@@ -4,7 +4,8 @@ import { useState, type ReactNode } from 'react';
 import { Building2, FileText, Handshake, Plus, Receipt, Send, Share2 } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
-import { EmptyState, ErrorState, InlineAlert, Meter, Skeleton } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, Meter, NoAccessState, Skeleton } from '../../components/feedback';
+import { useToastIfAny } from '../../components/notify';
 import { FieldRow, FormField } from '../../components/field';
 import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
 import { MultiSelect, Select } from '../../components/select';
@@ -46,8 +47,40 @@ const pct = (n: number) => `${Math.round(n * 10) / 10}%`;
 
 /* ================================================================== HIR-14 · Clients */
 
+/** Live list row (slice 1: open jobs, placements and money come with slices 2 and 3). */
+export interface ClientRowView {
+  id: string;
+  name: string;
+  gstin: string | null;
+  stateName: string;
+  status: 'onboarding' | 'active' | 'on_hold';
+  accountManager: string;
+  contractEnd: string | null;
+  contacts: number;
+}
+export interface LiveClients {
+  state: 'ready' | 'loading' | 'error' | 'denied' | 'off';
+  onRetry: () => void;
+  rows: ClientRowView[];
+  canManage: boolean;
+  onAdd: () => void;
+  onOpen: (id: string) => void;
+}
+const STATUS_WORD: Record<ClientRowView['status'], Client['status']> = { onboarding: 'Onboarding', active: 'Active', on_hold: 'On hold' };
+const statusTone = (v: unknown) => (v === 'Active' ? 'success' : v === 'On hold' ? 'warning' : 'info');
+
+/** The desk is off, or the viewer has no key: the same calm states on every staffing page. */
+function DeskState({ state, what, onRetry, title }: { state: 'loading' | 'error' | 'denied' | 'off'; what: string; onRetry: () => void; title: string }) {
+  if (state === 'loading') return <div className="yx-hire-stack" aria-busy="true" aria-label={`Loading ${what}`}><Skeleton height={64} /><Skeleton height={320} /></div>;
+  if (state === 'error') return <ErrorState title={`${title} could not be loaded.`} onRetry={onRetry} />;
+  if (state === 'off') return <EmptyState title="The staffing desk is off." description="An admin turns it on in Settings › Staffing desk, for a company that places its people with client companies." />;
+  return <NoAccessState grantedBy="your admin (Staffing account manager)" what={what} />;
+}
+
 // HIR-14
-export function ClientsScreen({ rows, state = 'ready' }: { rows: Client[]; state?: ListState }) {
+export function ClientsScreen(props: { rows: Client[]; state?: ListState } | { live: LiveClients }) {
+  if ('live' in props) return <LiveClientsView live={props.live} />;
+  const { rows, state = 'ready' } = props;
   const list = useListControls({
     rows,
     fields: [
@@ -61,7 +94,7 @@ export function ClientsScreen({ rows, state = 'ready' }: { rows: Client[]; state
   });
   const cols: TableColumn<Client>[] = [
     { key: 'name', header: 'Client', value: (r) => r.name, render: (r) => <PersonLabel name={r.name} secondary={`${r.state} · GSTIN ${r.gstin}`} /> },
-    { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (v === 'Active' ? 'success' : v === 'On hold' ? 'warning' : 'info') },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone },
     { key: 'jobs', header: 'Open jobs', type: 'number', value: (r) => r.openJobs, total: 'sum' },
     { key: 'placements', header: 'Active placements', type: 'number', value: (r) => r.activePlacements, total: 'sum' },
     { key: 'receivable', header: 'Receivable', type: 'money', value: (r) => r.receivable, total: 'sum' },
@@ -98,6 +131,46 @@ export function ClientsScreen({ rows, state = 'ready' }: { rows: Client[]; state
   );
 }
 
+function LiveClientsView({ live }: { live: LiveClients }) {
+  const list = useListControls({
+    rows: live.rows,
+    fields: [{ key: 'status', label: 'Status', type: 'multi', options: ['Active', 'Onboarding', 'On hold'].map((v) => ({ value: v, label: v })) }],
+    text: (r) => `${r.name} ${r.gstin ?? ''}`,
+    fieldValue: (r) => STATUS_WORD[r.status],
+    views: [{ id: 'all', name: 'All clients', shared: true }],
+    searchPlaceholder: 'Search clients or GSTIN',
+  });
+  const cols: TableColumn<ClientRowView>[] = [
+    { key: 'name', header: 'Client', value: (r) => r.name, render: (r) => <PersonLabel name={r.name} secondary={`${r.stateName}${r.gstin ? ` · GSTIN ${r.gstin}` : ' · no GSTIN'}`} /> },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => STATUS_WORD[r.status], statusTone },
+    { key: 'contacts', header: 'Contacts', type: 'number', value: (r) => r.contacts },
+    { key: 'ends', header: 'Contract ends', type: 'date', value: (r) => (r.contractEnd ? new Date(`${r.contractEnd}T00:00:00`) : null) },
+    { key: 'am', header: 'Account manager', type: 'person', value: (r) => r.accountManager, person: (r) => ({ name: r.accountManager || 'Nobody yet' }) },
+  ];
+  const add = live.canManage ? <Button variant="primary" icon={Plus} onClick={live.onAdd}>Add client</Button> : undefined;
+  return (
+    <HireFrame active="Clients">
+      <PageHeader title="Clients" description="Companies you place people with: their contacts, contract, SLAs and rate card." actions={live.state === 'ready' ? add : undefined} />
+      {live.state !== 'ready' ? (
+        <DeskState state={live.state} what="clients" title="Clients" onRetry={live.onRetry} />
+      ) : (
+        <DataTable
+          label="Clients"
+          columns={cols}
+          rows={list.rows}
+          getRowId={(r) => r.id}
+          toolbar={list.toolbar}
+          filtered={list.filtered}
+          onClearFilters={list.clear}
+          onRowClick={(r) => live.onOpen(r.id)}
+          rowButtons={(r) => <Button size="sm" onClick={() => live.onOpen(r.id)}>Open {r.name}</Button>}
+          empty={<EmptyState title="No clients yet." description="Add a client with its GSTIN, contract and SLAs, then its rate card." action={add} />}
+        />
+      )}
+    </HireFrame>
+  );
+}
+
 export interface ClientContact {
   name: string;
   role: string;
@@ -106,8 +179,48 @@ export interface ClientContact {
   billing?: boolean;
 }
 
+/** Live workspace data (GET staffing/clients/:id). */
+export interface ClientView {
+  id: string;
+  name: string;
+  legalName: string | null;
+  gstin: string | null;
+  stateName: string;
+  billingAddress: string;
+  status: ClientRowView['status'];
+  accountManager: string;
+  paymentTermsDays: number | null;
+  defaultPaymentTermsDays: number;
+  contractStart: string | null;
+  contractEnd: string | null;
+  noticeDays: number | null;
+  slaFirstSubmissionDays: number | null;
+  slaFeedbackDays: number | null;
+}
+export interface ContactView {
+  id: string;
+  name: string;
+  role: string;
+  email: string;
+  phone: string | null;
+  billing: boolean;
+}
+export interface LiveClientWorkspace {
+  client: ClientView;
+  contacts: ContactView[];
+  canManage: boolean;
+  onEdit: () => void;
+  onRates: () => void;
+  onAddContact: () => void;
+  onEditContact: (id: string) => void;
+  onRemoveContact: (id: string) => Promise<unknown>;
+}
+const d = (s: string | null) => (s ? formatDate(new Date(`${s}T00:00:00`)) : null);
+
 // HIR-14 (workspace)
-export function ClientWorkspaceScreen({ client, contacts, defaultTab = 'overview' }: { client: Client; contacts: ClientContact[]; defaultTab?: string }) {
+export function ClientWorkspaceScreen(props: { client: Client; contacts: ClientContact[]; defaultTab?: string } | { live: LiveClientWorkspace; defaultTab?: string }) {
+  if ('live' in props) return <LiveClientWorkspaceView live={props.live} defaultTab={props.defaultTab} />;
+  const { client, contacts, defaultTab = 'overview' } = props;
   return (
     <HireFrame active="Clients">
       <RecordLayout
@@ -125,6 +238,8 @@ export function ClientWorkspaceScreen({ client, contacts, defaultTab = 'overview
             ]}
             actions={
               <>
+                <Button>Rate card</Button>
+                <Button>Change client</Button>
                 <Button>Raise ticket for client</Button>
                 <Button variant="primary" icon={Plus}>
                   New client job
@@ -157,18 +272,23 @@ export function ClientWorkspaceScreen({ client, contacts, defaultTab = 'overview
             />
           </TabsContent>
           <TabsContent value="contacts">
-            <ul className="yx-hire-list">
-              {contacts.map((c) => (
-                <li key={c.email} className="yx-hire-list__item">
-                  <PersonLabel name={c.name} secondary={`${c.role} · ${c.email}`} />
-                  <div className="yx-hire-chips">
-                    {c.billing && <Badge tone="info">Billing contact</Badge>}
-                    <Badge tone={c.portal === 'Active' ? 'success' : c.portal === 'Invited' ? 'warning' : 'neutral'}>Portal: {c.portal}</Badge>
-                  </div>
-                  {c.portal === 'No access' && <Button size="sm">Invite to portal</Button>}
-                </li>
-              ))}
-            </ul>
+            <div className="yx-hire-stack">
+              <div>
+                <Button size="sm" icon={Plus}>Add contact</Button>
+              </div>
+              <ul className="yx-hire-list">
+                {contacts.map((c) => (
+                  <li key={c.email} className="yx-hire-list__item">
+                    <PersonLabel name={c.name} secondary={`${c.role} · ${c.email}`} />
+                    <div className="yx-hire-chips">
+                      {c.billing && <Badge tone="info">Billing contact</Badge>}
+                      <Badge tone={c.portal === 'Active' ? 'success' : c.portal === 'Invited' ? 'warning' : 'neutral'}>Portal: {c.portal}</Badge>
+                    </div>
+                    {c.portal === 'No access' && <Button size="sm">Invite to portal</Button>}
+                  </li>
+                ))}
+              </ul>
+            </div>
           </TabsContent>
           <TabsContent value="contracts">
             <ul className="yx-hire-list">
@@ -200,10 +320,160 @@ export function ClientWorkspaceScreen({ client, contacts, defaultTab = 'overview
   );
 }
 
+function LiveClientWorkspaceView({ live, defaultTab = 'overview' }: { live: LiveClientWorkspace; defaultTab?: string }) {
+  const c = live.client;
+  const [removing, setRemoving] = useState<ContactView | null>(null);
+  const toast = useToastIfAny();
+  const terms = c.paymentTermsDays ?? c.defaultPaymentTermsDays;
+  return (
+    <HireFrame active="Clients">
+      <RecordLayout
+        header={
+          <ObjectHeader
+            name={c.name}
+            icon={Building2}
+            secondary={`${c.gstin ? `GSTIN ${c.gstin}` : 'No GSTIN'} · ${c.stateName}${c.accountManager ? ` · account manager ${c.accountManager}` : ''}`}
+            status={<Badge tone={c.status === 'active' ? 'success' : c.status === 'on_hold' ? 'warning' : 'info'}>{STATUS_WORD[c.status]}</Badge>}
+            facts={[
+              { label: 'Contacts', value: live.contacts.length },
+              { label: 'Payment terms', value: `${terms} days` },
+              { label: 'Contract ends', value: d(c.contractEnd) ?? 'Not set' },
+            ]}
+            actions={
+              <>
+                <Button onClick={live.onRates}>Rate card</Button>
+                {live.canManage && <Button onClick={live.onEdit}>Change client</Button>}
+              </>
+            }
+          />
+        }
+      >
+        <Tabs defaultValue={defaultTab}>
+          <TabsList aria-label="Client sections">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="contacts" count={live.contacts.length}>
+              Contacts
+            </TabsTrigger>
+            <TabsTrigger value="contracts">Contracts</TabsTrigger>
+            <TabsTrigger value="slas">SLAs</TabsTrigger>
+          </TabsList>
+          <TabsContent value="overview">
+            <DescriptionList
+              columns={2}
+              items={[
+                { label: 'Legal name', value: c.legalName || c.name },
+                { label: 'Billing address', value: c.billingAddress },
+                { label: 'Place of supply', value: c.stateName },
+                { label: 'Payment terms', value: `${terms} days from invoice${c.paymentTermsDays == null ? ' (company default)' : ''}` },
+              ]}
+            />
+          </TabsContent>
+          <TabsContent value="contacts">
+            <div className="yx-hire-stack">
+              {live.canManage && (
+                <div>
+                  <Button size="sm" icon={Plus} onClick={live.onAddContact}>Add contact</Button>
+                </div>
+              )}
+              {live.contacts.length === 0 ? (
+                <EmptyState compact title="No contacts yet." description="Add the people you work with, and mark who gets invoices." />
+              ) : (
+                <ul className="yx-hire-list">
+                  {live.contacts.map((x) => (
+                    <li key={x.id} className="yx-hire-list__item">
+                      <PersonLabel name={x.name} secondary={`${x.role} · ${x.email}${x.phone ? ` · ${x.phone}` : ''}`} />
+                      <div className="yx-hire-chips">{x.billing && <Badge tone="info">Billing contact</Badge>}</div>
+                      {live.canManage && (
+                        <span className="yx-hire-actions">
+                          <Button size="sm" onClick={() => live.onEditContact(x.id)}>Change {x.name}</Button>
+                          <Button size="sm" variant="danger" onClick={() => setRemoving(x)}>Remove {x.name}</Button>
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </TabsContent>
+          <TabsContent value="contracts">
+            {c.contractStart || c.contractEnd ? (
+              <DescriptionList items={[{ label: 'Starts', value: d(c.contractStart) ?? 'Not set' }, { label: 'Ends', value: d(c.contractEnd) ?? 'Open-ended' }, { label: 'Notice', value: c.noticeDays != null ? `${c.noticeDays} days` : 'Not set' }]} />
+            ) : (
+              <EmptyState compact title="No contract dates yet." description={live.canManage ? 'Add them with Change client.' : undefined} />
+            )}
+          </TabsContent>
+          <TabsContent value="slas">
+            <DescriptionList
+              items={[
+                { label: 'First submission', value: c.slaFirstSubmissionDays ? `Within ${c.slaFirstSubmissionDays} working days of a new job` : 'Not agreed' },
+                { label: 'Client feedback', value: c.slaFeedbackDays ? `Client to respond within ${c.slaFeedbackDays} working days` : 'Not agreed' },
+              ]}
+            />
+          </TabsContent>
+        </Tabs>
+      </RecordLayout>
+      {removing && (
+        <ConfirmDialog
+          open
+          destructive
+          onOpenChange={(o) => !o && setRemoving(null)}
+          title={`Remove ${removing.name}?`}
+          consequence="They are no longer a contact of this client. Past records keep their name."
+          confirmLabel="Remove contact"
+          onConfirm={async () => {
+            await live.onRemoveContact(removing.id);
+            toast?.toast({ tone: 'success', title: 'Contact removed' });
+            setRemoving(null);
+          }}
+        />
+      )}
+    </HireFrame>
+  );
+}
+
 /* ================================================================== HIR-15 · Rate cards */
 
+/** Live rate-card row (GET staffing/clients/:id/rates): money as rupee text, pay and margin only for account managers. */
+export interface RateRowView {
+  id: string;
+  role: string;
+  skill: string;
+  location: string;
+  unit: 'hour' | 'day' | 'month';
+  billRate: string;
+  payRate?: string;
+  marginPct?: string;
+  ot: string;
+  holiday: string;
+  validFrom: string;
+  validTo: string | null;
+}
+export interface RateChangeInput {
+  validFrom: string;
+  billRate: number;
+  payRate: number;
+  reason: string;
+}
+export interface LiveRateCard {
+  state: 'ready' | 'loading' | 'error' | 'denied' | 'off';
+  onRetry: () => void;
+  clientName: string | null;
+  rows: RateRowView[];
+  showPay: boolean;
+  canManage: boolean;
+  history: boolean;
+  onHistory: (on: boolean) => void;
+  today: Date;
+  onAdd: () => void;
+  onChange: (rateId: string, input: RateChangeInput) => Promise<unknown>;
+  /** e.g. the client picker. */
+  extra?: ReactNode;
+}
+
 // HIR-15
-export function RateCardScreen({ client, rows, showHistory = false, editOpen = false, persona = 'am' }: { client: string; rows: RateCardRow[]; showHistory?: boolean; editOpen?: boolean; persona?: 'am' | 'recruiter' }) {
+export function RateCardScreen(props: { client: string; rows: RateCardRow[]; showHistory?: boolean; editOpen?: boolean; persona?: 'am' | 'recruiter' } | { live: LiveRateCard }) {
+  if ('live' in props) return <LiveRateCardView live={props.live} />;
+  const { client, rows, showHistory = false, editOpen = false, persona = 'am' } = props;
   const [history, setHistory] = useState(showHistory);
   const [edit, setEdit] = useState<RateCardRow | null>(editOpen ? rows[0] : null);
   const [bill, setBill] = useState<number | null>(edit?.billRate ?? null);
@@ -286,6 +556,144 @@ export function RateCardScreen({ client, rows, showHistory = false, editOpen = f
     </HireFrame>
   );
 }
+
+const isoDay = (x: Date) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+
+function LiveRateCardView({ live }: { live: LiveRateCard }) {
+  const toast = useToastIfAny();
+  const [edit, setEdit] = useState<RateRowView | null>(null);
+  const [from, setFrom] = useState<Date | null>(null);
+  const [bill, setBill] = useState<number | null>(null);
+  const [pay, setPay] = useState<number | null>(null);
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const money = (s: string | undefined) => (s == null ? 0 : Number(s));
+  const cols: TableColumn<RateRowView>[] = [
+    { key: 'role', header: 'Role', value: (r) => r.role, render: (r) => <PersonLabel name={r.role} secondary={`${r.skill} · ${r.location}`} /> },
+    { key: 'unit', header: 'Unit', value: (r) => `Per ${r.unit}` },
+    { key: 'bill', header: 'Bill rate', type: 'money', value: (r) => money(r.billRate) },
+    ...(live.showPay
+      ? [
+          { key: 'pay', header: 'Pay rate', type: 'money', value: (r: RateRowView) => money(r.payRate) } as TableColumn<RateRowView>,
+          { key: 'margin', header: 'Gross margin', type: 'number', value: (r: RateRowView) => Number(r.marginPct ?? 0), render: (r: RateRowView) => `${r.marginPct}%` } as TableColumn<RateRowView>,
+        ]
+      : []),
+    { key: 'ot', header: 'OT', value: (r) => `${r.ot}×` },
+    { key: 'holiday', header: 'Holiday', value: (r) => `${r.holiday}×` },
+    { key: 'from', header: 'Valid from', type: 'date', value: (r) => new Date(`${r.validFrom}T00:00:00`) },
+    { key: 'to', header: 'Valid to', value: (r) => r.validTo ?? 'Current', render: (r) => (r.validTo ? d(r.validTo) : <Badge tone="success">Current</Badge>) },
+  ];
+  const open = (r: RateRowView) => {
+    setEdit(r);
+    setFrom(live.today);
+    setBill(money(r.billRate));
+    setPay(r.payRate != null ? money(r.payRate) : null);
+    setReason('');
+    setTried(false);
+    setFailed(null);
+  };
+  const payBad = pay == null || pay <= 0 || (bill != null && pay > bill);
+  const save = async () => {
+    if (!edit) return;
+    setTried(true);
+    if (!from) return focus('rc-from');
+    if (bill == null || bill <= 0) return focus('rc-bill');
+    if (payBad) return focus('rc-pay');
+    if (reason.trim().length < 3) return focus('rc-reason');
+    setBusy(true);
+    setFailed(null);
+    try {
+      await live.onChange(edit.id, { validFrom: isoDay(from), billRate: bill, payRate: pay!, reason: reason.trim() });
+      toast?.toast({ tone: 'success', title: 'Rate changed', description: `From ${formatDate(from)}; the old rate ends the day before.` });
+      setEdit(null);
+    } catch (e) {
+      setFailed(e instanceof Error && e.message ? e.message : 'That did not save. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <HireFrame active="Rate cards">
+      <ObjectHeader
+        name={live.clientName ? `Rate card · ${live.clientName}` : 'Rate cards'}
+        icon={Receipt}
+        secondary="Per role, skill and location. Changes are dated: a new rate applies from its valid-from date; the old rate stays for the days before."
+        actions={
+          <>
+            {live.extra}
+            {live.canManage && live.clientName && live.state === 'ready' && (
+              <Button variant="primary" icon={Plus} onClick={live.onAdd}>
+                Add role
+              </Button>
+            )}
+          </>
+        }
+      />
+      {live.state !== 'ready' ? (
+        <DeskState state={live.state} what="rate cards" title="The rate card" onRetry={live.onRetry} />
+      ) : !live.clientName ? (
+        <EmptyState title="Choose a client." description="Each client has its own rate card." />
+      ) : (
+        <>
+          <Switch className="yx-hire-switch" label="Show expired rates" checked={live.history} onChange={live.onHistory} />
+          <DataTable
+            label="Rate card"
+            columns={cols}
+            rows={live.rows}
+            getRowId={(r) => r.id}
+            rowButtons={live.canManage ? (r) => (!r.validTo ? <Button size="sm" onClick={() => open(r)}>Change rate</Button> : null) : undefined}
+            empty={<EmptyState title="No rates on this card yet." description="Add each role with bill rate, pay rate and OT and holiday multipliers." />}
+          />
+          {!live.showPay && <Text size="sm" tone="secondary">Pay rates and margins are visible to account managers.</Text>}
+        </>
+      )}
+      {edit && (
+        <Drawer
+          open
+          onOpenChange={(o) => !o && setEdit(null)}
+          title={`Change rate · ${edit.role}`}
+          subtitle={`Current bill ${formatINR(money(edit.billRate))} per ${edit.unit} since ${d(edit.validFrom)}`}
+          dirty
+          footer={
+            <>
+              <Button onClick={() => setEdit(null)}>Cancel</Button>
+              <Button variant="primary" loading={busy} onClick={() => void save()}>
+                Save dated change
+              </Button>
+            </>
+          }
+        >
+          <div className="yx-hire-stack">
+            {failed && <InlineAlert tone="danger" title={failed} />}
+            <FormField id="rc-from" label="Effective from" required helper="The current rate ends the day before." error={tried && !from ? 'Choose the day it starts.' : null}>
+              <DatePicker value={from} onChange={setFrom} />
+            </FormField>
+            <FieldRow>
+              <FormField id="rc-bill" label="New bill rate" required error={tried && (bill == null || bill <= 0) ? 'Enter the bill rate.' : null}>
+                <CurrencyField value={bill} onChange={setBill} />
+              </FormField>
+              <FormField id="rc-pay" label="Pay rate" required error={tried && payBad ? (pay != null && bill != null && pay > bill ? 'The pay rate is above the bill rate.' : 'Enter the pay rate.') : null}>
+                <CurrencyField value={pay} onChange={setPay} />
+              </FormField>
+            </FieldRow>
+            {bill != null && bill > 0 && pay != null && edit.marginPct && (
+              <Text size="sm" tone="secondary" aria-live="polite">
+                Gross margin {pct(((bill - pay) / bill) * 100)} (was {edit.marginPct}%).
+              </Text>
+            )}
+            <FormField id="rc-reason" label="Reason" required error={tried && reason.trim().length < 3 ? 'Say why the rate changes.' : null}>
+              <TextArea rows={2} value={reason} onChange={setReason} maxLength={500} />
+            </FormField>
+          </div>
+        </Drawer>
+      )}
+    </HireFrame>
+  );
+}
+
+const focus = (id: string) => setTimeout(() => document.getElementById(id)?.focus(), 0);
 
 /* ================================================================== HIR-16 · Submissions board */
 

@@ -56,11 +56,12 @@ built**.
 | B. Candidates, pipeline and interviews | 8 | 52 | 1 | 0 | 9 | 1 | 63 |
 | C. Offers, BGV and joining | 4 | 23 | 4 | 0 | 1 | 0 | 28 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 24 | 0 | 0 | 3 | 4 | 31 |
-| E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
+| E. Staffing agency | 8 | 11 | 6 | 4 | 31 | 0 | 52 |
 | F. Compliance and fairness | 5 | 12 | 2 | 0 | 15 | 0 | 29 |
-| G. Careers site, portals and settings | 4 | 57 | 3 | 2 | 11 | 0 | 73 |
-| **All Hiring design groups (A–G)** | **37** | **204** | **11** | **6** | **83** | **5** | **309** |
+| G. Careers site, portals and settings | 4 | 59 | 4 | 2 | 9 | 0 | 74 |
+| **All Hiring design groups (A–G)** | **37** | **217** | **18** | **6** | **68** | **5** | **314** |
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 5 | 0 | 5 | 5 | 0 | 15 |
+Recounted by script on `test/yukthix-main` after merging staffing slice 1 (clients, rate cards, 6.2): A–G 217 live, 18 gap, 6 wire, 68 not built, 5 phone, of 314.
 Recounted by script on `test/yukthix-main` after merging the careers follow-ups, HIR-13 internal jobs and HIR-25 notetaker: A–G 204 live, 11 gap, 6 wire, 83 not built, 5 phone, of 309.
 Recounted by script on `test/yukthix-main` after merging HIR-28 bulk offers (with the HIR-09 follow-ups) and HIR-27 interview days: A–G 189 live, 11 gap, 6 wire, 92 not built, 5 phone, of 303.
 Recounted by script 13 Nov 2026 on `feat/yukthix-careers-2` after the careers follow-ups (answers 351-353, 355-357, 359, 362): T9-09 WhiteLabel live (gap) → live; 2 new T9-09 stories drawn and live (JobInternationalPhone, PortalWithLogo); Job stays live (gap) for WhatsApp apply (354).
@@ -72,6 +73,7 @@ Recounted by script 12 Nov 2026 on `feat/yukthix-hir-28` after HIR-28 went live 
 Recounted by script 12 Nov 2026 on `feat/yukthix-hir-09` after merging the Settings 6.1 follow-ups with answers 332 and 334-337: A–G 179 live, 10 gap, 6 wire, 100 not built, 5 phone, of 300.
 
 Recounted by script on `test/yukthix-main` after merging the Settings 6.1 follow-ups with HIR-10/20: A–G 176 live, 12 gap, 6 wire, 100 not built, 5 phone, of 299 (H: the old scorecard-templates group left with its page).
+Recounted by script 14 Nov 2026 on `feat/yukthix-staffing-1` after staffing slice 1: HIR-14 8 stories and HIR-15 5 stories design only → live (6 with a gap) plus 4 new drawn stories (add client, add contact, desk off, add role); Settings 6.2 P6_2 and P6_2_ReadOnly → live plus the new invoice series story.
 Recounted by script 14 Nov 2026 on `feat/yukthix-hir-27` after HIR-27 went live: its 4 stories design only → live (1 with a gap) plus 3 new drawn stories (some not sent, plan sheet, no days yet).
 Recounted by script 12 Nov 2026 on `feat/yukthix-hiring-settings-2` after the Settings 6.1 follow-ups (answers 341, 345, 348): 5 new 6.1 stories drawn and live (edit, add, used and view-only scorecard; default recruiter no longer qualifies); the "Live · Job workspace and interviews" group's last stand-in story (Scorecards) was deleted with the /yx/hiring/scorecards page.
 Recounted by script 11 Nov 2026 on `feat/yukthix-hir-09` after founder answers 332 and 334-337: HIR-09 HrEmployerCost and HIR-29 Reminder became live; a new T9-09 story (OfferSign, the e-sign accept page) is live.
@@ -609,32 +611,45 @@ No AI runs while acting for someone else. Recruiting adds a person to the pipeli
 
 ### E. Staffing agency
 
-HIR-14 … 19 and HIR-30 have no page and no API (no client, rate card, placement, client invoice or collection model).
+Staffing desk slice 1 (14 Nov 2026, branch `feat/yukthix-staffing-1`): HIR-14 clients and HIR-15 rate cards are live, with
+Settings 6.2. The desk is off until the company turns it on (`staffing.desk.enabled`, default off); then the Hiring
+menu shows a "Staffing desk" group (Clients, Rate cards) to holders of `ats.staffing.manage` (account managers: clients,
+contacts, pay rates, margins, invoice series; new template "Staffing account manager") or `ats.staffing.view` (recruiters:
+clients and bill rates only). API `/staffing/*` (desk, clients, contacts, rates, rate changes, settings, invoice series);
+writes are refused while acting (403); another company's records 404; migration `202617o0000003_staffing_1` (four
+tables with RLS; the two keys; the GST state codes as a rule set `GST.STATE_CODES`, data not code). Money is paise
+(BigInt) in the database and exact rupee text on the wire. HIR-16 … 19 and HIR-30, 31 have no page yet (slices 2 and 3).
 HIR-21 overlaps with the recruitment-agency feature that exists (Agency, AgencyJob, AgencySubmission; public
-/agency/[token]; older v2 /settings/agencies and /agency-submissions). Scope: question 1.
+/agency/[token]; older v2 /settings/agencies and /agency-submissions): slice 2 must build HIR-21 on those models and the
+agency token page, adding the staffing parts (sub-vendor rate caps, duplicate checks) to them, never a second vendor
+model. Scope: question 1.
 
 #### HIR-14 · Clients
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| List · Account manager · clients list | design only, feature not built | no client model |
-| Workspace · Client workspace · overview | design only, feature not built | same |
-| Contacts · Client workspace · contacts and portal access | design only, feature not built | same |
-| Contracts · Client workspace · contracts | design only, feature not built | same |
-| Slas · Client workspace · SLAs | design only, feature not built | same |
-| Empty · Empty | design only, feature not built | same |
-| Loading · Loading | design only, feature not built | same |
-| Error · Error | design only, feature not built | same |
+| List · Account manager · clients list | live (gap) | /yx/staffing/clients: name, GSTIN and state, status, contacts, contract end, account manager; search and status filter. Gap: open jobs, placements, receivable and overdue (slices 2, 3), portal invites (no client portal), saved views and export |
+| Workspace · Client workspace · overview | live (gap) | /yx/staffing/clients/[id]: legal name, billing address, place of supply, payment terms (client's or the company default); Change client and Rate card. Gap: TDS by client and invoice grouping (slice 3), Raise ticket, New client job (slice 2) |
+| Contacts · Client workspace · contacts and portal access | live (gap) | add, change, remove (after a confirmation), billing contact; one email per client. Gap: client portal access (question 453) |
+| Contracts · Client workspace · contracts | live (gap) | contract start, end and notice from the client. Gap: contract documents, fees and guarantee (slice 3, HIR-30) |
+| Slas · Client workspace · SLAs | live (gap) | first submission and client feedback days. Gap: ticket SLAs (no client tickets) |
+| Empty · Empty | live | no clients yet, with Add client for account managers |
+| Loading · Loading | live | |
+| Error · Error | live | |
+| AddClient · Add client | live | new story (drawn): `ClientSheet`: GSTIN checked (shape, check character, state code against the billing state from the rule set), contract dates, SLAs, payment terms; duplicates 409; a stale change 409 |
+| AddContact · Client workspace · add contact | live | new story (drawn): `ContactSheet` |
+| DeskOff · Staffing desk turned off | live | new story (drawn): the calm state while the desk is off (API 403 with that reason) |
 
 #### HIR-15 · Rate cards
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Current · Account manager · current rates with margin | design only, feature not built | no rate cards |
-| History · Dated history shown | design only, feature not built | same |
-| ChangeRate · Dated rate change | design only, feature not built | same |
-| Recruiter · Recruiter · no pay rates or margins | design only, feature not built | same |
-| Empty · Empty | design only, feature not built | same |
+| Current · Account manager · current rates with margin | live | /yx/staffing/rate-cards?client=: bill, pay, gross margin (exact paise, one decimal), OT and holiday multipliers, valid from; a client picker |
+| History · Dated history shown | live | Show expired rates: every dated version |
+| ChangeRate · Dated rate change | live (gap) | a dated change: after the current start, no earlier than the company allows (`staffing.rate_change.backdate_days`, default today or later); the old rate ends the day before; pay never above bill; reason required; a replaced rate 409. Gap: "affects N active placements" (slice 2) |
+| Recruiter · Recruiter · no pay rates or margins | live | `ats.staffing.view` only: the API never sends pay rates or margins |
+| Empty · Empty | live | |
+| AddRole · Add role | live | new story (drawn): `RateLineSheet`: role, skills, location, unit (Segment), bill and pay with the margin, the company's OT and holiday multipliers as defaults; the same role, skill and location twice 409 |
 
 #### HIR-16 · Submissions board
 
@@ -889,8 +904,9 @@ stand-in is gone. Approval routes, careers and job boards stay on their stand-in
 | P6_1_ScorecardUsed · 6.1 Hiring · used scorecard (saved as a copy) | live | a template already used by a scorecard is never changed: “Save as a copy” posts a new template named “(copy)”; the API refuses a change with 409 |
 | P6_1_ScorecardView · 6.1 Hiring · scorecard, view only | live | the view-only sheet (skills with per cent, scale, pass bar) is drawn; live shows the list rows read-only without the pipelines key instead of opening it. Archive scorecard (danger, after a confirmation): `DELETE hiring/scorecard-templates/:id`, jobs using it go back to no scorecard, filled scorecards keep it |
 | P6_1_StaleRecruiter · 6.1 Hiring · default recruiter no longer qualifies | live | answer 348: a stored default who left or no longer holds the recruiter key reads as None with a warning naming them; new requisitions start with no recruiter (`defaultRecruiter`); the API refuses anyone else as default with 400, on both `PUT hiring/settings` and `PUT org/settings` |
-| P6_2 · 6.2 Staffing desk | design only, feature not built | rate cards, bill multipliers, invoice numbering: staffing business (question 1) |
-| P6_2_ReadOnly · 6.2 Staffing desk · read-only | design only, feature not built | same |
+| P6_2 · 6.2 Staffing desk | live (gap) | /yx/settings/staffing: turn on the staffing desk (`staffing.desk.enabled`, default off, drawn), the rate-change backdating (`staffing.rate_change.backdate_days`, default 0, drawn), OT and holiday multipliers (1.5 and 2), default payment terms (30 days), invoice numbering (one series per GSTIN per financial year; the next number only goes up) and the r.46(b) law row. Changed by `ats.staffing.manage` or `org.settings.manage` company-wide, never while acting; audited. Gap: collections, dunning, bench, client-portal times and e-invoicing (slices 2 and 3) are left out |
+| P6_2_ReadOnly · 6.2 Staffing desk · read-only | live | recruiters (`ats.staffing.view`) read it |
+| P6_2_InvoiceSeries · 6.2 Staffing desk · add invoice series | live | new story (drawn): `InvoiceSeriesSheet`: the GSTIN must be one of the entity's registrations; a duplicate year and GSTIN 409; the number cannot go back |
 
 ### H. Kit and "Live ·" groups (not designs)
 
@@ -1645,3 +1661,23 @@ in India.
      words fills the scorecard form instead of the draft.*
 435. **Recruiters off the panel.** Built: they see the consent card and record the candidate's answer, but never give
      panel consent, add a transcript or draft. *Suggested: keep.*
+## Staffing desk slice 1 built (14 Nov 2026, branch `feat/yukthix-staffing-1`)
+- HIR-14, HIR-15 and Settings 6.2: see their rows above. Company settings with defaults: `staffing.desk.enabled` (off),
+  `staffing.ot_multiplier` (1.5), `staffing.holiday_multiplier` (2), `staffing.payment_terms_days` (30),
+  `staffing.rate_change.backdate_days` (0).
+- For slice 2: HIR-21 must reuse Agency, AgencyJob, AgencySubmission and /agency/[token]; placements and submissions
+  should point at `staffing_clients` and the current `staffing_rates` line (by `line_id` and the day).
+## Founder questions from the staffing desk slice 1 (14 Nov 2026)
+451. **Pay above bill.** A rate-card line whose pay rate is above its bill rate is refused (the database refuses it too).
+     *Suggested: keep; a loss-making line needs a deliberate exception later if ever.*
+452. **Who gets the staffing keys.** Built: System Admins and the new "Staffing account manager" template; the Recruiter
+     template is unchanged (no `ats.staffing.view`). *Suggested: add `ats.staffing.view` to the Recruiter template for
+     companies that turn the desk on.*
+453. **Client portal.** The design's portal access per contact (Active / Invited / Invite to portal) is not built: there is
+     no client sign-in. *Suggested: build it with slice 3 (clients see their placements and invoices).*
+454. **TDS by client and invoice grouping** (design overview) are left out until invoices (slice 3). *Suggested: keep
+     the TDS section as data (a rule set like the GST state codes) and add both with slice 3.*
+455. **Clients without a GSTIN.** Allowed (an unregistered client, B2C invoicing later). *Suggested: keep; the invoice
+     slice warns when a client has none.*
+456. **The desk switch and existing data.** Turning the desk off hides the menu and closes the pages (403); the data stays
+     and returns when it is turned on. *Suggested: keep.*

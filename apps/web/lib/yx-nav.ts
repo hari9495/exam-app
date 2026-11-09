@@ -47,6 +47,8 @@ export interface NavInput {
   caseTeam?: boolean;
   /** HLP-09: on the ethics or escalation list. */
   ethicsDesk?: boolean;
+  /** The company turned the staffing desk on (Settings › Staffing desk; the server decides). */
+  staffing?: boolean;
 }
 
 /** Possible same person is in the menu when the server sends its count: company-wide HR while a pair waits or for 90 days after any merge, even at 0. */
@@ -290,6 +292,8 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(any('exam:manage', 'question_bank:manage'), L('hiring-older', 'Assessments & more (older screens)', '/v2/today')),
           ...when(has('results:view') && !any('exam:manage', 'question_bank:manage'), L('hiring-results', 'Test results (older screens)', '/v2/panel/reports')),
           ]),
+          // Staffing desk slice 1 (HIR-14, HIR-15): its own group, only for a company that turned the desk on.
+          ...sec('Staffing desk', [...when(Boolean(n.staffing) && any('ats.staffing.manage', 'ats.staffing.view'), L('staffing-clients', 'Clients', '/yx/staffing/clients'), L('staffing-rates', 'Rate cards', '/yx/staffing/rate-cards'))]),
           // HIR-11: the design puts Recruiting costs under "Reports & compliance" (key ats.costs.manage, founder answer 202).
           // HIR-12 All referrals (answer 204): HR with ats.referral.manage, or recruiters who see candidates.
           ...sec('Reports & compliance', [
@@ -387,7 +391,11 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(has('payroll.import.run'), L('pay-imports', 'Import old payroll', '/yx/payroll/imports')),
       ])),
       // Settings 6.1 Hiring: recruiting, hiring admins and HR read it; the hiring settings key changes it.
-      ...sec('Hiring & Assessments', when(!support && any('ats.settings.manage', 'org.settings.manage', 'pipeline:manage', 'pipelines:configure', 'ats.headcount.manage', 'ats.referral.manage'), L('hiring-settings', 'Hiring', '/yx/settings/hiring'))),
+      ...sec('Hiring & Assessments', [
+        ...when(!support && any('ats.settings.manage', 'org.settings.manage', 'pipeline:manage', 'pipelines:configure', 'ats.headcount.manage', 'ats.referral.manage'), L('hiring-settings', 'Hiring', '/yx/settings/hiring')),
+        // 6.2: where the desk is turned on, so it shows to the settings holders even while it is off.
+        ...when(!support && any('ats.staffing.manage', 'org.settings.manage'), L('staffing-settings', 'Staffing desk', '/yx/settings/staffing')),
+      ]),
       ...sec('Documents & Communication', [
         ...when(any('letter.template.manage', 'letter.signatory.manage'), L('letter-templates', 'Letter templates', '/yx/settings/letters')),
         ...when(has('notification.template.manage') || support, L('emails', 'Emails', '/yx/settings/emails')),

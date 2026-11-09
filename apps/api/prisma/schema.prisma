@@ -12279,3 +12279,90 @@ model InterviewDayRow {
   @@index([organizationId, dayId], map: "interview_day_rows_day_idx")
   @@map("interview_day_rows")
 }
+
+/// Staffing desk slice 1 (HIR-14): a client company the staffing company places people with.
+model StaffingClient {
+  id                     String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId         String                  @map("organization_id") @db.Uuid
+  name                   String                  @db.VarChar(200)
+  legalName              String?                 @map("legal_name") @db.VarChar(200)
+  gstin                  String?                 @db.VarChar(15)
+  state                  String                  @db.VarChar(5)
+  billingAddress         String                  @map("billing_address") @db.VarChar(500)
+  status                 String                  @default("onboarding") @db.VarChar(12)
+  accountManagerUserId   String?                 @map("account_manager_user_id") @db.Uuid
+  paymentTermsDays       Int?                    @map("payment_terms_days")
+  contractStart          DateTime?               @map("contract_start") @db.Date
+  contractEnd            DateTime?               @map("contract_end") @db.Date
+  noticeDays             Int?                    @map("notice_days")
+  slaFirstSubmissionDays Int?                    @map("sla_first_submission_days")
+  slaFeedbackDays        Int?                    @map("sla_feedback_days")
+  version                Int                     @default(1)
+  createdBy              String?                 @map("created_by") @db.Uuid
+  createdAt              DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  contacts               StaffingClientContact[]
+  rates                  StaffingRate[]
+
+  @@map("staffing_clients")
+}
+
+model StaffingClientContact {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String         @map("organization_id") @db.Uuid
+  clientId       String         @map("client_id") @db.Uuid
+  name           String         @db.VarChar(120)
+  role           String         @db.VarChar(120)
+  email          String         @db.Citext
+  phone          String?        @db.VarChar(16)
+  billing        Boolean        @default(false)
+  archivedAt     DateTime?      @map("archived_at") @db.Timestamptz(3)
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  client         StaffingClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, clientId], map: "staffing_client_contacts_client_idx")
+  @@map("staffing_client_contacts")
+}
+
+/// HIR-15: one dated version of a rate-card line (bill and pay rates in paise).
+model StaffingRate {
+  id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String         @map("organization_id") @db.Uuid
+  clientId          String         @map("client_id") @db.Uuid
+  lineId            String         @map("line_id") @db.Uuid
+  role              String         @db.VarChar(120)
+  skill             String         @db.VarChar(200)
+  location          String         @db.VarChar(120)
+  unit              String         @db.VarChar(6)
+  billRatePaise     BigInt         @map("bill_rate_paise")
+  payRatePaise      BigInt         @map("pay_rate_paise")
+  otMultiplier      Decimal        @map("ot_multiplier") @db.Decimal(4, 2)
+  holidayMultiplier Decimal        @map("holiday_multiplier") @db.Decimal(4, 2)
+  validFrom         DateTime       @map("valid_from") @db.Date
+  validTo           DateTime?      @map("valid_to") @db.Date
+  reason            String?        @db.VarChar(500)
+  createdBy         String?        @map("created_by") @db.Uuid
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  client            StaffingClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, clientId, lineId, validFrom], map: "staffing_rates_client_idx")
+  @@map("staffing_rates")
+}
+
+/// Settings 6.2: one consecutive invoice series per GSTIN per financial year (CGST Rules 2017 r.46(b)).
+model StaffingInvoiceSeries {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  gstin          String   @db.VarChar(15)
+  financialYear  String   @map("financial_year") @db.VarChar(7)
+  prefix         String   @db.VarChar(16)
+  nextNumber     Int      @default(1) @map("next_number")
+  version        Int      @default(1)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, gstin, financialYear], map: "staffing_invoice_series_key")
+  @@map("staffing_invoice_series")
+}

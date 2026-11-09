@@ -59,3 +59,7 @@ export { hiringSettingsPage, hiringSettingsChanges, type HiringSettingsData } fr
 export { BgvTrackerScreen, TalentCrmScreen, type BgvResultInput, type LiveBgv, type LiveBgvCheck, type LiveBgvJoiner, type LivePool, type LivePoolMember, type LivePostingJob, type LiveTalentCrm } from '../hiring-offers';
 // HIR-27 bulk interview day.
 export { InterviewDaySheet, type InterviewDayInput, type InterviewDaySheetProps, type InterviewDayView, type LiveInterviewDay } from '../interview-day';
+// Staffing desk slice 1 (HIR-14, HIR-15, Settings 6.2).
+export { ClientsScreen, ClientWorkspaceScreen, RateCardScreen, type ClientRowView, type ClientView, type ContactView, type LiveClients, type LiveClientWorkspace, type LiveRateCard, type RateChangeInput, type RateRowView } from '../hiring-staffing';
+export { ClientSheet, ContactSheet, InvoiceSeriesSheet, RateLineSheet, type ClientInput, type ContactInput, type InvoiceSeriesInput, type RateLineInput } from '../staffing-sheets';
+export { staffingSettingsPage, staffingSettingsChanges, type StaffingSettingsData } from '../../settings/staffing-live';

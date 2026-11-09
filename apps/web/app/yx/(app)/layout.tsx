@@ -62,6 +62,9 @@ function Frame({ children }: { children: React.ReactNode }) {
   const myClearance = useLife<{ rows: unknown[] }>('/lifecycle/clearance/mine');
   const firstDays = useLife<{ card: unknown }>('/lifecycle/me/first-30-days');
   const counts = useWorkspaceCounts();
+  // Staffing desk: its menu group only once the company turned the desk on (asked only by staffing key holders).
+  const staffingKeys = perms.has('ats.staffing.manage' as never) || perms.has('ats.staffing.view' as never);
+  const staffingDesk = useQuery<{ enabled: boolean }>({ queryKey: ['staffing', '/desk'], queryFn: () => apiFetch('/staffing/desk', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && staffingKeys && !actingSuperAdmin, retry: false });
   // Shares the cache with My security, so the banner clears as soon as a factor is added there.
   const mfa = useQuery<MfaStatus>({ queryKey: ['yx', 'mfa'], queryFn: () => apiFetch('/auth/mfa', {}, accessToken ?? undefined), enabled: Boolean(accessToken) });
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -105,10 +108,11 @@ function Frame({ children }: { children: React.ReactNode }) {
         designated: counts.data?.declarationsDue !== undefined,
         caseTeam: counts.data?.casesOpen !== undefined,
         ethicsDesk: counts.data?.ethicsReports !== undefined,
+        staffing: Boolean(staffingDesk.data?.enabled),
       }),
     // perms.data drives perms.has
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [perms.data, role, support, employee, team.data, people.data, myClearance.data, myTasks.data, firstDays.data, counts.data],
+    [perms.data, role, support, employee, team.data, people.data, myClearance.data, myTasks.data, firstDays.data, counts.data, staffingDesk.data],
   );
   // Ctrl K as designed (PLT-20): Recent, Actions, people, requests and tickets, pages when typed.
   const palette = useYxPalette({ nav: withAccount(nav, { support, employee }), pathname, open: paletteOpen, userId: me.data?.id, orgId: me.data?.organizationId, waiting: counts.data?.approvals, self: employee && !support, help: !support, go: (href) => {
