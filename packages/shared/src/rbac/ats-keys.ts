@@ -22,6 +22,8 @@ export const ATS_KEYS = [
   // Staffing desk slice 1 (HIR-14, HIR-15, Settings 6.2): account managers, and recruiters who read clients and bill rates.
   'ats.staffing.manage',
   'ats.staffing.view',
+  // Staffing desk slice 3 (HIR-18, HIR-19): finance: client invoices, credit notes, receipts and TDS, vendor invoices.
+  'ats.staffing.billing',
 ] as const;
 
 /** Older key → the `ats.*` keys that satisfy it. */

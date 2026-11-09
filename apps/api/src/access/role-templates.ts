@@ -211,6 +211,16 @@ const TEMPLATES: readonly RoleTemplate[] = [
     cannot: 'See employees, payroll or candidates beyond hiring keys given separately.',
     permissions: ['ats.staffing.manage', 'ats.staffing.view'],
   },
+  // Staffing desk slice 3 (HIR-18, HIR-19): finance on the staffing desk: client invoices and credit notes, receipts and
+  // client TDS, vendor invoices. Reads clients and bill rates; no pay rates or margins.
+  {
+    key: 'staffing_finance',
+    name: 'Staffing finance',
+    typicalScope: 'tenant',
+    summary: 'Client invoices and credit notes, receipts and client TDS, receivables and reminders, and vendor invoices (staffing desk).',
+    cannot: 'Change clients, rate cards or placements; see pay rates or margins.',
+    permissions: ['ats.staffing.billing', 'ats.staffing.view'],
+  },
   {
     key: 'compliance_owner',
     name: 'Compliance Owner',

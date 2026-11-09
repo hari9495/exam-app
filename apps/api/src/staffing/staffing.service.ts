@@ -28,9 +28,11 @@ export const STAFFING_SETTING_KEYS = [
   'staffing.bench.pay_pct',
   'staffing.bench.max_days',
   'staffing.bench.after',
+  'staffing.dunning.schedule',
+  'staffing.einvoice.applies',
 ] as const;
-const KEYS = ['ats.staffing.manage', 'ats.staffing.view', 'org.settings.manage', 'ats.agency.manage'] as const;
-type Access = { manage: boolean; view: boolean; settings: boolean; vendorRates: boolean; actingForOther: boolean };
+const KEYS = ['ats.staffing.manage', 'ats.staffing.view', 'org.settings.manage', 'ats.agency.manage', 'ats.staffing.billing'] as const;
+type Access = { manage: boolean; view: boolean; settings: boolean; vendorRates: boolean; billing: boolean; actingForOther: boolean };
 
 /**
  * Staffing desk slice 1 (HIR-14 clients, HIR-15 rate cards, Settings 6.2). A company turns the desk on (setting
@@ -52,7 +54,8 @@ export class StaffingService {
     const manage = tenantWide(v, 'ats.staffing.manage');
     const settings = manage || tenantWide(v, 'org.settings.manage');
     // Vendor quotes and caps are costs: account managers and vendor managers see them, recruiters never do.
-    return { manage, view: manage || tenantWide(v, 'ats.staffing.view'), settings, vendorRates: settings || tenantWide(v, 'ats.agency.manage'), actingForOther: v.actingForOther };
+    // Slice 3: finance (invoices, receipts, vendor invoices) is its own key.
+    return { manage, view: manage || tenantWide(v, 'ats.staffing.view'), settings, vendorRates: settings || tenantWide(v, 'ats.agency.manage'), billing: tenantWide(v, 'ats.staffing.billing'), actingForOther: v.actingForOther };
   }
 
   /** Whether the company turned the desk on (the menu asks; anyone signed in may know). */
@@ -166,6 +169,9 @@ export class StaffingService {
       noticeDays: dto.noticeDays ?? null,
       slaFirstSubmissionDays: dto.slaFirstSubmissionDays ?? null,
       slaFeedbackDays: dto.slaFeedbackDays ?? null,
+      // Slice 3 (answer 454): the client's TDS section and invoice grouping (an existing value is kept when not sent).
+      ...(dto.tdsSection !== undefined ? { tdsSection: dto.tdsSection } : {}),
+      ...(dto.invoiceGrouping ? { invoiceGrouping: dto.invoiceGrouping } : {}),
     };
   }
 
@@ -186,6 +192,8 @@ export class StaffingService {
       noticeDays: r.noticeDays,
       slaFirstSubmissionDays: r.slaFirstSubmissionDays,
       slaFeedbackDays: r.slaFeedbackDays,
+      tdsSection: r.tdsSection,
+      invoiceGrouping: r.invoiceGrouping,
       version: r.version,
     };
   }
