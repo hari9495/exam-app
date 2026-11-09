@@ -53,14 +53,15 @@ built**.
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Plans, requisitions, jobs and costs | 4 | 35 | 1 | 0 | 0 | 0 | 36 |
-| B. Candidates, pipeline and interviews | 8 | 37 | 0 | 7 | 13 | 1 | 58 |
+| B. Candidates, pipeline and interviews | 8 | 45 | 0 | 0 | 13 | 1 | 59 |
 | C. Offers, BGV and joining | 4 | 0 | 0 | 13 | 12 | 0 | 25 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 13 | 0 | 3 | 7 | 4 | 27 |
 | E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
 | F. Compliance and fairness | 5 | 4 | 1 | 0 | 20 | 0 | 25 |
 | G. Careers site, portals and settings | 4 | 0 | 0 | 30 | 11 | 0 | 41 |
-| **All Hiring design groups (A–G)** | **37** | **89** | **2** | **57** | **107** | **5** | **260** |
-| H. Kit and "Live ·" groups (not designs; own line) | 5 | 11 | 0 | 6 | 5 | 0 | 22 |
+| **All Hiring design groups (A–G)** | **37** | **97** | **2** | **50** | **107** | **5** | **261** |
+| H. Kit and "Live ·" groups (not designs; own line) | 5 | 8 | 0 | 6 | 5 | 0 | 19 |
+Recounted by script 11 Nov 2026 on `feat/yukthix-hir-06-07` after HIR-06 and HIR-07 went live: HIR-06 3 stories wire design → live (the slot finder's 2 stay feature not built), HIR-07 4 → live plus 1 new story (Overseer); the 3 "Live · Job workspace and interviews" stand-in stories (Interview, InterviewSubmitted, MyInterviews) were deleted with the stand-ins.
 Recounted by script 10 Nov 2026 on `feat/yukthix-hir-04-followups` after founder answers 261 and 263: HIR-04 gained 3 sheet stories, HIR-05 the 2 Application stories, HIR-03 the Settings story; the 3 "Live · Job workspace" stand-in stories were deleted with the stand-ins.
 Recounted by script 9 Nov 2026 on `feat/yukthix-hir-04` after HIR-04 went live (its 7 stories: wire design → live; no story added or removed). Before that, recounted on `feat/yukthix-hir-03-24` after HIR-01 (four new stories, Plans and NoPlans deleted), HIR-03 and HIR-24 went live and the HIR-03 follow-ups added the Change recruiter story (HIR-03 gained the Create job sheet story; the "Live · Jobs" stand-in and its 4 stories were deleted). First counted (the script is in the appendix): every `export const`
 Recounted by script 9 Nov 2026 on `feat/yukthix-hir-05` after HIR-05 went live: the record (10 stories, one new: choose the duplicate), the new Candidate list (8) and Candidate data retention (9) designs (founder decision 9); the "Live · Candidates" stand-ins and 6 of their 7 stories deleted (Pools stays for HIR-20).
@@ -115,8 +116,8 @@ the web page.
 | /yx/hiring/duplicates | opens /yx/hiring/candidates?view=duplicates (the list's Possible duplicates tab) | HIR-05 List, Merge | `GET hiring/duplicates` (`candidate:manage`), merge (manage + `candidate:data_rights`) | live |
 | /yx/hiring/pools | `TalentPoolsScreen` (stand-in) | HIR-20 Pools | `GET/POST/DELETE hiring/pools`, `…/members` (`candidate:manage`) | wire design |
 | /yx/hiring/retention | `CandidateRetentionScreen` with `live` (designed 9 Nov 2026, decision 9) | HIR-05 Retention | `POST hiring/retention/run`, `GET …/runs`, `POST hiring/data-requests/lookup`, export, erase (`candidate:data_rights`; a real run, export and erase refused while acting) | live |
-| /yx/hiring/interviews | `MyInterviewsScreen` (stand-in) | HIR-06 Interviewer | `GET hiring/interviews/mine` | wire design |
-| /yx/hiring/interviews/[id] | `InterviewScreen` (stand-in) | HIR-07 | `GET hiring/interviews/:id`, `PUT …/scorecard`, `POST …/scorecard/submit` | wire design |
+| /yx/hiring/interviews | the designed `InterviewCalendarScreen` with `live` (11 Nov 2026); recruiters see the company week, everyone else their own interviews and scorecards; India time | HIR-06 | new `GET hiring/interviews?from=&to=` (≤ 62 days; `pipeline:manage` = company, else panel or the job's hiring manager), `GET hiring/interviews/mine` (+ overdue, setting `hiring.scorecard.overdue_hours`, default 24) | live |
+| /yx/hiring/interviews/[id] | the designed `ScorecardScreen` with `live` (11 Nov 2026): the panellist's form, the panel's submitted scorecards, résumé, earlier rounds; recruiters resend or cancel here (answer 301) | HIR-07 | `GET hiring/interviews/:id`, `PUT …/scorecard`, `POST …/scorecard/submit` (own session only), `POST interviews/:id/send`, `/cancel` (`pipeline:manage`, own session only) | live |
 | /yx/hiring/scorecards | `ScorecardTemplatesScreen` (stand-in) | Settings 6.1 | `GET/POST/PUT/DELETE hiring/scorecard-templates` (`pipelines:configure`) | wire design |
 | /yx/hiring/approval-routes | `ApprovalRoutesScreen` (stand-in) | Settings 6.1 | approval chains (`approvals:configure`) | wire design |
 | /yx/hiring/careers | `CareersSiteScreen` (stand-in; the guard lists it as `portals: CareersSiteScreen`) | Surfaces/Careers page builder | `organizations/careers` (+ banner), `hiring/careers-entities`, `hiring/consent-notices` (`org:manage_settings`) | wire design |
@@ -287,7 +288,7 @@ list's Possible duplicates tab).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Recruiter · Recruiter · default | live | `GET hiring/candidates/:id` (candidate keys); facts, applications, scores, consent & retention, activity built from the record; Email, Open in pipeline, menu (pool, merge, export, legal hold, erase) |
+| Recruiter · Recruiter · default | live | `GET hiring/candidates/:id` (candidate keys); facts, applications, scores (with each interview in IST, opening HIR-07), consent & retention, activity built from the record; Email, Schedule interview and Move to next stage as drawn (answer 274: `pipeline:manage`, not while acting; the open application, `POST pipeline/entries/:id/interviews`, `POST hiring/entries/:id/move`), else Open in pipeline; menu (pool, merge, export, legal hold, erase) |
 | ExEmployeeRecruiter · Ex-employee · recruiter sees exit details | live | People's person match (`personByEmail`, the one the offer hand-off uses); exit date and type need `lifecycle.exit.view`/`manage` reaching the person |
 | RehireIneligibleHr · Ex-employee · rehire ineligible, HR can clear | live | rehire eligibility needs `lifecycle.exit.confidential.view`; Clear flag uses the existing `PUT lifecycle/exits/:id/hr` (exit manage + confidential) with a reason. Answer 272: with company setting `hiring.rehire_flag.blocks_screening` on (default off) every move past the first stage is refused (409) until HR clears it |
 | ExEmployeeHiringManager · Ex-employee · hiring manager sees flag only | live | flag only for a viewer with `employee.profile.view` reaching the person and no exit key; nobody who may not see the employee gets even the flag |
@@ -297,7 +298,7 @@ list's Possible duplicates tab).
 | Minor · Under 18 · guardian consent pending | design only, feature not built | no date of birth / guardian consent on candidates |
 | NoAccess · No access | live | 403 without a candidate key |
 | NotFound · Not found (anonymised) | live | 404, or an erased candidate |
-| Application · Application · interviews, messages, notes, offers | live | added 10 Nov 2026 (answer 261, moved from the deleted `ApplicationPanel`): the record's `?entry=` or Open application; stage, reject / undo, owner, checklist, fit, interviews (schedule, cancel, resend, open), email / SMS / WhatsApp / survey, notes, offers (create, send, for approval, withdraw, letter; until HIR-09); toasts |
+| Application · Application · messages, notes, offers | live | added 10 Nov 2026 (answer 261, moved from the deleted `ApplicationPanel`): the record's `?entry=` or Open application; stage, reject / undo, owner, checklist, fit, email / SMS / WhatsApp / survey, notes, offers (create, send, for approval, withdraw, letter; until HIR-09); toasts. Interviews left it 11 Nov 2026 (answer 301): schedule on the record header, open / resend / cancel on HIR-07, the list on HIR-06 and the record's Scores tab |
 | ApplicationOfferToApprove · Application · offer waiting for your approval | live | the approver's step from the approval inbox; turn down needs a reason |
 
 #### HIR-05 · Candidate list
@@ -337,27 +338,28 @@ Live page: /yx/hiring/retention. Designed 9 Nov 2026 from kit parts (founder dec
 
 #### HIR-06 · Interview calendar
 
-Live page: /yx/hiring/interviews (`MyInterviewsScreen`, stand-in). Designed: `InterviewCalendarScreen`.
+Live page: /yx/hiring/interviews, the designed `InterviewCalendarScreen` with `live` (11 Nov 2026, branch `feat/yukthix-hir-06-07`); the stand-in `MyInterviewsScreen` and its story are deleted. Its Scorecards-to-do filter became the order of the list (overdue, to fill, the rest).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| RecruiterWeek · Recruiter · week | wire design | interviews exist per entry and per candidate; API: no company-wide list by week |
+| RecruiterWeek · Recruiter · week | live | new `GET hiring/interviews?from=&to=` (company-wide for `pipeline:manage`); IST; an entry opens HIR-07; Find a slot hidden until the slot finder exists |
 | SlotFinder · Slot finder · proposed slots ranked | design only, feature not built | no panel calendar free/busy (needs a calendar partner); candidate self-booking slots exist (`booking-slots.ts`) |
 | UnknownAvailability · Slot finder · required panelist has no calendar | design only, feature not built | same |
-| Interviewer · Interviewer · my interviews and scorecards | wire design | `GET hiring/interviews/mine` |
-| Empty · Empty · interviewer with nothing assigned | wire design | empty `mine` |
+| Interviewer · Interviewer · my interviews and scorecards | live | `GET hiring/interviews/mine` (only interviews they are on) plus the range for the agenda; badges due / overdue (company setting) / started / submitted / cancelled; Fill scorecard or Open goes to HIR-07 |
+| Empty · Empty · interviewer with nothing assigned | live | empty `mine` |
 
 #### HIR-07 · Scorecard form
 
-Live page: /yx/hiring/interviews/[id] (`InterviewScreen`, stand-in). Designed: `ScorecardScreen`, `ScorecardPhone`.
+Live page: /yx/hiring/interviews/[id], the designed `ScorecardScreen` with `live` (11 Nov 2026); the stand-in `InterviewScreen` and its two stories are deleted. Ratings and the recommendation became joined Segment controls (house rule); Submit is never disabled (pressed too early it names the gap and focuses it); a Summary field was added to the design (the API had it). Scale and pass bar come from the job's scorecard template (one pass bar for every item; weights shown as per cent of the total).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Blank · Interviewer · blank | wire design | `GET hiring/interviews/:id` with the job's scorecard template |
-| MeetsBar · Complete · meets the bar, next-step prompt | wire design | `PUT hiring/interviews/:id/scorecard` (`scorecard-rules.ts`) |
-| BelowBar · Complete · below the bar on 2 skills | wire design | same |
+| Blank · Interviewer · blank | live | `GET hiring/interviews/:id` with the job's (or the interview's) scorecard template |
+| MeetsBar · Complete · meets the bar, next-step prompt | live | Save draft = `PUT hiring/interviews/:id/scorecard` (only the interviewer sees a draft; refused while acting); toast |
+| BelowBar · Complete · below the bar on 2 skills | live | same; "Below pass bar" per item against the template's bar |
 | IdentityFlag · Identity flag shown, not a reason | design only, feature not built | no candidate identity check (HIR-22) |
-| Submitted · Submitted · read only | wire design | `POST …/scorecard/submit` |
+| Submitted · Submitted · read only | live | `POST …/scorecard/submit` after a confirm: read-only, audited (`ats.scorecard.submitted`), a second submit 409; colleagues' submitted scorecards then show (D7). "Add comment" hidden: no comment feature (question 322) |
+| Overseer · Recruiter or hiring manager · submitted scorecards, resend and cancel | live | new story 11 Nov 2026 (drawn in the same style): recruiters and the job's hiring manager read every submitted scorecard (never drafts) and the panel result; `pipeline:manage` resends or cancels (answer 301) |
 | Phone · phone | phone view, mobile app not built | `ScorecardPhone` |
 
 #### HIR-08 · AI interview review player
@@ -789,9 +791,6 @@ a design, BUILD-STANDARD rule 1). Each "Live ·" story is deleted with its stand
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Interview · Interview | live | /yx/hiring/interviews/[id]; goes with HIR-07 |
-| InterviewSubmitted · InterviewSubmitted | live | same, submitted |
-| MyInterviews · MyInterviews | live | /yx/hiring/interviews; goes with HIR-06 |
 | Scorecards · Scorecards | live | /yx/hiring/scorecards; goes with Settings 6.1 |
 
 #### Live · Plans and approvals
@@ -864,7 +863,7 @@ stand-in it replaces with its "Live ·" stories.
 | 5 | HIR-03 jobs list and workspace, HIR-24 company-setting pay range | wire `JobsScreen`, `JobWorkspaceScreen`, `JobPayRangePanel` | M |
 | 6 | HIR-04 pipeline board | wire `PipelineBoardScreen` on /yx/hiring/jobs/[id] | M |
 | 7 | ~~HIR-05 candidate record (+ ex-employee match, merge)~~ | done 9 Nov 2026: record, merge, candidate list and retention (decision 9) | M |
-| 8 | HIR-06 interviewer list, HIR-07 scorecard | wire `InterviewCalendarScreen` (interviewer part), `ScorecardScreen`; company-wide week list in the API | M |
+| 8 | ~~HIR-06 interviewer list, HIR-07 scorecard~~ | done 11 Nov 2026: calendar (recruiter week and interviewer), scorecard, Schedule and Move on the record (answer 274) | M |
 | 9 | Settings 6.1 Hiring | wire the settings page; retire /yx/hiring/scorecards and /approval-routes stand-ins | S |
 | 10 | HIR-09 offer builder (after questions 4, 5) | CTC lines, band check, versions, hand-off | L |
 | 11 | HIR-10 BGV tracker, manual | company-wide list of joiner BGV checks | S |
@@ -1145,4 +1144,32 @@ Each has a safe default already built; the suggestion is the answer we propose.
      Rejecting, moving back and undo are never blocked. *Suggested: keep.*
 313. **Erase refused (276)** names the open job and says to reject or close the application and withdraw any offer first;
      with an accepted offer it says the details are kept for joining and HR handles the request on the People record.
+     *Suggested: keep.*
+## Founder questions from the HIR-06 / HIR-07 build (11 Nov 2026)
+Each has a safe default already built; the suggestion is the answer we propose.
+321. **Which clock interview times use.** Built: India time (IST) everywhere staff see or enter a time (calendar,
+     scorecard, the record's Scores tab, the Schedule dialog says "(IST)"); the dialog's time zone field is only the
+     candidate's, for their invitation. *Suggested: keep IST; show a location's own zone only when a job is abroad.*
+322. **"Add comment" on a submitted scorecard** (drawn on the Submitted story). Built: hidden; a submitted scorecard cannot
+     change and there is no comment store. *Suggested: add append-only comments under a submitted scorecard (kit story
+     first), audited, visible to whoever may read the scorecard.*
+323. **Find a slot (slot finder, free / busy).** Built: hidden on the recruiter week; scheduling is the record's Schedule
+     interview (proposed times or candidate self-booking). *Suggested: build it when the Google / Microsoft calendar link
+     is chosen (provider: to decide), using the drawn SlotGrid.*
+324. **When a scorecard is "overdue".** Built: company setting `hiring.scorecard.overdue_hours` (12 / 24 / 48 / 72, default
+     24) after the interview ended; the reminder emails stay at 24 and 48 hours. *Suggested: keep; let the reminders
+     follow the same setting later.*
+325. **Who sees the company-wide week.** Built: everyone with the pipeline key (`pipeline:manage`) sees every interview in
+     the company; anyone else only interviews they are on, plus a hiring manager's own jobs. *Suggested: keep; limit a
+     recruiter to their own jobs only if companies ask.*
+326. **Hiring manager on HIR-07.** Built: reads every submitted scorecard and the panel result for their job (never a
+     draft), no resend or cancel. *Suggested: keep.*
+327. **Which application Move and Schedule act on (answer 274).** Built: the application open on the record (`?entry=`),
+     else the first open one; the dialog title names the job. *Suggested: keep.*
+328. **The stand-in "Scorecards to do / All" switch** on My interviews became the order of the drawn Scorecards list
+     (overdue, to fill, then submitted / cancelled). *Suggested: keep.*
+329. **Pass bar per skill.** The design has one per skill; the API's scorecard template has one bar for the whole card,
+     shown on each item, and weights 1-10 shown as a per cent of the total. *Suggested: keep one bar per template; add
+     per-item bars only if recruiters ask.*
+330. **Scorecard templates page** (/yx/hiring/scorecards) stays the stand-in until Settings 6.1 is wired (queue item 9).
      *Suggested: keep.*
