@@ -833,3 +833,19 @@ pay-history question where banned); the bias audit only when AI interview review
 pages, Surfaces/Careers for the admin page builder; (9) draw the candidate list and retention page designs first, then
 wire them; (10) draw the candidate pages outside the app (status, portal, offer accept, interview booking) in the T9-09
 portal style; (11) hiring managers see their own department's plan and their own requisitions, read-only.
+
+Founder approved, 9 Nov 2026 (questions 201-207, 211-216, 221-229, all as suggested):
+- Referrals and costs: (201) no referral credit when the person applied on their own in the last N days, N a company setting
+  (default 90); (202) a new hiring key for recruiting costs, given to HR and recruiters; (203) payroll posts a referral-bonus
+  cost when it pays one, assessments post their cost; (204) draw an HR "All referrals" design first, then wire it; (205) the
+  bonus becomes "No bonus" automatically when the joiner exits before the qualifying day; (206) costs can be entered for any
+  month of the current quarter; (207) keep Referrals in the menu for employees and anyone with a hiring key.
+- Headcount plan: (211) same approvers for a budget-raising revision, a setting later if needed; (212) own department plus
+  departments headed; (213) no budgets for hiring managers; (214) approved plans only for them; (215) April-March year,
+  a setting when a Jan-Dec customer comes; (216) one plan per department with its own version.
+- Jobs and pay range: (221) pay range off by default in India; (222) a Recruiter field on the job, default the person who
+  opened it; (223) an On hold status that hides the job from careers and boards but keeps candidates; (224) the pay-history
+  question goes on the T9-09 apply page; (225) company job numbers JOB-0001 on, saved views later, export of visible
+  columns; (226) Referrals & internal tab and Share with vendors wired with HIR-12, HIR-13 and HIR-21; (227) keep the old
+  workspace behind Open pipeline until HIR-04; (228) counsel checks every pay-law row (GO-LIVE-CHECKLIST), size limits only
+  if a customer needs them; (229) jobs outside India need a location from the masters.
