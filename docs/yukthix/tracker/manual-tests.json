@@ -17426,5 +17426,59 @@
       "Screens/Hiring/HIR-29 · Offer conditions tab · Lapsed · pre-boarding unwound"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-28-01",
+    "area": "Hiring · HIR-28 Bulk offers (12 Nov 2026)",
+    "screen": "Bulk offers · template and values",
+    "url": "http://localhost:3000/yx/hiring/jobs/<job id>",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin: has the offer-pay key). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open a demo job with several candidates; menu (three dots) › Make bulk offers; compare with the stories \"Template step\" and \"Per-candidate values · checks\".",
+      "On Template press Continue with no joining date.",
+      "Choose the joining date; on Candidates and values press Continue with no CTC typed.",
+      "Type a CTC in each row (one above the grade range); untick one candidate.",
+      "Read the Preview and the Approve and send steps."
+    ],
+    "expected": "Step 1: same layout; no page scroll at 1278 x 635 (the table scrolls inside). Step 2: \"Choose the joining date.\" with focus; nothing sent. Step 3: \"Enter the fixed CTC for …\" naming the candidates. Step 4: the above-range row shows Out of range and the warning names the extra approver; rows beyond the plan line's free places show No plan line and the held warning; the finish button counts only the offers that go. Step 5: the letter filled for the first selected candidate; the route and e-sign as the company has them.",
+    "stories": [
+      "Screens/Hiring/HIR-28 · Bulk offer screen · Template step",
+      "Screens/Hiring/HIR-28 · Bulk offer screen · Per-candidate values · checks",
+      "Screens/Hiring/HIR-28 · Bulk offer screen · Preview step"
+    ],
+    "note": "Positive and negative (pressed too early)."
+  },
+  {
+    "id": "MT-HIR-28-02",
+    "area": "Hiring · HIR-28 Bulk offers (12 Nov 2026)",
+    "screen": "Bulk offers · sent batch",
+    "url": "http://localhost:3000/yx/hiring/offer-batches/<batch id>",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin: has the offer-pay key). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Press Send N offers.",
+      "Check mailpit and open one candidate's offer from the result table.",
+      "Press the browser Back and send again (refresh the page and press Send with the same rows)."
+    ],
+    "expected": "Step 1: toast \"Batch sent\"; the batch page shows the counts and each candidate's result: Sent, Waiting for extra approval, Held: no plan line, Skipped: has an offer, Not sent with its reason. Step 2: one email per sent candidate; the offer record opens. Step 3: a fresh page is a new batch: candidates who now have offers are not offered again (Skipped).",
+    "stories": [
+      "Screens/Hiring/HIR-28 · Bulk offer screen · Sent · batch status"
+    ],
+    "note": "Positive and negative (no double offers)."
+  },
+  {
+    "id": "MT-HIR-28-03",
+    "area": "Hiring · HIR-28 Bulk offers (12 Nov 2026)",
+    "screen": "Bulk offers · refusals",
+    "url": "http://localhost:3000/yx/hiring/jobs/<job id>/bulk-offers",
+    "account": "A recruiter without the offer-pay key; then admin-tester@demo-org.test acting for hr-tester.",
+    "steps": [
+      "Without the offer-pay key, open the job menu, then the bulk offers address.",
+      "Acting for hr-tester, open the page and press Send."
+    ],
+    "expected": "Step 1: no Make bulk offers item; the page says it needs the offer-pay key. Step 2: refused: \"Not available while acting for someone else\"; nothing is made.",
+    "stories": [
+      "Screens/Hiring/HIR-28 · Bulk offer screen · Per-candidate values · checks"
+    ],
+    "note": "Negative."
   }
 ]

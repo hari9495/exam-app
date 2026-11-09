@@ -54,13 +54,15 @@ built**.
 |---|---|---|---|---|---|---|---|
 | A. Plans, requisitions, jobs and costs | 4 | 36 | 1 | 0 | 0 | 0 | 37 |
 | B. Candidates, pipeline and interviews | 8 | 46 | 0 | 0 | 13 | 1 | 60 |
-| C. Offers, BGV and joining | 4 | 19 | 4 | 0 | 5 | 0 | 28 |
+| C. Offers, BGV and joining | 4 | 23 | 4 | 0 | 1 | 0 | 28 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 20 | 0 | 0 | 7 | 4 | 31 |
 | E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
 | F. Compliance and fairness | 5 | 4 | 1 | 0 | 20 | 0 | 25 |
 | G. Careers site, portals and settings | 4 | 54 | 4 | 2 | 11 | 0 | 71 |
-| **All Hiring design groups (A–G)** | **37** | **179** | **10** | **6** | **100** | **5** | **300** |
+| **All Hiring design groups (A–G)** | **37** | **183** | **10** | **6** | **96** | **5** | **300** |
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 5 | 0 | 5 | 5 | 0 | 15 |
+Recounted by script 12 Nov 2026 on `feat/yukthix-hir-28` after HIR-28 went live (all 4 stories).
+
 Recounted by script 12 Nov 2026 on `feat/yukthix-hir-09` after merging the Settings 6.1 follow-ups with answers 332 and 334-337: A–G 179 live, 10 gap, 6 wire, 100 not built, 5 phone, of 300.
 
 Recounted by script on `test/yukthix-main` after merging the Settings 6.1 follow-ups with HIR-10/20: A–G 176 live, 12 gap, 6 wire, 100 not built, 5 phone, of 299 (H: the old scorecard-templates group left with its page).
@@ -453,14 +455,22 @@ clears an earlier decision. Columns show "Not added" for a check type the joiner
 
 #### HIR-28 · Bulk offer screen
 
-No live page. Designed: `BulkOfferScreen`.
+Live 12 Nov 2026 (branch `feat/yukthix-hir-28`): the job workspace's menu "Make bulk offers" (people with the offer-pay
+key) opens /yx/hiring/jobs/[id]/bulk-offers, the designed `BulkOfferScreen` with `live`; sending opens
+/yx/hiring/offer-batches/[id], the same screen's sent state. API: `GET hiring/offer-batches/setup?jobId=`,
+`POST hiring/offer-batches` (rate-limited; refused while acting for someone else), `GET hiring/offer-batches/:id`
+(`ats.offer.manage` or `pipeline:manage`; pay and making offers need `ats.offer.compensation.view`). Every row is an
+ordinary HIR-09 offer made by the single-offer service: the band check and its extra step, the company's route (the
+sender never approves), the company's conditions, the letter's e-sign, and an idempotent send. One bad row fails alone with
+its reason; an application that already has an offer is skipped; the same batch key never sends twice. Settings:
+`hiring.bulk_offer.plan_check` (hold, the starter, or off) and `hiring.offer.expiry_days` (7).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Values · Per-candidate values · checks | design only, feature not built | no batch offers |
-| Template · Template step | design only, feature not built | same |
-| Preview · Preview step | design only, feature not built | same |
-| Sent · Sent · batch status | design only, feature not built | same |
+| Values · Per-candidate values · checks | live | the job's candidates without an open offer; CTC per row (inline edit); the grade range per row; rows beyond the free places on the job's plan line are held (in list order); pressed too early it names the candidates with no CTC |
+| Template · Template step | live | letter kind, the company's salary structure, one joining date (drawn 12 Nov 2026 in place of "joining batch", question 401), work location and letter template (drawn, for e-sign) |
+| Preview · Preview step | live | the chosen letter filled for the first selected candidate |
+| Sent · Sent · batch status | live | the counts and each candidate's result with its reason and Open offer (drawn 12 Nov 2026: the results table); pay column only with the key |
 
 #### HIR-29 · Offer conditions tab
 
@@ -1437,3 +1447,21 @@ Each has a safe default already built; the suggestion is the answer we propose.
 377. **E-signed letter copy.** Built: the evidence (time, address, device, the letter's fingerprint) is kept on the offer;
      no sealed PDF copy is made for the candidate as letters do. *Suggested: add the sealed copy with the letters' signer
      when the offer letter moves to People letter templates (PPL-29).*
+
+## Founder questions from the HIR-28 bulk offers build (12 Nov 2026)
+Each has a safe default already built; the suggestion is the answer we propose.
+401. **Joining batch.** The design chose a "joining batch"; offers have no batches (People's joiner batches come after
+     acceptance). Built: one joining date for the whole batch, drawn in its place. *Suggested: keep; link the accepted
+     offers to a People joiner batch when HR adds the joiners.*
+402. **Where bulk offers start.** Built: "Make bulk offers" in the job workspace's menu (drawn), for people with the
+     offer-pay key; the batch page is reached from there and from each offer. *Suggested: also add it to the pipeline
+     board's Bulk actions sheet for selected candidates.*
+403. **Plan check order.** Rows beyond the free places on the job's plan line are held in the order listed (free = the
+     line's count less hires and offers in play on its jobs); a job with no plan line is not checked. *Suggested: keep.*
+404. **Expiry.** Built: `hiring.offer.expiry_days` (7) after sending, never after the joining day (single offers keep
+     their own chosen expiry). *Suggested: show it on Settings 6.1 "Offer expires after" (drawn there) and use it as the
+     single builder's default too.*
+405. **Batch size and speed.** Built: at most 100 candidates; rows are made one after another in the request (about a
+     second each). *Suggested: keep for campus batches; move to a background job with progress if batches grow.*
+406. **Same CTC for everyone.** Each row's CTC is typed; there is no "apply to all". *Suggested: add "Set the same CTC
+     for the selected" in the kit table's bulk edit later.*
