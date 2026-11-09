@@ -281,7 +281,7 @@ describe('Hiring HIR-10 / HIR-20 / HIR-07 comments', () => {
   // ------------------------------------------------------------------------------------------ HIR-07 comments (answer 322)
 
   it('scorecard comments: never on a draft; append-only, audited, idempotent; whoever may read it; acting 403; other company 404', async () => {
-    const t = (await api('admin', 'post', '/hiring/scorecard-templates').send({ name: 'QA round 1', scaleMax: 5, passBar: 3, items: [{ label: 'Test design', weight: 1 }] }).expect(want(201))).body;
+    const t = (await api('admin', 'post', '/hiring/scorecard-templates').send({ name: 'QA round 1', scaleMax: 5, passBar: 3, items: [{ label: 'Test design', weight: 100 }] }).expect(want(201))).body;
     await api('recruiter', 'put', `/hiring/jobs/${ids.job}/scorecard`).send({ templateId: t.id }).expect(want(200));
     await inA((tx) => tx.job.update({ where: { id: ids.job }, data: { hiringManagerId: users.hm } }));
     const entry = (await api('admin', 'post', `/jobs/${ids.job}/entries`).send({ newCandidate: { name: 'Vikram Reddy', email: `vikram-${run}@x.test` } }).expect(201)).body.id;
