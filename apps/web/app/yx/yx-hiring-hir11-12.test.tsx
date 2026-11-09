@@ -180,7 +180,18 @@ describe('Hiring › All referrals (HIR-12, HR)', () => {
     expect(within(d).getByText('Mark ₹20,000 paid to Neha Joshi?')).toBeInTheDocument();
     await ue.click(within(d).getByRole('button', { name: 'Mark paid' }));
     await waitFor(() => expect(patched).toEqual([['/referrals/r1/reward', { rewardStatus: 'paid' }]]));
-    expect(await screen.findByText('Bonus marked paid')).toBeInTheDocument();
+    expect((await screen.findAllByText('Bonus sent to payroll')).length).toBeGreaterThan(0);
+  });
+
+  it('a resignation waiting for approval shows Bonus on hold and offers no Mark paid (answer 234)', async () => {
+    api.mockImplementation(async (path: string) => {
+      if (path === '/referrals') return [{ ...row, bonusDue: 'on-hold' }];
+      throw new Error(`unexpected ${path}`);
+    });
+    wrap(<YxAllReferralsPage />);
+    expect((await screen.findAllByText('Bonus on hold')).length).toBeGreaterThan(0);
+    await ue.click(screen.getByRole('button', { name: /Row actions|Actions|More/ }));
+    expect(await screen.findByRole('menuitem', { name: 'On hold: their resignation is pending' })).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('a refusal (not due) stays in the dialog', async () => {
