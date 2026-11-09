@@ -1441,3 +1441,7 @@ of the hiring settings key when the default recruiter goes stale.
      asks.*
 395. **Erased scorecards keep their numbers.** The rating per skill, the recommendation and the score stay (no text about
      the person). *Suggested: keep, so panel and funnel figures stay right.*
+Founder approved, 9 Nov 2026 (questions 391-395, all as suggested): (391) keep: a rehire skipping probation is refused
+at joining while a "before confirmation" check is open, HR decides; (392) also show the open check on the Probation page;
+(393) keep: reported once; (394) add the "Referral bonuses moved to Settings › Hiring" line to the design only if HR asks;
+(395) keep ratings, recommendation and score on erased scorecards.
