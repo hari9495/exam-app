@@ -16555,5 +16555,171 @@
       "Screens/Hiring/HIR-05 · Candidate data retention · Data request · person found"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-09-01",
+    "area": "Hiring · HIR-09 Offer builder and HIR-29 offer conditions (11 Nov 2026)",
+    "screen": "Offer builder · new offer within the range",
+    "url": "http://localhost:3000/yx/hiring/candidates",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin: has the offer-pay key). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open a demo candidate with an open application (Hiring › Candidates › a candidate › Open application); go to the Offers tab and press Create an offer.",
+      "Compare the page with the story \"Recruiter · within range, CTC breakup preview\" element by element.",
+      "Press Continue with the Fixed CTC empty.",
+      "Choose the salary structure, type a fixed CTC inside the grade range shown under the field (for example 16,00,000) and a variable pay of 1,50,000.",
+      "Continue to Terms and press Continue with no joining date.",
+      "Choose a joining date 30 days ahead, an expiry 10 days ahead and the work location; keep Add conditions ticked; continue to Letter and Approval, then Review, then press Send for approval (or Send offer when the company has no offer approval step)."
+    ],
+    "expected": "Step 1: the builder opens with the candidate and job in the heading and the grade range in the description. Step 2: same layout; no page scroll bar at 1278 x 635. Step 3: Continue is not greyed; \"Enter the fixed CTC.\" shows and the cursor is in Fixed CTC. Step 4: the breakup preview shows the company's lines (earnings and employer contributions) adding up to the CTC, the green \"Within the grade pay range.\" badge. Step 5: \"Choose the joining date.\" with focus. Step 6: the Letter step shows the company's letter filled with the name, job and pay, and says the candidate accepts by the link; Approval shows the company's steps without you; toast \"Sent for approval\" (or \"Offer sent to the candidate\") for 5 s and the offer record opens at version 1.",
+    "stories": [
+      "Screens/Hiring/HIR-09 · Offer builder · Recruiter · within range, CTC breakup preview",
+      "Screens/Hiring/HIR-09 · Offer builder · Letter step"
+    ],
+    "note": "Positive and negative (pressed too early)."
+  },
+  {
+    "id": "MT-HIR-09-02",
+    "area": "Hiring · HIR-09 Offer builder and HIR-29 offer conditions (11 Nov 2026)",
+    "screen": "Offer builder · above the range adds the extra step",
+    "url": "http://localhost:3000/yx/hiring/offers/new?entry=<application id>",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin: has the offer-pay key). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Start a new offer for another demo application and type a fixed CTC above the grade range (for example 20,50,000).",
+      "Go to the Approval step.",
+      "Finish with Send for approval; sign in as the HR head (or, if HR set Settings › hiring.offer.band_approver to the hiring manager, as the job's hiring manager) and open the approvals inbox.",
+      "As hr-tester, open the approvals inbox."
+    ],
+    "expected": "Step 1: the amber badge \"Above the grade pay range. Needs extra approval.\". Step 2: the warning names the extra approver (the HR head by default) and the timeline shows it after the company's steps. Step 3: the offer waits there at the right step. Step 4: hr-tester (the sender) has no task to approve this offer.",
+    "stories": [
+      "Screens/Hiring/HIR-09 · Offer builder · Above range · extra approval"
+    ],
+    "note": "Positive and negative (the sender never approves)."
+  },
+  {
+    "id": "MT-HIR-09-03",
+    "area": "Hiring · HIR-09 Offer builder and HIR-29 offer conditions (11 Nov 2026)",
+    "screen": "Offer record · send, versions and revision",
+    "url": "http://localhost:3000/yx/hiring/offers/<offer id>",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin: has the offer-pay key). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open an approved offer from MT-HIR-09-01 and press Send offer.",
+      "Press Revise offer; change the fixed CTC by 1,00,000 and finish.",
+      "Open the Versions tab.",
+      "Revise again changing only the expiry date and finish.",
+      "Open the first emailed offer link (mailpit) in a private window."
+    ],
+    "expected": "Step 1: toast \"Offer sent to the candidate\"; status Sent; the email is in mailpit with the PDF. Step 2: the alert says the CTC changed so it goes through approval again and the earlier letter is withdrawn; toast \"Sent for approval\". Step 3: version 2 (current) and version 1 (superseded) with who, when and whether approval was needed. Step 4: the alert says no new approval is needed; toast \"New letter sent to the candidate\". Step 5: the old link says the offer is not found.",
+    "stories": [
+      "Screens/Hiring/HIR-09 · Offer builder · Revision v2 · re-approval because CTC changed",
+      "Screens/Hiring/HIR-09 · Offer builder · Versions tab"
+    ],
+    "note": "Positive and negative (old letter stops working)."
+  },
+  {
+    "id": "MT-HIR-09-04",
+    "area": "Hiring · HIR-09 Offer builder and HIR-29 offer conditions (11 Nov 2026)",
+    "screen": "Offer record · pay hidden without the offer-pay key",
+    "url": "http://localhost:3000/yx/hiring/offers/<offer id>",
+    "account": "A recruiter account without the offer-pay key (the Recruiter role alone; ask the admin for one in demo-org). Browser window 1278 x 635.",
+    "steps": [
+      "Open the same offer.",
+      "Open the menu (three dots).",
+      "Open the candidate's Application › Offers tab.",
+      "Type /yx/hiring/offers/new?entry=<application id> in the address bar."
+    ],
+    "expected": "Step 1: the offer, its status, dates, conditions and activity show; Fixed CTC says \"Shown with the offer-pay key\"; the Overview says \"Pay hidden\"; no Revise offer. Step 2: no Download letter. Step 3: the card says \"Offer\" without the pay. Step 4: the no-access page names the offer-pay key.",
+    "stories": [
+      "Screens/Hiring/HIR-09 · Offer builder · Recruiter · within range, CTC breakup preview"
+    ],
+    "note": "Negative (pay is sensitive)."
+  },
+  {
+    "id": "MT-HIR-09-05",
+    "area": "Hiring · HIR-09 Offer builder and HIR-29 offer conditions (11 Nov 2026)",
+    "screen": "Accepted · hand-off to People and Pay",
+    "url": "http://localhost:3000/yx/hiring/offers/<offer id>",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin: has the offer-pay key). Browser window 1278 x 635, sidebar open. Then payroll-tester@demo-org.test.",
+    "steps": [
+      "Accept a sent offer from its email link (default: accept by the link, no code).",
+      "Open the offer as hr-tester and press Create employee, then Open in People.",
+      "Add the joiner in People › Ready to onboard as before; on the joining day mark them joined.",
+      "Open the new employee's Pay tab and the pay changes waiting for approval.",
+      "Press Create employee again on the same offer and try to add the joiner twice."
+    ],
+    "expected": "Step 1: the record says Accepted and \"In Ready to onboard\". Step 2: People › Ready to onboard opens with the offer listed. Step 3: the joiner is created exactly as before. Step 4: a first-salary pay change from \"the accepted offer (version N)\" waits for someone else's approval, with the offer's structure and fixed CTC. Step 5: the second add is refused: \"This offer already has a joiner.\"",
+    "stories": [
+      "Screens/Hiring/HIR-09 · Offer builder · Accepted · manual hand-off, HR creates employee"
+    ],
+    "note": "Positive and negative (no second employee)."
+  },
+  {
+    "id": "MT-HIR-09-06",
+    "area": "Hiring · HIR-09 Offer builder and HIR-29 offer conditions (11 Nov 2026)",
+    "screen": "E-sign only when the template switches it on",
+    "url": "http://localhost:3000/yx/hiring/offers/new?entry=<application id>",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin: has the offer-pay key). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "With an offer letter template that has e-sign on (offer-template esign: true; ask the lead if no screen sets it yet), make and send an offer using it.",
+      "Open the candidate's link and press Accept without a code.",
+      "Ask for the code, type a wrong code, then the right one from mailpit."
+    ],
+    "expected": "Step 1: the Letter step says the candidate signs with a one-time code. Step 2: refused: read and accept how electronic signing works first / enter the code. Step 3: wrong code refused; the right one accepts the offer and the record's activity says the candidate signed and accepted.",
+    "stories": [
+      "Screens/Hiring/HIR-09 · Offer builder · Letter step"
+    ],
+    "note": "Positive and negative. The public offer page has no design yet (decision 10)."
+  },
+  {
+    "id": "MT-HIR-09-07",
+    "area": "Hiring · HIR-09 Offer builder and HIR-29 offer conditions (11 Nov 2026)",
+    "screen": "Refusals: employee, acting for someone else",
+    "url": "http://localhost:3000/yx/hiring/offers/<offer id>",
+    "account": "arjun@demo-org.test (employee); then admin-tester@demo-org.test acting for hr-tester.",
+    "steps": [
+      "As arjun, open the offer address.",
+      "As admin-tester, act for hr-tester and open the offer; press Revise offer and finish, and press Send for approval on a draft."
+    ],
+    "expected": "Step 1: no access. Step 2: the offer opens read-only in practice: each write is refused with \"Not available while acting for someone else\".",
+    "stories": [
+      "Screens/Hiring/HIR-09 · Offer builder · Recruiter · within range, CTC breakup preview"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-HIR-29-01",
+    "area": "Hiring · HIR-09 Offer builder and HIR-29 offer conditions (11 Nov 2026)",
+    "screen": "Conditions tab · met and waived",
+    "url": "http://localhost:3000/yx/hiring/offers/<offer id>",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin: has the offer-pay key). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open an offer made with Add conditions ticked; open the Conditions tab and compare with the story \"Open conditions · on track\".",
+      "Press Mark met on Background check clear.",
+      "Press Waive with reason on another and press Waive with the reason empty.",
+      "Type a reason and press Waive.",
+      "Press Add condition, press Add condition with the name empty; then name it Medical fitness and add it."
+    ],
+    "expected": "Step 1: the company's conditions (Background check clear, Degree certificate uploaded, Relieving letter from current employer), each due on the joining day. Step 2: toast \"…: met\"; badge Met. Step 3: not greyed; \"Say why it is waived, in a few words.\" with the cursor in Reason. Step 4: badge Waived and \"Reason: …\" under it; the activity names it. Step 5: \"Name the condition…\" with focus; then toast \"Condition added\".",
+    "stories": [
+      "Screens/Hiring/HIR-29 · Offer conditions tab · Open conditions · on track",
+      "Screens/Hiring/HIR-29 · Offer conditions tab · All met or waived"
+    ],
+    "note": "Positive and negative (pressed too early)."
+  },
+  {
+    "id": "MT-HIR-29-02",
+    "area": "Hiring · HIR-09 Offer builder and HIR-29 offer conditions (11 Nov 2026)",
+    "screen": "Conditions tab · overdue and withdrawn offers",
+    "url": "http://localhost:3000/yx/hiring/offers/<offer id>",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin: has the offer-pay key). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open an offer whose joining day is within 3 days with an open condition.",
+      "Withdraw a sent offer (menu › Withdraw offer) and open its Conditions tab."
+    ],
+    "expected": "Step 1: the amber \"Auto-lapse on …\" warning asks to mark each condition before the joining day (nothing lapses by itself yet: question 335). Step 2: no Mark met, Waive or Add condition buttons; the banner says the offer was withdrawn.",
+    "stories": [
+      "Screens/Hiring/HIR-29 · Offer conditions tab · Overdue condition · lapse reminder",
+      "Screens/Hiring/HIR-29 · Offer conditions tab · Lapsed · pre-boarding unwound"
+    ],
+    "note": "Positive and negative."
   }
 ]

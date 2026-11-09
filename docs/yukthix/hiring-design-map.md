@@ -53,13 +53,15 @@ built**.
 |---|---|---|---|---|---|---|---|
 | A. Plans, requisitions, jobs and costs | 4 | 35 | 1 | 0 | 0 | 0 | 36 |
 | B. Candidates, pipeline and interviews | 8 | 37 | 0 | 7 | 13 | 1 | 58 |
-| C. Offers, BGV and joining | 4 | 0 | 0 | 13 | 12 | 0 | 25 |
+| C. Offers, BGV and joining | 4 | 8 | 6 | 6 | 5 | 0 | 25 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 13 | 0 | 3 | 7 | 4 | 27 |
 | E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
 | F. Compliance and fairness | 5 | 4 | 1 | 0 | 20 | 0 | 25 |
 | G. Careers site, portals and settings | 4 | 0 | 0 | 30 | 11 | 0 | 41 |
-| **All Hiring design groups (A–G)** | **37** | **89** | **2** | **57** | **107** | **5** | **260** |
+| **All Hiring design groups (A–G)** | **37** | **97** | **8** | **50** | **100** | **5** | **260** |
 | H. Kit and "Live ·" groups (not designs; own line) | 5 | 11 | 0 | 6 | 5 | 0 | 22 |
+Recounted by script 11 Nov 2026 on `feat/yukthix-hir-09` after HIR-09 / HIR-29 went live: HIR-09 7 live and 3 live (gap), HIR-29 2 live and 2 live (gap); the HIR-05 Application offer story now opens the offer record (answer 301); the kit's CTC breakup table is live.
+
 Recounted by script 10 Nov 2026 on `feat/yukthix-hir-04-followups` after founder answers 261 and 263: HIR-04 gained 3 sheet stories, HIR-05 the 2 Application stories, HIR-03 the Settings story; the 3 "Live · Job workspace" stand-in stories were deleted with the stand-ins.
 Recounted by script 9 Nov 2026 on `feat/yukthix-hir-04` after HIR-04 went live (its 7 stories: wire design → live; no story added or removed). Before that, recounted on `feat/yukthix-hir-03-24` after HIR-01 (four new stories, Plans and NoPlans deleted), HIR-03 and HIR-24 went live and the HIR-03 follow-ups added the Change recruiter story (HIR-03 gained the Create job sheet story; the "Live · Jobs" stand-in and its 4 stories were deleted). First counted (the script is in the appendix): every `export const`
 Recounted by script 9 Nov 2026 on `feat/yukthix-hir-05` after HIR-05 went live: the record (10 stories, one new: choose the duplicate), the new Candidate list (8) and Candidate data retention (9) designs (founder decision 9); the "Live · Candidates" stand-ins and 6 of their 7 stories deleted (Pools stays for HIR-20).
@@ -1152,3 +1154,28 @@ Each has a safe default already built; the suggestion is the answer we propose.
 313. **Erase refused (276)** names the open job and says to reject or close the application and withdraw any offer first;
      with an accepted offer it says the details are kept for joining and HR handles the request on the People record.
      *Suggested: keep.*
+
+## Founder questions from the HIR-09 / HIR-29 build (11 Nov 2026)
+Each has a safe default already built; the suggestion is the answer we propose.
+331. **Recruiters without the offer-pay key.** Built: building or revising an offer needs `ats.offer.compensation.view`
+     (you cannot set pay you may not see); without it a recruiter sees the offer without pay and can still send an
+     approved offer, withdraw it and work its conditions. *Suggested: keep; give the key to the recruiters who make offers.*
+332. **Who is "the HR head"?** Built: the head of the department coded HR; with none, the people who hold the offer-pay
+     key. *Suggested: add a named "HR head" person to the company setting `hiring.offer.band_approver`.*
+333. **Below the range.** Built per decision 4: shown on the badge, never an extra step. *Suggested: keep.*
+334. **Joining bonus, clawback and variable pay in Pay.** Built: the hand-off carries the salary structure and the fixed
+     CTC (lines worked out again with the employee's own facts); the bonus and its clawback months stay on the offer.
+     *Suggested: pay the joining bonus as one-time pay in the first run and add the clawback to the final settlement when
+     the person leaves within the months.*
+335. **Conditions never lapse by themselves.** Built: the tab warns before and after the joining day; HR decides.
+     *Suggested: keep HR deciding (like a BGV discrepancy, never auto-withdrawn), and tell HR on the joining day.*
+336. **Reminders.** "Send reminder" (sent offers) and the candidate's condition reminder are not built (hidden live).
+     *Suggested: two email templates, sent by the recruiter's button, never automatically.*
+337. **E-sign switch and the candidate's page.** The template switch is in the API only (no settings screen yet) and the
+     public offer page has no design (decision 10). *Suggested: add the switch to the offer-template editor when Settings
+     6.x is wired; draw the T9 accept and sign page.*
+338. **What approvers see.** Built: the approvals inbox summary shows the version, fixed CTC and range check (cards
+     outside the app stay neutral). *Suggested: keep; approvers decide on pay.*
+339. **Older offer routes.** `POST offers/:id/submit` now runs on the P03 engine; requests made before stay on the older
+     inbox; `POST pipeline/entries/:id/offers` (text pay) still exists for older callers. *Suggested: retire the text
+     route when the stand-in /pipeline/list page is deleted.*
