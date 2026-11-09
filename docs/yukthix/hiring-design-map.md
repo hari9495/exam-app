@@ -56,12 +56,13 @@ built**.
 | B. Candidates, pipeline and interviews | 8 | 52 | 1 | 0 | 9 | 1 | 63 |
 | C. Offers, BGV and joining | 4 | 17 | 6 | 0 | 5 | 0 | 28 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 20 | 0 | 0 | 7 | 4 | 31 |
-| E. Staffing agency | 8 | 32 | 12 | 0 | 16 | 0 | 60 |
+| E. Staffing agency | 8 | 47 | 16 | 0 | 0 | 0 | 63 |
 | F. Compliance and fairness | 5 | 4 | 1 | 0 | 20 | 0 | 25 |
 | G. Careers site, portals and settings | 4 | 55 | 5 | 2 | 9 | 0 | 71 |
-| **All Hiring design groups (A–G)** | **37** | **216** | **26** | **2** | **66** | **5** | **315** |
+| **All Hiring design groups (A–G)** | **37** | **234** | **32** | **2** | **45** | **5** | **318** |
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 5 | 0 | 5 | 5 | 0 | 15 |
 Recounted by script on `test/yukthix-main` after merging the Settings 6.1 follow-ups with HIR-10/20: A–G 176 live, 12 gap, 6 wire, 100 not built, 5 phone, of 299 (H: the old scorecard-templates group left with its page).
+Recounted by script 10 Nov 2026 on `feat/yukthix-staffing-3` after staffing slice 3: HIR-18 7, HIR-19 5, HIR-30 3 and HIR-31 5 stories design only → live (8 with a gap) plus 2 new HIR-18 stories (create invoices, draft) and 1 new HIR-17 story (weekly hours); HIR-21 Invoices → live (gap); HIR-14 Workspace and Contacts gaps closed or narrowed; section E has no design-only story left.
 Recounted by script 10 Nov 2026 on `feat/yukthix-staffing-2` after staffing slice 2: HIR-16 6 and HIR-17 8 stories design only → live (4 with a gap) plus 6 new drawn stories (submit by email, desk off, new client job, new placement, add to bench, recruiter view); HIR-21 4 wire design and Scorecards → live (1 with a gap) plus 2 new (add vendor, share client job); Invoices stays design only (slice 3); Settings 6.2 gains the slice-2 policies.
 Recounted by script 14 Nov 2026 on `feat/yukthix-staffing-1` after staffing slice 1: HIR-14 8 stories and HIR-15 5 stories design only → live (6 with a gap) plus 4 new drawn stories (add client, add contact, desk off, add role); Settings 6.2 P6_2 and P6_2_ReadOnly → live plus the new invoice series story.
 Recounted by script 14 Nov 2026 on `feat/yukthix-hir-27` after HIR-27 went live: its 4 stories design only → live (1 with a gap) plus 3 new drawn stories (some not sent, plan sheet, no days yet).
@@ -600,13 +601,26 @@ Vendors (Hiring › Vendors) work without the desk, for any company using recrui
 needs it. The older v2 /settings/agencies and /agency-submissions redirect to /yx/hiring/vendors (pages removed), and the
 older allow-list and accept routes refuse a client job (it goes through the cap, duplicate and consent checks).
 
+Staffing desk slice 3 (10 Nov 2026, branch `feat/yukthix-staffing-3`): HIR-18 invoices (with vendor invoices, answer
+490), HIR-19 receivables, HIR-30 fees and guarantee and HIR-31 the e-invoice window are live, with Settings 6.2
+reminders and e-invoicing, the client's TDS section and invoice grouping (answer 454) and the client portal per contact
+(answer 453, T9-06: drawn sign-in by email code; jobs, submissions, timesheets and invoices tabs live; interviews and
+tickets not built, question 491). Migration `202617o0000005_staffing_3`: eight tables with forced RLS (weekly hours,
+invoices and lines, receipts and allocations, client terms, vendor invoices, portal sessions); a credit-note counter on
+the slice-1 series; key `ats.staffing.billing` (new template "Staffing finance"); rule sets `GST.STAFFING_RATE`,
+`GST.EINVOICE_WINDOW` and `TDS.SECTIONS` (all verify; go-live lines for counsel and the CA). Invoices are drafted from
+client-approved hours (a week counts in the month of its Monday) at the rate-card bill rate of that week, numbered from
+the series only when issued (only up, never reused, at most 16 characters), and never edited after: credit notes (own
+CN number) or cancel and reissue. The IRP is not connected: "Send for IRN" says so. Account managers read invoices and
+keep hours and fees; recruiters see none of it.
+
 #### HIR-14 · Clients
 
 | story (sub-page) | verdict | note |
 |---|---|---|
 | List · Account manager · clients list | live (gap) | /yx/staffing/clients: name, GSTIN and state, status, contacts, contract end, account manager; search and status filter. Gap: open jobs, placements, receivable and overdue (slices 2, 3), portal invites (no client portal), saved views and export |
-| Workspace · Client workspace · overview | live (gap) | /yx/staffing/clients/[id]: legal name, billing address, place of supply, payment terms (client's or the company default); Change client and Rate card. Gap: TDS by client and invoice grouping (slice 3), Raise ticket, New client job (slice 2) |
-| Contacts · Client workspace · contacts and portal access | live (gap) | add, change, remove (after a confirmation), billing contact; one email per client. Gap: client portal access (question 453) |
+| Workspace · Client workspace · overview | live (gap) | /yx/staffing/clients/[id]: legal name, billing address, place of supply, payment terms (client's or the company default), TDS by client and invoice grouping (answer 454); Change client, Rate card, Fees and guarantee. Gap: Raise ticket (no client tickets) |
+| Contacts · Client workspace · contacts and portal access | live | add, change, remove (after a confirmation), billing contact; one email per client; portal access per contact (answer 453): Invite (an email with the portal link), Invited, Active on the first sign-in, Remove (ends the sessions) |
 | Contracts · Client workspace · contracts | live (gap) | contract start, end and notice from the client. Gap: contract documents, fees and guarantee (slice 3, HIR-30) |
 | Slas · Client workspace · SLAs | live (gap) | first submission and client feedback days. Gap: ticket SLAs (no client tickets) |
 | Empty · Empty | live | no clients yet, with Add client for account managers |
@@ -656,28 +670,31 @@ older allow-list and accept routes refuse a client job (it goes through the cap,
 | NewPlacement · New placement · from a selected submission | live | new story (drawn): `PlacementSheet`: a selected submission, once; a rate on the first day; a pipeline candidate joins as an employee first (question 481); placing takes the person off the bench the day before |
 | AddToBench · Add to bench | live | new story (drawn): `BenchSheet`: active employees not placed and not on the bench |
 | RecruiterView · Recruiter · no pay rates or margins | live | new story (drawn) |
+| Hours · Placement record · weekly hours | live | new story (drawn): `PlacementHours`: account managers enter a week (Monday start, inside the placement); the client approves or sends it back in the portal, or the account manager records an approval naming the contact; an approved week is never changed |
 
 #### HIR-18 · Invoices
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Finance · Finance · invoice list | design only, feature not built | no client invoices |
-| AccountManager · Account manager · read only | design only, feature not built | same |
-| IntraState · Invoice · CGST + SGST, credit note | design only, feature not built | same |
-| InterState · Invoice · IGST (inter-state) | design only, feature not built | same |
-| IrnWarning · Invoice · IRN day 28 warning | design only, feature not built | same (HIR-31) |
-| Empty · Empty | design only, feature not built | same |
-| Error · Error | design only, feature not built | same |
+| Finance · Finance · invoice list | live (gap) | /yx/staffing/invoices: number (draft until issued), client, date, period, type, taxable, GST, total, status (draft, issued, part paid, paid), IRN day from the rule set; Create invoices. Gap: export to accounting, bulk Send for IRN (IRP not connected), PDF (question 492) |
+| AccountManager · Account manager · read only | live (gap) | `ats.staffing.manage` reads; no Create. Gap: Download (no PDF yet) |
+| IntraState · Invoice · CGST + SGST, credit note | live | /yx/staffing/invoices/[id]: lines (hours × rate, overtime at the line's multiplier), CGST + SGST half each from `GST.STAFFING_RATE`; credit notes listed and opened |
+| InterState · Invoice · IGST (inter-state) | live | supplier state from the series GSTIN (rule set `GST.STATE_CODES`) against the client's state |
+| IrnWarning · Invoice · IRN day 28 warning | live | the banner from `GST.EINVOICE_WINDOW` (30 days, warn from 25; verify) when `staffing.einvoice.applies` is on |
+| Empty · Empty | live | |
+| Error · Error | live | |
+| CreateInvoices · Create invoices · from approved hours | live | new story (drawn): `CreateInvoicesSheet`: client, month, series, PO; one draft a month or one per placement (the client's grouping) |
+| Draft · Invoice · draft before issue | live | new story (drawn): issue (next number, today) or delete (hours free again) |
 
 #### HIR-19 · Receivables and collections
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Ageing · Finance · ageing, TDS and disputes | design only, feature not built | no receivables |
-| Receipt · Record part payment | design only, feature not built | same |
-| Empty · Empty · nothing outstanding | design only, feature not built | same |
-| Loading · Loading | design only, feature not built | same |
-| Error · Error | design only, feature not built | same |
+| Ageing · Finance · ageing, TDS and disputes | live (gap) | /yx/staffing/collections: outstanding by client and ageing group, TDS receivable against the 26AS amount entered, disputes (pause reminders), next reminder on `staffing.dunning.schedule` (default standard). Gap: reminders are shown, not sent yet (question 493); disputes are per invoice, not per line |
+| Receipt · Record part payment | live | `ReceiptSheet`: amount, date, client TDS (the client's section), allocations that must add up to amount + TDS, never more than outstanding; TDS spread in proportion |
+| Empty · Empty · nothing outstanding | live | |
+| Loading · Loading | live | |
+| Error · Error | live | |
 
 #### HIR-21 · Staffing vendors
 
@@ -686,7 +703,7 @@ older allow-list and accept routes refuse a client job (it goes through the cap,
 | Register · Register · one vendor pending documents | live | /yx/hiring/vendors: the existing agencies with PAN, GSTIN (must carry the PAN), TDS section, tier, agreement date and bank verified; status pending until every document is in; portal link, new link, stop sharing (what the older page did) |
 | ShareJob · Share job · rate cap and masked client | live | `ShareJobSheet`: rate cap suggested as the bill rate less `staffing.vendor.target_margin_pct` (default 25), never above the bill rate; most submissions per vendor; last day; hide the client; a client job only to complete vendors; an ordinary job without a cap |
 | Submissions · Vendor submissions · duplicate and over cap | live | the vendor's quote (exact paise), right to represent and consent; the first vendor holds a person for a job for `staffing.vendor.ownership_days` (default 90); a later vendor's submission, or one for someone already in the job's pipeline, is a duplicate (the vendor sees only "duplicate"); over the cap needs an exception with a reason; Forward to client (account managers, desk on) accepts into the pipeline and makes a client submission; ordinary jobs: Accept or Reject (recruiters) |
-| Invoices · Vendor invoices · proposed from hours | design only, feature not built | no hours yet (slice 3); hidden in live |
+| Invoices · Vendor invoices · proposed from hours | live (gap) | answer 490: proposed per vendor worker and month from approved hours × the vendor rate; GST 18% when the vendor has a GSTIN; TDS by the vendor's section (`TDS.SECTIONS`; PAN of an individual 1%, others 2% for 194C); Vendor confirmed (their number), Mark paid. Gap: no consultant invoice in payroll yet (question 496) |
 | Scorecards · Scorecards | live (gap) | submissions, duplicate rate, placements and tier. Gap: time to first submission |
 | Empty · Empty register | live | |
 | AddVendor · Add vendor · documents | live | new story (drawn): `VendorSheet` |
@@ -696,9 +713,9 @@ older allow-list and accept routes refuse a client job (it goes through the cap,
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Percent · Account manager · % of CTC, replacement | design only, feature not built | no placement fees |
-| FixedRefund · Finance · fixed fee, pro-rated credit | design only, feature not built | same |
-| OutsideGuarantee · Left after the guarantee period | design only, feature not built | same |
+| Percent · Account manager · % of CTC, replacement | live | /yx/staffing/clients/[id]/fees: fee as % of CTC (exact, 2 decimals) or fixed; conversion taper from month 0 that only goes down; guarantee days and free replacement or pro-rated credit; the example computed the same way |
+| FixedRefund · Finance · fixed fee, pro-rated credit | live (gap) | staffing finance reads. Gap: fee invoices and guarantee credit notes are not raised from these terms yet (question 494) |
+| OutsideGuarantee · Left after the guarantee period | live | |
 
 ### F. Compliance and fairness
 
@@ -754,11 +771,11 @@ both ends where required. Jobs now keep `salaryPeriod` and `askPayHistory`.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| DayTen · Day 10 · within window | design only, feature not built | goes with client invoices (HIR-18) |
-| DayTwentyEight · Day 28 · warning from day 25 | design only, feature not built | same |
-| DayThirtyThree · Day 33 · blocked after day 30 | design only, feature not built | same |
-| BelowThreshold · Entity below threshold · not applicable | design only, feature not built | same |
-| OnInvoice · On the invoice · Send for IRN blocked | design only, feature not built | same |
+| DayTen · Day 10 · within window | live | `LiveEInvoiceBanner`: days and limits from the rule set `GST.EINVOICE_WINDOW` (verify) |
+| DayTwentyEight · Day 28 · warning from day 25 | live | |
+| DayThirtyThree · Day 33 · blocked after day 30 | live | Cancel and reissue: a full credit note and the same lines as a new draft |
+| BelowThreshold · Entity below threshold · not applicable | live (gap) | e-invoicing off for the company (`staffing.einvoice.applies`, default off). Gap: per legal entity (question 495) |
+| OnInvoice · On the invoice · Send for IRN blocked | live (gap) | Send for IRN says the IRP is not connected. Gap: IRP integration |
 
 ### G. Careers site, portals and settings
 
@@ -865,7 +882,7 @@ stand-in is gone. Approval routes, careers and job boards stay on their stand-in
 | P6_1_ScorecardUsed · 6.1 Hiring · used scorecard (saved as a copy) | live | a template already used by a scorecard is never changed: “Save as a copy” posts a new template named “(copy)”; the API refuses a change with 409 |
 | P6_1_ScorecardView · 6.1 Hiring · scorecard, view only | live | the view-only sheet (skills with per cent, scale, pass bar) is drawn; live shows the list rows read-only without the pipelines key instead of opening it. Archive scorecard (danger, after a confirmation): `DELETE hiring/scorecard-templates/:id`, jobs using it go back to no scorecard, filled scorecards keep it |
 | P6_1_StaleRecruiter · 6.1 Hiring · default recruiter no longer qualifies | live | answer 348: a stored default who left or no longer holds the recruiter key reads as None with a warning naming them; new requisitions start with no recruiter (`defaultRecruiter`); the API refuses anyone else as default with 400, on both `PUT hiring/settings` and `PUT org/settings` |
-| P6_2 · 6.2 Staffing desk | live (gap) | /yx/settings/staffing: turn on the staffing desk (`staffing.desk.enabled`, default off, drawn), the rate-change backdating (`staffing.rate_change.backdate_days`, default 0, drawn), OT and holiday multipliers (1.5 and 2), default payment terms (30 days), invoice numbering (one series per GSTIN per financial year; the next number only goes up) and the r.46(b) law row. Changed by `ats.staffing.manage` or `org.settings.manage` company-wide, never while acting; audited. Slice 2 (drawn, live): submissions and placements (mask contact details, ending soon days, statutory cost %), vendors (target margin for the rate cap, ownership days) and the bench policy (bench pay, maximum days, then review or unpaid; a Segment). Gap: collections, dunning, client-portal times and e-invoicing (slice 3) are left out |
+| P6_2 · 6.2 Staffing desk | live (gap) | /yx/settings/staffing: turn on the staffing desk (`staffing.desk.enabled`, default off, drawn), the rate-change backdating (`staffing.rate_change.backdate_days`, default 0, drawn), OT and holiday multipliers (1.5 and 2), default payment terms (30 days), invoice numbering (one series per GSTIN per financial year; the next number only goes up) and the r.46(b) law row. Changed by `ats.staffing.manage` or `org.settings.manage` company-wide, never while acting; audited. Slice 2 (drawn, live): submissions and placements (mask contact details, ending soon days, statutory cost %), vendors (target margin for the rate cap, ownership days) and the bench policy (bench pay, maximum days, then review or unpaid; a Segment). Slice 3: payment reminders (`staffing.dunning.schedule`: standard, gentle or off), the ageing groups (fixed) and e-invoicing (`staffing.einvoice.applies`, default off, with the IRP not connected). Gap: client-portal response times (no tickets) |
 | P6_2_ReadOnly · 6.2 Staffing desk · read-only | live | recruiters (`ats.staffing.view`) read it |
 | P6_2_InvoiceSeries · 6.2 Staffing desk · add invoice series | live | new story (drawn): `InvoiceSeriesSheet`: the GSTIN must be one of the entity's registrations; a duplicate year and GSTIN 409; the number cannot go back |
 
@@ -1557,3 +1574,33 @@ at joining while a "before confirmation" check is open, HR decides; (392) also s
 489. **Duplicate disputes.** The design's "Review dispute" is not built: a duplicate cannot be forwarded and has no override.
      *Suggested: add an override with a reason (audited) for an account manager.*
 490. **Vendor invoices.** The Vendor invoices tab stays hidden until hours exist (slice 3). *Suggested: keep.*
+## Staffing desk slice 3 built (10 Nov 2026, branch `feat/yukthix-staffing-3`)
+- HIR-18, HIR-19, HIR-30, HIR-31, the vendor invoices tab, the client portal (T9-06) and Settings 6.2: see their rows and
+  the section E note. New company settings: `staffing.dunning.schedule` (standard), `staffing.einvoice.applies` (off).
+  Client fields: `tds_section`, `invoice_grouping` (month). Rule sets (verify): `GST.STAFFING_RATE`,
+  `GST.EINVOICE_WINDOW`, `TDS.SECTIONS`.
+## Founder questions from the staffing desk slice 3 (10 Nov 2026)
+491. **Client portal: interviews and tickets.** The drawn Interviews (schedule) and Tickets tabs are not built: interview
+     scheduling with a client panel and client tickets have no back end. *Suggested: interviews with HIR-06 scheduling;
+     tickets through the help desk later.*
+492. **Invoice PDF and export.** No invoice PDF, Download or Export to accounting yet; the client portal shows invoices
+     without a PDF. *Suggested: a GST invoice PDF (r.46 fields) next, then a Tally/Zoho export.*
+493. **Payment reminders.** The next reminder date is shown on the company's schedule, but no reminder email is sent yet.
+     *Suggested: a daily job that emails the billing contacts, paused by a dispute.*
+494. **Fee invoices and guarantee credits.** HIR-30 terms are kept, but a permanent placement or conversion does not yet
+     raise a fee invoice, and a leaver inside the guarantee does not raise the credit. *Suggested: raise both from the
+     placement record when the client hires.*
+495. **E-invoicing per legal entity.** E-invoicing is one company setting (the design shows it per legal entity).
+     *Suggested: per legal entity once a company has entities on both sides of the limit.*
+496. **Vendor invoices into payroll.** The design says a confirmed vendor invoice becomes a consultant invoice in payroll
+     (TDS under the vendor's section). Built: confirm and mark paid on the staffing desk only. *Suggested: link to the
+     consultant payouts (PAY 8) so TDS is deposited and certified there.*
+497. **Hours entry.** Weekly hours are entered by the account manager (a drawn sheet); workers do not enter them, and
+     the employee timesheets of the Time area are not used. *Suggested: let own-payroll workers' approved Time
+     timesheets flow in later.*
+498. **A week across two months.** A week counts in the month of its Monday (for invoices and vendor invoices).
+     *Suggested: keep; split by day only if a client asks.*
+499. **Credit notes in whole rupees.** The credit-note and receipt fields take whole rupees (the kit's money field); the
+     API takes paise. *Suggested: allow paise in the money field.*
+500. **Client sign-in for a contact of two clients.** A person who is a contact of two clients signs in to the first.
+     *Suggested: a client picker if it ever happens.*

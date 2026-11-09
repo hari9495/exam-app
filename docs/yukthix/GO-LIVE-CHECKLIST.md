@@ -108,3 +108,13 @@ Things deliberately left for launch. Development runs locally until then (test k
       attendance.factories_act, stop offering those scopes (keep department and employment type) (answer 152, 4 Nov 2026).
 - [ ] **Pay transparency law rows.** Counsel checks HIR.PAY_TRANSPARENCY (New York, California, Colorado, Washington,
       Illinois, EU directive; all verify) before any job outside India is published (Hiring answer 228, 9 Nov 2026).
+- [ ] **Staffing GST rule data.** The CA checks GST.STAFFING_RATE (18%, SAC 998519, CGST + SGST intra-state, IGST
+      inter-state) and GST.STATE_CODES before the first client invoice (staffing slice 3, 10 Nov 2026).
+- [ ] **E-invoice window.** The CA confirms GST.EINVOICE_WINDOW (report within 30 days of the invoice date for AATO of
+      ₹10 crore or more; warn from day 25) and whether each company's legal entities must e-invoice (staffing slice 3).
+- [ ] **TDS sections for staffing.** The CA and counsel check TDS.SECTIONS (194C 1% individual or HUF, 2% others; 194J
+      10%, 2% technical) and the new Income-tax Act 2025 section numbers from 1 Apr 2026 before vendor invoices or
+      client TDS are relied on (staffing slice 3).
+- [ ] **GST invoice and credit note contents.** Counsel and the CA review the invoice and credit note fields against
+      CGST Rules r.46 and r.53 (16-character numbers per series, place of supply, reason on the credit note) before the
+      PDF is built (questions 492, staffing slice 3).
