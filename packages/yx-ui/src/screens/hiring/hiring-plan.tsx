@@ -535,7 +535,7 @@ export function PlanEditorDrawer({ open, onOpenChange, fy, plans, choices, defau
 }
 
 /** Finance › Send back: the reason goes to HR with the plan. */
-function SendBackDialog({ open, onOpenChange, what, onSend }: { open: boolean; onOpenChange: (o: boolean) => void; what: string; onSend?: (reason: string) => Promise<void> }) {
+function SendBackDialog({ open, onOpenChange, what, onSend, consequence = 'HR sees your reason and can change it and send it again.', who = 'HR' }: { open: boolean; onOpenChange: (o: boolean) => void; what: string; onSend?: (reason: string) => Promise<void>; consequence?: string; who?: string }) {
   const [reason, setReason] = useState('');
   const [tried, setTried] = useState(false);
   return (
@@ -543,7 +543,7 @@ function SendBackDialog({ open, onOpenChange, what, onSend }: { open: boolean; o
       open={open}
       onOpenChange={onOpenChange}
       title={`Send back the ${what}?`}
-      consequence="HR sees your reason and can change it and send it again."
+      consequence={consequence}
       confirmLabel="Send back"
       onConfirm={async () => {
         setTried(true);
@@ -551,7 +551,7 @@ function SendBackDialog({ open, onOpenChange, what, onSend }: { open: boolean; o
         await onSend?.(reason.trim());
       }}
     >
-      <FormField label="Reason" required error={tried && !reason.trim() ? 'Enter a reason so HR knows what to change.' : null}>
+      <FormField label="Reason" required error={tried && !reason.trim() ? `Enter a reason so ${who} knows what to change.` : null}>
         <TextArea value={reason} onChange={setReason} rows={3} maxLength={1000} />
       </FormField>
     </ConfirmDialog>
@@ -695,6 +695,8 @@ export interface RediscoveryMatch {
   pool?: string;
   /** The company's AI's short "why" (advice only; it never changes who is listed or the order). */
   aiNote?: string | null;
+  /** Answer 255: already suggested to the requisition's recruiter. */
+  suggested?: boolean;
 }
 
 /** The live panel for one requisition (GET hiring/requisitions/:id/rediscovery); the page shows the toasts. */
@@ -707,6 +709,10 @@ export interface LiveRediscovery {
   matches: RediscoveryMatch[];
   /** Recruiting only, signed in as themselves: adds the person to this requisition's pipeline. */
   onAdd?: (m: RediscoveryMatch) => Promise<void>;
+  /** Answer 254, recruiting: opens the candidate email, only for someone who opted in to email. */
+  onContact?: (m: RediscoveryMatch) => void;
+  /** Answer 255, a hiring manager: a bell notice to the requisition's recruiter, once per person. */
+  onSuggest?: (m: RediscoveryMatch) => Promise<void>;
 }
 
 const AI_TEXT: Record<LiveRediscovery['ai'], string> = {
@@ -720,7 +726,23 @@ const AI_TEXT: Record<LiveRediscovery['ai'], string> = {
 export function RediscoveryPanel({ matches: sample, viewer, onAdd, live }: { matches: RediscoveryMatch[]; viewer: 'recruiter' | 'hm'; onAdd?: (id: string) => void; live?: LiveRediscovery }) {
   const [added, setAdded] = useState<string[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
+  const [suggested, setSuggested] = useState<string[]>([]);
+  const [why, setWhy] = useState<string | null>(null);
   const matches = live ? live.matches : sample;
+  const suggest = async (m: RediscoveryMatch) => {
+    if (!live?.onSuggest) return;
+    setBusy(m.id);
+    try {
+      await live.onSuggest(m);
+      setSuggested((x) => [...x, m.id]);
+    } catch {
+      // The page shows why in a toast.
+    } finally {
+      setBusy(null);
+    }
+  };
+  // Never greyed out: without an email opt-in the button says why instead.
+  const contact = (m: RediscoveryMatch) => (m.consent.email === 'opted-in' ? (setWhy(null), live?.onContact?.(m)) : setWhy(m.id));
   const add = async (m: RediscoveryMatch) => {
     if (!live?.onAdd) return;
     setBusy(m.id);
@@ -774,18 +796,34 @@ export function RediscoveryPanel({ matches: sample, viewer, onAdd, live }: { mat
                 </Text>
               </div>
               {live ? (
-                live.onAdd &&
-                (added.includes(m.id) ? (
-                  <div className="yx-hire-list__actions">
-                    <Badge tone="success">Added to pipeline</Badge>
-                  </div>
-                ) : (
-                  <div className="yx-hire-list__actions">
-                    <Button size="sm" icon={UserPlus} loading={busy === m.id} onClick={() => void add(m)}>
-                      Add to pipeline
+                <div className="yx-hire-list__actions">
+                  {live.onContact && (
+                    <Button size="sm" onClick={() => contact(m)}>
+                      Contact
                     </Button>
-                  </div>
-                ))
+                  )}
+                  {live.onAdd &&
+                    (added.includes(m.id) ? (
+                      <Badge tone="success">Added to pipeline</Badge>
+                    ) : (
+                      <Button size="sm" icon={UserPlus} loading={busy === m.id} onClick={() => void add(m)}>
+                        Add to pipeline
+                      </Button>
+                    ))}
+                  {live.onSuggest &&
+                    (m.suggested || suggested.includes(m.id) ? (
+                      <Badge tone="success">Suggested to recruiter</Badge>
+                    ) : (
+                      <Button size="sm" loading={busy === m.id} onClick={() => void suggest(m)}>
+                        Suggest to recruiter
+                      </Button>
+                    ))}
+                  {why === m.id && (
+                    <Text as="p" size="sm" tone="secondary" role="status">
+                      {m.name} has not agreed to email from us, so you can&apos;t contact them here.
+                    </Text>
+                  )}
+                </div>
               ) : viewer === 'recruiter' ? (
                 <div className="yx-hire-list__actions">
                   <Button size="sm" disabled={m.consent.email !== 'opted-in' && m.consent.whatsapp !== 'opted-in'}>
@@ -832,6 +870,12 @@ export interface RequisitionsScreenProps {
   state?: ListState;
   now?: Date;
   live?: LiveRequisitions;
+  /** Design state: the viewer holds the open requisition's approval task (Approve / Send back in the drawer). */
+  approver?: boolean;
+  /** Design state: the Cancel requisition dialog open for this row. */
+  cancelId?: string | null;
+  /** Design state: the Assign recruiter dialog open. */
+  assignOpen?: boolean;
 }
 
 /** A requisition as the live list reads it (GET hiring/requisitions). */
@@ -845,6 +889,11 @@ export type LiveRequisitionRow = Omit<Requisition, 'proposedMax' | 'planLineId'>
   sentBackReason: string | null;
   /** The route: submitted, then each step as the approvals engine ran it. */
   steps: ApprovalStep[];
+  /** Answer 257: the viewer holds the approval task on its current step. */
+  canDecide: boolean;
+  /** Answer 252: the viewer's own requisition (a hiring manager changes it when sent back). */
+  mine: boolean;
+  cancelReason: string | null;
 };
 
 /** The live list (HIR-02): recruiting and HR see every requisition; a hiring manager their own, read-only (decision 11). */
@@ -865,13 +914,24 @@ export interface LiveRequisitions {
   onOpenRow?: (id: string | null) => void;
   /** The open requisition's past candidates; absent when the viewer may not see candidates. */
   rediscovery?: LiveRediscovery;
+  /** Answer 257: the task holder approves or sends back (reason required) here; the sender never holds the task. */
+  onDecide?: (row: LiveRequisitionRow, decision: 'approve' | 'reject', reason: string | null) => Promise<void>;
+  /** Answer 252: the hiring manager changes their own sent-back requisition (opens the request sheet filled in). */
+  onEdit?: (row: LiveRequisitionRow) => void;
+  /** Answer 253: opens the request sheet filled in from this one. */
+  onDuplicate?: (row: LiveRequisitionRow) => void;
+  /** Answer 253, recruiting: cancel with a reason (refused once filled). */
+  onCancel?: (row: LiveRequisitionRow, reason: string) => Promise<void>;
+  /** Answer 253, recruiting: sets the recruiter of the chosen requisitions. */
+  assign?: { recruiters: { value: string; label: string }[]; onAssign: (rows: LiveRequisitionRow[], userId: string) => Promise<void> };
   now?: Date;
 }
 
-const REQ_TONE: Record<Requisition['status'], BadgeTone> = { Draft: 'neutral', 'Pending approval': 'warning', Approved: 'success', 'Sent back': 'danger', Filled: 'info', Closed: 'neutral' };
+const REQ_TONE: Record<Requisition['status'], BadgeTone> = { Draft: 'neutral', 'Pending approval': 'warning', Approved: 'success', 'Sent back': 'danger', Filled: 'info', Closed: 'neutral', Cancelled: 'neutral' };
+const ENDED: Requisition['status'][] = ['Filled', 'Closed', 'Cancelled'];
 
 // HIR-02
-export function RequisitionsScreen({ rows: sample, planLines, persona: samplePersona, me = 'Karthik Subramanian', openId = null, sheetOpen = false, rediscovery = [], state = 'ready', now, live }: RequisitionsScreenProps) {
+export function RequisitionsScreen({ rows: sample, planLines, persona: samplePersona, me = 'Karthik Subramanian', openId = null, sheetOpen = false, rediscovery = [], state = 'ready', now, live, approver = false, cancelId = null, assignOpen = false }: RequisitionsScreenProps) {
   type Row = Requisition | LiveRequisitionRow;
   const persona = live ? live.persona : samplePersona;
   // Live: the API already returns only what the viewer may see.
@@ -883,9 +943,13 @@ export function RequisitionsScreen({ rows: sample, planLines, persona: samplePer
   };
   const [sheet, setSheet] = useState(sheetOpen);
   const [busy, setBusy] = useState(false);
+  const [sendBack, setSendBack] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [cancelling, setCancelling] = useState<string | null>(cancelId);
+  const [assigning, setAssigning] = useState<Row[] | null>(assignOpen ? sample.slice(0, 2) : null);
   const isLive = (r: Row): r is LiveRequisitionRow => Boolean(live) && 'steps' in r;
   const planText = (r: Row) => (r.replacementFor ? 'Replacement' : isLive(r) ? (r.line ? 'In plan' : r.outsidePlan ? 'Outside plan' : 'No plan line') : (r as Requisition).planLineId ? 'In plan' : 'Outside plan');
-  const statuses = live ? ['Draft', 'Pending approval', 'Approved', 'Sent back', 'Filled', 'Closed'] : ['Draft', 'Pending approval', 'Approved', 'Sent back', 'Filled'];
+  const statuses = live ? ['Draft', 'Pending approval', 'Approved', 'Sent back', 'Filled', 'Closed', 'Cancelled'] : ['Draft', 'Pending approval', 'Approved', 'Sent back', 'Filled'];
   const list = useListControls<Row>({
     rows: base,
     fields: [
@@ -929,13 +993,21 @@ export function RequisitionsScreen({ rows: sample, planLines, persona: samplePer
     </Button>
   );
   const liveActions = (r: LiveRequisitionRow) =>
-    can ? (
+    can || live?.onDuplicate ? (
       <>
-        {live?.onOpenJob && <MenuItem onSelect={() => live.onOpenJob?.(r)}>Open job</MenuItem>}
-        {(r.status === 'Draft' || r.status === 'Sent back') && <MenuItem onSelect={() => void act(() => live!.onSubmit(r))}>Send for approval</MenuItem>}
-        {r.status === 'Pending approval' && <MenuItem onSelect={() => void act(() => live!.onWithdraw(r))}>Withdraw from approval</MenuItem>}
+        {can && live?.onOpenJob && <MenuItem onSelect={() => live.onOpenJob?.(r)}>Open job</MenuItem>}
+        {can && (r.status === 'Draft' || r.status === 'Sent back') && <MenuItem onSelect={() => void act(() => live!.onSubmit(r))}>Send for approval</MenuItem>}
+        {can && r.status === 'Pending approval' && <MenuItem onSelect={() => void act(() => live!.onWithdraw(r))}>Withdraw from approval</MenuItem>}
+        {live?.onDuplicate && <MenuItem onSelect={() => live.onDuplicate?.(r)}>Duplicate</MenuItem>}
+        {can && live?.onCancel && !ENDED.includes(r.status) && (
+          <MenuItem destructive onSelect={() => setCancelling(r.id)}>
+            Cancel requisition
+          </MenuItem>
+        )}
       </>
     ) : null;
+  const cancelRow = base.find((r) => r.id === cancelling) ?? null;
+  const decide = (decision: 'approve' | 'reject', reason: string | null) => act(() => live!.onDecide!(current as LiveRequisitionRow, decision, reason));
 
   return (
     <HireFrame active="Jobs & requisitions">
@@ -962,8 +1034,14 @@ export function RequisitionsScreen({ rows: sample, planLines, persona: samplePer
         views={live ? undefined : list.views}
         onRowClick={(r) => setOpen(r.id)}
         activeRowId={open}
-        selectable={!live && persona === 'recruiter'}
-        bulkActions={live ? undefined : () => <Button size="sm">Assign recruiter</Button>}
+        selectable={live ? can && Boolean(live.assign) : persona === 'recruiter'}
+        selectedIds={picked}
+        onSelectedChange={setPicked}
+        bulkActions={(ids) => (
+          <Button size="sm" onClick={() => setAssigning(base.filter((r) => ids.includes(r.id)))}>
+            Assign recruiter
+          </Button>
+        )}
         rowActions={
           live
             ? (r) => liveActions(r as LiveRequisitionRow)
@@ -1004,9 +1082,28 @@ export function RequisitionsScreen({ rows: sample, planLines, persona: samplePer
           subtitle={[current.department, current.location, current.grade].filter(Boolean).join(' · ')}
           meta={<Badge tone={REQ_TONE[current.status]}>{current.status}</Badge>}
           footer={
-            live ? (
+            live && (current as LiveRequisitionRow).canDecide && live.onDecide ? (
+              <>
+                <Button onClick={() => setSendBack(true)} disabled={busy}>
+                  Send back
+                </Button>
+                <Button variant="primary" loading={busy} onClick={() => void decide('approve', null)}>
+                  Approve
+                </Button>
+              </>
+            ) : !live && approver ? (
+              <>
+                <Button>Send back</Button>
+                <Button variant="primary">Approve</Button>
+              </>
+            ) : live ? (
               <>
                 <Button onClick={() => setOpen(null)}>Close</Button>
+                {live.onEdit && (current as LiveRequisitionRow).mine && current.status === 'Sent back' && (
+                  <Button variant="primary" onClick={() => live.onEdit?.(current as LiveRequisitionRow)}>
+                    Edit and resubmit
+                  </Button>
+                )}
                 {can && current.status === 'Approved' && live.onOpenJob && (
                   <Button variant="primary" onClick={() => live.onOpenJob?.(current as LiveRequisitionRow)}>
                     Open job
@@ -1036,7 +1133,72 @@ export function RequisitionsScreen({ rows: sample, planLines, persona: samplePer
         </Drawer>
       )}
       {!live && <RequisitionSheet open={sheet} onOpenChange={setSheet} planLines={planLines} />}
+      {current && sendBack && (
+        <SendBackDialog
+          open
+          onOpenChange={setSendBack}
+          what={`requisition ${current.code || current.title}`}
+          consequence="The hiring manager sees your reason. Recruiting or the hiring manager changes it and sends it again."
+          who="the hiring manager"
+          onSend={async (reason) => {
+            await live?.onDecide?.(current as LiveRequisitionRow, 'reject', reason);
+          }}
+        />
+      )}
+      {cancelRow && <CancelRequisitionDialog row={cancelRow} onClose={() => setCancelling(null)} onCancel={live?.onCancel ? (reason) => live.onCancel!(cancelRow as LiveRequisitionRow, reason) : undefined} />}
+      {assigning && <AssignRecruiterDialog rows={assigning} recruiters={live?.assign?.recruiters ?? SAMPLE_RECRUITERS} onClose={() => (setAssigning(null), setPicked([]))} onAssign={live?.assign ? (userId) => live.assign!.onAssign(assigning as LiveRequisitionRow[], userId) : undefined} />}
     </HireFrame>
+  );
+}
+
+const SAMPLE_RECRUITERS = [{ value: 'u1', label: 'Neha Joshi' }, { value: 'u2', label: 'Imran Qureshi' }];
+
+/** HIR-02 answer 253: why the requisition is cancelled (required); it closes the job. */
+function CancelRequisitionDialog({ row, onClose, onCancel }: { row: { code: string; title: string }; onClose: () => void; onCancel?: (reason: string) => Promise<void> }) {
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`Cancel requisition ${row.code || row.title}?`}
+      consequence="The job closes and its board postings close. A waiting approval is withdrawn. Candidates stay in your candidate list."
+      confirmLabel="Cancel requisition"
+      destructive
+      onConfirm={async () => {
+        setTried(true);
+        if (reason.trim().length < 3) return false;
+        await onCancel?.(reason.trim());
+      }}
+    >
+      <FormField label="Reason" required error={tried && reason.trim().length < 3 ? 'Say why it is cancelled, so the hiring manager knows.' : null}>
+        <TextArea value={reason} onChange={setReason} rows={3} maxLength={500} />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
+
+/** HIR-02 answer 253: the recruiter of the chosen requisitions (the job's recruiter field). */
+function AssignRecruiterDialog({ rows, recruiters, onClose, onAssign }: { rows: { id: string }[]; recruiters: { value: string; label: string }[]; onClose: () => void; onAssign?: (userId: string) => Promise<void> }) {
+  const [who, setWho] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={rows.length === 1 ? 'Assign a recruiter' : `Assign a recruiter to ${rows.length} requisitions`}
+      consequence="They see the requisition's candidates and get its suggestions."
+      confirmLabel="Assign"
+      onConfirm={async () => {
+        setTried(true);
+        if (!who) return false;
+        await onAssign?.(who);
+      }}
+    >
+      <FormField label="Recruiter" required error={tried && !who ? 'Choose the recruiter.' : null}>
+        <Select value={who} onChange={setWho} options={recruiters} searchable />
+      </FormField>
+    </ConfirmDialog>
   );
 }
 
@@ -1045,7 +1207,11 @@ function LiveRequisitionDetail({ req, now }: { req: LiveRequisitionRow; now?: Da
   const line = req.line;
   return (
     <div className="yx-hire-stack">
-      {req.status === 'Sent back' ? (
+      {req.status === 'Cancelled' ? (
+        <InlineAlert tone="info" title="Cancelled">
+          {req.cancelReason ? `“${req.cancelReason}”` : 'This requisition was cancelled.'}
+        </InlineAlert>
+      ) : req.status === 'Sent back' ? (
         <InlineAlert tone="danger" title="Sent back">
           {req.sentBackReason ? `“${req.sentBackReason}” ` : ''}Recruiting can change it and send it again.
         </InlineAlert>
@@ -1128,19 +1294,36 @@ export interface LiveRequisitionSheet {
   subtitle: string;
   /** The people who may leave and be replaced (the manager's team). */
   team: { value: string; label: string }[];
-  onSend: (input: { title: string; requisitionReason: 'new' | 'replacement'; headcountPlanLineId: string | null; outsidePlan: boolean; outsidePlanReason: string | null; replacementOfEmployeeId: string | null; headcount: number; budgetAmount: number | null; targetStart: Date | null }) => Promise<void>;
+  onSend: (input: RequisitionInput) => Promise<void>;
+  /** Answers 252, 253: the sheet opens filled in (change a sent-back requisition, or Duplicate one). */
+  initial?: RequisitionInput;
+  /** Drawer title; "New requisition" by default. */
+  title?: string;
+}
+
+export interface RequisitionInput {
+  title: string;
+  requisitionReason: 'new' | 'replacement';
+  headcountPlanLineId: string | null;
+  outsidePlan: boolean;
+  outsidePlanReason: string | null;
+  replacementOfEmployeeId: string | null;
+  headcount: number;
+  budgetAmount: number | null;
+  targetStart: Date | null;
 }
 
 export function RequisitionSheet({ open, onOpenChange, planLines, defaultLine = 'pl3', defaultMax = 8_40_000, live }: { open: boolean; onOpenChange: (o: boolean) => void; planLines: PlanLine[]; defaultLine?: string | null; defaultMax?: number | null; live?: LiveRequisitionSheet }) {
-  const [lineId, setLineId] = useState<string | null>(defaultLine);
-  const [outside, setOutside] = useState(!live && defaultLine == null);
-  const [max, setMax] = useState<number | null>(defaultMax);
-  const [positions, setPositions] = useState<number | null>(1);
-  const [reason, setReason] = useState('');
-  const [replacement, setReplacement] = useState(false);
-  const [leaver, setLeaver] = useState<string | null>(null);
-  const [title, setTitle] = useState('');
-  const [start, setStart] = useState<Date | null>(live ? null : new Date(2026, 11, 1));
+  const init = live?.initial;
+  const [lineId, setLineId] = useState<string | null>(init ? init.headcountPlanLineId : defaultLine);
+  const [outside, setOutside] = useState(init ? init.outsidePlan : !live && defaultLine == null);
+  const [max, setMax] = useState<number | null>(init ? init.budgetAmount : defaultMax);
+  const [positions, setPositions] = useState<number | null>(init ? init.headcount : 1);
+  const [reason, setReason] = useState(init?.outsidePlanReason ?? '');
+  const [replacement, setReplacement] = useState(init?.requisitionReason === 'replacement');
+  const [leaver, setLeaver] = useState<string | null>(init?.replacementOfEmployeeId ?? null);
+  const [title, setTitle] = useState(init && !init.headcountPlanLineId ? init.title : '');
+  const [start, setStart] = useState<Date | null>(init ? init.targetStart : live ? null : new Date(2026, 11, 1));
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
   // Live: Send is never greyed out; pressed too early it shows each missing field and focuses the first.
@@ -1176,7 +1359,7 @@ export function RequisitionSheet({ open, onOpenChange, planLines, defaultLine = 
       open={open}
       onOpenChange={onOpenChange}
       size="lg"
-      title="New requisition"
+      title={live?.title ?? 'New requisition'}
       subtitle={live ? live.subtitle : 'Hiring manager request · Engineering'}
       dirty={reason.length > 0 || title.length > 0}
       footer={

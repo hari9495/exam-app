@@ -9,7 +9,7 @@ const ue = userEvent.setup({ pointerEventsCheck: 0 });
 
 const row = (i: number, o: Partial<LiveRequisitionRow> = {}): LiveRequisitionRow => {
   const { planLineId: _p, ...r } = REQUISITIONS[i];
-  return { ...r, line: null, outsidePlan: false, outsidePlanReason: null, sentBackReason: null, steps: [], ...o };
+  return { ...r, line: null, outsidePlan: false, outsidePlanReason: null, sentBackReason: null, steps: [], canDecide: false, mine: false, cancelReason: null, ...o };
 };
 const ROWS: LiveRequisitionRow[] = [
   row(0, { id: 'a', status: 'Approved', line: PLAN_LINES[0], steps: [{ id: 's0', label: 'Submitted', status: 'done' }, { id: 's1', label: 'Recruiting', status: 'done', approver: 'Neha Joshi' }] }),
@@ -129,5 +129,92 @@ describe('Request a hire sheet: never greyed out', () => {
     expect(screen.getByText('Enter the most you can pay.')).toBeInTheDocument();
     await new Promise((r) => requestAnimationFrame(r));
     expect(document.activeElement).toHaveAttribute('aria-invalid', 'true');
+  });
+});
+
+describe('HIR-02 / HIR-26 follow-ups (answers 252-257)', () => {
+  it('257: the task holder approves, or sends back only with a reason', async () => {
+    const onDecide = vi.fn(async () => undefined);
+    show(live({ rows: [row(1, { id: 'b', status: 'Pending approval', canDecide: true })], onDecide }));
+    await ue.click(screen.getByText('Shift Lead, Line 3'));
+    const d = await screen.findByRole('dialog');
+    await ue.click(within(d).getByRole('button', { name: 'Send back' }));
+    const ask = (await screen.findAllByRole('dialog')).at(-1)!;
+    await ue.click(within(ask).getByRole('button', { name: 'Send back' }));
+    expect(onDecide).not.toHaveBeenCalled();
+    expect(within(ask).getByText('Enter a reason so the hiring manager knows what to change.')).toBeInTheDocument();
+    await ue.type(within(ask).getByRole('textbox', { name: /Reason/ }), 'Lower the pay');
+    await ue.click(within(ask).getByRole('button', { name: 'Send back' }));
+    expect(onDecide).toHaveBeenCalledWith(expect.objectContaining({ id: 'b' }), 'reject', 'Lower the pay');
+  });
+
+  it('257: without the task there is no Approve', async () => {
+    show(live({ rows: [row(1, { id: 'b', status: 'Pending approval', canDecide: false })], onDecide: vi.fn() }));
+    await ue.click(screen.getByText('Shift Lead, Line 3'));
+    const d = await screen.findByRole('dialog');
+    expect(within(d).queryByRole('button', { name: 'Approve' })).toBeNull();
+  });
+
+  it('252: the hiring manager edits their own sent-back requisition; not someone else’s', async () => {
+    const onEdit = vi.fn();
+    const { unmount } = show(live({ persona: 'hm', canManage: false, rows: [row(2, { id: 'c', status: 'Sent back', mine: true })], onEdit }));
+    await ue.click(screen.getByText(ROWS[2].title));
+    await ue.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Edit and resubmit' }));
+    expect(onEdit).toHaveBeenCalledWith(expect.objectContaining({ id: 'c' }));
+    unmount();
+    show(live({ persona: 'hm', canManage: false, rows: [row(2, { id: 'c', status: 'Sent back', mine: false })], onEdit }));
+    await ue.click(screen.getByText(ROWS[2].title));
+    expect(within(await screen.findByRole('dialog')).queryByRole('button', { name: 'Edit and resubmit' })).toBeNull();
+  });
+
+  it('253: cancel asks for a reason first; ended requisitions offer no cancel', async () => {
+    const onCancel = vi.fn(async () => undefined);
+    render(<RequisitionsScreen rows={[]} planLines={[]} persona="recruiter" cancelId="a" live={live({ onCancel })} />);
+    const ask = (await screen.findAllByRole('dialog')).at(-1)!;
+    await ue.click(within(ask).getByRole('button', { name: 'Cancel requisition' }));
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(within(ask).getByText(/Say why it is cancelled/)).toBeInTheDocument();
+    await ue.type(within(ask).getByRole('textbox', { name: /Reason/ }), 'Client deal fell through');
+    await ue.click(within(ask).getByRole('button', { name: 'Cancel requisition' }));
+    expect(onCancel).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }), 'Client deal fell through');
+  });
+
+  it('253: assign recruiter needs a choice; then sets it for the chosen rows', async () => {
+    const onAssign = vi.fn(async () => undefined);
+    render(<RequisitionsScreen rows={[]} planLines={[]} persona="recruiter" live={live({ assign: { recruiters: [{ value: 'u9', label: 'Neha Joshi' }], onAssign } })} />);
+    await ue.click(screen.getByRole('checkbox', { name: `Select ${ROWS[0].code}` }));
+    await ue.click(screen.getByRole('button', { name: 'Assign recruiter' }));
+    const ask = (await screen.findAllByRole('dialog')).at(-1)!;
+    await ue.click(within(ask).getByRole('button', { name: 'Assign' }));
+    expect(within(ask).getByText('Choose the recruiter.')).toBeInTheDocument();
+    await ue.click(within(ask).getByRole('combobox', { name: /Recruiter/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Neha Joshi' }));
+    await ue.click(within(ask).getByRole('button', { name: 'Assign' }));
+    expect(onAssign).toHaveBeenCalledWith([expect.objectContaining({ id: 'a' })], 'u9');
+  });
+
+  it('254, 255: Contact explains when there is no email opt-in; Suggest to recruiter turns into a badge', async () => {
+    const onContact = vi.fn();
+    const onSuggest = vi.fn(async () => undefined);
+    const { unmount } = render(<RediscoveryPanel matches={[]} viewer="recruiter" live={rd({ matches: [REDISCOVERY[0], REDISCOVERY[2]], onContact })} />);
+    const [ok, no] = screen.getAllByRole('button', { name: 'Contact' });
+    await ue.click(no);
+    expect(onContact).not.toHaveBeenCalled();
+    expect(screen.getByText(/Deepa Ghosh has not agreed to email from us/)).toBeInTheDocument();
+    await ue.click(ok);
+    expect(onContact).toHaveBeenCalledWith(expect.objectContaining({ id: 'rd1' }));
+    unmount();
+    render(<RediscoveryPanel matches={[]} viewer="hm" live={rd({ matches: [REDISCOVERY[0], { ...REDISCOVERY[1], suggested: true }], onSuggest })} />);
+    expect(screen.getByText('Suggested to recruiter')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Suggest to recruiter' }));
+    expect(onSuggest).toHaveBeenCalledWith(expect.objectContaining({ id: 'rd1' }));
+    expect(await screen.findAllByText('Suggested to recruiter')).toHaveLength(2);
+  });
+
+  it('the request sheet opens filled in for edit and Duplicate', () => {
+    render(<RequisitionSheet open onOpenChange={() => {}} planLines={PLAN_LINES} live={{ subtitle: 'x', title: 'Change and send again', team: [], onSend: vi.fn(), initial: { title: 'Data Analyst', requisitionReason: 'new', headcountPlanLineId: null, outsidePlan: true, outsidePlanReason: 'Backlog', replacementOfEmployeeId: null, headcount: 2, budgetAmount: 800000, targetStart: null } }} />);
+    expect(screen.getByRole('dialog', { name: /Change and send again/ })).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Data Analyst')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Backlog')).toBeInTheDocument();
   });
 });
