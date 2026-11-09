@@ -1,10 +1,25 @@
 // Pure rules behind the Hiring & staffing desk screens (M10). Screens call these; hiring.test.tsx covers them.
-import { formatINR } from '../../lib/format';
+import { formatDate, formatINR } from '../../lib/format';
 
 const DAY_MS = 86_400_000;
 const dayNo = (d: Date) => Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / DAY_MS);
 export const daysBetween = (from: Date, to: Date) => dayNo(to) - dayNo(from);
 export const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+
+/* ---------------- HIR-06 / 07 · interview times are shown in India time, whatever the browser's zone ---------------- */
+
+const IST_PARTS = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' });
+/** The India wall-clock time of an instant, as a local Date (so a calendar drawn in local time shows India time). */
+export function istWall(at: string | Date): Date {
+  const p = Object.fromEntries(IST_PARTS.formatToParts(new Date(at)).map((x) => [x.type, x.value]));
+  return new Date(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute));
+}
+/** "3 Nov 2026, 11:00 am IST". */
+export function istWhen(at: string | Date): string {
+  const d = istWall(at);
+  const h = d.getHours();
+  return `${formatDate(d)}, ${h % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')} ${h < 12 ? 'am' : 'pm'} IST`;
+}
 
 /* ---------------- HIR-01 / 02 · plan and requisition approval (YX-ATS-01, Q1) ---------------- */
 

@@ -155,22 +155,6 @@ describe('HIR-03 job settings (answer 261) and stage targets (answer 263)', () =
 });
 
 describe('HIR-05 application on the record (answer 261)', () => {
-  it('schedules an interview with the panel; without a booking window it asks', async () => {
-    const onSchedule = vi.fn(async () => ({}));
-    show(<ApplicationDrawer {...sampleApplication} onSchedule={onSchedule} />);
-    await ue.click(screen.getByRole('tab', { name: /Interviews/ }));
-    await ue.click(screen.getByRole('button', { name: 'Schedule an interview' }));
-    const d = lastDialog();
-    await ue.click(within(d).getByRole('radio', { name: 'Candidate books' }));
-    await ue.click(within(d).getByRole('combobox', { name: 'Panel' }));
-    await ue.click(screen.getByRole('option', { name: 'Kavya' }));
-    await ue.keyboard('{Escape}');
-    await ue.type(within(d).getByLabelText(/^Where/), 'Video call');
-    await ue.click(within(d).getByRole('button', { name: 'Schedule' }));
-    expect(within(d).getByText('Choose the first bookable date.')).toBeInTheDocument();
-    expect(onSchedule).not.toHaveBeenCalled();
-  });
-
   it('offers stay here until HIR-09: approval when the company asks; the approver decides, a turn-down needs a reason', async () => {
     const onOfferDecide = vi.fn(async () => ({}));
     const waiting = { ...sampleApplication.app!, offers: [{ id: 'o1', status: 'pending_approval', compensation: '₹12,00,000 a year', startDate: '2026-12-01', expiresAt: '2026-11-15' }] };

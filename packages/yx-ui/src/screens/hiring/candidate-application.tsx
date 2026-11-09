@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CalendarPlus, Check, Download, ExternalLink, Mail, MessageSquare, Plus, Sparkles } from 'lucide-react';
+import { Check, Download, ExternalLink, Mail, MessageSquare, Plus, Sparkles } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Checkbox } from '../../components/choice';
 import { DatePicker } from '../../components/date';
@@ -18,13 +18,13 @@ import { useRun } from '../org/org-kit';
 import { useToastIfAny } from '../../components/notify';
 import { dateText } from '../time/live/kit';
 import { EmailDialog } from './candidate-dialogs';
-import { RejectDialog, scorecardText } from './pipeline-sheets';
+import { RejectDialog } from './pipeline-sheets';
 import type { ApplicationView, Choice, EmailCompose, EmailTemplateChoice, OfferInput, RejectInput, ScheduleInput } from './live/types';
 
 // HIR-05 Application (founder answer 261, 10 Nov 2026): one application, opened on the candidate record (a card on the
-// HIR-04 board opens the record with it). Tests and fit, interviews (schedule with proposed slots or self-booking;
-// calendar events and meeting links come from the calendar sync), messages, notes, the checklist, the owner and offers
-// (offers stay here until HIR-09). Moved from the AT5 stand-in drawer so nothing it did is lost.
+// HIR-04 board opens the record with it). Tests and fit, messages, notes, the checklist, the owner and offers (offers
+// stay here until HIR-09). Interviews moved out (answer 301): Schedule interview is on the record's header (answer 274),
+// each interview opens the HIR-07 scorecard page (resend and cancel there), and HIR-06 is the calendar.
 
 const day = (iso: string) => dateText(iso.slice(0, 10));
 const when = (iso: string) => new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
@@ -41,8 +41,6 @@ export interface ApplicationDrawerProps {
   canManage: boolean;
   statuses: Choice[];
   people: Choice[];
-  scorecardTemplates: Choice[];
-  defaultScorecardId: string | null;
   templates: EmailTemplateChoice[];
   senders: Choice[];
   smsTemplates: EmailTemplateChoice[];
@@ -60,10 +58,6 @@ export interface ApplicationDrawerProps {
   onChecklist: (itemId: string, done: boolean) => Promise<unknown>;
   onScoreFit?: () => Promise<unknown>;
   onResume: () => Promise<unknown>;
-  onSchedule: (input: ScheduleInput) => Promise<unknown>;
-  onOpenInterview: (interviewId: string) => void;
-  onCancelInterview: (interviewId: string) => Promise<unknown>;
-  onResendInterview: (interviewId: string) => Promise<unknown>;
   onEmail: (c: EmailCompose) => Promise<unknown>;
   onSms: (body: string, templateId: string | null) => Promise<unknown>;
   onWhatsapp: (body: string, templateId: string | null) => Promise<unknown>;
@@ -94,7 +88,6 @@ export function ApplicationDrawer(p: ApplicationDrawerProps) {
   const [turningDown, setTurningDown] = useState<string | null>(null);
   const [downReason, setDownReason] = useState('');
   const [downTried, setDownTried] = useState(false);
-  const [scheduling, setScheduling] = useState(false);
   const [emailing, setEmailing] = useState(false);
   const [texting, setTexting] = useState<'sms' | 'whatsapp' | null>(null);
   const [noting, setNoting] = useState(false);
@@ -130,7 +123,6 @@ export function ApplicationDrawer(p: ApplicationDrawerProps) {
           <Tabs defaultValue="overview">
             <TabsList aria-label="Application sections">
               <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="interviews" count={a.interviews.length}>Interviews</TabsTrigger>
               <TabsTrigger value="messages" count={a.emails.length + a.sms.length + a.whatsapp.length}>Messages</TabsTrigger>
               <TabsTrigger value="notes" count={a.notes.length}>Notes</TabsTrigger>
               <TabsTrigger value="offers" count={a.offers.length}>Offers</TabsTrigger>
@@ -182,25 +174,6 @@ export function ApplicationDrawer(p: ApplicationDrawerProps) {
                   {a.customFields.length > 0 && <DescriptionList items={a.customFields.map((f) => ({ label: f.label, value: f.value }))} />}
                   {a.rejectedReason && <Text as="p" tone="secondary">Rejected: {a.rejectedReason}</Text>}
                 </Card>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="interviews">
-              <div className="yx-hire-stack">
-                {p.canManage && <div><Button size="sm" icon={CalendarPlus} onClick={() => setScheduling(true)}>Schedule an interview</Button></div>}
-                {a.interviews.length === 0 && <EmptyState compact title="No interviews yet." />}
-                {a.interviews.map((iv) => (
-                  <Card key={iv.id} title={iv.when ? when(iv.when) : 'Time not fixed yet'}>
-                    <Text as="p">{iv.status} · {iv.location} · {iv.panel.join(', ') || 'No panel'}</Text>
-                    {iv.scorecards && <Text as="p" tone="secondary">{scorecardText(iv.scorecards)}</Text>}
-                    <div className="yx-hire-actions">
-                      <Button size="sm" onClick={() => p.onOpenInterview(iv.id)}>Open interview</Button>
-                      {iv.meetingUrl && <Button asChild size="sm"><a href={iv.meetingUrl} target="_blank" rel="noopener noreferrer">Join meeting</a></Button>}
-                      {p.canManage && iv.status !== 'cancelled' && <Button size="sm" onClick={() => void run('resend', () => p.onResendInterview(iv.id))}>Send to candidate again</Button>}
-                      {p.canManage && iv.status !== 'cancelled' && <Button size="sm" variant="danger" onClick={() => void run('cancel', () => p.onCancelInterview(iv.id))}>Cancel interview</Button>}
-                    </div>
-                  </Card>
-                ))}
               </div>
             </TabsContent>
 
@@ -306,7 +279,6 @@ export function ApplicationDrawer(p: ApplicationDrawerProps) {
             </Dialog>
           )}
           {rejecting && <RejectDialog count={1} templates={p.templates} onClose={() => setRejecting(false)} onReject={async (i) => { await p.onReject(i); told('Candidate rejected')(); }} />}
-          {scheduling && <ScheduleDialog {...p} onSchedule={(i) => p.onSchedule(i).then(told('Interview scheduled'))} onClose={() => setScheduling(false)} />}
           {emailing && <EmailDialog count={1} templates={p.templates} senders={p.senders} onClose={() => setEmailing(false)} onSend={async (c) => { await p.onEmail(c); told('Email on its way')(); }} />}
           {texting && <TextDialog channel={texting} templates={texting === 'sms' ? p.smsTemplates : p.whatsappTemplates} onClose={() => setTexting(null)} onSend={(b, t) => (texting === 'sms' ? p.onSms(b, t) : p.onWhatsapp(b, t)).then(told(texting === 'sms' ? 'SMS sent' : 'WhatsApp message sent'))} />}
           {noting && <NoteDialog onClose={() => setNoting(false)} onSave={(n, r) => p.onNote(n, r).then(told('Note added'))} />}
@@ -367,7 +339,18 @@ function NoteDialog(p: { onClose: () => void; onSave: (note: string, rating: num
   );
 }
 
-function ScheduleDialog(p: ApplicationDrawerProps & { onClose: () => void }) {
+/** HIR-05 record › Schedule interview (answer 274), for one application. Times are entered and shown in India time. */
+export interface ScheduleDialogProps {
+  /** e.g. the job title, shown in the title. */
+  forWhat?: string;
+  people: Choice[];
+  scorecardTemplates: Choice[];
+  defaultScorecardId: string | null;
+  onSchedule: (input: ScheduleInput) => Promise<unknown>;
+  onClose: () => void;
+}
+
+export function ScheduleDialog(p: ScheduleDialogProps) {
   const [mode, setMode] = useState<'proposed' | 'self_book'>('proposed');
   const [slots, setSlots] = useState<{ date: Date | null; start: string | null; end: string | null }[]>([{ date: null, start: null, end: null }]);
   const [wFrom, setWFrom] = useState<Date | null>(null);
@@ -375,22 +358,31 @@ function ScheduleDialog(p: ApplicationDrawerProps & { onClose: () => void }) {
   const [minutes, setMinutes] = useState<'15' | '30' | '45' | '60'>('30');
   const [panel, setPanel] = useState<string[]>([]);
   const [location, setLocation] = useState('');
-  const [tz, setTz] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata');
+  const [tz, setTz] = useState('Asia/Kolkata');
   const [note, setNote] = useState('');
   const [scorecard, setScorecard] = useState<string | null>(p.defaultScorecardId);
-  const iso = (d: Date, t: string) => new Date(`${dayKey(d)}T${t}:00`).toISOString();
+  // India time (+05:30, no daylight saving) whatever the browser's zone; the time zone field is the candidate's.
+  const iso = (d: Date, t: string) => new Date(`${dayKey(d)}T${t}:00+05:30`).toISOString();
   const slotsOk = slots.every((s) => s.date && s.start && s.end && s.end > s.start);
   const ok = location.trim() && tz.trim() && (mode === 'proposed' ? slotsOk : wFrom && wTo && wTo > wFrom);
   const [tried, setTried] = useState(false);
+  const firstBad = () =>
+    mode === 'proposed'
+      ? (() => { const i = slots.findIndex((s) => !(s.date && s.start && s.end && s.end > s.start)); if (i < 0) return null; const s = slots[i]; return !s.date ? `sc-d${i}` : !s.start ? `sc-s${i}` : `sc-e${i}`; })()
+      : !wFrom ? 'sc-wf' : !(wTo && wTo > wFrom) ? 'sc-wt' : null;
   return (
-    <ConfirmDialog open size="md" onOpenChange={(o) => !o && p.onClose()} title="Schedule an interview" confirmLabel="Schedule" onConfirm={async () => {
+    <ConfirmDialog open size="md" onOpenChange={(o) => !o && p.onClose()} title={p.forWhat ? `Schedule an interview · ${p.forWhat}` : 'Schedule an interview'} confirmLabel="Schedule" onConfirm={async () => {
       setTried(true);
-      if (!ok) return false;
+      if (!ok) {
+        const id = firstBad() ?? (!location.trim() ? 'sc-loc' : 'sc-tz');
+        setTimeout(() => document.getElementById(id)?.focus(), 0);
+        return false;
+      }
       await p.onSchedule({
         mode,
         slots: mode === 'proposed' ? slots.map((s) => ({ startsAt: iso(s.date!, s.start!), endsAt: iso(s.date!, s.end!) })) : [],
-        windowStart: mode === 'self_book' ? new Date(`${dayKey(wFrom!)}T00:00:00`).toISOString() : null,
-        windowEnd: mode === 'self_book' ? new Date(`${dayKey(wTo!)}T23:59:00`).toISOString() : null,
+        windowStart: mode === 'self_book' ? new Date(`${dayKey(wFrom!)}T00:00:00+05:30`).toISOString() : null,
+        windowEnd: mode === 'self_book' ? new Date(`${dayKey(wTo!)}T23:59:00+05:30`).toISOString() : null,
         slotMinutes: mode === 'self_book' ? (Number(minutes) as 15 | 30 | 45 | 60) : null,
         panelistUserIds: panel,
         location: location.trim(),
@@ -408,10 +400,10 @@ function ScheduleDialog(p: ApplicationDrawerProps & { onClose: () => void }) {
               <FormField id={`sc-d${i}`} label={`Option ${i + 1} date`} error={tried && !s.date ? 'Choose a date.' : null}>
                 <DatePicker aria-label={`Option ${i + 1} date`} value={s.date} onChange={(d) => setSlots((x) => x.map((y, k) => (k === i ? { ...y, date: d } : y)))} min={new Date()} />
               </FormField>
-              <FormField id={`sc-s${i}`} label={`Option ${i + 1} from`} error={tried && !s.start ? 'Choose a start time.' : null}>
+              <FormField id={`sc-s${i}`} label={`Option ${i + 1} from (IST)`} error={tried && !s.start ? 'Choose a start time.' : null}>
                 <TimeField value={s.start} onChange={(v) => setSlots((x) => x.map((y, k) => (k === i ? { ...y, start: v } : y)))} />
               </FormField>
-              <FormField id={`sc-e${i}`} label={`Option ${i + 1} to`} error={tried && !(s.end && (!s.start || s.end > s.start)) ? 'Choose an end time after the start time.' : null}>
+              <FormField id={`sc-e${i}`} label={`Option ${i + 1} to (IST)`} error={tried && !(s.end && (!s.start || s.end > s.start)) ? 'Choose an end time after the start time.' : null}>
                 <TimeField value={s.end} onChange={(v) => setSlots((x) => x.map((y, k) => (k === i ? { ...y, end: v } : y)))} />
               </FormField>
               {slots.length > 1 && <Button size="sm" variant="danger" onClick={() => setSlots((x) => x.filter((_, k) => k !== i))}>Remove option {i + 1}</Button>}
@@ -438,7 +430,7 @@ function ScheduleDialog(p: ApplicationDrawerProps & { onClose: () => void }) {
       <FormField id="sc-loc" label="Where" required helper="An address, or 'Video call' (a meeting link is added when your calendar is connected)." error={tried && !location.trim() ? 'Enter where the interview takes place.' : null}>
         <TextField value={location} onChange={setLocation} maxLength={500} />
       </FormField>
-      <FormField id="sc-tz" label="Time zone" required error={tried && !tz.trim() ? 'Enter the time zone.' : null}>
+      <FormField id="sc-tz" label="Candidate's time zone" required helper="Used in the candidate's invitation. Times above are India time." error={tried && !tz.trim() ? 'Enter the time zone.' : null}>
         <TextField value={tz} onChange={setTz} maxLength={64} />
       </FormField>
       <FormField id="sc-card" label="Scorecard" optional>

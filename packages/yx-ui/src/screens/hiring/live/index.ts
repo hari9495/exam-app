@@ -14,9 +14,12 @@ export { TalentPoolsScreen, type TalentPoolsScreenProps } from './talent';
 // HIR-04 follow-ups (answer 261): the Bulk actions and Add candidate sheets on the board, the job settings on the HIR-03
 // workspace, and the application on the HIR-05 record (the old candidates list and application panel are gone).
 export { AddCandidateSheet, BulkActionsSheet, RejectDialog, scorecardText, type AddCandidateInput, type BulkRow } from '../pipeline-sheets';
-export { ApplicationDrawer, type ApplicationDrawerProps } from '../candidate-application';
+export { ApplicationDrawer, ScheduleDialog, type ApplicationDrawerProps, type ScheduleDialogProps } from '../candidate-application';
 export { JobSettingsPanel, type LiveJobSettings, type StageTarget, type JobSettingsPatch } from '../job-settings';
-export { MyInterviewsScreen, InterviewScreen, ScorecardTemplatesScreen, type MyInterviewsScreenProps, type InterviewScreenProps, type ScorecardTemplatesScreenProps } from './interviews';
+// HIR-06 / HIR-07: the designed interview calendar and scorecard form, live with their `live` prop (stand-ins gone).
+export { InterviewCalendarScreen, ScorecardScreen, type LiveInterviewCalendar, type LiveScorecard } from '../hiring-pipeline';
+// Settings 6.1 stand-in until that page is wired.
+export { ScorecardTemplatesScreen, type ScorecardTemplatesScreenProps } from './interviews';
 // HIR-11 and HIR-12: the designed screens themselves (hiring-plan.tsx), made live with their `live` prop.
 export { AllReferralsScreen, RecruitingCostsScreen, ReferralsScreen, type AllReferral, type LiveAllReferrals, type CostEntry, type CostInput, type LiveRecruitingCosts, type LiveReferrals, type ReferInput, type ReferJob, type Referral } from '../hiring-plan';
 // HIR-02 and HIR-26: the designed requisitions list and rediscovery panel (hiring-plan.tsx), made live with `live`.
