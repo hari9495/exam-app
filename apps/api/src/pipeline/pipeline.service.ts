@@ -367,6 +367,11 @@ export class PipelineService {
     if (problem) throw new BadRequestException(problem);
   }
 
+  /** HIR-24: the company-level pay choices for new jobs. */
+  async paySettings(context: TenantContext): Promise<{ showRange: boolean; askHistory: boolean }> {
+    return this.tenantPrisma.forTenant(context, (tx) => payDefaults(tx, context.organizationId as string, { legalEntityId: null, locationId: null }));
+  }
+
   /** HIR-24 / HIR-03: the job's pay law and the company's choices, and its postings on every company board. */
   async jobPayAndPostings(tx: Prisma.TransactionClient, organizationId: string, job: Job) {
     const { law, legalEntityId, place } = await payLawFor(tx, organizationId, job.locationId, todayIst());

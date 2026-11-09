@@ -193,9 +193,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'privacy.erasure.enabled': { label: 'Delete Special data when its period ends', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // PLT-02 / settings 2.2 Home page (19 Oct 2026): employees see their own latest net pay on Home, hidden until they ask.
   // HIR-24 (founder decision 7, 9 Nov 2026): where no law requires it (India), showing a new job's pay range on the careers
-  // page and job boards is the company's choice (starter on, as drawn); asking applicants about their current or past pay
+  // page and job boards is the company's choice (starter off: today's behaviour, founder question 221); asking applicants about their current or past pay
   // is off unless the company switches it on, and never where the location's law bans it (HIR.PAY_TRANSPARENCY).
-  'hiring.pay_range.show': { label: 'Hiring: show the pay range on new jobs', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['on', 'off'], default: 'on' },
+  'hiring.pay_range.show': { label: 'Hiring: show the pay range on new jobs', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['off', 'on'], default: 'off' },
   'hiring.pay_history.ask': { label: 'Hiring: ask applicants about their current or past pay on new jobs', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['off', 'on'], default: 'off' },
   'home.pay_on_employee_home': { label: 'Show net pay on the employee home', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // P02 §4.5 fraud guard: a new bank account is used for payouts only after this cooling period (starter, D17).

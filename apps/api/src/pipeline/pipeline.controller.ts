@@ -52,6 +52,13 @@ export class PipelineController {
     return this.pipelineService.listJobs(tenant, status, role, search);
   }
 
+  /** HIR-24: the company's pay choices for new jobs (company level; a location's own setting and law apply on save). */
+  @Get('jobs/pay-settings')
+  @RequirePermissions('results:view')
+  paySettings(@CurrentTenant() tenant: TenantContext) {
+    return this.pipelineService.paySettings(tenant);
+  }
+
   @Get('jobs/:id')
   @RequirePermissions('results:view')
   getJob(@CurrentTenant() tenant: TenantContext, @CurrentUserRole() role: string, @Param('id') id: string) {
