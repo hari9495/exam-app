@@ -58,6 +58,8 @@ export interface DayBoardProps {
   extra?: React.ReactNode;
   onAssign: () => Promise<unknown> | void;
   onSend: () => Promise<SendResult | void> | SendResult | void;
+  /** Answer 423: removes one slot (a lunch break); its unsent candidates go back to waiting for Auto-assign. */
+  onRemoveSlot?: (start: number) => Promise<unknown>;
   /** WhatsApp reminders: drawn; hidden live until reminders exist (question 421). */
   showReminders?: boolean;
 }
@@ -66,12 +68,12 @@ const RESULT: Record<Exclude<DayResult, 'ready'>, { tone: 'success' | 'danger'; 
 
 export function DayBoard(p: DayBoardProps) {
   const toast = useToastIfAny();
-  const [busy, setBusy] = useState<'assign' | 'send' | null>(null);
+  const [busy, setBusy] = useState<'assign' | 'send' | number | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const toSend = p.placed.filter((x) => x.result !== 'sent');
   const notSent = p.placed.filter((x) => x.result === 'failed');
   const at = (panel: string, slot: number) => p.placed.find((a) => a.panel === panel && a.start === slot);
-  const run = async (which: 'assign' | 'send', fn: () => unknown) => {
+  const run = async (which: 'assign' | 'send' | number, fn: () => unknown) => {
     setBusy(which);
     setFailed(null);
     try {
@@ -85,6 +87,10 @@ export function DayBoard(p: DayBoardProps) {
   const assign = () => void run('assign', async () => {
     await p.onAssign();
     toast?.toast({ tone: 'success', title: 'Candidates assigned', description: 'Rows already sent keep their place.' });
+  });
+  const removeSlot = (s: number) => void run(s, async () => {
+    await p.onRemoveSlot!(s);
+    toast?.toast({ tone: 'success', title: `Slot ${minutesToLabel(s)} removed`, description: 'Auto-assign will not use it. Anyone placed there is waiting again.' });
   });
   const send = async () => {
     const r = (await run('send', p.onSend)) as SendResult | void;
@@ -163,7 +169,16 @@ export function DayBoard(p: DayBoardProps) {
             <tbody>
               {p.slots.map((s) => (
                 <tr key={s}>
-                  <th scope="row">{minutesToLabel(s)}</th>
+                  <th scope="row">
+                    {minutesToLabel(s)}
+                    {p.onRemoveSlot && p.canManage && p.status !== 'sending' && p.slots.length > 1 && (
+                      <div>
+                        <Button size="sm" loading={busy === s} onClick={() => removeSlot(s)} aria-label={`Remove the ${minutesToLabel(s)} slot`}>
+                          Remove
+                        </Button>
+                      </div>
+                    )}
+                  </th>
                   {p.panels.map((x) => {
                     const a = at(x.id, s);
                     return (
@@ -225,6 +240,8 @@ export function InterviewDaySheet({ open, onOpenChange, jobs, people, slotMinute
   const [day, setDay] = useState<Date | null>(null);
   const [first, setFirst] = useState<string | null>('10:00');
   const [count, setCount] = useState<number | null>(6);
+  // Answer 423: single slots the planner took out (a lunch break), by start time.
+  const [dropped, setDropped] = useState<number[]>([]);
   const [panels, setPanels] = useState<PanelDraft[]>([{ name: 'Panel A', room: '', members: [] }]);
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -233,6 +250,8 @@ export function InterviewDaySheet({ open, onOpenChange, jobs, people, slotMinute
   const start = toMinutes(first);
   const lastEnd = start != null && count ? start + count * slotMinutes : null;
   const slotsBad = start == null || !count || count < 1 || count > 20 || (lastEnd ?? 0) > 1440;
+  const allSlots = !slotsBad ? Array.from({ length: count! }, (_, i) => start! + i * slotMinutes) : [];
+  const kept = allSlots.filter((s) => !dropped.includes(s));
   const pastDay = day != null && iso(day) < iso(today);
   const set = (k: number, patch: Partial<PanelDraft>) => setPanels((x) => x.map((y, i) => (i === k ? { ...y, ...patch } : y)));
   const save = async () => {
@@ -244,6 +263,7 @@ export function InterviewDaySheet({ open, onOpenChange, jobs, people, slotMinute
     if (!day || pastDay) return focus('day-date');
     if (start == null) return focus('day-first');
     if (slotsBad) return focus('day-count');
+    if (!kept.length) return focus('day-slots');
     const bad = panels.findIndex((x) => !x.name.trim() || !x.room.trim() || !x.members.length);
     if (bad >= 0) return focus(!panels[bad]!.name.trim() ? `day-pn${bad}` : !panels[bad]!.room.trim() ? `day-pr${bad}` : `day-pm${bad}`);
     const seen = new Set<string>();
@@ -251,7 +271,7 @@ export function InterviewDaySheet({ open, onOpenChange, jobs, people, slotMinute
     if (twice) return setFailed(`${people.find((x) => x.value === twice)?.label ?? 'A person'} is on two panels. Each panel sits at the same times, so put them on one panel only.`);
     setBusy(true);
     try {
-      await onCreate({ name: name.trim(), jobId, stageId, day: iso(day), slots: Array.from({ length: count! }, (_, i) => start + i * slotMinutes), panels: panels.map((x) => ({ name: x.name.trim(), room: x.room.trim(), memberUserIds: x.members })) });
+      await onCreate({ name: name.trim(), jobId, stageId, day: iso(day), slots: kept, panels: panels.map((x) => ({ name: x.name.trim(), room: x.room.trim(), memberUserIds: x.members })) });
       toast?.toast({ tone: 'success', title: 'Interview day planned', description: 'Use Auto-assign to place the candidates.' });
       onOpenChange(false);
     } catch (e) {
@@ -304,6 +324,15 @@ export function InterviewDaySheet({ open, onOpenChange, jobs, people, slotMinute
             <NumberField value={count} onChange={setCount} min={1} max={20} />
           </FormField>
         </div>
+        {allSlots.length > 0 && (
+          <FormField id="day-slots" label="Slots in the day" helper="Untick a slot to leave it out, for example a lunch break. Auto-assign skips it." error={tried && !kept.length ? 'Keep at least one slot.' : null}>
+            <div className="yx-hire-actions">
+              {allSlots.map((s) => (
+                <Checkbox key={s} label={minutesToLabel(s)} checked={!dropped.includes(s)} onChange={(on) => setDropped((d) => (on ? d.filter((x) => x !== s) : [...d, s]))} />
+              ))}
+            </div>
+          </FormField>
+        )}
         {panels.map((x, k) => (
           <div key={k} className="yx-hire-actions">
             <FormField id={`day-pn${k}`} label={`Panel ${k + 1}`} required error={tried && !x.name.trim() ? 'Name the panel.' : null}>
@@ -360,6 +389,8 @@ export interface LiveInterviewDay {
   onPlan: () => void;
   onAssign: () => Promise<unknown>;
   onSend: () => Promise<{ sent: number; failed: number }>;
+  /** Answer 423: removes one slot of the chosen day. */
+  onRemoveSlot?: (start: number) => Promise<unknown>;
 }
 
 export function LiveInterviewDayView({ live }: { live: LiveInterviewDay }) {
@@ -413,6 +444,7 @@ export function LiveInterviewDayView({ live }: { live: LiveInterviewDay }) {
       extra={extra}
       onAssign={live.onAssign}
       onSend={live.onSend}
+      onRemoveSlot={live.onRemoveSlot}
     />
   );
 }

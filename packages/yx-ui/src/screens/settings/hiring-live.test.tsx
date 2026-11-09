@@ -70,7 +70,7 @@ describe('Settings 6.1 Hiring (live)', () => {
     expect(screen.getByText('Engineer round 1')).toBeInTheDocument();
     expect(screen.getByText('₹25,000')).toBeInTheDocument();
     // Designed fields with nothing behind them yet are left out, never shown with sample data.
-    for (const t of ['Offer expires after', 'Headcount plan approvers', 'AI interview', 'Careers site colour', 'Plant worker', 'Recruiting cost categories']) expect(screen.queryByText(t)).not.toBeInTheDocument();
+    for (const t of ['Headcount plan approvers', 'AI interview', 'Careers site colour', 'Plant worker', 'Recruiting cost categories']) expect(screen.queryByText(t)).not.toBeInTheDocument();
     // Fixed rows: the referral rule is edited, never added to; without a scorecard editor templates are read-only lists.
     expect(screen.queryByRole('button', { name: /Add referral rule|Add pipeline template|Add scorecard/ })).not.toBeInTheDocument();
     // Answer 345: skills with weights in per cent (an older 2:1 template reads 67 % and 33 %) and the pass bar.

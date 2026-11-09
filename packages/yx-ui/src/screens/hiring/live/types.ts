@@ -446,6 +446,8 @@ export interface OfferSetupView {
   locations: Choice[];
   letters: { value: string; label: string; esign: boolean; subject: string; body: string }[];
   defaultConditions: string[];
+  /** Offers answer 404: a new offer expires this many days after today unless changed (Settings › Hiring). */
+  expiryDays?: number;
   /** The company's offer route for this sender (the sender is never an approver) and the step above the range. */
   route: { steps: { name: string; approvers: string[] }[]; bandStep: { name: string; approvers: string[] } };
 }
@@ -590,4 +592,6 @@ export interface LiveBulkOffers {
   onSend: (input: BulkOfferInput) => Promise<void>;
   onOpenOffer: (offerId: string) => void;
   now: Date;
+  /** Offers answer 402: the candidates ticked on the pipeline board's Bulk actions (the rest start unticked). */
+  selected?: string[];
 }

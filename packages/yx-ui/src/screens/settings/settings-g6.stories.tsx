@@ -74,6 +74,16 @@ const staleRecruiter: SettingsPageDef = {
 };
 const staleGroups = SETTINGS_GROUPS.map((g) => (g.id === 6 ? { ...g, pages: g.pages.map((p) => (p.id === '6.1' ? staleRecruiter : p)) } : g));
 export const P6_1_StaleRecruiter: S = { name: '6.1 Hiring · default recruiter no longer qualifies', render: () => <SettingsPageScreen groups={staleGroups} pageId="6.1" highlightKey="hire.default_recruiter" /> };
+// Offers answer 376: the named approver above the range who lost the offer-pay key stays named, with a warning.
+const staleApprover: SettingsPageDef = {
+  ...hiringPage,
+  sections: hiringPage.sections.map((sec) => ({
+    ...sec,
+    settings: sec.settings.map((d) => (d.key === 'hire.band_approver' ? { ...d, options: [...(d.options ?? []), 'Meenakshi Sundaram (cannot approve)'], value: 'Meenakshi Sundaram (cannot approve)', starter: false, warning: 'Meenakshi Sundaram can no longer see offer pay or has left, so offers above the range go to the company admins instead. Choose someone else.' } : d)),
+  })),
+};
+const staleApproverGroups = SETTINGS_GROUPS.map((g) => (g.id === 6 ? { ...g, pages: g.pages.map((p) => (p.id === '6.1' ? staleApprover : p)) } : g));
+export const P6_1_StaleBandApprover: S = { name: '6.1 Hiring · approver above the range can no longer approve', render: () => <SettingsPageScreen groups={staleApproverGroups} pageId="6.1" highlightKey="hire.band_approver" /> };
 export const P6_2: S = { name: '6.2 Staffing desk', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.2" /> };
 export const P6_2_ReadOnly: S = { name: '6.2 Staffing desk · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.2" readOnly /> };
 export const P6_3: S = { name: '6.3 Performance', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.3" /> };

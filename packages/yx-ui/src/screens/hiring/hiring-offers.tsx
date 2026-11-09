@@ -71,6 +71,7 @@ export interface OfferBuilderProps {
 }
 
 const fromIso = (s: string) => new Date(`${s.slice(0, 10)}T00:00:00`);
+const addDaysTo = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 const failure = (e: unknown) => (e instanceof Error && e.message ? e.message : 'That did not work. Check your connection and try again.');
 /** The letter's merge fields filled from the form (the server fills the same ones when it sends). */
 const fillLetter = (text: string, f: Record<string, string>) => text.replace(/\{\{(\w+)\}\}/g, (m, k: string) => f[k] ?? m);
@@ -121,7 +122,7 @@ function OfferBuilderForm({ candidate: sampleCandidate = '', job: sampleJob = ''
   const [kind, setKind] = useState<string>(prevIn?.letterKind ?? 'offer');
   const [metro, setMetro] = useState(true);
   const [start, setStart] = useState<Date | null>(live ? (prevIn ? fromIso(prevIn.startDate) : null) : new Date(2026, 10, 2));
-  const [expires, setExpires] = useState<Date | null>(live ? (prevIn ? fromIso(prevIn.expiresAt) : null) : new Date(2026, 9, 6));
+  const [expires, setExpires] = useState<Date | null>(live ? (prevIn ? fromIso(prevIn.expiresAt) : setup?.expiryDays ? addDaysTo(now ?? new Date(), setup.expiryDays) : null) : new Date(2026, 9, 6));
   const [place, setPlace] = useState<string | null>(live ? (prevIn?.locationId ?? setup?.job.locationId ?? setup?.locations[0]?.value ?? null) : 'maa');
   const [letter, setLetter] = useState<string | null>(live ? (prevIn?.templateId ?? setup?.letters[0]?.value ?? null) : 't1');
   const [conditions, setConditions] = useState(true);
@@ -995,7 +996,7 @@ function BulkOfferBuilder({ rows: sampleRows, band: sampleBand, defaultStep, liv
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
   const base: BulkOfferRow[] = setup ? setup.candidates.map((c) => ({ id: c.entryId, name: c.name, college: c.email, ctc: ctcs[c.entryId] ?? 0, joining: start ?? new Date(), planOk: true })) : sampleRows;
-  const [selected, setSelected] = useState<string[]>(base.map((r) => r.id));
+  const [selected, setSelected] = useState<string[]>(live?.selected?.length ? base.map((r) => r.id).filter((x) => live.selected!.includes(x)) : base.map((r) => r.id));
   // Live: rows beyond the free places on the plan line are held, in the order they are listed.
   const free = setup?.plan.check === 'hold' ? setup.plan.free : null;
   const rows = setup ? base.map((r) => ({ ...r, planOk: free === null || !selected.includes(r.id) || selected.filter((s) => base.findIndex((x) => x.id === s) <= base.findIndex((x) => x.id === r.id)).length <= free })) : base;
