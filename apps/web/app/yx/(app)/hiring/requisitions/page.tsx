@@ -93,7 +93,7 @@ export default function YxRequisitionsPage() {
   const recruiting = perms.has('pipeline:manage');
   const seesCandidates = recruiting || perms.has('candidate:view');
   const [open, setOpen] = useState<string | null>(null);
-  const past = useHiring<{ mode: 'ai' | 'text'; ai: 'on' | 'off' | 'not_set_up' | 'failed'; matches: ApiMatch[] }>(open ? `/requisitions/${encodeURIComponent(open)}/rediscovery` : null, seesCandidates);
+  const past = useHiring<{ mode: 'ai' | 'text'; ai: 'on' | 'off' | 'not_set_up' | 'failed' | 'blocked'; blocked?: string | null; matches: ApiMatch[] }>(open ? `/requisitions/${encodeURIComponent(open)}/rediscovery` : null, seesCandidates);
   // The request sheet (PPL-08) for whoever may raise a requisition, signed in as themselves: new, change (252), copy (253).
   const canRaise = perms.has('ats.requisition.raise') && !acting;
   const [sheet, setSheet] = useState<{ edit: string | null; initial?: Input } | null>(null);
@@ -177,6 +177,8 @@ export default function YxRequisitionsPage() {
                   onRetry: () => void past.refetch(),
                   mode: past.data?.mode ?? 'text',
                   ai: past.data?.ai ?? 'off',
+                  // HIR-23: AI notes blocked for a New York City job while the bias audit is overdue (the reason is shown).
+                  blocked: past.data?.blocked ?? null,
                   matches: (past.data?.matches ?? []).map((m) => ({ ...m, retentionUntil: new Date(m.retentionUntil), pool: m.pool ?? undefined })),
                   ...(manage && open
                     ? {

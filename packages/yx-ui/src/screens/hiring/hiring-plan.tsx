@@ -707,7 +707,9 @@ export interface LiveRediscovery {
   onRetry: () => void;
   /** text: the plain search (AI off, not set up, failed, or acting for someone); ai: plus the AI's notes. */
   mode: 'ai' | 'text';
-  ai: 'on' | 'off' | 'not_set_up' | 'failed';
+  ai: 'on' | 'off' | 'not_set_up' | 'failed' | 'blocked';
+  /** HIR-23: why the AI notes are blocked (a New York City job with the bias audit overdue). */
+  blocked?: string | null;
   matches: RediscoveryMatch[];
   /** Recruiting only, signed in as themselves: adds the person to this requisition's pipeline. */
   onAdd?: (m: RediscoveryMatch) => Promise<void>;
@@ -722,6 +724,7 @@ const AI_TEXT: Record<LiveRediscovery['ai'], string> = {
   off: 'Plain search: AI notes are off for your company. You decide.',
   not_set_up: 'Plain search: your company has no AI set up. You decide.',
   failed: 'Plain search: the AI did not answer this time. You decide.',
+  blocked: 'Plain search below. You decide.',
 };
 
 // HIR-26
@@ -764,6 +767,7 @@ export function RediscoveryPanel({ matches: sample, viewer, onAdd, live }: { mat
           ? 'Past candidates matched on this requisition’s words: past roles, skills and location. Only people who agreed to be kept for other roles, within their retention period, appear here.'
           : 'Silver medallists and pool members matched on skills and location. Only people whose consent and retention period are still valid appear here.'}
       </Text>
+      {live && live.state === 'ready' && live.ai === 'blocked' && <InlineAlert tone="warning" title="AI notes are blocked for this job">{live.blocked ?? 'The bias audit for New York City jobs is overdue.'}</InlineAlert>}
       {live && live.state === 'ready' && (
         <Text as="p" size="sm" tone="secondary">
           {AI_TEXT[live.ai]}

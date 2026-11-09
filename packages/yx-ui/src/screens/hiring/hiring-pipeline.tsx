@@ -1806,6 +1806,8 @@ export interface NotetakerControls {
   onTranscript: (text: string) => Promise<unknown>;
   /** Makes (or opens) the viewer's AI draft. */
   onDraft: () => Promise<unknown>;
+  /** HIR-23: why the AI draft cannot run for this job (New York City, the bias audit overdue). */
+  aiBlocked?: string | null;
 }
 
 // HIR-25
@@ -1934,7 +1936,8 @@ function NotetakerTranscript({ c }: { c: NotetakerControls }) {
           />
         </FormField>
       )}
-      {c.isPanelist && c.transcript && !c.submitted && (
+      {c.isPanelist && c.transcript && !c.submitted && c.aiDraft && c.aiBlocked && <InlineAlert tone="warning" title="AI drafting is blocked for this job">{c.aiBlocked} Fill the scorecard yourself.</InlineAlert>}
+      {c.isPanelist && c.transcript && !c.submitted && !c.aiBlocked && (
         c.aiDraft ? (
           <span className="yx-hire-row">
             <Button

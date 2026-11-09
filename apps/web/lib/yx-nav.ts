@@ -295,6 +295,8 @@ export function buildNav(n: NavInput): NavArea[] {
           ...sec('Reports & compliance', [
             ...when(has('ats.costs.manage'), L('hiring-costs', 'Recruiting costs', '/yx/hiring/costs')),
             ...when(any('ats.referral.manage', 'candidate:view'), L('hiring-all-referrals', 'All referrals', '/yx/hiring/referrals/all')),
+            // HIR-23: the bias audit record (recruiting and the hiring settings holders).
+            ...when(any('ats.settings.manage', 'org.settings.manage', 'pipeline:manage'), L('hiring-bias-audits', 'Bias audits', '/yx/hiring/bias-audits')),
           ]),
         ],
   };

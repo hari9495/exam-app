@@ -57,3 +57,6 @@ export { hiringSettingsPage, hiringSettingsChanges, type HiringSettingsData } fr
 // HIR-10 and HIR-20: the designed BGV tracker and Talent CRM (hiring-offers.tsx), live with their `live` prop (the
 // pools stand-in is gone).
 export { BgvTrackerScreen, TalentCrmScreen, type BgvResultInput, type LiveBgv, type LiveBgvCheck, type LiveBgvJoiner, type LivePool, type LivePoolMember, type LivePostingJob, type LiveTalentCrm } from '../hiring-offers';
+// HIR-23: the designed bias audit record, live with its `live` prop.
+export { BiasAuditScreen, type BiasAuditInput, type LiveBiasAudit } from '../hiring-offers';
+export type { AuditCategory } from '../hiring-logic';

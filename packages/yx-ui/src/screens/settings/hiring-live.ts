@@ -48,6 +48,8 @@ const KEY = {
   'hire.notetaker_ai_draft': 'hiring.notetaker.ai_draft',
   'hire.notetaker_keep_days': 'hiring.notetaker.keep_days',
   'hire.bgv_decider_other_person': 'hiring.bgv.decider_other_person',
+  // HIR-23 (founder decision 2, question 7).
+  'hire.bias_audit_nyc': 'hiring.bias_audit.nyc',
 } as const;
 /** On/off fields: the stored value for on and for off. */
 const TOGGLE: Partial<Record<keyof typeof KEY, [on: string, off: string]>> = {
@@ -61,6 +63,7 @@ const TOGGLE: Partial<Record<keyof typeof KEY, [on: string, off: string]>> = {
   'hire.notetaker_enabled': ['on', 'off'],
   'hire.notetaker_ai_draft': ['on', 'off'],
   'hire.bgv_decider_other_person': ['on', 'off'],
+  'hire.bias_audit_nyc': ['on', 'off'],
 };
 const BASIS: Record<string, string> = { full: 'All of it', pro_rata: 'The part for the months not served' };
 const BONUS = 'ats.referral.bonus_inr';
@@ -125,6 +128,7 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
       case 'hire.internal_after_probation':
       case 'hire.notetaker_enabled':
       case 'hire.notetaker_ai_draft':
+      case 'hire.bias_audit_nyc':
       case 'hire.bgv_decider_other_person': {
         const k = KEY[d.key];
         return { ...base, value: v[k] === TOGGLE[d.key]![0], starter: v[k] === data.defaults[k] };

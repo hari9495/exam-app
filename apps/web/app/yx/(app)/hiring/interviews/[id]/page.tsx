@@ -21,6 +21,7 @@ type Notetaker = {
   myDraft: boolean;
   submitted: boolean;
   cancelled: boolean;
+  aiBlocked?: string | null;
 };
 
 export default function YxInterviewPage() {
@@ -69,6 +70,7 @@ export default function YxInterviewPage() {
                   transcript: n.transcript ? { addedAt: new Date(n.transcript.addedAt), addedBy: n.transcript.addedBy } : null,
                   myDraft: n.myDraft,
                   submitted: n.submitted,
+                  aiBlocked: n.aiBlocked ?? null,
                   onConsent: (participant, consent) => write('PUT', `/interviews/${id}/notetaker/consent`, { participant, consent }),
                   onTranscript: (text) => write('PUT', `/interviews/${id}/notetaker/transcript`, { text }),
                   onDraft: async () => {

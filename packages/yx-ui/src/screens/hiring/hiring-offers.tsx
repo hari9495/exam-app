@@ -6,7 +6,7 @@ import { Button } from '../../components/button';
 import { AiBadge, Badge, PersonLabel, type BadgeTone } from '../../components/display';
 import { EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
 import { dayKey } from '../../lib/dates';
-import { FieldRow, FormField } from '../../components/field';
+import { FieldRow, FormField, useTooEarly } from '../../components/field';
 import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
 import { Select } from '../../components/select';
 import { Checkbox, RadioGroup, Switch } from '../../components/choice';
@@ -2152,6 +2152,33 @@ function SequenceSteps({ steps, editable }: { steps: SequenceStep[]; editable?: 
 
 /* ================================================================== HIR-23 · Bias audit record */
 
+/** What Save audit sends (live): the date (YYYY-MM-DD), the auditor, the published summary, the results and the report. */
+export interface BiasAuditInput {
+  auditedOn: string;
+  auditor: string;
+  summaryUrl: string;
+  results: { sex: AuditCategory[]; race: AuditCategory[] };
+  reportBase64: string;
+  reportName: string;
+  note: string | null;
+}
+
+/** HIR-23 live: the company's audit state and the law's categories (rule set HIR.BIAS_AUDIT). */
+export interface LiveBiasAudit {
+  state: 'ready' | 'loading' | 'error';
+  onRetry: () => void;
+  /** The hiring settings key for the whole company, signed in as themselves. */
+  canEdit: boolean;
+  lawName: string;
+  categories: { sex: string[]; race: string[] };
+  /** The latest audit's last valid day. */
+  validUntil: Date | null;
+  /** Opens the latest audit's report (PDF). */
+  onReport?: () => void;
+  /** Rejects with an Error whose message says why. */
+  onRecord: (input: BiasAuditInput) => Promise<void>;
+}
+
 export interface BiasAuditProps {
   feature: string;
   nycOn: boolean;
@@ -2162,6 +2189,7 @@ export interface BiasAuditProps {
   race: AuditCategory[];
   today: Date;
   recordOpen?: boolean;
+  live?: LiveBiasAudit;
 }
 
 function RatioTable({ title, cats }: { title: string; cats: AuditCategory[] }) {
@@ -2199,10 +2227,89 @@ function RatioTable({ title, cats }: { title: string; cats: AuditCategory[] }) {
   );
 }
 
+const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const pdfBase64 = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(',')[1] ?? '');
+    r.onerror = () => reject(new Error('The file could not be read.'));
+    r.readAsDataURL(file);
+  });
+
+/** The Record audit form (live): every field checked before Save, never a greyed-out button. */
+function useAuditForm(live: LiveBiasAudit | undefined, categories: { sex: string[]; race: string[] }, close: () => void) {
+  const blank = (labels: string[]) => labels.map((label) => ({ label, assessed: null as number | null, selected: null as number | null }));
+  const [date, setDate] = useState<Date | null>(null);
+  const [auditor, setAuditor] = useState('');
+  const [url, setUrl] = useState('');
+  const [note, setNote] = useState('');
+  const [sex, setSex] = useState(() => blank(categories.sex));
+  const [race, setRace] = useState(() => blank(categories.race));
+  const [report, setReport] = useState<{ base64: string; name: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const toast = useToastIfAny();
+  const missingNumber = [...sex, ...race].findIndex((c) => c.assessed == null || c.selected == null);
+  const early = useTooEarly([
+    ...(!date ? [{ fieldId: 'ba-date', message: 'Choose the audit date.' }] : []),
+    ...(auditor.trim().length < 2 ? [{ fieldId: 'ba-auditor', message: 'Enter the independent auditor.' }] : []),
+    ...(!/^https:\/\/\S+\.\S+/.test(url.trim()) ? [{ fieldId: 'ba-url', message: 'Enter the web address of the published summary, starting with https://' }] : []),
+    ...(missingNumber >= 0 ? [{ fieldId: `ba-n-${missingNumber}`, message: 'Enter assessed and selected for every category (0 when none).' }] : []),
+    ...(!report ? [{ fieldId: 'ba-report', message: 'Add the auditor’s report (PDF).' }] : []),
+  ]);
+  const save = async () => {
+    if (!live || early.stop()) return;
+    setBusy(true);
+    setProblem(null);
+    try {
+      const done = (cs: typeof sex) => cs.map((c) => ({ label: c.label, assessed: c.assessed!, selected: c.selected! }));
+      await live.onRecord({ auditedOn: ymd(date!), auditor: auditor.trim(), summaryUrl: url.trim(), results: { sex: done(sex), race: done(race) }, reportBase64: report!.base64, reportName: report!.name, note: note.trim() || null });
+      toast?.toast({ tone: 'success', title: 'Bias audit recorded', description: 'Automated tools can be used for New York City jobs again.' });
+      early.reset();
+      close();
+    } catch (e) {
+      setProblem(e instanceof Error && e.message ? e.message : 'That did not work. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return { date, setDate, auditor, setAuditor, url, setUrl, note, setNote, sex, setSex, race, setRace, setReport, busy, problem, early, save };
+}
+
+function CategoryInputs({ title, rows, offset, onChange, form }: { title: string; rows: { label: string; assessed: number | null; selected: number | null }[]; offset: number; onChange: (rows: { label: string; assessed: number | null; selected: number | null }[]) => void; form: ReturnType<typeof useAuditForm> }) {
+  const set = (i: number, k: 'assessed' | 'selected', v: number | null) => onChange(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+  return (
+    <fieldset className="yx-hire-skill">
+      <legend>
+        <Text weight="semibold">{title}</Text>
+      </legend>
+      {rows.map((r, i) => (
+        <FieldRow key={r.label}>
+          <FormField id={`ba-n-${offset + i}`} label={`${r.label} · assessed`} error={form.early.errorOf(`ba-n-${offset + i}`)}>
+            <NumberField value={r.assessed} onChange={(v) => set(i, 'assessed', v)} min={0} />
+          </FormField>
+          <FormField label={`${r.label} · selected`}>
+            <NumberField value={r.selected} onChange={(v) => set(i, 'selected', v)} min={0} />
+          </FormField>
+        </FieldRow>
+      ))}
+    </fieldset>
+  );
+}
+
 // HIR-23
-export function BiasAuditScreen({ feature, nycOn, lastAudit, auditor, summaryUrl, sex, race, today, recordOpen = false }: BiasAuditProps) {
+export function BiasAuditScreen({ feature, nycOn, lastAudit, auditor, summaryUrl, sex, race, today, recordOpen = false, live }: BiasAuditProps) {
   const [open, setOpen] = useState(recordOpen);
-  const expired = auditExpired(lastAudit, today);
+  const form = useAuditForm(live, live?.categories ?? { sex: sex.map((c) => c.label), race: race.map((c) => c.label) }, () => setOpen(false));
+  const expired = live ? !live.validUntil || ymd(live.validUntil) < ymd(today) : auditExpired(lastAudit, today);
+  const until = live ? live.validUntil : lastAudit ? new Date(lastAudit.getFullYear() + 1, lastAudit.getMonth(), lastAudit.getDate()) : null;
+  if (live && live.state !== 'ready')
+    return (
+      <HireFrame active="Bias audits">
+        <PageHeader title="Bias audits" />
+        {live.state === 'loading' ? <Skeleton height={240} /> : <ErrorState title="Bias audits could not be loaded." onRetry={live.onRetry} />}
+      </HireFrame>
+    );
   if (!nycOn)
     return (
       <HireFrame active="Bias audits">
@@ -2210,6 +2317,7 @@ export function BiasAuditScreen({ feature, nycOn, lastAudit, auditor, summaryUrl
         <EmptyState title="Bias audits aren't needed for your company." description="They apply when AI-scored hiring is used for New York City jobs. Switch on the NYC setting in Settings › Hiring if you hire there." />
       </HireFrame>
     );
+  const canRecord = !live || live.canEdit;
   return (
     <HireFrame active="Bias audits">
       <RecordLayout
@@ -2224,32 +2332,44 @@ export function BiasAuditScreen({ feature, nycOn, lastAudit, auditor, summaryUrl
           <ObjectHeader
             name={`Bias audit · ${feature}`}
             icon={Scale}
-            secondary="NYC Local Law 144 · data 1 Oct 2025 – 30 Sep 2026 · no candidate identities"
+            secondary={live ? `${live.lawName} · results as reported by the auditor · no candidate identities` : 'NYC Local Law 144 · data 1 Oct 2025 – 30 Sep 2026 · no candidate identities'}
             status={<Badge tone={expired ? 'danger' : 'success'}>{expired ? 'Audit overdue' : 'Audit valid'}</Badge>}
             facts={[
               { label: 'Last audit', value: lastAudit ? formatDate(lastAudit) : 'None' },
               { label: 'Independent auditor', value: auditor ?? '—' },
-              { label: 'Valid until', value: lastAudit ? formatDate(new Date(lastAudit.getFullYear() + 1, lastAudit.getMonth(), lastAudit.getDate())) : '—' },
+              { label: 'Valid until', value: until ? formatDate(until) : '—' },
               { label: 'Published summary', value: summaryUrl ?? 'Not published' },
             ]}
             actions={
               <>
-                <Button icon={ExternalLink}>Download export</Button>
-                <Button variant="primary" onClick={() => setOpen(true)}>
-                  Record audit
-                </Button>
+                {live ? (
+                  live.onReport && (
+                    <Button icon={FileText} onClick={live.onReport}>
+                      Open audit report
+                    </Button>
+                  )
+                ) : (
+                  <Button icon={ExternalLink}>Download export</Button>
+                )}
+                {canRecord && (
+                  <Button variant="primary" onClick={() => setOpen(true)}>
+                    Record audit
+                  </Button>
+                )}
               </>
             }
           />
         }
         aside={
-          <Card title="Auditor access">
-            <Text as="p" size="sm">
-              Read-only access to this export and the model card, time-boxed.
-            </Text>
-            <DescriptionList items={[{ label: 'Access', value: auditor ? `${auditor} · until 31 Oct 2026` : 'Not granted' }]} />
-            <Button size="sm">Grant access</Button>
-          </Card>
+          live ? undefined : (
+            <Card title="Auditor access">
+              <Text as="p" size="sm">
+                Read-only access to this export and the model card, time-boxed.
+              </Text>
+              <DescriptionList items={[{ label: 'Access', value: auditor ? `${auditor} · until 31 Oct 2026` : 'Not granted' }]} />
+              <Button size="sm">Grant access</Button>
+            </Card>
+          )
         }
       >
         <div className="yx-hire-chips">
@@ -2258,33 +2378,58 @@ export function BiasAuditScreen({ feature, nycOn, lastAudit, auditor, summaryUrl
             Selection rate = selected ÷ assessed. Impact ratio = category rate ÷ highest category rate.
           </Text>
         </div>
-        <RatioTable title="By sex" cats={sex} />
-        <RatioTable title="By race / ethnicity" cats={race} />
+        {sex.length || race.length ? (
+          <>
+            <RatioTable title="By sex" cats={sex} />
+            <RatioTable title="By race / ethnicity" cats={race} />
+          </>
+        ) : (
+          <EmptyState compact title="No audit results yet." description="Record the independent auditor's results to see the selection rates and impact ratios." />
+        )}
       </RecordLayout>
       <Drawer
         open={open}
         onOpenChange={setOpen}
         title="Record independent audit"
+        dirty={live ? Boolean(form.auditor || form.url) : undefined}
         footer={
           <>
             <Button onClick={() => setOpen(false)}>Cancel</Button>
-            <Button variant="primary">Save audit</Button>
+            {/* Live: never disabled; pressed too early, it says what is missing (founder rule). */}
+            <Button variant="primary" loading={form.busy} onClick={live ? () => void form.save() : undefined}>
+              Save audit
+            </Button>
           </>
         }
       >
         <div className="yx-hire-stack">
-          <FormField label="Audit date" required>
-            <DatePicker value={null} onChange={() => {}} max={today} />
+          <FormField id="ba-date" label="Audit date" required error={form.early.errorOf('ba-date')}>
+            <DatePicker value={live ? form.date : null} onChange={live ? form.setDate : () => {}} max={today} />
           </FormField>
-          <FormField label="Independent auditor" required>
-            <TextField placeholder="Firm or person" />
+          <FormField id="ba-auditor" label="Independent auditor" required error={form.early.errorOf('ba-auditor')}>
+            {live ? <TextField value={form.auditor} onChange={form.setAuditor} maxLength={200} placeholder="Firm or person" /> : <TextField placeholder="Firm or person" />}
           </FormField>
-          <FormField label="Published summary URL" required helper="The public page with the audit summary">
-            <TextField type="url" placeholder="https://" />
+          <FormField id="ba-url" label="Published summary URL" required helper="The public page with the audit summary" error={form.early.errorOf('ba-url')}>
+            {live ? <TextField type="url" value={form.url} onChange={form.setUrl} maxLength={500} placeholder="https://" /> : <TextField type="url" placeholder="https://" />}
+          </FormField>
+          <Text as="p" size="sm" tone="secondary">
+            Summary results: the numbers the auditor reported for each category ({live?.lawName ?? 'NYC Local Law 144'}).
+          </Text>
+          <CategoryInputs title="By sex" rows={form.sex} offset={0} onChange={form.setSex} form={form} />
+          <CategoryInputs title="By race / ethnicity" rows={form.race} offset={form.sex.length} onChange={form.setRace} form={form} />
+          <FormField id="ba-report" label="Auditor's report" required helper="A PDF, up to 5 MB." error={form.early.errorOf('ba-report')}>
+            <FileUpload
+              accept={['.pdf']}
+              maxSize={5 * 1024 * 1024}
+              multiple={false}
+              upload={async (file) => form.setReport({ base64: await pdfBase64(file), name: file.name })}
+              onItemsChange={(items) => void (items.length === 0 && form.setReport(null))}
+            />
           </FormField>
           <FormField label="Note" optional>
-            <TextArea rows={3} />
+            {live ? <TextArea rows={3} value={form.note} onChange={form.setNote} maxLength={1000} /> : <TextArea rows={3} />}
           </FormField>
+          {form.problem && <InlineAlert tone="danger" title={form.problem} />}
         </div>
       </Drawer>
     </HireFrame>
