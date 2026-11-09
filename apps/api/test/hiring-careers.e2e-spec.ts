@@ -225,7 +225,7 @@ describe('Hiring careers site and candidate pages (T9-09)', () => {
     ids.statusToken = entry.applicationToken!;
     ids.portalToken = entry.candidate.portalToken!;
     const status = (await pub('get', `/applications/${ids.statusToken}`).expect(200)).body;
-    expect(Object.keys(status).sort()).toEqual(['accent', 'appliedAt', 'careersSlug', 'jobTitle', 'location', 'orgLogo', 'orgName', 'statusBucket']);
+    expect(Object.keys(status).sort()).toEqual(['accent', 'appliedAt', 'careersSlug', 'jobTitle', 'location', 'orgLogo', 'orgName', 'statusBucket', 'whiteLabel']);
     expect(status).toMatchObject({ jobTitle: `QA Chemist ${run}`, statusBucket: 'Application received', careersSlug: org.A.slug });
     // Asha applies to a second job; Ravi (another applicant) never shows on her pages.
     await apply(ids.nyToken, { email: `asha-${run}@x.test` }).expect(201);
@@ -291,5 +291,42 @@ describe('Hiring careers site and candidate pages (T9-09)', () => {
     await pub('get', `/careers/${org.A.slug}`).expect(404);
     expect((await api('A', 'get', '/organizations/careers').expect(200)).body.config.theme).toBe('split');
     await api('A', 'put', '/organizations/careers').send({ enabled: true }).expect(200);
+  });
+
+  it('careers follow-ups: apply-by closes a job, experience shows, international number outside India, white-label and brand on the answers, pay history only in the own company (answers 353, 355, 356, 359, 362)', async () => {
+    // 353: optional fields; a bad day or long text is refused; after the day the job is closed to applicants and off the list.
+    await api('A', 'post', '/jobs').send({ title: `Bad day ${run}`, applyBy: '31-12-2099' }).expect(400);
+    await api('A', 'post', '/jobs').send({ title: `Long ${run}`, experience: 'x'.repeat(61) }).expect(400);
+    const soon = await job({ title: `Soon ${run}`, locationId: ids.chennai, applyBy: '2099-12-31', experience: '3 to 5 years' });
+    expect((await pub('get', `/jobs/${soon.applyToken}`).expect(200)).body).toMatchObject({ applyBy: '2099-12-31', experience: '3 to 5 years' });
+    const past = await job({ title: `Past ${run}`, locationId: ids.chennai });
+    await api('A', 'patch', `/jobs/${past.id}`).send({ applyBy: '2020-01-01' }).expect(200);
+    expect((await pub('get', `/jobs/${past.applyToken}`).expect(404)).body.message).toBe('This role is not accepting applications');
+    await apply(past.applyToken, { email: `late-${run}@x.test` }).expect(404);
+    const titles = (await pub('get', `/careers/${org.A.slug}`).expect(200)).body.jobs.map((j: { title: string }) => j.title);
+    expect(titles).toContain(`Soon ${run}`);
+    expect(titles).not.toContain(`Past ${run}`);
+    // 359: a job outside India takes any country code; India keeps the 10-digit number.
+    expect((await pub('get', `/jobs/${ids.nyToken}`).expect(200)).body.internationalPhone).toBe(true);
+    expect((await pub('get', `/jobs/${ids.openToken}`).expect(200)).body.internationalPhone).toBe(false);
+    await apply(ids.nyToken, { email: `intl-${run}@x.test`, phone: '+12125550123' }).expect(201);
+    // 356: off by default; on hides "Powered by" on the careers page, the job page and the offer answer (362).
+    expect((await pub('get', `/careers/${org.A.slug}`).expect(200)).body.whiteLabel).toBe(false);
+    const entry = await inA((tx) => tx.pipelineEntry.findFirstOrThrow({ where: { jobId: ids.open, candidate: { email: `asha-${run}@x.test` } } }));
+    const offerToken = `brand-offer-${run}`;
+    await inA((tx) => tx.offer.create({ data: { organizationId: org.A.id, pipelineEntryId: entry.id, candidateId: entry.candidateId, compensation: 'x', startDate: new Date('2026-12-01T00:00:00Z'), expiresAt: new Date(Date.now() + 86_400_000), status: 'sent', offerToken, letterSubject: 'Offer', letterBody: 'Welcome', sentAt: new Date() } }));
+    expect((await pub('get', `/offers/${offerToken}`).expect(200)).body.brand).toMatchObject({ careersSlug: org.A.slug, whiteLabel: false });
+    await inA((tx) => tx.setting.create({ data: { organizationId: org.A.id, scopeType: 'tenant', scopeId: org.A.id, key: 'brand.white_label', value: 'on' } }));
+    expect((await pub('get', `/careers/${org.A.slug}`).expect(200)).body.whiteLabel).toBe(true);
+    expect((await pub('get', `/jobs/${ids.openToken}`).expect(200)).body.whiteLabel).toBe(true);
+    const offer = (await pub('get', `/offers/${offerToken}`).expect(200)).body;
+    expect(offer.brand).toMatchObject({ orgName: expect.stringContaining('Careers Org A'), whiteLabel: true });
+    expect(JSON.stringify(offer.brand)).not.toMatch(/organizationId|logoPath/);
+    expect((await pub('get', `/careers/${org.B.slug}`).expect(200)).body.whiteLabel).toBe(false);
+    await inA((tx) => tx.setting.deleteMany({ where: { organizationId: org.A.id, key: 'brand.white_label' } }));
+    // 355: the pay given when applying, read by the company's own pay-key holder; another company and a bad id are refused.
+    expect((await api('A', 'get', `/hiring/offers/current-pay?entryId=${entry.id}`).expect(200)).body).toEqual({ currentPay: 520000 });
+    await api('B', 'get', `/hiring/offers/current-pay?entryId=${entry.id}`).expect(404);
+    await api('A', 'get', '/hiring/offers/current-pay?entryId=not-a-uuid').expect(400);
   });
 });
