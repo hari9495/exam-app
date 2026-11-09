@@ -1,6 +1,9 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { OffersService } from './offers.service';
 
+// Careers answers 356/362: the public brand read has its own tests (e2e); stub it here.
+jest.mock('../public-applications/public-brand', () => ({ publicBrand: jest.fn(async () => ({ orgName: 'Acme', orgLogo: null, careersSlug: null, accent: null, whiteLabel: false })) }));
+
 describe('OffersService', () => {
   let service: OffersService;
   let tenantPrisma: { forTenant: jest.Mock };
