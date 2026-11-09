@@ -77,6 +77,9 @@ describe('HIR-03 / HIR-24 jobs and pay range', () => {
       ids.ny = (await loc('New York office', 'NYC', 'US', 'US-NY', 'America/New_York')).id;
       ids.tx = (await loc('Austin office', 'AUS', 'US', 'US-TX', 'America/Chicago')).id;
       ids.board = (await tx.jobBoard.create({ data: { ...x, name: `Feed ${run}`, feedToken: `feed-${run}` } })).id;
+      // Answer 229: an entity outside India, with one location of its own.
+      ids.usEntity = (await tx.legalEntity.create({ data: { ...x, name: 'Kaveri Foods Inc', shortName: `KI${run.slice(0, 4).toUpperCase()}`, country: 'US', currency: 'USD' } })).id;
+      ids.usLoc = (await tx.location.create({ data: { ...x, legalEntityId: ids.usEntity, name: 'Boston office', code: 'BOS', address: {}, country: 'US', state: 'US-MA', timezone: 'America/New_York' } })).id;
     });
   }, 300_000);
 
@@ -168,5 +171,74 @@ describe('HIR-03 / HIR-24 jobs and pay range', () => {
     await api('acting', 'delete', `/jobs/${ids.nyJob}`).expect(403);
     await api('acting', 'post', `/jobs/${ids.nyJob}/submit`).expect(403);
     expect((await inA((tx) => tx.job.findUniqueOrThrow({ where: { id: ids.nyJob } }))).salaryMin).toBe(95000);
+  });
+
+  // ---------------------------------------------------------------- founder answers 222, 223, 225, 229 (9 Nov 2026)
+  const number = async (jobId: string) => (await inA((tx) => tx.job.findUniqueOrThrow({ where: { id: jobId } }))).jobNumber;
+
+  it('job numbers: per company, one each even when made at the same moment, never reused after a delete', async () => {
+    const before = (await api('rec', 'get', '/jobs').expect(200)).body as { jobNumber: number }[];
+    const top = Math.max(...before.map((j) => j.jobNumber));
+    const made = await Promise.all([1, 2, 3, 4, 5].map((i) => api('rec', 'post', '/jobs').send({ title: `Burst ${i} ${run}` }).expect(201)));
+    const nums = made.map((r) => r.body.jobNumber as number).sort((x, y) => x - y);
+    expect(nums).toEqual([top + 1, top + 2, top + 3, top + 4, top + 5]);
+    await api('rec', 'delete', `/jobs/${made[4].body.id}`).expect(200);
+    await inA((tx) => tx.job.deleteMany({ where: { id: made[4].body.id } })); // purged from the recycle bin too
+    expect((await api('rec', 'post', '/jobs').send({ title: `After delete ${run}` }).expect(201)).body.jobNumber).toBe(top + 6);
+    // Another company counts from 1.
+    expect((await api('hrB', 'post', '/jobs').send({ title: `B first ${run}` }).expect(201)).body.jobNumber).toBe(1);
+  });
+
+  it('recruiter: the person who opened the job; HR changes it (audited); not someone of another company', async () => {
+    const j = (await api('rec', 'post', '/jobs').send({ title: `Recruiter ${run}` }).expect(201)).body;
+    expect(j.recruiterUserId).toBe(users.rec);
+    await api('hr', 'patch', `/jobs/${j.id}`).send({ recruiterUserId: users.hr }).expect(200);
+    expect((await api('rec', 'get', `/jobs/${j.id}`).expect(200)).body.recruiterUserId).toBe(users.hr);
+    const log = await inA((tx) => tx.auditLog.findFirstOrThrow({ where: { action: 'job.recruiter_changed', entityId: j.id } }));
+    expect(JSON.parse(log.metadataJson ?? '{}')).toMatchObject({ from: users.rec, to: users.hr });
+    await api('hr', 'patch', `/jobs/${j.id}`).send({ recruiterUserId: users.hrB }).expect(400).expect((r) => expect(r.body.message).toMatch(/recruiter from your company/));
+    await api('hr', 'patch', `/jobs/${j.id}`).send({ recruiterUserId: 'nobody' }).expect(400);
+    await api('emp', 'patch', `/jobs/${j.id}`).send({ recruiterUserId: users.emp }).expect(403);
+    expect((await api('rec', 'post', '/jobs').send({ title: `Named ${run}`, recruiterUserId: users.hr }).expect(201)).body.recruiterUserId).toBe(users.hr);
+  });
+
+  it('on hold: off the careers site, public applications and boards; candidates stay; resumed it is back', async () => {
+    const j = (await api('rec', 'post', '/jobs').send({ title: `Hold ${run}`, locationId: ids.chennai }).expect(201)).body;
+    const live = (await api('rec', 'patch', `/jobs/${j.id}`).send({ publicApplyEnabled: true, listOnCareers: true, jobBoardIds: [ids.board] }).expect(200)).body;
+    await inA(async (tx) => {
+      const c = await tx.candidate.create({ data: { organizationId: org.A.id, email: `hold-${run}@x.test`, name: 'Asha' } });
+      ids.holdEntry = (await tx.pipelineEntry.create({ data: { organizationId: org.A.id, jobId: j.id, candidateId: c.id, enteredVia: 'manual' } })).id;
+    });
+    const listed = async () => ((await request(server()).get(`/api/v1/public/careers/${org.A.slug}`).expect(200)).body.jobs as { title: string }[]).some((x) => x.title === `Hold ${run}`);
+    expect(await listed()).toBe(true);
+    await request(server()).get(`/api/v1/public/jobs/${live.applyToken}`).expect(200);
+    await api('rec', 'patch', `/jobs/${j.id}`).send({ status: 'on_hold' }).expect(200);
+    expect(await listed()).toBe(false);
+    await request(server()).get(`/api/v1/public/jobs/${live.applyToken}`).expect(404);
+    expect((await api('rec', 'get', `/jobs/${j.id}`).expect(200)).body.postings).toEqual([expect.objectContaining({ boardId: ids.board, status: 'draft' })]);
+    expect((await inA((tx) => tx.pipelineEntry.findUniqueOrThrow({ where: { id: ids.holdEntry } }))).archivedAt).toBeNull();
+    expect(((await api('rec', 'get', '/jobs').expect(200)).body as { id: string; status: string }[]).find((x) => x.id === j.id)?.status).toBe('on_hold');
+    await api('rec', 'patch', `/jobs/${j.id}`).send({ status: 'open' }).expect(200);
+    expect(await listed()).toBe(true);
+    // Closing from hold works; a draft requisition cannot be put on hold; bad status refused.
+    await api('rec', 'patch', `/jobs/${j.id}`).send({ status: 'on_hold' }).expect(200);
+    await api('rec', 'patch', `/jobs/${j.id}`).send({ status: 'closed' }).expect(200);
+    await api('rec', 'patch', `/jobs/${j.id}`).send({ status: 'on_hold' }).expect(409);
+    const draft = await inA((tx) => tx.job.create({ data: { organizationId: org.A.id, title: `Draft ${run}`, status: 'draft', createdById: users.rec } }));
+    await api('rec', 'patch', `/jobs/${draft.id}`).send({ status: 'on_hold' }).expect(409).expect((r) => expect(r.body.message).toMatch(/Only an open job/));
+    await api('rec', 'patch', `/jobs/${j.id}`).send({ status: 'paused' }).expect(400);
+    await api('emp', 'patch', `/jobs/${j.id}`).send({ status: 'on_hold' }).expect(403);
+    await api('hrB', 'patch', `/jobs/${j.id}`).send({ status: 'on_hold' }).expect(404);
+  });
+
+  it('outside India a job needs a location from the masters; India keeps free text', async () => {
+    await api('rec', 'post', '/jobs').send({ title: `US free ${run}`, legalEntityId: ids.usEntity, location: 'Boston' }).expect(400).expect((r) => expect(r.body.message).toMatch(/outside India needs a location/));
+    await api('rec', 'post', '/jobs').send({ title: `US none ${run}`, legalEntityId: ids.usEntity }).expect(400);
+    const us = (await api('rec', 'post', '/jobs').send({ title: `US ok ${run}`, legalEntityId: ids.usEntity, locationId: ids.usLoc }).expect(201)).body;
+    await api('rec', 'patch', `/jobs/${us.id}`).send({ locationId: null, location: 'Boston' }).expect(400);
+    await api('rec', 'post', '/jobs').send({ title: `IN free ${run}`, location: 'Madurai' }).expect(201);
+    const inJob = (await api('rec', 'post', '/jobs').send({ title: `Move ${run}`, location: 'Madurai' }).expect(201)).body;
+    await api('rec', 'patch', `/jobs/${inJob.id}`).send({ legalEntityId: ids.usEntity }).expect(400);
+    expect(await number(us.id)).toBeGreaterThan(0);
   });
 });

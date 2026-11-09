@@ -61,6 +61,21 @@ const PEOPLE_SUPPORT_EXCLUDED = ['buddy_pool', 'succession_positions', 'successo
   // PPL-07: saved employee imports (also restricted to the person who saved them).
   'employee_import_drafts'];
 const HIRING_SUPPORT_EXCLUDED = ['offers', 'pipeline_feedback', 'referrals', 'recruiting_costs', 'scorecards', 'scorecard_ratings'];
+// Later features that also carry the RESTRICTIVE support_session_excluded policy (added 9 Nov 2026 from the catalogue,
+// pg_policy, when this list had fallen behind): helpdesk cases, BFSI and pay extras, expenses cards, performance disputes.
+const LATER_SUPPORT_EXCLUDED = [
+  // HLP-12 accidents, HLP-13 collective disputes, speak-up cases.
+  'accident_cases', 'accident_medical_records', 'accident_steps', 'ir_disputes', 'ir_dispute_steps',
+  'speakup_cases', 'speakup_case_members', 'speakup_case_steps', 'speakup_messages', 'speakup_team_members',
+  // People: BFSI, disability, international bank, privacy nominees, identity checks, work permits, team pay access.
+  'bfsi_declarations', 'bfsi_designations', 'trade_preclearances', 'trading_windows', 'disability_declarations',
+  'employee_intl_bank_accounts', 'employee_pay_splits', 'privacy_nominees', 'person_identity_checks', 'work_authorisations', 'pay_access_requests',
+  // Pay: bonus, court orders, union dues, tax requests and forms.
+  'bonus_computations', 'bonus_computation_rows', 'court_order_remittances', 'union_remittances', 'form12b_submissions', 'form16_return_links',
+  'tax_pan_link_requests', 'tax_regime_requests', 'tax_residency_requests', 'tds_nil_months',
+  // Expenses cards; performance market rates, coach and disputes.
+  'expense_cards', 'expense_card_lines', 'expense_card_mappings', 'expense_card_statements',
+  'comp_market_rates', 'comp_market_surveys', 'perf_coach_dismissals', 'perf_coach_prefs', 'perf_dispute_exports', 'perf_dispute_files', 'perf_disputes', 'perf_home_snapshots'];
 // Founder decision 5a-D4: compensations also carry the RESTRICTIVE pay guard (5b).
 const policiesOf = (table: string) => BigInt(([...SUPPORT_EXCLUDED, ...PEOPLE_SUPPORT_EXCLUDED].includes(table) ? 2 : 1) + (table === 'compensations' ? 1 : 0));
 
@@ -715,7 +730,7 @@ describe('PostgreSQL row-level security (app role)', () => {
     const restrictive = await prisma.$queryRaw<{ table: string }[]>`
       SELECT c.relname AS table FROM pg_policy p JOIN pg_class c ON c.oid = p.polrelid
       WHERE p.polname = 'support_session_excluded' AND NOT p.polpermissive ORDER BY c.relname`;
-    expect(restrictive.map((r) => r.table)).toEqual([...SUPPORT_EXCLUDED, ...PAYROLL_SUPPORT_EXCLUDED, ...LIFECYCLE_SUPPORT_EXCLUDED, ...EXPENSES_SUPPORT_EXCLUDED, ...PERFORMANCE_SUPPORT_EXCLUDED, ...HIRING_SUPPORT_EXCLUDED, ...PEOPLE_SUPPORT_EXCLUDED].sort());
+    expect(restrictive.map((r) => r.table)).toEqual([...SUPPORT_EXCLUDED, ...PAYROLL_SUPPORT_EXCLUDED, ...LIFECYCLE_SUPPORT_EXCLUDED, ...EXPENSES_SUPPORT_EXCLUDED, ...PERFORMANCE_SUPPORT_EXCLUDED, ...HIRING_SUPPORT_EXCLUDED, ...PEOPLE_SUPPORT_EXCLUDED, ...LATER_SUPPORT_EXCLUDED].sort());
   });
 
   it("(b) org A cannot read, change or point at org B's grants, personal data, identifiers, bank accounts or requests", async () => {
