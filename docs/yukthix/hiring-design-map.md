@@ -14,11 +14,8 @@ was built.
   /yx/hiring/jobs/[id], with the HIR-24 pay range by location law (one story live with a gap: the apply form has no
   pay-history question). Since 9 Nov 2026 also HIR-04, the pipeline board (all 7 stories) on /yx/hiring/jobs/[id]/pipeline.
   Counts in the table below.
-- **Few of the Hiring designs are live.** Of 228 design stories (HIR-01 … 31, the careers site, candidate
-  identity check and the hiring settings), 23 are live with their design. First the "Request a hire" sheet (HIR-02
-  pay-history question). Counts in the table below.
-- **Few of the Hiring designs are live.** Of 249 design stories (HIR-01 … 31, the careers site, candidate
-  identity check and the hiring settings), 61 are live with their design (recount 9 Nov 2026, after HIR-05). First the "Request a hire" sheet (HIR-02
+- **Few of the Hiring designs are live.** Of 255 design stories (HIR-01 … 31, the careers site, candidate
+  identity check and the hiring settings), 74 are live with their design (recount 10 Nov 2026, after the HIR-04 follow-ups). First the "Request a hire" sheet (HIR-02
   NewRequisition), which People › My team (/yx/people/team) renders with `live` and sends to `POST jobs/requisitions`. Since 9 Nov 2026 (branch `feat/yukthix-hir-01`) HIR-01, the headcount plan board, is live too: all 10 of
   its stories (section 4). HIR-05 (branch `feat/yukthix-hir-05`): the candidate record with the ex-employee match and merge, plus the newly drawn candidate list (with Possible duplicates) and candidate data retention pages. HIR-11 Recruiting costs (/yx/hiring/costs) and HIR-12 Referrals (/yx/hiring/referrals, with HR's
   All referrals at /yx/hiring/referrals/all) are live too (branch `feat/yukthix-hir-11-12`).
@@ -51,15 +48,16 @@ built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Plans, requisitions, jobs and costs | 4 | 25 | 0 | 7 | 0 | 0 | 32 |
-| B. Candidates, pipeline and interviews | 8 | 32 | 0 | 7 | 13 | 1 | 53 |
+| A. Plans, requisitions, jobs and costs | 4 | 26 | 0 | 7 | 0 | 0 | 33 |
+| B. Candidates, pipeline and interviews | 8 | 37 | 0 | 7 | 13 | 1 | 58 |
 | C. Offers, BGV and joining | 4 | 0 | 0 | 13 | 12 | 0 | 25 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 7 | 0 | 7 | 7 | 4 | 25 |
 | E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
 | F. Compliance and fairness | 5 | 4 | 1 | 0 | 20 | 0 | 25 |
 | G. Careers site, portals and settings | 4 | 0 | 0 | 30 | 11 | 0 | 41 |
-| **All Hiring design groups (A–G)** | **37** | **68** | **1** | **68** | **107** | **5** | **249** |
-| H. Kit and "Live ·" groups (not designs; own line) | 5 | 14 | 0 | 6 | 5 | 0 | 25 |
+| **All Hiring design groups (A–G)** | **37** | **74** | **1** | **68** | **107** | **5** | **255** |
+| H. Kit and "Live ·" groups (not designs; own line) | 5 | 11 | 0 | 6 | 5 | 0 | 22 |
+Recounted by script 10 Nov 2026 on `feat/yukthix-hir-04-followups` after founder answers 261 and 263: HIR-04 gained 3 sheet stories, HIR-05 the 2 Application stories, HIR-03 the Settings story; the 3 "Live · Job workspace" stand-in stories were deleted with the stand-ins.
 Recounted by script 9 Nov 2026 on `feat/yukthix-hir-04` after HIR-04 went live (its 7 stories: wire design → live; no story added or removed). Before that, recounted on `feat/yukthix-hir-03-24` after HIR-01 (four new stories, Plans and NoPlans deleted), HIR-03 and HIR-24 went live and the HIR-03 follow-ups added the Change recruiter story (HIR-03 gained the Create job sheet story; the "Live · Jobs" stand-in and its 4 stories were deleted). First counted (the script is in the appendix): every `export const`
 Recounted by script 9 Nov 2026 on `feat/yukthix-hir-05` after HIR-05 went live: the record (10 stories, one new: choose the duplicate), the new Candidate list (8) and Candidate data retention (9) designs (founder decision 9); the "Live · Candidates" stand-ins and 6 of their 7 stories deleted (Pools stays for HIR-20).
 Recounted by script 9 Nov 2026 on `feat/yukthix-hir-03-24` after HIR-01 (four new stories, Plans and NoPlans deleted), HIR-03 and HIR-24 went live and the HIR-03 follow-ups added the Change recruiter story (HIR-03 gained the Create job sheet story; the "Live · Jobs" stand-in and its 4 stories were deleted). First counted (the script is in the appendix): every `export const`
@@ -104,8 +102,8 @@ the web page.
 |---|---|---|---|---|
 | /yx/hiring/plans | `HeadcountPlanScreen` with `live` (designed) | HIR-01 | `GET hiring/plans` (`ats.headcount.manage` or `ats.requisition.raise`), `POST/PUT hiring/plans`, `POST hiring/plans/:id/submit` (`ats.headcount.manage`), `GET hiring/plan-lines` | live |
 | /yx/hiring/jobs | `JobsScreen` with `live` (designed, 9 Nov 2026): jobs and requisitions in one list, Create job sheet with pay range | HIR-02, HIR-03 list, HIR-24 | `GET/POST jobs`, `GET jobs/pay-settings`, `PATCH/DELETE jobs/:id`, `POST jobs/:id/submit`, `/approval/cancel` (`pipeline:manage`; refused while acting for someone else) | live |
-| /yx/hiring/jobs/[id] | `JobWorkspaceScreen` with `live` (designed, 9 Nov 2026): overview, postings, pay range | HIR-03 workspace, HIR-24 | `GET jobs/:id` (`results:view`), `PATCH jobs/:id` (`pipeline:manage`) | live |
-| /yx/hiring/jobs/[id]/pipeline | `JobWorkspaceScreen` + `ApplicationPanel` (stand-ins, moved from /jobs/[id]): board, application, interviews, offers, feedback, job settings | HIR-04, HIR-09 | `GET hiring/jobs/:id/board` (`results:view`), `POST hiring/entries/:id/move`, `/reject`, `/reject/undo`, `hiring/entries/bulk`, `PUT hiring/jobs/:id/scorecard` (`pipeline:manage`), `POST/GET pipeline/entries/:id/offers`, `/interviews`, `offers/:id/send`, `/submit`, `/withdraw` (`pipeline:manage`) | wire design |
+| /yx/hiring/jobs/[id] | `JobWorkspaceScreen` with `live` (designed, 9 Nov 2026): overview, postings, pay range, settings (10 Nov 2026, answer 261) | HIR-03 workspace, HIR-24 | `GET jobs/:id` (`results:view`), `PATCH jobs/:id` (`pipeline:manage`) | live |
+| /yx/hiring/jobs/[id]/pipeline | the designed `PipelineBoardScreen` with `live`, its Bulk actions and Add candidate sheets; a card opens the HIR-05 record with the application (offers there until HIR-09) | HIR-04, HIR-05 Application | `GET hiring/jobs/:id/board` (`results:view`), `POST hiring/entries/:id/move`, `/reject`, `/reject/undo`, `hiring/entries/bulk`, `PUT hiring/jobs/:id/scorecard` (`pipeline:manage`), `POST/GET pipeline/entries/:id/offers`, `/interviews`, `offers/:id/send`, `/submit`, `/withdraw` (`pipeline:manage`) | live |
 | /yx/hiring/jobs/[id]/pipeline/list | `JobWorkspaceScreen` (stand-in, board removed): candidates list with bulk move / test / email / reject, Add candidate, Export, job settings; `ApplicationPanel`: interviews, offers, feedback | HIR-09 (application), none for the list and settings (question 261) | `hiring/entries/bulk`, `PUT hiring/jobs/:id/scorecard`, `POST jobs/:id/entries` (`pipeline:manage`), `POST/GET pipeline/entries/:id/offers`, `/interviews`, `offers/:id/send`, `/submit`, `/withdraw` (`pipeline:manage`) | wire design |
 | /yx/hiring/candidates | `CandidateListScreen` with `live` (designed 9 Nov 2026, decision 9) | HIR-05 List | `GET/POST/PATCH candidates`, bulk delete, upload and invite, email, pools (`candidate:manage` / `candidate:view`; writes refused while acting) | live |
 | /yx/hiring/candidates/[id] | `CandidateRecordScreen` with `live` (designed) | HIR-05 | `GET hiring/candidates/:id` (viewer-aware: contact details with `candidate:manage` or data rights; ex-employee match for people who may see the employee), `PUT …/legal-hold`, `POST candidates/:id/erase`, `GET …/export` (`candidate:data_rights`), `POST …/merge` (manage + data rights), `POST …/consents/withdraw`; writes refused while acting | live |
@@ -218,6 +216,7 @@ list `GET custom-fields` stays `org:manage_settings` and is no longer called by 
 | Error · Error | live | `GET jobs` fails |
 | CreateJob · Create job sheet | live | added 9 Nov 2026 (the stand-in's new-job form, drawn from the kit): `POST jobs`; pay fields, plan line, replacement, custom fields, AI draft; outside India the API needs a location from the masters (229) |
 | ChangeRecruiter · Job workspace · change recruiter | live | added 9 Nov 2026 (answer 222): `PATCH jobs/:id recruiterUserId` (`pipeline:manage`), audited; pressed with no change: field error |
+| Settings · Job workspace · settings (tests, scorecard, applying, fit, stage targets) | live | added 10 Nov 2026 (answer 261, moved from the deleted /pipeline/list): `GET hiring/jobs/:id/interview-settings` (`results:view`), link / unlink a test, the stage that sends it, the scorecard (`pipeline:manage`; refused while acting), public applying and careers site, job boards, fit criteria with per-cent weights adding up to 100 (`PATCH jobs/:id`); stage targets (answer 263, `PATCH pipelines/stages/:id`, `pipelines:configure`, refused while acting); without the keys the values show as text |
 
 #### HIR-11 · Recruiting costs entry
 
@@ -239,19 +238,25 @@ posts a read-only Referral bonus row (answer 203); assessments have no cost anyw
 #### HIR-04 · Pipeline board
 
 Live page: /yx/hiring/jobs/[id]/pipeline ("Open pipeline" on the job), since 9 Nov 2026 (branch `feat/yukthix-hir-04`): the
-designed `PipelineBoardScreen` with `live`. The old stand-in board is gone; the old workspace's list, bulk actions, Add
-candidate, Export and job settings are on /pipeline/list ("Bulk actions"; "Add candidate" opens it with the dialog open),
-and a card opens the application (stand-in `ApplicationPanel`: interviews, offers, messages, notes) until HIR-05 / HIR-09.
+designed `PipelineBoardScreen` with `live`. Follow-ups 10 Nov 2026 (branch `feat/yukthix-hir-04-followups`, founder answers
+261 and 263): "Bulk actions" and "Add candidate" are designed sheets on the board (every bulk function of the deleted
+/pipeline/list kept: move, send a test, email, reject with a reason and an optional message that waits 24 hours, undo,
+Export CSV); a card opens the HIR-05 candidate record with that application (`?entry=`; old links too); the job settings
+moved to the HIR-03 workspace; each stage has an optional days target and limit (migration 202617i0000000, empty = none).
+/pipeline/list, `ApplicationPanel` and the stand-in `JobWorkspaceScreen` are deleted.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Recruiter · Recruiter · rich cards | live | `GET hiring/jobs/:id/board` (`results:view`): one column per stage (archived hidden, Hired collapsed), cards with email · source, Test / AI fit (advisory) / Panel chips, next step in India time, days in stage; the job picker lists open and on-hold jobs. No SLA days or WIP limits in live (question 263) |
+| Recruiter · Recruiter · rich cards | live | `GET hiring/jobs/:id/board` (`results:view`): one column per stage (archived hidden, Hired collapsed), cards with email · source, Test / AI fit (advisory) / Panel chips, next step in India time, days in stage; the job picker lists open and on-hold jobs; a stage's days target (amber over it) and limit (column flagged over it) from `pipeline_stages.days_target` / `stage_limit` (answer 263, none by default) |
 | HiringManager · Hiring manager | live | `results:view` without `pipeline:manage` (or acting for someone else): read-only, no drag and no Move menu, Share feedback; the API refuses moves (403) |
 | MoveMenu · Move to menu (keyboard alternative) | live | `POST hiring/entries/:id/move` with `fromStatusId`: a repeat ("Already moved") and an out-of-date card are 409, exactly one of two moves at once lands; stage rules, audit `entry.stage_changed`; toast 5 s; a refused move goes back with an error toast |
 | RejectReason · Reject asks for a reason | live | `POST hiring/entries/:id/reject` (reason required, 400 without), audit `entry.rejected`, toast with Undo; no candidate email unless `hiring.reject.email_candidate` is on (default off; then the Rejected template waits 24 h). Moving to Rejected through move is refused ("Use Reject") |
-| Empty · Empty | live | job with no applicants; Add candidate opens the list with the dialog |
+| Empty · Empty | live | job with no applicants; Add candidate opens the sheet |
 | Loading · Loading | live | while loading |
 | Error · Error | live | board or job fails to load; Retry |
+| BulkActions · Bulk actions · tick candidates, then move, test, email or reject | live | added 10 Nov 2026 (answer 261): `POST hiring/entries/bulk` (move, assessment, reject; each move follows the stage rules and answer 272), `POST hiring/entries/:id/reject` and `/undo`, `POST bulk-candidate-email/by-entries`, `GET jobs/:id/candidates.csv` (`pipeline:manage`; refused while acting); toasts |
+| AddCandidate · Add candidate · existing candidate | live | added 10 Nov 2026 (answer 261): `POST jobs/:id/entries {candidateId}`; pressed too early: field error |
+| AddCandidateNew · Add candidate · new candidate | live | `POST jobs/:id/entries {newCandidate}` (an email already known adds that person) |
 
 #### HIR-05 · Candidate record
 
@@ -263,7 +268,7 @@ list's Possible duplicates tab).
 |---|---|---|
 | Recruiter · Recruiter · default | live | `GET hiring/candidates/:id` (candidate keys); facts, applications, scores, consent & retention, activity built from the record; Email, Open in pipeline, menu (pool, merge, export, legal hold, erase) |
 | ExEmployeeRecruiter · Ex-employee · recruiter sees exit details | live | People's person match (`personByEmail`, the one the offer hand-off uses); exit date and type need `lifecycle.exit.view`/`manage` reaching the person |
-| RehireIneligibleHr · Ex-employee · rehire ineligible, HR can clear | live | rehire eligibility needs `lifecycle.exit.confidential.view`; Clear flag uses the existing `PUT lifecycle/exits/:id/hr` (exit manage + confidential) with a reason |
+| RehireIneligibleHr · Ex-employee · rehire ineligible, HR can clear | live | rehire eligibility needs `lifecycle.exit.confidential.view`; Clear flag uses the existing `PUT lifecycle/exits/:id/hr` (exit manage + confidential) with a reason. Answer 272: with company setting `hiring.rehire_flag.blocks_screening` on (default off) every move past the first stage is refused (409) until HR clears it |
 | ExEmployeeHiringManager · Ex-employee · hiring manager sees flag only | live | flag only for a viewer with `employee.profile.view` reaching the person and no exit key; nobody who may not see the employee gets even the flag |
 | Merge · Merge duplicate · field-level choice | live | `POST hiring/candidates/:id/merge` now needs `candidate:manage` AND `candidate:data_rights`; confirm says what happens; audited |
 | MergeChooseDuplicate · Merge with another candidate · choose the duplicate first | live | new story (kit first): the record's menu merge picks the other candidate; "Record to keep" choice |
@@ -271,6 +276,8 @@ list's Possible duplicates tab).
 | Minor · Under 18 · guardian consent pending | design only, feature not built | no date of birth / guardian consent on candidates |
 | NoAccess · No access | live | 403 without a candidate key |
 | NotFound · Not found (anonymised) | live | 404, or an erased candidate |
+| Application · Application · interviews, messages, notes, offers | live | added 10 Nov 2026 (answer 261, moved from the deleted `ApplicationPanel`): the record's `?entry=` or Open application; stage, reject / undo, owner, checklist, fit, interviews (schedule, cancel, resend, open), email / SMS / WhatsApp / survey, notes, offers (create, send, for approval, withdraw, letter; until HIR-09); toasts |
+| ApplicationOfferToApprove · Application · offer waiting for your approval | live | the approver's step from the approval inbox; turn down needs a reason |
 
 #### HIR-05 · Candidate list
 
@@ -745,9 +752,6 @@ a design, BUILD-STANDARD rule 1). Each "Live ·" story is deleted with its stand
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Workspace · Workspace | live | /yx/hiring/jobs/[id]; goes with HIR-03 / 04 |
-| Application · Application | live | the application panel; goes with HIR-05 / 09 |
-| ApplicationOfferToApprove · Application · offer waiting for your approval | live | offer approval in the panel; goes with HIR-09 |
 | Interview · Interview | live | /yx/hiring/interviews/[id]; goes with HIR-07 |
 | InterviewSubmitted · InterviewSubmitted | live | same, submitted |
 | MyInterviews · MyInterviews | live | /yx/hiring/interviews; goes with HIR-06 |
@@ -1032,3 +1036,24 @@ cleans duplicates; (274) Move and Schedule come onto the candidate record when H
 candidate shows Not found; (276) a requested erase is also refused while an offer is accepted or a process is open, the
 same as the sweep; (277) a data-request log with due dates once the DPDP rules fix the deadline; (278) assessment
 invites, bulk email and re-engage refuse acting-for in those modules' own builds.
+
+## Founder questions from the HIR-04 follow-ups and answers 272 / 276 (10 Nov 2026)
+Each has a safe default already built; the suggestion is the answer we propose.
+301. **Where the application went.** The old panel's content (stage, owner, checklist, fit, interviews, messages, notes,
+     offers) is now an "Application" drawer on the HIR-05 record, drawn as two HIR-05 stories; nothing it did was dropped.
+     *Suggested: keep it until HIR-06 / 07 (interviews), HIR-09 (offers) and the notes design replace its parts.*
+302. **Stage targets belong to the pipeline**, which several jobs can share; they are edited on the job's Settings tab (the
+     pipelines key) because Settings 6.1 is not wired. *Suggested: move the editor to Settings 6.1 when it is wired; keep
+     the read-only view on the job.*
+303. **Fit rubric weights.** The API has always required whole per-cent weights adding up to 100; the old form allowed 1 to
+     10 and could never save. Built: per-cent weights with the total checked before saving. *Suggested: keep.*
+304. **Share feedback for a hiring manager** still points to a candidate (answer 264); the card now opens the record, where
+     the note is added under Application › Notes. *Suggested: keep.*
+311. **Who learns why a move was refused (272).** The refusal says the candidate worked here and is not eligible for rehire
+     (no exit type or reason). A recruiter without People keys learns that much. *Suggested: keep; the move cannot be
+     explained without it.*
+312. **"Screening or later" (272)** is any stage after the pipeline's first active stage (pipelines name stages freely).
+     Rejecting, moving back and undo are never blocked. *Suggested: keep.*
+313. **Erase refused (276)** names the open job and says to reject or close the application and withdraw any offer first;
+     with an accepted offer it says the details are kept for joining and HR handles the request on the People record.
+     *Suggested: keep.*

@@ -132,6 +132,19 @@ describe('HIR-03 job settings (answer 261) and stage targets (answer 263)', () =
     expect(screen.queryByRole('switch')).not.toBeInTheDocument();
   });
 
+  it('fit rubric weights are per cent and must add up to 100 before saving', async () => {
+    const live = settings({ job: { ...settings().job, fitRubric: [{ label: 'Plant experience', weight: 60 }, { label: 'Safety', weight: 30 }] } });
+    show(<JobSettingsPanel live={live} />);
+    await ue.click(screen.getByRole('button', { name: 'Save fit criteria' }));
+    expect(await screen.findByText(/must add up to 100 per cent \(now 90\)/)).toBeInTheDocument();
+    expect(live.onUpdateJob).not.toHaveBeenCalled();
+    const w = screen.getByLabelText(/^Weight 2/);
+    await ue.clear(w);
+    await ue.type(w, '40');
+    await ue.click(screen.getByRole('button', { name: 'Save fit criteria' }));
+    await waitFor(() => expect(live.onUpdateJob).toHaveBeenCalledWith({ fitCriteria: null, fitRubric: [{ label: 'Plant experience', weight: 60 }, { label: 'Safety', weight: 40 }] }));
+  });
+
   it('turning on public applying for a job that is not open says why and saves nothing', async () => {
     const live = settings({ job: { ...settings().job, status: 'on_hold', publicApplyEnabled: false } });
     show(<JobSettingsPanel live={live} />);

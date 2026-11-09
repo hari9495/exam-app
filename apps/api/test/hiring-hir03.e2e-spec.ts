@@ -261,13 +261,14 @@ describe('HIR-03 / HIR-24 jobs and pay range', () => {
     const job = ids.chennaiJob;
     expect((await api('rec', 'get', `/hiring/jobs/${job}/interview-settings`).expect(200)).body).toMatchObject({ scorecardTemplateId: null, exams: [] });
     await api('rec', 'put', `/hiring/jobs/${job}/scorecard`).send({ templateId: null }).expect(200);
-    await api('rec', 'patch', `/jobs/${job}`).send({ fitCriteria: 'Five years in audit and GST filing.', fitRubric: [{ label: 'GST', weight: 3 }], listOnCareers: false }).expect(200);
+    await api('rec', 'patch', `/jobs/${job}`).send({ fitCriteria: 'Five years in audit and GST filing.', fitRubric: [{ label: 'GST', weight: 100 }], listOnCareers: false }).expect(200);
     const got = (await api('rec', 'get', `/jobs/${job}`).expect(200)).body;
     expect(got).toMatchObject({ fitCriteria: 'Five years in audit and GST filing.', listOnCareers: false });
     await api('emp', 'get', `/hiring/jobs/${job}/interview-settings`).expect(403);
     await api('emp', 'put', `/hiring/jobs/${job}/scorecard`).send({ templateId: null }).expect(403);
     await api('hrB', 'get', `/hiring/jobs/${job}/interview-settings`).expect(404);
     await api('rec', 'put', `/hiring/jobs/${job}/scorecard`).send({ templateId: 'not-an-id' }).expect(400);
+    await api('rec', 'patch', `/jobs/${job}`).send({ fitRubric: [{ label: 'GST', weight: 30 }] }).expect(400).expect((r) => expect(r.body.message).toMatch(/sum to 100/));
     await api('rec', 'put', '/hiring/jobs/not-an-id/scorecard').send({ templateId: null }).expect(400);
     token.acting = token.acting ?? (await request(server()).post(`/api/v1/auth/impersonate/${users.rec}`).set('Authorization', `Bearer ${token.hr}`).expect(200)).body.accessToken;
     await api('acting', 'get', `/hiring/jobs/${job}/interview-settings`).expect(200);

@@ -91,7 +91,9 @@ export function JobSettingsPanel({ live }: { live: LiveJobSettings }) {
   };
   const { canManage: can, settings } = live;
   const linked = new Set(settings?.exams.map((e) => e.examId));
-  const badRubric = rubric.findIndex((r) => !r.label.trim() || !(r.weight >= 1 && r.weight <= 10));
+  // The API scores against weights in per cent: whole numbers that add up to 100 (an empty rubric is fine).
+  const badRubric = rubric.findIndex((r) => !r.label.trim() || !(Number.isInteger(r.weight) && r.weight >= 0 && r.weight <= 100));
+  const rubricTotal = rubric.reduce((t, r) => t + (r.weight || 0), 0);
   const badTarget = targets.findIndex((t) => (t.daysTarget != null && (t.daysTarget < 1 || t.daysTarget > 365)) || (t.limit != null && (t.limit < 1 || t.limit > 1000)));
   const name = (list: Choice[], v: string | null) => list.find((x) => x.value === v)?.label ?? null;
   const testCols: TableColumn<JobSettingsView['exams'][number]>[] = [
@@ -197,8 +199,8 @@ export function JobSettingsPanel({ live }: { live: LiveJobSettings }) {
                   <FormField id={`js-r${i}`} label={`Rubric ${i + 1}`} error={rubricTried && !r.label.trim() ? 'Name what is scored.' : null}>
                     <TextField value={r.label} onChange={(v) => setRubric((x) => x.map((y, k) => (k === i ? { ...y, label: v } : y)))} maxLength={100} />
                   </FormField>
-                  <FormField id={`js-w${i}`} label={`Weight ${i + 1}`} error={rubricTried && !(r.weight >= 1 && r.weight <= 10) ? 'Enter a weight from 1 to 10.' : null}>
-                    <NumberField value={r.weight} onChange={(v) => setRubric((x) => x.map((y, k) => (k === i ? { ...y, weight: v ?? 0 } : y)))} min={1} max={10} />
+                  <FormField id={`js-w${i}`} label={`Weight ${i + 1} (%)`} error={rubricTried && !(Number.isInteger(r.weight) && r.weight >= 0 && r.weight <= 100) ? 'Enter a whole per cent from 0 to 100.' : null}>
+                    <NumberField value={r.weight} onChange={(v) => setRubric((x) => x.map((y, k) => (k === i ? { ...y, weight: v ?? 0 } : y)))} min={0} max={100} />
                   </FormField>
                   <div>
                     <Button size="sm" variant="danger" onClick={() => setRubric((x) => x.filter((_, k) => k !== i))}>Remove rubric {i + 1}</Button>
@@ -206,10 +208,14 @@ export function JobSettingsPanel({ live }: { live: LiveJobSettings }) {
                 </div>
               ))}
               <div className="yx-hire-actions">
-                <Button size="sm" icon={Plus} onClick={() => (rubric.length >= 8 ? setFailed('Up to 8 rubric lines.') : setRubric((x) => [...x, { label: '', weight: 1 }]))}>Add a rubric line</Button>
+                <Button size="sm" icon={Plus} onClick={() => (rubric.length >= 8 ? setFailed('Up to 8 rubric lines.') : setRubric((x) => [...x, { label: '', weight: 0 }]))}>Add a rubric line</Button>
                 <Button size="sm" variant="primary" loading={busy === 'fit'} onClick={() => {
                   setRubricTried(true);
                   if (badRubric >= 0) return focus(rubric[badRubric]!.label.trim() ? `js-w${badRubric}` : `js-r${badRubric}`);
+                  if (rubric.length && rubricTotal !== 100) {
+                    setFailed(`The weights must add up to 100 per cent (now ${rubricTotal}).`);
+                    return focus('js-w0');
+                  }
                   void run('fit', () => live.onUpdateJob({ fitCriteria: criteria.trim() || null, fitRubric: rubric.length ? rubric : null }), 'Fit criteria saved');
                 }}>
                   Save fit criteria

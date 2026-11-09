@@ -108,6 +108,16 @@ describe('HIR-04 pipeline board page', () => {
     expect((await screen.findAllByText(/You can undo until 10 Nov 2026, 11:30 am. The candidate is not emailed./))[0]).toBeInTheDocument();
   });
 
+  it('answer 272: a not-eligible ex-employee refused past the first stage shows the reason; the card stays', async () => {
+    const msg = 'This candidate worked here before and is marked not eligible for rehire, so they stay in the first stage (company setting). Ask HR to review the flag on the candidate record; once cleared, move them on.';
+    serve(['pipeline:manage', 'results:view'], (path) => (path === '/hiring/entries/e1/move' ? Promise.reject(Object.assign(new Error(msg), { status: 409 })) : undefined));
+    wrap(<YxHiringPipelinePage />);
+    await ue.click(await screen.findByRole('button', { name: 'Move Priya Raman' }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'Interview' }));
+    expect((await screen.findAllByText(msg)).length).toBeGreaterThan(0);
+    expect(within(screen.getByRole('region', { name: 'Applied' })).getByText('Priya Raman')).toBeInTheDocument();
+  });
+
   it('a refused move (stale card, 409) shows why and reloads the board', async () => {
     let boards = 0;
     serve(['pipeline:manage', 'results:view'], (path) => {

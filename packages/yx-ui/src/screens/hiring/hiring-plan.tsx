@@ -1824,7 +1824,7 @@ const SAMPLE_STAGES = ['Applied', 'Screening', 'Assessment', 'Panel', 'Offer'];
 const SAMPLE_JOB_SETTINGS: LiveJobSettings = {
   canManage: true,
   canConfigure: true,
-  job: { status: 'open', publicApplyEnabled: true, listOnCareers: true, applyUrl: 'https://kaveri-foods.yukthix.in/apply/qa-0311', boardIds: ['b1'], fitCriteria: 'Five or more years in QA with test automation (Playwright or Selenium) and API testing.', fitRubric: [{ label: 'Test automation', weight: 3 }, { label: 'API testing', weight: 2 }] },
+  job: { status: 'open', publicApplyEnabled: true, listOnCareers: true, applyUrl: 'https://kaveri-foods.yukthix.in/apply/qa-0311', boardIds: ['b1'], fitCriteria: 'Five or more years in QA with test automation (Playwright or Selenium) and API testing.', fitRubric: [{ label: 'Test automation', weight: 60 }, { label: 'API testing', weight: 40 }] },
   settings: { scorecardTemplateId: 's1', exams: [{ examId: 'e1', title: 'QA aptitude', sendOnStageId: 'Assessment' }] },
   pipelineName: 'Engineering, 6 stages',
   stages: SAMPLE_STAGES.map((n) => ({ id: n, name: n, daysTarget: n === 'Applied' ? 3 : n === 'Screening' ? 5 : n === 'Panel' ? 7 : null, limit: n === 'Panel' ? 6 : null })),
