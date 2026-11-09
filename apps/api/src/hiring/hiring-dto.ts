@@ -6,6 +6,11 @@ import { ArrayMaxSize, ArrayMinSize, IsArray, IsDateString, IsIn, IsInt, IsNumbe
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 
 export class PlanLineDto {
+  /** HIR-01 revision: the approved line this row changes (kept so linked jobs stay on it); none = a new line. */
+  @IsOptional()
+  @IsUUID()
+  id?: string | null;
+
   @IsUUID()
   designationId!: string;
 

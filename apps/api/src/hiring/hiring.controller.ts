@@ -1,4 +1,6 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
+import type { ScopeUser } from '../access/scope';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
@@ -11,6 +13,12 @@ import { CareersAdminService } from './careers-admin.service';
 
 // Recruitment batch AT2 (M10-BUILD-DESIGN §18.1): headcount plans (ats.headcount.manage) and the plan lines a
 // requisition can draw on (anyone who raises or runs requisitions). Requisitions themselves are jobs (/jobs, AT1).
+/** Plans are changed by the signed-in person themselves, never while acting for someone else. */
+function ownSession(req: Request): void {
+  const user = req.user as ScopeUser | undefined;
+  if (user?.impersonatorUserId || user?.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
+}
+
 @Controller('hiring')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class HiringController {
@@ -19,28 +27,32 @@ export class HiringController {
     private readonly careers: CareersAdminService,
   ) {}
 
+  // HIR-01: HR sees every plan; a hiring manager their own department's approved plan, read-only (decision 11).
   @Get('plans')
-  @RequirePermissions('ats.headcount.manage')
-  plans(@CurrentTenant() ctx: TenantContext, @Query() q: PlanQueryDto) {
-    return this.svc.plans(ctx, q.fy);
+  @RequireAnyPermission('ats.headcount.manage', 'ats.requisition.raise')
+  plans(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: PlanQueryDto) {
+    return this.svc.plans(ctx, req.user as ScopeUser, q.fy);
   }
 
   @Post('plans')
   @RequirePermissions('ats.headcount.manage')
-  create(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Body() dto: PlanDto) {
+  create(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Body() dto: PlanDto) {
+    ownSession(req);
     return this.svc.savePlan(ctx, userId, null, dto);
   }
 
   @Put('plans/:id')
   @RequirePermissions('ats.headcount.manage')
-  update(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PlanDto) {
+  update(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PlanDto) {
+    ownSession(req);
     return this.svc.savePlan(ctx, userId, id, dto);
   }
 
   @Post('plans/:id/submit')
   @HttpCode(200)
   @RequirePermissions('ats.headcount.manage')
-  submit(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PlanVersionDto) {
+  submit(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PlanVersionDto) {
+    ownSession(req);
     return this.svc.submitPlan(ctx, userId, id, dto.version);
   }
 

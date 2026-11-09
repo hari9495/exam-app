@@ -142,6 +142,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'perf.pip.lengths': { label: 'Performance: improvement plans run for (days)', scopes: ['tenant'], dated: false, values: ['30,60,90', '30,60', '60,90', '90'], default: '30,60,90' },
   // M10 AT2 (D5): requisitions against the headcount plan: not used, shown (outside-plan needs the extra approver), or required.
   'ats.headcount_plan': { label: 'Hiring: requisitions and the headcount plan', scopes: ['tenant'], dated: false, values: ['off', 'advisory', 'required'], default: 'advisory' },
+  // HIR-01 (founder decision 11, 9 Nov 2026): hiring managers see their own department's approved plan, read-only.
+  'ats.headcount_plan.manager_view': { label: 'Hiring: hiring managers see their department’s headcount plan', scopes: ['tenant'], dated: false, values: ['own_department', 'off'], default: 'own_department' },
   // M10 AT4 (Q6, YX-ATS-53): months without activity before a non-hired candidate is anonymised.
   'ats.retention_months': { label: 'Hiring: keep candidate details for (months without activity)', scopes: ['tenant'], dated: false, values: ['6', '9', '12', '18', '24', '36'], default: '12' },
   'perf.goal.checkin_days': { label: 'Performance: remind about goal check-ins after (days)', scopes: ['tenant'], dated: false, values: ['14', '30', '90'], default: '30' },

@@ -10714,6 +10714,12 @@ model HeadcountPlan {
   note           String?  @db.VarChar(1000)
   wfRequestId    String?  @map("wf_request_id") @db.Uuid
   version        Int      @default(1)
+  /// HIR-01: shown as "v{n}"; goes up when a revision is approved.
+  revisionNo           Int     @default(1) @map("revision_no")
+  /// HIR-01: the pending revision of an approved plan ({ note, lines }); null when none.
+  revision             Json?
+  revisionStatus       String? @map("revision_status") @db.VarChar(12)
+  revisionWfRequestId  String? @map("revision_wf_request_id") @db.Uuid
   createdBy      String?  @map("created_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
