@@ -346,7 +346,9 @@ describe('Lifecycle batch 6e', () => {
     // The header (PPL-24 design): role and place, first day absent (no attendance: the next day), policy, salary hold.
     expect(row).toMatchObject({ designation: 'Operator', location: 'Bengaluru', firstAbsentOn: addDays(lastPresent, 1), policy: 'Starter template v1', salaryHeldSince: addDays(lastPresent, 3), salaryReleased: false });
     const k = (await api('hr', 'get', `/lifecycle/exits/${row.exitCaseId}`).expect(200)).body;
-    expect(k).toMatchObject({ exitType: 'absconding', lastDay: lastPresent, status: 'accepted' });
+    // The last day is in the past, so the last-day sweep may already have moved the case on to exited.
+    expect(k).toMatchObject({ exitType: 'absconding', lastDay: lastPresent });
+    expect(['accepted', 'exited']).toContain(k.status);
     expect(k.hr.rehireEligible).toBe(false);
     const anilPerson = (await inA((tx) => tx.employee.findFirstOrThrow({ where: { id: emp.anil } }))).personId;
     expect(await inA((tx) => tx.letterIssue.count({ where: { letterType: 'absconding_notice', personId: anilPerson, status: 'issued' } }))).toBe(2);
