@@ -13,10 +13,10 @@ was built.
   the headcount plan board (all 10 stories); and HIR-03 Jobs list, Create job sheet and job workspace on /yx/hiring/jobs and
   /yx/hiring/jobs/[id], with the HIR-24 pay range by location law (one story live with a gap: the apply form has no
   pay-history question). Counts in the table below.
-- **Few of the Hiring designs are live.** Of 228 design stories (HIR-01 … 31, the careers site, candidate
-  identity check and the hiring settings), 23 are live with their design. First the "Request a hire" sheet (HIR-02
+- **Few of the Hiring designs are live.** Of 249 design stories (HIR-01 … 31, the careers site, candidate
+  identity check and the hiring settings), 61 are live with their design (recount 9 Nov 2026, after HIR-05). First the "Request a hire" sheet (HIR-02
   NewRequisition), which People › My team (/yx/people/team) renders with `live` and sends to `POST jobs/requisitions`. Since 9 Nov 2026 (branch `feat/yukthix-hir-01`) HIR-01, the headcount plan board, is live too: all 10 of
-  its stories (section 4). HIR-11 Recruiting costs (/yx/hiring/costs) and HIR-12 Referrals (/yx/hiring/referrals, with HR's
+  its stories (section 4). HIR-05 (branch `feat/yukthix-hir-05`): the candidate record with the ex-employee match and merge, plus the newly drawn candidate list (with Possible duplicates) and candidate data retention pages. HIR-11 Recruiting costs (/yx/hiring/costs) and HIR-12 Referrals (/yx/hiring/referrals, with HR's
   All referrals at /yx/hiring/referrals/all) are live too (branch `feat/yukthix-hir-11-12`).
 - **Hiring itself works, but on stand-in screens.** The 14 pages under /yx/hiring render the older "Live ·" screens from
   `packages/yx-ui/src/screens/hiring/live/*` (the package path `@yukthix/ui/hiring` points there). None of them passes a
@@ -48,14 +48,15 @@ built**.
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Plans, requisitions, jobs and costs | 4 | 25 | 0 | 7 | 0 | 0 | 32 |
-| B. Candidates, pipeline and interviews | 6 | 0 | 0 | 21 | 13 | 1 | 35 |
+| B. Candidates, pipeline and interviews | 8 | 25 | 0 | 14 | 13 | 1 | 53 |
 | C. Offers, BGV and joining | 4 | 0 | 0 | 13 | 12 | 0 | 25 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 7 | 0 | 7 | 7 | 4 | 25 |
 | E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
 | F. Compliance and fairness | 5 | 4 | 1 | 0 | 20 | 0 | 25 |
 | G. Careers site, portals and settings | 4 | 0 | 0 | 30 | 11 | 0 | 41 |
-| **All Hiring design groups (A–G)** | **35** | **36** | **1** | **82** | **107** | **5** | **231** |
-| H. Kit and "Live ·" groups (not designs; own line) | 5 | 19 | 0 | 7 | 5 | 0 | 31 |
+| **All Hiring design groups (A–G)** | **37** | **61** | **1** | **75** | **107** | **5** | **249** |
+| H. Kit and "Live ·" groups (not designs; own line) | 5 | 14 | 0 | 6 | 5 | 0 | 25 |
+Recounted by script 9 Nov 2026 on `feat/yukthix-hir-05` after HIR-05 went live: the record (10 stories, one new: choose the duplicate), the new Candidate list (8) and Candidate data retention (9) designs (founder decision 9); the "Live · Candidates" stand-ins and 6 of their 7 stories deleted (Pools stays for HIR-20).
 Recounted by script 9 Nov 2026 on `feat/yukthix-hir-03-24` after HIR-01 (four new stories, Plans and NoPlans deleted), HIR-03 and HIR-24 went live and the HIR-03 follow-ups added the Change recruiter story (HIR-03 gained the Create job sheet story; the "Live · Jobs" stand-in and its 4 stories were deleted). First counted (the script is in the appendix): every `export const`
 Recounted by script 9 Nov 2026 on `feat/yukthix-hir-11-12` after HIR-11 (5 stories) and HIR-12 (4 stories plus 3 new All referrals design stories, founder answer 204) went live on top of HIR-01. Before that, recounted on `feat/yukthix-hir-01` after HIR-01 went live (four new HIR-01 design stories; the stand-in's Plans and NoPlans stories deleted). First counted by script 9 Nov 2026 on `feat/yukthix-hiring-design-map` (the script is in the appendix): every `export const`
 story with a capital first letter (the lower-case exports are sample props, excluded from Storybook by
@@ -100,11 +101,11 @@ the web page.
 | /yx/hiring/jobs | `JobsScreen` with `live` (designed, 9 Nov 2026): jobs and requisitions in one list, Create job sheet with pay range | HIR-02, HIR-03 list, HIR-24 | `GET/POST jobs`, `GET jobs/pay-settings`, `PATCH/DELETE jobs/:id`, `POST jobs/:id/submit`, `/approval/cancel` (`pipeline:manage`; refused while acting for someone else) | live |
 | /yx/hiring/jobs/[id] | `JobWorkspaceScreen` with `live` (designed, 9 Nov 2026): overview, postings, pay range | HIR-03 workspace, HIR-24 | `GET jobs/:id` (`results:view`), `PATCH jobs/:id` (`pipeline:manage`) | live |
 | /yx/hiring/jobs/[id]/pipeline | `JobWorkspaceScreen` + `ApplicationPanel` (stand-ins, moved from /jobs/[id]): board, application, interviews, offers, feedback, job settings | HIR-04, HIR-09 | `GET hiring/jobs/:id/board` (`results:view`), `POST hiring/entries/:id/move`, `/reject`, `/reject/undo`, `hiring/entries/bulk`, `PUT hiring/jobs/:id/scorecard` (`pipeline:manage`), `POST/GET pipeline/entries/:id/offers`, `/interviews`, `offers/:id/send`, `/submit`, `/withdraw` (`pipeline:manage`) | wire design |
-| /yx/hiring/candidates | `HiringCandidatesScreen` (stand-in) | none (section 2) | `GET candidates`, `POST candidates`, CSV, email | no design |
-| /yx/hiring/candidates/[id] | `CandidateProfileScreen` (stand-in) | HIR-05 | `GET hiring/candidates/:id`, `PUT …/legal-hold` (`candidate:data_rights`), `POST …/consents/withdraw` | wire design |
-| /yx/hiring/duplicates | `DuplicatesScreen` (stand-in) | HIR-05 Merge | `GET hiring/duplicates`, `POST hiring/candidates/:id/merge` (`candidate:manage`) | wire design |
+| /yx/hiring/candidates | `CandidateListScreen` with `live` (designed 9 Nov 2026, decision 9) | HIR-05 List | `GET/POST/PATCH candidates`, bulk delete, upload and invite, email, pools (`candidate:manage` / `candidate:view`; writes refused while acting) | live |
+| /yx/hiring/candidates/[id] | `CandidateRecordScreen` with `live` (designed) | HIR-05 | `GET hiring/candidates/:id` (viewer-aware: contact details with `candidate:manage` or data rights; ex-employee match for people who may see the employee), `PUT …/legal-hold`, `POST candidates/:id/erase`, `GET …/export` (`candidate:data_rights`), `POST …/merge` (manage + data rights), `POST …/consents/withdraw`; writes refused while acting | live |
+| /yx/hiring/duplicates | opens /yx/hiring/candidates?view=duplicates (the list's Possible duplicates tab) | HIR-05 List, Merge | `GET hiring/duplicates` (`candidate:manage`), merge (manage + `candidate:data_rights`) | live |
 | /yx/hiring/pools | `TalentPoolsScreen` (stand-in) | HIR-20 Pools | `GET/POST/DELETE hiring/pools`, `…/members` (`candidate:manage`) | wire design |
-| /yx/hiring/retention | `CandidateRetentionScreen` (stand-in) | none (section 2) | `POST hiring/retention/run`, `GET …/runs` (`candidate:data_rights`) | no design |
+| /yx/hiring/retention | `CandidateRetentionScreen` with `live` (designed 9 Nov 2026, decision 9) | HIR-05 Retention | `POST hiring/retention/run`, `GET …/runs`, `POST hiring/data-requests/lookup`, export, erase (`candidate:data_rights`; a real run, export and erase refused while acting) | live |
 | /yx/hiring/interviews | `MyInterviewsScreen` (stand-in) | HIR-06 Interviewer | `GET hiring/interviews/mine` | wire design |
 | /yx/hiring/interviews/[id] | `InterviewScreen` (stand-in) | HIR-07 | `GET hiring/interviews/:id`, `PUT …/scorecard`, `POST …/scorecard/submit` | wire design |
 | /yx/hiring/scorecards | `ScorecardTemplatesScreen` (stand-in) | Settings 6.1 | `GET/POST/PUT/DELETE hiring/scorecard-templates` (`pipelines:configure`) | wire design |
@@ -123,8 +124,6 @@ the web page.
 
 | page | what it does | suggestion |
 |---|---|---|
-| /yx/hiring/candidates | the candidate list: search, stage filter, add, CSV import, email | draw HIR-05 List stories (founder question 9) |
-| /yx/hiring/retention | candidate data retention run and history | draw it into the kit / Settings 6.1 (question 9) |
 | /application/[statusToken], /portal/[portalToken], /offer/[token], /interview/[token] | candidate's status page, portal, offer accept / decline, interview booking | candidate portal designs are needed (question 10) |
 | /agency/[token] and v2 /settings/agencies, /agency-submissions | recruitment agencies submit candidates by link; the older v2 screens review them | HIR-21 covers part of it (question 1) |
 | v2 /referrals | the older recruiter list of referrals | HIR-12 replaces it |
@@ -247,20 +246,57 @@ Live page: /yx/hiring/jobs/[id] (board tab of the stand-in `JobWorkspaceScreen`)
 
 #### HIR-05 · Candidate record
 
-Live page: /yx/hiring/candidates/[id] (`CandidateProfileScreen`, stand-in) and /yx/hiring/duplicates. Designed:
-`CandidateRecordScreen`, `MergeDrawer`.
+Live page: /yx/hiring/candidates/[id], the designed `CandidateRecordScreen` with `live` (9 Nov 2026, branch
+`feat/yukthix-hir-05`); the stand-in `CandidateProfileScreen` is deleted. Merge: the designed `MergeDrawer` (record and the
+list's Possible duplicates tab).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Recruiter · Recruiter · default | wire design | `GET hiring/candidates/:id`, applications, interviews, offers |
-| ExEmployeeRecruiter · Ex-employee · recruiter sees exit details | wire design | API: the candidate record has no ex-employee match; the data exists (person by email, last exit, `rehire_eligible`; `offerRehire` does this for offers) |
-| RehireIneligibleHr · Ex-employee · rehire ineligible, HR can clear | wire design | same, plus an HR route to clear the flag with a reason |
-| ExEmployeeHiringManager · Ex-employee · hiring manager sees flag only | wire design | same; field masking by viewer |
-| Merge · Merge duplicate · field-level choice | wire design | `GET hiring/duplicates`, `POST hiring/candidates/:id/merge` (`candidate:manage`) |
+| Recruiter · Recruiter · default | live | `GET hiring/candidates/:id` (candidate keys); facts, applications, scores, consent & retention, activity built from the record; Email, Open in pipeline, menu (pool, merge, export, legal hold, erase) |
+| ExEmployeeRecruiter · Ex-employee · recruiter sees exit details | live | People's person match (`personByEmail`, the one the offer hand-off uses); exit date and type need `lifecycle.exit.view`/`manage` reaching the person |
+| RehireIneligibleHr · Ex-employee · rehire ineligible, HR can clear | live | rehire eligibility needs `lifecycle.exit.confidential.view`; Clear flag uses the existing `PUT lifecycle/exits/:id/hr` (exit manage + confidential) with a reason |
+| ExEmployeeHiringManager · Ex-employee · hiring manager sees flag only | live | flag only for a viewer with `employee.profile.view` reaching the person and no exit key; nobody who may not see the employee gets even the flag |
+| Merge · Merge duplicate · field-level choice | live | `POST hiring/candidates/:id/merge` now needs `candidate:manage` AND `candidate:data_rights`; confirm says what happens; audited |
+| MergeChooseDuplicate · Merge with another candidate · choose the duplicate first | live | new story (kit first): the record's menu merge picks the other candidate; "Record to keep" choice |
 | IdentityFlag · Identity review flag | design only, feature not built | no candidate identity check (HIR-22) |
 | Minor · Under 18 · guardian consent pending | design only, feature not built | no date of birth / guardian consent on candidates |
-| NoAccess · No access | wire design | 403 without `candidate:view` |
-| NotFound · Not found (anonymised) | wire design | retention anonymises candidates (`hiring/retention/run`) |
+| NoAccess · No access | live | 403 without a candidate key |
+| NotFound · Not found (anonymised) | live | 404, or an erased candidate |
+
+#### HIR-05 · Candidate list
+
+Live page: /yx/hiring/candidates (and /yx/hiring/duplicates, which opens the Possible duplicates tab). Designed 9 Nov 2026
+from kit parts (founder decision 9): `CandidateListScreen` in `hiring-candidates.tsx`; the stand-in
+`HiringCandidatesScreen` and `DuplicatesScreen` are deleted. Every stand-in function kept (search, active / inactive,
+stage, add / edit with custom fields, upload and invite, invite, email, add to a list, re-engage, deactivate, delete).
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Recruiter · Recruiter · default | live | `GET candidates` (server paging and filters), `POST/PATCH candidates`, bulk delete, invitations, email, pools (`candidate:manage`; writes refused while acting) |
+| HiringManager · Hiring manager · read-only | live | `candidate:view` only: no add, upload, bulk actions or duplicates tab |
+| Empty · Empty · first use | live | no candidates |
+| Loading · Loading | live | while loading |
+| Failed · Error | live | API fails |
+| Duplicates · Possible duplicates | live | `GET hiring/duplicates` (`candidate:manage`) |
+| DuplicatesNoMergeKey · Possible duplicates · no data-rights key | live | pairs shown, no merge |
+| MergePair · Possible duplicates · compare and merge | live | `MergeDrawer` with Record to keep; `POST hiring/candidates/:id/merge` |
+
+#### HIR-05 · Candidate data retention
+
+Live page: /yx/hiring/retention. Designed 9 Nov 2026 from kit parts (founder decision 9): `CandidateRetentionScreen` in
+`hiring-candidates.tsx`; the stand-in of the same name is deleted.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Default · HR · default | live | `GET hiring/retention/runs`; period = company setting `ats.retention_months` (default 12) |
+| Preview · Preview · changes nothing | live | `POST hiring/retention/run` `{ dryRun: true }` |
+| RequestFound · Data request · person found | live | new `POST hiring/data-requests/lookup` (email in the body), `GET candidates/:id/export`, `POST candidates/:id/erase` (all `candidate:data_rights`; export and erase refused while acting; erase audited) |
+| RequestOnHold · Data request · on legal hold, no erase | live | the API refuses erase under legal hold (409) |
+| RequestNobody · Data request · nobody with that email | live | `{ match: null }` |
+| PeriodReadOnly · Period · no settings key | live | without `org.settings.manage` |
+| NoRuns · First use · no runs yet | live | empty history |
+| Loading · Loading | live | while loading |
+| NoAccess · No access · no data-rights key | live | 403 |
 
 #### HIR-06 · Interview calendar
 
@@ -671,7 +707,7 @@ a design, BUILD-STANDARD rule 1). Each "Live ·" story is deleted with its stand
 | Tiles · SummaryTiles | wire design | used by HIR list screens |
 | Pipeline · PipelineFacts | wire design | HIR-04 cards |
 | Consent · ConsentBadges | wire design | candidate channel consent exists |
-| ExEmployee · ExEmployeeBanner · recruiter and HM | wire design | HIR-05 |
+| ExEmployee · ExEmployeeBanner · recruiter and HM | live | HIR-05 record (levels: flag, exit, rehire) |
 | Identity · IdentityStrip | design only, feature not built | HIR-22 |
 | Postings · PostingStrip | wire design | job boards |
 | EInvoice · EInvoiceBanner · warning | design only, feature not built | HIR-31 |
@@ -685,13 +721,7 @@ a design, BUILD-STANDARD rule 1). Each "Live ·" story is deleted with its stand
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Candidates · Candidates | live | /yx/hiring/candidates (stand-in, no HIR design) |
-| NoCandidates · NoCandidates | live | same, empty |
-| Profile · Profile | live | /yx/hiring/candidates/[id]; goes with HIR-05 |
-| ProfileOnHold · ProfileOnHold | live | legal hold; goes with HIR-05 |
-| Duplicates · Duplicates | live | /yx/hiring/duplicates; goes with HIR-05 Merge |
-| Pools · Pools | live | /yx/hiring/pools; goes with HIR-20 |
-| Retention · Retention | live | /yx/hiring/retention (no design) |
+| Pools · Pools | live | /yx/hiring/pools; goes with HIR-20 (the candidate list, record, duplicates and retention stand-ins and their stories were deleted with HIR-05) |
 
 #### Live · Careers site and job boards
 
@@ -783,7 +813,7 @@ stand-in it replaces with its "Live ·" stories.
 | 4 | HIR-02 requisitions list (+ HIR-26 rediscovery panel, AI off = text search) | wire `RequisitionsScreen`; hiring manager's own list | M |
 | 5 | HIR-03 jobs list and workspace, HIR-24 company-setting pay range | wire `JobsScreen`, `JobWorkspaceScreen`, `JobPayRangePanel` | M |
 | 6 | HIR-04 pipeline board | wire `PipelineBoardScreen` on /yx/hiring/jobs/[id] | M |
-| 7 | HIR-05 candidate record (+ ex-employee match, merge) | wire `CandidateRecordScreen`, `MergeDrawer`; ex-employee lookup in the API | M |
+| 7 | ~~HIR-05 candidate record (+ ex-employee match, merge)~~ | done 9 Nov 2026: record, merge, candidate list and retention (decision 9) | M |
 | 8 | HIR-06 interviewer list, HIR-07 scorecard | wire `InterviewCalendarScreen` (interviewer part), `ScorecardScreen`; company-wide week list in the API | M |
 | 9 | Settings 6.1 Hiring | wire the settings page; retire /yx/hiring/scorecards and /approval-routes stand-ins | S |
 | 10 | HIR-09 offer builder (after questions 4, 5) | CTC lines, band check, versions, hand-off | L |
@@ -919,3 +949,31 @@ Founder approved, 9 Nov 2026 (questions 201-207, 211-216, 221-229, all as sugges
      of an Indian entity may still use a free-text place abroad. *Suggested: also require a master location whenever the
      job's place is outside India, once locations carry a country for every company.*
 
+
+## Founder questions from the HIR-05 build (9 Nov 2026)
+Each has a safe default already built; the suggestion is the answer we propose.
+271. **Who sees the ex-employee match?** Built: only people who may see the employee: `employee.profile.view` gives the
+     flag; an exit key (`lifecycle.exit.view`/`manage`) adds the exit date and type; the confidential exit key adds rehire
+     eligibility; exit manage + confidential may clear it. A plain Recruiter or Hiring manager (no People key) sees nothing,
+     not even the flag the design shows the hiring manager. *Suggested: keep; HR gives a recruiter `employee.profile.view`
+     only if they should see the flag.*
+272. **Should an ineligible rehire flag block Screening?** The design said "Screening can't be passed until HR clears the
+     flag". Built: it does not block (the banner says HR can clear it; nothing is rejected automatically). *Suggested:
+     add a company setting `hiring.rehire_flag.blocks_screening` (default off), checked when the card leaves Screening.*
+273. **Merge now needs the data-rights key** (founder brief) on top of `candidate:manage`; plain recruiters see the pairs
+     but cannot merge. *Suggested: keep; give recruiters who clean duplicates the Hiring admin template.*
+274. **Design actions with no live route.** "Schedule interview" and "Move to next stage" became "Open in pipeline" (the
+     board does both); the hiring manager's "Add feedback" is on the interview scorecard; "Expected CTC", "Notice period"
+     and "Next action" are not stored on a candidate; the identity strip (HIR-22) and under-18 consent are not built.
+     *Suggested: add Move and Schedule on the record when HIR-04 and HIR-06 are wired; add expected CTC and notice period
+     as candidate fields only if recruiters ask.*
+275. **An erased candidate opens "Not found (anonymised)"** as designed; the stand-in showed the erased record with its
+     applications. Applications and scores stay on the job board without the name. *Suggested: keep.*
+276. **Erase of a hired candidate.** The API (DPDP rules already built) refuses erase only under legal hold; the nightly sweep
+     also skips hired people and open processes. *Suggested: refuse a requested erase while an offer is accepted or a
+     process is open too (409 with the reason), the same rules as the sweep.*
+277. **Data-request register.** Built: find by email, export (JSON), erase; each export and erase is in the audit log. There
+     is no list of past requests with due dates. *Suggested: add a "Data requests" log with the DPDP response date when the
+     Data Protection Board rules fix it.*
+278. **Writes refused while acting** are added on the candidate, merge, hold, consent, pool and erase/export routes.
+     Invitations, bulk email and re-engage (other modules) still allow it. *Suggested: refuse them too in their own build.*
