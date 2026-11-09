@@ -949,7 +949,7 @@ describe('PublicApplicationsService', () => {
       expect(xml.startsWith('<?xml')).toBe(true);
       expect(xml).toContain('<source>');
       expect(xml).toContain('Backend Engineer');
-      expect(xml).toContain('/apply/tok-1');
+      expect(xml).toContain('/yx/apply/tok-1');
       expect(xml).toContain('Acme');
       expect(xml).toContain('FULL_TIME');
       // free-text is CDATA-wrapped so "<stuff> & things" can't break the XML
@@ -1140,7 +1140,7 @@ describe('PublicApplicationsService', () => {
       expect(xml).toContain('<source>');
       expect(xml).toContain('<publisher>');
       expect(xml).toContain('Backend Engineer');
-      expect(xml).toContain('/apply/tok-1');
+      expect(xml).toContain('/yx/apply/tok-1');
       expect(xml).toContain('Acme');
     });
 

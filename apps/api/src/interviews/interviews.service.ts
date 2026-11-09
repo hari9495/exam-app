@@ -335,7 +335,7 @@ export class InterviewsService {
     // and jobTitle are attacker-controlled (candidate name comes from the public apply form) so they
     // are only ever interpolated into plain bodyText and rendered via buildCandidateEmailHtml, which
     // HTML-escapes it -- never hand-built into raw HTML.
-    const confirmLink = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/interview/${prep.interviewToken}`;
+    const confirmLink = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/yx/interview/${prep.interviewToken}`;
     const interviewTimes = prep.interview.slots.map((s) => formatSlot(s.startsAt, s.endsAt, prep.interview.timeZone)).join('\n');
     const panelNames = prep.panelists.map((p) => p.name).join(', ');
     const templates = await this.emailTemplates.resolveMap(context);

@@ -305,7 +305,7 @@ export class PublicApplicationsService {
           `    <title>${xmlCdata(j.title)}</title>`,
           `    <date>${j.createdAt.toUTCString()}</date>`,
           `    <referencenumber>${xmlCdata(j.applyToken as string)}</referencenumber>`,
-          `    <url>${xmlCdata(`${baseUrl}/apply/${j.applyToken}`)}</url>`,
+          `    <url>${xmlCdata(`${baseUrl}/yx/apply/${j.applyToken}`)}</url>`,
           `    <company>${xmlCdata(orgName.get(j.organizationId) ?? '')}</company>`,
           `    <city>${xmlCdata(j.location ?? '')}</city>`,
           `    <jobtype>${xmlCdata(j.employmentType ?? '')}</jobtype>`,
@@ -548,8 +548,8 @@ export class PublicApplicationsService {
       to,
       organizationId,
       subject: `Your application to ${name}`,
-      html: `<p>Thank you for applying for <strong>${esc(jobTitle)}</strong> at ${esc(name)}.</p><p><a href="${base}/application/${encodeURIComponent(statusToken)}">See where your application is</a></p><p><a href="${base}/portal/${encodeURIComponent(portalToken)}">Open your candidate page</a> to update your résumé or see your other applications.</p><p>If you did not apply, you can ignore this email.</p>`,
-      text: `Thank you for applying for ${jobTitle} at ${name}.\nWhere your application is: ${base}/application/${statusToken}\nYour candidate page: ${base}/portal/${portalToken}\nIf you did not apply, ignore this email.`,
+      html: `<p>Thank you for applying for <strong>${esc(jobTitle)}</strong> at ${esc(name)}.</p><p><a href="${base}/yx/application/${encodeURIComponent(statusToken)}">See where your application is</a></p><p><a href="${base}/yx/candidate/${encodeURIComponent(portalToken)}">Open your candidate page</a> to update your résumé or see your other applications.</p><p>If you did not apply, you can ignore this email.</p>`,
+      text: `Thank you for applying for ${jobTitle} at ${name}.\nWhere your application is: ${base}/yx/application/${statusToken}\nYour candidate page: ${base}/yx/candidate/${portalToken}\nIf you did not apply, ignore this email.`,
     });
   }
 

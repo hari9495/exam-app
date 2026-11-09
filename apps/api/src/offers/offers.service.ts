@@ -229,7 +229,7 @@ export class OffersService {
     });
 
     // Phase 2 (outside any tx): rendering + network calls (PDF build, blob upload, SMTP send).
-    const offerLink = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/offer/${prep.offerToken}`;
+    const offerLink = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/yx/offer/${prep.offerToken}`;
     const rendered = renderOfferTemplate(prep.offer.letterSubject, prep.offer.letterBody, {
       candidateName: prep.candidate.name,
       jobTitle: prep.job.title,

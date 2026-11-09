@@ -105,7 +105,7 @@ export class CandidateRetentionService {
     const org = await this.prisma.organization.findUnique({ where: { id: ctx.organizationId as string }, select: { name: true } });
     const name = org?.name ?? 'the company';
     const esc = (v: string) => v.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
-    const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/portal/${encodeURIComponent(claimed.portalToken!)}`;
+    const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/yx/candidate/${encodeURIComponent(claimed.portalToken!)}`;
     const sent = await this.email.send({
       to: claimed.email,
       organizationId: ctx.organizationId as string,

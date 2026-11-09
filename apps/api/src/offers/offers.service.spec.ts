@@ -274,7 +274,7 @@ describe('OffersService', () => {
         expect.objectContaining({
           to: 'asha@x.com',
           organizationId: 'org-1',
-          html: expect.stringContaining(`/offer/${mintedToken}`),
+          html: expect.stringContaining(`/yx/offer/${mintedToken}`),
           attachments: [{ filename: 'offer-letter.pdf', content: expect.any(Buffer) }],
         }),
       );
