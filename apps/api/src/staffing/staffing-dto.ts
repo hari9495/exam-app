@@ -270,5 +270,5 @@ export class PortalDecisionDto {
 }
 
 export class PortalSendBackDto {
-  @trim() @IsString() @MinLength(3) @MaxLength(500) note!: string;
+  @IsOptional() @trim() @IsString() @MaxLength(500) note?: string;
 }

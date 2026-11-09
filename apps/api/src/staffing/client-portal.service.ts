@@ -186,7 +186,7 @@ export class ClientPortalService {
       const h = await tx.staffingHours.findFirst({ where: { id, organizationId: s.org } });
       if (!h) throw new NotFoundException('Timesheet not found.');
       if (h.clientId !== s.clientId) throw new ForbiddenException('This is not your company’s timesheet.');
-      const { count } = await tx.staffingHours.updateMany({ where: { id, status: 'waiting' }, data: { status: action === 'approve' ? 'approved' : 'sent_back', note: action === 'send_back' ? dto!.note.trim() : null, decidedByContactId: s.contactId, decidedAt: new Date(), version: { increment: 1 } } });
+      const { count } = await tx.staffingHours.updateMany({ where: { id, status: 'waiting' }, data: { status: action === 'approve' ? 'approved' : 'sent_back', note: action === 'send_back' ? dto?.note?.trim() || null : null, decidedByContactId: s.contactId, decidedAt: new Date(), version: { increment: 1 } } });
       if (!count) throw new ConflictException('This timesheet is not waiting for you.');
       await audit(tx, { organizationId: s.org, isSuperAdmin: false } as CompanyContext, action === 'approve' ? 'staffing.hours.approved' : 'staffing.hours.sent_back', 'staffing_hours', id, { by: 'client_contact', contactId: s.contactId });
       return { id };

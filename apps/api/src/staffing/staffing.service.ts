@@ -122,7 +122,7 @@ export class StaffingService {
         canManage: a.manage && !a.actingForOther,
         choices: a.manage ? await this.choices(tx, c) : null,
         client: { ...this.clientView(r), accountManager: r.accountManagerUserId ? (names.get(r.accountManagerUserId) ?? '') : '', defaultPaymentTermsDays: terms },
-        contacts: contacts.map((x) => ({ id: x.id, name: x.name, role: x.role, email: x.email, phone: x.phone, billing: x.billing })),
+        contacts: contacts.map((x) => ({ id: x.id, name: x.name, role: x.role, email: x.email, phone: x.phone, billing: x.billing, portal: x.portal })),
       };
     });
   }
