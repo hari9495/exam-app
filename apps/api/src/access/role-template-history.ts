@@ -2688,6 +2688,13 @@ export const TEMPLATE_HISTORY: Record<string, string[][]> = {
       "desk.sla.manage"
     ]
   ],
+  "staffing_account_manager": [
+    [
+      "ats.staffing.manage",
+      "ats.staffing.view",
+      "payroll.equity.own"
+    ]
+  ],
   "team_salary": [
     [
       "employee.salary.view",
