@@ -47,7 +47,9 @@ const routes = (extra: (key: string, init?: RequestInit) => unknown, perms = ['p
     if (key === 'GET /jobs/pay-settings') return { showRange: false, askHistory: false };
     if (key === 'GET /pipelines') return [{ id: 'p1', name: 'Standard', isDefault: true, stages: [{ id: 's1', name: 'Interview' }] }];
     if (key === 'GET /users/teammates') return [{ id: 'u1', name: 'Neha Joshi', email: 'neha@x.test' }, { id: 'u9', name: 'Imran Qureshi', email: 'imran@x.test' }];
-    if (key.startsWith('GET /org/masters') || key === 'GET /org/locations' || key.startsWith('GET /custom-fields') || key === 'GET /hiring/plan-lines' || key === 'GET /hiring/scorecard-templates') return key === 'GET /org/masters/departments' ? [{ id: 'd1', name: 'Finance', archivedAt: null }] : [];
+    if (key.startsWith('GET /org/masters') || key === 'GET /org/locations' || key === 'GET /hiring/plan-lines' || key === 'GET /hiring/scorecard-templates') return key === 'GET /org/masters/departments' ? [{ id: 'd1', name: 'Finance', archivedAt: null }] : [];
+    // The job form reads the fields with the hiring key; never the settings list (always refused for recruiters).
+    if (key === 'GET /custom-fields/in-use') return [{ id: 'cf1', label: 'Cost centre', fieldType: 'text', options: null, required: true, archivedAt: null }];
     if (key === 'GET /hiring/jobs/j1/interview-settings') return { scorecardTemplateId: null, exams: [] };
     throw new Error(`unexpected ${key}`);
   });
@@ -66,11 +68,14 @@ describe('Hiring › Jobs (HIR-03 list, live)', () => {
     const d = await screen.findByRole('dialog');
     await userEvent.click(within(d).getByRole('button', { name: 'Create job' }));
     expect(within(d).getByText('Enter the job title.')).toBeInTheDocument();
+    expect(within(d).getByText('Enter the Cost centre.')).toBeInTheDocument();
+    await userEvent.type(within(d).getByRole('textbox', { name: /Cost centre/ }), 'CC-1');
     await userEvent.type(within(d).getByRole('textbox', { name: /Job title/ }), 'Accountant');
     await userEvent.click(within(d).getByRole('combobox', { name: 'Department' }));
     await userEvent.click(await screen.findByRole('option', { name: 'Finance' }));
     await userEvent.click(within(d).getByRole('button', { name: 'Create job' }));
-    await waitFor(() => expect(posted).toEqual([expect.objectContaining({ title: 'Accountant', departmentId: 'd1', pipelineId: 'p1' })]));
+    await waitFor(() => expect(posted).toEqual([expect.objectContaining({ title: 'Accountant', departmentId: 'd1', pipelineId: 'p1', customFields: { cf1: 'CC-1' } })]));
+    expect(api.mock.calls.map((c) => String(c[0])).filter((x) => x.startsWith('/custom-fields?'))).toEqual([]);
     expect((await screen.findAllByText('Job Accountant created')).length).toBeGreaterThan(0);
   });
 
@@ -90,6 +95,8 @@ describe('Hiring › Jobs (HIR-03 list, live)', () => {
     wrap(<YxHiringJobsPage />);
     expect(await screen.findByText('Senior accountant')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Create job' })).not.toBeInTheDocument();
+    // No create form, so no field read at all.
+    expect(api.mock.calls.map((c) => String(c[0])).filter((x) => x.startsWith('/custom-fields'))).toEqual([]);
   });
 });
 

@@ -190,7 +190,9 @@ a Recruiter on every job (default who opened it; Change recruiter in the job men
 read status `open`; the board sync retracts paid postings; candidates stay; Resume or Close), company job numbers
 (JOB-0001 on, per company, from the `job_number_counters` row lock, never reused) on the list and the workspace, Export of
 the visible columns as CSV, and a location from the masters for jobs of a legal entity outside India. Still waiting:
-saved views (225), the Referrals & internal tab and Share with vendors (226).
+saved views (225), the Referrals & internal tab and Share with vendors (226). The job form and the candidate pages read the custom field definitions from
+`GET custom-fields/in-use` (results:view or pipeline:manage; ats.job.manage counts), so recruiters see them; the settings
+list `GET custom-fields` stays `org:manage_settings` and is no longer called by these pages (it was refused for recruiters).
 
 | story (sub-page) | verdict | note |
 |---|---|---|

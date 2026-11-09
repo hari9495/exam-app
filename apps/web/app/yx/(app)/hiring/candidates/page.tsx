@@ -12,7 +12,7 @@ import { saveBlob } from '../../../../../lib/yx-pay';
 import { useCandidates } from '../../../../../lib/hooks/useCandidates';
 import { useExams } from '../../../../../lib/hooks/useExams';
 import { useJobs } from '../../../../../lib/hooks/usePipeline';
-import { useCustomFields } from '../../../../../lib/hooks/useCustomFields';
+import { useCustomFieldsInUse } from '../../../../../lib/hooks/useCustomFields';
 import { useMessageTemplates } from '../../../../../lib/hooks/useCandidateMessages';
 import { useOrgSenderAddresses } from '../../../../../lib/hooks/useOrgSenderAddresses';
 import { templateChoices } from '../../../../../lib/yx-candidates';
@@ -33,7 +33,7 @@ export default function YxHiringCandidatesPage() {
   const canManage = perms.has('candidate:manage');
   const exams = useExams(undefined, { pageSize: 100 });
   const jobs = useJobs('open');
-  const fields = useCustomFields('candidate');
+  const fields = useCustomFieldsInUse('candidate');
   const templates = useMessageTemplates();
   const senders = useOrgSenderAddresses();
   const lists = useHiring<TalentList[]>('/pools');

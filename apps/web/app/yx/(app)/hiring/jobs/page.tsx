@@ -12,7 +12,7 @@ import { usePeople } from '../../../../../lib/yx-people';
 import { useApi, useApiWrite, useHiring } from '../../../../../lib/yx-hiring';
 import { usePipelines } from '../../../../../lib/hooks/usePipelines';
 import { useTeammates } from '../../../../../lib/hooks/useUserDirectory';
-import { useCustomFields } from '../../../../../lib/hooks/useCustomFields';
+import { useCustomFieldsInUse } from '../../../../../lib/hooks/useCustomFields';
 import { useGenerateJobDescription } from '../../../../../lib/hooks/useAiDrafting';
 import { jobRow, type ApiJob } from '../../../../../lib/yx-jobs';
 
@@ -27,7 +27,7 @@ export default function YxHiringJobsPage() {
   const jobs = useApi<ApiJob[]>('/jobs');
   const pipelines = usePipelines();
   const teammates = useTeammates();
-  const customFields = useCustomFields('job');
+  const customFields = useCustomFieldsInUse('job', canManage);
   const draft = useGenerateJobDescription();
   const pay = useApi<{ showRange: boolean }>(canManage ? '/jobs/pay-settings' : null);
   const write = useApiWrite();

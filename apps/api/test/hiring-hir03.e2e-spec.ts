@@ -25,7 +25,7 @@ describe('HIR-03 / HIR-24 jobs and pay range', () => {
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'hr' | 'rec' | 'emp' | 'hrB' | 'acting';
+  type Who = 'hr' | 'rec' | 'emp' | 'hrB' | 'acting' | 'atsJob';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
@@ -60,6 +60,7 @@ describe('HIR-03 / HIR-24 jobs and pay range', () => {
       ['hr', 'A', 'org_admin', null],
       ['rec', 'A', 'recruiter', null],
       ['emp', 'A', 'panel', []],
+      ['atsJob', 'A', 'panel', ['ats.job.manage']],
       ['hrB', 'B', 'org_admin', null],
     ];
     for (const [who, k, role, keys] of roster) {
@@ -240,5 +241,18 @@ describe('HIR-03 / HIR-24 jobs and pay range', () => {
     const inJob = (await api('rec', 'post', '/jobs').send({ title: `Move ${run}`, location: 'Madurai' }).expect(201)).body;
     await api('rec', 'patch', `/jobs/${inJob.id}`).send({ legalEntityId: ids.usEntity }).expect(400);
     expect(await number(us.id)).toBeGreaterThan(0);
+  });
+
+  it('the job form reads the job custom fields with a hiring key; managing them stays with settings', async () => {
+    await inA((tx) => tx.customFieldDefinition.create({ data: { organizationId: org.A.id, entityType: 'job', key: `cost_${run}`, label: 'Cost centre', fieldType: 'text', required: true } }));
+    for (const who of ['rec', 'atsJob', 'hr'] as const) {
+      const got = (await api(who, 'get', '/custom-fields/in-use?entityType=job').expect(200)).body as { label: string }[];
+      expect(got.map((f) => f.label)).toEqual(['Cost centre']);
+    }
+    await api('rec', 'get', '/custom-fields?entityType=job').expect(403);
+    await api('atsJob', 'get', '/custom-fields?entityType=job').expect(403);
+    await api('emp', 'get', '/custom-fields/in-use?entityType=job').expect(403);
+    await api('rec', 'get', '/custom-fields/in-use?entityType=offer').expect(400);
+    expect((await api('hrB', 'get', '/custom-fields/in-use?entityType=job').expect(200)).body).toEqual([]);
   });
 });
