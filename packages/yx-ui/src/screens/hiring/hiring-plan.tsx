@@ -2054,6 +2054,8 @@ export interface LiveJobWorkspace {
   onPosting: (posting: LivePosting, action: 'post' | 'refresh' | 'close') => Promise<void>;
   pay: LivePayRange;
   onOpenPipeline: () => void;
+  /** HIR-28: one batch of offers for this job (people with the offer-pay key). */
+  onBulkOffers?: () => void;
   onViewCareers: () => void;
   onStatus: (to: 'open' | 'closed' | 'on_hold') => Promise<void>;
   /** Answer 222: the recruiter and who it can be changed to (job-manage key); the API audits the change. */
@@ -2132,6 +2134,7 @@ export function JobWorkspaceScreen({ job, postings: initial, law, range, activit
                 can ? (
                   <>
                     <MenuItem onSelect={() => setChanging(true)}>Change recruiter</MenuItem>
+                    {live.onBulkOffers && <MenuItem onSelect={live.onBulkOffers}>Make bulk offers</MenuItem>}
                     {job.status === 'Open' && <MenuItem onSelect={() => void live.onStatus('on_hold').catch(() => undefined)}>Put on hold</MenuItem>}
                     {job.status === 'On hold' && <MenuItem onSelect={() => void live.onStatus('open').catch(() => undefined)}>Resume job</MenuItem>}
                     {job.status === 'Closed' && <MenuItem onSelect={() => void live.onStatus('open').catch(() => undefined)}>Reopen job</MenuItem>}
@@ -2145,6 +2148,7 @@ export function JobWorkspaceScreen({ job, postings: initial, law, range, activit
               ) : (
                 <>
                   <MenuItem onSelect={() => setChanging(true)}>Change recruiter</MenuItem>
+                  <MenuItem>Make bulk offers</MenuItem>
                   <MenuItem>Share with vendors</MenuItem>
                   <MenuItem>Put on hold</MenuItem>
                   <MenuItem destructive>Close job and all postings</MenuItem>

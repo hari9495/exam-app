@@ -533,3 +533,59 @@ export interface LiveOfferRecord {
   onMet: (conditionId: string) => Promise<void>;
   onWaive: (conditionId: string, reason: string) => Promise<void>;
 }
+
+/* ---------------- HIR-28 bulk offers (live) ---------------- */
+
+/** GET hiring/offer-batches/setup: the job's facts for a batch, and the candidates who can get an offer now. */
+export interface BulkOfferSetup {
+  job: { id: string; title: string; locationId: string | null };
+  company: string;
+  grade: string | null;
+  band: { min: number; max: number } | null;
+  structures: Choice[];
+  locations: Choice[];
+  letters: { value: string; label: string; esign: boolean; subject: string; body: string }[];
+  defaultConditions: string[];
+  expiryDays: number;
+  /** Rows beyond the free places on the job's plan line are held ('hold'), or the check is off. free: null = not checked. */
+  plan: { check: 'hold' | 'off'; linked: boolean; free: number | null };
+  route: { steps: { name: string; approvers: string[] }[]; bandStep: { name: string; approvers: string[] } };
+  candidates: { entryId: string; name: string; email: string }[];
+}
+
+export interface BulkOfferInput {
+  templateVersionId: string;
+  templateId: string | null;
+  letterKind: 'offer' | 'loi';
+  /** ISO date. */
+  startDate: string;
+  locationId: string;
+  addConditions: boolean;
+  rows: { entryId: string; annualCtc: number }[];
+}
+
+export type BulkRowStatus = 'sent' | 'pending_approval' | 'approved' | 'draft' | 'held' | 'skipped' | 'failed';
+
+/** GET hiring/offer-batches/:id: each row's result and its offer's status now (amounts only with the offer-pay key). */
+export interface BulkBatchView {
+  id: string;
+  status: 'running' | 'done';
+  job: { id: string; title: string };
+  startDate: string;
+  expiresAt: string;
+  canSeePay: boolean;
+  rows: { entryId: string; name: string; annualCtc: number | null; status: BulkRowStatus; offerId: string | null; reason: string | null; offerStatus: string | null; esign: boolean; band: string | null }[];
+}
+
+export interface LiveBulkOffers {
+  state: 'loading' | 'ready' | 'error' | 'denied' | 'not-found';
+  onRetry: () => void;
+  /** The batch builder; null on the sent page. */
+  setup: BulkOfferSetup | null;
+  /** The sent page: the batch and each row's result. */
+  batch?: BulkBatchView | null;
+  /** Makes and sends the batch; resolves when every row has its result (the page then opens the batch). */
+  onSend: (input: BulkOfferInput) => Promise<void>;
+  onOpenOffer: (offerId: string) => void;
+  now: Date;
+}
