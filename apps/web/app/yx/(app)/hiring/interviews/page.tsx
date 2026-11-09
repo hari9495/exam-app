@@ -38,6 +38,8 @@ export default function YxInterviewsPage() {
           if (Math.abs(noon.getTime() - at.getTime()) > 21 * DAY) setAt(noon);
         },
         onOpen: (id) => router.push(`/yx/hiring/interviews/${encodeURIComponent(id)}`),
+        // HIR-27: recruiting plans bulk interview days.
+        onInterviewDays: perms.has('pipeline:manage') ? () => router.push('/yx/hiring/interview-days') : undefined,
       }}
     />
   );
