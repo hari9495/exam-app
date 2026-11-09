@@ -1,0 +1,32 @@
+'use client';
+
+import { useParams } from 'next/navigation';
+import { PlacementRecordScreen, type PlacementRowView } from '@yukthix/ui/hiring';
+import { deskState, useStaffing, useStaffingWrite } from '../../../../../../lib/yx-staffing';
+import { useAuth } from '../../../../../../lib/auth-context';
+
+type One = { canManage: boolean; showPay: boolean; placement: PlacementRowView };
+
+// Staffing desk › Placements › one placement (HIR-17 record): extend (a later last day and a reason) or end early (the
+// last day and a reason; own payroll moves to the bench). Each write carries the version; a stale one is refused.
+export default function YxStaffingPlacementPage() {
+  const { id } = useParams<{ id: string }>();
+  const { impersonating, actingSuperAdmin } = useAuth();
+  const one = useStaffing<One>(`/placements/${encodeURIComponent(id)}`);
+  const write = useStaffingWrite();
+  const path = `/placements/${encodeURIComponent(id)}`;
+  return (
+    <PlacementRecordScreen
+      live={{
+        state: deskState(one),
+        onRetry: () => void one.refetch(),
+        placement: one.data?.placement ?? null,
+        showPay: Boolean(one.data?.showPay),
+        canManage: Boolean(one.data?.canManage) && !(impersonating || actingSuperAdmin),
+        today: new Date(),
+        onExtend: (input) => write('POST', `${path}/extend`, input),
+        onEnd: (input) => write('POST', `${path}/end`, { ...input, ...(input.note ? {} : { note: undefined }) }),
+      }}
+    />
+  );
+}

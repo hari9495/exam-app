@@ -66,3 +66,6 @@ export { staffingSettingsPage, staffingSettingsChanges, type StaffingSettingsDat
 // HIR-23: the designed bias audit record, live with its `live` prop.
 export { BiasAuditScreen, type BiasAuditInput, type LiveBiasAudit } from '../hiring-offers';
 export type { AuditCategory } from '../hiring-logic';
+// Staffing desk slice 2 (HIR-16 submissions, HIR-17 placements and bench, HIR-21 vendors).
+export { BenchBoardScreen, PlacementRecordScreen, PlacementsScreen, SubmissionsBoardScreen, VendorsScreen, type BenchRowView, type LiveBench, type LivePlacementRecord, type LivePlacements, type LiveSubmissions, type LiveVendors, type PlacementEndInput, type PlacementExtendInput, type PlacementRowView, type SubmissionRowView, type SubmissionStage, type VendorRowView, type VendorSubmissionView } from '../hiring-staffing';
+export { BenchSheet, ClientJobSheet, PlacementSheet, ShareJobSheet, SubmitToClientSheet, VendorSheet, type BenchInput, type ClientJobInput, type PlaceableRow, type VendorLinks, type PlacementInput, type ShareInput, type ShareOptions, type SubmitInput, type SubmitOptions, type SubmitPerson, type VendorInput } from '../staffing-sheets';

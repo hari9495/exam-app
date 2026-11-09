@@ -65,7 +65,7 @@ export class StaffingSettingChangeDto {
 export class SaveStaffingSettingsDto {
   @IsArray()
   @ArrayMinSize(1)
-  @ArrayMaxSize(10)
+  @ArrayMaxSize(20)
   @ValidateNested({ each: true })
   @Type(() => StaffingSettingChangeDto)
   changes!: StaffingSettingChangeDto[];
@@ -80,4 +80,90 @@ export class InvoiceSeriesDto {
   @trim() @Matches(/^[A-Za-z0-9/-]{1,13}$/) prefix!: string;
   @IsInt() @Min(1) @Max(99_999_999) nextNumber!: number;
   @IsOptional() @IsInt() @Min(1) version?: number;
+}
+
+/* ---------------- Slice 2 ---------------- */
+
+export class ClientJobDto {
+  @IsUUID() lineId!: string;
+  @IsOptional() @trim() @IsString() @MaxLength(200) title?: string;
+  @IsOptional() @IsInt() @Min(1) @Max(500) headcount?: number;
+}
+
+export class SubmitPersonDto {
+  @IsIn(['employee', 'candidate']) kind!: 'employee' | 'candidate';
+  @IsUUID() id!: string;
+}
+
+export class SubmitToClientDto {
+  @IsUUID() jobId!: string;
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => SubmitPersonDto)
+  people!: SubmitPersonDto[];
+  @IsUUID() contactId!: string;
+  @IsString() @Matches(MONEY) billRate!: string;
+  @IsBoolean() masked!: boolean;
+}
+
+export class MoveSubmissionDto {
+  @IsIn(['submitted', 'client_review', 'interview', 'selected', 'rejected']) stage!: 'submitted' | 'client_review' | 'interview' | 'selected' | 'rejected';
+  @IsOptional() @trim() @IsString() @MaxLength(500) reason?: string;
+  @IsOptional() @trim() @IsString() @MaxLength(500) feedback?: string;
+}
+
+export class PlacementCreateDto {
+  @IsUUID() submissionId!: string;
+  @Matches(DAY) startOn!: string;
+  @Matches(DAY) endOn!: string;
+}
+
+export class PlacementExtendDto {
+  @Matches(DAY) endOn!: string;
+  @trim() @IsString() @MinLength(3) @MaxLength(500) reason!: string;
+  @IsInt() @Min(1) version!: number;
+}
+
+export class PlacementEndDto {
+  @Matches(DAY) endOn!: string;
+  @IsIn(['client', 'performance', 'resigned']) reason!: 'client' | 'performance' | 'resigned';
+  @IsOptional() @trim() @IsString() @MaxLength(500) note?: string;
+  @IsInt() @Min(1) version!: number;
+}
+
+export class BenchAddDto {
+  @IsUUID() employeeId!: string;
+  @Matches(DAY) sinceOn!: string;
+  @IsOptional() @trim() @IsString() @MaxLength(300) note?: string;
+}
+
+export class VendorDto {
+  @trim() @IsString() @MinLength(1) @MaxLength(200) name!: string;
+  @IsOptional() @trim() @IsEmail() @MaxLength(254) contactEmail?: string | null;
+  @IsOptional() @trim() @Matches(/^[A-Z]{5}[0-9]{4}[A-Z]$/) pan?: string | null;
+  @IsOptional() @trim() @IsString() @MaxLength(15) gstin?: string | null;
+  @IsOptional() @IsIn(['194C', '194J']) tdsSection?: '194C' | '194J' | null;
+  @IsOptional() @IsIn(['preferred', 'standard', 'probation']) tier?: 'preferred' | 'standard' | 'probation' | null;
+  @IsOptional() @Matches(DAY) agreementSignedOn?: string | null;
+  @IsOptional() @IsBoolean() bankVerified?: boolean;
+  @IsOptional() @IsBoolean() active?: boolean;
+}
+
+export class ShareJobDto {
+  @IsUUID() jobId!: string;
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(50) @IsUUID('all', { each: true }) agencyIds!: string[];
+  @IsOptional() @IsString() @Matches(MONEY) rateCap?: string | null;
+  @IsInt() @Min(1) @Max(100) maxSubmissions!: number;
+  @Matches(DAY) expiresOn!: string;
+  @IsBoolean() maskClient!: boolean;
+}
+
+export class CapExceptionDto {
+  @trim() @IsString() @MinLength(3) @MaxLength(500) reason!: string;
+}
+
+export class ForwardDto {
+  @IsUUID() contactId!: string;
 }

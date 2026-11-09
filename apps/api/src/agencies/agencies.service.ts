@@ -205,6 +205,9 @@ export class AgenciesService {
     if (toRemove.length > 0) {
       await tx.agencyJob.deleteMany({ where: { agencyId, jobId: { in: toRemove } } });
     }
+    // Staffing slice 2: a client job is shared only with its rate cap and terms (Hiring › Vendors, Share a job).
+    if (toAdd.length > 0 && (await tx.job.count({ where: { id: { in: toAdd }, organizationId, staffingLineId: { not: null } } })))
+      throw new BadRequestException('Share a client job from Hiring › Vendors, with its rate cap.');
     if (toAdd.length > 0) {
       await tx.agencyJob.createMany({ data: toAdd.map((jobId) => ({ agencyId, jobId, organizationId })) });
     }

@@ -13,9 +13,24 @@ import { dayBefore, financialYear, marginPct, rateChangeProblem, toPaise, toRupe
 import type { ClientContactDto, ClientDto, InvoiceSeriesDto, RateChangeDto, RateLineDto } from './staffing-dto';
 
 /** Settings 6.2 Staffing desk: the company settings the page shows (slice 1). */
-export const STAFFING_SETTING_KEYS = ['staffing.desk.enabled', 'staffing.ot_multiplier', 'staffing.holiday_multiplier', 'staffing.payment_terms_days', 'staffing.rate_change.backdate_days'] as const;
-const KEYS = ['ats.staffing.manage', 'ats.staffing.view', 'org.settings.manage'] as const;
-type Access = { manage: boolean; view: boolean; settings: boolean; actingForOther: boolean };
+export const STAFFING_SETTING_KEYS = [
+  'staffing.desk.enabled',
+  'staffing.ot_multiplier',
+  'staffing.holiday_multiplier',
+  'staffing.payment_terms_days',
+  'staffing.rate_change.backdate_days',
+  // Slice 2.
+  'staffing.vendor.target_margin_pct',
+  'staffing.vendor.ownership_days',
+  'staffing.submission.mask_contact',
+  'staffing.placement.ending_soon_days',
+  'staffing.statutory_cost_pct',
+  'staffing.bench.pay_pct',
+  'staffing.bench.max_days',
+  'staffing.bench.after',
+] as const;
+const KEYS = ['ats.staffing.manage', 'ats.staffing.view', 'org.settings.manage', 'ats.agency.manage'] as const;
+type Access = { manage: boolean; view: boolean; settings: boolean; vendorRates: boolean; actingForOther: boolean };
 
 /**
  * Staffing desk slice 1 (HIR-14 clients, HIR-15 rate cards, Settings 6.2). A company turns the desk on (setting
@@ -35,7 +50,9 @@ export class StaffingService {
   async access(user: ScopeUser): Promise<Access> {
     const v = await buildViewer(this.prisma, this.tenantPrisma, user, [...KEYS]);
     const manage = tenantWide(v, 'ats.staffing.manage');
-    return { manage, view: manage || tenantWide(v, 'ats.staffing.view'), settings: manage || tenantWide(v, 'org.settings.manage'), actingForOther: v.actingForOther };
+    const settings = manage || tenantWide(v, 'org.settings.manage');
+    // Vendor quotes and caps are costs: account managers and vendor managers see them, recruiters never do.
+    return { manage, view: manage || tenantWide(v, 'ats.staffing.view'), settings, vendorRates: settings || tenantWide(v, 'ats.agency.manage'), actingForOther: v.actingForOther };
   }
 
   /** Whether the company turned the desk on (the menu asks; anyone signed in may know). */
@@ -43,18 +60,18 @@ export class StaffingService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => ({ enabled: (await settingFor(tx, c, 'staffing.desk.enabled', { legalEntityId: '' })) === 'on' }));
   }
 
-  private async gate(user: ScopeUser, need: 'view' | 'manage') {
+  async gate(user: ScopeUser, need: 'view' | 'manage') {
     const a = await this.access(user);
     if (need === 'manage' && a.actingForOther) throw new ForbiddenException('Not available while acting for someone else. Sign in as yourself.');
     if (!(need === 'manage' ? a.manage : a.view)) throw new ForbiddenException(need === 'manage' ? 'Only account managers (the staffing desk key for the whole company) can change this.' : 'You need the staffing desk key to see clients.');
     return a;
   }
 
-  private async deskOn(tx: Tx, c: CompanyContext) {
+  async deskOn(tx: Tx, c: CompanyContext) {
     if ((await settingFor(tx, c, 'staffing.desk.enabled', { legalEntityId: '' })) !== 'on') throw new ForbiddenException('The staffing desk is off for your company. An admin turns it on in Settings › Staffing desk.');
   }
 
-  private async client(tx: Tx, c: CompanyContext, id: string) {
+  async client(tx: Tx, c: CompanyContext, id: string) {
     const row = await tx.staffingClient.findFirst({ where: { id, organizationId: c.organizationId } });
     if (!row) throw new NotFoundException('Client not found.');
     return row;

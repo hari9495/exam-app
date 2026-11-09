@@ -49,6 +49,9 @@ const nextConfig = {
       // M10 AT3: the careers site, applicant consent and job boards moved to YukthiX Hiring.
       ...['careers', 'apply-consent'].flatMap((p) => [`/settings/${p}`, `/v2/settings/${p}`].map((source) => ({ source, destination: '/yx/hiring/careers', permanent: false }))),
       ...['/settings/job-boards', '/v2/settings/job-boards'].map((source) => ({ source, destination: '/yx/hiring/job-boards', permanent: false })),
+      // HIR-21 (staffing slice 2): one vendor model; the older agencies and agency-submissions pages are Hiring › Vendors.
+      ...['/settings/agencies', '/v2/settings/agencies'].map((source) => ({ source, destination: '/yx/hiring/vendors', permanent: false })),
+      ...['/agency-submissions', '/v2/agency-submissions'].map((source) => ({ source, destination: '/yx/hiring/vendors?tab=submissions', permanent: false })),
       // M10 AT4: the candidates list moved to YukthiX Hiring (bulk upload and invite included).
       ...['/candidates', '/v2/candidates', '/candidates/bulk-upload-invite'].map((source) => ({ source, destination: '/yx/hiring/candidates', permanent: false })),
       ...routes.map((source) => ({ source, destination: `/v2${source}`, permanent: false })),

@@ -700,7 +700,9 @@ const focus = (id: string) => setTimeout(() => document.getElementById(id)?.focu
 const SUB_STAGES: Submission['stage'][] = ['Submitted', 'Client review', 'Interview', 'Selected', 'Rejected by client'];
 
 // HIR-16
-export function SubmissionsBoardScreen({ rows, persona = 'am', submitOpen = false, state = 'ready' }: { rows: Submission[]; persona?: 'am' | 'recruiter'; submitOpen?: boolean; state?: ListState }) {
+export function SubmissionsBoardScreen(props: { rows: Submission[]; persona?: 'am' | 'recruiter'; submitOpen?: boolean; state?: ListState } | { live: LiveSubmissions }) {
+  if ('live' in props) return <LiveSubmissionsView live={props.live} />;
+  const { rows, persona = 'am', submitOpen = false, state = 'ready' } = props;
   const [open, setOpen] = useState(submitOpen);
   const columns: KanbanColumn[] = SUB_STAGES.map((st) => ({
     id: st,
@@ -801,7 +803,9 @@ export function SubmissionsBoardScreen({ rows, persona = 'am', submitOpen = fals
 const PL_TONE: Record<Placement['status'], BadgeTone> = { Active: 'success', 'Ending soon': 'warning', Bench: 'info', Ended: 'neutral' };
 
 // HIR-17
-export function PlacementsScreen({ rows, state = 'ready', persona = 'am' }: { rows: Placement[]; state?: ListState; persona?: 'am' | 'finance' }) {
+export function PlacementsScreen(props: { rows: Placement[]; state?: ListState; persona?: 'am' | 'finance' } | { live: LivePlacements }) {
+  if ('live' in props) return <LivePlacementsView live={props.live} />;
+  const { rows, state = 'ready', persona = 'am' } = props;
   const active = rows.filter((r) => r.status !== 'Bench');
   const list = useListControls({
     rows: active,
@@ -858,7 +862,9 @@ export function PlacementsScreen({ rows, state = 'ready', persona = 'am' }: { ro
 }
 
 // HIR-17 (placement record: extend / end)
-export function PlacementRecordScreen({ placement: p, today, action = null }: { placement: Placement; today: Date; action?: 'extend' | 'end' | null }) {
+export function PlacementRecordScreen(props: { placement: Placement; today: Date; action?: 'extend' | 'end' | null } | { live: LivePlacementRecord }) {
+  if ('live' in props) return <LivePlacementRecordView live={props.live} />;
+  const { placement: p, today, action = null } = props;
   const [open, setOpen] = useState(action);
   const margin = placementMargin(p.billRate, p.payRate, p.statutoryPerHour);
   const daysLeft = daysBetween(today, p.end);
@@ -964,7 +970,9 @@ export function PlacementRecordScreen({ placement: p, today, action = null }: { 
 }
 
 // HIR-17 (bench board)
-export function BenchBoardScreen({ rows, today, maxBenchDays = 45, benchPayPct = 60 }: { rows: Placement[]; today: Date; maxBenchDays?: number; benchPayPct?: number }) {
+export function BenchBoardScreen(props: { rows: Placement[]; today: Date; maxBenchDays?: number; benchPayPct?: number } | { live: LiveBench }) {
+  if ('live' in props) return <LiveBenchView live={props.live} />;
+  const { rows, today, maxBenchDays = 45, benchPayPct = 60 } = props;
   const bench = rows.filter((r) => r.status === 'Bench' && r.benchSince);
   return (
     <HireFrame active="Placements & bench">
@@ -1346,7 +1354,9 @@ export interface VendorsProps {
 }
 
 // HIR-21
-export function VendorsScreen({ vendors, submissions, prior, today, defaultTab = 'register', shareOpen = false }: VendorsProps) {
+export function VendorsScreen(props: VendorsProps | { live: LiveVendors }) {
+  if ('live' in props) return <LiveVendorsView live={props.live} />;
+  const { vendors, submissions, prior, today, defaultTab = 'register', shareOpen = false } = props;
   const [share, setShare] = useState(shareOpen);
   const [margin, setMargin] = useState<number | null>(25);
   const [cap, setCap] = useState<number | null>(suggestedRateCap(1_200, 25));
@@ -1630,6 +1640,672 @@ export function PlacementFeeSettingsScreen({ client, model: m0, taper, guarantee
           </Text>
         </aside>
       </div>
+    </HireFrame>
+  );
+}
+
+/* ================================================================== Staffing slice 2 made live (HIR-16, HIR-17, HIR-21) */
+
+const isoDate = (s: string) => new Date(`${s}T00:00:00`);
+const isoOfDate = (x: Date | null) => (x ? `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}` : null);
+type DeskLoad = 'ready' | 'loading' | 'error' | 'denied' | 'off';
+
+export type SubmissionStage = 'submitted' | 'client_review' | 'interview' | 'selected' | 'rejected';
+const STAGE_TITLE: Record<SubmissionStage, Submission['stage']> = { submitted: 'Submitted', client_review: 'Client review', interview: 'Interview', selected: 'Selected', rejected: 'Rejected by client' };
+
+/** GET /staffing/submissions row. */
+export interface SubmissionRowView {
+  id: string;
+  person: string;
+  job: string;
+  jobId: string;
+  client: string;
+  contact: string;
+  billRate: string;
+  source: string;
+  kind: 'employee' | 'candidate';
+  stage: SubmissionStage;
+  daysInStage: number;
+  slaDays: number | null;
+  feedback: string | null;
+  rejectedReason: string | null;
+  emailed: boolean;
+}
+export interface LiveSubmissions {
+  state: DeskLoad;
+  onRetry: () => void;
+  rows: SubmissionRowView[];
+  onSubmit: () => void;
+  /** Account managers open a client job on a rate-card line. */
+  onNewJob?: () => void;
+  /** A move; the board refreshes from the server after it (a refused move snaps back with the reason). */
+  onMove: (id: string, stage: SubmissionStage, reason?: string) => void;
+}
+
+function LiveSubmissionsView({ live }: { live: LiveSubmissions }) {
+  const sla = live.rows.filter((r) => r.slaDays != null).map((r) => r.slaDays!);
+  const columns: KanbanColumn[] = (Object.keys(STAGE_TITLE) as SubmissionStage[]).map((st) => ({
+    id: st,
+    title: STAGE_TITLE[st],
+    slaDays: st === 'client_review' && sla.length ? Math.min(...sla) : undefined,
+    requiresReason: st === 'rejected',
+    cards: live.rows
+      .filter((r) => r.stage === st)
+      .map((r) => ({
+        id: r.id,
+        name: r.person,
+        daysInStage: r.daysInStage,
+        facts: [
+          `${r.job} · ${r.client}`,
+          (
+            <span key="f" className="yx-hire-pfacts">
+              <span>
+                Bill {formatINR(Number(r.billRate))} · {r.source}
+                {r.emailed ? '' : ' · email not sent'}
+              </span>
+              {(r.rejectedReason || r.feedback) && <span className="yx-hire-pfacts__next">Client: {r.rejectedReason ?? r.feedback}</span>}
+            </span>
+          ),
+        ] as [ReactNode, ReactNode],
+      })),
+  }));
+  const submit = live.state === 'ready' ? <Button variant="primary" icon={Send} onClick={live.onSubmit}>Submit to client</Button> : undefined;
+  return (
+    <HireFrame active="Submissions">
+      <PageHeader title="Submissions" description="People sent to client contacts by email. Move a card as the client replies; a rejection needs the client's reason." actions={submit && <>{live.onNewJob && <Button icon={Plus} onClick={live.onNewJob}>New client job</Button>}{submit}</>} />
+      {live.state !== 'ready' ? (
+        <DeskState state={live.state} what="submissions" title="Submissions" onRetry={live.onRetry} />
+      ) : live.rows.length === 0 ? (
+        <EmptyState title="No submissions yet." description="Submit people from the bench or a client job's pipeline to a client contact." action={submit} />
+      ) : (
+        <KanbanBoard aria-label="Client submissions" columns={columns} onColumnsChange={() => {}} noun="submission" onMove={(id, _from, to, reason) => live.onMove(id, to as SubmissionStage, reason)} />
+      )}
+    </HireFrame>
+  );
+}
+
+/** GET /staffing/placements row (cost, statutory and margin only for account managers). */
+export interface PlacementRowView {
+  id: string;
+  person: string;
+  role: string;
+  unit: string;
+  clientId: string;
+  client: string;
+  supply: 'own' | 'vendor';
+  vendor: string | null;
+  startOn: string;
+  endOn: string;
+  status: 'active' | 'ending_soon' | 'ended';
+  endedReason: string | null;
+  billRate: string | null;
+  costRate?: string;
+  statutory?: string;
+  margin?: string | null;
+  marginPct?: string | null;
+  version: number;
+}
+const PL_WORD: Record<PlacementRowView['status'], Placement['status']> = { active: 'Active', ending_soon: 'Ending soon', ended: 'Ended' };
+const ENDED_WORD: Record<string, string> = { client: 'Client ended the project', performance: 'Performance', resigned: 'Resigned', completed: 'Completed' };
+const supplyWord = (r: PlacementRowView) => (r.supply === 'vendor' ? `Vendor: ${r.vendor ?? ''}` : 'Own payroll');
+
+export interface LivePlacements {
+  state: DeskLoad;
+  onRetry: () => void;
+  rows: PlacementRowView[];
+  showPay: boolean;
+  canManage: boolean;
+  onNew: () => void;
+  onOpen: (id: string) => void;
+  onBench: () => void;
+}
+
+function LivePlacementsView({ live }: { live: LivePlacements }) {
+  const list = useListControls({
+    rows: live.rows,
+    fields: [
+      { key: 'status', label: 'Status', type: 'multi', options: ['Active', 'Ending soon', 'Ended'].map((v) => ({ value: v, label: v })) },
+      { key: 'supply', label: 'Supply', type: 'multi', options: ['Own payroll', 'Vendor supplied'].map((v) => ({ value: v, label: v })) },
+    ],
+    text: (r) => `${r.person} ${r.client} ${r.role}`,
+    fieldValue: (r, k) => (k === 'status' ? PL_WORD[r.status] : r.supply === 'vendor' ? 'Vendor supplied' : 'Own payroll'),
+    views: [{ id: 'all', name: 'All placements', shared: true }],
+  });
+  const cols: TableColumn<PlacementRowView>[] = [
+    { key: 'person', header: 'Person', type: 'person', value: (r) => r.person, person: (r) => ({ name: r.person, secondary: r.role }) },
+    { key: 'client', header: 'Client', value: (r) => r.client },
+    { key: 'supply', header: 'Supply', value: supplyWord },
+    { key: 'start', header: 'Start', type: 'date', value: (r) => isoDate(r.startOn) },
+    { key: 'end', header: 'End', type: 'date', value: (r) => isoDate(r.endOn) },
+    { key: 'bill', header: 'Bill rate', type: 'money', value: (r) => (r.billRate != null ? Number(r.billRate) : null) },
+    ...(live.showPay ? [{ key: 'margin', header: 'Margin per unit', type: 'money', value: (r: PlacementRowView) => (r.margin != null ? Number(r.margin) : null) } as TableColumn<PlacementRowView>] : []),
+    { key: 'status', header: 'Status', type: 'status', value: (r) => PL_WORD[r.status], statusTone: (v) => PL_TONE[v as Placement['status']] },
+  ];
+  const add = live.canManage ? <Button variant="primary" icon={Plus} onClick={live.onNew}>New placement</Button> : undefined;
+  return (
+    <HireFrame active="Placements & bench">
+      <PageHeader
+        title="Placements"
+        description={live.showPay ? 'Margin = bill − pay − statutory cost for own payroll, bill − vendor rate for vendor supplied.' : 'Who works where, from when to when. Pay rates and margins are for account managers.'}
+        actions={live.state === 'ready' ? <><Button onClick={live.onBench}>Bench</Button>{add}</> : undefined}
+      />
+      {live.state !== 'ready' ? (
+        <DeskState state={live.state} what="placements" title="Placements" onRetry={live.onRetry} />
+      ) : (
+        <DataTable
+          label="Placements"
+          columns={cols}
+          rows={list.rows}
+          getRowId={(r) => r.id}
+          toolbar={list.toolbar}
+          filtered={list.filtered}
+          onClearFilters={list.clear}
+          onRowClick={(r) => live.onOpen(r.id)}
+          rowButtons={(r) => <Button size="sm" onClick={() => live.onOpen(r.id)}>Open {r.person}</Button>}
+          empty={<EmptyState title="No placements yet." description="A submission the client selected becomes a placement." action={add} />}
+        />
+      )}
+    </HireFrame>
+  );
+}
+
+export interface PlacementExtendInput {
+  endOn: string;
+  reason: string;
+  version: number;
+}
+export interface PlacementEndInput {
+  endOn: string;
+  reason: 'client' | 'performance' | 'resigned';
+  note: string | null;
+  version: number;
+}
+export interface LivePlacementRecord {
+  state: DeskLoad;
+  onRetry: () => void;
+  placement: PlacementRowView | null;
+  showPay: boolean;
+  canManage: boolean;
+  today: Date;
+  onExtend: (input: PlacementExtendInput) => Promise<unknown>;
+  onEnd: (input: PlacementEndInput) => Promise<unknown>;
+}
+
+function LivePlacementRecordView({ live }: { live: LivePlacementRecord }) {
+  const toast = useToastIfAny();
+  const [open, setOpen] = useState<'extend' | 'end' | null>(null);
+  const [newEnd, setNewEnd] = useState<Date | null>(null);
+  const [reason, setReason] = useState('');
+  const [endOn, setEndOn] = useState<Date | null>(null);
+  const [why, setWhy] = useState<PlacementEndInput['reason'] | null>(null);
+  const [note, setNote] = useState('');
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const p = live.placement;
+  if (live.state !== 'ready' || !p) return <HireFrame active="Placements & bench"><DeskState state={live.state === 'ready' ? 'loading' : live.state} what="this placement" title="The placement" onRetry={live.onRetry} /></HireFrame>;
+  const daysLeft = daysBetween(live.today, isoDate(p.endOn));
+  const unit = `/${p.unit}`;
+  const begin = (which: 'extend' | 'end') => {
+    setOpen(which);
+    setTried(false);
+    setFailed(null);
+    setNewEnd(null);
+    setReason('');
+    setEndOn(live.today < isoDate(p.startOn) ? isoDate(p.startOn) : live.today);
+    setWhy(null);
+    setNote('');
+  };
+  const extendBad = !newEnd || isoOfDate(newEnd)! <= p.endOn;
+  const extend = async () => {
+    setTried(true);
+    if (extendBad) return focus('px-end');
+    if (reason.trim().length < 3) return focus('px-reason');
+    setBusy(true);
+    setFailed(null);
+    try {
+      await live.onExtend({ endOn: isoOfDate(newEnd)!, reason: reason.trim(), version: p.version });
+      toast?.toast({ tone: 'success', title: 'Placement extended' });
+      setOpen(null);
+    } catch (e) {
+      setFailed(e instanceof Error && e.message ? e.message : 'That did not save. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const endBad = !endOn || isoOfDate(endOn)! < p.startOn || isoOfDate(endOn)! > p.endOn;
+  const end = async () => {
+    setTried(true);
+    if (endBad) return (focus('pe-end'), false);
+    if (!why) return (focus('pe-reason'), false);
+    await live.onEnd({ endOn: isoOfDate(endOn)!, reason: why, note: note.trim() || null, version: p.version });
+    toast?.toast({ tone: 'success', title: 'Placement ended' });
+    return true;
+  };
+  const cost = p.supply === 'vendor' ? 'Vendor rate' : 'Pay rate';
+  const facts = [
+    { label: 'Dates', value: `${formatDate(isoDate(p.startOn))} – ${formatDate(isoDate(p.endOn))}` },
+    { label: 'Bill rate', value: p.billRate != null ? `${formatINR(Number(p.billRate))}${unit}` : 'No rate on the card' },
+    ...(live.showPay && p.costRate != null ? [{ label: cost, value: `${formatINR(Number(p.costRate))}${unit}` }, { label: 'Margin', value: p.margin != null ? `${formatINR(Number(p.margin))}${unit} (${p.marginPct}%)` : '—' }] : []),
+  ];
+  const manage = live.canManage && p.status !== 'ended';
+  return (
+    <HireFrame active="Placements & bench">
+      <RecordLayout
+        banner={
+          p.status === 'ending_soon' && daysLeft >= 0 ? (
+            <InlineAlert tone="warning" title={`Placement ends in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`}>
+              Extend it, or plan what comes next{p.supply === 'own' ? `: after the last day ${p.person} moves to the bench when you end it` : ''}.
+            </InlineAlert>
+          ) : undefined
+        }
+        header={
+          <ObjectHeader
+            name={`${p.person} at ${p.client}`}
+            icon={Handshake}
+            secondary={`${p.role} · ${supplyWord(p)}`}
+            status={<Badge tone={PL_TONE[PL_WORD[p.status]]}>{PL_WORD[p.status]}</Badge>}
+            facts={facts}
+            actions={
+              manage ? (
+                <>
+                  <Button onClick={() => begin('end')}>End early</Button>
+                  <Button variant="primary" onClick={() => begin('extend')}>
+                    Extend
+                  </Button>
+                </>
+              ) : undefined
+            }
+          />
+        }
+      >
+        <DescriptionList
+          columns={2}
+          items={[
+            { label: 'Supply', value: p.supply === 'vendor' ? `Vendor supplied by ${p.vendor ?? ''}, paid at the vendor's quote` : 'Own payroll' },
+            ...(live.showPay && p.statutory != null && p.supply === 'own' ? [{ label: 'Statutory cost', value: `${formatINR(Number(p.statutory))}${unit} (Settings › Staffing desk)` }] : []),
+            ...(p.endedReason ? [{ label: 'Ended because', value: ENDED_WORD[p.endedReason] ?? p.endedReason }] : []),
+            { label: 'Rates', value: 'From the client’s rate card on each day; change them there with a dated rate change.' },
+          ]}
+        />
+      </RecordLayout>
+      <Drawer
+        open={open === 'extend'}
+        onOpenChange={(o) => !o && setOpen(null)}
+        title="Extend placement"
+        subtitle={`${p.person} at ${p.client}`}
+        dirty
+        footer={
+          <>
+            <Button onClick={() => setOpen(null)}>Cancel</Button>
+            <Button variant="primary" loading={busy} onClick={() => void extend()}>
+              Save extension
+            </Button>
+          </>
+        }
+      >
+        <div className="yx-hire-stack">
+          {failed && <InlineAlert tone="danger" title={failed} />}
+          <FormField id="px-end" label="New last day" required helper={`Now ${formatDate(isoDate(p.endOn))}.`} error={tried && extendBad ? 'Choose a day after the current last day.' : null}>
+            <DatePicker value={newEnd} onChange={setNewEnd} min={isoDate(p.endOn)} />
+          </FormField>
+          <FormField id="px-reason" label="Reason" required error={tried && reason.trim().length < 3 ? 'Say why, like “Client extended the PO”.' : null}>
+            <TextArea rows={2} value={reason} onChange={setReason} maxLength={500} />
+          </FormField>
+        </div>
+      </Drawer>
+      <ConfirmDialog
+        open={open === 'end'}
+        onOpenChange={(o) => !o && setOpen(null)}
+        destructive
+        title={`End ${p.person}'s placement early?`}
+        consequence={p.supply === 'own' ? `${p.person} moves to the bench from the next day, under the bench policy. Nothing exits automatically.` : `The vendor's worker leaves the client on the last day.`}
+        confirmLabel="End placement"
+        onConfirm={end}
+      >
+        <FormField id="pe-end" label="Last day" required error={tried && endBad ? `Choose a day from ${formatDate(isoDate(p.startOn))} to ${formatDate(isoDate(p.endOn))}.` : null}>
+          <DatePicker value={endOn} onChange={setEndOn} min={isoDate(p.startOn)} max={isoDate(p.endOn)} />
+        </FormField>
+        <FormField id="pe-reason" label="Reason" required error={tried && !why ? 'Choose the reason.' : null}>
+          <Select value={why} onChange={(v) => setWhy(v as PlacementEndInput['reason'] | null)} options={[{ value: 'client', label: 'Client ended the project' }, { value: 'performance', label: 'Performance' }, { value: 'resigned', label: 'Resigned' }]} placeholder="Choose a reason" />
+        </FormField>
+        <FormField id="pe-note" label="Note" optional>
+          <TextArea rows={2} value={note} onChange={setNote} maxLength={500} />
+        </FormField>
+      </ConfirmDialog>
+    </HireFrame>
+  );
+}
+
+/** GET /staffing/bench. */
+export interface BenchRowView {
+  id: string;
+  employeeId: string;
+  person: string;
+  sinceOn: string;
+  days: number;
+  left: number;
+  overPolicy: boolean;
+  lastClient: string | null;
+  note: string | null;
+}
+export interface LiveBench {
+  state: DeskLoad;
+  onRetry: () => void;
+  rows: BenchRowView[];
+  policy: { maxDays: number; payPct: number; after: 'review' | 'unpaid' };
+  canManage: boolean;
+  onAdd: () => void;
+  onRemove: (id: string) => Promise<unknown>;
+  onSubmit: () => void;
+  onPlacements: () => void;
+}
+
+function LiveBenchView({ live }: { live: LiveBench }) {
+  const toast = useToastIfAny();
+  const [removing, setRemoving] = useState<BenchRowView | null>(null);
+  const after = live.policy.after === 'unpaid' ? 'then unpaid bench' : 'then redeploy or an exit review';
+  const add = live.canManage ? <Button onClick={live.onAdd}>Add to bench</Button> : undefined;
+  return (
+    <HireFrame active="Placements & bench">
+      <PageHeader
+        title="Bench"
+        description={`Employees between placements. Bench policy (Settings › Staffing desk): ${live.policy.payPct}% pay, up to ${live.policy.maxDays} days, ${after}. Nothing exits automatically.`}
+        actions={
+          live.state === 'ready' ? (
+            <>
+              <Button onClick={live.onPlacements}>Placements</Button>
+              {add}
+              <Button variant="primary" icon={Send} onClick={live.onSubmit}>
+                Submit from bench
+              </Button>
+            </>
+          ) : undefined
+        }
+      />
+      {live.state !== 'ready' ? (
+        <DeskState state={live.state} what="the bench" title="The bench" onRetry={live.onRetry} />
+      ) : live.rows.length === 0 ? (
+        <EmptyState title="No one is on the bench." description="People whose placement ends appear here until they're placed again." action={add} />
+      ) : (
+        <div className="yx-hire-board">
+          {live.rows.map((b) => (
+            <article key={b.id} className="yx-hire-board__card">
+              <PersonLabel name={b.person} secondary={`Since ${formatDate(isoDate(b.sinceOn))}${b.lastClient ? ` · last at ${b.lastClient}` : ''}`} />
+              <Meter value={Math.min(b.days, live.policy.maxDays)} max={live.policy.maxDays} label={`${b.person} bench days`} warnAt={75} valueText={`${b.days} of ${live.policy.maxDays} days`} />
+              {b.overPolicy ? <Badge tone="warning">{live.policy.after === 'unpaid' ? 'Over the limit: unpaid bench' : 'Redeploy or start an exit review'}</Badge> : <Text size="sm" tone="secondary">{b.left} days left under the policy</Text>}
+              {b.note && <Text size="sm" tone="secondary">{b.note}</Text>}
+              <div className="yx-hire-actions">
+                <Button size="sm" onClick={live.onSubmit}>Submit to a job</Button>
+                {live.canManage && <Button size="sm" onClick={() => setRemoving(b)}>Take off the bench</Button>}
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+      <ConfirmDialog
+        open={Boolean(removing)}
+        onOpenChange={(o) => !o && setRemoving(null)}
+        title={`Take ${removing?.person ?? ''} off the bench?`}
+        consequence="Their bench days stop today. Placing them takes them off the bench on its own; use this when they leave the desk for another reason."
+        confirmLabel="Take off the bench"
+        onConfirm={async () => {
+          await live.onRemove(removing!.id);
+          toast?.toast({ tone: 'success', title: 'Taken off the bench' });
+        }}
+      />
+    </HireFrame>
+  );
+}
+
+/** GET /staffing/vendors row (the existing agencies with their documents). */
+export interface VendorRowView {
+  id: string;
+  name: string;
+  contactEmail: string | null;
+  pan: string | null;
+  gstin: string | null;
+  tdsSection: '194C' | '194J' | null;
+  tier: 'preferred' | 'standard' | 'probation' | null;
+  agreementSignedOn: string | null;
+  bankVerified: boolean;
+  active: boolean;
+  status: 'inactive' | 'pending' | 'active';
+  missing: string[];
+  sharedJobs: number;
+  submissions: number;
+  duplicateRate: number;
+  placements: number;
+  portalToken: string;
+  jobs: { id: string; title: string; expiresOn: string | null }[];
+}
+/** GET /staffing/vendor-submissions row: quote, cap and over-by only for account and vendor managers. */
+export interface VendorSubmissionView {
+  id: string;
+  vendor: string;
+  candidate: string;
+  job: string;
+  jobId: string;
+  clientJob: boolean;
+  at: string;
+  quoted: string | null;
+  cap: string | null;
+  overBy: string | null;
+  overCap: boolean;
+  exception: { reason: string; at: string } | null;
+  duplicate: { holder: string; until: string | null } | null;
+  rightToRepresent: boolean;
+  consent: boolean;
+  status: 'pending' | 'accepted' | 'rejected';
+}
+export interface LiveVendors {
+  state: 'ready' | 'loading' | 'error' | 'denied';
+  onRetry: () => void;
+  vendors: VendorRowView[];
+  /** Null while loading or when the viewer only manages vendors without reviewing. */
+  submissions: VendorSubmissionView[] | null;
+  canManage: boolean;
+  /** Forwarding to a client is the account manager's, with the desk on. */
+  canForward: boolean;
+  defaultTab?: 'register' | 'submissions' | 'scorecards';
+  onAdd: () => void;
+  onEdit: (id: string) => void;
+  onShare: () => void;
+  onException: (id: string, reason: string) => Promise<unknown>;
+  loadContacts: (jobId: string) => Promise<{ value: string; label: string }[]>;
+  onForward: (id: string, contactId: string) => Promise<unknown>;
+  /** Recruiters (pipeline key) accept or reject a submission for an ordinary job into its pipeline. */
+  canReview: boolean;
+  onAccept: (id: string) => Promise<unknown>;
+  onReject: (id: string) => Promise<unknown>;
+  /** False when the viewer reviews submissions but does not manage vendors: no register or scorecards. */
+  showRegister?: boolean;
+}
+const TIER: Record<string, string> = { preferred: 'Preferred', standard: 'Standard', probation: 'Probation' };
+const V_STATUS: Record<VendorRowView['status'], string> = { active: 'Active', pending: 'Pending documents', inactive: 'Inactive' };
+
+function LiveVendorsView({ live }: { live: LiveVendors }) {
+  const toast = useToastIfAny();
+  const [exc, setExc] = useState<VendorSubmissionView | null>(null);
+  const [fwd, setFwd] = useState<VendorSubmissionView | null>(null);
+  const [reason, setReason] = useState('');
+  const [contacts, setContacts] = useState<{ value: string; label: string }[] | null>(null);
+  const [contact, setContact] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
+  const vcols: TableColumn<VendorRowView>[] = [
+    { key: 'name', header: 'Vendor', value: (r) => r.name, render: (r) => <PersonLabel name={r.name} secondary={[r.pan ? `PAN ${r.pan}` : null, r.gstin ? `GSTIN ${r.gstin}` : null].filter(Boolean).join(' · ') || 'No tax details yet'} /> },
+    { key: 'tier', header: 'Tier', value: (r) => (r.tier ? TIER[r.tier] : '—') },
+    { key: 'tds', header: 'TDS section', value: (r) => r.tdsSection ?? '—' },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => V_STATUS[r.status], statusTone: (v) => (v === 'Active' ? 'success' : v === 'Pending documents' ? 'warning' : 'neutral') },
+    { key: 'missing', header: 'Missing', value: (r) => (r.missing.length ? r.missing.join(', ') : '—') },
+    { key: 'shares', header: 'Shared jobs', type: 'number', value: (r) => r.sharedJobs },
+    { key: 'subs', header: 'Submissions', type: 'number', value: (r) => r.submissions, total: 'sum' },
+  ];
+  const subs = live.submissions ?? [];
+  const register = live.showRegister !== false;
+  const review = async (fn: () => Promise<unknown>, title: string) => {
+    try {
+      await fn();
+      toast?.toast({ tone: 'success', title });
+    } catch (e) {
+      toast?.toast({ tone: 'error', title: e instanceof Error && e.message ? e.message : 'That did not save. Try again.' });
+    }
+  };
+  const openFwd = (s: VendorSubmissionView) => {
+    setFwd(s);
+    setContact(null);
+    setContacts(null);
+    setTried(false);
+    void live.loadContacts(s.jobId).then((c) => {
+      setContacts(c);
+      if (c.length === 1) setContact(c[0]!.value);
+    });
+  };
+  const actions =
+    live.state === 'ready' && live.canManage ? (
+      <>
+        <Button icon={Plus} onClick={live.onAdd}>Add vendor</Button>
+        <Button variant="primary" icon={Share2} onClick={live.onShare}>
+          Share a job
+        </Button>
+      </>
+    ) : undefined;
+  return (
+    <HireFrame active="Vendors">
+      <PageHeader title="Vendors" description="Agencies that supply candidates. A vendor gets client jobs only with a signed agreement, PAN, verified bank account and TDS section. Vendors never see other vendors, bill rates or margins." actions={actions} />
+      {live.state !== 'ready' ? (
+        live.state === 'denied' ? <NoAccessState grantedBy="your admin (vendor manager)" what="vendors" /> : <DeskState state={live.state} what="vendors" title="Vendors" onRetry={live.onRetry} />
+      ) : (
+        <Tabs defaultValue={register ? (live.defaultTab ?? 'register') : 'submissions'}>
+          <TabsList aria-label="Vendor sections">
+            {register && (
+              <TabsTrigger value="register" count={live.vendors.length}>
+                Register
+              </TabsTrigger>
+            )}
+            <TabsTrigger value="submissions" count={subs.filter((s) => s.status === 'pending').length}>
+              Vendor submissions
+            </TabsTrigger>
+            {register && <TabsTrigger value="scorecards">Scorecards</TabsTrigger>}
+          </TabsList>
+          <TabsContent value="register">
+            <DataTable
+              label="Vendor register"
+              columns={vcols}
+              rows={live.vendors}
+              getRowId={(r) => r.id}
+              onRowClick={live.canManage ? (r) => live.onEdit(r.id) : undefined}
+              rowButtons={live.canManage ? (r) => <Button size="sm" onClick={() => live.onEdit(r.id)}>Change {r.name}</Button> : undefined}
+              empty={<EmptyState title="No vendors yet." description="Add a vendor, then share jobs with a rate cap." action={live.canManage ? <Button icon={Plus} onClick={live.onAdd}>Add vendor</Button> : undefined} />}
+            />
+          </TabsContent>
+          <TabsContent value="submissions">
+            {subs.length === 0 ? (
+              <EmptyState title="No vendor submissions yet." description="Vendors submit through their portal link once you share a job with them." />
+            ) : (
+              <ul className="yx-hire-list" aria-label="Vendor submissions">
+                {subs.map((s) => {
+                  const consentOk = s.rightToRepresent && s.consent;
+                  const ready = s.status === 'pending' && !s.duplicate && consentOk && !s.overCap;
+                  return (
+                    <li key={s.id} className="yx-hire-list__item">
+                      <div className="yx-hire-list__main">
+                        <PersonLabel name={s.candidate} secondary={`${s.job} · from ${s.vendor} · ${formatDate(new Date(s.at))}`} />
+                        <div className="yx-hire-chips">
+                          {s.status !== 'pending' ? <Badge tone="neutral">{s.status === 'accepted' ? 'Accepted' : 'Rejected'}</Badge> : null}
+                          <Badge tone={s.duplicate ? 'warning' : 'success'}>{s.duplicate ? `Duplicate: held by ${s.duplicate.holder}${s.duplicate.until ? ` until ${d(s.duplicate.until)}` : ''}` : 'Unique'}</Badge>
+                          {s.clientJob && (
+                            <Badge tone={s.overCap ? 'danger' : 'neutral'}>
+                              {s.quoted != null
+                                ? `Quote ${formatINR(Number(s.quoted))} ${s.overBy ? `over cap ${formatINR(Number(s.cap))} by ${formatINR(Number(s.overBy))}` : `within cap ${formatINR(Number(s.cap))}`}`
+                                : s.overCap
+                                  ? 'Quote over the rate cap'
+                                  : 'Quote within the rate cap'}
+                              {s.exception ? ' · exception approved' : ''}
+                            </Badge>
+                          )}
+                          <Badge tone={consentOk ? 'success' : 'warning'}>{consentOk ? 'Right to represent + consent' : 'Consent missing'}</Badge>
+                        </div>
+                        {s.duplicate && <Text size="sm" tone="secondary">The vendor sees “duplicate” and not who holds the candidate.</Text>}
+                      </div>
+                      <div className="yx-hire-list__actions">
+                        {s.status === 'pending' && s.clientJob && s.overCap && live.canManage && (
+                          <Button size="sm" onClick={() => (setExc(s), setReason(''), setTried(false))}>
+                            Approve exception with reason
+                          </Button>
+                        )}
+                        {ready && s.clientJob && live.canForward && (
+                          <Button size="sm" onClick={() => openFwd(s)}>
+                            Forward to client
+                          </Button>
+                        )}
+                        {s.status === 'pending' && !s.clientJob && live.canReview && (
+                          <>
+                            <Button size="sm" onClick={() => void review(() => live.onReject(s.id), 'Submission rejected')}>
+                              Reject
+                            </Button>
+                            <Button size="sm" onClick={() => void review(() => live.onAccept(s.id), 'Added to the job’s pipeline')}>
+                              Accept into pipeline
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </TabsContent>
+          <TabsContent value="scorecards">
+            <DataTable
+              label="Vendor scorecards"
+              columns={[
+                { key: 'name', header: 'Vendor', value: (r: VendorRowView) => r.name },
+                { key: 'subs', header: 'Submissions', type: 'number', value: (r: VendorRowView) => r.submissions },
+                { key: 'dup', header: 'Duplicate rate', type: 'number', value: (r: VendorRowView) => r.duplicateRate, render: (r: VendorRowView) => `${r.duplicateRate}%` },
+                { key: 'placements', header: 'Placements', type: 'number', value: (r: VendorRowView) => r.placements },
+                { key: 'tier', header: 'Tier (set by you)', value: (r: VendorRowView) => (r.tier ? TIER[r.tier] : '—') },
+              ]}
+              rows={live.vendors}
+              getRowId={(r) => r.id}
+            />
+          </TabsContent>
+        </Tabs>
+      )}
+      <ConfirmDialog
+        open={Boolean(exc)}
+        onOpenChange={(o) => !o && setExc(null)}
+        title={`Approve ${exc?.candidate ?? ''} over the rate cap?`}
+        consequence="The quote stays above the cap; your reason is kept with the submission and in the audit log."
+        confirmLabel="Approve exception"
+        onConfirm={async () => {
+          setTried(true);
+          if (reason.trim().length < 3) return (focus('vx-reason'), false);
+          await live.onException(exc!.id, reason.trim());
+          toast?.toast({ tone: 'success', title: 'Exception approved' });
+        }}
+      >
+        <FormField id="vx-reason" label="Reason" required error={tried && reason.trim().length < 3 ? 'Say why, like “Rare skill; client agreed”.' : null}>
+          <TextArea rows={2} value={reason} onChange={setReason} maxLength={500} />
+        </FormField>
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={Boolean(fwd)}
+        onOpenChange={(o) => !o && setFwd(null)}
+        title={`Forward ${fwd?.candidate ?? ''} to the client?`}
+        consequence="The candidate joins this job's pipeline and a client submission is made from this vendor. The vendor's quote is never shown to the client."
+        confirmLabel="Forward to client"
+        onConfirm={async () => {
+          setTried(true);
+          if (!contact) return (focus('vf-contact'), false);
+          await live.onForward(fwd!.id, contact);
+          toast?.toast({ tone: 'success', title: 'Forwarded to the client' });
+        }}
+      >
+        <FormField id="vf-contact" label="Client contact" required error={tried && !contact ? (contacts && !contacts.length ? 'Add a contact to this client first.' : 'Choose the client contact.') : null}>
+          <Select value={contact} onChange={setContact} options={contacts ?? []} placeholder={contacts ? 'Choose a contact' : 'Loading contacts…'} />
+        </FormField>
+      </ConfirmDialog>
     </HireFrame>
   );
 }

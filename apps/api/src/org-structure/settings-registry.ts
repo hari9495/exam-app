@@ -251,6 +251,18 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'staffing.holiday_multiplier': { label: 'Staffing desk: holiday bill multiplier for new rate-card lines', scopes: ['tenant'], dated: false, values: ['1', '1.25', '1.5', '1.75', '2', '2.5', '3'], default: '2' },
   'staffing.payment_terms_days': { label: 'Staffing desk: default payment terms (days)', scopes: ['tenant'], dated: false, values: ['0', '7', '15', '30', '45', '60', '90', '120'], default: '30' },
   'staffing.rate_change.backdate_days': { label: 'Staffing desk: a rate change may start up to (days back)', scopes: ['tenant'], dated: false, values: ['0', '7', '30', '90'], default: '0' },
+  // Staffing slice 2 (Settings 6.2). Vendors: the margin the suggested rate cap keeps, and how long the first submitter
+  // holds a candidate for a job (later ones are duplicates). Submissions: hide the candidate's phone and email from the
+  // client until shortlisted. Placements: when one counts as ending soon; the statutory cost (employer PF, ESI…) taken
+  // from own-payroll margin as a share of pay. Bench: pay while between placements, how long, and what follows.
+  'staffing.vendor.target_margin_pct': { label: 'Staffing desk: target margin for a vendor rate cap (%)', scopes: ['tenant'], dated: false, values: ['10', '15', '20', '25', '30', '35', '40'], default: '25' },
+  'staffing.vendor.ownership_days': { label: 'Staffing desk: a vendor holds a submitted candidate for (days)', scopes: ['tenant'], dated: false, values: ['30', '60', '90', '180'], default: '90' },
+  'staffing.submission.mask_contact': { label: 'Staffing desk: hide candidate phone and email from clients until shortlisted', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'on' },
+  'staffing.placement.ending_soon_days': { label: 'Staffing desk: a placement is ending soon within (days)', scopes: ['tenant'], dated: false, values: ['15', '30', '45', '60'], default: '30' },
+  'staffing.statutory_cost_pct': { label: 'Staffing desk: statutory cost on own-payroll pay (%)', scopes: ['tenant'], dated: false, values: ['0', '5', '10', '13', '15', '20'], default: '0' },
+  'staffing.bench.pay_pct': { label: 'Staffing desk: bench pay (% of fixed pay)', scopes: ['tenant'], dated: false, values: ['0', '25', '50', '60', '75', '100'], default: '50' },
+  'staffing.bench.max_days': { label: 'Staffing desk: maximum bench days', scopes: ['tenant'], dated: false, values: ['15', '30', '45', '60', '90'], default: '30' },
+  'staffing.bench.after': { label: 'Staffing desk: after the maximum bench days', scopes: ['tenant'], dated: false, values: ['review', 'unpaid'], default: 'review' },
   'hiring.scorecard.overdue_hours': { label: 'Hiring: a scorecard is overdue this many hours after the interview', scopes: ['tenant'], dated: false, values: ['12', '24', '48', '72'], default: '24' },
   // HIR-02 founder answer 291 (Settings 6.1): a hiring manager's request starts with this recruiter, or with none until
   // recruiting assigns one; never the manager themselves. The value is a person of the company (or none).
