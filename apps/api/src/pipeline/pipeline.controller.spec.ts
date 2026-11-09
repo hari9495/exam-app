@@ -144,9 +144,9 @@ describe('PipelineController', () => {
     expect(service.addFeedback).toHaveBeenCalledWith(tenant, 'user-1', 'entry-1', dto);
   });
 
-  it('listFeedback delegates to the service with the entry id', async () => {
-    await controller.listFeedback(tenant, 'entry-1');
-    expect(service.listFeedback).toHaveBeenCalledWith(tenant, 'entry-1');
+  it('listFeedback delegates to the service with the entry id and the viewer (HIR-13 hides internal applications from the manager)', async () => {
+    await controller.listFeedback(tenant, 'user-1', 'entry-1');
+    expect(service.listFeedback).toHaveBeenCalledWith(tenant, 'entry-1', 'user-1');
   });
 
   // Routes must be mounted behind JwtAuthGuard, not simply absent -- an unauthenticated

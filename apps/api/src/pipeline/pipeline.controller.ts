@@ -192,8 +192,8 @@ export class PipelineController {
 
   @Get('entries/:id/feedback')
   @RequirePermissions('results:view')
-  listFeedback(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
-    return this.pipelineService.listFeedback(tenant, id);
+  listFeedback(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.pipelineService.listFeedback(tenant, id, userId);
   }
 
   @Patch('entries/:id/assignment')

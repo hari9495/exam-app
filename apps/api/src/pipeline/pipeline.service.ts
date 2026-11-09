@@ -1,3 +1,4 @@
+import { hiddenFromManager } from '../internal-applications/internal-applications.service';
 import { randomUUID } from 'crypto';
 import { rehireBlock } from '../lifecycle/rehire-policy';
 import type { Tx } from '../org-structure/org-structure.service';
@@ -1618,10 +1619,12 @@ export class PipelineService {
     return { success: true };
   }
 
-  async listFeedback(context: TenantContext, entryId: string): Promise<FeedbackRow[]> {
+  async listFeedback(context: TenantContext, entryId: string, viewerUserId?: string): Promise<FeedbackRow[]> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const entry = await tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: context.organizationId as string } });
       if (!entry) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
+      // HIR-13: an internal applicant's current manager never reads the application's notes (as if it did not exist).
+      if (viewerUserId && (await hiddenFromManager(tx, entry.organizationId, viewerUserId, [entryId])).size) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
 
       const feedback = await tx.pipelineFeedback.findMany({ where: { entryId }, orderBy: { createdAt: 'desc' } });
       const authorIds = [...new Set(feedback.map((f: PipelineFeedback) => f.authorUserId))];

@@ -4,7 +4,7 @@ jest.mock('../people/probation', () => ({ settingFor: jest.fn(async (_tx: unknow
 
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { InternalApplicationsService, internalStatus } from './internal-applications.service';
+import { InternalApplicationsService, hiddenFromManager, internalStatus } from './internal-applications.service';
 import { addMonths, internalEligibility, roleSince } from './internal-eligibility';
 
 const ctx = { organizationId: 'org-1', isSuperAdmin: false } as any;
@@ -190,5 +190,17 @@ describe('InternalApplicationsService.myApplications', () => {
     const rows = await makeService(tx as any).svc.myApplications(ctx, 'user-1');
     expect(tx.pipelineEntry.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { referrerUserId: 'user-1', enteredVia: 'internal' } }));
     expect(rows).toEqual([{ entryId: 'e1', jobTitle: 'Senior Engineer', status: 'Interview', appliedAt: day('2026-09-15') }]);
+  });
+});
+
+describe('hiddenFromManager (the current manager never sees the application)', () => {
+  it('hides the entries whose recorded manager is the viewer, unless they are the job’s hiring manager', async () => {
+    const tx = {
+      internalApplication: { findMany: jest.fn().mockResolvedValue([{ entryId: 'e1', jobId: 'j1' }, { entryId: 'e2', jobId: 'j2' }]) },
+      job: { findMany: jest.fn().mockResolvedValue([{ id: 'j2' }]) },
+    };
+    expect([...(await hiddenFromManager(tx as any, 'org-1', 'mgr-1', ['e1', 'e2', 'e3']))]).toEqual(['e1']);
+    expect(tx.internalApplication.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { organizationId: 'org-1', managerUserId: 'mgr-1', entryId: { in: ['e1', 'e2', 'e3'] } } }));
+    expect((await hiddenFromManager(tx as any, 'org-1', 'mgr-1', [])).size).toBe(0);
   });
 });

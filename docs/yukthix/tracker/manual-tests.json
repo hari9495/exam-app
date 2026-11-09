@@ -17338,5 +17338,134 @@
       "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring · default recruiter no longer qualifies"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-13-01",
+    "area": "Hiring · HIR-13 Internal jobs (13 Nov 2026)",
+    "screen": "Internal jobs · Browse and my applications",
+    "url": "http://localhost:3000/yx/hiring/internal-jobs",
+    "account": "panel@demo-org.test (Divya, an employee and a manager). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open Hiring › Internal jobs.",
+      "Compare with the story \"Browse and my applications\": header with the company name, the openings as cards (department · location · type, Posted date), My applications card.",
+      "Check the page fits without a scroll bar when there are 3 openings or fewer.",
+      "Hover and tab to an Apply button."
+    ],
+    "expected": "Step 1: the link is in the menu for an employee. Step 2: same layout; only open jobs with \"Show on internal jobs\" on; dates like \"3 Nov 2026\". Step 3: no page scroll. Step 4: border, hover, pointer and focus ring.",
+    "stories": [
+      "Screens/Hiring/HIR-13 · Internal jobs · Browse and my applications",
+      "Screens/Hiring/HIR-13 · Internal jobs · Empty · no openings"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HIR-13-02",
+    "area": "Hiring · HIR-13 Internal jobs (13 Nov 2026)",
+    "screen": "Internal jobs · Apply sheet",
+    "url": "http://localhost:3000/yx/hiring/internal-jobs",
+    "account": "panel@demo-org.test (Divya; confirmed, more than 12 months in the role). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Press Apply on an opening.",
+      "Press Send application with the note empty.",
+      "Type a short note: \"I want to lead QA automation.\" and press Send application.",
+      "Check My applications.",
+      "Press Apply on the same job again and send."
+    ],
+    "expected": "Step 1: the sheet shows \"Your manager, … is told when you apply\". Step 2: the button is not greyed out; \"Say why you are interested in this job.\" shows under the field and the cursor goes there. Step 3: a toast \"Applied for …\", the sheet closes. Step 4: the job with \"Applied\" and today's date. Step 5: \"You have already applied for this job.\" stays in the sheet.",
+    "stories": [
+      "Screens/Hiring/HIR-13 · Internal jobs · Apply sheet"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-13-03",
+    "area": "Hiring · HIR-13 Internal jobs (13 Nov 2026)",
+    "screen": "Internal jobs · Blocked · not yet eligible",
+    "url": "http://localhost:3000/yx/hiring/internal-jobs",
+    "account": "arjun@demo-org.test (demo exit, last day 22 Nov 2026), then hr-tester@demo-org.test for Settings. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "As Arjun open Hiring › Internal jobs and press Apply.",
+      "Type a note and press Send application.",
+      "As HR, in Settings › Hiring › Internal jobs set \"Time in their current role\" to 24 months and save; as someone who joined less than 24 months ago open the apply sheet.",
+      "Set it back to 12 months."
+    ],
+    "expected": "Step 1: a warning \"You can't apply while serving notice\". Step 2: nothing is sent; the reason shows again. Step 3: \"You can apply after 24 months in your current role\" with the day it opens (company rule). Step 4: saved with a toast.",
+    "stories": [
+      "Screens/Hiring/HIR-13 · Internal jobs · Blocked · not yet eligible"
+    ],
+    "note": "Negative (rules from People and the company settings)."
+  },
+  {
+    "id": "MT-HIR-13-04",
+    "area": "Hiring · HIR-13 Internal jobs (13 Nov 2026)",
+    "screen": "Internal jobs · manager told",
+    "url": "http://localhost:3000/yx/home",
+    "account": "Divya's manager (check the demo DB for who manages panel@), then panel@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "After MT-HIR-13-02, as Divya's manager open the bell.",
+      "Open the job's candidates or the application from the manager's account (copy the address from a recruiter).",
+      "As HR set Settings › Hiring › \"Tell the current manager\" to \"At the offer stage\"; apply for another job as Divya; then as a recruiter make an offer on that application."
+    ],
+    "expected": "Step 1: \"… applied for the internal job …\" (told, nothing to approve). Step 2: refused: the manager sees no candidate, notes or tests. Step 3: no notice on apply; one notice when the offer is made. Set it back to \"When they apply\".",
+    "stories": [
+      "Screens/Hiring/HIR-13 · Internal jobs · Apply sheet"
+    ],
+    "note": "Positive and negative (decision 6: told, not asked)."
+  },
+  {
+    "id": "MT-HIR-13-05",
+    "area": "Hiring · HIR-13 Internal jobs (13 Nov 2026)",
+    "screen": "Job workspace · Referrals & internal",
+    "url": "http://localhost:3000/yx/hiring/jobs",
+    "account": "recruiter@demo-org.test, then arjun@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open an open job and its \"Referrals & internal\" tab.",
+      "Switch \"Show on internal jobs\" off.",
+      "As an employee open Hiring › Internal jobs.",
+      "Switch \"Open for referrals\" off; as an employee open Referrals › Refer someone.",
+      "Switch both back on.",
+      "As a hiring manager without the job key open the same tab."
+    ],
+    "expected": "Step 1: both switches, the referral bonus rule in words. Step 2: toast \"… is off Internal jobs\". Step 3: the job is gone. Step 4: toast; the job is not in the Job list. Step 5: both toasts; the job is back. Step 6: the switches are read-only.",
+    "stories": [
+      "Screens/Hiring/HIR-03 · Jobs and job workspace · Job workspace · overview (the Referrals & internal tab)"
+    ],
+    "note": "Positive and negative (answer 226)."
+  },
+  {
+    "id": "MT-HIR-13-06",
+    "area": "Hiring · HIR-13 Internal jobs (13 Nov 2026)",
+    "screen": "Settings 6.1 Hiring · Internal jobs",
+    "url": "http://localhost:3000/yx/settings/hiring",
+    "account": "hr-tester@demo-org.test, then recruiter@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Find the Internal jobs section.",
+      "Turn off \"Only people past probation can apply\", choose \"At the offer stage\" and save.",
+      "Check the last change line.",
+      "Set them back and save.",
+      "As a recruiter open the page."
+    ],
+    "expected": "Step 1: three settings with their defaults (on, 12 months, When they apply), \"Tell the current manager\" is a joined Segment. Step 2: a toast. Step 3: your name and the change (audited). Step 4: saved. Step 5: read-only, no Save.",
+    "stories": [
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring",
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring · read-only"
+    ],
+    "note": "Positive and negative (decision 6)."
+  },
+  {
+    "id": "MT-HIR-13-07",
+    "area": "Hiring · HIR-13 Internal jobs (13 Nov 2026)",
+    "screen": "Internal jobs · acting for someone",
+    "url": "http://localhost:3000/yx/hiring/internal-jobs",
+    "account": "admin-tester@demo-org.test acting as panel@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Start acting for Divya and open Hiring › Internal jobs.",
+      "Apply with a note."
+    ],
+    "expected": "Step 1: Divya's view. Step 2: refused: \"Not available while acting for someone else\" stays in the sheet; nothing is sent.",
+    "stories": [
+      "Screens/Hiring/HIR-13 · Internal jobs · Apply sheet"
+    ],
+    "note": "Negative (security)."
   }
 ]

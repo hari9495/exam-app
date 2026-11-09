@@ -1,3 +1,4 @@
+import { hiddenFromManager } from '../internal-applications/internal-applications.service';
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { audit, inCompany } from '../org-structure/org-structure.service';
@@ -41,12 +42,14 @@ export class HiringBoardService {
         select: { startsAt: true, id: true, interview: { select: { pipelineEntryId: true, confirmedSlotId: true } } },
       });
       const pending = await tx.pendingRejection.findMany({ where: { organizationId: c.organizationId, entryId: { in: entryIds }, sentAt: null, undoneAt: null }, select: { entryId: true, sendAt: true } });
-      return { results, next, pending };
+      // HIR-13: an internal applicant's current manager never sees the application (unless they hire for the job).
+      const hidden = await hiddenFromManager(tx, c.organizationId, userId, entryIds);
+      return { results, next, pending, hidden };
     });
     const columns = Object.fromEntries(
       Object.entries(b.columns).map(([stageId, rows]) => [
         stageId,
-        rows.map((r) => {
+        rows.filter((r) => !extra.hidden.has(r.entryId)).map((r) => {
           const res = extra.results.get(r.entryId);
           const slot = extra.next.find((s) => s.interview.pipelineEntryId === r.entryId && (!s.interview.confirmedSlotId || s.interview.confirmedSlotId === s.id));
           const p = extra.pending.find((x) => x.entryId === r.entryId);

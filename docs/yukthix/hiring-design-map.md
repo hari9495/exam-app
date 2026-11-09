@@ -14,8 +14,8 @@ was built.
   /yx/hiring/jobs/[id], with the HIR-24 pay range by location law (one story live with a gap: the apply form has no
   pay-history question). Since 9 Nov 2026 also HIR-04, the pipeline board (all 7 stories) on /yx/hiring/jobs/[id]/pipeline.
   Counts in the table below.
-- **Few of the Hiring designs are live.** Of 255 design stories (HIR-01 … 31, the careers site, candidate
-  identity check and the hiring settings), 118 of 271 are live with their design (recount 12 Nov 2026, after HIR-10 manual BGV on /yx/hiring/bgv, HIR-20 Talent CRM on /yx/hiring/pools and the HIR-07 scorecard comments). First the "Request a hire" sheet (HIR-02
+- **Few of the Hiring designs are live.** Of the design stories (HIR-01 … 31, the careers site, candidate
+  identity check and the hiring settings), 180 of 299 are live with their design and 12 more live with a gap (recount 13 Nov 2026, after HIR-13 Internal jobs on /yx/hiring/internal-jobs; before that HIR-10 manual BGV on /yx/hiring/bgv, HIR-20 Talent CRM on /yx/hiring/pools and the HIR-07 scorecard comments). First the "Request a hire" sheet (HIR-02
   NewRequisition), which People › My team (/yx/people/team) renders with `live` and sends to `POST jobs/requisitions`. Since 9 Nov 2026 (branch `feat/yukthix-hir-01`) HIR-01, the headcount plan board, is live too: all 10 of
   its stories (section 4). HIR-05 (branch `feat/yukthix-hir-05`): the candidate record with the ex-employee match and merge, plus the newly drawn candidate list (with Possible duplicates) and candidate data retention pages. HIR-11 Recruiting costs (/yx/hiring/costs) and HIR-12 Referrals (/yx/hiring/referrals, with HR's
   All referrals at /yx/hiring/referrals/all) are live too (branch `feat/yukthix-hir-11-12`).
@@ -33,7 +33,7 @@ was built.
   pages and consent, recruiting costs, referrals, recruitment agencies (submissions by a link). An accepted offer becomes
   a joiner in People (PPL-12), and background checks are recorded on the joiner (People onboarding).
 - **Not built at all (no API):** the staffing-agency business (clients, rate cards, submissions to clients, placements,
-  bench, client invoices, collections, placement fees, e-invoice window: HIR-14 … 19, 30, 31), internal jobs (HIR-13),
+  bench, client invoices, collections, placement fees, e-invoice window: HIR-14 … 19, 30, 31),
   AI interview review (HIR-08), notetaker and recording consent (HIR-25), candidate identity checks (HIR-22, T9-15),
   bias audit (HIR-23), BGV partner checks (HIR-10), bulk interview day and bulk offers (HIR-27, 28), interview slot finder from calendars (HIR-06), CRM sequences and
   sourced profiles (HIR-20). (Pay-transparency law rules, HIR-24, went live 9 Nov 2026.)
@@ -55,12 +55,13 @@ built**.
 | A. Plans, requisitions, jobs and costs | 4 | 36 | 1 | 0 | 0 | 0 | 37 |
 | B. Candidates, pipeline and interviews | 8 | 46 | 0 | 0 | 13 | 1 | 60 |
 | C. Offers, BGV and joining | 4 | 17 | 6 | 0 | 5 | 0 | 28 |
-| D. Referrals, internal jobs, CRM and rediscovery | 4 | 20 | 0 | 0 | 7 | 4 | 31 |
+| D. Referrals, internal jobs, CRM and rediscovery | 4 | 24 | 0 | 0 | 3 | 4 | 31 |
 | E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
 | F. Compliance and fairness | 5 | 4 | 1 | 0 | 20 | 0 | 25 |
 | G. Careers site, portals and settings | 4 | 53 | 4 | 2 | 11 | 0 | 70 |
-| **All Hiring design groups (A–G)** | **37** | **176** | **12** | **6** | **100** | **5** | **299** |
+| **All Hiring design groups (A–G)** | **37** | **180** | **12** | **6** | **96** | **5** | **299** |
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 5 | 0 | 5 | 5 | 0 | 15 |
+Recounted by script 13 Nov 2026 on `feat/yukthix-hir-13` after HIR-13 went live: Browse, Apply, NotEligible and Empty design only → live (no story added or removed; the two phone stories stay phone views); A–G 180 live, 12 gap, 6 wire, 96 not built, 5 phone, of 299. Settings 6.1 gained the drawn Internal jobs section inside the existing P6_1 stories.
 Recounted by script on `test/yukthix-main` after merging the Settings 6.1 follow-ups with HIR-10/20: A–G 176 live, 12 gap, 6 wire, 100 not built, 5 phone, of 299 (H: the old scorecard-templates group left with its page).
 Recounted by script 12 Nov 2026 on `feat/yukthix-hiring-settings-2` after the Settings 6.1 follow-ups (answers 341, 345, 348): 5 new 6.1 stories drawn and live (edit, add, used and view-only scorecard; default recruiter no longer qualifies); the "Live · Job workspace and interviews" group's last stand-in story (Scorecards) was deleted with the /yx/hiring/scorecards page.
 Recounted by script 11 Nov 2026 on `feat/yukthix-hir-09` (merged with HIR-06/07 and Settings 6.1) after HIR-09 / HIR-29 went live: HIR-09 7 live and 3 live (gap), HIR-29 2 live and 2 live (gap); the HIR-05 Application offer story now opens the offer record (answer 301); the kit's CTC breakup table is live.
@@ -132,6 +133,7 @@ the web page.
 | /yx/hiring/costs | the designed `RecruitingCostsScreen` with `live` | HIR-11 | `GET/POST hiring/costs`, `PUT/DELETE hiring/costs/:id`, `GET hiring/costs/overview` (`ats.costs.manage`; writes refused while acting) | live |
 | /yx/hiring/referrals | the designed `ReferralsScreen` with `live` | HIR-12 | `GET referrals/mine`, `/jobs`, `/policy`, `POST referrals` (anyone signed in; refused while acting) | live |
 | /yx/hiring/referrals/all | the designed `AllReferralsScreen` with `live` | HIR-12 All referrals | `GET referrals`, `PATCH referrals/:id/reward` (`ats.referral.manage` or `candidate:view` / `pipeline:manage`; refused while acting; paid outside payroll and undo paid, answers 283 and 285) | live |
+| /yx/hiring/internal-jobs | the designed `InternalJobsScreen` with `live` (13 Nov 2026) | HIR-13 | `GET internal-applications/jobs`, `/eligibility`, `/mine`, `POST internal-applications` (anyone signed in, own data only; rules from People and the `hiring.internal.*` settings; refused while acting); job switches `PATCH jobs/:id internalOpen / referralOpen` (`pipeline:manage`) | live |
 | /yx/settings/hiring | the designed `SettingsPageScreen` (6.1) with `live`; scorecard templates in `ScorecardTemplateSheet` (answer 345) | Settings 6.1 Hiring | `GET/PUT hiring/settings` (read: `pipeline:manage`, `pipelines:configure`, `ats.headcount.manage`, `ats.referral.manage`, `ats.settings.manage`, `org.settings.manage`; change: `ats.settings.manage` or `org.settings.manage` company-wide, never while acting), `PATCH pipelines/stages/:id` (`pipelines:configure`) | live |
 | /yx/hiring/requisitions | the designed `RequisitionsScreen` with `live`, its drawer and the designed `RediscoveryPanel` with `live`; the request sheet for managers | HIR-02, HIR-26 | `GET hiring/requisitions` (`pipeline:manage` / `ats.headcount.manage`: all; `ats.requisition.raise`: own, read-only), `GET hiring/requisitions/:id/rediscovery` (and `candidate:view` or `pipeline:manage`), `POST jobs/:id/submit`, `/approval/cancel`, `POST jobs/:id/entries`, `POST jobs/requisitions` (writes refused while acting) | live |
 | /yx/people/team (Request a hire) | the designed `RequisitionSheet` with `live` | HIR-02 NewRequisition | `POST jobs/requisitions` (`ats.requisition.raise`) | live |
@@ -146,6 +148,7 @@ the web page.
 | /application/[statusToken], /portal/[portalToken], /offer/[token], /interview/[token] | candidate's status page, portal, offer accept / decline, interview booking | candidate portal designs are needed (question 10) |
 | /agency/[token] and v2 /settings/agencies, /agency-submissions | recruitment agencies submit candidates by link; the older v2 screens review them | HIR-21 covers part of it (question 1) |
 | v2 /referrals | the older recruiter list of referrals | HIR-12 replaces it |
+| ~~v2 /internal-mobility~~ | deleted 13 Nov 2026; redirects to /yx/hiring/internal-jobs | HIR-13 replaced it |
 
 ## 3. Designs with no live page or API
 
@@ -153,7 +156,6 @@ the web page.
 |---|---|---|
 | HIR-08 AI interview review | no async AI interview, recordings or advisory score | L |
 | HIR-10 partner BGV | no BGV partner integration (founder decision 3: after a vendor contract); manual checks are live on /yx/hiring/bgv | M (per partner) |
-| HIR-13 internal jobs | no internal posting, eligibility rule or employee apply | M |
 | HIR-14 … 19, 21 (part), 30, 31 | the staffing-agency business: clients, rate cards, submissions to clients, placements, bench, invoices, receivables, fees, e-invoice | XL |
 | HIR-22, T9-15 identity | no candidate ID or selfie check (People's face match waits for a provider too) | M + provider |
 | HIR-23 bias audit | no audit record or NYC setting | S |
@@ -232,14 +234,14 @@ a Recruiter on every job (default who opened it; Change recruiter in the job men
 read status `open`; the board sync retracts paid postings; candidates stay; Resume or Close), company job numbers
 (JOB-0001 on, per company, from the `job_number_counters` row lock, never reused) on the list and the workspace, Export of
 the visible columns as CSV, and a location from the masters for jobs of a legal entity outside India. Still waiting:
-saved views (225), the Referrals & internal tab and Share with vendors (226). The job form and the candidate pages read the custom field definitions from
+saved views (225) and Share with vendors (226); the Referrals & internal tab went live with HIR-13 (13 Nov 2026). The job form and the candidate pages read the custom field definitions from
 `GET custom-fields/in-use` (results:view or pipeline:manage; ats.job.manage counts), so recruiters see them; the settings
 list `GET custom-fields` stays `org:manage_settings` and is no longer called by these pages (it was refused for recruiters).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
 | List · Jobs list | live | `GET jobs` (`results:view`); job numbers, filters, search, Export CSV of the visible columns (CSV only, answer 241); row menu: copy careers link, send for approval, withdraw, put on hold, resume, close, reopen, delete (`pipeline:manage`); Recruiter column; saved views wait (225) |
-| Workspace · Job workspace · overview | live | `GET jobs/:id` with `payLaw` and `postings`; job number; recruiter; stage counts from `GET jobs`; put on hold, resume, close, reopen; Open pipeline |
+| Workspace · Job workspace · overview | live | `GET jobs/:id` with `payLaw` and `postings`; job number; recruiter; stage counts from `GET jobs`; put on hold, resume, close, reopen; Open pipeline; the Referrals & internal tab (answer 226, HIR-13): Show on internal jobs and Open for referrals, `PATCH jobs/:id internalOpen / referralOpen`, toast |
 | Postings · Job workspace · board postings (one failed) | live | `postings` (every company board, its publication status and error); post, refresh, retry, close by `PATCH jobs/:id jobBoardIds` |
 | Empty · Empty | live | no jobs |
 | Loading · Loading | live | while `GET jobs` loads |
@@ -506,14 +508,29 @@ waiting for approval shows **Bonus on hold** in both lists and refuses mark-paid
 
 #### HIR-13 · Internal jobs
 
-No live page, no API. Designed: `InternalJobsScreen`, `InternalJobsPhone`.
+Live page: /yx/hiring/internal-jobs (13 Nov 2026, branch `feat/yukthix-hir-13`; menu Hiring › Internal jobs for anyone
+with an employee record, never in a support session) renders the designed `InternalJobsScreen` with `live`. API (all the
+signed-in person's own): `GET internal-applications/jobs` (open jobs with "Show on internal jobs" on, never a job the
+person is the hiring manager of), `GET …/eligibility` (the company rule, the reason and the day it opens, the manager's
+name and when they are told), `POST internal-applications` (note required, optional PDF résumé up to 5 MB; refused while
+acting for someone else; 404 for a job not on Internal jobs or another company's, 409 closed / on hold / already
+applied, 403 not eligible or the job's own hiring manager), `GET …/mine`. Founder decision 6 as company settings with
+defaults, on Settings 6.1 (new drawn section "Internal jobs", audited, the page's keys): `hiring.internal.after_probation`
+(on), `hiring.internal.months_in_role` (12; counted from the start of the current designation) and
+`hiring.internal.tell_manager` (When they apply / At the offer stage; default when they apply). Someone serving notice or
+with no current employee record can never apply. The current manager is told by a bell notice and email
+(`hiring.internal.applied`), never asked, and sees nothing of the application (no candidate, notes or tests). New table
+`internal_applications` (RLS) keeps the person's words, their manager and when the manager was told; the words also go
+to the application's notes for the hiring team. The job workspace's "Referrals & internal" tab is wired (answer 226):
+`jobs.internal_open` and `jobs.referral_open` (both on by default; referrals respect it). The older v2 Internal Mobility
+page is deleted; its addresses redirect here.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Browse · Browse and my applications | design only, feature not built | no internal posting or employee apply |
-| Apply · Apply sheet | design only, feature not built | same |
-| NotEligible · Blocked · not yet eligible | design only, feature not built | needs an eligibility policy (default + HR setting) |
-| Empty · Empty · no openings | design only, feature not built | same |
+| Browse · Browse and my applications | live | the openings as drawn (department · location · type, posted date); My applications with Applied / Assessment / Interview / Offer / Selected / Not selected from the pipeline (Selected added for the hired stage) |
+| Apply · Apply sheet | live | note required (too-early error and focus, never disabled), optional PDF résumé, the manager notice from the setting; toast "Applied for …"; refusals stay in the sheet |
+| NotEligible · Blocked · not yet eligible | live | the company rule and the day it opens (probation, months in the role, notice, no employee record); Send says why and sends nothing |
+| Empty · Empty · no openings | live | no openings / no applications |
 | Phone · phone | phone view, mobile app not built | `InternalJobsPhone` |
 | PhoneApply · phone · apply | phone view, mobile app not built | same |
 
@@ -926,7 +943,7 @@ stand-in it replaces with its "Live ·" stories.
 | 11 | ~~HIR-10 BGV tracker, manual~~ | done 12 Nov 2026: /yx/hiring/bgv on the joiner's checks; a person decides a discrepancy | S |
 | 12 | T9-09 careers site + page builder (after question 8) | public pages and /yx/hiring/careers | M |
 | 13 | ~~HIR-20 talent CRM (pools, postings)~~ | done 12 Nov 2026: /yx/hiring/pools; sequences and sourcing later | M |
-| 14 | HIR-13 internal jobs (after question 6) | new API + page | M |
+| 14 | ~~HIR-13 internal jobs~~ | done 13 Nov 2026: /yx/hiring/internal-jobs; phone stories wait for the app | M |
 | later | HIR-25, HIR-08, HIR-22 / T9-15, partner BGV, HIR-27, 28, 29, slot finder, staffing E | after the founder answers and providers | L–XL |
 
 Suggested first wave (3 builders): 1 + 2 (one builder, both S), 3, 5.
@@ -1412,3 +1429,20 @@ Founder approved, 9 Nov 2026 (questions 381-385, all as suggested): (381) keep `
 (382) add "Different for: …" on 6.1 when a customer uses entity or location values; (383) keep older 1-10 weights, no
 data change; (384) referral settings on 6.1 only (remove them from Company rules › Referrals); (385) notify the holders
 of the hiring settings key when the default recruiter goes stale.
+## HIR-13 internal jobs built (founder decision 6, answer 226; 13 Nov 2026, branch `feat/yukthix-hir-13`)
+- Who can apply, and when, are company settings with defaults on Settings 6.1 › Internal jobs (audited, the page's keys):
+  past probation (on), months in the current role (12), tell the current manager (when they apply). Never while serving
+  notice, never without a current employee record, never for a job one is the hiring manager of.
+- Migration `202617p0000000_hir13_internal_jobs`: `jobs.internal_open`, `jobs.referral_open` (both default on) and the
+  `internal_applications` table (forced RLS). Schema only; no data written.
+## Founder questions from the HIR-13 build (13 Nov 2026)
+411. **New jobs on Internal jobs by default.** Built: every job (new and existing) shows on Internal jobs and stays open
+     for referrals until a recruiter switches it off in the job's "Referrals & internal" tab. *Suggested: keep; switch a
+     confidential replacement off by hand. If customers often forget, add a company setting "New jobs show on Internal
+     jobs" (default on).*
+412. **Serving notice.** Built: someone whose employment status is "notice" can never apply (not a setting); someone whose
+     resignation still waits for approval can. *Suggested: keep both.*
+413. **What counts as "current role".** Built: the months count from the day the current designation started; a move of
+     department, location or manager alone does not restart the count. *Suggested: keep.*
+414. **Who reads "Why are you interested?"** Built: the hiring team sees it as the first note on the application; the
+     current manager is told only the person's name and the job, and sees no notes, tests or stage. *Suggested: keep.*

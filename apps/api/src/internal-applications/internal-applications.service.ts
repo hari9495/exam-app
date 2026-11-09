@@ -250,3 +250,15 @@ export function internalStatus(rejected: boolean, archived: boolean, stage: { na
   if (firstActivePosition === undefined || stage.position <= firstActivePosition) return 'Applied';
   return /assess|test|exam/i.test(stage.name) ? 'Assessment' : 'Interview';
 }
+
+/**
+ * HIR-13: an internal applicant's current manager (as recorded when they applied) never sees the application on the board
+ * or its notes, unless they are the job's own hiring manager. The entries hidden from `viewerUserId`.
+ */
+export async function hiddenFromManager(tx: Tx, organizationId: string, viewerUserId: string, entryIds: string[]): Promise<Set<string>> {
+  if (!entryIds.length) return new Set();
+  const rows = await tx.internalApplication.findMany({ where: { organizationId, managerUserId: viewerUserId, entryId: { in: entryIds } }, select: { entryId: true, jobId: true } });
+  if (!rows.length) return new Set();
+  const own = new Set((await tx.job.findMany({ where: { organizationId, id: { in: rows.map((r) => r.jobId) }, hiringManagerId: viewerUserId }, select: { id: true } })).map((j) => j.id));
+  return new Set(rows.filter((r) => !own.has(r.jobId)).map((r) => r.entryId));
+}
