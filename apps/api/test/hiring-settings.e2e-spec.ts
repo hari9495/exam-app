@@ -116,6 +116,8 @@ describe('Settings 6.1 Hiring', () => {
     'hiring.rediscovery.ai': 'off',
     'hiring.rehire_flag.blocks_screening': 'off',
     'hiring.bgv.decider_other_person': 'on',
+    'hiring.interview_day.slot_minutes': '45',
+    'hiring.interview_day.assign': 'by_slot',
   };
 
   it('reads: recruiting and hiring admins see the defaults; only the settings keys may edit; employees and managers are refused', async () => {
@@ -147,6 +149,8 @@ describe('Settings 6.1 Hiring', () => {
       { key: 'hiring.rediscovery.ai', value: 'on' },
       { key: 'hiring.rehire_flag.blocks_screening', value: 'on' },
       { key: 'hiring.bgv.decider_other_person', value: 'off' },
+      { key: 'hiring.interview_day.slot_minutes', value: '60' },
+      { key: 'hiring.interview_day.assign', value: 'by_panel' },
     ]).expect(200)).body as Settings;
     expect(after.values).toEqual({
       'ats.retention_months': '18',
@@ -162,6 +166,8 @@ describe('Settings 6.1 Hiring', () => {
       'hiring.rediscovery.ai': 'on',
       'hiring.rehire_flag.blocks_screening': 'on',
       'hiring.bgv.decider_other_person': 'off',
+      'hiring.interview_day.slot_minutes': '60',
+      'hiring.interview_day.assign': 'by_panel',
     });
     // Answer 362: the BGV tracker reads the same company setting.
     expect(await inA((tx) => tx.setting.findFirstOrThrow({ where: { organizationId: org.A.id, key: 'hiring.bgv.decider_other_person' } }))).toMatchObject({ value: 'off' });
@@ -197,6 +203,8 @@ describe('Settings 6.1 Hiring', () => {
       [{ key: 'hiring.pay_range.show', value: 'true' }],
       [{ key: 'hiring.rehire_flag.blocks_screening', value: 'yes' }],
       [{ key: 'hiring.bgv.decider_other_person', value: 'true' }],
+      [{ key: 'hiring.interview_day.slot_minutes', value: '50' }],
+      [{ key: 'hiring.interview_day.assign', value: 'random' }],
       [{ key: 'hiring.rediscovery.ai', value: 'on' }, { key: 'hiring.requisition.default_recruiter', value: 'not-a-person' }],
       [{ key: 'not.a.setting', value: 'x' }],
       [{ key: 'ats.retention_months', value: '6' }, { key: 'ats.retention_months', value: '9' }],
