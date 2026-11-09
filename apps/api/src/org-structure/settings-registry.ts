@@ -227,6 +227,14 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // slots first across every panel, as drawn; by_panel: one panel's slots before the next panel's).
   'hiring.interview_day.slot_minutes': { label: 'Hiring: each interview on an interview day lasts (minutes)', scopes: ['tenant'], dated: false, values: ['30', '45', '60', '90'], default: '45' },
   'hiring.interview_day.assign': { label: 'Hiring: Auto-assign on an interview day fills', scopes: ['tenant'], dated: false, values: ['by_slot', 'by_panel'], default: 'by_slot' },
+  // Staffing desk (slice 1; Settings 6.2). Off by default: the staffing area shows only to a company that turns it on.
+  'staffing.desk.enabled': { label: 'Staffing desk: place people with client companies', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
+  // Rate-card defaults for a new line (each line keeps its own), the client's payment terms when a client has none, and
+  // how far back a rate change may start (0: today or later, so billed timesheets keep their rate).
+  'staffing.ot_multiplier': { label: 'Staffing desk: overtime bill multiplier for new rate-card lines', scopes: ['tenant'], dated: false, values: ['1', '1.25', '1.5', '1.75', '2', '2.5', '3'], default: '1.5' },
+  'staffing.holiday_multiplier': { label: 'Staffing desk: holiday bill multiplier for new rate-card lines', scopes: ['tenant'], dated: false, values: ['1', '1.25', '1.5', '1.75', '2', '2.5', '3'], default: '2' },
+  'staffing.payment_terms_days': { label: 'Staffing desk: default payment terms (days)', scopes: ['tenant'], dated: false, values: ['0', '7', '15', '30', '45', '60', '90', '120'], default: '30' },
+  'staffing.rate_change.backdate_days': { label: 'Staffing desk: a rate change may start up to (days back)', scopes: ['tenant'], dated: false, values: ['0', '7', '30', '90'], default: '0' },
   'hiring.scorecard.overdue_hours': { label: 'Hiring: a scorecard is overdue this many hours after the interview', scopes: ['tenant'], dated: false, values: ['12', '24', '48', '72'], default: '24' },
   // HIR-02 founder answer 291 (Settings 6.1): a hiring manager's request starts with this recruiter, or with none until
   // recruiting assigns one; never the manager themselves. The value is a person of the company (or none).

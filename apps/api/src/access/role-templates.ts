@@ -201,6 +201,16 @@ const TEMPLATES: readonly RoleTemplate[] = [
     // Settings 6.1 Hiring: the company's hiring settings (ats.settings.manage).
     permissions: ['ats.headcount.manage', 'ats.offer.compensation.view', 'ats.referral.manage', 'ats.agency.manage', 'ats.report.view', 'ats.candidate.data_rights', 'ats.settings.manage'],
   },
+  // Staffing desk slice 1 (HIR-14, HIR-15): a staffing company's account managers (clients, contacts, rate cards with pay
+  // rates and margins, invoice series). Only useful once the company turns the staffing desk on (Settings › Staffing desk).
+  {
+    key: 'staffing_account_manager',
+    name: 'Staffing account manager',
+    typicalScope: 'tenant',
+    summary: 'Clients and their contacts, contracts and SLAs, client rate cards with pay rates and margins, and invoice number series (staffing desk).',
+    cannot: 'See employees, payroll or candidates beyond hiring keys given separately.',
+    permissions: ['ats.staffing.manage', 'ats.staffing.view'],
+  },
   {
     key: 'compliance_owner',
     name: 'Compliance Owner',

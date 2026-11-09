@@ -190,6 +190,9 @@ export const YX_KEYS = [
   'ats.referral.manage',
   // Settings 6.1 Hiring.
   'ats.settings.manage',
+  // Staffing desk (HIR-14, HIR-15, Settings 6.2).
+  'ats.staffing.manage',
+  'ats.staffing.view',
   // Menu items that checked keys nobody asked for (yx-nav-keys.test.ts): team pay access, the older assessment screens.
   'employee.pay_access.approve',
   'exam:manage',

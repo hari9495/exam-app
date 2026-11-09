@@ -19,6 +19,9 @@ export const ATS_KEYS = [
   'ats.costs.manage',
   // Settings 6.1 Hiring (founder answer 302 and the 6.1 build): change the company's hiring settings.
   'ats.settings.manage',
+  // Staffing desk slice 1 (HIR-14, HIR-15, Settings 6.2): account managers, and recruiters who read clients and bill rates.
+  'ats.staffing.manage',
+  'ats.staffing.view',
 ] as const;
 
 /** Older key → the `ats.*` keys that satisfy it. */
