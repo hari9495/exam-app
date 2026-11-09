@@ -37,7 +37,8 @@ export class PipelineController {
   /** PPL-08 "Request a hire": a requisition raised by a manager; always goes for approval. */
   @Post('jobs/requisitions')
   @RequirePermissions('ats.requisition.raise')
-  raiseRequisition(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: RaiseRequisitionDto) {
+  raiseRequisition(@Req() req: Parameters<typeof notActing>[0], @CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: RaiseRequisitionDto) {
+    notActing(req);
     return this.pipelineService.raiseRequisition(tenant, userId, dto);
   }
 

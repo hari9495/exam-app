@@ -11,6 +11,7 @@ import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { HiringRequisitionsService } from './requisitions.service';
 import { CareersEntityDto, ConsentNoticeDto, RecruitingCostDto, PlanDto, PlanQueryDto, PlanVersionDto } from './hiring-dto';
 import { CareersAdminService } from './careers-admin.service';
+import { RediscoveryService } from './rediscovery.service';
 
 // Recruitment batch AT2 (M10-BUILD-DESIGN §18.1): headcount plans (ats.headcount.manage) and the plan lines a
 // requisition can draw on (anyone who raises or runs requisitions). Requisitions themselves are jobs (/jobs, AT1).
@@ -26,6 +27,7 @@ export class HiringController {
   constructor(
     private readonly svc: HiringRequisitionsService,
     private readonly careers: CareersAdminService,
+    private readonly rediscovery: RediscoveryService,
   ) {}
 
   // HIR-01: HR sees every plan; a hiring manager their own department's approved plan, read-only (decision 11).
@@ -55,6 +57,20 @@ export class HiringController {
   submit(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PlanVersionDto) {
     ownSession(req);
     return this.svc.submitPlan(ctx, userId, id, dto.version);
+  }
+
+  // HIR-02: recruiting and HR see every requisition; a hiring manager their own, read-only (decision 11).
+  @Get('requisitions')
+  @RequireAnyPermission('pipeline:manage', 'ats.headcount.manage', 'ats.requisition.raise')
+  requisitions(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.svc.requisitions(ctx, req.user as ScopeUser);
+  }
+
+  // HIR-26: past candidates to consider for a requisition (advisory; plain text search when the company has AI off).
+  @Get('requisitions/:id/rediscovery')
+  @RequireAnyPermission('pipeline:manage', 'ats.headcount.manage', 'ats.requisition.raise')
+  rediscover(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.rediscovery.suggest(ctx, req.user as ScopeUser, id);
   }
 
   @Get('plan-lines')
