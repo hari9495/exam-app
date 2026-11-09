@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { CandidatePortalScreen, type CandidatePageState, type CandidatePortalView } from '@yukthix/ui/hiring';
-import { fileToBase64, publicGet, publicPost } from '../../../../lib/yx-careers';
+import { fileToBase64, publicGet, publicPost, candidateBrand } from '../../../../lib/yx-careers';
 import type { PortalOpenJobs, PortalView } from '../../../../lib/types';
 
 // T9-09 candidate page (founder decision 10): the candidate's own link (from the apply email) shows their details,
@@ -45,7 +45,7 @@ export default function YxCandidatePortalPage() {
 
   return (
     <CandidatePortalScreen
-      brand={{ tenant: portal?.orgName ?? '', accent: portal?.accent, careersHref: portal?.careersSlug ? `/yx/careers/${encodeURIComponent(portal.careersSlug)}` : null }}
+      brand={candidateBrand(portal)}
       state={state}
       portal={view}
       live={{

@@ -100,6 +100,14 @@ export class CreateJobDto {
 
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/)
   targetStart?: string | null;
+
+  /** Careers answer 353: the last day to apply (YYYY-MM-DD); applications close after it. */
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  applyBy?: string | null;
+
+  /** Careers answer 353: the experience asked for, as candidates read it ("2 to 4 years"). */
+  @IsOptional() @IsString() @MaxLength(60)
+  experience?: string | null;
 }
 
 /**
@@ -133,4 +141,12 @@ export class RaiseRequisitionDto {
 
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/)
   targetStart?: string | null;
+
+  /** Careers answer 353: the last day to apply (YYYY-MM-DD); applications close after it. */
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  applyBy?: string | null;
+
+  /** Careers answer 353: the experience asked for, as candidates read it ("2 to 4 years"). */
+  @IsOptional() @IsString() @MaxLength(60)
+  experience?: string | null;
 }

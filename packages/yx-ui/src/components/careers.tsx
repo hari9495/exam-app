@@ -1174,6 +1174,8 @@ export interface JobApplyFormProps {
   notices?: ApplyNotice[];
   /** HIR-24 answer 224: ask for current or last pay (only where the job asks and the law allows). */
   askPay?: boolean;
+  /** Careers answer 359: the job is outside India, so the number takes any country code. */
+  internationalPhone?: boolean;
   questions?: ApplyQuestion[];
   /** Reads contact details from a picked resume; fills only empty fields. */
   onResumePicked?: (file: File) => Promise<Partial<Record<'name' | 'email' | 'phone', string>>>;
@@ -1196,6 +1198,7 @@ export function JobApplyForm({
   resumeAccept = ['.pdf', '.doc', '.docx'],
   notices,
   askPay = false,
+  internationalPhone = false,
   questions = [],
   onResumePicked,
   honeypot = false,
@@ -1203,6 +1206,7 @@ export function JobApplyForm({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const phoneKind = internationalPhone ? 'intlPhone' : 'phone';
   const [files, setFiles] = useState<UploadItem[]>([]);
   const [consent, setConsent] = useState(false);
   const [ticked, setTicked] = useState<Record<string, boolean>>({});
@@ -1226,7 +1230,7 @@ export function JobApplyForm({
         .then((d) => {
           if (d.name) setName((c) => (c.trim() ? c : d.name!));
           if (d.email) setEmail((c) => (c.trim() ? c : d.email!));
-          if (d.phone) setPhone((c) => (c.trim() ? c : d.phone!.replace(/\D/g, '').slice(-10)));
+          if (d.phone) setPhone((c) => (c.trim() ? c : ID_SPECS[phoneKind].normalise(d.phone!)));
         })
         .catch(() => undefined);
     }
@@ -1236,7 +1240,7 @@ export function JobApplyForm({
     const e: ApplyErrors = {};
     if (!name.trim()) e.name = 'Enter your full name';
     if (!isEmail(email)) e.email = 'Enter an email like name@example.com';
-    const phoneError = phone ? ID_SPECS.phone.validate(phone) : 'Enter your mobile number';
+    const phoneError = phone ? ID_SPECS[phoneKind].validate(phone) : 'Enter your mobile number';
     if (phoneError) e.phone = phoneError;
     const done = files.find((f) => f.status === 'done');
     if (!done) e.resume = files.some((f) => f.status === 'uploading' || f.status === 'scanning') ? 'Wait for your resume to finish uploading' : 'Attach your resume';
@@ -1313,8 +1317,8 @@ export function JobApplyForm({
         <FormField label="Email" required error={errors.email} id={fid('email')}>
           <TextField type="email" value={email} onChange={setEmail} autoComplete="email" inputMode="email" />
         </FormField>
-        <FormField label="Mobile number" required error={errors.phone} id={fid('phone')}>
-          <MaskedField kind="phone" value={phone} onChange={setPhone} />
+        <FormField label="Mobile number" required error={errors.phone} helper={internationalPhone ? 'Start with + and your country code' : undefined} id={fid('phone')}>
+          <MaskedField kind={phoneKind} value={phone} onChange={setPhone} />
         </FormField>
         <FormField label="Resume" required error={errors.resume} helper={resumeAccept.every((a) => a === '.pdf') ? 'PDF file, up to 5 MB' : 'PDF or Word file'} id={fid('resume')}>
           <FileUpload upload={upload} accept={resumeAccept} maxSize={5 * 1024 * 1024} multiple={false} onItemsChange={onFiles} />

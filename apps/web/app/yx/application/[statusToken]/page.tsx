@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { ApplicationStatusScreen, type ApplicationStatusView, type CandidatePageState } from '@yukthix/ui/hiring';
-import { publicGet } from '../../../../lib/yx-careers';
+import { publicGet, candidateBrand } from '../../../../lib/yx-careers';
 import type { ApplicationStatus } from '../../../../lib/types';
 
 // T9-09 application status (founder decision 10): the status link from the apply email shows this one application in
@@ -24,5 +24,5 @@ export default function YxApplicationStatusPage() {
     };
   }, [statusToken]);
   const status: ApplicationStatusView | null = data ? { jobTitle: data.jobTitle, location: data.location ?? null, appliedAt: new Date(data.appliedAt), bucket: data.statusBucket } : null;
-  return <ApplicationStatusScreen brand={{ tenant: data?.orgName ?? '', accent: data?.accent, careersHref: data?.careersSlug ? `/yx/careers/${encodeURIComponent(data.careersSlug)}` : null }} state={state} status={status} />;
+  return <ApplicationStatusScreen brand={candidateBrand(data)} state={state} status={status} />;
 }

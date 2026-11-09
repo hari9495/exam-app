@@ -184,7 +184,7 @@ describe('Recruitment batch AT4', () => {
       const res = (await api('A', 'post', '/hiring/retention/run').send({ dryRun: false }).expect(200)).body;
       expect(mine(res.plan)).toEqual({ old: 'anonymised', window: 'renewal_sent', held: 'skipped_hold', hired: 'skipped_hired', open: 'skipped_open' });
       expect(send).toHaveBeenCalledTimes(1);
-      expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: `window.applicant-${run}@x.test`, html: expect.stringContaining('/portal/') }));
+      expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: `window.applicant-${run}@x.test`, html: expect.stringContaining('/yx/candidate/') }));
 
       const [old, profile, entries, held] = await inA((tx) => Promise.all([
         tx.candidate.findUniqueOrThrow({ where: { id: r.old } }),

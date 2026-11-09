@@ -14,6 +14,7 @@ import { Segment } from '../../components/segment';
 import { MultiSelect, Select } from '../../components/select';
 import { Card, DescriptionList, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { dayKey } from '../../lib/dates';
+import { formatINR } from '../../lib/format';
 import { useRun } from '../org/org-kit';
 import { useToastIfAny } from '../../components/notify';
 import { dateText } from '../time/live/kit';
@@ -148,6 +149,12 @@ export function ApplicationDrawer(p: ApplicationDrawerProps) {
                   )}
                   {p.onScoreFit && p.canManage && <div><Button size="sm" icon={Sparkles} loading={busy === 'fit'} onClick={() => void run('fit', p.onScoreFit!)}>Score fit</Button></div>}
                 </Card>
+                {a.currentPay != null && (
+                  <Card title="Pay history">
+                    <DescriptionList items={[{ label: 'Current pay, given when applying', value: `${formatINR(a.currentPay)} a year` }]} />
+                    <Text as="p" size="sm" tone="secondary">Shown only to people allowed to see offer pay.</Text>
+                  </Card>
+                )}
                 {a.checklist.length > 0 && (
                   <Card title="Checklist">
                     {p.canManage

@@ -48,6 +48,8 @@ export function useApplicationDrawer(entryId: string | null, jobId: string | nul
   const sms = useApi<CandidateSms[]>(cid && p.canManage ? `/candidate-sms/${cid}` : null);
   const wa = useApi<CandidateWhatsappMessage[]>(cid && p.canManage ? `/candidate-whatsapp/${cid}` : null);
   const notes = useApi<FeedbackRow[]>(cid ? `/entries/${r.entryId}/feedback` : null);
+  // Careers answer 355: the pay-history answer, only for holders of the offer-pay key (the API checks it again).
+  const pay = useApi<{ currentPay: number | null }>(cid && perms.has('ats.offer.compensation.view') ? `/hiring/offers/current-pay?entryId=${encodeURIComponent(r.entryId)}` : null);
   const offers = useApi<(Offer & { pipelineEntryId?: string })[]>(cid && p.canManage ? `/candidates/${cid}/offers` : null);
   const smsTemplates = useApi<{ id: string | null; name: string; body: string; enabled: boolean }[]>(cid && p.canManage ? '/candidate-sms-templates' : null);
   const waTemplates = useApi<{ id: string | null; name: string; body: string; enabled: boolean }[]>(cid && p.canManage ? '/candidate-whatsapp-templates' : null);
@@ -62,6 +64,7 @@ export function useApplicationDrawer(entryId: string | null, jobId: string | nul
     resume: v.resume ? { title: v.resume.title, summary: v.resume.summary, skills: (v.resume.skills ?? '').split(',').map((s) => s.trim()).filter(Boolean), hasFile: v.resume.hasFile && v.resume.scan === 'clean', status: v.resume.parseStatus } : null,
     fit: fit.data ? { status: fit.data.status, score: fit.data.overallScore, summary: fit.data.summary, stale: r.fitStale } : null,
     tests: r.examResults.map((e) => ({ examId: e.examId, title: e.examTitle, score: e.score, passFail: e.passFail, status: e.score == null ? 'not taken yet' : 'taken' })),
+    currentPay: pay.data?.currentPay ?? null,
     customFields: (r.customFields ?? []).filter((f) => f.value != null).map((f) => ({ label: f.label, value: String(f.value) })),
     checklist: collectChecklistItems(p.stages).map((c) => ({ id: c.id, label: c.label, done: Boolean(r.blueprintChecklist?.[c.id]) })),
     assignee: r.assignedUserId,

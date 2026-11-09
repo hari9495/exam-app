@@ -11,6 +11,7 @@ import { buildOfferPdf } from './offer-pdf';
 import { renderOfferTemplate } from './offer-render';
 import { ApprovalsService, ApprovalSummary, SubmitResult } from '../approvals/approvals.service';
 import { OtpService } from '../auth/otp.service';
+import { publicBrand } from '../public-applications/public-brand';
 
 const LOGO_SIGN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const PDF_SIGN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
@@ -229,7 +230,7 @@ export class OffersService {
     });
 
     // Phase 2 (outside any tx): rendering + network calls (PDF build, blob upload, SMTP send).
-    const offerLink = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/offer/${prep.offerToken}`;
+    const offerLink = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/yx/offer/${prep.offerToken}`;
     const rendered = renderOfferTemplate(prep.offer.letterSubject, prep.offer.letterBody, {
       candidateName: prep.candidate.name,
       jobTitle: prep.job.title,
@@ -357,6 +358,8 @@ export class OffersService {
     return {
       jobTitle: details.jobTitle,
       orgName: details.orgName,
+      // Careers answer 362: the company's logo, colour, careers link and white-label on the offer page.
+      brand: await publicBrand(this.tenantPrisma, this.blobStorage, offer.organizationId),
       compensation: offer.compensation,
       startDate: offer.startDate,
       expiresAt: offer.expiresAt,

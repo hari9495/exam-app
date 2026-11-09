@@ -108,6 +108,8 @@ export interface TenantPortalProps {
   /** Tenant accent as hex (with or without #). Used only if it reaches 4.5:1 on white (§38). */
   accent?: string;
   whiteLabel?: boolean;
+  /** Careers answer 357: the company's logo in the header. */
+  logoUrl?: string | null;
   access: PortalAccess;
   footer: FooterNotices;
   /** Primary action pinned at the bottom of the viewport (T8 pattern). */
@@ -126,7 +128,7 @@ export interface TenantPortalProps {
   children: ReactNode;
 }
 
-export function TenantPortal({ tenant, portal, nav, accent, whiteLabel, access, footer, pinned, narrow, noLanguage, onSignOut, language = 'en', onLanguageChange, languages, children }: TenantPortalProps) {
+export function TenantPortal({ tenant, portal, nav, accent, whiteLabel, logoUrl, access, footer, pinned, narrow, noLanguage, onSignOut, language = 'en', onLanguageChange, languages, children }: TenantPortalProps) {
   const res = resolveTenantAccent(accent);
   const style = res.accent ? ({ '--yx-tenant-accent': res.accent } as CSSProperties) : undefined;
   const user = access.kind === 'otp' ? access.identity : undefined;
@@ -138,6 +140,7 @@ export function TenantPortal({ tenant, portal, nav, accent, whiteLabel, access, 
         nav={nav}
         user={user}
         whiteLabel={whiteLabel}
+        tenantLogoUrl={logoUrl}
         foot={<PortalFooterLinks {...footer} />}
         aside={
           // In the header band, so the page body keeps its height for the content (sign-in fits one laptop screen).

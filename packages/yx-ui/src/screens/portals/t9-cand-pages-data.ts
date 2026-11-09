@@ -2,6 +2,8 @@
 const d = (y: number, m: number, day: number) => new Date(y, m - 1, day);
 
 export const CAND_BRAND = { tenant: 'Kaveri Foods', accent: '1F6F4A', careersHref: '#careers' };
+/** Careers answer 357: a sample company logo (an inline image, so stories need no files). */
+export const KAVERI_LOGO = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='60'><rect width='300' height='60' rx='8' fill='%231F6F4A'/><text x='20' y='40' font-size='28' fill='white' font-family='sans-serif'>Kaveri Foods</text></svg>";
 
 export const APP_STATUS = { jobTitle: 'QA Chemist', location: 'Hosur plant', appliedAt: d(2026, 10, 2), bucket: 'Under review', portalHref: '#portal' };
 

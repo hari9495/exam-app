@@ -57,3 +57,19 @@ export function PoweredBy({ whiteLabel, href = 'https://yukthix.com', className 
     </a>
   );
 }
+
+export interface TenantLogoProps {
+  /** The company's logo (a signed image address); without one, the company name shows in text. */
+  src?: string | null;
+  /** The company name: the image's alt text, and the text when there is no logo. */
+  name: string;
+  /** Height cap: sm 24 px (portal headers), md 40 px (the careers banner). Width follows the image, capped too. */
+  size?: 'sm' | 'md';
+  className?: string;
+}
+
+/** Careers answer 357: a company's own logo on its candidate pages, size-capped, with the name as alt text and fallback. */
+export function TenantLogo({ src, name, size = 'sm', className }: TenantLogoProps) {
+  if (!src) return <span className={cx('yx-tenant-logo', 'yx-tenant-logo--text', className)} data-size={size}>{name}</span>;
+  return <img className={cx('yx-tenant-logo', className)} data-size={size} src={src} alt={`${name} logo`} loading="lazy" decoding="async" referrerPolicy="no-referrer" />;
+}

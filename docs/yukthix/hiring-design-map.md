@@ -58,10 +58,11 @@ built**.
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 20 | 0 | 0 | 7 | 4 | 31 |
 | E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
 | F. Compliance and fairness | 5 | 4 | 1 | 0 | 20 | 0 | 25 |
-| G. Careers site, portals and settings | 4 | 54 | 4 | 2 | 11 | 0 | 71 |
-| **All Hiring design groups (A–G)** | **37** | **189** | **11** | **6** | **92** | **5** | **303** |
+| G. Careers site, portals and settings | 4 | 57 | 3 | 2 | 11 | 0 | 73 |
+| **All Hiring design groups (A–G)** | **37** | **186** | **9** | **6** | **96** | **5** | **302** |
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 5 | 0 | 5 | 5 | 0 | 15 |
 Recounted by script on `test/yukthix-main` after merging HIR-28 bulk offers (with the HIR-09 follow-ups) and HIR-27 interview days: A–G 189 live, 11 gap, 6 wire, 92 not built, 5 phone, of 303.
+Recounted by script 13 Nov 2026 on `feat/yukthix-careers-2` after the careers follow-ups (answers 351-353, 355-357, 359, 362): T9-09 WhiteLabel live (gap) → live; 2 new T9-09 stories drawn and live (JobInternationalPhone, PortalWithLogo); Job stays live (gap) for WhatsApp apply (354).
 Recounted by script 12 Nov 2026 on `feat/yukthix-hir-28` after HIR-28 went live (all 4 stories).
 
 Recounted by script 12 Nov 2026 on `feat/yukthix-hir-09` after merging the Settings 6.1 follow-ups with answers 332 and 334-337: A–G 179 live, 10 gap, 6 wire, 100 not built, 5 phone, of 300.
@@ -754,14 +755,16 @@ Google for Jobs JSON-LD and /yx/careers/[org]/sitemap.xml), /yx/apply/[token], a
 |---|---|---|
 | Home · Careers home | live | builder layout, banner as hero photo, company pages, assistant when on |
 | HomePhone · Careers home · phone | live | same page at phone width |
-| WhiteLabel · Careers home · white-label | live (gap) | no white-label setting in the API: "Powered by YukthiX" always shows (question 356) |
+| WhiteLabel · Careers home · white-label | live | answer 356: company setting `brand.white_label` (default off) hides "Powered by YukthiX" on the careers site, job page and every candidate page |
 | NoJobs · Careers home · no open jobs | live | no open jobs |
-| Job · Job page with pay range and apply | live (gap) | range only when the job shows it; no "apply by" date, experience or requirements list on a job (question 353); no WhatsApp apply (question 354) |
+| Job · Job page with pay range and apply | live (gap) | range only when the job shows it; Apply by and Experience shown when the job has them (answer 353; the job closes itself after that day); requirements stay in the description; no WhatsApp apply (354, with T9-20) |
 | JobPhone · Job page · phone | live | same page at phone width |
 | Applied · Job page · application sent | live | after apply |
 | Closed · Job page · closed | live | closed, on hold or unknown link: "This role is not accepting applications" (answer 242) |
 | JobPayQuestion · Job page · pay question where the law allows | live | answer 224: only where the job asks and HIR-24's law row allows; dropped by the API otherwise |
 | JobOnHold · Job page · not accepting applications (on hold) | live | answer 242 |
+| JobInternationalPhone · Job page · outside India (international number) | live | drawn 13 Nov 2026 (answer 359): a job whose place is outside India takes a number with any country code (kit `MaskedField` kind `intlPhone`) |
+| PortalWithLogo · Candidate page · company logo | live | drawn 13 Nov 2026 (answers 357, 362): the kit `TenantLogo` in the portal header on every candidate page; offer and interview answers carry the company's logo, colour, careers link and white-label |
 | Status · Application status | live | /yx/application/[token]: this application only, candidate words (no stage name) |
 | StatusPhone · Application status · phone | live | same page at phone width |
 | StatusDecision · Application status · decision made | live | rejected or archived |
@@ -1537,3 +1540,31 @@ in India.
 424. **Time zone.** Every day is India time (IST), like HIR-06. *Suggested: keep; add a zone when a company hires abroad.*
 425. **Panel email on a retry.** A row whose candidate email bounced is resent as HIR-06 resends: the panel gets the invite
      again. *Suggested: keep (same as a single resend).*
+## Careers follow-ups built (answers 351-353, 355-357, 359, 362; 13 Nov 2026, branch `feat/yukthix-careers-2`)
+- (351) The API's emails, feeds and sitemap use the /yx addresses (offer, interview, application, candidate, apply); the
+  old-address redirects stay until 13 Nov 2027 (noted in `apps/web/next.config.js`).
+- (352) When a résumé is quarantined, the applicant gets "We could not accept your résumé file" with their candidate-page
+  link to upload another (audited `candidate.resume.quarantine_told`). Company setting
+  `hiring.resume_quarantine.tell_applicant`, default on.
+- (353) Jobs gain optional Apply by (date) and Experience (up to 60 characters) on Create job (kit `CreateJobSheet`) and
+  the job API. After the Apply-by day (India date) the job is off the careers site, feeds and sitemap and its apply link
+  says "This role is not accepting applications". Migration `202617p0000000_job_apply_by_experience` (two nullable columns).
+- (355) The HIR-05 Application drawer shows a "Pay history" card with the pay given when applying, fetched from
+  `GET hiring/offers/current-pay` only by holders of the offer-pay key (another company's entry: 404).
+- (356) Company setting `brand.white_label`, default off: hides "Powered by YukthiX" on the careers site, job page and every
+  candidate page.
+- (357) New kit part `TenantLogo` (image with the company name as alt text, 24 / 40 px caps, name as fallback), story
+  Foundations › TenantLogos; shown in the portal header of every candidate page and on the careers banner.
+- (359) A job whose location is outside India takes an international number (kit `MaskedField` kind `intlPhone`, checked
+  with libphonenumber); the job answer carries `internationalPhone`. Jobs in India keep the 10-digit mobile.
+- (362) The offer and interview answers carry the company's brand (name, logo, careers link, colour, white-label).
+## Founder questions from the careers follow-ups (13 Nov 2026)
+441. **Apply-by day.** The job closes after the Apply-by day in India time, also for jobs abroad (a New York job closes
+     at 2:30 pm New York time). *Suggested: keep for now; use the location's time zone when overseas hiring grows.*
+442. **Where white-label is switched on.** `brand.white_label` is a company setting with no screen yet (D15 says
+     plan-level). *Suggested: YukthiX staff switch it from the console with the plan; HR does not see it.*
+443. **Quarantine email switch.** `hiring.resume_quarantine.tell_applicant` (default on) has no place on Settings 6.1
+     yet. *Suggested: draw it on 6.1 under "Background checks and candidate data".*
+444. **International number on jobs in India.** The designed form still asks Indian applicants for a 10-digit mobile;
+     the API accepts any number (an applicant abroad applying to an India job must use an Indian number). *Suggested:
+     keep; add a "my number is not Indian" switch only if recruiters ask.*

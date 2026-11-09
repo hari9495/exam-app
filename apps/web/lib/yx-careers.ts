@@ -87,6 +87,7 @@ export function liveApply(applyToken: string, job: PublicJob): LiveCareersJob['a
     resumeAccept: ['.pdf'],
     honeypot: true,
     askPay: Boolean(job.askPayHistory),
+    internationalPhone: Boolean(job.internationalPhone),
     notices: notices.map((n) => ({ purpose: n.purpose, text: n.text, required: n.required })),
     questions: job.customFields.map((f) => ({ id: f.definitionId, label: f.label, type: f.fieldType, options: f.options, required: f.required })),
     onResumePicked: async (file: File) => {
@@ -116,5 +117,28 @@ export function jobDetail(job: PublicJob, slug: string, fallbackId: string) {
     slug,
     pay: job.salary ? { min: job.salary.min, max: job.salary.max, period: `a ${job.salary.period}`, currency: job.salary.currency } : null,
     about: job.jobDescription ?? '',
+    // Careers answer 353: shown on the job page only when the job sets them.
+    experience: job.experience ?? null,
+    closesOn: job.applyBy ? new Date(`${job.applyBy}T00:00:00`) : null,
+  };
+}
+
+/** The company's public face as the candidate pages answer it (careers answers 356, 357, 362). */
+export interface PublicBrandAnswer {
+  orgName?: string;
+  orgLogo?: string | null;
+  careersSlug?: string | null;
+  accent?: string | null;
+  whiteLabel?: boolean;
+}
+
+/** The candidate pages' brand: name, logo, colour, careers link and white-label (all from the company). */
+export function candidateBrand(b: PublicBrandAnswer | null | undefined, name?: string) {
+  return {
+    tenant: name ?? b?.orgName ?? '',
+    accent: b?.accent ?? null,
+    careersHref: b?.careersSlug ? `/yx/careers/${encodeURIComponent(b.careersSlug)}` : null,
+    logoUrl: b?.orgLogo ?? null,
+    whiteLabel: Boolean(b?.whiteLabel),
   };
 }

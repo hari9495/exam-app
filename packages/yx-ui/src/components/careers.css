@@ -386,3 +386,8 @@
 /* FAQ rows tint on hover like any disclosure (7 Oct 2026). */
 .yx-careers__faq-q button:hover { color: var(--yx-color-link); }
 .yx-page-builder__row-main:hover { background: var(--yx-color-bg-subtle); }
+
+/* Careers answer 357: a company's logo, height-capped so a tall or wide upload never pushes the page around. */
+.yx-tenant-logo { display: inline-block; max-width: 160px; height: auto; max-height: 24px; object-fit: contain; vertical-align: middle; }
+.yx-tenant-logo[data-size="md"] { max-width: 240px; max-height: 40px; }
+.yx-tenant-logo--text { max-height: none; font-weight: var(--yx-weight-semibold); color: var(--yx-color-text-primary); }

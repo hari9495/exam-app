@@ -1632,6 +1632,9 @@ export interface NewJob {
   budgetAmount?: number;
   /** YYYY-MM-DD. */
   targetStart?: string;
+  /** Careers answer 353: the last day to apply (YYYY-MM-DD; applications close after it) and the experience asked for. */
+  applyBy?: string;
+  experience?: string;
 }
 
 export interface CreateJobChoice {
@@ -1698,6 +1701,8 @@ export function CreateJobSheet({ open, onOpenChange, choices = SAMPLE_CHOICES, o
   const [replaces, setReplaces] = useState<string | null>(null);
   const [budget, setBudget] = useState<number | null>(null);
   const [start, setStart] = useState<Date | null>(null);
+  const [applyBy, setApplyBy] = useState<Date | null>(null);
+  const [experience, setExperience] = useState('');
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState<'save' | 'draft' | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
@@ -1746,6 +1751,8 @@ export function CreateJobSheet({ open, onOpenChange, choices = SAMPLE_CHOICES, o
         replacementOfEmployeeId: reason === 'replacement' ? opt(replaces) : undefined,
         budgetAmount: opt(budget),
         targetStart: start ? `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}` : undefined,
+        applyBy: applyBy ? `${applyBy.getFullYear()}-${pad(applyBy.getMonth() + 1)}-${pad(applyBy.getDate())}` : undefined,
+        experience: experience.trim() || undefined,
       });
       onOpenChange(false);
     } catch (e) {
@@ -1823,6 +1830,14 @@ export function CreateJobSheet({ open, onOpenChange, choices = SAMPLE_CHOICES, o
           </FormField>
           <FormField label="Pipeline">
             <Select aria-label="Pipeline" value={pipelineId} onChange={setPipelineId} options={c.pipelines} />
+          </FormField>
+        </FieldRow>
+        <FieldRow>
+          <FormField label="Apply by" optional helper="Applications close after this day">
+            <DatePicker aria-label="Apply by" value={applyBy} onChange={setApplyBy} min={new Date()} />
+          </FormField>
+          <FormField label="Experience" optional helper="As candidates read it, e.g. 2 to 4 years">
+            <TextField value={experience} onChange={setExperience} maxLength={60} />
           </FormField>
         </FieldRow>
         <FieldRow>

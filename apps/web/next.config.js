@@ -55,6 +55,8 @@ const nextConfig = {
       // YukthiX platform staff sign in at /staff/sign-in, which nothing links to.
       // T9-09 (founder decisions 8 and 10): the careers site and the candidate pages live under /yx; older emails, job
       // boards and search results still carry these addresses.
+      // Founder answer 351: the API's emails and feeds use the /yx addresses since 13 Nov 2026; keep these redirects for a
+      // year, until 13 Nov 2027 (older emails and boards' cached links), then remove them.
       { source: '/careers/:orgSlug', destination: '/yx/careers/:orgSlug', permanent: true },
       { source: '/careers/:orgSlug/jobs/:slug', destination: '/yx/careers/:orgSlug/jobs/:slug', permanent: true },
       { source: '/careers/:orgSlug/sitemap.xml', destination: '/yx/careers/:orgSlug/sitemap.xml', permanent: true },

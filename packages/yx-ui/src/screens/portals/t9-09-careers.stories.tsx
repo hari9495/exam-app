@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { CareersJobScreen, CareersSiteScreen } from './t9-candidate';
 import { ApplicationStatusScreen, CandidatePortalScreen, InterviewBookingScreen, OfferAcceptScreen } from './t9-09-candidate-pages';
 import { CAREERS_CONFIG, CAREERS_JOBS, JOB_DETAIL } from './t9-cand-data';
-import { APP_STATUS, CAND_BRAND, CAND_PORTAL, INTERVIEW, INTERVIEW_SELF_BOOK, OFFER } from './t9-cand-pages-data';
+import { APP_STATUS, CAND_BRAND, CAND_PORTAL, INTERVIEW, INTERVIEW_SELF_BOOK, KAVERI_LOGO, OFFER } from './t9-cand-pages-data';
 import { KAVERI_ACCENT, TENANT, TODAY } from './t9-data';
 
 const meta: Meta = { title: 'Screens/Portals/T9-09 · Careers site', parameters: { layout: 'fullscreen' } };
@@ -39,6 +39,13 @@ export const JobOnHold: S = {
   name: 'Job page · not accepting applications (on hold)',
   render: () => <CareersJobScreen tenant={TENANT} accent={KAVERI_ACCENT} detail={{ ...JOB_DETAIL, closesOn: null }} today={TODAY} state="closed" live={{ allJobsHref: '#careers', apply: APPLY }} />,
 };
+// Careers answer 359: a job placed outside India takes a number with any country code.
+export const JobInternationalPhone: S = {
+  name: 'Job page · outside India (international number)',
+  render: () => <CareersJobScreen tenant={TENANT} accent={KAVERI_ACCENT} detail={{ ...JOB_DETAIL, job: { ...JOB_DETAIL.job, location: 'Dubai office' }, closesOn: null }} today={TODAY} live={{ allJobsHref: '#careers', apply: { ...APPLY, askPay: false, internationalPhone: true } }} />,
+};
+// Careers answer 357/362: the candidate pages carry the company's logo and colour.
+export const PortalWithLogo: S = { name: 'Candidate page · company logo', render: () => <CandidatePortalScreen brand={{ ...CAND_BRAND, logoUrl: KAVERI_LOGO }} state="ready" portal={CAND_PORTAL} /> };
 
 // Decision 10: the candidate pages outside the app, in the T9-09 portal style.
 export const Status: S = { name: 'Application status', render: () => <ApplicationStatusScreen brand={CAND_BRAND} state="ready" status={APP_STATUS} /> };

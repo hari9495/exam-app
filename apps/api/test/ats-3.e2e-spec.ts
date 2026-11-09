@@ -138,7 +138,7 @@ describe('Recruitment batch AT3', () => {
     const res = await apply({ email, name: 'Someone Else', resumeBase64: pdf('replacement'), consents: [{ purpose: 'application', version: 2 }] }).expect(201);
     expect(res.body).toEqual({ received: true });
     expect(JSON.stringify(res.body)).not.toMatch(/token/i);
-    expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: email, html: expect.stringContaining('/portal/') }));
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: email, html: expect.stringContaining('/yx/candidate/') }));
     const after = await inA((tx) => tx.candidate.findFirstOrThrow({ where: { email }, include: { profile: true } }));
     expect(after.name).toBe(before.name);
     expect(after.profile?.resumePath).toBe(before.profile?.resumePath);
