@@ -35,7 +35,7 @@ export class HiringController {
   // Settings 6.1 Hiring: recruiting, hiring admins and HR read it; the hiring settings key (or HR's settings key), held
   // for the whole company, changes it; never while acting for someone else.
   @Get('settings')
-  @RequireAnyPermission('ats.settings.manage', 'org.settings.manage', 'pipeline:manage', 'ats.headcount.manage', 'ats.referral.manage')
+  @RequireAnyPermission('ats.settings.manage', 'org.settings.manage', 'pipeline:manage', 'pipelines:configure', 'ats.headcount.manage', 'ats.referral.manage')
   settings(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.hiringSettings.read(ctx, req.user as ScopeUser);
   }

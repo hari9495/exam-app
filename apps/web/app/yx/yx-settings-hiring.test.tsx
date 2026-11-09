@@ -28,7 +28,7 @@ const SETTINGS = {
   choices: { 'ats.retention_months': ['6', '12', '18'], 'hiring.reject.email_candidate': ['off', 'on'], 'ats.referral.bonus_inr': ['25000', '50000'], 'ats.referral.qualify_days': ['60', '90'], 'hiring.requisition.default_recruiter': ['none'] },
   lastChange: { by: 'Neha Joshi', at: '2026-11-08T10:00:00Z', what: 'Changed referral bonus' },
   pipelines: [{ id: 'p1', name: 'Standard', isDefault: true, jobs: 2, stages: [{ id: 's1', name: 'Applied', category: 'active', daysTarget: null, limit: null }] }],
-  scorecards: [],
+  scorecards: [{ id: 'sc1', name: 'Plant technician', scaleMax: 4, passBar: 2.5, inUse: false, items: [{ id: 'i1', label: 'Machine safety', guidance: null, weight: 60, competencyId: null }, { id: 'i2', label: 'Teamwork', guidance: null, weight: 40, competencyId: null }] }],
 };
 const calls: [string, unknown][] = [];
 const routes = (perms: string[], settings: object = SETTINGS) =>
@@ -36,6 +36,7 @@ const routes = (perms: string[], settings: object = SETTINGS) =>
     if (init?.method && init.method !== 'GET') return (calls.push([`${init.method} ${path}`, JSON.parse(String(init.body))]), {});
     if (path.startsWith('/rbac/me/permissions')) return perms;
     if (path === '/hiring/settings') return settings;
+    if (path === '/hiring/scorecard-competencies') return [{ id: 'c1', name: 'Problem solving' }];
     throw new Error(`unexpected ${path}`);
   });
 
@@ -86,6 +87,47 @@ describe('Settings › Hiring (6.1, live)', () => {
     await ue.type(within(sheet).getByLabelText(/^Applied: days target/), '5');
     await ue.click(within(sheet).getByRole('button', { name: 'Save stage targets' }));
     await waitFor(() => expect(calls).toEqual([['PATCH /pipelines/stages/s1', { daysTarget: 5, limit: null }]]));
+  });
+
+  it('scorecard templates (answer 345): the pipelines key adds and edits them in a sheet, saved through their API', async () => {
+    routes(['pipelines:configure']);
+    wrap(<YxHiringSettingsPage />);
+    expect(await screen.findByText('Machine safety 60 %, Teamwork 40 %')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Edit Plant technician' }));
+    let sheet = await screen.findByRole('dialog');
+    await ue.click(within(sheet).getByRole('button', { name: 'Save scorecard' }));
+    await waitFor(() => expect(calls).toEqual([['PUT /hiring/scorecard-templates/sc1', { name: 'Plant technician', scaleMax: 4, passBar: 2.5, items: [{ label: 'Machine safety', guidance: null, weight: 60, competencyId: null }, { label: 'Teamwork', guidance: null, weight: 40, competencyId: null }] }]]));
+    expect((await screen.findAllByText('Scorecard saved')).length).toBeGreaterThan(0);
+    calls.length = 0;
+    await ue.click(screen.getByRole('button', { name: 'Add scorecard' }));
+    sheet = await screen.findByRole('dialog');
+    await ue.click(within(sheet).getByRole('button', { name: 'Save scorecard' }));
+    expect(within(sheet).getByText('Enter the name.')).toBeInTheDocument();
+    expect(calls).toEqual([]);
+    await ue.type(within(sheet).getByLabelText(/^Name/), 'Sales');
+    await ue.type(within(sheet).getByLabelText(/^Skill 1/), 'Negotiation');
+    await ue.click(within(sheet).getByRole('button', { name: 'Save scorecard' }));
+    await waitFor(() => expect(calls).toEqual([['POST /hiring/scorecard-templates', expect.objectContaining({ name: 'Sales', items: [expect.objectContaining({ label: 'Negotiation', weight: 100 })] })]]));
+  });
+
+  it('scorecard templates: without the pipelines key, or while acting, no Add or Edit (read-only list)', async () => {
+    routes(['ats.settings.manage']);
+    const { unmount } = wrap(<YxHiringSettingsPage />);
+    expect(await screen.findByText('Plant technician')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add scorecard' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit Plant technician' })).not.toBeInTheDocument();
+    unmount();
+    (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'org_admin', impersonating: true, actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
+    routes(['pipelines:configure']);
+    wrap(<YxHiringSettingsPage />);
+    expect(await screen.findByText('Plant technician')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add scorecard' })).not.toBeInTheDocument();
+  });
+
+  it('default recruiter (answer 348): one who no longer qualifies shows a warning and reads as None', async () => {
+    routes(['ats.settings.manage'], { ...SETTINGS, staleRecruiter: 'Kavya Rao' });
+    wrap(<YxHiringSettingsPage />);
+    expect(await screen.findByText(/Kavya Rao no longer holds the recruiter key or has left/)).toBeInTheDocument();
   });
 
   it('no access: the API refusal shows the error state', async () => {

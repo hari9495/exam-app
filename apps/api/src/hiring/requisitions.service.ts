@@ -12,6 +12,7 @@ import { JobBoardPosterService } from '../job-boards/job-board-poster.service';
 import { resolveSteps, type ChainStepInput } from '../approvals/approver-resolver';
 import type { ApprovalSummary } from '../approvals/approvals.service';
 import { checkRequisition, type PlanMode } from './requisition-rules';
+import { isRecruiter } from './recruiter-key';
 import type { PlanDto } from './hiring-dto';
 
 // Recruitment batch AT2 (M10-BUILD-DESIGN §5; AT-2.01 … 2.04): headcount plans and requisitions on P03.
@@ -76,6 +77,18 @@ export class HiringRequisitionsService implements OnModuleInit {
   }
 
   /** Does a new job start as a draft requisition? When the company's requisition chain is on, or the plan is required. */
+  /**
+   * Answers 291 and 348: a hiring manager's request starts with the company's default recruiter, or none, never the
+   * manager themselves. A default who has left or no longer holds the recruiter key is treated as none.
+   */
+  async defaultRecruiter(ctx: TenantContext, actorUserId: string): Promise<string | null> {
+    const org = ctx.organizationId as string;
+    const row = await this.tenantPrisma.forTenant(ctx, (tx) => tx.setting.findFirst({ where: { organizationId: org, key: 'hiring.requisition.default_recruiter', scopeType: 'tenant', scopeId: org } }));
+    const id = row ? String(row.value) : 'none';
+    if (id === 'none' || id === actorUserId) return null;
+    return (await isRecruiter(this.prisma, this.tenantPrisma, org, id)) ? id : null;
+  }
+
   async startsAsDraft(ctx: TenantContext): Promise<boolean> {
     return this.run(ctx, async (tx, c) => {
       const chain = await tx.approvalChain.findFirst({ where: { organizationId: c.organizationId, gate: 'requisition' }, select: { enabled: true } });

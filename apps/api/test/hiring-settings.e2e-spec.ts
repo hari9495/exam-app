@@ -10,6 +10,7 @@ import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { LOGIN_PROTECTION_REDIS } from '../src/auth/login-protection.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
+import { HiringRequisitionsService } from '../src/hiring/requisitions.service';
 
 // Settings 6.1 Hiring end to end against the real database (forced RLS, the app role): recruiting and hiring admins
 // read it; the hiring settings key (or HR's settings key) for the whole company changes it; a grant for one legal entity
@@ -20,21 +21,22 @@ describe('Settings 6.1 Hiring', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let tenantPrisma: TenantPrismaService;
+  let moduleRequisitions: () => HiringRequisitionsService;
   const PASSWORD = 'Corr3ct-Horse-Battery';
   const run = randomUUID().slice(0, 8);
   const SUPER: TenantContext = { organizationId: null, isSuperAdmin: true };
   const server = () => app.getHttpServer();
   let billingPlanId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'adminB' | 'rec' | 'hra' | 'mgr' | 'emp' | 'hrEntity' | 'acting';
+  type Who = 'adminA' | 'adminB' | 'rec' | 'rec2' | 'hra' | 'mgr' | 'emp' | 'hrEntity' | 'acting' | 'actingRec';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
-  const api = (who: Who, method: 'get' | 'put' | 'patch', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const api = (who: Who, method: 'get' | 'put' | 'patch' | 'post' | 'delete', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const at = (o: string) => <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: o, isSuperAdmin: false }, fn);
   const inA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => at(org.A.id)(fn);
   const save = (who: Who, changes: unknown) => api(who, 'put', '/hiring/settings').send({ changes });
-  type Settings = { canEdit: boolean; values: Record<string, string>; people: { id: string; name: string }[]; lastChange: { by: string; what: string } | null; pipelines: { id: string; name: string; stages: { id: string; name: string; daysTarget: number | null; limit: number | null }[] }[] };
+  type Settings = { canEdit: boolean; values: Record<string, string>; staleRecruiter: string | null; scorecards: { id: string; name: string; passBar: number; inUse: boolean; items: { label: string; weight: number }[] }[]; people: { id: string; name: string }[]; lastChange: { by: string; what: string } | null; pipelines: { id: string; name: string; stages: { id: string; name: string; daysTarget: number | null; limit: number | null }[] }[] };
   const read = async (who: Who) => (await api(who, 'get', '/hiring/settings').expect(200)).body as Settings;
 
   beforeAll(async () => {
@@ -46,6 +48,7 @@ describe('Settings 6.1 Hiring', () => {
     await app.init();
     prisma = moduleRef.get(PrismaService);
     tenantPrisma = moduleRef.get(TenantPrismaService);
+    moduleRequisitions = () => moduleRef.get(HiringRequisitionsService);
     const redis = moduleRef.get<Redis>(LOGIN_PROTECTION_REDIS);
     const ipKeys = await redis.keys('auth:otp:ip:*');
     if (ipKeys.length) await redis.del(...ipKeys);
@@ -61,6 +64,7 @@ describe('Settings 6.1 Hiring', () => {
       ['adminA', 'A', 'org_admin', null],
       ['adminB', 'B', 'org_admin', null],
       ['rec', 'A', 'panel', tpl('recruiter')],
+      ['rec2', 'A', 'panel', tpl('recruiter')],
       ['hra', 'A', 'panel', tpl('hiring_admin')],
       ['mgr', 'A', 'panel', tpl('hiring_manager')],
       ['emp', 'A', 'panel', []],
@@ -78,9 +82,10 @@ describe('Settings 6.1 Hiring', () => {
       const profile = await tx.permissionProfile.create({ data: { ...o, name: `entity-${run}`, permissionsJson: JSON.stringify(['org.settings.manage', 'ats.settings.manage']) } });
       await tx.roleGrant.create({ data: { ...o, userId: users.hrEntity, permissionProfileId: profile.id, scopeType: 'legal_entity', legalEntityId: ids.entity, validFrom: new Date('2026-01-01'), status: 'active', reason: 'HR for Kaveri Foods' } });
     });
-    for (const [who, k] of [['adminA', 'A'], ['adminB', 'B'], ['rec', 'A'], ['hra', 'A'], ['mgr', 'A'], ['emp', 'A'], ['hrEntity', 'A']] as const)
+    for (const [who, k] of [['adminA', 'A'], ['adminB', 'B'], ['rec', 'A'], ['rec2', 'A'], ['hra', 'A'], ['mgr', 'A'], ['emp', 'A'], ['hrEntity', 'A']] as const)
       token[who] = (await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: org[k].slug, email: `${who}@hirset-${run}.test`, password: PASSWORD }).expect(200)).body.accessToken;
     token.acting = (await request(server()).post(`/api/v1/auth/impersonate/${users.hra}`).set('Authorization', `Bearer ${token.adminA}`).expect(200)).body.accessToken;
+    token.actingRec = (await request(server()).post(`/api/v1/auth/impersonate/${users.rec}`).set('Authorization', `Bearer ${token.adminA}`).expect(200)).body.accessToken;
     // The company's first job makes its standard pipeline.
     await request(server()).post('/api/v1/jobs').set('Authorization', `Bearer ${token.adminA}`).send({ title: 'Plant Technician', location: 'Hosur' }).expect(201);
   }, 300_000);
@@ -93,10 +98,27 @@ describe('Settings 6.1 Hiring', () => {
     await app.close();
   });
 
+  // Answer 341: the seven settings drawn into 6.1, with their defaults.
+  const DEFAULTS = {
+    'ats.retention_months': '12',
+    'hiring.reject.email_candidate': 'off',
+    'ats.referral.bonus_inr': '25000',
+    'ats.referral.qualify_days': '90',
+    'hiring.requisition.default_recruiter': 'none',
+    'ats.headcount_plan': 'advisory',
+    'ats.headcount_plan.manager_view': 'own_department',
+    'ats.referral.self_apply_days': '90',
+    'hiring.pay_range.show': 'off',
+    'hiring.pay_history.ask': 'off',
+    'hiring.rediscovery.ai': 'off',
+    'hiring.rehire_flag.blocks_screening': 'off',
+  };
+
   it('reads: recruiting and hiring admins see the defaults; only the settings keys may edit; employees and managers are refused', async () => {
     const rec = await read('rec');
-    expect(rec).toMatchObject({ canEdit: false, values: { 'ats.retention_months': '12', 'hiring.reject.email_candidate': 'off', 'ats.referral.bonus_inr': '25000', 'ats.referral.qualify_days': '90', 'hiring.requisition.default_recruiter': 'none' }, lastChange: null });
-    expect(rec.people.map((p) => p.id)).toEqual(expect.arrayContaining([users.rec, users.hra]));
+    expect(rec).toMatchObject({ canEdit: false, staleRecruiter: null, values: { ...DEFAULTS }, lastChange: null });
+    // Answer 348: the default recruiter's choices are the people with the recruiter key only (a System Admin holds it).
+    expect(rec.people.map((p) => p.id).sort()).toEqual([users.adminA, users.rec, users.rec2].sort());
     expect(rec.pipelines[0]!.stages.length).toBeGreaterThan(2);
     expect((await read('hra')).canEdit).toBe(true);
     expect((await read('adminA')).canEdit).toBe(true);
@@ -113,13 +135,33 @@ describe('Settings 6.1 Hiring', () => {
       { key: 'ats.referral.bonus_inr', value: '50000' },
       { key: 'ats.referral.qualify_days', value: '60' },
       { key: 'hiring.requisition.default_recruiter', value: users.rec },
+      { key: 'ats.headcount_plan', value: 'required' },
+      { key: 'ats.headcount_plan.manager_view', value: 'off' },
+      { key: 'ats.referral.self_apply_days', value: '30' },
+      { key: 'hiring.pay_range.show', value: 'on' },
+      { key: 'hiring.pay_history.ask', value: 'on' },
+      { key: 'hiring.rediscovery.ai', value: 'on' },
+      { key: 'hiring.rehire_flag.blocks_screening', value: 'on' },
     ]).expect(200)).body as Settings;
-    expect(after.values).toEqual({ 'ats.retention_months': '18', 'hiring.reject.email_candidate': 'on', 'ats.referral.bonus_inr': '50000', 'ats.referral.qualify_days': '60', 'hiring.requisition.default_recruiter': users.rec });
+    expect(after.values).toEqual({
+      'ats.retention_months': '18',
+      'hiring.reject.email_candidate': 'on',
+      'ats.referral.bonus_inr': '50000',
+      'ats.referral.qualify_days': '60',
+      'hiring.requisition.default_recruiter': users.rec,
+      'ats.headcount_plan': 'required',
+      'ats.headcount_plan.manager_view': 'off',
+      'ats.referral.self_apply_days': '30',
+      'hiring.pay_range.show': 'on',
+      'hiring.pay_history.ask': 'on',
+      'hiring.rediscovery.ai': 'on',
+      'hiring.rehire_flag.blocks_screening': 'on',
+    });
     expect(after.lastChange).toMatchObject({ by: `hra ${run}` });
     // The other screens read the same company settings.
     expect((await api('rec', 'get', '/referrals/policy').expect(200)).body).toMatchObject({ bonusInr: 50000, qualifyDays: 60 });
     const audits = await inA((tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action: 'org.setting.changed' }, orderBy: { createdAt: 'asc' } }));
-    expect(audits.map((a) => JSON.parse(a.metadataJson!))).toEqual(expect.arrayContaining([expect.objectContaining({ key: 'ats.retention_months', from: null, to: '18' }), expect.objectContaining({ key: 'hiring.requisition.default_recruiter', from: null, to: users.rec })]));
+    expect(audits.map((a) => JSON.parse(a.metadataJson!))).toEqual(expect.arrayContaining([expect.objectContaining({ key: 'ats.retention_months', from: null, to: '18' }), expect.objectContaining({ key: 'hiring.requisition.default_recruiter', from: null, to: users.rec }), expect.objectContaining({ key: 'hiring.rehire_flag.blocks_screening', from: null, to: 'on' }), expect.objectContaining({ key: 'ats.headcount_plan', from: null, to: 'required' })]));
     expect(audits.every((a) => a.actorUserId === users.hra)).toBe(true);
     // A second change records the value before.
     await save('adminA', [{ key: 'ats.retention_months', value: '24' }]).expect(200);
@@ -140,7 +182,13 @@ describe('Settings 6.1 Hiring', () => {
       [{ key: 'ats.retention_months', value: '7' }],
       [{ key: 'ats.retention_months', value: '6' }, { key: 'ats.referral.bonus_inr', value: '12345' }],
       [{ key: 'hiring.reject.email_candidate', value: 'yes' }],
-      [{ key: 'ats.headcount_plan', value: 'off' }], // a setting that is not on this page
+      [{ key: 'rehire.code', value: 'new' }], // a setting that is not on this page
+      [{ key: 'ats.headcount_plan', value: 'strict' }],
+      [{ key: 'ats.headcount_plan.manager_view', value: 'on' }],
+      [{ key: 'ats.referral.self_apply_days', value: '45' }],
+      [{ key: 'hiring.pay_range.show', value: 'true' }],
+      [{ key: 'hiring.rehire_flag.blocks_screening', value: 'yes' }],
+      [{ key: 'hiring.rediscovery.ai', value: 'on' }, { key: 'hiring.requisition.default_recruiter', value: 'not-a-person' }],
       [{ key: 'not.a.setting', value: 'x' }],
       [{ key: 'ats.retention_months', value: '6' }, { key: 'ats.retention_months', value: '9' }],
       [{ key: 'ats.retention_months', value: 6 }],
@@ -150,19 +198,66 @@ describe('Settings 6.1 Hiring', () => {
     ];
     for (const changes of bad) await save('hra', changes).expect(400);
     await api('hra', 'put', '/hiring/settings').send({}).expect(400);
-    expect((await read('rec')).values).toMatchObject({ 'ats.retention_months': '24', 'ats.referral.bonus_inr': '50000' });
+    expect((await read('rec')).values).toMatchObject({ 'ats.retention_months': '24', 'ats.referral.bonus_inr': '50000', 'ats.headcount_plan': 'required', 'hiring.rediscovery.ai': 'on' });
   });
 
-  it('another company: its own values only; this company\'s people are not found (404); a person who left cannot be chosen', async () => {
+  it('another company: its own values only; only an active person of this company with the recruiter key can be the default (400 otherwise, answer 348)', async () => {
     const b = await read('adminB');
     expect(b.values).toMatchObject({ 'ats.retention_months': '12', 'hiring.requisition.default_recruiter': 'none' });
     expect(b.people.map((p) => p.id)).not.toContain(users.rec);
-    await save('adminB', [{ key: 'hiring.requisition.default_recruiter', value: users.rec }]).expect(404);
-    await save('hra', [{ key: 'hiring.requisition.default_recruiter', value: users.adminB }]).expect(404);
-    await save('hra', [{ key: 'hiring.requisition.default_recruiter', value: randomUUID() }]).expect(404);
+    await save('adminB', [{ key: 'hiring.requisition.default_recruiter', value: users.rec }]).expect(400);
+    await save('hra', [{ key: 'hiring.requisition.default_recruiter', value: users.adminB }]).expect(400);
+    await save('hra', [{ key: 'hiring.requisition.default_recruiter', value: randomUUID() }]).expect(400);
+    // Active people of the company without the recruiter key: the hiring admin, a hiring manager.
+    for (const who of ['hra', 'mgr'] as const) expect((await save('hra', [{ key: 'hiring.requisition.default_recruiter', value: users[who] }]).expect(400)).body.message).toMatch(/recruiter key/);
+    // The company settings API refuses them the same way.
+    await api('adminA', 'put', '/org/settings').send({ key: 'hiring.requisition.default_recruiter', scopeType: 'tenant', value: users.mgr }).expect(400);
     await inA((tx) => tx.user.update({ where: { id: users.emp }, data: { status: 'inactive' } }));
-    await save('hra', [{ key: 'hiring.requisition.default_recruiter', value: users.emp }]).expect(404);
+    await save('hra', [{ key: 'hiring.requisition.default_recruiter', value: users.emp }]).expect(400);
     expect((await read('rec')).values['hiring.requisition.default_recruiter']).toBe(users.rec);
+    // A key holder can be chosen through either API; none clears it.
+    await api('adminA', 'put', '/org/settings').send({ key: 'hiring.requisition.default_recruiter', scopeType: 'tenant', value: users.rec2 }).expect(200);
+    await save('hra', [{ key: 'hiring.requisition.default_recruiter', value: 'none' }]).expect(200);
+    await save('hra', [{ key: 'hiring.requisition.default_recruiter', value: users.rec2 }]).expect(200);
+  });
+
+  it('a default recruiter who loses the recruiter key or leaves is treated as none, with a warning naming them (answer 348)', async () => {
+    const ctxA = { organizationId: org.A.id, isSuperAdmin: false };
+    expect(await read('hra')).toMatchObject({ staleRecruiter: null, values: { 'hiring.requisition.default_recruiter': users.rec2 } });
+    const rec2 = await inA((tx) => tx.user.findUniqueOrThrow({ where: { id: users.rec2 } }));
+    await inA((tx) => tx.permissionProfile.update({ where: { id: rec2.permissionProfileId! }, data: { permissionsJson: JSON.stringify(['ats.candidate.view']) } }));
+    const lost = await read('hra');
+    expect(lost).toMatchObject({ staleRecruiter: `rec2 ${run}`, values: { 'hiring.requisition.default_recruiter': 'none' } });
+    expect(lost.people.map((p) => p.id)).not.toContain(users.rec2);
+    // The stored value stays until someone changes it; a request a hiring manager raises starts with no recruiter.
+    expect(await inA((tx) => tx.setting.findFirstOrThrow({ where: { organizationId: org.A.id, key: 'hiring.requisition.default_recruiter' } }))).toMatchObject({ value: users.rec2 });
+    const reqs = moduleRequisitions();
+    expect(await reqs.defaultRecruiter(ctxA, users.mgr)).toBeNull();
+    await inA((tx) => tx.permissionProfile.update({ where: { id: rec2.permissionProfileId! }, data: { permissionsJson: JSON.stringify(ROLE_TEMPLATES.find((t) => t.key === 'recruiter')!.permissions) } }));
+    expect(await reqs.defaultRecruiter(ctxA, users.mgr)).toBe(users.rec2);
+    // Never the manager themselves.
+    expect(await reqs.defaultRecruiter(ctxA, users.rec2)).toBeNull();
+    await inA((tx) => tx.user.update({ where: { id: users.rec2 }, data: { status: 'inactive' } }));
+    expect(await read('hra')).toMatchObject({ staleRecruiter: `rec2 ${run}`, values: { 'hiring.requisition.default_recruiter': 'none' } });
+    expect(await reqs.defaultRecruiter(ctxA, users.mgr)).toBeNull();
+  });
+
+  it('scorecard templates on 6.1 (answer 345): listed with weights and pass bar; per cent adding to 100; archive; refused while acting', async () => {
+    const body = { name: 'Plant technician', scaleMax: 4, passBar: 2.5, items: [{ label: 'Machine safety', weight: 50 }, { label: 'Food hygiene', weight: 30 }, { label: 'Teamwork', weight: 20, guidance: 'Helps the shift' }] };
+    await api('rec', 'post', '/hiring/scorecard-templates').send({ ...body, items: body.items.slice(0, 2) }).expect(400);
+    await api('hra', 'post', '/hiring/scorecard-templates').send(body).expect(403);
+    // Acting for a recruiter is refused (by the key check for an impersonation token, and by the controller otherwise).
+    await api('actingRec', 'post', '/hiring/scorecard-templates').send(body).expect(403);
+    const t = (await api('rec', 'post', '/hiring/scorecard-templates').send(body).expect(201)).body as { id: string };
+    const listed = (await read('hra')).scorecards.find((x) => x.id === t.id)!;
+    expect(listed).toMatchObject({ name: 'Plant technician', passBar: 2.5, inUse: false, items: [expect.objectContaining({ label: 'Machine safety', weight: 50 }), expect.objectContaining({ weight: 30 }), expect.objectContaining({ label: 'Teamwork', weight: 20, guidance: 'Helps the shift' })] });
+    await api('rec', 'put', `/hiring/scorecard-templates/${t.id}`).send({ ...body, passBar: 3, items: [{ label: 'Machine safety', weight: 100 }] }).expect(200);
+    expect((await read('hra')).scorecards.find((x) => x.id === t.id)).toMatchObject({ passBar: 3, items: [expect.objectContaining({ weight: 100 })] });
+    await api('adminB', 'put', `/hiring/scorecard-templates/${t.id}`).send(body).expect(404);
+    await api('actingRec', 'delete', `/hiring/scorecard-templates/${t.id}`).expect(403);
+    await api('rec', 'delete', `/hiring/scorecard-templates/${t.id}`).expect(200);
+    expect((await read('hra')).scorecards.map((x) => x.id)).not.toContain(t.id);
+    expect(await inA((tx) => tx.auditLog.count({ where: { organizationId: org.A.id, entityId: t.id, action: { startsWith: 'ats.scorecard_template.' } } }))).toBe(3);
   });
 
   it('stage targets (answer 302): the pipelines key changes them, audited; the hiring admin alone may not; another company gets 404', async () => {

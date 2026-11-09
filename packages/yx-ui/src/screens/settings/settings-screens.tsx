@@ -241,6 +241,11 @@ export interface LiveSettingsPage {
   onSave: (values: Record<string, SettingValue>, rows: Record<string, string[][]>) => Promise<void>;
   /** list kind: a row's extra button (`rowAction`), e.g. Stage targets of a pipeline. */
   onRowAction?: (key: string, rowIndex: number) => void;
+  /**
+   * list kind, by setting key: Add and each row's Edit open the caller's editor (e.g. scorecard templates, saved through
+   * their own API at once) instead of the row drawer. Pass a key only when the viewer may change that list.
+   */
+  listEditors?: Record<string, (rowIndex: number | 'new') => void>;
   onOpenScreen?: (screenId: string) => void;
   /** Title of the success toast. */
   savedTitle?: string;
@@ -470,6 +475,7 @@ function SettingsForm({
       onRowsChange={(r) => setRows((x) => ({ ...x, [d.key]: r }))}
       onOpenLink={onOpenScreen}
       onRowAction={live?.onRowAction ? (i) => live.onRowAction!(d.key, i) : undefined}
+      onListEdit={live?.listEditors?.[d.key]}
     />
     );
   };

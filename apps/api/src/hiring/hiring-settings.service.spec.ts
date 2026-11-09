@@ -18,11 +18,21 @@ describe('HiringSettingsService.save', () => {
   it('checks every key and value before writing any', async () => {
     jest.spyOn(svc, 'canEdit').mockResolvedValue(true);
     await expect(svc.save(ctx, { role: 'panel' }, [{ key: 'ats.retention_months', value: '18' }, { key: 'ats.referral.qualify_days', value: '45' }])).rejects.toBeInstanceOf(BadRequestException);
-    await expect(svc.save(ctx, { role: 'panel' }, [{ key: 'hiring.pay_range.show', value: 'on' }])).rejects.toThrow(/not a hiring setting on this page/);
+    await expect(svc.save(ctx, { role: 'panel' }, [{ key: 'rehire.code', value: 'new' }])).rejects.toThrow(/not a hiring setting on this page/);
+    // Answer 341: the seven settings now on the page still take only their own values.
+    await expect(svc.save(ctx, { role: 'panel' }, [{ key: 'ats.headcount_plan', value: 'strict' }])).rejects.toThrow(/one of: off, advisory, required/);
+    await expect(svc.save(ctx, { role: 'panel' }, [{ key: 'ats.referral.self_apply_days', value: '45' }])).rejects.toBeInstanceOf(BadRequestException);
     expect(set).not.toHaveBeenCalled();
   });
 
-  it('page keys are registry keys with defaults', () => {
-    expect(HIRING_SETTING_KEYS).toContain('hiring.requisition.default_recruiter');
+  it('a default recruiter that is not a UUID is refused (400) before anything is written (answer 348)', async () => {
+    jest.spyOn(svc, 'canEdit').mockResolvedValue(true);
+    await expect(svc.save(ctx, { role: 'panel' }, [{ key: 'ats.retention_months', value: '18' }, { key: 'hiring.requisition.default_recruiter', value: 'Neha' }])).rejects.toThrow(/recruiter key/);
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it('page keys are registry keys with defaults, the seven of answer 341 included', () => {
+    expect(HIRING_SETTING_KEYS).toEqual(expect.arrayContaining(['hiring.requisition.default_recruiter', 'ats.headcount_plan', 'ats.headcount_plan.manager_view', 'ats.referral.self_apply_days', 'hiring.pay_range.show', 'hiring.pay_history.ask', 'hiring.rediscovery.ai', 'hiring.rehire_flag.blocks_screening']));
+    expect(HIRING_SETTING_KEYS).toHaveLength(12);
   });
 });
