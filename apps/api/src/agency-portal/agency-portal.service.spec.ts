@@ -315,7 +315,7 @@ describe('AgencyPortalService', () => {
       await service.submit('T', dto);
       const data = tx.agencySubmission.create.mock.calls[0][0].data;
       expect(data.duplicateOfAgencyId).toBe('agency-2');
-      expect(data.ownerUntil.toISOString().slice(0, 10)).toBe(new Date(first.getTime() + 30 * 86_400_000).toISOString().slice(0, 10));
+      expect(data.ownerUntil.toISOString().slice(0, 10)).toBe(new Date(first.getTime() + 330 * 60_000 + 30 * 86_400_000).toISOString().slice(0, 10));
     });
 
     it('outside the ownership window the person is free again', async () => {

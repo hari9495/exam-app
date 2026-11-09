@@ -140,7 +140,8 @@ export class AgencyPortalService {
         if (prior && prior.agencyId === agency.id) throw new BadRequestException('You have already submitted this candidate for this role.');
         const inPipeline = !prior && (await tx.pipelineEntry.findFirst({ where: { organizationId: agency.organizationId, jobId: dto.jobId, createdAt: { gte: since }, candidate: { email: { equals: dto.email, mode: 'insensitive' } } }, select: { createdAt: true } }));
         const ownedFrom = prior?.createdAt ?? (inPipeline ? inPipeline.createdAt : null);
-        const ownerUntil = ownedFrom ? new Date(new Date(ownedFrom.getTime() + windowDays * 86_400_000).toISOString().slice(0, 10) + 'T00:00:00Z') : null;
+        // The last day held, as an India date (the first submission's IST day plus the window).
+        const ownerUntil = ownedFrom ? new Date(new Date(ownedFrom.getTime() + 330 * 60_000 + windowDays * 86_400_000).toISOString().slice(0, 10) + 'T00:00:00Z') : null;
         // No candidate/pipeline row is written here -- a submission is only turned into a
         // candidate/pipeline entry later, when a recruiter reviews and accepts it.
         const submission = await tx.agencySubmission.create({

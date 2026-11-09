@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { BenchBoardScreen, PlacementRecordScreen, PlacementsScreen } from './hiring-staffing';
 import { PLACEMENTS } from './hiring-data';
 import { TODAY } from '../_kit/data';
+import { BenchSheet, PlacementSheet } from './staffing-sheets';
 
 const meta: Meta = { title: 'Screens/Hiring/HIR-17 · Placements and bench board', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -15,3 +16,31 @@ export const VendorSupplied: S = { name: 'Vendor-supplied placement', render: ()
 export const Bench: S = { name: 'Bench board · policy days', render: () => <BenchBoardScreen rows={PLACEMENTS} today={TODAY} /> };
 export const BenchEmpty: S = { name: 'Bench · empty', render: () => <BenchBoardScreen rows={[]} today={TODAY} /> };
 export const Loading: S = { name: 'Loading', render: () => <PlacementsScreen rows={[]} state="loading" /> };
+
+// Drawn for the live page (staffing slice 2): a placement from a selected submission; adding someone to the bench.
+export const NewPlacement: S = {
+  name: 'New placement · from a selected submission',
+  render: () => (
+    <>
+      <PlacementsScreen rows={PLACEMENTS} />
+      <PlacementSheet open onOpenChange={() => {}} today={TODAY} placeable={[{ id: 's1', person: 'Kiran Joshi', job: 'Java Developer', source: 'employee' }, { id: 's2', person: 'Deepak Rao', job: 'Java Developer', source: 'candidate' }]} onSave={async () => {}} />
+    </>
+  ),
+};
+export const AddToBench: S = {
+  name: 'Add to bench',
+  render: () => (
+    <>
+      <BenchBoardScreen rows={PLACEMENTS} today={TODAY} />
+      <BenchSheet open onOpenChange={() => {}} today={TODAY} people={[{ value: 'e2', label: 'Kiran Joshi' }]} onSave={async () => {}} />
+    </>
+  ),
+};
+export const RecruiterView: S = {
+  name: 'Recruiter · no pay rates or margins',
+  render: () => (
+    <PlacementsScreen
+      live={{ state: 'ready', onRetry: () => {}, showPay: false, canManage: false, onNew: () => {}, onOpen: () => {}, onBench: () => {}, rows: [{ id: 'p1', person: 'Aravind Kumar', role: 'Java Developer', unit: 'hour', clientId: 'c1', client: 'Nilgiri Retail', supply: 'own', vendor: null, startOn: '2026-01-05', endOn: '2026-12-31', status: 'active', endedReason: null, billRate: '1200.00', version: 1 }] }}
+    />
+  ),
+};

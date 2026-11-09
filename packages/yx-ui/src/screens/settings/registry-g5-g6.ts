@@ -879,6 +879,22 @@ const staffing: SettingsPageDef = {
         { key: 'staff.rate_cards', label: 'Client rate cards', kind: 'link', linkScreenId: 'HIR-15', linkLabel: 'Open rate cards' },
       ],
     },
+    // Staffing slice 2 (HIR-16, HIR-17, HIR-21): submissions, placements and vendors.
+    {
+      title: 'Submissions and placements',
+      settings: [
+        { key: 'staff.mask_contact', label: 'Hide phone and email from clients until they shortlist', kind: 'toggle', value: true, helper: 'The submission email names the people; their contact details follow once the client shortlists.', starter: true, scope: 'Company', synonyms: ['mask', 'submission email'] },
+        { key: 'staff.ending_soon', label: 'A placement is ending soon within', kind: 'select', value: '30', options: ['15', '30', '45', '60'], optionLabels: { '15': '15 days', '30': '30 days', '45': '45 days', '60': '60 days' }, starter: true, scope: 'Company', synonyms: ['placement end', 'redeploy'] },
+        { key: 'staff.statutory_cost', label: 'Statutory cost on own-payroll pay', kind: 'select', value: '0', options: ['0', '5', '10', '13', '15', '20'], optionLabels: { '0': 'None', '5': '5%', '10': '10%', '13': '13%', '15': '15%', '20': '20%' }, helper: 'Employer PF, ESI and similar costs as a share of the pay rate; taken off the margin of own-payroll placements.', starter: true, scope: 'Company', synonyms: ['margin', 'pf', 'esi'] },
+      ],
+    },
+    {
+      title: 'Vendors',
+      settings: [
+        { key: 'staff.vendor_margin', label: 'Target margin for a vendor rate cap', kind: 'select', value: '25', options: ['10', '15', '20', '25', '30', '35', '40'], optionLabels: { '10': '10%', '15': '15%', '20': '20%', '25': '25%', '30': '30%', '35': '35%', '40': '40%' }, helper: 'Sharing a client job suggests the rate cap as the bill rate less this margin.', starter: true, scope: 'Company', synonyms: ['rate cap', 'vendor margin'] },
+        { key: 'staff.vendor_ownership', label: 'A vendor holds a candidate it submitted for', kind: 'select', value: '90', options: ['30', '60', '90', '180'], optionLabels: { '30': '30 days', '60': '60 days', '90': '90 days', '180': '180 days' }, helper: 'Per job. A later vendor’s submission of the same person is a duplicate; the vendor is never told who holds them.', starter: true, scope: 'Company', synonyms: ['duplicate', 'ownership'] },
+      ],
+    },
     {
       title: 'Invoicing',
       settings: [
@@ -941,7 +957,7 @@ const staffing: SettingsPageDef = {
       settings: [
         { key: 'staff.bench_pay', label: 'Bench pay', kind: 'percent', value: 50, min: 0, max: 100, helper: 'Share of fixed pay while between placements.', starter: true, scope: 'Company', synonyms: ['bench policy'] },
         { key: 'staff.bench_days', label: 'Maximum bench days', kind: 'number', value: 30, unit: 'days', min: 0, max: 180, starter: true, scope: 'Company' },
-        { key: 'staff.bench_after', label: 'After maximum bench days', kind: 'radio', value: 'Redeploy or exit review', options: ['Redeploy or exit review', 'Unpaid bench'], starter: true, scope: INHERITED },
+        { key: 'staff.bench_after', label: 'After maximum bench days', kind: 'segment', value: 'Redeploy or exit review', options: ['Redeploy or exit review', 'Unpaid bench'], starter: true, scope: INHERITED },
         {
           key: 'staff.portal_sla',
           label: 'Client portal response times',
