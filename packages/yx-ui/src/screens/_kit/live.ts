@@ -31,6 +31,10 @@ export { OrgChartScreen, type LiveOrgChart } from '../people/directory';
 export { TeamPage, type LiveTeam, type TeamMember as TeamPageMember } from '../people/directory';
 // PPL-08 "Request a hire": the designed HIR-02 requisition sheet.
 export { RequisitionSheet, type LiveRequisitionSheet } from '../hiring/hiring-plan';
+// HIR-03 Jobs list and job workspace, HIR-24 job pay range (the designed screens with `live`).
+export { CreateJobSheet, JobPayRangePanel, JobsScreen, JobWorkspaceScreen, type CreateJobChoices, type LiveJobRow, type LiveJobs, type LiveJobWorkspace, type LivePayRange, type LivePosting, type NewJob, type PayPeriod, type PayRangeInput } from '../hiring/hiring-plan';
+export type { Job as HiringJobRow } from '../hiring/hiring-data';
+export type { PayLaw } from '../hiring/hiring-logic';
 export type { PlanLine } from '../hiring/hiring-logic';
 // Onboarding (PPL-11 to PPL-17, PPL-41) with live data.
 export { OnboardingBoard, joinerCard, type JoinerCard, type LiveBoard } from '../people/onboarding';

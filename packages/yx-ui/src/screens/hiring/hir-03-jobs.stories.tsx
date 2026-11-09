@@ -18,3 +18,4 @@ export const Postings: S = {
 export const Empty: S = { name: 'Empty', render: () => <JobsScreen rows={[]} /> };
 export const Loading: S = { name: 'Loading', render: () => <JobsScreen rows={[]} state="loading" /> };
 export const Error: S = { name: 'Error', render: () => <JobsScreen rows={[]} state="error" /> };
+export const CreateJob: S = { name: 'Create job sheet', render: () => <JobsScreen rows={JOBS} createOpen /> };
