@@ -38,12 +38,9 @@ export const boards: JobBoardsScreenProps = {
   onSave: ok,
   onDelete: ok,
   onCopy: ok,
-  costs: [{ id: 'c1', source: 'Naukri', jobTitle: 'Senior Accountant', amount: 4500, currency: 'INR', createdAt: '2026-10-11T09:00:00.000Z' }],
-  jobs: [{ value: 'j1', label: 'Senior Accountant' }],
-  onAddCost: ok,
 };
 
 export const CareersSite: S = { render: () => <CareersSiteScreen {...careers} /> };
 export const CareersSiteNoNotices: S = { render: () => <CareersSiteScreen {...careers} notices={[]} entities={[]} /> };
 export const JobBoards: S = { render: () => <JobBoardsScreen {...boards} /> };
-export const NoJobBoards: S = { render: () => <JobBoardsScreen {...boards} boards={[]} costs={[]} /> };
+export const NoJobBoards: S = { render: () => <JobBoardsScreen {...boards} boards={[]} /> };

@@ -5,13 +5,15 @@ import { Briefcase, ExternalLink, Plus, Send, UserPlus } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
 import { EmptyState, ErrorState, InlineAlert, Meter, Skeleton } from '../../components/feedback';
-import { FormField, FieldRow } from '../../components/field';
+import { FormField, FieldRow, useTooEarly } from '../../components/field';
+import { Segment } from '../../components/segment';
+import { useToastIfAny } from '../../components/notify';
 import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
 import { Select } from '../../components/select';
-import { Checkbox, RadioGroup, Switch } from '../../components/choice';
+import { Checkbox, Switch } from '../../components/choice';
 import { DatePicker } from '../../components/date';
 import { Drawer } from '../../components/drawer';
-import { BottomSheet } from '../../components/overlay';
+import { BottomSheet, ConfirmDialog } from '../../components/overlay';
 import { DataTable, type TableColumn } from '../../components/table';
 import { MenuItem } from '../../components/menu';
 import { ApprovalTimeline, Timeline, type ApprovalStep, type TimelineItem } from '../../components/timeline';
@@ -948,22 +950,49 @@ export interface Referral {
   paid?: boolean;
 }
 
-function ReferralRows({ rows, today }: { rows: Referral[]; today: Date }) {
-  if (rows.length === 0) return <EmptyState compact title="You haven't referred anyone yet." description="Refer a friend to an open job. You get a bonus when they complete 90 days." />;
+/** A job one can refer to (the design's Job, only what the form shows). */
+export type ReferJob = Pick<Job, 'id' | 'title' | 'location'>;
+
+/** What the live page sends when someone refers a friend (the résumé as base64 PDF). */
+export interface ReferInput {
+  jobId: string;
+  name: string;
+  email: string;
+  phone: string;
+  resumeBase64: string | null;
+  consentGiven: true;
+}
+
+/** HIR-12 live: the company's bonus policy (settings) and the refer action; rows and jobs come in as props. */
+export interface LiveReferrals {
+  /** Bonus (₹) for a referred hire, from the company setting. */
+  bonus: number;
+  /** Days the hire completes before the bonus is due, from the company setting. */
+  qualifyDays: number;
+  state: ListState;
+  onRetry: () => void;
+  /** Rejects with an Error; `status: 409` means this person was already referred for this job. */
+  onRefer: (input: ReferInput) => Promise<void>;
+}
+
+function ReferralRows({ rows, today, days = 90 }: { rows: Referral[]; today: Date; days?: number }) {
+  if (rows.length === 0) return <EmptyState compact title="You haven't referred anyone yet." description={`Refer a friend to an open job. You get a bonus when they complete ${days} days.`} />;
   return (
     <ul className="yx-hire-list">
       {rows.map((r) => {
-        const b = referralBonusStatus(r.stage === 'Hired' ? r.joined : null, today);
+        const b = referralBonusStatus(r.stage === 'Hired' ? r.joined : null, today, days);
         const bonusText =
-          r.stage !== 'Hired'
-            ? r.stage === 'Not selected'
-              ? 'No bonus'
-              : 'Bonus after they join and complete 90 days'
-            : r.paid
-              ? `${formatINR(r.bonus)} paid in payroll`
-              : b.state === 'eligible'
-                ? `${formatINR(r.bonus)} eligible · paid in the next payroll`
-                : `${formatINR(r.bonus)} on ${formatDate(b.eligibleOn)} (${b.daysLeft} days to go)`;
+          r.stage === 'Not selected' || (r.bonus === 0 && !r.paid)
+            ? 'No bonus'
+            : r.stage !== 'Hired'
+              ? `Bonus after they join and complete ${days} days`
+              : r.paid
+                ? `${formatINR(r.bonus)} paid in payroll`
+                : b.state === 'eligible'
+                  ? `${formatINR(r.bonus)} eligible · paid in the next payroll`
+                  : b.state === 'waiting'
+                    ? `${formatINR(r.bonus)} on ${formatDate(b.eligibleOn!)} (${b.daysLeft} days to go)`
+                    : `${formatINR(r.bonus)} after they join and complete ${days} days`;
         return (
           <li key={r.id} className="yx-hire-list__item">
             <div className="yx-hire-list__main">
@@ -980,78 +1009,157 @@ function ReferralRows({ rows, today }: { rows: Referral[]; today: Date }) {
   );
 }
 
-function ReferForm({ jobs, duplicate }: { jobs: Job[]; duplicate?: boolean }) {
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const asBase64 = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(',')[1] ?? '');
+    r.onerror = () => reject(new Error('That file could not be read. Try another.'));
+    r.readAsDataURL(file);
+  });
+
+/** The live refer form: controlled, checked when Send is pressed, then sent. */
+function useReferForm(jobs: ReferJob[], live: LiveReferrals | undefined, close: () => void) {
   const [job, setJob] = useState<string | null>(jobs[0]?.id ?? null);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [resume, setResume] = useState<string | null>(null);
+  const [consent, setConsent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<{ duplicate: boolean; text: string } | null>(null);
+  const toaster = useToastIfAny();
+  const chosenJob = job && jobs.some((j) => j.id === job) ? job : jobs[0]?.id ?? null;
+  const early = useTooEarly([
+    ...(!chosenJob ? [{ fieldId: 'rf-job', message: 'Choose the job.' }] : []),
+    ...(!name.trim() ? [{ fieldId: 'rf-name', message: "Enter your friend's full name." }] : []),
+    ...(!EMAIL.test(email.trim()) ? [{ fieldId: 'rf-email', message: 'Enter an email address like name@example.com.' }] : []),
+    ...(!/^[6-9]\d{9}$/.test(phone.replace(/\s/g, '')) ? [{ fieldId: 'rf-phone', message: 'Enter a 10-digit mobile number.' }] : []),
+    ...(!consent ? [{ fieldId: 'rf-consent', message: 'Tick this once your friend has agreed.' }] : []),
+  ]);
+  const send = async () => {
+    if (!live || early.stop()) return;
+    setBusy(true);
+    setProblem(null);
+    try {
+      await live.onRefer({ jobId: chosenJob!, name: name.trim(), email: email.trim(), phone: `+91${phone.replace(/\s/g, '')}`, resumeBase64: resume, consentGiven: true });
+      toaster?.toast({ tone: 'success', title: `${name.trim()} referred`, description: 'You can follow them here as they move through hiring.' });
+      early.reset();
+      setName('');
+      setEmail('');
+      setPhone('');
+      setResume(null);
+      setConsent(false);
+      close();
+    } catch (e) {
+      setProblem({ duplicate: (e as { status?: number }).status === 409, text: e instanceof Error && e.message ? e.message : 'That did not work. Try again.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return { job: chosenJob, setJob, name, setName, email, setEmail, phone, setPhone, setResume, consent, setConsent, busy, problem, early, send };
+}
+
+function ReferForm({ jobs, duplicate, form }: { jobs: ReferJob[]; duplicate?: boolean; form?: ReturnType<typeof useReferForm> }) {
+  const [sampleJob, setSampleJob] = useState<string | null>(jobs[0]?.id ?? null);
+  const f = form;
   return (
     <div className="yx-hire-stack">
-      <FormField label="Job" required>
-        <Select value={job} onChange={setJob} options={jobs.map((j) => ({ value: j.id, label: j.title, description: j.location }))} />
+      <FormField id="rf-job" label="Job" required error={f?.early.errorOf('rf-job')}>
+        <Select value={f ? f.job : sampleJob} onChange={f ? f.setJob : setSampleJob} options={jobs.map((j) => ({ value: j.id, label: j.title, description: j.location }))} />
       </FormField>
-      <FormField label="Friend's full name" required>
-        <TextField defaultValue={duplicate ? 'Ananya Iyer' : ''} />
+      <FormField id="rf-name" label="Friend's full name" required error={f?.early.errorOf('rf-name')}>
+        {f ? <TextField value={f.name} onChange={f.setName} maxLength={200} autoComplete="off" /> : <TextField defaultValue={duplicate ? 'Ananya Iyer' : ''} />}
       </FormField>
       <FieldRow>
-        <FormField label="Email" required>
-          <TextField type="email" defaultValue={duplicate ? 'ananya.iyer@mailbox.in' : ''} />
+        <FormField id="rf-email" label="Email" required error={f?.early.errorOf('rf-email')}>
+          {f ? <TextField type="email" value={f.email} onChange={f.setEmail} maxLength={320} autoComplete="off" /> : <TextField type="email" defaultValue={duplicate ? 'ananya.iyer@mailbox.in' : ''} />}
         </FormField>
-        <FormField label="Mobile" required>
-          <TextField type="tel" prefix="+91" />
+        <FormField id="rf-phone" label="Mobile" required error={f?.early.errorOf('rf-phone')}>
+          {f ? <TextField type="tel" prefix="+91" value={f.phone} onChange={f.setPhone} maxLength={11} autoComplete="off" /> : <TextField type="tel" prefix="+91" />}
         </FormField>
       </FieldRow>
-      <FormField label="Résumé" optional>
-        <FileUpload upload={async () => {}} accept={['.pdf', '.docx']} multiple={false} />
+      <FormField label="Résumé" optional helper={f ? 'A PDF, up to 5 MB.' : undefined}>
+        <FileUpload
+          upload={f ? async (file) => f.setResume(await asBase64(file)) : async () => {}}
+          onItemsChange={f ? (items) => void (items.length === 0 && f.setResume(null)) : undefined}
+          accept={f ? ['.pdf'] : ['.pdf', '.docx']}
+          maxSize={f ? 5 * 1024 * 1024 : undefined}
+          multiple={false}
+        />
       </FormField>
-      {duplicate && (
+      {(duplicate || f?.problem?.duplicate) && (
         <InlineAlert tone="warning" title="Already in our system">
-          This person applied for this job in the last 90 days, so the referral can&rsquo;t be credited. You can still refer them to another job.
+          {f?.problem ? `${f.problem.text}. You can still refer them to another job.` : <>This person applied for this job in the last 90 days, so the referral can&rsquo;t be credited. You can still refer them to another job.</>}
         </InlineAlert>
       )}
-      <Checkbox label="My friend agreed that I can share their details" required />
+      {f?.problem && !f.problem.duplicate && <InlineAlert tone="danger" title={f.problem.text} />}
+      <FormField id="rf-consent-field" label="Consent" hideLabel error={f?.early.errorOf('rf-consent')}>
+        {f ? <Checkbox id="rf-consent" label="My friend agreed that I can share their details" required checked={f.consent} onChange={f.setConsent} /> : <Checkbox label="My friend agreed that I can share their details" required />}
+      </FormField>
     </div>
   );
 }
 
 // HIR-12
-export function ReferralsScreen({ jobs, referrals, today, referOpen = false, duplicate = false }: { jobs: Job[]; referrals: Referral[]; today: Date; referOpen?: boolean; duplicate?: boolean }) {
+export function ReferralsScreen({ jobs, referrals, today, referOpen = false, duplicate = false, live }: { jobs: ReferJob[]; referrals: Referral[]; today: Date; referOpen?: boolean; duplicate?: boolean; live?: LiveReferrals }) {
   const [open, setOpen] = useState(referOpen);
+  const form = useReferForm(jobs, live, () => setOpen(false));
+  const days = live?.qualifyDays ?? 90;
+  const bonus = live?.bonus ?? 25_000;
   const pending = referrals.filter((r) => r.stage === 'Hired' && !r.paid).reduce((s, r) => s + r.bonus, 0);
+  const state = live?.state ?? 'ready';
   return (
     <HireFrame active="Candidates & talent CRM">
-      <PageHeader title="Referrals" description="Refer people you know. The bonus is paid through payroll once they complete 90 days." actions={<Button variant="primary" icon={UserPlus} onClick={() => setOpen(true)}>Refer someone</Button>} />
-      <SummaryTiles
-        label="My referrals"
-        tiles={[
-          { label: 'Referred', value: referrals.length },
-          { label: 'Hired', value: referrals.filter((r) => r.stage === 'Hired').length },
-          { label: 'Bonus pending', value: formatINR(pending) },
-          { label: 'Bonus paid', value: formatINR(referrals.filter((r) => r.paid).reduce((s, r) => s + r.bonus, 0)) },
-        ]}
+      <PageHeader
+        title="Referrals"
+        description={bonus > 0 ? `Refer people you know. The bonus is paid through payroll once they complete ${days} days.` : 'Refer people you know for our open jobs.'}
+        actions={<Button variant="primary" icon={UserPlus} onClick={() => setOpen(true)}>Refer someone</Button>}
       />
-      <Card title="My referrals">
-        <ReferralRows rows={referrals} today={today} />
-      </Card>
+      {state === 'loading' ? (
+        <Skeleton height={240} />
+      ) : state === 'error' ? (
+        <ErrorState title="Couldn't load your referrals" description="Check your connection and try again." onRetry={live?.onRetry} />
+      ) : (
+        <>
+          <SummaryTiles
+            label="My referrals"
+            tiles={[
+              { label: 'Referred', value: referrals.length },
+              { label: 'Hired', value: referrals.filter((r) => r.stage === 'Hired').length },
+              { label: 'Bonus pending', value: formatINR(pending) },
+              { label: 'Bonus paid', value: formatINR(referrals.filter((r) => r.paid).reduce((s, r) => s + r.bonus, 0)) },
+            ]}
+          />
+          <Card title="My referrals">
+            <ReferralRows rows={referrals} today={today} days={days} />
+          </Card>
+        </>
+      )}
       <Drawer
         open={open}
         onOpenChange={setOpen}
         title="Refer someone"
-        subtitle="Referral bonus up to ₹25,000"
+        subtitle={bonus > 0 ? `Referral bonus up to ${formatINR(bonus)}` : undefined}
+        dirty={live ? Boolean(form.name || form.email || form.phone) : undefined}
         footer={
           <>
             <Button onClick={() => setOpen(false)}>Cancel</Button>
-            <Button variant="primary" disabled={duplicate}>
+            {/* Live: never disabled; pressed too early, it shows what is missing (founder rule). */}
+            <Button variant="primary" disabled={!live && duplicate} loading={form.busy} onClick={live ? () => void form.send() : undefined}>
               Send referral
             </Button>
           </>
         }
       >
-        <ReferForm jobs={jobs} duplicate={duplicate} />
+        {live && jobs.length === 0 ? <EmptyState compact title="No open jobs right now." description="Come back when a job opens. You can refer people to any open job." /> : <ReferForm jobs={jobs} duplicate={duplicate} form={live ? form : undefined} />}
       </Drawer>
     </HireFrame>
   );
 }
 
 // HIR-12 (phone)
-export function ReferralsPhone({ jobs, referrals, today, referOpen = false }: { jobs: Job[]; referrals: Referral[]; today: Date; referOpen?: boolean }) {
+export function ReferralsPhone({ jobs, referrals, today, referOpen = false }: { jobs: ReferJob[]; referrals: Referral[]; today: Date; referOpen?: boolean }) {
   const [open, setOpen] = useState(referOpen);
   return (
     <PhoneFrame tab="me" title="Referrals">
@@ -1087,14 +1195,70 @@ export interface CostEntry {
   origin: 'Manual' | 'Payroll one-time pay' | 'Assessment cost';
   enteredBy: string;
   note?: string;
+  /** Live: the job's id and the month (YYYY-MM), so Edit opens with them. */
+  jobId?: string | null;
+  month?: string;
 }
 
+/** What Add cost / Edit sends: rupees (two decimals at most) and the first day of the month. */
+export interface CostInput {
+  costType: 'job_board' | 'agency_fee' | 'event' | 'other';
+  source: string;
+  jobId: string | null;
+  amount: number;
+  currency: 'INR';
+  period: string;
+  note: string | null;
+}
+
+/** HIR-11 live: the quarter (India time) the tiles add up, the months to enter, the jobs to pick, and the actions. */
+export interface LiveRecruitingCosts {
+  /** e.g. "Oct–Dec 2026" and its months as YYYY-MM. */
+  quarter: { label: string; months: string[] };
+  /** Months a cost can be entered for, oldest first (value YYYY-MM, label e.g. "Oct"). */
+  months: { value: string; label: string }[];
+  jobs: { value: string; label: string }[];
+  onRetry: () => void;
+  /** `id` null = a new cost. */
+  onSave: (input: CostInput, id: string | null) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+  onExport: (rows: CostEntry[]) => void;
+}
+
+const ENTERED_TYPES = [
+  { value: 'job_board', label: 'Job board' },
+  { value: 'agency_fee', label: 'Agency fee' },
+  { value: 'event', label: 'Event' },
+  { value: 'other', label: 'Other' },
+] as const;
+const typeValue = (label: string) => ENTERED_TYPES.find((t) => t.label === label)?.value ?? 'other';
+const SAMPLE_MONTHS = [
+  { value: 'aug', label: 'Aug' },
+  { value: 'sep', label: 'Sep' },
+];
+
 // HIR-11
-export function RecruitingCostsScreen({ rows, hires, state = 'ready', addOpen = false }: { rows: CostEntry[]; hires: number; state?: ListState; addOpen?: boolean }) {
+export function RecruitingCostsScreen({ rows, hires, state = 'ready', addOpen = false, live }: { rows: CostEntry[]; hires: number; state?: ListState; addOpen?: boolean; live?: LiveRecruitingCosts }) {
+  const months = live?.months ?? SAMPLE_MONTHS;
+  const lastMonth = months[months.length - 1]?.value ?? '';
   const [open, setOpen] = useState(addOpen);
-  const [type, setType] = useState<string | null>('Job board');
+  const [editing, setEditing] = useState<CostEntry | null>(null);
+  const [deleting, setDeleting] = useState<CostEntry | null>(null);
+  const [type, setType] = useState<string | null>('job_board');
+  const [source, setSource] = useState('');
+  const [job, setJob] = useState<string | null>(null);
   const [amount, setAmount] = useState<number | null>(null);
-  const total = rows.reduce((s, r) => s + r.amount, 0);
+  const [month, setMonth] = useState<string>(lastMonth);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const toaster = useToastIfAny();
+  const early = useTooEarly([
+    ...(!source.trim() ? [{ fieldId: 'rc-source', message: 'Say where the money went, for example Naukri.' }] : []),
+    ...(!amount || amount <= 0 ? [{ fieldId: 'rc-amount', message: 'Enter the amount in rupees.' }] : []),
+  ]);
+  const inQuarter = live ? rows.filter((r) => r.month && live.quarter.months.includes(r.month)) : rows;
+  const total = inQuarter.reduce((s, r) => s + r.amount, 0);
   const list = useListControls({
     rows,
     fields: [
@@ -1117,11 +1281,40 @@ export function RecruitingCostsScreen({ rows, hires, state = 'ready', addOpen = 
     ],
     [],
   );
+  const openSheet = (r: CostEntry | null) => {
+    setEditing(r);
+    setType(r ? typeValue(r.type) : 'job_board');
+    setSource(r?.source ?? '');
+    setJob(r?.jobId ?? null);
+    setAmount(r?.amount ?? null);
+    setMonth(r?.month ?? lastMonth);
+    setNote(r?.note ?? '');
+    setFailed(null);
+    early.reset();
+    setOpen(true);
+  };
+  const save = async () => {
+    if (!live || early.stop()) return;
+    setBusy(true);
+    setFailed(null);
+    try {
+      await live.onSave({ costType: (type ?? 'other') as CostInput['costType'], source: source.trim(), jobId: job, amount: amount!, currency: 'INR', period: `${month}-01`, note: note.trim() || null }, editing?.id ?? null);
+      toaster?.toast({ tone: 'success', title: editing ? 'Cost saved' : 'Cost added', description: `${formatINR(amount!)} · ${source.trim()}` });
+      setOpen(false);
+    } catch (e) {
+      setFailed(e instanceof Error && e.message ? e.message : 'That did not work. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  // Live: an older cost keeps its own month (it is not one of the months offered for new costs).
+  const monthOptions = editing?.month && !months.some((m) => m.value === editing.month) ? [{ value: editing.month, label: editing.period }, ...months] : months;
+  const add = () => (live ? openSheet(null) : setOpen(true));
   return (
     <HireFrame active="Recruiting costs">
-      <PageHeader title="Recruiting costs" description="Costs behind cost per hire. Referral bonuses post from payroll and assessment costs from the test settings, so they're never entered twice." actions={<Button variant="primary" icon={Plus} onClick={() => setOpen(true)}>Add cost</Button>} />
+      <PageHeader title="Recruiting costs" description="Costs behind cost per hire. Referral bonuses post from payroll and assessment costs from the test settings, so they're never entered twice." actions={<Button variant="primary" icon={Plus} onClick={add}>Add cost</Button>} />
       <SummaryTiles
-        label="Cost summary, Jul–Sep 2026"
+        label={`Cost summary, ${live?.quarter.label ?? 'Jul–Sep 2026'}`}
         tiles={[
           { label: 'Total spend', value: formatINR(total) },
           { label: 'Hires this quarter', value: hires },
@@ -1134,52 +1327,81 @@ export function RecruitingCostsScreen({ rows, hires, state = 'ready', addOpen = 
         rows={list.rows}
         getRowId={(r) => r.id}
         state={state}
-        onRetry={() => {}}
+        onRetry={live?.onRetry ?? (() => {})}
         toolbar={list.toolbar}
         views={list.views}
         filtered={list.filtered}
         onClearFilters={list.clear}
         defaultGroupBy="type"
-        rowActions={(r) => (r.origin === 'Manual' ? <><MenuItem>Edit</MenuItem><MenuItem destructive>Delete</MenuItem></> : <MenuItem disabled>Posted automatically: edit at source</MenuItem>)}
-        empty={<EmptyState title="No recruiting costs this quarter." description="Add job-board fees, agency fees and events here." action={<Button variant="primary" icon={Plus} onClick={() => setOpen(true)}>Add cost</Button>} />}
-        onExport={() => {}}
+        rowActions={(r) =>
+          r.origin === 'Manual' ? (
+            <>
+              <MenuItem onSelect={live ? () => openSheet(r) : undefined}>Edit</MenuItem>
+              <MenuItem destructive onSelect={live ? () => setDeleting(r) : undefined}>
+                Delete
+              </MenuItem>
+            </>
+          ) : (
+            <MenuItem disabled>Posted automatically: edit at source</MenuItem>
+          )
+        }
+        empty={<EmptyState title="No recruiting costs this quarter." description="Add job-board fees, agency fees and events here." action={<Button variant="primary" icon={Plus} onClick={add}>Add cost</Button>} />}
+        onExport={() => live?.onExport(list.rows)}
       />
       <Drawer
         open={open}
         onOpenChange={setOpen}
-        title="Add recruiting cost"
+        title={editing ? 'Edit recruiting cost' : 'Add recruiting cost'}
+        dirty={live ? Boolean(source || amount || note) : undefined}
+        notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined}
         footer={
           <>
             <Button onClick={() => setOpen(false)}>Cancel</Button>
-            <Button variant="primary" disabled={!amount}>
-              Add cost
+            {/* Never disabled (founder rule): pressed too early, it shows what is missing. */}
+            <Button variant="primary" loading={busy} onClick={live ? () => void save() : undefined}>
+              {editing ? 'Save cost' : 'Add cost'}
             </Button>
           </>
         }
       >
         <div className="yx-hire-stack">
           <FormField label="Cost type" required helper="Referral bonuses and assessment costs are added automatically.">
-            <Select value={type} onChange={setType} options={['Job board', 'Agency fee', 'Event', 'Other'].map((v) => ({ value: v, label: v }))} />
+            <Select value={type} onChange={setType} options={ENTERED_TYPES.map((t) => ({ value: t.value, label: t.label }))} />
           </FormField>
-          <FormField label="Source" required>
-            <TextField placeholder="e.g. Naukri, campus fair at Hosur" />
+          <FormField id="rc-source" label="Source" required error={early.errorOf('rc-source')}>
+            <TextField value={source} onChange={setSource} maxLength={120} placeholder="e.g. Naukri, campus fair at Hosur" />
           </FormField>
           <FormField label="Job" optional helper="Leave empty for general spend.">
-            <Select value={null} onChange={() => {}} clearable options={[{ value: 'j1', label: 'Senior QA Engineer' }, { value: 'j3', label: 'Accountant' }]} />
+            <Select value={job} onChange={setJob} clearable options={live?.jobs ?? [{ value: 'j1', label: 'Senior QA Engineer' }, { value: 'j3', label: 'Accountant' }]} />
           </FormField>
           <FieldRow>
-            <FormField label="Amount" required>
-              <CurrencyField value={amount} onChange={setAmount} />
+            <FormField id="rc-amount" label="Amount" required error={early.errorOf('rc-amount')}>
+              <CurrencyField value={amount} onChange={setAmount} allowPaise max={1_000_000_000} />
             </FormField>
             <FormField label="Month" required>
-              <RadioGroup aria-label="Month" orientation="horizontal" defaultValue="sep" options={[{ value: 'aug', label: 'Aug' }, { value: 'sep', label: 'Sep' }]} />
+              <Segment label="Month" value={month} onChange={setMonth} options={monthOptions} />
             </FormField>
           </FieldRow>
           <FormField label="Note" optional>
-            <TextArea rows={2} />
+            <TextArea rows={2} value={note} onChange={setNote} maxLength={500} />
           </FormField>
         </div>
       </Drawer>
+      {deleting && live && (
+        <ConfirmDialog
+          open
+          destructive
+          onOpenChange={(o) => !o && setDeleting(null)}
+          title={`Delete the ${formatINR(deleting.amount)} cost for ${deleting.source}?`}
+          consequence="It comes off the totals and the cost per hire. This can't be undone."
+          confirmLabel="Delete cost"
+          onConfirm={async () => {
+            await live.onDelete(deleting.id);
+            toaster?.toast({ tone: 'success', title: 'Cost deleted', description: `${formatINR(deleting.amount)} · ${deleting.source}` });
+            setDeleting(null);
+          }}
+        />
+      )}
     </HireFrame>
   );
 }

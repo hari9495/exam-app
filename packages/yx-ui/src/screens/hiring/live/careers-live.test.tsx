@@ -75,14 +75,4 @@ describe('Job boards (AT3)', () => {
     await ue.click(within(d).getByRole('button', { name: 'Save board' }));
     expect(onSave).toHaveBeenCalledWith(boards.boards[1], { name: 'LinkedIn', provider: 'linkedin', config: { accessToken: 'secret-token', organizationUrn: 'urn:li:organization:9' } });
   });
-
-  it('records a posting cost against a board', async () => {
-    const onAddCost = vi.fn(async () => ({}));
-    render(<JobBoardsScreen {...boards} onAddCost={onAddCost} />);
-    await ue.click(screen.getByRole('button', { name: 'Record a posting cost' }));
-    const d = screen.getByRole('dialog');
-    await ue.type(within(d).getByLabelText(/Amount/), '4500');
-    await ue.click(within(d).getByRole('button', { name: 'Record cost' }));
-    expect(onAddCost).toHaveBeenCalledWith({ jobBoardId: 'b1', jobId: null, amount: 4500, currency: 'INR', note: null });
-  });
 });

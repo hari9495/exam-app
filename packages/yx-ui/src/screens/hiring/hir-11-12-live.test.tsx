@@ -1,0 +1,185 @@
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
+import { ToastProvider } from '../../components/notify';
+import { RecruitingCostsScreen, ReferralsScreen, type CostEntry, type LiveRecruitingCosts, type LiveReferrals, type Referral } from './hiring-plan';
+
+// HIR-11 recruiting costs and HIR-12 referrals, the designed screens with `live`: positive and negative.
+const ue = userEvent.setup({ pointerEventsCheck: 0 });
+const show = (ui: React.ReactElement) => render(<ToastProvider>{ui}</ToastProvider>);
+
+const COST_ROWS: CostEntry[] = [
+  { id: 'c1', period: 'Oct 2026', month: '2026-10', job: 'Senior Accountant', jobId: 'j1', source: 'Naukri', type: 'Job board', amount: 12_500.5, origin: 'Manual', enteredBy: 'Neha Joshi' },
+  { id: 'c2', period: 'Nov 2026', month: '2026-11', job: null, jobId: null, source: 'Campus fair, Hosur', type: 'Event', amount: 42_000, origin: 'Manual', enteredBy: 'Neha Joshi' },
+  { id: 'c3', period: 'Sep 2026', month: '2026-09', job: null, jobId: null, source: 'LinkedIn', type: 'Job board', amount: 99_999, origin: 'Manual', enteredBy: 'Neha Joshi' },
+];
+const costsLive = (over: Partial<LiveRecruitingCosts> = {}): LiveRecruitingCosts => ({
+  quarter: { label: 'Oct–Dec 2026', months: ['2026-10', '2026-11', '2026-12'] },
+  months: [
+    { value: '2026-10', label: 'Oct' },
+    { value: '2026-11', label: 'Nov' },
+  ],
+  jobs: [{ value: 'j1', label: 'Senior Accountant' }],
+  onRetry: vi.fn(),
+  onSave: vi.fn().mockResolvedValue(undefined),
+  onDelete: vi.fn().mockResolvedValue(undefined),
+  onExport: vi.fn(),
+  ...over,
+});
+
+describe('HIR-11 Recruiting costs (live)', () => {
+  it('adds up only this quarter in rupees; cost per hire = quarter spend / hires', () => {
+    show(<RecruitingCostsScreen rows={COST_ROWS} hires={3} live={costsLive()} />);
+    expect(screen.getByRole('region', { name: 'Cost summary, Oct–Dec 2026' })).toBeInTheDocument();
+    // 12,500.50 + 42,000 (September's 99,999 is last quarter).
+    expect(screen.getByText('₹54,500.50')).toBeInTheDocument();
+    expect(screen.getByText('₹18,167')).toBeInTheDocument();
+  });
+
+  it('Add cost pressed too early shows what is missing and sends nothing', async () => {
+    const live = costsLive();
+    show(<RecruitingCostsScreen rows={[]} hires={0} live={live} />);
+    await ue.click(screen.getAllByRole('button', { name: 'Add cost' })[0]!);
+    const d = screen.getByRole('dialog');
+    const add = within(d).getByRole('button', { name: 'Add cost' });
+    expect(add).toBeEnabled();
+    await ue.click(add);
+    expect(await within(d).findByText('Say where the money went, for example Naukri.')).toBeInTheDocument();
+    expect(within(d).getByText('Enter the amount in rupees.')).toBeInTheDocument();
+    expect(live.onSave).not.toHaveBeenCalled();
+  });
+
+  it('adds an agency fee in rupees for the chosen month (Segment) with a toast', async () => {
+    const live = costsLive();
+    show(<RecruitingCostsScreen rows={COST_ROWS} hires={3} live={live} />);
+    await ue.click(screen.getAllByRole('button', { name: 'Add cost' })[0]!);
+    const d = screen.getByRole('dialog');
+    await ue.click(within(d).getByRole('combobox', { name: /Cost type/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Agency fee' }));
+    await ue.type(within(d).getByRole('textbox', { name: /Source/ }), 'Sahyadri Staffing');
+    await ue.type(within(d).getByRole('textbox', { name: /Amount/ }), '64000.75');
+    const month = within(d).getByRole('radiogroup', { name: 'Month' });
+    expect(within(month).getByRole('radio', { name: 'Nov' })).toHaveAttribute('aria-checked', 'true');
+    await ue.click(within(month).getByRole('radio', { name: 'Oct' }));
+    await ue.click(within(d).getByRole('button', { name: 'Add cost' }));
+    expect(live.onSave).toHaveBeenCalledWith({ costType: 'agency_fee', source: 'Sahyadri Staffing', jobId: null, amount: 64000.75, currency: 'INR', period: '2026-10-01', note: null }, null);
+    expect(await screen.findByText('Cost added')).toBeInTheDocument();
+  });
+
+  it('a refusal stays in the sheet and nothing is toasted', async () => {
+    const live = costsLive({ onSave: vi.fn().mockRejectedValue(new Error('That job is not in your organisation.')) });
+    show(<RecruitingCostsScreen rows={[]} hires={0} live={live} />);
+    await ue.click(screen.getAllByRole('button', { name: 'Add cost' })[0]!);
+    const d = screen.getByRole('dialog');
+    await ue.type(within(d).getByRole('textbox', { name: /Source/ }), 'Naukri');
+    await ue.type(within(d).getByRole('textbox', { name: /Amount/ }), '4500');
+    await ue.click(within(d).getByRole('button', { name: 'Add cost' }));
+    expect(await within(d).findByText('That job is not in your organisation.')).toBeInTheDocument();
+    expect(screen.queryByText('Cost added')).not.toBeInTheDocument();
+  });
+
+  it('shows loading and error states; Try again retries', async () => {
+    const live = costsLive();
+    const { rerender } = show(<RecruitingCostsScreen rows={[]} hires={0} state="error" live={live} />);
+    await ue.click(screen.getByRole('button', { name: /Try again|Retry/ }));
+    expect(live.onRetry).toHaveBeenCalled();
+    rerender(
+      <ToastProvider>
+        <RecruitingCostsScreen rows={[]} hires={0} state="loading" live={live} />
+      </ToastProvider>,
+    );
+    expect(screen.queryByText('No recruiting costs this quarter.')).not.toBeInTheDocument();
+  });
+});
+
+const REFS: Referral[] = [
+  { id: 'r1', name: 'Vikram Reddy', job: 'Senior QA Engineer', referred: new Date(2026, 9, 8), stage: 'Applied', joined: null, bonus: 20_000 },
+  { id: 'r2', name: 'Kiran Rao', job: 'Accountant', referred: new Date(2026, 5, 2), stage: 'Hired', joined: new Date(2026, 9, 1), bonus: 20_000 },
+  { id: 'r3', name: 'Neha Das', job: 'Shift Lead', referred: new Date(2026, 3, 11), stage: 'Hired', joined: new Date(2026, 4, 20), bonus: 15_000, paid: true },
+  { id: 'r4', name: 'Ajay Menon', job: 'Sales Manager', referred: new Date(2026, 7, 30), stage: 'Not selected', joined: null, bonus: 20_000 },
+];
+const JOBS = [{ id: 'j1', title: 'Senior QA Engineer', location: 'Chennai' }];
+const refLive = (over: Partial<LiveReferrals> = {}): LiveReferrals => ({ bonus: 20_000, qualifyDays: 60, state: 'ready', onRetry: vi.fn(), onRefer: vi.fn().mockResolvedValue(undefined), ...over });
+const TODAY = new Date(2026, 10, 9);
+
+describe('HIR-12 Referrals (live)', () => {
+  it('uses the company bonus and qualifying days; counts down from the joining day', () => {
+    show(<ReferralsScreen jobs={JOBS} referrals={REFS} today={TODAY} live={refLive()} />);
+    expect(screen.getByText(/once they complete 60 days/)).toBeInTheDocument();
+    // Joined 1 Oct 2026 + 60 days = 30 Nov 2026, 21 days after 9 Nov.
+    expect(screen.getByText('₹20,000 on 30 Nov 2026 (21 days to go)')).toBeInTheDocument();
+    expect(screen.getByText('₹15,000 paid in payroll')).toBeInTheDocument();
+    expect(screen.getByText('No bonus')).toBeInTheDocument();
+    expect(screen.getByText('Bonus after they join and complete 60 days')).toBeInTheDocument();
+  });
+
+  it('Send referral pressed too early says what is missing, focuses it, and sends nothing', async () => {
+    const live = refLive();
+    show(<ReferralsScreen jobs={JOBS} referrals={[]} today={TODAY} live={live} />);
+    await ue.click(screen.getByRole('button', { name: 'Refer someone' }));
+    const d = screen.getByRole('dialog');
+    expect(within(d).getByText('Referral bonus up to ₹20,000')).toBeInTheDocument();
+    await ue.click(within(d).getByRole('button', { name: 'Send referral' }));
+    expect(await within(d).findByText("Enter your friend's full name.")).toBeInTheDocument();
+    expect(within(d).getByText('Enter a 10-digit mobile number.')).toBeInTheDocument();
+    expect(within(d).getByText('Tick this once your friend has agreed.')).toBeInTheDocument();
+    expect(within(d).getByRole('textbox', { name: /full name/ })).toHaveFocus();
+    expect(live.onRefer).not.toHaveBeenCalled();
+  });
+
+  const fill = async (d: HTMLElement, mobile = '9876543210') => {
+    await ue.type(within(d).getByRole('textbox', { name: /full name/ }), 'Ananya Iyer');
+    await ue.type(within(d).getByRole('textbox', { name: /Email/ }), 'ananya.iyer@mailbox.in');
+    await ue.type(within(d).getByRole('textbox', { name: /Mobile/ }), mobile);
+    await ue.click(within(d).getByRole('checkbox', { name: /My friend agreed/ }));
+  };
+
+  it('refers a friend with consent and shows a toast', async () => {
+    const live = refLive();
+    show(<ReferralsScreen jobs={JOBS} referrals={[]} today={TODAY} live={live} />);
+    await ue.click(screen.getByRole('button', { name: 'Refer someone' }));
+    const d = screen.getByRole('dialog');
+    await fill(d);
+    await ue.click(within(d).getByRole('button', { name: 'Send referral' }));
+    expect(live.onRefer).toHaveBeenCalledWith({ jobId: 'j1', name: 'Ananya Iyer', email: 'ananya.iyer@mailbox.in', phone: '+919876543210', resumeBase64: null, consentGiven: true });
+    expect(await screen.findByText('Ananya Iyer referred')).toBeInTheDocument();
+  });
+
+  it('a bad mobile number is refused before sending', async () => {
+    const live = refLive();
+    show(<ReferralsScreen jobs={JOBS} referrals={[]} today={TODAY} live={live} />);
+    await ue.click(screen.getByRole('button', { name: 'Refer someone' }));
+    const d = screen.getByRole('dialog');
+    await fill(d, '12345');
+    await ue.click(within(d).getByRole('button', { name: 'Send referral' }));
+    expect(await within(d).findByText('Enter a 10-digit mobile number.')).toBeInTheDocument();
+    expect(live.onRefer).not.toHaveBeenCalled();
+  });
+
+  it('already referred (409) shows the blocked state, no toast', async () => {
+    const live = refLive({ onRefer: vi.fn().mockRejectedValue(Object.assign(new Error('This person has already been referred for this role'), { status: 409 })) });
+    show(<ReferralsScreen jobs={JOBS} referrals={[]} today={TODAY} live={live} />);
+    await ue.click(screen.getByRole('button', { name: 'Refer someone' }));
+    const d = screen.getByRole('dialog');
+    await fill(d);
+    await ue.click(within(d).getByRole('button', { name: 'Send referral' }));
+    expect(await within(d).findByText('Already in our system')).toBeInTheDocument();
+    expect(within(d).getByText(/already been referred for this role/)).toBeInTheDocument();
+    expect(screen.queryByText('Ananya Iyer referred')).not.toBeInTheDocument();
+  });
+
+  it('no open jobs: the sheet says so; empty and error states', async () => {
+    const live = refLive({ bonus: 0 });
+    show(<ReferralsScreen jobs={[]} referrals={[]} today={TODAY} live={live} />);
+    expect(screen.getByText("You haven't referred anyone yet.")).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Refer someone' }));
+    expect(within(screen.getByRole('dialog')).getByText('No open jobs right now.')).toBeInTheDocument();
+  });
+
+  it('error state retries', async () => {
+    const live = refLive({ state: 'error' });
+    show(<ReferralsScreen jobs={JOBS} referrals={[]} today={TODAY} live={live} />);
+    await ue.click(screen.getByRole('button', { name: /Try again|Retry/ }));
+    expect(live.onRetry).toHaveBeenCalled();
+  });
+});
