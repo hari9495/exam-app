@@ -1075,6 +1075,8 @@ describe('CandidatesService', () => {
       } = {},
     ) {
       return {
+        // HIR-05 answer 276: a requested erase first checks for an accepted offer or an open process (none here).
+        $queryRaw: jest.fn().mockResolvedValue([{ accepted: false, open: null }]),
         candidate: {
           findFirst: jest.fn().mockResolvedValue(
             overrides.candidate ?? { id: 'cand-1', email: 'a@test.com', name: 'Alice', phone: '555-1234', erasedAt: null },
