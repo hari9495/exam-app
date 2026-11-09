@@ -1,5 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { sampleBulk } from './hir-04-pipeline.stories';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { PipelineBoardScreen, type LivePipelineBoard } from './hiring-pipeline';
@@ -30,8 +31,8 @@ const live = (o: Partial<LivePipelineBoard> = {}): LivePipelineBoard => ({
   onMove: vi.fn(async () => undefined),
   onReject: vi.fn(async () => ({ description: 'The candidate is not emailed.', undo: vi.fn(async () => undefined) })),
   onOpen: vi.fn(),
-  onBulk: vi.fn(),
-  onAdd: vi.fn(),
+  bulk: { ...sampleBulk },
+  add: { candidates: [], onAdd: vi.fn(async () => undefined) },
   ...o,
 });
 const show = (l: LivePipelineBoard) => render(<ToastProvider><PipelineBoardScreen live={l} /></ToastProvider>);
@@ -85,13 +86,12 @@ describe('HIR-04 live board', () => {
     await waitFor(() => expect(within(column('Applied')).getByText('Priya Raman')).toBeInTheDocument());
   });
 
-  it('header actions: Bulk actions, Add candidate, another job, open a card', async () => {
+  it('header actions: Bulk actions sheet, another job, open a card', async () => {
     const l = live();
     show(l);
     await ue.click(screen.getByRole('button', { name: 'Bulk actions' }));
-    expect(l.onBulk).toHaveBeenCalled();
-    await ue.click(screen.getAllByRole('button', { name: 'Add candidate' })[0]);
-    expect(l.onAdd).toHaveBeenCalled();
+    const sheet = await screen.findByRole('dialog', { name: 'Bulk actions' });
+    await ue.click(within(sheet).getAllByRole('button', { name: 'Close' }).at(-1)!);
     await ue.click(screen.getByRole('button', { name: 'Priya Raman' }));
     expect(l.onOpen).toHaveBeenCalledWith('e1');
     await ue.click(screen.getByRole('combobox', { name: 'Job' }));

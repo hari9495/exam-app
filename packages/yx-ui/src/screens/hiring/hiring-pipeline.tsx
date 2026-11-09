@@ -25,6 +25,8 @@ import { assignInterviewDay, findSlots, identityFlags, minutesToLabel, scorecard
 import { ExEmployeeBanner, HireFrame, IdentityStrip, PipelineFacts, RecordLayout, RecordingPlaceholder, SlotGrid, SummaryTiles, type ExEmployeeInfo, type Score } from './hiring-kit';
 import type { Candidate } from './hiring-data';
 import { EmailDialog, PickDialog, StageBadge, istDay } from './candidate-dialogs';
+import { AddCandidateSheet, BulkActionsSheet, type AddCandidateSheetProps, type BulkActionsSheetProps } from './pipeline-sheets';
+import { ApplicationDrawer, type ApplicationDrawerProps } from './candidate-application';
 import type { CandidateProfileView, Choice, EmailCompose, EmailTemplateChoice, MergeChoices } from './live/types';
 import './hiring.css';
 
@@ -71,6 +73,10 @@ export interface LivePipelineStage {
   rejected: boolean;
   /** Shown collapsed at first, like Hired in the design. */
   collapsed?: boolean;
+  /** Answer 263: days a card should stay here at most (over it: amber); null = none. */
+  daysTarget?: number | null;
+  /** Answer 263: how many cards the stage should hold (over it: the column is flagged); null = none. */
+  limit?: number | null;
 }
 
 /** The live board (HIR-04): the job's stages and applications from GET hiring/jobs/:id/board; the API checks every move. */
@@ -90,9 +96,12 @@ export interface LivePipelineBoard {
   onMove: (cardId: string, toStageId: string) => Promise<void>;
   /** Resolves with the toast text and, while the candidate has not been told, an undo. */
   onReject: (cardId: string, reason: string) => Promise<{ description: string; undo: (() => Promise<void>) | null }>;
+  /** A card opens the HIR-05 candidate record with this application (answer 261). */
   onOpen: (cardId: string) => void;
-  onBulk: () => void;
-  onAdd: () => void;
+  /** Answer 261: the Bulk actions sheet (the old candidates list). */
+  bulk: Omit<BulkActionsSheetProps, 'open' | 'onOpenChange' | 'job'>;
+  /** Answer 261: the Add candidate sheet. */
+  add: Omit<AddCandidateSheetProps, 'open' | 'onOpenChange' | 'job'>;
 }
 
 // HIR-04
@@ -162,7 +171,7 @@ function SamplePipelineBoard({ job, candidates, stages, persona, state = 'ready'
 }
 
 /** The header, the states and the board: the same for the design stories and the live page. */
-function PipelineBoardLayout({ job, count, jobPicker, persona, state, onRetry, onAdd, onBulk, onShareFeedback, readOnlyNote, board }: {
+function PipelineBoardLayout({ job, count, jobPicker, persona, state, onRetry, onAdd, onBulk, onShareFeedback, readOnlyNote, board, sheets }: {
   job: string;
   count: number;
   jobPicker: ReactNode;
@@ -174,6 +183,8 @@ function PipelineBoardLayout({ job, count, jobPicker, persona, state, onRetry, o
   onShareFeedback?: () => void;
   readOnlyNote?: string;
   board: ReactNode;
+  /** The live Bulk actions and Add candidate sheets. */
+  sheets?: ReactNode;
 }) {
   return (
     <HireFrame active="Pipeline">
@@ -217,12 +228,14 @@ function PipelineBoardLayout({ job, count, jobPicker, persona, state, onRetry, o
       ) : (
         board
       )}
+      {sheets}
     </HireFrame>
   );
 }
 
 function LivePipelineBoardView({ live }: { live: LivePipelineBoard }) {
   const toaster = useToastIfAny();
+  const [sheet, setSheet] = useState<null | 'bulk' | 'add'>(null);
   const shown = useMemo<KanbanColumn[]>(
     () =>
       live.stages.map((st, i) => ({
@@ -230,6 +243,8 @@ function LivePipelineBoardView({ live }: { live: LivePipelineBoard }) {
         title: st.title,
         requiresReason: st.rejected,
         addable: i === 0 && live.canMove,
+        slaDays: st.daysTarget ?? undefined,
+        wipLimit: st.limit ?? undefined,
         cards: live.cards
           .filter((c) => c.stageId === st.id)
           .map((c) => ({ id: c.id, name: c.name, daysInStage: c.daysInStage, facts: [c.line, <PipelineFacts key="f" scores={c.scores} next={c.next} flags={c.flags} />] as [ReactNode, ReactNode] })),
@@ -279,8 +294,8 @@ function LivePipelineBoardView({ live }: { live: LivePipelineBoard }) {
       persona={live.canMove ? 'recruiter' : 'hm'}
       state={live.state}
       onRetry={live.onRetry}
-      onAdd={live.onAdd}
-      onBulk={live.onBulk}
+      onAdd={() => setSheet('add')}
+      onBulk={() => setSheet('bulk')}
       onShareFeedback={() => toaster?.toast({ tone: 'default', title: 'Open a candidate to share feedback', description: 'Choose a name on the board; your note goes on their application.' })}
       readOnlyNote={live.readOnlyNote}
       board={
@@ -290,12 +305,18 @@ function LivePipelineBoardView({ live }: { live: LivePipelineBoard }) {
           onColumnsChange={setCols}
           noun="candidate"
           addCardLabel="Add candidate"
-          onAddCard={live.onAdd}
+          onAddCard={() => setSheet('add')}
           onOpenCard={live.onOpen}
           onMove={(id, from, to, reason) => void move(id, from, to, reason)}
           defaultCollapsed={live.stages.filter((s) => s.collapsed).map((s) => s.id)}
           readOnly={!live.canMove}
         />
+      }
+      sheets={
+        <>
+          {sheet === 'bulk' && <BulkActionsSheet {...live.bulk} open onOpenChange={(o) => !o && setSheet(null)} job={live.job} />}
+          {sheet === 'add' && <AddCandidateSheet {...live.add} open onOpenChange={(o) => !o && setSheet(null)} job={live.job} />}
+        </>
       }
     />
   );
@@ -363,6 +384,9 @@ export interface LiveCandidateRecord {
   onErase: () => Promise<void>;
   /** HR clears an ineligible rehire flag (PUT lifecycle/exits/:id/hr) with a reason. */
   onClearRehire: (reason: string) => Promise<void>;
+  /** Answer 261: one application open on the record (a board card or Open application): interviews, messages, notes, offers. */
+  application?: Omit<ApplicationDrawerProps, 'open'> | null;
+  onOpenApplication?: (entryId: string) => void;
 }
 
 // HIR-05
@@ -725,9 +749,16 @@ function LiveCandidateRecordView({ live }: { live: LiveCandidateRecord }) {
                       </Text>
                     </div>
                     <Badge tone={a.closed ? 'neutral' : 'info'}>{a.closed ? (a.closedReason ?? 'Closed') : [a.stage, a.status].filter(Boolean).join(' · ') || 'Applied'}</Badge>
-                    <Button size="sm" onClick={() => live.onOpenJob(a.jobId)}>
-                      Open job
-                    </Button>
+                    <div className="yx-hire-actions">
+                      {live.onOpenApplication && (
+                        <Button size="sm" onClick={() => live.onOpenApplication!(a.id)}>
+                          Open application
+                        </Button>
+                      )}
+                      <Button size="sm" onClick={() => live.onOpenJob(a.jobId)}>
+                        Open job
+                      </Button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -838,6 +869,7 @@ function LiveCandidateRecordView({ live }: { live: LiveCandidateRecord }) {
         />
       )}
       {dialog === 'clear' && <ClearRehireDialog onClose={() => setDialog(null)} onSave={async (reason) => (await live.onClearRehire(reason), done('Rehire flag cleared'))} />}
+      {live.application && <ApplicationDrawer {...live.application} open />}
       {merging && (
         <LiveMerge
           live={live}

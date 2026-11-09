@@ -12,16 +12,20 @@ import { usePipelines } from '../../../../../../lib/hooks/usePipelines';
 import { useTeammates } from '../../../../../../lib/hooks/useUserDirectory';
 import { stageSummary } from '../../../../../../lib/job-stage-summary';
 import { careersUrl, jobRow, type ApiJob } from '../../../../../../lib/yx-jobs';
+import { useExams } from '../../../../../../lib/hooks/useExams';
+import { useJobBoards } from '../../../../../../lib/hooks/useJobBoards';
+import type { Board } from '../../../../../../lib/yx-application';
 
 type PayLawView = { rangeRequired: boolean; historyBanned: boolean; name: string | null; place: string | null; showByDefault: boolean };
-type JobView = ApiJob & { jobBoardIds: string[]; payLaw?: PayLawView; postings?: (LivePosting & { postedAt: string | null; error: string | null })[] };
+type JobView = ApiJob & { jobBoardIds: string[]; fitCriteria?: string | null; fitRubric?: string | null; payLaw?: PayLawView; postings?: (LivePosting & { postedAt: string | null; error: string | null })[] };
 
 const REASON: Record<string, string> = { new: 'New position', replacement: 'Replacement' };
 const APPROVAL: Record<string, string> = { pending: 'waiting for approval', approved: 'approved', rejected: 'sent back', cancelled: 'withdrawn' };
 
 // Hiring › Jobs › one job (HIR-03, HIR-24): the designed job workspace with `live` on the jobs API: overview, job-board
 // postings (PATCH jobs/:id jobBoardIds), the pay range by the location's law (GET jobs/:id payLaw) and close / reopen.
-// The board, applications and job settings stay on /pipeline ("Open pipeline") until HIR-04 is wired.
+// Founder answer 261: the Settings tab holds the job settings that were on the old candidates list (tests, scorecard,
+// public applying, job boards, fit criteria) and answer 263's stage targets (PATCH pipelines/stages/:id, pipelines:configure).
 export default function YxHiringJobPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -39,7 +43,11 @@ export default function YxHiringJobPage() {
   const list = useApi<ApiJob[]>('/jobs');
   const pipelines = usePipelines();
   const teammates = useTeammates();
-  const settings = useHiring<{ scorecardTemplateId: string | null }>(`/jobs/${enc(id)}/interview-settings`);
+  const settings = useHiring<{ scorecardTemplateId: string | null; exams: { examId: string; title: string; sendOnStageId: string | null }[] }>(`/jobs/${enc(id)}/interview-settings`);
+  const board = useHiring<Board>(`/jobs/${enc(id)}/board`);
+  const exams = useExams(undefined, { pageSize: 100 });
+  const jobBoards = useJobBoards();
+  const canConfigure = perms.has('pipelines:configure');
   const scorecards = useHiring<{ id: string; name: string }[]>(canManage ? '/scorecard-templates' : null);
   const masters = perms.has('org.structure.view') || perms.has('org.settings.manage');
   const designations = useOrg<MasterRecord[]>('/masters/designations', masters);
@@ -137,6 +145,40 @@ export default function YxHiringJobPage() {
             done(`Recruiter changed to ${names(userId) || 'the new recruiter'}`);
           },
         },
+        settings:
+          j && settings.data && board.data
+            ? {
+                canManage,
+                canConfigure,
+                job: {
+                  status: j.status as 'open',
+                  publicApplyEnabled: j.publicApplyEnabled,
+                  listOnCareers: j.listOnCareers,
+                  applyUrl: j.applyToken ? `${origin}/apply/${j.applyToken}` : null,
+                  boardIds: j.jobBoardIds ?? [],
+                  fitCriteria: j.fitCriteria ?? null,
+                  fitRubric: j.fitRubric ? (JSON.parse(j.fitRubric) as { label: string; weight: number }[]) : [],
+                },
+                settings: settings.data,
+                pipelineName: board.data.pipeline.name,
+                stages: board.data.pipeline.stages.filter((s) => s.category !== 'archived').map((s) => ({ id: s.id, name: s.name, daysTarget: s.daysTarget ?? null, limit: s.stageLimit ?? null })),
+                sendStages: board.data.pipeline.stages.filter((s) => s.category === 'active' || s.category === 'offer').map((s) => ({ value: s.id, label: s.name })),
+                exams: (exams.data?.data ?? []).map((e) => ({ value: e.id, label: e.title })),
+                scorecardTemplates: (scorecards.data ?? []).map((t) => ({ value: t.id, label: t.name })),
+                jobBoards: (jobBoards.data ?? []).map((b) => ({ value: b.id, label: b.name })),
+                onLinkExam: (examId) => write('POST', `/jobs/${enc(id)}/exams`, { examId }).then(() => settings.refetch()),
+                onUnlinkExam: (examId) => write('DELETE', `/jobs/${enc(id)}/exams/${enc(examId)}`).then(() => settings.refetch()),
+                onSendOn: (examId, stageId) => write('PUT', `/hiring/jobs/${enc(id)}/exams/${enc(examId)}/send-on`, { stageId }).then(() => settings.refetch()),
+                onScorecard: (templateId) => write('PUT', `/hiring/jobs/${enc(id)}/scorecard`, { templateId }).then(() => settings.refetch()),
+                onUpdateJob: (patch) => write('PATCH', `/jobs/${enc(id)}`, patch).then(() => job.refetch()),
+                onScreenAll: canManage ? () => write<{ queued: number }>('POST', `/jobs/${enc(id)}/fit-assessments/score`) : undefined,
+                onCopy: (text) => navigator.clipboard.writeText(text),
+                onStageTargets: async (changes) => {
+                  for (const c of changes) await write('PATCH', `/pipelines/stages/${enc(c.stageId)}`, { daysTarget: c.daysTarget, limit: c.limit });
+                  await board.refetch();
+                },
+              }
+            : undefined,
         onOpenPipeline: () => router.push(`/yx/hiring/jobs/${enc(id)}/pipeline`),
         onViewCareers: () => {
           if (url) window.open(url, '_blank', 'noopener');

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { CandidateRecordScreen, type CandidateProfileView, type DuplicatePairView, type LiveCandidateRecord, type TalentList } from '@yukthix/ui/hiring';
 import { useYxPermissions } from '../../../../../../lib/yx-org';
 import { apiFetch } from '../../../../../../lib/api-client';
@@ -12,12 +12,14 @@ import { useMessageTemplates } from '../../../../../../lib/hooks/useCandidateMes
 import { useOrgSenderAddresses } from '../../../../../../lib/hooks/useOrgSenderAddresses';
 import { templateChoices } from '../../../../../../lib/yx-candidates';
 import { saveBlob } from '../../../../../../lib/yx-pay';
+import { useApplicationDrawer } from '../../../../../../lib/yx-application';
 
 type Answer = CandidateProfileView | { mergedIntoId: string };
 
 // Hiring › Candidates › one candidate: the designed HIR-05 record with `live`. The API decides what this viewer sees
 // (contact details only with candidate:manage or the data-rights key; the ex-employee match only for people who may see
 // the employee) and refuses writes while acting for someone else. A merged-away candidate's address opens the kept one.
+// Founder answer 261: ?entry= opens that application on the record (a card on the HIR-04 board links here).
 export default function YxHiringCandidatePage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -39,6 +41,10 @@ export default function YxHiringCandidatePage() {
     if (merged) router.replace(`/yx/hiring/candidates/${encodeURIComponent(merged)}`);
   }, [merged, router]);
   const view = profile.data && !('mergedIntoId' in profile.data) ? profile.data : null;
+  const entry = useSearchParams().get('entry');
+  const entryJob = view?.applications.find((a) => a.id === entry)?.jobId ?? null;
+  const here = `/yx/hiring/candidates/${encodeURIComponent(id)}`;
+  const application = useApplicationDrawer(entryJob ? entry : null, entryJob, () => router.replace(here));
   const status = (profile.error as { status?: number } | null)?.status;
   const state: LiveCandidateRecord['state'] = profile.isError ? (status === 403 ? 'denied' : status === 404 || status === 400 ? 'not-found' : 'error') : view ? 'ready' : 'loading';
   const get = <T,>(path: string) => apiFetch(path, {}, accessToken ?? undefined) as Promise<T>;
@@ -61,6 +67,8 @@ export default function YxHiringCandidatePage() {
           const v = await get<CandidateProfileView>(`/hiring/candidates/${encodeURIComponent(other)}`);
           return { name: v.candidate.name, email: v.candidate.email, phone: v.candidate.phone, hasResume: Boolean(v.resume?.hasFile) };
         },
+        application,
+        onOpenApplication: (entryId) => router.replace(`${here}?entry=${encodeURIComponent(entryId)}`),
         onBack: () => router.push('/yx/hiring/candidates'),
         onOpenJob: (jobId) => router.push(`/yx/hiring/jobs/${encodeURIComponent(jobId)}/pipeline`),
         onResume: async () => {

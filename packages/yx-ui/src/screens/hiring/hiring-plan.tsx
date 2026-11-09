@@ -40,6 +40,7 @@ import {
 import { ConsentBadges, HireFrame, PostingStrip, RecordLayout, SummaryTiles, useListControls, type ConsentValue, type Posting } from './hiring-kit';
 import type { Job, Requisition } from './hiring-data';
 import { CustomFieldInputs, missingRequired } from './live/fields';
+import { JobSettingsPanel, type LiveJobSettings } from './job-settings';
 import type { JobCustomField } from './live/types';
 import './hiring.css';
 
@@ -2055,6 +2056,8 @@ export interface LiveJobWorkspace {
   onStatus: (to: 'open' | 'closed' | 'on_hold') => Promise<void>;
   /** Answer 222: the recruiter and who it can be changed to (job-manage key); the API audits the change. */
   recruiter: { id: string | null; choices: { value: string; label: string }[]; onChange: (userId: string) => Promise<void> };
+  /** Answer 261: the job settings moved here from the old candidates list (tests, scorecard, applying, boards, fit, stage targets). */
+  settings?: LiveJobSettings;
 }
 
 export interface JobWorkspaceScreenProps {
@@ -2063,7 +2066,7 @@ export interface JobWorkspaceScreenProps {
   law: PayLaw;
   range: PayRange;
   activity: TimelineItem[];
-  defaultTab?: 'overview' | 'postings' | 'pay' | 'sharing';
+  defaultTab?: 'overview' | 'postings' | 'pay' | 'sharing' | 'settings';
   now?: Date;
   live?: LiveJobWorkspace;
   /** The Change recruiter dialog open (story). */
@@ -2162,6 +2165,7 @@ export function JobWorkspaceScreen({ job, postings: initial, law, range, activit
               Job-board postings
             </TabsTrigger>
             <TabsTrigger value="pay">Pay range</TabsTrigger>
+            {(!live || live.settings) && <TabsTrigger value="settings">Settings</TabsTrigger>}
             {/* Live: internal jobs (HIR-13) and referral settings per job are not built yet (founder question). */}
             {!live && <TabsTrigger value="sharing">Referrals & internal</TabsTrigger>}
           </TabsList>
@@ -2202,6 +2206,11 @@ export function JobWorkspaceScreen({ job, postings: initial, law, range, activit
           <TabsContent value="pay">
             <JobPayRangePanel location={job.location} law={law} defaultRange={range} live={live?.pay} />
           </TabsContent>
+          {(!live || live.settings) && (
+            <TabsContent value="settings">
+              <JobSettingsPanel live={live?.settings ?? SAMPLE_JOB_SETTINGS} />
+            </TabsContent>
+          )}
           {!live && (
             <TabsContent value="sharing">
               <div className="yx-hire-stack">
@@ -2224,6 +2233,29 @@ export function JobWorkspaceScreen({ job, postings: initial, law, range, activit
     </HireFrame>
   );
 }
+
+const SAMPLE_STAGES = ['Applied', 'Screening', 'Assessment', 'Panel', 'Offer'];
+/** The design's settings tab (stories): sample values, actions that only answer. */
+const SAMPLE_JOB_SETTINGS: LiveJobSettings = {
+  canManage: true,
+  canConfigure: true,
+  job: { status: 'open', publicApplyEnabled: true, listOnCareers: true, applyUrl: 'https://kaveri-foods.yukthix.in/apply/qa-0311', boardIds: ['b1'], fitCriteria: 'Five or more years in QA with test automation (Playwright or Selenium) and API testing.', fitRubric: [{ label: 'Test automation', weight: 60 }, { label: 'API testing', weight: 40 }] },
+  settings: { scorecardTemplateId: 's1', exams: [{ examId: 'e1', title: 'QA aptitude', sendOnStageId: 'Assessment' }] },
+  pipelineName: 'Engineering, 6 stages',
+  stages: SAMPLE_STAGES.map((n) => ({ id: n, name: n, daysTarget: n === 'Applied' ? 3 : n === 'Screening' ? 5 : n === 'Panel' ? 7 : null, limit: n === 'Panel' ? 6 : null })),
+  sendStages: SAMPLE_STAGES.map((n) => ({ value: n, label: n })),
+  exams: [{ value: 'e1', label: 'QA aptitude' }, { value: 'e2', label: 'SQL basics' }],
+  scorecardTemplates: [{ value: 's1', label: 'QA engineering (4 skills, pass bar 3 of 5)' }],
+  jobBoards: [{ value: 'b1', label: 'Naukri' }, { value: 'b2', label: 'LinkedIn' }],
+  onLinkExam: async () => undefined,
+  onUnlinkExam: async () => undefined,
+  onSendOn: async () => undefined,
+  onScorecard: async () => undefined,
+  onUpdateJob: async () => undefined,
+  onScreenAll: async () => ({ queued: 12 }),
+  onCopy: async () => undefined,
+  onStageTargets: async () => undefined,
+};
 
 /** HIR-03 answer 222: change the job's recruiter (pressed with no change: a field error, never a disabled button). */
 function RecruiterDialog({ current, choices, name, onClose, onSave }: { current: string | null; choices: { value: string; label: string }[]; name: string; onClose: () => void; onSave: (userId: string) => Promise<void> }) {

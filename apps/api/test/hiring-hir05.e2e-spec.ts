@@ -252,4 +252,76 @@ describe('Hiring HIR-05 candidate record', () => {
       expect((await api('hrExit', 'get', `/hiring/candidates/${c}`).expect(200)).body.exEmployee).toBeNull();
     });
   });
+
+  describe('founder answers 272 and 276 (10 Nov 2026)', () => {
+    const st: Record<string, string> = {};
+    const entryOf = (candidateId: string) => inA((tx) => tx.pipelineEntry.findFirstOrThrow({ where: { jobId: ids.job, candidateId } }));
+    const setting = (value: 'on' | 'off') =>
+      inA(async (tx) => {
+        const where = { organizationId: org.A.id, key: 'hiring.rehire_flag.blocks_screening', scopeType: 'tenant', scopeId: org.A.id };
+        const found = await tx.setting.findFirst({ where });
+        return found ? tx.setting.update({ where: { id: found.id }, data: { value } }) : tx.setting.create({ data: { ...where, value } });
+      });
+
+    beforeAll(async () => {
+      const board = (await api('admin', 'get', `/hiring/jobs/${ids.job}/board`).expect(200)).body.pipeline.stages as { category: string; statuses: { id: string }[] }[];
+      const active = board.filter((s) => s.category === 'active');
+      st.first = active[0]!.statuses[0]!.id;
+      st.second = active[1]!.statuses[0]!.id;
+      // Ravi worked here and absconded: not eligible for rehire until HR says otherwise.
+      ids.raviEmail = `ravi-${run}@mailbox.in`;
+      const emp = (await api('admin', 'post', '/people/employees').send({ legalEntityId: ids.entity, status: 'confirmed', reason: 'Joined', givenName: 'Ravi', familyName: run, employeeCode: 'KF-102', joinedOn: addDays(today, -30), workEmail: ids.raviEmail, assignment: { locationId: ids.loc, departmentId: ids.dept, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId: null } }).expect(want(201))).body.id;
+      const k = (await api('admin', 'post', '/lifecycle/exits').send({ employeeId: emp, exitType: 'absconding', lwd: addDays(today, -10), reasonText: 'Stopped coming' }).expect(want(201))).body;
+      ids.raviExit = k.id;
+      await lastDay.sweepCase(org.A.id, k.id, new Date());
+      ids.ravi = await candidate('Ravi Kumar', { email: ids.raviEmail });
+      ids.other = await candidate('Not Ex Employee');
+      for (const c of [ids.ravi, ids.other]) await api('admin', 'post', `/jobs/${ids.job}/entries`).send({ candidateId: c }).expect(201);
+    });
+
+    it('272 off (the default): a not-eligible ex-employee moves on like anyone', async () => {
+      const e = await entryOf(ids.ravi);
+      await api('admin', 'post', `/hiring/entries/${e.id}/move`).send({ statusId: st.second, fromStatusId: st.first }).expect(200);
+      await api('admin', 'post', `/hiring/entries/${e.id}/move`).send({ statusId: st.first, fromStatusId: st.second }).expect(200);
+    });
+
+    it('272 on: past the first stage is refused with the reason (move and bulk); others and the first stage are not', async () => {
+      await setting('on');
+      const e = await entryOf(ids.ravi);
+      const r = await api('admin', 'post', `/hiring/entries/${e.id}/move`).send({ statusId: st.second, fromStatusId: st.first }).expect(409);
+      expect(r.body.message).toMatch(/not eligible for rehire/);
+      expect(r.body.message).not.toMatch(/absconding|Absconding|Stopped coming/);
+      const bulk = (await api('admin', 'post', '/hiring/entries/bulk').send({ entryIds: [e.id, (await entryOf(ids.other)).id], action: 'move', statusId: st.second }).expect(200)).body;
+      expect(bulk.succeeded).toBe(1);
+      expect(bulk.skipped).toEqual([{ id: e.id, reason: expect.stringMatching(/not eligible for rehire/) }]);
+      expect((await entryOf(ids.ravi)).statusId).toBe(st.first);
+      // Rejecting is still possible: it is not a move forward.
+      await api('admin', 'post', `/hiring/entries/${e.id}/reject`).send({ reason: 'Not this time', fromStatusId: st.first }).expect(200);
+      await api('admin', 'post', `/hiring/entries/${e.id}/reject/undo`).expect(200);
+    });
+
+    it('272 on: once HR clears the flag with a reason, the move goes through', async () => {
+      const ex = (await api('hrExit', 'get', `/hiring/candidates/${ids.ravi}`).expect(200)).body.exEmployee;
+      expect(ex).toMatchObject({ rehireEligible: false, exitCaseId: ids.raviExit });
+      await api('hrExit', 'put', `/lifecycle/exits/${ids.raviExit}/hr`).send({ version: ex.version, rehireEligible: true, rehireReason: 'Medical emergency; HR checked' }).expect(200);
+      const e = await entryOf(ids.ravi);
+      await api('admin', 'post', `/hiring/entries/${e.id}/move`).send({ statusId: st.second, fromStatusId: st.first }).expect(200);
+      await setting('off');
+    });
+
+    it('276: a requested erase waits while a hiring process is open or an offer is accepted; the message says what to do', async () => {
+      const open = await api('rights', 'post', `/candidates/${ids.other}/erase`).expect(409);
+      expect(open.body.message).toMatch(/still in the hiring process for Accountant\. Reject or close that application/);
+      const e = await entryOf(ids.other);
+      await api('admin', 'post', `/hiring/entries/${e.id}/reject`).send({ reason: 'Withdrew', fromStatusId: e.statusId }).expect(200);
+      await api('rights', 'post', `/candidates/${ids.other}/erase`).expect(201);
+      expect(await inA((tx) => tx.candidate.findUniqueOrThrow({ where: { id: ids.other }, select: { erasedAt: true } }))).toEqual({ erasedAt: expect.any(Date) });
+
+      const r = await entryOf(ids.ravi);
+      await inA((tx) => tx.offer.create({ data: { organizationId: org.A.id, pipelineEntryId: r.id, candidateId: ids.ravi, compensation: 'INR 8,40,000', startDate: new Date(Date.now() + 30 * 86_400_000), expiresAt: new Date(Date.now() + 7 * 86_400_000), status: 'accepted', letterSubject: 'Offer', letterBody: 'Welcome' } }));
+      const acc = await api('rights', 'post', `/candidates/${ids.ravi}/erase`).expect(409);
+      expect(acc.body.message).toMatch(/accepted an offer/);
+      expect(await inA((tx) => tx.candidate.findUniqueOrThrow({ where: { id: ids.ravi }, select: { erasedAt: true } }))).toEqual({ erasedAt: null });
+    });
+  });
 });

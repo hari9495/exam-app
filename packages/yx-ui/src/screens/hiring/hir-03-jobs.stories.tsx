@@ -23,3 +23,7 @@ export const ChangeRecruiter: S = {
   name: 'Job workspace · change recruiter',
   render: () => <JobWorkspaceScreen job={JOBS[0]} postings={POSTINGS} law={LAW} range={{ min: 14_00_000, max: 18_00_000 }} activity={JOB_ACTIVITY} now={TODAY} recruiterOpen />,
 };
+export const Settings: S = {
+  name: 'Job workspace · settings (tests, scorecard, applying, fit, stage targets)',
+  render: () => <JobWorkspaceScreen job={JOBS[0]} postings={POSTINGS} law={LAW} range={{ min: 14_00_000, max: 18_00_000 }} activity={JOB_ACTIVITY} defaultTab="settings" now={TODAY} />,
+};

@@ -465,6 +465,9 @@ export interface PipelineStageConfig {
   position: number;
   statuses: PipelineStatus[];
   rules?: BlueprintRule[];
+  /** HIR-04 answer 263: optional days target and card limit (null = none). */
+  daysTarget?: number | null;
+  stageLimit?: number | null;
 }
 
 export interface Pipeline {

@@ -648,6 +648,22 @@ export class CandidatesService {
         return { erasedAt: candidate.erasedAt, didErase: false, evidenceUrls: [] as string[] };
       }
       if (candidate.legalHoldAt) throw new ConflictException('This candidate is under legal hold, so nothing can be erased. Lift the hold first.');
+      // HIR-05 founder answer 276: the same rule as the nightly sweep. A requested erase waits while an offer is accepted
+      // or a hiring process is open (an application not rejected, withdrawn or closed, or an offer still in progress).
+      if (reason === 'request') {
+        const [{ accepted, open }] = await tx.$queryRaw<{ accepted: boolean; open: string | null }[]>`
+          SELECT EXISTS (SELECT 1 FROM offers o WHERE o.candidate_id = ${candidateId}::uuid AND o.status = 'accepted') AS accepted,
+            (SELECT j.title FROM pipeline_entries pe JOIN jobs j ON j.id = pe.job_id
+               LEFT JOIN pipeline_statuses ps ON ps.id = pe.status_id LEFT JOIN pipeline_stages st ON st.id = ps.stage_id
+             WHERE pe.candidate_id = ${candidateId}::uuid AND pe.archived_at IS NULL AND NOT pe.rejected AND j.status <> 'closed' AND j.deleted_at IS NULL
+               AND COALESCE(st.category, 'active') IN ('active', 'offer')
+             UNION ALL
+             SELECT j.title FROM offers o JOIN pipeline_entries pe ON pe.id = o.pipeline_entry_id JOIN jobs j ON j.id = pe.job_id
+             WHERE o.candidate_id = ${candidateId}::uuid AND o.status IN ('draft', 'pending_approval', 'sent')
+             LIMIT 1) AS open`;
+        if (accepted) throw new ConflictException('This candidate accepted an offer, so their details are kept for the joining. Ask HR to handle the request on their People record.');
+        if (open) throw new ConflictException(`This candidate is still in the hiring process for ${open}. Reject or close that application (and withdraw any offer) first, then erase.`);
+      }
 
       const invitations = await tx.invitation.findMany({ where: { candidateId }, select: { id: true } });
       const invitationIds = invitations.map((invitation) => invitation.id);
