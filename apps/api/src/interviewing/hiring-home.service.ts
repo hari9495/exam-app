@@ -72,11 +72,14 @@ export class HiringHomeService {
       const jobIds = myJobs.map((j) => j.id);
       const open = myJobs.filter((j) => j.status === 'open');
 
+      // HIR-09: offers now wait on the P03 engine ('ats.offer'); the person's open tasks there count too.
+      const myTasks = await tx.wfTask.findMany({ where: { organizationId: org, assigneeUserId: me, status: 'open' }, select: { requestId: true }, take: 500 });
+      const p03 = myTasks.length ? await tx.wfRequest.findMany({ where: { organizationId: org, id: { in: myTasks.map((t) => t.requestId) }, requestType: 'ats.offer', status: 'pending' }, select: { subjectId: true } }) : [];
       const offerRows = await tx.offer.findMany({
         where: {
           organizationId: org,
           OR: [
-            { id: { in: toApprove }, status: 'pending_approval' },
+            { id: { in: [...toApprove, ...p03.map((r) => r.subjectId)] }, status: 'pending_approval' },
             ...(keys.has('pipeline:manage') ? [{ status: { in: ['draft', 'approved'] }, pipelineEntry: { jobId: { in: jobIds } } }] : []),
           ],
         },

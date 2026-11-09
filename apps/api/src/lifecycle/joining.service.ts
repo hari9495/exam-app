@@ -8,6 +8,8 @@ import { ProfileService } from '../people/profile.service';
 import { DocumentsService } from '../documents/documents.service';
 import { LettersService } from '../documents/letters/letters.service';
 import { PipelineService } from '../pipeline/pipeline.service';
+import { PayStructuresService } from '../payroll/structures.service';
+import type { CompensationChangeDto } from '../payroll/dto-5b';
 import { JourneysService as DeskJourneysService } from '../service-desk/journeys.service';
 import { joinerInScope, ownOf } from '../documents/person-access';
 import { PreboardingPortalService, nomineesOf } from './portal.service';
@@ -52,6 +54,7 @@ export class JoiningService {
     private readonly extras: OnboardingExtrasService,
     private readonly letters: LettersService,
     private readonly pipeline: PipelineService,
+    private readonly structures: PayStructuresService,
   ) {}
 
   private viewer(user: ScopeUser) {
@@ -116,7 +119,7 @@ export class JoiningService {
     if (!dto.identityAttested) throw new BadRequestException('Confirm you checked the original ID before marking the joiner as joined (YX-LC-31).');
     const v = await this.viewer(user);
     const hv = await this.history.viewer(user as Parameters<EmployeeHistoryService['viewer']>[0]);
-    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const pb = await this.joiner(tx, c, v, id, 'lifecycle.onboarding.manage');
       if (pb.status !== 'invited' || pb.version !== dto.version) throw new ConflictException('This joiner changed meanwhile. Reload it.');
@@ -176,8 +179,34 @@ export class JoiningService {
         if (j) await tx.journeyTask.updateMany({ where: { organizationId: org, journeyId: j.id, ownerType: 'person', status: { in: ['open', 'waiting'] } }, data: { assigneeUserId: dto.userId } });
       }
       await audit(tx, c, 'preboarding.joined', 'preboarding', id, { employeeId: hired.id, employmentId: hired.employmentId, identityAttested: true, changeRequests: raised });
-      return { employeeId: hired.id, employmentId: hired.employmentId, employeeCode: hired.employeeCode, changeRequests: raised };
+      return { employeeId: hired.id, employmentId: hired.employmentId, employeeCode: hired.employeeCode, changeRequests: raised, joinedOn: iso(pb.joiningOn), offerId: pb.offerId };
     }, { timeout: 30_000 }); // one step makes the employee, their details and the approvals: give it room under load
+    const { joinedOn, offerId, ...rest } = out;
+    return { ...rest, payHandoff: offerId ? await this.payFromOffer(ctx, user, offerId, out.employeeId, joinedOn) : null };
+  }
+
+  /**
+   * HIR-09: a joiner from an offer with CTC lines gets that pay as their first salary in Pay: the offer's salary structure
+   * and fixed CTC, worked out again with the employee's own facts, as a pay change someone else approves (as any other).
+   * Never blocks joining: when it cannot be raised (no right to set pay, a structure problem) the reason is returned and
+   * audited, and payroll sets the salary as before. Variable pay and the joining bonus are not carried (question 334).
+   */
+  private async payFromOffer(ctx: TenantContext, user: ScopeUser, offerId: string, employeeId: string, joinedOn: string) {
+    const v = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const o = await tx.offer.findFirst({ where: { organizationId: c.organizationId, id: offerId }, select: { currentVersion: true } });
+      return o?.currentVersion ? tx.offerVersion.findFirst({ where: { organizationId: c.organizationId, offerId, version: o.currentVersion } }) : null;
+    });
+    if (!v) return null;
+    try {
+      const r = await this.structures.change(ctx, user, { employeeId, effectiveDate: joinedOn, templateVersionId: v.salaryTemplateVersionId, entryMode: 'ctc', annualCtc: v.annualCtc.toFixed(2), reason: `Pay from the accepted offer (version ${v.version})` } as CompensationChangeDto);
+      await inCompany(this.tenantPrisma, ctx, (tx, c) => audit(tx, c, 'ats.offer.pay_handed_off', 'offer', offerId, { employeeId, version: v.version, changeId: r.changeId }));
+      return { status: 'sent' as const, changeId: r.changeId, offerVersion: v.version };
+    } catch (e) {
+      const status = (e as { status?: number }).status;
+      const reason = status === 403 || status === 404 ? 'You cannot set pay for this person. Payroll sets the first salary from the offer.' : ((e as Error).message || 'The pay could not be worked out.');
+      await inCompany(this.tenantPrisma, ctx, (tx, c) => audit(tx, c, 'ats.offer.pay_handoff_failed', 'offer', offerId, { employeeId, version: v.version, reason: reason.slice(0, 300) }));
+      return { status: 'not_sent' as const, reason, offerVersion: v.version };
+    }
   }
 
   /** YX-LC-12: did not join / reneged / offer withdrawn, in one audited action; nothing is deleted. */

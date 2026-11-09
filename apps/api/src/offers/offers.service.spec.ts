@@ -287,11 +287,12 @@ describe('OffersService', () => {
           pdfPath: 'https://blob.test/container/offers/org-1/tok-1.pdf',
           sentAt: expect.any(Date),
           sentByUserId: 'user-1',
+          esign: false,
         },
       });
       expect(audit.record).toHaveBeenCalledWith(
         context,
-        expect.objectContaining({ actorUserId: 'user-1', action: 'offer.sent', entityId: 'offer-1', metadata: { to: 'asha@x.com' } }),
+        expect.objectContaining({ actorUserId: 'user-1', action: 'offer.sent', entityId: 'offer-1', metadata: { to: 'asha@x.com', esign: false } }),
       );
       expect(out).toMatchObject({ status: 'sent', pdfPath: 'https://blob.test/container/offers/org-1/tok-1.pdf' });
 

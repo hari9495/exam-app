@@ -5,6 +5,7 @@ import request from 'supertest';
 import { OffersController } from './offers.controller';
 import { OffersService } from './offers.service';
 import { OfferTemplatesService } from './offer-templates.service';
+import { OfferBuilderService } from './offer-builder.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { PERMISSIONS_KEY } from '../rbac/permissions.decorator';
@@ -26,8 +27,11 @@ describe('OffersController', () => {
   let offers: { createOffer: jest.Mock; listForEntry: jest.Mock; listForCandidate: jest.Mock; previewPdf: jest.Mock };
   let offerTemplates: { list: jest.Mock; getDefault: jest.Mock; create: jest.Mock; update: jest.Mock; remove: jest.Mock };
   const tenant = { organizationId: 'org-1', isSuperAdmin: false } as any;
+  const req = { user: { userId: 'user-1' } } as any;
+  let builder: { canSeePay: jest.Mock; submit: jest.Mock; cancelApproval: jest.Mock };
 
   beforeEach(async () => {
+    builder = { canSeePay: jest.fn().mockResolvedValue(true), submit: jest.fn(), cancelApproval: jest.fn() };
     offers = {
       createOffer: jest.fn().mockResolvedValue({ id: 'offer-1' }),
       listForEntry: jest.fn().mockResolvedValue([{ id: 'offer-1' }]),
@@ -46,6 +50,7 @@ describe('OffersController', () => {
       providers: [
         { provide: OffersService, useValue: offers },
         { provide: OfferTemplatesService, useValue: offerTemplates },
+        { provide: OfferBuilderService, useValue: builder },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -63,18 +68,18 @@ describe('OffersController', () => {
   });
 
   it('listForEntry delegates to the service with the entry id', async () => {
-    await controller.listForEntry(tenant, 'entry-1');
+    await controller.listForEntry(tenant, 'entry-1', req);
     expect(offers.listForEntry).toHaveBeenCalledWith(tenant, 'entry-1');
   });
 
   it('listForCandidate delegates to the service with the candidate id', async () => {
-    await controller.listForCandidate(tenant, 'cand-1');
+    await controller.listForCandidate(tenant, 'cand-1', req);
     expect(offers.listForCandidate).toHaveBeenCalledWith(tenant, 'cand-1');
   });
 
   it('previewPdf streams the PDF buffer as a StreamableFile with the application/pdf content type', async () => {
     const res = { set: jest.fn() };
-    const result = await controller.previewPdf(tenant, 'offer-1', res as any);
+    const result = await controller.previewPdf(tenant, 'offer-1', res as any, req);
 
     expect(offers.previewPdf).toHaveBeenCalledWith(tenant, 'offer-1');
     expect(res.set).toHaveBeenCalledWith(expect.objectContaining({ 'Content-Type': 'application/pdf' }));
@@ -85,6 +90,19 @@ describe('OffersController', () => {
     const dto = { compensation: '100k', startDate: '2026-09-01', expiresAt: '2026-09-15', templateId: 'tmpl-1' };
     await controller.createOffer(tenant, 'user-1', 'entry-1', dto as any);
     expect(offers.createOffer).toHaveBeenCalledWith(tenant, 'user-1', 'entry-1', dto);
+  });
+
+  it('hides offer pay from people without ats.offer.compensation.view (HIR-09)', async () => {
+    builder.canSeePay.mockResolvedValue(false);
+    offers.listForEntry.mockResolvedValue([{ id: 'offer-1', compensation: 'Fixed CTC' }]);
+    expect(await controller.listForEntry(tenant, 'entry-1', req)).toEqual([{ id: 'offer-1', compensation: null }]);
+    await expect(controller.previewPdf(tenant, 'offer-1', { set: jest.fn() } as any, req)).rejects.toThrow('ats.offer.compensation.view');
+  });
+
+  it('submit goes to the P03 offer route and is refused while acting for someone else (HIR-09)', async () => {
+    await controller.submitOffer(tenant, 'user-1', 'offer-1', req);
+    expect(builder.submit).toHaveBeenCalledWith(tenant, 'user-1', 'offer-1');
+    expect(() => controller.submitOffer(tenant, 'user-1', 'offer-1', { user: { impersonatorUserId: 'x' } } as any)).toThrow('acting for someone else');
   });
 
   it('listTemplates delegates to OfferTemplatesService.list', async () => {
@@ -131,6 +149,7 @@ describe('OffersController', () => {
       providers: [
         { provide: OffersService, useValue: offers },
         { provide: OfferTemplatesService, useValue: offerTemplates },
+        { provide: OfferBuilderService, useValue: builder },
       ],
     })
       .overrideGuard(JwtAuthGuard)
