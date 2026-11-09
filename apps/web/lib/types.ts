@@ -546,6 +546,11 @@ export interface PublicJob {
   department?: string | null;
   salary?: { min: number; max: number; currency: string; period: string } | null;
   askPayHistory?: boolean;
+  /** Careers answer 359: the job is outside India, so the apply form takes any country code. */
+  internationalPhone?: boolean;
+  /** Careers answer 353: the last day to apply (YYYY-MM-DD) and the experience asked for. */
+  applyBy?: string | null;
+  experience?: string | null;
   /** The careers site this job sits on (jobSlug null when unlisted); null when the company has no public page. */
   careers?: { orgSlug: string; jobSlug: string | null } | null;
   accent?: string | null;
@@ -587,6 +592,8 @@ export interface CareersLayout {
 }
 
 export interface CareersPageResponse {
+  /** Careers answer 356: hide "Powered by YukthiX". */
+  whiteLabel?: boolean;
   orgName: string;
   /** M10 AT3: the legal entity whose page this is (?company=), else null. */
   companyName?: string | null;
@@ -999,6 +1006,8 @@ export interface OfferTemplate {
 
 // GET /public/offers/:token -- unauthenticated, deliberately thin (no offer id, no org internals).
 export interface PublicOffer {
+  /** Careers answer 362: the company's logo, colour, careers link and white-label. */
+  brand?: { orgName?: string; orgLogo?: string | null; careersSlug?: string | null; accent?: string | null; whiteLabel?: boolean };
   jobTitle: string;
   orgName: string;
   compensation: string;
@@ -1037,6 +1046,8 @@ export interface Interview {
 // bookingMode/slotDurationMinutes/availableSlots are present only for a self-book interview that
 // isn't confirmed yet -- proposed mode and already-confirmed interviews omit them (today's shape).
 export interface PublicInterview {
+  /** Careers answer 362: the company's logo, colour, careers link and white-label. */
+  brand?: { orgName?: string; orgLogo?: string | null; careersSlug?: string | null; accent?: string | null; whiteLabel?: boolean };
   jobTitle: string;
   orgName: string;
   slots: InterviewSlot[];
