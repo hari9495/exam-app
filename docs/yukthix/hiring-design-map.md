@@ -1324,3 +1324,11 @@ Founder approved, 10 Nov 2026 (questions 331-339, 341-350, all as suggested):
      never shown (the candidate page showed it before). *Suggested: keep.*
 362. **Offer and interview pages** show the company name but not its colour or careers link (those APIs send the name
      only). *Suggested: add the company's brand to those two answers.*
+
+Founder approved, 9 Nov 2026 (questions 351-362, all as suggested): (351) switch the API's email and feed links to the new
+addresses, keep the redirects for a year; (352) email the applicant to upload another file from their candidate page when a
+résumé is quarantined; (353) optional Apply by and Experience fields on the job; (354) WhatsApp apply with T9-20; (355) show
+the pay-history answer in the HIR-05 Application drawer to pay-key holders only; (356) a plan-level white-label company
+setting, default off; (357) a tenant-logo kit part; (358) keep the assistant as a page section; (359) an international
+number field for jobs outside India; (360) keep builder edits as a draft until Publish; (361) keep candidate status words
+from the stage category; (362) add the company colour and careers link to the offer and interview page answers.
