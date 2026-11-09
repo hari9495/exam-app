@@ -809,3 +809,20 @@ console.table(counts);
 if (errs.length) { console.error(errs.join('\n')); process.exit(1); }
 console.log('ok');
 ```
+
+## Founder decisions, 9 Nov 2026 (before building)
+All eleven questions answered as suggested, with question 1 timed: (1) the staffing-agency part (HIR-14 to 21, 30, 31,
+Settings 6.2) is built right after the main hiring flow (build order items 1 to 13) is built and founder-tested; now only
+the HIR-21 part where outside recruitment agencies send us candidates; (2) AI: rediscovery first (advisory, plain search
+when AI is off), then the notetaker (everyone consents first, no recording if anyone declines, the interviewer confirms
+each AI draft rating), AI interview review last (never moves or rejects anyone, a human process on request, bias audit
+first); (3) BGV and identity: manual BGV tracking now, one Indian BGV vendor and the ID and selfie check after a contract;
+a failed match always goes to a person; (4) offers above the grade band add one approval step, who approves is a company
+setting (default HR head); e-sign only when the company's offer template switches it on; accept by link stays the
+default; (5) offer pay becomes CTC lines with versions; old text offers stay readable; (6) internal jobs: a company
+setting, default past probation and 12 months in the current role; the manager is told, not asked; (7) pay range and bias
+audit: a small table of laws by location (India: the company chooses; NYC, US states, EU pay transparency rows; hide the
+pay-history question where banned); the bias audit only when AI interview review ships; (8) T9-09 for the public careers
+pages, Surfaces/Careers for the admin page builder; (9) draw the candidate list and retention page designs first, then
+wire them; (10) draw the candidate pages outside the app (status, portal, offer accept, interview booking) in the T9-09
+portal style; (11) hiring managers see their own department's plan and their own requisitions, read-only.
