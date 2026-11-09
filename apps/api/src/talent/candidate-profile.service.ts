@@ -55,7 +55,7 @@ export class CandidateProfileService {
         tx.candidateProfile.findUnique({ where: { candidateId: id }, select: { resumePath: true, resumeScan: true, parseStatus: true, parsedTitle: true, parsedSummary: true, parsedSkills: true, parsedYearsExperience: true } }),
         tx.pipelineEntry.findMany({ where: { organizationId: org, candidateId: id }, orderBy: { createdAt: 'desc' }, select: { id: true, createdAt: true, archivedAt: true, rejected: true, rejectedReason: true, enteredVia: true, job: { select: { id: true, title: true, status: true } }, status: { select: { name: true, stage: { select: { name: true, category: true } } } } } }),
         tx.invitation.findMany({ where: { candidateId: id }, orderBy: { invitedAt: 'desc' }, select: { id: true, status: true, invitedAt: true, exam: { select: { title: true } } } }),
-        tx.interview.findMany({ where: { organizationId: org, candidateId: id }, orderBy: { createdAt: 'desc' }, select: { id: true, status: true, createdAt: true } }),
+        tx.interview.findMany({ where: { organizationId: org, candidateId: id }, orderBy: { createdAt: 'desc' }, select: { id: true, status: true, createdAt: true, pipelineEntryId: true, confirmedSlotId: true, slots: { select: { id: true, startsAt: true } }, pipelineEntry: { select: { job: { select: { title: true } } } } } }),
         tx.candidateEmail.findMany({ where: { organizationId: org, candidateId: id }, orderBy: { createdAt: 'desc' }, take: 50, select: { id: true, subject: true, status: true, createdAt: true } }),
         tx.candidateSms.count({ where: { organizationId: org, candidateId: id } }),
         tx.candidateWhatsapp.count({ where: { organizationId: org, candidateId: id } }),
@@ -75,7 +75,8 @@ export class CandidateProfileService {
         resume: profile ? { hasFile: Boolean(profile.resumePath), scan: profile.resumeScan, parseStatus: profile.parseStatus, title: profile.parsedTitle, summary: profile.parsedSummary, skills: profile.parsedSkills, years: profile.parsedYearsExperience } : null,
         applications: entries.map((e) => ({ id: e.id, jobId: e.job.id, jobTitle: e.job.title, jobStatus: e.job.status, stage: e.status?.stage.name ?? null, status: e.status?.name ?? null, appliedAt: e.createdAt, closed: Boolean(e.archivedAt) || e.rejected, closedReason: e.rejectedReason, source: e.enteredVia })),
         assessments: invitations.map((i) => ({ id: i.id, exam: i.exam.title, status: i.status, invitedAt: i.invitedAt })),
-        interviews,
+        // HIR-06 / 07: each interview with its application, job and time (the confirmed slot, else the first proposed).
+        interviews: interviews.map((i) => ({ id: i.id, status: i.status, createdAt: i.createdAt, entryId: i.pipelineEntryId, jobTitle: i.pipelineEntry.job.title, when: (i.slots.find((s) => s.id === i.confirmedSlotId) ?? i.slots[0])?.startsAt ?? null })),
         messages: { emails, sms, whatsapp },
         consents,
         lists: pools.map((p) => ({ ...p.pool, addedAt: p.addedAt })),

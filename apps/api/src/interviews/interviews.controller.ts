@@ -1,13 +1,17 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
+import { assertOwnSession } from '../service-desk/desk-access';
 import { InterviewsService } from './interviews.service';
 import { CreateInterviewDto } from './dto/create-interview.dto';
 
+// HIR-05 / HIR-06: scheduling, cancelling and resending an interview are the recruiter's own acts, never done while
+// acting for someone else.
 @Controller()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class InterviewsController {
@@ -16,11 +20,13 @@ export class InterviewsController {
   @Post('pipeline/entries/:id/interviews')
   @RequirePermissions('pipeline:manage')
   createInterview(
+    @Req() req: Request,
     @CurrentTenant() tenant: TenantContext,
     @CurrentUserId() userId: string,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateInterviewDto,
   ) {
+    assertOwnSession(req);
     return this.interviews.createInterview(tenant, userId, id, dto);
   }
 
@@ -44,13 +50,15 @@ export class InterviewsController {
 
   @Post('interviews/:id/cancel')
   @RequirePermissions('pipeline:manage')
-  cancel(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+  cancel(@Req() req: Request, @CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+    assertOwnSession(req);
     return this.interviews.cancel(tenant, userId, id);
   }
 
   @Post('interviews/:id/send')
   @RequirePermissions('pipeline:manage')
-  sendInvite(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+  sendInvite(@Req() req: Request, @CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+    assertOwnSession(req);
     return this.interviews.sendInvite(tenant, userId, id);
   }
 }

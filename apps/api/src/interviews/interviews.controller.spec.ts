@@ -29,6 +29,8 @@ describe('InterviewsController', () => {
     sendInvite: jest.Mock;
   };
   const tenant = { organizationId: 'org-1', isSuperAdmin: false } as any;
+  const own = { user: { userId: 'user-1' } } as any;
+  const acting = { user: { userId: 'user-1', impersonatorUserId: 'admin-1' } } as any;
 
   beforeEach(async () => {
     interviews = {
@@ -53,7 +55,7 @@ describe('InterviewsController', () => {
 
   it('createInterview delegates to the service with the actor, entry id, and dto', async () => {
     const dto = { slots: [{ startsAt: 'a', endsAt: 'b' }], panelistUserIds: [], location: 'Room 1', timeZone: 'UTC' };
-    await controller.createInterview(tenant, 'user-1', 'entry-1', dto as any);
+    await controller.createInterview(own, tenant, 'user-1', 'entry-1', dto as any);
     expect(interviews.createInterview).toHaveBeenCalledWith(tenant, 'user-1', 'entry-1', dto);
   });
 
@@ -73,13 +75,20 @@ describe('InterviewsController', () => {
   });
 
   it('cancel delegates to the service with the actor and interview id', async () => {
-    await controller.cancel(tenant, 'user-1', 'interview-1');
+    await controller.cancel(own, tenant, 'user-1', 'interview-1');
     expect(interviews.cancel).toHaveBeenCalledWith(tenant, 'user-1', 'interview-1');
   });
 
   it('sendInvite delegates to the service with the actor and interview id', async () => {
-    await controller.sendInvite(tenant, 'user-1', 'interview-1');
+    await controller.sendInvite(own, tenant, 'user-1', 'interview-1');
     expect(interviews.sendInvite).toHaveBeenCalledWith(tenant, 'user-1', 'interview-1');
+  });
+
+  it('refuses to schedule, cancel or resend while acting for someone else', () => {
+    expect(() => controller.createInterview(acting, tenant, 'user-1', 'entry-1', {} as any)).toThrow('acting for someone else');
+    expect(() => controller.cancel(acting, tenant, 'user-1', 'interview-1')).toThrow('acting for someone else');
+    expect(() => controller.sendInvite(acting, tenant, 'user-1', 'interview-1')).toThrow('acting for someone else');
+    expect(interviews.cancel).not.toHaveBeenCalled();
   });
 
   // Routes must be mounted behind JwtAuthGuard, not simply absent -- an unauthenticated
