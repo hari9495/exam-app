@@ -1,56 +1,13 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { HeadcountPlansScreen, type HeadcountPlansScreenProps } from './plans';
 import { ApprovalRoutesScreen } from './routes';
 import { HiringJobsScreen, type HiringJobsScreenProps } from './jobs';
 
-// Recruitment batch AT2 (M10-BUILD-DESIGN §5).
+// Recruitment batch AT2 (M10-BUILD-DESIGN §5). The headcount plan board is the designed HIR-01 screen (hir-01-live.test.tsx).
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const ok = async () => ({});
-
-describe('Headcount plans (AT2)', () => {
-  const sp = (o: Partial<HeadcountPlansScreenProps> = {}): HeadcountPlansScreenProps => ({
-    state: 'ready',
-    fy: 2026,
-    years: [2026],
-    onFy: vi.fn(),
-    plans: [{ id: 'p1', departmentId: 'd1', department: 'Finance', legalEntityId: null, fyStart: 2026, status: 'draft', note: null, version: 2, lines: [{ id: 'l1', designationId: 'x1', designation: 'Accountant', gradeId: null, grade: null, locationId: null, location: null, count: 2, budget: null, committed: 1, committedBudget: 0, filled: 0 }] }],
-    departments: [{ value: 'd1', label: 'Finance' }],
-    designations: [{ value: 'x1', label: 'Accountant' }],
-    grades: [],
-    locations: [],
-    onSave: vi.fn(ok),
-    onSubmit: vi.fn(ok),
-    ...o,
-  });
-
-  it('shows a draft plan and sends it for approval with its version', async () => {
-    const p = sp();
-    render(<HeadcountPlansScreen {...p} />);
-    expect(screen.getByText('Finance · FY 2026–27')).toBeInTheDocument();
-    await ue.click(screen.getByRole('button', { name: 'Send for approval' }));
-    expect(p.onSubmit).toHaveBeenCalledWith('p1', 2);
-  });
-
-  it('a new plan needs a department and a designation on each line', async () => {
-    const p = sp({ plans: [] });
-    render(<HeadcountPlansScreen {...p} />);
-    await ue.click(screen.getByRole('button', { name: 'New plan' }));
-    const d = screen.getByRole('dialog');
-    await ue.click(within(d).getByRole('button', { name: 'Save' }));
-    expect(within(d).getByText('Choose the department.')).toBeInTheDocument();
-    expect(within(d).getByText('Choose the designation.')).toBeInTheDocument();
-    expect(p.onSave).not.toHaveBeenCalled();
-    await ue.click(within(d).getByRole('combobox', { name: 'Department' }));
-    await ue.click(screen.getByRole('option', { name: 'Finance' }));
-    await ue.click(within(d).getByRole('combobox', { name: 'Line 1: designation' }));
-    await ue.click(screen.getByRole('option', { name: 'Accountant' }));
-    await ue.click(within(d).getByRole('button', { name: 'Save' }));
-    expect(p.onSave).toHaveBeenCalledWith(null, expect.objectContaining({ departmentId: 'd1', fyStart: 2026, lines: [{ designationId: 'x1', gradeId: null, locationId: null, count: 1, budget: null }] }));
-  });
-});
 
 describe('Hiring approvals (AT2)', () => {
   it('a named-people step needs people before it can be saved while approval is on', async () => {

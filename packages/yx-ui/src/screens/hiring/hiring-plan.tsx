@@ -1,7 +1,7 @@
 // Hiring › Headcount plan, requisitions, rediscovery, jobs, pay range, internal jobs, referrals, recruiting costs.
 // HIR-01, HIR-02, HIR-26, HIR-03, HIR-24, HIR-13, HIR-12, HIR-11 (M10 §3, Q1, YX-ATS-01 / 02 / 12 / 23 / 34 / 39 / 42, P09 Q3).
-import { useMemo, useState } from 'react';
-import { Briefcase, ExternalLink, Plus, Send, UserPlus } from 'lucide-react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { Briefcase, ExternalLink, Plus, Send, Trash2, UserPlus } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
 import { EmptyState, ErrorState, InlineAlert, Meter, Skeleton } from '../../components/feedback';
@@ -14,6 +14,8 @@ import { Checkbox, Switch } from '../../components/choice';
 import { DatePicker } from '../../components/date';
 import { Drawer } from '../../components/drawer';
 import { BottomSheet, ConfirmDialog } from '../../components/overlay';
+import { toCsv } from '../../lib/table';
+import { downloadText } from '../workforce/workforce-kit';
 import { DataTable, type TableColumn } from '../../components/table';
 import { MenuItem } from '../../components/menu';
 import { ApprovalTimeline, Timeline, type ApprovalStep, type TimelineItem } from '../../components/timeline';
@@ -52,70 +54,168 @@ export interface HeadcountPlanScreenProps {
   planStatus: 'Approved' | 'Revision pending' | 'Draft';
   version: number;
   revisionSteps?: ApprovalStep[];
-  state?: ListState;
+  state?: ListState | 'no-access';
+  now?: Date;
+  /** Design state: the status of each department's own plan, shown on its column (plans are kept per department). */
+  departmentStatus?: Record<string, { label: string; tone: BadgeTone }>;
+  /** Design state: the plan sheet open (HR › Revise plan). */
+  editorOpen?: boolean;
+  /** Design state: the finance "Send back" reason dialog open. */
+  sendBackOpen?: boolean;
+}
+
+/** A plan line as the API returns it (one department's plan). */
+export interface LivePlanLine {
+  id: string;
+  designationId: string;
+  designation: string;
+  gradeId: string | null;
+  grade: string | null;
+  locationId: string | null;
+  location: string | null;
+  count: number;
+  /** Null: no budget set, or hidden from a hiring manager. */
+  budget: number | null;
+  /** Openings of live requisitions on the line. */
+  committed: number;
+  committedBudget: number;
+  filled: number;
+}
+
+/** One department's plan for a financial year (GET hiring/plans). */
+export interface LivePlan {
+  id: string;
+  departmentId: string;
+  department: string;
+  fyStart: number;
+  status: 'draft' | 'submitted' | 'approved' | 'rejected';
+  note: string | null;
+  /** Concurrency check, sent back on every change. */
+  version: number;
+  /** "v{n}": goes up when a revision is approved. */
+  revisionNo: number;
+  lines: LivePlanLine[];
+  /** The revision of an approved plan, while it is drafted, waiting or sent back. */
+  revision: { status: 'draft' | 'submitted' | 'rejected'; note: string | null; lines: (Omit<LivePlanLine, 'id' | 'committed' | 'committedBudget' | 'filled'> & { id: string | null })[] } | null;
+  /** The plan's latest request to approvers, while it waits or after it was sent back. */
+  approval: {
+    kind: 'plan' | 'revision';
+    status: string;
+    reason: string | null;
+    submittedAt: string | null;
+    submittedBy: string | null;
+    steps: { name: string; state: string; approvers: string[]; at: string | null }[];
+    /** The viewer's own open task on the current step: they may decide it here. */
+    myTaskId: string | null;
+  } | null;
+}
+
+export interface PlanInput {
+  departmentId: string;
+  fyStart: number;
+  note: string | null;
+  lines: { id: string | null; designationId: string; gradeId: string | null; locationId: string | null; count: number; budget: number | null }[];
+  version?: number;
+}
+
+export interface PlanChoice {
+  value: string;
+  label: string;
+}
+
+/** The live board: HR (ats.headcount.manage) or a hiring manager (their own department, read-only; decision 11). */
+export interface LiveHeadcountPlan {
+  persona: 'hr' | 'hm';
+  /** no-access: the company shows the plan to HR only (ats.headcount_plan.manager_view). */
+  state: ListState | 'no-access';
+  onRetry: () => void;
+  fy: number;
+  years: number[];
+  onFy: (fy: number) => void;
+  plans: LivePlan[];
+  choices: { departments: PlanChoice[]; designations: PlanChoice[]; grades: PlanChoice[]; locations: PlanChoice[] };
+  /** Acting for someone else: nothing is changed (the API refuses it too). */
+  readOnly?: boolean;
+  onSave: (planId: string | null, input: PlanInput) => Promise<LivePlan>;
+  onSubmit: (planId: string, version: number) => Promise<void>;
+  onDecide: (taskId: string, decision: 'approve' | 'reject', reason: string | null) => Promise<void>;
+  /** A hiring manager who may raise requisitions: opens the request sheet on this line (null: choose a line). */
+  onRequisition?: (lineId: string | null) => void;
   now?: Date;
 }
 
-// HIR-01
-export function HeadcountPlanScreen({ fy, lines, persona, myDepartment, planStatus, version, revisionSteps, state = 'ready', now }: HeadcountPlanScreenProps) {
-  const shown = persona === 'hm' && myDepartment ? lines.filter((l) => l.department === myDepartment) : lines;
+const fyText = (y: number) => `FY ${y}–${String(y + 1).slice(2)}`;
+const PLAN_STATE: Record<string, { label: string; tone: BadgeTone }> = {
+  draft: { label: 'Draft', tone: 'neutral' },
+  submitted: { label: 'Waiting for approval', tone: 'warning' },
+  rejected: { label: 'Sent back', tone: 'danger' },
+};
+const REV_STATE: Record<string, { label: string; tone: BadgeTone }> = {
+  draft: { label: 'Revision draft', tone: 'neutral' },
+  submitted: { label: 'Revision pending', tone: 'warning' },
+  rejected: { label: 'Revision sent back', tone: 'danger' },
+};
+/** A department's plan as its column shows it. */
+export const livePlanBadge = (p: LivePlan) =>
+  p.status !== 'approved' ? PLAN_STATE[p.status] : p.revision ? REV_STATE[p.revision.status] : { label: `Approved · v${p.revisionNo}`, tone: 'success' as BadgeTone };
+const STEP_STATE: Record<string, ApprovalStep['status']> = { approved: 'done', rejected: 'rejected', skipped: 'skipped', waiting: 'current' };
+
+/** What a waiting revision changes, in words: "Adds 2 positions and ₹12,00,000 budget." */
+export function revisionChange(p: LivePlan): string {
+  const lines = p.revision?.lines ?? [];
+  const dPos = lines.reduce((t, l) => t + l.count, 0) - p.lines.reduce((t, l) => t + l.count, 0);
+  const dBudget = lines.reduce((t, l) => t + (l.budget ?? 0), 0) - p.lines.reduce((t, l) => t + (l.budget ?? 0), 0);
+  const ps = [dPos ? { dir: dPos < 0 ? 'removes' : 'adds', text: `${Math.abs(dPos)} position${Math.abs(dPos) === 1 ? '' : 's'}` } : null, dBudget ? { dir: dBudget < 0 ? 'removes' : 'adds', text: `${L(Math.abs(dBudget))} budget` } : null].filter((x): x is { dir: string; text: string } => Boolean(x));
+  const text = !ps.length ? 'changes lines without changing the totals' : ps.length === 2 && ps[0].dir === ps[1].dir ? `${ps[0].dir} ${ps[0].text} and ${ps[1].text}` : ps.map((x) => `${x.dir} ${x.text}`).join(' and ');
+  return `${text[0].toUpperCase()}${text.slice(1)}.`;
+}
+
+interface PlanBoardView {
+  fy: string;
+  persona: 'hr' | 'finance' | 'hm';
+  facts: string;
+  status: ReactNode;
+  lines: PlanLine[];
+  departmentStatus?: Record<string, { label: string; tone: BadgeTone }>;
+  alerts?: ReactNode;
+  actions: ReactNode;
+  state: ListState | 'no-access';
+  onRetry?: () => void;
+  emptyAction?: ReactNode;
+  /** Budgets are not shown to hiring managers. */
+  budgets: boolean;
+  lineAction?: (l: PlanLine) => ReactNode;
+  children?: ReactNode;
+}
+
+/** The board itself; the design stories and the live page both render it. */
+function PlanBoard({ fy, persona, facts, status, lines: shown, departmentStatus, alerts, actions, state, onRetry, emptyAction, budgets, lineAction, children }: PlanBoardView) {
   const depts = Array.from(new Set(shown.map((l) => l.department)));
   const sum = (f: (l: PlanLine) => number) => shown.reduce((s, l) => s + f(l), 0);
   const budget = sum((l) => l.budget);
   const committed = sum((l) => l.committed);
-  const statusTone: BadgeTone = planStatus === 'Approved' ? 'success' : planStatus === 'Draft' ? 'neutral' : 'warning';
-  const actions =
-    persona === 'hr' ? (
-      <>
-        <Button>Export</Button>
-        <Button variant="primary">Revise plan</Button>
-      </>
-    ) : persona === 'finance' ? (
-      planStatus === 'Revision pending' ? (
-        <>
-          <Button>Send back</Button>
-          <Button variant="primary">Approve revision</Button>
-        </>
-      ) : (
-        <Button>Export</Button>
-      )
-    ) : (
-      <Button variant="primary" icon={Plus}>
-        Open requisition
-      </Button>
-    );
-
   return (
     <HireFrame active="Headcount plan">
-      <PageHeader
-        title="Headcount plan"
-        status={<Badge tone={statusTone}>{planStatus} · v{version}</Badge>}
-        description={`${fy} · positions by designation, grade and location, with budget. Requisitions draw it down; replacement hires don't use plan lines.`}
-        facts={persona === 'hm' ? `Showing ${myDepartment} only` : `${depts.length} departments · approved by HR and finance`}
-        actions={actions}
-      />
+      <PageHeader title="Headcount plan" status={status} description={`${fy} · positions by designation, grade and location, with budget. Requisitions draw it down; replacement hires don't use plan lines.`} facts={facts} actions={actions} />
       {state === 'loading' ? (
         <div className="yx-hire-board" aria-busy="true">
           {[0, 1, 2].map((i) => (
             <Skeleton key={i} height={240} />
           ))}
         </div>
+      ) : state === 'no-access' ? (
+        <EmptyState title="Only HR sees the headcount plan" description="Your company shows the headcount plan to HR only. Ask HR for your department's numbers." />
       ) : state === 'error' ? (
-        <ErrorState title="Couldn't load the headcount plan" description="Check your connection and try again. Your plan is unchanged." onRetry={() => {}} reference="HC-5021" />
+        <ErrorState title="Couldn't load the headcount plan" description="Check your connection and try again. Your plan is unchanged." onRetry={onRetry ?? (() => {})} reference="HC-5021" />
       ) : shown.length === 0 ? (
         <EmptyState
           title={`No headcount plan for ${fy} yet`}
           description="Add positions per department with designation, grade, location and budget. HR and finance approve the plan before requisitions can draw it down."
-          action={persona === 'hr' ? <Button variant="primary" icon={Plus}>Create plan</Button> : undefined}
+          action={emptyAction}
         />
       ) : (
         <>
-          {planStatus === 'Revision pending' && revisionSteps && (
-            <InlineAlert tone="warning" title={`Revision v${version} waiting for approval`}>
-              Adds 2 Shift Lead positions at Hosur and ₹12,00,000 budget. Requisitions keep drawing on v{version - 1} until it is approved.
-              <ApprovalTimeline steps={revisionSteps} now={now} />
-            </InlineAlert>
-          )}
+          {alerts}
           <SummaryTiles
             label="Plan summary"
             tiles={[
@@ -123,16 +223,20 @@ export function HeadcountPlanScreen({ fy, lines, persona, myDepartment, planStat
               { label: 'Filled', value: sum((l) => l.filled) },
               { label: 'Open requisitions', value: sum((l) => l.open) },
               { label: 'Free to requisition', value: sum(planLineFree) },
-              { label: 'Budget committed', value: L(committed), sub: `of ${L(budget)} (${Math.round((committed / budget) * 100)}%)`, tone: committed / budget > 0.9 ? 'warning' : 'default' },
+              ...(budget > 0 ? [{ label: 'Budget committed', value: L(committed), sub: `of ${L(budget)} (${Math.round((committed / budget) * 100)}%)`, tone: committed / budget > 0.9 ? ('warning' as const) : ('default' as const) }] : []),
             ]}
           />
           <div className="yx-hire-board" role="list" aria-label="Plan lines by department">
             {depts.map((d) => {
               const ls = shown.filter((l) => l.department === d);
+              const ds = departmentStatus?.[d];
               return (
                 <section key={d} className="yx-hire-board__col" role="listitem" aria-label={d}>
                   <header className="yx-hire-board__head">
-                    <Text weight="semibold">{d}</Text>
+                    <span className="yx-hire-board__title">
+                      <Text weight="semibold">{d}</Text>
+                      {ds && <Badge tone={ds.tone}>{ds.label}</Badge>}
+                    </span>
                     <Text size="sm" tone="secondary">
                       {ls.reduce((s, l) => s + l.filled, 0)} of {ls.reduce((s, l) => s + l.approved, 0)} filled
                     </Text>
@@ -144,7 +248,7 @@ export function HeadcountPlanScreen({ fy, lines, persona, myDepartment, planStat
                       <article key={l.id} className="yx-hire-board__card">
                         <Text weight="semibold">{l.designation}</Text>
                         <Text size="sm" tone="secondary">
-                          {l.grade} · {l.location}
+                          {[l.grade, l.location].filter(Boolean).join(' · ') || 'Any grade and location'}
                         </Text>
                         <dl className="yx-hire-mini">
                           <div>
@@ -164,15 +268,9 @@ export function HeadcountPlanScreen({ fy, lines, persona, myDepartment, planStat
                             <dd>{free}</dd>
                           </div>
                         </dl>
-                        {persona !== 'hm' && (
-                          <Meter value={l.committed} max={l.budget} label={`Budget used, ${l.designation}`} warnAt={90} valueText={`${L(l.committed)} of ${L(l.budget)}`} />
-                        )}
-                        {free === 0 ? <Badge tone="warning">Fully drawn: a new requisition goes outside plan</Badge> : left < 0 ? <Badge tone="danger">Over budget</Badge> : null}
-                        {persona === 'hm' && free > 0 && (
-                          <Button size="sm" icon={Plus}>
-                            Open requisition
-                          </Button>
-                        )}
+                        {budgets && l.budget > 0 && <Meter value={l.committed} max={l.budget} label={`Budget used, ${l.designation}`} warnAt={90} valueText={`${L(l.committed)} of ${L(l.budget)}`} />}
+                        {free === 0 ? <Badge tone="warning">Fully drawn: a new requisition goes outside plan</Badge> : budgets && l.budget > 0 && left < 0 ? <Badge tone="danger">Over budget</Badge> : null}
+                        {persona === 'hm' && free > 0 && lineAction?.(l)}
                       </article>
                     );
                   })}
@@ -182,7 +280,398 @@ export function HeadcountPlanScreen({ fy, lines, persona, myDepartment, planStat
           </div>
         </>
       )}
+      {children}
     </HireFrame>
+  );
+}
+
+// HIR-01
+export function HeadcountPlanScreen(props: HeadcountPlanScreenProps | { live: LiveHeadcountPlan }) {
+  return 'live' in props ? <LiveHeadcountPlanBoard live={props.live} /> : <SampleHeadcountPlan {...props} />;
+}
+
+function SampleHeadcountPlan(props: HeadcountPlanScreenProps) {
+  const { fy, lines, persona, myDepartment, planStatus, version, revisionSteps, state = 'ready', now, departmentStatus, editorOpen = false, sendBackOpen = false } = props;
+  const shown = persona === 'hm' && myDepartment ? lines.filter((l) => l.department === myDepartment) : lines;
+  const depts = Array.from(new Set(shown.map((l) => l.department)));
+  const statusTone: BadgeTone = planStatus === 'Approved' ? 'success' : planStatus === 'Draft' ? 'neutral' : 'warning';
+  const [year, setYear] = useState(fy);
+  const years = <Segment label="Financial year" options={['FY 2025–26', 'FY 2026–27', 'FY 2027–28'].map((v) => ({ value: v, label: v }))} value={year} onChange={setYear} />;
+  const actions =
+    persona === 'hr' ? (
+      <>
+        {years}
+        <Button>Export</Button>
+        <Button variant="primary">Revise plan</Button>
+      </>
+    ) : persona === 'finance' ? (
+      planStatus === 'Revision pending' ? (
+        <>
+          <Button>Send back</Button>
+          <Button variant="primary">Approve revision</Button>
+        </>
+      ) : (
+        <Button>Export</Button>
+      )
+    ) : (
+      <Button variant="primary" icon={Plus}>
+        Open requisition
+      </Button>
+    );
+  return (
+    <PlanBoard
+      fy={fy}
+      persona={persona}
+      facts={persona === 'hm' ? `Showing ${myDepartment} only` : `${depts.length} departments · approved by HR and finance`}
+      status={<Badge tone={statusTone}>{planStatus} · v{version}</Badge>}
+      lines={shown}
+      departmentStatus={departmentStatus}
+      alerts={
+        planStatus === 'Revision pending' &&
+        revisionSteps && (
+          <InlineAlert tone="warning" title={`Revision v${version} waiting for approval`}>
+            Adds 2 Shift Lead positions at Hosur and ₹12,00,000 budget. Requisitions keep drawing on v{version - 1} until it is approved.
+            <ApprovalTimeline steps={revisionSteps} now={now} />
+          </InlineAlert>
+        )
+      }
+      actions={actions}
+      state={state}
+      emptyAction={persona === 'hr' ? <Button variant="primary" icon={Plus}>Create plan</Button> : undefined}
+      budgets={persona !== 'hm'}
+      lineAction={() => (
+        <Button size="sm" icon={Plus}>
+          Open requisition
+        </Button>
+      )}
+    >
+      {editorOpen && <PlanEditorDrawer open onOpenChange={() => {}} fy={2026} plans={SAMPLE_EDITOR_PLANS} choices={SAMPLE_EDITOR_CHOICES} defaultDepartment="d2" />}
+      {sendBackOpen && <SendBackDialog open onOpenChange={() => {}} what="Operations revision v3" />}
+    </PlanBoard>
+  );
+}
+
+/** Sample plans and masters for the plan sheet design story. */
+const SAMPLE_EDITOR_CHOICES: LiveHeadcountPlan['choices'] = {
+  departments: [{ value: 'd1', label: 'Engineering' }, { value: 'd2', label: 'Operations' }, { value: 'd3', label: 'Sales' }],
+  designations: [{ value: 'x1', label: 'Shift Lead' }, { value: 'x2', label: 'Machine Operator' }, { value: 'x3', label: 'Software Engineer' }],
+  grades: [{ value: 'g3', label: 'G3' }, { value: 'g4', label: 'G4' }],
+  locations: [{ value: 'c1', label: 'Hosur plant' }, { value: 'c2', label: 'Chennai office' }],
+};
+const SAMPLE_EDITOR_PLANS: LivePlan[] = [
+  { id: 'p2', departmentId: 'd2', department: 'Operations', fyStart: 2026, status: 'approved', note: null, version: 7, revisionNo: 2, revision: null, approval: null, lines: [{ id: 'l1', designationId: 'x1', designation: 'Shift Lead', gradeId: 'g4', grade: 'G4', locationId: 'c1', location: 'Hosur plant', count: 5, budget: 36_00_000, committed: 2, committedBudget: 14_80_000, filled: 1 }] },
+];
+
+type EditRow = { key: number; id: string | null; designationId: string | null; gradeId: string | null; locationId: string | null; count: number | null; budget: number | null; min: number };
+
+export interface PlanEditorDrawerProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  fy: number;
+  /** The year's plans: choosing a department picks up its draft, or revises its approved plan. */
+  plans: LivePlan[];
+  choices: LiveHeadcountPlan['choices'];
+  defaultDepartment?: string | null;
+  onSave?: LiveHeadcountPlan['onSave'];
+  onSubmit?: LiveHeadcountPlan['onSubmit'];
+}
+
+/** HIR-01 plan sheet: a new plan, a draft, or the revision of an approved plan, for one department and year. */
+export function PlanEditorDrawer({ open, onOpenChange, fy, plans, choices, defaultDepartment = null, onSave, onSubmit }: PlanEditorDrawerProps) {
+  const toast = useToastIfAny();
+  const [dept, setDept] = useState<string | null>(defaultDepartment);
+  const plan = plans.find((p) => p.departmentId === dept) ?? null;
+  const revising = plan?.status === 'approved';
+  const locked = plan ? (revising ? plan.revision?.status === 'submitted' : plan.status === 'submitted') : false;
+  const seed = (p: LivePlan | null): EditRow[] => {
+    const src = p ? (p.status === 'approved' && p.revision ? p.revision.lines : p.lines) : [];
+    const used = (id: string | null) => {
+      const l = p?.lines.find((x) => x.id === id);
+      return l && p?.status === 'approved' ? l.committed + l.filled : 0;
+    };
+    const rows = src.map((l, i) => ({ key: i, id: p?.status === 'approved' ? l.id : null, designationId: l.designationId, gradeId: l.gradeId, locationId: l.locationId, count: l.count, budget: l.budget, min: used(l.id) }));
+    return rows.length ? rows : [{ key: 0, id: null, designationId: null, gradeId: null, locationId: null, count: 1, budget: null, min: 0 }];
+  };
+  const [rows, setRows] = useState<EditRow[]>(() => seed(plan));
+  const [note, setNote] = useState(plan ? ((revising ? plan.revision?.note : plan.note) ?? plan.note ?? '') : '');
+  const [tried, setTried] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState<'save' | 'send' | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const body = useRef<HTMLDivElement>(null);
+  const pick = (v: string | null) => {
+    const p = plans.find((x) => x.departmentId === v) ?? null;
+    setDept(v);
+    setRows(seed(p));
+    setNote(p ? ((p.status === 'approved' ? p.revision?.note : p.note) ?? p.note ?? '') : '');
+    setFailed(null);
+  };
+  const set = (key: number, patch: Partial<EditRow>) => {
+    setDirty(true);
+    setRows((r) => r.map((x) => (x.key === key ? { ...x, ...patch } : x)));
+  };
+  const rowError = (r: EditRow) => (!r.designationId ? 'designation' : !r.count || r.count < Math.max(1, r.min) ? 'count' : null);
+  const go = async (send: boolean) => {
+    setTried(true);
+    setFailed(null);
+    if (!dept || rows.some(rowError)) {
+      // Pressed too early: the first field with an error takes the focus.
+      requestAnimationFrame(() => body.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
+      return;
+    }
+    if (!onSave) return;
+    setBusy(send ? 'send' : 'save');
+    try {
+      const saved = await onSave(plan?.id ?? null, { departmentId: dept, fyStart: fy, note: note.trim() || null, lines: rows.map((r) => ({ id: r.id, designationId: r.designationId!, gradeId: r.gradeId, locationId: r.locationId, count: r.count!, budget: r.budget })), ...(plan ? { version: plan.version } : {}) });
+      const name = choices.departments.find((d) => d.value === dept)?.label ?? 'The';
+      if (send && onSubmit) await onSubmit(saved.id, saved.version);
+      toast?.toast({ tone: 'success', title: send ? `${name} ${revising ? 'revision' : 'plan'} sent for approval` : `${name} ${revising ? 'revision' : 'plan'} saved as a draft` });
+      onOpenChange(false);
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : 'That did not work. Try again.');
+    } finally {
+      setBusy(null);
+    }
+  };
+  const total = rows.reduce((t, r) => t + (r.count ?? 0), 0);
+  const budget = rows.reduce((t, r) => t + (r.budget ?? 0), 0);
+  return (
+    <Drawer
+      open={open}
+      onOpenChange={onOpenChange}
+      size="lg"
+      title={revising ? `Revise plan · v${(plan?.revisionNo ?? 1) + 1}` : plan ? 'Edit plan' : 'New plan'}
+      subtitle={`${fyText(fy)} · ${revising ? `requisitions keep using v${plan?.revisionNo} until the revision is approved` : 'HR and finance approve it before requisitions can use it'}`}
+      dirty={dirty}
+      notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined}
+      footer={
+        <>
+          <Button onClick={() => onOpenChange(false)}>Cancel</Button>
+          {!locked && (
+            <>
+              <Button loading={busy === 'save'} onClick={() => void go(false)}>
+                Save draft
+              </Button>
+              <Button variant="primary" icon={Send} loading={busy === 'send'} onClick={() => void go(true)}>
+                Send for approval
+              </Button>
+            </>
+          )}
+        </>
+      }
+    >
+      <div className="yx-hire-sheet" ref={body}>
+        <div className="yx-hire-sheet__form">
+          <FormField label="Department" required error={tried && !dept ? 'Choose the department.' : null}>
+            <Select value={dept} onChange={pick} options={choices.departments} searchable />
+          </FormField>
+          {locked && <InlineAlert tone="info" title="This plan is with the approvers">You can change it again after they answer.</InlineAlert>}
+          {!locked &&
+            rows.map((r, i) => {
+              const err = tried ? rowError(r) : null;
+              return (
+                <div key={r.key} className="yx-hire-planline" role="group" aria-label={`Line ${i + 1}`}>
+                  <Text weight="semibold">Line {i + 1}</Text>
+                  <FieldRow>
+                    <FormField label="Designation" required error={err === 'designation' ? 'Choose the designation.' : null}>
+                      <Select value={r.designationId} onChange={(v) => set(r.key, { designationId: v })} options={choices.designations} searchable disabled={r.min > 0} />
+                    </FormField>
+                    <FormField label="Grade" optional>
+                      <Select value={r.gradeId} onChange={(v) => set(r.key, { gradeId: v })} options={choices.grades} clearable />
+                    </FormField>
+                    <FormField label="Location" optional>
+                      <Select value={r.locationId} onChange={(v) => set(r.key, { locationId: v })} options={choices.locations} clearable />
+                    </FormField>
+                  </FieldRow>
+                  <FieldRow>
+                    <FormField label="Positions" required helper={r.min ? `At least ${r.min}: open requisitions and hires` : undefined} error={err === 'count' ? `Enter at least ${Math.max(1, r.min)}.` : null}>
+                      <NumberField value={r.count} onChange={(v) => set(r.key, { count: v })} min={1} max={10000} />
+                    </FormField>
+                    <FormField label="Budget (annual CTC)" optional>
+                      <CurrencyField value={r.budget} onChange={(v) => set(r.key, { budget: v })} />
+                    </FormField>
+                  </FieldRow>
+                  {rows.length > 1 && r.min === 0 && (
+                    <Button size="sm" icon={Trash2} onClick={() => (setDirty(true), setRows((x) => x.filter((y) => y.key !== r.key)))}>
+                      Remove line {i + 1}
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          {!locked && (
+            <>
+              <Button size="sm" icon={Plus} onClick={() => (setDirty(true), setRows((x) => [...x, { key: Math.max(...x.map((y) => y.key)) + 1, id: null, designationId: null, gradeId: null, locationId: null, count: 1, budget: null, min: 0 }]))}>
+                Add a line
+              </Button>
+              <FormField label="Note for the approvers" optional>
+                <TextArea value={note} onChange={(v) => (setDirty(true), setNote(v))} rows={2} maxLength={1000} />
+              </FormField>
+            </>
+          )}
+        </div>
+        <aside className="yx-hire-sheet__effect" aria-live="polite" aria-label="What happens">
+          <Text weight="semibold">What happens</Text>
+          <Text as="p" size="sm" tone="secondary">
+            {total} position{total === 1 ? '' : 's'}
+            {budget ? ` · ${L(budget)} budget` : ''}
+          </Text>
+          <Text as="p" size="sm" tone="secondary">
+            {revising
+              ? 'The approvers see what changes. A line with open requisitions or hires keeps its designation and at least that many positions.'
+              : 'It goes to the people who approve headcount plans. You follow it in Approvals.'}
+          </Text>
+        </aside>
+      </div>
+    </Drawer>
+  );
+}
+
+/** Finance › Send back: the reason goes to HR with the plan. */
+function SendBackDialog({ open, onOpenChange, what, onSend }: { open: boolean; onOpenChange: (o: boolean) => void; what: string; onSend?: (reason: string) => Promise<void> }) {
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`Send back the ${what}?`}
+      consequence="HR sees your reason and can change it and send it again."
+      confirmLabel="Send back"
+      onConfirm={async () => {
+        setTried(true);
+        if (!reason.trim()) return false;
+        await onSend?.(reason.trim());
+      }}
+    >
+      <FormField label="Reason" required error={tried && !reason.trim() ? 'Enter a reason so HR knows what to change.' : null}>
+        <TextArea value={reason} onChange={setReason} rows={3} maxLength={1000} />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
+
+function LiveHeadcountPlanBoard({ live }: { live: LiveHeadcountPlan }) {
+  const toast = useToastIfAny();
+  const [editing, setEditing] = useState<{ dept: string | null } | null>(null);
+  const [sendBack, setSendBack] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const { plans, persona } = live;
+  const hm = persona === 'hm';
+  const fy = fyText(live.fy);
+  const lines: PlanLine[] = plans.flatMap((p) => p.lines.map((l) => ({ id: l.id, department: p.department, designation: l.designation, grade: l.grade ?? '', location: l.location ?? '', approved: l.count, filled: l.filled, open: l.committed, budget: l.budget ?? 0, committed: l.committedBudget })));
+  const mine = hm || live.readOnly ? undefined : plans.find((p) => p.approval?.myTaskId && p.approval.status === 'pending');
+  const what = (p: LivePlan) => (p.approval?.kind === 'revision' ? `${p.department} revision v${p.revisionNo + 1}` : `${p.department} plan`);
+  const decide = async (decision: 'approve' | 'reject', reason: string | null) => {
+    if (!mine?.approval?.myTaskId) return;
+    setBusy(true);
+    try {
+      await live.onDecide(mine.approval.myTaskId, decision, reason);
+      toast?.toast({ tone: 'success', title: decision === 'approve' ? `Approved: ${what(mine)}` : `Sent back: ${what(mine)}`, description: 'HR is told by email and in their bell.' });
+    } catch (e) {
+      toast?.toast({ tone: 'error', title: `Could not decide the ${what(mine)}`, description: (e as Error).message });
+      if (decision === 'reject') throw e;
+    } finally {
+      setBusy(false);
+    }
+  };
+  const exportCsv = () =>
+    downloadText(
+      `headcount-plan-${live.fy}.csv`,
+      toCsv(
+        ['Department', 'Designation', 'Grade', 'Location', 'Approved', 'Filled', 'Open requisitions', 'Free', ...(hm ? [] : ['Budget', 'Budget committed'])],
+        lines.map((l) => [l.department, l.designation, l.grade, l.location, String(l.approved), String(l.filled), String(l.open), String(planLineFree(l)), ...(hm ? [] : [String(l.budget), String(l.committed)])]),
+      ),
+    );
+  const pending = plans.filter((p) => p.approval?.status === 'pending');
+  const revNos = new Set(plans.map((p) => p.revisionNo));
+  const statusLabel = !plans.length ? null : pending.length ? (pending.some((p) => p.approval!.kind === 'revision') ? 'Revision pending' : 'Waiting for approval') : plans.every((p) => p.status === 'approved') ? 'Approved' : 'Draft';
+  const years = <Segment label="Financial year" options={live.years.map((y) => ({ value: y, label: fyText(y) }))} value={live.fy} onChange={live.onFy} />;
+  const actions = hm ? (
+    <>
+      {years}
+      {live.onRequisition && (
+        <Button variant="primary" icon={Plus} onClick={() => live.onRequisition!(null)}>
+          Open requisition
+        </Button>
+      )}
+    </>
+  ) : mine ? (
+    <>
+      {years}
+      <Button onClick={() => setSendBack(true)} disabled={busy}>
+        Send back
+      </Button>
+      <Button variant="primary" loading={busy} onClick={() => void decide('approve', null).catch(() => undefined)}>
+        {mine.approval!.kind === 'revision' ? 'Approve revision' : 'Approve plan'}
+      </Button>
+    </>
+  ) : (
+    <>
+      {years}
+      <Button onClick={exportCsv}>Export</Button>
+      {!live.readOnly && (
+        <Button variant="primary" onClick={() => setEditing({ dept: null })}>
+          {plans.length ? 'Revise plan' : 'Create plan'}
+        </Button>
+      )}
+    </>
+  );
+  const alerts = plans
+    .filter((p) => p.approval)
+    .map((p) => {
+      const a = p.approval!;
+      if (a.status === 'rejected')
+        return (
+          <InlineAlert key={p.id} tone="danger" title={`${what(p)} sent back`}>
+            {a.reason ? `“${a.reason}” ` : ''}Change it with Revise plan and send it again.
+          </InlineAlert>
+        );
+      if (a.status !== 'pending') return null;
+      const steps: ApprovalStep[] = [
+        { id: 's0', label: 'Submitted', status: 'done', ...(a.submittedBy ? { approver: a.submittedBy } : {}), ...(a.submittedAt ? { at: new Date(a.submittedAt) } : {}) },
+        ...a.steps.map((s, i) => ({ id: `s${i + 1}`, label: s.name, status: STEP_STATE[s.state] ?? ('pending' as const), ...(s.approvers.length ? { approver: s.approvers.join(', ') } : {}), ...(s.at && s.state !== 'waiting' ? { at: new Date(s.at) } : {}) })),
+      ];
+      return (
+        <InlineAlert key={p.id} tone="warning" title={`${a.kind === 'revision' ? `Revision v${p.revisionNo + 1} of ${p.department}` : `${p.department} plan`} waiting for approval`}>
+          {a.kind === 'revision' ? `${revisionChange(p)} Requisitions keep drawing on v${p.revisionNo} until it is approved.` : 'Requisitions can use it once it is approved.'}
+          <ApprovalTimeline steps={steps} now={live.now} />
+        </InlineAlert>
+      );
+    });
+  return (
+    <PlanBoard
+      fy={fy}
+      persona={mine ? 'finance' : persona}
+      facts={hm ? `Showing ${plans.map((p) => p.department).join(', ') || 'your department'} only · read-only` : `${plans.length} department${plans.length === 1 ? '' : 's'} · approved by HR and finance${live.readOnly ? ' · read-only while acting for someone else' : ''}`}
+      status={statusLabel && <Badge tone={statusLabel === 'Approved' ? 'success' : statusLabel === 'Draft' ? 'neutral' : 'warning'}>{revNos.size === 1 ? `${statusLabel} · v${[...revNos][0]}` : statusLabel}</Badge>}
+      lines={lines}
+      departmentStatus={Object.fromEntries(plans.map((p) => [p.department, livePlanBadge(p)]))}
+      alerts={alerts}
+      actions={actions}
+      state={live.state}
+      onRetry={live.onRetry}
+      emptyAction={
+        hm || live.readOnly ? undefined : (
+          <Button variant="primary" icon={Plus} onClick={() => setEditing({ dept: null })}>
+            Create plan
+          </Button>
+        )
+      }
+      budgets={!hm}
+      lineAction={
+        live.onRequisition
+          ? (l) => (
+              <Button size="sm" icon={Plus} onClick={() => live.onRequisition!(l.id)}>
+                Open requisition
+              </Button>
+            )
+          : undefined
+      }
+    >
+      {editing && <PlanEditorDrawer open onOpenChange={(o) => !o && setEditing(null)} fy={live.fy} plans={plans} choices={live.choices} defaultDepartment={editing.dept} onSave={live.onSave} onSubmit={live.onSubmit} />}
+      {mine && <SendBackDialog open={sendBack} onOpenChange={setSendBack} what={what(mine)} onSend={(r) => decide('reject', r)} />}
+    </PlanBoard>
   );
 }
 

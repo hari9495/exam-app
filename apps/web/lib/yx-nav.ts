@@ -270,7 +270,8 @@ export function buildNav(n: NavInput): NavArea[] {
       ? []
       : [
           ...sec(undefined, [
-          ...when(has('ats.headcount.manage'), L('hiring-plans', 'Headcount plan', '/yx/hiring/plans')),
+          // HIR-01 (founder decision 11): a hiring manager reads their own department's plan.
+          ...when(any('ats.headcount.manage', 'ats.requisition.raise'), L('hiring-plans', 'Headcount plan', '/yx/hiring/plans')),
           ...when(any('pipeline:manage', 'results:view'), L('hiring-jobs', 'Jobs & requisitions', '/yx/hiring/jobs')),
           ...when(any('interview:view_assigned', 'pipeline:manage'), L('hiring-interviews', 'Interviews', '/yx/hiring/interviews', 'scorecardsToDo')),
           ...when(any('candidate:manage', 'candidate:view'), L('hiring-candidates', 'Candidates & talent CRM', '/yx/hiring/candidates'), L('hiring-pools', 'Talent pools', '/yx/hiring/pools')),

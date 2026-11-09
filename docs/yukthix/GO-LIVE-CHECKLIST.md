@@ -106,3 +106,5 @@ Things deliberately left for launch. Development runs locally until then (test k
       the 1-in-20 rate (HLP-14 answers 142, 144, 4 Nov 2026).
 - [ ] **Old Factories Act scopes.** After go-live, once no company has a company / entity / location value for
       attendance.factories_act, stop offering those scopes (keep department and employment type) (answer 152, 4 Nov 2026).
+- [ ] **Pay transparency law rows.** Counsel checks HIR.PAY_TRANSPARENCY (New York, California, Colorado, Washington,
+      Illinois, EU directive; all verify) before any job outside India is published (Hiring answer 228, 9 Nov 2026).
