@@ -42,6 +42,14 @@ export const HIRING_SETTING_KEYS = [
   // HIR-27: the interview day's slot length and how Auto-assign fills it.
   'hiring.interview_day.slot_minutes',
   'hiring.interview_day.assign',
+  // HIR-13 (founder decision 6): who can apply for internal jobs, and when the current manager is told.
+  'hiring.internal.after_probation',
+  'hiring.internal.months_in_role',
+  'hiring.internal.tell_manager',
+  // HIR-25 (founder decision 2): the notetaker, the AI draft and how long transcripts are kept.
+  'hiring.notetaker.enabled',
+  'hiring.notetaker.ai_draft',
+  'hiring.notetaker.keep_days',
 ] as const;
 export type HiringSettingKey = (typeof HIRING_SETTING_KEYS)[number];
 const EDIT_KEYS = ['ats.settings.manage', 'org.settings.manage'] as const;

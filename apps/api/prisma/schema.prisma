@@ -1242,6 +1242,9 @@ model Job {
   requisitionCancelledBy  String?               @map("requisition_cancelled_by") @db.Uuid
   /// M10 AT5: the scorecard new interviews for this job use, unless the scheduler picks another.
   scorecardTemplateId     String?               @map("scorecard_template_id") @db.Uuid
+  /// HIR-13 answer 226: the job shows on Internal jobs, and is open for referrals (both on by default).
+  internalOpen            Boolean               @default(true) @map("internal_open")
+  referralOpen            Boolean               @default(true) @map("referral_open")
   headcount               Int?
   salaryMin               Int?                  @map("salary_min")
   salaryMax               Int?                  @map("salary_max")
@@ -1348,6 +1351,24 @@ model PipelineEntry {
   @@unique([jobId, candidateId])
   @@index([jobId])
   @@map("pipeline_entries")
+}
+
+/// HIR-13: an employee's own application to an internal job (the pipeline entry is enteredVia='internal'): their own
+/// words, their manager at the time, and when that manager was told (founder decision 6: told, not asked).
+model InternalApplication {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  entryId         String    @unique(map: "internal_applications_entry_key") @map("entry_id") @db.Uuid
+  jobId           String    @map("job_id") @db.Uuid
+  applicantUserId String    @map("applicant_user_id") @db.Uuid
+  employeeId      String    @map("employee_id") @db.Uuid
+  note            String    @db.VarChar(2000)
+  managerUserId   String?   @map("manager_user_id") @db.Uuid
+  managerToldAt   DateTime? @map("manager_told_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, applicantUserId, createdAt], map: "internal_applications_applicant_idx")
+  @@map("internal_applications")
 }
 
 // An employee referral: a staff user refers a person for an open job. The referred person is ingested
@@ -1911,6 +1932,49 @@ model InterviewSlot {
 
   @@index([interviewId])
   @@map("interview_slots")
+}
+
+/// HIR-25 (founder decision 2): one participant's answer to the notetaker (candidate = 'candidate', else the panellist's
+/// user id); no row = still waiting. Recording and AI notes need every participant's "given".
+model InterviewNotetakerConsent {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  interviewId    String   @map("interview_id") @db.Uuid
+  participant    String   @db.VarChar(40)
+  consent        String   @db.VarChar(10)
+  recordedBy     String   @map("recorded_by") @db.Uuid
+  decidedAt      DateTime @default(now()) @map("decided_at") @db.Timestamptz(3)
+
+  @@unique([interviewId, participant], map: "interview_notetaker_consents_key")
+  @@map("interview_notetaker_consents")
+}
+
+/// HIR-25: the interview's transcript, kept only while everyone consents and for the company's set days.
+model InterviewTranscript {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  interviewId    String   @unique(map: "interview_transcripts_interview_key") @map("interview_id") @db.Uuid
+  text           String
+  source         String   @db.VarChar(12)
+  uploadedBy     String   @map("uploaded_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, createdAt], map: "interview_transcripts_age_idx")
+  @@map("interview_transcripts")
+}
+
+/// HIR-25: an AI draft of one panellist's scorecard, a suggestion only (the panellist confirms or changes each rating).
+model InterviewScorecardDraft {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  interviewId    String   @map("interview_id") @db.Uuid
+  panelistUserId String   @map("panelist_user_id") @db.Uuid
+  items          Json
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([interviewId, panelistUserId], map: "interview_scorecard_drafts_key")
+  @@index([organizationId, createdAt], map: "interview_scorecard_drafts_age_idx")
+  @@map("interview_scorecard_drafts")
 }
 
 model InterviewPanelist {

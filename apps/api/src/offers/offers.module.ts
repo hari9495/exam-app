@@ -6,6 +6,7 @@ import { ApprovalsModule } from '../approvals/approvals.module';
 import { AuthModule } from '../auth/auth.module';
 import { WorkflowModule } from '../workflow/workflow.module';
 import { PayrollModule } from '../payroll/payroll.module';
+import { InternalApplicationsModule } from '../internal-applications/internal-applications.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { OffersController } from './offers.controller';
 import { PublicOffersController } from './public-offers.controller';
@@ -20,7 +21,7 @@ import { OfferBatchController } from './offer-batch.controller';
   // ApprovalsModule -> the offer gate (getChains/isConfigurer/cancelForSubject), same wiring as PipelineModule's
   // requisition gate. HIR-09: WorkflowModule (offers run on the P03 engine), PayrollModule (the CTC breakup),
   // AuthModule (the e-sign one-time code).
-  imports: [EmailModule, StorageModule, JobsModule, ApprovalsModule, AuthModule, WorkflowModule, PayrollModule, NotificationsModule],
+  imports: [EmailModule, StorageModule, JobsModule, ApprovalsModule, AuthModule, WorkflowModule, PayrollModule, NotificationsModule, InternalApplicationsModule],
   controllers: [OffersController, PublicOffersController, OfferBuilderController, OfferBatchController],
   providers: [OffersService, OfferTemplatesService, OfferBuilderService, OfferBatchService],
   exports: [OffersService, OfferBuilderService],

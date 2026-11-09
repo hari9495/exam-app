@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { InternalApplicationsService } from '../internal-applications/internal-applications.service';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuditService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { buildViewer, has, type ScopeUser, type Viewer } from '../access/scope';
@@ -81,6 +82,7 @@ export class OfferBuilderService implements OnModuleInit {
     private readonly email: EmailService,
     private readonly looks: EmailLookService,
     private readonly notifications: NotificationsService,
+    @Optional() private readonly internal?: InternalApplicationsService,
   ) {}
 
   onModuleInit() {
@@ -274,6 +276,13 @@ export class OfferBuilderService implements OnModuleInit {
   }
 
   async create(ctx: TenantContext, user: ScopeUser, dto: OfferCreateDto, opts: { batchId?: string } = {}) {
+    const made = await this.createOffer(ctx, user, dto, opts);
+    // HIR-13: an internal applicant's manager may be told at the offer (company setting).
+    await this.internal?.tellAtOffer(ctx, dto.entryId);
+    return made;
+  }
+
+  private async createOffer(ctx: TenantContext, user: ScopeUser, dto: OfferCreateDto, opts: { batchId?: string } = {}) {
     const v = await this.viewer(user);
     this.needPay(v);
     this.checkDates(dto);

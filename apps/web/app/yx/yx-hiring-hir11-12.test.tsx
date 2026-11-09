@@ -56,7 +56,7 @@ describe('HIR-11 / HIR-12 glue (India time, rupees)', () => {
     const hire = (has: (k: string) => boolean, support = false) => buildNav({ ...base, has, support }).find((a) => a.id === 'hire')!;
     const hireArea = (support: boolean) => buildNav({ ...base, has: () => true, support }).find((a) => a.id === 'hire');
     const links = (a: ReturnType<typeof hire>) => a.sections.flatMap((s) => s.items.map((i) => i.href));
-    expect(links(hire(() => false))).toEqual(['/yx/hiring/referrals']); // an employee with no keys
+    expect(links(hire(() => false))).toEqual(['/yx/hiring/referrals', '/yx/hiring/internal-jobs']); // an employee with no keys
     expect(buildNav({ ...base, employee: false, has: () => false }).find((a) => a.id === 'hire')).toBeUndefined();
     // Founder answers 202 and 204: costs with ats.costs.manage (not the settings key); All referrals for HR.
     const hr = hire((k) => k === 'ats.costs.manage' || k === 'ats.referral.manage');

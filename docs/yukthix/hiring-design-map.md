@@ -14,8 +14,8 @@ was built.
   /yx/hiring/jobs/[id], with the HIR-24 pay range by location law (one story live with a gap: the apply form has no
   pay-history question). Since 9 Nov 2026 also HIR-04, the pipeline board (all 7 stories) on /yx/hiring/jobs/[id]/pipeline.
   Counts in the table below.
-- **Few of the Hiring designs are live.** Of 255 design stories (HIR-01 … 31, the careers site, candidate
-  identity check and the hiring settings), 118 of 271 are live with their design (recount 12 Nov 2026, after HIR-10 manual BGV on /yx/hiring/bgv, HIR-20 Talent CRM on /yx/hiring/pools and the HIR-07 scorecard comments). First the "Request a hire" sheet (HIR-02
+- **Few of the Hiring designs are live.** Of the design stories (HIR-01 … 31, the careers site, candidate
+  identity check and the hiring settings), 195 of 304 are live with their design and 11 more live with a gap (recount 13 Nov 2026, after HIR-25 the interview notetaker and HIR-13 Internal jobs merged with test main on /yx/hiring/internal-jobs; before that HIR-10 manual BGV on /yx/hiring/bgv, HIR-20 Talent CRM on /yx/hiring/pools and the HIR-07 scorecard comments). First the "Request a hire" sheet (HIR-02
   NewRequisition), which People › My team (/yx/people/team) renders with `live` and sends to `POST jobs/requisitions`. Since 9 Nov 2026 (branch `feat/yukthix-hir-01`) HIR-01, the headcount plan board, is live too: all 10 of
   its stories (section 4). HIR-05 (branch `feat/yukthix-hir-05`): the candidate record with the ex-employee match and merge, plus the newly drawn candidate list (with Possible duplicates) and candidate data retention pages. HIR-11 Recruiting costs (/yx/hiring/costs) and HIR-12 Referrals (/yx/hiring/referrals, with HR's
   All referrals at /yx/hiring/referrals/all) are live too (branch `feat/yukthix-hir-11-12`).
@@ -33,8 +33,8 @@ was built.
   pages and consent, recruiting costs, referrals, recruitment agencies (submissions by a link). An accepted offer becomes
   a joiner in People (PPL-12), and background checks are recorded on the joiner (People onboarding).
 - **Not built at all (no API):** the staffing-agency business (clients, rate cards, submissions to clients, placements,
-  bench, client invoices, collections, placement fees, e-invoice window: HIR-14 … 19, 30, 31), internal jobs (HIR-13),
-  AI interview review (HIR-08), notetaker and recording consent (HIR-25), candidate identity checks (HIR-22, T9-15),
+  bench, client invoices, collections, placement fees, e-invoice window: HIR-14 … 19, 30, 31),
+  AI interview review (HIR-08), a recording provider for the notetaker (HIR-25), candidate identity checks (HIR-22, T9-15),
   bias audit (HIR-23), BGV partner checks (HIR-10), bulk interview day and bulk offers (HIR-27, 28), interview slot finder from calendars (HIR-06), CRM sequences and
   sourced profiles (HIR-20). (Pay-transparency law rules, HIR-24, went live 9 Nov 2026.)
 - **The public careers site** is live on T9-09 since 11 Nov 2026 (/yx/careers/[org], its job pages, /yx/apply/[token])
@@ -55,14 +55,18 @@ built**.
 | A. Plans, requisitions, jobs and costs | 4 | 36 | 1 | 0 | 0 | 0 | 37 |
 | B. Candidates, pipeline and interviews | 8 | 52 | 1 | 0 | 9 | 1 | 63 |
 | C. Offers, BGV and joining | 4 | 23 | 4 | 0 | 1 | 0 | 28 |
-| D. Referrals, internal jobs, CRM and rediscovery | 4 | 20 | 0 | 0 | 7 | 4 | 31 |
+| D. Referrals, internal jobs, CRM and rediscovery | 4 | 24 | 0 | 0 | 3 | 4 | 31 |
 | E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
-| F. Compliance and fairness | 5 | 4 | 1 | 0 | 20 | 0 | 25 |
+| F. Compliance and fairness | 5 | 12 | 2 | 0 | 15 | 0 | 29 |
 | G. Careers site, portals and settings | 4 | 57 | 3 | 2 | 11 | 0 | 73 |
-| **All Hiring design groups (A–G)** | **37** | **186** | **9** | **6** | **96** | **5** | **302** |
+| **All Hiring design groups (A–G)** | **37** | **204** | **11** | **6** | **83** | **5** | **309** |
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 5 | 0 | 5 | 5 | 0 | 15 |
+Recounted by script on `test/yukthix-main` after merging the careers follow-ups, HIR-13 internal jobs and HIR-25 notetaker: A–G 204 live, 11 gap, 6 wire, 83 not built, 5 phone, of 309.
 Recounted by script on `test/yukthix-main` after merging HIR-28 bulk offers (with the HIR-09 follow-ups) and HIR-27 interview days: A–G 189 live, 11 gap, 6 wire, 92 not built, 5 phone, of 303.
 Recounted by script 13 Nov 2026 on `feat/yukthix-careers-2` after the careers follow-ups (answers 351-353, 355-357, 359, 362): T9-09 WhiteLabel live (gap) → live; 2 new T9-09 stories drawn and live (JobInternationalPhone, PortalWithLogo); Job stays live (gap) for WhatsApp apply (354).
+Recounted by script 13 Nov 2026 on `feat/yukthix-hir-25` after HIR-25 went live: its 5 stories design only → 4 live and 1 live (gap, no recording provider), plus 4 new drawn stories (YourAnswer, NoProvider, TranscriptAdded, AiOff), all live; A–G 195 live, 11 gap, 6 wire, 87 not built, 5 phone, of 304.
+Recounted by script 13 Nov 2026 on `feat/yukthix-hir-13` after merging `test/yukthix-main` (Settings rounds 2-3, HIR-09 follow-ups, HIR-28): A–G 187 live, 10 gap, 6 wire, 92 not built, 5 phone, of 300.
+Recounted by script 13 Nov 2026 on `feat/yukthix-hir-13` after HIR-13 went live: Browse, Apply, NotEligible and Empty design only → live (no story added or removed; the two phone stories stay phone views); A–G 180 live, 12 gap, 6 wire, 96 not built, 5 phone, of 299. Settings 6.1 gained the drawn Internal jobs section inside the existing P6_1 stories.
 Recounted by script 12 Nov 2026 on `feat/yukthix-hir-28` after HIR-28 went live (all 4 stories).
 
 Recounted by script 12 Nov 2026 on `feat/yukthix-hir-09` after merging the Settings 6.1 follow-ups with answers 332 and 334-337: A–G 179 live, 10 gap, 6 wire, 100 not built, 5 phone, of 300.
@@ -141,6 +145,7 @@ the web page.
 | /yx/hiring/costs | the designed `RecruitingCostsScreen` with `live` | HIR-11 | `GET/POST hiring/costs`, `PUT/DELETE hiring/costs/:id`, `GET hiring/costs/overview` (`ats.costs.manage`; writes refused while acting) | live |
 | /yx/hiring/referrals | the designed `ReferralsScreen` with `live` | HIR-12 | `GET referrals/mine`, `/jobs`, `/policy`, `POST referrals` (anyone signed in; refused while acting) | live |
 | /yx/hiring/referrals/all | the designed `AllReferralsScreen` with `live` | HIR-12 All referrals | `GET referrals`, `PATCH referrals/:id/reward` (`ats.referral.manage` or `candidate:view` / `pipeline:manage`; refused while acting; paid outside payroll and undo paid, answers 283 and 285) | live |
+| /yx/hiring/internal-jobs | the designed `InternalJobsScreen` with `live` (13 Nov 2026) | HIR-13 | `GET internal-applications/jobs`, `/eligibility`, `/mine`, `POST internal-applications` (anyone signed in, own data only; rules from People and the `hiring.internal.*` settings; refused while acting); job switches `PATCH jobs/:id internalOpen / referralOpen` (`pipeline:manage`) | live |
 | /yx/settings/hiring | the designed `SettingsPageScreen` (6.1) with `live`; scorecard templates in `ScorecardTemplateSheet` (answer 345) | Settings 6.1 Hiring | `GET/PUT hiring/settings` (read: `pipeline:manage`, `pipelines:configure`, `ats.headcount.manage`, `ats.referral.manage`, `ats.settings.manage`, `org.settings.manage`; change: `ats.settings.manage` or `org.settings.manage` company-wide, never while acting), `PATCH pipelines/stages/:id` (`pipelines:configure`) | live |
 | /yx/hiring/requisitions | the designed `RequisitionsScreen` with `live`, its drawer and the designed `RediscoveryPanel` with `live`; the request sheet for managers | HIR-02, HIR-26 | `GET hiring/requisitions` (`pipeline:manage` / `ats.headcount.manage`: all; `ats.requisition.raise`: own, read-only), `GET hiring/requisitions/:id/rediscovery` (and `candidate:view` or `pipeline:manage`), `POST jobs/:id/submit`, `/approval/cancel`, `POST jobs/:id/entries`, `POST jobs/requisitions` (writes refused while acting) | live |
 | /yx/people/team (Request a hire) | the designed `RequisitionSheet` with `live` | HIR-02 NewRequisition | `POST jobs/requisitions` (`ats.requisition.raise`) | live |
@@ -155,6 +160,7 @@ the web page.
 | /application/[statusToken], /portal/[portalToken], /offer/[token], /interview/[token] | candidate's status page, portal, offer accept / decline, interview booking | candidate portal designs are needed (question 10) |
 | /agency/[token] and v2 /settings/agencies, /agency-submissions | recruitment agencies submit candidates by link; the older v2 screens review them | HIR-21 covers part of it (question 1) |
 | v2 /referrals | the older recruiter list of referrals | HIR-12 replaces it |
+| ~~v2 /internal-mobility~~ | deleted 13 Nov 2026; redirects to /yx/hiring/internal-jobs | HIR-13 replaced it |
 
 ## 3. Designs with no live page or API
 
@@ -162,11 +168,10 @@ the web page.
 |---|---|---|
 | HIR-08 AI interview review | no async AI interview, recordings or advisory score | L |
 | HIR-10 partner BGV | no BGV partner integration (founder decision 3: after a vendor contract); manual checks are live on /yx/hiring/bgv | M (per partner) |
-| HIR-13 internal jobs | no internal posting, eligibility rule or employee apply | M |
 | HIR-14 … 19, 21 (part), 30, 31 | the staffing-agency business: clients, rate cards, submissions to clients, placements, bench, invoices, receivables, fees, e-invoice | XL |
 | HIR-22, T9-15 identity | no candidate ID or selfie check (People's face match waits for a provider too) | M + provider |
 | HIR-23 bias audit | no audit record or NYC setting | S |
-| HIR-25 notetaker | no recording, consent or AI draft (an older notes-to-scorecard AI route exists: `POST interviews/:id/scorecard`, unused) | L |
+| HIR-25 recording provider | consent, the transcript by upload and the AI draft are live; no recording or transcription provider (question 431) | M + provider |
 | HIR-27, 28 bulk day, bulk offers | no drive scheduling, no batch offers | M each |
 | HIR-06 slot finder | no calendar free/busy (needs Google / Microsoft calendar link) | M + partner |
 | Settings 6.2 Staffing desk | goes with the staffing business | with E |
@@ -241,14 +246,14 @@ a Recruiter on every job (default who opened it; Change recruiter in the job men
 read status `open`; the board sync retracts paid postings; candidates stay; Resume or Close), company job numbers
 (JOB-0001 on, per company, from the `job_number_counters` row lock, never reused) on the list and the workspace, Export of
 the visible columns as CSV, and a location from the masters for jobs of a legal entity outside India. Still waiting:
-saved views (225), the Referrals & internal tab and Share with vendors (226). The job form and the candidate pages read the custom field definitions from
+saved views (225) and Share with vendors (226); the Referrals & internal tab went live with HIR-13 (13 Nov 2026). The job form and the candidate pages read the custom field definitions from
 `GET custom-fields/in-use` (results:view or pipeline:manage; ats.job.manage counts), so recruiters see them; the settings
 list `GET custom-fields` stays `org:manage_settings` and is no longer called by these pages (it was refused for recruiters).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
 | List · Jobs list | live | `GET jobs` (`results:view`); job numbers, filters, search, Export CSV of the visible columns (CSV only, answer 241); row menu: copy careers link, send for approval, withdraw, put on hold, resume, close, reopen, delete (`pipeline:manage`); Recruiter column; saved views wait (225) |
-| Workspace · Job workspace · overview | live | `GET jobs/:id` with `payLaw` and `postings`; job number; recruiter; stage counts from `GET jobs`; put on hold, resume, close, reopen; Open pipeline |
+| Workspace · Job workspace · overview | live | `GET jobs/:id` with `payLaw` and `postings`; job number; recruiter; stage counts from `GET jobs`; put on hold, resume, close, reopen; Open pipeline; the Referrals & internal tab (answer 226, HIR-13): Show on internal jobs and Open for referrals, `PATCH jobs/:id internalOpen / referralOpen`, toast |
 | Postings · Job workspace · board postings (one failed) | live | `postings` (every company board, its publication status and error); post, refresh, retry, close by `PATCH jobs/:id jobBoardIds` |
 | Empty · Empty | live | no jobs |
 | Loading · Loading | live | while `GET jobs` loads |
@@ -534,14 +539,29 @@ waiting for approval shows **Bonus on hold** in both lists and refuses mark-paid
 
 #### HIR-13 · Internal jobs
 
-No live page, no API. Designed: `InternalJobsScreen`, `InternalJobsPhone`.
+Live page: /yx/hiring/internal-jobs (13 Nov 2026, branch `feat/yukthix-hir-13`; menu Hiring › Internal jobs for anyone
+with an employee record, never in a support session) renders the designed `InternalJobsScreen` with `live`. API (all the
+signed-in person's own): `GET internal-applications/jobs` (open jobs with "Show on internal jobs" on, never a job the
+person is the hiring manager of), `GET …/eligibility` (the company rule, the reason and the day it opens, the manager's
+name and when they are told), `POST internal-applications` (note required, optional PDF résumé up to 5 MB; refused while
+acting for someone else; 404 for a job not on Internal jobs or another company's, 409 closed / on hold / already
+applied, 403 not eligible or the job's own hiring manager), `GET …/mine`. Founder decision 6 as company settings with
+defaults, on Settings 6.1 (new drawn section "Internal jobs", audited, the page's keys): `hiring.internal.after_probation`
+(on), `hiring.internal.months_in_role` (12; counted from the start of the current designation) and
+`hiring.internal.tell_manager` (When they apply / At the offer stage; default when they apply). Someone serving notice or
+with no current employee record can never apply. The current manager is told by a bell notice and email
+(`hiring.internal.applied`), never asked, and sees nothing of the application (no candidate, notes or tests). New table
+`internal_applications` (RLS) keeps the person's words, their manager and when the manager was told; the words also go
+to the application's notes for the hiring team. The job workspace's "Referrals & internal" tab is wired (answer 226):
+`jobs.internal_open` and `jobs.referral_open` (both on by default; referrals respect it). The older v2 Internal Mobility
+page is deleted; its addresses redirect here.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Browse · Browse and my applications | design only, feature not built | no internal posting or employee apply |
-| Apply · Apply sheet | design only, feature not built | same |
-| NotEligible · Blocked · not yet eligible | design only, feature not built | needs an eligibility policy (default + HR setting) |
-| Empty · Empty · no openings | design only, feature not built | same |
+| Browse · Browse and my applications | live | the openings as drawn (department · location · type, posted date); My applications with Applied / Assessment / Interview / Offer / Selected / Not selected from the pipeline (Selected added for the hired stage) |
+| Apply · Apply sheet | live | note required (too-early error and focus, never disabled), optional PDF résumé, the manager notice from the setting; toast "Applied for …"; refusals stay in the sheet |
+| NotEligible · Blocked · not yet eligible | live | the company rule and the day it opens (probation, months in the role, notice, no employee record); Send says why and sends nothing |
+| Empty · Empty · no openings | live | no openings / no applications |
 | Phone · phone | phone view, mobile app not built | `InternalJobsPhone` |
 | PhoneApply · phone · apply | phone view, mobile app not built | same |
 
@@ -723,13 +743,33 @@ both ends where required. Jobs now keep `salaryPeriod` and `askPayHistory`.
 
 #### HIR-25 · Interview notetaker consent
 
+Live 13 Nov 2026 (branch `feat/yukthix-hir-25`, founder decision 2): the designed `NotetakerConsentPanel` on the HIR-07
+interview page (/yx/hiring/interviews/[id]) when the company has the notetaker on, and the designed `DraftScorecardReview`
+at /yx/hiring/interviews/[id]/draft. Company settings on Settings 6.1 › Interview notetaker (audited, the page's keys):
+`hiring.notetaker.enabled` (off), `hiring.notetaker.ai_draft` (off), `hiring.notetaker.keep_days` (90). API (the panel and
+the job's overseers; another company 404, off the panel 403, every write refused while acting): `GET hiring/interviews/:id/notetaker`,
+`PUT …/notetaker/consent` (`me` = a panellist for themselves; `candidate` = recorded by the panel or a recruiter, with who
+recorded it), `PUT …/notetaker/transcript` (a panellist, only with everyone's consent), `POST …/notetaker/draft` and
+`GET …/notetaker/draft` (the panellist's own). Any "no", also a later one, deletes the transcript and every draft at once.
+Provider: to decide; no recording or transcription provider is connected, so the transcript is added as a .txt file. The
+AI draft goes through `AiInvocationService` (the company's AI, credits, logged; the prompt has the skills and transcript
+only) and is a suggestion: the panellist confirms or changes each rating, picks a recommendation and submits their own
+scorecard (`POST interviews/:id/scorecard/submit`, audited `fromDraft`); the draft is deleted then. The older
+`POST interviews/:id/scorecard` notes-to-scorecard route, its service method and client are removed. Retention: the daily
+candidate retention sweep deletes transcripts and drafts after the company's days; the candidate erase deletes them at
+once. Migration `202617q0000000_hir25_notetaker` (three tables, forced RLS; schema only).
+
 | story (sub-page) | verdict | note |
 |---|---|---|
-| AllConsented · All consented · recording | design only, feature not built | no recording or consent per participant (question 2) |
-| OneDeclined · One declined · no recording | design only, feature not built | same |
-| Waiting · Waiting for the candidate | design only, feature not built | same |
-| DraftReview · Draft scorecard · 1 of 4 confirmed | design only, feature not built | an older notes-to-scorecard AI route exists (`POST interviews/:id/scorecard`), unused by YukthiX |
-| DraftAllConfirmed · Draft scorecard · all confirmed, ready to submit | design only, feature not built | same |
+| AllConsented · All consented · recording | live (gap) | everyone's consent is recorded and shown; no recording provider is connected, so the badge stays "Not recording" and the transcript is added by upload (question 431) |
+| OneDeclined · One declined · no recording | live | "… declined. No recording or transcript"; nothing can be added; a later "no" deletes the transcript and drafts |
+| Waiting · Waiting for the candidate | live | "Recording starts only after every participant consents" |
+| DraftReview · Draft scorecard · 1 of 4 confirmed | live | the panellist's own draft; the scorecard's scale; never-disabled Submit names what is missing and focuses it |
+| DraftAllConfirmed · Draft scorecard · all confirmed, ready to submit | live | with the drawn recommendation Segment; submits the panellist's own scorecard; toast |
+| YourAnswer · Your answer and the candidate's · asked | live | drawn 13 Nov 2026: I consent / I decline for oneself, Candidate agreed / declined for the candidate; withdraw asks first |
+| NoProvider · All consented · no provider, add the transcript | live | drawn 13 Nov 2026: "No recording provider is connected"; a .txt file up to 200,000 characters |
+| TranscriptAdded · Transcript added · draft with AI | live | drawn 13 Nov 2026: who added it and when; Draft my scorecard (AI badge) |
+| AiOff · Transcript added · AI drafting off | live | drawn 13 Nov 2026: "AI drafting is off for your company. Fill the scorecard yourself." |
 
 #### HIR-31 · E-invoice window banner
 
@@ -957,7 +997,7 @@ stand-in it replaces with its "Live ·" stories.
 | 11 | ~~HIR-10 BGV tracker, manual~~ | done 12 Nov 2026: /yx/hiring/bgv on the joiner's checks; a person decides a discrepancy | S |
 | 12 | T9-09 careers site + page builder (after question 8) | public pages and /yx/hiring/careers | M |
 | 13 | ~~HIR-20 talent CRM (pools, postings)~~ | done 12 Nov 2026: /yx/hiring/pools; sequences and sourcing later | M |
-| 14 | HIR-13 internal jobs (after question 6) | new API + page | M |
+| 14 | ~~HIR-13 internal jobs~~ | done 13 Nov 2026: /yx/hiring/internal-jobs; phone stories wait for the app | M |
 | later | HIR-25, HIR-08, HIR-22 / T9-15, partner BGV, HIR-27, 28, 29, slot finder, staffing E | after the founder answers and providers | L–XL |
 
 Suggested first wave (3 builders): 1 + 2 (one builder, both S), 3, 5.
@@ -1568,3 +1608,40 @@ in India.
 444. **International number on jobs in India.** The designed form still asks Indian applicants for a 10-digit mobile;
      the API accepts any number (an applicant abroad applying to an India job must use an Indian number). *Suggested:
      keep; add a "my number is not Indian" switch only if recruiters ask.*
+## HIR-13 internal jobs built (founder decision 6, answer 226; 13 Nov 2026, branch `feat/yukthix-hir-13`)
+- Who can apply, and when, are company settings with defaults on Settings 6.1 › Internal jobs (audited, the page's keys):
+  past probation (on), months in the current role (12), tell the current manager (when they apply). Never while serving
+  notice, never without a current employee record, never for a job one is the hiring manager of.
+- Migration `202617p0000000_hir13_internal_jobs`: `jobs.internal_open`, `jobs.referral_open` (both default on) and the
+  `internal_applications` table (forced RLS). Schema only; no data written.
+## Founder questions from the HIR-13 build (13 Nov 2026)
+411. **New jobs on Internal jobs by default.** Built: every job (new and existing) shows on Internal jobs and stays open
+     for referrals until a recruiter switches it off in the job's "Referrals & internal" tab. *Suggested: keep; switch a
+     confidential replacement off by hand. If customers often forget, add a company setting "New jobs show on Internal
+     jobs" (default on).*
+412. **Serving notice.** Built: someone whose employment status is "notice" can never apply (not a setting); someone whose
+     resignation still waits for approval can. *Suggested: keep both.*
+413. **What counts as "current role".** Built: the months count from the day the current designation started; a move of
+     department, location or manager alone does not restart the count. *Suggested: keep.*
+414. **Who reads "Why are you interested?"** Built: the hiring team sees it as the first note on the application; the
+     current manager is told only the person's name and the job, and sees no notes, tests or stage. *Suggested: keep.*
+## HIR-25 interview notetaker built (founder decision 2; 13 Nov 2026, branch `feat/yukthix-hir-25`)
+- Company settings with defaults on Settings 6.1 › Interview notetaker (audited, the page's keys): the notetaker (off), the
+  AI draft scorecard (off), keep transcripts and drafts (90 days). Consent from every participant before any transcript or
+  AI note; a "no" at any time deletes them. The AI draft is a suggestion the panellist confirms and submits themselves.
+- HIR-12 fix on the same branch: a referral résumé that is not a real PDF (by its content) is refused with 400.
+## Founder questions from the HIR-25 build (13 Nov 2026)
+431. **Recording provider.** Built: no recording or transcription provider is connected; once everyone consents a
+     panellist adds the transcript as a .txt file from their meeting tool. *Suggested: keep the upload path; pick a
+     provider (Zoom / Google Meet / Teams transcripts, or an Indian speech-to-text vendor) when a customer asks, behind
+     the same consent.*
+432. **How the candidate consents.** Built: a panellist or recruiter records the candidate's answer ("Candidate agreed" /
+     "declined"), with who recorded it in the record and the audit. *Suggested: also ask the candidate on their interview
+     link page before the call (needs a drawn candidate page, like question 10).*
+433. **Who on the panel adds the transcript.** Built: any panellist, only while everyone has consented; adding another
+     replaces it and drops drafts made from the old one. *Suggested: keep.*
+434. **AI note text kept as rating notes.** Built: when the panellist submits from the draft, each skill's AI note goes in
+     as that rating's note (the panellist saw it next to the rating). *Suggested: keep; a panellist who wants their own
+     words fills the scorecard form instead of the draft.*
+435. **Recruiters off the panel.** Built: they see the consent card and record the candidate's answer, but never give
+     panel consent, add a transcript or draft. *Suggested: keep.*

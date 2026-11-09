@@ -1,3 +1,4 @@
+import { InternalApplicationsService } from '../internal-applications/internal-applications.service';
 import { createHash, randomUUID } from 'crypto';
 import { BadRequestException, ConflictException, Injectable, NotFoundException, Optional, UnauthorizedException } from '@nestjs/common';
 import { Offer, Prisma } from '@prisma/client';
@@ -33,6 +34,7 @@ export class OffersService {
     private readonly approvals: ApprovalsService,
     // HIR-09 e-sign: the one-time code the candidate signs with (optional so older unit tests build without it).
     @Optional() private readonly otp?: OtpService,
+    @Optional() private readonly internal?: InternalApplicationsService,
   ) {}
 
   async createOffer(context: TenantContext, actorUserId: string, entryId: string, dto: CreateOfferDto): Promise<Offer> {
@@ -49,7 +51,7 @@ export class OffersService {
       letterBody = letterBody ?? template.body;
     }
 
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+    const made = await this.tenantPrisma.forTenant(context, async (tx) => {
       const orgId = context.organizationId as string;
       const entry = await tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: orgId } });
       if (!entry) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
@@ -76,6 +78,9 @@ export class OffersService {
       });
       return offer;
     });
+    // HIR-13: an internal applicant's manager may be told at the offer (company setting).
+    await this.internal?.tellAtOffer(context, entryId);
+    return made;
   }
 
   async previewPdf(context: TenantContext, offerId: string): Promise<Buffer> {

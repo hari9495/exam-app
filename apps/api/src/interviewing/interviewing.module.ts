@@ -12,12 +12,14 @@ import { ScorecardsService } from './scorecards.service';
 import { HiringHomeService } from './hiring-home.service';
 import { InterviewDaysService } from './interview-days.service';
 import { InterviewsModule } from '../interviews/interviews.module';
+import { NotetakerService } from './notetaker.service';
+import { AiModule } from '../ai/ai.module';
 
 // M10 recruitment batch AT5 (M10-BUILD-DESIGN §8, §9): the pipeline board, interviews and scorecards.
 @Module({
-  imports: [AuthModule, PipelineModule, InvitationsModule, CandidateEmailsModule, EmailModule, ApprovalsModule, InterviewsModule],
+  imports: [AuthModule, PipelineModule, InvitationsModule, CandidateEmailsModule, EmailModule, ApprovalsModule, InterviewsModule, AiModule],
   controllers: [InterviewingController],
-  providers: [HiringBoardService, ScorecardTemplatesService, ScorecardsService, HiringHomeService, InterviewDaysService],
+  providers: [HiringBoardService, ScorecardTemplatesService, ScorecardsService, HiringHomeService, InterviewDaysService, NotetakerService],
   exports: [HiringBoardService, ScorecardsService, HiringHomeService],
 })
 export class InterviewingModule {}

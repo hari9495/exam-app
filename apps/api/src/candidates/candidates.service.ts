@@ -791,6 +791,9 @@ export class CandidatesService {
       const cards = await tx.scorecard.findMany({ where: { organizationId: context.organizationId as string, interviewId: { in: erasedInterviews.map((i) => i.id) }, redactedAt: null }, select: { id: true, summary: true } });
       for (const card of cards) await tx.scorecard.update({ where: { id: card.id }, data: { summary: card.summary == null ? null : 'Redacted', redactedAt: now } });
       if (cards.length) await tx.scorecardRating.updateMany({ where: { organizationId: context.organizationId as string, scorecardId: { in: cards.map((x) => x.id) }, notes: { not: null } }, data: { notes: 'Redacted' } });
+      // HIR-25: the interview transcripts and AI draft scorecards are about the candidate: deleted outright.
+      await tx.interviewTranscript.deleteMany({ where: { organizationId: context.organizationId as string, interviewId: { in: erasedInterviews.map((i) => i.id) } } });
+      await tx.interviewScorecardDraft.deleteMany({ where: { organizationId: context.organizationId as string, interviewId: { in: erasedInterviews.map((i) => i.id) } } });
       await tx.candidateRefreshToken.deleteMany({ where: { invitationId: { in: invitationIds } } });
       await tx.invitation.updateMany({
         where: { id: { in: invitationIds }, status: 'invited' },

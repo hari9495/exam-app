@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { formatDate, useToast } from '@yukthix/ui';
+import { formatDate, formatINR, useToast } from '@yukthix/ui';
 import { JobWorkspaceScreen, type LivePosting, type PayRangeInput } from '@yukthix/ui/frame';
 import type { MasterRecord } from '@yukthix/ui/org';
 import { loadState, useOrg, useYxPermissions } from '../../../../../../lib/yx-org';
@@ -53,6 +53,8 @@ export default function YxHiringJobPage() {
   const designations = useOrg<MasterRecord[]>('/masters/designations', masters);
   const grades = useOrg<MasterRecord[]>('/masters/grades', masters);
   const write = useApiWrite();
+  // Answer 226: the referral bonus rule in words for the "Referrals & internal" tab.
+  const policy = useApi<{ bonusInr: number; qualifyDays: number }>('/referrals/policy');
   const j = job.data;
   const counted = (list.data ?? []).find((x) => x.id === id);
   const names = (uid: string | null) => (uid ? ((teammates.data ?? []).find((t) => t.id === uid)?.name ?? '') : '');
@@ -177,6 +179,24 @@ export default function YxHiringJobPage() {
                 onOpenSettings: () => router.push('/yx/settings/hiring'),
               }
             : undefined,
+        sharing: j
+          ? {
+              internal: j.internalOpen !== false,
+              referrals: j.referralOpen !== false,
+              referralNote: policy.data && policy.data.bonusInr > 0 ? `Referral bonus ${formatINR(policy.data.bonusInr)} after the hire completes ${policy.data.qualifyDays} days.` : 'Employees can refer people they know for this job.',
+              onChange: async (patch) => {
+                try {
+                  await write('PATCH', `/jobs/${enc(id)}`, patch);
+                  await job.refetch();
+                  const t = j.title;
+                  done(patch.internalOpen !== undefined ? (patch.internalOpen ? `${t} shows on Internal jobs` : `${t} is off Internal jobs`) : patch.referralOpen ? `${t} is open for referrals` : `${t} is closed to referrals`);
+                } catch (e) {
+                  toast({ tone: 'error', title: 'The job was not changed', description: (e as Error).message });
+                  throw e;
+                }
+              },
+            }
+          : undefined,
         onOpenPipeline: () => router.push(`/yx/hiring/jobs/${enc(id)}/pipeline`),
         // HIR-28: bulk offers need the offer-pay key (the API checks it again).
         onBulkOffers: perms.has('ats.offer.compensation.view') ? () => router.push(`/yx/hiring/jobs/${enc(id)}/bulk-offers`) : undefined,

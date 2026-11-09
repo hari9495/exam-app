@@ -840,6 +840,24 @@ const hiring: SettingsPageDef = {
         { key: 'hire.cost_categories', label: 'Recruiting cost categories', kind: 'multiselect', value: ['Job boards', 'Agency fees', 'Referral bonuses', 'Assessments', 'Campus events', 'Other'], options: ['Job boards', 'Agency fees', 'Referral bonuses', 'Assessments', 'Campus events', 'Other'], helper: 'Used for cost per hire. Recruiter time is not counted.', contributedBy: 'P09', scope: 'Company', synonyms: ['cost per hire'] },
       ],
     },
+    {
+      // HIR-25 (founder decision 2): off by default; consent from every participant before anything is recorded.
+      title: 'Interview notetaker',
+      settings: [
+        { key: 'hire.notetaker_enabled', label: 'Interview notetaker', kind: 'toggle', value: false, helper: 'Keeps an interview transcript only after every participant consents. Anyone saying no means no recording.', starter: true, scope: 'Company', synonyms: ['recording', 'transcript', 'notetaker', 'consent'] },
+        { key: 'hire.notetaker_ai_draft', label: 'AI drafts a scorecard from the transcript', kind: 'toggle', value: false, helper: 'A suggestion only: the interviewer confirms or changes every rating and submits. Uses your company’s AI.', starter: true, scope: 'Company', synonyms: ['ai', 'scorecard', 'draft'] },
+        { key: 'hire.notetaker_keep_days', label: 'Keep transcripts and drafts for', kind: 'select', value: '90', options: ['30', '90', '180', '365'], optionLabels: { '30': '30 days', '90': '90 days', '180': '180 days', '365': '1 year' }, helper: 'Then they are deleted. Erasing a candidate deletes them at once.', starter: true, scope: 'Company', synonyms: ['retention', 'transcript'] },
+      ],
+    },
+    {
+      // HIR-13 (founder decision 6): who can apply for internal jobs, and when; the current manager is told, never asked.
+      title: 'Internal jobs',
+      settings: [
+        { key: 'hire.internal_after_probation', label: 'Only people past probation can apply for internal jobs', kind: 'toggle', value: true, helper: 'Off: people still on probation can apply too.', starter: true, scope: 'Company', synonyms: ['internal mobility', 'internal jobs', 'probation'] },
+        { key: 'hire.internal_months_in_role', label: 'Time in their current role before applying', kind: 'select', value: '12', options: ['0', '3', '6', '9', '12', '18', '24'], optionLabels: { '0': 'No wait', '3': '3 months', '6': '6 months', '9': '9 months', '12': '12 months', '18': '18 months', '24': '24 months' }, helper: 'Counted from the day their current designation started. People serving notice can never apply.', starter: true, scope: 'Company', synonyms: ['internal mobility', 'tenure', 'time in role'] },
+        { key: 'hire.internal_tell_manager', label: 'Tell the current manager', kind: 'segment', value: 'on_apply', options: ['on_apply', 'at_offer'], optionLabels: { on_apply: 'When they apply', at_offer: 'At the offer stage' }, helper: 'The manager is told, never asked. Test results stay with the job’s hiring manager and HR.', starter: true, scope: 'Company', synonyms: ['internal mobility', 'manager', 'notify'] },
+      ],
+    },
   ],
   lastChange: {
     by: 'Neha Joshi',

@@ -5,7 +5,7 @@ import { InterviewingController } from './interviewing.controller';
 // impersonation token is already refused by the key check, so the controller's own check is proved here).
 describe('InterviewingController scorecard templates while acting', () => {
   const templates = { save: jest.fn(), archive: jest.fn() };
-  const c = new InterviewingController({} as never, templates as never, {} as never, {} as never);
+  const c = new InterviewingController({} as never, templates as never, {} as never, {} as never, {} as never);
   const ctx = { organizationId: 'o1', isSuperAdmin: false };
   const body = { name: 'x', scaleMax: 4, passBar: 2, items: [{ label: 'a', weight: 100 }] };
   const id = '00000000-0000-4000-8000-000000000001';

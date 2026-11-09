@@ -294,6 +294,10 @@ describe('Hiring HIR-11 costs and HIR-12 referrals', () => {
       await api('emp', 'post', '/referrals').send(friend({ jobId: ids.jobB, email: `y-${run}@mailbox.in` })).expect(404);
       for (const bad of [friend({ email: 'not-an-email' }), friend({ jobId: 'nope' }), friend({ name: 'x'.repeat(201) }), friend({ consentGiven: 'yes' }), friend({ resumeBase64: '%%%' }), friend({ bonusInr: 1 })])
         await api('emp', 'post', '/referrals').send(bad).expect(400);
+      // A résumé is checked by its real content: an .exe sent as base64 is refused and nobody is referred.
+      const fake = friend({ email: `fake-pdf-${run}@mailbox.in`, resumeBase64: Buffer.from('MZ not a pdf').toString('base64') });
+      expect((await api('emp', 'post', '/referrals').send(fake).expect(400)).body.message).toBe('The résumé must be a PDF file.');
+      expect(await inA((tx) => tx.candidate.count({ where: { email: `fake-pdf-${run}@mailbox.in` } }))).toBe(0);
     });
 
     it('All referrals (answer 204): HR sees every referral with who referred; employees and the settings key alone may not', async () => {

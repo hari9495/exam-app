@@ -39,6 +39,14 @@ const KEY = {
   'hire.rediscovery_ai': 'hiring.rediscovery.ai',
   'hire.rehire_blocks_screening': 'hiring.rehire_flag.blocks_screening',
   'hire.referral_self_apply_days': 'ats.referral.self_apply_days',
+  // HIR-13 (founder decision 6).
+  'hire.internal_after_probation': 'hiring.internal.after_probation',
+  'hire.internal_months_in_role': 'hiring.internal.months_in_role',
+  'hire.internal_tell_manager': 'hiring.internal.tell_manager',
+  // HIR-25 (founder decision 2).
+  'hire.notetaker_enabled': 'hiring.notetaker.enabled',
+  'hire.notetaker_ai_draft': 'hiring.notetaker.ai_draft',
+  'hire.notetaker_keep_days': 'hiring.notetaker.keep_days',
   'hire.bgv_decider_other_person': 'hiring.bgv.decider_other_person',
   'hire.interview_day_minutes': 'hiring.interview_day.slot_minutes',
   'hire.interview_day_assign': 'hiring.interview_day.assign',
@@ -51,6 +59,9 @@ const TOGGLE: Partial<Record<keyof typeof KEY, [on: string, off: string]>> = {
   'hire.pay_history_ask': ['on', 'off'],
   'hire.rediscovery_ai': ['on', 'off'],
   'hire.rehire_blocks_screening': ['on', 'off'],
+  'hire.internal_after_probation': ['on', 'off'],
+  'hire.notetaker_enabled': ['on', 'off'],
+  'hire.notetaker_ai_draft': ['on', 'off'],
   'hire.bgv_decider_other_person': ['on', 'off'],
 };
 const BASIS: Record<string, string> = { full: 'All of it', pro_rata: 'The part for the months not served' };
@@ -103,6 +114,9 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
       case 'hire.headcount_plan':
       case 'hire.interview_day_minutes':
       case 'hire.interview_day_assign':
+      case 'hire.internal_months_in_role':
+      case 'hire.notetaker_keep_days':
+      case 'hire.internal_tell_manager':
       case 'hire.referral_self_apply_days': {
         const k = KEY[d.key];
         return { ...base, options: data.choices[k] ?? d.options, value: v[k]!, starter: v[k] === data.defaults[k] };
@@ -112,6 +126,9 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
       case 'hire.pay_history_ask':
       case 'hire.rediscovery_ai':
       case 'hire.rehire_blocks_screening':
+      case 'hire.internal_after_probation':
+      case 'hire.notetaker_enabled':
+      case 'hire.notetaker_ai_draft':
       case 'hire.bgv_decider_other_person': {
         const k = KEY[d.key];
         return { ...base, value: v[k] === TOGGLE[d.key]![0], starter: v[k] === data.defaults[k] };
@@ -168,7 +185,7 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
   };
   return {
     ...design,
-    summary: 'Pipeline and scorecard templates with stage targets, the default recruiter, the headcount plan, pay transparency, rehire, background-check and candidate data rules, AI notes on past candidates, telling candidates who are not selected, offers (the approver above the pay range, joining bonus clawback, e-signed letters) and referral bonuses.',
+    summary: 'Pipeline and scorecard templates with stage targets, the default recruiter, the headcount plan, pay transparency, rehire, background-check and candidate data rules, AI notes on past candidates, telling candidates who are not selected, offers (the approver above the pay range, joining bonus clawback, e-signed letters), referral bonuses, who can apply for internal jobs, and the interview notetaker.',
     related: undefined,
     scopes: undefined,
     sections: design.sections.map((sec) => ({ ...sec, settings: sec.settings.map(fill).filter((x): x is SettingDef => x !== null) })).filter((sec) => sec.settings.length > 0),

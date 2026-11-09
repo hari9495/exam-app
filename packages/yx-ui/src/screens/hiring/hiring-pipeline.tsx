@@ -1,11 +1,12 @@
 // Hiring › Pipeline, candidate record, identity strip, interviews, scorecards, notetaker, AI review, bulk interview day.
 // HIR-04, HIR-05, HIR-22, HIR-06, HIR-07, HIR-25, HIR-08, HIR-27 (M10 §7, YX-ATS-03 / 04 / 05 / 19 / 24 / 32 / 33 / 35 / 37 / 40).
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { CalendarPlus, Merge, Mic, MicOff, Send, Shuffle, UserRound } from 'lucide-react';
+import { CalendarPlus, Merge, Mic, MicOff, Send, Shuffle, Sparkles, UserRound } from 'lucide-react';
 import { Button } from '../../components/button';
 import { AiBadge, Badge, PersonLabel } from '../../components/display';
 import { EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
+import { FileUpload } from '../../components/upload';
 import { TextArea } from '../../components/inputs';
 import { Select } from '../../components/select';
 import { Checkbox, RadioGroup } from '../../components/choice';
@@ -1576,6 +1577,8 @@ export interface LiveScorecard {
   onCancelInterview: () => Promise<unknown>;
   /** Answer 322: an append-only comment under a submitted scorecard (refused by the API while acting). */
   onComment?: (scorecardId: string, body: string) => Promise<unknown>;
+  /** HIR-25: the designed notetaker card, when the company has the notetaker on (setting, off by default). */
+  notetaker?: { participants: Participant[]; controls: NotetakerControls };
 }
 
 // HIR-07
@@ -1735,6 +1738,7 @@ function LiveScorecardView({ live }: { live: LiveScorecard }) {
               <DescriptionList items={v.earlier.map((e, i) => ({ label: `${e.panelistName} (${i + 1})`, value: `${recText(e.recommendation)} · ${e.weightedScore}${e.summary ? ` · ${e.summary}` : ''}` }))} />
             </Card>
           )}
+          {live.notetaker && <NotetakerConsentPanel participants={live.notetaker.participants} controls={live.notetaker.controls} />}
           <Card title="Résumé">
             {v.resume ? (
               <DescriptionList
@@ -1795,28 +1799,93 @@ export interface Participant {
   name: string;
   role: 'Candidate' | 'Interviewer' | 'Hiring manager';
   consent: 'given' | 'declined' | 'waiting';
+  /** 'candidate' or the panellist's id (with controls). */
+  key?: string;
+  /** With controls: the viewer answers for this row (their own row, or the candidate's). */
+  canAnswer?: boolean;
+}
+
+/**
+ * The panel's controls (founder decision 2): each panellist answers for themselves; the candidate's answer is recorded by
+ * the panel or a recruiter. No provider connected: a panellist adds the transcript as a text file once everyone has
+ * consented. The AI draft is a company setting (off by default) and only a suggestion.
+ */
+export interface NotetakerControls {
+  /** The recording provider's name; null = none connected (the transcript is added by upload). */
+  provider: string | null;
+  aiDraft: boolean;
+  isPanelist: boolean;
+  transcript: { addedAt: Date; addedBy: string } | null;
+  myDraft: boolean;
+  submitted: boolean;
+  onConsent: (participant: 'me' | 'candidate', consent: 'given' | 'declined') => Promise<unknown>;
+  onTranscript: (text: string) => Promise<unknown>;
+  /** Makes (or opens) the viewer's AI draft. */
+  onDraft: () => Promise<unknown>;
 }
 
 // HIR-25
-export function NotetakerConsentPanel({ participants }: { participants: Participant[] }) {
-  const recording = participants.every((p) => p.consent === 'given');
+export function NotetakerConsentPanel({ participants, controls }: { participants: Participant[]; controls?: NotetakerControls }) {
+  const everyone = participants.length > 0 && participants.every((p) => p.consent === 'given');
+  const recording = everyone && (!controls || Boolean(controls.provider));
   const declined = participants.filter((p) => p.consent === 'declined');
+  const [withdraw, setWithdraw] = useState<'me' | 'candidate' | null>(null);
+  const [busy, setBusy] = useState(false);
+  const toast = useToastIfAny();
+  const c = controls;
+  const answer = async (who: 'me' | 'candidate', consent: 'given' | 'declined') => {
+    if (!c) return;
+    setBusy(true);
+    try {
+      await c.onConsent(who, consent);
+      toast?.toast({ tone: 'success', title: consent === 'given' ? (who === 'me' ? 'Your consent is recorded' : 'The candidate’s consent is recorded') : who === 'me' ? 'You declined: no recording' : 'The candidate declined: no recording' });
+    } catch (e) {
+      toast?.toast({ tone: 'error', title: 'That did not work', description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const rowActions = (p: Participant) => {
+    if (!c || !p.canAnswer) return null;
+    const who = p.role === 'Candidate' ? 'candidate' : 'me';
+    if (p.consent === 'given')
+      return (
+        <Button size="sm" onClick={() => setWithdraw(who)}>
+          {who === 'me' ? 'Withdraw my consent' : 'Candidate withdrew'}
+        </Button>
+      );
+    return (
+      <span className="yx-hire-row">
+        <Button size="sm" loading={busy} onClick={() => void answer(who, 'given')}>
+          {who === 'me' ? 'I consent' : 'Candidate agreed'}
+        </Button>
+        {p.consent === 'waiting' && (
+          <Button size="sm" loading={busy} onClick={() => void answer(who, 'declined')}>
+            {who === 'me' ? 'I decline' : 'Candidate declined'}
+          </Button>
+        )}
+      </span>
+    );
+  };
   return (
     <Card title="Interview notetaker" actions={<Badge tone={recording ? 'success' : 'neutral'}>{recording ? 'Recording' : 'Not recording'}</Badge>}>
       <ul className="yx-hire-list">
         {participants.map((p) => (
-          <li key={p.name} className="yx-hire-list__item">
+          <li key={p.key ?? p.name} className="yx-hire-list__item">
             <PersonLabel name={p.name} secondary={p.role} />
-            <Badge tone={p.consent === 'given' ? 'success' : p.consent === 'declined' ? 'warning' : 'neutral'}>
-              {p.consent === 'given' ? 'Consent given' : p.consent === 'declined' ? 'Declined' : 'Waiting'}
-            </Badge>
+            <span className="yx-hire-row">
+              <Badge tone={p.consent === 'given' ? 'success' : p.consent === 'declined' ? 'warning' : 'neutral'}>
+                {p.consent === 'given' ? 'Consent given' : p.consent === 'declined' ? 'Declined' : 'Waiting'}
+              </Badge>
+              {rowActions(p)}
+            </span>
           </li>
         ))}
       </ul>
       <Text as="p" size="sm" tone="secondary">
-        {recording ? (
+        {everyone ? (
           <>
-            <MicIcon on /> Everyone consented. The transcript drafts scorecard notes; you confirm each rating before submitting.
+            <MicIcon on /> Everyone consented. {c && !c.aiDraft ? 'The transcript is kept for the panel; you fill the scorecard yourself.' : 'The transcript drafts scorecard notes; you confirm each rating before submitting.'}
           </>
         ) : declined.length ? (
           <>
@@ -1828,7 +1897,89 @@ export function NotetakerConsentPanel({ participants }: { participants: Particip
           </>
         )}
       </Text>
+      {c && everyone && <NotetakerTranscript c={c} />}
+      {withdraw && (
+        <ConfirmDialog
+          open
+          destructive
+          onOpenChange={(o) => !o && setWithdraw(null)}
+          title={withdraw === 'me' ? 'Withdraw your consent?' : 'Record that the candidate withdrew?'}
+          consequence="Nothing more is recorded. The transcript and every draft scorecard for this interview are deleted now."
+          confirmLabel="Withdraw consent"
+          cancelLabel="Keep it"
+          onConfirm={async () => {
+            await answer(withdraw, 'declined');
+            setWithdraw(null);
+          }}
+        />
+      )}
     </Card>
+  );
+}
+
+/** Everyone consented: the transcript (added by upload while no provider is connected) and the AI draft. */
+function NotetakerTranscript({ c }: { c: NotetakerControls }) {
+  const [problem, setProblem] = useState<string | null>(null);
+  const [drafting, setDrafting] = useState(false);
+  const toast = useToastIfAny();
+  return (
+    <div className="yx-hire-stack">
+      {!c.provider && (
+        <InlineAlert tone="info" title="No recording provider is connected">
+          {c.isPanelist ? 'Add the transcript as a text file (.txt) from your meeting tool. It is kept only while everyone consents.' : 'A panellist adds the transcript as a text file.'}
+        </InlineAlert>
+      )}
+      {c.transcript && (
+        <Text as="p" size="sm">
+          Transcript added {formatDate(c.transcript.addedAt)} by {c.transcript.addedBy}.
+        </Text>
+      )}
+      {c.isPanelist && !c.provider && !c.submitted && (
+        <FormField label={c.transcript ? 'Replace the transcript' : 'Transcript'} optional helper="A .txt file, up to 200,000 characters.">
+          <FileUpload
+            accept={['.txt']}
+            maxSize={1024 * 1024}
+            multiple={false}
+            upload={async (file) => {
+              const text = await file.text();
+              if (!text.trim()) throw new Error('The file is empty.');
+              if (text.length > 200_000) throw new Error('The transcript is longer than 200,000 characters.');
+              await c.onTranscript(text);
+              toast?.toast({ tone: 'success', title: 'Transcript added' });
+            }}
+          />
+        </FormField>
+      )}
+      {c.isPanelist && c.transcript && !c.submitted && (
+        c.aiDraft ? (
+          <span className="yx-hire-row">
+            <Button
+              icon={Sparkles}
+              loading={drafting}
+              onClick={async () => {
+                setDrafting(true);
+                setProblem(null);
+                try {
+                  await c.onDraft();
+                } catch (e) {
+                  setProblem(e instanceof Error && e.message ? e.message : 'The AI draft did not work. Fill the scorecard yourself.');
+                } finally {
+                  setDrafting(false);
+                }
+              }}
+            >
+              {c.myDraft ? 'Review my draft scorecard' : 'Draft my scorecard from the transcript'}
+            </Button>
+            <AiBadge />
+          </span>
+        ) : (
+          <Text as="p" size="sm" tone="secondary">
+            AI drafting is off for your company. Fill the scorecard yourself.
+          </Text>
+        )
+      )}
+      {problem && <InlineAlert tone="danger" title={problem} />}
+    </div>
   );
 }
 
@@ -1842,12 +1993,62 @@ export interface DraftRating {
   aiRating: number;
   aiNote: string;
   quote: string;
+  /** Live: the scorecard item the rating is for. */
+  itemId?: string;
+}
+
+/** Live: submit the panellist's own scorecard with the confirmed ratings (POST interviews/:id/scorecard/submit). */
+export interface LiveDraftReview {
+  state: 'loading' | 'ready' | 'error' | 'not-found';
+  onRetry: () => void;
+  scaleMax: number;
+  onSubmit: (input: { ratings: { itemId: string; rating: number; notes: string | null }[]; recommendation: LiveRecommendation }) => Promise<unknown>;
+  onBack: () => void;
 }
 
 // HIR-25 (draft review)
-export function DraftScorecardReview({ candidate, drafts, defaultConfirmed = [] }: { candidate: string; drafts: DraftRating[]; defaultConfirmed?: number[] }) {
-  const [confirmed, setConfirmed] = useState<Record<number, number>>(Object.fromEntries(defaultConfirmed.map((i) => [i, drafts[i].aiRating])));
+export function DraftScorecardReview({ candidate, drafts, defaultConfirmed = [], live }: { candidate: string; drafts: DraftRating[]; defaultConfirmed?: number[]; live?: LiveDraftReview }) {
+  const [confirmed, setConfirmed] = useState<Record<number, number>>(Object.fromEntries(defaultConfirmed.filter((i) => drafts[i]).map((i) => [i, drafts[i]!.aiRating])));
+  const [rec, setRec] = useState<LiveRecommendation | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const toast = useToastIfAny();
   const done = Object.keys(confirmed).length === drafts.length;
+  const firstOpen = drafts.findIndex((_, i) => confirmed[i] == null);
+  const early = useTooEarly([
+    ...(firstOpen >= 0 ? [{ fieldId: `dr-confirm-${firstOpen}`, message: 'Confirm or change every rating first.' }] : []),
+    ...(!rec ? [{ fieldId: 'dr-rec', message: 'Choose your recommendation.' }] : []),
+  ]);
+  const scale = live?.scaleMax ?? 5;
+  const submit = async () => {
+    if (!live || early.stop()) return;
+    setBusy(true);
+    setProblem(null);
+    try {
+      await live.onSubmit({ ratings: drafts.map((d, i) => ({ itemId: d.itemId!, rating: confirmed[i]!, notes: d.aiNote || null })), recommendation: rec! });
+      toast?.toast({ tone: 'success', title: 'Scorecard submitted', description: `Your scorecard for ${candidate} is in.` });
+      live.onBack();
+    } catch (e) {
+      setProblem(e instanceof Error && e.message ? e.message : 'That did not work. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (live && live.state !== 'ready')
+    return (
+      <HireFrame active="Interviews">
+        {live.state === 'loading' ? (
+          <div className="yx-hire-stack" aria-busy="true" aria-label="Loading the draft">
+            <Skeleton height={56} />
+            <Skeleton height={240} />
+          </div>
+        ) : live.state === 'not-found' ? (
+          <EmptyState title="There is no draft for you on this interview." description="Draft it from the interview page, or fill the scorecard yourself." action={<Button onClick={live.onBack}>Back to the interview</Button>} />
+        ) : (
+          <ErrorState title="This draft could not be loaded." onRetry={live.onRetry} />
+        )}
+      </HireFrame>
+    );
   return (
     <HireFrame active="Interviews">
       <PageHeader title={`Review draft scorecard · ${candidate}`} description="Drafted from the consented transcript. Nothing is submitted until you confirm or change every rating." status={<AiBadge />} />
@@ -1861,29 +2062,38 @@ export function DraftScorecardReview({ candidate, drafts, defaultConfirmed = [] 
               {d.aiNote}
             </Text>
             <blockquote className="yx-hire-quote">&ldquo;{d.quote}&rdquo;</blockquote>
-            <div className="yx-hire-row">
-              <RadioGroup
-                aria-label={`${d.skill} rating`}
-                orientation="horizontal"
-                value={String(confirmed[i] ?? d.aiRating)}
-                onChange={(v) => setConfirmed((c) => ({ ...c, [i]: Number(v) }))}
-                options={[1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: String(n) }))}
-              />
-              {confirmed[i] != null ? (
-                <Badge tone="success">{confirmed[i] === d.aiRating ? 'Confirmed' : `Changed from ${d.aiRating}`}</Badge>
-              ) : (
-                <Button size="sm" onClick={() => setConfirmed((c) => ({ ...c, [i]: d.aiRating }))}>
-                  Confirm {d.aiRating}
-                </Button>
-              )}
-            </div>
+            <FormField label={`${d.skill} rating`} hideLabel error={early.errorOf(`dr-confirm-${i}`)}>
+              <div className="yx-hire-row">
+                <RadioGroup
+                  aria-label={`${d.skill} rating`}
+                  orientation="horizontal"
+                  value={String(confirmed[i] ?? d.aiRating)}
+                  onChange={(v) => setConfirmed((c) => ({ ...c, [i]: Number(v) }))}
+                  options={Array.from({ length: scale }, (_, k) => k + 1).map((n) => ({ value: String(n), label: String(n) }))}
+                />
+                {confirmed[i] != null ? (
+                  <Badge tone="success">{confirmed[i] === d.aiRating ? 'Confirmed' : `Changed from ${d.aiRating}`}</Badge>
+                ) : (
+                  <Button size="sm" id={`dr-confirm-${i}`} onClick={() => setConfirmed((c) => ({ ...c, [i]: d.aiRating }))}>
+                    Confirm {d.aiRating}
+                  </Button>
+                )}
+              </div>
+            </FormField>
           </fieldset>
         ))}
+        <FormField label="Your recommendation" required error={early.errorOf('dr-rec')}>
+          <div id="dr-rec" tabIndex={-1}>
+            <Segment label="Your recommendation" value={rec} onChange={(v) => setRec(v)} options={LIVE_RECS} />
+          </div>
+        </FormField>
+        {problem && <InlineAlert tone="danger" title={problem} />}
         <div className="yx-hire-row">
           <Text size="sm" tone={done ? 'success' : 'secondary'} aria-live="polite">
             {Object.keys(confirmed).length} of {drafts.length} ratings confirmed
           </Text>
-          <Button variant="primary" disabled={!done}>
+          {/* Live: never disabled; pressed too early, it says what is missing (founder rule). */}
+          <Button variant="primary" disabled={!live && !done} loading={busy} onClick={live ? () => void submit() : undefined}>
             Submit scorecard
           </Button>
         </div>

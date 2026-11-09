@@ -30,7 +30,7 @@ export class ScorecardsService {
     return (await resolvePermissionGrants(this.prisma, this.tenantPrisma, { role: v.role, organizationId: v.organizationId ?? null, permissionProfileId: v.permissionProfileId, userId: v.userId }, ['pipeline:manage'])).has('pipeline:manage');
   }
 
-  private async load(tx: Tx, c: CompanyContext, interviewId: string) {
+  async load(tx: Tx, c: CompanyContext, interviewId: string) {
     const iv = await tx.interview.findFirst({
       where: { id: interviewId, organizationId: c.organizationId },
       include: { panelists: true, slots: true, pipelineEntry: { select: { id: true, jobId: true, candidateId: true, job: { select: { title: true, hiringManagerId: true, scorecardTemplateId: true } }, candidate: { select: { name: true, email: true } } } } },
@@ -41,7 +41,7 @@ export class ScorecardsService {
     return { iv, template };
   }
 
-  private async access(iv: { panelists: { userId: string }[]; pipelineEntry: { job: { hiringManagerId: string | null } } }, v: Viewer) {
+  async access(iv: { panelists: { userId: string }[]; pipelineEntry: { job: { hiringManagerId: string | null } } }, v: Viewer) {
     const isPanelist = iv.panelists.some((p) => p.userId === v.userId);
     const isOverseer = iv.pipelineEntry.job.hiringManagerId === v.userId || (await this.isRecruiter(v));
     if (!isPanelist && !isOverseer) throw new ForbiddenException('You are not on this interview panel.');
@@ -191,7 +191,9 @@ export class ScorecardsService {
       if (missing.length) throw new BadRequestException(missing.join(' '));
       const score = weightedScore(template.items, ratings)!;
       await tx.scorecard.update({ where: { id: card.id }, data: { status: 'submitted', recommendation: dto.recommendation!, summary: dto.summary || null, weightedScore: score, passes: score >= Number(template.passBar), submittedAt: new Date() } });
-      await audit(tx, c, 'ats.scorecard.submitted', 'interview', interviewId, { score, passes: score >= Number(template.passBar) });
+      // HIR-25: an AI draft is a suggestion until this submit; it goes once the panellist has submitted their own scorecard.
+      const fromDraft = (await tx.interviewScorecardDraft.deleteMany({ where: { organizationId: c.organizationId, interviewId, panelistUserId: v.userId } })).count > 0;
+      await audit(tx, c, 'ats.scorecard.submitted', 'interview', interviewId, { score, passes: score >= Number(template.passBar), fromDraft });
       return { id: card.id, status: 'submitted', weightedScore: score, passes: score >= Number(template.passBar) };
     });
   }

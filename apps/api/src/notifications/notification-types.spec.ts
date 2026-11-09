@@ -99,6 +99,8 @@ describe('notification catalog', () => {
       'helpdesk.accident.update',
       'helpdesk.accident.contractor_late',
       'helpdesk.dispute.settlement',
+      // HIR-13: the manager is told about an internal application.
+      'hiring.internal.applied',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);

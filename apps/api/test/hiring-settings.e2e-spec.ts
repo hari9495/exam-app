@@ -115,9 +115,17 @@ describe('Settings 6.1 Hiring', () => {
     'hiring.pay_history.ask': 'off',
     'hiring.rediscovery.ai': 'off',
     'hiring.rehire_flag.blocks_screening': 'off',
+    // HIR-13 (decision 6): past probation, 12 months in the role, the manager told when the person applies.
+    'hiring.internal.after_probation': 'on',
+    'hiring.internal.months_in_role': '12',
+    'hiring.internal.tell_manager': 'on_apply',
     'hiring.bgv.decider_other_person': 'on',
     'hiring.interview_day.slot_minutes': '45',
     'hiring.interview_day.assign': 'by_slot',
+    // HIR-25 (decision 2): the notetaker and its AI draft are off; transcripts are kept 90 days.
+    'hiring.notetaker.enabled': 'off',
+    'hiring.notetaker.ai_draft': 'off',
+    'hiring.notetaker.keep_days': '90',
   };
 
   it('reads: recruiting and hiring admins see the defaults; only the settings keys may edit; employees and managers are refused', async () => {
@@ -148,9 +156,15 @@ describe('Settings 6.1 Hiring', () => {
       { key: 'hiring.pay_history.ask', value: 'on' },
       { key: 'hiring.rediscovery.ai', value: 'on' },
       { key: 'hiring.rehire_flag.blocks_screening', value: 'on' },
+      { key: 'hiring.internal.after_probation', value: 'off' },
+      { key: 'hiring.internal.months_in_role', value: '6' },
+      { key: 'hiring.internal.tell_manager', value: 'at_offer' },
       { key: 'hiring.bgv.decider_other_person', value: 'off' },
       { key: 'hiring.interview_day.slot_minutes', value: '60' },
       { key: 'hiring.interview_day.assign', value: 'by_panel' },
+      { key: 'hiring.notetaker.enabled', value: 'on' },
+      { key: 'hiring.notetaker.ai_draft', value: 'on' },
+      { key: 'hiring.notetaker.keep_days', value: '30' },
     ]).expect(200)).body as Settings;
     expect(after.values).toEqual({
       'ats.retention_months': '18',
@@ -165,11 +179,17 @@ describe('Settings 6.1 Hiring', () => {
       'hiring.pay_history.ask': 'on',
       'hiring.rediscovery.ai': 'on',
       'hiring.rehire_flag.blocks_screening': 'on',
+      'hiring.internal.after_probation': 'off',
+      'hiring.internal.months_in_role': '6',
+      'hiring.internal.tell_manager': 'at_offer',
       'hiring.offer.band_approver': 'hr_head',
       'hiring.offer.clawback_basis': 'full',
       'hiring.bgv.decider_other_person': 'off',
       'hiring.interview_day.slot_minutes': '60',
       'hiring.interview_day.assign': 'by_panel',
+      'hiring.notetaker.enabled': 'on',
+      'hiring.notetaker.ai_draft': 'on',
+      'hiring.notetaker.keep_days': '30',
     });
     // Answer 362: the BGV tracker reads the same company setting.
     expect(await inA((tx) => tx.setting.findFirstOrThrow({ where: { organizationId: org.A.id, key: 'hiring.bgv.decider_other_person' } }))).toMatchObject({ value: 'off' });
@@ -204,9 +224,14 @@ describe('Settings 6.1 Hiring', () => {
       [{ key: 'ats.referral.self_apply_days', value: '45' }],
       [{ key: 'hiring.pay_range.show', value: 'true' }],
       [{ key: 'hiring.rehire_flag.blocks_screening', value: 'yes' }],
+      [{ key: 'hiring.internal.months_in_role', value: '7' }],
+      [{ key: 'hiring.internal.tell_manager', value: 'ask' }],
+      [{ key: 'hiring.internal.after_probation', value: 'true' }],
       [{ key: 'hiring.bgv.decider_other_person', value: 'true' }],
       [{ key: 'hiring.interview_day.slot_minutes', value: '50' }],
       [{ key: 'hiring.interview_day.assign', value: 'random' }],
+      [{ key: 'hiring.notetaker.keep_days', value: '45' }],
+      [{ key: 'hiring.notetaker.enabled', value: 'yes' }],
       [{ key: 'hiring.rediscovery.ai', value: 'on' }, { key: 'hiring.requisition.default_recruiter', value: 'not-a-person' }],
       [{ key: 'not.a.setting', value: 'x' }],
       [{ key: 'ats.retention_months', value: '6' }, { key: 'ats.retention_months', value: '9' }],

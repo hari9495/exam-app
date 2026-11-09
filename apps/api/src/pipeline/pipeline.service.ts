@@ -1,3 +1,4 @@
+import { hiddenFromManager } from '../internal-applications/internal-applications.service';
 import { randomUUID } from 'crypto';
 import { rehireBlock } from '../lifecycle/rehire-policy';
 import type { Tx } from '../org-structure/org-structure.service';
@@ -572,6 +573,8 @@ export class PipelineService {
       showSalary?: boolean;
       salaryPeriod?: 'year' | 'month' | 'hour';
       askPayHistory?: boolean;
+      internalOpen?: boolean;
+      referralOpen?: boolean;
       recruiterUserId?: string;
       locationCountry?: string;
       fitCriteria?: string | null;
@@ -655,6 +658,8 @@ export class PipelineService {
         showSalary?: boolean;
         salaryPeriod?: string;
         askPayHistory?: boolean;
+        internalOpen?: boolean;
+        referralOpen?: boolean;
         recruiterUserId?: string;
         applyToken?: string;
         fitCriteria?: string | null;
@@ -705,6 +710,8 @@ export class PipelineService {
       if (dto.showSalary !== undefined) data.showSalary = dto.showSalary;
       if (dto.salaryPeriod !== undefined) data.salaryPeriod = dto.salaryPeriod;
       if (dto.askPayHistory !== undefined) data.askPayHistory = dto.askPayHistory;
+      if (dto.internalOpen !== undefined) data.internalOpen = dto.internalOpen;
+      if (dto.referralOpen !== undefined) data.referralOpen = dto.referralOpen;
       if (dto.recruiterUserId !== undefined && dto.recruiterUserId !== job.recruiterUserId) {
         await this.checkRecruiter(tx, organizationId, dto.recruiterUserId);
         data.recruiterUserId = dto.recruiterUserId;
@@ -1619,10 +1626,12 @@ export class PipelineService {
     return { success: true };
   }
 
-  async listFeedback(context: TenantContext, entryId: string): Promise<FeedbackRow[]> {
+  async listFeedback(context: TenantContext, entryId: string, viewerUserId?: string): Promise<FeedbackRow[]> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const entry = await tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: context.organizationId as string } });
       if (!entry) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
+      // HIR-13: an internal applicant's current manager never reads the application's notes (as if it did not exist).
+      if (viewerUserId && (await hiddenFromManager(tx, entry.organizationId, viewerUserId, [entryId])).size) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
 
       const feedback = await tx.pipelineFeedback.findMany({ where: { entryId }, orderBy: { createdAt: 'desc' } });
       const authorIds = [...new Set(feedback.map((f: PipelineFeedback) => f.authorUserId))];

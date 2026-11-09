@@ -1,3 +1,4 @@
+import { purgeNotetaker } from '../interviewing/notetaker.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
@@ -29,6 +30,13 @@ export class CandidateRetentionService {
 
   /** Scheduled: every company with candidates, each in its own context. */
   async sweep(now = new Date()): Promise<number> {
+    // HIR-25: interview transcripts and AI drafts past the company's days (hiring.notetaker.keep_days, default 90).
+    try {
+      const gone = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) => purgeNotetaker(tx, now));
+      if (gone) this.logger.log(`Interview notetaker retention: ${gone} transcripts and drafts deleted`);
+    } catch (e) {
+      this.logger.error(`Interview notetaker retention failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
     const orgs = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) => tx.$queryRaw<{ id: string }[]>`SELECT DISTINCT organization_id::text AS id FROM candidates WHERE erased_at IS NULL`);
     let changed = 0;
     for (const { id } of orgs) {
