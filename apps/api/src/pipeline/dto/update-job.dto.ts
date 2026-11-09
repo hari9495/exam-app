@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Min, MaxLength, MinLength, IsNumber, Matches } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { EMPLOYMENT_TYPES } from './create-job.dto';
 
 export class UpdateJobDto {
@@ -27,6 +27,14 @@ export class UpdateJobDto {
   @IsOptional() @IsBoolean()
   showSalary?: boolean;
 
+  /** HIR-24: the period of the pay range. */
+  @IsOptional() @IsIn(['year', 'month', 'hour'])
+  salaryPeriod?: 'year' | 'month' | 'hour';
+
+  /** HIR-24: the application asks about current or past pay (refused where the location's law bans it). */
+  @IsOptional() @IsBoolean()
+  askPayHistory?: boolean;
+
   @IsOptional() @IsString() @MaxLength(5000)
   fitCriteria?: string;
 
@@ -42,13 +50,13 @@ export class UpdateJobDto {
   @IsOptional() @IsInt() @Min(1)
   headcount?: number;
 
-  @IsOptional() @IsInt()
+  @IsOptional() @IsInt() @Min(0) @Max(2_000_000_000)
   salaryMin?: number;
 
-  @IsOptional() @IsInt()
+  @IsOptional() @IsInt() @Min(0) @Max(2_000_000_000)
   salaryMax?: number;
 
-  @IsOptional() @IsString()
+  @IsOptional() @IsString() @Matches(/^[A-Z]{3}$/, { message: 'Currency is three capital letters, for example INR.' })
   salaryCurrency?: string;
 
   @IsOptional() @IsObject()

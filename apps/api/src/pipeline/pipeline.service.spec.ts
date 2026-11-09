@@ -14,6 +14,17 @@ function withJobCustomFieldMocks(tx: any) {
   return tx;
 }
 
+// HIR-24: the pay law (no location: none), the company's pay settings (defaults) and the company boards (none).
+function withPayMocks(tx: any) {
+  if (!tx || typeof tx !== 'object') return tx;
+  tx.location = { findFirst: jest.fn().mockResolvedValue(null), ...tx.location };
+  tx.statutoryRuleSet = { findMany: jest.fn().mockResolvedValue([]), ...tx.statutoryRuleSet };
+  tx.setting = { findMany: jest.fn().mockResolvedValue([]), ...tx.setting };
+  tx.jobBoard = { findMany: jest.fn().mockResolvedValue([]), ...tx.jobBoard };
+  tx.jobBoardPublication = { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0), ...tx.jobBoardPublication };
+  return tx;
+}
+
 // addEntry/patchEntry now call recomputeGlobalStage(tx, ...) as their last tx write, which reads
 // tx.pipelineEntry.findMany + tx.candidateEmail.count and writes tx.candidate.update. Any test tx
 // that reaches that point needs these three -- default to an empty/no-op shape, letting a test's
@@ -92,7 +103,9 @@ describe('PipelineService', () => {
     surveys = { triggerOnStageChange: jest.fn().mockResolvedValue(undefined) };
     // M10 AT2: requisitions run on P03 through the hiring service (its own e2e covers the route).
     hiring = { startsAsDraft: jest.fn(async () => (await approvals.getChains()).requisition.enabled), submit: jest.fn(), withdraw: jest.fn().mockResolvedValue(false), summaries: jest.fn().mockResolvedValue(new Map()), checkLinks: jest.fn() };
-    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, smsTemplates as any, candidateSms as any, whatsappTemplates as any, candidateWhatsapp as any, integrationEvents as any, notifications as any, approvals as any, pipelines as any, fieldPerms as any, jobBoardPoster as any, hrisExport as any, drip as any, surveys as any, hiring as any);
+    // HIR-24: every job create / read / pay change also reads the pay law, the company's pay settings and the boards.
+    const withPay = { forTenant: (c: unknown, fn: (tx: any) => unknown) => tenantPrisma.forTenant(c, (tx: any) => fn(withPayMocks(tx))) };
+    service = new PipelineService(withPay as any, audit as any, templates as any, messages as any, smsTemplates as any, candidateSms as any, whatsappTemplates as any, candidateWhatsapp as any, integrationEvents as any, notifications as any, approvals as any, pipelines as any, fieldPerms as any, jobBoardPoster as any, hrisExport as any, drip as any, surveys as any, hiring as any);
   });
 
   it('createJob writes org-scoped and audits', async () => {

@@ -553,6 +553,8 @@ export interface CareersJob {
   salaryMin: number | null;
   salaryMax: number | null;
   salaryCurrency: string | null;
+  /** HIR-24: year, month or hour (older API: year). */
+  salaryPeriod?: string;
   company?: { name: string; slug: string | null } | null;
   postedAt?: string;
 }

@@ -1225,6 +1225,9 @@ model Job {
   slug                    String?               @db.VarChar(120)
   publishedAt             DateTime?             @map("published_at") @db.Timestamptz(3)
   showSalary              Boolean               @default(false) @map("show_salary")
+  /// HIR-24: the pay period of the range, and whether the application asks about current or past pay (never where the law bans it).
+  salaryPeriod            String                @default("year") @map("salary_period") @db.VarChar(5)
+  askPayHistory           Boolean               @default(false) @map("ask_pay_history")
   /// M10 AT5: the scorecard new interviews for this job use, unless the scheduler picks another.
   scorecardTemplateId     String?               @map("scorecard_template_id") @db.Uuid
   headcount               Int?

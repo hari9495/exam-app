@@ -64,6 +64,8 @@ export interface CareersPageResponse {
     salaryMin: number | null;
     salaryMax: number | null;
     salaryCurrency: string | null;
+    /** HIR-24: year, month or hour. */
+    salaryPeriod: string;
   }[];
 }
 
@@ -863,7 +865,7 @@ export class PublicApplicationsService {
     return this.tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: true }, async (tx) => {
       const jobs = await tx.job.findMany({
         where: { organizationId: orgId, ...this.LISTED, ...where },
-        select: { id: true, slug: true, applyToken: true, title: true, description: true, location: true, employmentType: true, department: true, salaryMin: true, salaryMax: true, salaryCurrency: true, showSalary: true, createdAt: true, publishedAt: true, closedAt: true, legalEntityId: true },
+        select: { id: true, slug: true, applyToken: true, title: true, description: true, location: true, employmentType: true, department: true, salaryMin: true, salaryMax: true, salaryCurrency: true, salaryPeriod: true, showSalary: true, createdAt: true, publishedAt: true, closedAt: true, legalEntityId: true },
         orderBy: { createdAt: 'desc' },
       });
       const pages = await tx.careersEntityPage.findMany({ where: { organizationId: orgId } });
@@ -872,7 +874,7 @@ export class PublicApplicationsService {
     });
   }
 
-  private publicJob(j: { slug: string | null; applyToken: string | null; title: string; location: string | null; employmentType: string | null; department: string | null; salaryMin: number | null; salaryMax: number | null; salaryCurrency: string | null; showSalary: boolean; createdAt: Date; publishedAt: Date | null; legalEntityId: string | null }, company: (id: string | null) => { name: string; slug: string | null } | null) {
+  private publicJob(j: { slug: string | null; applyToken: string | null; title: string; location: string | null; employmentType: string | null; department: string | null; salaryMin: number | null; salaryMax: number | null; salaryCurrency: string | null; salaryPeriod: string; showSalary: boolean; createdAt: Date; publishedAt: Date | null; legalEntityId: string | null }, company: (id: string | null) => { name: string; slug: string | null } | null) {
     return {
       slug: j.slug,
       applyToken: j.applyToken as string,
@@ -885,6 +887,7 @@ export class PublicApplicationsService {
       salaryMin: j.showSalary ? j.salaryMin : null,
       salaryMax: j.showSalary ? j.salaryMax : null,
       salaryCurrency: j.showSalary ? j.salaryCurrency : null,
+      salaryPeriod: j.salaryPeriod,
     };
   }
 

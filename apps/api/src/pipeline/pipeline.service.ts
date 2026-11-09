@@ -1,4 +1,6 @@
 import { randomUUID } from 'crypto';
+import { payDefaults, payLawFor, payProblem, type PayLaw } from '../hiring/pay-law';
+import { todayIst } from '../org-structure/org-validation';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Job, PipelineEntry, PipelineFeedback, Prisma } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService, StageCategory, STAGE_CATEGORIES, lockedFieldEdits } from '@exam-platform/shared';
@@ -223,6 +225,8 @@ export class PipelineService {
       salaryMax?: number;
       salaryCurrency?: string;
       showSalary?: boolean;
+      salaryPeriod?: 'year' | 'month' | 'hour';
+      askPayHistory?: boolean;
       pipelineId?: string;
       customFields?: Record<string, string | number | null>;
       legalEntityId?: string | null;
@@ -254,12 +258,21 @@ export class PipelineService {
       await this.hiring.checkLinks(tx, organizationId, dto);
       const id = randomUUID();
       const location = dto.location ?? m.locationName;
+      // HIR-24: the company's choices where no law decides; the location's law wins (never code).
+      const { law, legalEntityId } = await payLawFor(tx, organizationId, dto.locationId ?? null, todayIst());
+      const defaults = await payDefaults(tx, organizationId, { legalEntityId: dto.legalEntityId ?? legalEntityId, locationId: dto.locationId ?? null });
+      const showSalary = dto.showSalary ?? (law.rangeRequired || defaults.showRange);
+      const askPayHistory = dto.askPayHistory ?? (defaults.askHistory && !law.historyBanned);
+      const problem = payProblem({ salaryMin: dto.salaryMin ?? null, salaryMax: dto.salaryMax ?? null, showSalary, askPayHistory, isPublic: false }, law);
+      if (problem) throw new BadRequestException(problem);
       const created = await tx.job.create({
         data: {
           id,
           // M10 AT3: the readable careers URL; fixed at creation so shared links keep working after a rename.
           slug: jobSlug(dto.title, location, id),
-          showSalary: dto.showSalary ?? false,
+          showSalary,
+          askPayHistory,
+          ...(dto.salaryPeriod ? { salaryPeriod: dto.salaryPeriod } : {}),
           organizationId,
           title: dto.title,
           description: dto.description,
@@ -319,6 +332,56 @@ export class PipelineService {
     const locationName = await one('location', dto.locationId, (id) => tx.location.findFirst(where(id)));
     const pick = <K extends keyof typeof dto>(k: K) => (dto[k] === undefined ? {} : { [k]: dto[k] ?? null });
     return { departmentName: departmentName ?? undefined, locationName: locationName ?? undefined, links: { ...pick('legalEntityId'), ...pick('departmentId'), ...pick('designationId'), ...pick('gradeId'), ...pick('locationId') } };
+  }
+
+  /**
+   * HIR-24: a change that touches the pay range, the location or makes the job public must leave it lawful for its
+   * location (HIR.PAY_TRANSPARENCY): the range shown where required, both ends before it is public, no pay-history
+   * question where banned. Other edits (closing an older job) are never blocked by its older pay facts.
+   */
+  private async checkPay(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    job: Job,
+    dto: { salaryMin?: number | null; salaryMax?: number | null; showSalary?: boolean; askPayHistory?: boolean; locationId?: string | null; publicApplyEnabled?: boolean; listOnCareers?: boolean; jobBoardIds?: string[] },
+    data: { showSalary?: boolean; askPayHistory?: boolean; publicApplyEnabled?: boolean; listOnCareers?: boolean },
+  ): Promise<void> {
+    const touches =
+      [dto.salaryMin, dto.salaryMax, dto.showSalary, dto.askPayHistory, dto.locationId].some((v) => v !== undefined) || dto.publicApplyEnabled === true || dto.listOnCareers === true || Boolean(dto.jobBoardIds?.length);
+    if (!touches) return;
+    const { law } = await payLawFor(tx, organizationId, dto.locationId !== undefined ? dto.locationId : job.locationId, todayIst());
+    // The law wins over the job's earlier choices; an explicit choice against it is refused below.
+    if (law.rangeRequired && dto.showSalary === undefined && !job.showSalary) data.showSalary = true;
+    if (law.historyBanned && dto.askPayHistory === undefined && job.askPayHistory) data.askPayHistory = false;
+    const boards = dto.jobBoardIds !== undefined ? dto.jobBoardIds.length : await tx.jobBoardPublication.count({ where: { jobId: job.id } });
+    const problem = payProblem(
+      {
+        salaryMin: dto.salaryMin !== undefined ? dto.salaryMin : job.salaryMin,
+        salaryMax: dto.salaryMax !== undefined ? dto.salaryMax : job.salaryMax,
+        showSalary: data.showSalary ?? job.showSalary,
+        askPayHistory: data.askPayHistory ?? job.askPayHistory,
+        isPublic: (data.publicApplyEnabled ?? job.publicApplyEnabled) || (data.listOnCareers ?? job.listOnCareers) || boards > 0,
+      },
+      law,
+    );
+    if (problem) throw new BadRequestException(problem);
+  }
+
+  /** HIR-24 / HIR-03: the job's pay law and the company's choices, and its postings on every company board. */
+  async jobPayAndPostings(tx: Prisma.TransactionClient, organizationId: string, job: Job) {
+    const { law, legalEntityId, place } = await payLawFor(tx, organizationId, job.locationId, todayIst());
+    const defaults = await payDefaults(tx, organizationId, { legalEntityId: job.legalEntityId ?? legalEntityId, locationId: job.locationId });
+    const boards = await tx.jobBoard.findMany({ where: { organizationId }, select: { id: true, name: true, provider: true }, orderBy: { name: 'asc' } });
+    const pubs = await tx.jobBoardPublication.findMany({ where: { jobId: job.id }, select: { jobBoardId: true, postStatus: true, postError: true, postedAt: true } });
+    const live = job.status === 'open' && job.publicApplyEnabled;
+    const postings = boards.map((b) => {
+      const p = pubs.find((x) => x.jobBoardId === b.id);
+      // A feed board (pull) has no post status: it shows the job while the job takes public applications.
+      const status = !p ? 'not posted' : p.postStatus === 'failed' ? 'failed' : p.postStatus === 'removed' ? 'closed' : p.postStatus === 'pending' ? 'draft' : live ? 'live' : 'draft';
+      return { boardId: b.id, board: b.name, provider: b.provider, status, error: p?.postError ?? null, postedAt: p?.postedAt ?? null };
+    });
+    const payLaw: PayLaw & { place: string | null; showByDefault: boolean; askByDefault: boolean } = { ...law, place, showByDefault: defaults.showRange, askByDefault: defaults.askHistory };
+    return { payLaw, postings };
   }
 
   // Resolves the pipeline a new job should use: the caller's requested pipeline, but only if it
@@ -423,8 +486,9 @@ export class PipelineService {
       })) as CustomFieldDefinitionLite[];
       const rows = await tx.customFieldValue.findMany({ where: { organizationId, entityType: 'job', entityId: jobId } });
       const publications = await tx.jobBoardPublication.findMany({ where: { jobId }, select: { jobBoardId: true } });
+      const { payLaw, postings } = await this.jobPayAndPostings(tx, organizationId, job);
       return {
-        job,
+        job: { ...job, payLaw, postings },
         linkedExams,
         customFields: serializeCustomFieldValues(rows, defs),
         jobBoardIds: publications.map((p: { jobBoardId: string }) => p.jobBoardId),
@@ -446,6 +510,8 @@ export class PipelineService {
       publicApplyEnabled?: boolean;
       listOnCareers?: boolean;
       showSalary?: boolean;
+      salaryPeriod?: 'year' | 'month' | 'hour';
+      askPayHistory?: boolean;
       fitCriteria?: string | null;
       fitRubric?: { label: string; weight: number }[] | null;
       location?: string;
@@ -519,6 +585,8 @@ export class PipelineService {
         listOnCareers?: boolean;
         publishedAt?: Date;
         showSalary?: boolean;
+        salaryPeriod?: string;
+        askPayHistory?: boolean;
         applyToken?: string;
         fitCriteria?: string | null;
         fitRubric?: string | null;
@@ -566,6 +634,8 @@ export class PipelineService {
         if (dto.listOnCareers && !job.publishedAt) data.publishedAt = new Date();
       }
       if (dto.showSalary !== undefined) data.showSalary = dto.showSalary;
+      if (dto.salaryPeriod !== undefined) data.salaryPeriod = dto.salaryPeriod;
+      if (dto.askPayHistory !== undefined) data.askPayHistory = dto.askPayHistory;
       if (dto.fitCriteria !== undefined) {
         data.fitCriteria = dto.fitCriteria?.trim() || null;
       }
@@ -608,6 +678,7 @@ export class PipelineService {
       Object.assign(data, requisitionData(dto));
       if (dto.departmentId && dto.department === undefined) data.department = m.departmentName;
       if (dto.locationId && dto.location === undefined) data.location = m.locationName;
+      await this.checkPay(tx, organizationId, job, dto, data);
       const updated = await tx.job.update({ where: { id: jobId }, data });
       await this.audit.record(context, {
         actorUserId,

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Header, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
@@ -17,6 +17,11 @@ import { AssignEntryDto } from './dto/assign-entry.dto';
 import { BulkPatchEntriesDto } from './dto/bulk-patch-entries.dto';
 import { SetChecklistItemDto } from './dto/set-checklist-item.dto';
 
+/** HIR-03: a job is created or changed only by the person themselves, never while acting for someone else. */
+function notActing(req: { user?: { impersonatorUserId?: string; actingSuperAdmin?: boolean } }) {
+  if (req.user?.impersonatorUserId || req.user?.actingSuperAdmin) throw new ForbiddenException('Jobs cannot be changed while acting for someone else. Sign in as yourself.');
+}
+
 @Controller()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class PipelineController {
@@ -24,7 +29,8 @@ export class PipelineController {
 
   @Post('jobs')
   @RequirePermissions('pipeline:manage')
-  createJob(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: CreateJobDto) {
+  createJob(@Req() req: Parameters<typeof notActing>[0], @CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: CreateJobDto) {
+    notActing(req);
     return this.pipelineService.createJob(tenant, userId, dto);
   }
 
@@ -55,30 +61,35 @@ export class PipelineController {
   @Patch('jobs/:id')
   @RequirePermissions('pipeline:manage')
   updateJob(
+    @Req() req: Parameters<typeof notActing>[0],
     @CurrentTenant() tenant: TenantContext,
     @CurrentUserId() userId: string,
     @CurrentUserRole() role: string,
     @Param('id') id: string,
     @Body() dto: UpdateJobDto,
   ) {
+    notActing(req);
     return this.pipelineService.updateJob(tenant, userId, id, dto, role);
   }
 
   @Delete('jobs/:id')
   @RequirePermissions('pipeline:manage')
-  deleteJob(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+  deleteJob(@Req() req: Parameters<typeof notActing>[0], @CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    notActing(req);
     return this.pipelineService.deleteJob(tenant, userId, id);
   }
 
   @Post('jobs/:id/submit')
   @RequirePermissions('pipeline:manage')
-  submitRequisition(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+  submitRequisition(@Req() req: Parameters<typeof notActing>[0], @CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    notActing(req);
     return this.pipelineService.submitRequisition(tenant, userId, id);
   }
 
   @Post('jobs/:id/approval/cancel')
   @RequirePermissions('pipeline:manage')
-  cancelRequisitionApproval(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+  cancelRequisitionApproval(@Req() req: Parameters<typeof notActing>[0], @CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    notActing(req);
     return this.pipelineService.cancelRequisitionApproval(tenant, userId, id);
   }
 
