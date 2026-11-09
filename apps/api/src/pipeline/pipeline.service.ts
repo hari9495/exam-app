@@ -567,6 +567,8 @@ export class PipelineService {
       showSalary?: boolean;
       salaryPeriod?: 'year' | 'month' | 'hour';
       askPayHistory?: boolean;
+      internalOpen?: boolean;
+      referralOpen?: boolean;
       recruiterUserId?: string;
       locationCountry?: string;
       fitCriteria?: string | null;
@@ -648,6 +650,8 @@ export class PipelineService {
         showSalary?: boolean;
         salaryPeriod?: string;
         askPayHistory?: boolean;
+        internalOpen?: boolean;
+        referralOpen?: boolean;
         recruiterUserId?: string;
         applyToken?: string;
         fitCriteria?: string | null;
@@ -698,6 +702,8 @@ export class PipelineService {
       if (dto.showSalary !== undefined) data.showSalary = dto.showSalary;
       if (dto.salaryPeriod !== undefined) data.salaryPeriod = dto.salaryPeriod;
       if (dto.askPayHistory !== undefined) data.askPayHistory = dto.askPayHistory;
+      if (dto.internalOpen !== undefined) data.internalOpen = dto.internalOpen;
+      if (dto.referralOpen !== undefined) data.referralOpen = dto.referralOpen;
       if (dto.recruiterUserId !== undefined && dto.recruiterUserId !== job.recruiterUserId) {
         await this.checkRecruiter(tx, organizationId, dto.recruiterUserId);
         data.recruiterUserId = dto.recruiterUserId;

@@ -112,6 +112,10 @@ describe('Settings 6.1 Hiring', () => {
     'hiring.pay_history.ask': 'off',
     'hiring.rediscovery.ai': 'off',
     'hiring.rehire_flag.blocks_screening': 'off',
+    // HIR-13 (decision 6): past probation, 12 months in the role, the manager told when the person applies.
+    'hiring.internal.after_probation': 'on',
+    'hiring.internal.months_in_role': '12',
+    'hiring.internal.tell_manager': 'on_apply',
   };
 
   it('reads: recruiting and hiring admins see the defaults; only the settings keys may edit; employees and managers are refused', async () => {
@@ -142,6 +146,9 @@ describe('Settings 6.1 Hiring', () => {
       { key: 'hiring.pay_history.ask', value: 'on' },
       { key: 'hiring.rediscovery.ai', value: 'on' },
       { key: 'hiring.rehire_flag.blocks_screening', value: 'on' },
+      { key: 'hiring.internal.after_probation', value: 'off' },
+      { key: 'hiring.internal.months_in_role', value: '6' },
+      { key: 'hiring.internal.tell_manager', value: 'at_offer' },
     ]).expect(200)).body as Settings;
     expect(after.values).toEqual({
       'ats.retention_months': '18',
@@ -156,6 +163,9 @@ describe('Settings 6.1 Hiring', () => {
       'hiring.pay_history.ask': 'on',
       'hiring.rediscovery.ai': 'on',
       'hiring.rehire_flag.blocks_screening': 'on',
+      'hiring.internal.after_probation': 'off',
+      'hiring.internal.months_in_role': '6',
+      'hiring.internal.tell_manager': 'at_offer',
     });
     expect(after.lastChange).toMatchObject({ by: `hra ${run}` });
     // The other screens read the same company settings.
@@ -188,6 +198,9 @@ describe('Settings 6.1 Hiring', () => {
       [{ key: 'ats.referral.self_apply_days', value: '45' }],
       [{ key: 'hiring.pay_range.show', value: 'true' }],
       [{ key: 'hiring.rehire_flag.blocks_screening', value: 'yes' }],
+      [{ key: 'hiring.internal.months_in_role', value: '7' }],
+      [{ key: 'hiring.internal.tell_manager', value: 'ask' }],
+      [{ key: 'hiring.internal.after_probation', value: 'true' }],
       [{ key: 'hiring.rediscovery.ai', value: 'on' }, { key: 'hiring.requisition.default_recruiter', value: 'not-a-person' }],
       [{ key: 'not.a.setting', value: 'x' }],
       [{ key: 'ats.retention_months', value: '6' }, { key: 'ats.retention_months', value: '9' }],

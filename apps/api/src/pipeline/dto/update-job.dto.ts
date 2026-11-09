@@ -47,6 +47,14 @@ export class UpdateJobDto {
   @IsOptional() @IsBoolean()
   askPayHistory?: boolean;
 
+  /** HIR-13 answer 226: the job shows on Internal jobs (employees can apply). */
+  @IsOptional() @IsBoolean()
+  internalOpen?: boolean;
+
+  /** HIR-13 answer 226: employees can refer people to the job. */
+  @IsOptional() @IsBoolean()
+  referralOpen?: boolean;
+
   @IsOptional() @IsString() @MaxLength(5000)
   fitCriteria?: string;
 

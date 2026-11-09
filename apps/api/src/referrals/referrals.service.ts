@@ -127,7 +127,8 @@ export class ReferralsService implements OnModuleInit {
   async referableJobs(context: TenantContext) {
     return this.tenantPrisma.forTenant(context, (tx) =>
       tx.job.findMany({
-        where: { status: 'open' },
+        // HIR-13 answer 226: a job can be closed to referrals in its "Referrals & internal" tab.
+        where: { status: 'open', referralOpen: true, deletedAt: null },
         orderBy: { createdAt: 'desc' },
         select: { id: true, title: true, location: true, department: true },
       }),
@@ -146,9 +147,9 @@ export class ReferralsService implements OnModuleInit {
     }
 
     const { referral, candidateId, isNew } = await this.tenantPrisma.forTenant(context, async (tx) => {
-      const job = await tx.job.findFirst({ where: { id: dto.jobId }, select: { id: true, status: true, pipelineId: true } });
+      const job = await tx.job.findFirst({ where: { id: dto.jobId }, select: { id: true, status: true, pipelineId: true, referralOpen: true } });
       if (!job) throw new NotFoundException('Job not found');
-      if (job.status !== 'open') throw new BadRequestException('That job is not open for referrals');
+      if (job.status !== 'open' || !job.referralOpen) throw new BadRequestException('That job is not open for referrals');
 
       // Candidate upsert (org+email). Anti-tamper: never overwrite an existing candidate's name/phone.
       const existing = await tx.candidate.findUnique({ where: { organizationId_email: { organizationId: orgId, email: dto.email } } });

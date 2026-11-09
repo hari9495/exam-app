@@ -1239,6 +1239,9 @@ model Job {
   requisitionCancelledBy  String?               @map("requisition_cancelled_by") @db.Uuid
   /// M10 AT5: the scorecard new interviews for this job use, unless the scheduler picks another.
   scorecardTemplateId     String?               @map("scorecard_template_id") @db.Uuid
+  /// HIR-13 answer 226: the job shows on Internal jobs, and is open for referrals (both on by default).
+  internalOpen            Boolean               @default(true) @map("internal_open")
+  referralOpen            Boolean               @default(true) @map("referral_open")
   headcount               Int?
   salaryMin               Int?                  @map("salary_min")
   salaryMax               Int?                  @map("salary_max")
@@ -1345,6 +1348,24 @@ model PipelineEntry {
   @@unique([jobId, candidateId])
   @@index([jobId])
   @@map("pipeline_entries")
+}
+
+/// HIR-13: an employee's own application to an internal job (the pipeline entry is enteredVia='internal'): their own
+/// words, their manager at the time, and when that manager was told (founder decision 6: told, not asked).
+model InternalApplication {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  entryId         String    @unique(map: "internal_applications_entry_key") @map("entry_id") @db.Uuid
+  jobId           String    @map("job_id") @db.Uuid
+  applicantUserId String    @map("applicant_user_id") @db.Uuid
+  employeeId      String    @map("employee_id") @db.Uuid
+  note            String    @db.VarChar(2000)
+  managerUserId   String?   @map("manager_user_id") @db.Uuid
+  managerToldAt   DateTime? @map("manager_told_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, applicantUserId, createdAt], map: "internal_applications_applicant_idx")
+  @@map("internal_applications")
 }
 
 // An employee referral: a staff user refers a person for an open job. The referred person is ingested

@@ -25,6 +25,10 @@ export const HIRING_SETTING_KEYS = [
   'hiring.pay_history.ask',
   'hiring.rediscovery.ai',
   'hiring.rehire_flag.blocks_screening',
+  // HIR-13 (founder decision 6): who can apply for internal jobs, and when the current manager is told.
+  'hiring.internal.after_probation',
+  'hiring.internal.months_in_role',
+  'hiring.internal.tell_manager',
 ] as const;
 export type HiringSettingKey = (typeof HIRING_SETTING_KEYS)[number];
 const EDIT_KEYS = ['ats.settings.manage', 'org.settings.manage'] as const;

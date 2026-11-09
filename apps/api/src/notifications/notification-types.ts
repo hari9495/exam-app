@@ -86,6 +86,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'asset.assigned', group: 'assignments', label: 'A company asset was issued to you' },
   { type: 'exit.deprovisioning.failed', group: 'reminders', label: 'A step after someone left did not go through (HR)' },
   { type: 'probation.review.done', group: 'reminders', label: 'A manager reviewed a probation' },
+  // HIR-13 (founder decision 6): the manager is told, never asked.
+  { type: 'hiring.internal.applied', group: 'reminders', label: 'Someone in your team applied for an internal job' },
   // M06 performance PM2.
   { type: 'perf.goal.checkin_due', group: 'reminders', label: 'Your goals are due a check-in' },
   // PM3: feedback and 1:1s.

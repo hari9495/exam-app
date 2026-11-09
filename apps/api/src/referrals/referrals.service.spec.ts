@@ -15,7 +15,7 @@ function makeService(tx: Record<string, any>, intake: Record<string, any> = {}) 
 
 function baseTx(overrides: Record<string, any> = {}) {
   return {
-    job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'open', pipelineId: 'p1' }) },
+    job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'open', pipelineId: 'p1', referralOpen: true }) },
     candidate: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn().mockResolvedValue({ id: 'cand-1' }) },
     candidateProfile: { upsert: jest.fn() },
     pipeline: { findFirst: jest.fn().mockResolvedValue({ stages: [{ category: 'active', statuses: [{ id: 'st-1' }] }] }) },

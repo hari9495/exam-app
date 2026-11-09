@@ -38,6 +38,9 @@ const nextConfig = {
       { source: '/v2/jobs/:jobId', destination: '/yx/hiring/jobs/:jobId', permanent: false },
       // Founder answer 345: scorecard templates moved to Settings 6.1 Hiring; the old stand-in page is gone.
       { source: '/yx/hiring/scorecards', destination: '/yx/settings/hiring', permanent: true },
+      // HIR-13: internal jobs are the designed YukthiX page now; the older Internal Mobility screen is gone.
+      { source: '/internal-mobility', destination: '/yx/hiring/internal-jobs', permanent: false },
+      { source: '/v2/internal-mobility', destination: '/yx/hiring/internal-jobs', permanent: false },
       // M10 AT5: an interviewer's interviews and scorecards.
       { source: '/v2/panel/interviews', destination: '/yx/hiring/interviews', permanent: false },
       // M10 AT2: hiring approval routes moved to YukthiX (requisitions now run on YukthiX Approvals).
