@@ -19,7 +19,7 @@ export function jobPosting(job: CareersJobDetail, url: string) {
   };
   // The API sends a salary only when the job chose to show it.
   if (job.salaryCurrency && (job.salaryMin != null || job.salaryMax != null)) {
-    ld.baseSalary = { '@type': 'MonetaryAmount', currency: job.salaryCurrency, value: { '@type': 'QuantitativeValue', minValue: job.salaryMin ?? undefined, maxValue: job.salaryMax ?? undefined, unitText: 'YEAR' } };
+    ld.baseSalary = { '@type': 'MonetaryAmount', currency: job.salaryCurrency, value: { '@type': 'QuantitativeValue', minValue: job.salaryMin ?? undefined, maxValue: job.salaryMax ?? undefined, unitText: ({ month: 'MONTH', hour: 'HOUR' } as Record<string, string>)[job.salaryPeriod ?? ''] ?? 'YEAR' } };
   }
   return ld;
 }

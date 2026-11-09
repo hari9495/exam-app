@@ -243,7 +243,8 @@ export function managerHome(input: {
 }
 
 const enc = encodeURIComponent;
-const application = (jobId: string, entryId: string) => `/yx/hiring/jobs/${enc(jobId)}?entry=${enc(entryId)}`;
+// One application opens on the job's pipeline (HIR-03: the job workspace itself has no board).
+const application = (jobId: string, entryId: string) => `/yx/hiring/jobs/${enc(jobId)}/pipeline?entry=${enc(entryId)}`;
 
 /** The recruiter Home: its action rows (each opening the hiring page that handles it) and its widgets. */
 export function hiringHome(h: HiringHome | undefined, now: Date): { actions: ActionItem[]; view?: NonNullable<LiveHome['hiring']> } {

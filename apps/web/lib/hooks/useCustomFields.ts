@@ -16,6 +16,17 @@ export function useCustomFields(entityType: 'candidate' | 'job') {
   });
 }
 
+/** The active definitions a hiring form shows (job form, candidate pages): readable with the hiring read key, not only by settings admins. */
+export function useCustomFieldsInUse(entityType: 'candidate' | 'job', enabled = true) {
+  const { accessToken } = useAuth();
+  return useQuery<CustomFieldDefinition[]>({
+    queryKey: ['custom-fields', entityType, 'in-use'],
+    queryFn: () => apiFetch(`/custom-fields/in-use?entityType=${entityType}`, {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken) && enabled,
+    retry: false,
+  });
+}
+
 export interface CreateCustomFieldInput {
   entityType: 'candidate' | 'job';
   label: string;

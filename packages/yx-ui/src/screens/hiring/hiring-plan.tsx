@@ -1,7 +1,7 @@
 // Hiring › Headcount plan, requisitions, rediscovery, jobs, pay range, internal jobs, referrals, recruiting costs.
 // HIR-01, HIR-02, HIR-26, HIR-03, HIR-24, HIR-13, HIR-12, HIR-11 (M10 §3, Q1, YX-ATS-01 / 02 / 12 / 23 / 34 / 39 / 42, P09 Q3).
 import { useMemo, useRef, useState, type ReactNode } from 'react';
-import { Briefcase, ExternalLink, Plus, Send, Trash2, UserPlus } from 'lucide-react';
+import { Briefcase, ExternalLink, Plus, Send, Sparkles, Trash2, UserPlus } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
 import { EmptyState, ErrorState, InlineAlert, Meter, NoAccessState, Skeleton } from '../../components/feedback';
@@ -38,6 +38,8 @@ import {
 } from './hiring-logic';
 import { ConsentBadges, HireFrame, PostingStrip, RecordLayout, SummaryTiles, useListControls, type ConsentValue, type Posting } from './hiring-kit';
 import type { Job, Requisition } from './hiring-data';
+import { CustomFieldInputs, missingRequired } from './live/fields';
+import type { JobCustomField } from './live/types';
 import './hiring.css';
 
 export type ListState = 'ready' | 'loading' | 'error';
@@ -1051,6 +1053,34 @@ export function RequisitionSheet({ open, onOpenChange, planLines, defaultLine = 
 
 /* ================================================================== HIR-24 · Job pay range panel */
 
+export type PayPeriod = 'year' | 'month' | 'hour';
+
+export interface PayRangeInput {
+  min: number | null;
+  max: number | null;
+  currency: string;
+  period: PayPeriod;
+  show: boolean;
+  askHistory: boolean;
+  /** Publish the job as well (careers page and public applications). */
+  publish: boolean;
+}
+
+/** The live pay range (HIR-24): the job's saved values, the company's choice and the save. The API checks the law again. */
+export interface LivePayRange {
+  currency: string;
+  period: PayPeriod;
+  show: boolean;
+  askHistory: boolean;
+  /** The company's choice for new jobs where no law decides (setting hiring.pay_range.show). */
+  companyShows: boolean;
+  /** Already on the careers page: the button saves instead of publishing. */
+  published: boolean;
+  /** pipeline:manage; without it the panel is read-only. */
+  canManage: boolean;
+  onSave: (input: PayRangeInput) => Promise<void>;
+}
+
 export interface JobPayRangePanelProps {
   location: string;
   law: PayLaw;
@@ -1058,29 +1088,60 @@ export interface JobPayRangePanelProps {
   defaultShowRange?: boolean;
   defaultHistoryQuestion?: boolean;
   onPublish?: () => void;
+  live?: LivePayRange;
 }
 
+const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP'];
+const CURRENCY_LABEL: Record<string, string> = { INR: 'INR (₹)', USD: 'USD ($)', EUR: 'EUR (€)', GBP: 'GBP (£)' };
+
 // HIR-24
-export function JobPayRangePanel({ location, law, defaultRange = { min: null, max: null }, defaultShowRange = true, defaultHistoryQuestion = false, onPublish }: JobPayRangePanelProps) {
+export function JobPayRangePanel({ location, law, defaultRange = { min: null, max: null }, defaultShowRange = true, defaultHistoryQuestion = false, onPublish, live }: JobPayRangePanelProps) {
   const [range, setRange] = useState<PayRange>(defaultRange);
-  const [show, setShow] = useState(defaultShowRange || law.rangeRequired);
-  const [period, setPeriod] = useState<string | null>('year');
-  const [history, setHistory] = useState(defaultHistoryQuestion && payHistoryAllowed(law));
+  const [show, setShow] = useState((live ? live.show : defaultShowRange) || law.rangeRequired);
+  const [period, setPeriod] = useState<string | null>(live?.period ?? 'year');
+  const [currency, setCurrency] = useState<string | null>(live?.currency ?? 'INR');
+  const [history, setHistory] = useState((live ? live.askHistory : defaultHistoryQuestion) && payHistoryAllowed(law));
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [tried, setTried] = useState(!live);
+  const minRef = useRef<HTMLDivElement>(null);
   const issues = payRangeIssues(range, law, show);
   const ok = canPublishJob(range, law, show);
+  const readOnly = Boolean(live && !live.canManage);
+  // Live: the button is never disabled; pressed too early it shows what to fix and moves to the minimum.
+  const save = async () => {
+    if (!live) return;
+    setTried(true);
+    if (!ok) {
+      minRef.current?.querySelector('input')?.focus();
+      return;
+    }
+    setBusy(true);
+    setFailed(null);
+    try {
+      await live.onSave({ min: range.min, max: range.max, currency: currency ?? 'INR', period: (period ?? 'year') as PayPeriod, show, askHistory: history, publish: !live.published });
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : 'That did not work. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const currencies = live && !CURRENCIES.includes(live.currency) ? [...CURRENCIES, live.currency] : CURRENCIES;
   return (
     <Card
       title="Pay range"
       actions={law.rangeRequired ? <Badge tone="info">Set by law · {location}</Badge> : <Badge>Company setting</Badge>}
       footer={
-        <div className="yx-hire-row">
-          <Text size="sm" tone={ok ? 'secondary' : 'danger'}>
-            {ok ? 'Ready to publish.' : 'Publishing is blocked until the pay range is fixed.'}
-          </Text>
-          <Button variant="primary" disabled={!ok} onClick={onPublish}>
-            Publish job
-          </Button>
-        </div>
+        readOnly ? undefined : (
+          <div className="yx-hire-row">
+            <Text size="sm" tone={ok ? 'secondary' : 'danger'}>
+              {ok ? (live?.published ? 'The job is published. Changes show at once.' : 'Ready to publish.') : 'Publishing is blocked until the pay range is fixed.'}
+            </Text>
+            <Button variant="primary" disabled={!live && !ok} loading={busy} onClick={live ? () => void save() : onPublish}>
+              {live?.published ? 'Save pay range' : 'Publish job'}
+            </Button>
+          </div>
+        )
       }
     >
       {law.rangeRequired && (
@@ -1088,7 +1149,8 @@ export function JobPayRangePanel({ location, law, defaultRange = { min: null, ma
           {location} has a pay-transparency law ({law.source}). A pay range is required on the job ad and careers page.
         </InlineAlert>
       )}
-      {issues.length > 0 && (
+      {failed && <InlineAlert tone="danger" title={failed} />}
+      {tried && issues.length > 0 && (
         <InlineAlert tone="danger" title="Fix before publishing">
           <ul className="yx-hire-plainlist">
             {issues.map((i) => (
@@ -1098,46 +1160,361 @@ export function JobPayRangePanel({ location, law, defaultRange = { min: null, ma
         </InlineAlert>
       )}
       <FieldRow>
-        <FormField label="Minimum" required={law.rangeRequired || show}>
-          <CurrencyField value={range.min} onChange={(v) => setRange((r) => ({ ...r, min: v }))} />
-        </FormField>
+        <div ref={minRef}>
+          <FormField label="Minimum" required={law.rangeRequired || show}>
+            <CurrencyField value={range.min} onChange={(v) => setRange((r) => ({ ...r, min: v }))} disabled={readOnly} />
+          </FormField>
+        </div>
         <FormField label="Maximum" required={law.rangeRequired || show}>
-          <CurrencyField value={range.max} onChange={(v) => setRange((r) => ({ ...r, max: v }))} />
+          <CurrencyField value={range.max} onChange={(v) => setRange((r) => ({ ...r, max: v }))} disabled={readOnly} />
         </FormField>
       </FieldRow>
       <FieldRow>
         <FormField label="Currency">
-          <Select value="INR" onChange={() => {}} options={[{ value: 'INR', label: 'INR (₹)' }]} />
+          {live ? (
+            <Select value={currency} onChange={setCurrency} disabled={readOnly} options={currencies.map((c) => ({ value: c, label: CURRENCY_LABEL[c] ?? c }))} />
+          ) : (
+            <Select value="INR" onChange={() => {}} options={[{ value: 'INR', label: 'INR (₹)' }]} />
+          )}
         </FormField>
         <FormField label="Period">
-          <Select value={period} onChange={setPeriod} options={[{ value: 'year', label: 'Per year (CTC)' }, { value: 'month', label: 'Per month' }, { value: 'hour', label: 'Per hour' }]} />
+          <Select value={period} onChange={setPeriod} disabled={readOnly} options={[{ value: 'year', label: 'Per year (CTC)' }, { value: 'month', label: 'Per month' }, { value: 'hour', label: 'Per hour' }]} />
         </FormField>
       </FieldRow>
-      <Switch className="yx-hire-switch" label="Show pay range on the careers page and job boards" description={law.rangeRequired ? 'Required by law for this location.' : 'YukthiX starter: on. You can switch it off for this job.'} checked={show} disabled={law.rangeRequired} onChange={setShow} />
+      <Switch
+        className="yx-hire-switch"
+        label="Show pay range on the careers page and job boards"
+        description={law.rangeRequired ? 'Required by law for this location.' : live ? `Company setting: ${live.companyShows ? 'shown' : 'hidden'} on new jobs. You can change it for this job.` : 'YukthiX starter: on. You can switch it off for this job.'}
+        checked={show}
+        disabled={law.rangeRequired || readOnly}
+        onChange={setShow}
+      />
       <Switch className="yx-hire-switch"
         label="Ask applicants about their current or past pay"
         description={law.historyBanned ? `Not allowed: the law for ${location} bans pay-history questions.` : 'Off by default. Switch on only if your company needs it.'}
         checked={history}
-        disabled={law.historyBanned}
+        disabled={law.historyBanned || readOnly}
         onChange={setHistory}
       />
     </Card>
   );
 }
 
+/* ================================================================== HIR-03 · Create job sheet */
+
+export interface NewJob {
+  title: string;
+  description?: string;
+  departmentId?: string;
+  department?: string;
+  locationId?: string;
+  location?: string;
+  designationId?: string;
+  hiringManagerId?: string;
+  headcount?: number;
+  salaryMin?: number;
+  salaryMax?: number;
+  salaryCurrency?: string;
+  salaryPeriod?: PayPeriod;
+  /** Sent only when changed: otherwise the company's choice for the location (and its law) decides. */
+  showSalary?: boolean;
+  pipelineId?: string;
+  customFields?: Record<string, string | number | null>;
+  headcountPlanLineId?: string;
+  outsidePlan?: boolean;
+  outsidePlanReason?: string;
+  requisitionReason?: 'new' | 'replacement';
+  replacementOfEmployeeId?: string;
+  budgetAmount?: number;
+  /** YYYY-MM-DD. */
+  targetStart?: string;
+}
+
+export interface CreateJobChoice {
+  value: string;
+  label: string;
+}
+
+/** What the create-job sheet offers: the company's masters (empty list: free text), people and plan lines. */
+export interface CreateJobChoices {
+  departments: CreateJobChoice[];
+  locations: CreateJobChoice[];
+  designations: CreateJobChoice[];
+  managers: CreateJobChoice[];
+  pipelines: (CreateJobChoice & { isDefault?: boolean })[];
+  planLines: { id: string; departmentId: string; label: string }[];
+  employees: CreateJobChoice[];
+  customFields: JobCustomField[];
+  /** The company's choice for new jobs (setting hiring.pay_range.show). */
+  showRangeByDefault: boolean;
+}
+
+const SAMPLE_CHOICES: CreateJobChoices = {
+  departments: [{ value: 'd1', label: 'Engineering' }, { value: 'd2', label: 'Operations' }],
+  locations: [{ value: 'l1', label: 'Chennai office' }, { value: 'l2', label: 'Hosur plant' }],
+  designations: [{ value: 'x1', label: 'Senior QA Engineer' }],
+  managers: [{ value: 'u1', label: 'Karthik Subramanian' }],
+  pipelines: [{ value: 'p1', label: 'Engineering, 6 stages', isDefault: true }],
+  planLines: [{ id: 'pl3', departmentId: 'd1', label: 'Engineering · Senior QA Engineer · Chennai office · 2 left' }],
+  employees: [{ value: 'e1', label: 'Rohit Bhat' }],
+  customFields: [{ id: 'cf1', label: 'Cost centre', fieldType: 'text', options: null, required: false }],
+  showRangeByDefault: false,
+};
+
+const pad = (n: number) => String(n).padStart(2, '0');
+
+// HIR-03 (create): a new job, or a requisition when the company's approval chain is on (the API decides).
+export function CreateJobSheet({ open, onOpenChange, choices = SAMPLE_CHOICES, onCreate, onDraftDescription }: { open: boolean; onOpenChange: (o: boolean) => void; choices?: CreateJobChoices; onCreate?: (input: NewJob) => Promise<void>; onDraftDescription?: (title: string) => Promise<string> }) {
+  const c = choices;
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [departmentId, setDepartmentId] = useState<string | null>(null);
+  const [department, setDepartment] = useState('');
+  const [locationId, setLocationId] = useState<string | null>(null);
+  const [location, setLocation] = useState('');
+  const [designationId, setDesignationId] = useState<string | null>(null);
+  const [managerId, setManagerId] = useState<string | null>(null);
+  const [headcount, setHeadcount] = useState<number | null>(1);
+  const [min, setMin] = useState<number | null>(null);
+  const [max, setMax] = useState<number | null>(null);
+  const [currency, setCurrency] = useState<string | null>('INR');
+  const [period, setPeriod] = useState<string | null>('year');
+  const [show, setShow] = useState<boolean | null>(null);
+  const [pipelineId, setPipelineId] = useState<string | null>(c.pipelines.find((x) => x.isDefault)?.value ?? c.pipelines[0]?.value ?? null);
+  const [custom, setCustom] = useState<Record<string, string | number | null>>({});
+  const [reason, setReason] = useState<'new' | 'replacement'>('new');
+  const [lineId, setLineId] = useState<string | null>(null);
+  const [outside, setOutside] = useState(false);
+  const [outsideWhy, setOutsideWhy] = useState('');
+  const [replaces, setReplaces] = useState<string | null>(null);
+  const [budget, setBudget] = useState<number | null>(null);
+  const [start, setStart] = useState<Date | null>(null);
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState<'save' | 'draft' | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const titleRef = useRef<HTMLDivElement>(null);
+  const lines = c.planLines.filter((l) => !departmentId || l.departmentId === departmentId);
+  const missing = missingRequired(c.customFields, custom);
+  const rangeBad = min !== null && max !== null && min > max;
+  const replacesBad = reason === 'replacement' && !replaces;
+  const outsideBad = reason === 'new' && outside && outsideWhy.trim().length < 3;
+  const opt = <T,>(v: T | null | '') => (v === null || v === '' ? undefined : v);
+  const create = async () => {
+    setTried(true);
+    if (!title.trim() || missing.length || rangeBad || replacesBad || outsideBad) {
+      titleRef.current?.closest('[role="dialog"]')?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+      if (!title.trim()) titleRef.current?.querySelector('input')?.focus();
+      return;
+    }
+    if (!onCreate) return;
+    setBusy('save');
+    setFailed(null);
+    try {
+      await onCreate({
+        title: title.trim(),
+        description: opt(description.trim()),
+        departmentId: opt(departmentId),
+        department: c.departments.length ? undefined : opt(department.trim()),
+        locationId: opt(locationId),
+        location: c.locations.length ? undefined : opt(location.trim()),
+        designationId: opt(designationId),
+        hiringManagerId: opt(managerId),
+        headcount: opt(headcount),
+        salaryMin: opt(min),
+        salaryMax: opt(max),
+        salaryCurrency: min !== null || max !== null ? opt(currency) : undefined,
+        salaryPeriod: min !== null || max !== null ? ((period ?? 'year') as PayPeriod) : undefined,
+        showSalary: show ?? undefined,
+        pipelineId: opt(pipelineId),
+        customFields: Object.keys(custom).length ? custom : undefined,
+        requisitionReason: reason,
+        headcountPlanLineId: reason === 'new' && !outside ? opt(lineId) : undefined,
+        outsidePlan: reason === 'new' && outside ? true : undefined,
+        outsidePlanReason: reason === 'new' && outside ? outsideWhy.trim() : undefined,
+        replacementOfEmployeeId: reason === 'replacement' ? opt(replaces) : undefined,
+        budgetAmount: opt(budget),
+        targetStart: start ? `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}` : undefined,
+      });
+      onOpenChange(false);
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : 'That did not work. Try again.');
+    } finally {
+      setBusy(null);
+    }
+  };
+  const draft = async () => {
+    if (!onDraftDescription) return;
+    setTried(true);
+    if (!title.trim()) {
+      titleRef.current?.querySelector('input')?.focus();
+      return;
+    }
+    setBusy('draft');
+    try {
+      setDescription(await onDraftDescription(title.trim()));
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : 'The description could not be drafted. Write it yourself or try again.');
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <Drawer
+      open={open}
+      onOpenChange={onOpenChange}
+      size="lg"
+      title="Create job"
+      subtitle="Goes for approval first when your company's requisition approval is on."
+      dirty={title.length > 0 || description.length > 0}
+      notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined}
+      footer={
+        <>
+          <Button onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="primary" icon={Plus} loading={busy === 'save'} onClick={() => void create()}>
+            Create job
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-hire-stack">
+        <div ref={titleRef}>
+          <FormField label="Job title" required error={tried && !title.trim() ? 'Enter the job title.' : null}>
+            <TextField value={title} onChange={setTitle} maxLength={200} />
+          </FormField>
+        </div>
+        <FieldRow>
+          <FormField label="Department" optional>
+            {c.departments.length ? <Select aria-label="Department" value={departmentId} onChange={setDepartmentId} options={c.departments} searchable clearable /> : <TextField value={department} onChange={setDepartment} maxLength={200} />}
+          </FormField>
+          <FormField label="Location" optional helper="The location's law decides whether the pay range must be shown.">
+            {c.locations.length ? <Select aria-label="Location" value={locationId} onChange={setLocationId} options={c.locations} searchable clearable /> : <TextField value={location} onChange={setLocation} maxLength={200} />}
+          </FormField>
+        </FieldRow>
+        <FieldRow>
+          {c.designations.length > 0 && (
+            <FormField label="Designation" optional>
+              <Select aria-label="Designation" value={designationId} onChange={setDesignationId} options={c.designations} searchable clearable />
+            </FormField>
+          )}
+          <FormField label="Hiring manager" optional>
+            <Select aria-label="Hiring manager" value={managerId} onChange={setManagerId} options={c.managers} searchable clearable />
+          </FormField>
+        </FieldRow>
+        <FieldRow>
+          <FormField label="Openings" optional>
+            <NumberField value={headcount} onChange={setHeadcount} min={1} />
+          </FormField>
+          <FormField label="Pipeline">
+            <Select aria-label="Pipeline" value={pipelineId} onChange={setPipelineId} options={c.pipelines} />
+          </FormField>
+        </FieldRow>
+        <FieldRow>
+          <FormField label="Pay from" optional>
+            <CurrencyField value={min} onChange={setMin} />
+          </FormField>
+          <FormField label="Pay up to" optional error={rangeBad ? 'Must be at least the minimum.' : null}>
+            <CurrencyField value={max} onChange={setMax} />
+          </FormField>
+        </FieldRow>
+        <FieldRow>
+          <FormField label="Currency">
+            <Select aria-label="Currency" value={currency} onChange={setCurrency} options={CURRENCIES.map((x) => ({ value: x, label: CURRENCY_LABEL[x] }))} />
+          </FormField>
+          <FormField label="Period">
+            <Select aria-label="Period" value={period} onChange={setPeriod} options={[{ value: 'year', label: 'Per year (CTC)' }, { value: 'month', label: 'Per month' }, { value: 'hour', label: 'Per hour' }]} />
+          </FormField>
+        </FieldRow>
+        <Switch
+          className="yx-hire-switch"
+          label="Show pay range on the careers page and job boards"
+          description={`Company setting: ${c.showRangeByDefault ? 'shown' : 'hidden'}. Where the law requires it, the range is always shown.`}
+          checked={show ?? c.showRangeByDefault}
+          onChange={setShow}
+        />
+        <FormField label="Why this hire">
+          <Segment label="Why this hire" value={reason} onChange={setReason} options={[{ value: 'new', label: 'New position' }, { value: 'replacement', label: 'Replacement' }]} />
+        </FormField>
+        {reason === 'replacement' ? (
+          <FormField label="Replaces" required helper="A replacement does not use the headcount plan." error={tried && replacesBad ? 'Choose who this hire replaces.' : null}>
+            <Select aria-label="Replaces" value={replaces} onChange={setReplaces} options={c.employees} searchable />
+          </FormField>
+        ) : (
+          <>
+            {lines.length > 0 && !outside && (
+              <FormField label="Headcount plan line" optional>
+                <Select aria-label="Headcount plan line" value={lineId} onChange={setLineId} options={lines.map((l) => ({ value: l.id, label: l.label }))} clearable />
+              </FormField>
+            )}
+            <Checkbox label="Outside the headcount plan" description="Adds a finance approval." checked={outside} onChange={setOutside} />
+            {outside && (
+              <FormField label="Why outside the plan" required error={tried && outsideBad ? 'Enter a reason of at least 3 characters.' : null}>
+                <TextArea value={outsideWhy} onChange={setOutsideWhy} rows={2} maxLength={1000} />
+              </FormField>
+            )}
+          </>
+        )}
+        <FieldRow>
+          <FormField label="Budget for this hire (a year)" optional>
+            <CurrencyField value={budget} onChange={setBudget} />
+          </FormField>
+          <FormField label="Wanted from" optional>
+            <DatePicker aria-label="Wanted from" value={start} onChange={setStart} />
+          </FormField>
+        </FieldRow>
+        <FormField label="Description" optional>
+          <TextArea value={description} onChange={setDescription} rows={5} maxLength={5000} />
+        </FormField>
+        {onDraftDescription && (
+          <div>
+            <Button size="sm" icon={Sparkles} loading={busy === 'draft'} onClick={() => void draft()}>
+              Draft the description
+            </Button>
+          </div>
+        )}
+        <CustomFieldInputs fields={c.customFields} values={custom} onChange={setCustom} idPrefix="cj" tried={tried} />
+      </div>
+    </Drawer>
+  );
+}
+
 /* ================================================================== HIR-03 · Jobs list + job workspace */
 
-const JOB_TONE: Record<Job['status'], BadgeTone> = { Open: 'success', Draft: 'neutral', 'On hold': 'warning', Closed: 'neutral' };
+const JOB_TONE: Record<Job['status'], BadgeTone> = { Open: 'success', Draft: 'neutral', 'On hold': 'warning', Closed: 'neutral', 'Waiting for approval': 'warning' };
+
+/** A live jobs row: the designed row plus what the actions need. */
+export type LiveJobRow = Job & { careersUrl: string | null };
+
+/** The live jobs list (HIR-03): rows from GET jobs, the actions the API allows; the page shows the toasts. */
+export interface LiveJobs {
+  rows: LiveJobRow[];
+  state: ListState;
+  onRetry: () => void;
+  /** pipeline:manage: create, close, reopen, delete, send for approval. */
+  canManage: boolean;
+  onOpen: (id: string) => void;
+  create: { choices: CreateJobChoices; onCreate: (input: NewJob) => Promise<void>; onDraftDescription?: (title: string) => Promise<string> };
+  onCopyLink: (row: LiveJobRow) => void;
+  /** open: reopen or resume; on_hold: hidden from careers and boards, candidates stay (answer 223). */
+  onStatus: (row: LiveJobRow, to: 'open' | 'closed' | 'on_hold') => void;
+  onSubmit: (row: LiveJobRow) => void;
+  onWithdraw: (row: LiveJobRow) => void;
+  onDelete: (row: LiveJobRow) => Promise<void>;
+}
 
 // HIR-03
-export function JobsScreen({ rows, state = 'ready' }: { rows: Job[]; state?: ListState }) {
+export function JobsScreen({ rows: sample, state = 'ready', createOpen = false, live, now }: { rows: Job[]; state?: ListState; createOpen?: boolean; live?: LiveJobs; now?: Date }) {
+  const rows: Job[] = live ? live.rows : sample;
+  const [creating, setCreating] = useState(createOpen);
+  const [deleting, setDeleting] = useState<LiveJobRow | null>(null);
+  const statuses = live ? ['Open', 'On hold', 'Draft', 'Waiting for approval', 'Closed'] : ['Open', 'Draft', 'On hold', 'Closed'];
+  const types = live ? [...new Set(rows.map((r) => r.type).filter(Boolean))].sort() : ['Full time', 'Contract', 'Campus'];
   const list = useListControls({
     rows,
     fields: [
-      { key: 'status', label: 'Status', type: 'multi', options: ['Open', 'Draft', 'On hold', 'Closed'].map((v) => ({ value: v, label: v })) },
-      { key: 'type', label: 'Type', type: 'multi', options: ['Full time', 'Contract', 'Campus'].map((v) => ({ value: v, label: v })) },
+      { key: 'status', label: 'Status', type: 'multi', options: statuses.map((v) => ({ value: v, label: v })) },
+      { key: 'type', label: 'Type', type: 'multi', options: types.map((v) => ({ value: v, label: v })) },
     ],
-    text: (r) => `${r.code} ${r.title} ${r.location} ${r.client ?? ''}`,
+    text: (r) => `${r.code} ${r.title} ${r.department} ${r.location} ${r.client ?? ''}`,
     fieldValue: (r, k) => (k === 'status' ? r.status : r.type),
     views: [
       { id: 'mine', name: 'My open jobs' },
@@ -1147,7 +1524,7 @@ export function JobsScreen({ rows, state = 'ready' }: { rows: Job[]; state?: Lis
   });
   const cols: TableColumn<Job>[] = [
     { key: 'code', header: 'Job', type: 'id', value: (r) => r.code, width: 110 },
-    { key: 'title', header: 'Title', value: (r) => r.title, render: (r) => <PersonLabel name={r.title} secondary={r.client ? `${r.client} · ${r.location}` : `${r.department} · ${r.location}`} /> },
+    { key: 'title', header: 'Title', value: (r) => r.title, render: (r) => <PersonLabel name={r.title} secondary={[r.client ?? r.department, r.location].filter(Boolean).join(' · ')} /> },
     { key: 'type', header: 'Type', value: (r) => r.type, groupable: true },
     { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => JOB_TONE[v as Job['status']] },
     { key: 'applicants', header: 'Applicants', type: 'number', value: (r) => r.applicants, total: 'sum' },
@@ -1155,33 +1532,114 @@ export function JobsScreen({ rows, state = 'ready' }: { rows: Job[]; state?: Lis
     { key: 'recruiter', header: 'Recruiter', type: 'person', value: (r) => r.recruiter, person: (r) => ({ name: r.recruiter }) },
     { key: 'posted', header: 'Posted', type: 'date', value: (r) => r.posted },
   ];
+  const can = Boolean(live?.canManage);
+  const createButton = (!live || can) && (
+    <Button variant="primary" icon={Plus} onClick={() => setCreating(true)}>
+      Create job
+    </Button>
+  );
+  const liveActions = (r: LiveJobRow) => (
+    <>
+      {r.careersUrl && <MenuItem onSelect={() => live!.onCopyLink(r)}>Copy careers link</MenuItem>}
+      {can && r.status === 'Draft' && <MenuItem onSelect={() => live!.onSubmit(r)}>Send for approval</MenuItem>}
+      {can && r.status === 'Waiting for approval' && <MenuItem onSelect={() => live!.onWithdraw(r)}>Withdraw from approval</MenuItem>}
+      {can && r.status === 'Closed' && <MenuItem onSelect={() => live!.onStatus(r, 'open')}>Reopen job</MenuItem>}
+      {can && r.status === 'Open' && <MenuItem onSelect={() => live!.onStatus(r, 'on_hold')}>Put on hold</MenuItem>}
+      {can && r.status === 'On hold' && <MenuItem onSelect={() => live!.onStatus(r, 'open')}>Resume job</MenuItem>}
+      {can && (r.status === 'Open' || r.status === 'On hold') && (
+        <MenuItem destructive onSelect={() => live!.onStatus(r, 'closed')}>
+          Close job
+        </MenuItem>
+      )}
+      {can && (
+        <MenuItem destructive onSelect={() => setDeleting(r)}>
+          Delete job
+        </MenuItem>
+      )}
+    </>
+  );
   return (
     <HireFrame active="Jobs & requisitions">
-      <PageHeader title="Jobs" description="Jobs link to departments, designations, grades and locations. Filling or closing the requisition closes every live board posting." actions={<Button variant="primary" icon={Plus}>Create job</Button>} />
+      <PageHeader title="Jobs" description="Jobs link to departments, designations, grades and locations. Filling or closing the requisition closes every live board posting." actions={createButton || undefined} />
       <DataTable
         label="Jobs"
         columns={cols}
         rows={list.rows}
         getRowId={(r) => r.id}
-        state={state}
-        onRetry={() => {}}
+        state={live ? live.state : state}
+        onRetry={live ? live.onRetry : () => {}}
         filtered={list.filtered}
         onClearFilters={list.clear}
         toolbar={list.toolbar}
-        views={list.views}
-        onRowClick={() => {}}
-        rowActions={() => (
-          <>
-            <MenuItem>Copy careers link</MenuItem>
-            <MenuItem>Put on hold</MenuItem>
-            <MenuItem destructive>Close job</MenuItem>
-          </>
-        )}
-        empty={<EmptyState title="No jobs yet." description="Create a job from an approved requisition." action={<Button variant="primary" icon={Plus}>Create job</Button>} />}
-        onExport={() => {}}
+        views={live ? undefined : list.views}
+        onRowClick={live ? (r) => live.onOpen(r.id) : () => {}}
+        rowActions={
+          live
+            ? (r) => (can || (r as LiveJobRow).careersUrl ? liveActions(r as LiveJobRow) : null)
+            : () => (
+                <>
+                  <MenuItem>Copy careers link</MenuItem>
+                  <MenuItem>Put on hold</MenuItem>
+                  <MenuItem destructive>Close job</MenuItem>
+                </>
+              )
+        }
+        empty={<EmptyState title="No jobs yet." description={live && !can ? 'Jobs your company opens show here.' : 'Create a job from an approved requisition.'} action={createButton || undefined} />}
+        onExport={
+          live
+            ? (_format, keys) => {
+                // Answer 225: the visible columns as CSV (Excel opens it too); dates as "3 Nov 2026".
+                const shown = cols.filter((c) => keys.includes(c.key));
+                const text = (c: TableColumn<Job>, r: Job) => {
+                  const v = c.value(r);
+                  return v instanceof Date ? formatDate(v) : v == null ? '' : String(v);
+                };
+                downloadText(`jobs-${formatDate(now ?? new Date()).replace(/ /g, '-')}.csv`, toCsv(shown.map((c) => String(c.header)), list.rows.map((r) => shown.map((c) => text(c, r)))));
+              }
+            : () => {}
+        }
       />
+      {creating && <CreateJobSheet open onOpenChange={(o) => !o && setCreating(false)} choices={live?.create.choices} onCreate={live?.create.onCreate} onDraftDescription={live?.create.onDraftDescription} />}
+      {deleting && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setDeleting(null)}
+          size="sm"
+          title={`Delete job ${deleting.title}?`}
+          consequence="The job and its pipeline are removed. Candidates stay in your candidate list."
+          confirmLabel="Delete job"
+          destructive
+          onConfirm={async () => {
+            await live!.onDelete(deleting);
+            setDeleting(null);
+          }}
+        />
+      )}
     </HireFrame>
   );
+}
+
+export interface LivePosting extends Posting {
+  boardId: string;
+}
+
+/** The live job workspace (HIR-03, HIR-24): the job, its board postings and pay range; the page shows the toasts. */
+export interface LiveJobWorkspace {
+  state: ListState;
+  onRetry: () => void;
+  /** pipeline:manage. */
+  canManage: boolean;
+  /** The careers page link when the job is listed. */
+  careersUrl: string | null;
+  overview: { label: string; value: string; mono?: boolean }[];
+  postings: LivePosting[];
+  onPosting: (posting: LivePosting, action: 'post' | 'refresh' | 'close') => Promise<void>;
+  pay: LivePayRange;
+  onOpenPipeline: () => void;
+  onViewCareers: () => void;
+  onStatus: (to: 'open' | 'closed' | 'on_hold') => Promise<void>;
+  /** Answer 222: the recruiter and who it can be changed to (job-manage key); the API audits the change. */
+  recruiter: { id: string | null; choices: { value: string; label: string }[]; onChange: (userId: string) => Promise<void> };
 }
 
 export interface JobWorkspaceScreenProps {
@@ -1192,17 +1650,35 @@ export interface JobWorkspaceScreenProps {
   activity: TimelineItem[];
   defaultTab?: 'overview' | 'postings' | 'pay' | 'sharing';
   now?: Date;
+  live?: LiveJobWorkspace;
+  /** The Change recruiter dialog open (story). */
+  recruiterOpen?: boolean;
 }
 
 // HIR-03 (workspace)
-export function JobWorkspaceScreen({ job, postings: initial, law, range, activity, defaultTab = 'overview', now }: JobWorkspaceScreenProps) {
-  const [postings, setPostings] = useState(initial);
+export function JobWorkspaceScreen({ job, postings: initial, law, range, activity, defaultTab = 'overview', now, live, recruiterOpen = false }: JobWorkspaceScreenProps) {
+  const [own, setPostings] = useState(initial);
+  const [changing, setChanging] = useState(recruiterOpen);
   const [msg, setMsg] = useState('');
+  const postings = live ? live.postings : own;
   const act = (board: string, action: 'post' | 'refresh' | 'close') => {
+    const done = `${board}: ${action === 'close' ? 'closed' : action === 'refresh' ? 'refreshed' : 'posted'}`;
+    if (live) {
+      const p = live.postings.find((x) => x.board === board);
+      if (p) void live.onPosting(p, action).then(() => setMsg(done), () => undefined);
+      return;
+    }
     setPostings((ps) => ps.map((p) => (p.board === board ? { ...p, status: action === 'close' ? 'closed' : action === 'refresh' ? 'refreshed' : 'live', error: undefined } : p)));
-    setMsg(`${board}: ${action === 'close' ? 'closed' : action === 'refresh' ? 'refreshed' : 'posted'}`);
+    setMsg(done);
   };
   const liveCount = postings.filter((p) => p.status === 'live' || p.status === 'refreshed').length;
+  if (live && live.state !== 'ready')
+    return (
+      <HireFrame active="Jobs & requisitions">
+        {live.state === 'loading' ? <div className="yx-hire-stack" aria-busy="true" aria-label="Loading the job"><Skeleton height={56} /><Skeleton height={240} /></div> : <ErrorState title="This job could not be loaded." onRetry={live.onRetry} />}
+      </HireFrame>
+    );
+  const can = Boolean(live?.canManage);
   return (
     <HireFrame active="Jobs & requisitions">
       <RecordLayout
@@ -1210,27 +1686,50 @@ export function JobWorkspaceScreen({ job, postings: initial, law, range, activit
           <ObjectHeader
             name={job.title}
             icon={Briefcase}
-            secondary={`${job.code} · ${job.department} · ${job.location}`}
+            secondary={[job.code, job.department, job.location].filter(Boolean).join(' · ')}
             status={<Badge tone={JOB_TONE[job.status]}>{job.status}</Badge>}
             facts={[
               { label: 'Applicants', value: job.applicants },
               { label: 'In pipeline', value: job.inPipeline },
               { label: 'Live postings', value: liveCount },
-              { label: 'Hiring manager', value: job.hiringManager },
-              { label: 'Careers URL', value: `/careers/kaveri-foods/${job.slug}` },
+              { label: 'Hiring manager', value: job.hiringManager || 'Not set' },
+              { label: 'Careers URL', value: live ? (live.careersUrl ? `/careers/${live.careersUrl.split('/careers/')[1] ?? ''}` : 'Not listed') : `/careers/kaveri-foods/${job.slug}` },
             ]}
             actions={
               <>
-                <Button icon={ExternalLink}>View careers page</Button>
-                <Button variant="primary">Open pipeline</Button>
+                {(!live || live.careersUrl) && (
+                  <Button icon={ExternalLink} onClick={live?.onViewCareers}>
+                    View careers page
+                  </Button>
+                )}
+                <Button variant="primary" onClick={live?.onOpenPipeline}>
+                  Open pipeline
+                </Button>
               </>
             }
             menu={
-              <>
-                <MenuItem>Share with vendors</MenuItem>
-                <MenuItem>Put on hold</MenuItem>
-                <MenuItem destructive>Close job and all postings</MenuItem>
-              </>
+              live ? (
+                can ? (
+                  <>
+                    <MenuItem onSelect={() => setChanging(true)}>Change recruiter</MenuItem>
+                    {job.status === 'Open' && <MenuItem onSelect={() => void live.onStatus('on_hold').catch(() => undefined)}>Put on hold</MenuItem>}
+                    {job.status === 'On hold' && <MenuItem onSelect={() => void live.onStatus('open').catch(() => undefined)}>Resume job</MenuItem>}
+                    {job.status === 'Closed' && <MenuItem onSelect={() => void live.onStatus('open').catch(() => undefined)}>Reopen job</MenuItem>}
+                    {(job.status === 'Open' || job.status === 'On hold') && (
+                      <MenuItem destructive onSelect={() => void live.onStatus('closed').catch(() => undefined)}>
+                        Close job and all postings
+                      </MenuItem>
+                    )}
+                  </>
+                ) : undefined
+              ) : (
+                <>
+                  <MenuItem onSelect={() => setChanging(true)}>Change recruiter</MenuItem>
+                  <MenuItem>Share with vendors</MenuItem>
+                  <MenuItem>Put on hold</MenuItem>
+                  <MenuItem destructive>Close job and all postings</MenuItem>
+                </>
+              )
             }
           />
         }
@@ -1241,28 +1740,33 @@ export function JobWorkspaceScreen({ job, postings: initial, law, range, activit
           </>
         }
       >
-        <Tabs defaultValue={defaultTab}>
+        <Tabs defaultValue={defaultTab === 'sharing' && live ? 'overview' : defaultTab}>
           <TabsList aria-label="Job sections">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="postings" count={postings.length}>
               Job-board postings
             </TabsTrigger>
             <TabsTrigger value="pay">Pay range</TabsTrigger>
-            <TabsTrigger value="sharing">Referrals & internal</TabsTrigger>
+            {/* Live: internal jobs (HIR-13) and referral settings per job are not built yet (founder question). */}
+            {!live && <TabsTrigger value="sharing">Referrals & internal</TabsTrigger>}
           </TabsList>
           <TabsContent value="overview">
             <DescriptionList
               columns={2}
-              items={[
-                { label: 'Department', value: job.department },
-                { label: 'Designation · grade', value: `${job.title} · G6` },
-                { label: 'Location', value: job.location },
-                { label: 'Legal entity', value: 'Kaveri Foods Pvt Ltd (Tamil Nadu)' },
-                { label: 'Requisition', value: 'REQ-0142 · in plan', mono: true },
-                { label: 'Pipeline template', value: 'Engineering, 6 stages' },
-                { label: 'Scorecard', value: 'QA engineering (4 skills, pass bar 3 of 5)' },
-                { label: 'Employment type', value: job.type },
-              ]}
+              items={
+                live
+                  ? live.overview
+                  : [
+                      { label: 'Department', value: job.department },
+                      { label: 'Designation · grade', value: `${job.title} · G6` },
+                      { label: 'Location', value: job.location },
+                      { label: 'Legal entity', value: 'Kaveri Foods Pvt Ltd (Tamil Nadu)' },
+                      { label: 'Requisition', value: 'REQ-0142 · in plan', mono: true },
+                      { label: 'Pipeline template', value: 'Engineering, 6 stages' },
+                      { label: 'Scorecard', value: 'QA engineering (4 skills, pass bar 3 of 5)' },
+                      { label: 'Employment type', value: job.type },
+                    ]
+              }
             />
           </TabsContent>
           <TabsContent value="postings">
@@ -1270,24 +1774,65 @@ export function JobWorkspaceScreen({ job, postings: initial, law, range, activit
               <Text as="p" size="sm" tone="secondary">
                 Posted through your company&rsquo;s own board accounts. Board fees are your contract with the board; costs flow into recruiting costs.
               </Text>
-              <PostingStrip postings={postings} onAction={act} />
+              {live && postings.length === 0 ? (
+                <EmptyState compact title="No job boards yet." description="An admin adds your company's boards in Hiring › Job boards." />
+              ) : (
+                <PostingStrip postings={postings} onAction={!live || can ? act : undefined} />
+              )}
               <span className="yx-visually-hidden" aria-live="polite">
                 {msg}
               </span>
             </div>
           </TabsContent>
           <TabsContent value="pay">
-            <JobPayRangePanel location={job.location} law={law} defaultRange={range} />
+            <JobPayRangePanel location={job.location} law={law} defaultRange={range} live={live?.pay} />
           </TabsContent>
-          <TabsContent value="sharing">
-            <div className="yx-hire-stack">
-              <Switch className="yx-hire-switch" label="Show on internal jobs" description="Employees can apply; tests taken are hidden from their current manager." defaultChecked={job.internal} />
-              <Switch className="yx-hire-switch" label="Open for referrals" description="Referral bonus ₹25,000 after the hire completes 90 days." defaultChecked />
-            </div>
-          </TabsContent>
+          {!live && (
+            <TabsContent value="sharing">
+              <div className="yx-hire-stack">
+                <Switch className="yx-hire-switch" label="Show on internal jobs" description="Employees can apply; tests taken are hidden from their current manager." defaultChecked={job.internal} />
+                <Switch className="yx-hire-switch" label="Open for referrals" description="Referral bonus ₹25,000 after the hire completes 90 days." defaultChecked />
+              </div>
+            </TabsContent>
+          )}
         </Tabs>
       </RecordLayout>
+      {changing && (
+        <RecruiterDialog
+          current={live ? live.recruiter.id : null}
+          choices={live ? live.recruiter.choices : [{ value: 'u1', label: 'Neha Joshi' }, { value: 'u2', label: 'Imran Qureshi' }]}
+          name={job.recruiter}
+          onClose={() => setChanging(false)}
+          onSave={live ? live.recruiter.onChange : async () => undefined}
+        />
+      )}
     </HireFrame>
+  );
+}
+
+/** HIR-03 answer 222: change the job's recruiter (pressed with no change: a field error, never a disabled button). */
+function RecruiterDialog({ current, choices, name, onClose, onSave }: { current: string | null; choices: { value: string; label: string }[]; name: string; onClose: () => void; onSave: (userId: string) => Promise<void> }) {
+  const [to, setTo] = useState<string | null>(current);
+  const [tried, setTried] = useState(false);
+  const bad = !to || to === current;
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      size="sm"
+      title="Change recruiter"
+      consequence={`${name || 'Nobody'} is the recruiter now. The change is recorded with your name.`}
+      confirmLabel="Change recruiter"
+      onConfirm={async () => {
+        setTried(true);
+        if (bad) return false;
+        await onSave(to!);
+      }}
+    >
+      <FormField label="New recruiter" required error={tried && bad ? 'Choose someone other than the current recruiter.' : null}>
+        <Select aria-label="New recruiter" value={to} onChange={setTo} options={choices} searchable />
+      </FormField>
+    </ConfirmDialog>
   );
 }
 

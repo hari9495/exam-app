@@ -1,4 +1,4 @@
-import { IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Max, Min, MaxLength, MinLength, IsBoolean, IsNumber, Matches } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 // schema.org / Google-for-Jobs employmentType enum (the values a valid JobPosting accepts).
 export const EMPLOYMENT_TYPES = ['FULL_TIME', 'PART_TIME', 'CONTRACTOR', 'TEMPORARY', 'INTERN', 'VOLUNTEER', 'PER_DIEM', 'OTHER'] as const;
@@ -25,18 +25,30 @@ export class CreateJobDto {
   @IsOptional() @IsInt() @Min(1)
   headcount?: number;
 
-  @IsOptional() @IsInt()
+  @IsOptional() @IsInt() @Min(0) @Max(2_000_000_000)
   salaryMin?: number;
 
-  @IsOptional() @IsInt()
+  @IsOptional() @IsInt() @Min(0) @Max(2_000_000_000)
   salaryMax?: number;
 
-  @IsOptional() @IsString()
+  @IsOptional() @IsString() @Matches(/^[A-Z]{3}$/, { message: 'Currency is three capital letters, for example INR.' })
   salaryCurrency?: string;
 
   /** M10 AT3: show the salary range on the careers site and in Google for Jobs. */
   @IsOptional() @IsBoolean()
   showSalary?: boolean;
+
+  /** HIR-03 answer 222: the job's recruiter (a staff member of the company); default the person who opens it. */
+  @IsOptional() @IsUUID()
+  recruiterUserId?: string;
+
+  /** HIR-24: the period of the pay range. */
+  @IsOptional() @IsIn(['year', 'month', 'hour'])
+  salaryPeriod?: 'year' | 'month' | 'hour';
+
+  /** HIR-24: the application asks about current or past pay (refused where the location's law bans it). */
+  @IsOptional() @IsBoolean()
+  askPayHistory?: boolean;
 
   @IsOptional() @IsUUID()
   pipelineId?: string;

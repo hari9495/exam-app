@@ -15406,5 +15406,247 @@
       "Screens/Hiring/HIR-01 · Headcount plan board · Error"
     ],
     "note": "Positive and negative: load states and two people editing at once (version check)."
+  },
+  {
+    "id": "MT-HIR-03-01",
+    "area": "Hiring · HIR-03 Jobs and job workspace (9 Nov 2026, designed screens live)",
+    "screen": "Hiring › Jobs (list)",
+    "url": "http://localhost:3000/yx/hiring/jobs",
+    "account": "recruiter@demo-org.test (pipeline:manage); hr-tester@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Hiring › Jobs.",
+      "2. Type part of a job title in Search jobs; then clear it.",
+      "3. Filter Status: Open; then Status: Closed; then clear the filters.",
+      "4. Click a job row.",
+      "5. Back on the list, open the row menu (…) of an open job that is on the careers page and press Copy careers link; paste it in a new tab."
+    ],
+    "expected": "Step 1: the designed list (Title with department · location, Type, Status, Applicants, In pipeline, Recruiter, Posted) fits 1278 x 635 without a page scroll bar for up to about 8 jobs. Step 2: only matching jobs; clearing brings all back. Step 3: only jobs of that status; \"Clear filters\" shows all. Step 4: the job workspace opens. Step 5: toast \"Careers link copied\" (5 s); the link opens the job on the careers page. Negative: a job not on the careers page has no Copy careers link.",
+    "stories": [
+      "Screens/Hiring/HIR-03 · Jobs and job workspace"
+    ],
+    "note": "Positive and negative: search, filters, open, copy link only when listed."
+  },
+  {
+    "id": "MT-HIR-03-02",
+    "area": "Hiring · HIR-03 Jobs and job workspace (9 Nov 2026, designed screens live)",
+    "screen": "Hiring › Jobs › Create job sheet",
+    "url": "http://localhost:3000/yx/hiring/jobs",
+    "account": "recruiter@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Press Create job; press Create job in the sheet with nothing filled.",
+      "2. Enter title \"Quality Analyst\", Department Quality, Location Chennai, Pay from 6,00,000 and Pay up to 5,00,000; press Create job.",
+      "3. Change Pay up to 8,00,000; choose Why this hire: Replacement and press Create job without choosing who.",
+      "4. Choose New position; tick Outside the headcount plan, leave the reason empty and press Create job.",
+      "5. Type the reason \"New client line\"; press Create job.",
+      "6. Press Cancel on a half-filled sheet."
+    ],
+    "expected": "Step 1: \"Enter the job title.\" and the title field takes the focus; nothing is sent. Step 2: \"Must be at least the minimum.\" under Pay up to; nothing sent. Step 3: \"Choose who this hire replaces.\"; nothing sent. Step 4: \"Enter a reason of at least 3 characters.\" Step 5: the sheet closes, toast \"Job Quality Analyst created\" (or \"saved as a requisition\" when the company requisition approval is on) and the job is in the list. Step 6: asks to discard the changes first.",
+    "stories": [
+      "Screens/Hiring/HIR-03 · Jobs and job workspace"
+    ],
+    "note": "Positive and negative: every required field errors and takes the focus; the Create button is never disabled."
+  },
+  {
+    "id": "MT-HIR-03-03",
+    "area": "Hiring · HIR-03 Jobs and job workspace (9 Nov 2026, designed screens live)",
+    "screen": "Hiring › Jobs (row actions)",
+    "url": "http://localhost:3000/yx/hiring/jobs",
+    "account": "recruiter@demo-org.test; then arjun@demo-org.test (employee). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open the row menu of a draft requisition and press Send for approval.",
+      "2. Open the row menu of a job Waiting for approval and press Withdraw from approval.",
+      "3. Open the row menu of an open job and press Close job; then Reopen job.",
+      "4. Press Delete job on a test job; press Cancel; press Delete job again and confirm.",
+      "5. Sign in as arjun@demo-org.test and open /yx/hiring/jobs."
+    ],
+    "expected": "Step 1: toast \"<job> sent for approval\" (or approved when no route); status changes. Step 2: toast \"<job> withdrawn from approval\"; status Draft. Step 3: toast \"<job> closed. Its board postings close too.\" then \"<job> reopened\". Step 4: Cancel keeps it; confirming removes it with toast \"<job> deleted\". Step 5: no Hiring in the menu and the API refuses the list (403); the page never shows the jobs.",
+    "stories": [
+      "Screens/Hiring/HIR-03 · Jobs and job workspace"
+    ],
+    "note": "Positive and negative: actions follow the status; delete asks first; an employee sees nothing."
+  },
+  {
+    "id": "MT-HIR-03-04",
+    "area": "Hiring · HIR-03 Jobs and job workspace (9 Nov 2026, designed screens live)",
+    "screen": "Hiring › Jobs › one job (workspace)",
+    "url": "http://localhost:3000/yx/hiring/jobs/<job id>",
+    "account": "recruiter@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open an open job with candidates.",
+      "2. Read the header facts and the Overview tab.",
+      "3. Press Open pipeline; then go back.",
+      "4. Open the Job-board postings tab; press Post on a board that is Not posted; then Close it.",
+      "5. Open the job menu (…) and press Close job and all postings; then Reopen job."
+    ],
+    "expected": "Step 1: the designed workspace: title, status, Applicants, In pipeline, Live postings, Hiring manager, Careers URL; Activity on the right; fits 1278 x 635 without page scroll. Step 2: department, designation · grade, location, employment type, openings, requisition, pipeline template, scorecard, candidates by stage, opened (date like \"3 Nov 2026\" and by whom). Step 3: the board (pipeline page) with every earlier function: candidates, applications, interviews, offers, job settings, export. Step 4: toast \"Posted to <board>\", status Live; Close: toast \"<board> posting closed\". Step 5: toast \"<job> closed. Its board postings close too.\"; Reopen: \"<job> reopened\". Negative: with results:view only there are no Post/Close buttons and no job menu.",
+    "stories": [
+      "Screens/Hiring/HIR-03 · Jobs and job workspace"
+    ],
+    "note": "Positive and negative: everything the stand-in workspace had stays on Open pipeline."
+  },
+  {
+    "id": "MT-HIR-03-05",
+    "area": "Hiring · HIR-03 Jobs and job workspace (9 Nov 2026, designed screens live)",
+    "screen": "Hiring › Jobs (acting for someone else)",
+    "url": "http://localhost:3000/yx/hiring/jobs",
+    "account": "admin-tester@demo-org.test acting as recruiter@demo-org.test (Admin › Users › Act as). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Act as the recruiter; open Hiring › Jobs and a job.",
+      "2. Try Create job, Close job and Save pay range.",
+      "3. Stop acting."
+    ],
+    "expected": "Step 1: the list and the job show (reading is fine). Step 2: each is refused with \"Jobs cannot be changed while acting for someone else. Sign in as yourself.\" (error toast or the message in the sheet or panel); nothing changes. Step 3: as yourself the same actions work.",
+    "stories": [
+      "Screens/Hiring/HIR-03 · Jobs and job workspace"
+    ],
+    "note": "Negative: writes refused while acting for someone else."
+  },
+  {
+    "id": "MT-HIR-24-01",
+    "area": "Hiring · HIR-24 Job pay range (9 Nov 2026, founder decision 7)",
+    "screen": "Hiring › Jobs › one job › Pay range (India, company setting)",
+    "url": "http://localhost:3000/yx/hiring/jobs/<job id>",
+    "account": "recruiter@demo-org.test; hr-tester@demo-org.test for the setting. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open a Chennai job not yet on the careers page; open the Pay range tab.",
+      "2. Enter Minimum 20,00,000 and Maximum 16,00,000; press Publish job.",
+      "3. Fix Maximum to 24,00,000; switch on Show pay range; choose Per year; press Publish job.",
+      "4. Open the careers page of the job.",
+      "5. As HR set Settings › \"Hiring: show the pay range on new jobs\" to on; create a new Chennai job and open its Pay range tab."
+    ],
+    "expected": "Step 1: badge \"Company setting\"; the show switch says \"Company setting: hidden on new jobs. You can change it for this job.\"; the pay-history switch can be turned on. Step 2: \"Fix before publishing · Minimum must be less than or equal to maximum.\" and the focus goes to Minimum; nothing saved. Step 3: toast \"<job> is published on the careers page\"; the button now says Save pay range. Step 4: the range shows. Step 5: the switch is on for the new job and the text says \"shown on new jobs\".",
+    "stories": [
+      "Screens/Hiring/HIR-24 · Job pay range fields"
+    ],
+    "note": "Positive and negative: India is the company choice; minimum above maximum refused in the screen and by the API."
+  },
+  {
+    "id": "MT-HIR-24-02",
+    "area": "Hiring · HIR-24 Job pay range (9 Nov 2026, founder decision 7)",
+    "screen": "Hiring › Jobs › one job › Pay range (New York law)",
+    "url": "http://localhost:3000/yx/hiring/jobs/<job id>",
+    "account": "hr-tester@demo-org.test (adds the location); recruiter@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As HR add a location \"New York office\", country US, state US-NY (Settings › Locations).",
+      "2. As recruiter create a job at New York office and open its Pay range tab.",
+      "3. Press Publish job with the range empty.",
+      "4. Enter 95,000 and 1,20,000, currency USD; press Publish job.",
+      "5. Clear Maximum and press Save pay range."
+    ],
+    "expected": "Step 2: badge \"Set by law · New York office\"; info \"New York office has a pay-transparency law (New York pay transparency law). A pay range is required…\"; the show switch is on and cannot be changed; the pay-history switch is off, cannot be changed and says the law bans it. Step 3: \"The law for this location requires a pay range before you publish.\" and focus on Minimum; nothing saved. Step 4: toast \"<job> is published on the careers page\"; the careers page shows USD 95,000 – 1,20,000. Step 5: refused before sending; forced through the API it is refused with the law message.",
+    "stories": [
+      "Screens/Hiring/HIR-24 · Job pay range fields"
+    ],
+    "note": "Positive and negative: the law row (marked verify) wins over the company setting."
+  },
+  {
+    "id": "MT-HIR-24-03",
+    "area": "Hiring · HIR-24 Job pay range (9 Nov 2026, founder decision 7)",
+    "screen": "Hiring › Jobs › one job › Pay range (pay-history question)",
+    "url": "http://localhost:3000/yx/hiring/jobs/<job id>",
+    "account": "hr-tester@demo-org.test; recruiter@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As HR set \"Hiring: ask applicants about their current or past pay on new jobs\" to on.",
+      "2. Create a Chennai job; open Pay range.",
+      "3. Create a New York job; open Pay range.",
+      "4. Move the Chennai job to New York office (location) and open Pay range again."
+    ],
+    "expected": "Step 2: the pay-history switch is on (company setting). Step 3: it is off and disabled: \"Not allowed: the law for New York office bans pay-history questions.\" Step 4: the switch is off now; the range is shown (the law wins). Note: the public apply form does not ask the question yet (founder question 224).",
+    "stories": [
+      "Screens/Hiring/HIR-24 · Job pay range fields"
+    ],
+    "note": "Positive and negative: the question is hidden wherever the law bans it."
+  },
+  {
+    "id": "MT-HIR-24-04",
+    "area": "Hiring · HIR-24 Job pay range (9 Nov 2026, founder decision 7)",
+    "screen": "Hiring › Jobs › one job › Pay range (read-only)",
+    "url": "http://localhost:3000/yx/hiring/jobs/<job id>",
+    "account": "a user with results:view only (no pipeline:manage). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open a job and its Pay range tab.",
+      "2. Try to change Minimum."
+    ],
+    "expected": "Step 1: the range and switches show, with no Publish job or Save button. Step 2: the fields cannot be changed. Negative: a direct API change is refused (403).",
+    "stories": [
+      "Screens/Hiring/HIR-24 · Job pay range fields"
+    ],
+    "note": "Negative: read-only users cannot change the pay range."
+  },
+  {
+    "id": "MT-HIR-03-06",
+    "area": "Hiring · HIR-03 Jobs and job workspace (9 Nov 2026, founder answers 222, 223, 225, 229)",
+    "screen": "Hiring › Jobs › On hold",
+    "url": "http://localhost:3000/yx/hiring/jobs",
+    "account": "recruiter@demo-org.test; arjun@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open an open job that is on the careers page; note its careers link and apply link.",
+      "2. Row menu (…) › Put on hold.",
+      "3. Open the careers page and the apply link in a private window.",
+      "4. Open the job: check the candidates on Open pipeline.",
+      "5. Job menu (…) › Resume job; open the careers page again.",
+      "6. Put it on hold again; job menu › Close job and all postings.",
+      "7. Try Put on hold on a draft requisition (row menu)."
+    ],
+    "expected": "Step 2: toast \"<job> is on hold. It is off the careers page and job boards; candidates stay.\"; status On hold. Step 3: the job is not on the careers page; the apply link says the role is not accepting applications. Step 4: every candidate is still there. Step 5: toast \"<job> resumed\"; it is back on the careers page. Step 6: closed with toast. Step 7: a draft has no Put on hold (the API refuses it with \"Only an open job can be put on hold.\").",
+    "stories": [
+      "Screens/Hiring/HIR-03 · Jobs and job workspace"
+    ],
+    "note": "Positive and negative: hold hides, resume shows, candidates stay, drafts cannot be held."
+  },
+  {
+    "id": "MT-HIR-03-07",
+    "area": "Hiring · HIR-03 Jobs and job workspace (9 Nov 2026, founder answers 222, 223, 225, 229)",
+    "screen": "Hiring › Jobs › one job › Change recruiter",
+    "url": "http://localhost:3000/yx/hiring/jobs/<job id>",
+    "account": "recruiter@demo-org.test; hr-tester@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Create a job; open it; read Recruiter on the Overview tab and in the list.",
+      "2. As HR open the job menu (…) › Change recruiter; press Change recruiter without choosing anyone.",
+      "3. Choose another person; press Change recruiter.",
+      "4. Open Admin › Audit log and search the job.",
+      "5. As a results:view-only user open the job."
+    ],
+    "expected": "Step 1: the recruiter is the person who created the job. Step 2: \"Choose someone other than the current recruiter.\" and nothing changes. Step 3: toast \"Recruiter changed to <name>\"; the list Recruiter column shows the new name. Step 4: an entry \"job.recruiter_changed\" with from and to and who did it. Step 5: no job menu.",
+    "stories": [
+      "Screens/Hiring/HIR-03 · Jobs and job workspace"
+    ],
+    "note": "Positive and negative: default, change with the job-manage key, audited, refused for others."
+  },
+  {
+    "id": "MT-HIR-03-08",
+    "area": "Hiring · HIR-03 Jobs and job workspace (9 Nov 2026, founder answers 222, 223, 225, 229)",
+    "screen": "Hiring › Jobs (job numbers and export)",
+    "url": "http://localhost:3000/yx/hiring/jobs",
+    "account": "recruiter@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Read the Job column of the list.",
+      "2. Create two jobs quickly one after another.",
+      "3. Delete the newest job; create another.",
+      "4. Hide the Type column (column menu); Export › CSV (visible columns); open the file."
+    ],
+    "expected": "Step 1: JOB-0001 style numbers, oldest job lowest. Step 2: the two get the next two numbers. Step 3: the new job gets a new number; the deleted number is never given again. Step 4: the file has the visible columns only (no Type), dates like \"3 Nov 2026\", and the job numbers.",
+    "stories": [
+      "Screens/Hiring/HIR-03 · Jobs and job workspace"
+    ],
+    "note": "Positive and negative: numbers never repeat; export follows the visible columns."
+  },
+  {
+    "id": "MT-HIR-03-09",
+    "area": "Hiring · HIR-03 Jobs and job workspace (9 Nov 2026, founder answers 222, 223, 225, 229)",
+    "screen": "Hiring › Jobs › Create job (outside India)",
+    "url": "http://localhost:3000/yx/hiring/jobs",
+    "account": "hr-tester@demo-org.test (adds a US legal entity and location); recruiter@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As HR add a legal entity with country US and a location \"Boston office\" under it.",
+      "2. Through the API (or a company without locations) create a job of the US entity with a free-text location \"Boston\".",
+      "3. Create it with location Boston office.",
+      "4. Create a job of the Indian entity with a free-text place \"Madurai\"."
+    ],
+    "expected": "Step 2: refused: \"A job outside India needs a location from your company locations. Choose one.\" Step 3: created. Step 4: created (India unchanged).",
+    "stories": [
+      "Screens/Hiring/HIR-03 · Jobs and job workspace"
+    ],
+    "note": "Positive and negative: answer 229."
   }
 ]

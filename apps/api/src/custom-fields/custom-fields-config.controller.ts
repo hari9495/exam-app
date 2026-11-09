@@ -3,7 +3,7 @@ import { CustomFieldDefinition } from '@prisma/client';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { RequirePermissions } from '../rbac/permissions.decorator';
+import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CustomFieldsService } from './custom-fields.service';
 import { CreateCustomFieldDto, CF_ENTITY_TYPES } from './dto/create-custom-field.dto';
@@ -42,6 +42,18 @@ export function toResponse(def: CustomFieldDefinition) {
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class CustomFieldsConfigController {
   constructor(private readonly service: CustomFieldsService) {}
+
+  /**
+   * The active field definitions the hiring forms show (job form, candidate pages). Reading them follows the hiring keys
+   * (results:view, or pipeline:manage that ats.job.manage / ats.candidate.manage stand in for company-wide); managing them
+   * stays with settings (org:manage_settings) below.
+   */
+  @Get('in-use')
+  @RequireAnyPermission('results:view', 'pipeline:manage')
+  async inUse(@CurrentTenant() tenant: TenantContext, @Query('entityType') entityType: string) {
+    if (!CF_ENTITY_TYPES.includes(entityType as any)) throw new BadRequestException('entityType must be candidate or job');
+    return (await this.service.list(tenant, entityType as 'candidate' | 'job', false)).map(toResponse);
+  }
 
   @Get()
   @RequirePermissions('org:manage_settings')

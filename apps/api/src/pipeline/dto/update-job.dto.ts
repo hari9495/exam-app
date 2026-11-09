@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Min, MaxLength, MinLength, IsNumber, Matches } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { EMPLOYMENT_TYPES } from './create-job.dto';
 
 export class UpdateJobDto {
@@ -14,8 +14,9 @@ export class UpdateJobDto {
   @IsOptional() @IsIn(EMPLOYMENT_TYPES as unknown as string[])
   employmentType?: string;
 
-  @IsOptional() @IsIn(['open', 'closed'])
-  status?: 'open' | 'closed';
+  /** HIR-03 answer 223: on_hold hides the job from the careers site, applications and boards; candidates stay. */
+  @IsOptional() @IsIn(['open', 'closed', 'on_hold'])
+  status?: 'open' | 'closed' | 'on_hold';
 
   @IsOptional() @IsBoolean()
   publicApplyEnabled?: boolean;
@@ -26,6 +27,18 @@ export class UpdateJobDto {
   /** M10 AT3: show the salary range on the careers site and in Google for Jobs. */
   @IsOptional() @IsBoolean()
   showSalary?: boolean;
+
+  /** HIR-03 answer 222: the job's recruiter (a staff member of the company); default the person who opens it. */
+  @IsOptional() @IsUUID()
+  recruiterUserId?: string;
+
+  /** HIR-24: the period of the pay range. */
+  @IsOptional() @IsIn(['year', 'month', 'hour'])
+  salaryPeriod?: 'year' | 'month' | 'hour';
+
+  /** HIR-24: the application asks about current or past pay (refused where the location's law bans it). */
+  @IsOptional() @IsBoolean()
+  askPayHistory?: boolean;
 
   @IsOptional() @IsString() @MaxLength(5000)
   fitCriteria?: string;
@@ -42,13 +55,13 @@ export class UpdateJobDto {
   @IsOptional() @IsInt() @Min(1)
   headcount?: number;
 
-  @IsOptional() @IsInt()
+  @IsOptional() @IsInt() @Min(0) @Max(2_000_000_000)
   salaryMin?: number;
 
-  @IsOptional() @IsInt()
+  @IsOptional() @IsInt() @Min(0) @Max(2_000_000_000)
   salaryMax?: number;
 
-  @IsOptional() @IsString()
+  @IsOptional() @IsString() @Matches(/^[A-Z]{3}$/, { message: 'Currency is three capital letters, for example INR.' })
   salaryCurrency?: string;
 
   @IsOptional() @IsObject()

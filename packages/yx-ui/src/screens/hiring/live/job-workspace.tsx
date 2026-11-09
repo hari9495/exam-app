@@ -24,7 +24,7 @@ import type { BoardRowView, BoardStageView, Choice, EmailCompose, EmailTemplateC
 // Replaces the older /v2/jobs/:id page. Moving a card to Rejected asks for a reason and the message; the message waits
 // 24 hours by default so the rejection can be undone.
 
-const STATUS_LABEL: Record<JobView['status'], string> = { draft: 'Draft requisition', pending_approval: 'Waiting for approval', open: 'Open', closed: 'Closed' };
+const STATUS_LABEL: Record<JobView['status'], string> = { draft: 'Draft requisition', pending_approval: 'Waiting for approval', open: 'Open', on_hold: 'On hold', closed: 'Closed' };
 const when = (iso: string) => new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 
 export function scorecardText(s: BoardRowView['scorecards']): string | null {

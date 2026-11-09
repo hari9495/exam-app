@@ -19,6 +19,7 @@ const STATUS_PILL: Record<JobStatus, { c: string; label: string }> = {
   draft: { c: 'var(--muted)', label: 'Draft' },
   pending_approval: { c: STATUS.warn, label: 'Pending approval' },
   open: { c: STATUS.ok, label: 'Open' },
+  on_hold: { c: STATUS.warn, label: 'On hold' },
   closed: { c: 'var(--muted)', label: 'Closed' },
 };
 const SOURCE_LABEL: Record<string, string> = { manual: 'Manual', exam: 'Exam', application: 'Application', drive: 'Drive' };

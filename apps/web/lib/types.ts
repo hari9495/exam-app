@@ -430,7 +430,8 @@ export interface WalkInGroup {
   jobId: string | null;
 }
 
-export type JobStatus = 'draft' | 'pending_approval' | 'open' | 'closed';
+/** HIR-03 answer 223: on_hold hides the job from careers and boards; candidates stay. */
+export type JobStatus = 'draft' | 'pending_approval' | 'open' | 'on_hold' | 'closed';
 
 // --- Configurable pipeline config types (Phase A, Task 9) ---
 // Mirrors apps/api/src/pipeline/pipelines.service.ts + apps/api's PipelineWithStages/Board.
@@ -553,6 +554,8 @@ export interface CareersJob {
   salaryMin: number | null;
   salaryMax: number | null;
   salaryCurrency: string | null;
+  /** HIR-24: year, month or hour (older API: year). */
+  salaryPeriod?: string;
   company?: { name: string; slug: string | null } | null;
   postedAt?: string;
 }

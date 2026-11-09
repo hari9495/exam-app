@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { apiFetch } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
-import YxHiringJobPage from './(app)/hiring/jobs/[id]/page';
+import YxHiringJobPage from './(app)/hiring/jobs/[id]/pipeline/page';
 import YxInterviewPage from './(app)/hiring/interviews/[id]/page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn() }));

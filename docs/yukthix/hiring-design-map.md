@@ -9,10 +9,10 @@ was built.
 
 ## What is live today (plain English)
 
-- **Almost none of the Hiring designs are live.** Of 221 design stories (HIR-01 … 31, the careers site, candidate
-  identity check and the hiring settings), exactly **one** is live with its design: the "Request a hire" sheet (HIR-02
-  NewRequisition), which People › My team (/yx/people/team) renders with `live` and sends to `POST jobs/requisitions`. Since 9 Nov 2026 (branch `feat/yukthix-hir-01`) HIR-01, the headcount plan board, is live too: all 11 of
-  its stories (section 4).
+- **Few Hiring designs are live yet.** The "Request a hire" sheet (HIR-02 NewRequisition) on People › My team; HIR-01,
+  the headcount plan board (all 10 stories); and HIR-03 Jobs list, Create job sheet and job workspace on /yx/hiring/jobs and
+  /yx/hiring/jobs/[id], with the HIR-24 pay range by location law (one story live with a gap: the apply form has no
+  pay-history question). Counts in the table below.
 - **Hiring itself works, but on stand-in screens.** The 14 pages under /yx/hiring render the older "Live ·" screens from
   `packages/yx-ui/src/screens/hiring/live/*` (the package path `@yukthix/ui/hiring` points there). None of them passes a
   `live` prop to a designed HIR screen. The design-live guard already lists all 14 as `liveCopies` and every HIR screen
@@ -27,7 +27,7 @@ was built.
   AI interview review (HIR-08), notetaker and recording consent (HIR-25), candidate identity checks (HIR-22, T9-15),
   bias audit (HIR-23), BGV partner checks (HIR-10), offer versions, employer costs and conditions (HIR-09, HIR-29),
   bulk interview day and bulk offers (HIR-27, 28), interview slot finder from calendars (HIR-06), CRM sequences and
-  sourced profiles (HIR-20), pay-transparency law rules (HIR-24).
+  sourced profiles (HIR-20). (Pay-transparency law rules, HIR-24, went live 9 Nov 2026.)
 - **The public careers site** (/careers/[org], /careers/[org]/jobs/[slug], /apply/[token]) is hand-written pages, not the
   designed T9-09 screens, and there are **two designs for it** (T9-09 and the older Surfaces/Careers kit; section 5).
 
@@ -42,17 +42,17 @@ built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Plans, requisitions, jobs and costs | 4 | 12 | 0 | 18 | 0 | 0 | 30 |
+| A. Plans, requisitions, jobs and costs | 4 | 20 | 0 | 12 | 0 | 0 | 32 |
 | B. Candidates, pipeline and interviews | 6 | 0 | 0 | 21 | 13 | 1 | 35 |
 | C. Offers, BGV and joining | 4 | 0 | 0 | 13 | 12 | 0 | 25 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 0 | 0 | 11 | 7 | 4 | 22 |
 | E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
-| F. Compliance and fairness | 5 | 0 | 0 | 3 | 22 | 0 | 25 |
+| F. Compliance and fairness | 5 | 4 | 1 | 0 | 20 | 0 | 25 |
 | G. Careers site, portals and settings | 4 | 0 | 0 | 30 | 11 | 0 | 41 |
-| **All Hiring design groups (A–G)** | **35** | **12** | **0** | **100** | **109** | **5** | **226** |
-| H. Kit and "Live ·" groups (not designs; own line) | 6 | 23 | 0 | 7 | 5 | 0 | 35 |
+| **All Hiring design groups (A–G)** | **35** | **24** | **1** | **91** | **107** | **5** | **228** |
+| H. Kit and "Live ·" groups (not designs; own line) | 5 | 19 | 0 | 7 | 5 | 0 | 31 |
 
-Recounted by script 9 Nov 2026 on `feat/yukthix-hir-01` after HIR-01 went live (five new HIR-01 design stories, the last the plain no-access state added 10 Nov 2026; the stand-in's Plans and NoPlans stories deleted). First counted by script 9 Nov 2026 on `feat/yukthix-hiring-design-map` (the script is in the appendix): every `export const`
+Recounted by script 9 Nov 2026 on `feat/yukthix-hir-03-24` after HIR-01 (four new stories, Plans and NoPlans deleted), HIR-03 and HIR-24 went live and the HIR-03 follow-ups added the Change recruiter story (HIR-03 gained the Create job sheet story; the "Live · Jobs" stand-in and its 4 stories were deleted). First counted (the script is in the appendix): every `export const`
 story with a capital first letter (the lower-case exports are sample props, excluded from Storybook by
 `excludeStories`) in the 31 `hir-NN-*.stories.tsx` files, `hiring-kit.stories.tsx`, the five `hiring/live/*.stories.tsx`,
 `portals/t9-09-careers.stories.tsx`, `portals/t9-15-identity.stories.tsx`, `stories/careers.stories.tsx` and the hiring
@@ -92,8 +92,9 @@ the web page.
 | page | screen it renders | design | API (permission) | verdict |
 |---|---|---|---|---|
 | /yx/hiring/plans | `HeadcountPlanScreen` with `live` (designed) | HIR-01 | `GET hiring/plans` (`ats.headcount.manage` or `ats.requisition.raise`), `POST/PUT hiring/plans`, `POST hiring/plans/:id/submit` (`ats.headcount.manage`), `GET hiring/plan-lines` | live |
-| /yx/hiring/jobs | `HiringJobsScreen` (stand-in): jobs and requisitions in one list, new job / requisition drawer with pay range | HIR-02, HIR-03 list, HIR-24 | `GET/POST jobs`, `POST jobs/requisitions`, `PATCH/DELETE jobs/:id`, `POST jobs/:id/submit`, `/approval/cancel` (`pipeline:manage`) | wire design |
-| /yx/hiring/jobs/[id] | `JobWorkspaceScreen` + `ApplicationPanel` (stand-ins): board, application, interviews, offers, feedback | HIR-03 workspace, HIR-04, HIR-09 | `GET hiring/jobs/:id/board` (`results:view`), `POST hiring/entries/:id/move`, `/reject`, `/reject/undo`, `hiring/entries/bulk`, `PUT hiring/jobs/:id/scorecard` (`pipeline:manage`), `POST/GET pipeline/entries/:id/offers`, `/interviews`, `offers/:id/send`, `/submit`, `/withdraw` (`pipeline:manage`) | wire design |
+| /yx/hiring/jobs | `JobsScreen` with `live` (designed, 9 Nov 2026): jobs and requisitions in one list, Create job sheet with pay range | HIR-02, HIR-03 list, HIR-24 | `GET/POST jobs`, `GET jobs/pay-settings`, `PATCH/DELETE jobs/:id`, `POST jobs/:id/submit`, `/approval/cancel` (`pipeline:manage`; refused while acting for someone else) | live |
+| /yx/hiring/jobs/[id] | `JobWorkspaceScreen` with `live` (designed, 9 Nov 2026): overview, postings, pay range | HIR-03 workspace, HIR-24 | `GET jobs/:id` (`results:view`), `PATCH jobs/:id` (`pipeline:manage`) | live |
+| /yx/hiring/jobs/[id]/pipeline | `JobWorkspaceScreen` + `ApplicationPanel` (stand-ins, moved from /jobs/[id]): board, application, interviews, offers, feedback, job settings | HIR-04, HIR-09 | `GET hiring/jobs/:id/board` (`results:view`), `POST hiring/entries/:id/move`, `/reject`, `/reject/undo`, `hiring/entries/bulk`, `PUT hiring/jobs/:id/scorecard` (`pipeline:manage`), `POST/GET pipeline/entries/:id/offers`, `/interviews`, `offers/:id/send`, `/submit`, `/withdraw` (`pipeline:manage`) | wire design |
 | /yx/hiring/candidates | `HiringCandidatesScreen` (stand-in) | none (section 2) | `GET candidates`, `POST candidates`, CSV, email | no design |
 | /yx/hiring/candidates/[id] | `CandidateProfileScreen` (stand-in) | HIR-05 | `GET hiring/candidates/:id`, `PUT …/legal-hold` (`candidate:data_rights`), `POST …/consents/withdraw` | wire design |
 | /yx/hiring/duplicates | `DuplicatesScreen` (stand-in) | HIR-05 Merge | `GET hiring/duplicates`, `POST hiring/candidates/:id/merge` (`candidate:manage`) | wire design |
@@ -181,17 +182,29 @@ Live page: /yx/hiring/jobs (menu Hiring › Jobs & requisitions) lists requisiti
 
 #### HIR-03 · Jobs and job workspace
 
-Live pages: /yx/hiring/jobs (`HiringJobsScreen`) and /yx/hiring/jobs/[id] (`JobWorkspaceScreen`), stand-ins. Designed:
-`JobsScreen`, `JobWorkspaceScreen` (hiring-plan.tsx; same name as the stand-in, different file).
+Live 9 Nov 2026 (branch `feat/yukthix-hir-03-24`): /yx/hiring/jobs renders the designed `JobsScreen` with `live`, and
+/yx/hiring/jobs/[id] the designed `JobWorkspaceScreen` (hiring-plan.tsx) with `live`. The stand-in list (`HiringJobsScreen`)
+is deleted; the stand-in workspace (board, applications, job settings) moved to /yx/hiring/jobs/[id]/pipeline ("Open
+pipeline") until HIR-04 is wired. Founder answers 222, 223, 225 and 229 built the same day (migration 202617c0000001):
+a Recruiter on every job (default who opened it; Change recruiter in the job menu, `pipeline:manage`, audited
+`job.recruiter_changed`), On hold (status `on_hold`: off the careers site, public applications and job boards, which all
+read status `open`; the board sync retracts paid postings; candidates stay; Resume or Close), company job numbers
+(JOB-0001 on, per company, from the `job_number_counters` row lock, never reused) on the list and the workspace, Export of
+the visible columns as CSV, and a location from the masters for jobs of a legal entity outside India. Still waiting:
+saved views (225), the Referrals & internal tab and Share with vendors (226). The job form and the candidate pages read the custom field definitions from
+`GET custom-fields/in-use` (results:view or pipeline:manage; ats.job.manage counts), so recruiters see them; the settings
+list `GET custom-fields` stays `org:manage_settings` and is no longer called by these pages (it was refused for recruiters).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| List · Jobs list | wire design | `GET jobs` |
-| Workspace · Job workspace · overview | wire design | `GET jobs/:id`, stage summary |
-| Postings · Job workspace · board postings (one failed) | wire design | `JobBoardPublication` rows from `organizations/job-boards`; a failed posting status is stored |
-| Empty · Empty | wire design | no jobs |
-| Loading · Loading | wire design | while loading |
-| Error · Error | wire design | API fails |
+| List · Jobs list | live | `GET jobs` (`results:view`); job numbers, filters, search, Export CSV of the visible columns; row menu: copy careers link, send for approval, withdraw, put on hold, resume, close, reopen, delete (`pipeline:manage`); Recruiter column; saved views wait (225) |
+| Workspace · Job workspace · overview | live | `GET jobs/:id` with `payLaw` and `postings`; job number; recruiter; stage counts from `GET jobs`; put on hold, resume, close, reopen; Open pipeline |
+| Postings · Job workspace · board postings (one failed) | live | `postings` (every company board, its publication status and error); post, refresh, retry, close by `PATCH jobs/:id jobBoardIds` |
+| Empty · Empty | live | no jobs |
+| Loading · Loading | live | while `GET jobs` loads |
+| Error · Error | live | `GET jobs` fails |
+| CreateJob · Create job sheet | live | added 9 Nov 2026 (the stand-in's new-job form, drawn from the kit): `POST jobs`; pay fields, plan line, replacement, custom fields, AI draft; outside India the API needs a location from the masters (229) |
+| ChangeRecruiter · Job workspace · change recruiter | live | added 9 Nov 2026 (answer 222): `PATCH jobs/:id recruiterUserId` (`pipeline:manage`), audited; pressed with no change: field error |
 
 #### HIR-11 · Recruiting costs entry
 
@@ -516,16 +529,21 @@ HIR-21 overlaps with the recruitment-agency feature that exists (Agency, AgencyJ
 
 #### HIR-24 · Job pay range fields
 
-Live page: the new-job drawer of /yx/hiring/jobs (stand-in) has `salaryMin`, `salaryMax`, currency and "show salary".
-Designed: `JobPayRangePanel`.
+Live 9 Nov 2026: the Pay range tab of /yx/hiring/jobs/[id] renders the designed `JobPayRangePanel` with `live`. The law
+comes from the rule set `HIR.PAY_TRANSPARENCY` (statutory_rule_sets, every row `verify`; migration 202617c0000000): India
+(none), US-NY, US-CA, US-CO, US-WA, US-IL and the EU directive (a country list), matched by the location's state code, then
+country, then list. Where no row applies, the company settings `hiring.pay_range.show` (default off) and
+`hiring.pay_history.ask` (default off) decide (tenant, legal entity or location). The API refuses: minimum above maximum,
+hiding the range or asking pay history where the law says so, publishing (careers, public applications or a board) without
+both ends where required. Jobs now keep `salaryPeriod` and `askPayHistory`.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| RequiredMissing · Required by law · missing, publish blocked | design only, feature not built | no pay-transparency rule by location |
-| RequiredFilled · Required by law · filled, pay-history banned | design only, feature not built | same; no pay-history question to hide |
-| CompanySetting · Company setting · range shown | wire design | `Job.showSalary`, `salaryMin/Max` |
-| InvalidRange · Error · minimum above maximum | wire design | the stand-in checks it; API should refuse it too |
-| InWorkspace · In the job workspace | wire design | /yx/hiring/jobs/[id] |
+| RequiredMissing · Required by law · missing, publish blocked | live | New York location: Publish shows the issues and focuses Minimum; the API refuses too |
+| RequiredFilled · Required by law · filled, pay-history banned | live (gap) | the switch is off and locked and the API refuses it; the public apply form does not ask the question yet (question 224) |
+| CompanySetting · Company setting · range shown | live | India: the switch follows `showSalary`, its text the company setting |
+| InvalidRange · Error · minimum above maximum | live | the screen and `PATCH jobs/:id` refuse it |
+| InWorkspace · In the job workspace | live | /yx/hiring/jobs/[id] › Pay range |
 
 #### HIR-25 · Interview notetaker consent
 
@@ -676,15 +694,6 @@ a design, BUILD-STANDARD rule 1). Each "Live ·" story is deleted with its stand
 | MyInterviews · MyInterviews | live | /yx/hiring/interviews; goes with HIR-06 |
 | Scorecards · Scorecards | live | /yx/hiring/scorecards; goes with Settings 6.1 |
 
-#### Live · Jobs
-
-| story (sub-page) | verdict | note |
-|---|---|---|
-| List · List | live | /yx/hiring/jobs; goes with HIR-02 / 03 |
-| ReadOnly · ReadOnly | live | `results:view` only |
-| Empty · Empty | live | no jobs |
-| NoMasters · NoMasters | live | no departments / designations yet |
-
 #### Live · Plans and approvals
 
 | story (sub-page) | verdict | note |
@@ -696,7 +705,7 @@ a design, BUILD-STANDARD rule 1). Each "Live ·" story is deleted with its stand
 | job | design 1 | design 2 | suggestion |
 |---|---|---|---|
 | Public careers site and apply | T9-09 (`portals/t9-candidate.tsx`, 8 stories) | Surfaces/Careers (`components/careers.tsx`, 18 stories, with the page builder and apply form) | keep T9-09 for the public pages, Surfaces/Careers' page builder for the admin page; drop the other half (question 8) |
-| Job workspace | `JobWorkspaceScreen` in `hiring-plan.tsx` (HIR-03) | `JobWorkspaceScreen` in `live/job-workspace.tsx` (stand-in) | same name, two files: rename nothing; delete the stand-in when HIR-03 is wired |
+| Job workspace | `JobWorkspaceScreen` in `hiring-plan.tsx` (HIR-03, live at /yx/hiring/jobs/[id]) | `JobWorkspaceScreen` in `live/job-workspace.tsx` (stand-in, now /yx/hiring/jobs/[id]/pipeline) | same name, two files: rename nothing; delete the stand-in when HIR-04 is wired |
 | Pools and postings | HIR-20 Talent CRM tabs | HIR-03 Postings tab | both read the same publications; one source of truth (the API), two views is fine |
 
 ## 6. Questions for the founder (before building)
@@ -835,6 +844,33 @@ pages, Surfaces/Careers for the admin page builder; (9) draw the candidate list 
 wire them; (10) draw the candidate pages outside the app (status, portal, offer accept, interview booking) in the T9-09
 portal style; (11) hiring managers see their own department's plan and their own requisitions, read-only.
 
+## Founder questions from the HIR-03 / HIR-24 build (9 Nov 2026)
+Each has a safe default already built; the suggestion is the answer we propose.
+221. **Show the pay range by default in India?** Built: company setting `hiring.pay_range.show`, default **off** (today's
+     behaviour; the design's "YukthiX starter: on" text now shows the company's own setting). *Suggested: keep off; HR
+     switches it on per company, entity or location.*
+222. **Recruiter column.** A job has no recruiter field; the list shows who opened the job. *Suggested: add a Recruiter
+     field on the job (default: the person who opens it), changeable by HR.*
+223. **"Put on hold" (list and workspace menus).** Not built: jobs have no on-hold status. *Suggested: add "On hold":
+     hides the job from the careers page and boards, keeps the candidates, and reopens in one click.*
+224. **Pay-history question on the apply form.** Built: the per-job switch, the company default (`hiring.pay_history.ask`,
+     off) and the law check (refused where banned). The public apply form does not ask the question yet. *Suggested: add
+     it with the T9-09 apply page, never shown where the law bans it.*
+225. **Job codes, saved views ("My open jobs") and Export in the designed list.** Not built (no job number, no saved-view
+     store); hidden in live. *Suggested: a company job number (JOB-0001 onwards), saved views when the kit's view store
+     exists, Export of the visible columns.*
+226. **Referrals & internal tab and "Share with vendors".** Hidden in live until HIR-12, HIR-13 and HIR-21 are built.
+     *Suggested: wire them with those pages.*
+227. **What moved.** The old list's "Pipeline" column (candidates per stage) is now "Candidates by stage" in the job
+     overview; the list shows Applicants and In pipeline. The old workspace (board, applications, job settings, careers
+     toggles, fit criteria, tests, export) is on "Open pipeline" (/yx/hiring/jobs/[id]/pipeline). *Suggested: keep until
+     HIR-04 replaces the board.*
+228. **Which law rows.** Built: India (none), New York, California, Colorado, Washington, Illinois and the EU directive, all
+     marked verify; employer-size limits (15 or more staff in CA, WA, IL) are not modelled, so the rule applies to every
+     company there. *Suggested: counsel checks each row; add a size limit only if a customer is below it.*
+229. **A job with a free-text location** (no P01 location) has no law applied. *Suggested: require a location from the
+     masters for jobs outside India.*
+
 Founder approved, 9 Nov 2026 (questions 201-207, 211-216, 221-229, all as suggested):
 - Referrals and costs: (201) no referral credit when the person applied on their own in the last N days, N a company setting
   (default 90); (202) a new hiring key for recruiting costs, given to HR and recruiters; (203) payroll posts a referral-bonus
@@ -850,3 +886,16 @@ Founder approved, 9 Nov 2026 (questions 201-207, 211-216, 221-229, all as sugges
   columns; (226) Referrals & internal tab and Share with vendors wired with HIR-12, HIR-13 and HIR-21; (227) keep the old
   workspace behind Open pipeline until HIR-04; (228) counsel checks every pay-law row (GO-LIVE-CHECKLIST), size limits only
   if a customer needs them; (229) jobs outside India need a location from the masters.
+
+## Founder questions from the HIR-03 follow-ups (9 Nov 2026)
+241. **Export menu offers "Excel" too.** The kit's table always shows CSV and Excel; both download the same CSV file
+     (Excel opens it). *Suggested: keep one file; later add an `exportFormats` option to the kit table to show CSV only.*
+242. **On hold and a job's public link.** On hold, the apply link answers "This role is not accepting applications" and the
+     careers page drops the job; candidates already in the pipeline keep moving. *Suggested: keep; tell applicants nothing
+     extra.*
+243. **Job numbers of older jobs.** Existing jobs (deleted ones too) were numbered by the date they were opened, so a
+     company's numbers start at JOB-0001 for its oldest job. *Suggested: keep.*
+244. **"Outside India" is decided by the job's legal entity** (or the company's default entity when none is chosen). A job
+     of an Indian entity may still use a free-text place abroad. *Suggested: also require a master location whenever the
+     job's place is outside India, once locations carry a country for every company.*
+
