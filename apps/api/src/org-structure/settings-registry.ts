@@ -231,6 +231,10 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // HIR-02 founder answer 291 (Settings 6.1): a hiring manager's request starts with this recruiter, or with none until
   // recruiting assigns one; never the manager themselves. The value is a person of the company (or none).
   'hiring.requisition.default_recruiter': { label: 'Hiring: default recruiter for new requisitions', scopes: ['tenant'], dated: false, values: ['none'], default: 'none', oneOf: 'company_users' },
+  // HIR-28 bulk offers: an offer beyond the free places on the job's headcount-plan line is held (not made) until the plan
+  // is revised (starter), or the check is off. A bulk offer expires this many days after it is sent (never after joining).
+  'hiring.bulk_offer.plan_check': { label: 'Hiring: bulk offers beyond the free places on the plan line', scopes: ['tenant'], dated: false, values: ['hold', 'off'], default: 'hold', labels: { hold: 'Are held until the plan is revised', off: 'Are not checked against the plan' } },
+  'hiring.offer.expiry_days': { label: 'Hiring: a bulk offer expires after (days)', scopes: ['tenant'], dated: false, values: ['3', '5', '7', '10', '14', '30'], default: '7' },
   'home.pay_on_employee_home': { label: 'Show net pay on the employee home', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // P02 §4.5 fraud guard: a new bank account is used for payouts only after this cooling period (starter, D17).
   'employee.bank_change.cooling_hours': { label: 'New bank accounts are used for pay after (hours)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '24', '48', '72'], default: '48', guard: 'access.role.manage' },

@@ -77,3 +77,12 @@ describe('HIR-09 answer 334: joining bonus clawback at the last day', () => {
     expect(clawbackDue('365000', '2026-01-01', '2026-12-31', 12, 'pro_rata').toString()).toBe('0');
   });
 });
+
+describe('HIR-28 plan check', () => {
+  it('holds the rows beyond the free places; no plan line (or the check off) holds none', () => {
+    const { planHolds } = jest.requireActual('./offer-rules') as typeof import('./offer-rules');
+    expect([0, 1, 2].map((i) => planHolds(i, 2))).toEqual([false, false, true]);
+    expect(planHolds(0, 0)).toBe(true);
+    expect(planHolds(99, null)).toBe(false);
+  });
+});

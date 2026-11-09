@@ -95,3 +95,6 @@ export function clawbackDue(bonus: Prisma.Decimal.Value, joinedOn: string, lastD
   const unserved = (end.getTime() - left.getTime()) / 86_400_000 - 1; // the last day itself was served
   return n(bonus).mul(Math.max(0, unserved)).div(total).toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP);
 }
+
+/** HIR-28: a row beyond the free places on the plan line is held (rows are taken in the order the screen lists them). */
+export const planHolds = (index: number, free: number | null) => free !== null && index >= free;

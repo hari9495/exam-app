@@ -102,7 +102,7 @@ export class OfferBuilderService implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ reads
 
-  private async entry(tx: Tx, org: string, entryId: string) {
+  async entry(tx: Tx, org: string, entryId: string) {
     const e = await tx.pipelineEntry.findFirst({ where: { organizationId: org, id: entryId }, include: { candidate: true, job: true } });
     if (!e || e.job.deletedAt) throw new NotFoundException('No such application.');
     return e;
@@ -115,7 +115,7 @@ export class OfferBuilderService implements OnModuleInit {
   }
 
   /** The grade's pay range for the job's legal entity on a day (founder rule R1: read here, shown only with the pay key). */
-  private async band(tx: Tx, org: string, gradeId: string | null, legalEntityId: string | null, on: string) {
+  async band(tx: Tx, org: string, gradeId: string | null, legalEntityId: string | null, on: string) {
     if (!gradeId || !legalEntityId) return null;
     const day = new Date(`${on}T00:00:00Z`);
     const r = await tx.gradePayRange.findFirst({ where: { organizationId: org, gradeId, legalEntityId, validFrom: { lte: day }, OR: [{ validTo: null }, { validTo: { gte: day } }] }, orderBy: { validFrom: 'desc' } });
@@ -123,7 +123,7 @@ export class OfferBuilderService implements OnModuleInit {
   }
 
   /** Salary structures the job's legal entity can use on a day: the latest version of each active template. */
-  private async structuresFor(tx: Tx, org: string, legalEntityId: string | null, on: string) {
+  async structuresFor(tx: Tx, org: string, legalEntityId: string | null, on: string) {
     const ts = await tx.salaryTemplate.findMany({ where: { organizationId: org, status: 'active', OR: [{ legalEntityId: null }, ...(legalEntityId ? [{ legalEntityId }] : [])] }, orderBy: { name: 'asc' } });
     const out: { value: string; label: string }[] = [];
     for (const t of ts) {
@@ -231,7 +231,7 @@ export class OfferBuilderService implements OnModuleInit {
   }
 
   /** The route the builder shows before sending: the chain's steps and, when above the range, the extra step. */
-  private async routePreview(tx: Tx, c: CompanyContext, job: { hiringManagerId: string | null; legalEntityId: string | null }, sender: string | null) {
+  async routePreview(tx: Tx, c: CompanyContext, job: { hiringManagerId: string | null; legalEntityId: string | null }, sender: string | null) {
     const steps = await this.chainSteps(tx, c.organizationId, null, sender);
     const band = await this.bandApprovers(tx, c, job, sender);
     const ids = [...new Set([...steps.flatMap((s) => (s.approvers[0] as { userIds: string[] }).userIds), ...band.ids])];
@@ -264,7 +264,7 @@ export class OfferBuilderService implements OnModuleInit {
     };
   }
 
-  async create(ctx: TenantContext, user: ScopeUser, dto: OfferCreateDto) {
+  async create(ctx: TenantContext, user: ScopeUser, dto: OfferCreateDto, opts: { batchId?: string } = {}) {
     const v = await this.viewer(user);
     this.needPay(v);
     this.checkDates(dto);
@@ -277,7 +277,7 @@ export class OfferBuilderService implements OnModuleInit {
       const letter = await this.letterOf(tx, org, dto.templateId);
       const pay = { annualCtc: dto.annualCtc, variablePay: w.variablePay, joiningBonus: w.joiningBonus, clawbackMonths: w.clawbackMonths };
       const offer = await tx.offer.create({
-        data: { organizationId: org, pipelineEntryId: e.id, candidateId: e.candidateId, compensation: compensationText(pay), startDate: new Date(dto.startDate), expiresAt: new Date(dto.expiresAt), status: 'draft', letterSubject: letter.subject, letterBody: letter.body, templateId: letter.id, gradeId: e.job.gradeId, currentVersion: 1, createdBy: c.userId ?? null },
+        data: { organizationId: org, pipelineEntryId: e.id, candidateId: e.candidateId, compensation: compensationText(pay), startDate: new Date(dto.startDate), expiresAt: new Date(dto.expiresAt), status: 'draft', letterSubject: letter.subject, letterBody: letter.body, templateId: letter.id, gradeId: e.job.gradeId, currentVersion: 1, createdBy: c.userId ?? null, batchId: opts.batchId ?? null },
       });
       await tx.offerVersion.create({ data: this.versionData(org, offer.id, 1, dto, e.job.gradeId, w, true, c.userId ?? null, null) });
       if (dto.addConditions) {

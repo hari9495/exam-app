@@ -13,14 +13,16 @@ import { OfferBuilderController } from './offer-builder.controller';
 import { OffersService } from './offers.service';
 import { OfferTemplatesService } from './offer-templates.service';
 import { OfferBuilderService } from './offer-builder.service';
+import { OfferBatchService } from './offer-batch.service';
+import { OfferBatchController } from './offer-batch.controller';
 
 @Module({
   // ApprovalsModule -> the offer gate (getChains/isConfigurer/cancelForSubject), same wiring as PipelineModule's
   // requisition gate. HIR-09: WorkflowModule (offers run on the P03 engine), PayrollModule (the CTC breakup),
   // AuthModule (the e-sign one-time code).
   imports: [EmailModule, StorageModule, JobsModule, ApprovalsModule, AuthModule, WorkflowModule, PayrollModule, NotificationsModule],
-  controllers: [OffersController, PublicOffersController, OfferBuilderController],
-  providers: [OffersService, OfferTemplatesService, OfferBuilderService],
+  controllers: [OffersController, PublicOffersController, OfferBuilderController, OfferBatchController],
+  providers: [OffersService, OfferTemplatesService, OfferBuilderService, OfferBatchService],
   exports: [OffersService, OfferBuilderService],
 })
 export class OffersModule {}
