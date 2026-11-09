@@ -4,6 +4,9 @@ jest.mock('../people/probation', () => ({ settingFor: jest.fn(async (_tx: unknow
 import { BadGatewayException, BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { NotetakerService, everyoneConsented } from './notetaker.service';
 import { checkDraft } from './notetaker-draft.client';
+import { plainToInstance } from 'class-transformer';
+import { validateSync } from 'class-validator';
+import { NotetakerConsentDto, NotetakerTranscriptDto } from './interviewing-dto';
 
 const ctx = { organizationId: 'org-1', isSuperAdmin: false } as any;
 const PANEL = { userId: 'u-panel', role: 'panel' };
@@ -126,5 +129,17 @@ describe('HIR-25 AI draft (a suggestion only)', () => {
   });
   it('the draft page is the panellist’s own: none = 404', async () => {
     await expect(setup().svc.myDraft(ctx, 'iv1', PANEL)).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('HIR-25 request bodies', () => {
+  const bad = (cls: new () => object, body: unknown) => validateSync(plainToInstance(cls, body) as object).length > 0;
+  it('a transcript is text up to 200,000 characters; consent is me/candidate and given/declined', () => {
+    expect(bad(NotetakerTranscriptDto, { text: 'x'.repeat(200_000) })).toBe(false);
+    expect(bad(NotetakerTranscriptDto, { text: 'x'.repeat(200_001) })).toBe(true);
+    expect(bad(NotetakerTranscriptDto, { text: 5 })).toBe(true);
+    expect(bad(NotetakerConsentDto, { participant: 'me', consent: 'given' })).toBe(false);
+    expect(bad(NotetakerConsentDto, { participant: 'someone', consent: 'given' })).toBe(true);
+    expect(bad(NotetakerConsentDto, { participant: 'candidate', consent: 'maybe' })).toBe(true);
   });
 });

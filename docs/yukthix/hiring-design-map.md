@@ -15,7 +15,7 @@ was built.
   pay-history question). Since 9 Nov 2026 also HIR-04, the pipeline board (all 7 stories) on /yx/hiring/jobs/[id]/pipeline.
   Counts in the table below.
 - **Few of the Hiring designs are live.** Of the design stories (HIR-01 … 31, the careers site, candidate
-  identity check and the hiring settings), 187 of 300 are live with their design and 10 more live with a gap (recount 13 Nov 2026, after HIR-13 Internal jobs merged with test main on /yx/hiring/internal-jobs; before that HIR-10 manual BGV on /yx/hiring/bgv, HIR-20 Talent CRM on /yx/hiring/pools and the HIR-07 scorecard comments). First the "Request a hire" sheet (HIR-02
+  identity check and the hiring settings), 195 of 304 are live with their design and 11 more live with a gap (recount 13 Nov 2026, after HIR-25 the interview notetaker and HIR-13 Internal jobs merged with test main on /yx/hiring/internal-jobs; before that HIR-10 manual BGV on /yx/hiring/bgv, HIR-20 Talent CRM on /yx/hiring/pools and the HIR-07 scorecard comments). First the "Request a hire" sheet (HIR-02
   NewRequisition), which People › My team (/yx/people/team) renders with `live` and sends to `POST jobs/requisitions`. Since 9 Nov 2026 (branch `feat/yukthix-hir-01`) HIR-01, the headcount plan board, is live too: all 10 of
   its stories (section 4). HIR-05 (branch `feat/yukthix-hir-05`): the candidate record with the ex-employee match and merge, plus the newly drawn candidate list (with Possible duplicates) and candidate data retention pages. HIR-11 Recruiting costs (/yx/hiring/costs) and HIR-12 Referrals (/yx/hiring/referrals, with HR's
   All referrals at /yx/hiring/referrals/all) are live too (branch `feat/yukthix-hir-11-12`).
@@ -34,7 +34,7 @@ was built.
   a joiner in People (PPL-12), and background checks are recorded on the joiner (People onboarding).
 - **Not built at all (no API):** the staffing-agency business (clients, rate cards, submissions to clients, placements,
   bench, client invoices, collections, placement fees, e-invoice window: HIR-14 … 19, 30, 31),
-  AI interview review (HIR-08), notetaker and recording consent (HIR-25), candidate identity checks (HIR-22, T9-15),
+  AI interview review (HIR-08), a recording provider for the notetaker (HIR-25), candidate identity checks (HIR-22, T9-15),
   bias audit (HIR-23), BGV partner checks (HIR-10), bulk interview day and bulk offers (HIR-27, 28), interview slot finder from calendars (HIR-06), CRM sequences and
   sourced profiles (HIR-20). (Pay-transparency law rules, HIR-24, went live 9 Nov 2026.)
 - **The public careers site** is live on T9-09 since 11 Nov 2026 (/yx/careers/[org], its job pages, /yx/apply/[token])
@@ -57,10 +57,11 @@ built**.
 | C. Offers, BGV and joining | 4 | 23 | 4 | 0 | 1 | 0 | 28 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 24 | 0 | 0 | 3 | 4 | 31 |
 | E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
-| F. Compliance and fairness | 5 | 4 | 1 | 0 | 20 | 0 | 25 |
+| F. Compliance and fairness | 5 | 12 | 2 | 0 | 15 | 0 | 29 |
 | G. Careers site, portals and settings | 4 | 54 | 4 | 2 | 11 | 0 | 71 |
-| **All Hiring design groups (A–G)** | **37** | **187** | **10** | **6** | **92** | **5** | **300** |
+| **All Hiring design groups (A–G)** | **37** | **195** | **11** | **6** | **87** | **5** | **304** |
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 5 | 0 | 5 | 5 | 0 | 15 |
+Recounted by script 13 Nov 2026 on `feat/yukthix-hir-25` after HIR-25 went live: its 5 stories design only → 4 live and 1 live (gap, no recording provider), plus 4 new drawn stories (YourAnswer, NoProvider, TranscriptAdded, AiOff), all live; A–G 195 live, 11 gap, 6 wire, 87 not built, 5 phone, of 304.
 Recounted by script 13 Nov 2026 on `feat/yukthix-hir-13` after merging `test/yukthix-main` (Settings rounds 2-3, HIR-09 follow-ups, HIR-28): A–G 187 live, 10 gap, 6 wire, 92 not built, 5 phone, of 300.
 Recounted by script 13 Nov 2026 on `feat/yukthix-hir-13` after HIR-13 went live: Browse, Apply, NotEligible and Empty design only → live (no story added or removed; the two phone stories stay phone views); A–G 180 live, 12 gap, 6 wire, 96 not built, 5 phone, of 299. Settings 6.1 gained the drawn Internal jobs section inside the existing P6_1 stories.
 Recounted by script 12 Nov 2026 on `feat/yukthix-hir-28` after HIR-28 went live (all 4 stories).
@@ -166,7 +167,7 @@ the web page.
 | HIR-14 … 19, 21 (part), 30, 31 | the staffing-agency business: clients, rate cards, submissions to clients, placements, bench, invoices, receivables, fees, e-invoice | XL |
 | HIR-22, T9-15 identity | no candidate ID or selfie check (People's face match waits for a provider too) | M + provider |
 | HIR-23 bias audit | no audit record or NYC setting | S |
-| HIR-25 notetaker | no recording, consent or AI draft (an older notes-to-scorecard AI route exists: `POST interviews/:id/scorecard`, unused) | L |
+| HIR-25 recording provider | consent, the transcript by upload and the AI draft are live; no recording or transcription provider (question 431) | M + provider |
 | HIR-27, 28 bulk day, bulk offers | no drive scheduling, no batch offers | M each |
 | HIR-06 slot finder | no calendar free/busy (needs Google / Microsoft calendar link) | M + partner |
 | Settings 6.2 Staffing desk | goes with the staffing business | with E |
@@ -727,13 +728,33 @@ both ends where required. Jobs now keep `salaryPeriod` and `askPayHistory`.
 
 #### HIR-25 · Interview notetaker consent
 
+Live 13 Nov 2026 (branch `feat/yukthix-hir-25`, founder decision 2): the designed `NotetakerConsentPanel` on the HIR-07
+interview page (/yx/hiring/interviews/[id]) when the company has the notetaker on, and the designed `DraftScorecardReview`
+at /yx/hiring/interviews/[id]/draft. Company settings on Settings 6.1 › Interview notetaker (audited, the page's keys):
+`hiring.notetaker.enabled` (off), `hiring.notetaker.ai_draft` (off), `hiring.notetaker.keep_days` (90). API (the panel and
+the job's overseers; another company 404, off the panel 403, every write refused while acting): `GET hiring/interviews/:id/notetaker`,
+`PUT …/notetaker/consent` (`me` = a panellist for themselves; `candidate` = recorded by the panel or a recruiter, with who
+recorded it), `PUT …/notetaker/transcript` (a panellist, only with everyone's consent), `POST …/notetaker/draft` and
+`GET …/notetaker/draft` (the panellist's own). Any "no", also a later one, deletes the transcript and every draft at once.
+Provider: to decide; no recording or transcription provider is connected, so the transcript is added as a .txt file. The
+AI draft goes through `AiInvocationService` (the company's AI, credits, logged; the prompt has the skills and transcript
+only) and is a suggestion: the panellist confirms or changes each rating, picks a recommendation and submits their own
+scorecard (`POST interviews/:id/scorecard/submit`, audited `fromDraft`); the draft is deleted then. The older
+`POST interviews/:id/scorecard` notes-to-scorecard route, its service method and client are removed. Retention: the daily
+candidate retention sweep deletes transcripts and drafts after the company's days; the candidate erase deletes them at
+once. Migration `202617q0000000_hir25_notetaker` (three tables, forced RLS; schema only).
+
 | story (sub-page) | verdict | note |
 |---|---|---|
-| AllConsented · All consented · recording | design only, feature not built | no recording or consent per participant (question 2) |
-| OneDeclined · One declined · no recording | design only, feature not built | same |
-| Waiting · Waiting for the candidate | design only, feature not built | same |
-| DraftReview · Draft scorecard · 1 of 4 confirmed | design only, feature not built | an older notes-to-scorecard AI route exists (`POST interviews/:id/scorecard`), unused by YukthiX |
-| DraftAllConfirmed · Draft scorecard · all confirmed, ready to submit | design only, feature not built | same |
+| AllConsented · All consented · recording | live (gap) | everyone's consent is recorded and shown; no recording provider is connected, so the badge stays "Not recording" and the transcript is added by upload (question 431) |
+| OneDeclined · One declined · no recording | live | "… declined. No recording or transcript"; nothing can be added; a later "no" deletes the transcript and drafts |
+| Waiting · Waiting for the candidate | live | "Recording starts only after every participant consents" |
+| DraftReview · Draft scorecard · 1 of 4 confirmed | live | the panellist's own draft; the scorecard's scale; never-disabled Submit names what is missing and focuses it |
+| DraftAllConfirmed · Draft scorecard · all confirmed, ready to submit | live | with the drawn recommendation Segment; submits the panellist's own scorecard; toast |
+| YourAnswer · Your answer and the candidate's · asked | live | drawn 13 Nov 2026: I consent / I decline for oneself, Candidate agreed / declined for the candidate; withdraw asks first |
+| NoProvider · All consented · no provider, add the transcript | live | drawn 13 Nov 2026: "No recording provider is connected"; a .txt file up to 200,000 characters |
+| TranscriptAdded · Transcript added · draft with AI | live | drawn 13 Nov 2026: who added it and when; Draft my scorecard (AI badge) |
+| AiOff · Transcript added · AI drafting off | live | drawn 13 Nov 2026: "AI drafting is off for your company. Fill the scorecard yourself." |
 
 #### HIR-31 · E-invoice window banner
 
@@ -1530,3 +1551,23 @@ Each has a safe default already built; the suggestion is the answer we propose.
      department, location or manager alone does not restart the count. *Suggested: keep.*
 414. **Who reads "Why are you interested?"** Built: the hiring team sees it as the first note on the application; the
      current manager is told only the person's name and the job, and sees no notes, tests or stage. *Suggested: keep.*
+## HIR-25 interview notetaker built (founder decision 2; 13 Nov 2026, branch `feat/yukthix-hir-25`)
+- Company settings with defaults on Settings 6.1 › Interview notetaker (audited, the page's keys): the notetaker (off), the
+  AI draft scorecard (off), keep transcripts and drafts (90 days). Consent from every participant before any transcript or
+  AI note; a "no" at any time deletes them. The AI draft is a suggestion the panellist confirms and submits themselves.
+- HIR-12 fix on the same branch: a referral résumé that is not a real PDF (by its content) is refused with 400.
+## Founder questions from the HIR-25 build (13 Nov 2026)
+431. **Recording provider.** Built: no recording or transcription provider is connected; once everyone consents a
+     panellist adds the transcript as a .txt file from their meeting tool. *Suggested: keep the upload path; pick a
+     provider (Zoom / Google Meet / Teams transcripts, or an Indian speech-to-text vendor) when a customer asks, behind
+     the same consent.*
+432. **How the candidate consents.** Built: a panellist or recruiter records the candidate's answer ("Candidate agreed" /
+     "declined"), with who recorded it in the record and the audit. *Suggested: also ask the candidate on their interview
+     link page before the call (needs a drawn candidate page, like question 10).*
+433. **Who on the panel adds the transcript.** Built: any panellist, only while everyone has consented; adding another
+     replaces it and drops drafts made from the old one. *Suggested: keep.*
+434. **AI note text kept as rating notes.** Built: when the panellist submits from the draft, each skill's AI note goes in
+     as that rating's note (the panellist saw it next to the rating). *Suggested: keep; a panellist who wants their own
+     words fills the scorecard form instead of the draft.*
+435. **Recruiters off the panel.** Built: they see the consent card and record the candidate's answer, but never give
+     panel consent, add a transcript or draft. *Suggested: keep.*

@@ -17696,5 +17696,133 @@
       "Screens/Hiring/HIR-13 · Internal jobs · Apply sheet"
     ],
     "note": "Negative (security)."
+  },
+  {
+    "id": "MT-HIR-25-01",
+    "area": "Hiring · HIR-25 Interview notetaker (13 Nov 2026)",
+    "screen": "Settings 6.1 · Interview notetaker",
+    "url": "http://localhost:3000/yx/settings/hiring",
+    "account": "hr-tester@demo-org.test, then recruiter@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Find the Interview notetaker section.",
+      "Open an interview as a panellist while it is off.",
+      "Turn the notetaker on (leave AI drafting off) and save.",
+      "As a recruiter open the settings page."
+    ],
+    "expected": "Step 1: off, off, 90 days. Step 2: no notetaker card on the interview. Step 3: a toast; the last change line names you. Step 4: read-only, no Save.",
+    "stories": [
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring"
+    ],
+    "note": "Positive and negative (decision 2: off by default)."
+  },
+  {
+    "id": "MT-HIR-25-02",
+    "area": "Hiring · HIR-25 Interview notetaker (13 Nov 2026)",
+    "screen": "Notetaker · Waiting and your answer",
+    "url": "http://localhost:3000/yx/hiring/interviews",
+    "account": "recruiter@demo-org.test (on the panel of a demo interview), then the other panellist. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open an interview you are on.",
+      "Press I consent.",
+      "Press Candidate agreed.",
+      "Compare with the stories \"Waiting for the candidate\" and \"Your answer and the candidate's · asked\".",
+      "Check the other panellist's row has no buttons for you."
+    ],
+    "expected": "Step 1: every row Waiting, badge Not recording, \"Recording starts only after every participant consents\". Steps 2-3: toasts; the rows say Consent given. Step 4: same layout. Step 5: only their own Consent / Decline is theirs.",
+    "stories": [
+      "Screens/Hiring/HIR-25 · Interview notetaker consent · Waiting for the candidate",
+      "Screens/Hiring/HIR-25 · Interview notetaker consent · Your answer and the candidate’s · asked"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-25-03",
+    "area": "Hiring · HIR-25 Interview notetaker (13 Nov 2026)",
+    "screen": "Notetaker · One declined",
+    "url": "http://localhost:3000/yx/hiring/interviews",
+    "account": "the second panellist of the same interview. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Press I decline.",
+      "Try to add a transcript (no upload is offered).",
+      "Press I consent again."
+    ],
+    "expected": "Step 1: \"… declined. No recording or transcript: the interview continues and you fill the scorecard yourself.\" Step 2: nothing to upload. Step 3: everyone consented; the upload appears.",
+    "stories": [
+      "Screens/Hiring/HIR-25 · Interview notetaker consent · One declined · no recording"
+    ],
+    "note": "Negative (no consent, no recording)."
+  },
+  {
+    "id": "MT-HIR-25-04",
+    "area": "Hiring · HIR-25 Interview notetaker (13 Nov 2026)",
+    "screen": "Notetaker · No provider · add the transcript",
+    "url": "http://localhost:3000/yx/hiring/interviews",
+    "account": "a panellist; everyone consented. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Read the info box.",
+      "Add a .txt transcript.",
+      "Try a .pdf or an empty .txt.",
+      "Withdraw your consent (confirm)."
+    ],
+    "expected": "Step 1: \"No recording provider is connected\". Step 2: a toast; \"Transcript added <date> by <you>\". Step 3: refused with the reason in the upload list. Step 4: the dialog says the transcript and every draft are deleted; afterwards the transcript is gone.",
+    "stories": [
+      "Screens/Hiring/HIR-25 · Interview notetaker consent · All consented · no provider, add the transcript",
+      "Screens/Hiring/HIR-25 · Interview notetaker consent · All consented · recording"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-25-05",
+    "area": "Hiring · HIR-25 Interview notetaker (13 Nov 2026)",
+    "screen": "Notetaker · AI off and AI draft",
+    "url": "http://localhost:3000/yx/hiring/interviews",
+    "account": "a panellist with a transcript added; hr-tester@ for Settings. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "With AI drafting off, read the card.",
+      "As HR turn on AI drafting; as the panellist press Draft my scorecard from the transcript.",
+      "If the company has no AI key, read the message."
+    ],
+    "expected": "Step 1: \"AI drafting is off for your company. Fill the scorecard yourself.\" Step 2: the draft review page opens (AI badge). Step 3: \"AI is not configured …\" stays on the card; the scorecard can still be filled by hand.",
+    "stories": [
+      "Screens/Hiring/HIR-25 · Interview notetaker consent · Transcript added · AI drafting off",
+      "Screens/Hiring/HIR-25 · Interview notetaker consent · Transcript added · draft with AI"
+    ],
+    "note": "Positive and negative (works with AI off)."
+  },
+  {
+    "id": "MT-HIR-25-06",
+    "area": "Hiring · HIR-25 Interview notetaker (13 Nov 2026)",
+    "screen": "Draft scorecard review",
+    "url": "http://localhost:3000/yx/hiring/interviews/<id>/draft",
+    "account": "the panellist who drafted. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Press Submit scorecard at once.",
+      "Confirm one rating, change another, pick a recommendation and press Submit scorecard.",
+      "Open the interview again.",
+      "As another panellist open the same /draft address."
+    ],
+    "expected": "Step 1: \"Confirm or change every rating first.\" and \"Choose your recommendation.\", the cursor on the first; nothing sent. Step 2: a toast \"Scorecard submitted\", back on the interview. Step 3: your scorecard is submitted with your ratings; no draft button. Step 4: \"There is no draft for you on this interview.\"",
+    "stories": [
+      "Screens/Hiring/HIR-25 · Interview notetaker consent · Draft scorecard · 1 of 4 confirmed",
+      "Screens/Hiring/HIR-25 · Interview notetaker consent · Draft scorecard · all confirmed, ready to submit"
+    ],
+    "note": "Positive and negative (nothing is submitted by itself)."
+  },
+  {
+    "id": "MT-HIR-25-07",
+    "area": "Hiring · HIR-25 Interview notetaker (13 Nov 2026)",
+    "screen": "Notetaker · acting and erase",
+    "url": "http://localhost:3000/yx/hiring/interviews",
+    "account": "admin-tester@demo-org.test acting as a panellist; then hr-tester@ with data rights. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "While acting, press I consent.",
+      "Stop acting. Erase the demo candidate of a test interview (Candidates › record › Erase).",
+      "Open that interview."
+    ],
+    "expected": "Step 1: refused \"Not available while acting for someone else\". Step 2: erased. Step 3: no transcript on the card.",
+    "stories": [
+      "Screens/Hiring/HIR-25 · Interview notetaker consent · Waiting for the candidate"
+    ],
+    "note": "Negative (security, erase)."
   }
 ]
