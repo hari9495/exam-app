@@ -41,7 +41,7 @@ const asDate = (d: string) => new Date(`${d}T00:00:00Z`);
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const isoOrNull = (d: Date | null | undefined) => (d ? iso(d) : null);
 const LIVE = ['submitted', 'accepted', 'cleared'];
-const TYPE_LABEL: Record<ExitType, string> = { resignation: 'Resignation', termination: 'Termination', probation_termination: 'Probation not confirmed', end_of_contract: 'End of contract', retirement: 'Retirement', death: 'Death in service', absconding: 'Absconding', retrenchment: 'Retrenchment', vrs: 'Voluntary retirement' };
+export const TYPE_LABEL: Record<ExitType, string> = { resignation: 'Resignation', termination: 'Termination', probation_termination: 'Probation not confirmed', end_of_contract: 'End of contract', retirement: 'Retirement', death: 'Death in service', absconding: 'Absconding', retrenchment: 'Retrenchment', vrs: 'Voluntary retirement' };
 
 /** M08 / M06 are not built yet: their checks say so, and HR sees "not checked" (§10.5). */
 const PRECHECKS = () => ({ posh: 'not_checked', disciplinary: 'not_checked', pip: 'not_checked' });

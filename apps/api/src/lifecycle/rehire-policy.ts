@@ -29,12 +29,23 @@ export async function offerRehire(tx: Tx, org: string, offerId: string) {
   const o = await tx.offer.findFirst({ where: { organizationId: org, id: offerId, status: 'accepted' } });
   if (!o) throw new NotFoundException('No accepted offer with this id.');
   const cand = await tx.candidate.findFirstOrThrow({ where: { organizationId: org, id: o.candidateId }, select: { email: true } });
-  const persons = await tx.person.findMany({ where: { organizationId: org, primaryEmail: cand.email, status: 'active' }, select: { id: true } });
-  const emp = await tx.employee.findFirst({ where: { organizationId: org, OR: [{ personId: { in: persons.map((p) => p.id) } }, { workEmail: cand.email }] }, select: { id: true, personId: true } });
-  if (!emp) return { offer: o, email: cand.email, rehire: null };
-  if (await tx.employment.findFirst({ where: { organizationId: org, employeeId: emp.id, exitedOn: null }, select: { id: true } })) {
+  const match = await personByEmail(tx, org, cand.email);
+  if (!match) return { offer: o, email: cand.email, rehire: null };
+  if (match.current) {
     throw new ConflictException('This is a current employee. Their move is a transfer or promotion on their record (People › Job changes), not onboarding (YX-LC-11).');
   }
-  const last = await tx.employment.findFirstOrThrow({ where: { organizationId: org, employeeId: emp.id }, orderBy: { exitedOn: 'desc' } });
-  return { offer: o, email: cand.email, rehire: { personId: emp.personId, employmentId: last.id } };
+  return { offer: o, email: cand.email, rehire: { personId: match.personId, employmentId: match.lastEmployment.id } };
+}
+
+/**
+ * The P01 person match for a candidate's email: a person's email or an employee's work email. Shared by the offer
+ * hand-off above and the HIR-05 ex-employee banner, so there is one matcher. `current`: still employed.
+ */
+export async function personByEmail(tx: Tx, org: string, email: string) {
+  const persons = await tx.person.findMany({ where: { organizationId: org, primaryEmail: email, status: 'active' }, select: { id: true } });
+  const emp = await tx.employee.findFirst({ where: { organizationId: org, OR: [{ personId: { in: persons.map((p) => p.id) } }, { workEmail: email }] }, select: { id: true, personId: true } });
+  if (!emp) return null;
+  const current = Boolean(await tx.employment.findFirst({ where: { organizationId: org, employeeId: emp.id, exitedOn: null }, select: { id: true } }));
+  const lastEmployment = await tx.employment.findFirstOrThrow({ where: { organizationId: org, employeeId: emp.id }, orderBy: { exitedOn: 'desc' } });
+  return { employeeId: emp.id, personId: emp.personId, current, lastEmployment };
 }

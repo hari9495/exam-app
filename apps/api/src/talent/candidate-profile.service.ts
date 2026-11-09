@@ -1,6 +1,11 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
-import { audit, inCompany } from '../org-structure/org-structure.service';
+import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
+import { ScopeUser, Viewer, buildViewer, grantPeriods, has, tenantWide } from '../access/scope';
+import { ownOf } from '../documents/person-access';
+import { personByEmail } from '../lifecycle/rehire-policy';
+import { TYPE_LABEL } from '../lifecycle/exits.service';
+import type { ExitType } from '../lifecycle/exit-rules';
 import { settingFor } from '../people/probation';
 import { addMonths } from './talent-rules';
 import { withdrawConsent } from './pools.service';
@@ -10,9 +15,37 @@ import { withdrawConsent } from './pools.service';
 // the retention sweep would anonymise them. A merged-away candidate answers with the kept one's id.
 @Injectable()
 export class CandidateProfileService {
-  constructor(private readonly tenantPrisma: TenantPrismaService) {}
+  constructor(
+    private readonly tenantPrisma: TenantPrismaService,
+    private readonly prisma: PrismaService,
+  ) {}
 
-  get(ctx: TenantContext, id: string) {
+  /**
+   * HIR-05. Contact details, messages, consents and retention go only to holders of candidate:manage or the data-rights
+   * key; a view-only holder (a hiring manager, ats.candidate.view) gets the hiring facts. The ex-employee match is
+   * added for viewers who may see the employee (see exEmployee).
+   */
+  async get(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await buildViewer(this.prisma, this.tenantPrisma, user, VIEW_KEYS);
+    const full = has(v, 'candidate:manage') || has(v, 'candidate:data_rights');
+    const r = await this.read(ctx, id);
+    if ('mergedIntoId' in r) return r;
+    const exEmployee = r.candidate.erasedAt ? null : await inCompany(this.tenantPrisma, ctx, (tx, c) => exEmployeeFor(tx, c, v, r.candidate.email));
+    if (full) return { ...r, exEmployee };
+    return {
+      ...r,
+      candidate: { ...r.candidate, email: null, phone: null, phoneE164: null },
+      messages: { emails: [], sms: 0, whatsapp: 0 },
+      consents: [],
+      lists: [],
+      merges: [],
+      retention: null,
+      legalHold: r.legalHold ? { at: r.legalHold.at, reason: null } : null,
+      exEmployee,
+    };
+  }
+
+  private read(ctx: TenantContext, id: string) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const cand = await tx.candidate.findFirst({ where: { id, organizationId: org } });
@@ -71,4 +104,49 @@ export class CandidateProfileService {
       return { withdrawn: n };
     });
   }
+}
+
+const VIEW_KEYS = ['candidate:manage', 'candidate:data_rights', 'employee.profile.view', 'lifecycle.exit.view', 'lifecycle.exit.manage', 'lifecycle.exit.confidential.view'] as const;
+
+/** Does `key` reach this employee in any period (an ex-employee is in scope for the periods they worked there)? */
+async function reachesEver(tx: Tx, c: CompanyContext, v: Viewer, key: string, employeeId: string, own: string | null) {
+  if (tenantWide(v, key)) return true;
+  if (!has(v, key)) return false;
+  return (await grantPeriods(tx, c, v, key, employeeId, own)).length > 0;
+}
+
+/**
+ * HIR-05 ex-employee match (YX-ATS-33), with People's person match (`personByEmail`, the one the offer hand-off uses).
+ * Shown only to viewers who may see the employee: employee.profile.view or an exit key reaching them. Exit date and
+ * type need an exit key; rehire eligibility needs the confidential exit key; clearing it (the existing PUT
+ * lifecycle/exits/:id/hr) needs exit manage too. Never while acting for someone else (P02 YX-SEC-20). A current
+ * employee is not an ex-employee (their move is a job change).
+ */
+export async function exEmployeeFor(tx: Tx, c: CompanyContext, v: Viewer, email: string | null) {
+  if (!email || v.actingForOther) return null;
+  const m = await personByEmail(tx, c.organizationId, email);
+  if (!m || m.current) return null;
+  const own = (await ownOf(tx, c, v)).employeeId;
+  if (own === m.employeeId) return null;
+  const reach = (key: string) => reachesEver(tx, c, v, key, m.employeeId, own);
+  const exitView = (await reach('lifecycle.exit.view')) || (await reach('lifecycle.exit.manage'));
+  if (!exitView && !(await reach('employee.profile.view'))) return null;
+  if (!exitView) return { level: 'flag' as const, exitDate: null, exitType: null, rehireEligible: null, rehireReason: null, exitCaseId: null, version: null };
+  const k = await tx.exitCase.findFirst({ where: { organizationId: c.organizationId, employmentId: m.lastEmployment.id }, orderBy: { createdAt: 'desc' }, select: { id: true, exitType: true, version: true } });
+  const confidential = Boolean(k) && (await reach('lifecycle.exit.confidential.view'));
+  let hr: { rehireEligible: boolean | null; rehireReason: string | null } | null = null;
+  if (confidential) {
+    await tx.$executeRaw`SELECT set_config('app.lifecycle_confidential', 'on', true)`;
+    hr = await tx.exitCaseHr.findUnique({ where: { exitCaseId: k!.id }, select: { rehireEligible: true, rehireReason: true } });
+  }
+  const canClear = confidential && (await reach('lifecycle.exit.manage'));
+  return {
+    level: confidential ? ('rehire' as const) : ('exit' as const),
+    exitDate: m.lastEmployment.exitedOn,
+    exitType: k ? (TYPE_LABEL[k.exitType as ExitType] ?? k.exitType) : null,
+    rehireEligible: hr?.rehireEligible ?? null,
+    rehireReason: hr?.rehireReason ?? null,
+    exitCaseId: canClear ? k!.id : null,
+    version: canClear ? k!.version : null,
+  };
 }
