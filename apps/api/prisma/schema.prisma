@@ -1222,6 +1222,9 @@ model Job {
   replacementOfEmployeeId String?               @map("replacement_of_employee_id") @db.Uuid
   budgetAmount            Decimal?              @map("budget_amount") @db.Decimal(14, 2)
   targetStart             DateTime?             @map("target_start") @db.Date
+  /// Careers answer 353: the last day to apply (applications close after it) and the experience asked for.
+  applyBy                 DateTime?             @map("apply_by") @db.Date
+  experience              String?               @db.VarChar(60)
   wfRequestId             String?               @map("wf_request_id") @db.Uuid
   /// M10 AT3: readable careers URL (stable once set), first publication, salary shown or not.
   slug                    String?               @db.VarChar(120)

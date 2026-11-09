@@ -20,6 +20,9 @@ import { EmailService } from '../email/email.service';
 import { scannerFromEnv, type Scanner } from '../common/scanner';
 import { careersLayout, withHero, type CareersLayout, checkConsents, ipHash, isSlug, safeColor } from '../hiring/careers-rules';
 import { payLawFor } from '../hiring/pay-law';
+import { SETTINGS } from '../org-structure/settings-registry';
+import { publicBrand } from './public-brand';
+import { todayIst } from '../org-structure/org-validation';
 import { poolConsented, withdrawConsent } from '../talent/pools.service';
 import { QuickApplyDto } from './dto/quick-apply.dto';
 import { CareersAssistantDto } from './dto/careers-assistant.dto';
@@ -53,6 +56,8 @@ export interface CareersPageResponse {
   accentColor: string | null;
   textColor: string | null;
   companies: { slug: string; name: string }[];
+  /** Careers answer 356: no "Powered by YukthiX" (company setting brand.white_label). */
+  whiteLabel: boolean;
   /** T9-09 page builder layout (theme, accent, sections), made from headline and intro until first saved. */
   config: CareersLayout;
   jobs: {
@@ -87,6 +92,9 @@ const CONTACT_SCHEMA = {
   },
   required: [] as string[],
 };
+
+/** Careers answer 353: a job whose Apply-by day has passed takes no applications and leaves the lists (India time). */
+const stillOpen = () => ({ OR: [{ applyBy: null }, { applyBy: { gte: new Date(`${todayIst()}T00:00:00Z`) } }] });
 
 @Injectable()
 export class PublicApplicationsService {
@@ -159,12 +167,15 @@ export class PublicApplicationsService {
             salaryPeriod: true,
             askPayHistory: true,
             listOnCareers: true,
+            applyBy: true,
+            experience: true,
           },
         }),
     );
     // Generic message regardless of which condition failed -- distinguishing "no such token" from
     // "closed" from "public apply disabled" would give an outsider an oracle to probe job state.
-    if (!job || job.status !== 'open' || !job.publicApplyEnabled) {
+    // Careers answer 353: after the Apply-by day the job takes no more applications (the same answer, no oracle).
+    if (!job || job.status !== 'open' || !job.publicApplyEnabled || (job.applyBy && job.applyBy.toISOString().slice(0, 10) < todayIst())) {
       throw new NotFoundException('This role is not accepting applications');
     }
     return job;
@@ -241,6 +252,10 @@ export class PublicApplicationsService {
       select: { name: true, slug: true, logoPath: true, applyConsentText: true, applyConsentVersion: true, careersEnabled: true, careersHeadline: true, careersIntro: true, careersConfig: true },
     });
     const askPayHistory = await this.asksPayHistory(job);
+    // Careers answer 359: a job placed outside India takes an international phone number (+country code).
+    const country = job.locationId
+      ? (await this.tenantPrisma.forTenant({ organizationId: job.organizationId, isSuperAdmin: true }, (tx) => tx.location.findUnique({ where: { id: job.locationId! }, select: { country: true } })))?.country ?? 'IN'
+      : 'IN';
     // Apply-visible candidate custom fields, cross-tenant super-admin read (same LOOKUP_ORG
     // pattern as resolveJob -- there is no org context until the applyToken resolves one).
     const defs = await this.tenantPrisma.forTenant(
@@ -262,10 +277,16 @@ export class PublicApplicationsService {
       // HIR-24: the range only when the job shows it; the pay-history question only where the job asks and the law allows.
       salary: job.showSalary && job.salaryMin != null && job.salaryMax != null ? { min: job.salaryMin, max: job.salaryMax, currency: job.salaryCurrency ?? 'INR', period: job.salaryPeriod } : null,
       askPayHistory,
+      internationalPhone: country !== 'IN',
+      // Careers answer 353: the last day to apply and the experience asked for (shown on the job page when set).
+      applyBy: job.applyBy ? job.applyBy.toISOString().slice(0, 10) : null,
+      experience: job.experience,
       // The careers site this job sits on (null when the company has no public careers page or the job is unlisted).
       careers: org?.careersEnabled && org.slug ? { orgSlug: org.slug, jobSlug: job.listOnCareers ? job.slug : null } : null,
       accent: org ? careersLayout(org.careersConfig, { name: org.name, careersHeadline: org.careersHeadline, careersIntro: org.careersIntro }).accent : null,
       orgName: org?.name ?? '',
+      // Careers answer 356: the job page hides "Powered by YukthiX" for a white-label company.
+      whiteLabel: (await this.brand(job.organizationId)).whiteLabel,
       // Container is private -- unsigned logoPath 403s in <img src>. signIfOurs mints a
       // read-only SAS for blobs we own and passes anything else through untouched.
       orgLogo: org?.logoPath ? ((await this.blobStorage.signIfOurs(org.logoPath)) as string | null) : null,
@@ -331,7 +352,7 @@ export class PublicApplicationsService {
       { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
       (tx) =>
         tx.job.findMany({
-          where: { status: 'open', publicApplyEnabled: true, applyToken: { not: null } },
+          where: { status: 'open', publicApplyEnabled: true, applyToken: { not: null }, ...stillOpen() },
           select: this.JOB_FEED_SELECT,
           orderBy: { createdAt: 'desc' },
         }),
@@ -353,6 +374,7 @@ export class PublicApplicationsService {
             organizationId: board.organizationId,
             status: 'open',
             publicApplyEnabled: true,
+            ...stillOpen(),
             applyToken: { not: null },
             jobBoardPublications: { some: { jobBoardId: board.id } },
           },
@@ -529,14 +551,41 @@ export class PublicApplicationsService {
       const v = await scanner.scan(buf);
       if (v.verdict === 'error') throw new Error(v.detail);
       const ctx = { organizationId, isSuperAdmin: true };
-      await this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const tell = await this.tenantPrisma.forTenant(ctx, async (tx) => {
         const { count } = await tx.candidateProfile.updateMany({ where: { organizationId, candidateId, resumePath, resumeScan: 'pending' }, data: { resumeScan: v.verdict } });
         if (count) await AuditService.recordIn(tx, ctx, { actorUserId: null, action: `candidate.resume.scan.${v.verdict}`, entityType: 'candidate', entityId: candidateId, metadata: { scanner: scanner.name } });
+        if (!count || v.verdict !== 'infected') return null;
+        // Founder answer 352: the applicant is told and can upload another file from their candidate page (company
+        // setting hiring.resume_quarantine.tell_applicant, default on).
+        const row = await tx.setting.findFirst({ where: { organizationId, key: 'hiring.resume_quarantine.tell_applicant', scopeType: 'tenant' }, select: { value: true } });
+        if ((row?.value ?? SETTINGS['hiring.resume_quarantine.tell_applicant']!.default) !== 'on') return null;
+        const c = await tx.candidate.findFirst({ where: { organizationId, id: candidateId, erasedAt: null }, select: { email: true, portalToken: true } });
+        return c?.portalToken && c.email ? c : null;
       });
       if (v.verdict === 'infected') this.logger.warn(`Public résumé of candidate ${candidateId} quarantined (${v.detail})`);
+      if (tell) await this.sendQuarantineNotice(organizationId, candidateId, tell.email, tell.portalToken!).catch((e) => this.logger.warn(`quarantine email: ${(e as Error).message}`));
     } catch (e) {
       this.logger.warn(`Scan of a public résumé failed, it stays pending: ${(e as Error).message}`);
     }
+  }
+
+  /** Answer 352: the résumé file could not be accepted; the candidate page lets them upload another. Logged, never the file. */
+  private async sendQuarantineNotice(organizationId: string, candidateId: string, to: string, portalToken: string) {
+    const org = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } });
+    const base = process.env.FRONTEND_URL ?? 'http://localhost:3000';
+    const name = org?.name ?? 'the company';
+    const esc = (v: string) => v.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!);
+    const link = `${base}/yx/candidate/${encodeURIComponent(portalToken)}`;
+    const sent = await this.email.send({
+      to,
+      organizationId,
+      subject: `We could not accept your résumé file for ${name}`,
+      html: `<p>Your application to ${esc(name)} is in, but our safety check could not accept the résumé file you sent, so recruiters cannot open it.</p><p><a href="${link}">Open your candidate page</a> to upload another file (a PDF works best).</p><p>If you did not apply, you can ignore this email.</p>`,
+      text: `Your application to ${name} is in, but our safety check could not accept the résumé file you sent, so recruiters cannot open it.
+Upload another file from your candidate page: ${link}
+If you did not apply, ignore this email.`,
+    });
+    await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: true }, (tx) => AuditService.recordIn(tx, { organizationId, isSuperAdmin: true }, { actorUserId: null, action: 'candidate.resume.quarantine_told', entityType: 'candidate', entityId: candidateId, metadata: { sent: sent.success } }));
   }
 
   private async sendApplyLinks(organizationId: string, to: string, jobTitle: string, statusToken: string, portalToken: string) {
@@ -724,6 +773,7 @@ export class PublicApplicationsService {
           status: 'open',
           publicApplyEnabled: true,
           applyToken: { not: null },
+          ...stillOpen(),
           id: { notIn: appliedJobIds.length ? appliedJobIds : ['00000000-0000-0000-0000-000000000000'] },
         },
         select: { applyToken: true, title: true, location: true, employmentType: true },
@@ -905,7 +955,9 @@ export class PublicApplicationsService {
   // M10 AT3: the careers site. The 4-condition filter is load-bearing: listOnCareers alone must never surface a job
   // that isn't also open + publicApplyEnabled + has a live apply link. Colours are #rrggbb or nothing (they go into
   // CSS); images are only our own signed URLs; job text is returned as text (the page renders it as text).
-  private readonly LISTED = { status: 'open', publicApplyEnabled: true, listOnCareers: true, applyToken: { not: null }, deletedAt: null } as const;
+  private get LISTED() {
+    return { status: 'open', publicApplyEnabled: true, listOnCareers: true, applyToken: { not: null }, deletedAt: null, ...stillOpen() } as const;
+  }
 
   private async careersOrg(orgSlug: string) {
     if (!/^[a-z0-9][a-z0-9-]{0,98}$/.test(orgSlug)) return null;
@@ -965,6 +1017,7 @@ export class PublicApplicationsService {
       headline: page?.headline ?? org.careersHeadline ?? null,
       intro: page?.intro ?? org.careersIntro ?? null,
       assistantEnabled: org.careersAssistantEnabled,
+      whiteLabel: (await this.brand(org.id)).whiteLabel,
       logoUrl: org.logoPath ? ((await this.blobStorage.signIfOurs(org.logoPath)) as string | null) : null,
       bannerUrl: org.careersBannerPath ? ((await this.blobStorage.signIfOurs(org.careersBannerPath)) as string | null) : null,
       primaryColor: safeColor(page?.primaryColor ?? org.primaryColor),
@@ -1025,7 +1078,7 @@ export class PublicApplicationsService {
         if (!org || !org.careersEnabled) return null;
         if (!org.careersAssistantEnabled) return { org, jobs: null };
         const jobs = await tx.job.findMany({
-          where: { organizationId: org.id, status: 'open', publicApplyEnabled: true, listOnCareers: true, applyToken: { not: null } },
+          where: { organizationId: org.id, status: 'open', publicApplyEnabled: true, listOnCareers: true, applyToken: { not: null }, ...stillOpen() },
           select: { title: true, description: true, department: true, location: true, employmentType: true, salaryMin: true, salaryMax: true, salaryCurrency: true },
           orderBy: { createdAt: 'desc' },
         });
@@ -1096,16 +1149,9 @@ export class PublicApplicationsService {
     ].join('\n');
   }
 
-  /** The company's public face for the candidate pages: name, logo, careers link and accent (no internal data). */
-  private async brand(organizationId: string) {
-    const org = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true, slug: true, logoPath: true, careersEnabled: true, careersHeadline: true, careersIntro: true, careersConfig: true } });
-    if (!org) return { orgName: '', orgLogo: null, careersSlug: null, accent: null };
-    return {
-      orgName: org.name,
-      orgLogo: org.logoPath ? ((await this.blobStorage.signIfOurs(org.logoPath)) as string | null) : null,
-      careersSlug: org.careersEnabled ? org.slug : null,
-      accent: careersLayout(org.careersConfig, org).accent,
-    };
+  /** The company's public face for the candidate pages (answers 356, 357, 362: shared with the offer and interview pages). */
+  private brand(organizationId: string) {
+    return publicBrand(this.tenantPrisma, this.blobStorage, organizationId);
   }
 
   async getApplicationStatus(statusToken: string) {

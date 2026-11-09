@@ -25,6 +25,13 @@ export class OfferBuilderController {
     return this.offers.setup(ctx, req.user as ScopeUser, entryId);
   }
 
+  /** Careers answer 355: the pay the applicant gave when asked, for holders of the offer-pay key only. */
+  @Get('current-pay')
+  @RequireAnyPermission('ats.offer.manage', 'pipeline:manage')
+  currentPay(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query('entryId', ParseUUIDPipe) entryId: string) {
+    return this.offers.currentPay(ctx, req.user as ScopeUser, entryId);
+  }
+
   @Post('preview')
   @HttpCode(200)
   @RequireAnyPermission('ats.offer.manage', 'pipeline:manage')

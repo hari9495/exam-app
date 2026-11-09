@@ -184,6 +184,25 @@ describe('Hiring careers site and candidate pages (T9-09)', () => {
     const c = await inA((tx) => tx.candidate.findFirstOrThrow({ where: { email: virus } }));
     await api('A', 'get', `/candidates/${c.id}/resume`).expect(409);
     expect(await inA((tx) => tx.auditLog.count({ where: { entityId: c.id, action: 'candidate.resume.scan.infected' } }))).toBe(1);
+    // Answer 352: the applicant is told, with their candidate page to upload another file.
+    const told = async (to: string) => {
+      for (let i = 0; i < 50; i++) {
+        const m = (send.mock.calls as unknown as [{ to: string; subject: string; html: string }][]).find(([x]) => x.to === to && /could not accept your résumé/.test(x.subject));
+        if (m) return m[0];
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return null;
+    };
+    const mail = await told(virus);
+    expect(mail?.html).toMatch(/\/yx\/candidate\/[^"]+/);
+    expect(await inA((tx) => tx.auditLog.count({ where: { entityId: c.id, action: 'candidate.resume.quarantine_told' } }))).toBe(1);
+    // With the company setting off, nobody is told (the file is still quarantined).
+    await inA((tx) => tx.setting.create({ data: { organizationId: org.A.id, scopeType: 'tenant', scopeId: org.A.id, key: 'hiring.resume_quarantine.tell_applicant', value: 'off' } }));
+    const quiet = `quiet-${run}@x.test`;
+    await apply(ids.openToken, { email: quiet, resumeBase64: Buffer.from(`%PDF-1.7\n${EICAR}`).toString('base64') }).expect(201);
+    expect(await scanOf(quiet)).toBe('infected');
+    expect(await told(quiet)).toBeNull();
+    await inA((tx) => tx.setting.deleteMany({ where: { organizationId: org.A.id, key: 'hiring.resume_quarantine.tell_applicant' } }));
   });
 
   it('public routes are rate limited: apply 5 a minute, the rest 20, keyed by the link (fail closed)', () => {

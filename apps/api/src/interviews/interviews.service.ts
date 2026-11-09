@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Interview, Prisma } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService, BlobStorageService, BusinessHours, Holiday, renderTemplateString } from '@exam-platform/shared';
+import { publicBrand } from '../public-applications/public-brand';
 import { EmailService } from '../email/email.service';
 import { IntegrationEventsService } from '../integrations/integration-events.service';
 import { buildCandidateEmailHtml } from '../candidate-emails/candidate-email-render';
@@ -545,6 +546,8 @@ export class InterviewsService {
     const base = {
       jobTitle: details.jobTitle,
       orgName: details.orgName,
+      // Careers answer 362: the company's logo, colour, careers link and white-label on the interview page.
+      brand: await publicBrand(this.tenantPrisma, this.blobStorage, interview.organizationId),
       slots: interview.slots.map((s) => ({ id: s.id, startsAt: s.startsAt, endsAt: s.endsAt })),
       location: interview.location,
       timeZone: interview.timeZone,
