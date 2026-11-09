@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { CandidateRecordScreen, type CandidateApplication } from './hiring-pipeline';
+import { CandidateRecordScreen, MergeDrawer, type CandidateApplication } from './hiring-pipeline';
 import { CANDIDATES, D, ID_POINTS, ID_POINTS_CLEAR } from './hiring-data';
 import { TODAY } from '../_kit/data';
 import type { TimelineItem } from '../../components/timeline';
@@ -17,8 +17,8 @@ const ACT: TimelineItem[] = [
   { id: 'x2', actor: { name: 'System' }, action: 'matched the person to a past employee record', at: D(2026, 9, 27) },
   { id: 'x3', actor: { name: 'Fatima Shaikh' }, action: 'applied through the careers site', at: D(2026, 9, 27) },
 ];
-const EX = { exitDate: D(2024, 3, 31), exitType: 'Resignation', rehireEligible: true };
-const EX_NO = { exitDate: D(2024, 3, 31), exitType: 'Termination after PIP', rehireEligible: false };
+const EX = { exitDate: D(2024, 3, 31), exitType: 'Resignation', rehireEligible: true, company: 'Kaveri Foods' };
+const EX_NO = { exitDate: D(2024, 3, 31), exitType: 'Termination after PIP', rehireEligible: false, company: 'Kaveri Foods' };
 const fatima = CANDIDATES[2];
 const ananya = CANDIDATES[0];
 
@@ -29,6 +29,18 @@ export const ExEmployeeHiringManager: S = { name: 'Ex-employee · hiring manager
 export const Merge: S = {
   name: 'Merge duplicate · field-level choice',
   render: () => <CandidateRecordScreen candidate={ananya} viewer="recruiter" identity={ID_POINTS_CLEAR} applications={APPS.slice(0, 1)} activity={ACT} duplicate={{ ...ananya, id: 'dup', name: 'Ananya S Iyer', email: 'ananya.work@postbox.in', location: 'Coimbatore' }} mergeOpen now={TODAY} />,
+};
+export const MergeChooseDuplicate: S = {
+  name: 'Merge with another candidate · choose the duplicate first',
+  render: () => (
+    <MergeDrawer
+      open
+      onOpenChange={() => {}}
+      a={null}
+      b={null}
+      live={{ keptName: ananya.name, otherName: null, fields: [], pick: { options: [{ value: 'c9', label: 'Ananya S Iyer · ananya.work@postbox.in' }], value: null, onChange: () => {} }, onMerge: async () => {} }}
+    />
+  ),
 };
 export const IdentityFlag: S = { name: 'Identity review flag', render: () => <CandidateRecordScreen candidate={CANDIDATES[3]} viewer="recruiter" identity={ID_POINTS} applications={APPS.slice(0, 1)} activity={ACT} now={TODAY} /> };
 export const Minor: S = {

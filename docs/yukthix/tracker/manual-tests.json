@@ -15987,5 +15987,165 @@
     ],
     "note": "Positive and negative: states; no writes while acting.",
     "area": "Hiring · HIR-04 Pipeline board (9 Nov 2026, designed screen live)"
+  },
+  {
+    "id": "MT-HIR-05-01",
+    "area": "Hiring · HIR-05 Candidate record, list and retention (9 Nov 2026)",
+    "screen": "Candidate list · Recruiter default",
+    "url": "http://localhost:3000/yx/hiring/candidates",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open Hiring › Candidates; compare with the story \"Recruiter · default\" element by element (header with Upload and invite + Add candidate, tabs Candidates / Possible duplicates, Show segment, search, stage filter, table, pages).",
+      "Type part of a demo candidate's name in the search box; then pick a stage; then press Inactive in the Show segment.",
+      "Press Add candidate and, with every field empty, press Add candidate in the dialog.",
+      "Enter a name and the email \"hir05-test-1@mailbox.in\"; press Add candidate.",
+      "Open the new candidate's row menu: Edit (change the phone), then Deactivate, then show Inactive and Reactivate."
+    ],
+    "expected": "Step 1: same layout as the design; no page scroll bar at 1278 x 635 (the table scrolls inside). Step 2: the list narrows each time (server search). Step 3: the button is not greyed; \"Enter the name.\" shows under Name and the cursor is in Name; nothing saved. Step 4: toast \"<name> added\" for 5 s; the row is there. Step 5: toasts \"saved\", \"deactivated\", \"reactivated\".",
+    "stories": [
+      "Screens/Hiring/HIR-05 · Candidate list · Recruiter · default",
+      "Screens/Hiring/HIR-05 · Candidate list · Empty · first use"
+    ],
+    "note": "Positive and negative (pressed too early)."
+  },
+  {
+    "id": "MT-HIR-05-02",
+    "area": "Hiring · HIR-05 Candidate record, list and retention (9 Nov 2026)",
+    "screen": "Candidate list · bulk actions and upload",
+    "url": "http://localhost:3000/yx/hiring/candidates",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Tick two candidates; press Invite to an assessment and press Send invitations without choosing one.",
+      "Choose an assessment and send.",
+      "Tick one; Email selected; press Send with an empty subject; then fill subject and message and send.",
+      "Press Upload and invite; drop a CSV before choosing an assessment; then choose one and drop the file again.",
+      "Tick a candidate who was invited and press Delete; confirm."
+    ],
+    "expected": "Step 1: \"Choose the assessment.\" with focus on the field; nothing sent. Step 2: toast \"Invited 2\" (or \"… skipped: already invited\"). Step 3: \"Enter a subject.\"; then toast \"Sending 1 email\". Step 4: the file shows \"Choose the assessment first, then add the file again.\"; the second time the result line shows invited / skipped counts. Step 5: toast \"Deleted 0\" with \"1 skipped: invited before, so erase them instead.\"",
+    "stories": [
+      "Screens/Hiring/HIR-05 · Candidate list · Recruiter · default"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-05-03",
+    "area": "Hiring · HIR-05 Candidate record, list and retention (9 Nov 2026)",
+    "screen": "Candidate record · Recruiter default",
+    "url": "http://localhost:3000/yx/hiring/candidates",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open a demo candidate with an application; compare with the story \"Recruiter · default\" (avatar, name, résumé line, stage badge, facts Email / Mobile / Source / Added, Email + Open in pipeline, ⋯ menu, Activity on the right, tabs Overview / Applications / Scores / Consent & retention).",
+      "Open each tab; check dates read like \"3 Nov 2026\" (India date).",
+      "Press Open in pipeline.",
+      "Back on the record open the ⋯ menu; choose Add to pool or hotlist; press Add to list without a list; then choose a hotlist.",
+      "Choose Place legal hold; press Place hold with no reason; then enter \"Test hold 01\" and place it; then Lift legal hold."
+    ],
+    "expected": "Step 1: the designed layout; no page scroll bar unless the activity list is long. Step 2: every tab fills from real data. Step 3: the job's pipeline board opens. Step 4: \"Choose the list.\" then toast \"Added to the list\". Step 5: \"Enter a reason of at least 3 characters.\" with focus in Reason; then toast \"Legal hold placed\", a Legal hold badge and banner, and no Erase in the menu; then \"Legal hold lifted\".",
+    "stories": [
+      "Screens/Hiring/HIR-05 · Candidate record · Recruiter · default"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-05-04",
+    "area": "Hiring · HIR-05 Candidate record, list and retention (9 Nov 2026)",
+    "screen": "Candidate record · Merge duplicate",
+    "url": "http://localhost:3000/yx/hiring/candidates?view=duplicates",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Add two candidates: \"Merge Test\" with mobile 98450 11111 and \"Merge T\" with mobile +91 98450-11111 (different emails).",
+      "Open Hiring › Candidates › Possible duplicates (also /yx/hiring/duplicates); the pair shows \"Same phone\". Press Compare and merge.",
+      "Without choosing anything press Merge records.",
+      "Pick \"Record to keep\" = the first email; choose a value for each field; press Merge records; read the confirm; press Merge records.",
+      "Open the kept candidate; check Consent & retention › Merges and the Activity line. Open the merged one's old address (/yx/hiring/candidates/<old id>).",
+      "On another candidate use ⋯ › Merge with another candidate and press Merge records before choosing the duplicate."
+    ],
+    "expected": "Step 2: the pair is listed; /yx/hiring/duplicates opens the same tab. Step 3: the button is not greyed; \"Choose which name to keep.\" under each field and focus on the first. Step 4: the confirm says who is merged into whom, that applications and consents move, and that it is in the audit log and cannot be undone; toast \"Candidates merged\". Step 5: \"A duplicate was merged in on <today>\"; the old address opens the kept candidate. Step 6: \"Choose the duplicate to merge.\" with focus on the field.",
+    "stories": [
+      "Screens/Hiring/HIR-05 · Candidate record · Merge duplicate · field-level choice",
+      "Screens/Hiring/HIR-05 · Candidate list · Possible duplicates · compare and merge",
+      "Screens/Hiring/HIR-05 · Candidate record · Merge with another candidate · choose the duplicate first"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-05-05",
+    "area": "Hiring · HIR-05 Candidate record, list and retention (9 Nov 2026)",
+    "screen": "Merge and erase need the data-rights key; refused while acting",
+    "url": "http://localhost:3000/yx/hiring/candidates",
+    "account": "a recruiter account with the Recruiter template only (no Hiring admin); admin-tester@demo-org.test acting for hr-tester. Browser window 1278 x 635.",
+    "steps": [
+      "As the recruiter open Possible duplicates.",
+      "As the recruiter open a candidate and the ⋯ menu.",
+      "As admin-tester@ act for hr-tester (Act as); open a candidate; choose Erase candidate data and confirm.",
+      "Still acting, place a legal hold with a reason; then add a candidate on the list."
+    ],
+    "expected": "Step 1: the pairs show with \"Merging needs the candidate data-rights key.\"; no Compare and merge button. Step 2: Add to pool is there; Merge, Export, legal hold and Erase are not. Step 3: the dialog shows \"Not available while acting for someone else\"; nothing erased. Step 4: the same refusal both times.",
+    "stories": [
+      "Screens/Hiring/HIR-05 · Candidate list · Possible duplicates · no data-rights key"
+    ],
+    "note": "Negative: keys and acting for someone else."
+  },
+  {
+    "id": "MT-HIR-05-06",
+    "area": "Hiring · HIR-05 Candidate record, list and retention (9 Nov 2026)",
+    "screen": "Candidate record · Ex-employee",
+    "url": "http://localhost:3000/yx/hiring/candidates",
+    "account": "hr-tester@demo-org.test (HR keys: People and exits); a recruiter with no People key. Browser window 1278 x 635.",
+    "steps": [
+      "As hr-tester add a candidate with the email kavya@demo-org.test (Kavya was exited on 2 Nov 2026) and open her record.",
+      "If the banner says rehire eligible: no, press Clear flag with reason and press Clear flag with no reason; then give \"Checked with her manager\".",
+      "As the recruiter with no People key open the same candidate.",
+      "Add a candidate with a current employee's email (arjun@demo-org.test) and open it."
+    ],
+    "expected": "Step 1: an \"Ex-employee\" badge and the banner \"Ex-employee · rehire eligible: …\" with \"Left on 10 Oct 2026 (…)\". Step 2: \"Say why the flag is cleared (at least 3 characters).\"; then toast \"Rehire flag cleared\" and the banner says yes. Step 3: no ex-employee banner or badge at all (they may not see the employee). Step 4: no banner (a current employee is not an ex-employee).",
+    "stories": [
+      "Screens/Hiring/HIR-05 · Candidate record · Ex-employee · recruiter sees exit details",
+      "Screens/Hiring/HIR-05 · Candidate record · Ex-employee · rehire ineligible, HR can clear",
+      "Screens/Hiring/HIR-05 · Candidate record · Ex-employee · hiring manager sees flag only"
+    ],
+    "note": "Positive and negative. Uses People's person match (personal or work email)."
+  },
+  {
+    "id": "MT-HIR-05-07",
+    "area": "Hiring · HIR-05 Candidate record, list and retention (9 Nov 2026)",
+    "screen": "Hiring manager read-only, no access, not found",
+    "url": "http://localhost:3000/yx/hiring/candidates",
+    "account": "a user with only the Hiring manager template; arjun@demo-org.test (employee, no hiring key); hr-tester@demo-org.test. Browser window 1278 x 635.",
+    "steps": [
+      "As the hiring manager open Hiring › Candidates and a candidate.",
+      "As arjun@ type /yx/hiring/candidates/<a candidate id>.",
+      "As hr-tester type /yx/hiring/candidates/00000000-0000-4000-8000-000000000000."
+    ],
+    "expected": "Step 1: the list has no Add, Upload or duplicates tab; the record shows Job / Source / Applied facts, no email or mobile, no Consent tab, no ⋯ menu. Step 2: the No access state. Step 3: the Not found state with Back to candidates.",
+    "stories": [
+      "Screens/Hiring/HIR-05 · Candidate list · Hiring manager · read-only",
+      "Screens/Hiring/HIR-05 · Candidate record · No access",
+      "Screens/Hiring/HIR-05 · Candidate record · Not found (anonymised)"
+    ],
+    "note": "Negative: who may see personal data."
+  },
+  {
+    "id": "MT-HIR-05-08",
+    "area": "Hiring · HIR-05 Candidate record, list and retention (9 Nov 2026)",
+    "screen": "Candidate data retention · data request and sweep",
+    "url": "http://localhost:3000/yx/hiring/retention",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open Hiring › Candidate data retention; compare with the story \"HR · default\" (header, four tiles, Period, Data requests, Retention sweep with the runs table).",
+      "Press Find with an empty email; then type \"not-an-email\" and press Find; then \"nobody-hir05@mailbox.in\".",
+      "Type the email of the candidate added in MT-HIR-05-01 (hir05-test-1@mailbox.in); press Find; press Export their data.",
+      "Press Erase their data; confirm.",
+      "Press Preview (changes nothing); then Run now and confirm.",
+      "Change Keep details for to 18 months; reload; set it back to 12."
+    ],
+    "expected": "Step 1: the designed layout; no page scroll bar. Step 2: \"Enter the email address the person gave.\", then \"Enter a valid email address.\", then \"Nobody with this email is in your candidates.\" Step 3: the person shows with their stage; a JSON file downloads. Step 4: toast \"Personal data erased\"; the row shows \"Erased\"; their record now shows Not found. Step 5: a line \"Today it would send …\"; then toast \"Retention sweep done\" and a new row in the runs table dated today. Step 6: the tile says 18 months after reload, then 12.",
+    "stories": [
+      "Screens/Hiring/HIR-05 · Candidate data retention · HR · default",
+      "Screens/Hiring/HIR-05 · Candidate data retention · Data request · person found",
+      "Screens/Hiring/HIR-05 · Candidate data retention · Data request · nobody with that email",
+      "Screens/Hiring/HIR-05 · Candidate data retention · Preview · changes nothing"
+    ],
+    "note": "Positive and negative. DPDP: erase is audited; legal hold blocks it."
   }
 ]

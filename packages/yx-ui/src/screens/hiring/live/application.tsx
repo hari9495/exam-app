@@ -16,7 +16,7 @@ import { Card, DescriptionList, Tabs, TabsContent, TabsList, TabsTrigger } from 
 import { dayKey } from '../../../lib/dates';
 import { useRun } from '../../org/org-kit';
 import { dateText } from '../../time/live/kit';
-import { EmailDialog } from './candidates';
+import { EmailDialog } from '../candidate-dialogs';
 import { RejectDialog, scorecardText } from './job-workspace';
 import type { ApplicationView, Choice, EmailCompose, EmailTemplateChoice, OfferInput, RejectInput, ScheduleInput } from './types';
 

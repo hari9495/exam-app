@@ -191,10 +191,26 @@ export interface UploadInviteResult {
   errors: { row: number; message: string }[];
 }
 
+/**
+ * HIR-05 ex-employee match (YX-ATS-33), as the API gives it to this viewer: 'flag' (may see the employee, no exit key),
+ * 'exit' (exit date and type) or 'rehire' (also rehire eligibility). exitCaseId and version only when they may clear it.
+ */
+export interface ExEmployeeView {
+  level: 'flag' | 'exit' | 'rehire';
+  exitDate: string | null;
+  exitType: string | null;
+  rehireEligible: boolean | null;
+  rehireReason: string | null;
+  exitCaseId: string | null;
+  version: number | null;
+}
+
+/** GET hiring/candidates/:id. A view-only holder (hiring manager) gets no contact details, messages, consents or retention. */
 export interface CandidateProfileView {
-  candidate: { id: string; name: string; email: string; phone: string | null; phoneE164: string | null; status: string; globalStage: GlobalStage; createdAt: string; erasedAt: string | null; emailOptedOut: boolean; smsOptedOut?: boolean; whatsappOptedOut?: boolean };
+  candidate: { id: string; name: string; email: string | null; phone: string | null; phoneE164: string | null; status: string; globalStage: GlobalStage; createdAt: string; erasedAt: string | null; emailOptedOut: boolean; smsOptedOut?: boolean; whatsappOptedOut?: boolean };
   legalHold: { at: string; reason: string | null } | null;
-  retention: { months: number; lastActivityAt: string; until: string | null; noticeAt: string | null };
+  retention: { months: number; lastActivityAt: string; until: string | null; noticeAt: string | null } | null;
+  exEmployee?: ExEmployeeView | null;
   resume: { hasFile: boolean; scan: string; parseStatus: string; title: string | null; summary: string | null; skills: string | null; years: number | null } | null;
   applications: { id: string; jobId: string; jobTitle: string; jobStatus: string; stage: string | null; status: string | null; appliedAt: string; closed: boolean; closedReason: string | null; source: string | null }[];
   assessments: { id: string; exam: string; status: string; invitedAt: string }[];

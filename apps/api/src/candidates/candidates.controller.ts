@@ -1,4 +1,6 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
+import { assertOwnSession } from '../service-desk/desk-access';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions, RequireAnyPermission } from '../rbac/permissions.decorator';
@@ -21,7 +23,8 @@ export class CandidatesController {
 
   @Post()
   @RequirePermissions('candidate:manage')
-  create(@CurrentTenant() tenant: TenantContext, @Body() dto: CreateCandidateDto) {
+  create(@Req() req: Request, @CurrentTenant() tenant: TenantContext, @Body() dto: CreateCandidateDto) {
+    assertOwnSession(req);
     return this.candidatesService.create(tenant, dto);
   }
 
@@ -45,18 +48,21 @@ export class CandidatesController {
   @Patch(':id')
   @RequirePermissions('candidate:manage')
   update(
+    @Req() req: Request,
     @CurrentTenant() tenant: TenantContext,
     @CurrentUserId() userId: string,
     @CurrentUserRole() role: string,
     @Param('id') id: string,
     @Body() dto: UpdateCandidateDto,
   ) {
+    assertOwnSession(req);
     return this.candidatesService.update(tenant, userId, id, dto, role);
   }
 
   @Delete(':id')
   @RequirePermissions('candidate:manage')
-  remove(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+  remove(@Req() req: Request, @CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    assertOwnSession(req);
     return this.candidatesService.remove(tenant, userId, id);
   }
 
@@ -88,18 +94,21 @@ export class CandidatesController {
 
   @Post('bulk-delete')
   @RequirePermissions('candidate:manage')
-  bulkDelete(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: BulkDeleteCandidatesDto) {
+  bulkDelete(@Req() req: Request, @CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: BulkDeleteCandidatesDto) {
+    assertOwnSession(req);
     return this.candidatesService.bulkRemove(tenant, userId, dto.candidateIds);
   }
 
   @Get(':id/export')
   @RequirePermissions('candidate:data_rights')
   exportData(
+    @Req() req: Request,
     @CurrentTenant() tenant: TenantContext,
     @CurrentUserId() userId: string,
     @CurrentUserRole() role: string,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ) {
+    assertOwnSession(req);
     return this.candidatesService.exportData(tenant, userId, id, role);
   }
 
@@ -117,7 +126,9 @@ export class CandidatesController {
 
   @Post(':id/erase')
   @RequirePermissions('candidate:data_rights')
-  erase(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+  erase(@Req() req: Request, @CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+    // HIR-05: a DPDP erase (audited as candidate.erased) is the person's own act, never while acting for someone else.
+    assertOwnSession(req);
     return this.candidatesService.erase(tenant, userId, id);
   }
 

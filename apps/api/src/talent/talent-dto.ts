@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength, ValidateIf } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsEmail, IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength, ValidateIf } from 'class-validator';
 
 // Recruitment batch AT4 request bodies (M10-BUILD-DESIGN §18.1).
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
@@ -73,4 +73,12 @@ export class WithdrawConsentDto {
 export class RetentionRunDto {
   @IsBoolean()
   dryRun!: boolean;
+}
+
+/** HIR-05 data request: the email in the body, never in the URL (it would sit in access logs). */
+export class DataRequestLookupDto {
+  @trim()
+  @IsEmail()
+  @MaxLength(254)
+  email!: string;
 }

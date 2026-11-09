@@ -6,9 +6,11 @@ export { HeadcountPlanScreen, PlanEditorDrawer, type LiveHeadcountPlan, type Liv
 export { ApprovalRoutesScreen, type ApprovalRoutesScreenProps } from './routes';
 export { CareersSiteScreen, type CareersSiteScreenProps } from './careers';
 export { JobBoardsScreen, type JobBoardsScreenProps } from './boards';
-export { HiringCandidatesScreen, EmailDialog, STAGE, type HiringCandidatesScreenProps, type CandidateStatusFilter } from './candidates';
-export { CandidateProfileScreen, type CandidateProfileScreenProps } from './profile';
-export { DuplicatesScreen, TalentPoolsScreen, CandidateRetentionScreen, type DuplicatesScreenProps, type TalentPoolsScreenProps, type CandidateRetentionScreenProps } from './talent';
+// HIR-05: the designed candidate record, merge, candidate list and retention, live with their `live` prop.
+export { EmailDialog, STAGE } from '../candidate-dialogs';
+export { CandidateRecordScreen, MergeDrawer, type LiveCandidateRecord, type LiveDuplicate, type LiveMergeDrawer, type MergeFieldRow } from '../hiring-pipeline';
+export { CandidateListScreen, CandidateRetentionScreen, type CandidateListTab, type CandidateStatusFilter, type DataRequestMatch, type LiveCandidateList, type LiveRetention } from '../hiring-candidates';
+export { TalentPoolsScreen, type TalentPoolsScreenProps } from './talent';
 export { JobWorkspaceScreen, RejectDialog, scorecardText, type JobWorkspaceScreenProps } from './job-workspace';
 export { ApplicationPanel, type ApplicationPanelProps } from './application';
 export { MyInterviewsScreen, InterviewScreen, ScorecardTemplatesScreen, type MyInterviewsScreenProps, type InterviewScreenProps, type ScorecardTemplatesScreenProps } from './interviews';
