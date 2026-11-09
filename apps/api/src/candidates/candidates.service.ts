@@ -786,6 +786,9 @@ export class CandidatesService {
         where: { organizationId: context.organizationId as string, interviewId: { in: erasedInterviews.map((i) => i.id) }, redactedAt: null },
         data: { body: 'Redacted', redactedAt: now },
       });
+      // HIR-25: the interview transcripts and AI draft scorecards are about the candidate: deleted outright.
+      await tx.interviewTranscript.deleteMany({ where: { organizationId: context.organizationId as string, interviewId: { in: erasedInterviews.map((i) => i.id) } } });
+      await tx.interviewScorecardDraft.deleteMany({ where: { organizationId: context.organizationId as string, interviewId: { in: erasedInterviews.map((i) => i.id) } } });
       await tx.candidateRefreshToken.deleteMany({ where: { invitationId: { in: invitationIds } } });
       await tx.invitation.updateMany({
         where: { id: { in: invitationIds }, status: 'invited' },

@@ -11,7 +11,8 @@ import { CurrentUserRole } from '../auth/current-user-role.decorator';
 import { HiringBoardService } from './hiring-board.service';
 import { ScorecardTemplatesService } from './scorecard-templates.service';
 import { ScorecardsService, type Viewer } from './scorecards.service';
-import { BoardRejectDto, BulkBoardDto, InterviewRangeDto, JobScorecardDto, MoveDto, ScorecardCommentDto, ScorecardDto, ScorecardTemplateDto, SendOnStageDto } from './interviewing-dto';
+import { BoardRejectDto, BulkBoardDto, InterviewRangeDto, JobScorecardDto, MoveDto, NotetakerConsentDto, NotetakerTranscriptDto, ScorecardCommentDto, ScorecardDto, ScorecardTemplateDto, SendOnStageDto } from './interviewing-dto';
+import { NotetakerService } from './notetaker.service';
 
 const viewer = (req: Request): Viewer => {
   const u = req.user as { userId: string; role: string; organizationId?: string | null; permissionProfileId?: string | null };
@@ -35,6 +36,7 @@ export class InterviewingController {
     private readonly board: HiringBoardService,
     private readonly templates: ScorecardTemplatesService,
     private readonly scorecards: ScorecardsService,
+    private readonly notetaker: NotetakerService,
   ) {}
 
   @Get('jobs/:id/board')
@@ -172,5 +174,40 @@ export class InterviewingController {
   commentScorecard(@CurrentTenant() ctx: TenantContext, @Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Param('scorecardId', ParseUUIDPipe) scorecardId: string, @Body() dto: ScorecardCommentDto) {
     assertOwnSession(req);
     return this.scorecards.comment(ctx, id, scorecardId, viewer(req), dto);
+  }
+
+  // HIR-25 interview notetaker (founder decision 2): the panel and the job's overseers see it; every write is the
+  // person's own act (refused while acting for someone else). Another company's interview is 404.
+  @Get('interviews/:id/notetaker')
+  @RequireAnyPermission('interview:view_assigned', 'pipeline:manage', 'results:view')
+  notetakerView(@CurrentTenant() ctx: TenantContext, @Req() req: Request, @Param('id', ParseUUIDPipe) id: string) {
+    return this.notetaker.view(ctx, id, viewer(req));
+  }
+
+  @Put('interviews/:id/notetaker/consent')
+  @RequireAnyPermission('interview:view_assigned', 'pipeline:manage', 'results:view')
+  notetakerConsent(@CurrentTenant() ctx: TenantContext, @Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Body() dto: NotetakerConsentDto) {
+    assertOwnSession(req);
+    return this.notetaker.consent(ctx, id, viewer(req), dto.participant, dto.consent);
+  }
+
+  @Put('interviews/:id/notetaker/transcript')
+  @RequireAnyPermission('interview:view_assigned', 'pipeline:manage', 'results:view')
+  notetakerTranscript(@CurrentTenant() ctx: TenantContext, @Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Body() dto: NotetakerTranscriptDto) {
+    assertOwnSession(req);
+    return this.notetaker.addTranscript(ctx, id, viewer(req), dto.text);
+  }
+
+  @Post('interviews/:id/notetaker/draft')
+  @RequireAnyPermission('interview:view_assigned', 'pipeline:manage', 'results:view')
+  notetakerDraft(@CurrentTenant() ctx: TenantContext, @Req() req: Request, @Param('id', ParseUUIDPipe) id: string) {
+    assertOwnSession(req);
+    return this.notetaker.draft(ctx, id, viewer(req));
+  }
+
+  @Get('interviews/:id/notetaker/draft')
+  @RequireAnyPermission('interview:view_assigned', 'pipeline:manage', 'results:view')
+  notetakerMyDraft(@CurrentTenant() ctx: TenantContext, @Req() req: Request, @Param('id', ParseUUIDPipe) id: string) {
+    return this.notetaker.myDraft(ctx, id, viewer(req));
   }
 }

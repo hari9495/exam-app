@@ -32,7 +32,7 @@ describe('HiringSettingsService.save', () => {
   });
 
   it('page keys are registry keys with defaults, the seven of answer 341 included', () => {
-    expect(HIRING_SETTING_KEYS).toEqual(expect.arrayContaining(['hiring.requisition.default_recruiter', 'ats.headcount_plan', 'ats.headcount_plan.manager_view', 'ats.referral.self_apply_days', 'hiring.pay_range.show', 'hiring.pay_history.ask', 'hiring.rediscovery.ai', 'hiring.rehire_flag.blocks_screening', 'hiring.internal.after_probation', 'hiring.internal.months_in_role', 'hiring.internal.tell_manager']));
-    expect(HIRING_SETTING_KEYS).toHaveLength(15);
+    expect(HIRING_SETTING_KEYS).toEqual(expect.arrayContaining(['hiring.requisition.default_recruiter', 'ats.headcount_plan', 'ats.headcount_plan.manager_view', 'ats.referral.self_apply_days', 'hiring.pay_range.show', 'hiring.pay_history.ask', 'hiring.rediscovery.ai', 'hiring.rehire_flag.blocks_screening', 'hiring.internal.after_probation', 'hiring.internal.months_in_role', 'hiring.internal.tell_manager', 'hiring.notetaker.enabled', 'hiring.notetaker.ai_draft', 'hiring.notetaker.keep_days']));
+    expect(HIRING_SETTING_KEYS).toHaveLength(18);
   });
 });

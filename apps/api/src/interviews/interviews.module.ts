@@ -10,7 +10,6 @@ import { InterviewAiController } from './interview-ai.controller';
 import { InterviewsService } from './interviews.service';
 import { InterviewAiService } from './interview-ai.service';
 import { InterviewQuestionsClient } from './interview-questions.client';
-import { InterviewScorecardClient } from './interview-scorecard.client';
 import { InterviewEmailTemplatesController } from './interview-email-templates.controller';
 import { InterviewEmailTemplatesService } from './interview-email-templates.service';
 
@@ -21,7 +20,7 @@ import { InterviewEmailTemplatesService } from './interview-email-templates.serv
   // -- both imported explicitly, mirroring JobsModule's AI processors.
   imports: [EmailModule, StorageModule, JobsModule, CalendarSyncModule, CryptoModule, BillingModule],
   controllers: [InterviewsController, PublicInterviewsController, InterviewAiController, InterviewEmailTemplatesController],
-  providers: [InterviewsService, InterviewAiService, InterviewQuestionsClient, InterviewScorecardClient, InterviewEmailTemplatesService],
+  providers: [InterviewsService, InterviewAiService, InterviewQuestionsClient, InterviewEmailTemplatesService],
   exports: [InterviewsService],
 })
 export class InterviewsModule {}

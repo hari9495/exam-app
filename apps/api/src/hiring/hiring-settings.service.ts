@@ -29,6 +29,10 @@ export const HIRING_SETTING_KEYS = [
   'hiring.internal.after_probation',
   'hiring.internal.months_in_role',
   'hiring.internal.tell_manager',
+  // HIR-25 (founder decision 2): the notetaker, the AI draft and how long transcripts are kept.
+  'hiring.notetaker.enabled',
+  'hiring.notetaker.ai_draft',
+  'hiring.notetaker.keep_days',
 ] as const;
 export type HiringSettingKey = (typeof HIRING_SETTING_KEYS)[number];
 const EDIT_KEYS = ['ats.settings.manage', 'org.settings.manage'] as const;

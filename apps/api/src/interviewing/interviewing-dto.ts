@@ -191,3 +191,19 @@ export class ScorecardCommentDto {
   @IsUUID('4')
   requestId?: string;
 }
+
+/** HIR-25: a participant's answer to the notetaker ("me" = the panellist themselves; "candidate" = recorded for them). */
+export class NotetakerConsentDto {
+  @IsIn(['me', 'candidate'])
+  participant!: 'me' | 'candidate';
+
+  @IsIn(['given', 'declined'])
+  consent!: 'given' | 'declined';
+}
+
+/** HIR-25: the transcript a panellist adds while no recording provider is connected (plain text, up to 200,000 characters). */
+export class NotetakerTranscriptDto {
+  @IsString()
+  @MaxLength(200_000)
+  text!: string;
+}

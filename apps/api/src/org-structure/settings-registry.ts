@@ -152,6 +152,11 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'ats.referral.qualify_days': { label: 'Hiring: days a referred hire must complete before the bonus is due', scopes: ['tenant'], dated: false, values: ['30', '60', '90', '180'], default: '90' },
   // Founder answer 201: no credit when the person applied for the job on their own this many days before (0 = always credit).
   'ats.referral.self_apply_days': { label: 'Hiring: no referral credit if the person applied themselves within (days)', scopes: ['tenant'], dated: false, values: ['0', '30', '60', '90', '180'], default: '90' },
+  // HIR-25 interview notetaker (founder decision 2): off by default; consent from every participant first; the AI draft
+  // scorecard is a separate switch (also off) and needs the company's AI; transcripts and drafts are kept for N days.
+  'hiring.notetaker.enabled': { label: 'Hiring: interview notetaker (transcript with everyone’s consent)', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
+  'hiring.notetaker.ai_draft': { label: 'Hiring: AI drafts a scorecard from the transcript', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
+  'hiring.notetaker.keep_days': { label: 'Hiring: keep interview transcripts and drafts for (days)', scopes: ['tenant'], dated: false, values: ['30', '90', '180', '365'], default: '90' },
   // HIR-13 internal jobs (founder decision 6): who may apply, and when; the current manager is told, never asked.
   'hiring.internal.after_probation': { label: 'Hiring: only people past probation can apply for internal jobs', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'hiring.internal.months_in_role': { label: 'Hiring: months in their current role before someone can apply for internal jobs', scopes: ['tenant'], dated: false, values: ['0', '3', '6', '9', '12', '18', '24'], default: '12' },
