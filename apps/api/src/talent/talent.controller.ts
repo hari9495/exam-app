@@ -11,7 +11,7 @@ import { CandidateMergeService } from './merge.service';
 import { TalentPoolsService } from './pools.service';
 import { CandidateRetentionService } from './retention.service';
 import { CandidateProfileService } from './candidate-profile.service';
-import { LegalHoldDto, MergeDto, PoolDto, PoolMembersDto, RetentionRunDto, WithdrawConsentDto } from './talent-dto';
+import { DataRequestLookupDto, LegalHoldDto, MergeDto, PoolDto, PoolMembersDto, RetentionRunDto, WithdrawConsentDto } from './talent-dto';
 
 // Recruitment batch AT4 (M10-BUILD-DESIGN §18.1): duplicates and merge, talent pools and hotlists, the candidate
 // profile, legal hold, consent withdrawal and the retention sweep. HIR-05: a merge also needs the data-rights key (it
@@ -59,6 +59,14 @@ export class TalentController {
   withdraw(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: WithdrawConsentDto) {
     assertOwnSession(req);
     return this.profiles.withdraw(ctx, id, dto.purpose);
+  }
+
+  /** HIR-05 retention page: find one person by the email they applied with (DPDP access and erase requests). */
+  @Post('data-requests/lookup')
+  @HttpCode(200)
+  @RequirePermissions('candidate:data_rights')
+  lookup(@CurrentTenant() ctx: TenantContext, @Body() dto: DataRequestLookupDto) {
+    return this.profiles.lookup(ctx, dto.email);
   }
 
   @Get('pools')

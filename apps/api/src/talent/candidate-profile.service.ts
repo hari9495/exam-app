@@ -84,6 +84,14 @@ export class CandidateProfileService {
     });
   }
 
+  /** One candidate by email for a data request (merged-away tombstones never match: they gave up their email). */
+  lookup(ctx: TenantContext, email: string) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const cand = await tx.candidate.findFirst({ where: { organizationId: c.organizationId, email, deletedAt: null, mergedIntoId: null }, select: { id: true, name: true, email: true, globalStage: true, legalHoldAt: true, erasedAt: true } });
+      return { match: cand ? { id: cand.id, name: cand.name, email: cand.email, stage: cand.globalStage, onHold: Boolean(cand.legalHoldAt), erased: Boolean(cand.erasedAt) } : null };
+    });
+  }
+
   /** Legal hold (P02): nothing is erased, merged away or swept while it is on. */
   setHold(ctx: TenantContext, id: string, on: boolean, reason: string | null) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
