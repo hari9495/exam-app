@@ -53,15 +53,16 @@ built**.
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Plans, requisitions, jobs and costs | 4 | 36 | 1 | 0 | 0 | 0 | 37 |
-| B. Candidates, pipeline and interviews | 8 | 46 | 0 | 0 | 13 | 1 | 60 |
+| B. Candidates, pipeline and interviews | 8 | 52 | 1 | 0 | 9 | 1 | 63 |
 | C. Offers, BGV and joining | 4 | 17 | 6 | 0 | 5 | 0 | 28 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 20 | 0 | 0 | 7 | 4 | 31 |
 | E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
 | F. Compliance and fairness | 5 | 4 | 1 | 0 | 20 | 0 | 25 |
 | G. Careers site, portals and settings | 4 | 53 | 4 | 2 | 11 | 0 | 70 |
-| **All Hiring design groups (A–G)** | **37** | **176** | **12** | **6** | **100** | **5** | **299** |
+| **All Hiring design groups (A–G)** | **37** | **182** | **13** | **6** | **96** | **5** | **302** |
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 5 | 0 | 5 | 5 | 0 | 15 |
 Recounted by script on `test/yukthix-main` after merging the Settings 6.1 follow-ups with HIR-10/20: A–G 176 live, 12 gap, 6 wire, 100 not built, 5 phone, of 299 (H: the old scorecard-templates group left with its page).
+Recounted by script 14 Nov 2026 on `feat/yukthix-hir-27` after HIR-27 went live: its 4 stories design only → live (1 with a gap) plus 3 new drawn stories (some not sent, plan sheet, no days yet).
 Recounted by script 12 Nov 2026 on `feat/yukthix-hiring-settings-2` after the Settings 6.1 follow-ups (answers 341, 345, 348): 5 new 6.1 stories drawn and live (edit, add, used and view-only scorecard; default recruiter no longer qualifies); the "Live · Job workspace and interviews" group's last stand-in story (Scorecards) was deleted with the /yx/hiring/scorecards page.
 Recounted by script 11 Nov 2026 on `feat/yukthix-hir-09` (merged with HIR-06/07 and Settings 6.1) after HIR-09 / HIR-29 went live: HIR-09 7 live and 3 live (gap), HIR-29 2 live and 2 live (gap); the HIR-05 Application offer story now opens the offer record (answer 301); the kit's CTC breakup table is live.
 Recounted by script 11 Nov 2026 on `feat/yukthix-careers` after the careers site went live (decisions 8 and 10): T9-09 8 stories wire design → live (2 with a gap) plus 17 new (the pay question, on hold, and the drawn candidate pages: status 4, candidate page 3, offer 4, interview 4); Surfaces/Careers 18 → live (2 with a gap) plus 6 new (site settings, company pages, notices 2, company switch and assistant, full apply form); the 2 "Live · Careers site" stand-in stories were deleted with the stand-in.
@@ -384,14 +385,25 @@ No live page. Designed: `AiInterviewReviewScreen`.
 
 #### HIR-27 · Bulk interview-day scheduler
 
-No live page. Designed: `BulkInterviewDayScreen`.
+Live 14 Nov 2026 (branch `feat/yukthix-hir-27`): /yx/hiring/interview-days (from Hiring › Interviews › Interview days)
+renders the designed `BulkInterviewDayScreen` with `live`. API `GET/POST hiring/interview-days`, `GET
+hiring/interview-days/options`, `GET hiring/interview-days/:id`, `POST …/:id/assign`, `POST …/:id/send`, all
+`pipeline:manage` (the key that schedules interviews), writes never while acting (403), another company 404. Migration
+`202617o0000002_hir27_interview_days` (three tables with RLS). Company settings (6.1): `hiring.interview_day.slot_minutes`
+(30/45/60/90, default 45) and `hiring.interview_day.assign` (by slot as drawn / by panel, default by slot). Each candidate
+becomes an ordinary HIR-06 interview (the panel as panellists, the room, the job's scorecard, the same invite emails)
+when sent, row by row: a row that fails keeps its reason and never stops the others; a sent row is never sent again; a
+retry reuses the interview already made; a second send while one runs is 409.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Assigned · Auto-assigned · ready to send | design only, feature not built | no drive / interview-day API |
-| OverCapacity · Over capacity · some unassigned | design only, feature not built | same |
-| NotAssigned · Empty · not assigned yet | design only, feature not built | same |
-| Sent · Invites sent | design only, feature not built | same |
+| Assigned · Auto-assigned · ready to send | live | Auto-assign places the job's candidates of the chosen stage (oldest in the stage first; erased, rejected and archived left out) by the company rule; rows already sent keep their place |
+| OverCapacity · Over capacity · some unassigned | live | candidates who do not fit are listed (they get nothing) |
+| NotAssigned · Empty · not assigned yet | live | a new day; Auto-assign |
+| Sent · Invites sent | live (gap) | the WhatsApp reminder switch is hidden: no interview reminders exist (question 421) |
+| SentSomeFailed · Invites sent · some not sent | live | new story (drawn): each row's badge (Invite sent / Not sent) and an alert listing each reason; Send again retries only those |
+| Plan · Plan an interview day | live | new story (drawn): `InterviewDaySheet`: name, job, stage, day, first slot and number of slots (length from 6.1), panels with room and members; checked and focused before saving; a member on two panels is refused |
+| NoDays · No interview days yet | live | new story (drawn): the empty page with Plan an interview day |
 
 ### C. Offers, BGV and joining
 
@@ -810,7 +822,7 @@ stand-in is gone. Approval routes, careers and job boards stay on their stand-in
 |---|---|---|
 | Overview · Group 6 · Hiring & Assessments | wire design | the group's landing in Settings |
 | OverviewLoading · Group 6 · loading | wire design | same, loading |
-| P6_1 · 6.1 Hiring | live | /yx/settings/hiring (Settings › Hiring & Assessments › Hiring) renders `SettingsPageScreen` with `live`: pipeline templates (read-only list, Stage targets per row), scorecard templates (skills with per cent weights, scale, pass bar; Add and Edit with the pipelines key, answer 345), default recruiter for new requisitions (only people with the recruiter key, answer 348), headcount plan mode (`ats.headcount_plan`, the joined Segment: Not used / Advisory / Required) and the hiring manager's view (`ats.headcount_plan.manager_view`), show the pay range and ask pay history on new jobs (`hiring.pay_range.show`, `hiring.pay_history.ask`, company value), “not eligible for rehire” stops at the first stage (`hiring.rehire_flag.blocks_screening`), a BGV discrepancy is decided by someone other than who recorded it (`hiring.bgv.decider_other_person`, default on, answer 362), candidate retention (`ats.retention_months`), AI notes on past candidates (`hiring.rediscovery.ai`), tell candidates not selected (`hiring.reject.email_candidate`), the referral rule (`ats.referral.bonus_inr`, `ats.referral.qualify_days`, one fixed row) and the self-apply days (`ats.referral.self_apply_days`) — all with their defaults (answer 341); the referral settings are on 6.1 only (answer 384, removed from Company rules). A default recruiter who goes stale is told once to the hiring settings holders (answer 385). `GET/PUT hiring/settings`: read by `pipeline:manage`, `pipelines:configure`, `ats.headcount.manage`, `ats.referral.manage` or the settings keys; changed by `ats.settings.manage` or `org.settings.manage` held company-wide, never while acting; every key and value checked before any write; audited `org.setting.changed`; toast. Gap: the designed fields with no setting yet (plan approvers, extra approver, replacement link, offer expiry, clawback, range check, offer template, hand-off, BGV packages and timing, consent renewal, minors, AI interview and languages, careers colour and heading, cost categories) are left out, not shown with sample data (answer 342); pay range and pay history values for one legal entity or location are not shown on 6.1 (question 382) |
+| P6_1 · 6.1 Hiring | live | /yx/settings/hiring (Settings › Hiring & Assessments › Hiring) renders `SettingsPageScreen` with `live`: pipeline templates (read-only list, Stage targets per row), scorecard templates (skills with per cent weights, scale, pass bar; Add and Edit with the pipelines key, answer 345), default recruiter for new requisitions (only people with the recruiter key, answer 348), headcount plan mode (`ats.headcount_plan`, the joined Segment: Not used / Advisory / Required) and the hiring manager's view (`ats.headcount_plan.manager_view`), show the pay range and ask pay history on new jobs (`hiring.pay_range.show`, `hiring.pay_history.ask`, company value), “not eligible for rehire” stops at the first stage (`hiring.rehire_flag.blocks_screening`), a BGV discrepancy is decided by someone other than who recorded it (`hiring.bgv.decider_other_person`, default on, answer 362), the interview day's slot length and assign order (`hiring.interview_day.slot_minutes`, `hiring.interview_day.assign`, HIR-27), candidate retention (`ats.retention_months`), AI notes on past candidates (`hiring.rediscovery.ai`), tell candidates not selected (`hiring.reject.email_candidate`), the referral rule (`ats.referral.bonus_inr`, `ats.referral.qualify_days`, one fixed row) and the self-apply days (`ats.referral.self_apply_days`) — all with their defaults (answer 341); the referral settings are on 6.1 only (answer 384, removed from Company rules). A default recruiter who goes stale is told once to the hiring settings holders (answer 385). `GET/PUT hiring/settings`: read by `pipeline:manage`, `pipelines:configure`, `ats.headcount.manage`, `ats.referral.manage` or the settings keys; changed by `ats.settings.manage` or `org.settings.manage` held company-wide, never while acting; every key and value checked before any write; audited `org.setting.changed`; toast. Gap: the designed fields with no setting yet (plan approvers, extra approver, replacement link, offer expiry, clawback, range check, offer template, hand-off, BGV packages and timing, consent renewal, minors, AI interview and languages, careers colour and heading, cost categories) are left out, not shown with sample data (answer 342); pay range and pay history values for one legal entity or location are not shown on 6.1 (question 382) |
 | P6_1_ReadOnly · 6.1 Hiring · read-only | live | without the edit keys (or while acting): every value as text, no save, no edit buttons; the Request access button is not shown in live (no request flow, answer 349). With the pipelines key (not acting) Add scorecard and Edit still show on the scorecard list |
 | P6_1_StageTargets · 6.1 Hiring · stage targets | live | answer 302: Stage targets on a pipeline row opens `StageTargetsSheet`; `PATCH pipelines/stages/:id` (`pipelines:configure`, never while acting; audited); values checked and focused before saving; read-only without the key. The job's Settings tab shows them read-only with "Change in Settings" |
 | P6_1_ScorecardEdit · 6.1 Hiring · edit scorecard | live | answer 345: Edit on a scorecard row opens `ScorecardTemplateSheet`; `PUT hiring/scorecard-templates/:id` (`pipelines:configure`, never while acting; audited `ats.scorecard_template.updated`); name, scale 3-10, pass bar 1 to the scale, skills with whole per cent weights adding to 100 (total shown live), what good looks like, from the competency library; pressed too early: field errors and focus; toast. Older 1-10 weights open as per cent |
@@ -1445,3 +1457,19 @@ Founder approved, 9 Nov 2026 (questions 391-395, all as suggested): (391) keep: 
 at joining while a "before confirmation" check is open, HR decides; (392) also show the open check on the Probation page;
 (393) keep: reported once; (394) add the "Referral bonuses moved to Settings › Hiring" line to the design only if HR asks;
 (395) keep ratings, recommendation and score on erased scorecards.
+## HIR-27 bulk interview day and answer 392 built (14 Nov 2026, branch `feat/yukthix-hir-27`)
+- HIR-27: see its section above. Interview days open from Hiring › Interviews (a new "Interview days" button, drawn on the
+  HIR-06 header).
+- (392) People › Probation: HR (who raises or approves job changes) sees "A background check must be clear before
+  confirmation" in the review drawer while such a check is open, with why approving will be refused; a manager is never
+  told (the count is not sent to them). Story PPL-16 BgvOpen.
+## Founder questions from the HIR-27 build (14 Nov 2026)
+421. **WhatsApp reminders 2 hours before each slot** (drawn on the day). No interview reminders exist, so the switch is
+     hidden. *Suggested: add them with the HIR-06 reminder work (only to candidates who opted in).*
+422. **Swapping two candidates** ("you can swap afterwards" in the design). Not built: Auto-assign places everyone; a
+     single interview can still be moved on its own. *Suggested: drag to swap on the board in a later round.*
+423. **Breaks in the day.** Slots are evenly spaced from the first slot (the 6.1 length); a lunch break needs a second
+     day or fewer slots. *Suggested: let the planner remove single slots.*
+424. **Time zone.** Every day is India time (IST), like HIR-06. *Suggested: keep; add a zone when a company hires abroad.*
+425. **Panel email on a retry.** A row whose candidate email bounced is resent as HIR-06 resends: the panel gets the invite
+     again. *Suggested: keep (same as a single resend).*

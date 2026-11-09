@@ -17425,5 +17425,114 @@
       "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring · default recruiter no longer qualifies"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-27-01",
+    "area": "Hiring · HIR-27 bulk interview day and answer 392 (14 Nov 2026)",
+    "screen": "Plan an interview day",
+    "url": "http://localhost:3000/yx/hiring/interview-days",
+    "account": "hr-tester@demo-org.test (Recruiter). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Hiring › Interviews and press Interview days.",
+      "2. Press Plan an interview day, then Plan the day at once.",
+      "3. Fill: name \"Campus drive – test\", a job with candidates, its first stage, tomorrow, first slot 10:00, 4 slots; Panel A with a room and two interviewers; Add a panel: Panel B with a room and one of the same interviewers.",
+      "4. Press Plan the day.",
+      "5. Change Panel B to a different interviewer and press Plan the day."
+    ],
+    "expected": "Step 1: the Interview days page (or \"No interview days yet.\"). Step 2: field errors under Name, Job, Stage, Day and Members; focus on Name; nothing saved. Step 4: refused: the person is on two panels. Step 5: toast \"Interview day planned\"; the day opens with 2 panels × 4 slots; the header shows the 45-minute length (Settings › Hiring).",
+    "stories": [
+      "Screens/Hiring/HIR-27 · Bulk interview-day scheduler · Plan an interview day",
+      "Screens/Hiring/HIR-27 · Bulk interview-day scheduler · No interview days yet"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-27-02",
+    "area": "Hiring · HIR-27 bulk interview day and answer 392 (14 Nov 2026)",
+    "screen": "Auto-assign the day",
+    "url": "http://localhost:3000/yx/hiring/interview-days",
+    "account": "hr-tester@demo-org.test (Recruiter). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. On the day from MT-HIR-27-01 press Auto-assign.",
+      "2. Check the board and any warning.",
+      "3. In Settings › Hiring set \"Auto-assign on an interview day fills\" to One panel at a time and save; come back and press Auto-assign again.",
+      "4. Put the setting back."
+    ],
+    "expected": "Step 1: toast \"Candidates assigned\". Step 2: candidates fill the earliest slots across both panels; those who do not fit are listed in the warning. Step 3: Panel A fills before Panel B.",
+    "stories": [
+      "Screens/Hiring/HIR-27 · Bulk interview-day scheduler · Auto-assigned · ready to send",
+      "Screens/Hiring/HIR-27 · Bulk interview-day scheduler · Over capacity · some unassigned"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HIR-27-03",
+    "area": "Hiring · HIR-27 bulk interview day and answer 392 (14 Nov 2026)",
+    "screen": "Send the invites, one row at a time",
+    "url": "http://localhost:3000/yx/hiring/interview-days",
+    "account": "hr-tester@demo-org.test (Recruiter). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Reject one assigned candidate on the job’s board.",
+      "2. Back on the day press Send N invites and confirm.",
+      "3. Open Hiring › Interviews and one of the new interviews.",
+      "4. Press Send again."
+    ],
+    "expected": "Step 2: toast \"N invites sent\" with \"1 not sent\"; the rejected candidate’s row shows Not sent with \"No longer in the hiring process\"; every other row shows Invite sent; mail arrives in mailpit for each candidate and panel member. Step 3: each candidate has an ordinary interview with the panel, room, time and the job’s scorecard. Step 4: only the failed row is tried; nobody gets a second invite.",
+    "stories": [
+      "Screens/Hiring/HIR-27 · Bulk interview-day scheduler · Invites sent",
+      "Screens/Hiring/HIR-27 · Bulk interview-day scheduler · Invites sent · some not sent"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-27-04",
+    "area": "Hiring · HIR-27 bulk interview day and answer 392 (14 Nov 2026)",
+    "screen": "Who may use interview days",
+    "url": "http://localhost:3000/yx/hiring/interview-days",
+    "account": "panel@demo-org.test (Divya, hiring manager), then an admin acting for hr-tester.",
+    "steps": [
+      "1. As Divya open http://localhost:3000/yx/hiring/interview-days.",
+      "2. As the admin acting for hr-tester open the same page."
+    ],
+    "expected": "Step 1: no access. Step 2: the day shows, but there is no Plan, Auto-assign or Send.",
+    "stories": [
+      "Screens/Hiring/HIR-27 · Bulk interview-day scheduler · Auto-assigned · ready to send"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-HIR-27-05",
+    "area": "Hiring · HIR-27 bulk interview day and answer 392 (14 Nov 2026)",
+    "screen": "Settings › Hiring: interview day settings",
+    "url": "http://localhost:3000/yx/settings/hiring",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Settings › Hiring. Find \"Each interview on an interview day lasts\" and \"Auto-assign on an interview day fills\".",
+      "2. Choose 1 hour and save; plan a new day.",
+      "3. Put it back to 45 min and save."
+    ],
+    "expected": "Step 1: 45 min and Earliest slots first are chosen (defaults), as joined Segment controls. Step 2: toast; the new day says 1-hour interviews and its last slot ends later. Step 3: saved.",
+    "stories": [
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-PPL-392-01",
+    "area": "Hiring · HIR-27 bulk interview day and answer 392 (14 Nov 2026)",
+    "screen": "Probation: an open \"before confirmation\" check is shown to HR (392)",
+    "url": "http://localhost:3000/yx/people/probation",
+    "account": "hr-tester@demo-org.test (HR), then panel@demo-org.test (Divya, manager).",
+    "steps": [
+      "1. Give a probation employee’s joining a background check \"Must be clear before confirmation\" (People › Background checks), left open.",
+      "2. As HR open People › Probation and press Decide (or Review) on that person.",
+      "3. As Divya open the same person’s review.",
+      "4. Record the check as Clear and open the review as HR again."
+    ],
+    "expected": "Step 2: a warning \"A background check must be clear before confirmation\" says approving will be refused until it is clear. Step 3: no such warning (the manager is not told about background checks). Step 4: no warning.",
+    "stories": [
+      "Screens/People/PPL-16 · Probation reviews queue · HR · decide · background check still open"
+    ],
+    "note": "Positive and negative."
   }
 ]
