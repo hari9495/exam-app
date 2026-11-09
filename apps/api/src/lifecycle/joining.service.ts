@@ -1,3 +1,4 @@
+import { BGV_BEFORE_CONFIRMATION } from './bgv-gate';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
@@ -130,11 +131,14 @@ export class JoiningService {
       if (!pb.departmentId || !pb.designationId || !pb.employmentTypeId) throw new BadRequestException('Add the department, designation and employment type to the joiner first.');
       // HIR-10: a discrepancy a person decided to proceed with no longer blocks joining (founder decision 3).
       const gated = await tx.bgvCheck.findFirst({ where: { organizationId: org, preboardingId: id, gate: 'before_joining', status: { notIn: ['clear', 'cancelled'] }, NOT: { status: 'discrepancy', decision: 'proceed' } } });
-      if (gated) throw new ConflictException('A background check must be clear before joining. HR can change that check’s gate if the company decides so.');
+      if (gated) throw new ConflictException({ statusCode: 409, code: 'BGV_NOT_CLEAR_FOR_JOINING', message: 'A background check must be clear before joining. HR can change that check’s gate if the company decides so.' });
       const p = await tx.person.findFirstOrThrow({ where: { organizationId: org, id: pb.personId } });
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`preboarding:${id}`}))`;
       // Lifecycle 6e (YX-LC-18): a rehire joins on the same record with the rehire policy's choices.
       const rehire = pb.personType === 'rehire' ? await this.extras.rehireAtJoining(tx, c, pb) : null;
+      // Answer 364: joining straight as confirmed skips the confirmation, so a "before confirmation" check must be clear too.
+      if ((rehire?.skipProbation || dto.status === 'confirmed') && (await tx.bgvCheck.findFirst({ where: { organizationId: org, preboardingId: id, gate: 'before_confirmation', status: { notIn: ['clear', 'cancelled'] }, NOT: { status: 'discrepancy', decision: 'proceed' } } })))
+        throw new ConflictException({ statusCode: 409, code: BGV_BEFORE_CONFIRMATION, message: 'A background check must be clear before confirmation, so the joiner cannot join as confirmed yet. Mark them joined on probation, or record the check’s result first.' });
       const hired = await this.history.createEmployeeIn(tx, c, hv, {
         legalEntityId: pb.legalEntityId,
         status: rehire?.skipProbation ? 'confirmed' : dto.status,

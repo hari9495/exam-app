@@ -1,9 +1,12 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { buildViewer, tenantWide, type ScopeUser } from '../access/scope';
 import { audit, inCompany } from '../org-structure/org-structure.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { escapeHtml } from '../notifications/notification-email-render';
 import { OrgSettingsService } from '../org-structure/org-settings.service';
 import { SETTINGS } from '../org-structure/settings-registry';
+import { assertDefaultRecruiter, isRecruiter, recruiterKeyHolders } from './recruiter-key';
 import { todayIst } from '../org-structure/org-validation';
 import { holdersOf } from '../time/time-core';
 
@@ -11,7 +14,6 @@ import { holdersOf } from '../time/time-core';
 const OFFER_PAY_KEY = 'ats.offer.compensation.view';
 const NONE = '00000000-0000-0000-0000-000000000000';
 const LETTER_ESIGN = 'offer_template.esign';
-import { assertDefaultRecruiter, recruiterKeyHolders } from './recruiter-key';
 
 /**
  * Settings 6.1 Hiring: the company hiring settings the design has a place for (answers 291, 302 and 341). Every value is a scoped company setting with a default (org-settings.service), audited there
@@ -35,17 +37,71 @@ export const HIRING_SETTING_KEYS = [
   // HIR-09 answers 332 and 334: who approves above the range, and how a joining bonus is repaid.
   'hiring.offer.band_approver',
   'hiring.offer.clawback_basis',
+  // Founder answer 362: who decides a BGV discrepancy.
+  'hiring.bgv.decider_other_person',
 ] as const;
 export type HiringSettingKey = (typeof HIRING_SETTING_KEYS)[number];
 const EDIT_KEYS = ['ats.settings.manage', 'org.settings.manage'] as const;
+const DEFAULT_RECRUITER = 'hiring.requisition.default_recruiter';
+export const STALE_NOTICE = 'hiring.default_recruiter.stale_notified';
 
 @Injectable()
 export class HiringSettingsService {
+  private readonly logger = new Logger(HiringSettingsService.name);
+
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly prisma: PrismaService,
     private readonly settings: OrgSettingsService,
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
+
+  /**
+   * Founder answer 385 (scheduled, hourly): a company's default recruiter who has left or lost the recruiter key is
+   * reported to the people who may change the hiring settings, once for each saved value (a new save that goes stale
+   * again is reported again). The marker is an audit row, claimed before the notice is sent, so a rerun never repeats it.
+   */
+  async staleRecruiterSweep(): Promise<number> {
+    const rows = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) => tx.setting.findMany({ where: { key: DEFAULT_RECRUITER, scopeType: 'tenant' }, select: { id: true, organizationId: true, value: true, updatedAt: true } }));
+    let sent = 0;
+    for (const r of rows) {
+      if (String(r.value) === 'none') continue;
+      try {
+        if (await this.noticeStaleRecruiter({ ...r, value: String(r.value) })) sent++;
+      } catch (e) {
+        this.logger.error(`Default recruiter check failed for ${r.organizationId}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    return sent;
+  }
+
+  /** One company's default recruiter: true when a notice went out now. */
+  async noticeStaleRecruiter(row: { id: string; organizationId: string; value: string; updatedAt: Date }): Promise<boolean> {
+    const org = row.organizationId;
+    if (await isRecruiter(this.prisma, this.tenantPrisma, org, row.value)) return false;
+    const ctx: TenantContext = { organizationId: org, isSuperAdmin: false };
+    const saved = row.updatedAt.toISOString();
+    const claimed = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const done = await tx.auditLog.findFirst({ where: { organizationId: org, action: STALE_NOTICE, entityType: 'setting', entityId: row.id, metadataJson: { contains: `"saved":"${saved}"` } }, select: { id: true } });
+      if (done) return null;
+      const person = await tx.user.findFirst({ where: { organizationId: org, id: row.value }, select: { name: true, email: true, status: true } });
+      const left = !person || person.status !== 'active';
+      await audit(tx, c, STALE_NOTICE, 'setting', row.id, { value: row.value, saved, left });
+      return { name: person?.name || person?.email || 'The default recruiter', left };
+    });
+    if (!claimed) return false;
+    const people = await inCompany(this.tenantPrisma, ctx, (tx) => tx.user.findMany({ where: { organizationId: org, status: 'active' }, take: 1000, select: { id: true, role: true, permissionProfileId: true } }));
+    const to: string[] = [];
+    for (let i = 0; i < people.length; i += 10) {
+      const batch = people.slice(i, i + 10);
+      const can = await Promise.all(batch.map((u) => this.canEdit({ userId: u.id, role: u.role, organizationId: org, permissionProfileId: u.permissionProfileId })));
+      to.push(...batch.filter((_, k) => can[k]).map((u) => u.id));
+    }
+    const why = claimed.left ? 'has left the company' : 'no longer holds the recruiter key';
+    const text = `${claimed.name} ${why}, so new requisitions start with no recruiter. Choose another default recruiter in Settings › Hiring.`;
+    await this.notifications?.notifySystem(ctx, to.filter((id) => id !== row.value), 'hiring.default_recruiter.stale', { entityType: 'setting', entityId: row.id, contextText: text, linkPath: '/yx/settings/hiring' }, { subject: 'Choose a new default recruiter', html: `<p>${escapeHtml(text)}</p>` }, row.value);
+    return true;
+  }
 
   /** The hiring settings key or HR's settings key, held for the whole company (a narrower grant confers nothing). */
   async canEdit(user: ScopeUser): Promise<boolean> {

@@ -52,4 +52,6 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'import-drafts-retention', cron: '15 22 * * *' },
   // People follow-up 12: Special data past its period is deleted, only for companies that turned it on (04:15 IST).
   { id: 'privacy-erasure', cron: '45 22 * * *' },
+  // Founder answer 385: a default recruiter who left or lost the recruiter key is reported once (hourly at :20).
+  { id: 'hiring-default-recruiter', cron: '20 * * * *' },
 ];

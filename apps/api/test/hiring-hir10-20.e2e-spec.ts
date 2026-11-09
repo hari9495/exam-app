@@ -227,6 +227,31 @@ describe('Hiring HIR-10 / HIR-20 / HIR-07 comments', () => {
     await setting('hiring.bgv.decider_other_person', 'on');
   });
 
+  it('answer 364: a "before confirmation" check blocks joining as confirmed (409 with a code), not joining on probation; clear passes', async () => {
+    const j = (await api('hr', 'post', '/lifecycle/joiners').send({ givenName: 'Rohan', familyName: run, email: `rohan-${run}@join.test`, joiningOn: today, legalEntityId: ids.entity, locationId: ids.blr, departmentId: ids.dept, designationId: ids.desig, employmentTypeId: ids.perm }).expect(want(201))).body;
+    await api('hr', 'post', `/lifecycle/joiners/${j.id}/bgv/ask`).expect(want(200));
+    const personId = (await inA((tx) => tx.preboarding.findUniqueOrThrow({ where: { id: j.id } }))).personId;
+    await inA((tx) => tx.consentRecord.create({ data: { organizationId: org.A.id, personId, purpose: 'bgv', noticeVersion: BGV_NOTICE, itemsShown: BGV_ITEMS as unknown as string[], evidence: { via: 'test' } } }));
+    const k = (await api('hr', 'post', `/lifecycle/joiners/${j.id}/bgv/checks`).send({ checkType: 'criminal', gate: 'before_confirmation' }).expect(want(201))).body.id as string;
+    const version = async () => (await inA((tx) => tx.preboarding.findUniqueOrThrow({ where: { id: j.id } }))).version;
+    const refused = await api('hr', 'post', `/lifecycle/joiners/${j.id}/join`).send({ identityAttested: true, status: 'confirmed', version: await version() }).expect(409);
+    expect(refused.body).toMatchObject({ code: 'BGV_NOT_CLEAR_FOR_CONFIRMATION', message: expect.stringMatching(/must be clear before confirmation/) });
+    expect((await inA((tx) => tx.preboarding.findUniqueOrThrow({ where: { id: j.id } }))).status).toBe('invited');
+    // Joining on probation is not held by a before-confirmation check.
+    const onProbation = await api('hr', 'post', `/lifecycle/joiners/${j.id}/join`).send({ identityAttested: true, status: 'probation', version: await version() });
+    expect(onProbation.body.code).not.toBe('BGV_NOT_CLEAR_FOR_CONFIRMATION');
+    expect(String(onProbation.body.message ?? '')).not.toMatch(/background check/i);
+    // The confirmation later waits on the same check (the gate follows the joining into the employment).
+    const pb = await inA((tx) => tx.preboarding.findUniqueOrThrow({ where: { id: j.id } }));
+    if (pb.employmentId) {
+      const { openConfirmationChecks } = await import('../src/lifecycle/bgv-gate');
+      expect(await inA((tx) => openConfirmationChecks(tx as never, org.A.id, pb.employmentId!))).toBe(1);
+      const kv = (await check(k)).version;
+      await api('hr', 'post', `/lifecycle/bgv/checks/${k}`).field('status', 'clear').field('version', String(kv)).expect(want(200));
+      expect(await inA((tx) => openConfirmationChecks(tx as never, org.A.id, pb.employmentId!))).toBe(0);
+    }
+  });
+
   // ------------------------------------------------------------------------------------------ HIR-20 Talent CRM
 
   it('pools: create (bad input 400), consent counts and owner; a talent pool takes only consented people; remove', async () => {
@@ -293,7 +318,7 @@ describe('Hiring HIR-10 / HIR-20 / HIR-07 comments', () => {
     await api('int1', 'post', path(draft.id)).send({ body: 'Too early' }).expect(409);
     // Not readable by the recruiter yet (a draft): 404, never a hint it exists.
     await api('recruiter', 'post', path(draft.id)).send({ body: 'Seen?' }).expect(404);
-    await api('int1', 'post', `/hiring/interviews/${ids.iv}/scorecard/submit`).send({ ratings: [{ itemId: t.items[0].id, rating: 4 }], recommendation: 'yes' }).expect(want(200));
+    await api('int1', 'post', `/hiring/interviews/${ids.iv}/scorecard/submit`).send({ ratings: [{ itemId: t.items[0].id, rating: 4, notes: 'Vikram named every boundary case' }], recommendation: 'yes', summary: 'Strong tester; hire Vikram' }).expect(want(200));
     const sc = draft.id as string;
     await api('int1', 'post', path(sc)).send({ body: '   ' }).expect(400);
     await api('int1', 'post', path(sc)).send({ body: 'x'.repeat(2001) }).expect(400);
@@ -323,5 +348,19 @@ describe('Hiring HIR-10 / HIR-20 / HIR-07 comments', () => {
     await inA((tx) => tx.pipelineEntry.update({ where: { id: entry }, data: { rejected: true } }));
     await api('admin', 'post', `/candidates/${candidateId}/erase`).expect((r) => expect([200, 201]).toContain(r.status));
     expect(await seen('int1')).toEqual(['Redacted', 'Redacted', 'Redacted']);
+    // Answer 367: the scorecard's own summary and rating notes are redacted too; the rating, recommendation and score stay.
+    const card = await inA((tx) => tx.scorecard.findUniqueOrThrow({ where: { id: sc }, include: { ratings: true } }));
+    expect(card).toMatchObject({ summary: 'Redacted', recommendation: 'yes', status: 'submitted', redactedAt: expect.any(Date) });
+    expect(card.ratings).toEqual([expect.objectContaining({ rating: 4, notes: 'Redacted' })]);
+    const view = (await api('int1', 'get', `/hiring/interviews/${ids.iv}`).expect(200)).body.scorecards.find((x: { id: string }) => x.id === sc);
+    expect(JSON.stringify(view)).not.toMatch(/Vikram named|hire Vikram/);
+    // Still frozen for everything else: no new text, no new rating, no second redaction, no deleting a rating.
+    await expect(inA((tx) => tx.scorecard.update({ where: { id: sc }, data: { summary: 'Rewritten' } }))).rejects.toThrow(/cannot be changed/);
+    await expect(inA((tx) => tx.scorecard.update({ where: { id: sc }, data: { recommendation: 'no' } }))).rejects.toThrow(/cannot be changed/);
+    await expect(inA((tx) => tx.scorecardRating.updateMany({ where: { scorecardId: sc }, data: { rating: 1 } }))).rejects.toThrow(/cannot be changed/);
+    await expect(inA((tx) => tx.scorecardRating.updateMany({ where: { scorecardId: sc }, data: { notes: 'New words' } }))).rejects.toThrow(/cannot be changed/);
+    await expect(inA((tx) => tx.scorecardRating.deleteMany({ where: { scorecardId: sc } }))).rejects.toThrow(/cannot be changed/);
+    // Erasing again is a no-op for the scorecards.
+    await api('admin', 'post', `/candidates/${candidateId}/erase`).expect((r) => expect([200, 201]).toContain(r.status));
   });
 });

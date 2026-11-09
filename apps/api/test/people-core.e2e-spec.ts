@@ -438,6 +438,22 @@ describe('People core (P01 §4.4–4.5a; M01 §3.2–3.4, §3.10; P02 YX-SEC-04/
       expect((await api('hrA', 'get', `/people/employees/${ids.ravi}/as-of`).expect(200)).body.status.status).toBe('probation');
       // Switched on (Q3: the company opts in): confirmed from the day after the end, by the company rule.
       await api('adminA', 'put', '/org/settings').send({ key: 'probation.auto_confirm_after_days', scopeType: 'tenant', value: '7' }).expect(200);
+      // Answer 364: a "must be clear before confirmation" background check from Ravi's joining holds the company rule.
+      const gate = await tenantPrisma.forTenant(asA(), async (tx) => {
+        const o = org.A.id;
+        const emp = await tx.employment.findFirstOrThrow({ where: { organizationId: o, employeeId: ids.ravi } });
+        const person = await tx.employee.findFirstOrThrow({ where: { organizationId: o, id: ids.ravi } });
+        const a = await tx.employeeAssignment.findFirstOrThrow({ where: { organizationId: o, employmentId: emp.id, supersededAt: null } });
+        const pb = await tx.preboarding.create({ data: { organizationId: o, personId: person.personId, source: 'direct', joiningOn: emp.joinedOn, legalEntityId: emp.legalEntityId, locationId: a.locationId, hrOwnerUserId: users.hrA, status: 'joined', employmentId: emp.id } as never });
+        const consent = await tx.consentRecord.create({ data: { organizationId: o, personId: person.personId, purpose: 'bgv', noticeVersion: '1', itemsShown: [], evidence: { via: 'test' } } });
+        return (await tx.bgvCheck.create({ data: { organizationId: o, preboardingId: pb.id, consentId: consent.id, checkType: 'criminal', status: 'requested', gate: 'before_confirmation' } })).id;
+      });
+      await people.probationSweep(at(today));
+      await people.probationSweep(at(today));
+      expect((await api('hrA', 'get', `/people/employees/${ids.ravi}/as-of`).expect(200)).body.status.status).toBe('probation');
+      expect((await auditActions('employee.probation.auto_confirm_held')).map((x) => [x.entityId, x.metadata.openChecks])).toEqual([[ids.ravi, 1]]);
+      expect(await auditActions('employee.probation.auto_confirmed')).toEqual([]);
+      await tenantPrisma.forTenant(asA(), (tx) => tx.bgvCheck.update({ where: { id: gate }, data: { status: 'clear' } }));
       await people.probationSweep(at(today));
       const status = (await api('hrA', 'get', `/people/employees/${ids.ravi}/as-of`).expect(200)).body.status;
       expect(status).toMatchObject({ status: 'confirmed', validFrom: '2026-04-30' });

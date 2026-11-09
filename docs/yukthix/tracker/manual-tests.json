@@ -17340,6 +17340,93 @@
     "note": "Positive and negative."
   },
   {
+    "id": "MT-HIR-SET-14",
+    "area": "Hiring · Settings 6.1 round 3, answers 362, 364, 367, 384, 385 (13 Nov 2026)",
+    "screen": "Settings › Hiring: who decides a BGV discrepancy (362)",
+    "url": "http://localhost:3000/yx/settings/hiring",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Settings › Hiring. Under Background checks and candidate data find \"A discrepancy is decided by someone other than who recorded it\".",
+      "2. Untick it and press Save changes.",
+      "3. Open People › Background checks (as an HR person with the background-check key) and record a discrepancy on a joiner, then decide it yourself.",
+      "4. Back on Settings › Hiring tick it again and save; record another discrepancy and try to decide it yourself.",
+      "5. As recruiter@demo-org.test (no hiring settings key) open Settings › Hiring."
+    ],
+    "expected": "Step 1: ticked (the default). Step 2: toast \"Hiring settings saved\". Step 3: you may decide your own discrepancy. Step 4: deciding your own is refused; someone else must. Step 5: the switch shows as text, no Save.",
+    "stories": [
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring",
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring · read-only"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-SET-15",
+    "area": "Hiring · Settings 6.1 round 3, answers 362, 364, 367, 384, 385 (13 Nov 2026)",
+    "screen": "Probation: a \"before confirmation\" check blocks confirming (364)",
+    "url": "http://localhost:3000/yx/people/probation",
+    "account": "hr-tester@demo-org.test (HR with the background-check key), then a second HR person to approve.",
+    "steps": [
+      "1. Take a joiner, add a background check with \"Must be clear before confirmation\", and mark them joined choosing \"Confirmed\".",
+      "2. Mark them joined on probation instead.",
+      "3. Raise their confirmation from People › Probation and ask the second HR person to approve it.",
+      "4. Record the check as Clear in Background checks, then approve the confirmation again."
+    ],
+    "expected": "Step 1: refused: \"A background check must be clear before confirmation, so the joiner cannot join as confirmed yet…\" (code BGV_NOT_CLEAR_FOR_CONFIRMATION). Step 2: joined on probation. Step 3: approving is refused with \"A background check must be clear before confirmation…\"; the status stays probation. Step 4: confirmed.",
+    "stories": [],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-SET-16",
+    "area": "Hiring · Settings 6.1 round 3, answers 362, 364, 367, 384, 385 (13 Nov 2026)",
+    "screen": "Candidate erase redacts the scorecard text (367)",
+    "url": "http://localhost:3000/yx/hiring/candidates",
+    "account": "hr-tester@demo-org.test (candidate data rights), plus an interviewer with a submitted scorecard.",
+    "steps": [
+      "1. Pick a rejected test candidate whose interview has a submitted scorecard with a summary and notes.",
+      "2. Erase the candidate (Candidate data › Erase).",
+      "3. Open the interview’s scorecard as the interviewer and as the recruiter."
+    ],
+    "expected": "Step 3: the summary, each rating note and each comment read \"Redacted\"; the ratings, recommendation and score are still shown. Nothing names the candidate.",
+    "stories": [],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HIR-SET-17",
+    "area": "Hiring · Settings 6.1 round 3, answers 362, 364, 367, 384, 385 (13 Nov 2026)",
+    "screen": "Referral settings only on 6.1 (384)",
+    "url": "http://localhost:3000/yx/settings/company-rules",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Settings › Organisation › Company rules.",
+      "2. Open Settings › Hiring and change the referral bonus; save.",
+      "3. Open Hiring › Referrals."
+    ],
+    "expected": "Step 1: no Referrals section. Step 2: toast \"Hiring settings saved\". Step 3: the new bonus shows on new referrals.",
+    "stories": [
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-SET-18",
+    "area": "Hiring · Settings 6.1 round 3, answers 362, 364, 367, 384, 385 (13 Nov 2026)",
+    "screen": "Default recruiter goes stale: one notice (385)",
+    "url": "http://localhost:3000/yx/settings/hiring",
+    "account": "hr-tester@demo-org.test, then an admin who removes the Recruiter role; a recruiter-only account to check who is told.",
+    "steps": [
+      "1. Choose recruiter@demo-org.test as default recruiter and save.",
+      "2. In Roles & access remove that person’s Recruiter role.",
+      "3. Wait for the hourly check (or ask the lead to run the hiring-default-recruiter sweep) and open the bell as hr-tester and as the recruiter-only account.",
+      "4. Wait for the next hourly check.",
+      "5. Give the role back, choose None and save."
+    ],
+    "expected": "Step 3: hr-tester (and other hiring settings holders) get \"… no longer holds the recruiter key, so new requisitions start with no recruiter…\" with a link to Settings › Hiring; the recruiter-only account gets nothing. Step 4: no second notice. Step 5: saved; no warning.",
+    "stories": [
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring · default recruiter no longer qualifies"
+    ],
+    "note": "Positive and negative."
+  },
+  {
     "id": "MT-HIR-09-08",
     "area": "Hiring · HIR-09 Offer builder and HIR-29 offer conditions (11 Nov 2026)",
     "screen": "Settings 6.1 · offer approver, clawback, e-signed letters (answers 332, 334, 337)",

@@ -786,6 +786,11 @@ export class CandidatesService {
         where: { organizationId: context.organizationId as string, interviewId: { in: erasedInterviews.map((i) => i.id) }, redactedAt: null },
         data: { body: 'Redacted', redactedAt: now },
       });
+      // Answer 367: the scorecards' own text about the candidate too: the summary and each rating's notes (the ratings,
+      // recommendation and score stay, so funnel and panel numbers keep). The freeze triggers allow only this, once.
+      const cards = await tx.scorecard.findMany({ where: { organizationId: context.organizationId as string, interviewId: { in: erasedInterviews.map((i) => i.id) }, redactedAt: null }, select: { id: true, summary: true } });
+      for (const card of cards) await tx.scorecard.update({ where: { id: card.id }, data: { summary: card.summary == null ? null : 'Redacted', redactedAt: now } });
+      if (cards.length) await tx.scorecardRating.updateMany({ where: { organizationId: context.organizationId as string, scorecardId: { in: cards.map((x) => x.id) }, notes: { not: null } }, data: { notes: 'Redacted' } });
       await tx.candidateRefreshToken.deleteMany({ where: { invitationId: { in: invitationIds } } });
       await tx.invitation.updateMany({
         where: { id: { in: invitationIds }, status: 'invited' },
