@@ -207,13 +207,13 @@ list `GET custom-fields` stays `org:manage_settings` and is no longer called by 
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| List · Jobs list | live | `GET jobs` (`results:view`); job numbers, filters, search, Export CSV of the visible columns; row menu: copy careers link, send for approval, withdraw, put on hold, resume, close, reopen, delete (`pipeline:manage`); Recruiter column; saved views wait (225) |
+| List · Jobs list | live | `GET jobs` (`results:view`); job numbers, filters, search, Export CSV of the visible columns (CSV only, answer 241); row menu: copy careers link, send for approval, withdraw, put on hold, resume, close, reopen, delete (`pipeline:manage`); Recruiter column; saved views wait (225) |
 | Workspace · Job workspace · overview | live | `GET jobs/:id` with `payLaw` and `postings`; job number; recruiter; stage counts from `GET jobs`; put on hold, resume, close, reopen; Open pipeline |
 | Postings · Job workspace · board postings (one failed) | live | `postings` (every company board, its publication status and error); post, refresh, retry, close by `PATCH jobs/:id jobBoardIds` |
 | Empty · Empty | live | no jobs |
 | Loading · Loading | live | while `GET jobs` loads |
 | Error · Error | live | `GET jobs` fails |
-| CreateJob · Create job sheet | live | added 9 Nov 2026 (the stand-in's new-job form, drawn from the kit): `POST jobs`; pay fields, plan line, replacement, custom fields, AI draft; outside India the API needs a location from the masters (229) |
+| CreateJob · Create job sheet | live | added 9 Nov 2026 (the stand-in's new-job form, drawn from the kit): `POST jobs`; pay fields, plan line, replacement, custom fields, AI draft; outside India the API needs a location from the masters (229); a typed place carries its country and a foreign one is refused even under an Indian entity (244) |
 | ChangeRecruiter · Job workspace · change recruiter | live | added 9 Nov 2026 (answer 222): `PATCH jobs/:id recruiterUserId` (`pipeline:manage`), audited; pressed with no change: field error |
 
 #### HIR-11 · Recruiting costs entry
@@ -382,8 +382,13 @@ before it is due (default 90) and the days an own application blocks credit (def
 `ats.referral.bonus_inr` / `qualify_days` / `self_apply_days` (Settings › Company rules › Referrals); the amount is kept on
 each referral when it is made. The joining day and any exit come from People: leaving before the qualifying day means no
 bonus (answer 205). HR's All referrals (answer 204) is at /yx/hiring/referrals/all (Hiring › Reports & compliance;
-`ats.referral.manage` or `candidate:view`): `GET referrals`, `PATCH referrals/:id/reward` (paid only when due, posts the
-cost; refused while acting).
+`ats.referral.manage` or `candidate:view`): `GET referrals`, `PATCH referrals/:id/reward` (paid only when due; refused
+while acting). Founder answers 231 and 234 (10 Nov 2026, branch `feat/yukthix-hir-followups-2`): marking paid hands payroll
+a one-time **Referral bonus** line (`referral_bonus`, source `m10`, linked `referral:<id>`) for the referrer's employee
+record through `PayrollIntakeService.oneTime`, in this month or the next open one; the Recruiting cost is posted when the
+run whose payslip carries that line is approved (outbox event `payroll.run.approved`, once per referral); undoing "paid"
+cancels the line while no approved run has it (the cost goes too) and is refused with the month after. A resignation
+waiting for approval shows **Bonus on hold** in both lists and refuses mark-paid with the reason.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
@@ -393,8 +398,8 @@ cost; refused while acting).
 | Empty · Empty | live | no referrals; no open jobs shows its own message in the sheet |
 | Phone · phone | phone view, mobile app not built | `ReferralsPhone` |
 | PhoneRefer · phone · refer | phone view, mobile app not built | same |
-| AllReferrals · All referrals (HR) | live | /yx/hiring/referrals/all: tiles, filters by bonus and stage, Due on, amounts |
-| AllReferralsMarkPaid · All referrals · mark bonus paid | live | confirm, then toast; refused with the reason when not due or left early (409) |
+| AllReferrals · All referrals (HR) | live | /yx/hiring/referrals/all: tiles, filters by bonus and stage, Due on, amounts; Bonus on hold (answer 234) |
+| AllReferralsMarkPaid · All referrals · mark bonus paid | live | confirm, then toast "Bonus sent to payroll"; the payroll line is made (answer 231); refused with the reason when not due, on hold, left early or the referrer has no employee record (409) |
 | AllReferralsEmpty · All referrals · empty | live | no referrals |
 
 #### HIR-13 · Internal jobs
@@ -951,3 +956,22 @@ Each has a safe default already built; the suggestion is the answer we propose.
      that lists the candidates waiting for the manager's view.*
 265. **Moving out of Rejected.** Built: allowed for the job-manage key; it cancels a waiting rejection email. *Suggested:
      keep.*
+
+## Founder questions from the HIR follow-ups round 2 (10 Nov 2026)
+Each has a safe default already built; the suggestion is the answer we propose.
+281. **Typed place names.** A typed place carries a country (default India) and a foreign one is refused; the words
+     themselves ("Boston, USA") are not read. *Suggested: keep; the country choice is what counts.*
+282. **Undo while a draft run has the line.** Built as asked: undo cancels the line until an approved run has it; a draft
+     run that already calculated it shows the change only after it is recalculated. *Suggested: keep; payroll's own
+     one-time pay cancel works the same way.*
+283. **Undo paid in the screen.** The API undoes "paid" (to approved or rejected), but All referrals has no Undo item (the
+     design has none). *Suggested: draw "Undo paid" in the row menu (shown while no approved run has it).*
+284. **Referral bonus pay flags.** `referral_bonus` starts as the performance bonus does: taxable, in the PT wage, outside
+     the Code wage. *Suggested: keep; payroll can change the flags per company.*
+285. **A referrer without an employee record** (a contractor or an outside person) cannot be paid through payroll; mark-paid
+     is refused with the reason. *Suggested: add a "paid outside payroll" choice that posts the cost at once.*
+286. **Other tables that offer Excel but write CSV** (answer 241 asked to list them): HIR-01 headcount plan, Helpdesk
+     tickets, Pay component library, Pay inputs (LOP, one-time pay, payment status), Piece-rate check, People assets,
+     People letters, Time attendance reports, the HIR-04 candidates list; People directory passes the format to the
+     server. *Suggested: give each `exportFormats={['csv']}` in one small change.*
+
