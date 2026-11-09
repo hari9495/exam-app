@@ -1515,6 +1515,12 @@ accepted offers to a People joiner batch (later); (402) add bulk offers to the p
 "Offer expires after" on 6.1, used by single and bulk offers; (405) background job with progress if batches grow (later);
 (406) bulk edit in the kit table (later); (421) WhatsApp slot reminders with interview reminders, opted-in only (later);
 (422) drag to swap on the interview-day board (later); (423) let the planner remove single slots.
+Founder approved, 10 Nov 2026 (questions 431-435 and 441-444, all as suggested): (431) keep the transcript upload;
+pick a recording provider when a customer asks, behind the same consent (later); (432) keep the recorded answer, also ask
+the candidate on their interview page once it is drawn (later); (433)-(435) keep; (441) keep the India date for Apply by,
+use the job location's time zone when hiring abroad (later); (442) YukthiX staff switch white-label on from the console
+with the plan; (443) add the quarantine-email switch to 6.1 under candidate data; (444) keep the Indian mobile for jobs
+in India.
 ## HIR-27 bulk interview day and answer 392 built (14 Nov 2026, branch `feat/yukthix-hir-27`)
 - HIR-27: see its section above. Interview days open from Hiring › Interviews (a new "Interview days" button, drawn on the
   HIR-06 header).
