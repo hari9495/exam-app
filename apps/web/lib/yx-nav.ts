@@ -268,18 +268,24 @@ export function buildNav(n: NavInput): NavArea[] {
     title: 'Hiring',
     sections: support
       ? []
-      : sec(undefined, [
+      : [
+          ...sec(undefined, [
           ...when(has('ats.headcount.manage'), L('hiring-plans', 'Headcount plan', '/yx/hiring/plans')),
           ...when(any('pipeline:manage', 'results:view'), L('hiring-jobs', 'Jobs & requisitions', '/yx/hiring/jobs')),
           ...when(any('interview:view_assigned', 'pipeline:manage'), L('hiring-interviews', 'Interviews', '/yx/hiring/interviews', 'scorecardsToDo')),
           ...when(any('candidate:manage', 'candidate:view'), L('hiring-candidates', 'Candidates & talent CRM', '/yx/hiring/candidates'), L('hiring-pools', 'Talent pools', '/yx/hiring/pools')),
+          // HIR-12 (design: under Hiring): anyone signed in refers a friend to an open job and follows the bonus.
+          L('hiring-referrals', 'Referrals', '/yx/hiring/referrals'),
           ...when(has('org:manage_settings'), L('hiring-careers', 'Careers site', '/yx/hiring/careers'), L('hiring-boards', 'Job boards', '/yx/hiring/job-boards')),
           ...when(has('pipelines:configure'), L('hiring-scorecards', 'Scorecards', '/yx/hiring/scorecards')),
           ...when(has('approvals:configure'), L('hiring-approvals', 'Hiring approvals', '/yx/hiring/approval-routes')),
           ...when(has('candidate:data_rights'), L('hiring-retention', 'Candidate data retention', '/yx/hiring/retention')),
           ...when(any('exam:manage', 'question_bank:manage'), L('hiring-older', 'Assessments & more (older screens)', '/v2/today')),
           ...when(has('results:view') && !any('exam:manage', 'question_bank:manage'), L('hiring-results', 'Test results (older screens)', '/v2/panel/reports')),
-        ]),
+          ]),
+          // HIR-11: the design puts Recruiting costs under "Reports & compliance"; the API needs org:manage_settings.
+          ...sec('Reports & compliance', when(has('org:manage_settings'), L('hiring-costs', 'Recruiting costs', '/yx/hiring/costs'))),
+        ],
   };
 
   const performance: NavArea = {
