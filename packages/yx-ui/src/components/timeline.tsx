@@ -330,8 +330,21 @@ export interface CommentThreadProps {
   onResolvedChange?: (resolved: boolean) => void;
   /** Show the thread's own Resolve button (default true). Turn off where the page has its own resolve action. */
   resolvable?: boolean;
-  onAdd?: (c: NewComment) => void;
+  /**
+   * Called on Post. A promise waits for the server: the comment shows when it resolves (with the returned id), and a
+   * rejection shows its message under the composer and keeps the draft.
+   */
+  onAdd?: (c: NewComment) => unknown;
   onEdit?: (id: string, body: string) => void;
+  /**
+   * Append-only (e.g. comments under a submitted scorecard): no edit, attachment, private note or resolve; the thread
+   * says comments stay as written.
+   */
+  appendOnly?: boolean;
+  /** Longest comment allowed (characters). */
+  maxLength?: number;
+  /** Composer label and the empty-thread hint (defaults suit a thread with @mentions). */
+  emptyHint?: string;
   /** Clock for the edit window. Defaults to now. */
   now?: Date;
   /** Composer text on first render; ending in "@…" opens the mention list (docs and screenshot tests). */
@@ -372,6 +385,9 @@ export function CommentThread({
   now: nowProp,
   defaultDraft = '',
   defaultPrivate = false,
+  appendOnly = false,
+  maxLength,
+  emptyHint = 'Type @ to mention someone. They get a notification.',
 }: CommentThreadProps) {
   const now = nowProp ?? new Date();
   const [comments, setComments] = useState(defaultComments);
@@ -388,6 +404,7 @@ export function CommentThread({
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const uid = useId();
@@ -419,11 +436,13 @@ export function CommentThread({
     });
   };
 
-  const post = () => {
+  const post = async () => {
     if (!draft.trim()) {
       setError('Write a comment before you post it.');
+      areaRef.current?.focus();
       return;
     }
+    if (busy) return;
     const body = toMentionMarkup(draft.trim(), people);
     const c: Comment = {
       id: `new-${++seq}`,
@@ -433,8 +452,20 @@ export function CommentThread({
       private: isPrivate || undefined,
       attachments: files.length ? files.map((f) => ({ name: f.name, size: f.size })) : undefined,
     };
-    setComments((cs) => [...cs, c]);
-    onAdd?.({ body, mentions: parseMentions(body).ids, private: isPrivate, files });
+    const out = onAdd?.({ body, mentions: parseMentions(body).ids, private: isPrivate, files });
+    if (out && typeof (out as Promise<unknown>).then === 'function') {
+      setBusy(true);
+      try {
+        const saved = (await out) as { id?: string } | undefined;
+        setComments((cs) => [...cs, { ...c, id: saved?.id ?? c.id }]);
+      } catch (e) {
+        setError(e instanceof Error && e.message ? e.message : 'The comment was not posted. Try again.');
+        areaRef.current?.focus();
+        return;
+      } finally {
+        setBusy(false);
+      }
+    } else setComments((cs) => [...cs, c]);
     setDraft('');
     setFiles([]);
     setQuery(null);
@@ -460,7 +491,7 @@ export function CommentThread({
     }
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
-      post();
+      void post();
     }
   };
 
@@ -481,7 +512,7 @@ export function CommentThread({
           Comments <span className="yx-comments__count">{comments.length}</span>
         </h3>
         {resolved && <Badge tone="success">Resolved</Badge>}
-        {resolvable && comments.length > 0 && (
+        {resolvable && !appendOnly && comments.length > 0 && (
           <Button size="sm" onClick={() => setResolved(!resolved)}>
             {resolved ? 'Reopen thread' : 'Resolve thread'}
           </Button>
@@ -489,7 +520,7 @@ export function CommentThread({
       </div>
 
       {comments.length === 0 ? (
-        <EmptyState compact title="No comments yet." description="Type @ to mention someone. They get a notification." />
+        <EmptyState compact title="No comments yet." description={emptyHint} />
       ) : (
         <ol className="yx-comments__list">
           {comments.map((c) => (
@@ -508,7 +539,7 @@ export function CommentThread({
                       Private
                     </span>
                   )}
-                  {!resolved && canEditComment(c, currentUser.id, now) && editing?.id !== c.id && (
+                  {!resolved && !appendOnly && canEditComment(c, currentUser.id, now) && editing?.id !== c.id && (
                     <IconButton icon={Pencil} size="sm" label="Edit comment" onClick={() => setEditing({ id: c.id, text: fromMentionMarkup(c.body) })} />
                   )}
                 </p>
@@ -553,7 +584,8 @@ export function CommentThread({
               ref={areaRef}
               rows={3}
               aria-label={isPrivate ? 'Private HR note' : 'Comment'}
-              placeholder={isPrivate ? 'Write a private note for HR' : 'Write a comment. Type @ to mention someone.'}
+              placeholder={isPrivate ? 'Write a private note for HR' : appendOnly ? 'Write a comment. It cannot be changed after you post it.' : 'Write a comment. Type @ to mention someone.'}
+              maxLength={maxLength}
               value={draft}
               onChange={onDraftChange}
               onKeyDown={onKeyDown}
@@ -603,9 +635,9 @@ export function CommentThread({
               ))}
             </ul>
           )}
-          {canWritePrivate && <Switch label="Private HR note — hidden from the employee" checked={isPrivate} onChange={setPrivate} />}
+          {canWritePrivate && !appendOnly && <Switch label="Private HR note — hidden from the employee" checked={isPrivate} onChange={setPrivate} />}
           <div className="yx-comments__actions">
-            <IconButton icon={Paperclip} variant="secondary" label="Attach file" onClick={() => fileRef.current?.click()} />
+            {!appendOnly && <IconButton icon={Paperclip} variant="secondary" label="Attach file" onClick={() => fileRef.current?.click()} />}
             <input
               ref={fileRef}
               type="file"
@@ -616,7 +648,7 @@ export function CommentThread({
                 e.target.value = '';
               }}
             />
-            <Button variant="primary" onClick={post}>
+            <Button variant="primary" loading={busy} onClick={() => void post()}>
               {isPrivate ? 'Add private note' : 'Post comment'}
             </Button>
           </div>

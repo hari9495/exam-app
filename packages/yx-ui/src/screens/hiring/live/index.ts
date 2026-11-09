@@ -10,7 +10,6 @@ export { JobBoardsScreen, type JobBoardsScreenProps } from './boards';
 export { EmailDialog, STAGE } from '../candidate-dialogs';
 export { CandidateRecordScreen, MergeDrawer, type LiveCandidateRecord, type LiveDuplicate, type LiveMergeDrawer, type MergeFieldRow } from '../hiring-pipeline';
 export { CandidateListScreen, CandidateRetentionScreen, type CandidateListTab, type CandidateStatusFilter, type DataRequestMatch, type LiveCandidateList, type LiveRetention } from '../hiring-candidates';
-export { TalentPoolsScreen, type TalentPoolsScreenProps } from './talent';
 // HIR-04 follow-ups (answer 261): the Bulk actions and Add candidate sheets on the board, the job settings on the HIR-03
 // workspace, and the application on the HIR-05 record (the old candidates list and application panel are gone).
 export { AddCandidateSheet, BulkActionsSheet, RejectDialog, scorecardText, type AddCandidateInput, type BulkRow } from '../pipeline-sheets';
@@ -31,3 +30,6 @@ export type { Score as PipelineScore } from '../hiring-kit';
 export { SettingsPageScreen, type LiveSettingsPage } from '../../settings/settings-screens';
 export { SETTINGS_GROUPS } from '../../settings/settings-groups';
 export { hiringSettingsPage, hiringSettingsChanges, type HiringSettingsData } from '../../settings/hiring-live';
+// HIR-10 and HIR-20: the designed BGV tracker and Talent CRM (hiring-offers.tsx), live with their `live` prop (the
+// pools stand-in is gone).
+export { BgvTrackerScreen, TalentCrmScreen, type BgvResultInput, type LiveBgv, type LiveBgvCheck, type LiveBgvJoiner, type LivePool, type LivePoolMember, type LivePostingJob, type LiveTalentCrm } from '../hiring-offers';

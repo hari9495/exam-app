@@ -241,6 +241,34 @@ describe('mentions', () => {
   });
 });
 
+describe('append-only comment thread (HIR-07 answer 322)', () => {
+  const now = new Date('2026-11-12T06:00:00Z');
+  const mine = { id: 'c1', author: { id: 'e2', name: 'Arjun Kulkarni' }, body: 'Named the boundary cases.', at: now };
+  it('has no edit, attachment, private note or resolve, even for a fresh own comment', () => {
+    render(<CommentThread currentUser={{ id: 'e2', name: 'Arjun Kulkarni' }} people={[]} defaultComments={[mine]} now={now} canWritePrivate appendOnly />);
+    expect(screen.queryByRole('button', { name: 'Edit comment' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Attach file' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Resolve thread' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+  });
+
+  it('waits for the server: shows the saved comment, or the refusal and keeps the draft', async () => {
+    const u = userEvent.setup();
+    const onAdd = vi.fn().mockRejectedValueOnce(new Error('Comments are not allowed while acting for someone else.')).mockResolvedValueOnce({ id: 'srv-1' });
+    render(<CommentThread currentUser={{ id: 'e2', name: 'Arjun Kulkarni' }} people={[]} now={now} appendOnly onAdd={onAdd} />);
+    const box = screen.getByRole('textbox', { name: 'Comment' });
+    await u.type(box, 'Also strong on SQL.');
+    await u.click(screen.getByRole('button', { name: 'Post comment' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Comments are not allowed while acting for someone else.');
+    expect(box).toHaveValue('Also strong on SQL.');
+    expect(box).toHaveFocus();
+    await u.click(screen.getByRole('button', { name: 'Post comment' }));
+    expect(await screen.findByText('Also strong on SQL.', { selector: 'span' })).toBeInTheDocument();
+    expect(box).toHaveValue('');
+    expect(onAdd).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('comment edit window', () => {
   const now = d(9, 29, 11, 0);
   const me = { id: 'e2', name: 'Arjun Kulkarni' };

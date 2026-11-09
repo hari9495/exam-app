@@ -16,7 +16,7 @@ import { Segment } from '../../components/segment';
 import { useToastIfAny } from '../../components/notify';
 import { KanbanBoard, type KanbanColumn } from '../../components/kanban';
 import { Calendar, type CalendarEvent } from '../../components/calendar';
-import { Timeline, type TimelineItem } from '../../components/timeline';
+import { CommentThread, Timeline, type Comment, type TimelineItem } from '../../components/timeline';
 import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { Text } from '../../components/foundations';
 import { formatDate, formatINR, formatPhone } from '../../lib/format';
@@ -1351,6 +1351,8 @@ export interface ScorecardFormProps {
   defaultRatings?: (number | null)[];
   identity?: IdCheckpoint[];
   submitted?: boolean;
+  /** Answer 322: comments under the submitted scorecard (append-only, shown to whoever reads it). */
+  comments?: Comment[];
 }
 
 /** What the form holds: a rating and evidence per skill, the recommendation and the summary. */
@@ -1371,6 +1373,8 @@ interface ScorecardBodyProps extends ScorecardFormProps {
   /** Live: saves the draft / submits (after the confirm); a failure shows in the form. */
   onSave?: (v: ScorecardValue) => Promise<unknown>;
   onSubmit?: (v: ScorecardValue) => Promise<unknown>;
+  /** Answer 322: posts a comment under the submitted scorecard (live). */
+  onComment?: (body: string) => Promise<unknown>;
 }
 
 const RECOMMENDATIONS = [
@@ -1381,7 +1385,7 @@ const RECOMMENDATIONS = [
 ];
 const focusFirst = (id: string) => setTimeout(() => document.getElementById(id)?.querySelector<HTMLElement>('[role="radio"]')?.focus(), 0);
 
-function ScorecardBody({ candidate, round, skills, defaultRatings, identity, submitted, scaleMax = 5, defaultEvidence, defaultRecommendation, defaultSummary, recommendations = RECOMMENDATIONS, onSave, onSubmit }: ScorecardBodyProps) {
+function ScorecardBody({ candidate, round, skills, defaultRatings, identity, submitted, scaleMax = 5, defaultEvidence, defaultRecommendation, defaultSummary, recommendations = RECOMMENDATIONS, onSave, onSubmit, comments, onComment }: ScorecardBodyProps) {
   const toast = useToastIfAny();
   const [ratings, setRatings] = useState<(number | null)[]>(defaultRatings ?? skills.map(() => null));
   const [evidence, setEvidence] = useState<string[]>(defaultEvidence ?? skills.map(() => ''));
@@ -1424,8 +1428,8 @@ function ScorecardBody({ candidate, round, skills, defaultRatings, identity, sub
         <InlineAlert tone="info">Rate the interview on its merits. An identity flag goes to review separately and can&rsquo;t be the reason for your recommendation.</InlineAlert>
       )}
       {submitted && (
-        <InlineAlert tone="success" title="Scorecard submitted" actions={live ? undefined : <Button size="sm">Add comment</Button>}>
-          The recruiter and hiring manager can see it. You can&rsquo;t edit it now{live ? '.' : '; add a comment instead.'}
+        <InlineAlert tone="success" title="Scorecard submitted" actions={comments ? <Button size="sm" onClick={() => focusComment('sc-comments-mine')}>Add comment</Button> : undefined}>
+          The recruiter and hiring manager can see it. You can&rsquo;t edit it now{comments ? '; add a comment instead.' : '.'}
         </InlineAlert>
       )}
       {failed && (
@@ -1481,6 +1485,7 @@ function ScorecardBody({ candidate, round, skills, defaultRatings, identity, sub
           </Button>
         </div>
       )}
+      {submitted && comments && <ScorecardComments id="sc-comments-mine" comments={comments} onAdd={onComment} />}
       <Text size="xs" tone="muted">
         {candidate} · {round}
       </Text>
@@ -1502,6 +1507,40 @@ function ScorecardBody({ candidate, round, skills, defaultRatings, identity, sub
   );
 }
 
+const focusComment = (id: string) => setTimeout(() => document.getElementById(id)?.querySelector<HTMLTextAreaElement>('textarea')?.focus(), 0);
+
+/**
+ * Answer 322: comments under a submitted scorecard. Append-only (no edit, delete, attachment or private note), shown to
+ * whoever may read the scorecard. Live, the thread waits for the server; a refusal (e.g. acting for someone else) shows
+ * under the composer.
+ */
+function ScorecardComments({ id, comments, onAdd }: { id: string; comments: Comment[]; onAdd?: (body: string) => Promise<unknown> }) {
+  const toast = useToastIfAny();
+  return (
+    <div id={id}>
+      <CommentThread
+        key={comments.length}
+        currentUser={{ id: 'me', name: 'You' }}
+        people={[]}
+        defaultComments={comments}
+        appendOnly
+        maxLength={2000}
+        emptyHint="Add what you remembered or noticed later. Comments stay as written; everyone who can read this scorecard sees them."
+        onAdd={
+          onAdd &&
+          (async (c) => {
+            const out = await onAdd(c.body);
+            toast?.toast({ tone: 'success', title: 'Comment added' });
+            return out;
+          })
+        }
+      />
+    </div>
+  );
+}
+
+const liveComments = (s: { comments?: { id: string; authorUserId: string; author: string; body: string; at: string }[] }): Comment[] => (s.comments ?? []).map((m) => ({ id: m.id, author: { id: m.authorUserId, name: m.author }, body: m.body, at: new Date(m.at) }));
+
 /**
  * The live scorecard page (HIR-07): GET hiring/interviews/:id. A panellist fills their own (a draft only they see);
  * once submitted it is read-only and audited. Recruiters and the job's hiring manager read every submitted scorecard.
@@ -1519,6 +1558,8 @@ export interface LiveScorecard {
   onSubmit: (input: ScorecardInput) => Promise<unknown>;
   onResendInterview: () => Promise<unknown>;
   onCancelInterview: () => Promise<unknown>;
+  /** Answer 322: an append-only comment under a submitted scorecard (refused by the API while acting). */
+  onComment?: (scorecardId: string, body: string) => Promise<unknown>;
 }
 
 // HIR-07
@@ -1642,6 +1683,8 @@ function LiveScorecardView({ live }: { live: LiveScorecard }) {
                 defaultSummary={mine?.summary ?? ''}
                 recommendations={LIVE_RECS}
                 submitted={mine?.status === 'submitted' || cancelled}
+                comments={mine?.status === 'submitted' && live.onComment ? liveComments(mine) : undefined}
+                onComment={mine && live.onComment ? (body) => live.onComment!(mine.id, body) : undefined}
                 onSave={(x) => live.onSave(toInput(t.items, x))}
                 onSubmit={(x) => live.onSubmit(toInput(t.items, x))}
               />
@@ -1667,6 +1710,7 @@ function LiveScorecardView({ live }: { live: LiveScorecard }) {
                     ...(s.submittedAt ? [{ label: 'Submitted', value: istWhen(s.submittedAt) }] : []),
                   ]}
                 />
+                {live.onComment && <ScorecardComments id={`sc-comments-${s.id}`} comments={liveComments(s)} onAdd={(body) => live.onComment!(s.id, body)} />}
               </Card>
             ))
           )}

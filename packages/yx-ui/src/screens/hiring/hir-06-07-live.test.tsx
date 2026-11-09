@@ -148,7 +148,8 @@ describe('HIR-07 scorecard (live)', () => {
     expect(screen.getByText('Scorecard submitted')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save draft' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Submit scorecard' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Add comment' })).not.toBeInTheDocument();
+    // Answer 322: comments are built now; the own submitted scorecard offers Add comment.
+    expect(screen.getByRole('button', { name: 'Add comment' })).toBeInTheDocument();
     expect(screen.getByText("Anil Kumar's scorecard")).toBeInTheDocument();
   });
 

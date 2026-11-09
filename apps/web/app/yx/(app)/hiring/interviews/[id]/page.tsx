@@ -41,6 +41,8 @@ export default function YxInterviewPage() {
         onSubmit: (input) => write('POST', `/interviews/${id}/scorecard/submit`, input),
         onResendInterview: () => apiWrite('POST', `/interviews/${id}/send`),
         onCancelInterview: () => apiWrite('POST', `/interviews/${id}/cancel`),
+        // Answer 322: append-only comments under a submitted scorecard; one key per Post press (a retry is the same comment).
+        onComment: (scorecardId, body) => write('POST', `/interviews/${id}/scorecards/${encodeURIComponent(scorecardId)}/comments`, { body, requestId: crypto.randomUUID() }),
       }}
     />
   );
