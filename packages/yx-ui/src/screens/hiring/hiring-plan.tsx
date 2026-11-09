@@ -176,7 +176,7 @@ export function revisionChange(p: LivePlan): string {
 interface PlanBoardView {
   fy: string;
   persona: 'hr' | 'finance' | 'hm';
-  facts: string;
+  facts?: string;
   status: ReactNode;
   lines: PlanLine[];
   departmentStatus?: Record<string, { label: string; tone: BadgeTone }>;
@@ -199,7 +199,7 @@ function PlanBoard({ fy, persona, facts, status, lines: shown, departmentStatus,
   const committed = sum((l) => l.committed);
   return (
     <HireFrame active="Headcount plan">
-      <PageHeader title="Headcount plan" status={status} description={`${fy} · positions by designation, grade and location, with budget. Requisitions draw it down; replacement hires don't use plan lines.`} facts={facts} actions={actions} />
+      <PageHeader title="Headcount plan" status={status} description={`${fy} · positions by designation, grade and location, with budget. Requisitions draw it down; replacement hires don't use plan lines.`} facts={state === 'no-access' || state === 'hr-only' ? undefined : facts} actions={actions} />
       {state === 'loading' ? (
         <div className="yx-hire-board" aria-busy="true">
           {[0, 1, 2].map((i) => (
