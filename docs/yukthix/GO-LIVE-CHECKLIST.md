@@ -108,3 +108,5 @@ Things deliberately left for launch. Development runs locally until then (test k
       attendance.factories_act, stop offering those scopes (keep department and employment type) (answer 152, 4 Nov 2026).
 - [ ] **Pay transparency law rows.** Counsel checks HIR.PAY_TRANSPARENCY (New York, California, Colorado, Washington,
       Illinois, EU directive; all verify) before any job outside India is published (Hiring answer 228, 9 Nov 2026).
+- [ ] **Joining bonus clawback wording.** Counsel checks the clawback clause in offer letters and the full / pro-rata
+      recovery in the final settlement (Hiring answer 373, 10 Nov 2026).

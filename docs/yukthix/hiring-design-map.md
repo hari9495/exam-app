@@ -1495,3 +1495,10 @@ Each has a safe default already built; the suggestion is the answer we propose.
      second each). *Suggested: keep for campus batches; move to a background job with progress if batches grow.*
 406. **Same CTC for everyone.** Each row's CTC is typed; there is no "apply to all". *Suggested: add "Set the same CTC
      for the selected" in the kit table's bulk edit later.*
+Founder approved, 10 Nov 2026 (questions 371-377, 401-406, 411-414, 421-425, all as suggested): keep 371, 372, 374,
+375, 403, 411-414, 424, 425; (373) keep, counsel checks the clawback wording (go-live list); (376) warn HR on 6.1 when
+the named band approver loses the offer-pay key; (377) sealed e-sign PDF with PPL-29 letter templates (later); (401) link
+accepted offers to a People joiner batch (later); (402) add bulk offers to the pipeline board Bulk actions; (404) one
+"Offer expires after" on 6.1, used by single and bulk offers; (405) background job with progress if batches grow (later);
+(406) bulk edit in the kit table (later); (421) WhatsApp slot reminders with interview reminders, opted-in only (later);
+(422) drag to swap on the interview-day board (later); (423) let the planner remove single slots.
