@@ -6,6 +6,7 @@ import { addDays, asDate, isoDate, todayIst } from '../org-structure/org-validat
 import { displayName, EmployeeHistoryService, Viewer } from '../employee-history/employee-history.service';
 import { covers, has as holds, managerViewScope, tenantWide } from '../access/scope';
 import { localToday } from '../employee-history/history-rules';
+import { openConfirmationChecks } from '../lifecycle/bgv-gate';
 import { addRole, checkLoginLink } from './persons';
 import { endAfterMonths, settingFor } from './probation';
 
@@ -649,7 +650,11 @@ export class PeopleService {
       }
       const auto = await settingFor(tx, c, 'probation.auto_confirm_after_days', { legalEntityId: e.legalEntityId });
       if (auto !== 'off' && today >= addDays(end, Number(auto))) {
-        await this.autoConfirm(tx, c, e, addDays(end, 1), today);
+        // Answer 364: the company rule waits while a "must be clear before confirmation" background check is open
+        // (told once a day at most: the sweep audits each held day).
+        const open = await openConfirmationChecks(tx, c.organizationId, e.id);
+        if (open) await audit(tx, c, 'employee.probation.auto_confirm_held', 'employee', e.employeeId, { ...meta, openChecks: open, on: today });
+        else await this.autoConfirm(tx, c, e, addDays(end, 1), today);
         actions++;
       }
     }
