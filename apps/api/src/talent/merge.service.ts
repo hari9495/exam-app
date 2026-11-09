@@ -29,6 +29,8 @@ export const CANDIDATE_TABLES = {
   referrals: 'move',
   survey_responses: 'move',
   talent_pool_members: 'unique',
+  // HIR-26 answer 255: a suggestion moves unless the kept candidate was already suggested for the same requisition.
+  requisition_suggestions: 'unique',
   candidate_retention_actions: 'record',
 } as const;
 
@@ -104,6 +106,7 @@ export class CandidateMergeService {
       moved.pipeline_entries = (await tx.pipelineEntry.updateMany({ where: { organizationId: org, candidateId: mergedId, jobId: { notIn: keptJobs } }, data: { candidateId: keptId } })).count;
       moved.drip_enrolments = await moveExcept(tx, 'drip_enrolments', 'campaign_id', mergedId, keptId);
       moved.talent_pool_members = await moveExcept(tx, 'talent_pool_members', 'pool_id', mergedId, keptId);
+      moved.requisition_suggestions = await moveExcept(tx, 'requisition_suggestions', 'job_id', mergedId, keptId);
       for (const [table, how] of Object.entries(CANDIDATE_TABLES)) {
         if (how !== 'move') continue;
         moved[table] = await tx.$executeRaw`UPDATE ${Prisma.raw(`"${table}"`)} SET candidate_id = ${keptId}::uuid WHERE candidate_id = ${mergedId}::uuid`;
@@ -149,7 +152,7 @@ export class CandidateMergeService {
 }
 
 /** Re-points rows whose (key, candidate) pair is free on the kept candidate; the clashing ones stay behind. */
-async function moveExcept(tx: Tx, table: 'drip_enrolments' | 'talent_pool_members', key: 'campaign_id' | 'pool_id', from: string, to: string): Promise<number> {
+async function moveExcept(tx: Tx, table: 'drip_enrolments' | 'talent_pool_members' | 'requisition_suggestions', key: 'campaign_id' | 'pool_id' | 'job_id', from: string, to: string): Promise<number> {
   return tx.$executeRaw`UPDATE ${Prisma.raw(`"${table}"`)} t SET candidate_id = ${to}::uuid WHERE t.candidate_id = ${from}::uuid
     AND NOT EXISTS (SELECT 1 FROM ${Prisma.raw(`"${table}"`)} k WHERE k.candidate_id = ${to}::uuid AND k.${Prisma.raw(key)} = t.${Prisma.raw(key)})`;
 }

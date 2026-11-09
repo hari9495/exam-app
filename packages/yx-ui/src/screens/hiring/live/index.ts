@@ -16,6 +16,8 @@ export { ApplicationPanel, type ApplicationPanelProps } from './application';
 export { MyInterviewsScreen, InterviewScreen, ScorecardTemplatesScreen, type MyInterviewsScreenProps, type InterviewScreenProps, type ScorecardTemplatesScreenProps } from './interviews';
 // HIR-11 and HIR-12: the designed screens themselves (hiring-plan.tsx), made live with their `live` prop.
 export { AllReferralsScreen, RecruitingCostsScreen, ReferralsScreen, type AllReferral, type LiveAllReferrals, type CostEntry, type CostInput, type LiveRecruitingCosts, type LiveReferrals, type ReferInput, type ReferJob, type Referral } from '../hiring-plan';
+// HIR-02 and HIR-26: the designed requisitions list and rediscovery panel (hiring-plan.tsx), made live with `live`.
+export { RediscoveryPanel, RequisitionsScreen, type LiveRediscovery, type LiveRequisitionRow, type LiveRequisitions, type RediscoveryMatch } from '../hiring-plan';
 // HIR-04: the designed pipeline board itself, live with its `live` prop (the stand-in board is gone).
 export { PipelineBoardScreen, type LivePipelineBoard, type LivePipelineCard, type LivePipelineStage } from '../hiring-pipeline';
 export type { Score as PipelineScore } from '../hiring-kit';

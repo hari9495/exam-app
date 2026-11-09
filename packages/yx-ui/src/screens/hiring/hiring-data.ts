@@ -29,7 +29,7 @@ export interface Requisition {
   replacementFor?: string | null;
   proposedMax: number;
   positions: number;
-  status: 'Draft' | 'Pending approval' | 'Approved' | 'Sent back' | 'Filled' | 'Closed';
+  status: 'Draft' | 'Pending approval' | 'Approved' | 'Sent back' | 'Filled' | 'Closed' | 'Cancelled';
   raised: Date;
   waitingOn?: string;
 }

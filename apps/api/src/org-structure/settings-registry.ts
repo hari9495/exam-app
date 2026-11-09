@@ -205,6 +205,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // is off unless the company switches it on, and never where the location's law bans it (HIR.PAY_TRANSPARENCY).
   'hiring.pay_range.show': { label: 'Hiring: show the pay range on new jobs', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['off', 'on'], default: 'off' },
   'hiring.pay_history.ask': { label: 'Hiring: ask applicants about their current or past pay on new jobs', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['off', 'on'], default: 'off' },
+  // HIR-26 (founder decision 2): the company's AI writes a short advisory note per suggested past candidate; off = plain text search.
+  'hiring.rediscovery.ai': { label: 'Hiring: AI notes on past candidates suggested for a requisition', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // HIR-04: rejecting on the pipeline board tells the candidate nothing unless the company switches this on; then the
   // Rejected stage's email template goes after 24 hours (the rejection can be undone until then).
   'hiring.reject.email_candidate': { label: 'Hiring: email the candidate when they are rejected on the board', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },

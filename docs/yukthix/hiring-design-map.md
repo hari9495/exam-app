@@ -22,6 +22,10 @@ was built.
   NewRequisition), which People › My team (/yx/people/team) renders with `live` and sends to `POST jobs/requisitions`. Since 9 Nov 2026 (branch `feat/yukthix-hir-01`) HIR-01, the headcount plan board, is live too: all 10 of
   its stories (section 4). HIR-05 (branch `feat/yukthix-hir-05`): the candidate record with the ex-employee match and merge, plus the newly drawn candidate list (with Possible duplicates) and candidate data retention pages. HIR-11 Recruiting costs (/yx/hiring/costs) and HIR-12 Referrals (/yx/hiring/referrals, with HR's
   All referrals at /yx/hiring/referrals/all) are live too (branch `feat/yukthix-hir-11-12`).
+  its stories (section 4). HIR-11 Recruiting costs (/yx/hiring/costs) and HIR-12 Referrals (/yx/hiring/referrals, with HR's
+  All referrals at /yx/hiring/referrals/all) are live too (branch `feat/yukthix-hir-11-12`). HIR-02 Requisitions
+  (/yx/hiring/requisitions, menu Hiring › Requisitions) and the HIR-26 rediscovery panel are live too (branch
+  `feat/yukthix-hir-02-26`, section 4).
 - **Hiring itself works, but on stand-in screens.** The 14 pages under /yx/hiring render the older "Live ·" screens from
   `packages/yx-ui/src/screens/hiring/live/*` (the package path `@yukthix/ui/hiring` points there). None of them passes a
   `live` prop to a designed HIR screen. The design-live guard already lists all 14 as `liveCopies` and every HIR screen
@@ -51,18 +55,19 @@ built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Plans, requisitions, jobs and costs | 4 | 25 | 0 | 7 | 0 | 0 | 32 |
-| B. Candidates, pipeline and interviews | 8 | 32 | 0 | 7 | 13 | 1 | 53 |
+| A. Plans, requisitions, jobs and costs | 4 | 34 | 1 | 0 | 0 | 0 | 35 |
+| B. Candidates, pipeline and interviews | 6 | 7 | 0 | 14 | 13 | 1 | 35 |
 | C. Offers, BGV and joining | 4 | 0 | 0 | 13 | 12 | 0 | 25 |
-| D. Referrals, internal jobs, CRM and rediscovery | 4 | 7 | 0 | 7 | 7 | 4 | 25 |
+| D. Referrals, internal jobs, CRM and rediscovery | 4 | 13 | 0 | 3 | 7 | 4 | 27 |
 | E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
 | F. Compliance and fairness | 5 | 4 | 1 | 0 | 20 | 0 | 25 |
 | G. Careers site, portals and settings | 4 | 0 | 0 | 30 | 11 | 0 | 41 |
-| **All Hiring design groups (A–G)** | **37** | **68** | **1** | **68** | **107** | **5** | **249** |
-| H. Kit and "Live ·" groups (not designs; own line) | 5 | 14 | 0 | 6 | 5 | 0 | 25 |
+| **All Hiring design groups (A–G)** | **35** | **58** | **2** | **64** | **107** | **5** | **236** |
+| H. Kit and "Live ·" groups (not designs; own line) | 5 | 19 | 0 | 7 | 5 | 0 | 31 |
 Recounted by script 9 Nov 2026 on `feat/yukthix-hir-04` after HIR-04 went live (its 7 stories: wire design → live; no story added or removed). Before that, recounted on `feat/yukthix-hir-03-24` after HIR-01 (four new stories, Plans and NoPlans deleted), HIR-03 and HIR-24 went live and the HIR-03 follow-ups added the Change recruiter story (HIR-03 gained the Create job sheet story; the "Live · Jobs" stand-in and its 4 stories were deleted). First counted (the script is in the appendix): every `export const`
 Recounted by script 9 Nov 2026 on `feat/yukthix-hir-05` after HIR-05 went live: the record (10 stories, one new: choose the duplicate), the new Candidate list (8) and Candidate data retention (9) designs (founder decision 9); the "Live · Candidates" stand-ins and 6 of their 7 stories deleted (Pools stays for HIR-20).
 Recounted by script 9 Nov 2026 on `feat/yukthix-hir-03-24` after HIR-01 (four new stories, Plans and NoPlans deleted), HIR-03 and HIR-24 went live and the HIR-03 follow-ups added the Change recruiter story (HIR-03 gained the Create job sheet story; the "Live · Jobs" stand-in and its 4 stories were deleted). First counted (the script is in the appendix): every `export const`
+Recounted by script 10 Nov 2026 on `feat/yukthix-hir-02-26` after merging HIR-04 (7 stories live) and the HIR-02 / HIR-26 follow-ups 252-257 (three new HIR-02 stories: Approver, Cancel requisition, Assign recruiter). Before that, recounted 9 Nov 2026 after HIR-02 (8 stories) and HIR-26 (4 stories plus 2 new: AI notes, plain search) went live. Before that, recounted on `feat/yukthix-hir-03-24` after HIR-01 (four new stories, Plans and NoPlans deleted), HIR-03 and HIR-24 went live and the HIR-03 follow-ups added the Change recruiter story (HIR-03 gained the Create job sheet story; the "Live · Jobs" stand-in and its 4 stories were deleted). First counted (the script is in the appendix): every `export const`
 Recounted by script 9 Nov 2026 on `feat/yukthix-hir-11-12` after HIR-11 (5 stories) and HIR-12 (4 stories plus 3 new All referrals design stories, founder answer 204) went live on top of HIR-01. Before that, recounted on `feat/yukthix-hir-01` after HIR-01 went live (four new HIR-01 design stories; the stand-in's Plans and NoPlans stories deleted). First counted by script 9 Nov 2026 on `feat/yukthix-hiring-design-map` (the script is in the appendix): every `export const`
 story with a capital first letter (the lower-case exports are sample props, excluded from Storybook by
 `excludeStories`) in the 31 `hir-NN-*.stories.tsx` files, `hiring-kit.stories.tsx`, the five `hiring/live/*.stories.tsx`,
@@ -121,6 +126,7 @@ the web page.
 | /yx/hiring/costs | the designed `RecruitingCostsScreen` with `live` | HIR-11 | `GET/POST hiring/costs`, `PUT/DELETE hiring/costs/:id`, `GET hiring/costs/overview` (`ats.costs.manage`; writes refused while acting) | live |
 | /yx/hiring/referrals | the designed `ReferralsScreen` with `live` | HIR-12 | `GET referrals/mine`, `/jobs`, `/policy`, `POST referrals` (anyone signed in; refused while acting) | live |
 | /yx/hiring/referrals/all | the designed `AllReferralsScreen` with `live` | HIR-12 All referrals | `GET referrals`, `PATCH referrals/:id/reward` (`ats.referral.manage` or `candidate:view` / `pipeline:manage`; refused while acting) | live |
+| /yx/hiring/requisitions | the designed `RequisitionsScreen` with `live`, its drawer and the designed `RediscoveryPanel` with `live`; the request sheet for managers | HIR-02, HIR-26 | `GET hiring/requisitions` (`pipeline:manage` / `ats.headcount.manage`: all; `ats.requisition.raise`: own, read-only), `GET hiring/requisitions/:id/rediscovery` (and `candidate:view` or `pipeline:manage`), `POST jobs/:id/submit`, `/approval/cancel`, `POST jobs/:id/entries`, `POST jobs/requisitions` (writes refused while acting) | live |
 | /yx/people/team (Request a hire) | the designed `RequisitionSheet` with `live` | HIR-02 NewRequisition | `POST jobs/requisitions` (`ats.requisition.raise`) | live |
 | /yx/people/onboarding/[id] | People onboarding (PPL design) with the joiner's BGV checks | HIR-10 (manual part) | `POST lifecycle joiners/:id/bgv/ask`, `/bgv/checks`, `bgv/checks/:checkId` | wire design (HIR-10) |
 | /careers/[orgSlug], /jobs/[slug] | hand-written server pages | T9-09, Surfaces/Careers | public careers API | wire design |
@@ -179,19 +185,34 @@ revised; refused while acting for someone else), decisions on `POST workflow/app
 
 #### HIR-02 · Requisitions
 
-Live page: /yx/hiring/jobs (menu Hiring › Jobs & requisitions) lists requisitions as draft jobs in the stand-in
-`HiringJobsScreen`; the request sheet is live on /yx/people/team. Designed screen: `RequisitionsScreen`.
+Live 9 Nov 2026 (branch `feat/yukthix-hir-02-26`): /yx/hiring/requisitions renders the designed `RequisitionsScreen` with
+`live` on `GET hiring/requisitions`. Recruiting (`pipeline:manage`) and HR (`ats.headcount.manage`) see every requisition;
+a hiring manager (`ats.requisition.raise` only) sees the ones they raised or are hiring manager of, read-only, without plan
+budgets (decision 11). A requisition is a job that went through the requisition flow (a reason, plan line, outside-plan
+flag or approval request, or still draft / waiting). Status: draft, sent back (its latest request was rejected), pending
+approval (waiting on the current step), approved (open or on hold), filled or closed. The drawer shows the route the
+approvals engine ran (the company's own approvers, not the drawn HM → HRBP → Finance chain) and the sent-back reason.
+Approvers decide in Approvals (`/workflow/approvals/tasks/:id/decide`); recruiting sends a draft or sent-back requisition
+again and withdraws a waiting one; "Open job" opens the job workspace. Follow-ups 10 Nov 2026 (answers 252, 253, 257;
+migration 202617h0000000): the approval task holder approves or sends back in the drawer; a hiring manager changes and
+resends their own sent-back requisition; recruiting assigns a recruiter, duplicates and cancels with a reason
+("Cancelled" status). Raising a requisition (`POST jobs/requisitions`) is now
+refused while acting for someone else, and its "Send for approval" is never greyed out (pressed too early it shows each
+missing field and focuses the first; also on People › My team and the plan board).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Recruiter · Recruiter · all requisitions | wire design | `GET jobs` (draft / pending approval); needs its own list or tab |
-| OutsidePlan · Outside plan · extra CFO approval | wire design | `outsidePlan` + reason stored; the route comes from the requisition approval chain (`approvals:configure`) |
-| InPlan · In plan · short chain | wire design | `headcountPlanLineId` set; chain decides |
-| HiringManagerSentBack · Hiring manager · sent back | wire design | approval rejected; the hiring manager's own list is missing (they only raise from My team) |
-| NewRequisition · New requisition sheet | live | /yx/people/team › Request a hire: `RequisitionSheet` with `live`, `POST jobs/requisitions` (`ats.requisition.raise`), toast on send |
-| Empty · Empty | wire design | no requisitions |
-| Loading · Loading | wire design | while `GET jobs` loads |
-| Error · Error | wire design | `GET jobs` fails |
+| Recruiter · Recruiter · all requisitions | live (gap) | live list, filters, search, export, row selection with Assign recruiter, Duplicate and Cancel (answer 253); saved views wait for the kit's view store |
+| OutsidePlan · Outside plan · extra CFO approval | live | the "Outside the plan" step (holders of `ats.headcount.manage`) and the reason; the panel below shows past candidates |
+| InPlan · In plan · short chain | live | plan line, free positions, budget left (not for hiring managers), the company's route |
+| HiringManagerSentBack · Hiring manager · sent back | live | the reason shows; "Edit and resubmit" opens the request sheet filled in, `PUT jobs/requisitions/:id` (own, sent back only; answer 252) |
+| NewRequisition · New requisition sheet | live | "New requisition" for `ats.requisition.raise` (not while acting); also on /yx/people/team and the plan board |
+| Empty · Empty | live | no requisitions |
+| Loading · Loading | live | while `GET hiring/requisitions` loads |
+| Error · Error | live | it fails; Retry |
+| Approver · Approver · approve or send back | live | the holder of the approval task (`myTaskId`): Approve, or Send back with a required reason, through `/workflow/approvals/tasks/:id/decide` (answer 257) |
+| CancelRequisition · Cancel requisition · reason | live | `POST hiring/requisitions/:id/cancel` with a reason (`pipeline:manage`; withdraws a waiting approval, closes the job; refused once filled; audited; answer 253) |
+| AssignRecruiter · Assign recruiter | live | `PATCH jobs/:id` `recruiterUserId` for each chosen requisition (answer 253) |
 
 #### HIR-03 · Jobs and job workspace
 
@@ -471,15 +492,26 @@ Live pages: /yx/hiring/pools (`TalentPoolsScreen`) and /yx/hiring/job-boards (`J
 
 #### HIR-26 · Rediscovery panel
 
-No live page shows it. API: `POST candidates/search`, `GET candidates/:id/similar` (semantic search; inert until the
-company sets up an embeddings provider), `GET jobs/:jobId/fit-assessments`. Designed: `RediscoveryPanel`.
+Live 9 Nov 2026 (branch `feat/yukthix-hir-02-26`) in the HIR-02 drawer: the designed `RediscoveryPanel` with `live` on
+`GET hiring/requisitions/:id/rediscovery`. Founder decision 2: advisory only. A plain text match always picks and orders
+the people (a word of the title or designation in their résumé title or a past role, or a skill found in the
+requisition; location adds a reason). Only this company's candidates who gave talent-pool consent (not withdrawn), within
+the retention period (`ats.retention_months`), not erased, merged, on legal hold, hired or already on the job; only for
+viewers who may see candidates (`pipeline:manage` or `candidate:view`), a hiring manager only on their own requisitions.
+With the company setting `hiring.rediscovery.ai` (default **off**) and an AI provider, the company's AI
+(AiInvocationService: its provider and credit limit) adds a short note per person, shown as "AI note, advice only"; it
+never adds, drops or reorders anyone. Only role facts and past role titles, skills, years and stage go to it (no names,
+emails, phones or ids). Every run is audited (`ats.rediscovery.run`: mode, outcome, count, provider; never the prompt).
+No AI runs while acting for someone else. Recruiting adds a person to the pipeline (`POST jobs/:id/entries`).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| OnRequisition · On the requisition · recruiter | wire design | on the HIR-02 page; search past candidates by the requisition text (AI setting: question 2) |
-| Recruiter · Panel · recruiter | wire design | same |
-| HiringManager · Panel · hiring manager | wire design | same; masked fields for the hiring manager |
-| NoMatches · Empty · no matches | wire design | empty search, or AI off |
+| OnRequisition · On the requisition · recruiter | live | in the HIR-02 drawer |
+| Recruiter · Panel · recruiter | live | Add to pipeline; Contact opens the candidate email (`bulk-candidate-email/by-candidates`) only for an email opt-in, otherwise it says why (answer 254) |
+| HiringManager · Panel · hiring manager | live | Suggest to recruiter: `POST hiring/requisitions/:id/rediscovery/:candidateId/suggest`, a bell notice to the recruiter, audited, once per person (answer 255) |
+| NoMatches · Empty · no matches | live | nothing matches, or no consented candidates |
+| AiNotes · Panel · AI notes, advice only | live | company AI setting on and a provider set up |
+| PlainSearch · Panel · plain search, AI off | live | AI off, not set up, failed, or acting for someone else |
 
 ### E. Staffing agency
 
@@ -963,6 +995,29 @@ Founder approved, 9 Nov 2026 (questions 201-207, 211-216, 221-229, all as sugges
      of an Indian entity may still use a free-text place abroad. *Suggested: also require a master location whenever the
      job's place is outside India, once locations carry a country for every company.*
 
+
+## Founder questions from the HIR-02 / HIR-26 build (9 Nov 2026)
+Each has a safe default already built; the suggestion is the answer we propose.
+251. **AI notes on past candidates by default?** Built: company setting `hiring.rediscovery.ai`, default **off** (plain
+     text search). *Suggested: keep off; HR switches it on per company once they have an AI key.*
+252. **Hiring manager "Edit and resubmit" on a sent-back requisition.** Not built: decision 11 makes the hiring manager's
+     list read-only, so recruiting sends it again. *Suggested: let a hiring manager edit and resend only their own
+     sent-back requisition (refused while acting for someone else).*
+253. **Saved views, "Assign recruiter" (bulk), Duplicate and Cancel requisition.** Hidden in live (no view store; no bulk
+     recruiter change; no cancel state). *Suggested: Assign recruiter with the HIR-03 recruiter field; Duplicate opens the
+     request sheet filled in; Cancel closes a draft or waiting requisition with a reason; saved views when the kit's store exists.*
+254. **"Contact" on a past candidate.** Hidden in live (no messaging from the panel). *Suggested: open the existing
+     candidate email with the consent check (only "opted in").*
+255. **Hiring manager "Suggest to recruiter".** Hidden (read-only). *Suggested: a bell notice to the requisition's
+     recruiter naming the person, audited; refused while acting.*
+256. **Who sees "New requisition".** Built: holders of `ats.requisition.raise` (hiring managers), not while acting.
+     The Recruiter role does not hold it, so recruiters open requisitions with Jobs › Create job. *Suggested: keep.*
+257. **Approve / Send back in the requisition drawer.** Not built: approvers decide in Approvals (the drawn screen has no
+     approver persona). *Suggested: add the approver's Approve / Send back to the drawer (kit story first), as on the HIR-01 board.*
+258. **Requisition code.** Built: REQ-0007 uses the job's number (the same requisition is JOB-0007 on Jobs). *Suggested: keep.*
+259. **Who can be rediscovered.** Built: only candidates with talent-pool consent (not withdrawn), in their retention
+     period, not on legal hold, not hired. *Suggested: keep (consent law); no company setting, as it is not a choice.*
+
 Founder approved, 10 Nov 2026 (questions 231-234, 241-244, all as suggested): (231) marking a referral bonus paid also
 creates the payroll one-time pay line (referral component, linked to the referral); the cost follows that line: posted when
 the run is approved, removed if the line is cancelled; (232) keep: only careers-site applications count as applied on
@@ -1053,3 +1108,18 @@ Each has a safe default already built; the suggestion is the answer we propose.
      tickets, Pay component library, Pay inputs (LOP, one-time pay, payment status), Piece-rate check, People assets,
      People letters, Time attendance reports, the HIR-04 candidates list; People directory passes the format to the
      server. *Suggested: give each `exportFormats={['csv']}` in one small change.*
+## Founder questions from the HIR-02 / HIR-26 follow-ups (10 Nov 2026)
+291. **Who is the recruiter of a manager's request?** Built (unchanged from HIR-03): the person who raises it, so a
+     hiring manager is first the recruiter of their own request; "Suggest to recruiter" then says "no recruiter yet" until
+     recruiting assigns one. *Suggested: a request raised with the requisition key starts with no recruiter (or the
+     company's default recruiter, a setting), so suggestions reach recruiting at once.*
+292. **Cancelled requisitions and the plan.** Built: a cancelled requisition closes its job, so its openings return to
+     the plan line at once. *Suggested: keep.*
+293. **Who may cancel.** Built: recruiting (`pipeline:manage`), never while acting for someone else; a hiring manager
+     cannot cancel their own. *Suggested: let a hiring manager cancel their own requisition while it is still waiting
+     for approval, with a reason.*
+294. **Contact on WhatsApp.** Built: Contact uses the candidate email only (opt-in checked; the email worker also skips
+     anyone who opted out). *Suggested: add WhatsApp when the candidate WhatsApp consent is recorded as an opt-in.*
+295. **Edit and resubmit, and what changed.** Built: the hiring manager's change replaces the requisition's facts and
+     sends it to the route again (audited `ats.requisition.changed` with title and positions). *Suggested: show approvers
+     what changed since it was sent back (a "was → now" line), later.*

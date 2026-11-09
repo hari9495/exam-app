@@ -9,8 +9,9 @@ import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.de
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { HiringRequisitionsService } from './requisitions.service';
-import { CareersEntityDto, ConsentNoticeDto, RecruitingCostDto, PlanDto, PlanQueryDto, PlanVersionDto } from './hiring-dto';
+import { CancelRequisitionDto, CareersEntityDto, ConsentNoticeDto, RecruitingCostDto, PlanDto, PlanQueryDto, PlanVersionDto } from './hiring-dto';
 import { CareersAdminService } from './careers-admin.service';
+import { RediscoveryService } from './rediscovery.service';
 
 // Recruitment batch AT2 (M10-BUILD-DESIGN §18.1): headcount plans (ats.headcount.manage) and the plan lines a
 // requisition can draw on (anyone who raises or runs requisitions). Requisitions themselves are jobs (/jobs, AT1).
@@ -26,6 +27,7 @@ export class HiringController {
   constructor(
     private readonly svc: HiringRequisitionsService,
     private readonly careers: CareersAdminService,
+    private readonly rediscovery: RediscoveryService,
   ) {}
 
   // HIR-01: HR sees every plan; a hiring manager their own department's approved plan, read-only (decision 11).
@@ -55,6 +57,38 @@ export class HiringController {
   submit(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PlanVersionDto) {
     ownSession(req);
     return this.svc.submitPlan(ctx, userId, id, dto.version);
+  }
+
+  // HIR-02: recruiting and HR see every requisition; a hiring manager their own, read-only (decision 11).
+  @Get('requisitions')
+  @RequireAnyPermission('pipeline:manage', 'ats.headcount.manage', 'ats.requisition.raise')
+  requisitions(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.svc.requisitions(ctx, req.user as ScopeUser);
+  }
+
+  // HIR-26: past candidates to consider for a requisition (advisory; plain text search when the company has AI off).
+  @Get('requisitions/:id/rediscovery')
+  @RequireAnyPermission('pipeline:manage', 'ats.headcount.manage', 'ats.requisition.raise')
+  rediscover(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.rediscovery.suggest(ctx, req.user as ScopeUser, id);
+  }
+
+  // HIR-02 answer 253: cancel a requisition with a reason (recruiting; never while acting for someone else).
+  @Post('requisitions/:id/cancel')
+  @HttpCode(200)
+  @RequirePermissions('pipeline:manage')
+  cancelRequisition(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CancelRequisitionDto) {
+    ownSession(req);
+    return this.svc.cancel(ctx, userId, id, dto.reason);
+  }
+
+  // HIR-26 answer 255: suggest a past candidate to the requisition's recruiter (bell notice, once per candidate).
+  @Post('requisitions/:id/rediscovery/:candidateId/suggest')
+  @HttpCode(200)
+  @RequireAnyPermission('pipeline:manage', 'ats.headcount.manage', 'ats.requisition.raise')
+  suggestCandidate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('candidateId', ParseUUIDPipe) candidateId: string) {
+    ownSession(req);
+    return this.rediscovery.suggestToRecruiter(ctx, req.user as ScopeUser, id, candidateId);
   }
 
   @Get('plan-lines')

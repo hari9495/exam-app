@@ -159,3 +159,12 @@ export class RecruitingCostDto {
   @MaxLength(500)
   note?: string | null;
 }
+
+/** HIR-02 answer 253: why the requisition is cancelled (required). */
+export class CancelRequisitionDto {
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MinLength(3)
+  @MaxLength(500)
+  reason!: string;
+}

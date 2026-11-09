@@ -201,6 +201,123 @@ export class HiringRequisitionsService implements OnModuleInit {
     });
   }
 
+  /**
+   * HIR-02: the requisitions list. Recruiting (pipeline:manage) and HR (ats.headcount.manage) see every requisition; a
+   * hiring manager (ats.requisition.raise only) sees the ones they raised or are the hiring manager of, read-only,
+   * without plan budgets (founder decision 11). A requisition is a job that went through the requisition flow.
+   */
+  async requisitions(ctx: TenantContext, user: ScopeUser) {
+    const v = await buildViewer(this.prisma, this.tenantPrisma, user, ['pipeline:manage', 'ats.headcount.manage']);
+    const all = has(v, 'pipeline:manage') || has(v, 'ats.headcount.manage');
+    return this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const me = user.userId ?? '00000000-0000-0000-0000-000000000000';
+      const jobs = await tx.job.findMany({
+        where: {
+          organizationId: org,
+          deletedAt: null,
+          OR: [{ requisitionReason: { not: null } }, { wfRequestId: { not: null } }, { headcountPlanLineId: { not: null } }, { outsidePlan: true }, { status: { in: ['draft', 'pending_approval'] } }],
+          ...(all ? {} : { AND: [{ OR: [{ hiringManagerId: me }, { createdById: me }] }] }),
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 1000,
+      });
+      const lineIds = [...new Set(jobs.map((j) => j.headcountPlanLineId).filter((x): x is string => Boolean(x)))];
+      const lines = await tx.headcountPlanLine.findMany({ where: { organizationId: org, id: { in: lineIds } } });
+      const use = await this.usage(tx, org, lineIds);
+      const users = new Map((await tx.user.findMany({ where: { organizationId: org, id: { in: [...new Set(jobs.flatMap((j) => [j.hiringManagerId, j.recruiterUserId, j.createdById]).filter((x): x is string => Boolean(x)))] } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name || u.email]));
+      const grades = new Map((await tx.grade.findMany({ where: { organizationId: org, id: { in: [...new Set([...jobs.map((j) => j.gradeId), ...lines.map((l) => l.gradeId)].filter((x): x is string => Boolean(x)))] } }, select: { id: true, name: true } })).map((g) => [g.id, g.name]));
+      const desig = new Map((await tx.designation.findMany({ where: { organizationId: org, id: { in: lines.map((l) => l.designationId) } }, select: { id: true, name: true } })).map((d) => [d.id, d.name]));
+      const locs = new Map((await tx.location.findMany({ where: { organizationId: org, id: { in: lines.map((l) => l.locationId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } })).map((d) => [d.id, d.name]));
+      const leavers = new Map((await tx.employee.findMany({ where: { organizationId: org, id: { in: jobs.map((j) => j.replacementOfEmployeeId).filter((x): x is string => Boolean(x)) } }, select: { id: true, givenName: true, familyName: true } })).map((e) => [e.id, [e.givenName, e.familyName].filter(Boolean).join(' ')]));
+      const reqs = await tx.wfRequest.findMany({ where: { organizationId: org, id: { in: jobs.map((j) => j.wfRequestId).filter((x): x is string => Boolean(x)) } } });
+      const routes = new Map(await Promise.all(reqs.map(async (r) => [r.id, await this.engine.viewIn(tx, org, r)] as const)));
+      const mine = me && reqs.length ? await tx.wfTask.findMany({ where: { organizationId: org, requestId: { in: reqs.map((r) => r.id) }, assigneeUserId: me, status: 'open' }, select: { id: true, requestId: true, step: true } }) : [];
+      const closed = jobs.filter((j) => j.status === 'closed').map((j) => j.id);
+      const hired = closed.length
+        ? new Map((await tx.$queryRaw<{ job: string; n: bigint }[]>`
+            SELECT e.job_id::text AS job, count(*) AS n FROM pipeline_entries e JOIN pipeline_statuses s ON s.id = e.status_id JOIN pipeline_stages st ON st.id = s.stage_id
+            WHERE e.organization_id = ${org}::uuid AND e.job_id = ANY(${closed}::uuid[]) AND st.category = 'hired' GROUP BY e.job_id`).map((r) => [r.job, Number(r.n)]))
+        : new Map<string, number>();
+      return {
+        viewer: all ? ('all' as const) : ('own' as const),
+        rows: jobs.map((j) => {
+          const req = reqs.find((r) => r.id === j.wfRequestId);
+          const route = req ? routes.get(req.id) : undefined;
+          const status = j.requisitionCancelledAt
+            ? 'Cancelled'
+            : j.status === 'pending_approval' ? 'Pending approval' : j.status === 'draft' ? (req?.status === 'rejected' ? 'Sent back' : 'Draft') : j.status === 'closed' ? ((hired.get(j.id) ?? 0) >= (j.headcount ?? 1) ? 'Filled' : 'Closed') : 'Approved';
+          const l = lines.find((x) => x.id === j.headcountPlanLineId);
+          const u = l ? (use.get(l.id) ?? { committed: 0, committedBudget: 0, filled: 0 }) : null;
+          return {
+            id: j.id,
+            jobNumber: j.jobNumber,
+            title: j.title,
+            department: j.department ?? '',
+            location: j.location ?? '',
+            grade: j.gradeId ? (grades.get(j.gradeId) ?? '') : '',
+            hiringManager: users.get(j.hiringManagerId ?? j.createdById) ?? '',
+            recruiterUserId: j.recruiterUserId,
+            // Answer 252: the hiring manager's own requisition (they may change a sent-back one and send it again).
+            mine: j.hiringManagerId === me || j.createdById === me,
+            // What the request sheet needs to open it filled in (edit and resend, Duplicate).
+            request: { requisitionReason: j.requisitionReason, headcountPlanLineId: j.headcountPlanLineId, replacementOfEmployeeId: j.replacementOfEmployeeId, targetStart: j.targetStart ? j.targetStart.toISOString().slice(0, 10) : null },
+            cancelReason: j.requisitionCancelReason,
+            recruiter: j.recruiterUserId ? (users.get(j.recruiterUserId) ?? '') : '',
+            replacementFor: j.requisitionReason === 'replacement' ? (leavers.get(j.replacementOfEmployeeId ?? '') ?? 'a leaver') : null,
+            outsidePlan: j.outsidePlan,
+            outsidePlanReason: j.outsidePlanReason,
+            budgetAmount: D(j.budgetAmount),
+            positions: j.headcount ?? 1,
+            status,
+            raised: j.createdAt,
+            // The plan line it draws on; the budget only for those who see plan budgets.
+            line: l && u ? { id: l.id, designation: desig.get(l.designationId) ?? '', grade: l.gradeId ? (grades.get(l.gradeId) ?? '') : '', location: l.locationId ? (locs.get(l.locationId) ?? '') : '', approved: l.count, open: u.committed, filled: u.filled, budget: all ? D(l.budget) : null, committedBudget: all ? u.committedBudget : 0 } : null,
+            approval:
+              route && req && req.status !== 'withdrawn'
+                ? {
+                    status: req.status,
+                    reason: req.status === 'rejected' ? ([...route.log].reverse().find((a) => a.reason)?.reason ?? null) : null,
+                    submittedAt: route.submittedAt,
+                    submittedBy: route.log[0]?.by ?? null,
+                    steps: route.steps.map((st, i) => ({ name: st.name, state: st.state, approvers: [...new Set([...st.approvers.map((a) => a.name), ...st.waitingFor])].filter(Boolean), at: [...route.log].reverse().find((a) => a.step === i + 1)?.at ?? null })),
+                    waitingOn: req.status === 'pending' ? (route.steps[req.currentStep]?.name ?? null) : null,
+                    myTaskId: mine.find((t) => t.requestId === req.id && t.step === req.currentStep)?.id ?? null,
+                  }
+                : null,
+          };
+        }),
+      };
+    });
+  }
+
+  /**
+   * HIR-02 answer 253: cancels a requisition with a reason (audited). A waiting approval is withdrawn, the job is closed
+   * (its board postings close after commit). Refused once filled or already closed.
+   */
+  async cancel(ctx: TenantContext, userId: string, jobId: string, reason: string) {
+    await this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const job = await tx.job.findFirst({ where: { organizationId: org, id: jobId, deletedAt: null } });
+      if (!job) throw new NotFoundException('No such requisition.');
+      if (job.requisitionCancelledAt) throw new ConflictException('This requisition is already cancelled.');
+      const [{ n }] = await tx.$queryRaw<{ n: bigint }[]>`
+        SELECT count(*) AS n FROM pipeline_entries e JOIN pipeline_statuses s ON s.id = e.status_id JOIN pipeline_stages st ON st.id = s.stage_id
+        WHERE e.organization_id = ${org}::uuid AND e.job_id = ${job.id}::uuid AND st.category = 'hired'`;
+      if (Number(n) >= (job.headcount ?? 1)) throw new ConflictException('This requisition is filled, so it cannot be cancelled. Close the job instead.');
+      if (job.status === 'closed') throw new ConflictException('This requisition is already closed.');
+      if (job.status === 'pending_approval' && job.wfRequestId) {
+        const req = await tx.wfRequest.findFirst({ where: { organizationId: org, id: job.wfRequestId } });
+        if (req?.status === 'pending') await this.engine.withdraw(tx, c, req.id, userId, 'Requisition cancelled');
+      }
+      const done = await tx.job.updateMany({ where: { id: job.id, requisitionCancelledAt: null }, data: { status: 'closed', requisitionCancelledAt: new Date(), requisitionCancelReason: reason, requisitionCancelledBy: userId } });
+      if (!done.count) throw new ConflictException('This requisition is already cancelled.');
+      await audit(tx, c, 'ats.requisition.cancelled', 'job', job.id, { reason, from: job.status });
+    });
+    await this.poster.syncJobToPaidBoards(ctx, jobId).catch((e) => this.logger.warn(`boards ${jobId}: ${(e as Error).message}`));
+    return { status: 'cancelled' as const };
+  }
+
   /** Lines of approved plans a requisition can draw on (pickers), with what is left. */
   async openLines(ctx: TenantContext, departmentId?: string) {
     return this.run(ctx, async (tx, c) => {

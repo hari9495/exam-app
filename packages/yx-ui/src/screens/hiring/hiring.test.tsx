@@ -242,7 +242,8 @@ describe('Request a hire (PPL-08, the HIR-02 sheet live)', () => {
     const onSend = vi.fn(async () => undefined);
     render(<RequisitionSheet open onOpenChange={() => {}} planLines={PLAN_LINES} defaultLine={null} defaultMax={null} live={{ subtitle: 'Hiring manager request', team: [{ value: 'e1', label: 'Arjun Kulkarni' }], onSend }} />);
     const send = screen.getByRole('button', { name: /Send for approval/ });
-    expect(send).toBeDisabled();
+    // Never greyed out: pressed too early it shows the missing fields (see hir-02-26-live.test.tsx).
+    expect(send).toBeEnabled();
     expect(screen.queryByRole('button', { name: 'Save draft' })).toBeNull();
     await userEvent.click(screen.getByRole('switch', { name: /Replacement for a leaver/ }));
     await userEvent.click(screen.getByRole('combobox', { name: /Who is leaving/ }));
