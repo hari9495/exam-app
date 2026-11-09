@@ -67,6 +67,30 @@ describe('ReferralsService.submit', () => {
   });
 });
 
+describe('ReferralsService.submit: the résumé is checked by its real content', () => {
+  function svc(tx: Record<string, any>) {
+    const tenantPrisma = { forTenant: jest.fn((_c: unknown, fn: (t: unknown) => unknown) => fn(tx)) } as any;
+    const blobStorage = { upload: jest.fn().mockResolvedValue('candidates/org-1/r.pdf') } as any;
+    return { s: new ReferralsService(tenantPrisma, blobStorage, { enqueue: jest.fn().mockResolvedValue({}) } as any, { record: jest.fn().mockResolvedValue(undefined) } as any, {} as any, {} as any, { subscribe: jest.fn() } as any), blobStorage };
+  }
+  it('refuses a file that is not a PDF (even named .pdf), and one over 5 MB; nothing is stored', async () => {
+    const tx = baseTx();
+    const { s, blobStorage } = svc(tx);
+    await expect(s.submit(ctx, 'user-1', { ...dto, resumeBase64: Buffer.from('MZ an exe renamed').toString('base64') } as any)).rejects.toThrow('The résumé must be a PDF file.');
+    const big = Buffer.concat([Buffer.from('%PDF-1.4 '), Buffer.alloc(5 * 1024 * 1024 + 1)]);
+    await expect(s.submit(ctx, 'user-1', { ...dto, resumeBase64: big.toString('base64') } as any)).rejects.toBeInstanceOf(BadRequestException);
+    expect(blobStorage.upload).not.toHaveBeenCalled();
+    expect(tx.referral.create).not.toHaveBeenCalled();
+  });
+  it('accepts a real PDF', async () => {
+    const tx = baseTx();
+    const { s, blobStorage } = svc(tx);
+    await s.submit(ctx, 'user-1', { ...dto, resumeBase64: Buffer.from('%PDF-1.4 small').toString('base64') } as any);
+    expect(blobStorage.upload).toHaveBeenCalled();
+    expect(tx.candidateProfile.upsert).toHaveBeenCalledWith(expect.objectContaining({ create: expect.objectContaining({ resumePath: 'candidates/org-1/r.pdf' }) }));
+  });
+});
+
 describe('ReferralsService.setReward', () => {
   // One referral, its application in a stage of the given category, and (when hired) an accepted offer starting `start`.
   const rewardTx = (category: string, start: Date | null, rewardStatus = 'pending') => ({

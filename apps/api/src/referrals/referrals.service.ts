@@ -142,7 +142,9 @@ export class ReferralsService implements OnModuleInit {
     let resumePath: string | null = null;
     if (dto.resumeBase64) {
       const buf = Buffer.from(dto.resumeBase64, 'base64');
-      validatePdfUpload(buf); // throws BadRequest on non-PDF / oversized
+      // The real file content must be a PDF of at most 5 MB (the check returns a result; it never throws).
+      const checked = validatePdfUpload(buf);
+      if (!checked.ok) throw new BadRequestException(checked.reason === 'too_large' ? 'The résumé is larger than 5 MB. Add a smaller PDF.' : 'The résumé must be a PDF file.');
       resumePath = await this.blobStorage.upload(`candidates/${orgId}/${randomUUID()}.pdf`, buf, 'application/pdf');
     }
 
