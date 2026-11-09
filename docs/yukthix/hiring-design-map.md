@@ -1335,6 +1335,7 @@ Founder approved, 10 Nov 2026 (questions 331-339, 341-350, all as suggested):
   `ScorecardTemplateSheet` (pipelines key, never while acting). Weights are whole per cent adding to 100 (API 400
   otherwise); older templates keep their weights and score the same. /yx/hiring/scorecards, its menu item and
   `ScorecardTemplatesScreen` are deleted; the old address redirects to /yx/settings/hiring.
+  Migration `202617o0000000_scorecard_weight_per_cent` widens the item weight check from 1-10 to 1-100 (schema only).
 - (348) The default recruiter's choices are the people who hold the recruiter key (`pipeline:manage`, resolved like the
   guard: role, profile, role grants, and `ats.job.manage` / `ats.candidate.manage` company-wide). Anyone else is refused
   with 400 on `PUT hiring/settings` and `PUT org/settings`. A stored default who left or lost the key reads as None with a
