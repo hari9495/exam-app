@@ -39,7 +39,7 @@ export { JobSettingsPanel, StageTargetsSheet, type LiveJobSettings, type StageTa
 // HIR-06 / HIR-07: the designed interview calendar and scorecard form, live with their `live` prop (stand-ins gone).
 export { InterviewCalendarScreen, ScorecardScreen, type LiveInterviewCalendar, type LiveScorecard } from '../hiring-pipeline';
 // Settings 6.1 shows templates read-only; this old page stays until template editing is drawn (answer 345).
-export { ScorecardTemplatesScreen, type ScorecardTemplatesScreenProps } from './interviews';
+export { ScorecardTemplateSheet, asPerCent, type ScorecardTemplateSheetProps } from '../scorecard-template-sheet';
 // HIR-11 and HIR-12: the designed screens themselves (hiring-plan.tsx), made live with their `live` prop.
 export { AllReferralsScreen, RecruitingCostsScreen, ReferralsScreen, type AllReferral, type LiveAllReferrals, type CostEntry, type CostInput, type LiveRecruitingCosts, type LiveReferrals, type ReferInput, type ReferJob, type Referral } from '../hiring-plan';
 // HIR-02 and HIR-26: the designed requisitions list and rediscovery panel (hiring-plan.tsx), made live with `live`.

@@ -12,6 +12,7 @@ export type SettingKind =
   | 'toggle' // on / off (rendered as a checkbox; the page has a Save button, so no Switch)
   | 'select' // one of many (> 5 options)
   | 'radio' // one of 2–5 visible options
+  | 'segment' // one of 2–4 short options, the joined Segment control (R11)
   | 'multiselect' // several of many
   | 'time' // 12-hour time, value 'HH:mm'
   | 'date' // value ISO 'yyyy-mm-dd'

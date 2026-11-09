@@ -11,6 +11,7 @@ import { FormField } from '../../components/field';
 import { Icon } from '../../components/foundations';
 import { CurrencyField, NumberField, TextArea, TextField, TimeField } from '../../components/inputs';
 import { MultiSelect, Select } from '../../components/select';
+import { Segment } from '../../components/segment';
 import { Timeline, type TimelineItem } from '../../components/timeline';
 import { formatDate } from '../../lib/format';
 import { TODAY } from '../_kit/data';
@@ -79,16 +80,18 @@ export interface SettingFieldProps {
   onPickOverride?: (scope: string) => void;
   /** list kind: the row's extra button (`def.rowAction`) was pressed. */
   onRowAction?: (rowIndex: number) => void;
+  /** list kind: Add and each row's Edit open the caller's own editor (e.g. a scorecard template) instead of the row drawer. */
+  onListEdit?: (rowIndex: number | 'new') => void;
 }
 
-export function SettingField({ def, value, onChange, error, readOnly, highlighted, onResetScope, rows, onRowsChange, onOpenLink, onPickOverride, onRowAction }: SettingFieldProps) {
+export function SettingField({ def, value, onChange, error, readOnly, highlighted, onResetScope, rows, onRowsChange, onOpenLink, onPickOverride, onRowAction, onListEdit }: SettingFieldProps) {
   const wrap = (children: ReactNode) => (
     <div className="yx-set-field" id={`setting-${def.key}`} data-highlight={highlighted || undefined} data-kind={def.kind}>
       {children}
     </div>
   );
 
-  if (def.kind === 'list') return wrap(<MasterList def={def} rows={rows ?? def.rows ?? []} onRowsChange={onRowsChange} readOnly={readOnly} onRowAction={onRowAction} />);
+  if (def.kind === 'list') return wrap(<MasterList def={def} rows={rows ?? def.rows ?? []} onRowsChange={onRowsChange} readOnly={readOnly} onRowAction={onRowAction} onEdit={onListEdit} />);
   if (def.kind === 'link') return wrap(<LinkedEditor def={def} onOpen={onOpenLink} />);
 
   const helper = (
@@ -208,6 +211,9 @@ export function SettingField({ def, value, onChange, error, readOnly, highlighte
     case 'radio':
       control = <RadioGroup aria-label={def.label} value={typeof value === 'string' ? value : undefined} onChange={onChange} options={opts(def.options, def.optionLabels)} orientation={radioRow(def) ? 'horizontal' : 'vertical'} disabled={off} />;
       break;
+    case 'segment':
+      control = <Segment label={def.label} value={typeof value === 'string' ? value : null} onChange={onChange} options={opts(def.options, def.optionLabels)} />;
+      break;
     case 'image':
       control = <ImageField value={typeof value === 'string' ? value : null} onChange={onChange} />;
       break;
@@ -263,13 +269,15 @@ function Cell({ col, text }: { col: string; text: string }) {
   return <>{text}</>;
 }
 
-export function MasterList({ def, rows, onRowsChange, readOnly: pageReadOnly, defaultEditing, onRowAction }: { def: SettingDef; rows: string[][]; onRowsChange?: (rows: string[][]) => void; readOnly?: boolean; defaultEditing?: number | 'new'; onRowAction?: (rowIndex: number) => void }) {
-  const readOnly = pageReadOnly || def.readOnlyList;
+export function MasterList({ def, rows, onRowsChange, readOnly: pageReadOnly, defaultEditing, onRowAction, onEdit }: { def: SettingDef; rows: string[][]; onRowsChange?: (rows: string[][]) => void; readOnly?: boolean; defaultEditing?: number | 'new'; onRowAction?: (rowIndex: number) => void; onEdit?: (rowIndex: number | 'new') => void }) {
+  // With its own editor (onEdit) the list is editable whenever the caller passes it: the caller checks the key.
+  const readOnly = onEdit ? false : pageReadOnly || def.readOnlyList;
   const cols = def.columns ?? ['Name'];
   const [editing, setEditing] = useState<number | 'new' | null>(defaultEditing ?? null);
   const [form, setForm] = useState<string[]>(() => (typeof defaultEditing === 'number' ? rows[defaultEditing] : cols.map(() => '')));
   const [err, setErr] = useState<string | null>(null);
   const open = (i: number | 'new') => {
+    if (onEdit) return onEdit(i);
     setForm(i === 'new' ? cols.map(() => '') : [...rows[i]]);
     setErr(null);
     setEditing(i);

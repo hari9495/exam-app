@@ -16,7 +16,6 @@
     "desk: TeamScreen",
     "hiring: ApprovalRoutesScreen",
     "hiring: JobBoardsScreen",
-    "hiring: ScorecardTemplatesScreen",
     "hiring: TalentPoolsScreen",
     "performance: CompCyclesScreen",
     "performance: FeedbackTasksScreen",
