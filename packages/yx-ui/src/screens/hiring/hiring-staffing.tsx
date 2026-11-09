@@ -39,7 +39,7 @@ import {
   type InvoiceLine,
   type PriorSubmission,
 } from './hiring-logic';
-import { EInvoiceBanner, HireFrame, RecordLayout, SummaryTiles, useListControls } from './hiring-kit';
+import { EInvoiceBanner, HireFrame, HireTable, RecordLayout, SummaryTiles, useListControls } from './hiring-kit';
 import type { Client, ClientInvoice, Placement, RateCardRow, Submission, Vendor } from './hiring-data';
 import './hiring.css';
 
@@ -1151,66 +1151,17 @@ export function InvoiceRecordScreen(props: InvoiceRecordProps | { live: LiveInvo
           />
         }
       >
-        <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Invoice lines, scrolls sideways on small screens">
-        <table className="yx-hire-ctc">
-          <caption>Invoice lines</caption>
-          <thead>
-            <tr>
-              <th scope="col">Description</th>
-              <th scope="col">Hours</th>
-              <th scope="col">Rate</th>
-              <th scope="col">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map((l) => (
-              <tr key={l.description}>
-                <th scope="row">{l.description}</th>
-                <td>{l.qty}</td>
-                <td>{formatINR(l.rate)}</td>
-                <td>{formatINR(Math.round(l.qty * l.rate))}</td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <th scope="row" colSpan={3}>
-                Taxable value
-              </th>
-              <td>{formatINR(t.subtotal)}</td>
-            </tr>
-            {t.interState ? (
-              <tr>
-                <th scope="row" colSpan={3}>
-                  IGST 18% (inter-state)
-                </th>
-                <td>{formatINR(t.igst)}</td>
-              </tr>
-            ) : (
-              <>
-                <tr>
-                  <th scope="row" colSpan={3}>
-                    CGST 9%
-                  </th>
-                  <td>{formatINR(t.cgst)}</td>
-                </tr>
-                <tr>
-                  <th scope="row" colSpan={3}>
-                    SGST 9%
-                  </th>
-                  <td>{formatINR(t.sgst)}</td>
-                </tr>
-              </>
-            )}
-            <tr>
-              <th scope="row" colSpan={3}>
-                Total
-              </th>
-              <td>{formatINR(t.total)}</td>
-            </tr>
-          </tfoot>
-        </table>
-        </div>
+        <HireTable
+          label="Invoice lines, scrolls sideways on small screens"
+          caption="Invoice lines"
+          head={['Description', 'Hours', 'Rate', 'Amount']}
+          rows={lines.map((l) => ({ key: l.description, cells: [l.description, l.qty, formatINR(l.rate), formatINR(Math.round(l.qty * l.rate))] }))}
+          foot={[
+            { label: 'Taxable value', value: formatINR(t.subtotal) },
+            ...(t.interState ? [{ label: 'IGST 18% (inter-state)', value: formatINR(t.igst) }] : [{ label: 'CGST 9%', value: formatINR(t.cgst) }, { label: 'SGST 9%', value: formatINR(t.sgst) }]),
+            { label: 'Total', value: formatINR(t.total) },
+          ]}
+        />
         {creditNotes.length > 0 && (
           <Card title="Credit notes against this invoice">
             <ul className="yx-hire-list">
@@ -1538,7 +1489,8 @@ export function VendorsScreen(props: VendorsProps | { live: LiveVendors }) {
   );
 }
 
-function VendorInvoices() {
+function VendorInvoices(props: { live?: VendorInvoicesLive } = {}) {
+  if (props.live) return <LiveVendorInvoicesView {...props.live} />;
   const rows = [
     { id: 'vi1', vendor: 'Sahyadri Staffing LLP', period: 'Sep 2026', worker: 'Priya Nair', hours: 160, rate: 900, tds: '194C', status: 'Waiting for vendor', vendorNo: '' },
     { id: 'vi2', vendor: 'Sahyadri Staffing LLP', period: 'Aug 2026', worker: 'Priya Nair', hours: 152, rate: 900, tds: '194C', status: 'Paid', vendorNo: 'SS/26-27/044' },
@@ -1615,27 +1567,13 @@ export function PlacementFeeSettingsScreen(props: FeeSettingsProps | { live: Liv
             <Text as="p" size="sm" tone="secondary">
               Tapers by months the contractor served before the client hires them.
             </Text>
-            <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Conversion fee taper, scrolls sideways on small screens">
-            <table className="yx-hire-ctc">
-              <caption className="yx-visually-hidden">Conversion fee taper</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Months served</th>
-                  <th scope="col">Fee (% of CTC)</th>
-                  <th scope="col">On {formatINR(exampleCtc)}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {taper.map((t, i) => (
-                  <tr key={t.fromMonth}>
-                    <th scope="row">{i < taper.length - 1 ? `${t.fromMonth}–${taper[i + 1].fromMonth - 1}` : `${t.fromMonth}+`}</th>
-                    <td>{t.pct}%</td>
-                    <td>{formatINR(conversionFee(taper, t.fromMonth, exampleCtc))}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
+            <HireTable
+              label="Conversion fee taper, scrolls sideways on small screens"
+              caption="Conversion fee taper"
+              hideCaption
+              head={['Months served', 'Fee (% of CTC)', `On ${formatINR(exampleCtc)}`]}
+              rows={taper.map((t, i) => ({ key: t.fromMonth, cells: [i < taper.length - 1 ? `${t.fromMonth}–${taper[i + 1].fromMonth - 1}` : `${t.fromMonth}+`, `${t.pct}%`, formatINR(conversionFee(taper, t.fromMonth, exampleCtc))] }))}
+            />
           </Card>
           <Card title="Replacement guarantee">
             <FieldRow>
@@ -2223,7 +2161,7 @@ function LiveVendorsView({ live }: { live: LiveVendors }) {
           </TabsList>
           {live.bills && (
             <TabsContent value="invoices">
-              <LiveVendorInvoices {...live.bills} />
+              <VendorInvoices live={live.bills} />
             </TabsContent>
           )}
           <TabsContent value="register">
@@ -2524,51 +2462,18 @@ function LiveInvoiceRecordView({ live }: { live: LiveInvoiceRecord }) {
           />
         }
       >
-        <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Invoice lines, scrolls sideways on small screens">
-          <table className="yx-hire-ctc">
-            <caption>{cn ? 'Credit note' : 'Invoice lines'}</caption>
-            <thead>
-              <tr>
-                <th scope="col">Description</th>
-                <th scope="col">Hours</th>
-                <th scope="col">Rate</th>
-                <th scope="col">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.lines.map((l, i) => (
-                <tr key={i}>
-                  <th scope="row">{l.description}</th>
-                  <td>{cn ? '—' : l.qty}</td>
-                  <td>{cn ? '—' : formatINR(Number(l.rate))}</td>
-                  <td>{formatINR(Number(l.amount))}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <th scope="row" colSpan={3}>Taxable value</th>
-                <td>{formatINR(Number(inv.taxable))}</td>
-              </tr>
-              {tax.map(([label, v]) => (
-                <tr key={label}>
-                  <th scope="row" colSpan={3}>{label}</th>
-                  <td>{formatINR(Number(v))}</td>
-                </tr>
-              ))}
-              <tr>
-                <th scope="row" colSpan={3}>Total</th>
-                <td>{formatINR(Number(inv.total))}</td>
-              </tr>
-              {!cn && inv.status !== 'draft' && (
-                <tr>
-                  <th scope="row" colSpan={3}>Outstanding</th>
-                  <td>{formatINR(Number(inv.outstanding))}</td>
-                </tr>
-              )}
-            </tfoot>
-          </table>
-        </div>
+        <HireTable
+          label="Invoice lines, scrolls sideways on small screens"
+          caption={cn ? 'Credit note' : 'Invoice lines'}
+          head={['Description', 'Hours', 'Rate', 'Amount']}
+          rows={data.lines.map((l, i) => ({ key: i, cells: [l.description, cn ? '—' : l.qty, cn ? '—' : formatINR(Number(l.rate)), formatINR(Number(l.amount))] }))}
+          foot={[
+            { label: 'Taxable value', value: formatINR(Number(inv.taxable)) },
+            ...tax.map(([label, v]) => ({ label, value: formatINR(Number(v)) })),
+            { label: 'Total', value: formatINR(Number(inv.total)) },
+            ...(!cn && inv.status !== 'draft' ? [{ label: 'Outstanding', value: formatINR(Number(inv.outstanding)) }] : []),
+          ]}
+        />
         {data.creditNotes.length > 0 && (
           <Card title="Credit notes against this invoice">
             <ul className="yx-hire-list">
@@ -2950,35 +2855,25 @@ function LiveFeeTermsView({ live }: { live: LiveFeeTerms }) {
           </Card>
           <Card title="Conversion fee (contract to hire)">
             <Text as="p" size="sm" tone="secondary">Tapers by months the contractor served before the client hires them. It starts at month 0 and only goes down.</Text>
-            <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Conversion fee taper, scrolls sideways on small screens" id="ft-taper">
-              <table className="yx-hire-ctc">
-                <caption className="yx-visually-hidden">Conversion fee taper</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">From month</th>
-                    <th scope="col">Fee (% of CTC)</th>
-                    <th scope="col">On {formatINR(EXAMPLE_CTC)}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {taper.map((r, i) => (
-                    <tr key={i}>
-                      <th scope="row">
-                        <FormField label={`Row ${i + 1} from month`} hideLabel>
-                          <NumberField value={r.fromMonth} onChange={(v) => setTaper((xs) => xs.map((x, j) => (j === i ? { ...x, fromMonth: v } : x)))} min={0} max={120} disabled={ro} />
-                        </FormField>
-                      </th>
-                      <td>
-                        <FormField label={`Row ${i + 1} fee`} hideLabel>
-                          <NumberField value={r.pct} onChange={(v) => setTaper((xs) => xs.map((x, j) => (j === i ? { ...x, pct: v } : x)))} decimals suffix="%" disabled={ro} />
-                        </FormField>
-                      </td>
-                      <td>{formatINR(Math.round((EXAMPLE_CTC * (r.pct ?? 0)) / 100))}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <HireTable
+              id="ft-taper"
+              label="Conversion fee taper, scrolls sideways on small screens"
+              caption="Conversion fee taper"
+              hideCaption
+              head={['From month', 'Fee (% of CTC)', `On ${formatINR(EXAMPLE_CTC)}`]}
+              rows={taper.map((r, i) => ({
+                key: i,
+                cells: [
+                  <FormField key="m" label={`Row ${i + 1} from month`} hideLabel>
+                    <NumberField value={r.fromMonth} onChange={(v) => setTaper((xs) => xs.map((x, j) => (j === i ? { ...x, fromMonth: v } : x)))} min={0} max={120} disabled={ro} />
+                  </FormField>,
+                  <FormField key="p" label={`Row ${i + 1} fee`} hideLabel>
+                    <NumberField value={r.pct} onChange={(v) => setTaper((xs) => xs.map((x, j) => (j === i ? { ...x, pct: v } : x)))} decimals suffix="%" disabled={ro} />
+                  </FormField>,
+                  formatINR(Math.round((EXAMPLE_CTC * (r.pct ?? 0)) / 100)),
+                ],
+              }))}
+            />
             {tried && taperBad && <Text size="sm" tone="danger">Start at month 0; each row starts later and its fee is no higher than the row before.</Text>}
           </Card>
           <Card title="Replacement guarantee">
@@ -3030,7 +2925,15 @@ export interface VendorBillView {
 }
 const BILL_WORD = { waiting: 'Waiting for vendor', confirmed: 'Vendor confirmed', paid: 'Paid' } as const;
 
-export function LiveVendorInvoices({ rows, canEdit, onConfirm, onPaid }: { rows: VendorBillView[]; canEdit: boolean; onConfirm: (placementId: string, month: string, vendorInvoiceNo: string) => Promise<unknown>; onPaid: (id: string, paidOn: string) => Promise<unknown> }) {
+export interface VendorInvoicesLive {
+  rows: VendorBillView[];
+  canEdit: boolean;
+  onConfirm: (placementId: string, month: string, vendorInvoiceNo: string) => Promise<unknown>;
+  onPaid: (id: string, paidOn: string) => Promise<unknown>;
+}
+export { VendorInvoices };
+
+function LiveVendorInvoicesView({ rows, canEdit, onConfirm, onPaid }: VendorInvoicesLive) {
   const toast = useToastIfAny();
   const [confirming, setConfirming] = useState<VendorBillView | null>(null);
   const [paying, setPaying] = useState<VendorBillView | null>(null);

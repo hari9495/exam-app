@@ -72,12 +72,12 @@ export const CLIENT_TIMESHEETS: ClientTimesheet[] = [
 export interface ClientInvoice {
   no: string;
   period: string;
-  kind: 'Placement fee' | 'Contract staffing';
+  kind: 'Placement fee' | 'Contract staffing' | 'Credit note';
   amount: number;
   gst: number;
   issuedOn: Date;
   dueOn: Date;
-  status: 'Paid' | 'Due' | 'Overdue';
+  status: 'Paid' | 'Due' | 'Overdue' | 'Credit';
 }
 export const CLIENT_INVOICES: ClientInvoice[] = [
   { no: 'SSS/26-27/0418', period: 'Sep 2026', kind: 'Contract staffing', amount: 3_45_600, gst: 62_208, issuedOn: d(2026, 9, 28), dueOn: d(2026, 10, 28), status: 'Due' },

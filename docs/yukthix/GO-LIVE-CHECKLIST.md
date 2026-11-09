@@ -36,6 +36,10 @@ Things deliberately left for launch. Development runs locally until then (test k
 | 29 | Help widget frame (Service Desk 3b-2, SD-2.20) | Serve `/yx/widget/*` with `Content-Security-Policy: frame-ancestors <the widget's allowed sites>` (edge rule or middleware reading the widget's sites) and cache `/yx-widget.js` with a short TTL | The frame already trusts messages only from the allowed sites and the API checks the site again |
 | 30 | Privacy and grievance contact (founder answer 3 Nov 2026) | Set `NEXT_PUBLIC_YX_PRIVACY_EMAIL` on the web host to the grievance officer's mailbox, rebuild the web app, then open /yx/legal/privacy and /yx/legal/grievance and check the address shows and opens an email | A public mailbox, not a secret. Until it is set the pages say the contact isn't published yet (APX-G G-23) |
 | 31 | Hindi sign-in wording: native review (founder answer 3 Nov 2026) | A native Hindi reader checks every Hindi line in `packages/yx-ui/src/screens/auth/words.ts` (marked NEEDS NATIVE REVIEW BEFORE GO-LIVE) on the live pages, then removes the mark | Keep the meaning of the answers that must not reveal an account ("अगर … तो …") |
+| 32 | Staffing GST rule data (staffing slice 3, 10 Nov 2026) | The CA checks the rule sets GST.STAFFING_RATE (18%, SAC 998519, CGST + SGST intra-state, IGST inter-state) and GST.STATE_CODES, then clears their verify flag | Before the first client invoice is issued |
+| 33 | E-invoice window (staffing slice 3) | The CA confirms GST.EINVOICE_WINDOW (report within 30 days for AATO of ₹10 crore or more; warn from day 25) and which companies turn on Settings › Staffing desk › e-invoicing | The IRP is not connected: invoices are reported on the IRP by hand |
+| 34 | TDS sections for staffing (staffing slice 3) | The CA and counsel check TDS.SECTIONS (194C 1% individual or HUF, 2% others; 194J 10%, 2% technical) and the Income-tax Act 2025 section numbers from 1 Apr 2026 | Used for client TDS on receipts and vendor invoices |
+| 35 | GST invoice and credit note contents (staffing slice 3) | Counsel and the CA review invoice and credit note fields against CGST Rules r.46 and r.53 (16-character numbers per series, place of supply, reason on the credit note) | Before the invoice PDF is built (question 492) |
 
 
 ## Sign-in without a company code (founder decision 7 Oct 2026)
@@ -108,13 +112,3 @@ Things deliberately left for launch. Development runs locally until then (test k
       attendance.factories_act, stop offering those scopes (keep department and employment type) (answer 152, 4 Nov 2026).
 - [ ] **Pay transparency law rows.** Counsel checks HIR.PAY_TRANSPARENCY (New York, California, Colorado, Washington,
       Illinois, EU directive; all verify) before any job outside India is published (Hiring answer 228, 9 Nov 2026).
-- [ ] **Staffing GST rule data.** The CA checks GST.STAFFING_RATE (18%, SAC 998519, CGST + SGST intra-state, IGST
-      inter-state) and GST.STATE_CODES before the first client invoice (staffing slice 3, 10 Nov 2026).
-- [ ] **E-invoice window.** The CA confirms GST.EINVOICE_WINDOW (report within 30 days of the invoice date for AATO of
-      ₹10 crore or more; warn from day 25) and whether each company's legal entities must e-invoice (staffing slice 3).
-- [ ] **TDS sections for staffing.** The CA and counsel check TDS.SECTIONS (194C 1% individual or HUF, 2% others; 194J
-      10%, 2% technical) and the new Income-tax Act 2025 section numbers from 1 Apr 2026 before vendor invoices or
-      client TDS are relied on (staffing slice 3).
-- [ ] **GST invoice and credit note contents.** Counsel and the CA review the invoice and credit note fields against
-      CGST Rules r.46 and r.53 (16-character numbers per series, place of supply, reason on the credit note) before the
-      PDF is built (questions 492, staffing slice 3).

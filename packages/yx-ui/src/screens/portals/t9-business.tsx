@@ -323,8 +323,9 @@ function ClientTimesheets({ items }: { items: ClientTimesheet[] }) {
   );
 }
 
-function ClientInvoices({ items, today }: { items: ClientInvoice[]; today: Date }) {
-  const outstanding = items.filter((i) => i.status !== 'Paid').reduce((a, i) => a + i.amount + i.gst, 0);
+/** Live (slice 3): no PDF yet (question 492), so `pdf` is off there. */
+function ClientInvoices({ items, today, pdf = true }: { items: ClientInvoice[]; today: Date; pdf?: boolean }) {
+  const outstanding = items.filter((i) => i.status === 'Due' || i.status === 'Overdue').reduce((a, i) => a + i.amount + i.gst, 0);
   const overdue = items.filter((i) => i.status === 'Overdue');
   return (
     <>
@@ -345,16 +346,18 @@ function ClientInvoices({ items, today }: { items: ClientInvoice[]; today: Date 
               <th scope="col">GST</th>
               <th scope="col">Due</th>
               <th scope="col">Status</th>
-              <th scope="col">
-                <span className="yx-visually-hidden">Download</span>
-              </th>
+              {pdf && (
+                <th scope="col">
+                  <span className="yx-visually-hidden">Download</span>
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
             {items.map((i) => (
               <tr key={i.no}>
                 <td className="yx-ps-mono">{i.no}</td>
-                <td>{i.period}</td>
+                <td>{i.period || '—'}</td>
                 <td>{i.kind}</td>
                 <td data-num>{formatINR(i.amount)}</td>
                 <td data-num>{formatINR(i.gst)}</td>
@@ -363,13 +366,15 @@ function ClientInvoices({ items, today }: { items: ClientInvoice[]; today: Date 
                   {i.status === 'Overdue' && ` · ${-daysUntil(i.dueOn, today)} days late`}
                 </td>
                 <td>
-                  <Badge tone={i.status === 'Paid' ? 'success' : i.status === 'Overdue' ? 'danger' : 'warning'}>{i.status}</Badge>
+                  <Badge tone={i.status === 'Paid' || i.status === 'Credit' ? 'success' : i.status === 'Overdue' ? 'danger' : 'warning'}>{i.status}</Badge>
                 </td>
-                <td>
-                  <Button size="sm" icon={Download}>
-                    PDF
-                  </Button>
-                </td>
+                {pdf && (
+                  <td>
+                    <Button size="sm" icon={Download}>
+                      PDF
+                    </Button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -1360,57 +1365,8 @@ function LiveClientPortalView({ live }: { live: LiveClientPortal }) {
         </Card>
       );
     }
-    const unpaid = d.invoices.filter((i) => i.status === 'Due' || i.status === 'Overdue');
-    const overdue = d.invoices.filter((i) => i.status === 'Overdue');
-    const sum = (xs: typeof unpaid) => xs.reduce((a, i) => a + Number(i.amount) + Number(i.gst), 0);
-    return (
-      <>
-        <FactRow label="Invoices">
-          <Fact label="Outstanding" value={formatINR(sum(unpaid))} />
-          <Fact label="Overdue" value={`${overdue.length} · ${formatINR(sum(overdue))}`} tone={overdue.length ? 'danger' : undefined} />
-        </FactRow>
-        {d.invoices.length === 0 ? (
-          <EmptyState compact title="No invoices yet." />
-        ) : (
-          <Card title="Invoices">
-            <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Invoices, scrolls sideways on small screens">
-              <table className="yx-ps-slabgrid">
-                <caption className="yx-visually-hidden">Invoices</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Invoice</th>
-                    <th scope="col">Period</th>
-                    <th scope="col">Type</th>
-                    <th scope="col">Amount</th>
-                    <th scope="col">GST</th>
-                    <th scope="col">Due</th>
-                    <th scope="col">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {d.invoices.map((i) => (
-                    <tr key={i.id}>
-                      <td className="yx-ps-mono">{i.no}</td>
-                      <td>{i.period ?? '—'}</td>
-                      <td>{i.kind}</td>
-                      <td data-num>{formatINR(Number(i.amount))}</td>
-                      <td data-num>{formatINR(Number(i.gst))}</td>
-                      <td>
-                        {formatDate(dOf(i.dueOn))}
-                        {i.status === 'Overdue' && ` · ${-daysUntil(dOf(i.dueOn), live.today)} days late`}
-                      </td>
-                      <td>
-                        <Badge tone={i.status === 'Paid' || i.status === 'Credit' ? 'success' : i.status === 'Overdue' ? 'danger' : 'warning'}>{i.status}</Badge>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        )}
-      </>
-    );
+    if (d.invoices.length === 0) return <EmptyState compact title="No invoices yet." />;
+    return <ClientInvoices pdf={false} today={live.today} items={d.invoices.map((x) => ({ no: x.no, period: x.period ?? '', kind: x.kind as ClientInvoice['kind'], amount: Number(x.amount), gst: Number(x.gst), issuedOn: dOf(x.issuedOn), dueOn: dOf(x.dueOn), status: x.status }))} />;
   };
   return (
     <TenantPortal

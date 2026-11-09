@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
-import { CollectionsScreen, InvoiceRecordScreen, InvoicesScreen, LiveEInvoiceBanner, LiveVendorInvoices, PlacementFeeSettingsScreen, PlacementHours, type InvoiceDetail, type LedgerRowView } from './hiring-staffing';
+import { CollectionsScreen, InvoiceRecordScreen, InvoicesScreen, LiveEInvoiceBanner, VendorInvoices, PlacementFeeSettingsScreen, PlacementHours, type InvoiceDetail, type LedgerRowView } from './hiring-staffing';
 import { CreateInvoicesSheet } from './staffing-sheets';
 import { ClientPortalScreen, type LiveClientPortal } from '../portals/t9-business';
 import { staffingSettingsChanges } from '../settings/staffing-live';
@@ -137,7 +137,7 @@ describe('hours and vendor invoices (live)', () => {
   });
   it('a vendor invoice is confirmed only with the vendor’s number', async () => {
     const onConfirm = vi.fn().mockResolvedValue(undefined);
-    wrap(<LiveVendorInvoices canEdit onConfirm={onConfirm} onPaid={vi.fn()} rows={[{ id: null, status: 'waiting', vendorInvoiceNo: null, vendor: 'Velocity', worker: 'Priya', placementId: 'p1', month: '2026-10', hours: '40', rate: '900.00', net: '36000.00', gst: '6480.00', tdsSection: '194C', tds: '720.00' }]} />);
+    wrap(<VendorInvoices live={{ canEdit: true, onConfirm, onPaid: vi.fn(), rows: [{ id: null, status: 'waiting', vendorInvoiceNo: null, vendor: 'Velocity', worker: 'Priya', placementId: 'p1', month: '2026-10', hours: '40', rate: '900.00', net: '36000.00', gst: '6480.00', tdsSection: '194C', tds: '720.00' }] }} />);
     expect(screen.getByText(/40 h × ₹900 = ₹36,000 \+ GST ₹6,480 · TDS 194C ₹720/)).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Vendor confirmed' }));
     const dialog = await screen.findByRole('dialog');
