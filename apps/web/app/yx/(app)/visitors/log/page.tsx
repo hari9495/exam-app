@@ -1,6 +1,6 @@
 'use client';
 
-import { VisitorLogScreen, type VisitView } from '@yukthix/ui/visitors';
+import { VisitorLogScreen, type VisitReport, type VisitView } from '@yukthix/ui/visitors';
 import { loadState } from '../../../../../lib/yx-org';
 import { useOpenVisitorIdImage, useVisitorLogCsv, useVisitors } from '../../../../../lib/yx-visitors';
 
@@ -10,11 +10,13 @@ export default function YxVisitorLogPage() {
   const log = useVisitors<{ locations: { value: string; label: string }[]; visits: VisitView[] }>('/log');
   const csv = useVisitorLogCsv();
   const openId = useOpenVisitorIdImage();
+  // Slice 4 (608): counts only, no names.
+  const reports = useVisitors<VisitReport>('/reports');
   return (
     <VisitorLogScreen
       log={[]}
       today={new Date()}
-      live={{ state: loadState(log), onRetry: () => void log.refetch(), visits: log.data?.visits ?? [], locations: log.data?.locations ?? [], onExport: () => csv(), onOpenIdImage: openId }}
+      live={{ state: loadState(log), onRetry: () => void log.refetch(), visits: log.data?.visits ?? [], locations: log.data?.locations ?? [], onExport: () => csv(), onOpenIdImage: openId, reports: { state: reports.isLoading ? 'loading' : reports.isError ? 'error' : 'ready', data: reports.data ?? null, onRetry: () => void reports.refetch() } }}
     />
   );
 }

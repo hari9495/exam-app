@@ -61,7 +61,8 @@ function panelFor(area: OpsArea, active: string, member: boolean, counts: Record
         { label: 'As a contractor', items: mk(['Client establishments', 'Own licences', 'Client compliance packs']) },
       ];
     case 'visitors':
-      return [{ items: mk(["Today's visitors", 'Invites', 'Visitor log', 'Watch-list', 'Kiosks & badges', 'Reports']) }];
+      // Answer 617: no "Kiosks & badges" item (kiosks are enrolled on the Time devices page; the badge is a 3.12 setting).
+      return [{ items: mk(["Today's visitors", 'Invites', 'Visitor log', 'Watch-list', 'Roll-call', 'Reports']) }];
   }
 }
 

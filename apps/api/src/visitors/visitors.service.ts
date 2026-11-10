@@ -21,7 +21,7 @@ import { STATUS_WORDS, badgeText, checkInProblem, dayBounds, localDay, maskMobil
 // after the location's retention period (608), keeping counts without names; visits nobody checked out are closed at the
 // end of their window (611).
 
-const KEYS = ['visitors.desk.manage', 'visitors.log.view', 'visitors.settings.manage', 'org.settings.manage'] as const;
+const KEYS = ['visitors.desk.manage', 'visitors.log.view', 'visitors.settings.manage', 'org.settings.manage', 'visitors.rollcall.view'] as const;
 export const VISITOR_SETTING_KEYS = ['visitors.host_timeout_minutes', 'visitors.id_capture', 'visitors.photo', 'visitors.hours_from', 'visitors.hours_to', 'visitors.notice', 'visitors.badge', 'visitors.retention_days', 'visitors.id_retention_days', 'visitors.watchlist_review_days'] as const;
 type VisitorSettingKey = (typeof VISITOR_SETTING_KEYS)[number];
 const LOOKUP: TenantContext = { organizationId: null, isSuperAdmin: true };
@@ -51,12 +51,13 @@ export class VisitorsService {
 
   /* ---------------- access ---------------- */
 
-  private viewer(user: ScopeUser) {
+  /** Slice 4 (badges, reports, roll-call) reads through these. */
+  viewer(user: ScopeUser) {
     return buildViewer(this.prisma, this.tenantPrisma, user, [...KEYS]);
   }
 
   /** The locations a key reaches: every location for a company-wide grant, else the granted locations and entities. */
-  private async reach(tx: Tx, c: CompanyContext, v: Viewer, keys: readonly string[]): Promise<Loc[]> {
+  async reach(tx: Tx, c: CompanyContext, v: Viewer, keys: readonly string[]): Promise<Loc[]> {
     const scopes = keys.flatMap((k) => v.scopes.get(k) ?? []);
     if (!scopes.length) return [];
     const all = await tx.location.findMany({ where: { organizationId: c.organizationId, archivedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true, timezone: true, address: true, legalEntityId: true } });
@@ -76,7 +77,7 @@ export class VisitorsService {
   }
 
   /** A location setting's value (the location's own, else the company's, else the default). */
-  private async setting(tx: Tx, c: CompanyContext, key: VisitorSettingKey, locationId: string | null): Promise<string> {
+  async setting(tx: Tx, c: CompanyContext, key: VisitorSettingKey, locationId: string | null): Promise<string> {
     const rows = await tx.setting.findMany({ where: { organizationId: c.organizationId, key } });
     const r = resolveSetting(SETTINGS[key]!, rows.map((x) => ({ id: x.id, scopeType: x.scopeType, scopeId: x.scopeId, value: x.value, validFrom: null })), { tenant: c.organizationId, ...(locationId ? { location: locationId } : {}) }, null);
     return String(r.value);
@@ -144,10 +145,14 @@ export class VisitorsService {
         row = await tx.visit.update({ where: { id: row.id }, data: { blockedAt: new Date() } });
         await audit(tx, c, 'visitor.blocked', 'visit', row.id, { by: 'watchlist' });
       }
-      return { row, loc, host };
+      // Answer 652: a window outside the location's allowed hours is warned about, never refused.
+      const hFrom = await this.setting(tx, c, 'visitors.hours_from', loc.id);
+      const hTo = await this.setting(tx, c, 'visitors.hours_to', loc.id);
+      const outsideHours = dto.from < hFrom || dto.to > hTo ? `${hFrom} to ${hTo}` : null;
+      return { row, loc, host, outsideHours };
     });
     const sent = made.row.blockedAt ? false : await this.sendInvite(ctx.organizationId!, made.row, made.loc, made.host.name || made.host.email);
-    return { ...(await inCompany(this.tenantPrisma, ctx, async (tx, c) => (await this.views(tx, c, [made.row]))[0]!)), emailed: sent };
+    return { ...(await inCompany(this.tenantPrisma, ctx, async (tx, c) => (await this.views(tx, c, [made.row]))[0]!)), emailed: sent, outsideHours: made.outsideHours };
   }
 
   private async sendInvite(organizationId: string, row: VisitRow, loc: { name: string; timezone: string }, host: string) {
@@ -183,7 +188,7 @@ export class VisitorsService {
 
   /* ---------------- reception (VIS-01) ---------------- */
 
-  private async deskLoc(tx: Tx, c: CompanyContext, v: Viewer, locationId: string) {
+  async deskLoc(tx: Tx, c: CompanyContext, v: Viewer, locationId: string) {
     const loc = (await this.reach(tx, c, v, ['visitors.desk.manage'])).find((l) => l.id === locationId);
     if (!loc) {
       const exists = await tx.location.findFirst({ where: { organizationId: c.organizationId, id: locationId }, select: { id: true } });
@@ -206,7 +211,9 @@ export class VisitorsService {
         take: 500,
       });
       const idCapture = (await this.setting(tx, c, 'visitors.id_capture', loc.id)) as IdCapture;
-      return { location: { id: loc.id, name: loc.name }, today, canChange: !v.actingForOther, idCapture, visits: await this.views(tx, c, rows) };
+      // Slice 4 (607): the badge the location prints (or the pass on the phone only).
+      const badge = await this.setting(tx, c, 'visitors.badge', loc.id);
+      return { location: { id: loc.id, name: loc.name }, today, canChange: !v.actingForOther, idCapture, badge, visits: await this.views(tx, c, rows) };
     });
   }
 
@@ -563,14 +570,14 @@ export class VisitorsService {
 
   /* ---------------- helpers ---------------- */
 
-  private async find(tx: Tx, c: CompanyContext, id: string) {
+  async find(tx: Tx, c: CompanyContext, id: string) {
     const row = await tx.visit.findFirst({ where: { organizationId: c.organizationId, id } });
     if (!row) throw new NotFoundException('Visit not found.');
     return row;
   }
 
   /** Visits as the pages show them (host and location names; the mobile only to the people who reach the record). */
-  private async views(tx: Tx, c: CompanyContext, rows: VisitRow[]) {
+  async views(tx: Tx, c: CompanyContext, rows: VisitRow[]) {
     const users = new Map((await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: [...new Set(rows.map((r) => r.hostUserId))] } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name || u.email]));
     const locs = new Map((await tx.location.findMany({ where: { organizationId: c.organizationId, id: { in: [...new Set(rows.map((r) => r.locationId))] } }, select: { id: true, name: true, timezone: true } })).map((l) => [l.id, l]));
     return rows.map((r) => ({
