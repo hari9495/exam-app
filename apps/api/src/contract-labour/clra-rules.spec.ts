@@ -109,3 +109,14 @@ describe('contract worker rules (CL-2)', () => {
     expect(workerChecks({ ...base, activeAtSite: 48 }).find((x) => x.id === 'threshold')!.status).toBe('pass');
   });
 });
+
+describe('work order headcount (CL-2, answer 675)', () => {
+  const base = { dob: '1994-07-03', on: '2026-10-01', minAge: 18, licences: [{ id: 'l1', locationId: 'hosur', states: ['IN-TN'], validFrom: '2026-01-01', validTo: '2026-12-31', status: 'verified' as const, renewalOfId: null }], site: { locationId: 'hosur', state: 'IN-TN', name: 'Hosur plant' }, licenceMax: 20, activeUnderLicence: 10, activeAtSite: 10, threshold: 50, duplicateAt: null };
+  it('warns past the headcount, never blocks; no work order, no row', () => {
+    const over = workerChecks({ ...base, workOrder: { number: 'WO-7', headcount: 10, active: 10 } });
+    expect(over.find((c) => c.id === 'workorder')!.status).toBe('warn');
+    expect(over.some((c) => c.status === 'fail')).toBe(false);
+    expect(workerChecks({ ...base, workOrder: { number: 'WO-7', headcount: 11, active: 10 } }).find((c) => c.id === 'workorder')!.status).toBe('pass');
+    expect(workerChecks(base).some((c) => c.id === 'workorder')).toBe(false);
+  });
+});

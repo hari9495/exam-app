@@ -94,7 +94,7 @@ export function gateValidTo(i: { toOn: string | null; licenceValidTo: string; in
 
 export type CheckStatus = 'pass' | 'fail' | 'warn';
 export interface WorkerCheck {
-  id: 'age' | 'licence' | 'max' | 'dup' | 'threshold';
+  id: 'age' | 'licence' | 'max' | 'dup' | 'threshold' | 'workorder';
   status: CheckStatus;
   label: string;
   detail?: string;
@@ -117,6 +117,8 @@ export function workerChecks(i: {
   activeAtSite: number;
   threshold: number | null;
   duplicateAt: string | null;
+  /** Answer 675: the contractor's work order covering the site on the day, and its deployments there. */
+  workOrder?: { number: string; headcount: number; active: number } | null;
 }): WorkerCheck[] {
   const age = ageOn(i.dob, i.on);
   const lic = deployBlock(i.licences, { locationId: i.site.locationId, state: i.site.state, on: i.on });
@@ -127,6 +129,9 @@ export function workerChecks(i: {
     { id: 'licence', status: lic ? 'fail' : 'pass', label: `Contractor licence valid at ${i.site.name} on the first day`, ...(lic ? { detail: lic } : {}) },
     { id: 'max', status: full ? 'fail' : 'pass', label: 'Within the licence maximum', ...(i.licenceMax !== null ? { detail: `Licence allows ${i.licenceMax} workers here; ${i.activeUnderLicence} are already deployed or waiting.` } : {}) },
     { id: 'dup', status: i.duplicateAt ? 'fail' : 'pass', label: 'Not already deployed', ...(i.duplicateAt ? { detail: `The same ID is already deployed or waiting at ${i.duplicateAt}.` } : { detail: 'Matched on the ID' }) },
+    ...(i.workOrder
+      ? [{ id: 'workorder' as const, status: (i.workOrder.active + 1 > i.workOrder.headcount ? 'warn' : 'pass') as CheckStatus, label: `Within work order ${i.workOrder.number}`, detail: i.workOrder.active + 1 > i.workOrder.headcount ? `The work order is for ${i.workOrder.headcount} workers; this makes ${i.workOrder.active + 1}. Amend the work order with the contractor.` : `${i.workOrder.active + 1} of ${i.workOrder.headcount} workers.` }]
+      : []),
     { id: 'threshold', status: crossing ? 'warn' : 'pass', label: 'Principal-employer registration threshold', ...(i.threshold !== null ? { detail: crossing ? `This makes ${i.activeAtSite + 1} contract workers at ${i.site.name}; registration is needed from ${i.threshold}. Make sure the site is registered.` : `${i.activeAtSite + 1} of ${i.threshold} before registration is needed.` } : {}) },
   ];
 }

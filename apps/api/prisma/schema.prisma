@@ -12864,3 +12864,20 @@ model ContractDeployment {
   @@index([organizationId, personId], map: "contract_deployments_person_idx")
   @@map("contract_deployments")
 }
+
+/// Contract labour CL-2 (answer 675): a contractor's work order; deploying past its headcount warns.
+model ContractorWorkOrder {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  agencyId       String   @map("agency_id") @db.Uuid
+  number         String   @db.VarChar(40)
+  fromOn         DateTime @map("from_on") @db.Date
+  toOn           DateTime @map("to_on") @db.Date
+  headcount      Int
+  locationIds    String[] @map("location_ids") @db.Uuid
+  version        Int      @default(1)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("contractor_work_orders")
+}

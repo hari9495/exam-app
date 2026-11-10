@@ -1178,6 +1178,13 @@ const contractLabour: SettingsPageDef = {
       ],
     },
     {
+      title: 'Workers on site',
+      settings: [
+        { key: 'clra.induction_required', label: 'Site safety induction before the gate pass', kind: 'toggle', value: true, starter: true, scope: 'Company', helper: 'Recorded with the day and who gave it. The gate pass ends when the induction does.', synonyms: ['safety induction', 'gate pass'] },
+        { key: 'clra.induction_months', label: 'A safety induction lasts', kind: 'select', value: '12', options: ['6', '12', '24'], optionLabels: { '6': '6 months', '12': '12 months', '24': '24 months' }, starter: true, scope: 'Company', synonyms: ['induction validity'] },
+      ],
+    },
+    {
       title: 'Monthly compliance',
       settings: [
         {

@@ -93,7 +93,6 @@
     "ops: VisitorDeskScreen",
     "ops: VisitorKioskScreen",
     "ops: VisitorLogScreen",
-    "ops: WorkersScreen",
     "pay: FirstUse",
     "pay: GroupHealthScreen",
     "pay: RunReadinessScreen",

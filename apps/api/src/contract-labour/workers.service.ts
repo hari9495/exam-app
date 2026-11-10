@@ -103,6 +103,9 @@ export class WorkersService {
     const dupAt = dup ? ((await tx.location.findFirst({ where: { id: dup.locationId, organizationId: org }, select: { name: true } }))?.name ?? 'another site') : null;
     const rule = await tx.statutoryRuleSet.findFirst({ where: { statute: 'IN.CLRA', jurisdiction: loc.state, status: 'published', validFrom: { lte: day(i.on) }, OR: [{ validTo: null }, { validTo: { gte: day(i.on) } }] }, orderBy: { validFrom: 'desc' } });
     const law = rule?.values as { registrationThreshold?: number; minAge?: number } | undefined;
+    // Answer 675: the contractor's work order covering this site on the day (the latest one when several do).
+    const wo = await tx.contractorWorkOrder.findFirst({ where: { organizationId: org, agencyId: contractor.id, locationIds: { has: loc.id }, fromOn: { lte: day(i.on) }, toOn: { gte: day(i.on) } }, orderBy: { fromOn: 'desc' } });
+    const woActive = wo ? await tx.contractDeployment.count({ where: { ...active, agencyId: contractor.id, locationId: { in: wo.locationIds } } }) : 0;
     const checks = workerChecks({
       dob: i.dob,
       on: i.on,
@@ -115,6 +118,7 @@ export class WorkersService {
       activeAtSite,
       threshold: law?.registrationThreshold ?? null,
       duplicateAt: dupAt,
+      workOrder: wo ? { number: wo.number, headcount: wo.headcount, active: woActive } : null,
     });
     return { checks, loc, licence: inForce };
   }
@@ -147,8 +151,8 @@ export class WorkersService {
       const org = c.organizationId;
       const idHash = this.hash(org, dto.aadhaar);
       // One deployment at a time per ID: two sends of the same worker never both pass the duplicate check.
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`clra-worker:${org}:${idHash}`}))`;
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`clra-site:${org}:${dto.locationId}`}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`clra-worker:${org}:${idHash}`}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`clra-site:${org}:${dto.locationId}`}))`;
       const { checks } = await this.checksFor(tx, c, { contractorId: dto.contractorId, locationId: dto.locationId, on: dto.fromOn, dob: dto.dob, idHash });
       this.refuse(checks);
       const before = await tx.contractDeployment.findFirst({ where: { organizationId: org, idHash }, orderBy: { createdAt: 'desc' }, select: { personId: true } });
@@ -183,7 +187,7 @@ export class WorkersService {
       const p = await this.policy(tx, c);
       const on = iso(row.fromOn) > today ? iso(row.fromOn) : today;
       if (row.toOn && iso(row.toOn) < today) throw new BadRequestException('This deployment has already ended. Release it instead.');
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`clra-site:${org}:${row.locationId}`}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`clra-site:${org}:${row.locationId}`}))`;
       const { checks, loc, licence } = await this.checksFor(tx, c, { contractorId: row.agencyId, locationId: row.locationId, on, dob: iso(row.dob), idHash: row.idHash, exceptId: row.id });
       this.refuse(checks);
       const induction = dto.inductionOn ? { on: dto.inductionOn, by: dto.inductionBy?.trim() || null } : null;
@@ -193,7 +197,7 @@ export class WorkersService {
         if (monthsLater(induction.on, p.inductionMonths) < on) throw new BadRequestException(`The safety induction is older than ${p.inductionMonths} months. Give it again.`);
       } else if (induction && induction.on > today) throw new BadRequestException('The safety induction cannot be in the future.');
       const validTo = gateValidTo({ toOn: row.toOn ? iso(row.toOn) : null, licenceValidTo: licence!.validTo, inductionOn: p.inductionRequired ? induction!.on : null, inductionMonths: p.inductionRequired ? p.inductionMonths : null });
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`clra-pass:${org}:${loc.id}`}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`clra-pass:${org}:${loc.id}`}))`;
       const prefix = `GP-${loc.code.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)}-`;
       const n = (await tx.contractDeployment.count({ where: { organizationId: org, gatePassNo: { startsWith: prefix } } })) + 1;
       const gatePassNo = `${prefix}${String(n).padStart(4, '0')}`;

@@ -12,7 +12,7 @@ import { RequireAnyPermission } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import { ContractLabourService } from './contract-labour.service';
-import { ApproveWorkerDto, ContractorDto, LicenceDto, RejectLicenceDto, ReleaseWorkerDto, RenewalDto, SaveClraSettingsDto, WorkerDto } from './clra-dto';
+import { ApproveWorkerDto, ContractorDto, LicenceDto, RejectLicenceDto, ReleaseWorkerDto, RenewalDto, SaveClraSettingsDto, WorkerDto, WorkOrderDto } from './clra-dto';
 import { WorkersService } from './workers.service';
 
 const who = (req: Request) => req.user as ScopeUser;
@@ -85,6 +85,20 @@ export class ContractLabourController {
   update(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ContractorDto) {
     assertOwnSession(req);
     return this.svc.updateContractor(ctx, who(req), id, dto);
+  }
+
+  @Post('contractors/:id/work-orders')
+  @RequireAnyPermission('clra.contractor.manage')
+  addWorkOrder(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: WorkOrderDto) {
+    assertOwnSession(req);
+    return this.svc.saveWorkOrder(ctx, who(req), id, null, dto);
+  }
+
+  @Put('contractors/:id/work-orders/:orderId')
+  @RequireAnyPermission('clra.contractor.manage')
+  changeWorkOrder(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('orderId', ParseUUIDPipe) orderId: string, @Body() dto: WorkOrderDto) {
+    assertOwnSession(req);
+    return this.svc.saveWorkOrder(ctx, who(req), id, orderId, dto);
   }
 
   @Post('contractors/:id/licences')

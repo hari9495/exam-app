@@ -91,3 +91,13 @@ export class ReleaseWorkerDto {
   @Matches(DAY) on!: string;
   @trim() @IsString() @MinLength(3) @MaxLength(500) reason!: string;
 }
+
+/** Answer 675: a contractor's work order. */
+export class WorkOrderDto {
+  @trim() @IsString() @MinLength(1) @MaxLength(40) number!: string;
+  @Matches(DAY) fromOn!: string;
+  @Matches(DAY) toOn!: string;
+  @IsInt() @Min(1) @Max(100000) headcount!: number;
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100) @IsUUID('all', { each: true }) locationIds!: string[];
+  @IsOptional() @IsInt() @Min(1) version?: number;
+}
