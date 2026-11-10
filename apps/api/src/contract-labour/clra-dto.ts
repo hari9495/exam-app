@@ -195,3 +195,29 @@ export class PortalWithdrawDto {
   @trim() @IsString() @MinLength(3) @MaxLength(500) reason!: string;
 }
 
+/* ---------------- CL-5 attendance, registrations ---------------- */
+
+export class AttendanceConfirmDto {
+  @IsUUID() contractorId!: string;
+  @IsUUID() locationId!: string;
+  @Matches(MONTH) month!: string;
+}
+
+class AttendanceEntryDto {
+  @IsUUID() deploymentId!: string;
+  @IsArray() @ArrayMaxSize(31) @Matches(DAY, { each: true }) days!: string[];
+}
+export class PortalAttendanceDto {
+  @IsUUID() locationId!: string;
+  @Matches(MONTH) month!: string;
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(2000) @ValidateNested({ each: true }) @Type(() => AttendanceEntryDto) entries!: AttendanceEntryDto[];
+}
+
+/** Answer 673: a site's principal-employer registration. */
+export class RegistrationDto {
+  @IsUUID() locationId!: string;
+  @trim() @IsString() @MinLength(1) @MaxLength(60) registrationNo!: string;
+  @IsInt() @Min(1) @Max(100000) maxWorkers!: number;
+  @IsOptional() @Matches(DAY) validTo?: string | null;
+  @IsOptional() @IsInt() @Min(1) version?: number;
+}

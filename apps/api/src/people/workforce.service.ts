@@ -52,6 +52,8 @@ interface Counts {
   employeePersons: number;
 }
 
+/** All persons with contract workers added (the month-on-month change then has no comparison). */
+const plusContract = (p: { roles: number; people: number; previous: number | null }, cw: { roles: number; people: number } | null) => (cw && cw.roles ? { roles: p.roles + cw.roles, people: p.people + cw.people, previous: null } : p);
 const monthStart = (d: string) => `${d.slice(0, 7)}-01`;
 const previousMonth = (d: string) => {
   const x = new Date(`${d.slice(0, 7)}-01T00:00:00Z`);
@@ -146,11 +148,16 @@ export class WorkforceService {
             employees: scoped && rows.length < now.employees ? { count: rows.length, previous: null } : { count: now.employees, previous: prev?.employees ?? null },
             consultants: consultants ? { count: now.consultants, previous: prev?.consultants ?? null } : null,
             contractWorkers: cw ? { count: cw.length, previous: null } : null,
-            persons: consultants
-              ? { roles: now.employees + now.consultants, people: now.persons, previous: prev?.persons ?? null }
-              : scoped && rows.length < now.employees
-                ? { roles: rows.length, people: rows.length, previous: null }
-                : { roles: now.employees, people: now.employeePersons, previous: prev?.employeePersons ?? null },
+            // Answer 686: contract workers count in All persons for the contract labour keys (a person who is also an
+            // employee is one person with two roles).
+            persons: plusContract(
+              consultants
+                ? { roles: now.employees + now.consultants, people: now.persons, previous: prev?.persons ?? null }
+                : scoped && rows.length < now.employees
+                  ? { roles: rows.length, people: rows.length, previous: null }
+                  : { roles: now.employees, people: now.employeePersons, previous: prev?.employeePersons ?? null },
+              cw ? { roles: cw.length, people: await this.contractOnlyPersons(tx, c, cw.map((r) => r.id)) } : null,
+            ),
           },
           previousMonth: prev ? previousMonth(today).slice(0, 7) : null,
         };
@@ -218,6 +225,16 @@ export class WorkforceService {
         : {}),
       ...(r.phone !== null ? { phone: r.phone } : {}),
     }));
+  }
+
+  /** Persons among these deployments who have no employee record (counted once each). */
+  private async contractOnlyPersons(tx: Tx, c: CompanyContext, deploymentIds: string[]): Promise<number> {
+    if (!deploymentIds.length) return 0;
+    const [r] = await tx.$queryRaw<{ n: number }[]>`
+      SELECT count(DISTINCT d.person_id)::int AS n FROM contract_deployments d
+      WHERE d.organization_id = ${c.organizationId}::uuid AND d.id = ANY(${deploymentIds}::uuid[])
+        AND NOT EXISTS (SELECT 1 FROM employees e WHERE e.organization_id = d.organization_id AND e.person_id = d.person_id)`;
+    return r?.n ?? 0;
   }
 
   /** CL-2: contract workers deployed or waiting for approval today, at the entity's sites when one is chosen. */

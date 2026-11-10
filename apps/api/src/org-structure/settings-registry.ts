@@ -272,6 +272,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // CL-4 (answer 634): when a month's proofs are due, and whether a contractor's bill is held while they are overdue or disputed.
   'clra.doc_cutoff': { label: 'Contract labour: monthly proofs due by (day of the following month)', scopes: ['tenant'], dated: false, values: Array.from({ length: 25 }, (_, i) => String(i + 1)), default: '15' },
   'clra.payment_hold': { label: 'Contract labour: contractor bill while proofs are overdue or disputed', scopes: ['tenant'], dated: false, values: ['hold', 'alert'], default: 'hold' },
+  // CL-5 (answers 622, 625): warn as a site nears the registration threshold; where contract workers' attendance comes from.
+  'clra.threshold_warn': { label: 'Contract labour: warn at this share of the registration threshold (%)', scopes: ['tenant'], dated: false, values: ['50', '60', '70', '80', '90'], default: '80' },
+  'clra.attendance_source': { label: 'Contract labour: where contract workers’ attendance comes from', scopes: ['tenant'], dated: false, values: ['kiosk_else_contractor', 'contractor'], default: 'kiosk_else_contractor' },
   'staffing.vendor.target_margin_pct': { label: 'Staffing desk: target margin for a vendor rate cap (%)', scopes: ['tenant'], dated: false, values: ['10', '15', '20', '25', '30', '35', '40'], default: '25' },
   'staffing.vendor.ownership_days': { label: 'Staffing desk: a vendor holds a submitted candidate for (days)', scopes: ['tenant'], dated: false, values: ['30', '60', '90', '180'], default: '90' },
   'staffing.submission.mask_contact': { label: 'Staffing desk: hide candidate phone and email from clients until shortlisted', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'on' },

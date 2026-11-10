@@ -12,8 +12,9 @@ import { RequireAnyPermission } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import { ContractLabourService } from './contract-labour.service';
-import { DirectPaymentDto, DiscrepancyDto, HoldReleaseDto, MinWageQueryDto, MonthQueryDto, ProofDecisionDto, ApproveWorkerDto, ContractorContactDto, ContractorDto, LicenceDto, RejectLicenceDto, ReleaseWorkerDto, RenewalDto, SaveClraSettingsDto, WorkerDto, WorkOrderDto } from './clra-dto';
+import { AttendanceConfirmDto, RegistrationDto, DirectPaymentDto, DiscrepancyDto, HoldReleaseDto, MinWageQueryDto, MonthQueryDto, ProofDecisionDto, ApproveWorkerDto, ContractorContactDto, ContractorDto, LicenceDto, RejectLicenceDto, ReleaseWorkerDto, RenewalDto, SaveClraSettingsDto, WorkerDto, WorkOrderDto } from './clra-dto';
 import { WorkersService } from './workers.service';
+import { ContractAttendanceService } from './attendance.service';
 import { ComplianceService } from './compliance.service';
 
 const who = (req: Request) => req.user as ScopeUser;
@@ -30,7 +31,75 @@ export class ContractLabourController {
     private readonly svc: ContractLabourService,
     private readonly workers: WorkersService,
     private readonly compliance: ComplianceService,
+    private readonly attendance: ContractAttendanceService,
   ) {}
+
+  /* ---------------- CL-5 attendance, gate pass, photo, kiosk PIN, registrations ---------------- */
+
+  @Get('attendance')
+  @RequireAnyPermission(...READ)
+  attendanceMonth(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: MonthQueryDto) {
+    return this.attendance.month(ctx, who(req), q.month);
+  }
+
+  @Post('attendance/confirm')
+  @RequireAnyPermission('clra.contractor.manage')
+  confirmAttendance(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: AttendanceConfirmDto) {
+    assertOwnSession(req);
+    return this.attendance.confirm(ctx, who(req), dto);
+  }
+
+  @Post('workers/:id/gate-pass')
+  @RequireAnyPermission('clra.contractor.manage')
+  renewPass(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ApproveWorkerDto) {
+    assertOwnSession(req);
+    return this.workers.renewPass(ctx, who(req), id, dto);
+  }
+
+  @Post('workers/:id/kiosk-pin')
+  @RequireAnyPermission('clra.contractor.manage')
+  kioskPin(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    assertOwnSession(req);
+    return this.workers.setKioskPin(ctx, who(req), id);
+  }
+
+  @Post('workers/:id/photo')
+  @RequireAnyPermission('clra.contractor.manage')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  @UseInterceptors(UPLOAD)
+  setPhoto(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @UploadedFile() file: Express.Multer.File | undefined) {
+    assertOwnSession(req);
+    return this.workers.setPhoto(ctx, who(req), id, upload(file));
+  }
+
+  @Get('workers/:id/photo')
+  @RequireAnyPermission(...READ)
+  async photo(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Res({ passthrough: true }) res: Response) {
+    const f = await this.workers.photo(ctx, who(req), id);
+    res.set({ 'Content-Type': f.contentType, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox" });
+    return new StreamableFile(f.file);
+  }
+
+  @Post('registrations')
+  @RequireAnyPermission('clra.settings.manage', 'org.settings.manage')
+  addRegistration(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: RegistrationDto) {
+    assertOwnSession(req);
+    return this.svc.saveRegistration(ctx, who(req), null, dto);
+  }
+
+  @Put('registrations/:id')
+  @RequireAnyPermission('clra.settings.manage', 'org.settings.manage')
+  changeRegistration(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RegistrationDto) {
+    assertOwnSession(req);
+    return this.svc.saveRegistration(ctx, who(req), id, dto);
+  }
+
+  @Post('registrations/:id/remove')
+  @RequireAnyPermission('clra.settings.manage', 'org.settings.manage')
+  removeRegistration(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    assertOwnSession(req);
+    return this.svc.removeRegistration(ctx, who(req), id);
+  }
 
   /* ---------------- CL-4 vendor compliance (CLB-03) ---------------- */
 

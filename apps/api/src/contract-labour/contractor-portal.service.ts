@@ -10,8 +10,9 @@ import { toRupees } from '../staffing/staffing-rules';
 import { ContractLabourService, type Upload } from './contract-labour.service';
 import { WorkersService } from './workers.service';
 import { ComplianceService } from './compliance.service';
+import { ContractAttendanceService } from './attendance.service';
 import { alertDaysOf, daysBetween, licenceState, type LicenceLike } from './clra-rules';
-import type { PackItemDto, PortalWithdrawDto, PortalWorkerDto, RenewalDto } from './clra-dto';
+import type { PortalAttendanceDto, PackItemDto, PortalWithdrawDto, PortalWorkerDto, RenewalDto } from './clra-dto';
 
 const PORTAL_MINUTES = 60;
 const tokenHash = (t: string) => createHash('sha256').update(t).digest('hex');
@@ -40,7 +41,17 @@ export class ContractorPortalService {
     private readonly workers: WorkersService,
     private readonly files: FilesService,
     private readonly compliance: ComplianceService,
+    private readonly attendance: ContractAttendanceService,
   ) {}
+
+  /** Answer 625: a month's days at a site (marked here where the site has no kiosk). */
+  attendanceMonth(slug: string, token: string | undefined, locationId: string, month: string) {
+    return this.inPortal(slug, token, (tx, s) => this.attendance.portalMonth(tx, s.c, s.agencyId, locationId, month));
+  }
+
+  saveAttendance(slug: string, token: string | undefined, d: PortalAttendanceDto) {
+    return this.inPortal(slug, token, (tx, s) => this.attendance.portalEnter(tx, s.c, s.agencyId, s.contactId, d));
+  }
 
   private async orgOf(slug: string) {
     const o = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) => tx.organization.findUnique({ where: { slug }, select: { id: true } }));

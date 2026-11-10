@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ContractLabourModule } from '../contract-labour/contract-labour.module';
 import { AuditModule, CryptoModule } from '@exam-platform/shared';
 import { REDIS_CONNECTION, createRedisConnection } from '../jobs/redis-connection';
 import { AuthModule } from '../auth/auth.module';
@@ -50,7 +51,7 @@ import { OrgSettingsService } from '../org-structure/org-settings.service';
 
 // M02 Time and leave (step 4, batches 1 and 2) on the shared P03 approvals engine and P19 conditions.
 @Module({
-  imports: [AuditModule, WorkflowModule, NotificationsModule, AuthModule, PayrollModule, CryptoModule],
+  imports: [AuditModule, WorkflowModule, NotificationsModule, AuthModule, PayrollModule, CryptoModule, ContractLabourModule],
   controllers: [TimeController, TimeOpsController, LeaveV2Controller, AttendanceOpsController, DevicesController, KioskController, FieldController, HybridPrefillController, RosterExtrasController, AutoRosterController, RosterLicencesController],
   providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, OrgSettingsService, DayEngine, LeaveService, AttendanceService, TimeSetupService, TimeJobs, RosterService, OvertimeService, TimesheetService, PeriodsService, NightWorkService, LeaveV2Service, { provide: HOLIDAY_PROVIDER, useClass: DevFakeHolidayProvider }, AttendanceOpsService, IndustrialActionService, PresenceService, DeviceBackfillService, DevicesService, KioskService, { provide: FACE_MATCH, useFactory: faceMatchFromEnv }, FieldService, FieldJobs, { provide: MAPS, useFactory: mapsFromEnv }, HybridService, PrefillService, { provide: WORK_TOOLS, useFactory: workToolsFromEnv }, OpenShiftsService, StandbyService, AutoRosterService, LicencesService, LicenceJobs],
   // PeriodsService.feedRows / feed: the stable read of the frozen payroll feed for payroll (step 5).

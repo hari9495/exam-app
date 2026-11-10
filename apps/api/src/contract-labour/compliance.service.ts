@@ -15,6 +15,7 @@ import { ContractLabourService, type Upload } from './contract-labour.service';
 import { activeIn, heldMonths, monthPacks } from './clra-holds';
 import { PROOF_KINDS, challanShortfall, monthOf, packDue, packStatus, wageShortfall, type ProofKind, type ProofState } from './clra-rules';
 import { WageLineDto, type DirectPaymentDto, type HoldReleaseDto, type PackItemDto } from './clra-dto';
+import { shortDays } from './clra-rules';
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const day = (s: string) => new Date(`${s}T00:00:00Z`);
@@ -92,6 +93,9 @@ export class ComplianceService {
     const released = await tx.contractorHoldRelease.findFirst({ where: { organizationId: org, agencyId, month: day(month) } });
     const states: Partial<Record<ProofKind, ProofState>> = {};
     for (const i of items) states[i.kind as ProofKind] = i.state as ProofState;
+    // Answer 742: the days each worker was on site (kiosk punches or the contractor's entry), and whether confirmed.
+    const present = await tx.contractAttendance.groupBy({ by: ['deploymentId'], where: { organizationId: org, deploymentId: { in: deps.map((d) => d.id) }, workOn: { gte: day(month), lt: day(new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1)).toISOString().slice(0, 10)) } }, _count: { _all: true } });
+    const confirmed = Boolean(await tx.contractAttendanceConfirmation.findFirst({ where: { organizationId: org, agencyId, locationId, month: day(month) } }));
     const workers = deps.map((d) => {
       const p = persons.find((x) => x.id === d.personId);
       const line = lines.find((l) => l.deploymentId === d.id);
@@ -110,6 +114,7 @@ export class ComplianceService {
         short: w ? rupees(w.shortPaise) : null,
         paidByUs: rupees(ours),
         stillShort: rupees(left),
+        daysOnSite: present.find((x) => x.deploymentId === d.id)?._count._all ?? 0,
       };
     });
     const item = (k: ProofKind) => {
@@ -130,6 +135,7 @@ export class ComplianceService {
         return { id: k, label: `${LABEL[k]}: workers covered ≥ workers on site`, status: n === null ? ('pending' as const) : short ? ('fail' as const) : ('pass' as const), detail: n === null ? 'Not uploaded yet.' : `Covers ${n}; ${deps.length} deployed in the month.${short ? ` Short by ${short}.` : ''}` };
       }),
       { id: 'wage_register', label: 'Every worker in the wage register', status: !items.some((i) => i.kind === 'wage_register') ? ('pending' as const) : missingLines.length ? ('fail' as const) : ('pass' as const), detail: missingLines.length && items.some((i) => i.kind === 'wage_register') ? `Missing: ${missingLines.map((w) => w.name).join(', ')}.` : undefined },
+      ((short) => ({ id: 'days', label: `Days paid ≥ days on site${confirmed ? ' (confirmed)' : ' (not yet confirmed)'}`, status: !lines.length ? ('pending' as const) : short.length ? ('fail' as const) : ('pass' as const), detail: short.length ? short.map((w) => `${w.name}: paid ${w.line!.days} days, on site ${w.daysOnSite}`).join('; ') : undefined }))(workers.filter((w) => w.line && shortDays(w.line.days, w.daysOnSite) > 0)),
       { id: 'min_wage', label: 'Wages at or above the minimum wage (verify)', status: !lines.length ? ('pending' as const) : shortWorkers.length ? ('fail' as const) : ('pass' as const), detail: shortWorkers.length ? shortWorkers.map((w) => `${w.name}: paid ₹${w.line!.gross}, due ₹${w.due}`).join('; ') : undefined },
     ];
     return {

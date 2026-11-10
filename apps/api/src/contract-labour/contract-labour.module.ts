@@ -11,6 +11,7 @@ import { REDIS_CONNECTION, bullOpts, createRedisConnection, logBullErrors } from
 import { ContractLabourController } from './contract-labour.controller';
 import { ContractLabourService } from './contract-labour.service';
 import { WorkersService } from './workers.service';
+import { ContractAttendanceService } from './attendance.service';
 import { ComplianceService } from './compliance.service';
 import { StatutoryModule } from '../statutory/statutory.module';
 import { ContractorPortalService } from './contractor-portal.service';
@@ -28,6 +29,7 @@ export class ContractLabourJobs implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Inject(REDIS_CONNECTION) private readonly connection: Redis,
     private readonly svc: ContractLabourService,
+    private readonly attendance: ContractAttendanceService,
   ) {
     this.queue = logBullErrors(new Queue(QUEUE, bullOpts(connection)), QUEUE);
   }
@@ -44,6 +46,8 @@ export class ContractLabourJobs implements OnModuleInit, OnModuleDestroy {
 
   async run() {
     const n = await this.svc.alertAll().catch((e: Error) => (this.logger.warn(`licence alerts: ${e.message}`), 0));
+    // Answer 622: each site's highest number of contract workers on any day of the last 12 months.
+    await this.attendance.peaksAll().catch((e: Error) => this.logger.warn(`clra peaks: ${e.message}`));
     if (n) this.logger.log(`contractor licence alerts: ${n}`);
   }
 }
@@ -53,7 +57,7 @@ export class ContractLabourJobs implements OnModuleInit, OnModuleDestroy {
 @Module({
   imports: [AuthModule, StatutoryModule, CryptoModule, DocumentsModule, EmailModule, NotificationsModule, OrgStructureModule],
   controllers: [ContractLabourController, PublicContractorPortalController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, ContractLabourService, WorkersService, ComplianceService, ContractorPortalService, ContractLabourJobs],
-  exports: [ContractLabourService],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, ContractLabourService, WorkersService, ComplianceService, ContractAttendanceService, ContractorPortalService, ContractLabourJobs],
+  exports: [ContractLabourService, ContractAttendanceService],
 })
 export class ContractLabourModule {}
