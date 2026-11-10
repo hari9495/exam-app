@@ -375,6 +375,13 @@ function SettingsForm({
   const [picked, setPicked] = useState(page.typePicker?.options[0] ?? '');
   const [rows, setRows] = useState<Record<string, string[][]>>({});
   const [status, setStatus] = useState<SaveStatus>({ kind: 'idle' });
+  // Walk-through 10 Nov 2026: the save bar is at the bottom of long pages, so a failed save scrolls its message into view.
+  const failedRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (status.kind !== 'failed' || !failedRef.current) return;
+    failedRef.current.scrollIntoView?.({ block: 'center' });
+    failedRef.current.focus({ preventScroll: true });
+  }, [status]);
   const [confirmSensitive, setConfirmSensitive] = useState(false);
   const [scope, setScope] = useState(defaultScope ?? page.scopes?.[0] ?? 'Company');
   const [requested, setRequested] = useState(false);
@@ -524,9 +531,11 @@ function SettingsForm({
         </InlineAlert>
       )}
       {status.kind === 'failed' && (
-        <InlineAlert tone="danger" title="We couldn't save your changes" actions={<Button size="sm" onClick={() => void doSave()}>Retry</Button>}>
-          {status.message ? `${status.message} Your edits are kept on this page.` : 'Your edits are kept on this page. Retry, or copy reference SET-S91B2 for support.'}
-        </InlineAlert>
+        <div ref={failedRef} tabIndex={-1}>
+          <InlineAlert tone="danger" title="We couldn't save your changes" actions={<Button size="sm" onClick={() => void doSave()}>Retry</Button>}>
+            {status.message ? `${status.message} Your edits are kept on this page.` : 'Your edits are kept on this page. Retry, or copy reference SET-S91B2 for support.'}
+          </InlineAlert>
+        </div>
       )}
 
       {/* Long pages get a jump list (founder review 30 Sep 2026). */}

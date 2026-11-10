@@ -6,6 +6,7 @@ export type Draft = Record<string, SettingValue>;
 
 /** Parses the registry's ISO "yyyy-mm-ddTHH:mm" without time-zone surprises. */
 export function parseIso(iso: string): Date {
+  if (/(Z|[+-]\d\d:?\d\d)$/.test(iso)) return new Date(iso);
   const [d, t = '00:00'] = iso.split('T');
   const [y, m, day] = d.split('-').map(Number);
   const [h, min] = t.split(':').map(Number);

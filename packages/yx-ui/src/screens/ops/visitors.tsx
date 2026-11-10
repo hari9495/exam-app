@@ -463,14 +463,14 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
   );
   if (live)
     return (
-      <LivePage title="Today's visitors" description={`${place} reception. Scan the visitor's QR pass or check them in by name.`} actions={actions} state={live.state} onRetry={live.onRetry} what="today's visitors" grantedBy="an admin (the Reception role)">
+      <LivePage title="Today's visitors" description={`${place ? `${place} reception` : 'Reception'}. Scan the visitor's QR pass or check them in by name.`} actions={actions} state={live.state} onRetry={live.onRetry} what="today's visitors" grantedBy="an admin (the Reception role)">
         <p className="yx-ops-muted">{facts}</p>
         {body}
       </LivePage>
     );
   return (
     <OpsDesk area="visitors" active="Today's visitors" counts={{ "Today's visitors": groups.onsite.length }}>
-      <PageHeader title="Today's visitors" description={`${place} reception. Scan the visitor's QR pass or check them in by name.`} facts={facts} actions={actions} />
+      <PageHeader title="Today's visitors" description={`${place ? `${place} reception` : 'Reception'}. Scan the visitor's QR pass or check them in by name.`} facts={facts} actions={actions} />
       {body}
     </OpsDesk>
   );
