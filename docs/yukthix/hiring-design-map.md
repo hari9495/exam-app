@@ -1626,6 +1626,17 @@ the candidate on their interview page once it is drawn (later); (433)-(435) keep
 use the job location's time zone when hiring abroad (later); (442) YukthiX staff switch white-label on from the console
 with the plan; (443) add the quarantine-email switch to 6.1 under candidate data; (444) keep the Indian mobile for jobs
 in India.
+Founder approved, 10 Nov 2026 (questions 442, 451-456, 461-463, 471-476, 481-490, all as suggested): (442) build a
+YukthiX-staff-only "Company settings" page in the console for white-label, audited, tied to the plan; keep 451, 455, 456,
+461-463, 472, 485-488, 490; (452) give recruiters `ats.staffing.view` in companies that turn the desk on; (453, 454) client
+portal, TDS as data and invoice grouping in slice 3; (471) keep, counsel confirms the NYC city list and remote roles;
+(473) hint on 6.1 when an AI tool is on and the company has a NYC location; (474) the NYC candidate notice on the job page
+and apply form when the setting is on; (475) "Data from / to" only if counsel wants it; (476) one free builder builds the
+small approved items, the other walks Hiring as real users, live against design, and fixes what it finds; (481) keep, a
+selected candidate starts onboarding from the card later; (482) bench pay as a payroll input in slice 3, the exit review
+stays manual; (483) a nightly job puts own-payroll people on the bench the day after the last day; (484) 13% statutory
+cost (employer PF and ESI) for companies with those registrations; (489) a duplicate override with a reason, audited, for
+an account manager.
 ## HIR-27 bulk interview day and answer 392 built (14 Nov 2026, branch `feat/yukthix-hir-27`)
 - HIR-27: see its section above. Interview days open from Hiring › Interviews (a new "Interview days" button, drawn on the
   HIR-06 header).
