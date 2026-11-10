@@ -1684,6 +1684,10 @@ Founder approved, 10 Nov 2026 (questions 531, 532, 541, 542, all as suggested): 
 notice" button on the Application drawer; (532) the single offer builder refuses a ₹0 CTC with the same words; (541) leave
 the older v2 screens as they are (being retired); (542) HR removes results:view and interview:view_assigned from a
 company-made manager role if managers should not read jobs and test results; panel membership is enough for interviews.
+Founder approved, 10 Nov 2026 (questions 521-528, all as suggested): keep 521, 523, 524, 526; (522) the Tally XML and
+Zoho CSV export next; (525) take the GST state from the paying entity once vendors are per entity (later); (527) a DSC or
+e-sign step with e-invoicing if the CA asks (later); (528) on "Client hired", offer to end the placement the day before the
+hire.
 ## HIR-27 bulk interview day and answer 392 built (14 Nov 2026, branch `feat/yukthix-hir-27`)
 - HIR-27: see its section above. Interview days open from Hiring › Interviews (a new "Interview days" button, drawn on the
   HIR-06 header).
