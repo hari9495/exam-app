@@ -19177,5 +19177,22 @@
       "Screens/Settings/Group 3 · Time & Leave · 3.12 Visitors"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-691-01",
+    "area": "Hiring · Answer 691 WhatsApp tick on the candidate page (10 Nov 2026)",
+    "screen": "Candidate page · Messages about jobs",
+    "url": "http://localhost:3000/yx/candidate/<candidate page link from the apply email>",
+    "account": "An applicant who gave a mobile number (and one who did not). Browser window 1278 x 635.",
+    "steps": [
+      "Open the candidate page link from the apply email.",
+      "Tick \"Message me on WhatsApp about jobs\", then untick it.",
+      "Open the candidate page of an applicant with no mobile number."
+    ],
+    "expected": "Step 2: \"WhatsApp messages on\" then \"WhatsApp messages off\" (toasts); the status page shows the same choice. Step 3: no tick; \"We have no mobile number for you, so we cannot message you on WhatsApp.\"",
+    "stories": [
+      "Screens/Portals/T9-09 · Careers site · Candidate page · Message me on WhatsApp about jobs"
+    ],
+    "note": "Positive and negative."
   }
 ]

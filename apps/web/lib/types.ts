@@ -637,6 +637,8 @@ export interface PortalView {
   candidateName: string;
   candidateEmail: string;
   candidatePhone: string | null;
+  /** Answer 691: the WhatsApp tick on the candidate page. */
+  whatsappOptedIn?: boolean;
   resume: { hasResume: boolean; parseStatus: string | null };
   orgName: string;
   applications: PortalApplication[];

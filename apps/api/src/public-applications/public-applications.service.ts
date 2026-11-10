@@ -644,6 +644,14 @@ If you did not apply, ignore this email.`,
   }
 
   /** M10 AT4: the candidate withdraws their talent-pool consent; they leave every pool at once. */
+  /** Answer 691: "Message me on WhatsApp about jobs" on the candidate page (tick or untick). Audited. */
+  async setPortalWhatsapp(portalToken: string, optIn: boolean) {
+    const { id, organizationId } = await this.resolvePortalCandidate(portalToken);
+    const c = { organizationId, isSuperAdmin: true };
+    await this.tenantPrisma.forTenant(c, (tx) => setWhatsappOptIn(tx, c, id, optIn, 'candidate_page'));
+    return { whatsappOptedIn: optIn };
+  }
+
   async withdrawTalentPool(portalToken: string) {
     const { id, organizationId } = await this.resolvePortalCandidate(portalToken);
     await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: true }, (tx) => withdrawConsent(tx, organizationId, id, 'talent_pool'));
@@ -661,7 +669,7 @@ If you did not apply, ignore this email.`,
     const { candidate, entries, profile, inPools } = await this.tenantPrisma.forTenant(
       { organizationId, isSuperAdmin: true },
       async (tx) => {
-        const candidate = await tx.candidate.findUnique({ where: { id: candidateId }, select: { name: true, email: true, phone: true } });
+        const candidate = await tx.candidate.findUnique({ where: { id: candidateId }, select: { name: true, email: true, phone: true, whatsappOptedInAt: true } });
         const entries = await tx.pipelineEntry.findMany({
           where: { candidateId },
           orderBy: { createdAt: 'desc' },
@@ -686,6 +694,8 @@ If you did not apply, ignore this email.`,
       candidateName: candidate?.name ?? '',
       candidateEmail: candidate?.email ?? '',
       candidatePhone: candidate?.phone ?? null,
+      // Answer 691: the WhatsApp tick on the candidate page.
+      whatsappOptedIn: Boolean(candidate?.whatsappOptedInAt),
       resume: { hasResume: Boolean(profile?.resumePath), parseStatus: profile?.parseStatus ?? null },
       /** M10 AT4: whether they agreed to be kept for other roles (they can withdraw it here). */
       talentPool: inPools,

@@ -422,6 +422,23 @@ describe('Hiring rest: campaigns, sourced profiles, under 18', () => {
       expect((await pub('post', `/applications/${await statusToken(np.id)}/whatsapp`).send({ optIn: true }).expect(409)).body.message).toMatch(/mobile number/);
     });
 
+    it('answer 691: the candidate page ticks and unticks it (source candidate_page, audited); a bad token is 404; no number is 409', async () => {
+      const portal = async (email: string) => (await inA((tx) => tx.candidate.findFirstOrThrow({ where: { email }, select: { portalToken: true } }))).portalToken!;
+      const t = await portal(`plain-${run}@x.test`);
+      expect((await pub('get', `/portal/${t}`).expect(200)).body.whatsappOptedIn).toBe(false);
+      expect((await pub('post', `/portal/${t}/whatsapp`).send({ optIn: true }).expect(200)).body).toEqual({ whatsappOptedIn: true });
+      const c = await cand(`plain-${run}@x.test`);
+      expect(c.whatsappOptedInAt).not.toBeNull();
+      expect(c.whatsappOptInSource).toBe('candidate_page');
+      expect((await pub('get', `/portal/${t}`).expect(200)).body.whatsappOptedIn).toBe(true);
+      await pub('post', `/portal/${t}/whatsapp`).send({ optIn: false }).expect(200);
+      expect((await cand(`plain-${run}@x.test`)).whatsappOptedInAt).toBeNull();
+      expect(await inA((tx) => tx.auditLog.count({ where: { action: { in: ['candidate.whatsapp.opted_in', 'candidate.whatsapp.opted_out'] }, entityId: c.id } }))).toBe(2);
+      await pub('post', `/portal/${t}/whatsapp`).send({ optIn: 'yes' }).expect(400);
+      await pub('post', `/portal/${randomUUID()}/whatsapp`).send({ optIn: true }).expect(404);
+      expect((await pub('post', `/portal/${await portal(`nophone-${run}@x.test`)}/whatsapp`).send({ optIn: true }).expect(409)).body.message).toMatch(/mobile number/);
+    });
+
     it('the unsubscribe link withdraws it too', async () => {
       const unsubscribeToken = randomUUID();
       await inA((tx) => tx.candidate.update({ where: { id: ids.wa }, data: { unsubscribeToken } }));

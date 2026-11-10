@@ -262,3 +262,30 @@ describe('New York City notice on the status page (answer 502)', () => {
   });
 });
 
+describe('WhatsApp tick (answers 561 and 691)', () => {
+  const portal = { candidateName: 'Asha Rao', candidateEmail: 'asha@example.in', candidatePhone: '9876543210', resume: { hasResume: true, parseStatus: 'done' }, orgName: 'Kaveri Foods', careersSlug: null, accent: null, applications: [], whatsappOptedIn: false };
+  const open = { hasResume: true, requiresConsent: false, requiredFieldCount: 0, jobs: [] };
+
+  it('candidate page: ticking posts optIn true and shows it on; a refusal shows the reason', async () => {
+    (useParams as jest.Mock).mockReturnValue({ portalToken: 'p2' });
+    mockFetch({ 'GET /portal/p2': { body: portal }, 'GET /portal/p2/open-jobs': { body: open }, 'POST /portal/p2/whatsapp': { body: { whatsappOptedIn: true } } });
+    const { unmount } = wrap(<YxCandidatePortalPage />);
+    await ue.click(await screen.findByRole('checkbox', { name: 'Message me on WhatsApp about jobs' }));
+    expect(await screen.findByText('WhatsApp messages on')).toBeInTheDocument();
+    expect(calls.find((c) => c.method === 'POST' && c.url.endsWith('/portal/p2/whatsapp'))?.body).toEqual({ optIn: true });
+    expect(screen.getByRole('checkbox', { name: 'Message me on WhatsApp about jobs' })).toBeChecked();
+    unmount();
+    mockFetch({ 'GET /portal/p2': { body: portal }, 'GET /portal/p2/open-jobs': { body: open }, 'POST /portal/p2/whatsapp': { status: 409, body: { message: 'Add a mobile number first: we have none to message on WhatsApp.' } } });
+    wrap(<YxCandidatePortalPage />);
+    await ue.click(await screen.findByRole('checkbox', { name: 'Message me on WhatsApp about jobs' }));
+    expect(await screen.findByText(/Add a mobile number first/)).toBeInTheDocument();
+  });
+
+  it('candidate page with no mobile number: no tick, it says why', async () => {
+    (useParams as jest.Mock).mockReturnValue({ portalToken: 'p3' });
+    mockFetch({ 'GET /portal/p3': { body: { ...portal, candidatePhone: null } }, 'GET /portal/p3/open-jobs': { body: open } });
+    wrap(<YxCandidatePortalPage />);
+    expect(await screen.findByText(/no mobile number for you/)).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /WhatsApp/ })).not.toBeInTheDocument();
+  });
+});

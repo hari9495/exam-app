@@ -359,20 +359,25 @@ export function SequenceBuilderDrawer({ open, onClose, pools, templates, whatsap
           <FormField id="seq-steps" label="Steps" required error={tried ? errors.steps : null} helper={`Messages use your company's ${channel === 'email' ? 'email' : 'WhatsApp'} templates`}>
             <ol className="yx-hire-seq" aria-label="Sequence steps">
               {steps.map((s, i) => (
-                <li key={s.id} className="yx-hire-seq__step yx-hire-row" data-kind={s.kind}>
+                <li key={s.id} className="yx-hire-seq__step" data-kind={s.kind}>
                   <Text size="sm" weight="semibold">
                     Step {i + 1}
                   </Text>
-                  {s.kind === 'message' ? (
-                    <Select aria-label={`Step ${i + 1} template`} size="sm" value={s.templateId} onChange={(v) => setStep(s.id, { templateId: v })} options={list} placeholder="Choose a template" emptyText={`No ${channel === 'email' ? 'email' : 'WhatsApp'} templates yet.`} />
-                  ) : (
-                    <span className="yx-hire-row">
-                      <Text size="sm">Wait</Text>
-                      <NumberField aria-label={`Step ${i + 1} days`} value={s.days} onChange={(v) => setStep(s.id, { days: v })} min={1} max={60} />
-                      <Text size="sm">days</Text>
-                    </span>
-                  )}
-                  {steps.length > 1 && <IconButton size="sm" icon={Trash2} label={`Remove step ${i + 1}`} onClick={() => setSteps((all) => all.filter((x) => x.id !== s.id))} />}
+                  {/* Walk 2: the step's control and its remove button on one row, under the step number. */}
+                  <div className="yx-hire-row">
+                    {s.kind === 'message' ? (
+                      <div className="yx-hire-seq__control">
+                        <Select aria-label={`Step ${i + 1} template`} size="sm" value={s.templateId} onChange={(v) => setStep(s.id, { templateId: v })} options={list} placeholder="Choose a template" emptyText={`No ${channel === 'email' ? 'email' : 'WhatsApp'} templates yet.`} />
+                      </div>
+                    ) : (
+                      <span className="yx-hire-row">
+                        <Text size="sm">Wait</Text>
+                        <NumberField aria-label={`Step ${i + 1} days`} value={s.days} onChange={(v) => setStep(s.id, { days: v })} min={1} max={60} />
+                        <Text size="sm">days</Text>
+                      </span>
+                    )}
+                    {steps.length > 1 && <IconButton size="sm" icon={Trash2} label={`Remove step ${i + 1}`} onClick={() => setSteps((all) => all.filter((x) => x.id !== s.id))} />}
+                  </div>
                 </li>
               ))}
               {steps.length < 10 && (
