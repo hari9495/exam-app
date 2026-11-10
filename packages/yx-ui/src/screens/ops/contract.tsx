@@ -26,6 +26,7 @@ import type { FilterValue } from '../../lib/table';
 import { Actions, CardGrid, CheckList, Facts, OpsDesk, PhotoPlaceholder, StatusTrail, useSay, type CheckRow } from './ops-kit';
 import { Segment } from '../../components/segment';
 import { hintText, useMinWage, type MinWageHint } from '../portals/contractor-portal';
+import { FileButton } from '../pay/pay-kit';
 import { deployBlocks, expiryTone } from './ops-rules';
 import type { ListState } from './helpdesk';
 import type { ContractWorker, Contractor, Licence, ProofStatus, WorkOrder } from './contract-data';
@@ -1294,20 +1295,129 @@ function PayByUsDialog({ alert, onClose, onSave }: { alert: VcAlert; onClose: ()
  * CLB-04 · CLRA registers & returns (T7)
  * ======================================================================================= */
 
-export function ClraRegistersScreen({ loading, tab = 'registers' }: { loading?: boolean; tab?: 'registers' | 'returns' }) {
+/** GET contract-labour/registers (CL-6, answer 629). */
+export interface ClraRegistersData {
+  month: string;
+  canMake: boolean;
+  establishments: { id: string; name: string }[];
+  registers: { id: string; type: string; locationId: string | null; location: string; formatVersion: string; version: number; status: 'generated' | 'frozen' | 'signed' | 'superseded'; rows: number }[];
+  /** Contractors without a wage register for the month: the muster and wage registers wait for them. */
+  waiting: { locationId: string; contractors: string[] }[];
+  chart: { months: string[]; series: { name: string; values: number[] }[] };
+}
+/** GET contract-labour/returns (answer 630). */
+export interface ClraReturnsData {
+  year: number;
+  canFile: boolean;
+  daysNote: string;
+  returns: { locationId: string; location: string; title: string; due: string; figures: { contractors: number; workers: number; maxWorkersOnADay: number; daysWorked: number; wagesPaid: string }; filed: { on: string; reference: string } | null }[];
+}
+export interface LiveClraRegisters {
+  state: 'ready' | 'loading' | 'error' | 'no-access';
+  onRetry: () => void;
+  month: string;
+  months: { value: string; label: string }[];
+  onMonth: (m: string) => void;
+  data: ClraRegistersData | null;
+  /** Freezing and the DSC signature need the company's register-signing key (statutory.register.sign). */
+  canSign: boolean;
+  onMake: (locationId: string, reason?: string) => Promise<unknown>;
+  onDownload: (id: string) => Promise<unknown>;
+  onFreeze: (id: string) => Promise<unknown>;
+  onSign: (id: string, file: File) => Promise<unknown>;
+  returns: {
+    state: 'ready' | 'loading' | 'error';
+    data: ClraReturnsData | null;
+    year: number;
+    years: number[];
+    onYear: (y: number) => void;
+    onDraft: (locationId: string, year: number) => Promise<unknown>;
+    onFiled: (locationId: string, year: number, input: { filedOn: string; reference: string }) => Promise<unknown>;
+  };
+}
+
+const CLRA_TITLE: Record<string, string> = { clra_contractors: 'Register of contractors', clra_workmen: 'Register of contract workers', clra_muster: 'Muster roll', clra_wages: 'Register of wages' };
+const CLRA_STATUS: Record<string, string> = { generated: 'Made', frozen: 'Frozen', signed: 'Signed', superseded: 'Replaced' };
+const monthWord = (m: string) => new Date(`${m}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+
+export function ClraRegistersScreen({ loading, tab = 'registers', live }: { loading?: boolean; tab?: 'registers' | 'returns'; live?: LiveClraRegisters }) {
   const [current, setCurrent] = useState(tab);
   const [filters, setFilters] = useState<FilterValue[]>([]);
-  const registers = [
-    { id: 'r1', name: 'Register of contractors', est: 'Hosur plant', period: 'Aug 2026', format: 'IN.REGISTERS TN OSH 2025-11-T', status: 'Signed' },
-    { id: 'r2', name: 'Register of workmen, Sri Lakshmi Facility Services', est: 'Hosur plant', period: 'Aug 2026', format: 'IN.REGISTERS TN OSH 2025-11-T', status: 'Signed' },
-    { id: 'r3', name: 'Muster roll (from kiosk punches)', est: 'Hosur plant', period: 'Aug 2026', format: 'IN.REGISTERS TN OSH 2025-11-T', status: 'Frozen' },
-    { id: 'r4', name: 'Wage register (contractor uploads)', est: 'Hosur plant', period: 'Aug 2026', format: 'IN.REGISTERS TN OSH 2025-11-T', status: 'Waiting for 2 contractors' },
-    { id: 'r5', name: 'Register of contractors', est: 'Bengaluru head office', period: 'Aug 2026', format: 'IN.REGISTERS KA OSH 2025-11', status: 'Signed' },
+  const [making, setMaking] = useState(false);
+  const [filing, setFiling] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const { toast } = useSay();
+  const d = live?.data ?? null;
+  const go = (key: string, fn: () => Promise<unknown>, done?: string) => {
+    setBusy(key);
+    setFailed(null);
+    return fn()
+      .then(() => done && toast({ tone: 'success', title: done }))
+      .catch((e: Error) => setFailed(e.message))
+      .finally(() => setBusy(null));
+  };
+  const sample = [
+    { id: 'r1', name: 'Register of contractors', est: 'Hosur plant', period: 'Aug 2026', format: 'IN.CLRA.REGISTERS osh-2025-v1', status: 'Signed' },
+    { id: 'r2', name: 'Register of contract workers', est: 'Hosur plant', period: 'Aug 2026', format: 'IN.CLRA.REGISTERS osh-2025-v1', status: 'Signed' },
+    { id: 'r3', name: 'Muster roll', est: 'Hosur plant', period: 'Aug 2026', format: 'IN.CLRA.REGISTERS osh-2025-v1', status: 'Frozen' },
+    { id: 'r4', name: 'Register of wages', est: 'Hosur plant', period: 'Aug 2026', format: 'IN.CLRA.REGISTERS osh-2025-v1', status: 'Waiting for 2 contractors' },
+    { id: 'r5', name: 'Register of contractors', est: 'Bengaluru head office', period: 'Aug 2026', format: 'IN.CLRA.REGISTERS osh-2025-v1', status: 'Made' },
   ];
-  return (
-    <OpsDesk area="contract" active="CLRA registers & returns">
-      <PageHeader title="Registers & returns" description="Generated from contractor, worker and attendance records in the format valid for each state and period; frozen on period lock and signed with the company DSC." actions={<Button icon={Download}>Inspection pack</Button>} />
-      <FilterBar fields={[multi('est', 'Establishment', ['Hosur plant', 'Bengaluru head office'])]} value={filters} onChange={setFilters} />
+  type Row = (typeof sample)[number] & { live?: ClraRegistersData['registers'][number] };
+  const registers: Row[] = d
+    ? [
+        ...d.registers.map((r) => ({ id: r.id, name: CLRA_TITLE[r.type] ?? r.type, est: r.location, period: monthWord(d.month), format: `IN.CLRA.REGISTERS ${r.formatVersion} · v${r.version}`, status: CLRA_STATUS[r.status] ?? r.status, live: r })),
+        ...d.waiting.flatMap((w) => [
+          { id: `wm-${w.locationId}`, name: 'Muster roll', est: d.establishments.find((e) => e.id === w.locationId)?.name ?? '', period: monthWord(d.month), format: '', status: `Waiting for ${w.contractors.length} contractor${w.contractors.length === 1 ? '' : 's'}` },
+          { id: `ww-${w.locationId}`, name: 'Register of wages', est: d.establishments.find((e) => e.id === w.locationId)?.name ?? '', period: monthWord(d.month), format: '', status: `Waiting for ${w.contractors.length} contractor${w.contractors.length === 1 ? '' : 's'}` },
+        ]),
+      ]
+    : sample;
+  const ests = d ? d.establishments.map((e) => e.name) : ['Hosur plant', 'Bengaluru head office'];
+  const chart = d ? d.chart : { months: ['2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09'], series: [{ name: 'Hosur plant', values: [58, 61, 63, 64, 66, 66] }, { name: 'Bengaluru head office', values: [8, 8, 8, 8, 8, 8] }] };
+  const rowButtons = (r: Row) => {
+    if (!live) return r.status === 'Frozen' ? <Button size="sm">Sign with DSC</Button> : r.status === 'Signed' ? <Button size="sm" icon={Download}>PDF</Button> : null;
+    if (!r.live) return null;
+    const x = r.live;
+    return (
+      <>
+        <Button size="sm" icon={Download} loading={busy === `d-${x.id}`} onClick={() => void go(`d-${x.id}`, () => live.onDownload(x.id))}>
+          PDF
+        </Button>
+        {live.canSign && x.status === 'generated' && (
+          <Button size="sm" loading={busy === `f-${x.id}`} onClick={() => void go(`f-${x.id}`, () => live.onFreeze(x.id), `${r.name} frozen.`)}>
+            Freeze
+          </Button>
+        )}
+        {live.canSign && x.status === 'frozen' && <FileButton label="Sign with DSC" accept=".pdf,application/pdf" ariaLabel={`Upload the signed ${r.name}`} loading={busy === `s-${x.id}`} onFile={(f) => void go(`s-${x.id}`, () => live.onSign(x.id, f), `${r.name} signed.`)} />}
+      </>
+    );
+  };
+  const months = live?.months ?? [];
+  const actions = live ? (
+    <>
+      <FormField label="Month" hideLabel>
+        <Select aria-label="Month" value={live.month} onChange={(v) => v && live.onMonth(v)} options={months} />
+      </FormField>
+      {d?.canMake && (
+        <Button variant="primary" icon={Plus} onClick={() => setMaking(true)}>
+          Make registers
+        </Button>
+      )}
+    </>
+  ) : (
+    <Button icon={Download}>Inspection pack</Button>
+  );
+  const rd = live?.returns.data ?? null;
+  const returnsCards = rd
+    ? rd.returns.map((x) => ({ ...x, live: true }))
+    : [{ locationId: 'hsr', location: 'Hosur plant', title: 'Annual return of the principal employer', due: '2027-02-15', figures: { contractors: 3, workers: 74, maxWorkersOnADay: 68, daysWorked: 17940, wagesPaid: '2,61,40,000' }, filed: null, live: false }];
+  const year = live?.returns.year ?? 2026;
+  const body = (
+    <>
+      {failed && <InlineAlert tone="danger" title="Not done">{failed}</InlineAlert>}
+      <FilterBar fields={[multi('est', 'Establishment', ests)]} value={filters} onChange={setFilters} />
       <Tabs value={current} onValueChange={(v) => setCurrent(v as typeof current)}>
         <TabsList aria-label="Registers and returns">
           <TabsTrigger value="registers">Registers</TabsTrigger>
@@ -1315,36 +1425,137 @@ export function ClraRegistersScreen({ loading, tab = 'registers' }: { loading?: 
         </TabsList>
         <TabsContent value="registers">
           <div className="yx-ops-stack">
-            <BarChart title="Contract workers on site, by month" xLabel="Month" categories={['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep']} series={[{ name: 'Hosur plant', values: [58, 61, 63, 64, 66, 66] }, { name: 'Bengaluru head office', values: [8, 8, 8, 8, 8, 8] }]} stacked loading={loading} />
+            <BarChart title="Contract workers on site, by month" xLabel="Month" categories={chart.months.map((m) => monthWord(m).split(' ')[0]!)} series={chart.series} stacked loading={loading || live?.state === 'loading'} />
             <DataTable
               label="Registers"
               columns={[
-                { key: 'n', header: 'Register', value: (r: (typeof registers)[number]) => r.name, width: 300 },
-                { key: 'e', header: 'Establishment', value: (r) => r.est },
+                { key: 'n', header: 'Register', value: (r: Row) => r.name, width: 260 },
+                { key: 'est', header: 'Establishment', value: (r) => r.est },
                 { key: 'p', header: 'Period', value: (r) => r.period },
-                { key: 'f', header: 'Format', type: 'id', value: (r) => r.format, width: 220 },
-                { key: 's', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (v === 'Signed' ? 'success' : v === 'Frozen' ? 'info' : 'warning') },
+                { key: 'f', header: 'Format', type: 'id', value: (r) => r.format, width: 240 },
+                { key: 's', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (v === 'Signed' ? 'success' : v === 'Frozen' ? 'info' : v === 'Made' ? 'neutral' : 'warning') },
               ]}
               rows={applyFilters(registers, filters)}
               getRowId={(r) => r.id}
-              state={loading ? 'loading' : 'ready'}
-              rowButtons={(r) => (r.status === 'Frozen' ? <Button size="sm">Sign with DSC</Button> : r.status === 'Signed' ? <Button size="sm" icon={Download}>PDF</Button> : null)}
+              state={loading || live?.state === 'loading' ? 'loading' : 'ready'}
+              empty={<EmptyState compact title="No registers for this month." description={d?.canMake ? 'Make them once the month has ended.' : 'The compliance owner makes them after the month ends.'} />}
+              rowButtons={rowButtons}
             />
+            {d && <p className="yx-ops-muted">The muster roll's days come from the contractors' wage registers until site attendance is live. Freeze a register, then sign the frozen PDF with the company DSC and upload it.</p>}
           </div>
         </TabsContent>
         <TabsContent value="returns">
-          <Card title="Annual return 2026 · Hosur plant (principal employer)">
-            <div className="yx-ops-stack">
-              <StatusTrail steps={[{ label: 'Drafted from the year’s data' }, { label: 'Reviewed' }, { label: 'Signed' }, { label: 'Filed' }]} current={0} />
-              <Facts items={[{ label: 'Contractors', value: 3 }, { label: 'Max workers on any day', value: 68 }, { label: 'Days worked', value: '17,940' }, { label: 'Due', value: '15 Feb 2027' }]} />
-              <Actions>
-                <Button icon={FileText}>Open draft</Button>
-              </Actions>
-            </div>
-          </Card>
+          <div className="yx-ops-stack">
+            {live && (
+              <FormField label="Year" hideLabel>
+                <Select aria-label="Year" value={String(year)} onChange={(v) => v && live.returns.onYear(Number(v))} options={live.returns.years.map((y) => ({ value: String(y), label: String(y) }))} />
+              </FormField>
+            )}
+            {live && live.returns.state === 'ready' && !returnsCards.length && <EmptyState compact title={`No contract workers worked at any establishment in ${year}.`} />}
+            {returnsCards.map((r) => (
+              <Card key={r.locationId} title={`${r.title} ${year} · ${r.location}`}>
+                <div className="yx-ops-stack">
+                  <StatusTrail steps={[{ label: 'Drafted from the year’s data' }, { label: r.filed ? `Filed on ${formatDate(new Date(`${r.filed.on}T00:00:00`))} · ${r.filed.reference}` : 'Filed on the portal' }]} current={r.filed ? 1 : 0} />
+                  <Facts items={[{ label: 'Contractors', value: r.figures.contractors }, { label: 'Max workers on any day', value: r.figures.maxWorkersOnADay }, { label: 'Days worked', value: r.figures.daysWorked.toLocaleString('en-IN') }, { label: 'Due', value: formatDate(new Date(`${r.due}T00:00:00`)) }]} />
+                  <Actions>
+                    <Button icon={FileText} loading={busy === `r-${r.locationId}`} onClick={() => live && void go(`r-${r.locationId}`, () => live.returns.onDraft(r.locationId, year))}>
+                      Open draft
+                    </Button>
+                    {live && rd?.canFile && !r.filed && <Button onClick={() => setFiling(r.locationId)}>Record filing</Button>}
+                  </Actions>
+                </div>
+              </Card>
+            ))}
+            {rd && <p className="yx-ops-muted">Filing is on the government portal; record the day and the portal’s reference here. {rd.daysNote}.</p>}
+          </div>
         </TabsContent>
       </Tabs>
+      {making && live && d && <MakeRegistersDialog month={monthWord(d.month)} establishments={d.establishments} existing={new Set(d.registers.map((r) => r.locationId ?? ''))} onClose={() => setMaking(false)} onMake={(loc, reason) => live.onMake(loc, reason)} />}
+      {filing && live && <RecordFilingDialog place={returnsCards.find((r) => r.locationId === filing)?.location ?? ''} year={year} onClose={() => setFiling(null)} onFiled={(input) => live.returns.onFiled(filing, year, input)} />}
+    </>
+  );
+  const title = 'Registers & returns';
+  const description = 'Generated from contractor, worker and wage records in the format valid for each state and period; frozen and signed with the company DSC.';
+  if (live)
+    return (
+      <LivePage title={title} description={description} actions={actions} state={live.state} onRetry={live.onRetry} what="the contract labour registers" grantedBy="an admin (the contract labour key)">
+        {body}
+      </LivePage>
+    );
+  return (
+    <OpsDesk area="contract" active="CLRA registers & returns">
+      <PageHeader title={title} description={description} actions={actions} />
+      {body}
     </OpsDesk>
+  );
+}
+
+/** Make the month's registers for one establishment; a new version over existing ones needs a reason. */
+function MakeRegistersDialog({ month, establishments, existing, onClose, onMake }: { month: string; establishments: { id: string; name: string }[]; existing: Set<string>; onClose: () => void; onMake: (locationId: string, reason?: string) => Promise<unknown> }) {
+  const [loc, setLoc] = useState<string | null>(establishments.length === 1 ? establishments[0]!.id : null);
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const { toast } = useSay();
+  const again = Boolean(loc && existing.has(loc));
+  const bad = { loc: !loc ? 'Choose the establishment.' : null, reason: again && reason.trim().length < 3 ? 'Say why a new version is needed.' : null };
+  const go = () => {
+    setTried(true);
+    if (bad.loc || bad.reason) return;
+    setBusy(true);
+    setFailed(null);
+    onMake(loc!, again ? reason.trim() : undefined)
+      .then(() => (toast({ tone: 'success', title: `Registers made for ${month}` }), onClose()))
+      .catch((e: Error) => setFailed(e.message))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} size="md" title={`Make the ${month} registers`} description="Made from the deployments and the contractors’ wage registers, in the state’s format. A new version keeps the earlier one as replaced." notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={go}>Make registers</Button></>}>
+      <div className="yx-ops-stack">
+        <FormField id="mr-loc" label="Establishment" required error={tried ? bad.loc : null}>
+          <Select value={loc} onChange={setLoc} options={establishments.map((e) => ({ value: e.id, label: e.name }))} placeholder="Choose" />
+        </FormField>
+        {again && (
+          <FormField id="mr-reason" label="Why a new version" required error={tried ? bad.reason : null}>
+            <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
+          </FormField>
+        )}
+      </div>
+    </Dialog>
+  );
+}
+
+/** Answer 630: the return was filed on the portal; record the day and the portal's reference (once). */
+function RecordFilingDialog({ place, year, onClose, onFiled }: { place: string; year: number; onClose: () => void; onFiled: (input: { filedOn: string; reference: string }) => Promise<unknown> }) {
+  const [on, setOn] = useState<Date | null>(null);
+  const [reference, setReference] = useState('');
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const { toast } = useSay();
+  const bad = { on: !on ? 'Choose the day it was filed.' : null, ref: reference.trim().length < 3 ? 'Give the portal’s reference.' : null };
+  const go = () => {
+    setTried(true);
+    if (bad.on || bad.ref) return;
+    setBusy(true);
+    setFailed(null);
+    onFiled({ filedOn: isoDay(on!), reference: reference.trim() })
+      .then(() => (toast({ tone: 'success', title: `${year} return recorded as filed` }), onClose()))
+      .catch((e: Error) => setFailed(e.message))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} size="md" title={`Record the ${year} return as filed`} description={`${place}. Filed on the government portal; this records the day and its reference. It cannot be changed afterwards.`} notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={go}>Record filing</Button></>}>
+      <div className="yx-ops-stack">
+        <FormField id="rf-on" label="Filed on" required error={tried ? bad.on : null}>
+          <DatePicker value={on} onChange={setOn} />
+        </FormField>
+        <FormField id="rf-ref" label="Portal reference" required error={tried ? bad.ref : null}>
+          <TextField value={reference} onChange={setReference} maxLength={60} />
+        </FormField>
+      </div>
+    </Dialog>
   );
 }
 
