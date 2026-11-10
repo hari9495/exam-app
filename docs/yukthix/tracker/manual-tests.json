@@ -19466,5 +19466,43 @@
       "Screens/Visitors/VIS-06 · Emergency roll-call · On site now · visitors and employees"
     ],
     "note": "Positive and negative. Answer 612. Also check the Visitors menu has no \"Kiosks & badges\" (617)."
+  },
+  {
+    "id": "MT-CL-7-01",
+    "area": "Contract labour · CL-7 (18 Nov 2026)",
+    "screen": "CLB-05 Convert worker to employee",
+    "url": "http://localhost:3000/yx/contract-labour/workers",
+    "account": "HR with the onboarding key (HR admin for the company); then a contract-labour compliance owner without it; then act for the HR person. Browser window 1278 x 635.",
+    "steps": [
+      "Open Contract labour › Contract workers. Look for \"Make employee\" on a deployed worker and on a worker waiting for approval.",
+      "Press Make employee on a deployed worker; go through Same person and End contract role.",
+      "On Employee details press Continue with no joining date; then choose a date on or before the deployment start.",
+      "Choose a later joining date, Continue to Carry over and Check and start; press Start pre-boarding.",
+      "Open the same worker's Make employee again.",
+      "Sign in as the compliance owner without the onboarding key; act for the HR person and try Start pre-boarding."
+    ],
+    "expected": "Step 1: only deployed workers have it. Step 2: the person and site are filled in; the last day says \"the day before joining\". Step 3: the date errors; nothing starts. Step 4: toast, then the new joiner's checklist opens; the joiner is on the Onboarding board as the same person. Step 5: \"already joining\" and no start. Step 6: no \"Make employee\"; acting is refused.",
+    "stories": [
+      "Screens/Contract labour/CLB-05 · Convert worker to employee"
+    ],
+    "note": "Positive and negative. Answer 637."
+  },
+  {
+    "id": "MT-CL-7-02",
+    "area": "Contract labour · CL-7 (18 Nov 2026)",
+    "screen": "PPL-13 Mark joined (a converted contract worker)",
+    "url": "http://localhost:3000/yx/people/onboarding",
+    "account": "HR with the onboarding key, on the joining day of a converted worker. Browser window 1278 x 635.",
+    "steps": [
+      "Open the joiner's checklist and Mark joined (check the original ID).",
+      "Open Contract labour › Contract workers and find the worker.",
+      "Open the new employee's profile change requests.",
+      "Open People and the employee's history."
+    ],
+    "expected": "Step 2: released, last day the day before joining, reason \"Joined as an employee\"; the gate pass no longer valid after it. Step 3: UAN and ESIC IP waiting for approval. Step 4: one person; the contract-worker deployment is in their history.",
+    "stories": [
+      "Screens/Contract labour/CLB-05 · Convert worker to employee · End contract role"
+    ],
+    "note": "Positive. Answer 637."
   }
 ]
