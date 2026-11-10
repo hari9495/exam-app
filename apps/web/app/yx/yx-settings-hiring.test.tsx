@@ -130,10 +130,20 @@ describe('Settings › Hiring (6.1, live)', () => {
     expect(await screen.findByText(/Kavya Rao no longer holds the recruiter key or has left/)).toBeInTheDocument();
   });
 
-  it('no access: the API refusal shows the error state', async () => {
+  it('no access: the API refusal says so (Hiring walk, answer 476), never a load error', async () => {
     api.mockImplementation(async (path: string) => {
       if (path.startsWith('/rbac/me/permissions')) return [];
       throw Object.assign(new Error('Missing any of required permission(s)'), { status: 403 });
+    });
+    wrap(<YxHiringSettingsPage />);
+    expect(await screen.findByText("You don't have access to Hiring settings")).toBeInTheDocument();
+    expect(screen.queryByText(/We couldn't load Hiring/)).not.toBeInTheDocument();
+  });
+
+  it('a failing load (not a refusal) still shows the error state with Retry', async () => {
+    api.mockImplementation(async (path: string) => {
+      if (path.startsWith('/rbac/me/permissions')) return ['ats.settings.manage'];
+      throw Object.assign(new Error('down'), { status: 500 });
     });
     wrap(<YxHiringSettingsPage />);
     expect(await screen.findByText(/We couldn't load Hiring/)).toBeInTheDocument();

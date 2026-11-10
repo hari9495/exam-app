@@ -21,6 +21,8 @@ export const OverviewLoading: S = { name: 'Group 6 · loading', render: () => <S
 
 export const P6_1: S = { name: '6.1 Hiring', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.1" /> };
 export const P6_1_ReadOnly: S = { name: '6.1 Hiring · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.1" readOnly /> };
+// Drawn 13 Nov 2026 (Hiring walk, answer 476): opened by someone with no hiring key (the menu never offers it).
+export const P6_1_NoAccess: S = { name: '6.1 Hiring · no access', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.1" readOnly state="no-access" /> };
 // Founder answer 302: a pipeline template's Stage targets (days target and limit per stage), moved here from the job.
 const OFFICE_STAGES = [
   { id: 's1', name: 'Applied', daysTarget: 3, limit: null },

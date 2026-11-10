@@ -6,7 +6,7 @@ import { KeyRound, Lock } from 'lucide-react';
 import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
 import { ConfirmDialog } from '../../components/overlay';
-import { ErrorState, InlineAlert, Skeleton } from '../../components/feedback';
+import { ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
 import { ErrorSummary, FormField, StickySaveBar, useUnsavedChangesGuard, useSaveErrors } from '../../components/field';
 import { Breadcrumbs, Card, PageHeader } from '../../components/shell';
 import { Select } from '../../components/select';
@@ -31,7 +31,8 @@ import {
 import type { LastChange, SettingDef, SettingValue, SettingsGroupDef, SettingsPageDef } from './settings-types';
 import './settings.css';
 
-export type LoadState = 'ready' | 'loading' | 'error';
+/** no-access: the API refused this page (Hiring walk, answer 476): the page says so, never a load error. */
+export type LoadState = 'ready' | 'loading' | 'error' | 'no-access';
 
 /**
  * Settings panel (founder review 30 Sep 2026): the 8 groups, and only the open group's pages, so it isn't a 71-line
@@ -301,9 +302,10 @@ export function SettingsPageScreen({
         breadcrumbs={live ? undefined : <Breadcrumbs items={[{ label: 'Settings', href: '#settings' }, { label: group.title, href: `#settings/group/${group.id}` }, { label: page.title }]} />}
         title={page.title}
         description={page.summary}
-        status={readOnly ? <Badge tone="neutral">View only</Badge> : undefined}
+        status={readOnly && state !== 'no-access' ? <Badge tone="neutral">View only</Badge> : undefined}
         facts={lastChange ? <AuditLine compact change={lastChange} history={history} /> : undefined}
       />
+      {state === 'no-access' && <NoAccessState grantedBy="your System Admin" what={`${page.title} settings`} />}
       {state === 'loading' && <SettingsSkeleton />}
       {state === 'error' && (
         <ErrorState title={`We couldn't load ${page.title}.`} description="Retry in a moment. Nothing has changed on this page." onRetry={live?.onRetry ?? (() => {})} reference="SET-P3E77" />

@@ -53,15 +53,17 @@ built**.
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Plans, requisitions, jobs and costs | 4 | 36 | 1 | 0 | 0 | 0 | 37 |
-| B. Candidates, pipeline and interviews | 8 | 52 | 1 | 0 | 9 | 1 | 63 |
-| C. Offers, BGV and joining | 4 | 17 | 6 | 0 | 5 | 0 | 28 |
+| B. Candidates, pipeline and interviews | 8 | 55 | 1 | 0 | 9 | 1 | 66 |
+| C. Offers, BGV and joining | 4 | 23 | 4 | 0 | 1 | 0 | 28 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 25 | 0 | 0 | 3 | 4 | 32 |
-| E. Staffing agency | 8 | 49 | 15 | 0 | 0 | 0 | 64 |
-| F. Compliance and fairness | 5 | 4 | 1 | 0 | 20 | 0 | 25 |
-| G. Careers site, portals and settings | 4 | 55 | 5 | 2 | 9 | 0 | 71 |
-| **All Hiring design groups (A–G)** | **37** | **267** | **29** | **2** | **28** | **5** | **331** |
+| E. Staffing agency | 8 | 32 | 12 | 0 | 16 | 0 | 60 |
+| F. Compliance and fairness | 5 | 18 | 2 | 0 | 11 | 0 | 31 |
+| G. Careers site, portals and settings | 4 | 61 | 4 | 2 | 9 | 0 | 76 |
+| **All Hiring design groups (A–G)** | **37** | **270** | **29** | **2** | **28** | **5** | **334** |
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 5 | 0 | 5 | 5 | 0 | 15 |
+Recounted by script on `test/yukthix-main` after merging the Hiring walk-through fixes: A–G 270 live, 29 gap, 2 wire, 28 not built, 5 phone, of 334.
 Recounted by script on `test/yukthix-main` after merging staffing slice 3 (invoices, collections, fees, e-invoice banner, client portal) and answers 482-484, 489: A–G 267 live, 29 gap, 2 wire, 28 not built, 5 phone, of 331.
+Recounted by script 13 Nov 2026 on `feat/yukthix-hiring-walk` (answer 476, from test main 9b05e1e73): the table had fallen behind for C, F and G; now A–G 250 live, 24 gap, 2 wire, 49 not built, 5 phone, of 330, with the walk's 3 new no-access stories (candidate list, bias audit, 6.1).
 Recounted by script on `test/yukthix-main` after merging staffing slice 2 (submissions, placements, bench, vendors): A–G 247 live, 24 gap, 2 wire, 49 not built, 5 phone, of 327.
 Recounted by script on `test/yukthix-main` after merging HIR-23 bias audit: A–G 226 live, 17 gap, 6 wire, 65 not built, 5 phone, of 319.
 Recounted by script on `test/yukthix-main` after merging offers round 3 (376, 402, 404, 423, 443): A–G 220 live, 17 gap, 6 wire, 69 not built, 5 phone, of 317.
@@ -349,6 +351,7 @@ stage, add / edit with custom fields, upload and invite, invite, email, add to a
 | Empty · Empty · first use | live | no candidates |
 | Loading · Loading | live | while loading |
 | Failed · Error | live | API fails |
+| NoAccess · No access · no candidate key | live | drawn 13 Nov 2026 (Hiring walk, answer 476): the page opened without a candidate key (managers, employees) says so; no table, no requests the API would refuse |
 | Duplicates · Possible duplicates | live | `GET hiring/duplicates` (`candidate:manage`) |
 | DuplicatesNoMergeKey · Possible duplicates · no data-rights key | live | pairs shown, no merge |
 | MergePair · Possible duplicates · compare and merge | live | `MergeDrawer` with Record to keep; `POST hiring/candidates/:id/merge` |
@@ -801,6 +804,7 @@ company location is in a covered city (or whose free-text place names one); othe
 | Overdue · Overdue · feature blocked for NYC jobs | live | the banner names the tools that are on; the gate refuses them for NYC jobs |
 | RecordAudit · Record new audit | live | drawn 13 Nov 2026 into the drawer: the numbers per law category and the auditor's PDF report; never-disabled Save with field errors; toast |
 | NotApplicable · Not applicable · NYC setting off | live | the NYC setting off (the default) |
+| NoAccess · No access | live | drawn 13 Nov 2026 (Hiring walk, answer 476): opened without a hiring key |
 
 #### HIR-24 · Job pay range fields
 
@@ -963,6 +967,7 @@ stand-in is gone. Approval routes, careers and job boards stay on their stand-in
 | OverviewLoading · Group 6 · loading | wire design | same, loading |
 | P6_1 · 6.1 Hiring | live | /yx/settings/hiring (Settings › Hiring & Assessments › Hiring) renders `SettingsPageScreen` with `live`: pipeline templates (read-only list, Stage targets per row), scorecard templates (skills with per cent weights, scale, pass bar; Add and Edit with the pipelines key, answer 345), default recruiter for new requisitions (only people with the recruiter key, answer 348), headcount plan mode (`ats.headcount_plan`, the joined Segment: Not used / Advisory / Required) and the hiring manager's view (`ats.headcount_plan.manager_view`), show the pay range and ask pay history on new jobs (`hiring.pay_range.show`, `hiring.pay_history.ask`, company value), “not eligible for rehire” stops at the first stage (`hiring.rehire_flag.blocks_screening`), a BGV discrepancy is decided by someone other than who recorded it (`hiring.bgv.decider_other_person`, default on, answer 362), candidate retention (`ats.retention_months`), AI notes on past candidates (`hiring.rediscovery.ai`), tell candidates not selected (`hiring.reject.email_candidate`), the referral rule (`ats.referral.bonus_inr`, `ats.referral.qualify_days`, one fixed row) and the self-apply days (`ats.referral.self_apply_days`) — all with their defaults (answer 341); HIR-09 (drawn 11 Nov 2026): who approves an offer above the pay range (`hiring.offer.band_approver`: HR head, hiring manager or a named person with the offer-pay key, answer 332), joining bonus clawback basis (`hiring.offer.clawback_basis`, answer 334), offer letters signed electronically (each offer template's e-sign switch, answer 337); the referral settings are on 6.1 only (answer 384, removed from Company rules). A default recruiter who goes stale is told once to the hiring settings holders (answer 385). `GET/PUT hiring/settings`: read by `pipeline:manage`, `pipelines:configure`, `ats.headcount.manage`, `ats.referral.manage` or the settings keys; changed by `ats.settings.manage` or `org.settings.manage` held company-wide, never while acting; every key and value checked before any write; audited `org.setting.changed`; toast. Gap: the designed fields with no setting yet (plan approvers, extra approver, replacement link, offer expiry, clawback, range check, offer template, hand-off, BGV packages and timing, consent renewal, minors, AI interview and languages, careers colour and heading, cost categories) are left out, not shown with sample data (answer 342); pay range and pay history values for one legal entity or location are not shown on 6.1 (question 382) |
 | P6_1_ReadOnly · 6.1 Hiring · read-only | live | without the edit keys (or while acting): every value as text, no save, no edit buttons; the Request access button is not shown in live (no request flow, answer 349). With the pipelines key (not acting) Add scorecard and Edit still show on the scorecard list |
+| P6_1_NoAccess · 6.1 Hiring · no access | live | drawn 13 Nov 2026 (Hiring walk, answer 476): opened with no hiring key: the no-access state, no "View only" badge |
 | P6_1_StageTargets · 6.1 Hiring · stage targets | live | answer 302: Stage targets on a pipeline row opens `StageTargetsSheet`; `PATCH pipelines/stages/:id` (`pipelines:configure`, never while acting; audited); values checked and focused before saving; read-only without the key. The job's Settings tab shows them read-only with "Change in Settings" |
 | P6_1_ScorecardEdit · 6.1 Hiring · edit scorecard | live | answer 345: Edit on a scorecard row opens `ScorecardTemplateSheet`; `PUT hiring/scorecard-templates/:id` (`pipelines:configure`, never while acting; audited `ats.scorecard_template.updated`); name, scale 3-10, pass bar 1 to the scale, skills with whole per cent weights adding to 100 (total shown live), what good looks like, from the competency library; pressed too early: field errors and focus; toast. Older 1-10 weights open as per cent |
 | P6_1_ScorecardNew · 6.1 Hiring · add scorecard | live | Add scorecard: `POST hiring/scorecard-templates` (audited `ats.scorecard_template.created`); one skill at 100 % to start |
@@ -1866,3 +1871,24 @@ white-label per company from the console with the plan; (443) draw the quarantin
      API takes paise. *Suggested: allow paise in the money field.*
 500. **Client sign-in for a contact of two clients.** A person who is a contact of two clients signs in to the first.
      *Suggested: a client picker if it ever happens.*
+## Hiring walk as real users (answer 476; 13 Nov 2026, branch `feat/yukthix-hiring-walk`)
+Walked on the test app as hr-tester (Hiring admin + Recruiter), panel (Divya, manager and panellist), arjun (employee)
+and admin-tester (settings), every Hiring page and its main drawers, against the Storybook designs at 1278 x 635.
+Fixed: the no-access state (instead of a load error or an empty list) on Candidates, Bias audits and Settings › Hiring;
+no requests the API refuses a role (message templates, sender addresses, pipelines, pools) so no 403s in the console for
+managers and employees; the job overview's legal entity; the candidate source in words; the jobs list totals on one line
+with In pipeline summed. Screenshots and the per-page results are in the walk report.
+## Founder questions from the Hiring walk (13 Nov 2026)
+511. **What an employee sees under Hiring.** Arjun (a plain employee) has Jobs & requisitions, Interviews and Test results
+     (older screens) because the default employee role holds the interviewer keys (`results:view`,
+     `interview:view_assigned`): he can read every job with its applicant counts. *Suggested: give those keys only to people
+     put on an interview panel (or a Panellist role), so an employee's Hiring menu is Referrals and Internal jobs.*
+512. **Breadcrumbs.** Every live Hiring page shows "Hiring › page" above the title; the designs do not. *Suggested: keep (the
+     app shell adds them everywhere); no design change.*
+513. **Long emails in the candidate list.** An email or mobile number that wraps makes a 6-row list scroll by a few lines at
+     1278 x 635. *Suggested: keep wrapping (nothing is cut off); revisit if HR asks for one-line rows.*
+514. **Bulk offers start at ₹0.** The per-candidate Fixed CTC starts empty as ₹0 until typed. *Suggested: start blank with
+     "Enter the CTC" on Next, so ₹0 is never sent by mistake.*
+515. **Recruiters and job boards.** A recruiter without the settings key cannot read the company's board list, so the job's
+     Settings tab offers no boards to pick (postings already made still show). *Suggested: let recruiting (`pipeline:manage`)
+     read the board names (never their keys), so they can post a job themselves.*

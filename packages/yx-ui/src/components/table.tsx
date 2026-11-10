@@ -1093,7 +1093,7 @@ export function DataTable<R>(props: DataTableProps<R>) {
               <tr>
                 {selectable && <td className="yx-table__select" />}
                 {visible.map((c, i) => (
-                  <td key={c.key} data-label={i === 0 ? undefined : c.header} data-align={alignOf(c)} data-frozen={i === 0 || undefined} style={i === 0 ? stickyStyle(c) : undefined}>
+                  <td key={c.key} data-label={i === 0 ? undefined : c.header} data-align={alignOf(c)} data-frozen={i === 0 || undefined} style={i === 0 ? { ...stickyStyle(c), whiteSpace: 'nowrap' } : undefined}>
                     {i === 0 ? `Total · ${groupIndian(rows.length)} ${rows.length === 1 ? rowNoun[0] : rowNoun[1]}` : c.total ? formatTotal(c.total, c.type, computeTotal(rows, c.value, c.total)) : null}
                   </td>
                 ))}

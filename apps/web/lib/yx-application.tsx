@@ -29,8 +29,8 @@ export function useApplicationDrawer(entryId: string | null, jobId: string | nul
   const on = Boolean(entryId && jobId);
   const board = useHiring<Board>(on ? `/jobs/${encodeURIComponent(jobId!)}/board` : null);
   const canManage = perms.has('pipeline:manage');
-  const messageTemplates = useMessageTemplates();
-  const senderAddresses = useOrgSenderAddresses();
+  const messageTemplates = useMessageTemplates(perms.has('pipeline:manage'));
+  const senderAddresses = useOrgSenderAddresses(perms.has('pipeline:manage'));
   const found = Object.values(board.data?.columns ?? {}).flat().find((x) => x.entryId === entryId);
   // Hooks below always run (rules of hooks); with no row they ask for nothing useful and the result is null.
   const r = found ?? ({ entryId: entryId ?? '', candidateId: '', stageId: '', statusId: '', category: 'active', candidateName: '', candidateEmail: '', examResults: [], scorecards: null } as unknown as Row);

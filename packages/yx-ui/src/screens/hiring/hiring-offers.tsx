@@ -2166,7 +2166,8 @@ export interface BiasAuditInput {
 
 /** HIR-23 live: the company's audit state and the law's categories (rule set HIR.BIAS_AUDIT). */
 export interface LiveBiasAudit {
-  state: 'ready' | 'loading' | 'error';
+  /** no-access: opened without a hiring key (Hiring walk, answer 476): the page says so. */
+  state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   /** The hiring settings key for the whole company, signed in as themselves. */
   canEdit: boolean;
@@ -2308,7 +2309,7 @@ export function BiasAuditScreen({ feature, nycOn, lastAudit, auditor, summaryUrl
     return (
       <HireFrame active="Bias audits">
         <PageHeader title="Bias audits" />
-        {live.state === 'loading' ? <Skeleton height={240} /> : <ErrorState title="Bias audits could not be loaded." onRetry={live.onRetry} />}
+        {live.state === 'loading' ? <Skeleton height={240} /> : live.state === 'no-access' ? <NoAccessState grantedBy="your System Admin (the hiring settings key or a recruiter role)" what="bias audits" /> : <ErrorState title="Bias audits could not be loaded." onRetry={live.onRetry} />}
       </HireFrame>
     );
   if (!nycOn)

@@ -42,7 +42,7 @@ export default function YxBiasAuditsPage() {
       race={latest?.results.race ?? []}
       today={todayInIndia()}
       live={{
-        state: view.isError ? 'error' : v ? 'ready' : 'loading',
+        state: view.isError ? ((view.error as { status?: number } | null)?.status === 403 ? 'no-access' : 'error') : v ? 'ready' : 'loading',
         onRetry: () => void view.refetch(),
         canEdit: Boolean(v?.canEdit) && !impersonating && !actingSuperAdmin,
         lawName: v?.law?.name ?? 'NYC Local Law 144',

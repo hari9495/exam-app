@@ -6,12 +6,13 @@ import type { JobBoard, JobBoardProviderMeta, JobBoardConfig } from '../types';
 // Web data layer for GET/POST/PATCH/DELETE /organizations/job-boards (all org:manage_settings).
 // Mirrors useOrgSenderAddresses.ts's fetch-wrapper/invalidation conventions.
 
-export function useJobBoards() {
+/** `enabled`: only for people with org:manage_settings (the API refuses everyone else). */
+export function useJobBoards(enabled = true) {
   const { accessToken } = useAuth();
   return useQuery<JobBoard[]>({
     queryKey: ['job-boards'],
     queryFn: () => apiFetch('/organizations/job-boards', {}, accessToken ?? undefined),
-    enabled: Boolean(accessToken),
+    enabled: Boolean(accessToken) && enabled,
   });
 }
 

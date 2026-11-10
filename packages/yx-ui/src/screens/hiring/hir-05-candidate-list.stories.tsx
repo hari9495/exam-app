@@ -34,6 +34,8 @@ export const HiringManager: S = { name: 'Hiring manager · read-only', render: (
 export const Empty: S = { name: 'Empty · first use', render: () => <CandidateListScreen rows={[]} {...common} duplicates={[]} /> };
 export const Loading: S = { name: 'Loading', render: () => <CandidateListScreen rows={[]} {...common} state="loading" /> };
 export const Failed: S = { name: 'Error', render: () => <CandidateListScreen rows={[]} {...common} state="error" /> };
+// Drawn 13 Nov 2026 (Hiring walk, answer 476): opened by someone without a candidate key (the menu never offers it).
+export const NoAccess: S = { name: 'No access · no candidate key', render: () => <CandidateListScreen rows={[]} {...common} state="no-access" /> };
 export const Duplicates: S = { name: 'Possible duplicates', render: () => <CandidateListScreen rows={sampleRows} {...common} tab="duplicates" /> };
 export const DuplicatesNoMergeKey: S = { name: 'Possible duplicates · no data-rights key', render: () => <CandidateListScreen rows={sampleRows} {...common} tab="duplicates" canMerge={false} /> };
 export const MergePair: S = { name: 'Possible duplicates · compare and merge', render: () => <CandidateListScreen rows={sampleRows} {...common} tab="duplicates" mergePair={0} /> };

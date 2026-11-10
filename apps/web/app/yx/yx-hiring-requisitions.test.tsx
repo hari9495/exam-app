@@ -84,6 +84,9 @@ describe('Hiring › Requisitions (HIR-02 + HIR-26)', () => {
     expect(within(d).queryByRole('button', { name: 'Send for approval' })).toBeNull();
     expect(await within(d).findByText('Sana Nizami')).toBeInTheDocument();
     expect(within(d).queryByRole('button', { name: /Add to pipeline/ })).toBeNull();
+    // Hiring walk (answer 476): nothing the API would refuse a hiring manager is asked for (no 403s in the console).
+    const asked = api.mock.calls.map(([path]) => String(path));
+    expect(asked.filter((x) => x === '/candidate-email-templates' || x === '/org-sender-addresses')).toEqual([]);
   });
 
   it('acting for someone else: no New requisition, no Add, no Send', async () => {

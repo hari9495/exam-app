@@ -1964,7 +1964,7 @@ export function JobsScreen({ rows: sample, state = 'ready', createOpen = false, 
     { key: 'type', header: 'Type', value: (r) => r.type, groupable: true },
     { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => JOB_TONE[v as Job['status']] },
     { key: 'applicants', header: 'Applicants', type: 'number', value: (r) => r.applicants, total: 'sum' },
-    { key: 'pipeline', header: 'In pipeline', type: 'number', value: (r) => r.inPipeline },
+    { key: 'pipeline', header: 'In pipeline', type: 'number', value: (r) => r.inPipeline, total: 'sum' },
     { key: 'recruiter', header: 'Recruiter', type: 'person', value: (r) => r.recruiter, person: (r) => ({ name: r.recruiter }) },
     { key: 'posted', header: 'Posted', type: 'date', value: (r) => r.posted },
   ];
@@ -2000,6 +2000,7 @@ export function JobsScreen({ rows: sample, state = 'ready', createOpen = false, 
       <DataTable
         label="Jobs"
         columns={cols}
+        rowNoun={['job', 'jobs']}
         rows={list.rows}
         getRowId={(r) => r.id}
         state={live ? live.state : state}

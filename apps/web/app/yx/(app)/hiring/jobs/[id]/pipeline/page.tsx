@@ -43,8 +43,8 @@ export default function YxHiringPipelinePage() {
   const exams = useExams(undefined, { pageSize: 100 });
   const [q, setQ] = useState('');
   const candidates = useCandidates({ search: q.trim() || undefined, pageSize: 20 });
-  const templates = useMessageTemplates();
-  const senders = useOrgSenderAddresses();
+  const templates = useMessageTemplates(perms.has('pipeline:manage'));
+  const senders = useOrgSenderAddresses(perms.has('pipeline:manage'));
   const write = useApiWrite();
   const enc = encodeURIComponent;
 
