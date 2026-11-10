@@ -319,3 +319,8 @@ console.table(counts);
 if (errs.length) { console.error(errs.join('\n')); process.exit(1); }
 console.log('ok');
 ```
+
+
+Founder approved, 10 Nov 2026 (questions 621-641, all as suggested; policies are company settings with defaults, law
+details are rule-set data marked verify for counsel). Build after Visitors, CL-1 first; CL-8 and CL-9 when a customer
+needs them.

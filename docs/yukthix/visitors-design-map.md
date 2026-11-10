@@ -282,3 +282,7 @@ console.table(counts);
 if (errs.length) { console.error(errs.join('\n')); process.exit(1); }
 console.log('ok');
 ```
+
+
+Founder approved, 10 Nov 2026 (questions 601-617, all as suggested; each policy a company setting, mostly per location,
+with the suggested answer as its default). Build Visitors first (slices 1-4), then Contract labour.
