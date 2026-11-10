@@ -60,7 +60,8 @@ built**.
 | F. Compliance and fairness | 5 | 21 | 4 | 0 | 6 | 0 | 31 |
 | G. Careers site, portals and settings | 4 | 64 | 4 | 2 | 9 | 0 | 79 |
 | **All Hiring design groups (A–G)** | **37** | **277** | **29** | **2** | **28** | **5** | **341** |
-| H. Kit and "Live ·" groups (not designs; own line) | 3 | 5 | 0 | 5 | 5 | 0 | 15 |
+| H. Kit and "Live ·" groups (not designs; own line) | 3 | 11 | 0 | 0 | 4 | 0 | 15 |
+Recounted by script 10 Nov 2026 on `feat/yukthix-hiring-rest`: kit rows SummaryTiles, PipelineFacts, ConsentBadges, PostingStrip (already in the live designed screens) and StatusLine (now wired on the job pay range panel) → live; EInvoiceBanner → live with HIR-31. H: 11 live, 4 not built, of 15.
 Recounted by script 16 Nov 2026 on `feat/yukthix-hiring-small-5` (from `test/yukthix-main` 5b7855eb0) after answers 502 and 514: 3 new stories drawn and live (HIR-28 ValuesBlank, T9-09 StatusNycNotice, HIR-05 ApplicationRecordAlternative): A–G 276 live, 29 gap, 2 wire, 28 not built, 5 phone, of 340 (rows B, C, E, F, G recounted from the script; two 6.1 rows put back in file order).
 Recounted by script 13 Nov 2026 on `feat/yukthix-hiring-keys`: HIR-02 gained the drawn No access story (re-walk of answer 476); A–G 274 live, 29 gap, 2 wire, 28 not built, 5 phone, of 338.
 Recounted by script on `test/yukthix-main` after merging round 4 (442, 452, 473, 474): A–G 273 live, 29 gap, 2 wire, 28 not built, 5 phone, of 337.
@@ -999,18 +1000,18 @@ a design, BUILD-STANDARD rule 1). Each "Live ·" story is deleted with its stand
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Tiles · SummaryTiles | wire design | used by HIR list screens |
-| Pipeline · PipelineFacts | wire design | HIR-04 cards |
-| Consent · ConsentBadges | wire design | candidate channel consent exists |
+| Tiles · SummaryTiles | live | in the live designed screens: plan, referrals, costs, pipeline, offers, candidates |
+| Pipeline · PipelineFacts | live | HIR-04 pipeline board cards |
+| Consent · ConsentBadges | live | HIR-20 rediscovery panel and campaign engagement card |
 | ExEmployee · ExEmployeeBanner · recruiter and HM | live | HIR-05 record (levels: flag, exit, rehire) |
 | Identity · IdentityStrip | design only, feature not built | HIR-22 |
-| Postings · PostingStrip | wire design | job boards |
-| EInvoice · EInvoiceBanner · warning | design only, feature not built | HIR-31 |
+| Postings · PostingStrip | live | job workspace and HIR-20 Postings |
+| EInvoice · EInvoiceBanner · warning | live | HIR-31 invoice record (`LiveEInvoiceBanner`, rule set `GST.EINVOICE_WINDOW`) |
 | Ctc · CtcBreakupTable | live | HIR-09 builder and offer record |
 | Recording · RecordingPlaceholder | design only, feature not built | HIR-08, 25 |
 | Slots · SlotGrid | design only, feature not built | HIR-06 slot finder |
 | Budget · BudgetBars | design only, feature not built | Projects (no projects API) |
-| Status · StatusLine | wire design | publish readiness (HIR-03, 24) |
+| Status · StatusLine | live | publish readiness on the job pay range panel (HIR-03, 24) |
 
 #### Live · Careers site and job boards
 
