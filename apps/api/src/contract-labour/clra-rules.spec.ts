@@ -102,11 +102,16 @@ describe('contract worker rules (CL-2)', () => {
     expect(fails({ duplicateAt: 'Bengaluru head office' })).toEqual(['dup']);
   });
 
-  it('the registration threshold warns, never blocks', () => {
-    const c = workerChecks({ ...base, activeAtSite: 49 });
-    expect(c.find((x) => x.id === 'threshold')!.status).toBe('warn');
-    expect(c.filter((x) => x.status === 'fail')).toEqual([]);
-    expect(workerChecks({ ...base, activeAtSite: 48 }).find((x) => x.id === 'threshold')!.status).toBe('pass');
+  it('answers 622 / 681: warn at 80 % of the threshold, block at it without a registration, block above the registration', () => {
+    const t = (x: Partial<Parameters<typeof workerChecks>[0]>) => workerChecks({ ...base, ...x }).find((c) => c.id === 'threshold')!.status;
+    expect(t({ activeAtSite: 38 })).toBe('pass');
+    expect(t({ activeAtSite: 39 })).toBe('warn');
+    expect(t({ activeAtSite: 48 })).toBe('warn');
+    expect(t({ activeAtSite: 49 })).toBe('fail');
+    expect(t({ activeAtSite: 49, registration: { maxWorkers: 250 } })).toBe('pass');
+    expect(t({ activeAtSite: 250, registration: { maxWorkers: 250 } })).toBe('fail');
+    expect(t({ activeAtSite: 44, warnPct: 90 })).toBe('warn');
+    expect(t({ activeAtSite: 43, warnPct: 90 })).toBe('pass');
   });
 });
 
@@ -121,7 +126,7 @@ describe('work order headcount (CL-2, answer 675)', () => {
   });
 });
 
-import { holdsBill, monthOf, packDue, packStatus, recoveryFrom, wageShortfall } from './clra-rules';
+import { holdsBill, monthOf, packDue, packStatus, recoveryFrom, requiredProofs, wageShortfall } from './clra-rules';
 
 describe('monthly proofs, wage check and hold (CL-4)', () => {
   it('due on the cut-off day of the following month, clipped to the month', () => {
@@ -132,13 +137,24 @@ describe('monthly proofs, wage check and hold (CL-4)', () => {
   });
 
   it('pack status: discrepancy wins, all verified, overdue after the due day, submitted, open', () => {
-    const all = { pf_challan: 'verified', esi_challan: 'verified', wage_register: 'verified', bank_proof: 'verified' } as const;
+    const all = { pf_challan: 'verified', esi_challan: 'verified', wage_register: 'verified', bank_proof: 'verified', muster_roll: 'verified' } as const;
     expect(packStatus(all, '2026-09-15', '2026-10-01')).toBe('verified');
     expect(packStatus({ ...all, esi_challan: 'discrepancy' }, '2026-09-15', '2026-09-01')).toBe('discrepancy');
     expect(packStatus({ ...all, bank_proof: 'submitted' }, '2026-09-15', '2026-09-15')).toBe('submitted');
     expect(packStatus({ ...all, bank_proof: 'submitted' }, '2026-09-15', '2026-09-16')).toBe('overdue');
     expect(packStatus({ pf_challan: 'submitted' }, '2026-09-15', '2026-09-10')).toBe('open');
     expect(packStatus({}, '2026-09-15', '2026-09-16')).toBe('overdue');
+  });
+
+  it('741: only the required proofs decide the status; a discrepancy on any proof still counts', () => {
+    const two = requiredProofs('pf_challan,esi_challan');
+    expect(two).toEqual(['pf_challan', 'esi_challan']);
+    expect(requiredProofs('muster_roll,pf_challan,nope')).toEqual(['pf_challan', 'muster_roll']);
+    expect(packStatus({ pf_challan: 'verified', esi_challan: 'verified' }, '2026-09-15', '2026-10-01', two)).toBe('verified');
+    expect(packStatus({ pf_challan: 'verified', esi_challan: 'verified', muster_roll: 'discrepancy' }, '2026-09-15', '2026-09-01', two)).toBe('discrepancy');
+    expect(packStatus({ pf_challan: 'verified' }, '2026-09-15', '2026-09-16', two)).toBe('overdue');
+    const four = { pf_challan: 'verified', esi_challan: 'verified', wage_register: 'verified', bank_proof: 'verified' } as const;
+    expect(packStatus(four, '2026-09-15', '2026-09-16')).toBe('overdue');
   });
 
   it('the hold: overdue or disputed and not released', () => {
@@ -163,3 +179,19 @@ describe('monthly proofs, wage check and hold (CL-4)', () => {
     expect(recoveryFrom(50000n, [])).toEqual({ totalPaise: 0n, take: [] });
   });
 });
+
+import { peakOf, shortDays } from './clra-rules';
+
+describe('attendance and the peak (CL-5)', () => {
+  it('the highest number of workers on one day, and when', () => {
+    expect(peakOf([], '2026-01-01', '2026-12-31')).toEqual({ peak: 0, on: null });
+    expect(peakOf([{ from: '2026-03-01', to: '2026-03-31' }, { from: '2026-03-15', to: null }, { from: '2026-04-01', to: '2026-04-10' }], '2026-01-01', '2026-12-31')).toEqual({ peak: 2, on: '2026-03-15' });
+    expect(peakOf([{ from: '2025-01-01', to: '2025-06-30' }], '2026-01-01', '2026-12-31')).toEqual({ peak: 0, on: null });
+    expect(peakOf([{ from: '2025-12-01', to: null }, { from: '2026-02-01', to: '2026-02-01' }], '2026-01-01', '2026-12-31')).toEqual({ peak: 2, on: '2026-02-01' });
+  });
+  it('days paid against days on site', () => {
+    expect(shortDays(26, 24)).toBe(0);
+    expect(shortDays(20, 24)).toBe(4);
+  });
+});
+

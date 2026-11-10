@@ -96,6 +96,9 @@ export interface ContractWorker {
   status: 'Deployed' | 'Pending approval' | 'Released';
   /* CL-2 live */
   induction?: { on: Date; by: string | null } | null;
+  /** CL-5: a photo for the gate pass card (735), a kiosk PIN set (625). */
+  photo?: boolean;
+  kioskPin?: boolean;
   version?: number;
 }
 const W = (i: number, name: string, contractor: string, skill: ContractWorker['skill'], wage: number, status: ContractWorker['status'] = 'Deployed'): ContractWorker => ({

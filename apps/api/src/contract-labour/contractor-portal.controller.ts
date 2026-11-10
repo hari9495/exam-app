@@ -5,7 +5,7 @@ import { memoryStorage } from 'multer';
 import { MODERATE_UPLOAD_THROTTLE, PUBLIC_API_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import { PortalEmailDto, PortalVerifyDto } from '../staffing/staffing-dto';
 import { ContractorPortalService } from './contractor-portal.service';
-import { MinWageQueryDto, PackItemDto, PackQueryDto, PortalWithdrawDto, PortalWorkerDto, RenewalDto } from './clra-dto';
+import { PortalAttendanceDto, MinWageQueryDto, PackItemDto, PackQueryDto, PortalWithdrawDto, PortalWorkerDto, RenewalDto } from './clra-dto';
 
 const UPLOAD = FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 1 } });
 
@@ -68,6 +68,19 @@ export class PublicContractorPortalController {
   @UseInterceptors(UPLOAD)
   renew(@Param('org') org: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RenewalDto, @UploadedFile() file: Express.Multer.File | undefined, @Headers('x-contractor-portal') token?: string) {
     return this.portal.renew(org.slice(0, 100), token, id, dto, file ? { name: file.originalname, data: file.buffer } : null);
+  }
+
+  @Get(':org/attendance')
+  @Throttle(PUBLIC_API_THROTTLE)
+  attendance(@Param('org') org: string, @Query() q: PackQueryDto, @Headers('x-contractor-portal') token?: string) {
+    return this.portal.attendanceMonth(org.slice(0, 100), token, q.locationId, q.month);
+  }
+
+  @Post(':org/attendance')
+  @HttpCode(200)
+  @Throttle(PUBLIC_API_THROTTLE)
+  saveAttendance(@Param('org') org: string, @Body() dto: PortalAttendanceDto, @Headers('x-contractor-portal') token?: string) {
+    return this.portal.saveAttendance(org.slice(0, 100), token, dto);
   }
 
   @Get(':org/packs')

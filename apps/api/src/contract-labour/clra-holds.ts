@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import type { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { settingFor } from '../people/probation';
 import { audit } from '../org-structure/org-structure.service';
-import { PROOF_KINDS, holdsBill, monthOf, packDue, packStatus, recoveryFrom, type PackStatus, type ProofKind, type ProofState } from './clra-rules';
+import { PROOF_KINDS, holdsBill, monthOf, packDue, packStatus, recoveryFrom, requiredProofs, type PackStatus, type ProofKind, type ProofState } from './clra-rules';
 
 // Contract labour CL-4 (answers 626, 634): the month-by-month pack status of a contractor's sites, the payment hold it
 // puts on the contractor's PAY 8 bills, and the recovery of wages the company paid itself. Plain functions on a
@@ -42,6 +42,7 @@ export const activeIn = (d: { fromOn: Date; toOn: Date | null; releasedOn: Date 
 export async function monthPacks(tx: Tx, c: CompanyContext, today: string, agencyIds?: string[]): Promise<MonthPack[]> {
   const org = c.organizationId;
   const cutoff = Number(await settingFor(tx, c, 'clra.doc_cutoff', ANY_ENTITY));
+  const required = requiredProofs(await settingFor(tx, c, 'clra.required_proofs', ANY_ENTITY));
   const current = monthOf(today);
   const from = addMonths(current, -LOOKBACK_MONTHS);
   const deps = await tx.contractDeployment.findMany({ where: { organizationId: org, ...(agencyIds ? { agencyId: { in: agencyIds } } : {}), fromOn: { lt: day(current) } }, select: { agencyId: true, locationId: true, fromOn: true, toOn: true, releasedOn: true, status: true } });
@@ -61,7 +62,7 @@ export async function monthPacks(tx: Tx, c: CompanyContext, today: string, agenc
     for (const i of items.filter((x) => x.packId === p?.id)) states[i.kind as ProofKind] = i.state as ProofState;
     const due = packDue(k.month, cutoff);
     const r = releases.find((x) => x.agencyId === k.agencyId && iso(x.month) === k.month);
-    return { ...k, due, status: packStatus(states, due, today), released: r ? { reason: r.reason, at: r.releasedAt.toISOString() } : null, packId: p?.id ?? null };
+    return { ...k, due, status: packStatus(states, due, today, required), released: r ? { reason: r.reason, at: r.releasedAt.toISOString() } : null, packId: p?.id ?? null };
   });
 }
 

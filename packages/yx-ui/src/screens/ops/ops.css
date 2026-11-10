@@ -189,6 +189,10 @@
 /* Editor side-by-side */
 .yx-ops-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--yx-space-6); align-items: start; }
 @media (max-width: 1100px) { .yx-ops-split { grid-template-columns: minmax(0, 1fr); } }
+/* CL-5 gate pass card (answer 735) and the one-time kiosk PIN (answer 625). */
+.yx-ops-gatepass { display: flex; flex-wrap: wrap; gap: var(--yx-space-4); align-items: flex-start; padding: var(--yx-space-4); border: 1px solid var(--yx-color-border); border-radius: var(--yx-radius-card); }
+.yx-ops-gatepass__photo { width: 96px; height: 120px; object-fit: cover; border-radius: var(--yx-radius-control); border: 1px solid var(--yx-color-border); }
+.yx-ops-pin { font-family: var(--yx-font-mono); font-size: var(--yx-text-2xl); letter-spacing: 0.3em; margin: 0; text-align: center; }
 
 .yx-ops-clause { display: flex; flex-direction: column; gap: var(--yx-space-2); padding: var(--yx-space-3); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); }
 .yx-ops-clause[data-finding] { border-color: var(--yx-color-danger-border); }

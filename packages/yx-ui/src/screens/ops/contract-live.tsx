@@ -15,7 +15,7 @@ export interface ContractorsData {
   locations: { id: string; name: string; state: string }[];
   states: { code: string; name: string }[];
   /** Answer 674 (CL-2): sites with contractor licences or contract workers. */
-  establishments?: { id: string; name: string; state: string; workers: number; licenceMax: number; threshold: number | null; verify: boolean }[];
+  establishments?: { id: string; name: string; state: string; workers: number; licenceMax: number; threshold: number | null; verify: boolean; registration?: { no: string; maxWorkers: number; validTo: string | null } | null; peak?: { count: number; on: string | null } | null }[];
   contractors: {
     id: string;
     name: string;
@@ -117,7 +117,7 @@ export function LiveContractors({ live }: { live: ContractorsLive }) {
   return (
     <ContractorsView
       contractors={d ? contractorsOf(d) : []}
-      establishments={(d?.establishments ?? []).filter((e) => e.threshold !== null).map((e) => ({ name: e.name, state: e.state, rc: '—', family: 'OSH Code', workers: e.workers, threshold: e.threshold!, validTo: null, licenceMax: e.licenceMax }))}
+      establishments={(d?.establishments ?? []).filter((e) => e.threshold !== null).map((e) => ({ name: e.name, state: e.state, rc: e.registration?.no ?? '—', family: 'OSH Code', workers: e.workers, threshold: e.threshold!, validTo: e.registration?.validTo ? date(e.registration.validTo) : null, licenceMax: e.licenceMax, peak: e.peak?.count }))}
       today={d ? date(d.today) : new Date()}
       state={live.state === 'ready' ? (d && d.contractors.length ? 'ready' : 'empty') : live.state}
       openId={null}
@@ -169,6 +169,8 @@ export interface WorkersData {
     idMasked: string;
     releasedOn: string | null;
     releaseReason: string | null;
+    photo?: boolean;
+    kioskPin?: boolean;
     version: number;
   }[];
 }
@@ -181,6 +183,10 @@ export interface WorkersLive {
   onApprove: (id: string, version: number, induction: { on: string | null; by: string | null }) => Promise<unknown>;
   onRelease: (id: string, version: number, on: string, reason: string) => Promise<unknown>;
   onMinWage?: (locationId: string, skill: string) => Promise<{ monthly: string; daily: string; source: string; verify: boolean } | null>;
+  onRenewPass?: (id: string, version: number, induction: { on: string | null; by: string | null }) => Promise<unknown>;
+  onPhoto?: (id: string, file: File) => Promise<unknown>;
+  photoUrl?: (id: string) => Promise<string | null>;
+  onKioskPin?: (id: string) => Promise<string>;
   /** CL-7: opens CLB-05 for a deployed worker (only for HR with the onboarding key). */
   onConvert?: (id: string) => void;
 }
@@ -204,6 +210,8 @@ export function workersOf(data: WorkersData): ContractWorker[] {
     idMasked: w.idMasked,
     status: STATUS[w.status],
     induction: w.induction ? { on: date(w.induction.on), by: w.induction.by } : null,
+    photo: w.photo,
+    kioskPin: w.kioskPin,
     version: w.version,
   }));
 }
@@ -227,6 +235,10 @@ export function LiveWorkers({ live }: { live: WorkersLive }) {
       onApprove={live.onApprove}
       onRelease={live.onRelease}
       onMinWage={live.onMinWage}
+      onRenewPass={live.onRenewPass}
+      onPhoto={live.onPhoto}
+      photoUrl={live.photoUrl}
+      onKioskPin={live.onKioskPin}
       onConvert={live.onConvert}
     />
   );
@@ -234,7 +246,7 @@ export function LiveWorkers({ live }: { live: WorkersLive }) {
 
 /* ---------------- CL-4 live: CLB-03 vendor compliance ---------------- */
 
-type ProofKind = 'pf_challan' | 'esi_challan' | 'wage_register' | 'bank_proof';
+type ProofKind = 'pf_challan' | 'esi_challan' | 'wage_register' | 'bank_proof' | 'muster_roll';
 type LiveItem = { id: string; state: 'submitted' | 'verified' | 'discrepancy'; note: string | null; fileName: string; scan: string; workersCovered: number | null; amount: string | null; uploadedAt: string; version: number } | null;
 type LiveCheck = { id: string; label: string; status: 'pass' | 'fail' | 'pending'; detail?: string };
 /** GET /contract-labour/compliance. */
@@ -243,7 +255,8 @@ export interface VendorComplianceData {
   due: string;
   holdMode: 'hold' | 'alert';
   canManage: boolean;
-  proofTypes: { kind: ProofKind; label: string }[];
+  /** Answer 741: `required` false for a proof the company does not ask for (not shown as a column). */
+  proofTypes: { kind: ProofKind; label: string; required?: boolean }[];
   months: string[];
   rows: { contractorId: string; contractor: string; site: { id: string; name: string }; month: string; due: string; status: 'open' | 'submitted' | 'verified' | 'discrepancy' | 'overdue'; released: { reason: string; at: string } | null; deployed: number; items: Record<ProofKind, LiveItem>; checks: LiveCheck[]; held: boolean; heldMonths: string[] }[];
   alerts: { id: string; type: string; contractor: string; contractorId: string; site: string; month: string; detail: string; liability: string | null; severity: 'High' | 'Medium'; deploymentId?: string }[];
@@ -260,7 +273,7 @@ export interface VendorComplianceLive {
   onPayByUs: (input: { deploymentId: string; month: string; amount: string; paidOn: string; reference: string; reason: string }) => Promise<unknown>;
 }
 const CELL: Record<'submitted' | 'verified' | 'discrepancy', ProofStatus> = { submitted: 'Submitted', verified: 'Verified', discrepancy: 'Discrepancy' };
-const CHECKS_FOR: Record<ProofKind, string[]> = { pf_challan: ['pf_challan'], esi_challan: ['esi_challan'], wage_register: ['wage_register', 'min_wage'], bank_proof: [] };
+const CHECKS_FOR: Record<ProofKind, string[]> = { pf_challan: ['pf_challan'], esi_challan: ['esi_challan'], wage_register: ['wage_register', 'min_wage'], bank_proof: [], muster_roll: ['days'] };
 
 export function LiveVendorCompliance({ live }: { live: VendorComplianceLive }) {
   const d = live.data;
@@ -272,12 +285,12 @@ export function LiveVendorCompliance({ live }: { live: VendorComplianceLive }) {
     month: r.month,
     held: r.held,
     released: r.released,
-    cells: d!.proofTypes.map((t) => {
+    cells: d!.proofTypes.filter((t) => t.required !== false).map((t) => {
       const i = r.items[t.kind];
       return { label: t.label, status: i ? CELL[i.state] : r.status === 'overdue' ? 'Overdue' : 'Open', itemId: i?.id, version: i?.version, fileName: i && i.scan === 'clean' ? i.fileName : undefined, note: i?.note ?? null };
     }),
     checks: Object.fromEntries(
-      d!.proofTypes.map((t) => [
+      d!.proofTypes.filter((t) => t.required !== false).map((t) => [
         t.label,
         [
           ...(t.kind === 'pf_challan' || t.kind === 'esi_challan' ? [{ id: `${t.kind}-n`, status: 'pass' as const, label: `Workers covered ${r.items[t.kind]?.workersCovered ?? '—'}, amount ₹${r.items[t.kind]?.amount ?? '—'}` }] : []),
@@ -294,7 +307,7 @@ export function LiveVendorCompliance({ live }: { live: VendorComplianceLive }) {
       months={d?.months}
       onMonth={live.onMonth}
       holdMode={d?.holdMode ?? 'hold'}
-      proofLabels={d?.proofTypes.map((t) => t.label) ?? []}
+      proofLabels={d?.proofTypes.filter((t) => t.required !== false).map((t) => t.label) ?? []}
       rows={rows}
       alerts={(d?.alerts ?? []).map((a) => ({ ...a, liability: a.liability === null ? null : Number(a.liability) }))}
       canManage={Boolean(d?.canManage)}

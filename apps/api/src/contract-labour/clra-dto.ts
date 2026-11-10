@@ -137,7 +137,7 @@ const RUPEES = /^\d{1,9}(\.\d{1,2})?$/;
 export class PackItemDto {
   @IsUUID() locationId!: string;
   @Matches(MONTH, { message: 'Give the month as yyyy-mm.' }) month!: string;
-  @IsIn(['pf_challan', 'esi_challan', 'wage_register', 'bank_proof']) kind!: 'pf_challan' | 'esi_challan' | 'wage_register' | 'bank_proof';
+  @IsIn(['pf_challan', 'esi_challan', 'wage_register', 'bank_proof', 'muster_roll']) kind!: 'pf_challan' | 'esi_challan' | 'wage_register' | 'bank_proof' | 'muster_roll';
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(100000) workersCovered?: number;
   @IsOptional() @Matches(RUPEES, { message: 'Enter the amount in rupees.' }) amount?: string;
   /** Wage register: JSON [{ deploymentId, days, gross, paidOn }]. */
@@ -195,3 +195,29 @@ export class PortalWithdrawDto {
   @trim() @IsString() @MinLength(3) @MaxLength(500) reason!: string;
 }
 
+/* ---------------- CL-5 attendance, registrations ---------------- */
+
+export class AttendanceConfirmDto {
+  @IsUUID() contractorId!: string;
+  @IsUUID() locationId!: string;
+  @Matches(MONTH) month!: string;
+}
+
+class AttendanceEntryDto {
+  @IsUUID() deploymentId!: string;
+  @IsArray() @ArrayMaxSize(31) @Matches(DAY, { each: true }) days!: string[];
+}
+export class PortalAttendanceDto {
+  @IsUUID() locationId!: string;
+  @Matches(MONTH) month!: string;
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(2000) @ValidateNested({ each: true }) @Type(() => AttendanceEntryDto) entries!: AttendanceEntryDto[];
+}
+
+/** Answer 673: a site's principal-employer registration. */
+export class RegistrationDto {
+  @IsUUID() locationId!: string;
+  @trim() @IsString() @MinLength(1) @MaxLength(60) registrationNo!: string;
+  @IsInt() @Min(1) @Max(100000) maxWorkers!: number;
+  @IsOptional() @Matches(DAY) validTo?: string | null;
+  @IsOptional() @IsInt() @Min(1) version?: number;
+}

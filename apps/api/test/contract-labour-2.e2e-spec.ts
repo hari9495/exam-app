@@ -214,7 +214,7 @@ describe('Contract labour CL-2', () => {
 
   it('the site cards (674): workers against the licence maximum and the threshold', async () => {
     const e = (await api('reader', 'get', '/contract-labour/contractors').expect(200)).body.establishments;
-    expect(e).toEqual([{ id: ids.hosur, name: 'Hosur plant', state: 'IN-TN', workers: 2, licenceMax: 2, threshold: 50, verify: true }]);
+    expect(e).toEqual([{ id: ids.hosur, name: 'Hosur plant', state: 'IN-TN', workers: 2, licenceMax: 2, threshold: 50, verify: true, registration: null, peak: null }]);
   });
 
   it('the directory (PPL-01): contract workers and their card for the contract labour keys', async () => {

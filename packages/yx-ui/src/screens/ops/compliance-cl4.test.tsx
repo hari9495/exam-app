@@ -36,7 +36,7 @@ const DATA: VendorComplianceData = {
       status: 'discrepancy',
       released: null,
       deployed: 1,
-      items: { pf_challan: item('discrepancy', { id: 'pf' }), esi_challan: item('submitted', { id: 'esi' }), wage_register: null, bank_proof: null },
+      items: { pf_challan: item('discrepancy', { id: 'pf' }), esi_challan: item('submitted', { id: 'esi' }), wage_register: null, bank_proof: null, muster_roll: null },
       checks: [{ id: 'esi_challan', label: 'ESI challan: workers covered ≥ workers on site', status: 'pass', detail: 'Covers 1; 1 deployed in the month.' }],
       held: true,
       heldMonths: ['2026-10'],
@@ -116,7 +116,7 @@ const PACK: ContractorPackData = {
   month: '2026-10',
   due: '2026-11-15',
   status: 'open',
-  items: { pf_challan: null, esi_challan: null, wage_register: null, bank_proof: null },
+  items: { pf_challan: null, esi_challan: null, wage_register: null, bank_proof: null, muster_roll: null },
   workers: [{ deploymentId: 'd1', name: 'Kannan S', idMasked: 'XXXX XXXX 1234', skill: 'Unskilled', line: null, minimum: { monthly: '14820.00', daily: '570.00', source: 'TN 2026-04, zone A', verify: true }, short: null }],
   checks: [{ id: 'pf_challan', label: 'PF ECR and challan: workers covered ≥ workers on site', status: 'pending', detail: 'Not uploaded yet.' }],
 };

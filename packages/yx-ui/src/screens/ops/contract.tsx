@@ -1,7 +1,7 @@
 // Contract labour screens (M13, P07 IN.CLRA / IN.OSH): CLB-01 contractors, CLB-02 contract workers, CLB-03 vendor compliance,
 // CLB-04 CLRA registers & returns, CLB-05 convert worker to employee, CLB-06 client establishments, CLB-07 own licences,
 // CLB-08 client compliance packs.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Download, FileText, Plus, Upload } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
@@ -63,7 +63,7 @@ export function licenceBadge(l: Licence, today: Date): { tone: BadgeTone; text: 
 
 export interface ContractorsScreenProps {
   contractors: Contractor[];
-  establishments: { name: string; state: string; rc: string; family: string; workers: number; threshold: number; validTo: Date | null; licenceMax?: number }[];
+  establishments: { name: string; state: string; rc: string; family: string; workers: number; threshold: number; validTo: Date | null; licenceMax?: number; peak?: number }[];
   today: Date;
   state?: ListState;
   openId?: string | null;
@@ -162,8 +162,8 @@ export function ContractorsView(p: ContractorsViewProps) {
                 <h3 className="yx-ops-card__title">{e.name}</h3>
                 <Badge tone={e.rc === '—' ? (e.workers >= e.threshold ? 'danger' : 'neutral') : 'success'}>{e.rc === '—' ? (e.workers >= e.threshold ? 'Registration needed' : 'Below threshold') : 'Registered'}</Badge>
               </div>
-              <Facts items={[{ label: 'Contract workers', value: e.workers }, ...(e.licenceMax !== undefined ? [{ label: 'Licence maximum', value: e.licenceMax, tone: e.workers > e.licenceMax ? ('danger' as const) : undefined }] : []), { label: 'Threshold (OSH Code, verify)', value: e.threshold }]} />
-              <p className="yx-ops-muted">{e.rc === '—' ? `No registration needed below ${e.threshold} contract workers.` : `${e.family} registration ${e.rc}, valid to ${formatDate(e.validTo)}`}</p>
+              <Facts items={[{ label: 'Contract workers', value: e.workers }, ...(e.licenceMax !== undefined ? [{ label: 'Licence maximum', value: e.licenceMax, tone: e.workers > e.licenceMax ? ('danger' as const) : undefined }] : []), ...(e.peak !== undefined ? [{ label: 'Highest in 12 months', value: e.peak }] : []), { label: 'Threshold (OSH Code, verify)', value: e.threshold }]} />
+              <p className="yx-ops-muted">{e.rc === '—' ? `No registration needed below ${e.threshold} contract workers.` : `${e.family} registration ${e.rc}${e.validTo ? `, valid to ${formatDate(e.validTo)}` : ''}`}</p>
             </article>
           ))}
         </CardGrid>
@@ -637,7 +637,7 @@ export interface WorkersScreenProps {
   /** CL-2 live (the page passes it; docs/yukthix/contract-labour-design-map.md). */
   live?: WorkersLive;
 }
-export type WorkersSheet = { kind: 'deploy' } | { kind: 'approve'; id: string } | { kind: 'release'; id: string };
+export type WorkersSheet = { kind: 'deploy' } | { kind: 'approve'; id: string } | { kind: 'release'; id: string } | { kind: 'renew'; id: string } | { kind: 'card'; id: string } | { kind: 'pin'; id: string; pin?: string };
 
 /** The deploy form (answers 635, 636): the Aadhaar number is sent once; only its last 4 digits come back. */
 export interface WorkerInput {
@@ -673,6 +673,11 @@ export interface WorkersViewProps {
   onRelease?: (id: string, version: number, on: string, reason: string) => Promise<unknown>;
   /** Answer 685: the minimum wage for a site and skill. */
   onMinWage?: (locationId: string, skill: string) => Promise<MinWageHint | null>;
+  /** CL-5: renew a gate pass keeping its number (684); the photo and the card (735); the kiosk PIN, shown once (625). */
+  onRenewPass?: (id: string, version: number, induction: { on: string | null; by: string | null }) => Promise<unknown>;
+  onPhoto?: (id: string, file: File) => Promise<unknown>;
+  photoUrl?: (id: string) => Promise<string | null>;
+  onKioskPin?: (id: string) => Promise<string>;
   /** CL-7 (answer 637): opens CLB-05 for a deployed worker (HR with the onboarding key). */
   onConvert?: (id: string) => void;
 }
@@ -766,6 +771,7 @@ export function WorkersView(p: WorkersViewProps) {
             </>
           ) : w.status === 'Deployed' ? (
             <>
+              <Button size="sm" onClick={() => setSheet({ kind: 'card', id: w.id })}>Gate pass</Button>
               {p.onConvert && <Button size="sm" onClick={() => p.onConvert!(w.id)}>Make employee</Button>}
               <Button size="sm" onClick={() => setSheet({ kind: 'release', id: w.id })}>Release</Button>
             </>
@@ -774,6 +780,24 @@ export function WorkersView(p: WorkersViewProps) {
       />
       {sheet?.kind === 'deploy' && <DeployWorkerSheet {...p} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'approve' && target && <ApproveWorkerDialog worker={target} today={today} required={p.inductionRequired} months={p.inductionMonths} onClose={() => setSheet(null)} onApprove={(induction) => (p.onApprove ? p.onApprove(target.id, target.version ?? 1, induction) : Promise.resolve(say('Approved')))} />}
+      {sheet?.kind === 'card' && target && (
+        <GatePassCard
+          worker={target}
+          today={today}
+          canManage={canManage}
+          photoUrl={p.photoUrl}
+          onClose={() => setSheet(null)}
+          onRenew={() => setSheet({ kind: 'renew', id: target.id })}
+          onPin={() => (p.onKioskPin ? p.onKioskPin(target.id).then((pin) => setSheet({ kind: 'pin', id: target.id, pin })) : Promise.resolve(setSheet({ kind: 'pin', id: target.id, pin: '4821' })))}
+          onPhoto={(file) => (p.onPhoto ? p.onPhoto(target.id, file) : Promise.resolve())}
+        />
+      )}
+      {sheet?.kind === 'renew' && target && <ApproveWorkerDialog renew worker={target} today={today} required={p.inductionRequired} months={p.inductionMonths} onClose={() => setSheet(null)} onApprove={(induction) => (p.onRenewPass ? p.onRenewPass(target.id, target.version ?? 1, induction) : Promise.resolve())} />}
+      {sheet?.kind === 'pin' && target && (
+        <Dialog open onOpenChange={(o) => !o && setSheet(null)} size="sm" title={`Kiosk PIN for ${target.name}`} description="Give it to the worker with the gate pass. At the site's kiosk they enter the gate pass number and this PIN. It is shown only now; a new PIN replaces it." footer={<Button variant="primary" onClick={() => setSheet(null)}>Done</Button>}>
+          <p className="yx-ops-pin" aria-label="Kiosk PIN">{sheet.pin}</p>
+        </Dialog>
+      )}
       {sheet?.kind === 'release' && target && <ReleaseWorkerDialog worker={target} today={today} onClose={() => setSheet(null)} onRelease={(on, reason) => (p.onRelease ? p.onRelease(target.id, target.version ?? 1, on, reason) : Promise.resolve())} />}
     </OpsDesk>
   );
@@ -884,7 +908,7 @@ function DeployWorkerSheet(p: WorkersViewProps & { onClose: () => void }) {
 }
 
 /** Site approval (632, 633): the safety induction is recorded and the gate pass is issued. */
-function ApproveWorkerDialog({ worker, today, required, months, onClose, onApprove }: { worker: ContractWorker; today: Date; required: boolean; months: number; onClose: () => void; onApprove: (induction: { on: string | null; by: string | null }) => Promise<unknown> }) {
+function ApproveWorkerDialog({ worker, today, required, months, renew = false, onClose, onApprove }: { worker: ContractWorker; today: Date; required: boolean; months: number; renew?: boolean; onClose: () => void; onApprove: (induction: { on: string | null; by: string | null }) => Promise<unknown> }) {
   const { say } = useSay();
   const [on, setOn] = useState<Date | null>(worker.induction ? worker.induction.on : null);
   const [by, setBy] = useState(worker.induction?.by ?? '');
@@ -892,8 +916,8 @@ function ApproveWorkerDialog({ worker, today, required, months, onClose, onAppro
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
   const bad = {
-    on: required && !on ? 'Enter the day of the safety induction.' : on && on > today ? 'The induction cannot be in the future.' : null,
-    by: required && !by.trim() ? 'Enter who gave the induction.' : null,
+    on: required && !renew && !on ? 'Enter the day of the safety induction.' : on && on > today ? 'The induction cannot be in the future.' : null,
+    by: (required && !renew && !by.trim()) || (renew && on && !by.trim()) ? 'Enter who gave the induction.' : null,
   };
   const go = () => {
     setTried(true);
@@ -902,12 +926,12 @@ function ApproveWorkerDialog({ worker, today, required, months, onClose, onAppro
     setBusy(true);
     setFailed(null);
     onApprove({ on: on ? isoDay(on) : null, by: by.trim() || null })
-      .then(() => (say(`${worker.name} approved; gate pass issued`), onClose()))
+      .then(() => (say(renew ? `${worker.name}'s gate pass renewed` : `${worker.name} approved; gate pass issued`), onClose()))
       .catch((e: unknown) => setFailed(errText(e)))
       .finally(() => setBusy(false));
   };
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()} size="md" title={`Approve ${worker.name}?`} description={`${worker.contractor} · ${worker.site}. The checks run again; the gate pass ends with the deployment, the licence or the induction (${months} months), whichever comes first.`} notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={go}>Approve and issue gate pass</Button></>}>
+    <Dialog open onOpenChange={(o) => !o && onClose()} size="md" title={renew ? `Renew ${worker.name}'s gate pass?` : `Approve ${worker.name}?`} description={renew ? `${worker.gatePass ?? ''} keeps its number. The new end is the first of the deployment's last day, the licence in force and the induction (${months} months). Record a new induction if the last one has run out.` : `${worker.contractor} · ${worker.site}. The checks run again; the gate pass ends with the deployment, the licence or the induction (${months} months), whichever comes first.`} notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={go}>{renew ? 'Renew gate pass' : 'Approve and issue gate pass'}</Button></>}>
       <div className="yx-ops-stack">
         <FieldRow>
           <FormField id="ap-on" label="Safety induction on" required={required} optional={!required} error={tried ? bad.on : null}>
@@ -919,6 +943,56 @@ function ApproveWorkerDialog({ worker, today, required, months, onClose, onAppro
         </FieldRow>
       </div>
     </Dialog>
+  );
+}
+
+/** Answers 684, 735, 625: the gate pass card (photo, name, number, site, end) with its actions; printable. */
+function GatePassCard({ worker, today, canManage, photoUrl, onClose, onRenew, onPin, onPhoto }: { worker: ContractWorker; today: Date; canManage: boolean; photoUrl?: (id: string) => Promise<string | null>; onClose: () => void; onRenew: () => void; onPin: () => Promise<unknown>; onPhoto: (file: File) => Promise<unknown> }) {
+  const { say } = useSay();
+  const [url, setUrl] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  useEffect(() => {
+    if (!worker.photo || !photoUrl) return;
+    let live = true;
+    photoUrl(worker.id).then((u) => live && setUrl(u), () => undefined);
+    return () => {
+      live = false;
+    };
+  }, [worker.id, worker.photo, photoUrl]);
+  const ending = worker.gateValidTo ? Math.round((worker.gateValidTo.getTime() - today.getTime()) / 86_400_000) : null;
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      size="md"
+      title="Gate pass"
+      subtitle={`${worker.contractor} · ${worker.site}`}
+      footer={
+        <>
+          <Button onClick={() => window.print()}>Print card</Button>
+          {canManage && <Button onClick={() => void onPin().catch((e: unknown) => say(errText(e)))}>{worker.kioskPin ? 'New kiosk PIN' : 'Kiosk PIN'}</Button>}
+          {canManage && <Button variant="primary" onClick={onRenew}>Renew gate pass</Button>}
+        </>
+      }
+    >
+      <div className="yx-ops-stack">
+        <article className="yx-ops-gatepass" aria-label={`Gate pass ${worker.gatePass ?? ''}`}>
+          {url ? <img className="yx-ops-gatepass__photo" src={url} alt={`Photo of ${worker.name}`} /> : <PhotoPlaceholder name={worker.name} size="lg" />}
+          <DescriptionList items={[{ label: 'Name', value: worker.name }, { label: 'Gate pass', value: worker.gatePass ?? '—', mono: true }, { label: 'Valid to', value: worker.gateValidTo ? formatDate(worker.gateValidTo) : '—' }, { label: 'ID', value: worker.idMasked }]} />
+        </article>
+        {ending !== null && ending <= 30 && <InlineAlert tone={ending < 0 ? 'danger' : 'warning'} title={ending < 0 ? 'The gate pass has ended' : `The gate pass ends in ${ending} days`}>Renew it: the number stays the same.</InlineAlert>}
+        {canManage && !worker.photo && !adding && (
+          <Actions>
+            <Button size="sm" icon={Upload} onClick={() => setAdding(true)}>Add photo</Button>
+          </Actions>
+        )}
+        {canManage && (adding || worker.photo) && (
+          <FormField id="gp-photo" label={worker.photo ? 'Replace the photo' : 'Photo'} optional helper="JPG or PNG, a clear face, up to 5 MB.">
+            <FileUpload id="gp-photo" multiple={false} accept={['.jpg', '.png']} upload={async (f) => { await onPhoto(f); say('Photo saved'); }} />
+          </FormField>
+        )}
+      </div>
+    </Drawer>
   );
 }
 
@@ -1720,3 +1794,134 @@ export function ClientPacksScreen({ packs, recordOpen }: { packs: ClientPack[]; 
   );
 }
 
+/* =========================================================================================
+ * CL-5 · Contract workers' attendance (answer 625): the month per contractor and site, confirmed by the site in-charge
+ * ======================================================================================= */
+
+export interface AttendanceRow {
+  contractorId: string;
+  contractor: string;
+  site: { id: string; name: string };
+  contractorEnters: boolean;
+  confirmed: { at: string; days: number } | null;
+  workers: { deploymentId: string; name: string; gatePass: string | null; present: number; days: { day: string; source: string }[] }[];
+}
+export interface AttendanceMonthProps {
+  month: string;
+  months?: string[];
+  rows: AttendanceRow[];
+  canManage: boolean;
+  canConfirm: boolean;
+  state?: 'ready' | 'loading' | 'error';
+  onRetry?: () => void;
+  onMonth?: (month: string) => void;
+  onConfirm?: (contractorId: string, locationId: string, month: string) => Promise<unknown>;
+  /** The design opens the confirmation for this row. */
+  confirmOpen?: string | null;
+}
+
+export function AttendanceMonthScreen(p: AttendanceMonthProps) {
+  const { say } = useSay();
+  const [confirming, setConfirming] = useState<string | null>(p.confirmOpen ?? null);
+  const row = p.rows.find((r) => `${r.contractorId}:${r.site.id}` === confirming);
+  return (
+    <OpsDesk area="contract" active="Contract workers">
+      <PageHeader
+        title="Contract workers' attendance"
+        description={`Days on site in ${p.month}: kiosk punches with the gate pass number and PIN, or the contractor's entry where a site has no kiosk. Confirm a month once it ends; it is then locked and used in the wage check.`}
+        actions={p.months && p.months.length > 1 && p.onMonth ? <Select value={p.month} onChange={(v) => v && p.onMonth!(v)} options={p.months.map((m) => ({ value: m, label: m }))} /> : undefined}
+      />
+      {p.state === 'error' ? (
+        <EmptyState title="This page could not be loaded." action={<Button onClick={p.onRetry}>Try again</Button>} />
+      ) : p.rows.length === 0 ? (
+        <EmptyState title={p.state === 'loading' ? 'Loading…' : 'No contract workers were deployed this month.'} />
+      ) : (
+        p.rows.map((r) => (
+          <Card
+            key={`${r.contractorId}:${r.site.id}`}
+            title={`${r.contractor} · ${r.site.name}`}
+            actions={
+              <span className="yx-ops-row">
+                <Badge tone="neutral">{r.contractorEnters ? 'Entered by the contractor' : 'Kiosk'}</Badge>
+                {r.confirmed ? <Badge tone="success">Confirmed</Badge> : p.canManage && p.canConfirm ? <Button size="sm" variant="primary" onClick={() => setConfirming(`${r.contractorId}:${r.site.id}`)}>Confirm month</Button> : <Badge tone="info">Open</Badge>}
+              </span>
+            }
+          >
+            <PlainTable
+              label={`Attendance, ${r.contractor}, ${r.site.name}`}
+              rows={r.workers}
+              getRowId={(w) => w.deploymentId}
+              columns={[
+                { key: 'n', header: 'Worker', rowHeader: true, cell: (w) => w.name },
+                { key: 'g', header: 'Gate pass', cell: (w) => <span className="yx-ops-mono">{w.gatePass ?? '—'}</span> },
+                { key: 'p', header: 'Days on site', cell: (w) => String(w.present) },
+              ]}
+            />
+          </Card>
+        ))
+      )}
+      {row && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setConfirming(null)}
+          title={`Confirm ${row.contractor}'s ${p.month} at ${row.site.name}?`}
+          consequence={`${row.workers.reduce((n, w) => n + w.present, 0)} days on site for ${row.workers.length} workers. The month is then locked: no more punches or entries, and the wage check uses these days.`}
+          confirmLabel="Confirm month"
+          onConfirm={() => void (p.onConfirm ? p.onConfirm(row.contractorId, row.site.id, p.month) : Promise.resolve()).then(() => (say('Month confirmed'), setConfirming(null)), (e: unknown) => say(errText(e)))}
+        />
+      )}
+    </OpsDesk>
+  );
+}
+
+/** Answer 673: a site's principal-employer registration (Settings 4.9). */
+export interface RegistrationInput {
+  locationId: string;
+  registrationNo: string;
+  maxWorkers: number;
+  validTo: string | null;
+  version?: number;
+}
+export function RegistrationSheet({ initial, sites, onClose, onSave, onRemove }: { initial: (RegistrationInput & { id: string }) | null; sites: { id: string; name: string }[]; onClose: () => void; onSave: (input: RegistrationInput) => Promise<unknown>; onRemove?: () => Promise<unknown> }) {
+  const { say } = useSay();
+  const [site, setSite] = useState<string | null>(initial?.locationId ?? null);
+  const [no, setNo] = useState(initial?.registrationNo ?? '');
+  const [max, setMax] = useState<number | null>(initial?.maxWorkers ?? null);
+  const [to, setTo] = useState<Date | null>(initial?.validTo ? new Date(`${initial.validTo}T00:00:00`) : null);
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const bad = { site: !site ? 'Choose the site.' : null, no: !no.trim() ? 'Enter the registration number.' : null, max: !max || max < 1 ? 'Enter the maximum contract workers it allows.' : null };
+  const save = () => {
+    setTried(true);
+    const order: [keyof typeof bad, string][] = [['site', 'rg-site'], ['no', 'rg-no'], ['max', 'rg-max']];
+    const miss = order.find(([k]) => bad[k]);
+    if (miss) return focusOn(miss[1]);
+    setBusy(true);
+    setFailed(null);
+    onSave({ locationId: site!, registrationNo: no.trim(), maxWorkers: max!, validTo: to ? isoDay(to) : null, ...(initial?.version ? { version: initial.version } : {}) })
+      .then(() => (say(initial ? 'Registration saved' : 'Registration added'), onClose()))
+      .catch((e: unknown) => setFailed(errText(e)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Drawer open onOpenChange={(o) => !o && onClose()} size="md" title={initial ? 'Change registration' : 'Add registration'} subtitle="Principal-employer registration" dirty notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined} footer={<>{initial && onRemove && <Button onClick={() => void onRemove().then(() => (say('Registration removed'), onClose()), (e: unknown) => setFailed(errText(e)))}>Remove</Button>}<Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={save}>{initial ? 'Save registration' : 'Add registration'}</Button></>}>
+      <div className="yx-ops-stack">
+        <FormField id="rg-site" label="Establishment" required error={tried ? bad.site : null}>
+          <Select options={sites.map((s) => ({ value: s.id, label: s.name }))} value={site} onChange={setSite} />
+        </FormField>
+        <FormField id="rg-no" label="Registration number" required error={tried ? bad.no : null}>
+          <TextField value={no} onChange={setNo} maxLength={60} />
+        </FormField>
+        <FieldRow>
+          <FormField id="rg-max" label="Maximum contract workers" required error={tried ? bad.max : null}>
+            <NumberField value={max} onChange={setMax} min={1} max={100000} />
+          </FormField>
+          <FormField id="rg-to" label="Valid to" optional>
+            <DatePicker value={to} onChange={setTo} />
+          </FormField>
+        </FieldRow>
+      </div>
+    </Drawer>
+  );
+}

@@ -137,6 +137,8 @@
 .yx-ps-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-2); }
 .yx-ps-row[data-between] { justify-content: space-between; }
 .yx-ps-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(var(--yx-space-16) * 4)), 1fr)); gap: var(--yx-space-4); }
+.yx-ps-days { border: 0; margin: 0; padding: 0; min-width: 0; }
+.yx-ps-days > legend { font-weight: 600; margin-bottom: var(--yx-space-2); }
 .yx-ps-muted { color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); margin: 0; }
 .yx-ps-p { margin: 0; }
 .yx-ps-h { margin: 0; font-size: var(--yx-text-lg); font-weight: var(--yx-weight-semibold); }

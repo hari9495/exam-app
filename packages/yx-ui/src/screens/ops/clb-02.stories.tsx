@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { WorkersScreen } from './contract';
+import { AttendanceMonthScreen, WorkersScreen } from './contract';
 import { CONTRACTORS, WORKERS } from './contract-data';
 import { TODAY } from '../_kit/data';
 
@@ -20,3 +20,13 @@ export const Threshold: S = { name: 'Deploy · registration threshold warning (C
 export const Approve: S = { name: 'Site approval · induction and gate pass (CL-2)', render: () => <WorkersScreen {...base} sheet={{ kind: 'approve', id: 'w6' }} /> };
 export const Release: S = { name: 'Release a worker (CL-2)', render: () => <WorkersScreen {...base} sheet={{ kind: 'release', id: 'w1' }} /> };
 export const ReadOnly: S = { name: 'Read only (view key, CL-2)', render: () => <WorkersScreen {...base} readOnly /> };
+// CL-5 (answers 625, 684, 735): the gate pass card with the photo, renewal keeping the number, the kiosk PIN shown once.
+export const GatePassCard: S = { name: 'Gate pass card (CL-5)', render: () => <WorkersScreen {...base} sheet={{ kind: 'card', id: 'w1' }} /> };
+export const RenewPass: S = { name: 'Renew gate pass (CL-5)', render: () => <WorkersScreen {...base} sheet={{ kind: 'renew', id: 'w1' }} /> };
+export const KioskPin: S = { name: 'Kiosk PIN shown once (CL-5)', render: () => <WorkersScreen {...base} sheet={{ kind: 'pin', id: 'w1', pin: '4821' }} /> };
+const ATT_ROWS = [
+  { contractorId: 'c1', contractor: 'Sri Lakshmi Facility Services', site: { id: 'hosur', name: 'Hosur plant' }, contractorEnters: false, confirmed: null, workers: WORKERS.slice(0, 3).map((w, i) => ({ deploymentId: w.id, name: w.name, gatePass: w.gatePass, present: 24 - i, days: [] })) },
+  { contractorId: 'c4', contractor: 'Annapoorna Canteen Services', site: { id: 'blr', name: 'Bengaluru head office' }, contractorEnters: true, confirmed: { at: '2026-10-02T10:00:00', days: 52 }, workers: WORKERS.slice(3, 5).map((w) => ({ deploymentId: w.id, name: w.name, gatePass: w.gatePass, present: 26, days: [] })) },
+];
+export const AttendanceMonth: S = { name: 'Attendance month (CL-5)', render: () => <AttendanceMonthScreen month="2026-09" rows={ATT_ROWS} canManage canConfirm /> };
+export const ConfirmMonth: S = { name: 'Confirm a month (CL-5)', render: () => <AttendanceMonthScreen month="2026-09" rows={ATT_ROWS} canManage canConfirm confirmOpen="c1:hosur" /> };

@@ -12968,6 +12968,8 @@ model ContractDeployment {
   approvedAt    DateTime? @map("approved_at") @db.Timestamptz(3)
   releasedOn    DateTime? @map("released_on") @db.Date
   releaseReason String?   @map("release_reason") @db.VarChar(500)
+  /// Answer 735: the worker's photo for the gate pass card.
+  photoFileId   String?   @map("photo_file_id") @db.Uuid
   version       Int       @default(1)
   createdBy     String?   @map("created_by") @db.Uuid
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -13124,4 +13126,85 @@ model ContractorDirectPayment {
 
   @@index([organizationId, agencyId], map: "contractor_direct_payments_agency_idx")
   @@map("contractor_direct_payments")
+}
+
+/// Contract labour CL-5 (answer 625): a contract worker's day: kiosk punches or the contractor's entry.
+model ContractAttendance {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  deploymentId     String    @map("deployment_id") @db.Uuid
+  workOn           DateTime  @map("work_on") @db.Date
+  source           String    @db.VarChar(10)
+  inAt             DateTime? @map("in_at") @db.Timestamptz(3)
+  outAt            DateTime? @map("out_at") @db.Timestamptz(3)
+  enteredByContact String?   @map("entered_by_contact") @db.Uuid
+  updatedAt        DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([deploymentId, workOn], map: "contract_attendance_key")
+  @@map("contract_attendance")
+}
+
+/// Contract labour CL-5 (answer 625): the site in-charge confirmed a contractor's month at a site.
+model ContractAttendanceConfirmation {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  agencyId       String   @map("agency_id") @db.Uuid
+  locationId     String   @map("location_id") @db.Uuid
+  month          DateTime @db.Date
+  days           Int
+  confirmedBy    String   @map("confirmed_by") @db.Uuid
+  confirmedAt    DateTime @default(now()) @map("confirmed_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, agencyId, locationId, month], map: "contract_attendance_confirmations_key")
+  @@map("contract_attendance_confirmations")
+}
+
+/// Contract labour CL-5 (answer 625): a contract worker's kiosk PIN (with the gate pass number).
+model ContractKioskPin {
+  organizationId String    @map("organization_id") @db.Uuid
+  deploymentId   String    @id @map("deployment_id") @db.Uuid
+  pinHash        String    @map("pin_hash") @db.VarChar(200)
+  failed         Int       @default(0) @db.SmallInt
+  lockedUntil    DateTime? @map("locked_until") @db.Timestamptz(3)
+  setAt          DateTime  @default(now()) @map("set_at") @db.Timestamptz(3)
+
+  @@map("contract_kiosk_pins")
+}
+
+/// Contract labour CL-5 (answer 673): a site's principal-employer registration.
+model ClraRegistration {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  locationId     String    @map("location_id") @db.Uuid
+  registrationNo String    @map("registration_no") @db.VarChar(60)
+  maxWorkers     Int       @map("max_workers")
+  validTo        DateTime? @map("valid_to") @db.Date
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  removedAt      DateTime? @map("removed_at") @db.Timestamptz(3)
+  version        Int       @default(1)
+
+  @@map("clra_registrations")
+}
+
+/// Contract labour CL-5 (answer 622): the highest number of contract workers on any day of the last 12 months.
+/// Answer 743: the liability alerts the compliance owners were told about (each once).
+model ClraAlertNotice {
+  organizationId String   @map("organization_id") @db.Uuid
+  alertId        String   @map("alert_id") @db.VarChar(200)
+  sentAt         DateTime @default(now()) @map("sent_at") @db.Timestamptz(3)
+
+  @@id([organizationId, alertId])
+  @@map("clra_alert_notices")
+}
+
+model ClraSitePeak {
+  organizationId String    @map("organization_id") @db.Uuid
+  locationId     String    @map("location_id") @db.Uuid
+  peak           Int
+  peakOn         DateTime? @map("peak_on") @db.Date
+  evaluatedOn    DateTime  @map("evaluated_on") @db.Date
+
+  @@id([organizationId, locationId])
+  @@map("clra_site_peaks")
 }

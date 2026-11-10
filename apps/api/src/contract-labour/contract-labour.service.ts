@@ -14,13 +14,13 @@ import { safeName } from '../service-desk/attachments.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { escapeHtml } from '../notifications/notification-email-render';
 import { alertDaysOf, alertDue, deployBlock, licenceState, type LicenceLike } from './clra-rules';
-import type { ContractorContactDto, ContractorDto, LicenceDto, RenewalDto, WorkOrderDto } from './clra-dto';
+import type { ContractorContactDto, ContractorDto, LicenceDto, RegistrationDto, RenewalDto, WorkOrderDto } from './clra-dto';
 import { EmailService } from '../email/email.service';
 
 const KEYS = ['clra.contractor.manage', 'clra.contractor.view', 'clra.settings.manage', 'org.settings.manage'] as const;
 type Access = { manage: boolean; view: boolean; settings: boolean; actingForOther: boolean };
 /** Settings 4.9 keys made live in CL-1 and CL-2 (the monthly compliance keys come with CL-4). */
-export const CLRA_SETTING_KEYS = ['clra.licence_alerts', 'clra.induction_required', 'clra.induction_months', 'clra.doc_cutoff', 'clra.payment_hold'] as const;
+export const CLRA_SETTING_KEYS = ['clra.licence_alerts', 'clra.induction_required', 'clra.induction_months', 'clra.doc_cutoff', 'clra.payment_hold', 'clra.threshold_warn', 'clra.attendance_source', 'clra.required_proofs'] as const;
 const LICENCE_TYPES = ['application/pdf', 'image/jpeg', 'image/png'] as const;
 const FILE_MAX_MB = 10;
 const NOT_FOUND = 'Contractor not found.';
@@ -89,7 +89,9 @@ export class ContractLabourService {
       for (const l of sites) {
         const rule = await tx.statutoryRuleSet.findFirst({ where: { statute: 'IN.CLRA', jurisdiction: l.state, status: 'published', validFrom: { lte: day(today) }, OR: [{ validTo: null }, { validTo: { gte: day(today) } }] }, orderBy: { validFrom: 'desc' } });
         const inForce = licences.filter((x) => x.locationId === l.id && x.status === 'verified' && iso(x.validFrom) <= today && today <= iso(x.validTo));
-        establishments.push({ id: l.id, name: l.name, state: l.state, workers: active.find((x) => x.locationId === l.id)?._count._all ?? 0, licenceMax: inForce.reduce((n, x) => n + x.maxWorkers, 0), threshold: (rule?.values as { registrationThreshold?: number } | undefined)?.registrationThreshold ?? null, verify: rule?.verify ?? true });
+        const reg = await tx.clraRegistration.findFirst({ where: { organizationId: org, locationId: l.id, removedAt: null } });
+        const peak = await tx.clraSitePeak.findFirst({ where: { organizationId: org, locationId: l.id } });
+        establishments.push({ registration: reg ? { no: reg.registrationNo, maxWorkers: reg.maxWorkers, validTo: reg.validTo ? iso(reg.validTo) : null } : null, peak: peak ? { count: peak.peak, on: peak.peakOn ? iso(peak.peakOn) : null } : null, id: l.id, name: l.name, state: l.state, workers: active.find((x) => x.locationId === l.id)?._count._all ?? 0, licenceMax: inForce.reduce((n, x) => n + x.maxWorkers, 0), threshold: (rule?.values as { registrationThreshold?: number } | undefined)?.registrationThreshold ?? null, verify: rule?.verify ?? true });
       }
       const like = (l: (typeof licences)[number]): LicenceLike => ({ id: l.id, locationId: l.locationId, states: l.states, validFrom: iso(l.validFrom), validTo: iso(l.validTo), status: l.status as LicenceLike['status'], renewalOfId: l.renewalOfId });
       return {
@@ -259,6 +261,48 @@ export class ContractLabourService {
     });
   }
 
+  /* ---------------- answer 673: principal-employer registrations (Settings 4.9) ---------------- */
+
+  private async settingsGate(user: ScopeUser) {
+    const a = await this.access(user);
+    if (a.actingForOther) throw new ForbiddenException('Not available while acting for someone else. Sign in as yourself.');
+    if (!a.settings) throw new ForbiddenException('Only HR with the contract labour settings key for the whole company can change registrations.');
+  }
+
+  async saveRegistration(ctx: TenantContext, user: ScopeUser, id: string | null, dto: RegistrationDto) {
+    await this.settingsGate(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const loc = await tx.location.findFirst({ where: { id: dto.locationId, organizationId: c.organizationId, archivedAt: null }, select: { id: true } });
+      if (!loc) throw new NotFoundException('Site not found.');
+      const data = { locationId: loc.id, registrationNo: dto.registrationNo, maxWorkers: dto.maxWorkers, validTo: dto.validTo ? day(dto.validTo) : null };
+      const dup = (e: unknown): never => {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('This site already has a registration. Change that one.');
+        throw e;
+      };
+      if (id) {
+        const cur = await tx.clraRegistration.findFirst({ where: { id, organizationId: c.organizationId, removedAt: null } });
+        if (!cur) throw new NotFoundException('Registration not found.');
+        if (dto.version !== cur.version) throw new ConflictException('Someone else changed this registration just now. Reload the page.');
+        await tx.clraRegistration.update({ where: { id }, data: { ...data, version: { increment: 1 } } }).catch(dup);
+        await audit(tx, c, 'clra.registration.updated', 'clra_registration', id, { locationId: loc.id, registrationNo: dto.registrationNo, maxWorkers: dto.maxWorkers });
+        return { id };
+      }
+      const row = await tx.clraRegistration.create({ data: { organizationId: c.organizationId, ...data, createdBy: c.userId ?? null } }).catch(dup);
+      await audit(tx, c, 'clra.registration.added', 'clra_registration', row.id, { locationId: loc.id, registrationNo: dto.registrationNo, maxWorkers: dto.maxWorkers });
+      return { id: row.id };
+    });
+  }
+
+  async removeRegistration(ctx: TenantContext, user: ScopeUser, id: string) {
+    await this.settingsGate(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const { count } = await tx.clraRegistration.updateMany({ where: { id, organizationId: c.organizationId, removedAt: null }, data: { removedAt: new Date() } });
+      if (!count) throw new NotFoundException('Registration not found.');
+      await audit(tx, c, 'clra.registration.removed', 'clra_registration', id, {});
+      return { removed: true };
+    });
+  }
+
   /** Answer 675: add or change a work order (number, dates, headcount, our sites it covers). */
   async saveWorkOrder(ctx: TenantContext, user: ScopeUser, contractorId: string, id: string | null, dto: WorkOrderDto) {
     await this.gate(user, 'manage');
@@ -404,6 +448,9 @@ export class ContractLabourService {
         defaults: Object.fromEntries(CLRA_SETTING_KEYS.map((k) => [k, SETTINGS[k]!.default])),
         choices: Object.fromEntries(CLRA_SETTING_KEYS.map((k) => [k, SETTINGS[k]!.values])),
         lastChange: last ? { by: by?.name || by?.email || 'Someone', at: last.updatedAt, what: `Changed ${SETTINGS[last.key]!.label.replace(/^Contract labour: /, '').toLowerCase()}` } : null,
+        registrations: (await tx.clraRegistration.findMany({ where: { organizationId: org, removedAt: null }, orderBy: { createdAt: 'asc' } })).map((r) => ({ id: r.id, locationId: r.locationId, registrationNo: r.registrationNo, maxWorkers: r.maxWorkers, validTo: r.validTo ? iso(r.validTo) : null, version: r.version })),
+        sites: (await tx.location.findMany({ where: { organizationId: org, archivedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true, state: true } })),
+        peaks: (await tx.clraSitePeak.findMany({ where: { organizationId: org } })).map((p) => ({ locationId: p.locationId, peak: p.peak, peakOn: p.peakOn ? iso(p.peakOn) : null })),
         law: law.map((r) => ({ state: r.jurisdiction, version: r.version, validFrom: iso(r.validFrom), validTo: r.validTo ? iso(r.validTo) : null, verify: r.verify, source: r.source, values: r.values as { law: string; registrationThreshold: number; licenceThreshold: number; minAge: number } })),
       };
     });
@@ -472,7 +519,7 @@ export class ContractLabourService {
   }
 
   /** Active holders of clra.contractor.manage for the whole company (profile or company-wide grant), else the System Admins. */
-  private async owners(tx: Tx, org: string, today: string): Promise<string[]> {
+  async owners(tx: Tx, org: string, today: string): Promise<string[]> {
     const like = '%"clra.contractor.manage"%';
     const rows = await tx.$queryRaw<{ id: string }[]>`
       SELECT u.id::text FROM users u JOIN permission_profiles p ON p.organization_id = u.organization_id AND p.id = u.permission_profile_id

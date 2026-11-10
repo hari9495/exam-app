@@ -13,20 +13,25 @@ import { inForce, minWage, minWageTableFor, type RuleSet } from '../statutory/ev
 import { toPaise, toRupees } from '../staffing/staffing-rules';
 import { ContractLabourService, type Upload } from './contract-labour.service';
 import { activeIn, heldMonths, monthPacks } from './clra-holds';
-import { PROOF_KINDS, challanShortfall, monthOf, packDue, packStatus, wageShortfall, type ProofKind, type ProofState } from './clra-rules';
+import { PROOF_KINDS, challanShortfall, monthOf, packDue, packStatus, requiredProofs, wageShortfall, type ProofKind, type ProofState } from './clra-rules';
+import { NotificationsService } from '../notifications/notifications.service';
+import { escapeHtml } from '../notifications/notification-email-render';
 import { WageLineDto, type DirectPaymentDto, type HoldReleaseDto, type PackItemDto } from './clra-dto';
+import { shortDays } from './clra-rules';
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const day = (s: string) => new Date(`${s}T00:00:00Z`);
 const ANY_ENTITY = { legalEntityId: '' };
 const PROOF_TYPES = ['application/pdf', 'image/jpeg', 'image/png'] as const;
-const LABEL: Record<ProofKind, string> = { pf_challan: 'PF ECR and challan', esi_challan: 'ESI challan', wage_register: 'Wage register', bank_proof: 'Wage payment proof' };
+const LABEL: Record<ProofKind, string> = { pf_challan: 'PF ECR and challan', esi_challan: 'ESI challan', wage_register: 'Wage register', bank_proof: 'Wage payment proof', muster_roll: 'Muster roll' };
 const SKILL: Record<string, string> = { unskilled: 'Unskilled', semi_skilled: 'Semi-skilled', skilled: 'Skilled', highly_skilled: 'Highly skilled' };
 const prevMonth = (today: string) => {
   const [y, m] = today.split('-').map(Number) as [number, number];
   return new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 10);
 };
 const rupees = (p: bigint) => toRupees(p);
+
+export interface ClraAlert { id: string; type: string; contractor: string; contractorId: string; site: string; month: string; detail: string; liability: string | null; severity: 'High' | 'Medium'; deploymentId?: string }
 
 export interface MinWage {
   monthly: string;
@@ -72,6 +77,7 @@ export class ComplianceService {
     private readonly clra: ContractLabourService,
     private readonly rules: StatutoryRulesService,
     private readonly files: FilesService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /** One contractor's pack for a site and month: proofs, workers with their pay against the minimum, and the checks. */
@@ -81,6 +87,7 @@ export class ComplianceService {
     if (!loc) throw new NotFoundException('Site not found.');
     const cutoff = Number(await settingFor(tx, c, 'clra.doc_cutoff', ANY_ENTITY));
     const due = packDue(month, cutoff);
+    const required = requiredProofs(await settingFor(tx, c, 'clra.required_proofs', ANY_ENTITY));
     const pack = await tx.contractorPack.findFirst({ where: { organizationId: org, agencyId, locationId, month: day(month) } });
     const items = pack ? await tx.contractorPackItem.findMany({ where: { organizationId: org, packId: pack.id } }) : [];
     const lines = pack ? await tx.contractorWageLine.findMany({ where: { organizationId: org, packId: pack.id } }) : [];
@@ -92,6 +99,9 @@ export class ComplianceService {
     const released = await tx.contractorHoldRelease.findFirst({ where: { organizationId: org, agencyId, month: day(month) } });
     const states: Partial<Record<ProofKind, ProofState>> = {};
     for (const i of items) states[i.kind as ProofKind] = i.state as ProofState;
+    // Answer 742: the days each worker was on site (kiosk punches or the contractor's entry), and whether confirmed.
+    const present = await tx.contractAttendance.groupBy({ by: ['deploymentId'], where: { organizationId: org, deploymentId: { in: deps.map((d) => d.id) }, workOn: { gte: day(month), lt: day(new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1)).toISOString().slice(0, 10)) } }, _count: { _all: true } });
+    const confirmed = Boolean(await tx.contractAttendanceConfirmation.findFirst({ where: { organizationId: org, agencyId, locationId, month: day(month) } }));
     const workers = deps.map((d) => {
       const p = persons.find((x) => x.id === d.personId);
       const line = lines.find((l) => l.deploymentId === d.id);
@@ -110,6 +120,7 @@ export class ComplianceService {
         short: w ? rupees(w.shortPaise) : null,
         paidByUs: rupees(ours),
         stillShort: rupees(left),
+        daysOnSite: present.find((x) => x.deploymentId === d.id)?._count._all ?? 0,
       };
     });
     const item = (k: ProofKind) => {
@@ -130,6 +141,7 @@ export class ComplianceService {
         return { id: k, label: `${LABEL[k]}: workers covered ≥ workers on site`, status: n === null ? ('pending' as const) : short ? ('fail' as const) : ('pass' as const), detail: n === null ? 'Not uploaded yet.' : `Covers ${n}; ${deps.length} deployed in the month.${short ? ` Short by ${short}.` : ''}` };
       }),
       { id: 'wage_register', label: 'Every worker in the wage register', status: !items.some((i) => i.kind === 'wage_register') ? ('pending' as const) : missingLines.length ? ('fail' as const) : ('pass' as const), detail: missingLines.length && items.some((i) => i.kind === 'wage_register') ? `Missing: ${missingLines.map((w) => w.name).join(', ')}.` : undefined },
+      ((short) => ({ id: 'days', label: `Days paid ≥ days on site${confirmed ? ' (confirmed)' : ' (not yet confirmed)'}`, status: !lines.length ? ('pending' as const) : short.length ? ('fail' as const) : ('pass' as const), detail: short.length ? short.map((w) => `${w.name}: paid ${w.line!.days} days, on site ${w.daysOnSite}`).join('; ') : undefined }))(workers.filter((w) => w.line && shortDays(w.line.days, w.daysOnSite) > 0)),
       { id: 'min_wage', label: 'Wages at or above the minimum wage (verify)', status: !lines.length ? ('pending' as const) : shortWorkers.length ? ('fail' as const) : ('pass' as const), detail: shortWorkers.length ? shortWorkers.map((w) => `${w.name}: paid ₹${w.line!.gross}, due ₹${w.due}`).join('; ') : undefined },
     ];
     return {
@@ -137,7 +149,8 @@ export class ComplianceService {
       site: { id: loc.id, name: loc.name },
       month: month.slice(0, 7),
       due,
-      status: packStatus(states, due, today),
+      status: packStatus(states, due, today, required),
+      required,
       released: released ? { reason: released.reason, at: released.releasedAt.toISOString() } : null,
       deployed: deps.length,
       items: Object.fromEntries(PROOF_KINDS.map((k) => [k, item(k)])) as Record<ProofKind, ReturnType<typeof item>>,
@@ -153,32 +166,79 @@ export class ComplianceService {
     const today = todayIst();
     const month = monthArg ? `${monthArg}-01` : prevMonth(today);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const org = c.organizationId;
       const all = await monthPacks(tx, c, today);
-      const here = all.filter((p) => p.month === month);
-      const agencies = await tx.agency.findMany({ where: { organizationId: org, id: { in: [...new Set(all.map((p) => p.agencyId))] } }, select: { id: true, name: true } });
-      const held = await heldMonths(tx, c, today);
-      const rows = [];
-      const alerts: { id: string; type: string; contractor: string; contractorId: string; site: string; month: string; detail: string; liability: string | null; severity: 'High' | 'Medium'; deploymentId?: string }[] = [];
-      for (const p of here) {
-        const v = await this.packView(tx, c, p.agencyId, p.locationId, month, today);
-        const name = agencies.find((x) => x.id === p.agencyId)?.name ?? 'Contractor';
-        rows.push({ contractorId: p.agencyId, contractor: name, ...v, held: (held.get(p.agencyId) ?? []).length > 0, heldMonths: (held.get(p.agencyId) ?? []).map((m) => m.slice(0, 7)) });
-        for (const w of v.workers) if (w.stillShort !== '0.00') alerts.push({ id: `wage:${w.deploymentId}:${month}`, type: 'Wage below minimum', contractor: name, contractorId: p.agencyId, site: v.site.name, month: month.slice(0, 7), detail: `${w.name}: paid ₹${w.line!.gross} for ${w.line!.days} days; due ₹${w.due} (${w.minimum?.source})${w.paidByUs !== '0.00' ? `; we paid ₹${w.paidByUs}` : ''}.`, liability: w.stillShort, severity: 'High', deploymentId: w.deploymentId });
-        for (const ch of v.checks.filter((x) => (x.id === 'pf_challan' || x.id === 'esi_challan') && x.status === 'fail')) alerts.push({ id: `${ch.id}:${p.agencyId}:${p.locationId}:${month}`, type: ch.id === 'pf_challan' ? 'Short PF challan' : 'Short ESI challan', contractor: name, contractorId: p.agencyId, site: v.site.name, month: month.slice(0, 7), detail: ch.detail!, liability: null, severity: 'High' });
-        if (v.status === 'overdue') alerts.push({ id: `overdue:${p.agencyId}:${p.locationId}:${month}`, type: 'Proofs overdue', contractor: name, contractorId: p.agencyId, site: v.site.name, month: month.slice(0, 7), detail: `Due ${v.due}; ${PROOF_KINDS.filter((k) => v.items[k]?.state !== 'verified').map((k) => LABEL[k]).join(', ')} not verified.`, liability: null, severity: 'Medium' });
-      }
+      const { rows, alerts } = await this.monthAlerts(tx, c, all, month, today);
+      const required = requiredProofs(await settingFor(tx, c, 'clra.required_proofs', ANY_ENTITY));
       return {
         month: month.slice(0, 7),
         due: packDue(month, Number(await settingFor(tx, c, 'clra.doc_cutoff', ANY_ENTITY))),
         holdMode: await settingFor(tx, c, 'clra.payment_hold', ANY_ENTITY),
         canManage: a.manage && !a.actingForOther,
-        proofTypes: PROOF_KINDS.map((k) => ({ kind: k, label: LABEL[k] })),
+        proofTypes: PROOF_KINDS.map((k) => ({ kind: k, label: LABEL[k], required: required.includes(k) })),
         months: [...new Set(all.map((p) => p.month.slice(0, 7)))].sort().reverse(),
         rows,
         alerts,
       };
     });
+  }
+
+  /** A month's packs on the tracker and its liability alerts (wage below minimum, short challans, proofs overdue). */
+  private async monthAlerts(tx: Tx, c: CompanyContext, all: Awaited<ReturnType<typeof monthPacks>>, month: string, today: string) {
+    const org = c.organizationId;
+    const here = all.filter((p) => p.month === month);
+    const agencies = await tx.agency.findMany({ where: { organizationId: org, id: { in: [...new Set(all.map((p) => p.agencyId))] } }, select: { id: true, name: true } });
+    const held = await heldMonths(tx, c, today);
+    const rows = [];
+    const alerts: ClraAlert[] = [];
+    for (const p of here) {
+      const v = await this.packView(tx, c, p.agencyId, p.locationId, month, today);
+      const name = agencies.find((x) => x.id === p.agencyId)?.name ?? 'Contractor';
+      rows.push({ contractorId: p.agencyId, contractor: name, ...v, held: (held.get(p.agencyId) ?? []).length > 0, heldMonths: (held.get(p.agencyId) ?? []).map((m) => m.slice(0, 7)) });
+      for (const w of v.workers) if (w.stillShort !== '0.00') alerts.push({ id: `wage:${w.deploymentId}:${month}`, type: 'Wage below minimum', contractor: name, contractorId: p.agencyId, site: v.site.name, month: month.slice(0, 7), detail: `${w.name}: paid ₹${w.line!.gross} for ${w.line!.days} days; due ₹${w.due} (${w.minimum?.source})${w.paidByUs !== '0.00' ? `; we paid ₹${w.paidByUs}` : ''}.`, liability: w.stillShort, severity: 'High', deploymentId: w.deploymentId });
+      for (const ch of v.checks.filter((x) => (x.id === 'pf_challan' || x.id === 'esi_challan') && x.status === 'fail')) alerts.push({ id: `${ch.id}:${p.agencyId}:${p.locationId}:${month}`, type: ch.id === 'pf_challan' ? 'Short PF challan' : 'Short ESI challan', contractor: name, contractorId: p.agencyId, site: v.site.name, month: month.slice(0, 7), detail: ch.detail!, liability: null, severity: 'High' });
+      if (v.status === 'overdue') alerts.push({ id: `overdue:${p.agencyId}:${p.locationId}:${month}`, type: 'Proofs overdue', contractor: name, contractorId: p.agencyId, site: v.site.name, month: month.slice(0, 7), detail: `Due ${v.due}; ${v.required.filter((k) => v.items[k]?.state !== 'verified').map((k) => LABEL[k]).join(', ')} not verified.`, liability: null, severity: 'Medium' });
+    }
+    return { rows, alerts };
+  }
+
+  /* ---------------- answer 743: new liability alerts by email, once per alert ---------------- */
+
+  async noticeAll(today = todayIst()): Promise<number> {
+    const orgs = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) => tx.$queryRaw<{ id: string }[]>`SELECT DISTINCT organization_id::text AS id FROM contract_deployments`);
+    let n = 0;
+    for (const { id } of orgs) n += await this.noticeOrg(id, today).catch(() => 0);
+    return n;
+  }
+
+  /**
+   * Each alert on Vendor compliance in the last three months that the compliance owners were not told about yet
+   * (clra_alert_notices keeps the ones sent). One message per alert, in the app and by email.
+   */
+  async noticeOrg(org: string, today = todayIst()): Promise<number> {
+    const c: CompanyContext = { organizationId: org, isSuperAdmin: false, userId: null };
+    const sends = await this.tenantPrisma.forTenant(c, async (tx) => {
+      const [lock] = await tx.$queryRaw<{ ok: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtext(${`clra-alert-notices:${org}`})) AS ok`;
+      if (!lock?.ok) return { out: [] as ClraAlert[], to: [] as string[] };
+      const all = await monthPacks(tx, c, today);
+      // shortcut: only the last three months are checked each night; an older month's new alert shows on the tracker only.
+      const months = [...new Set(all.map((p) => p.month))].sort().reverse().slice(0, 3);
+      const out: ClraAlert[] = [];
+      for (const m of months) {
+        for (const a of (await this.monthAlerts(tx, c, all, m, today)).alerts) {
+          const { count } = await tx.clraAlertNotice.createMany({ data: [{ organizationId: org, alertId: a.id }], skipDuplicates: true });
+          if (count) out.push(a);
+        }
+      }
+      if (out.length) await audit(tx, c, 'clra.alerts.noticed', 'organization', org, { alerts: out.length });
+      return { out, to: out.length ? await this.clra.owners(tx, org, today) : [] };
+    });
+    for (const a of sends.out) {
+      const text = `${a.type}: ${a.contractor}, ${a.site}, ${a.month}. ${a.detail}${a.liability ? ` Our liability: ₹${a.liability}.` : ''}`;
+      await this.notifications
+        .notifySystem({ organizationId: org, isSuperAdmin: false }, sends.to, 'clra.alert.new', { entityType: 'agency', entityId: a.contractorId, contextText: text, linkPath: '/yx/contract-labour/compliance' }, { subject: `Contract labour: ${a.type.toLowerCase()} (${a.contractor})`, html: `<p>${escapeHtml(text)}</p><p>Open Contract labour › Vendor compliance in YukthiX.</p>` })
+        .catch(() => undefined);
+    }
+    return sends.out.length;
   }
 
   private async itemFor(tx: Tx, c: CompanyContext, id: string, version?: number) {

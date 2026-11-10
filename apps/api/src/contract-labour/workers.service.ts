@@ -7,6 +7,9 @@ import { settingFor } from '../people/probation';
 import { toPaise, toRupees } from '../staffing/staffing-rules';
 import { ContractLabourService } from './contract-labour.service';
 import { gateValidTo, monthsLater, workerChecks, type LicenceLike, type WorkerCheck } from './clra-rules';
+import * as argon2 from 'argon2';
+import { randomInt } from 'crypto';
+import { FilesService } from '../documents/files.service';
 import type { ApproveWorkerDto, ReleaseWorkerDto, WorkerDto } from './clra-dto';
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -33,6 +36,7 @@ export class WorkersService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly crypto: OrgSecretsCryptoService,
     private readonly clra: ContractLabourService,
+    private readonly files: FilesService,
   ) {}
 
   private async policy(tx: Tx, c: CompanyContext) {
@@ -48,6 +52,7 @@ export class WorkersService {
       const persons = await tx.person.findMany({ where: { organizationId: org, id: { in: [...new Set(rows.map((r) => r.personId))] } }, select: { id: true, givenName: true, familyName: true } });
       const agencies = await tx.agency.findMany({ where: { organizationId: org, OR: [{ contractLabour: true }, { id: { in: rows.map((r) => r.agencyId) } }] }, select: { id: true, name: true, active: true, contractLabour: true }, orderBy: { name: 'asc' } });
       const locations = await tx.location.findMany({ where: { organizationId: org }, orderBy: { name: 'asc' }, select: { id: true, name: true, state: true, archivedAt: true } });
+      const pins = new Set((await tx.contractKioskPin.findMany({ where: { organizationId: org, deploymentId: { in: rows.map((r) => r.id) } }, select: { deploymentId: true } })).map((x) => x.deploymentId));
       const name = (p?: { givenName: string; familyName: string | null }) => (p ? [p.givenName, p.familyName].filter(Boolean).join(' ') : 'Unknown');
       return {
         canManage: a.manage && !a.actingForOther,
@@ -74,6 +79,8 @@ export class WorkersService {
           idMasked: `XXXX XXXX ${r.idLast4}`,
           releasedOn: r.releasedOn ? iso(r.releasedOn) : null,
           releaseReason: r.releaseReason,
+          photo: Boolean(r.photoFileId),
+          kioskPin: pins.has(r.id),
           version: r.version,
         })),
       };
@@ -117,6 +124,9 @@ export class WorkersService {
       activeUnderLicence,
       activeAtSite,
       threshold: law?.registrationThreshold ?? null,
+      // Answers 673 / 681: the site's registration (in force on the day) lifts the threshold block up to its maximum.
+      registration: await tx.clraRegistration.findFirst({ where: { organizationId: org, locationId: loc.id, removedAt: null, OR: [{ validTo: null }, { validTo: { gte: day(i.on) } }] }, select: { maxWorkers: true } }),
+      warnPct: Number(await settingFor(tx, c, 'clra.threshold_warn', ANY_ENTITY)),
       duplicateAt: dupAt,
       workOrder: wo ? { number: wo.number, headcount: wo.headcount, active: woActive } : null,
     });
@@ -254,4 +264,80 @@ export class WorkersService {
       return { id: row.id, releasedOn: end };
     });
   }
+
+  /**
+   * Answer 684: renew a gate pass, keeping its number: the licence in force today (a verified renewal counts) and the
+   * induction (recorded again when the old one has run out) set the new end, never past the deployment's last day.
+   */
+  async renewPass(ctx: TenantContext, user: ScopeUser, id: string, dto: ApproveWorkerDto) {
+    await this.clra.gate(user, 'manage');
+    const today = todayIst();
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const row = await this.deployment(tx, c, id, dto.version);
+      if (row.status !== 'deployed' || !row.gatePassNo) throw new ConflictException('Only a deployed worker has a gate pass to renew.');
+      if (row.toOn && iso(row.toOn) < today) throw new BadRequestException('This deployment has ended.');
+      const p = await this.policy(tx, c);
+      const { checks, licence } = await this.checksFor(tx, c, { contractorId: row.agencyId, locationId: row.locationId, on: today, dob: iso(row.dob), idHash: row.idHash, exceptId: row.id });
+      const lic = checks.find((x) => x.id === 'licence' && x.status === 'fail');
+      if (lic || !licence) throw new BadRequestException(`The gate pass cannot be renewed: ${lic?.detail ?? 'no licence in force today'}.`);
+      let induction = dto.inductionOn ? { on: dto.inductionOn, by: dto.inductionBy?.trim() || null } : row.inductionOn ? { on: iso(row.inductionOn), by: row.inductionBy } : null;
+      if (dto.inductionOn && (!induction?.by || induction.on > today)) throw new BadRequestException('Give the day of the induction (not in the future) and who gave it.');
+      if (p.inductionRequired) {
+        if (!induction || monthsLater(induction.on, p.inductionMonths) < today) throw new BadRequestException(`The safety induction is older than ${p.inductionMonths} months. Record the new induction.`);
+      } else induction = dto.inductionOn ? induction : null;
+      const validTo = gateValidTo({ toOn: row.toOn ? iso(row.toOn) : null, licenceValidTo: licence.validTo, inductionOn: p.inductionRequired ? induction!.on : null, inductionMonths: p.inductionRequired ? p.inductionMonths : null });
+      if (row.gateValidTo && validTo <= iso(row.gateValidTo)) throw new ConflictException(`The gate pass already runs to ${iso(row.gateValidTo)}; renewing would not extend it. Renew the licence or record a new induction first.`);
+      const { count } = await tx.contractDeployment.updateMany({ where: { id: row.id, organizationId: c.organizationId, version: row.version }, data: { gateValidTo: day(validTo), ...(dto.inductionOn ? { inductionOn: day(dto.inductionOn), inductionBy: dto.inductionBy!.trim() } : {}), version: { increment: 1 } } });
+      if (!count) throw new ConflictException('Someone else changed this worker just now. Reload the page.');
+      await audit(tx, c, 'clra.gate_pass.renewed', 'contract_deployment', row.id, { gatePassNo: row.gatePassNo, from: row.gateValidTo ? iso(row.gateValidTo) : null, to: validTo });
+      return { id: row.id, gatePass: row.gatePassNo, gateValidTo: validTo };
+    });
+  }
+
+  /** Answer 735: the worker's photo for the gate pass card (JPG or PNG; replaces the old one). */
+  async setPhoto(ctx: TenantContext, user: ScopeUser, id: string, file: { name: string; data: Buffer } | null) {
+    await this.clra.gate(user, 'manage');
+    if (!file?.data?.length) throw new BadRequestException('Choose a photo (JPG or PNG).');
+    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const row = await tx.contractDeployment.findFirst({ where: { id, organizationId: c.organizationId } });
+      if (!row) throw new NotFoundException(NOT_FOUND);
+      const f = await this.files.storeIn(tx, c, { area: 'clra-photo', name: file.name.slice(0, 120) || 'photo.jpg', data: file.data, allowedMime: ['image/jpeg', 'image/png'], maxMb: 5, via: 'staff' });
+      await tx.contractDeployment.update({ where: { id: row.id }, data: { photoFileId: f.id } });
+      await audit(tx, c, 'clra.worker.photo_set', 'contract_deployment', row.id, { fileId: f.id, sha256: f.sha256 });
+      return { org: c.organizationId, fileId: f.id };
+    });
+    void this.files.scan(out.org, out.fileId).catch(() => undefined);
+    return { photo: true };
+  }
+
+  async photo(ctx: TenantContext, user: ScopeUser, id: string) {
+    await this.clra.gate(user, 'view');
+    const row = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const d = await tx.contractDeployment.findFirst({ where: { id, organizationId: c.organizationId }, select: { photoFileId: true } });
+      if (!d?.photoFileId) throw new NotFoundException('No photo yet.');
+      const f = await tx.file.findFirstOrThrow({ where: { organizationId: c.organizationId, id: d.photoFileId } });
+      if (f.scanStatus !== 'clean') throw new ConflictException('The photo is still being checked for viruses, or failed the check.');
+      return f;
+    });
+    return { file: await this.files.bytes(row), name: row.fileName, contentType: row.mime };
+  }
+
+  /**
+   * Answer 625: the worker's kiosk PIN, shown once to give to the worker with the gate pass. At the site's kiosk the
+   * worker enters the gate pass number and this PIN; wrong tries lock it as an employee's PIN does.
+   */
+  async setKioskPin(ctx: TenantContext, user: ScopeUser, id: string) {
+    await this.clra.gate(user, 'manage');
+    const pin = String(randomInt(0, 10000)).padStart(4, '0');
+    const pinHash = await argon2.hash(pin);
+    await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const row = await tx.contractDeployment.findFirst({ where: { id, organizationId: c.organizationId } });
+      if (!row) throw new NotFoundException(NOT_FOUND);
+      if (row.status !== 'deployed' || !row.gatePassNo) throw new ConflictException('A kiosk PIN goes with the gate pass: approve the worker first.');
+      await tx.contractKioskPin.upsert({ where: { deploymentId: row.id }, create: { organizationId: c.organizationId, deploymentId: row.id, pinHash }, update: { pinHash, failed: 0, lockedUntil: null, setAt: new Date() } });
+      await audit(tx, c, 'clra.kiosk_pin.set', 'contract_deployment', row.id, {});
+    });
+    return { pin };
+  }
 }
+

@@ -30,21 +30,21 @@ built** (no API for this feature) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Principal employer (contractors working at our sites) | 5 | 37 | 2 | 0 | 3 | 0 | 42 |
+| A. Principal employer (contractors working at our sites) | 5 | 44 | 0 | 0 | 3 | 0 | 47 |
 | B. We are the contractor (our staff at client sites) | 3 | 0 | 0 | 0 | 10 | 0 | 10 |
-| C. Contractor portal | 1 | 16 | 1 | 0 | 0 | 0 | 17 |
-| D. Settings | 1 | 0 | 2 | 0 | 0 | 0 | 2 |
-| **All** | 10 | 53 | 5 | 0 | 13 | 0 | 71 |
+| C. Contractor portal | 1 | 19 | 0 | 0 | 0 | 0 | 19 |
+| D. Settings | 1 | 1 | 2 | 0 | 0 | 0 | 3 |
+| **All** | 10 | 64 | 2 | 0 | 13 | 0 | 79 |
 
-Recounted by script 18 Nov 2026 on `feat/yukthix-contract-labour-cl7` after CL-7: CLB-05 live (5 stories) and 1 new story drawn and live (CLB-05 Start).
+Of the 57 stories under Screens/Contract labour, 44 are live (CL-1 to CL-5 and CL-7); with the portal and settings pages, 64 of 79.
 
-Of the 51 stories under Screens/Contract labour, 31 are live and 2 live with a gap (CL-1 to CL-4); with the portal and settings pages, 52 of 70.
+Recounted by script 10 Nov 2026 on `feat/yukthix-contract-labour-cl5` after merging CL-7 (CLB-05 live, 5 stories, and CLB-05 Start).
 
 Related stories in other areas (counted in their own maps, listed here so the build reaches them):
 
 | story | area map | verdict there | what contract labour must add |
 |---|---|---|---|
-| PPL-01 HrContractWorkers · HR · contract workers | people | design only | the directory card from the contract-worker deployments |
+| PPL-01 HrContractWorkers · HR · contract workers | people | design only | the directory card from the contract-worker deployments; (CL-5, answer 686) All persons on the workforce page now counts each contract worker once |
 | PPL-12 Conversion · Contract worker conversion | people | live (gap) | a `contract_worker` joiner source (CLB-05 uses it) |
 | PPL-35 Panel · Panel alone (contract worker to employee, nominee) | people | live (gap) | something that creates `contract_worker` roles |
 | PPL-49 Retirements and contract ends (10) | people | live | nothing: these are fixed-term employees, not contract labour |
@@ -91,7 +91,7 @@ All 46 stories in section 4: there is no contractor, licence, deployment, proof 
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Register · Register · renewal alerts | live (gap) | the register, the renewal banner and (CL-2, answer 674) the site cards: contract workers against the licence maximums and the `IN.CLRA` threshold; the registration number waits for CL-5 (answer 673), so a site at the threshold reads "Registration needed" |
+| Register · Register · renewal alerts | live | the register, the renewal banner and (CL-2, answer 674) the site cards: contract workers against the licence maximums and the `IN.CLRA` threshold; (CL-5, answers 673 and 681) the site's registration number and its end, and the highest number on any day of the last 12 months (kept nightly) |
 | Record · Contractor record (licence, work order) | live | statutory codes, licences, (CL-2, answer 675) work orders with workers against the headcount and (CL-3, answer 631) the contractor login: contacts with access; PAN "Verified" from the linked PAY 8 consultant |
 | Expired · Expired licence record | live | an ended verified licence with no verified renewal: "Deployment blocked" (`deployBlock`) |
 | Empty · Empty | live | |
@@ -119,17 +119,22 @@ All 46 stories in section 4: there is no contractor, licence, deployment, proof 
 | Empty · Empty | live | |
 | Error · Error | live | |
 | Duplicate · Deploy · same ID already deployed (CL-2) | live | the keyed Aadhaar hash: pending or deployed anywhere in the company |
-| Threshold · Deploy · registration threshold warning (CL-2) | live | warns at the `IN.CLRA` threshold (a block once registrations exist, CL-5) |
+| Threshold · Deploy · registration threshold warning (CL-2) | live | (CL-5, answers 622 and 681) warns at `clra.threshold_warn` (default 80 %) of the `IN.CLRA` threshold; without a registration the threshold blocks; a registered site is held to its maximum |
 | Approve · Site approval · induction and gate pass (CL-2) | live | `POST …/workers/:id/approve`: induction within `clra.induction_months`; gate pass GP-<site>-<n> ending first of deployment, licence and induction |
 | Release · Release a worker (CL-2) | live | `POST …/workers/:id/release` (or withdraw before approval): the deployment and the contract_worker role end |
 | ReadOnly · Read only (view key, CL-2) | live | `clra.contractor.view` |
+| GatePassCard · Gate pass card (CL-5) | live | answer 735: the card with the worker's photo (`POST/GET …/workers/:id/photo`, JPG or PNG up to 5 MB, a new file each time), printable |
+| RenewPass · Renew gate pass (CL-5) | live | answer 684: `POST …/workers/:id/gate-pass` keeps the number; the new end must be later (otherwise 409); a new induction when the last ran out |
+| KioskPin · Kiosk PIN shown once (CL-5) | live | answer 625: `POST …/workers/:id/kiosk-pin`, a random 4-digit PIN kept only as its argon2 hash; five wrong tries lock it for 15 minutes |
+| AttendanceMonth · Attendance month (CL-5) | live | /yx/contract-labour/attendance (menu Contract labour › Attendance); `GET contract-labour/attendance?month=`: days on site per contractor and site, from the kiosk or the contractor |
+| ConfirmMonth · Confirm a month (CL-5) | live | `POST …/attendance/confirm`: a past month only, once (409 after); the month is then locked for the kiosk and the portal |
 
 #### CLB-03 · Vendor compliance tracker
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Matrix · Matrix · liability alerts · payment holds | live | /yx/contract-labour/compliance (menu Contract labour › Vendor compliance); `GET contract-labour/compliance?month=`: the four proofs per contractor and site (PT / LWF: question 741), the hold, liability alerts (wages below the minimum, short challans, overdue proofs) |
-| Verify · Proof verification · short challan | live (gap) | `POST …/compliance/proofs/:id/verify` (a clean copy; a short challan is refused: raise a discrepancy) and `…/discrepancy` with a note; days paid against days on site waits for attendance (CL-5) |
+| Matrix · Matrix · liability alerts · payment holds | live | /yx/contract-labour/compliance (menu Contract labour › Vendor compliance); `GET contract-labour/compliance?month=`: the required proofs per contractor and site (answer 741: five with the muster roll, `clra.required_proofs`; PT / LWF stay design), the hold, liability alerts (wages below the minimum, short challans, overdue proofs), each emailed once to the compliance owners (answer 743) |
+| Verify · Proof verification · short challan | live | `POST …/compliance/proofs/:id/verify` (a clean copy; a short challan is refused: raise a discrepancy) and `…/discrepancy` with a note; (CL-5, answer 742) days paid against days on site, confirmed or not yet |
 | Override · Payment hold override with reason | live | `POST …/compliance/holds/release` with the reason, the compliance owner only; the PAY 8 bank file refuses held contractors' bills (`heldConsultants`) |
 | Finance · Finance view (no override) | live | `clra.contractor.view` (finance holds no contract labour change key): sees holds and alerts, no Release |
 | AllClear · All verified | live | |
@@ -192,7 +197,7 @@ All 46 stories in section 4: there is no contractor, licence, deployment, proof 
 | Workers · Workers | live | the own contractor's waiting and deployed workers, masked ID, gate pass |
 | UnderAge · Add worker · under 18 blocked | live | `POST …/workers/check` then `…/workers`: the CL-2 checks, no override; the contractor is always the contact's own |
 | LicenceFull · Add worker · licence maximum reached | live | as UnderAge |
-| Pack · Monthly pack · short challan | live (gap) | `GET public/contractor-portal/:org/packs`, `…/pack?locationId&month`: the four proofs with their checks; the muster roll and days on site wait for attendance (CL-5) |
+| Pack · Monthly pack · short challan | live | `GET public/contractor-portal/:org/packs`, `…/pack?locationId&month`: the five proofs (the company's required ones; the others read "Optional") with their checks, days paid against days on site (CL-5) |
 | PackVerified · Monthly pack · verified | live | |
 | Bills · Bills · payment on hold | live | `GET …/bills`: the contractor's PAY 8 bills with TDS, wages we paid taken back, and the hold |
 | Phone · Monthly pack · phone | live | the same web portal at phone width (answer 641) |
@@ -204,6 +209,8 @@ All 46 stories in section 4: there is no contractor, licence, deployment, proof 
 | UploadChallan · Monthly pack · upload a challan (CL-4) | live | `POST …/pack/items` with the copy, the workers covered and the amount; a verified proof is final |
 | UploadWages · Monthly pack · wage register (CL-4) | live | each worker deployed that month: days, wage paid, paid on; the minimum wage shown for each (verify) |
 | Withdraw · Withdraw a waiting worker (CL-4) | live | answer 736: `POST …/workers/:id/withdraw` with a reason, the contractor's own waiting worker only (another's: 404); audited `via: contractor_portal` |
+| Attendance · Attendance · mark the days (CL-5) | live | answer 625: `GET/POST public/contractor-portal/:org/attendance` where the site has no attendance kiosk (or `clra.attendance_source` is "contractor"); days inside the deployment, not in the future, not after the month is confirmed |
+| AttendanceKiosk · Attendance · kiosk site (CL-5) | live | a kiosk site: the days from the workers' punches (gate pass number and PIN), read-only; entering refused (409) |
 
 ### D. Settings
 
@@ -211,8 +218,9 @@ All 46 stories in section 4: there is no contractor, licence, deployment, proof 
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| P4_9 · 4.9 Contract labour | live (gap) | the threshold and minimum age from `IN.CLRA` (verify), the licence block (law) and `clra.licence_alerts`; registrations (question 673) and monthly compliance (CL-4) left out |
+| P4_9 · 4.9 Contract labour | live (gap) | the threshold and minimum age from `IN.CLRA` (verify), the licence block (law), `clra.licence_alerts`, the induction, the proofs due day and the hold; (CL-5) registrations with the 12-month peak (answer 673, added and changed in their sheet), `clra.threshold_warn`, `clra.attendance_source` and `clra.required_proofs` (answer 741); the per-site checklist ("Required at") stays design (question 751) |
 | P4_9_ReadOnly · 4.9 Contract labour · read-only | live (gap) | without `clra.settings.manage` or `org.settings.manage` (or while acting for someone else) |
+| P4_9_Registration · 4.9 Contract labour · registration (CL-5) | live | answer 673: `POST/PUT contract-labour/registrations`, `POST …/registrations/:id/remove` with the settings key; one active per site (409), version checked |
 
 ## 5. Two designs for one job
 
@@ -496,6 +504,41 @@ renewal forms (migration `202617o0000014`), shown on the contractor record and t
 736 the contractor withdraws its own waiting workers on the portal, with a reason, audited. Later slices: 684 "Renew gate
 pass" keeping the number; 681 block at the threshold once registrations exist, 686 contract workers in All persons and
 735 the worker photo with the gate pass card (CL-5). 734 stays Aadhaar only.
+
+## CL-5 built (10 Nov 2026, branch `feat/yukthix-contract-labour-cl5`)
+
+- **Attendance (625).** Contract workers punch at the site's attendance kiosk with the gate pass number and a kiosk PIN
+  of their own (shown once, argon2 hash, locked after five wrong tries); punches go to `contract_attendance`, never to
+  employee punches, and leave and training are refused at the kiosk. Where the site has no kiosk, or the company chose
+  `clra.attendance_source` = contractor, the contractor marks the days on the portal. Our site in-charge (the contract
+  labour key) confirms a past month on Contract labour › Attendance; it is then locked.
+- **Wage check (742).** Days paid in the wage register against days on site, shown as confirmed or not yet confirmed.
+- **Threshold (622, 681).** Each site's highest number of contract workers on any day of the last 12 months, kept
+  nightly (`clra_site_peaks`). Warn at `clra.threshold_warn` (default 80 %); at the threshold a site without a
+  registration takes no more; a registered site is held to its maximum.
+- **Registrations (673).** Settings 4.9: one active registration per site, added, changed (version) and removed in a sheet.
+- **All persons (686), photo (735), renew gate pass (684).** As in the rows above.
+- **Founder answers 741, 743, 745.** The muster roll is a fifth monthly proof; `clra.required_proofs` (default all five)
+  decides the pack status and the hold; a discrepancy on any uploaded proof still counts. New liability alerts (last
+  three months) go to the compliance owners once each, in the app and by email, in the 08:30 job (`clra_alert_notices`).
+  The PAY 8 payment advice shows "Recovered wages (paid to your workers by us)" when a bill had a recovery.
+- Migrations `202617o0000015_contract_labour_5` and `202617o0000016_contract_labour_5b`; RLS on every new table.
+- Tests: `clra-rules.spec.ts`, `notification-types.spec.ts`, the kit tests for CL-5 and e2e `contract-labour-5`.
+
+## Founder questions from the CL-5 build (10 Nov 2026)
+
+751. **Required proofs per site.** The 4.9 design has a checklist with "Required at" per site; we built one company-wide
+     list. Suggested: keep company-wide until a customer needs per-site lists.
+752. **Who confirms the month.** Anyone with the contract labour key (`clra.contractor.manage`) confirms a site's month;
+     there is no separate site in-charge role. Suggested: keep; a site-scoped grant can come with access scopes.
+753. **A wrong punch after confirming.** A confirmed month is locked; there is no unlock. Suggested: the compliance owner
+     can reopen a month with a reason (audited) in a later slice.
+754. **Photo from the portal.** Only our staff add the worker's photo. Suggested: let the contractor add it when adding
+     the worker, checked at site approval.
+755. **Kiosk for contract workers.** The kiosk shows contract workers only clock in and out (no leave, no training).
+     Suggested: keep.
+756. **Older alerts.** The nightly email covers alerts in the last three months; an older month's new alert shows on
+     Vendor compliance only. Suggested: keep.
 
 ## CL-7 built (CLB-05, answer 637; 18 Nov 2026, branch `feat/yukthix-contract-labour-cl7`)
 

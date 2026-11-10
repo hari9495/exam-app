@@ -102,6 +102,7 @@ describe('notification catalog', () => {
       // HIR-13: the manager is told about an internal application.
       'hiring.internal.applied',
       'clra.licence.expiring',
+      'clra.alert.new',
       // Visitors slice 2 (604).
       'visitor.walkin.approval.host',
     ];

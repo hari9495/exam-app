@@ -5,9 +5,9 @@
 import { Button } from '../../components/button';
 import { EmptyState } from '../../components/feedback';
 import { TenantPortal } from './portals-kit';
-import { ClBillList, ClDue, ClLicences, ClPackList, ClPackView, ClWorkerList, ClWorkOrders, type MinWageHint, type PortalCheck, type PortalPackSummary, type PortalRenewalInput, type PortalUploadInput, type PortalWorkerInput } from './contractor-portal';
+import { ClAttendance, ClBillList, ClDue, ClLicences, ClPackList, ClPackView, ClWorkerList, ClWorkOrders, type MinWageHint, type PortalCheck, type PortalPackSummary, type PortalRenewalInput, type PortalUploadInput, type PortalWorkerInput, type PortalAttendance } from './contractor-portal';
 
-export type LiveContractorTab = 'establishments' | 'workers' | 'packs' | 'bills';
+export type LiveContractorTab = 'establishments' | 'workers' | 'attendance' | 'packs' | 'bills';
 /** GET /public/contractor-portal/:org/me. */
 export interface ContractorPortalData {
   company: string;
@@ -43,6 +43,10 @@ export interface LiveContractorPortal {
   onMinWage?: (locationId: string, skill: string) => Promise<MinWageHint | null>;
   /** Answer 736. */
   onWithdraw?: (id: string, reason: string) => Promise<unknown>;
+  /** CL-5 (answer 625): the days on site for a site and month, and saving the contractor's marks. */
+  attendance?: { siteId: string | null; month: string; data: PortalAttendance | null };
+  onPickAttendance?: (siteId: string, month: string) => void;
+  onSaveAttendance?: (entries: { deploymentId: string; days: string[] }[]) => Promise<unknown>;
 }
 /** GET /public/contractor-portal/:org/pack. */
 export interface ContractorPackData {
@@ -50,7 +54,8 @@ export interface ContractorPackData {
   month: string;
   due: string;
   status: 'open' | 'submitted' | 'verified' | 'discrepancy' | 'overdue';
-  items: Record<'pf_challan' | 'esi_challan' | 'wage_register' | 'bank_proof', { state: 'submitted' | 'verified' | 'discrepancy'; note: string | null; fileName: string; workersCovered: number | null; amount: string | null } | null>;
+  required?: ('pf_challan' | 'esi_challan' | 'wage_register' | 'bank_proof' | 'muster_roll')[];
+  items: Record<'pf_challan' | 'esi_challan' | 'wage_register' | 'bank_proof' | 'muster_roll', { state: 'submitted' | 'verified' | 'discrepancy'; note: string | null; fileName: string; workersCovered: number | null; amount: string | null } | null>;
   workers: { deploymentId: string; name: string; idMasked: string; skill: string; line: { days: number; gross: string; paidOn: string } | null; minimum: { monthly: string; daily: string; source: string; verify: boolean } | null; short: string | null }[];
   checks: { id: string; label: string; status: 'pass' | 'fail' | 'pending'; detail?: string }[];
 }
@@ -58,6 +63,7 @@ export interface ContractorPackData {
 const TABS: { id: LiveContractorTab; label: string }[] = [
   { id: 'establishments', label: 'Establishments and licences' },
   { id: 'workers', label: 'Workers' },
+  { id: 'attendance', label: 'Attendance' },
   { id: 'packs', label: 'Monthly packs' },
   { id: 'bills', label: 'Bills' },
 ];
@@ -82,6 +88,10 @@ export function LiveContractorPortalView({ live }: { live: LiveContractorPortal 
           <ClWorkOrders items={d.workOrders.map((w) => ({ id: w.id, number: w.number, from: dOf(w.fromOn), to: dOf(w.toOn), headcount: w.headcount, active: w.active, sites: w.sites }))} />
         </div>
       );
+    if (live.tab === 'attendance') {
+      const sites = [...new Map([...d.sites, ...(live.packs ?? []).map((x) => x.site)].map((x) => [x.id, x])).values()];
+      return <ClAttendance key={`${live.attendance?.siteId}-${live.attendance?.month}-${live.attendance?.data?.workers.map((w) => w.present).join()}`} today={today} sites={sites} siteId={live.attendance?.siteId ?? null} month={live.attendance?.month ?? d.today.slice(0, 7)} data={live.attendance?.data ?? null} onPick={live.onPickAttendance} onSave={live.onSaveAttendance} />;
+    }
     if (live.tab === 'packs') {
       if (live.pack) return <ClPackView pack={{ ...live.pack, due: dOf(live.pack.due) }} today={today} onBack={() => live.onOpenPack?.(null)} onUpload={live.onUpload} />;
       return <ClPackList items={live.packs ?? []} onOpen={(p) => live.onOpenPack?.(p)} />;

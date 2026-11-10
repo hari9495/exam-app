@@ -18967,51 +18967,6 @@
     "note": "Positive."
   },
   {
-    "id": "MT-561-01",
-    "area": "Hiring · Answer 561 WhatsApp opt-in (10 Nov 2026)",
-    "screen": "Apply form · WhatsApp tick",
-    "url": "http://localhost:3000/yx/careers/<demo company slug> (open a job, Apply)",
-    "account": "A new applicant (not signed in). Browser window 1278 x 635.",
-    "steps": [
-      "Fill the apply form and leave \"Message me on WhatsApp about jobs\" unticked; send.",
-      "Apply again to another job with a new email and tick it; send."
-    ],
-    "expected": "Step 1: sent; the candidate record shows no WhatsApp opt-in. Step 2: sent; the candidate is opted in (Talent CRM engagement shows WhatsApp: opted in), and the audit log has candidate.whatsapp.opted_in.",
-    "stories": [
-      "Surfaces/Careers · Apply form · Message me on WhatsApp about jobs"
-    ],
-    "note": "Negative then positive."
-  },
-  {
-    "id": "MT-561-02",
-    "area": "Hiring · Answer 561 WhatsApp opt-in (10 Nov 2026)",
-    "screen": "Status page · WhatsApp tick",
-    "url": "http://localhost:3000/yx/application/<status link from the apply email>",
-    "account": "The applicant from MT-561-01 step 2.",
-    "steps": [
-      "Open the status link from the apply email.",
-      "Untick \"Message me on WhatsApp about jobs\", then tick it again."
-    ],
-    "expected": "Ticked at first; unticking shows \"WhatsApp messages off\" and ticking \"WhatsApp messages on\" (toasts). A candidate who gave no mobile number sees \"We have no mobile number for you…\" and no tick.",
-    "stories": [
-      "Screens/Portals/T9-09 · Careers site · Application status · Message me on WhatsApp about jobs"
-    ],
-    "note": "Positive and negative."
-  },
-  {
-    "id": "MT-561-03",
-    "area": "Hiring · Answer 561 WhatsApp opt-in (10 Nov 2026)",
-    "screen": "Unsubscribe link · WhatsApp",
-    "url": "http://localhost:3000/unsubscribe/<link from a campaign email>",
-    "account": "The opted-in applicant.",
-    "steps": [
-      "Open the unsubscribe link and press Stop WhatsApp messages about jobs."
-    ],
-    "expected": "It says no WhatsApp messages about jobs will come; a WhatsApp campaign no longer counts them in Who gets it.",
-    "stories": [],
-    "note": "Positive."
-  },
-  {
     "id": "MT-CLRA-01",
     "area": "Contract labour · CL-1: contractors and licences (10 Nov 2026)",
     "screen": "Add a contractor (CLB-01)",
@@ -19085,6 +19040,286 @@
       "Screens/Settings/Group 4 · Payroll & Statutory · 4.9 Contract labour"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CLRA-05",
+    "area": "Contract labour · CL-2: contract workers (10 Nov 2026)",
+    "screen": "Deploy a worker (CLB-02)",
+    "url": "http://localhost:3000/yx/contract-labour/workers",
+    "account": "admin-tester@demo-org.test (System Admin). Browser window 1278 x 635. A contractor with a verified licence for Hosur plant (maximum 2); a test Aadhaar number with a valid check digit.",
+    "steps": [
+      "1. Press Deploy worker and press Send for site approval with nothing filled.",
+      "2. Fill everything with a date of birth 17 years ago and send.",
+      "3. Change the date of birth to 30 years ago and send.",
+      "4. Deploy the same Aadhaar number again.",
+      "5. Deploy two more workers with other numbers."
+    ],
+    "expected": "Step 1: every missing field is named; nothing is sent. Step 2: the checks show 'Age 18 or over' failed and 'Deployment blocked'. Step 3: 'Sent for site approval'; the row shows ID XXXX XXXX and the last 4 digits only, status Pending approval. Step 4: blocked: already deployed or waiting. Step 5: the second is sent; the third is blocked by the licence maximum.",
+    "stories": [
+      "Screens/Contract labour/CLB-02 · Contract workers register · Deploy · under 18 blocked",
+      "Screens/Contract labour/CLB-02 · Contract workers register · Deploy · same ID already deployed (CL-2)"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CLRA-06",
+    "area": "Contract labour · CL-2: contract workers (10 Nov 2026)",
+    "screen": "Site approval and release (CLB-02)",
+    "url": "http://localhost:3000/yx/contract-labour/workers",
+    "account": "admin-tester@demo-org.test (System Admin). Browser window 1278 x 635. A contractor with a verified licence for Hosur plant (maximum 2); a test Aadhaar number with a valid check digit.",
+    "steps": [
+      "1. Press Approve on a waiting worker and approve with nothing filled.",
+      "2. Enter an induction 13 months ago and approve.",
+      "3. Enter today's induction and the person who gave it; approve.",
+      "4. Press Release on the worker, without a reason, then with one."
+    ],
+    "expected": "Step 1: the induction day and who gave it are asked for. Step 2: refused: older than 12 months. Step 3: a toast; the row shows the gate pass GP-… and the day it ends (the licence end or 12 months, whichever is first), status Deployed. Step 4: a reason is asked for; then the worker is Released.",
+    "stories": [
+      "Screens/Contract labour/CLB-02 · Contract workers register · Site approval · induction and gate pass (CL-2)",
+      "Screens/Contract labour/CLB-02 · Contract workers register · Release a worker (CL-2)"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CLRA-07",
+    "area": "Contract labour · CL-2: contract workers (10 Nov 2026)",
+    "screen": "Work order, site card and directory",
+    "url": "http://localhost:3000/yx/contract-labour/contractors",
+    "account": "admin-tester@demo-org.test (System Admin). Browser window 1278 x 635. A contractor with a verified licence for Hosur plant (maximum 2); a test Aadhaar number with a valid check digit.",
+    "steps": [
+      "1. Open the contractor, press Add work order and save with nothing filled; then add one for Hosur plant with headcount 1.",
+      "2. Deploy another worker for this contractor at Hosur plant.",
+      "3. Look at the Hosur plant card above the register.",
+      "4. Open People › Directory, card Contract workers."
+    ],
+    "expected": "Step 1: each missing field is named; then the work order shows with its workers against the headcount. Step 2: the checks show 'Within work order' as Check (a warning), and the worker is still sent. Step 3: contract workers, licence maximum and the threshold (verify). Step 4: the contract workers are listed with their contractor; a row opens Contract workers.",
+    "stories": [
+      "Screens/Contract labour/CLB-01 · Contractors register · Add work order (CL-2)",
+      "Screens/People/PPL-01 · Directory · HR · contract workers"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CLRA-08",
+    "area": "Contract labour · CL-3: contractor portal (10 Nov 2026)",
+    "screen": "Invite and sign in (CLB-01, T9-13)",
+    "url": "http://localhost:3000/yx/contract-labour/contractors",
+    "account": "admin-tester@demo-org.test (System Admin) and a mailbox you can read for the contractor contact. Browser window 1278 x 635, then a phone-width window.",
+    "steps": [
+      "1. Open a contractor, press Invite to contractor login and send with nothing filled; then invite your mailbox.",
+      "2. Open the emailed link, ask for a code with an email that was not invited.",
+      "3. Ask for a code with the invited email twice at once.",
+      "4. Enter a wrong code, then the right one.",
+      "5. Back in the contractor record, press Remove access; reload the portal."
+    ],
+    "expected": "Step 1: name and email asked for; then a toast and the contact shows Invited. Step 2: the same 'code sent' answer, no email arrives. Step 3: the second request is refused: wait and try again. Step 4: the wrong code is refused; the right one opens What is due. Step 5: the portal asks to sign in again.",
+    "stories": [
+      "Screens/Contract labour/CLB-01 · Contractors register · Invite to contractor login (CL-3)",
+      "Screens/Portals/T9-13 · Contract-labour vendor portal · Sign in (email OTP)"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CLRA-09",
+    "area": "Contract labour · CL-3: contractor portal (10 Nov 2026)",
+    "screen": "Portal: renewal and add worker (T9-13)",
+    "url": "http://localhost:3000/yx/contractor/demo-org",
+    "account": "The invited contractor contact (signed in). A licence of theirs ending within 60 days.",
+    "steps": [
+      "1. On Establishments and licences press Upload renewed licence and upload with nothing filled; then fill it with an end date after the current one and a PDF.",
+      "2. As the compliance owner, reject the renewal with a reason; reload the portal.",
+      "3. On Workers press Add worker, fill a date of birth 17 years ago and send; then 30 years ago.",
+      "4. Make the window phone width."
+    ],
+    "expected": "Step 1: every missing field is named; then 'Renewal uploaded; the company checks it' and What is due says it is being checked. Step 2: the reason shows and the upload button is back. Step 3: blocked: the worker is under 18; then 'Sent for site approval' and the worker waits for site approval. Step 4: everything fits with no sideways scroll except the workers table, which scrolls inside its box.",
+    "stories": [
+      "Screens/Portals/T9-13 · Contract-labour vendor portal · Upload a renewed licence (CL-3)",
+      "Screens/Portals/T9-13 · Contract-labour vendor portal · Add worker · under 18 blocked"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CLRA-10",
+    "area": "Contract labour · CL-4: vendor compliance (10 Nov 2026)",
+    "screen": "Portal: monthly pack (T9-13)",
+    "url": "http://localhost:3000/yx/contractor/demo-org?tab=packs",
+    "account": "The invited contractor contact (signed in). One of their workers was deployed last month at a site of theirs.",
+    "steps": [
+      "1. Open Monthly packs, open last month's pack.",
+      "2. Upload the PF challan with nothing filled; then with workers covered 0 and an amount and a PDF.",
+      "3. Open the wage register: fill one worker below the minimum shown, and upload.",
+      "4. Upload the ESI challan covering every worker and the bank proof."
+    ],
+    "expected": "Step 1: the four proofs, each Not uploaded, and the checks waiting. Step 2: workers covered, amount and the copy are asked for; then the PF check fails (short). Step 3: the minimum wage shows under each wage; after upload 'Wages at or above the minimum wage' fails. Step 4: the pack is Submitted (or Overdue past the due day).",
+    "stories": [
+      "Screens/Portals/T9-13 · Contract-labour vendor portal · Monthly pack · upload a challan (CL-4)",
+      "Screens/Portals/T9-13 · Contract-labour vendor portal · Monthly pack · wage register (CL-4)"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CLRA-11",
+    "area": "Contract labour · CL-4: vendor compliance (10 Nov 2026)",
+    "screen": "Vendor compliance, the hold and payment by us (CLB-03)",
+    "url": "http://localhost:3000/yx/contract-labour/compliance",
+    "account": "admin-tester@demo-org.test (System Admin); then a payroll user without the contract labour keys. The contractor has a PAY 8 consultant record with an approved bill.",
+    "steps": [
+      "1. Open Vendor compliance for last month; press the PF challan cell and Mark verified.",
+      "2. Raise a discrepancy without a note, then with one.",
+      "3. As payroll, make a bank file with the contractor's bill; try Release.",
+      "4. As the System Admin press Release without a reason, then with one; make the bank file again.",
+      "5. On the wage alert press Record payment by us; then approve the contractor's next bill."
+    ],
+    "expected": "Step 1: refused: the challan covers fewer workers than deployed. Step 2: a note is asked for; then the cell shows Discrepancy and the bill Held. Step 3: the bank file is refused: bills on hold; payroll sees no Release. Step 4: a reason is asked for; then the month is released and the bank file is no longer refused for the hold. Step 5: the alert closes; the next approved bill's net is less by the amount paid.",
+    "stories": [
+      "Screens/Contract labour/CLB-03 · Vendor compliance tracker · Payment hold override with reason",
+      "Screens/Contract labour/CLB-03 · Vendor compliance tracker · Record payment by us (CL-4)"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CLRA-12",
+    "area": "Contract labour · CL-5: attendance, threshold, gate pass (10 Nov 2026)",
+    "screen": "Gate pass card, renewal, photo and kiosk PIN (CLB-02)",
+    "url": "http://localhost:3000/yx/contract-labour/workers",
+    "account": "admin-tester@demo-org.test (System Admin); then a user with only the contract labour view key. A deployed contract worker.",
+    "steps": [
+      "1. On a deployed worker press Gate pass; press Add photo and upload a PDF, then a JPG.",
+      "2. Press Kiosk PIN; close the dialog and open the card again.",
+      "3. Press Renew gate pass, clear Given by and press Renew gate pass; then fill it and renew.",
+      "4. As the view-key user open Contract workers."
+    ],
+    "expected": "Step 1: the PDF is refused (JPG or PNG); the JPG shows on the card. Step 2: a 4-digit PIN is shown once; the card now offers New kiosk PIN, never the old PIN. Step 3: 'Enter who gave the induction.' with focus on the field; then a toast and the gate pass keeps its number with a later end. Step 4: no Gate pass, Release or Approve buttons.",
+    "stories": [
+      "Screens/Contract labour/CLB-02 · Contract workers register · Gate pass card (CL-5)",
+      "Screens/Contract labour/CLB-02 · Contract workers register · Renew gate pass (CL-5)",
+      "Screens/Contract labour/CLB-02 · Contract workers register · Kiosk PIN shown once (CL-5)"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CLRA-13",
+    "area": "Contract labour · CL-5: attendance, threshold, gate pass (10 Nov 2026)",
+    "screen": "Contract worker at the attendance kiosk (625)",
+    "url": "http://localhost:3000/yx/kiosk",
+    "account": "The site's attendance kiosk (paired). The worker's gate pass number and the PIN from MT-CLRA-12.",
+    "steps": [
+      "1. Enter the gate pass number and a wrong PIN five times.",
+      "2. After 15 minutes enter the right PIN; clock in, then clock out.",
+      "3. Look for leave and training on the kiosk.",
+      "4. Open Contract labour › Attendance for this month."
+    ],
+    "expected": "Step 1: refused each time, then locked. Step 2: the punches are taken. Step 3: not offered to a contract worker. Step 4: the worker has 1 day on site at that site, from the kiosk; no employee punch was made.",
+    "stories": [
+      "Screens/Contract labour/CLB-02 · Contract workers register · Attendance month (CL-5)"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CLRA-14",
+    "area": "Contract labour · CL-5: attendance, threshold, gate pass (10 Nov 2026)",
+    "screen": "Contractor marks days; the site in-charge confirms (625, 742)",
+    "url": "http://localhost:3000/yx/contractor/demo-org",
+    "account": "The contractor's portal contact (email code), for a site with no attendance kiosk; then admin-tester@demo-org.test (System Admin).",
+    "steps": [
+      "1. On the portal open Attendance, choose the site and last month; tick days and Save days.",
+      "2. Choose a kiosk site.",
+      "3. As the System Admin open Contract labour › Attendance for last month and Confirm month; try this month.",
+      "4. On the portal change a day of the confirmed month.",
+      "5. Upload a wage register paying fewer days than marked; open Vendor compliance."
+    ],
+    "expected": "Step 1: toast 'Days saved'; days outside the deployment cannot be ticked. Step 2: read-only, 'From the kiosk'. Step 3: the month shows Confirmed; this month has no Confirm. Step 4: nothing can be changed. Step 5: the check 'Days paid ≥ days on site (confirmed)' fails with the worker's days.",
+    "stories": [
+      "Screens/Portals/T9-13 · Contract-labour vendor portal · Attendance · mark the days (CL-5)",
+      "Screens/Portals/T9-13 · Contract-labour vendor portal · Attendance · kiosk site (CL-5)",
+      "Screens/Contract labour/CLB-02 · Contract workers register · Confirm a month (CL-5)"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CLRA-15",
+    "area": "Contract labour · CL-5: attendance, threshold, gate pass (10 Nov 2026)",
+    "screen": "Registrations and the threshold (Settings 4.9; 622, 673, 681)",
+    "url": "http://localhost:3000/yx/settings/contract-labour",
+    "account": "admin-tester@demo-org.test (System Admin); then a user with only the contract labour change key.",
+    "steps": [
+      "1. Under Registrations press Add and save empty; then add one for a site with a maximum of 2.",
+      "2. Add a second one for the same site.",
+      "3. Deploy contract workers at that site until the maximum is passed.",
+      "4. Remove the registration; deploy at a site at 80 % of the threshold.",
+      "5. As the contract labour user open 4.9."
+    ],
+    "expected": "Step 1: each missing field named, focus on the first; then the row shows with 'Highest in 12 months'. Step 2: refused, one registration per site. Step 3: the third worker is blocked by the registration maximum. Step 4: a warning at 80 % (Warn when a site reaches); blocked at the threshold. Step 5: read-only, no Add.",
+    "stories": [
+      "Screens/Settings/Group 4 · Payroll & Statutory · 4.9 Contract labour",
+      "Screens/Contract labour/CLB-02 · Contract workers register · Deploy · registration threshold warning (CL-2)"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CLRA-16",
+    "area": "Contract labour · CL-5: attendance, threshold, gate pass (10 Nov 2026)",
+    "screen": "Muster roll, required proofs, alert emails, recovered wages (741, 743, 745)",
+    "url": "http://localhost:3000/yx/contract-labour/compliance",
+    "account": "admin-tester@demo-org.test (System Admin); the contractor's portal contact; a payroll user for PAY 8.",
+    "steps": [
+      "1. In 4.9 untick Muster roll in 'Proofs a contractor must give each month' and save; untick all and save.",
+      "2. On the portal open last month's pack.",
+      "3. Leave a pack overdue past the due day; wait for the 08:30 job (or the next morning).",
+      "4. The next morning check email again.",
+      "5. Pay a contractor bill with a recovery and open its payment advice."
+    ],
+    "expected": "Step 1: toast; Vendor compliance no longer has a Muster roll column. With none ticked nothing decides the status (question 751 if that is wrong). Step 2: Muster roll reads Optional and can still be uploaded. Step 3: one email per new alert to the compliance owners. Step 4: no repeat for the same alert. Step 5: a line 'Recovered wages (paid to your workers by us)' with the amount taken back.",
+    "stories": [
+      "Screens/Contract labour/CLB-03 · Vendor compliance tracker · Matrix · liability alerts · payment holds",
+      "Screens/Portals/T9-13 · Contract-labour vendor portal · Monthly pack · short challan"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-561-01",
+    "area": "Hiring · Answer 561 WhatsApp opt-in (10 Nov 2026)",
+    "screen": "Apply form · WhatsApp tick",
+    "url": "http://localhost:3000/yx/careers/<demo company slug> (open a job, Apply)",
+    "account": "A new applicant (not signed in). Browser window 1278 x 635.",
+    "steps": [
+      "Fill the apply form and leave \"Message me on WhatsApp about jobs\" unticked; send.",
+      "Apply again to another job with a new email and tick it; send."
+    ],
+    "expected": "Step 1: sent; the candidate record shows no WhatsApp opt-in. Step 2: sent; the candidate is opted in (Talent CRM engagement shows WhatsApp: opted in), and the audit log has candidate.whatsapp.opted_in.",
+    "stories": [
+      "Surfaces/Careers · Apply form · Message me on WhatsApp about jobs"
+    ],
+    "note": "Negative then positive."
+  },
+  {
+    "id": "MT-561-02",
+    "area": "Hiring · Answer 561 WhatsApp opt-in (10 Nov 2026)",
+    "screen": "Status page · WhatsApp tick",
+    "url": "http://localhost:3000/yx/application/<status link from the apply email>",
+    "account": "The applicant from MT-561-01 step 2.",
+    "steps": [
+      "Open the status link from the apply email.",
+      "Untick \"Message me on WhatsApp about jobs\", then tick it again."
+    ],
+    "expected": "Ticked at first; unticking shows \"WhatsApp messages off\" and ticking \"WhatsApp messages on\" (toasts). A candidate who gave no mobile number sees \"We have no mobile number for you…\" and no tick.",
+    "stories": [
+      "Screens/Portals/T9-09 · Careers site · Application status · Message me on WhatsApp about jobs"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-561-03",
+    "area": "Hiring · Answer 561 WhatsApp opt-in (10 Nov 2026)",
+    "screen": "Unsubscribe link · WhatsApp",
+    "url": "http://localhost:3000/unsubscribe/<link from a campaign email>",
+    "account": "The opted-in applicant.",
+    "steps": [
+      "Open the unsubscribe link and press Stop WhatsApp messages about jobs."
+    ],
+    "expected": "It says no WhatsApp messages about jobs will come; a WhatsApp campaign no longer counts them in Who gets it.",
+    "stories": [],
+    "note": "Positive."
   },
   {
     "id": "MT-VIS-01",
@@ -19196,103 +19431,6 @@
     "note": "Positive and negative."
   },
   {
-    "id": "MT-CLRA-05",
-    "area": "Contract labour · CL-2: contract workers (10 Nov 2026)",
-    "screen": "Deploy a worker (CLB-02)",
-    "url": "http://localhost:3000/yx/contract-labour/workers",
-    "account": "admin-tester@demo-org.test (System Admin). Browser window 1278 x 635. A contractor with a verified licence for Hosur plant (maximum 2); a test Aadhaar number with a valid check digit.",
-    "steps": [
-      "1. Press Deploy worker and press Send for site approval with nothing filled.",
-      "2. Fill everything with a date of birth 17 years ago and send.",
-      "3. Change the date of birth to 30 years ago and send.",
-      "4. Deploy the same Aadhaar number again.",
-      "5. Deploy two more workers with other numbers."
-    ],
-    "expected": "Step 1: every missing field is named; nothing is sent. Step 2: the checks show 'Age 18 or over' failed and 'Deployment blocked'. Step 3: 'Sent for site approval'; the row shows ID XXXX XXXX and the last 4 digits only, status Pending approval. Step 4: blocked: already deployed or waiting. Step 5: the second is sent; the third is blocked by the licence maximum.",
-    "stories": [
-      "Screens/Contract labour/CLB-02 · Contract workers register · Deploy · under 18 blocked",
-      "Screens/Contract labour/CLB-02 · Contract workers register · Deploy · same ID already deployed (CL-2)"
-    ],
-    "note": "Positive and negative."
-  },
-  {
-    "id": "MT-CLRA-06",
-    "area": "Contract labour · CL-2: contract workers (10 Nov 2026)",
-    "screen": "Site approval and release (CLB-02)",
-    "url": "http://localhost:3000/yx/contract-labour/workers",
-    "account": "admin-tester@demo-org.test (System Admin). Browser window 1278 x 635. A contractor with a verified licence for Hosur plant (maximum 2); a test Aadhaar number with a valid check digit.",
-    "steps": [
-      "1. Press Approve on a waiting worker and approve with nothing filled.",
-      "2. Enter an induction 13 months ago and approve.",
-      "3. Enter today's induction and the person who gave it; approve.",
-      "4. Press Release on the worker, without a reason, then with one."
-    ],
-    "expected": "Step 1: the induction day and who gave it are asked for. Step 2: refused: older than 12 months. Step 3: a toast; the row shows the gate pass GP-… and the day it ends (the licence end or 12 months, whichever is first), status Deployed. Step 4: a reason is asked for; then the worker is Released.",
-    "stories": [
-      "Screens/Contract labour/CLB-02 · Contract workers register · Site approval · induction and gate pass (CL-2)",
-      "Screens/Contract labour/CLB-02 · Contract workers register · Release a worker (CL-2)"
-    ],
-    "note": "Positive and negative."
-  },
-  {
-    "id": "MT-CLRA-07",
-    "area": "Contract labour · CL-2: contract workers (10 Nov 2026)",
-    "screen": "Work order, site card and directory",
-    "url": "http://localhost:3000/yx/contract-labour/contractors",
-    "account": "admin-tester@demo-org.test (System Admin). Browser window 1278 x 635. A contractor with a verified licence for Hosur plant (maximum 2); a test Aadhaar number with a valid check digit.",
-    "steps": [
-      "1. Open the contractor, press Add work order and save with nothing filled; then add one for Hosur plant with headcount 1.",
-      "2. Deploy another worker for this contractor at Hosur plant.",
-      "3. Look at the Hosur plant card above the register.",
-      "4. Open People › Directory, card Contract workers."
-    ],
-    "expected": "Step 1: each missing field is named; then the work order shows with its workers against the headcount. Step 2: the checks show 'Within work order' as Check (a warning), and the worker is still sent. Step 3: contract workers, licence maximum and the threshold (verify). Step 4: the contract workers are listed with their contractor; a row opens Contract workers.",
-    "stories": [
-      "Screens/Contract labour/CLB-01 · Contractors register · Add work order (CL-2)",
-      "Screens/People/PPL-01 · Directory · HR · contract workers"
-    ],
-    "note": "Positive and negative."
-  },
-  {
-    "id": "MT-CLRA-08",
-    "area": "Contract labour · CL-3: contractor portal (10 Nov 2026)",
-    "screen": "Invite and sign in (CLB-01, T9-13)",
-    "url": "http://localhost:3000/yx/contract-labour/contractors",
-    "account": "admin-tester@demo-org.test (System Admin) and a mailbox you can read for the contractor contact. Browser window 1278 x 635, then a phone-width window.",
-    "steps": [
-      "1. Open a contractor, press Invite to contractor login and send with nothing filled; then invite your mailbox.",
-      "2. Open the emailed link, ask for a code with an email that was not invited.",
-      "3. Ask for a code with the invited email twice at once.",
-      "4. Enter a wrong code, then the right one.",
-      "5. Back in the contractor record, press Remove access; reload the portal."
-    ],
-    "expected": "Step 1: name and email asked for; then a toast and the contact shows Invited. Step 2: the same 'code sent' answer, no email arrives. Step 3: the second request is refused: wait and try again. Step 4: the wrong code is refused; the right one opens What is due. Step 5: the portal asks to sign in again.",
-    "stories": [
-      "Screens/Contract labour/CLB-01 · Contractors register · Invite to contractor login (CL-3)",
-      "Screens/Portals/T9-13 · Contract-labour vendor portal · Sign in (email OTP)"
-    ],
-    "note": "Positive and negative."
-  },
-  {
-    "id": "MT-CLRA-09",
-    "area": "Contract labour · CL-3: contractor portal (10 Nov 2026)",
-    "screen": "Portal: renewal and add worker (T9-13)",
-    "url": "http://localhost:3000/yx/contractor/demo-org",
-    "account": "The invited contractor contact (signed in). A licence of theirs ending within 60 days.",
-    "steps": [
-      "1. On Establishments and licences press Upload renewed licence and upload with nothing filled; then fill it with an end date after the current one and a PDF.",
-      "2. As the compliance owner, reject the renewal with a reason; reload the portal.",
-      "3. On Workers press Add worker, fill a date of birth 17 years ago and send; then 30 years ago.",
-      "4. Make the window phone width."
-    ],
-    "expected": "Step 1: every missing field is named; then 'Renewal uploaded; the company checks it' and What is due says it is being checked. Step 2: the reason shows and the upload button is back. Step 3: blocked: the worker is under 18; then 'Sent for site approval' and the worker waits for site approval. Step 4: everything fits with no sideways scroll except the workers table, which scrolls inside its box.",
-    "stories": [
-      "Screens/Portals/T9-13 · Contract-labour vendor portal · Upload a renewed licence (CL-3)",
-      "Screens/Portals/T9-13 · Contract-labour vendor portal · Add worker · under 18 blocked"
-    ],
-    "note": "Positive and negative."
-  },
-  {
     "id": "MT-VIS-06",
     "area": "Visitors · slice 3 (16 Nov 2026)",
     "screen": "VIS-05 Visitor watch-list",
@@ -19372,45 +19510,6 @@
       "Screens/Visitors/VIS-01 · Today's visitors · Check in · visitor under 18 with an adult"
     ],
     "note": "Positive and negative. Answer 614."
-  },
-  {
-    "id": "MT-CLRA-10",
-    "area": "Contract labour · CL-4: vendor compliance (10 Nov 2026)",
-    "screen": "Portal: monthly pack (T9-13)",
-    "url": "http://localhost:3000/yx/contractor/demo-org?tab=packs",
-    "account": "The invited contractor contact (signed in). One of their workers was deployed last month at a site of theirs.",
-    "steps": [
-      "1. Open Monthly packs, open last month's pack.",
-      "2. Upload the PF challan with nothing filled; then with workers covered 0 and an amount and a PDF.",
-      "3. Open the wage register: fill one worker below the minimum shown, and upload.",
-      "4. Upload the ESI challan covering every worker and the bank proof."
-    ],
-    "expected": "Step 1: the four proofs, each Not uploaded, and the checks waiting. Step 2: workers covered, amount and the copy are asked for; then the PF check fails (short). Step 3: the minimum wage shows under each wage; after upload 'Wages at or above the minimum wage' fails. Step 4: the pack is Submitted (or Overdue past the due day).",
-    "stories": [
-      "Screens/Portals/T9-13 · Contract-labour vendor portal · Monthly pack · upload a challan (CL-4)",
-      "Screens/Portals/T9-13 · Contract-labour vendor portal · Monthly pack · wage register (CL-4)"
-    ],
-    "note": "Positive and negative."
-  },
-  {
-    "id": "MT-CLRA-11",
-    "area": "Contract labour · CL-4: vendor compliance (10 Nov 2026)",
-    "screen": "Vendor compliance, the hold and payment by us (CLB-03)",
-    "url": "http://localhost:3000/yx/contract-labour/compliance",
-    "account": "admin-tester@demo-org.test (System Admin); then a payroll user without the contract labour keys. The contractor has a PAY 8 consultant record with an approved bill.",
-    "steps": [
-      "1. Open Vendor compliance for last month; press the PF challan cell and Mark verified.",
-      "2. Raise a discrepancy without a note, then with one.",
-      "3. As payroll, make a bank file with the contractor's bill; try Release.",
-      "4. As the System Admin press Release without a reason, then with one; make the bank file again.",
-      "5. On the wage alert press Record payment by us; then approve the contractor's next bill."
-    ],
-    "expected": "Step 1: refused: the challan covers fewer workers than deployed. Step 2: a note is asked for; then the cell shows Discrepancy and the bill Held. Step 3: the bank file is refused: bills on hold; payroll sees no Release. Step 4: a reason is asked for; then the month is released and the bank file is no longer refused for the hold. Step 5: the alert closes; the next approved bill's net is less by the amount paid.",
-    "stories": [
-      "Screens/Contract labour/CLB-03 · Vendor compliance tracker · Payment hold override with reason",
-      "Screens/Contract labour/CLB-03 · Vendor compliance tracker · Record payment by us (CL-4)"
-    ],
-    "note": "Positive and negative."
   },
   {
     "id": "MT-VIS-10",

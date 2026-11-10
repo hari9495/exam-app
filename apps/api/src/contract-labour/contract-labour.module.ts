@@ -11,6 +11,7 @@ import { REDIS_CONNECTION, bullOpts, createRedisConnection, logBullErrors } from
 import { ContractLabourController } from './contract-labour.controller';
 import { ContractLabourService } from './contract-labour.service';
 import { WorkersService } from './workers.service';
+import { ContractAttendanceService } from './attendance.service';
 import { ComplianceService } from './compliance.service';
 import { StatutoryModule } from '../statutory/statutory.module';
 import { ContractorPortalService } from './contractor-portal.service';
@@ -18,7 +19,7 @@ import { PublicContractorPortalController } from './contractor-portal.controller
 
 const QUEUE = 'clra-jobs';
 
-/** Answer 627: every morning at 08:30 India time, tell the compliance owners about licences reaching an alert day. */
+/** Answers 627, 743: every morning at 08:30 India time, tell the compliance owners about licences reaching an alert day and new liability alerts. */
 @Injectable()
 export class ContractLabourJobs implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ContractLabourJobs.name);
@@ -28,6 +29,8 @@ export class ContractLabourJobs implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Inject(REDIS_CONNECTION) private readonly connection: Redis,
     private readonly svc: ContractLabourService,
+    private readonly attendance: ContractAttendanceService,
+    private readonly compliance: ComplianceService,
   ) {
     this.queue = logBullErrors(new Queue(QUEUE, bullOpts(connection)), QUEUE);
   }
@@ -44,7 +47,12 @@ export class ContractLabourJobs implements OnModuleInit, OnModuleDestroy {
 
   async run() {
     const n = await this.svc.alertAll().catch((e: Error) => (this.logger.warn(`licence alerts: ${e.message}`), 0));
+    // Answer 622: each site's highest number of contract workers on any day of the last 12 months.
+    await this.attendance.peaksAll().catch((e: Error) => this.logger.warn(`clra peaks: ${e.message}`));
     if (n) this.logger.log(`contractor licence alerts: ${n}`);
+    // Answer 743: new liability alerts to the compliance owners, once per alert.
+    const k = await this.compliance.noticeAll().catch((e: Error) => (this.logger.warn(`clra alert notices: ${e.message}`), 0));
+    if (k) this.logger.log(`contract labour alerts noticed: ${k}`);
   }
 }
 
@@ -53,7 +61,7 @@ export class ContractLabourJobs implements OnModuleInit, OnModuleDestroy {
 @Module({
   imports: [AuthModule, StatutoryModule, CryptoModule, DocumentsModule, EmailModule, NotificationsModule, OrgStructureModule],
   controllers: [ContractLabourController, PublicContractorPortalController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, ContractLabourService, WorkersService, ComplianceService, ContractorPortalService, ContractLabourJobs],
-  exports: [ContractLabourService],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, ContractLabourService, WorkersService, ComplianceService, ContractAttendanceService, ContractorPortalService, ContractLabourJobs],
+  exports: [ContractLabourService, ContractAttendanceService],
 })
 export class ContractLabourModule {}

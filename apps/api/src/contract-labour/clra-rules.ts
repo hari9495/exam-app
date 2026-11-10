@@ -103,7 +103,8 @@ export interface WorkerCheck {
 /**
  * The deployment checks (answer 635, law, no override): age on the first day at least the rule set's minimum; a verified
  * licence for the site in force on the day and covering its state (deployBlock); room under the licence maximum; the
- * same ID not pending or deployed anywhere. The registration threshold is a warning until registrations are recorded
+ * same ID not pending or deployed anywhere. Answer 681: at the registration threshold a site without a registration is
+ * blocked, and a registered site is blocked above the registration's maximum; nearing the threshold warns (answer 622)
  * (question 681).
  */
 export function workerChecks(i: {
@@ -116,6 +117,9 @@ export function workerChecks(i: {
   activeUnderLicence: number;
   activeAtSite: number;
   threshold: number | null;
+  /** CL-5 (answers 622, 673, 681): the site's registration, and the share of the threshold that warns (80 %). */
+  registration?: { maxWorkers: number } | null;
+  warnPct?: number;
   duplicateAt: string | null;
   /** Answer 675: the contractor's work order covering the site on the day, and its deployments there. */
   workOrder?: { number: string; headcount: number; active: number } | null;
@@ -123,7 +127,18 @@ export function workerChecks(i: {
   const age = ageOn(i.dob, i.on);
   const lic = deployBlock(i.licences, { locationId: i.site.locationId, state: i.site.state, on: i.on });
   const full = i.licenceMax !== null && i.activeUnderLicence + 1 > i.licenceMax;
-  const crossing = i.threshold !== null && i.activeAtSite + 1 >= i.threshold;
+  const n = i.activeAtSite + 1;
+  const reg = i.registration ?? null;
+  const warnAt = i.threshold !== null ? Math.ceil((i.threshold * (i.warnPct ?? 80)) / 100) : null;
+  const threshold: WorkerCheck = reg
+    ? n > reg.maxWorkers
+      ? { id: 'threshold', status: 'fail', label: 'Within the principal-employer registration', detail: `The registration allows ${reg.maxWorkers} contract workers at ${i.site.name}; this makes ${n}. Amend the registration first.` }
+      : { id: 'threshold', status: 'pass', label: 'Within the principal-employer registration', detail: `${n} of ${reg.maxWorkers} under the registration.` }
+    : i.threshold !== null && n >= i.threshold
+      ? { id: 'threshold', status: 'fail', label: 'Principal-employer registration threshold', detail: `This makes ${n} contract workers at ${i.site.name}; registration is needed from ${i.threshold}. Record the site's registration in Settings › Contract labour first.` }
+      : warnAt !== null && n >= warnAt
+        ? { id: 'threshold', status: 'warn', label: 'Principal-employer registration threshold', detail: `${n} of ${i.threshold} before registration is needed. Register the site soon.` }
+        : { id: 'threshold', status: 'pass', label: 'Principal-employer registration threshold', ...(i.threshold !== null ? { detail: `${n} of ${i.threshold} before registration is needed.` } : {}) };
   return [
     { id: 'age', status: age >= i.minAge ? 'pass' : 'fail', label: `Age ${i.minAge} or over`, ...(age < i.minAge ? { detail: `The worker is ${age} on the first day. Deployment is not allowed.` } : {}) },
     { id: 'licence', status: lic ? 'fail' : 'pass', label: `Contractor licence valid at ${i.site.name} on the first day`, ...(lic ? { detail: lic } : {}) },
@@ -132,13 +147,13 @@ export function workerChecks(i: {
     ...(i.workOrder
       ? [{ id: 'workorder' as const, status: (i.workOrder.active + 1 > i.workOrder.headcount ? 'warn' : 'pass') as CheckStatus, label: `Within work order ${i.workOrder.number}`, detail: i.workOrder.active + 1 > i.workOrder.headcount ? `The work order is for ${i.workOrder.headcount} workers; this makes ${i.workOrder.active + 1}. Amend the work order with the contractor.` : `${i.workOrder.active + 1} of ${i.workOrder.headcount} workers.` }]
       : []),
-    { id: 'threshold', status: crossing ? 'warn' : 'pass', label: 'Principal-employer registration threshold', ...(i.threshold !== null ? { detail: crossing ? `This makes ${i.activeAtSite + 1} contract workers at ${i.site.name}; registration is needed from ${i.threshold}. Make sure the site is registered.` : `${i.activeAtSite + 1} of ${i.threshold} before registration is needed.` } : {}) },
+    threshold,
   ];
 }
 
 /* ---------------- CL-4: monthly proofs, the wage check and the payment hold (answers 626, 634) ---------------- */
 
-export const PROOF_KINDS = ['pf_challan', 'esi_challan', 'wage_register', 'bank_proof'] as const;
+export const PROOF_KINDS = ['pf_challan', 'esi_challan', 'wage_register', 'bank_proof', 'muster_roll'] as const;
 export type ProofKind = (typeof PROOF_KINDS)[number];
 export type ProofState = 'submitted' | 'verified' | 'discrepancy';
 export type PackStatus = 'open' | 'submitted' | 'verified' | 'discrepancy' | 'overdue';
@@ -157,10 +172,12 @@ export function packDue(month: string, cutoffDay: number): string {
 
 /**
  * Where a month's pack stands: a discrepancy on any proof wins; every proof verified is verified; past the due day with a
- * proof missing or not yet verified is overdue; all four in is submitted; otherwise open.
+ * proof missing or not yet verified is overdue; all in is submitted; otherwise open. Only the company's required proofs
+ * count (answer 741, setting clra.required_proofs); a discrepancy on any uploaded proof still counts.
  */
-export function packStatus(states: Partial<Record<ProofKind, ProofState>>, due: string, today: string): PackStatus {
-  const s = PROOF_KINDS.map((k) => states[k]);
+export function packStatus(states: Partial<Record<ProofKind, ProofState>>, due: string, today: string, required: readonly ProofKind[] = PROOF_KINDS): PackStatus {
+  if (Object.values(states).includes('discrepancy')) return 'discrepancy';
+  const s = required.map((k) => states[k]);
   if (s.includes('discrepancy')) return 'discrepancy';
   if (s.every((x) => x === 'verified')) return 'verified';
   if (today > due) return 'overdue';
@@ -195,3 +212,35 @@ export function recoveryFrom(netPaise: bigint, pending: { id: string; leftPaise:
 
 /** YX-CLRA-06 short challan: workers covered must be at least the workers deployed in the month. */
 export const challanShortfall = (covered: number, onSite: number) => Math.max(0, onSite - covered);
+
+/* ---------------- CL-5: attendance and the threshold peak (answers 622, 625, 742) ---------------- */
+
+/**
+ * Answer 622: the highest number of contract workers on any one day between `from` and `to` (both included), from the
+ * deployments' first and last days. Returns the peak and its first day.
+ */
+export function peakOf(spans: { from: string; to: string | null }[], from: string, to: string): { peak: number; on: string | null } {
+  const delta = new Map<string, number>();
+  const next = (d: string) => new Date(Date.parse(`${d}T00:00:00Z`) + DAY).toISOString().slice(0, 10);
+  for (const s of spans) {
+    const a = s.from > from ? s.from : from;
+    const b = s.to && s.to < to ? s.to : to;
+    if (a > b) continue;
+    delta.set(a, (delta.get(a) ?? 0) + 1);
+    const after = next(b);
+    delta.set(after, (delta.get(after) ?? 0) - 1);
+  }
+  let cur = 0;
+  let best = { peak: 0, on: null as string | null };
+  for (const d of [...delta.keys()].sort()) {
+    cur += delta.get(d)!;
+    if (d <= to && cur > best.peak) best = { peak: cur, on: d };
+  }
+  return best;
+}
+
+/** Answer 742: the wage register may not pay fewer days than the worker was on site (attendance). */
+export const shortDays = (paidDays: number, presentDays: number) => Math.max(0, presentDays - paidDays);
+
+/** Answer 741: the company's required proofs (a comma list of PROOF_KINDS), in the usual order; unknown values dropped. */
+export const requiredProofs = (setting: string): ProofKind[] => PROOF_KINDS.filter((k) => setting.split(',').includes(k));

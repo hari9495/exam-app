@@ -5,6 +5,7 @@ import { SignJWT, jwtVerify } from 'jose';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit } from '../org-structure/org-structure.service';
 import { DevicesService, type PunchResult } from './devices.service';
+import { ContractAttendanceService } from '../contract-labour/attendance.service';
 import { DevicePunchDto, KioskIdentifyDto, KioskSyncItemDto } from './devices.dto';
 import { KIOSK_PERSON_SECONDS, afterWrongPin, normalSetupCode, newDeviceToken, pinLocked, sha256, tokenOrg } from './device-rules';
 import { SETTINGS } from '../org-structure/settings-registry';
@@ -40,6 +41,11 @@ const ctxOf = (k: Kiosk): CompanyContext => ({ organizationId: k.org, isSuperAdm
 
 /** A stored argon2id hash nothing matches: an unknown code costs the same time as a wrong PIN. */
 let dummyHash: Promise<string> | null = null;
+/** A kiosk person who is a contract worker (answer 625): their attendance is contract labour's, never an employee punch. */
+const CW = 'cw:';
+const employeeOnly = (id: string) => {
+  if (id.startsWith(CW)) throw new ForbiddenException('Leave and training at the kiosk are for employees. Ask your contractor.');
+};
 const dummy = () => (dummyHash ??= argon2.hash(`no-pin-${Math.random()}`, { type: argon2.argon2id }));
 
 @Injectable()
@@ -48,6 +54,7 @@ export class KioskService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly devices: DevicesService,
     private readonly leaves: LeaveService,
+    private readonly cw: ContractAttendanceService,
   ) {}
 
   // ------------------------------------------------------------------------------------------ set-up and the guard
@@ -126,6 +133,11 @@ export class KioskService {
         SELECT m.employee_id::text AS id FROM employments m
         WHERE m.organization_id = ${k.org}::uuid AND m.employee_code = ${code} AND (m.exited_on IS NULL OR m.exited_on >= current_date)
         ORDER BY m.joined_on DESC LIMIT 1` : [];
+      // Contract labour answer 625: a contract worker signs in with the gate pass number and their own kiosk PIN.
+      if (!emp && code) {
+        const cw = await this.cw.byGatePass(tx, c, k.locationId, code, pin, tries, await dummy());
+        if (cw) return { id: `${CW}${cw}`, tries };
+      }
       if (emp) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`device:${k.org}:${emp.id}`}))`;
       const cred = emp ? await tx.kioskCredential.findFirst({ where: { organizationId: k.org, employeeId: emp.id } }) : null;
       const locked = pinLocked(cred?.lockedUntil ?? null, now);
@@ -185,6 +197,11 @@ export class KioskService {
   async identify(k: Kiosk, dto: KioskIdentifyDto) {
     this.attendanceOnly(k);
     const id = await this.who(k, dto);
+    if (id.startsWith(CW)) {
+      const name = await this.tenantPrisma.forTenant(ctxOf(k), (tx) => this.cw.kioskName(tx, ctxOf(k), id.slice(CW.length)));
+      const pass = await new SignJWT({ dev: k.deviceId }).setProtectedHeader({ alg: 'HS256' }).setIssuer(k.org).setAudience(PERSON_AUDIENCE).setSubject(id).setIssuedAt().setExpirationTime(`${KIOSK_PERSON_SECONDS}s`).sign(this.devices.key(k.org, 'person'));
+      return { person: pass, firstName: name, expiresInSeconds: KIOSK_PERSON_SECONDS };
+    }
     const f = await this.tenantPrisma.forTenant(ctxOf(k), (tx) => factsOn(tx, k.org, id, localDate(new Date(), 'Asia/Kolkata')));
     if (!f) throw this.noMatch(5);
     const person = await new SignJWT({ dev: k.deviceId }).setProtectedHeader({ alg: 'HS256' }).setIssuer(k.org).setAudience(PERSON_AUDIENCE).setSubject(id).setIssuedAt().setExpirationTime(`${KIOSK_PERSON_SECONDS}s`).sign(this.devices.key(k.org, 'person'));
@@ -212,6 +229,7 @@ export class KioskService {
   /** Today for the person at the kiosk: first name, shift, punches (times only), what the next punch is, requests. */
   async today(k: Kiosk, token: string | undefined) {
     const id = await this.person(k, token);
+    if (id.startsWith(CW)) return this.tenantPrisma.forTenant(ctxOf(k), (tx) => this.cw.kioskToday(tx, ctxOf(k), id.slice(CW.length)));
     return this.tenantPrisma.forTenant(ctxOf(k), async (tx) => {
       const f = await this.factsNow(tx, k, id);
       const today = todayIn(f.zone);
@@ -261,7 +279,7 @@ export class KioskService {
       const [emp] = await tx.$queryRaw<{ id: string }[]>`
         SELECT m.employee_id::text AS id FROM employments m
         WHERE m.organization_id = ${k.org}::uuid AND m.employee_code = ${code} AND (m.exited_on IS NULL OR m.exited_on >= current_date) LIMIT 1`;
-      if (emp) return { known: true };
+      if (emp || (await this.cw.knownGatePass(tx, c, k.locationId, code))) return { known: true };
       await audit(tx, c, 'time.kiosk.sign_in_refused', 'time_device', k.deviceId, { reason: 'unknown_code' });
       throw new NotFoundException({ statusCode: 404, code: 'UNKNOWN_CODE', message: `No one with code ${code}. Check the code on your ID card and try again.` });
     });
@@ -282,6 +300,7 @@ export class KioskService {
   async leave(k: Kiosk, token: string | undefined) {
     this.attendanceOnly(k);
     const id = await this.person(k, token);
+    employeeOnly(id);
     return this.tenantPrisma.forTenant(ctxOf(k), async (tx) => {
       const f = await this.leaveFacts(tx, k, id);
       const today = todayIn(f.zone);
@@ -316,6 +335,7 @@ export class KioskService {
   async applyLeave(k: Kiosk, dto: { person: string; leaveTypeId: string; from: string; to: string }) {
     this.attendanceOnly(k);
     const id = await this.person(k, dto.person);
+    employeeOnly(id);
     const f = await this.tenantPrisma.forTenant(ctxOf(k), async (tx) => {
       const facts = await this.leaveFacts(tx, k, id);
       const today = todayIn(facts.zone);
@@ -341,6 +361,7 @@ export class KioskService {
   async training(k: Kiosk, token: string | undefined) {
     this.attendanceOnly(k);
     const id = await this.person(k, token);
+    employeeOnly(id);
     return this.tenantPrisma.forTenant(ctxOf(k), async (tx) => {
       const f = await this.factsNow(tx, k, id);
       const now = new Date();
@@ -363,6 +384,7 @@ export class KioskService {
   async markTraining(k: Kiosk, person: string, sessionId: string) {
     this.attendanceOnly(k);
     const id = await this.person(k, person);
+    employeeOnly(id);
     const c = ctxOf(k);
     return this.tenantPrisma.forTenant(c, async (tx) => {
       const f = await this.factsNow(tx, k, id);
@@ -392,6 +414,7 @@ export class KioskService {
   async punch(k: Kiosk, person: string, item: DevicePunchDto): Promise<PunchResult> {
     this.attendanceOnly(k);
     const id = await this.person(k, person);
+    if (id.startsWith(CW)) return this.tenantPrisma.forTenant(ctxOf(k), (tx) => this.cw.kioskPunch(tx, ctxOf(k), id.slice(CW.length), item.kind, new Date(item.punchedAt)));
     return this.devices.punchOnce(ctxOf(k), item, this.resolveFor(k, id, new Date(item.punchedAt)));
   }
 
@@ -404,6 +427,7 @@ export class KioskService {
       if (seen) return { ...(seen.result as unknown as PunchResult), repeat: true };
       if (!item.qr && !(item.code && item.pin)) throw new BadRequestException('Each offline punch needs the code and PIN, or the ID card.');
       const id = await this.who(k, item.qr ? { method: 'qr', qr: item.qr } : { method: 'pin', code: item.code, pin: item.pin });
+      if (id.startsWith(CW)) return this.tenantPrisma.forTenant(c, (tx) => this.cw.kioskPunch(tx, c, id.slice(CW.length), item.kind, new Date(item.punchedAt)));
       return this.devices.punchOnce(c, item, this.resolveFor(k, id, new Date(item.punchedAt)));
     });
   }

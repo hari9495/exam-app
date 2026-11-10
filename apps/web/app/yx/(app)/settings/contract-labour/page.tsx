@@ -1,9 +1,9 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { SETTINGS_GROUPS, SettingsPageScreen } from '@yukthix/ui/hiring';
-import { clraSettingsChanges, clraSettingsPage, type ClraSettingsData } from '@yukthix/ui/desk';
+import { RegistrationSheet, clraSettingsChanges, clraSettingsPage, type ClraSettingsData } from '@yukthix/ui/desk';
 import { loadState } from '../../../../../lib/yx-org';
 import { useClra, useClraWrite } from '../../../../../lib/yx-contract-labour';
 import { useAuth } from '../../../../../lib/auth-context';
@@ -21,14 +21,21 @@ export default function YxContractLabourSettingsPage() {
   const data = useClra<ClraSettingsData>('/settings');
   const write = useClraWrite();
   const state = loadState(data);
+  const [reg, setReg] = useState<number | 'new' | null>(null);
+  const canEdit = Boolean(data.data?.canEdit) && !acting;
+  const regs = data.data?.registrations ?? [];
+  const current = typeof reg === 'number' ? regs[reg] ?? null : null;
   const page = useMemo(() => (data.data ? clraSettingsPage(design, data.data) : design), [data.data]);
   return (
+    <>
     <SettingsPageScreen
       groups={SETTINGS_GROUPS}
       pageId="4.9"
       live={{
         page,
-        canEdit: Boolean(data.data?.canEdit) && !acting,
+        canEdit,
+        // CL-5 (answer 673): Add and Edit open the registration sheet.
+        listEditors: canEdit ? { 'clra.registrations': setReg } : undefined,
         lastChange: data.data?.lastChange ? { by: data.data.lastChange.by, role: '', at: data.data.lastChange.at, what: data.data.lastChange.what } : null,
         state: state === 'ready' ? 'ready' : state === 'loading' ? 'loading' : state === 'no-access' ? 'no-access' : 'error',
         onRetry: () => void data.refetch(),
@@ -40,5 +47,21 @@ export default function YxContractLabourSettingsPage() {
         onOpenScreen: (screenId) => (screenId === 'CLB-01' ? router.push('/yx/contract-labour/contractors') : undefined),
       }}
     />
+    {reg !== null && (
+      <RegistrationSheet
+        initial={current}
+        sites={(data.data?.sites ?? []).map((x) => ({ id: x.id, name: x.name }))}
+        onClose={() => setReg(null)}
+        onSave={async (input) => {
+          await (current ? write('PUT', `/registrations/${encodeURIComponent(current.id)}`, input) : write('POST', '/registrations', input));
+          await data.refetch();
+        }}
+        onRemove={current ? async () => {
+          await write('POST', `/registrations/${encodeURIComponent(current.id)}/remove`);
+          await data.refetch();
+        } : undefined}
+      />
+    )}
+    </>
   );
 }
