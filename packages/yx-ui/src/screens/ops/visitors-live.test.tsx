@@ -24,6 +24,8 @@ const desk = (over = {}) => ({
   onFind: vi.fn(async () => v()),
   onCheckIn: vi.fn(async () => v({ status: 'on_site', statusText: 'On site', badge: 'V-0413' })),
   onCheckOut: vi.fn(async () => undefined),
+  idCapture: 'off' as const,
+  onIdImage: vi.fn(async () => undefined),
   ...over,
 });
 
@@ -41,7 +43,7 @@ describe('VIS-01 desk (live)', () => {
     expect(await within(drawer).findByText('Tick that the visitor read and accepted the notice.')).toBeInTheDocument();
     await ue.click(within(drawer).getByRole('checkbox', { name: /read and accepted the notice/ }));
     await ue.click(within(drawer).getByRole('button', { name: 'Check in' }));
-    await waitFor(() => expect(live.onCheckIn).toHaveBeenCalledWith('v1', true));
+    await waitFor(() => expect(live.onCheckIn).toHaveBeenCalledWith('v1', { noticeAccepted: true }));
     expect((await screen.findAllByText('Rahul Menon checked in')).length).toBeGreaterThan(0);
   });
 
@@ -52,7 +54,7 @@ describe('VIS-01 desk (live)', () => {
     const drawer = screen.getByRole('dialog', { name: /Check in Rahul Menon/ });
     expect(within(drawer).getByText('Notice accepted')).toBeInTheDocument();
     await ue.click(within(drawer).getByRole('button', { name: 'Check in' }));
-    await waitFor(() => expect(live.onCheckIn).toHaveBeenCalledWith('v1', false));
+    await waitFor(() => expect(live.onCheckIn).toHaveBeenCalledWith('v1', { noticeAccepted: false }));
     expect(await within(drawer).findByText(/This pass has expired/)).toBeInTheDocument();
     await ue.click(within(drawer).getByRole('button', { name: 'Cancel' }));
     await ue.click(screen.getByRole('tab', { name: /On site now/ }));
@@ -118,7 +120,7 @@ describe('VIS-02 my visitors (live)', () => {
 describe('VIS-04 log (live)', () => {
   it('rows with the days left before deletion; export; no Reports tab until slice 4', async () => {
     const onExport = vi.fn(async () => undefined);
-    show(<VisitorLogScreen log={[]} today={TODAY} live={{ state: 'ready', onRetry: vi.fn(), locations: [{ value: 'maa', label: 'Chennai office' }], onExport, visits: [v({ status: 'checked_out', statusText: 'Checked out', checkedInAt: '2026-11-12T08:31:00Z', checkedOutAt: '2026-11-12T09:10:00Z', noticeAcceptedAt: '2026-11-12T03:00:00Z', deletedOn: '2026-11-22' }), v({ id: 'v9', name: 'Old visitor', status: 'not_out', statusText: 'Not checked out', checkedInAt: '2026-11-12T08:31:00Z', deletedOn: '2026-11-12' })] }} />);
+    show(<VisitorLogScreen log={[]} today={TODAY} live={{ state: 'ready', onRetry: vi.fn(), locations: [{ value: 'maa', label: 'Chennai office' }], onExport, onOpenIdImage: vi.fn(), visits: [v({ status: 'checked_out', statusText: 'Checked out', checkedInAt: '2026-11-12T08:31:00Z', checkedOutAt: '2026-11-12T09:10:00Z', noticeAcceptedAt: '2026-11-12T03:00:00Z', deletedOn: '2026-11-22' }), v({ id: 'v9', name: 'Old visitor', status: 'not_out', statusText: 'Not checked out', checkedInAt: '2026-11-12T08:31:00Z', deletedOn: '2026-11-12' })] }} />);
     expect(screen.getByText('10 days')).toBeInTheDocument();
     expect(screen.getByText('Today')).toBeInTheDocument();
     expect(screen.getAllByText('Not checked out').length).toBeGreaterThan(0);
@@ -145,7 +147,7 @@ describe('T9-14 the visitor’s pass page (live)', () => {
     expect(onAccept).not.toHaveBeenCalled();
     await ue.click(screen.getByRole('checkbox', { name: /visitor notice and the privacy notice/ }));
     await ue.click(screen.getByRole('button', { name: 'Get my pass' }));
-    await waitFor(() => expect(onAccept).toHaveBeenCalledWith('TN 09 BX 4471'));
+    await waitFor(() => expect(onAccept).toHaveBeenCalledWith('TN 09 BX 4471', undefined));
   });
   it('a used, cancelled or unknown link says so', () => {
     const { unmount } = show(<VisitorInviteScreen tenant="" visit={VISIT} stage="details" today={TODAY} live={{ state: 'ready', onRetry: vi.fn(), visit: pv({ state: 'blocked' }), onAccept: vi.fn() }} />);
@@ -175,10 +177,11 @@ describe('Settings 3.12 (live)', () => {
     const f = (k: string) => page.sections.flatMap((s) => s.settings).find((d) => d.key === k);
     expect(f('vis.retention_days')).toMatchObject({ kind: 'select', value: '90', scope: 'Company · own value at Hosur plant', optionLabels: expect.objectContaining({ '730': '730 days' }) });
     expect(f('vis.photo')).toMatchObject({ value: true });
-    expect(f('vis.id_capture')).toMatchObject({ value: false });
+    expect(f('vis.id_capture')).toMatchObject({ kind: 'select', value: 'off' });
     expect(f('vis.badge')).toMatchObject({ value: 'name_qr', optionLabels: { name_qr: 'Name badge with QR', phone_only: 'Pass on the phone only' } });
     expect(f('vis.types')).toBeUndefined();
     expect(f('vis.watchlist_access')).toBeUndefined();
+    expect(f('vis.watchlist')).toMatchObject({ kind: 'link', linkScreenId: 'VIS-05' });
   });
   it('changes map to the company settings; unknown fields are ignored', () => {
     expect(visitorSettingsChanges({ 'vis.photo': false, 'vis.retention_days': '30', 'vis.types': 'x' })).toEqual([

@@ -6,7 +6,7 @@ import { Button } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
 import { Card, DescriptionList } from '../../components/shell';
 import { EmptyState, InlineAlert, Meter, NoAccessState } from '../../components/feedback';
-import { FieldRow, FormField } from '../../components/field';
+import { FieldRow, FormField, useTooEarly } from '../../components/field';
 import { CurrencyField, TextArea, TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup } from '../../components/choice';
 import { Select } from '../../components/select';
@@ -1039,14 +1039,28 @@ export interface PublicVisitView {
   noticeVersion: string;
   passCode: string | null;
   brand?: { orgName?: string; orgLogo?: string | null; accent?: string | null; whiteLabel?: boolean };
+  /** Slice 3 (answer 603): the ID step where the location takes ID proof (never for a visitor under 18). */
+  idStep?: boolean;
+  idGiven?: { type: string; last4: string | null } | null;
+  idRetentionDays?: number;
 }
 export interface LiveVisitorPass {
   state: 'loading' | 'ready' | 'not-found' | 'error';
   onRetry: () => void;
   visit: PublicVisitView | null;
-  /** Accepts the notice (the version read) with the vehicle number; resolves with the page's new state. */
-  onAccept: (vehicle: string) => Promise<unknown>;
+  /** Accepts the notice (the version read) with the vehicle number and the ID given (603); resolves with the page's new state. */
+  onAccept: (vehicle: string, id?: { idType: string; idLast4: string }) => Promise<unknown>;
 }
+
+const VISIT_ID_TYPES = [
+  { value: 'aadhaar', label: 'Aadhaar' },
+  { value: 'driving_licence', label: 'Driving licence' },
+  { value: 'passport', label: 'Passport' },
+  { value: 'voter_id', label: 'Voter ID' },
+  { value: 'pan', label: 'PAN card' },
+  { value: 'company_id', label: 'Company ID card' },
+  { value: 'other', label: 'Other ID' },
+];
 
 const PURPOSE_WORDS: Record<string, string> = { meeting: 'a meeting', interview: 'an interview', vendor: 'a supplier visit', audit: 'an audit', delivery: 'a delivery', maintenance: 'maintenance work' };
 
@@ -1061,9 +1075,21 @@ export function VisitorInviteScreen({ tenant: sampleTenant, accent: sampleAccent
     : sample;
   const [stage, setStage] = useState<VisitStage>(lv ? lv.state : initial);
   const [vehicle, setVehicle] = useState(lv?.vehicle ?? '');
-  // Live (slice 1): details, the notice, the pass; the ID and photo steps come with slice 3.
-  const steps = live ? ['Your details', 'Notice', 'Pass'] : ['Your details', 'ID', 'Photo', 'Notice', 'Pass'];
-  const idx = live ? { details: 0, id: 0, photo: 0, notice: 1, pass: 2, expired: 2, blocked: 0 }[stage] : { details: 0, id: 1, photo: 2, notice: 3, pass: 4, expired: 4, blocked: 0 }[stage];
+  // Slice 3 (603): the ID type and last 4 where the location takes ID proof; the photo step comes with slice 2.
+  const [idType, setIdType] = useState<string | null>(lv?.idGiven?.type ?? null);
+  const [last4, setLast4] = useState(lv?.idGiven?.last4 ?? '');
+  const idStep = Boolean(lv?.idStep);
+  const idEarly = useTooEarly(
+    live
+      ? ([
+          !idType && { fieldId: 'vp-idtype', message: 'Choose the ID you will bring.' },
+          !/^[A-Za-z0-9]{4}$/.test(last4.trim()) && { fieldId: 'vp-last4', message: 'Enter only the last 4 characters of the ID number.' },
+        ].filter(Boolean) as { fieldId: string; message: string }[])
+      : [],
+  );
+  const steps = live ? (idStep ? ['Your details', 'ID', 'Notice', 'Pass'] : ['Your details', 'Notice', 'Pass']) : ['Your details', 'ID', 'Photo', 'Notice', 'Pass'];
+  const n = idStep ? 1 : 0;
+  const idx = live ? { details: 0, id: 1, photo: 0, notice: 1 + n, pass: 2 + n, expired: 2 + n, blocked: 0 }[stage] : { details: 0, id: 1, photo: 2, notice: 3, pass: 4, expired: 4, blocked: 0 }[stage];
   const when = `${formatDate(visit.window.from)}, ${timeOf(visit.window.from)} to ${timeOf(visit.window.to)}`;
   if (live && (live.state !== 'ready' || !lv))
     return (
@@ -1089,11 +1115,11 @@ export function VisitorInviteScreen({ tenant: sampleTenant, accent: sampleAccent
       footer={{ privacy: 'Visitor privacy notice (G-27)', cookies: true }}
       pinned={
         stage === 'details' ? (
-          <Button variant="primary" onClick={() => setStage(live ? 'notice' : 'id')}>
+          <Button variant="primary" onClick={() => setStage(live && !idStep ? 'notice' : 'id')}>
             Continue
           </Button>
         ) : stage === 'id' ? (
-          <Button variant="primary" onClick={() => setStage('photo')}>
+          <Button variant="primary" onClick={() => (live ? !idEarly.stop() && setStage('notice') : setStage('photo'))}>
             Continue
           </Button>
         ) : stage === 'photo' ? (
@@ -1139,7 +1165,20 @@ export function VisitorInviteScreen({ tenant: sampleTenant, accent: sampleAccent
           {visit.rules.escort && <p className="yx-ps-muted">An escort will meet you at reception; plant areas need safety shoes.</p>}
         </>
       )}
-      {stage === 'id' && (
+      {stage === 'id' && live && (
+        <Card title="Your ID">
+          <div className="yx-ps-stack">
+            <p className="yx-ps-muted">Bring this ID: reception checks it on arrival. We keep only the ID type and its last 4 characters, and delete them after {lv?.idRetentionDays ?? 30} days. Never type the full number.</p>
+            <FormField id="vp-idtype" label="ID type" required error={idEarly.errorOf('vp-idtype')}>
+              <Select value={idType} onChange={setIdType} options={VISIT_ID_TYPES} placeholder="Choose your ID" />
+            </FormField>
+            <FormField id="vp-last4" label="Last 4 characters" required error={idEarly.errorOf('vp-last4')}>
+              <TextField value={last4} onChange={setLast4} maxLength={4} autoComplete="off" spellCheck={false} />
+            </FormField>
+          </div>
+        </Card>
+      )}
+      {stage === 'id' && !live && (
         <Card title="Your ID">
           <div className="yx-ps-stack">
             <p className="yx-ps-muted">Reception checks your ID on arrival. We store only the ID type and last 4 digits, and delete them after 30 days.</p>
@@ -1181,7 +1220,7 @@ export function VisitorInviteScreen({ tenant: sampleTenant, accent: sampleAccent
           acceptLabel="Get my pass"
           declineLabel="Not now"
           onAccept={async () => {
-            await live!.onAccept(vehicle.trim());
+            await live!.onAccept(vehicle.trim(), idStep && idType && !(lv?.idGiven?.type === idType && lv?.idGiven?.last4 === last4.trim().toUpperCase()) ? { idType, idLast4: last4.trim().toUpperCase() } : undefined);
             setStage('pass');
           }}
           declinedText={`Nothing was recorded. Reception will ask you to read the notice when you arrive.`}
