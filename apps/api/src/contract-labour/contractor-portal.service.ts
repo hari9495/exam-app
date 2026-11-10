@@ -224,6 +224,13 @@ export class ContractorPortalService {
     });
   }
 
+  /** Answer 754: the photo of the contractor's own worker waiting for site approval; scanned after the commit. */
+  async workerPhoto(slug: string, token: string | undefined, id: string, file: Upload) {
+    const out = await this.inPortal(slug, token, (tx, s) => this.workers.portalPhotoIn(tx, s.c, s.agencyId, s.contactId, id, file));
+    void this.files.scan(out.org, out.fileId).catch(() => undefined);
+    return { photo: true };
+  }
+
   /** Upload a renewal of the contractor's own licence; it waits for the compliance owner's verification. */
   async renew(slug: string, token: string | undefined, licenceId: string, d: RenewalDto, file: Upload) {
     const out = await this.inPortal(slug, token, (tx, s) => this.clra.renewIn(tx, s.c, licenceId, d, file, s.agencyId, s.contactId));
