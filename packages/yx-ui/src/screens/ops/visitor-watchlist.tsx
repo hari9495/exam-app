@@ -194,7 +194,7 @@ export function VisitorWatchListScreen({ entries: sample, today, state = 'ready'
   );
   if (live)
     return (
-      <LivePage title="Visitor watch-list" description={description} actions={actions} state={live.state} onRetry={live.onRetry} what="the visitor watch-list" grantedBy="an admin (the HR admin or Facility admin role, for the whole company)">
+      <LivePage title="Visitor watch-list" description={description} facts={`${entries.length} on the list`} actions={actions} state={live.state} onRetry={live.onRetry} what="the visitor watch-list" grantedBy="an admin (the HR admin or Facility admin role, for the whole company)">
         {body}
       </LivePage>
     );

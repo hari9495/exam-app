@@ -469,8 +469,7 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
   );
   if (live)
     return (
-      <LivePage title="Today's visitors" description={`${place ? `${place} reception` : 'Reception'}. Scan the visitor's QR pass or check them in by name.`} actions={actions} state={live.state} onRetry={live.onRetry} what="today's visitors" grantedBy="an admin (the Reception role)">
-        <p className="yx-ops-muted">{facts}</p>
+      <LivePage title="Today's visitors" facts={facts} description={`${place ? `${place} reception` : 'Reception'}. Scan the visitor's QR pass or check them in by name.`} actions={actions} state={live.state} onRetry={live.onRetry} what="today's visitors" grantedBy="an admin (the Reception role)">
         {body}
       </LivePage>
     );

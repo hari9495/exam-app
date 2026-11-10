@@ -193,6 +193,8 @@ describe('VIS-05 watch-list (live)', () => {
     show(<VisitorWatchListScreen entries={[]} today={TODAY} live={wl()} />);
     expect(screen.getByText('Photographed the packing line.')).toBeInTheDocument();
     expect(screen.getByText(/\(\d+ days\)/)).toBeInTheDocument();
+    // The count line of the design (walk-through 11 Nov 2026).
+    expect(screen.getByText('1 on the list')).toBeInTheDocument();
   });
 
   it('adding needs a name and a reason; then it is added and the toast says how many visits were blocked', async () => {
