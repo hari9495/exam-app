@@ -29,6 +29,7 @@ import { hintText, useMinWage, type MinWageHint } from '../portals/contractor-po
 import { deployBlocks, expiryTone } from './ops-rules';
 import type { ListState } from './helpdesk';
 import type { ContractWorker, Contractor, Licence, ProofStatus, WorkOrder } from './contract-data';
+import { LivePage } from '../time/live/kit';
 import { LiveContractors, LiveVendorCompliance, LiveWorkers, type ContractorsLive, type VendorComplianceLive, type WorkersLive } from './contract-live';
 
 const multi = (key: string, label: string, values: string[]): FilterFieldDef => ({ key, label, type: 'multi', options: values.map((v) => ({ value: v, label: v })) });
@@ -672,6 +673,8 @@ export interface WorkersViewProps {
   onRelease?: (id: string, version: number, on: string, reason: string) => Promise<unknown>;
   /** Answer 685: the minimum wage for a site and skill. */
   onMinWage?: (locationId: string, skill: string) => Promise<MinWageHint | null>;
+  /** CL-7 (answer 637): opens CLB-05 for a deployed worker (HR with the onboarding key). */
+  onConvert?: (id: string) => void;
 }
 
 const SKILLS = [
@@ -762,7 +765,10 @@ export function WorkersView(p: WorkersViewProps) {
               <Button variant="approve" size="sm" onClick={() => setSheet({ kind: 'approve', id: w.id })}>Approve</Button>
             </>
           ) : w.status === 'Deployed' ? (
-            <Button size="sm" onClick={() => setSheet({ kind: 'release', id: w.id })}>Release</Button>
+            <>
+              {p.onConvert && <Button size="sm" onClick={() => p.onConvert!(w.id)}>Make employee</Button>}
+              <Button size="sm" onClick={() => setSheet({ kind: 'release', id: w.id })}>Release</Button>
+            </>
           ) : null
         }
       />
@@ -1346,92 +1352,213 @@ export function ClraRegistersScreen({ loading, tab = 'registers' }: { loading?: 
  * CLB-05 · Convert contract worker to employee (T5)
  * ======================================================================================= */
 
-export function ConvertWorkerScreen({ worker, current = 'person', finishing }: { worker: ContractWorker; current?: string; finishing?: boolean }) {
-  const [joining, setJoining] = useState<Date | null>(new Date(2026, 9, 1));
-  const [ctc, setCtc] = useState<number | null>(264000);
+/** GET lifecycle/joiners/from-contract-worker/:deploymentId (CL-7, answer 637). */
+export interface ConversionData {
+  deploymentId: string;
+  version: number;
+  /** False with `block` when the worker cannot be converted now (not deployed, already an employee or a joiner). */
+  canStart: boolean;
+  block: string | null;
+  person: { id: string; name: string; email: string | null; phone: string | null };
+  /** They worked here before as an employee: they join again on their own record (a rehire). */
+  rehire: boolean;
+  contractor: string;
+  site: { id: string; name: string; legalEntityId: string } | null;
+  fromOn: string;
+  gatePass: string | null;
+  uan: string | null;
+  esicIp: string | null;
+  idMasked: string;
+  today: string;
+}
+export interface ConversionInput {
+  joiningOn: string;
+  legalEntityId: string;
+  locationId: string;
+  departmentId: string | null;
+  designationId: string | null;
+  employmentTypeId: string | null;
+  managerEmployeeId: string | null;
+  version: number;
+}
+type Choice = { value: string; label: string };
+/** CLB-05 live: the PPL-12 joiner flow with the contract_worker source. */
+export interface LiveConvert {
+  state: 'ready' | 'loading' | 'error' | 'no-access';
+  onRetry: () => void;
+  data: ConversionData | null;
+  places: { entities: Choice[]; locations: (Choice & { entityId: string })[]; departments: Choice[]; designations: Choice[]; employmentTypes: Choice[]; managers: Choice[] };
+  /** False while acting for someone else. */
+  canChange: boolean;
+  onStart: (input: ConversionInput) => Promise<{ id: string }>;
+  /** Opens the new joiner's onboarding checklist. */
+  onDone: (preboardingId: string) => void;
+}
+
+const dayOf = (s: string) => new Date(`${s}T00:00:00`);
+const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const dayBefore = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1);
+
+const NO_WORKER: ContractWorker = { id: '', name: '', contractor: '', site: '', skill: 'Unskilled', wage: null, from: new Date(0), to: null, gatePass: null, gateValidTo: null, uan: '', ip: '', idMasked: '', status: 'Deployed' };
+
+/** The design's sample worker, or (live) the worker loaded from the API. */
+export function ConvertWorkerScreen({ worker = NO_WORKER, current = 'person', finishing, live }: { worker?: ContractWorker; current?: string; finishing?: boolean; live?: LiveConvert }) {
+  const d = live?.data ?? null;
+  const name = d ? d.person.name : worker.name;
+  const contractor = d ? d.contractor : worker.contractor;
+  const site = d ? (d.site?.name ?? '') : worker.site;
+  const places = live?.places;
+  const [step, setStep] = useState(current);
+  const [joining, setJoining] = useState<Date | null>(live ? null : new Date(2026, 9, 1));
+  const [entity, setEntity] = useState<string | null>(live ? (d?.site?.legalEntityId ?? null) : 'tn');
+  const [location, setLocation] = useState<string | null>(live ? (d?.site?.id ?? null) : 'hsr');
+  const [dept, setDept] = useState<string | null>(null);
+  const [desig, setDesig] = useState<string | null>(null);
+  const [type, setType] = useState<string | null>(null);
+  const [manager, setManager] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const { toast } = useSay();
+  const from = d ? dayOf(d.fromOn) : worker.from;
+  const lastDay = joining ? dayBefore(joining) : null;
+  const joinErr = !joining ? 'Choose the joining date.' : joining <= from ? `Join after ${formatDate(from)}, when the deployment started.` : live && d && isoOf(joining) < d.today ? 'The joining date cannot be in the past.' : null;
+  const placeErr = { entity: !entity ? 'Choose the legal entity.' : null, location: !location ? 'Choose the location.' : null };
+  const [tried, setTried] = useState(false);
+  const show = (e: string | null) => (tried ? e : null);
+  const entityLocs = (places?.locations ?? []).filter((l) => l.entityId === entity);
+  const stepOk = (id: string) => (id === 'employee' ? !joinErr && !placeErr.entity && !placeErr.location : id === 'person' ? !d?.block : true);
+  const finish = () => {
+    setTried(true);
+    if (!live || !d) return;
+    if (d.block) return void setStep('person');
+    if (!stepOk('employee')) return void setStep('employee');
+    setBusy(true);
+    setFailed(null);
+    live
+      .onStart({ joiningOn: isoOf(joining!), legalEntityId: entity!, locationId: location!, departmentId: dept, designationId: desig, employmentTypeId: type, managerEmployeeId: manager, version: d.version })
+      .then((r) => {
+        toast({ tone: 'success', title: `${name} joins on ${formatDate(joining!)}`, description: 'Pre-boarding started. The contract role ends the day before.' });
+        live.onDone(r.id);
+      })
+      .catch((e: Error) => setFailed(e.message))
+      .finally(() => setBusy(false));
+  };
+  const carry = d
+    ? [
+        { id: 'person', status: 'pass' as const, label: 'Same person record', detail: d.rehire ? 'Worked here before as an employee: joins again on the same record (rehire)' : 'No second record is made' },
+        { id: 'uan', status: d.uan ? ('pass' as const) : ('warn' as const), label: d.uan ? `UAN ${d.uan}` : 'No UAN on the deployment', detail: d.uan ? 'Raised on the employee record on the joining day for HR to approve' : 'HR adds it after joining if the person has one' },
+        { id: 'ip', status: d.esicIp ? ('pass' as const) : ('warn' as const), label: d.esicIp ? `ESIC IP ${d.esicIp}` : 'No ESIC IP number on the deployment', detail: d.esicIp ? 'Raised on the employee record on the joining day for HR to approve' : 'HR adds it after joining if the person has one' },
+        { id: 'id', status: 'warn' as const, label: `ID ${d.idMasked}`, detail: 'Only the last 4 digits are kept; check the original ID on the joining day' },
+      ]
+    : [
+        { id: 'person', status: 'pass' as const, label: 'Same person record', detail: 'No second record is made' },
+        { id: 'uan', status: 'pass' as const, label: `UAN ${worker.uan}`, detail: 'Raised on the employee record on the joining day for HR to approve' },
+        { id: 'ip', status: 'pass' as const, label: `ESIC IP ${worker.ip}`, detail: 'Raised on the employee record on the joining day for HR to approve' },
+        { id: 'id', status: 'warn' as const, label: `ID ${worker.idMasked}`, detail: 'Only the last 4 digits are kept; check the original ID on the joining day' },
+      ];
+  const stepper = (
+    <Stepper
+      title="Convert contract worker to employee"
+      current={step}
+      onCurrentChange={setStep}
+      onContinue={(id) => {
+        if (stepOk(id)) return true;
+        setTried(true);
+        return false;
+      }}
+      finishLabel="Start pre-boarding"
+      finishing={finishing || busy}
+      onFinish={finish}
+      review={{ title: 'Check and start', note: failed ? <InlineAlert tone="danger" title="Not started">{failed}</InlineAlert> : <InlineAlert tone="info">{name} joins the Onboarding board as a joiner. Nothing changes for them as a contract worker until the joining day.</InlineAlert> }}
+      steps={[
+        {
+          id: 'person',
+          title: 'Same person',
+          content: (
+            <div className="yx-ops-stack">
+              <span className="yx-ops-row">
+                <PhotoPlaceholder name={name} size="lg" />
+                <DescriptionList items={[{ label: 'Person', value: `${name} · ID ${d ? d.idMasked : worker.idMasked}` }, { label: 'Now', value: `Contract worker, ${contractor}, ${site}` }, { label: 'UAN', value: (d ? d.uan : worker.uan) || '—', mono: true }]} />
+              </span>
+              {d?.block ? (
+                <InlineAlert tone="danger" title="Can't convert now">{d.block}</InlineAlert>
+              ) : (
+                <CheckList label="Duplicate check" items={[{ id: 'd', status: 'pass', label: d?.rehire ? 'A former employee: joins again on their own record' : 'No current employee or joiner record for this person', detail: 'The same person record is used' }]} />
+              )}
+            </div>
+          ),
+          summary: `${name}, same person record`,
+        },
+        {
+          id: 'end',
+          title: 'End contract role',
+          content: (
+            <div className="yx-ops-stack">
+              <DescriptionList items={[{ label: 'Last day as contract worker', value: lastDay ? `${formatDate(lastDay)}: the day before joining` : 'The day before the joining date (chosen next)' }, { label: 'Gate pass', value: (d ? d.gatePass : worker.gatePass) ?? '—' }]} />
+              <InlineAlert tone="info">On the joining day the deployment with {contractor} ends, the gate pass stops working after the last day, and the contract-worker role closes. Earlier punches, deployments and register rows stay as contract-worker records.</InlineAlert>
+            </div>
+          ),
+          summary: lastDay ? `Contract role ends ${formatDate(lastDay)}` : 'Contract role ends the day before joining',
+        },
+        {
+          id: 'employee',
+          title: 'Employee details',
+          content: (
+            <div className="yx-ops-stack">
+              <FieldRow>
+                <FormField id="cv-entity" label="Legal entity" required error={show(placeErr.entity)}>
+                  <Select value={entity} onChange={(v) => (setEntity(v), setLocation(null))} options={places ? places.entities : [{ value: 'tn', label: 'Kaveri Foods Pvt Ltd (Tamil Nadu)' }]} placeholder="Choose" />
+                </FormField>
+                <FormField id="cv-location" label="Location" required error={show(placeErr.location)}>
+                  <Select value={location} onChange={setLocation} options={places ? entityLocs : [{ value: 'hsr', label: 'Hosur plant' }]} placeholder="Choose" />
+                </FormField>
+              </FieldRow>
+              <FieldRow>
+                <FormField id="cv-joining" label="Joining date" required error={show(joinErr)} helper="The contract role ends the day before.">
+                  <DatePicker value={joining} onChange={setJoining} />
+                </FormField>
+                <FormField label="Designation" optional>
+                  <Select value={desig} onChange={setDesig} options={places ? places.designations : [{ value: 'hk', label: 'Housekeeping associate' }]} placeholder="Choose" />
+                </FormField>
+              </FieldRow>
+              <FieldRow>
+                <FormField label="Department" optional>
+                  <Select value={dept} onChange={setDept} options={places ? places.departments : [{ value: 'fac', label: 'Facilities' }]} placeholder="Choose" />
+                </FormField>
+                <FormField label="Employment type" optional>
+                  <Select value={type} onChange={setType} options={places ? places.employmentTypes : [{ value: 'perm', label: 'Permanent' }]} placeholder="Choose" />
+                </FormField>
+              </FieldRow>
+              <FormField label="Manager" optional>
+                <Select value={manager} onChange={setManager} options={places ? places.managers : [{ value: 'm', label: 'Ravi Shankar' }]} placeholder="Choose" />
+              </FormField>
+              <p className="yx-ops-muted">Department, designation and employment type can be added on the checklist before the joining day. Pay is set in Pay after joining.</p>
+            </div>
+          ),
+          summary: joining ? `Joins ${formatDate(joining)}` : 'Joining date not chosen',
+        },
+        {
+          id: 'carry',
+          title: 'Carry over',
+          content: <CheckList label="Carried over" items={carry} />,
+          summary: 'The same person; UAN and ESIC IP raised on the employee record',
+        },
+      ]}
+    />
+  );
+  const title = `Make ${name} an employee`;
+  const description = 'The same person record is kept. They join through pre-boarding; on the joining day the contract-worker role ends and the employee record starts.';
+  if (live)
+    return (
+      <LivePage title={title} description={description} state={live.state} onRetry={live.onRetry} what="this contract worker" grantedBy="an admin (the onboarding key)">
+        {!live.canChange && <InlineAlert tone="info">You are acting for someone else: you can read this, not convert.</InlineAlert>}
+        {stepper}
+      </LivePage>
+    );
   return (
     <OpsDesk area="contract" active="Contract workers">
-      <PageHeader title={`Make ${worker.name} an employee`} description="The same person record is kept. The contract-worker role ends and an employee role starts, carrying identity and documents over." />
-      <Stepper
-        key={current}
-        title="Convert contract worker to employee"
-        defaultCurrent={current}
-        finishLabel="Create employee"
-        finishing={finishing}
-        review={{ title: 'Check and create' }}
-        steps={[
-          {
-            id: 'person',
-            title: 'Same person',
-            content: (
-              <div className="yx-ops-stack">
-                <span className="yx-ops-row">
-                  <PhotoPlaceholder name={worker.name} size="lg" />
-                  <DescriptionList items={[{ label: 'Person', value: `${worker.name} · ID ${worker.idMasked}` }, { label: 'Now', value: `Contract worker, ${worker.contractor}, ${worker.site}` }, { label: 'UAN', value: worker.uan, mono: true }]} />
-                </span>
-                <CheckList label="Duplicate check" items={[{ id: 'd', status: 'pass', label: 'No other employee or applicant record for this person', detail: 'Matched on ID, date of birth and mobile' }]} />
-              </div>
-            ),
-            summary: `${worker.name}, same person record`,
-          },
-          {
-            id: 'end',
-            title: 'End contract role',
-            content: (
-              <div className="yx-ops-stack">
-                <FormField label="Last day as contract worker" required>
-                  <DatePicker value={new Date(2026, 8, 30)} onChange={() => {}} />
-                </FormField>
-                <Checkbox defaultChecked label={`Tell ${worker.contractor} and release the deployment`} description={`Gate pass ${worker.gatePass} is voided on that day`} />
-                <InlineAlert tone="info">Earlier punches, deployments and register rows stay as contract-worker records.</InlineAlert>
-              </div>
-            ),
-            summary: 'Contract role ends 30 Sep 2026',
-          },
-          {
-            id: 'employee',
-            title: 'Employee details',
-            content: (
-              <div className="yx-ops-stack">
-                <FieldRow>
-                  <FormField label="Legal entity" required>
-                    <Select value="tn" onChange={() => {}} options={[{ value: 'tn', label: 'Kaveri Foods Pvt Ltd (Tamil Nadu)' }]} />
-                  </FormField>
-                  <FormField label="Joining date" required>
-                    <DatePicker value={joining} onChange={setJoining} />
-                  </FormField>
-                </FieldRow>
-                <FieldRow>
-                  <FormField label="Designation" required>
-                    <TextField defaultValue="Housekeeping associate" />
-                  </FormField>
-                  <FormField label="Annual CTC" required>
-                    <CurrencyField value={ctc} onChange={setCtc} />
-                  </FormField>
-                </FieldRow>
-              </div>
-            ),
-            summary: `Housekeeping associate from ${formatDate(joining)}, ${formatINR(ctc ?? 0)} a year`,
-          },
-          {
-            id: 'carry',
-            title: 'Carry over',
-            content: (
-              <CheckList
-                label="Carried over"
-                items={[
-                  { id: 'id', status: 'pass', label: 'Identity and photo' },
-                  { id: 'uan', status: 'pass', label: 'UAN and ESI IP number', detail: 'PF / ESI continue under the new employer code' },
-                  { id: 'docs', status: 'pass', label: 'Documents: ID proof, address proof, bank details' },
-                  { id: 'bio', status: 'pass', label: 'Kiosk and biometric enrolment', detail: 'Kept: the device map follows the person; punches from the joining date count as employee punches' },
-                  { id: 'bgv', status: 'warn', label: 'Background verification', detail: 'Last done 14 months ago; company policy asks for a fresh check' },
-                ]}
-              />
-            ),
-            summary: 'Identity, statutory IDs, documents and enrolment carried over',
-          },
-        ]}
-      />
+      <PageHeader title={title} description={description} />
+      {stepper}
     </OpsDesk>
   );
 }
