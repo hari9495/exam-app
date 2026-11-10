@@ -9,3 +9,5 @@ type S = StoryObj;
 export const Packs: S = { name: 'Packs by client and month', render: () => <ClientPacksScreen packs={CLIENT_PACKS} /> };
 export const RecordUpload: S = { name: 'Record portal upload', render: () => <ClientPacksScreen packs={CLIENT_PACKS} recordOpen /> };
 export const AllAccepted: S = { name: 'All accepted', render: () => <ClientPacksScreen packs={CLIENT_PACKS.filter((p) => p.status === 'Accepted')} /> };
+export const MakePack: S = { name: 'Make pack', render: () => <ClientPacksScreen packs={CLIENT_PACKS} making /> };
+export const RecordAcceptance: S = { name: 'Record client acceptance', render: () => <ClientPacksScreen packs={CLIENT_PACKS} accepting /> };
