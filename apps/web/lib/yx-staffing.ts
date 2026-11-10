@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiFetch } from './api-client';
+import { apiFetch, apiFetchBlob } from './api-client';
 import { useAuth } from './auth-context';
 
 // API glue for the staffing desk (/staffing/*: clients, contacts, rate cards, Settings 6.2; slice 2: client jobs,
@@ -17,6 +17,20 @@ export function useStaffing<T>(path: string | null, enabled = true) {
 export function useStaffingGet() {
   const { accessToken } = useAuth();
   return useCallback(<T>(path: string): Promise<T> => apiFetch(`/staffing${path}`, {}, accessToken ?? undefined) as Promise<T>, [accessToken]);
+}
+
+/** Downloads a file under /staffing (the invoice PDF, answer 492). */
+export function useStaffingDownload() {
+  const { accessToken } = useAuth();
+  return useCallback(async (path: string, name: string) => {
+    const { blob, filename } = await apiFetchBlob(`/staffing${path}`, {}, accessToken ?? undefined);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename ?? name;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [accessToken]);
 }
 
 /** A write under /staffing; refreshes every staffing view. */

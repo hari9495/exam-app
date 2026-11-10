@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { BenchBoardScreen, PlacementHours, PlacementRecordScreen, PlacementsScreen } from './hiring-staffing';
+import { BenchBoardScreen, PlacementFee, PlacementHours, PlacementRecordScreen, PlacementsScreen } from './hiring-staffing';
 import { PLACEMENTS } from './hiring-data';
 import { TODAY } from '../_kit/data';
 import { BenchSheet, PlacementSheet } from './staffing-sheets';
@@ -65,4 +65,11 @@ export const Hours: S = {
       }}
     />
   ),
+};
+// Drawn for answer 494: the client hires the person (fee invoice from HIR-30 terms) and the guarantee on leaving.
+const FEE = { series: [{ value: 's1', label: 'KF/TN/26-27/ · 33AABCK1234F1Z9' }], terms: true, today: TODAY, onHired: async () => {}, onLeft: async () => {}, onOpenInvoice: () => {} };
+export const FeeBeforeHire: S = { name: 'Placement fee · before the hire', render: () => <PlacementFee canManage person="Aravind Kumar" fee={{ ...FEE, hiredOn: null, ctc: null, feeInvoice: null, leftOn: null, guarantee: null }} /> };
+export const FeeGuarantee: S = {
+  name: 'Placement fee · left inside the guarantee',
+  render: () => <PlacementFee canManage person="Aravind Kumar" fee={{ ...FEE, hiredOn: '2026-09-01', ctc: '1800000.00', feeInvoice: { id: 'f1', number: 'KF/TN/26-27/0201', status: 'issued', total: '176929.20' }, leftOn: '2026-10-01', guarantee: 'credit' }} />,
 };

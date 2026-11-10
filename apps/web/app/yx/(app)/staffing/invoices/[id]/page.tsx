@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { InvoiceRecordScreen, type InvoiceDetail } from '@yukthix/ui/hiring';
-import { deskState, rupees, useStaffing, useStaffingWrite } from '../../../../../../lib/yx-staffing';
+import { deskState, rupees, useStaffing, useStaffingDownload, useStaffingWrite } from '../../../../../../lib/yx-staffing';
 import { useAuth } from '../../../../../../lib/auth-context';
 
 // Staffing desk › Invoices › one invoice (HIR-18 record with the HIR-31 window): issue a draft (next number of its
@@ -13,6 +13,7 @@ export default function YxStaffingInvoicePage() {
   const { impersonating, actingSuperAdmin } = useAuth();
   const one = useStaffing<InvoiceDetail>(`/invoices/${encodeURIComponent(id)}`);
   const write = useStaffingWrite();
+  const download = useStaffingDownload();
   const path = `/invoices/${encodeURIComponent(id)}`;
   const data = one.data ? { ...one.data, canEdit: one.data.canEdit && !(impersonating || actingSuperAdmin) } : null;
   return (
@@ -32,6 +33,7 @@ export default function YxStaffingInvoicePage() {
           router.push(`/yx/staffing/invoices/${encodeURIComponent(r.draftId)}`);
         },
         onOpen: (other) => router.push(`/yx/staffing/invoices/${encodeURIComponent(other)}`),
+        onPdf: () => void download(`${path}/pdf`, `${one.data?.invoice.number ?? 'invoice'}.pdf`),
       }}
     />
   );
