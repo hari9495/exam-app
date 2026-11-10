@@ -36,9 +36,9 @@ export function useClraDownload() {
 }
 
 /** A licence form: the fields as text and the copy as the file. */
-export function licenceForm(fields: Record<string, string | number | string[]>, file: File): FormData {
+export function licenceForm(fields: Record<string, string | number | string[] | null | undefined>, file: File): FormData {
   const f = new FormData();
-  for (const [k, v] of Object.entries(fields)) f.append(k, Array.isArray(v) ? v.join(',') : String(v));
+  for (const [k, v] of Object.entries(fields)) if (v !== null && v !== undefined) f.append(k, Array.isArray(v) ? v.join(',') : String(v));
   f.append('file', file);
   return f;
 }

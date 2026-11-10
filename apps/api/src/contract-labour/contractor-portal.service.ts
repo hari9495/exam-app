@@ -11,7 +11,7 @@ import { ContractLabourService, type Upload } from './contract-labour.service';
 import { WorkersService } from './workers.service';
 import { ComplianceService } from './compliance.service';
 import { alertDaysOf, daysBetween, licenceState, type LicenceLike } from './clra-rules';
-import type { PackItemDto, PortalWorkerDto, RenewalDto } from './clra-dto';
+import type { PackItemDto, PortalWithdrawDto, PortalWorkerDto, RenewalDto } from './clra-dto';
 
 const PORTAL_MINUTES = 60;
 const tokenHash = (t: string) => createHash('sha256').update(t).digest('hex');
@@ -138,6 +138,7 @@ export class ContractorPortalService {
           site: { id: l.locationId, name: site(l.locationId) },
           licenceNo: l.licenceNo,
           scope: l.scope,
+          issuedBy: l.issuedBy,
           states: l.states,
           maxWorkers: l.maxWorkers,
           deployed: deps.filter((d) => d.locationId === l.locationId).length,
@@ -200,6 +201,11 @@ export class ContractorPortalService {
   }
 
   /** Send a worker for site approval: the same checks as the compliance owner's, no override. */
+  /** Answer 736: withdraw the contractor's own worker waiting for site approval (another contractor's: 404). */
+  withdraw(slug: string, token: string | undefined, id: string, d: PortalWithdrawDto) {
+    return this.inPortal(slug, token, (tx, s) => this.workers.withdrawIn(tx, s.c, id, s.agencyId, d.reason, s.contactId));
+  }
+
   addWorker(slug: string, token: string | undefined, d: PortalWorkerDto) {
     return this.inPortal(slug, token, async (tx, s) => {
       const r = await this.workers.sendIn(tx, s.c, this.dto(s, d), s.contactId);

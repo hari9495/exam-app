@@ -759,6 +759,8 @@ export interface ContractorPortalProps {
   renewingId?: string;
   /** CL-4: a proof whose upload form is open. */
   uploading?: PortalProofKind;
+  /** Answer 736: a waiting worker being withdrawn. */
+  withdrawingId?: string;
 }
 
 /** The design's sample establishments and workers as the portal parts take them. */
@@ -816,6 +818,7 @@ export function ContractorPortalScreen(props: ContractorPortalProps | { live: Li
           workers={workersOf(p.workers)}
           sites={p.establishments.map((e) => ({ id: e.id, name: `${e.name} (${e.deployed} of ${e.maxWorkers})` }))}
           today={today}
+          withdrawingId={p.withdrawingId ?? null}
           design={p.addWorker ? { dob: p.addWorker.dob, siteId: p.addWorker.establishmentId, checks: [{ id: 'age', status: block?.includes('under 18') ? 'fail' : 'pass', label: 'Age 18 or over', detail: block?.includes('under 18') ? block : undefined }, { id: 'max', status: block && !block.includes('under 18') ? 'fail' : 'pass', label: 'Within the licence maximum', detail: block && !block.includes('under 18') ? block : undefined }, { id: 'dup', status: 'pass', label: 'Not already deployed', detail: 'Matched on the ID' }] } : undefined}
         />
       )}

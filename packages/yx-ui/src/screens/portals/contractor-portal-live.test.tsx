@@ -95,4 +95,21 @@ describe('T9-13 contractor portal (live)', () => {
     await ue.click(within(screen.getByRole('main')).getByRole('button', { name: 'Try again' }));
     expect(e.onRetry).toHaveBeenCalled();
   });
+
+  it('answer 736: withdraw a waiting worker needs a reason', async () => {
+    const onWithdraw = vi.fn(async () => undefined);
+    show(<ContractorPortalScreen live={live({ tab: 'workers', onWithdraw })} />);
+    await ue.click(screen.getByRole('button', { name: 'Withdraw' }));
+    await ue.click(screen.getAllByRole('button', { name: 'Withdraw' }).at(-1)!);
+    expect(screen.getByText('Say why.')).toBeInTheDocument();
+    expect(onWithdraw).not.toHaveBeenCalled();
+    await ue.type(screen.getByLabelText(/Reason/), 'Not joining');
+    await ue.click(screen.getAllByRole('button', { name: 'Withdraw' }).at(-1)!);
+    expect(onWithdraw).toHaveBeenCalledWith('d1', 'Not joining');
+  });
+
+  it('answer 731: the issuing office shows on the licence', () => {
+    show(<ContractorPortalScreen live={live({ data: { ...DATA, establishments: [{ ...DATA.establishments[0]!, issuedBy: 'Assistant Commissioner of Labour, Hosur' }] } })} />);
+    expect(screen.getByText('Assistant Commissioner of Labour, Hosur')).toBeInTheDocument();
+  });
 });

@@ -24,6 +24,8 @@ export class LicenceDto {
   @IsUUID() locationId!: string;
   @trim() @IsString() @MinLength(1) @MaxLength(40) licenceNo!: string;
   @trim() @IsString() @MinLength(1) @MaxLength(200) scope!: string;
+  /** Answer 731: the issuing office, as written on the licence (optional). */
+  @IsOptional() @trim() @IsString() @MaxLength(200) issuedBy?: string | null;
   /** "IN-TN,IN-KA" in the form. */
   @Transform(({ value }) => (typeof value === 'string' ? value.split(',').map((s) => s.trim()).filter(Boolean) : value))
   @IsArray()
@@ -39,6 +41,8 @@ export class LicenceDto {
 /** A renewal: the same establishment; a new number is allowed (some states issue one). */
 export class RenewalDto {
   @trim() @IsString() @MinLength(1) @MaxLength(40) licenceNo!: string;
+  /** Answer 731: the issuing office, as written on the licence (optional). */
+  @IsOptional() @trim() @IsString() @MaxLength(200) issuedBy?: string | null;
   @Type(() => Number) @IsInt() @Min(1) @Max(100000) maxWorkers!: number;
   @Matches(DAY) validFrom!: string;
   @Matches(DAY) validTo!: string;
@@ -184,5 +188,10 @@ export class MinWageQueryDto {
 export class PackQueryDto {
   @IsUUID() locationId!: string;
   @Matches(MONTH) month!: string;
+}
+
+/** Answer 736: a contractor withdraws its own worker waiting for site approval. */
+export class PortalWithdrawDto {
+  @trim() @IsString() @MinLength(3) @MaxLength(500) reason!: string;
 }
 

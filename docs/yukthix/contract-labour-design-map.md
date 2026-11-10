@@ -30,11 +30,11 @@ built** (no API for this feature) · **phone view, mobile app not built**.
 |---|---|---|---|---|---|---|---|
 | A. Principal employer (contractors working at our sites) | 5 | 31 | 2 | 0 | 8 | 0 | 41 |
 | B. We are the contractor (our staff at client sites) | 3 | 0 | 0 | 0 | 10 | 0 | 10 |
-| C. Contractor portal | 1 | 14 | 2 | 0 | 0 | 0 | 16 |
+| C. Contractor portal | 1 | 16 | 1 | 0 | 0 | 0 | 17 |
 | D. Settings | 1 | 0 | 2 | 0 | 0 | 0 | 2 |
-| **All** | 10 | 45 | 6 | 0 | 18 | 0 | 69 |
+| **All** | 10 | 47 | 5 | 0 | 18 | 0 | 70 |
 
-Of the 51 stories under Screens/Contract labour, 31 are live and 2 live with a gap (CL-1 to CL-4); with the portal and settings pages, 51 of 69.
+Of the 51 stories under Screens/Contract labour, 31 are live and 2 live with a gap (CL-1 to CL-4); with the portal and settings pages, 52 of 70.
 
 Related stories in other areas (counted in their own maps, listed here so the build reaches them):
 
@@ -183,7 +183,7 @@ All 46 stories in section 4: there is no contractor, licence, deployment, proof 
 | story (sub-page) | verdict | note |
 |---|---|---|
 | SignIn · Sign in (email OTP) | live | /yx/contractor/[org]; `POST public/contractor-portal/:org/code` always answers "sent" (no telling who has access), rate-limited per email and IP; `…/verify` gives a 60-minute session kept only as its SHA-256 hash |
-| Licences · Establishments and licence renewals | live (gap) | `GET …/me`: the own contractor's licences per site with workers against the maximum; the issuing office is not recorded (question 731) |
+| Licences · Establishments and licence renewals | live | `GET …/me`: the own contractor's licences per site with workers against the maximum and (answer 731) the issuing office |
 | Workers · Workers | live | the own contractor's waiting and deployed workers, masked ID, gate pass |
 | UnderAge · Add worker · under 18 blocked | live | `POST …/workers/check` then `…/workers`: the CL-2 checks, no override; the contractor is always the contact's own |
 | LicenceFull · Add worker · licence maximum reached | live | as UnderAge |
@@ -198,6 +198,7 @@ All 46 stories in section 4: there is no contractor, licence, deployment, proof 
 | DuePhone · What is due · phone (CL-3) | live | the same web portal at phone width (answer 641) |
 | UploadChallan · Monthly pack · upload a challan (CL-4) | live | `POST …/pack/items` with the copy, the workers covered and the amount; a verified proof is final |
 | UploadWages · Monthly pack · wage register (CL-4) | live | each worker deployed that month: days, wage paid, paid on; the minimum wage shown for each (verify) |
+| Withdraw · Withdraw a waiting worker (CL-4) | live | answer 736: `POST …/workers/:id/withdraw` with a reason, the contractor's own waiting worker only (another's: 404); audited `via: contractor_portal` |
 
 ### D. Settings
 
@@ -467,4 +468,10 @@ Tests: `clra-rules.spec.ts`, `compliance-cl4.test.tsx`, the CL-3 portal test and
 745. **The recovery on the PAY 8 payment advice.** The bill's net shows the wages we paid taken back; the payment advice
      and the consultant invoice list do not name it yet. Suggested: add a line "Wages paid to your workers by us".
 746. **Proofs for a month with no workers.** No pack is owed for a site and month with no deployment. Suggested: keep.
+
+Answers 681-686 and 731-736 (founder, 10 Nov 2026), built in CL-4: 731 the optional issuing office on the licence and
+renewal forms (migration `202617o0000014`), shown on the contractor record and the portal; 685 the minimum-wage hint;
+736 the contractor withdraws its own waiting workers on the portal, with a reason, audited. Later slices: 684 "Renew gate
+pass" keeping the number; 681 block at the threshold once registrations exist, 686 contract workers in All persons and
+735 the worker photo with the gate pass card (CL-5). 734 stays Aadhaar only.
 

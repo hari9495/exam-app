@@ -5,7 +5,7 @@ import { memoryStorage } from 'multer';
 import { MODERATE_UPLOAD_THROTTLE, PUBLIC_API_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import { PortalEmailDto, PortalVerifyDto } from '../staffing/staffing-dto';
 import { ContractorPortalService } from './contractor-portal.service';
-import { MinWageQueryDto, PackItemDto, PackQueryDto, PortalWorkerDto, RenewalDto } from './clra-dto';
+import { MinWageQueryDto, PackItemDto, PackQueryDto, PortalWithdrawDto, PortalWorkerDto, RenewalDto } from './clra-dto';
 
 const UPLOAD = FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 1 } });
 
@@ -53,6 +53,13 @@ export class PublicContractorPortalController {
   @Throttle(PUBLIC_API_THROTTLE)
   addWorker(@Param('org') org: string, @Body() dto: PortalWorkerDto, @Headers('x-contractor-portal') token?: string) {
     return this.portal.addWorker(org.slice(0, 100), token, dto);
+  }
+
+  @Post(':org/workers/:id/withdraw')
+  @HttpCode(200)
+  @Throttle(PUBLIC_API_THROTTLE)
+  withdraw(@Param('org') org: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PortalWithdrawDto, @Headers('x-contractor-portal') token?: string) {
+    return this.portal.withdraw(org.slice(0, 100), token, id, dto);
   }
 
   @Post(':org/licences/:id/renewal')

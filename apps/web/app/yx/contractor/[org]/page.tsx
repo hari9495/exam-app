@@ -104,10 +104,14 @@ export default function YxContractorPortalPage() {
           setPack(await call<NonNullable<LiveContractorPortal['pack']>>(`/pack?locationId=${encodeURIComponent(open.siteId)}&month=${encodeURIComponent(open.month)}`, token));
           await load(token);
         },
+        onWithdraw: async (id, reason) => {
+          await call(`/workers/${encodeURIComponent(id)}/withdraw`, token, { method: 'POST', body: JSON.stringify({ reason }) });
+          await load(token);
+        },
         onMinWage: (locationId, skill) => call(`/min-wage?locationId=${encodeURIComponent(locationId)}&skill=${encodeURIComponent(skill)}`, token),
         onRenew: async (licenceId, input, file) => {
           const body = new FormData();
-          for (const [k, v] of Object.entries(input)) body.append(k, String(v));
+          for (const [k, v] of Object.entries(input)) if (v !== null && v !== undefined) body.append(k, String(v));
           body.append('file', file);
           await call(`/licences/${encodeURIComponent(licenceId)}/renewal`, token, { method: 'POST', body });
           await load(token);

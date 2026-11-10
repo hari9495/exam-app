@@ -220,6 +220,7 @@ export function ContractorsView(p: ContractorsViewProps) {
                         ...(renews ? [{ label: 'Licence number', value: l.no, mono: true }] : []),
                         { label: 'Establishment', value: l.establishment },
                         { label: 'Scope', value: `${l.scope} (${l.states.join(', ')})` },
+                        ...(l.issuedBy ? [{ label: 'Issued by', value: l.issuedBy }] : []),
                         { label: 'Maximum workers', value: l.max },
                         ...(l.validFrom ? [{ label: 'Valid from', value: formatDate(l.validFrom) }] : []),
                         { label: 'Valid to', value: formatDate(l.validTo) },
@@ -278,7 +279,7 @@ export function ContractorsView(p: ContractorsViewProps) {
         <LicenceSheet mode="add" locations={p.locations} states={p.states} contractor={contractors.find((x) => x.id === sheet.contractorId)?.name ?? ''} onClose={() => setSheet(null)} onSave={(input, file) => (p.onAddLicence ? p.onAddLicence(sheet.contractorId, input, file) : Promise.resolve())} />
       )}
       {sheet?.kind === 'renew' && target && (
-        <LicenceSheet mode="renew" current={target.l} locations={p.locations} states={p.states} contractor={target.c.name} onClose={() => setSheet(null)} onSave={(input, file) => (p.onRenew ? p.onRenew(sheet.licenceId, { licenceNo: input.licenceNo, maxWorkers: input.maxWorkers, validFrom: input.validFrom, validTo: input.validTo }, file) : Promise.resolve())} />
+        <LicenceSheet mode="renew" current={target.l} locations={p.locations} states={p.states} contractor={target.c.name} onClose={() => setSheet(null)} onSave={(input, file) => (p.onRenew ? p.onRenew(sheet.licenceId, { licenceNo: input.licenceNo, issuedBy: input.issuedBy, maxWorkers: input.maxWorkers, validFrom: input.validFrom, validTo: input.validTo }, file) : Promise.resolve())} />
       )}
       {sheet?.kind === 'contact' && <ContactDialog contractor={contractors.find((x) => x.id === sheet.contractorId)?.name ?? ''} onClose={() => setSheet(null)} onSave={(input) => (p.onAddContact ? p.onAddContact(sheet.contractorId, input) : Promise.resolve())} />}
       {sheet?.kind === 'workorder' && (
@@ -313,12 +314,14 @@ export interface LicenceInput {
   locationId: string;
   licenceNo: string;
   scope: string;
+  /** Answer 731: optional. */
+  issuedBy: string | null;
   states: string[];
   maxWorkers: number;
   validFrom: string;
   validTo: string;
 }
-export type RenewalInput = Pick<LicenceInput, 'licenceNo' | 'maxWorkers' | 'validFrom' | 'validTo'>;
+export type RenewalInput = Pick<LicenceInput, 'licenceNo' | 'issuedBy' | 'maxWorkers' | 'validFrom' | 'validTo'>;
 
 const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
@@ -412,6 +415,7 @@ export function LicenceSheet({ mode, current, contractor, locations, states, onC
   const [from, setFrom] = useState<Date | null>(null);
   const [to, setTo] = useState<Date | null>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [office, setOffice] = useState(current?.issuedBy ?? '');
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
@@ -438,7 +442,7 @@ export function LicenceSheet({ mode, current, contractor, locations, states, onC
     if (miss) return focusOn(miss[1]);
     setBusy(true);
     setFailed(null);
-    onSave({ locationId: loc ?? '', licenceNo: no.trim(), scope: scope.trim(), states: covered, maxWorkers: max!, validFrom: isoDay(from), validTo: isoDay(to) }, file!)
+    onSave({ locationId: loc ?? '', licenceNo: no.trim(), scope: scope.trim(), issuedBy: office.trim() || null, states: covered, maxWorkers: max!, validFrom: isoDay(from), validTo: isoDay(to) }, file!)
       .then(() => (say(mode === 'renew' ? 'Renewal added, waiting for verification' : 'Licence added, waiting for verification'), onClose()))
       .catch((e: unknown) => setFailed(errText(e)))
       .finally(() => setBusy(false));
@@ -471,6 +475,9 @@ export function LicenceSheet({ mode, current, contractor, locations, states, onC
             <NumberField value={max} onChange={setMax} min={1} max={100000} />
           </FormField>
         </FieldRow>
+        <FormField id="lc-office" label="Issuing office" optional helper="As written on the licence, e.g. Assistant Commissioner of Labour, Hosur.">
+          <TextField value={office} onChange={setOffice} maxLength={200} />
+        </FormField>
         <FieldRow>
           <FormField id="lc-from" label="Valid from" required error={err('from')}>
             <DatePicker value={from} onChange={setFrom} />

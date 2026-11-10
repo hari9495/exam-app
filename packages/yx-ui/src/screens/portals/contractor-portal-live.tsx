@@ -15,7 +15,7 @@ export interface ContractorPortalData {
   contact: { name: string; email: string };
   today: string;
   sites: { id: string; name: string }[];
-  establishments: { licenceId: string; site: { id: string; name: string }; licenceNo: string; scope: string; states: string[]; maxWorkers: number; deployed: number; validFrom: string; validTo: string; state: string; renewal: { id: string; licenceNo: string; status: 'pending' | 'verified' | 'rejected'; validTo: string; rejectReason: string | null } | null }[];
+  establishments: { licenceId: string; site: { id: string; name: string }; licenceNo: string; scope: string; issuedBy?: string | null; states: string[]; maxWorkers: number; deployed: number; validFrom: string; validTo: string; state: string; renewal: { id: string; licenceNo: string; status: 'pending' | 'verified' | 'rejected'; validTo: string; rejectReason: string | null } | null }[];
   workOrders: { id: string; number: string; fromOn: string; toOn: string; headcount: number; active: number; sites: string[] }[];
   workers: { id: string; name: string; idMasked: string; site: string; skill: string; wage: string | null; fromOn: string; toOn: string | null; status: 'pending' | 'deployed'; gatePass: string | null; gateValidTo: string | null; uan: string | null; esicIp: string | null }[];
   due: { kind: string; tone: 'danger' | 'warning' | 'info'; text: string }[];
@@ -41,6 +41,8 @@ export interface LiveContractorPortal {
   onOpenPack?: (p: PortalPackSummary | null) => void;
   onUpload?: (input: PortalUploadInput, file: File) => Promise<unknown>;
   onMinWage?: (locationId: string, skill: string) => Promise<MinWageHint | null>;
+  /** Answer 736. */
+  onWithdraw?: (id: string, reason: string) => Promise<unknown>;
 }
 /** GET /public/contractor-portal/:org/pack. */
 export interface ContractorPackData {
@@ -74,7 +76,7 @@ export function LiveContractorPortalView({ live }: { live: LiveContractorPortal 
           <ClDue items={d.due} />
           <ClLicences
             today={today}
-            items={d.establishments.map((e) => ({ id: e.licenceId, site: e.site.name, licenceNo: e.licenceNo, nature: e.scope, maxWorkers: e.maxWorkers, deployed: e.deployed, validTo: dOf(e.validTo), renewal: e.renewal ? { licenceNo: e.renewal.licenceNo, status: e.renewal.status, validTo: dOf(e.renewal.validTo), rejectReason: e.renewal.rejectReason } : null }))}
+            items={d.establishments.map((e) => ({ id: e.licenceId, site: e.site.name, licenceNo: e.licenceNo, authority: e.issuedBy ?? undefined, nature: e.scope, maxWorkers: e.maxWorkers, deployed: e.deployed, validTo: dOf(e.validTo), renewal: e.renewal ? { licenceNo: e.renewal.licenceNo, status: e.renewal.status, validTo: dOf(e.renewal.validTo), rejectReason: e.renewal.rejectReason } : null }))}
             onRenew={live.onRenew}
           />
           <ClWorkOrders items={d.workOrders.map((w) => ({ id: w.id, number: w.number, from: dOf(w.fromOn), to: dOf(w.toOn), headcount: w.headcount, active: w.active, sites: w.sites }))} />
@@ -93,6 +95,7 @@ export function LiveContractorPortalView({ live }: { live: LiveContractorPortal 
         onCheck={live.onCheck}
         onAdd={live.onAdd}
         onMinWage={live.onMinWage}
+        onWithdraw={live.onWithdraw}
       />
     );
   };

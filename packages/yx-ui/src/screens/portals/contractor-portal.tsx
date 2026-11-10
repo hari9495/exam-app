@@ -59,6 +59,8 @@ export interface PortalWorker {
 }
 export interface PortalRenewalInput {
   licenceNo: string;
+  /** Answer 731: optional. */
+  issuedBy: string | null;
   maxWorkers: number;
   validFrom: string;
   validTo: string;
@@ -171,6 +173,7 @@ function RenewForm({ licence, onClose, onSave }: { licence: PortalLicence; onClo
   const toast = useToastIfAny();
   const [no, setNo] = useState('');
   const [max, setMax] = useState<number | null>(licence.maxWorkers);
+  const [office, setOffice] = useState(licence.authority ?? '');
   const [from, setFrom] = useState<Date | null>(null);
   const [to, setTo] = useState<Date | null>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -191,7 +194,7 @@ function RenewForm({ licence, onClose, onSave }: { licence: PortalLicence; onClo
     if (miss) return focusOn(miss[1]);
     setBusy(true);
     setFailed(null);
-    onSave({ licenceNo: no.trim(), maxWorkers: max!, validFrom: iso(from), validTo: iso(to) }, file!)
+    onSave({ licenceNo: no.trim(), issuedBy: office.trim() || null, maxWorkers: max!, validFrom: iso(from), validTo: iso(to) }, file!)
       .then(() => (toast?.toast({ tone: 'success', title: 'Renewal uploaded; the company checks it' }), onClose()))
       .catch((e: unknown) => setFailed(errText(e)))
       .finally(() => setBusy(false));
@@ -209,6 +212,9 @@ function RenewForm({ licence, onClose, onSave }: { licence: PortalLicence; onClo
             <NumberField value={max} onChange={setMax} min={1} max={100000} />
           </FormField>
         </FieldRow>
+        <FormField id={`rn-office-${licence.id}`} label="Issuing office" optional>
+          <TextField value={office} onChange={setOffice} maxLength={200} />
+        </FormField>
         <FieldRow>
           <FormField id={`rn-from-${licence.id}`} label="Valid from" required error={err('from')}>
             <DatePicker value={from} onChange={setFrom} />
@@ -261,7 +267,7 @@ const CHECK_WORD: Record<PortalCheck['status'], string> = { pass: 'Passed', fail
  * digits are kept; the company's checks (age, licence, licence maximum, the same ID) run before anything is saved, with
  * no override; the worker then waits for site approval and the gate pass.
  */
-export function ClWorkerList({ workers, sites, today, adding: addingAtStart = false, design, onCheck, onAdd, onMinWage }: {
+export function ClWorkerList({ workers, sites, today, adding: addingAtStart = false, design, onCheck, onAdd, onMinWage, withdrawingId = null, onWithdraw }: {
   workers: PortalWorker[];
   sites: { id: string; name: string }[];
   today: Date;
@@ -272,8 +278,13 @@ export function ClWorkerList({ workers, sites, today, adding: addingAtStart = fa
   onAdd?: (input: PortalWorkerInput) => Promise<unknown>;
   /** Answer 685: the minimum wage for a site and skill. */
   onMinWage?: (locationId: string, skill: string) => Promise<MinWageHint | null>;
+  /** Answer 736: withdraw a worker still waiting for site approval. */
+  withdrawingId?: string | null;
+  onWithdraw?: (id: string, reason: string) => Promise<unknown>;
 }) {
   const [adding, setAdding] = useState(addingAtStart || Boolean(design));
+  const [withdrawing, setWithdrawing] = useState<string | null>(withdrawingId);
+  const leaving = workers.find((w) => w.id === withdrawing);
   return (
     <div className="yx-ps-stack">
       <Card title={`Workers · ${workers.length}`} actions={sites.length > 0 ? <Button size="sm" icon={Plus} onClick={() => setAdding(true)}>Add worker</Button> : undefined}>
@@ -305,7 +316,7 @@ export function ClWorkerList({ workers, sites, today, adding: addingAtStart = fa
                     <td>{w.skill}</td>
                     <td data-num>{w.wage === null ? '—' : formatINR(w.wage)}</td>
                     <td>{w.site}</td>
-                    <td>{w.status === 'Pending approval' ? <Badge tone="info">Waiting for site approval</Badge> : <><span className="yx-ps-mono">{w.gatePass}</span> · to {w.gateValidTo ? formatDate(w.gateValidTo) : '—'}</>}</td>
+                    <td>{w.status === 'Pending approval' ? <span className="yx-ps-row"><Badge tone="info">Waiting for site approval</Badge><Button size="sm" onClick={() => setWithdrawing(w.id)}>Withdraw</Button></span> : <><span className="yx-ps-mono">{w.gatePass}</span> · to {w.gateValidTo ? formatDate(w.gateValidTo) : '—'}</>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -313,9 +324,39 @@ export function ClWorkerList({ workers, sites, today, adding: addingAtStart = fa
           </div>
         )}
       </Card>
+      {leaving && <WithdrawForm worker={leaving} onClose={() => setWithdrawing(null)} onWithdraw={(reason) => (onWithdraw ? onWithdraw(leaving.id, reason) : Promise.resolve())} />}
       {sites.length === 0 && <InlineAlert tone="warning" title="No site to deploy to">You can add workers once the company has a valid licence of yours on record for one of its sites.</InlineAlert>}
       {adding && sites.length > 0 && <AddWorkerForm sites={sites} today={today} design={design} onCheck={onCheck} onAdd={onAdd} onMinWage={onMinWage} onClose={() => setAdding(false)} />}
     </div>
+  );
+}
+
+function WithdrawForm({ worker, onClose, onWithdraw }: { worker: PortalWorker; onClose: () => void; onWithdraw: (reason: string) => Promise<unknown> }) {
+  const toast = useToastIfAny();
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const go = () => {
+    setTried(true);
+    if (reason.trim().length < 3) return focusOn('wd-reason');
+    setBusy(true);
+    setFailed(null);
+    onWithdraw(reason.trim())
+      .then(() => (toast?.toast({ tone: 'success', title: `${worker.name} withdrawn` }), onClose()))
+      .catch((e: unknown) => setFailed(errText(e)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Card title={`Withdraw ${worker.name}?`} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={go}>Withdraw</Button></>}>
+      <div className="yx-ps-stack">
+        {failed && <InlineAlert tone="danger" title={failed} />}
+        <p className="yx-ps-muted">{worker.site}. The company will not approve this deployment; you can add the worker again later.</p>
+        <FormField id="wd-reason" label="Reason" required error={tried && reason.trim().length < 3 ? 'Say why.' : null}>
+          <TextField value={reason} onChange={setReason} maxLength={500} />
+        </FormField>
+      </div>
+    </Card>
   );
 }
 

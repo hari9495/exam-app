@@ -36,6 +36,7 @@ export interface ContractorsData {
       locationId: string;
       establishment: string;
       scope: string;
+      issuedBy?: string | null;
       states: string[];
       max: number;
       validFrom: string;
@@ -94,6 +95,7 @@ export function contractorsOf(data: ContractorsData): Contractor[] {
       locationId: l.locationId,
       establishment: l.establishment,
       scope: l.scope,
+      issuedBy: l.issuedBy ?? null,
       states: l.states.map(name),
       stateCodes: l.states,
       max: l.max,

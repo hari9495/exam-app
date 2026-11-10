@@ -12805,6 +12805,8 @@ model ContractorLicence {
   locationId     String    @map("location_id") @db.Uuid
   licenceNo      String    @map("licence_no") @db.VarChar(40)
   scope          String    @db.VarChar(200)
+  /// Answer 731: the issuing office, as written on the licence.
+  issuedBy       String?   @map("issued_by") @db.VarChar(200)
   states         String[]  @db.VarChar(6)
   maxWorkers     Int       @map("max_workers")
   validFrom      DateTime  @map("valid_from") @db.Date

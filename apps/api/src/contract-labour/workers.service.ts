@@ -222,6 +222,20 @@ export class WorkersService {
     });
   }
 
+  /** Answer 736: the contractor withdraws its own worker waiting for approval: ended today, the role too; audited. */
+  async withdrawIn(tx: Tx, c: CompanyContext, id: string, agencyId: string, reason: string, contactId: string) {
+    const row = await tx.contractDeployment.findFirst({ where: { id, organizationId: c.organizationId, agencyId } });
+    if (!row) throw new NotFoundException(NOT_FOUND);
+    if (row.status !== 'pending') throw new ConflictException('Only a worker waiting for site approval can be withdrawn. Ask the company to release a deployed worker.');
+    const today = todayIst();
+    const end = iso(row.fromOn) > today ? iso(row.fromOn) : today;
+    const { count } = await tx.contractDeployment.updateMany({ where: { id: row.id, organizationId: c.organizationId, status: 'pending', version: row.version }, data: { status: 'released', releasedOn: day(end), releaseReason: reason, toOn: day(end), version: { increment: 1 } } });
+    if (!count) throw new ConflictException('This worker changed just now. Reload the page.');
+    await tx.personRole.updateMany({ where: { organizationId: c.organizationId, roleType: 'contract_worker', sourceTable: 'contract_deployments', sourceId: row.id }, data: { endOn: day(end) } });
+    await audit(tx, c, 'clra.worker.released', 'contract_deployment', row.id, { on: end, reason, wasPending: true, via: 'contractor_portal', contactId });
+    return { id: row.id, status: 'released' };
+  }
+
   /** Release (or withdraw before approval): the deployment and the contract_worker role end on the day. */
   async release(ctx: TenantContext, user: ScopeUser, id: string, dto: ReleaseWorkerDto) {
     await this.clra.gate(user, 'manage');
