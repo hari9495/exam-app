@@ -7,6 +7,7 @@ import { todayIst } from '../org-structure/org-validation';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Job, PipelineEntry, PipelineFeedback, Prisma } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService, StageCategory, STAGE_CATEGORIES, lockedFieldEdits } from '@exam-platform/shared';
+import { noticeEmail, nycNotice } from '../hiring/bias-audit';
 import { EntryExamResult, deriveEntryExamResults, averageRating } from './derive-entry-exam-results';
 import {
   upsertCustomFieldValues,
@@ -1083,6 +1084,22 @@ export class PipelineService {
   }
 
   async addEntry(context: TenantContext, actorUserId: string, jobId: string, dto: AddEntryDto): Promise<PipelineEntry> {
+    const { entry, notice } = await this.addEntryRow(context, actorUserId, jobId, dto);
+    // Answer 502: a candidate added by hand to a New York City job (setting on) is emailed the automated-tool notice with
+    // their status link to ask for another process; the notice days count from this email. Outside the transaction.
+    if (notice) {
+      const { subject, body } = noticeEmail(notice);
+      const sent = await this.messages.sendMessage(context, actorUserId, entry.id, { subject, body, source: 'stage_auto' }, { appendSignature: false }).catch((e) => (this.logger.warn(`NYC notice for ${entry.id}: ${(e as Error).message}`), null));
+      if (sent?.status === 'sent')
+        await this.tenantPrisma.forTenant(context, async (tx) => {
+          await tx.pipelineEntry.update({ where: { id: entry.id }, data: { toolNoticeAt: new Date() } });
+          await AuditService.recordIn(tx, context, { actorUserId, action: 'candidate.tool_notice.sent', entityType: 'pipeline_entry', entityId: entry.id, metadata: { jobId } });
+        });
+    }
+    return entry;
+  }
+
+  private async addEntryRow(context: TenantContext, actorUserId: string, jobId: string, dto: AddEntryDto) {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const job = await tx.job.findFirst({
         where: { id: jobId, organizationId: context.organizationId as string },
@@ -1140,7 +1157,9 @@ export class PipelineService {
       });
       // Last write in the tx: a fresh entry always makes the candidate at least 'engaged'.
       await recomputeGlobalStage(tx, context.organizationId as string, candidateId);
-      return entry;
+      // A hand-added candidate not yet sent the notice (new, or added again after the company turned the setting on).
+      const notice = entry.enteredVia === 'manual' && !entry.toolNoticeAt ? await nycNotice(tx, { organizationId: context.organizationId as string, isSuperAdmin: false }, jobId) : null;
+      return { entry, notice };
     });
   }
 

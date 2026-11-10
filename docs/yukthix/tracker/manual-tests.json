@@ -17678,6 +17678,24 @@
     "note": "Positive and negative (no key)."
   },
   {
+    "id": "MT-HIR-28-05",
+    "area": "Hiring · HIR-28 bulk offers (16 Nov 2026)",
+    "screen": "Bulk offers · Fixed CTC starts blank",
+    "url": "http://localhost:3000/yx/hiring/jobs/<id>/bulk-offers",
+    "account": "hr-tester@demo-org.test (offer-pay key). Browser window 1278 x 635.",
+    "steps": [
+      "Open Make bulk offers for a job with three candidates; look at the Fixed CTC column.",
+      "Fill the template step; on Candidates and values press Continue without typing any CTC.",
+      "Type 480000 for the first; type 0 for the second; press Continue again.",
+      "Type CTCs for all and continue to Send."
+    ],
+    "expected": "Step 1: every CTC cell is empty (no ₹0). Step 2: \"Enter the fixed CTC for <all three names>.\" and the cursor is in the first candidate's CTC. Step 3: the message names the second and third and the cursor is in the second's CTC. Step 4: the batch sends.",
+    "stories": [
+      "Screens/Hiring/HIR-28 · Bulk offer screen · Per-candidate values · CTC left blank"
+    ],
+    "note": "Positive and negative (blank, 0)."
+  },
+  {
     "id": "MT-HIR-27-01",
     "area": "Hiring · HIR-27 bulk interview day and answer 392 (14 Nov 2026)",
     "screen": "Plan an interview day",
@@ -18592,6 +18610,26 @@
       "Screens/Hiring/HIR-05 · Candidate record · Application · asked for another process (New York City)"
     ],
     "note": "Positive and negative (not asked, outside NYC, switch off)."
+  },
+  {
+    "id": "MT-HIR-CAR-12",
+    "area": "Hiring · Careers site (16 Nov 2026)",
+    "screen": "New York City · notice email to a hand-added candidate; ask or record another process",
+    "url": "http://localhost:3000/yx/hiring/jobs/<id>/pipeline",
+    "account": "hr-tester@demo-org.test with 6.1 \"We use an automated tool for jobs in New York City\" on and a job at the New York location; a mailbox you can read. Browser window 1278 x 635.",
+    "steps": [
+      "Add candidate (new) with your address to the NYC job; open the email.",
+      "Open the link in the email; press Assess me another way; reload.",
+      "Add a second candidate by hand; on their Application press Record: asked for another process.",
+      "Add a candidate by hand to a job outside NYC.",
+      "Open an interview for a third hand-added NYC candidate and look at the AI draft card."
+    ],
+    "expected": "Step 1: an email \"How <company> assesses candidates for <job>\" with what is assessed, 10 business days and a link. Step 2: toast \"Request sent\"; the page then says \"You asked for another process\" with the date; the recruiter sees it on the Application. Step 3: toast \"Request recorded\"; the drawer shows \"Asked for another process\". Step 4: no email and no record button. Step 5: the AI draft says from which date it can be used (10 business days from the email).",
+    "stories": [
+      "Screens/Portals/T9-09 · Careers site · Application status · New York City notice, ask for another process",
+      "Screens/Hiring/HIR-05 · Candidate record · Application · record a request for another process (New York City)"
+    ],
+    "note": "Positive and negative (outside NYC, already asked)."
   },
   {
     "id": "MT-HIR-SET-20",

@@ -52,7 +52,7 @@ export class NotetakerService {
     const tool = 'The AI draft scorecard';
     const audit = await biasAuditBlock(tx, c, jobId, tool);
     if (audit) return audit;
-    const entry = await tx.pipelineEntry.findFirst({ where: { organizationId: c.organizationId, id: entryId }, select: { jobId: true, createdAt: true, alternativeRequestedAt: true } });
+    const entry = await tx.pipelineEntry.findFirst({ where: { organizationId: c.organizationId, id: entryId }, select: { jobId: true, createdAt: true, alternativeRequestedAt: true, enteredVia: true, toolNoticeAt: true } });
     return entry ? noticeBlock(tx, c, entry, tool) : null;
   }
 

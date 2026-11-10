@@ -56,6 +56,11 @@ export const PortalWithLogo: S = { name: 'Candidate page · company logo', rende
 export const Status: S = { name: 'Application status', render: () => <ApplicationStatusScreen brand={CAND_BRAND} state="ready" status={APP_STATUS} /> };
 export const StatusPhone: S = { name: 'Application status · phone', globals: phone, render: () => <ApplicationStatusScreen brand={CAND_BRAND} state="ready" status={APP_STATUS} /> };
 export const StatusDecision: S = { name: 'Application status · decision made', render: () => <ApplicationStatusScreen brand={CAND_BRAND} state="ready" status={{ ...APP_STATUS, bucket: 'A decision has been made; the team will follow up' }} /> };
+// Answer 502: a New York City candidate added by a recruiter opens the link in the notice email.
+export const StatusNycNotice: S = {
+  name: 'Application status · New York City notice, ask for another process',
+  render: () => <ApplicationStatusScreen brand={CAND_BRAND} state="ready" status={{ ...APP_STATUS, location: 'New York office', toolNotice: { assesses: ['An AI draft of the interview scorecard, from the interview transcript (a person on the panel checks and submits it)'], businessDays: 10, requestedAt: null } }} onAskAlternative={async () => {}} />,
+};
 export const StatusNotFound: S = { name: 'Application status · link not valid', render: () => <ApplicationStatusScreen brand={CAND_BRAND} state="not-found" status={null} /> };
 export const Portal: S = { name: 'Candidate page', render: () => <CandidatePortalScreen brand={CAND_BRAND} state="ready" portal={CAND_PORTAL} /> };
 export const PortalPhone: S = { name: 'Candidate page · phone', globals: phone, render: () => <CandidatePortalScreen brand={CAND_BRAND} state="ready" portal={CAND_PORTAL} /> };

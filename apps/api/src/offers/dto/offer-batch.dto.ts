@@ -1,11 +1,12 @@
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDateString, IsIn, IsOptional, IsUUID, Matches, ValidateNested } from 'class-validator';
 
-const MONEY = /^\d{1,12}(\.\d{1,2})?$/;
+/** Answer 514: above ₹0 (blank and 0 are refused). */
+const POSITIVE_MONEY = /^(?!0+(\.0+)?$)\d{1,12}(\.\d{1,2})?$/;
 
 export class OfferBatchRowDto {
   @IsUUID() entryId!: string;
-  @Matches(MONEY, { message: 'Give each fixed CTC in rupees.' }) annualCtc!: string;
+  @Matches(POSITIVE_MONEY, { message: 'Enter a fixed CTC above ₹0 for each candidate.' }) annualCtc!: string;
 }
 
 /** HIR-28: one job, one letter, one salary structure, one joining day; a fixed CTC per candidate (at most 100). */

@@ -128,6 +128,15 @@ export class InterviewingController {
     return this.board.move(ctx, userId, id, dto.statusId, dto.fromStatusId);
   }
 
+  // Answer 502: record that a New York City candidate asked for another process than the automated tool.
+  @Post('entries/:id/alternative-process')
+  @HttpCode(200)
+  @RequirePermissions('pipeline:manage')
+  recordAlternative(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+    notActing(req);
+    return this.board.recordAlternative(ctx, userId, id);
+  }
+
   @Post('entries/:id/reject')
   @HttpCode(200)
   @RequirePermissions('pipeline:manage')

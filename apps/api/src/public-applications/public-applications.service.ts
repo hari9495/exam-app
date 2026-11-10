@@ -1174,6 +1174,8 @@ If you did not apply, ignore this email.`,
             status: STAGE_FOR_BUCKET,
             rejected: true,
             createdAt: true,
+            jobId: true,
+            alternativeRequestedAt: true,
             job: { select: { title: true, location: true } },
           },
         }),
@@ -1186,6 +1188,30 @@ If you did not apply, ignore this email.`,
       appliedAt: row.createdAt,
       statusBucket: bucketOf(row.status, row.rejected),
       ...(await this.brand(row.organizationId)),
+      // Answer 502: the New York City automated-tool notice and whether this candidate asked for another process.
+      toolNotice: await this.toolNoticeFor(row.organizationId, row.jobId, row.alternativeRequestedAt),
     };
+  }
+
+  private async toolNoticeFor(organizationId: string, jobId: string, requestedAt: Date | null) {
+    const c = { organizationId, isSuperAdmin: true };
+    const notice = await this.tenantPrisma.forTenant(c, (tx) => nycNotice(tx, c, jobId));
+    return notice ? { ...notice, requestedAt: requestedAt ? requestedAt.toISOString() : null } : null;
+  }
+
+  /**
+   * Answer 502: the candidate asks for another process than the automated tool from their status page (the link in the
+   * notice email). Only where the notice applies (409 otherwise); a second ask changes nothing. Audited.
+   */
+  async askAlternative(statusToken: string) {
+    const row = await this.tenantPrisma.forTenant({ organizationId: this.LOOKUP_ORG, isSuperAdmin: true }, (tx) => tx.pipelineEntry.findUnique({ where: { applicationToken: statusToken }, select: { id: true, organizationId: true, jobId: true, alternativeRequestedAt: true } }));
+    if (!row) throw new NotFoundException('Application not found');
+    const c = { organizationId: row.organizationId, isSuperAdmin: true };
+    await this.tenantPrisma.forTenant(c, async (tx) => {
+      if (!(await nycNotice(tx, c, row.jobId))) throw new ConflictException('No automated tool is used for this job, so there is nothing to ask for.');
+      const { count } = await tx.pipelineEntry.updateMany({ where: { id: row.id, alternativeRequestedAt: null }, data: { alternativeRequestedAt: new Date() } });
+      if (count) await AuditService.recordIn(tx, c, { actorUserId: null, action: 'candidate.alternative_process.requested', entityType: 'pipeline_entry', entityId: row.id, metadata: { jobId: row.jobId, from: 'status_page' } });
+    });
+    return this.getApplicationStatus(statusToken);
   }
 }

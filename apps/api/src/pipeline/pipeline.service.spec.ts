@@ -48,6 +48,8 @@ function withRecomputeMocks(tx: any) {
 
 // The rehire block (answer 272) has its own tests; here nobody is blocked.
 jest.mock('../lifecycle/rehire-policy', () => ({ rehireBlock: jest.fn().mockResolvedValue(null) }));
+// Answer 502: the New York City notice has its own tests (bias-audit spec, HIR-23 e2e); none applies here.
+jest.mock('../hiring/bias-audit', () => ({ nycNotice: jest.fn().mockResolvedValue(null), noticeEmail: jest.fn() }));
 
 describe('PipelineService', () => {
   let service: PipelineService;

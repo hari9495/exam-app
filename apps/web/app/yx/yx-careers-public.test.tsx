@@ -241,3 +241,24 @@ describe('New York City notice (answer 474)', () => {
     expect(screen.queryByRole('region', { name: 'Automated tool notice' })).not.toBeInTheDocument();
   });
 });
+
+describe('New York City notice on the status page (answer 502)', () => {
+  it('the candidate asks for another process; the page then says when; no notice: no button', async () => {
+    (useParams as jest.Mock).mockReturnValue({ statusToken: 's9' });
+    const base = { jobTitle: 'QA Engineer', location: 'New York office', appliedAt: '2026-11-02T00:00:00.000Z', statusBucket: 'Application received', orgName: 'Kaveri Foods', careersSlug: null, accent: null };
+    mockFetch({
+      'GET /applications/s9': { body: { ...base, toolNotice: { assesses: ['An AI draft of the interview scorecard'], businessDays: 10, requestedAt: null } } },
+      'POST /applications/s9/alternative-process': { body: { ...base, toolNotice: { assesses: ['An AI draft of the interview scorecard'], businessDays: 10, requestedAt: '2026-11-12T05:00:00.000Z' } } },
+    });
+    const { unmount } = wrap(<YxApplicationStatusPage />);
+    await ue.click(await screen.findByRole('button', { name: 'Assess me another way' }));
+    expect(await screen.findByText('You asked for another process')).toBeInTheDocument();
+    expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/applications/s9/alternative-process'))).toBe(true);
+    unmount();
+    mockFetch({ 'GET /applications/s9': { body: { ...base, toolNotice: null } } });
+    wrap(<YxApplicationStatusPage />);
+    expect(await screen.findByText('QA Engineer')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Assess me another way' })).not.toBeInTheDocument();
+  });
+});
+

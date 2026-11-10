@@ -83,6 +83,13 @@ export class PublicApplicationsController {
     return this.service.getApplicationStatus(statusToken);
   }
 
+  // Answer 502: a New York City candidate asks for another process than the automated tool.
+  @Post('applications/:statusToken/alternative-process')
+  @HttpCode(200)
+  askAlternative(@Param('statusToken') statusToken: string) {
+    return this.service.askAlternative(statusToken);
+  }
+
   @Get('unsubscribe/:token')
   getUnsubscribe(@Param('token') token: string) {
     return this.service.getUnsubscribe(token);

@@ -2,7 +2,7 @@ const SETTINGS: Record<string, string> = {};
 jest.mock('../people/probation', () => ({ settingFor: jest.fn(async (_tx: unknown, _c: unknown, key: string) => SETTINGS[key] ?? 'off') }));
 
 import { ForbiddenException } from '@nestjs/common';
-import { addBusinessDays, biasAuditBlock, coveredPlace, noticeBlock, nycNotice, resultsProblem, validUntil, type BiasLaw } from './bias-audit';
+import { addBusinessDays, biasAuditBlock, coveredPlace, noticeBlock, noticeEmail, nycNotice, resultsProblem, validUntil, type BiasLaw } from './bias-audit';
 import { BiasAuditService } from './bias-audit.service';
 
 const LAW: BiasLaw = {
@@ -121,6 +121,26 @@ describe('Answer 474: the New York City candidate notice', () => {
     expect(await noticeBlock(tx({ location: { state: 'IN-TN', address: { city: 'Chennai' } } }), c, { jobId: 'job-1', createdAt: applied, alternativeRequestedAt: applied }, 'The AI draft scorecard', NOW)).toBeNull();
     SETTINGS['hiring.bias_audit.nyc'] = 'off';
     expect(await noticeBlock(tx({ location: NYC }), c, { jobId: 'job-1', createdAt: applied, alternativeRequestedAt: applied }, 'The AI draft scorecard', NOW)).toBeNull();
+  });
+});
+
+describe('Answer 502: a candidate added by hand to a New York City job', () => {
+  it('the notice days count from the notice email; with none sent the AI draft waits; an applicant counts from applying', async () => {
+    SETTINGS['hiring.bias_audit.nyc'] = 'on';
+    const added = new Date('2026-10-01T06:00:00Z');
+    const emailed = new Date('2026-11-05T06:00:00Z'); // 10 business days -> 19 Nov
+    expect(await noticeBlock(tx({ location: NYC }), c, { jobId: 'job-1', createdAt: added, alternativeRequestedAt: null, enteredVia: 'manual', toolNoticeAt: null }, 'The AI draft scorecard', NOW)).toMatch(/have not been sent the New York City notice/);
+    expect(await noticeBlock(tx({ location: NYC }), c, { jobId: 'job-1', createdAt: added, alternativeRequestedAt: null, enteredVia: 'manual', toolNoticeAt: emailed }, 'The AI draft scorecard', NOW)).toMatch(/from 19 Nov 2026/);
+    expect(await noticeBlock(tx({ location: NYC }), c, { jobId: 'job-1', createdAt: added, alternativeRequestedAt: null, enteredVia: 'application', toolNoticeAt: null }, 'The AI draft scorecard', NOW)).toBeNull();
+  });
+
+  it('the email names what the tool assesses, the days and the status link to ask', () => {
+    const m = noticeEmail({ assesses: ['An AI draft of the interview scorecard'], businessDays: 10 });
+    expect(m.subject).toBe('How {{orgName}} assesses candidates for {{jobTitle}}');
+    expect(m.body).toContain('- An AI draft of the interview scorecard');
+    expect(m.body).toContain('at least 10 business days from this email');
+    expect(m.body).toContain('{{statusLink}}');
+    expect(noticeEmail({ assesses: [], businessDays: 10 }).body).toContain('- How your skills and experience match this job');
   });
 });
 

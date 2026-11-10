@@ -53,14 +53,15 @@ built**.
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Plans, requisitions, jobs and costs | 4 | 36 | 1 | 0 | 0 | 0 | 37 |
-| B. Candidates, pipeline and interviews | 8 | 55 | 1 | 0 | 9 | 1 | 66 |
-| C. Offers, BGV and joining | 4 | 23 | 4 | 0 | 1 | 0 | 28 |
+| B. Candidates, pipeline and interviews | 8 | 57 | 1 | 0 | 9 | 1 | 68 |
+| C. Offers, BGV and joining | 4 | 24 | 4 | 0 | 1 | 0 | 29 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 25 | 0 | 0 | 3 | 4 | 32 |
-| E. Staffing agency | 8 | 32 | 12 | 0 | 16 | 0 | 60 |
-| F. Compliance and fairness | 5 | 17 | 2 | 0 | 11 | 0 | 30 |
-| G. Careers site, portals and settings | 4 | 62 | 4 | 2 | 9 | 0 | 77 |
-| **All Hiring design groups (A–G)** | **37** | **273** | **29** | **2** | **28** | **5** | **337** |
+| E. Staffing agency | 8 | 49 | 15 | 0 | 0 | 0 | 64 |
+| F. Compliance and fairness | 5 | 21 | 4 | 0 | 6 | 0 | 31 |
+| G. Careers site, portals and settings | 4 | 64 | 4 | 2 | 9 | 0 | 79 |
+| **All Hiring design groups (A–G)** | **37** | **276** | **29** | **2** | **28** | **5** | **340** |
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 5 | 0 | 5 | 5 | 0 | 15 |
+Recounted by script 16 Nov 2026 on `feat/yukthix-hiring-small-5` (from `test/yukthix-main` 5b7855eb0) after answers 502 and 514: 3 new stories drawn and live (HIR-28 ValuesBlank, T9-09 StatusNycNotice, HIR-05 ApplicationRecordAlternative): A–G 276 live, 29 gap, 2 wire, 28 not built, 5 phone, of 340 (rows B, C, E, F, G recounted from the script; two 6.1 rows put back in file order).
 Recounted by script on `test/yukthix-main` after merging round 4 (442, 452, 473, 474): A–G 273 live, 29 gap, 2 wire, 28 not built, 5 phone, of 337.
 Recounted by script on `test/yukthix-main` after merging the Hiring walk-through fixes: A–G 270 live, 29 gap, 2 wire, 28 not built, 5 phone, of 334.
 Recounted by script on `test/yukthix-main` after merging staffing slice 3 (invoices, collections, fees, e-invoice banner, client portal) and answers 482-484, 489: A–G 267 live, 29 gap, 2 wire, 28 not built, 5 phone, of 331.
@@ -338,6 +339,7 @@ list's Possible duplicates tab).
 | NotFound · Not found (anonymised) | live | 404, or an erased candidate |
 | Application · Application · messages, notes, offers | live | added 10 Nov 2026 (answer 261, moved from the deleted `ApplicationPanel`): the record's `?entry=` or Open application; stage, reject / undo, owner, checklist, fit, email / SMS / WhatsApp / survey, notes, offers (listed; made and worked on the HIR-09 pages); toasts. Interviews left it 11 Nov 2026 (answer 301): schedule on the record header, open / resend / cancel on HIR-07, the list on HIR-06 and the record's Scores tab |
 | ApplicationOffer · Application · an offer opens its record (HIR-09) | live | HIR-09 (answer 301): the Offers tab lists the offers (pay text only with the key) and opens the offer builder or record; approvers decide in the approvals inbox |
+| ApplicationRecordAlternative · Application · record a request for another process (New York City) | live | drawn 16 Nov 2026 (answer 502): where the notice applies (board row `toolNotice`), the recruiter records a request made by phone or email (`POST hiring/entries/:id/alternative-process`, `pipeline:manage`, not while acting, audited); it then shows like an apply-form request |
 | ApplicationAlternative · Application · asked for another process (New York City) | live | drawn 15 Nov 2026 (answer 474): the applicant ticked "Assess me another way" on a NYC job; the drawer says so with the day (board row `alternativeRequestedAt`); the AI draft scorecard is not used for them |
 
 #### HIR-05 · Candidate list
@@ -509,6 +511,7 @@ its reason; an application that already has an offer is skipped; the same batch 
 | Template · Template step | live | letter kind, the company's salary structure, one joining date (drawn 12 Nov 2026 in place of "joining batch", question 401), work location and letter template (drawn, for e-sign) |
 | Preview · Preview step | live | the chosen letter filled for the first selected candidate |
 | Sent · Sent · batch status | live | the counts and each candidate's result with its reason and Open offer (drawn 12 Nov 2026: the results table); pay column only with the key |
+| ValuesBlank · Per-candidate values · CTC left blank | live | drawn 16 Nov 2026 (answer 514): each Fixed CTC starts blank (never ₹0); Continue with a blank (or 0) names the rows and puts the cursor in the first one's cell (kit DataTable `openEdit`); the API refuses 0 or blank (400) |
 
 #### HIR-29 · Offer conditions tab
 
@@ -896,6 +899,7 @@ Google for Jobs JSON-LD and /yx/careers/[org]/sitemap.xml), /yx/apply/[token], a
 | Status · Application status | live | /yx/application/[token]: this application only, candidate words (no stage name) |
 | StatusPhone · Application status · phone | live | same page at phone width |
 | StatusDecision · Application status · decision made | live | rejected or archived |
+| StatusNycNotice · Application status · New York City notice, ask for another process | live | drawn 16 Nov 2026 (answer 502): the link in the notice email (a candidate added by hand to a NYC job, setting on); the notice and "Assess me another way" (`POST public/applications/:token/alternative-process`, audited); once asked, the page says when |
 | StatusNotFound · Application status · link not valid | live | unknown token |
 | Portal · Candidate page | live | /yx/candidate/[token]: details, resume, own applications, interviews, offers, other open jobs |
 | PortalPhone · Candidate page · phone | live | same page at phone width |
@@ -978,9 +982,9 @@ stand-in is gone. Approval routes, careers and job boards stay on their stand-in
 | P6_1_ScorecardUsed · 6.1 Hiring · used scorecard (saved as a copy) | live | a template already used by a scorecard is never changed: “Save as a copy” posts a new template named “(copy)”; the API refuses a change with 409 |
 | P6_1_ScorecardView · 6.1 Hiring · scorecard, view only | live | the view-only sheet (skills with per cent, scale, pass bar) is drawn; live shows the list rows read-only without the pipelines key instead of opening it. Archive scorecard (danger, after a confirmation): `DELETE hiring/scorecard-templates/:id`, jobs using it go back to no scorecard, filled scorecards keep it |
 | P6_1_StaleRecruiter · 6.1 Hiring · default recruiter no longer qualifies | live | answer 348: a stored default who left or no longer holds the recruiter key reads as None with a warning naming them; new requisitions start with no recruiter (`defaultRecruiter`); the API refuses anyone else as default with 400, on both `PUT hiring/settings` and `PUT org/settings` |
-| P6_2 · 6.2 Staffing desk | live (gap) | /yx/settings/staffing: turn on the staffing desk (`staffing.desk.enabled`, default off, drawn), the rate-change backdating (`staffing.rate_change.backdate_days`, default 0, drawn), OT and holiday multipliers (1.5 and 2), default payment terms (30 days), invoice numbering (one series per GSTIN per financial year; the next number only goes up) and the r.46(b) law row. Changed by `ats.staffing.manage` or `org.settings.manage` company-wide, never while acting; audited. Slice 2 (drawn, live): submissions and placements (mask contact details, ending soon days, statutory cost %), vendors (target margin for the rate cap, ownership days) and the bench policy (bench pay, maximum days, then review or unpaid; a Segment). Gap: collections, dunning, client-portal times and e-invoicing (slice 3) are left out |
 | P6_1_NycHint · 6.1 Hiring · AI on with a New York City location | live | drawn 15 Nov 2026 (answer 473): AI notes on past candidates or the AI draft is on, the company has a location in New York City (HIR.BIAS_AUDIT's city rules; `GET hiring/settings` `nycLocations`) and the NYC switch is off: a warning on the switch; nothing is blocked |
 | P6_1_StaleBandApprover · 6.1 Hiring · approver above the range can no longer approve | live | drawn 14 Nov 2026 (answer 376): a named approver who left or lost the offer-pay key stays named ("(cannot approve)") with a warning; the step goes to the company admins until HR chooses again |
+| P6_2 · 6.2 Staffing desk | live (gap) | /yx/settings/staffing: turn on the staffing desk (`staffing.desk.enabled`, default off, drawn), the rate-change backdating (`staffing.rate_change.backdate_days`, default 0, drawn), OT and holiday multipliers (1.5 and 2), default payment terms (30 days), invoice numbering (one series per GSTIN per financial year; the next number only goes up) and the r.46(b) law row. Changed by `ats.staffing.manage` or `org.settings.manage` company-wide, never while acting; audited. Slice 2 (drawn, live): submissions and placements (mask contact details, ending soon days, statutory cost %), vendors (target margin for the rate cap, ownership days) and the bench policy (bench pay, maximum days, then review or unpaid; a Segment). Gap: collections, dunning, client-portal times and e-invoicing (slice 3) are left out |
 | P6_2_ReadOnly · 6.2 Staffing desk · read-only | live | recruiters (`ats.staffing.view`) read it |
 | P6_2_InvoiceSeries · 6.2 Staffing desk · add invoice series | live | new story (drawn): `InvoiceSeriesSheet`: the GSTIN must be one of the entity's registrations; a duplicate year and GSTIN 409; the number cannot go back |
 
@@ -1939,3 +1943,21 @@ with In pipeline summed. Screenshots and the per-page results are in the walk re
      request apply to the AI draft only. *Suggested: keep; counsel confirms whether rediscovery needs its own notice.*
 504. **Plan features.** `products.features` has no console editor (only `white_label` exists today); a change is a
      migration. *Suggested: keep until a second plan feature appears.*
+## Small items round 5 built (answers 502, 514; 16 Nov 2026, branch `feat/yukthix-hiring-small-5`)
+- (502) A candidate a recruiter adds by hand to a New York City job while "We use an automated tool for jobs in New York
+  City" is on is emailed the automated-tool notice (what it assesses, the notice days, their status link to ask for
+  another process), kept with the candidate's messages; `pipeline_entries.tool_notice_at` (migration
+  `202617t0000000_nyc_notice_email`), audited `candidate.tool_notice.sent`. The notice days count from that email (an
+  applicant's from the day they applied). The status page shows the notice and "Assess me another way"
+  (`POST public/applications/:token/alternative-process`, audited `candidate.alternative_process.requested`); the
+  recruiter records a request made by phone or email on the Application drawer (`POST hiring/entries/:id/alternative-process`,
+  audited `candidate.alternative_process.recorded`). Both show the same way as the apply-form request.
+- (514) Bulk offers: each Fixed CTC starts blank, never ₹0. Continue with a blank (or 0) names the rows and puts the
+  cursor in the first one's cell (kit DataTable `openEdit` / `editLabel`). The API refuses 0 or blank (400).
+## Founder questions from small items round 5 (16 Nov 2026)
+531. **Hand-added candidates never told.** A candidate added before the company turned the NYC setting on, or whose
+     notice email failed or who unsubscribed from emails, has no notice: the AI draft stays refused for them, with that
+     reason. *Suggested: a "Send the New York City notice" button on the Application drawer.*
+532. **A CTC of ₹0 on a single offer.** The single offer builder has no ₹0 check of its own, only what the salary structure refuses (bulk
+     offers now refuse 0). *Suggested: refuse 0 there too, with the same words.*
+
