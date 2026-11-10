@@ -12592,6 +12592,9 @@ model StaffingPlacement {
   guaranteeOutcome  String?   @map("guarantee_outcome") @db.VarChar(8)
   guaranteeCreditId String?   @map("guarantee_credit_id") @db.Uuid
 
+  /// CL-8: our own employee at a client's establishment (contract labour at the client).
+  clientSiteId      String?   @map("client_site_id") @db.Uuid
+
   @@index([organizationId, status, endOn], map: "staffing_placements_org_idx")
   @@map("staffing_placements")
 }
@@ -12805,8 +12808,11 @@ model StaffingReminder {
 model ContractorLicence {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String    @map("organization_id") @db.Uuid
-  agencyId       String    @map("agency_id") @db.Uuid
-  locationId     String    @map("location_id") @db.Uuid
+  agencyId       String?   @map("agency_id") @db.Uuid
+  locationId     String?   @map("location_id") @db.Uuid
+  /// CL-8 (answer 638): our own licence: owned by our legal entity, for one client site or the states listed.
+  legalEntityId  String?   @map("legal_entity_id") @db.Uuid
+  clientSiteId   String?   @map("client_site_id") @db.Uuid
   licenceNo      String    @map("licence_no") @db.VarChar(40)
   scope          String    @db.VarChar(200)
   /// Answer 731: the issuing office, as written on the licence.
@@ -13224,4 +13230,47 @@ model ClraAnnualReturn {
 
   @@unique([organizationId, locationId, year], map: "clra_annual_returns_key")
   @@map("clra_annual_returns")
+}
+
+/// CL-8 (CLB-06, answer 638): a client's establishment where our staff work; the client is the principal employer.
+model StaffingClientSite {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  clientId       String    @map("client_id") @db.Uuid
+  name           String    @db.VarChar(200)
+  state          String    @db.VarChar(6)
+  address        String?   @db.VarChar(500)
+  principalName  String    @map("principal_name") @db.VarChar(200)
+  registrationNo String    @map("registration_no") @db.VarChar(60)
+  packChannel    String    @map("pack_channel") @db.VarChar(100)
+  packDueDay     Int       @default(10) @map("pack_due_day")
+  archivedAt     DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("staffing_client_sites")
+}
+
+/// CL-8 (CLB-08, answer 639): a client's monthly compliance pack and its upload to the client's portal (recorded by hand).
+model ClientPack {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  clientSiteId     String    @map("client_site_id") @db.Uuid
+  month            DateTime  @db.Date
+  legalEntityId    String    @map("legal_entity_id") @db.Uuid
+  wagesRegisterId  String    @map("wages_register_id") @db.Uuid
+  musterRegisterId String    @map("muster_register_id") @db.Uuid
+  employees        Int
+  madeBy           String    @map("made_by") @db.Uuid
+  madeAt           DateTime  @default(now()) @map("made_at") @db.Timestamptz(3)
+  uploadedOn       DateTime? @map("uploaded_on") @db.Date
+  reference        String?   @db.VarChar(80)
+  recordedBy       String?   @map("recorded_by") @db.Uuid
+  recordedAt       DateTime? @map("recorded_at") @db.Timestamptz(3)
+  ackFileId        String?   @map("ack_file_id") @db.Uuid
+  acceptedAt       DateTime? @map("accepted_at") @db.Timestamptz(3)
+  version          Int       @default(1)
+
+  @@unique([organizationId, clientSiteId, month], map: "client_packs_key")
+  @@map("client_packs")
 }

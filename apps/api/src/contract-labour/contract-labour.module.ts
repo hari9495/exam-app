@@ -1,3 +1,5 @@
+import { ContractorSideController } from './contractor-side.controller';
+import { ContractorSideService } from './contractor-side.service';
 import { PayrollModule } from '../payroll/payroll.module';
 import { ClraRegistersController } from './registers.controller';
 import { ClraRegistersService } from './registers.service';
@@ -64,7 +66,7 @@ export class ContractLabourJobs implements OnModuleInit, OnModuleDestroy {
 @Module({
   imports: [AuthModule, StatutoryModule, CryptoModule, DocumentsModule, EmailModule, NotificationsModule, OrgStructureModule, PayrollModule],
   controllers: [ContractLabourController, PublicContractorPortalController, ClraRegistersController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, ContractLabourService, WorkersService, ComplianceService, ContractAttendanceService, ContractorPortalService, ContractLabourJobs, ClraRegistersService],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, ContractLabourService, WorkersService, ComplianceService, ContractAttendanceService, ContractorPortalService, ContractLabourJobs, ClraRegistersService, ContractorSideService],
   exports: [ContractLabourService, ContractAttendanceService],
 })
 export class ContractLabourModule {}

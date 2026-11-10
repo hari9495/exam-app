@@ -130,10 +130,10 @@ export class ContractorPortalService {
       const company = await tx.organization.findUniqueOrThrow({ where: { id: org }, select: { name: true } });
       const licences = await tx.contractorLicence.findMany({ where: { organizationId: org, agencyId }, orderBy: [{ validTo: 'desc' }, { createdAt: 'desc' }] });
       const deps = await tx.contractDeployment.findMany({ where: { organizationId: org, agencyId, status: { in: ['pending', 'deployed'] } }, orderBy: { fromOn: 'desc' } });
-      const locs = await tx.location.findMany({ where: { organizationId: org, id: { in: [...new Set([...licences.map((l) => l.locationId), ...deps.map((d) => d.locationId)])] } }, select: { id: true, name: true, archivedAt: true } });
+      const locs = await tx.location.findMany({ where: { organizationId: org, id: { in: [...new Set([...licences.map((l) => l.locationId!), ...deps.map((d) => d.locationId)])] } }, select: { id: true, name: true, archivedAt: true } });
       const persons = await tx.person.findMany({ where: { organizationId: org, id: { in: deps.map((d) => d.personId) } }, select: { id: true, givenName: true, familyName: true } });
       const orders = await tx.contractorWorkOrder.findMany({ where: { organizationId: org, agencyId }, orderBy: { fromOn: 'desc' } });
-      const all: LicenceLike[] = licences.map((l) => ({ id: l.id, locationId: l.locationId, states: l.states, validFrom: iso(l.validFrom), validTo: iso(l.validTo), status: l.status as LicenceLike['status'], renewalOfId: l.renewalOfId }));
+      const all: LicenceLike[] = licences.map((l) => ({ id: l.id, locationId: l.locationId!, states: l.states, validFrom: iso(l.validFrom), validTo: iso(l.validTo), status: l.status as LicenceLike['status'], renewalOfId: l.renewalOfId }));
       const site = (id: string) => locs.find((x) => x.id === id)?.name ?? 'Archived site';
       // One card per licence in use: a verified licence until its verified renewal starts, then the renewal.
       const current = licences.filter(
@@ -146,7 +146,7 @@ export class ContractorPortalService {
         const renewal = licences.filter((r) => r.renewalOfId === l.id).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null;
         return {
           licenceId: l.id,
-          site: { id: l.locationId, name: site(l.locationId) },
+          site: { id: l.locationId!, name: site(l.locationId!) },
           licenceNo: l.licenceNo,
           scope: l.scope,
           issuedBy: l.issuedBy,

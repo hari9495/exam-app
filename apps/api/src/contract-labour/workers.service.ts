@@ -100,7 +100,7 @@ export class WorkersService {
     const loc = await tx.location.findFirst({ where: { id: i.locationId, organizationId: org, archivedAt: null }, select: { id: true, name: true, state: true, code: true } });
     if (!loc) throw new NotFoundException('Site not found.');
     const licences = (await tx.contractorLicence.findMany({ where: { organizationId: org, agencyId: contractor.id } })).map(
-      (l): LicenceLike & { maxWorkers: number } => ({ id: l.id, locationId: l.locationId, states: l.states, validFrom: iso(l.validFrom), validTo: iso(l.validTo), status: l.status as LicenceLike['status'], renewalOfId: l.renewalOfId, maxWorkers: l.maxWorkers }),
+      (l): LicenceLike & { maxWorkers: number } => ({ id: l.id, locationId: l.locationId!, states: l.states, validFrom: iso(l.validFrom), validTo: iso(l.validTo), status: l.status as LicenceLike['status'], renewalOfId: l.renewalOfId, maxWorkers: l.maxWorkers }),
     );
     const inForce = licences.filter((l) => l.status === 'verified' && l.locationId === loc.id && l.validFrom <= i.on && i.on <= l.validTo).sort((x, y) => (x.validTo < y.validTo ? 1 : -1))[0] ?? null;
     const active = { organizationId: org, status: { in: ['pending', 'deployed'] }, ...(i.exceptId ? { id: { not: i.exceptId } } : {}) };
