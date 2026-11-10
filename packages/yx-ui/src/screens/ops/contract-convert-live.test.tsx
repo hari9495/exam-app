@@ -31,6 +31,8 @@ describe('CLB-05 convert a contract worker (live)', () => {
     // Entity and location come from the deployment's site; the joining date is not guessed.
     await next();
     expect(screen.getAllByText('Choose the joining date.').length).toBeGreaterThan(0);
+    // Walk finding: focus moves to the field with the error.
+    await waitFor(() => expect(document.activeElement?.id).toBe('cv-joining'));
     await ue.type(screen.getByLabelText(/^Joining date/), '01/12/2026');
     await next();
     expect(screen.getByText('UAN 100200300400')).toBeInTheDocument();

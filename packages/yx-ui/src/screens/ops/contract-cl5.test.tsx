@@ -72,9 +72,11 @@ describe('Contract workers’ attendance (live, CL-5)', () => {
     const onConfirm = vi.fn(async () => undefined);
     show(<AttendanceMonthScreen month="2026-09" rows={ROWS} canManage canConfirm onConfirm={onConfirm} />);
     expect(screen.getByText('Confirmed')).toBeInTheDocument();
+    // Walk finding: the month reads as words, not 2026-09.
+    expect(screen.getByText(/Days on site in Sept? 2026/)).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Confirm month' }));
     const dlg = screen.getByRole('dialog');
-    expect(within(dlg).getByText(/21 days on site for 1 workers/)).toBeInTheDocument();
+    expect(within(dlg).getByText(/21 days on site for 1 worker\./)).toBeInTheDocument();
     await ue.click(within(dlg).getByRole('button', { name: 'Confirm month' }));
     expect(onConfirm).toHaveBeenCalledWith('c1', 'hosur', '2026-09');
   });
@@ -142,6 +144,12 @@ const plive = (p: Partial<LiveContractorPortal> = {}): LiveContractorPortal => (
 });
 
 describe('T9-13 muster roll and attendance (live, CL-5)', () => {
+  it('the upload form keeps acronyms (walk finding: it read "Upload pf ecr and challan")', async () => {
+    show(<ContractorPortalScreen live={plive()} />);
+    await ue.click(screen.getAllByRole('button', { name: 'Upload' })[0]!);
+    expect(screen.getByText('Upload PF ECR and challan')).toBeInTheDocument();
+  });
+
   it('741: the proofs the company does not require read Optional and can still be uploaded', () => {
     show(<ContractorPortalScreen live={plive()} />);
     expect(screen.getByText('Muster roll (the days each worker was on site)')).toBeInTheDocument();
@@ -182,5 +190,30 @@ describe('Required proofs on the tracker and 4.9 (live, CL-5, answer 741)', () =
     expect(req.starter).toBe(false);
     expect(all.find((x) => x.key === 'clra.attendance_source')!.value).toBe('contractor');
     expect(clraSettingsChanges({ 'clra.required_proofs': ['muster_roll', 'pf_challan', 'nope'] })).toEqual([{ key: 'clra.required_proofs', value: 'pf_challan,muster_roll' }]);
+  });
+});
+
+describe('Contractor portal shell (walk findings)', () => {
+  it('a tab changes without reloading the page; a modified click keeps the link', async () => {
+    const onTab = vi.fn();
+    show(<ContractorPortalScreen live={plive({ tab: 'bills', onTab })} />);
+    await ue.click(screen.getByRole('link', { name: 'Workers' }));
+    expect(onTab).toHaveBeenCalledWith('workers');
+    onTab.mockClear();
+    await ue.keyboard('{Control>}');
+    await ue.click(screen.getByRole('link', { name: 'Attendance' }));
+    await ue.keyboard('{/Control}');
+    expect(onTab).not.toHaveBeenCalled();
+  });
+
+  it('access ends with the contract, never today; without a licence or work order no end is shown', () => {
+    const est = { licenceId: 'l1', site: { id: 'blr', name: 'Bengaluru head office' }, licenceNo: 'KA/1', scope: 'Security', states: ['IN-KA'], maxWorkers: 5, deployed: 1, validFrom: '2026-01-01', validTo: '2027-12-31', state: 'valid', renewal: null };
+    const base = plive({ tab: 'bills' });
+    const { unmount } = show(<ContractorPortalScreen live={{ ...base, data: { ...base.data!, establishments: [est] } }} />);
+    expect(screen.getByText(/Access ends 31 Dec 2027/)).toBeInTheDocument();
+    expect(screen.queryByText('Ends today')).not.toBeInTheDocument();
+    unmount();
+    show(<ContractorPortalScreen live={plive({ tab: 'bills' })} />);
+    expect(screen.queryByText(/Access ends/)).not.toBeInTheDocument();
   });
 });

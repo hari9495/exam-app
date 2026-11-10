@@ -675,3 +675,51 @@ pass" keeping the number; 681 block at the threshold once registrations exist, 6
      threshold (IN.CLRA, 50 under the OSH Code) would be reached. *Suggested: keep; verify the number with counsel.*
 825. **A pack after upload is final.** A correction is uploaded again on the client's portal outside YukthiX.
      *Suggested: keep; a support fix if needed (as for the annual return, 784).*
+
+## Contract labour walk-through (11 Nov 2026, branch `feat/yukthix-walk-cl`)
+
+Walked on the test app as real users (admin-tester, hr-tester, panel@, arjun@ and a contractor portal contact signed in by
+mailpit code), live against the design screenshots at 1278 x 635. Test data made through the UI as admin-tester: the
+contractor "Walk Security Services", licence WALK/CLRA/2026/001 (verified), two workers, a portal contact and a
+registration; cleaned up afterwards (see the report).
+
+| page | admin-tester | hr-tester | panel@ / arjun@ | portal contact |
+|---|---|---|---|---|
+| Contractors, licence, contact, site cards | pass (add, licence, verify, invite; empty saves name each field, focus on the first) | no access (403, kind page) | no access | not shown |
+| Contract workers, deploy, approval, gate pass, renewal | pass (under 18 and the same ID refused; renewal that would not extend refused 409; photo PDF refused, JPG saved; kiosk PIN shown once) | no access | no access | sees own workers |
+| Attendance | pass (Oct confirmed: 5 days; current month has no Confirm) | no access | no access | Oct days saved (5), kiosk text where a site has one |
+| Vendor compliance | pass (Oct pack: five proofs open, wage check waiting) | no access | no access | pack opened; empty upload names each field |
+| Registers & returns | pass (Make registers for a month with no workers refused) | no access | no access | not shown |
+| Settings 4.9 | pass (registration: empty save named, then added) | can edit (settings key) | no access | not shown |
+| Make employee (CL-7) | pass to "Check and start"; joining day on or before the start refused; nothing started | no access | no access | not shown |
+| Portal: due, workers, attendance, packs, bills | | | | pass after the tab fix (below) |
+
+Fixed on the branch: months and due dates as words (`49bb0ab0e`, `e2e12162d`); portal tab links signed the contact out,
+"Access ends today" for everyone, photo size said 10 MB, ISO dates in two messages (`4389396d3`); a refused deployment
+says why (`ff504e2a8`); "Upload pf ecr and challan" and the doubled size hint (`7920d0da0`); Make employee focus on the
+wrong field (`7bb97c964`); "1 workers" (`248bb3636`).
+
+## Founder questions from the Contract labour walk (11 Nov 2026)
+
+801. **Three row buttons wrap.** A deployed worker shows Gate pass, Make employee and Release; at 1278 px Release wraps
+     to a second line (the CLB-05 drawing shows the same). Suggested: Make employee inside the gate pass card.
+802. **Done toasts look like information.** Contract labour (and the other ops areas) show success with the blue "i"
+     toast. Suggested: the success tone for every done message in the ops screens.
+803. **Highest in 12 months reads 0 until the night.** The peak is counted by the 08:30 job. Suggested: count it when a
+     worker is approved or released too.
+804. **Registers text said attendance was not live.** Seen on the walk; the CL-5/CL-6 follow-up merged since has changed
+     both texts (rechecked in the code). *No question left.*
+805. **Registers & returns against the drawing.** The drawing has "Inspection pack" at the top and the menu says "CLRA
+     registers & returns"; the live page has the month and Make registers. Suggested: CL-6 builder to confirm.
+806. **"Open" twice on the portal packs list.** The status "Open" sits next to the Open button. Suggested: the status
+     "Not started" until a proof is uploaded.
+807. **A month with no days can be confirmed.** Suggested: the confirmation names the workers with 0 days.
+808. **Make employee scrolls.** Employee details and Check and start are taller than the screen (703 and 883 px against
+     579). Suggested: keep (the fields need it), or put Designation, Department and Employment type in two columns.
+809. **No photo on Make employee.** The same-person step shows the placeholder although the worker has a gate pass photo.
+     Suggested: show it.
+810. **Deployed below the minimum wage.** A worker at ₹9,000 a month (minimum ₹16,137, Karnataka) was deployed; the wage
+     is only a hint until the monthly wage check. Suggested: keep, with the hint in red on the approval dialog.
+811. **Registers no-access text.** "Ask an admin (the contract labour key)" while the other pages say "Ask your HR team".
+     Suggested: the same words everywhere.
+

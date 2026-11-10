@@ -24,6 +24,8 @@ export interface LiveContractorPortal {
   tenant: string;
   tab: LiveContractorTab;
   hrefFor: (tab: LiveContractorTab) => string;
+  /** Change tab without reloading the page (the one-time-code session lives only in the page). */
+  onTab?: (tab: LiveContractorTab) => void;
   state: 'ready' | 'loading' | 'error';
   onRetry: () => void;
   /** The session ended part-way (a call answered 401). */
@@ -112,12 +114,14 @@ export function LiveContractorPortalView({ live }: { live: LiveContractorPortal 
       />
     );
   };
+  // Walk finding: access ends with the contract (the last work order, else the last licence), never "today".
+  const contractEnd = d ? [...d.workOrders.map((w) => w.toOn), ...d.establishments.map((e) => e.validTo)].sort().at(-1) : undefined;
   return (
     <TenantPortal
       tenant={d?.company ?? live.tenant}
       portal={`Contractor portal${d ? ` · ${d.contractor.name}` : ''}`}
-      nav={TABS.map((t) => ({ label: t.label, active: t.id === live.tab, href: live.hrefFor(t.id) }))}
-      access={{ kind: 'otp', identity: d?.contact.email ?? '', endsOn: today, today, endsBecause: 'contract end' }}
+      nav={TABS.map((t) => ({ label: t.label, active: t.id === live.tab, href: live.hrefFor(t.id), onNavigate: live.onTab ? () => live.onTab!(t.id) : undefined }))}
+      access={contractEnd ? { kind: 'otp', identity: d?.contact.email ?? '', endsOn: dOf(contractEnd), today, endsBecause: 'contract end' } : { kind: 'signin' }}
       footer={{ privacy: 'Privacy notice for contract-labour vendors (G-09)' }}
       noLanguage
       onSignOut={live.onSignOut}

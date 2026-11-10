@@ -1140,6 +1140,8 @@ export interface LiveClientPortal {
   tab: LiveClientTab;
   /** Each tab is a link (the page keeps the tab in the address). */
   hrefFor: (tab: LiveClientTab) => string;
+  /** Change tab without reloading the page (the one-time-code session lives only in the page). */
+  onTab?: (tab: LiveClientTab) => void;
   state: 'ready' | 'loading' | 'error';
   onRetry: () => void;
   /** The session ended part-way (a call answered 401). */
@@ -1355,7 +1357,7 @@ function LiveClientPortalView({ live }: { live: LiveClientPortal }) {
     <TenantPortal
       tenant={live.tenant}
       portal={`Client portal${d ? ` · ${d.client.name}` : ''}`}
-      nav={LIVE_TABS.map((t) => ({ label: t.label, active: t.id === live.tab, href: live.hrefFor(t.id) }))}
+      nav={LIVE_TABS.map((t) => ({ label: t.label, active: t.id === live.tab, href: live.hrefFor(t.id), onNavigate: live.onTab ? () => live.onTab!(t.id) : undefined }))}
       access={{ kind: 'otp', identity: d?.client.email ?? '', endsOn: d?.client.contractEnds ? dOf(d.client.contractEnds) : live.today, today: live.today, endsBecause: 'contract end' }}
       footer={{ privacy: 'Privacy notice for client contacts (G-09)' }}
       noLanguage
