@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '../../components/button';
 import { DatePicker } from '../../components/date';
 import { EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { TextArea, TextField } from '../../components/inputs';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
@@ -63,8 +63,19 @@ function GrantDialog({ users, roles, scopes, userId, today, onGrant, onClose }: 
   const [busy, setBusy] = useState(false);
   const picked = roles.find((r) => r.id === role);
   const targetList = scopeType && SCOPE_TARGET[scopeType] ? scopes[SCOPE_TARGET[scopeType]!] : null;
-  const ready = Boolean(user && role && scopeType && (!targetList || target) && from && reason.trim());
+  // The button is never disabled: pressing it early names each missing field and moves focus there (walk-through 11 Nov 2026).
+  const early = useTooEarly(
+    [
+      !user && { fieldId: 'ga-user', message: 'Choose the person.' },
+      !role && { fieldId: 'ga-role', message: 'Choose the role.' },
+      !scopeType && { fieldId: 'ga-scope', message: 'Choose over whom.' },
+      targetList && !target && { fieldId: 'ga-target', message: `Choose the ${SCOPE_LABEL[scopeType!].toLowerCase()}.` },
+      !from && { fieldId: 'ga-from', message: 'Choose the start date.' },
+      !reason.trim() && { fieldId: 'ga-reason', message: 'Say why: it is kept on the record.' },
+    ].filter(Boolean) as { fieldId: string; message: string }[],
+  );
   const send = async () => {
+    if (early.stop()) return;
     setBusy(true);
     setError(null);
     try {
@@ -99,33 +110,33 @@ function GrantDialog({ users, roles, scopes, userId, today, onGrant, onClose }: 
           <Button onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="primary" loading={busy} disabled={!ready} onClick={send}>
+          <Button variant="primary" loading={busy} onClick={() => void send()}>
             {risk ? (picked?.confidential ? 'Send for approval anyway' : 'Give access anyway') : picked?.confidential ? 'Send for approval' : 'Give access'}
           </Button>
         </>
       }
     >
-      <FormField id="ga-user" label="Person" required>
+      <FormField id="ga-user" error={early.errorOf('ga-user')} label="Person" required>
         <Select aria-label="Person" value={user} onChange={setUser} searchable options={users.map((u) => ({ value: u.id, label: userLabel(u) }))} />
       </FormField>
-      <FormField id="ga-role" label="Role" required helper={picked?.confidential ? 'Opens Confidential data: another admin approves it.' : undefined}>
+      <FormField id="ga-role" error={early.errorOf('ga-role')} label="Role" required helper={picked?.confidential ? 'Opens Confidential data: another admin approves it.' : undefined}>
         <Select aria-label="Role" value={role} onChange={(v) => (setRole(v), setRisk(null))} options={roles.map((r) => ({ value: r.id, label: r.confidential ? `${r.name} (Confidential)` : r.name }))} />
       </FormField>
-      <FormField id="ga-scope" label="Over" required helper={picked?.companyWideOnly.length ? `${picked.companyWideOnly.length === 1 ? 'One of this role’s permissions works' : `${picked.companyWideOnly.length} of this role’s permissions work`} only over the whole company.` : undefined}>
+      <FormField id="ga-scope" error={early.errorOf('ga-scope')} label="Over" required helper={picked?.companyWideOnly.length ? `${picked.companyWideOnly.length === 1 ? 'One of this role’s permissions works' : `${picked.companyWideOnly.length} of this role’s permissions work`} only over the whole company.` : undefined}>
         <Select aria-label="Over" value={scopeType} onChange={(v) => (setScopeType(v), setTarget(null), setRisk(null))} options={SCOPE_TYPES.map((t) => ({ value: t, label: SCOPE_LABEL[t] }))} />
       </FormField>
       {targetList && (
-        <FormField id="ga-target" label={SCOPE_LABEL[scopeType!]} required>
+        <FormField id="ga-target" error={early.errorOf('ga-target')} label={SCOPE_LABEL[scopeType!]} required>
           <Select aria-label={SCOPE_LABEL[scopeType!]} value={target} onChange={(v) => (setTarget(v), setRisk(null))} searchable options={targetList} />
         </FormField>
       )}
-      <FormField id="ga-from" label="From" required>
+      <FormField id="ga-from" error={early.errorOf('ga-from')} label="From" required>
         <DatePicker value={from} onChange={setFrom} min={new Date(`${today}T00:00:00`)} />
       </FormField>
       <FormField id="ga-to" label="Until" optional helper="Leave empty for no end date. Auditors and cover roles should have one.">
         <DatePicker value={to} onChange={setTo} min={from ?? undefined} />
       </FormField>
-      <FormField id="ga-reason" label="Reason" required helper="Kept on the record.">
+      <FormField id="ga-reason" error={early.errorOf('ga-reason')} label="Reason" required helper="Kept on the record.">
         <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
       </FormField>
     </Dialog>
