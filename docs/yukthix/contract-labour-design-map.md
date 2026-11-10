@@ -612,3 +612,16 @@ pass" keeping the number; 681 block at the threshold once registrations exist, 6
 785. **Register per contractor.** The drawing showed a register of workmen per contractor; YukthiX makes one register
      for the establishment with the contractor named on each row. *Suggested: keep (inspectors accept the combined form;
      verify with counsel).*
+
+## Follow-up after CL-5 and CL-6 (answers 754, 775, 781; 11 Nov 2026, branch `feat/yukthix-contract-labour-followup`)
+
+- **781:** the muster roll's days are the site attendance the site in-charge confirmed (CL-5). The muster waits until
+  every contractor's month at the site is confirmed ("Waiting for attendance of N contractors"); the wage register still
+  waits for every wage register. The annual return's days worked stay from the wage registers.
+- **754:** the contractor adds the worker's photo when adding the worker on the portal (optional; JPG or PNG up to 5 MB;
+  checked from the bytes, private storage, virus-scanned): `POST public/contractor-portal/:org/workers/:id/photo`, only
+  for its own worker waiting for approval. It is the same single photo the site adds on the gate pass card (CL-5): one
+  `photo_file_id` per deployment, never a second photo. At site approval a worker with a photo shows it, and the
+  approval needs the tick "the person at the site is the one in this photo" (the API refuses without it). Audited.
+- **775:** the PPL-12 Ready to onboard drawing has no "contract worker conversion" row or story any more (conversions
+  start from the worker, CLB-05); its row is gone from the people map.
