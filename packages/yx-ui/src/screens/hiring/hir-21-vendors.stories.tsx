@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { VendorsScreen } from './hiring-staffing';
+import { VendorInvoices as VendorInvoicesView, VendorsScreen } from './hiring-staffing';
 import { PRIOR_SUBMISSIONS, VENDORS, VENDOR_SUBMISSIONS } from './hiring-data';
 import { TODAY } from '../_kit/data';
 import { ShareJobSheet, VendorSheet } from './staffing-sheets';
@@ -73,6 +73,26 @@ export const ReviewDispute: S = {
         onAccept: async () => {},
         onReject: async () => {},
         onOverride: async () => {},
+      }}
+    />
+  ),
+};
+// Drawn for answer 496: each vendor links to its consultant record in payroll; confirmed invoices are paid there.
+export const VendorInvoicesPayroll: S = {
+  name: 'Vendor invoices · linked to payroll (PAY 8)',
+  render: () => (
+    <VendorInvoicesView
+      live={{
+        canEdit: true,
+        onConfirm: async () => {},
+        onPaid: async () => {},
+        onLink: async () => {},
+        vendors: [{ id: 'v1', name: 'Sahyadri Staffing LLP', consultantId: 'k1' }, { id: 'v2', name: 'Konkan Talent', consultantId: null }],
+        consultants: [{ value: 'k1', label: 'Sahyadri Staffing LLP · PAN …234F · 194C · Kaveri Foods Pvt Ltd' }],
+        rows: [
+          { id: null, status: 'waiting', vendorInvoiceNo: null, vendor: 'Sahyadri Staffing LLP', worker: 'Priya Nair', placementId: 'p1', month: '2026-10', hours: '160', rate: '900.00', net: '144000.00', gst: '25920.00', tdsSection: '194C', tds: '2880.00' },
+          { id: 'b1', status: 'confirmed', vendorInvoiceNo: 'SS/26-27/044', vendor: 'Sahyadri Staffing LLP', worker: 'Priya Nair', placementId: 'p1', month: '2026-09', hours: '152', rate: '900.00', net: '136800.00', gst: '24624.00', tdsSection: '194C', tds: '2736.00', payroll: { status: 'approved', paidOn: null, tds: '2736.00' } },
+        ],
       }}
     />
   ),

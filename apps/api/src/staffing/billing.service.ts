@@ -6,9 +6,14 @@ import { audit, CompanyContext, inCompany, Tx } from '../org-structure/org-struc
 import { IN_STATES, todayIst } from '../org-structure/org-validation';
 import { settingFor } from '../people/probation';
 import { StaffingService } from './staffing.service';
+import { ConsultantsService } from '../payroll/consultants.service';
+import type { VendorConsultantDto } from './staffing-dto';
 import { rateOn } from './staffing-work.service';
 import { financialYear, toPaise, toRupees } from './staffing-rules';
+import { conversionFee, guaranteeOutcome, placementFee } from './billing-rules';
 import { addDays, ageingBucket, creditProblem, daysBetween, eInvoiceState, gstSplit, lineAmount, mondayOf, nextReminder, pctToBp, splitTds, taperProblem } from './billing-rules';
+import { buildInvoicePdf, type InvoicePdfField } from './invoice-pdf';
+import type { HireDto, LeftDto } from './staffing-dto';
 import type { ApproveHoursDto, ClientTermsDto, CollectionDto, CreditNoteDto, DraftInvoiceDto, HoursDto, ReceiptDto, ReissueDto, VendorBillDto, VendorBillPaidDto, VersionDto } from './staffing-dto';
 
 const iso = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : null);
@@ -40,6 +45,7 @@ export class StaffingBillingService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly staffing: StaffingService,
+    private readonly consultants: ConsultantsService,
   ) {}
 
   /** The key (manage: account manager; billing: finance; read: either), the desk on, then the company's transaction. */
@@ -250,7 +256,7 @@ export class StaffingBillingService {
   private async credit(tx: Tx, c: CompanyContext, id: string, amount: bigint, reason: string) {
     const inv = await tx.staffingInvoice.findFirst({ where: { id, organizationId: c.organizationId } });
     if (!inv) throw new NotFoundException('Invoice not found.');
-    if (inv.status !== 'issued' || inv.kind !== 'staffing') throw new ConflictException('Only an issued invoice takes a credit note.');
+    if (inv.status !== 'issued' || inv.kind === 'credit_note') throw new ConflictException('Only an issued invoice takes a credit note.');
     const before = await tx.staffingInvoice.aggregate({ where: { creditOf: id }, _sum: { taxablePaise: true } });
     const bad = creditProblem(inv.taxablePaise, before._sum.taxablePaise ?? 0n, amount);
     if (bad) throw new BadRequestException(bad);
@@ -278,7 +284,7 @@ export class StaffingBillingService {
       const cn = await this.credit(tx, c, id, inv.taxablePaise, dto.reason);
       const copy = await tx.staffingInvoice.create({
         data: {
-          organizationId: c.organizationId, clientId: inv.clientId, seriesId: inv.seriesId, kind: 'staffing', periodStart: inv.periodStart, periodEnd: inv.periodEnd, supplierState: inv.supplierState, placeOfSupply: inv.placeOfSupply, gstPct: inv.gstPct,
+          organizationId: c.organizationId, clientId: inv.clientId, seriesId: inv.seriesId, kind: inv.kind, periodStart: inv.periodStart, periodEnd: inv.periodEnd, supplierState: inv.supplierState, placeOfSupply: inv.placeOfSupply, gstPct: inv.gstPct,
           taxablePaise: inv.taxablePaise, cgstPaise: inv.cgstPaise, sgstPaise: inv.sgstPaise, igstPaise: inv.igstPaise, totalPaise: inv.totalPaise, po: inv.po, reason: `Reissue of ${inv.number}`, createdBy: c.userId ?? null,
           lines: { create: inv.lines.map((l) => ({ organizationId: c.organizationId, placementId: l.placementId, description: l.description, qtyCenti: l.qtyCenti, ratePaise: l.ratePaise, amountPaise: l.amountPaise, position: l.position })) },
         },
@@ -361,7 +367,7 @@ export class StaffingBillingService {
   receivables(ctx: TenantContext, user: ScopeUser) {
     return this.run(ctx, user, 'billing', async (tx, c, a) => {
       const org = c.organizationId;
-      const invs = await tx.staffingInvoice.findMany({ where: { organizationId: org, kind: 'staffing', status: 'issued' }, orderBy: { invoiceDate: 'asc' } });
+      const invs = await tx.staffingInvoice.findMany({ where: { organizationId: org, kind: { in: ['staffing', 'fee'] }, status: 'issued' }, orderBy: { invoiceDate: 'asc' } });
       const of = await this.paidOf(tx, invs.map((i) => i.id));
       const clients = await tx.staffingClient.findMany({ where: { organizationId: org, id: { in: [...new Set(invs.map((i) => i.clientId))] } }, select: { id: true, name: true, paymentTermsDays: true, tdsSection: true } });
       const terms = Number(await settingFor(tx, c, 'staffing.payment_terms_days', { legalEntityId: '' }));
@@ -375,7 +381,7 @@ export class StaffingBillingService {
         const due = addDays(iso(i.invoiceDate)!, cl.paymentTermsDays ?? terms);
         rows.push({
           invoiceId: i.id, invoice: i.number, clientId: cl.id, client: cl.name, tdsSection: cl.tdsSection, date: iso(i.invoiceDate), dueOn: due, bucket: ageingBucket(iso(i.invoiceDate)!, today), overdueDays: Math.max(0, daysBetween(due, today)),
-          total: toRupees(i.totalPaise), outstanding: toRupees(o.outstanding), tdsDeducted: toRupees(o.tds), tds26as: i.tds26asPaise != null ? toRupees(i.tds26asPaise) : null, dispute: i.dispute, nextReminder: i.dispute ? null : nextReminder(due, today, schedule), version: i.version,
+          total: toRupees(i.totalPaise), outstanding: toRupees(o.outstanding), tdsDeducted: toRupees(o.tds), tds26as: i.tds26asPaise != null ? toRupees(i.tds26asPaise) : null, dispute: i.dispute, nextReminder: i.dispute ? null : nextReminder(due, today, schedule), lastReminder: iso((await tx.staffingReminder.findFirst({ where: { invoiceId: i.id, emailed: true }, orderBy: { sentAt: 'desc' }, select: { sentAt: true } }))?.sentAt), version: i.version,
         });
       }
       return { canRecord: a.billing && !a.actingForOther, schedule, rows };
@@ -395,7 +401,7 @@ export class StaffingBillingService {
     return this.run(ctx, user, 'billing', async (tx, c) => {
       const org = c.organizationId;
       await this.staffing.client(tx, c, dto.clientId);
-      const invs = await tx.staffingInvoice.findMany({ where: { organizationId: org, id: { in: allocs.map((x) => x.invoiceId) }, clientId: dto.clientId, kind: 'staffing', status: 'issued' } });
+      const invs = await tx.staffingInvoice.findMany({ where: { organizationId: org, id: { in: allocs.map((x) => x.invoiceId) }, clientId: dto.clientId, kind: { in: ['staffing', 'fee'] }, status: 'issued' } });
       if (invs.length !== allocs.length) throw new BadRequestException('Allocate only to this client’s issued invoices.');
       const of = await this.paidOf(tx, invs.map((i) => i.id));
       for (const x of allocs) {
@@ -413,7 +419,7 @@ export class StaffingBillingService {
   /** The 26AS amount seen for an invoice's TDS, and a dispute (which pauses reminders). */
   async collection(ctx: TenantContext, user: ScopeUser, id: string, dto: CollectionDto) {
     return this.run(ctx, user, 'billing', async (tx, c) => {
-      const inv = await tx.staffingInvoice.findFirst({ where: { id, organizationId: c.organizationId, kind: 'staffing', status: 'issued' } });
+      const inv = await tx.staffingInvoice.findFirst({ where: { id, organizationId: c.organizationId, kind: { in: ['staffing', 'fee'] }, status: 'issued' } });
       if (!inv) throw new NotFoundException('Invoice not found.');
       const tds26 = dto.tds26as === undefined ? undefined : dto.tds26as === null ? null : toPaise(dto.tds26as);
       if (tds26 === null && dto.tds26as) throw new BadRequestException('Enter the 26AS amount in rupees.');
@@ -462,8 +468,22 @@ export class StaffingBillingService {
 
   /* ---------------- answer 490: vendor invoices ---------------- */
 
-  vendorBills(ctx: TenantContext, user: ScopeUser) {
-    return this.run(ctx, user, 'billing', async (tx, c, a) => ({ canEdit: a.billing && !a.actingForOther, rows: await this.vendorRows(tx, c) }));
+  async vendorBills(ctx: TenantContext, user: ScopeUser) {
+    const out = await this.run(ctx, user, 'billing', async (tx, c, a) => {
+      const vendors = await tx.agency.findMany({ where: { organizationId: c.organizationId }, orderBy: { name: 'asc' }, select: { id: true, name: true, consultantId: true } });
+      const links = await tx.staffingVendorBill.findMany({ where: { organizationId: c.organizationId, consultantInvoiceId: { not: null } }, select: { id: true, consultantInvoiceId: true } });
+      return { canEdit: a.billing && !a.actingForOther, rows: await this.vendorRows(tx, c), vendors: vendors.map((v) => ({ id: v.id, name: v.name, consultantId: v.consultantId })), links };
+    });
+    const states = await this.consultants.staffingStates(ctx, out.links.map((l) => l.consultantInvoiceId!));
+    return {
+      canEdit: out.canEdit,
+      vendors: out.vendors,
+      rows: out.rows.map((r) => {
+        const link = out.links.find((l) => l.id === r.id);
+        const st = link ? states.get(link.consultantInvoiceId!) : undefined;
+        return { ...r, payroll: link ? { status: st?.status ?? 'submitted', paidOn: st?.paidOn ?? null, tds: st?.tdsAmount ?? null } : null };
+      }),
+    };
   }
 
   /** Proposed (approved hours not yet billed, by placement and month) and confirmed vendor invoices. */
@@ -496,12 +516,19 @@ export class StaffingBillingService {
         ];
   }
 
-  /** The vendor confirmed its invoice for a month: the proposal is fixed with the vendor's number. */
+  /**
+   * The vendor confirmed its invoice for a month: the proposal is fixed with the vendor's number and enters payroll
+   * (PAY 8) as an invoice of the vendor's linked consultant record (answer 496), which approves, deducts TDS, pays and
+   * certifies it.
+   */
   async confirmVendorBill(ctx: TenantContext, user: ScopeUser, dto: VendorBillDto) {
-    return this.run(ctx, user, 'billing', async (tx, c) => {
+    if (dto.invoiceDate && dto.invoiceDate > todayIst()) throw new BadRequestException('The vendor invoice date is in the future.');
+    const made = await this.run(ctx, user, 'billing', async (tx, c) => {
       const org = c.organizationId;
       const p = await tx.staffingPlacement.findFirst({ where: { id: dto.placementId, organizationId: org, supply: 'vendor' } });
       if (!p) throw new NotFoundException('Vendor placement not found.');
+      const agency = await tx.agency.findFirstOrThrow({ where: { id: p.agencyId! } });
+      if (!agency.consultantId) throw new ConflictException(`Link ${agency.name} to its consultant record in payroll first.`);
       const from = `${dto.month}-01`;
       const to = addDays(new Date(Date.UTC(Number(dto.month.slice(0, 4)), Number(dto.month.slice(5, 7)), 1)).toISOString().slice(0, 10), -1);
       const hours = await tx.staffingHours.findMany({ where: { organizationId: org, placementId: p.id, status: 'approved', vendorBillId: null, weekStart: { gte: day(from), lte: day(to) } } });
@@ -516,17 +543,161 @@ export class StaffingBillingService {
         });
       await tx.staffingHours.updateMany({ where: { id: { in: hours.map((h) => h.id) } }, data: { vendorBillId: b.id } });
       await audit(tx, c, 'staffing.vendor_bill.confirmed', 'staffing_vendor_bill', b.id, { month: dto.month, vendorInvoiceNo: dto.vendorInvoiceNo, net: listed.net });
-      return { id: b.id };
+      const interState = agency.gstin ? agency.gstin.slice(0, 2) !== (await tx.staffingInvoiceSeries.findFirst({ where: { organizationId: org }, select: { gstin: true } }))?.gstin.slice(0, 2) : true;
+      const gst = toPaise(listed.gst)!;
+      return { billId: b.id, consultantId: agency.consultantId, invoice: { invoiceNo: dto.vendorInvoiceNo.trim(), invoiceDate: dto.invoiceDate ?? todayIst(), period: dto.month, taxableValue: listed.net, cgst: interState ? '0' : toRupees(gst / 2n), sgst: interState ? '0' : toRupees(gst - gst / 2n), igst: interState ? listed.gst : '0', section: listed.tdsSection } };
     }, true);
+    // shortcut: the CGST/SGST split compares the vendor's GSTIN with the company's first series GSTIN; the payroll
+    // approver checks the vendor's invoice anyway.
+    let consultantInvoiceId: string;
+    try {
+      consultantInvoiceId = (await this.consultants.staffingSubmit(ctx, made.consultantId, made.invoice as never, user.userId!)).id;
+    } catch (e) {
+      // Not accepted by payroll (e.g. no approver): undo the confirmation so it can be tried again.
+      await inCompany(this.tenantPrisma, ctx, async (tx) => {
+        await tx.staffingHours.updateMany({ where: { vendorBillId: made.billId }, data: { vendorBillId: null } });
+        await tx.staffingVendorBill.delete({ where: { id: made.billId } });
+      });
+      throw e;
+    }
+    await inCompany(this.tenantPrisma, ctx, (tx) => tx.staffingVendorBill.update({ where: { id: made.billId }, data: { consultantInvoiceId } }));
+    return { id: made.billId, consultantInvoiceId };
+  }
+
+  /** Answer 496: link a vendor to its consultant record in payroll (or unlink with null). */
+  async linkConsultant(ctx: TenantContext, user: ScopeUser, agencyId: string, dto: VendorConsultantDto) {
+    return this.run(ctx, user, 'billing', async (tx, c) => {
+      const a = await tx.agency.findFirst({ where: { id: agencyId, organizationId: c.organizationId } });
+      if (!a) throw new NotFoundException('Vendor not found.');
+      if (dto.consultantId && !(await this.consultants.staffingOptions(ctx)).some((o) => o.value === dto.consultantId)) throw new BadRequestException('Choose an active consultant record of your company.');
+      await tx.agency.update({ where: { id: a.id }, data: { consultantId: dto.consultantId ?? null } });
+      await audit(tx, c, 'staffing.vendor.consultant_linked', 'agency', a.id, { consultantId: dto.consultantId ?? null });
+      return { id: a.id };
+    }, true);
+  }
+
+  consultantOptions(ctx: TenantContext, user: ScopeUser) {
+    return this.run(ctx, user, 'billing', () => this.consultants.staffingOptions(ctx));
   }
 
   async vendorBillPaid(ctx: TenantContext, user: ScopeUser, id: string, dto: VendorBillPaidDto) {
     if (dto.paidOn > todayIst()) throw new BadRequestException('A payment cannot be in the future.');
     return this.run(ctx, user, 'billing', async (tx, c) => {
+      if (await tx.staffingVendorBill.count({ where: { id, consultantInvoiceId: { not: null } } })) throw new ConflictException('This vendor invoice is paid through payroll payouts.');
       const { count } = await tx.staffingVendorBill.updateMany({ where: { id, organizationId: c.organizationId, status: 'confirmed' }, data: { status: 'paid', paidOn: day(dto.paidOn) } });
       if (!count) throw new NotFoundException('Vendor invoice not found or already paid.');
       await audit(tx, c, 'staffing.vendor_bill.paid', 'staffing_vendor_bill', id, { paidOn: dto.paidOn });
       return { id };
+    }, true);
+  }
+
+  /* ---------------- answer 492: the GST invoice PDF ---------------- */
+
+  /** The PDF of an issued invoice or credit note: fields from the rule set GST.INVOICE_R46 (verify). */
+  async pdfIn(tx: Tx, org: string, id: string, clientId?: string) {
+    const inv = await tx.staffingInvoice.findFirst({ where: { id, organizationId: org, ...(clientId ? { clientId } : {}) }, include: { lines: { orderBy: { position: 'asc' } } } });
+    if (!inv) throw new NotFoundException('Invoice not found.');
+    if (inv.status !== 'issued') throw new ConflictException('A draft has no PDF. Issue it first.');
+    const client = await tx.staffingClient.findFirstOrThrow({ where: { id: inv.clientId } });
+    const series = await tx.staffingInvoiceSeries.findFirstOrThrow({ where: { id: inv.seriesId } });
+    const entity = await tx.legalEntity.findFirst({ where: { id: series.legalEntityId }, select: { name: true, registeredAddress: true } });
+    const rule = await ruleValues<{ fields: InvoicePdfField[]; title: Record<string, string> }>(tx, 'GST.INVOICE_R46');
+    const gst = await ruleValues<{ sac: string }>(tx, 'GST.STAFFING_RATE');
+    const codes = await ruleValues<Record<string, string>>(tx, 'GST.STATE_CODES');
+    const code = (st: string) => Object.entries(codes).find(([, v]) => v === st)?.[0] ?? '';
+    const addr = (a: unknown) => {
+      const r = a as { lines?: string[]; city?: string; postalCode?: string | null } | null;
+      return r ? [...(r.lines ?? []), r.city, r.postalCode].filter(Boolean).join(', ') : null;
+    };
+    const original = inv.creditOf ? await tx.staffingInvoice.findFirst({ where: { id: inv.creditOf }, select: { number: true, invoiceDate: true } }) : null;
+    const credits = inv.kind === 'credit_note' ? [] : await tx.staffingInvoice.findMany({ where: { creditOf: inv.id }, orderBy: { createdAt: 'asc' } });
+    const r = (p: bigint) => toRupees(p);
+    const half = (Number(inv.gstPct) / 2).toString();
+    const buf = await buildInvoicePdf({
+      title: rule.title[inv.kind === 'credit_note' ? 'credit_note' : 'invoice'] ?? 'Tax invoice',
+      kind: inv.kind === 'credit_note' ? 'credit_note' : 'invoice',
+      fields: rule.fields,
+      values: {
+        supplier: entity?.name, supplierAddress: addr(entity?.registeredAddress), supplierGstin: series.gstin, number: inv.number, date: iso(inv.invoiceDate),
+        original: original ? `${original.number} of ${iso(original.invoiceDate)}` : null, recipient: client.legalName || client.name, recipientAddress: client.billingAddress, recipientGstin: client.gstin ?? 'Unregistered',
+        placeOfSupply: `${IN_STATES[inv.placeOfSupply] ?? inv.placeOfSupply} (${code(inv.placeOfSupply)})`, reverseCharge: 'No', reason: inv.reason, po: inv.po, signature: `For ${entity?.name ?? ''}: authorised signatory`,
+      },
+      lines: inv.lines.map((l) => ({ description: l.description, sac: gst.sac, qty: qty(l.qtyCenti), rate: r(l.ratePaise), amount: r(l.amountPaise) })),
+      totals: [
+        { label: 'Taxable value', value: r(inv.taxablePaise) },
+        ...(inv.igstPaise > 0n || inv.supplierState !== inv.placeOfSupply ? [{ label: `IGST ${inv.gstPct.toString()}%`, value: r(inv.igstPaise) }] : [{ label: `CGST ${half}%`, value: r(inv.cgstPaise) }, { label: `SGST ${half}%`, value: r(inv.sgstPaise) }]),
+        { label: 'Total', value: r(inv.totalPaise) },
+      ],
+      notes: credits.map((x) => `${x.number} of ${iso(x.invoiceDate)}: ${r(x.totalPaise)} (${x.reason ?? ''})`),
+      footer: 'Computer-generated invoice. GST field list from rule set GST.INVOICE_R46 (to be verified by the CA).',
+    });
+    return { buffer: buf, filename: `${(inv.number ?? 'invoice').replace(/[^A-Za-z0-9-]/g, '_')}.pdf` };
+  }
+
+  pdf(ctx: TenantContext, user: ScopeUser, id: string) {
+    return this.run(ctx, user, 'read', (tx, c) => this.pdfIn(tx, c.organizationId, id));
+  }
+
+  /* ---------------- answer 494: the placement fee and the guarantee ---------------- */
+
+  /** The client hired the person: a draft fee invoice from the client's HIR-30 terms (finance issues it). */
+  async hired(ctx: TenantContext, user: ScopeUser, placementId: string, dto: HireDto) {
+    const ctc = toPaise(dto.ctc);
+    if (ctc == null || ctc <= 0n) throw new BadRequestException('Enter the first-year CTC in rupees.');
+    if (dto.hiredOn > todayIst()) throw new BadRequestException('The hire date cannot be in the future.');
+    return this.run(ctx, user, 'manage', async (tx, c) => {
+      const org = c.organizationId;
+      const p = await this.placement(tx, c, placementId);
+      if (p.hiredOn) throw new ConflictException('The hire is recorded already.');
+      if (dto.hiredOn < iso(p.startOn)!) throw new BadRequestException('The hire date is before the placement started.');
+      const t = await tx.staffingClientTerms.findFirst({ where: { clientId: p.clientId, organizationId: org } });
+      if (!t) throw new BadRequestException('Set this client’s fees and guarantee first.');
+      const series = await tx.staffingInvoiceSeries.findFirst({ where: { id: dto.seriesId, organizationId: org } });
+      if (!series) throw new BadRequestException('Choose an invoice series.');
+      const client = await this.staffing.client(tx, c, p.clientId);
+      const taper = t.taper as { fromMonth: number; pctBp: number }[];
+      const months = Math.max(0, (Number(dto.hiredOn.slice(0, 4)) - p.startOn.getUTCFullYear()) * 12 + Number(dto.hiredOn.slice(5, 7)) - 1 - p.startOn.getUTCMonth() - (Number(dto.hiredOn.slice(8)) < p.startOn.getUTCDate() ? 1 : 0));
+      // A contractor converted by the client pays the taper for the months served; with no taper, the permanent fee.
+      const fee = taper.length ? conversionFee(taper, months, ctc) : placementFee(t, ctc);
+      const basis = taper.length ? `conversion after ${months} month${months === 1 ? '' : 's'} served` : t.feeKind === 'fixed' ? 'fixed fee' : `${(t.feePctBp! / 100).toFixed(2)}% of CTC`;
+      let invoiceId: string | null = null;
+      if (fee > 0n) {
+        const gst = await ruleValues<{ gstPct: string }>(tx, 'GST.STAFFING_RATE');
+        const supplierState = await this.supplierState(tx, series.gstin);
+        const tx2 = this.taxes(fee, gst.gstPct, supplierState, client.state);
+        const inv = await tx.staffingInvoice.create({
+          data: {
+            organizationId: org, clientId: p.clientId, seriesId: series.id, kind: 'fee', supplierState, placeOfSupply: client.state, gstPct: gst.gstPct, taxablePaise: fee, cgstPaise: tx2.cgst, sgstPaise: tx2.sgst, igstPaise: tx2.igst, totalPaise: tx2.total, po: dto.po?.trim() || null, reason: `Placement fee: ${p.workerName}, ${basis}`, createdBy: c.userId ?? null,
+            lines: { create: [{ organizationId: org, placementId: p.id, description: `Placement fee: ${p.workerName} hired ${dto.hiredOn} at CTC ₹${toRupees(ctc)} (${basis})`, qtyCenti: 100, ratePaise: fee, amountPaise: fee, position: 1 }] },
+          },
+        });
+        invoiceId = inv.id;
+      }
+      await tx.staffingPlacement.update({ where: { id: p.id }, data: { hiredOn: day(dto.hiredOn), hireCtcPaise: ctc, feeInvoiceId: invoiceId, version: { increment: 1 } } });
+      await audit(tx, c, 'staffing.placement.hired', 'staffing_placement', p.id, { hiredOn: dto.hiredOn, ctc: toRupees(ctc), fee: toRupees(fee), basis, invoiceId });
+      return { invoiceId, fee: toRupees(fee) };
+    }, true);
+  }
+
+  /** The person left the client: inside the guarantee, a free replacement is owed or a pro-rated credit note is raised. */
+  async left(ctx: TenantContext, user: ScopeUser, placementId: string, dto: LeftDto) {
+    if (dto.leftOn > todayIst()) throw new BadRequestException('The leaving date cannot be in the future.');
+    return this.run(ctx, user, 'manage', async (tx, c) => {
+      const p = await this.placement(tx, c, placementId);
+      if (!p.hiredOn) throw new ConflictException('Record the client’s hire first.');
+      if (p.leftOn) throw new ConflictException('The leaving is recorded already.');
+      if (dto.leftOn < iso(p.hiredOn)!) throw new BadRequestException('The leaving date is before the hire.');
+      const t = await tx.staffingClientTerms.findFirst({ where: { clientId: p.clientId, organizationId: c.organizationId } });
+      const inv = p.feeInvoiceId ? await tx.staffingInvoice.findFirst({ where: { id: p.feeInvoiceId } }) : null;
+      if (inv && inv.status !== 'issued') throw new ConflictException('Issue the fee invoice first; the credit note is raised against it.');
+      const daysIn = daysBetween(iso(p.hiredOn)!, dto.leftOn);
+      const o = t && inv ? guaranteeOutcome(inv.taxablePaise, t.guaranteeDays, daysIn, t.remedy as 'replace' | 'refund') : { covered: false, credit: 0n };
+      const outcome = !o.covered ? 'none' : t!.remedy === 'replace' ? 'replace' : 'credit';
+      let creditId: string | null = null;
+      if (outcome === 'credit' && o.credit > 0n) creditId = (await this.credit(tx, c, inv!.id, o.credit, `Replacement guarantee: ${p.workerName} left after ${daysIn} of ${t!.guaranteeDays} days`)).id;
+      await tx.staffingPlacement.update({ where: { id: p.id }, data: { leftOn: day(dto.leftOn), guaranteeOutcome: outcome, guaranteeCreditId: creditId, version: { increment: 1 } } });
+      await audit(tx, c, 'staffing.placement.left_client', 'staffing_placement', p.id, { leftOn: dto.leftOn, daysIn, outcome, credit: toRupees(o.credit) });
+      return { outcome, creditNoteId: creditId, credit: toRupees(o.credit) };
     }, true);
   }
 }

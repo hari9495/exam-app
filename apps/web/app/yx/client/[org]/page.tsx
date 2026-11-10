@@ -3,10 +3,10 @@
 import { useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { ClientPortalScreen, PortalSignInScreen, type LiveClientPortal, type LiveClientTab } from '@yukthix/ui/hiring';
-import { apiFetch } from '../../../../lib/api-client';
+import { apiFetch, apiFetchBlob } from '../../../../lib/api-client';
 import { otpSignIn } from '../../../../lib/yx-portal';
 
-const TABS: LiveClientTab[] = ['jobs', 'submissions', 'timesheets', 'invoices'];
+const TABS: LiveClientTab[] = ['jobs', 'submissions', 'interviews', 'timesheets', 'invoices'];
 
 // T9-06 client portal (staffing slice 3, answer 453): a client contact the account manager gave access signs in with a
 // one-time code by email, then a session (this tab only) sees only their own company's jobs, submissions, timesheets
@@ -76,6 +76,21 @@ export default function YxClientPortalPage() {
           await call(`/submissions/${encodeURIComponent(id)}/decision`, token, { method: 'POST', body: JSON.stringify({ decision, ...(feedback ? { feedback } : {}) }) });
           await load(token);
         },
+        onBook: async (input) => {
+          await call('/interviews', token, { method: 'POST', body: JSON.stringify({ ...input, ...(input.panel ? {} : { panel: undefined }) }) });
+          await load(token);
+        },
+        onPdf: (invoiceId) =>
+          void apiFetchBlob(`${base}/invoices/${encodeURIComponent(invoiceId)}/pdf`, { headers: headers(token) })
+            .then(({ blob, filename }) => {
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = filename ?? 'invoice.pdf';
+              a.click();
+              URL.revokeObjectURL(url);
+            })
+            .catch((e: { status?: number }) => e.status === 401 && setEnded(true)),
         onTimesheet: async (id, action) => {
           await call(`/timesheets/${encodeURIComponent(id)}/${action === 'approve' ? 'approve' : 'send-back'}`, token, { method: 'POST', body: JSON.stringify({}) });
           await load(token);

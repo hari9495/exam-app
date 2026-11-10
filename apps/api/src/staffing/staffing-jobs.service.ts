@@ -6,7 +6,10 @@ import { REDIS_CONNECTION, bullOpts, logBullErrors } from '../jobs/redis-connect
 import { audit, CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import { settingFor } from '../people/probation';
-import { addDays, benchLop } from './billing-rules';
+import { DUNNING, addDays, benchLop } from './billing-rules';
+import { EmailService } from '../email/email.service';
+import { escapeHtml } from '../notifications/notification-email-render';
+import { toRupees } from './staffing-rules';
 import { withPayScope } from '../payroll/pay-access';
 
 export const STAFFING_JOBS_QUEUE = 'staffing-jobs';
@@ -31,6 +34,7 @@ export class StaffingJobsService implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Inject(REDIS_CONNECTION) private readonly connection: Redis,
     private readonly tenantPrisma: TenantPrismaService,
+    private readonly email: EmailService,
   ) {
     this.queue = logBullErrors(new Queue(STAFFING_JOBS_QUEUE, bullOpts(connection)), STAFFING_JOBS_QUEUE);
   }
@@ -47,7 +51,7 @@ export class StaffingJobsService implements OnModuleInit, OnModuleDestroy {
 
   private async run(job: Job) {
     if (job.name !== 'nightly') return;
-    const done = await Promise.allSettled([this.endPlacements(), this.benchPay()]);
+    const done = await Promise.allSettled([this.endPlacements(), this.benchPay(), this.reminders()]);
     for (const r of done) if (r.status === 'rejected') this.logger.warn(`nightly: ${(r.reason as Error)?.message}`);
   }
 
@@ -57,6 +61,59 @@ export class StaffingJobsService implements OnModuleInit, OnModuleDestroy {
         ? tx.staffingPlacement.findMany({ where: { supply: 'own', status: 'active', endOn: { lt: day(todayIst()) } }, distinct: ['organizationId'], select: { organizationId: true } })
         : tx.staffingBench.findMany({ distinct: ['organizationId'], select: { organizationId: true } }),
     );
+  }
+
+  /**
+   * Answer 493: the daily payment reminder. For each issued, unpaid, undisputed invoice, the company's schedule
+   * (`staffing.dunning.schedule`) gives steps around the due date; a step whose day has come is handled once: the client's
+   * billing contacts get one email for the latest step due (earlier missed steps are recorded as passed, not sent). Audited.
+   */
+  async reminders(today = todayIst()): Promise<number> {
+    const orgs = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) => tx.staffingInvoice.findMany({ where: { status: 'issued', kind: { in: ['staffing', 'fee'] }, dispute: null }, distinct: ['organizationId'], select: { organizationId: true } }));
+    let n = 0;
+    for (const { organizationId: org } of orgs) {
+      const sends = await this.tenantPrisma
+        .forTenant({ organizationId: org, isSuperAdmin: false }, (tx) => this.remindersIn(tx, org, today))
+        .catch((e: Error) => (this.logger.warn(`reminders ${org}: ${e.message}`), []));
+      for (const m of sends) {
+        const r = await this.email.send({ ...m, organizationId: org }).catch((e: Error) => (this.logger.warn(`reminder email: ${e.message}`), { success: false }));
+        if (r?.success) n++;
+      }
+    }
+    return n;
+  }
+
+  private async remindersIn(tx: Tx, org: string, today: string) {
+    const c = SYSTEM(org);
+    const schedule = DUNNING[await settingFor(tx, c, 'staffing.dunning.schedule', { legalEntityId: '' })] ?? [];
+    if (!schedule.length) return [];
+    const terms = Number(await settingFor(tx, c, 'staffing.payment_terms_days', { legalEntityId: '' }));
+    const invs = await tx.staffingInvoice.findMany({ where: { organizationId: org, status: 'issued', kind: { in: ['staffing', 'fee'] }, dispute: null }, take: 2000 });
+    const company = (await tx.organization.findUnique({ where: { id: org }, select: { name: true } }))?.name ?? '';
+    const out: { to: string; subject: string; html: string }[] = [];
+    for (const inv of invs) {
+      const paid = (await tx.staffingReceiptAllocation.aggregate({ where: { invoiceId: inv.id }, _sum: { amountPaise: true } }))._sum.amountPaise ?? 0n;
+      const credited = (await tx.staffingInvoice.aggregate({ where: { creditOf: inv.id }, _sum: { totalPaise: true } }))._sum.totalPaise ?? 0n;
+      const owed = inv.totalPaise - paid - credited;
+      if (owed <= 0n) continue;
+      const client = await tx.staffingClient.findFirstOrThrow({ where: { id: inv.clientId } });
+      const due = addDays(iso(inv.invoiceDate)!, client.paymentTermsDays ?? terms);
+      const done = new Set((await tx.staffingReminder.findMany({ where: { invoiceId: inv.id }, select: { step: true } })).map((x) => x.step));
+      const dueSteps = schedule.filter((s) => addDays(due, s) <= today && !done.has(s));
+      if (!dueSteps.length) continue;
+      const last = dueSteps[dueSteps.length - 1]!;
+      const to = (await tx.staffingClientContact.findMany({ where: { organizationId: org, clientId: client.id, billing: true, archivedAt: null }, select: { email: true } })).map((x) => x.email);
+      for (const s of dueSteps) {
+        // Once per step: a parallel run loses the unique insert and sends nothing.
+        const ok = await tx.staffingReminder.createMany({ data: [{ organizationId: org, invoiceId: inv.id, step: s, emailed: s === last && to.length > 0, recipients: s === last ? to : [] }], skipDuplicates: true });
+        if (!ok.count) continue;
+        if (s !== last) continue;
+        await audit(tx, c, 'staffing.reminder.sent', 'staffing_invoice', inv.id, { step: s, due, owed: toRupees(owed), to: to.length, emailed: to.length > 0 });
+        const late = s > 0 ? `It was due on ${due} and is ${s} days overdue.` : s === 0 ? `It is due today (${due}).` : `It is due on ${due}.`;
+        for (const email of to) out.push({ to: email, subject: `Payment reminder: invoice ${inv.number}`, html: `<p>Dear ${escapeHtml(client.legalName || client.name)},</p><p>Invoice ${escapeHtml(inv.number ?? '')} of ${iso(inv.invoiceDate)} from ${escapeHtml(company)} has ₹${toRupees(owed)} outstanding. ${late}</p><p>If you have paid already, please ignore this or reply with the payment reference. If something on the invoice is wrong, reply so we can look at it.</p>` });
+      }
+    }
+    return out;
   }
 
   /** Answer 483. Returns the number of placements ended. */

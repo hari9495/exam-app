@@ -268,7 +268,19 @@ export class StaffingWorkService {
     return this.run(ctx, user, 'view', async (tx, c, a) => {
       const r = await tx.staffingPlacement.findFirst({ where: { id, organizationId: c.organizationId } });
       if (!r) throw new NotFoundException('Placement not found.');
-      return { canManage: a.manage && !a.actingForOther, showPay: a.manage, placement: (await this.placementView(tx, c, [r], a.manage))[0]! };
+      // Answer 494: the hire and the guarantee, for account managers (money: never for recruiters).
+      const fee = a.manage
+        ? {
+            hiredOn: iso(r.hiredOn),
+            ctc: r.hireCtcPaise != null ? toRupees(r.hireCtcPaise) : null,
+            feeInvoice: r.feeInvoiceId ? await tx.staffingInvoice.findFirst({ where: { id: r.feeInvoiceId }, select: { id: true, number: true, status: true, totalPaise: true } }).then((i) => (i ? { id: i.id, number: i.number, status: i.status, total: toRupees(i.totalPaise) } : null)) : null,
+            leftOn: iso(r.leftOn),
+            guarantee: r.guaranteeOutcome,
+            terms: Boolean(await tx.staffingClientTerms.count({ where: { clientId: r.clientId, organizationId: c.organizationId } })),
+            series: (await tx.staffingInvoiceSeries.findMany({ where: { organizationId: c.organizationId }, orderBy: [{ financialYear: 'desc' }] })).map((x) => ({ value: x.id, label: `${x.prefix} · ${x.gstin} · ${x.financialYear}` })),
+          }
+        : null;
+      return { canManage: a.manage && !a.actingForOther, showPay: a.manage, placement: (await this.placementView(tx, c, [r], a.manage))[0]!, fee };
     });
   }
 

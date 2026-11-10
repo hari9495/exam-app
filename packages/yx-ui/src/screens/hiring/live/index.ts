@@ -73,5 +73,7 @@ export { BenchSheet, ClientJobSheet, PlacementSheet, ShareJobSheet, SubmitToClie
 // window, T9-06 the client portal per contact).
 export { CollectionsScreen, InvoiceRecordScreen, InvoicesScreen, LiveEInvoiceBanner, PlacementFeeSettingsScreen, type FeeTermsInput, type FeeTermsView, type HoursRowView, type InvoiceDetail, type InvoiceRowView, type LedgerRowView, type LiveCollections, type LiveFeeTerms, type LiveHours, type LiveInvoiceRecord, type LiveInvoices, type ReceiptInput, type VendorBillView, type WindowView } from '../hiring-staffing';
 export { CreateInvoicesSheet, type DraftInput, type InvoiceOptions } from '../staffing-sheets';
+// Round 4 (answers 491-499): the placement fee card and its live shape.
+export { PlacementFee, type LivePlacementFee } from '../hiring-staffing';
 export { ClientPortalScreen, type LiveClientPortal, type LiveClientTab } from '../../portals/t9-business';
 export { PortalSignInScreen } from '../../portals/portals-kit';

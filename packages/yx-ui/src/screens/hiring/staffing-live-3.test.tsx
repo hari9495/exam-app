@@ -145,7 +145,7 @@ describe('hours and vendor invoices (live)', () => {
     expect(within(dialog).getByText("Enter the vendor's invoice number.")).toBeInTheDocument();
     await ue.type(within(dialog).getByLabelText(/invoice number/), 'VT/044');
     await ue.click(within(dialog).getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith('p1', '2026-10', 'VT/044'));
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith('p1', '2026-10', 'VT/044', expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/)));
   });
 });
 

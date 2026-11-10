@@ -10,6 +10,7 @@ import { FieldRow, FormField } from '../../components/field';
 import { CurrencyField, TextArea, TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup } from '../../components/choice';
 import { Select } from '../../components/select';
+import { Segment } from '../../components/segment';
 import { DatePicker } from '../../components/date';
 import { TimeField } from '../../components/inputs';
 import { FileUpload } from '../../components/upload';
@@ -206,7 +207,9 @@ function ClientSubmissions({ subs, jobs, defaultRejectId }: { subs: ClientSubmis
   );
 }
 
-function ClientInterviews({ items, defaultOpen }: { items: ClientPortalProps['interviews']; defaultOpen?: boolean }) {
+function ClientInterviews(props: { items: ClientPortalProps['interviews']; defaultOpen?: boolean } | { live: Parameters<typeof LiveClientInterviews>[0] }) {
+  if ('live' in props) return <LiveClientInterviews {...props.live} />;
+  const { items, defaultOpen } = props;
   const [open, setOpen] = useState(!!defaultOpen);
   const [date, setDate] = useState<Date | null>(new Date(2026, 9, 1));
   const [time, setTime] = useState('11:00');
@@ -324,7 +327,7 @@ function ClientTimesheets({ items }: { items: ClientTimesheet[] }) {
 }
 
 /** Live (slice 3): no PDF yet (question 492), so `pdf` is off there. */
-function ClientInvoices({ items, today, pdf = true }: { items: ClientInvoice[]; today: Date; pdf?: boolean }) {
+function ClientInvoices({ items, today, pdf = true, onPdf }: { items: ClientInvoice[]; today: Date; pdf?: boolean; onPdf?: (no: string) => void }) {
   const outstanding = items.filter((i) => i.status === 'Due' || i.status === 'Overdue').reduce((a, i) => a + i.amount + i.gst, 0);
   const overdue = items.filter((i) => i.status === 'Overdue');
   return (
@@ -370,7 +373,7 @@ function ClientInvoices({ items, today, pdf = true }: { items: ClientInvoice[]; 
                 </td>
                 {pdf && (
                   <td>
-                    <Button size="sm" icon={Download}>
+                    <Button size="sm" icon={Download} onClick={onPdf ? () => onPdf(i.no) : undefined} aria-label={`PDF of ${i.no}`}>
                       PDF
                     </Button>
                   </td>
@@ -1160,7 +1163,7 @@ export function VisitorInviteScreen({ tenant, accent, visit, stage: initial, cam
 
 /* ================================================================== T9-06 made live (staffing slice 3, answer 453) */
 
-export type LiveClientTab = 'jobs' | 'submissions' | 'timesheets' | 'invoices';
+export type LiveClientTab = 'jobs' | 'submissions' | 'interviews' | 'timesheets' | 'invoices';
 export interface LiveClientPortal {
   tenant: string;
   tab: LiveClientTab;
@@ -1179,13 +1182,21 @@ export interface LiveClientPortal {
     submissions: { id: string; candidate: string; job: string; submittedOn: string; status: ClientSubmission['status']; feedback: string | null }[];
     timesheets: { id: string; worker: string; role: string; weekStart: string; hours: string; overtime: string; vendor: string | null; status: ClientTimesheet['status']; note: string | null }[];
     invoices: { id: string; no: string; period: string | null; kind: string; amount: string; gst: string; issuedOn: string; dueOn: string; status: 'Paid' | 'Due' | 'Overdue' | 'Credit' }[];
+    /** Answer 491: HIR-06 interviews for this client's jobs, and who can be booked. */
+    interviews?: { id: string; candidate: string; job: string; at: string | null; mode: string; panel: string | null; status: string }[];
+    bookable?: { value: string; label: string }[];
   } | null;
+  /** Answer 491: propose an interview time (HIR-06; the recruiter confirms it with the candidate). */
+  onBook?: (input: { submissionId: string; startsAt: string; mode: 'video' | 'site' | 'phone'; panel: string | null }) => Promise<unknown>;
+  /** Answer 492: download an invoice or credit note PDF. */
+  onPdf?: (invoiceId: string) => void;
   onDecide: (id: string, decision: 'shortlist' | 'reject', feedback?: string) => Promise<unknown>;
   onTimesheet: (id: string, action: 'approve' | 'send_back') => Promise<unknown>;
 }
 const LIVE_TABS: { id: LiveClientTab; label: string }[] = [
   { id: 'jobs', label: 'Jobs' },
   { id: 'submissions', label: 'Submissions' },
+  { id: 'interviews', label: 'Interviews' },
   { id: 'timesheets', label: 'Timesheets' },
   { id: 'invoices', label: 'Invoices' },
 ];
@@ -1312,6 +1323,7 @@ function LiveClientPortalView({ live }: { live: LiveClientPortal }) {
         </Card>
       );
     }
+    if (live.tab === 'interviews') return <ClientInterviews live={{ items: d.interviews ?? [], bookable: d.bookable ?? [], today: live.today, onBook: live.onBook }} />;
     if (live.tab === 'timesheets') {
       const waiting = d.timesheets.filter((r) => r.status === 'Waiting for you');
       return (
@@ -1366,7 +1378,7 @@ function LiveClientPortalView({ live }: { live: LiveClientPortal }) {
       );
     }
     if (d.invoices.length === 0) return <EmptyState compact title="No invoices yet." />;
-    return <ClientInvoices pdf={false} today={live.today} items={d.invoices.map((x) => ({ no: x.no, period: x.period ?? '', kind: x.kind as ClientInvoice['kind'], amount: Number(x.amount), gst: Number(x.gst), issuedOn: dOf(x.issuedOn), dueOn: dOf(x.dueOn), status: x.status }))} />;
+    return <ClientInvoices pdf={Boolean(live.onPdf)} onPdf={(no) => live.onPdf?.(d.invoices.find((x) => x.no === no)!.id)} today={live.today} items={d.invoices.map((x) => ({ no: x.no, period: x.period ?? '', kind: x.kind as ClientInvoice['kind'], amount: Number(x.amount), gst: Number(x.gst), issuedOn: dOf(x.issuedOn), dueOn: dOf(x.dueOn), status: x.status }))} />;
   };
   return (
     <TenantPortal
@@ -1381,5 +1393,94 @@ function LiveClientPortalView({ live }: { live: LiveClientPortal }) {
       {failed && <InlineAlert tone="danger" title={failed} />}
       {body()}
     </TenantPortal>
+  );
+}
+
+/** Answer 491: the drawn Interviews tab made live: the list, and Schedule interview proposing a time through HIR-06. */
+function LiveClientInterviews({ items, bookable, today, onBook }: { items: NonNullable<NonNullable<LiveClientPortal['data']>['interviews']>; bookable: { value: string; label: string }[]; today: Date; onBook?: LiveClientPortal['onBook'] }) {
+  const [open, setOpen] = useState(false);
+  const [sub, setSub] = useState<string | null>(null);
+  const [date, setDate] = useState<Date | null>(null);
+  const [time, setTime] = useState<string | null>('11:00');
+  const [mode, setMode] = useState<'video' | 'site' | 'phone'>('video');
+  const [panel, setPanel] = useState('');
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const save = async () => {
+    setTried(true);
+    if (!sub) return document.getElementById('ci-sub')?.focus();
+    if (!date) return document.getElementById('ci-date')?.focus();
+    if (!time) return document.getElementById('ci-time')?.focus();
+    setBusy(true);
+    setFailed(null);
+    try {
+      await onBook!({ submissionId: sub, startsAt: `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${time}`, mode, panel: panel.trim() || null });
+      setOpen(false);
+    } catch (e) {
+      setFailed(e instanceof Error && e.message ? e.message : 'That did not save. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const MODE: Record<string, string> = { 'Video call': 'Video call', 'At the client’s site': 'At your site', Phone: 'Phone' };
+  return (
+    <Card title="Interviews" actions={onBook && bookable.length ? <Button size="sm" icon={Plus} onClick={() => (setOpen(true), setTried(false), setFailed(null))}>Schedule interview</Button> : undefined}>
+      {items.length === 0 ? (
+        <EmptyState compact title="No interviews scheduled." />
+      ) : (
+        <ul className="yx-ps-list">
+          {items.map((i) => (
+            <li key={i.id}>
+              <div className="yx-ps-list__main">
+                <span className="yx-ps-list__title">
+                  {i.candidate} · {i.job}
+                </span>
+                <span className="yx-ps-list__meta">
+                  {i.at ? `${formatDate(new Date(i.at))}, ${timeOf(new Date(i.at))}` : 'Time to be agreed'} · {MODE[i.mode] ?? i.mode}
+                  {i.panel ? ` · panel: ${i.panel}` : ''}
+                </span>
+              </div>
+              <Badge tone={i.status === 'Confirmed' ? 'success' : i.status === 'Cancelled' ? 'neutral' : 'warning'}>{i.status}</Badge>
+            </li>
+          ))}
+        </ul>
+      )}
+      <Dialog
+        open={open}
+        onOpenChange={setOpen}
+        size="md"
+        title="Schedule an interview"
+        description="The recruiter confirms the time with the candidate and sends invitations."
+        footer={
+          <>
+            <Button onClick={() => setOpen(false)}>Cancel</Button>
+            <Button variant="primary" loading={busy} onClick={() => void save()}>
+              Propose time
+            </Button>
+          </>
+        }
+      >
+        {failed && <InlineAlert tone="danger" title={failed} />}
+        <FormField id="ci-sub" label="Candidate" required error={tried && !sub ? 'Choose the candidate.' : null}>
+          <Select value={sub} onChange={setSub} options={bookable} placeholder="Choose a candidate" />
+        </FormField>
+        <FieldRow>
+          <FormField id="ci-date" label="Date" required error={tried && !date ? 'Choose the date.' : null}>
+            <DatePicker value={date} onChange={setDate} min={today} />
+          </FormField>
+          <FormField id="ci-time" label="Start time" required error={tried && !time ? 'Choose the time.' : null}>
+            <TimeField value={time} onChange={(v) => setTime(v ?? null)} />
+          </FormField>
+        </FieldRow>
+        <FormField label="How">
+          <Segment label="How" value={mode} onChange={setMode} options={[{ value: 'video', label: 'Video call' }, { value: 'site', label: 'At your site' }, { value: 'phone', label: 'Phone' }]} />
+        </FormField>
+        <FormField label="Panel" optional helper="Names only; the recruiter sends the invitations.">
+          <TextField value={panel} onChange={setPanel} maxLength={300} />
+        </FormField>
+      </Dialog>
+    </Card>
   );
 }

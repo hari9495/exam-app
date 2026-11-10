@@ -27,7 +27,9 @@ export default function YxHiringVendorsPage() {
   const vendors = useStaffing<VendorRowView[]>('/vendors', manages);
   const subs = useStaffing<VendorSubmissionView[]>('/vendor-submissions');
   // Slice 3 (answer 490): vendor invoices for staffing finance.
-  const bills = useStaffing<{ canEdit: boolean; rows: VendorBillView[] }>('/vendor-bills', billing);
+  const bills = useStaffing<{ canEdit: boolean; rows: VendorBillView[]; vendors: { id: string; name: string; consultantId: string | null }[] }>('/vendor-bills', billing);
+  // Answer 496: the consultant records in payroll a vendor links to.
+  const consultants = useStaffing<{ value: string; label: string }[]>('/vendor-bills/consultants', billing);
   const jobs = useStaffing<Job[]>('/vendors/jobs', manages);
   const get = useStaffingGet();
   const write = useStaffingWrite();
@@ -59,7 +61,10 @@ export default function YxHiringVendorsPage() {
             ? {
                 rows: bills.data.rows,
                 canEdit: bills.data.canEdit && !acting,
-                onConfirm: (placementId, month, vendorInvoiceNo) => write('POST', '/vendor-bills', { placementId, month, vendorInvoiceNo }),
+                onConfirm: (placementId, month, vendorInvoiceNo, invoiceDate) => write('POST', '/vendor-bills', { placementId, month, vendorInvoiceNo, ...(invoiceDate ? { invoiceDate } : {}) }),
+                vendors: bills.data.vendors,
+                consultants: consultants.data ?? [],
+                onLink: (vendorId, consultantId) => write('PUT', `/vendor-bills/vendors/${encodeURIComponent(vendorId)}/consultant`, { consultantId }),
                 onPaid: (id, paidOn) => write('POST', `/vendor-bills/${encodeURIComponent(id)}/paid`, { paidOn }),
               }
             : null,

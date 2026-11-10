@@ -18668,5 +18668,87 @@
       "Screens/YukthiX console/Platform console (step 3) · Company settings · not in the plan"
     ],
     "note": "Positive and negative (no reason, not in plan, company admin)."
+  },
+  {
+    "id": "MT-STAFF-22",
+    "area": "Hiring › Staffing round 4: answers 491-499 (10 Nov 2026)",
+    "screen": "Invoice PDF (answer 492)",
+    "url": "http://localhost:3000/yx/staffing/invoices",
+    "account": "admin-tester@demo-org.test (System Admin; staffing finance and account manager). Browser window 1278 x 635. Staffing desk on; an issued invoice; a client with a portal contact.",
+    "steps": [
+      "1. Open a draft invoice.",
+      "2. Issue it; press Download PDF.",
+      "3. Raise a credit note of ₹100.50; open it; Download PDF.",
+      "4. In the client portal, Invoices: press PDF."
+    ],
+    "expected": "Step 1: no Download PDF. Step 2: a PDF with the supplier, GSTIN, number, date, recipient, place of supply with state code, SAC, lines, taxes, total and the signatory line. Step 3: the credit note PDF names the invoice it corrects and the reason; the amount keeps the paise. Step 4: the same PDF; another client’s invoice is never offered.",
+    "stories": [],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-STAFF-23",
+    "area": "Hiring › Staffing round 4: answers 491-499 (10 Nov 2026)",
+    "screen": "Payment reminders (answer 493)",
+    "url": "http://localhost:3000/yx/staffing/collections",
+    "account": "admin-tester@demo-org.test (System Admin; staffing finance and account manager). Browser window 1278 x 635. Staffing desk on; an issued invoice; a client with a portal contact.",
+    "steps": [
+      "1. Have an unpaid invoice past its due date and wait for the daily job (or ask the developer to run it).",
+      "2. Check the billing contact’s mailbox and the receivables row.",
+      "3. Add a dispute; the next day check again."
+    ],
+    "expected": "Step 2: one email per step to billing contacts only; the row shows the last reminder. Step 3: no email while disputed.",
+    "stories": [],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-STAFF-24",
+    "area": "Hiring › Staffing round 4: answers 491-499 (10 Nov 2026)",
+    "screen": "Placement fee and guarantee (answer 494)",
+    "url": "http://localhost:3000/yx/staffing/placements",
+    "account": "admin-tester@demo-org.test (System Admin; staffing finance and account manager). Browser window 1278 x 635. Staffing desk on; an issued invoice; a client with a portal contact.",
+    "steps": [
+      "1. On a placement, press Client hired without a CTC.",
+      "2. Enter the hire date, CTC and series.",
+      "3. Press Left the client before the fee invoice is issued; then issue it (finance) and record leaving inside the guarantee."
+    ],
+    "expected": "Step 1: \"Enter the CTC.\" Step 2: a draft fee invoice (Placement fee). Step 3: refused until issued; then a pro-rated credit note against the fee invoice (or \"free replacement due\").",
+    "stories": [
+      "Screens/Hiring/HIR-17 · Placements and bench board · Placement fee · before the hire"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-STAFF-25",
+    "area": "Hiring › Staffing round 4: answers 491-499 (10 Nov 2026)",
+    "screen": "Vendor invoices into payroll (answer 496)",
+    "url": "http://localhost:3000/yx/hiring/vendors?tab=invoices",
+    "account": "admin-tester@demo-org.test (System Admin; staffing finance and account manager). Browser window 1278 x 635. Staffing desk on; an issued invoice; a client with a portal contact.",
+    "steps": [
+      "1. Press Vendor confirmed for a vendor not linked to payroll.",
+      "2. Link the vendor to its consultant record; confirm with the vendor’s number and date.",
+      "3. Open Payroll › Consultants › invoices."
+    ],
+    "expected": "Step 1: refused (link first). Step 2: the row reads In payroll: submitted; no Mark paid. Step 3: the invoice waits for a payroll approver; TDS and payment happen there.",
+    "stories": [
+      "Screens/Hiring/HIR-21 · Staffing vendors · Vendor invoices · linked to payroll (PAY 8)"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-STAFF-26",
+    "area": "Hiring › Staffing round 4: answers 491-499 (10 Nov 2026)",
+    "screen": "Client portal interviews (answer 491)",
+    "url": "http://localhost:3000/yx/client/",
+    "account": "admin-tester@demo-org.test (System Admin; staffing finance and account manager). Browser window 1278 x 635. Staffing desk on; an issued invoice; a client with a portal contact.",
+    "steps": [
+      "1. In the client portal, Interviews: Schedule interview; Propose time with nothing chosen.",
+      "2. Choose a candidate, a date and time, Video call, a panel; Propose time.",
+      "3. In Hiring › Interviews, open the candidate’s interview."
+    ],
+    "expected": "Step 1: \"Choose the candidate.\" Step 2: the interview shows Proposed. Step 3: a proposed HIR-06 interview with the client panel in the note; the recruiter confirms it and sends invitations.",
+    "stories": [
+      "Screens/Portals/T9-06 · Client portal · Interviews · schedule"
+    ],
+    "note": "Positive and negative."
   }
 ]

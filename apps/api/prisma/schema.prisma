@@ -2269,6 +2269,8 @@ model Agency {
   agreementSignedOn DateTime? @map("agreement_signed_on") @db.Date
   bankVerifiedAt    DateTime? @map("bank_verified_at") @db.Timestamptz(3)
   bankVerifiedBy    String?   @map("bank_verified_by") @db.Uuid
+  /// Answer 496: the vendor's consultant record in payroll (PAY 8).
+  consultantId      String?   @map("consultant_id") @db.Uuid
   createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
   agencyJobs     AgencyJob[]
@@ -12473,6 +12475,13 @@ model StaffingPlacement {
   createdBy       String?   @map("created_by") @db.Uuid
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  /// Answer 494: the client hired the person (CTC in paise), the fee invoice, and a leave inside the guarantee.
+  hiredOn           DateTime? @map("hired_on") @db.Date
+  hireCtcPaise      BigInt?   @map("hire_ctc_paise")
+  feeInvoiceId      String?   @map("fee_invoice_id") @db.Uuid
+  leftOn            DateTime? @map("left_on") @db.Date
+  guaranteeOutcome  String?   @map("guarantee_outcome") @db.VarChar(8)
+  guaranteeCreditId String?   @map("guarantee_credit_id") @db.Uuid
 
   @@index([organizationId, status, endOn], map: "staffing_placements_org_idx")
   @@map("staffing_placements")
@@ -12633,6 +12642,8 @@ model StaffingVendorBill {
   paidOn          DateTime? @map("paid_on") @db.Date
   createdBy       String?   @map("created_by") @db.Uuid
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// Answer 496: the consultant invoice in payroll it became.
+  consultantInvoiceId String? @map("consultant_invoice_id") @db.Uuid
 
   @@map("staffing_vendor_bills")
 }
@@ -12665,4 +12676,18 @@ model StaffingBenchPay {
 
   @@unique([benchId, month], map: "staffing_bench_pay_key")
   @@map("staffing_bench_pay")
+}
+
+/// Answer 493: a payment reminder step of an invoice, sent once (emailed false: no billing contact to send to).
+model StaffingReminder {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  invoiceId      String   @map("invoice_id") @db.Uuid
+  step           Int
+  emailed        Boolean
+  recipients     String[] @default([])
+  sentAt         DateTime @default(now()) @map("sent_at") @db.Timestamptz(3)
+
+  @@unique([invoiceId, step], map: "staffing_reminders_step_key")
+  @@map("staffing_reminders")
 }

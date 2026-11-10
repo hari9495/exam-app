@@ -1796,6 +1796,21 @@ export interface LivePlacementRecord {
   onEnd: (input: PlacementEndInput) => Promise<unknown>;
   /** Slice 3: the weekly hours (account managers and finance). */
   hours?: LiveHours | null;
+  /** Answer 494: the client hired the person (fee invoice) and left inside the guarantee (credit note). */
+  fee?: LivePlacementFee | null;
+}
+export interface LivePlacementFee {
+  hiredOn: string | null;
+  ctc: string | null;
+  feeInvoice: { id: string; number: string | null; status: string; total: string } | null;
+  leftOn: string | null;
+  guarantee: 'replace' | 'credit' | 'none' | null;
+  series: { value: string; label: string }[];
+  terms: boolean;
+  today: Date;
+  onHired: (input: { hiredOn: string; ctc: number; seriesId: string }) => Promise<unknown>;
+  onLeft: (leftOn: string) => Promise<unknown>;
+  onOpenInvoice: (id: string) => void;
 }
 
 function LivePlacementRecordView({ live }: { live: LivePlacementRecord }) {
@@ -1896,6 +1911,7 @@ function LivePlacementRecordView({ live }: { live: LivePlacementRecord }) {
           ]}
         />
         {live.hours && <PlacementHours live={live.hours} />}
+        {live.fee && <PlacementFee fee={live.fee} canManage={live.canManage} person={p.person} />}
       </RecordLayout>
       <Drawer
         open={open === 'extend'}
@@ -2095,7 +2111,7 @@ export interface LiveVendors {
   /** Stories: open the dispute review for this submission. */
   defaultDisputeId?: string;
   /** Slice 3 (answer 490): vendor invoices for staffing finance; absent hides the tab. */
-  bills?: { rows: VendorBillView[]; canEdit: boolean; onConfirm: (placementId: string, month: string, vendorInvoiceNo: string) => Promise<unknown>; onPaid: (id: string, paidOn: string) => Promise<unknown> } | null;
+  bills?: VendorInvoicesLive | null;
 }
 const TIER: Record<string, string> = { preferred: 'Preferred', standard: 'Standard', probation: 'Probation' };
 const V_STATUS: Record<VendorRowView['status'], string> = { active: 'Active', pending: 'Pending documents', inactive: 'Inactive' };
@@ -2429,6 +2445,8 @@ export interface LiveInvoiceRecord {
   onCreditNote: (input: { amount: number; reason: string }) => Promise<unknown>;
   onReissue: (reason: string) => Promise<unknown>;
   onOpen: (id: string) => void;
+  /** Answer 492: download the GST PDF of an issued invoice or credit note. */
+  onPdf?: () => void;
 }
 
 function LiveInvoiceRecordView({ live }: { live: LiveInvoiceRecord }) {
@@ -2460,7 +2478,8 @@ function LiveInvoiceRecordView({ live }: { live: LiveInvoiceRecord }) {
   };
   const name = inv.number ? `${cn ? 'Credit note' : 'Invoice'} ${inv.number}` : 'Draft invoice';
   const tax = inv.interState ? [[`IGST ${inv.gstPct}% (inter-state)`, inv.igst]] : [[`CGST ${Number(inv.gstPct) / 2}%`, inv.cgst], [`SGST ${Number(inv.gstPct) / 2}%`, inv.sgst]];
-  const actions = data.canEdit ? (
+  const pdfButton = live.onPdf && inv.status !== 'draft' ? <Button icon={FileText} onClick={live.onPdf}>Download PDF</Button> : null;
+  const editActions = data.canEdit ? (
     inv.status === 'draft' ? (
       <>
         <Button onClick={() => begin('delete')}>Delete draft</Button>
@@ -2473,6 +2492,7 @@ function LiveInvoiceRecordView({ live }: { live: LiveInvoiceRecord }) {
       </>
     ) : undefined
   ) : undefined;
+  const actions = pdfButton || editActions ? <>{pdfButton}{editActions}</> : undefined;
   return (
     <HireFrame active="Invoices">
       <RecordLayout
@@ -2555,7 +2575,7 @@ function LiveInvoiceRecordView({ live }: { live: LiveInvoiceRecord }) {
         <div className="yx-hire-stack">
           {failed && <InlineAlert tone="danger" title={failed} />}
           <FormField id="cn-amount" label="Taxable amount to credit" required helper={`At most ${formatINR(Math.round(left * 100) / 100)}; GST is credited at the invoice's rate.`} error={tried && (amount == null || amount <= 0 || amount > left + 0.005) ? (amount != null && amount > left ? 'That is more than is left on the invoice.' : 'Enter the amount to credit.') : null}>
-            <CurrencyField value={amount} onChange={setAmount} />
+            <CurrencyField allowPaise value={amount} onChange={setAmount} />
           </FormField>
           <FormField id="cn-reason" label="Reason" required error={tried && reason.trim().length < 3 ? 'Say why, like “8 h duplicate on 14 Aug”.' : null}>
             <TextArea rows={2} value={reason} onChange={setReason} maxLength={500} />
@@ -2711,7 +2731,7 @@ function LiveCollectionsView({ live }: { live: LiveCollections }) {
         }}
       >
         <FormField label="TDS seen in 26AS" optional helper={edit ? `TDS deducted by the client: ${formatINR(Number(edit.tdsDeducted))}` : undefined}>
-          <CurrencyField value={in26} onChange={setIn26} />
+          <CurrencyField allowPaise value={in26} onChange={setIn26} />
         </FormField>
         <FormField label="Dispute" optional helper="Empty clears it.">
           <TextArea rows={2} value={dispute} onChange={setDispute} maxLength={500} />
@@ -2767,7 +2787,7 @@ export function ReceiptSheet({ open, onOpenChange, rows, today, onSave }: { open
         </FormField>
         <FieldRow>
           <FormField id="rc-amount" label="Amount received" required error={tried && (amount == null || due <= 0) ? 'Enter the amount received.' : null}>
-            <CurrencyField value={amount} onChange={setAmount} />
+            <CurrencyField allowPaise value={amount} onChange={setAmount} />
           </FormField>
           <FormField id="rc-on" label="Received on" required error={tried && !on ? 'Choose the day.' : null}>
             <DatePicker value={on} onChange={setOn} max={today} />
@@ -2775,7 +2795,7 @@ export function ReceiptSheet({ open, onOpenChange, rows, today, onSave }: { open
         </FieldRow>
         <FieldRow>
           <FormField id="rc-tds" label={`TDS deducted by client${section ? ` (${section})` : ''}`} optional helper="Recorded as TDS receivable and matched to 26AS">
-            <CurrencyField value={tds} onChange={setTds} />
+            <CurrencyField allowPaise value={tds} onChange={setTds} />
           </FormField>
           <FormField id="rc-ref" label="Reference" optional>
             <TextField value={ref} onChange={setRef} maxLength={60} />
@@ -2790,7 +2810,7 @@ export function ReceiptSheet({ open, onOpenChange, rows, today, onSave }: { open
                 <Text size="sm" tone="secondary">Outstanding {formatINR(Number(r.outstanding))}</Text>
               </div>
               <FormField label={`Allocate to ${r.invoice}`} hideLabel>
-                <CurrencyField value={alloc[r.invoiceId] ?? null} onChange={(v) => setAlloc((x) => ({ ...x, [r.invoiceId]: v }))} />
+                <CurrencyField allowPaise value={alloc[r.invoiceId] ?? null} onChange={(v) => setAlloc((x) => ({ ...x, [r.invoiceId]: v }))} />
               </FormField>
             </li>
           ))}
@@ -2952,19 +2972,26 @@ export interface VendorBillView {
   gst: string;
   tdsSection: string;
   tds: string;
+  /** Answer 496: the consultant invoice in payroll it became. */
+  payroll?: { status: string; paidOn: string | null; tds: string | null } | null;
 }
 const BILL_WORD = { waiting: 'Waiting for vendor', confirmed: 'Vendor confirmed', paid: 'Paid' } as const;
 
 export interface VendorInvoicesLive {
   rows: VendorBillView[];
   canEdit: boolean;
-  onConfirm: (placementId: string, month: string, vendorInvoiceNo: string) => Promise<unknown>;
+  onConfirm: (placementId: string, month: string, vendorInvoiceNo: string, invoiceDate?: string) => Promise<unknown>;
   onPaid: (id: string, paidOn: string) => Promise<unknown>;
+  /** Answer 496: each vendor's consultant record in payroll (PAY 8), and the records to pick from. */
+  vendors?: { id: string; name: string; consultantId: string | null }[];
+  consultants?: { value: string; label: string }[];
+  onLink?: (vendorId: string, consultantId: string | null) => Promise<unknown>;
 }
 export { VendorInvoices };
 
-function LiveVendorInvoicesView({ rows, canEdit, onConfirm, onPaid }: VendorInvoicesLive) {
+function LiveVendorInvoicesView({ rows, canEdit, onConfirm, onPaid, vendors, consultants, onLink }: VendorInvoicesLive) {
   const toast = useToastIfAny();
+  const [invDate, setInvDate] = useState<Date | null>(new Date());
   const [confirming, setConfirming] = useState<VendorBillView | null>(null);
   const [paying, setPaying] = useState<VendorBillView | null>(null);
   const [no, setNo] = useState('');
@@ -2972,7 +2999,20 @@ function LiveVendorInvoicesView({ rows, canEdit, onConfirm, onPaid }: VendorInvo
   const month = (m: string) => formatDate(new Date(`${m}-01T00:00:00`)).replace(/^\d+ /, '');
   return (
     <div className="yx-hire-stack">
-      <InlineAlert tone="info">Proposed from client-approved hours × the vendor rate. GST is added when the vendor has a GSTIN; TDS follows the vendor&rsquo;s section (rates from the TDS rule set). Pay-when-paid is off.</InlineAlert>
+      <InlineAlert tone="info">Proposed from client-approved hours × the vendor rate. GST is added when the vendor has a GSTIN; TDS follows the vendor&rsquo;s section (rates from the TDS rule set). A confirmed invoice goes to payroll as an invoice of the vendor&rsquo;s consultant record, where it is approved, paid with TDS and certified. Pay-when-paid is off.</InlineAlert>
+      {vendors && onLink && canEdit && (
+        <Card title="Vendors in payroll">
+          <ul className="yx-hire-list">
+            {vendors.map((v) => (
+              <li key={v.id} className="yx-hire-list__item">
+                <FormField label={`${v.name}: consultant record in payroll`}>
+                  <Select value={v.consultantId} onChange={(c) => void onLink(v.id, c).then(() => toast?.toast({ tone: 'success', title: c ? `${v.name} linked to payroll` : `${v.name} unlinked` }))} options={consultants ?? []} placeholder="Not linked" clearable />
+                </FormField>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
       {rows.length === 0 ? (
         <EmptyState compact title="No vendor invoices yet." description="They appear once the client approves a vendor worker's hours." />
       ) : (
@@ -2988,9 +3028,9 @@ function LiveVendorInvoicesView({ rows, canEdit, onConfirm, onPaid }: VendorInvo
                   {r.vendorInvoiceNo ? ` · vendor invoice ${r.vendorInvoiceNo}` : ''}
                 </Text>
               </div>
-              <Badge tone={r.status === 'paid' ? 'success' : r.status === 'confirmed' ? 'info' : 'warning'}>{BILL_WORD[r.status]}</Badge>
-              {canEdit && r.status === 'waiting' && <Button size="sm" onClick={() => (setConfirming(r), setNo(''), setTried(false))}>Vendor confirmed</Button>}
-              {canEdit && r.status === 'confirmed' && <Button size="sm" onClick={() => setPaying(r)}>Mark paid</Button>}
+              <Badge tone={r.payroll?.paidOn || r.status === 'paid' ? 'success' : r.status === 'confirmed' ? 'info' : 'warning'}>{r.payroll ? (r.payroll.paidOn ? `Paid in payroll on ${formatDate(new Date(`${r.payroll.paidOn}T00:00:00`))}` : `In payroll: ${r.payroll.status}`) : BILL_WORD[r.status]}</Badge>
+              {canEdit && r.status === 'waiting' && <Button size="sm" onClick={() => (setConfirming(r), setNo(''), setTried(false), setInvDate(new Date()))}>Vendor confirmed</Button>}
+              {canEdit && r.status === 'confirmed' && !r.payroll && <Button size="sm" onClick={() => setPaying(r)}>Mark paid</Button>}
             </li>
           ))}
         </ul>
@@ -3004,12 +3044,17 @@ function LiveVendorInvoicesView({ rows, canEdit, onConfirm, onPaid }: VendorInvo
         onConfirm={async () => {
           setTried(true);
           if (!no.trim()) return (focus('vb-no'), false);
-          await onConfirm(confirming!.placementId, confirming!.month, no.trim());
+          if (!invDate) return (focus('vb-date'), false);
+          const pad = (n: number) => String(n).padStart(2, '0');
+          await onConfirm(confirming!.placementId, confirming!.month, no.trim(), `${invDate.getFullYear()}-${pad(invDate.getMonth() + 1)}-${pad(invDate.getDate())}`);
           toast?.toast({ tone: 'success', title: 'Vendor invoice confirmed' });
         }}
       >
         <FormField id="vb-no" label="Vendor's invoice number" required error={tried && !no.trim() ? "Enter the vendor's invoice number." : null}>
           <TextField value={no} onChange={setNo} maxLength={40} />
+        </FormField>
+        <FormField id="vb-date" label="Vendor's invoice date" required error={tried && !invDate ? 'Choose the date on the vendor’s invoice.' : null}>
+          <DatePicker value={invDate} onChange={setInvDate} max={new Date()} />
         </FormField>
       </ConfirmDialog>
       <ConfirmDialog
@@ -3134,6 +3179,76 @@ export function PlacementHours({ live }: { live: LiveHours }) {
       >
         <FormField id="ph-contact" label="Who approved" required error={tried && !contact ? 'Choose the client contact.' : null}>
           <Select value={contact} onChange={setContact} options={live.contacts.map((c) => ({ value: c.id, label: `${c.name} · ${c.role}` }))} placeholder="Choose a contact" />
+        </FormField>
+      </ConfirmDialog>
+    </Card>
+  );
+}
+
+/** Answer 494: the placement fee when the client hires the person, and the guarantee when they leave. */
+export function PlacementFee({ fee: f, canManage, person }: { fee: LivePlacementFee; canManage: boolean; person: string }) {
+  const toast = useToastIfAny();
+  const [open, setOpen] = useState<'hired' | 'left' | null>(null);
+  const [on, setOn] = useState<Date | null>(f.today);
+  const [ctc, setCtc] = useState<number | null>(null);
+  const [series, setSeries] = useState<string | null>(f.series.length === 1 ? f.series[0]!.value : null);
+  const [tried, setTried] = useState(false);
+  const iso = (x: Date) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+  const begin = (w: 'hired' | 'left') => (setOpen(w), setTried(false), setOn(f.today));
+  const G = { replace: 'Inside the guarantee: a free replacement is due', credit: 'Inside the guarantee: a pro-rated credit note was raised', none: 'Outside the guarantee: no replacement or credit' } as const;
+  return (
+    <Card title="Placement fee" actions={canManage && !f.hiredOn ? <Button size="sm" onClick={() => begin('hired')}>Client hired {person}</Button> : canManage && f.hiredOn && !f.leftOn ? <Button size="sm" onClick={() => begin('left')}>Left the client</Button> : undefined}>
+      {!f.hiredOn ? (
+        <Text size="sm" tone="secondary">{f.terms ? 'When the client hires this person, record it here: the fee invoice is drafted from the client’s fees and guarantee.' : 'Set this client’s fees and guarantee before a hire can be invoiced.'}</Text>
+      ) : (
+        <DescriptionList
+          items={[
+            { label: 'Hired by the client', value: `${formatDate(new Date(`${f.hiredOn}T00:00:00`))}${f.ctc ? ` · CTC ${formatINR(Number(f.ctc))}` : ''}` },
+            { label: 'Fee invoice', value: f.feeInvoice ? <Button size="sm" onClick={() => f.onOpenInvoice(f.feeInvoice!.id)}>{f.feeInvoice.number ?? 'Draft'} · {formatINR(Number(f.feeInvoice.total))} · {f.feeInvoice.status}</Button> : 'No fee under the terms' },
+            ...(f.leftOn ? [{ label: 'Left the client', value: `${formatDate(new Date(`${f.leftOn}T00:00:00`))}: ${f.guarantee ? G[f.guarantee] : ''}` }] : []),
+          ]}
+        />
+      )}
+      <ConfirmDialog
+        open={open === 'hired'}
+        onOpenChange={(o) => !o && setOpen(null)}
+        title={`The client hired ${person}?`}
+        consequence="A draft fee invoice is made from the client’s terms (the conversion taper for the months served, else the placement fee). Finance issues it."
+        confirmLabel="Record the hire"
+        onConfirm={async () => {
+          setTried(true);
+          if (!on || on > f.today) return (focus('pf-on'), false);
+          if (ctc == null || ctc <= 0) return (focus('pf-ctc'), false);
+          if (!series) return (focus('pf-series'), false);
+          await f.onHired({ hiredOn: iso(on), ctc, seriesId: series });
+          toast?.toast({ tone: 'success', title: 'Hire recorded; the fee invoice is drafted' });
+        }}
+      >
+        <FormField id="pf-on" label="Hired on" required error={tried && (!on || on > f.today) ? 'Choose the hire date (not in the future).' : null}>
+          <DatePicker value={on} onChange={setOn} max={f.today} />
+        </FormField>
+        <FormField id="pf-ctc" label="First-year CTC" required error={tried && (ctc == null || ctc <= 0) ? 'Enter the CTC.' : null}>
+          <CurrencyField value={ctc} onChange={setCtc} />
+        </FormField>
+        <FormField id="pf-series" label="Invoice series" required error={tried && !series ? 'Choose the series.' : null}>
+          <Select value={series} onChange={setSeries} options={f.series} placeholder="Choose a series" />
+        </FormField>
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={open === 'left'}
+        onOpenChange={(o) => !o && setOpen(null)}
+        title={`${person} left the client?`}
+        consequence="Inside the guarantee, a free replacement is due or a pro-rated credit note is raised against the fee invoice (by the client’s terms). Outside it, nothing."
+        confirmLabel="Record leaving"
+        onConfirm={async () => {
+          setTried(true);
+          if (!on || on > f.today) return (focus('pl-left'), false);
+          await f.onLeft(iso(on));
+          toast?.toast({ tone: 'success', title: 'Leaving recorded' });
+        }}
+      >
+        <FormField id="pl-left" label="Left on" required error={tried && (!on || on > f.today) ? 'Choose the leaving date (not in the future).' : null}>
+          <DatePicker value={on} onChange={setOn} max={f.today} />
         </FormField>
       </ConfirmDialog>
     </Card>

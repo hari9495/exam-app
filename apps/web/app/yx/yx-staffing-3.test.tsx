@@ -88,10 +88,10 @@ describe('Staffing desk slice 3 pages', () => {
     const { unmount } = wrap(<YxStaffingInvoicePage />);
     await ue.click(await screen.findByRole('button', { name: 'Raise credit note' }));
     const sheet = await screen.findByRole('dialog');
-    await ue.type(within(sheet).getByLabelText(/^Taxable amount/), '100');
+    await ue.type(within(sheet).getByLabelText(/^Taxable amount/), '100.5');
     await ue.type(within(sheet).getByLabelText(/^Reason/), 'Duplicate hours');
     await ue.click(within(sheet).getByRole('button', { name: 'Issue credit note' }));
-    await waitFor(() => expect(calls).toEqual([['POST /staffing/invoices/i1/credit-note', { amount: '100.00', reason: 'Duplicate hours' }]]));
+    await waitFor(() => expect(calls).toEqual([['POST /staffing/invoices/i1/credit-note', { amount: '100.50', reason: 'Duplicate hours' }]]));
     unmount();
     (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'panel', impersonating: true, actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
     wrap(<YxStaffingInvoicePage />);
@@ -105,10 +105,10 @@ describe('Staffing desk slice 3 pages', () => {
     await ue.click(await screen.findByRole('button', { name: 'Record receipt' }));
     const sheet = await screen.findByRole('dialog');
     await ue.type(within(sheet).getByLabelText(/^Amount received/), '1000');
-    await ue.type(within(sheet).getByLabelText(/^TDS deducted/), '20');
-    await ue.type(within(sheet).getByLabelText('Allocate to KS/41'), '1020');
+    await ue.type(within(sheet).getByLabelText(/^TDS deducted/), '20.25');
+    await ue.type(within(sheet).getByLabelText('Allocate to KS/41'), '1020.25');
     await ue.click(within(sheet).getByRole('button', { name: 'Save receipt' }));
-    await waitFor(() => expect(calls).toEqual([['POST /staffing/receipts', expect.objectContaining({ clientId: 'c1', amount: '1000.00', tds: '20.00', allocations: [{ invoiceId: 'i1', amount: '1020.00' }] })]]));
+    await waitFor(() => expect(calls).toEqual([['POST /staffing/receipts', expect.objectContaining({ clientId: 'c1', amount: '1000.00', tds: '20.25', allocations: [{ invoiceId: 'i1', amount: '1020.25' }] })]]));
     unmount();
     routes({ '/staffing/receivables': Object.assign(new Error('The staffing desk is off for your company.'), { status: 403 }) });
     wrap(<YxStaffingCollectionsPage />);

@@ -12,7 +12,9 @@ import { displayName } from '../employee-history/employee-history.service';
 import { StaffingService } from './staffing.service';
 import { toRupees } from './staffing-rules';
 import { addDays } from './billing-rules';
-import type { ContactPortalDto, PortalDecisionDto, PortalEmailDto, PortalSendBackDto, PortalVerifyDto } from './staffing-dto';
+import type { ContactPortalDto, PortalDecisionDto, PortalEmailDto, PortalInterviewDto, PortalSendBackDto, PortalVerifyDto } from './staffing-dto';
+import { InterviewsService } from '../interviews/interviews.service';
+import type { StaffingBillingService } from './billing.service';
 
 const PORTAL_MINUTES = 60;
 const tokenHash = (t: string) => createHash('sha256').update(t).digest('hex');
@@ -36,7 +38,11 @@ export class ClientPortalService {
     private readonly staffing: StaffingService,
     private readonly otp: OtpService,
     private readonly email: EmailService,
+    private readonly interviews: InterviewsService,
   ) {}
+
+  /** Set by the module (the billing service builds the invoice PDF; a constructor cycle otherwise). */
+  billing?: StaffingBillingService;
 
   /* ---------------- the account manager's side ---------------- */
 
@@ -142,6 +148,9 @@ export class ClientPortalService {
       const hours = await tx.staffingHours.findMany({ where: { organizationId: s.org, clientId: s.clientId }, orderBy: { weekStart: 'desc' }, take: 500 });
       const rates = await tx.staffingRate.findMany({ where: { organizationId: s.org, clientId: s.clientId, validTo: null }, select: { lineId: true, role: true } });
       const agencies = await tx.agency.findMany({ where: { organizationId: s.org, id: { in: placements.map((p) => p.agencyId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } });
+      // Answer 491: interviews for this client's jobs (HIR-06 interviews on the job's pipeline), and who can be booked.
+      const ivs = await tx.interview.findMany({ where: { organizationId: s.org, pipelineEntry: { job: { staffingClientId: s.clientId } } }, include: { slots: { orderBy: { startsAt: 'asc' } }, pipelineEntry: { select: { jobId: true, candidate: { select: { name: true, erasedAt: true } } } } }, orderBy: { createdAt: 'desc' }, take: 300 });
+      const ivStatus: Record<string, string> = { proposed: 'Proposed', confirmed: 'Confirmed', completed: 'Done', cancelled: 'Cancelled' };
       const invoices = await tx.staffingInvoice.findMany({ where: { organizationId: s.org, clientId: s.clientId, status: 'issued' }, orderBy: { invoiceDate: 'desc' }, take: 200 });
       const alloc = await tx.staffingReceiptAllocation.groupBy({ by: ['invoiceId'], where: { invoiceId: { in: invoices.map((i) => i.id) } }, _sum: { amountPaise: true } });
       const terms = client.paymentTermsDays ?? Number(await settingFor(tx, { organizationId: s.org, isSuperAdmin: false } as CompanyContext, 'staffing.payment_terms_days', { legalEntityId: '' }));
@@ -151,6 +160,11 @@ export class ClientPortalService {
         company: org?.name ?? '',
         client: { name: client.name, contact: contact.name, email: contact.email, contractEnds: iso(client.contractEnd) },
         jobs: jobs.map((j) => ({ id: j.id, title: j.title, location: j.location ?? '', openings: j.headcount ?? 1, submissions: subs.filter((x) => x.jobId === j.id).length, interviews: subs.filter((x) => x.jobId === j.id && x.stage === 'interview').length, status: j.status === 'open' ? 'Open' : j.status === 'on_hold' ? 'On hold' : 'Filled' })),
+        interviews: ivs.map((i) => {
+          const slot = i.slots.find((x) => x.id === i.confirmedSlotId) ?? i.slots[0];
+          return { id: i.id, candidate: i.pipelineEntry?.candidate.erasedAt ? 'Erased candidate' : (i.pipelineEntry?.candidate.name ?? ''), job: jobs.find((j) => j.id === i.pipelineEntry?.jobId)?.title ?? '', at: slot?.startsAt ?? null, mode: i.location, panel: (i.recruiterNote ?? '').replace(/^.*Client panel: /s, '') || null, status: ivStatus[i.status] ?? i.status };
+        }),
+        bookable: subs.filter((x) => x.candidateId && x.stage !== 'rejected').map((x) => ({ value: x.id, label: `${person(x)} · ${jobs.find((j) => j.id === x.jobId)?.title ?? ''}` })),
         submissions: subs.map((x) => ({ id: x.id, candidate: person(x), jobId: x.jobId, job: jobs.find((j) => j.id === x.jobId)?.title ?? '', submittedOn: iso(x.createdAt), status: STAGE[x.stage] ?? x.stage, feedback: x.rejectedReason ?? x.feedback })),
         timesheets: hours.map((h) => {
           const p = placements.find((x) => x.id === h.placementId)!;
@@ -191,5 +205,48 @@ export class ClientPortalService {
       await audit(tx, { organizationId: s.org, isSuperAdmin: false } as CompanyContext, action === 'approve' ? 'staffing.hours.approved' : 'staffing.hours.sent_back', 'staffing_hours', id, { by: 'client_contact', contactId: s.contactId });
       return { id };
     });
+  }
+
+  /**
+   * Answer 491: the client contact proposes an interview time for one of their candidates. It goes through HIR-06
+   * (InterviewsService.createInterview on the candidate's pipeline entry: status proposed; the recruiter confirms with the
+   * candidate and sends the invitations), never a second scheduler. The board moves the submission to Interview.
+   */
+  async bookInterview(slug: string, token: string | undefined, dto: PortalInterviewDto) {
+    const startsAt = new Date(`${dto.startsAt}:00+05:30`);
+    if (Number.isNaN(startsAt.getTime()) || startsAt.getTime() < Date.now() + 60 * 60_000) throw new BadRequestException('Choose a time at least an hour from now.');
+    const prep = await this.inPortal(slug, token, async (tx, s) => {
+      const sub = await tx.staffingSubmission.findFirst({ where: { id: dto.submissionId, organizationId: s.org } });
+      if (!sub) throw new NotFoundException('Submission not found.');
+      if (sub.clientId !== s.clientId) throw new ForbiddenException('This is not your company’s submission.');
+      if (!sub.candidateId) throw new ConflictException('Ask your account manager to arrange interviews for this person.');
+      if (sub.stage === 'rejected' || sub.stage === 'selected') throw new ConflictException('This submission is closed for interviews.');
+      const entry = await tx.pipelineEntry.findFirst({ where: { organizationId: s.org, candidateId: sub.candidateId, jobId: sub.jobId }, select: { id: true } });
+      if (!entry) throw new ConflictException('Ask your account manager to arrange interviews for this person.');
+      const client = await tx.staffingClient.findFirstOrThrow({ where: { id: s.clientId } });
+      const actor = client.accountManagerUserId ?? sub.submittedBy;
+      if (!actor) throw new ConflictException('Your account manager is not set yet. Ask them to arrange it.');
+      const contact = await tx.staffingClientContact.findFirstOrThrow({ where: { id: s.contactId } });
+      return { org: s.org, entryId: entry.id, actor, sub, contact };
+    });
+    const ctx = { organizationId: prep.org, isSuperAdmin: false };
+    const mode = { video: 'Video call', site: 'At the client’s site', phone: 'Phone' }[dto.mode];
+    const made = await this.interviews.createInterview(ctx, prep.actor, prep.entryId, {
+      slots: [{ startsAt: startsAt.toISOString(), endsAt: new Date(startsAt.getTime() + 60 * 60_000).toISOString() }],
+      panelistUserIds: [],
+      location: mode,
+      timeZone: 'Asia/Kolkata',
+      recruiterNote: `Asked by ${prep.contact.name} (client portal). Client panel: ${dto.panel?.trim() || 'not given'}`,
+    } as never);
+    await this.tenantPrisma.forTenant(ctx, async (tx) => {
+      if (prep.sub.stage === 'submitted' || prep.sub.stage === 'client_review') await tx.staffingSubmission.update({ where: { id: prep.sub.id }, data: { stage: 'interview', stageEnteredAt: new Date() } });
+      await audit(tx, { organizationId: prep.org, isSuperAdmin: false } as CompanyContext, 'staffing.portal.interview_proposed', 'staffing_submission', prep.sub.id, { interviewId: made.id, startsAt: startsAt.toISOString(), mode: dto.mode, contactId: prep.contact.id });
+    });
+    return { id: made.id };
+  }
+
+  /** Answer 492: the PDF of one of this client's issued invoices or credit notes. */
+  invoicePdf(slug: string, token: string | undefined, id: string) {
+    return this.inPortal(slug, token, (tx, s) => this.billing!.pdfIn(tx, s.org, id, s.clientId));
   }
 }
