@@ -41,6 +41,21 @@ type Access = { manage: boolean; view: boolean; settings: boolean; vendorRates: 
  * clients and bill rates, never pay rates or margins. Money is paise (BigInt), never floating point. Every write is
  * audited with what changed; nothing is written while acting for someone else; another company's records are not found.
  */
+/**
+ * Answer 484: the statutory cost default is 13% (employer PF and ESI) when any legal entity of the company has a PF or
+ * ESI registration that is on or applied for (statutory_registrations.statute IN.PF / IN.ESI, status on or
+ * applied_awaited: the same rows payroll uses), else 0%. A value HR saved on 6.2 always wins.
+ */
+export async function statutoryCostDefault(tx: Tx, org: string) {
+  const n = await tx.statutoryRegistration.count({ where: { organizationId: org, statute: { in: ['IN.PF', 'IN.ESI'] }, status: { in: ['on', 'applied_awaited'] } } });
+  return n ? '13' : '0';
+}
+export async function statutoryCostPct(tx: Tx, org: string) {
+  const row = await tx.setting.findFirst({ where: { organizationId: org, key: 'staffing.statutory_cost_pct', scopeType: 'tenant', scopeId: org }, select: { value: true } });
+  return Number(row?.value ?? (await statutoryCostDefault(tx, org)));
+}
+
+
 @Injectable()
 export class StaffingService {
   constructor(
@@ -58,7 +73,7 @@ export class StaffingService {
     return { manage, view: manage || tenantWide(v, 'ats.staffing.view'), settings, vendorRates: settings || tenantWide(v, 'ats.agency.manage'), billing: tenantWide(v, 'ats.staffing.billing'), actingForOther: v.actingForOther };
   }
 
-  /** Whether the company turned the desk on (the menu asks; anyone signed in may know). */
+    /** Whether the company turned the desk on (the menu asks; anyone signed in may know). */
   desk(ctx: TenantContext) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => ({ enabled: (await settingFor(tx, c, 'staffing.desk.enabled', { legalEntityId: '' })) === 'on' }));
   }
@@ -325,7 +340,9 @@ export class StaffingService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const rows = await tx.setting.findMany({ where: { organizationId: org, key: { in: [...STAFFING_SETTING_KEYS] }, scopeType: 'tenant', scopeId: org } });
-      const values = Object.fromEntries(STAFFING_SETTING_KEYS.map((k) => [k, String(rows.find((r) => r.key === k)?.value ?? SETTINGS[k]!.default)]));
+      const statDefault = await statutoryCostDefault(tx, org);
+      const dflt = (k: string) => (k === 'staffing.statutory_cost_pct' ? statDefault : SETTINGS[k]!.default);
+      const values = Object.fromEntries(STAFFING_SETTING_KEYS.map((k) => [k, String(rows.find((r) => r.key === k)?.value ?? dflt(k))]));
       const last = rows.filter((r) => r.updatedBy).sort((x, y) => y.updatedAt.getTime() - x.updatedAt.getTime())[0];
       const by = last ? await tx.user.findFirst({ where: { organizationId: org, id: last.updatedBy! }, select: { name: true, email: true } }) : null;
       const entities = await tx.legalEntity.findMany({ where: { organizationId: org, archivedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true, gstin: true } });
@@ -334,7 +351,7 @@ export class StaffingService {
       return {
         canEdit: a.settings && !a.actingForOther,
         values,
-        defaults: Object.fromEntries(STAFFING_SETTING_KEYS.map((k) => [k, SETTINGS[k]!.default])),
+        defaults: Object.fromEntries(STAFFING_SETTING_KEYS.map((k) => [k, dflt(k)])),
         choices: Object.fromEntries(STAFFING_SETTING_KEYS.map((k) => [k, SETTINGS[k]!.values])),
         lastChange: last ? { by: by?.name || by?.email || 'Someone', at: last.updatedAt, what: `Changed ${SETTINGS[last.key]!.label.replace(/^Staffing desk: /, '').toLowerCase()}` } : null,
         financialYear: financialYear(todayIst()),

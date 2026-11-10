@@ -69,6 +69,7 @@ export default function YxHiringVendorsPage() {
           onException: (id, reason) => write('POST', `/vendor-submissions/${encodeURIComponent(id)}/exception`, { reason }),
           loadContacts: async (jobId) => (await get<Options>(`/submissions/options?jobId=${encodeURIComponent(jobId)}`)).contacts.map((c) => ({ value: c.id, label: `${c.name} · ${c.role}` })),
           onForward: (id, contactId) => write('POST', `/vendor-submissions/${encodeURIComponent(id)}/forward`, { contactId }),
+          onOverride: has('ats.staffing.manage') && !acting ? (id, reason) => write('POST', `/vendor-submissions/${encodeURIComponent(id)}/override`, { reason }) : undefined,
           onAccept: (id) => review(`/agency-submissions/${encodeURIComponent(id)}/accept`),
           onReject: (id) => review(`/agency-submissions/${encodeURIComponent(id)}/reject`),
         }}

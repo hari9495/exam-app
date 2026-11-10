@@ -105,3 +105,22 @@ export function mondayOf(iso: string) {
   const dow = (new Date(`${iso}T00:00:00Z`).getUTCDay() + 6) % 7;
   return addDays(iso, -dow);
 }
+
+/**
+ * Answer 482: a bench spell's days in a pay month and the loss-of-pay days they make: (100 − bench pay %) of each day,
+ * and the whole day past the maximum bench days when the company's policy is "then unpaid". Exact to 0.01 day.
+ */
+export function benchLop(since: string, until: string | null, month: string, payPct: number, maxDays: number, unpaidAfter: boolean) {
+  const from = `${month}-01`;
+  const to = addDays(new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1)).toISOString().slice(0, 10), -1);
+  const a = since > from ? since : from;
+  const b = until && until < to ? until : to;
+  if (a > b) return { benchDays: 0, lopDays: '0.00' };
+  const benchDays = daysBetween(a, b) + 1;
+  // Day numbers of the spell (1 = its first day) that fall in this month: a..b.
+  const firstNo = daysBetween(since, a) + 1;
+  const lastNo = firstNo + benchDays - 1;
+  const full = unpaidAfter ? Math.max(0, lastNo - Math.max(maxDays, firstNo - 1)) : 0;
+  const centi = (benchDays - full) * (100 - payPct) + full * 100;
+  return { benchDays, lopDays: (centi / 100).toFixed(2) };
+}

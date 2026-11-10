@@ -2210,6 +2210,10 @@ model AgencySubmission {
   capExceptionReason  String?   @map("cap_exception_reason") @db.VarChar(500)
   capExceptionBy      String?   @map("cap_exception_by") @db.Uuid
   capExceptionAt      DateTime? @map("cap_exception_at") @db.Timestamptz(3)
+  /// Answer 489: an account manager overrode the duplicate (reason audited).
+  duplicateOverrideReason String?   @map("duplicate_override_reason") @db.VarChar(500)
+  duplicateOverrideBy     String?   @map("duplicate_override_by") @db.Uuid
+  duplicateOverrideAt     DateTime? @map("duplicate_override_at") @db.Timestamptz(3)
   agency           Agency    @relation(fields: [agencyId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   job              Job       @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
@@ -12531,4 +12535,20 @@ model StaffingPortalSession {
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("staffing_portal_sessions")
+}
+
+/// Answer 482: a bench spell's pay month sent to payroll once (as loss-of-pay days on the LOP input).
+model StaffingBenchPay {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  benchId        String   @map("bench_id") @db.Uuid
+  employmentId   String   @map("employment_id") @db.Uuid
+  month          DateTime @db.Date
+  benchDays      Int      @map("bench_days")
+  lopDays        Decimal  @map("lop_days") @db.Decimal(5, 2)
+  payPct         Int      @map("pay_pct")
+  sentAt         DateTime @default(now()) @map("sent_at") @db.Timestamptz(3)
+
+  @@unique([benchId, month], map: "staffing_bench_pay_key")
+  @@map("staffing_bench_pay")
 }

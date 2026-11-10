@@ -17873,5 +17873,53 @@
       "Screens/Hiring/HIR-21 · Staffing vendors · Vendor invoices · proposed from hours"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-STAFF-19",
+    "area": "Hiring › Staffing follow-ups: answers 482, 483, 484, 489 (10 Nov 2026)",
+    "screen": "Statutory cost default (answer 484)",
+    "url": "http://localhost:3000/yx/settings/staffing",
+    "account": "admin-tester@demo-org.test (System Admin). Browser window 1278 x 635, sidebar open. Staffing desk on.",
+    "steps": [
+      "1. With no PF or ESI registration on any legal entity, open Settings › Staffing desk.",
+      "2. Turn on a PF registration for a legal entity (Settings › Statutory); reopen Staffing desk.",
+      "3. Set the statutory cost to 5% and save; open an own-payroll placement."
+    ],
+    "expected": "Step 1: statutory cost None (starter). Step 2: 13% (starter). Step 3: toast; the placement shows statutory cost at 5% of the pay rate and the lower margin.",
+    "stories": [],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-STAFF-20",
+    "area": "Hiring › Staffing follow-ups: answers 482, 483, 484, 489 (10 Nov 2026)",
+    "screen": "Placement past its last day and bench pay (answers 482, 483)",
+    "url": "http://localhost:3000/yx/staffing/bench",
+    "account": "admin-tester@demo-org.test (System Admin). Browser window 1278 x 635, sidebar open. Staffing desk on.",
+    "steps": [
+      "1. Have an own-payroll placement whose last day was yesterday; wait for the night job (01:30) or ask the developer to run it.",
+      "2. Open Placements and the Bench.",
+      "3. After the month ends, open Payroll › Inputs › LOP for the person and month."
+    ],
+    "expected": "Step 2: the placement shows Ended (completed); the person is on the bench from today; a person already on the bench gets no second spell. Step 3: loss-of-pay days = bench days × (100 − bench pay %)/100, reason \"Bench N days at X% pay\", once only.",
+    "stories": [],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-STAFF-21",
+    "area": "Hiring › Staffing follow-ups: answers 482, 483, 484, 489 (10 Nov 2026)",
+    "screen": "Review dispute (answer 489)",
+    "url": "http://localhost:3000/yx/hiring/vendors?tab=submissions",
+    "account": "admin-tester@demo-org.test (System Admin). Browser window 1278 x 635, sidebar open. Staffing desk on.",
+    "steps": [
+      "1. As an account manager, press Review dispute on a duplicate; press Override with reason with no reason.",
+      "2. Give a reason; confirm.",
+      "3. Forward to client.",
+      "4. As a vendor manager without the staffing key, open the same tab."
+    ],
+    "expected": "Step 1: \"Say why…\". Step 2: toast; the badge reads Duplicate overridden with your reason. Step 3: forwarded (or refused if the same person is already submitted to that client job). Step 4: no Review dispute button.",
+    "stories": [
+      "Screens/Hiring/HIR-21 · Staffing vendors · Review dispute · override the duplicate with a reason"
+    ],
+    "note": "Positive and negative."
   }
 ]

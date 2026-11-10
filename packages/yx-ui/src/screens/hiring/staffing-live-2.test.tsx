@@ -191,3 +191,31 @@ describe('Settings 6.2 slice 2 (live)', () => {
     ]);
   });
 });
+
+describe('answer 489: Review dispute (live)', () => {
+  it('an account manager overrides a duplicate only with a reason; then it reads as overridden', async () => {
+    const onOverride = vi.fn().mockResolvedValue(undefined);
+    const dup = { id: 'a2', vendor: 'Second', candidate: 'Ravi', job: 'Java', jobId: 'j1', clientJob: true, at: '2026-11-09T10:00:00Z', quoted: '800.00', cap: '900.00', overBy: null, overCap: false, exception: null, duplicate: { holder: 'Velocity', until: '2027-02-07' }, rightToRepresent: true, consent: true, status: 'pending' as const };
+    const base = { state: 'ready' as const, onRetry: vi.fn(), vendors: [], showRegister: false, defaultTab: 'submissions' as const, canManage: true, canForward: true, canReview: false, onAdd: vi.fn(), onEdit: vi.fn(), onShare: vi.fn(), onException: vi.fn(), loadContacts: vi.fn().mockResolvedValue([]), onForward: vi.fn(), onAccept: vi.fn(), onReject: vi.fn() };
+    const { unmount } = wrap(<VendorsScreen live={{ ...base, submissions: [dup], onOverride }} />);
+    expect(screen.queryByRole('button', { name: 'Forward to client' })).not.toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Review dispute' }));
+    const dialog = await screen.findByRole('dialog');
+    await ue.click(within(dialog).getByRole('button', { name: 'Override with reason' }));
+    expect(within(dialog).getByText(/Say why/)).toBeInTheDocument();
+    expect(onOverride).not.toHaveBeenCalled();
+    await ue.type(within(dialog).getByLabelText(/Reason/), 'Withdrawn by Velocity');
+    await ue.click(within(dialog).getByRole('button', { name: 'Override with reason' }));
+    await waitFor(() => expect(onOverride).toHaveBeenCalledWith('a2', 'Withdrawn by Velocity'));
+    unmount();
+    wrap(<VendorsScreen live={{ ...base, submissions: [{ ...dup, override: { reason: 'Withdrawn by Velocity', at: '2026-11-10' } }], onOverride }} />);
+    expect(screen.getByText(/Duplicate overridden: held by Velocity/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Forward to client' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Review dispute' })).not.toBeInTheDocument();
+  });
+  it('without the account manager key there is no Review dispute', () => {
+    const dup = { id: 'a2', vendor: 'Second', candidate: 'Ravi', job: 'Java', jobId: 'j1', clientJob: true, at: '2026-11-09T10:00:00Z', quoted: null, cap: null, overBy: null, overCap: false, exception: null, duplicate: { holder: 'Velocity', until: null }, rightToRepresent: true, consent: true, status: 'pending' as const };
+    wrap(<VendorsScreen live={{ state: 'ready', onRetry: vi.fn(), vendors: [], showRegister: false, defaultTab: 'submissions', submissions: [dup], canManage: false, canForward: false, canReview: true, onAdd: vi.fn(), onEdit: vi.fn(), onShare: vi.fn(), onException: vi.fn(), loadContacts: vi.fn(), onForward: vi.fn(), onAccept: vi.fn(), onReject: vi.fn() }} />);
+    expect(screen.queryByRole('button', { name: 'Review dispute' })).not.toBeInTheDocument();
+  });
+});

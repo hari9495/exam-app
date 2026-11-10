@@ -56,3 +56,22 @@ describe('staffing billing rules', () => {
     expect([mondayOf('2026-11-09'), mondayOf('2026-11-15'), mondayOf('2026-11-12')]).toEqual(['2026-11-09', '2026-11-09', '2026-11-09']);
   });
 });
+
+import { benchLop } from './billing-rules';
+
+describe('bench pay as loss-of-pay days (answer 482)', () => {
+  it('half pay: half of each bench day in the month is loss of pay', () => {
+    expect(benchLop('2026-10-21', null, '2026-10', 50, 30, false)).toEqual({ benchDays: 11, lopDays: '5.50' });
+    expect(benchLop('2026-09-15', '2026-10-04', '2026-10', 60, 30, false)).toEqual({ benchDays: 4, lopDays: '1.60' });
+  });
+  it('full pay makes none; outside the month makes nothing', () => {
+    expect(benchLop('2026-10-01', null, '2026-10', 100, 30, false)).toEqual({ benchDays: 31, lopDays: '0.00' });
+    expect(benchLop('2026-11-02', null, '2026-10', 50, 30, false)).toEqual({ benchDays: 0, lopDays: '0.00' });
+    expect(benchLop('2026-08-01', '2026-09-30', '2026-10', 50, 30, false)).toEqual({ benchDays: 0, lopDays: '0.00' });
+  });
+  it('past the maximum days with "then unpaid", each day is wholly unpaid; with review, still at bench pay', () => {
+    // Bench from 20 Sep: Oct 1 is day 12; days 12–30 (19 days) at half pay, days 31–42 (12 days) unpaid.
+    expect(benchLop('2026-09-20', null, '2026-10', 50, 30, true)).toEqual({ benchDays: 31, lopDays: '21.50' });
+    expect(benchLop('2026-09-20', null, '2026-10', 50, 30, false)).toEqual({ benchDays: 31, lopDays: '15.50' });
+  });
+});

@@ -2065,6 +2065,8 @@ export interface VendorSubmissionView {
   rightToRepresent: boolean;
   consent: boolean;
   status: 'pending' | 'accepted' | 'rejected';
+  /** Answer 489: an account manager's override of the duplicate, with the reason. */
+  override?: { reason: string; at: string } | null;
 }
 export interface LiveVendors {
   state: 'ready' | 'loading' | 'error' | 'denied';
@@ -2088,6 +2090,10 @@ export interface LiveVendors {
   onReject: (id: string) => Promise<unknown>;
   /** False when the viewer reviews submissions but does not manage vendors: no register or scorecards. */
   showRegister?: boolean;
+  /** Answer 489 (the design's Review dispute): override a duplicate with a reason (account managers). */
+  onOverride?: (id: string, reason: string) => Promise<unknown>;
+  /** Stories: open the dispute review for this submission. */
+  defaultDisputeId?: string;
   /** Slice 3 (answer 490): vendor invoices for staffing finance; absent hides the tab. */
   bills?: { rows: VendorBillView[]; canEdit: boolean; onConfirm: (placementId: string, month: string, vendorInvoiceNo: string) => Promise<unknown>; onPaid: (id: string, paidOn: string) => Promise<unknown> } | null;
 }
@@ -2097,6 +2103,7 @@ const V_STATUS: Record<VendorRowView['status'], string> = { active: 'Active', pe
 function LiveVendorsView({ live }: { live: LiveVendors }) {
   const toast = useToastIfAny();
   const [exc, setExc] = useState<VendorSubmissionView | null>(null);
+  const [dispute, setDispute] = useState<VendorSubmissionView | null>(() => live.submissions?.find((x) => x.id === live.defaultDisputeId) ?? null);
   const [fwd, setFwd] = useState<VendorSubmissionView | null>(null);
   const [reason, setReason] = useState('');
   const [contacts, setContacts] = useState<{ value: string; label: string }[] | null>(null);
@@ -2182,14 +2189,15 @@ function LiveVendorsView({ live }: { live: LiveVendors }) {
               <ul className="yx-hire-list" aria-label="Vendor submissions">
                 {subs.map((s) => {
                   const consentOk = s.rightToRepresent && s.consent;
-                  const ready = s.status === 'pending' && !s.duplicate && consentOk && !s.overCap;
+                  const dup = s.duplicate && !s.override;
+                  const ready = s.status === 'pending' && !dup && consentOk && !s.overCap;
                   return (
                     <li key={s.id} className="yx-hire-list__item">
                       <div className="yx-hire-list__main">
                         <PersonLabel name={s.candidate} secondary={`${s.job} · from ${s.vendor} · ${formatDate(new Date(s.at))}`} />
                         <div className="yx-hire-chips">
                           {s.status !== 'pending' ? <Badge tone="neutral">{s.status === 'accepted' ? 'Accepted' : 'Rejected'}</Badge> : null}
-                          <Badge tone={s.duplicate ? 'warning' : 'success'}>{s.duplicate ? `Duplicate: held by ${s.duplicate.holder}${s.duplicate.until ? ` until ${d(s.duplicate.until)}` : ''}` : 'Unique'}</Badge>
+                          <Badge tone={dup ? 'warning' : 'success'}>{s.duplicate ? `${s.override ? 'Duplicate overridden' : 'Duplicate'}: held by ${s.duplicate.holder}${s.duplicate.until ? ` until ${d(s.duplicate.until)}` : ''}` : 'Unique'}</Badge>
                           {s.clientJob && (
                             <Badge tone={s.overCap ? 'danger' : 'neutral'}>
                               {s.quoted != null
@@ -2202,12 +2210,17 @@ function LiveVendorsView({ live }: { live: LiveVendors }) {
                           )}
                           <Badge tone={consentOk ? 'success' : 'warning'}>{consentOk ? 'Right to represent + consent' : 'Consent missing'}</Badge>
                         </div>
-                        {s.duplicate && <Text size="sm" tone="secondary">The vendor sees “duplicate” and not who holds the candidate.</Text>}
+                        {s.duplicate && <Text size="sm" tone="secondary">{s.override ? `Overridden: ${s.override.reason}` : 'The vendor sees “duplicate” and not who holds the candidate.'}</Text>}
                       </div>
                       <div className="yx-hire-list__actions">
                         {s.status === 'pending' && s.clientJob && s.overCap && live.canManage && (
                           <Button size="sm" onClick={() => (setExc(s), setReason(''), setTried(false))}>
                             Approve exception with reason
+                          </Button>
+                        )}
+                        {s.status === 'pending' && dup && live.canForward && live.onOverride && (
+                          <Button size="sm" onClick={() => (setDispute(s), setReason(''), setTried(false))}>
+                            Review dispute
                           </Button>
                         )}
                         {ready && s.clientJob && live.canForward && (
@@ -2248,6 +2261,23 @@ function LiveVendorsView({ live }: { live: LiveVendors }) {
           </TabsContent>
         </Tabs>
       )}
+      <ConfirmDialog
+        open={Boolean(dispute)}
+        onOpenChange={(o) => !o && setDispute(null)}
+        title={`Override the duplicate for ${dispute?.candidate ?? ''}?`}
+        consequence={dispute?.duplicate ? `${dispute.duplicate.holder} holds this person${dispute.duplicate.until ? ` until ${d(dispute.duplicate.until)}` : ''}. With your reason (kept in the audit log) you can forward them; the other vendor is not told.` : undefined}
+        confirmLabel="Override with reason"
+        onConfirm={async () => {
+          setTried(true);
+          if (reason.trim().length < 3) return (focus('vd-reason'), false);
+          await live.onOverride!(dispute!.id, reason.trim());
+          toast?.toast({ tone: 'success', title: 'Duplicate overridden' });
+        }}
+      >
+        <FormField id="vd-reason" label="Reason" required error={tried && reason.trim().length < 3 ? 'Say why, like “The first vendor withdrew the candidate”.' : null}>
+          <TextArea rows={2} value={reason} onChange={setReason} maxLength={500} />
+        </FormField>
+      </ConfirmDialog>
       <ConfirmDialog
         open={Boolean(exc)}
         onOpenChange={(o) => !o && setExc(null)}

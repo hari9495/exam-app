@@ -11,6 +11,8 @@ import { EmailService } from '../src/email/email.service';
 import { LOGIN_PROTECTION_REDIS } from '../src/auth/login-protection.service';
 import { gstinCheckChar } from '../src/expenses/checks';
 import { financialYear } from '../src/staffing/staffing-rules';
+import { StaffingJobsService } from '../src/staffing/staffing-jobs.service';
+import { payScope } from '../src/payroll/pay-access';
 
 // Staffing desk slice 3 end to end (HIR-18 invoices and vendor invoices, HIR-19 receivables, HIR-30 fees, HIR-31 the
 // e-invoice window, the client portal per contact): approved hours become invoices numbered from the series (only up),
@@ -22,6 +24,7 @@ jest.setTimeout(300_000);
 describe('Staffing desk slice 3', () => {
   let app: INestApplication;
   let prisma: PrismaService;
+  let jobs: StaffingJobsService;
   let tenantPrisma: TenantPrismaService;
   const send = jest.fn(async (_m: { to: string; subject: string; html: string }) => ({ success: true }));
   const PASSWORD = 'Corr3ct-Horse-Battery';
@@ -67,6 +70,7 @@ describe('Staffing desk slice 3', () => {
     await app.init();
     prisma = moduleRef.get(PrismaService);
     tenantPrisma = moduleRef.get(TenantPrismaService);
+    jobs = moduleRef.get(StaffingJobsService);
     const redis = moduleRef.get<Redis>(LOGIN_PROTECTION_REDIS);
     const ipKeys = await redis.keys('auth:otp:ip:*');
     if (ipKeys.length) await redis.del(...ipKeys);
@@ -126,7 +130,7 @@ describe('Staffing desk slice 3', () => {
         await tx.refreshToken.deleteMany({ where: { userId: { in: all } } });
         await tx.session.deleteMany({ where: { userId: { in: all } } });
         for (const o of [org.A.id, org.B.id]) {
-          for (const t of ['staffing_receipt_allocations', 'staffing_receipts', 'staffing_vendor_bills', 'staffing_hours', 'staffing_invoice_lines'] as const) await tx.$executeRawUnsafe(`DELETE FROM "${t}" WHERE organization_id = $1::uuid`, o);
+          for (const t of ['staffing_receipt_allocations', 'staffing_receipts', 'staffing_vendor_bills', 'staffing_hours', 'staffing_invoice_lines', 'staffing_bench_pay'] as const) await tx.$executeRawUnsafe(`DELETE FROM "${t}" WHERE organization_id = $1::uuid`, o);
           await tx.$executeRawUnsafe(`DELETE FROM "staffing_invoices" WHERE organization_id = $1::uuid AND credit_of IS NOT NULL`, o);
           await tx.$executeRawUnsafe(`DELETE FROM "staffing_invoices" WHERE organization_id = $1::uuid`, o);
         }
@@ -382,9 +386,85 @@ describe('Staffing desk slice 3', () => {
     expect((await api('fin', 'get', '/staffing/vendor-bills').expect(200)).body.rows.find((r: { id: string | null }) => r.id === id)).toMatchObject({ status: 'paid', vendorInvoiceNo: 'VT/26-27/044', net: '36000.00' });
   });
 
+  it('484: the statutory cost default is 13% with a PF or ESI registration, else 0%; a saved value wins', async () => {
+    const stat = async () => (await api('am', 'get', '/staffing/settings').expect(200)).body;
+    expect((await stat()).defaults['staffing.statutory_cost_pct']).toBe('0');
+    await inA((tx) => tx.statutoryRegistration.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity!, statute: 'IN.PT', state: 'IN-KA', status: 'on' } }));
+    expect((await stat()).defaults['staffing.statutory_cost_pct']).toBe('0'); // PT is not PF or ESI
+    const esi = await inA((tx) => tx.statutoryRegistration.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity!, statute: 'IN.ESI', status: 'off' } }));
+    expect((await stat()).defaults['staffing.statutory_cost_pct']).toBe('0'); // switched off
+    await inA((tx) => tx.statutoryRegistration.update({ where: { id: esi.id }, data: { status: 'applied_awaited', appliedOn: day(today) } }));
+    const s = await stat();
+    expect([s.defaults['staffing.statutory_cost_pct'], s.values['staffing.statutory_cost_pct']]).toEqual(['13', '13']);
+    expect((await api('am', 'get', `/staffing/placements/${ids.pOwn}`).expect(200)).body.placement).toMatchObject({ costRate: '800.00', statutory: '104.00', margin: '296.00' });
+    await settings('am', [{ key: 'staffing.statutory_cost_pct', value: '5' }]).expect(want(200));
+    expect((await api('am', 'get', `/staffing/placements/${ids.pOwn}`).expect(200)).body.placement.statutory).toBe('40.00');
+    expect((await stat()).values['staffing.statutory_cost_pct']).toBe('5');
+  });
+
+  it('483: the nightly job ends a placement past its last day once and benches own payroll; skips vendors and people already on the bench', async () => {
+    const yesterday = addDays(today, -1);
+    await inA(async (tx) => {
+      const x = { organizationId: org.A.id };
+      for (const [k, given] of [['bhavna', 'Bhavna'], ['chitra', 'Chitra']] as const) {
+        const person = await tx.person.create({ data: { ...x, givenName: given } });
+        ids[k] = (await tx.employee.create({ data: { ...x, personId: person.id, givenName: given } })).id;
+        await tx.employment.create({ data: { ...x, employeeId: ids[k]!, legalEntityId: ids.entity!, employeeCode: `${k}-${run}`, codeScopeKey: ids.entity!, joinedOn: day('2025-04-01') } });
+      }
+      const p = { ...x, clientId: ids.tn!, lineId: ids.tnLine!, startOn: day(addDays(today, -60)), endOn: day(yesterday) };
+      ids.pDone = (await tx.staffingPlacement.create({ data: { ...p, supply: 'own', employeeId: ids.bhavna!, workerName: 'Bhavna' } })).id;
+      ids.pDone2 = (await tx.staffingPlacement.create({ data: { ...p, supply: 'own', employeeId: ids.chitra!, workerName: 'Chitra' } })).id;
+      ids.pVendorDone = (await tx.staffingPlacement.create({ data: { ...p, supply: 'vendor', agencyId: ids.agency!, workerName: 'Vendor worker', vendorRatePaise: 90000n } })).id;
+      ids.benchChitra = (await tx.staffingBench.create({ data: { ...x, employeeId: ids.chitra!, sinceOn: day(addDays(today, -3)) } })).id; // already on the bench
+    });
+    expect(await jobs.endPlacements(today)).toBeGreaterThanOrEqual(2);
+    const [b, c, v] = await inA((tx) => Promise.all([ids.pDone, ids.pDone2, ids.pVendorDone].map((id) => tx.staffingPlacement.findUniqueOrThrow({ where: { id } }))));
+    expect([b.status, b.endedReason, c.status, v.status]).toEqual(['ended', 'completed', 'ended', 'active']); // vendor supply untouched
+    const benches = await inA((tx) => tx.staffingBench.findMany({ where: { employeeId: { in: [ids.bhavna!, ids.chitra!] } } }));
+    expect(benches.filter((x) => x.employeeId === ids.bhavna).map((x) => x.sinceOn.toISOString().slice(0, 10))).toEqual([today]);
+    expect(benches.filter((x) => x.employeeId === ids.chitra)).toHaveLength(1); // not a second spell
+    expect(await jobs.endPlacements(today)).toBe(0); // once per placement
+    const audits = await inA((tx) => tx.auditLog.findMany({ where: { action: 'staffing.placement.completed', entityId: { in: [ids.pDone!, ids.pDone2!] } } }));
+    expect(audits.map((x) => JSON.parse(x.metadataJson!).skipped).sort()).toEqual(['already on the bench', null]);
+    // Arun's placement runs to next year: untouched.
+    expect((await inA((tx) => tx.staffingPlacement.findUniqueOrThrow({ where: { id: ids.pOwn } }))).status).toBe('active');
+  });
+
+  it('482: bench pay reaches payroll once per bench spell per pay month as loss-of-pay days; added to manual LOP; a locked month is skipped', async () => {
+    const month = prevFirst.slice(0, 7);
+    const lastDay = addDays(new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1)).toISOString().slice(0, 10), -1);
+    const days = Number(lastDay.slice(8));
+    await inA(async (tx) => {
+      const x = { organizationId: org.A.id };
+      // Bhavna: on the bench from the 21st of last month (50% pay, the default): (days − 20) × 0.5 LOP days.
+      await tx.staffingBench.updateMany({ where: { employeeId: ids.bhavna }, data: { sinceOn: day(`${month}-21`) } });
+      // Chitra: a manual LOP of 2 days already; bench from the 1st to the 10th.
+      await tx.staffingBench.update({ where: { id: ids.benchChitra }, data: { sinceOn: day(`${month}-01`), untilOn: day(`${month}-10`) } });
+      const e = await tx.employment.findFirstOrThrow({ where: { employeeId: ids.chitra } });
+      await payScope(tx, [e.legalEntityId]); // the pay guard, as payroll staff
+      await tx.lopInput.create({ data: { ...x, legalEntityId: e.legalEntityId, employeeId: ids.chitra!, employmentId: e.id, periodStart: day(`${month}-01`), lopDays: '2', reason: 'Absent', enteredBy: users.admin! } });
+      // Dinesh: another entity whose month is locked: skipped.
+      const ent = await tx.legalEntity.create({ data: { ...x, name: 'Locked Entity', shortName: `LE-${run}` } });
+      const person = await tx.person.create({ data: { ...x, givenName: 'Dinesh' } });
+      ids.dinesh = (await tx.employee.create({ data: { ...x, personId: person.id, givenName: 'Dinesh' } })).id;
+      await tx.employment.create({ data: { ...x, employeeId: ids.dinesh, legalEntityId: ent.id, employeeCode: `d-${run}`, codeScopeKey: ent.id, joinedOn: day('2025-04-01') } });
+      await tx.staffingBench.create({ data: { ...x, employeeId: ids.dinesh, sinceOn: day(`${month}-05`) } });
+      await tx.payPeriod.create({ data: { ...x, legalEntityId: ent.id, periodStart: day(`${month}-01`), periodEnd: day(lastDay), stage: 'locked' } });
+    });
+    expect(await jobs.benchPay(today)).toBe(2);
+    const lop = await inA(async (tx) => (await payScope(tx, [ids.entity!]), tx.lopInput.findMany({ where: { periodStart: day(`${month}-01`), employeeId: { in: [ids.bhavna!, ids.chitra!, ids.dinesh!] } } })));
+    const of = (e: string) => lop.find((x) => x.employeeId === e);
+    expect([Number(of(ids.bhavna!)!.lopDays), of(ids.bhavna!)!.source]).toEqual([((days - 20) * 0.5), 'bench']);
+    expect([Number(of(ids.chitra!)!.lopDays), of(ids.chitra!)!.source, of(ids.chitra!)!.reason]).toEqual([7, 'manual', 'Absent; Bench 10 days at 50% pay']);
+    expect(of(ids.dinesh!)).toBeUndefined();
+    expect(await jobs.benchPay(today)).toBe(0); // once per spell per month
+    expect(Number((await inA(async (tx) => (await payScope(tx, [ids.entity!]), tx.lopInput.findFirstOrThrow({ where: { employeeId: ids.bhavna, periodStart: day(`${month}-01`) } })))).lopDays)).toBe((days - 20) * 0.5);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'staffing.bench_pay.sent' } }))).toBe(2);
+  });
+
   it('row-level security: company B sees none of the new rows', async () => {
-    const counts = await inB(async (tx) => [await tx.staffingHours.count(), await tx.staffingInvoice.count(), await tx.staffingInvoiceLine.count(), await tx.staffingReceipt.count(), await tx.staffingReceiptAllocation.count(), await tx.staffingClientTerms.count(), await tx.staffingVendorBill.count(), await tx.staffingPortalSession.count()]);
-    expect(counts).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
+    const counts = await inB(async (tx) => [await tx.staffingHours.count(), await tx.staffingInvoice.count(), await tx.staffingInvoiceLine.count(), await tx.staffingReceipt.count(), await tx.staffingReceiptAllocation.count(), await tx.staffingClientTerms.count(), await tx.staffingVendorBill.count(), await tx.staffingPortalSession.count(), await tx.staffingBenchPay.count()]);
+    expect(counts).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0]);
     const a = await inA(async (tx) => [await tx.staffingHours.count(), await tx.staffingInvoice.count(), await tx.staffingReceipt.count(), await tx.staffingVendorBill.count(), await tx.staffingPortalSession.count()]);
     expect(a.every((n) => n > 0)).toBe(true);
   });

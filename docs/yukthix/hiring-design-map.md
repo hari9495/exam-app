@@ -56,12 +56,13 @@ built**.
 | B. Candidates, pipeline and interviews | 8 | 52 | 1 | 0 | 9 | 1 | 63 |
 | C. Offers, BGV and joining | 4 | 17 | 6 | 0 | 5 | 0 | 28 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 20 | 0 | 0 | 7 | 4 | 31 |
-| E. Staffing agency | 8 | 47 | 16 | 0 | 0 | 0 | 63 |
+| E. Staffing agency | 8 | 49 | 15 | 0 | 0 | 0 | 64 |
 | F. Compliance and fairness | 5 | 4 | 1 | 0 | 20 | 0 | 25 |
 | G. Careers site, portals and settings | 4 | 55 | 5 | 2 | 9 | 0 | 71 |
-| **All Hiring design groups (A–G)** | **37** | **234** | **32** | **2** | **45** | **5** | **318** |
+| **All Hiring design groups (A–G)** | **37** | **236** | **31** | **2** | **45** | **5** | **319** |
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 5 | 0 | 5 | 5 | 0 | 15 |
 Recounted by script on `test/yukthix-main` after merging the Settings 6.1 follow-ups with HIR-10/20: A–G 176 live, 12 gap, 6 wire, 100 not built, 5 phone, of 299 (H: the old scorecard-templates group left with its page).
+Recounted by script 10 Nov 2026 on `feat/yukthix-staffing-3` after answers 482, 483, 484 and 489: HIR-17 Bench live (gap closed); HIR-21 1 new drawn story (Review dispute).
 Recounted by script 10 Nov 2026 on `feat/yukthix-staffing-3` after staffing slice 3: HIR-18 7, HIR-19 5, HIR-30 3 and HIR-31 5 stories design only → live (8 with a gap) plus 2 new HIR-18 stories (create invoices, draft) and 1 new HIR-17 story (weekly hours); HIR-21 Invoices → live (gap); HIR-14 Workspace and Contacts gaps closed or narrowed; section E has no design-only story left.
 Recounted by script 10 Nov 2026 on `feat/yukthix-staffing-2` after staffing slice 2: HIR-16 6 and HIR-17 8 stories design only → live (4 with a gap) plus 6 new drawn stories (submit by email, desk off, new client job, new placement, add to bench, recruiter view); HIR-21 4 wire design and Scorecards → live (1 with a gap) plus 2 new (add vendor, share client job); Invoices stays design only (slice 3); Settings 6.2 gains the slice-2 policies.
 Recounted by script 14 Nov 2026 on `feat/yukthix-staffing-1` after staffing slice 1: HIR-14 8 stories and HIR-15 5 stories design only → live (6 with a gap) plus 4 new drawn stories (add client, add contact, desk off, add role); Settings 6.2 P6_2 and P6_2_ReadOnly → live plus the new invoice series story.
@@ -664,7 +665,7 @@ keep hours and fees; recruiters see none of it.
 | Extend · Extend (dated change) | live (gap) | a later last day and a reason, with the version (stale 409). Gap: rates change on the rate card (a dated rate change), not in this sheet |
 | EndEarly · End early · confirmation | live | last day within the placement and a reason (client, performance, resigned); own payroll moves to the bench from the next day |
 | VendorSupplied · Vendor-supplied placement | live | cost is the vendor's quote; no bench |
-| Bench · Bench board · policy days | live (gap) | /yx/staffing/bench: days on the bench against `staffing.bench.max_days` (default 30), bench pay `staffing.bench.pay_pct` (default 50) and what follows `staffing.bench.after` (default redeploy or exit review); take off the bench. Gap: bench pay in payroll and the exit review (question 482) |
+| Bench · Bench board · policy days | live | /yx/staffing/bench: days on the bench against `staffing.bench.max_days` (default 30), bench pay `staffing.bench.pay_pct` (default 50) and what follows `staffing.bench.after` (default redeploy or exit review); take off the bench. Answer 482: each finished pay month, every bench spell goes to payroll once as loss-of-pay days on the existing LOP input (source bench; added to a manual LOP of that month; a locked or frozen month is skipped). Answer 483: a nightly job ends an own-payroll placement past its last day (completed, audited) and benches the person from the next day unless re-placed or already on the bench. The exit review stays manual |
 | BenchEmpty · Bench · empty | live | |
 | Loading · Loading | live | |
 | NewPlacement · New placement · from a selected submission | live | new story (drawn): `PlacementSheet`: a selected submission, once; a rate on the first day; a pipeline candidate joins as an employee first (question 481); placing takes the person off the bench the day before |
@@ -708,6 +709,7 @@ keep hours and fees; recruiters see none of it.
 | Empty · Empty register | live | |
 | AddVendor · Add vendor · documents | live | new story (drawn): `VendorSheet` |
 | ShareClientJob · Share client job · cap suggested, incomplete vendor blocked | live | new story (drawn) |
+| ReviewDispute · Review dispute · override the duplicate with a reason | live | new story (drawn, answer 489): the design's Review dispute opens an override for an account manager (`ats.staffing.manage`): a reason (audited), then Forward to client; the other vendor is not told; the same person already submitted to the client job is refused (409) |
 
 #### HIR-30 · Placement fee and replacement guarantee
 
@@ -882,7 +884,7 @@ stand-in is gone. Approval routes, careers and job boards stay on their stand-in
 | P6_1_ScorecardUsed · 6.1 Hiring · used scorecard (saved as a copy) | live | a template already used by a scorecard is never changed: “Save as a copy” posts a new template named “(copy)”; the API refuses a change with 409 |
 | P6_1_ScorecardView · 6.1 Hiring · scorecard, view only | live | the view-only sheet (skills with per cent, scale, pass bar) is drawn; live shows the list rows read-only without the pipelines key instead of opening it. Archive scorecard (danger, after a confirmation): `DELETE hiring/scorecard-templates/:id`, jobs using it go back to no scorecard, filled scorecards keep it |
 | P6_1_StaleRecruiter · 6.1 Hiring · default recruiter no longer qualifies | live | answer 348: a stored default who left or no longer holds the recruiter key reads as None with a warning naming them; new requisitions start with no recruiter (`defaultRecruiter`); the API refuses anyone else as default with 400, on both `PUT hiring/settings` and `PUT org/settings` |
-| P6_2 · 6.2 Staffing desk | live (gap) | /yx/settings/staffing: turn on the staffing desk (`staffing.desk.enabled`, default off, drawn), the rate-change backdating (`staffing.rate_change.backdate_days`, default 0, drawn), OT and holiday multipliers (1.5 and 2), default payment terms (30 days), invoice numbering (one series per GSTIN per financial year; the next number only goes up) and the r.46(b) law row. Changed by `ats.staffing.manage` or `org.settings.manage` company-wide, never while acting; audited. Slice 2 (drawn, live): submissions and placements (mask contact details, ending soon days, statutory cost %), vendors (target margin for the rate cap, ownership days) and the bench policy (bench pay, maximum days, then review or unpaid; a Segment). Slice 3: payment reminders (`staffing.dunning.schedule`: standard, gentle or off), the ageing groups (fixed) and e-invoicing (`staffing.einvoice.applies`, default off, with the IRP not connected). Gap: client-portal response times (no tickets) |
+| P6_2 · 6.2 Staffing desk | live (gap) | /yx/settings/staffing: turn on the staffing desk (`staffing.desk.enabled`, default off, drawn), the rate-change backdating (`staffing.rate_change.backdate_days`, default 0, drawn), OT and holiday multipliers (1.5 and 2), default payment terms (30 days), invoice numbering (one series per GSTIN per financial year; the next number only goes up) and the r.46(b) law row. Changed by `ats.staffing.manage` or `org.settings.manage` company-wide, never while acting; audited. Slice 2 (drawn, live): submissions and placements (mask contact details, ending soon days, statutory cost %), vendors (target margin for the rate cap, ownership days) and the bench policy (bench pay, maximum days, then review or unpaid; a Segment). Answer 484: the statutory cost starts at 13% when any legal entity has a PF or ESI registration on or applied for (`statutory_registrations`: statute IN.PF or IN.ESI, status on or applied_awaited, as payroll uses), else 0%; a value HR saves wins. Slice 3: payment reminders (`staffing.dunning.schedule`: standard, gentle or off), the ageing groups (fixed) and e-invoicing (`staffing.einvoice.applies`, default off, with the IRP not connected). Gap: client-portal response times (no tickets) |
 | P6_2_ReadOnly · 6.2 Staffing desk · read-only | live | recruiters (`ats.staffing.view`) read it |
 | P6_2_InvoiceSeries · 6.2 Staffing desk · add invoice series | live | new story (drawn): `InvoiceSeriesSheet`: the GSTIN must be one of the entity's registrations; a duplicate year and GSTIN 409; the number cannot go back |
 
@@ -1579,6 +1581,10 @@ at joining while a "before confirmation" check is open, HR decides; (392) also s
   the section E note. New company settings: `staffing.dunning.schedule` (standard), `staffing.einvoice.applies` (off).
   Client fields: `tds_section`, `invoice_grouping` (month). Rule sets (verify): `GST.STAFFING_RATE`,
   `GST.EINVOICE_WINDOW`, `TDS.SECTIONS`.
+## Staffing follow-ups built (answers 482, 483, 484, 489; 10 Nov 2026, branch `feat/yukthix-staffing-3`)
+- Migration `202617o0000006_staffing_followups`: `lop_inputs.source` may be `bench`; `staffing_bench_pay` (once per bench
+  spell per pay month, RLS); the duplicate override columns on `agency_submissions`. Nightly job `staffing-nightly` at
+  01:30 India time (BullMQ, idempotent).
 ## Founder questions from the staffing desk slice 3 (10 Nov 2026)
 491. **Client portal: interviews and tickets.** The drawn Interviews (schedule) and Tickets tabs are not built: interview
      scheduling with a client panel and client tickets have no back end. *Suggested: interviews with HIR-06 scheduling;
