@@ -333,6 +333,8 @@ Founder approved, 10 Nov 2026 (questions 651-654, 661-665, 711-714, all as sugge
 who keep the watch-list get the Facility admin role; (664) remove the ID type field from the invite drawing; (711) build
 "Send someone" next (the named colleague gets the card with their own minutes, audited); (713) reception sees the photo
 at check-in and on the photo badge, never on the host's phone after the decision.
+Founder approved, 10 Nov 2026 (questions 761-765, all as suggested): (761) the slice-2 photo is wired into the badge
+after the merge; keep 762, 763, 764, 765.
 
 ## Visitors slice 1 built (answers 601-617; 15 Nov 2026, branch `feat/yukthix-visitors-1`)
 

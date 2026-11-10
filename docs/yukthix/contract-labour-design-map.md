@@ -358,6 +358,9 @@ registrations exist (CL-5); keep 682 (second approver setting later), 683, 685 (
 action keeping the number; (686) count contract workers in All persons with CL-5; (731) optional issuing office on the
 licence form in CL-4; (734) Aadhaar only for now, other IDs later under the last-4-plus-hash rule; (735) worker photo with
 the gate pass card in CL-5; (736) the contractor can withdraw their own waiting workers.
+Founder approved, 10 Nov 2026 (questions 741-746, all as suggested): (741) the muster roll in CL-5 and the proof
+list a company setting; (742) paid days against attendance in CL-5; (743) a daily email to the compliance owners for new
+liability alerts; keep 744 (release per month), 746; (745) a recovered-wages line on the payroll payment advice.
 
 ## CL-1 built (10 Nov 2026, branch `feat/yukthix-contract-labour-1`)
 
