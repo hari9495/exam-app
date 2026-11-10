@@ -89,7 +89,6 @@
     "ops: PoshComplaintScreen",
     "ops: StatutorySetupScreen",
     "ops: VendorComplianceScreen",
-    "ops: VisitorKioskScreen",
     "ops: WorkersScreen",
     "pay: FirstUse",
     "pay: GroupHealthScreen",

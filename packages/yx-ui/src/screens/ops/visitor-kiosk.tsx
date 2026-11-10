@@ -113,7 +113,7 @@ function PhotoTaker({ onPhoto, onProblem }: { onPhoto: (base64: string) => void;
         <video ref={video} muted playsInline aria-label="Camera ready · look at the camera" style={{ width: '100%', borderRadius: 'var(--yx-radius-md)' }} />
       </figure>
       <Actions end>
-        <Button variant="primary" onClick={take} disabled={state !== 'ready'}>
+        <Button variant="primary" onClick={take} loading={state !== 'ready'}>
           Take photo
         </Button>
       </Actions>
