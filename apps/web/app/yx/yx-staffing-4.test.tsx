@@ -7,6 +7,7 @@ import { apiFetch, apiFetchBlob } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
 import YxStaffingInvoicePage from './(app)/staffing/invoices/[id]/page';
 import YxStaffingPlacementPage from './(app)/staffing/placements/[id]/page';
+import YxStaffingInvoicesPage from './(app)/staffing/invoices/page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), apiFetchBlob: jest.fn() }));
@@ -59,5 +60,22 @@ it('494: the hire goes to the API with the CTC as exact rupee text', async () =>
   const dialog = await screen.findByRole('dialog');
   await ue.type(within(dialog).getByLabelText(/First-year CTC/), '1800000');
   await ue.click(within(dialog).getByRole('button', { name: 'Record the hire' }));
-  await waitFor(() => expect(calls).toEqual([['POST /staffing/placements/p1/hired', { hiredOn: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), ctc: '1800000.00', seriesId: 's1' }]]));
+  await waitFor(() => expect(calls).toEqual([['POST /staffing/placements/p1/hired', { hiredOn: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), ctc: '1800000.00', seriesId: 's1', endPlacement: true }]]));
+});
+
+it('522: Export to accounting downloads the chosen series, month and format', async () => {
+  (useParams as jest.Mock).mockReturnValue({});
+  api.mockImplementation(async (path: string) => {
+    if (path === '/staffing/invoices') return { canCreate: true, rows: [] };
+    if (path === '/staffing/invoices/options') return { clients: [], series: [] };
+    if (path === '/staffing/exports/options') return { series: [{ id: 's1', label: 'KS/ · 29AABCK1234F1Z5 · 2026-27', months: ['2026-10'], drafts: 1 }] };
+    throw new Error(`unexpected ${path}`);
+  });
+  blob.mockResolvedValue({ blob: new Blob(['<x/>']), filename: 'KS-2026-10-tally.xml' });
+  wrap(<YxStaffingInvoicesPage />);
+  await ue.click(await screen.findByRole('button', { name: 'Export to accounting' }));
+  const sheet = await screen.findByRole('dialog');
+  expect(within(sheet).getByText(/1 draft is not exported/)).toBeInTheDocument();
+  await ue.click(within(sheet).getByRole('button', { name: 'Download' }));
+  await waitFor(() => expect(blob).toHaveBeenCalledWith('/staffing/exports?seriesId=s1&month=2026-10&format=tally', {}, 'tok'));
 });

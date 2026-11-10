@@ -347,7 +347,7 @@ export class StaffingWorkService {
   }
 
   /** End early: the last day and the reason; an own-payroll person moves to the bench from the next day. */
-  async end(ctx: TenantContext, user: ScopeUser, id: string, dto: PlacementEndDto) {
+  async end(ctx: TenantContext, user: ScopeUser, id: string, dto: PlacementEndDto, opts: { bench?: boolean } = {}) {
     return this.run(ctx, user, 'manage', async (tx, c) => {
       const org = c.organizationId;
       const p = await tx.staffingPlacement.findFirst({ where: { id, organizationId: org } });
@@ -356,7 +356,8 @@ export class StaffingWorkService {
       if (dto.endOn < iso(p.startOn)! || dto.endOn > iso(p.endOn)!) throw new BadRequestException(`The last day is between ${iso(p.startOn)} and ${iso(p.endOn)}.`);
       const { count } = await tx.staffingPlacement.updateMany({ where: { id, version: dto.version, status: 'active' }, data: { endOn: day(dto.endOn), status: 'ended', endedReason: dto.reason, endNote: dto.note?.trim() || null, version: { increment: 1 } } });
       if (!count) throw new ConflictException('Someone changed this placement meanwhile. Reload it.');
-      if (p.employeeId && !(await tx.staffingBench.findFirst({ where: { organizationId: org, employeeId: p.employeeId, untilOn: null } })))
+      // Answer 528: a person the client hired leaves the desk, so no bench spell.
+      if (opts.bench !== false && p.employeeId && !(await tx.staffingBench.findFirst({ where: { organizationId: org, employeeId: p.employeeId, untilOn: null } })))
         await tx.staffingBench.create({ data: { organizationId: org, employeeId: p.employeeId, sinceOn: day(addDays(dto.endOn, 1)), lastClientId: p.clientId, createdBy: c.userId ?? null } });
       await audit(tx, c, 'staffing.placement.ended', 'staffing_placement', id, { endOn: dto.endOn, reason: dto.reason, was: iso(p.endOn) });
       return { id };

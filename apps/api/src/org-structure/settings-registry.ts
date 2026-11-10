@@ -266,6 +266,17 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'staffing.bench.max_days': { label: 'Staffing desk: maximum bench days', scopes: ['tenant'], dated: false, values: ['15', '30', '45', '60', '90'], default: '30' },
   // Staffing slice 3 (Settings 6.2 collections and e-invoicing).
   'staffing.dunning.schedule': { label: 'Staffing desk: payment reminders to client billing contacts', scopes: ['tenant'], dated: false, values: ['standard', 'gentle', 'off'], default: 'standard' },
+  // Staffing answer 522 (Settings 6.2 Accounting export): ledger names, the GST split, TDS and round-off.
+  'staffing.export.ledger.sales': { label: 'Staffing desk export: sales ledger', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 100 }, default: 'Sales - Staffing Services' },
+  'staffing.export.ledger.cgst': { label: 'Staffing desk export: CGST ledger', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 100 }, default: 'Output CGST' },
+  'staffing.export.ledger.sgst': { label: 'Staffing desk export: SGST ledger', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 100 }, default: 'Output SGST' },
+  'staffing.export.ledger.igst': { label: 'Staffing desk export: IGST ledger', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 100 }, default: 'Output IGST' },
+  'staffing.export.ledger.gst': { label: 'Staffing desk export: GST ledger (one ledger for all GST)', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 100 }, default: 'Output GST' },
+  'staffing.export.ledger.tds': { label: 'Staffing desk export: TDS receivable ledger', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 100 }, default: 'TDS Receivable' },
+  'staffing.export.ledger.round_off': { label: 'Staffing desk export: round-off ledger', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 100 }, default: 'Round Off' },
+  'staffing.export.gst_split': { label: 'Staffing desk export: GST in separate CGST, SGST and IGST ledgers or one', scopes: ['tenant'], dated: false, values: ['separate', 'combined'], default: 'separate' },
+  'staffing.export.tds': { label: 'Staffing desk export: show the TDS the client is expected to deduct', scopes: ['tenant'], dated: false, values: ['none', 'expected'], default: 'none' },
+  'staffing.export.round_off': { label: 'Staffing desk export: round each total to the rupee', scopes: ['tenant'], dated: false, values: ['none', 'rupee'], default: 'rupee' },
   'staffing.einvoice.applies': { label: 'Staffing desk: our invoices need an IRN (e-invoicing applies)', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   'staffing.bench.after': { label: 'Staffing desk: after the maximum bench days', scopes: ['tenant'], dated: false, values: ['review', 'unpaid'], default: 'review' },
   'hiring.scorecard.overdue_hours': { label: 'Hiring: a scorecard is overdue this many hours after the interview', scopes: ['tenant'], dated: false, values: ['12', '24', '48', '72'], default: '24' },

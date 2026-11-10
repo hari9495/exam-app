@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { InvoiceRecordScreen, InvoicesScreen } from './hiring-staffing';
-import { CreateInvoicesSheet } from './staffing-sheets';
+import { CreateInvoicesSheet, ExportSheet } from './staffing-sheets';
 import { D, INVOICES } from './hiring-data';
 import { TODAY } from '../_kit/data';
 
@@ -64,5 +64,15 @@ export const Draft: S = {
         },
       }}
     />
+  ),
+};
+// Drawn for answer 522: a month of one GSTIN series to Tally (XML) or Zoho Books (CSV); drafts are named and left out.
+export const ExportToAccounting: S = {
+  name: 'Export to accounting · Tally or Zoho Books',
+  render: () => (
+    <>
+      <InvoicesScreen rows={INVOICES} today={TODAY} />
+      <ExportSheet open onOpenChange={() => {}} options={{ series: [{ id: 's1', label: 'KF/TN/26-27/ · 33AABCK1234F1Z9 · 2026-27', months: ['2026-10', '2026-09'], drafts: 2 }] }} onExport={async () => {}} />
+    </>
   ),
 };

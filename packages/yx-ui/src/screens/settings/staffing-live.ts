@@ -33,7 +33,21 @@ const KEY = {
   // Slice 3: collections and e-invoicing.
   'staff.dunning': 'staffing.dunning.schedule',
   'staff.einvoice': 'staffing.einvoice.applies',
+  // Answer 522: the accounting export.
+  'staff.exp_sales': 'staffing.export.ledger.sales',
+  'staff.exp_split': 'staffing.export.gst_split',
+  'staff.exp_cgst': 'staffing.export.ledger.cgst',
+  'staff.exp_sgst': 'staffing.export.ledger.sgst',
+  'staff.exp_igst': 'staffing.export.ledger.igst',
+  'staff.exp_gst': 'staffing.export.ledger.gst',
+  'staff.exp_tds': 'staffing.export.tds',
+  'staff.exp_tds_ledger': 'staffing.export.ledger.tds',
+  'staff.exp_round': 'staffing.export.round_off',
+  'staff.exp_round_ledger': 'staffing.export.ledger.round_off',
 } as const;
+/** Free-text company settings (ledger names): shown as typed, saved as text. */
+const TEXTS = new Set(['staff.exp_sales', 'staff.exp_cgst', 'staff.exp_sgst', 'staff.exp_igst', 'staff.exp_gst', 'staff.exp_tds_ledger', 'staff.exp_round_ledger']);
+const SEGMENTS = new Set(['staff.exp_split', 'staff.exp_tds', 'staff.exp_round']);
 const TOGGLES = new Set(['staff.desk_enabled', 'staff.mask_contact', 'staff.einvoice']);
 /** The design's own option labels are kept for these (the stored values are the same). */
 const OWN_LABELS = new Set(['staff.rate_backdate', 'staff.ending_soon', 'staff.statutory_cost', 'staff.vendor_margin', 'staff.vendor_ownership']);
@@ -50,6 +64,8 @@ export function staffingSettingsPage(design: SettingsPageDef, data: StaffingSett
     if (d.key === 'staff.einvoice') return { ...base, kind: 'toggle', availability: undefined, value: v[k!] === 'on', starter: v[k!] === data.defaults[k!], helper: 'Our invoices need an IRN (aggregate turnover at or above the e-invoice limit in the rule set, verify with your CA). The invoice shows its reporting window; the IRP itself is not connected, so report on the IRP yourself.' };
     if (d.key === 'staff.dunning') return { ...base, kind: 'select', columns: undefined, rows: undefined, addLabel: undefined, options: data.choices[k!] ?? [], optionLabels: DUNNING_LABELS, value: v[k!]!, starter: v[k!] === data.defaults[k!], helper: 'Reminders go to the client’s billing contacts; a dispute pauses them for that invoice.' };
     if (d.key === 'staff.ageing') return { ...base, readOnlyList: true, helper: 'How unpaid invoices are grouped on Receivables (fixed).' };
+    if (k && TEXTS.has(d.key)) return { ...base, kind: 'text', value: v[k]!, starter: v[k] === data.defaults[k] };
+    if (k && SEGMENTS.has(d.key)) return { ...base, kind: 'segment', value: v[k]!, starter: v[k] === data.defaults[k] };
     if (k && TOGGLES.has(d.key)) return { ...base, kind: 'toggle', value: v[k] === 'on', starter: v[k] === data.defaults[k] };
     if (d.key === 'staff.bench_after') return { ...base, scope: 'Company', kind: 'segment', options: ['review', 'unpaid'], optionLabels: { review: 'Redeploy or exit review', unpaid: 'Unpaid bench' }, value: v[k!]!, starter: v[k!] === data.defaults[k!] };
     if (k) {

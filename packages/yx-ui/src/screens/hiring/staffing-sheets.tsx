@@ -845,6 +845,52 @@ export function ClientJobSheet({ open, onOpenChange, clients, loadLines, onSave 
   );
 }
 
+/* ================================================================== Answer 522: the accounting export */
+
+export interface ExportOptions {
+  series: { id: string; label: string; months: string[]; drafts: number }[];
+}
+export interface ExportInput {
+  seriesId: string;
+  month: string;
+  format: 'tally' | 'zoho';
+}
+
+/** HIR-18 Export to accounting: one GSTIN series and month, as a Tally XML import or Zoho Books CSVs. Drafts never. */
+export function ExportSheet({ open, onOpenChange, options, onExport }: { open: boolean; onOpenChange: (o: boolean) => void; options: ExportOptions; onExport: (input: ExportInput) => Promise<unknown> }) {
+  const [series, setSeries] = useState<string | null>(options.series.length === 1 ? options.series[0]!.id : null);
+  const s = options.series.find((x) => x.id === series);
+  const [month, setMonth] = useState<string | null>(s?.months[0] ?? null);
+  const [format, setFormat] = useState<'tally' | 'zoho'>('tally');
+  const [tried, setTried] = useState(false);
+  const run = useSave(() => onOpenChange(false));
+  const label = (m: string) => new Date(`${m}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+  const save = () => {
+    setTried(true);
+    if (!series) return focus('ex-series');
+    if (!month || !s?.months.includes(month)) return focus('ex-month');
+    void run.run(() => onExport({ seriesId: series, month, format }), format === 'tally' ? 'Tally file downloaded' : 'Zoho Books files downloaded');
+  };
+  return (
+    <Drawer open={open} onOpenChange={onOpenChange} title="Export to accounting" subtitle="Invoices" footer={<><Button onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" loading={run.busy} onClick={save}>Download</Button></>}>
+      <div className="yx-hire-stack">
+        {run.failed && <InlineAlert tone="danger" title={run.failed} />}
+        <FormField id="ex-series" label="Invoice series (GSTIN)" required error={tried && !series ? 'Choose the series.' : null}>
+          <Select value={series} onChange={(v) => (setSeries(v), setMonth(options.series.find((x) => x.id === v)?.months[0] ?? null))} options={options.series.map((x) => ({ value: x.id, label: x.label }))} placeholder="Choose a series" />
+        </FormField>
+        <FormField id="ex-month" label="Month" required helper="Invoices and credit notes issued in the month." error={tried && (!month || !s?.months.includes(month)) ? (s && !s.months.length ? 'Nothing is issued in this series yet.' : 'Choose the month.') : null}>
+          <Select value={month} onChange={setMonth} options={(s?.months ?? []).map((m) => ({ value: m, label: label(m) }))} placeholder={series ? 'Choose a month' : 'Choose a series first'} />
+        </FormField>
+        <FormField id="ex-format" label="For">
+          <Segment label="For" value={format} onChange={setFormat} options={[{ value: 'tally', label: 'Tally (XML)' }, { value: 'zoho', label: 'Zoho Books (CSV)' }]} />
+        </FormField>
+        {s && s.drafts > 0 && <InlineAlert tone="warning">{s.drafts} draft{s.drafts === 1 ? ' is' : 's are'} not exported: issue {s.drafts === 1 ? 'it' : 'them'} first.</InlineAlert>}
+        <Text size="sm" tone="secondary">Ledger names, GST ledgers, TDS and round-off come from Settings › Staffing desk › Accounting export. Create the ledgers in Tally first; Zoho Books takes invoices and credit notes as two files.</Text>
+      </div>
+    </Drawer>
+  );
+}
+
 /* ================================================================== Staffing slice 3 (HIR-18) */
 
 export interface InvoiceOptions {

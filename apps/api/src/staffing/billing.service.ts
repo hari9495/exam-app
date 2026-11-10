@@ -8,11 +8,13 @@ import { settingFor } from '../people/probation';
 import { StaffingService } from './staffing.service';
 import { ConsultantsService } from '../payroll/consultants.service';
 import type { VendorConsultantDto } from './staffing-dto';
-import { rateOn } from './staffing-work.service';
+import { rateOn, StaffingWorkService } from './staffing-work.service';
 import { financialYear, toPaise, toRupees } from './staffing-rules';
 import { conversionFee, guaranteeOutcome, placementFee } from './billing-rules';
 import { addDays, ageingBucket, creditProblem, daysBetween, eInvoiceState, gstSplit, lineAmount, mondayOf, nextReminder, pctToBp, splitTds, taperProblem } from './billing-rules';
 import { buildInvoicePdf, type InvoicePdfField } from './invoice-pdf';
+import JSZip from 'jszip';
+import { tallyXml, zohoCsv, type ExportDoc, type ExportSettings, type TallyRule, type ZohoRule } from './accounting-export';
 import type { HireDto, LeftDto } from './staffing-dto';
 import type { ApproveHoursDto, ClientTermsDto, CollectionDto, CreditNoteDto, DraftInvoiceDto, HoursDto, ReceiptDto, ReissueDto, VendorBillDto, VendorBillPaidDto, VersionDto } from './staffing-dto';
 
@@ -46,6 +48,7 @@ export class StaffingBillingService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly staffing: StaffingService,
     private readonly consultants: ConsultantsService,
+    private readonly work: StaffingWorkService,
   ) {}
 
   /** The key (manage: account manager; billing: finance; read: either), the desk on, then the company's transaction. */
@@ -642,6 +645,17 @@ export class StaffingBillingService {
 
   /** The client hired the person: a draft fee invoice from the client's HIR-30 terms (finance issues it). */
   async hired(ctx: TenantContext, user: ScopeUser, placementId: string, dto: HireDto) {
+    const out = await this.hiredFee(ctx, user, placementId, dto);
+    if (dto.endPlacement === false) return { ...out, ended: null };
+    // Answer 528: end the placement the day before the hire through the existing end path (audited there), no bench.
+    const p = await inCompany(this.tenantPrisma, ctx, (tx, c) => tx.staffingPlacement.findFirstOrThrow({ where: { id: placementId, organizationId: c.organizationId } }));
+    const last = [addDays(dto.hiredOn, -1), iso(p.startOn)!].sort().at(-1)!;
+    if (p.status !== 'active' || last > iso(p.endOn)!) return { ...out, ended: null };
+    await this.work.end(ctx, user, placementId, { endOn: last, reason: 'client', note: 'Hired by the client', version: p.version }, { bench: false });
+    return { ...out, ended: last };
+  }
+
+  private async hiredFee(ctx: TenantContext, user: ScopeUser, placementId: string, dto: HireDto) {
     const ctc = toPaise(dto.ctc);
     if (ctc == null || ctc <= 0n) throw new BadRequestException('Enter the first-year CTC in rupees.');
     if (dto.hiredOn > todayIst()) throw new BadRequestException('The hire date cannot be in the future.');
@@ -698,6 +712,74 @@ export class StaffingBillingService {
       await tx.staffingPlacement.update({ where: { id: p.id }, data: { leftOn: day(dto.leftOn), guaranteeOutcome: outcome, guaranteeCreditId: creditId, version: { increment: 1 } } });
       await audit(tx, c, 'staffing.placement.left_client', 'staffing_placement', p.id, { leftOn: dto.leftOn, daysIn, outcome, credit: toRupees(o.credit) });
       return { outcome, creditNoteId: creditId, credit: toRupees(o.credit) };
+    }, true);
+  }
+
+  /* ---------------- answer 522: the accounting export ---------------- */
+
+  /** The export sheet: the GSTIN series, and the months with issued documents and the drafts left out. */
+  exportOptions(ctx: TenantContext, user: ScopeUser) {
+    return this.run(ctx, user, 'billing', async (tx, c) => {
+      const org = c.organizationId;
+      const series = await tx.staffingInvoiceSeries.findMany({ where: { organizationId: org }, orderBy: [{ financialYear: 'desc' }, { prefix: 'asc' }] });
+      const issued = await tx.staffingInvoice.findMany({ where: { organizationId: org, status: 'issued' }, select: { seriesId: true, invoiceDate: true } });
+      const drafts = await tx.staffingInvoice.groupBy({ by: ['seriesId'], where: { organizationId: org, status: 'draft' }, _count: { _all: true } });
+      return {
+        series: series.map((s) => ({ id: s.id, label: `${s.prefix} · ${s.gstin} · ${s.financialYear}`, months: [...new Set(issued.filter((i) => i.seriesId === s.id).map((i) => iso(i.invoiceDate)!.slice(0, 7)))].sort().reverse(), drafts: drafts.find((d) => d.seriesId === s.id)?._count._all ?? 0 })),
+      };
+    });
+  }
+
+  /**
+   * A month's issued invoices and credit notes of one series as a Tally XML import or a Zoho Books CSV pair (zip).
+   * Drafts are never exported (they have no number yet). Finance only; audited.
+   */
+  async exportMonth(ctx: TenantContext, user: ScopeUser, q: { seriesId: string; month: string; format: 'tally' | 'zoho' }) {
+    return this.run(ctx, user, 'billing', async (tx, c) => {
+      const org = c.organizationId;
+      const series = await tx.staffingInvoiceSeries.findFirst({ where: { id: q.seriesId, organizationId: org } });
+      if (!series) throw new NotFoundException('Invoice series not found.');
+      const from = day(`${q.month}-01`);
+      const to = day(addDays(new Date(Date.UTC(Number(q.month.slice(0, 4)), Number(q.month.slice(5, 7)), 1)).toISOString().slice(0, 10), -1));
+      const invs = await tx.staffingInvoice.findMany({ where: { organizationId: org, seriesId: series.id, status: 'issued', invoiceDate: { gte: from, lte: to } }, include: { lines: { orderBy: { position: 'asc' } } }, orderBy: [{ invoiceDate: 'asc' }, { createdAt: 'asc' }] });
+      if (!invs.length) throw new BadRequestException('Nothing issued in this series and month. Drafts are not exported; issue them first.');
+      const g = async (k: string) => settingFor(tx, c, k, { legalEntityId: '' });
+      const s: ExportSettings = {
+        sales: await g('staffing.export.ledger.sales'), cgst: await g('staffing.export.ledger.cgst'), sgst: await g('staffing.export.ledger.sgst'), igst: await g('staffing.export.ledger.igst'), gst: await g('staffing.export.ledger.gst'),
+        gstSplit: (await g('staffing.export.gst_split')) as ExportSettings['gstSplit'], tds: await g('staffing.export.ledger.tds'), tdsMode: (await g('staffing.export.tds')) as ExportSettings['tdsMode'],
+        roundOff: (await g('staffing.export.round_off')) as ExportSettings['roundOff'], roundOffLedger: await g('staffing.export.ledger.round_off'),
+      };
+      const clients = await tx.staffingClient.findMany({ where: { organizationId: org, id: { in: [...new Set(invs.map((i) => i.clientId))] } } });
+      const codes = await ruleValues<Record<string, string>>(tx, 'GST.STATE_CODES');
+      const sac = (await ruleValues<{ sac: string }>(tx, 'GST.STAFFING_RATE')).sac;
+      const tdsRule = await ruleValues<Record<string, { otherPct: string }>>(tx, 'TDS.SECTIONS');
+      const originals = new Map((await tx.staffingInvoice.findMany({ where: { id: { in: invs.map((i) => i.creditOf).filter((x): x is string => Boolean(x)) } }, select: { id: true, number: true } })).map((x) => [x.id, x.number]));
+      const docs: ExportDoc[] = invs.map((i) => {
+        const cl = clients.find((x) => x.id === i.clientId)!;
+        const pct = cl.tdsSection ? tdsRule[cl.tdsSection]?.otherPct : null;
+        return {
+          kind: i.kind === 'credit_note' ? 'credit_note' : 'invoice', number: i.number!, date: iso(i.invoiceDate)!, party: cl.legalName || cl.name, gstin: cl.gstin, stateCode: Object.entries(codes).find(([, v]) => v === i.placeOfSupply)?.[0] ?? '', stateName: IN_STATES[i.placeOfSupply] ?? i.placeOfSupply,
+          original: i.creditOf ? (originals.get(i.creditOf) ?? null) : null, reason: i.reason, sac, gstPct: i.gstPct.toString(),
+          lines: i.lines.map((l) => ({ description: l.description, qtyCenti: l.qtyCenti, ratePaise: l.ratePaise, amountPaise: l.amountPaise })),
+          taxable: i.taxablePaise, cgst: i.cgstPaise, sgst: i.sgstPaise, igst: i.igstPaise, total: i.totalPaise,
+          tds: pct && i.kind !== 'credit_note' ? lineAmount(pctToBp(pct)!, i.taxablePaise) / 100n : 0n,
+        };
+      });
+      const entity = await tx.legalEntity.findFirst({ where: { id: series.legalEntityId }, select: { name: true } });
+      const base = `${series.prefix.replace(/[^A-Za-z0-9]+/g, '-').replace(/-+$/, '')}-${q.month}`;
+      let file: { buffer: Buffer; filename: string; type: string };
+      if (q.format === 'tally') {
+        const rule = await ruleValues<Omit<TallyRule, 'company'>>(tx, 'EXPORT.TALLY_XML');
+        file = { buffer: Buffer.from(tallyXml(docs, s, { ...rule, company: entity?.name ?? null }), 'utf8'), filename: `${base}-tally.xml`, type: 'application/xml' };
+      } else {
+        const rule = await ruleValues<ZohoRule>(tx, 'EXPORT.ZOHO_CSV');
+        const zip = new JSZip();
+        zip.file(`${base}-invoices.csv`, zohoCsv(docs, 'invoice', s, rule));
+        zip.file(`${base}-credit-notes.csv`, zohoCsv(docs, 'credit_note', s, rule));
+        file = { buffer: await zip.generateAsync({ type: 'nodebuffer' }), filename: `${base}-zoho.zip`, type: 'application/zip' };
+      }
+      await audit(tx, c, 'staffing.invoices.exported', 'staffing_invoice_series', series.id, { format: q.format, month: q.month, invoices: docs.filter((d) => d.kind === 'invoice').length, creditNotes: docs.filter((d) => d.kind === 'credit_note').length, ledgers: { gstSplit: s.gstSplit, tds: s.tdsMode, roundOff: s.roundOff } });
+      return file;
     }, true);
   }
 }

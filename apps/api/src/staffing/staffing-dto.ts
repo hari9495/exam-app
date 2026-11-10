@@ -275,6 +275,8 @@ export class HireDto {
   @IsString() @Matches(MONEY) ctc!: string;
   @IsUUID() seriesId!: string;
   @IsOptional() @trim() @IsString() @MaxLength(60) po?: string;
+  /** Answer 528: end the placement on the day before the hire (default yes). */
+  @IsOptional() @IsBoolean() endPlacement?: boolean;
 }
 
 export class LeftDto {
@@ -290,6 +292,12 @@ export class PortalInterviewDto {
 
 export class VendorConsultantDto {
   @IsOptional() @IsUUID() consultantId!: string | null;
+}
+
+export class ExportQueryDto {
+  @IsUUID() seriesId!: string;
+  @Matches(MONTH) month!: string;
+  @IsIn(['tally', 'zoho']) format!: 'tally' | 'zoho';
 }
 
 export class PortalSendBackDto {

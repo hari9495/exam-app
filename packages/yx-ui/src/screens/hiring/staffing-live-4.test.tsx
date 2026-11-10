@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { InvoiceRecordScreen, PlacementFee, VendorInvoices, type InvoiceDetail, type LivePlacementFee } from './hiring-staffing';
 import { ClientPortalScreen, type LiveClientPortal } from '../portals/t9-business';
+import { ExportSheet } from './staffing-sheets';
 
 // Staffing round 4 (answers 491, 492, 494, 496): live views, positive and negative.
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -41,7 +42,19 @@ describe('494: the placement fee', () => {
     expect(f.onHired).not.toHaveBeenCalled();
     await ue.type(within(dialog).getByLabelText(/First-year CTC/), '1800000');
     await ue.click(within(dialog).getByRole('button', { name: 'Record the hire' }));
-    await waitFor(() => expect(f.onHired).toHaveBeenCalledWith({ hiredOn: '2026-11-10', ctc: 1800000, seriesId: 's1' }));
+    await waitFor(() => expect(f.onHired).toHaveBeenCalledWith({ hiredOn: '2026-11-10', ctc: 1800000, seriesId: 's1', endPlacement: true }));
+  });
+  it('528: ending the placement is on by default and can be turned off', async () => {
+    const f = { ...base, onHired: vi.fn().mockResolvedValue(undefined) };
+    wrap(<PlacementFee canManage person="Arun" fee={f} />);
+    await ue.click(screen.getByRole('button', { name: 'Client hired Arun' }));
+    const dialog = await screen.findByRole('dialog');
+    const box = within(dialog).getByRole('checkbox', { name: /End the placement on the day before the hire/ });
+    expect(box).toBeChecked();
+    await ue.click(box);
+    await ue.type(within(dialog).getByLabelText(/First-year CTC/), '1800000');
+    await ue.click(within(dialog).getByRole('button', { name: 'Record the hire' }));
+    await waitFor(() => expect(f.onHired).toHaveBeenCalledWith(expect.objectContaining({ endPlacement: false })));
   });
   it('after the hire: the fee invoice and Left the client; nothing for a reader', () => {
     const hired = { ...base, hiredOn: '2026-10-01', ctc: '1800000.00', feeInvoice: { id: 'f1', number: 'KS/7', status: 'issued', total: '176929.20' } };
@@ -110,5 +123,21 @@ describe('491: client portal interviews', () => {
   it('no one to book: no Schedule button', () => {
     wrap(<ClientPortalScreen live={live({ data: { ...live().data!, bookable: [] } })} />);
     expect(screen.queryByRole('button', { name: 'Schedule interview' })).not.toBeInTheDocument();
+  });
+});
+
+describe('522: the export sheet', () => {
+  it('needs a series and month; names the drafts left out; sends the chosen format', async () => {
+    const onExport = vi.fn().mockResolvedValue(undefined);
+    wrap(<ExportSheet open onOpenChange={vi.fn()} options={{ series: [{ id: 's1', label: 'KS/', months: ['2026-10'], drafts: 2 }, { id: 's2', label: 'KT/', months: [], drafts: 0 }] }} onExport={onExport} />);
+    await ue.click(screen.getByRole('button', { name: 'Download' }));
+    expect(screen.getByText('Choose the series.')).toBeInTheDocument();
+    expect(onExport).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('combobox', { name: /Invoice series/ }));
+    await ue.click(await screen.findByRole('option', { name: 'KS/' }));
+    expect(screen.getByText(/2 drafts are not exported/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('radio', { name: 'Zoho Books (CSV)' }));
+    await ue.click(screen.getByRole('button', { name: 'Download' }));
+    await waitFor(() => expect(onExport).toHaveBeenCalledWith({ seriesId: 's1', month: '2026-10', format: 'zoho' }));
   });
 });

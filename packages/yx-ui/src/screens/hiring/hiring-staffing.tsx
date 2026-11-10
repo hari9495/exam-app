@@ -1808,7 +1808,7 @@ export interface LivePlacementFee {
   series: { value: string; label: string }[];
   terms: boolean;
   today: Date;
-  onHired: (input: { hiredOn: string; ctc: number; seriesId: string }) => Promise<unknown>;
+  onHired: (input: { hiredOn: string; ctc: number; seriesId: string; endPlacement: boolean }) => Promise<unknown>;
   onLeft: (leftOn: string) => Promise<unknown>;
   onOpenInvoice: (id: string) => void;
 }
@@ -2361,6 +2361,8 @@ export interface LiveInvoices {
   canCreate: boolean;
   onCreate: () => void;
   onOpen: (id: string) => void;
+  /** Answer 522: Export to accounting (finance). */
+  onExport?: () => void;
 }
 
 function LiveInvoicesView({ live }: { live: LiveInvoices }) {
@@ -2385,9 +2387,10 @@ function LiveInvoicesView({ live }: { live: LiveInvoices }) {
     { key: 'irn', header: 'IRN', type: 'status', value: (r) => irnWord(r.irn, r.status), statusTone: (v) => (String(v).startsWith('Blocked') ? 'danger' : String(v).startsWith('Pending') ? 'warning' : 'neutral') },
   ];
   const create = live.canCreate ? <Button variant="primary" onClick={live.onCreate}>Create invoices</Button> : undefined;
+  const exportBtn = live.canCreate && live.onExport ? <Button onClick={live.onExport}>Export to accounting</Button> : null;
   return (
     <HireFrame active="Invoices">
-      <PageHeader title="Invoices" description="GST tax invoices from client-approved timesheets, numbered per entity and GSTIN. Issued invoices are never edited: corrections are credit notes." actions={live.state === 'ready' ? create : undefined} />
+      <PageHeader title="Invoices" description="GST tax invoices from client-approved timesheets, numbered per entity and GSTIN. Issued invoices are never edited: corrections are credit notes." actions={live.state === 'ready' && create ? <>{exportBtn}{create}</> : undefined} />
       {live.state !== 'ready' ? (
         <DeskState state={live.state} what="invoices" title="Invoices" onRetry={live.onRetry} />
       ) : (
@@ -3192,6 +3195,7 @@ export function PlacementFee({ fee: f, canManage, person }: { fee: LivePlacement
   const [on, setOn] = useState<Date | null>(f.today);
   const [ctc, setCtc] = useState<number | null>(null);
   const [series, setSeries] = useState<string | null>(f.series.length === 1 ? f.series[0]!.value : null);
+  const [endIt, setEndIt] = useState(true);
   const [tried, setTried] = useState(false);
   const iso = (x: Date) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
   const begin = (w: 'hired' | 'left') => (setOpen(w), setTried(false), setOn(f.today));
@@ -3220,7 +3224,7 @@ export function PlacementFee({ fee: f, canManage, person }: { fee: LivePlacement
           if (!on || on > f.today) return (focus('pf-on'), false);
           if (ctc == null || ctc <= 0) return (focus('pf-ctc'), false);
           if (!series) return (focus('pf-series'), false);
-          await f.onHired({ hiredOn: iso(on), ctc, seriesId: series });
+          await f.onHired({ hiredOn: iso(on), ctc, seriesId: series, endPlacement: endIt });
           toast?.toast({ tone: 'success', title: 'Hire recorded; the fee invoice is drafted' });
         }}
       >
@@ -3233,6 +3237,7 @@ export function PlacementFee({ fee: f, canManage, person }: { fee: LivePlacement
         <FormField id="pf-series" label="Invoice series" required error={tried && !series ? 'Choose the series.' : null}>
           <Select value={series} onChange={setSeries} options={f.series} placeholder="Choose a series" />
         </FormField>
+        <Checkbox label="End the placement on the day before the hire" description="They leave your desk for the client’s payroll; no bench." checked={endIt} onChange={setEndIt} />
       </ConfirmDialog>
       <ConfirmDialog
         open={open === 'left'}

@@ -41,6 +41,7 @@ Things deliberately left for launch. Development runs locally until then (test k
 | 34 | TDS sections for staffing (staffing slice 3) | The CA and counsel check TDS.SECTIONS (194C 1% individual or HUF, 2% others; 194J 10%, 2% technical) and the Income-tax Act 2025 section numbers from 1 Apr 2026 | Used for client TDS on receipts and vendor invoices |
 | 35 | GST invoice and credit note contents (staffing slice 3) | Counsel and the CA review invoice and credit note fields against CGST Rules r.46 and r.53 (16-character numbers per series, place of supply, reason on the credit note) | Before the invoice PDF is built (question 492) |
 | 36 | GST invoice PDF fields (staffing round 4, 10 Nov 2026) | The CA checks the rule set GST.INVOICE_R46 (the r.46 tax invoice and r.53 credit note fields, labels and order) against a sample PDF, then clears its verify flag | Before the first PDF goes to a client |
+| 37 | Tally and Zoho export formats (staffing round 5, 10 Nov 2026) | The CA imports a month's export into a test company in Tally Prime and into Zoho Books, checks the vouchers, ledgers, GST, round-off and credit notes, and then clears the verify flag of the rule sets EXPORT.TALLY_XML and EXPORT.ZOHO_CSV | Ledgers are created in Tally first; tax names must match Zoho's tax rates |
 
 
 ## Sign-in without a company code (founder decision 7 Oct 2026)

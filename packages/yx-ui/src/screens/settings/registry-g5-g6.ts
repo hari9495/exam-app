@@ -942,6 +942,22 @@ const staffing: SettingsPageDef = {
         { key: 'staff.einvoice', label: 'E-invoicing (IRN and QR)', kind: 'toggle', value: false, availability: 'E-invoicing partner add-on', scope: 'Legal entity', synonyms: ['irn', 'e-invoice'] },
       ],
     },
+    // Staffing answer 522: the accounting export's ledgers (names as in the company's Tally or Zoho Books).
+    {
+      title: 'Accounting export',
+      settings: [
+        { key: 'staff.exp_sales', label: 'Sales ledger', kind: 'text', value: 'Sales - Staffing Services', helper: 'The ledger names must match your accounts in Tally or Zoho Books exactly.', starter: true, scope: 'Company', synonyms: ['tally', 'zoho', 'ledger', 'export'] },
+        { key: 'staff.exp_split', label: 'GST ledgers', kind: 'segment', value: 'separate', options: ['separate', 'combined'], optionLabels: { separate: 'CGST, SGST and IGST', combined: 'One GST ledger' }, starter: true, scope: 'Company' },
+        { key: 'staff.exp_cgst', label: 'CGST ledger', kind: 'text', value: 'Output CGST', starter: true, scope: 'Company' },
+        { key: 'staff.exp_sgst', label: 'SGST ledger', kind: 'text', value: 'Output SGST', starter: true, scope: 'Company' },
+        { key: 'staff.exp_igst', label: 'IGST ledger', kind: 'text', value: 'Output IGST', starter: true, scope: 'Company' },
+        { key: 'staff.exp_gst', label: 'GST ledger (one for all)', kind: 'text', value: 'Output GST', starter: true, scope: 'Company' },
+        { key: 'staff.exp_tds', label: 'TDS the client deducts', kind: 'segment', value: 'none', options: ['none', 'expected'], optionLabels: { none: 'Leave out', expected: 'Show the expected TDS' }, helper: 'Expected TDS: the client\'s section rate on the taxable value, to a TDS receivable ledger.', starter: true, scope: 'Company' },
+        { key: 'staff.exp_tds_ledger', label: 'TDS receivable ledger', kind: 'text', value: 'TDS Receivable', starter: true, scope: 'Company' },
+        { key: 'staff.exp_round', label: 'Round each total', kind: 'segment', value: 'rupee', options: ['rupee', 'none'], optionLabels: { rupee: 'To the rupee', none: 'Keep paise' }, starter: true, scope: 'Company' },
+        { key: 'staff.exp_round_ledger', label: 'Round-off ledger', kind: 'text', value: 'Round Off', starter: true, scope: 'Company' },
+      ],
+    },
     {
       title: 'Collections',
       settings: [
