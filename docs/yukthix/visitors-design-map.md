@@ -13,6 +13,9 @@ built.
   the visitor gets an email with their link (/yx/visit/…): details, the notice, the QR pass; reception checks them in and
   out at its location (Visitors › Today's visitors); the log with CSV; Settings › Time & Leave › Visitors (3.12). Visits
   are deleted after the location's period with counts kept; forgotten check-outs close at the end of the window.
+- **Slice 3 is live (16 Nov 2026, branch `feat/yukthix-visitors-3`):** the watch-list (Visitors › Watch-list, HR and
+  Facility admins only), ID proof per location (type and last 4, or also a photo of the ID) and visitors under 18 with
+  a named adult.
 - Before slice 1 nothing of Visitors was live (no visitor table, no key, no page).
 - The designs are complete in the kit: the reception desk, the host's pre-registration and approval card, the visitor
   kiosk, the log and reports, the visitor's own invite page (T9-14), the host's mobile list and Settings 3.12.
@@ -25,11 +28,15 @@ built.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Front desk and kiosk | 2 | 4 | 3 | 0 | 9 | 0 | 16 |
-| B. Hosts | 2 | 3 | 2 | 0 | 0 | 4 | 9 |
-| C. The visitor's own pages | 1 | 4 | 2 | 0 | 3 | 0 | 9 |
-| D. Log, reports and settings | 2 | 3 | 2 | 0 | 1 | 0 | 6 |
-| **All Visitors design groups (A–D)** | **7** | **14** | **9** | **0** | **13** | **4** | **40** |
+| A. Front desk and kiosk | 2 | 7 | 3 | 0 | 8 | 0 | 18 |
+| B. Hosts | 2 | 4 | 2 | 0 | 0 | 4 | 10 |
+| C. The visitor's own pages | 1 | 6 | 1 | 0 | 2 | 0 | 9 |
+| D. Log, reports and settings | 3 | 8 | 2 | 0 | 1 | 0 | 11 |
+| **All Visitors design groups (A–D)** | **8** | **25** | **8** | **0** | **11** | **4** | **48** |
+
+Recounted by script 16 Nov 2026 on `feat/yukthix-visitors-3` after Visitors slice 3: 33 stories live (8 with a gap);
+8 new stories drawn and live (VIS-01 CheckInIdPhoto and CheckInMinor, VIS-02 InviteMinor, VIS-05 the watch-list: List,
+Add, Remove, Empty, Loading); 11 wait for slices 2 and 4; 4 phone views wait for the app.
 
 Recounted by script 15 Nov 2026 on `feat/yukthix-visitors-1` after Visitors slice 1: 23 stories live (9 with a gap), 1 new
 story drawn and live (VIS-01 FindPass); 13 wait for slices 2-4; 4 phone views wait for the app.
@@ -74,9 +81,11 @@ All 39 stories below.
 | Expected · Expected · walk-in waiting for host | live (gap) | live 15 Nov 2026 at /yx/visitors (Reception role, per location): expected visitors of the location's day; the walk-in waiting for the host comes with slice 2 |
 | OnSite · On site now (emergency list) | live (gap) | live: everyone checked in and not out; the printable roll-call with employees comes with slice 4 |
 | CheckedOut · Checked out | live | live: checked out, and closed as "Not checked out" at the end of the window (611) |
-| CheckIn · Check in · notice and badge | live (gap) | live: check in (`POST visitors/:id/check-in`); the notice is ticked at the desk when not accepted on the link; badge number given; photo, ID and badge printing come with slices 2-4 |
+| CheckIn · Check in · notice and badge | live (gap) | live: check in (`POST visitors/:id/check-in`); the notice is ticked at the desk when not accepted on the link; the ID type and last 4 where the location takes ID (slice 3, 603); badge number given; the visitor photo and badge printing come with slices 2 and 4 |
+| CheckInIdPhoto · Check in · ID type, last 4 and photo of the ID | live | drawn 16 Nov 2026 (slice 3, 603): where the location keeps a photo of the ID, reception adds it (`POST visitors/:id/id-image`) with the type and last 4; private storage, virus-checked before it opens, deleted after the ID retention; never of an Aadhaar card |
+| CheckInMinor · Check in · visitor under 18 with an adult | live | drawn 16 Nov 2026 (slice 3, 614): no ID and no photo; reception ticks that the named adult is there |
 | FindPass · Scan or type the QR pass | live | drawn 15 Nov 2026: "Scan QR pass" takes the scanned or typed pass code (`POST visitors/desk/find`); a pass for another location or day is refused with the reason |
-| Blocked · Blocked visitor stopped | design only, feature not built | watch-list (slice 3) |
+| Blocked · Blocked visitor stopped | live | live (slice 3, 605): a visit matching the watch-list, or such a pass scanned, shows "Stop at reception" with the name only; no check-in; the reason is never shown |
 | Empty · Empty | live | no visitors today |
 | Loading · Loading | live | loading |
 
@@ -90,7 +99,7 @@ All 39 stories below.
 | Notice · Notice acknowledgement | design only, feature not built | the G-27 privacy notice and the visitor type's NDA / safety induction |
 | Waiting · Waiting for host | design only, feature not built | the host's approval card is out |
 | Badge · Badge and QR | design only, feature not built | badge on screen and printed; QR for check-out |
-| SeeReception · See reception (blocked or problem) | design only, feature not built | watch-list match, outside hours or any problem: no reason shown |
+| SeeReception · See reception (blocked or problem) | design only, feature not built | the kiosk page comes with slice 2; the watch-list check it needs is ready (`watchHit`, slice 3) |
 | Rejected · Host declined | design only, feature not built | the host said no |
 
 ### B. Hosts
@@ -99,8 +108,9 @@ All 39 stories below.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| MyVisitors · My visitors | live | live at /yx/visitors/invites: the host's own visitors; cancel while expected |
-| Invite · Invite a visitor | live (gap) | live: name, mobile (Indian or +country code), email (the pass goes there, answer 609), company, purpose, location, day, times in the location's time, vehicle; ID type comes with slice 3 |
+| MyVisitors · My visitors | live | live at /yx/visitors/invites: the host's own visitors; cancel while expected; a blocked visit says only that it can't go ahead (slice 3) |
+| Invite · Invite a visitor | live (gap) | live: name, mobile (Indian or +country code), email (the pass goes there, answer 609), company, purpose, location, day, times in the location's time, vehicle, under 18 with the adult (slice 3); the drawn ID type is given by the visitor on their link or at the desk instead (question 664) |
+| InviteMinor · Invite a visitor under 18 | live | drawn 16 Nov 2026 (slice 3, 614): "The visitor is under 18" asks for the adult who comes with them |
 | Sent · Invite sent | live | toast with the pass code; the email carries the link to the pass page |
 | Empty · Empty | live | no visitors yet |
 | Phone · My visitors · phone | phone view, mobile app not built | the web page at phone width serves it until the app |
@@ -121,14 +131,14 @@ All 39 stories below.
 | story (sub-page) | verdict | note |
 |---|---|---|
 | Details · Your details | live | live at /yx/visit/[link]: the details, mobile masked, vehicle number |
-| Id · ID | design only, feature not built | ID capture (slice 3) |
-| Photo · Photo · camera live | design only, feature not built | photo (slice 2) |
-| PhotoBlocked · Photo · camera blocked | design only, feature not built | photo (slice 2) |
+| Id · ID | live | live (slice 3, 603): where the location takes ID, the visitor gives the ID type and last 4 before the notice (never a full number); none for a visitor under 18 |
+| Photo · Photo · camera live | design only, feature not built | the visitor photo comes with slice 2 (never for a visitor under 18, 614) |
+| PhotoBlocked · Photo · camera blocked | design only, feature not built | the visitor photo comes with slice 2 |
 | Notice · Privacy notice, induction and NDA | live (gap) | live: the location's notice and the privacy line, accepted at its version (a changed notice is read again); NDA and induction per visitor type come with slice 2 |
 | Pass · QR pass | live | live: the QR pass after the notice |
 | PassDesktop · QR pass · desktop | live | same at desktop width |
 | Expired · Pass expired | live | used, closed or past the window |
-| Blocked · Visit blocked | live (gap) | live for a cancelled visit; the watch-list block comes with slice 3 |
+| Blocked · Visit blocked | live | live for a cancelled visit and a watch-list match (slice 3): no pass, "contact your host", no reason |
 
 ### D. Log, reports and settings
 
@@ -136,16 +146,26 @@ All 39 stories below.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Log · Log · retention countdown | live | live at /yx/visitors/log (log or desk key, per location): the day each visit is deleted (608); export CSV for audit (no mobile numbers) |
+| Log · Log · retention countdown | live | live at /yx/visitors/log (log or desk key, per location): the day each visit is deleted (608); the ID shown and "Photo of ID" (audited; slice 3); export CSV for audit (no mobile numbers) |
 | Reports · Reports by location, purpose, host | design only, feature not built | reports (slice 4); counts are kept without names after deletion |
 | Empty · Empty | live | no visits |
+| Loading · Loading | live | loading |
+
+#### VIS-05 · Visitor watch-list
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| List · Watch-list | live | drawn and live 16 Nov 2026 (slice 3, 605) at /yx/visitors/watchlist: HR and Facility admins only (`visitors.watchlist.manage`, company-wide); the reasons; the day each entry lapses |
+| Add · Add a person | live | name, mobile (optional; matched by mobile, then name), reason; audited without the reason; expected visits that match are blocked at once |
+| Remove · Remove an entry | live | asks first; audited; visits already blocked stay blocked |
+| Empty · Empty | live | nobody on the list |
 | Loading · Loading | live | loading |
 
 #### Group 3 · Time & Leave
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| P3_12 · 3.12 Visitors | live (gap) | live at /yx/settings/visitors: host timeout, ID capture, photo, hours, notice, badge, retention (per location: a location's own value is set on Company rules and named on the field); visitor types and the blocked-list readers come with slices 2-3 |
+| P3_12 · 3.12 Visitors | live (gap) | live at /yx/settings/visitors: host timeout, ID capture (off, type and last 4, or also a photo of the ID), photo, hours, notice, badge, retention, the watch-list link and its review period (slice 3); per location where the founder said so; visitor types come with slice 2 |
 | P3_12_ReadOnly · 3.12 Visitors · read-only | live (gap) | reception and anyone without the company-wide settings key read it |
 
 ## 5. What can be reused, and what is missing
@@ -252,7 +272,7 @@ story file in scope has exactly one row per story, in file order, with one of th
 const fs = require('fs');
 const UI = 'packages/yx-ui/src/';
 const files = [
-  ...['vis-01', 'vis-02', 'vis-03', 'vis-04'].map((f) => UI + 'screens/ops/' + f + '.stories.tsx'),
+  ...['vis-01', 'vis-02', 'vis-03', 'vis-04', 'vis-05'].map((f) => UI + 'screens/ops/' + f + '.stories.tsx'),
   UI + 'screens/portals/t9-14-visitor.stories.tsx',
   UI + 'screens/settings/mobile-me.stories.tsx',
   UI + 'screens/settings/settings-g3.stories.tsx',
@@ -334,3 +354,38 @@ with the suggested answer as its default). Build Visitors first (slices 1-4), th
 654. **Retention counts from the end of the visit.** A visit is deleted N days after its window ends, and a cancelled
      visit the same way. *Suggested: keep.*
 
+## Visitors slice 3 built (answers 603, 605, 614; 16 Nov 2026, branch `feat/yukthix-visitors-3`)
+
+- **Watch-list (605):** table `visitor_watchlist` (forced RLS; migration `202617v0000003_visitors_3`): name, mobile
+  (optional), reason, who added it, the last review and the day it lapses. Key `visitors.watchlist.manage`, company-wide
+  only: System Admins and the **Facility admin** role (question 662 for HR). Only they see the list (VIS-05, Visitors ›
+  Watch-list) and the reasons; acting for someone else cannot open it. Matched by mobile, then by name. A match blocks
+  the visit: on the invite (no pass is emailed), when an entry is added (expected visits), and again at check-in and on
+  the visitor's link. The host, reception and the visitor see only that the visit can't go ahead. Each entry is reviewed
+  every `visitors.watchlist_review_days` (365, company setting) or it lapses and the nightly job deletes it. Adds,
+  reviews, removals and lapses are audited, never with the name or the reason.
+- **ID proof (603):** `visitors.id_capture` per location is now off (default), "ID type and last 4", or "ID type, last 4
+  and a photo of the ID". Only the type and the last 4 characters are stored (the database refuses more). The visitor
+  gives them on their link, or reception at check-in. The photo of the ID is taken at the desk where the location asks:
+  private storage through the shared file pipeline (type checked from the bytes, virus-checked before it opens, every
+  open audited), never of an Aadhaar card, and deleted with the type and last 4 after `visitors.id_retention_days` (30)
+  by the nightly job (an owner's database function deletes the file row: the app cannot delete stored files).
+- **Under 18 (614):** the host ticks "under 18" and names the adult; no ID is taken (the database refuses it), and the
+  photo step (slice 2) must skip them; reception ticks that the adult is there before check-in.
+- **Left for slice 2:** the kiosk (VIS-03 SeeReception uses `watchHit`), the visitor photo (T9-14 Photo, PhotoBlocked).
+- **Tests:** rules (unit), e2e `visitors-3` (7 scenarios, positive and negative), kit and web tests.
+
+## Founder questions from Visitors slice 3 (16 Nov 2026)
+
+661. **Matching the watch-list.** A visitor matches an entry when the mobile number is the same, or the name is the
+     same (case and spaces ignored). A common name can stop an innocent visitor; reception then calls the admin on duty.
+     *Suggested: keep (safer to stop and check); the admin can let them in by removing or editing the entry.*
+662. **HR and the watch-list.** The list is company-wide, but the HR Admin role is granted per legal entity, so it does
+     not carry the watch-list key. *Suggested: HR people who keep the list get the Facility admin role (or a company-wide
+     grant of the key); System Admins have it.*
+663. **A lapsed entry.** An entry nobody reviewed by its date is deleted the next night (not kept as "lapsed").
+     *Suggested: keep (least data kept); the list warns 30 days before.*
+664. **Who gives the ID.** The drawn invite has an "ID type" field for the host; it is not used: the visitor gives the ID
+     type and last 4 on their link, or reception at the desk. *Suggested: keep; remove the field from the drawing.*
+665. **Removing an entry does not unblock visits.** Visits already blocked stay blocked; the host invites again.
+     *Suggested: keep.*

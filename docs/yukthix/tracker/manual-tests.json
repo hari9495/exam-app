@@ -19057,5 +19057,86 @@
       "Screens/Settings/Group 3 · Time & Leave · 3.12 Visitors"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-VIS-06",
+    "area": "Visitors · slice 3 (16 Nov 2026)",
+    "screen": "VIS-05 Visitor watch-list",
+    "url": "http://localhost:3000/yx/visitors/watchlist",
+    "account": "A Facility admin (company-wide) or a System Admin; then reception and an employee. Browser window 1278 x 635.",
+    "steps": [
+      "Open Visitors › Watch-list. Press Add a person with nothing filled in.",
+      "Add a person with a name, a mobile and a reason; note the toast.",
+      "Press Reviewed, keep on the entry; then Remove and confirm.",
+      "Sign in as reception and as an employee: look for Watch-list in the menu and open /yx/visitors/watchlist.",
+      "Act for the Facility admin (System Admin impersonation) and open the page."
+    ],
+    "expected": "Step 1: names the name and reason fields, nothing added. Step 2: toast \"Added to the watch-list\"; the reason shows only here; the audit log has the add without the name or reason. Step 3: the lapse date moves a year on; remove asks first, then the entry is gone. Step 4: no menu item; the page says no access. Step 5: refused (no access).",
+    "stories": [
+      "Screens/Visitors/VIS-05 · Visitor watch-list"
+    ],
+    "note": "Positive and negative. Answer 605."
+  },
+  {
+    "id": "MT-VIS-07",
+    "area": "Visitors · slice 3 (16 Nov 2026)",
+    "screen": "VIS-02 My visitors and VIS-01 Today's visitors (blocked)",
+    "url": "http://localhost:3000/yx/visitors/invites",
+    "account": "An employee (host), the Facility admin and reception at the Chennai office. Browser window 1278 x 635.",
+    "steps": [
+      "As the host invite Manish Gupta for today at the Chennai office.",
+      "As the Facility admin add Manish Gupta (same mobile) to the watch-list.",
+      "As the host open My visitors; invite \"manish gupta\" again with another mobile.",
+      "As reception open Today's visitors; scan or type the first pass code.",
+      "Open the visitor's link from the first invite email."
+    ],
+    "expected": "Step 2: toast says 1 expected visit was blocked. Step 3: both visits say only that they can't go ahead; the second invite toast says no pass was sent. Step 4: \"Stop at reception\" with the name only, no check-in button, no reason anywhere. Step 5: \"We can't issue a pass for this visit\".",
+    "stories": [
+      "Screens/Visitors/VIS-01 · Today's visitors · Blocked visitor stopped",
+      "Screens/Portals/T9-14 · Visitor invite page · Visit blocked"
+    ],
+    "note": "Positive and negative. Answer 605."
+  },
+  {
+    "id": "MT-VIS-08",
+    "area": "Visitors · slice 3 (16 Nov 2026)",
+    "screen": "T9-14 ID and VIS-01 check-in with ID",
+    "url": "http://localhost:3000/yx/visitors",
+    "account": "A System Admin (to set Company rules), a host, reception. Browser window 1278 x 635; the visitor link at phone width.",
+    "steps": [
+      "On Company rules set Capture ID proof to \"ID type and last 4\" for the Chennai office and \"ID type, last 4 and a photo of the ID\" for Hosur plant.",
+      "Invite a visitor to Chennai; on their link press Continue on the ID step with nothing; then choose Aadhaar and type 1234 5678 9012.",
+      "Choose Voter ID, last 4 AB12; accept the notice.",
+      "As reception check them in.",
+      "Invite one to Hosur; as a System Admin check in without the photo; choose Aadhaar; then Driving licence, last 4 and a JPG of the ID.",
+      "Open Visitors › Visitor log and press Photo of ID."
+    ],
+    "expected": "Step 2: names both fields; the last-4 box takes only 4 characters. Step 3: the pass shows. Step 4: \"ID shown: Voter ID ··AB12\", not asked again. Step 5: refused until the photo is added; with Aadhaar the photo field goes away (\"No photo of an Aadhaar card\"); the photo uploads and is checked for viruses; check-in works. Step 6: the photo opens in a new tab; the open is in the audit log.",
+    "stories": [
+      "Screens/Portals/T9-14 · Visitor invite page · ID",
+      "Screens/Visitors/VIS-01 · Today's visitors · Check in · ID type, last 4 and photo of the ID",
+      "Screens/Visitors/VIS-04 · Visitor log & reports · Log · retention countdown"
+    ],
+    "note": "Positive and negative. Answer 603. Never type a full ID number in a real test."
+  },
+  {
+    "id": "MT-VIS-09",
+    "area": "Visitors · slice 3 (16 Nov 2026)",
+    "screen": "VIS-02 invite under 18 and VIS-01 check-in",
+    "url": "http://localhost:3000/yx/visitors/invites",
+    "account": "A host and reception at the Chennai office (ID capture on there). Browser window 1278 x 635.",
+    "steps": [
+      "Invite a visitor and tick \"The visitor is under 18\"; press Send invite without the adult.",
+      "Name the adult and send.",
+      "Open the visitor's link.",
+      "As reception press Check in, then Check in again without ticking the adult.",
+      "Tick that the adult is here and check in."
+    ],
+    "expected": "Step 1: \"Name the adult who comes with them.\", nothing sent. Step 2: sent. Step 3: no ID step. Step 4: shows \"Under 18 · Comes with …\", no ID fields; refused until the adult is ticked. Step 5: checked in.",
+    "stories": [
+      "Screens/Visitors/VIS-02 · Pre-register + my visitors · Invite a visitor under 18",
+      "Screens/Visitors/VIS-01 · Today's visitors · Check in · visitor under 18 with an adult"
+    ],
+    "note": "Positive and negative. Answer 614."
   }
 ]
