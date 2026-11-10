@@ -39,7 +39,7 @@ export default function YxHiringSettingsPage() {
           page,
           canEdit: Boolean(data.data?.canEdit) && !acting,
           lastChange: data.data?.lastChange ? { by: data.data.lastChange.by, role: '', at: data.data.lastChange.at, what: data.data.lastChange.what } : null,
-          state: state === 'ready' ? 'ready' : state === 'loading' ? 'loading' : 'error',
+          state: state === 'ready' ? 'ready' : state === 'loading' ? 'loading' : state === 'no-access' ? 'no-access' : 'error',
           onRetry: () => void data.refetch(),
           savedTitle: 'Hiring settings saved',
           onSave: async (values, rows) => {

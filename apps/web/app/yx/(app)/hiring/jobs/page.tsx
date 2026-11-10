@@ -25,7 +25,7 @@ export default function YxHiringJobsPage() {
   const perms = useYxPermissions();
   const canManage = perms.has('pipeline:manage');
   const jobs = useApi<ApiJob[]>('/jobs');
-  const pipelines = usePipelines();
+  const pipelines = usePipelines(perms.has('pipelines:configure'));
   const teammates = useTeammates();
   const customFields = useCustomFieldsInUse('job', canManage);
   const draft = useGenerateJobDescription();

@@ -7,12 +7,13 @@ import type { BlueprintRule, Pipeline, PipelineStageConfig, PipelineStatus, Stag
 // pipelines:configure). Follows useApprovals.ts's fetch-wrapper/invalidation conventions --
 // every mutation invalidates the same ['pipelines'] key usePipelines() queries under.
 
-export function usePipelines() {
+/** `enabled`: only for people with pipelines:configure (the API refuses everyone else). */
+export function usePipelines(enabled = true) {
   const { accessToken } = useAuth();
   return useQuery<Pipeline[]>({
     queryKey: ['pipelines'],
     queryFn: () => apiFetch('/pipelines', {}, accessToken ?? undefined),
-    enabled: Boolean(accessToken),
+    enabled: Boolean(accessToken) && enabled,
   });
 }
 

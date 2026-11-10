@@ -45,12 +45,13 @@ export function useResendMessage(candidateId: string) {
   });
 }
 
-export function useMessageTemplates() {
+/** `enabled`: only for people with pipeline:manage (the API refuses everyone else). */
+export function useMessageTemplates(enabled = true) {
   const { accessToken } = useAuth();
   return useQuery<CandidateEmailTemplate[]>({
     queryKey: ['candidate-email-templates'],
     queryFn: () => apiFetch('/candidate-email-templates', {}, accessToken ?? undefined),
-    enabled: Boolean(accessToken),
+    enabled: Boolean(accessToken) && enabled,
   });
 }
 

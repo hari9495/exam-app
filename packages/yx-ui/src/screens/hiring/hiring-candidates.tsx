@@ -32,7 +32,8 @@ const REASON: Record<DuplicatePairView['reasons'][number], string> = { phone: 'S
 
 /** The live list: server paging and filters, and the actions (each resolves when done; the screen shows the toast). */
 export interface LiveCandidateList {
-  state: ListState;
+  /** no-access: the API refused (no candidate key): the page says so instead of an empty or failed list. */
+  state: ListState | 'no-access';
   onRetry: () => void;
   total: number;
   page: number;
@@ -72,7 +73,7 @@ export interface CandidateListProps {
   lists?: TalentList[];
   templates?: EmailTemplateChoice[];
   senders?: Choice[];
-  state?: ListState;
+  state?: ListState | 'no-access';
   tab?: CandidateListTab;
   /** Story: the pair whose merge drawer is open. */
   mergePair?: number;
@@ -135,6 +136,14 @@ export function CandidateListScreen({ rows: given, duplicates, canManage = true,
     { key: 'phone', label: 'Mobile', a: kept.phone ?? '(none)', b: other.phone ?? '(none)' },
     { key: 'resume', label: 'Résumé', a: `${kept.name}'s résumé (if any)`, b: `${other.name}'s résumé (if any)` },
   ] : [];
+  const shownState = live ? live.state : state;
+  if (shownState === 'no-access')
+    return (
+      <HireFrame active="Candidates & talent CRM">
+        <PageHeader title="Candidates" description="Everyone who applied or was added, across all jobs. Candidate details are personal data: only people with a candidate key see them." />
+        <NoAccessState grantedBy="your System Admin (a hiring role with the candidate key)" what="candidates" />
+      </HireFrame>
+    );
   return (
     <HireFrame active="Candidates & talent CRM">
       <PageHeader
@@ -171,7 +180,7 @@ export function CandidateListScreen({ rows: given, duplicates, canManage = true,
               columns={cols}
               rows={live ? rows : rows.slice((own.page - 1) * 25, own.page * 25)}
               getRowId={(x) => x.id}
-              state={live ? live.state : state}
+              state={shownState}
               onRetry={live?.onRetry}
               toolbar={toolbar}
               rowNoun={['candidate', 'candidates']}

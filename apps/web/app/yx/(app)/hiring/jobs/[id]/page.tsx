@@ -41,7 +41,7 @@ export default function YxHiringJobPage() {
   }, [entry, id, router, enc]);
   const job = useApi<JobView>(`/jobs/${enc(id)}`);
   const list = useApi<ApiJob[]>('/jobs');
-  const pipelines = usePipelines();
+  const pipelines = usePipelines(perms.has('pipelines:configure'));
   const teammates = useTeammates();
   const settings = useHiring<{ scorecardTemplateId: string | null; exams: { examId: string; title: string; sendOnStageId: string | null }[] }>(`/jobs/${enc(id)}/interview-settings`);
   const board = useHiring<Board>(`/jobs/${enc(id)}/board`);

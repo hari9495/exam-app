@@ -104,8 +104,8 @@ export default function YxRequisitionsPage() {
   const manage = recruiting && !acting;
   const teammates = useTeammates();
   const [emailing, setEmailing] = useState<RediscoveryMatch | null>(null);
-  const templates = useMessageTemplates();
-  const senders = useOrgSenderAddresses();
+  const templates = useMessageTemplates(perms.has('pipeline:manage'));
+  const senders = useOrgSenderAddresses(perms.has('pipeline:manage'));
   const apiRows = list.data?.rows ?? [];
   const byId = (id: string) => apiRows.find((r) => r.id === id)!;
   const id = encodeURIComponent;

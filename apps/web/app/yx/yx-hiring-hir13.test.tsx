@@ -95,4 +95,17 @@ describe('HIR-13 Internal jobs page', () => {
   it('maps the API job to the designed card', () => {
     expect(internalJob({ ...JOB, employmentType: null, department: null })).toMatchObject({ title: 'Senior QA Engineer', department: '', type: '', status: 'Open', internal: true });
   });
+
+  it('Hiring walk (answer 476): Candidates opened without a candidate key says no access, and asks for nothing else', async () => {
+    const YxCandidatesPage = (await import('./(app)/hiring/candidates/page')).default;
+    api.mockImplementation(async (path: string) => {
+      if (path.startsWith('/rbac/me/permissions')) return ['results:view'];
+      if (path.startsWith('/candidates')) throw Object.assign(new Error('Forbidden'), { status: 403 });
+      return [];
+    });
+    wrap(<YxCandidatesPage />);
+    expect(await screen.findByText("You don't have access to candidates")).toBeInTheDocument();
+    const asked = api.mock.calls.map(([path]) => String(path));
+    expect(asked.filter((x) => ['/candidate-email-templates', '/org-sender-addresses', '/hiring/pools'].includes(x))).toEqual([]);
+  });
 });

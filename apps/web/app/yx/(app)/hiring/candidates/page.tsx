@@ -37,9 +37,10 @@ export default function YxHiringCandidatesPage() {
   const exams = useExams(undefined, { pageSize: 100 });
   const jobs = useJobs('open');
   const fields = useCustomFieldsInUse('candidate');
-  const templates = useMessageTemplates();
-  const senders = useOrgSenderAddresses();
-  const lists = useHiring<TalentList[]>('/pools');
+  // Only what this person may read (the API refuses the rest; asking anyway only fills the console with 403s).
+  const templates = useMessageTemplates(perms.has('pipeline:manage'));
+  const senders = useOrgSenderAddresses(perms.has('pipeline:manage'));
+  const lists = useHiring<TalentList[]>('/pools', perms.has('candidate:manage') || perms.has('candidate:view'));
   const dupes = useHiring<DuplicatePairView[]>('/duplicates', canManage);
   const call = async <T,>(path: string, method: string, body?: unknown): Promise<T> => {
     const r = (await apiFetch(path, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }, accessToken ?? undefined)) as T;
@@ -59,7 +60,7 @@ export default function YxHiringCandidatesPage() {
       duplicates={dupes.data ?? []}
       canMerge={perms.has('candidate:data_rights')}
       live={{
-        state: ls === 'ready' ? 'ready' : ls === 'loading' ? 'loading' : 'error',
+        state: ls === 'ready' ? 'ready' : ls === 'loading' ? 'loading' : ls === 'no-access' ? 'no-access' : 'error',
         onRetry: () => void list.refetch(),
         total: list.data?.total ?? 0,
         page,

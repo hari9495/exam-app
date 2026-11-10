@@ -34,8 +34,8 @@ export default function YxHiringCandidatePage() {
   const apiWrite = useApiWrite();
   const [q, setQ] = useState('');
   const others = useCandidates({ search: q.trim() || undefined, pageSize: 20 });
-  const templates = useMessageTemplates();
-  const senders = useOrgSenderAddresses();
+  const templates = useMessageTemplates(perms.has('pipeline:manage'));
+  const senders = useOrgSenderAddresses(perms.has('pipeline:manage'));
   const merged = profile.data && 'mergedIntoId' in profile.data ? profile.data.mergedIntoId : null;
   useEffect(() => {
     if (merged) router.replace(`/yx/hiring/candidates/${encodeURIComponent(merged)}`);

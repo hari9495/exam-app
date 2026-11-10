@@ -8,12 +8,13 @@ import type { OrgSenderAddress } from '../types';
 // org:manage_settings (admin-only). Mirrors useUserGroups.ts's fetch-wrapper/invalidation
 // conventions.
 
-export function useOrgSenderAddresses() {
+/** `enabled`: only for people with pipeline:manage (the API refuses everyone else). */
+export function useOrgSenderAddresses(enabled = true) {
   const { accessToken } = useAuth();
   return useQuery<OrgSenderAddress[]>({
     queryKey: ['org-sender-addresses'],
     queryFn: () => apiFetch('/org-sender-addresses', {}, accessToken ?? undefined),
-    enabled: Boolean(accessToken),
+    enabled: Boolean(accessToken) && enabled,
   });
 }
 
