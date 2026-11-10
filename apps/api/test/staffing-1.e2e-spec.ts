@@ -230,7 +230,7 @@ describe('Staffing desk slice 1', () => {
     await change('am', qa.id, { validFrom: addDays(today, -10), billRate: '950', payRate: '600' }).expect(400);
     await settings('am', [{ key: 'staffing.rate_change.backdate_days', value: '30' }]).expect(want(200));
     await change('am', qa.id, { validFrom: addDays(today, -10), billRate: '950', payRate: '600' }).expect(want(201));
-    const audits = await inA((tx) => tx.auditLog.findMany({ where: { action: 'staffing.rate.changed', entityId: ids.client } }));
+    const audits = await inA((tx) => tx.auditLog.findMany({ where: { action: 'staffing.rate.changed', entityId: ids.client }, orderBy: { createdAt: 'asc' } }));
     expect(audits).toHaveLength(2);
     expect(JSON.parse(audits[0]!.metadataJson!)).toMatchObject({ from: { bill: '1200.00', pay: '800.00' }, to: { bill: '1300.00', pay: '850.00' } });
   });

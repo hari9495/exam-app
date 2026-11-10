@@ -378,12 +378,20 @@ describe('Staffing desk slice 3', () => {
     await api('adminB', 'post', '/staffing/vendor-bills').send(b).expect(404);
     await api('fin', 'post', '/staffing/vendor-bills').send({ ...b, vendorInvoiceNo: '' }).expect(400);
     await api('fin', 'post', '/staffing/vendor-bills').send({ ...b, placementId: ids.pOwn }).expect(404); // not vendor supplied
-    const id = (await api('fin', 'post', '/staffing/vendor-bills').send(b).expect(want(201))).body.id;
+    // Round 4 (answer 496): only a vendor linked to its consultant record in payroll is confirmed, into PAY 8.
+    await api('fin', 'post', '/staffing/vendor-bills').send(b).expect(409);
+    const kId = await inA(async (tx) => {
+      await payScope(tx, [ids.entity!]);
+      const prof = await tx.permissionProfile.create({ data: { organizationId: org.A.id, name: `payapp-${run}`, permissionsJson: JSON.stringify(['consultant.invoice.approve']) } });
+      await tx.user.create({ data: { organizationId: org.A.id, email: `payapp@staff3-${run}.test`, name: 'Pay approver', passwordHash: 'x', role: 'panel', permissionProfileId: prof.id } });
+      return (await tx.consultant.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity!, name: `Velocity LLP ${run}`, kind: 'firm', email: `ap-${run}@velocity.test`, panStatus: 'missing', defaultSection: '194C', createdBy: users.admin! } })).id;
+    });
+    await api('fin', 'put', `/staffing/vendor-bills/vendors/${ids.agency}/consultant`).send({ consultantId: kId }).expect(want(200));
+    const made = (await api('fin', 'post', '/staffing/vendor-bills').send(b).expect(want(201))).body;
     await api('fin', 'post', '/staffing/vendor-bills').send(b).expect(400); // nothing left to bill
-    await api('fin', 'post', `/staffing/vendor-bills/${id}/paid`).send({ paidOn: addDays(today, 1) }).expect(400);
-    await api('fin', 'post', `/staffing/vendor-bills/${id}/paid`).send({ paidOn: today }).expect(want(201));
-    await api('fin', 'post', `/staffing/vendor-bills/${id}/paid`).send({ paidOn: today }).expect(404);
-    expect((await api('fin', 'get', '/staffing/vendor-bills').expect(200)).body.rows.find((r: { id: string | null }) => r.id === id)).toMatchObject({ status: 'paid', vendorInvoiceNo: 'VT/26-27/044', net: '36000.00' });
+    await api('fin', 'post', `/staffing/vendor-bills/${made.id}/paid`).send({ paidOn: addDays(today, 1) }).expect(400);
+    await api('fin', 'post', `/staffing/vendor-bills/${made.id}/paid`).send({ paidOn: today }).expect(409); // paid through payroll payouts
+    expect((await api('fin', 'get', '/staffing/vendor-bills').expect(200)).body.rows.find((r: { id: string | null }) => r.id === made.id)).toMatchObject({ status: 'confirmed', vendorInvoiceNo: 'VT/26-27/044', net: '36000.00', payroll: { status: 'submitted', paidOn: null } });
   });
 
   it('484: the statutory cost default is 13% with a PF or ESI registration, else 0%; a saved value wins', async () => {
