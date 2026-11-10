@@ -1375,8 +1375,10 @@ export interface ClraRegistersData {
   canMake: boolean;
   establishments: { id: string; name: string }[];
   registers: { id: string; type: string; locationId: string | null; location: string; formatVersion: string; version: number; status: 'generated' | 'frozen' | 'signed' | 'superseded'; rows: number }[];
-  /** Contractors without a wage register for the month: the muster and wage registers wait for them. */
+  /** Contractors without a wage register for the month: the wage register waits for them. */
   waiting: { locationId: string; contractors: string[] }[];
+  /** Answer 781: contractors whose site attendance is not confirmed yet: the muster roll waits for them. */
+  attendanceWaiting?: { locationId: string; contractors: string[] }[];
   chart: { months: string[]; series: { name: string; values: number[] }[] };
 }
 /** GET contract-labour/returns (answer 630). */
@@ -1442,10 +1444,8 @@ export function ClraRegistersScreen({ loading, tab = 'registers', live }: { load
   const registers: Row[] = d
     ? [
         ...d.registers.map((r) => ({ id: r.id, name: CLRA_TITLE[r.type] ?? r.type, est: r.location, period: monthWord(d.month), format: `IN.CLRA.REGISTERS ${r.formatVersion} · v${r.version}`, status: CLRA_STATUS[r.status] ?? r.status, live: r })),
-        ...d.waiting.flatMap((w) => [
-          { id: `wm-${w.locationId}`, name: 'Muster roll', est: d.establishments.find((e) => e.id === w.locationId)?.name ?? '', period: monthWord(d.month), format: '', status: `Waiting for ${w.contractors.length} contractor${w.contractors.length === 1 ? '' : 's'}` },
-          { id: `ww-${w.locationId}`, name: 'Register of wages', est: d.establishments.find((e) => e.id === w.locationId)?.name ?? '', period: monthWord(d.month), format: '', status: `Waiting for ${w.contractors.length} contractor${w.contractors.length === 1 ? '' : 's'}` },
-        ]),
+        ...(d.attendanceWaiting ?? []).map((w) => ({ id: `wm-${w.locationId}`, name: 'Muster roll', est: d.establishments.find((e) => e.id === w.locationId)?.name ?? '', period: monthWord(d.month), format: '', status: `Waiting for attendance of ${w.contractors.length} contractor${w.contractors.length === 1 ? '' : 's'}` })),
+        ...d.waiting.map((w) => ({ id: `ww-${w.locationId}`, name: 'Register of wages', est: d.establishments.find((e) => e.id === w.locationId)?.name ?? '', period: monthWord(d.month), format: '', status: `Waiting for ${w.contractors.length} contractor${w.contractors.length === 1 ? '' : 's'}` })),
       ]
     : sample;
   const ests = d ? d.establishments.map((e) => e.name) : ['Hosur plant', 'Bengaluru head office'];
@@ -1515,7 +1515,7 @@ export function ClraRegistersScreen({ loading, tab = 'registers', live }: { load
               empty={<EmptyState compact title="No registers for this month." description={d?.canMake ? 'Make them once the month has ended.' : 'The compliance owner makes them after the month ends.'} />}
               rowButtons={rowButtons}
             />
-            {d && <p className="yx-ops-muted">The muster roll's days come from the contractors' wage registers until site attendance is live. Freeze a register, then sign the frozen PDF with the company DSC and upload it.</p>}
+            {d && <p className="yx-ops-muted">The muster roll's days are the site attendance the site in-charge confirmed; the wages come from the contractors' wage registers. Freeze a register, then sign the frozen PDF with the company DSC and upload it.</p>}
           </div>
         </TabsContent>
         <TabsContent value="returns">

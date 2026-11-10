@@ -14,6 +14,7 @@ const data = (over: Partial<ClraRegistersData> = {}): ClraRegistersData => ({
     { id: 'r2', type: 'clra_workmen', locationId: 'hsr', location: 'Hosur plant', formatVersion: 'osh-2025-v1', version: 1, status: 'frozen', rows: 5 },
   ],
   waiting: [{ locationId: 'hsr', contractors: ['Sri Lakshmi'] }],
+  attendanceWaiting: [{ locationId: 'hsr', contractors: ['Sri Lakshmi', 'Vetri'] }],
   chart: { months: ['2026-09', '2026-10'], series: [{ name: 'Hosur plant', values: [4, 5] }] }, ...over,
 });
 const live = (over: Partial<LiveClraRegisters> = {}): LiveClraRegisters => ({
@@ -31,7 +32,9 @@ describe('CLB-04 registers (live)', () => {
     const l = live();
     show(<ClraRegistersScreen live={l} />);
     expect(screen.getByText('Register of contractors')).toBeInTheDocument();
-    expect(screen.getAllByText('Waiting for 1 contractor')).toHaveLength(2);
+    // Answer 781: the muster waits for confirmed attendance, the wages for the wage register.
+    expect(screen.getByText('Waiting for attendance of 2 contractors')).toBeInTheDocument();
+    expect(screen.getByText('Waiting for 1 contractor')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Freeze' }));
     await waitFor(() => expect(l.onFreeze).toHaveBeenCalledWith('r1'));
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
