@@ -382,6 +382,8 @@ Founder approved, 10 Nov 2026 (questions 751-756, 771-775, 781-785, all as sugge
 contractor can add the worker photo when adding the worker, checked at site approval; (775) drop the unused PPL-12
 conversion row from the drawing; (781) muster days from confirmed attendance once CL-5 lands; (783) the inspection pack
 stays in Compliance.
+Founder decided, 11 Nov 2026: build CL-8 ("we are the contractor": CLB-06 client establishments, CLB-07 own licences,
+CLB-08 client compliance packs) now, instead of waiting for a customer (changes answer 638).
 
 ## CL-1 built (10 Nov 2026, branch `feat/yukthix-contract-labour-1`)
 
