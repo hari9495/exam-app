@@ -21,6 +21,8 @@ import { CandidateRetentionService } from '../talent/retention.service';
 import { HiringBoardService } from '../interviewing/hiring-board.service';
 import { ScorecardsService } from '../interviewing/scorecards.service';
 import { HiringSettingsService } from '../hiring/hiring-settings.service';
+import { CampaignsService } from '../talent-crm/campaigns.service';
+import { CrmConsentsService } from '../talent-crm/consents.service';
 
 function msg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -56,6 +58,8 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     importDrafts: EmployeeImportDraftsService,
     erasure: ErasureService,
     hiringSettings: HiringSettingsService,
+    campaigns: CampaignsService,
+    crmConsents: CrmConsentsService,
   ) {
     // Keys MUST match SWEEP_SCHEDULE ids.
     this.handlers = {
@@ -81,6 +85,9 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       'privacy-erasure': () => erasure.sweep(),
       // Founder answer 385: tell the hiring settings holders once when the default recruiter goes stale.
       'hiring-default-recruiter': () => hiringSettings.staleRecruiterSweep(),
+      // HIR-20: due campaign steps (inside the send window, under the daily cap), and sourced profiles past their limit.
+      'crm-campaigns': () => campaigns.sweep(),
+      'sourced-purge': () => crmConsents.purgeSourced(),
     };
     this.worker = logBullErrors(new Worker(SCHEDULED_SWEEPS_QUEUE_NAME, (job) => this.dispatch(job), bullOpts(this.connection)), SCHEDULED_SWEEPS_QUEUE_NAME);
     this.worker.on('failed', (job, err) => this.logger.error(`Sweep "${job?.name}" failed: ${msg(err)}`));

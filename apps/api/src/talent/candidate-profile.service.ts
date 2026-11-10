@@ -9,6 +9,8 @@ import type { ExitType } from '../lifecycle/exit-rules';
 import { settingFor } from '../people/probation';
 import { addMonths } from './talent-rules';
 import { withdrawConsent } from './pools.service';
+import { minorState } from '../talent-crm/minor';
+import { todayIst } from '../org-structure/org-validation';
 
 // Recruitment batch AT4 (M10-BUILD-DESIGN §7.1): one candidate as the YukthiX profile shows it — contact, résumé,
 // applications, assessments, interviews, messages, consents with versions, lists, merges, legal hold and the date
@@ -31,7 +33,10 @@ export class CandidateProfileService {
     const r = await this.read(ctx, id);
     if ('mergedIntoId' in r) return r;
     const exEmployee = r.candidate.erasedAt ? null : await inCompany(this.tenantPrisma, ctx, (tx, c) => exEmployeeFor(tx, c, v, r.candidate.email));
-    if (full) return { ...r, exEmployee };
+    // HIR-05 under 18: everyone who sees the record sees the hold; the date of birth (Special data) only candidate key holders.
+    const m = r.candidate.erasedAt ? null : await inCompany(this.tenantPrisma, ctx, (tx, c) => minorState(tx, c.organizationId, id, todayIst()));
+    const minor = m?.minor ? { dob: full ? m.dob : null, guardian: m.guardian, minAge: m.rule.minAge } : null;
+    if (full) return { ...r, exEmployee, minor };
     return {
       ...r,
       candidate: { ...r.candidate, email: null, phone: null, phoneE164: null },
@@ -42,6 +47,7 @@ export class CandidateProfileService {
       retention: null,
       legalHold: r.legalHold ? { at: r.legalHold.at, reason: null } : null,
       exEmployee,
+      minor,
     };
   }
 

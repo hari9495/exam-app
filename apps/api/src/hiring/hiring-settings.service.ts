@@ -57,6 +57,10 @@ export const HIRING_SETTING_KEYS = [
   'hiring.resume_quarantine.tell_applicant',
   // HIR-23 (founder decision 2, question 7): an automated tool for New York City jobs needs a yearly bias audit.
   'hiring.bias_audit.nyc',
+  // HIR-20: campaign send window and daily cap; how long a sourced profile waits for consent.
+  'hiring.crm.send_window',
+  'hiring.crm.daily_cap',
+  'hiring.sourced.keep_days',
 ] as const;
 export type HiringSettingKey = (typeof HIRING_SETTING_KEYS)[number];
 const EDIT_KEYS = ['ats.settings.manage', 'org.settings.manage'] as const;

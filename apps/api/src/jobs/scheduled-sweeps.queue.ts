@@ -54,4 +54,8 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'privacy-erasure', cron: '45 22 * * *' },
   // Founder answer 385: a default recruiter who left or lost the recruiter key is reported once (hourly at :20).
   { id: 'hiring-default-recruiter', cron: '20 * * * *' },
+  // HIR-20: campaign steps every 15 minutes (the send window and daily cap are checked per company); sourced profiles
+  // without consent past the company limit are erased hourly.
+  { id: 'crm-campaigns', cron: '*/15 * * * *' },
+  { id: 'sourced-purge', cron: '40 * * * *' },
 ];

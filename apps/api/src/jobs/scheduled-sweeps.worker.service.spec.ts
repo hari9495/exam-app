@@ -37,6 +37,8 @@ describe('ScheduledSweepsWorkerService', () => {
       importDrafts: { prune: jest.fn().mockResolvedValue(0) },
       erasure: { sweep: jest.fn().mockResolvedValue(0) },
       hiringSettings: { staleRecruiterSweep: jest.fn().mockResolvedValue(0) },
+      campaigns: { sweep: jest.fn().mockResolvedValue({ sent: 0, stopped: 0 }) },
+      crmConsents: { purgeSourced: jest.fn().mockResolvedValue({ erased: 0 }) },
     };
     const service = new ScheduledSweepsWorkerService(
       connection as never,
@@ -59,6 +61,8 @@ describe('ScheduledSweepsWorkerService', () => {
       services.importDrafts as never,
       services.erasure as never,
       services.hiringSettings as never,
+      services.campaigns as never,
+      services.crmConsents as never,
     );
     return { service, queue, connection, services };
   };
@@ -99,6 +103,8 @@ describe('ScheduledSweepsWorkerService', () => {
       'import-drafts-retention': services.importDrafts.prune,
       'privacy-erasure': services.erasure.sweep,
       'hiring-default-recruiter': services.hiringSettings.staleRecruiterSweep,
+      'crm-campaigns': services.campaigns.sweep,
+      'sourced-purge': services.crmConsents.purgeSourced,
     };
     for (const { id } of SWEEP_SCHEDULE) {
       await mockWorker.processor!({ name: id });
