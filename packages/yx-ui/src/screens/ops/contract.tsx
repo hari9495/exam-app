@@ -45,6 +45,9 @@ function applyFilters<R>(rows: R[], filters: FilterValue[]): R[] {
  * ======================================================================================= */
 
 /** Where a licence stands (CL-1 live: the server's state with the company's alert days; the design: expiryTone). */
+/** A month as people read it: "2026-10" is "Oct 2026"; other text is kept (the design passes "Aug 2026"). */
+const monthText = (m: string) => (/^\d{4}-\d{2}$/.test(m) ? new Date(`${m}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : m);
+
 export type LicenceStateName = 'pending' | 'rejected' | 'not-started' | 'valid' | 'expiring' | 'expired' | 'renewed';
 const LICENCE_BADGE: Record<LicenceStateName, BadgeTone> = { pending: 'info', rejected: 'neutral', 'not-started': 'neutral', valid: 'success', expiring: 'warning', expired: 'danger', renewed: 'neutral' };
 export function licenceBadge(l: Licence, today: Date): { tone: BadgeTone; text: string } {
@@ -1148,15 +1151,15 @@ export function VendorComplianceView(p: VendorComplianceViewProps) {
     <OpsDesk area="contract" active="Vendor compliance" counts={{ 'Vendor compliance': p.alerts.length }}>
       <PageHeader
         title="Vendor compliance"
-        description={`Monthly proofs from each contractor for ${p.month} wages${p.due ? `, due by ${p.due}` : ''}. You can be liable for unpaid wages and dues.`}
+        description={`Monthly proofs from each contractor for ${monthText(p.month)} wages${p.due ? `, due by ${/^\d{4}-\d{2}-\d{2}$/.test(p.due) ? formatDate(new Date(`${p.due}T00:00:00`)) : p.due}` : ''}. You can be liable for unpaid wages and dues.`}
         facts={`${p.alerts.length} liability alerts · estimated exposure ${formatINR(exposure)}`}
-        actions={p.months && p.months.length > 1 && p.onMonth ? <Select value={p.month} onChange={(v) => v && p.onMonth!(v)} options={p.months.map((m) => ({ value: m, label: m }))} /> : undefined}
+        actions={p.months && p.months.length > 1 && p.onMonth ? <Select value={p.month} onChange={(v) => v && p.onMonth!(v)} options={p.months.map((m) => ({ value: m, label: monthText(m) }))} /> : undefined}
       />
       {p.holdMode === 'alert' && <InlineAlert tone="info" title="Bills are not held">Your company chose alerts only (Settings › Contract labour). Overdue or disputed proofs still raise liability alerts.</InlineAlert>}
       {p.state === 'error' ? (
         <EmptyState title="This page could not be loaded." action={<Button onClick={p.onRetry}>Try again</Button>} />
       ) : (
-        <Card title={`Compliance matrix · ${p.month}`}>
+        <Card title={`Compliance matrix · ${monthText(p.month)}`}>
           {p.rows.length === 0 ? (
             <EmptyState compact title={p.state === 'loading' ? 'Loading…' : 'No contract workers were deployed this month.'} />
           ) : (
@@ -2039,8 +2042,8 @@ export function AttendanceMonthScreen(p: AttendanceMonthProps) {
     <OpsDesk area="contract" active="Contract workers">
       <PageHeader
         title="Contract workers' attendance"
-        description={`Days on site in ${p.month}: kiosk punches with the gate pass number and PIN, or the contractor's entry where a site has no kiosk. Confirm a month once it ends; it is then locked and used in the wage check.`}
-        actions={p.months && p.months.length > 1 && p.onMonth ? <Select value={p.month} onChange={(v) => v && p.onMonth!(v)} options={p.months.map((m) => ({ value: m, label: m }))} /> : undefined}
+        description={`Days on site in ${monthText(p.month)}: kiosk punches with the gate pass number and PIN, or the contractor's entry where a site has no kiosk. Confirm a month once it ends; it is then locked and used in the wage check.`}
+        actions={p.months && p.months.length > 1 && p.onMonth ? <Select value={p.month} onChange={(v) => v && p.onMonth!(v)} options={p.months.map((m) => ({ value: m, label: monthText(m) }))} /> : undefined}
       />
       {p.state === 'error' ? (
         <EmptyState title="This page could not be loaded." action={<Button onClick={p.onRetry}>Try again</Button>} />
@@ -2075,7 +2078,7 @@ export function AttendanceMonthScreen(p: AttendanceMonthProps) {
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setConfirming(null)}
-          title={`Confirm ${row.contractor}'s ${p.month} at ${row.site.name}?`}
+          title={`Confirm ${row.contractor}'s ${monthText(p.month)} at ${row.site.name}?`}
           consequence={`${row.workers.reduce((n, w) => n + w.present, 0)} days on site for ${row.workers.length} workers. The month is then locked: no more punches or entries, and the wage check uses these days.`}
           confirmLabel="Confirm month"
           onConfirm={() => void (p.onConfirm ? p.onConfirm(row.contractorId, row.site.id, p.month) : Promise.resolve()).then(() => (say('Month confirmed'), setConfirming(null)), (e: unknown) => say(errText(e)))}

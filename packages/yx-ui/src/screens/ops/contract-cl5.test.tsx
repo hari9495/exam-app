@@ -72,6 +72,8 @@ describe('Contract workers’ attendance (live, CL-5)', () => {
     const onConfirm = vi.fn(async () => undefined);
     show(<AttendanceMonthScreen month="2026-09" rows={ROWS} canManage canConfirm onConfirm={onConfirm} />);
     expect(screen.getByText('Confirmed')).toBeInTheDocument();
+    // Walk finding: the month reads as words, not 2026-09.
+    expect(screen.getByText(/Days on site in Sep 2026/)).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Confirm month' }));
     const dlg = screen.getByRole('dialog');
     expect(within(dlg).getByText(/21 days on site for 1 workers/)).toBeInTheDocument();
