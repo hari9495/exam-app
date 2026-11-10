@@ -349,6 +349,11 @@ Founder approved, 10 Nov 2026 (questions 671-678, all as suggested): (671) couns
 keep the adder verifying, a "second person verifies" company setting when a customer asks; (673) registrations list with
 CL-5; (674) site cards with CL-2 and CL-5; (675) the work order in CL-2, warning when deployments pass its headcount; keep
 676, 677; (678) also email the contractor once the portal (CL-3) exists.
+Founder approved, 10 Nov 2026 (questions 681-686, 731-736, all as suggested): (681) block at the threshold once
+registrations exist (CL-5); keep 682 (second approver setting later), 683, 685 (CL-4), 732, 733; (684) a "Renew gate pass"
+action keeping the number; (686) count contract workers in All persons with CL-5; (731) optional issuing office on the
+licence form in CL-4; (734) Aadhaar only for now, other IDs later under the last-4-plus-hash rule; (735) worker photo with
+the gate pass card in CL-5; (736) the contractor can withdraw their own waiting workers.
 
 ## CL-1 built (10 Nov 2026, branch `feat/yukthix-contract-labour-1`)
 

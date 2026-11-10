@@ -314,6 +314,11 @@ console.log('ok');
 
 Founder approved, 10 Nov 2026 (questions 601-617, all as suggested; each policy a company setting, mostly per location,
 with the suggested answer as its default). Build Visitors first (slices 1-4), then Contract labour.
+Founder approved, 10 Nov 2026 (questions 651-654, 661-665, 711-714, all as suggested): keep 651, 653, 654,
+661, 663, 665, 712, 714; (652) warn the host when the window is outside the allowed hours, never refuse; (662) HR people
+who keep the watch-list get the Facility admin role; (664) remove the ID type field from the invite drawing; (711) build
+"Send someone" next (the named colleague gets the card with their own minutes, audited); (713) reception sees the photo
+at check-in and on the photo badge, never on the host's phone after the decision.
 
 ## Visitors slice 1 built (answers 601-617; 15 Nov 2026, branch `feat/yukthix-visitors-1`)
 

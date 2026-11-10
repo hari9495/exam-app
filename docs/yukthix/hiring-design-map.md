@@ -1826,6 +1826,8 @@ applications), in the next candidate-page change.
      and returns when it is turned on. *Suggested: keep.*
 Founder approved, 14 Nov 2026 (questions 441-444, all as suggested): keep 441 and 444; (442) YukthiX staff switch
 white-label per company from the console with the plan; (443) draw the quarantine-email switch on 6.1.
+Founder approved, 10 Nov 2026 (question 701): seed one demo staffing client, placement and issued invoice in
+demo-org, shown only while the staffing desk is on.
 ## Offers round 3 built (answers 376, 402, 404, 423, 443; 14 Nov 2026, branch `feat/yukthix-offers-3`)
 - (376) Settings 6.1: a named approver above the range who left or lost the offer-pay key is named on the field ("Ravi
   Kumar (cannot approve)") with a warning, like the stale default recruiter; until HR chooses again the step goes to the
