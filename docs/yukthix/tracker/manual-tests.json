@@ -18821,5 +18821,149 @@
       "Screens/Hiring/HIR-17 · Placements and bench board · Placement fee · before the hire"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-20-REST-01",
+    "area": "Hiring · HIR-20 Talent CRM campaigns and sourced profiles, HIR-05 under 18 (10 Nov 2026)",
+    "screen": "Talent CRM · Sequence builder",
+    "url": "http://localhost:3000/yx/hiring/pools",
+    "account": "hr-tester@demo-org.test (candidate manage key). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open Hiring › Talent CRM and press New sequence.",
+      "Press Start for 0 people without filling anything.",
+      "Enter a name, choose a talent pool, choose a template for step 1, add a wait of 3 days and a second message, then Start."
+    ],
+    "expected": "Step 2: field errors under Name, Audience and Steps, focus on Name, nothing saved. Step 3: Who gets it shows the counts (no consent, opted out, under 18 never); after Start a toast \"… started for N people\" and the campaign shows Running with its steps.",
+    "stories": [
+      "Screens/Hiring/HIR-20 · Talent CRM · Sequence builder · consent-based audience"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-20-REST-02",
+    "area": "Hiring · HIR-20 Talent CRM campaigns and sourced profiles, HIR-05 under 18 (10 Nov 2026)",
+    "screen": "Talent CRM · Sequence builder · WhatsApp",
+    "url": "http://localhost:3000/yx/hiring/pools",
+    "account": "hr-tester@demo-org.test (candidate manage key). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Press New sequence and choose WhatsApp.",
+      "Fill the form and press Start."
+    ],
+    "expected": "With no WhatsApp provider: the option says \"WhatsApp (not connected)\", a warning says so, and Start shows \"WhatsApp is not connected…\"; Save draft works (toast).",
+    "stories": [
+      "Screens/Hiring/HIR-20 · Talent CRM · Sequence builder · WhatsApp not connected"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-HIR-20-REST-03",
+    "area": "Hiring · HIR-20 Talent CRM campaigns and sourced profiles, HIR-05 under 18 (10 Nov 2026)",
+    "screen": "Talent CRM · Campaigns · engagement",
+    "url": "http://localhost:3000/yx/hiring/pools",
+    "account": "hr-tester@demo-org.test (candidate manage key). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open Campaigns & sequences, choose the campaign and a person.",
+      "Press Mark as replied.",
+      "Press Stop and confirm."
+    ],
+    "expected": "The person's engagement timeline and their Email / WhatsApp consent badges; Mark as replied: toast, the person shows Replied; Stop: confirm, toast, status Stopped. After the next send window the person got step 1 once (Activity on their record shows the email).",
+    "stories": [
+      "Screens/Hiring/HIR-20 · Talent CRM · Sequence and engagement timeline"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HIR-20-REST-04",
+    "area": "Hiring · HIR-20 Talent CRM campaigns and sourced profiles, HIR-05 under 18 (10 Nov 2026)",
+    "screen": "Talent CRM · Sourced profiles · add",
+    "url": "http://localhost:3000/yx/hiring/pools",
+    "account": "hr-tester@demo-org.test (candidate manage key). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open Sourced profiles and press Add sourced profile.",
+      "Press Add and send consent email empty.",
+      "Fill name, email, found on and a lawful source note, then add."
+    ],
+    "expected": "Step 2: field errors (name, email, lawful source at least 10 characters), focus on Name. Step 3: toast; the row shows \"Pending consent · erased in 30 days\"; the person is not in Candidates search; Send again the same day is refused with a message.",
+    "stories": [
+      "Screens/Hiring/HIR-20 · Talent CRM · Sourced profiles · add with a lawful source",
+      "Screens/Hiring/HIR-20 · Talent CRM · Sourced profiles · pending consent"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-20-REST-05",
+    "area": "Hiring · HIR-20 Talent CRM campaigns and sourced profiles, HIR-05 under 18 (10 Nov 2026)",
+    "screen": "Consent page · sourced person",
+    "url": "http://localhost:3000/consent/sourced/<link from the consent email in the test mailbox>",
+    "account": "hr-tester@demo-org.test (candidate manage key). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open the link from the consent email.",
+      "Press Keep my details.",
+      "Open the same link again."
+    ],
+    "expected": "The company name and its talent-pool notice; after Keep my details a thank-you; the person is now a candidate with a talent-pool consent and the sourced row shows Consent given with Open candidate; the link a second time says it is not valid.",
+    "stories": [],
+    "note": "Positive; then the negative reuse."
+  },
+  {
+    "id": "MT-HIR-20-REST-06",
+    "area": "Hiring · HIR-20 Talent CRM campaigns and sourced profiles, HIR-05 under 18 (10 Nov 2026)",
+    "screen": "Candidate record · Record date of birth",
+    "url": "http://localhost:3000/yx/hiring/candidates/<a test candidate>",
+    "account": "hr-tester@demo-org.test (candidate manage key). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open a candidate, menu › Record date of birth, press Save empty.",
+      "Enter a date 15 years ago and Save and email the guardian without guardian details.",
+      "Enter the guardian name and email and save."
+    ],
+    "expected": "Step 1: \"Enter the date of birth.\" Step 2: guardian name and email errors. Step 3: toast; the record shows \"Under 18: guardian consent needed\" with the date of birth; Move to next stage is refused with the under-18 message; making an offer is refused.",
+    "stories": [
+      "Screens/Hiring/HIR-05 · Candidate record · Record date of birth · guardian consent",
+      "Screens/Hiring/HIR-05 · Candidate record · Under 18 · guardian consent pending"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-20-REST-07",
+    "area": "Hiring · HIR-20 Talent CRM campaigns and sourced profiles, HIR-05 under 18 (10 Nov 2026)",
+    "screen": "Candidate record · Under 18 · hiring manager",
+    "url": "http://localhost:3000/yx/hiring/candidates/<the same candidate>",
+    "account": "hr-tester@demo-org.test (candidate manage key). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Sign in as the hiring manager (panel@demo-org.test) and open the same candidate."
+    ],
+    "expected": "The hold shows (\"Under 18: guardian consent needed\") but not the date of birth, and there is no Send again.",
+    "stories": [
+      "Screens/Hiring/HIR-05 · Candidate record · Under 18 · guardian consent pending"
+    ],
+    "note": "Negative (Special data)."
+  },
+  {
+    "id": "MT-HIR-20-REST-08",
+    "area": "Hiring · HIR-20 Talent CRM campaigns and sourced profiles, HIR-05 under 18 (10 Nov 2026)",
+    "screen": "Consent page · guardian",
+    "url": "http://localhost:3000/consent/guardian/<link from the guardian email>",
+    "account": "hr-tester@demo-org.test (candidate manage key). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open the guardian link and press I consent.",
+      "Back on the record, Move to next stage."
+    ],
+    "expected": "A thank-you; the record says \"Guardian consent verified.\"; the move now works (toast).",
+    "stories": [],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HIR-20-REST-09",
+    "area": "Hiring · HIR-20 Talent CRM campaigns and sourced profiles, HIR-05 under 18 (10 Nov 2026)",
+    "screen": "Settings · Hiring · Talent CRM",
+    "url": "http://localhost:3000/yx/settings",
+    "account": "hr-tester@demo-org.test (candidate manage key). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open Settings › Hiring and find Talent CRM.",
+      "Change \"Erase a sourced profile with no consent after\" to 7 days and save."
+    ],
+    "expected": "Three settings with their defaults (9 am to 9 pm IST, 200 a day, 30 days); the change saves with a toast; a new sourced profile then shows \"erased in 7 days\".",
+    "stories": [],
+    "note": "Positive."
   }
 ]

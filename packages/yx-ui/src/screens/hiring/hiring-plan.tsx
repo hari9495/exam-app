@@ -37,7 +37,7 @@ import {
   type PayRange,
   type PlanLine,
 } from './hiring-logic';
-import { ConsentBadges, HireFrame, PostingStrip, RecordLayout, SummaryTiles, useListControls, type ConsentValue, type Posting } from './hiring-kit';
+import { ConsentBadges, HireFrame, PostingStrip, RecordLayout, StatusLine, SummaryTiles, useListControls, type ConsentValue, type Posting } from './hiring-kit';
 import type { Job, Requisition } from './hiring-data';
 import { CustomFieldInputs, missingRequired } from './live/fields';
 import { JobSettingsPanel, type LiveJobSettings } from './job-settings';
@@ -1549,9 +1549,8 @@ export function JobPayRangePanel({ location, law, defaultRange = { min: null, ma
       footer={
         readOnly ? undefined : (
           <div className="yx-hire-row">
-            <Text size="sm" tone={ok ? 'secondary' : 'danger'}>
-              {ok ? (live?.published ? 'The job is published. Changes show at once.' : 'Ready to publish.') : 'Publishing is blocked until the pay range is fixed.'}
-            </Text>
+            {/* The kit's publish-readiness line (StatusLine), not a hand-built copy. */}
+            <StatusLine ok={ok}>{ok ? (live?.published ? 'The job is published. Changes show at once.' : 'Ready to publish.') : 'Publishing is blocked until the pay range is fixed.'}</StatusLine>
             <Button variant="primary" disabled={!live && !ok} loading={busy} onClick={live ? () => void save() : onPublish}>
               {live?.published ? 'Save pay range' : 'Publish job'}
             </Button>

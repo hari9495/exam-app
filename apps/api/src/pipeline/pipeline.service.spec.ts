@@ -2,6 +2,9 @@ import { BadRequestException, ConflictException, ForbiddenException, NotFoundExc
 import { PipelineService } from './pipeline.service';
 import { computeCriteriaHash } from '../candidate-fit/candidate-fit.core';
 
+// HIR-05 under-18 holds are covered by test/hiring-rest.e2e-spec.ts; these mocks have no candidate table.
+jest.mock('../talent-crm/minor', () => ({ minorHold: jest.fn(async () => null) }));
+
 // getJob always loads job custom-field defs+values (unconditionally, no dto to gate on); every
 // getJob test tx needs these two, defaulting to "no custom fields defined" so pre-existing tests
 // that don't care about this feature are unaffected.

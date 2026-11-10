@@ -112,3 +112,8 @@ export const ApplicationSendNotice: S = { name: 'Application · send the New Yor
 export const ApplicationRecordAlternative: S = { name: 'Application · record a request for another process (New York City)', render: () => <ApplicationDrawer {...sampleApplication} app={{ ...sampleApplication.app!, toolNotice: true }} onRecordAlternative={async () => {}} /> };
 // Answer 474: a New York City applicant asked for another process than the automated tool.
 export const ApplicationAlternative: S = { name: 'Application · asked for another process (New York City)', render: () => <ApplicationDrawer {...sampleApplication} app={{ ...sampleApplication.app!, alternativeRequestedAt: '2026-11-12T10:30:00+05:30' }} /> };
+// HIR-05 under 18 build (10 Nov 2026): record the date of birth; under 18 the guardian is emailed for consent.
+export const RecordDob: S = {
+  name: 'Record date of birth · guardian consent',
+  render: () => <CandidateRecordScreen candidate={{ ...CANDIDATES[6], name: 'Rohan Das', aiInterview: undefined }} viewer="recruiter" dobOpen identity={ID_POINTS_CLEAR.slice(0, 1)} applications={APPS.slice(0, 1)} activity={ACT} now={TODAY} />,
+};

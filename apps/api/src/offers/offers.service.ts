@@ -1,5 +1,8 @@
 import { InternalApplicationsService } from '../internal-applications/internal-applications.service';
 import { createHash, randomUUID } from 'crypto';
+import { minorHold } from '../talent-crm/minor';
+import type { Tx } from '../org-structure/org-structure.service';
+import { todayIst } from '../org-structure/org-validation';
 import { BadRequestException, ConflictException, Injectable, NotFoundException, Optional, UnauthorizedException } from '@nestjs/common';
 import { Offer, Prisma } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService, BlobStorageService } from '@exam-platform/shared';
@@ -55,6 +58,9 @@ export class OffersService {
       const orgId = context.organizationId as string;
       const entry = await tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: orgId } });
       if (!entry) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
+      // HIR-05 under 18 (rule set HIR.MINOR): no offer until a parent or guardian consents.
+      const minor = await minorHold(tx as unknown as Tx, orgId, entry.candidateId, todayIst(), 'offer');
+      if (minor) throw new ConflictException(minor);
 
       const offer = await tx.offer.create({
         data: {

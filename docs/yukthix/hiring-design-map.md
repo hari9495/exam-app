@@ -52,15 +52,16 @@ built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Plans, requisitions, jobs and costs | 4 | 36 | 1 | 0 | 0 | 0 | 37 |
-| B. Candidates, pipeline and interviews | 8 | 58 | 1 | 0 | 9 | 1 | 69 |
+| A. Plans, requisitions, jobs and costs | 4 | 37 | 1 | 0 | 0 | 0 | 38 |
+| B. Candidates, pipeline and interviews | 8 | 59 | 1 | 0 | 8 | 1 | 69 |
 | C. Offers, BGV and joining | 4 | 24 | 4 | 0 | 1 | 0 | 29 |
-| D. Referrals, internal jobs, CRM and rediscovery | 4 | 25 | 0 | 0 | 3 | 4 | 32 |
-| E. Staffing agency | 8 | 56 | 12 | 0 | 0 | 0 | 68 |
-| F. Compliance and fairness | 5 | 17 | 2 | 0 | 11 | 0 | 30 |
-| G. Careers site, portals and settings | 4 | 62 | 4 | 2 | 9 | 0 | 77 |
-| **All Hiring design groups (A–G)** | **37** | **285** | **27** | **2** | **28** | **5** | **347** |
-| H. Kit and "Live ·" groups (not designs; own line) | 3 | 5 | 0 | 5 | 5 | 0 | 15 |
+| D. Referrals, internal jobs, CRM and rediscovery | 4 | 30 | 0 | 0 | 0 | 4 | 34 |
+| E. Staffing agency | 8 | 49 | 15 | 0 | 0 | 0 | 64 |
+| F. Compliance and fairness | 5 | 21 | 4 | 0 | 6 | 0 | 31 |
+| G. Careers site, portals and settings | 4 | 64 | 4 | 2 | 9 | 0 | 79 |
+| **All Hiring design groups (A–G)** | **37** | **292** | **27** | **2** | **24** | **5** | **350** |
+| H. Kit and "Live ·" groups (not designs; own line) | 3 | 11 | 0 | 0 | 4 | 0 | 15 |
+Recounted by script on `test/yukthix-main` after merging hiring-rest (Talent CRM campaigns, sourced profiles, under 18, kit wire-ups): A–G 292 live, 27 gap, 2 wire, 24 not built, 5 phone, of 350.
 Recounted by script on `test/yukthix-main` after merging staffing round 5 (Tally/Zoho export, 528): A–G 285 live, 27 gap, 2 wire, 28 not built, 5 phone, of 347.
 Recounted by script on `test/yukthix-main` after merging 531, 532: A–G 284 live, 26 gap, 2 wire, 28 not built, 5 phone, of 345.
 Recounted by script on `test/yukthix-main` after merging hiring-keys: A–G 283 live, 26 gap, 2 wire, 28 not built, 5 phone, of 344.
@@ -69,6 +70,8 @@ Recounted by script 17 Nov 2026 on `feat/yukthix-hiring-small-6` (from `test/yuk
 Recounted by script 16 Nov 2026 on `feat/yukthix-hiring-small-5` (from `test/yukthix-main` 5b7855eb0) after answers 502 and 514: 3 new stories drawn and live (HIR-28 ValuesBlank, T9-09 StatusNycNotice, HIR-05 ApplicationRecordAlternative): A–G 276 live, 29 gap, 2 wire, 28 not built, 5 phone, of 340 (rows B, C, E, F, G recounted from the script; two 6.1 rows put back in file order).
 Recounted by script 10 Nov 2026 on `feat/yukthix-staffing-5` after answers 522 and 528: 1 new drawn HIR-18 story (export to accounting).
 Recounted by script 10 Nov 2026 on `feat/yukthix-staffing-4` after staffing round 4 (answers 491-499): HIR-18 Account manager, HIR-19 Ageing (reminders), HIR-30 Fixed refund (fee and guarantee) and HIR-21 Vendor invoices gaps closed; 3 new drawn stories (placement fee before the hire and after leaving, vendor invoices linked to payroll).
+Recounted by script 10 Nov 2026 on `feat/yukthix-hiring-rest` after the rest of Hire: HIR-20 Campaigns, SequenceBuilder and Sourced design only → live plus 2 new stories (AddSourced, WhatsappNotConnected); HIR-05 Minor → live plus 1 new (RecordDob): A–G 284 live, 29 gap, 2 wire, 24 not built, 5 phone, of 344 (rows B and D recounted).
+Recounted by script 10 Nov 2026 on `feat/yukthix-hiring-rest`: kit rows SummaryTiles, PipelineFacts, ConsentBadges, PostingStrip (already in the live designed screens) and StatusLine (now wired on the job pay range panel) → live; EInvoiceBanner → live with HIR-31. H: 11 live, 4 not built, of 15.
 Recounted by script 13 Nov 2026 on `feat/yukthix-hiring-keys`: HIR-02 gained the drawn No access story (re-walk of answer 476); A–G 274 live, 29 gap, 2 wire, 28 not built, 5 phone, of 338.
 Recounted by script on `test/yukthix-main` after merging round 4 (442, 452, 473, 474): A–G 273 live, 29 gap, 2 wire, 28 not built, 5 phone, of 337.
 Recounted by script on `test/yukthix-main` after merging the Hiring walk-through fixes: A–G 270 live, 29 gap, 2 wire, 28 not built, 5 phone, of 334.
@@ -158,7 +161,7 @@ the web page.
 | /yx/hiring/candidates | `CandidateListScreen` with `live` (designed 9 Nov 2026, decision 9) | HIR-05 List | `GET/POST/PATCH candidates`, bulk delete, upload and invite, email, pools (`candidate:manage` / `candidate:view`; writes refused while acting) | live |
 | /yx/hiring/candidates/[id] | `CandidateRecordScreen` with `live` (designed) | HIR-05 | `GET hiring/candidates/:id` (viewer-aware: contact details with `candidate:manage` or data rights; ex-employee match for people who may see the employee), `PUT …/legal-hold`, `POST candidates/:id/erase`, `GET …/export` (`candidate:data_rights`), `POST …/merge` (manage + data rights), `POST …/consents/withdraw`; writes refused while acting | live |
 | /yx/hiring/duplicates | opens /yx/hiring/candidates?view=duplicates (the list's Possible duplicates tab) | HIR-05 List, Merge | `GET hiring/duplicates` (`candidate:manage`), merge (manage + `candidate:data_rights`) | live |
-| /yx/hiring/pools | the designed `TalentCrmScreen` with `live` (12 Nov 2026; the `TalentPoolsScreen` stand-in is deleted): pools and hotlists with owner, last change and talent-pool consent count, members drawer with consent, new pool, delete, remove, open; job-board postings | HIR-20 Pools, Postings | `GET hiring/pools` (+ `consented`, `ownerName`, `updatedAt`), `GET …/members` (+ each member's `consent`) (`candidate:manage` or `candidate:view`); `POST/DELETE hiring/pools`, `POST/DELETE …/members` (`candidate:manage`; a talent pool takes only consented people; refused while acting); new `GET hiring/postings` (`pipeline:manage` or `results:view`); posting changes are `PATCH jobs/:id jobBoardIds` (`pipeline:manage`) | live |
+| /yx/hiring/pools | the designed `TalentCrmScreen` with `live` (12 Nov 2026; the `TalentPoolsScreen` stand-in is deleted): pools and hotlists with owner, last change and talent-pool consent count, members drawer with consent, new pool, delete, remove, open; job-board postings; 10 Nov 2026 campaigns, sequence builder, engagement timeline and sourced profiles | HIR-20 Pools, Postings | `GET hiring/pools` (+ `consented`, `ownerName`, `updatedAt`), `GET …/members` (+ each member's `consent`) (`candidate:manage` or `candidate:view`); `POST/DELETE hiring/pools`, `POST/DELETE …/members` (`candidate:manage`; a talent pool takes only consented people; refused while acting); new `GET hiring/postings` (`pipeline:manage` or `results:view`); posting changes are `PATCH jobs/:id jobBoardIds` (`pipeline:manage`) | live |
 | /yx/hiring/bgv | the designed `BgvTrackerScreen` with `live` (12 Nov 2026), menu Hiring › Background checks | HIR-10 (manual) | new `GET lifecycle/bgv` (`lifecycle.bgv.manage` in each joiner's scope; refused while acting; each look audited `bgv.tracker.viewed`), `POST lifecycle/joiners/:id/bgv/ask`, `/bgv/checks`, `POST lifecycle/bgv/checks/:id` (+ `checkedOn`; who checked, report version), new `POST lifecycle/bgv/checks/:id/decision`; evidence opens with `GET documents/:id/file?version=` (document keys) | live |
 | /yx/hiring/retention | `CandidateRetentionScreen` with `live` (designed 9 Nov 2026, decision 9) | HIR-05 Retention | `POST hiring/retention/run`, `GET …/runs`, `POST hiring/data-requests/lookup`, export, erase (`candidate:data_rights`; a real run, export and erase refused while acting) | live |
 | /yx/hiring/interviews | the designed `InterviewCalendarScreen` with `live` (11 Nov 2026); recruiters see the company week, everyone else their own interviews and scorecards; India time | HIR-06 | new `GET hiring/interviews?from=&to=` (≤ 62 days; `pipeline:manage` = company, else panel or the job's hiring manager), `GET hiring/interviews/mine` (+ overdue, setting `hiring.scorecard.overdue_hours`, default 24) | live |
@@ -343,7 +346,8 @@ list's Possible duplicates tab).
 | Merge · Merge duplicate · field-level choice | live | `POST hiring/candidates/:id/merge` now needs `candidate:manage` AND `candidate:data_rights`; confirm says what happens; audited |
 | MergeChooseDuplicate · Merge with another candidate · choose the duplicate first | live | new story (kit first): the record's menu merge picks the other candidate; "Record to keep" choice |
 | IdentityFlag · Identity review flag | design only, feature not built | no candidate identity check (HIR-22) |
-| Minor · Under 18 · guardian consent pending | design only, feature not built | no date of birth / guardian consent on candidates |
+| Minor · Under 18 · guardian consent pending | live | 10 Nov 2026: the drawn banner from `minor` on `GET hiring/candidates/:id` (rule set `HIR.MINOR`, verify); the date of birth only to candidate key holders, the hold to everyone who sees the record; Send again (`POST …/guardian-consent/resend`). Until the guardian consents (/consent/guardian/:token) a move past the first stage (screening) and any offer are refused (409) |
+| RecordDob · Record date of birth · guardian consent | live | new story 10 Nov 2026: the record's menu (`candidate:manage`); date of birth (sealed with the company key, Special data, never in the audit); under the age the parent or guardian name and email are required and emailed; `PUT hiring/candidates/:id/date-of-birth`; toast |
 | NoAccess · No access | live | 403 without a candidate key |
 | NotFound · Not found (anonymised) | live | 404, or an erased candidate |
 | Application · Application · messages, notes, offers | live | added 10 Nov 2026 (answer 261, moved from the deleted `ApplicationPanel`): the record's `?entry=` or Open application; stage, reject / undo, owner, checklist, fit, email / SMS / WhatsApp / survey, notes, offers (listed; made and worked on the HIR-09 pages); toasts. Interviews left it 11 Nov 2026 (answer 301): schedule on the record header, open / resend / cancel on HIR-07, the list on HIR-06 and the record's Scores tab |
@@ -602,19 +606,23 @@ page is deleted; its addresses redirect here.
 Live page: /yx/hiring/pools (12 Nov 2026, menu Hiring › Talent CRM), the designed `TalentCrmScreen` with `live`; the
 `TalentPoolsScreen` stand-in, its story and test are deleted (every function kept: lists, create, archive, members,
 remove, open). Consent shown: per pool the members with a current talent-pool consent, per member Given / Not given. The
-design's Email / WhatsApp opt-in columns are not shown (no channel opt-in store; candidates only have opt-out flags), and
-the Campaigns and Sourced tabs and New sequence are hidden (not built). Board setup stays on /yx/hiring/job-boards.
+design's Email / WhatsApp opt-in columns are not shown on pools (the campaign builder counts each channel's audience
+instead). 10 Nov 2026 (`feat/yukthix-hiring-rest`): Campaigns, the sequence builder, the engagement timeline and Sourced
+profiles are live for `candidate:manage` (the tabs stay hidden without it); the drawn stories and the live page use the
+same parts (`hiring-crm.tsx`). Board setup stays on /yx/hiring/job-boards.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
 | Pools · Pools and hotlists | live | `GET hiring/pools` with owner, last change and the consent count; Delete pool (confirm, toast); New pool needs `candidate:manage` |
-| Campaigns · Sequence and engagement timeline | design only, feature not built | one-off bulk email exists; no sequences or engagement timeline |
-| SequenceBuilder · Sequence builder · consent-based audience | design only, feature not built | same |
-| Sourced · Sourced profiles · pending consent | design only, feature not built | no sourcing |
+| Campaigns · Sequence and engagement timeline | live | `GET hiring/campaigns` (steps with the company's template names, Enrolled / Replied / Applied / Opted out), a campaign picker when there are several, the people (`GET …/:id/members`) and one person's engagement timeline with their email and WhatsApp consent (`GET hiring/candidates/:id/engagement`); Start a draft, Stop (confirm), Mark as replied (stops them when the campaign stops on replies); toasts. Steps go out by the `crm-campaigns` sweep (every 15 minutes) inside the send window (`hiring.crm.send_window`, default 9 am to 9 pm IST) and under the daily cap (`hiring.crm.daily_cap`, default 200); each step once (unique member and step), every send a row, a message log line and an audit entry; a person stops on unsubscribe, consent withdrawn, hire, erasure, a reply or an application |
+| SequenceBuilder · Sequence builder · consent-based audience | live | New sequence (or a pool's Start a sequence): name, audience (a talent pool), channel, steps (a message from the company's candidate email or WhatsApp templates, or a wait of 1 to 60 days, up to 10), stop on reply / application; Who gets it from `POST hiring/campaigns/audience` (talent-pool consent plus the channel opt-in: email not unsubscribed, WhatsApp only where the candidate opted in; under 18 never); Save draft or Start (`POST hiring/campaigns`), field errors and focus, never a disabled Start; refusals show in the drawer |
+| Sourced · Sourced profiles · pending consent | live | `GET hiring/sourced`: each person with where they were found, the lawful source note, who added them and the days left; Send again (not within a day), Erase now (confirm), Open candidate once they consent. Kept in their own table: not in search, pools or campaigns, no AI. The one consent email links to /consent/sourced/:token (the company's talent-pool notice; agree makes them a candidate with that consent, refuse erases them); no answer by `hiring.sourced.keep_days` (default 30) and the `sourced-purge` sweep erases them. The browser extension in the design is not built: people are added by hand |
 | Postings · Job-board postings | live | new `GET hiring/postings`: open / on-hold jobs and any job still posted, with each board's posting (the same as the job workspace); Post / Refresh / Close with `pipeline:manage` (`PATCH jobs/:id`), toast |
 | Empty · Empty | live | no pools |
 | PoolMembers · Pool members · consent, open, remove | live | new story 12 Nov 2026: `GET hiring/pools/:id/members` with consent; Open the candidate; Remove after a confirm (`DELETE …/members/:candidateId`), toast |
 | NewPool · New pool or hotlist | live | new story: type (joined Segment), name (pressed too early: field error and focus), purpose; `POST hiring/pools`, toast |
+| AddSourced · Sourced profiles · add with a lawful source | live | new story 10 Nov 2026: name, email, found on, headline, lawful source (at least 10 characters); field errors and focus; `POST hiring/sourced` sends the consent email; toast |
+| WhatsappNotConnected · Sequence builder · WhatsApp not connected | live | new story: with no WhatsApp provider the channel says not connected and a WhatsApp sequence can be saved as a draft but not started (409 from the API too) |
 
 #### HIR-26 · Rediscovery panel
 
@@ -1012,18 +1020,18 @@ a design, BUILD-STANDARD rule 1). Each "Live ·" story is deleted with its stand
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Tiles · SummaryTiles | wire design | used by HIR list screens |
-| Pipeline · PipelineFacts | wire design | HIR-04 cards |
-| Consent · ConsentBadges | wire design | candidate channel consent exists |
+| Tiles · SummaryTiles | live | in the live designed screens: plan, referrals, costs, pipeline, offers, candidates |
+| Pipeline · PipelineFacts | live | HIR-04 pipeline board cards |
+| Consent · ConsentBadges | live | HIR-20 rediscovery panel and campaign engagement card |
 | ExEmployee · ExEmployeeBanner · recruiter and HM | live | HIR-05 record (levels: flag, exit, rehire) |
 | Identity · IdentityStrip | design only, feature not built | HIR-22 |
-| Postings · PostingStrip | wire design | job boards |
-| EInvoice · EInvoiceBanner · warning | design only, feature not built | HIR-31 |
+| Postings · PostingStrip | live | job workspace and HIR-20 Postings |
+| EInvoice · EInvoiceBanner · warning | live | HIR-31 invoice record (`LiveEInvoiceBanner`, rule set `GST.EINVOICE_WINDOW`) |
 | Ctc · CtcBreakupTable | live | HIR-09 builder and offer record |
 | Recording · RecordingPlaceholder | design only, feature not built | HIR-08, 25 |
 | Slots · SlotGrid | design only, feature not built | HIR-06 slot finder |
 | Budget · BudgetBars | design only, feature not built | Projects (no projects API) |
-| Status · StatusLine | wire design | publish readiness (HIR-03, 24) |
+| Status · StatusLine | live | publish readiness on the job pay range panel (HIR-03, 24) |
 
 #### Live · Careers site and job boards
 
@@ -2057,4 +2065,30 @@ with In pipeline summed. Screenshots and the per-page results are in the walk re
 ## Founder questions from small items round 6 (17 Nov 2026)
 551. **Sending the notice again.** Once the notice email has gone, there is no "send again" (a candidate who says it
      never arrived). *Suggested: keep; the recruiter records their request for another process by phone instead.*
+## The rest of Hire built (10 Nov 2026, branch `feat/yukthix-hiring-rest`)
+- Kit wire-ups: SummaryTiles, PipelineFacts, ConsentBadges and PostingStrip were already in the live designed screens
+  (map rows were stale); StatusLine now shows publish readiness on the job pay range panel; EInvoiceBanner is live with
+  HIR-31.
+- HIR-20 campaigns: tables `talent_campaigns`, `talent_campaign_members`, `talent_campaign_sends` (forced RLS; a send is
+  unique per member and step and cannot be rewritten); the `crm-campaigns` sweep (every 15 minutes) inside
+  `hiring.crm.send_window` and under `hiring.crm.daily_cap`; audience = talent-pool consent plus the channel opt-in (email
+  not unsubscribed; WhatsApp only with `candidates.whatsapp_opted_in_at` and a connected provider); under 18 never.
+- HIR-20 sourced profiles: `sourced_profiles` (forced RLS), one consent email with the talent-pool notice, the public page
+  /consent/sourced/:token (token-throttled), erased on refusal or after `hiring.sourced.keep_days` (`sourced-purge`).
+- HIR-05 under 18: `candidates.dob_sealed` (company key, bound to company and candidate), `guardian_consents` (forced
+  RLS), rule set `HIR.MINOR` (verify), /consent/guardian/:token; moves past the first stage and offers are refused until
+  the guardian consents. GO-LIVE-CHECKLIST: sourced profiles, under-18 candidates, campaign messages (counsel).
+## Founder questions from the rest of Hire (10 Nov 2026)
+561. **How a candidate opts in to WhatsApp.** Campaigns use WhatsApp only where the candidate opted in, but nothing yet
+     lets them opt in (the column exists). *Suggested: a "Message me on WhatsApp about jobs" tick on the apply form and the
+     candidate portal, off by default.*
+562. **Replies are recorded by hand.** There is no inbound mailbox for candidate replies, so "stop on reply" works when a
+     recruiter presses Mark as replied. *Suggested: keep it until the company inbox (service desk mail) can match replies
+     to candidates.*
+563. **One channel per campaign.** The first drawing mixed WhatsApp and email steps in one sequence; the build keeps one
+     channel per campaign (one opt-in to check). *Suggested: keep it; make a second campaign for the other channel.*
+564. **Under 18 and campaigns.** A candidate under 18 is never enrolled, even after a guardian consents (DPDP s.9 bars
+     targeted messages to children). *Suggested: keep it; counsel confirms in the go-live line.*
+565. **Sourcing extension.** The design's browser extension is not built; recruiters add people by hand with a lawful
+     source note. *Suggested: keep it manual until counsel signs off the sourced-profile flow.*
 

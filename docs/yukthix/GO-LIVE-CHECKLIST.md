@@ -121,3 +121,14 @@ Things deliberately left for launch. Development runs locally until then (test k
       "We use an automated tool for jobs in New York City" (HIR-23, 13 Nov 2026).
 - [ ] **NYC notice days and AI notes.** Counsel confirms whether the 10 business days skip US public holidays, and
       whether AI notes on past candidates need their own notice (Hiring answers 501, 503, 10 Nov 2026).
+- [ ] **Sourced profiles (DPDP).** Counsel checks that a person found outside YukthiX (a public profile, a referral, an
+      event) may be emailed once to ask for consent, the source note recruiters must write, and the company limit after
+      which the profile is erased with no consent (hiring.sourced.keep_days, default 30); and the consent email wording
+      (HIR-20, 10 Nov 2026).
+- [ ] **Under-18 candidates.** Counsel checks HIR.MINOR (DPDP Act s.9: verifiable consent of a parent or lawful guardian,
+      no tracking or profiling of a child; Child and Adolescent Labour Act 1986: no work under 14, 14 to 18 barred from
+      hazardous work): the age of 18, held at screening and no offer until the guardian consents (marked verify), and
+      whether an emailed consent link is "verifiable" enough (HIR-05, 10 Nov 2026).
+- [ ] **Campaign messages.** Counsel checks the campaign rules: talent-pool consent plus the channel opt-in, the send
+      window (default 9 am to 9 pm IST) and the daily cap, the unsubscribe link in every email, and WhatsApp only for
+      people who opted in (HIR-20, 10 Nov 2026).

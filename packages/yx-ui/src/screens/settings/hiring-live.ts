@@ -58,6 +58,10 @@ const KEY = {
   'hire.resume_quarantine_notice': 'hiring.resume_quarantine.tell_applicant',
   // HIR-23 (founder decision 2, question 7).
   'hire.bias_audit_nyc': 'hiring.bias_audit.nyc',
+  // HIR-20 Talent CRM.
+  'hire.crm_send_window': 'hiring.crm.send_window',
+  'hire.crm_daily_cap': 'hiring.crm.daily_cap',
+  'hire.sourced_keep_days': 'hiring.sourced.keep_days',
 } as const;
 /** On/off fields: the stored value for on and for off. */
 const TOGGLE: Partial<Record<keyof typeof KEY, [on: string, off: string]>> = {
@@ -139,6 +143,9 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
       case 'hire.interview_day_assign':
       case 'hire.internal_months_in_role':
       case 'hire.notetaker_keep_days':
+      case 'hire.crm_send_window':
+      case 'hire.crm_daily_cap':
+      case 'hire.sourced_keep_days':
       case 'hire.internal_tell_manager':
       case 'hire.referral_self_apply_days': {
         const k = KEY[d.key];

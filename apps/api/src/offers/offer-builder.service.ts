@@ -1,5 +1,6 @@
 import { InternalApplicationsService } from '../internal-applications/internal-applications.service';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
+import { minorHold } from '../talent-crm/minor';
 import { Prisma } from '@prisma/client';
 import { AuditService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { buildViewer, has, type ScopeUser, type Viewer } from '../access/scope';
@@ -292,6 +293,9 @@ export class OfferBuilderService implements OnModuleInit {
       const org = c.organizationId;
       const e = await this.entry(tx, org, dto.entryId);
       if (e.candidate.erasedAt) throw new BadRequestException('This candidate’s details were erased.');
+      // HIR-05 under 18 (rule set HIR.MINOR): no offer until a parent or guardian consents.
+      const minor = await minorHold(tx, org, e.candidateId, todayIst(), 'offer');
+      if (minor) throw new ConflictException(minor);
       if (await tx.offer.findFirst({ where: { organizationId: org, pipelineEntryId: e.id, status: { in: ['draft', 'pending_approval', 'approved', 'sent', 'accepted'] } }, select: { id: true } })) throw new ConflictException('This application already has an open offer. Revise that offer instead.');
       const w = await this.work(tx, org, e.job, dto, dto.startDate);
       const letter = await this.letterOf(tx, org, dto.templateId);

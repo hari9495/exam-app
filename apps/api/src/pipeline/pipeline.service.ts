@@ -1,6 +1,7 @@
 import { hiddenFromManager } from '../internal-applications/internal-applications.service';
 import { randomUUID } from 'crypto';
 import { rehireBlock } from '../lifecycle/rehire-policy';
+import { minorHold } from '../talent-crm/minor';
 import type { Tx } from '../org-structure/org-structure.service';
 import { payDefaults, payLawFor, payProblem, type PayLaw } from '../hiring/pay-law';
 import { todayIst } from '../org-structure/org-validation';
@@ -1228,6 +1229,14 @@ export class PipelineService {
           if (first?.id !== resolved.stage.id) {
             const block = await rehireBlock(tx as unknown as Tx, context.organizationId as string, existing.candidateId);
             if (block) throw new ConflictException(block);
+          }
+        }
+        // HIR-05 under 18 (rule set HIR.MINOR): no move past the first stage (screening) until a guardian consents.
+        if (category === 'active' || category === 'offer' || category === 'hired') {
+          const first = await tx.pipelineStage.findFirst({ where: { pipelineId: resolved.stage.pipelineId, category: 'active' }, orderBy: { position: 'asc' }, select: { id: true } });
+          if (first?.id !== resolved.stage.id) {
+            const hold = await minorHold(tx as unknown as Tx, context.organizationId as string, existing.candidateId, todayIst(), 'move');
+            if (hold) throw new ConflictException(hold);
           }
         }
         data = {

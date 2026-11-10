@@ -47,6 +47,7 @@ import {
 } from './hiring-logic';
 import { ConsentBadges, CtcBreakupTable, HireFrame, PostingStrip, RecordLayout, SummaryTiles, useListControls, type Posting } from './hiring-kit';
 import { POOL_MEMBERS, type Pool } from './hiring-data';
+import { CampaignsPanel, SequenceBuilderDrawer, SourcedPanel, sourcedRowsOf, type CampaignPerson, type CampaignView, type CampaignsPanelProps, type SequenceBuilderProps, type SourcedPanelProps } from './hiring-crm';
 import './hiring.css';
 
 type ListState = 'ready' | 'loading' | 'error';
@@ -1669,6 +1670,9 @@ export interface TalentCrmProps {
   /** Drawn states (HIR-20 build): a pool's members drawer, the new-pool dialog. */
   membersOpen?: string;
   newPoolOpen?: boolean;
+  /** Drawn states (HIR-20 campaigns): the add-sourced dialog; WhatsApp with no provider set up. */
+  sourcedAddOpen?: boolean;
+  whatsappConnected?: boolean;
 }
 
 /** One pool or hotlist as GET hiring/pools returns it (HIR-20 live). */
@@ -1696,9 +1700,9 @@ export interface LivePostingJob {
   postings: (Posting & { boardId: string })[];
 }
 /**
- * The live Talent CRM (HIR-20): pools and hotlists with their members and consent, and each job's board postings.
- * Campaigns, sequences and sourced profiles are not built (gaps), so their tabs and buttons stay hidden. The page shows
- * the toasts for posting; the CRM shows its own for pools.
+ * The live Talent CRM (HIR-20): pools and hotlists with their members and consent, each job's board postings, and (with
+ * `crm`) campaigns, the sequence builder, the engagement timeline and sourced profiles. The page shows the toasts for
+ * posting; the CRM shows its own for pools, campaigns and sourced profiles.
  */
 export interface LiveTalentCrm {
   state: 'loading' | 'ready' | 'error' | 'denied';
@@ -1717,7 +1721,20 @@ export interface LiveTalentCrm {
   /** pipeline:manage: post, refresh and close postings (the same change as the job workspace). */
   canPost: boolean;
   onPosting: (job: LivePostingJob, posting: LivePostingJob['postings'][number], action: 'post' | 'refresh' | 'close') => Promise<unknown>;
-  defaultTab?: 'pools' | 'postings';
+  defaultTab?: 'pools' | 'campaigns' | 'sourced' | 'postings';
+  /**
+   * Campaigns, the sequence builder, the engagement timeline and sourced profiles (candidate:manage). Absent without
+   * the key: those tabs stay hidden.
+   */
+  crm?: LiveCrm;
+}
+
+/** HIR-20 live campaigns and sourced profiles (the same parts as the drawn screen). */
+export interface LiveCrm {
+  campaigns: Omit<CampaignsPanelProps, 'onNew' | 'today' | 'canManage'>;
+  builder: Omit<SequenceBuilderProps, 'open' | 'onClose' | 'initial'>;
+  sourced: Omit<SourcedPanelProps, 'canManage' | 'addOpen'>;
+  today: Date;
 }
 
 /** One member row, for the drawn screen and the live one alike. */
@@ -1830,6 +1847,8 @@ function LiveTalentCrmView({ live }: { live: LiveTalentCrm }) {
   const toast = useToastIfAny();
   const [creating, setCreating] = useState(false);
   const [archiving, setArchiving] = useState<LivePool | null>(null);
+  const [builder, setBuilder] = useState<{ poolId: string | null } | null>(null);
+  const crm = live.crm;
   if (live.state === 'denied')
     return (
       <HireFrame active="Candidates & talent CRM">
@@ -1863,9 +1882,16 @@ function LiveTalentCrmView({ live }: { live: LiveTalentCrm }) {
         description="Pools and hotlists of past candidates, and where each job is posted. A talent pool holds only people who agreed to be kept for other roles; withdrawing consent takes them out at once."
         actions={
           live.canManage ? (
-            <Button variant="primary" icon={Plus} onClick={() => setCreating(true)}>
-              New pool
-            </Button>
+            <>
+              <Button icon={Plus} onClick={() => setCreating(true)}>
+                New pool
+              </Button>
+              {crm && (
+                <Button variant="primary" icon={Send} onClick={() => setBuilder({ poolId: null })}>
+                  New sequence
+                </Button>
+              )}
+            </>
           ) : undefined
         }
       />
@@ -1874,6 +1900,12 @@ function LiveTalentCrmView({ live }: { live: LiveTalentCrm }) {
           <TabsTrigger value="pools" count={live.pools.length}>
             Pools & hotlists
           </TabsTrigger>
+          {crm && <TabsTrigger value="campaigns">Campaigns & sequences</TabsTrigger>}
+          {crm && (
+            <TabsTrigger value="sourced" count={crm.sourced.rows.filter((r) => r.status === 'pending').length}>
+              Sourced profiles
+            </TabsTrigger>
+          )}
           <TabsTrigger value="postings">Job-board postings</TabsTrigger>
         </TabsList>
         <TabsContent value="pools">
@@ -1890,15 +1922,28 @@ function LiveTalentCrmView({ live }: { live: LiveTalentCrm }) {
             rowActions={
               live.canManage
                 ? (r) => (
-                    <MenuItem destructive onSelect={() => setArchiving(live.pools.find((p) => p.id === r.id) ?? null)}>
-                      Delete pool
-                    </MenuItem>
+                    <>
+                      {crm && r.kind !== 'Hotlist' && <MenuItem onSelect={() => setBuilder({ poolId: r.id })}>Start a sequence</MenuItem>}
+                      <MenuItem destructive onSelect={() => setArchiving(live.pools.find((p) => p.id === r.id) ?? null)}>
+                        Delete pool
+                      </MenuItem>
+                    </>
                   )
                 : undefined
             }
             empty={<EmptyState title="No pools yet." description="Create a pool, then add people to it from the candidate list." action={live.canManage ? <Button variant="primary" icon={Plus} onClick={() => setCreating(true)}>New pool</Button> : undefined} />}
           />
         </TabsContent>
+        {crm && (
+          <TabsContent value="campaigns">
+            <CampaignsPanel {...crm.campaigns} today={crm.today} canManage={live.canManage} onNew={() => setBuilder({ poolId: null })} />
+          </TabsContent>
+        )}
+        {crm && (
+          <TabsContent value="sourced">
+            <SourcedPanel {...crm.sourced} canManage={live.canManage} />
+          </TabsContent>
+        )}
         <TabsContent value="postings">
           <div className="yx-hire-stack">
             {live.postings.state === 'loading' ? (
@@ -1936,6 +1981,7 @@ function LiveTalentCrmView({ live }: { live: LiveTalentCrm }) {
         />
       )}
       {creating && <NewPoolDialog onClose={() => setCreating(false)} onCreate={live.onCreate} />}
+      {crm && builder && <SequenceBuilderDrawer {...crm.builder} open onClose={() => setBuilder(null)} initial={builder.poolId ? { poolId: builder.poolId } : undefined} />}
       {archiving && (
         <ConfirmDialog
           open
@@ -1961,13 +2007,13 @@ export function TalentCrmScreen(props: TalentCrmProps | { live: LiveTalentCrm })
   return <DrawnTalentCrm {...props} />;
 }
 
-function DrawnTalentCrm({ pools, members, captures, postings, steps, today, defaultTab = 'pools', builderOpen = false, engagement = [], membersOpen, newPoolOpen = false }: TalentCrmProps) {
+function DrawnTalentCrm({ pools, members, captures, postings, steps, today, defaultTab = 'pools', builderOpen = false, engagement = [], membersOpen, newPoolOpen = false, sourcedAddOpen = false, whatsappConnected = true }: TalentCrmProps) {
   const [builder, setBuilder] = useState(builderOpen);
   const [openPool, setOpenPool] = useState<string | null>(membersOpen ?? null);
   const [creating, setCreating] = useState(newPoolOpen);
+  const [campaignId, setCampaignId] = useState('cp1');
+  const [personId, setPersonId] = useState<string | null>('m1');
   const shownPool = pools.find((p) => p.id === openPool);
-  const [channel, setChannel] = useState<Channel>('whatsapp');
-  const audience = campaignAudience(members, channel);
   const poolCols: TableColumn<Pool>[] = [
     { key: 'name', header: 'Pool', value: (r) => r.name, render: (r) => <PersonLabel name={r.name} secondary={r.purpose} /> },
     { key: 'kind', header: 'Type', type: 'status', value: (r) => r.kind, statusTone: (v) => (v === 'Hotlist' ? 'info' : 'neutral') },
@@ -1977,6 +2023,21 @@ function DrawnTalentCrm({ pools, members, captures, postings, steps, today, defa
     { key: 'owner', header: 'Owner', type: 'person', value: (r) => r.owner, person: (r) => ({ name: r.owner }) },
     { key: 'updated', header: 'Updated', type: 'date', value: (r) => r.updated },
   ];
+  // The drawn campaigns: one running (as first drawn) and a draft, so the campaign picker shows.
+  const campaigns: CampaignView[] = [
+    { id: 'cp1', name: 'Java 2027 nurture', channel: 'whatsapp', audience: 'Java 2027 campus', status: 'running', steps, stopOnReply: true, counts: { enrolled: 160, replied: 22, applied: 9, optedOut: 4 } },
+    { id: 'cp2', name: 'QA silver medallists · new roles', channel: 'email', audience: 'QA silver medallists', status: 'draft', steps: steps.filter((s) => s.kind === 'wait' || s.channel === 'email').map((s) => (s.kind === 'message' ? { ...s, channel: 'email' as const } : s)), stopOnReply: true, counts: { enrolled: 0, replied: 0, applied: 0, optedOut: 0 } },
+  ];
+  const people: CampaignPerson[] = campaignId === 'cp1' ? campaignAudience(members, 'whatsapp').enrolled.map((m, i) => ({ id: m.id, name: m.name, status: i === 0 ? 'stopped' : 'active', reason: i === 0 ? 'applied' : null })) : [];
+  const templates = {
+    email: steps.filter((s) => s.kind === 'message' && s.channel === 'email').map((s) => ({ value: s.id, label: s.template ?? '' })),
+    whatsapp: steps.filter((s) => s.kind === 'message' && s.channel === 'whatsapp').map((s) => ({ value: s.id, label: s.template ?? '' })),
+  };
+  const audience = async (_pool: string, channel: Channel) => {
+    const a = campaignAudience(members, channel);
+    return { total: members.length, enrolled: a.enrolled.length, skipped: { noConsent: a.skipped.noConsent + a.skipped.pendingConsent, optedOut: a.skipped.optedOut, minor: a.skipped.minor } };
+  };
+  const person = members.find((m) => m.id === personId);
   return (
     <HireFrame active="Candidates & talent CRM">
       <PageHeader
@@ -2012,63 +2073,34 @@ function DrawnTalentCrm({ pools, members, captures, postings, steps, today, defa
             activeRowId={openPool}
             rowActions={() => (
               <>
-                <MenuItem>Start a sequence</MenuItem>
-                <MenuItem>Edit saved search</MenuItem>
+                <MenuItem onSelect={() => setBuilder(true)}>Start a sequence</MenuItem>
                 <MenuItem destructive>Delete pool</MenuItem>
               </>
             )}
-            empty={<EmptyState title="No pools yet." description="Create a pool from a saved search, past applicants or sourced profiles." action={<Button variant="primary" icon={Plus}>New pool</Button>} />}
+            empty={<EmptyState title="No pools yet." description="Create a pool, then add people to it from the candidate list." action={<Button variant="primary" icon={Plus}>New pool</Button>} />}
           />
         </TabsContent>
         <TabsContent value="campaigns">
-          <div className="yx-hire-cols">
-            <Card title="Java 2027 nurture · sequence" actions={<Badge tone="success">Running</Badge>}>
-              <SequenceSteps steps={steps} />
-              <SummaryTiles
-                label="Sequence results"
-                tiles={[
-                  { label: 'Enrolled', value: 160 },
-                  { label: 'Replied', value: 22 },
-                  { label: 'Applied', value: 9 },
-                  { label: 'Opted out', value: 4 },
-                ]}
-              />
-            </Card>
-            <Card title="Engagement · Arjun Kulkarni" actions={<ConsentBadges email="opted-in" whatsapp="opted-in" />}>
-              {engagement.length ? <Timeline items={engagement} today={today} /> : <EmptyState compact title="No messages yet." />}
-            </Card>
-          </div>
+          <CampaignsPanel
+            state="ready"
+            onRetry={() => {}}
+            campaigns={pools.length ? campaigns : []}
+            selectedId={campaignId}
+            onSelect={setCampaignId}
+            people={{ state: 'ready', rows: people }}
+            personId={personId}
+            onPerson={setPersonId}
+            engagement={{ state: 'ready', view: person ? { name: person.name, email: person.consent.email ?? 'none', whatsapp: person.consent.whatsapp ?? 'none', items: personId === 'm1' ? engagement : [] } : null }}
+            today={today}
+            canManage
+            onStart={async () => {}}
+            onStop={async () => {}}
+            onReplied={async () => {}}
+            onNew={() => setBuilder(true)}
+          />
         </TabsContent>
         <TabsContent value="sourced">
-          <div className="yx-hire-stack">
-            <InlineAlert tone="info">
-              Captured one at a time with the browser extension from your own session. Until the person consents, only a first message with the privacy notice is allowed: no AI scoring, ranking, campaigns or submission. With no consent in 30 days the capture is deleted.
-            </InlineAlert>
-            {captures.length === 0 ? (
-              <EmptyState title="No sourced profiles." description="Install the sourcing extension to capture profiles you are viewing." />
-            ) : (
-              <ul className="yx-hire-list">
-                {captures.map((c) => {
-                  const left = sourcedPurgeIn(c.capturedAt, today);
-                  return (
-                    <li key={c.id} className="yx-hire-list__item">
-                      <div className="yx-hire-list__main">
-                        <PersonLabel name={c.name} secondary={`${c.headline} · ${c.site}`} />
-                        <Text size="sm" tone="secondary">
-                          Captured by {c.capturedBy} on {formatDate(c.capturedAt)}
-                          {c.existing ? ' · already in YukthiX, merged' : ''}
-                        </Text>
-                      </div>
-                      <Badge tone={c.consent === 'Given' ? 'success' : left <= 5 ? 'warning' : 'neutral'}>{c.consent === 'Given' ? 'Consent given' : `Pending consent · deleted in ${left} days`}</Badge>
-                      <div className="yx-hire-list__actions">
-                        {c.consent === 'Pending' ? <Button size="sm">Send first message</Button> : <Button size="sm">Add to pipeline</Button>}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
+          <SourcedPanel state="ready" onRetry={() => {}} rows={sourcedRowsOf(captures, today)} keepDays={30} canManage onAdd={async () => {}} onResend={async () => {}} onErase={async () => {}} onOpenCandidate={() => {}} addOpen={sourcedAddOpen} />
         </TabsContent>
         <TabsContent value="postings">
           <div className="yx-hire-stack">
@@ -2082,78 +2114,20 @@ function DrawnTalentCrm({ pools, members, captures, postings, steps, today, defa
       </Tabs>
       {shownPool && <PoolMembersDrawer pool={{ name: shownPool.name, purpose: shownPool.purpose }} kind={shownPool.kind === 'Hotlist' ? 'hotlist' : 'pool'} rows={DRAWN_MEMBERS(today)} state="ready" canManage onClose={() => setOpenPool(null)} onOpen={() => {}} onRemove={async () => {}} />}
       {creating && <NewPoolDialog onClose={() => setCreating(false)} onCreate={async () => {}} />}
-      <Drawer
-        open={builder}
-        onOpenChange={setBuilder}
-        size="lg"
-        title="New nurture sequence"
-        subtitle="Audience: Java 2027 campus (dynamic pool)"
-        footer={
-          <>
-            <Button onClick={() => setBuilder(false)}>Cancel</Button>
-            <Button>Save draft</Button>
-            <Button variant="primary" disabled={audience.enrolled.length === 0}>
-              Start for {audience.enrolled.length} people
-            </Button>
-          </>
-        }
-      >
-        <div className="yx-hire-sheet">
-          <div className="yx-hire-sheet__form">
-            <FormField label="Name" required>
-              <TextField defaultValue="Java 2027 nurture" />
-            </FormField>
-            <FormField label="Channel" required>
-              <RadioGroup aria-label="Channel" orientation="horizontal" value={channel} onChange={(v) => setChannel(v as Channel)} options={[{ value: 'email', label: 'Email' }, { value: 'whatsapp', label: 'WhatsApp (approved templates)' }]} />
-            </FormField>
-            <SequenceSteps steps={steps} editable />
-            <FormField label="Stop when the candidate" helper="Always stops on opt-out, hire and retention end">
-              <div className="yx-hire-stack">
-                <Checkbox label="Replies" defaultChecked />
-                <Checkbox label="Applies to a job" defaultChecked />
-              </div>
-            </FormField>
-          </div>
-          <aside className="yx-hire-sheet__effect" aria-live="polite" aria-label="Audience">
-            <Text weight="semibold">Who gets it</Text>
-            <Text>
-              {audience.enrolled.length} of {members.length} enrolled
-            </Text>
-            <ul className="yx-hire-plainlist">
-              <li>{audience.skipped.noConsent} without {channel === 'email' ? 'email' : 'WhatsApp'} opt-in</li>
-              <li>{audience.skipped.optedOut} opted out</li>
-              <li>{audience.skipped.pendingConsent} sourced, pending consent</li>
-              <li>{audience.skipped.minor} under 18, never enrolled</li>
-            </ul>
-            <Text size="sm" tone="secondary">
-              Quiet hours 9 pm – 9 am. WhatsApp message charges are billed as an add-on.
-            </Text>
-          </aside>
-        </div>
-      </Drawer>
-    </HireFrame>
-  );
-}
-
-function SequenceSteps({ steps, editable }: { steps: SequenceStep[]; editable?: boolean }) {
-  return (
-    <ol className="yx-hire-seq" aria-label="Sequence steps">
-      {steps.map((s, i) => (
-        <li key={s.id} className="yx-hire-seq__step" data-kind={s.kind}>
-          <Text size="sm" weight="semibold">
-            Step {i + 1}
-          </Text>
-          <Text size="sm">{s.kind === 'wait' ? `Wait ${s.days} days` : `${s.channel === 'email' ? 'Email' : 'WhatsApp'}: ${s.template}`}</Text>
-        </li>
-      ))}
-      {editable && (
-        <li>
-          <Button size="sm" icon={Plus}>
-            Add step
-          </Button>
-        </li>
+      {builder && (
+        <SequenceBuilderDrawer
+          open
+          onClose={() => setBuilder(false)}
+          pools={pools.filter((p) => p.kind !== 'Hotlist').map((p) => ({ value: p.id, label: p.name }))}
+          templates={templates}
+          whatsappConnected={whatsappConnected}
+          sendRule="from 9 am to 9 pm IST, at most 200 messages a day"
+          audience={audience}
+          onSave={async () => ({ enrolled: 0 })}
+          initial={{ name: 'Java 2027 nurture', channel: 'whatsapp', poolId: 'po1', steps: steps.map((s) => (s.kind === 'wait' ? { id: s.id, kind: 'wait' as const, days: s.days ?? 7 } : { id: s.id, kind: 'message' as const, templateId: s.channel === 'whatsapp' ? s.id : (templates.whatsapp[0]?.value ?? null) })) }}
+        />
       )}
-    </ol>
+    </HireFrame>
   );
 }
 

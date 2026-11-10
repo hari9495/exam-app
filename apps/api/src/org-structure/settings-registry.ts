@@ -161,6 +161,13 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // scorecard is a separate switch (also off) and needs the company's AI; transcripts and drafts are kept for N days.
   'hiring.notetaker.enabled': { label: 'Hiring: interview notetaker (transcript with everyone’s consent)', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   'hiring.notetaker.ai_draft': { label: 'Hiring: AI drafts a scorecard from the transcript', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
+  // HIR-20 campaigns: steps go out only inside the send window (IST hours, the design's quiet hours 9 pm to 9 am) and at
+  // most the daily cap of campaign messages a day for the whole company.
+  'hiring.crm.send_window': { label: 'Hiring: campaign messages go out between (IST)', scopes: ['tenant'], dated: false, values: ['09-21', '10-18', '08-20', '00-24'], default: '09-21', labels: { '09-21': '9 am to 9 pm', '10-18': '10 am to 6 pm', '08-20': '8 am to 8 pm', '00-24': 'Any time' } },
+  'hiring.crm.daily_cap': { label: 'Hiring: most campaign messages a day', scopes: ['tenant'], dated: false, values: ['50', '100', '200', '500', '1000'], default: '200' },
+  // HIR-20 sourced profiles (DPDP): a person added from outside YukthiX is erased this many days after the consent email
+  // unless they consent first.
+  'hiring.sourced.keep_days': { label: 'Hiring: erase a sourced profile without consent after (days)', scopes: ['tenant'], dated: false, values: ['7', '15', '30'], default: '30' },
   'hiring.notetaker.keep_days': { label: 'Hiring: keep interview transcripts and drafts for (days)', scopes: ['tenant'], dated: false, values: ['30', '90', '180', '365'], default: '90' },
   // HIR-13 internal jobs (founder decision 6): who may apply, and when; the current manager is told, never asked.
   'hiring.internal.after_probation': { label: 'Hiring: only people past probation can apply for internal jobs', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },

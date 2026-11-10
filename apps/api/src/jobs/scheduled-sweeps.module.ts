@@ -15,6 +15,7 @@ import { EmployeeHistoryModule } from '../employee-history/employee-history.modu
 import { PeopleModule } from '../people/people.module';
 import { AuthModule } from '../auth/auth.module';
 import { TalentModule } from '../talent/talent.module';
+import { TalentCrmModule } from '../talent-crm/talent-crm.module';
 import { InterviewingModule } from '../interviewing/interviewing.module';
 import { HiringModule } from '../hiring/hiring.module';
 
@@ -37,6 +38,7 @@ import { HiringModule } from '../hiring/hiring.module';
     PeopleModule,
     AuthModule,
     TalentModule,
+    TalentCrmModule,
     InterviewingModule,
     HiringModule,
   ],

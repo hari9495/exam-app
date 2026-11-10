@@ -190,6 +190,8 @@ export interface CandidateProfileView {
   legalHold: { at: string; reason: string | null } | null;
   retention: { months: number; lastActivityAt: string; until: string | null; noticeAt: string | null } | null;
   exEmployee?: ExEmployeeView | null;
+  /** HIR-05 under 18 (rule set HIR.MINOR): the date of birth only for candidate key holders; null when not a minor. */
+  minor?: { dob: string | null; guardian: 'none' | 'pending' | 'given' | 'declined'; minAge: number } | null;
   resume: { hasFile: boolean; scan: string; parseStatus: string; title: string | null; summary: string | null; skills: string | null; years: number | null } | null;
   applications: { id: string; jobId: string; jobTitle: string; jobStatus: string; stage: string | null; status: string | null; appliedAt: string; closed: boolean; closedReason: string | null; source: string | null }[];
   assessments: { id: string; exam: string; status: string; invitedAt: string }[];

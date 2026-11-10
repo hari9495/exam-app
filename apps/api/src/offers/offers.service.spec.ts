@@ -1,6 +1,9 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { OffersService } from './offers.service';
 
+// HIR-05 under-18 holds are covered by test/hiring-rest.e2e-spec.ts; these mocks have no candidate table.
+jest.mock('../talent-crm/minor', () => ({ minorHold: jest.fn(async () => null) }));
+
 // Careers answers 356/362: the public brand read has its own tests (e2e); stub it here.
 jest.mock('../public-applications/public-brand', () => ({ publicBrand: jest.fn(async () => ({ orgName: 'Acme', orgLogo: null, careersSlug: null, accent: null, whiteLabel: false })) }));
 
