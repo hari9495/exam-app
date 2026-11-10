@@ -13,7 +13,6 @@ import { useTeammates } from '../../../../../../lib/hooks/useUserDirectory';
 import { stageSummary } from '../../../../../../lib/job-stage-summary';
 import { careersUrl, jobRow, type ApiJob } from '../../../../../../lib/yx-jobs';
 import { useExams } from '../../../../../../lib/hooks/useExams';
-import { useJobBoards } from '../../../../../../lib/hooks/useJobBoards';
 import type { Board } from '../../../../../../lib/yx-application';
 
 type PayLawView = { rangeRequired: boolean; historyBanned: boolean; name: string | null; place: string | null; showByDefault: boolean };
@@ -47,8 +46,8 @@ export default function YxHiringJobPage() {
   const settings = useHiring<{ scorecardTemplateId: string | null; exams: { examId: string; title: string; sendOnStageId: string | null }[] }>(`/jobs/${enc(id)}/interview-settings`);
   const board = useHiring<Board>(`/jobs/${enc(id)}/board`);
   const exams = useExams(undefined, { pageSize: 100 });
-  // The board list needs the settings key (question 515: recruiters cannot pick boards without it); no 403 for them.
-  const jobBoards = useJobBoards(perms.has('org:manage_settings'));
+  // Founder answer 515: recruiting picks boards from their names (GET organizations/job-boards/names: id, name, kind only).
+  const jobBoards = useApi<{ id: string; name: string }[]>(canManage || perms.has('org:manage_settings') ? '/organizations/job-boards/names' : null);
   const canConfigure = perms.has('pipelines:configure');
   const scorecards = useHiring<{ id: string; name: string }[]>(canManage ? '/scorecard-templates' : null);
   const masters = perms.has('org.structure.view') || perms.has('org.settings.manage');

@@ -47,6 +47,8 @@ export interface NavInput {
   caseTeam?: boolean;
   /** HLP-09: on the ethics or escalation list. */
   ethicsDesk?: boolean;
+  /** Founder answer 511: on an interview panel (the server decides): Interviews shows without any hiring key. */
+  panellist?: boolean;
   /** The company turned the staffing desk on (Settings › Staffing desk; the server decides). */
   staffing?: boolean;
 }
@@ -277,7 +279,8 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(any('pipeline:manage', 'results:view'), L('hiring-jobs', 'Jobs & requisitions', '/yx/hiring/jobs')),
           // HIR-02: recruiting and HR see every requisition; a hiring manager their own, read-only (decision 11).
           ...when(any('pipeline:manage', 'ats.headcount.manage', 'ats.requisition.raise'), L('hiring-requisitions', 'Requisitions', '/yx/hiring/requisitions')),
-          ...when(any('interview:view_assigned', 'pipeline:manage'), L('hiring-interviews', 'Interviews', '/yx/hiring/interviews', 'scorecardsToDo')),
+          // Founder answer 511: interviews are for people on a panel (or with the keys), never every employee.
+          ...when(Boolean(n.panellist) || any('interview:view_assigned', 'pipeline:manage'), L('hiring-interviews', 'Interviews', '/yx/hiring/interviews', 'scorecardsToDo')),
           ...when(any('candidate:manage', 'candidate:view'), L('hiring-candidates', 'Candidates & talent CRM', '/yx/hiring/candidates'), L('hiring-pools', 'Talent CRM', '/yx/hiring/pools')),
           // HIR-12 (design: under Hiring): an employee, or anyone already in Hiring, refers a friend to an open job and
           // follows the bonus (the API lets anyone signed in refer; someone with no record and no keys keeps a bare menu).

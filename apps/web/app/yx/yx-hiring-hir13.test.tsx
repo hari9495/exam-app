@@ -108,4 +108,13 @@ describe('HIR-13 Internal jobs page', () => {
     const asked = api.mock.calls.map(([path]) => String(path));
     expect(asked.filter((x) => ['/candidate-email-templates', '/org-sender-addresses', '/hiring/pools'].includes(x))).toEqual([]);
   });
+
+  it('answer 511: a plain employee sees Referrals and Internal jobs; Interviews only once on a panel', () => {
+    const base = { role: 'panel', support: false, employee: true, manager: false, history: false, clearance: false, tasks: false, firstDays: false, has: () => false };
+    const links = (n: Parameters<typeof buildNav>[0]) => (buildNav(n).find((a) => a.id === 'hire')?.sections ?? []).flatMap((s) => s.items.map((i) => i.href));
+    expect(links(base)).toEqual(['/yx/hiring/referrals', '/yx/hiring/internal-jobs']);
+    expect(links({ ...base, panellist: true })).toEqual(['/yx/hiring/interviews', '/yx/hiring/referrals', '/yx/hiring/internal-jobs']);
+    expect(links({ ...base, panellist: true, support: true })).toEqual([]);
+  });
 });
+

@@ -1,3 +1,4 @@
+import { StorageModule } from '@exam-platform/shared';
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { PipelineModule } from '../pipeline/pipeline.module';
@@ -17,7 +18,7 @@ import { AiModule } from '../ai/ai.module';
 
 // M10 recruitment batch AT5 (M10-BUILD-DESIGN §8, §9): the pipeline board, interviews and scorecards.
 @Module({
-  imports: [AuthModule, PipelineModule, InvitationsModule, CandidateEmailsModule, EmailModule, ApprovalsModule, InterviewsModule, AiModule],
+  imports: [StorageModule, AuthModule, PipelineModule, InvitationsModule, CandidateEmailsModule, EmailModule, ApprovalsModule, InterviewsModule, AiModule],
   controllers: [InterviewingController],
   providers: [HiringBoardService, ScorecardTemplatesService, ScorecardsService, HiringHomeService, InterviewDaysService, NotetakerService],
   exports: [HiringBoardService, ScorecardsService, HiringHomeService],

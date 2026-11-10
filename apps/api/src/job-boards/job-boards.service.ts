@@ -60,6 +60,12 @@ export class JobBoardsService {
     });
   }
 
+  /** Answer 515: the boards a recruiter can pick for a job. Only these three fields are selected, so no secret can leak. */
+  async names(context: TenantContext): Promise<{ id: string; name: string; provider: string }[]> {
+    const orgId = context.organizationId as string;
+    return this.tenantPrisma.forTenant(context, (tx) => tx.jobBoard.findMany({ where: { organizationId: orgId }, orderBy: { name: 'asc' }, select: { id: true, name: true, provider: true } }));
+  }
+
   /** Metadata for the paid providers, for the settings UI to render config forms. */
   listProviders(): { id: string; label: string; configFields: JobBoardConfigField[] }[] {
     return listJobBoardProviders().map((p) => ({ id: p.id, label: p.label, configFields: p.configFields }));

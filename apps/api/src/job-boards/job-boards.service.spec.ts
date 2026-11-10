@@ -34,6 +34,15 @@ describe('JobBoardsService', () => {
     return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', { code, clientVersion: 'test' });
   }
 
+  describe('names (answer 515)', () => {
+    it('selects only id, name and provider: the feed token and the credentials are never read', async () => {
+      const findMany = jest.fn().mockResolvedValue([{ id: 'b1', name: 'Naukri', provider: 'http' }]);
+      tenantPrisma.forTenant.mockImplementation((_c: unknown, fn: (tx: unknown) => unknown) => fn({ jobBoard: { findMany } }));
+      expect(await service.names(context)).toEqual([{ id: 'b1', name: 'Naukri', provider: 'http' }]);
+      expect(findMany).toHaveBeenCalledWith({ where: { organizationId: 'org-1' }, orderBy: { name: 'asc' }, select: { id: true, name: true, provider: true } });
+    });
+  });
+
   describe('list', () => {
     it('returns each board with its feedUrl and publishedJobCount', async () => {
       const tx = {
