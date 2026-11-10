@@ -180,7 +180,7 @@ export interface WorkersLive {
   onRetry: () => void;
   onCheck: (input: WorkerInput) => Promise<CheckRow[]>;
   onSend: (input: WorkerInput) => Promise<unknown>;
-  onApprove: (id: string, version: number, induction: { on: string | null; by: string | null }) => Promise<unknown>;
+  onApprove: (id: string, version: number, induction: { on: string | null; by: string | null; photoChecked?: boolean }) => Promise<unknown>;
   onRelease: (id: string, version: number, on: string, reason: string) => Promise<unknown>;
   onMinWage?: (locationId: string, skill: string) => Promise<{ monthly: string; daily: string; source: string; verify: boolean } | null>;
   onRenewPass?: (id: string, version: number, induction: { on: string | null; by: string | null }) => Promise<unknown>;

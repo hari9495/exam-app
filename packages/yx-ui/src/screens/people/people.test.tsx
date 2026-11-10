@@ -263,8 +263,9 @@ describe('ready to onboard', () => {
     render(<ReadyToOnboardQueue rows={READY_TO_ONBOARD} />);
     expect(screen.queryByText('Kavya Reddy')).toBeNull();
     const names = screen.getAllByRole('row').slice(1).map((r) => r.textContent ?? '');
-    expect(names[0]).toMatch(/Selvi Perumal/);
-    expect(screen.getAllByText('in 7 days').length).toBeGreaterThan(0);
+    // Answer 775: no contract-worker row here (conversions start from the worker, CLB-05).
+    expect(names[0]).toMatch(/Suresh Nair/);
+    expect(screen.queryByText(/Selvi Perumal/)).toBeNull();
     await u.click(screen.getAllByRole('button', { name: 'Create employee' })[0]);
     expect(screen.getByText('Reuses KF-0077')).toBeTruthy();
     expect(screen.getByText('Everything follows company policy.')).toBeTruthy();

@@ -80,7 +80,15 @@ export default function YxContractorPortalPage() {
         data,
         onCheck: async (input) => (await call<{ checks: Awaited<ReturnType<LiveContractorPortal['onCheck']>> }>('/workers/check', token, { method: 'POST', body: JSON.stringify(input) })).checks,
         onAdd: async (input) => {
-          await call('/workers', token, { method: 'POST', body: JSON.stringify(input) });
+          const made = await call<{ id: string }>('/workers', token, { method: 'POST', body: JSON.stringify(input) });
+          await load(token);
+          return made;
+        },
+        // Answer 754: the worker's photo, after the worker is sent.
+        onPhoto: async (id, file) => {
+          const body = new FormData();
+          body.append('file', file);
+          await call(`/workers/${encodeURIComponent(id)}/photo`, token, { method: 'POST', body });
           await load(token);
         },
         packs,

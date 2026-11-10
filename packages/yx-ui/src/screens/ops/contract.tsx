@@ -670,7 +670,8 @@ export interface WorkersViewProps {
   onRetry?: () => void;
   onCheck?: (input: WorkerInput) => Promise<CheckRow[]>;
   onSend?: (input: WorkerInput) => Promise<unknown>;
-  onApprove?: (id: string, version: number, induction: { on: string | null; by: string | null }) => Promise<unknown>;
+  /** photoChecked (answer 754): staff checked the worker's photo against the person. */
+  onApprove?: (id: string, version: number, induction: { on: string | null; by: string | null; photoChecked?: boolean }) => Promise<unknown>;
   onRelease?: (id: string, version: number, on: string, reason: string) => Promise<unknown>;
   /** Answer 685: the minimum wage for a site and skill. */
   onMinWage?: (locationId: string, skill: string) => Promise<MinWageHint | null>;
@@ -780,7 +781,7 @@ export function WorkersView(p: WorkersViewProps) {
         }
       />
       {sheet?.kind === 'deploy' && <DeployWorkerSheet {...p} onClose={() => setSheet(null)} />}
-      {sheet?.kind === 'approve' && target && <ApproveWorkerDialog worker={target} today={today} required={p.inductionRequired} months={p.inductionMonths} onClose={() => setSheet(null)} onApprove={(induction) => (p.onApprove ? p.onApprove(target.id, target.version ?? 1, induction) : Promise.resolve(say('Approved')))} />}
+      {sheet?.kind === 'approve' && target && <ApproveWorkerDialog photoUrl={p.photoUrl} worker={target} today={today} required={p.inductionRequired} months={p.inductionMonths} onClose={() => setSheet(null)} onApprove={(induction) => (p.onApprove ? p.onApprove(target.id, target.version ?? 1, induction) : Promise.resolve(say('Approved')))} />}
       {sheet?.kind === 'card' && target && (
         <GatePassCard
           worker={target}
@@ -909,14 +910,27 @@ function DeployWorkerSheet(p: WorkersViewProps & { onClose: () => void }) {
 }
 
 /** Site approval (632, 633): the safety induction is recorded and the gate pass is issued. */
-function ApproveWorkerDialog({ worker, today, required, months, renew = false, onClose, onApprove }: { worker: ContractWorker; today: Date; required: boolean; months: number; renew?: boolean; onClose: () => void; onApprove: (induction: { on: string | null; by: string | null }) => Promise<unknown> }) {
+function ApproveWorkerDialog({ worker, today, required, months, renew = false, photoUrl, onClose, onApprove }: { worker: ContractWorker; today: Date; required: boolean; months: number; renew?: boolean; photoUrl?: (id: string) => Promise<string | null>; onClose: () => void; onApprove: (induction: { on: string | null; by: string | null; photoChecked?: boolean }) => Promise<unknown> }) {
   const { say } = useSay();
   const [on, setOn] = useState<Date | null>(worker.induction ? worker.induction.on : null);
   const [by, setBy] = useState(worker.induction?.by ?? '');
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
+  // Answer 754: the photo the contractor sent (or the site added) is checked against the person before the gate pass.
+  const checkPhoto = !renew && Boolean(worker.photo);
+  const [matches, setMatches] = useState(false);
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!checkPhoto || !photoUrl) return;
+    let live = true;
+    photoUrl(worker.id).then((u) => live && setUrl(u), () => undefined);
+    return () => {
+      live = false;
+    };
+  }, [checkPhoto, photoUrl, worker.id]);
   const bad = {
+    photo: checkPhoto && !matches ? 'Tick that the person at the site is the one in the photo.' : null,
     on: required && !renew && !on ? 'Enter the day of the safety induction.' : on && on > today ? 'The induction cannot be in the future.' : null,
     by: (required && !renew && !by.trim()) || (renew && on && !by.trim()) ? 'Enter who gave the induction.' : null,
   };
@@ -924,9 +938,10 @@ function ApproveWorkerDialog({ worker, today, required, months, renew = false, o
     setTried(true);
     if (bad.on) return focusOn('ap-on');
     if (bad.by) return focusOn('ap-by');
+    if (bad.photo) return focusOn('ap-photo');
     setBusy(true);
     setFailed(null);
-    onApprove({ on: on ? isoDay(on) : null, by: by.trim() || null })
+    onApprove({ on: on ? isoDay(on) : null, by: by.trim() || null, ...(checkPhoto ? { photoChecked: true } : {}) })
       .then(() => (say(renew ? `${worker.name}'s gate pass renewed` : `${worker.name} approved; gate pass issued`), onClose()))
       .catch((e: unknown) => setFailed(errText(e)))
       .finally(() => setBusy(false));
@@ -942,6 +957,15 @@ function ApproveWorkerDialog({ worker, today, required, months, renew = false, o
             <TextField value={by} onChange={setBy} maxLength={120} />
           </FormField>
         </FieldRow>
+        {checkPhoto && (
+          <div className="yx-ops-row">
+            {url ? <img className="yx-ops-gatepass__photo" src={url} alt={`Photo of ${worker.name}`} /> : <PhotoPlaceholder name={worker.name} size="lg" />}
+            <div className="yx-ops-stack" data-gap="sm">
+              <Checkbox id="ap-photo" checked={matches} onChange={setMatches} label="The person at the site is the one in this photo" description="Sent with the worker. If it is not them, don't approve: release the worker instead." />
+              {tried && bad.photo && <p className="yx-field__error">{bad.photo}</p>}
+            </div>
+          </div>
+        )}
       </div>
     </Dialog>
   );

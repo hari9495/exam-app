@@ -268,7 +268,7 @@ const CHECK_WORD: Record<PortalCheck['status'], string> = { pass: 'Passed', fail
  * digits are kept; the company's checks (age, licence, licence maximum, the same ID) run before anything is saved, with
  * no override; the worker then waits for site approval and the gate pass.
  */
-export function ClWorkerList({ workers, sites, today, adding: addingAtStart = false, design, onCheck, onAdd, onMinWage, withdrawingId = null, onWithdraw }: {
+export function ClWorkerList({ workers, sites, today, adding: addingAtStart = false, design, onCheck, onAdd, onPhoto, onMinWage, withdrawingId = null, onWithdraw }: {
   workers: PortalWorker[];
   sites: { id: string; name: string }[];
   today: Date;
@@ -276,7 +276,10 @@ export function ClWorkerList({ workers, sites, today, adding: addingAtStart = fa
   /** The design's sample form and checks. */
   design?: { dob: Date; siteId: string; checks: PortalCheck[] };
   onCheck?: (input: PortalWorkerInput) => Promise<PortalCheck[]>;
+  /** Resolves with the new worker's id (for the photo). */
   onAdd?: (input: PortalWorkerInput) => Promise<unknown>;
+  /** Answer 754: the worker's photo, sent with the worker for the site to check at approval. */
+  onPhoto?: (id: string, file: File) => Promise<unknown>;
   /** Answer 685: the minimum wage for a site and skill. */
   onMinWage?: (locationId: string, skill: string) => Promise<MinWageHint | null>;
   /** Answer 736: withdraw a worker still waiting for site approval. */
@@ -327,7 +330,7 @@ export function ClWorkerList({ workers, sites, today, adding: addingAtStart = fa
       </Card>
       {leaving && <WithdrawForm worker={leaving} onClose={() => setWithdrawing(null)} onWithdraw={(reason) => (onWithdraw ? onWithdraw(leaving.id, reason) : Promise.resolve())} />}
       {sites.length === 0 && <InlineAlert tone="warning" title="No site to deploy to">You can add workers once the company has a valid licence of yours on record for one of its sites.</InlineAlert>}
-      {adding && sites.length > 0 && <AddWorkerForm sites={sites} today={today} design={design} onCheck={onCheck} onAdd={onAdd} onMinWage={onMinWage} onClose={() => setAdding(false)} />}
+      {adding && sites.length > 0 && <AddWorkerForm sites={sites} today={today} design={design} onCheck={onCheck} onAdd={onAdd} onPhoto={onPhoto} onMinWage={onMinWage} onClose={() => setAdding(false)} />}
     </div>
   );
 }
@@ -361,7 +364,7 @@ function WithdrawForm({ worker, onClose, onWithdraw }: { worker: PortalWorker; o
   );
 }
 
-function AddWorkerForm({ sites, today, design, onCheck, onAdd, onMinWage, onClose }: { sites: { id: string; name: string }[]; today: Date; design?: { dob: Date; siteId: string; checks: PortalCheck[] }; onCheck?: (input: PortalWorkerInput) => Promise<PortalCheck[]>; onAdd?: (input: PortalWorkerInput) => Promise<unknown>; onMinWage?: (locationId: string, skill: string) => Promise<MinWageHint | null>; onClose: () => void }) {
+function AddWorkerForm({ sites, today, design, onCheck, onAdd, onPhoto, onMinWage, onClose }: { sites: { id: string; name: string }[]; today: Date; design?: { dob: Date; siteId: string; checks: PortalCheck[] }; onCheck?: (input: PortalWorkerInput) => Promise<PortalCheck[]>; onAdd?: (input: PortalWorkerInput) => Promise<unknown>; onPhoto?: (id: string, file: File) => Promise<unknown>; onMinWage?: (locationId: string, skill: string) => Promise<MinWageHint | null>; onClose: () => void }) {
   const toast = useToastIfAny();
   const [site, setSite] = useState<string | null>(design?.siteId ?? (sites.length === 1 ? sites[0]!.id : null));
   const [given, setGiven] = useState(design ? 'Ramesh' : '');
@@ -373,6 +376,8 @@ function AddWorkerForm({ sites, today, design, onCheck, onAdd, onMinWage, onClos
   const [wage, setWage] = useState<number | null>(null);
   const [uan, setUan] = useState('');
   const [ip, setIp] = useState('');
+  // Answer 754: kept here and sent once the worker exists.
+  const [photo, setPhoto] = useState<File | null>(null);
   const [checks, setChecks] = useState<PortalCheck[] | null>(design?.checks ?? null);
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -401,7 +406,13 @@ function AddWorkerForm({ sites, today, design, onCheck, onAdd, onMinWage, onClos
       .then(async (rows) => {
         setChecks(rows);
         if (rows.some((r) => r.status === 'fail')) return setFailed('This worker can’t be deployed. See the checks.');
-        await onAdd(input());
+        const made = (await onAdd(input())) as { id?: string } | undefined;
+        if (photo && made?.id && onPhoto) {
+          const sent = await onPhoto(made.id, photo).then(() => true, () => false);
+          if (!sent) toast?.toast({ tone: 'warning', title: 'Sent for site approval; the photo did not upload', description: 'The site can add the photo at approval.' });
+          else toast?.toast({ tone: 'success', title: 'Sent for site approval with the photo' });
+          return onClose();
+        }
         toast?.toast({ tone: 'success', title: 'Sent for site approval' });
         onClose();
       })
@@ -447,6 +458,20 @@ function AddWorkerForm({ sites, today, design, onCheck, onAdd, onMinWage, onClos
         </FormField>
         <FormField id="aw-wage" label="Monthly wage you pay" optional helper={hintText(hint)}>
           <CurrencyField value={wage} onChange={setWage} />
+        </FormField>
+        <FormField id="aw-photo" label="Photo" optional helper="JPG or PNG, a clear face, up to 5 MB. The site checks it against the worker before the gate pass.">
+          <FileUpload
+            id="aw-photo"
+            multiple={false}
+            accept={['.jpg', '.jpeg', '.png']}
+            maxSize={5 * 1024 * 1024}
+            capture="user"
+            onItemsChange={(items) => !items.length && setPhoto(null)}
+            upload={async (file) => {
+              if (!/\.(jpe?g|png)$/i.test(file.name)) throw new Error('Choose a JPG or PNG photo.');
+              setPhoto(file);
+            }}
+          />
         </FormField>
         <FieldRow>
           <FormField id="aw-uan" label="UAN" optional error={err('uan')}>
