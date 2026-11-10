@@ -58,9 +58,10 @@ built**.
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 30 | 0 | 0 | 0 | 4 | 34 |
 | E. Staffing agency | 8 | 56 | 12 | 0 | 0 | 0 | 68 |
 | F. Compliance and fairness | 5 | 21 | 4 | 0 | 6 | 0 | 31 |
-| G. Careers site, portals and settings | 4 | 66 | 5 | 2 | 9 | 0 | 82 |
-| **All Hiring design groups (A–G)** | **37** | **294** | **27** | **2** | **24** | **5** | **352** |
+| G. Careers site, portals and settings | 4 | 67 | 5 | 2 | 9 | 0 | 83 |
+| **All Hiring design groups (A–G)** | **37** | **295** | **27** | **2** | **24** | **5** | **353** |
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 11 | 0 | 0 | 4 | 0 | 15 |
+Recounted by script 10 Nov 2026 on `feat/yukthix-walk-2` (answer 691): T9-09 PortalWhatsapp drawn and live: A–G 295 live, 27 gap, 2 wire, 24 not built, 5 phone, of 353.
 Recounted by script 10 Nov 2026 on `feat/yukthix-hiring-whatsapp-optin` (answer 561): 2 new stories drawn and live (Surfaces/Careers ApplyFormWhatsapp, T9-09 StatusWhatsapp): A–G 294 live, 27 gap, 2 wire, 24 not built, 5 phone, of 352 (rows B, E and G had fallen behind and are recounted from the script).
 Recounted by script on `test/yukthix-main` after merging hiring-rest (Talent CRM campaigns, sourced profiles, under 18, kit wire-ups): A–G 292 live, 27 gap, 2 wire, 24 not built, 5 phone, of 350.
 Recounted by script on `test/yukthix-main` after merging staffing round 5 (Tally/Zoho export, 528): A–G 285 live, 27 gap, 2 wire, 28 not built, 5 phone, of 347.
@@ -926,6 +927,7 @@ Google for Jobs JSON-LD and /yx/careers/[org]/sitemap.xml), /yx/apply/[token], a
 | StatusWhatsapp · Application status · Message me on WhatsApp about jobs | live | drawn 10 Nov 2026 (answer 561): tick or untick (`POST public/applications/:token/whatsapp`, audited, source status_page, toast); no mobile number on file: no tick, it says why (409 from the API) |
 | StatusNotFound · Application status · link not valid | live | unknown token |
 | Portal · Candidate page | live | /yx/candidate/[token]: details, resume, own applications, interviews, offers, other open jobs |
+| PortalWhatsapp · Candidate page · Message me on WhatsApp about jobs | live | drawn 10 Nov 2026 (answer 691): the same tick as the status page, for all applications (`POST public/portal/:token/whatsapp`, source candidate_page, audited, toast); no mobile number: no tick, it says why |
 | PortalPhone · Candidate page · phone | live | same page at phone width |
 | PortalEmpty · Candidate page · no applications, full form to apply | live | one click only with a resume, no consent and no required questions |
 | Offer · Offer to accept | live | /yx/offer/[token]: the existing accept-by-link; answers once, refuses expired |
@@ -2104,4 +2106,18 @@ with In pipeline summed. Screenshots and the per-page results are in the walk re
   migration `202617v0000000_whatsapp_opt_in_source`), audited `candidate.whatsapp.opted_in` / `opted_out`. Opting in needs
   a mobile number on file and clears an earlier WhatsApp opt-out; the unsubscribe page also stops WhatsApp
   (`POST public/unsubscribe/:token/whatsapp`). Only an opted-in candidate is in a WhatsApp campaign audience (HIR-20).
+
+## Walk-through 2 and answer 691 (10 Nov 2026, branch `feat/yukthix-walk-2`)
+- Walk fixes: a company role copied from a past template version that also got `payroll.equity.own` (PAY-58 migration)
+  follows its template again (the demo Recruiter gains `ats.staffing.view` at the next API start); the sequence builder's
+  step rows show the step number above its template or wait and the remove button on the same row.
+- Answer 691: "Message me on WhatsApp about jobs" on the candidate page (story PortalWhatsapp), same storage, source
+  `candidate_page`, audit and withdrawal as 561.
+## Founder questions from walk-through 2 (10 Nov 2026)
+701. **Demo staffing data.** The demo has no clients, placements or invoices, so an invoice record, its PDF and a client's
+     fees could not be walked. *Suggested: add a small staffing sample (one client, one placement, one issued invoice) to
+     the demo seed, behind the desk setting.*
+702. **The test app needs a restart after merges.** The web server on :3000 served an old apply form on the server side
+     (a hydration error until it restarted), and the API has not re-run the role template sync. *Suggested: restart both
+     after each merge that touches packages or apps/api, as the memory notes say for the API.*
 

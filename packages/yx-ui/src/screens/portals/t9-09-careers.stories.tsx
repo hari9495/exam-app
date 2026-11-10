@@ -65,6 +65,8 @@ export const StatusNycNotice: S = {
 export const StatusWhatsapp: S = { name: 'Application status · Message me on WhatsApp about jobs', render: () => <ApplicationStatusScreen brand={CAND_BRAND} state="ready" status={{ ...APP_STATUS, whatsapp: { optedIn: true, hasPhone: true } }} onWhatsapp={async () => {}} /> };
 export const StatusNotFound: S = { name: 'Application status · link not valid', render: () => <ApplicationStatusScreen brand={CAND_BRAND} state="not-found" status={null} /> };
 export const Portal: S = { name: 'Candidate page', render: () => <CandidatePortalScreen brand={CAND_BRAND} state="ready" portal={CAND_PORTAL} /> };
+// Answer 691: the WhatsApp tick on the candidate page, for all their applications.
+export const PortalWhatsapp: S = { name: 'Candidate page · Message me on WhatsApp about jobs', render: () => <CandidatePortalScreen brand={CAND_BRAND} state="ready" portal={{ ...CAND_PORTAL, whatsappOptedIn: false }} /> };
 export const PortalPhone: S = { name: 'Candidate page · phone', globals: phone, render: () => <CandidatePortalScreen brand={CAND_BRAND} state="ready" portal={CAND_PORTAL} /> };
 export const PortalEmpty: S = { name: 'Candidate page · no applications, full form to apply', render: () => <CandidatePortalScreen brand={CAND_BRAND} state="ready" portal={{ ...CAND_PORTAL, hasResume: false, oneClick: false, applications: [] }} /> };
 export const Offer: S = { name: 'Offer to accept', render: () => <OfferAcceptScreen brand={CAND_BRAND} state="ready" offer={OFFER} /> };

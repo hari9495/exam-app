@@ -95,25 +95,39 @@ export interface ApplicationStatusView {
   whatsapp?: { optedIn: boolean; hasPhone: boolean } | null;
 }
 
+/** Answers 561 and 691: "Message me on WhatsApp about jobs", saved at once (status page and candidate page alike). */
+function WhatsappTick({ optedIn, hasPhone, onChange }: { optedIn: boolean; hasPhone: boolean; onChange: (optIn: boolean) => Promise<unknown> }) {
+  const toast = useToastIfAny();
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const set = async (on: boolean) => {
+    setBusy(true);
+    setFailed(null);
+    try {
+      await onChange(on);
+      toast?.toast({ tone: 'success', title: on ? 'WhatsApp messages on' : 'WhatsApp messages off', description: on ? 'We may message you about jobs on WhatsApp.' : 'We will not message you on WhatsApp about jobs.' });
+    } catch (e) {
+      setFailed(e instanceof Error && e.message ? e.message : 'That did not go through. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div>
+      {failed && <InlineAlert tone="danger" title="Not saved">{failed}</InlineAlert>}
+      {hasPhone ? (
+        <Checkbox checked={optedIn} onChange={(v) => !busy && void set(v)} label="Message me on WhatsApp about jobs" description="On the mobile number you gave us. Untick to stop." />
+      ) : (
+        <p className="yx-ps-muted">We have no mobile number for you, so we cannot message you on WhatsApp.</p>
+      )}
+    </div>
+  );
+}
+
 /** Where one application is, in candidate words; reached by the status link in the apply email. */
 export function ApplicationStatusScreen({ brand, state, status, onAskAlternative, onWhatsapp }: { brand: CandidateBrand; state: CandidatePageState; status: ApplicationStatusView | null; onAskAlternative?: () => Promise<unknown>; onWhatsapp?: (optIn: boolean) => Promise<unknown> }) {
   const toast = useToastIfAny();
   const [asking, setAsking] = useState(false);
-  const [waBusy, setWaBusy] = useState(false);
-  const [waFailed, setWaFailed] = useState<string | null>(null);
-  const setWa = async (on: boolean) => {
-    if (!onWhatsapp) return;
-    setWaBusy(true);
-    setWaFailed(null);
-    try {
-      await onWhatsapp(on);
-      toast?.toast({ tone: 'success', title: on ? 'WhatsApp messages on' : 'WhatsApp messages off', description: on ? 'We may message you about jobs on WhatsApp.' : 'We will not message you on WhatsApp about jobs.' });
-    } catch (e) {
-      setWaFailed(e instanceof Error && e.message ? e.message : 'That did not go through. Try again.');
-    } finally {
-      setWaBusy(false);
-    }
-  };
   const [failed, setFailed] = useState<string | null>(null);
   const ask = async () => {
     if (!onAskAlternative) return;
@@ -173,16 +187,7 @@ export function ApplicationStatusScreen({ brand, state, status, onAskAlternative
               )}
             </>
           )}
-          {status.whatsapp && onWhatsapp && (
-            <div>
-              {waFailed && <InlineAlert tone="danger" title="Not saved">{waFailed}</InlineAlert>}
-              {status.whatsapp.hasPhone ? (
-                <Checkbox checked={status.whatsapp.optedIn} onChange={(v) => !waBusy && void setWa(v)} label="Message me on WhatsApp about jobs" description="On the mobile number you gave us. Untick to stop." />
-              ) : (
-                <p className="yx-ps-muted">We have no mobile number for you, so we cannot message you on WhatsApp.</p>
-              )}
-            </div>
-          )}
+          {status.whatsapp && onWhatsapp && <WhatsappTick optedIn={status.whatsapp.optedIn} hasPhone={status.whatsapp.hasPhone} onChange={onWhatsapp} />}
           <p className="yx-ps-muted">We email you when this changes. This page shows only this application; nobody else can see it.</p>
           {status.portalHref && (
             <div>
@@ -243,6 +248,8 @@ export interface CandidatePortalView {
   openJobs: PortalOpenJob[];
   /** One click reuses the saved details and resume; otherwise each job opens the full form. */
   oneClick: boolean;
+  /** Answer 691: "Message me on WhatsApp about jobs" for all their applications. */
+  whatsappOptedIn?: boolean;
 }
 
 export interface LiveCandidatePortal {
@@ -251,6 +258,8 @@ export interface LiveCandidatePortal {
   onQuickApply: (job: PortalOpenJob) => Promise<unknown>;
   interviewHref: (token: string) => string;
   offerHref: (token: string) => string;
+  /** Answer 691: tick or untick WhatsApp messages about jobs (the page shows the tick only with this). */
+  onWhatsapp?: (optIn: boolean) => Promise<unknown>;
 }
 
 const bucketTone = (b: string): BadgeTone => (b === DECISION ? 'neutral' : b === STATUS_STEPS[2] ? 'success' : 'info');
@@ -407,6 +416,11 @@ function PortalBody({ portal, live }: { portal: CandidatePortalView; live?: Live
               Save details
             </Button>
           </Card>
+          {portal.whatsappOptedIn !== undefined && (live?.onWhatsapp || !live) && (
+            <Card title="Messages about jobs">
+              <WhatsappTick optedIn={portal.whatsappOptedIn} hasPhone={Boolean(portal.phone)} onChange={live?.onWhatsapp ?? (async () => undefined)} />
+            </Card>
+          )}
           <Card title="Resume">
             <p className="yx-ps-muted">{portal.hasResume ? 'Your resume is on file. Upload a new one to replace it.' : 'No resume yet. Upload one so the company can read it.'}</p>
             <FormField label={portal.hasResume ? 'Replace your resume' : 'Upload your resume'} helper="PDF file, up to 5 MB">

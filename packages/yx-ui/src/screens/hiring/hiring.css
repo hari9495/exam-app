@@ -112,6 +112,7 @@
   padding: var(--yx-space-2) var(--yx-space-3); border-left: var(--yx-focus-width) solid var(--yx-color-action-primary);
   background: var(--yx-color-bg-surface);
 }
+.yx-hire-seq__control { flex: 1; min-width: 0; }
 .yx-hire-seq__step[data-kind="wait"] { border-left-color: var(--yx-color-border-strong); background: var(--yx-color-bg-subtle); }
 
 /* Timesheet approvals */

@@ -4,8 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { CareersJobScreen } from '../portals/t9-candidate';
 import { JOB_DETAIL } from '../portals/t9-cand-data';
-import { ApplicationStatusScreen } from '../portals/t9-09-candidate-pages';
-import { APP_STATUS, CAND_BRAND } from '../portals/t9-cand-pages-data';
+import { ApplicationStatusScreen, CandidatePortalScreen, type LiveCandidatePortal } from '../portals/t9-09-candidate-pages';
+import { APP_STATUS, CAND_BRAND, CAND_PORTAL } from '../portals/t9-cand-pages-data';
 
 // Answer 561: "Message me on WhatsApp about jobs" on the apply form (off by default) and the status page (tick and
 // untick). Positive and negative.
@@ -77,3 +77,27 @@ describe('Status page: the WhatsApp tick (561)', () => {
     expect(screen.getByText(/no mobile number for you/)).toBeInTheDocument();
   });
 });
+
+describe('Candidate page: the WhatsApp tick (691)', () => {
+  const live = (onWhatsapp?: LiveCandidatePortal['onWhatsapp']): LiveCandidatePortal => ({ onSaveDetails: vi.fn(), onUploadResume: vi.fn(), onQuickApply: vi.fn(), interviewHref: (t) => t, offerHref: (t) => t, onWhatsapp });
+  it('ticks for all applications (toast); unticks to stop', async () => {
+    const onWhatsapp = vi.fn(async () => undefined);
+    const { unmount } = show(<CandidatePortalScreen brand={CAND_BRAND} state="ready" portal={{ ...CAND_PORTAL, whatsappOptedIn: false }} live={live(onWhatsapp)} />);
+    await ue.click(screen.getByRole('checkbox', { name: 'Message me on WhatsApp about jobs' }));
+    expect(onWhatsapp).toHaveBeenCalledWith(true);
+    expect(await screen.findByText('WhatsApp messages on')).toBeInTheDocument();
+    unmount();
+    show(<CandidatePortalScreen brand={CAND_BRAND} state="ready" portal={{ ...CAND_PORTAL, whatsappOptedIn: true }} live={live(onWhatsapp)} />);
+    await ue.click(screen.getByRole('checkbox', { name: 'Message me on WhatsApp about jobs' }));
+    expect(onWhatsapp).toHaveBeenLastCalledWith(false);
+  });
+
+  it('no handler or no opt-in field: no tick; no mobile number: it says why', () => {
+    const { unmount } = show(<CandidatePortalScreen brand={CAND_BRAND} state="ready" portal={{ ...CAND_PORTAL, whatsappOptedIn: false }} live={live()} />);
+    expect(screen.queryByRole('checkbox', { name: /WhatsApp/ })).not.toBeInTheDocument();
+    unmount();
+    show(<CandidatePortalScreen brand={CAND_BRAND} state="ready" portal={{ ...CAND_PORTAL, phone: null, whatsappOptedIn: false }} live={live(vi.fn())} />);
+    expect(screen.getByText(/no mobile number for you/)).toBeInTheDocument();
+  });
+});
+

@@ -2,7 +2,7 @@ import { ConflictException } from '@nestjs/common';
 import { AuditService, TenantContext } from '@exam-platform/shared';
 import type { Tx } from '../org-structure/org-structure.service';
 
-export type OptInSource = 'apply' | 'status_page' | 'unsubscribe';
+export type OptInSource = 'apply' | 'status_page' | 'candidate_page' | 'unsubscribe';
 
 /**
  * Answer 561: the candidate's own WhatsApp opt-in ("Message me on WhatsApp about jobs"), off until they tick it. Opting in

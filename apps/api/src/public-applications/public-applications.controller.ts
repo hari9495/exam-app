@@ -137,6 +137,13 @@ export class PublicApplicationsController {
     return this.service.renewRetention(portalToken);
   }
 
+  // Answer 691: the WhatsApp tick on the candidate page.
+  @Post('portal/:portalToken/whatsapp')
+  @HttpCode(200)
+  setPortalWhatsapp(@Param('portalToken') portalToken: string, @Body() dto: WhatsappOptInDto) {
+    return this.service.setPortalWhatsapp(portalToken, dto.optIn);
+  }
+
   @Post('portal/:portalToken/talent-pool/withdraw')
   @HttpCode(200)
   withdrawTalentPool(@Param('portalToken') portalToken: string) {
