@@ -17300,6 +17300,26 @@
     "note": "Positive and negative (no pay key)."
   },
   {
+    "id": "MT-HIR-CAR-11",
+    "area": "Hiring · Careers site (15 Nov 2026)",
+    "screen": "New York City job · automated tool notice and another process",
+    "url": "http://localhost:3000/yx/apply/<token>",
+    "account": "hr-tester@demo-org.test turns on 6.1 \"We use an automated tool for jobs in New York City\" and the AI draft, records a bias audit (Hiring › Bias audits), and publishes a job at the New York location; then not signed in. Browser window 1278 x 635.",
+    "steps": [
+      "Open the NYC job's page; read the notice.",
+      "Apply with \"Assess me another way\" ticked (a +1 number).",
+      "Apply again with another email, not ticked.",
+      "As hr-tester open both applications (pipeline board › card › Application); open an interview for each and look at the AI draft card.",
+      "Open a job at a location outside New York City; turn the NYC switch off and reopen the NYC job."
+    ],
+    "expected": "Step 1: \"<company> uses an automated tool for this job\", at least 10 business days, what it assesses, how to ask for another process. Step 2 and 3: \"Application sent\". Step 4: the first shows \"Asked for another process\" with the date, and its AI draft says it is not used for this candidate; the second's AI draft says from which date it can be used. Step 5: no notice and no tick box.",
+    "stories": [
+      "Screens/Portals/T9-09 · Careers site · Job page · New York City automated tool notice",
+      "Screens/Hiring/HIR-05 · Candidate record · Application · asked for another process (New York City)"
+    ],
+    "note": "Positive and negative (not asked, outside NYC, switch off)."
+  },
+  {
     "id": "MT-HIR-SET-08",
     "area": "Hiring · Settings 6.1 follow-ups, answers 341, 345, 348 (12 Nov 2026)",
     "screen": "Settings › Hiring: the seven settings (341)",
@@ -17517,6 +17537,24 @@
       "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring · approver above the range can no longer approve"
     ],
     "note": "Positive and negative (no pay key; key lost later)."
+  },
+  {
+    "id": "MT-HIR-SET-20",
+    "area": "Hiring · Settings 6.1 (15 Nov 2026)",
+    "screen": "6.1 · hint for an AI tool with a New York City location",
+    "url": "http://localhost:3000/yx/settings/hiring",
+    "account": "hr-tester@demo-org.test (hiring settings key); a company location with state US-NY and city New York (Settings › Locations). Browser window 1278 x 635.",
+    "steps": [
+      "With \"We use an automated tool for jobs in New York City\" off, turn on AI notes on past candidates and save; look at the NYC switch.",
+      "Turn the NYC switch on and save.",
+      "Turn it off again, turn AI notes off (and the AI draft off); look again.",
+      "Archive or change the New York location to Albany; turn AI notes on; look again."
+    ],
+    "expected": "Step 1: a warning on the NYC switch naming AI notes and the New York location, saying to turn it on if the tool is used for jobs there. Step 2: the warning goes. Steps 3 and 4: no warning (no AI tool on; no New York City location). Nothing is ever blocked by the hint.",
+    "stories": [
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring · AI on with a New York City location"
+    ],
+    "note": "Positive and negative (switch on, no tool, no NYC location)."
   },
   {
     "id": "MT-HIR-09-08",
@@ -18377,5 +18415,25 @@
       "Screens/Hiring/HIR-21 · Staffing vendors · Vendor submissions · duplicate and over cap"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CONSOLE-SET-01",
+    "area": "YukthiX console (15 Nov 2026)",
+    "screen": "Companies › one company › Company settings (white-label)",
+    "url": "http://localhost:3000/staff/companies/<id>/settings",
+    "account": "A YukthiX staff account on the console (security key); the demo company's System Admin for step 5. Browser window 1278 x 635.",
+    "steps": [
+      "Open Companies › the demo company › Company settings.",
+      "Turn on \"Hide Powered by YukthiX…\"; press Turn on with no reason; then give a reason and confirm.",
+      "Open the demo company's careers site and a candidate page in another browser.",
+      "Open a company with no product (or whose plan lacks white-label) › Company settings.",
+      "As the demo company's System Admin, try to change brand.white_label in the company settings API or page."
+    ],
+    "expected": "Step 1: \"The plan includes White-label\" and the switch off. Step 2: the reason is asked for; then toast \"Turned on\"; the company page's History shows \"Turned white-label on\" with the reason. Step 3: no \"Powered by YukthiX\". Step 4: \"not in this company's plan\", no switch. Step 5: refused (only YukthiX changes it).",
+    "stories": [
+      "Screens/YukthiX console/Platform console (step 3) · Company settings · white-label in the plan",
+      "Screens/YukthiX console/Platform console (step 3) · Company settings · not in the plan"
+    ],
+    "note": "Positive and negative (no reason, not in plan, company admin)."
   }
 ]
