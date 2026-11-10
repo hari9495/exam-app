@@ -69,7 +69,7 @@ export function Drawer({ open, onOpenChange, title, subtitle, meta, children, fo
             <IconButton icon={X} label="Close" onClick={() => requestClose(false)} />
           </header>
           <div className="yx-drawer__body" tabIndex={0}>{children}</div>
-          {(footer || confirming) && (
+          {(footer || notice || confirming) && (
             <footer className="yx-drawer__foot">
               {confirming ? (
                 <InlineAlert

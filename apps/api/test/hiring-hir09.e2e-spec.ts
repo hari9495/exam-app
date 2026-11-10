@@ -188,6 +188,11 @@ describe('HIR-09 offer builder and HIR-29 conditions', () => {
   });
 
   it('within the range: the recruiter drafts, one approval (never the sender), then sends; the letter waits for approval', async () => {
+    // Answer 532: a fixed CTC of 0 or blank is refused with the bulk offers words; nothing is made.
+    for (const annualCtc of ['0', '0.00', ''])
+      expect((await api('rec', 'post', '/hiring/offers').send(draft(ids.joseph, { annualCtc })).expect(400)).body.message.join(' ')).toMatch(/Enter a fixed CTC above ₹0\./);
+    await api('rec', 'post', '/hiring/offers/preview').send({ entryId: ids.joseph, templateVersionId: ids.tv, annualCtc: '0', locationId: ids.blr }).expect(400);
+    expect(await inA((tx) => tx.offer.count({ where: { pipelineEntryId: ids.joseph } }))).toBe(0);
     const made = (await api('rec', 'post', '/hiring/offers').send(draft(ids.joseph, { startDate: today, expiresAt: endOfToday })).expect(201)).body;
     ids.o1 = made.id;
     expect(made).toMatchObject({ version: 1, bandPosition: 'within', extraApproval: false });

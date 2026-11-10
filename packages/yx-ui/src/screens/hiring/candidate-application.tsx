@@ -39,6 +39,8 @@ const OFFER_LABEL: Record<string, string> = { draft: 'Draft', pending_approval: 
 export interface ApplicationDrawerProps {
   /** Answer 502: records that a New York City candidate asked for another process (by phone or email). */
   onRecordAlternative?: () => Promise<unknown>;
+  /** Answer 531: emails the New York City notice to a candidate added by hand who was never told. */
+  onSendToolNotice?: () => Promise<unknown>;
   open: boolean;
   onClose: () => void;
   app: ApplicationView | null;
@@ -158,6 +160,19 @@ export function ApplicationDrawer(p: ApplicationDrawerProps) {
                 ) : (
                   a.toolNotice && p.canManage && p.onRecordAlternative && (
                     <Card title="New York City notice">
+                      {a.toolNoticeNeeded && p.onSendToolNotice && (
+                        <InlineAlert
+                          tone="warning"
+                          title="Not told yet"
+                          actions={
+                            <Button size="sm" loading={busy === 'notice'} onClick={() => void run('notice', async () => (await p.onSendToolNotice!(), toast?.toast({ tone: 'success', title: 'Notice sent', description: 'The notice days count from today.' })))}>
+                              Send the New York City notice
+                            </Button>
+                          }
+                        >
+                          This candidate was added by hand and has not been sent the notice. The AI draft scorecard is not used for them until they are told.
+                        </InlineAlert>
+                      )}
                       <Text as="p" size="sm" tone="secondary">An automated tool is used for this job. If the candidate asked you (by phone or email) to be assessed another way, record it here.</Text>
                       <div>
                         <Button size="sm" loading={busy === 'alternative'} onClick={() => void run('alternative', async () => (await p.onRecordAlternative!(), toast?.toast({ tone: 'success', title: 'Request recorded', description: 'The automated tool is not used for this candidate.' })))}>

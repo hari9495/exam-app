@@ -183,7 +183,8 @@ function OfferBuilderForm({ candidate: sampleCandidate = '', job: sampleJob = ''
 
   const errs: Record<BuilderField, string | null> = {
     tpl: live && !tpl ? 'Choose the salary structure.' : null,
-    ctc: !(fixed > 0) ? 'Enter the fixed CTC.' : null,
+    // Answer 532: the same words as bulk offers; blank and ₹0 are both refused (the API checks it again).
+    ctc: !(fixed > 0) ? 'Enter a fixed CTC above ₹0.' : null,
     claw: bonus > 0 && !(clawback && clawback >= 1 && clawback <= 60) ? 'Give 1 to 60 months.' : null,
     start: !start ? 'Choose the joining date.' : null,
     expires: !expires ? 'Choose when the offer expires.' : start && dayKey(expires) > dayKey(start) ? 'The offer must expire on or before the joining date.' : null,

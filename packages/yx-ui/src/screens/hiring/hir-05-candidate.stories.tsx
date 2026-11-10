@@ -106,6 +106,8 @@ export const ApplicationOffer: S = {
   name: 'Application · an offer opens its record (HIR-09)',
   render: () => <ApplicationDrawer {...sampleApplication} app={{ ...sampleApplication.app!, offers: [{ id: 'o1', status: 'pending_approval', compensation: 'Fixed CTC ₹12,00,000 a year', startDate: '2026-12-01', expiresAt: '2026-11-15' }] }} />,
 };
+// Answer 531: a candidate added by hand before the setting was on: the recruiter sends the notice.
+export const ApplicationSendNotice: S = { name: 'Application · send the New York City notice (never told)', render: () => <ApplicationDrawer {...sampleApplication} app={{ ...sampleApplication.app!, toolNotice: true, toolNoticeNeeded: true }} onRecordAlternative={async () => {}} onSendToolNotice={async () => {}} /> };
 // Answer 502: a New York City candidate added by a recruiter; the recruiter records their request.
 export const ApplicationRecordAlternative: S = { name: 'Application · record a request for another process (New York City)', render: () => <ApplicationDrawer {...sampleApplication} app={{ ...sampleApplication.app!, toolNotice: true }} onRecordAlternative={async () => {}} /> };
 // Answer 474: a New York City applicant asked for another process than the automated tool.
