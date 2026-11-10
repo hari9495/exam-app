@@ -1699,6 +1699,8 @@ Founder approved, 10 Nov 2026 (questions 521-528, all as suggested): keep 521, 5
 Zoho CSV export next; (525) take the GST state from the paying entity once vendors are per entity (later); (527) a DSC or
 e-sign step with e-invoicing if the CA asks (later); (528) on "Client hired", offer to end the placement the day before the
 hire.
+Founder approved, 10 Nov 2026 (questions 551, 571-575, all as suggested): keep 551, 571, 572 (off by default), 573,
+575; (574) receipt vouchers in the export later, if finance asks.
 ## HIR-27 bulk interview day and answer 392 built (14 Nov 2026, branch `feat/yukthix-hir-27`)
 - HIR-27: see its section above. Interview days open from Hiring › Interviews (a new "Interview days" button, drawn on the
   HIR-06 header).
