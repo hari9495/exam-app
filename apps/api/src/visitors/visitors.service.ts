@@ -7,6 +7,7 @@ import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
 import { EmailService } from '../email/email.service';
 import { escapeHtml } from '../notifications/notification-email-render';
 import { publicBrand } from '../public-applications/public-brand';
+import { acknowledge, checkAccepted, needsView, outstanding, visitNeeds } from './visit-needs';
 import { FilesService } from '../documents/files.service';
 import { FileStore } from '../documents/file-store';
 import type { AcceptVisitDto, CheckInDto, FindPassDto, IdImageDto, InviteVisitorDto } from './visitors-dto';
@@ -22,7 +23,7 @@ import { STATUS_WORDS, badgeText, checkInProblem, dayBounds, localDay, maskMobil
 // end of their window (611).
 
 const KEYS = ['visitors.desk.manage', 'visitors.log.view', 'visitors.settings.manage', 'org.settings.manage', 'visitors.rollcall.view'] as const;
-export const VISITOR_SETTING_KEYS = ['visitors.host_timeout_minutes', 'visitors.id_capture', 'visitors.photo', 'visitors.hours_from', 'visitors.hours_to', 'visitors.notice', 'visitors.badge', 'visitors.retention_days', 'visitors.id_retention_days', 'visitors.watchlist_review_days'] as const;
+export const VISITOR_SETTING_KEYS = ['visitors.host_timeout_minutes', 'visitors.id_capture', 'visitors.photo', 'visitors.hours_from', 'visitors.hours_to', 'visitors.notice', 'visitors.badge', 'visitors.retention_days', 'visitors.id_retention_days', 'visitors.watchlist_review_days', 'visitors.kiosk'] as const;
 type VisitorSettingKey = (typeof VISITOR_SETTING_KEYS)[number];
 const LOOKUP: TenantContext = { organizationId: null, isSuperAdmin: true };
 const frontend = () => process.env.FRONTEND_URL ?? 'http://localhost:3000';
@@ -72,7 +73,7 @@ export class VisitorsService {
     return tenantWide(v, 'visitors.settings.manage') || tenantWide(v, 'org.settings.manage');
   }
 
-  private own(v: Viewer, what = 'this') {
+  own(v: Viewer, what = 'this') {
     if (v.actingForOther) throw new ForbiddenException(`You can't change ${what} while acting for someone else. Sign in as yourself.`);
   }
 
@@ -126,6 +127,7 @@ export class VisitorsService {
       if ('problem' in w) throw new BadRequestException(w.problem);
       const host = await tx.user.findFirst({ where: { organizationId: c.organizationId, id: user.userId!, status: 'active' }, select: { id: true, name: true, email: true } });
       if (!host) throw new ForbiddenException('Only an active person of the company can invite a visitor.');
+      if (dto.typeId && !(await tx.visitorType.findFirst({ where: { organizationId: c.organizationId, id: dto.typeId }, select: { id: true } }))) throw new NotFoundException('Visitor type not found.');
       let row: VisitRow | null = null;
       for (let i = 0; i < 5 && !row; i++) {
         const code = passCode();
@@ -133,7 +135,7 @@ export class VisitorsService {
         row = await tx.visit.create({
           data: {
             organizationId: c.organizationId, locationId: loc.id, hostUserId: host.id, visitorName: dto.name, visitorMobile: mobile, visitorEmail: dto.email.toLowerCase(), visitorCompany: dto.company || null,
-            purpose: dto.purpose, vehicle: dto.vehicle?.toUpperCase() || null, startsAt: w.startsAt, endsAt: w.endsAt, passToken: passToken(), passCode: code, createdBy: host.id,
+            purpose: dto.purpose, vehicle: dto.vehicle?.toUpperCase() || null, visitorTypeId: dto.typeId || null, startsAt: w.startsAt, endsAt: w.endsAt, passToken: passToken(), passCode: code, createdBy: host.id,
             minor: Boolean(dto.minor), minorAdult: dto.minor ? dto.minorAdult!.trim() : null,
           },
         });
@@ -259,6 +261,11 @@ export class VisitorsService {
       const notice = (await this.setting(tx, c, 'visitors.notice', loc.id)).trim();
       const atDesk = !fresh.noticeAcceptedAt;
       if (atDesk && !dto.noticeAccepted) throw new BadRequestException('Tick that the visitor read and accepted the notice.');
+      // Slice 2 (606): what is still to accept for the visit's type, ticked at the desk.
+      const due = await outstanding(tx, c, fresh.id, await visitNeeds(tx, c, (k, l) => this.setting(tx, c, k, l), loc.id, fresh.visitorTypeId, fresh.visitorMobile, fresh.visitorCompany));
+      if (due.nda && !dto.ndaAccepted) throw new BadRequestException(`Tick that the visitor read and accepted ${due.nda.title}.`);
+      if (due.induction && !dto.inductionAccepted) throw new BadRequestException(`Tick that the visitor read and accepted ${due.induction.title}.`);
+      await acknowledge(tx, c, fresh.id, due, fresh.visitorMobile, fresh.visitorCompany, 'desk');
       const last = await tx.visit.aggregate({ where: { organizationId: c.organizationId }, _max: { badgeSeq: true } });
       const done = await tx.visit.update({
         where: { id: fresh.id },
@@ -409,6 +416,8 @@ export class VisitorsService {
         notice,
         noticeVersion: noticeVersion(notice),
         passCode: state === 'pass' ? row.passCode : null,
+        // Slice 2 (606): the visitor type's NDA and safety induction still to accept for this visit.
+        needs: needsView(await outstanding(tx, c, row.id, await visitNeeds(tx, c, (k, l) => this.setting(tx, c, k, l), row.locationId, row.visitorTypeId, row.visitorMobile, row.visitorCompany))),
         // 603: the ID step shows where the location takes ID proof (never for a visitor under 18).
         idStep: idRule !== 'off' && !row.minor,
         idGiven: row.idType ? { type: row.idType, last4: row.idLast4 } : null,
@@ -428,6 +437,10 @@ export class VisitorsService {
       if (row.status !== 'expected' || row.endsAt <= new Date()) throw new ConflictException('This visit pass has expired. Ask your host to invite you again.');
       const version = noticeVersion((await this.setting(tx, c, 'visitors.notice', row.locationId)).trim());
       if (dto.noticeVersion !== version) throw new ConflictException('The visitor notice changed while you were reading it. Reload the page and read it again.');
+      // Slice 2 (606): the type's NDA and induction, at the versions shown.
+      const due = await outstanding(tx, c, row.id, await visitNeeds(tx, c, (k, l) => this.setting(tx, c, k, l), row.locationId, row.visitorTypeId, row.visitorMobile, row.visitorCompany));
+      checkAccepted(due, dto);
+      await acknowledge(tx, c, row.id, due, row.visitorMobile, row.visitorCompany, 'link');
       // 603: the ID type and last 4 where the location takes ID proof (the photo of it, if kept, is taken at the desk).
       const rule = (await this.setting(tx, c, 'visitors.id_capture', row.locationId)) as IdCapture;
       const given = dto.idType || dto.idLast4 ? { type: dto.idType ?? null, last4: dto.idLast4 ?? null } : null;
@@ -516,7 +529,7 @@ export class VisitorsService {
     // Slice 3 rides the same nightly job: ID details past their own period (603), lapsed watch-list entries (605).
     await this.idSweep(now);
     await this.watchlist.lapseSweep(now);
-    const places = await this.tenantPrisma.forTenant(LOOKUP, (tx) => tx.visit.groupBy({ by: ['organizationId', 'locationId'], where: { status: { in: ['checked_out', 'not_out', 'no_show', 'cancelled'] } } }));
+    const places = await this.tenantPrisma.forTenant(LOOKUP, (tx) => tx.visit.groupBy({ by: ['organizationId', 'locationId'], where: { status: { in: ['checked_out', 'not_out', 'no_show', 'cancelled', 'declined'] } } }));
     let deleted = 0;
     for (const p of places) {
       const c = { organizationId: p.organizationId, isSuperAdmin: true } as CompanyContext;
@@ -525,7 +538,9 @@ export class VisitorsService {
         const cutoff = new Date(now.getTime() - days * 86_400_000);
         // The ID photo goes before (or with) its visit, so no file is left behind.
         await this.dropIds(tx, c, p.locationId, Math.min(days, Number(await this.setting(tx, c, 'visitors.id_retention_days', p.locationId))), now);
-        const old = { organizationId: p.organizationId, locationId: p.locationId, status: { in: ['checked_out', 'not_out', 'no_show', 'cancelled'] }, endsAt: { lt: cutoff } };
+        const old = { organizationId: p.organizationId, locationId: p.locationId, status: { in: ['checked_out', 'not_out', 'no_show', 'cancelled', 'declined'] }, endsAt: { lt: cutoff } };
+        // Slice 2 (602): the visitor's photo goes with the visit.
+        for (const ph of await tx.visit.findMany({ where: { ...old, photoPath: { not: null } }, select: { photoPath: true } })) await this.blob.deleteByUrl(ph.photoPath!).catch(() => undefined);
         await tx.$executeRaw`
           INSERT INTO visit_counts (organization_id, location_id, day, purpose, visits)
           SELECT organization_id, location_id, (starts_at AT TIME ZONE 'UTC')::date, purpose, count(*)::int
@@ -603,9 +618,17 @@ export class VisitorsService {
       noticeAcceptedAt: r.noticeAcceptedAt?.toISOString() ?? null,
       checkedInAt: r.checkedInAt?.toISOString() ?? null,
       checkedOutAt: r.checkedOutAt?.toISOString() ?? null,
+      // Slice 2: a walk-in, the host's deadline, who decided and how hours were overridden.
+      walkIn: r.walkIn,
+      typeId: r.visitorTypeId,
+      approvalDueAt: r.approvalDueAt?.toISOString() ?? null,
+      decidedVia: r.decidedVia,
+      hoursOverride: r.hoursOverrideReason,
       idType: r.idType,
       idText: r.idType ? `${ID_WORDS[r.idType as IdType]} ··${r.idLast4}` : null,
       hasIdImage: Boolean(r.idFileId),
+      // 713: a walk-in photo exists (reception reads it from desk/visits/:id/photo while it waits or is on site).
+      hasPhoto: Boolean(r.photoPath),
       minor: r.minor,
       minorAdult: r.minorAdult,
     }));

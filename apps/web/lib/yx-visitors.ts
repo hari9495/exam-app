@@ -1,14 +1,15 @@
 'use client';
 
+import { useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, apiFetchBlob } from './api-client';
 import { useAuth } from './auth-context';
 import { saveBlob } from './yx-pay';
 
 // Visitors slice 1 (M02 §B11): reads under ['visitors', path]; a write refreshes every visitors view.
-export function useVisitors<T>(path: string | null) {
+export function useVisitors<T>(path: string | null, refetchInterval?: number) {
   const { accessToken } = useAuth();
-  return useQuery<T>({ queryKey: ['visitors', path], queryFn: () => apiFetch(`/visitors${path}`, {}, accessToken ?? undefined), enabled: Boolean(accessToken && path !== null), retry: false });
+  return useQuery<T>({ queryKey: ['visitors', path], queryFn: () => apiFetch(`/visitors${path}`, {}, accessToken ?? undefined), enabled: Boolean(accessToken && path !== null), retry: false, ...(refetchInterval ? { refetchInterval } : {}) });
 }
 
 export function useVisitorsWrite() {
@@ -19,6 +20,32 @@ export function useVisitorsWrite() {
     await queryClient.invalidateQueries({ queryKey: ['visitors'] });
     return result as T;
   };
+}
+
+/** One read under /visitors, now (host search, what a visitor accepts). */
+export function useVisitorsGet() {
+  const { accessToken } = useAuth();
+  return <T,>(path: string): Promise<T> => apiFetch(`/visitors${path}`, {}, accessToken ?? undefined) as Promise<T>;
+}
+
+/** A photo as an object URL the view drops when it goes; one function per sign-in, so a re-render never fetches again. */
+function usePhoto(path: (id: string) => string) {
+  const { accessToken } = useAuth();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the path builder is a fixed literal per hook
+  return useCallback(async (id: string): Promise<string | null> => {
+    const { blob } = await apiFetchBlob(path(id), {}, accessToken ?? undefined);
+    return blob.size ? URL.createObjectURL(blob) : null;
+  }, [accessToken]);
+}
+
+/** Answer 602: the walk-in's photo for the host's card only. */
+export function useWalkInPhoto() {
+  return usePhoto((id) => `/visitors/walk-ins/${encodeURIComponent(id)}/photo`);
+}
+
+/** Answer 713: the walk-in's photo for reception at the location while it waits or is on site. */
+export function useDeskVisitorPhoto() {
+  return usePhoto((id) => `/visitors/desk/visits/${encodeURIComponent(id)}/photo`);
 }
 
 /** Answer 603: the photo of the ID (multipart) with its type and last 4; the virus check follows. */

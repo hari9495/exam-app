@@ -19504,5 +19504,135 @@
       "Screens/Contract labour/CLB-05 · Convert worker to employee · End contract role"
     ],
     "note": "Positive. Answer 637."
+  },
+  {
+    "id": "MT-VIS-2-01",
+    "area": "Visitors · Slice 2 walk-ins (10 Nov 2026)",
+    "screen": "Visitor kiosk · walk-in",
+    "url": "http://localhost:3000/yx/kiosk (a tablet set up in visitor mode at the location)",
+    "account": "A test visitor at the kiosk; host account hr-tester@demo-org.test. Turn the location's visitor kiosk on in Settings › Visitors first.",
+    "steps": [
+      "Press I don't have a pass and Next with nothing filled.",
+      "Fill name, mobile, company, a visitor type with an NDA, and the host's full name; take the photo; tick only the notice and continue.",
+      "Tick the NDA and induction and continue."
+    ],
+    "expected": "Step 1: field errors. Step 2: \"Tick to accept …\" for the NDA. Step 3: \"We've told <host>\"; the host sees the card with the photo on My visitors; after Approve the kiosk shows \"You're checked in\" with the badge.",
+    "stories": [
+      "Screens/Visitors/VIS-03 · Visitor kiosk · Walk-in details",
+      "Screens/Visitors/VIS-03 · Visitor kiosk · Notice acknowledgement"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-VIS-2-02",
+    "area": "Visitors · Slice 2 walk-ins (10 Nov 2026)",
+    "screen": "Visitor kiosk · outside hours",
+    "url": "http://localhost:3000/yx/kiosk",
+    "account": "The same tablet.",
+    "steps": [
+      "Set the location's allowed hours so now is outside them, then open the kiosk."
+    ],
+    "expected": "\"Please see the reception desk\", no reason shown.",
+    "stories": [
+      "Screens/Visitors/VIS-03 · Visitor kiosk · See reception (blocked or problem)"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-VIS-2-03",
+    "area": "Visitors · Slice 2 walk-ins (10 Nov 2026)",
+    "screen": "Today's visitors · add walk-in",
+    "url": "http://localhost:3000/yx/visitors",
+    "account": "A Reception role holder at the location.",
+    "steps": [
+      "Press Add walk-in, then Ask the host with nothing filled.",
+      "Fill the visitor, choose the host, tick what the visitor accepted; outside the hours also give the reason."
+    ],
+    "expected": "Step 1: field errors and focus. Step 2: toast; the walk-in shows \"Waiting for host\" with the time reception decides from; after it passes, Decide for host lets reception decide (a decline needs a reason).",
+    "stories": [
+      "Screens/Visitors/VIS-01 · Today's visitors · Add a walk-in · type, host, NDA and induction",
+      "Screens/Visitors/VIS-01 · Today's visitors · Decide for the host after the timeout"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-VIS-2-04",
+    "area": "Visitors · Slice 2 walk-ins (10 Nov 2026)",
+    "screen": "My visitors · approval card",
+    "url": "http://localhost:3000/yx/visitors/invites",
+    "account": "The host the walk-in asked for, and another person.",
+    "steps": [
+      "Open My visitors while a walk-in waits; Reject it.",
+      "Sign in as someone else and open My visitors."
+    ],
+    "expected": "Step 1: the card with the photo; after Reject the card and the photo go. Step 2: no card.",
+    "stories": [
+      "Screens/Visitors/VIS-02 · Pre-register + my visitors · Walk-in approval card"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-VIS-2-05",
+    "area": "Visitors · Slice 2 walk-ins (10 Nov 2026)",
+    "screen": "Settings › Visitors · types and kiosk",
+    "url": "http://localhost:3000/yx/settings/visitors",
+    "account": "A Facility admin.",
+    "steps": [
+      "Add a visitor type \"Contractor\" with escort, the NDA and the induction policies; turn the visitor kiosk on; save."
+    ],
+    "expected": "Toast; the type shows its policies; the kiosk offers the type under \"You are visiting as\".",
+    "stories": [
+      "Screens/Settings/Group 3 · Time & Leave · 3.12 Visitors"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-VIS-2-10",
+    "area": "Visitors · Answers 711, 713, 701 (10 Nov 2026)",
+    "screen": "My visitors · approval card · Send someone",
+    "url": "http://localhost:3000/yx/visitors/invites",
+    "account": "The host a kiosk walk-in asked for (manager test account), then the colleague they send.",
+    "steps": [
+      "On the waiting walk-in's card press Send someone, then Send with nobody chosen.",
+      "Search a colleague by name, choose them and press Send.",
+      "Sign in as the colleague and open My visitors."
+    ],
+    "expected": "Step 1: \"Choose who meets them.\" and nothing sent. Step 2: toast \"<name> has the card now\" with their deadline; the card goes from the host's page. Step 3: the card with the photo and fresh minutes; the bell says who sent them.",
+    "stories": [
+      "Screens/Visitors/VIS-02 · Pre-register + my visitors · Walk-in approval · send someone"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-VIS-2-11",
+    "area": "Visitors · Answers 711, 713, 701 (10 Nov 2026)",
+    "screen": "Today's visitors · walk-in photo",
+    "url": "http://localhost:3000/yx/visitors",
+    "account": "A Reception role holder at the location; the host.",
+    "steps": [
+      "With a kiosk walk-in (photo taken) waiting, look at its row; after the host's minutes open Decide for host.",
+      "Let them in; look at the On site row; then check them out.",
+      "As the host, look for the photo after the decision."
+    ],
+    "expected": "Step 1: the photo on the row and in the dialog. Step 2: the photo stays while on site and is gone after check-out. Step 3: no photo for the host.",
+    "stories": [
+      "Screens/Visitors/VIS-01 · Today's visitors · Decide for the host after the timeout"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-STF-701",
+    "area": "Visitors · Answers 711, 713, 701 (10 Nov 2026)",
+    "screen": "Staffing desk · demo data",
+    "url": "http://localhost:3000/yx/staffing/clients",
+    "account": "An HR admin of demo-org (after the founder runs prisma/scripts/demo-staffing.ts).",
+    "steps": [
+      "With the staffing desk off, open the staffing pages.",
+      "Turn the staffing desk on (Settings › Staffing desk) and open Clients, Placements and Invoices.",
+      "Run the script again."
+    ],
+    "expected": "Step 1: nothing shown. Step 2: Deccan Agro Processors with one rate line, one placement and one issued invoice (CGST and SGST). Step 3: \"everything already there, nothing to do\"; nothing doubled.",
+    "stories": [],
+    "note": "Positive and negative."
   }
 ]

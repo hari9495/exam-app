@@ -28,6 +28,8 @@ import { Actions, CameraFrame, CardGrid, OpsDesk, PhotoPlaceholder, QrPlaceholde
 import { retentionLeft } from './ops-rules';
 import type { ListState } from './helpdesk';
 import { ID_CHOICES, PURPOSE_CHOICES, visitOf, type Visit, type VisitStatus, type VisitView } from './visitors-data';
+import { LiveVisitorKioskView, type KioskNeeds, type LiveVisitorKiosk } from './visitor-kiosk';
+import { AddWalkInDrawer, DecideForHostDialog, SendSomeoneDialog, VisitorPhoto, type DeskWalkInParts } from './visitor-walkin';
 
 const time = (d?: Date) => (d ? d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }) : '—');
 const TONE: Record<VisitStatus, BadgeTone> = { Expected: 'neutral', 'Waiting for host': 'warning', 'On site': 'success', 'Checked out': 'neutral', Blocked: 'danger', Rejected: 'danger', 'No show': 'neutral', 'Not checked out': 'warning', Cancelled: 'neutral' };
@@ -41,6 +43,9 @@ export interface CheckInInput {
   adultPresent?: boolean;
   idType?: string;
   idLast4?: string;
+  /** Slice 2 (606): the visit type's NDA and induction ticked at the desk. */
+  ndaAccepted?: boolean;
+  inductionAccepted?: boolean;
 }
 
 /** Visitor badge preview (APX-F badge layout via P05). */
@@ -88,6 +93,13 @@ export interface LiveVisitorDesk {
   idCapture: IdCapture;
   /** Stores the photo of the ID with its type and last 4; resolves once stored (the virus check follows). */
   onIdImage: (id: string, file: File, idType: string, idLast4: string) => Promise<unknown>;
+  /** Visitors slice 2: walk-ins at the desk, deciding for the host, and the visit's type texts at check-in. */
+  walkIns?: DeskWalkInParts & {
+    onDecide: (id: string, approve: boolean, reason: string | null) => Promise<unknown>;
+    visitNeeds: (id: string) => Promise<KioskNeeds>;
+    /** 713: the walk-in's photo while it waits or is on site (an object URL the view drops when it goes). */
+    photo?: (id: string) => Promise<string | null>;
+  };
   /** Slice 4 (607): the location's badge; 'phone_only' prints nothing (the QR pass is on the visitor's phone). */
   badge?: 'name_qr' | 'photo_qr' | 'phone_only';
   /** Opens the label-size badge PDF for the browser to print. */
@@ -107,9 +119,12 @@ export interface VisitorDeskProps {
   findOpen?: boolean;
   /** Story: the location's ID rule (answer 603). */
   idCapture?: IdCapture;
+  /** Stories (slice 2): the Add walk-in drawer, and Decide for host. */
+  walkInOpen?: boolean;
+  decideOpen?: boolean;
   live?: LiveVisitorDesk;
 }
-export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab = 'expected', checkInId = null, blockedAlert, findOpen = false, idCapture = 'on', live }: VisitorDeskProps) {
+export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab = 'expected', checkInId = null, blockedAlert, findOpen = false, idCapture = 'on', walkInOpen = false, decideOpen = false, live }: VisitorDeskProps) {
   const { toast } = useSay();
   const visits = live ? live.visits.map(visitOf) : sample;
   const [current, setCurrent] = useState(tab);
@@ -125,7 +140,23 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
   const [photoDone, setPhotoDone] = useState(false);
   const [adult, setAdult] = useState(false);
   const { busy, error, run, clearError } = useRun();
+  const [adding, setAdding] = useState(walkInOpen);
+  const [deciding, setDeciding] = useState(decideOpen);
+  const [typeNeeds, setTypeNeeds] = useState<KioskNeeds | null>(null);
+  const [typeTicks, setTypeTicks] = useState({ nda: false, induction: false });
   const view = live ? (found?.id === checkIn ? found : live.visits.find((v) => v.id === checkIn)) : null;
+  // Slice 2 (606): the visit type's NDA and induction still to accept, read when the check-in drawer opens.
+  useEffect(() => {
+    setTypeNeeds(null);
+    setTypeTicks({ nda: false, induction: false });
+    if (!live?.walkIns || !checkIn) return;
+    let on = true;
+    void live.walkIns.visitNeeds(checkIn).then((n) => on && setTypeNeeds(n), () => undefined);
+    return () => {
+      on = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkIn]);
   const needsNotice = live ? !view?.noticeAcceptedAt : true;
   const shown = live ? (view ? visitOf(view) : undefined) : [...sample].find((v) => v.id === checkIn);
   const idRule: IdCapture = live ? live.idCapture : idCapture;
@@ -139,12 +170,14 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
       idNeeded && !idType && { fieldId: 'vd-idtype', message: 'Choose the ID the visitor showed.' },
       idNeeded && !/^[A-Za-z0-9]{4}$/.test(last4.trim()) && { fieldId: 'vd-last4', message: 'Enter only the last 4 characters of the ID number.' },
       photoNeeded && !photoDone && { fieldId: 'vd-idphoto', message: 'Add a photo of the ID: this location keeps one.' },
+      typeNeeds?.nda && !typeTicks.nda && { fieldId: 'vd-type-nda', message: `Tick that the visitor accepted ${typeNeeds.nda.title}.` },
+      typeNeeds?.induction && !typeTicks.induction && { fieldId: 'vd-type-ind', message: `Tick that the visitor read ${typeNeeds.induction.title}.` },
     ].filter(Boolean) as { fieldId: string; message: string }[],
   );
   const groups = {
     expected: visits.filter((v) => v.status === 'Expected' || v.status === 'Waiting for host' || v.status === 'Blocked'),
     onsite: visits.filter((v) => v.status === 'On site'),
-    out: visits.filter((v) => v.status === 'Checked out' || v.status === 'Not checked out'),
+    out: visits.filter((v) => v.status === 'Checked out' || v.status === 'Not checked out' || v.status === 'Rejected'),
   };
   const visit = view ? visitOf(view) : visits.find((v) => v.id === checkIn);
   const waiting = visits.find((v) => v.status === 'Waiting for host');
@@ -160,7 +193,7 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
     void (async () => {
       if (ndaEarly.stop() || !live || !visit) return;
       const ok = await run('in', async () => {
-        const done = await live.onCheckIn(visit.id, { noticeAccepted: nda, ...(minorAdult ? { adultPresent: adult } : {}), ...(idNeeded && idType ? { idType, idLast4: last4.trim().toUpperCase() } : {}) });
+        const done = await live.onCheckIn(visit.id, { noticeAccepted: nda, ...(minorAdult ? { adultPresent: adult } : {}), ...(idNeeded && idType ? { idType, idLast4: last4.trim().toUpperCase() } : {}), ...(typeNeeds?.nda ? { ndaAccepted: typeTicks.nda } : {}), ...(typeNeeds?.induction ? { inductionAccepted: typeTicks.induction } : {}) });
         toast({ tone: 'success', title: `${done.name} checked in`, description: done.badge ? `Badge ${done.badge}` : undefined });
         if (prints) await printBadge(done.id);
       });
@@ -180,7 +213,7 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
       });
     })();
   const cols: TableColumn<Visit>[] = [
-    { key: 'name', header: 'Visitor', value: (v) => v.name, render: (v) => <span className="yx-ops-row"><PhotoPlaceholder name={v.name} size="sm" /><span className="yx-ops-stack" data-gap="sm"><strong>{v.name}</strong><span className="yx-ops-muted">{v.company}</span></span></span>, width: 230 },
+    { key: 'name', header: 'Visitor', value: (v) => v.name, render: (v) => <span className="yx-ops-row">{v.hasPhoto && live?.walkIns?.photo ? <VisitorPhoto id={v.id} name={v.name} photo={live.walkIns.photo} size="sm" /> : <PhotoPlaceholder name={v.name} size="sm" />}<span className="yx-ops-stack" data-gap="sm"><strong>{v.name}</strong><span className="yx-ops-muted">{v.company}</span></span></span>, width: 230 },
     { key: 'host', header: 'Host', value: (v) => v.host },
     { key: 'purpose', header: 'Purpose', value: (v) => v.purpose },
     { key: 'window', header: 'Window', value: (v) => v.from, render: (v) => `${time(v.from)} to ${time(v.to)}` },
@@ -237,7 +270,11 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
           Roll-call
         </Button>
       )}
-      {!live && <Button icon={UserPlus}>Add walk-in</Button>}
+      {(!live || (live.walkIns && live.canChange)) && (
+        <Button icon={UserPlus} onClick={() => setAdding(true)}>
+          Add walk-in
+        </Button>
+      )}
       {canChange && (
         <Button variant="primary" icon={ScanLine} onClick={() => setFinding(true)}>
           Scan QR pass
@@ -252,11 +289,18 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
   const body = (
     <>
       {error && !checkIn && !finding && <InlineAlert tone="danger" title="Not done">{error}</InlineAlert>}
-      {waiting && (
-        <PageBanner tone="warning" action={<Button size="sm">Decide for host</Button>}>
-          {waiting.name} ({waiting.company}) is waiting for {waiting.host} to approve. After 10 minutes reception decides.
-        </PageBanner>
-      )}
+      {waiting && (() => {
+        // Slice 2 (604): reception decides once the host's minutes have passed.
+        const w = live?.visits.find((x) => x.id === waiting.id);
+        const due = w?.approvalDueAt ? new Date(w.approvalDueAt) : null;
+        const canDecide = !live || (canChange && Boolean(live.walkIns) && (!due || due <= new Date()));
+        return (
+          <PageBanner tone="warning" action={canDecide ? <Button size="sm" onClick={() => setDeciding(true)}>Decide for host</Button> : undefined}>
+            {waiting.name}
+            {waiting.company !== '—' ? ` (${waiting.company})` : ''} is waiting for {waiting.host} to approve. {live && due ? (due > new Date() ? `After ${time(due)} reception decides.` : 'The host did not answer in time: reception decides.') : 'After 10 minutes reception decides.'}
+          </PageBanner>
+        );
+      })()}
       {stopNames.length > 0 && (
         <InlineAlert tone="danger" title="Stop at reception">
           {stopNames.join(', ')} can't go ahead today. Don't issue a badge. Call the admin on duty; the host is told only that the visit can't go ahead.
@@ -327,6 +371,34 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
                   ]}
                 />
               )}
+              {typeNeeds && (typeNeeds.nda || typeNeeds.induction) && (
+                <>
+                  <div className="yx-ops-kiosk__notice" tabIndex={0} role="region" aria-label="What the visitor accepts">
+                    {typeNeeds.nda && (
+                      <p>
+                        <strong>{typeNeeds.nda.title}.</strong> {typeNeeds.nda.text}
+                      </p>
+                    )}
+                    {typeNeeds.induction && (
+                      <p>
+                        <strong>{typeNeeds.induction.title}.</strong> {typeNeeds.induction.text}
+                      </p>
+                    )}
+                  </div>
+                  {typeNeeds.nda && (
+                    <>
+                      <Checkbox id="vd-type-nda" checked={typeTicks.nda} onChange={(v) => setTypeTicks({ ...typeTicks, nda: v })} label={`The visitor accepted ${typeNeeds.nda.title}`} />
+                      {ndaEarly.errorOf('vd-type-nda') && <p className="yx-field__error">{ndaEarly.errorOf('vd-type-nda')}</p>}
+                    </>
+                  )}
+                  {typeNeeds.induction && (
+                    <>
+                      <Checkbox id="vd-type-ind" checked={typeTicks.induction} onChange={(v) => setTypeTicks({ ...typeTicks, induction: v })} label={`The visitor read ${typeNeeds.induction.title}`} />
+                      {ndaEarly.errorOf('vd-type-ind') && <p className="yx-field__error">{ndaEarly.errorOf('vd-type-ind')}</p>}
+                    </>
+                  )}
+                </>
+              )}
               {minorAdult ? (
                 <>
                   <InlineAlert tone="info" title="Under 18">
@@ -385,6 +457,8 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
           </div>
         )}
       </Drawer>
+      {adding && <AddWalkInDrawer open idCapture={idRule} onClose={() => setAdding(false)} parts={live?.walkIns ? { ...live.walkIns, onAdd: (i) => live.walkIns!.onAdd({ ...i }) } : undefined} />}
+      {deciding && waiting && <DecideForHostDialog open onClose={() => setDeciding(false)} id={waiting.id} name={waiting.name} company={waiting.company !== '—' ? waiting.company : null} host={waiting.host} photo={waiting.hasPhoto ? live?.walkIns?.photo : null} onDecide={live?.walkIns ? (approve, reason) => live.walkIns!.onDecide(waiting.id, approve, reason) : undefined} />}
     </>
   );
   if (live)
@@ -408,6 +482,8 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
 
 /** The invite the host sends (Visitors slice 1: the pass goes by email, answer 609). */
 export interface VisitorInviteInput {
+  /** Slice 2 (606): the visitor type, for its NDA and safety induction. */
+  typeId?: string;
   name: string;
   mobile: string;
   email: string;
@@ -436,6 +512,29 @@ export interface LivePreRegister {
   /** `outsideHours` (answer 652): the window falls outside the location's allowed hours; the host is warned, never refused. */
   onInvite: (input: VisitorInviteInput) => Promise<VisitView & { emailed?: boolean; outsideHours?: string | null }>;
   onCancel: (id: string) => Promise<unknown>;
+  /** Slice 2 (606): the company's visitor types for the invite (none: the field is not shown). */
+  types?: Choice[];
+  /** Slice 2 (604, 602): walk-ins asking for this host, their photo (only while deciding) and the decision. */
+  approvals?: {
+    rows: WalkInApproval[];
+    photo: (id: string) => Promise<string | null>;
+    onDecide: (id: string, approve: boolean) => Promise<unknown>;
+    /** Answer 711: colleagues to send (by name) and the send; the colleague gets the card. */
+    colleagues?: (id: string, q: string) => Promise<Choice[]>;
+    onSend?: (id: string, userId: string) => Promise<{ to: string; dueAt: string | null }>;
+  };
+}
+
+/** A walk-in asking for the host (GET visitors/approvals). */
+export interface WalkInApproval {
+  id: string;
+  name: string;
+  company: string | null;
+  purpose: string;
+  location: string;
+  arrivedAt: string;
+  dueAt: string | null;
+  hasPhoto: boolean;
 }
 
 export interface PreRegisterProps {
@@ -445,13 +544,15 @@ export interface PreRegisterProps {
   formOpen?: boolean;
   sent?: boolean;
   approval?: boolean;
+  /** Story (711): the Send someone dialog open on the approval card. */
+  sendOpen?: boolean;
   /** Story: the invite of a visitor under 18 (answer 614). */
   minor?: boolean;
   live?: LivePreRegister;
 }
 
-type InviteDraft = { name: string; mobile: string; email: string; company: string; purpose: string | null; day: Date | null; locationId: string | null; from: string | null; to: string | null; vehicle: string; minor: boolean; minorAdult: string };
-const blankDraft = (locations: Choice[]): InviteDraft => ({ name: '', mobile: '', email: '', company: '', purpose: 'meeting', day: null, locationId: locations.length === 1 ? locations[0]!.value : null, from: null, to: null, vehicle: '', minor: false, minorAdult: '' });
+type InviteDraft = { name: string; mobile: string; email: string; company: string; purpose: string | null; day: Date | null; locationId: string | null; from: string | null; to: string | null; vehicle: string; minor: boolean; minorAdult: string; typeId?: string | null };
+const blankDraft = (locations: Choice[]): InviteDraft => ({ name: '', mobile: '', email: '', company: '', purpose: 'meeting', day: null, locationId: locations.length === 1 ? locations[0]!.value : null, from: null, to: null, vehicle: '', minor: false, minorAdult: '', typeId: null });
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const inviteErrors = (d: InviteDraft) =>
   [
@@ -480,7 +581,7 @@ function MinorFields({ minor, adult, onMinor, onAdult, error }: { minor: boolean
   );
 }
 
-export function PreRegisterForm({ today, draft, onDraft, errorOf, locations, minor: minorStory = false }: { today: Date; draft?: InviteDraft; onDraft?: (d: InviteDraft) => void; errorOf?: (id: string) => string | null | undefined; locations?: Choice[]; minor?: boolean }) {
+export function PreRegisterForm({ today, draft, onDraft, errorOf, locations, minor: minorStory = false, types }: { today: Date; draft?: InviteDraft; onDraft?: (d: InviteDraft) => void; errorOf?: (id: string) => string | null | undefined; locations?: Choice[]; minor?: boolean; types?: Choice[] }) {
   const [date, setDate] = useState<Date | null>(new Date(2026, 9, 1));
   const [loc, setLoc] = useState<string | null>('maa');
   const [minor, setMinor] = useState(minorStory);
@@ -514,6 +615,11 @@ export function PreRegisterForm({ today, draft, onDraft, errorOf, locations, min
             <Select value={draft.locationId} onChange={(v) => set({ locationId: v })} options={locations ?? []} placeholder="Choose a location" />
           </FormField>
         </FieldRow>
+        {types && types.length > 0 && (
+          <FormField label="Visitor type" optional helper="Sets the NDA and safety induction they accept before entry">
+            <Select aria-label="Visitor type" value={draft.typeId ?? null} onChange={(v) => set({ typeId: v })} options={types} placeholder="No type" clearable />
+          </FormField>
+        )}
         <FieldRow>
           <FormField id="vi-day" label="Date" required error={err('vi-day')}>
             <DatePicker value={draft.day} onChange={(v) => set({ day: v })} min={today} />
@@ -561,6 +667,11 @@ export function PreRegisterForm({ today, draft, onDraft, errorOf, locations, min
           <Select value={loc} onChange={setLoc} options={[{ value: 'maa', label: 'Chennai office' }, { value: 'blr', label: 'Bengaluru head office' }, { value: 'hsr', label: 'Hosur plant' }]} />
         </FormField>
       </FieldRow>
+      {types && types.length > 0 && (
+        <FormField label="Visitor type" optional helper="Sets the NDA and safety induction they accept before entry">
+          <Select aria-label="Visitor type" value="contractor" onChange={() => {}} options={types} />
+        </FormField>
+      )}
       <FieldRow>
         <FormField label="Date" required>
           <DatePicker value={date} onChange={setDate} min={today} />
@@ -586,7 +697,8 @@ export function PreRegisterForm({ today, draft, onDraft, errorOf, locations, min
     </div>
   );
 }
-export function PreRegisterScreen({ device = 'desk', visits: sample, today, formOpen, sent, approval, minor, live }: PreRegisterProps) {
+export function PreRegisterScreen({ device = 'desk', visits: sample, today, formOpen, sent, approval, sendOpen = false, minor, live }: PreRegisterProps) {
+  const [sending, setSending] = useState<{ id: string; name: string } | null>(sendOpen ? { id: 'sample', name: 'Priyanka Sethi' } : null);
   const visits = live ? live.visits.map(visitOf) : sample;
   const [open, setOpen] = useState(!!formOpen);
   const { toast } = useSay();
@@ -600,7 +712,7 @@ export function PreRegisterScreen({ device = 'desk', visits: sample, today, form
     if (!live) return void (setOpen(false), saySent());
     if (early.stop()) return;
     void run('send', async () => {
-      const made = await live.onInvite({ name: draft.name.trim(), mobile: draft.mobile.trim(), email: draft.email.trim(), ...(draft.company.trim() ? { company: draft.company.trim() } : {}), purpose: draft.purpose ?? 'meeting', locationId: draft.locationId!, day: iso(draft.day!), from: draft.from!, to: draft.to!, ...(draft.vehicle.trim() ? { vehicle: draft.vehicle.trim() } : {}), ...(draft.minor ? { minor: true, minorAdult: draft.minorAdult.trim() } : {}) });
+      const made = await live.onInvite({ ...(draft.typeId ? { typeId: draft.typeId } : {}), name: draft.name.trim(), mobile: draft.mobile.trim(), email: draft.email.trim(), ...(draft.company.trim() ? { company: draft.company.trim() } : {}), purpose: draft.purpose ?? 'meeting', locationId: draft.locationId!, day: iso(draft.day!), from: draft.from!, to: draft.to!, ...(draft.vehicle.trim() ? { vehicle: draft.vehicle.trim() } : {}), ...(draft.minor ? { minor: true, minorAdult: draft.minorAdult.trim() } : {}) });
       setOpen(false);
       setDraft(blankDraft(live.locations));
       // Answer 605: the host learns only that the visit can't go ahead.
@@ -653,13 +765,57 @@ export function PreRegisterScreen({ device = 'desk', visits: sample, today, form
         <p className="yx-ops-muted">If you don't answer in 10 minutes, reception decides.</p>
         <Actions>
           <Button variant="approve" icon={Check}>Approve</Button>
-          <Button>Send someone</Button>
+          <Button icon={UserPlus} onClick={() => setSending({ id: 'sample', name: 'Priyanka Sethi' })}>
+            Send someone
+          </Button>
           <Button icon={X}>Reject</Button>
         </Actions>
       </div>
     </Card>
   );
-  const form = live ? <PreRegisterForm today={today} draft={draft} onDraft={setDraft} errorOf={early.errorOf} locations={live.locations} /> : <PreRegisterForm today={today} minor={minor} />;
+  const form = live ? <PreRegisterForm today={today} draft={draft} onDraft={setDraft} errorOf={early.errorOf} locations={live.locations} types={live.types} /> : <PreRegisterForm today={today} minor={minor} types={[{ value: 'customer', label: 'Customer' }, { value: 'contractor', label: 'Contractor' }]} />;
+  // Slice 2 (604): the live approval cards, one per walk-in asking for this host.
+  const sendDialog = sending && (
+    <SendSomeoneDialog
+      open
+      onClose={() => setSending(null)}
+      name={sending.name}
+      colleagues={live?.approvals?.colleagues ? (q) => live.approvals!.colleagues!(sending.id, q) : undefined}
+      onSend={live?.approvals?.onSend ? (userId) => live.approvals!.onSend!(sending.id, userId) : undefined}
+    />
+  );
+  const liveCards = live?.approvals?.rows.map((a) => (
+    <Card key={a.id} title="A walk-in is asking for you">
+      <div className="yx-ops-stack">
+        <span className="yx-ops-row">
+          {a.hasPhoto ? <VisitorPhoto id={a.id} name={a.name} photo={live.approvals!.photo} /> : <PhotoPlaceholder name={a.name} />}
+          <span className="yx-ops-stack" data-gap="sm">
+            <strong>{a.name}</strong>
+            <span className="yx-ops-muted">
+              {a.company ? `${a.company} · ` : ''}
+              {PURPOSE_CHOICES.find((p) => p.value === a.purpose)?.label ?? 'Meeting'} · at {a.location} reception since {time(new Date(a.arrivedAt))}
+            </span>
+          </span>
+        </span>
+        <p className="yx-ops-muted">{a.dueAt ? `If you don't answer by ${time(new Date(a.dueAt))}, reception decides.` : 'Reception decides if you do not answer.'}</p>
+        {live.canChange && (
+          <Actions>
+            <Button variant="approve" icon={Check} loading={busy === `yes-${a.id}`} onClick={() => void run(`yes-${a.id}`, async () => (await live.approvals!.onDecide(a.id, true), toast({ tone: 'success', title: `${a.name} is checked in`, description: 'Reception gives them a badge.' })))}>
+              Approve
+            </Button>
+            {live.approvals!.onSend && (
+              <Button icon={UserPlus} onClick={() => setSending({ id: a.id, name: a.name })}>
+                Send someone
+              </Button>
+            )}
+            <Button icon={X} loading={busy === `no-${a.id}`} onClick={() => void run(`no-${a.id}`, async () => (await live.approvals!.onDecide(a.id, false), toast({ tone: 'success', title: `${a.name}'s visit declined`, description: 'Reception lets them know.' })))}>
+              Reject
+            </Button>
+          </Actions>
+        )}
+      </div>
+    </Card>
+  ));
   if (device === 'phone' && !live)
     return (
       <PhoneFrame tab="me" title={open ? 'Invite a visitor' : 'My visitors'} back={<IconButton icon={ArrowLeft} label="Back" onClick={() => setOpen(false)} />}>
@@ -673,6 +829,7 @@ export function PreRegisterScreen({ device = 'desk', visits: sample, today, form
         ) : (
           <>
             {approvalCard}
+            {sendDialog}
             <Button variant="primary" icon={UserPlus} fullWidth onClick={() => setOpen(true)}>
               Invite a visitor
             </Button>
@@ -710,6 +867,8 @@ export function PreRegisterScreen({ device = 'desk', visits: sample, today, form
     return (
       <LivePage title="My visitors" description="Invite visitors ahead so they can check in with a QR pass." actions={inviteButton} state={live.state} onRetry={live.onRetry} what="your visitors">
         {error && !open && <InlineAlert tone="danger" title="Not done">{error}</InlineAlert>}
+        {liveCards}
+        {sendDialog}
         <Card>{list}</Card>
         {drawer}
       </LivePage>
@@ -718,6 +877,7 @@ export function PreRegisterScreen({ device = 'desk', visits: sample, today, form
     <OpsDesk area="visitors" active="Invites">
       <PageHeader title="My visitors" description="Invite visitors ahead so they can check in with a QR pass." actions={inviteButton} />
       {approvalCard}
+      {sendDialog}
       <Card>{list}</Card>
       {drawer}
     </OpsDesk>
@@ -728,10 +888,22 @@ export function PreRegisterScreen({ device = 'desk', visits: sample, today, form
  * VIS-03 · Visitor kiosk (self check-in, photo, notice, badge / QR)
  * ======================================================================================= */
 
-export type KioskStep = 'welcome' | 'details' | 'photo' | 'notice' | 'waiting' | 'badge' | 'see-reception' | 'rejected';
-export function VisitorKioskScreen({ step = 'welcome', visit, today }: { step?: KioskStep; visit: Visit; today: Date }) {
+export type KioskStep = 'welcome' | 'pass' | 'details' | 'photo' | 'notice' | 'waiting' | 'badge' | 'see-reception' | 'rejected';
+/** VIS-03. Live (Visitors slice 2): `live` makes it the kiosk on a tablet in visitor mode (LiveVisitorKioskView). */
+export function VisitorKioskScreen({ step = 'welcome', visit, today, live }: { step?: KioskStep; visit: Visit; today: Date; live?: LiveVisitorKiosk }) {
+  if (live) return <LiveVisitorKioskView live={live} />;
+  return <DrawnVisitorKiosk step={step} visit={visit} today={today} />;
+}
+
+function DrawnVisitorKiosk({ step, visit, today }: { step: KioskStep; visit: Visit; today: Date }) {
   const [agree, setAgree] = useState(false);
-  const agreeEarly = useTooEarly(agree ? [] : [{ fieldId: 'vk-agree', message: 'Tick to accept the notice before you continue.' }]);
+  const [nda, setNda] = useState(false);
+  const [induction, setInduction] = useState(false);
+  const agreeEarly = useTooEarly([
+    !agree && { fieldId: 'vk-agree', message: 'Tick to accept the notice before you continue.' },
+    !nda && { fieldId: 'vk-nda', message: 'Tick to accept the visitor NDA.' },
+    !induction && { fieldId: 'vk-induction', message: 'Tick to confirm the plant safety induction.' },
+  ].filter(Boolean) as { fieldId: string; message: string }[]);
   return (
     <KioskFrame tenant="Kaveri Foods · Chennai office">
       <div className="yx-ops-kiosk">
@@ -747,6 +919,19 @@ export function VisitorKioskScreen({ step = 'welcome', visit, today }: { step?: 
             </div>
           </>
         )}
+        {step === 'pass' && (
+          <>
+            <h1 className="yx-ops-kiosk__title">Your pass</h1>
+            <p className="yx-ops-kiosk__lead">Hold the QR to the scanner, or type the code under it.</p>
+            <FormField label="Pass code" required>
+              <TextField defaultValue="V-7KQ2-MX4P" />
+            </FormField>
+            <Actions end>
+              <Button>Back</Button>
+              <Button variant="primary">Next</Button>
+            </Actions>
+          </>
+        )}
         {step === 'details' && (
           <>
             <h1 className="yx-ops-kiosk__title">Tell us who you are</h1>
@@ -758,6 +943,9 @@ export function VisitorKioskScreen({ step = 'welcome', visit, today }: { step?: 
             </FormField>
             <FormField label="Company" optional>
               <TextField defaultValue="Fairview Auditors LLP" />
+            </FormField>
+            <FormField label="You are visiting as" optional>
+              <Select aria-label="You are visiting as" value="contractor" onChange={() => {}} options={[{ value: 'customer', label: 'Customer' }, { value: 'contractor', label: 'Contractor' }, { value: 'auditor', label: 'Food safety auditor' }]} />
             </FormField>
             <FormField label="Who are you meeting?" required>
               <TextField defaultValue="Anita Desai" />
@@ -792,8 +980,13 @@ export function VisitorKioskScreen({ step = 'welcome', visit, today }: { step?: 
                 <strong>Your data.</strong> Your name, mobile, photo and visit times are kept for 90 days for security, then deleted.
               </p>
             </div>
-            <Checkbox id="vk-agree" checked={agree} onChange={setAgree} label="I have read and accept the confidentiality and safety notice" />
+            <Checkbox id="vk-agree" checked={agree} onChange={setAgree} label="I have read and accept the visitor notice" />
             {agreeEarly.errorOf('vk-agree') && <p className="yx-field__error">{agreeEarly.errorOf('vk-agree')}</p>}
+            {/* Visitors slice 2 (606): the visitor type's NDA and safety induction, each accepted on its own. */}
+            <Checkbox id="vk-nda" checked={nda} onChange={setNda} label="I accept the visitor NDA" />
+            {agreeEarly.errorOf('vk-nda') && <p className="yx-field__error">{agreeEarly.errorOf('vk-nda')}</p>}
+            <Checkbox id="vk-induction" checked={induction} onChange={setInduction} label="I have read the plant safety induction and will follow it" />
+            {agreeEarly.errorOf('vk-induction') && <p className="yx-field__error">{agreeEarly.errorOf('vk-induction')}</p>}
             <Actions end>
               <Button>Back</Button>
               <Button variant="primary" onClick={() => agreeEarly.stop()}>

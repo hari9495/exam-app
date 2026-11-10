@@ -40,6 +40,7 @@ describe('ScheduledSweepsWorkerService', () => {
       campaigns: { sweep: jest.fn().mockResolvedValue({ sent: 0, stopped: 0 }) },
       crmConsents: { purgeSourced: jest.fn().mockResolvedValue({ erased: 0 }) },
       visitors: { closeSweep: jest.fn().mockResolvedValue(0), retentionSweep: jest.fn().mockResolvedValue(0) },
+      walkIns: { sweep: jest.fn().mockResolvedValue({ closed: 0, acknowledgementsDeleted: 0 }) },
     };
     const service = new ScheduledSweepsWorkerService(
       connection as never,
@@ -65,6 +66,7 @@ describe('ScheduledSweepsWorkerService', () => {
       services.campaigns as never,
       services.crmConsents as never,
       services.visitors as never,
+      services.walkIns as never,
     );
     return { service, queue, connection, services };
   };
@@ -109,6 +111,7 @@ describe('ScheduledSweepsWorkerService', () => {
       'sourced-purge': services.crmConsents.purgeSourced,
       'visitors-close': services.visitors.closeSweep,
       'visitors-retention': services.visitors.retentionSweep,
+      'visitors-walkins': services.walkIns.sweep,
     };
     for (const { id } of SWEEP_SCHEDULE) {
       await mockWorker.processor!({ name: id });

@@ -867,6 +867,8 @@ export interface PublicVisitView {
   noticeVersion: string;
   passCode: string | null;
   brand?: { orgName?: string; orgLogo?: string | null; accent?: string | null; whiteLabel?: boolean };
+  /** Visitors slice 2 (606): the visitor type's NDA and safety induction still to accept (null: not needed). */
+  needs?: { nda: { title: string; text: string; versionId: string } | null; induction: { title: string; text: string; versionId: string } | null };
   /** Slice 3 (answer 603): the ID step where the location takes ID proof (never for a visitor under 18). */
   idStep?: boolean;
   idGiven?: { type: string; last4: string | null } | null;
@@ -1036,13 +1038,27 @@ export function VisitorInviteScreen({ tenant: sampleTenant, accent: sampleAccent
           summary={
             <>
               <p>{lv.notice}</p>
+              {lv.needs?.nda && (
+                <p>
+                  <strong>{lv.needs.nda.title}.</strong> {lv.needs.nda.text}
+                </p>
+              )}
+              {lv.needs?.induction && (
+                <p>
+                  <strong>{lv.needs.induction.title}.</strong> {lv.needs.induction.text}
+                </p>
+              )}
               <p>
                 {tenant} records your name, mobile, company, host, purpose and your entry and exit times, for site security, safety and evacuation roll-call. Records are kept for{' '}
                 {lv.retentionDays} days after your visit, then deleted. Only your host, reception and security see them.
               </p>
             </>
           }
-          purposes={[{ id: 'notice', label: 'I have read the visitor notice and the privacy notice', required: true }]}
+          purposes={[
+            { id: 'notice', label: 'I have read the visitor notice and the privacy notice', required: true },
+            ...(lv.needs?.induction ? [{ id: 'safety', label: `I have read ${lv.needs.induction.title} and will follow it`, required: true }] : []),
+            ...(lv.needs?.nda ? [{ id: 'nda', label: `I agree to ${lv.needs.nda.title}`, required: true }] : []),
+          ]}
           noticeLabel="visitor privacy notice (G-27)"
           noticeVersion={lv.noticeVersion}
           acceptLabel="Get my pass"

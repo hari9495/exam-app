@@ -33,7 +33,7 @@ export default function YxVisitPassPage() {
         state,
         onRetry: load,
         visit,
-        onAccept: async (vehicle, id) => setVisit(await publicPost<PublicVisitView>(`/visits/${encodeURIComponent(token)}/accept`, { noticeVersion: visit!.noticeVersion, ...(vehicle ? { vehicle } : {}), ...(id ?? {}) })),
+        onAccept: async (vehicle, id) => setVisit(await publicPost<PublicVisitView>(`/visits/${encodeURIComponent(token)}/accept`, { noticeVersion: visit!.noticeVersion, ...(visit!.needs?.nda ? { ndaVersionId: visit!.needs.nda.versionId } : {}), ...(visit!.needs?.induction ? { inductionVersionId: visit!.needs.induction.versionId } : {}), ...(vehicle ? { vehicle } : {}), ...(id ?? {}) })),
       }}
     />
   );

@@ -61,4 +61,6 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   // Visitors (answers 611, 608): forgotten check-outs every 15 minutes; visits past the retention period nightly (04:20 IST).
   { id: 'visitors-close', cron: '*/15 * * * *' },
   { id: 'visitors-retention', cron: '50 22 * * *' },
+  // Visitors slice 2: walk-ins nobody decided by the end of their day, and acknowledgements past their use.
+  { id: 'visitors-walkins', cron: '5,20,35,50 * * * *' },
 ];

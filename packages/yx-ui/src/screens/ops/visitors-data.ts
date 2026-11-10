@@ -19,6 +19,8 @@ export interface Visit {
   nda?: boolean;
   escort?: boolean;
   walkIn?: boolean;
+  /** 713: a walk-in photo exists (reception sees it while the walk-in waits or is on site). */
+  hasPhoto?: boolean;
   vehicle?: string;
   idType?: string;
   /** Slice 3: the ID shown ("Driving licence ··4417"), whether a photo of it is kept, the adult with a visitor under 18. */
@@ -63,9 +65,17 @@ export interface VisitView {
   locationId: string;
   startsAt: string;
   endsAt: string;
-  /** 'blocked': a watch-list match (answer 605); nobody but HR and Facility admin sees why. */
-  status: 'expected' | 'blocked' | 'on_site' | 'checked_out' | 'not_out' | 'no_show' | 'cancelled';
+  /** 'blocked': a watch-list match (answer 605); nobody but HR and Facility admin sees why. Slice 2: 'waiting' and 'declined' walk-ins. */
+  status: 'expected' | 'waiting' | 'blocked' | 'on_site' | 'checked_out' | 'not_out' | 'no_show' | 'cancelled' | 'declined';
   statusText: string;
+  /** Slice 2: a walk-in, when the host's minutes end, who decided, the hours reason, the visitor type. */
+  walkIn?: boolean;
+  /** 713: a walk-in photo exists (reception sees it while the walk-in waits or is on site). */
+  hasPhoto?: boolean;
+  approvalDueAt?: string | null;
+  decidedVia?: 'host' | 'reception' | null;
+  hoursOverride?: string | null;
+  typeId?: string | null;
   passCode: string;
   badge: string | null;
   vehicle: string | null;
@@ -114,6 +124,8 @@ export function visitOf(v: VisitView): Visit {
     checkOut: v.checkedOutAt ? new Date(v.checkedOutAt) : undefined,
     nda: Boolean(v.noticeAcceptedAt),
     vehicle: v.vehicle ?? undefined,
+    walkIn: v.walkIn,
+    hasPhoto: v.hasPhoto || undefined,
     idText: v.idText ?? undefined,
     idImage: v.hasIdImage || undefined,
     minorAdult: v.minor ? (v.minorAdult ?? undefined) : undefined,

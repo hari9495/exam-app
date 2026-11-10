@@ -125,6 +125,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'expense.card.update', group: 'reminders', label: 'A company card line needs you to explain it' },
   // Contract labour CL-1 (answer 627): a contractor's licence ends soon.
   { type: 'clra.licence.expiring', group: 'reminders', label: 'A contractor’s licence ends soon (contract labour)' },
+  // Visitors slice 2 (answer 604): a walk-in asked for you; approve within the location's minutes.
+  { type: 'visitor.walkin.approval.host', group: 'approvals', label: 'A walk-in visitor is asking for you at reception' },
 ];
 
 export const NOTIFICATION_TYPE_BY_KEY = new Map(NOTIFICATION_TYPES.map((t) => [t.type, t]));

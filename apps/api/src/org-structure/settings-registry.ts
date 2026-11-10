@@ -320,6 +320,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'visitors.notice': { label: 'Visitors: notice shown before entry', scopes: ['tenant', 'location'], dated: false, values: [], default: 'Please wear your visitor badge at all times, follow the safety signs and your host, and hand in your badge when you leave. In an emergency, go to the assembly point and stay with your host.', text: { maxLength: 1000 } },
   'visitors.badge': { label: 'Visitors: badge', scopes: ['tenant', 'location'], dated: false, values: ['name_qr', 'photo_qr', 'phone_only'], default: 'name_qr', labels: { name_qr: 'Name badge with QR', photo_qr: 'Photo badge with QR', phone_only: 'Pass on the phone only' } },
   'visitors.retention_days': { label: 'Visitors: keep visit records for (days)', scopes: ['tenant', 'location'], dated: false, values: ['30', '60', '90', '180', '365', '730'], default: '90' },
+  // Answer 601: visitors sign themselves in on a kiosk in visitor mode at this location (off: reception only).
+  'visitors.kiosk': { label: 'Visitors: self check-in on a visitor kiosk', scopes: ['tenant', 'location'], dated: false, values: ['off', 'on'], default: 'off' },
   'visitors.id_retention_days': { label: 'Visitors: keep ID details for (days)', scopes: ['tenant', 'location'], dated: false, values: ['7', '15', '30', '60', '90'], default: '30' },
   // Answer 605: a watch-list entry is reviewed within this many days or it lapses (company-wide: the list is).
   'visitors.watchlist_review_days': { label: 'Visitors: review each watch-list entry every (days)', scopes: ['tenant'], dated: false, values: ['90', '180', '365'], default: '365' },

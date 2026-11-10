@@ -121,6 +121,9 @@ Things deliberately left for launch. Development runs locally until then (test k
 - [ ] **Visitor privacy notice (G-27).** The DPO writes the visitor privacy notice (APX-G G-27: what is recorded, why,
       for how long, who sees it, the visitor's rights) and the company template; it shows on the visitor's pass page and
       at reception before entry, with the retention days from Settings 3.12 (Visitors slice 1, 15 Nov 2026).
+- [ ] **Visitor photo and NDA records.** The DPO confirms the visitor privacy notice (G-27) covers the photo (shown to the
+      host only while deciding, deleted with the visit) and the NDA acknowledgement kept for a year (Visitors slice 2,
+      10 Nov 2026).
 - [ ] **Bias audit law row.** Counsel checks HIR.BIAS_AUDIT (NYC Local Law 144: the city names that count as New York
       City, the 12 months an audit lasts, the sex and race / ethnicity categories; marked verify) before any company turns on
       "We use an automated tool for jobs in New York City" (HIR-23, 13 Nov 2026).

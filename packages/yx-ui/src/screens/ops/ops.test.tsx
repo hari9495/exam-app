@@ -257,6 +257,8 @@ describe('house rules (Ops)', () => {
     render(<VisitorKioskScreen step="notice" visit={VISITS[0]!} today={TODAY} />);
     await u.click(screen.getByRole('button', { name: 'Accept and continue' }));
     expect(screen.getByText('Tick to accept the notice before you continue.')).toBeInTheDocument();
-    expect(screen.getByRole('checkbox')).toHaveFocus();
+    expect(screen.getByRole('checkbox', { name: 'I have read and accept the visitor notice' })).toHaveFocus();
+    // Slice 2 (606): the NDA and the induction say so too.
+    expect(screen.getByText('Tick to accept the visitor NDA.')).toBeInTheDocument();
   });
 });

@@ -28,21 +28,41 @@ const KEY = {
   'vis.retention_days': 'visitors.retention_days',
   'vis.id_retention_days': 'visitors.id_retention_days',
   'vis.watchlist_review_days': 'visitors.watchlist_review_days',
+  // Slice 2 (601): self check-in on a visitor kiosk (per location, off by default).
+  'vis.kiosk': 'visitors.kiosk',
 } as const;
 type Field = keyof typeof KEY;
-const TOGGLE: Partial<Record<Field, [on: string, off: string]>> = { 'vis.photo': ['on', 'off'] };
+const TOGGLE: Partial<Record<Field, [on: string, off: string]>> = { 'vis.photo': ['on', 'off'], 'vis.kiosk': ['on', 'off'] };
 const UNIT: Partial<Record<Field, (v: string) => string>> = {
   'vis.host_approval_timeout': (v) => `${v} minutes`,
   'vis.retention_days': (v) => `${v} days`,
   'vis.id_retention_days': (v) => `${v} days`,
   'vis.watchlist_review_days': (v) => `${v} days`,
 };
-const LIVE = new Set<string>([...Object.keys(KEY), 'vis.desk', 'vis.log', 'vis.watchlist']);
+const LIVE = new Set<string>([...Object.keys(KEY), 'vis.desk', 'vis.log', 'vis.watchlist', 'vis.types']);
+
+/** Slice 2 (606): GET /visitors/types. */
+export interface VisitorTypesData {
+  types: { id: string; name: string; escort: boolean; ndaPolicyId: string | null; nda: string | null; inductionPolicyId: string | null; induction: string | null }[];
+  policies: { id: string; title: string }[];
+}
+const NO = 'No';
+
+/** The edited list back to PUT /visitors/types (a row keeps its id by its place; added rows are new). */
+export function visitorTypesFromRows(rows: string[][], data: VisitorTypesData): { id?: string; name: string; escort: boolean; ndaPolicyId: string | null; inductionPolicyId: string | null }[] {
+  const policy = (title: string | undefined) => (title && title !== NO ? (data.policies.find((p) => p.title === title)?.id ?? null) : null);
+  return rows.map((r, i) => ({ ...(data.types[i] ? { id: data.types[i]!.id } : {}), name: (r[0] ?? '').trim(), escort: r[1] === 'Yes', ndaPolicyId: policy(r[2]), inductionPolicyId: policy(r[3]) }));
+}
 
 /** The designed 3.12 page with the company's values, for SettingsPageScreen `live`. */
-export function visitorSettingsPage(design: SettingsPageDef, data: VisitorSettingsData): SettingsPageDef {
+export function visitorSettingsPage(design: SettingsPageDef, data: VisitorSettingsData, types?: VisitorTypesData): SettingsPageDef {
   const fill = (d: SettingDef): SettingDef | null => {
     if (!LIVE.has(d.key)) return null;
+    if (d.key === 'vis.types') {
+      if (!types) return null;
+      const titles = [NO, ...types.policies.map((p) => p.title)];
+      return { ...d, rows: types.types.map((t) => [t.name, t.escort ? 'Yes' : 'No', t.nda ?? NO, t.induction ?? NO]), columnOptions: { Escort: ['Yes', 'No'], NDA: titles, 'Safety induction': titles }, helper: 'The NDA and the safety induction are published company policies (Policies). An NDA counts for a year for the same person and company; the induction is every visit.' };
+    }
     if (d.key === 'vis.desk' || d.key === 'vis.log' || d.key === 'vis.watchlist') return d;
     const f = d.key as Field;
     const k = KEY[f];

@@ -19,3 +19,6 @@ export const FindPass: S = { name: 'Scan or type the QR pass', render: () => <Vi
 export const Blocked: S = { name: 'Blocked visitor stopped', render: () => <VisitorDeskScreen visits={VISITS} today={TODAY} blockedAlert /> };
 export const Empty: S = { render: () => <VisitorDeskScreen visits={[]} today={TODAY} state="empty" /> };
 export const Loading: S = { render: () => <VisitorDeskScreen visits={VISITS} today={TODAY} state="loading" /> };
+// Visitors slice 2 (10 Nov 2026): reception adds a walk-in (type, host, NDA and induction, a reason outside the hours), and decides for the host after the timeout.
+export const AddWalkIn: S = { name: 'Add a walk-in · type, host, NDA and induction', render: () => <VisitorDeskScreen visits={VISITS} today={TODAY} walkInOpen /> };
+export const DecideForHost: S = { name: 'Decide for the host after the timeout', render: () => <VisitorDeskScreen visits={VISITS} today={TODAY} decideOpen /> };

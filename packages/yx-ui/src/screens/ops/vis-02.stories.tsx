@@ -17,3 +17,7 @@ export const Empty: S = { render: () => <PreRegisterScreen visits={[]} today={TO
 export const Phone: S = { name: 'My visitors · phone', globals: PHONE, render: () => <PreRegisterScreen device="phone" visits={MY_VISITORS} today={TODAY} /> };
 export const PhoneApproval: S = { name: 'Walk-in approval card · phone', globals: PHONE, render: () => <PreRegisterScreen device="phone" visits={MY_VISITORS} today={TODAY} approval /> };
 export const PhoneInvite: S = { name: 'Invite · phone', globals: PHONE, render: () => <PreRegisterScreen device="phone" visits={MY_VISITORS} today={TODAY} formOpen /> };
+// Visitors slice 2 (10 Nov 2026): the walk-in approval card on the web (the host's photo view; reception after the timeout).
+export const Approval: S = { name: 'Walk-in approval card', render: () => <PreRegisterScreen visits={MY_VISITORS} today={TODAY} approval /> };
+// Answer 711 (10 Nov 2026): the host sends a colleague; the colleague gets the card with their own minutes.
+export const ApprovalSend: S = { name: 'Walk-in approval · send someone', render: () => <PreRegisterScreen visits={MY_VISITORS} today={TODAY} approval sendOpen /> };

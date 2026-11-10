@@ -25,6 +25,7 @@ describe('Visitors slice 4', () => {
   let prisma: PrismaService;
   let tenantPrisma: TenantPrismaService;
   let visitors: VisitorsService;
+  let blob: BlobStorageService;
   const PASSWORD = 'Corr3ct-Horse-Battery';
   const run = randomUUID().slice(0, 8);
   const SUPER: TenantContext = { organizationId: null, isSuperAdmin: true };
@@ -65,6 +66,7 @@ describe('Visitors slice 4', () => {
     await app.init();
     prisma = moduleRef.get(PrismaService);
     tenantPrisma = moduleRef.get(TenantPrismaService);
+    blob = moduleRef.get(BlobStorageService);
     visitors = moduleRef.get(VisitorsService);
     const redis = moduleRef.get<Redis>(LOGIN_PROTECTION_REDIS);
     const ipKeys = await redis.keys('auth:otp:ip:*');
@@ -207,5 +209,27 @@ describe('Visitors slice 4', () => {
     await api('security', 'get', '/visitors/reports').expect(403);
     await api('host', 'get', '/visitors/reports').expect(403);
     await api('adminB', 'get', `/visitors/reports?locationId=${ids.maa}`).expect(404);
+  });
+
+  it('713 the photo badge: a walk-in photo on a photo badge location; never for a visitor under 18; the name badge without a photo', async () => {
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+    const images = (b: Buffer) => ((b.toString('latin1').match(/\/Subtype \/Image/g) ?? []).length);
+    const photoPath = await blob.upload(`visitors/${org.A.id}/badge-${run}.png`, png, 'image/png');
+    const make = async (name: string, minor: boolean) => {
+      const v = (await api('host', 'post', '/visitors/invites').send(invite({ name, email: `${name.split(' ')[0]!.toLowerCase()}-${run}@visitor.test`, ...(minor ? { minor: true, minorAdult: 'Lakshmi Rao' } : {}) })).expect(want(201))).body;
+      await inA((tx) => tx.visit.update({ where: { id: v.id }, data: { photoPath } }));
+      await api('reception', 'post', `/visitors/${v.id}/check-in`).send({ noticeAccepted: true, ...(minor ? { adultPresent: true } : {}) }).expect(want(200));
+      return v.id as string;
+    };
+    const adult = await make('Neha Joshi', false);
+    const kid = await make('Arjun Rao', true);
+    const badge = async (id: string) => images((await binary(api('reception', 'get', `/visitors/${id}/badge.pdf`)).expect(want(200))).body as Buffer);
+    const nameOnly = await badge(adult);
+    await api('admin', 'put', '/org/settings').send({ key: 'visitors.badge', scopeType: 'location', scopeId: ids.maa, value: 'photo_qr' }).expect(want(200));
+    expect(await badge(adult)).toBeGreaterThan(nameOnly);
+    expect(await badge(kid)).toBe(nameOnly);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'visitor.badge_printed', entityId: adult, metadataJson: { contains: '"photo":true' } } }))).toBe(1);
+    await api('admin', 'put', '/org/settings').send({ key: 'visitors.badge', scopeType: 'location', scopeId: ids.maa, value: 'name_qr' }).expect(want(200));
+    for (const id of [adult, kid]) await api('reception', 'post', `/visitors/${id}/check-out`).expect(want(200));
   });
 });

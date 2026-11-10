@@ -2370,17 +2370,17 @@ model Agency {
   bankVerifiedAt    DateTime?          @map("bank_verified_at") @db.Timestamptz(3)
   bankVerifiedBy    String?            @map("bank_verified_by") @db.Uuid
   /// Answer 496: the vendor's consultant record in payroll (PAY 8).
-  consultantId      String?   @map("consultant_id") @db.Uuid
+  consultantId      String?            @map("consultant_id") @db.Uuid
   /// Contract labour CL-1 (answer 623): the vendor supplies contract labour; its PF code, ESIC code and LIN.
-  contractLabour    Boolean   @default(false) @map("contract_labour")
-  work              String?   @db.VarChar(200)
-  pfCode            String?   @map("pf_code") @db.VarChar(15)
-  esicCode          String?   @map("esic_code") @db.VarChar(17)
-  lin               String?   @db.VarChar(13)
-  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
-  agencyJobs     AgencyJob[]
-  submissions    AgencySubmission[]
+  contractLabour    Boolean            @default(false) @map("contract_labour")
+  work              String?            @db.VarChar(200)
+  pfCode            String?            @map("pf_code") @db.VarChar(15)
+  esicCode          String?            @map("esic_code") @db.VarChar(17)
+  lin               String?            @db.VarChar(13)
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  agencyJobs        AgencyJob[]
+  submissions       AgencySubmission[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -12841,49 +12841,94 @@ model ContractorLicenceAlert {
 
 /// Visitors slice 1 (M02 §B11, YX-AT-22): one visit to a location, invited by a host. Forced RLS.
 model Visit {
-  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId    String    @map("organization_id") @db.Uuid
-  locationId        String    @map("location_id") @db.Uuid
-  hostUserId        String    @map("host_user_id") @db.Uuid
-  visitorName       String    @map("visitor_name") @db.VarChar(200)
-  visitorMobile     String    @map("visitor_mobile") @db.VarChar(20)
-  visitorEmail      String?   @map("visitor_email") @db.VarChar(254)
-  visitorCompany    String?   @map("visitor_company") @db.VarChar(200)
-  purpose           String    @db.VarChar(20)
-  vehicle           String?   @db.VarChar(20)
-  startsAt          DateTime  @map("starts_at") @db.Timestamptz(3)
-  endsAt            DateTime  @map("ends_at") @db.Timestamptz(3)
-  status            String    @default("expected") @db.VarChar(12)
-  passToken         String    @unique(map: "visits_pass_token_key") @map("pass_token") @db.VarChar(64)
-  passCode          String    @map("pass_code") @db.VarChar(16)
-  badgeSeq          Int?      @map("badge_seq")
-  noticeVersion     String?   @map("notice_version") @db.VarChar(40)
-  noticeAcceptedAt  DateTime? @map("notice_accepted_at") @db.Timestamptz(3)
-  noticeAcceptedVia String?   @map("notice_accepted_via") @db.VarChar(6)
-  checkedInAt       DateTime? @map("checked_in_at") @db.Timestamptz(3)
-  checkedInBy       String?   @map("checked_in_by") @db.Uuid
-  checkedOutAt      DateTime? @map("checked_out_at") @db.Timestamptz(3)
-  checkedOutBy      String?   @map("checked_out_by") @db.Uuid
-  closedAt          DateTime? @map("closed_at") @db.Timestamptz(3)
-  cancelledAt       DateTime? @map("cancelled_at") @db.Timestamptz(3)
-  cancelledBy       String?   @map("cancelled_by") @db.Uuid
-  createdBy         String    @map("created_by") @db.Uuid
-  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
-  // Slice 3 (603, 605, 614): watch-list block, ID type and last 4 (image only where asked), under 18 with an adult.
-  blockedAt         DateTime? @map("blocked_at") @db.Timestamptz(3)
-  idType            String?   @map("id_type") @db.VarChar(20)
-  idLast4           String?   @map("id_last4") @db.VarChar(4)
-  idFileId          String?   @map("id_file_id") @db.Uuid
-  idCapturedAt      DateTime? @map("id_captured_at") @db.Timestamptz(3)
-  minor             Boolean   @default(false)
-  minorAdult        String?   @map("minor_adult") @db.VarChar(200)
-  adultConfirmedAt  DateTime? @map("adult_confirmed_at") @db.Timestamptz(3)
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId      String    @map("organization_id") @db.Uuid
+  locationId          String    @map("location_id") @db.Uuid
+  hostUserId          String    @map("host_user_id") @db.Uuid
+  visitorName         String    @map("visitor_name") @db.VarChar(200)
+  visitorMobile       String    @map("visitor_mobile") @db.VarChar(20)
+  visitorEmail        String?   @map("visitor_email") @db.VarChar(254)
+  visitorCompany      String?   @map("visitor_company") @db.VarChar(200)
+  purpose             String    @db.VarChar(20)
+  vehicle             String?   @db.VarChar(20)
+  startsAt            DateTime  @map("starts_at") @db.Timestamptz(3)
+  endsAt              DateTime  @map("ends_at") @db.Timestamptz(3)
+  status              String    @default("expected") @db.VarChar(12)
+  passToken           String    @unique(map: "visits_pass_token_key") @map("pass_token") @db.VarChar(64)
+  passCode            String    @map("pass_code") @db.VarChar(16)
+  badgeSeq            Int?      @map("badge_seq")
+  noticeVersion       String?   @map("notice_version") @db.VarChar(40)
+  noticeAcceptedAt    DateTime? @map("notice_accepted_at") @db.Timestamptz(3)
+  noticeAcceptedVia   String?   @map("notice_accepted_via") @db.VarChar(6)
+  checkedInAt         DateTime? @map("checked_in_at") @db.Timestamptz(3)
+  checkedInBy         String?   @map("checked_in_by") @db.Uuid
+  checkedOutAt        DateTime? @map("checked_out_at") @db.Timestamptz(3)
+  checkedOutBy        String?   @map("checked_out_by") @db.Uuid
+  closedAt            DateTime? @map("closed_at") @db.Timestamptz(3)
+  cancelledAt         DateTime? @map("cancelled_at") @db.Timestamptz(3)
+  cancelledBy         String?   @map("cancelled_by") @db.Uuid
+  createdBy           String    @map("created_by") @db.Uuid
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  /// Slice 2: a walk-in (kiosk or desk), its type, the kiosk it came from, the photo, the host's deadline and the decision.
+  walkIn              Boolean   @default(false) @map("walk_in")
+  visitorTypeId       String?   @map("visitor_type_id") @db.Uuid
+  kioskDeviceId       String?   @map("kiosk_device_id") @db.Uuid
+  photoPath           String?   @map("photo_path") @db.VarChar(500)
+  approvalDueAt       DateTime? @map("approval_due_at") @db.Timestamptz(3)
+  decidedBy           String?   @map("decided_by") @db.Uuid
+  decidedAt           DateTime? @map("decided_at") @db.Timestamptz(3)
+  decidedVia          String?   @map("decided_via") @db.VarChar(10)
+  decisionReason      String?   @map("decision_reason") @db.VarChar(300)
+  hoursOverrideReason String?   @map("hours_override_reason") @db.VarChar(300)
+  /// Slice 3 (603, 605, 614): watch-list block, ID type and last 4 (image only where asked), under 18 with an adult.
+  blockedAt           DateTime? @map("blocked_at") @db.Timestamptz(3)
+  idType              String?   @map("id_type") @db.VarChar(20)
+  idLast4             String?   @map("id_last4") @db.VarChar(4)
+  idFileId            String?   @map("id_file_id") @db.Uuid
+  idCapturedAt        DateTime? @map("id_captured_at") @db.Timestamptz(3)
+  minor               Boolean   @default(false)
+  minorAdult          String?   @map("minor_adult") @db.VarChar(200)
+  adultConfirmedAt    DateTime? @map("adult_confirmed_at") @db.Timestamptz(3)
 
   @@unique([organizationId, passCode], map: "visits_pass_code_key")
   @@index([organizationId, locationId, startsAt], map: "visits_desk_idx")
   @@index([organizationId, hostUserId, startsAt(sort: Desc)], map: "visits_host_idx")
   @@map("visits")
+}
+
+/// Answer 606: a company's visitor type (Settings 3.12) with its escort rule and NDA / induction policy documents.
+model VisitorType {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String   @map("organization_id") @db.Uuid
+  name              String   @db.VarChar(60)
+  escort            Boolean  @default(false)
+  ndaPolicyId       String?  @map("nda_policy_id") @db.Uuid
+  inductionPolicyId String?  @map("induction_policy_id") @db.Uuid
+  position          Int      @default(0)
+  updatedBy         String?  @map("updated_by") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("visitor_types")
+}
+
+/// Answer 606: an NDA or induction a visitor acknowledged (policy version and text hash); append-only.
+model VisitAcknowledgement {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  visitId        String?  @map("visit_id") @db.Uuid
+  kind           String   @db.VarChar(10)
+  policyId       String   @map("policy_id") @db.Uuid
+  versionId      String   @map("version_id") @db.Uuid
+  bodySha256     String   @map("body_sha256") @db.Char(64)
+  personKey      String   @map("person_key") @db.Char(64)
+  via            String   @db.VarChar(6)
+  acknowledgedAt DateTime @default(now()) @map("acknowledged_at") @db.Timestamptz(3)
+
+  @@index([organizationId, personKey, kind, acknowledgedAt(sort: Desc)], map: "visit_acknowledgements_person_idx")
+  @@index([visitId], map: "visit_acknowledgements_visit_idx")
+  @@map("visit_acknowledgements")
 }
 
 /// Answer 608: counts kept after a visit is deleted (no names), for reports.

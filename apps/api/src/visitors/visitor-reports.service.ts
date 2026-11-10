@@ -1,5 +1,5 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { BlobStorageService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import type { ScopeUser } from '../access/scope';
 import { audit, inCompany, type CompanyContext, type Tx } from '../org-structure/org-structure.service';
 import { dayBounds, localDay } from './visitor-rules';
@@ -20,6 +20,7 @@ export class VisitorReportsService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly visitors: VisitorsService,
+    private readonly blob: BlobStorageService,
   ) {}
 
   private async company(tx: Tx, c: CompanyContext) {
@@ -37,7 +38,10 @@ export class VisitorReportsService {
       if ((await this.visitors.setting(tx, c, 'visitors.badge', loc.id)) === 'phone_only') throw new ConflictException(`${loc.name} uses the pass on the visitor's phone; no badge is printed (Settings › Visitors).`);
       if (row.status !== 'on_site') throw new ConflictException('Print a badge after check-in, while the visitor is on site.');
       const [view] = await this.visitors.views(tx, c, [row]);
-      await audit(tx, c, 'visitor.badge_printed', 'visit', row.id, { badge: view!.badge });
+      // Answer 713: a photo badge carries the walk-in's photo (slice 2); never for a visitor under 18 (614).
+      const photoBadge = (await this.visitors.setting(tx, c, 'visitors.badge', loc.id)) === 'photo_qr';
+      const photo = photoBadge && row.photoPath && !row.minor ? await this.blob.downloadToBuffer(row.photoPath) : null;
+      await audit(tx, c, 'visitor.badge_printed', 'visit', row.id, { badge: view!.badge, photo: Boolean(photo) });
       return badgePdf({
         company: await this.company(tx, c),
         location: loc.name,
@@ -48,9 +52,7 @@ export class VisitorReportsService {
         badge: view!.badge!,
         passCode: row.passCode,
         minorAdult: row.minor ? row.minorAdult : null,
-        // Answer 713: the photo on a photo badge. shortcut: the visitor photo is stored by slice 2 (not on this branch);
-        // after the slice 2 merge, read its clean photo file here for a 'photo_qr' location. Until then the name badge prints.
-        photo: null,
+        photo,
       });
     });
   }

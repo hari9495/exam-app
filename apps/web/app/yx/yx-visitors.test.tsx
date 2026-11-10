@@ -9,6 +9,7 @@ import YxVisitorDeskPage from './(app)/visitors/page';
 import YxMyVisitorsPage from './(app)/visitors/invites/page';
 import YxVisitorLogPage from './(app)/visitors/log/page';
 import YxVisitPassPage from './visit/[token]/page';
+import YxKioskPage from './kiosk/page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ API_BASE: 'http://api', apiFetch: jest.fn(), apiFetchBlob: jest.fn() }));
@@ -33,9 +34,10 @@ const routes = (over: Record<string, unknown> = {}) =>
       calls.push([method, path, init?.body ? JSON.parse(String(init.body)) : null]);
       if (path.endsWith('/check-in')) return visit({ status: 'on_site', statusText: 'On site', badge: 'V-0413' });
       if (path === '/visitors/invites') return { ...visit({ id: 'v9', name: 'Anjali Varma' }), emailed: true };
+      if (path === '/visitors/walk-ins') return visit({ id: 'w9', name: 'Mohan Lal', status: 'waiting', statusText: 'Waiting for host', walkIn: true });
       return {};
     }
-    const routesMap: Record<string, unknown> = { '/visitors/options': OPTIONS, '/visitors/desk?locationId=maa': { location: { id: 'maa', name: 'Chennai office' }, today: '2026-11-12', canChange: true, visits: [visit()] }, '/visitors/mine': [visit()], '/visitors/log': { locations: OPTIONS.log, visits: [visit({ status: 'checked_out', statusText: 'Checked out', checkedInAt: '2026-11-12T08:31:00Z', checkedOutAt: '2026-11-12T09:00:00Z', deletedOn: '2027-02-10' })] }, ...over };
+    const routesMap: Record<string, unknown> = { '/visitors/options': OPTIONS, '/visitors/desk?locationId=maa': { location: { id: 'maa', name: 'Chennai office' }, today: '2026-11-12', canChange: true, visits: [visit()] }, '/visitors/mine': [visit()], '/visitors/types': { types: [{ id: 't1', name: 'Customer' }], policies: [] }, '/visitors/approvals': [], '/visitors/v1/needs': { notice: { text: 'n', version: 'v-1' }, nda: null, induction: null }, '/visitors/log': { locations: OPTIONS.log, visits: [visit({ status: 'checked_out', statusText: 'Checked out', checkedInAt: '2026-11-12T08:31:00Z', checkedOutAt: '2026-11-12T09:00:00Z', deletedOn: '2027-02-10' })] }, ...over };
     if (path in routesMap) return routesMap[path];
     throw Object.assign(new Error(`unexpected ${path}`), { status: 404 });
   });
@@ -119,3 +121,61 @@ describe('The visitor’s pass page (T9-14, public)', () => {
     expect(await screen.findByText('We could not find this visit.')).toBeInTheDocument();
   });
 });
+
+describe('Visitors slice 2 pages (live)', () => {
+  it('desk: Add walk-in posts the visitor with the host and what they accepted', async () => {
+    routes({
+      '/visitors/desk/hosts?locationId=maa&q=': [{ value: 'h1', label: 'Anita Desai' }],
+      '/visitors/desk/needs?locationId=maa&mobile=': { notice: { text: 'Wear your badge.', version: 'v-1' }, nda: null, induction: null, inHours: true, hours: '09:00 to 18:30' },
+      '/visitors/desk/needs?locationId=maa&mobile=9000011111': { notice: { text: 'Wear your badge.', version: 'v-1' }, nda: null, induction: null, inHours: true, hours: '09:00 to 18:30' },
+    });
+    wrap(<YxVisitorDeskPage />);
+    await ue.click(await screen.findByRole('button', { name: 'Add walk-in' }));
+    const d = screen.getByRole('dialog', { name: /Add a walk-in/ });
+    await ue.type(within(d).getByLabelText(/^Visitor's name/), 'Mohan Lal');
+    await ue.type(within(d).getByLabelText(/^Mobile/), '9000011111');
+    await ue.click(within(d).getByRole('combobox', { name: 'Visiting' }));
+    await ue.click(await screen.findByRole('option', { name: /Anita Desai/ }));
+    await ue.click(within(d).getByRole('checkbox', { name: 'The visitor read and accepted the notice' }));
+    await ue.click(within(d).getByRole('button', { name: 'Ask the host' }));
+    await waitFor(() => expect(calls).toContainEqual(['POST', '/visitors/walk-ins', expect.objectContaining({ locationId: 'maa', hostUserId: 'h1', name: 'Mohan Lal', noticeVersion: 'v-1' })]));
+  });
+
+  it('my visitors: a walk-in card; Approve posts the decision', async () => {
+    routes({ '/visitors/approvals': [{ id: 'w1', name: 'Priyanka Sethi', company: 'Fairview', purpose: 'audit', location: 'Chennai office', arrivedAt: '2026-11-12T04:01:00.000Z', dueAt: '2026-11-12T04:11:00.000Z', hasPhoto: false }] });
+    wrap(<YxMyVisitorsPage />);
+    expect(await screen.findByText('A walk-in is asking for you')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(calls).toContainEqual(['POST', '/visitors/walk-ins/w1/decide', { approve: true }]));
+  });
+
+  it('my visitors: Send someone searches colleagues for this walk-in and posts the send (711)', async () => {
+    routes({
+      '/visitors/approvals': [{ id: 'w1', name: 'Priyanka Sethi', company: 'Fairview', purpose: 'audit', location: 'Chennai office', arrivedAt: '2026-11-12T04:01:00.000Z', dueAt: '2026-11-12T04:11:00.000Z', hasPhoto: false }],
+      '/visitors/walk-ins/w1/colleagues?q=': [{ value: 'c9', label: 'Ravi Kumar', description: 'ravi@kaveri.example' }],
+      '/visitors/walk-ins/w1/send': { id: 'w1', to: 'Ravi Kumar', dueAt: '2026-11-12T04:21:00.000Z' },
+    });
+    wrap(<YxMyVisitorsPage />);
+    await ue.click(await screen.findByRole('button', { name: 'Send someone' }));
+    const d = screen.getByRole('dialog', { name: 'Send someone to meet Priyanka Sethi' });
+    await ue.click(within(d).getByRole('combobox', { name: 'Who meets them' }));
+    await ue.click(await screen.findByRole('option', { name: /Ravi Kumar/ }));
+    await ue.click(within(d).getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(calls).toContainEqual(['POST', '/visitors/walk-ins/w1/send', { userId: 'c9' }]));
+  });
+
+  it('kiosk: a tablet in visitor mode shows the visitor kiosk with its own secret; a closed one sends to reception', async () => {
+    localStorage.setItem('yx-kiosk-token', 'org.secret');
+    const seen: string[] = [];
+    global.fetch = jest.fn(async (url: string, init?: RequestInit) => {
+      seen.push(`${init?.method ?? 'GET'} ${url} ${(init?.headers as Record<string, string>)['x-kiosk-token']}`);
+      const body = url.endsWith('/kiosk/me') ? { company: 'Kaveri Foods', location: 'Chennai office', mode: 'visitor', methods: [], code: 'K1', place: 'Lobby', codePrefix: '', codeDigits: 4, pinTries: 5, zone: 'Asia/Kolkata' } : { company: 'Kaveri Foods', location: 'Chennai office', open: false, photo: true, retentionDays: 90, types: [] };
+      return { ok: true, status: 200, json: async () => body } as Response;
+    }) as unknown as typeof fetch;
+    wrap(<YxKioskPage />);
+    expect(await screen.findByText('Please see the reception desk')).toBeInTheDocument();
+    expect(seen).toContain('GET http://api/visitor-kiosk/me org.secret');
+    localStorage.removeItem('yx-kiosk-token');
+  });
+});
+
