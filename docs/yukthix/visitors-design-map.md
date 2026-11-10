@@ -13,6 +13,8 @@ built.
   the visitor gets an email with their link (/yx/visit/…): details, the notice, the QR pass; reception checks them in and
   out at its location (Visitors › Today's visitors); the log with CSV; Settings › Time & Leave › Visitors (3.12). Visits
   are deleted after the location's period with counts kept; forgotten check-outs close at the end of the window.
+- **Slice 4 is live (17 Nov 2026, branch `feat/yukthix-visitors-4`):** the badge PDF the desk prints from the browser,
+  reports from counts (no names) and the emergency roll-call (Visitors › Roll-call) with visitors and employees.
 - **Slice 3 is live (16 Nov 2026, branch `feat/yukthix-visitors-3`):** the watch-list (Visitors › Watch-list, HR and
   Facility admins only), ID proof per location (type and last 4, or also a photo of the ID) and visitors under 18 with
   a named adult.
@@ -28,11 +30,15 @@ built.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Front desk and kiosk | 2 | 7 | 3 | 0 | 8 | 0 | 18 |
-| B. Hosts | 2 | 4 | 2 | 0 | 0 | 4 | 10 |
+| A. Front desk and kiosk | 2 | 8 | 2 | 0 | 8 | 0 | 18 |
+| B. Hosts | 2 | 5 | 1 | 0 | 0 | 4 | 10 |
 | C. The visitor's own pages | 1 | 6 | 1 | 0 | 2 | 0 | 9 |
-| D. Log, reports and settings | 3 | 8 | 2 | 0 | 1 | 0 | 11 |
-| **All Visitors design groups (A–D)** | **8** | **25** | **8** | **0** | **11** | **4** | **48** |
+| D. Log, reports and settings | 4 | 12 | 2 | 0 | 0 | 0 | 14 |
+| **All Visitors design groups (A–D)** | **9** | **31** | **6** | **0** | **10** | **4** | **51** |
+
+Recounted by script 17 Nov 2026 on `feat/yukthix-visitors-4` after Visitors slice 4: 37 stories live (6 with a gap; VIS-02 Invite live after 652 and 664);
+3 new stories drawn and live (VIS-06 the roll-call: RollCall, Empty, Loading); 10 wait for slice 2 (the kiosk, the
+visitor photo); 4 phone views wait for the app.
 
 Recounted by script 16 Nov 2026 on `feat/yukthix-visitors-3` after Visitors slice 3: 33 stories live (8 with a gap);
 8 new stories drawn and live (VIS-01 CheckInIdPhoto and CheckInMinor, VIS-02 InviteMinor, VIS-05 the watch-list: List,
@@ -51,12 +57,12 @@ counted as a page for that reason).
 
 Kit parts (not stories, reusable): `VisitorBadge`, `VisitorDeskScreen`, `PreRegisterForm`, `PreRegisterScreen`,
 `VisitorKioskScreen`, `VisitorLogScreen` (`screens/ops/visitors.tsx`), sample data (`visitors-data.ts`), the ops shell's
-Visitors menu (Today's visitors, Invites, Visitor log, Kiosks & badges, Reports; `ops-kit.tsx`), `retentionLeft`
+Visitors menu (Today's visitors, Invites, Visitor log, Watch-list, Roll-call, Reports; `ops-kit.tsx`; Kiosks & badges dropped, answer 617), `retentionLeft`
 (`ops-rules.ts`), `MobileVisitorsScreen` (`settings/mobile-me.tsx`), `KioskFrame` (`_kit/frames.tsx`), `TenantPortal`
 and `CameraFrame` (portals kit), and the Settings 3.12 page definition (`registry-g3.ts`, keys `vis.*`).
 
-Not drawn: the **Kiosks & badges** menu item has no screen (kiosks are enrolled on the Time devices page today; badge
-layout is one Settings 3.12 field).
+The **Kiosks & badges** menu item is dropped (answer 617, slice 4): kiosks are enrolled on the Time devices page and the
+badge layout is one Settings 3.12 field.
 
 ## 1. Live pages
 
@@ -79,9 +85,9 @@ All 39 stories below.
 | story (sub-page) | verdict | note |
 |---|---|---|
 | Expected · Expected · walk-in waiting for host | live (gap) | live 15 Nov 2026 at /yx/visitors (Reception role, per location): expected visitors of the location's day; the walk-in waiting for the host comes with slice 2 |
-| OnSite · On site now (emergency list) | live (gap) | live: everyone checked in and not out; the printable roll-call with employees comes with slice 4 |
+| OnSite · On site now (emergency list) | live | live: everyone checked in and not out, "Print badge" again (607), and the Roll-call button to the printable roll-call with employees (VIS-06, slice 4) |
 | CheckedOut · Checked out | live | live: checked out, and closed as "Not checked out" at the end of the window (611) |
-| CheckIn · Check in · notice and badge | live (gap) | live: check in (`POST visitors/:id/check-in`); the notice is ticked at the desk when not accepted on the link; the ID type and last 4 where the location takes ID (slice 3, 603); badge number given; the visitor photo and badge printing come with slices 2 and 4 |
+| CheckIn · Check in · notice and badge | live (gap) | live: check in (`POST visitors/:id/check-in`); the notice is ticked at the desk when not accepted on the link; the ID type and last 4 where the location takes ID (slice 3, 603); "Check in and print badge" opens the label-size badge PDF (slice 4, 607; none where the pass is on the phone only); the visitor photo comes with slice 2 |
 | CheckInIdPhoto · Check in · ID type, last 4 and photo of the ID | live | drawn 16 Nov 2026 (slice 3, 603): where the location keeps a photo of the ID, reception adds it (`POST visitors/:id/id-image`) with the type and last 4; private storage, virus-checked before it opens, deleted after the ID retention; never of an Aadhaar card |
 | CheckInMinor · Check in · visitor under 18 with an adult | live | drawn 16 Nov 2026 (slice 3, 614): no ID and no photo; reception ticks that the named adult is there |
 | FindPass · Scan or type the QR pass | live | drawn 15 Nov 2026: "Scan QR pass" takes the scanned or typed pass code (`POST visitors/desk/find`); a pass for another location or day is refused with the reason |
@@ -109,7 +115,7 @@ All 39 stories below.
 | story (sub-page) | verdict | note |
 |---|---|---|
 | MyVisitors · My visitors | live | live at /yx/visitors/invites: the host's own visitors; cancel while expected; a blocked visit says only that it can't go ahead (slice 3) |
-| Invite · Invite a visitor | live (gap) | live: name, mobile (Indian or +country code), email (the pass goes there, answer 609), company, purpose, location, day, times in the location's time, vehicle, under 18 with the adult (slice 3); the drawn ID type is given by the visitor on their link or at the desk instead (question 664) |
+| Invite · Invite a visitor | live | live: name, mobile (Indian or +country code), email (the pass goes there, answer 609), company, purpose, location, day, times in the location's time, vehicle, under 18 with the adult (slice 3); a window outside the allowed hours is warned about in the toast, never refused (652); the ID type field is gone from the drawing (664: the visitor or reception gives it) |
 | InviteMinor · Invite a visitor under 18 | live | drawn 16 Nov 2026 (slice 3, 614): "The visitor is under 18" asks for the adult who comes with them |
 | Sent · Invite sent | live | toast with the pass code; the email carries the link to the pass page |
 | Empty · Empty | live | no visitors yet |
@@ -147,7 +153,7 @@ All 39 stories below.
 | story (sub-page) | verdict | note |
 |---|---|---|
 | Log · Log · retention countdown | live | live at /yx/visitors/log (log or desk key, per location): the day each visit is deleted (608); the ID shown and "Photo of ID" (audited; slice 3); export CSV for audit (no mobile numbers) |
-| Reports · Reports by location, purpose, host | design only, feature not built | reports (slice 4); counts are kept without names after deletion |
+| Reports · Reports by location, purpose, host | live | live (slice 4, 608): counts only, no names: by location, purpose and month, from the counts kept after deletion and the visits still kept; "by host" and average stay were dropped from the drawing (names; not in the counts) |
 | Empty · Empty | live | no visits |
 | Loading · Loading | live | loading |
 
@@ -159,6 +165,14 @@ All 39 stories below.
 | Add · Add a person | live | name, mobile (optional; matched by mobile, then name), reason; audited without the reason; expected visits that match are blocked at once |
 | Remove · Remove an entry | live | asks first; audited; visits already blocked stay blocked |
 | Empty · Empty | live | nobody on the list |
+| Loading · Loading | live | loading |
+
+#### VIS-06 · Emergency roll-call
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| RollCall · On site now · visitors and employees | live | drawn and live 17 Nov 2026 (slice 4, 612) at /yx/visitors/rollcall: visitors checked in and employees whose last check-in today was at the location; one A4 PDF to print (audited); for reception, security and HR (`visitors.rollcall.view` or the desk key there) |
+| Empty · Empty | live | nobody on site |
 | Loading · Loading | live | loading |
 
 #### Group 3 · Time & Leave
@@ -272,7 +286,7 @@ story file in scope has exactly one row per story, in file order, with one of th
 const fs = require('fs');
 const UI = 'packages/yx-ui/src/';
 const files = [
-  ...['vis-01', 'vis-02', 'vis-03', 'vis-04', 'vis-05'].map((f) => UI + 'screens/ops/' + f + '.stories.tsx'),
+  ...['vis-01', 'vis-02', 'vis-03', 'vis-04', 'vis-05', 'vis-06'].map((f) => UI + 'screens/ops/' + f + '.stories.tsx'),
   UI + 'screens/portals/t9-14-visitor.stories.tsx',
   UI + 'screens/settings/mobile-me.stories.tsx',
   UI + 'screens/settings/settings-g3.stories.tsx',
@@ -389,3 +403,42 @@ with the suggested answer as its default). Build Visitors first (slices 1-4), th
      type and last 4 on their link, or reception at the desk. *Suggested: keep; remove the field from the drawing.*
 665. **Removing an entry does not unblock visits.** Visits already blocked stay blocked; the host invites again.
      *Suggested: keep.*
+
+## Visitors slice 4 built (answers 607, 608, 612, 617; 17 Nov 2026, branch `feat/yukthix-visitors-4`)
+
+- **Badge (607):** `GET visitors/:id/badge.pdf`: a 100 x 62 mm label (a common 62 mm roll, landscape) made with PDFKit
+  and the QR library already in use: the company and location, VISITOR, the name (Indian scripts in Noto fonts), company,
+  host, valid until, the badge number and the QR of the pass code; "under 18, with …" when so. Reception at the
+  location, for a visitor on site; audited. The browser prints it (no printer integration). Where the location's badge
+  setting is "pass on the phone only", nothing prints and the visitor shows the QR pass on their link (T9-14).
+- **Reports (608):** `GET visitors/reports`: visits by location, purpose and month over the last 12 months (or a from-to),
+  from `visit_counts` (kept after deletion) plus the visits still kept; counts only, never a name. The log or desk key,
+  the locations in reach. The drawn "by host" card and average stay are gone (they need names or times not kept).
+- **Roll-call (612):** `GET visitors/rollcall` and `rollcall.pdf`: at one location, the visitors checked in and not out,
+  and the employees whose last check-in today (the same punches the Time Today board reads) was at that location; one
+  A4 PDF with a box to tick per person (audited). New key `visitors.rollcall.view` (location, entity or company) on the
+  Reception, Facility admin and HR Admin roles, and a new **Security** role with only the roll-call. The desk key also
+  opens it. Visitors › Roll-call (VIS-06, drawn first).
+- **617:** the Kiosks & badges menu item is gone from the drawn Visitors menu.
+- **Founder answers done in slice 4 (approved 18 Nov 2026):** 652, an invite outside the location's allowed hours is
+  sent with a warning to the host (`outsideHours` on the invite), never refused; 664, the ID type field is removed from
+  the host's invite drawing; 713, the badge PDF draws the visitor's photo on a photo badge (never for a visitor under
+  18). The photo itself is stored by slice 2: after the slice 2 merge, one line in `VisitorReportsService.badge` reads it
+  (marked in the code); until then the name badge prints.
+- **Data:** no new table (migration `202617v0000005_visitors_4` adds the key); reports read `visits` and `visit_counts`,
+  both under forced RLS.
+- **Tests:** PDF unit tests, e2e `visitors-4` (3 scenarios, positive and negative), kit and web tests.
+
+## Founder questions from Visitors slice 4 (17 Nov 2026)
+
+761. **Photo badge.** The "photo badge with QR" setting prints the name badge until the slice 2 photo is wired in (one
+     line after the merge; answer 713). *Suggested: wire it in the merge.*
+762. **Employees on the roll-call.** Only people whose last check-in today was at this location are listed; people who
+     did not check in (attendance not by punch, or forgot) and web check-ins without a location are not. *Suggested:
+     keep, with the line on the list telling the warden to count them at the assembly point.*
+763. **Who sees employee names on the roll-call.** Reception and security see every employee checked in at their
+     location, beyond their usual access, because it is for an evacuation. *Suggested: keep; every print is audited.*
+764. **Label size.** The badge is 100 x 62 mm. *Suggested: keep; a company that needs another size asks support (no
+     setting until someone needs it).*
+765. **Report period.** Reports cover the last 12 months by default, counted by the day the visit started (UTC, as the
+     counts are kept). *Suggested: keep.*

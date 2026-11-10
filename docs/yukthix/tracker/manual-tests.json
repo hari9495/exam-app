@@ -19138,5 +19138,60 @@
       "Screens/Visitors/VIS-01 · Today's visitors · Check in · visitor under 18 with an adult"
     ],
     "note": "Positive and negative. Answer 614."
+  },
+  {
+    "id": "MT-VIS-10",
+    "area": "Visitors · slice 4 (17 Nov 2026)",
+    "screen": "VIS-01 Today's visitors · badge",
+    "url": "http://localhost:3000/yx/visitors",
+    "account": "Reception at the Chennai office; a System Admin for Company rules. Browser window 1278 x 635; allow pop-ups.",
+    "steps": [
+      "Check in an expected visitor with \"Check in and print badge\".",
+      "On the On site now tab press Print badge for them.",
+      "Block pop-ups for the site and press Print badge again.",
+      "On Company rules set Badge to \"Pass on the phone only\" for the Chennai office; check in another visitor."
+    ],
+    "expected": "Step 1: checked in (toast) and a 100 x 62 mm badge PDF opens with the name, company, host, valid until, badge number and QR; print it from the browser. Step 2: the same badge opens again. Step 3: toast \"Badge not printed\"; the visitor stays checked in. Step 4: the button says \"Check in\", the drawer says the visitor shows the QR pass on their phone, no PDF opens.",
+    "stories": [
+      "Screens/Visitors/VIS-01 · Today's visitors · Check in · notice and badge",
+      "Screens/Visitors/VIS-01 · Today's visitors · On site now (emergency list)"
+    ],
+    "note": "Positive and negative. Answer 607."
+  },
+  {
+    "id": "MT-VIS-11",
+    "area": "Visitors · slice 4 (17 Nov 2026)",
+    "screen": "VIS-04 Visitor log · Reports",
+    "url": "http://localhost:3000/yx/visitors/log",
+    "account": "A Facility admin (company-wide); then reception at one location; then an employee. Browser window 1278 x 635.",
+    "steps": [
+      "Open Visitors › Visitor log and the Reports tab.",
+      "Sign in as reception and open the Reports tab.",
+      "As an employee open /yx/visitors/log."
+    ],
+    "expected": "Step 1: total visits, by location, by purpose and by month; \"Counts only: no visitor names\"; no names anywhere. Step 2: only reception's location. Step 3: no access.",
+    "stories": [
+      "Screens/Visitors/VIS-04 · Visitor log & reports · Reports by location, purpose, host"
+    ],
+    "note": "Positive and negative. Answer 608."
+  },
+  {
+    "id": "MT-VIS-12",
+    "area": "Visitors · slice 4 (17 Nov 2026)",
+    "screen": "VIS-06 Emergency roll-call",
+    "url": "http://localhost:3000/yx/visitors/rollcall",
+    "account": "Security (the Security role at the Chennai office), HR Admin for its entity, reception; an employee who checks in at Chennai. Browser window 1278 x 635; allow pop-ups.",
+    "steps": [
+      "As the employee check in at the Chennai office; as reception check in a visitor there.",
+      "As security open Visitors › Roll-call.",
+      "Press Print roll-call.",
+      "As the employee check out; press Refresh.",
+      "As security open the roll-call of another location by its address; as an employee without a role open /yx/visitors/rollcall."
+    ],
+    "expected": "Step 2: the visitor and the employee, with times. Step 3: an A4 PDF with both lists and a box to tick per person; the print is in the audit log. Step 4: the employee is gone from the list. Step 5: refused (no access).",
+    "stories": [
+      "Screens/Visitors/VIS-06 · Emergency roll-call · On site now · visitors and employees"
+    ],
+    "note": "Positive and negative. Answer 612. Also check the Visitors menu has no \"Kiosks & badges\" (617)."
   }
 ]
