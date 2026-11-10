@@ -118,9 +118,9 @@ export class VisitorWatchlistService {
   }
 
   /** Nightly: entries nobody reviewed in time lapse and are deleted. */
-  async lapseSweep(now = new Date()): Promise<number> {
+  async lapseSweep(now = new Date(), only?: string[]): Promise<number> {
     return this.tenantPrisma.forTenant(LOOKUP, async (tx) => {
-      const gone = await tx.visitorWatch.findMany({ where: { reviewBy: { lte: now } }, select: { id: true, organizationId: true } });
+      const gone = await tx.visitorWatch.findMany({ where: { reviewBy: { lte: now }, ...(only ? { organizationId: { in: only } } : {}) }, select: { id: true, organizationId: true } });
       if (!gone.length) return 0;
       await tx.visitorWatch.deleteMany({ where: { id: { in: gone.map((g) => g.id) } } });
       for (const org of new Set(gone.map((g) => g.organizationId))) await AuditService.recordIn(tx, { organizationId: org, isSuperAdmin: true }, { actorUserId: null, action: 'visitor.watchlist.lapsed', entityType: 'visitor_watch', entityId: org, metadata: { deleted: gone.filter((g) => g.organizationId === org).length } });

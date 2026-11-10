@@ -179,6 +179,26 @@ describe('VIS-01 walk-ins at the desk (live)', () => {
   });
 });
 
+describe('VIS-01 Decide now on each waiting row (walk-through 11 Nov 2026)', () => {
+  it('each walk-in past its host time has Decide now for itself; one still in its host time has none', async () => {
+    const past = new Date(Date.now() - 60_000).toISOString();
+    const live = desk({ visits: [v({ id: 'w1', name: 'Farah Khan', approvalDueAt: past }), v({ id: 'w2', name: 'Ishaan Menon', approvalDueAt: past }), v({ id: 'w3', name: 'Gopal Iyer', approvalDueAt: new Date(Date.now() + 5 * 60_000).toISOString() })] });
+    show(<VisitorDeskScreen visits={[]} today={TODAY} live={live} />);
+    expect(screen.getAllByRole('button', { name: 'Decide now' })).toHaveLength(2);
+    const second = screen.getByRole('row', { name: /Ishaan Menon/ });
+    await ue.click(within(second).getByRole('button', { name: 'Decide now' }));
+    const d = screen.getByRole('dialog', { name: /Decide for Anita Desai/ });
+    expect(within(d).getAllByText('Ishaan Menon').length).toBeGreaterThan(0);
+    await ue.click(within(d).getByRole('button', { name: 'Let them in' }));
+    await waitFor(() => expect(live.walkIns.onDecide).toHaveBeenCalledWith('w2', true, null));
+    expect(within(screen.getByRole('row', { name: /Gopal Iyer/ })).queryByRole('button', { name: 'Decide now' })).not.toBeInTheDocument();
+  });
+  it('acting for someone else: no Decide now', () => {
+    show(<VisitorDeskScreen visits={[]} today={TODAY} live={desk({ canChange: false, visits: [v({ approvalDueAt: new Date(Date.now() - 60_000).toISOString() })] })} />);
+    expect(screen.queryByRole('button', { name: 'Decide now' })).not.toBeInTheDocument();
+  });
+});
+
 describe('VIS-01 the walk-in photo at the desk (713, live)', () => {
   it('reception sees the photo on the list and in Decide for host; a visit without a photo never fetches one', async () => {
     const photo = vi.fn(async () => 'blob:desk-1');
@@ -228,6 +248,11 @@ describe('VIS-02 the host approval card (live)', () => {
     await waitFor(() => expect(onSend).toHaveBeenCalledWith('w1', 'c9'));
     expect((await screen.findAllByText('Ravi Kumar has the card now')).length).toBeGreaterThan(0);
     expect(screen.queryByRole('dialog', { name: 'Send someone to meet Priyanka Sethi' })).not.toBeInTheDocument();
+  });
+
+  it('an under-18 walk-in says so on the card, with the adult', () => {
+    show(<PreRegisterScreen visits={[]} today={TODAY} live={pre({ approvals: approvals({ rows: [{ ...approvals().rows[0], name: 'Ishaan Menon', minorAdult: 'Priya Menon', hasPhoto: false }] }) })} />);
+    expect(screen.getByText(/under 18, with Priya Menon/)).toBeInTheDocument();
   });
 
   it('711: no Send someone without the send, or while acting', () => {

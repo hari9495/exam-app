@@ -285,6 +285,8 @@ describe('Visitors slice 2', () => {
     expect((await api('reception', 'post', '/visitors/walk-ins').send({ ...desk, name: 'Arjun Rao', minor: true, minorAdult: 'Lakshmi Rao', idType: 'pan', idLast4: '234F' }).expect(400)).body.message).toMatch(/under 18 do not give ID/);
     const kid = (await kiosk('visitor', 'post', '/walk-ins').send({ ...minor, minorAdult: 'Lakshmi Rao', photoBase64: undefined }).expect(want(200))).body;
     expect(await inA((tx) => tx.visit.findUniqueOrThrow({ where: { id: kid.id } }))).toMatchObject({ status: 'waiting', minor: true, minorAdult: 'Lakshmi Rao', photoPath: null, idType: null });
+    // The host's card says under 18 and names the adult (walk-through 11 Nov 2026).
+    expect((await api('host', 'get', '/visitors/approvals').expect(200)).body).toContainEqual(expect.objectContaining({ id: kid.id, minorAdult: 'Lakshmi Rao' }));
     // The location takes ID: type and last 4 on the kiosk and at the desk; a photo of the ID only at reception.
     await setting('visitors.id_capture', 'on');
     const adult = { ...kioskBase, name: 'Kavitha Nair', mobile: '9000044444' };

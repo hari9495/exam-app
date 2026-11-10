@@ -402,7 +402,7 @@ export class WalkInsService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const rows = await tx.visit.findMany({ where: { organizationId: c.organizationId, hostUserId: user.userId!, status: 'waiting' }, orderBy: { startsAt: 'asc' }, take: 20 });
       const locs = new Map((await tx.location.findMany({ where: { organizationId: c.organizationId, id: { in: rows.map((r) => r.locationId) } }, select: { id: true, name: true, timezone: true } })).map((l) => [l.id, l]));
-      return rows.map((r) => ({ id: r.id, name: r.visitorName, company: r.visitorCompany, purpose: r.purpose, location: locs.get(r.locationId)?.name ?? '', timeZone: locs.get(r.locationId)?.timezone ?? 'Asia/Kolkata', arrivedAt: r.startsAt.toISOString(), dueAt: r.approvalDueAt?.toISOString() ?? null, hasPhoto: Boolean(r.photoPath) }));
+      return rows.map((r) => ({ id: r.id, name: r.visitorName, company: r.visitorCompany, purpose: r.purpose, location: locs.get(r.locationId)?.name ?? '', timeZone: locs.get(r.locationId)?.timezone ?? 'Asia/Kolkata', arrivedAt: r.startsAt.toISOString(), dueAt: r.approvalDueAt?.toISOString() ?? null, hasPhoto: Boolean(r.photoPath), minorAdult: r.minor ? r.minorAdult : null }));
     });
   }
 

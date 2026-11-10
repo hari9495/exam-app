@@ -180,7 +180,7 @@ describe('Visitors slice 3', () => {
     expect((await audits('visitor.watchlist.reviewed')).length).toBe(1);
     ids.w2 = (await api('admin', 'post', '/visitors/watchlist').send({ name: 'Sunil Rawat', reason: 'Abusive to reception staff.' }).expect(201)).body.id;
     // A year and a day later nobody reviewed them: both lapse.
-    expect(await watchlist.lapseSweep(new Date(Date.now() + 367 * 86_400_000))).toBeGreaterThanOrEqual(2);
+    expect(await watchlist.lapseSweep(new Date(Date.now() + 367 * 86_400_000), [org.A.id, org.B.id])).toBeGreaterThanOrEqual(2);
     expect(await inA((tx) => tx.visitorWatch.count())).toBe(0);
     expect((await audits('visitor.watchlist.lapsed')).length).toBe(1);
     ids.w3 = (await api('facility', 'post', '/visitors/watchlist').send({ name: 'Sunil Rawat', reason: 'Abusive to reception staff.' }).expect(201)).body.id;
@@ -248,7 +248,10 @@ describe('Visitors slice 3', () => {
     const inn = (await api('admin', 'post', `/visitors/${made.id}/check-in`).send({ noticeAccepted: true }).expect(want(200))).body;
     expect(inn).toMatchObject({ status: 'on_site', idText: 'Driving licence ··4417', hasIdImage: true });
     // 40 days after the visit (the ID retention is 30): the ID details and the photo go; the visit stays.
-    expect(await visitors.idSweep(new Date(Date.now() + 40 * 86_400_000))).toBeGreaterThanOrEqual(1);
+    // A sweep for another company leaves this one alone (so a suite on a shared database spares other companies).
+    expect(await visitors.idSweep(new Date(Date.now() + 40 * 86_400_000), [org.B.id])).toBe(0);
+    expect(await inA((tx) => tx.visit.findUniqueOrThrow({ where: { id: made.id } }))).toMatchObject({ idType: 'driving_licence' });
+    expect(await visitors.idSweep(new Date(Date.now() + 40 * 86_400_000), [org.A.id, org.B.id])).toBeGreaterThanOrEqual(1);
     const after = await inA((tx) => tx.visit.findUniqueOrThrow({ where: { id: made.id } }));
     expect(after).toMatchObject({ idType: null, idLast4: null, idFileId: null });
     expect(await inA((tx) => tx.file.count({ where: { id: row.idFileId! } }))).toBe(0);

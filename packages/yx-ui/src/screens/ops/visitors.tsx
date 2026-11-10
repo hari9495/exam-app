@@ -142,6 +142,7 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
   const { busy, error, run, clearError } = useRun();
   const [adding, setAdding] = useState(walkInOpen);
   const [deciding, setDeciding] = useState(decideOpen);
+  const [decideId, setDecideId] = useState<string | null>(null);
   const [typeNeeds, setTypeNeeds] = useState<KioskNeeds | null>(null);
   const [typeTicks, setTypeTicks] = useState({ nda: false, induction: false });
   const view = live ? (found?.id === checkIn ? found : live.visits.find((v) => v.id === checkIn)) : null;
@@ -181,6 +182,9 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
   };
   const visit = view ? visitOf(view) : visits.find((v) => v.id === checkIn);
   const waiting = visits.find((v) => v.status === 'Waiting for host');
+  // Walk-through 11 Nov 2026: each waiting row has the drawn "Decide now" once its host's time has passed.
+  const deciderOf = (id: string) => { const due = live?.visits.find((x) => x.id === id)?.approvalDueAt; return !live || (canChange && Boolean(live.walkIns) && (!due || new Date(due) <= new Date())); };
+  const decided = (decideId ? visits.find((v) => v.id === decideId) : null) ?? waiting;
   const canChange = !live || live.canChange;
   // Slice 4 (607): the desk prints a label-size badge from the browser unless the location uses the pass on the phone only.
   const prints = live ? live.badge === 'name_qr' || live.badge === 'photo_qr' : true;
@@ -252,8 +256,10 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
               Check out
             </Button>
           </>
-        ) : v.status === 'Waiting for host' && !live ? (
-          <Button size="sm">Decide now</Button>
+        ) : v.status === 'Waiting for host' && deciderOf(v.id) ? (
+          <Button size="sm" onClick={() => (setDecideId(v.id), setDeciding(true))}>
+            Decide now
+          </Button>
         ) : null
       }
     />
@@ -295,7 +301,7 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
         const due = w?.approvalDueAt ? new Date(w.approvalDueAt) : null;
         const canDecide = !live || (canChange && Boolean(live.walkIns) && (!due || due <= new Date()));
         return (
-          <PageBanner tone="warning" action={canDecide ? <Button size="sm" onClick={() => setDeciding(true)}>Decide for host</Button> : undefined}>
+          <PageBanner tone="warning" action={canDecide ? <Button size="sm" onClick={() => (setDecideId(waiting.id), setDeciding(true))}>Decide for host</Button> : undefined}>
             {waiting.name}
             {waiting.company !== '—' ? ` (${waiting.company})` : ''} is waiting for {waiting.host} to approve. {live && due ? (due > new Date() ? `After ${time(due)} reception decides.` : 'The host did not answer in time: reception decides.') : 'After 10 minutes reception decides.'}
           </PageBanner>
@@ -458,7 +464,7 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
         )}
       </Drawer>
       {adding && <AddWalkInDrawer open idCapture={idRule} onClose={() => setAdding(false)} parts={live?.walkIns ? { ...live.walkIns, onAdd: (i) => live.walkIns!.onAdd({ ...i }) } : undefined} />}
-      {deciding && waiting && <DecideForHostDialog open onClose={() => setDeciding(false)} id={waiting.id} name={waiting.name} company={waiting.company !== '—' ? waiting.company : null} host={waiting.host} photo={waiting.hasPhoto ? live?.walkIns?.photo : null} onDecide={live?.walkIns ? (approve, reason) => live.walkIns!.onDecide(waiting.id, approve, reason) : undefined} />}
+      {deciding && decided && <DecideForHostDialog open onClose={() => (setDeciding(false), setDecideId(null))} id={decided.id} name={decided.name} company={decided.company !== '—' ? decided.company : null} host={decided.host} photo={decided.hasPhoto ? live?.walkIns?.photo : null} onDecide={live?.walkIns ? (approve, reason) => live.walkIns!.onDecide(decided.id, approve, reason) : undefined} />}
     </>
   );
   if (live)
@@ -535,6 +541,8 @@ export interface WalkInApproval {
   arrivedAt: string;
   dueAt: string | null;
   hasPhoto: boolean;
+  /** Slice 3 (614): under 18, with this adult (walk-through 11 Nov 2026: the host is told). */
+  minorAdult?: string | null;
 }
 
 export interface PreRegisterProps {
@@ -794,6 +802,7 @@ export function PreRegisterScreen({ device = 'desk', visits: sample, today, form
             <span className="yx-ops-muted">
               {a.company ? `${a.company} · ` : ''}
               {PURPOSE_CHOICES.find((p) => p.value === a.purpose)?.label ?? 'Meeting'} · at {a.location} reception since {time(new Date(a.arrivedAt))}
+              {a.minorAdult ? ` · under 18, with ${a.minorAdult}` : ''}
             </span>
           </span>
         </span>

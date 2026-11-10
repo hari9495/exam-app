@@ -26,6 +26,11 @@ const KEYS = ['visitors.desk.manage', 'visitors.log.view', 'visitors.settings.ma
 export const VISITOR_SETTING_KEYS = ['visitors.host_timeout_minutes', 'visitors.id_capture', 'visitors.photo', 'visitors.hours_from', 'visitors.hours_to', 'visitors.notice', 'visitors.badge', 'visitors.retention_days', 'visitors.id_retention_days', 'visitors.watchlist_review_days', 'visitors.kiosk'] as const;
 type VisitorSettingKey = (typeof VISITOR_SETTING_KEYS)[number];
 const LOOKUP: TenantContext = { organizationId: null, isSuperAdmin: true };
+/**
+ * The sweeps run over every company. Tests that sweep with a date in the future pass their own companies here, so a
+ * suite run against a shared database never deletes another company's visits or ID details (walk-through 11 Nov 2026).
+ */
+export const orgs = (only?: string[]) => (only ? { organizationId: { in: only } } : {});
 const frontend = () => process.env.FRONTEND_URL ?? 'http://localhost:3000';
 // Answer 605: nobody but HR and Facility admin learns why; reception calls the admin on duty.
 const BLOCKED_DESK = "Stop: this visit can't go ahead. Don't issue a badge; call the admin on duty.";
@@ -525,11 +530,11 @@ export class VisitorsService {
    * Answer 608: a visit is deleted after its location's retention period (counted from the end of the visit); what is
    * left is a count by location, day and purpose, with no name.
    */
-  async retentionSweep(now = new Date()): Promise<number> {
+  async retentionSweep(now = new Date(), only?: string[]): Promise<number> {
     // Slice 3 rides the same nightly job: ID details past their own period (603), lapsed watch-list entries (605).
-    await this.idSweep(now);
-    await this.watchlist.lapseSweep(now);
-    const places = await this.tenantPrisma.forTenant(LOOKUP, (tx) => tx.visit.groupBy({ by: ['organizationId', 'locationId'], where: { status: { in: ['checked_out', 'not_out', 'no_show', 'cancelled', 'declined'] } } }));
+    await this.idSweep(now, only);
+    await this.watchlist.lapseSweep(now, only);
+    const places = await this.tenantPrisma.forTenant(LOOKUP, (tx) => tx.visit.groupBy({ by: ['organizationId', 'locationId'], where: { status: { in: ['checked_out', 'not_out', 'no_show', 'cancelled', 'declined'] }, ...orgs(only) } }));
     let deleted = 0;
     for (const p of places) {
       const c = { organizationId: p.organizationId, isSuperAdmin: true } as CompanyContext;
@@ -558,8 +563,8 @@ export class VisitorsService {
   }
 
   /** Answer 603: ID details (and the photo of the ID) go after the location's ID retention period; the visit stays. */
-  async idSweep(now = new Date()): Promise<number> {
-    const places = await this.tenantPrisma.forTenant(LOOKUP, (tx) => tx.visit.groupBy({ by: ['organizationId', 'locationId'], where: { OR: [{ idType: { not: null } }, { idFileId: { not: null } }] } }));
+  async idSweep(now = new Date(), only?: string[]): Promise<number> {
+    const places = await this.tenantPrisma.forTenant(LOOKUP, (tx) => tx.visit.groupBy({ by: ['organizationId', 'locationId'], where: { OR: [{ idType: { not: null } }, { idFileId: { not: null } }], ...orgs(only) } }));
     let n = 0;
     for (const p of places) {
       const c = { organizationId: p.organizationId, isSuperAdmin: true } as CompanyContext;
