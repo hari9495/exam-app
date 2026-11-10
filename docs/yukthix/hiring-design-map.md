@@ -1680,6 +1680,10 @@ to the consultant payouts (PAY 8); (497) Time timesheets flow in later; (498) ke
 the recruiter record their request; (504, 505) keep; (511) interviewer keys only for people on an interview panel, an
 employee's Hiring menu is Referrals and Internal jobs; (512, 513) keep; (514) bulk-offer CTC starts blank and Next asks
 for it; (515) recruiting reads job-board names (never keys).
+Founder approved, 10 Nov 2026 (questions 531, 532, 541, 542, all as suggested): (531) a "Send the New York City
+notice" button on the Application drawer; (532) the single offer builder refuses a ₹0 CTC with the same words; (541) leave
+the older v2 screens as they are (being retired); (542) HR removes results:view and interview:view_assigned from a
+company-made manager role if managers should not read jobs and test results; panel membership is enough for interviews.
 ## HIR-27 bulk interview day and answer 392 built (14 Nov 2026, branch `feat/yukthix-hir-27`)
 - HIR-27: see its section above. Interview days open from Hiring › Interviews (a new "Interview days" button, drawn on the
   HIR-06 header).
