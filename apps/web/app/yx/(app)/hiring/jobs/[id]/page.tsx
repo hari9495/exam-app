@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { formatDate, formatINR, useToast } from '@yukthix/ui';
 import { JobWorkspaceScreen, type LivePosting, type PayRangeInput } from '@yukthix/ui/frame';
-import type { MasterRecord } from '@yukthix/ui/org';
+import type { LegalEntity, MasterRecord } from '@yukthix/ui/org';
 import { loadState, useOrg, useYxPermissions } from '../../../../../../lib/yx-org';
 import { useAuth } from '../../../../../../lib/auth-context';
 import { useApi, useApiWrite, useHiring } from '../../../../../../lib/yx-hiring';
@@ -52,6 +52,8 @@ export default function YxHiringJobPage() {
   const masters = perms.has('org.structure.view') || perms.has('org.settings.manage');
   const designations = useOrg<MasterRecord[]>('/masters/designations', masters);
   const grades = useOrg<MasterRecord[]>('/masters/grades', masters);
+  // Hiring walk (answer 476): the designed overview names the job's legal entity.
+  const entities = useOrg<LegalEntity[]>('/legal-entities', masters);
   const write = useApiWrite();
   // Answer 226: the referral bonus rule in words for the "Referrals & internal" tab.
   const policy = useApi<{ bonusInr: number; qualifyDays: number }>('/referrals/policy');
@@ -72,6 +74,7 @@ export default function YxHiringJobPage() {
         { label: 'Department', value: j.department ?? 'Not set' },
         { label: 'Designation · grade', value: [master(designations.data, j.designationId), master(grades.data, j.gradeId)].filter(Boolean).join(' · ') || 'Not set' },
         { label: 'Location', value: j.location ?? 'Not set' },
+        ...(j.legalEntityId ? [{ label: 'Legal entity', value: (entities.data ?? []).find((e) => e.id === j.legalEntityId)?.name ?? 'Set' }] : []),
         { label: 'Employment type', value: row!.type },
         { label: 'Openings', value: String(j.headcount ?? 1) },
         { label: 'Requisition', value: [j.requisitionReason ? REASON[j.requisitionReason] : null, j.outsidePlan ? 'outside the plan' : j.headcountPlanLineId ? 'in plan' : null, j.approval ? APPROVAL[j.approval.status] ?? j.approval.status : null].filter(Boolean).join(' · ') || 'No requisition' },

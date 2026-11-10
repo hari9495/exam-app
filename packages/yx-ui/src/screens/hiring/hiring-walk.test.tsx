@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { CandidateListScreen } from './hiring-candidates';
 import { BiasAuditScreen } from './hiring-offers';
+import { sourceText } from './hiring-pipeline';
+import { JobsScreen } from './hiring-plan';
+import { JOBS } from './hiring-data';
 import { SettingsPageScreen } from '../settings/settings-screens';
 import { SETTINGS_GROUPS } from '../settings/settings-groups';
 
@@ -34,5 +37,25 @@ describe('no-access states found on the Hiring walk', () => {
     expect(screen.getByText("You don't have access to Hiring settings")).toBeInTheDocument();
     expect(screen.queryByText('View only')).not.toBeInTheDocument();
     expect(screen.queryByText(/couldn't load/)).not.toBeInTheDocument();
+  });
+});
+
+describe('wording and totals found on the Hiring walk', () => {
+  it('a candidate source shows in words, never the code', () => {
+    expect(sourceText('manual')).toBe('Added by the team');
+    expect(sourceText('application')).toBe('Careers site');
+    expect(sourceText('referral')).toBe('Referral');
+    expect(sourceText(null)).toBe('Added by the team');
+    expect(sourceText('something-new')).toBe('something-new');
+  });
+
+  it('the jobs list totals name jobs and add up both counts, on one line', () => {
+    const rows = JOBS.slice(0, 3);
+    show(<JobsScreen rows={rows} />);
+    const foot = document.querySelector('tfoot')!;
+    expect(foot.textContent).toContain('Total · 3 jobs');
+    const tds = [...foot.querySelectorAll('td')];
+    expect((tds[0] as HTMLElement).style.whiteSpace).toBe('nowrap');
+    expect(foot.textContent).toContain(String(rows.reduce((s, r) => s + r.inPipeline, 0)));
   });
 });

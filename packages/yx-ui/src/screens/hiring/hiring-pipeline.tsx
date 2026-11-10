@@ -666,13 +666,13 @@ function LiveCandidateRecordView({ live }: { live: LiveCandidateRecord }) {
               hm
                 ? [
                     { label: 'Job', value: latest?.jobTitle ?? 'No application' },
-                    { label: 'Source', value: latest?.source ?? 'Added by the team' },
+                    { label: 'Source', value: sourceText(latest?.source) },
                     { label: 'Applied', value: latest ? istDay(latest.appliedAt) : '—' },
                   ]
                 : [
                     { label: 'Email', value: c.email ?? '—' },
                     { label: 'Mobile', value: c.phone ? formatPhone(c.phone) : '—' },
-                    { label: 'Source', value: latest?.source ?? 'Added by the team' },
+                    { label: 'Source', value: sourceText(latest?.source) },
                     { label: 'Added', value: istDay(c.createdAt) },
                   ]
             }
@@ -782,7 +782,7 @@ function LiveCandidateRecordView({ live }: { live: LiveCandidateRecord }) {
                       <Text weight="medium">{a.jobTitle}</Text>
                       <Text size="sm" tone="secondary">
                         Applied {istDay(a.appliedAt)}
-                        {a.source ? ` · ${a.source}` : ''}
+                        {a.source ? ` · ${sourceText(a.source)}` : ''}
                       </Text>
                     </div>
                     <Badge tone={a.closed ? 'neutral' : 'info'}>{a.closed ? (a.closedReason ?? 'Closed') : [a.stage, a.status].filter(Boolean).join(' · ') || 'Applied'}</Badge>
@@ -1600,6 +1600,9 @@ const LIVE_RECS: { value: LiveRecommendation; label: string }[] = [
   { value: 'no', label: 'No' },
   { value: 'strong_no', label: 'Strong no' },
 ];
+/** How a person came into an application, in words (the API sends the code: Hiring walk, answer 476). */
+const SOURCE_TEXT: Record<string, string> = { application: 'Careers site', reapply: 'Applied again', manual: 'Added by the team', referral: 'Referral', internal: 'Internal applicant', agency: 'Agency', drive: 'Hiring drive', exam: 'Test invitation' };
+export const sourceText = (s: string | null | undefined) => (s ? (SOURCE_TEXT[s] ?? s) : 'Added by the team');
 const recText = (r: string | null) => LIVE_RECS.find((x) => x.value === r)?.label ?? '—';
 
 function LiveScorecardView({ live }: { live: LiveScorecard }) {
