@@ -400,7 +400,7 @@ function AddWorkerForm({ sites, today, design, onCheck, onAdd, onMinWage, onClos
     onCheck(input())
       .then(async (rows) => {
         setChecks(rows);
-        if (rows.some((r) => r.status === 'fail')) return setFailed('This worker can’t be deployed. See the checks.');
+        if (rows.some((r) => r.status === 'fail')) return setFailed(`This worker can’t be deployed. ${rows.filter((r) => r.status === 'fail').map((r) => r.detail ?? r.label).join(' ')}`);
         await onAdd(input());
         toast?.toast({ tone: 'success', title: 'Sent for site approval' });
         onClose();

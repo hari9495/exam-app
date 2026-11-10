@@ -845,7 +845,8 @@ function DeployWorkerSheet(p: WorkersViewProps & { onClose: () => void }) {
     p.onCheck!(input())
       .then(async (rows) => {
         setChecks(rows);
-        if (rows.some((r) => r.status === 'fail')) return setFailed('This worker can’t be deployed. See the checks.');
+        // Walk finding: the checks sit below the fold of the sheet, so the alert names what failed.
+        if (rows.some((r) => r.status === 'fail')) return setFailed(`This worker can’t be deployed. ${rows.filter((r) => r.status === 'fail').map((r) => r.detail ?? r.label).join(' ')}`);
         await p.onSend!(input());
         say('Sent for site approval');
         p.onClose();
