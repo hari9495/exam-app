@@ -47,7 +47,8 @@ export default function YxHiringJobPage() {
   const settings = useHiring<{ scorecardTemplateId: string | null; exams: { examId: string; title: string; sendOnStageId: string | null }[] }>(`/jobs/${enc(id)}/interview-settings`);
   const board = useHiring<Board>(`/jobs/${enc(id)}/board`);
   const exams = useExams(undefined, { pageSize: 100 });
-  const jobBoards = useJobBoards();
+  // The board list needs the settings key (question 515: recruiters cannot pick boards without it); no 403 for them.
+  const jobBoards = useJobBoards(perms.has('org:manage_settings'));
   const canConfigure = perms.has('pipelines:configure');
   const scorecards = useHiring<{ id: string; name: string }[]>(canManage ? '/scorecard-templates' : null);
   const masters = perms.has('org.structure.view') || perms.has('org.settings.manage');

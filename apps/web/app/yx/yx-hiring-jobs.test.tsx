@@ -171,6 +171,9 @@ describe('Hiring › one job (HIR-03 workspace, HIR-24 pay range, live)', () => 
     expect(await screen.findByText('3 days target · limit 6')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save stage targets' })).not.toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Scorecard for new interviews' })).not.toBeInTheDocument();
+    // Hiring walk (answer 476): nothing the API refuses this person is asked for (no 403s in the console).
+    const asked = api.mock.calls.map(([path]) => String(path));
+    expect(asked.filter((x) => x.includes('/organizations/job-boards') || x === '/pipelines')).toEqual([]);
   });
 
   it('an older application link goes to the pipeline page', async () => {

@@ -1834,3 +1834,6 @@ with In pipeline summed. Screenshots and the per-page results are in the walk re
      1278 x 635. *Suggested: keep wrapping (nothing is cut off); revisit if HR asks for one-line rows.*
 514. **Bulk offers start at ₹0.** The per-candidate Fixed CTC starts empty as ₹0 until typed. *Suggested: start blank with
      "Enter the CTC" on Next, so ₹0 is never sent by mistake.*
+515. **Recruiters and job boards.** A recruiter without the settings key cannot read the company's board list, so the job's
+     Settings tab offers no boards to pick (postings already made still show). *Suggested: let recruiting (`pipeline:manage`)
+     read the board names (never their keys), so they can post a job themselves.*
