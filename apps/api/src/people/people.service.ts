@@ -396,12 +396,22 @@ export class PeopleService {
       const users = await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: roles.filter((r) => r.sourceTable === 'users').map((r) => r.sourceId) } }, select: { id: true, email: true } });
       const joins = await tx.preboarding.findMany({ where: { organizationId: c.organizationId, id: { in: roles.filter((r) => r.sourceTable === 'preboardings').map((r) => r.sourceId) } }, select: { id: true, designationId: true } });
       const titles = await tx.designation.findMany({ where: { organizationId: c.organizationId, id: { in: joins.flatMap((j) => (j.designationId ? [j.designationId] : [])) } }, select: { id: true, name: true } });
+      // CL-2 (PPL-35): a contract worker role names its contractor and site.
+      const deps = await tx.contractDeployment.findMany({ where: { organizationId: c.organizationId, id: { in: roles.filter((r) => r.sourceTable === 'contract_deployments').map((r) => r.sourceId) } }, select: { id: true, agencyId: true, locationId: true } });
+      const depNames = {
+        agencies: new Map((await tx.agency.findMany({ where: { organizationId: c.organizationId, id: { in: deps.map((d) => d.agencyId) } }, select: { id: true, name: true } })).map((x) => [x.id, x.name])),
+        sites: new Map((await tx.location.findMany({ where: { organizationId: c.organizationId, id: { in: deps.map((d) => d.locationId) } }, select: { id: true, name: true } })).map((x) => [x.id, x.name])),
+      };
       const label = (r: (typeof roles)[number]) => {
         if (r.sourceTable === 'employments') {
           const e = employments.find((x) => x.id === r.sourceId);
           return e ? `Employment ${e.employeeCode} · ${entities.find((x) => x.id === e.legalEntityId)?.name ?? ''}`.trim() : null;
         }
         if (r.sourceTable === 'users') return users.find((u) => u.id === r.sourceId)?.email ?? null;
+        if (r.sourceTable === 'contract_deployments') {
+          const d = deps.find((x) => x.id === r.sourceId);
+          return d ? `${depNames.agencies.get(d.agencyId) ?? 'Contractor'} · ${depNames.sites.get(d.locationId) ?? 'site'}` : null;
+        }
         if (r.sourceTable === 'preboardings') {
           const title = titles.find((t) => t.id === joins.find((j) => j.id === r.sourceId)?.designationId)?.name;
           return `Pre-boarding${title ? ` · ${title}` : ''}`;

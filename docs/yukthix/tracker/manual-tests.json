@@ -19194,5 +19194,63 @@
       "Screens/Portals/T9-09 · Careers site · Candidate page · Message me on WhatsApp about jobs"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CLRA-05",
+    "area": "Contract labour · CL-2: contract workers (10 Nov 2026)",
+    "screen": "Deploy a worker (CLB-02)",
+    "url": "http://localhost:3000/yx/contract-labour/workers",
+    "account": "admin-tester@demo-org.test (System Admin). Browser window 1278 x 635. A contractor with a verified licence for Hosur plant (maximum 2); a test Aadhaar number with a valid check digit.",
+    "steps": [
+      "1. Press Deploy worker and press Send for site approval with nothing filled.",
+      "2. Fill everything with a date of birth 17 years ago and send.",
+      "3. Change the date of birth to 30 years ago and send.",
+      "4. Deploy the same Aadhaar number again.",
+      "5. Deploy two more workers with other numbers."
+    ],
+    "expected": "Step 1: every missing field is named; nothing is sent. Step 2: the checks show 'Age 18 or over' failed and 'Deployment blocked'. Step 3: 'Sent for site approval'; the row shows ID XXXX XXXX and the last 4 digits only, status Pending approval. Step 4: blocked: already deployed or waiting. Step 5: the second is sent; the third is blocked by the licence maximum.",
+    "stories": [
+      "Screens/Contract labour/CLB-02 · Contract workers register · Deploy · under 18 blocked",
+      "Screens/Contract labour/CLB-02 · Contract workers register · Deploy · same ID already deployed (CL-2)"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CLRA-06",
+    "area": "Contract labour · CL-2: contract workers (10 Nov 2026)",
+    "screen": "Site approval and release (CLB-02)",
+    "url": "http://localhost:3000/yx/contract-labour/workers",
+    "account": "admin-tester@demo-org.test (System Admin). Browser window 1278 x 635. A contractor with a verified licence for Hosur plant (maximum 2); a test Aadhaar number with a valid check digit.",
+    "steps": [
+      "1. Press Approve on a waiting worker and approve with nothing filled.",
+      "2. Enter an induction 13 months ago and approve.",
+      "3. Enter today's induction and the person who gave it; approve.",
+      "4. Press Release on the worker, without a reason, then with one."
+    ],
+    "expected": "Step 1: the induction day and who gave it are asked for. Step 2: refused: older than 12 months. Step 3: a toast; the row shows the gate pass GP-… and the day it ends (the licence end or 12 months, whichever is first), status Deployed. Step 4: a reason is asked for; then the worker is Released.",
+    "stories": [
+      "Screens/Contract labour/CLB-02 · Contract workers register · Site approval · induction and gate pass (CL-2)",
+      "Screens/Contract labour/CLB-02 · Contract workers register · Release a worker (CL-2)"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CLRA-07",
+    "area": "Contract labour · CL-2: contract workers (10 Nov 2026)",
+    "screen": "Work order, site card and directory",
+    "url": "http://localhost:3000/yx/contract-labour/contractors",
+    "account": "admin-tester@demo-org.test (System Admin). Browser window 1278 x 635. A contractor with a verified licence for Hosur plant (maximum 2); a test Aadhaar number with a valid check digit.",
+    "steps": [
+      "1. Open the contractor, press Add work order and save with nothing filled; then add one for Hosur plant with headcount 1.",
+      "2. Deploy another worker for this contractor at Hosur plant.",
+      "3. Look at the Hosur plant card above the register.",
+      "4. Open People › Directory, card Contract workers."
+    ],
+    "expected": "Step 1: each missing field is named; then the work order shows with its workers against the headcount. Step 2: the checks show 'Within work order' as Check (a warning), and the worker is still sent. Step 3: contract workers, licence maximum and the threshold (verify). Step 4: the contract workers are listed with their contractor; a row opens Contract workers.",
+    "stories": [
+      "Screens/Contract labour/CLB-01 · Contractors register · Add work order (CL-2)",
+      "Screens/People/PPL-01 · Directory · HR · contract workers"
+    ],
+    "note": "Positive and negative."
   }
 ]

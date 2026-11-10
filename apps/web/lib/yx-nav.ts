@@ -376,7 +376,7 @@ export function buildNav(n: NavInput): NavArea[] {
   const contract: NavArea = {
     id: 'contract',
     title: 'Contract labour',
-    sections: support ? [] : sec(undefined, when(any('clra.contractor.manage', 'clra.contractor.view'), L('clra-contractors', 'Contractors', '/yx/contract-labour/contractors'))),
+    sections: support ? [] : sec(undefined, when(any('clra.contractor.manage', 'clra.contractor.view'), L('clra-contractors', 'Contractors', '/yx/contract-labour/contractors'), L('clra-workers', 'Contract workers', '/yx/contract-labour/workers'))),
   };
 
   // Visitors slice 1 (M02 §B11): hosts invite their own visitors; reception runs the desk; the log (answers 601-617).

@@ -39,6 +39,19 @@ export interface Contractor {
   loginInvited: boolean;
   licences: Licence[];
   status: 'Active' | 'Payment held' | 'Inactive';
+  /** Answer 675: work orders (number, period, headcount, our sites it covers). */
+  workOrders?: WorkOrder[];
+}
+export interface WorkOrder {
+  id: string;
+  number: string;
+  from: Date;
+  to: Date;
+  headcount: number;
+  sites: { id: string; name: string }[];
+  /** This contractor's workers deployed or waiting at its sites today. */
+  active?: number;
+  version?: number;
 }
 export const CONTRACTORS: Contractor[] = [
   { id: 'c1', name: 'Sri Lakshmi Facility Services', work: 'Housekeeping', pan: 'AAKFS4471L', panVerified: true, gstin: '33AAKFS4471L1Z2', pfCode: 'TNMAS0077120000', esicCode: '51000771200001001', lin: '1-2345-6789-0', contact: 'Lakshmi Narayanan', loginInvited: true, licences: [{ no: 'TN/OSH/CL/2026/1180', establishment: 'Hosur plant', scope: 'Single licence, Tamil Nadu and Karnataka', states: ['Tamil Nadu', 'Karnataka'], max: 30, active: 30, validTo: d(31, 11) }], status: 'Active' },
@@ -47,9 +60,16 @@ export const CONTRACTORS: Contractor[] = [
   { id: 'c4', name: 'Annapoorna Canteen Services', work: 'Canteen', pan: 'AAMFA5512P', panVerified: true, gstin: '29AAMFA5512P1ZQ', pfCode: 'KNBNG0066120000', esicCode: '53000661200001001', lin: '1-4567-8901-2', contact: 'Geetha P.', loginInvited: true, licences: [{ no: 'KA/OSH/CL/2026/0341', establishment: 'Bengaluru head office', scope: 'Establishment', states: ['Karnataka'], max: 12, active: 8, validTo: d(31, 2, 2028) }], status: 'Active' },
 ];
 
+// Each contractor's work order for the year at its licence's site (answer 675).
+const SITE_ID: Record<string, string> = { 'Hosur plant': 'hosur', 'Bengaluru head office': 'blr' };
+for (const c of CONTRACTORS) {
+  const l = c.licences[0]!;
+  c.workOrders = [{ id: `wo-${c.id}`, number: `WO/${c.id.toUpperCase()}/2026-27`, from: d(1, 3), to: d(31, 2, 2027), headcount: l.max, sites: [{ id: SITE_ID[l.establishment] ?? 'hosur', name: l.establishment }], active: l.active }];
+}
+
 export const ESTABLISHMENTS = [
-  { name: 'Hosur plant', state: 'Tamil Nadu', rc: 'TN/OSH/REG/2025/88120', family: 'OSH Code', workers: 66, threshold: 50, validTo: d(31, 11, 2030) },
-  { name: 'Bengaluru head office', state: 'Karnataka', rc: '—', family: 'OSH Code', workers: 8, threshold: 50, validTo: null as Date | null },
+  { name: 'Hosur plant', state: 'Tamil Nadu', rc: 'TN/OSH/REG/2025/88120', family: 'OSH Code', workers: 66, threshold: 50, validTo: d(31, 11, 2030), licenceMax: 75 },
+  { name: 'Bengaluru head office', state: 'Karnataka', rc: '—', family: 'OSH Code', workers: 8, threshold: 50, validTo: null as Date | null, licenceMax: 12 },
 ];
 
 export interface ContractWorker {
@@ -57,16 +77,21 @@ export interface ContractWorker {
   name: string;
   contractor: string;
   site: string;
-  skill: 'Unskilled' | 'Semi-skilled' | 'Skilled';
-  wage: number;
+  skill: 'Unskilled' | 'Semi-skilled' | 'Skilled' | 'Highly skilled';
+  /** Monthly, paid by the contractor; null when not given. */
+  wage: number | null;
   from: Date;
   to: Date | null;
-  gatePass: string;
-  gateValidTo: Date;
+  /** Issued on site approval (CL-2). */
+  gatePass: string | null;
+  gateValidTo: Date | null;
   uan: string;
   ip: string;
   idMasked: string;
   status: 'Deployed' | 'Pending approval' | 'Released';
+  /* CL-2 live */
+  induction?: { on: Date; by: string | null } | null;
+  version?: number;
 }
 const W = (i: number, name: string, contractor: string, skill: ContractWorker['skill'], wage: number, status: ContractWorker['status'] = 'Deployed'): ContractWorker => ({
   id: `w${i}`,
@@ -77,8 +102,8 @@ const W = (i: number, name: string, contractor: string, skill: ContractWorker['s
   wage,
   from: d(1 + (i % 20), 3 + (i % 4)),
   to: status === 'Released' ? d(15) : null,
-  gatePass: `GP-HSR-${String(4100 + i)}`,
-  gateValidTo: d(31, 11),
+  gatePass: status === 'Pending approval' ? null : `GP-HSR-${String(4100 + i)}`,
+  gateValidTo: status === 'Pending approval' ? null : d(31, 11),
   uan: `1013${String(55000000 + i * 1371)}`,
   ip: `31-00-7712${String(10 + i)}-000-0001`,
   idMasked: `XXXX XXXX ${String(1000 + i * 73).slice(-4)}`,

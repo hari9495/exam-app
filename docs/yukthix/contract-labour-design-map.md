@@ -28,13 +28,13 @@ built** (no API for this feature) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Principal employer (contractors working at our sites) | 5 | 11 | 2 | 0 | 20 | 0 | 33 |
+| A. Principal employer (contractors working at our sites) | 5 | 24 | 2 | 0 | 13 | 0 | 39 |
 | B. We are the contractor (our staff at client sites) | 3 | 0 | 0 | 0 | 10 | 0 | 10 |
 | C. Contractor portal | 1 | 0 | 0 | 0 | 9 | 0 | 9 |
 | D. Settings | 1 | 0 | 2 | 0 | 0 | 0 | 2 |
-| **All** | 10 | 11 | 4 | 0 | 39 | 0 | 54 |
+| **All** | 10 | 24 | 4 | 0 | 32 | 0 | 60 |
 
-Of the 43 stories under Screens/Contract labour, 11 are live and 2 live with a gap (CL-1); with the portal and settings pages, 15 of 54.
+Of the 49 stories under Screens/Contract labour, 24 are live and 2 live with a gap (CL-1 and CL-2); with the portal and settings pages, 28 of 60.
 
 Related stories in other areas (counted in their own maps, listed here so the build reaches them):
 
@@ -87,8 +87,8 @@ All 46 stories in section 4: there is no contractor, licence, deployment, proof 
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Register · Register · renewal alerts | live (gap) | the register and the renewal banner (state from the server with `clra.licence_alerts`); the establishment cards wait for deployments and registrations (CL-2, CL-5; question 674) |
-| Record · Contractor record (licence, work order) | live (gap) | statutory codes and licences; the work order (question 675) and the contractor login (CL-3) are left out; PAN "Verified" from the linked PAY 8 consultant |
+| Register · Register · renewal alerts | live (gap) | the register, the renewal banner and (CL-2, answer 674) the site cards: contract workers against the licence maximums and the `IN.CLRA` threshold; the registration number waits for CL-5 (answer 673), so a site at the threshold reads "Registration needed" |
+| Record · Contractor record (licence, work order) | live (gap) | statutory codes, licences and (CL-2, answer 675) work orders with workers against the headcount; the contractor login waits for CL-3; PAN "Verified" from the linked PAY 8 consultant |
 | Expired · Expired licence record | live | an ended verified licence with no verified renewal: "Deployment blocked" (`deployBlock`) |
 | Empty · Empty | live | |
 | Loading · Loading | live | |
@@ -100,18 +100,24 @@ All 46 stories in section 4: there is no contractor, licence, deployment, proof 
 | RenewalPending · Renewal waiting for verification (CL-1) | live | `POST …/licences/:id/verify` (clean copy only) |
 | Reject · Reject a renewal with the reason (CL-1) | live | `POST …/licences/:id/reject` with the reason |
 | ReadOnly · Read only (view key, CL-1) | live | `clra.contractor.view`: reads and opens the copy, no changes |
+| WorkOrder · Add work order (CL-2) | live | `POST/PUT contract-labour/contractors/:id/work-orders`; number, dates, headcount, sites |
 
 #### CLB-02 · Contract workers register
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Register · Register | design only, feature not built | needs the deployment table and `contract_worker` person roles |
-| Deploy · Deploy · checks pass | design only, feature not built | `deployBlocks` must run on the server too |
-| LicenceFull · Deploy · licence maximum reached | design only, feature not built | count of active deployments per licence |
-| Underage · Deploy · under 18 blocked | design only, feature not built | date of birth required; law, no override |
-| OutOfScope · Deploy · licence scope excludes Kerala | design only, feature not built | licence states against the site's state |
-| Empty · Empty | design only, feature not built | |
-| Error · Error | design only, feature not built | |
+| Register · Register | live | /yx/contract-labour/workers (menu Contract labour › Contract workers); `GET contract-labour/workers`; masked ID, gate pass and its end |
+| Deploy · Deploy · checks pass | live | `POST …/workers/check` then `POST …/workers` (the checks run again; nothing is written when one fails) |
+| LicenceFull · Deploy · licence maximum reached | live | deployed and waiting workers of the contractor at the site against the in-force licence's maximum |
+| Underage · Deploy · under 18 blocked | live | date of birth and Aadhaar required; age on the first day against the rule set's minimum, never under 18; no override |
+| OutOfScope · Deploy · licence scope excludes Kerala | live | `deployBlock`: a verified licence for the site in force on the day covering its state |
+| Empty · Empty | live | |
+| Error · Error | live | |
+| Duplicate · Deploy · same ID already deployed (CL-2) | live | the keyed Aadhaar hash: pending or deployed anywhere in the company |
+| Threshold · Deploy · registration threshold warning (CL-2) | live | warns at the `IN.CLRA` threshold (a block once registrations exist, CL-5) |
+| Approve · Site approval · induction and gate pass (CL-2) | live | `POST …/workers/:id/approve`: induction within `clra.induction_months`; gate pass GP-<site>-<n> ending first of deployment, licence and induction |
+| Release · Release a worker (CL-2) | live | `POST …/workers/:id/release` (or withdraw before approval): the deployment and the contract_worker role end |
+| ReadOnly · Read only (view key, CL-2) | live | `clra.contractor.view` |
 
 #### CLB-03 · Vendor compliance tracker
 
@@ -370,3 +376,34 @@ CL-2. Tests: `clra-rules.spec.ts`, `contract-live.test.tsx`, the nav test and e2
      Suggested: keep.
 678. **Who gets the alerts.** Holders of `clra.contractor.manage` for the whole company, else the System Admins.
      Suggested: keep, and also email the contractor once the portal exists (CL-3).
+
+## CL-2 built (10 Nov 2026, branch `feat/yukthix-contract-labour-cl2`)
+
+Answers 624, 632, 633, 635, 636, 674 and 675. (`feat/yukthix-contract-labour-2` already existed from 21 Oct 2026 with
+other work, so this slice uses `-cl2`.) Migrations `202617o0000010_contract_labour_2` (`contract_deployments`: person,
+contractor, site, skill, monthly wage paid by the contractor, date of birth, the last 4 Aadhaar digits and a keyed hash,
+UAN, ESI IP, first and last day, status pending / deployed / released, induction, gate pass; RLS; never two active
+deployments for one ID) and `202617o0000011_contract_labour_work_orders` (`contractor_work_orders`, RLS). A contract
+worker is a person with the `contract_worker` role (source `contract_deployments`); no employee record, no login, never
+on payroll. The same ID later reuses the same person, so history follows them. Server checks (`workerChecks`): age,
+licence, licence maximum, the same ID (blocks, no override); work-order headcount and the registration threshold (warn).
+Settings `clra.induction_required` (default on) and `clra.induction_months` (default 12) on 4.9. PPL-01: contract
+workers and their card in the directory for the contract labour keys of the whole company (never while acting for
+someone else); PPL-35: the role reads "contractor · site". Tests: `clra-rules.spec.ts`, `contract-live.test.tsx`,
+the nav test and e2e `contract-labour-2` (8 tests).
+
+## Founder questions from the CL-2 build (10 Nov 2026)
+
+681. **Registration threshold.** Today crossing the `IN.CLRA` threshold at a site warns. Suggested: block it once the
+     principal-employer registrations are recorded (CL-5, answer 673), unless the site is registered.
+682. **Site approval.** A deployment waits for site approval, which records the induction and issues the gate pass. Today
+     the same compliance owner can send and approve. Suggested: keep; a company setting "a second person approves" when
+     a customer asks.
+683. **Gate pass numbers.** GP-<site code>-<running number per site>, kept when a worker is released. Suggested: keep.
+684. **Gate pass renewal.** When the licence is renewed or the induction is given again, the gate pass does not extend by
+     itself yet. Suggested: a "Renew gate pass" action in CL-3 or CL-5, keeping the number.
+685. **Minimum wage hint.** The design shows the state minimum wage under the wage field; we leave it out until the
+     wage check (CL-4) reads the minimum-wage rule set. Suggested: keep it for CL-4.
+686. **The directory.** Contract workers appear in People › Directory only for holders of the contract labour keys, and
+     the "All persons" card does not count them yet. Suggested: count them in All persons in CL-5 with the monthly
+     snapshot.

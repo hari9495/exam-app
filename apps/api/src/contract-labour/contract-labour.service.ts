@@ -14,12 +14,12 @@ import { safeName } from '../service-desk/attachments.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { escapeHtml } from '../notifications/notification-email-render';
 import { alertDaysOf, alertDue, deployBlock, licenceState, type LicenceLike } from './clra-rules';
-import type { ContractorDto, LicenceDto, RenewalDto } from './clra-dto';
+import type { ContractorDto, LicenceDto, RenewalDto, WorkOrderDto } from './clra-dto';
 
 const KEYS = ['clra.contractor.manage', 'clra.contractor.view', 'clra.settings.manage', 'org.settings.manage'] as const;
 type Access = { manage: boolean; view: boolean; settings: boolean; actingForOther: boolean };
-/** Settings 4.9 keys made live in CL-1 (the monthly compliance keys come with CL-4). */
-export const CLRA_SETTING_KEYS = ['clra.licence_alerts'] as const;
+/** Settings 4.9 keys made live in CL-1 and CL-2 (the monthly compliance keys come with CL-4). */
+export const CLRA_SETTING_KEYS = ['clra.licence_alerts', 'clra.induction_required', 'clra.induction_months'] as const;
 const LICENCE_TYPES = ['application/pdf', 'image/jpeg', 'image/png'] as const;
 const FILE_MAX_MB = 10;
 const NOT_FOUND = 'Contractor not found.';
@@ -56,7 +56,7 @@ export class ContractLabourService {
     return { manage, view: manage || tenantWide(v, 'clra.contractor.view'), settings: tenantWide(v, 'clra.settings.manage') || tenantWide(v, 'org.settings.manage'), actingForOther: v.actingForOther };
   }
 
-  private async gate(user: ScopeUser, need: 'view' | 'manage') {
+  async gate(user: ScopeUser, need: 'view' | 'manage') {
     const a = await this.access(user);
     if (need === 'manage' && a.actingForOther) throw new ForbiddenException('Not available while acting for someone else. Sign in as yourself.');
     if (!(need === 'manage' ? a.manage : a.view)) throw new ForbiddenException(need === 'manage' ? 'Only the compliance owners for contract labour (the contractor key for the whole company) can change this.' : 'You need the contract labour key to see contractors.');
@@ -77,6 +77,17 @@ export class ContractLabourService {
       const fileRows = await tx.file.findMany({ where: { organizationId: org, id: { in: licences.map((l) => l.fileId) } }, select: { id: true, fileName: true, scanStatus: true } });
       const consultants = await tx.consultant.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.consultantId).filter((x): x is string => Boolean(x)) } }, select: { id: true, panStatus: true } });
       const deciders = await tx.user.findMany({ where: { organizationId: org, id: { in: licences.map((l) => l.decidedBy).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true, email: true } });
+      const workOrders = await tx.contractorWorkOrder.findMany({ where: { organizationId: org, agencyId: { in: rows.map((r) => r.id) } }, orderBy: { fromOn: 'desc' } });
+      const byAgencySite = await tx.contractDeployment.groupBy({ by: ['agencyId', 'locationId'], where: { organizationId: org, status: { in: ['pending', 'deployed'] } }, _count: { _all: true } });
+      // Answer 674: the site cards: contract workers deployed or waiting against the licence maximums and the threshold.
+      const active = await tx.contractDeployment.groupBy({ by: ['locationId'], where: { organizationId: org, status: { in: ['pending', 'deployed'] } }, _count: { _all: true } });
+      const sites = locations.filter((l) => !l.archivedAt && (licences.some((x) => x.locationId === l.id) || active.some((x) => x.locationId === l.id)));
+      const establishments = [];
+      for (const l of sites) {
+        const rule = await tx.statutoryRuleSet.findFirst({ where: { statute: 'IN.CLRA', jurisdiction: l.state, status: 'published', validFrom: { lte: day(today) }, OR: [{ validTo: null }, { validTo: { gte: day(today) } }] }, orderBy: { validFrom: 'desc' } });
+        const inForce = licences.filter((x) => x.locationId === l.id && x.status === 'verified' && iso(x.validFrom) <= today && today <= iso(x.validTo));
+        establishments.push({ id: l.id, name: l.name, state: l.state, workers: active.find((x) => x.locationId === l.id)?._count._all ?? 0, licenceMax: inForce.reduce((n, x) => n + x.maxWorkers, 0), threshold: (rule?.values as { registrationThreshold?: number } | undefined)?.registrationThreshold ?? null, verify: rule?.verify ?? true });
+      }
       const like = (l: (typeof licences)[number]): LicenceLike => ({ id: l.id, locationId: l.locationId, states: l.states, validFrom: iso(l.validFrom), validTo: iso(l.validTo), status: l.status as LicenceLike['status'], renewalOfId: l.renewalOfId });
       return {
         canManage: a.manage && !a.actingForOther,
@@ -84,6 +95,7 @@ export class ContractLabourService {
         alertDays,
         locations: locations.filter((l) => !l.archivedAt).map((l) => ({ id: l.id, name: l.name, state: l.state })),
         states: Object.entries(IN_STATES).map(([code, name]) => ({ code, name })),
+        establishments,
         contractors: rows.map((r) => {
           const mine = licences.filter((l) => l.agencyId === r.id);
           const all = mine.map(like);
@@ -99,6 +111,7 @@ export class ContractLabourService {
             esicCode: r.esicCode,
             lin: r.lin,
             active: r.active,
+            workOrders: workOrders.filter((w) => w.agencyId === r.id).map((w) => ({ id: w.id, number: w.number, fromOn: iso(w.fromOn), toOn: iso(w.toOn), headcount: w.headcount, active: byAgencySite.filter((x) => x.agencyId === w.agencyId && w.locationIds.includes(x.locationId)).reduce((n, x) => n + x._count._all, 0), sites: w.locationIds.map((id) => ({ id, name: locations.find((x) => x.id === id)?.name ?? 'Archived location' })), version: w.version })),
             licences: mine.map((l) => {
               const loc = locations.find((x) => x.id === l.locationId);
               const f = fileRows.find((x) => x.id === l.fileId);
@@ -203,6 +216,34 @@ export class ContractLabourService {
   private dates(from: string, to: string, today: string) {
     if (to < from) throw new BadRequestException('The licence ends before it starts. Check the dates.');
     if (to < today) throw new BadRequestException('This licence has already ended. Add the renewed licence instead.');
+  }
+
+  /** Answer 675: add or change a work order (number, dates, headcount, our sites it covers). */
+  async saveWorkOrder(ctx: TenantContext, user: ScopeUser, contractorId: string, id: string | null, dto: WorkOrderDto) {
+    await this.gate(user, 'manage');
+    if (dto.toOn < dto.fromOn) throw new BadRequestException('The work order ends before it starts.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      await this.contractor(tx, c, contractorId);
+      const ids = [...new Set(dto.locationIds)];
+      if ((await tx.location.count({ where: { organizationId: org, id: { in: ids }, archivedAt: null } })) !== ids.length) throw new NotFoundException('Site not found.');
+      const data = { number: dto.number, fromOn: day(dto.fromOn), toOn: day(dto.toOn), headcount: dto.headcount, locationIds: ids };
+      const dup = (e: unknown): never => {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException(`Work order ${dto.number} is already recorded for this contractor.`);
+        throw e;
+      };
+      if (id) {
+        const cur = await tx.contractorWorkOrder.findFirst({ where: { id, organizationId: org, agencyId: contractorId } });
+        if (!cur) throw new NotFoundException('Work order not found.');
+        if (dto.version !== cur.version) throw new ConflictException('Someone else changed this work order just now. Reload the page.');
+        await tx.contractorWorkOrder.update({ where: { id }, data: { ...data, version: { increment: 1 } } }).catch(dup);
+        await audit(tx, c, 'clra.work_order.updated', 'contractor_work_order', id, { contractorId, number: dto.number, headcount: dto.headcount, toOn: dto.toOn });
+        return { id };
+      }
+      const row = await tx.contractorWorkOrder.create({ data: { organizationId: org, agencyId: contractorId, ...data, createdBy: c.userId ?? null } }).catch(dup);
+      await audit(tx, c, 'clra.work_order.added', 'contractor_work_order', row.id, { contractorId, number: dto.number, headcount: dto.headcount, toOn: dto.toOn });
+      return { id: row.id };
+    });
   }
 
   /** A new licence for one of our establishments: it must cover the establishment's state; it waits for verification. */

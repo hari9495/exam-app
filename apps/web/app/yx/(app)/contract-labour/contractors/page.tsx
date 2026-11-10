@@ -32,6 +32,7 @@ export default function YxContractorsPage() {
         onRenew: (id, input, file) => write('POST', `/licences/${enc(id)}/renewal`, licenceForm({ ...input }, file)),
         onVerify: (id) => write('POST', `/licences/${enc(id)}/verify`),
         onReject: (id, reason) => write('POST', `/licences/${enc(id)}/reject`, { reason }),
+        onSaveWorkOrder: (contractorId, id, input) => (id ? write('PUT', `/contractors/${enc(contractorId)}/work-orders/${enc(id)}`, input) : write('POST', `/contractors/${enc(contractorId)}/work-orders`, input)),
         onOpenFile: (id) => void download(`/licences/${enc(id)}/file`, 'licence').catch((e: Error) => toast({ title: e.message })),
       }}
     />
