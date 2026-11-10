@@ -1020,24 +1020,76 @@ export interface VisitInfo {
   rules: { idRequired: boolean; photoRequired: boolean; safetyInduction: boolean; nda: boolean; escort: boolean; hours: string };
 }
 
+/** T9-14 live (Visitors slice 1): GET public/visits/:token. The mobile comes masked; the pass code only after the notice. */
+export interface PublicVisitView {
+  state: 'details' | 'pass' | 'expired' | 'blocked';
+  visitor: string;
+  /** Masked: "+91 ••••• ••871". */
+  mobile: string;
+  company: string;
+  purpose: string;
+  host: string;
+  location: string;
+  address: string;
+  window: { from: string; to: string };
+  vehicle: string | null;
+  hours: string;
+  retentionDays: number;
+  notice: string;
+  noticeVersion: string;
+  passCode: string | null;
+  brand?: { orgName?: string; orgLogo?: string | null; accent?: string | null; whiteLabel?: boolean };
+}
+export interface LiveVisitorPass {
+  state: 'loading' | 'ready' | 'not-found' | 'error';
+  onRetry: () => void;
+  visit: PublicVisitView | null;
+  /** Accepts the notice (the version read) with the vehicle number; resolves with the page's new state. */
+  onAccept: (vehicle: string) => Promise<unknown>;
+}
+
+const PURPOSE_WORDS: Record<string, string> = { meeting: 'a meeting', interview: 'an interview', vendor: 'a supplier visit', audit: 'an audit', delivery: 'a delivery', maintenance: 'maintenance work' };
+
 // T9-14
 /** Visitor pre-registration from a one-time link: confirm details, ID, photo, privacy notice (G-27), QR pass (M02 §B11). */
-export function VisitorInviteScreen({ tenant, accent, visit, stage: initial, camera = 'live', today }: { tenant: string; accent?: string; visit: VisitInfo; stage: VisitStage; camera?: CameraState; today: Date }) {
-  const [stage, setStage] = useState(initial);
-  const steps = ['Your details', 'ID', 'Photo', 'Notice', 'Pass'];
-  const idx = { details: 0, id: 1, photo: 2, notice: 3, pass: 4, expired: 4, blocked: 0 }[stage];
+export function VisitorInviteScreen({ tenant: sampleTenant, accent: sampleAccent, visit: sample, stage: initial, camera = 'live', today, live }: { tenant: string; accent?: string; visit: VisitInfo; stage: VisitStage; camera?: CameraState; today: Date; live?: LiveVisitorPass }) {
+  const lv = live?.visit ?? null;
+  const tenant = live ? (lv?.brand?.orgName ?? '') : sampleTenant;
+  const accent = live ? (lv?.brand?.accent ?? undefined) : sampleAccent;
+  const visit: VisitInfo = lv
+    ? { visitor: lv.visitor, mobile: lv.mobile, company: lv.company || 'Individual', purpose: PURPOSE_WORDS[lv.purpose] ?? lv.purpose, host: lv.host, location: lv.location, address: lv.address, window: { from: new Date(lv.window.from), to: new Date(lv.window.to) }, passCode: lv.passCode ?? '', rules: { idRequired: false, photoRequired: false, safetyInduction: false, nda: false, escort: false, hours: lv.hours } }
+    : sample;
+  const [stage, setStage] = useState<VisitStage>(lv ? lv.state : initial);
+  const [vehicle, setVehicle] = useState(lv?.vehicle ?? '');
+  // Live (slice 1): details, the notice, the pass; the ID and photo steps come with slice 3.
+  const steps = live ? ['Your details', 'Notice', 'Pass'] : ['Your details', 'ID', 'Photo', 'Notice', 'Pass'];
+  const idx = live ? { details: 0, id: 0, photo: 0, notice: 1, pass: 2, expired: 2, blocked: 0 }[stage] : { details: 0, id: 1, photo: 2, notice: 3, pass: 4, expired: 4, blocked: 0 }[stage];
   const when = `${formatDate(visit.window.from)}, ${timeOf(visit.window.from)} to ${timeOf(visit.window.to)}`;
+  if (live && (live.state !== 'ready' || !lv))
+    return (
+      <TenantPortal tenant={tenant || 'Visitor pass'} portal="Visitor pass" narrow access={{ kind: 'note', text: 'Your visit link' }} footer={{ privacy: 'Visitor privacy notice (G-27)', cookies: true }}>
+        {live.state === 'loading' ? (
+          <p className="yx-ps-muted" role="status">Loading your visit…</p>
+        ) : live.state === 'error' ? (
+          <InlineAlert tone="danger" title="We couldn't load your visit" actions={<Button size="sm" onClick={live.onRetry}>Try again</Button>}>Nothing has changed. Try again in a moment.</InlineAlert>
+        ) : (
+          <EmptyState title="We could not find this visit." description="The link may be mistyped or the visit removed. Ask your host to invite you again." />
+        )}
+      </TenantPortal>
+    );
   return (
     <TenantPortal
       tenant={tenant}
       portal="Visitor pass"
       accent={accent}
+      logoUrl={lv?.brand?.orgLogo ?? null}
+      whiteLabel={Boolean(lv?.brand?.whiteLabel)}
       narrow
       access={{ kind: 'link', endsOn: visit.window.to, today, endsBecause: 'end of your visit window' }}
       footer={{ privacy: 'Visitor privacy notice (G-27)', cookies: true }}
       pinned={
         stage === 'details' ? (
-          <Button variant="primary" onClick={() => setStage('id')}>
+          <Button variant="primary" onClick={() => setStage(live ? 'notice' : 'id')}>
             Continue
           </Button>
         ) : stage === 'id' ? (
@@ -1074,14 +1126,14 @@ export function VisitorInviteScreen({ tenant, accent, visit, stage: initial, cam
             <DescriptionList
               items={[
                 { label: 'Name', value: visit.visitor },
-                { label: 'Mobile', value: `+91 ••••• ••${visit.mobile.slice(-3)}` },
+                { label: 'Mobile', value: live ? visit.mobile : `+91 ••••• ••${visit.mobile.slice(-3)}` },
                 { label: 'Company', value: visit.company },
                 { label: 'Where', value: `${visit.location}, ${visit.address}` },
                 { label: 'Allowed hours', value: visit.rules.hours },
               ]}
             />
             <FormField label="Vehicle number" optional helper="For parking inside the gate.">
-              <TextField placeholder="TN 70 AB 1234" />
+              {live ? <TextField value={vehicle} onChange={setVehicle} placeholder="TN 70 AB 1234" maxLength={20} /> : <TextField placeholder="TN 70 AB 1234" />}
             </FormField>
           </Card>
           {visit.rules.escort && <p className="yx-ps-muted">An escort will meet you at reception; plant areas need safety shoes.</p>}
@@ -1111,7 +1163,31 @@ export function VisitorInviteScreen({ tenant, accent, visit, stage: initial, cam
           </div>
         </Card>
       )}
-      {stage === 'notice' && (
+      {stage === 'notice' && lv && (
+        <ConsentPanel
+          title="Before you visit"
+          summary={
+            <>
+              <p>{lv.notice}</p>
+              <p>
+                {tenant} records your name, mobile, company, host, purpose and your entry and exit times, for site security, safety and evacuation roll-call. Records are kept for{' '}
+                {lv.retentionDays} days after your visit, then deleted. Only your host, reception and security see them.
+              </p>
+            </>
+          }
+          purposes={[{ id: 'notice', label: 'I have read the visitor notice and the privacy notice', required: true }]}
+          noticeLabel="visitor privacy notice (G-27)"
+          noticeVersion={lv.noticeVersion}
+          acceptLabel="Get my pass"
+          declineLabel="Not now"
+          onAccept={async () => {
+            await live!.onAccept(vehicle.trim());
+            setStage('pass');
+          }}
+          declinedText={`Nothing was recorded. Reception will ask you to read the notice when you arrive.`}
+        />
+      )}
+      {stage === 'notice' && !lv && (
         <ConsentPanel
           title="Before you visit"
           summary={

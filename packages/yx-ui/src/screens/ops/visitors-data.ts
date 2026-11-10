@@ -1,7 +1,7 @@
 // Fictional visitor data (M02 §B11). Location: Chennai office unless noted.
 const at = (day: number, h: number, m = 0, month = 8) => new Date(2026, month, day, h, m);
 
-export type VisitStatus = 'Expected' | 'Waiting for host' | 'On site' | 'Checked out' | 'Blocked' | 'Rejected' | 'No show';
+export type VisitStatus = 'Expected' | 'Waiting for host' | 'On site' | 'Checked out' | 'Blocked' | 'Rejected' | 'No show' | 'Not checked out' | 'Cancelled';
 export interface Visit {
   id: string;
   name: string;
@@ -40,3 +40,54 @@ export const LOG: Visit[] = [
 ];
 
 export const MY_VISITORS: Visit[] = [VISITS[0], { ...VISITS[0], id: 'mv2', name: 'Anjali Varma', company: 'QualiTest Labs', from: at(1, 14, 0, 9), to: at(1, 15, 0, 9) }, { ...LOG[0] }];
+
+/* ---------------- Live (Visitors slice 1) ---------------- */
+
+/** A visit as the live API sends it (GET visitors/desk, visitors/mine, visitors/log). */
+export interface VisitView {
+  id: string;
+  name: string;
+  mobile: string;
+  email: string | null;
+  company: string | null;
+  purpose: string;
+  host: string;
+  location: string;
+  locationId: string;
+  startsAt: string;
+  endsAt: string;
+  status: 'expected' | 'on_site' | 'checked_out' | 'not_out' | 'no_show' | 'cancelled';
+  statusText: string;
+  passCode: string;
+  badge: string | null;
+  vehicle: string | null;
+  noticeAcceptedAt: string | null;
+  checkedInAt: string | null;
+  checkedOutAt: string | null;
+  /** The log only: the day the visit is deleted (answer 608). */
+  deletedOn?: string;
+}
+
+const PURPOSE: Record<string, Visit['purpose']> = { meeting: 'Meeting', interview: 'Interview', vendor: 'Vendor', audit: 'Audit', delivery: 'Delivery', maintenance: 'Maintenance' };
+export const PURPOSE_CHOICES = Object.entries(PURPOSE).map(([value, label]) => ({ value, label }));
+
+/** The drawn row from a live visit. */
+export function visitOf(v: VisitView): Visit {
+  return {
+    id: v.id,
+    name: v.name,
+    mobile: v.mobile,
+    company: v.company || '—',
+    purpose: PURPOSE[v.purpose] ?? 'Meeting',
+    host: v.host,
+    location: v.location,
+    from: new Date(v.startsAt),
+    to: new Date(v.endsAt),
+    status: v.statusText as VisitStatus,
+    badge: v.badge ?? undefined,
+    checkIn: v.checkedInAt ? new Date(v.checkedInAt) : undefined,
+    checkOut: v.checkedOutAt ? new Date(v.checkedOutAt) : undefined,
+    nda: Boolean(v.noticeAcceptedAt),
+    vehicle: v.vehicle ?? undefined,
+  };
+}
