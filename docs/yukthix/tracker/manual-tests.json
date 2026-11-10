@@ -19791,5 +19791,63 @@
       "Screens/Contract labour/CLB-02 · Contract workers register · Site approval · induction and gate pass (CL-2)"
     ],
     "note": "Positive and negative. Answer 754."
+  },
+  {
+    "area": "Contract labour · CL-8 we are the contractor (11 Nov 2026)",
+    "account": "The staffing account manager who also holds the contract labour key (clra.contractor.manage, ats.staffing.manage); then a reader with clra.contractor.view only. Browser window 1278 x 635.",
+    "note": "Positive and negative. Answers 638, 639.",
+    "id": "MT-CL8-01",
+    "screen": "CLB-06 Client establishments; CLB-07 Own licences",
+    "url": "http://localhost:3000/yx/contract-labour/client-sites",
+    "steps": [
+      "Add client site with every field empty and press Add site.",
+      "Add a site for a staffing client: Tamil Nadu, the client's registration number, pack due day 10.",
+      "Add the same site name again.",
+      "Own licences › Add licence for that site, max 2, without the copy; then with the copy.",
+      "As the reader open both pages."
+    ],
+    "expected": "Step 1: each field says what is missing; nothing saved. Step 2: toast; the site shows the registration number and No licence covers this site. Step 3: refused (already has a site with that name). Step 4: the copy is required; then the licence shows 0 of 2 and the site 0 of 2. Step 5: no Add buttons.",
+    "stories": [
+      "Screens/Contract labour/CLB-06 · Client establishments",
+      "Screens/Contract labour/CLB-07 · Own licences"
+    ]
+  },
+  {
+    "area": "Contract labour · CL-8 we are the contractor (11 Nov 2026)",
+    "account": "The staffing account manager who also holds the contract labour key (clra.contractor.manage, ats.staffing.manage); then a reader with clra.contractor.view only. Browser window 1278 x 635.",
+    "note": "Positive and negative. Answers 638, 639.",
+    "id": "MT-CL8-02",
+    "screen": "HIR-17 New placement (client site); CLB-07 licence maximum",
+    "url": "http://localhost:3000/yx/staffing/placements",
+    "steps": [
+      "New placement for two of our employees at the client site (licence max 2).",
+      "A third employee at the same site.",
+      "The third employee without a client site."
+    ],
+    "expected": "Step 1: both placed; the site shows 2 of 2. Step 2: refused: the licence allows 2 at the site; amend it or place elsewhere. Step 3: placed (not counted against the licence).",
+    "stories": [
+      "Screens/Hiring/HIR-17 · Placements and bench board",
+      "Screens/Contract labour/CLB-07 · Own licences"
+    ]
+  },
+  {
+    "area": "Contract labour · CL-8 we are the contractor (11 Nov 2026)",
+    "account": "The staffing account manager who also holds the contract labour key (clra.contractor.manage, ats.staffing.manage); then a reader with clra.contractor.view only. Browser window 1278 x 635.",
+    "note": "Positive and negative. Answers 638, 639.",
+    "id": "MT-CL8-03",
+    "screen": "CLB-08 Client compliance packs",
+    "url": "http://localhost:3000/yx/contract-labour/client-packs",
+    "steps": [
+      "Make pack for last month before payroll is approved.",
+      "Approve payroll; Make pack again; Download pack.",
+      "Make pack for the same month without a reason; then with one.",
+      "Record upload with a future day; then with today and the portal reference, no acknowledgement.",
+      "Record acceptance without a file; then with the client's acknowledgement.",
+      "Make pack for that month again."
+    ],
+    "expected": "Step 1: refused, naming who has no approved payroll. Step 2: a ZIP with the wage register, the muster (days from attendance, client's registration number) and a cover. Step 3: a reason is asked; then version 2. Step 4: future day refused; then Uploaded, awaiting acceptance. Step 5: file required; then Accepted. Step 6: refused: uploaded is final.",
+    "stories": [
+      "Screens/Contract labour/CLB-08 · Client compliance packs"
+    ]
   }
 ]

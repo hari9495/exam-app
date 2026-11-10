@@ -65,7 +65,7 @@ export class ContractLabourJobs implements OnModuleInit, OnModuleDestroy {
 // CL-2: contract workers (persons with the contract_worker role) and their deployments, gate passes and inductions.
 @Module({
   imports: [AuthModule, StatutoryModule, CryptoModule, DocumentsModule, EmailModule, NotificationsModule, OrgStructureModule, PayrollModule],
-  controllers: [ContractLabourController, PublicContractorPortalController, ClraRegistersController],
+  controllers: [ContractLabourController, PublicContractorPortalController, ClraRegistersController, ContractorSideController],
   providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, ContractLabourService, WorkersService, ComplianceService, ContractAttendanceService, ContractorPortalService, ContractLabourJobs, ClraRegistersService, ContractorSideService],
   exports: [ContractLabourService, ContractAttendanceService],
 })
