@@ -73,6 +73,9 @@ export default function YxHiringCandidatePage() {
         onOpenApplication: (entryId) => router.replace(`${here}?entry=${encodeURIComponent(entryId)}`),
         pipeline,
         onOpenInterview: (ivId) => router.push(`/yx/hiring/interviews/${encodeURIComponent(ivId)}`),
+        // HIR-05 under 18: the date of birth (sealed) and the guardian consent email.
+        onDob: async (input) => void (await write('PUT', `/candidates/${encodeURIComponent(id)}/date-of-birth`, input)),
+        onResendGuardian: async () => void (await write('POST', `/candidates/${encodeURIComponent(id)}/guardian-consent/resend`)),
         onBack: () => router.push('/yx/hiring/candidates'),
         onOpenJob: (jobId) => router.push(`/yx/hiring/jobs/${encodeURIComponent(jobId)}/pipeline`),
         onResume: async () => {

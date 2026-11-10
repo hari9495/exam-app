@@ -29,3 +29,6 @@ export const Empty: S = { name: 'Empty', render: () => <TalentCrmScreen {...base
 // HIR-20 build (live pools): a pool's members with their consent, and the new pool dialog (the stand-in's functions).
 export const PoolMembers: S = { name: 'Pool members · consent, open, remove', render: () => <TalentCrmScreen {...base} membersOpen="po2" /> };
 export const NewPool: S = { name: 'New pool or hotlist', render: () => <TalentCrmScreen {...base} newPoolOpen /> };
+// HIR-20 campaigns build (10 Nov 2026): add a sourced profile by hand with its lawful source; WhatsApp with no provider.
+export const AddSourced: S = { name: 'Sourced profiles · add with a lawful source', render: () => <TalentCrmScreen {...base} defaultTab="sourced" sourcedAddOpen /> };
+export const WhatsappNotConnected: S = { name: 'Sequence builder · WhatsApp not connected', render: () => <TalentCrmScreen {...base} defaultTab="campaigns" builderOpen whatsappConnected={false} /> };

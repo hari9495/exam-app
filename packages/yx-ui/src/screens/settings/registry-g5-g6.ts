@@ -854,6 +854,15 @@ const hiring: SettingsPageDef = {
       ],
     },
     {
+      // HIR-20 Talent CRM (10 Nov 2026): when campaign messages go, how many a day, and how long a sourced profile waits.
+      title: 'Talent CRM',
+      settings: [
+        { key: 'hire.crm_send_window', label: 'Campaign messages go out', kind: 'select', value: '09-21', options: ['09-21', '10-18', '08-20', '00-24'], optionLabels: { '09-21': '9 am to 9 pm IST', '10-18': '10 am to 6 pm IST', '08-20': '8 am to 8 pm IST', '00-24': 'Any time' }, helper: 'A step that falls due outside these hours waits for the next window.', starter: true, scope: 'Company', synonyms: ['quiet hours', 'campaign', 'sequence', 'nurture'] },
+        { key: 'hire.crm_daily_cap', label: 'Most campaign messages a day', kind: 'select', value: '200', options: ['50', '100', '200', '500', '1000'], helper: 'For the whole company, all campaigns together. The rest go the next day.', starter: true, scope: 'Company', synonyms: ['limit', 'campaign', 'cap'] },
+        { key: 'hire.sourced_keep_days', label: 'Erase a sourced profile with no consent after', kind: 'select', value: '30', options: ['7', '15', '30'], optionLabels: { '7': '7 days', '15': '15 days', '30': '30 days' }, helper: 'A person added from outside YukthiX gets one consent email; with no yes by then, their details are deleted (DPDP).', starter: true, scope: 'Company', synonyms: ['sourced', 'consent', 'dpdp', 'retention'] },
+      ],
+    },
+    {
       // HIR-13 (founder decision 6): who can apply for internal jobs, and when; the current manager is told, never asked.
       title: 'Internal jobs',
       settings: [

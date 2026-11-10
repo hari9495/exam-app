@@ -26,7 +26,7 @@ export {
 } from '../../portals/t9-09-candidate-pages';
 // HIR-05: the designed candidate record, merge, candidate list and retention, live with their `live` prop.
 export { EmailDialog, STAGE } from '../candidate-dialogs';
-export { CandidateRecordScreen, MergeDrawer, type LiveCandidateRecord, type LiveDuplicate, type LiveMergeDrawer, type MergeFieldRow } from '../hiring-pipeline';
+export { CandidateRecordScreen, MergeDrawer, type DobInput, type LiveCandidateRecord, type LiveDuplicate, type LiveMergeDrawer, type MergeFieldRow } from '../hiring-pipeline';
 export { CandidateListScreen, CandidateRetentionScreen, type CandidateListTab, type CandidateStatusFilter, type DataRequestMatch, type LiveCandidateList, type LiveRetention } from '../hiring-candidates';
 // HIR-04 follow-ups (answer 261): the Bulk actions and Add candidate sheets on the board, the job settings on the HIR-03
 // workspace, and the application on the HIR-05 record (the old candidates list and application panel are gone).
@@ -56,7 +56,8 @@ export { SETTINGS_GROUPS } from '../../settings/settings-groups';
 export { hiringSettingsPage, hiringSettingsChanges, type HiringSettingsData } from '../../settings/hiring-live';
 // HIR-10 and HIR-20: the designed BGV tracker and Talent CRM (hiring-offers.tsx), live with their `live` prop (the
 // pools stand-in is gone).
-export { BgvTrackerScreen, TalentCrmScreen, type BgvResultInput, type LiveBgv, type LiveBgvCheck, type LiveBgvJoiner, type LivePool, type LivePoolMember, type LivePostingJob, type LiveTalentCrm } from '../hiring-offers';
+export { BgvTrackerScreen, TalentCrmScreen, type BgvResultInput, type LiveBgv, type LiveBgvCheck, type LiveBgvJoiner, type LivePool, type LivePoolMember, type LivePostingJob, type LiveTalentCrm, type LiveCrm } from '../hiring-offers';
+export type { CampaignView, CampaignPerson, EngagementView, AudienceCount, SequenceDraft, SourcedRow, SourcedInput } from '../hiring-crm';
 // HIR-27 bulk interview day.
 export { InterviewDaySheet, type InterviewDayInput, type InterviewDaySheetProps, type InterviewDayView, type LiveInterviewDay } from '../interview-day';
 // Staffing desk slice 1 (HIR-14, HIR-15, Settings 6.2).

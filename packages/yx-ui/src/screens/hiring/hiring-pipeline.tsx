@@ -7,7 +7,8 @@ import { AiBadge, Badge, PersonLabel } from '../../components/display';
 import { EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
 import { FormField, useTooEarly } from '../../components/field';
 import { FileUpload } from '../../components/upload';
-import { TextArea } from '../../components/inputs';
+import { TextArea, TextField } from '../../components/inputs';
+import { DatePicker } from '../../components/date';
 import { Select } from '../../components/select';
 import { Checkbox, RadioGroup } from '../../components/choice';
 import { Drawer } from '../../components/drawer';
@@ -338,6 +339,8 @@ export interface CandidateRecordProps {
   viewer: 'recruiter' | 'hr' | 'hm';
   exEmployee?: ExEmployeeInfo;
   minor?: { dob: Date; guardianConsent: 'pending' | 'verified' };
+  /** Drawn state (HIR-05 build): the Record date of birth dialog. */
+  dobOpen?: boolean;
   identity: IdCheckpoint[];
   applications: CandidateApplication[];
   activity: TimelineItem[];
@@ -402,6 +405,80 @@ export interface LiveCandidateRecord {
   } | null;
   /** Opens the HIR-07 scorecard page of one interview (the API decides who may read it). */
   onOpenInterview?: (interviewId: string) => void;
+  /** HIR-05 under 18: records the date of birth (sealed) and, under the age, the guardian who is emailed for consent. */
+  onDob?: (input: DobInput) => Promise<void>;
+  /** Sends the guardian consent email again (a new link). */
+  onResendGuardian?: () => Promise<void>;
+}
+
+export interface DobInput {
+  dob: string;
+  guardianName: string | null;
+  guardianEmail: string | null;
+}
+
+/** HIR-05 under 18 (rule set HIR.MINOR): the hold until a parent or guardian consents. The date shows only when given. */
+function MinorBanner({ minAge, dob, given, onResend }: { minAge: number; dob: Date | null; given: boolean; onResend?: () => void }) {
+  return (
+    <InlineAlert tone="warning" title={`Under ${minAge}: guardian consent needed`} actions={!given && onResend ? <Button size="sm" icon={Send} onClick={onResend}>Send again</Button> : undefined}>
+      {dob ? `Date of birth ${formatDate(dob)}. ` : ''}
+      {given ? 'Guardian consent verified.' : 'Processing is paused until a parent or guardian gives verifiable consent: no move past screening and no offer.'} No AI interview and no profiling for this candidate (DPDP s.9).
+    </InlineAlert>
+  );
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const dayOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const yearsOn = (dob: Date, today: Date) => today.getFullYear() - dob.getFullYear() - (today.getMonth() < dob.getMonth() || (today.getMonth() === dob.getMonth() && today.getDate() < dob.getDate()) ? 1 : 0);
+
+/** Record date of birth: Special data, shown only to candidate key holders; under the age a guardian is emailed. */
+function DobDialog({ name, minAge, today, onClose, onSave }: { name: string; minAge: number; today: Date; onClose: () => void; onSave: (input: DobInput) => Promise<void> }) {
+  const toast = useToastIfAny();
+  const [dob, setDob] = useState<Date | null>(null);
+  const [gName, setGName] = useState('');
+  const [gEmail, setGEmail] = useState('');
+  const [tried, setTried] = useState(false);
+  const minor = dob ? yearsOn(dob, today) < minAge : false;
+  const errors = {
+    dob: !dob ? 'Enter the date of birth.' : dob > today ? 'Enter a date in the past.' : null,
+    gName: minor && !gName.trim() ? 'Enter the parent or guardian name.' : null,
+    gEmail: minor && !EMAIL_RE.test(gEmail.trim()) ? 'Enter the parent or guardian email.' : null,
+  };
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`Date of birth · ${name}`}
+      consequence={`Kept as Special data: only people with a candidate key see it. Under ${minAge}, a parent or guardian is emailed for consent, and until they agree the candidate stays at screening and gets no offer.`}
+      confirmLabel={minor ? 'Save and email the guardian' : 'Save'}
+      onConfirm={async () => {
+        setTried(true);
+        const first = errors.dob ? 'dob-date' : errors.gName ? 'dob-gname' : errors.gEmail ? 'dob-gemail' : null;
+        if (first) {
+          setTimeout(() => document.getElementById(first)?.focus(), 0);
+          return false;
+        }
+        await onSave({ dob: dayOf(dob!), guardianName: minor ? gName.trim() : null, guardianEmail: minor ? gEmail.trim() : null });
+        toast?.toast({ tone: 'success', title: 'Date of birth saved', description: minor ? 'The guardian consent email is on its way.' : undefined });
+        onClose();
+      }}
+    >
+      <FormField id="dob-date" label="Date of birth" required error={tried ? errors.dob : null}>
+        <DatePicker value={dob} onChange={setDob} max={today} />
+      </FormField>
+      {minor && (
+        <>
+          <InlineAlert tone="warning">Under {minAge}: a parent or guardian must consent before the application goes further.</InlineAlert>
+          <FormField id="dob-gname" label="Parent or guardian name" required error={tried ? errors.gName : null}>
+            <TextField value={gName} onChange={setGName} maxLength={200} />
+          </FormField>
+          <FormField id="dob-gemail" label="Parent or guardian email" required error={tried ? errors.gEmail : null}>
+            <TextField type="email" value={gEmail} onChange={setGEmail} maxLength={320} />
+          </FormField>
+        </>
+      )}
+    </ConfirmDialog>
+  );
 }
 
 // HIR-05
@@ -409,8 +486,9 @@ export function CandidateRecordScreen(props: CandidateRecordProps | { live: Live
   return 'live' in props ? <LiveCandidateRecordView live={props.live} /> : <SampleCandidateRecord {...props} />;
 }
 
-function SampleCandidateRecord({ candidate: c, viewer, exEmployee, minor, identity, applications, activity, duplicate = null, mergeOpen = false, access = 'ok', now }: CandidateRecordProps) {
+function SampleCandidateRecord({ candidate: c, viewer, exEmployee, minor, dobOpen = false, identity, applications, activity, duplicate = null, mergeOpen = false, access = 'ok', now }: CandidateRecordProps) {
   const [merge, setMerge] = useState(mergeOpen);
+  const [dobDialog, setDobDialog] = useState(dobOpen);
   if (access !== 'ok')
     return (
       <HireFrame active="Candidates & talent CRM">
@@ -427,11 +505,7 @@ function SampleCandidateRecord({ candidate: c, viewer, exEmployee, minor, identi
         banner={
           <>
             {exEmployee && <ExEmployeeBanner info={exEmployee} viewer={viewer} onClear={() => {}} />}
-            {minor && (
-              <InlineAlert tone="warning" title="Under 18: guardian consent needed">
-                Date of birth {formatDate(minor.dob)}. {minor.guardianConsent === 'pending' ? 'Processing is paused until a parent or guardian gives verifiable consent.' : 'Guardian consent verified.'} No AI interview and no profiling for this candidate (DPDP s.9).
-              </InlineAlert>
-            )}
+            {minor && <MinorBanner minAge={18} dob={viewer === 'hm' ? null : minor.dob} given={minor.guardianConsent === 'verified'} onResend={viewer === 'hm' ? undefined : () => {}} />}
             {duplicate && viewer !== 'hm' && (
               <InlineAlert tone="info" title="Possible duplicate" actions={<Button size="sm" icon={Merge} onClick={() => setMerge(true)}>Review merge</Button>}>
                 {duplicate.name} ({duplicate.email}) has the same phone number and a similar résumé.
@@ -479,6 +553,7 @@ function SampleCandidateRecord({ candidate: c, viewer, exEmployee, minor, identi
               viewer === 'hm' ? undefined : (
                 <>
                   <MenuItem>Add to pool or hotlist</MenuItem>
+                  <MenuItem onSelect={() => setDobDialog(true)}>Record date of birth</MenuItem>
                   <MenuItem>Merge with another candidate</MenuItem>
                   <MenuItem>Export candidate data</MenuItem>
                   <MenuItem destructive>Erase candidate data</MenuItem>
@@ -560,6 +635,7 @@ function SampleCandidateRecord({ candidate: c, viewer, exEmployee, minor, identi
         </Tabs>
       </RecordLayout>
       {duplicate && <MergeDrawer open={merge} onOpenChange={setMerge} a={c} b={duplicate} />}
+      {dobDialog && <DobDialog name={c.name} minAge={18} today={now ?? new Date()} onClose={() => setDobDialog(false)} onSave={async () => {}} />}
     </HireFrame>
   );
 }
@@ -591,7 +667,7 @@ function activityOf(v: CandidateProfileView, team: string): TimelineItem[] {
 
 function LiveCandidateRecordView({ live }: { live: LiveCandidateRecord }) {
   const toast = useToastIfAny();
-  const [dialog, setDialog] = useState<null | 'email' | 'pool' | 'hold' | 'erase' | 'withdraw' | 'clear' | 'schedule'>(null);
+  const [dialog, setDialog] = useState<null | 'email' | 'pool' | 'hold' | 'erase' | 'withdraw' | 'clear' | 'schedule' | 'dob'>(null);
   const [moving, setMoving] = useState(false);
   const [merging, setMerging] = useState<{ otherId: string | null; fromMenu: boolean } | null>(null);
   const done = (title: string, description?: string): void => void toast?.toast({ tone: 'success', title, description });
@@ -634,6 +710,14 @@ function LiveCandidateRecordView({ live }: { live: LiveCandidateRecord }) {
                 info={{ exitDate: ex.exitDate ? at(ex.exitDate) : null, exitType: ex.exitType, rehireEligible: ex.rehireEligible, rehireReason: ex.rehireReason, company: live.company }}
                 viewer={viewer}
                 onClear={() => setDialog('clear')}
+              />
+            )}
+            {v.minor && (
+              <MinorBanner
+                minAge={v.minor.minAge}
+                dob={v.minor.dob ? at(v.minor.dob) : null}
+                given={v.minor.guardian === 'given'}
+                onResend={manage && live.onResendGuardian ? () => void live.onResendGuardian!().then(() => done('Guardian consent email sent again'), (e: unknown) => void toast?.toast({ tone: 'error', title: 'Not sent', description: e instanceof Error ? e.message : 'Try again.' })) : undefined}
               />
             )}
             {v.legalHold && (
@@ -716,6 +800,7 @@ function LiveCandidateRecordView({ live }: { live: LiveCandidateRecord }) {
               hm ? undefined : (
                 <>
                   {manage && <MenuItem onSelect={() => setDialog('pool')}>Add to pool or hotlist</MenuItem>}
+                  {manage && live.onDob && <MenuItem onSelect={() => setDialog('dob')}>Record date of birth</MenuItem>}
                   {manage && dataRights && <MenuItem onSelect={() => setMerging({ otherId: null, fromMenu: true })}>Merge with another candidate</MenuItem>}
                   {dataRights && <MenuItem onSelect={() => void live.onExport().then(() => done('Candidate data downloaded'), () => undefined)}>Export candidate data</MenuItem>}
                   {dataRights && <MenuItem onSelect={() => setDialog('hold')}>{v.legalHold ? 'Lift legal hold' : 'Place legal hold'}</MenuItem>}
@@ -927,6 +1012,7 @@ function LiveCandidateRecordView({ live }: { live: LiveCandidateRecord }) {
       )}
       {dialog === 'schedule' && live.pipeline && <ScheduleDialog {...live.pipeline.schedule} forWhat={live.pipeline.jobTitle} onClose={() => setDialog(null)} onSchedule={async (i) => (await live.pipeline!.schedule.onSchedule(i), done('Interview scheduled', 'It is on the interview calendar.'))} />}
       {dialog === 'clear' && <ClearRehireDialog onClose={() => setDialog(null)} onSave={async (reason) => (await live.onClearRehire(reason), done('Rehire flag cleared'))} />}
+      {dialog === 'dob' && live.onDob && <DobDialog name={c.name} minAge={v.minor?.minAge ?? 18} today={live.now} onClose={() => setDialog(null)} onSave={live.onDob} />}
       {live.application && <ApplicationDrawer {...live.application} open />}
       {merging && (
         <LiveMerge
