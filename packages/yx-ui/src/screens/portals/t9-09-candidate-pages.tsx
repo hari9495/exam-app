@@ -16,6 +16,7 @@ import { Icon } from '../../components/foundations';
 import { useToastIfAny } from '../../components/notify';
 import { formatDate } from '../../lib/format';
 import { Fact, FactRow, StepDots, TenantPortal } from './portals-kit';
+import { AutomatedToolNotice, type ToolNotice } from '../../components/careers';
 
 const CAND_FOOTER = { privacy: 'Candidate privacy notice (G-07)', terms: 'Candidate terms (G-29)' };
 export type CandidatePageState = 'loading' | 'ready' | 'not-found';
@@ -88,10 +89,28 @@ export interface ApplicationStatusView {
   bucket: string;
   /** The candidate's own page (all their applications), when the link is known. */
   portalHref?: string | null;
+  /** Answer 502: the New York City automated-tool notice, and when this candidate asked for another process. */
+  toolNotice?: (ToolNotice & { requestedAt: Date | null }) | null;
 }
 
 /** Where one application is, in candidate words; reached by the status link in the apply email. */
-export function ApplicationStatusScreen({ brand, state, status }: { brand: CandidateBrand; state: CandidatePageState; status: ApplicationStatusView | null }) {
+export function ApplicationStatusScreen({ brand, state, status, onAskAlternative }: { brand: CandidateBrand; state: CandidatePageState; status: ApplicationStatusView | null; onAskAlternative?: () => Promise<unknown> }) {
+  const toast = useToastIfAny();
+  const [asking, setAsking] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const ask = async () => {
+    if (!onAskAlternative) return;
+    setAsking(true);
+    setFailed(null);
+    try {
+      await onAskAlternative();
+      toast?.toast({ tone: 'success', title: 'Request sent', description: 'A recruiter sees it; the automated tool is not used for you.' });
+    } catch (e) {
+      setFailed(e instanceof Error && e.message ? e.message : 'That did not go through. Try again.');
+    } finally {
+      setAsking(false);
+    }
+  };
   return (
     <Frame brand={brand} portal="Your application" narrow>
       {state === 'loading' ? (
@@ -117,6 +136,25 @@ export function ApplicationStatusScreen({ brand, state, status }: { brand: Candi
             </InlineAlert>
           ) : (
             <StepDots steps={['Received', 'Under review', 'Moving forward']} current={Math.max(0, STATUS_STEPS.indexOf(status.bucket))} />
+          )}
+          {status.toolNotice && (
+            <>
+              <AutomatedToolNotice notice={status.toolNotice} companyName={brand.tenant} />
+              {failed && <InlineAlert tone="danger" title="Not sent">{failed}</InlineAlert>}
+              {status.toolNotice.requestedAt ? (
+                <InlineAlert tone="success" title="You asked for another process">
+                  On {formatDate(status.toolNotice.requestedAt)}. A recruiter sees it; the automated tool is not used for you.
+                </InlineAlert>
+              ) : (
+                onAskAlternative && (
+                  <div>
+                    <Button loading={asking} onClick={() => void ask()}>
+                      Assess me another way
+                    </Button>
+                  </div>
+                )
+              )}
+            </>
           )}
           <p className="yx-ps-muted">We email you when this changes. This page shows only this application; nobody else can see it.</p>
           {status.portalHref && (

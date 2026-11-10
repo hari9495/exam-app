@@ -163,11 +163,24 @@ export async function nycNotice(tx: Prisma.TransactionClient, c: CompanyContext,
  * Answer 474: the automated tool on one application: refused when the candidate asked for another process, or before
  * the notice period has run from the day they applied (the notice was on the job page and apply form). Null: may run.
  */
-export async function noticeBlock(tx: Prisma.TransactionClient, c: CompanyContext, entry: { jobId: string; createdAt: Date; alternativeRequestedAt: Date | null }, tool: string, now = new Date()): Promise<string | null> {
+export async function noticeBlock(tx: Prisma.TransactionClient, c: CompanyContext, entry: { jobId: string; createdAt: Date; alternativeRequestedAt: Date | null; enteredVia?: string; toolNoticeAt?: Date | null }, tool: string, now = new Date()): Promise<string | null> {
   const notice = await nycNotice(tx, c, entry.jobId, now);
   if (!notice) return null;
   if (entry.alternativeRequestedAt) return `${tool} is not used for this candidate: they asked for another process on ${label(istDay(entry.alternativeRequestedAt))}.`;
-  const from = addBusinessDays(istDay(entry.createdAt), notice.businessDays);
+  // Answer 502: an applicant saw the notice on the page (the day they applied); a candidate added by hand was emailed it.
+  const told = entry.toolNoticeAt ?? (entry.enteredVia === undefined || entry.enteredVia === 'application' ? entry.createdAt : null);
+  if (!told) return `${tool} is not used for this candidate yet: they have not been sent the New York City notice (it goes by email when a recruiter adds them).`;
+  const from = addBusinessDays(istDay(told), notice.businessDays);
   if (istDay(now) < from) return `${tool} can be used for this candidate from ${label(from)}: New York City candidates are told ${notice.businessDays} business days before.`;
   return null;
 }
+
+/** Answer 502: the notice email to a candidate added by hand to a New York City job ({{…}} filled by the candidate emails). */
+export function noticeEmail(notice: { assesses: string[]; businessDays: number }): { subject: string; body: string } {
+  const what = notice.assesses.length ? notice.assesses.map((a) => `- ${a}`).join('\n') : '- How your skills and experience match this job';
+  return {
+    subject: 'How {{orgName}} assesses candidates for {{jobTitle}}',
+    body: `Dear {{candidateName}},\n\n{{orgName}} is considering you for {{jobTitle}} in New York City. We use an automated tool for this job. What it assesses:\n${what}\n\nWe will not use it on your application for at least ${notice.businessDays} business days from this email.\n\nIf you would like to be assessed another way, open {{statusLink}} and choose "Assess me another way". A recruiter sees your request and the tool is not used for you.`,
+  };
+}
+

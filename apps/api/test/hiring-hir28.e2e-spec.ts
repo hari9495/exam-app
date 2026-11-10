@@ -192,6 +192,12 @@ describe('HIR-28 bulk offers', () => {
     await api('noPay', 'post', '/hiring/offer-batches').send(batch([['kavin', '480000']])).expect(403);
   });
 
+  it('answer 514: a fixed CTC of 0 or blank is refused (400) and nothing is made; above 0 is taken', async () => {
+    for (const ctc of ['0', '0.00', '', ' '])
+      expect((await api('rec', 'post', '/hiring/offer-batches').send(batch([['kavin', ctc]])).expect(400)).body.message.join(' ')).toMatch(/fixed CTC above ₹0/);
+    expect(await inA((tx) => tx.offer.count({ where: { pipelineEntryId: ids.kavin } }))).toBe(0);
+  });
+
   it('with the plan check off, nothing is held', async () => {
     await setting('hiring.bulk_offer.plan_check', 'off');
     const b = (await api('rec', 'post', '/hiring/offer-batches').send(batch([['ishita', '480000'], ['joel', '480000']])).expect(200)).body;

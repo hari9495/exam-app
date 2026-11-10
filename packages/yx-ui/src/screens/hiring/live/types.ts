@@ -329,6 +329,8 @@ export interface ApplicationView {
   currentPay?: number | null;
   /** Answer 474: a New York City applicant asked for another process than the automated tool (ISO time). */
   alternativeRequestedAt?: string | null;
+  /** Answer 502: the New York City notice applies to this job (the recruiter may record a request for another process). */
+  toolNotice?: boolean;
   checklist: { id: string; label: string; done: boolean }[];
   assignee: string | null;
   emails: { id: string; subject: string; status: string; at: string }[];

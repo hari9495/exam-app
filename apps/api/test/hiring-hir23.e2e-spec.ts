@@ -116,7 +116,7 @@ describe('Hiring HIR-23 bias audit', () => {
     const entry = (await api('admin', 'post', `/jobs/${ids.nycJob}/entries`).send({ newCandidate: { name: 'Ana Ruiz', email: `ana-${run}@x.test` } }).expect(201)).body.id;
     ids.entry = entry;
     // Answer 474: this application is older than the NYC notice days, so only the bias audit decides in the tests below.
-    await inA((tx) => tx.pipelineEntry.update({ where: { id: entry }, data: { createdAt: new Date(Date.now() - 20 * 86_400_000) } }));
+    await inA((tx) => tx.pipelineEntry.update({ where: { id: entry }, data: { createdAt: new Date(Date.now() - 20 * 86_400_000), toolNoticeAt: new Date(Date.now() - 20 * 86_400_000) } }));
     const slot = { startsAt: new Date(Date.now() - 3_600_000).toISOString(), endsAt: new Date().toISOString() };
     ids.iv = (await api('admin', 'post', `/pipeline/entries/${entry}/interviews`).send({ panelistUserIds: [users.int1], location: 'Video call', timeZone: 'America/New_York', slots: [slot] }).expect(want(201))).body.id;
   });
@@ -274,5 +274,52 @@ describe('Hiring HIR-23 bias audit', () => {
     await setSetting('hiring.bias_audit.nyc', 'off');
     expect((await pub(`/jobs/${nyc}`).expect(200)).body.nycNotice).toBeNull();
     expect(await card(ids.iv)).toBeNull();
+  });
+
+  it('answer 502: a candidate added by hand to a NYC job is emailed the notice; they ask from the status page or the recruiter records it; audited', async () => {
+    await setSetting('hiring.bias_audit.nyc', 'on');
+    const add = async (jobId: string, who: string) => (await api('admin', 'post', `/jobs/${jobId}/entries`).send({ newCandidate: { name: `Hand ${who}`, email: `${who}-${run}@x.test` } }).expect(201)).body.id as string;
+    const nycA = await add(ids.nycJob, 'hand-a');
+    const nycB = await add(ids.nycJob, 'hand-b');
+    const alb = await add(ids.albanyJob, 'hand-c');
+    const row = (id: string) => inA((tx) => tx.pipelineEntry.findUniqueOrThrow({ where: { id }, select: { toolNoticeAt: true, applicationToken: true, alternativeRequestedAt: true } }));
+    // The NYC candidates got the notice email (kept with the candidate's messages); the Albany one did not.
+    for (const id of [nycA, nycB]) {
+      expect((await row(id)).toolNoticeAt).not.toBeNull();
+      const mail = await inA((tx) => tx.candidateEmail.findFirstOrThrow({ where: { pipelineEntryId: id } }));
+      expect(mail.subject).toMatch(/^How .+ assesses candidates for QA Engineer$/);
+      expect(mail.renderedBody).toMatch(/at least 10 business days from this email[\s\S]*\/yx\/application\/[0-9a-f-]+/);
+      expect(await inA((tx) => tx.auditLog.count({ where: { action: 'candidate.tool_notice.sent', entityId: id } }))).toBe(1);
+    }
+    expect((await row(alb)).toolNoticeAt).toBeNull();
+    expect(await inA((tx) => tx.candidateEmail.count({ where: { pipelineEntryId: alb } }))).toBe(0);
+    // The candidate asks from the status page (the link in the email); a second ask changes nothing.
+    const pub = (m: 'get' | 'post', path: string) => request(server())[m](`/api/v1/public${path}`);
+    const tokenA = (await row(nycA)).applicationToken!;
+    expect((await pub('get', `/applications/${tokenA}`).expect(200)).body.toolNotice).toMatchObject({ businessDays: 10, requestedAt: null });
+    const asked = (await pub('post', `/applications/${tokenA}/alternative-process`).expect(200)).body;
+    expect(asked.toolNotice.requestedAt).toBeTruthy();
+    await pub('post', `/applications/${tokenA}/alternative-process`).expect(200);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'candidate.alternative_process.requested', entityId: nycA } }))).toBe(1);
+    await pub('post', `/applications/no-such-token-${run}/alternative-process`).expect(404);
+    // The recruiter records it for the other NYC candidate (asked by phone); not while acting, not in another company, not outside NYC.
+    await api('acting', 'post', `/hiring/entries/${nycB}/alternative-process`).expect(403);
+    await api('adminB', 'post', `/hiring/entries/${nycB}/alternative-process`).expect(404);
+    await api('admin', 'post', `/hiring/entries/${alb}/alternative-process`).expect(409);
+    expect((await api('admin', 'post', `/hiring/entries/${nycB}/alternative-process`).expect(200)).body.alternativeRequestedAt).toBeTruthy();
+    await api('admin', 'post', `/hiring/entries/${nycB}/alternative-process`).expect(200);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'candidate.alternative_process.recorded', entityId: nycB, actorUserId: users.admin } }))).toBe(1);
+    // The board shows both the same way as an apply-form request, and says the notice applies to this job.
+    const board = (await api('admin', 'get', `/hiring/jobs/${ids.nycJob}/board`).expect(200)).body;
+    const rows = Object.values(board.columns).flat() as { entryId: string; alternativeRequestedAt: string | null; toolNotice: boolean }[];
+    for (const id of [nycA, nycB]) expect(rows.find((x) => x.entryId === id)).toMatchObject({ alternativeRequestedAt: expect.any(String), toolNotice: true });
+    // The AI draft: a hand-added candidate counts the notice days from the email.
+    const nycC = await add(ids.nycJob, 'hand-d');
+    const slot = { startsAt: new Date(Date.now() - 3_600_000).toISOString(), endsAt: new Date().toISOString() };
+    const iv = (await api('admin', 'post', `/pipeline/entries/${nycC}/interviews`).send({ panelistUserIds: [users.int1], location: 'Video call', timeZone: 'America/New_York', slots: [slot] }).expect(want(201))).body.id as string;
+    expect((await api('int1', 'get', `/hiring/interviews/${iv}/notetaker`).expect(200)).body.aiBlocked).toMatch(/can be used for this candidate from .+: New York City candidates are told 10 business days before\./);
+    await setSetting('hiring.bias_audit.nyc', 'off');
+    expect((await pub('get', `/applications/${tokenA}`).expect(200)).body.toolNotice).toBeNull();
+    await pub('post', `/applications/${tokenA}/alternative-process`).expect(409);
   });
 });

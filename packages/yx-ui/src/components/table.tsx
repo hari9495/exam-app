@@ -64,6 +64,8 @@ export interface TableColumn<R> {
   groupable?: boolean;
   /** Inline edit (§14, §20). The table calls onCellEdit; the app saves and updates rows. */
   editable?: 'text' | 'number' | 'money';
+  /** The editor's name for one row, e.g. "Fixed CTC for Aditi Rao" (default: the header). */
+  editLabel?: (row: R) => string;
 }
 
 export interface ColumnState {
@@ -129,6 +131,8 @@ export interface DataTableProps<R> {
   height?: number;
 
   onCellEdit?: (row: R, key: string, value: unknown) => void;
+  /** Opens one editable cell (the cursor goes into it); a new `at` opens it again. For "fix this row" checks. */
+  openEdit?: { id: string; key: string; at: number } | null;
   /** Left side of the toolbar: usually <FilterBar>. */
   toolbar?: ReactNode;
   /** Right side, before the table controls: usually <SavedViewMenu>. */
@@ -226,7 +230,7 @@ function EditCell<R>({ c, row, onCommit, onCancel }: { c: TableColumn<R>; row: R
     if (e.key === 'Escape') onCancel();
     if (e.key === 'Enter') onCommit(c.editable === 'text' ? text : num);
   };
-  const common = { size: 'sm' as const, autoFocus: true, onKeyDown: keys, 'aria-label': c.header };
+  const common = { size: 'sm' as const, autoFocus: true, onKeyDown: keys, 'aria-label': c.editLabel ? c.editLabel(row) : c.header };
   if (c.editable === 'money') return <CurrencyField {...common} value={num} onChange={setNum} onBlur={() => onCommit(num)} />;
   if (c.editable === 'number') return <NumberField {...common} value={num} onChange={setNum} onBlur={() => onCommit(num)} />;
   return <TextField {...common} value={text} onChange={setText} onBlur={() => onCommit(text)} />;
@@ -296,6 +300,7 @@ export function DataTable<R>(props: DataTableProps<R>) {
     height,
     treeParent,
     onCellEdit,
+    openEdit,
     toolbar,
     views,
     onExport,
@@ -460,6 +465,9 @@ export function DataTable<R>(props: DataTableProps<R>) {
 
   // ---- editing ----
   const [editing, setEditing] = useState<{ id: string; key: string } | null>(null);
+  useEffect(() => {
+    if (openEdit) setEditing({ id: openEdit.id, key: openEdit.key });
+  }, [openEdit?.at]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- virtual scroll ----
   const scrollRef = useRef<HTMLDivElement>(null);

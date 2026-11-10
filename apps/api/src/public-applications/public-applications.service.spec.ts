@@ -686,6 +686,7 @@ describe('PublicApplicationsService', () => {
         careersSlug: null,
         accent: null,
         whiteLabel: false,
+        toolNotice: null,
       });
     });
 

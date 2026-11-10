@@ -66,6 +66,7 @@ export function useApplicationDrawer(entryId: string | null, jobId: string | nul
     tests: r.examResults.map((e) => ({ examId: e.examId, title: e.examTitle, score: e.score, passFail: e.passFail, status: e.score == null ? 'not taken yet' : 'taken' })),
     currentPay: pay.data?.currentPay ?? null,
     alternativeRequestedAt: (r as { alternativeRequestedAt?: string | null }).alternativeRequestedAt ?? null,
+    toolNotice: Boolean((r as { toolNotice?: boolean }).toolNotice),
     customFields: (r.customFields ?? []).filter((f) => f.value != null).map((f) => ({ label: f.label, value: String(f.value) })),
     checklist: collectChecklistItems(p.stages).map((c) => ({ id: c.id, label: c.label, done: Boolean(r.blueprintChecklist?.[c.id]) })),
     assignee: r.assignedUserId,
@@ -93,6 +94,8 @@ export function useApplicationDrawer(entryId: string | null, jobId: string | nul
     onStatus: (statusId) => write('POST', `/hiring/entries/${r.entryId}/move`, { statusId }),
     onReject: (input) => write('POST', `/hiring/entries/${r.entryId}/reject`, { reason: input.reason, delayHours: input.delayHours, ...(input.message ? { message: input.message } : {}) }),
     onUndo: () => write('POST', `/hiring/entries/${r.entryId}/reject/undo`),
+    // Answer 502: the recruiter records a New York City candidate's request for another process.
+    onRecordAlternative: () => write('POST', `/hiring/entries/${r.entryId}/alternative-process`),
     onAssign: (userId) => write('PATCH', `/entries/${r.entryId}/assignment`, { assigneeUserId: userId }),
     onChecklist: (itemId, done) => write('PATCH', `/entries/${r.entryId}/checklist`, { itemId, done }),
     onScoreFit: () => write('POST', `/pipeline/entries/${r.entryId}/fit-assessment/score`),

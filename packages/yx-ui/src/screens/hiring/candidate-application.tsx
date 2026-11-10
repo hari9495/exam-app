@@ -37,6 +37,8 @@ const OPEN_OFFER = ['draft', 'pending_approval', 'approved', 'sent', 'accepted']
 const OFFER_LABEL: Record<string, string> = { draft: 'Draft', pending_approval: 'Waiting for approval', approved: 'Approved', rejected: 'Not approved', sent: 'Sent', accepted: 'Accepted', declined: 'Declined', withdrawn: 'Withdrawn', expired: 'Expired' };
 
 export interface ApplicationDrawerProps {
+  /** Answer 502: records that a New York City candidate asked for another process (by phone or email). */
+  onRecordAlternative?: () => Promise<unknown>;
   open: boolean;
   onClose: () => void;
   app: ApplicationView | null;
@@ -149,10 +151,21 @@ export function ApplicationDrawer(p: ApplicationDrawerProps) {
                   )}
                   {p.onScoreFit && p.canManage && <div><Button size="sm" icon={Sparkles} loading={busy === 'fit'} onClick={() => void run('fit', p.onScoreFit!)}>Score fit</Button></div>}
                 </Card>
-                {a.alternativeRequestedAt && (
+                {a.alternativeRequestedAt ? (
                   <InlineAlert tone="info" title="Asked for another process">
                     On {formatDate(new Date(a.alternativeRequestedAt))} this candidate asked not to be assessed by the automated tool (New York City notice). The AI draft scorecard is not used for them; assess them another way.
                   </InlineAlert>
+                ) : (
+                  a.toolNotice && p.canManage && p.onRecordAlternative && (
+                    <Card title="New York City notice">
+                      <Text as="p" size="sm" tone="secondary">An automated tool is used for this job. If the candidate asked you (by phone or email) to be assessed another way, record it here.</Text>
+                      <div>
+                        <Button size="sm" loading={busy === 'alternative'} onClick={() => void run('alternative', async () => (await p.onRecordAlternative!(), toast?.toast({ tone: 'success', title: 'Request recorded', description: 'The automated tool is not used for this candidate.' })))}>
+                          Record: asked for another process
+                        </Button>
+                      </div>
+                    </Card>
+                  )
                 )}
                 {a.currentPay != null && (
                   <Card title="Pay history">
