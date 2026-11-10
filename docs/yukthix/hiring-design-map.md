@@ -56,11 +56,12 @@ built**.
 | B. Candidates, pipeline and interviews | 8 | 55 | 1 | 0 | 9 | 1 | 66 |
 | C. Offers, BGV and joining | 4 | 23 | 4 | 0 | 1 | 0 | 28 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 25 | 0 | 0 | 3 | 4 | 32 |
-| E. Staffing agency | 8 | 32 | 12 | 0 | 16 | 0 | 60 |
+| E. Staffing agency | 8 | 55 | 12 | 0 | 0 | 0 | 67 |
 | F. Compliance and fairness | 5 | 17 | 2 | 0 | 11 | 0 | 30 |
 | G. Careers site, portals and settings | 4 | 62 | 4 | 2 | 9 | 0 | 77 |
-| **All Hiring design groups (A–G)** | **37** | **273** | **29** | **2** | **28** | **5** | **337** |
+| **All Hiring design groups (A–G)** | **37** | **279** | **26** | **2** | **28** | **5** | **340** |
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 5 | 0 | 5 | 5 | 0 | 15 |
+Recounted by script 10 Nov 2026 on `feat/yukthix-staffing-4` after staffing round 4 (answers 491-499): HIR-18 Account manager, HIR-19 Ageing (reminders), HIR-30 Fixed refund (fee and guarantee) and HIR-21 Vendor invoices gaps closed; 3 new drawn stories (placement fee before the hire and after leaving, vendor invoices linked to payroll).
 Recounted by script on `test/yukthix-main` after merging round 4 (442, 452, 473, 474): A–G 273 live, 29 gap, 2 wire, 28 not built, 5 phone, of 337.
 Recounted by script on `test/yukthix-main` after merging the Hiring walk-through fixes: A–G 270 live, 29 gap, 2 wire, 28 not built, 5 phone, of 334.
 Recounted by script on `test/yukthix-main` after merging staffing slice 3 (invoices, collections, fees, e-invoice banner, client portal) and answers 482-484, 489: A–G 267 live, 29 gap, 2 wire, 28 not built, 5 phone, of 331.
