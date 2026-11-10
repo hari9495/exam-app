@@ -41,7 +41,8 @@ export default function YxHiringJobPage() {
   }, [entry, id, router, enc]);
   const job = useApi<JobView>(`/jobs/${enc(id)}`);
   const list = useApi<ApiJob[]>('/jobs');
-  const pipelines = usePipelines(perms.has('pipelines:configure'));
+  // Recruiting and pipeline admins only (the employee view of jobs asks for nothing the API refuses it).
+  const pipelines = usePipelines(perms.has('pipelines:configure') || perms.has('pipeline:manage'));
   const teammates = useTeammates();
   const settings = useHiring<{ scorecardTemplateId: string | null; exams: { examId: string; title: string; sendOnStageId: string | null }[] }>(`/jobs/${enc(id)}/interview-settings`);
   const board = useHiring<Board>(`/jobs/${enc(id)}/board`);
