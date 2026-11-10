@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { KioskScreen, type KioskInfo, type KioskLeave, type KioskPunched, type KioskToday, type KioskTraining } from '@yukthix/ui/time';
+import { VisitorKioskScreen, type KioskNeeds, type KioskResult, type LiveVisitorKiosk } from '@yukthix/ui/visitors';
 import { API_BASE } from '../../../lib/api-client';
 
 // TIM-13: the kiosk on a site tablet, outside the signed-in app. HR's one-time set-up key becomes this tablet's own
@@ -34,7 +35,8 @@ export default function YxKioskPage() {
     async <T,>(path: string, init: { method?: string; body?: unknown; person?: string } = {}, tok = token): Promise<T> => {
       let r: Response;
       try {
-        r = await fetch(`${API_BASE}/kiosk${path}`, {
+        // Visitor mode (Visitors slice 2) talks to /visitor-kiosk with the same tablet secret.
+        r = await fetch(`${API_BASE}${path.startsWith('/visitor-kiosk') ? '' : '/kiosk'}${path}`, {
           method: init.method ?? 'GET',
           headers: { 'Content-Type': 'application/json', ...(tok ? { 'x-kiosk-token': tok } : {}), ...(init.person ? { 'x-kiosk-person': init.person } : {}) },
           ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
@@ -67,6 +69,42 @@ export default function YxKioskPage() {
     // Once, on open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Answer 601: a tablet enrolled in visitor mode is the visitor kiosk (VIS-03), not the attendance kiosk.
+  const [vInfo, setVInfo] = useState<LiveVisitorKiosk['info']>(null);
+  const [vState, setVState] = useState<LiveVisitorKiosk['state']>('loading');
+  const visitor = Boolean(token && (info as { mode?: string } | null)?.mode === 'visitor');
+  const loadVisitor = useCallback(() => {
+    setVState('loading');
+    void call<NonNullable<LiveVisitorKiosk['info']>>('/visitor-kiosk/me').then(
+      (i) => (setVInfo(i), setVState('ready')),
+      () => setVState('error'),
+    );
+  }, [call]);
+  useEffect(() => {
+    if (visitor) loadVisitor();
+  }, [visitor, loadVisitor]);
+  if (visitor)
+    return (
+      <VisitorKioskScreen
+        visit={{ id: '', name: '', mobile: '', company: '', purpose: 'Meeting', host: '', location: '', from: new Date(), to: new Date(), status: 'Expected' }}
+        today={new Date()}
+        live={{
+          state: vState,
+          onRetry: loadVisitor,
+          info: vInfo,
+          needs: (q) => call<KioskNeeds>('/visitor-kiosk/needs', { method: 'POST', body: { mobile: q.mobile, ...(q.typeId ? { typeId: q.typeId } : {}), ...(q.company ? { company: q.company } : {}) } }),
+          walkIn: (input) =>
+            call<KioskResult>('/visitor-kiosk/walk-ins', {
+              method: 'POST',
+              body: Object.fromEntries(Object.entries(input).filter(([, v]) => v !== null && v !== '')),
+            }),
+          status: (id) => call<KioskResult>(`/visitor-kiosk/walk-ins/${encodeURIComponent(id)}`),
+          pass: (code) => call<KioskResult>('/visitor-kiosk/pass', { method: 'POST', body: { code } }),
+          checkIn: (id, accepted) => call<KioskResult>(`/visitor-kiosk/visits/${encodeURIComponent(id)}/check-in`, { method: 'POST', body: Object.fromEntries(Object.entries(accepted).filter(([, v]) => v !== null)) }),
+        }}
+      />
+    );
 
   return (
     <KioskScreen

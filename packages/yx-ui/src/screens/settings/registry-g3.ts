@@ -1195,6 +1195,8 @@ const visitors: SettingsPageDef = {
         },
         { key: 'vis.id_capture', label: 'Capture ID proof', kind: 'toggle', value: true, scope: 'Overridden for Hosur plant' },
         { key: 'vis.photo', label: 'Capture photo', kind: 'toggle', value: true, starter: true },
+        // Answer 601 (Visitors slice 2): visitors sign themselves in on a tablet in visitor mode, where the location allows it.
+        { key: 'vis.kiosk', label: 'Visitors can check in on a visitor kiosk', kind: 'toggle', value: false, starter: true, helper: 'Off: reception checks every visitor in. Set up the tablet on Devices and kiosks in visitor mode.', scope: 'Overridden for Hosur plant', synonyms: ['kiosk', 'self check-in', 'walk-in'] },
         { key: 'vis.hours_from', label: 'Visitors allowed from', kind: 'time', value: '09:00' },
         { key: 'vis.hours_to', label: 'Visitors allowed until', kind: 'time', value: '18:30', after: 'vis.hours_from' },
         {

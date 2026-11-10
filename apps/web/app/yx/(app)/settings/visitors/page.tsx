@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { SETTINGS_GROUPS, SettingsPageScreen, visitorSettingsChanges, visitorSettingsPage, type VisitorSettingsData } from '@yukthix/ui/visitors';
+import { SETTINGS_GROUPS, SettingsPageScreen, visitorSettingsChanges, visitorSettingsPage, visitorTypesFromRows, type VisitorSettingsData, type VisitorTypesData } from '@yukthix/ui/visitors';
 import { loadState } from '../../../../../lib/yx-org';
 import { useAuth } from '../../../../../lib/auth-context';
 import { useVisitors, useVisitorsWrite } from '../../../../../lib/yx-visitors';
@@ -15,9 +15,11 @@ export default function YxVisitorSettingsPage() {
   const router = useRouter();
   const { impersonating, actingSuperAdmin } = useAuth();
   const data = useVisitors<VisitorSettingsData>('/settings');
+  // Slice 2 (606): the visitor types with their NDA and induction policies.
+  const types = useVisitors<VisitorTypesData>('/types');
   const write = useVisitorsWrite();
   const state = loadState(data);
-  const page = useMemo(() => (data.data ? visitorSettingsPage(design, data.data) : design), [data.data]);
+  const page = useMemo(() => (data.data ? visitorSettingsPage(design, data.data, types.data) : design), [data.data, types.data]);
   return (
     <SettingsPageScreen
       groups={SETTINGS_GROUPS}
@@ -29,9 +31,10 @@ export default function YxVisitorSettingsPage() {
         state: state === 'ready' ? 'ready' : state === 'loading' ? 'loading' : state === 'no-access' ? 'no-access' : 'error',
         onRetry: () => void data.refetch(),
         savedTitle: 'Visitor settings saved',
-        onSave: async (values) => {
+        onSave: async (values, rows) => {
           const changes = visitorSettingsChanges(values);
           if (changes.length) await write('PUT', '/settings', { changes });
+          if (rows['vis.types'] && types.data) await write('PUT', '/types', { types: visitorTypesFromRows(rows['vis.types'], types.data) });
         },
         onOpenScreen: (screenId) => (screenId === 'VIS-01' ? router.push('/yx/visitors') : screenId === 'VIS-04' ? router.push('/yx/visitors/log') : undefined),
       }}

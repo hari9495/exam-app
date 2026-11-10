@@ -56,8 +56,14 @@ export interface VisitView {
   locationId: string;
   startsAt: string;
   endsAt: string;
-  status: 'expected' | 'on_site' | 'checked_out' | 'not_out' | 'no_show' | 'cancelled';
+  status: 'expected' | 'waiting' | 'on_site' | 'checked_out' | 'not_out' | 'no_show' | 'cancelled' | 'declined';
   statusText: string;
+  /** Slice 2: a walk-in, when the host's minutes end, who decided, the hours reason, the visitor type. */
+  walkIn?: boolean;
+  approvalDueAt?: string | null;
+  decidedVia?: 'host' | 'reception' | null;
+  hoursOverride?: string | null;
+  typeId?: string | null;
   passCode: string;
   badge: string | null;
   vehicle: string | null;
@@ -89,5 +95,6 @@ export function visitOf(v: VisitView): Visit {
     checkOut: v.checkedOutAt ? new Date(v.checkedOutAt) : undefined,
     nda: Boolean(v.noticeAcceptedAt),
     vehicle: v.vehicle ?? undefined,
+    walkIn: v.walkIn,
   };
 }

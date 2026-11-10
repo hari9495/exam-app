@@ -6,9 +6,9 @@ import { useAuth } from './auth-context';
 import { saveBlob } from './yx-pay';
 
 // Visitors slice 1 (M02 §B11): reads under ['visitors', path]; a write refreshes every visitors view.
-export function useVisitors<T>(path: string | null) {
+export function useVisitors<T>(path: string | null, refetchInterval?: number) {
   const { accessToken } = useAuth();
-  return useQuery<T>({ queryKey: ['visitors', path], queryFn: () => apiFetch(`/visitors${path}`, {}, accessToken ?? undefined), enabled: Boolean(accessToken && path !== null), retry: false });
+  return useQuery<T>({ queryKey: ['visitors', path], queryFn: () => apiFetch(`/visitors${path}`, {}, accessToken ?? undefined), enabled: Boolean(accessToken && path !== null), retry: false, ...(refetchInterval ? { refetchInterval } : {}) });
 }
 
 export function useVisitorsWrite() {
@@ -18,6 +18,21 @@ export function useVisitorsWrite() {
     const result = await apiFetch(`/visitors${path}`, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }, accessToken ?? undefined);
     await queryClient.invalidateQueries({ queryKey: ['visitors'] });
     return result as T;
+  };
+}
+
+/** One read under /visitors, now (host search, what a visitor accepts). */
+export function useVisitorsGet() {
+  const { accessToken } = useAuth();
+  return <T,>(path: string): Promise<T> => apiFetch(`/visitors${path}`, {}, accessToken ?? undefined) as Promise<T>;
+}
+
+/** Answer 602: the walk-in's photo for the host's card only, as an object URL the card drops when it goes. */
+export function useWalkInPhoto() {
+  const { accessToken } = useAuth();
+  return async (id: string): Promise<string | null> => {
+    const { blob } = await apiFetchBlob(`/visitors/walk-ins/${encodeURIComponent(id)}/photo`, {}, accessToken ?? undefined);
+    return blob.size ? URL.createObjectURL(blob) : null;
   };
 }
 
