@@ -36,4 +36,16 @@ describe('role template sync', () => {
     expect(upgrade(before, hr.permissions, true).skipped).toContain('employee.aadhaar.view');
     expect(upgrade(before, hr.permissions, false).granted).toContain('employee.aadhaar.view');
   });
+
+  it('walk 2: a past version that also got payroll.equity.own (PAY-58 migration) still follows its template', () => {
+    // The demo company's Recruiter: the template before answer 452 plus the equity key.
+    const recruiter = ROLE_TEMPLATES.find((t) => t.key === 'recruiter')!;
+    const before = TEMPLATE_HISTORY.recruiter.find((v) => !v.includes('ats.staffing.view'))!;
+    const demo = ['ats.assessment.view', 'ats.candidate.manage', 'ats.costs.manage', 'ats.interview.schedule', 'ats.job.manage', 'ats.offer.manage', 'ats.report.view', 'payroll.equity.own'];
+    expect(before).toBeDefined();
+    expect(templateOf(demo)?.template).toBe('recruiter');
+    expect(upgrade(demo, recruiter.permissions, true).granted).toContain('ats.staffing.view');
+    expect(templateOf([...demo, 'company.own.key'])).toBeNull();
+  });
 });
+
