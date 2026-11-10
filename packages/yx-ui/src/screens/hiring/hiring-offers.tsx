@@ -903,7 +903,8 @@ export interface BulkOfferRow {
   id: string;
   name: string;
   college: string;
-  ctc: number;
+  /** Answer 514: blank until the recruiter types it (never ₹0). */
+  ctc: number | null;
   joining: Date;
   planOk: boolean;
 }
@@ -919,7 +920,7 @@ export interface BulkResultRow {
 }
 const RESULT_TONE: Record<BulkResultRow['result'], BadgeTone> = { Sent: 'success', 'Waiting for extra approval': 'warning', 'Waiting for approval': 'info', 'Approved, not emailed': 'warning', 'Held: no plan line': 'danger', 'Skipped: has an offer': 'neutral', 'Not sent': 'danger' };
 const SAMPLE_RESULTS = (rows: BulkOfferRow[], band: Band): BulkResultRow[] =>
-  rows.map((r) => ({ id: r.id, name: r.name, ctc: r.ctc, result: !r.planOk ? 'Held: no plan line' : bandCheck(r.ctc, band).extraApproval ? 'Waiting for extra approval' : 'Sent', reason: !r.planOk ? 'No free place on the headcount-plan line. Held until the plan is revised.' : null, offerId: null }));
+  rows.map((r) => ({ id: r.id, name: r.name, ctc: r.ctc, result: !r.planOk ? 'Held: no plan line' : bandCheck(r.ctc ?? 0, band).extraApproval ? 'Waiting for extra approval' : 'Sent', reason: !r.planOk ? 'No free place on the headcount-plan line. Held until the plan is revised.' : null, offerId: null }));
 
 const resultOf = (r: BulkBatchView['rows'][number]): BulkResultRow['result'] =>
   r.status === 'sent' ? 'Sent' : r.status === 'pending_approval' ? (r.band?.startsWith('Above') ? 'Waiting for extra approval' : 'Waiting for approval') : r.status === 'approved' ? 'Approved, not emailed' : r.status === 'held' ? 'Held: no plan line' : r.status === 'skipped' ? 'Skipped: has an offer' : 'Not sent';
@@ -985,7 +986,8 @@ function BulkOfferBuilder({ rows: sampleRows, band: sampleBand, defaultStep, liv
   const setup = live?.setup ?? null;
   const toast = useToastIfAny();
   const band = setup ? setup.band : sampleBand;
-  const [ctcs, setCtcs] = useState<Record<string, number>>({});
+  const [ctcs, setCtcs] = useState<Record<string, number | null>>({});
+  const [openEdit, setOpenEdit] = useState<{ id: string; key: string; at: number } | null>(null);
   const [start, setStart] = useState<Date | null>(setup ? null : new Date(2027, 6, 5));
   const [kind, setKind] = useState<string>('loi');
   const [tpl, setTpl] = useState<string | null>(setup ? (setup.structures[0]?.value ?? null) : 'get');
@@ -995,20 +997,21 @@ function BulkOfferBuilder({ rows: sampleRows, band: sampleBand, defaultStep, liv
   const [tried, setTried] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
-  const base: BulkOfferRow[] = setup ? setup.candidates.map((c) => ({ id: c.entryId, name: c.name, college: c.email, ctc: ctcs[c.entryId] ?? 0, joining: start ?? new Date(), planOk: true })) : sampleRows;
+  const base: BulkOfferRow[] = setup ? setup.candidates.map((c) => ({ id: c.entryId, name: c.name, college: c.email, ctc: ctcs[c.entryId] ?? null, joining: start ?? new Date(), planOk: true })) : sampleRows;
   const [selected, setSelected] = useState<string[]>(live?.selected?.length ? base.map((r) => r.id).filter((x) => live.selected!.includes(x)) : base.map((r) => r.id));
   // Live: rows beyond the free places on the plan line are held, in the order they are listed.
   const free = setup?.plan.check === 'hold' ? setup.plan.free : null;
   const rows = setup ? base.map((r) => ({ ...r, planOk: free === null || !selected.includes(r.id) || selected.filter((s) => base.findIndex((x) => x.id === s) <= base.findIndex((x) => x.id === r.id)).length <= free })) : base;
   const chosen = rows.filter((r) => selected.includes(r.id));
-  const outOfBand = chosen.filter((r) => band && bandCheck(r.ctc, band).extraApproval);
+  const outOfBand = chosen.filter((r) => band && r.ctc != null && bandCheck(r.ctc, band).extraApproval);
+  const blank = chosen.filter((r) => !(r.ctc != null && r.ctc > 0));
   const noPlan = (setup ? chosen : rows).filter((r) => !r.planOk);
   const chosenLetter = setup?.letters.find((l) => l.value === letter) ?? null;
   const cols: TableColumn<BulkOfferRow>[] = [
     { key: 'name', header: 'Candidate', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: r.college }) },
-    { key: 'ctc', header: 'Fixed CTC', type: 'money', value: (r) => r.ctc, editable: 'money', total: 'sum' },
+    { key: 'ctc', header: 'Fixed CTC', type: 'money', value: (r) => r.ctc, editable: 'money', editLabel: (r) => `Fixed CTC for ${r.name}`, total: 'sum' },
     { key: 'joining', header: 'Joining', type: 'date', value: (r) => r.joining },
-    { key: 'band', header: 'Grade range', type: 'status', value: (r) => (!band ? 'No range set' : bandCheck(r.ctc, band).extraApproval ? 'Out of range' : 'Within range'), statusTone: (v) => (v === 'Within range' ? 'success' : v === 'No range set' ? 'neutral' : 'warning') },
+    { key: 'band', header: 'Grade range', type: 'status', value: (r) => (!band ? 'No range set' : r.ctc == null ? 'Enter the CTC' : bandCheck(r.ctc, band).extraApproval ? 'Out of range' : 'Within range'), statusTone: (v) => (v === 'Within range' ? 'success' : v === 'No range set' || v === 'Enter the CTC' ? 'neutral' : 'warning') },
     { key: 'plan', header: 'Plan check', type: 'status', value: (r) => (setup && free === null ? 'Not checked' : r.planOk ? 'Plan line free' : 'No plan line'), statusTone: (v) => (v === 'Plan line free' ? 'success' : v === 'Not checked' ? 'neutral' : 'danger') },
   ];
   const errs: Record<string, string | null> = {
@@ -1016,7 +1019,7 @@ function BulkOfferBuilder({ rows: sampleRows, band: sampleBand, defaultStep, liv
     'bo-start': !start ? 'Choose the joining date.' : null,
     'bo-place': setup && !place ? 'Choose the work location.' : null,
     'bo-letter': setup && !letter ? 'Choose the offer letter.' : null,
-    'bo-rows': !chosen.length ? 'Choose at least one candidate.' : chosen.some((r) => !(r.ctc > 0)) ? `Enter the fixed CTC for ${chosen.filter((r) => !(r.ctc > 0)).map((r) => r.name).join(', ')}.` : null,
+    'bo-rows': !chosen.length ? 'Choose at least one candidate.' : blank.length ? `Enter the fixed CTC for ${blank.map((r) => r.name).join(', ')}.` : null,
   };
   const STEP: Record<string, string[]> = { template: ['bo-tpl', 'bo-start', 'bo-place', 'bo-letter'], values: ['bo-rows'] };
   const err = (id: string) => ([...tried].some((s) => STEP[s]?.includes(id)) ? errs[id] : null);
@@ -1026,7 +1029,9 @@ function BulkOfferBuilder({ rows: sampleRows, band: sampleBand, defaultStep, liv
     if (!bad) return true;
     setStep(bad);
     const f = STEP[bad]!.find((x) => errs[x])!;
-    setTimeout(() => (document.getElementById(f) as HTMLElement | null)?.focus(), 50);
+    // Answer 514: a blank CTC puts the cursor in that row's cell; anything else focuses its field.
+    if (f === 'bo-rows' && blank.length) setOpenEdit({ id: blank[0]!.id, key: 'ctc', at: Date.now() });
+    else setTimeout(() => (document.getElementById(f) as HTMLElement | null)?.focus(), 50);
     return false;
   };
   const sendable = chosen.filter((r) => r.planOk);
@@ -1036,7 +1041,7 @@ function BulkOfferBuilder({ rows: sampleRows, band: sampleBand, defaultStep, liv
     setBusy(true);
     setFailed(null);
     try {
-      await live.onSend({ templateVersionId: tpl!, templateId: letter && letter !== 'default' ? letter : null, letterKind: kind as 'offer' | 'loi', startDate: dayKey(start!), locationId: place!, addConditions: true, rows: chosen.map((r) => ({ entryId: r.id, annualCtc: r.ctc })) });
+      await live.onSend({ templateVersionId: tpl!, templateId: letter && letter !== 'default' ? letter : null, letterKind: kind as 'offer' | 'loi', startDate: dayKey(start!), locationId: place!, addConditions: true, rows: chosen.map((r) => ({ entryId: r.id, annualCtc: r.ctc! })) });
       toast?.toast({ tone: 'success', title: 'Batch sent', description: 'Each candidate’s result is on the next page.' });
     } catch (e) {
       setFailed(failure(e));
@@ -1098,7 +1103,7 @@ function BulkOfferBuilder({ rows: sampleRows, band: sampleBand, defaultStep, liv
                   <EmptyState title="No candidates to offer" description="Everyone on this job already has an offer, was hired or was rejected." />
                 ) : (
                   <div id="bo-rows" tabIndex={-1}>
-                    <DataTable label="Offer values" columns={cols} rows={rows} getRowId={(r) => r.id} selectable selectedIds={selected} onSelectedChange={setSelected} onCellEdit={(r, key, v) => key === 'ctc' && setCtcs((m) => ({ ...m, [r.id]: Number(v) || 0 }))} />
+                    <DataTable label="Offer values" columns={cols} rows={rows} getRowId={(r) => r.id} selectable selectedIds={selected} onSelectedChange={setSelected} openEdit={openEdit} onCellEdit={(r, key, v) => key === 'ctc' && setCtcs((m) => ({ ...m, [r.id]: v == null || v === '' ? null : Number(v) }))} />
                   </div>
                 )}
               </div>
@@ -1111,7 +1116,7 @@ function BulkOfferBuilder({ rows: sampleRows, band: sampleBand, defaultStep, liv
             content: (
               <div className="yx-hire-letter" role="document" aria-label="Letter preview for the first candidate">
                 {chosenLetter && first ? (
-                  fillLetter(chosenLetter.body, { candidateName: first.name, jobTitle: setup!.job.title, orgName: setup!.company, recruiterName: '', compensation: `a fixed CTC of ${formatINR(first.ctc)} a year`, startDate: start ? formatDate(start) : 'the joining date', offerExpiry: `${setup!.expiryDays} days after it is sent`, offerLink: '(the link comes with the email)' })
+                  fillLetter(chosenLetter.body, { candidateName: first.name, jobTitle: setup!.job.title, orgName: setup!.company, recruiterName: '', compensation: first.ctc != null ? `a fixed CTC of ${formatINR(first.ctc)} a year` : 'the fixed CTC you enter', startDate: start ? formatDate(start) : 'the joining date', offerExpiry: `${setup!.expiryDays} days after it is sent`, offerLink: '(the link comes with the email)' })
                     .split(/\n{2,}/)
                     .map((para, i) => (
                       <Text key={i} as="p" weight={i === 0 ? 'semibold' : undefined}>

@@ -47,10 +47,21 @@ describe('HIR-28 bulk offers (live)', () => {
     expect(screen.queryByText(/without a free plan line/)).not.toBeInTheDocument();
   });
 
-  it('values step pressed too early names the candidates with no CTC', async () => {
+  it('answer 514: CTCs start blank (not ₹0); Continue names the rows and puts the cursor in the first blank cell; 0 counts as blank', async () => {
     show(<BulkOfferScreen live={live()} defaultStep="values" />);
+    expect(screen.getAllByRole('button', { name: 'Edit Fixed CTC: empty' })).toHaveLength(3);
+    expect(screen.getAllByText('Enter the CTC').length).toBe(3);
     await ue.click(screen.getByRole('button', { name: 'Continue' }));
     expect(await screen.findByText(/Enter the fixed CTC for Aditi Rao, Farhan Sheikh, Ishita Bose/)).toBeInTheDocument();
+    const cell = await screen.findByRole('textbox', { name: 'Fixed CTC for Aditi Rao' });
+    await waitFor(() => expect(cell).toHaveFocus());
+    await ue.type(cell, '480000{Enter}');
+    await ue.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByText(/Enter the fixed CTC for Farhan Sheikh, Ishita Bose\./)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Fixed CTC for Farhan Sheikh' })).toHaveFocus());
+    await ue.type(screen.getByRole('textbox', { name: 'Fixed CTC for Farhan Sheikh' }), '0{Enter}');
+    await ue.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByText(/Enter the fixed CTC for Farhan Sheikh, Ishita Bose\./)).toBeInTheDocument();
   });
 
   it('the sent page: each candidate’s result, the counts, and the offer opens', async () => {
