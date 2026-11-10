@@ -1988,3 +1988,30 @@ with In pipeline summed. Screenshots and the per-page results are in the walk re
      `interview:view_assigned`; the migration will not change it. *Suggested: HR removes the two keys there if managers
      should not read jobs and test results; being on a panel is enough for interviews.*
 
+## The rest of Hire built (10 Nov 2026, branch `feat/yukthix-hiring-rest`)
+- Kit wire-ups: SummaryTiles, PipelineFacts, ConsentBadges and PostingStrip were already in the live designed screens
+  (map rows were stale); StatusLine now shows publish readiness on the job pay range panel; EInvoiceBanner is live with
+  HIR-31.
+- HIR-20 campaigns: tables `talent_campaigns`, `talent_campaign_members`, `talent_campaign_sends` (forced RLS; a send is
+  unique per member and step and cannot be rewritten); the `crm-campaigns` sweep (every 15 minutes) inside
+  `hiring.crm.send_window` and under `hiring.crm.daily_cap`; audience = talent-pool consent plus the channel opt-in (email
+  not unsubscribed; WhatsApp only with `candidates.whatsapp_opted_in_at` and a connected provider); under 18 never.
+- HIR-20 sourced profiles: `sourced_profiles` (forced RLS), one consent email with the talent-pool notice, the public page
+  /consent/sourced/:token (token-throttled), erased on refusal or after `hiring.sourced.keep_days` (`sourced-purge`).
+- HIR-05 under 18: `candidates.dob_sealed` (company key, bound to company and candidate), `guardian_consents` (forced
+  RLS), rule set `HIR.MINOR` (verify), /consent/guardian/:token; moves past the first stage and offers are refused until
+  the guardian consents. GO-LIVE-CHECKLIST: sourced profiles, under-18 candidates, campaign messages (counsel).
+## Founder questions from the rest of Hire (10 Nov 2026)
+561. **How a candidate opts in to WhatsApp.** Campaigns use WhatsApp only where the candidate opted in, but nothing yet
+     lets them opt in (the column exists). *Suggested: a "Message me on WhatsApp about jobs" tick on the apply form and the
+     candidate portal, off by default.*
+562. **Replies are recorded by hand.** There is no inbound mailbox for candidate replies, so "stop on reply" works when a
+     recruiter presses Mark as replied. *Suggested: keep it until the company inbox (service desk mail) can match replies
+     to candidates.*
+563. **One channel per campaign.** The first drawing mixed WhatsApp and email steps in one sequence; the build keeps one
+     channel per campaign (one opt-in to check). *Suggested: keep it; make a second campaign for the other channel.*
+564. **Under 18 and campaigns.** A candidate under 18 is never enrolled, even after a guardian consents (DPDP s.9 bars
+     targeted messages to children). *Suggested: keep it; counsel confirms in the go-live line.*
+565. **Sourcing extension.** The design's browser extension is not built; recruiters add people by hand with a lawful
+     source note. *Suggested: keep it manual until counsel signs off the sourced-profile flow.*
+
