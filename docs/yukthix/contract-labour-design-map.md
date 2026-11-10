@@ -333,6 +333,10 @@ console.log('ok');
 Founder approved, 10 Nov 2026 (questions 621-641, all as suggested; policies are company settings with defaults, law
 details are rule-set data marked verify for counsel). Build after Visitors, CL-1 first; CL-8 and CL-9 when a customer
 needs them.
+Founder approved, 10 Nov 2026 (questions 671-678, all as suggested): (671) counsel confirms the LIN format; (672)
+keep the adder verifying, a "second person verifies" company setting when a customer asks; (673) registrations list with
+CL-5; (674) site cards with CL-2 and CL-5; (675) the work order in CL-2, warning when deployments pass its headcount; keep
+676, 677; (678) also email the contractor once the portal (CL-3) exists.
 
 ## CL-1 built (10 Nov 2026, branch `feat/yukthix-contract-labour-1`)
 
