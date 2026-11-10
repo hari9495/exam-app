@@ -78,7 +78,7 @@ const TEMPLATES: readonly RoleTemplate[] = [
     cannot: 'Pay, payroll approval.',
     // Founder 27 Oct 2026: HR admins see Special data (the identity panel, Aadhaar in full); every look is recorded.
     // Founder 28 Oct 2026: HR approves a manager's request to see their team's pay (two different HR people).
-    permissions: [...HR_VIEW, 'org.settings.manage', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.pay_access.approve', 'employee.personal.view', 'employee.profile.edit', 'employee.identity.view', 'employee.identity.manage', 'employee.identity.approve', 'employee.aadhaar.view', 'request.raise_on_behalf', ...TIME_HR_ADMIN, ...LIFE_HR_ADMIN, 'expense.claim.view', 'expense.policy.view', 'perf.goal.view', 'perf.review.view', 'perf.report.view', 'perf.pip.manage', 'policy.manage', 'policy.publish', 'case.disciplinary.raise', 'ats.costs.manage', 'ats.referral.manage'],
+    permissions: [...HR_VIEW, 'org.settings.manage', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.pay_access.approve', 'employee.personal.view', 'employee.profile.edit', 'employee.identity.view', 'employee.identity.manage', 'employee.identity.approve', 'employee.aadhaar.view', 'request.raise_on_behalf', ...TIME_HR_ADMIN, ...LIFE_HR_ADMIN, 'expense.claim.view', 'expense.policy.view', 'perf.goal.view', 'perf.review.view', 'perf.report.view', 'perf.pip.manage', 'policy.manage', 'policy.publish', 'case.disciplinary.raise', 'ats.costs.manage', 'ats.referral.manage', 'visitors.rollcall.view'],
   },
   {
     // Founder 28 Oct 2026 (option B): HR Admin cannot see pay, so pay changes are approved by HR people given this role.
@@ -211,9 +211,18 @@ const TEMPLATES: readonly RoleTemplate[] = [
     key: 'reception',
     name: 'Reception',
     typicalScope: 'location',
-    summary: "Today's visitors at the location: check in and out, the on-site list and the visitor log.",
+    summary: "Today's visitors at the location: check in and out, badges, the on-site roll-call and the visitor log.",
     cannot: 'Change visitor settings, or see visitors at other locations.',
-    permissions: ['visitors.desk.manage', 'visitors.log.view'],
+    permissions: ['visitors.desk.manage', 'visitors.log.view', 'visitors.rollcall.view'],
+  },
+  // Answer 612: security reads the emergency roll-call (visitors and employees on site) where it is granted.
+  {
+    key: 'security',
+    name: 'Security',
+    typicalScope: 'location',
+    summary: 'The emergency roll-call at the location: visitors and employees on site now, printable.',
+    cannot: 'Check visitors in or out, or see the visitor log or settings.',
+    permissions: ['visitors.rollcall.view'],
   },
   {
     key: 'facility_admin',
@@ -222,7 +231,7 @@ const TEMPLATES: readonly RoleTemplate[] = [
     summary: 'Visitor settings (Settings 3.12), the reception desk, the visitor log and the blocked-visitor watch-list.',
     cannot: 'Change people, pay or time records.',
     // Answer 605: Facility admin keeps the watch-list with HR.
-    permissions: ['visitors.settings.manage', 'visitors.desk.manage', 'visitors.log.view', 'visitors.watchlist.manage'],
+    permissions: ['visitors.settings.manage', 'visitors.desk.manage', 'visitors.log.view', 'visitors.watchlist.manage', 'visitors.rollcall.view'],
   },
   {
     key: 'staffing_account_manager',

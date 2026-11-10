@@ -6,15 +6,17 @@ import { DocumentsModule } from '../documents/documents.module';
 import { EmailModule } from '../email/email.module';
 import { PublicVisitsController, VisitorWatchlistController, VisitorsController } from './visitors.controller';
 import { VisitorWatchlistService } from './visitor-watchlist.service';
+import { VisitorReportsController } from './visitor-reports.controller';
+import { VisitorReportsService } from './visitor-reports.service';
 import { VisitorsService } from './visitors.service';
 
 // Visitors (M02 §B11, VIS-01 … VIS-04, T9-14, Settings 3.12). Slice 1: invites, the visitor's pass page, the desk,
 // the log, Settings 3.12, retention and the auto-close of forgotten check-outs. Slice 3: the watch-list (605), ID proof
-// (603) and visitors under 18 (614).
+// (603) and visitors under 18 (614). Slice 4: badges, reports and the roll-call.
 @Module({
   imports: [AuthModule, OrgStructureModule, EmailModule, StorageModule, DocumentsModule],
-  controllers: [VisitorWatchlistController, VisitorsController, PublicVisitsController],
-  providers: [VisitorsService, VisitorWatchlistService],
+  controllers: [VisitorWatchlistController, VisitorReportsController, VisitorsController, PublicVisitsController],
+  providers: [VisitorsService, VisitorWatchlistService, VisitorReportsService],
   exports: [VisitorsService, VisitorWatchlistService],
 })
 export class VisitorsModule {}
