@@ -6786,7 +6786,9 @@ model Preboarding {
   id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId     String    @map("organization_id") @db.Uuid
   personId           String    @map("person_id") @db.Uuid
-  source             String    @db.VarChar(8)
+  source             String    @db.VarChar(16)
+  /// CL-7 (answer 637): the deployment a contract worker joins from (source "contract_worker").
+  contractDeploymentId String? @map("contract_deployment_id") @db.Uuid
   joiningOn          DateTime  @map("joining_on") @db.Date
   legalEntityId      String    @map("legal_entity_id") @db.Uuid
   locationId         String    @map("location_id") @db.Uuid

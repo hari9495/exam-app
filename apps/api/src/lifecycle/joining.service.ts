@@ -1,3 +1,4 @@
+import { endContractRoleIn } from './contract-conversion.service';
 import { BGV_BEFORE_CONFIRMATION } from './bgv-gate';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
@@ -177,6 +178,13 @@ export class JoiningService {
         }
       }
       if (a.bank && (await this.profile.raiseIn(tx, c, hired.id, 'bank_salary', { holderName: a.bank.holderName, accountNumber: a.bank.accountNumber, ifsc: a.bank.ifsc } as never, reason))) raised.push('bank_salary');
+      // CL-7 (answer 637): a contract worker's deployment and role end the day before joining; their UAN and ESIC IP carry over.
+      if (pb.contractDeploymentId) {
+        const carry = await endContractRoleIn(tx, c, pb.contractDeploymentId, iso(pb.joiningOn), hired.id);
+        const why = 'Carried over from the contract-worker deployment';
+        if (carry.uan && !raised.includes('uan') && (await this.profile.raiseIn(tx, c, hired.id, 'uan', { uan: carry.uan } as never, why))) raised.push('uan');
+        if (carry.esicIp && (await this.profile.raiseIn(tx, c, hired.id, 'esic', { esic: carry.esicIp } as never, why))) raised.push('esic');
+      }
       await tx.preboarding.update({ where: { id }, data: { status: 'joined', employmentId: hired.employmentId, joinedAt: new Date(), identityAttestedBy: c.userId ?? null, identityAttestedAt: new Date(), version: { increment: 1 } } });
       await tx.personRole.updateMany({ where: { organizationId: org, personId: p.id, roleType: 'preboarder', sourceId: id, endOn: null }, data: { endOn: asDate(todayIst()) } });
       await tx.preboardingPortalSession.updateMany({ where: { organizationId: org, preboardingId: id, endedAt: null }, data: { endedAt: new Date() } });
