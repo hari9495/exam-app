@@ -168,8 +168,8 @@ describe('Contract labour CL-4: vendor compliance', () => {
     ids.wage = (await upload({ ...base, kind: 'wage_register', lines: JSON.stringify([{ deploymentId: ids.dep, days: 26, gross: (due - 920).toFixed(2), paidOn: today }]) }).expect(want(201))).body.id;
     ids.bank = (await upload({ ...base, kind: 'bank_proof' }).expect(want(201))).body.id;
     const p = (await portal('get', `/pack?locationId=${ids.hosur}&month=${lastMonth}`).expect(want(200))).body;
-    // Submitted, or overdue once past the 15th (nothing is verified yet).
-    expect(['submitted', 'overdue']).toContain(p.status);
+    // Open (the muster roll, required by default since answer 741, is not in yet), or overdue once past the 15th.
+    expect(['open', 'overdue']).toContain(p.status);
     expect(p.checks.find((c: { id: string }) => c.id === 'pf_challan')).toMatchObject({ status: 'fail' });
     expect(p.checks.find((c: { id: string }) => c.id === 'esi_challan')).toMatchObject({ status: 'pass' });
     expect(p.checks.find((c: { id: string }) => c.id === 'min_wage')).toMatchObject({ status: 'fail' });
@@ -182,7 +182,7 @@ describe('Contract labour CL-4: vendor compliance', () => {
     const t = await tracker('reader');
     expect(t.canManage).toBe(false);
     expect(t.rows).toEqual([expect.objectContaining({ contractor: `Vetri Security ${run}`, deployed: 1 })]);
-    expect(['submitted', 'overdue']).toContain(t.rows[0].status);
+    expect(['open', 'overdue']).toContain(t.rows[0].status);
     const types = t.alerts.map((a: { type: string }) => a.type);
     expect(types).toEqual(expect.arrayContaining(['Short PF challan', 'Wage below minimum']));
     expect(t.alerts.find((a: { type: string }) => a.type === 'Wage below minimum')).toMatchObject({ liability: '920.00', deploymentId: ids.dep });
