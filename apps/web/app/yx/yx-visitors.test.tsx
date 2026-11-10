@@ -54,7 +54,7 @@ describe('Visitors pages (live)', () => {
     expect(await screen.findByText('Rahul Menon')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Check in' }));
     await ue.click(within(screen.getByRole('dialog', { name: /Check in Rahul Menon/ })).getByRole('button', { name: 'Check in' }));
-    await waitFor(() => expect(calls).toEqual([['POST', '/visitors/v1/check-in', {}]]));
+    await waitFor(() => expect(calls).toEqual([['POST', '/visitors/v1/check-in', { noticeAccepted: false }]]));
   });
 
   it('desk: no Reception role anywhere shows no access', async () => {

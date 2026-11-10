@@ -203,6 +203,8 @@ export const YX_KEYS = [
   'visitors.desk.manage',
   'visitors.log.view',
   'visitors.settings.manage',
+  // Visitors slice 3: the watch-list (HR and Facility admin).
+  'visitors.watchlist.manage',
   // Menu items that checked keys nobody asked for (yx-nav-keys.test.ts): team pay access, the older assessment screens.
   'employee.pay_access.approve',
   'exam:manage',
