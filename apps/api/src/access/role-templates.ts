@@ -223,6 +223,16 @@ const TEMPLATES: readonly RoleTemplate[] = [
     cannot: 'Change clients, rate cards or placements; see pay rates or margins.',
     permissions: ['ats.staffing.billing', 'ats.staffing.view'],
   },
+  // Contract labour CL-1 (answers 623, 627): the compliance owner for contractors working at our sites: contractors,
+  // their licences and renewals (verify or reject), and Settings 4.9. Company-wide.
+  {
+    key: 'contract_labour_owner',
+    name: 'Contract labour owner',
+    typicalScope: 'tenant',
+    summary: 'Contractors working at your sites, their licences and renewals, and the contract labour settings (Settings 4.9).',
+    cannot: 'See employees, payroll or contractor bills beyond keys given separately.',
+    permissions: ['clra.contractor.manage', 'clra.contractor.view', 'clra.settings.manage'],
+  },
   {
     key: 'compliance_owner',
     name: 'Compliance Owner',

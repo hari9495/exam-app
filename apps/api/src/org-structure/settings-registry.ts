@@ -264,6 +264,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // holds a candidate for a job (later ones are duplicates). Submissions: hide the candidate's phone and email from the
   // client until shortlisted. Placements: when one counts as ending soon; the statutory cost (employer PF, ESI…) taken
   // from own-payroll margin as a share of pay. Bench: pay while between placements, how long, and what follows.
+  // Contract labour CL-1 (answer 627, Settings 4.9): days before a contractor licence ends that the compliance owners are told.
+  'clra.licence_alerts': { label: 'Contract labour: licence expiry alerts (days before)', scopes: ['tenant'], dated: false, multi: true, values: ['90', '60', '30', '15', '7'], default: '60,30,7' },
   'staffing.vendor.target_margin_pct': { label: 'Staffing desk: target margin for a vendor rate cap (%)', scopes: ['tenant'], dated: false, values: ['10', '15', '20', '25', '30', '35', '40'], default: '25' },
   'staffing.vendor.ownership_days': { label: 'Staffing desk: a vendor holds a submitted candidate for (days)', scopes: ['tenant'], dated: false, values: ['30', '60', '90', '180'], default: '90' },
   'staffing.submission.mask_contact': { label: 'Staffing desk: hide candidate phone and email from clients until shortlisted', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'on' },

@@ -2369,6 +2369,12 @@ model Agency {
   bankVerifiedBy    String?   @map("bank_verified_by") @db.Uuid
   /// Answer 496: the vendor's consultant record in payroll (PAY 8).
   consultantId      String?   @map("consultant_id") @db.Uuid
+  /// Contract labour CL-1 (answer 623): the vendor supplies contract labour; its PF code, ESIC code and LIN.
+  contractLabour    Boolean   @default(false) @map("contract_labour")
+  work              String?   @db.VarChar(200)
+  pfCode            String?   @map("pf_code") @db.VarChar(15)
+  esicCode          String?   @map("esic_code") @db.VarChar(17)
+  lin               String?   @db.VarChar(13)
   createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
   agencyJobs     AgencyJob[]
@@ -12787,4 +12793,40 @@ model StaffingReminder {
 
   @@unique([invoiceId, step], map: "staffing_reminders_step_key")
   @@map("staffing_reminders")
+}
+
+/// Contract labour CL-1 (answer 627): a contractor's licence for one of our establishments; it counts only once verified.
+model ContractorLicence {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  agencyId       String    @map("agency_id") @db.Uuid
+  locationId     String    @map("location_id") @db.Uuid
+  licenceNo      String    @map("licence_no") @db.VarChar(40)
+  scope          String    @db.VarChar(200)
+  states         String[]  @db.VarChar(6)
+  maxWorkers     Int       @map("max_workers")
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime  @map("valid_to") @db.Date
+  fileId         String    @map("file_id") @db.Uuid
+  renewalOfId    String?   @map("renewal_of_id") @db.Uuid
+  status         String    @default("pending") @db.VarChar(10)
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  rejectReason   String?   @map("reject_reason") @db.VarChar(500)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, agencyId], map: "contractor_licences_agency_idx")
+  @@map("contractor_licences")
+}
+
+/// Contract labour CL-1: a renewal alert sent for a licence (one per lead day).
+model ContractorLicenceAlert {
+  organizationId String   @map("organization_id") @db.Uuid
+  licenceId      String   @map("licence_id") @db.Uuid
+  daysBefore     Int      @map("days_before")
+  sentAt         DateTime @default(now()) @map("sent_at") @db.Timestamptz(3)
+
+  @@id([licenceId, daysBefore])
+  @@map("contractor_licence_alerts")
 }
