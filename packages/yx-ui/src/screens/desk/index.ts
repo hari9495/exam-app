@@ -77,3 +77,7 @@ export { TicketEsmRail, HrSummaryCard, MyDocumentsCard, ActionLinkScreen, Channe
 // Phase 3b-2 batch 3 (SD-2.20 … SD-2.27).
 export * from './esm3-types';
 export { MessagingAdmin, MyChannelsCard, TeamScreen, KIND_LABEL as MSG_KIND_LABEL, PRESENCE_LABEL, type MessagingAdminProps, type MyChannelsCardProps, type TeamScreenProps } from './esm3';
+// Contract labour CL-1 (CLB-01 contractors register, Settings 4.9).
+export { ContractorsScreen, type ContractorInput, type LicenceInput, type RenewalInput } from '../ops/contract';
+export { type ContractorsData, type ContractorsLive } from '../ops/contract-live';
+export { clraSettingsPage, clraSettingsChanges, type ClraSettingsData } from '../settings/contract-labour-live';

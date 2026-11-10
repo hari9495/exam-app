@@ -9,9 +9,10 @@ nothing was built.
 
 ## What is live today (plain English)
 
-- **No Contract labour page is live.** None of the 8 designed screens (CLB-01 … 08), the contractor portal (T9-13) or
-  the settings page 4.9 is rendered by the web app. There is no `/yx/contract…` route, no `clra.*` setting in the API
-  and no contractor or contract-worker table.
+- **CL-1 is live (10 Nov 2026, branch `feat/yukthix-contract-labour-1`):** CLB-01 Contractors register on
+  /yx/contract-labour/contractors (menu Contract labour › Contractors) and Settings 4.9 on /yx/settings/contract-labour.
+  Contractors are the vendor record (`agencies`); licences with their copy, verified renewals, the deployment block and
+  the expiry alerts. CLB-02 … 08 and the contractor portal (T9-13) are not built yet.
 - **Some pieces around it are live:** HLP-12 accident cases already name a contractor (free text) and chase the
   contractor's filing; People knows a `contract_worker` person role (database check only; nothing creates one); the
   staffing desk has clients, placements, vendors and vendor bills; payroll has PAY 8 consultants with bills, TDS and an
@@ -27,13 +28,13 @@ built** (no API for this feature) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Principal employer (contractors working at our sites) | 5 | 0 | 0 | 0 | 25 | 0 | 25 |
+| A. Principal employer (contractors working at our sites) | 5 | 11 | 2 | 0 | 20 | 0 | 33 |
 | B. We are the contractor (our staff at client sites) | 3 | 0 | 0 | 0 | 10 | 0 | 10 |
 | C. Contractor portal | 1 | 0 | 0 | 0 | 9 | 0 | 9 |
-| D. Settings | 1 | 0 | 0 | 0 | 2 | 0 | 2 |
-| **All** | 10 | 0 | 0 | 0 | 46 | 0 | 46 |
+| D. Settings | 1 | 0 | 2 | 0 | 0 | 0 | 2 |
+| **All** | 10 | 11 | 4 | 0 | 39 | 0 | 54 |
 
-Of the 35 stories under Screens/Contract labour, 0 are live. With the portal and settings pages, 0 of 46.
+Of the 43 stories under Screens/Contract labour, 11 are live and 2 live with a gap (CL-1); with the portal and settings pages, 15 of 54.
 
 Related stories in other areas (counted in their own maps, listed here so the build reaches them):
 
@@ -86,11 +87,19 @@ All 46 stories in section 4: there is no contractor, licence, deployment, proof 
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Register · Register · renewal alerts | design only, feature not built | needs contractors (extend `agencies`) and a licence table; alerts from `expiryTone` and `clra.licence_alerts` |
-| Record · Contractor record (licence, work order) | design only, feature not built | needs the licence and work-order fields; PAN check status from the PAY 8 consultant |
-| Expired · Expired licence record | design only, feature not built | needs the licence validity and the deployment block |
-| Empty · Empty | design only, feature not built | |
-| Loading · Loading | design only, feature not built | |
+| Register · Register · renewal alerts | live (gap) | the register and the renewal banner (state from the server with `clra.licence_alerts`); the establishment cards wait for deployments and registrations (CL-2, CL-5; question 674) |
+| Record · Contractor record (licence, work order) | live (gap) | statutory codes and licences; the work order (question 675) and the contractor login (CL-3) are left out; PAN "Verified" from the linked PAY 8 consultant |
+| Expired · Expired licence record | live | an ended verified licence with no verified renewal: "Deployment blocked" (`deployBlock`) |
+| Empty · Empty | live | |
+| Loading · Loading | live | |
+| AddContractor · Add contractor (CL-1) | live | `POST contract-labour/contractors`; a vendor of the same name becomes the contractor (answer 623), PAN must match |
+| ChangeContractor · Change contractor details (CL-1) | live | `PUT contract-labour/contractors/:id` |
+| AddLicence · Add licence (CL-1) | live | `POST …/contractors/:id/licences` with the copy; must cover the establishment's state; waits for verification |
+| Blocked · Expired licence · deployment blocked (CL-1) | live | as Expired |
+| Renew · Add renewal (CL-1) | live | `POST …/licences/:id/renewal`; only of a verified licence, ending later, one at a time |
+| RenewalPending · Renewal waiting for verification (CL-1) | live | `POST …/licences/:id/verify` (clean copy only) |
+| Reject · Reject a renewal with the reason (CL-1) | live | `POST …/licences/:id/reject` with the reason |
+| ReadOnly · Read only (view key, CL-1) | live | `clra.contractor.view`: reads and opens the copy, no changes |
 
 #### CLB-02 · Contract workers register
 
@@ -181,8 +190,8 @@ All 46 stories in section 4: there is no contractor, licence, deployment, proof 
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| P4_9 · 4.9 Contract labour | design only, feature not built | no `clra.*` keys in the API registry; no live 4.9 page |
-| P4_9_ReadOnly · 4.9 Contract labour · read-only | design only, feature not built | |
+| P4_9 · 4.9 Contract labour | live (gap) | the threshold and minimum age from `IN.CLRA` (verify), the licence block (law) and `clra.licence_alerts`; registrations (question 673) and monthly compliance (CL-4) left out |
+| P4_9_ReadOnly · 4.9 Contract labour · read-only | live (gap) | without `clra.settings.manage` or `org.settings.manage` (or while acting for someone else) |
 
 ## 5. Two designs for one job
 
@@ -324,3 +333,36 @@ console.log('ok');
 Founder approved, 10 Nov 2026 (questions 621-641, all as suggested; policies are company settings with defaults, law
 details are rule-set data marked verify for counsel). Build after Visitors, CL-1 first; CL-8 and CL-9 when a customer
 needs them.
+
+## CL-1 built (10 Nov 2026, branch `feat/yukthix-contract-labour-1`)
+
+Answers 621, 623 and 627. Migration `202617o0000009_contract_labour_1`: `agencies` gains `contract_labour`, `work`,
+`pf_code`, `esic_code` and `lin` (format checks); `contractor_licences` (establishment, licence number, work covered,
+states, maximum workers, validity, the copy, the licence it renews, pending / verified / rejected with who and when)
+and `contractor_licence_alerts` (one row per licence and lead day), both with RLS; keys `clra.contractor.manage`,
+`clra.contractor.view` and `clra.settings.manage` (role template "Contract labour owner"); the rule set `IN.CLRA` for
+IN-TN and IN-KA (the 1970 Act to 20 Nov 2025: 20 workers; the OSH Code from 21 Nov 2025: 50; minimum age 18; all
+verify, GO-LIVE-CHECKLIST row 38). Company setting `clra.licence_alerts` (default 60, 30 and 7 days). A nightly job
+(08:30 India time) tells the compliance owners once per lead day; a verified renewal or an inactive contractor stops
+it. `deployBlock` (a verified licence for the establishment, in force on the day, covering its state) is ready for
+CL-2. Tests: `clra-rules.spec.ts`, `contract-live.test.tsx`, the nav test and e2e `contract-labour-1` (9 tests).
+
+## Founder questions from the CL-1 build (10 Nov 2026)
+
+671. **LIN format.** We accept 10 digits, with or without hyphens (1-2345-6789-0). Suggested: keep; counsel confirms
+     the Shram Suvidha format before go-live.
+672. **Who verifies a licence.** Today the person who adds a licence may also verify it. Suggested: keep that as the
+     default and add a company setting "a second person verifies licences" (default off) when a customer asks.
+673. **Principal-employer registrations on 4.9 (answer 628).** Suggested: build the list with CL-5, where the
+     threshold count from deployments needs it; until then the row stays hidden.
+674. **Establishment cards on CLB-01** (workers against the threshold, registration). Suggested: they appear with CL-2
+     and CL-5; hidden until then, never with sample numbers.
+675. **Work order** (scope, headcount, period) in the contractor record. Suggested: add it in CL-2 as a record per
+     contractor and establishment, and warn when deployments pass its headcount.
+676. **The licence copy is required** for every licence and renewal (PDF, JPG or PNG, up to 10 MB), and only a clean
+     (virus-checked) copy can be verified. Suggested: keep.
+677. **Ended licences and renewals.** A licence that has already ended cannot be added (add its renewal instead), and a
+     renewal keeps the establishment, work and states of the licence it renews; a change of states is a new licence.
+     Suggested: keep.
+678. **Who gets the alerts.** Holders of `clra.contractor.manage` for the whole company, else the System Admins.
+     Suggested: keep, and also email the contractor once the portal exists (CL-3).

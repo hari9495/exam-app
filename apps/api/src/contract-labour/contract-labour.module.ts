@@ -1,0 +1,49 @@
+import { Inject, Injectable, Logger, Module, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Queue, Worker } from 'bullmq';
+import Redis from 'ioredis';
+import { DocumentsModule } from '../documents/documents.module';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { OrgStructureModule } from '../org-structure/org-structure.module';
+import { REDIS_CONNECTION, bullOpts, createRedisConnection, logBullErrors } from '../jobs/redis-connection';
+import { ContractLabourController } from './contract-labour.controller';
+import { ContractLabourService } from './contract-labour.service';
+
+const QUEUE = 'clra-jobs';
+
+/** Answer 627: every morning at 08:30 India time, tell the compliance owners about licences reaching an alert day. */
+@Injectable()
+export class ContractLabourJobs implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(ContractLabourJobs.name);
+  private readonly queue: Queue;
+  private worker: Worker | null = null;
+
+  constructor(
+    @Inject(REDIS_CONNECTION) private readonly connection: Redis,
+    private readonly svc: ContractLabourService,
+  ) {
+    this.queue = logBullErrors(new Queue(QUEUE, bullOpts(connection)), QUEUE);
+  }
+
+  async onModuleInit() {
+    this.worker = logBullErrors(new Worker(QUEUE, () => this.run(), bullOpts(this.connection)), QUEUE);
+    await this.queue.upsertJobScheduler('licence-alerts', { pattern: '30 8 * * *', tz: 'Asia/Kolkata' }, { name: 'alerts', data: {} });
+  }
+
+  async onModuleDestroy() {
+    await this.worker?.close();
+    await this.queue.close();
+  }
+
+  async run() {
+    const n = await this.svc.alertAll().catch((e: Error) => (this.logger.warn(`licence alerts: ${e.message}`), 0));
+    if (n) this.logger.log(`contractor licence alerts: ${n}`);
+  }
+}
+
+// Contract labour CL-1: contractors (the vendor record), their licences and renewals, Settings 4.9, expiry alerts.
+@Module({
+  imports: [DocumentsModule, NotificationsModule, OrgStructureModule],
+  controllers: [ContractLabourController],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, ContractLabourService, ContractLabourJobs],
+})
+export class ContractLabourModule {}

@@ -8,16 +8,16 @@ import { Badge, type BadgeTone } from '../../components/display';
 import { EmptyState, InlineAlert, Meter } from '../../components/feedback';
 import { Drawer } from '../../components/drawer';
 import { FieldRow, FormField } from '../../components/field';
-import { CurrencyField, TextArea, TextField } from '../../components/inputs';
+import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
 import { Checkbox } from '../../components/choice';
-import { Select } from '../../components/select';
+import { MultiSelect, Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
 import { FileUpload } from '../../components/upload';
 import { DataTable, type TableColumn } from '../../components/table';
 import { PlainTable } from '../../components/plain-table';
 import { FilterBar, type FilterFieldDef } from '../../components/filters';
 import { Card, DescriptionList, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
-import { ConfirmDialog } from '../../components/overlay';
+import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { PageBanner } from '../../components/notify';
 import { BarChart } from '../../components/charts';
 import { Stepper } from '../../components/stepper';
@@ -26,7 +26,8 @@ import type { FilterValue } from '../../lib/table';
 import { Actions, CardGrid, CheckList, Facts, OpsDesk, PhotoPlaceholder, ReceiptImage, StatusTrail, useSay } from './ops-kit';
 import { challanShortfall, deployBlocks, expiryTone } from './ops-rules';
 import type { ListState } from './helpdesk';
-import type { ContractWorker, Contractor, ProofStatus } from './contract-data';
+import type { ContractWorker, Contractor, Licence, ProofStatus } from './contract-data';
+import { LiveContractors, type ContractorsLive } from './contract-live';
 
 const multi = (key: string, label: string, values: string[]): FilterFieldDef => ({ key, label, type: 'multi', options: values.map((v) => ({ value: v, label: v })) });
 function applyFilters<R>(rows: R[], filters: FilterValue[]): R[] {
@@ -39,61 +40,434 @@ function applyFilters<R>(rows: R[], filters: FilterValue[]): R[] {
  * CLB-01 · Contractors register (licence, registration, validity, renewal alerts)
  * ======================================================================================= */
 
+/** Where a licence stands (CL-1 live: the server's state with the company's alert days; the design: expiryTone). */
+export type LicenceStateName = 'pending' | 'rejected' | 'not-started' | 'valid' | 'expiring' | 'expired' | 'renewed';
+const LICENCE_BADGE: Record<LicenceStateName, BadgeTone> = { pending: 'info', rejected: 'neutral', 'not-started': 'neutral', valid: 'success', expiring: 'warning', expired: 'danger', renewed: 'neutral' };
+export function licenceBadge(l: Licence, today: Date): { tone: BadgeTone; text: string } {
+  if (!l.state) return expiryTone(l.validTo, today);
+  const left = Math.round((l.validTo.getTime() - today.getTime()) / 86_400_000);
+  const text: Record<LicenceStateName, string> = {
+    pending: l.renewalOf ? 'Renewal waiting for verification' : 'Waiting for verification',
+    rejected: 'Rejected',
+    'not-started': `Starts ${formatDate(l.validFrom ?? l.validTo)}`,
+    valid: 'Valid',
+    expiring: `Expires in ${left} days`,
+    expired: `Expired ${-left} days ago`,
+    renewed: 'Renewed',
+  };
+  return { tone: LICENCE_BADGE[l.state], text: text[l.state] };
+}
+
 export interface ContractorsScreenProps {
   contractors: Contractor[];
   establishments: { name: string; state: string; rc: string; family: string; workers: number; threshold: number; validTo: Date | null }[];
   today: Date;
   state?: ListState;
   openId?: string | null;
+  /** CL-1 states drawn first: the add / change sheets, and the reader without the contractor key to change. */
+  sheet?: ContractorsSheet | null;
+  readOnly?: boolean;
+  /** CL-1 live (the page passes it; docs/yukthix/contract-labour-design-map.md). */
+  live?: ContractorsLive;
 }
-export function ContractorsScreen({ contractors, establishments, today, state = 'ready', openId = null }: ContractorsScreenProps) {
-  const [open, setOpen] = useState<string | null>(openId);
+export type ContractorsSheet = { kind: 'contractor'; id: string | null } | { kind: 'licence'; contractorId: string } | { kind: 'renew'; licenceId: string } | { kind: 'reject'; licenceId: string };
+
+/** What the view needs beyond the rows: the actions, each optional (the design shows them without doing anything). */
+export interface ContractorsViewProps {
+  contractors: Contractor[];
+  establishments: ContractorsScreenProps['establishments'];
+  today: Date;
+  state: ListState;
+  openId: string | null;
+  sheet: ContractorsSheet | null;
+  canManage: boolean;
+  /** The contractor portal (CL-3): until then no "Invite to contractor login". */
+  portal: boolean;
+  /** The work order card (design only until it is built). */
+  workOrder: boolean;
+  locations: { id: string; name: string; state: string }[];
+  states: { code: string; name: string }[];
+  onRetry?: () => void;
+  onSaveContractor?: (id: string | null, input: ContractorInput) => Promise<unknown>;
+  onAddLicence?: (contractorId: string, input: LicenceInput, file: File) => Promise<unknown>;
+  onRenew?: (licenceId: string, input: RenewalInput, file: File) => Promise<unknown>;
+  onVerify?: (licenceId: string) => Promise<unknown>;
+  onReject?: (licenceId: string, reason: string) => Promise<unknown>;
+  onOpenFile?: (licenceId: string) => void;
+  /** "60, 30 and 7 days before expiry" from the company setting. */
+  alertText?: string;
+}
+
+const SAMPLE_LOCATIONS = [
+  { id: 'hosur', name: 'Hosur plant', state: 'IN-TN' },
+  { id: 'blr', name: 'Bengaluru head office', state: 'IN-KA' },
+];
+const SAMPLE_STATES = [
+  { code: 'IN-KA', name: 'Karnataka' },
+  { code: 'IN-KL', name: 'Kerala' },
+  { code: 'IN-TN', name: 'Tamil Nadu' },
+];
+
+export function ContractorsScreen({ contractors, establishments, today, state = 'ready', openId = null, sheet = null, readOnly = false, live }: ContractorsScreenProps) {
+  if (live) return <LiveContractors live={live} />;
+  return (
+    <ContractorsView
+      contractors={contractors}
+      establishments={establishments}
+      today={today}
+      state={state}
+      openId={openId}
+      sheet={sheet}
+      canManage={!readOnly}
+      portal
+      workOrder
+      locations={SAMPLE_LOCATIONS}
+      states={SAMPLE_STATES}
+    />
+  );
+}
+
+export function ContractorsView(p: ContractorsViewProps) {
+  const { contractors, establishments, today, state, canManage } = p;
+  const [open, setOpen] = useState<string | null>(p.openId);
+  const [sheet, setSheet] = useState<ContractorsSheet | null>(p.sheet);
+  const { say } = useSay();
   const c = contractors.find((x) => x.id === open);
-  const expiring = contractors.filter((x) => x.licences.some((l) => expiryTone(l.validTo, today).tone !== 'success'));
+  const licences = contractors.flatMap((x) => x.licences.map((l) => ({ l, c: x })));
+  const expiring = contractors.filter((x) => x.licences.some((l) => (l.state ? l.state === 'expiring' || l.state === 'expired' : expiryTone(l.validTo, today).tone !== 'success')));
+  const first = (x: Contractor) => x.licences.find((l) => l.status !== 'rejected' && l.state !== 'renewed') ?? x.licences[0];
   const cols: TableColumn<Contractor>[] = [
     { key: 'name', header: 'Contractor', value: (x) => x.name, width: 240, render: (x) => <span className="yx-ops-stack" data-gap="sm"><strong>{x.name}</strong><span className="yx-ops-muted">{x.work}</span></span> },
-    { key: 'pan', header: 'PAN', type: 'id', value: (x) => x.pan, render: (x) => <span className="yx-ops-row"><span className="yx-ops-mono">{x.pan}</span>{x.panVerified ? <Badge tone="success">Verified</Badge> : <Badge tone="warning">Not verified</Badge>}</span>, width: 200 },
-    { key: 'lic', header: 'Licence', value: (x) => x.licences[0]?.no, render: (x) => <span className="yx-ops-mono">{x.licences[0]?.no}</span>, width: 190 },
-    { key: 'val', header: 'Validity', value: (x) => x.licences[0]?.validTo, render: (x) => { const t = expiryTone(x.licences[0].validTo, today); return <span className="yx-ops-stack" data-gap="sm"><span>{formatDate(x.licences[0].validTo)}</span><Badge tone={t.tone}>{t.text}</Badge></span>; }, width: 160 },
-    { key: 'use', header: 'Workers / licence max', value: (x) => x.licences[0].active, render: (x) => <Meter label={`${x.name} workers`} value={x.licences[0].active} max={x.licences[0].max} warnAt={90} dangerAt={100} valueText={`${x.licences[0].active} of ${x.licences[0].max}`} />, width: 200 },
+    { key: 'pan', header: 'PAN', type: 'id', value: (x) => x.pan, render: (x) => <span className="yx-ops-row"><span className="yx-ops-mono">{x.pan || '—'}</span>{x.pan ? x.panVerified ? <Badge tone="success">Verified</Badge> : <Badge tone="warning">Not verified</Badge> : null}</span>, width: 200 },
+    { key: 'lic', header: 'Licence', value: (x) => first(x)?.no, render: (x) => <span className="yx-ops-mono">{first(x)?.no ?? 'No licence yet'}</span>, width: 190 },
+    { key: 'val', header: 'Validity', value: (x) => first(x)?.validTo, render: (x) => { const l = first(x); if (!l) return <Badge tone="warning">Add a licence</Badge>; const t = licenceBadge(l, today); return <span className="yx-ops-stack" data-gap="sm"><span>{formatDate(l.validTo)}</span><Badge tone={t.tone}>{t.text}</Badge></span>; }, width: 180 },
+    { key: 'use', header: 'Workers / licence max', value: (x) => first(x)?.active ?? 0, render: (x) => { const l = first(x); if (!l) return '—'; return l.active === undefined ? <span>Up to {l.max}</span> : <Meter label={`${x.name} workers`} value={l.active} max={l.max} warnAt={90} dangerAt={100} valueText={`${l.active} of ${l.max}`} />; }, width: 200 },
     { key: 'status', header: 'Status', type: 'status', value: (x) => x.status, statusTone: (v) => (v === 'Payment held' ? 'danger' : v === 'Active' ? 'success' : 'neutral') },
   ];
+  const add = canManage ? <Button variant="primary" icon={Plus} onClick={() => setSheet({ kind: 'contractor', id: null })}>Add contractor</Button> : undefined;
+  const renewalOf = (id: string) => licences.find((x) => x.l.id === id)?.l;
+  const target = sheet && (sheet.kind === 'renew' || sheet.kind === 'reject') ? licences.find((x) => x.l.id === sheet.licenceId) : undefined;
+  const editing = sheet?.kind === 'contractor' && sheet.id ? contractors.find((x) => x.id === sheet.id) : undefined;
+  const run = (fn: (() => Promise<unknown>) | undefined, title: string) => (fn ? fn().then(() => say(title), (e: unknown) => say(errText(e))) : Promise.resolve(say(title)));
   return (
     <OpsDesk area="contract" active="Contractors">
-      <PageHeader title="Contractors" description="Licensed contractors supplying workers to your sites. You are the principal employer." actions={<Button variant="primary" icon={Plus}>Add contractor</Button>} />
-      {expiring.length > 0 && <PageBanner tone="warning">{expiring.length} contractor licences expire within 60 days or have expired. Deployments stop when a licence isn't valid.</PageBanner>}
-      <CardGrid>
-        {establishments.map((e) => (
-          <article key={e.name} className="yx-ops-card" data-tone={e.workers >= e.threshold && e.rc === '—' ? 'danger' : undefined}>
-            <div className="yx-ops-card__head">
-              <h3 className="yx-ops-card__title">{e.name}</h3>
-              <Badge tone={e.rc === '—' ? (e.workers >= e.threshold ? 'danger' : 'neutral') : 'success'}>{e.rc === '—' ? (e.workers >= e.threshold ? 'Registration needed' : 'Below threshold') : 'Registered'}</Badge>
-            </div>
-            <Facts items={[{ label: 'Contract workers', value: e.workers }, { label: 'Threshold (OSH Code, verify)', value: e.threshold }]} />
-            <p className="yx-ops-muted">{e.rc === '—' ? `No registration needed below ${e.threshold} contract workers.` : `${e.family} registration ${e.rc}, valid to ${formatDate(e.validTo)}`}</p>
-          </article>
-        ))}
-      </CardGrid>
-      <DataTable label="Contractors" columns={cols} rows={state === 'empty' ? [] : contractors} getRowId={(x) => x.id} state={state === 'empty' ? 'ready' : state} onRetry={() => {}} empty={<EmptyState title="No contractors yet." description="Add a contractor with their licence to deploy workers." action={<Button variant="primary" icon={Plus}>Add contractor</Button>} />} onRowClick={(x) => setOpen(x.id)} activeRowId={open} />
-      <Drawer open={!!c} onOpenChange={(o) => !o && setOpen(null)} size="lg" title={c?.name ?? ''} subtitle={c ? `${c.work} · contact ${c.contact}` : ''} footer={<><Button>Invite to contractor login</Button><Button variant="primary">Add licence</Button></>}>
+      <PageHeader title="Contractors" description="Licensed contractors supplying workers to your sites. You are the principal employer." actions={add} />
+      {expiring.length > 0 && <PageBanner tone="warning">{expiring.length} contractor licences expire soon or have expired. Deployments stop when a licence isn't valid.</PageBanner>}
+      {establishments.length > 0 && (
+        <CardGrid>
+          {establishments.map((e) => (
+            <article key={e.name} className="yx-ops-card" data-tone={e.workers >= e.threshold && e.rc === '—' ? 'danger' : undefined}>
+              <div className="yx-ops-card__head">
+                <h3 className="yx-ops-card__title">{e.name}</h3>
+                <Badge tone={e.rc === '—' ? (e.workers >= e.threshold ? 'danger' : 'neutral') : 'success'}>{e.rc === '—' ? (e.workers >= e.threshold ? 'Registration needed' : 'Below threshold') : 'Registered'}</Badge>
+              </div>
+              <Facts items={[{ label: 'Contract workers', value: e.workers }, { label: 'Threshold (OSH Code, verify)', value: e.threshold }]} />
+              <p className="yx-ops-muted">{e.rc === '—' ? `No registration needed below ${e.threshold} contract workers.` : `${e.family} registration ${e.rc}, valid to ${formatDate(e.validTo)}`}</p>
+            </article>
+          ))}
+        </CardGrid>
+      )}
+      <DataTable label="Contractors" columns={cols} rows={state === 'empty' ? [] : contractors} getRowId={(x) => x.id} state={state === 'empty' ? 'ready' : state} onRetry={p.onRetry ?? (() => {})} empty={<EmptyState title="No contractors yet." description="Add a contractor with their licence to deploy workers." action={add} />} onRowClick={(x) => setOpen(x.id)} activeRowId={open} />
+      <Drawer
+        open={!!c && !sheet}
+        onOpenChange={(o) => !o && setOpen(null)}
+        size="lg"
+        title={c?.name ?? ''}
+        subtitle={c ? `${c.work}${c.contact ? ` · contact ${c.contact}` : ''}` : ''}
+        footer={
+          c && canManage ? (
+            <>
+              {p.portal && <Button>Invite to contractor login</Button>}
+              <Button onClick={() => setSheet({ kind: 'contractor', id: c.id })}>Change details</Button>
+              <Button variant="primary" icon={Plus} onClick={() => setSheet({ kind: 'licence', contractorId: c.id })}>Add licence</Button>
+            </>
+          ) : undefined
+        }
+      >
         {c && (
           <div className="yx-ops-stack">
-            <DescriptionList columns={2} items={[{ label: 'PAN', value: c.pan, mono: true }, { label: 'GSTIN', value: c.gstin, mono: true }, { label: 'PF code', value: c.pfCode, mono: true }, { label: 'ESIC code', value: c.esicCode, mono: true }, { label: 'LIN', value: c.lin, mono: true }, { label: 'Contractor login', value: c.loginInvited ? 'Invited (OTP, own records only, not billed)' : 'Not invited' }]} />
+            <DescriptionList columns={2} items={[{ label: 'PAN', value: c.pan || '—', mono: true }, { label: 'GSTIN', value: c.gstin || '—', mono: true }, { label: 'PF code', value: c.pfCode || '—', mono: true }, { label: 'ESIC code', value: c.esicCode || '—', mono: true }, { label: 'LIN', value: c.lin || '—', mono: true }, ...(p.portal ? [{ label: 'Contractor login', value: c.loginInvited ? 'Invited (OTP, own records only, not billed)' : 'Not invited' }] : [])]} />
+            {c.licences.length === 0 && <EmptyState title="No licence yet." description="Add the contractor's licence for your establishment. Workers can be deployed only under a verified licence." />}
             {c.licences.map((l) => {
-              const t = expiryTone(l.validTo, today);
+              const t = licenceBadge(l, today);
+              const renews = l.renewalOf ? renewalOf(l.renewalOf) : undefined;
+              const hasRenewal = licences.some((x) => x.l.renewalOf === l.id && x.l.status !== 'rejected');
               return (
-                <Card key={l.no} title={`Licence ${l.no}`} actions={<Badge tone={t.tone}>{t.text}</Badge>}>
-                  <DescriptionList items={[{ label: 'Establishment', value: l.establishment }, { label: 'Scope', value: `${l.scope} (${l.states.join(', ')})` }, { label: 'Maximum workers', value: l.max }, { label: 'Valid to', value: formatDate(l.validTo) }, { label: 'Renewal alerts', value: '60, 30 and 7 days before expiry' }]} />
+                <Card key={l.id ?? l.no} title={renews ? `Renewal of licence ${renews.no}` : `Licence ${l.no}`} actions={<Badge tone={t.tone}>{t.text}</Badge>}>
+                  <div className="yx-ops-stack">
+                    <DescriptionList
+                      items={[
+                        ...(renews ? [{ label: 'Licence number', value: l.no, mono: true }] : []),
+                        { label: 'Establishment', value: l.establishment },
+                        { label: 'Scope', value: `${l.scope} (${l.states.join(', ')})` },
+                        { label: 'Maximum workers', value: l.max },
+                        ...(l.validFrom ? [{ label: 'Valid from', value: formatDate(l.validFrom) }] : []),
+                        { label: 'Valid to', value: formatDate(l.validTo) },
+                        { label: 'Renewal alerts', value: p.alertText ?? '60, 30 and 7 days before expiry' },
+                        ...(l.decided ? [{ label: l.status === 'rejected' ? 'Rejected by' : 'Verified by', value: `${l.decided.by}, ${formatDate(new Date(l.decided.at))}` }] : []),
+                        ...(l.rejectReason ? [{ label: 'Reason', value: l.rejectReason }] : []),
+                      ]}
+                    />
+                    {l.block && l.status === 'verified' && l.state !== 'renewed' && <InlineAlert tone="danger" title="Deployment blocked">{l.block}</InlineAlert>}
+                    {l.status === 'pending' && <InlineAlert tone="info" title="Not counted yet">Check the copy against the original, then verify. Until then the licence does not allow deployment.</InlineAlert>}
+                    {(canManage || l.fileName) && (
+                      <Actions>
+                        {l.fileName && <Button size="sm" icon={Download} onClick={() => l.id && p.onOpenFile?.(l.id)}>Licence copy</Button>}
+                        {canManage && l.status === 'pending' && l.id && (
+                          <>
+                            <Button size="sm" onClick={() => setSheet({ kind: 'reject', licenceId: l.id! })}>Reject</Button>
+                            <Button size="sm" variant="primary" onClick={() => void run(p.onVerify && (() => p.onVerify!(l.id!)), 'Licence verified')}>Verify</Button>
+                          </>
+                        )}
+                        {canManage && l.status === 'verified' && !hasRenewal && l.state !== 'renewed' && l.id && <Button size="sm" icon={Upload} onClick={() => setSheet({ kind: 'renew', licenceId: l.id! })}>Add renewal</Button>}
+                      </Actions>
+                    )}
+                  </div>
                 </Card>
               );
             })}
-            <Card title="Work order">
-              <DescriptionList items={[{ label: 'Scope', value: `${c.work}, ${c.licences[0].establishment}` }, { label: 'Headcount', value: c.licences[0].max }, { label: 'Period', value: '1 Apr 2026 to 31 Mar 2027' }]} />
-            </Card>
+            {p.workOrder && c.licences[0] && (
+              <Card title="Work order">
+                <DescriptionList items={[{ label: 'Scope', value: `${c.work}, ${c.licences[0].establishment}` }, { label: 'Headcount', value: c.licences[0].max }, { label: 'Period', value: '1 Apr 2026 to 31 Mar 2027' }]} />
+              </Card>
+            )}
           </div>
         )}
       </Drawer>
+      {sheet?.kind === 'contractor' && (
+        <ContractorSheet
+          key={sheet.id ?? 'new'}
+          initial={editing ? { name: editing.name, work: editing.work, contactEmail: editing.contactEmail ?? null, pan: editing.pan || null, gstin: editing.gstin && editing.gstin !== '—' ? editing.gstin : null, pfCode: editing.pfCode || null, esicCode: editing.esicCode || null, lin: editing.lin && editing.lin !== '—' ? editing.lin : null, active: editing.status !== 'Inactive' } : null}
+          onClose={() => setSheet(null)}
+          onSave={(input) => (p.onSaveContractor ? p.onSaveContractor(sheet.id, input) : Promise.resolve())}
+        />
+      )}
+      {sheet?.kind === 'licence' && (
+        <LicenceSheet mode="add" locations={p.locations} states={p.states} contractor={contractors.find((x) => x.id === sheet.contractorId)?.name ?? ''} onClose={() => setSheet(null)} onSave={(input, file) => (p.onAddLicence ? p.onAddLicence(sheet.contractorId, input, file) : Promise.resolve())} />
+      )}
+      {sheet?.kind === 'renew' && target && (
+        <LicenceSheet mode="renew" current={target.l} locations={p.locations} states={p.states} contractor={target.c.name} onClose={() => setSheet(null)} onSave={(input, file) => (p.onRenew ? p.onRenew(sheet.licenceId, { licenceNo: input.licenceNo, maxWorkers: input.maxWorkers, validFrom: input.validFrom, validTo: input.validTo }, file) : Promise.resolve())} />
+      )}
+      {sheet?.kind === 'reject' && target && <RejectLicenceDialog licence={target.l} onClose={() => setSheet(null)} onReject={(reason) => (p.onReject ? p.onReject(sheet.licenceId, reason) : Promise.resolve())} />}
     </OpsDesk>
+  );
+}
+
+/* ---------------- CL-1 sheets: contractor, licence or renewal, reject ---------------- */
+
+export interface ContractorInput {
+  name: string;
+  work: string;
+  contactEmail: string | null;
+  pan: string | null;
+  gstin: string | null;
+  pfCode: string | null;
+  esicCode: string | null;
+  lin: string | null;
+  active: boolean;
+}
+export interface LicenceInput {
+  locationId: string;
+  licenceNo: string;
+  scope: string;
+  states: string[];
+  maxWorkers: number;
+  validFrom: string;
+  validTo: string;
+}
+export type RenewalInput = Pick<LicenceInput, 'licenceNo' | 'maxWorkers' | 'validFrom' | 'validTo'>;
+
+const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
+const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+const PF_RE = /^[A-Z]{5}[0-9]{7}([0-9]{3})?$/;
+const ESIC_RE = /^[0-9]{17}$/;
+const LIN_RE = /^[0-9][0-9-]{8,11}[0-9]$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const focusOn = (id: string) => setTimeout(() => document.getElementById(id)?.focus(), 0);
+const isoDay = (d: Date | null) => (d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : '');
+const errText = (e: unknown) => (e instanceof Error && e.message ? e.message : 'That did not save. Try again.');
+
+/** Add or change a contractor: the vendor record with its statutory codes (answer 623). */
+export function ContractorSheet({ initial, onClose, onSave }: { initial: ContractorInput | null; onClose: () => void; onSave: (input: ContractorInput) => Promise<unknown> }) {
+  const { say } = useSay();
+  const [f, setF] = useState<ContractorInput>(initial ?? { name: '', work: '', contactEmail: null, pan: null, gstin: null, pfCode: null, esicCode: null, lin: null, active: true });
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const set = (x: Partial<ContractorInput>) => setF((o) => ({ ...o, ...x }));
+  const bad = {
+    name: !f.name.trim() ? 'Enter the contractor’s name.' : null,
+    work: !f.work.trim() ? 'Say what work they do, like Housekeeping.' : null,
+    email: f.contactEmail && !EMAIL_RE.test(f.contactEmail) ? 'Enter an email like ops@contractor.in.' : null,
+    pan: f.pan && !PAN_RE.test(f.pan) ? 'A PAN has 10 characters, like ABCDE1234F.' : null,
+    gstin: f.gstin && !GSTIN_RE.test(f.gstin) ? 'A GSTIN has 15 characters, like 33ABCDE1234F1Z5.' : f.gstin && f.pan && f.gstin.slice(2, 12) !== f.pan ? 'The GSTIN does not carry this PAN.' : null,
+    pf: f.pfCode && !PF_RE.test(f.pfCode) ? 'A PF code looks like TNMAS0012345000.' : null,
+    esic: f.esicCode && !ESIC_RE.test(f.esicCode) ? 'An ESIC code has 17 digits.' : null,
+    lin: f.lin && !LIN_RE.test(f.lin) ? 'A LIN has 10 digits.' : null,
+  };
+  const save = () => {
+    setTried(true);
+    const order: [keyof typeof bad, string][] = [['name', 'cl-name'], ['work', 'cl-work'], ['email', 'cl-email'], ['pan', 'cl-pan'], ['gstin', 'cl-gstin'], ['pf', 'cl-pf'], ['esic', 'cl-esic'], ['lin', 'cl-lin']];
+    const miss = order.find(([k]) => bad[k]);
+    if (miss) return focusOn(miss[1]);
+    setBusy(true);
+    setFailed(null);
+    onSave({ ...f, name: f.name.trim(), work: f.work.trim(), contactEmail: f.contactEmail?.trim() || null })
+      .then(() => (say(initial ? 'Contractor saved' : 'Contractor added'), onClose()))
+      .catch((e: unknown) => setFailed(errText(e)))
+      .finally(() => setBusy(false));
+  };
+  const err = (k: keyof typeof bad) => (tried ? bad[k] : null);
+  return (
+    <Drawer open onOpenChange={(o) => !o && onClose()} size="lg" title={initial ? `Change ${initial.name}` : 'Add contractor'} subtitle="Contractors" dirty notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={save}>{initial ? 'Save contractor' : 'Add contractor'}</Button></>}>
+      <div className="yx-ops-stack">
+        <p className="yx-ops-muted">A vendor you already have (a staffing vendor or agency) with the same name becomes a contractor too: one record.</p>
+        <FieldRow>
+          <FormField id="cl-name" label="Contractor name" required error={err('name')}>
+            <TextField value={f.name} onChange={(v) => set({ name: v })} maxLength={200} />
+          </FormField>
+          <FormField id="cl-work" label="Kind of work" required error={err('work')}>
+            <TextField value={f.work} onChange={(v) => set({ work: v })} maxLength={200} />
+          </FormField>
+        </FieldRow>
+        <FormField id="cl-email" label="Contact email" optional error={err('email')}>
+          <TextField value={f.contactEmail ?? ''} onChange={(v) => set({ contactEmail: v })} maxLength={254} />
+        </FormField>
+        <FieldRow>
+          <FormField id="cl-pan" label="PAN" optional error={err('pan')}>
+            <TextField value={f.pan ?? ''} onChange={(v) => set({ pan: v.toUpperCase() || null })} maxLength={10} />
+          </FormField>
+          <FormField id="cl-gstin" label="GSTIN" optional helper="It carries the PAN." error={err('gstin')}>
+            <TextField value={f.gstin ?? ''} onChange={(v) => set({ gstin: v.toUpperCase() || null })} maxLength={15} />
+          </FormField>
+        </FieldRow>
+        <FieldRow>
+          <FormField id="cl-pf" label="PF code" optional error={err('pf')}>
+            <TextField value={f.pfCode ?? ''} onChange={(v) => set({ pfCode: v.toUpperCase() || null })} maxLength={15} />
+          </FormField>
+          <FormField id="cl-esic" label="ESIC code" optional error={err('esic')}>
+            <TextField value={f.esicCode ?? ''} onChange={(v) => set({ esicCode: v || null })} maxLength={17} />
+          </FormField>
+        </FieldRow>
+        <FormField id="cl-lin" label="LIN (Shram Suvidha)" optional error={err('lin')}>
+          <TextField value={f.lin ?? ''} onChange={(v) => set({ lin: v || null })} maxLength={13} />
+        </FormField>
+        {initial && <Checkbox label="Active" description="An inactive contractor gets no licence alerts." checked={f.active} onChange={(v) => set({ active: v })} />}
+      </div>
+    </Drawer>
+  );
+}
+
+/** A licence for one of our establishments, or its renewal (answer 627: it counts once verified). */
+export function LicenceSheet({ mode, current, contractor, locations, states, onClose, onSave }: { mode: 'add' | 'renew'; current?: Licence; contractor: string; locations: { id: string; name: string; state: string }[]; states: { code: string; name: string }[]; onClose: () => void; onSave: (input: LicenceInput, file: File) => Promise<unknown> }) {
+  const { say } = useSay();
+  const [loc, setLoc] = useState<string | null>(current?.locationId ?? null);
+  const [no, setNo] = useState(mode === 'renew' ? (current?.no ?? '') : '');
+  const [scope, setScope] = useState(current?.scope ?? '');
+  const [covered, setCovered] = useState<string[]>(current?.stateCodes ?? []);
+  const [max, setMax] = useState<number | null>(current?.max ?? null);
+  const [from, setFrom] = useState<Date | null>(null);
+  const [to, setTo] = useState<Date | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const site = locations.find((l) => l.id === loc);
+  const pickSite = (id: string | null) => {
+    setLoc(id);
+    const st = locations.find((l) => l.id === id)?.state;
+    if (st && !covered.includes(st)) setCovered((c) => [...c, st]);
+  };
+  const bad = {
+    loc: mode === 'add' && !loc ? 'Choose the establishment.' : null,
+    no: !no.trim() ? 'Enter the licence number.' : null,
+    scope: mode === 'add' && !scope.trim() ? 'Say what work the licence covers.' : null,
+    states: mode === 'add' && !covered.length ? 'Choose the states the licence covers.' : mode === 'add' && site && !covered.includes(site.state) ? `The licence must cover ${site.name}’s state.` : null,
+    max: !max || max < 1 ? 'Enter the maximum number of workers.' : null,
+    from: !from ? 'Choose the day the licence starts.' : current && mode === 'renew' && current.validFrom && from <= current.validFrom ? 'The renewal starts after the current licence started.' : null,
+    to: !to ? 'Choose the day the licence ends.' : from && to < from ? 'The licence ends before it starts.' : current && mode === 'renew' && to <= current.validTo ? `The renewal must end after ${formatDate(current.validTo)}.` : null,
+    file: !file ? 'Attach a copy of the licence.' : null,
+  };
+  const save = () => {
+    setTried(true);
+    const order: [keyof typeof bad, string][] = [['loc', 'lc-loc'], ['no', 'lc-no'], ['scope', 'lc-scope'], ['states', 'lc-states'], ['max', 'lc-max'], ['from', 'lc-from'], ['to', 'lc-to'], ['file', 'lc-file']];
+    const miss = order.find(([k]) => bad[k]);
+    if (miss) return focusOn(miss[1]);
+    setBusy(true);
+    setFailed(null);
+    onSave({ locationId: loc ?? '', licenceNo: no.trim(), scope: scope.trim(), states: covered, maxWorkers: max!, validFrom: isoDay(from), validTo: isoDay(to) }, file!)
+      .then(() => (say(mode === 'renew' ? 'Renewal added, waiting for verification' : 'Licence added, waiting for verification'), onClose()))
+      .catch((e: unknown) => setFailed(errText(e)))
+      .finally(() => setBusy(false));
+  };
+  const err = (k: keyof typeof bad) => (tried ? bad[k] : null);
+  return (
+    <Drawer open onOpenChange={(o) => !o && onClose()} size="lg" title={mode === 'renew' ? `Renew licence ${current?.no ?? ''}` : 'Add licence'} subtitle={contractor} dirty notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={save}>{mode === 'renew' ? 'Add renewal' : 'Add licence'}</Button></>}>
+      <div className="yx-ops-stack">
+        <InlineAlert tone="info" title="Verified before it counts">Someone with the contractor key checks the copy and verifies it. Until then it does not allow deployment.</InlineAlert>
+        {mode === 'renew' && current ? (
+          <DescriptionList columns={2} items={[{ label: 'Establishment', value: current.establishment }, { label: 'Scope', value: `${current.scope} (${current.states.join(', ')})` }, { label: 'Current licence ends', value: formatDate(current.validTo) }, { label: 'Maximum workers now', value: current.max }]} />
+        ) : (
+          <>
+            <FormField id="lc-loc" label="Establishment" required error={err('loc')} helper="Your site where the contractor's workers work.">
+              <Select options={locations.map((l) => ({ value: l.id, label: l.name }))} value={loc} onChange={(v) => pickSite(v)} />
+            </FormField>
+            <FormField id="lc-scope" label="Work covered" required error={err('scope')}>
+              <TextField value={scope} onChange={setScope} maxLength={200} />
+            </FormField>
+            <FormField id="lc-states" label="States covered" required error={err('states')} helper="Under the OSH Code one licence may cover several states.">
+              <MultiSelect options={states.map((s) => ({ value: s.code, label: s.name }))} value={covered} onChange={setCovered} searchable />
+            </FormField>
+          </>
+        )}
+        <FieldRow>
+          <FormField id="lc-no" label="Licence number" required error={err('no')}>
+            <TextField value={no} onChange={setNo} maxLength={40} />
+          </FormField>
+          <FormField id="lc-max" label="Maximum workers" required error={err('max')}>
+            <NumberField value={max} onChange={setMax} min={1} max={100000} />
+          </FormField>
+        </FieldRow>
+        <FieldRow>
+          <FormField id="lc-from" label="Valid from" required error={err('from')}>
+            <DatePicker value={from} onChange={setFrom} />
+          </FormField>
+          <FormField id="lc-to" label="Valid to" required error={err('to')}>
+            <DatePicker value={to} onChange={setTo} />
+          </FormField>
+        </FieldRow>
+        <FormField id="lc-file" label="Licence copy" required error={err('file')} helper="PDF, JPG or PNG, up to 10 MB.">
+          <FileUpload id="lc-file" multiple={false} accept={['.pdf', '.jpg', '.png']} upload={async (x) => void setFile(x)} onItemsChange={(items) => !items.length && setFile(null)} />
+        </FormField>
+      </div>
+    </Drawer>
+  );
+}
+
+/** Reject a licence or renewal with the reason (the contractor sees it once the portal is built). */
+export function RejectLicenceDialog({ licence, onClose, onReject }: { licence: Licence; onClose: () => void; onReject: (reason: string) => Promise<unknown> }) {
+  const { say } = useSay();
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const bad = reason.trim().length < 3 ? 'Say why, so the contractor can fix it.' : null;
+  const go = () => {
+    setTried(true);
+    if (bad) return focusOn('lc-reason');
+    setBusy(true);
+    setFailed(null);
+    onReject(reason.trim())
+      .then(() => (say('Licence rejected'), onClose()))
+      .catch((e: unknown) => setFailed(errText(e)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} title={`Reject licence ${licence.no}?`} description="It will not count for deployment. Add a new licence or renewal once the contractor sends a correct copy." notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="danger" loading={busy} onClick={go}>Reject licence</Button></>}>
+      <FormField id="lc-reason" label="Reason" required error={tried ? bad : null}>
+        <TextArea rows={3} value={reason} onChange={setReason} maxLength={500} />
+      </FormField>
+    </Dialog>
   );
 }
 

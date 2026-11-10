@@ -199,6 +199,10 @@ export const YX_KEYS = [
   'ats.agency.manage',
   // Staffing slice 3: staffing finance (invoices, receipts, vendor invoices).
   'ats.staffing.billing',
+  // Contract labour CL-1: contractors and their licences, Settings 4.9.
+  'clra.contractor.manage',
+  'clra.contractor.view',
+  'clra.settings.manage',
   // Menu items that checked keys nobody asked for (yx-nav-keys.test.ts): team pay access, the older assessment screens.
   'employee.pay_access.approve',
   'exam:manage',

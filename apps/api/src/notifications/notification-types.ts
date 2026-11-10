@@ -123,6 +123,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'expense.payment.update', group: 'reminders', label: 'An expense claim was paid, or its payment did not go through' },
   // EXP-08: a company card line to explain, and its reminders.
   { type: 'expense.card.update', group: 'reminders', label: 'A company card line needs you to explain it' },
+  // Contract labour CL-1 (answer 627): a contractor's licence ends soon.
+  { type: 'clra.licence.expiring', group: 'reminders', label: 'A contractor’s licence ends soon (contract labour)' },
 ];
 
 export const NOTIFICATION_TYPE_BY_KEY = new Map(NOTIFICATION_TYPES.map((t) => [t.type, t]));

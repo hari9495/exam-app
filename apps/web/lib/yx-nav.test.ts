@@ -199,7 +199,7 @@ describe('buildNav: Settings', () => {
   });
 
   it('the settings admin gets company rules, Countries and Translations; set-up pages follow their keys', () => {
-    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['Legal entities', 'Locations', 'Structure', 'Company rules', 'Countries', 'Translations', 'Access and privacy', 'Custom fields', 'Payroll rules', 'Hiring', 'Staffing desk']);
+    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['Legal entities', 'Locations', 'Structure', 'Company rules', 'Countries', 'Translations', 'Access and privacy', 'Custom fields', 'Payroll rules', 'Contract labour', 'Hiring', 'Staffing desk']);
     // Settings 6.1 Hiring: recruiting, hiring admins and HR read it (the API decides who changes it).
     expect(labels(nav(['ats.settings.manage']), 'settings')).toEqual(['Hiring']);
     expect(labels(nav(['pipeline:manage']), 'settings')).toEqual(['Hiring']);
@@ -357,5 +357,14 @@ describe('pageLink: Speak up and its set-up name themselves (HLP-06)', () => {
     expect(pageLink(nav([], { employee: true }), '/yx/desk/speakup')).toMatchObject({ area: { id: 'helpdesk' }, link: { label: 'Speak up' }, inMenu: true });
     expect(pageLink(nav(['speakup.setup.manage'], { employee: true }), '/yx/desk/speakup-setup')).toMatchObject({ link: { label: 'Speak-up set-up' }, inMenu: true });
     expect(pageLink(nav(['policy.manage'], { employee: true }), '/yx/desk/speakup-setup')?.inMenu).not.toBe(true);
+  });
+
+  it('contract labour CL-1: Contractors for the contractor keys, Settings 4.9 without payroll; never in support', () => {
+    expect(labels(nav(['clra.contractor.view']), 'contract')).toEqual(['Contractors']);
+    expect(labels(nav(['clra.contractor.manage']), 'settings')).toContain('Contract labour');
+    expect(labels(nav(['clra.settings.manage']), 'settings')).toContain('Contract labour');
+    expect(areas(nav(['clra.settings.manage']))).not.toContain('contract');
+    expect(areas(nav([]))).not.toContain('contract');
+    expect(areas(nav(['clra.contractor.manage'], { support: true }))).not.toContain('contract');
   });
 });
