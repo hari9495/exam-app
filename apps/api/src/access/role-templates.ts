@@ -174,7 +174,9 @@ const TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'tenant',
     summary: 'Jobs, pipelines, candidates, interviews, assessments and offers; hiring reports (M10).',
     cannot: 'See offer pay, erase candidate data, or set headcount budgets.',
-    permissions: ['ats.job.manage', 'ats.candidate.manage', 'ats.interview.schedule', 'ats.assessment.view', 'ats.offer.manage', 'ats.report.view', 'ats.costs.manage'],
+    // Answer 452: clients and bill rates on the staffing desk; in effect only while the company's desk is on (the staffing
+    // routes refuse otherwise).
+    permissions: ['ats.job.manage', 'ats.candidate.manage', 'ats.interview.schedule', 'ats.assessment.view', 'ats.offer.manage', 'ats.report.view', 'ats.costs.manage', 'ats.staffing.view'],
   },
   {
     key: 'hiring_manager',

@@ -1332,6 +1332,8 @@ model PipelineEntry {
   applicationToken       String?                 @unique @map("application_token") @db.VarChar(1000)
   /// HIR-24 answer 224: the applicant's own answer to the pay-history question (rupees a year), only where the job asks and the law allows.
   currentPay             Int?                    @map("current_pay")
+  /// Answer 474: the candidate asked for another process than the automated tool (NYC notice), when.
+  alternativeRequestedAt DateTime?               @map("alternative_requested_at") @db.Timestamptz(3)
   assignedUserId         String?                 @map("assigned_user_id") @db.Uuid
   assignedGroupId        String?                 @map("assigned_group_id") @db.Uuid
   createdAt              DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -3239,6 +3241,8 @@ model Product {
   code      String   @id @db.VarChar(32)
   name      String   @db.VarChar(100)
   unit      String   @db.VarChar(40)
+  /// Careers answer 442: what the product's plan includes (D15), e.g. white_label.
+  features  String[] @default([])
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("products")

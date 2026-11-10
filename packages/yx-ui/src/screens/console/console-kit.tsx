@@ -47,6 +47,8 @@ export function actionWords(action: string, details: Record<string, unknown> | n
       return `Changed the company from ${LIFECYCLE_LABEL[d.from as Lifecycle] ?? d.from} to ${LIFECYCLE_LABEL[d.to as Lifecycle] ?? d.to}`;
     case 'platform.company.trial_extended':
       return `Extended the trial by ${d.days} days`;
+    case 'platform.company.setting_changed':
+      return `Turned ${d.key === 'brand.white_label' ? 'white-label' : String(d.key)} ${d.to === 'on' ? 'on' : 'off'}`;
     case 'platform.price.scheduled':
       return `Set a new ${PRODUCT_LABEL[String(d.product)] ?? d.product} price (${d.currency} ${d.unitPrice}) from ${d.validFrom}`;
     case 'platform.price.withdrawn':

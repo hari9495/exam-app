@@ -22,6 +22,8 @@ function setup(opts: { consents?: { participant: string; consent: string }[]; tr
     interviewScorecardDraft: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn(), deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
     scorecard: { findUnique: jest.fn().mockResolvedValue(opts.submitted ? { status: 'submitted' } : null) },
     auditLog: { create: jest.fn().mockResolvedValue({}) },
+    // Answer 474: the application the AI draft is for (no NYC notice in these tests: the setting is off).
+    pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ jobId: 'job-1', createdAt: new Date(), alternativeRequestedAt: null }) },
   };
   const tenantPrisma = { forTenant: jest.fn((_c: unknown, fn: (t: unknown) => unknown) => fn(tx)) } as any;
   const scorecards = {

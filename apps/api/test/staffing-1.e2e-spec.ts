@@ -10,6 +10,7 @@ import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { LOGIN_PROTECTION_REDIS } from '../src/auth/login-protection.service';
 import { gstinCheckChar } from '../src/expenses/checks';
+import { ROLE_TEMPLATES } from '../src/access/role-templates';
 
 // Staffing desk slice 1 end to end (HIR-14 clients, HIR-15 rate cards, Settings 6.2): the desk is off until the company
 // turns it on; account managers keep clients, contacts and dated rate cards with pay rates; recruiters read clients
@@ -28,7 +29,7 @@ describe('Staffing desk slice 1', () => {
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'admin' | 'am' | 'rec' | 'hr' | 'emp' | 'adminB' | 'acting';
+  type Who = 'admin' | 'am' | 'rec' | 'recOld' | 'hr' | 'emp' | 'adminB' | 'acting';
   const token: Partial<Record<Who, string>> = {};
   const users: Partial<Record<Who, string>> = {};
   const ids: Record<string, string> = {};
@@ -68,7 +69,9 @@ describe('Staffing desk slice 1', () => {
     const roster: [Exclude<Who, 'acting'>, 'A' | 'B', string, string[] | null][] = [
       ['admin', 'A', 'org_admin', null],
       ['am', 'A', 'panel', ['ats.staffing.manage', 'ats.staffing.view']],
-      ['rec', 'A', 'panel', ['ats.staffing.view']],
+      // Answer 452: a recruiter on the Recruiter template's keys, and one on the older recruiter role (no company role).
+      ['rec', 'A', 'panel', [...ROLE_TEMPLATES.find((t) => t.key === 'recruiter')!.permissions]],
+      ['recOld', 'A', 'recruiter', null],
       ['hr', 'A', 'panel', ['org.settings.manage']],
       ['emp', 'A', 'panel', []],
       ['adminB', 'B', 'org_admin', null],
@@ -140,6 +143,8 @@ describe('Staffing desk slice 1', () => {
     // Read: the recruiter sees clients, cannot change them.
     const list = (await api('rec', 'get', '/staffing/clients').expect(200)).body;
     expect(list.canManage).toBe(false);
+    expect((await api('recOld', 'get', '/staffing/clients').expect(200)).body.canManage).toBe(false);
+    await api('rec', 'post', '/staffing/clients').send(client({ name: `Not allowed ${run}`, gstin: null })).expect(403);
     expect(list.rows.map((r: { name: string }) => r.name)).toEqual([`Coromandel ${run}`, `Nilgiri Retail ${run}`]);
     const one = (await api('rec', 'get', `/staffing/clients/${ids.client}`).expect(200)).body;
     expect(one.client).toMatchObject({ gstin: TN, stateName: 'Tamil Nadu', status: 'active', accountManager: `am ${run}`, paymentTermsDays: null, defaultPaymentTermsDays: 30, contractEnd: '2027-03-31', slaFeedbackDays: 2, version: 1 });
@@ -252,6 +257,8 @@ describe('Staffing desk slice 1', () => {
     await settings('am', [{ key: 'staffing.desk.enabled', value: 'off' }]).expect(want(200));
     await api('am', 'get', '/staffing/clients').expect(403);
     await api('am', 'get', `/staffing/clients/${ids.client}/rates`).expect(403);
+    // Answer 452: the recruiter's key works only while the desk is on.
+    for (const who of ['rec', 'recOld'] as const) await api(who, 'get', '/staffing/clients').expect(403);
     expect(await inA((tx) => tx.staffingClient.count({ where: { organizationId: org.A.id } }))).toBe(2);
   });
 });

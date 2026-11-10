@@ -9,6 +9,7 @@ import { SETTINGS } from '../org-structure/settings-registry';
 import { assertDefaultRecruiter, isRecruiter, recruiterKeyHolders } from './recruiter-key';
 import { todayIst } from '../org-structure/org-validation';
 import { holdersOf } from '../time/time-core';
+import { biasLaw, coveredPlace } from './bias-audit';
 
 /** Answer 332: the band approver may be a named person who holds the offer-pay key (they decide on pay). */
 const OFFER_PAY_KEY = 'ats.offer.compensation.view';
@@ -158,6 +159,13 @@ export class HiringSettingsService {
           const who = gone ? await tx.user.findFirst({ where: { organizationId: org, id: named }, select: { name: true, email: true } }) : null;
           return { offerApprovers, staleBandApprover: gone ? { id: named, name: who?.name || who?.email || 'Someone who is no longer in the company' } : null };
         })()),
+        // Answer 473: the company's locations in New York City (HIR.BIAS_AUDIT's city rules), for the hint on 6.1.
+        nycLocations: await (async () => {
+          const law = await biasLaw(tx, todayIst());
+          if (!law) return [] as string[];
+          const locs = await tx.location.findMany({ where: { organizationId: org, archivedAt: null }, orderBy: { name: 'asc' }, select: { name: true, state: true, address: true } });
+          return locs.filter((l) => coveredPlace(law, { state: l.state, city: (l.address as { city?: string } | null)?.city ?? null })).map((l) => l.name);
+        })(),
         offerLetters: await tx.offerTemplate.findMany({ where: { organizationId: org }, orderBy: [{ isDefault: 'desc' }, { name: 'asc' }], select: { id: true, name: true, esign: true } }),
         values,
         defaults: Object.fromEntries(HIRING_SETTING_KEYS.map((k) => [k, SETTINGS[k]!.default])),

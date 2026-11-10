@@ -3,7 +3,7 @@ import type { BoardEntryRow } from './types';
 
 // HIR-04: the board rows of GET hiring/jobs/:id/board shaped into the designed board's cards (the API decides what is sent).
 
-type Row = BoardEntryRow & { stageEnteredAt: string; scorecards: (ScorecardSummary & { interviewId: string }) | null; nextInterviewAt: string | null; rejectionPendingUntil: string | null };
+type Row = BoardEntryRow & { stageEnteredAt: string; scorecards: (ScorecardSummary & { interviewId: string }) | null; nextInterviewAt: string | null; rejectionPendingUntil: string | null; alternativeRequestedAt?: string | null };
 
 const SOURCE: Record<string, string> = { application: 'Applied online', reapply: 'Applied again', referral: 'Referral', agency: 'Agency', internal: 'Internal', manual: 'Added by recruiter', exam: 'From a test', drive: 'Hiring drive' };
 const IST = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });

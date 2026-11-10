@@ -2,7 +2,7 @@ const SETTINGS: Record<string, string> = {};
 jest.mock('../people/probation', () => ({ settingFor: jest.fn(async (_tx: unknown, _c: unknown, key: string) => SETTINGS[key] ?? 'off') }));
 
 import { ForbiddenException } from '@nestjs/common';
-import { biasAuditBlock, coveredPlace, resultsProblem, validUntil, type BiasLaw } from './bias-audit';
+import { addBusinessDays, biasAuditBlock, coveredPlace, noticeBlock, nycNotice, resultsProblem, validUntil, type BiasLaw } from './bias-audit';
 import { BiasAuditService } from './bias-audit.service';
 
 const LAW: BiasLaw = {
@@ -10,6 +10,7 @@ const LAW: BiasLaw = {
   jurisdiction: 'US-NY',
   cities: ['New York', 'NYC', 'Brooklyn', 'Staten Island'],
   validMonths: 12,
+  noticeBusinessDays: 10,
   categories: { sex: ['Female', 'Male'], race: ['Asian', 'White'] },
   source: 's',
   verify: true,
@@ -18,7 +19,7 @@ const c = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
 function tx(o: { audit?: string | null; location?: { state: string; address: { city: string } } | null; text?: string | null } = {}) {
   return {
-    statutoryRuleSet: { findFirst: jest.fn().mockResolvedValue({ jurisdiction: 'US-NY', values: { name: LAW.name, cities: LAW.cities, validMonths: 12, categories: LAW.categories }, source: 's', verify: true }) },
+    statutoryRuleSet: { findFirst: jest.fn().mockResolvedValue({ jurisdiction: 'US-NY', values: { name: LAW.name, cities: LAW.cities, validMonths: 12, noticeBusinessDays: 10, categories: LAW.categories }, source: 's', verify: true }) },
     biasAudit: { findFirst: jest.fn().mockResolvedValue(o.audit ? { auditedOn: new Date(`${o.audit}T00:00:00Z`) } : null) },
     job: { findFirst: jest.fn().mockResolvedValue({ locationId: o.location ? 'loc-1' : null, location: o.text ?? null }) },
     location: { findFirst: jest.fn().mockResolvedValue(o.location ?? null) },
@@ -92,3 +93,34 @@ describe('BiasAuditService.record refusals before anything is stored', () => {
     expect(blobs.upload).not.toHaveBeenCalled();
   });
 });
+
+describe('Answer 474: the New York City candidate notice', () => {
+  it('business days skip weekends: 10 from a Thursday is the Thursday two weeks on', () => {
+    expect(addBusinessDays('2026-11-12', 10)).toBe('2026-11-26');
+    expect(addBusinessDays('2026-11-14', 1)).toBe('2026-11-16'); // Saturday -> Monday
+  });
+
+  it('the notice: only with the setting on and a NYC job; it lists the tools that are on and the days from the rule set', async () => {
+    expect(await nycNotice(tx({ location: NYC }), c, 'job-1', NOW)).toBeNull();
+    SETTINGS['hiring.bias_audit.nyc'] = 'on';
+    expect(await nycNotice(tx({ location: { state: 'US-NY', address: { city: 'Albany' } } }), c, 'job-1', NOW)).toBeNull();
+    expect(await nycNotice(tx({ location: NYC }), c, 'job-1', NOW)).toEqual({ assesses: [], businessDays: 10 });
+    SETTINGS['hiring.notetaker.enabled'] = 'on';
+    SETTINGS['hiring.notetaker.ai_draft'] = 'on';
+    SETTINGS['hiring.rediscovery.ai'] = 'on';
+    expect((await nycNotice(tx({ location: NYC }), c, 'job-1', NOW))!.assesses).toHaveLength(2);
+  });
+
+  it('the AI draft for one applicant: refused when they asked for another process or within the notice days; then allowed', async () => {
+    SETTINGS['hiring.bias_audit.nyc'] = 'on';
+    const applied = new Date('2026-11-05T06:00:00Z'); // Thursday; 10 business days -> 19 Nov
+    expect(await noticeBlock(tx({ location: NYC }), c, { jobId: 'job-1', createdAt: applied, alternativeRequestedAt: applied }, 'The AI draft scorecard', NOW)).toBe('The AI draft scorecard is not used for this candidate: they asked for another process on 5 Nov 2026.');
+    expect(await noticeBlock(tx({ location: NYC }), c, { jobId: 'job-1', createdAt: applied, alternativeRequestedAt: null }, 'The AI draft scorecard', NOW)).toBe('The AI draft scorecard can be used for this candidate from 19 Nov 2026: New York City candidates are told 10 business days before.');
+    expect(await noticeBlock(tx({ location: NYC }), c, { jobId: 'job-1', createdAt: applied, alternativeRequestedAt: null }, 'The AI draft scorecard', new Date('2026-11-19T06:00:00Z'))).toBeNull();
+    // Outside NYC, or with the setting off, nothing is refused.
+    expect(await noticeBlock(tx({ location: { state: 'IN-TN', address: { city: 'Chennai' } } }), c, { jobId: 'job-1', createdAt: applied, alternativeRequestedAt: applied }, 'The AI draft scorecard', NOW)).toBeNull();
+    SETTINGS['hiring.bias_audit.nyc'] = 'off';
+    expect(await noticeBlock(tx({ location: NYC }), c, { jobId: 'job-1', createdAt: applied, alternativeRequestedAt: applied }, 'The AI draft scorecard', NOW)).toBeNull();
+  });
+});
+

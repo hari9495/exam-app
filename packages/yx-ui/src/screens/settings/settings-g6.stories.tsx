@@ -86,6 +86,16 @@ const staleApprover: SettingsPageDef = {
   })),
 };
 const staleApproverGroups = SETTINGS_GROUPS.map((g) => (g.id === 6 ? { ...g, pages: g.pages.map((p) => (p.id === '6.1' ? staleApprover : p)) } : g));
+// Answer 473: an AI tool is on and the company has a New York City location while the NYC switch is off.
+const nycHintPage: SettingsPageDef = {
+  ...hiringPage,
+  sections: hiringPage.sections.map((sec) => ({
+    ...sec,
+    settings: sec.settings.map((d) => (d.key === 'hire.bias_audit_nyc' ? { ...d, value: false, starter: false, warning: 'AI notes on past candidates is on and New York office is in New York City. If you use it for jobs there, turn this on: the law then needs a yearly bias audit and a notice to candidates.' } : d)),
+  })),
+};
+const nycHintGroups = SETTINGS_GROUPS.map((g) => (g.id === 6 ? { ...g, pages: g.pages.map((p) => (p.id === '6.1' ? nycHintPage : p)) } : g));
+export const P6_1_NycHint: S = { name: '6.1 Hiring · AI on with a New York City location', render: () => <SettingsPageScreen groups={nycHintGroups} pageId="6.1" highlightKey="hire.bias_audit_nyc" /> };
 export const P6_1_StaleBandApprover: S = { name: '6.1 Hiring · approver above the range can no longer approve', render: () => <SettingsPageScreen groups={staleApproverGroups} pageId="6.1" highlightKey="hire.band_approver" /> };
 export const P6_2: S = { name: '6.2 Staffing desk', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.2" /> };
 export const P6_2_ReadOnly: S = { name: '6.2 Staffing desk · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.2" readOnly /> };

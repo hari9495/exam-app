@@ -1,5 +1,5 @@
 // Sample data for the console stories and tests. Fictional companies and people only.
-import type { CompanyDetail, CompanyRow, PlatformAuditEntry, Product, SupportActivity, SupportSession } from './types';
+import type { CompanyDetail, CompanyRow, PlatformAuditEntry, Product, SupportActivity, SupportSession, CompanySettingsView } from './types';
 
 export const NOW = new Date('2026-10-08T10:00:00+05:30');
 export const TODAY = '2026-10-08';
@@ -21,6 +21,14 @@ export const COMPANY: CompanyDetail = {
     { id: 'h2', action: 'platform.company.trial_extended', by: 'Anand Iyer', at: '2026-10-05T10:30:00Z', details: { days: 7, reason: 'Set-up call booked' } },
     { id: 'h1', action: 'platform.company.created', by: 'Anand Iyer', at: '2026-09-30T09:00:00Z', details: { products: ['hrms', 'service_desk'] } },
   ],
+};
+
+/** Careers answer 442: Godavari Agro's plan settings. */
+export const COMPANY_SETTINGS: CompanySettingsView = {
+  id: 'c2',
+  name: 'Godavari Agro',
+  features: ['white_label'],
+  settings: [{ key: 'brand.white_label', label: 'Hide "Powered by YukthiX" on the careers site and candidate pages', value: 'off', default: 'off', values: ['off', 'on'], feature: 'white_label', included: true }],
 };
 
 export const PRODUCTS: Product[] = [

@@ -221,3 +221,23 @@ describe('Careers follow-ups (answers 353, 356, 357, 359, 362)', () => {
     expect(screen.getByText(/Powered by/)).toBeInTheDocument();
   });
 });
+
+describe('New York City notice (answer 474)', () => {
+  it('a NYC job shows the notice; "Assess me another way" goes with the application; no notice elsewhere', async () => {
+    mockFetch({ 'POST /jobs/t1/apply': { status: 201, body: { received: true } }, 'POST /jobs/t1/parse-resume': { body: {} } });
+    const { unmount } = wrap(<JobPage applyToken="t1" job={{ ...JOB, askPayHistory: false, internationalPhone: true, nycNotice: { assesses: ['An AI draft of the interview scorecard'], businessDays: 10 } }} address="a" allJobsHref={null} />);
+    expect(screen.getByRole('region', { name: 'Automated tool notice' })).toHaveTextContent('at least 10 business days before');
+    await ue.type(screen.getByLabelText(/Full name/), 'Mia Chen');
+    await ue.type(screen.getByLabelText(/^Email/), 'mia@example.com');
+    await ue.type(screen.getByLabelText(/Mobile number/), '+1 212 555 0123');
+    await ue.upload(document.querySelector('input[type="file"]') as HTMLInputElement, new File(['%PDF-1.7'], 'cv.pdf', { type: 'application/pdf' }));
+    await ue.click(screen.getByRole('checkbox', { name: 'I have read this and agree.' }));
+    await ue.click(screen.getByRole('checkbox', { name: 'Assess me another way (no automated tool)' }));
+    await ue.click(screen.getByRole('button', { name: 'Send application' }));
+    expect(await screen.findByText('Application sent')).toBeInTheDocument();
+    expect(calls.find((c) => c.url.endsWith('/apply'))!.body).toMatchObject({ alternativeProcess: true });
+    unmount();
+    wrap(<JobPage applyToken="t1" job={{ ...JOB, nycNotice: null }} address="a" allJobsHref={null} />);
+    expect(screen.queryByRole('region', { name: 'Automated tool notice' })).not.toBeInTheDocument();
+  });
+});

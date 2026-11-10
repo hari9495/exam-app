@@ -44,6 +44,11 @@ export const JobInternationalPhone: S = {
   name: 'Job page · outside India (international number)',
   render: () => <CareersJobScreen tenant={TENANT} accent={KAVERI_ACCENT} detail={{ ...JOB_DETAIL, job: { ...JOB_DETAIL.job, location: 'Dubai office' }, closesOn: null }} today={TODAY} live={{ allJobsHref: '#careers', apply: { ...APPLY, askPay: false, internationalPhone: true } }} />,
 };
+// Answer 474: a New York City job tells candidates about the automated tool; the form offers another process.
+export const JobNycNotice: S = {
+  name: 'Job page · New York City automated tool notice',
+  render: () => <CareersJobScreen tenant={TENANT} accent={KAVERI_ACCENT} detail={{ ...JOB_DETAIL, job: { ...JOB_DETAIL.job, location: 'New York office' }, closesOn: null }} today={TODAY} live={{ allJobsHref: '#careers', apply: { ...APPLY, askPay: false, internationalPhone: true, toolNotice: { assesses: ['An AI draft of the interview scorecard, from the interview transcript (a person on the panel checks and submits it)'], businessDays: 10 } } }} />,
+};
 // Careers answer 357/362: the candidate pages carry the company's logo and colour.
 export const PortalWithLogo: S = { name: 'Candidate page · company logo', render: () => <CandidatePortalScreen brand={{ ...CAND_BRAND, logoUrl: KAVERI_LOGO }} state="ready" portal={CAND_PORTAL} /> };
 

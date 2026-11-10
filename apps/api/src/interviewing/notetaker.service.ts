@@ -6,7 +6,7 @@ import { audit, inCompany, type CompanyContext, type Tx } from '../org-structure
 import { settingFor } from '../people/probation';
 import { ScorecardsService, type Viewer } from './scorecards.service';
 import { draftScorecard, type DraftItem } from './notetaker-draft.client';
-import { biasAuditBlock } from '../hiring/bias-audit';
+import { biasAuditBlock, noticeBlock } from '../hiring/bias-audit';
 
 export type ConsentValue = 'given' | 'declined' | 'waiting';
 export interface NotetakerParticipant {
@@ -47,6 +47,15 @@ export class NotetakerService {
   }
 
   /** The interview (404 for another company), the viewer's access (403 off the panel), the participants and their answers. */
+  /** HIR-23 and answer 474: why the AI draft cannot run for this interview's application (bias audit, NYC notice), or null. */
+  private async aiStop(tx: Tx, c: CompanyContext, entryId: string, jobId: string): Promise<string | null> {
+    const tool = 'The AI draft scorecard';
+    const audit = await biasAuditBlock(tx, c, jobId, tool);
+    if (audit) return audit;
+    const entry = await tx.pipelineEntry.findFirst({ where: { organizationId: c.organizationId, id: entryId }, select: { jobId: true, createdAt: true, alternativeRequestedAt: true } });
+    return entry ? noticeBlock(tx, c, entry, tool) : null;
+  }
+
   private async state(tx: Tx, c: CompanyContext, interviewId: string, v: Viewer) {
     const { iv, template } = await this.scorecards.load(tx, c, interviewId);
     const who = await this.scorecards.access(iv, v);
@@ -83,7 +92,7 @@ export class NotetakerService {
         submitted: mine?.status === 'submitted',
         cancelled: s.iv.status === 'cancelled',
         // HIR-23: why the AI draft cannot run for this job (NYC, bias audit overdue), shown before anyone presses Draft.
-        aiBlocked: s.aiDraft ? await biasAuditBlock(tx, c, s.iv.pipelineEntry.jobId, 'The AI draft scorecard') : null,
+        aiBlocked: s.aiDraft ? await this.aiStop(tx, c, s.iv.pipelineEntryId, s.iv.pipelineEntry.jobId) : null,
       };
     });
   }
@@ -148,7 +157,7 @@ export class NotetakerService {
       const t = await tx.interviewTranscript.findUnique({ where: { interviewId }, select: { text: true } });
       if (!t) throw new ConflictException('Add the transcript first.');
       // HIR-23: a New York City job with the bias audit overdue gets no AI draft (a plain refusal, never a silent skip).
-      const blocked = await biasAuditBlock(tx, c, s.iv.pipelineEntry.jobId, 'The AI draft scorecard');
+      const blocked = await this.aiStop(tx, c, s.iv.pipelineEntryId, s.iv.pipelineEntry.jobId);
       if (blocked) throw new ConflictException(`${blocked} Fill the scorecard yourself.`);
       return { jobTitle: s.iv.pipelineEntry.job.title, scaleMax: s.template.scaleMax, skills: s.template.items.map((i) => ({ id: i.id, label: i.label, guidance: i.guidance })), transcript: t.text };
     });

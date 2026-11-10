@@ -4,6 +4,7 @@ export * from './types';
 export { ConsoleShell, CONSOLE_LINKS, type ConsoleShellProps, type ConsolePageId } from './console-shell';
 export { CompaniesScreen, companyInput, slugFrom, type CompaniesScreenProps } from './companies';
 export { CompanyScreen, supportInput, type CompanyScreenProps } from './company';
+export { CompanySettingsScreen, type CompanySettingsScreenProps } from './company-settings';
 export { PlansScreen, priceInput, type PlansScreenProps } from './plans';
 export { SupportSessionsScreen, type SupportSessionsScreenProps } from './support';
 export { PlatformAuditScreen, type PlatformAuditScreenProps } from './audit';

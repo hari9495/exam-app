@@ -1141,6 +1141,44 @@ export interface JobApplication {
   answers?: Record<string, string | number>;
   /** The hidden bot trap; a person leaves it empty. */
   website?: string;
+  /** Answer 474: a New York City applicant asked for another process than the automated tool. */
+  alternativeProcess?: boolean;
+}
+
+/** Answer 474: what a New York City job tells candidates about the company's automated tool (rule set HIR.BIAS_AUDIT). */
+export interface ToolNotice {
+  /** What each tool in use assesses, in candidate words; empty: the generic sentence. */
+  assesses: string[];
+  /** Business days of notice before the tool is used (from the rule set). */
+  businessDays: number;
+}
+
+/**
+ * Answer 474 (NYC Local Law 144): an automated tool is used for this job, what it assesses, and how to ask for another
+ * process. Shown on the job page; the apply form carries the request.
+ */
+export function AutomatedToolNotice({ notice, companyName }: { notice: ToolNotice; companyName: string }) {
+  return (
+    <section className="yx-apply__tool-notice" aria-label="Automated tool notice">
+      <h3>{companyName} uses an automated tool for this job</h3>
+      <p>
+        New York City law asks us to tell you at least {notice.businessDays} business days before we use it. We will not use it on your application before then.
+      </p>
+      {notice.assesses.length ? (
+        <>
+          <p>What it assesses:</p>
+          <ul>
+            {notice.assesses.map((a) => (
+              <li key={a}>{a}</li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <p>It helps us assess how your skills and experience match this job.</p>
+      )}
+      <p>You can ask for another process: tick &quot;Assess me another way&quot; when you apply. A recruiter sees your request and the tool is not used for you.</p>
+    </section>
+  );
 }
 
 /** A company's own question on the apply form (live: candidate custom fields shown on apply). */
@@ -1176,6 +1214,8 @@ export interface JobApplyFormProps {
   askPay?: boolean;
   /** Careers answer 359: the job is outside India, so the number takes any country code. */
   internationalPhone?: boolean;
+  /** Answer 474: a New York City job's automated tool notice: the form offers "Assess me another way". */
+  toolNotice?: ToolNotice | null;
   questions?: ApplyQuestion[];
   /** Reads contact details from a picked resume; fills only empty fields. */
   onResumePicked?: (file: File) => Promise<Partial<Record<'name' | 'email' | 'phone', string>>>;
@@ -1199,6 +1239,7 @@ export function JobApplyForm({
   notices,
   askPay = false,
   internationalPhone = false,
+  toolNotice = null,
   questions = [],
   onResumePicked,
   honeypot = false,
@@ -1213,6 +1254,7 @@ export function JobApplyForm({
   const [pay, setPay] = useState<number | null>(null);
   const [answers, setAnswers] = useState<Record<string, string | number>>({});
   const [website, setWebsite] = useState('');
+  const [another, setAnother] = useState(false);
   const [errors, setErrors] = useState<ApplyErrors>({});
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(defaultSent);
@@ -1275,6 +1317,7 @@ export function JobApplyForm({
         currentPay: askPay ? pay : undefined,
         answers: questions.length ? answers : undefined,
         website: honeypot && website ? website : undefined,
+        alternativeProcess: toolNotice && another ? true : undefined,
       });
       setSent(true);
     } catch (err) {
@@ -1340,6 +1383,12 @@ export function JobApplyForm({
           <FormField label="Your current or last pay (₹ a year)" optional helper="You can leave this empty." id={fid('pay')}>
             <NumberField value={pay} onChange={setPay} min={0} max={1_000_000_000} />
           </FormField>
+        )}
+        {toolNotice && (
+          <div className="yx-apply__consent">
+            <p className="yx-apply__notice">An automated tool is used for this job (New York City notice above). It is not used on your application for {toolNotice.businessDays} business days.</p>
+            <Checkbox id={fid('another')} checked={another} onChange={setAnother} label="Assess me another way (no automated tool)" />
+          </div>
         )}
         {notices ? (
           notices.map((n) => (

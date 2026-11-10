@@ -11,7 +11,7 @@ import { MaskedField, NumberField, TextArea, TextField } from '../../components/
 import { Checkbox, RadioGroup } from '../../components/choice';
 import { Select } from '../../components/select';
 import { FileUpload } from '../../components/upload';
-import { CareersPage, JobApplyForm, type CareersConfig, type CareersJob, type CareersPageProps, type JobApplyFormProps } from '../../components/careers';
+import { CareersPage, JobApplyForm, type CareersConfig, type CareersJob, type CareersPageProps, type JobApplyFormProps, AutomatedToolNotice } from '../../components/careers';
 import { ApprovalTimeline } from '../../components/timeline';
 import { formatDate, formatINR } from '../../lib/format';
 import { timeOf } from '../../lib/dates';
@@ -108,6 +108,7 @@ export function CareersJobScreen({ tenant, accent, detail, today, state = 'open'
                 </ul>
               </Card>
             )}
+            {live?.apply.toolNotice && <AutomatedToolNotice notice={live.apply.toolNotice} companyName={tenant} />}
             {live ? (
               !askPay && <p className="yx-ps-muted">We never ask about your current or past salary for this job.</p>
             ) : (

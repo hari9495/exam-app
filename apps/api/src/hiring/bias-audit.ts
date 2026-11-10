@@ -16,6 +16,8 @@ export interface BiasLaw {
   jurisdiction: string;
   cities: string[];
   validMonths: number;
+  /** Answer 474: candidates are told this many business days before the tool is used (null: the law sets none). */
+  noticeBusinessDays: number | null;
   categories: { sex: string[]; race: string[] };
   source: string;
   verify: boolean;
@@ -40,12 +42,13 @@ export async function biasLaw(tx: Prisma.TransactionClient, on: string): Promise
     select: { jurisdiction: true, values: true, source: true, verify: true },
   });
   if (!row) return null;
-  const v = row.values as { name?: string; cities?: string[]; validMonths?: number; categories?: { sex?: string[]; race?: string[] } };
+  const v = row.values as { name?: string; cities?: string[]; validMonths?: number; noticeBusinessDays?: number; categories?: { sex?: string[]; race?: string[] } };
   return {
     name: v.name ?? row.jurisdiction,
     jurisdiction: row.jurisdiction,
     cities: Array.isArray(v.cities) ? v.cities : [],
     validMonths: Number(v.validMonths ?? 12),
+    noticeBusinessDays: typeof v.noticeBusinessDays === 'number' ? v.noticeBusinessDays : null,
     categories: { sex: v.categories?.sex ?? [], race: v.categories?.race ?? [] },
     source: row.source,
     verify: row.verify,
@@ -114,11 +117,57 @@ export async function biasAuditBlock(tx: Prisma.TransactionClient, c: CompanyCon
   if ((await settingFor(tx, c, 'hiring.bias_audit.nyc', { legalEntityId: '' })) !== 'on') return null;
   const s = await auditState(tx, c, now);
   if (!s.nycOn || !s.law || s.valid) return null;
-  const job = await tx.job.findFirst({ where: { organizationId: c.organizationId, id: jobId }, select: { locationId: true, location: true } });
-  if (!job) return null;
-  const loc = job.locationId ? await tx.location.findFirst({ where: { organizationId: c.organizationId, id: job.locationId }, select: { state: true, address: true } }) : null;
-  const covered = loc ? coveredPlace(s.law, { state: loc.state, city: (loc.address as { city?: string } | null)?.city ?? null }) : coveredPlace(s.law, { text: job.location });
-  if (!covered) return null;
+  if (!(await jobCovered(tx, c, s.law, jobId))) return null;
   const last = s.latest ? `The last bias audit was on ${label(s.latest.auditedOn.toISOString().slice(0, 10))}, more than a year ago.` : 'No bias audit is recorded.';
   return `${tool} is blocked for New York City jobs. ${last} HR records a new independent audit in Hiring › Bias audits; other jobs are not affected.`;
+}
+
+/** Is the job's place covered by the law (its company location, else its free-text place)? */
+export async function jobCovered(tx: Prisma.TransactionClient, c: CompanyContext, law: BiasLaw, jobId: string): Promise<boolean> {
+  const job = await tx.job.findFirst({ where: { organizationId: c.organizationId, id: jobId }, select: { locationId: true, location: true } });
+  if (!job) return false;
+  const loc = job.locationId ? await tx.location.findFirst({ where: { organizationId: c.organizationId, id: job.locationId }, select: { state: true, address: true } }) : null;
+  return loc ? coveredPlace(law, { state: loc.state, city: (loc.address as { city?: string } | null)?.city ?? null }) : coveredPlace(law, { text: job.location });
+}
+
+/** `n` business days (Monday to Friday) after a date (shortcut: public holidays are not counted out; counsel to confirm). */
+export function addBusinessDays(iso: string, n: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  let left = n;
+  while (left > 0) {
+    d.setUTCDate(d.getUTCDate() + 1);
+    const wd = d.getUTCDay();
+    if (wd !== 0 && wd !== 6) left--;
+  }
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Answer 474: the notice a New York City job shows candidates while the company says it uses an automated tool there
+ * (hiring.bias_audit.nyc on): which tools are on (what they assess) and the business days of notice from the rule set.
+ * Null when the setting is off, no law is published or the job is not in a covered place.
+ */
+export async function nycNotice(tx: Prisma.TransactionClient, c: CompanyContext, jobId: string, now = new Date()): Promise<{ assesses: string[]; businessDays: number } | null> {
+  if ((await settingFor(tx, c, 'hiring.bias_audit.nyc', { legalEntityId: '' })) !== 'on') return null;
+  const law = await biasLaw(tx, istDay(now));
+  if (!law?.noticeBusinessDays || !(await jobCovered(tx, c, law, jobId))) return null;
+  const on = async (k: 'hiring.rediscovery.ai' | 'hiring.notetaker.enabled' | 'hiring.notetaker.ai_draft') => (await settingFor(tx, c, k, { legalEntityId: '' })) === 'on';
+  const assesses = [
+    (await on('hiring.notetaker.enabled')) && (await on('hiring.notetaker.ai_draft')) ? 'An AI draft of the interview scorecard, from the interview transcript (a person on the panel checks and submits it)' : null,
+    (await on('hiring.rediscovery.ai')) ? 'AI notes on how your profile matches other jobs, if you are considered for them later (a recruiter decides)' : null,
+  ].filter((x): x is string => Boolean(x));
+  return { assesses, businessDays: law.noticeBusinessDays };
+}
+
+/**
+ * Answer 474: the automated tool on one application: refused when the candidate asked for another process, or before
+ * the notice period has run from the day they applied (the notice was on the job page and apply form). Null: may run.
+ */
+export async function noticeBlock(tx: Prisma.TransactionClient, c: CompanyContext, entry: { jobId: string; createdAt: Date; alternativeRequestedAt: Date | null }, tool: string, now = new Date()): Promise<string | null> {
+  const notice = await nycNotice(tx, c, entry.jobId, now);
+  if (!notice) return null;
+  if (entry.alternativeRequestedAt) return `${tool} is not used for this candidate: they asked for another process on ${label(istDay(entry.alternativeRequestedAt))}.`;
+  const from = addBusinessDays(istDay(entry.createdAt), notice.businessDays);
+  if (istDay(now) < from) return `${tool} can be used for this candidate from ${label(from)}: New York City candidates are told ${notice.businessDays} business days before.`;
+  return null;
 }

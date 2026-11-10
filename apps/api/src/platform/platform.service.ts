@@ -3,7 +3,8 @@ import { Prisma } from '@prisma/client';
 import { AuditEntry, AuditService, TenantContext, TenantPrismaService, revokeStaffSessions } from '@exam-platform/shared';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { addDays, asDate, todayIst } from '../org-structure/org-validation';
-import { CompaniesQueryDto, CreateCompanyDto, ExtendTrialDto, LifecycleAction, LifecycleDto, PlatformAuditQueryDto, PriceDto } from './dto';
+import { SETTINGS } from '../org-structure/settings-registry';
+import { CompaniesQueryDto, CompanySettingDto, CreateCompanyDto, ExtendTrialDto, LifecycleAction, LifecycleDto, PlatformAuditQueryDto, PriceDto } from './dto';
 
 type Tx = Prisma.TransactionClient;
 export type Actor = NonNullable<AuditEntry['actor']>;
@@ -38,6 +39,8 @@ const MOVES: Record<LifecycleAction, { from: readonly string[]; to: string | nul
   close: { from: ['trial', 'active', 'suspended'], to: 'closed' },
 };
 const TRIAL_DAYS = 30; // P14 YX-TEN-08
+/** Careers answer 442: the company settings only YukthiX staff change. */
+const PLATFORM_KEYS = Object.keys(SETTINGS).filter((k) => SETTINGS[k]!.platform);
 const PRICE_NOTICE_DAYS = 90; // P14 YX-BILL-13
 
 const money = (d: Prisma.Decimal) => Number(d.toString());
@@ -192,6 +195,55 @@ export class PlatformService {
       return { result: null, audit: { action: 'platform.company.trial_extended', entityType: 'organization', entityId: id, metadata: { days: dto.days, trialEndsAt: trialEndsAt.toISOString().slice(0, 10), reason: dto.reason.trim() } } };
     });
     return this.company(actorUserId, id);
+  }
+
+  // ---- company settings only YukthiX changes (careers answer 442) ----
+
+  /** The platform-only settings of one company, each with whether its plan (the products' `features`, D15) includes it. */
+  async companySettings(actorUserId: string, id: string) {
+    return platformRead(this.tenantPrisma, actorUserId, 'companies.settings', async (tx) => {
+      const o = await tx.organization.findUnique({ where: { id }, select: { id: true, name: true } });
+      if (!o) throw new NotFoundException('Company not found');
+      const features = await this.planFeatures(tx, id);
+      const rows = await tx.setting.findMany({ where: { organizationId: id, scopeType: 'tenant', key: { in: PLATFORM_KEYS } }, select: { key: true, value: true } });
+      return {
+        id: o.id,
+        name: o.name,
+        features,
+        settings: PLATFORM_KEYS.map((key) => {
+          const def = SETTINGS[key]!;
+          return { key, label: def.label, value: String(rows.find((r) => r.key === key)?.value ?? def.default), default: def.default, values: def.values, feature: def.platform!.feature, included: features.includes(def.platform!.feature) };
+        }),
+      };
+    });
+  }
+
+  /** Changes one platform-only setting, with a reason; switching it on needs the plan to include it. Audited for the company. */
+  async changeCompanySetting(actorUserId: string, id: string, dto: CompanySettingDto) {
+    const def = SETTINGS[dto.key];
+    if (!def?.platform) throw new BadRequestException('YukthiX does not set that for a company here.');
+    if (!def.values.includes(dto.value)) throw new BadRequestException(`${def.label} is one of: ${def.values.join(', ')}`);
+    const actor = await staffActor(this.tenantPrisma, actorUserId);
+    const features = await this.tenantPrisma.forTenant(PLATFORM, async (tx) => {
+      if (!(await tx.organization.findUnique({ where: { id }, select: { id: true } }))) throw new NotFoundException('Company not found');
+      return this.planFeatures(tx, id);
+    });
+    if (dto.value !== def.default && !features.includes(def.platform.feature)) throw new ConflictException('This company’s plan does not include it. Add a product whose plan includes it first.');
+    await this.changeCompany(id, actorUserId, actor, async (tx) => {
+      const where = { organizationId: id, key: dto.key, scopeType: 'tenant', scopeId: id, validFrom: null };
+      const existing = await tx.setting.findFirst({ where });
+      const from = String(existing?.value ?? def.default);
+      if (existing) await tx.setting.update({ where: { id: existing.id }, data: { value: dto.value } });
+      else await tx.setting.create({ data: { ...where, value: dto.value } });
+      return { result: null, audit: { action: 'platform.company.setting_changed', entityType: 'organization', entityId: id, metadata: { key: dto.key, from, to: dto.value, reason: dto.reason.trim() } } };
+    });
+    return this.companySettings(actorUserId, id);
+  }
+
+  private async planFeatures(tx: Tx, organizationId: string): Promise<string[]> {
+    const codes = (await tx.organizationProduct.findMany({ where: { organizationId }, select: { productCode: true } })).map((p) => p.productCode);
+    const products = await tx.product.findMany({ where: { code: { in: codes } }, select: { features: true } });
+    return [...new Set(products.flatMap((p) => p.features))].sort();
   }
 
   // ---- plans and prices (P14 §4, YX-BILL-01/13/14) ----

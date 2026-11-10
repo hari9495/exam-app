@@ -14,7 +14,7 @@ import { Segment } from '../../components/segment';
 import { MultiSelect, Select } from '../../components/select';
 import { Card, DescriptionList, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { dayKey } from '../../lib/dates';
-import { formatINR } from '../../lib/format';
+import { formatDate, formatINR } from '../../lib/format';
 import { useRun } from '../org/org-kit';
 import { useToastIfAny } from '../../components/notify';
 import { dateText } from '../time/live/kit';
@@ -149,6 +149,11 @@ export function ApplicationDrawer(p: ApplicationDrawerProps) {
                   )}
                   {p.onScoreFit && p.canManage && <div><Button size="sm" icon={Sparkles} loading={busy === 'fit'} onClick={() => void run('fit', p.onScoreFit!)}>Score fit</Button></div>}
                 </Card>
+                {a.alternativeRequestedAt && (
+                  <InlineAlert tone="info" title="Asked for another process">
+                    On {formatDate(new Date(a.alternativeRequestedAt))} this candidate asked not to be assessed by the automated tool (New York City notice). The AI draft scorecard is not used for them; assess them another way.
+                  </InlineAlert>
+                )}
                 {a.currentPay != null && (
                   <Card title="Pay history">
                     <DescriptionList items={[{ label: 'Current pay, given when applying', value: `${formatINR(a.currentPay)} a year` }]} />

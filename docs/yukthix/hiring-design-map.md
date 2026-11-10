@@ -57,13 +57,15 @@ built**.
 | C. Offers, BGV and joining | 4 | 23 | 4 | 0 | 1 | 0 | 28 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 25 | 0 | 0 | 3 | 4 | 32 |
 | E. Staffing agency | 8 | 32 | 12 | 0 | 16 | 0 | 60 |
-| F. Compliance and fairness | 5 | 18 | 2 | 0 | 11 | 0 | 31 |
-| G. Careers site, portals and settings | 4 | 61 | 4 | 2 | 9 | 0 | 76 |
-| **All Hiring design groups (A–G)** | **37** | **270** | **29** | **2** | **28** | **5** | **334** |
+| F. Compliance and fairness | 5 | 17 | 2 | 0 | 11 | 0 | 30 |
+| G. Careers site, portals and settings | 4 | 62 | 4 | 2 | 9 | 0 | 77 |
+| **All Hiring design groups (A–G)** | **37** | **273** | **29** | **2** | **28** | **5** | **337** |
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 5 | 0 | 5 | 5 | 0 | 15 |
+Recounted by script on `test/yukthix-main` after merging round 4 (442, 452, 473, 474): A–G 273 live, 29 gap, 2 wire, 28 not built, 5 phone, of 337.
 Recounted by script on `test/yukthix-main` after merging the Hiring walk-through fixes: A–G 270 live, 29 gap, 2 wire, 28 not built, 5 phone, of 334.
 Recounted by script on `test/yukthix-main` after merging staffing slice 3 (invoices, collections, fees, e-invoice banner, client portal) and answers 482-484, 489: A–G 267 live, 29 gap, 2 wire, 28 not built, 5 phone, of 331.
 Recounted by script 13 Nov 2026 on `feat/yukthix-hiring-walk` (answer 476, from test main 9b05e1e73): the table had fallen behind for C, F and G; now A–G 250 live, 24 gap, 2 wire, 49 not built, 5 phone, of 330, with the walk's 3 new no-access stories (candidate list, bias audit, 6.1).
+Recounted by script 15 Nov 2026 on `feat/yukthix-hiring-small-4` (from `test/yukthix-main` 9b05e1e73 with HIR-23, staffing 2 and offers 3) after answers 473 and 474: 3 new stories drawn and live (6.1 P6_1_NycHint, T9-09 JobNycNotice, HIR-05 ApplicationAlternative): A–G 250 live, 24 gap, 2 wire, 49 not built, 5 phone, of 330 (rows C, F and G recounted from the script).
 Recounted by script on `test/yukthix-main` after merging staffing slice 2 (submissions, placements, bench, vendors): A–G 247 live, 24 gap, 2 wire, 49 not built, 5 phone, of 327.
 Recounted by script on `test/yukthix-main` after merging HIR-23 bias audit: A–G 226 live, 17 gap, 6 wire, 65 not built, 5 phone, of 319.
 Recounted by script on `test/yukthix-main` after merging offers round 3 (376, 402, 404, 423, 443): A–G 220 live, 17 gap, 6 wire, 69 not built, 5 phone, of 317.
@@ -336,6 +338,7 @@ list's Possible duplicates tab).
 | NotFound · Not found (anonymised) | live | 404, or an erased candidate |
 | Application · Application · messages, notes, offers | live | added 10 Nov 2026 (answer 261, moved from the deleted `ApplicationPanel`): the record's `?entry=` or Open application; stage, reject / undo, owner, checklist, fit, email / SMS / WhatsApp / survey, notes, offers (listed; made and worked on the HIR-09 pages); toasts. Interviews left it 11 Nov 2026 (answer 301): schedule on the record header, open / resend / cancel on HIR-07, the list on HIR-06 and the record's Scores tab |
 | ApplicationOffer · Application · an offer opens its record (HIR-09) | live | HIR-09 (answer 301): the Offers tab lists the offers (pay text only with the key) and opens the offer builder or record; approvers decide in the approvals inbox |
+| ApplicationAlternative · Application · asked for another process (New York City) | live | drawn 15 Nov 2026 (answer 474): the applicant ticked "Assess me another way" on a NYC job; the drawer says so with the day (board row `alternativeRequestedAt`); the AI draft scorecard is not used for them |
 
 #### HIR-05 · Candidate list
 
@@ -888,6 +891,7 @@ Google for Jobs JSON-LD and /yx/careers/[org]/sitemap.xml), /yx/apply/[token], a
 | JobPayQuestion · Job page · pay question where the law allows | live | answer 224: only where the job asks and HIR-24's law row allows; dropped by the API otherwise |
 | JobOnHold · Job page · not accepting applications (on hold) | live | answer 242 |
 | JobInternationalPhone · Job page · outside India (international number) | live | drawn 13 Nov 2026 (answer 359): a job whose place is outside India takes a number with any country code (kit `MaskedField` kind `intlPhone`) |
+| JobNycNotice · Job page · New York City automated tool notice | live | drawn 15 Nov 2026 (answer 474): with "We use an automated tool for jobs in New York City" on, a NYC job shows the kit `AutomatedToolNotice` (the tool is used, what it assesses, the business days of notice from HIR.BIAS_AUDIT, how to ask for another process) and the apply form offers "Assess me another way" (kept on the application, audited) |
 | PortalWithLogo · Candidate page · company logo | live | drawn 13 Nov 2026 (answers 357, 362): the kit `TenantLogo` in the portal header on every candidate page; offer and interview answers carry the company's logo, colour, careers link and white-label |
 | Status · Application status | live | /yx/application/[token]: this application only, candidate words (no stage name) |
 | StatusPhone · Application status · phone | live | same page at phone width |
@@ -974,10 +978,11 @@ stand-in is gone. Approval routes, careers and job boards stay on their stand-in
 | P6_1_ScorecardUsed · 6.1 Hiring · used scorecard (saved as a copy) | live | a template already used by a scorecard is never changed: “Save as a copy” posts a new template named “(copy)”; the API refuses a change with 409 |
 | P6_1_ScorecardView · 6.1 Hiring · scorecard, view only | live | the view-only sheet (skills with per cent, scale, pass bar) is drawn; live shows the list rows read-only without the pipelines key instead of opening it. Archive scorecard (danger, after a confirmation): `DELETE hiring/scorecard-templates/:id`, jobs using it go back to no scorecard, filled scorecards keep it |
 | P6_1_StaleRecruiter · 6.1 Hiring · default recruiter no longer qualifies | live | answer 348: a stored default who left or no longer holds the recruiter key reads as None with a warning naming them; new requisitions start with no recruiter (`defaultRecruiter`); the API refuses anyone else as default with 400, on both `PUT hiring/settings` and `PUT org/settings` |
-| P6_2 · 6.2 Staffing desk | live (gap) | /yx/settings/staffing: turn on the staffing desk (`staffing.desk.enabled`, default off, drawn), the rate-change backdating (`staffing.rate_change.backdate_days`, default 0, drawn), OT and holiday multipliers (1.5 and 2), default payment terms (30 days), invoice numbering (one series per GSTIN per financial year; the next number only goes up) and the r.46(b) law row. Changed by `ats.staffing.manage` or `org.settings.manage` company-wide, never while acting; audited. Slice 2 (drawn, live): submissions and placements (mask contact details, ending soon days, statutory cost %), vendors (target margin for the rate cap, ownership days) and the bench policy (bench pay, maximum days, then review or unpaid; a Segment). Answer 484: the statutory cost starts at 13% when any legal entity has a PF or ESI registration on or applied for (`statutory_registrations`: statute IN.PF or IN.ESI, status on or applied_awaited, as payroll uses), else 0%; a value HR saves wins. Slice 3: payment reminders (`staffing.dunning.schedule`: standard, gentle or off), the ageing groups (fixed) and e-invoicing (`staffing.einvoice.applies`, default off, with the IRP not connected). Gap: client-portal response times (no tickets) |
+| P6_2 · 6.2 Staffing desk | live (gap) | /yx/settings/staffing: turn on the staffing desk (`staffing.desk.enabled`, default off, drawn), the rate-change backdating (`staffing.rate_change.backdate_days`, default 0, drawn), OT and holiday multipliers (1.5 and 2), default payment terms (30 days), invoice numbering (one series per GSTIN per financial year; the next number only goes up) and the r.46(b) law row. Changed by `ats.staffing.manage` or `org.settings.manage` company-wide, never while acting; audited. Slice 2 (drawn, live): submissions and placements (mask contact details, ending soon days, statutory cost %), vendors (target margin for the rate cap, ownership days) and the bench policy (bench pay, maximum days, then review or unpaid; a Segment). Gap: collections, dunning, client-portal times and e-invoicing (slice 3) are left out |
+| P6_1_NycHint · 6.1 Hiring · AI on with a New York City location | live | drawn 15 Nov 2026 (answer 473): AI notes on past candidates or the AI draft is on, the company has a location in New York City (HIR.BIAS_AUDIT's city rules; `GET hiring/settings` `nycLocations`) and the NYC switch is off: a warning on the switch; nothing is blocked |
+| P6_1_StaleBandApprover · 6.1 Hiring · approver above the range can no longer approve | live | drawn 14 Nov 2026 (answer 376): a named approver who left or lost the offer-pay key stays named ("(cannot approve)") with a warning; the step goes to the company admins until HR chooses again |
 | P6_2_ReadOnly · 6.2 Staffing desk · read-only | live | recruiters (`ats.staffing.view`) read it |
 | P6_2_InvoiceSeries · 6.2 Staffing desk · add invoice series | live | new story (drawn): `InvoiceSeriesSheet`: the GSTIN must be one of the entity's registrations; a duplicate year and GSTIN 409; the number cannot go back |
-| P6_1_StaleBandApprover · 6.1 Hiring · approver above the range can no longer approve | live | drawn 14 Nov 2026 (answer 376): a named approver who left or lost the offer-pay key stays named ("(cannot approve)") with a warning; the step goes to the company admins until HR chooses again |
 
 ### H. Kit and "Live ·" groups (not designs)
 
@@ -1892,3 +1897,36 @@ with In pipeline summed. Screenshots and the per-page results are in the walk re
 515. **Recruiters and job boards.** A recruiter without the settings key cannot read the company's board list, so the job's
      Settings tab offers no boards to pick (postings already made still show). *Suggested: let recruiting (`pipeline:manage`)
      read the board names (never their keys), so they can post a job themselves.*
+## Small items round 4 built (answers 442, 452, 473, 474; 15 Nov 2026, branch `feat/yukthix-hiring-small-4`)
+- (442) Console › Companies › one company › **Company settings** (YukthiX staff only, platform session with the security
+  key): `brand.white_label` switched per company with a reason (`PATCH platform/companies/:id/settings`,
+  `platform.companies.manage`; read with `platform.companies.view`), audited `platform.company.setting_changed` in the
+  company's history. Tied to the plan: plans had no feature list, so `products.features` (data, migration
+  `202617s0000000_product_features`; D15: `white_label` in the HR and Service Desk plans) decides; switching on is refused
+  (409) when none of the company's products includes it; off is always allowed. The company cannot change or remove it
+  (`PUT org/settings` 403). Drawn first: console stories CompanySettings and CompanySettingsNotInPlan.
+- (452) The Recruiter template gains `ats.staffing.view` (clients and bill rates), in effect only while the company's desk
+  is on (the staffing routes refuse otherwise). Template history as for the slice-1 template; existing recruiters (the
+  older recruiter role and company roles still following the template) get it by migration
+  `202617s0000001_recruiter_staffing_view`, written with the super-admin line and audited `access.role.template_synced`
+  like the template sync; changed roles are left alone.
+- (473) Settings 6.1: a warning on "We use an automated tool for jobs in New York City" when it is off, AI notes on past
+  candidates or the AI draft scorecard is on, and the company has a location in New York City (HIR.BIAS_AUDIT city rules;
+  `GET hiring/settings` returns `nycLocations`). Nothing is blocked.
+- (474) With the NYC setting on, a NYC job's page shows the kit `AutomatedToolNotice` (the tool is used, what it assesses,
+  the notice days, how to ask for another process; `nycNotice` on the public job answer) and the apply form offers
+  "Assess me another way". The request is kept on the application (`pipeline_entries.alternative_requested_at`, audited
+  `candidate.alternative_process.requested`) and shown to the recruiter (board row, Application drawer). The 10 business
+  days are data: HIR.BIAS_AUDIT 2023-v2 (`noticeBusinessDays`; 2023-v1 withdrawn, migration
+  `202617s0000002_nyc_candidate_notice`). The AI draft scorecard is refused for a NYC application until the notice days
+  have run from the day it came in, and never for a candidate who asked.
+## Founder questions from small items round 4 (15 Nov 2026)
+501. **Business days.** The notice days count Monday to Friday; US public holidays are not taken out. *Suggested: keep;
+     counsel confirms (GO-LIVE), and a holiday list can join the rule set if needed.*
+502. **NYC candidates a recruiter adds.** They never saw the job page notice: the AI draft waits the notice days from when
+     they were added, but nobody tells them and they cannot ask for another process themselves. *Suggested: email them
+     the notice when added to a NYC job, and let the recruiter record a request for another process.*
+503. **Rediscovery and the notice.** AI notes on past candidates look at people for a new job; the notice and the
+     request apply to the AI draft only. *Suggested: keep; counsel confirms whether rediscovery needs its own notice.*
+504. **Plan features.** `products.features` has no console editor (only `white_label` exists today); a change is a
+     migration. *Suggested: keep until a second plan feature appears.*
