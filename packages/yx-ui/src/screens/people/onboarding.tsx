@@ -323,7 +323,7 @@ export function ReadyToOnboardQueue({ rows, defaultOpenId, overridden, live }: {
       </Button>
     ) : (
       <Button size="sm" icon={UserPlus} onClick={() => setOpenId(r.id)}>
-        {r.personType === 'Contract worker conversion' ? 'Convert' : 'Create employee'}
+        Create employee
       </Button>
     );
   const empty = (
@@ -392,12 +392,12 @@ export function ReadyToOnboardQueue({ rows, defaultOpenId, overridden, live }: {
           open={!!open}
           onOpenChange={(o) => !o && setOpenId(null)}
           size="lg"
-          title={open?.personType === 'Contract worker conversion' ? `Convert ${open?.name} to employee` : `Create employee: ${open?.name ?? ''}`}
+          title={`Create employee: ${open?.name ?? ''}`}
           subtitle={open ? `${open.personType} · ${open.source}${open.note ? ` · ${open.note}` : ''}` : undefined}
           footer={
             <>
               <Button onClick={() => setOpenId(null)}>Cancel</Button>
-              <Button variant="primary">{open?.personType === 'Contract worker conversion' ? 'Convert and start pre-boarding' : 'Create and start pre-boarding'}</Button>
+              <Button variant="primary">Create and start pre-boarding</Button>
             </>
           }
         >
@@ -429,11 +429,6 @@ export function ReadyToOnboardQueue({ rows, defaultOpenId, overridden, live }: {
                 </FormField>
               </div>
               {open.personType === 'Ex-employee rehire' && <RehireImpact overridden={overridden} />}
-              {open.personType === 'Contract worker conversion' && (
-                <InlineAlert tone="info" title="Same person, new role">
-                  {open.name}&apos;s deployments, site attendance and contract-labour records stay on the same timeline. Contract service doesn&apos;t count for probation (company setting). The kiosk enrolment carries over.
-                </InlineAlert>
-              )}
               <InlineAlert tone="info">An appointment letter task is added for HR, due by the joining date. It can&apos;t be removed.</InlineAlert>
             </div>
           )}

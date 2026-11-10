@@ -88,6 +88,8 @@ export class ApproveWorkerDto {
   @IsInt() @Min(1) version!: number;
   @IsOptional() @Matches(DAY) inductionOn?: string | null;
   @IsOptional() @trim() @IsString() @MaxLength(120) inductionBy?: string | null;
+  /** Answer 754: staff checked the worker's photo against the person at the site. */
+  @IsOptional() @IsBoolean() photoChecked?: boolean;
 }
 
 export class ReleaseWorkerDto {

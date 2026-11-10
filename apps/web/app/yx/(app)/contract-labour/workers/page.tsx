@@ -35,7 +35,7 @@ export default function YxContractWorkersPage() {
         onRetry: () => void q.refetch(),
         onCheck: async (input) => (await write<{ checks: { id: string; status: 'pass' | 'fail' | 'warn'; label: string; detail?: string }[] }>('POST', '/workers/check', input)).checks,
         onSend: (input) => write('POST', '/workers', input),
-        onApprove: (id, version, induction) => write('POST', `/workers/${enc(id)}/approve`, { version, inductionOn: induction.on, inductionBy: induction.by }),
+        onApprove: (id, version, induction) => write('POST', `/workers/${enc(id)}/approve`, { version, inductionOn: induction.on, inductionBy: induction.by, ...(induction.photoChecked ? { photoChecked: true } : {}) }),
         onRelease: (id, version, on, reason) => write('POST', `/workers/${enc(id)}/release`, { version, on, reason }),
         // CL-5: renew the gate pass (684), the photo (735), the kiosk PIN shown once (625).
         onRenewPass: (id, version, induction) => write('POST', `/workers/${enc(id)}/gate-pass`, { version, inductionOn: induction.on, inductionBy: induction.by }),

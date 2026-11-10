@@ -187,8 +187,8 @@ export class StatutoryRegistersService {
         return slips.map((s) => ({ employeeId: s.employeeId, cells: [codes.get(s.employmentId) ?? '', people.get(s.employeeId) ?? '', String(monthDays), String(lop(s.id)), String(daysPaid(s.id))] }));
       };
       const types = rs.values.types as RegisterType[];
-      // Contract labour registers (clra_*, CL-6) share the table, the freeze and the DSC signing, not this generation.
-      const current = await tx.statutoryRegister.findMany({ where: { organizationId: org, legalEntityId: e.id, locationId, periodStart, status: { not: 'superseded' }, NOT: { registerType: { startsWith: 'clra_' } } } });
+      // Contract labour registers (clra_*, CL-6) and client packs (clpk_*, CL-8) share the table, the freeze and the DSC signing, not this generation.
+      const current = await tx.statutoryRegister.findMany({ where: { organizationId: org, legalEntityId: e.id, locationId, periodStart, status: { not: 'superseded' }, NOT: [{ registerType: { startsWith: 'clra_' } }, { registerType: { startsWith: 'clpk_' } }] } });
       if (current.length && !reason) throw new BadRequestException('Registers for this month exist. Say why a new version is needed.');
       const made: { id: string; type: string; version: number; rows: number }[] = [];
       for (const t of types) {
@@ -265,7 +265,7 @@ export class StatutoryRegistersService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       await this.entity(tx, c, v, 'statutory.filing.view', entityId);
       const rows = await tx.statutoryRegister.findMany({
-        where: { organizationId: c.organizationId, legalEntityId: entityId, NOT: { registerType: { startsWith: 'clra_' } }, ...(month ? { periodStart: asDate(`${month}-01`) } : {}) },
+        where: { organizationId: c.organizationId, legalEntityId: entityId, NOT: [{ registerType: { startsWith: 'clra_' } }, { registerType: { startsWith: 'clpk_' } }], ...(month ? { periodStart: asDate(`${month}-01`) } : {}) },
         orderBy: [{ periodStart: 'desc' }, { registerType: 'asc' }, { version: 'desc' }],
         take: 300,
       });
@@ -361,7 +361,8 @@ export class StatutoryRegistersService {
       const org = c.organizationId;
       const e = await this.entity(tx, c, v, 'statutory.register.sign', entityId);
       const regs = await tx.statutoryRegister.findMany({
-        where: { organizationId: org, legalEntityId: e.id, locationId, periodStart: asDate(`${month}-01`), status: { in: ['frozen', 'signed'] } },
+        // A client's compliance pack (CL-8, clpk_*) is the client's, not part of our inspection pack.
+        where: { organizationId: org, legalEntityId: e.id, locationId, periodStart: asDate(`${month}-01`), status: { in: ['frozen', 'signed'] }, NOT: { registerType: { startsWith: 'clpk_' } } },
         orderBy: { registerType: 'asc' },
       });
       if (!regs.length) throw new ConflictException('Freeze (and sign) the month’s registers first.');

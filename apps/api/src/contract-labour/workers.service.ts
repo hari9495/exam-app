@@ -100,7 +100,7 @@ export class WorkersService {
     const loc = await tx.location.findFirst({ where: { id: i.locationId, organizationId: org, archivedAt: null }, select: { id: true, name: true, state: true, code: true } });
     if (!loc) throw new NotFoundException('Site not found.');
     const licences = (await tx.contractorLicence.findMany({ where: { organizationId: org, agencyId: contractor.id } })).map(
-      (l): LicenceLike & { maxWorkers: number } => ({ id: l.id, locationId: l.locationId, states: l.states, validFrom: iso(l.validFrom), validTo: iso(l.validTo), status: l.status as LicenceLike['status'], renewalOfId: l.renewalOfId, maxWorkers: l.maxWorkers }),
+      (l): LicenceLike & { maxWorkers: number } => ({ id: l.id, locationId: l.locationId!, states: l.states, validFrom: iso(l.validFrom), validTo: iso(l.validTo), status: l.status as LicenceLike['status'], renewalOfId: l.renewalOfId, maxWorkers: l.maxWorkers }),
     );
     const inForce = licences.filter((l) => l.status === 'verified' && l.locationId === loc.id && l.validFrom <= i.on && i.on <= l.validTo).sort((x, y) => (x.validTo < y.validTo ? 1 : -1))[0] ?? null;
     const active = { organizationId: org, status: { in: ['pending', 'deployed'] }, ...(i.exceptId ? { id: { not: i.exceptId } } : {}) };
@@ -211,6 +211,8 @@ export class WorkersService {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`clra-site:${org}:${row.locationId}`}))`;
       const { checks, loc, licence } = await this.checksFor(tx, c, { contractorId: row.agencyId, locationId: row.locationId, on, dob: iso(row.dob), idHash: row.idHash, exceptId: row.id });
       this.refuse(checks);
+      // Answer 754: a photo the contractor sent is checked against the person before the gate pass.
+      if (row.photoFileId && !dto.photoChecked) throw new BadRequestException('Check the photo against the person at the site first.');
       const induction = dto.inductionOn ? { on: dto.inductionOn, by: dto.inductionBy?.trim() || null } : null;
       if (p.inductionRequired) {
         if (!induction || !induction.by) throw new BadRequestException('Record the site safety induction (the day and who gave it) before the gate pass.');
@@ -301,13 +303,30 @@ export class WorkersService {
     const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const row = await tx.contractDeployment.findFirst({ where: { id, organizationId: c.organizationId } });
       if (!row) throw new NotFoundException(NOT_FOUND);
-      const f = await this.files.storeIn(tx, c, { area: 'clra-photo', name: file.name.slice(0, 120) || 'photo.jpg', data: file.data, allowedMime: ['image/jpeg', 'image/png'], maxMb: 5, via: 'staff' });
-      await tx.contractDeployment.update({ where: { id: row.id }, data: { photoFileId: f.id } });
-      await audit(tx, c, 'clra.worker.photo_set', 'contract_deployment', row.id, { fileId: f.id, sha256: f.sha256 });
-      return { org: c.organizationId, fileId: f.id };
+      return this.photoIn(tx, c, row.id, file, null);
     });
     void this.files.scan(out.org, out.fileId).catch(() => undefined);
     return { photo: true };
+  }
+
+  /**
+   * The one stored photo of a deployment (answers 735, 754): JPG or PNG up to 5 MB, private, virus-scanned before it
+   * opens; a new one replaces it. Staff add it on the gate pass card; the contractor when sending the worker (portal).
+   */
+  async photoIn(tx: Tx, c: CompanyContext, deploymentId: string, file: { name: string; data: Buffer }, contactId: string | null) {
+    const f = await this.files.storeIn(tx, c, { area: 'clra-photo', name: file.name.slice(0, 120) || 'photo.jpg', data: file.data, allowedMime: ['image/jpeg', 'image/png'], maxMb: 5, via: contactId ? 'self' : 'staff' });
+    await tx.contractDeployment.update({ where: { id: deploymentId }, data: { photoFileId: f.id } });
+    await audit(tx, c, 'clra.worker.photo_set', 'contract_deployment', deploymentId, { fileId: f.id, sha256: f.sha256, ...(contactId ? { via: 'contractor_portal', contactId } : {}) });
+    return { org: c.organizationId, fileId: f.id };
+  }
+
+  /** Answer 754: the contractor adds the photo of its own worker waiting for site approval (another's: 404). */
+  async portalPhotoIn(tx: Tx, c: CompanyContext, agencyId: string, contactId: string, id: string, file: { name: string; data: Buffer } | null) {
+    if (!file?.data?.length) throw new BadRequestException('Choose a photo (JPG or PNG).');
+    const row = await tx.contractDeployment.findFirst({ where: { id, organizationId: c.organizationId, agencyId } });
+    if (!row) throw new NotFoundException(NOT_FOUND);
+    if (row.status !== 'pending') throw new ConflictException('Add the photo while the worker waits for site approval. Ask the site to change it later.');
+    return this.photoIn(tx, c, row.id, file, contactId);
   }
 
   async photo(ctx: TenantContext, user: ScopeUser, id: string) {

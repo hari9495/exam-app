@@ -62,6 +62,15 @@ export class PublicContractorPortalController {
     return this.portal.withdraw(org.slice(0, 100), token, id, dto);
   }
 
+  /** Answer 754: the worker's photo, sent with the worker (JPG or PNG, up to 5 MB). */
+  @Post(':org/workers/:id/photo')
+  @HttpCode(200)
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  @UseInterceptors(UPLOAD)
+  workerPhoto(@Param('org') org: string, @Param('id', ParseUUIDPipe) id: string, @UploadedFile() file: Express.Multer.File | undefined, @Headers('x-contractor-portal') token?: string) {
+    return this.portal.workerPhoto(org.slice(0, 100), token, id, file ? { name: file.originalname, data: file.buffer } : null);
+  }
+
   @Post(':org/licences/:id/renewal')
   @HttpCode(201)
   @Throttle(MODERATE_UPLOAD_THROTTLE)

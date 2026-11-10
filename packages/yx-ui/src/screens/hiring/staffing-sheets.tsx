@@ -486,11 +486,14 @@ export interface PlaceableRow {
   person: string;
   job: string;
   source: 'employee' | 'candidate' | 'vendor';
+  /** CL-8: the client's sites (client establishments); our own employees placed there count against our licence. */
+  sites?: { id: string; name: string }[];
 }
 export interface PlacementInput {
   submissionId: string;
   startOn: string;
   endOn: string;
+  clientSiteId?: string;
 }
 
 /** HIR-17 New placement: a selected submission, its first and last day. */
@@ -498,16 +501,18 @@ export function PlacementSheet({ open, onOpenChange, placeable, today, onSave }:
   const [sub, setSub] = useState<string | null>(placeable.length === 1 ? placeable[0]!.id : null);
   const [start, setStart] = useState<Date | null>(today);
   const [end, setEnd] = useState<Date | null>(null);
+  const [site, setSite] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
   const s = useSave(() => onOpenChange(false));
   const chosen = placeable.find((p) => p.id === sub);
+  const sites = chosen?.sites ?? [];
   const endBad = !end || Boolean(start && end < start);
   const save = () => {
     setTried(true);
     if (!sub) return focus('pl-sub');
     if (!start) return focus('pl-start');
     if (endBad) return focus('pl-end');
-    void s.run(() => onSave({ submissionId: sub, startOn: isoOf(start)!, endOn: isoOf(end)! }), 'Placement started');
+    void s.run(() => onSave({ submissionId: sub, startOn: isoOf(start)!, endOn: isoOf(end)!, ...(site && sites.some((x) => x.id === site) ? { clientSiteId: site } : {}) }), 'Placement started');
   };
   const SOURCE = { employee: 'Own payroll', candidate: 'Pipeline candidate', vendor: 'Vendor supplied' } as const;
   return (
@@ -518,6 +523,11 @@ export function PlacementSheet({ open, onOpenChange, placeable, today, onSave }:
           <Select value={sub} onChange={setSub} options={placeable.map((p) => ({ value: p.id, label: p.person, description: `${p.job} · ${SOURCE[p.source]}` }))} placeholder="Choose a person" />
         </FormField>
         {chosen?.source === 'candidate' && <InlineAlert tone="warning">A pipeline candidate joins as an employee first (People › Onboarding); then submit them from the bench.</InlineAlert>}
+        {sites.length > 0 && (
+          <FormField id="pl-site" label="Client site" optional helper="Where they work. Our own staff at a site count against our contractor licence there.">
+            <Select value={site} onChange={setSite} options={sites.map((x) => ({ value: x.id, label: x.name }))} placeholder="Choose a site" />
+          </FormField>
+        )}
         <FieldRow>
           <FormField id="pl-start" label="First day" required helper="The rate card must have a rate on this day." error={tried && !start ? 'Choose the first day.' : null}>
             <DatePicker value={start} onChange={setStart} />

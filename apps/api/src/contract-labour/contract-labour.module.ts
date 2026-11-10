@@ -1,3 +1,5 @@
+import { ContractorSideController } from './contractor-side.controller';
+import { ContractorSideService } from './contractor-side.service';
 import { PayrollModule } from '../payroll/payroll.module';
 import { ClraRegistersController } from './registers.controller';
 import { ClraRegistersService } from './registers.service';
@@ -63,8 +65,8 @@ export class ContractLabourJobs implements OnModuleInit, OnModuleDestroy {
 // CL-2: contract workers (persons with the contract_worker role) and their deployments, gate passes and inductions.
 @Module({
   imports: [AuthModule, StatutoryModule, CryptoModule, DocumentsModule, EmailModule, NotificationsModule, OrgStructureModule, PayrollModule],
-  controllers: [ContractLabourController, PublicContractorPortalController, ClraRegistersController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, ContractLabourService, WorkersService, ComplianceService, ContractAttendanceService, ContractorPortalService, ContractLabourJobs, ClraRegistersService],
+  controllers: [ContractLabourController, PublicContractorPortalController, ClraRegistersController, ContractorSideController],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, ContractLabourService, WorkersService, ComplianceService, ContractAttendanceService, ContractorPortalService, ContractLabourJobs, ClraRegistersService, ContractorSideService],
   exports: [ContractLabourService, ContractAttendanceService],
 })
 export class ContractLabourModule {}

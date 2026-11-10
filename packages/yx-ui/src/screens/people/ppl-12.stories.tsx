@@ -10,5 +10,4 @@ export const Queue: S = { name: 'Queue by person type', render: () => <ReadyToOn
 export const CreateNew: S = { name: 'Create employee (new person)', render: () => <ReadyToOnboardQueue rows={READY_TO_ONBOARD} defaultOpenId="r4" /> };
 export const Rehire: S = { name: 'Create employee (rehire impact preview)', render: () => <ReadyToOnboardQueue rows={READY_TO_ONBOARD} defaultOpenId="r2" /> };
 export const RehireOverride: S = { name: 'Rehire with an override (reason required)', render: () => <ReadyToOnboardQueue rows={READY_TO_ONBOARD} defaultOpenId="r2" overridden /> };
-export const Conversion: S = { name: 'Contract worker conversion', render: () => <ReadyToOnboardQueue rows={READY_TO_ONBOARD} defaultOpenId="r3" /> };
 export const Empty: S = { name: '· empty', render: () => <ReadyToOnboardQueue rows={[]} /> };

@@ -13,8 +13,8 @@ import { ContractLabourService } from './contract-labour.service';
 // Contract labour CL-6 (CLB-04, founder answers 629, 630). The registers: the formats are rule-set data per state
 // (IN.CLRA.REGISTERS, verify); each month and establishment the compliance owner makes the register of contractors, of
 // contract workers, the muster roll and the wage register from the deployments and the contractors' wage registers
-// (CL-4). Until CL-5's attendance lands, the muster's days are the wage register's (said on the register). A contractor
-// without a wage register for the month keeps the muster and wages waiting. The versions live in statutory_registers
+// (CL-4). Answer 781: the muster's days are the site attendance the site in-charge confirmed (CL-5); a contractor whose
+// month is not confirmed keeps the muster waiting, and one without a wage register keeps the wage register waiting. The versions live in statutory_registers
 // (types clra_*), so freezing and the company DSC signature are the payroll registers service's. The annual return is
 // drafted here from the year's data; filing on the portal stays manual: the filed day and reference are recorded.
 // Reads: clra.contractor.view; changes: clra.contractor.manage, never while acting (403); another company: 404.
@@ -22,7 +22,8 @@ import { ContractLabourService } from './contract-labour.service';
 type RegisterFormat = { type: string; title: string; columns: string[] };
 type Formats = { registers: RegisterFormat[]; annualReturn: { title: string; due: string } };
 const STATUTE = 'IN.CLRA.REGISTERS';
-const MUSTER_NOTE = 'Days from the contractors’ wage registers (site attendance comes with CL-5)';
+const MUSTER_NOTE = 'Days from the site attendance confirmed by the site in-charge';
+const RETURN_DAYS_NOTE = 'Days worked are from the contractors’ wage registers';
 const day = (s: string) => new Date(`${s}T00:00:00Z`);
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const rupees = (paise: bigint) => (Number(paise) / 100).toFixed(2);
@@ -67,9 +68,13 @@ export class ClraRegistersService {
       await payScope(tx, [...new Set(sites.map((s) => s.legalEntityId))]);
       const regs = await tx.statutoryRegister.findMany({ where: { organizationId: org, registerType: { startsWith: 'clra_' }, periodStart: day(from), status: { not: 'superseded' } }, orderBy: [{ registerType: 'asc' }] });
       const waiting = [];
+      const attendanceWaiting = [];
       for (const s of sites) {
-        const names = await this.missingWages(tx, c, s.id, month, deps.filter((d) => d.locationId === s.id));
+        const here = deps.filter((d) => d.locationId === s.id);
+        const names = await this.missingWages(tx, c, s.id, month, here);
         if (names.length) waiting.push({ locationId: s.id, contractors: names });
+        const open = await this.unconfirmed(tx, c, s.id, month, here);
+        if (open.length) attendanceWaiting.push({ locationId: s.id, contractors: open });
       }
       const chartMonths = lastMonths(month, 6);
       const chartDeps = await this.deployments(tx, c, null, `${chartMonths[0]}-01`, to);
@@ -79,6 +84,7 @@ export class ClraRegistersService {
         establishments: sites.map((s) => ({ id: s.id, name: s.name })),
         registers: regs.map((r) => ({ id: r.id, type: r.registerType, locationId: r.locationId, location: sites.find((s) => s.id === r.locationId)?.name ?? '', formatVersion: r.formatVersion, version: r.version, status: r.status, rows: r.rowCount, signatureRef: r.signatureRef, frozenAt: r.frozenAt, signedAt: r.signedAt })),
         waiting,
+        attendanceWaiting,
         chart: {
           months: chartMonths,
           series: sites.map((s) => ({ name: s.name, values: chartMonths.map((m) => chartDeps.filter((d) => d.locationId === s.id && iso(d.fromOn) <= monthRange(m).to && (!d.toOn || iso(d.toOn) >= `${m}-01`)).length) })),
@@ -95,6 +101,14 @@ export class ClraRegistersService {
     const withWages = new Set((await tx.contractorPackItem.findMany({ where: { organizationId: c.organizationId, packId: { in: packs.map((p) => p.id) }, kind: 'wage_register' }, select: { packId: true } })).map((i) => packs.find((p) => p.id === i.packId)!.agencyId));
     const missing = agencies.filter((x) => !withWages.has(x));
     return (await tx.agency.findMany({ where: { organizationId: c.organizationId, id: { in: missing } }, select: { name: true }, orderBy: { name: 'asc' } })).map((x) => x.name);
+  }
+
+  /** Answer 781: contractors with workers at the site in the month whose attendance the site in-charge has not confirmed. */
+  private async unconfirmed(tx: Tx, c: CompanyContext, locationId: string, month: string, deps: { agencyId: string }[]) {
+    const agencies = [...new Set(deps.map((d) => d.agencyId))];
+    if (!agencies.length) return [];
+    const done = new Set((await tx.contractAttendanceConfirmation.findMany({ where: { organizationId: c.organizationId, locationId, month: day(`${month}-01`), agencyId: { in: agencies } }, select: { agencyId: true } })).map((x) => x.agencyId));
+    return (await tx.agency.findMany({ where: { organizationId: c.organizationId, id: { in: agencies.filter((x) => !done.has(x)) } }, select: { name: true }, orderBy: { name: 'asc' } })).map((x) => x.name);
   }
 
   /** Answer 629: the month's registers for one establishment (a new version needs a reason; the old one is superseded). */
@@ -115,6 +129,10 @@ export class ClraRegistersService {
       const persons = new Map((await tx.person.findMany({ where: { organizationId: org, id: { in: deps.map((d) => d.personId) } }, select: { id: true, givenName: true, familyName: true } })).map((p) => [p.id, [p.givenName, p.familyName].filter(Boolean).join(' ')]));
       const agencyName = new Map(agencies.map((x) => [x.id, x.name]));
       const waiting = await this.missingWages(tx, c, loc.id, dto.month, deps);
+      const attendanceWaiting = await this.unconfirmed(tx, c, loc.id, dto.month, deps);
+      // Answer 781: each worker's days on site from the confirmed attendance.
+      const present = new Map<string, number>();
+      for (const a of await tx.contractAttendance.findMany({ where: { organizationId: org, deploymentId: { in: deps.map((d) => d.id) }, workOn: { gte: day(from), lte: day(to) } }, select: { deploymentId: true } })) present.set(a.deploymentId, (present.get(a.deploymentId) ?? 0) + 1);
       const packs = await tx.contractorPack.findMany({ where: { organizationId: org, locationId: loc.id, month: day(from) }, select: { id: true } });
       const wages = new Map((await tx.contractorWageLine.findMany({ where: { organizationId: org, packId: { in: packs.map((p) => p.id) }, deploymentId: { in: deps.map((d) => d.id) } } })).map((w) => [w.deploymentId, w]));
       const sl = (rows: string[][]) => rows.map((r, i) => [String(i + 1), ...r]);
@@ -125,8 +143,8 @@ export class ClraRegistersService {
           return [ag.name, ag.work ?? '', lic?.licenceNo ?? 'No licence verified', lic ? iso(lic.validTo) : '', lic ? String(lic.maxWorkers) : '', String(deps.filter((d) => d.agencyId === ag.id).length)];
         })),
         clra_workmen: sl(byName.map((d) => [persons.get(d.personId) ?? '', agencyName.get(d.agencyId) ?? '', d.skill.replace('_', '-'), d.idLast4, d.uan ?? '', iso(d.fromOn), d.toOn ? iso(d.toOn) : ''])),
-        // Waiting for a contractor's wage register: no muster or wage register yet (they would be incomplete).
-        clra_muster: waiting.length ? null : sl(byName.map((d) => [persons.get(d.personId) ?? '', agencyName.get(d.agencyId) ?? '', String(wages.get(d.id)?.days ?? 0)])),
+        // A register that would be incomplete waits: the muster for every contractor's confirmed attendance, the wages for every wage register.
+        clra_muster: attendanceWaiting.length ? null : sl(byName.map((d) => [persons.get(d.personId) ?? '', agencyName.get(d.agencyId) ?? '', String(present.get(d.id) ?? 0)])),
         clra_wages: waiting.length ? null : sl(byName.map((d) => { const w = wages.get(d.id); return [persons.get(d.personId) ?? '', agencyName.get(d.agencyId) ?? '', String(w?.days ?? 0), w ? rupees(w.grossPaise) : '0.00', w ? iso(w.paidOn) : '']; })),
       };
       const current = await tx.statutoryRegister.findMany({ where: { organizationId: org, legalEntityId: entity.id, locationId: loc.id, periodStart: day(from), registerType: { startsWith: 'clra_' }, status: { not: 'superseded' } } });
@@ -140,8 +158,8 @@ export class ClraRegistersService {
         const reg = await this.registers.storeIn(tx, c, { entity, locationId: loc.id, place: loc.name, month: dto.month, type: t.type, title: t.title, columns: t.columns, rows, note, formatVersion: f.version, old, reason: dto.reason?.trim() ?? null, userId: user.userId! });
         made.push({ id: reg.id, type: t.type, version: reg.version, rows: rows.length });
       }
-      await audit(tx, c, 'clra.registers.generated', 'location', loc.id, { month: dto.month, registers: made, waiting, reason: dto.reason ?? null });
-      return { month: dto.month, registers: made, waiting };
+      await audit(tx, c, 'clra.registers.generated', 'location', loc.id, { month: dto.month, registers: made, waiting, attendanceWaiting, reason: dto.reason ?? null });
+      return { month: dto.month, registers: made, waiting, attendanceWaiting };
     });
   }
 
@@ -195,7 +213,7 @@ export class ClraRegistersService {
           filed: done ? { on: iso(done.filedOn), reference: done.reference, at: done.filedAt.toISOString() } : null,
         });
       }
-      return { year, canFile: a.manage && !a.actingForOther, daysNote: MUSTER_NOTE, returns: out };
+      return { year, canFile: a.manage && !a.actingForOther, daysNote: RETURN_DAYS_NOTE, returns: out };
     });
   }
 
