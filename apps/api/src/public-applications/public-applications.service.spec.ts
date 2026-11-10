@@ -665,6 +665,7 @@ describe('PublicApplicationsService', () => {
               rejected: false,
               createdAt: new Date('2026-01-01T00:00:00Z'),
               job: { title: 'Backend' },
+              candidate: { phone: null, whatsappOptedInAt: null },
             }),
           },
         }),
@@ -687,6 +688,7 @@ describe('PublicApplicationsService', () => {
         accent: null,
         whiteLabel: false,
         toolNotice: null,
+        whatsapp: { optedIn: false, hasPhone: false },
       });
     });
 
@@ -1196,7 +1198,7 @@ describe('PublicApplicationsService', () => {
         expect.any(Function),
       );
       expect(prisma.organization.findUnique).toHaveBeenCalledWith({ where: { id: 'org-1' }, select: { name: true } });
-      expect(result).toEqual({ optedOut: false, orgName: 'Acme' });
+      expect(result).toEqual({ optedOut: false, orgName: 'Acme', whatsappOptedIn: false });
     });
 
     it('reports optedOut: true when emailOptedOutAt is set', async () => {
@@ -1207,7 +1209,7 @@ describe('PublicApplicationsService', () => {
 
       const result = await service.getUnsubscribe('unsub-token-1');
 
-      expect(result).toEqual({ optedOut: true, orgName: 'Acme' });
+      expect(result).toEqual({ optedOut: true, orgName: 'Acme', whatsappOptedIn: false });
     });
 
     it('throws NotFoundException for an unknown token', async () => {
