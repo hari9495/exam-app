@@ -548,6 +548,8 @@ export interface PublicJob {
   askPayHistory?: boolean;
   /** Careers answer 359: the job is outside India, so the apply form takes any country code. */
   internationalPhone?: boolean;
+  /** Answer 474: a New York City job's automated tool notice (null elsewhere). */
+  nycNotice?: { assesses: string[]; businessDays: number } | null;
   /** Careers answer 353: the last day to apply (YYYY-MM-DD) and the experience asked for. */
   applyBy?: string | null;
   experience?: string | null;

@@ -21,6 +21,8 @@ export interface HiringSettingsData {
   scorecards: ScorecardTemplateView[];
   /** HIR-09 answer 332: people who may approve an offer above the range (they hold the offer-pay key). */
   offerApprovers?: { id: string; name: string }[];
+  /** Answer 473: the company's locations in New York City (the bias-audit law's city rules). */
+  nycLocations?: string[];
   /** Offers answer 376: the named band approver who left or lost the offer-pay key: their name (the step goes to the company admins). */
   staleBandApprover?: { id: string; name: string } | null;
   /** HIR-09 answer 337: each offer letter template and its e-sign switch. */
@@ -82,6 +84,19 @@ const bonusLabel = (v: string) => formatINR(Number(v));
 const daysLabel = (v: string) => `${v} days`;
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
+/**
+ * Answer 473: an AI tool is on (AI notes on past candidates, the AI draft scorecard), the company has a New York City
+ * location, and "We use an automated tool for jobs in New York City" is off: say so (nothing is blocked).
+ */
+export function nycHint(data: HiringSettingsData): string | undefined {
+  const v = data.values;
+  if (v['hiring.bias_audit.nyc'] === 'on' || !data.nycLocations?.length) return undefined;
+  const tools = [v['hiring.rediscovery.ai'] === 'on' ? 'AI notes on past candidates' : null, v['hiring.notetaker.enabled'] === 'on' && v['hiring.notetaker.ai_draft'] === 'on' ? 'the AI draft scorecard' : null].filter(Boolean);
+  if (!tools.length) return undefined;
+  const places = data.nycLocations.length === 1 ? `${data.nycLocations[0]} is` : `${data.nycLocations.slice(0, -1).join(', ')} and ${data.nycLocations.at(-1)} are`;
+  return `${tools.join(' and ')} ${tools.length > 1 ? 'are' : 'is'} on and ${places} in New York City. If you use ${tools.length > 1 ? 'them' : 'it'} for jobs there, turn this on: the law then needs a yearly bias audit and a notice to candidates.`.replace(/^./, (c) => c.toUpperCase());
+}
+
 /** The designed 6.1 page with the company's values, for SettingsPageScreen `live`. */
 export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettingsData): SettingsPageDef {
   const people = data.people.map((p) => ({ value: p.id, label: p.name }));
@@ -138,10 +153,14 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
       case 'hire.notetaker_enabled':
       case 'hire.notetaker_ai_draft':
       case 'hire.bgv_decider_other_person':
-      case 'hire.resume_quarantine_notice':
-      case 'hire.bias_audit_nyc': {
+      case 'hire.resume_quarantine_notice': {
         const k = KEY[d.key];
         return { ...base, value: v[k] === TOGGLE[d.key]![0], starter: v[k] === data.defaults[k] };
+      }
+      case 'hire.bias_audit_nyc': {
+        const k = KEY[d.key];
+        const warning = nycHint(data);
+        return { ...base, value: v[k] === TOGGLE[d.key]![0], starter: v[k] === data.defaults[k] && !warning, warning };
       }
       case 'hire.retention_months': {
         const k = KEY[d.key];

@@ -65,6 +65,7 @@ export function useApplicationDrawer(entryId: string | null, jobId: string | nul
     fit: fit.data ? { status: fit.data.status, score: fit.data.overallScore, summary: fit.data.summary, stale: r.fitStale } : null,
     tests: r.examResults.map((e) => ({ examId: e.examId, title: e.examTitle, score: e.score, passFail: e.passFail, status: e.score == null ? 'not taken yet' : 'taken' })),
     currentPay: pay.data?.currentPay ?? null,
+    alternativeRequestedAt: (r as { alternativeRequestedAt?: string | null }).alternativeRequestedAt ?? null,
     customFields: (r.customFields ?? []).filter((f) => f.value != null).map((f) => ({ label: f.label, value: String(f.value) })),
     checklist: collectChecklistItems(p.stages).map((c) => ({ id: c.id, label: c.label, done: Boolean(r.blueprintChecklist?.[c.id]) })),
     assignee: r.assignedUserId,

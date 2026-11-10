@@ -106,3 +106,5 @@ export const ApplicationOffer: S = {
   name: 'Application · an offer opens its record (HIR-09)',
   render: () => <ApplicationDrawer {...sampleApplication} app={{ ...sampleApplication.app!, offers: [{ id: 'o1', status: 'pending_approval', compensation: 'Fixed CTC ₹12,00,000 a year', startDate: '2026-12-01', expiresAt: '2026-11-15' }] }} />,
 };
+// Answer 474: a New York City applicant asked for another process than the automated tool.
+export const ApplicationAlternative: S = { name: 'Application · asked for another process (New York City)', render: () => <ApplicationDrawer {...sampleApplication} app={{ ...sampleApplication.app!, alternativeRequestedAt: '2026-11-12T10:30:00+05:30' }} /> };

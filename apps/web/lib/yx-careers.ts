@@ -88,6 +88,7 @@ export function liveApply(applyToken: string, job: PublicJob): LiveCareersJob['a
     honeypot: true,
     askPay: Boolean(job.askPayHistory),
     internationalPhone: Boolean(job.internationalPhone),
+    toolNotice: job.nycNotice ?? null,
     notices: notices.map((n) => ({ purpose: n.purpose, text: n.text, required: n.required })),
     questions: job.customFields.map((f) => ({ id: f.definitionId, label: f.label, type: f.fieldType, options: f.options, required: f.required })),
     onResumePicked: async (file: File) => {
@@ -105,6 +106,7 @@ export function liveApply(applyToken: string, job: PublicJob): LiveCareersJob['a
         consents: notices.filter((n) => a.consents?.includes(n.purpose)).map((n) => ({ purpose: n.purpose, version: n.version })),
         ...(a.currentPay != null ? { currentPay: a.currentPay } : {}),
         ...(a.website ? { website: a.website } : {}),
+        ...(a.alternativeProcess ? { alternativeProcess: true } : {}),
       });
     },
   };

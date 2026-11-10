@@ -391,3 +391,20 @@
 .yx-tenant-logo { display: inline-block; max-width: 160px; height: auto; max-height: 24px; object-fit: contain; vertical-align: middle; }
 .yx-tenant-logo[data-size="md"] { max-width: 240px; max-height: 40px; }
 .yx-tenant-logo--text { max-height: none; font-weight: var(--yx-weight-semibold); color: var(--yx-color-text-primary); }
+
+/* Answer 474: the New York City automated tool notice on the job page. */
+.yx-apply__tool-notice {
+  border: var(--yx-border-width) solid var(--yx-color-border);
+  border-radius: var(--yx-radius-card);
+  padding: var(--yx-space-4);
+  display: grid;
+  gap: var(--yx-space-2);
+}
+.yx-apply__tool-notice h3 {
+  margin: 0;
+  font-size: var(--yx-text-md);
+}
+.yx-apply__tool-notice p,
+.yx-apply__tool-notice ul {
+  margin: 0;
+}

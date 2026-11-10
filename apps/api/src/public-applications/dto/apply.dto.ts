@@ -39,6 +39,9 @@ export class ApplyDto {
   /** HIR-24 answer 224: current or last pay in rupees a year, optional; stored only where the job asks and the law allows. */
   @IsOptional() @IsInt() @Min(0) @Max(1_000_000_000) currentPay?: number;
 
+  /** Answer 474: a New York City applicant asks for another process than the automated tool. */
+  @IsOptional() @IsBoolean() alternativeProcess?: boolean;
+
   /** Honeypot: a field people never see. A bot that fills it is answered as if it applied, and nothing is stored. */
   @IsOptional() @IsString() @MaxLength(500) website?: string;
 }

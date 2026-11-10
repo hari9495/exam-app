@@ -327,6 +327,8 @@ export interface ApplicationView {
   customFields: { label: string; value: string }[];
   /** Careers answer 355: the pay the applicant gave when asked (rupees a year); only for holders of the offer-pay key. */
   currentPay?: number | null;
+  /** Answer 474: a New York City applicant asked for another process than the automated tool (ISO time). */
+  alternativeRequestedAt?: string | null;
   checklist: { id: string; label: string; done: boolean }[];
   assignee: string | null;
   emails: { id: string; subject: string; status: string; at: string }[];

@@ -22,6 +22,7 @@ import { careersLayout, withHero, type CareersLayout, checkConsents, ipHash, isS
 import { payLawFor } from '../hiring/pay-law';
 import { SETTINGS } from '../org-structure/settings-registry';
 import { publicBrand } from './public-brand';
+import { nycNotice } from '../hiring/bias-audit';
 import { todayIst } from '../org-structure/org-validation';
 import { poolConsented, withdrawConsent } from '../talent/pools.service';
 import { QuickApplyDto } from './dto/quick-apply.dto';
@@ -278,6 +279,8 @@ export class PublicApplicationsService {
       salary: job.showSalary && job.salaryMin != null && job.salaryMax != null ? { min: job.salaryMin, max: job.salaryMax, currency: job.salaryCurrency ?? 'INR', period: job.salaryPeriod } : null,
       askPayHistory,
       internationalPhone: country !== 'IN',
+      // Answer 474: New York City jobs tell candidates about the automated tool (null elsewhere, or when the company says it uses none).
+      nycNotice: await this.tenantPrisma.forTenant({ organizationId: job.organizationId, isSuperAdmin: true }, (tx) => nycNotice(tx, { organizationId: job.organizationId, isSuperAdmin: true }, job.id)),
       // Careers answer 353: the last day to apply and the experience asked for (shown on the job page when set).
       applyBy: job.applyBy ? job.applyBy.toISOString().slice(0, 10) : null,
       experience: job.experience,
@@ -518,6 +521,12 @@ export class PublicApplicationsService {
         // though the profile above IS refreshed with the newly-uploaded résumé.
         update: {},
       });
+      // Answer 474: a New York City applicant who asks for another process than the automated tool (the notice was on
+      // the job page and apply form); kept on the application for the recruiter, audited. Ignored where no notice applies.
+      if (dto.alternativeProcess && !entry.alternativeRequestedAt && (await nycNotice(tx, context, job.id))) {
+        await tx.pipelineEntry.update({ where: { id: entry.id }, data: { alternativeRequestedAt: new Date() } });
+        await AuditService.recordIn(tx, context, { actorUserId: null, action: 'candidate.alternative_process.requested', entityType: 'pipeline_entry', entityId: entry.id, metadata: { jobId: job.id } });
+      }
       // Last write in the tx: a public application always makes the candidate at least 'engaged'.
       await recomputeGlobalStage(tx, job.organizationId, candidate.id);
       return { entry, candidateId: candidate.id, isNewCandidate, portalToken, newResume };

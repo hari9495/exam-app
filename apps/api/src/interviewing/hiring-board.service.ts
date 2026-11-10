@@ -44,7 +44,9 @@ export class HiringBoardService {
       const pending = await tx.pendingRejection.findMany({ where: { organizationId: c.organizationId, entryId: { in: entryIds }, sentAt: null, undoneAt: null }, select: { entryId: true, sendAt: true } });
       // HIR-13: an internal applicant's current manager never sees the application (unless they hire for the job).
       const hidden = await hiddenFromManager(tx, c.organizationId, userId, entryIds);
-      return { results, next, pending, hidden };
+      // Answer 474: New York City applicants who asked for another process than the automated tool.
+      const alternative = new Map((await tx.pipelineEntry.findMany({ where: { organizationId: c.organizationId, id: { in: entryIds }, alternativeRequestedAt: { not: null } }, select: { id: true, alternativeRequestedAt: true } })).map((e) => [e.id, e.alternativeRequestedAt]));
+      return { results, next, pending, hidden, alternative };
     });
     const columns = Object.fromEntries(
       Object.entries(b.columns).map(([stageId, rows]) => [
@@ -53,7 +55,7 @@ export class HiringBoardService {
           const res = extra.results.get(r.entryId);
           const slot = extra.next.find((s) => s.interview.pipelineEntryId === r.entryId && (!s.interview.confirmedSlotId || s.interview.confirmedSlotId === s.id));
           const p = extra.pending.find((x) => x.entryId === r.entryId);
-          return { ...r, scorecards: res ?? null, nextInterviewAt: slot?.startsAt ?? null, rejectionPendingUntil: p?.sendAt ?? null };
+          return { ...r, scorecards: res ?? null, nextInterviewAt: slot?.startsAt ?? null, rejectionPendingUntil: p?.sendAt ?? null, alternativeRequestedAt: extra.alternative.get(r.entryId) ?? null };
         }),
       ]),
     );
