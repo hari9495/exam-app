@@ -89,7 +89,6 @@
     "ops: PoshComplaintScreen",
     "ops: PreRegisterScreen",
     "ops: StatutorySetupScreen",
-    "ops: VendorComplianceScreen",
     "ops: VisitorDeskScreen",
     "ops: VisitorKioskScreen",
     "ops: VisitorLogScreen",

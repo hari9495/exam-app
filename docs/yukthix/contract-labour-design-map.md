@@ -28,13 +28,13 @@ built** (no API for this feature) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Principal employer (contractors working at our sites) | 5 | 26 | 1 | 0 | 13 | 0 | 40 |
+| A. Principal employer (contractors working at our sites) | 5 | 31 | 2 | 0 | 8 | 0 | 41 |
 | B. We are the contractor (our staff at client sites) | 3 | 0 | 0 | 0 | 10 | 0 | 10 |
-| C. Contractor portal | 1 | 9 | 1 | 0 | 4 | 0 | 14 |
+| C. Contractor portal | 1 | 14 | 2 | 0 | 0 | 0 | 16 |
 | D. Settings | 1 | 0 | 2 | 0 | 0 | 0 | 2 |
-| **All** | 10 | 35 | 4 | 0 | 27 | 0 | 66 |
+| **All** | 10 | 45 | 6 | 0 | 18 | 0 | 69 |
 
-Of the 50 stories under Screens/Contract labour, 26 are live and 1 live with a gap (CL-1 to CL-3); with the portal and settings pages, 39 of 66.
+Of the 51 stories under Screens/Contract labour, 31 are live and 2 live with a gap (CL-1 to CL-4); with the portal and settings pages, 51 of 69.
 
 Related stories in other areas (counted in their own maps, listed here so the build reaches them):
 
@@ -124,11 +124,12 @@ All 46 stories in section 4: there is no contractor, licence, deployment, proof 
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Matrix · Matrix · liability alerts · payment holds | design only, feature not built | needs monthly proofs per contractor and proof type (`clra.checklist`, due day `clra.doc_cutoff`) |
-| Verify · Proof verification · short challan | design only, feature not built | `challanShortfall`: the challan covers fewer workers than the muster |
-| Override · Payment hold override with reason | design only, feature not built | the hold sits on the PAY 8 bill; release with reason, audited |
-| Finance · Finance view (no override) | design only, feature not built | finance key sees holds, cannot release |
-| AllClear · All verified | design only, feature not built | |
+| Matrix · Matrix · liability alerts · payment holds | live | /yx/contract-labour/compliance (menu Contract labour › Vendor compliance); `GET contract-labour/compliance?month=`: the four proofs per contractor and site (PT / LWF: question 741), the hold, liability alerts (wages below the minimum, short challans, overdue proofs) |
+| Verify · Proof verification · short challan | live (gap) | `POST …/compliance/proofs/:id/verify` (a clean copy; a short challan is refused: raise a discrepancy) and `…/discrepancy` with a note; days paid against days on site waits for attendance (CL-5) |
+| Override · Payment hold override with reason | live | `POST …/compliance/holds/release` with the reason, the compliance owner only; the PAY 8 bank file refuses held contractors' bills (`heldConsultants`) |
+| Finance · Finance view (no override) | live | `clra.contractor.view` (finance holds no contract labour change key): sees holds and alerts, no Release |
+| AllClear · All verified | live | |
+| PayByUs · Record payment by us (CL-4) | live | `POST …/compliance/direct-payments`; taken off the contractor's next approved PAY 8 bill (`consultant_invoices.clra_recovery`) |
 
 #### CLB-04 · CLRA registers & returns
 
@@ -186,15 +187,17 @@ All 46 stories in section 4: there is no contractor, licence, deployment, proof 
 | Workers · Workers | live | the own contractor's waiting and deployed workers, masked ID, gate pass |
 | UnderAge · Add worker · under 18 blocked | live | `POST …/workers/check` then `…/workers`: the CL-2 checks, no override; the contractor is always the contact's own |
 | LicenceFull · Add worker · licence maximum reached | live | as UnderAge |
-| Pack · Monthly pack · short challan | design only, feature not built | CL-4 |
-| PackVerified · Monthly pack · verified | design only, feature not built | CL-4 |
-| Bills · Bills · payment on hold | design only, feature not built | CL-4 |
-| Phone · Monthly pack · phone | design only, feature not built | CL-4 (the portal itself works at phone width: DuePhone) |
+| Pack · Monthly pack · short challan | live (gap) | `GET public/contractor-portal/:org/packs`, `…/pack?locationId&month`: the four proofs with their checks; the muster roll and days on site wait for attendance (CL-5) |
+| PackVerified · Monthly pack · verified | live | |
+| Bills · Bills · payment on hold | live | `GET …/bills`: the contractor's PAY 8 bills with TDS, wages we paid taken back, and the hold |
+| Phone · Monthly pack · phone | live | the same web portal at phone width (answer 641) |
 | Due · What is due and work orders (CL-3) | live | licences ending or ended, renewals being checked or not accepted, gate passes ending within 30 days, workers waiting for approval |
 | RenewUpload · Upload a renewed licence (CL-3) | live | `POST …/licences/:id/renewal` with the copy: another contractor's licence 404; pending until the compliance owner verifies it |
 | RenewalChecked · Renewal being checked, renewal not accepted (CL-3) | live | the renewal's state and the reason it was rejected |
 | NothingDue · Nothing due (CL-3) | live | |
 | DuePhone · What is due · phone (CL-3) | live | the same web portal at phone width (answer 641) |
+| UploadChallan · Monthly pack · upload a challan (CL-4) | live | `POST …/pack/items` with the copy, the workers covered and the amount; a verified proof is final |
+| UploadWages · Monthly pack · wage register (CL-4) | live | each worker deployed that month: days, wage paid, paid on; the minimum wage shown for each (verify) |
 
 ### D. Settings
 
@@ -436,4 +439,32 @@ attendance for CL-5. Tests: `contractor-portal-live.test.tsx`, `contract-live.te
 735. **Worker photo.** The design asked for a photo; it is not stored. Suggested: add it with the gate pass card in CL-5.
 736. **Withdraw from the portal.** A contractor cannot withdraw a worker waiting for approval; the compliance owner can.
      Suggested: let the contractor withdraw their own waiting workers.
+
+## CL-4 built (10 Nov 2026, branch `feat/yukthix-contract-labour-cl4`)
+
+Answers 626, 634 and 685. Migration `202617o0000013_contract_labour_4`: `contractor_packs` (contractor, site, month),
+`contractor_pack_items` (PF and ESI challans with the workers covered and the amount, the wage register, the wage payment
+proof; submitted / verified / discrepancy with a note), `contractor_wage_lines` (each worker's days, wage paid and the day
+paid), `contractor_hold_releases` and `contractor_direct_payments`, all with RLS; `consultant_invoices.clra_recovery`.
+The minimum wage comes from the `IN.MW` rule sets (the national floor and the state table for the site's minimum-wage
+zone and the worker's skill; verify). A month's pack is due on `clra.doc_cutoff` (default the 15th) of the next month;
+overdue or disputed months hold the contractor's PAY 8 bills (`clra.payment_hold`, default hold): the bank file refuses
+them until the compliance owner releases the month with a reason. Wages the company pays a worker itself are recorded and
+taken off the contractor's next approved bill. The minimum wage shows under the wage field on CLB-02 and the portal.
+Tests: `clra-rules.spec.ts`, `compliance-cl4.test.tsx`, the CL-3 portal test and e2e `contract-labour-4` (7 tests).
+
+## Founder questions from the CL-4 build (10 Nov 2026)
+
+741. **Which proofs.** We ask for four (PF challan, ESI challan, wage register, wage payment proof); the design also had
+     PT / LWF and the muster roll, and 4.9 shows a configurable checklist. Suggested: add the muster roll with attendance
+     (CL-5) and make the list a company setting with these four as the default.
+742. **Days on site.** The wage check uses the days in the contractor's register; comparing them with the days on site
+     needs contract workers' attendance. Suggested: in CL-5.
+743. **Liability alerts by email.** Alerts show on Vendor compliance; nobody is emailed yet. Suggested: tell the
+     compliance owners once a day when a new alert appears.
+744. **What a hold covers.** Any held month holds all of the contractor's bills (the design: "the August bill is held
+     until the August pack's discrepancy is fixed"). Suggested: keep; a release is per month.
+745. **The recovery on the PAY 8 payment advice.** The bill's net shows the wages we paid taken back; the payment advice
+     and the consultant invoice list do not name it yet. Suggested: add a line "Wages paid to your workers by us".
+746. **Proofs for a month with no workers.** No pack is owed for a site and month with no deployment. Suggested: keep.
 

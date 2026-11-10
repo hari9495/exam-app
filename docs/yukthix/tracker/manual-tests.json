@@ -19137,5 +19137,44 @@
       "Screens/Portals/T9-13 · Contract-labour vendor portal · Add worker · under 18 blocked"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CLRA-10",
+    "area": "Contract labour · CL-4: vendor compliance (10 Nov 2026)",
+    "screen": "Portal: monthly pack (T9-13)",
+    "url": "http://localhost:3000/yx/contractor/demo-org?tab=packs",
+    "account": "The invited contractor contact (signed in). One of their workers was deployed last month at a site of theirs.",
+    "steps": [
+      "1. Open Monthly packs, open last month's pack.",
+      "2. Upload the PF challan with nothing filled; then with workers covered 0 and an amount and a PDF.",
+      "3. Open the wage register: fill one worker below the minimum shown, and upload.",
+      "4. Upload the ESI challan covering every worker and the bank proof."
+    ],
+    "expected": "Step 1: the four proofs, each Not uploaded, and the checks waiting. Step 2: workers covered, amount and the copy are asked for; then the PF check fails (short). Step 3: the minimum wage shows under each wage; after upload 'Wages at or above the minimum wage' fails. Step 4: the pack is Submitted (or Overdue past the due day).",
+    "stories": [
+      "Screens/Portals/T9-13 · Contract-labour vendor portal · Monthly pack · upload a challan (CL-4)",
+      "Screens/Portals/T9-13 · Contract-labour vendor portal · Monthly pack · wage register (CL-4)"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CLRA-11",
+    "area": "Contract labour · CL-4: vendor compliance (10 Nov 2026)",
+    "screen": "Vendor compliance, the hold and payment by us (CLB-03)",
+    "url": "http://localhost:3000/yx/contract-labour/compliance",
+    "account": "admin-tester@demo-org.test (System Admin); then a payroll user without the contract labour keys. The contractor has a PAY 8 consultant record with an approved bill.",
+    "steps": [
+      "1. Open Vendor compliance for last month; press the PF challan cell and Mark verified.",
+      "2. Raise a discrepancy without a note, then with one.",
+      "3. As payroll, make a bank file with the contractor's bill; try Release.",
+      "4. As the System Admin press Release without a reason, then with one; make the bank file again.",
+      "5. On the wage alert press Record payment by us; then approve the contractor's next bill."
+    ],
+    "expected": "Step 1: refused: the challan covers fewer workers than deployed. Step 2: a note is asked for; then the cell shows Discrepancy and the bill Held. Step 3: the bank file is refused: bills on hold; payroll sees no Release. Step 4: a reason is asked for; then the month is released and the bank file is no longer refused for the hold. Step 5: the alert closes; the next approved bill's net is less by the amount paid.",
+    "stories": [
+      "Screens/Contract labour/CLB-03 · Vendor compliance tracker · Payment hold override with reason",
+      "Screens/Contract labour/CLB-03 · Vendor compliance tracker · Record payment by us (CL-4)"
+    ],
+    "note": "Positive and negative."
   }
 ]
