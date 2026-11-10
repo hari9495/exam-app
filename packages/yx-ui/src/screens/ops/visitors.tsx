@@ -275,7 +275,7 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
                   {ndaEarly.errorOf('vd-nda') && <p className="yx-field__error">{ndaEarly.errorOf('vd-nda')}</p>}
                 </>
               ) : (
-                <InlineAlert tone="success" title="Notice accepted">The visitor accepted the notice on their link.</InlineAlert>
+                <InlineAlert tone="info" title="Notice accepted">The visitor accepted the notice on their link.</InlineAlert>
               )}
               <p className="yx-ops-muted">{live ? "Visit details are deleted after the location's retention period (Settings › Visitors)." : 'ID images are deleted after 30 days; other visitor details after 90 days.'}</p>
             </div>

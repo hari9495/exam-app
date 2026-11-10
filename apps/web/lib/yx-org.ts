@@ -199,6 +199,10 @@ export const YX_KEYS = [
   'ats.agency.manage',
   // Staffing slice 3: staffing finance (invoices, receipts, vendor invoices).
   'ats.staffing.billing',
+  // Visitors slice 1: the desk, the log and the visitor settings.
+  'visitors.desk.manage',
+  'visitors.log.view',
+  'visitors.settings.manage',
   // Menu items that checked keys nobody asked for (yx-nav-keys.test.ts): team pay access, the older assessment screens.
   'employee.pay_access.approve',
   'exam:manage',
