@@ -165,7 +165,7 @@ export class ClientPortalService {
           return { id: i.id, candidate: i.pipelineEntry?.candidate.erasedAt ? 'Erased candidate' : (i.pipelineEntry?.candidate.name ?? ''), job: jobs.find((j) => j.id === i.pipelineEntry?.jobId)?.title ?? '', at: slot?.startsAt ?? null, mode: i.location, panel: (i.recruiterNote ?? '').replace(/^.*Client panel: /s, '') || null, status: ivStatus[i.status] ?? i.status };
         }),
         bookable: subs.filter((x) => x.candidateId && x.stage !== 'rejected').map((x) => ({ value: x.id, label: `${person(x)} · ${jobs.find((j) => j.id === x.jobId)?.title ?? ''}` })),
-        submissions: subs.map((x) => ({ id: x.id, candidate: person(x), jobId: x.jobId, job: jobs.find((j) => j.id === x.jobId)?.title ?? '', submittedOn: iso(x.createdAt), status: STAGE[x.stage] ?? x.stage, feedback: x.rejectedReason ?? x.feedback })),
+        submissions: subs.map((x) => ({ id: x.id, candidate: person(x), jobId: x.jobId, job: jobs.find((j) => j.id === x.jobId)?.title ?? '', submittedOn: todayIst(x.createdAt), status: STAGE[x.stage] ?? x.stage, feedback: x.rejectedReason ?? x.feedback })),
         timesheets: hours.map((h) => {
           const p = placements.find((x) => x.id === h.placementId)!;
           return { id: h.id, worker: p.workerName, role: rates.find((r) => r.lineId === p.lineId)?.role ?? '', weekStart: iso(h.weekStart), hours: hrs(h.hoursCenti), overtime: hrs(h.overtimeCenti), vendor: p.agencyId ? (agencies.find((a) => a.id === p.agencyId)?.name ?? null) : null, status: h.status === 'waiting' ? 'Waiting for you' : h.status === 'approved' ? 'Approved' : 'Sent back', note: h.note, version: h.version };

@@ -384,7 +384,7 @@ export class StaffingBillingService {
         const due = addDays(iso(i.invoiceDate)!, cl.paymentTermsDays ?? terms);
         rows.push({
           invoiceId: i.id, invoice: i.number, clientId: cl.id, client: cl.name, tdsSection: cl.tdsSection, date: iso(i.invoiceDate), dueOn: due, bucket: ageingBucket(iso(i.invoiceDate)!, today), overdueDays: Math.max(0, daysBetween(due, today)),
-          total: toRupees(i.totalPaise), outstanding: toRupees(o.outstanding), tdsDeducted: toRupees(o.tds), tds26as: i.tds26asPaise != null ? toRupees(i.tds26asPaise) : null, dispute: i.dispute, nextReminder: i.dispute ? null : nextReminder(due, today, schedule), lastReminder: iso((await tx.staffingReminder.findFirst({ where: { invoiceId: i.id, emailed: true }, orderBy: { sentAt: 'desc' }, select: { sentAt: true } }))?.sentAt), version: i.version,
+          total: toRupees(i.totalPaise), outstanding: toRupees(o.outstanding), tdsDeducted: toRupees(o.tds), tds26as: i.tds26asPaise != null ? toRupees(i.tds26asPaise) : null, dispute: i.dispute, nextReminder: i.dispute ? null : nextReminder(due, today, schedule), lastReminder: ((r) => (r ? todayIst(r.sentAt) : null))(await tx.staffingReminder.findFirst({ where: { invoiceId: i.id, emailed: true }, orderBy: { sentAt: 'desc' }, select: { sentAt: true } })), version: i.version,
         });
       }
       return { canRecord: a.billing && !a.actingForOther, schedule, rows };

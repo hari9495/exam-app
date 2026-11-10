@@ -1,4 +1,5 @@
-import { ageingBucket, conversionFee, creditProblem, eInvoiceState, gstSplit, guaranteeOutcome, lineAmount, mondayOf, nextReminder, pctToBp, placementFee, splitTds, taperProblem } from './billing-rules';
+import { ageingBucket, conversionFee, daysBetween, creditProblem, eInvoiceState, gstSplit, guaranteeOutcome, lineAmount, mondayOf, nextReminder, pctToBp, placementFee, splitTds, taperProblem } from './billing-rules';
+import { todayIst } from '../org-structure/org-validation';
 
 describe('staffing billing rules', () => {
   it('percent strings to basis points; bad ones refused', () => {
@@ -73,5 +74,19 @@ describe('bench pay as loss-of-pay days (answer 482)', () => {
     // Bench from 20 Sep: Oct 1 is day 12; days 12–30 (19 days) at half pay, days 31–42 (12 days) unpaid.
     expect(benchLop('2026-09-20', null, '2026-10', 50, 30, true)).toEqual({ benchDays: 31, lopDays: '21.50' });
     expect(benchLop('2026-09-20', null, '2026-10', 50, 30, false)).toEqual({ benchDays: 31, lopDays: '15.50' });
+  });
+});
+
+// A reminder sent, a submission made or a stage entered at 00:30 India time (19:00 UTC the day before) is that India
+// day: the ledger's last reminder, the client portal's submitted-on and the board's days in stage use todayIst(x).
+describe('India dates from timestamps (00:30 IST)', () => {
+  const at0030 = new Date('2026-11-10T19:00:00Z');
+  it('the date is the India day, not the UTC day', () => {
+    expect(todayIst(at0030)).toBe('2026-11-11');
+    expect(at0030.toISOString().slice(0, 10)).toBe('2026-11-10'); // what the old code showed
+  });
+  it('a stage entered at 00:30 IST has been in it 0 days that India day, 1 the next', () => {
+    expect(daysBetween(todayIst(at0030), '2026-11-11')).toBe(0);
+    expect(daysBetween(todayIst(at0030), '2026-11-12')).toBe(1);
   });
 });

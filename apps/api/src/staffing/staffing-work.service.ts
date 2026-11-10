@@ -192,7 +192,7 @@ export class StaffingWorkService {
         source: r.agencySubmissionId ? `Vendor: ${vendor.get(r.agencySubmissionId) ?? ''}` : r.employeeId ? 'Bench' : 'Pipeline',
         kind: r.employeeId ? 'employee' : 'candidate',
         stage: r.stage,
-        daysInStage: Math.max(0, daysBetween(iso(r.stageEnteredAt)!, today)),
+        daysInStage: Math.max(0, daysBetween(todayIst(r.stageEnteredAt), today)),
         slaDays: clients.get(r.clientId)?.slaFeedbackDays ?? null,
         feedback: r.feedback,
         rejectedReason: r.rejectedReason,
