@@ -366,6 +366,11 @@ the gate pass card in CL-5; (736) the contractor can withdraw their own waiting 
 Founder approved, 10 Nov 2026 (questions 741-746, all as suggested): (741) the muster roll in CL-5 and the proof
 list a company setting; (742) paid days against attendance in CL-5; (743) a daily email to the compliance owners for new
 liability alerts; keep 744 (release per month), 746; (745) a recovered-wages line on the payroll payment advice.
+Founder approved, 10 Nov 2026 (questions 751-756, 771-775, 781-785, all as suggested): keep 751, 752, 755, 756,
+771-774, 782, 784, 785; (753) the compliance owner can reopen a confirmed month with a reason, audited, later; (754) the
+contractor can add the worker photo when adding the worker, checked at site approval; (775) drop the unused PPL-12
+conversion row from the drawing; (781) muster days from confirmed attendance once CL-5 lands; (783) the inspection pack
+stays in Compliance.
 
 ## CL-1 built (10 Nov 2026, branch `feat/yukthix-contract-labour-1`)
 
