@@ -21,8 +21,8 @@ describe('buildNav: areas', () => {
 
   it('areas come in the designed rail order, Settings last; unbuilt modules never appear', () => {
     const n = nav(['employee.profile.view', 'payroll.run.view', 'statutory.filing.view', 'pipeline:manage', 'perf.goal.view', 'org.settings.manage'], { employee: true });
-    expect(areas(n)).toEqual(['home', 'people', 'time', 'pay', 'compliance', 'hire', 'performance', 'helpdesk', 'settings']);
-    for (const unbuilt of ['assess', 'learning', 'analytics', 'engage', 'projects', 'contract', 'visitors']) expect(areas(n)).not.toContain(unbuilt);
+    expect(areas(n)).toEqual(['home', 'people', 'time', 'pay', 'compliance', 'hire', 'performance', 'helpdesk', 'visitors', 'settings']);
+    for (const unbuilt of ['assess', 'learning', 'analytics', 'engage', 'projects', 'contract']) expect(areas(n)).not.toContain(unbuilt);
   });
 
   it('YukthiX Hiring for hiring; the exam tools not yet in YukthiX are one link to the older screens (19 Oct 2026)', () => {
@@ -199,11 +199,16 @@ describe('buildNav: Settings', () => {
   });
 
   it('the settings admin gets company rules, Countries and Translations; set-up pages follow their keys', () => {
-    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['Legal entities', 'Locations', 'Structure', 'Company rules', 'Countries', 'Translations', 'Access and privacy', 'Custom fields', 'Payroll rules', 'Hiring', 'Staffing desk']);
+    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['Legal entities', 'Locations', 'Structure', 'Company rules', 'Countries', 'Translations', 'Access and privacy', 'Custom fields', 'Visitors', 'Payroll rules', 'Hiring', 'Staffing desk']);
     // Settings 6.1 Hiring: recruiting, hiring admins and HR read it (the API decides who changes it).
     expect(labels(nav(['ats.settings.manage']), 'settings')).toEqual(['Hiring']);
     expect(labels(nav(['pipeline:manage']), 'settings')).toEqual(['Hiring']);
     expect(labels(nav(['ats.requisition.raise']), 'settings')).not.toContain('Hiring');
+    // Visitors slice 1: an employee invites their visitors; reception gets the desk and log; Settings 3.12 for its holders.
+    expect(labels(nav([], { employee: true }), 'visitors')).toEqual(['My visitors']);
+    expect(labels(nav(['visitors.desk.manage'], { employee: true }), 'visitors')).toEqual(["Today's visitors", 'My visitors', 'Visitor log']);
+    expect(labels(nav(['visitors.log.view']), 'visitors')).toEqual(['Visitor log']);
+    expect(labels(nav(['visitors.settings.manage']), 'settings')).toEqual(['Visitors']);
     // Founder 30 Oct 2026 (last 10, item 5): Payroll rules for HR (org.settings.manage) or payroll set-up, never for others.
     expect(labels(nav(['payroll.run.view']), 'settings')).not.toContain('Payroll rules');
     expect(labels(nav(['perf.setup.manage']), 'settings')).toEqual(['Performance']);

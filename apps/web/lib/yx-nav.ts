@@ -372,6 +372,19 @@ export function buildNav(n: NavInput): NavArea[] {
         ]),
   };
 
+  // Visitors slice 1 (M02 §B11): hosts invite their own visitors; reception runs the desk; the log (answers 601-617).
+  const visitors: NavArea = {
+    id: 'visitors',
+    title: 'Visitors',
+    sections: [
+      ...sec(undefined, [
+        ...when(!support && has('visitors.desk.manage'), L('visitors-desk', "Today's visitors", '/yx/visitors')),
+        ...when(self, L('visitors-invites', 'My visitors', '/yx/visitors/invites')),
+        ...when(!support && any('visitors.log.view', 'visitors.desk.manage'), L('visitors-log', 'Visitor log', '/yx/visitors/log')),
+      ]),
+    ],
+  };
+
   // Settings, pinned at the bottom of the rail, in the designed settings groups.
   const settings: NavArea = {
     id: 'settings',
@@ -390,6 +403,8 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(adminRole || n.role === 'auditor', L('activity', 'Login activity', '/yx/admin/login-activity')),
         ...when(has('org.support_access.approve') && !support, L('support-access', 'Support access', '/yx/settings/support-access')),
       ]),
+      // 3.12 Visitors: Facility admins and HR change it; reception reads it.
+      ...sec('Time & Leave', when(!support && any('visitors.settings.manage', 'org.settings.manage', 'visitors.desk.manage'), L('visitor-settings', 'Visitors', '/yx/settings/visitors'))),
       ...sec('Payroll & Statutory', when(pay, ...[
         ...when(any('payroll.setup.manage', 'payroll.statutory.setup'), L('pay-setup', 'Payroll set-up', '/yx/payroll/setup')),
         ...when(any('payroll.setup.manage', 'org.settings.manage'), L('payroll-rules', 'Payroll rules', '/yx/settings/payroll-rules')),
@@ -414,7 +429,7 @@ export function buildNav(n: NavInput): NavArea[] {
     ],
   };
 
-  return [home, people, time, pays, compliance, hire, performance, helpdesk, settings].filter((a) => a.sections.some((s) => s.items.length));
+  return [home, people, time, pays, compliance, hire, performance, helpdesk, visitors, settings].filter((a) => a.sections.some((s) => s.items.length));
 }
 
 /** The area and link a path belongs to: the longest link that is the path or a parent of it. A page linked from two
