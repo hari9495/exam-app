@@ -123,3 +123,66 @@ export class PortalWorkerDto {
   @Matches(DAY) fromOn!: string;
   @IsOptional() @Matches(DAY) toOn?: string | null;
 }
+
+/* ---------------- CL-4 monthly proofs, verification, holds, payments by us ---------------- */
+
+const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
+const RUPEES = /^\d{1,9}(\.\d{1,2})?$/;
+
+/** A proof upload from the contractor portal (multipart: numbers and the wage lines arrive as text). */
+export class PackItemDto {
+  @IsUUID() locationId!: string;
+  @Matches(MONTH, { message: 'Give the month as yyyy-mm.' }) month!: string;
+  @IsIn(['pf_challan', 'esi_challan', 'wage_register', 'bank_proof']) kind!: 'pf_challan' | 'esi_challan' | 'wage_register' | 'bank_proof';
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(100000) workersCovered?: number;
+  @IsOptional() @Matches(RUPEES, { message: 'Enter the amount in rupees.' }) amount?: string;
+  /** Wage register: JSON [{ deploymentId, days, gross, paidOn }]. */
+  @IsOptional() @IsString() @MaxLength(200000) lines?: string;
+}
+
+export class WageLineDto {
+  @IsUUID() deploymentId!: string;
+  @IsInt() @Min(0) @Max(31) days!: number;
+  @Matches(RUPEES) gross!: string;
+  @Matches(DAY) paidOn!: string;
+}
+
+export class ProofDecisionDto {
+  @IsInt() @Min(1) version!: number;
+}
+
+export class DiscrepancyDto {
+  @IsInt() @Min(1) version!: number;
+  @trim() @IsString() @MinLength(3) @MaxLength(500) note!: string;
+}
+
+export class HoldReleaseDto {
+  @IsUUID() contractorId!: string;
+  @Matches(MONTH) month!: string;
+  @trim() @IsString() @MinLength(3) @MaxLength(500) reason!: string;
+}
+
+export class DirectPaymentDto {
+  @IsUUID() deploymentId!: string;
+  @Matches(MONTH) month!: string;
+  @Matches(RUPEES, { message: 'Enter the amount in rupees.' }) amount!: string;
+  @Matches(DAY) paidOn!: string;
+  @trim() @IsString() @MinLength(1) @MaxLength(100) reference!: string;
+  @trim() @IsString() @MinLength(3) @MaxLength(500) reason!: string;
+}
+
+export class MonthQueryDto {
+  @IsOptional() @Matches(MONTH) month?: string;
+}
+
+export class MinWageQueryDto {
+  @IsUUID() locationId!: string;
+  @IsIn(['unskilled', 'semi_skilled', 'skilled', 'highly_skilled']) skill!: string;
+  @IsOptional() @Matches(DAY) on?: string;
+}
+
+export class PackQueryDto {
+  @IsUUID() locationId!: string;
+  @Matches(MONTH) month!: string;
+}
+

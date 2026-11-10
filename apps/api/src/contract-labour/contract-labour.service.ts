@@ -20,7 +20,7 @@ import { EmailService } from '../email/email.service';
 const KEYS = ['clra.contractor.manage', 'clra.contractor.view', 'clra.settings.manage', 'org.settings.manage'] as const;
 type Access = { manage: boolean; view: boolean; settings: boolean; actingForOther: boolean };
 /** Settings 4.9 keys made live in CL-1 and CL-2 (the monthly compliance keys come with CL-4). */
-export const CLRA_SETTING_KEYS = ['clra.licence_alerts', 'clra.induction_required', 'clra.induction_months'] as const;
+export const CLRA_SETTING_KEYS = ['clra.licence_alerts', 'clra.induction_required', 'clra.induction_months', 'clra.doc_cutoff', 'clra.payment_hold'] as const;
 const LICENCE_TYPES = ['application/pdf', 'image/jpeg', 'image/png'] as const;
 const FILE_MAX_MB = 10;
 const NOT_FOUND = 'Contractor not found.';

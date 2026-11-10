@@ -120,3 +120,46 @@ describe('work order headcount (CL-2, answer 675)', () => {
     expect(workerChecks(base).some((c) => c.id === 'workorder')).toBe(false);
   });
 });
+
+import { holdsBill, monthOf, packDue, packStatus, recoveryFrom, wageShortfall } from './clra-rules';
+
+describe('monthly proofs, wage check and hold (CL-4)', () => {
+  it('due on the cut-off day of the following month, clipped to the month', () => {
+    expect(packDue('2026-08-01', 15)).toBe('2026-09-15');
+    expect(packDue('2026-12-01', 15)).toBe('2027-01-15');
+    expect(packDue('2026-01-01', 31)).toBe('2026-02-28');
+    expect(monthOf('2026-08-19')).toBe('2026-08-01');
+  });
+
+  it('pack status: discrepancy wins, all verified, overdue after the due day, submitted, open', () => {
+    const all = { pf_challan: 'verified', esi_challan: 'verified', wage_register: 'verified', bank_proof: 'verified' } as const;
+    expect(packStatus(all, '2026-09-15', '2026-10-01')).toBe('verified');
+    expect(packStatus({ ...all, esi_challan: 'discrepancy' }, '2026-09-15', '2026-09-01')).toBe('discrepancy');
+    expect(packStatus({ ...all, bank_proof: 'submitted' }, '2026-09-15', '2026-09-15')).toBe('submitted');
+    expect(packStatus({ ...all, bank_proof: 'submitted' }, '2026-09-15', '2026-09-16')).toBe('overdue');
+    expect(packStatus({ pf_challan: 'submitted' }, '2026-09-15', '2026-09-10')).toBe('open');
+    expect(packStatus({}, '2026-09-15', '2026-09-16')).toBe('overdue');
+  });
+
+  it('the hold: overdue or disputed and not released', () => {
+    expect(holdsBill('overdue', false)).toBe(true);
+    expect(holdsBill('discrepancy', false)).toBe(true);
+    expect(holdsBill('discrepancy', true)).toBe(false);
+    expect(holdsBill('submitted', false)).toBe(false);
+    expect(holdsBill('open', false)).toBe(false);
+  });
+
+  it('wage shortfall: daily rate times days, capped at the monthly rate', () => {
+    const m = { minDailyPaise: 57000n, minMonthlyPaise: 1482000n };
+    expect(wageShortfall({ ...m, days: 26, grossPaise: 1482000n })).toEqual({ duePaise: 1482000n, shortPaise: 0n });
+    expect(wageShortfall({ ...m, days: 30, grossPaise: 1482000n })).toEqual({ duePaise: 1482000n, shortPaise: 0n });
+    expect(wageShortfall({ ...m, days: 10, grossPaise: 500000n })).toEqual({ duePaise: 570000n, shortPaise: 70000n });
+    expect(wageShortfall({ ...m, days: 0, grossPaise: 0n })).toEqual({ duePaise: 0n, shortPaise: 0n });
+  });
+
+  it('recovery: oldest first, never more than the bill', () => {
+    expect(recoveryFrom(100000n, [{ id: 'a', leftPaise: 30000n }, { id: 'b', leftPaise: 90000n }])).toEqual({ totalPaise: 100000n, take: [{ id: 'a', paise: 30000n }, { id: 'b', paise: 70000n }] });
+    expect(recoveryFrom(0n, [{ id: 'a', leftPaise: 30000n }])).toEqual({ totalPaise: 0n, take: [] });
+    expect(recoveryFrom(50000n, [])).toEqual({ totalPaise: 0n, take: [] });
+  });
+});

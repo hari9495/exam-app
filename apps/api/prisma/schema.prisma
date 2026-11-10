@@ -10321,6 +10321,8 @@ model ConsultantInvoice {
   certificateId   String?   @map("certificate_id") @db.Uuid
   certificateUsed Decimal   @default(0) @map("certificate_used") @db.Decimal(14, 2)
   netPayable      Decimal?  @map("net_payable") @db.Decimal(14, 2)
+  /// Contract labour CL-4: wages the company paid the contractor's workers itself, recovered from this bill.
+  clraRecovery   Decimal   @default(0) @map("clra_recovery") @db.Decimal(14, 2)
   payoutBatchId   String?   @map("payout_batch_id") @db.Uuid
   paidOn          DateTime? @map("paid_on") @db.Date
   paymentRef      String?   @map("payment_ref") @db.VarChar(80)
@@ -12910,4 +12912,86 @@ model ContractorPortalSession {
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("contractor_portal_sessions")
+}
+
+/// Contract labour CL-4: a contractor's monthly proofs for one site.
+model ContractorPack {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  agencyId       String   @map("agency_id") @db.Uuid
+  locationId     String   @map("location_id") @db.Uuid
+  month          DateTime @db.Date
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, agencyId, locationId, month], map: "contractor_packs_key")
+  @@map("contractor_packs")
+}
+
+/// Contract labour CL-4: one proof of a monthly pack (challans carry the workers covered and the amount).
+model ContractorPackItem {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  packId            String    @map("pack_id") @db.Uuid
+  kind              String    @db.VarChar(14)
+  fileId            String    @map("file_id") @db.Uuid
+  state             String    @default("submitted") @db.VarChar(12)
+  workersCovered    Int?      @map("workers_covered")
+  amountPaise       BigInt?   @map("amount_paise")
+  note              String?   @db.VarChar(500)
+  uploadedByContact String?   @map("uploaded_by_contact") @db.Uuid
+  uploadedAt        DateTime  @default(now()) @map("uploaded_at") @db.Timestamptz(3)
+  decidedBy         String?   @map("decided_by") @db.Uuid
+  decidedAt         DateTime? @map("decided_at") @db.Timestamptz(3)
+  version           Int       @default(1)
+
+  @@unique([packId, kind], map: "contractor_pack_items_key")
+  @@map("contractor_pack_items")
+}
+
+/// Contract labour CL-4: a worker's days and wage paid in a month (from the wage register).
+model ContractorWageLine {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  packId         String   @map("pack_id") @db.Uuid
+  deploymentId   String   @map("deployment_id") @db.Uuid
+  days           Int
+  grossPaise     BigInt   @map("gross_paise")
+  paidOn         DateTime @map("paid_on") @db.Date
+
+  @@unique([packId, deploymentId], map: "contractor_wage_lines_key")
+  @@map("contractor_wage_lines")
+}
+
+/// Contract labour CL-4 (answer 634): a month's payment hold released by the compliance owner, with the reason.
+model ContractorHoldRelease {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  agencyId       String   @map("agency_id") @db.Uuid
+  month          DateTime @db.Date
+  reason         String   @db.VarChar(500)
+  releasedBy     String   @map("released_by") @db.Uuid
+  releasedAt     DateTime @default(now()) @map("released_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, agencyId, month], map: "contractor_hold_releases_key")
+  @@map("contractor_hold_releases")
+}
+
+/// Contract labour CL-4 (answer 626): wages the company paid a contractor's worker itself, recovered from the next bill.
+model ContractorDirectPayment {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String   @map("organization_id") @db.Uuid
+  agencyId           String   @map("agency_id") @db.Uuid
+  deploymentId       String   @map("deployment_id") @db.Uuid
+  month              DateTime @db.Date
+  amountPaise        BigInt   @map("amount_paise")
+  paidOn             DateTime @map("paid_on") @db.Date
+  reference          String   @db.VarChar(100)
+  reason             String   @db.VarChar(500)
+  recoveredInvoiceId String?  @map("recovered_invoice_id") @db.Uuid
+  recoveredPaise     BigInt   @default(0) @map("recovered_paise")
+  createdBy          String?  @map("created_by") @db.Uuid
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, agencyId], map: "contractor_direct_payments_agency_idx")
+  @@map("contractor_direct_payments")
 }

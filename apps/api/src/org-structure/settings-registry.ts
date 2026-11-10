@@ -269,6 +269,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // CL-2 (answer 632): a recorded site safety induction before the first gate pass, and how long it lasts.
   'clra.induction_required': { label: 'Contract labour: safety induction before the gate pass', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'clra.induction_months': { label: 'Contract labour: a safety induction lasts (months)', scopes: ['tenant'], dated: false, values: ['6', '12', '24'], default: '12' },
+  // CL-4 (answer 634): when a month's proofs are due, and whether a contractor's bill is held while they are overdue or disputed.
+  'clra.doc_cutoff': { label: 'Contract labour: monthly proofs due by (day of the following month)', scopes: ['tenant'], dated: false, values: Array.from({ length: 25 }, (_, i) => String(i + 1)), default: '15' },
+  'clra.payment_hold': { label: 'Contract labour: contractor bill while proofs are overdue or disputed', scopes: ['tenant'], dated: false, values: ['hold', 'alert'], default: 'hold' },
   'staffing.vendor.target_margin_pct': { label: 'Staffing desk: target margin for a vendor rate cap (%)', scopes: ['tenant'], dated: false, values: ['10', '15', '20', '25', '30', '35', '40'], default: '25' },
   'staffing.vendor.ownership_days': { label: 'Staffing desk: a vendor holds a submitted candidate for (days)', scopes: ['tenant'], dated: false, values: ['30', '60', '90', '180'], default: '90' },
   'staffing.submission.mask_contact': { label: 'Staffing desk: hide candidate phone and email from clients until shortlisted', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'on' },
