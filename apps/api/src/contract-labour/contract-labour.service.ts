@@ -20,7 +20,7 @@ import { EmailService } from '../email/email.service';
 const KEYS = ['clra.contractor.manage', 'clra.contractor.view', 'clra.settings.manage', 'org.settings.manage'] as const;
 type Access = { manage: boolean; view: boolean; settings: boolean; actingForOther: boolean };
 /** Settings 4.9 keys made live in CL-1 and CL-2 (the monthly compliance keys come with CL-4). */
-export const CLRA_SETTING_KEYS = ['clra.licence_alerts', 'clra.induction_required', 'clra.induction_months'] as const;
+export const CLRA_SETTING_KEYS = ['clra.licence_alerts', 'clra.induction_required', 'clra.induction_months', 'clra.doc_cutoff', 'clra.payment_hold'] as const;
 const LICENCE_TYPES = ['application/pdf', 'image/jpeg', 'image/png'] as const;
 const FILE_MAX_MB = 10;
 const NOT_FOUND = 'Contractor not found.';
@@ -126,6 +126,7 @@ export class ContractLabourService {
                 locationId: l.locationId,
                 establishment: loc?.name ?? 'Archived location',
                 scope: l.scope,
+                issuedBy: l.issuedBy,
                 states: l.states,
                 max: l.maxWorkers,
                 validFrom: iso(l.validFrom),
@@ -301,7 +302,7 @@ export class ContractLabourService {
       if (!states.includes(loc.state)) throw new BadRequestException(`The licence must cover ${loc.name}’s state (${loc.state}).`);
       const f = await this.store(tx, c, file);
       const row = await tx.contractorLicence
-        .create({ data: { organizationId: c.organizationId, agencyId: contractorId, locationId: loc.id, licenceNo: dto.licenceNo, scope: dto.scope, states, maxWorkers: dto.maxWorkers, validFrom: day(dto.validFrom), validTo: day(dto.validTo), fileId: f.id, createdBy: c.userId ?? null } })
+        .create({ data: { organizationId: c.organizationId, agencyId: contractorId, locationId: loc.id, licenceNo: dto.licenceNo, scope: dto.scope, issuedBy: dto.issuedBy || null, states, maxWorkers: dto.maxWorkers, validFrom: day(dto.validFrom), validTo: day(dto.validTo), fileId: f.id, createdBy: c.userId ?? null } })
         .catch(this.duplicate);
       await audit(tx, c, 'clra.licence.added', 'contractor_licence', row.id, { contractorId, licenceNo: dto.licenceNo, locationId: loc.id, validTo: dto.validTo, fileId: f.id, sha256: f.sha256 });
       return { id: row.id, fileId: f.id, org: c.organizationId };
@@ -339,7 +340,7 @@ export class ContractLabourService {
       if (dto.validFrom <= iso(old.validFrom)) throw new BadRequestException('The renewal must start after the current licence started.');
       const f = await this.store(tx, c, file);
       const row = await tx.contractorLicence
-        .create({ data: { organizationId: c.organizationId, agencyId: old.agencyId, locationId: old.locationId, licenceNo: dto.licenceNo, scope: old.scope, states: old.states, maxWorkers: dto.maxWorkers, validFrom: day(dto.validFrom), validTo: day(dto.validTo), fileId: f.id, renewalOfId: old.id, createdBy: c.userId ?? null } })
+        .create({ data: { organizationId: c.organizationId, agencyId: old.agencyId, locationId: old.locationId, licenceNo: dto.licenceNo, scope: old.scope, issuedBy: dto.issuedBy || old.issuedBy, states: old.states, maxWorkers: dto.maxWorkers, validFrom: day(dto.validFrom), validTo: day(dto.validTo), fileId: f.id, renewalOfId: old.id, createdBy: c.userId ?? null } })
         .catch(this.duplicate);
       await audit(tx, c, 'clra.licence.renewal_added', 'contractor_licence', row.id, { renews: old.id, licenceNo: dto.licenceNo, validTo: dto.validTo, fileId: f.id, sha256: f.sha256, ...(portalContactId ? { via: 'contractor_portal', contactId: portalContactId } : {}) });
       return { id: row.id, fileId: f.id, org: c.organizationId };

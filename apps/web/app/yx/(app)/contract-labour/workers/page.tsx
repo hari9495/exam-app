@@ -3,6 +3,8 @@
 import { NoAccessState } from '@yukthix/ui';
 import { WorkersScreen, type WorkersData } from '@yukthix/ui/desk';
 import { loadState } from '../../../../../lib/yx-org';
+import { apiFetch } from '../../../../../lib/api-client';
+import { useAuth } from '../../../../../lib/auth-context';
 import { useClra, useClraWrite } from '../../../../../lib/yx-contract-labour';
 
 const enc = encodeURIComponent;
@@ -14,6 +16,7 @@ const enc = encodeURIComponent;
 // owners change; never while acting for someone else.
 export default function YxContractWorkersPage() {
   const q = useClra<WorkersData>('/workers');
+  const { accessToken } = useAuth();
   const write = useClraWrite();
   const state = loadState(q);
   if (state === 'no-access') return <NoAccessState what="contract workers" grantedBy="your HR team" />;
@@ -30,6 +33,8 @@ export default function YxContractWorkersPage() {
         onSend: (input) => write('POST', '/workers', input),
         onApprove: (id, version, induction) => write('POST', `/workers/${enc(id)}/approve`, { version, inductionOn: induction.on, inductionBy: induction.by }),
         onRelease: (id, version, on, reason) => write('POST', `/workers/${enc(id)}/release`, { version, on, reason }),
+        // Answer 685: the minimum wage under the wage field.
+        onMinWage: (locationId, skill) => apiFetch(`/contract-labour/min-wage?locationId=${enc(locationId)}&skill=${enc(skill)}`, {}, accessToken ?? undefined) as Promise<{ monthly: string; daily: string; source: string; verify: boolean } | null>,
       }}
     />
   );
