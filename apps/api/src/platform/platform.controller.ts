@@ -14,6 +14,7 @@ import { CreateSmsAccountDto, DeliveriesQueryDto, UpdateSmsAccountDto } from '..
 import { SmsAccountsService } from '../sms-channel/sms-accounts.service';
 import {
   CompaniesQueryDto,
+  CompanySettingDto,
   CreateCompanyDto,
   ExtendTrialDto,
   LifecycleDto,
@@ -74,6 +75,19 @@ export class PlatformController {
   @RequirePermissions('platform.companies.manage')
   extendTrial(@CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ExtendTrialDto) {
     return this.platform.extendTrial(actor, id, dto);
+  }
+
+  // Careers answer 442: the company settings only YukthiX staff change, each allowed by the company's plan.
+  @Get('companies/:id/settings')
+  @RequirePermissions('platform.companies.view')
+  companySettings(@CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.platform.companySettings(actor, id);
+  }
+
+  @Patch('companies/:id/settings')
+  @RequirePermissions('platform.companies.manage')
+  changeCompanySetting(@CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CompanySettingDto) {
+    return this.platform.changeCompanySetting(actor, id, dto);
   }
 
   // ---- plans and prices (one plan per product, so the routes say products; /platform/plans is the exam app's) ----

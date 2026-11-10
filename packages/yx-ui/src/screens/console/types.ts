@@ -33,6 +33,15 @@ export interface CompanyDetail extends CompanyRow {
   history: CompanyHistoryEntry[];
 }
 
+/** Careers answer 442: GET platform/companies/:id/settings (the settings only YukthiX changes, each allowed by the plan). */
+export interface CompanySettingsView {
+  id: string;
+  name: string;
+  /** What the company's plan includes (its products' features, D15). */
+  features: string[];
+  settings: { key: string; label: string; value: string; default: string; values: string[]; feature: string; included: boolean }[];
+}
+
 export interface NewCompany {
   name: string;
   slug: string;

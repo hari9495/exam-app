@@ -2,11 +2,12 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { ConsoleShell, type ConsolePageId } from './console-shell';
 import { CompaniesScreen } from './companies';
 import { CompanyScreen } from './company';
+import { CompanySettingsScreen } from './company-settings';
 import { PlansScreen } from './plans';
 import { SupportSessionsScreen } from './support';
 import { PlatformAuditScreen } from './audit';
 import { SupportAccessScreen } from '../access/support-access';
-import { ACTIVITY, AUDIT, COMPANIES, COMPANY, NOW, PRODUCTS, REQUEST, SESSIONS, TODAY } from './data';
+import { ACTIVITY, AUDIT, COMPANIES, COMPANY, COMPANY_SETTINGS, NOW, PRODUCTS, REQUEST, SESSIONS, TODAY } from './data';
 
 const meta: Meta = { title: 'Screens/YukthiX console/Platform console (step 3)', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -43,6 +44,12 @@ const company = (sessions = SESSIONS.filter((s) => s.organizationId === 'c2')) =
   );
 export const Company: S = { name: 'Company · trial with an open support session', render: () => company() };
 export const CompanyNoSession: S = { name: 'Company · ask for support access', render: () => company([]) };
+// Careers answer 442: settings only YukthiX changes, each allowed by the company's plan.
+export const CompanySettings: S = { name: 'Company settings · white-label in the plan', render: () => shell('companies', <CompanySettingsScreen state="ready" company={COMPANY_SETTINGS} canManage onBack={() => {}} onChange={() => wait()} />) };
+export const CompanySettingsNotInPlan: S = {
+  name: 'Company settings · not in the plan',
+  render: () => shell('companies', <CompanySettingsScreen state="ready" company={{ ...COMPANY_SETTINGS, features: [], settings: COMPANY_SETTINGS.settings.map((s) => ({ ...s, included: false })) }} canManage onBack={() => {}} onChange={() => wait()} />),
+};
 
 export const Plans: S = { name: 'Plans and prices', render: () => shell('plans', <PlansScreen state="ready" products={PRODUCTS} canManage today={TODAY} onSchedule={() => wait()} onWithdraw={() => wait()} />) };
 export const Support: S = { name: 'Support sessions', render: () => shell('support', <SupportSessionsScreen state="ready" sessions={SESSIONS} now={NOW} onOpenCompany={() => {}} onOpenSession={() => wait()} onEndSession={() => wait()} onWithdrawRequest={() => wait()} />) };

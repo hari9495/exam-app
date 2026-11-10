@@ -35,6 +35,7 @@ export default function ConsoleCompanyPage() {
       }}
       onEndSession={(sessionId) => session(sessionId, 'end')}
       onWithdrawRequest={(sessionId) => session(sessionId, 'cancel')}
+      onOpenSettings={() => router.push(`/staff/companies/${encodeURIComponent(id)}/settings`)}
     />
   );
 }

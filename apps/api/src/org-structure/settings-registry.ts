@@ -25,6 +25,8 @@ export interface SettingDef {
   oneOf?: 'policy_industries' | 'company_users';
   /** Labels of the values, when the list is not fixed in code. */
   labels?: Record<string, string>;
+  /** Careers answer 442: only YukthiX staff change it (console › Company settings), and only when the plan includes this feature. */
+  platform?: { feature: string };
 }
 
 export const SETTINGS: Readonly<Record<string, SettingDef>> = {
@@ -276,7 +278,7 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'hiring.resume_quarantine.tell_applicant': { label: 'Hiring: tell applicants when their résumé file could not be accepted', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'on' },
   // Careers answer 356 (D15: white-label is in every plan): hide "Powered by YukthiX" on the careers site and the candidate
   // pages. Starter off.
-  'brand.white_label': { label: 'Hide "Powered by YukthiX" on the careers site and candidate pages', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
+  'brand.white_label': { label: 'Hide "Powered by YukthiX" on the careers site and candidate pages', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off', platform: { feature: 'white_label' } },
   'home.pay_on_employee_home': { label: 'Show net pay on the employee home', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // P02 §4.5 fraud guard: a new bank account is used for payouts only after this cooling period (starter, D17).
   'employee.bank_change.cooling_hours': { label: 'New bank accounts are used for pay after (hours)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '24', '48', '72'], default: '48', guard: 'access.role.manage' },

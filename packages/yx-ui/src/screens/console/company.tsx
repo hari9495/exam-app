@@ -91,6 +91,8 @@ export interface CompanyScreenProps {
   onOpenSession: (session: SupportSession) => Promise<void>;
   onEndSession: (id: string) => Promise<void>;
   onWithdrawRequest: (id: string) => Promise<void>;
+  /** Careers answer 442: opens Company settings (white-label and other plan settings). */
+  onOpenSettings?: () => void;
   now?: Date;
 }
 
@@ -159,6 +161,7 @@ export function CompanyScreen(props: CompanyScreenProps) {
             ]}
             actions={
               <>
+                {props.onOpenSettings && <Button onClick={props.onOpenSettings}>Company settings</Button>}
                 {props.canSupport && c.signInAllowed && !open && !waiting && <Button onClick={() => setRequesting(Date.now())}>Ask for support access</Button>}
                 {props.canManage && c.lifecycle === 'trial' && <Button variant="primary" onClick={move('activate')}>Switch on</Button>}
                 {props.canManage && c.lifecycle === 'suspended' && <Button variant="primary" onClick={move('reinstate')}>Reinstate</Button>}

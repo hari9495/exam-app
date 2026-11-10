@@ -58,6 +58,20 @@ export class CreateCompanyDto {
   products!: string[];
 }
 
+/** Careers answer 442: one company setting YukthiX staff change (console › Company settings). */
+export class CompanySettingDto {
+  @IsString()
+  @MaxLength(100)
+  key!: string;
+
+  @IsString()
+  @MaxLength(100)
+  value!: string;
+
+  @Reason(5)
+  reason!: string;
+}
+
 export class LifecycleDto {
   @IsIn(LIFECYCLE_ACTIONS)
   action!: LifecycleAction;

@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { assertDefaultRecruiter } from '../hiring/recruiter-key';
 import { ResolveSettingQueryDto, SettingDto } from './dto';
@@ -117,6 +117,7 @@ export class OrgSettingsService {
 
   async set(ctx: TenantContext, dto: SettingDto) {
     const def = definition(dto.key);
+    if (def.platform) throw new ForbiddenException(`Only YukthiX changes "${def.label}": it comes with your plan. Ask YukthiX support.`);
     // Answer 348: the default recruiter is none or an active person of the company who holds the recruiter key (400).
     if (def.oneOf === 'company_users' && dto.key === 'hiring.requisition.default_recruiter' && ctx.organizationId) await assertDefaultRecruiter(this.prisma, this.tenantPrisma, ctx.organizationId, dto.value);
     const scopeType = dto.scopeType as ScopeType;
@@ -167,6 +168,7 @@ export class OrgSettingsService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const row = await tx.setting.findFirst({ where: { id, organizationId: c.organizationId } });
       if (!row) throw new NotFoundException('Setting not found');
+      if (SETTINGS[row.key]?.platform) throw new ForbiddenException(`Only YukthiX changes "${SETTINGS[row.key]!.label}": it comes with your plan. Ask YukthiX support.`);
       if (row.validFrom && isoDate(row.validFrom) <= todayIst()) {
         throw new ConflictException('That value is already in force. Add a new value from a later date instead (YX-HIS-07).');
       }

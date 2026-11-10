@@ -3235,6 +3235,8 @@ model Product {
   code      String   @id @db.VarChar(32)
   name      String   @db.VarChar(100)
   unit      String   @db.VarChar(40)
+  /// Careers answer 442: what the product's plan includes (D15), e.g. white_label.
+  features  String[] @default([])
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("products")
