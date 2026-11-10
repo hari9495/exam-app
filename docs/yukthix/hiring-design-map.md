@@ -1939,3 +1939,18 @@ with In pipeline summed. Screenshots and the per-page results are in the walk re
      request apply to the AI draft only. *Suggested: keep; counsel confirms whether rediscovery needs its own notice.*
 504. **Plan features.** `products.features` has no console editor (only `white_label` exists today); a change is a
      migration. *Suggested: keep until a second plan feature appears.*
+## Founder answers 511 and 515 built (13 Nov 2026, branch `feat/yukthix-hiring-keys`)
+- (511) Interviews, scorecards, comments, the notetaker and the candidate's résumé (new `GET hiring/interviews/:id/resume`,
+  audited) open by panel membership (or overseeing the job), not by a role key; someone on no panel sees none and is
+  refused one (403), another company 404. Hiring home and the menu (Interviews) show for anyone on a panel. Still to do,
+  waiting for the coordinator's go-ahead on the counts: taking `results:view` and `interview:view_assigned` out of the
+  default employee role (`panel`) and from company overrides that still equal it.
+- (515) `GET organizations/job-boards/names` (`pipeline:manage` or the settings key): id, name and kind only; the job's
+  Settings tab picks boards from it. The full list, feed tokens and credentials stay with the settings key.
+## Founder questions from answers 511 and 515 (13 Nov 2026)
+541. **Older v2 interview screens.** `GET interviews/mine` behind "Test results (older screens)" still needs
+     `interview:view_assigned`. *Suggested: leave it (older screens are going); the YukthiX Interviews page needs no key.*
+542. **Divya's "Team Manager" role.** A company-made role (not a template) that still holds `results:view` and
+     `interview:view_assigned`; the migration will not change it. *Suggested: HR removes the two keys there if managers
+     should not read jobs and test results; being on a panel is enough for interviews.*
+
