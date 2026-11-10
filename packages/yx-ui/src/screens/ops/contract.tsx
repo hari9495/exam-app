@@ -1753,6 +1753,8 @@ export function ConvertWorkerScreen({ worker = NO_WORKER, current = 'person', fi
       onContinue={(id) => {
         if (stepOk(id)) return true;
         setTried(true);
+        // Walk finding: the error showed but focus stayed on Continue; move it to the first wrong field.
+        if (id === 'employee') focusOn(placeErr.entity ? 'cv-entity' : placeErr.location ? 'cv-location' : 'cv-joining');
         return false;
       }}
       finishLabel="Start pre-boarding"
