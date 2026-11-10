@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { StorageModule } from '@exam-platform/shared';
 import { AuthModule } from '../auth/auth.module';
 import { OrgStructureModule } from '../org-structure/org-structure.module';
 import { EmailModule } from '../email/email.module';
@@ -8,7 +9,7 @@ import { VisitorsService } from './visitors.service';
 // Visitors (M02 §B11, VIS-01 … VIS-04, T9-14, Settings 3.12). Slice 1: invites, the visitor's pass page, the desk,
 // the log, Settings 3.12, retention and the auto-close of forgotten check-outs.
 @Module({
-  imports: [AuthModule, OrgStructureModule, EmailModule],
+  imports: [AuthModule, OrgStructureModule, EmailModule, StorageModule],
   controllers: [VisitorsController, PublicVisitsController],
   providers: [VisitorsService],
   exports: [VisitorsService],

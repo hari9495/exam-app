@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AuditService, BlobStorageService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
-import { buildViewer, type ScopeUser, type Viewer } from '../access/scope';
+import { buildViewer, tenantWide, type ScopeUser, type Viewer } from '../access/scope';
 import { audit, inCompany, type CompanyContext, type Tx } from '../org-structure/org-structure.service';
 import { OrgSettingsService } from '../org-structure/org-settings.service';
 import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
@@ -55,6 +55,11 @@ export class VisitorsService {
     return all.filter((l) => locs.has(l.id) || ents.has(l.legalEntityId));
   }
 
+  /** Settings 3.12 are company-wide values: the key for the whole company. */
+  private settingsHolder(v: Viewer) {
+    return tenantWide(v, 'visitors.settings.manage') || tenantWide(v, 'org.settings.manage');
+  }
+
   private own(v: Viewer, what = 'this') {
     if (v.actingForOther) throw new ForbiddenException(`You can't change ${what} while acting for someone else. Sign in as yourself.`);
   }
@@ -77,7 +82,7 @@ export class VisitorsService {
         locations: all.map((l) => ({ value: l.id, label: l.name })),
         desk: desk.map((l) => ({ value: l.id, label: l.name })),
         log: log.map((l) => ({ value: l.id, label: l.name })),
-        canSettings: v.grants.has('visitors.settings.manage') || v.grants.has('org.settings.manage'),
+        canSettings: this.settingsHolder(v),
         acting: v.actingForOther,
       };
     });
@@ -348,7 +353,7 @@ export class VisitorsService {
       const last = rows.filter((r) => r.updatedBy).sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0];
       const by = last ? await tx.user.findFirst({ where: { organizationId: c.organizationId, id: last.updatedBy! }, select: { name: true, email: true } }) : null;
       return {
-        canEdit: (v.grants.has('visitors.settings.manage') || v.grants.has('org.settings.manage')) && !v.actingForOther,
+        canEdit: this.settingsHolder(v) && !v.actingForOther,
         values: Object.fromEntries(VISITOR_SETTING_KEYS.map((k) => [k, String(company(k)?.value ?? SETTINGS[k]!.default)])),
         defaults: Object.fromEntries(VISITOR_SETTING_KEYS.map((k) => [k, SETTINGS[k]!.default])),
         choices: Object.fromEntries(VISITOR_SETTING_KEYS.map((k) => [k, SETTINGS[k]!.values])),
@@ -364,7 +369,7 @@ export class VisitorsService {
   async saveSettings(ctx: TenantContext, user: ScopeUser, changes: { key: string; value: string }[]) {
     const v = await this.viewer(user);
     this.own(v, 'settings');
-    if (!(v.grants.has('visitors.settings.manage') || v.grants.has('org.settings.manage'))) throw new ForbiddenException('Only Facility admins or HR with the settings key can change visitor settings.');
+    if (!this.settingsHolder(v)) throw new ForbiddenException('Only Facility admins or HR with the settings key for the whole company can change visitor settings.');
     const seen = new Set<string>();
     for (const ch of changes) {
       if (!(VISITOR_SETTING_KEYS as readonly string[]).includes(ch.key)) throw new BadRequestException(`${ch.key} is not a visitor setting.`);

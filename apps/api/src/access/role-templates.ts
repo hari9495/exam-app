@@ -218,7 +218,7 @@ const TEMPLATES: readonly RoleTemplate[] = [
   {
     key: 'facility_admin',
     name: 'Facility admin',
-    typicalScope: 'location',
+    typicalScope: 'tenant',
     summary: 'Visitor settings (Settings 3.12), the reception desk and the visitor log.',
     cannot: 'Change people, pay or time records.',
     permissions: ['visitors.settings.manage', 'visitors.desk.manage', 'visitors.log.view'],
