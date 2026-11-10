@@ -117,6 +117,9 @@ Things deliberately left for launch. Development runs locally until then (test k
       Illinois, EU directive; all verify) before any job outside India is published (Hiring answer 228, 9 Nov 2026).
 - [ ] **Joining bonus clawback wording.** Counsel checks the clawback clause in offer letters and the full / pro-rata
       recovery in the final settlement (Hiring answer 373, 10 Nov 2026).
+- [ ] **Visitor privacy notice (G-27).** The DPO writes the visitor privacy notice (APX-G G-27: what is recorded, why,
+      for how long, who sees it, the visitor's rights) and the company template; it shows on the visitor's pass page and
+      at reception before entry, with the retention days from Settings 3.12 (Visitors slice 1, 15 Nov 2026).
 - [ ] **Bias audit law row.** Counsel checks HIR.BIAS_AUDIT (NYC Local Law 144: the city names that count as New York
       City, the 12 months an audit lasts, the sex and race / ethnicity categories; marked verify) before any company turns on
       "We use an automated tool for jobs in New York City" (HIR-23, 13 Nov 2026).

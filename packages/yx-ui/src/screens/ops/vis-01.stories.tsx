@@ -11,6 +11,8 @@ export const Expected: S = { name: 'Expected · walk-in waiting for host', rende
 export const OnSite: S = { name: 'On site now (emergency list)', render: () => <VisitorDeskScreen visits={VISITS} today={TODAY} tab="onsite" /> };
 export const CheckedOut: S = { name: 'Checked out', render: () => <VisitorDeskScreen visits={VISITS} today={TODAY} tab="out" /> };
 export const CheckIn: S = { name: 'Check in · notice and badge', render: () => <VisitorDeskScreen visits={VISITS} today={TODAY} checkInId="v1" /> };
+// Visitors slice 1: "Scan QR pass" takes a scanned or typed pass code (the scanner types it), then opens the check-in.
+export const FindPass: S = { name: 'Scan or type the QR pass', render: () => <VisitorDeskScreen visits={VISITS} today={TODAY} findOpen /> };
 export const Blocked: S = { name: 'Blocked visitor stopped', render: () => <VisitorDeskScreen visits={VISITS} today={TODAY} blockedAlert /> };
 export const Empty: S = { render: () => <VisitorDeskScreen visits={[]} today={TODAY} state="empty" /> };
 export const Loading: S = { render: () => <VisitorDeskScreen visits={VISITS} today={TODAY} state="loading" /> };

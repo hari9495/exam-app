@@ -19085,5 +19085,97 @@
       "Screens/Settings/Group 4 · Payroll & Statutory · 4.9 Contract labour"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-VIS-01",
+    "area": "Visitors · slice 1 (15 Nov 2026)",
+    "screen": "My visitors · invite a visitor (VIS-02)",
+    "url": "http://localhost:3000/yx/visitors/invites",
+    "account": "Any employee of the demo company (for example employee@demo-org.test); a mailbox you can read for the visitor. Browser window 1278 x 635.",
+    "steps": [
+      "Open Visitors › My visitors; press Invite a visitor, then Send invite with nothing filled.",
+      "Fill name, mobile 12345, your email, Chennai office, today, 2:00 pm to 1:00 pm; send.",
+      "Fix the mobile (98401 22871) and the times (2:00 pm to 3:00 pm); send.",
+      "Press Cancel visit on another invite you made."
+    ],
+    "expected": "Step 1: each missing field names itself and nothing is sent. Step 2: the times say the visitor must leave after they arrive; the server refuses the mobile with its words. Step 3: toast \"Invite sent\" with the pass code; the email arrives with the link. Step 4: the visit shows Cancelled.",
+    "stories": [
+      "Screens/Visitors/VIS-02 · Pre-register + my visitors · Invite a visitor"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-VIS-02",
+    "area": "Visitors · slice 1 (15 Nov 2026)",
+    "screen": "The visitor's pass page (T9-14)",
+    "url": "http://localhost:3000/yx/visit/<link from the email>",
+    "account": "Not signed in, on a phone width, with the invite email from MT-VIS-01. Browser window 1278 x 635.",
+    "steps": [
+      "Open the link; check the details (mobile shows only its last 3 digits); type a vehicle number; Continue.",
+      "Press Get my pass without ticking; tick and press it.",
+      "Change the notice on Settings 3.12, then open a new invite's link and read the notice.",
+      "Open the cancelled visit's link and a mistyped link."
+    ],
+    "expected": "Step 2: asks to tick first; then the QR pass with the code. Step 3: the new notice shows. Step 4: \"We can't issue a pass for this visit\"; the mistyped link: \"We could not find this visit.\" The page shows the company's logo and colour.",
+    "stories": [
+      "Screens/Portals/T9-14 · Visitor invite page · Your details",
+      "Screens/Portals/T9-14 · Visitor invite page · QR pass"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-VIS-03",
+    "area": "Visitors · slice 1 (15 Nov 2026)",
+    "screen": "Today's visitors · find the pass, check in and out (VIS-01)",
+    "url": "http://localhost:3000/yx/visitors",
+    "account": "A person with the Reception role at the Chennai office only (Settings › Roles & access), then an employee without it. Browser window 1278 x 635.",
+    "steps": [
+      "Open Visitors › Today's visitors; press Scan QR pass and type a wrong code, then the right code in lower case.",
+      "In the check-in drawer for a visitor who did not open their link, press Check in without ticking the notice; tick and check in.",
+      "On On site now press Check out.",
+      "Type the pass code of a Hosur visit, and of tomorrow's visit.",
+      "Sign in as an employee without the Reception role and open /yx/visitors."
+    ],
+    "expected": "Step 1: \"No visit has that pass code\"; then the check-in drawer opens. Step 2: asks to tick; then toast with the badge number. Step 3: toast; the visitor moves to Checked out. Step 4: \"This pass is for Hosur plant\" / \"This pass is for <date>, not today\". Step 5: no Today's visitors in the menu; the page says it needs the Reception role.",
+    "stories": [
+      "Screens/Visitors/VIS-01 · Today's visitors · Scan or type the QR pass",
+      "Screens/Visitors/VIS-01 · Today's visitors · Check in · notice and badge"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-VIS-04",
+    "area": "Visitors · slice 1 (15 Nov 2026)",
+    "screen": "Visitor log and CSV (VIS-04)",
+    "url": "http://localhost:3000/yx/visitors/log",
+    "account": "Reception at the Chennai office; then a System Admin. Browser window 1278 x 635.",
+    "steps": [
+      "Open Visitors › Visitor log; look at Deleted in.",
+      "Press Export for audit and open the file.",
+      "Sign in as the System Admin and open the log."
+    ],
+    "expected": "Step 1: Chennai visits only, each with the days left before deletion. Step 2: the CSV has names, host, times and status, and no mobile numbers. Step 3: every location's visits.",
+    "stories": [
+      "Screens/Visitors/VIS-04 · Visitor log & reports · Log · retention countdown"
+    ],
+    "note": "Positive and negative (another location)."
+  },
+  {
+    "id": "MT-VIS-05",
+    "area": "Visitors · slice 1 (15 Nov 2026)",
+    "screen": "Settings 3.12 Visitors",
+    "url": "http://localhost:3000/yx/settings/visitors",
+    "account": "A Facility admin (company-wide) or HR with the settings key; then reception. Browser window 1278 x 635.",
+    "steps": [
+      "Open Settings › Time & Leave › Visitors; change Keep visitor records for to 180 days and save.",
+      "Set Visitors allowed from 19:00 (until 18:30) and save.",
+      "On Company rules give Hosur plant its own retention (30 days); reopen 3.12.",
+      "Sign in as reception and open 3.12."
+    ],
+    "expected": "Step 1: toast \"Visitor settings saved\"; the change is in the audit log. Step 2: refused: until must be after from. Step 3: the field says \"own value at Hosur plant\". Step 4: read-only.",
+    "stories": [
+      "Screens/Settings/Group 3 · Time & Leave · 3.12 Visitors"
+    ],
+    "note": "Positive and negative."
   }
 ]

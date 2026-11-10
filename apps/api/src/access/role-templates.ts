@@ -205,6 +205,24 @@ const TEMPLATES: readonly RoleTemplate[] = [
   },
   // Staffing desk slice 1 (HIR-14, HIR-15): a staffing company's account managers (clients, contacts, rate cards with pay
   // rates and margins, invoice series). Only useful once the company turns the staffing desk on (Settings › Staffing desk).
+  // Visitors (founder answer 613): reception runs the desk where it is granted (a location); Facility admin also owns
+  // Settings 3.12.
+  {
+    key: 'reception',
+    name: 'Reception',
+    typicalScope: 'location',
+    summary: "Today's visitors at the location: check in and out, the on-site list and the visitor log.",
+    cannot: 'Change visitor settings, or see visitors at other locations.',
+    permissions: ['visitors.desk.manage', 'visitors.log.view'],
+  },
+  {
+    key: 'facility_admin',
+    name: 'Facility admin',
+    typicalScope: 'tenant',
+    summary: 'Visitor settings (Settings 3.12), the reception desk and the visitor log.',
+    cannot: 'Change people, pay or time records.',
+    permissions: ['visitors.settings.manage', 'visitors.desk.manage', 'visitors.log.view'],
+  },
   {
     key: 'staffing_account_manager',
     name: 'Staffing account manager',

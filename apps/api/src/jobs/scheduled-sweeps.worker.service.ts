@@ -23,6 +23,7 @@ import { ScorecardsService } from '../interviewing/scorecards.service';
 import { HiringSettingsService } from '../hiring/hiring-settings.service';
 import { CampaignsService } from '../talent-crm/campaigns.service';
 import { CrmConsentsService } from '../talent-crm/consents.service';
+import { VisitorsService } from '../visitors/visitors.service';
 
 function msg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -60,6 +61,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     hiringSettings: HiringSettingsService,
     campaigns: CampaignsService,
     crmConsents: CrmConsentsService,
+    visitors: VisitorsService,
   ) {
     // Keys MUST match SWEEP_SCHEDULE ids.
     this.handlers = {
@@ -88,6 +90,9 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       // HIR-20: due campaign steps (inside the send window, under the daily cap), and sourced profiles past their limit.
       'crm-campaigns': () => campaigns.sweep(),
       'sourced-purge': () => crmConsents.purgeSourced(),
+      // Visitors answers 611 and 608: close forgotten check-outs at the end of the window; delete visits after the period.
+      'visitors-close': () => visitors.closeSweep(),
+      'visitors-retention': () => visitors.retentionSweep(),
     };
     this.worker = logBullErrors(new Worker(SCHEDULED_SWEEPS_QUEUE_NAME, (job) => this.dispatch(job), bullOpts(this.connection)), SCHEDULED_SWEEPS_QUEUE_NAME);
     this.worker.on('failed', (job, err) => this.logger.error(`Sweep "${job?.name}" failed: ${msg(err)}`));
