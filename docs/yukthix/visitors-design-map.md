@@ -31,11 +31,12 @@ built.
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Front desk and kiosk | 2 | 20 | 1 | 0 | 0 | 0 | 21 |
-| B. Hosts | 2 | 6 | 1 | 0 | 0 | 4 | 11 |
+| B. Hosts | 2 | 7 | 1 | 0 | 0 | 4 | 12 |
 | C. The visitor's own pages | 1 | 7 | 0 | 0 | 2 | 0 | 9 |
 | D. Log, reports and settings | 4 | 12 | 2 | 0 | 0 | 0 | 14 |
-| **All Visitors design groups (A–D)** | **9** | **45** | **4** | **0** | **2** | **4** | **55** |
+| **All Visitors design groups (A–D)** | **9** | **46** | **4** | **0** | **2** | **4** | **56** |
 
+Recounted by script 10 Nov 2026 on `feat/yukthix-visitors-2` after 711 (VIS-02 ApprovalSend drawn and live): 46 live, 4 with a gap, 2 not built, 4 phone views of 56.
 Recounted by script 10 Nov 2026 on `feat/yukthix-visitors-2` after merging slice 4 (test main e26aaa556): 45 live, 4 with a gap, 2 not built (T9-14 Photo, PhotoBlocked), 4 phone views.
 Recounted by script 10 Nov 2026 on `feat/yukthix-visitors-2` after merging slice 3 (test main 4b5598706): 38 live, 7 with a gap, 3 not built (T9-14 Photo, PhotoBlocked; VIS-04 Reports), 4 phone views; the kiosk's See reception is live with the watch-list.
 Recounted by script 16 Nov 2026 on `feat/yukthix-visitors-3` after Visitors slice 3: 33 stories live (8 with a gap);
@@ -84,14 +85,14 @@ All 39 stories below.
 | story (sub-page) | verdict | note |
 |---|---|---|
 | Expected · Expected · walk-in waiting for host | live | live 15 Nov 2026 at /yx/visitors (Reception role, per location): expected visitors of the location's day; slice 2 (10 Nov 2026): the walk-in waiting for the host with the time reception decides from, Decide for host once it has passed |
-| OnSite · On site now (emergency list) | live | live: everyone checked in and not out, "Print badge" again (607), and the Roll-call button to the printable roll-call with employees (VIS-06, slice 4) |
+| OnSite · On site now (emergency list) | live | live: everyone checked in and not out (a walk-in with its photo for reception, 713: `GET visitors/desk/visits/:id/photo`, the desk key at the location, while waiting or on site, never cached), "Print badge" again (607), and the Roll-call button to the printable roll-call with employees (VIS-06, slice 4) |
 | CheckedOut · Checked out | live | live: checked out, and closed as "Not checked out" at the end of the window (611) |
 | CheckIn · Check in · notice and badge | live | live: check in (`POST visitors/:id/check-in`); the notice, and (slice 2) the visit type's NDA and induction, ticked at the desk when not accepted on the link; the ID type and last 4 where the location takes ID (slice 3, 603); under 18 the named adult (614); "Check in and print badge" opens the label-size badge PDF (slice 4, 607; none where the pass is on the phone only), a photo badge carries the walk-in's photo (713, never under 18); reception sees the walk-in's photo while it waits and while on site (713) |
 | CheckInIdPhoto · Check in · ID type, last 4 and photo of the ID | live | drawn 16 Nov 2026 (slice 3, 603): where the location keeps a photo of the ID, reception adds it (`POST visitors/:id/id-image`) with the type and last 4; private storage, virus-checked before it opens, deleted after the ID retention; never of an Aadhaar card |
 | CheckInMinor · Check in · visitor under 18 with an adult | live | drawn 16 Nov 2026 (slice 3, 614): no ID and no photo; reception ticks that the named adult is there |
 | FindPass · Scan or type the QR pass | live | drawn 15 Nov 2026: "Scan QR pass" takes the scanned or typed pass code (`POST visitors/desk/find`); a pass for another location or day is refused with the reason |
 | AddWalkIn · Add a walk-in · type, host, NDA and induction | live | drawn 10 Nov 2026 (slice 2, answers 604, 606, 610): name, mobile, company, visitor type, purpose, host (searched, `GET visitors/desk/hosts`); the notice and the type's NDA and induction read and ticked (`GET visitors/desk/needs`); outside the allowed hours a reason (audited `visitor.hours_overridden`); `POST visitors/walk-ins`, the host is told (bell and email) |
-| DecideForHost · Decide for the host after the timeout | live | drawn 10 Nov 2026 (604): after the host's minutes (`visitors.host_timeout_minutes`, default 10) reception lets them in or declines with a reason (`POST visitors/walk-ins/:id/decide`; before the deadline 409); audited `visitor.walkin_decided` with who decided |
+| DecideForHost · Decide for the host after the timeout | live | drawn 10 Nov 2026 (604): after the host's minutes (`visitors.host_timeout_minutes`, default 10) reception lets them in or declines with a reason (`POST visitors/walk-ins/:id/decide`; before the deadline 409); audited `visitor.walkin_decided` with who decided; the walk-in's photo shows here for reception (713) |
 | Blocked · Blocked visitor stopped | live | live (slice 3, 605): a visit matching the watch-list, or such a pass scanned, shows "Stop at reception" with the name only; no check-in; the reason is never shown |
 | Empty · Empty | live | no visitors today |
 | Loading · Loading | live | loading |
@@ -123,7 +124,8 @@ All 39 stories below.
 | Empty · Empty | live | no visitors yet |
 | Phone · My visitors · phone | phone view, mobile app not built | the web page at phone width serves it until the app |
 | PhoneApproval · Walk-in approval card · phone | phone view, mobile app not built | the phone app; the web card (Approval) serves it at phone width |
-| Approval · Walk-in approval card | live | drawn 10 Nov 2026 (604, 602): on My visitors, each walk-in asking for the host (`GET visitors/approvals`, every 15 s) with the photo (`GET visitors/walk-ins/:id/photo`, the host only, while waiting, never cached; the page drops it when the card goes); Approve or Reject (`POST visitors/walk-ins/:id/decide`); "Send someone" is not built (question 711) |
+| Approval · Walk-in approval card | live | drawn 10 Nov 2026 (604, 602): on My visitors, each walk-in asking for the host (`GET visitors/approvals`, every 15 s) with the photo (`GET visitors/walk-ins/:id/photo`, the host only, while waiting, never cached; the page drops it when the card goes); Approve or Reject (`POST visitors/walk-ins/:id/decide`); Send someone (711, see ApprovalSend) |
+| ApprovalSend · Walk-in approval · send someone | live | drawn 10 Nov 2026 (711): the host picks a colleague (`GET visitors/walk-ins/:id/colleagues`, the host only, while it waits) and sends (`POST visitors/walk-ins/:id/send`); the colleague becomes the host: the card, the photo and the location's minutes from now, told by bell and email with who sent them; the host's card and photo go; audited `visitor.walkin_sent` (from, to, deadline); a decision or another send meanwhile wins (409) |
 | PhoneInvite · Invite · phone | phone view, mobile app not built | the web invite at phone width until the app |
 
 #### Requests and Me tabs
@@ -436,6 +438,20 @@ at check-in and on the photo badge, never on the host's phone after the decision
 - **Merge note:** slice 3 must keep `waiting` and `declined` when it changes `visits_status_check`.
 - **Slice 4 merge (761, 713):** `VisitorReportsService.badge` now reads the walk-in's photo for a "photo badge with QR"
   location (never for a visitor under 18; the audit says whether a photo was drawn); e2e `visitors-4` adds the scenario.
+
+## Founder answers built after Visitors slice 2 (711, 713, 701; 10 Nov 2026)
+
+- **711 Send someone:** on the host's approval card. The named colleague becomes the host of the walk-in: the card with
+  their own minutes (the location's, from the send), the photo while they decide, the bell and email saying who sent
+  them; the first host's card and photo go. Audited `visitor.walkin_sent`. Refused while acting (403), to themselves
+  (400), for anyone but the host or another company (404), once decided (409).
+- **713 The photo at the desk:** reception at the location sees the walk-in's photo on today's list and in Decide for
+  host, while it waits and while on site (`GET visitors/desk/visits/:id/photo`, never cached); after check-out not at
+  all; never on the host's phone after the decision. A photo badge carries it (slice 4 merge), never for a visitor
+  under 18.
+- **701 demo staffing:** `apps/api/prisma/scripts/demo-staffing.ts` (run by the founder against the test app).
+- **Tests:** e2e `visitors-2` (11 scenarios; the eleventh is 711 and 713), `visitors-4` (the photo badge), kit and web
+  tests for Send someone and the desk photo.
 
 ## Founder questions from Visitors slice 2 (10 Nov 2026)
 

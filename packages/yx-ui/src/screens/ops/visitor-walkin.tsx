@@ -1,7 +1,7 @@
 // Visitors slice 2 at the reception desk (VIS-01; answers 604, 606, 610): add a walk-in (details, who they visit, their
 // type's NDA and induction read and ticked, a reason when outside the allowed hours), and decide for the host once the
 // host's minutes have passed. The same parts draw the stories and run the live desk.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/button';
 import { InlineAlert } from '../../components/feedback';
 import { FieldRow, FormField, useTooEarly } from '../../components/field';
@@ -11,11 +11,33 @@ import { Select } from '../../components/select';
 import { Drawer } from '../../components/drawer';
 import { Dialog } from '../../components/overlay';
 import { useRun } from '../org/org-kit';
-import { useSay } from './ops-kit';
+import { PhotoPlaceholder, useSay } from './ops-kit';
 import { ID_CHOICES, PURPOSE_CHOICES } from './visitors-data';
 import type { KioskNeeds } from './visitor-kiosk';
 
 type Choice = { value: string; label: string; description?: string };
+
+/**
+ * Answers 602 and 713: a walk-in's photo, fetched for this view only and dropped when it goes (never kept on the
+ * device). The host sees it while deciding; reception while the walk-in waits or is on site.
+ */
+export function VisitorPhoto({ id, name, photo, size = 'md' }: { id: string; name: string; photo: (id: string) => Promise<string | null>; size?: 'sm' | 'md' }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let on = true;
+    let made: string | null = null;
+    void photo(id).then((u) => {
+      made = u;
+      if (on) setUrl(u);
+      else if (u) URL.revokeObjectURL(u);
+    }, () => undefined);
+    return () => {
+      on = false;
+      if (made) URL.revokeObjectURL(made);
+    };
+  }, [id, photo]);
+  return url ? <img src={url} alt={`Photo of ${name}`} className="yx-ops-photo" data-size={size} style={{ objectFit: 'cover' }} /> : <PhotoPlaceholder name={name} size={size} />;
+}
 
 export interface DeskWalkInInput {
   name: string;
@@ -196,7 +218,7 @@ export function AddWalkInDrawer({ open, onClose, parts, idCapture = 'on' }: { op
 }
 
 /** Answer 604: after the host's minutes, reception lets the walk-in in or not; a refusal says why. Audited. */
-export function DecideForHostDialog({ open, onClose, name, host, onDecide }: { open: boolean; onClose: () => void; name: string; host: string; onDecide?: (approve: boolean, reason: string | null) => Promise<unknown> }) {
+export function DecideForHostDialog({ open, onClose, id, name, company, host, photo, onDecide }: { open: boolean; onClose: () => void; id?: string; name: string; company?: string | null; host: string; photo?: ((id: string) => Promise<string | null>) | null; onDecide?: (approve: boolean, reason: string | null) => Promise<unknown> }) {
   const { toast } = useSay();
   const { busy, error, run, clearError } = useRun();
   const [choice, setChoice] = useState<'approve' | 'decline'>('approve');
@@ -227,11 +249,75 @@ export function DecideForHostDialog({ open, onClose, name, host, onDecide }: { o
         </>
       }
     >
+      {/* 713: reception sees who is at the desk before letting them in. */}
+      <span className="yx-ops-row">
+        {photo && id ? <VisitorPhoto id={id} name={name} photo={photo} /> : <PhotoPlaceholder name={name} />}
+        <span className="yx-ops-stack" data-gap="sm">
+          <strong>{name}</strong>
+          {company && <span className="yx-ops-muted">{company}</span>}
+        </span>
+      </span>
       <FormField label={name} hideLabel>
         <RadioGroup aria-label="Decision" value={choice} onChange={(v) => setChoice(v as 'approve' | 'decline')} options={[{ value: 'approve', label: `Let ${name} in` }, { value: 'decline', label: 'The visit cannot go ahead' }]} />
       </FormField>
       <FormField id="dh-reason" label="Reason" required={choice === 'decline'} optional={choice === 'approve'} error={early.errorOf('dh-reason')}>
         <TextArea value={reason} onChange={setReason} maxLength={300} rows={2} />
+      </FormField>
+    </Dialog>
+  );
+}
+
+/**
+ * Answer 711: the host sends a colleague to meet the walk-in. The colleague gets the card (with their own minutes and
+ * the photo while they decide); the host's card goes. Recorded in the audit log.
+ */
+export function SendSomeoneDialog({ open, onClose, name, colleagues, onSend }: { open: boolean; onClose: () => void; name: string; colleagues?: (q: string) => Promise<Choice[]>; onSend?: (userId: string) => Promise<{ to: string; dueAt: string | null }> }) {
+  const { toast } = useSay();
+  const { busy, error, run, clearError } = useRun();
+  const [who, setWho] = useState<string | null>(null);
+  const [q, setQ] = useState('');
+  const [options, setOptions] = useState<Choice[]>(colleagues ? [] : [{ value: 'c1', label: 'Ravi Kumar', description: 'ravi@kaveri.example' }, { value: 'c2', label: 'Meena Iyer', description: 'meena@kaveri.example' }]);
+  // The search runs on the typed text only (the page may hand a new function on every render).
+  const search = useRef(colleagues);
+  search.current = colleagues;
+  const live = Boolean(colleagues);
+  useEffect(() => {
+    if (!open || !search.current) return;
+    let on = true;
+    void search.current(q).then((r) => on && setOptions(r), () => undefined);
+    return () => {
+      on = false;
+    };
+  }, [q, open, live]);
+  const early = useTooEarly(!who ? [{ fieldId: 'ss-who', message: 'Choose who meets them.' }] : []);
+  const go = () => {
+    if (early.stop()) return;
+    if (!onSend) return void onClose();
+    void run('send', async () => {
+      const r = await onSend(who!);
+      const by = r.dueAt ? new Date(r.dueAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }) : null;
+      toast({ tone: 'success', title: `${r.to} has the card now`, description: by ? `They have until ${by} to answer; then reception decides.` : 'Reception decides if they do not answer.' });
+      onClose();
+    });
+  };
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(o) => !o && (onClose(), clearError())}
+      title={`Send someone to meet ${name}`}
+      description="They get this card with their own minutes to answer. Recorded in the audit log."
+      notice={error ? <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert> : undefined}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" loading={busy === 'send'} onClick={go}>
+            Send
+          </Button>
+        </>
+      }
+    >
+      <FormField id="ss-who" label="Who meets them" required error={early.errorOf('ss-who')}>
+        <Select aria-label="Who meets them" value={who} onChange={setWho} options={options} searchable onSearchChange={setQ} placeholder="Search by name" emptyText="Nobody by that name." />
       </FormField>
     </Dialog>
   );

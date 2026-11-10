@@ -29,7 +29,7 @@ import { retentionLeft } from './ops-rules';
 import type { ListState } from './helpdesk';
 import { ID_CHOICES, PURPOSE_CHOICES, visitOf, type Visit, type VisitStatus, type VisitView } from './visitors-data';
 import { LiveVisitorKioskView, type KioskNeeds, type LiveVisitorKiosk } from './visitor-kiosk';
-import { AddWalkInDrawer, DecideForHostDialog, type DeskWalkInParts } from './visitor-walkin';
+import { AddWalkInDrawer, DecideForHostDialog, SendSomeoneDialog, VisitorPhoto, type DeskWalkInParts } from './visitor-walkin';
 
 const time = (d?: Date) => (d ? d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }) : '—');
 const TONE: Record<VisitStatus, BadgeTone> = { Expected: 'neutral', 'Waiting for host': 'warning', 'On site': 'success', 'Checked out': 'neutral', Blocked: 'danger', Rejected: 'danger', 'No show': 'neutral', 'Not checked out': 'warning', Cancelled: 'neutral' };
@@ -97,6 +97,8 @@ export interface LiveVisitorDesk {
   walkIns?: DeskWalkInParts & {
     onDecide: (id: string, approve: boolean, reason: string | null) => Promise<unknown>;
     visitNeeds: (id: string) => Promise<KioskNeeds>;
+    /** 713: the walk-in's photo while it waits or is on site (an object URL the view drops when it goes). */
+    photo?: (id: string) => Promise<string | null>;
   };
   /** Slice 4 (607): the location's badge; 'phone_only' prints nothing (the QR pass is on the visitor's phone). */
   badge?: 'name_qr' | 'photo_qr' | 'phone_only';
@@ -211,7 +213,7 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
       });
     })();
   const cols: TableColumn<Visit>[] = [
-    { key: 'name', header: 'Visitor', value: (v) => v.name, render: (v) => <span className="yx-ops-row"><PhotoPlaceholder name={v.name} size="sm" /><span className="yx-ops-stack" data-gap="sm"><strong>{v.name}</strong><span className="yx-ops-muted">{v.company}</span></span></span>, width: 230 },
+    { key: 'name', header: 'Visitor', value: (v) => v.name, render: (v) => <span className="yx-ops-row">{v.hasPhoto && live?.walkIns?.photo ? <VisitorPhoto id={v.id} name={v.name} photo={live.walkIns.photo} size="sm" /> : <PhotoPlaceholder name={v.name} size="sm" />}<span className="yx-ops-stack" data-gap="sm"><strong>{v.name}</strong><span className="yx-ops-muted">{v.company}</span></span></span>, width: 230 },
     { key: 'host', header: 'Host', value: (v) => v.host },
     { key: 'purpose', header: 'Purpose', value: (v) => v.purpose },
     { key: 'window', header: 'Window', value: (v) => v.from, render: (v) => `${time(v.from)} to ${time(v.to)}` },
@@ -456,7 +458,7 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
         )}
       </Drawer>
       {adding && <AddWalkInDrawer open idCapture={idRule} onClose={() => setAdding(false)} parts={live?.walkIns ? { ...live.walkIns, onAdd: (i) => live.walkIns!.onAdd({ ...i }) } : undefined} />}
-      {deciding && waiting && <DecideForHostDialog open onClose={() => setDeciding(false)} name={waiting.name} host={waiting.host} onDecide={live?.walkIns ? (approve, reason) => live.walkIns!.onDecide(waiting.id, approve, reason) : undefined} />}
+      {deciding && waiting && <DecideForHostDialog open onClose={() => setDeciding(false)} id={waiting.id} name={waiting.name} company={waiting.company !== '—' ? waiting.company : null} host={waiting.host} photo={waiting.hasPhoto ? live?.walkIns?.photo : null} onDecide={live?.walkIns ? (approve, reason) => live.walkIns!.onDecide(waiting.id, approve, reason) : undefined} />}
     </>
   );
   if (live)
@@ -517,6 +519,9 @@ export interface LivePreRegister {
     rows: WalkInApproval[];
     photo: (id: string) => Promise<string | null>;
     onDecide: (id: string, approve: boolean) => Promise<unknown>;
+    /** Answer 711: colleagues to send (by name) and the send; the colleague gets the card. */
+    colleagues?: (id: string, q: string) => Promise<Choice[]>;
+    onSend?: (id: string, userId: string) => Promise<{ to: string; dueAt: string | null }>;
   };
 }
 
@@ -532,25 +537,6 @@ export interface WalkInApproval {
   hasPhoto: boolean;
 }
 
-/** Answer 602: the photo is fetched for this card only and dropped when the card goes (never kept on the device). */
-function ApprovalPhoto({ id, name, photo }: { id: string; name: string; photo: (id: string) => Promise<string | null> }) {
-  const [url, setUrl] = useState<string | null>(null);
-  useEffect(() => {
-    let on = true;
-    let made: string | null = null;
-    void photo(id).then((u) => {
-      made = u;
-      if (on) setUrl(u);
-      else if (u) URL.revokeObjectURL(u);
-    }, () => undefined);
-    return () => {
-      on = false;
-      if (made) URL.revokeObjectURL(made);
-    };
-  }, [id, photo]);
-  return url ? <img src={url} alt={`Photo of ${name}`} className="yx-ops-photo" data-size="md" style={{ objectFit: 'cover' }} /> : <PhotoPlaceholder name={name} />;
-}
-
 export interface PreRegisterProps {
   device?: 'desk' | 'phone';
   visits: Visit[];
@@ -558,6 +544,8 @@ export interface PreRegisterProps {
   formOpen?: boolean;
   sent?: boolean;
   approval?: boolean;
+  /** Story (711): the Send someone dialog open on the approval card. */
+  sendOpen?: boolean;
   /** Story: the invite of a visitor under 18 (answer 614). */
   minor?: boolean;
   live?: LivePreRegister;
@@ -709,7 +697,8 @@ export function PreRegisterForm({ today, draft, onDraft, errorOf, locations, min
     </div>
   );
 }
-export function PreRegisterScreen({ device = 'desk', visits: sample, today, formOpen, sent, approval, minor, live }: PreRegisterProps) {
+export function PreRegisterScreen({ device = 'desk', visits: sample, today, formOpen, sent, approval, sendOpen = false, minor, live }: PreRegisterProps) {
+  const [sending, setSending] = useState<{ id: string; name: string } | null>(sendOpen ? { id: 'sample', name: 'Priyanka Sethi' } : null);
   const visits = live ? live.visits.map(visitOf) : sample;
   const [open, setOpen] = useState(!!formOpen);
   const { toast } = useSay();
@@ -776,7 +765,9 @@ export function PreRegisterScreen({ device = 'desk', visits: sample, today, form
         <p className="yx-ops-muted">If you don't answer in 10 minutes, reception decides.</p>
         <Actions>
           <Button variant="approve" icon={Check}>Approve</Button>
-          <Button>Send someone</Button>
+          <Button icon={UserPlus} onClick={() => setSending({ id: 'sample', name: 'Priyanka Sethi' })}>
+            Send someone
+          </Button>
           <Button icon={X}>Reject</Button>
         </Actions>
       </div>
@@ -784,11 +775,20 @@ export function PreRegisterScreen({ device = 'desk', visits: sample, today, form
   );
   const form = live ? <PreRegisterForm today={today} draft={draft} onDraft={setDraft} errorOf={early.errorOf} locations={live.locations} types={live.types} /> : <PreRegisterForm today={today} minor={minor} types={[{ value: 'customer', label: 'Customer' }, { value: 'contractor', label: 'Contractor' }]} />;
   // Slice 2 (604): the live approval cards, one per walk-in asking for this host.
+  const sendDialog = sending && (
+    <SendSomeoneDialog
+      open
+      onClose={() => setSending(null)}
+      name={sending.name}
+      colleagues={live?.approvals?.colleagues ? (q) => live.approvals!.colleagues!(sending.id, q) : undefined}
+      onSend={live?.approvals?.onSend ? (userId) => live.approvals!.onSend!(sending.id, userId) : undefined}
+    />
+  );
   const liveCards = live?.approvals?.rows.map((a) => (
     <Card key={a.id} title="A walk-in is asking for you">
       <div className="yx-ops-stack">
         <span className="yx-ops-row">
-          {a.hasPhoto ? <ApprovalPhoto id={a.id} name={a.name} photo={live.approvals!.photo} /> : <PhotoPlaceholder name={a.name} />}
+          {a.hasPhoto ? <VisitorPhoto id={a.id} name={a.name} photo={live.approvals!.photo} /> : <PhotoPlaceholder name={a.name} />}
           <span className="yx-ops-stack" data-gap="sm">
             <strong>{a.name}</strong>
             <span className="yx-ops-muted">
@@ -803,6 +803,11 @@ export function PreRegisterScreen({ device = 'desk', visits: sample, today, form
             <Button variant="approve" icon={Check} loading={busy === `yes-${a.id}`} onClick={() => void run(`yes-${a.id}`, async () => (await live.approvals!.onDecide(a.id, true), toast({ tone: 'success', title: `${a.name} is checked in`, description: 'Reception gives them a badge.' })))}>
               Approve
             </Button>
+            {live.approvals!.onSend && (
+              <Button icon={UserPlus} onClick={() => setSending({ id: a.id, name: a.name })}>
+                Send someone
+              </Button>
+            )}
             <Button icon={X} loading={busy === `no-${a.id}`} onClick={() => void run(`no-${a.id}`, async () => (await live.approvals!.onDecide(a.id, false), toast({ tone: 'success', title: `${a.name}'s visit declined`, description: 'Reception lets them know.' })))}>
               Reject
             </Button>
@@ -824,6 +829,7 @@ export function PreRegisterScreen({ device = 'desk', visits: sample, today, form
         ) : (
           <>
             {approvalCard}
+            {sendDialog}
             <Button variant="primary" icon={UserPlus} fullWidth onClick={() => setOpen(true)}>
               Invite a visitor
             </Button>
@@ -862,6 +868,7 @@ export function PreRegisterScreen({ device = 'desk', visits: sample, today, form
       <LivePage title="My visitors" description="Invite visitors ahead so they can check in with a QR pass." actions={inviteButton} state={live.state} onRetry={live.onRetry} what="your visitors">
         {error && !open && <InlineAlert tone="danger" title="Not done">{error}</InlineAlert>}
         {liveCards}
+        {sendDialog}
         <Card>{list}</Card>
         {drawer}
       </LivePage>
@@ -870,6 +877,7 @@ export function PreRegisterScreen({ device = 'desk', visits: sample, today, form
     <OpsDesk area="visitors" active="Invites">
       <PageHeader title="My visitors" description="Invite visitors ahead so they can check in with a QR pass." actions={inviteButton} />
       {approvalCard}
+      {sendDialog}
       <Card>{list}</Card>
       {drawer}
     </OpsDesk>

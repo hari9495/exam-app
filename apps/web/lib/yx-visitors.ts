@@ -1,5 +1,6 @@
 'use client';
 
+import { useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, apiFetchBlob } from './api-client';
 import { useAuth } from './auth-context';
@@ -27,13 +28,24 @@ export function useVisitorsGet() {
   return <T,>(path: string): Promise<T> => apiFetch(`/visitors${path}`, {}, accessToken ?? undefined) as Promise<T>;
 }
 
-/** Answer 602: the walk-in's photo for the host's card only, as an object URL the card drops when it goes. */
-export function useWalkInPhoto() {
+/** A photo as an object URL the view drops when it goes; one function per sign-in, so a re-render never fetches again. */
+function usePhoto(path: (id: string) => string) {
   const { accessToken } = useAuth();
-  return async (id: string): Promise<string | null> => {
-    const { blob } = await apiFetchBlob(`/visitors/walk-ins/${encodeURIComponent(id)}/photo`, {}, accessToken ?? undefined);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the path builder is a fixed literal per hook
+  return useCallback(async (id: string): Promise<string | null> => {
+    const { blob } = await apiFetchBlob(path(id), {}, accessToken ?? undefined);
     return blob.size ? URL.createObjectURL(blob) : null;
-  };
+  }, [accessToken]);
+}
+
+/** Answer 602: the walk-in's photo for the host's card only. */
+export function useWalkInPhoto() {
+  return usePhoto((id) => `/visitors/walk-ins/${encodeURIComponent(id)}/photo`);
+}
+
+/** Answer 713: the walk-in's photo for reception at the location while it waits or is on site. */
+export function useDeskVisitorPhoto() {
+  return usePhoto((id) => `/visitors/desk/visits/${encodeURIComponent(id)}/photo`);
 }
 
 /** Answer 603: the photo of the ID (multipart) with its type and last 4; the virus check follows. */

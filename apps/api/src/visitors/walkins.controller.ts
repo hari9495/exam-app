@@ -78,6 +78,11 @@ class SaveTypesDto {
   @IsArray() @ArrayMaxSize(50) @ValidateNested({ each: true }) @Type(() => TypeRowDto) types!: TypeRowDto[];
 }
 
+class SendDto {
+  /** 711: the colleague who meets the visitor instead. */
+  @IsUUID() userId!: string;
+}
+
 class PassDto {
   @trim() @IsString() @MaxLength(20) code!: string;
 }
@@ -120,6 +125,29 @@ export class WalkInsController {
   @HttpCode(200)
   decide(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DecideDto) {
     return this.walkIns.decide(ctx, who(req), id, dto);
+  }
+
+  /** 711: colleagues the host can send to meet the walk-in (the host only, while it waits). */
+  @Get('walk-ins/:id/colleagues')
+  colleagues(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Query('q') q?: string) {
+    return this.walkIns.colleagues(ctx, who(req), id, (q ?? '').slice(0, 100));
+  }
+
+  /** 711: the host sends a colleague; the colleague gets the card with their own minutes. Audited. */
+  @Post('walk-ins/:id/send')
+  @HttpCode(200)
+  send(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SendDto) {
+    return this.walkIns.send(ctx, who(req), id, dto.userId);
+  }
+
+  /** 713: the walk-in's photo for reception at the location while it waits or is on site; never cached. */
+  @Get('desk/visits/:id/photo')
+  @RequireAnyPermission('visitors.desk.manage')
+  @Header('Cache-Control', 'no-store, private')
+  async deskPhoto(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Res({ passthrough: true }) res: Response) {
+    const p = await this.walkIns.deskPhoto(ctx, who(req), id);
+    res.setHeader('Content-Type', p.type);
+    return new StreamableFile(p.data);
   }
 
   @Get('desk/hosts')

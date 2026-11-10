@@ -141,16 +141,18 @@ export class WalkInsService {
   }
 
   /** Answer 604: the host is told at once (bell and email), with the minutes they have. No photo in the email. */
-  private async tellHost(org: string, visit: { id: string; hostUserId: string; visitorName: string; visitorCompany: string | null; approvalDueAt: Date | null }, place: string) {
+  private async tellHost(org: string, visit: { id: string; hostUserId: string; visitorName: string; visitorCompany: string | null; approvalDueAt: Date | null }, place: string, sentBy?: string) {
     const who = `${visit.visitorName}${visit.visitorCompany ? ` (${visit.visitorCompany})` : ''}`;
+    // 711: a colleague the host sent is told who sent them.
+    const asked = sentBy ? `${esc(sentBy)} asked you to meet them.` : 'They asked for you.';
     const mins = visit.approvalDueAt ? Math.round((visit.approvalDueAt.getTime() - Date.now()) / 60_000) : 10;
     await this.notifications
       .notifySystem(
         { organizationId: org, isSuperAdmin: false },
         [visit.hostUserId],
         'visitor.walkin.approval.host',
-        { entityType: 'visit', entityId: visit.id, contextText: `${who} is at ${place} reception asking for you`, linkPath: '/yx/visitors/invites' },
-        { subject: `${who} is asking for you at reception`, html: `<p>${esc(who)} is at ${esc(place)} reception and asked for you.</p><p>Approve or decline in YukthiX (Visitors › My visitors) within ${mins} minutes; after that, reception decides.</p>` },
+        { entityType: 'visit', entityId: visit.id, contextText: sentBy ? `${sentBy} asked you to meet ${who} at ${place} reception` : `${who} is at ${place} reception asking for you`, linkPath: '/yx/visitors/invites' },
+        { subject: sentBy ? `${sentBy} asked you to meet ${who} at reception` : `${who} is asking for you at reception`, html: `<p>${esc(who)} is at ${esc(place)} reception. ${asked}</p><p>Approve or decline in YukthiX (Visitors › My visitors) within ${mins} minutes; after that, reception decides.</p>` },
       )
       .catch((e: Error) => this.logger.warn(`walk-in ${visit.id}: ${e.message}`));
   }
@@ -402,6 +404,56 @@ export class WalkInsService {
       const locs = new Map((await tx.location.findMany({ where: { organizationId: c.organizationId, id: { in: rows.map((r) => r.locationId) } }, select: { id: true, name: true, timezone: true } })).map((l) => [l.id, l]));
       return rows.map((r) => ({ id: r.id, name: r.visitorName, company: r.visitorCompany, purpose: r.purpose, location: locs.get(r.locationId)?.name ?? '', timeZone: locs.get(r.locationId)?.timezone ?? 'Asia/Kolkata', arrivedAt: r.startsAt.toISOString(), dueAt: r.approvalDueAt?.toISOString() ?? null, hasPhoto: Boolean(r.photoPath) }));
     });
+  }
+
+  /** 711: active colleagues by name or email for the host's "Send someone" (the host only, while the walk-in waits). */
+  async colleagues(ctx: TenantContext, user: ScopeUser, id: string, q: string) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      if (!(await tx.visit.findFirst({ where: { organizationId: c.organizationId, id, hostUserId: user.userId!, status: 'waiting' }, select: { id: true } }))) throw new NotFoundException('Visit not found.');
+      const s = q.trim();
+      const rows = await tx.user.findMany({ where: { organizationId: c.organizationId, status: 'active', id: { not: user.userId! }, ...(s ? { OR: [{ name: { contains: s, mode: 'insensitive' } }, { email: { contains: s, mode: 'insensitive' } }] } : {}) }, orderBy: { name: 'asc' }, take: 20, select: { id: true, name: true, email: true } });
+      return rows.map((r) => ({ value: r.id, label: r.name || r.email, description: r.email }));
+    });
+  }
+
+  /**
+   * 711: the host sends a colleague to meet the walk-in. The colleague becomes the host: they get the card (bell and
+   * email) with the location's minutes from now, and the photo while they decide. Audited with who sent whom.
+   */
+  async send(ctx: TenantContext, user: ScopeUser, id: string, toUserId: string) {
+    const v = await this.visitors.viewer(user);
+    this.visitors.own(v, 'a visit');
+    if (toUserId === user.userId) throw new BadRequestException('Choose a colleague, not yourself.');
+    const made = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const row = await tx.visit.findFirst({ where: { organizationId: c.organizationId, id, hostUserId: user.userId! } });
+      if (!row) throw new NotFoundException('Visit not found.');
+      if (row.status !== 'waiting') throw new ConflictException('This walk-in is not waiting for a decision.');
+      const to = await tx.user.findFirst({ where: { organizationId: c.organizationId, id: toUserId, status: 'active' }, select: { id: true, name: true, email: true } });
+      if (!to) throw new NotFoundException('Choose who meets them.');
+      const minutes = Number(await this.visitors.setting(tx, c, 'visitors.host_timeout_minutes', row.locationId));
+      const dueAt = approvalDue(new Date(), minutes);
+      // Only while it still waits for this host (a decision or another send meanwhile wins).
+      const { count } = await tx.visit.updateMany({ where: { id, status: 'waiting', hostUserId: user.userId! }, data: { hostUserId: to.id, approvalDueAt: dueAt } });
+      if (!count) throw new ConflictException('This walk-in changed meanwhile. Reload the page.');
+      await audit(tx, c, 'visitor.walkin_sent', 'visit', id, { from: user.userId!, to: to.id, dueAt: dueAt.toISOString() });
+      const loc = await tx.location.findFirst({ where: { id: row.locationId }, select: { name: true } });
+      const me = await tx.user.findFirst({ where: { id: user.userId! }, select: { name: true, email: true } });
+      return { visit: { ...row, hostUserId: to.id, approvalDueAt: dueAt }, place: loc?.name ?? '', to: to.name || to.email, from: me?.name || me?.email || 'Your colleague' };
+    });
+    await this.tellHost(ctx.organizationId!, made.visit, made.place, made.from);
+    return { id, to: made.to, dueAt: made.visit.approvalDueAt.toISOString() };
+  }
+
+  /** 713: reception at the visit's location sees the walk-in's photo while it waits and while on site (anyone else: not found). */
+  async deskPhoto(ctx: TenantContext, user: ScopeUser, id: string): Promise<{ data: Buffer; type: string }> {
+    const v = await this.visitors.viewer(user);
+    const path = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const row = await tx.visit.findFirst({ where: { organizationId: c.organizationId, id, status: { in: ['waiting', 'on_site'] }, photoPath: { not: null } }, select: { locationId: true, photoPath: true } });
+      const desk = row && (await this.visitors.reach(tx, c, v, ['visitors.desk.manage'])).some((l) => l.id === row.locationId);
+      if (!row || !desk) throw new NotFoundException('Photo not found.');
+      return row.photoPath!;
+    });
+    return { data: await this.blob.downloadToBuffer(path), type: path.endsWith('.png') ? 'image/png' : 'image/jpeg' };
   }
 
   /** Answer 602: the photo goes only to the host, only while they decide (anyone else: not found). */

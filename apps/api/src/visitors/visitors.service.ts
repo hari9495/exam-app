@@ -627,6 +627,8 @@ export class VisitorsService {
       idType: r.idType,
       idText: r.idType ? `${ID_WORDS[r.idType as IdType]} ··${r.idLast4}` : null,
       hasIdImage: Boolean(r.idFileId),
+      // 713: a walk-in photo exists (reception reads it from desk/visits/:id/photo while it waits or is on site).
+      hasPhoto: Boolean(r.photoPath),
       minor: r.minor,
       minorAdult: r.minorAdult,
     }));

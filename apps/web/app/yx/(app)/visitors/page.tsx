@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { VisitorDeskScreen, type KioskNeeds, type VisitView } from '@yukthix/ui/visitors';
 import { loadState } from '../../../../lib/yx-org';
-import { useOpenVisitorPdf, useVisitorIdImage, useVisitors, useVisitorsGet, useVisitorsWrite, type VisitorOptions } from '../../../../lib/yx-visitors';
+import { useDeskVisitorPhoto, useOpenVisitorPdf, useVisitorIdImage, useVisitors, useVisitorsGet, useVisitorsWrite, type VisitorOptions } from '../../../../lib/yx-visitors';
 
 // Visitors › Today's visitors (VIS-01): reception's day at one of the locations its Reception role reaches. Scan or type
 // the QR pass, check in (the notice at the desk if not accepted on the link) and out. The API checks the key, the
@@ -20,6 +20,7 @@ export default function YxVisitorDeskPage() {
   const enc = encodeURIComponent;
   const idImage = useVisitorIdImage();
   const openPdf = useOpenVisitorPdf();
+  const photo = useDeskVisitorPhoto();
   const router = useRouter();
   const noDesk = options.isSuccess && !options.data.desk.length;
   const state = noDesk ? 'no-access' : loadState(options, desk);
@@ -51,6 +52,8 @@ export default function YxVisitorDeskPage() {
               onAdd: (input) => write<VisitView>('POST', '/walk-ins', { ...input, locationId }),
               onDecide: (id, approve, reason) => write('POST', `/walk-ins/${enc(id)}/decide`, { approve, ...(reason ? { reason } : {}) }),
               visitNeeds: (id) => get<KioskNeeds>(`/${enc(id)}/needs`),
+              // 713: reception sees the walk-in's photo while it waits and while on site.
+              photo,
             }
           : undefined,
         // Slice 4: the badge PDF (607) and the roll-call (612).

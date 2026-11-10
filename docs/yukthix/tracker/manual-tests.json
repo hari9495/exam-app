@@ -19547,5 +19547,54 @@
       "Screens/Settings/Group 3 · Time & Leave · 3.12 Visitors"
     ],
     "note": "Positive."
+  },
+  {
+    "id": "MT-VIS-2-10",
+    "area": "Visitors · Answers 711, 713, 701 (10 Nov 2026)",
+    "screen": "My visitors · approval card · Send someone",
+    "url": "http://localhost:3000/yx/visitors/invites",
+    "account": "The host a kiosk walk-in asked for (manager test account), then the colleague they send.",
+    "steps": [
+      "On the waiting walk-in's card press Send someone, then Send with nobody chosen.",
+      "Search a colleague by name, choose them and press Send.",
+      "Sign in as the colleague and open My visitors."
+    ],
+    "expected": "Step 1: \"Choose who meets them.\" and nothing sent. Step 2: toast \"<name> has the card now\" with their deadline; the card goes from the host's page. Step 3: the card with the photo and fresh minutes; the bell says who sent them.",
+    "stories": [
+      "Screens/Visitors/VIS-02 · Pre-register + my visitors · Walk-in approval · send someone"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-VIS-2-11",
+    "area": "Visitors · Answers 711, 713, 701 (10 Nov 2026)",
+    "screen": "Today's visitors · walk-in photo",
+    "url": "http://localhost:3000/yx/visitors",
+    "account": "A Reception role holder at the location; the host.",
+    "steps": [
+      "With a kiosk walk-in (photo taken) waiting, look at its row; after the host's minutes open Decide for host.",
+      "Let them in; look at the On site row; then check them out.",
+      "As the host, look for the photo after the decision."
+    ],
+    "expected": "Step 1: the photo on the row and in the dialog. Step 2: the photo stays while on site and is gone after check-out. Step 3: no photo for the host.",
+    "stories": [
+      "Screens/Visitors/VIS-01 · Today's visitors · Decide for the host after the timeout"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-STF-701",
+    "area": "Visitors · Answers 711, 713, 701 (10 Nov 2026)",
+    "screen": "Staffing desk · demo data",
+    "url": "http://localhost:3000/yx/staffing/clients",
+    "account": "An HR admin of demo-org (after the founder runs prisma/scripts/demo-staffing.ts).",
+    "steps": [
+      "With the staffing desk off, open the staffing pages.",
+      "Turn the staffing desk on (Settings › Staffing desk) and open Clients, Placements and Invoices.",
+      "Run the script again."
+    ],
+    "expected": "Step 1: nothing shown. Step 2: Deccan Agro Processors with one rate line, one placement and one issued invoice (CGST and SGST). Step 3: \"everything already there, nothing to do\"; nothing doubled.",
+    "stories": [],
+    "note": "Positive and negative."
   }
 ]

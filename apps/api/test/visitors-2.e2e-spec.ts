@@ -328,6 +328,46 @@ describe('Visitors slice 2', () => {
     expect((await inA((tx) => tx.visitAcknowledgement.findMany({ where: { visitId: inv.id } }))).map((a) => a.via)).toEqual(['desk', 'desk']);
   });
 
+  it('711/713: the host sends a colleague (their own minutes and the photo; audited); reception sees the photo while it waits and on site', async () => {
+    const notice = (await kiosk('visitor', 'post', '/needs').send({ mobile: '9000066666' }).expect(200)).body.notice.version;
+    const w = (await kiosk('visitor', 'post', '/walk-ins').send({ name: 'Deepa Menon', mobile: '9000066666', hostName: 'anita desai', noticeVersion: notice, photoBase64: JPEG }).expect(want(200))).body;
+    const send = (who: Who, userId: string) => api(who, 'post', `/visitors/walk-ins/${w.id}/send`).send({ userId });
+    // Colleagues: the host only, never themselves.
+    await api('other', 'get', `/visitors/walk-ins/${w.id}/colleagues?q=ravi`).expect(404);
+    expect((await api('host', 'get', `/visitors/walk-ins/${w.id}/colleagues?q=ravi`).expect(200)).body).toEqual([expect.objectContaining({ value: users.other, label: `Ravi Kumar ${run}` })]);
+    expect((await api('host', 'get', `/visitors/walk-ins/${w.id}/colleagues?q=anita`).expect(200)).body).toEqual([]);
+    // Refused: acting, not the host, to themselves, someone in another company, not an id.
+    await send('acting', users.other!).expect(403);
+    await send('other', users.facility!).expect(404);
+    await send('adminB', users.other!).expect(404);
+    expect((await send('host', users.host!).expect(400)).body.message).toMatch(/not yourself/);
+    await send('host', users.adminB!).expect(404);
+    await send('host', 'not-an-id').expect(400);
+    // 713: reception at the location sees the photo while it waits; nobody else at the desk route.
+    expect((await api('reception', 'get', `/visitors/desk/visits/${w.id}/photo`).expect(200)).headers['cache-control']).toMatch(/no-store/);
+    await api('host', 'get', `/visitors/desk/visits/${w.id}/photo`).expect(403);
+    await api('adminB', 'get', `/visitors/desk/visits/${w.id}/photo`).expect(404);
+    // Sent: the colleague has the card, the photo and fresh minutes; the host has neither now.
+    const sent = (await send('host', users.other!).expect(want(200))).body;
+    expect(sent).toMatchObject({ id: w.id, to: `Ravi Kumar ${run}` });
+    expect(Date.parse(sent.dueAt) - Date.now()).toBeGreaterThan(9 * 60_000);
+    expect(((await api('host', 'get', '/visitors/approvals').expect(200)).body as { id: string }[]).some((a) => a.id === w.id)).toBe(false);
+    await api('host', 'get', `/visitors/walk-ins/${w.id}/photo`).expect(404);
+    await api('host', 'post', `/visitors/walk-ins/${w.id}/decide`).send({ approve: true }).expect(404);
+    await send('host', users.facility!).expect(404);
+    expect((await api('other', 'get', '/visitors/approvals').expect(200)).body).toEqual([expect.objectContaining({ id: w.id, hasPhoto: true })]);
+    await api('other', 'get', `/visitors/walk-ins/${w.id}/photo`).expect(200);
+    expect(await inA((tx) => tx.userNotification.count({ where: { recipientUserId: users.other, type: 'visitor.walkin.approval.host', entityId: w.id } }))).toBe(1);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'visitor.walkin_sent', entityId: w.id, actorUserId: users.host } }))).toBe(1);
+    expect((await kiosk('visitor', 'get', `/walk-ins/${w.id}`).expect(200)).body).toMatchObject({ state: 'waiting', host: 'Ravi' });
+    // The colleague decides; reception still sees the photo on site, the host's route never after the decision.
+    expect((await api('other', 'post', `/visitors/walk-ins/${w.id}/decide`).send({ approve: true }).expect(want(200))).body).toMatchObject({ status: 'on_site', decidedVia: 'host', hasPhoto: true });
+    await api('other', 'get', `/visitors/walk-ins/${w.id}/photo`).expect(404);
+    await api('reception', 'get', `/visitors/desk/visits/${w.id}/photo`).expect(200);
+    await api('reception', 'post', `/visitors/${w.id}/check-out`).expect(want(200));
+    await api('reception', 'get', `/visitors/desk/visits/${w.id}/photo`).expect(404);
+  });
+
   it('the sweep closes undecided walk-ins at the end of their day and drops acknowledgements past their use', async () => {
     const kept = await inA((tx) => tx.visitAcknowledgement.count({ where: { organizationId: org.A.id } }));
     const w = (await kiosk('visitor', 'post', '/walk-ins').send({ name: 'Late Larry', mobile: '9000044444', hostName: 'Anita Desai', noticeVersion: (await kiosk('visitor', 'post', '/needs').send({ mobile: '9000044444' }).expect(200)).body.notice.version, photoBase64: JPEG }).expect(200)).body;

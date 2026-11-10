@@ -179,6 +179,20 @@ describe('VIS-01 walk-ins at the desk (live)', () => {
   });
 });
 
+describe('VIS-01 the walk-in photo at the desk (713, live)', () => {
+  it('reception sees the photo on the list and in Decide for host; a visit without a photo never fetches one', async () => {
+    const photo = vi.fn(async () => 'blob:desk-1');
+    const live = desk({ visits: [v({ hasPhoto: true, approvalDueAt: new Date(Date.now() - 60_000).toISOString() }), v({ id: 'e2', name: 'Kiran Rao', status: 'expected', statusText: 'Expected', walkIn: false })], walkIns: walkIns({ photo }) });
+    show(<VisitorDeskScreen visits={[]} today={TODAY} live={live} />);
+    await waitFor(() => expect(screen.getAllByRole('img', { name: 'Photo of Mohan Lal' })[0]).toHaveAttribute('src', 'blob:desk-1'));
+    await ue.click(screen.getByRole('button', { name: 'Decide for host' }));
+    const d = screen.getByRole('dialog', { name: /Decide for Anita Desai/ });
+    await waitFor(() => expect(within(d).getByRole('img', { name: 'Photo of Mohan Lal' })).toHaveAttribute('src', 'blob:desk-1'));
+    expect(within(d).getByText('Acme')).toBeInTheDocument();
+    expect(photo).not.toHaveBeenCalledWith('e2');
+  });
+});
+
 describe('VIS-02 the host approval card (live)', () => {
   const approvals = (over = {}) => ({ rows: [{ id: 'w1', name: 'Priyanka Sethi', company: 'Fairview', purpose: 'audit', location: 'Chennai office', arrivedAt: '2026-11-12T04:01:00.000Z', dueAt: '2026-11-12T04:11:00.000Z', hasPhoto: true }], photo: vi.fn(async () => 'blob:photo-1'), onDecide: vi.fn(async () => undefined), ...over });
   const pre = (over = {}) => ({ state: 'ready' as const, onRetry: vi.fn(), visits: [], locations: [{ value: 'maa', label: 'Chennai office' }], today: TODAY, canChange: true, onInvite: vi.fn(), onCancel: vi.fn(), approvals: approvals(), ...over });
@@ -195,6 +209,33 @@ describe('VIS-02 the host approval card (live)', () => {
     expect(screen.queryByText('A walk-in is asking for you')).not.toBeInTheDocument();
     expect(revoke).toHaveBeenCalledWith('blob:photo-1');
     revoke.mockRestore();
+  });
+
+  it('711 send someone: a colleague is required; the search and the send go for this walk-in; the toast names them', async () => {
+    const colleagues = vi.fn(async () => [{ value: 'c9', label: 'Ravi Kumar', description: 'ravi@kaveri.example' }]);
+    const onSend = vi.fn(async () => ({ to: 'Ravi Kumar', dueAt: '2026-11-12T04:21:00.000Z' }));
+    const live = pre({ approvals: approvals({ colleagues, onSend }) });
+    show(<PreRegisterScreen visits={[]} today={TODAY} live={live} />);
+    await ue.click(screen.getByRole('button', { name: 'Send someone' }));
+    const d = screen.getByRole('dialog', { name: 'Send someone to meet Priyanka Sethi' });
+    await ue.click(within(d).getByRole('button', { name: 'Send' }));
+    expect(within(d).getByText('Choose who meets them.')).toBeInTheDocument();
+    expect(onSend).not.toHaveBeenCalled();
+    await waitFor(() => expect(colleagues).toHaveBeenCalledWith('w1', ''));
+    await ue.click(within(d).getByRole('combobox', { name: 'Who meets them' }));
+    await ue.click(await screen.findByRole('option', { name: /Ravi Kumar/ }));
+    await ue.click(within(d).getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith('w1', 'c9'));
+    expect((await screen.findAllByText('Ravi Kumar has the card now')).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('dialog', { name: 'Send someone to meet Priyanka Sethi' })).not.toBeInTheDocument();
+  });
+
+  it('711: no Send someone without the send, or while acting', () => {
+    const { unmount } = show(<PreRegisterScreen visits={[]} today={TODAY} live={pre()} />);
+    expect(screen.queryByRole('button', { name: 'Send someone' })).not.toBeInTheDocument();
+    unmount();
+    show(<PreRegisterScreen visits={[]} today={TODAY} live={pre({ canChange: false, approvals: approvals({ colleagues: vi.fn(), onSend: vi.fn() }) })} />);
+    expect(screen.queryByRole('button', { name: 'Send someone' })).not.toBeInTheDocument();
   });
 
   it('acting for someone else: no buttons; no photo: the placeholder', () => {

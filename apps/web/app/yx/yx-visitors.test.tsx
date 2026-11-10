@@ -149,6 +149,21 @@ describe('Visitors slice 2 pages (live)', () => {
     await waitFor(() => expect(calls).toContainEqual(['POST', '/visitors/walk-ins/w1/decide', { approve: true }]));
   });
 
+  it('my visitors: Send someone searches colleagues for this walk-in and posts the send (711)', async () => {
+    routes({
+      '/visitors/approvals': [{ id: 'w1', name: 'Priyanka Sethi', company: 'Fairview', purpose: 'audit', location: 'Chennai office', arrivedAt: '2026-11-12T04:01:00.000Z', dueAt: '2026-11-12T04:11:00.000Z', hasPhoto: false }],
+      '/visitors/walk-ins/w1/colleagues?q=': [{ value: 'c9', label: 'Ravi Kumar', description: 'ravi@kaveri.example' }],
+      '/visitors/walk-ins/w1/send': { id: 'w1', to: 'Ravi Kumar', dueAt: '2026-11-12T04:21:00.000Z' },
+    });
+    wrap(<YxMyVisitorsPage />);
+    await ue.click(await screen.findByRole('button', { name: 'Send someone' }));
+    const d = screen.getByRole('dialog', { name: 'Send someone to meet Priyanka Sethi' });
+    await ue.click(within(d).getByRole('combobox', { name: 'Who meets them' }));
+    await ue.click(await screen.findByRole('option', { name: /Ravi Kumar/ }));
+    await ue.click(within(d).getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(calls).toContainEqual(['POST', '/visitors/walk-ins/w1/send', { userId: 'c9' }]));
+  });
+
   it('kiosk: a tablet in visitor mode shows the visitor kiosk with its own secret; a closed one sends to reception', async () => {
     localStorage.setItem('yx-kiosk-token', 'org.secret');
     const seen: string[] = [];

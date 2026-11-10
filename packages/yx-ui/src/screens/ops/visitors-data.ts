@@ -19,6 +19,8 @@ export interface Visit {
   nda?: boolean;
   escort?: boolean;
   walkIn?: boolean;
+  /** 713: a walk-in photo exists (reception sees it while the walk-in waits or is on site). */
+  hasPhoto?: boolean;
   vehicle?: string;
   idType?: string;
   /** Slice 3: the ID shown ("Driving licence ··4417"), whether a photo of it is kept, the adult with a visitor under 18. */
@@ -68,6 +70,8 @@ export interface VisitView {
   statusText: string;
   /** Slice 2: a walk-in, when the host's minutes end, who decided, the hours reason, the visitor type. */
   walkIn?: boolean;
+  /** 713: a walk-in photo exists (reception sees it while the walk-in waits or is on site). */
+  hasPhoto?: boolean;
   approvalDueAt?: string | null;
   decidedVia?: 'host' | 'reception' | null;
   hoursOverride?: string | null;
@@ -121,6 +125,7 @@ export function visitOf(v: VisitView): Visit {
     nda: Boolean(v.noticeAcceptedAt),
     vehicle: v.vehicle ?? undefined,
     walkIn: v.walkIn,
+    hasPhoto: v.hasPhoto || undefined,
     idText: v.idText ?? undefined,
     idImage: v.hasIdImage || undefined,
     minorAdult: v.minor ? (v.minorAdult ?? undefined) : undefined,
