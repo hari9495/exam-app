@@ -225,8 +225,8 @@ describe('Hiring careers site and candidate pages (T9-09)', () => {
     ids.statusToken = entry.applicationToken!;
     ids.portalToken = entry.candidate.portalToken!;
     const status = (await pub('get', `/applications/${ids.statusToken}`).expect(200)).body;
-    expect(Object.keys(status).sort()).toEqual(['accent', 'appliedAt', 'careersSlug', 'jobTitle', 'location', 'orgLogo', 'orgName', 'statusBucket', 'whiteLabel']);
-    expect(status).toMatchObject({ jobTitle: `QA Chemist ${run}`, statusBucket: 'Application received', careersSlug: org.A.slug });
+    expect(Object.keys(status).sort()).toEqual(['accent', 'appliedAt', 'careersSlug', 'jobTitle', 'location', 'orgLogo', 'orgName', 'statusBucket', 'toolNotice', 'whiteLabel']);
+    expect(status).toMatchObject({ jobTitle: `QA Chemist ${run}`, statusBucket: 'Application received', careersSlug: org.A.slug, toolNotice: null });
     // Asha applies to a second job; Ravi (another applicant) never shows on her pages.
     await apply(ids.nyToken, { email: `asha-${run}@x.test` }).expect(201);
     const portal = (await pub('get', `/portal/${ids.portalToken}`).expect(200)).body;
