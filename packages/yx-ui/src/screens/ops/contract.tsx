@@ -491,7 +491,7 @@ export function LicenceSheet({ mode, current, contractor, locations, states, onC
             <DatePicker value={to} onChange={setTo} />
           </FormField>
         </FieldRow>
-        <FormField id="lc-file" label="Licence copy" required error={err('file')} helper="PDF, JPG or PNG, up to 10 MB.">
+        <FormField id="lc-file" label="Licence copy" required error={err('file')}>
           <FileUpload id="lc-file" multiple={false} accept={['.pdf', '.jpg', '.png']} upload={async (x) => void setFile(x)} onItemsChange={(items) => !items.length && setFile(null)} />
         </FormField>
       </div>

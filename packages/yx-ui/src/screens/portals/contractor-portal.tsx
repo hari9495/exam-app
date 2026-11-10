@@ -224,7 +224,7 @@ function RenewForm({ licence, onClose, onSave }: { licence: PortalLicence; onClo
             <DatePicker value={to} onChange={setTo} />
           </FormField>
         </FieldRow>
-        <FormField id={`rn-file-${licence.id}`} label="Licence copy" required error={err('file')} helper="PDF, JPG or PNG, up to 10 MB.">
+        <FormField id={`rn-file-${licence.id}`} label="Licence copy" required error={err('file')}>
           <FileUpload id={`rn-file-${licence.id}`} multiple={false} accept={['.pdf', '.jpg', '.png']} upload={async (x) => void setFile(x)} onItemsChange={(items) => !items.length && setFile(null)} />
         </FormField>
       </div>
@@ -513,6 +513,8 @@ export interface PortalBill {
   paidOn: string | null;
 }
 
+/** "Wage register" reads "wage register" mid-sentence; an acronym ("PF ECR", "ESI") keeps its capitals. */
+const lowerWord = (t: string) => (/^[A-Z][a-z]/.test(t) ? t[0]!.toLowerCase() + t.slice(1) : t);
 const PROOF_LABEL: Record<PortalProofKind, string> = { pf_challan: 'PF ECR and challan', esi_challan: 'ESI challan', wage_register: 'Wage register (each worker’s days and pay)', bank_proof: 'Wage payment proof (bank statement)', muster_roll: 'Muster roll (the days each worker was on site)' };
 const STATE_TONE: Record<'submitted' | 'verified' | 'discrepancy' | 'missing', { tone: BadgeTone; text: string }> = {
   submitted: { tone: 'info', text: 'Being checked' },
@@ -641,7 +643,7 @@ function ProofForm({ kind, pack, onClose, onSave }: { kind: PortalProofKind; pac
       .finally(() => setBusy(false));
   };
   return (
-    <Card title={`Upload ${PROOF_LABEL[kind].split(' (')[0]!.toLowerCase()}`} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={save}>Upload</Button></>}>
+    <Card title={`Upload ${lowerWord(PROOF_LABEL[kind].split(' (')[0]!)}`} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={save}>Upload</Button></>}>
       <div className="yx-ps-stack">
         {failed && <InlineAlert tone="danger" title={failed} />}
         {challan && (
@@ -672,7 +674,7 @@ function ProofForm({ kind, pack, onClose, onSave }: { kind: PortalProofKind; pac
             ))}
           </div>
         )}
-        <FormField id="pf-file" label="Copy" required error={tried ? bad.file : null} helper="PDF, JPG or PNG, up to 10 MB.">
+        <FormField id="pf-file" label="Copy" required error={tried ? bad.file : null}>
           <FileUpload id="pf-file" multiple={false} accept={['.pdf', '.jpg', '.png']} upload={async (x) => void setFile(x)} onItemsChange={(items) => !items.length && setFile(null)} />
         </FormField>
       </div>

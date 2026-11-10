@@ -144,6 +144,12 @@ const plive = (p: Partial<LiveContractorPortal> = {}): LiveContractorPortal => (
 });
 
 describe('T9-13 muster roll and attendance (live, CL-5)', () => {
+  it('the upload form keeps acronyms (walk finding: it read "Upload pf ecr and challan")', async () => {
+    show(<ContractorPortalScreen live={plive()} />);
+    await ue.click(screen.getAllByRole('button', { name: 'Upload' })[0]!);
+    expect(screen.getByText('Upload PF ECR and challan')).toBeInTheDocument();
+  });
+
   it('741: the proofs the company does not require read Optional and can still be uploaded', () => {
     show(<ContractorPortalScreen live={plive()} />);
     expect(screen.getByText('Muster roll (the days each worker was on site)')).toBeInTheDocument();
