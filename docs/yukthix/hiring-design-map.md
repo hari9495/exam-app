@@ -53,14 +53,15 @@ built**.
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Plans, requisitions, jobs and costs | 4 | 36 | 1 | 0 | 0 | 0 | 37 |
-| B. Candidates, pipeline and interviews | 8 | 57 | 1 | 0 | 9 | 1 | 68 |
+| B. Candidates, pipeline and interviews | 8 | 58 | 1 | 0 | 9 | 1 | 69 |
 | C. Offers, BGV and joining | 4 | 24 | 4 | 0 | 1 | 0 | 29 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 25 | 0 | 0 | 3 | 4 | 32 |
 | E. Staffing agency | 8 | 49 | 15 | 0 | 0 | 0 | 64 |
 | F. Compliance and fairness | 5 | 21 | 4 | 0 | 6 | 0 | 31 |
 | G. Careers site, portals and settings | 4 | 64 | 4 | 2 | 9 | 0 | 79 |
-| **All Hiring design groups (A–G)** | **37** | **276** | **29** | **2** | **28** | **5** | **340** |
+| **All Hiring design groups (A–G)** | **37** | **277** | **29** | **2** | **28** | **5** | **341** |
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 5 | 0 | 5 | 5 | 0 | 15 |
+Recounted by script 17 Nov 2026 on `feat/yukthix-hiring-small-6` (from `test/yukthix-main` c8e6752f7) after answers 531 and 532: 1 new story drawn and live (HIR-05 ApplicationSendNotice): A–G 277 live, 29 gap, 2 wire, 28 not built, 5 phone, of 341.
 Recounted by script 16 Nov 2026 on `feat/yukthix-hiring-small-5` (from `test/yukthix-main` 5b7855eb0) after answers 502 and 514: 3 new stories drawn and live (HIR-28 ValuesBlank, T9-09 StatusNycNotice, HIR-05 ApplicationRecordAlternative): A–G 276 live, 29 gap, 2 wire, 28 not built, 5 phone, of 340 (rows B, C, E, F, G recounted from the script; two 6.1 rows put back in file order).
 Recounted by script on `test/yukthix-main` after merging round 4 (442, 452, 473, 474): A–G 273 live, 29 gap, 2 wire, 28 not built, 5 phone, of 337.
 Recounted by script on `test/yukthix-main` after merging the Hiring walk-through fixes: A–G 270 live, 29 gap, 2 wire, 28 not built, 5 phone, of 334.
@@ -339,6 +340,7 @@ list's Possible duplicates tab).
 | NotFound · Not found (anonymised) | live | 404, or an erased candidate |
 | Application · Application · messages, notes, offers | live | added 10 Nov 2026 (answer 261, moved from the deleted `ApplicationPanel`): the record's `?entry=` or Open application; stage, reject / undo, owner, checklist, fit, email / SMS / WhatsApp / survey, notes, offers (listed; made and worked on the HIR-09 pages); toasts. Interviews left it 11 Nov 2026 (answer 301): schedule on the record header, open / resend / cancel on HIR-07, the list on HIR-06 and the record's Scores tab |
 | ApplicationOffer · Application · an offer opens its record (HIR-09) | live | HIR-09 (answer 301): the Offers tab lists the offers (pay text only with the key) and opens the offer builder or record; approvers decide in the approvals inbox |
+| ApplicationSendNotice · Application · send the New York City notice (never told) | live | drawn 17 Nov 2026 (answer 531): a candidate added by hand who was never sent the notice (added before the setting was on, or the email failed): "Send the New York City notice" (`POST hiring/entries/:id/tool-notice`, `pipeline:manage`, not while acting); the same email, audit and notice-day start as 502; claimed before sending, so a second press is 409 and never a second email |
 | ApplicationRecordAlternative · Application · record a request for another process (New York City) | live | drawn 16 Nov 2026 (answer 502): where the notice applies (board row `toolNotice`), the recruiter records a request made by phone or email (`POST hiring/entries/:id/alternative-process`, `pipeline:manage`, not while acting, audited); it then shows like an apply-form request |
 | ApplicationAlternative · Application · asked for another process (New York City) | live | drawn 15 Nov 2026 (answer 474): the applicant ticked "Assess me another way" on a NYC job; the drawer says so with the day (board row `alternativeRequestedAt`); the AI draft scorecard is not used for them |
 
@@ -1964,4 +1966,17 @@ with In pipeline summed. Screenshots and the per-page results are in the walk re
      reason. *Suggested: a "Send the New York City notice" button on the Application drawer.*
 532. **A CTC of ₹0 on a single offer.** The single offer builder has no ₹0 check of its own, only what the salary structure refuses (bulk
      offers now refuse 0). *Suggested: refuse 0 there too, with the same words.*
+## Small items round 6 built (answers 531, 532; 17 Nov 2026, branch `feat/yukthix-hiring-small-6`)
+- (531) Application drawer: "Send the New York City notice" for a NYC job with the setting on, shown while a candidate
+  added by hand was never told (board row `toolNoticeNeeded`). The same email, audit (`candidate.tool_notice.sent`) and
+  notice-day start as 502; the entry is claimed before the email goes, so two presses never send two emails (409), and a
+  failed email gives the claim back with a plain message. Refused while acting, for an applicant (told on the page), and
+  where no notice applies.
+- (532) The single offer builder refuses a ₹0 or blank fixed CTC, on the screen and in the API (`Enter a fixed CTC above
+  ₹0.`, the bulk offers words); the preview is not asked until the CTC is above 0.
+- Found while testing: the kit Drawer showed its error notice only when it had a footer, so the HIR-05 Application
+  drawer (no footer) never showed a refusal. The Drawer now shows the notice either way.
+## Founder questions from small items round 6 (17 Nov 2026)
+551. **Sending the notice again.** Once the notice email has gone, there is no "send again" (a candidate who says it
+     never arrived). *Suggested: keep; the recruiter records their request for another process by phone instead.*
 

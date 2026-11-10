@@ -17590,6 +17590,23 @@
     "note": "Positive and negative."
   },
   {
+    "id": "MT-HIR-09-12",
+    "area": "Hiring · HIR-09 offer builder (17 Nov 2026)",
+    "screen": "Single offer · ₹0 or blank CTC",
+    "url": "http://localhost:3000/yx/hiring/offers/new?entry=<id>",
+    "account": "hr-tester@demo-org.test (offer-pay key). Browser window 1278 x 635.",
+    "steps": [
+      "Open New offer; press Continue with the Fixed CTC empty.",
+      "Type 0 and press Continue.",
+      "Type 1600000 and continue."
+    ],
+    "expected": "Steps 1 and 2: \"Enter a fixed CTC above ₹0.\" and the cursor in Fixed CTC; no preview. Step 3: the CTC breakup and band check show; the step continues.",
+    "stories": [
+      "Screens/Hiring/HIR-09 · Offer builder"
+    ],
+    "note": "Positive and negative (blank, 0)."
+  },
+  {
     "id": "MT-HIR-29-03",
     "area": "Hiring · HIR-09 Offer builder and HIR-29 offer conditions (11 Nov 2026)",
     "screen": "Joining-day notice (answer 335)",
@@ -18630,6 +18647,25 @@
       "Screens/Hiring/HIR-05 · Candidate record · Application · record a request for another process (New York City)"
     ],
     "note": "Positive and negative (outside NYC, already asked)."
+  },
+  {
+    "id": "MT-HIR-CAR-13",
+    "area": "Hiring · Careers site (17 Nov 2026)",
+    "screen": "New York City · send the notice to a hand-added candidate never told",
+    "url": "http://localhost:3000/yx/hiring/jobs/<id>/pipeline",
+    "account": "hr-tester@demo-org.test; a NYC job; 6.1 \"We use an automated tool for jobs in New York City\" off at first; a mailbox you can read. Browser window 1278 x 635.",
+    "steps": [
+      "With the setting off, add a candidate by hand to the NYC job; turn the setting on.",
+      "Open their Application: look at the New York City notice card; press Send the New York City notice.",
+      "Press it again (or open the drawer in a second window and press it there).",
+      "Open an applicant's Application on the same job, and a hand-added candidate on a job outside NYC.",
+      "While acting for someone else, open the first candidate's Application."
+    ],
+    "expected": "Step 2: \"Not told yet\" with the button; then toast \"Notice sent\" and one email; the card no longer says Not told yet. Step 3: no second email; \"already sent\" if the second window presses. Step 4: no Send button. Step 5: the button is refused.",
+    "stories": [
+      "Screens/Hiring/HIR-05 · Candidate record · Application · send the New York City notice (never told)"
+    ],
+    "note": "Positive and negative (twice, applicant, outside NYC, acting)."
   },
   {
     "id": "MT-HIR-SET-20",
