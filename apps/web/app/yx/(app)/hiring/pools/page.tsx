@@ -47,7 +47,7 @@ export default function YxHiringPoolsPage() {
   const postings = useHiring<LivePostingJob[]>('/postings', perms.has('pipeline:manage') || perms.has('results:view'));
   const camps = useHiring<CampaignsApi>('/campaigns', manage);
   const sourced = useHiring<SourcedApi>('/sourced', manage);
-  const shownCampaign = campaignId ?? camps.data?.campaigns[0]?.id ?? null;
+  const shownCampaign = campaignId ?? camps.data?.campaigns?.[0]?.id ?? null;
   const people = useHiring<{ candidateId: string; name: string; status: 'active' | 'done' | 'stopped'; stopReason: string | null }[]>(manage && shownCampaign ? `/campaigns/${enc(shownCampaign)}/members` : null);
   const engagement = useHiring<EngagementApi>(manage && personId ? `/candidates/${enc(personId)}/engagement` : null);
   const write = useHiringWrite();

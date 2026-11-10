@@ -71,6 +71,7 @@ describe('Hiring › Background checks (HIR-10)', () => {
 });
 
 describe('Hiring › Talent CRM (HIR-20)', () => {
+  const CAMPAIGNS = { campaigns: [{ id: 'k1', name: 'Winter nurture', channel: 'email', poolName: 'QA silver medallists', steps: [{ kind: 'message', templateId: 't1' }, { kind: 'wait', days: 3 }], stopOnReply: true, status: 'running', counts: { enrolled: 2, active: 1, replied: 0, applied: 0, optedOut: 1, sent: 2 } }], templates: { email: [{ id: 't1', name: 'Hello again' }], whatsapp: [] }, whatsappConnected: false, window: '09-21', dailyCap: 200 };
   const POOLS = [{ id: 'l1', name: 'QA silver medallists', kind: 'pool', description: 'Finalists', members: 1, consented: 1, ownerName: 'Neha', updatedAt: '2026-11-01T05:00:00.000Z' }];
   const routes = (calls: [string, string | undefined][]) =>
     api.mockImplementation(async (path: string, init?: RequestInit) => {
@@ -79,6 +80,12 @@ describe('Hiring › Talent CRM (HIR-20)', () => {
       if (path === '/hiring/pools') return POOLS;
       if (path === '/hiring/pools/l1/members') return { pool: POOLS[0], members: [{ candidateId: 'c1', addedAt: '2026-11-02T05:00:00.000Z', consent: 'given', candidate: { id: 'c1', name: 'Priya Raman', email: 'priya@example.com', globalStage: 'available' } }] };
       if (path === '/hiring/postings') return [{ jobId: 'job1', title: 'Senior QA Engineer', status: 'open', jobBoardIds: [], postings: [{ boardId: 'b1', board: 'Naukri', status: 'not posted' }] }];
+      if (path === '/hiring/campaigns') return CAMPAIGNS;
+      if (path === '/hiring/campaigns/k1/members') return [{ candidateId: 'c1', name: 'Priya Raman', status: 'active', stopReason: null }];
+      if (path === '/hiring/candidates/c1/engagement') return { name: 'Priya Raman', consent: { email: 'opted-in', whatsapp: 'none' }, items: [{ id: 'x1', at: '2026-11-09T06:00:00.000Z', kind: 'sent', campaign: 'Winter nurture', step: 1, channel: 'email', reason: null }] };
+      if (path === '/hiring/campaigns/audience') return { total: 3, enrolled: 2, skipped: { noConsent: 1, optedOut: 0, minor: 0 } };
+      if (path === '/hiring/campaigns' && init?.method === 'POST') return { id: 'k2', status: 'running', enrolled: 2 };
+      if (path === '/hiring/sourced') return { keepDays: 30, profiles: [{ id: 'sp1', name: 'Rohit Das', headline: null, site: 'LinkedIn', sourceNote: 'Public profile', status: 'pending', daysLeft: 12, capturedBy: 'Neha', createdAt: '2026-11-01T05:00:00.000Z', candidateId: null }] };
       return { ok: true };
     });
 
@@ -110,5 +117,34 @@ describe('Hiring › Talent CRM (HIR-20)', () => {
     wrap(<YxHiringPoolsPage />);
     expect(await screen.findByText('QA silver medallists')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'New pool' })).not.toBeInTheDocument();
+  });
+  it('campaigns: the sequence with its template names, a person’s engagement, and Mark as replied posts', async () => {
+    const calls: [string, string | undefined][] = [];
+    routes(calls);
+    wrap(<YxHiringPoolsPage />);
+    await userEvent.click(await screen.findByRole('tab', { name: /Campaigns/ }));
+    expect(await screen.findByText('Email: Hello again')).toBeInTheDocument();
+    await userEvent.click(await screen.findByText('Priya Raman'));
+    expect(await screen.findByText(/sent email step 1 of Winter nurture/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Mark as replied' }));
+    await waitFor(() => expect(calls).toContainEqual(['/hiring/campaigns/k1/members/c1/replied', 'POST']));
+  });
+
+  it('sourced: pending with days left; Send again posts; without the manage key there is no campaigns tab', async () => {
+    const calls: [string, string | undefined][] = [];
+    routes(calls);
+    const { unmount } = wrap(<YxHiringPoolsPage />);
+    await userEvent.click(await screen.findByRole('tab', { name: /Sourced/ }));
+    expect(await screen.findByText('Pending consent · erased in 12 days')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Send again' }));
+    await waitFor(() => expect(calls).toContainEqual(['/hiring/sourced/sp1/resend', 'POST']));
+    unmount();
+    PERMS = ['candidate:view'];
+    const later: [string, string | undefined][] = [];
+    routes(later);
+    wrap(<YxHiringPoolsPage />);
+    expect(await screen.findByText('QA silver medallists')).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Campaigns/ })).not.toBeInTheDocument();
+    expect(later.some(([p]) => p === '/hiring/campaigns' || p === '/hiring/sourced')).toBe(false);
   });
 });
