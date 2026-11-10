@@ -58,4 +58,7 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   // without consent past the company limit are erased hourly.
   { id: 'crm-campaigns', cron: '*/15 * * * *' },
   { id: 'sourced-purge', cron: '40 * * * *' },
+  // Visitors (answers 611, 608): forgotten check-outs every 15 minutes; visits past the retention period nightly (04:20 IST).
+  { id: 'visitors-close', cron: '*/15 * * * *' },
+  { id: 'visitors-retention', cron: '50 22 * * *' },
 ];

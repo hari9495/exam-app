@@ -64,6 +64,7 @@ import { CandidateSearchModule } from './candidate-search/candidate-search.modul
 import { TalentModule } from './talent/talent.module';
 import { TalentCrmModule } from './talent-crm/talent-crm.module';
 import { StaffingModule } from './staffing/staffing.module';
+import { VisitorsModule } from './visitors/visitors.module';
 import { InterviewingModule } from './interviewing/interviewing.module';
 import { CandidateFitModule } from './candidate-fit/candidate-fit.module';
 import { BillingModule } from './billing/billing.module';
@@ -171,6 +172,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     TalentCrmModule,
     InterviewingModule,
     StaffingModule,
+    VisitorsModule,
     CandidateFitModule,
     BillingModule,
     IntegrationsModule,

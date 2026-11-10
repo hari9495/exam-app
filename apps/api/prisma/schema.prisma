@@ -12788,3 +12788,53 @@ model StaffingReminder {
   @@unique([invoiceId, step], map: "staffing_reminders_step_key")
   @@map("staffing_reminders")
 }
+
+/// Visitors slice 1 (M02 §B11, YX-AT-22): one visit to a location, invited by a host. Forced RLS.
+model Visit {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  locationId        String    @map("location_id") @db.Uuid
+  hostUserId        String    @map("host_user_id") @db.Uuid
+  visitorName       String    @map("visitor_name") @db.VarChar(200)
+  visitorMobile     String    @map("visitor_mobile") @db.VarChar(20)
+  visitorEmail      String?   @map("visitor_email") @db.VarChar(254)
+  visitorCompany    String?   @map("visitor_company") @db.VarChar(200)
+  purpose           String    @db.VarChar(20)
+  vehicle           String?   @db.VarChar(20)
+  startsAt          DateTime  @map("starts_at") @db.Timestamptz(3)
+  endsAt            DateTime  @map("ends_at") @db.Timestamptz(3)
+  status            String    @default("expected") @db.VarChar(12)
+  passToken         String    @unique(map: "visits_pass_token_key") @map("pass_token") @db.VarChar(64)
+  passCode          String    @map("pass_code") @db.VarChar(16)
+  badgeSeq          Int?      @map("badge_seq")
+  noticeVersion     String?   @map("notice_version") @db.VarChar(40)
+  noticeAcceptedAt  DateTime? @map("notice_accepted_at") @db.Timestamptz(3)
+  noticeAcceptedVia String?   @map("notice_accepted_via") @db.VarChar(6)
+  checkedInAt       DateTime? @map("checked_in_at") @db.Timestamptz(3)
+  checkedInBy       String?   @map("checked_in_by") @db.Uuid
+  checkedOutAt      DateTime? @map("checked_out_at") @db.Timestamptz(3)
+  checkedOutBy      String?   @map("checked_out_by") @db.Uuid
+  closedAt          DateTime? @map("closed_at") @db.Timestamptz(3)
+  cancelledAt       DateTime? @map("cancelled_at") @db.Timestamptz(3)
+  cancelledBy       String?   @map("cancelled_by") @db.Uuid
+  createdBy         String    @map("created_by") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, passCode], map: "visits_pass_code_key")
+  @@index([organizationId, locationId, startsAt], map: "visits_desk_idx")
+  @@index([organizationId, hostUserId, startsAt(sort: Desc)], map: "visits_host_idx")
+  @@map("visits")
+}
+
+/// Answer 608: counts kept after a visit is deleted (no names), for reports.
+model VisitCount {
+  organizationId String   @map("organization_id") @db.Uuid
+  locationId     String   @map("location_id") @db.Uuid
+  day            DateTime @db.Date
+  purpose        String   @db.VarChar(20)
+  visits         Int
+
+  @@id([organizationId, locationId, day, purpose])
+  @@map("visit_counts")
+}

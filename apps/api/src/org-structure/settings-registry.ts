@@ -29,6 +29,9 @@ export interface SettingDef {
   platform?: { feature: string };
 }
 
+/** Half-hour times for the visitor hours settings (05:00 to 23:30). */
+const HOURS = Array.from({ length: 38 }, (_, i) => `${String(5 + Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`);
+
 export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // HLP-04 (founder 3 Nov 2026): how often a published help article is checked again (YX-GRO-07). Desk set-up › Settings.
   'desk.kb.review_months': { label: 'Check help articles again every (months)', scopes: ['tenant'], dated: false, values: ['3', '6', '12', '24'], default: '12' },
@@ -299,6 +302,16 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'hiring.resume_quarantine.tell_applicant': { label: 'Hiring: tell applicants when their résumé file could not be accepted', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'on' },
   // Careers answer 356 (D15: white-label is in every plan): hide "Powered by YukthiX" on the careers site and the candidate
   // pages. Starter off.
+  // Visitors slice 1 (M02 §B11; founder answers 602-610): Settings 3.12, per location where the founder said so.
+  'visitors.host_timeout_minutes': { label: 'Visitors: the host approves a walk-in within (minutes)', scopes: ['tenant', 'location'], dated: false, values: ['2', '5', '10', '15', '30', '60'], default: '10' },
+  'visitors.id_capture': { label: 'Visitors: capture ID proof (type and last 4 only)', scopes: ['tenant', 'location'], dated: false, values: ['off', 'on'], default: 'off' },
+  'visitors.photo': { label: 'Visitors: capture a photo', scopes: ['tenant', 'location'], dated: false, values: ['on', 'off'], default: 'on' },
+  'visitors.hours_from': { label: 'Visitors: allowed from', scopes: ['tenant', 'location'], dated: false, values: HOURS, default: '09:00' },
+  'visitors.hours_to': { label: 'Visitors: allowed until', scopes: ['tenant', 'location'], dated: false, values: HOURS, default: '18:30' },
+  'visitors.notice': { label: 'Visitors: notice shown before entry', scopes: ['tenant', 'location'], dated: false, values: [], default: 'Please wear your visitor badge at all times, follow the safety signs and your host, and hand in your badge when you leave. In an emergency, go to the assembly point and stay with your host.', text: { maxLength: 1000 } },
+  'visitors.badge': { label: 'Visitors: badge', scopes: ['tenant', 'location'], dated: false, values: ['name_qr', 'photo_qr', 'phone_only'], default: 'name_qr', labels: { name_qr: 'Name badge with QR', photo_qr: 'Photo badge with QR', phone_only: 'Pass on the phone only' } },
+  'visitors.retention_days': { label: 'Visitors: keep visit records for (days)', scopes: ['tenant', 'location'], dated: false, values: ['30', '60', '90', '180', '365', '730'], default: '90' },
+  'visitors.id_retention_days': { label: 'Visitors: keep ID details for (days)', scopes: ['tenant', 'location'], dated: false, values: ['7', '15', '30', '60', '90'], default: '30' },
   'brand.white_label': { label: 'Hide "Powered by YukthiX" on the careers site and candidate pages', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off', platform: { feature: 'white_label' } },
   'home.pay_on_employee_home': { label: 'Show net pay on the employee home', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // P02 §4.5 fraud guard: a new bank account is used for payouts only after this cooling period (starter, D17).
