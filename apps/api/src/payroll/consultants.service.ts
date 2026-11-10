@@ -650,6 +650,8 @@ export class ConsultantsService implements OnModuleInit {
     line('Value before GST', money(inv.taxableValue.toFixed(2)));
     line('GST', money(gst.toFixed(2)));
     line(`TDS (section ${SECTION_LABEL[inv.section] ?? inv.section})`, money((inv.tdsAmount ?? ZERO).toFixed(2)));
+    // Answer 745: wages we paid the contractor's workers ourselves, taken back from this bill.
+    if (inv.clraRecovery.gt(0)) line('Recovered wages (paid to your workers by us)', `- ${money(inv.clraRecovery.toFixed(2))}`);
     line('Paid', money(inv.netPayable!.toFixed(2)));
     line('Paid on', dateOf(inv.paidOn!));
     line('Bank reference', inv.paymentRef ?? '—');

@@ -11,6 +11,7 @@ import { EmailService } from '../src/email/email.service';
 import { LOGIN_PROTECTION_REDIS } from '../src/auth/login-protection.service';
 import { verhoeffValid } from '../src/service-desk/pii';
 import { ContractAttendanceService } from '../src/contract-labour/attendance.service';
+import { ComplianceService } from '../src/contract-labour/compliance.service';
 
 // Contract labour CL-5 (answers 622, 625, 673, 681, 684, 686, 735, 742): contract workers at the kiosk with the gate pass
 // number and their own PIN (never employee punches), the contractor's days where a site has no kiosk, the month
@@ -24,6 +25,7 @@ describe('Contract labour CL-5', () => {
   let prisma: PrismaService;
   let tenantPrisma: TenantPrismaService;
   let att: ContractAttendanceService;
+  let compliance: ComplianceService;
   const send = jest.fn(async (_m: { to: string; subject: string; html: string }) => ({ success: true }));
   const PASSWORD = 'Corr3ct-Horse-Battery';
   const run = randomUUID().slice(0, 8);
@@ -79,6 +81,7 @@ describe('Contract labour CL-5', () => {
     prisma = moduleRef.get(PrismaService);
     tenantPrisma = moduleRef.get(TenantPrismaService);
     att = moduleRef.get(ContractAttendanceService);
+    compliance = moduleRef.get(ComplianceService);
     const redis = moduleRef.get<Redis>(LOGIN_PROTECTION_REDIS);
     const keys = await redis.keys('auth:otp:ip:*');
     if (keys.length) await redis.del(...keys);
@@ -259,5 +262,32 @@ describe('Contract labour CL-5', () => {
     expect(d.cards.persons.roles).toBeGreaterThanOrEqual(cw.length);
     expect(d.cards.persons.people).toBeLessThanOrEqual(d.cards.persons.roles);
     expect(d.cards.persons.people).toBeGreaterThan(0);
+  });
+
+  it('741 the muster roll and the required proofs on 4.9; 743 each new alert told once', async () => {
+    const up = portal('post', '/pack/items');
+    for (const [k, v] of Object.entries({ locationId: ids.chennai!, month: lastMonth, kind: 'muster_roll' })) up.field(k, v);
+    await up.attach('file', Buffer.from(`%PDF-1.7\n${run} muster\n%%EOF`), { filename: 'm.pdf', contentType: 'application/pdf' }).expect(want(201));
+    let p = (await portal('get', `/pack?locationId=${ids.chennai}&month=${lastMonth}`).expect(200)).body;
+    expect(p.required).toEqual(['pf_challan', 'esi_challan', 'wage_register', 'bank_proof', 'muster_roll']);
+    expect(p.items.muster_roll).toMatchObject({ state: 'submitted' });
+    const two = { changes: [{ key: 'clra.required_proofs', value: 'pf_challan,esi_challan' }] };
+    await api('reader', 'put', '/contract-labour/settings').send(two).expect(403);
+    await api('acting', 'put', '/contract-labour/settings').send(two).expect(403);
+    await api('hr', 'put', '/contract-labour/settings').send({ changes: [{ key: 'clra.required_proofs', value: 'pf_challan,nope' }] }).expect(400);
+    await api('owner', 'put', '/contract-labour/settings').send(two).expect(403);
+    await api('hr', 'put', '/contract-labour/settings').send(two).expect(want(200));
+    p = (await portal('get', `/pack?locationId=${ids.chennai}&month=${lastMonth}`).expect(200)).body;
+    expect(p.required).toEqual(['pf_challan', 'esi_challan']);
+    const t = (await api('reader', 'get', `/contract-labour/compliance?month=${lastMonth}`).expect(200)).body;
+    expect(t.proofTypes.filter((x: { required: boolean }) => x.required).map((x: { kind: string }) => x.kind)).toEqual(['pf_challan', 'esi_challan']);
+    // Past the due day (the 15th) the PF and ESI challans are overdue: one alert per pack, told once.
+    const late = `${today.slice(0, 7)}-28`;
+    const n = await compliance.noticeOrg(org.A.id, late);
+    expect(n).toBeGreaterThan(0);
+    expect(await inA((tx) => tx.clraAlertNotice.count({ where: { organizationId: org.A.id } }))).toBe(n);
+    expect(await compliance.noticeOrg(org.A.id, late)).toBe(0);
+    expect(await compliance.noticeOrg(org.B.id, late)).toBe(0);
+    await api('hr', 'put', '/contract-labour/settings').send({ changes: [{ key: 'clra.required_proofs', value: 'pf_challan,esi_challan,wage_register,bank_proof,muster_roll' }] }).expect(want(200));
   });
 });

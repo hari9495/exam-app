@@ -13060,6 +13060,16 @@ model ClraRegistration {
 }
 
 /// Contract labour CL-5 (answer 622): the highest number of contract workers on any day of the last 12 months.
+/// Answer 743: the liability alerts the compliance owners were told about (each once).
+model ClraAlertNotice {
+  organizationId String   @map("organization_id") @db.Uuid
+  alertId        String   @map("alert_id") @db.VarChar(200)
+  sentAt         DateTime @default(now()) @map("sent_at") @db.Timestamptz(3)
+
+  @@id([organizationId, alertId])
+  @@map("clra_alert_notices")
+}
+
 model ClraSitePeak {
   organizationId String    @map("organization_id") @db.Uuid
   locationId     String    @map("location_id") @db.Uuid

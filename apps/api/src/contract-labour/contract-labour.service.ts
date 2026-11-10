@@ -20,7 +20,7 @@ import { EmailService } from '../email/email.service';
 const KEYS = ['clra.contractor.manage', 'clra.contractor.view', 'clra.settings.manage', 'org.settings.manage'] as const;
 type Access = { manage: boolean; view: boolean; settings: boolean; actingForOther: boolean };
 /** Settings 4.9 keys made live in CL-1 and CL-2 (the monthly compliance keys come with CL-4). */
-export const CLRA_SETTING_KEYS = ['clra.licence_alerts', 'clra.induction_required', 'clra.induction_months', 'clra.doc_cutoff', 'clra.payment_hold', 'clra.threshold_warn', 'clra.attendance_source'] as const;
+export const CLRA_SETTING_KEYS = ['clra.licence_alerts', 'clra.induction_required', 'clra.induction_months', 'clra.doc_cutoff', 'clra.payment_hold', 'clra.threshold_warn', 'clra.attendance_source', 'clra.required_proofs'] as const;
 const LICENCE_TYPES = ['application/pdf', 'image/jpeg', 'image/png'] as const;
 const FILE_MAX_MB = 10;
 const NOT_FOUND = 'Contractor not found.';
@@ -519,7 +519,7 @@ export class ContractLabourService {
   }
 
   /** Active holders of clra.contractor.manage for the whole company (profile or company-wide grant), else the System Admins. */
-  private async owners(tx: Tx, org: string, today: string): Promise<string[]> {
+  async owners(tx: Tx, org: string, today: string): Promise<string[]> {
     const like = '%"clra.contractor.manage"%';
     const rows = await tx.$queryRaw<{ id: string }[]>`
       SELECT u.id::text FROM users u JOIN permission_profiles p ON p.organization_id = u.organization_id AND p.id = u.permission_profile_id

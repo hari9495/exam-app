@@ -153,7 +153,7 @@ export function workerChecks(i: {
 
 /* ---------------- CL-4: monthly proofs, the wage check and the payment hold (answers 626, 634) ---------------- */
 
-export const PROOF_KINDS = ['pf_challan', 'esi_challan', 'wage_register', 'bank_proof'] as const;
+export const PROOF_KINDS = ['pf_challan', 'esi_challan', 'wage_register', 'bank_proof', 'muster_roll'] as const;
 export type ProofKind = (typeof PROOF_KINDS)[number];
 export type ProofState = 'submitted' | 'verified' | 'discrepancy';
 export type PackStatus = 'open' | 'submitted' | 'verified' | 'discrepancy' | 'overdue';
@@ -172,10 +172,12 @@ export function packDue(month: string, cutoffDay: number): string {
 
 /**
  * Where a month's pack stands: a discrepancy on any proof wins; every proof verified is verified; past the due day with a
- * proof missing or not yet verified is overdue; all four in is submitted; otherwise open.
+ * proof missing or not yet verified is overdue; all in is submitted; otherwise open. Only the company's required proofs
+ * count (answer 741, setting clra.required_proofs); a discrepancy on any uploaded proof still counts.
  */
-export function packStatus(states: Partial<Record<ProofKind, ProofState>>, due: string, today: string): PackStatus {
-  const s = PROOF_KINDS.map((k) => states[k]);
+export function packStatus(states: Partial<Record<ProofKind, ProofState>>, due: string, today: string, required: readonly ProofKind[] = PROOF_KINDS): PackStatus {
+  if (Object.values(states).includes('discrepancy')) return 'discrepancy';
+  const s = required.map((k) => states[k]);
   if (s.includes('discrepancy')) return 'discrepancy';
   if (s.every((x) => x === 'verified')) return 'verified';
   if (today > due) return 'overdue';
@@ -240,3 +242,5 @@ export function peakOf(spans: { from: string; to: string | null }[], from: strin
 /** Answer 742: the wage register may not pay fewer days than the worker was on site (attendance). */
 export const shortDays = (paidDays: number, presentDays: number) => Math.max(0, presentDays - paidDays);
 
+/** Answer 741: the company's required proofs (a comma list of PROOF_KINDS), in the usual order; unknown values dropped. */
+export const requiredProofs = (setting: string): ProofKind[] => PROOF_KINDS.filter((k) => setting.split(',').includes(k));

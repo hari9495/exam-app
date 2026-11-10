@@ -19,7 +19,7 @@ import { Icon } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { timeOf } from '../../lib/dates';
 import { daysUntil, deploymentBlock, licenceAlert, rateCapCheck, submissionBlock, vendorInvoice } from './portals-logic';
-import { ClBillList, ClDue, ClLicences, ClPackView, ClWorkerList, ClWorkOrders, type PortalDue, type PortalLicence, type PortalPack, type PortalProofKind, type PortalWorker, type PortalWorkOrder } from './contractor-portal';
+import { ClAttendance, ClBillList, ClDue, ClLicences, ClPackView, ClWorkerList, ClWorkOrders, type PortalDue, type PortalLicence, type PortalPack, type PortalProofKind, type PortalWorker, type PortalWorkOrder } from './contractor-portal';
 import { LiveContractorPortalView, type LiveContractorPortal } from './contractor-portal-live';
 import { BlockNote, CameraFrame, ConsentPanel, Fact, FactRow, QrCode, StepDots, TenantPortal, type CameraState } from './portals-kit';
 import type {
@@ -725,10 +725,11 @@ function VendorInvoices({ tds }: { tds: string }) {
 /* T9-13 Contract-labour vendor portal                                 */
 /* ================================================================== */
 
-export type ClTab = 'establishments' | 'workers' | 'packs' | 'bills';
+export type ClTab = 'establishments' | 'workers' | 'attendance' | 'packs' | 'bills';
 const CL_TABS: { id: ClTab; label: string }[] = [
   { id: 'establishments', label: 'Establishments and licences' },
   { id: 'workers', label: 'Workers' },
+  { id: 'attendance', label: 'Attendance' },
   { id: 'packs', label: 'Monthly packs' },
   { id: 'bills', label: 'Bills' },
 ];
@@ -761,19 +762,21 @@ export interface ContractorPortalProps {
   uploading?: PortalProofKind;
   /** Answer 736: a waiting worker being withdrawn. */
   withdrawingId?: string;
+  /** CL-5: attendance at a kiosk site (read-only here) rather than the contractor's entry. */
+  attendanceKiosk?: boolean;
 }
 
 /** The design's sample establishments and workers as the portal parts take them. */
 const licencesOf = (xs: ClEstablishment[]): PortalLicence[] => xs.map((e) => ({ id: e.id, site: e.name, licenceNo: e.licenceNo, authority: e.authority, nature: e.nature, maxWorkers: e.maxWorkers, deployed: e.deployed, validTo: e.validTo, renewal: e.renewal ?? null }));
-/** The design's sample pack as the CL-4 pack view takes it (four proofs: answer 634; PT and the muster: question 741). */
-const KIND_OF: Record<string, PortalProofKind> = { ecr: 'pf_challan', esi: 'esi_challan', wage: 'wage_register', proof: 'bank_proof' };
+/** The design's sample pack as the CL-4 pack view takes it (five proofs: answers 634 and 741; PT stays in the design only). */
+const KIND_OF: Record<string, PortalProofKind> = { ecr: 'pf_challan', esi: 'esi_challan', wage: 'wage_register', proof: 'bank_proof', muster: 'muster_roll' };
 const packOf = (pk: ContractorPortalProps['pack'], ws: ClWorker[]): PortalPack => ({
   site: { id: 'hsr', name: pk.establishment },
   month: '2026-08',
   due: pk.due,
   status: pk.status,
   items: Object.fromEntries(
-    (['pf_challan', 'esi_challan', 'wage_register', 'bank_proof'] as PortalProofKind[]).map((k) => {
+    (['pf_challan', 'esi_challan', 'wage_register', 'bank_proof', 'muster_roll'] as PortalProofKind[]).map((k) => {
       const it = pk.items.find((x) => KIND_OF[x.id] === k);
       return [k, !it || it.state === 'missing' ? null : { state: it.state === 'pending' ? 'submitted' : it.state, note: it.note ?? null, fileName: `${k}.pdf`, workersCovered: k === 'pf_challan' ? 40 : k === 'esi_challan' ? 52 : null, amount: k === 'pf_challan' ? '86400.00' : k === 'esi_challan' ? '18200.00' : null }];
     }),
@@ -823,6 +826,15 @@ export function ContractorPortalScreen(props: ContractorPortalProps | { live: Li
         />
       )}
       {tab === 'packs' && <ClPackView pack={packOf(p.pack, p.workers)} today={today} uploading={p.uploading ?? null} />}
+      {tab === 'attendance' && (
+        <ClAttendance
+          today={today}
+          sites={[{ id: 'maa', name: 'Chennai office · facility' }, { id: 'hsr', name: 'Hosur plant · packing' }]}
+          siteId={p.attendanceKiosk ? 'hsr' : 'maa'}
+          month="2026-09"
+          data={{ month: '2026-09', site: p.attendanceKiosk ? 'hsr' : 'maa', contractorEnters: !p.attendanceKiosk, editable: !p.attendanceKiosk, confirmed: null, workers: p.workers.slice(0, 2).map((w) => ({ deploymentId: w.id, name: w.name, gatePass: w.gatePass, from: '2026-09-01', to: null, days: ['2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04'].map((day) => ({ day, source: p.attendanceKiosk ? 'kiosk' : 'contractor' })), present: 4 })) }}
+        />
+      )}
       {tab === 'bills' && <ClBillList held={p.bills.some((b) => b.status === 'On hold') ? ['2026-08'] : []} bills={p.bills.map((b, n) => ({ id: b.no, no: b.no, period: ['2026-08', '2026-07', '2026-06'][n] ?? '2026-05', amount: b.amount, tds: b.tds, recovery: n === 0 ? 920 : 0, net: b.status === 'Paid' ? b.amount - b.tds : null, status: b.status, paidOn: b.status === 'Paid' ? '2026-08-18' : null }))} />}
     </TenantPortal>
   );

@@ -10,6 +10,7 @@ import { EmptyState, InlineAlert, Meter } from '../../components/feedback';
 import { FieldRow, FormField } from '../../components/field';
 import { CurrencyField, NumberField, TextField } from '../../components/inputs';
 import { Select } from '../../components/select';
+import { Checkbox } from '../../components/choice';
 import { Segment } from '../../components/segment';
 import { DatePicker } from '../../components/date';
 import { FileUpload } from '../../components/upload';
@@ -475,7 +476,7 @@ function AddWorkerForm({ sites, today, design, onCheck, onAdd, onMinWage, onClos
 
 /* ---------------- CL-4: monthly packs and bills (answers 626, 634) ---------------- */
 
-export type PortalProofKind = 'pf_challan' | 'esi_challan' | 'wage_register' | 'bank_proof';
+export type PortalProofKind = 'pf_challan' | 'esi_challan' | 'wage_register' | 'bank_proof' | 'muster_roll';
 export type PortalPackStatus = 'open' | 'submitted' | 'verified' | 'discrepancy' | 'overdue';
 export interface PortalPackSummary {
   month: string;
@@ -491,6 +492,8 @@ export interface PortalPack {
   items: Record<PortalProofKind, { state: 'submitted' | 'verified' | 'discrepancy'; note: string | null; fileName: string; workersCovered: number | null; amount: string | null } | null>;
   workers: { deploymentId: string; name: string; idMasked: string; skill: string; line: { days: number; gross: string; paidOn: string } | null; minimum: { monthly: string; daily: string; source: string; verify: boolean } | null; short: string | null }[];
   checks: { id: string; label: string; status: 'pass' | 'fail' | 'pending'; detail?: string }[];
+  /** Answer 741: the proofs the company requires; the others may be given. Absent: all. */
+  required?: PortalProofKind[];
 }
 export interface PortalUploadInput {
   kind: PortalProofKind;
@@ -510,7 +513,7 @@ export interface PortalBill {
   paidOn: string | null;
 }
 
-const PROOF_LABEL: Record<PortalProofKind, string> = { pf_challan: 'PF ECR and challan', esi_challan: 'ESI challan', wage_register: 'Wage register (each worker’s days and pay)', bank_proof: 'Wage payment proof (bank statement)' };
+const PROOF_LABEL: Record<PortalProofKind, string> = { pf_challan: 'PF ECR and challan', esi_challan: 'ESI challan', wage_register: 'Wage register (each worker’s days and pay)', bank_proof: 'Wage payment proof (bank statement)', muster_roll: 'Muster roll (the days each worker was on site)' };
 const STATE_TONE: Record<'submitted' | 'verified' | 'discrepancy' | 'missing', { tone: BadgeTone; text: string }> = {
   submitted: { tone: 'info', text: 'Being checked' },
   verified: { tone: 'success', text: 'Verified' },
@@ -565,6 +568,7 @@ export function ClPackView({ pack, today, onBack, onUpload, uploading: uploading
               {(Object.keys(PROOF_LABEL) as PortalProofKind[]).map((k) => {
                 const i = pack.items[k];
                 const st = STATE_TONE[i?.state ?? 'missing'];
+                const optional = !i && pack.required !== undefined && !pack.required.includes(k);
                 return (
                   <li key={k}>
                     <div className="yx-ps-list__main">
@@ -572,7 +576,7 @@ export function ClPackView({ pack, today, onBack, onUpload, uploading: uploading
                       {i?.note && <span className="yx-ps-list__meta">{i.note}</span>}
                       {i?.workersCovered !== null && i?.workersCovered !== undefined && <span className="yx-ps-list__meta">Covers {i.workersCovered} workers · ₹{i.amount}</span>}
                     </div>
-                    <Badge tone={st.tone}>{st.text}</Badge>
+                    {optional ? <Badge tone="neutral">Optional</Badge> : <Badge tone={st.tone}>{st.text}</Badge>}
                     {i?.state !== 'verified' && uploading !== k && (
                       <Button size="sm" icon={Upload} onClick={() => setUploading(k)}>
                         {i ? 'Replace' : 'Upload'}
@@ -710,6 +714,82 @@ export function ClBillList({ bills, held }: { bills: PortalBill[]; held: string[
           </ul>
         )}
       </Card>
+    </div>
+  );
+}
+
+/* ---------------- CL-5: the contractor's attendance entry (answer 625) ---------------- */
+
+export interface PortalAttendance {
+  month: string;
+  site: string;
+  contractorEnters: boolean;
+  editable: boolean;
+  confirmed: { at: string; days: number } | null;
+  workers: { deploymentId: string; name: string; gatePass: string | null; from: string; to: string | null; days: { day: string; source: string }[]; present: number }[];
+}
+
+/** The days each worker was on site: marked here where the site has no kiosk, read-only at a kiosk site or once confirmed. */
+export function ClAttendance({ data, today, sites, siteId, month, onPick, onSave }: { data: PortalAttendance | null; today: Date; sites: { id: string; name: string }[]; siteId: string | null; month: string; onPick?: (siteId: string, month: string) => void; onSave?: (entries: { deploymentId: string; days: string[] }[]) => Promise<unknown> }) {
+  const toast = useToastIfAny();
+  const [marks, setMarks] = useState<Record<string, string[]>>(() => Object.fromEntries((data?.workers ?? []).map((w) => [w.deploymentId, w.days.map((d) => d.day)])));
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [y, m] = month.split('-').map(Number) as [number, number];
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const todayIso = iso(today);
+  const days = Array.from({ length: last }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`).filter((d) => d <= todayIso);
+  const months = Array.from({ length: 3 }, (_, i) => {
+    const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const toggle = (id: string, d: string) => setMarks((x) => ({ ...x, [id]: (x[id] ?? []).includes(d) ? (x[id] ?? []).filter((v) => v !== d) : [...(x[id] ?? []), d].sort() }));
+  const save = () => {
+    if (!onSave || !data) return;
+    setBusy(true);
+    setFailed(null);
+    onSave(data.workers.map((w) => ({ deploymentId: w.deploymentId, days: marks[w.deploymentId] ?? [] })))
+      .then(() => toast?.toast({ tone: 'success', title: 'Days saved' }))
+      .catch((e: unknown) => setFailed(errText(e)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <div className="yx-ps-stack">
+      <FieldRow>
+        <FormField id="at-site" label="Site">
+          <Select value={siteId} onChange={(v) => v && onPick?.(v, month)} options={sites.map((s) => ({ value: s.id, label: s.name }))} />
+        </FormField>
+        <FormField id="at-month" label="Month">
+          <Segment label="Month" options={months.map((x) => ({ value: x, label: new Date(`${x}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) }))} value={month} onChange={(v) => siteId && onPick?.(siteId, v)} />
+        </FormField>
+      </FieldRow>
+      {!data ? (
+        <EmptyState compact title="Choose a site." />
+      ) : (
+        <Card title="Days on site" actions={data.confirmed ? <Badge tone="success">Confirmed by the company</Badge> : data.contractorEnters ? undefined : <Badge tone="neutral">From the kiosk</Badge>} footer={data.editable ? <Button variant="primary" loading={busy} onClick={save}>Save days</Button> : undefined}>
+          <div className="yx-ps-stack">
+            {failed && <InlineAlert tone="danger" title={failed} />}
+            {!data.contractorEnters && <p className="yx-ps-muted">Workers punch at the site's kiosk with the gate pass number and PIN; the days come from there.</p>}
+            {data.workers.length === 0 && <p className="yx-ps-muted">No workers deployed here this month.</p>}
+            {data.workers.map((w) => (
+              <fieldset key={w.deploymentId} className="yx-ps-days">
+                <legend>{w.name} · {(marks[w.deploymentId] ?? []).length} days</legend>
+                {data.editable ? (
+                  <div className="yx-ps-row">
+                    {days
+                      .filter((d) => d >= w.from && (w.to === null || d <= w.to))
+                      .map((d) => (
+                        <Checkbox key={d} label={String(Number(d.slice(8)))} checked={(marks[w.deploymentId] ?? []).includes(d)} onChange={() => toggle(w.deploymentId, d)} />
+                      ))}
+                  </div>
+                ) : (
+                  <p className="yx-ps-muted">{w.days.length ? w.days.map((d) => Number(d.day.slice(8))).join(', ') : 'No days yet.'}</p>
+                )}
+              </fieldset>
+            ))}
+          </div>
+        </Card>
+      )}
     </div>
   );
 }

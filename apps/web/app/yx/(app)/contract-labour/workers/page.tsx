@@ -3,7 +3,7 @@
 import { NoAccessState } from '@yukthix/ui';
 import { WorkersScreen, type WorkersData } from '@yukthix/ui/desk';
 import { loadState } from '../../../../../lib/yx-org';
-import { apiFetch } from '../../../../../lib/api-client';
+import { apiFetch, apiFetchBlob } from '../../../../../lib/api-client';
 import { useAuth } from '../../../../../lib/auth-context';
 import { useClra, useClraWrite } from '../../../../../lib/yx-contract-labour';
 
@@ -33,6 +33,15 @@ export default function YxContractWorkersPage() {
         onSend: (input) => write('POST', '/workers', input),
         onApprove: (id, version, induction) => write('POST', `/workers/${enc(id)}/approve`, { version, inductionOn: induction.on, inductionBy: induction.by }),
         onRelease: (id, version, on, reason) => write('POST', `/workers/${enc(id)}/release`, { version, on, reason }),
+        // CL-5: renew the gate pass (684), the photo (735), the kiosk PIN shown once (625).
+        onRenewPass: (id, version, induction) => write('POST', `/workers/${enc(id)}/gate-pass`, { version, inductionOn: induction.on, inductionBy: induction.by }),
+        onPhoto: (id, file) => {
+          const body = new FormData();
+          body.append('file', file);
+          return write('POST', `/workers/${enc(id)}/photo`, body);
+        },
+        photoUrl: (id) => apiFetchBlob(`/contract-labour/workers/${enc(id)}/photo`, {}, accessToken ?? undefined).then(({ blob }) => URL.createObjectURL(blob), () => null),
+        onKioskPin: async (id) => (await write<{ pin: string }>('POST', `/workers/${enc(id)}/kiosk-pin`)).pin,
         // Answer 685: the minimum wage under the wage field.
         onMinWage: (locationId, skill) => apiFetch(`/contract-labour/min-wage?locationId=${enc(locationId)}&skill=${enc(skill)}`, {}, accessToken ?? undefined) as Promise<{ monthly: string; daily: string; source: string; verify: boolean } | null>,
       }}

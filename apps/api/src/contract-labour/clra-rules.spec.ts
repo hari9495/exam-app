@@ -126,7 +126,7 @@ describe('work order headcount (CL-2, answer 675)', () => {
   });
 });
 
-import { holdsBill, monthOf, packDue, packStatus, recoveryFrom, wageShortfall } from './clra-rules';
+import { holdsBill, monthOf, packDue, packStatus, recoveryFrom, requiredProofs, wageShortfall } from './clra-rules';
 
 describe('monthly proofs, wage check and hold (CL-4)', () => {
   it('due on the cut-off day of the following month, clipped to the month', () => {
@@ -137,13 +137,24 @@ describe('monthly proofs, wage check and hold (CL-4)', () => {
   });
 
   it('pack status: discrepancy wins, all verified, overdue after the due day, submitted, open', () => {
-    const all = { pf_challan: 'verified', esi_challan: 'verified', wage_register: 'verified', bank_proof: 'verified' } as const;
+    const all = { pf_challan: 'verified', esi_challan: 'verified', wage_register: 'verified', bank_proof: 'verified', muster_roll: 'verified' } as const;
     expect(packStatus(all, '2026-09-15', '2026-10-01')).toBe('verified');
     expect(packStatus({ ...all, esi_challan: 'discrepancy' }, '2026-09-15', '2026-09-01')).toBe('discrepancy');
     expect(packStatus({ ...all, bank_proof: 'submitted' }, '2026-09-15', '2026-09-15')).toBe('submitted');
     expect(packStatus({ ...all, bank_proof: 'submitted' }, '2026-09-15', '2026-09-16')).toBe('overdue');
     expect(packStatus({ pf_challan: 'submitted' }, '2026-09-15', '2026-09-10')).toBe('open');
     expect(packStatus({}, '2026-09-15', '2026-09-16')).toBe('overdue');
+  });
+
+  it('741: only the required proofs decide the status; a discrepancy on any proof still counts', () => {
+    const two = requiredProofs('pf_challan,esi_challan');
+    expect(two).toEqual(['pf_challan', 'esi_challan']);
+    expect(requiredProofs('muster_roll,pf_challan,nope')).toEqual(['pf_challan', 'muster_roll']);
+    expect(packStatus({ pf_challan: 'verified', esi_challan: 'verified' }, '2026-09-15', '2026-10-01', two)).toBe('verified');
+    expect(packStatus({ pf_challan: 'verified', esi_challan: 'verified', muster_roll: 'discrepancy' }, '2026-09-15', '2026-09-01', two)).toBe('discrepancy');
+    expect(packStatus({ pf_challan: 'verified' }, '2026-09-15', '2026-09-16', two)).toBe('overdue');
+    const four = { pf_challan: 'verified', esi_challan: 'verified', wage_register: 'verified', bank_proof: 'verified' } as const;
+    expect(packStatus(four, '2026-09-15', '2026-09-16')).toBe('overdue');
   });
 
   it('the hold: overdue or disputed and not released', () => {

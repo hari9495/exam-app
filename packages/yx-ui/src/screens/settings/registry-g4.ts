@@ -1166,6 +1166,7 @@ const contractLabour: SettingsPageDef = {
           addLabel: 'Add registration',
           synonyms: ['CLRA registration', 'RC', 'principal employer'],
         },
+        { key: 'clra.threshold_warn', label: 'Warn when a site reaches', kind: 'select', value: '80', options: ['50', '60', '70', '80', '90'], optionLabels: { '50': '50 % of the threshold', '60': '60 % of the threshold', '70': '70 % of the threshold', '80': '80 % of the threshold', '90': '90 % of the threshold' }, starter: true, scope: 'Company', helper: 'At the threshold a site without a registration takes no more contract workers.' },
         { key: 'clra.threshold', label: 'Registration needed from', kind: 'law', value: '50 contract workers (20 for dates before 21 Nov 2025)', law: 'OSH Code, 2020 contract-labour chapter; Contract Labour Act, 1970 s.1(4) for earlier dates' },
       ],
     },
@@ -1181,6 +1182,7 @@ const contractLabour: SettingsPageDef = {
       title: 'Workers on site',
       settings: [
         { key: 'clra.induction_required', label: 'Site safety induction before the gate pass', kind: 'toggle', value: true, starter: true, scope: 'Company', helper: 'Recorded with the day and who gave it. The gate pass ends when the induction does.', synonyms: ['safety induction', 'gate pass'] },
+        { key: 'clra.attendance_source', label: 'Contract workers’ attendance', kind: 'radio', value: 'kiosk_else_contractor', options: ['kiosk_else_contractor', 'contractor'], optionLabels: { kiosk_else_contractor: 'The site’s kiosk (gate pass and PIN); the contractor where there is no kiosk', contractor: 'Always the contractor, on the portal' }, starter: true, scope: 'Company' },
         { key: 'clra.induction_months', label: 'A safety induction lasts', kind: 'select', value: '12', options: ['6', '12', '24'], optionLabels: { '6': '6 months', '12': '12 months', '24': '24 months' }, starter: true, scope: 'Company', synonyms: ['induction validity'] },
       ],
     },
@@ -1203,6 +1205,7 @@ const contractLabour: SettingsPageDef = {
           starter: true,
           synonyms: ['vendor compliance', 'challan check'],
         },
+        { key: 'clra.required_proofs', label: 'Proofs a contractor must give each month', kind: 'multiselect', value: ['PF ECR and challan', 'ESI challan', 'Wage register', 'Wage payment proof', 'Muster roll'], options: ['PF ECR and challan', 'ESI challan', 'Wage register', 'Wage payment proof', 'Muster roll'], starter: true, scope: 'Company', helper: 'Only these decide whether a month is complete, overdue or holds the bill. The others may still be uploaded.', synonyms: ['muster roll', 'monthly proofs'] },
         {
           key: 'clra.doc_cutoff',
           label: 'Proofs due by',

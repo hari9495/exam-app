@@ -137,7 +137,7 @@ const RUPEES = /^\d{1,9}(\.\d{1,2})?$/;
 export class PackItemDto {
   @IsUUID() locationId!: string;
   @Matches(MONTH, { message: 'Give the month as yyyy-mm.' }) month!: string;
-  @IsIn(['pf_challan', 'esi_challan', 'wage_register', 'bank_proof']) kind!: 'pf_challan' | 'esi_challan' | 'wage_register' | 'bank_proof';
+  @IsIn(['pf_challan', 'esi_challan', 'wage_register', 'bank_proof', 'muster_roll']) kind!: 'pf_challan' | 'esi_challan' | 'wage_register' | 'bank_proof' | 'muster_roll';
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(100000) workersCovered?: number;
   @IsOptional() @Matches(RUPEES, { message: 'Enter the amount in rupees.' }) amount?: string;
   /** Wage register: JSON [{ deploymentId, days, gross, paidOn }]. */

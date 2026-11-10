@@ -7,7 +7,7 @@ import { ContractorPortalScreen, type LiveContractorPortal, type LiveContractorT
 import { apiFetch } from '../../../../lib/api-client';
 import { otpSignIn } from '../../../../lib/yx-portal';
 
-const TABS: LiveContractorTab[] = ['establishments', 'workers', 'packs', 'bills'];
+const TABS: LiveContractorTab[] = ['establishments', 'workers', 'attendance', 'packs', 'bills'];
 
 // T9-13 contractor portal (CL-3, answer 631): a contractor's contact the compliance owner invited signs in with a
 // one-time code by email; the session (this tab only) sees only their own contractor's licences, work orders, workers
@@ -26,6 +26,7 @@ export default function YxContractorPortalPage() {
   const [pack, setPack] = useState<LiveContractorPortal['pack']>(null);
   const [open, setOpen] = useState<{ siteId: string; month: string } | null>(null);
   const [bills, setBills] = useState<LiveContractorPortal['bills']>(null);
+  const [attendance, setAttendance] = useState<NonNullable<LiveContractorPortal['attendance']>>({ siteId: null, month: new Date().toISOString().slice(0, 7), data: null });
   const call = async <T,>(path: string, t: string, init: RequestInit = {}): Promise<T> => {
     try {
       return (await apiFetch(`${base}${path}`, { ...init, headers: { 'X-Contractor-Portal': t } })) as T;
@@ -107,6 +108,17 @@ export default function YxContractorPortalPage() {
         onWithdraw: async (id, reason) => {
           await call(`/workers/${encodeURIComponent(id)}/withdraw`, token, { method: 'POST', body: JSON.stringify({ reason }) });
           await load(token);
+        },
+        attendance,
+        onPickAttendance: (siteId, m) => {
+          setAttendance({ siteId, month: m, data: null });
+          void call<NonNullable<LiveContractorPortal['attendance']>['data']>(`/attendance?locationId=${encodeURIComponent(siteId)}&month=${encodeURIComponent(m)}`, token).then((data) => setAttendance({ siteId, month: m, data }), () => undefined);
+        },
+        onSaveAttendance: async (entries) => {
+          if (!attendance.siteId) return;
+          await call('/attendance', token, { method: 'POST', body: JSON.stringify({ locationId: attendance.siteId, month: attendance.month, entries }) });
+          const data = await call<NonNullable<LiveContractorPortal['attendance']>['data']>(`/attendance?locationId=${encodeURIComponent(attendance.siteId)}&month=${encodeURIComponent(attendance.month)}`, token);
+          setAttendance({ ...attendance, data });
         },
         onMinWage: (locationId, skill) => call(`/min-wage?locationId=${encodeURIComponent(locationId)}&skill=${encodeURIComponent(skill)}`, token),
         onRenew: async (licenceId, input, file) => {
