@@ -12820,6 +12820,15 @@ model Visit {
   createdBy         String    @map("created_by") @db.Uuid
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  // Slice 3 (603, 605, 614): watch-list block, ID type and last 4 (image only where asked), under 18 with an adult.
+  blockedAt         DateTime? @map("blocked_at") @db.Timestamptz(3)
+  idType            String?   @map("id_type") @db.VarChar(20)
+  idLast4           String?   @map("id_last4") @db.VarChar(4)
+  idFileId          String?   @map("id_file_id") @db.Uuid
+  idCapturedAt      DateTime? @map("id_captured_at") @db.Timestamptz(3)
+  minor             Boolean   @default(false)
+  minorAdult        String?   @map("minor_adult") @db.VarChar(200)
+  adultConfirmedAt  DateTime? @map("adult_confirmed_at") @db.Timestamptz(3)
 
   @@unique([organizationId, passCode], map: "visits_pass_code_key")
   @@index([organizationId, locationId, startsAt], map: "visits_desk_idx")
@@ -12837,4 +12846,24 @@ model VisitCount {
 
   @@id([organizationId, locationId, day, purpose])
   @@map("visit_counts")
+}
+
+/// Answer 605: the blocked-visitor watch-list (RLS in the migration). Reviewed every review period or it lapses.
+model VisitorWatch {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  name           String    @db.VarChar(200)
+  nameKey        String    @map("name_key") @db.VarChar(200)
+  mobile         String?   @db.VarChar(20)
+  reason         String    @db.VarChar(500)
+  addedBy        String    @map("added_by") @db.Uuid
+  addedAt        DateTime  @default(now()) @map("added_at") @db.Timestamptz(3)
+  reviewedBy     String?   @map("reviewed_by") @db.Uuid
+  reviewedAt     DateTime? @map("reviewed_at") @db.Timestamptz(3)
+  reviewBy       DateTime  @map("review_by") @db.Timestamptz(3)
+
+  @@index([organizationId, mobile], map: "visitor_watchlist_mobile_idx")
+  @@index([organizationId, nameKey], map: "visitor_watchlist_name_idx")
+  @@index([reviewBy], map: "visitor_watchlist_review_idx")
+  @@map("visitor_watchlist")
 }

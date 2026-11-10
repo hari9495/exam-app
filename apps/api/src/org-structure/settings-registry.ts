@@ -304,7 +304,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // pages. Starter off.
   // Visitors slice 1 (M02 §B11; founder answers 602-610): Settings 3.12, per location where the founder said so.
   'visitors.host_timeout_minutes': { label: 'Visitors: the host approves a walk-in within (minutes)', scopes: ['tenant', 'location'], dated: false, values: ['2', '5', '10', '15', '30', '60'], default: '10' },
-  'visitors.id_capture': { label: 'Visitors: capture ID proof (type and last 4 only)', scopes: ['tenant', 'location'], dated: false, values: ['off', 'on'], default: 'off' },
+  // Answer 603: off by default; per location the ID type and last 4, or also a photo of the ID (deleted after the ID retention).
+  'visitors.id_capture': { label: 'Visitors: capture ID proof (type and last 4 only)', scopes: ['tenant', 'location'], dated: false, values: ['off', 'on', 'with_image'], default: 'off', labels: { off: 'Off', on: 'ID type and last 4', with_image: 'ID type, last 4 and a photo of the ID' } },
   'visitors.photo': { label: 'Visitors: capture a photo', scopes: ['tenant', 'location'], dated: false, values: ['on', 'off'], default: 'on' },
   'visitors.hours_from': { label: 'Visitors: allowed from', scopes: ['tenant', 'location'], dated: false, values: HOURS, default: '09:00' },
   'visitors.hours_to': { label: 'Visitors: allowed until', scopes: ['tenant', 'location'], dated: false, values: HOURS, default: '18:30' },
@@ -312,6 +313,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'visitors.badge': { label: 'Visitors: badge', scopes: ['tenant', 'location'], dated: false, values: ['name_qr', 'photo_qr', 'phone_only'], default: 'name_qr', labels: { name_qr: 'Name badge with QR', photo_qr: 'Photo badge with QR', phone_only: 'Pass on the phone only' } },
   'visitors.retention_days': { label: 'Visitors: keep visit records for (days)', scopes: ['tenant', 'location'], dated: false, values: ['30', '60', '90', '180', '365', '730'], default: '90' },
   'visitors.id_retention_days': { label: 'Visitors: keep ID details for (days)', scopes: ['tenant', 'location'], dated: false, values: ['7', '15', '30', '60', '90'], default: '30' },
+  // Answer 605: a watch-list entry is reviewed within this many days or it lapses (company-wide: the list is).
+  'visitors.watchlist_review_days': { label: 'Visitors: review each watch-list entry every (days)', scopes: ['tenant'], dated: false, values: ['90', '180', '365'], default: '365' },
   'brand.white_label': { label: 'Hide "Powered by YukthiX" on the careers site and candidate pages', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off', platform: { feature: 'white_label' } },
   'home.pay_on_employee_home': { label: 'Show net pay on the employee home', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // P02 §4.5 fraud guard: a new bank account is used for payouts only after this cooling period (starter, D17).

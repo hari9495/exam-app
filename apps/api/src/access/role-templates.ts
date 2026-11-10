@@ -219,9 +219,10 @@ const TEMPLATES: readonly RoleTemplate[] = [
     key: 'facility_admin',
     name: 'Facility admin',
     typicalScope: 'tenant',
-    summary: 'Visitor settings (Settings 3.12), the reception desk and the visitor log.',
+    summary: 'Visitor settings (Settings 3.12), the reception desk, the visitor log and the blocked-visitor watch-list.',
     cannot: 'Change people, pay or time records.',
-    permissions: ['visitors.settings.manage', 'visitors.desk.manage', 'visitors.log.view'],
+    // Answer 605: Facility admin keeps the watch-list with HR.
+    permissions: ['visitors.settings.manage', 'visitors.desk.manage', 'visitors.log.view', 'visitors.watchlist.manage'],
   },
   {
     key: 'staffing_account_manager',
