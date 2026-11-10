@@ -72,7 +72,7 @@ export { BenchSheet, ClientJobSheet, PlacementSheet, ShareJobSheet, SubmitToClie
 // Staffing desk slice 3 (HIR-18 invoices and vendor invoices, HIR-19 receivables, HIR-30 fees, HIR-31 the e-invoice
 // window, T9-06 the client portal per contact).
 export { CollectionsScreen, InvoiceRecordScreen, InvoicesScreen, LiveEInvoiceBanner, PlacementFeeSettingsScreen, type FeeTermsInput, type FeeTermsView, type HoursRowView, type InvoiceDetail, type InvoiceRowView, type LedgerRowView, type LiveCollections, type LiveFeeTerms, type LiveHours, type LiveInvoiceRecord, type LiveInvoices, type ReceiptInput, type VendorBillView, type WindowView } from '../hiring-staffing';
-export { CreateInvoicesSheet, type DraftInput, type InvoiceOptions } from '../staffing-sheets';
+export { CreateInvoicesSheet, ExportSheet, type DraftInput, type ExportInput, type ExportOptions, type InvoiceOptions } from '../staffing-sheets';
 // Round 4 (answers 491-499): the placement fee card and its live shape.
 export { PlacementFee, type LivePlacementFee } from '../hiring-staffing';
 export { ClientPortalScreen, type LiveClientPortal, type LiveClientTab } from '../../portals/t9-business';

@@ -56,11 +56,12 @@ built**.
 | B. Candidates, pipeline and interviews | 8 | 55 | 1 | 0 | 9 | 1 | 66 |
 | C. Offers, BGV and joining | 4 | 23 | 4 | 0 | 1 | 0 | 28 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 25 | 0 | 0 | 3 | 4 | 32 |
-| E. Staffing agency | 8 | 55 | 12 | 0 | 0 | 0 | 67 |
+| E. Staffing agency | 8 | 56 | 12 | 0 | 0 | 0 | 68 |
 | F. Compliance and fairness | 5 | 17 | 2 | 0 | 11 | 0 | 30 |
 | G. Careers site, portals and settings | 4 | 62 | 4 | 2 | 9 | 0 | 77 |
-| **All Hiring design groups (A–G)** | **37** | **279** | **26** | **2** | **28** | **5** | **340** |
+| **All Hiring design groups (A–G)** | **37** | **280** | **26** | **2** | **28** | **5** | **341** |
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 5 | 0 | 5 | 5 | 0 | 15 |
+Recounted by script 10 Nov 2026 on `feat/yukthix-staffing-5` after answers 522 and 528: 1 new drawn HIR-18 story (export to accounting).
 Recounted by script 10 Nov 2026 on `feat/yukthix-staffing-4` after staffing round 4 (answers 491-499): HIR-18 Account manager, HIR-19 Ageing (reminders), HIR-30 Fixed refund (fee and guarantee) and HIR-21 Vendor invoices gaps closed; 3 new drawn stories (placement fee before the hire and after leaving, vendor invoices linked to payroll).
 Recounted by script on `test/yukthix-main` after merging round 4 (442, 452, 473, 474): A–G 273 live, 29 gap, 2 wire, 28 not built, 5 phone, of 337.
 Recounted by script on `test/yukthix-main` after merging the Hiring walk-through fixes: A–G 270 live, 29 gap, 2 wire, 28 not built, 5 phone, of 334.
@@ -732,13 +733,14 @@ keep hours and fees; recruiters see none of it.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Finance · Finance · invoice list | live (gap) | /yx/staffing/invoices: number (draft until issued), client, date, period, type (contract staffing, placement fee, credit note), taxable, GST, total, status, IRN day from the rule set; Create invoices. Gap: export to accounting (Tally/Zoho, question 522), bulk Send for IRN (IRP not connected) |
+| Finance · Finance · invoice list | live (gap) | /yx/staffing/invoices: number (draft until issued), client, date, period, type (contract staffing, placement fee, credit note), taxable, GST, total, status, IRN day from the rule set; Create invoices; Export to accounting (answer 522): a month of one GSTIN series as a Tally XML import or a Zoho Books CSV pair, issued documents only, finance only, audited. Gap: bulk Send for IRN (IRP not connected) |
 | AccountManager · Account manager · read only | live | `ats.staffing.manage` reads; Download PDF (answer 492): the GST invoice or credit note PDF, fields from the rule set `GST.INVOICE_R46` (r.46 / r.53, verify) |
 | IntraState · Invoice · CGST + SGST, credit note | live | /yx/staffing/invoices/[id]: lines (hours × rate, overtime at the line's multiplier), CGST + SGST half each from `GST.STAFFING_RATE`; credit notes listed and opened |
 | InterState · Invoice · IGST (inter-state) | live | supplier state from the series GSTIN (rule set `GST.STATE_CODES`) against the client's state |
 | IrnWarning · Invoice · IRN day 28 warning | live | the banner from `GST.EINVOICE_WINDOW` (30 days, warn from 25; verify) when `staffing.einvoice.applies` is on |
 | Empty · Empty | live | |
 | Error · Error | live | |
+| ExportToAccounting · Export to accounting · Tally or Zoho Books | live | new story (drawn, answer 522): `ExportSheet`: series, month, Tally (XML) or Zoho Books (CSV); drafts are named and left out; formats from the rule sets `EXPORT.TALLY_XML` and `EXPORT.ZOHO_CSV` (verify); ledgers from 6.2 |
 | CreateInvoices · Create invoices · from approved hours | live | new story (drawn): `CreateInvoicesSheet`: client, month, series, PO; one draft a month or one per placement (the client's grouping) |
 | Draft · Invoice · draft before issue | live | new story (drawn): issue (next number, today) or delete (hours free again) |
 
@@ -982,7 +984,7 @@ stand-in is gone. Approval routes, careers and job boards stay on their stand-in
 | P6_1_ScorecardUsed · 6.1 Hiring · used scorecard (saved as a copy) | live | a template already used by a scorecard is never changed: “Save as a copy” posts a new template named “(copy)”; the API refuses a change with 409 |
 | P6_1_ScorecardView · 6.1 Hiring · scorecard, view only | live | the view-only sheet (skills with per cent, scale, pass bar) is drawn; live shows the list rows read-only without the pipelines key instead of opening it. Archive scorecard (danger, after a confirmation): `DELETE hiring/scorecard-templates/:id`, jobs using it go back to no scorecard, filled scorecards keep it |
 | P6_1_StaleRecruiter · 6.1 Hiring · default recruiter no longer qualifies | live | answer 348: a stored default who left or no longer holds the recruiter key reads as None with a warning naming them; new requisitions start with no recruiter (`defaultRecruiter`); the API refuses anyone else as default with 400, on both `PUT hiring/settings` and `PUT org/settings` |
-| P6_2 · 6.2 Staffing desk | live (gap) | /yx/settings/staffing: turn on the staffing desk (`staffing.desk.enabled`, default off, drawn), the rate-change backdating (`staffing.rate_change.backdate_days`, default 0, drawn), OT and holiday multipliers (1.5 and 2), default payment terms (30 days), invoice numbering (one series per GSTIN per financial year; the next number only goes up) and the r.46(b) law row. Changed by `ats.staffing.manage` or `org.settings.manage` company-wide, never while acting; audited. Slice 2 (drawn, live): submissions and placements (mask contact details, ending soon days, statutory cost %), vendors (target margin for the rate cap, ownership days) and the bench policy (bench pay, maximum days, then review or unpaid; a Segment). Gap: collections, dunning, client-portal times and e-invoicing (slice 3) are left out |
+| P6_2 · 6.2 Staffing desk | live (gap) | /yx/settings/staffing: turn on the staffing desk (`staffing.desk.enabled`, default off, drawn), the rate-change backdating (`staffing.rate_change.backdate_days`, default 0, drawn), OT and holiday multipliers (1.5 and 2), default payment terms (30 days), invoice numbering (one series per GSTIN per financial year; the next number only goes up) and the r.46(b) law row. Changed by `ats.staffing.manage` or `org.settings.manage` company-wide, never while acting; audited. Slice 2 (drawn, live): submissions and placements (mask contact details, ending soon days, statutory cost %), vendors (target margin for the rate cap, ownership days) and the bench policy (bench pay, maximum days, then review or unpaid; a Segment). Slice 3: payment reminders (standard, gentle or off) and e-invoicing (IRP not connected). Answer 522 (drawn, live): Accounting export: sales, CGST, SGST, IGST or one GST ledger, TDS receivable and round-off ledger names (text), GST ledgers separate or combined, expected TDS left out or shown, totals rounded to the rupee or not. Gap: client-portal response times (no tickets) |
 | P6_1_NycHint · 6.1 Hiring · AI on with a New York City location | live | drawn 15 Nov 2026 (answer 473): AI notes on past candidates or the AI draft is on, the company has a location in New York City (HIR.BIAS_AUDIT's city rules; `GET hiring/settings` `nycLocations`) and the NYC switch is off: a warning on the switch; nothing is blocked |
 | P6_1_StaleBandApprover · 6.1 Hiring · approver above the range can no longer approve | live | drawn 14 Nov 2026 (answer 376): a named approver who left or lost the offer-pay key stays named ("(cannot approve)") with a warning; the step goes to the company admins until HR chooses again |
 | P6_2_ReadOnly · 6.2 Staffing desk · read-only | live | recruiters (`ats.staffing.view`) read it |
@@ -1873,6 +1875,23 @@ white-label per company from the console with the plan; (443) draw the quarantin
   `staffing_reminders`). 494: fee invoice (kind fee) and guarantee credit from the placement record. 496: vendors link
   to PAY 8 consultants; `ConsultantsService.staffingSubmit`. 499: paise in credit notes, receipts, TDS and 26AS
   (the kit field's existing `allowPaise` option). Migration `202617o0000007_staffing_4`.
+## Staffing round 5 built (answers 522 and 528; 10 Nov 2026, branch `feat/yukthix-staffing-5`)
+- 522: `accounting-export.ts` (Tally XML vouchers; Zoho Books invoices and credit notes CSVs in a zip); rule sets
+  `EXPORT.TALLY_XML` and `EXPORT.ZOHO_CSV` (migration `202617o0000008_staffing_5`, verify); ten 6.2 settings
+  (`staffing.export.*`). GET /staffing/exports (finance key, refused while acting, audited `staffing.invoices.exported`).
+- 528: Client hired ends the placement on the day before the hire by default (a checkbox in the same dialog), through the
+  existing end path (audited), with no bench spell.
+## Founder questions from the staffing round 5 (10 Nov 2026)
+571. **Ledgers created in Tally first.** The Tally file names ledgers; it does not create them (party, sales, GST,
+     round-off, TDS). *Suggested: keep; the import fails clearly on a missing ledger, and the CA sets them up once.*
+572. **Expected TDS in the export.** With "Show the expected TDS", the invoice voucher debits TDS receivable at the
+     client's section rate (TDS.SECTIONS, others' rate) and the party for the rest; the actual TDS comes with the
+     receipt. *Suggested: keep it off by default; turn on only if the CA books TDS at invoice.*
+573. **Zoho as two files in a zip.** Zoho Books imports invoices and credit notes separately. *Suggested: keep.*
+574. **Receipts in the export.** Only invoices and credit notes are exported, not receipts. *Suggested: add receipt
+     vouchers next if finance asks.*
+575. **A hire on the placement's first day.** The placement then ends on its first day (not the day before).
+     *Suggested: keep.*
 ## Founder questions from the staffing round 4 (10 Nov 2026)
 521. **Interviews for bench employees.** The portal books interviews only for candidates in the job's pipeline (HIR-06
      works on pipeline entries); a bench employee submitted to a client is arranged by the account manager. *Suggested:

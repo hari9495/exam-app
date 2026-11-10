@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Headers, HttpCode, Ip, Param, ParseUUIDPipe, Post, Put, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, HttpCode, Ip, Param, ParseUUIDPipe, Post, Put, Query, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
@@ -12,7 +12,7 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PUBLIC_API_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import { StaffingBillingService } from './billing.service';
 import { ClientPortalService } from './client-portal.service';
-import { ApproveHoursDto, HireDto, LeftDto, PortalInterviewDto, VendorConsultantDto, ClientTermsDto, CollectionDto, ContactPortalDto, CreditNoteDto, DraftInvoiceDto, HoursDto, PortalDecisionDto, PortalEmailDto, PortalSendBackDto, PortalVerifyDto, ReceiptDto, ReissueDto, VendorBillDto, VendorBillPaidDto, VersionDto } from './staffing-dto';
+import { ApproveHoursDto, ExportQueryDto, HireDto, LeftDto, PortalInterviewDto, VendorConsultantDto, ClientTermsDto, CollectionDto, ContactPortalDto, CreditNoteDto, DraftInvoiceDto, HoursDto, PortalDecisionDto, PortalEmailDto, PortalSendBackDto, PortalVerifyDto, ReceiptDto, ReissueDto, VendorBillDto, VendorBillPaidDto, VersionDto } from './staffing-dto';
 
 const who = (req: Request) => req.user as ScopeUser;
 const READ = ['ats.staffing.manage', 'ats.staffing.billing'] as const;
@@ -69,6 +69,22 @@ export class StaffingBillingController {
   @RequireAnyPermission(...READ)
   invoice(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.billing.one(ctx, who(req), id);
+  }
+
+  @Get('exports/options')
+  @RequireAnyPermission('ats.staffing.billing')
+  exportOptions(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.billing.exportOptions(ctx, who(req));
+  }
+
+  /** Answer 522: a download (a GET), but audited and refused while acting, like every finance write. */
+  @Get('exports')
+  @RequireAnyPermission('ats.staffing.billing')
+  async exportMonth(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: ExportQueryDto, @Res({ passthrough: true }) res: Response) {
+    assertOwnSession(req);
+    const f = await this.billing.exportMonth(ctx, who(req), q);
+    res.set({ 'Content-Type': f.type, 'Content-Disposition': `attachment; filename="${f.filename}"` });
+    return new StreamableFile(f.buffer);
   }
 
   @Get('invoices/:id/pdf')

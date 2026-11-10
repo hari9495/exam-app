@@ -30,6 +30,16 @@ export const STAFFING_SETTING_KEYS = [
   'staffing.bench.after',
   'staffing.dunning.schedule',
   'staffing.einvoice.applies',
+  'staffing.export.ledger.sales',
+  'staffing.export.ledger.cgst',
+  'staffing.export.ledger.sgst',
+  'staffing.export.ledger.igst',
+  'staffing.export.ledger.gst',
+  'staffing.export.ledger.tds',
+  'staffing.export.ledger.round_off',
+  'staffing.export.gst_split',
+  'staffing.export.tds',
+  'staffing.export.round_off',
 ] as const;
 const KEYS = ['ats.staffing.manage', 'ats.staffing.view', 'org.settings.manage', 'ats.agency.manage', 'ats.staffing.billing'] as const;
 type Access = { manage: boolean; view: boolean; settings: boolean; vendorRates: boolean; billing: boolean; actingForOther: boolean };
@@ -371,7 +381,11 @@ export class StaffingService {
       if (!(STAFFING_SETTING_KEYS as readonly string[]).includes(ch.key)) throw new BadRequestException(`${ch.key} is not a staffing desk setting.`);
       if (seen.has(ch.key)) throw new BadRequestException(`${SETTINGS[ch.key]!.label} is in the list twice.`);
       seen.add(ch.key);
-      if (!SETTINGS[ch.key]!.values.includes(ch.value)) throw new BadRequestException(`${SETTINGS[ch.key]!.label} is one of: ${SETTINGS[ch.key]!.values.join(', ')}`);
+      const def = SETTINGS[ch.key]!;
+      // A text setting (answer 522 ledger names): non-empty, short, no line breaks.
+      if (def.text) {
+        if (!ch.value.trim() || ch.value.length > def.text.maxLength || /[\r\n<>]/.test(ch.value)) throw new BadRequestException(`${def.label}: up to ${def.text.maxLength} characters, on one line.`);
+      } else if (!def.values.includes(ch.value)) throw new BadRequestException(`${def.label} is one of: ${def.values.join(', ')}`);
     }
     for (const ch of changes) await this.settings.set(ctx, { key: ch.key, scopeType: 'tenant', value: ch.value } as Parameters<OrgSettingsService['set']>[1]);
     return this.readSettings(ctx, user);

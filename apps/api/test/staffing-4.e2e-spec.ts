@@ -256,6 +256,12 @@ describe('Staffing desk round 4', () => {
     await hire('am', ids.pOther!).expect(400); // no terms for that client
     const h = (await hire('am', ids.pOwn!).expect(want(201))).body;
     expect(h.fee).toBe('149940.00'); // 2 months served: 8.33% of ₹18,00,000
+    // Answer 528: by default the placement ends the day before the hire (existing end path, audited), with no bench spell.
+    expect(h.ended).toBe(addDays(today, -1));
+    const ended = await inA((tx) => tx.staffingPlacement.findUniqueOrThrow({ where: { id: ids.pOwn } }));
+    expect([ended.status, ended.endOn.toISOString().slice(0, 10), ended.endNote]).toEqual(['ended', addDays(today, -1), 'Hired by the client']);
+    expect(await inA((tx) => tx.staffingBench.count({ where: { employeeId: ids.arun } }))).toBe(0);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'staffing.placement.ended', entityId: ids.pOwn } }))).toBe(1);
     await hire('am', ids.pOwn!).expect(409);
     const fee = (await api('fin', 'get', `/staffing/invoices/${h.invoiceId}`).expect(200)).body;
     expect(fee.invoice).toMatchObject({ kind: 'fee', status: 'draft', taxable: '149940.00', interState: true, igst: '26989.20' });
@@ -271,7 +277,10 @@ describe('Staffing desk round 4', () => {
     expect(after.creditNotes).toEqual([expect.objectContaining({ amount: '176929.20' })]);
     // Outside the guarantee: nothing. Replacement remedy: no credit.
     await hire('am', ids.pVendor!, { hiredOn: addDays(today, -95) }).expect(400); // before the placement? no: start was −80
-    const v = (await hire('am', ids.pVendor!, { hiredOn: addDays(today, -70) }).expect(want(201))).body;
+    const v = (await hire('am', ids.pVendor!, { hiredOn: addDays(today, -70), endPlacement: false }).expect(want(201))).body;
+    expect(v.ended).toBeNull();
+    expect((await inA((tx) => tx.staffingPlacement.findUniqueOrThrow({ where: { id: ids.pVendor } }))).status).toBe('active'); // left as it is when turned off
+    await hire('am', ids.pOther!, { endPlacement: 'yes' }).expect(400);
     await api('fin', 'post', `/staffing/invoices/${v.invoiceId}/issue`).send({ version: 1 }).expect(want(201));
     expect((await api('am', 'post', `/staffing/placements/${ids.pVendor}/left`).send({ leftOn: today }).expect(want(201))).body).toMatchObject({ outcome: 'credit' }); // 70 days in: (90 − 70)/90
     expect(await inA((tx) => tx.auditLog.count({ where: { action: { in: ['staffing.placement.hired', 'staffing.placement.left_client'] } } }))).toBe(4);
