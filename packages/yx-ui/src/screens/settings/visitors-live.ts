@@ -1,6 +1,7 @@
 // Settings 3.12 Visitors made live (Visitors slice 1; founder answers 602-610): the designed page with the company's
 // values. A location's own value is set on the company rules page and named on the field ("Own value at Hosur plant").
-// Fields with nothing behind them yet (visitor types, the blocked-list readers) are left out until their slice.
+// Fields with nothing behind them yet (visitor types) are left out until their slice. Slice 3: ID capture is three
+// choices (603), the watch-list link and its review period (605).
 import type { SettingDef, SettingsPageDef, SettingValue } from './settings-types';
 
 /** GET /visitors/settings. */
@@ -26,21 +27,23 @@ const KEY = {
   'vis.badge': 'visitors.badge',
   'vis.retention_days': 'visitors.retention_days',
   'vis.id_retention_days': 'visitors.id_retention_days',
+  'vis.watchlist_review_days': 'visitors.watchlist_review_days',
 } as const;
 type Field = keyof typeof KEY;
-const TOGGLE: Partial<Record<Field, [on: string, off: string]>> = { 'vis.id_capture': ['on', 'off'], 'vis.photo': ['on', 'off'] };
+const TOGGLE: Partial<Record<Field, [on: string, off: string]>> = { 'vis.photo': ['on', 'off'] };
 const UNIT: Partial<Record<Field, (v: string) => string>> = {
   'vis.host_approval_timeout': (v) => `${v} minutes`,
   'vis.retention_days': (v) => `${v} days`,
   'vis.id_retention_days': (v) => `${v} days`,
+  'vis.watchlist_review_days': (v) => `${v} days`,
 };
-const LIVE = new Set<string>([...Object.keys(KEY), 'vis.desk', 'vis.log']);
+const LIVE = new Set<string>([...Object.keys(KEY), 'vis.desk', 'vis.log', 'vis.watchlist']);
 
 /** The designed 3.12 page with the company's values, for SettingsPageScreen `live`. */
 export function visitorSettingsPage(design: SettingsPageDef, data: VisitorSettingsData): SettingsPageDef {
   const fill = (d: SettingDef): SettingDef | null => {
     if (!LIVE.has(d.key)) return null;
-    if (d.key === 'vis.desk' || d.key === 'vis.log') return d;
+    if (d.key === 'vis.desk' || d.key === 'vis.log' || d.key === 'vis.watchlist') return d;
     const f = d.key as Field;
     const k = KEY[f];
     const own = data.overrides[k] ?? [];

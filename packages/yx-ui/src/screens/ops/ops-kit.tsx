@@ -61,7 +61,7 @@ function panelFor(area: OpsArea, active: string, member: boolean, counts: Record
         { label: 'As a contractor', items: mk(['Client establishments', 'Own licences', 'Client compliance packs']) },
       ];
     case 'visitors':
-      return [{ items: mk(["Today's visitors", 'Invites', 'Visitor log', 'Kiosks & badges', 'Reports']) }];
+      return [{ items: mk(["Today's visitors", 'Invites', 'Visitor log', 'Watch-list', 'Kiosks & badges', 'Reports']) }];
   }
 }
 

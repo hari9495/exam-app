@@ -14,10 +14,36 @@ export function useVisitors<T>(path: string | null) {
 export function useVisitorsWrite() {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
-  return async <T = unknown>(method: 'POST' | 'PUT', path: string, body?: unknown): Promise<T> => {
+  return async <T = unknown>(method: 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T> => {
     const result = await apiFetch(`/visitors${path}`, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }, accessToken ?? undefined);
     await queryClient.invalidateQueries({ queryKey: ['visitors'] });
     return result as T;
+  };
+}
+
+/** Answer 603: the photo of the ID (multipart) with its type and last 4; the virus check follows. */
+export function useVisitorIdImage() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return async (id: string, file: File, idType: string, idLast4: string) => {
+    const form = new FormData();
+    form.append('idType', idType);
+    form.append('idLast4', idLast4);
+    form.append('file', file);
+    const result = await apiFetch(`/visitors/${encodeURIComponent(id)}/id-image`, { method: 'POST', body: form }, accessToken ?? undefined);
+    await queryClient.invalidateQueries({ queryKey: ['visitors'] });
+    return result;
+  };
+}
+
+/** Opens the photo of the ID in a new tab (audited by the API; clean files only). */
+export function useOpenVisitorIdImage() {
+  const { accessToken } = useAuth();
+  return async (id: string) => {
+    const { blob } = await apiFetchBlob(`/visitors/${encodeURIComponent(id)}/id-image`, {}, accessToken ?? undefined);
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank', 'noopener,noreferrer');
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
 }
 

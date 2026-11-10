@@ -209,6 +209,9 @@ describe('buildNav: Settings', () => {
     expect(labels(nav(['visitors.desk.manage'], { employee: true }), 'visitors')).toEqual(["Today's visitors", 'My visitors', 'Visitor log']);
     expect(labels(nav(['visitors.log.view']), 'visitors')).toEqual(['Visitor log']);
     expect(labels(nav(['visitors.settings.manage']), 'settings')).toEqual(['Visitors']);
+    // Slice 3: the watch-list only with its key; reception does not see it.
+    expect(labels(nav(['visitors.watchlist.manage', 'visitors.log.view']), 'visitors')).toEqual(['Visitor log', 'Watch-list']);
+    expect(labels(nav(['visitors.desk.manage']), 'visitors')).not.toContain('Watch-list');
     // Founder 30 Oct 2026 (last 10, item 5): Payroll rules for HR (org.settings.manage) or payroll set-up, never for others.
     expect(labels(nav(['payroll.run.view']), 'settings')).not.toContain('Payroll rules');
     expect(labels(nav(['perf.setup.manage']), 'settings')).toEqual(['Performance']);

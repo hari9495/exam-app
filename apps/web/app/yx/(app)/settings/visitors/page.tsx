@@ -33,7 +33,7 @@ export default function YxVisitorSettingsPage() {
           const changes = visitorSettingsChanges(values);
           if (changes.length) await write('PUT', '/settings', { changes });
         },
-        onOpenScreen: (screenId) => (screenId === 'VIS-01' ? router.push('/yx/visitors') : screenId === 'VIS-04' ? router.push('/yx/visitors/log') : undefined),
+        onOpenScreen: (screenId) => (screenId === 'VIS-01' ? router.push('/yx/visitors') : screenId === 'VIS-04' ? router.push('/yx/visitors/log') : screenId === 'VIS-05' ? router.push('/yx/visitors/watchlist') : undefined),
       }}
     />
   );

@@ -10,6 +10,8 @@ const PHONE = { viewport: { value: 'mobile2', isRotated: false } };
 
 export const MyVisitors: S = { name: 'My visitors', render: () => <PreRegisterScreen visits={MY_VISITORS} today={TODAY} /> };
 export const Invite: S = { name: 'Invite a visitor', render: () => <PreRegisterScreen visits={MY_VISITORS} today={TODAY} formOpen /> };
+// Visitors slice 3 (answer 614): a visitor under 18 comes only with a named adult; no photo and no ID for them.
+export const InviteMinor: S = { name: 'Invite a visitor under 18', render: () => <PreRegisterScreen visits={MY_VISITORS} today={TODAY} formOpen minor /> };
 export const Sent: S = { name: 'Invite sent', render: () => <PreRegisterScreen visits={MY_VISITORS} today={TODAY} sent /> };
 export const Empty: S = { render: () => <PreRegisterScreen visits={[]} today={TODAY} /> };
 export const Phone: S = { name: 'My visitors · phone', globals: PHONE, render: () => <PreRegisterScreen device="phone" visits={MY_VISITORS} today={TODAY} /> };
