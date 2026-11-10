@@ -24,6 +24,7 @@ import { HiringSettingsService } from '../hiring/hiring-settings.service';
 import { CampaignsService } from '../talent-crm/campaigns.service';
 import { CrmConsentsService } from '../talent-crm/consents.service';
 import { VisitorsService } from '../visitors/visitors.service';
+import { WalkInsService } from '../visitors/walkins.service';
 
 function msg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -62,6 +63,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     campaigns: CampaignsService,
     crmConsents: CrmConsentsService,
     visitors: VisitorsService,
+    walkIns: WalkInsService,
   ) {
     // Keys MUST match SWEEP_SCHEDULE ids.
     this.handlers = {
@@ -93,6 +95,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       // Visitors answers 611 and 608: close forgotten check-outs at the end of the window; delete visits after the period.
       'visitors-close': () => visitors.closeSweep(),
       'visitors-retention': () => visitors.retentionSweep(),
+      'visitors-walkins': () => walkIns.sweep(),
     };
     this.worker = logBullErrors(new Worker(SCHEDULED_SWEEPS_QUEUE_NAME, (job) => this.dispatch(job), bullOpts(this.connection)), SCHEDULED_SWEEPS_QUEUE_NAME);
     this.worker.on('failed', (job, err) => this.logger.error(`Sweep "${job?.name}" failed: ${msg(err)}`));

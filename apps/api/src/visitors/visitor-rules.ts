@@ -5,7 +5,7 @@ import { DateTime } from 'luxon';
 
 export const PURPOSES = ['meeting', 'interview', 'vendor', 'audit', 'delivery', 'maintenance'] as const;
 export type Purpose = (typeof PURPOSES)[number];
-export type VisitStatus = 'expected' | 'on_site' | 'checked_out' | 'not_out' | 'no_show' | 'cancelled';
+export type VisitStatus = 'expected' | 'waiting' | 'on_site' | 'checked_out' | 'not_out' | 'no_show' | 'cancelled' | 'declined';
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -76,4 +76,4 @@ export const noticeVersion = (text: string) => `v-${createHash('sha256').update(
 export const badgeText = (seq: number | null) => (seq ? `V-${String(seq).padStart(4, '0')}` : null);
 
 /** Words for a status (the drawn badges). */
-export const STATUS_WORDS: Record<VisitStatus, string> = { expected: 'Expected', on_site: 'On site', checked_out: 'Checked out', not_out: 'Not checked out', no_show: 'No show', cancelled: 'Cancelled' };
+export const STATUS_WORDS: Record<VisitStatus, string> = { expected: 'Expected', waiting: 'Waiting for host', on_site: 'On site', checked_out: 'Checked out', not_out: 'Not checked out', no_show: 'No show', cancelled: 'Cancelled', declined: 'Rejected' };

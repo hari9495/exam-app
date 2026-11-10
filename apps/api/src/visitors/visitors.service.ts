@@ -8,6 +8,7 @@ import { EmailService } from '../email/email.service';
 import { escapeHtml } from '../notifications/notification-email-render';
 import { publicBrand } from '../public-applications/public-brand';
 import type { AcceptVisitDto, CheckInDto, FindPassDto, InviteVisitorDto } from './visitors-dto';
+import { acknowledge, checkAccepted, needsView, outstanding, visitNeeds } from './visit-needs';
 import { STATUS_WORDS, badgeText, checkInProblem, dayBounds, localDay, maskMobile, normalCode, normalMobile, noticeVersion, passCode, passToken, visitWindow, type VisitStatus } from './visitor-rules';
 
 // Visitors slice 1 (M02 §B11, YX-AT-22; founder answers 601-617). Every employee may invite a visitor (they are the
@@ -18,7 +19,7 @@ import { STATUS_WORDS, badgeText, checkInProblem, dayBounds, localDay, maskMobil
 // end of their window (611).
 
 const KEYS = ['visitors.desk.manage', 'visitors.log.view', 'visitors.settings.manage', 'org.settings.manage'] as const;
-export const VISITOR_SETTING_KEYS = ['visitors.host_timeout_minutes', 'visitors.id_capture', 'visitors.photo', 'visitors.hours_from', 'visitors.hours_to', 'visitors.notice', 'visitors.badge', 'visitors.retention_days', 'visitors.id_retention_days'] as const;
+export const VISITOR_SETTING_KEYS = ['visitors.host_timeout_minutes', 'visitors.id_capture', 'visitors.photo', 'visitors.hours_from', 'visitors.hours_to', 'visitors.notice', 'visitors.badge', 'visitors.retention_days', 'visitors.id_retention_days', 'visitors.kiosk'] as const;
 type VisitorSettingKey = (typeof VISITOR_SETTING_KEYS)[number];
 const LOOKUP: TenantContext = { organizationId: null, isSuperAdmin: true };
 const frontend = () => process.env.FRONTEND_URL ?? 'http://localhost:3000';
@@ -40,12 +41,12 @@ export class VisitorsService {
 
   /* ---------------- access ---------------- */
 
-  private viewer(user: ScopeUser) {
+  viewer(user: ScopeUser) {
     return buildViewer(this.prisma, this.tenantPrisma, user, [...KEYS]);
   }
 
   /** The locations a key reaches: every location for a company-wide grant, else the granted locations and entities. */
-  private async reach(tx: Tx, c: CompanyContext, v: Viewer, keys: readonly string[]): Promise<Loc[]> {
+  async reach(tx: Tx, c: CompanyContext, v: Viewer, keys: readonly string[]): Promise<Loc[]> {
     const scopes = keys.flatMap((k) => v.scopes.get(k) ?? []);
     if (!scopes.length) return [];
     const all = await tx.location.findMany({ where: { organizationId: c.organizationId, archivedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true, timezone: true, address: true, legalEntityId: true } });
@@ -60,12 +61,12 @@ export class VisitorsService {
     return tenantWide(v, 'visitors.settings.manage') || tenantWide(v, 'org.settings.manage');
   }
 
-  private own(v: Viewer, what = 'this') {
+  own(v: Viewer, what = 'this') {
     if (v.actingForOther) throw new ForbiddenException(`You can't change ${what} while acting for someone else. Sign in as yourself.`);
   }
 
   /** A location setting's value (the location's own, else the company's, else the default). */
-  private async setting(tx: Tx, c: CompanyContext, key: VisitorSettingKey, locationId: string | null): Promise<string> {
+  async setting(tx: Tx, c: CompanyContext, key: VisitorSettingKey, locationId: string | null): Promise<string> {
     const rows = await tx.setting.findMany({ where: { organizationId: c.organizationId, key } });
     const r = resolveSetting(SETTINGS[key]!, rows.map((x) => ({ id: x.id, scopeType: x.scopeType, scopeId: x.scopeId, value: x.value, validFrom: null })), { tenant: c.organizationId, ...(locationId ? { location: locationId } : {}) }, null);
     return String(r.value);
@@ -112,6 +113,7 @@ export class VisitorsService {
       if ('problem' in w) throw new BadRequestException(w.problem);
       const host = await tx.user.findFirst({ where: { organizationId: c.organizationId, id: user.userId!, status: 'active' }, select: { id: true, name: true, email: true } });
       if (!host) throw new ForbiddenException('Only an active person of the company can invite a visitor.');
+      if (dto.typeId && !(await tx.visitorType.findFirst({ where: { organizationId: c.organizationId, id: dto.typeId }, select: { id: true } }))) throw new NotFoundException('Visitor type not found.');
       let row: VisitRow | null = null;
       for (let i = 0; i < 5 && !row; i++) {
         const code = passCode();
@@ -119,7 +121,7 @@ export class VisitorsService {
         row = await tx.visit.create({
           data: {
             organizationId: c.organizationId, locationId: loc.id, hostUserId: host.id, visitorName: dto.name, visitorMobile: mobile, visitorEmail: dto.email.toLowerCase(), visitorCompany: dto.company || null,
-            purpose: dto.purpose, vehicle: dto.vehicle?.toUpperCase() || null, startsAt: w.startsAt, endsAt: w.endsAt, passToken: passToken(), passCode: code, createdBy: host.id,
+            purpose: dto.purpose, vehicle: dto.vehicle?.toUpperCase() || null, visitorTypeId: dto.typeId || null, startsAt: w.startsAt, endsAt: w.endsAt, passToken: passToken(), passCode: code, createdBy: host.id,
           },
         });
       }
@@ -164,7 +166,7 @@ export class VisitorsService {
 
   /* ---------------- reception (VIS-01) ---------------- */
 
-  private async deskLoc(tx: Tx, c: CompanyContext, v: Viewer, locationId: string) {
+  async deskLoc(tx: Tx, c: CompanyContext, v: Viewer, locationId: string) {
     const loc = (await this.reach(tx, c, v, ['visitors.desk.manage'])).find((l) => l.id === locationId);
     if (!loc) {
       const exists = await tx.location.findFirst({ where: { organizationId: c.organizationId, id: locationId }, select: { id: true } });
@@ -221,6 +223,11 @@ export class VisitorsService {
       const notice = (await this.setting(tx, c, 'visitors.notice', loc.id)).trim();
       const atDesk = !fresh.noticeAcceptedAt;
       if (atDesk && !dto.noticeAccepted) throw new BadRequestException('Tick that the visitor read and accepted the notice.');
+      // Slice 2 (606): what is still to accept for the visit's type, ticked at the desk.
+      const due = await outstanding(tx, c, fresh.id, await visitNeeds(tx, c, (k, l) => this.setting(tx, c, k, l), loc.id, fresh.visitorTypeId, fresh.visitorMobile, fresh.visitorCompany));
+      if (due.nda && !dto.ndaAccepted) throw new BadRequestException(`Tick that the visitor read and accepted ${due.nda.title}.`);
+      if (due.induction && !dto.inductionAccepted) throw new BadRequestException(`Tick that the visitor read and accepted ${due.induction.title}.`);
+      await acknowledge(tx, c, fresh.id, due, fresh.visitorMobile, fresh.visitorCompany, 'desk');
       const last = await tx.visit.aggregate({ where: { organizationId: c.organizationId }, _max: { badgeSeq: true } });
       const done = await tx.visit.update({
         where: { id: fresh.id },
@@ -320,6 +327,8 @@ export class VisitorsService {
         notice,
         noticeVersion: noticeVersion(notice),
         passCode: state === 'pass' ? row.passCode : null,
+        // Slice 2 (606): the visitor type's NDA and safety induction still to accept for this visit.
+        needs: needsView(await outstanding(tx, c, row.id, await visitNeeds(tx, c, (k, l) => this.setting(tx, c, k, l), row.locationId, row.visitorTypeId, row.visitorMobile, row.visitorCompany))),
         brand: await publicBrand(this.tenantPrisma, this.blob, row.organizationId),
       };
     });
@@ -334,6 +343,10 @@ export class VisitorsService {
       if (row.status !== 'expected' || row.endsAt <= new Date()) throw new ConflictException('This visit pass has expired. Ask your host to invite you again.');
       const version = noticeVersion((await this.setting(tx, c, 'visitors.notice', row.locationId)).trim());
       if (dto.noticeVersion !== version) throw new ConflictException('The visitor notice changed while you were reading it. Reload the page and read it again.');
+      // Slice 2 (606): the type's NDA and induction, at the versions shown.
+      const due = await outstanding(tx, c, row.id, await visitNeeds(tx, c, (k, l) => this.setting(tx, c, k, l), row.locationId, row.visitorTypeId, row.visitorMobile, row.visitorCompany));
+      checkAccepted(due, dto);
+      await acknowledge(tx, c, row.id, due, row.visitorMobile, row.visitorCompany, 'link');
       await tx.visit.update({ where: { id: row.id }, data: { noticeAcceptedAt: row.noticeAcceptedAt ?? new Date(), noticeAcceptedVia: row.noticeAcceptedVia ?? 'link', noticeVersion: version, ...(dto.vehicle !== undefined ? { vehicle: dto.vehicle.toUpperCase() || null } : {}) } });
       if (!row.noticeAcceptedAt) await AuditService.recordIn(tx, c, { actorUserId: null, action: 'visitor.notice_accepted', entityType: 'visit', entityId: row.id, metadata: { version, via: 'link' } });
     });
@@ -412,14 +425,16 @@ export class VisitorsService {
    * left is a count by location, day and purpose, with no name.
    */
   async retentionSweep(now = new Date()): Promise<number> {
-    const places = await this.tenantPrisma.forTenant(LOOKUP, (tx) => tx.visit.groupBy({ by: ['organizationId', 'locationId'], where: { status: { in: ['checked_out', 'not_out', 'no_show', 'cancelled'] } } }));
+    const places = await this.tenantPrisma.forTenant(LOOKUP, (tx) => tx.visit.groupBy({ by: ['organizationId', 'locationId'], where: { status: { in: ['checked_out', 'not_out', 'no_show', 'cancelled', 'declined'] } } }));
     let deleted = 0;
     for (const p of places) {
       const c = { organizationId: p.organizationId, isSuperAdmin: true } as CompanyContext;
       deleted += await this.tenantPrisma.forTenant(c, async (tx) => {
         const days = Number(await this.setting(tx, c, 'visitors.retention_days', p.locationId));
         const cutoff = new Date(now.getTime() - days * 86_400_000);
-        const old = { organizationId: p.organizationId, locationId: p.locationId, status: { in: ['checked_out', 'not_out', 'no_show', 'cancelled'] }, endsAt: { lt: cutoff } };
+        const old = { organizationId: p.organizationId, locationId: p.locationId, status: { in: ['checked_out', 'not_out', 'no_show', 'cancelled', 'declined'] }, endsAt: { lt: cutoff } };
+        // Slice 2 (602): the visitor's photo goes with the visit.
+        for (const ph of await tx.visit.findMany({ where: { ...old, photoPath: { not: null } }, select: { photoPath: true } })) await this.blob.deleteByUrl(ph.photoPath!).catch(() => undefined);
         await tx.$executeRaw`
           INSERT INTO visit_counts (organization_id, location_id, day, purpose, visits)
           SELECT organization_id, location_id, (starts_at AT TIME ZONE 'UTC')::date, purpose, count(*)::int
@@ -438,14 +453,14 @@ export class VisitorsService {
 
   /* ---------------- helpers ---------------- */
 
-  private async find(tx: Tx, c: CompanyContext, id: string) {
+  async find(tx: Tx, c: CompanyContext, id: string) {
     const row = await tx.visit.findFirst({ where: { organizationId: c.organizationId, id } });
     if (!row) throw new NotFoundException('Visit not found.');
     return row;
   }
 
   /** Visits as the pages show them (host and location names; the mobile only to the people who reach the record). */
-  private async views(tx: Tx, c: CompanyContext, rows: VisitRow[]) {
+  async views(tx: Tx, c: CompanyContext, rows: VisitRow[]) {
     const users = new Map((await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: [...new Set(rows.map((r) => r.hostUserId))] } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name || u.email]));
     const locs = new Map((await tx.location.findMany({ where: { organizationId: c.organizationId, id: { in: [...new Set(rows.map((r) => r.locationId))] } }, select: { id: true, name: true, timezone: true } })).map((l) => [l.id, l]));
     return rows.map((r) => ({
@@ -470,6 +485,12 @@ export class VisitorsService {
       noticeAcceptedAt: r.noticeAcceptedAt?.toISOString() ?? null,
       checkedInAt: r.checkedInAt?.toISOString() ?? null,
       checkedOutAt: r.checkedOutAt?.toISOString() ?? null,
+      // Slice 2: a walk-in, the host's deadline, who decided and how hours were overridden.
+      walkIn: r.walkIn,
+      typeId: r.visitorTypeId,
+      approvalDueAt: r.approvalDueAt?.toISOString() ?? null,
+      decidedVia: r.decidedVia,
+      hoursOverride: r.hoursOverrideReason,
     }));
   }
 }

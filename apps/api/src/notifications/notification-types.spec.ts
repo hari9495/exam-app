@@ -102,6 +102,8 @@ describe('notification catalog', () => {
       // HIR-13: the manager is told about an internal application.
       'hiring.internal.applied',
       'clra.licence.expiring',
+      // Visitors slice 2 (604).
+      'visitor.walkin.approval.host',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);
