@@ -3,12 +3,16 @@ import { Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import { CryptoModule } from '@exam-platform/shared';
 import { DocumentsModule } from '../documents/documents.module';
+import { EmailModule } from '../email/email.module';
+import { AuthModule } from '../auth/auth.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { OrgStructureModule } from '../org-structure/org-structure.module';
 import { REDIS_CONNECTION, bullOpts, createRedisConnection, logBullErrors } from '../jobs/redis-connection';
 import { ContractLabourController } from './contract-labour.controller';
 import { ContractLabourService } from './contract-labour.service';
 import { WorkersService } from './workers.service';
+import { ContractorPortalService } from './contractor-portal.service';
+import { PublicContractorPortalController } from './contractor-portal.controller';
 
 const QUEUE = 'clra-jobs';
 
@@ -45,9 +49,9 @@ export class ContractLabourJobs implements OnModuleInit, OnModuleDestroy {
 // Contract labour CL-1: contractors (the vendor record), their licences and renewals, Settings 4.9, expiry alerts.
 // CL-2: contract workers (persons with the contract_worker role) and their deployments, gate passes and inductions.
 @Module({
-  imports: [CryptoModule, DocumentsModule, NotificationsModule, OrgStructureModule],
-  controllers: [ContractLabourController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, ContractLabourService, WorkersService, ContractLabourJobs],
+  imports: [AuthModule, CryptoModule, DocumentsModule, EmailModule, NotificationsModule, OrgStructureModule],
+  controllers: [ContractLabourController, PublicContractorPortalController],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, ContractLabourService, WorkersService, ContractorPortalService, ContractLabourJobs],
   exports: [ContractLabourService],
 })
 export class ContractLabourModule {}

@@ -81,3 +81,6 @@ export { MessagingAdmin, MyChannelsCard, TeamScreen, KIND_LABEL as MSG_KIND_LABE
 export { ContractorsScreen, WorkersScreen, type ContractorInput, type LicenceInput, type RenewalInput, type WorkerInput, type WorkOrderInput } from '../ops/contract';
 export { type ContractorsData, type ContractorsLive, type WorkersData, type WorkersLive } from '../ops/contract-live';
 export { clraSettingsPage, clraSettingsChanges, type ClraSettingsData } from '../settings/contract-labour-live';
+// CL-3 (T9-13): the contractor portal.
+export { ContractorPortalScreen } from '../portals/t9-business';
+export { type LiveContractorPortal, type LiveContractorTab, type ContractorPortalData } from '../portals/contractor-portal-live';

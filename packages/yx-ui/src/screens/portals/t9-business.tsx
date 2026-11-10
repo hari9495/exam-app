@@ -19,6 +19,8 @@ import { Icon } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { timeOf } from '../../lib/dates';
 import { daysUntil, deploymentBlock, licenceAlert, rateCapCheck, submissionBlock, vendorInvoice } from './portals-logic';
+import { ClDue, ClLicences, ClWorkerList, ClWorkOrders, type PortalDue, type PortalLicence, type PortalWorker, type PortalWorkOrder } from './contractor-portal';
+import { LiveContractorPortalView, type LiveContractorPortal } from './contractor-portal-live';
 import { BlockNote, CameraFrame, ConsentPanel, Fact, FactRow, QrCode, StepDots, TenantPortal, type CameraState } from './portals-kit';
 import type {
   ClEstablishment,
@@ -757,13 +759,25 @@ export interface ContractorPortalProps {
   bills: { no: string; month: string; amount: number; tds: number; status: 'On hold' | 'Paid' | 'Due'; reason: string }[];
   /** Adding a worker: show the add form with this DOB and establishment. */
   addWorker?: { dob: Date; establishmentId: string };
+  /** CL-3 (answer 631): what is due, the work orders, and a licence whose renewal is being uploaded. */
+  due?: PortalDue[];
+  workOrders?: PortalWorkOrder[];
+  renewingId?: string;
 }
+
+/** The design's sample establishments and workers as the portal parts take them. */
+const licencesOf = (xs: ClEstablishment[]): PortalLicence[] => xs.map((e) => ({ id: e.id, site: e.name, licenceNo: e.licenceNo, authority: e.authority, nature: e.nature, maxWorkers: e.maxWorkers, deployed: e.deployed, validTo: e.validTo, renewal: e.renewal ?? null }));
+const workersOf = (xs: ClWorker[]): PortalWorker[] => xs.map((w) => ({ id: w.id, name: w.name, idMasked: w.idMasked, uan: w.uan === 'Not linked' ? '' : w.uan, esic: w.esic, skill: w.skill, wage: w.wage, site: w.site, from: w.from, gatePass: w.gatePass, gateValidTo: w.gateValidTo, status: w.status ?? 'Deployed' }));
 
 // T9-13
 /** Contractor contact: own establishments, workers, monthly compliance packs, discrepancies, bills and licences (M13). */
-export function ContractorPortalScreen(p: ContractorPortalProps) {
+export function ContractorPortalScreen(props: ContractorPortalProps | { live: LiveContractorPortal }) {
+  if ('live' in props) return <LiveContractorPortalView live={props.live} />;
+  const p = props;
   const { tenant, accent, contractor, today, tab } = p;
   const held = p.bills.some((b) => b.status === 'On hold');
+  const est = p.addWorker ? p.establishments.find((e) => e.id === p.addWorker!.establishmentId)! : null;
+  const block = p.addWorker && est ? deploymentBlock({ dob: p.addWorker.dob, today, deployed: est.deployed, maxWorkers: est.maxWorkers }) : null;
   return (
     <TenantPortal
       tenant={tenant}
@@ -778,147 +792,24 @@ export function ContractorPortalScreen(p: ContractorPortalProps) {
           The August 2026 bill is held until the August pack's discrepancy is fixed.
         </InlineAlert>
       )}
-      {tab === 'establishments' && <ClEstablishments items={p.establishments} today={today} />}
-      {tab === 'workers' && <ClWorkers workers={p.workers} establishments={p.establishments} today={today} addWorker={p.addWorker} />}
+      {tab === 'establishments' && (
+        <div className="yx-ps-stack">
+          {p.due && <ClDue items={p.due} />}
+          <ClLicences items={licencesOf(p.establishments)} today={today} renewingId={p.renewingId ?? null} />
+          {p.workOrders && <ClWorkOrders items={p.workOrders} />}
+        </div>
+      )}
+      {tab === 'workers' && (
+        <ClWorkerList
+          workers={workersOf(p.workers)}
+          sites={p.establishments.map((e) => ({ id: e.id, name: `${e.name} (${e.deployed} of ${e.maxWorkers})` }))}
+          today={today}
+          design={p.addWorker ? { dob: p.addWorker.dob, siteId: p.addWorker.establishmentId, checks: [{ id: 'age', status: block?.includes('under 18') ? 'fail' : 'pass', label: 'Age 18 or over', detail: block?.includes('under 18') ? block : undefined }, { id: 'max', status: block && !block.includes('under 18') ? 'fail' : 'pass', label: 'Within the licence maximum', detail: block && !block.includes('under 18') ? block : undefined }, { id: 'dup', status: 'pass', label: 'Not already deployed', detail: 'Matched on the ID' }] } : undefined}
+        />
+      )}
       {tab === 'packs' && <ClPack pack={p.pack} today={today} />}
       {tab === 'bills' && <ClBills bills={p.bills} />}
     </TenantPortal>
-  );
-}
-
-function ClEstablishments({ items, today }: { items: ClEstablishment[]; today: Date }) {
-  return (
-    <div className="yx-ps-stack">
-      {items.map((e) => {
-        const a = licenceAlert(e.validTo, today);
-        return (
-          <Card
-            key={e.id}
-            title={e.name}
-            actions={
-              <Badge tone={a.band === 'ok' ? 'success' : a.band === '60' ? 'info' : a.band === '30' ? 'warning' : 'danger'}>
-                {a.band === 'expired' ? 'Licence expired' : a.band === 'ok' ? 'Licence valid' : `Licence ends in ${a.days} days`}
-              </Badge>
-            }
-          >
-            <div className="yx-ps-stack">
-              <DescriptionList
-                columns={2}
-                items={[
-                  { label: 'Licence number', value: e.licenceNo, mono: true },
-                  { label: 'Issued by', value: e.authority },
-                  { label: 'Nature of work', value: e.nature },
-                  { label: 'Valid until', value: formatDate(e.validTo) },
-                ]}
-              />
-              <Meter label={`Workers deployed at ${e.name}`} value={e.deployed} max={e.maxWorkers} warnAt={90} valueText={`${e.deployed} of ${e.maxWorkers} allowed`} />
-              {a.band !== 'ok' && (
-                <div className="yx-ps-row">
-                  <Button size="sm" icon={Upload}>
-                    Upload renewed licence
-                  </Button>
-                </div>
-              )}
-            </div>
-          </Card>
-        );
-      })}
-    </div>
-  );
-}
-
-function ClWorkers({ workers, establishments, today, addWorker }: { workers: ClWorker[]; establishments: ClEstablishment[]; today: Date; addWorker?: { dob: Date; establishmentId: string } }) {
-  const [adding, setAdding] = useState(!!addWorker);
-  const [dob, setDob] = useState<Date | null>(addWorker?.dob ?? null);
-  const [estId, setEstId] = useState<string | null>(addWorker?.establishmentId ?? establishments[0].id);
-  const est = establishments.find((e) => e.id === estId)!;
-  const block = dob ? deploymentBlock({ dob, today, deployed: est.deployed, maxWorkers: est.maxWorkers }) : null;
-  return (
-    <div className="yx-ps-stack">
-      <Card title={`Workers · ${workers.length}`} actions={<Button size="sm" icon={Plus} onClick={() => setAdding(true)}>Add worker</Button>}>
-        <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Workers, scrolls sideways on small screens">
-        <table className="yx-ps-slabgrid">
-          <caption className="yx-visually-hidden">Workers</caption>
-          <thead>
-            <tr>
-              <th scope="col">Name</th>
-              <th scope="col">ID</th>
-              <th scope="col">UAN</th>
-              <th scope="col">ESIC IP</th>
-              <th scope="col">Skill</th>
-              <th scope="col">Daily wage</th>
-              <th scope="col">Site</th>
-              <th scope="col">Gate pass</th>
-            </tr>
-          </thead>
-          <tbody>
-            {workers.map((w) => (
-              <tr key={w.id}>
-                <th scope="row">{w.name}</th>
-                <td>{w.idMasked}</td>
-                <td className="yx-ps-mono">{w.uan === 'Not linked' ? <Badge tone="warning">Not linked</Badge> : w.uan}</td>
-                <td className="yx-ps-mono">{w.esic}</td>
-                <td>{w.skill}</td>
-                <td data-num>{formatINR(w.wage)}</td>
-                <td>{w.site}</td>
-                <td>
-                  <span className="yx-ps-mono">{w.gatePass}</span> · to {formatDate(w.gateValidTo)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
-      </Card>
-      {adding && (
-        <Card
-          title="Add a worker"
-          footer={
-            <>
-              <Button onClick={() => setAdding(false)}>Cancel</Button>
-              <Button variant="primary" disabled={!!block || !dob}>
-                Add worker
-              </Button>
-            </>
-          }
-        >
-          <div className="yx-ps-stack">
-            {block && (
-              <InlineAlert tone="danger" title="This worker can't be deployed">
-                {block}
-              </InlineAlert>
-            )}
-            <FieldRow>
-              <FormField label="Full name" required>
-                <TextField defaultValue="Ramesh Pandi" />
-              </FormField>
-              <FormField label="Date of birth" required>
-                <DatePicker value={dob} onChange={setDob} max={today} />
-              </FormField>
-            </FieldRow>
-            <FieldRow>
-              <FormField label="Establishment" required>
-                <Select value={estId} onChange={setEstId} options={establishments.map((e) => ({ value: e.id, label: `${e.name} (${e.deployed} of ${e.maxWorkers})` }))} />
-              </FormField>
-              <FormField label="Skill category" required>
-                <Select value="Unskilled" onChange={() => undefined} options={opt(['Unskilled', 'Semi-skilled', 'Skilled', 'Highly skilled'])} />
-              </FormField>
-            </FieldRow>
-            <FieldRow>
-              <FormField label="ID type" required>
-                <Select value="Aadhaar" onChange={() => undefined} options={opt(['Aadhaar', 'Voter ID', 'Driving licence', 'Passport'])} />
-              </FormField>
-              <FormField label="Last 4 digits of ID" required helper="We store only the masked number.">
-                <TextField defaultValue="3318" inputMode="numeric" maxLength={4} />
-              </FormField>
-            </FieldRow>
-            <FormField label="Photo" required>
-              <FileUpload upload={fakeUpload} accept={['.jpg', '.png']} multiple={false} />
-            </FormField>
-          </div>
-        </Card>
-      )}
-    </div>
   );
 }
 

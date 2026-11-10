@@ -59,3 +59,26 @@ export const PackVerified: S = {
 };
 export const Bills: S = { name: 'Bills · payment on hold', render: () => <ContractorPortalScreen {...base} tab="bills" /> };
 export const Phone: S = { name: 'Monthly pack · phone', globals: { viewport: { value: 'mobile2', isRotated: false } }, render: () => <ContractorPortalScreen {...base} tab="packs" /> };
+
+// CL-3 (answers 631, 636, 678): what is due, the work orders, the renewal upload and its outcomes.
+const DUE = [
+  { tone: 'danger' as const, text: 'Licence TN/CLRA/CHN/2026/0107 for Chennai office · facility ends in 7 days (6 Oct 2026). Upload the renewed licence.' },
+  { tone: 'warning' as const, text: "Siddharth Naik's gate pass GP-HSR-0902 ends on 15 Oct 2026." },
+  { tone: 'info' as const, text: '1 worker is waiting for site approval.' },
+];
+const ORDERS = [{ id: 'wo1', number: 'WO/HSR/2026-27/14', from: new Date(2026, 3, 1), to: new Date(2027, 2, 31), headcount: 50, active: 48, sites: ['Hosur plant'] }];
+export const Due: S = { name: 'What is due and work orders (CL-3)', render: () => <ContractorPortalScreen {...base} due={DUE} workOrders={ORDERS} /> };
+export const RenewUpload: S = { name: 'Upload a renewed licence (CL-3)', render: () => <ContractorPortalScreen {...base} due={DUE} renewingId="maa" /> };
+export const RenewalChecked: S = {
+  name: 'Renewal being checked, renewal not accepted (CL-3)',
+  render: () => (
+    <ContractorPortalScreen
+      {...base}
+      due={[{ tone: 'info', text: 'Renewal TN/CLRA/CHN/2026/0311 for Chennai office · facility is being checked by Kaveri Foods.' }, { tone: 'danger', text: 'Renewal TN/CLRA/HSR/2026/0590 for Hosur plant · packing was not accepted: the copy is unreadable. Upload it again.' }]}
+      establishments={CL_ESTABLISHMENTS.map((e) => (e.id === 'maa' ? { ...e, renewal: { licenceNo: 'TN/CLRA/CHN/2026/0311', status: 'pending' as const, validTo: new Date(2027, 9, 6) } } : e.id === 'hsr' ? { ...e, renewal: { licenceNo: 'TN/CLRA/HSR/2026/0590', status: 'rejected' as const, validTo: new Date(2027, 10, 20), rejectReason: 'The copy is unreadable.' } } : e))}
+    />
+  ),
+};
+export const NothingDue: S = { name: 'Nothing due (CL-3)', render: () => <ContractorPortalScreen {...base} due={[]} workOrders={ORDERS} /> };
+export const DuePhone: S = { name: 'What is due · phone (CL-3)', globals: { viewport: { value: 'mobile2', isRotated: false } }, render: () => <ContractorPortalScreen {...base} due={DUE} workOrders={ORDERS} /> };
+
