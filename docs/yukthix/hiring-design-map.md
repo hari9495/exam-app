@@ -723,14 +723,16 @@ keep hours and fees; recruiters see none of it.
 | NewPlacement · New placement · from a selected submission | live | new story (drawn): `PlacementSheet`: a selected submission, once; a rate on the first day; a pipeline candidate joins as an employee first (question 481); placing takes the person off the bench the day before |
 | AddToBench · Add to bench | live | new story (drawn): `BenchSheet`: active employees not placed and not on the bench |
 | RecruiterView · Recruiter · no pay rates or margins | live | new story (drawn) |
+| FeeBeforeHire · Placement fee · before the hire | live | new story (drawn, answer 494): Client hired (date, first-year CTC, series) drafts the fee invoice |
+| FeeGuarantee · Placement fee · left inside the guarantee | live | new story (drawn, answer 494): the fee invoice and the guarantee outcome |
 | Hours · Placement record · weekly hours | live | new story (drawn): `PlacementHours`: account managers enter a week (Monday start, inside the placement); the client approves or sends it back in the portal, or the account manager records an approval naming the contact; an approved week is never changed |
 
 #### HIR-18 · Invoices
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Finance · Finance · invoice list | live (gap) | /yx/staffing/invoices: number (draft until issued), client, date, period, type, taxable, GST, total, status (draft, issued, part paid, paid), IRN day from the rule set; Create invoices. Gap: export to accounting, bulk Send for IRN (IRP not connected), PDF (question 492) |
-| AccountManager · Account manager · read only | live (gap) | `ats.staffing.manage` reads; no Create. Gap: Download (no PDF yet) |
+| Finance · Finance · invoice list | live (gap) | /yx/staffing/invoices: number (draft until issued), client, date, period, type (contract staffing, placement fee, credit note), taxable, GST, total, status, IRN day from the rule set; Create invoices. Gap: export to accounting (Tally/Zoho, question 522), bulk Send for IRN (IRP not connected) |
+| AccountManager · Account manager · read only | live | `ats.staffing.manage` reads; Download PDF (answer 492): the GST invoice or credit note PDF, fields from the rule set `GST.INVOICE_R46` (r.46 / r.53, verify) |
 | IntraState · Invoice · CGST + SGST, credit note | live | /yx/staffing/invoices/[id]: lines (hours × rate, overtime at the line's multiplier), CGST + SGST half each from `GST.STAFFING_RATE`; credit notes listed and opened |
 | InterState · Invoice · IGST (inter-state) | live | supplier state from the series GSTIN (rule set `GST.STATE_CODES`) against the client's state |
 | IrnWarning · Invoice · IRN day 28 warning | live | the banner from `GST.EINVOICE_WINDOW` (30 days, warn from 25; verify) when `staffing.einvoice.applies` is on |
@@ -743,7 +745,7 @@ keep hours and fees; recruiters see none of it.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Ageing · Finance · ageing, TDS and disputes | live (gap) | /yx/staffing/collections: outstanding by client and ageing group, TDS receivable against the 26AS amount entered, disputes (pause reminders), next reminder on `staffing.dunning.schedule` (default standard). Gap: reminders are shown, not sent yet (question 493); disputes are per invoice, not per line |
+| Ageing · Finance · ageing, TDS and disputes | live (gap) | /yx/staffing/collections: outstanding by client and ageing group, TDS receivable against the 26AS amount entered, disputes, next reminder on `staffing.dunning.schedule`. Answer 493: a daily job emails the client's billing contacts once per schedule step (the latest step due; a dispute pauses it; audited). Gap: disputes are per invoice, not per line |
 | Receipt · Record part payment | live | `ReceiptSheet`: amount, date, client TDS (the client's section), allocations that must add up to amount + TDS, never more than outstanding; TDS spread in proportion |
 | Empty · Empty · nothing outstanding | live | |
 | Loading · Loading | live | |
@@ -756,11 +758,12 @@ keep hours and fees; recruiters see none of it.
 | Register · Register · one vendor pending documents | live | /yx/hiring/vendors: the existing agencies with PAN, GSTIN (must carry the PAN), TDS section, tier, agreement date and bank verified; status pending until every document is in; portal link, new link, stop sharing (what the older page did) |
 | ShareJob · Share job · rate cap and masked client | live | `ShareJobSheet`: rate cap suggested as the bill rate less `staffing.vendor.target_margin_pct` (default 25), never above the bill rate; most submissions per vendor; last day; hide the client; a client job only to complete vendors; an ordinary job without a cap |
 | Submissions · Vendor submissions · duplicate and over cap | live | the vendor's quote (exact paise), right to represent and consent; the first vendor holds a person for a job for `staffing.vendor.ownership_days` (default 90); a later vendor's submission, or one for someone already in the job's pipeline, is a duplicate (the vendor sees only "duplicate"); over the cap needs an exception with a reason; Forward to client (account managers, desk on) accepts into the pipeline and makes a client submission; ordinary jobs: Accept or Reject (recruiters) |
-| Invoices · Vendor invoices · proposed from hours | live (gap) | answer 490: proposed per vendor worker and month from approved hours × the vendor rate; GST 18% when the vendor has a GSTIN; TDS by the vendor's section (`TDS.SECTIONS`; PAN of an individual 1%, others 2% for 194C); Vendor confirmed (their number), Mark paid. Gap: no consultant invoice in payroll yet (question 496) |
+| Invoices · Vendor invoices · proposed from hours | live | answer 490: proposed per vendor worker and month from approved hours × the vendor rate; GST when the vendor has a GSTIN; TDS by the vendor's section (`TDS.SECTIONS`). Answer 496: each vendor links to its consultant record in payroll; Vendor confirmed (their number and date) enters PAY 8 as that consultant's invoice (approval, TDS, payout, certificate there; never marked paid on the desk) |
 | Scorecards · Scorecards | live (gap) | submissions, duplicate rate, placements and tier. Gap: time to first submission |
 | Empty · Empty register | live | |
 | AddVendor · Add vendor · documents | live | new story (drawn): `VendorSheet` |
 | ShareClientJob · Share client job · cap suggested, incomplete vendor blocked | live | new story (drawn) |
+| VendorInvoicesPayroll · Vendor invoices · linked to payroll (PAY 8) | live | new story (drawn, answer 496): the vendors' consultant links and the payroll state of each confirmed invoice |
 | ReviewDispute · Review dispute · override the duplicate with a reason | live | new story (drawn, answer 489): the design's Review dispute opens an override for an account manager (`ats.staffing.manage`): a reason (audited), then Forward to client; the other vendor is not told; the same person already submitted to the client job is refused (409) |
 
 #### HIR-30 · Placement fee and replacement guarantee
@@ -768,7 +771,7 @@ keep hours and fees; recruiters see none of it.
 | story (sub-page) | verdict | note |
 |---|---|---|
 | Percent · Account manager · % of CTC, replacement | live | /yx/staffing/clients/[id]/fees: fee as % of CTC (exact, 2 decimals) or fixed; conversion taper from month 0 that only goes down; guarantee days and free replacement or pro-rated credit; the example computed the same way |
-| FixedRefund · Finance · fixed fee, pro-rated credit | live (gap) | staffing finance reads. Gap: fee invoices and guarantee credit notes are not raised from these terms yet (question 494) |
+| FixedRefund · Finance · fixed fee, pro-rated credit | live | staffing finance reads. Answer 494: on the placement record, Client hired drafts the fee invoice from these terms (the taper for the months served, else the placement fee); Left the client inside the guarantee raises the pro-rated credit note or records a free replacement due |
 | OutsideGuarantee · Left after the guarantee period | live | |
 
 ### F. Compliance and fairness
@@ -1860,6 +1863,34 @@ white-label per company from the console with the plan; (443) draw the quarantin
 - Migration `202617o0000006_staffing_followups`: `lop_inputs.source` may be `bench`; `staffing_bench_pay` (once per bench
   spell per pay month, RLS); the duplicate override columns on `agency_submissions`. Nightly job `staffing-nightly` at
   01:30 India time (BullMQ, idempotent).
+## Staffing round 4 built (answers 491-499; 10 Nov 2026, branch `feat/yukthix-staffing-4`)
+- 491: the client portal's Interviews tab: a contact proposes a time for one of their candidates through HIR-06
+  (`InterviewsService.createInterview` on the candidate's pipeline entry, status proposed; the recruiter confirms and
+  invites); the submission moves to Interview. Tickets stay later.
+- 492: the GST invoice and credit note PDF (pdfkit with the letters' `writeText`), fields from the rule set
+  `GST.INVOICE_R46` (verify); from the invoice record and the client portal. 493: the daily reminder job (BullMQ,
+  `staffing_reminders`). 494: fee invoice (kind fee) and guarantee credit from the placement record. 496: vendors link
+  to PAY 8 consultants; `ConsultantsService.staffingSubmit`. 499: paise in credit notes, receipts, TDS and 26AS
+  (the kit field's existing `allowPaise` option). Migration `202617o0000007_staffing_4`.
+## Founder questions from the staffing round 4 (10 Nov 2026)
+521. **Interviews for bench employees.** The portal books interviews only for candidates in the job's pipeline (HIR-06
+     works on pipeline entries); a bench employee submitted to a client is arranged by the account manager. *Suggested:
+     keep; add employees to a client job's pipeline later if clients ask.*
+522. **Tally / Zoho export.** Not built in this round (the PDF came first). *Suggested: a Tally XML and a Zoho CSV of
+     issued invoices and credit notes for a month, next.*
+523. **Missed reminder steps.** If the job did not run on a step's day, only the latest step due is emailed; earlier ones
+     are recorded as passed, never sent late. *Suggested: keep.*
+524. **Which fee applies on a hire.** With a conversion taper on the client's terms, the fee is the taper for the whole
+     months served; with none, the placement fee. *Suggested: keep; a client with both permanent and contract roles
+     gets the permanent fee on its permanent jobs later.*
+525. **CGST/SGST on a vendor invoice into payroll.** Intra-state when the vendor's GSTIN state equals the company's first
+     series GSTIN state, else IGST; the payroll approver checks the vendor's invoice. *Suggested: take the state from the
+     entity that pays the vendor once vendors are per entity.*
+526. **Interview length.** A time proposed in the portal books one hour. *Suggested: keep; the recruiter can change it.*
+527. **PDF signature.** The PDF prints "For <company>: authorised signatory"; no digital signature is applied.
+     *Suggested: a DSC or e-sign step with e-invoicing, if the CA asks.*
+528. **A hire does not end the placement.** Recording the client's hire leaves the placement as it is; the account
+     manager ends it. *Suggested: offer to end it on the day before the hire.*
 ## Founder questions from the staffing desk slice 3 (10 Nov 2026)
 491. **Client portal: interviews and tickets.** The drawn Interviews (schedule) and Tickets tabs are not built: interview
      scheduling with a client panel and client tickets have no back end. *Suggested: interviews with HIR-06 scheduling;

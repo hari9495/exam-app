@@ -40,6 +40,7 @@ Things deliberately left for launch. Development runs locally until then (test k
 | 33 | E-invoice window (staffing slice 3) | The CA confirms GST.EINVOICE_WINDOW (report within 30 days for AATO of ₹10 crore or more; warn from day 25) and which companies turn on Settings › Staffing desk › e-invoicing | The IRP is not connected: invoices are reported on the IRP by hand |
 | 34 | TDS sections for staffing (staffing slice 3) | The CA and counsel check TDS.SECTIONS (194C 1% individual or HUF, 2% others; 194J 10%, 2% technical) and the Income-tax Act 2025 section numbers from 1 Apr 2026 | Used for client TDS on receipts and vendor invoices |
 | 35 | GST invoice and credit note contents (staffing slice 3) | Counsel and the CA review invoice and credit note fields against CGST Rules r.46 and r.53 (16-character numbers per series, place of supply, reason on the credit note) | Before the invoice PDF is built (question 492) |
+| 36 | GST invoice PDF fields (staffing round 4, 10 Nov 2026) | The CA checks the rule set GST.INVOICE_R46 (the r.46 tax invoice and r.53 credit note fields, labels and order) against a sample PDF, then clears its verify flag | Before the first PDF goes to a client |
 
 
 ## Sign-in without a company code (founder decision 7 Oct 2026)
