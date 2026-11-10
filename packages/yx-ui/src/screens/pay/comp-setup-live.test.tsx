@@ -291,12 +291,17 @@ describe('Component library (PAY-14 live)', () => {
     expect(within(dialog).getByText('Name the component.')).toBeInTheDocument();
     expect(within(dialog).getByText('Give the component a code.')).toBeInTheDocument();
     expect(live.onSave).not.toHaveBeenCalled();
-    await ue.type(within(dialog).getByRole('textbox', { name: /Name/ }), 'Shift allowance');
-    await ue.type(within(dialog).getByRole('textbox', { name: /Code/ }), 'basic');
+    // paste, not type: each keystroke re-renders the whole drawer, and 25 of them timed out the loaded full run
+    const name = within(dialog).getByRole('textbox', { name: /Name/ });
+    const code = within(dialog).getByRole('textbox', { name: /Code/ });
+    await ue.click(name);
+    await ue.paste('Shift allowance');
+    await ue.click(code);
+    await ue.paste('basic');
     await ue.click(within(dialog).getByRole('button', { name: 'Save component' }));
     expect(within(dialog).getByText('Code basic is already used.')).toBeInTheDocument();
-    await ue.clear(within(dialog).getByRole('textbox', { name: /Code/ }));
-    await ue.type(within(dialog).getByRole('textbox', { name: /Code/ }), 'shift');
+    await ue.clear(code);
+    await ue.paste('shift');
     await ue.click(within(dialog).getByRole('button', { name: 'Save component' }));
     await waitFor(() => expect(live.onSave).toHaveBeenCalledWith(null, expect.objectContaining({ code: 'shift', name: 'Shift allowance', kind: 'earning' })));
     await toastSays('Shift allowance created. Add it to a template to use it.');
