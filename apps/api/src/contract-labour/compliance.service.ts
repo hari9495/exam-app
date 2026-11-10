@@ -29,6 +29,7 @@ const prevMonth = (today: string) => {
   const [y, m] = today.split('-').map(Number) as [number, number];
   return new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 10);
 };
+const dmy = (s: string) => day(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 const rupees = (p: bigint) => toRupees(p);
 
 export interface ClraAlert { id: string; type: string; contractor: string; contractorId: string; site: string; month: string; detail: string; liability: string | null; severity: 'High' | 'Medium'; deploymentId?: string }
@@ -196,7 +197,7 @@ export class ComplianceService {
       rows.push({ contractorId: p.agencyId, contractor: name, ...v, held: (held.get(p.agencyId) ?? []).length > 0, heldMonths: (held.get(p.agencyId) ?? []).map((m) => m.slice(0, 7)) });
       for (const w of v.workers) if (w.stillShort !== '0.00') alerts.push({ id: `wage:${w.deploymentId}:${month}`, type: 'Wage below minimum', contractor: name, contractorId: p.agencyId, site: v.site.name, month: month.slice(0, 7), detail: `${w.name}: paid ₹${w.line!.gross} for ${w.line!.days} days; due ₹${w.due} (${w.minimum?.source})${w.paidByUs !== '0.00' ? `; we paid ₹${w.paidByUs}` : ''}.`, liability: w.stillShort, severity: 'High', deploymentId: w.deploymentId });
       for (const ch of v.checks.filter((x) => (x.id === 'pf_challan' || x.id === 'esi_challan') && x.status === 'fail')) alerts.push({ id: `${ch.id}:${p.agencyId}:${p.locationId}:${month}`, type: ch.id === 'pf_challan' ? 'Short PF challan' : 'Short ESI challan', contractor: name, contractorId: p.agencyId, site: v.site.name, month: month.slice(0, 7), detail: ch.detail!, liability: null, severity: 'High' });
-      if (v.status === 'overdue') alerts.push({ id: `overdue:${p.agencyId}:${p.locationId}:${month}`, type: 'Proofs overdue', contractor: name, contractorId: p.agencyId, site: v.site.name, month: month.slice(0, 7), detail: `Due ${v.due}; ${v.required.filter((k) => v.items[k]?.state !== 'verified').map((k) => LABEL[k]).join(', ')} not verified.`, liability: null, severity: 'Medium' });
+      if (v.status === 'overdue') alerts.push({ id: `overdue:${p.agencyId}:${p.locationId}:${month}`, type: 'Proofs overdue', contractor: name, contractorId: p.agencyId, site: v.site.name, month: month.slice(0, 7), detail: `Due ${dmy(v.due)}; ${v.required.filter((k) => v.items[k]?.state !== 'verified').map((k) => LABEL[k]).join(', ')} not verified.`, liability: null, severity: 'Medium' });
     }
     return { rows, alerts };
   }

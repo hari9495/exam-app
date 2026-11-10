@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { ClientPortalScreen, PortalSignInScreen, type LiveClientPortal, type LiveClientTab } from '@yukthix/ui/hiring';
 import { apiFetch, apiFetchBlob } from '../../../../lib/api-client';
 import { otpSignIn } from '../../../../lib/yx-portal';
@@ -12,6 +12,7 @@ const TABS: LiveClientTab[] = ['jobs', 'submissions', 'interviews', 'timesheets'
 // one-time code by email, then a session (this tab only) sees only their own company's jobs, submissions, timesheets
 // and invoices. A call answered 401 part-way (the session ended) shows "sign in again".
 export default function YxClientPortalPage() {
+  const router = useRouter();
   const { org } = useParams<{ org: string }>();
   const params = useSearchParams();
   const tab = (TABS.includes(params.get('tab') as LiveClientTab) ? params.get('tab') : 'jobs') as LiveClientTab;
@@ -61,6 +62,8 @@ export default function YxClientPortalPage() {
         tenant: org,
         tab,
         hrefFor: (t) => `?tab=${t}`,
+        // Walk finding: a plain link reloaded the page and signed the contact out.
+        onTab: (t) => router.push(`?tab=${t}`, { scroll: false }),
         state,
         onRetry: () => void load(token),
         ended,

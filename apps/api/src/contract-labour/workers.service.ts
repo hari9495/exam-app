@@ -286,7 +286,7 @@ export class WorkersService {
         if (!induction || monthsLater(induction.on, p.inductionMonths) < today) throw new BadRequestException(`The safety induction is older than ${p.inductionMonths} months. Record the new induction.`);
       } else induction = dto.inductionOn ? induction : null;
       const validTo = gateValidTo({ toOn: row.toOn ? iso(row.toOn) : null, licenceValidTo: licence.validTo, inductionOn: p.inductionRequired ? induction!.on : null, inductionMonths: p.inductionRequired ? p.inductionMonths : null });
-      if (row.gateValidTo && validTo <= iso(row.gateValidTo)) throw new ConflictException(`The gate pass already runs to ${iso(row.gateValidTo)}; renewing would not extend it. Renew the licence or record a new induction first.`);
+      if (row.gateValidTo && validTo <= iso(row.gateValidTo)) throw new ConflictException(`The gate pass already runs to ${row.gateValidTo.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })}; renewing would not extend it. Renew the licence or record a new induction first.`);
       const { count } = await tx.contractDeployment.updateMany({ where: { id: row.id, organizationId: c.organizationId, version: row.version }, data: { gateValidTo: day(validTo), ...(dto.inductionOn ? { inductionOn: day(dto.inductionOn), inductionBy: dto.inductionBy!.trim() } : {}), version: { increment: 1 } } });
       if (!count) throw new ConflictException('Someone else changed this worker just now. Reload the page.');
       await audit(tx, c, 'clra.gate_pass.renewed', 'contract_deployment', row.id, { gatePassNo: row.gatePassNo, from: row.gateValidTo ? iso(row.gateValidTo) : null, to: validTo });

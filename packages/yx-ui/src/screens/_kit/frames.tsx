@@ -289,7 +289,7 @@ export interface PortalFrameProps {
   /** Portal name, e.g. "Candidate portal", "Client portal". */
   portal: string;
   /** `href` where the page is live; the stories leave it out (#). */
-  nav?: { label: string; active?: boolean; href?: string }[];
+  nav?: { label: string; active?: boolean; href?: string; onNavigate?: () => void }[];
   user?: string;
   /** Right end of the header band (a tenant portal's note and language picker). */
   aside?: ReactNode;
@@ -310,7 +310,14 @@ export function PortalFrame({ tenant, portal, nav = [], user, aside, foot, child
         <span className="yx-portal__name">{portal}</span>
         <nav className="yx-portal__nav" aria-label={portal}>
           {nav.map((n) => (
-            <a key={n.label} href={n.href ?? '#'} aria-current={n.active ? 'page' : undefined}>
+            <a
+              key={n.label}
+              href={n.href ?? '#'}
+              aria-current={n.active ? 'page' : undefined}
+              // A portal kept signed in only in the page (a one-time-code session) changes tab without reloading it;
+              // a modified click (new tab or window) keeps the plain link.
+              onClick={n.onNavigate ? (e) => { if (e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) { e.preventDefault(); n.onNavigate!(); } } : undefined}
+            >
               {n.label}
             </a>
           ))}

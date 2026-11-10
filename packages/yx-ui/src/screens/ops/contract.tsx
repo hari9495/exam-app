@@ -991,8 +991,8 @@ function GatePassCard({ worker, today, canManage, photoUrl, onClose, onRenew, on
           </Actions>
         )}
         {canManage && (adding || worker.photo) && (
-          <FormField id="gp-photo" label={worker.photo ? 'Replace the photo' : 'Photo'} optional helper="JPG or PNG, a clear face, up to 5 MB.">
-            <FileUpload id="gp-photo" multiple={false} accept={['.jpg', '.png']} upload={async (f) => { await onPhoto(f); say('Photo saved'); }} />
+          <FormField id="gp-photo" label={worker.photo ? 'Replace the photo' : 'Photo'} optional helper="A clear face.">
+            <FileUpload id="gp-photo" multiple={false} accept={['.jpg', '.png']} maxSize={5 * 1024 * 1024} upload={async (f) => { await onPhoto(f); say('Photo saved'); }} />
           </FormField>
         )}
       </div>

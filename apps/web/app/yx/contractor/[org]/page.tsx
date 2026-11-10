@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { PortalSignInScreen } from '@yukthix/ui/hiring';
 import { ContractorPortalScreen, type LiveContractorPortal, type LiveContractorTab } from '@yukthix/ui/desk';
 import { apiFetch } from '../../../../lib/api-client';
@@ -14,6 +14,7 @@ const TABS: LiveContractorTab[] = ['establishments', 'workers', 'attendance', 'p
 // and gate passes, sends a worker for site approval (the company's checks, no override) and uploads a licence renewal
 // (checked by the company before it counts). A call answered 401 part-way (the session ended) shows "sign in again".
 export default function YxContractorPortalPage() {
+  const router = useRouter();
   const { org } = useParams<{ org: string }>();
   const params = useSearchParams();
   const tab = (TABS.includes(params.get('tab') as LiveContractorTab) ? params.get('tab') : 'establishments') as LiveContractorTab;
@@ -68,6 +69,8 @@ export default function YxContractorPortalPage() {
         tenant: org,
         tab,
         hrefFor: (t) => `?tab=${t}`,
+        // Walk finding: a plain link reloaded the page and signed the contact out.
+        onTab: (t) => router.push(`?tab=${t}`, { scroll: false }),
         state,
         onRetry: () => void load(token),
         ended,

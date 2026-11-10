@@ -186,3 +186,28 @@ describe('Required proofs on the tracker and 4.9 (live, CL-5, answer 741)', () =
     expect(clraSettingsChanges({ 'clra.required_proofs': ['muster_roll', 'pf_challan', 'nope'] })).toEqual([{ key: 'clra.required_proofs', value: 'pf_challan,muster_roll' }]);
   });
 });
+
+describe('Contractor portal shell (walk findings)', () => {
+  it('a tab changes without reloading the page; a modified click keeps the link', async () => {
+    const onTab = vi.fn();
+    show(<ContractorPortalScreen live={plive({ tab: 'bills', onTab })} />);
+    await ue.click(screen.getByRole('link', { name: 'Workers' }));
+    expect(onTab).toHaveBeenCalledWith('workers');
+    onTab.mockClear();
+    await ue.keyboard('{Control>}');
+    await ue.click(screen.getByRole('link', { name: 'Attendance' }));
+    await ue.keyboard('{/Control}');
+    expect(onTab).not.toHaveBeenCalled();
+  });
+
+  it('access ends with the contract, never today; without a licence or work order no end is shown', () => {
+    const est = { licenceId: 'l1', site: { id: 'blr', name: 'Bengaluru head office' }, licenceNo: 'KA/1', scope: 'Security', states: ['IN-KA'], maxWorkers: 5, deployed: 1, validFrom: '2026-01-01', validTo: '2027-12-31', state: 'valid', renewal: null };
+    const base = plive({ tab: 'bills' });
+    const { unmount } = show(<ContractorPortalScreen live={{ ...base, data: { ...base.data!, establishments: [est] } }} />);
+    expect(screen.getByText(/Access ends 31 Dec 2027/)).toBeInTheDocument();
+    expect(screen.queryByText('Ends today')).not.toBeInTheDocument();
+    unmount();
+    show(<ContractorPortalScreen live={plive({ tab: 'bills' })} />);
+    expect(screen.queryByText(/Access ends/)).not.toBeInTheDocument();
+  });
+});

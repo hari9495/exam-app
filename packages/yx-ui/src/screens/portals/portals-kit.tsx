@@ -104,7 +104,7 @@ export type PortalAccess =
 export interface TenantPortalProps {
   tenant: string;
   portal: string;
-  nav?: { label: string; active?: boolean; href?: string }[];
+  nav?: { label: string; active?: boolean; href?: string; onNavigate?: () => void }[];
   /** Tenant accent as hex (with or without #). Used only if it reaches 4.5:1 on white (§38). */
   accent?: string;
   whiteLabel?: boolean;
