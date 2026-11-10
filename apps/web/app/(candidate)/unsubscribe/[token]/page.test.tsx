@@ -72,4 +72,23 @@ describe('UnsubscribePage', () => {
 
     expect(await screen.findByText(/isn't valid/i)).toBeInTheDocument();
   });
+
+  it('answer 561: an opted-in candidate stops WhatsApp messages here (POST …/whatsapp)', async () => {
+    const posts: string[] = [];
+    global.fetch = jest.fn(async (url, options) => {
+      if (options?.method === 'POST') return (posts.push(String(url)), new Response(JSON.stringify({ whatsappOptedIn: false }), { status: 200 }));
+      return new Response(JSON.stringify({ optedOut: false, orgName: 'Acme Corp', whatsappOptedIn: true }), { status: 200 });
+    }) as unknown as typeof fetch;
+    render(<UnsubscribePage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Stop WhatsApp messages about jobs' }));
+    expect(await screen.findByText(/no WhatsApp messages about jobs/)).toBeInTheDocument();
+    expect(posts).toEqual([expect.stringMatching(/\/public\/unsubscribe\/tok-abc\/whatsapp$/)]);
+  });
+
+  it('answer 561: not opted in: no WhatsApp button', async () => {
+    global.fetch = jest.fn(async () => new Response(JSON.stringify({ optedOut: false, orgName: 'Acme Corp', whatsappOptedIn: false }), { status: 200 })) as unknown as typeof fetch;
+    render(<UnsubscribePage />);
+    await screen.findByText('Acme Corp');
+    expect(screen.queryByRole('button', { name: /WhatsApp/ })).not.toBeInTheDocument();
+  });
 });

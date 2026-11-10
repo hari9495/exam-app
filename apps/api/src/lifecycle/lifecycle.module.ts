@@ -1,3 +1,5 @@
+import { ContractConversionController } from './contract-conversion.controller';
+import { ContractConversionService } from './contract-conversion.service';
 import { OffersModule } from '../offers/offers.module';
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
@@ -38,8 +40,8 @@ import { PreboardingPortalService } from './portal.service';
 @Module({
   // The alumni login shows the pay documents portal's payslips and Form 16 (PayDocumentsService).
   imports: [OffersModule, WorkflowModule, NotificationsModule, RulesEngineModule, ServiceDeskModule, DocumentsModule, AuthModule, CryptoModule, EmailModule, EmployeeHistoryModule, PeopleModule, PipelineModule, PayrollModule],
-  controllers: [LifecycleController, PreboardingPortalController, ExitsController, AlumniPortalController, SpecialCasesController, PeopleRegistersController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, LifecycleJourneysService, JoinersService, JoiningService, PreboardingPortalService, LifecycleJobs, ExitsService, OffboardingService, LastDayService, AlumniPortalService, OnboardingExtrasService, ExitExtrasService, LifeEventsService, PeopleRegistersService],
+  controllers: [ContractConversionController, LifecycleController, PreboardingPortalController, ExitsController, AlumniPortalController, SpecialCasesController, PeopleRegistersController],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, LifecycleJourneysService, JoinersService, JoiningService, PreboardingPortalService, LifecycleJobs, ExitsService, OffboardingService, LastDayService, AlumniPortalService, OnboardingExtrasService, ExitExtrasService, LifeEventsService, PeopleRegistersService, ContractConversionService],
   // M06 PM8 opens a company exit from an improvement plan through M01's own checks.
   exports: [LifecycleJourneysService, ExitsService],
 })

@@ -103,6 +103,8 @@ describe('notification catalog', () => {
       'hiring.internal.applied',
       'clra.licence.expiring',
       'clra.alert.new',
+      // Visitors slice 2 (604).
+      'visitor.walkin.approval.host',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);

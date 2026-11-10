@@ -86,6 +86,8 @@ export function liveApply(applyToken: string, job: PublicJob): LiveCareersJob['a
     upload: async () => undefined, // the resume goes with the application itself (one request)
     resumeAccept: ['.pdf'],
     honeypot: true,
+    // Answer 561: the optional WhatsApp tick (off until ticked).
+    whatsappTick: true,
     askPay: Boolean(job.askPayHistory),
     internationalPhone: Boolean(job.internationalPhone),
     toolNotice: job.nycNotice ?? null,
@@ -107,6 +109,7 @@ export function liveApply(applyToken: string, job: PublicJob): LiveCareersJob['a
         ...(a.currentPay != null ? { currentPay: a.currentPay } : {}),
         ...(a.website ? { website: a.website } : {}),
         ...(a.alternativeProcess ? { alternativeProcess: true } : {}),
+        ...(a.whatsappOptIn ? { whatsappOptIn: true } : {}),
       });
     },
   };

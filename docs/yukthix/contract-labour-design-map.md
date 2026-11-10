@@ -9,6 +9,8 @@ nothing was built.
 
 ## What is live today (plain English)
 
+- **CL-7 is live (18 Nov 2026, branch `feat/yukthix-contract-labour-cl7`):** CLB-05, a deployed contract worker becomes
+  an employee through the joiner flow on the same person record (Contract workers › Make employee).
 - **CL-1 is live (10 Nov 2026, branch `feat/yukthix-contract-labour-1`):** CLB-01 Contractors register on
   /yx/contract-labour/contractors (menu Contract labour › Contractors) and Settings 4.9 on /yx/settings/contract-labour.
   Contractors are the vendor record (`agencies`); licences with their copy, verified renewals, the deployment block and
@@ -28,13 +30,15 @@ built** (no API for this feature) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Principal employer (contractors working at our sites) | 5 | 38 | 0 | 0 | 8 | 0 | 46 |
+| A. Principal employer (contractors working at our sites) | 5 | 44 | 0 | 0 | 3 | 0 | 47 |
 | B. We are the contractor (our staff at client sites) | 3 | 0 | 0 | 0 | 10 | 0 | 10 |
 | C. Contractor portal | 1 | 19 | 0 | 0 | 0 | 0 | 19 |
 | D. Settings | 1 | 1 | 2 | 0 | 0 | 0 | 3 |
-| **All** | 10 | 58 | 2 | 0 | 18 | 0 | 78 |
+| **All** | 10 | 64 | 2 | 0 | 13 | 0 | 79 |
 
-Of the 56 stories under Screens/Contract labour, 38 are live (CL-1 to CL-5); with the portal and settings pages, 60 of 78.
+Of the 57 stories under Screens/Contract labour, 44 are live (CL-1 to CL-5 and CL-7); with the portal and settings pages, 64 of 79.
+
+Recounted by script 10 Nov 2026 on `feat/yukthix-contract-labour-cl5` after merging CL-7 (CLB-05 live, 5 stories, and CLB-05 Start).
 
 Related stories in other areas (counted in their own maps, listed here so the build reaches them):
 
@@ -148,11 +152,12 @@ All 46 stories in section 4: there is no contractor, licence, deployment, proof 
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| SamePerson · Same person kept | design only, feature not built | the same `persons` row; PPL-12 has no `contract_worker` source yet |
-| EndRole · End contract role | design only, feature not built | ends the deployment and the role the day before joining |
-| Employee · Employee details | design only, feature not built | the PPL-12 joiner fields |
-| CarryOver · Identity and documents carried over | design only, feature not built | UAN, ESIC IP, ID and documents from the deployment |
-| Review · Review and create | design only, feature not built | |
+| SamePerson · Same person kept | live | live 18 Nov 2026 (CL-7) at /yx/contract-labour/workers/[id]/convert: the same `persons` row; refused when not deployed, already an employee or already joining (GET lifecycle/joiners/from-contract-worker/:deploymentId) |
+| EndRole · End contract role | live | the last day is the day before joining (answer 637), shown, not chosen; the deployment, the gate pass and the role end on the joining day |
+| Employee · Employee details | live | the PPL-12 joiner fields, entity and location pre-filled from the deployment's site; the drawn CTC is gone (pay is set in Pay after joining, question 772) |
+| CarryOver · Identity and documents carried over | live | the same person; UAN and ESIC IP raised on the employee record on the joining day for HR to approve; only the last 4 ID digits exist, so the original is checked on the joining day |
+| Review · Review and create | live | "Start pre-boarding": POST lifecycle/joiners/from-contract-worker/:deploymentId; the joiner goes to the Onboarding board |
+| Start · Start · Make employee on a deployed worker | live | drawn 18 Nov 2026: "Make employee" on a deployed worker in Contract workers, for HR with the onboarding key |
 
 ### B. We are the contractor (our staff at client sites)
 
@@ -357,6 +362,18 @@ console.log('ok');
 Founder approved, 10 Nov 2026 (questions 621-641, all as suggested; policies are company settings with defaults, law
 details are rule-set data marked verify for counsel). Build after Visitors, CL-1 first; CL-8 and CL-9 when a customer
 needs them.
+Founder approved, 10 Nov 2026 (questions 671-678, all as suggested): (671) counsel confirms the LIN format; (672)
+keep the adder verifying, a "second person verifies" company setting when a customer asks; (673) registrations list with
+CL-5; (674) site cards with CL-2 and CL-5; (675) the work order in CL-2, warning when deployments pass its headcount; keep
+676, 677; (678) also email the contractor once the portal (CL-3) exists.
+Founder approved, 10 Nov 2026 (questions 681-686, 731-736, all as suggested): (681) block at the threshold once
+registrations exist (CL-5); keep 682 (second approver setting later), 683, 685 (CL-4), 732, 733; (684) a "Renew gate pass"
+action keeping the number; (686) count contract workers in All persons with CL-5; (731) optional issuing office on the
+licence form in CL-4; (734) Aadhaar only for now, other IDs later under the last-4-plus-hash rule; (735) worker photo with
+the gate pass card in CL-5; (736) the contractor can withdraw their own waiting workers.
+Founder approved, 10 Nov 2026 (questions 741-746, all as suggested): (741) the muster roll in CL-5 and the proof
+list a company setting; (742) paid days against attendance in CL-5; (743) a daily email to the compliance owners for new
+liability alerts; keep 744 (release per month), 746; (745) a recovered-wages line on the payroll payment advice.
 
 ## CL-1 built (10 Nov 2026, branch `feat/yukthix-contract-labour-1`)
 
@@ -517,3 +534,34 @@ pass" keeping the number; 681 block at the threshold once registrations exist, 6
      Suggested: keep.
 756. **Older alerts.** The nightly email covers alerts in the last three months; an older month's new alert shows on
      Vendor compliance only. Suggested: keep.
+
+## CL-7 built (CLB-05, answer 637; 18 Nov 2026, branch `feat/yukthix-contract-labour-cl7`)
+
+- **Joiner source:** the PPL-12 joiner flow takes the source `contract_worker` (migration
+  `202617w0000007_contract_labour_7`: `preboardings.source` widened, `contract_deployment_id` with a check that it is set
+  exactly for that source, one open conversion per deployment). The joiner is the worker's own `persons` row (never a
+  copy); a former employee joins again on their record (rehire), as for any joiner.
+- **Start:** HR with `lifecycle.onboarding.manage` opens Contract labour › Contract workers › Make employee (deployed
+  workers only) → CLB-05: the person, the last day (the day before joining), the employee details pre-filled with the
+  site's entity and location, what carries over. Refused: without the key 403, acting for someone else 403, another
+  company's deployment 404, a worker not deployed or already joining 409, a joining day on or before the deployment
+  start 400. Audited (`clra.worker.conversion_started`).
+- **Joining day:** "Mark joined" makes the employee on the same person; the deployment ends the day before (status
+  released, reason "Joined as an employee"), the gate pass with it, the `contract_worker` role closes; the UAN and ESIC IP
+  from the deployment are raised as profile changes for HR to approve. Earlier deployments, punches and register rows
+  stay as contract-worker history. Audited (`clra.worker.converted`).
+- **Tests:** kit and web tests, e2e `contract-labour-7` (4 scenarios, positive and negative).
+
+## Founder questions from CL-7 (18 Nov 2026)
+
+771. **Who converts.** HR with the onboarding key starts it (they see the worker's UAN and masked ID for that). The
+     contract-labour compliance owner does not need the onboarding key. *Suggested: keep.*
+772. **Pay at conversion.** The drawing asked for the annual CTC; the joiner flow has no pay, so it is set in Pay after
+     joining (as for every direct joiner). *Suggested: keep; the CTC field is gone from the drawing.*
+773. **Contract service and probation.** Contract service does not count towards probation or gratuity (the new
+     employment starts on the joining day). *Suggested: keep (the PPL-12 drawing says so; a company setting later if asked).*
+774. **The contractor is not told.** The contractor learns of the end through the released deployment in their portal;
+     no message is sent. *Suggested: keep; a notice to the contractor later if asked.*
+775. **PPL-12 Ready to onboard.** That queue lists accepted offers; conversions start from the worker and go straight to
+     the Onboarding board, so its drawn "Contract worker conversion" row stays unused. *Suggested: drop that row from the
+     PPL-12 drawing.*

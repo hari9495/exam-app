@@ -637,6 +637,8 @@ export interface PortalView {
   candidateName: string;
   candidateEmail: string;
   candidatePhone: string | null;
+  /** Answer 691: the WhatsApp tick on the candidate page. */
+  whatsappOptedIn?: boolean;
   resume: { hasResume: boolean; parseStatus: string | null };
   orgName: string;
   applications: PortalApplication[];
@@ -669,6 +671,8 @@ export interface ApplicationStatus {
   accent?: string | null;
   /** Answer 502: the New York City automated-tool notice and when this candidate asked for another process. */
   toolNotice?: { assesses: string[]; businessDays: number; requestedAt: string | null } | null;
+  /** Answer 561: the WhatsApp tick on the status page. */
+  whatsapp?: { optedIn: boolean; hasPhone: boolean } | null;
 }
 
 // StageCounts mirrors apps/api/src/pipeline/pipeline.service.ts's StageCounts -- a job's

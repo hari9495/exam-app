@@ -29,6 +29,7 @@ export default function YxCandidatePortalPage() {
         name: portal.candidateName,
         email: portal.candidateEmail,
         phone: portal.candidatePhone,
+        whatsappOptedIn: Boolean(portal.whatsappOptedIn),
         hasResume: portal.resume.hasResume,
         oneClick: Boolean(open && open.hasResume && !open.requiresConsent && open.requiredFieldCount === 0),
         applications: portal.applications.map((a) => ({
@@ -60,6 +61,11 @@ export default function YxCandidatePortalPage() {
         },
         interviewHref: (t) => `/yx/interview/${encodeURIComponent(t)}`,
         offerHref: (t) => `/yx/offer/${encodeURIComponent(t)}`,
+        // Answer 691: tick or untick WhatsApp messages about jobs for all their applications.
+        onWhatsapp: async (optIn) => {
+          const r = await publicPost<{ whatsappOptedIn: boolean }>(`${base}/whatsapp`, { optIn });
+          setPortal((p) => (p ? { ...p, whatsappOptedIn: r.whatsappOptedIn } : p));
+        },
       }}
     />
   );

@@ -203,6 +203,14 @@ export const YX_KEYS = [
   'clra.contractor.manage',
   'clra.contractor.view',
   'clra.settings.manage',
+  // Visitors slice 1: the desk, the log and the visitor settings.
+  'visitors.desk.manage',
+  'visitors.log.view',
+  'visitors.settings.manage',
+  // Visitors slice 3: the watch-list (HR and Facility admin).
+  'visitors.watchlist.manage',
+  // Visitors slice 4: the emergency roll-call (reception, security, HR).
+  'visitors.rollcall.view',
   // Menu items that checked keys nobody asked for (yx-nav-keys.test.ts): team pay access, the older assessment screens.
   'employee.pay_access.approve',
   'exam:manage',

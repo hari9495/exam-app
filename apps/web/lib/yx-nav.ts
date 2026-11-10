@@ -379,6 +379,23 @@ export function buildNav(n: NavInput): NavArea[] {
     sections: support ? [] : sec(undefined, when(any('clra.contractor.manage', 'clra.contractor.view'), L('clra-contractors', 'Contractors', '/yx/contract-labour/contractors'), L('clra-workers', 'Contract workers', '/yx/contract-labour/workers'), L('clra-attendance', 'Attendance', '/yx/contract-labour/attendance'), L('clra-compliance', 'Vendor compliance', '/yx/contract-labour/compliance'))),
   };
 
+  // Visitors slice 1 (M02 §B11): hosts invite their own visitors; reception runs the desk; the log (answers 601-617).
+  const visitors: NavArea = {
+    id: 'visitors',
+    title: 'Visitors',
+    sections: [
+      ...sec(undefined, [
+        ...when(!support && has('visitors.desk.manage'), L('visitors-desk', "Today's visitors", '/yx/visitors')),
+        ...when(self, L('visitors-invites', 'My visitors', '/yx/visitors/invites')),
+        ...when(!support && any('visitors.log.view', 'visitors.desk.manage'), L('visitors-log', 'Visitor log', '/yx/visitors/log')),
+        // Slice 3 (answer 605): the watch-list, for HR and Facility admins only.
+        ...when(!support && has('visitors.watchlist.manage'), L('visitors-watchlist', 'Watch-list', '/yx/visitors/watchlist')),
+        // Slice 4 (answer 612): the emergency roll-call for reception, security and HR.
+        ...when(!support && any('visitors.rollcall.view', 'visitors.desk.manage'), L('visitors-rollcall', 'Roll-call', '/yx/visitors/rollcall')),
+      ]),
+    ],
+  };
+
   // Settings, pinned at the bottom of the rail, in the designed settings groups.
   const settings: NavArea = {
     id: 'settings',
@@ -397,6 +414,8 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(adminRole || n.role === 'auditor', L('activity', 'Login activity', '/yx/admin/login-activity')),
         ...when(has('org.support_access.approve') && !support, L('support-access', 'Support access', '/yx/settings/support-access')),
       ]),
+      // 3.12 Visitors: Facility admins and HR change it; reception reads it.
+      ...sec('Time & Leave', when(!support && any('visitors.settings.manage', 'org.settings.manage', 'visitors.desk.manage'), L('visitor-settings', 'Visitors', '/yx/settings/visitors'))),
       ...sec('Payroll & Statutory', [
         ...when(pay, ...[
           ...when(any('payroll.setup.manage', 'payroll.statutory.setup'), L('pay-setup', 'Payroll set-up', '/yx/payroll/setup')),
@@ -425,7 +444,7 @@ export function buildNav(n: NavInput): NavArea[] {
     ],
   };
 
-  return [home, people, time, pays, compliance, contract, hire, performance, helpdesk, settings].filter((a) => a.sections.some((s) => s.items.length));
+  return [home, people, time, pays, compliance, contract, hire, performance, helpdesk, visitors, settings].filter((a) => a.sections.some((s) => s.items.length));
 }
 
 /** The area and link a path belongs to: the longest link that is the path or a parent of it. A page linked from two

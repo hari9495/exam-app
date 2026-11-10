@@ -53,14 +53,16 @@ built**.
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Plans, requisitions, jobs and costs | 4 | 37 | 1 | 0 | 0 | 0 | 38 |
-| B. Candidates, pipeline and interviews | 8 | 59 | 1 | 0 | 8 | 1 | 69 |
+| B. Candidates, pipeline and interviews | 8 | 60 | 1 | 0 | 8 | 1 | 70 |
 | C. Offers, BGV and joining | 4 | 24 | 4 | 0 | 1 | 0 | 29 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 30 | 0 | 0 | 0 | 4 | 34 |
-| E. Staffing agency | 8 | 49 | 15 | 0 | 0 | 0 | 64 |
+| E. Staffing agency | 8 | 56 | 12 | 0 | 0 | 0 | 68 |
 | F. Compliance and fairness | 5 | 21 | 4 | 0 | 6 | 0 | 31 |
-| G. Careers site, portals and settings | 4 | 64 | 4 | 2 | 9 | 0 | 79 |
-| **All Hiring design groups (A–G)** | **37** | **292** | **27** | **2** | **24** | **5** | **350** |
+| G. Careers site, portals and settings | 4 | 67 | 5 | 2 | 9 | 0 | 83 |
+| **All Hiring design groups (A–G)** | **37** | **295** | **27** | **2** | **24** | **5** | **353** |
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 11 | 0 | 0 | 4 | 0 | 15 |
+Recounted by script 10 Nov 2026 on `feat/yukthix-walk-2` (answer 691): T9-09 PortalWhatsapp drawn and live: A–G 295 live, 27 gap, 2 wire, 24 not built, 5 phone, of 353.
+Recounted by script 10 Nov 2026 on `feat/yukthix-hiring-whatsapp-optin` (answer 561): 2 new stories drawn and live (Surfaces/Careers ApplyFormWhatsapp, T9-09 StatusWhatsapp): A–G 294 live, 27 gap, 2 wire, 24 not built, 5 phone, of 352 (rows B, E and G had fallen behind and are recounted from the script).
 Recounted by script on `test/yukthix-main` after merging hiring-rest (Talent CRM campaigns, sourced profiles, under 18, kit wire-ups): A–G 292 live, 27 gap, 2 wire, 24 not built, 5 phone, of 350.
 Recounted by script on `test/yukthix-main` after merging staffing round 5 (Tally/Zoho export, 528): A–G 285 live, 27 gap, 2 wire, 28 not built, 5 phone, of 347.
 Recounted by script on `test/yukthix-main` after merging 531, 532: A–G 284 live, 26 gap, 2 wire, 28 not built, 5 phone, of 345.
@@ -922,8 +924,10 @@ Google for Jobs JSON-LD and /yx/careers/[org]/sitemap.xml), /yx/apply/[token], a
 | StatusPhone · Application status · phone | live | same page at phone width |
 | StatusDecision · Application status · decision made | live | rejected or archived |
 | StatusNycNotice · Application status · New York City notice, ask for another process | live | drawn 16 Nov 2026 (answer 502): the link in the notice email (a candidate added by hand to a NYC job, setting on); the notice and "Assess me another way" (`POST public/applications/:token/alternative-process`, audited); once asked, the page says when |
+| StatusWhatsapp · Application status · Message me on WhatsApp about jobs | live | drawn 10 Nov 2026 (answer 561): tick or untick (`POST public/applications/:token/whatsapp`, audited, source status_page, toast); no mobile number on file: no tick, it says why (409 from the API) |
 | StatusNotFound · Application status · link not valid | live | unknown token |
 | Portal · Candidate page | live | /yx/candidate/[token]: details, resume, own applications, interviews, offers, other open jobs |
+| PortalWhatsapp · Candidate page · Message me on WhatsApp about jobs | live | drawn 10 Nov 2026 (answer 691): the same tick as the status page, for all applications (`POST public/portal/:token/whatsapp`, source candidate_page, audited, toast); no mobile number: no tick, it says why |
 | PortalPhone · Candidate page · phone | live | same page at phone width |
 | PortalEmpty · Candidate page · no applications, full form to apply | live | one click only with a resume, no consent and no required questions |
 | Offer · Offer to accept | live | /yx/offer/[token]: the existing accept-by-link; answers once, refuses expired |
@@ -981,6 +985,7 @@ Google for Jobs JSON-LD and /yx/careers/[org]/sitemap.xml), /yx/apply/[token], a
 | ApplyFormMobile · ApplyFormMobile | live | same at phone width |
 | ApplyFormSent · ApplyFormSent | live | after apply |
 | ApplyFormFull · Apply form · notices, pay question and company questions | live | versioned notices, answer 224, candidate custom fields shown on apply |
+| ApplyFormWhatsapp · Apply form · Message me on WhatsApp about jobs | live | drawn 10 Nov 2026 (answer 561): optional tick, off by default; ticked with a mobile number the candidate is opted in (time and source apply, audited); withdrawn on the status page or the unsubscribe link (`POST public/unsubscribe/:token/whatsapp`); only then does a WhatsApp campaign reach them |
 | BrandPlaceholders · Logo and monogram (placeholders) | live (gap) | the company logo is not shown on the careers pages yet (question 357) |
 
 #### Group 6 · Hiring & Assessments
@@ -1716,6 +1721,8 @@ Founder approved, 10 Nov 2026 (questions 551, 571-575, all as suggested): keep 5
 Founder approved, 10 Nov 2026 (questions 561-565, all as suggested): (561) a "Message me on WhatsApp about jobs" tick on
 the apply form and the candidate page, off by default; keep 562, 563, 564 (counsel confirms), 565 (manual until counsel
 signs off the sourced-profile flow).
+Founder approved, 10 Nov 2026 (question 691): yes, the same WhatsApp tick on the candidate page (all their
+applications), in the next candidate-page change.
 ## HIR-27 bulk interview day and answer 392 built (14 Nov 2026, branch `feat/yukthix-hir-27`)
 - HIR-27: see its section above. Interview days open from Hiring › Interviews (a new "Interview days" button, drawn on the
   HIR-06 header).
@@ -1819,6 +1826,8 @@ signs off the sourced-profile flow).
      and returns when it is turned on. *Suggested: keep.*
 Founder approved, 14 Nov 2026 (questions 441-444, all as suggested): keep 441 and 444; (442) YukthiX staff switch
 white-label per company from the console with the plan; (443) draw the quarantine-email switch on 6.1.
+Founder approved, 10 Nov 2026 (question 701): seed one demo staffing client, placement and issued invoice in
+demo-org, shown only while the staffing desk is on.
 ## Offers round 3 built (answers 376, 402, 404, 423, 443; 14 Nov 2026, branch `feat/yukthix-offers-3`)
 - (376) Settings 6.1: a named approver above the range who left or lost the offer-pay key is named on the field ("Ravi
   Kumar (cannot approve)") with a warning, like the stale default recruiter; until HR chooses again the step goes to the
@@ -2094,4 +2103,25 @@ with In pipeline summed. Screenshots and the per-page results are in the walk re
      targeted messages to children). *Suggested: keep it; counsel confirms in the go-live line.*
 565. **Sourcing extension.** The design's browser extension is not built; recruiters add people by hand with a lawful
      source note. *Suggested: keep it manual until counsel signs off the sourced-profile flow.*
+
+## Founder answer 561 built (10 Nov 2026, branch `feat/yukthix-hiring-whatsapp-optin`)
+- "Message me on WhatsApp about jobs (optional)" on the apply form (off by default) and the status page (tick and
+  untick). Stored as `candidates.whatsapp_opted_in_at` with `whatsapp_opt_in_source` (apply, status_page, unsubscribe;
+  migration `202617v0000000_whatsapp_opt_in_source`), audited `candidate.whatsapp.opted_in` / `opted_out`. Opting in needs
+  a mobile number on file and clears an earlier WhatsApp opt-out; the unsubscribe page also stops WhatsApp
+  (`POST public/unsubscribe/:token/whatsapp`). Only an opted-in candidate is in a WhatsApp campaign audience (HIR-20).
+
+## Walk-through 2 and answer 691 (10 Nov 2026, branch `feat/yukthix-walk-2`)
+- Walk fixes: a company role copied from a past template version that also got `payroll.equity.own` (PAY-58 migration)
+  follows its template again (the demo Recruiter gains `ats.staffing.view` at the next API start); the sequence builder's
+  step rows show the step number above its template or wait and the remove button on the same row.
+- Answer 691: "Message me on WhatsApp about jobs" on the candidate page (story PortalWhatsapp), same storage, source
+  `candidate_page`, audit and withdrawal as 561.
+## Founder questions from walk-through 2 (10 Nov 2026)
+701. **Demo staffing data.** The demo has no clients, placements or invoices, so an invoice record, its PDF and a client's
+     fees could not be walked. *Suggested: add a small staffing sample (one client, one placement, one issued invoice) to
+     the demo seed, behind the desk setting.*
+702. **The test app needs a restart after merges.** The web server on :3000 served an old apply form on the server side
+     (a hydration error until it restarted), and the API has not re-run the role template sync. *Suggested: restart both
+     after each merge that touches packages or apps/api, as the memory notes say for the API.*
 

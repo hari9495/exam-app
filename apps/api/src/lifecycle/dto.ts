@@ -345,3 +345,16 @@ export class BgvDecisionDto {
   @IsInt()
   version!: number;
 }
+
+/** CL-7 (CLB-05, answer 637): a contract worker joins from their deployment; the person's details come from their record. */
+export class ContractConversionDto {
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'Give the joining day as a date.' }) joiningOn!: string;
+  @IsUUID() legalEntityId!: string;
+  @IsUUID() locationId!: string;
+  @IsOptional() @IsUUID() departmentId?: string | null;
+  @IsOptional() @IsUUID() designationId?: string | null;
+  @IsOptional() @IsUUID() employmentTypeId?: string | null;
+  @IsOptional() @IsUUID() managerEmployeeId?: string | null;
+  @IsOptional() @IsUUID() templateId?: string | null;
+  @IsInt() @Min(1) version!: number;
+}

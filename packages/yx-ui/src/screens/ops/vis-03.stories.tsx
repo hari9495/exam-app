@@ -16,3 +16,5 @@ export const Waiting: S = { name: 'Waiting for host', render: () => <VisitorKios
 export const Badge: S = { name: 'Badge and QR', render: () => <VisitorKioskScreen step="badge" visit={v} today={TODAY} /> };
 export const SeeReception: S = { name: 'See reception (blocked or problem)', render: () => <VisitorKioskScreen step="see-reception" visit={v} today={TODAY} /> };
 export const Rejected: S = { name: 'Host declined', render: () => <VisitorKioskScreen step="rejected" visit={v} today={TODAY} /> };
+// Visitors slice 2 (10 Nov 2026): a pre-registered visitor types or scans their pass on the kiosk.
+export const Pass: S = { name: 'Scan or type my pass', render: () => <VisitorKioskScreen step="pass" visit={v} today={TODAY} /> };

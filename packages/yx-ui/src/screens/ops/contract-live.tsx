@@ -187,6 +187,8 @@ export interface WorkersLive {
   onPhoto?: (id: string, file: File) => Promise<unknown>;
   photoUrl?: (id: string) => Promise<string | null>;
   onKioskPin?: (id: string) => Promise<string>;
+  /** CL-7: opens CLB-05 for a deployed worker (only for HR with the onboarding key). */
+  onConvert?: (id: string) => void;
 }
 const STATUS: Record<WorkersData['workers'][number]['status'], ContractWorker['status']> = { pending: 'Pending approval', deployed: 'Deployed', released: 'Released' };
 
@@ -237,6 +239,7 @@ export function LiveWorkers({ live }: { live: WorkersLive }) {
       onPhoto={live.onPhoto}
       photoUrl={live.photoUrl}
       onKioskPin={live.onKioskPin}
+      onConvert={live.onConvert}
     />
   );
 }

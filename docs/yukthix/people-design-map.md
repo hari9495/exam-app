@@ -554,7 +554,7 @@ Live page: /yx/people/ready-to-onboard (menu People › Onboarding › Ready to 
 | CreateNew · Create employee (new person) | live | row → `CreateFromOffer` drawer; POST lifecycle/ready-to-onboard/:offerId |
 | Rehire · Create employee (rehire impact preview) | live | an ex-employee offer: the Create drawer shows the policy per option for the chosen entity and the earlier spell (GET lifecycle/ready-to-onboard/:offerId/rehire); the offer joins on their own record as a rehire |
 | RehireOverride · Rehire with an override (reason required) | live | change a choice in the drawer: Create without a reason shows the field error and focuses it; POST ready-to-onboard/:offerId takes `rehire` choices with the reason (also on the checklist's Rehire card) |
-| Conversion · Contract worker conversion | live (gap) | the API has no contract-worker person type (contract workers module not built); only new, ex_employee, internal |
+| Conversion · Contract worker conversion | live (gap) | conversions are live from the worker since CL-7 (CLB-05; the joiner source `contract_worker`) and go straight to the Onboarding board, not this offers queue (question 775) |
 | Empty · · empty | live | no accepted offers waiting |
 
 #### PPL-13 · Journey record

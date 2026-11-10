@@ -56,6 +56,7 @@ import { OrgSettingsService } from '../org-structure/org-settings.service';
   providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, OrgSettingsService, DayEngine, LeaveService, AttendanceService, TimeSetupService, TimeJobs, RosterService, OvertimeService, TimesheetService, PeriodsService, NightWorkService, LeaveV2Service, { provide: HOLIDAY_PROVIDER, useClass: DevFakeHolidayProvider }, AttendanceOpsService, IndustrialActionService, PresenceService, DeviceBackfillService, DevicesService, KioskService, { provide: FACE_MATCH, useFactory: faceMatchFromEnv }, FieldService, FieldJobs, { provide: MAPS, useFactory: mapsFromEnv }, HybridService, PrefillService, { provide: WORK_TOOLS, useFactory: workToolsFromEnv }, OpenShiftsService, StandbyService, AutoRosterService, LicencesService, LicenceJobs],
   // PeriodsService.feedRows / feed: the stable read of the frozen payroll feed for payroll (step 5).
   // LeaveV2Service.creditCompOff: the one comp-off ledger, for overtime settled as comp-off (TIM-09).
-  exports: [LeaveService, PeriodsService, LeaveV2Service],
+  // KioskService: the visitor kiosk (Visitors slice 2) uses the same device token sign-in.
+  exports: [LeaveService, PeriodsService, LeaveV2Service, KioskService],
 })
 export class TimeModule {}

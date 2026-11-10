@@ -10,8 +10,14 @@ const PHONE = { viewport: { value: 'mobile2', isRotated: false } };
 
 export const MyVisitors: S = { name: 'My visitors', render: () => <PreRegisterScreen visits={MY_VISITORS} today={TODAY} /> };
 export const Invite: S = { name: 'Invite a visitor', render: () => <PreRegisterScreen visits={MY_VISITORS} today={TODAY} formOpen /> };
+// Visitors slice 3 (answer 614): a visitor under 18 comes only with a named adult; no photo and no ID for them.
+export const InviteMinor: S = { name: 'Invite a visitor under 18', render: () => <PreRegisterScreen visits={MY_VISITORS} today={TODAY} formOpen minor /> };
 export const Sent: S = { name: 'Invite sent', render: () => <PreRegisterScreen visits={MY_VISITORS} today={TODAY} sent /> };
 export const Empty: S = { render: () => <PreRegisterScreen visits={[]} today={TODAY} /> };
 export const Phone: S = { name: 'My visitors · phone', globals: PHONE, render: () => <PreRegisterScreen device="phone" visits={MY_VISITORS} today={TODAY} /> };
 export const PhoneApproval: S = { name: 'Walk-in approval card · phone', globals: PHONE, render: () => <PreRegisterScreen device="phone" visits={MY_VISITORS} today={TODAY} approval /> };
 export const PhoneInvite: S = { name: 'Invite · phone', globals: PHONE, render: () => <PreRegisterScreen device="phone" visits={MY_VISITORS} today={TODAY} formOpen /> };
+// Visitors slice 2 (10 Nov 2026): the walk-in approval card on the web (the host's photo view; reception after the timeout).
+export const Approval: S = { name: 'Walk-in approval card', render: () => <PreRegisterScreen visits={MY_VISITORS} today={TODAY} approval /> };
+// Answer 711 (10 Nov 2026): the host sends a colleague; the colleague gets the card with their own minutes.
+export const ApprovalSend: S = { name: 'Walk-in approval · send someone', render: () => <PreRegisterScreen visits={MY_VISITORS} today={TODAY} approval sendOpen /> };

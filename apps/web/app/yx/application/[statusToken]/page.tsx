@@ -24,9 +24,11 @@ export default function YxApplicationStatusPage() {
     };
   }, [statusToken]);
   const status: ApplicationStatusView | null = data
-    ? { jobTitle: data.jobTitle, location: data.location ?? null, appliedAt: new Date(data.appliedAt), bucket: data.statusBucket, toolNotice: data.toolNotice ? { ...data.toolNotice, requestedAt: data.toolNotice.requestedAt ? new Date(data.toolNotice.requestedAt) : null } : null }
+    ? { jobTitle: data.jobTitle, location: data.location ?? null, appliedAt: new Date(data.appliedAt), bucket: data.statusBucket, toolNotice: data.toolNotice ? { ...data.toolNotice, requestedAt: data.toolNotice.requestedAt ? new Date(data.toolNotice.requestedAt) : null } : null, whatsapp: data.whatsapp ?? null }
     : null;
   // Answer 502: a New York City candidate asks for another process than the automated tool.
   const onAskAlternative = async () => setData(await publicPost<ApplicationStatus>(`/applications/${encodeURIComponent(statusToken)}/alternative-process`, {}));
-  return <ApplicationStatusScreen brand={candidateBrand(data)} state={state} status={status} onAskAlternative={onAskAlternative} />;
+  // Answer 561: tick or untick "Message me on WhatsApp about jobs".
+  const onWhatsapp = async (optIn: boolean) => setData(await publicPost<ApplicationStatus>(`/applications/${encodeURIComponent(statusToken)}/whatsapp`, { optIn }));
+  return <ApplicationStatusScreen brand={candidateBrand(data)} state={state} status={status} onAskAlternative={onAskAlternative} onWhatsapp={onWhatsapp} />;
 }
