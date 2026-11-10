@@ -52,15 +52,16 @@ built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Plans, requisitions, jobs and costs | 4 | 36 | 1 | 0 | 0 | 0 | 37 |
+| A. Plans, requisitions, jobs and costs | 4 | 37 | 1 | 0 | 0 | 0 | 38 |
 | B. Candidates, pipeline and interviews | 8 | 55 | 1 | 0 | 9 | 1 | 66 |
 | C. Offers, BGV and joining | 4 | 23 | 4 | 0 | 1 | 0 | 28 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 25 | 0 | 0 | 3 | 4 | 32 |
 | E. Staffing agency | 8 | 32 | 12 | 0 | 16 | 0 | 60 |
 | F. Compliance and fairness | 5 | 17 | 2 | 0 | 11 | 0 | 30 |
 | G. Careers site, portals and settings | 4 | 62 | 4 | 2 | 9 | 0 | 77 |
-| **All Hiring design groups (A–G)** | **37** | **273** | **29** | **2** | **28** | **5** | **337** |
+| **All Hiring design groups (A–G)** | **37** | **274** | **29** | **2** | **28** | **5** | **338** |
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 5 | 0 | 5 | 5 | 0 | 15 |
+Recounted by script 13 Nov 2026 on `feat/yukthix-hiring-keys`: HIR-02 gained the drawn No access story (re-walk of answer 476); A–G 274 live, 29 gap, 2 wire, 28 not built, 5 phone, of 338.
 Recounted by script on `test/yukthix-main` after merging round 4 (442, 452, 473, 474): A–G 273 live, 29 gap, 2 wire, 28 not built, 5 phone, of 337.
 Recounted by script on `test/yukthix-main` after merging the Hiring walk-through fixes: A–G 270 live, 29 gap, 2 wire, 28 not built, 5 phone, of 334.
 Recounted by script on `test/yukthix-main` after merging staffing slice 3 (invoices, collections, fees, e-invoice banner, client portal) and answers 482-484, 489: A–G 267 live, 29 gap, 2 wire, 28 not built, 5 phone, of 331.
@@ -245,6 +246,7 @@ missing field and focuses the first; also on People › My team and the plan boa
 | Empty · Empty | live | no requisitions |
 | Loading · Loading | live | while `GET hiring/requisitions` loads |
 | Error · Error | live | it fails; Retry |
+| NoAccess · No access · no requisition key | live | drawn 13 Nov 2026 (re-walk of answer 476): a plain employee opening the page by address is told so; nothing is asked of the API |
 | Approver · Approver · approve or send back | live | the holder of the approval task (`myTaskId`): Approve, or Send back with a required reason, through `/workflow/approvals/tasks/:id/decide` (answer 257) |
 | CancelRequisition · Cancel requisition · reason | live | `POST hiring/requisitions/:id/cancel` with a reason (`pipeline:manage`; withdraws a waiting approval, closes the job; refused once filled; audited; answer 253) |
 | HiringManagerCancel · Hiring manager · cancel own waiting requisition | live | the same `POST hiring/requisitions/:id/cancel` with a reason for `ats.requisition.raise`: only the manager's own requisition (else 404), only while it waits for approval (else 409 with the reason), never while acting; audited `by: hiring_manager` (answer 293) |
@@ -1943,8 +1945,8 @@ with In pipeline summed. Screenshots and the per-page results are in the walk re
 - (511) Interviews, scorecards, comments, the notetaker and the candidate's résumé (new `GET hiring/interviews/:id/resume`,
   audited) open by panel membership (or overseeing the job), not by a role key; someone on no panel sees none and is
   refused one (403), another company 404. Hiring home and the menu (Interviews) show for anyone on a panel. Still to do,
-  waiting for the coordinator's go-ahead on the counts: taking `results:view` and `interview:view_assigned` out of the
-  default employee role (`panel`) and from company overrides that still equal it.
+  done in migration `202617t0000000_panel_role_interviewer_keys`: `results:view` and `interview:view_assigned` leave the
+  default employee role (`panel`) and any company override that still equals it exactly (audited); seed.ts matches.
 - (515) `GET organizations/job-boards/names` (`pipeline:manage` or the settings key): id, name and kind only; the job's
   Settings tab picks boards from it. The full list, feed tokens and credentials stay with the settings key.
 ## Founder questions from answers 511 and 515 (13 Nov 2026)

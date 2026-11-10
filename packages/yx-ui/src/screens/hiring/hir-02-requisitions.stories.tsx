@@ -18,6 +18,8 @@ export const NewRequisition: S = { name: 'New requisition sheet', render: () => 
 export const Empty: S = { name: 'Empty', render: () => <RequisitionsScreen rows={[]} planLines={PLAN_LINES} persona="hm" /> };
 export const Loading: S = { name: 'Loading', render: () => <RequisitionsScreen rows={[]} planLines={PLAN_LINES} persona="recruiter" state="loading" /> };
 export const Error: S = { name: 'Error', render: () => <RequisitionsScreen rows={[]} planLines={PLAN_LINES} persona="recruiter" state="error" /> };
+// Drawn 13 Nov 2026 (re-walk of answer 476): opened by a plain employee with no requisition key.
+export const NoAccess: S = { name: 'No access · no requisition key', render: () => <RequisitionsScreen rows={[]} planLines={PLAN_LINES} persona="hm" state="no-access" /> };
 export const Approver: S = { name: 'Approver · approve or send back', render: () => <RequisitionsScreen rows={REQUISITIONS} planLines={PLAN_LINES} persona="recruiter" openId="r2" approver now={TODAY} /> };
 export const CancelRequisition: S = { name: 'Cancel requisition · reason', render: () => <RequisitionsScreen rows={REQUISITIONS} planLines={PLAN_LINES} persona="recruiter" cancelId="r2" now={TODAY} /> };
 // Founder answer 293: a hiring manager cancels their own requisition while it waits for approval, with a reason.
