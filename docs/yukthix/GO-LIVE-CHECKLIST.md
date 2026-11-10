@@ -117,3 +117,5 @@ Things deliberately left for launch. Development runs locally until then (test k
 - [ ] **Bias audit law row.** Counsel checks HIR.BIAS_AUDIT (NYC Local Law 144: the city names that count as New York
       City, the 12 months an audit lasts, the sex and race / ethnicity categories; marked verify) before any company turns on
       "We use an automated tool for jobs in New York City" (HIR-23, 13 Nov 2026).
+- [ ] **NYC notice days and AI notes.** Counsel confirms whether the 10 business days skip US public holidays, and
+      whether AI notes on past candidates need their own notice (Hiring answers 501, 503, 10 Nov 2026).

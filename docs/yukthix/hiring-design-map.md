@@ -1667,6 +1667,15 @@ selected candidate starts onboarding from the card later; (482) bench pay as a p
 stays manual; (483) a nightly job puts own-payroll people on the bench the day after the last day; (484) 13% statutory
 cost (employer PF and ESI) for companies with those registrations; (489) a duplicate override with a reason, audited, for
 an account manager.
+Founder approved, 10 Nov 2026 (questions 491-505 and 511-515, all as suggested): (491) client portal interviews with
+HIR-06 scheduling, tickets through the help desk later; (492) a GST invoice PDF (r.46 fields) next, then a Tally/Zoho
+export; (493) a daily payment reminder email to billing contacts, paused by a dispute; (494) raise the fee invoice and the
+guarantee credit from the placement record; (495) e-invoicing per legal entity later; (496) link confirmed vendor invoices
+to the consultant payouts (PAY 8); (497) Time timesheets flow in later; (498) keep; (499) allow paise in the money field;
+(500) client picker later; (501, 503) counsel (go-live list); (502) email the notice to hand-added NYC candidates and let
+the recruiter record their request; (504, 505) keep; (511) interviewer keys only for people on an interview panel, an
+employee's Hiring menu is Referrals and Internal jobs; (512, 513) keep; (514) bulk-offer CTC starts blank and Next asks
+for it; (515) recruiting reads job-board names (never keys).
 ## HIR-27 bulk interview day and answer 392 built (14 Nov 2026, branch `feat/yukthix-hir-27`)
 - HIR-27: see its section above. Interview days open from Hiring › Interviews (a new "Interview days" button, drawn on the
   HIR-06 header).
