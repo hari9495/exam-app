@@ -370,7 +370,7 @@ describe('pageLink: Speak up and its set-up name themselves (HLP-06)', () => {
   });
 
   it('contract labour CL-1: Contractors for the contractor keys, Settings 4.9 without payroll; never in support', () => {
-    expect(labels(nav(['clra.contractor.view']), 'contract')).toEqual(['Contractors', 'Contract workers', 'Attendance', 'Vendor compliance', 'Registers & returns']);
+    expect(labels(nav(['clra.contractor.view']), 'contract')).toEqual(['Contractors', 'Contract workers', 'Attendance', 'Vendor compliance', 'Registers & returns', 'Client establishments', 'Own licences', 'Client compliance packs']);
     expect(labels(nav(['clra.contractor.manage']), 'settings')).toContain('Contract labour');
     expect(labels(nav(['clra.settings.manage']), 'settings')).toContain('Contract labour');
     expect(areas(nav(['clra.settings.manage']))).not.toContain('contract');
