@@ -32,7 +32,8 @@ export function thresholdText(law: ClraSettingsData['law']): string {
   return new Set(texts.map((x) => x.t)).size === 1 ? texts[0]!.t : texts.map((x) => `${STATE_NAMES[x.s] ?? x.s}: ${x.t}`).join('; ');
 }
 
-const LIVE = new Set(['clra.threshold', 'clra.licence_check', 'clra.licence_alerts', 'clra.min_age', 'clra.induction_required', 'clra.induction_months']);
+const LIVE = new Set(['clra.threshold', 'clra.licence_check', 'clra.licence_alerts', 'clra.min_age', 'clra.induction_required', 'clra.induction_months', 'clra.doc_cutoff', 'clra.payment_hold']);
+const HOLD_LABELS: Record<string, string> = { hold: 'Hold, compliance owner can release with a reason', alert: 'Alert only' };
 
 export function clraSettingsPage(design: SettingsPageDef, data: ClraSettingsData): SettingsPageDef {
   const verify = data.law.some((r) => r.verify) ? ' (verify)' : '';
@@ -47,6 +48,9 @@ export function clraSettingsPage(design: SettingsPageDef, data: ClraSettingsData
     // CL-2 (answer 632): the induction before the gate pass and how long it lasts.
     if (d.key === 'clra.induction_required') return 'clra.induction_required' in data.values ? { ...base, kind: 'toggle', scope: 'Company', value: data.values['clra.induction_required'] === 'on', starter: data.values['clra.induction_required'] === data.defaults['clra.induction_required'] } : null;
     if (d.key === 'clra.induction_months') return 'clra.induction_months' in data.values ? { ...base, kind: 'select', scope: 'Company', options: data.choices['clra.induction_months'] ?? [], value: data.values['clra.induction_months']!, starter: data.values['clra.induction_months'] === data.defaults['clra.induction_months'] } : null;
+    // CL-4 (answer 634): when a month's proofs are due, and the payment hold.
+    if (d.key === 'clra.doc_cutoff') return 'clra.doc_cutoff' in data.values ? { ...base, kind: 'number', scope: 'Company', value: Number(data.values['clra.doc_cutoff']), starter: data.values['clra.doc_cutoff'] === data.defaults['clra.doc_cutoff'] } : null;
+    if (d.key === 'clra.payment_hold') return 'clra.payment_hold' in data.values ? { ...base, kind: 'radio', scope: 'Company', options: ['hold', 'alert'], optionLabels: HOLD_LABELS, value: data.values['clra.payment_hold']!, starter: data.values['clra.payment_hold'] === data.defaults['clra.payment_hold'] } : null;
     if (!('clra.licence_alerts' in data.values)) return null; // an older API: never shown with a sample value
     const options = data.choices['clra.licence_alerts'] ?? [];
     const v = data.values['clra.licence_alerts']!;
@@ -69,5 +73,7 @@ export function clraSettingsChanges(values: Record<string, SettingValue>): { key
     ...(Array.isArray(v) ? [{ key: 'clra.licence_alerts', value: [...v].map(String).sort((a, b) => Number(b) - Number(a)).join(',') }] : []),
     ...('clra.induction_required' in values ? [{ key: 'clra.induction_required', value: values['clra.induction_required'] === true ? 'on' : 'off' }] : []),
     ...('clra.induction_months' in values ? [{ key: 'clra.induction_months', value: String(values['clra.induction_months']) }] : []),
+    ...('clra.doc_cutoff' in values ? [{ key: 'clra.doc_cutoff', value: String(values['clra.doc_cutoff']) }] : []),
+    ...('clra.payment_hold' in values ? [{ key: 'clra.payment_hold', value: String(values['clra.payment_hold']) }] : []),
   ];
 }

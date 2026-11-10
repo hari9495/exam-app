@@ -12,3 +12,4 @@ export const Verify: S = { name: 'Proof verification · short challan', render: 
 export const Override: S = { name: 'Payment hold override with reason', render: () => <VendorComplianceScreen {...base} overrideOpen /> };
 export const Finance: S = { name: 'Finance view (no override)', render: () => <VendorComplianceScreen {...base} persona="fin" /> };
 export const AllClear: S = { name: 'All verified', render: () => <VendorComplianceScreen {...base} matrix={PACK_MATRIX.map((m) => ({ ...m, statuses: m.statuses.map((s) => (s === 'Not required' ? s : 'Verified')) }))} alerts={[]} /> };
+export const PayByUs: S = { name: 'Record payment by us (CL-4)', render: () => <VendorComplianceScreen {...base} payOpen /> };

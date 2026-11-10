@@ -37,13 +37,14 @@ const live = (p: Partial<LiveContractorPortal> = {}): LiveContractorPortal => ({
 });
 
 describe('T9-13 contractor portal (live)', () => {
-  it('what is due, the licence with its renewal upload, work orders; no packs or bills yet', () => {
+  it('what is due, the licence with its renewal upload, work orders; the packs and bills tabs', () => {
     show(<ContractorPortalScreen live={live()} />);
     expect(screen.getByText(/Upload the renewed licence\./)).toBeInTheDocument();
     expect(screen.getByText('WO/7')).toBeInTheDocument();
     expect(screen.getByText('14 of 20 allowed')).toBeInTheDocument();
-    expect(screen.queryByText('Monthly packs')).not.toBeInTheDocument();
-    expect(screen.queryByText('Bills')).not.toBeInTheDocument();
+    // CL-4: the packs and bills tabs.
+    expect(screen.getByRole('link', { name: 'Monthly packs' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Bills' })).toBeInTheDocument();
   });
 
   it('renewal: every missing field named and nothing sent', async () => {

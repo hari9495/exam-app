@@ -1,7 +1,7 @@
 // T9-13 contractor portal, the parts CL-3 makes live (answers 631, 636, 678): what is due, licences per site with their
 // renewal, work orders, and the workers with the add-worker form. The designed ContractorPortalScreen and its live path
 // render these same pieces; the design passes sample rows and no actions, live passes the contractor's own records.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, Upload } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
@@ -76,6 +76,12 @@ export interface PortalWorkerInput {
   fromOn: string;
   toOn: string | null;
 }
+export interface MinWageHint {
+  monthly: string;
+  daily: string;
+  source: string;
+  verify: boolean;
+}
 export interface PortalCheck {
   id: string;
   status: 'pass' | 'fail' | 'warn';
@@ -88,6 +94,21 @@ const focusOn = (id: string) => setTimeout(() => document.getElementById(id)?.fo
 const errText = (e: unknown) => (e instanceof Error && e.message ? e.message : 'That did not save. Try again.');
 const DUE_ICON: Record<PortalDue['tone'], BadgeTone> = { danger: 'danger', warning: 'warning', info: 'info' };
 const DUE_WORD: Record<PortalDue['tone'], string> = { danger: 'Act now', warning: 'Soon', info: 'Waiting' };
+
+/** Answer 685: the minimum wage for the chosen site and skill (from the company's rule sets; verify). */
+export function useMinWage(site: string | null, skill: string, fetch?: (locationId: string, skill: string) => Promise<MinWageHint | null>, fixed: MinWageHint | null = null) {
+  const [hint, setHint] = useState<MinWageHint | null>(fixed);
+  useEffect(() => {
+    if (!site || !fetch) return;
+    let live = true;
+    fetch(site, skill).then((h) => live && setHint(h), () => live && setHint(null));
+    return () => {
+      live = false;
+    };
+  }, [site, skill, fetch]);
+  return hint;
+}
+export const hintText = (h: MinWageHint | null) => (h ? `Minimum ₹${h.monthly} a month (₹${h.daily} a day): ${h.source}${h.verify ? ', verify' : ''}.` : undefined);
 
 /** What the contractor has to do or is waiting for (licence renewals, gate passes, approvals). */
 export function ClDue({ items }: { items: PortalDue[] }) {
@@ -240,7 +261,7 @@ const CHECK_WORD: Record<PortalCheck['status'], string> = { pass: 'Passed', fail
  * digits are kept; the company's checks (age, licence, licence maximum, the same ID) run before anything is saved, with
  * no override; the worker then waits for site approval and the gate pass.
  */
-export function ClWorkerList({ workers, sites, today, adding: addingAtStart = false, design, onCheck, onAdd }: {
+export function ClWorkerList({ workers, sites, today, adding: addingAtStart = false, design, onCheck, onAdd, onMinWage }: {
   workers: PortalWorker[];
   sites: { id: string; name: string }[];
   today: Date;
@@ -249,6 +270,8 @@ export function ClWorkerList({ workers, sites, today, adding: addingAtStart = fa
   design?: { dob: Date; siteId: string; checks: PortalCheck[] };
   onCheck?: (input: PortalWorkerInput) => Promise<PortalCheck[]>;
   onAdd?: (input: PortalWorkerInput) => Promise<unknown>;
+  /** Answer 685: the minimum wage for a site and skill. */
+  onMinWage?: (locationId: string, skill: string) => Promise<MinWageHint | null>;
 }) {
   const [adding, setAdding] = useState(addingAtStart || Boolean(design));
   return (
@@ -291,12 +314,12 @@ export function ClWorkerList({ workers, sites, today, adding: addingAtStart = fa
         )}
       </Card>
       {sites.length === 0 && <InlineAlert tone="warning" title="No site to deploy to">You can add workers once the company has a valid licence of yours on record for one of its sites.</InlineAlert>}
-      {adding && sites.length > 0 && <AddWorkerForm sites={sites} today={today} design={design} onCheck={onCheck} onAdd={onAdd} onClose={() => setAdding(false)} />}
+      {adding && sites.length > 0 && <AddWorkerForm sites={sites} today={today} design={design} onCheck={onCheck} onAdd={onAdd} onMinWage={onMinWage} onClose={() => setAdding(false)} />}
     </div>
   );
 }
 
-function AddWorkerForm({ sites, today, design, onCheck, onAdd, onClose }: { sites: { id: string; name: string }[]; today: Date; design?: { dob: Date; siteId: string; checks: PortalCheck[] }; onCheck?: (input: PortalWorkerInput) => Promise<PortalCheck[]>; onAdd?: (input: PortalWorkerInput) => Promise<unknown>; onClose: () => void }) {
+function AddWorkerForm({ sites, today, design, onCheck, onAdd, onMinWage, onClose }: { sites: { id: string; name: string }[]; today: Date; design?: { dob: Date; siteId: string; checks: PortalCheck[] }; onCheck?: (input: PortalWorkerInput) => Promise<PortalCheck[]>; onAdd?: (input: PortalWorkerInput) => Promise<unknown>; onMinWage?: (locationId: string, skill: string) => Promise<MinWageHint | null>; onClose: () => void }) {
   const toast = useToastIfAny();
   const [site, setSite] = useState<string | null>(design?.siteId ?? (sites.length === 1 ? sites[0]!.id : null));
   const [given, setGiven] = useState(design ? 'Ramesh' : '');
@@ -312,6 +335,7 @@ function AddWorkerForm({ sites, today, design, onCheck, onAdd, onClose }: { site
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
+  const hint = useMinWage(site, skill, onMinWage, design ? { monthly: '14820.00', daily: '570.00', source: 'TN 2026-04, zone A, unskilled', verify: true } : null);
   const bad = {
     site: !site ? 'Choose the site.' : null,
     name: !given.trim() ? 'Enter the worker’s name.' : null,
@@ -379,7 +403,7 @@ function AddWorkerForm({ sites, today, design, onCheck, onAdd, onClose }: { site
         <FormField id="aw-skill" label="Skill category" required>
           <Segment label="Skill category" options={[...SKILLS]} value={skill} onChange={(v) => setSkill(v)} />
         </FormField>
-        <FormField id="aw-wage" label="Monthly wage you pay" optional>
+        <FormField id="aw-wage" label="Monthly wage you pay" optional helper={hintText(hint)}>
           <CurrencyField value={wage} onChange={setWage} />
         </FormField>
         <FieldRow>
@@ -405,5 +429,246 @@ function AddWorkerForm({ sites, today, design, onCheck, onAdd, onClose }: { site
         )}
       </div>
     </Card>
+  );
+}
+
+/* ---------------- CL-4: monthly packs and bills (answers 626, 634) ---------------- */
+
+export type PortalProofKind = 'pf_challan' | 'esi_challan' | 'wage_register' | 'bank_proof';
+export type PortalPackStatus = 'open' | 'submitted' | 'verified' | 'discrepancy' | 'overdue';
+export interface PortalPackSummary {
+  month: string;
+  site: { id: string; name: string };
+  due: string;
+  status: PortalPackStatus;
+}
+export interface PortalPack {
+  site: { id: string; name: string };
+  month: string;
+  due: Date;
+  status: PortalPackStatus;
+  items: Record<PortalProofKind, { state: 'submitted' | 'verified' | 'discrepancy'; note: string | null; fileName: string; workersCovered: number | null; amount: string | null } | null>;
+  workers: { deploymentId: string; name: string; idMasked: string; skill: string; line: { days: number; gross: string; paidOn: string } | null; minimum: { monthly: string; daily: string; source: string; verify: boolean } | null; short: string | null }[];
+  checks: { id: string; label: string; status: 'pass' | 'fail' | 'pending'; detail?: string }[];
+}
+export interface PortalUploadInput {
+  kind: PortalProofKind;
+  workersCovered?: number;
+  amount?: string;
+  lines?: { deploymentId: string; days: number; gross: string; paidOn: string }[];
+}
+export interface PortalBill {
+  id: string;
+  no: string;
+  period: string;
+  amount: number;
+  tds: number | null;
+  recovery: number;
+  net: number | null;
+  status: 'Paid' | 'Rejected' | 'On hold' | 'Being checked' | 'Due';
+  paidOn: string | null;
+}
+
+const PROOF_LABEL: Record<PortalProofKind, string> = { pf_challan: 'PF ECR and challan', esi_challan: 'ESI challan', wage_register: 'Wage register (each worker’s days and pay)', bank_proof: 'Wage payment proof (bank statement)' };
+const STATE_TONE: Record<'submitted' | 'verified' | 'discrepancy' | 'missing', { tone: BadgeTone; text: string }> = {
+  submitted: { tone: 'info', text: 'Being checked' },
+  verified: { tone: 'success', text: 'Verified' },
+  discrepancy: { tone: 'danger', text: 'Discrepancy' },
+  missing: { tone: 'warning', text: 'Not uploaded' },
+};
+const PACK_TONE: Record<PortalPackStatus, { tone: BadgeTone; text: string }> = { open: { tone: 'neutral', text: 'Open' }, submitted: { tone: 'info', text: 'Submitted' }, verified: { tone: 'success', text: 'Verified' }, discrepancy: { tone: 'danger', text: 'Discrepancy' }, overdue: { tone: 'danger', text: 'Overdue' } };
+const CHECK_STATE: Record<'pass' | 'fail' | 'pending', { tone: BadgeTone; text: string }> = { pass: { tone: 'success', text: 'Passed' }, fail: { tone: 'danger', text: 'Failed' }, pending: { tone: 'neutral', text: 'Waiting' } };
+const monthText = (m: string) => new Date(`${m}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+
+/** The months and sites a pack is owed for; one opens its proofs. */
+export function ClPackList({ items, onOpen }: { items: PortalPackSummary[]; onOpen: (p: PortalPackSummary) => void }) {
+  if (items.length === 0) return <EmptyState title="No packs owed yet." description="A pack is owed for each site and month you had workers deployed." />;
+  return (
+    <Card title="Monthly packs">
+      <ul className="yx-ps-list" aria-label="Monthly packs">
+        {items.map((p) => (
+          <li key={`${p.site.id}-${p.month}`}>
+            <div className="yx-ps-list__main">
+              <span className="yx-ps-list__title">{p.site.name} · {monthText(p.month)}</span>
+              <span className="yx-ps-list__meta">Due by {formatDate(new Date(`${p.due}T00:00:00`))}</span>
+            </div>
+            <Badge tone={PACK_TONE[p.status].tone}>{PACK_TONE[p.status].text}</Badge>
+            <Button size="sm" onClick={() => onOpen(p)}>Open</Button>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+/** One month's pack for a site: each proof with its upload, the workers' pay against the minimum wage, the checks. */
+export function ClPackView({ pack, today, onBack, onUpload, uploading: uploadingAtStart = null }: { pack: PortalPack; today: Date; onBack?: () => void; onUpload?: (input: PortalUploadInput, file: File) => Promise<unknown>; uploading?: PortalProofKind | null }) {
+  const [uploading, setUploading] = useState<PortalProofKind | null>(uploadingAtStart);
+  const late = pack.due < today && pack.status !== 'verified';
+  return (
+    <div className="yx-ps-stack">
+      <div className="yx-ps-row" data-between>
+        <h1 className="yx-ps-h">
+          {pack.site.name} · {monthText(pack.month)}
+        </h1>
+        <Badge tone={PACK_TONE[pack.status].tone}>{PACK_TONE[pack.status].text}</Badge>
+      </div>
+      <p className="yx-ps-muted">
+        Due by {formatDate(pack.due)}{late ? ' (late)' : ''}. Bills are held while a pack is overdue or has a discrepancy.{onBack && ' '}
+        {onBack && <Button size="sm" onClick={onBack}>All packs</Button>}
+      </p>
+      <div className="yx-split">
+        <div className="yx-split__main">
+          <Card title="Proofs">
+            <ul className="yx-ps-list">
+              {(Object.keys(PROOF_LABEL) as PortalProofKind[]).map((k) => {
+                const i = pack.items[k];
+                const st = STATE_TONE[i?.state ?? 'missing'];
+                return (
+                  <li key={k}>
+                    <div className="yx-ps-list__main">
+                      <span className="yx-ps-list__title">{PROOF_LABEL[k]}</span>
+                      {i?.note && <span className="yx-ps-list__meta">{i.note}</span>}
+                      {i?.workersCovered !== null && i?.workersCovered !== undefined && <span className="yx-ps-list__meta">Covers {i.workersCovered} workers · ₹{i.amount}</span>}
+                    </div>
+                    <Badge tone={st.tone}>{st.text}</Badge>
+                    {i?.state !== 'verified' && uploading !== k && (
+                      <Button size="sm" icon={Upload} onClick={() => setUploading(k)}>
+                        {i ? 'Replace' : 'Upload'}
+                      </Button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
+          {uploading && <ProofForm kind={uploading} pack={pack} onClose={() => setUploading(null)} onSave={(input, file) => (onUpload ? onUpload(input, file) : Promise.resolve())} />}
+        </div>
+        <div className="yx-split__aside">
+          <Card title="Automatic checks">
+            <ul className="yx-ps-list">
+              {pack.checks.map((c) => (
+                <li key={c.id}>
+                  <div className="yx-ps-list__main">
+                    <span className="yx-ps-list__title">{c.label}</span>
+                    {c.detail && <span className="yx-ps-list__meta">{c.detail}</span>}
+                  </div>
+                  <Badge tone={CHECK_STATE[c.status].tone}>{CHECK_STATE[c.status].text}</Badge>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProofForm({ kind, pack, onClose, onSave }: { kind: PortalProofKind; pack: PortalPack; onClose: () => void; onSave: (input: PortalUploadInput, file: File) => Promise<unknown> }) {
+  const toast = useToastIfAny();
+  const challan = kind === 'pf_challan' || kind === 'esi_challan';
+  const [covered, setCovered] = useState<number | null>(null);
+  const [amount, setAmount] = useState<number | null>(null);
+  const [lines, setLines] = useState(pack.workers.map((w) => ({ deploymentId: w.deploymentId, days: w.line?.days ?? null as number | null, gross: w.line ? Number(w.line.gross) : (null as number | null), paidOn: w.line ? new Date(`${w.line.paidOn}T00:00:00`) : (null as Date | null) })));
+  const [file, setFile] = useState<File | null>(null);
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const setLine = (i: number, x: Partial<(typeof lines)[number]>) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...x } : l)));
+  const lineBad = (l: (typeof lines)[number]) => l.days === null || l.days < 0 || l.days > 31 || l.gross === null || l.gross < 0 || !l.paidOn;
+  const bad = {
+    covered: challan && (covered === null || covered < 0) ? 'Enter how many workers the challan covers.' : null,
+    amount: challan && (amount === null || amount < 0) ? 'Enter the challan amount.' : null,
+    lines: kind === 'wage_register' && lines.some(lineBad) ? 'Enter every worker’s days (0 to 31), the wage paid and the day it was paid.' : null,
+    file: !file ? 'Attach the proof.' : null,
+  };
+  const save = () => {
+    setTried(true);
+    const order: [keyof typeof bad, string][] = [['covered', `pf-covered`], ['amount', `pf-amount`], ['lines', `pf-lines`], ['file', `pf-file`]];
+    const miss = order.find(([k]) => bad[k]);
+    if (miss) return focusOn(miss[1]);
+    setBusy(true);
+    setFailed(null);
+    const input: PortalUploadInput = { kind, ...(challan ? { workersCovered: covered!, amount: amount!.toFixed(2) } : {}), ...(kind === 'wage_register' ? { lines: lines.map((l) => ({ deploymentId: l.deploymentId, days: l.days!, gross: l.gross!.toFixed(2), paidOn: iso(l.paidOn) })) } : {}) };
+    onSave(input, file!)
+      .then(() => (toast?.toast({ tone: 'success', title: 'Proof uploaded; the company checks it' }), onClose()))
+      .catch((e: unknown) => setFailed(errText(e)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Card title={`Upload ${PROOF_LABEL[kind].split(' (')[0]!.toLowerCase()}`} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={save}>Upload</Button></>}>
+      <div className="yx-ps-stack">
+        {failed && <InlineAlert tone="danger" title={failed} />}
+        {challan && (
+          <FieldRow>
+            <FormField id="pf-covered" label="Workers covered" required error={tried ? bad.covered : null} helper={`${pack.workers.length} deployed at ${pack.site.name} in the month.`}>
+              <NumberField value={covered} onChange={setCovered} min={0} max={100000} />
+            </FormField>
+            <FormField id="pf-amount" label="Amount paid" required error={tried ? bad.amount : null}>
+              <CurrencyField value={amount} onChange={setAmount} allowPaise />
+            </FormField>
+          </FieldRow>
+        )}
+        {kind === 'wage_register' && (
+          <div id="pf-lines" tabIndex={-1} className="yx-ps-stack">
+            {tried && bad.lines && <InlineAlert tone="danger" title={bad.lines} />}
+            {pack.workers.map((w, i) => (
+              <FieldRow key={w.deploymentId}>
+                <FormField id={`pf-days-${i}`} label={`${w.name} · days`} required>
+                  <NumberField value={lines[i]!.days} onChange={(v) => setLine(i, { days: v })} min={0} max={31} />
+                </FormField>
+                <FormField id={`pf-gross-${i}`} label="Wage paid" required helper={w.minimum ? `Minimum ₹${w.minimum.monthly} a month (₹${w.minimum.daily} a day)${w.minimum.verify ? ', verify' : ''}` : undefined}>
+                  <CurrencyField value={lines[i]!.gross} onChange={(v) => setLine(i, { gross: v })} allowPaise />
+                </FormField>
+                <FormField id={`pf-paid-${i}`} label="Paid on" required>
+                  <DatePicker value={lines[i]!.paidOn} onChange={(v) => setLine(i, { paidOn: v })} />
+                </FormField>
+              </FieldRow>
+            ))}
+          </div>
+        )}
+        <FormField id="pf-file" label="Copy" required error={tried ? bad.file : null} helper="PDF, JPG or PNG, up to 10 MB.">
+          <FileUpload id="pf-file" multiple={false} accept={['.pdf', '.jpg', '.png']} upload={async (x) => void setFile(x)} onItemsChange={(items) => !items.length && setFile(null)} />
+        </FormField>
+      </div>
+    </Card>
+  );
+}
+
+/** The contractor's bills: TDS, wages the company paid workers itself and took back, and any hold. */
+export function ClBillList({ bills, held }: { bills: PortalBill[]; held: string[] }) {
+  return (
+    <div className="yx-ps-stack">
+      {held.length > 0 && (
+        <InlineAlert tone="warning" title="Your bills are on hold">
+          Proofs for {held.map(monthText).join(', ')} are overdue or have a discrepancy. Fix them in Monthly packs; the company pays once they are verified.
+        </InlineAlert>
+      )}
+      <Card title="Bills and payments">
+        {bills.length === 0 ? (
+          <p className="yx-ps-muted">No bills yet.</p>
+        ) : (
+          <ul className="yx-ps-list">
+            {bills.map((b) => (
+              <li key={b.id}>
+                <div className="yx-ps-list__main">
+                  <span className="yx-ps-list__title">
+                    <span className="yx-ps-mono">{b.no}</span> · {monthText(b.period)}
+                  </span>
+                  <span className="yx-ps-list__meta">
+                    {formatINR(b.amount)}
+                    {b.tds !== null ? ` · TDS ${formatINR(b.tds)}` : ''}
+                    {b.recovery > 0 ? ` · wages we paid your workers ${formatINR(b.recovery)}` : ''}
+                    {b.net !== null ? ` · paid to you ${formatINR(b.net)}` : ''}
+                    {b.paidOn ? ` · paid ${formatDate(new Date(`${b.paidOn}T00:00:00`))}` : ''}
+                  </span>
+                </div>
+                <Badge tone={b.status === 'Paid' ? 'success' : b.status === 'On hold' || b.status === 'Rejected' ? 'danger' : 'warning'}>{b.status}</Badge>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    </div>
   );
 }

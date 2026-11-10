@@ -23,12 +23,13 @@ import { BarChart } from '../../components/charts';
 import { Stepper } from '../../components/stepper';
 import { formatDate, formatINR } from '../../lib/format';
 import type { FilterValue } from '../../lib/table';
-import { Actions, CardGrid, CheckList, Facts, OpsDesk, PhotoPlaceholder, ReceiptImage, StatusTrail, useSay, type CheckRow } from './ops-kit';
+import { Actions, CardGrid, CheckList, Facts, OpsDesk, PhotoPlaceholder, StatusTrail, useSay, type CheckRow } from './ops-kit';
 import { Segment } from '../../components/segment';
-import { challanShortfall, deployBlocks, expiryTone } from './ops-rules';
+import { hintText, useMinWage, type MinWageHint } from '../portals/contractor-portal';
+import { deployBlocks, expiryTone } from './ops-rules';
 import type { ListState } from './helpdesk';
 import type { ContractWorker, Contractor, Licence, ProofStatus, WorkOrder } from './contract-data';
-import { LiveContractors, LiveWorkers, type ContractorsLive, type WorkersLive } from './contract-live';
+import { LiveContractors, LiveVendorCompliance, LiveWorkers, type ContractorsLive, type VendorComplianceLive, type WorkersLive } from './contract-live';
 
 const multi = (key: string, label: string, values: string[]): FilterFieldDef => ({ key, label, type: 'multi', options: values.map((v) => ({ value: v, label: v })) });
 function applyFilters<R>(rows: R[], filters: FilterValue[]): R[] {
@@ -662,6 +663,8 @@ export interface WorkersViewProps {
   onSend?: (input: WorkerInput) => Promise<unknown>;
   onApprove?: (id: string, version: number, induction: { on: string | null; by: string | null }) => Promise<unknown>;
   onRelease?: (id: string, version: number, on: string, reason: string) => Promise<unknown>;
+  /** Answer 685: the minimum wage for a site and skill. */
+  onMinWage?: (locationId: string, skill: string) => Promise<MinWageHint | null>;
 }
 
 const SKILLS = [
@@ -772,6 +775,7 @@ function DeployWorkerSheet(p: WorkersViewProps & { onClose: () => void }) {
   const [to, setTo] = useState<Date | null>(null);
   const [wage, setWage] = useState<number | null>(p.design ? 14820 : null);
   const [checks, setChecks] = useState<CheckRow[] | null>(p.design?.checks ?? null);
+  const hint = useMinWage(f.locationId, f.skill, p.onMinWage, p.design ? { monthly: '14820.00', daily: '570.00', source: 'TN 2026-04, zone A, unskilled', verify: true } : null);
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
@@ -848,7 +852,7 @@ function DeployWorkerSheet(p: WorkersViewProps & { onClose: () => void }) {
             <DatePicker value={to} onChange={setTo} />
           </FormField>
         </FieldRow>
-        <FormField id="dw-wage" label="Monthly wage paid by the contractor" optional helper="Checked against the minimum wage with the contractor's monthly proofs.">
+        <FormField id="dw-wage" label="Monthly wage paid by the contractor" optional helper={hintText(hint) ?? "Checked against the minimum wage with the contractor's monthly proofs."}>
           <CurrencyField value={wage} onChange={setWage} />
         </FormField>
         <FieldRow>
@@ -953,87 +957,323 @@ export interface VendorComplianceProps {
   verifyOpen?: boolean;
   overrideOpen?: boolean;
   persona?: 'compliance' | 'fin';
+  /** CL-4: recording a payment the company made itself (answer 626). */
+  payOpen?: boolean;
+  /** CL-4 live (the page passes it; docs/yukthix/contract-labour-design-map.md). */
+  live?: VendorComplianceLive;
 }
-export function VendorComplianceScreen({ month, proofTypes, matrix, alerts, verifyOpen, overrideOpen, persona = 'compliance' }: VendorComplianceProps) {
-  const [verify, setVerify] = useState(!!verifyOpen);
-  const [override, setOverride] = useState(!!overrideOpen);
-  const short = challanShortfall(12, 14);
-  const { say } = useSay();
+
+/** One contractor's pack for a site and month, as the matrix shows it. */
+export interface VcRow {
+  key: string;
+  contractorId: string;
+  contractor: string;
+  site?: string;
+  month: string;
+  cells: { label: string; status: ProofStatus; itemId?: string; version?: number; fileName?: string; note?: string | null }[];
+  held: boolean;
+  released?: { reason: string } | null;
+  /** The checks for the verification drawer, by proof label. */
+  checks?: Record<string, CheckRow[]>;
+}
+export interface VcAlert {
+  id: string;
+  type: string;
+  contractor: string;
+  contractorId?: string;
+  month: string;
+  detail: string;
+  liability: number | null;
+  severity: string;
+  deploymentId?: string;
+}
+export interface VendorComplianceViewProps {
+  month: string;
+  due?: string;
+  months?: string[];
+  onMonth?: (month: string) => void;
+  holdMode: 'hold' | 'alert';
+  proofLabels: string[];
+  rows: VcRow[];
+  alerts: VcAlert[];
+  canManage: boolean;
+  state?: 'ready' | 'loading' | 'error';
+  onRetry?: () => void;
+  verify?: { row: string; label: string } | null;
+  release?: string | null;
+  pay?: string | null;
+  onVerify?: (itemId: string, version: number) => Promise<unknown>;
+  onDiscrepancy?: (itemId: string, version: number, note: string) => Promise<unknown>;
+  onOpenFile?: (itemId: string) => void;
+  onRelease?: (contractorId: string, month: string, reason: string) => Promise<unknown>;
+  onPayByUs?: (input: { deploymentId: string; month: string; amount: string; paidOn: string; reference: string; reason: string }) => Promise<unknown>;
+}
+
+const SAMPLE_CHECKS: CheckRow[] = [
+  { id: 'p', status: 'pass', label: 'Challan period matches (Aug 2026)' },
+  { id: 'w', status: 'fail', label: 'Workers covered ≥ workers on site', detail: 'Covers 12; 14 deployed in the month. Short by 2.' },
+  { id: 'm', status: 'pass', label: 'Wages at or above minimum wage (IN.MW Tamil Nadu 2026-04, verify)' },
+];
+
+export function VendorComplianceScreen({ month, proofTypes, matrix, alerts, verifyOpen, overrideOpen, payOpen, persona = 'compliance', live }: VendorComplianceProps) {
+  if (live) return <LiveVendorCompliance live={live} />;
+  // The design's four proofs (answer 634 asks for these; PT / LWF is question 741).
+  const labels = proofTypes.filter((p) => p !== 'PT / LWF');
+  const rows: VcRow[] = matrix.map((m, r) => ({
+    key: m.contractor,
+    contractorId: `c${r + 1}`,
+    contractor: m.contractor,
+    site: 'Hosur plant',
+    month,
+    cells: labels.map((label) => ({ label, status: m.statuses[proofTypes.indexOf(label)]!, itemId: `${r}-${label}`, version: 1, fileName: 'challan.pdf', note: m.statuses[proofTypes.indexOf(label)] === 'Discrepancy' ? 'Covers 12; 14 deployed.' : null })),
+    held: m.statuses.some((s) => s === 'Overdue' || s === 'Discrepancy'),
+    checks: Object.fromEntries(labels.map((l) => [l, SAMPLE_CHECKS])),
+  }));
   return (
-    <OpsDesk area="contract" active="Vendor compliance" counts={{ 'Vendor compliance': alerts.length }}>
-      <PageHeader title="Vendor compliance" description={`Monthly proofs from each contractor for ${month} wages, due by 15 Oct 2026. You can be liable for unpaid wages and dues.`} facts={`${alerts.length} liability alerts · estimated exposure ${formatINR(alerts.reduce((s, a) => s + a.liability, 0))}`} />
-      <Card title={`Compliance matrix · ${month}`}>
-        <PlainTable
-          label="Contractor by proof type"
-          rows={matrix}
-          getRowId={(m) => m.contractor}
-          columns={[
-            { key: 'contractor', header: 'Contractor', rowHeader: true, cell: (m) => m.contractor },
-            ...proofTypes.map((p, i) => ({
-              key: p,
-              header: p,
-              cell: (m: (typeof matrix)[number]) => {
-                const s = m.statuses[i]!;
-                return s === 'Discrepancy' || s === 'Submitted' ? (
-                  <button type="button" className="yx-ops-cellbtn" onClick={() => setVerify(true)} aria-label={`${p}, ${m.contractor}: ${s}. Open verification`}>
-                    <Badge tone={PROOF_TONE[s]}>{s}</Badge>
-                  </button>
-                ) : (
-                  <Badge tone={PROOF_TONE[s]}>{s}</Badge>
-                );
-              },
-            })),
-            {
-              key: 'bill',
-              header: 'Bill payment',
-              cell: (m) =>
-                m.statuses.some((s) => s === 'Overdue' || s === 'Discrepancy') ? (
-                  <span className="yx-ops-row"><Badge tone="danger">Held</Badge>{persona === 'compliance' && <Button size="sm" onClick={() => setOverride(true)}>Override</Button>}</span>
-                ) : (
-                  <Badge tone="success">Can be paid</Badge>
-                ),
-            },
-          ]}
-        />
-      </Card>
+    <VendorComplianceView
+      month={month}
+      due="15 Oct 2026"
+      holdMode="hold"
+      proofLabels={labels}
+      rows={rows}
+      alerts={alerts.map((a) => ({ ...a, liability: a.liability || null, deploymentId: a.type === 'Wage below minimum' ? 'w9' : undefined }))}
+      canManage={persona === 'compliance'}
+      verify={verifyOpen ? { row: 'Vetri Security Agency', label: 'ESI challan' } : null}
+      release={overrideOpen ? 'Kaveri Loaders Co-op' : null}
+      pay={payOpen ? 'la4' : null}
+    />
+  );
+}
+
+export function VendorComplianceView(p: VendorComplianceViewProps) {
+  const [verify, setVerify] = useState(p.verify ?? null);
+  const [release, setRelease] = useState<string | null>(p.release ?? null);
+  const [pay, setPay] = useState<string | null>(p.pay ?? null);
+  const { say } = useSay();
+  const row = verify ? p.rows.find((r) => r.key === verify.row) : undefined;
+  const cell = row?.cells.find((c) => c.label === verify?.label);
+  const rel = release ? p.rows.find((r) => r.key === release) : undefined;
+  const alert = pay ? p.alerts.find((a) => a.id === pay) : undefined;
+  const exposure = p.alerts.reduce((s, a) => s + (a.liability ?? 0), 0);
+  const run = (fn: (() => Promise<unknown>) | undefined, title: string, after?: () => void) => (fn ? fn().then(() => (say(title), after?.()), (e: unknown) => say(errText(e))) : Promise.resolve(say(title)));
+  return (
+    <OpsDesk area="contract" active="Vendor compliance" counts={{ 'Vendor compliance': p.alerts.length }}>
+      <PageHeader
+        title="Vendor compliance"
+        description={`Monthly proofs from each contractor for ${p.month} wages${p.due ? `, due by ${p.due}` : ''}. You can be liable for unpaid wages and dues.`}
+        facts={`${p.alerts.length} liability alerts · estimated exposure ${formatINR(exposure)}`}
+        actions={p.months && p.months.length > 1 && p.onMonth ? <Select value={p.month} onChange={(v) => v && p.onMonth!(v)} options={p.months.map((m) => ({ value: m, label: m }))} /> : undefined}
+      />
+      {p.holdMode === 'alert' && <InlineAlert tone="info" title="Bills are not held">Your company chose alerts only (Settings › Contract labour). Overdue or disputed proofs still raise liability alerts.</InlineAlert>}
+      {p.state === 'error' ? (
+        <EmptyState title="This page could not be loaded." action={<Button onClick={p.onRetry}>Try again</Button>} />
+      ) : (
+        <Card title={`Compliance matrix · ${p.month}`}>
+          {p.rows.length === 0 ? (
+            <EmptyState compact title={p.state === 'loading' ? 'Loading…' : 'No contract workers were deployed this month.'} />
+          ) : (
+            <PlainTable
+              label="Contractor by proof type"
+              rows={p.rows}
+              getRowId={(m) => m.key}
+              columns={[
+                { key: 'contractor', header: 'Contractor', rowHeader: true, cell: (m) => (m.site ? <span className="yx-ops-stack" data-gap="sm"><strong>{m.contractor}</strong><span className="yx-ops-muted">{m.site}</span></span> : m.contractor) },
+                ...p.proofLabels.map((label) => ({
+                  key: label,
+                  header: label,
+                  cell: (m: VcRow) => {
+                    const c = m.cells.find((x) => x.label === label)!;
+                    return c.itemId && c.status !== 'Open' && c.status !== 'Overdue' ? (
+                      <button type="button" className="yx-ops-cellbtn" onClick={() => setVerify({ row: m.key, label })} aria-label={`${label}, ${m.contractor}: ${c.status}. Open verification`}>
+                        <Badge tone={PROOF_TONE[c.status]}>{c.status}</Badge>
+                      </button>
+                    ) : (
+                      <Badge tone={PROOF_TONE[c.status]}>{c.status}</Badge>
+                    );
+                  },
+                })),
+                {
+                  key: 'bill',
+                  header: 'Bill payment',
+                  cell: (m: VcRow) =>
+                    m.held ? (
+                      <span className="yx-ops-row">
+                        <Badge tone="danger">Held</Badge>
+                        {p.canManage && <Button size="sm" onClick={() => setRelease(m.key)}>Release</Button>}
+                      </span>
+                    ) : m.released ? (
+                      <Badge tone="warning">Released by the compliance owner</Badge>
+                    ) : (
+                      <Badge tone="success">Can be paid</Badge>
+                    ),
+                },
+              ]}
+            />
+          )}
+        </Card>
+      )}
       <Card title="Liability alerts">
         <DataTable
           label="Liability alerts"
           columns={[
-            { key: 't', header: 'Alert', value: (a: VendorComplianceProps['alerts'][number]) => a.type, width: 200 },
+            { key: 't', header: 'Alert', value: (a: VcAlert) => a.type, width: 200 },
             { key: 'c', header: 'Contractor', value: (a) => a.contractor, width: 200 },
             { key: 'd', header: 'Detail', value: (a) => a.detail, width: 340 },
-            { key: 'l', header: 'Possible liability', type: 'money', value: (a) => a.liability, total: 'sum' },
+            { key: 'l', header: 'Possible liability', type: 'money', value: (a) => a.liability ?? 0, total: 'sum' },
             { key: 's', header: 'Severity', type: 'status', value: (a) => a.severity, statusTone: (v) => (v === 'High' ? 'danger' : 'warning') },
           ]}
-          rows={alerts}
+          rows={p.alerts}
           getRowId={(a) => a.id}
-          rowButtons={() => <Button size="sm">Resolve with note</Button>}
+          rowButtons={(a) => (p.canManage && a.deploymentId ? <Button size="sm" onClick={() => setPay(a.id)}>Record payment by us</Button> : null)}
           empty={<EmptyState compact title="No open alerts." />}
         />
       </Card>
-      <Drawer open={verify} onOpenChange={setVerify} size="full" title="Verify ESI challan · Vetri Security Agency · Aug 2026" subtitle="Uploaded by Selvam K. (contractor login) on 16 Sep 2026. You can verify because you didn't upload it." footer={<><Button>Raise discrepancy</Button><Button variant="primary" onClick={() => say(short > 0 && `The challan covers ${short} fewer ${short === 1 ? 'worker' : 'workers'} than were on site. Raise a discrepancy instead.`)}>Mark verified</Button></>}>
-        <div className="yx-ops-split">
-          <ReceiptImage merchant="ESIC challan 26081544901" amount={9412} date={new Date(2026, 8, 14)} />
-          <CheckList
-            label="Automatic checks"
-            items={[
-              { id: 'p', status: 'pass', label: 'Challan period matches (Aug 2026)' },
-              { id: 'e', status: 'pass', label: 'Employer code matches the contractor (51000812300001001)' },
-              { id: 'w', status: short ? 'fail' : 'pass', label: `Workers covered ≥ workers on site`, detail: `Covers 12; ${12 + short} had site attendance. Short by ${short}.` },
-              { id: 'a', status: 'warn', label: 'Amount consistent with declared wages', detail: 'Declared wages imply ₹11,070; challan ₹9,412' },
-              { id: 'm', status: 'pass', label: 'Wages at or above minimum wage (IN.MW Tamil Nadu 2026-04)' },
-              { id: 'd', status: 'pass', label: 'Days paid ≥ days on site (from kiosk punches)' },
-            ]}
-          />
-        </div>
-      </Drawer>
-      <ConfirmDialog open={override} onOpenChange={setOverride} title="Release Kaveri Loaders Co-op's September bill?" consequence="The pack still has overdue proofs. Releasing it is recorded with your reason in the audit log. Alerts stay open." confirmLabel="Release bill" onConfirm={() => setOverride(false)}>
-        <FormField label="Reason" required>
-          <TextArea rows={3} defaultValue="Contractor paid wages in cash on 6 Sep; payment register seen on site. Proof upload due by 5 Oct." />
-        </FormField>
-      </ConfirmDialog>
+      {row && cell && (
+        <ProofDrawer
+          title={`Verify ${cell.label.toLowerCase()} · ${row.contractor} · ${row.month}`}
+          cell={cell}
+          checks={row.checks?.[cell.label] ?? []}
+          canManage={p.canManage}
+          onClose={() => setVerify(null)}
+          onOpenFile={() => cell.itemId && p.onOpenFile?.(cell.itemId)}
+          onVerify={() => run(p.onVerify && (() => p.onVerify!(cell.itemId!, cell.version ?? 1)), 'Proof verified', () => setVerify(null))}
+          onDiscrepancy={(note) => (p.onDiscrepancy ? p.onDiscrepancy(cell.itemId!, cell.version ?? 1, note) : Promise.resolve())}
+        />
+      )}
+      {rel && <ReleaseHoldDialog contractor={rel.contractor} month={rel.month} onClose={() => setRelease(null)} onRelease={(reason) => (p.onRelease ? p.onRelease(rel.contractorId, rel.month, reason) : Promise.resolve())} />}
+      {alert && <PayByUsDialog alert={alert} onClose={() => setPay(null)} onSave={(input) => (p.onPayByUs ? p.onPayByUs({ deploymentId: alert.deploymentId!, month: alert.month, ...input }) : Promise.resolve())} />}
     </OpsDesk>
+  );
+}
+
+/** Verify a proof or raise a discrepancy with a note (a short challan cannot be verified). */
+function ProofDrawer({ title, cell, checks, canManage, onClose, onOpenFile, onVerify, onDiscrepancy }: { title: string; cell: VcRow['cells'][number]; checks: CheckRow[]; canManage: boolean; onClose: () => void; onOpenFile: () => void; onVerify: () => Promise<unknown>; onDiscrepancy: (note: string) => Promise<unknown> }) {
+  const { say } = useSay();
+  const [raising, setRaising] = useState(false);
+  const [note, setNote] = useState('');
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const open = cell.status === 'Submitted' || cell.status === 'Discrepancy';
+  const raise = () => {
+    setTried(true);
+    if (note.trim().length < 3) return focusOn('pd-note');
+    setBusy(true);
+    setFailed(null);
+    onDiscrepancy(note.trim())
+      .then(() => (say('Discrepancy raised; the contractor is asked to replace the proof'), onClose()))
+      .catch((e: unknown) => setFailed(errText(e)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      size="lg"
+      title={title}
+      subtitle={cell.status === 'Discrepancy' ? `Discrepancy: ${cell.note ?? ''}` : 'Uploaded by the contractor on the portal. Check the copy, then verify or raise a discrepancy.'}
+      notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined}
+      footer={
+        canManage && open ? (
+          raising ? (
+            <>
+              <Button onClick={() => setRaising(false)}>Back</Button>
+              <Button variant="primary" loading={busy} onClick={raise}>Raise discrepancy</Button>
+            </>
+          ) : (
+            <>
+              {cell.status === 'Submitted' && <Button onClick={() => setRaising(true)}>Raise discrepancy</Button>}
+              {cell.status === 'Submitted' && <Button variant="primary" onClick={() => void onVerify()}>Mark verified</Button>}
+            </>
+          )
+        ) : undefined
+      }
+    >
+      <div className="yx-ops-stack">
+        {cell.fileName && (
+          <Actions>
+            <Button size="sm" icon={Download} onClick={onOpenFile}>{cell.fileName}</Button>
+          </Actions>
+        )}
+        <CheckList label="Automatic checks" items={checks} />
+        {raising && (
+          <FormField id="pd-note" label="What is wrong" required error={tried && note.trim().length < 3 ? 'Say what is wrong, so the contractor can fix it.' : null}>
+            <TextArea rows={3} value={note} onChange={setNote} maxLength={500} />
+          </FormField>
+        )}
+      </div>
+    </Drawer>
+  );
+}
+
+/** Answer 634: release a month's hold on the contractor's bills, with a reason (the compliance owner only). */
+function ReleaseHoldDialog({ contractor, month, onClose, onRelease }: { contractor: string; month: string; onClose: () => void; onRelease: (reason: string) => Promise<unknown> }) {
+  const { say } = useSay();
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const go = () => {
+    setTried(true);
+    if (reason.trim().length < 3) return focusOn('rh-reason');
+    setBusy(true);
+    setFailed(null);
+    onRelease(reason.trim())
+      .then(() => (say(`${contractor}'s ${month} bill released`), onClose()))
+      .catch((e: unknown) => setFailed(errText(e)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} size="md" title={`Release ${contractor}'s ${month} bill?`} description="The proofs are still overdue or disputed. Releasing it is recorded with your reason. Alerts stay open." notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={go}>Release bill</Button></>}>
+      <FormField id="rh-reason" label="Reason" required error={tried && reason.trim().length < 3 ? 'Say why the bill can be paid.' : null}>
+        <TextArea rows={3} value={reason} onChange={setReason} maxLength={500} />
+      </FormField>
+    </Dialog>
+  );
+}
+
+/** Answer 626: wages the company paid a worker itself; taken off the contractor's next bill. */
+function PayByUsDialog({ alert, onClose, onSave }: { alert: VcAlert; onClose: () => void; onSave: (input: { amount: string; paidOn: string; reference: string; reason: string }) => Promise<unknown> }) {
+  const { say } = useSay();
+  const [amount, setAmount] = useState<number | null>(alert.liability);
+  const [paidOn, setPaidOn] = useState<Date | null>(null);
+  const [reference, setReference] = useState('');
+  const [reason, setReason] = useState('Wage shortfall paid to the worker.');
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const bad = { amount: !amount || amount <= 0 ? 'Enter the amount paid.' : null, paidOn: !paidOn ? 'Choose the day it was paid.' : null, reference: !reference.trim() ? 'Enter the payment reference.' : null, reason: reason.trim().length < 3 ? 'Say why.' : null };
+  const go = () => {
+    setTried(true);
+    const order: [keyof typeof bad, string][] = [['amount', 'pb-amount'], ['paidOn', 'pb-on'], ['reference', 'pb-ref'], ['reason', 'pb-reason']];
+    const miss = order.find(([k]) => bad[k]);
+    if (miss) return focusOn(miss[1]);
+    setBusy(true);
+    setFailed(null);
+    onSave({ amount: amount!.toFixed(2), paidOn: isoDay(paidOn), reference: reference.trim(), reason: reason.trim() })
+      .then(() => (say('Payment recorded; it comes off the contractor’s next bill'), onClose()))
+      .catch((e: unknown) => setFailed(errText(e)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} size="md" title="Record payment by us" description={`${alert.contractor} · ${alert.detail} The amount is taken off the contractor's next approved bill.`} notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={go}>Record payment</Button></>}>
+      <div className="yx-ops-stack">
+        <FieldRow>
+          <FormField id="pb-amount" label="Amount paid" required error={tried ? bad.amount : null}>
+            <CurrencyField value={amount} onChange={setAmount} allowPaise />
+          </FormField>
+          <FormField id="pb-on" label="Paid on" required error={tried ? bad.paidOn : null}>
+            <DatePicker value={paidOn} onChange={setPaidOn} />
+          </FormField>
+        </FieldRow>
+        <FormField id="pb-ref" label="Payment reference" required error={tried ? bad.reference : null}>
+          <TextField value={reference} onChange={setReference} maxLength={100} />
+        </FormField>
+        <FormField id="pb-reason" label="Reason" required error={tried ? bad.reason : null}>
+          <TextArea rows={2} value={reason} onChange={setReason} maxLength={500} />
+        </FormField>
+      </div>
+    </Dialog>
   );
 }
 

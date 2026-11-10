@@ -3,8 +3,8 @@
 // company's contractors, their licences and renewals, and the actions the person may take. What CL-1 has no data for
 // yet is left out, never shown with sample values: the establishment cards (deployments, CL-2), the work order and
 // the contractor login (CL-3). The server checks every rule again.
-import { ContractorsView, WorkersView, type ContractorInput, type LicenceInput, type RenewalInput, type WorkerInput, type WorkOrderInput } from './contract';
-import type { ContractWorker, Contractor } from './contract-data';
+import { ContractorsView, VendorComplianceView, WorkersView, type VcRow, type ContractorInput, type LicenceInput, type RenewalInput, type WorkerInput, type WorkOrderInput } from './contract';
+import type { ContractWorker, Contractor, ProofStatus } from './contract-data';
 import type { CheckRow } from './ops-kit';
 
 /** GET /contract-labour/contractors. */
@@ -178,6 +178,7 @@ export interface WorkersLive {
   onSend: (input: WorkerInput) => Promise<unknown>;
   onApprove: (id: string, version: number, induction: { on: string | null; by: string | null }) => Promise<unknown>;
   onRelease: (id: string, version: number, on: string, reason: string) => Promise<unknown>;
+  onMinWage?: (locationId: string, skill: string) => Promise<{ monthly: string; daily: string; source: string; verify: boolean } | null>;
 }
 const STATUS: Record<WorkersData['workers'][number]['status'], ContractWorker['status']> = { pending: 'Pending approval', deployed: 'Deployed', released: 'Released' };
 
@@ -221,6 +222,85 @@ export function LiveWorkers({ live }: { live: WorkersLive }) {
       onSend={live.onSend}
       onApprove={live.onApprove}
       onRelease={live.onRelease}
+      onMinWage={live.onMinWage}
     />
   );
 }
+
+/* ---------------- CL-4 live: CLB-03 vendor compliance ---------------- */
+
+type ProofKind = 'pf_challan' | 'esi_challan' | 'wage_register' | 'bank_proof';
+type LiveItem = { id: string; state: 'submitted' | 'verified' | 'discrepancy'; note: string | null; fileName: string; scan: string; workersCovered: number | null; amount: string | null; uploadedAt: string; version: number } | null;
+type LiveCheck = { id: string; label: string; status: 'pass' | 'fail' | 'pending'; detail?: string };
+/** GET /contract-labour/compliance. */
+export interface VendorComplianceData {
+  month: string;
+  due: string;
+  holdMode: 'hold' | 'alert';
+  canManage: boolean;
+  proofTypes: { kind: ProofKind; label: string }[];
+  months: string[];
+  rows: { contractorId: string; contractor: string; site: { id: string; name: string }; month: string; due: string; status: 'open' | 'submitted' | 'verified' | 'discrepancy' | 'overdue'; released: { reason: string; at: string } | null; deployed: number; items: Record<ProofKind, LiveItem>; checks: LiveCheck[]; held: boolean; heldMonths: string[] }[];
+  alerts: { id: string; type: string; contractor: string; contractorId: string; site: string; month: string; detail: string; liability: string | null; severity: 'High' | 'Medium'; deploymentId?: string }[];
+}
+export interface VendorComplianceLive {
+  state: 'loading' | 'ready' | 'error';
+  data: VendorComplianceData | null;
+  onRetry: () => void;
+  onMonth: (month: string) => void;
+  onVerify: (itemId: string, version: number) => Promise<unknown>;
+  onDiscrepancy: (itemId: string, version: number, note: string) => Promise<unknown>;
+  onOpenFile: (itemId: string) => void;
+  onRelease: (contractorId: string, month: string, reason: string) => Promise<unknown>;
+  onPayByUs: (input: { deploymentId: string; month: string; amount: string; paidOn: string; reference: string; reason: string }) => Promise<unknown>;
+}
+const CELL: Record<'submitted' | 'verified' | 'discrepancy', ProofStatus> = { submitted: 'Submitted', verified: 'Verified', discrepancy: 'Discrepancy' };
+const CHECKS_FOR: Record<ProofKind, string[]> = { pf_challan: ['pf_challan'], esi_challan: ['esi_challan'], wage_register: ['wage_register', 'min_wage'], bank_proof: [] };
+
+export function LiveVendorCompliance({ live }: { live: VendorComplianceLive }) {
+  const d = live.data;
+  const rows: VcRow[] = (d?.rows ?? []).map((r) => ({
+    key: `${r.contractorId}:${r.site.id}`,
+    contractorId: r.contractorId,
+    contractor: r.contractor,
+    site: r.site.name,
+    month: r.month,
+    held: r.held,
+    released: r.released,
+    cells: d!.proofTypes.map((t) => {
+      const i = r.items[t.kind];
+      return { label: t.label, status: i ? CELL[i.state] : r.status === 'overdue' ? 'Overdue' : 'Open', itemId: i?.id, version: i?.version, fileName: i && i.scan === 'clean' ? i.fileName : undefined, note: i?.note ?? null };
+    }),
+    checks: Object.fromEntries(
+      d!.proofTypes.map((t) => [
+        t.label,
+        [
+          ...(t.kind === 'pf_challan' || t.kind === 'esi_challan' ? [{ id: `${t.kind}-n`, status: 'pass' as const, label: `Workers covered ${r.items[t.kind]?.workersCovered ?? '—'}, amount ₹${r.items[t.kind]?.amount ?? '—'}` }] : []),
+          ...r.checks.filter((c) => CHECKS_FOR[t.kind].includes(c.id)).map((c) => ({ id: c.id, status: c.status, label: c.label, detail: c.detail })),
+          ...(r.items[t.kind]?.scan && r.items[t.kind]!.scan !== 'clean' ? [{ id: 'scan', status: 'pending' as const, label: 'The copy is being checked for viruses' }] : []),
+        ],
+      ]),
+    ),
+  }));
+  return (
+    <VendorComplianceView
+      month={d?.month ?? ''}
+      due={d?.due}
+      months={d?.months}
+      onMonth={live.onMonth}
+      holdMode={d?.holdMode ?? 'hold'}
+      proofLabels={d?.proofTypes.map((t) => t.label) ?? []}
+      rows={rows}
+      alerts={(d?.alerts ?? []).map((a) => ({ ...a, liability: a.liability === null ? null : Number(a.liability) }))}
+      canManage={Boolean(d?.canManage)}
+      state={live.state}
+      onRetry={live.onRetry}
+      onVerify={live.onVerify}
+      onDiscrepancy={live.onDiscrepancy}
+      onOpenFile={live.onOpenFile}
+      onRelease={live.onRelease}
+      onPayByUs={live.onPayByUs}
+    />
+  );
+}
+

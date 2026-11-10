@@ -19,7 +19,7 @@ import { Icon } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { timeOf } from '../../lib/dates';
 import { daysUntil, deploymentBlock, licenceAlert, rateCapCheck, submissionBlock, vendorInvoice } from './portals-logic';
-import { ClDue, ClLicences, ClWorkerList, ClWorkOrders, type PortalDue, type PortalLicence, type PortalWorker, type PortalWorkOrder } from './contractor-portal';
+import { ClBillList, ClDue, ClLicences, ClPackView, ClWorkerList, ClWorkOrders, type PortalDue, type PortalLicence, type PortalPack, type PortalProofKind, type PortalWorker, type PortalWorkOrder } from './contractor-portal';
 import { LiveContractorPortalView, type LiveContractorPortal } from './contractor-portal-live';
 import { BlockNote, CameraFrame, ConsentPanel, Fact, FactRow, QrCode, StepDots, TenantPortal, type CameraState } from './portals-kit';
 import type {
@@ -733,12 +733,6 @@ const CL_TABS: { id: ClTab; label: string }[] = [
   { id: 'bills', label: 'Bills' },
 ];
 
-const PACK_TONE: Record<PackItemState, { tone: BadgeTone; text: string }> = {
-  pending: { tone: 'info', text: 'Being checked' },
-  verified: { tone: 'success', text: 'Verified' },
-  discrepancy: { tone: 'danger', text: 'Discrepancy' },
-  missing: { tone: 'warning', text: 'Not uploaded' },
-};
 
 export interface ContractorPortalProps {
   tenant: string;
@@ -763,10 +757,28 @@ export interface ContractorPortalProps {
   due?: PortalDue[];
   workOrders?: PortalWorkOrder[];
   renewingId?: string;
+  /** CL-4: a proof whose upload form is open. */
+  uploading?: PortalProofKind;
 }
 
 /** The design's sample establishments and workers as the portal parts take them. */
 const licencesOf = (xs: ClEstablishment[]): PortalLicence[] => xs.map((e) => ({ id: e.id, site: e.name, licenceNo: e.licenceNo, authority: e.authority, nature: e.nature, maxWorkers: e.maxWorkers, deployed: e.deployed, validTo: e.validTo, renewal: e.renewal ?? null }));
+/** The design's sample pack as the CL-4 pack view takes it (four proofs: answer 634; PT and the muster: question 741). */
+const KIND_OF: Record<string, PortalProofKind> = { ecr: 'pf_challan', esi: 'esi_challan', wage: 'wage_register', proof: 'bank_proof' };
+const packOf = (pk: ContractorPortalProps['pack'], ws: ClWorker[]): PortalPack => ({
+  site: { id: 'hsr', name: pk.establishment },
+  month: '2026-08',
+  due: pk.due,
+  status: pk.status,
+  items: Object.fromEntries(
+    (['pf_challan', 'esi_challan', 'wage_register', 'bank_proof'] as PortalProofKind[]).map((k) => {
+      const it = pk.items.find((x) => KIND_OF[x.id] === k);
+      return [k, !it || it.state === 'missing' ? null : { state: it.state === 'pending' ? 'submitted' : it.state, note: it.note ?? null, fileName: `${k}.pdf`, workersCovered: k === 'pf_challan' ? 40 : k === 'esi_challan' ? 52 : null, amount: k === 'pf_challan' ? '86400.00' : k === 'esi_challan' ? '18200.00' : null }];
+    }),
+  ) as PortalPack['items'],
+  workers: ws.map((w) => ({ deploymentId: w.id, name: w.name, idMasked: w.idMasked, skill: w.skill, line: { days: 26, gross: String(w.wage), paidOn: '2026-09-07' }, minimum: { monthly: '14820.00', daily: '570.00', source: 'TN 2026-04, zone A', verify: true }, short: w.wage < 14820 ? (14820 - w.wage).toFixed(2) : '0.00' })),
+  checks: pk.checks.map((c, n) => ({ id: `c${n}`, label: c.label, status: c.ok ? 'pass' : 'fail' })),
+});
 const workersOf = (xs: ClWorker[]): PortalWorker[] => xs.map((w) => ({ id: w.id, name: w.name, idMasked: w.idMasked, uan: w.uan === 'Not linked' ? '' : w.uan, esic: w.esic, skill: w.skill, wage: w.wage, site: w.site, from: w.from, gatePass: w.gatePass, gateValidTo: w.gateValidTo, status: w.status ?? 'Deployed' }));
 
 // T9-13
@@ -807,90 +819,12 @@ export function ContractorPortalScreen(props: ContractorPortalProps | { live: Li
           design={p.addWorker ? { dob: p.addWorker.dob, siteId: p.addWorker.establishmentId, checks: [{ id: 'age', status: block?.includes('under 18') ? 'fail' : 'pass', label: 'Age 18 or over', detail: block?.includes('under 18') ? block : undefined }, { id: 'max', status: block && !block.includes('under 18') ? 'fail' : 'pass', label: 'Within the licence maximum', detail: block && !block.includes('under 18') ? block : undefined }, { id: 'dup', status: 'pass', label: 'Not already deployed', detail: 'Matched on the ID' }] } : undefined}
         />
       )}
-      {tab === 'packs' && <ClPack pack={p.pack} today={today} />}
-      {tab === 'bills' && <ClBills bills={p.bills} />}
+      {tab === 'packs' && <ClPackView pack={packOf(p.pack, p.workers)} today={today} uploading={p.uploading ?? null} />}
+      {tab === 'bills' && <ClBillList held={p.bills.some((b) => b.status === 'On hold') ? ['2026-08'] : []} bills={p.bills.map((b, n) => ({ id: b.no, no: b.no, period: ['2026-08', '2026-07', '2026-06'][n] ?? '2026-05', amount: b.amount, tds: b.tds, recovery: n === 0 ? 920 : 0, net: b.status === 'Paid' ? b.amount - b.tds : null, status: b.status, paidOn: b.status === 'Paid' ? '2026-08-18' : null }))} />}
     </TenantPortal>
   );
 }
 
-function ClPack({ pack, today }: { pack: ContractorPortalProps['pack']; today: Date }) {
-  const late = daysUntil(pack.due, today) < 0 && pack.status !== 'verified';
-  return (
-    <div className="yx-ps-stack">
-      <div className="yx-ps-row" data-between>
-        <h1 className="yx-ps-h">
-          {pack.establishment} · {pack.month}
-        </h1>
-        <Badge tone={pack.status === 'verified' ? 'success' : pack.status === 'discrepancy' || pack.status === 'overdue' ? 'danger' : 'info'}>
-          {pack.status === 'discrepancy' ? 'Discrepancy' : pack.status === 'overdue' ? 'Overdue' : pack.status === 'verified' ? 'Verified' : pack.status === 'submitted' ? 'Submitted' : 'Open'}
-        </Badge>
-      </div>
-      <p className="yx-ps-muted">
-        Due by {formatDate(pack.due)} (15th of the following month){late ? ` · ${-daysUntil(pack.due, today)} days late` : ''}. Bills are held while a pack is overdue or has a discrepancy.
-      </p>
-      <div className="yx-split">
-        <div className="yx-split__main">
-          <Card title="Proofs">
-            <ul className="yx-ps-list">
-              {pack.items.map((i) => (
-                <li key={i.id}>
-                  <div className="yx-ps-list__main">
-                    <span className="yx-ps-list__title">{i.label}</span>
-                    {i.note && <span className="yx-ps-list__meta">{i.note}</span>}
-                  </div>
-                  <Badge tone={PACK_TONE[i.state].tone}>{PACK_TONE[i.state].text}</Badge>
-                  {(i.state === 'missing' || i.state === 'discrepancy') && (
-                    <Button size="sm" icon={Upload}>
-                      {i.state === 'missing' ? 'Upload' : 'Replace'}
-                    </Button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </Card>
-        </div>
-        <div className="yx-split__aside">
-          <Card title="Automatic checks">
-            <ul className="yx-ps-list">
-              {pack.checks.map((c) => (
-                <li key={c.label}>
-                  <Icon icon={c.ok ? Check : X} label={c.ok ? 'Passed' : 'Failed'} />
-                  <span className="yx-ps-list__main">{c.label}</span>
-                  <Badge tone={c.ok ? 'success' : 'danger'}>{c.ok ? 'Passed' : 'Failed'}</Badge>
-                </li>
-              ))}
-            </ul>
-          </Card>
-          <Button variant="primary" disabled={pack.items.some((i) => i.state === 'missing')}>
-            Submit pack
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ClBills({ bills }: { bills: ContractorPortalProps['bills'] }) {
-  return (
-    <Card title="Bills and payments">
-      <ul className="yx-ps-list">
-        {bills.map((b) => (
-          <li key={b.no}>
-            <div className="yx-ps-list__main">
-              <span className="yx-ps-list__title">
-                <span className="yx-ps-mono">{b.no}</span> · {b.month}
-              </span>
-              <span className="yx-ps-list__meta">
-                {formatINR(b.amount)} · TDS under section 194C {formatINR(b.tds)} · {b.reason}
-              </span>
-            </div>
-            <Badge tone={b.status === 'Paid' ? 'success' : b.status === 'On hold' ? 'danger' : 'warning'}>{b.status}</Badge>
-          </li>
-        ))}
-      </ul>
-    </Card>
-  );
-}
 
 /* ================================================================== */
 /* T9-14 Visitor invite page                                           */

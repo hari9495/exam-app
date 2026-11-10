@@ -376,7 +376,7 @@ export function buildNav(n: NavInput): NavArea[] {
   const contract: NavArea = {
     id: 'contract',
     title: 'Contract labour',
-    sections: support ? [] : sec(undefined, when(any('clra.contractor.manage', 'clra.contractor.view'), L('clra-contractors', 'Contractors', '/yx/contract-labour/contractors'), L('clra-workers', 'Contract workers', '/yx/contract-labour/workers'))),
+    sections: support ? [] : sec(undefined, when(any('clra.contractor.manage', 'clra.contractor.view'), L('clra-contractors', 'Contractors', '/yx/contract-labour/contractors'), L('clra-workers', 'Contract workers', '/yx/contract-labour/workers'), L('clra-compliance', 'Vendor compliance', '/yx/contract-labour/compliance'))),
   };
 
   // Settings, pinned at the bottom of the rail, in the designed settings groups.
