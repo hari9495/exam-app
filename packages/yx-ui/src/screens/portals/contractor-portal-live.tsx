@@ -35,6 +35,8 @@ export interface LiveContractorPortal {
   data: ContractorPortalData | null;
   onCheck: (input: PortalWorkerInput) => Promise<PortalCheck[]>;
   onAdd: (input: PortalWorkerInput) => Promise<unknown>;
+  /** Answer 754: the worker's photo, after the worker is sent. */
+  onPhoto?: (id: string, file: File) => Promise<unknown>;
   onRenew: (licenceId: string, input: PortalRenewalInput, file: File) => Promise<unknown>;
   /** CL-4: the packs owed, the one open, the bills; the uploads; the minimum-wage hint (685). */
   packs?: PortalPackSummary[];
@@ -106,6 +108,7 @@ export function LiveContractorPortalView({ live }: { live: LiveContractorPortal 
         workers={d.workers.map((w) => ({ id: w.id, name: w.name, idMasked: w.idMasked, uan: w.uan ?? '', esic: w.esicIp ?? '', skill: w.skill, wage: w.wage === null ? null : Number(w.wage), site: w.site, from: dOf(w.fromOn), gatePass: w.gatePass, gateValidTo: w.gateValidTo ? dOf(w.gateValidTo) : null, status: w.status === 'pending' ? 'Pending approval' : 'Deployed' }))}
         onCheck={live.onCheck}
         onAdd={live.onAdd}
+        onPhoto={live.onPhoto}
         onMinWage={live.onMinWage}
         onWithdraw={live.onWithdraw}
       />

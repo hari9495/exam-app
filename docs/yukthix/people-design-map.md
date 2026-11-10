@@ -19,12 +19,14 @@ API) · **phone view, mobile app not built**.
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Directory, record and changes | 9 | 140 | 0 | 0 | 1 | 0 | 141 |
-| B. Onboarding and probation | 7 | 69 | 2 | 0 | 0 | 0 | 71 |
+| B. Onboarding and probation | 7 | 69 | 1 | 0 | 0 | 0 | 70 |
 | C. Exits | 7 | 56 | 0 | 0 | 0 | 3 | 59 |
 | D. Assets, documents, letters and self-service | 9 | 55 | 2 | 0 | 0 | 9 | 66 |
 | E. Identity, same person and records | 6 | 18 | 3 | 0 | 2 | 0 | 23 |
 | F. Declarations, relations, special cases and checklists | 11 | 72 | 0 | 0 | 0 | 3 | 75 |
-| **All PPL groups (A–F)** | **49** | **410** | **7** | **0** | **3** | **15** | **435** |
+| **All PPL groups (A–F)** | **49** | **410** | **6** | **0** | **3** | **15** | **434** |
+
+11 Nov 2026 (branch `feat/yukthix-contract-labour-followup`, answer 775): the PPL-12 "Contract worker conversion" story is dropped from the drawing (conversions start from the worker, CLB-05).
 | G. Other People stories (no PPL number) | 4 | 44 | 0 | 0 | 0 | 0 | 44 |
 
 Counted by script (3 Nov 2026, branch `feat/yukthix-perf-followups-b`: PPL-03 gains PerformanceHr, live (founder answer 9). Before that, branch `feat/yukthix-people-last`: the last rows we can build ourselves are live: PPL-28 Held (+ story LiveHeld), PPL-33 MyData (+ Correction, Nominate), PPL-36 Queue, PPL-44 Blocked (+ OfficerWindow), PPL-46 SplitPay, OnPayTab, OverSplit; four design stories added; the C row was already 56 live by the script (the table said 55); what is left needs a provider (penny drop and PAN check PPL-27, face match PPL-34/36) or another module (contract workers, learning). Before that, 2 Nov 2026, branch `feat/yukthix-people-changes`: builder 2 added 24 design stories (PPL-03 12, PPL-04 3, PPL-05 3, PPL-24 6) and made the 8 "wire design" stories live; earlier counts 30 Oct 2026, on `test/yukthix-main`; the script is in the appendix): every `export const` story in the 49 `ppl-NN.stories.tsx`
@@ -554,7 +556,6 @@ Live page: /yx/people/ready-to-onboard (menu People › Onboarding › Ready to 
 | CreateNew · Create employee (new person) | live | row → `CreateFromOffer` drawer; POST lifecycle/ready-to-onboard/:offerId |
 | Rehire · Create employee (rehire impact preview) | live | an ex-employee offer: the Create drawer shows the policy per option for the chosen entity and the earlier spell (GET lifecycle/ready-to-onboard/:offerId/rehire); the offer joins on their own record as a rehire |
 | RehireOverride · Rehire with an override (reason required) | live | change a choice in the drawer: Create without a reason shows the field error and focuses it; POST ready-to-onboard/:offerId takes `rehire` choices with the reason (also on the checklist's Rehire card) |
-| Conversion · Contract worker conversion | live (gap) | conversions are live from the worker since CL-7 (CLB-05; the joiner source `contract_worker`) and go straight to the Onboarding board, not this offers queue (question 775) |
 | Empty · · empty | live | no accepted offers waiting |
 
 #### PPL-13 · Journey record

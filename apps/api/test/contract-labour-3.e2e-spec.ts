@@ -199,6 +199,26 @@ describe('Contract labour CL-3: contractor portal', () => {
     expect(me.due.map((d: { kind: string }) => d.kind)).toContain('approval');
   });
 
+  it('answer 754: the contractor sends the worker’s photo (JPG or PNG, private); the site must check it at approval', async () => {
+    const w = (await portal('get', '/me', ids.token).expect(200)).body.workers[0];
+    const png = Buffer.from('89504E470D0A1A0A0000000D49484452000000010000000108060000001F15C4890000000D49444154789C6360000002000154A24F5D0000000049454E44AE426082', 'hex');
+    const up = (id: string, file: Buffer, name: string, t: string = ids.token!) => portal('post', `/workers/${id}/photo`, t).attach('file', file, { filename: name, contentType: name.endsWith('.png') ? 'image/png' : 'application/pdf' });
+    await up(w.id, Buffer.from('%PDF-1.7 not a photo'), 'p.pdf').expect(400);
+    await up(randomUUID(), png, 'p.png').expect(404);
+    await up(w.id, png, 'p.png', 'not-a-token').expect(401);
+    await portal('post', `/workers/${w.id}/photo`, ids.token).expect(400);
+    await up(w.id, png, 'p.png').expect(want(200));
+    const row = await inA((tx) => tx.contractDeployment.findFirstOrThrow({ where: { id: w.id } }));
+    expect(row.photoFileId).toBeTruthy();
+    const f = await inA((tx) => tx.file.findFirstOrThrow({ where: { id: row.photoFileId! } }));
+    expect(f).toMatchObject({ area: 'clra-photo', mime: 'image/png', uploadedVia: 'self' });
+    const a = await inA((tx) => tx.auditLog.findFirstOrThrow({ where: { organizationId: org.A.id, action: 'clra.worker.photo_set', entityId: w.id } }));
+    expect(JSON.parse(a.metadataJson ?? '{}')).toMatchObject({ via: 'contractor_portal', contactId: ids.meera });
+    // Site approval refuses until the photo is checked against the person.
+    const refused = await api('owner', 'post', `/contract-labour/workers/${w.id}/approve`).send({ version: row.version, inductionOn: today, inductionBy: 'Safety officer' }).expect(400);
+    expect(refused.body.message).toMatch(/Check the photo/);
+  });
+
   it('answer 736: the contractor withdraws its own waiting worker, with a reason; audited', async () => {
     const w = (await portal('get', '/me', ids.token).expect(200)).body.workers[0];
     await portal('post', `/workers/${w.id}/withdraw`, ids.token).send({ reason: 'x' }).expect(400);

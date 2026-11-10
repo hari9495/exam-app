@@ -93,7 +93,7 @@ export class ContractLabourService {
         const peak = await tx.clraSitePeak.findFirst({ where: { organizationId: org, locationId: l.id } });
         establishments.push({ registration: reg ? { no: reg.registrationNo, maxWorkers: reg.maxWorkers, validTo: reg.validTo ? iso(reg.validTo) : null } : null, peak: peak ? { count: peak.peak, on: peak.peakOn ? iso(peak.peakOn) : null } : null, id: l.id, name: l.name, state: l.state, workers: active.find((x) => x.locationId === l.id)?._count._all ?? 0, licenceMax: inForce.reduce((n, x) => n + x.maxWorkers, 0), threshold: (rule?.values as { registrationThreshold?: number } | undefined)?.registrationThreshold ?? null, verify: rule?.verify ?? true });
       }
-      const like = (l: (typeof licences)[number]): LicenceLike => ({ id: l.id, locationId: l.locationId, states: l.states, validFrom: iso(l.validFrom), validTo: iso(l.validTo), status: l.status as LicenceLike['status'], renewalOfId: l.renewalOfId });
+      const like = (l: (typeof licences)[number]): LicenceLike => ({ id: l.id, locationId: l.locationId!, states: l.states, validFrom: iso(l.validFrom), validTo: iso(l.validTo), status: l.status as LicenceLike['status'], renewalOfId: l.renewalOfId });
       return {
         canManage: a.manage && !a.actingForOther,
         today,
@@ -140,7 +140,7 @@ export class ContractLabourService {
                 decided: l.decidedAt ? { by: who?.name || who?.email || 'Someone', at: l.decidedAt.toISOString() } : null,
                 file: { name: f?.fileName ?? 'licence', scan: f?.scanStatus === 'clean' ? 'clean' : f?.scanStatus === 'infected' ? 'infected' : 'pending' },
                 // shortcut: no deployments before CL-2, so "today at this establishment" is the only check shown.
-                block: loc ? deployBlock(all, { locationId: l.locationId, state: loc.state, on: today }) : 'The establishment is archived.',
+                block: loc ? deployBlock(all, { locationId: l.locationId!, state: loc.state, on: today }) : 'The establishment is archived.',
               };
             }),
           };
@@ -210,7 +210,8 @@ export class ContractLabourService {
   }
 
   private async licence(tx: Tx, c: CompanyContext, id: string) {
-    const row = await tx.contractorLicence.findFirst({ where: { id, organizationId: c.organizationId } });
+    // A contractor's licence only: our own licences (CL-8) have their own page and are never verified here.
+    const row = await tx.contractorLicence.findFirst({ where: { id, organizationId: c.organizationId, agencyId: { not: null } } });
     if (!row) throw new NotFoundException('Licence not found.');
     return row;
   }
@@ -487,9 +488,10 @@ export class ContractLabourService {
       const [lock] = await tx.$queryRaw<{ ok: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtext(${`clra-licence-alerts:${org}`})) AS ok`;
       if (!lock?.ok) return { out: [], company: null, to: [] };
       const days = alertDaysOf(await settingFor(tx, c, 'clra.licence_alerts', ANY_ENTITY));
-      const rows = await tx.contractorLicence.findMany({ where: { organizationId: org, status: 'verified', validTo: { gte: day(today) } } });
+      // Contractors' licences (CL-8's own licences, with no contractor, are not alerted to contractors).
+      const rows = await tx.contractorLicence.findMany({ where: { organizationId: org, status: 'verified', validTo: { gte: day(today) }, agencyId: { not: null } } });
       const renewed = new Set((await tx.contractorLicence.findMany({ where: { organizationId: org, status: 'verified', renewalOfId: { in: rows.map((r) => r.id) } }, select: { renewalOfId: true } })).map((r) => r.renewalOfId));
-      const agencies = await tx.agency.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.agencyId) }, active: true, contractLabour: true }, select: { id: true, name: true } });
+      const agencies = await tx.agency.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.agencyId!) }, active: true, contractLabour: true }, select: { id: true, name: true } });
       const out: { id: string; text: string; contacts: string[]; licenceNo: string; validTo: string; lead: number }[] = [];
       for (const l of rows) {
         const lead = alertDue(iso(l.validTo), today, days);

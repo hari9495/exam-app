@@ -12,6 +12,7 @@ import { LOGIN_PROTECTION_REDIS } from '../src/auth/login-protection.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { markSteppedUp } from './fixtures/step-up';
+import { pdfText } from './fixtures/pdf-text';
 
 // Contract labour CL-6 end to end (CLB-04, founder answers 629, 630): the month's registers per establishment from the
 // deployments and the contractors' wage registers, in the state's format (IN.CLRA.REGISTERS); the muster and wages
@@ -109,6 +110,7 @@ describe('Contract labour CL-6: registers and the annual return', () => {
         deps.push((await tx.contractDeployment.create({ data: { ...o, personId: p.id, agencyId: a, locationId: ids.hsr, skill: 'unskilled', dob: day('1990-01-01'), idLast4: `100${i}`, idHash: String(i).repeat(64), fromOn: day(`${lastYear}-11-01`), status: 'deployed', gatePassNo: `GP-${run}-${i}`, gateValidTo: day(`${year + 1}-12-31`), approvedAt: new Date(`${lastYear}-11-01T00:00:00Z`) } })).id);
       }
       ids.d1 = deps[0]!;
+      ids.d2 = deps[1]!;
       ids.d3 = deps[2]!;
       // Sri Lakshmi's wage registers: last month and December last year. Vetri has none for last month yet.
       const wages = async (agencyId: string, m: string, lines: [string, number, number][]) => {
@@ -148,6 +150,8 @@ describe('Contract labour CL-6: registers and the annual return', () => {
     const made = (await api('owner', 'post', '/contract-labour/registers').send({ month, locationId: ids.hsr }).expect(want(201))).body;
     expect(made.registers.map((r: { type: string }) => r.type).sort()).toEqual(['clra_contractors', 'clra_workmen']);
     expect(made.waiting).toEqual([`Vetri Security ${run}`]);
+    // Answer 781: no contractor's attendance is confirmed yet, so the muster waits for both.
+    expect(made.attendanceWaiting).toEqual([`Sri Lakshmi Facility Services ${run}`, `Vetri Security ${run}`]);
     const workmen = made.registers.find((r: { type: string }) => r.type === 'clra_workmen');
     expect(workmen.rows).toBe(3);
     await api('owner', 'post', '/contract-labour/registers').send({ month, locationId: ids.hsr }).expect(400);
@@ -160,14 +164,31 @@ describe('Contract labour CL-6: registers and the annual return', () => {
       const fileId = (await tx.file.create({ data: { organizationId: org.A.id, area: 'clra', storageRef: `x/${randomUUID()}`, fileName: 'w.pdf', mime: 'application/pdf', size: 1, sha256: 'b'.repeat(64), uploadedVia: 'staff' } })).id;
       await tx.contractorPackItem.create({ data: { organizationId: org.A.id, packId: pack.id, kind: 'wage_register', fileId } });
       await tx.contractorWageLine.create({ data: { organizationId: org.A.id, packId: pack.id, deploymentId: ids.d3, days: 30, grossPaise: 1800000n, paidOn: day(`${month}-28`) } });
+      // Answer 781: the site attendance (Worker1 on 3 days, Worker2 on 1, Worker3 on 2), confirmed for both contractors.
+      const att = (dep: string, d: number) => ({ organizationId: org.A.id, deploymentId: dep, workOn: day(`${month}-0${d}`), source: 'kiosk' });
+      await tx.contractAttendance.createMany({ data: [att(ids.d1, 1), att(ids.d1, 2), att(ids.d1, 3), att(ids.d2, 1), att(ids.d3, 4), att(ids.d3, 5)] });
+      // Sri Lakshmi's month first: Vetri's is still open, so the muster keeps waiting.
+      await tx.contractAttendanceConfirmation.create({ data: { organizationId: org.A.id, agencyId: ids.a1, locationId: ids.hsr, month: day(`${month}-01`), days: 4, confirmedBy: users.owner! } });
     });
+    const half = (await api('owner', 'post', '/contract-labour/registers').send({ month, locationId: ids.hsr, reason: 'Sri Lakshmi confirmed' }).expect(want(201))).body;
+    expect(half.attendanceWaiting).toEqual([`Vetri Security ${run}`]);
+    expect(half.registers.map((r: { type: string }) => r.type)).not.toContain('clra_muster');
+    await inA((tx) => tx.contractAttendanceConfirmation.create({ data: { organizationId: org.A.id, agencyId: ids.a2, locationId: ids.hsr, month: day(`${month}-01`), days: 2, confirmedBy: users.owner! } }));
     const v2 = (await api('owner', 'post', '/contract-labour/registers').send({ month, locationId: ids.hsr, reason: 'Vetri sent its wage register' }).expect(want(201))).body;
     expect(v2.registers.map((r: { type: string }) => r.type).sort()).toEqual(['clra_contractors', 'clra_muster', 'clra_wages', 'clra_workmen']);
-    expect(v2.registers.find((r: { type: string }) => r.type === 'clra_contractors').version).toBe(2);
+    expect(v2.registers.find((r: { type: string }) => r.type === 'clra_contractors').version).toBe(3);
+    expect(v2.attendanceWaiting).toEqual([]);
     expect(v2.registers.find((r: { type: string }) => r.type === 'clra_muster').version).toBe(1);
     expect(v2.waiting).toEqual([]);
     const list = (await api('reader', 'get', `/contract-labour/registers?month=${month}`).expect(200)).body;
     expect(list.registers).toHaveLength(4);
+    // The muster's days are the confirmed attendance (3, 1 and 2), not the wage registers' 26, 24 and 30.
+    const muster = list.registers.find((r: { type: string }) => r.type === 'clra_muster').id;
+    const text = pdfText((await binary(api('reader', 'get', `/contract-labour/registers/${muster}/file`)).expect(200)).body as Buffer);
+    const daysOf = (row: string) => text.split(row)[1]?.trim().split(' ')[0];
+    expect(daysOf(`Worker1 ${run} Sri Lakshmi Facility Services ${run}`)).toBe('3');
+    expect(daysOf(`Worker3 ${run} Vetri Security ${run}`)).toBe('2');
+    expect(text).toMatch(/site attendance confirmed/);
     expect(list.registers.every((r: { status: string }) => r.status === 'generated')).toBe(true);
     ids.wages = list.registers.find((r: { type: string }) => r.type === 'clra_wages').id;
     const f = await binary(api('reader', 'get', `/contract-labour/registers/${ids.wages}/file`)).expect(want(200));
@@ -186,7 +207,7 @@ describe('Contract labour CL-6: registers and the annual return', () => {
     expect(refused.body.code).toBe('SIGNATURE_REFUSED');
     // A frozen register never changes; a new version supersedes it with the reason.
     const v3 = (await api('owner', 'post', '/contract-labour/registers').send({ month, locationId: ids.hsr, reason: 'Corrected days' }).expect(201)).body;
-    expect(v3.registers.find((r: { type: string }) => r.type === 'clra_wages').version).toBe(2);
+    expect(v3.registers.find((r: { type: string }) => r.type === 'clra_wages').version).toBe(3);
     // The register table's pay guard holds for everyone: the check opens it to the entity, as the services do.
     const old = await asSuper(async (tx) => (await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`, tx.statutoryRegister.findUniqueOrThrow({ where: { id: ids.wages } })));
     expect(old).toMatchObject({ status: 'superseded' });

@@ -673,7 +673,8 @@ export interface WorkersViewProps {
   onRetry?: () => void;
   onCheck?: (input: WorkerInput) => Promise<CheckRow[]>;
   onSend?: (input: WorkerInput) => Promise<unknown>;
-  onApprove?: (id: string, version: number, induction: { on: string | null; by: string | null }) => Promise<unknown>;
+  /** photoChecked (answer 754): staff checked the worker's photo against the person. */
+  onApprove?: (id: string, version: number, induction: { on: string | null; by: string | null; photoChecked?: boolean }) => Promise<unknown>;
   onRelease?: (id: string, version: number, on: string, reason: string) => Promise<unknown>;
   /** Answer 685: the minimum wage for a site and skill. */
   onMinWage?: (locationId: string, skill: string) => Promise<MinWageHint | null>;
@@ -783,7 +784,7 @@ export function WorkersView(p: WorkersViewProps) {
         }
       />
       {sheet?.kind === 'deploy' && <DeployWorkerSheet {...p} onClose={() => setSheet(null)} />}
-      {sheet?.kind === 'approve' && target && <ApproveWorkerDialog worker={target} today={today} required={p.inductionRequired} months={p.inductionMonths} onClose={() => setSheet(null)} onApprove={(induction) => (p.onApprove ? p.onApprove(target.id, target.version ?? 1, induction) : Promise.resolve(say('Approved')))} />}
+      {sheet?.kind === 'approve' && target && <ApproveWorkerDialog photoUrl={p.photoUrl} worker={target} today={today} required={p.inductionRequired} months={p.inductionMonths} onClose={() => setSheet(null)} onApprove={(induction) => (p.onApprove ? p.onApprove(target.id, target.version ?? 1, induction) : Promise.resolve(say('Approved')))} />}
       {sheet?.kind === 'card' && target && (
         <GatePassCard
           worker={target}
@@ -913,14 +914,27 @@ function DeployWorkerSheet(p: WorkersViewProps & { onClose: () => void }) {
 }
 
 /** Site approval (632, 633): the safety induction is recorded and the gate pass is issued. */
-function ApproveWorkerDialog({ worker, today, required, months, renew = false, onClose, onApprove }: { worker: ContractWorker; today: Date; required: boolean; months: number; renew?: boolean; onClose: () => void; onApprove: (induction: { on: string | null; by: string | null }) => Promise<unknown> }) {
+function ApproveWorkerDialog({ worker, today, required, months, renew = false, photoUrl, onClose, onApprove }: { worker: ContractWorker; today: Date; required: boolean; months: number; renew?: boolean; photoUrl?: (id: string) => Promise<string | null>; onClose: () => void; onApprove: (induction: { on: string | null; by: string | null; photoChecked?: boolean }) => Promise<unknown> }) {
   const { say } = useSay();
   const [on, setOn] = useState<Date | null>(worker.induction ? worker.induction.on : null);
   const [by, setBy] = useState(worker.induction?.by ?? '');
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
+  // Answer 754: the photo the contractor sent (or the site added) is checked against the person before the gate pass.
+  const checkPhoto = !renew && Boolean(worker.photo);
+  const [matches, setMatches] = useState(false);
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!checkPhoto || !photoUrl) return;
+    let live = true;
+    photoUrl(worker.id).then((u) => live && setUrl(u), () => undefined);
+    return () => {
+      live = false;
+    };
+  }, [checkPhoto, photoUrl, worker.id]);
   const bad = {
+    photo: checkPhoto && !matches ? 'Tick that the person at the site is the one in the photo.' : null,
     on: required && !renew && !on ? 'Enter the day of the safety induction.' : on && on > today ? 'The induction cannot be in the future.' : null,
     by: (required && !renew && !by.trim()) || (renew && on && !by.trim()) ? 'Enter who gave the induction.' : null,
   };
@@ -928,9 +942,10 @@ function ApproveWorkerDialog({ worker, today, required, months, renew = false, o
     setTried(true);
     if (bad.on) return focusOn('ap-on');
     if (bad.by) return focusOn('ap-by');
+    if (bad.photo) return focusOn('ap-photo');
     setBusy(true);
     setFailed(null);
-    onApprove({ on: on ? isoDay(on) : null, by: by.trim() || null })
+    onApprove({ on: on ? isoDay(on) : null, by: by.trim() || null, ...(checkPhoto ? { photoChecked: true } : {}) })
       .then(() => (say(renew ? `${worker.name}'s gate pass renewed` : `${worker.name} approved; gate pass issued`), onClose()))
       .catch((e: unknown) => setFailed(errText(e)))
       .finally(() => setBusy(false));
@@ -946,6 +961,15 @@ function ApproveWorkerDialog({ worker, today, required, months, renew = false, o
             <TextField value={by} onChange={setBy} maxLength={120} />
           </FormField>
         </FieldRow>
+        {checkPhoto && (
+          <div className="yx-ops-row">
+            {url ? <img className="yx-ops-gatepass__photo" src={url} alt={`Photo of ${worker.name}`} /> : <PhotoPlaceholder name={worker.name} size="lg" />}
+            <div className="yx-ops-stack" data-gap="sm">
+              <Checkbox id="ap-photo" checked={matches} onChange={setMatches} label="The person at the site is the one in this photo" description="Sent with the worker. If it is not them, don't approve: release the worker instead." />
+              {tried && bad.photo && <p className="yx-field__error">{bad.photo}</p>}
+            </div>
+          </div>
+        )}
       </div>
     </Dialog>
   );
@@ -1379,8 +1403,10 @@ export interface ClraRegistersData {
   canMake: boolean;
   establishments: { id: string; name: string }[];
   registers: { id: string; type: string; locationId: string | null; location: string; formatVersion: string; version: number; status: 'generated' | 'frozen' | 'signed' | 'superseded'; rows: number }[];
-  /** Contractors without a wage register for the month: the muster and wage registers wait for them. */
+  /** Contractors without a wage register for the month: the wage register waits for them. */
   waiting: { locationId: string; contractors: string[] }[];
+  /** Answer 781: contractors whose site attendance is not confirmed yet: the muster roll waits for them. */
+  attendanceWaiting?: { locationId: string; contractors: string[] }[];
   chart: { months: string[]; series: { name: string; values: number[] }[] };
 }
 /** GET contract-labour/returns (answer 630). */
@@ -1446,10 +1472,8 @@ export function ClraRegistersScreen({ loading, tab = 'registers', live }: { load
   const registers: Row[] = d
     ? [
         ...d.registers.map((r) => ({ id: r.id, name: CLRA_TITLE[r.type] ?? r.type, est: r.location, period: monthWord(d.month), format: `IN.CLRA.REGISTERS ${r.formatVersion} · v${r.version}`, status: CLRA_STATUS[r.status] ?? r.status, live: r })),
-        ...d.waiting.flatMap((w) => [
-          { id: `wm-${w.locationId}`, name: 'Muster roll', est: d.establishments.find((e) => e.id === w.locationId)?.name ?? '', period: monthWord(d.month), format: '', status: `Waiting for ${w.contractors.length} contractor${w.contractors.length === 1 ? '' : 's'}` },
-          { id: `ww-${w.locationId}`, name: 'Register of wages', est: d.establishments.find((e) => e.id === w.locationId)?.name ?? '', period: monthWord(d.month), format: '', status: `Waiting for ${w.contractors.length} contractor${w.contractors.length === 1 ? '' : 's'}` },
-        ]),
+        ...(d.attendanceWaiting ?? []).map((w) => ({ id: `wm-${w.locationId}`, name: 'Muster roll', est: d.establishments.find((e) => e.id === w.locationId)?.name ?? '', period: monthWord(d.month), format: '', status: `Waiting for attendance of ${w.contractors.length} contractor${w.contractors.length === 1 ? '' : 's'}` })),
+        ...d.waiting.map((w) => ({ id: `ww-${w.locationId}`, name: 'Register of wages', est: d.establishments.find((e) => e.id === w.locationId)?.name ?? '', period: monthWord(d.month), format: '', status: `Waiting for ${w.contractors.length} contractor${w.contractors.length === 1 ? '' : 's'}` })),
       ]
     : sample;
   const ests = d ? d.establishments.map((e) => e.name) : ['Hosur plant', 'Bengaluru head office'];
@@ -1519,7 +1543,7 @@ export function ClraRegistersScreen({ loading, tab = 'registers', live }: { load
               empty={<EmptyState compact title="No registers for this month." description={d?.canMake ? 'Make them once the month has ended.' : 'The compliance owner makes them after the month ends.'} />}
               rowButtons={rowButtons}
             />
-            {d && <p className="yx-ops-muted">The muster roll's days come from the contractors' wage registers until site attendance is live. Freeze a register, then sign the frozen PDF with the company DSC and upload it.</p>}
+            {d && <p className="yx-ops-muted">The muster roll's days are the site attendance the site in-charge confirmed; the wages come from the contractors' wage registers. Freeze a register, then sign the frozen PDF with the company DSC and upload it.</p>}
           </div>
         </TabsContent>
         <TabsContent value="returns">
@@ -1869,12 +1893,45 @@ export interface ClientEst {
   portal: string;
   state: string;
 }
-export function ClientEstablishmentsScreen({ clients, state = 'ready', openId = null }: { clients: ClientEst[]; state?: ListState; openId?: string | null }) {
+type Opt = { value: string; label: string };
+const STATE_NAMES: Record<string, string> = { 'IN-TN': 'Tamil Nadu', 'IN-KA': 'Karnataka', 'IN-KL': 'Kerala', 'IN-MH': 'Maharashtra', 'IN-AP': 'Andhra Pradesh', 'IN-TG': 'Telangana', 'IN-DL': 'Delhi', 'IN-GJ': 'Gujarat', 'IN-WB': 'West Bengal', 'IN-UP': 'Uttar Pradesh', 'IN-HR': 'Haryana', 'IN-RJ': 'Rajasthan' };
+const STATE_OPTIONS: Opt[] = Object.entries(STATE_NAMES).map(([value, label]) => ({ value, label }));
+
+/** GET contract-labour/client-sites (CL-8, answer 638). */
+export interface ClientSitesData {
+  canManage: boolean;
+  clients: { id: string; name: string }[];
+  sites: { id: string; clientId: string; client: string; site: string; principal: string; registrationNo: string; state: string; address: string | null; packChannel: string; packDueDay: number; deployed: number; max: number; licenceNo: string | null }[];
+}
+export interface ClientSiteInput {
+  clientId: string;
+  name: string;
+  state: string;
+  address?: string;
+  principalName: string;
+  registrationNo: string;
+  packChannel: string;
+  packDueDay: number;
+}
+export interface LiveClientSites {
+  state: 'ready' | 'loading' | 'error' | 'no-access';
+  onRetry: () => void;
+  data: ClientSitesData | null;
+  onAdd: (input: ClientSiteInput) => Promise<unknown>;
+}
+
+export function ClientEstablishmentsScreen({ clients: sample, state = 'ready', openId = null, adding: addingAtStart = false, live }: { clients: ClientEst[]; state?: ListState; openId?: string | null; adding?: boolean; live?: LiveClientSites }) {
   const [open, setOpen] = useState<string | null>(openId);
+  const [adding, setAdding] = useState(addingAtStart);
+  const d = live?.data ?? null;
+  const clients: ClientEst[] = d ? d.sites.map((x) => ({ id: x.id, client: x.client, site: x.site, principal: x.principal, rc: x.registrationNo, deployed: x.deployed, max: x.max, portal: x.packChannel, state: STATE_NAMES[x.state] ?? x.state })) : sample;
   const c = clients.find((x) => x.id === open);
-  return (
-    <OpsDesk area="contractor" active="Client establishments">
-      <PageHeader title="Client establishments" description="Sites where your employees work as contract labour. The client is the principal employer." actions={<Button variant="primary" icon={Plus}>Add client site</Button>} />
+  const canAdd = !live || Boolean(d?.canManage);
+  const actions = canAdd ? <Button variant="primary" icon={Plus} onClick={() => setAdding(true)}>Add client site</Button> : undefined;
+  const title = 'Client establishments';
+  const description = 'Sites where your employees work as contract labour. The client is the principal employer.';
+  const body = (
+    <>
       <DataTable
         label="Client establishments"
         columns={[
@@ -1886,7 +1943,7 @@ export function ClientEstablishmentsScreen({ clients, state = 'ready', openId = 
         ]}
         rows={state === 'empty' ? [] : clients}
         getRowId={(x) => x.id}
-        state={state === 'empty' ? 'ready' : state}
+        state={live ? (live.state === 'loading' ? 'loading' : 'ready') : state === 'empty' ? 'ready' : state}
         empty={<EmptyState title="No client sites yet." description="Add each site where you deploy staff, with the client's registration number." />}
         onRowClick={(x) => setOpen(x.id)}
         activeRowId={open}
@@ -1894,13 +1951,101 @@ export function ClientEstablishmentsScreen({ clients, state = 'ready', openId = 
       <Drawer open={!!c} onOpenChange={(o) => !o && setOpen(null)} size="lg" title={c ? `${c.client} · ${c.site}` : ''} subtitle={c ? `Principal employer: ${c.principal}` : ''}>
         {c && (
           <div className="yx-ops-stack">
-            <DescriptionList items={[{ label: 'Registration', value: c.rc, mono: true }, { label: 'State', value: c.state }, { label: 'Deployed', value: `${c.deployed} employees` }, { label: 'Monthly pack', value: `Due 10th of next month, via ${c.portal}` }]} />
-            {c.deployed >= c.max && c.max > 0 && <InlineAlert tone="warning">At the licence maximum. Deploying one more is blocked until the licence is amended.</InlineAlert>}
-            {c.max === 0 && <InlineAlert tone="danger">Your licences don't cover Kerala. Deployment here is blocked.</InlineAlert>}
+            <DescriptionList items={[{ label: 'Registration', value: c.rc, mono: true }, { label: 'State', value: c.state }, { label: 'Deployed', value: `${c.deployed} employees` }, { label: 'Monthly pack', value: `Due ${d ? (d.sites.find((x) => x.id === c.id)?.packDueDay ?? 10) : 10}th of next month, via ${c.portal}` }]} />
+            {c.deployed >= c.max && c.max > 0 && <InlineAlert tone="warning">At the licence maximum. Placing one more is blocked until the licence is amended.</InlineAlert>}
+            {c.max === 0 && <InlineAlert tone="danger">No licence of yours covers {c.state} for this site. Placing staff here is blocked once the state's licence threshold is reached.</InlineAlert>}
           </div>
         )}
       </Drawer>
+      {adding && <AddClientSiteSheet clients={d ? d.clients : [{ id: 'c1', name: 'Nilgiri Pharma Ltd' }]} onClose={() => setAdding(false)} onAdd={(input) => (live ? live.onAdd(input) : Promise.resolve())} />}
+    </>
+  );
+  if (live)
+    return (
+      <LivePage title={title} description={description} actions={actions} state={live.state} onRetry={live.onRetry} what="client establishments" grantedBy="an admin (the contract labour key)">
+        {body}
+      </LivePage>
+    );
+  return (
+    <OpsDesk area="contractor" active="Client establishments">
+      <PageHeader title={title} description={description} actions={actions} />
+      {body}
     </OpsDesk>
+  );
+}
+
+/** CLB-06 Add client site: the client, the site, the principal's registration number, where the pack goes. */
+function AddClientSiteSheet({ clients, onClose, onAdd }: { clients: { id: string; name: string }[]; onClose: () => void; onAdd: (input: ClientSiteInput) => Promise<unknown> }) {
+  const { toast } = useSay();
+  const [client, setClient] = useState<string | null>(clients.length === 1 ? clients[0]!.id : null);
+  const [name, setName] = useState('');
+  const [st, setSt] = useState<string | null>(null);
+  const [address, setAddress] = useState('');
+  const [principal, setPrincipal] = useState('');
+  const [rc, setRc] = useState('');
+  const [channel, setChannel] = useState('');
+  const [due, setDue] = useState<number | null>(10);
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const bad = {
+    client: !client ? 'Choose the client.' : null,
+    name: name.trim().length < 2 ? 'Name the site.' : null,
+    st: !st ? 'Choose the state.' : null,
+    principal: principal.trim().length < 2 ? 'Name the principal employer.' : null,
+    rc: rc.trim().length < 3 ? 'Give the client’s registration number for this site.' : null,
+    channel: channel.trim().length < 2 ? 'Say where the pack goes.' : null,
+    due: !due || due < 1 || due > 28 ? 'A day from 1 to 28.' : null,
+  };
+  const go = () => {
+    setTried(true);
+    const miss = (Object.keys(bad) as (keyof typeof bad)[]).find((k) => bad[k]);
+    if (miss) return focusOn(`cs-${miss}`);
+    setBusy(true);
+    setFailed(null);
+    onAdd({ clientId: client!, name: name.trim(), state: st!, ...(address.trim() ? { address: address.trim() } : {}), principalName: principal.trim(), registrationNo: rc.trim(), packChannel: channel.trim(), packDueDay: due! })
+      .then(() => (toast({ tone: 'success', title: 'Client site added' }), onClose()))
+      .catch((e: unknown) => setFailed(errText(e)))
+      .finally(() => setBusy(false));
+  };
+  const err = (k: keyof typeof bad) => (tried ? bad[k] : null);
+  return (
+    <Drawer open onOpenChange={(o) => !o && onClose()} size="lg" title="Add client site" subtitle="Where your employees work as contract labour" dirty notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={go}>Add site</Button></>}>
+      <div className="yx-ops-stack">
+        <FieldRow>
+          <FormField id="cs-client" label="Client" required error={err('client')}>
+            <Select value={client} onChange={setClient} options={clients.map((x) => ({ value: x.id, label: x.name }))} placeholder="Choose" />
+          </FormField>
+          <FormField id="cs-name" label="Site" required error={err('name')}>
+            <TextField value={name} onChange={setName} maxLength={200} />
+          </FormField>
+        </FieldRow>
+        <FieldRow>
+          <FormField id="cs-st" label="State" required error={err('st')}>
+            <Select value={st} onChange={setSt} options={STATE_OPTIONS} placeholder="Choose" />
+          </FormField>
+          <FormField id="cs-address" label="Address" optional>
+            <TextField value={address} onChange={setAddress} maxLength={500} />
+          </FormField>
+        </FieldRow>
+        <FieldRow>
+          <FormField id="cs-principal" label="Principal employer" required error={err('principal')} helper="The client's legal name at this establishment.">
+            <TextField value={principal} onChange={setPrincipal} maxLength={200} />
+          </FormField>
+          <FormField id="cs-rc" label="Principal registration" required error={err('rc')} helper="The client's registration number for this establishment.">
+            <TextField value={rc} onChange={setRc} maxLength={60} />
+          </FormField>
+        </FieldRow>
+        <FieldRow>
+          <FormField id="cs-channel" label="Pack goes to" required error={err('channel')} helper="The client's vendor portal, an email address…">
+            <TextField value={channel} onChange={setChannel} maxLength={100} />
+          </FormField>
+          <FormField id="cs-due" label="Pack due on day" required error={err('due')} helper="Of the next month.">
+            <NumberField value={due} onChange={setDue} min={1} max={28} />
+          </FormField>
+        </FieldRow>
+      </div>
+    </Drawer>
   );
 }
 
@@ -1917,27 +2062,163 @@ export interface OwnLicence {
   validTo: Date;
   authority: string;
 }
-export function OwnLicencesScreen({ licences, today, blocked }: { licences: OwnLicence[]; today: Date; blocked?: boolean }) {
-  return (
-    <OpsDesk area="contractor" active="Own licences">
-      <PageHeader title="Own licences" description="Your contractor licences per client establishment, or single licences covering several sites or states." actions={<Button variant="primary" icon={Plus}>Add licence</Button>} />
+/** GET contract-labour/own-licences. */
+export interface OwnLicencesData {
+  canManage: boolean;
+  today: string;
+  entities: Opt[];
+  sites: (Opt & { state: string })[];
+  licences: { id: string; licenceNo: string; scope: string; clientSiteId: string | null; site: string | null; states: string[]; maxWorkers: number; deployed: number; validFrom: string; validTo: string; authority: string | null; entity: string }[];
+}
+export interface OwnLicenceInput {
+  legalEntityId: string;
+  clientSiteId?: string;
+  states?: string[];
+  licenceNo: string;
+  scope: string;
+  maxWorkers: number;
+  validFrom: string;
+  validTo: string;
+  issuedBy?: string;
+}
+export interface LiveOwnLicences {
+  state: 'ready' | 'loading' | 'error' | 'no-access';
+  onRetry: () => void;
+  data: OwnLicencesData | null;
+  onAdd: (input: OwnLicenceInput, file: File) => Promise<unknown>;
+}
+export function OwnLicencesScreen({ licences: sample, today, blocked, adding: addingAtStart = false, live }: { licences: OwnLicence[]; today: Date; blocked?: boolean; adding?: boolean; live?: LiveOwnLicences }) {
+  const [adding, setAdding] = useState<null | { siteId: string | null; states: string[] }>(addingAtStart ? { siteId: null, states: [] } : null);
+  const d = live?.data ?? null;
+  const now = d ? dayOf(d.today) : today;
+  const licences: (OwnLicence & { id: string; siteId: string | null; stateCodes: string[] })[] = d
+    ? d.licences.map((l) => ({ id: l.id, no: l.licenceNo, scope: l.site ? `${l.site} · ${l.scope}` : `Single licence · ${l.scope}`, states: l.states.map((x) => STATE_NAMES[x] ?? x).join(', '), max: l.maxWorkers, deployed: l.deployed, validTo: dayOf(l.validTo), authority: l.authority ?? '', siteId: l.clientSiteId, stateCodes: l.states }))
+    : sample.map((l) => ({ ...l, id: l.no, siteId: null, stateCodes: [] }));
+  const canAdd = !live || Boolean(d?.canManage);
+  const actions = canAdd ? <Button variant="primary" icon={Plus} onClick={() => setAdding({ siteId: null, states: [] })}>Add licence</Button> : undefined;
+  const title = 'Own licences';
+  const description = 'Your contractor licences per client establishment, or single licences covering several sites or states. A placement past the maximum is blocked.';
+  const body = (
+    <>
       {blocked && <InlineAlert tone="danger" title="Deployment blocked">A 51st guard for Nilgiri Pharma Ltd, Ambattur: licence TN/OSH/CL/2026/2211 allows 50. Amend the licence or deploy elsewhere.</InlineAlert>}
       <DataTable
         label="Own licences"
         columns={[
-          { key: 'no', header: 'Licence', type: 'id', value: (l: OwnLicence) => l.no, width: 200 },
+          { key: 'no', header: 'Licence', type: 'id', value: (l: (typeof licences)[number]) => l.no, width: 200 },
           { key: 'scope', header: 'Scope', value: (l) => l.scope, width: 260 },
           { key: 'states', header: 'States', value: (l) => l.states },
           { key: 'use', header: 'Deployed / max', value: (l) => l.deployed, render: (l) => <Meter label={`${l.no} usage`} value={l.deployed} max={l.max} warnAt={90} dangerAt={100} valueText={`${l.deployed} of ${l.max}`} />, width: 200 },
-          { key: 'valid', header: 'Valid to', value: (l) => l.validTo, render: (l) => { const t = expiryTone(l.validTo, today); return <span className="yx-ops-row">{formatDate(l.validTo)}<Badge tone={t.tone}>{t.text}</Badge></span>; }, width: 240 },
+          { key: 'valid', header: 'Valid to', value: (l) => l.validTo, render: (l) => { const t = expiryTone(l.validTo, now); return <span className="yx-ops-row">{formatDate(l.validTo)}<Badge tone={t.tone}>{t.text}</Badge></span>; }, width: 240 },
           { key: 'auth', header: 'Authority', value: (l) => l.authority, width: 240 },
         ]}
         rows={licences}
-        getRowId={(l) => l.no}
-        rowButtons={(l) => (expiryTone(l.validTo, today).tone !== 'success' ? <Button size="sm">Start renewal</Button> : null)}
+        getRowId={(l) => l.id}
+        state={live?.state === 'loading' ? 'loading' : 'ready'}
+        rowButtons={(l) => (canAdd && expiryTone(l.validTo, now).tone !== 'success' ? <Button size="sm" onClick={() => setAdding({ siteId: l.siteId, states: l.stateCodes })}>Start renewal</Button> : null)}
         empty={<EmptyState title="No licences yet." description="Add a licence before deploying staff to a client site." />}
       />
+      {adding && <AddOwnLicenceSheet entities={d ? d.entities : [{ value: 'e1', label: 'Kaveri Foods Pvt Ltd' }]} sites={d ? d.sites : [{ value: 's1', label: 'Nilgiri Pharma Ltd · Ambattur unit', state: 'IN-TN' }]} start={adding} onClose={() => setAdding(null)} onAdd={(input, file) => (live ? live.onAdd(input, file) : Promise.resolve())} />}
+    </>
+  );
+  if (live)
+    return (
+      <LivePage title={title} description={description} actions={actions} state={live.state} onRetry={live.onRetry} what="your contractor licences" grantedBy="an admin (the contract labour key)">
+        {body}
+      </LivePage>
+    );
+  return (
+    <OpsDesk area="contractor" active="Own licences">
+      <PageHeader title={title} description={description} actions={actions} />
+      {body}
     </OpsDesk>
+  );
+}
+
+/** CLB-07 Add licence (or its renewal): for one client site, or a single licence for the states listed; with its copy. */
+function AddOwnLicenceSheet({ entities, sites, start, onClose, onAdd }: { entities: Opt[]; sites: (Opt & { state: string })[]; start: { siteId: string | null; states: string[] }; onClose: () => void; onAdd: (input: OwnLicenceInput, file: File) => Promise<unknown> }) {
+  const { toast } = useSay();
+  const [entity, setEntity] = useState<string | null>(entities.length === 1 ? entities[0]!.value : null);
+  const [kind, setKind] = useState<'site' | 'single'>(start.siteId || !start.states.length ? 'site' : 'single');
+  const [site, setSite] = useState<string | null>(start.siteId);
+  const [states, setStates] = useState<string[]>(start.states);
+  const [no, setNo] = useState('');
+  const [scope, setScope] = useState('');
+  const [max, setMax] = useState<number | null>(null);
+  const [from, setFrom] = useState<Date | null>(null);
+  const [to, setTo] = useState<Date | null>(null);
+  const [by, setBy] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const bad = {
+    entity: !entity ? 'Choose the legal entity that holds it.' : null,
+    site: kind === 'site' && !site ? 'Choose the client site.' : null,
+    states: kind === 'single' && !states.length ? 'Choose the states it covers.' : null,
+    no: no.trim().length < 3 ? 'Enter the licence number.' : null,
+    scope: scope.trim().length < 3 ? 'Say what work it covers.' : null,
+    max: !max || max < 1 ? 'Enter the most workers it allows.' : null,
+    from: !from ? 'Enter the first day.' : null,
+    to: !to ? 'Enter the last day.' : from && to < from ? 'It ends before it starts.' : null,
+    file: !file ? 'Attach a copy of the licence.' : null,
+  };
+  const go = () => {
+    setTried(true);
+    const miss = (Object.keys(bad) as (keyof typeof bad)[]).find((k) => bad[k]);
+    if (miss) return focusOn(`ol-${miss}`);
+    setBusy(true);
+    setFailed(null);
+    onAdd({ legalEntityId: entity!, ...(kind === 'site' ? { clientSiteId: site! } : { states }), licenceNo: no.trim(), scope: scope.trim(), maxWorkers: max!, validFrom: isoDay(from), validTo: isoDay(to), ...(by.trim() ? { issuedBy: by.trim() } : {}) }, file!)
+      .then(() => (toast({ tone: 'success', title: 'Licence added' }), onClose()))
+      .catch((e: unknown) => setFailed(errText(e)))
+      .finally(() => setBusy(false));
+  };
+  const err = (k: keyof typeof bad) => (tried ? bad[k] : null);
+  return (
+    <Drawer open onOpenChange={(o) => !o && onClose()} size="lg" title="Add licence" subtitle="Your contractor licence" dirty notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={go}>Add licence</Button></>}>
+      <div className="yx-ops-stack">
+        <FormField id="ol-entity" label="Held by" required error={err('entity')}>
+          <Select value={entity} onChange={setEntity} options={entities} placeholder="Choose" />
+        </FormField>
+        <FormField id="ol-kind" label="Covers" required>
+          <Segment label="Covers" options={[{ value: 'site', label: 'One client site' }, { value: 'single', label: 'States (single licence)' }]} value={kind} onChange={(v) => setKind(v as 'site' | 'single')} />
+        </FormField>
+        {kind === 'site' ? (
+          <FormField id="ol-site" label="Client site" required error={err('site')}>
+            <Select value={site} onChange={setSite} options={sites} placeholder="Choose" />
+          </FormField>
+        ) : (
+          <FormField id="ol-states" label="States" required error={err('states')}>
+            <MultiSelect value={states} onChange={setStates} options={STATE_OPTIONS} placeholder="Choose" />
+          </FormField>
+        )}
+        <FieldRow>
+          <FormField id="ol-no" label="Licence number" required error={err('no')}>
+            <TextField value={no} onChange={setNo} maxLength={40} />
+          </FormField>
+          <FormField id="ol-max" label="Most workers allowed" required error={err('max')}>
+            <NumberField value={max} onChange={setMax} min={1} />
+          </FormField>
+        </FieldRow>
+        <FormField id="ol-scope" label="Work covered" required error={err('scope')}>
+          <TextField value={scope} onChange={setScope} maxLength={200} />
+        </FormField>
+        <FieldRow>
+          <FormField id="ol-from" label="Valid from" required error={err('from')}>
+            <DatePicker value={from} onChange={setFrom} />
+          </FormField>
+          <FormField id="ol-to" label="Valid to" required error={err('to')}>
+            <DatePicker value={to} onChange={setTo} />
+          </FormField>
+        </FieldRow>
+        <FormField id="ol-by" label="Issued by" optional>
+          <TextField value={by} onChange={setBy} maxLength={200} />
+        </FormField>
+        <FormField id="ol-file" label="Copy of the licence" required error={err('file')} helper="PDF, JPG or PNG.">
+          <FileUpload id="ol-file" multiple={false} accept={['.pdf', '.jpg', '.png']} upload={async (x) => void setFile(x)} onItemsChange={(items) => !items.length && setFile(null)} />
+        </FormField>
+      </div>
+    </Drawer>
   );
 }
 
@@ -1954,23 +2235,63 @@ export interface ClientPack {
   uploaded: Date | null;
   ref: string;
 }
+/** GET contract-labour/client-packs (answer 639). */
+export interface ClientPacksData {
+  canManage: boolean;
+  today: string;
+  sites: Opt[];
+  packs: { id: string; client: string; site: string; clientSiteId: string; month: string; employees: number; due: string; channel: string; status: ClientPack['status']; uploadedOn: string | null; reference: string | null; version: number }[];
+}
+export interface LiveClientPacks {
+  state: 'ready' | 'loading' | 'error' | 'no-access';
+  onRetry: () => void;
+  data: ClientPacksData | null;
+  months: Opt[];
+  onMake: (clientSiteId: string, month: string, reason?: string) => Promise<unknown>;
+  onDownload: (id: string) => Promise<unknown>;
+  onUpload: (id: string, input: { uploadedOn: string; reference: string }, file: File | null) => Promise<unknown>;
+  onAcknowledge: (id: string, file: File) => Promise<unknown>;
+}
 const PACK_TONE = { Generated: 'info', Uploaded: 'warning', Accepted: 'success', Overdue: 'danger' } as const;
-export function ClientPacksScreen({ packs, recordOpen }: { packs: ClientPack[]; recordOpen?: boolean }) {
-  const [open, setOpen] = useState(!!recordOpen);
+const PACK_ITEMS_LIVE = ['Wage register', 'Muster'];
+export function ClientPacksScreen({ packs: sample, recordOpen, making: makingAtStart = false, accepting, live }: { packs: ClientPack[]; recordOpen?: boolean; making?: boolean; accepting?: boolean; live?: LiveClientPacks }) {
+  const d = live?.data ?? null;
+  type Card = ClientPack & { id: string; live?: ClientPacksData['packs'][number] };
+  const packs: Card[] = d
+    ? d.packs.map((p) => ({ id: p.id, client: `${p.client} · ${p.site}`, month: new Date(`${p.month}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }), items: PACK_ITEMS_LIVE, status: p.status, due: dayOf(p.due), uploaded: p.uploadedOn ? dayOf(p.uploadedOn) : null, ref: p.reference ?? '', live: p }))
+    : sample.map((p, i) => ({ ...p, id: `s${i}` }));
+  const [open, setOpen] = useState<string | null>(recordOpen ? (packs[0]?.id ?? null) : null);
+  const [ack, setAck] = useState<string | null>(accepting ? (packs.find((p) => p.status === 'Uploaded')?.id ?? null) : null);
+  const [making, setMaking] = useState(makingAtStart);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
   const overdue = packs.filter((p) => p.status === 'Overdue');
-  return (
-    <OpsDesk area="contractor" active="Client compliance packs" counts={{ 'Client compliance packs': overdue.length }}>
-      <PageHeader title="Client compliance packs" description="Built each month from payroll and attendance for the staff you deploy at each client. Record the upload to the client's portal." />
-      {overdue.length > 0 && <PageBanner tone="danger">{overdue.length} pack is overdue. HR and the account owner have been told.</PageBanner>}
+  const canChange = !live || Boolean(d?.canManage);
+  const target = packs.find((p) => p.id === open);
+  const ackTarget = packs.find((p) => p.id === ack);
+  const download = (p: Card) => {
+    if (!live || !p.live) return;
+    setBusy(`d-${p.id}`);
+    setFailed(null);
+    live.onDownload(p.id).catch((e: unknown) => setFailed(errText(e))).finally(() => setBusy(null));
+  };
+  const title = 'Client compliance packs';
+  const description = 'Built each month from payroll and attendance for the staff you deploy at each client. Record the upload to the client\'s portal.';
+  const actions = live && canChange ? <Button variant="primary" icon={Plus} onClick={() => setMaking(true)}>Make pack</Button> : undefined;
+  const body = (
+    <>
+      {failed && <InlineAlert tone="danger" title={failed} />}
+      {overdue.length > 0 && <PageBanner tone="danger">{overdue.length} {overdue.length === 1 ? 'pack is' : 'packs are'} overdue. Record the upload once it is on the client's portal.</PageBanner>}
+      {live && live.state === 'ready' && !packs.length && <EmptyState title="No packs yet." description="Make a pack for a client site after the month ends." />}
       <CardGrid min="lg">
         {packs.map((p) => (
-          <article key={p.client + p.month} className="yx-ops-card" data-tone={p.status === 'Overdue' ? 'danger' : undefined}>
+          <article key={p.id} className="yx-ops-card" data-tone={p.status === 'Overdue' ? 'danger' : undefined}>
             <div className="yx-ops-card__head">
               <div>
                 <h3 className="yx-ops-card__title">
                   {p.client} · {p.month}
                 </h3>
-                <span className="yx-ops-card__sub">Due {formatDate(p.due)}</span>
+                <span className="yx-ops-card__sub">Due {formatDate(p.due)}{p.live ? ` · ${p.live.employees} employees · via ${p.live.channel}` : ''}</span>
               </div>
               <Badge tone={PACK_TONE[p.status]}>{p.status === 'Uploaded' ? 'Uploaded, awaiting acceptance' : p.status}</Badge>
             </div>
@@ -1984,30 +2305,143 @@ export function ClientPacksScreen({ packs, recordOpen }: { packs: ClientPack[]; 
             </ul>
             {p.uploaded && <p className="yx-ops-muted">Uploaded {formatDate(p.uploaded)} · {p.ref}</p>}
             <Actions>
-              <Button size="sm" icon={Download}>Download pack</Button>
-              {!p.uploaded && (
-                <Button size="sm" onClick={() => setOpen(true)}>
+              <Button size="sm" icon={Download} loading={busy === `d-${p.id}`} onClick={() => download(p)}>Download pack</Button>
+              {canChange && !p.uploaded && (
+                <Button size="sm" onClick={() => setOpen(p.id)}>
                   Record upload
+                </Button>
+              )}
+              {canChange && p.status === 'Uploaded' && (
+                <Button size="sm" onClick={() => setAck(p.id)}>
+                  Record acceptance
                 </Button>
               )}
             </Actions>
           </article>
         ))}
       </CardGrid>
-      <Drawer open={open} onOpenChange={setOpen} title="Record portal upload" subtitle="Nilgiri Pharma Ltd · Sep 2026" footer={<><Button onClick={() => setOpen(false)}>Cancel</Button><Button variant="primary">Save upload</Button></>}>
-        <div className="yx-ops-stack">
-          <FormField label="Uploaded on" required>
-            <DatePicker value={new Date(2026, 8, 29)} onChange={() => {}} />
-          </FormField>
-          <FormField label="Portal reference" required>
-            <TextField />
-          </FormField>
-          <FormField label="Acknowledgement" optional>
-            <FileUpload accept={['.pdf', '.png']} upload={async () => {}} />
-          </FormField>
-        </div>
-      </Drawer>
+      {target && <RecordUploadSheet title={`${target.client} · ${target.month}`} monthStart={target.live ? dayOf(`${target.live.month}-01`) : null} onClose={() => setOpen(null)} onSave={(input, file) => (live && target.live ? live.onUpload(target.id, input, file) : Promise.resolve())} />}
+      {ackTarget && <RecordAcceptanceDialog title={`${ackTarget.client} · ${ackTarget.month}`} onClose={() => setAck(null)} onSave={(file) => (live && ackTarget.live ? live.onAcknowledge(ackTarget.id, file) : Promise.resolve())} />}
+      {making && <MakePackDialog sites={d ? d.sites : [{ value: 's1', label: 'Nilgiri Pharma Ltd · Ambattur unit' }]} months={live ? live.months : [{ value: '2026-09', label: 'Sep 2026' }]} existing={new Set((d?.packs ?? []).map((p) => `${p.clientSiteId}:${p.month}`))} onClose={() => setMaking(false)} onMake={(site, month, reason) => (live ? live.onMake(site, month, reason) : Promise.resolve())} />}
+    </>
+  );
+  if (live)
+    return (
+      <LivePage title={title} description={description} actions={actions} state={live.state} onRetry={live.onRetry} what="client compliance packs" grantedBy="an admin (the contract labour key)">
+        {body}
+      </LivePage>
+    );
+  return (
+    <OpsDesk area="contractor" active="Client compliance packs" counts={{ 'Client compliance packs': overdue.length }}>
+      <PageHeader title={title} description={description} actions={actions ?? <Button variant="primary" icon={Plus} onClick={() => setMaking(true)}>Make pack</Button>} />
+      {body}
     </OpsDesk>
+  );
+}
+
+/** Answer 639: the upload to the client's portal, by hand: the day and reference; the acknowledgement if it came. */
+function RecordUploadSheet({ title, monthStart, onClose, onSave }: { title: string; monthStart: Date | null; onClose: () => void; onSave: (input: { uploadedOn: string; reference: string }, file: File | null) => Promise<unknown> }) {
+  const { toast } = useSay();
+  const [on, setOn] = useState<Date | null>(null);
+  const [ref, setRef] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const bad = { on: !on ? 'Choose the day it was uploaded.' : monthStart && on < monthStart ? 'Before the pack’s month.' : null, ref: ref.trim().length < 3 ? 'Give the portal’s reference.' : null };
+  const go = () => {
+    setTried(true);
+    if (bad.on) return focusOn('ru-on');
+    if (bad.ref) return focusOn('ru-ref');
+    setBusy(true);
+    setFailed(null);
+    onSave({ uploadedOn: isoDay(on), reference: ref.trim() }, file)
+      .then(() => (toast({ tone: 'success', title: file ? 'Upload recorded; pack accepted' : 'Upload recorded' }), onClose()))
+      .catch((e: unknown) => setFailed(errText(e)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Drawer open onOpenChange={(o) => !o && onClose()} title="Record portal upload" subtitle={title} notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={go}>Save upload</Button></>}>
+      <div className="yx-ops-stack">
+        <FormField id="ru-on" label="Uploaded on" required error={tried ? bad.on : null}>
+          <DatePicker value={on} onChange={setOn} />
+        </FormField>
+        <FormField id="ru-ref" label="Portal reference" required error={tried ? bad.ref : null}>
+          <TextField value={ref} onChange={setRef} maxLength={80} />
+        </FormField>
+        <FormField id="ru-ack" label="Acknowledgement" optional helper="The client's acceptance, if it came: the pack is then accepted.">
+          <FileUpload id="ru-ack" multiple={false} accept={['.pdf', '.png', '.jpg']} upload={async (x) => void setFile(x)} onItemsChange={(items) => !items.length && setFile(null)} />
+        </FormField>
+      </div>
+    </Drawer>
+  );
+}
+
+/** The client's acceptance arrived after the upload. */
+function RecordAcceptanceDialog({ title, onClose, onSave }: { title: string; onClose: () => void; onSave: (file: File) => Promise<unknown> }) {
+  const { toast } = useSay();
+  const [file, setFile] = useState<File | null>(null);
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const go = () => {
+    setTried(true);
+    if (!file) return focusOn('ra-file');
+    setBusy(true);
+    setFailed(null);
+    onSave(file)
+      .then(() => (toast({ tone: 'success', title: 'Pack accepted' }), onClose()))
+      .catch((e: unknown) => setFailed(errText(e)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} size="md" title="Record the client's acceptance" description={title} notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={go}>Save acceptance</Button></>}>
+      <FormField id="ra-file" label="Acknowledgement" required error={tried && !file ? 'Attach the client’s acknowledgement.' : null}>
+        <FileUpload id="ra-file" multiple={false} accept={['.pdf', '.png', '.jpg']} upload={async (x) => void setFile(x)} onItemsChange={(items) => !items.length && setFile(null)} />
+      </FormField>
+    </Dialog>
+  );
+}
+
+/** Answer 639: make a finished month's pack for a client site; a new version before upload needs a reason. */
+function MakePackDialog({ sites, months, existing, onClose, onMake }: { sites: Opt[]; months: Opt[]; existing: Set<string>; onClose: () => void; onMake: (site: string, month: string, reason?: string) => Promise<unknown> }) {
+  const { toast } = useSay();
+  const [site, setSite] = useState<string | null>(sites.length === 1 ? sites[0]!.value : null);
+  const [month, setMonth] = useState<string | null>(months[0]?.value ?? null);
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const again = Boolean(site && month && existing.has(`${site}:${month}`));
+  const bad = { site: !site ? 'Choose the client site.' : null, month: !month ? 'Choose the month.' : null, reason: again && reason.trim().length < 3 ? 'Say why a new version is needed.' : null };
+  const go = () => {
+    setTried(true);
+    if (bad.site) return focusOn('mp-site');
+    if (bad.month) return focusOn('mp-month');
+    if (bad.reason) return focusOn('mp-reason');
+    setBusy(true);
+    setFailed(null);
+    onMake(site!, month!, again ? reason.trim() : undefined)
+      .then(() => (toast({ tone: 'success', title: 'Pack made' }), onClose()))
+      .catch((e: unknown) => setFailed(errText(e)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} size="md" title="Make a client pack" description="The wage register and muster roll of the employees placed at the site, from approved payroll and attendance." notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={go}>Make pack</Button></>}>
+      <div className="yx-ops-stack">
+        <FormField id="mp-site" label="Client site" required error={tried ? bad.site : null}>
+          <Select value={site} onChange={setSite} options={sites} placeholder="Choose" />
+        </FormField>
+        <FormField id="mp-month" label="Month" required error={tried ? bad.month : null}>
+          <Select value={month} onChange={setMonth} options={months} placeholder="Choose" />
+        </FormField>
+        {again && (
+          <FormField id="mp-reason" label="Why a new version" required error={tried ? bad.reason : null}>
+            <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
+          </FormField>
+        )}
+      </div>
+    </Dialog>
   );
 }
 

@@ -9,6 +9,9 @@ nothing was built.
 
 ## What is live today (plain English)
 
+- **CL-8 is live (11 Nov 2026, branch `feat/yukthix-contract-labour-cl8`):** CLB-06 … 08, we are the contractor: client
+  sites with the client's registration number, our own licences, the placement block past our licence maximum, and the
+  monthly client packs with the portal upload recorded (menu Contract labour › We are the contractor).
 - **CL-6 is live (19 Nov 2026, branch `feat/yukthix-contract-labour-cl6`):** CLB-04, the contract-labour registers per
   month and establishment (frozen and DSC-signed with payroll's) and the annual return draft with the filing recorded.
 - **CL-7 is live (18 Nov 2026, branch `feat/yukthix-contract-labour-cl7`):** CLB-05, a deployed contract worker becomes
@@ -32,11 +35,12 @@ built** (no API for this feature) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Principal employer (contractors working at our sites) | 5 | 39 | 3 | 0 | 0 | 0 | 42 |
-| B. We are the contractor (our staff at client sites) | 3 | 0 | 0 | 0 | 10 | 0 | 10 |
-| C. Contractor portal | 1 | 16 | 1 | 0 | 0 | 0 | 17 |
-| D. Settings | 1 | 0 | 2 | 0 | 0 | 0 | 2 |
-| **All** | 10 | 55 | 6 | 0 | 10 | 0 | 71 |
+| A. Principal employer (contractors working at our sites) | 5 | 46 | 1 | 0 | 0 | 0 | 47 |
+| B. We are the contractor (our staff at client sites) | 3 | 13 | 1 | 0 | 0 | 0 | 14 |
+| C. Contractor portal | 1 | 19 | 0 | 0 | 0 | 0 | 19 |
+| D. Settings | 1 | 1 | 2 | 0 | 0 | 0 | 3 |
+| **All** | 10 | 79 | 4 | 0 | 0 | 0 | 83 |
+Recounted by script 11 Nov 2026 on `feat/yukthix-contract-labour-cl8` after CL-8: group B live (four new drawn stories).
 Recounted by script 19 Nov 2026 on `feat/yukthix-contract-labour-cl6` after CL-6: CLB-04 live (Registers with a gap: the inspection pack stays in Compliance › Registers).
 
 Of the 57 stories under Screens/Contract labour, 44 are live (CL-1 to CL-5 and CL-7); with the portal and settings pages, 64 of 79.
@@ -168,26 +172,30 @@ All 46 stories in section 4: there is no contractor, licence, deployment, proof 
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| List · List | design only, feature not built | reuse `staffing_clients`; needs a client-site row with the client's registration number |
-| AtMaximum · Site at licence maximum | design only, feature not built | placements at the site against our licence maximum |
-| NotCovered · Site not covered by any licence | design only, feature not built | |
-| Empty · Empty | design only, feature not built | |
+| List · List | live | CL-8: `staffing_client_sites` under the staffing client, with the client's registration number |
+| AtMaximum · Site at licence maximum | live | deployed = our active own-payroll placements at the site, against the covering licence |
+| NotCovered · Site not covered by any licence | live | |
+| Empty · Empty | live | |
+| AddSite · Add client site | live | CL-8, drawn first |
 
 #### CLB-07 · Own licences
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| List · Licences · renewal due | design only, feature not built | same licence table as CLB-01, owner = our legal entity |
-| Blocked · 51st deployment blocked | design only, feature not built | block in the staffing placement create |
-| Empty · Empty | design only, feature not built | |
+| List · Licences · renewal due | live | same `contractor_licences` table as CLB-01, owner = our legal entity; Start renewal opens Add licence for the same site |
+| Blocked · 51st deployment blocked | live | Staffing placement create refuses (`LICENCE_MAXIMUM`); the screen's banner is the drawing's, the refusal shows in the placement sheet |
+| Empty · Empty | live | |
+| AddLicence · Add licence | live | CL-8, drawn first: one client site, or a single licence for states; copy required |
 
 #### CLB-08 · Client compliance packs
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Packs · Packs by client and month | design only, feature not built | built from payroll and attendance of the placed employees |
-| RecordUpload · Record portal upload | design only, feature not built | date, reference and acknowledgement file; no client-portal integration |
-| AllAccepted · All accepted | design only, feature not built | |
+| Packs · Packs by client and month | live (gap) | wage register and muster from approved payslips and attendance; the drawing's PF ECR, ESI challan, payment proof and PT items are not in the pack (question 821) |
+| RecordUpload · Record portal upload | live | date, reference and acknowledgement file; no client-portal integration |
+| AllAccepted · All accepted | live | |
+| MakePack · Make pack | live | CL-8, drawn first; a remake before upload needs a reason |
+| RecordAcceptance · Record client acceptance | live | CL-8, drawn first |
 
 ### C. Contractor portal
 
@@ -382,6 +390,8 @@ Founder approved, 10 Nov 2026 (questions 751-756, 771-775, 781-785, all as sugge
 contractor can add the worker photo when adding the worker, checked at site approval; (775) drop the unused PPL-12
 conversion row from the drawing; (781) muster days from confirmed attendance once CL-5 lands; (783) the inspection pack
 stays in Compliance.
+Founder decided, 11 Nov 2026: build CL-8 ("we are the contractor": CLB-06 client establishments, CLB-07 own licences,
+CLB-08 client compliance packs) now, instead of waiting for a customer (changes answer 638).
 
 ## CL-1 built (10 Nov 2026, branch `feat/yukthix-contract-labour-1`)
 
@@ -613,6 +623,59 @@ pass" keeping the number; 681 block at the threshold once registrations exist, 6
      for the establishment with the contractor named on each row. *Suggested: keep (inspectors accept the combined form;
      verify with counsel).*
 
+## Follow-up after CL-5 and CL-6 (answers 754, 775, 781; 11 Nov 2026, branch `feat/yukthix-contract-labour-followup`)
+
+- **781:** the muster roll's days are the site attendance the site in-charge confirmed (CL-5). The muster waits until
+  every contractor's month at the site is confirmed ("Waiting for attendance of N contractors"); the wage register still
+  waits for every wage register. The annual return's days worked stay from the wage registers.
+- **754:** the contractor adds the worker's photo when adding the worker on the portal (optional; JPG or PNG up to 5 MB;
+  checked from the bytes, private storage, virus-scanned): `POST public/contractor-portal/:org/workers/:id/photo`, only
+  for its own worker waiting for approval. It is the same single photo the site adds on the gate pass card (CL-5): one
+  `photo_file_id` per deployment, never a second photo. At site approval a worker with a photo shows it, and the
+  approval needs the tick "the person at the site is the one in this photo" (the API refuses without it). Audited.
+- **775:** the PPL-12 Ready to onboard drawing has no "contract worker conversion" row or story any more (conversions
+  start from the worker, CLB-05); its row is gone from the people map.
+
+## CL-8 built (CLB-06 … 08, answers 638, 639; 11 Nov 2026, branch `feat/yukthix-contract-labour-cl8`)
+
+- **Data:** migration `202617y0000008_contract_labour_8`: `staffing_client_sites` (client, site, state, principal
+  employer and its registration number, where the pack goes, its due day 1-28; forced RLS); `staffing_placements.client_site_id`;
+  `contractor_licences` now also holds our own licences (owner = our legal entity, for one client site or a single
+  licence for states; a database check keeps the two owners apart); `client_packs` (site, month, the two register
+  versions, upload day, reference, acknowledgement file, accepted; forced RLS).
+- **Client sites (CLB-06):** under a staffing client; deployed against the covering licence. Keys: `clra.contractor.view`
+  reads, `clra.contractor.manage` adds.
+- **Own licences (CLB-07):** added with the copy (private, scanned), verified on entry. The covering licence is the
+  site's own first, else a single licence for its state, valid that day.
+- **Placement block (answer 638):** Staffing › New placement takes an optional client site (of the submission's client).
+  For our own employee the API refuses past the licence maximum (`LICENCE_MAXIMUM`, "the 51st of 50"), and with no
+  licence once the state's threshold (`IN.CLRA` rule set, verify) would be reached (`NO_LICENCE`). A vendor's worker is
+  not ours and is not counted.
+- **Client packs (answer 639):** for a finished month and site: our employees placed there; each needs an approved
+  payslip (else "Payroll for … is not approved yet for …"); the wage register (days paid, gross, deductions, net) and the
+  muster (days present, leave, absent from attendance) are `statutory_registers` (types `clpk_*`) made through the
+  payroll registers service, held by the licence's legal entity; payroll's own lists and inspection pack leave them
+  alone. Download is one ZIP with a cover of fingerprints (audited). The upload to the client's portal is recorded by
+  hand once (day, reference, optional acknowledgement); the acknowledgement makes it accepted; after upload the pack is
+  final. A remake before upload needs a reason. Overdue after the site's due day.
+- **Refused:** without the key 403, acting for someone else 403, another company 404, bad input 400, repeats 409.
+- **Tests:** API unit (`own-licence-rules.spec`), kit and web tests (positive and negative), e2e `contract-labour-8`
+  (5 scenarios).
+
+## Founder questions from CL-8 (11 Nov 2026)
+
+821. **What the pack holds.** The drawing lists PF ECR, ESI challan, wage payment proof and PT with the wage register
+     and muster. CL-8 packs the wage register and muster only. *Suggested: add the month's PF and ESI challan copies
+     from payroll statutory filings in a later slice; keep the payment proof by hand.*
+822. **Placements without a site.** A placement may still be made without a client site (as before CL-8); it is then
+     not counted against any licence. *Suggested: make the site required for own staff once a client has sites.*
+823. **Our licences are verified on entry.** The compliance owner who adds our own licence is trusted; there is no
+     second approver. *Suggested: keep.*
+824. **Licence threshold without a licence.** With no licence of ours at a site, placements stop when the state's
+     threshold (IN.CLRA, 50 under the OSH Code) would be reached. *Suggested: keep; verify the number with counsel.*
+825. **A pack after upload is final.** A correction is uploaded again on the client's portal outside YukthiX.
+     *Suggested: keep; a support fix if needed (as for the annual return, 784).*
+
 ## Contract labour walk-through (11 Nov 2026, branch `feat/yukthix-walk-cl`)
 
 Walked on the test app as real users (admin-tester, hr-tester, panel@, arjun@ and a contractor portal contact signed in by
@@ -644,9 +707,8 @@ wrong field (`7bb97c964`); "1 workers" (`248bb3636`).
      toast. Suggested: the success tone for every done message in the ops screens.
 803. **Highest in 12 months reads 0 until the night.** The peak is counted by the 08:30 job. Suggested: count it when a
      worker is approved or released too.
-804. **Registers text says attendance is not live.** "The muster roll's days come from the contractors' wage registers
-     until site attendance is live" and "site attendance comes with CL-5". Suggested: the round 6 follow-up (muster days
-     from confirmed attendance) changes both.
+804. **Registers text said attendance was not live.** Seen on the walk; the CL-5/CL-6 follow-up merged since has changed
+     both texts (rechecked in the code). *No question left.*
 805. **Registers & returns against the drawing.** The drawing has "Inspection pack" at the top and the menu says "CLRA
      registers & returns"; the live page has the month and Make registers. Suggested: CL-6 builder to confirm.
 806. **"Open" twice on the portal packs list.** The status "Open" sits next to the Open button. Suggested: the status

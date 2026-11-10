@@ -401,7 +401,6 @@ export const ONBOARDING_TASKS: JourneyTask[] = [
  */
 export const READY_TO_ONBOARD = [
   { id: 'r2', name: 'Suresh Nair', role: 'Maintenance Technician', dept: 'Operations', location: 'Hosur plant', entity: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', manager: 'Ramesh Gowda', joining: d(2026, 10, 12), offerAccepted: d(2026, 9, 24), personType: 'Ex-employee rehire', source: 'OFR-2026-0241', note: 'Left Feb 2025 · old code KF-0077' },
-  { id: 'r3', name: 'Selvi Perumal', role: 'Warehouse Associate', dept: 'Operations', location: 'Hosur plant', entity: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', manager: 'Ramesh Gowda', joining: d(2026, 10, 6), offerAccepted: d(2026, 9, 26), personType: 'Contract worker conversion', source: 'CW-0004', note: 'Deployed since Apr 2025' },
   { id: 'r4', name: 'Ananya Das', role: 'Account Executive', dept: 'Sales', location: 'Chennai office', entity: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', manager: 'Vikram Rao', joining: d(2026, 11, 2), offerAccepted: d(2026, 9, 27), personType: 'New person', source: 'OFR-2026-0247', note: '' },
 ];
 

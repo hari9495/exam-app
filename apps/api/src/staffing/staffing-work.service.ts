@@ -11,6 +11,7 @@ import { escapeHtml } from '../notifications/notification-email-render';
 import { StaffingService, statutoryCostPct } from './staffing.service';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { marginPct, toPaise, toRupees } from './staffing-rules';
+import { ownLicenceCheckIn } from '../contract-labour/own-licence-check';
 import type { BenchAddDto, ClientJobDto, MoveSubmissionDto, PlacementCreateDto, PlacementEndDto, PlacementExtendDto, SubmitToClientDto } from './staffing-dto';
 
 const STAGES = ['submitted', 'client_review', 'interview', 'selected', 'rejected'] as const;
@@ -291,7 +292,9 @@ export class StaffingWorkService {
       const placed = new Set((await tx.staffingPlacement.findMany({ where: { organizationId: c.organizationId, submissionId: { in: rows.map((r) => r.id) } }, select: { submissionId: true } })).map((p) => p.submissionId));
       const n = await this.names(tx, c, rows.map((r) => r.employeeId), rows.map((r) => r.candidateId));
       const jobs = new Map((await tx.job.findMany({ where: { organizationId: c.organizationId, id: { in: rows.map((r) => r.jobId) } }, select: { id: true, title: true } })).map((j) => [j.id, j.title]));
-      return rows.filter((r) => !placed.has(r.id)).map((r) => ({ id: r.id, person: r.employeeId ? n.emp.get(r.employeeId) : n.cand.get(r.candidateId!)?.name, job: jobs.get(r.jobId) ?? '', source: r.agencySubmissionId ? 'vendor' : r.employeeId ? 'employee' : 'candidate' }));
+      // CL-8: the client's establishments, to name where the person works.
+      const sites = await tx.staffingClientSite.findMany({ where: { organizationId: c.organizationId, clientId: { in: rows.map((r) => r.clientId) }, archivedAt: null }, select: { id: true, name: true, clientId: true }, orderBy: { name: 'asc' } });
+      return rows.filter((r) => !placed.has(r.id)).map((r) => ({ id: r.id, person: r.employeeId ? n.emp.get(r.employeeId) : n.cand.get(r.candidateId!)?.name, job: jobs.get(r.jobId) ?? '', source: r.agencySubmissionId ? 'vendor' : r.employeeId ? 'employee' : 'candidate', sites: sites.filter((x) => x.clientId === r.clientId).map((x) => ({ id: x.id, name: x.name })) }));
     });
   }
 
@@ -319,6 +322,13 @@ export class StaffingWorkService {
         if (!e || !(await tx.employment.findFirst({ where: { organizationId: org, employeeId: s.employeeId, exitedOn: null }, select: { id: true } }))) throw new BadRequestException('This person is no longer an employee.');
         data = { organizationId: org, clientId: s.clientId, lineId: s.lineId, submissionId: s.id, supply: 'own', employeeId: s.employeeId, workerName: displayName(e), startOn: day(dto.startOn), endOn: day(dto.endOn), createdBy: c.userId ?? null };
       } else throw new BadRequestException('A pipeline candidate joins as an employee first (People › Onboarding); then submit them from the bench.');
+      // CL-8 (answer 638): at a client's establishment our employees are contract labour: never past our licence maximum.
+      if (dto.clientSiteId) {
+        const site = await tx.staffingClientSite.findFirst({ where: { organizationId: org, id: dto.clientSiteId, clientId: s.clientId, archivedAt: null }, select: { id: true, name: true, state: true, clientId: true } });
+        if (!site) throw new NotFoundException('Client site not found.');
+        if (data.supply === 'own') await ownLicenceCheckIn(tx, org, site, dto.startOn);
+        data = { ...data, clientSiteId: site.id };
+      }
       const p = await tx.staffingPlacement.create({ data }).catch((e: unknown) => {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('This person already has an active placement.');
         throw e;

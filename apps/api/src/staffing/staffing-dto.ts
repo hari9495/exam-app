@@ -120,6 +120,8 @@ export class PlacementCreateDto {
   @IsUUID() submissionId!: string;
   @Matches(DAY) startOn!: string;
   @Matches(DAY) endOn!: string;
+  /** CL-8 (answer 638): our employee works at this client establishment as contract labour. */
+  @IsOptional() @IsUUID() clientSiteId?: string;
 }
 
 export class PlacementExtendDto {
