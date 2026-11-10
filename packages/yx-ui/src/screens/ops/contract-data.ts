@@ -7,8 +7,22 @@ export interface Licence {
   scope: string;
   states: string[];
   max: number;
-  active: number;
+  /** Workers deployed under it (CL-2; live leaves it out until deployments exist). */
+  active?: number;
   validTo: Date;
+  /* CL-1: a recorded licence and its verification (answer 627). */
+  id?: string;
+  locationId?: string;
+  stateCodes?: string[];
+  validFrom?: Date;
+  status?: 'pending' | 'verified' | 'rejected';
+  state?: 'pending' | 'rejected' | 'not-started' | 'valid' | 'expiring' | 'expired' | 'renewed';
+  renewalOf?: string | null;
+  rejectReason?: string | null;
+  decided?: { by: string; at: string } | null;
+  /** Why deployment is blocked today, if it is. */
+  block?: string | null;
+  fileName?: string | null;
 }
 export interface Contractor {
   id: string;
@@ -21,6 +35,7 @@ export interface Contractor {
   esicCode: string;
   lin: string;
   contact: string;
+  contactEmail?: string | null;
   loginInvited: boolean;
   licences: Licence[];
   status: 'Active' | 'Payment held' | 'Inactive';

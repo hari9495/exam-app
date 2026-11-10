@@ -372,6 +372,13 @@ export function buildNav(n: NavInput): NavArea[] {
         ]),
   };
 
+  // Contract labour CL-1 (CLB-01): contractors working at the company's sites, for the contractor keys (whole company).
+  const contract: NavArea = {
+    id: 'contract',
+    title: 'Contract labour',
+    sections: support ? [] : sec(undefined, when(any('clra.contractor.manage', 'clra.contractor.view'), L('clra-contractors', 'Contractors', '/yx/contract-labour/contractors'))),
+  };
+
   // Settings, pinned at the bottom of the rail, in the designed settings groups.
   const settings: NavArea = {
     id: 'settings',
@@ -390,14 +397,18 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(adminRole || n.role === 'auditor', L('activity', 'Login activity', '/yx/admin/login-activity')),
         ...when(has('org.support_access.approve') && !support, L('support-access', 'Support access', '/yx/settings/support-access')),
       ]),
-      ...sec('Payroll & Statutory', when(pay, ...[
-        ...when(any('payroll.setup.manage', 'payroll.statutory.setup'), L('pay-setup', 'Payroll set-up', '/yx/payroll/setup')),
-        ...when(any('payroll.setup.manage', 'org.settings.manage'), L('payroll-rules', 'Payroll rules', '/yx/settings/payroll-rules')),
-        ...when(has('payroll.setup.manage'), L('pay-groups', 'Pay groups', '/yx/payroll/pay-groups'), L('pay-layout', 'Payslip layout', '/yx/payroll/payslip-layout'), L('pay-country-packs', 'Country packs', '/yx/payroll/country-packs')),
-        ...when(has('payroll.component.manage'), L('pay-components', 'Component library', '/yx/payroll/components')),
-        ...when(has('payroll.template.manage'), L('pay-templates', 'Salary templates', '/yx/payroll/templates')),
-        ...when(has('payroll.import.run'), L('pay-imports', 'Import old payroll', '/yx/payroll/imports')),
-      ])),
+      ...sec('Payroll & Statutory', [
+        ...when(pay, ...[
+          ...when(any('payroll.setup.manage', 'payroll.statutory.setup'), L('pay-setup', 'Payroll set-up', '/yx/payroll/setup')),
+          ...when(any('payroll.setup.manage', 'org.settings.manage'), L('payroll-rules', 'Payroll rules', '/yx/settings/payroll-rules')),
+          ...when(has('payroll.setup.manage'), L('pay-groups', 'Pay groups', '/yx/payroll/pay-groups'), L('pay-layout', 'Payslip layout', '/yx/payroll/payslip-layout'), L('pay-country-packs', 'Country packs', '/yx/payroll/country-packs')),
+          ...when(has('payroll.component.manage'), L('pay-components', 'Component library', '/yx/payroll/components')),
+          ...when(has('payroll.template.manage'), L('pay-templates', 'Salary templates', '/yx/payroll/templates')),
+          ...when(has('payroll.import.run'), L('pay-imports', 'Import old payroll', '/yx/payroll/imports')),
+        ]),
+        // Settings 4.9 Contract labour (CL-1): no payroll needed.
+        ...when(!support && any('clra.settings.manage', 'clra.contractor.manage', 'clra.contractor.view', 'org.settings.manage'), L('clra-settings', 'Contract labour', '/yx/settings/contract-labour')),
+      ]),
       // Settings 6.1 Hiring: recruiting, hiring admins and HR read it; the hiring settings key changes it.
       ...sec('Hiring & Assessments', [
         ...when(!support && any('ats.settings.manage', 'org.settings.manage', 'pipeline:manage', 'pipelines:configure', 'ats.headcount.manage', 'ats.referral.manage'), L('hiring-settings', 'Hiring', '/yx/settings/hiring')),
@@ -414,7 +425,7 @@ export function buildNav(n: NavInput): NavArea[] {
     ],
   };
 
-  return [home, people, time, pays, compliance, hire, performance, helpdesk, settings].filter((a) => a.sections.some((s) => s.items.length));
+  return [home, people, time, pays, compliance, contract, hire, performance, helpdesk, settings].filter((a) => a.sections.some((s) => s.items.length));
 }
 
 /** The area and link a path belongs to: the longest link that is the path or a parent of it. A page linked from two

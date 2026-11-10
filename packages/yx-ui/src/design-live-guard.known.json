@@ -80,7 +80,6 @@
     "ops: ClientEstablishmentsScreen",
     "ops: ClientPacksScreen",
     "ops: ClraRegistersScreen",
-    "ops: ContractorsScreen",
     "ops: ConvertWorkerScreen",
     "ops: ErrorCase",
     "ops: IcConsoleScreen",

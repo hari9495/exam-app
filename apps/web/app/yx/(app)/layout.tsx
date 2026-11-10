@@ -27,7 +27,7 @@ import { ScopeProvider, recentMonths, useScope, useWorkspaceCounts } from '../..
 import { DeskHelp } from './desk-help';
 
 // Pages outside the menu (a record, a sub-page) still light up their area.
-const AREA_BY_PATH: [string, AreaId][] = [['/yx/people', 'people'], ['/yx/time', 'time'], ['/yx/payroll', 'pay'], ['/yx/expenses', 'pay'], ['/yx/hiring', 'hire'], ['/yx/performance', 'performance'], ['/yx/desk', 'helpdesk'], ['/yx/settings', 'settings'], ['/yx/admin', 'settings'], ['/yx/support', 'settings']];
+const AREA_BY_PATH: [string, AreaId][] = [['/yx/people', 'people'], ['/yx/time', 'time'], ['/yx/payroll', 'pay'], ['/yx/expenses', 'pay'], ['/yx/hiring', 'hire'], ['/yx/performance', 'performance'], ['/yx/desk', 'helpdesk'], ['/yx/contract-labour', 'contract'], ['/yx/settings', 'settings'], ['/yx/admin', 'settings'], ['/yx/support', 'settings']];
 const COLLAPSE_KEY = 'yx-panel-collapsed';
 
 export default function YxAppLayout({ children }: { children: React.ReactNode }) {

@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { buildViewer, tenantWide, type ScopeUser } from '../access/scope';
 import { audit, CompanyContext, inCompany, Tx } from '../org-structure/org-structure.service';
-import { todayIst } from '../org-structure/org-validation';
+import { IN_STATES, todayIst } from '../org-structure/org-validation';
 import { OrgSettingsService } from '../org-structure/org-settings.service';
 import { SETTINGS } from '../org-structure/settings-registry';
 import { settingFor } from '../people/probation';
@@ -83,6 +83,7 @@ export class ContractLabourService {
         today,
         alertDays,
         locations: locations.filter((l) => !l.archivedAt).map((l) => ({ id: l.id, name: l.name, state: l.state })),
+        states: Object.entries(IN_STATES).map(([code, name]) => ({ code, name })),
         contractors: rows.map((r) => {
           const mine = licences.filter((l) => l.agencyId === r.id);
           const all = mine.map(like);
@@ -214,6 +215,8 @@ export class ContractLabourService {
       const loc = await tx.location.findFirst({ where: { id: dto.locationId, organizationId: c.organizationId, archivedAt: null }, select: { id: true, name: true, state: true } });
       if (!loc) throw new NotFoundException('Establishment not found.');
       const states = [...new Set(dto.states)];
+      const unknown = states.find((x) => !(x in IN_STATES));
+      if (unknown) throw new BadRequestException(`${unknown} is not a state of India.`);
       if (!states.includes(loc.state)) throw new BadRequestException(`The licence must cover ${loc.name}’s state (${loc.state}).`);
       const f = await this.store(tx, c, file);
       const row = await tx.contractorLicence
