@@ -18965,5 +18965,80 @@
     "expected": "Three settings with their defaults (9 am to 9 pm IST, 200 a day, 30 days); the change saves with a toast; a new sourced profile then shows \"erased in 7 days\".",
     "stories": [],
     "note": "Positive."
+  },
+  {
+    "id": "MT-CLRA-01",
+    "area": "Contract labour · CL-1: contractors and licences (10 Nov 2026)",
+    "screen": "Add a contractor (CLB-01)",
+    "url": "http://localhost:3000/yx/contract-labour/contractors",
+    "account": "admin-tester@demo-org.test (System Admin: holds the contract labour keys). Browser window 1278 x 635. Locations Hosur plant (Tamil Nadu) and Bengaluru head office (Karnataka); a PDF of a licence to attach.",
+    "steps": [
+      "1. Press Add contractor and press Add contractor again with nothing filled.",
+      "2. Enter a name and kind of work, an ESIC code of 5 digits, and save.",
+      "3. Fix the ESIC code to 17 digits and save.",
+      "4. Add a contractor with the same name as an existing staffing vendor."
+    ],
+    "expected": "Step 1: the name and kind of work are named as missing; nothing is saved. Step 2: 'An ESIC code has 17 digits.' Step 3: a toast 'Contractor added'; the contractor is in the register with 'Add a licence'. Step 4: the vendor becomes the contractor (one record, its TDS section kept).",
+    "stories": [
+      "Screens/Contract labour/CLB-01 · Contractors register · Add contractor (CL-1)"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CLRA-02",
+    "area": "Contract labour · CL-1: contractors and licences (10 Nov 2026)",
+    "screen": "Add a licence and verify it (CLB-01)",
+    "url": "http://localhost:3000/yx/contract-labour/contractors",
+    "account": "admin-tester@demo-org.test (System Admin: holds the contract labour keys). Browser window 1278 x 635. Locations Hosur plant (Tamil Nadu) and Bengaluru head office (Karnataka); a PDF of a licence to attach.",
+    "steps": [
+      "1. Open the contractor, press Add licence and save with nothing filled.",
+      "2. Choose Hosur plant, choose only Karnataka as the state, fill the rest with the PDF and save.",
+      "3. Add Tamil Nadu and save.",
+      "4. Press Verify on the licence.",
+      "5. Press Licence copy."
+    ],
+    "expected": "Step 1: every missing field is named, including the copy. Step 2: the server refuses: the licence must cover Hosur plant's state. Step 3: 'Licence added, waiting for verification'; the card says it does not count yet. Step 4: 'Licence verified'; the badge shows Valid or Expires in N days. Step 5: the PDF downloads.",
+    "stories": [
+      "Screens/Contract labour/CLB-01 · Contractors register · Add licence (CL-1)",
+      "Screens/Contract labour/CLB-01 · Contractors register · Renewal waiting for verification (CL-1)"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CLRA-03",
+    "area": "Contract labour · CL-1: contractors and licences (10 Nov 2026)",
+    "screen": "Renewal: reject then verify (CLB-01)",
+    "url": "http://localhost:3000/yx/contract-labour/contractors",
+    "account": "admin-tester@demo-org.test (System Admin: holds the contract labour keys). Browser window 1278 x 635. Locations Hosur plant (Tamil Nadu) and Bengaluru head office (Karnataka); a PDF of a licence to attach.",
+    "steps": [
+      "1. On a verified licence press Add renewal with an end date before the current one.",
+      "2. Fix the end date and add the renewal.",
+      "3. Press Reject without a reason, then with 'Copy unreadable'.",
+      "4. Add the renewal again and verify it."
+    ],
+    "expected": "Step 1: 'The renewal must end after …'. Step 2: 'Renewal waiting for verification'. Step 3: a reason is asked for; then the renewal shows Rejected with the reason. Step 4: the renewal is verified; the current licence no longer shows 'Expires in'.",
+    "stories": [
+      "Screens/Contract labour/CLB-01 · Contractors register · Add renewal (CL-1)",
+      "Screens/Contract labour/CLB-01 · Contractors register · Reject a renewal with the reason (CL-1)"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CLRA-04",
+    "area": "Contract labour · CL-1: contractors and licences (10 Nov 2026)",
+    "screen": "Settings 4.9 Contract labour",
+    "url": "http://localhost:3000/yx/settings/contract-labour",
+    "account": "admin-tester@demo-org.test (System Admin: holds the contract labour keys). Browser window 1278 x 635. Locations Hosur plant (Tamil Nadu) and Bengaluru head office (Karnataka); a PDF of a licence to attach.",
+    "steps": [
+      "1. Open Settings › Contract labour.",
+      "2. Remove every alert day and save.",
+      "3. Choose 90 and 15 days and save.",
+      "4. As the System Admin, act for someone (Act as) and open the page."
+    ],
+    "expected": "Step 1: 'Registration needed from 50 contract workers (20 for dates before 21 Nov 2025)' marked verify; the licence block and minimum age 18 are read-only. Step 2: the save is refused: choose at least one day. Step 3: a toast 'Contract labour settings saved'. Step 4: every value is read-only.",
+    "stories": [
+      "Screens/Settings/Group 4 · Payroll & Statutory · 4.9 Contract labour"
+    ],
+    "note": "Positive and negative."
   }
 ]
