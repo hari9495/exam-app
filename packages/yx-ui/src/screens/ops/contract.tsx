@@ -2082,7 +2082,7 @@ export function AttendanceMonthScreen(p: AttendanceMonthProps) {
           open
           onOpenChange={(o) => !o && setConfirming(null)}
           title={`Confirm ${row.contractor}'s ${monthText(p.month)} at ${row.site.name}?`}
-          consequence={`${row.workers.reduce((n, w) => n + w.present, 0)} days on site for ${row.workers.length} workers. The month is then locked: no more punches or entries, and the wage check uses these days.`}
+          consequence={`${row.workers.reduce((n, w) => n + w.present, 0)} days on site for ${row.workers.length} ${row.workers.length === 1 ? 'worker' : 'workers'}. The month is then locked: no more punches or entries, and the wage check uses these days.`}
           confirmLabel="Confirm month"
           onConfirm={() => void (p.onConfirm ? p.onConfirm(row.contractorId, row.site.id, p.month) : Promise.resolve()).then(() => (say('Month confirmed'), setConfirming(null)), (e: unknown) => say(errText(e)))}
         />

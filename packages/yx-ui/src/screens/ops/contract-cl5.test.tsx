@@ -76,7 +76,7 @@ describe('Contract workers’ attendance (live, CL-5)', () => {
     expect(screen.getByText(/Days on site in Sept? 2026/)).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Confirm month' }));
     const dlg = screen.getByRole('dialog');
-    expect(within(dlg).getByText(/21 days on site for 1 workers/)).toBeInTheDocument();
+    expect(within(dlg).getByText(/21 days on site for 1 worker\./)).toBeInTheDocument();
     await ue.click(within(dlg).getByRole('button', { name: 'Confirm month' }));
     expect(onConfirm).toHaveBeenCalledWith('c1', 'hosur', '2026-09');
   });
