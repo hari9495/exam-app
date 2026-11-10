@@ -51,10 +51,24 @@ describe('HIR-09 offer builder (live)', () => {
     show(<OfferBuilderScreen live={live} />);
     expect(screen.getByRole('heading', { name: /New offer · Joseph George/ })).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Continue' }));
-    expect(await screen.findByText('Enter the fixed CTC.')).toBeInTheDocument();
+    expect(await screen.findByText('Enter a fixed CTC above ₹0.')).toBeInTheDocument();
     await waitFor(() => expect(document.activeElement?.id).toBe('ob-ctc'));
     expect(live.onPreview).not.toHaveBeenCalled();
     expect(live.onFinish).not.toHaveBeenCalled();
+  });
+
+  it('answer 532: ₹0 is refused like blank, with the bulk offers words; above 0 goes on', async () => {
+    const live = builder();
+    show(<OfferBuilderScreen live={live} />);
+    await ue.type(screen.getByLabelText(/Fixed CTC/), '0');
+    await ue.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByText('Enter a fixed CTC above ₹0.')).toBeInTheDocument();
+    await waitFor(() => expect(document.activeElement?.id).toBe('ob-ctc'));
+    expect(live.onPreview).not.toHaveBeenCalled();
+    await ue.clear(screen.getByLabelText(/Fixed CTC/));
+    await ue.type(screen.getByLabelText(/Fixed CTC/), '1600000');
+    await waitFor(() => expect(live.onPreview).toHaveBeenCalled());
+    expect(screen.queryByText('Enter a fixed CTC above ₹0.')).not.toBeInTheDocument();
   });
 
   it('shows Pay’s CTC lines with employer costs and the band check; above the range is flagged', async () => {

@@ -3,11 +3,13 @@ import { Transform } from 'class-transformer';
 
 // HIR-09 / HIR-29 inputs. Money is whole rupees or rupees and paise as text (never a float); dates are ISO dates.
 const MONEY = /^\d{1,12}(\.\d{1,2})?$/;
+/** Answer 532: the fixed CTC is above ₹0 (blank and 0 refused), the same words as bulk offers. */
+const POSITIVE_MONEY = /^(?!0+(\.0+)?$)\d{1,12}(\.\d{1,2})?$/;
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 
 export class OfferPayDto {
   @IsUUID() templateVersionId!: string;
-  @Matches(MONEY, { message: 'Give the fixed CTC in rupees.' }) annualCtc!: string;
+  @Matches(POSITIVE_MONEY, { message: 'Enter a fixed CTC above ₹0.' }) annualCtc!: string;
   @IsOptional() @Matches(MONEY, { message: 'Give the variable pay in rupees.' }) variablePay?: string;
   @IsOptional() @Matches(MONEY, { message: 'Give the joining bonus in rupees.' }) joiningBonus?: string;
   @IsOptional() @IsInt() @Min(1) @Max(60) clawbackMonths?: number;

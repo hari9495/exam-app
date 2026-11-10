@@ -322,4 +322,31 @@ describe('Hiring HIR-23 bias audit', () => {
     expect((await pub('get', `/applications/${tokenA}`).expect(200)).body.toolNotice).toBeNull();
     await pub('post', `/applications/${tokenA}/alternative-process`).expect(409);
   });
+
+  it('answer 531: "Send the New York City notice" for a hand-added candidate never told: once, audited, the days start then; refused otherwise', async () => {
+    // Added while the setting was off: never told.
+    await setSetting('hiring.bias_audit.nyc', 'off');
+    const late = (await api('admin', 'post', `/jobs/${ids.nycJob}/entries`).send({ newCandidate: { name: 'Hand late', email: `hand-late-${run}@x.test` } }).expect(201)).body.id as string;
+    await setSetting('hiring.bias_audit.nyc', 'on');
+    const board = async () => Object.values((await api('admin', 'get', `/hiring/jobs/${ids.nycJob}/board`).expect(200)).body.columns).flat() as { entryId: string; toolNoticeNeeded: boolean }[];
+    expect((await board()).find((r) => r.entryId === late)!.toolNoticeNeeded).toBe(true);
+    // Not while acting, not from another company.
+    await api('acting', 'post', `/hiring/entries/${late}/tool-notice`).expect(403);
+    await api('adminB', 'post', `/hiring/entries/${late}/tool-notice`).expect(404);
+    const sent = (await api('admin', 'post', `/hiring/entries/${late}/tool-notice`).expect(200)).body;
+    expect(sent.toolNoticeAt).toBeTruthy();
+    expect(await inA((tx) => tx.candidateEmail.count({ where: { pipelineEntryId: late, subject: { startsWith: 'How ' } } }))).toBe(1);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'candidate.tool_notice.sent', entityId: late, actorUserId: users.admin } }))).toBe(1);
+    expect((await board()).find((r) => r.entryId === late)!.toolNoticeNeeded).toBe(false);
+    // Pressed again (or two people at once): never a second email.
+    const again = await Promise.all([api('admin', 'post', `/hiring/entries/${late}/tool-notice`), api('admin', 'post', `/hiring/entries/${late}/tool-notice`)]);
+    expect(again.map((r) => r.status)).toEqual([409, 409]);
+    expect(await inA((tx) => tx.candidateEmail.count({ where: { pipelineEntryId: late, subject: { startsWith: 'How ' } } }))).toBe(1);
+    // An applicant (told on the page), a job outside NYC, or the setting off: refused.
+    const applicant = await inA((tx) => tx.pipelineEntry.findFirstOrThrow({ where: { jobId: ids.nycJob, enteredVia: 'application' }, select: { id: true } }));
+    expect((await api('admin', 'post', `/hiring/entries/${applicant.id}/tool-notice`).expect(409)).body.message).toMatch(/applied on the job page/);
+    const alb = (await api('admin', 'post', `/jobs/${ids.albanyJob}/entries`).send({ newCandidate: { name: 'Hand alb', email: `hand-alb-${run}@x.test` } }).expect(201)).body.id as string;
+    await api('admin', 'post', `/hiring/entries/${alb}/tool-notice`).expect(409);
+    await setSetting('hiring.bias_audit.nyc', 'off');
+  });
 });

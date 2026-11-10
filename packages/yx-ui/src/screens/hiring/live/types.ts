@@ -331,6 +331,8 @@ export interface ApplicationView {
   alternativeRequestedAt?: string | null;
   /** Answer 502: the New York City notice applies to this job (the recruiter may record a request for another process). */
   toolNotice?: boolean;
+  /** Answer 531: a candidate added by hand who was never sent the New York City notice. */
+  toolNoticeNeeded?: boolean;
   checklist: { id: string; label: string; done: boolean }[];
   assignee: string | null;
   emails: { id: string; subject: string; status: string; at: string }[];

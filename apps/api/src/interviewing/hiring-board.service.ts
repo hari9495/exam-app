@@ -49,7 +49,9 @@ export class HiringBoardService {
       const alternative = new Map((await tx.pipelineEntry.findMany({ where: { organizationId: c.organizationId, id: { in: entryIds }, alternativeRequestedAt: { not: null } }, select: { id: true, alternativeRequestedAt: true } })).map((e) => [e.id, e.alternativeRequestedAt]));
       // Answer 502: the notice applies to this job (the recruiter may record a request for another process).
       const toolNotice = Boolean(await nycNotice(tx, c, jobId));
-      return { results, next, pending, hidden, alternative, toolNotice };
+      // Answer 531: candidates added by hand who were never sent the notice.
+      const untold = new Set(toolNotice ? (await tx.pipelineEntry.findMany({ where: { organizationId: c.organizationId, id: { in: entryIds }, enteredVia: 'manual', toolNoticeAt: null }, select: { id: true } })).map((e) => e.id) : []);
+      return { results, next, pending, hidden, alternative, toolNotice, untold };
     });
     const columns = Object.fromEntries(
       Object.entries(b.columns).map(([stageId, rows]) => [
@@ -58,7 +60,7 @@ export class HiringBoardService {
           const res = extra.results.get(r.entryId);
           const slot = extra.next.find((s) => s.interview.pipelineEntryId === r.entryId && (!s.interview.confirmedSlotId || s.interview.confirmedSlotId === s.id));
           const p = extra.pending.find((x) => x.entryId === r.entryId);
-          return { ...r, scorecards: res ?? null, nextInterviewAt: slot?.startsAt ?? null, rejectionPendingUntil: p?.sendAt ?? null, alternativeRequestedAt: extra.alternative.get(r.entryId) ?? null, toolNotice: extra.toolNotice };
+          return { ...r, scorecards: res ?? null, nextInterviewAt: slot?.startsAt ?? null, rejectionPendingUntil: p?.sendAt ?? null, alternativeRequestedAt: extra.alternative.get(r.entryId) ?? null, toolNotice: extra.toolNotice, toolNoticeNeeded: extra.untold.has(r.entryId) };
         }),
       ]),
     );
@@ -98,6 +100,11 @@ export class HiringBoardService {
    * Answer 502: the recruiter records that a New York City candidate asked for another process (by phone or email). Only
    * where the notice applies (409 otherwise); a second record changes nothing. Audited with who recorded it.
    */
+  /** Answer 531: send the NYC notice to a hand-added candidate who was never told (rules in PipelineService.sendToolNotice). */
+  sendToolNotice(ctx: TenantContext, userId: string, entryId: string) {
+    return this.pipeline.sendToolNotice(ctx, userId, entryId);
+  }
+
   async recordAlternative(ctx: TenantContext, userId: string, entryId: string) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const e = await tx.pipelineEntry.findFirst({ where: { organizationId: c.organizationId, id: entryId }, select: { id: true, jobId: true, alternativeRequestedAt: true } });

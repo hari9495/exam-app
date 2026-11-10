@@ -128,6 +128,15 @@ export class InterviewingController {
     return this.board.move(ctx, userId, id, dto.statusId, dto.fromStatusId);
   }
 
+  // Answer 531: send the New York City notice to a candidate added by hand who was never told.
+  @Post('entries/:id/tool-notice')
+  @HttpCode(200)
+  @RequirePermissions('pipeline:manage')
+  sendToolNotice(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+    notActing(req);
+    return this.board.sendToolNotice(ctx, userId, id);
+  }
+
   // Answer 502: record that a New York City candidate asked for another process than the automated tool.
   @Post('entries/:id/alternative-process')
   @HttpCode(200)

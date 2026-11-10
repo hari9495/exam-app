@@ -57,3 +57,29 @@ describe('Application drawer: record a request for another process (502)', () =>
     }
   });
 });
+
+describe('Application drawer: send the New York City notice (531)', () => {
+  it('shows for a hand-added candidate never told; sending toasts; refusal shows its words; no button otherwise', async () => {
+    const onSend = vi.fn(async () => undefined);
+    const app = { ...sampleApplication.app!, toolNotice: true, toolNoticeNeeded: true };
+    const { unmount } = show(<ApplicationDrawer {...sampleApplication} app={app} onRecordAlternative={async () => {}} onSendToolNotice={onSend} />);
+    expect(screen.getByText('Not told yet')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Send the New York City notice' }));
+    await waitFor(() => expect(onSend).toHaveBeenCalled());
+    expect((await screen.findAllByText('Notice sent')).length).toBeGreaterThan(0);
+    unmount();
+    const refused = vi.fn(async () => {
+      throw new Error('This candidate was already sent the New York City notice.');
+    });
+    const second = show(<ApplicationDrawer {...sampleApplication} app={app} onRecordAlternative={async () => {}} onSendToolNotice={refused} />);
+    await ue.click(screen.getByRole('button', { name: 'Send the New York City notice' }));
+    await waitFor(() => expect(refused).toHaveBeenCalled());
+    expect(await screen.findByText(/already sent the New York City notice/)).toBeInTheDocument();
+    second.unmount();
+    for (const props of [{ canManage: false, app }, { app: { ...app, toolNoticeNeeded: false } }, { app: { ...app, toolNotice: false } }]) {
+      const r = show(<ApplicationDrawer {...sampleApplication} {...props} onRecordAlternative={async () => {}} onSendToolNotice={onSend} />);
+      expect(screen.queryByRole('button', { name: 'Send the New York City notice' })).not.toBeInTheDocument();
+      r.unmount();
+    }
+  });
+});

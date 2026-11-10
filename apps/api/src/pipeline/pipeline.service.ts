@@ -1087,16 +1087,47 @@ export class PipelineService {
     const { entry, notice } = await this.addEntryRow(context, actorUserId, jobId, dto);
     // Answer 502: a candidate added by hand to a New York City job (setting on) is emailed the automated-tool notice with
     // their status link to ask for another process; the notice days count from this email. Outside the transaction.
-    if (notice) {
-      const { subject, body } = noticeEmail(notice);
-      const sent = await this.messages.sendMessage(context, actorUserId, entry.id, { subject, body, source: 'stage_auto' }, { appendSignature: false }).catch((e) => (this.logger.warn(`NYC notice for ${entry.id}: ${(e as Error).message}`), null));
-      if (sent?.status === 'sent')
-        await this.tenantPrisma.forTenant(context, async (tx) => {
-          await tx.pipelineEntry.update({ where: { id: entry.id }, data: { toolNoticeAt: new Date() } });
-          await AuditService.recordIn(tx, context, { actorUserId, action: 'candidate.tool_notice.sent', entityType: 'pipeline_entry', entityId: entry.id, metadata: { jobId } });
-        });
-    }
+    if (notice) await this.emailToolNotice(context, actorUserId, entry.id, jobId, notice).catch((e) => this.logger.warn(`NYC notice for ${entry.id}: ${(e as Error).message}`));
     return entry;
+  }
+
+  /**
+   * Answer 531: "Send the New York City notice" for a candidate added by hand who was never told (added before the
+   * setting was on, or the email failed). Only for a NYC job with the setting on; refused while acting (the controller)
+   * and when already told; a second press never sends twice.
+   */
+  async sendToolNotice(context: TenantContext, actorUserId: string, entryId: string) {
+    const prep = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const e = await tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: context.organizationId as string }, select: { id: true, jobId: true, enteredVia: true, toolNoticeAt: true } });
+      if (!e) throw new NotFoundException('Application not found.');
+      const notice = await nycNotice(tx, { organizationId: context.organizationId as string, isSuperAdmin: false }, e.jobId);
+      if (!notice) throw new ConflictException('No automated tool is used for this job (the New York City setting is off or the job is not in New York City).');
+      if (e.enteredVia !== 'manual') throw new ConflictException('This candidate applied on the job page, where the notice was shown.');
+      if (e.toolNoticeAt) throw new ConflictException('This candidate was already sent the New York City notice.');
+      return { jobId: e.jobId, notice };
+    });
+    await this.emailToolNotice(context, actorUserId, entryId, prep.jobId, prep.notice);
+    return this.tenantPrisma.forTenant(context, (tx) => tx.pipelineEntry.findFirstOrThrow({ where: { id: entryId }, select: { toolNoticeAt: true } }));
+  }
+
+  /**
+   * Answer 502 / 531: emails the notice once. The entry is claimed first (tool_notice_at), so two presses never send two
+   * emails; a failed send gives the claim back (the recruiter may try again). The notice days count from this email.
+   */
+  private async emailToolNotice(context: TenantContext, actorUserId: string, entryId: string, jobId: string, notice: { assesses: string[]; businessDays: number }) {
+    const claimed = await this.tenantPrisma.forTenant(context, (tx) => tx.pipelineEntry.updateMany({ where: { id: entryId, organizationId: context.organizationId as string, toolNoticeAt: null }, data: { toolNoticeAt: new Date() } }));
+    if (!claimed.count) throw new ConflictException('This candidate was already sent the New York City notice.');
+    const { subject, body } = noticeEmail(notice);
+    const sent = await this.messages.sendMessage(context, actorUserId, entryId, { subject, body, source: 'stage_auto' }, { appendSignature: false }).catch((e) => (this.logger.warn(`NYC notice for ${entryId}: ${(e as Error).message}`), null));
+    await this.tenantPrisma.forTenant(context, async (tx) => {
+      if (sent?.status === 'sent') {
+        await tx.pipelineEntry.update({ where: { id: entryId }, data: { toolNoticeAt: new Date() } });
+        await AuditService.recordIn(tx, context, { actorUserId, action: 'candidate.tool_notice.sent', entityType: 'pipeline_entry', entityId: entryId, metadata: { jobId } });
+      } else {
+        await tx.pipelineEntry.update({ where: { id: entryId }, data: { toolNoticeAt: null } });
+      }
+    });
+    if (sent?.status !== 'sent') throw new ConflictException('The notice email did not go (the address failed or the candidate unsubscribed from emails). Nothing is recorded; try again or tell them another way.');
   }
 
   private async addEntryRow(context: TenantContext, actorUserId: string, jobId: string, dto: AddEntryDto) {

@@ -67,6 +67,7 @@ export function useApplicationDrawer(entryId: string | null, jobId: string | nul
     currentPay: pay.data?.currentPay ?? null,
     alternativeRequestedAt: (r as { alternativeRequestedAt?: string | null }).alternativeRequestedAt ?? null,
     toolNotice: Boolean((r as { toolNotice?: boolean }).toolNotice),
+    toolNoticeNeeded: Boolean((r as { toolNoticeNeeded?: boolean }).toolNoticeNeeded),
     customFields: (r.customFields ?? []).filter((f) => f.value != null).map((f) => ({ label: f.label, value: String(f.value) })),
     checklist: collectChecklistItems(p.stages).map((c) => ({ id: c.id, label: c.label, done: Boolean(r.blueprintChecklist?.[c.id]) })),
     assignee: r.assignedUserId,
@@ -96,6 +97,8 @@ export function useApplicationDrawer(entryId: string | null, jobId: string | nul
     onUndo: () => write('POST', `/hiring/entries/${r.entryId}/reject/undo`),
     // Answer 502: the recruiter records a New York City candidate's request for another process.
     onRecordAlternative: () => write('POST', `/hiring/entries/${r.entryId}/alternative-process`),
+    // Answer 531: send the notice to a hand-added candidate who was never told.
+    onSendToolNotice: () => write('POST', `/hiring/entries/${r.entryId}/tool-notice`),
     onAssign: (userId) => write('PATCH', `/entries/${r.entryId}/assignment`, { assigneeUserId: userId }),
     onChecklist: (itemId, done) => write('PATCH', `/entries/${r.entryId}/checklist`, { itemId, done }),
     onScoreFit: () => write('POST', `/pipeline/entries/${r.entryId}/fit-assessment/score`),
