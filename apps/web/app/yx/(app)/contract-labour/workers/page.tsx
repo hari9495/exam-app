@@ -2,7 +2,8 @@
 
 import { NoAccessState } from '@yukthix/ui';
 import { WorkersScreen, type WorkersData } from '@yukthix/ui/desk';
-import { loadState } from '../../../../../lib/yx-org';
+import { useRouter } from 'next/navigation';
+import { loadState, useYxPermissions } from '../../../../../lib/yx-org';
 import { apiFetch } from '../../../../../lib/api-client';
 import { useAuth } from '../../../../../lib/auth-context';
 import { useClra, useClraWrite } from '../../../../../lib/yx-contract-labour';
@@ -18,6 +19,9 @@ export default function YxContractWorkersPage() {
   const q = useClra<WorkersData>('/workers');
   const { accessToken } = useAuth();
   const write = useClraWrite();
+  const router = useRouter();
+  // CL-7 (answer 637): HR with the onboarding key converts a deployed worker (CLB-05).
+  const perms = useYxPermissions();
   const state = loadState(q);
   if (state === 'no-access') return <NoAccessState what="contract workers" grantedBy="your HR team" />;
   return (
@@ -34,6 +38,7 @@ export default function YxContractWorkersPage() {
         onApprove: (id, version, induction) => write('POST', `/workers/${enc(id)}/approve`, { version, inductionOn: induction.on, inductionBy: induction.by }),
         onRelease: (id, version, on, reason) => write('POST', `/workers/${enc(id)}/release`, { version, on, reason }),
         // Answer 685: the minimum wage under the wage field.
+        onConvert: perms.has('lifecycle.onboarding.manage') ? (id) => router.push(`/yx/contract-labour/workers/${enc(id)}/convert`) : undefined,
         onMinWage: (locationId, skill) => apiFetch(`/contract-labour/min-wage?locationId=${enc(locationId)}&skill=${enc(skill)}`, {}, accessToken ?? undefined) as Promise<{ monthly: string; daily: string; source: string; verify: boolean } | null>,
       }}
     />
