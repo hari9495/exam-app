@@ -81,4 +81,7 @@ export const RenewalChecked: S = {
 };
 export const NothingDue: S = { name: 'Nothing due (CL-3)', render: () => <ContractorPortalScreen {...base} due={[]} workOrders={ORDERS} /> };
 export const DuePhone: S = { name: 'What is due · phone (CL-3)', globals: { viewport: { value: 'mobile2', isRotated: false } }, render: () => <ContractorPortalScreen {...base} due={DUE} workOrders={ORDERS} /> };
-
+// CL-4 (answers 626, 634): a proof's upload, and the wage register with each worker's pay against the minimum.
+export const UploadChallan: S = { name: 'Monthly pack · upload a challan (CL-4)', render: () => <ContractorPortalScreen {...base} tab="packs" uploading="esi_challan" /> };
+export const UploadWages: S = { name: 'Monthly pack · wage register (CL-4)', render: () => <ContractorPortalScreen {...base} tab="packs" uploading="wage_register" /> };
+export const Withdraw: S = { name: 'Withdraw a waiting worker (CL-4)', render: () => <ContractorPortalScreen {...base} tab="workers" workers={CL_WORKERS.map((w, i) => (i === 3 ? { ...w, status: 'Pending approval' as const, gatePass: null, gateValidTo: null } : w))} withdrawingId="w4" /> };

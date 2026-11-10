@@ -9,8 +9,9 @@ import { FilesService } from '../documents/files.service';
 import { toRupees } from '../staffing/staffing-rules';
 import { ContractLabourService, type Upload } from './contract-labour.service';
 import { WorkersService } from './workers.service';
+import { ComplianceService } from './compliance.service';
 import { alertDaysOf, daysBetween, licenceState, type LicenceLike } from './clra-rules';
-import type { PortalWorkerDto, RenewalDto } from './clra-dto';
+import type { PackItemDto, PortalWithdrawDto, PortalWorkerDto, RenewalDto } from './clra-dto';
 
 const PORTAL_MINUTES = 60;
 const tokenHash = (t: string) => createHash('sha256').update(t).digest('hex');
@@ -38,6 +39,7 @@ export class ContractorPortalService {
     private readonly clra: ContractLabourService,
     private readonly workers: WorkersService,
     private readonly files: FilesService,
+    private readonly compliance: ComplianceService,
   ) {}
 
   private async orgOf(slug: string) {
@@ -136,6 +138,7 @@ export class ContractorPortalService {
           site: { id: l.locationId, name: site(l.locationId) },
           licenceNo: l.licenceNo,
           scope: l.scope,
+          issuedBy: l.issuedBy,
           states: l.states,
           maxWorkers: l.maxWorkers,
           deployed: deps.filter((d) => d.locationId === l.locationId).length,
@@ -198,6 +201,11 @@ export class ContractorPortalService {
   }
 
   /** Send a worker for site approval: the same checks as the compliance owner's, no override. */
+  /** Answer 736: withdraw the contractor's own worker waiting for site approval (another contractor's: 404). */
+  withdraw(slug: string, token: string | undefined, id: string, d: PortalWithdrawDto) {
+    return this.inPortal(slug, token, (tx, s) => this.workers.withdrawIn(tx, s.c, id, s.agencyId, d.reason, s.contactId));
+  }
+
   addWorker(slug: string, token: string | undefined, d: PortalWorkerDto) {
     return this.inPortal(slug, token, async (tx, s) => {
       const r = await this.workers.sendIn(tx, s.c, this.dto(s, d), s.contactId);
@@ -210,5 +218,41 @@ export class ContractorPortalService {
     const out = await this.inPortal(slug, token, (tx, s) => this.clra.renewIn(tx, s.c, licenceId, d, file, s.agencyId, s.contactId));
     void this.files.scan(out.org, out.fileId).catch(() => undefined);
     return { id: out.id, status: 'pending' };
+  }
+
+  /* ---------------- CL-4: monthly packs, bills, the minimum-wage hint ---------------- */
+
+  packs(slug: string, token: string | undefined) {
+    return this.inPortal(slug, token, (tx, s) => this.compliance.portalPacks(tx, s.c, s.agencyId, todayIst()));
+  }
+
+  /** One month's pack for a site the contractor owes it for (another site or month: 404). */
+  pack(slug: string, token: string | undefined, locationId: string, month: string) {
+    return this.inPortal(slug, token, async (tx, s) => {
+      const today = todayIst();
+      const owed = (await this.compliance.portalPacks(tx, s.c, s.agencyId, today)).some((p) => p.site.id === locationId && p.month === month);
+      if (!owed) throw new NotFoundException('No pack is owed for this site and month.');
+      const v = await this.compliance.packView(tx, s.c, s.agencyId, locationId, `${month}-01`, today);
+      return { ...v, agencyId: undefined, workers: v.workers.map((w) => ({ ...w, paidByUs: undefined, stillShort: undefined })) };
+    });
+  }
+
+  async upload(slug: string, token: string | undefined, d: PackItemDto, file: Upload) {
+    const out = await this.inPortal(slug, token, (tx, s) => this.compliance.upload(tx, s.c, s.agencyId, s.contactId, d, file, todayIst()));
+    void this.files.scan(out.org, out.fileId).catch(() => undefined);
+    return { id: out.id, state: 'submitted' };
+  }
+
+  bills(slug: string, token: string | undefined) {
+    return this.inPortal(slug, token, (tx, s) => this.compliance.portalBills(tx, s.c, s.agencyId, todayIst()));
+  }
+
+  /** Answer 685: the minimum wage for one of the contractor's sites and a skill. */
+  minWage(slug: string, token: string | undefined, locationId: string, skill: string) {
+    return this.inPortal(slug, token, async (tx, s) => {
+      const has = await tx.contractorLicence.findFirst({ where: { organizationId: s.org, agencyId: s.agencyId, locationId, status: 'verified' }, select: { id: true } });
+      if (!has) throw new NotFoundException('Site not found.');
+      return this.compliance.hintIn(tx, s.c, locationId, skill, todayIst());
+    });
   }
 }

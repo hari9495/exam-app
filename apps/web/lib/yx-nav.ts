@@ -376,7 +376,7 @@ export function buildNav(n: NavInput): NavArea[] {
   const contract: NavArea = {
     id: 'contract',
     title: 'Contract labour',
-    sections: support ? [] : sec(undefined, when(any('clra.contractor.manage', 'clra.contractor.view'), L('clra-contractors', 'Contractors', '/yx/contract-labour/contractors'), L('clra-workers', 'Contract workers', '/yx/contract-labour/workers'))),
+    sections: support ? [] : sec(undefined, when(any('clra.contractor.manage', 'clra.contractor.view'), L('clra-contractors', 'Contractors', '/yx/contract-labour/contractors'), L('clra-workers', 'Contract workers', '/yx/contract-labour/workers'), L('clra-compliance', 'Vendor compliance', '/yx/contract-labour/compliance'))),
   };
 
   // Visitors slice 1 (M02 §B11): hosts invite their own visitors; reception runs the desk; the log (answers 601-617).
@@ -390,6 +390,8 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(!support && any('visitors.log.view', 'visitors.desk.manage'), L('visitors-log', 'Visitor log', '/yx/visitors/log')),
         // Slice 3 (answer 605): the watch-list, for HR and Facility admins only.
         ...when(!support && has('visitors.watchlist.manage'), L('visitors-watchlist', 'Watch-list', '/yx/visitors/watchlist')),
+        // Slice 4 (answer 612): the emergency roll-call for reception, security and HR.
+        ...when(!support && any('visitors.rollcall.view', 'visitors.desk.manage'), L('visitors-rollcall', 'Roll-call', '/yx/visitors/rollcall')),
       ]),
     ],
   };

@@ -11,6 +11,8 @@ import { REDIS_CONNECTION, bullOpts, createRedisConnection, logBullErrors } from
 import { ContractLabourController } from './contract-labour.controller';
 import { ContractLabourService } from './contract-labour.service';
 import { WorkersService } from './workers.service';
+import { ComplianceService } from './compliance.service';
+import { StatutoryModule } from '../statutory/statutory.module';
 import { ContractorPortalService } from './contractor-portal.service';
 import { PublicContractorPortalController } from './contractor-portal.controller';
 
@@ -49,9 +51,9 @@ export class ContractLabourJobs implements OnModuleInit, OnModuleDestroy {
 // Contract labour CL-1: contractors (the vendor record), their licences and renewals, Settings 4.9, expiry alerts.
 // CL-2: contract workers (persons with the contract_worker role) and their deployments, gate passes and inductions.
 @Module({
-  imports: [AuthModule, CryptoModule, DocumentsModule, EmailModule, NotificationsModule, OrgStructureModule],
+  imports: [AuthModule, StatutoryModule, CryptoModule, DocumentsModule, EmailModule, NotificationsModule, OrgStructureModule],
   controllers: [ContractLabourController, PublicContractorPortalController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, ContractLabourService, WorkersService, ContractorPortalService, ContractLabourJobs],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, ContractLabourService, WorkersService, ComplianceService, ContractorPortalService, ContractLabourJobs],
   exports: [ContractLabourService],
 })
 export class ContractLabourModule {}

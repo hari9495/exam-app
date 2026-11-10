@@ -62,6 +62,18 @@ export function useOpenVisitorIdImage() {
   };
 }
 
+/** Slice 4: opens a visitors PDF (the badge, the roll-call) in a new tab for the browser to print. */
+export function useOpenVisitorPdf() {
+  const { accessToken } = useAuth();
+  return async (path: string) => {
+    const { blob } = await apiFetchBlob(`/visitors${path}`, {}, accessToken ?? undefined);
+    const url = URL.createObjectURL(blob);
+    // A blob link of our own page; null when the browser blocked the pop-up.
+    if (!window.open(url, '_blank')) throw new Error('Allow pop-ups for this site to print.');
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  };
+}
+
 /** The visitor log as CSV for an audit (VIS-04 "Export for audit"). */
 export function useVisitorLogCsv() {
   const { accessToken } = useAuth();

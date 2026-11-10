@@ -156,7 +156,7 @@ describe('Contract labour CL-1', () => {
   });
 
   it('add a licence: covers the establishment state, needs the copy and good dates; it waits for verification', async () => {
-    const f = { locationId: ids.hosur!, licenceNo: `TN/CLRA/${run}/1`, scope: 'Security', states: 'IN-TN,IN-KA', maxWorkers: '20', validFrom: addDays(today, -300), validTo: addDays(today, 30) };
+    const f = { locationId: ids.hosur!, licenceNo: `TN/CLRA/${run}/1`, scope: 'Security', issuedBy: 'Assistant Commissioner of Labour, Hosur', states: 'IN-TN,IN-KA', maxWorkers: '20', validFrom: addDays(today, -300), validTo: addDays(today, 30) };
     await licence('owner', ids.vendor!, f, null).expect(400);
     await licence('owner', ids.vendor!, { ...f, states: 'IN-KA' }).expect(400);
     await licence('owner', ids.vendor!, { ...f, states: 'IN-TN,IN-ZZ' }).expect(400);
@@ -172,7 +172,7 @@ describe('Contract labour CL-1', () => {
     await licence('owner', ids.vendor!, f).expect(409);
     const r = await reg();
     const l = r.contractors.find((c: { id: string }) => c.id === ids.vendor).licences[0];
-    expect(l).toMatchObject({ status: 'pending', state: 'pending', states: ['IN-TN', 'IN-KA'], max: 20, block: 'The contractor has no verified licence for this establishment.' });
+    expect(l).toMatchObject({ status: 'pending', state: 'pending', issuedBy: 'Assistant Commissioner of Labour, Hosur', states: ['IN-TN', 'IN-KA'], max: 20, block: 'The contractor has no verified licence for this establishment.' });
     expect(r.alertDays).toEqual([60, 30, 7]);
   });
 

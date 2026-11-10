@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { VisitorDeskScreen, type KioskNeeds, type VisitView } from '@yukthix/ui/visitors';
 import { loadState } from '../../../../lib/yx-org';
-import { useVisitorIdImage, useVisitors, useVisitorsGet, useVisitorsWrite, type VisitorOptions } from '../../../../lib/yx-visitors';
+import { useOpenVisitorPdf, useVisitorIdImage, useVisitors, useVisitorsGet, useVisitorsWrite, type VisitorOptions } from '../../../../lib/yx-visitors';
 
 // Visitors › Today's visitors (VIS-01): reception's day at one of the locations its Reception role reaches. Scan or type
 // the QR pass, check in (the notice at the desk if not accepted on the link) and out. The API checks the key, the
@@ -12,12 +13,14 @@ export default function YxVisitorDeskPage() {
   const options = useVisitors<VisitorOptions>('/options');
   const [picked, setPicked] = useState<string | null>(null);
   const locationId = picked ?? options.data?.desk[0]?.value ?? null;
-  const desk = useVisitors<{ location: { id: string; name: string }; today: string; canChange: boolean; idCapture: 'off' | 'on' | 'with_image'; visits: VisitView[] }>(locationId ? `/desk?locationId=${encodeURIComponent(locationId)}` : null);
+  const desk = useVisitors<{ location: { id: string; name: string }; today: string; canChange: boolean; idCapture: 'off' | 'on' | 'with_image'; badge: 'name_qr' | 'photo_qr' | 'phone_only'; visits: VisitView[] }>(locationId ? `/desk?locationId=${encodeURIComponent(locationId)}` : null);
   const write = useVisitorsWrite();
   const get = useVisitorsGet();
   const types = useVisitors<{ types: { id: string; name: string }[] }>('/types');
   const enc = encodeURIComponent;
   const idImage = useVisitorIdImage();
+  const openPdf = useOpenVisitorPdf();
+  const router = useRouter();
   const noDesk = options.isSuccess && !options.data.desk.length;
   const state = noDesk ? 'no-access' : loadState(options, desk);
   return (
@@ -50,6 +53,10 @@ export default function YxVisitorDeskPage() {
               visitNeeds: (id) => get<KioskNeeds>(`/${enc(id)}/needs`),
             }
           : undefined,
+        // Slice 4: the badge PDF (607) and the roll-call (612).
+        badge: desk.data?.badge,
+        onPrintBadge: (id) => openPdf(`/${encodeURIComponent(id)}/badge.pdf`),
+        onOpenRollCall: () => router.push(`/yx/visitors/rollcall${locationId ? `?locationId=${encodeURIComponent(locationId)}` : ''}`),
       }}
     />
   );

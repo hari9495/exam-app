@@ -78,9 +78,9 @@ export { TicketEsmRail, HrSummaryCard, MyDocumentsCard, ActionLinkScreen, Channe
 export * from './esm3-types';
 export { MessagingAdmin, MyChannelsCard, TeamScreen, KIND_LABEL as MSG_KIND_LABEL, PRESENCE_LABEL, type MessagingAdminProps, type MyChannelsCardProps, type TeamScreenProps } from './esm3';
 // Contract labour CL-1 (CLB-01 contractors register, Settings 4.9).
-export { ContractorsScreen, WorkersScreen, type ContractorInput, type LicenceInput, type RenewalInput, type WorkerInput, type WorkOrderInput } from '../ops/contract';
-export { type ContractorsData, type ContractorsLive, type WorkersData, type WorkersLive } from '../ops/contract-live';
+export { ContractorsScreen, VendorComplianceScreen, WorkersScreen, type ContractorInput, type LicenceInput, type RenewalInput, type WorkerInput, type WorkOrderInput } from '../ops/contract';
+export { type ContractorsData, type ContractorsLive, type VendorComplianceData, type VendorComplianceLive, type WorkersData, type WorkersLive } from '../ops/contract-live';
 export { clraSettingsPage, clraSettingsChanges, type ClraSettingsData } from '../settings/contract-labour-live';
 // CL-3 (T9-13): the contractor portal.
 export { ContractorPortalScreen } from '../portals/t9-business';
-export { type LiveContractorPortal, type LiveContractorTab, type ContractorPortalData } from '../portals/contractor-portal-live';
+export { type LiveContractorPortal, type LiveContractorTab, type ContractorPortalData, type ContractorPackData } from '../portals/contractor-portal-live';

@@ -24,7 +24,7 @@ import { formatDate } from '../../lib/format';
 import type { FilterValue } from '../../lib/table';
 import { LivePage } from '../time/live/kit';
 import { useRun } from '../org/org-kit';
-import { Actions, CameraFrame, CardGrid, Facts, OpsDesk, PhotoPlaceholder, QrPlaceholder, useSay } from './ops-kit';
+import { Actions, CameraFrame, CardGrid, OpsDesk, PhotoPlaceholder, QrPlaceholder, useSay } from './ops-kit';
 import { retentionLeft } from './ops-rules';
 import type { ListState } from './helpdesk';
 import { ID_CHOICES, PURPOSE_CHOICES, visitOf, type Visit, type VisitStatus, type VisitView } from './visitors-data';
@@ -98,6 +98,12 @@ export interface LiveVisitorDesk {
     onDecide: (id: string, approve: boolean, reason: string | null) => Promise<unknown>;
     visitNeeds: (id: string) => Promise<KioskNeeds>;
   };
+  /** Slice 4 (607): the location's badge; 'phone_only' prints nothing (the QR pass is on the visitor's phone). */
+  badge?: 'name_qr' | 'photo_qr' | 'phone_only';
+  /** Opens the label-size badge PDF for the browser to print. */
+  onPrintBadge?: (id: string) => Promise<unknown>;
+  /** Opens the emergency roll-call (612). */
+  onOpenRollCall?: () => void;
 }
 
 export interface VisitorDeskProps {
@@ -174,6 +180,12 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
   const visit = view ? visitOf(view) : visits.find((v) => v.id === checkIn);
   const waiting = visits.find((v) => v.status === 'Waiting for host');
   const canChange = !live || live.canChange;
+  // Slice 4 (607): the desk prints a label-size badge from the browser unless the location uses the pass on the phone only.
+  const prints = live ? live.badge === 'name_qr' || live.badge === 'photo_qr' : true;
+  const printBadge = async (id: string) => {
+    if (!live?.onPrintBadge) return;
+    await live.onPrintBadge(id).catch(() => toast({ tone: 'warning', title: 'Badge not printed', description: 'Print it again from On site now.' }));
+  };
   const closeCheckIn = () => (setCheckIn(null), setNda(false), setFound(null), setIdType(null), setLast4(''), setPhotoDone(false), setAdult(false), clearError());
   const doCheckIn = () =>
     void (async () => {
@@ -181,6 +193,7 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
       const ok = await run('in', async () => {
         const done = await live.onCheckIn(visit.id, { noticeAccepted: nda, ...(minorAdult ? { adultPresent: adult } : {}), ...(idNeeded && idType ? { idType, idLast4: last4.trim().toUpperCase() } : {}), ...(typeNeeds?.nda ? { ndaAccepted: typeTicks.nda } : {}), ...(typeNeeds?.induction ? { inductionAccepted: typeTicks.induction } : {}) });
         toast({ tone: 'success', title: `${done.name} checked in`, description: done.badge ? `Badge ${done.badge}` : undefined });
+        if (prints) await printBadge(done.id);
       });
       if (ok) closeCheckIn();
     })();
@@ -222,14 +235,21 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
             Check in
           </Button>
         ) : v.status === 'On site' ? (
-          <Button
-            size="sm"
-            icon={LogOut}
-            loading={busy === `out-${v.id}`}
-            onClick={() => live && void run(`out-${v.id}`, async () => (await live.onCheckOut(v.id), toast({ tone: 'success', title: `${v.name} checked out` })))}
-          >
-            Check out
-          </Button>
+          <>
+            {live && prints && live.onPrintBadge && (
+              <Button size="sm" icon={Printer} loading={busy === `badge-${v.id}`} onClick={() => void run(`badge-${v.id}`, () => printBadge(v.id))}>
+                Print badge
+              </Button>
+            )}
+            <Button
+              size="sm"
+              icon={LogOut}
+              loading={busy === `out-${v.id}`}
+              onClick={() => live && void run(`out-${v.id}`, async () => (await live.onCheckOut(v.id), toast({ tone: 'success', title: `${v.name} checked out` })))}
+            >
+              Check out
+            </Button>
+          </>
         ) : v.status === 'Waiting for host' && !live ? (
           <Button size="sm">Decide now</Button>
         ) : null
@@ -243,7 +263,11 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
           <Select aria-label="Location" value={live.locationId} onChange={(v) => v && live.onLocation(v)} options={live.locations} />
         </FormField>
       )}
-      {!live && <Button icon={Printer}>Print on-site list</Button>}
+      {(!live || live.onOpenRollCall) && (
+        <Button icon={Printer} onClick={live?.onOpenRollCall}>
+          Roll-call
+        </Button>
+      )}
       {(!live || (live.walkIns && live.canChange)) && (
         <Button icon={UserPlus} onClick={() => setAdding(true)}>
           Add walk-in
@@ -325,8 +349,8 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
         footer={
           <>
             <Button onClick={closeCheckIn}>Cancel</Button>
-            <Button variant="primary" icon={live ? LogIn : Printer} loading={busy === 'in'} onClick={live ? doCheckIn : () => ndaEarly.stop()}>
-              {live ? 'Check in' : 'Check in and print badge'}
+            <Button variant="primary" icon={prints ? Printer : LogIn} loading={busy === 'in'} onClick={live ? doCheckIn : () => ndaEarly.stop()}>
+              {prints ? 'Check in and print badge' : 'Check in'}
             </Button>
           </>
         }
@@ -423,7 +447,11 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
               )}
               <p className="yx-ops-muted">{live ? "Visit details are deleted after the location's retention period, ID details sooner (Settings › Visitors)." : 'ID images are deleted after 30 days; other visitor details after 90 days.'}</p>
             </div>
-            <VisitorBadge visit={{ ...visit, badge: live ? (visit.badge ?? 'Given at check-in') : 'V-0413' }} today={today} />
+            {prints ? (
+              <VisitorBadge visit={{ ...visit, badge: live ? (visit.badge ?? 'Given at check-in') : 'V-0413' }} today={today} />
+            ) : (
+              <p className="yx-ops-muted">No badge at this location: the visitor shows the QR pass on their phone.</p>
+            )}
           </div>
         )}
       </Drawer>
@@ -479,7 +507,8 @@ export interface LivePreRegister {
   today: Date;
   /** False while acting for someone else. */
   canChange: boolean;
-  onInvite: (input: VisitorInviteInput) => Promise<VisitView & { emailed?: boolean }>;
+  /** `outsideHours` (answer 652): the window falls outside the location's allowed hours; the host is warned, never refused. */
+  onInvite: (input: VisitorInviteInput) => Promise<VisitView & { emailed?: boolean; outsideHours?: string | null }>;
   onCancel: (id: string) => Promise<unknown>;
   /** Slice 2 (606): the company's visitor types for the invite (none: the field is not shown). */
   types?: Choice[];
@@ -672,14 +701,10 @@ export function PreRegisterForm({ today, draft, onDraft, errorOf, locations, min
         </FormField>
       </FieldRow>
       <MinorFields minor={minor} adult={adult} onMinor={setMinor} onAdult={setAdult} />
-      <FieldRow>
-        <FormField label="ID type" optional>
-          <Select value={null} onChange={() => {}} options={[{ value: 'dl', label: 'Driving licence' }, { value: 'pan', label: 'PAN card' }]} placeholder="Not needed" />
-        </FormField>
-        <FormField label="Send the pass by">
-          <RadioGroup orientation="horizontal" value="email" onChange={() => {}} options={[{ value: 'email', label: 'Email' }]} />
-        </FormField>
-      </FieldRow>
+      {/* Answer 664: no ID type here; the visitor gives it on their link, or reception at the desk. */}
+      <FormField label="Send the pass by">
+        <RadioGroup orientation="horizontal" value="email" onChange={() => {}} options={[{ value: 'email', label: 'Email' }]} />
+      </FormField>
       <p className="yx-ops-muted">The visitor gets a QR pass, directions and a privacy notice. Hosur plant asks for the safety induction at the gate.</p>
     </div>
   );
@@ -703,7 +728,12 @@ export function PreRegisterScreen({ device = 'desk', visits: sample, today, form
       setDraft(blankDraft(live.locations));
       // Answer 605: the host learns only that the visit can't go ahead.
       if (made.status === 'blocked') return void toast({ tone: 'warning', title: "This visit can't go ahead", description: `No pass was sent to ${made.name}. HR or the Facility admin can tell you more.` });
-      toast({ tone: made.emailed === false ? 'warning' : 'success', title: made.emailed === false ? 'Invite saved; the email did not go' : 'Invite sent', description: `${made.name}: pass ${made.passCode} for ${formatDate(new Date(made.startsAt))}, ${time(new Date(made.startsAt))} to ${time(new Date(made.endsAt))}, ${made.location}.` });
+      const warn = made.emailed === false || Boolean(made.outsideHours);
+      toast({
+        tone: warn ? 'warning' : 'success',
+        title: made.emailed === false ? 'Invite saved; the email did not go' : 'Invite sent',
+        description: `${made.name}: pass ${made.passCode} for ${formatDate(new Date(made.startsAt))}, ${time(new Date(made.startsAt))} to ${time(new Date(made.endsAt))}, ${made.location}.${made.outsideHours ? ` This is outside the allowed hours (${made.outsideHours}): tell reception.` : ''}`,
+      });
     });
   };
   const list = visits.length ? (
@@ -1008,7 +1038,42 @@ export interface LiveVisitorLog {
   onExport: () => Promise<unknown>;
   /** Opens the photo of the ID (answer 603; audited). */
   onOpenIdImage: (id: string) => Promise<unknown>;
+  /** Slice 4 (608): counts only, no names, from the counts kept after deletion and the visits still kept. */
+  reports?: { state: 'ready' | 'loading' | 'error'; data: VisitReport | null; onRetry: () => void };
 }
+
+/** GET visitors/reports. */
+export interface VisitReport {
+  from: string;
+  to: string;
+  total: number;
+  byLocation: { label: string; visits: number }[];
+  byPurpose: { label: string; visits: number }[];
+  byMonth: { month: string; visits: number }[];
+}
+
+const SAMPLE_REPORT: VisitReport = {
+  from: '2025-10-01',
+  to: '2026-09-29',
+  total: 299,
+  byLocation: [
+    { label: 'Chennai office', visits: 142 },
+    { label: 'Bengaluru head office', visits: 96 },
+    { label: 'Hosur plant', visits: 61 },
+  ],
+  byPurpose: [
+    { label: 'Meeting', visits: 121 },
+    { label: 'Interview', visits: 74 },
+    { label: 'Audit', visits: 38 },
+    { label: 'Maintenance', visits: 66 },
+  ],
+  byMonth: [
+    { month: '2026-07', visits: 88 },
+    { month: '2026-08', visits: 104 },
+    { month: '2026-09', visits: 107 },
+  ],
+};
+const monthWord = (m: string) => new Date(`${m}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
 
 export function VisitorLogScreen({ log: sample, today, loading, tab = 'log', live }: { log: Visit[]; today: Date; loading?: boolean; tab?: 'log' | 'reports'; live?: LiveVisitorLog }) {
   const log = live ? live.visits.map(visitOf) : sample;
@@ -1024,11 +1089,28 @@ export function VisitorLogScreen({ log: sample, today, loading, tab = 'log', liv
   ];
   let rows = log;
   for (const f of filters) if (f.type === 'multi' && f.values.length) rows = rows.filter((v) => f.values.includes(String((v as unknown as Record<string, unknown>)[f.key])));
-  const byPurpose = ['Meeting', 'Interview', 'Audit', 'Maintenance'].map((p) => log.filter((v) => v.purpose === p).length);
   const left = (v: Visit) => {
     const on = deleted.get(v.id);
     return on ? Math.max(0, Math.round((new Date(`${on}T00:00:00`).getTime() - new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()) / 86_400_000)) : retentionLeft(v.from, today);
   };
+  const report = live ? (live.reports?.data ?? null) : SAMPLE_REPORT;
+  const reportLoading = live ? live.reports?.state === 'loading' : loading;
+  const reportsTab = (
+    <>
+      {live?.reports?.state === 'error' && (
+        <InlineAlert tone="danger" title="Reports did not load" actions={<Button size="sm" onClick={live.reports.onRetry}>Try again</Button>}>
+          Nothing has changed. Try again in a moment.
+        </InlineAlert>
+      )}
+      <p className="yx-ops-muted">{report ? `${report.total} visits, ${formatDate(new Date(`${report.from}T00:00:00`))} to ${formatDate(new Date(`${report.to}T00:00:00`))}. Counts only: no visitor names.` : ''}</p>
+      <CardGrid min="lg">
+        <BarChart title="Visits by location" xLabel="Location" categories={(report?.byLocation ?? []).map((x) => x.label)} series={[{ name: 'Visits', values: (report?.byLocation ?? []).map((x) => x.visits) }]} loading={reportLoading} />
+        <DonutChart title="Visits by purpose" slices={(report?.byPurpose ?? []).map((x) => ({ label: x.label, value: x.visits }))} loading={reportLoading} />
+      </CardGrid>
+      <BarChart title="Visits by month" xLabel="Month" categories={(report?.byMonth ?? []).map((x) => monthWord(x.month))} series={[{ name: 'Visits', values: (report?.byMonth ?? []).map((x) => x.visits) }]} loading={reportLoading} />
+      <DescriptionList items={[{ label: 'Retention', value: live ? "Visit details are deleted after the location's retention period; these counts stay, without names (Settings › Visitors)." : '90 days for visitor details, 30 days for ID images (company setting, Settings 3.12); the counts stay, without names' }]} />
+    </>
+  );
   const exportButton = live ? (
     <Button loading={busy === 'export'} onClick={() => void run('export', live.onExport)}>
       Export for audit
@@ -1082,7 +1164,18 @@ export function VisitorLogScreen({ log: sample, today, loading, tab = 'log', liv
     return (
       <LivePage title="Visitor log" description={description} actions={exportButton} state={live.state} onRetry={live.onRetry} what="the visitor log" grantedBy="an admin (the Reception or Facility admin role)">
         {error && <InlineAlert tone="danger" title="Not done">{error}</InlineAlert>}
-        {table}
+        {live.reports ? (
+          <Tabs value={current} onValueChange={(v) => setCurrent(v as typeof current)}>
+            <TabsList aria-label="Visitor log views">
+              <TabsTrigger value="log">Log</TabsTrigger>
+              <TabsTrigger value="reports">Reports</TabsTrigger>
+            </TabsList>
+            <TabsContent value="log">{table}</TabsContent>
+            <TabsContent value="reports">{reportsTab}</TabsContent>
+          </Tabs>
+        ) : (
+          table
+        )}
       </LivePage>
     );
   return (
@@ -1094,16 +1187,7 @@ export function VisitorLogScreen({ log: sample, today, loading, tab = 'log', liv
           <TabsTrigger value="reports">Reports</TabsTrigger>
         </TabsList>
         <TabsContent value="log">{table}</TabsContent>
-        <TabsContent value="reports">
-          <CardGrid min="lg">
-            <BarChart title="Visits by location, September" xLabel="Location" categories={['Chennai office', 'Bengaluru head office', 'Hosur plant']} series={[{ name: 'Visits', values: [142, 96, 61] }]} loading={loading} />
-            <DonutChart title="Visits by purpose" slices={['Meeting', 'Interview', 'Audit', 'Maintenance'].map((p, i) => ({ label: p, value: byPurpose[i] * 20 + 10 }))} loading={loading} />
-          </CardGrid>
-          <Card title="By host, September">
-            <Facts items={[{ label: 'Neha Joshi', value: 38 }, { label: 'Anita Desai', value: 21 }, { label: 'Ravi Shankar', value: 17 }, { label: 'Average stay', value: '1 h 25 min' }]} />
-          </Card>
-          <DescriptionList items={[{ label: 'Retention', value: '90 days for visitor details, 30 days for ID images (company setting, Settings 3.12)' }]} />
-        </TabsContent>
+        <TabsContent value="reports">{reportsTab}</TabsContent>
       </Tabs>
     </OpsDesk>
   );

@@ -135,3 +135,63 @@ export function workerChecks(i: {
     { id: 'threshold', status: crossing ? 'warn' : 'pass', label: 'Principal-employer registration threshold', ...(i.threshold !== null ? { detail: crossing ? `This makes ${i.activeAtSite + 1} contract workers at ${i.site.name}; registration is needed from ${i.threshold}. Make sure the site is registered.` : `${i.activeAtSite + 1} of ${i.threshold} before registration is needed.` } : {}) },
   ];
 }
+
+/* ---------------- CL-4: monthly proofs, the wage check and the payment hold (answers 626, 634) ---------------- */
+
+export const PROOF_KINDS = ['pf_challan', 'esi_challan', 'wage_register', 'bank_proof'] as const;
+export type ProofKind = (typeof PROOF_KINDS)[number];
+export type ProofState = 'submitted' | 'verified' | 'discrepancy';
+export type PackStatus = 'open' | 'submitted' | 'verified' | 'discrepancy' | 'overdue';
+
+/** The first day of the month of a day. */
+export const monthOf = (iso: string) => `${iso.slice(0, 7)}-01`;
+
+/** A month's proofs are due on the company's cut-off day of the following month (setting clra.doc_cutoff). */
+export function packDue(month: string, cutoffDay: number): string {
+  const [y, m] = month.split('-').map(Number) as [number, number];
+  const next = new Date(Date.UTC(y, m, 1));
+  const last = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate();
+  next.setUTCDate(Math.min(cutoffDay, last));
+  return next.toISOString().slice(0, 10);
+}
+
+/**
+ * Where a month's pack stands: a discrepancy on any proof wins; every proof verified is verified; past the due day with a
+ * proof missing or not yet verified is overdue; all four in is submitted; otherwise open.
+ */
+export function packStatus(states: Partial<Record<ProofKind, ProofState>>, due: string, today: string): PackStatus {
+  const s = PROOF_KINDS.map((k) => states[k]);
+  if (s.includes('discrepancy')) return 'discrepancy';
+  if (s.every((x) => x === 'verified')) return 'verified';
+  if (today > due) return 'overdue';
+  return s.every(Boolean) ? 'submitted' : 'open';
+}
+
+/** Answer 634: a month holds the contractor's bill while overdue or disputed, unless the compliance owner released it. */
+export const holdsBill = (status: PackStatus, released: boolean) => !released && (status === 'overdue' || status === 'discrepancy');
+
+/**
+ * Answer 626, the wage check: what a worker had to be paid for the days in the register (the minimum daily rate times the
+ * days, never more than the monthly rate), and the shortfall in paise (0 when paid enough).
+ */
+export function wageShortfall(i: { days: number; grossPaise: bigint; minDailyPaise: bigint; minMonthlyPaise: bigint }): { duePaise: bigint; shortPaise: bigint } {
+  const byDays = i.minDailyPaise * BigInt(i.days);
+  const due = byDays < i.minMonthlyPaise ? byDays : i.minMonthlyPaise;
+  return { duePaise: due, shortPaise: i.grossPaise >= due ? 0n : due - i.grossPaise };
+}
+
+/** The recovery from a bill: what the company paid workers itself and has not recovered yet, never more than the bill. */
+export function recoveryFrom(netPaise: bigint, pending: { id: string; leftPaise: bigint }[]): { totalPaise: bigint; take: { id: string; paise: bigint }[] } {
+  let room = netPaise > 0n ? netPaise : 0n;
+  const take: { id: string; paise: bigint }[] = [];
+  for (const p of pending) {
+    if (room <= 0n) break;
+    const t = p.leftPaise < room ? p.leftPaise : room;
+    if (t > 0n) take.push({ id: p.id, paise: t });
+    room -= t;
+  }
+  return { totalPaise: take.reduce((n, t) => n + t.paise, 0n), take };
+}
+
+/** YX-CLRA-06 short challan: workers covered must be at least the workers deployed in the month. */
+export const challanShortfall = (covered: number, onSite: number) => Math.max(0, onSite - covered);

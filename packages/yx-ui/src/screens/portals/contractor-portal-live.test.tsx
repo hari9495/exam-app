@@ -37,13 +37,14 @@ const live = (p: Partial<LiveContractorPortal> = {}): LiveContractorPortal => ({
 });
 
 describe('T9-13 contractor portal (live)', () => {
-  it('what is due, the licence with its renewal upload, work orders; no packs or bills yet', () => {
+  it('what is due, the licence with its renewal upload, work orders; the packs and bills tabs', () => {
     show(<ContractorPortalScreen live={live()} />);
     expect(screen.getByText(/Upload the renewed licence\./)).toBeInTheDocument();
     expect(screen.getByText('WO/7')).toBeInTheDocument();
     expect(screen.getByText('14 of 20 allowed')).toBeInTheDocument();
-    expect(screen.queryByText('Monthly packs')).not.toBeInTheDocument();
-    expect(screen.queryByText('Bills')).not.toBeInTheDocument();
+    // CL-4: the packs and bills tabs.
+    expect(screen.getByRole('link', { name: 'Monthly packs' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Bills' })).toBeInTheDocument();
   });
 
   it('renewal: every missing field named and nothing sent', async () => {
@@ -93,5 +94,22 @@ describe('T9-13 contractor portal (live)', () => {
     show(<ContractorPortalScreen live={e} />);
     await ue.click(within(screen.getByRole('main')).getByRole('button', { name: 'Try again' }));
     expect(e.onRetry).toHaveBeenCalled();
+  });
+
+  it('answer 736: withdraw a waiting worker needs a reason', async () => {
+    const onWithdraw = vi.fn(async () => undefined);
+    show(<ContractorPortalScreen live={live({ tab: 'workers', onWithdraw })} />);
+    await ue.click(screen.getByRole('button', { name: 'Withdraw' }));
+    await ue.click(screen.getAllByRole('button', { name: 'Withdraw' }).at(-1)!);
+    expect(screen.getByText('Say why.')).toBeInTheDocument();
+    expect(onWithdraw).not.toHaveBeenCalled();
+    await ue.type(screen.getByLabelText(/Reason/), 'Not joining');
+    await ue.click(screen.getAllByRole('button', { name: 'Withdraw' }).at(-1)!);
+    expect(onWithdraw).toHaveBeenCalledWith('d1', 'Not joining');
+  });
+
+  it('answer 731: the issuing office shows on the licence', () => {
+    show(<ContractorPortalScreen live={live({ data: { ...DATA, establishments: [{ ...DATA.establishments[0]!, issuedBy: 'Assistant Commissioner of Labour, Hosur' }] } })} />);
+    expect(screen.getByText('Assistant Commissioner of Labour, Hosur')).toBeInTheDocument();
   });
 });

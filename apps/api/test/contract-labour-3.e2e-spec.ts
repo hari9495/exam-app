@@ -199,6 +199,20 @@ describe('Contract labour CL-3: contractor portal', () => {
     expect(me.due.map((d: { kind: string }) => d.kind)).toContain('approval');
   });
 
+  it('answer 736: the contractor withdraws its own waiting worker, with a reason; audited', async () => {
+    const w = (await portal('get', '/me', ids.token).expect(200)).body.workers[0];
+    await portal('post', `/workers/${w.id}/withdraw`, ids.token).send({ reason: 'x' }).expect(400);
+    await portal('post', `/workers/${randomUUID()}/withdraw`, ids.token).send({ reason: 'Not joining' }).expect(404);
+    await portal('post', `/workers/${w.id}/withdraw`, 'not-a-token').send({ reason: 'Not joining' }).expect(401);
+    await portal('post', `/workers/${w.id}/withdraw`, ids.token).send({ reason: 'Not joining after all' }).expect(200);
+    await portal('post', `/workers/${w.id}/withdraw`, ids.token).send({ reason: 'Not joining after all' }).expect(409);
+    const row = await inA((tx) => tx.contractDeployment.findFirstOrThrow({ where: { id: w.id } }));
+    expect(row).toMatchObject({ status: 'released', releaseReason: 'Not joining after all' });
+    const a = await inA((tx) => tx.auditLog.findFirstOrThrow({ where: { organizationId: org.A.id, action: 'clra.worker.released', entityId: w.id } }));
+    expect(JSON.parse(a.metadataJson ?? '{}')).toMatchObject({ via: 'contractor_portal', contactId: ids.meera });
+    expect((await portal('get', '/me', ids.token).expect(200)).body.workers).toEqual([]);
+  });
+
   it("renewal: only of the own licence (another contractor's 404); it waits for verification", async () => {
     const f = { licenceNo: `TN/V2/${run}`, maxWorkers: '6', validFrom: addDays(today, 21), validTo: addDays(today, 385) };
     const up = (id: string, t: string = ids.token!) => {

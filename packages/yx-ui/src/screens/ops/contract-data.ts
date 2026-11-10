@@ -12,6 +12,8 @@ export interface Licence {
   validTo: Date;
   /* CL-1: a recorded licence and its verification (answer 627). */
   id?: string;
+  /** Answer 731: the issuing office. */
+  issuedBy?: string | null;
   locationId?: string;
   stateCodes?: string[];
   validFrom?: Date;

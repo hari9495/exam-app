@@ -88,7 +88,6 @@
     "ops: PoshCaseScreen",
     "ops: PoshComplaintScreen",
     "ops: StatutorySetupScreen",
-    "ops: VendorComplianceScreen",
     "pay: FirstUse",
     "pay: GroupHealthScreen",
     "pay: RunReadinessScreen",

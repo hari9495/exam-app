@@ -6,6 +6,7 @@ import PDFDocument from 'pdfkit';
 import { writeText } from '../documents/pdf-text';
 import { OrgSecretsCryptoService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
+import { heldConsultants, recoverDirectPayments } from '../contract-labour/clra-holds';
 import { entityTimeZone, localDate, todayIst } from '../org-structure/org-validation';
 import { settingFor } from '../people/probation';
 import { OtpService } from '../auth/otp.service';
@@ -439,7 +440,8 @@ export class ConsultantsService implements OnModuleInit {
     const country = (await tx.legalEntity.findFirstOrThrow({ where: { organizationId: org, id: inv.legalEntityId }, select: { country: true } })).country;
     if (country !== 'IN') {
       const gross0 = inv.taxableValue.add(inv.cgst).add(inv.sgst).add(inv.igst);
-      await tx.consultantInvoice.update({ where: { id: inv.id }, data: { status: 'approved', tdsAmount: ZERO, tdsBase: ZERO, tdsRate: '0', tdsReason: 'not_withheld', tdsOn: asDate(todayIst()), netPayable: gross0, version: { increment: 1 } } });
+      const rec0 = await recoverDirectPayments(tx, c, k.id, inv.id, gross0);
+      await tx.consultantInvoice.update({ where: { id: inv.id }, data: { status: 'approved', tdsAmount: ZERO, tdsBase: ZERO, tdsRate: '0', tdsReason: 'not_withheld', tdsOn: asDate(todayIst()), netPayable: gross0.sub(rec0), clraRecovery: rec0, version: { increment: 1 } } });
       await audit(tx, c, 'consultant.invoice.approved', 'consultant_invoice', inv.id, { tds: '0', country });
       return;
     }
@@ -460,6 +462,8 @@ export class ConsultantsService implements OnModuleInit {
     });
     const gross = inv.taxableValue.add(inv.cgst).add(inv.sgst).add(inv.igst);
     const used = D(t.certificateUsed.toString());
+    // Contract labour answer 626: wages the company paid this contractor's workers itself come off the bill.
+    const recovery = await recoverDirectPayments(tx, c, k.id, inv.id, gross.sub(t.tds.toString()));
     await tx.consultantInvoice.update({
       where: { id: inv.id },
       data: {
@@ -472,7 +476,8 @@ export class ConsultantsService implements OnModuleInit {
         tdsOn: asDate(todayIst()),
         certificateId: used.gt(0) ? cert!.id : null,
         certificateUsed: used,
-        netPayable: gross.sub(t.tds.toString()),
+        netPayable: gross.sub(t.tds.toString()).sub(recovery),
+        clraRecovery: recovery,
         version: { increment: 1 },
       },
     });
@@ -496,6 +501,9 @@ export class ConsultantsService implements OnModuleInit {
       if (invs.some((i) => i.legalEntityId !== entity)) throw new BadRequestException('One bank file pays one legal entity’s invoices.');
       const notReady = invs.filter((i) => !['approved', 'failed'].includes(i.status));
       if (notReady.length) throw new ConflictException(`Only approved invoices are paid (${notReady.map((i) => i.invoiceNo).join(', ')}).`);
+      // Contract labour answer 634: a contractor's bills are held while its monthly proofs are overdue or disputed.
+      const held = await heldConsultants(tx, c, [...new Set(invs.map((i) => i.consultantId))], todayIst());
+      if (held.size) throw new ConflictException({ statusCode: 409, message: 'Some bills are on hold.', problems: [...held.values()] });
       const payDate = todayIst();
       const fmt = inForce(await this.rules.published(), 'IN.BANKFMT', ['GENERIC'], payDate);
       if (!fmt) throw new ConflictException(`No published bank format "GENERIC" is in force on ${payDate}.`);

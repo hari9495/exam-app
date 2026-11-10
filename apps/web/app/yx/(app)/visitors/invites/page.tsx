@@ -25,7 +25,7 @@ export default function YxMyVisitorsPage() {
         locations: options.data?.locations ?? [],
         today: new Date(),
         canChange: Boolean(options.data && !options.data.acting),
-        onInvite: (input) => write<VisitView & { emailed: boolean }>('POST', '/invites', input),
+        onInvite: (input) => write<VisitView & { emailed: boolean; outsideHours: string | null }>('POST', '/invites', input),
         onCancel: (id) => write('POST', `/${encodeURIComponent(id)}/cancel`),
         types: (types.data?.types ?? []).map((t) => ({ value: t.id, label: t.name })),
         approvals: { rows: approvals.data ?? [], photo, onDecide: (id, approve) => write('POST', `/walk-ins/${encodeURIComponent(id)}/decide`, { approve }) },

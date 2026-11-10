@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { memoryStorage } from 'multer';
@@ -12,8 +12,9 @@ import { RequireAnyPermission } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import { ContractLabourService } from './contract-labour.service';
-import { ApproveWorkerDto, ContractorContactDto, ContractorDto, LicenceDto, RejectLicenceDto, ReleaseWorkerDto, RenewalDto, SaveClraSettingsDto, WorkerDto, WorkOrderDto } from './clra-dto';
+import { DirectPaymentDto, DiscrepancyDto, HoldReleaseDto, MinWageQueryDto, MonthQueryDto, ProofDecisionDto, ApproveWorkerDto, ContractorContactDto, ContractorDto, LicenceDto, RejectLicenceDto, ReleaseWorkerDto, RenewalDto, SaveClraSettingsDto, WorkerDto, WorkOrderDto } from './clra-dto';
 import { WorkersService } from './workers.service';
+import { ComplianceService } from './compliance.service';
 
 const who = (req: Request) => req.user as ScopeUser;
 const UPLOAD = FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 1 } });
@@ -28,7 +29,58 @@ export class ContractLabourController {
   constructor(
     private readonly svc: ContractLabourService,
     private readonly workers: WorkersService,
+    private readonly compliance: ComplianceService,
   ) {}
+
+  /* ---------------- CL-4 vendor compliance (CLB-03) ---------------- */
+
+  @Get('compliance')
+  @RequireAnyPermission(...READ)
+  tracker(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: MonthQueryDto) {
+    return this.compliance.tracker(ctx, who(req), q.month);
+  }
+
+  @Post('compliance/proofs/:id/verify')
+  @RequireAnyPermission('clra.contractor.manage')
+  verifyProof(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ProofDecisionDto) {
+    assertOwnSession(req);
+    return this.compliance.verify(ctx, who(req), id, dto.version);
+  }
+
+  @Post('compliance/proofs/:id/discrepancy')
+  @RequireAnyPermission('clra.contractor.manage')
+  proofDiscrepancy(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DiscrepancyDto) {
+    assertOwnSession(req);
+    return this.compliance.discrepancy(ctx, who(req), id, dto.version, dto.note);
+  }
+
+  @Get('compliance/proofs/:id/file')
+  @RequireAnyPermission(...READ)
+  async proofFile(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Res({ passthrough: true }) res: Response) {
+    const f = await this.compliance.itemFile(ctx, who(req), id);
+    res.set({ 'Content-Type': f.contentType, 'Content-Disposition': `attachment; filename="${f.name.replace(/[^A-Za-z0-9._-]/g, '_')}"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox" });
+    return new StreamableFile(f.file);
+  }
+
+  @Post('compliance/holds/release')
+  @RequireAnyPermission('clra.contractor.manage')
+  releaseHold(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: HoldReleaseDto) {
+    assertOwnSession(req);
+    return this.compliance.release(ctx, who(req), dto);
+  }
+
+  @Post('compliance/direct-payments')
+  @RequireAnyPermission('clra.contractor.manage')
+  directPayment(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: DirectPaymentDto) {
+    assertOwnSession(req);
+    return this.compliance.directPayment(ctx, who(req), dto);
+  }
+
+  @Get('min-wage')
+  @RequireAnyPermission(...READ)
+  minWage(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: MinWageQueryDto) {
+    return this.compliance.minWageHint(ctx, who(req), q.locationId, q.skill, q.on);
+  }
 
   /* ---------------- CL-2 contract workers (CLB-02) ---------------- */
 
