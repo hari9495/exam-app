@@ -59,3 +59,53 @@ describe('contract labour licence rules (CL-1)', () => {
     expect(LIN.test('LIN123')).toBe(false);
   });
 });
+
+import { ageOn, gateValidTo, monthsLater, workerChecks } from './clra-rules';
+
+describe('contract worker rules (CL-2)', () => {
+  it('age in whole years', () => {
+    expect(ageOn('2008-10-01', '2026-09-30')).toBe(17);
+    expect(ageOn('2008-10-01', '2026-10-01')).toBe(18);
+    expect(ageOn('2008-02-29', '2026-02-28')).toBe(17);
+    expect(ageOn('2008-02-29', '2026-03-01')).toBe(18);
+  });
+
+  it('months later, less a day; the gate pass ends first of deployment, licence, induction', () => {
+    expect(monthsLater('2026-03-10', 12)).toBe('2027-03-09');
+    expect(monthsLater('2026-01-31', 1)).toBe('2026-02-27');
+    expect(gateValidTo({ toOn: null, licenceValidTo: '2027-08-31', inductionOn: '2026-03-10', inductionMonths: 12 })).toBe('2027-03-09');
+    expect(gateValidTo({ toOn: '2026-12-31', licenceValidTo: '2027-08-31', inductionOn: '2026-03-10', inductionMonths: 12 })).toBe('2026-12-31');
+    expect(gateValidTo({ toOn: null, licenceValidTo: '2026-11-30', inductionOn: null, inductionMonths: null })).toBe('2026-11-30');
+  });
+
+  const base = {
+    dob: '1994-07-03',
+    on: '2026-10-01',
+    minAge: 18,
+    licences: [{ id: 'l1', locationId: 'hosur', states: ['IN-TN'], validFrom: '2026-01-01', validTo: '2026-12-31', status: 'verified' as const, renewalOfId: null }],
+    site: { locationId: 'hosur', state: 'IN-TN', name: 'Hosur plant' },
+    licenceMax: 20,
+    activeUnderLicence: 10,
+    activeAtSite: 10,
+    threshold: 50,
+    duplicateAt: null as string | null,
+  };
+  const fails = (x: Partial<typeof base>) => workerChecks({ ...base, ...x }).filter((c) => c.status === 'fail').map((c) => c.id);
+
+  it('all pass; each block on its own', () => {
+    expect(fails({})).toEqual([]);
+    expect(fails({ dob: '2009-05-12' })).toEqual(['age']);
+    expect(fails({ on: '2027-01-02' })).toEqual(['licence']);
+    expect(fails({ site: { locationId: 'hosur', state: 'IN-KL', name: 'Hosur plant' } })).toEqual(['licence']);
+    expect(fails({ activeUnderLicence: 20 })).toEqual(['max']);
+    expect(fails({ activeUnderLicence: 19 })).toEqual([]);
+    expect(fails({ duplicateAt: 'Bengaluru head office' })).toEqual(['dup']);
+  });
+
+  it('the registration threshold warns, never blocks', () => {
+    const c = workerChecks({ ...base, activeAtSite: 49 });
+    expect(c.find((x) => x.id === 'threshold')!.status).toBe('warn');
+    expect(c.filter((x) => x.status === 'fail')).toEqual([]);
+    expect(workerChecks({ ...base, activeAtSite: 48 }).find((x) => x.id === 'threshold')!.status).toBe('pass');
+  });
+});

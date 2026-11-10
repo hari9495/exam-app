@@ -12830,3 +12830,37 @@ model ContractorLicenceAlert {
   @@id([licenceId, daysBefore])
   @@map("contractor_licence_alerts")
 }
+
+/// Contract labour CL-2 (answers 624, 632, 633, 635, 636): a contract worker's deployment at one of our sites.
+model ContractDeployment {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  personId      String    @map("person_id") @db.Uuid
+  agencyId      String    @map("agency_id") @db.Uuid
+  locationId    String    @map("location_id") @db.Uuid
+  skill         String    @db.VarChar(14)
+  wagePaise     BigInt?   @map("wage_paise")
+  dob           DateTime  @db.Date
+  idLast4       String    @map("id_last4") @db.Char(4)
+  idHash        String    @map("id_hash") @db.Char(64)
+  uan           String?   @db.VarChar(12)
+  esicIp        String?   @map("esic_ip") @db.VarChar(10)
+  fromOn        DateTime  @map("from_on") @db.Date
+  toOn          DateTime? @map("to_on") @db.Date
+  status        String    @default("pending") @db.VarChar(10)
+  inductionOn   DateTime? @map("induction_on") @db.Date
+  inductionBy   String?   @map("induction_by") @db.VarChar(120)
+  gatePassNo    String?   @map("gate_pass_no") @db.VarChar(30)
+  gateValidTo   DateTime? @map("gate_valid_to") @db.Date
+  approvedBy    String?   @map("approved_by") @db.Uuid
+  approvedAt    DateTime? @map("approved_at") @db.Timestamptz(3)
+  releasedOn    DateTime? @map("released_on") @db.Date
+  releaseReason String?   @map("release_reason") @db.VarChar(500)
+  version       Int       @default(1)
+  createdBy     String?   @map("created_by") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, locationId, agencyId, status], map: "contract_deployments_site_idx")
+  @@index([organizationId, personId], map: "contract_deployments_person_idx")
+  @@map("contract_deployments")
+}

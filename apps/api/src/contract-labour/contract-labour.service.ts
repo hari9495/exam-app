@@ -18,8 +18,8 @@ import type { ContractorDto, LicenceDto, RenewalDto } from './clra-dto';
 
 const KEYS = ['clra.contractor.manage', 'clra.contractor.view', 'clra.settings.manage', 'org.settings.manage'] as const;
 type Access = { manage: boolean; view: boolean; settings: boolean; actingForOther: boolean };
-/** Settings 4.9 keys made live in CL-1 (the monthly compliance keys come with CL-4). */
-export const CLRA_SETTING_KEYS = ['clra.licence_alerts'] as const;
+/** Settings 4.9 keys made live in CL-1 and CL-2 (the monthly compliance keys come with CL-4). */
+export const CLRA_SETTING_KEYS = ['clra.licence_alerts', 'clra.induction_required', 'clra.induction_months'] as const;
 const LICENCE_TYPES = ['application/pdf', 'image/jpeg', 'image/png'] as const;
 const FILE_MAX_MB = 10;
 const NOT_FOUND = 'Contractor not found.';
@@ -56,7 +56,7 @@ export class ContractLabourService {
     return { manage, view: manage || tenantWide(v, 'clra.contractor.view'), settings: tenantWide(v, 'clra.settings.manage') || tenantWide(v, 'org.settings.manage'), actingForOther: v.actingForOther };
   }
 
-  private async gate(user: ScopeUser, need: 'view' | 'manage') {
+  async gate(user: ScopeUser, need: 'view' | 'manage') {
     const a = await this.access(user);
     if (need === 'manage' && a.actingForOther) throw new ForbiddenException('Not available while acting for someone else. Sign in as yourself.');
     if (!(need === 'manage' ? a.manage : a.view)) throw new ForbiddenException(need === 'manage' ? 'Only the compliance owners for contract labour (the contractor key for the whole company) can change this.' : 'You need the contract labour key to see contractors.');

@@ -67,3 +67,66 @@ export const alertDaysOf = (value: string) =>
     .map(Number)
     .filter((n) => Number.isInteger(n) && n > 0)
     .sort((a, b) => b - a);
+
+/* ---------------- CL-2: deploying a contract worker (answers 632, 633, 635) ---------------- */
+
+/** Whole years of age on a day (a birthday on 29 Feb counts on 1 Mar in other years). */
+export function ageOn(dob: string, on: string): number {
+  const [y, m, d] = dob.split('-').map(Number) as [number, number, number];
+  const [Y, M, D] = on.split('-').map(Number) as [number, number, number];
+  return Y - y - (M < m || (M === m && D < d) ? 1 : 0);
+}
+
+/** The day `months` after `iso`, less one day (an induction on 10 Mar 2026 for 12 months lasts to 9 Mar 2027). */
+export function monthsLater(iso: string, months: number): string {
+  const [y, m, d] = iso.split('-').map(Number) as [number, number, number];
+  const t = new Date(Date.UTC(y, m - 1 + months, 1));
+  const last = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate();
+  t.setUTCDate(Math.min(d, last));
+  return new Date(t.getTime() - DAY).toISOString().slice(0, 10);
+}
+
+/** Answer 633: a gate pass ends with the deployment, the licence or the induction, whichever comes first. */
+export function gateValidTo(i: { toOn: string | null; licenceValidTo: string; inductionOn: string | null; inductionMonths: number | null }): string {
+  const ends = [i.licenceValidTo, i.toOn, i.inductionOn && i.inductionMonths ? monthsLater(i.inductionOn, i.inductionMonths) : null].filter((x): x is string => Boolean(x));
+  return ends.sort()[0]!;
+}
+
+export type CheckStatus = 'pass' | 'fail' | 'warn';
+export interface WorkerCheck {
+  id: 'age' | 'licence' | 'max' | 'dup' | 'threshold';
+  status: CheckStatus;
+  label: string;
+  detail?: string;
+}
+
+/**
+ * The deployment checks (answer 635, law, no override): age on the first day at least the rule set's minimum; a verified
+ * licence for the site in force on the day and covering its state (deployBlock); room under the licence maximum; the
+ * same ID not pending or deployed anywhere. The registration threshold is a warning until registrations are recorded
+ * (question 681).
+ */
+export function workerChecks(i: {
+  dob: string;
+  on: string;
+  minAge: number;
+  licences: LicenceLike[];
+  site: { locationId: string; state: string; name: string };
+  licenceMax: number | null;
+  activeUnderLicence: number;
+  activeAtSite: number;
+  threshold: number | null;
+  duplicateAt: string | null;
+}): WorkerCheck[] {
+  const age = ageOn(i.dob, i.on);
+  const lic = deployBlock(i.licences, { locationId: i.site.locationId, state: i.site.state, on: i.on });
+  const full = i.licenceMax !== null && i.activeUnderLicence + 1 > i.licenceMax;
+  const crossing = i.threshold !== null && i.activeAtSite + 1 >= i.threshold;
+  return [
+    { id: 'age', status: age >= i.minAge ? 'pass' : 'fail', label: `Age ${i.minAge} or over`, ...(age < i.minAge ? { detail: `The worker is ${age} on the first day. Deployment is not allowed.` } : {}) },
+    { id: 'licence', status: lic ? 'fail' : 'pass', label: `Contractor licence valid at ${i.site.name} on the first day`, ...(lic ? { detail: lic } : {}) },
+    { id: 'max', status: full ? 'fail' : 'pass', label: 'Within the licence maximum', ...(i.licenceMax !== null ? { detail: `Licence allows ${i.licenceMax} workers here; ${i.activeUnderLicence} are already deployed or waiting.` } : {}) },
+    { id: 'dup', status: i.duplicateAt ? 'fail' : 'pass', label: 'Not already deployed', ...(i.duplicateAt ? { detail: `The same ID is already deployed or waiting at ${i.duplicateAt}.` } : { detail: 'Matched on the ID' }) },
+    { id: 'threshold', status: crossing ? 'warn' : 'pass', label: 'Principal-employer registration threshold', ...(i.threshold !== null ? { detail: crossing ? `This makes ${i.activeAtSite + 1} contract workers at ${i.site.name}; registration is needed from ${i.threshold}. Make sure the site is registered.` : `${i.activeAtSite + 1} of ${i.threshold} before registration is needed.` } : {}) },
+  ];
+}
