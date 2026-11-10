@@ -2555,7 +2555,7 @@ function LiveInvoiceRecordView({ live }: { live: LiveInvoiceRecord }) {
         <div className="yx-hire-stack">
           {failed && <InlineAlert tone="danger" title={failed} />}
           <FormField id="cn-amount" label="Taxable amount to credit" required helper={`At most ${formatINR(Math.round(left * 100) / 100)}; GST is credited at the invoice's rate.`} error={tried && (amount == null || amount <= 0 || amount > left + 0.005) ? (amount != null && amount > left ? 'That is more than is left on the invoice.' : 'Enter the amount to credit.') : null}>
-            <CurrencyField value={amount} onChange={setAmount} />
+            <CurrencyField allowPaise value={amount} onChange={setAmount} />
           </FormField>
           <FormField id="cn-reason" label="Reason" required error={tried && reason.trim().length < 3 ? 'Say why, like “8 h duplicate on 14 Aug”.' : null}>
             <TextArea rows={2} value={reason} onChange={setReason} maxLength={500} />
@@ -2711,7 +2711,7 @@ function LiveCollectionsView({ live }: { live: LiveCollections }) {
         }}
       >
         <FormField label="TDS seen in 26AS" optional helper={edit ? `TDS deducted by the client: ${formatINR(Number(edit.tdsDeducted))}` : undefined}>
-          <CurrencyField value={in26} onChange={setIn26} />
+          <CurrencyField allowPaise value={in26} onChange={setIn26} />
         </FormField>
         <FormField label="Dispute" optional helper="Empty clears it.">
           <TextArea rows={2} value={dispute} onChange={setDispute} maxLength={500} />
@@ -2767,7 +2767,7 @@ export function ReceiptSheet({ open, onOpenChange, rows, today, onSave }: { open
         </FormField>
         <FieldRow>
           <FormField id="rc-amount" label="Amount received" required error={tried && (amount == null || due <= 0) ? 'Enter the amount received.' : null}>
-            <CurrencyField value={amount} onChange={setAmount} />
+            <CurrencyField allowPaise value={amount} onChange={setAmount} />
           </FormField>
           <FormField id="rc-on" label="Received on" required error={tried && !on ? 'Choose the day.' : null}>
             <DatePicker value={on} onChange={setOn} max={today} />
@@ -2775,7 +2775,7 @@ export function ReceiptSheet({ open, onOpenChange, rows, today, onSave }: { open
         </FieldRow>
         <FieldRow>
           <FormField id="rc-tds" label={`TDS deducted by client${section ? ` (${section})` : ''}`} optional helper="Recorded as TDS receivable and matched to 26AS">
-            <CurrencyField value={tds} onChange={setTds} />
+            <CurrencyField allowPaise value={tds} onChange={setTds} />
           </FormField>
           <FormField id="rc-ref" label="Reference" optional>
             <TextField value={ref} onChange={setRef} maxLength={60} />
@@ -2790,7 +2790,7 @@ export function ReceiptSheet({ open, onOpenChange, rows, today, onSave }: { open
                 <Text size="sm" tone="secondary">Outstanding {formatINR(Number(r.outstanding))}</Text>
               </div>
               <FormField label={`Allocate to ${r.invoice}`} hideLabel>
-                <CurrencyField value={alloc[r.invoiceId] ?? null} onChange={(v) => setAlloc((x) => ({ ...x, [r.invoiceId]: v }))} />
+                <CurrencyField allowPaise value={alloc[r.invoiceId] ?? null} onChange={(v) => setAlloc((x) => ({ ...x, [r.invoiceId]: v }))} />
               </FormField>
             </li>
           ))}
