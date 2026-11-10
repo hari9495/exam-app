@@ -38,6 +38,8 @@
 
 /* in-app pages */
 .yx-auth__page { display: flex; flex-direction: column; gap: var(--yx-space-6); max-width: var(--yx-page-max); min-width: 0; }
+/* The page's gap already spaces the header from the content (as .yx-screen does for designed frames); no second margin. */
+.yx-auth__page > .yx-page-header { margin-bottom: 0; }
 .yx-auth__stack { display: flex; flex-direction: column; gap: var(--yx-space-4); min-width: 0; }
 .yx-auth__list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
 .yx-auth__item { display: flex; align-items: center; justify-content: space-between; gap: var(--yx-space-3); padding: var(--yx-space-3) 0; min-width: 0; }
