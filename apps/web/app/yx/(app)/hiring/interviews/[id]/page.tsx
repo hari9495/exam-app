@@ -49,7 +49,7 @@ export default function YxInterviewPage() {
         onOpenCandidate: () => v && router.push(`/yx/hiring/candidates/${encodeURIComponent(v.interview.candidateId)}`),
         onResume: v
           ? async () => {
-              const { url } = (await apiFetch(`/candidates/${v.interview.candidateId}/resume`, {}, accessToken ?? undefined)) as { url: string };
+              const { url } = (await apiFetch(`/hiring/interviews/${encodeURIComponent(id)}/resume`, {}, accessToken ?? undefined)) as { url: string };
               window.open(url, '_blank', 'noopener');
             }
           : undefined,

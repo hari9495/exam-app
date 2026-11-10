@@ -88,7 +88,9 @@ export default function YxRequisitionsPage() {
   const acting = Boolean(impersonating || actingSuperAdmin);
   const { toast } = useToast();
   const perms = useYxPermissions();
-  const list = useHiring<{ viewer: 'all' | 'own'; rows: ApiRow[] }>('/requisitions', perms.isSuccess);
+  // Re-walk of answer 476: someone with no requisition key (a plain employee) is told so; nothing is asked for.
+  const mayRead = perms.has('pipeline:manage') || perms.has('ats.headcount.manage') || perms.has('ats.requisition.raise');
+  const list = useHiring<{ viewer: 'all' | 'own'; rows: ApiRow[] }>('/requisitions', perms.isSuccess && mayRead);
   const write = useApiWrite();
   const recruiting = perms.has('pipeline:manage');
   const seesCandidates = recruiting || perms.has('candidate:view');
@@ -113,7 +115,7 @@ export default function YxRequisitionsPage() {
     toast({ tone: 'error', title, description: (e as Error).message });
     throw e;
   };
-  const state = perms.isLoading ? 'loading' : loadState(list);
+  const state = perms.isLoading ? 'loading' : !mayRead ? 'no-access' : loadState(list);
   return (
     <>
       <RequisitionsScreen
@@ -123,7 +125,7 @@ export default function YxRequisitionsPage() {
         live={{
           persona: list.data?.viewer === 'own' ? 'hm' : 'recruiter',
           rows: apiRows.map((r) => requisitionRow(r, acting)),
-          state: state === 'no-access' ? 'error' : state,
+          state,
           onRetry: () => void list.refetch(),
           canManage: manage,
           ...(recruiting ? { onOpenJob: (r: LiveRequisitionRow) => router.push(`/yx/hiring/jobs/${id(r.id)}`) } : {}),

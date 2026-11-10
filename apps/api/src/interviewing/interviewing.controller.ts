@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { assertOwnSession } from '../service-desk/desk-access';
-import { TenantContext } from '@exam-platform/shared';
+import { BlobStorageService, TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
@@ -40,6 +40,7 @@ export class InterviewingController {
     private readonly scorecards: ScorecardsService,
     private readonly days: InterviewDaysService,
     private readonly notetaker: NotetakerService,
+    private readonly blobs: BlobStorageService,
   ) {}
 
   // HIR-27 bulk interview day: recruiting (the key that schedules interviews). Planning, assigning and sending are the
@@ -195,7 +196,8 @@ export class InterviewingController {
   }
 
   @Get('interviews/mine')
-  @RequireAnyPermission('interview:view_assigned', 'pipeline:manage', 'results:view')
+  // Founder answer 511: being on the interview's panel (or overseeing its job) is what lets someone in, not a role key;
+  // the service refuses everyone else (403, another company 404).
   myInterviews(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string) {
     return this.scorecards.mine(ctx, userId);
   }
@@ -203,20 +205,29 @@ export class InterviewingController {
   // HIR-06 calendar: recruiters (pipeline:manage) see the company's interviews; anyone else only those they are on, or
   // for jobs they are the hiring manager of.
   @Get('interviews')
-  @RequireAnyPermission('interview:view_assigned', 'pipeline:manage', 'results:view')
+  // Founder answer 511: being on the interview's panel (or overseeing its job) is what lets someone in, not a role key;
+  // the service refuses everyone else (403, another company 404).
   interviewRange(@CurrentTenant() ctx: TenantContext, @Req() req: Request, @Query() q: InterviewRangeDto) {
     return this.scorecards.range(ctx, viewer(req), new Date(q.from), new Date(q.to));
   }
 
   // Panellists (interview:view_assigned) and recruiters; the service applies D7 per viewer.
   @Get('interviews/:id')
-  @RequireAnyPermission('interview:view_assigned', 'pipeline:manage', 'results:view')
+  // Founder answer 511: being on the interview's panel (or overseeing its job) is what lets someone in, not a role key;
+  // the service refuses everyone else (403, another company 404).
   interview(@CurrentTenant() ctx: TenantContext, @Req() req: Request, @Param('id', ParseUUIDPipe) id: string) {
     return this.scorecards.get(ctx, id, viewer(req));
   }
 
+  @Get('interviews/:id/resume')
+  // Founder answer 511: the panel reads the candidate's résumé from the interview (checked by the service).
+  async interviewResume(@CurrentTenant() ctx: TenantContext, @Req() req: Request, @Param('id', ParseUUIDPipe) id: string) {
+    return { url: (await this.blobs.signIfOurs(await this.scorecards.resumePath(ctx, id, viewer(req)))) as string };
+  }
+
   @Put('interviews/:id/scorecard')
-  @RequireAnyPermission('interview:view_assigned', 'pipeline:manage', 'results:view')
+  // Founder answer 511: being on the interview's panel (or overseeing its job) is what lets someone in, not a role key;
+  // the service refuses everyone else (403, another company 404).
   saveScorecard(@CurrentTenant() ctx: TenantContext, @Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ScorecardDto) {
     // HIR-07: a scorecard is the interviewer's own judgement, never written while acting for someone else.
     assertOwnSession(req);
@@ -225,7 +236,8 @@ export class InterviewingController {
 
   @Post('interviews/:id/scorecard/submit')
   @HttpCode(200)
-  @RequireAnyPermission('interview:view_assigned', 'pipeline:manage', 'results:view')
+  // Founder answer 511: being on the interview's panel (or overseeing its job) is what lets someone in, not a role key;
+  // the service refuses everyone else (403, another company 404).
   submitScorecard(@CurrentTenant() ctx: TenantContext, @Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ScorecardDto) {
     assertOwnSession(req);
     return this.scorecards.save(ctx, id, viewer(req), dto, true);
@@ -233,7 +245,8 @@ export class InterviewingController {
 
   // HIR-07 answer 322: an append-only comment under a submitted scorecard; whoever may read it; never while acting.
   @Post('interviews/:id/scorecards/:scorecardId/comments')
-  @RequireAnyPermission('interview:view_assigned', 'pipeline:manage', 'results:view')
+  // Founder answer 511: being on the interview's panel (or overseeing its job) is what lets someone in, not a role key;
+  // the service refuses everyone else (403, another company 404).
   commentScorecard(@CurrentTenant() ctx: TenantContext, @Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Param('scorecardId', ParseUUIDPipe) scorecardId: string, @Body() dto: ScorecardCommentDto) {
     assertOwnSession(req);
     return this.scorecards.comment(ctx, id, scorecardId, viewer(req), dto);
@@ -242,34 +255,39 @@ export class InterviewingController {
   // HIR-25 interview notetaker (founder decision 2): the panel and the job's overseers see it; every write is the
   // person's own act (refused while acting for someone else). Another company's interview is 404.
   @Get('interviews/:id/notetaker')
-  @RequireAnyPermission('interview:view_assigned', 'pipeline:manage', 'results:view')
+  // Founder answer 511: being on the interview's panel (or overseeing its job) is what lets someone in, not a role key;
+  // the service refuses everyone else (403, another company 404).
   notetakerView(@CurrentTenant() ctx: TenantContext, @Req() req: Request, @Param('id', ParseUUIDPipe) id: string) {
     return this.notetaker.view(ctx, id, viewer(req));
   }
 
   @Put('interviews/:id/notetaker/consent')
-  @RequireAnyPermission('interview:view_assigned', 'pipeline:manage', 'results:view')
+  // Founder answer 511: being on the interview's panel (or overseeing its job) is what lets someone in, not a role key;
+  // the service refuses everyone else (403, another company 404).
   notetakerConsent(@CurrentTenant() ctx: TenantContext, @Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Body() dto: NotetakerConsentDto) {
     assertOwnSession(req);
     return this.notetaker.consent(ctx, id, viewer(req), dto.participant, dto.consent);
   }
 
   @Put('interviews/:id/notetaker/transcript')
-  @RequireAnyPermission('interview:view_assigned', 'pipeline:manage', 'results:view')
+  // Founder answer 511: being on the interview's panel (or overseeing its job) is what lets someone in, not a role key;
+  // the service refuses everyone else (403, another company 404).
   notetakerTranscript(@CurrentTenant() ctx: TenantContext, @Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Body() dto: NotetakerTranscriptDto) {
     assertOwnSession(req);
     return this.notetaker.addTranscript(ctx, id, viewer(req), dto.text);
   }
 
   @Post('interviews/:id/notetaker/draft')
-  @RequireAnyPermission('interview:view_assigned', 'pipeline:manage', 'results:view')
+  // Founder answer 511: being on the interview's panel (or overseeing its job) is what lets someone in, not a role key;
+  // the service refuses everyone else (403, another company 404).
   notetakerDraft(@CurrentTenant() ctx: TenantContext, @Req() req: Request, @Param('id', ParseUUIDPipe) id: string) {
     assertOwnSession(req);
     return this.notetaker.draft(ctx, id, viewer(req));
   }
 
   @Get('interviews/:id/notetaker/draft')
-  @RequireAnyPermission('interview:view_assigned', 'pipeline:manage', 'results:view')
+  // Founder answer 511: being on the interview's panel (or overseeing its job) is what lets someone in, not a role key;
+  // the service refuses everyone else (403, another company 404).
   notetakerMyDraft(@CurrentTenant() ctx: TenantContext, @Req() req: Request, @Param('id', ParseUUIDPipe) id: string) {
     return this.notetaker.myDraft(ctx, id, viewer(req));
   }

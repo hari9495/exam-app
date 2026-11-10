@@ -89,6 +89,23 @@ describe('Hiring › Requisitions (HIR-02 + HIR-26)', () => {
     expect(asked.filter((x) => x === '/candidate-email-templates' || x === '/org-sender-addresses')).toEqual([]);
   });
 
+  it('re-walk of answer 476: a plain employee is told they have no access; nothing is asked for and no table shows', async () => {
+    serve([], 'own');
+    wrap(<YxRequisitionsPage />);
+    expect(await screen.findByText("You don't have access to requisitions")).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(api.mock.calls.map(([path]) => String(path))).not.toContain('/hiring/requisitions');
+  });
+
+  it('a 403 from the API (keys changed meanwhile) shows the same no-access state', async () => {
+    api.mockImplementation(async (path: string) => {
+      if (path.startsWith('/rbac/me/permissions')) return ['ats.requisition.raise'];
+      throw Object.assign(new Error('Forbidden'), { status: 403 });
+    });
+    wrap(<YxRequisitionsPage />);
+    expect(await screen.findByText("You don't have access to requisitions")).toBeInTheDocument();
+  });
+
   it('acting for someone else: no New requisition, no Add, no Send', async () => {
     (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'panel', actingSuperAdmin: false, impersonating: true, isLoading: false, logout: jest.fn() });
     serve(['pipeline:manage', 'ats.requisition.raise'], 'all');

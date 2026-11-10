@@ -162,6 +162,22 @@ export class ScorecardsService {
     });
   }
 
+  /**
+   * Founder answer 511: the candidate's résumé file for the interview's panel and overseers (no candidate key needed).
+   * Only a file that passed the virus check; another company 404, someone off the panel 403.
+   */
+  resumePath(ctx: TenantContext, interviewId: string, v: Viewer) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const { iv } = await this.load(tx, c, interviewId);
+      await this.access(iv, v);
+      const profile = await tx.candidateProfile.findFirst({ where: { organizationId: c.organizationId, candidateId: iv.pipelineEntry.candidateId }, select: { resumePath: true, resumeScan: true } });
+      if (!profile?.resumePath) throw new NotFoundException('No résumé on file.');
+      if (profile.resumeScan !== 'clean') throw new ConflictException(profile.resumeScan === 'infected' ? 'This résumé was blocked by the virus check.' : 'This résumé is waiting for the virus check.');
+      await audit(tx, c, 'ats.interview.resume_opened', 'interview', interviewId, {});
+      return profile.resumePath;
+    });
+  }
+
   /** Saves the viewer's own draft; with submit, checks it is complete, scores it and makes it final. */
   save(ctx: TenantContext, interviewId: string, v: Viewer, dto: ScorecardDto, submit: boolean) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {

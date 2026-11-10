@@ -41,12 +41,13 @@ export class HiringHomeService {
     if (!ctx.organizationId || !user.userId || user.actingSuperAdmin) return null;
     const me = user.userId;
     const keys = await resolvePermissionGrants(this.prisma, this.tenantPrisma, { role: user.role, organizationId: user.organizationId ?? null, permissionProfileId: user.permissionProfileId, userId: me }, [...KEYS]);
-    if (!keys.size) return null;
+    const mine = await this.scorecards.mine(ctx, me);
+    // Founder answer 511: a panellist without any hiring key still gets their interviews and scorecards here.
+    if (!keys.size && !mine.length) return null;
     const out: HiringHome = {};
     const now = new Date();
     const today = todayIst(now);
 
-    const mine = await this.scorecards.mine(ctx, me);
     const live = mine.filter((i) => i.status !== 'cancelled' && i.confirmed && i.when && i.endsAt);
     out.scorecardsDue = live
       .filter((i) => i.endsAt! <= now && (i.scorecard === 'not_started' || i.scorecard === 'draft'))

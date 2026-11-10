@@ -52,18 +52,20 @@ built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Plans, requisitions, jobs and costs | 4 | 36 | 1 | 0 | 0 | 0 | 37 |
-| B. Candidates, pipeline and interviews | 8 | 57 | 1 | 0 | 9 | 1 | 68 |
-| C. Offers, BGV and joining | 4 | 24 | 4 | 0 | 1 | 0 | 29 |
+| A. Plans, requisitions, jobs and costs | 4 | 37 | 1 | 0 | 0 | 0 | 38 |
+| B. Candidates, pipeline and interviews | 8 | 55 | 1 | 0 | 9 | 1 | 66 |
+| C. Offers, BGV and joining | 4 | 23 | 4 | 0 | 1 | 0 | 28 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 25 | 0 | 0 | 3 | 4 | 32 |
 | E. Staffing agency | 8 | 55 | 12 | 0 | 0 | 0 | 67 |
 | F. Compliance and fairness | 5 | 17 | 2 | 0 | 11 | 0 | 30 |
 | G. Careers site, portals and settings | 4 | 62 | 4 | 2 | 9 | 0 | 77 |
-| **All Hiring design groups (A–G)** | **37** | **282** | **26** | **2** | **28** | **5** | **343** |
+| **All Hiring design groups (A–G)** | **37** | **283** | **26** | **2** | **28** | **5** | **344** |
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 5 | 0 | 5 | 5 | 0 | 15 |
+Recounted by script on `test/yukthix-main` after merging hiring-keys: A–G 283 live, 26 gap, 2 wire, 28 not built, 5 phone, of 344.
 Recounted by script on `test/yukthix-main` after merging staffing-4: A–G 282 live, 26 gap, 2 wire, 28 not built, 5 phone, of 343.
 Recounted by script 16 Nov 2026 on `feat/yukthix-hiring-small-5` (from `test/yukthix-main` 5b7855eb0) after answers 502 and 514: 3 new stories drawn and live (HIR-28 ValuesBlank, T9-09 StatusNycNotice, HIR-05 ApplicationRecordAlternative): A–G 276 live, 29 gap, 2 wire, 28 not built, 5 phone, of 340 (rows B, C, E, F, G recounted from the script; two 6.1 rows put back in file order).
 Recounted by script 10 Nov 2026 on `feat/yukthix-staffing-4` after staffing round 4 (answers 491-499): HIR-18 Account manager, HIR-19 Ageing (reminders), HIR-30 Fixed refund (fee and guarantee) and HIR-21 Vendor invoices gaps closed; 3 new drawn stories (placement fee before the hire and after leaving, vendor invoices linked to payroll).
+Recounted by script 13 Nov 2026 on `feat/yukthix-hiring-keys`: HIR-02 gained the drawn No access story (re-walk of answer 476); A–G 274 live, 29 gap, 2 wire, 28 not built, 5 phone, of 338.
 Recounted by script on `test/yukthix-main` after merging round 4 (442, 452, 473, 474): A–G 273 live, 29 gap, 2 wire, 28 not built, 5 phone, of 337.
 Recounted by script on `test/yukthix-main` after merging the Hiring walk-through fixes: A–G 270 live, 29 gap, 2 wire, 28 not built, 5 phone, of 334.
 Recounted by script on `test/yukthix-main` after merging staffing slice 3 (invoices, collections, fees, e-invoice banner, client portal) and answers 482-484, 489: A–G 267 live, 29 gap, 2 wire, 28 not built, 5 phone, of 331.
@@ -248,6 +250,7 @@ missing field and focuses the first; also on People › My team and the plan boa
 | Empty · Empty | live | no requisitions |
 | Loading · Loading | live | while `GET hiring/requisitions` loads |
 | Error · Error | live | it fails; Retry |
+| NoAccess · No access · no requisition key | live | drawn 13 Nov 2026 (re-walk of answer 476): a plain employee opening the page by address is told so; nothing is asked of the API |
 | Approver · Approver · approve or send back | live | the holder of the approval task (`myTaskId`): Approve, or Send back with a required reason, through `/workflow/approvals/tasks/:id/decide` (answer 257) |
 | CancelRequisition · Cancel requisition · reason | live | `POST hiring/requisitions/:id/cancel` with a reason (`pipeline:manage`; withdraws a waiting approval, closes the job; refused once filled; audited; answer 253) |
 | HiringManagerCancel · Hiring manager · cancel own waiting requisition | live | the same `POST hiring/requisitions/:id/cancel` with a reason for `ats.requisition.raise`: only the manager's own requisition (else 404), only while it waits for approval (else 409 with the reason), never while acting; audited `by: hiring_manager` (answer 293) |
@@ -2001,4 +2004,18 @@ with In pipeline summed. Screenshots and the per-page results are in the walk re
      reason. *Suggested: a "Send the New York City notice" button on the Application drawer.*
 532. **A CTC of ₹0 on a single offer.** The single offer builder has no ₹0 check of its own, only what the salary structure refuses (bulk
      offers now refuse 0). *Suggested: refuse 0 there too, with the same words.*
+## Founder answers 511 and 515 built (13 Nov 2026, branch `feat/yukthix-hiring-keys`)
+- (511) Interviews, scorecards, comments, the notetaker and the candidate's résumé (new `GET hiring/interviews/:id/resume`,
+  audited) open by panel membership (or overseeing the job), not by a role key; someone on no panel sees none and is
+  refused one (403), another company 404. Hiring home and the menu (Interviews) show for anyone on a panel. Still to do,
+  done in migration `202617t0000000_panel_role_interviewer_keys`: `results:view` and `interview:view_assigned` leave the
+  default employee role (`panel`) and any company override that still equals it exactly (audited); seed.ts matches.
+- (515) `GET organizations/job-boards/names` (`pipeline:manage` or the settings key): id, name and kind only; the job's
+  Settings tab picks boards from it. The full list, feed tokens and credentials stay with the settings key.
+## Founder questions from answers 511 and 515 (13 Nov 2026)
+541. **Older v2 interview screens.** `GET interviews/mine` behind "Test results (older screens)" still needs
+     `interview:view_assigned`. *Suggested: leave it (older screens are going); the YukthiX Interviews page needs no key.*
+542. **Divya's "Team Manager" role.** A company-made role (not a template) that still holds `results:view` and
+     `interview:view_assigned`; the migration will not change it. *Suggested: HR removes the two keys there if managers
+     should not read jobs and test results; being on a panel is enough for interviews.*
 

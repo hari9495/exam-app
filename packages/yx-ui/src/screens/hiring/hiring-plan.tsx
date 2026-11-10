@@ -873,7 +873,7 @@ export interface RequisitionsScreenProps {
   openId?: string | null;
   sheetOpen?: boolean;
   rediscovery?: RediscoveryMatch[];
-  state?: ListState;
+  state?: ListState | 'no-access';
   now?: Date;
   live?: LiveRequisitions;
   /** Design state: the viewer holds the open requisition's approval task (Approve / Send back in the drawer). */
@@ -906,7 +906,8 @@ export type LiveRequisitionRow = Omit<Requisition, 'proposedMax' | 'planLineId'>
 export interface LiveRequisitions {
   persona: 'recruiter' | 'hm';
   rows: LiveRequisitionRow[];
-  state: ListState;
+  /** no-access: opened without any requisition key (a plain employee): the page says so, never an empty table. */
+  state: ListState | 'no-access';
   onRetry: () => void;
   /** pipeline:manage, signed in as themselves: send for approval and withdraw. */
   canManage: boolean;
@@ -1016,6 +1017,14 @@ export function RequisitionsScreen({ rows: sample, planLines, persona: samplePer
     ) : null;
   const cancelRow = base.find((r) => r.id === cancelling) ?? null;
   const decide = (decision: 'approve' | 'reject', reason: string | null) => act(() => live!.onDecide!(current as LiveRequisitionRow, decision, reason));
+  const shownState = live ? live.state : state;
+  if (shownState === 'no-access')
+    return (
+      <HireFrame active="Jobs & requisitions">
+        <PageHeader title="Requisitions" description="Requests to hire against the headcount plan." />
+        <NoAccessState grantedBy="your System Admin (a hiring role, or the request-a-hire key for managers)" what="requisitions" />
+      </HireFrame>
+    );
 
   return (
     <HireFrame active="Jobs & requisitions">
@@ -1033,7 +1042,7 @@ export function RequisitionsScreen({ rows: sample, planLines, persona: samplePer
         columns={cols}
         rows={list.rows}
         getRowId={(r) => r.id}
-        state={live ? live.state : state}
+        state={shownState}
         onRetry={live ? live.onRetry : () => {}}
         errorReference="REQ-4410"
         filtered={list.filtered}

@@ -4,7 +4,7 @@ import { ToastProvider } from '../../components/notify';
 import { CandidateListScreen } from './hiring-candidates';
 import { BiasAuditScreen } from './hiring-offers';
 import { sourceText } from './hiring-pipeline';
-import { JobsScreen } from './hiring-plan';
+import { JobsScreen, RequisitionsScreen } from './hiring-plan';
 import { JOBS } from './hiring-data';
 import { SettingsPageScreen } from '../settings/settings-screens';
 import { SETTINGS_GROUPS } from '../settings/settings-groups';
@@ -57,5 +57,14 @@ describe('wording and totals found on the Hiring walk', () => {
     const tds = [...foot.querySelectorAll('td')];
     expect((tds[0] as HTMLElement).style.whiteSpace).toBe('nowrap');
     expect(foot.textContent).toContain(String(rows.reduce((s, r) => s + r.inPipeline, 0)));
+  });
+});
+
+describe('re-walk of answer 476: Requisitions', () => {
+  it('no requisition key: the no-access state, no table, no New requisition', () => {
+    show(<RequisitionsScreen rows={[]} planLines={[]} persona="hm" state="no-access" />);
+    expect(screen.getByText("You don't have access to requisitions")).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'New requisition' })).not.toBeInTheDocument();
   });
 });

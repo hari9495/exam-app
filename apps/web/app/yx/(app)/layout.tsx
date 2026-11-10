@@ -62,6 +62,8 @@ function Frame({ children }: { children: React.ReactNode }) {
   const myClearance = useLife<{ rows: unknown[] }>('/lifecycle/clearance/mine');
   const firstDays = useLife<{ card: unknown }>('/lifecycle/me/first-30-days');
   const counts = useWorkspaceCounts();
+  // Founder answer 511: Interviews shows for anyone on an interview panel (their own interviews; no key needed).
+  const myInterviews = useQuery<unknown[]>({ queryKey: ['hiring', '/interviews/mine'], queryFn: () => apiFetch('/hiring/interviews/mine', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false });
   // Staffing desk: its menu group only once the company turned the desk on (asked only by staffing key holders).
   const staffingKeys = perms.has('ats.staffing.manage' as never) || perms.has('ats.staffing.view' as never);
   const staffingDesk = useQuery<{ enabled: boolean }>({ queryKey: ['staffing', '/desk'], queryFn: () => apiFetch('/staffing/desk', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && staffingKeys && !actingSuperAdmin, retry: false });
@@ -109,10 +111,11 @@ function Frame({ children }: { children: React.ReactNode }) {
         caseTeam: counts.data?.casesOpen !== undefined,
         ethicsDesk: counts.data?.ethicsReports !== undefined,
         staffing: Boolean(staffingDesk.data?.enabled),
+        panellist: Boolean(myInterviews.data?.length),
       }),
     // perms.data drives perms.has
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [perms.data, role, support, employee, team.data, people.data, myClearance.data, myTasks.data, firstDays.data, counts.data, staffingDesk.data],
+    [perms.data, role, support, employee, team.data, people.data, myClearance.data, myTasks.data, firstDays.data, counts.data, staffingDesk.data, myInterviews.data],
   );
   // Ctrl K as designed (PLT-20): Recent, Actions, people, requests and tickets, pages when typed.
   const palette = useYxPalette({ nav: withAccount(nav, { support, employee }), pathname, open: paletteOpen, userId: me.data?.id, orgId: me.data?.organizationId, waiting: counts.data?.approvals, self: employee && !support, help: !support, go: (href) => {

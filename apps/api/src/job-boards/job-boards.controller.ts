@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Put, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { RequirePermissions } from '../rbac/permissions.decorator';
+import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
@@ -18,6 +18,14 @@ export class JobBoardsController {
   @RequirePermissions('org:manage_settings')
   list(@CurrentTenant() tenant: TenantContext) {
     return this.service.list(tenant);
+  }
+
+  // Founder answer 515: recruiting picks the boards for a job, so it reads the board names (id, name, kind) and nothing
+  // else: never the feed token or the provider credentials. Static route before the ':id' routes.
+  @Get('names')
+  @RequireAnyPermission('pipeline:manage', 'org:manage_settings')
+  names(@CurrentTenant() tenant: TenantContext) {
+    return this.service.names(tenant);
   }
 
   // Static route BEFORE the ':id' routes so 'providers' isn't captured as an id.

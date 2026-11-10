@@ -141,13 +141,15 @@ describe('Hiring HIR-06 / HIR-07 interviews and scorecards', () => {
     expect((await api('int2', 'get', '/hiring/interviews/mine').expect(200)).body.map((r: { id: string }) => r.id)).toEqual([ids.iv2]);
   });
 
-  it('the calendar refuses bad ranges (400), an employee (403) and shows another company nothing', async () => {
+  it('the calendar refuses bad ranges (400), shows an employee off every panel nothing (answer 511) and another company nothing', async () => {
     await api('recruiter', 'get', '/hiring/interviews').expect(400);
     await api('recruiter', 'get', '/hiring/interviews?from=yesterday&to=today').expect(400);
     await api('recruiter', 'get', range(10, 0)).expect(400);
     await api('recruiter', 'get', range(0, 24 * 70)).expect(400);
-    await api('emp', 'get', range(-72, 72)).expect(403);
-    await api('emp', 'get', '/hiring/interviews/mine').expect(403);
+    // Founder answer 511: panel membership, not a key, opens interviews: someone on no panel sees none and opens none.
+    expect((await api('emp', 'get', range(-72, 72)).expect(200)).body).toEqual([]);
+    expect((await api('emp', 'get', '/hiring/interviews/mine').expect(200)).body).toEqual([]);
+    await api('emp', 'get', `/hiring/interviews/${ids.iv1}`).expect(403);
     expect((await api('adminB', 'get', range(-72, 72)).expect(200)).body).toEqual([]);
   });
 

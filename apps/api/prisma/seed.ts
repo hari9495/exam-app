@@ -236,7 +236,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'perf.pip.manage',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned', 'payroll.equity.own'],
-  panel: ['org:view', 'results:view', 'interview:view_assigned', 'payroll.equity.own'],
+  // Founder answer 511: a plain employee holds no interviewer key; being on an interview panel opens interviews.
+  panel: ['org:view', 'payroll.equity.own'],
   // hiring_manager: a job owner who reviews their reqs' candidates + results and joins interviews,
   // but has no settings/users/billing access. Pair with Record-level visibility to scope them to
   // their own jobs. This is the seeded DEFAULT — an org admin can retune it in Roles & Permissions.
