@@ -116,7 +116,8 @@ describe('Indian-script names in every PDF', () => {
       igst: D('0'),
       section: '194J_B',
       tdsAmount: D('100'),
-      netPayable: D('1080'),
+      netPayable: D('1000'),
+      clraRecovery: D('80'), // answer 745: the recovered wages line
       paidOn: new Date('2026-10-10'),
       paymentRef: kn,
     };

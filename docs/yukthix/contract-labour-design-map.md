@@ -31,10 +31,10 @@ built** (no API for this feature) · **phone view, mobile app not built**.
 | A. Principal employer (contractors working at our sites) | 5 | 38 | 0 | 0 | 8 | 0 | 46 |
 | B. We are the contractor (our staff at client sites) | 3 | 0 | 0 | 0 | 10 | 0 | 10 |
 | C. Contractor portal | 1 | 19 | 0 | 0 | 0 | 0 | 19 |
-| D. Settings | 1 | 0 | 2 | 0 | 0 | 0 | 2 |
-| **All** | 10 | 57 | 2 | 0 | 18 | 0 | 77 |
+| D. Settings | 1 | 1 | 2 | 0 | 0 | 0 | 3 |
+| **All** | 10 | 58 | 2 | 0 | 18 | 0 | 78 |
 
-Of the 56 stories under Screens/Contract labour, 38 are live (CL-1 to CL-5); with the portal and settings pages, 59 of 77.
+Of the 56 stories under Screens/Contract labour, 38 are live (CL-1 to CL-5); with the portal and settings pages, 60 of 78.
 
 Related stories in other areas (counted in their own maps, listed here so the build reaches them):
 
@@ -215,6 +215,7 @@ All 46 stories in section 4: there is no contractor, licence, deployment, proof 
 |---|---|---|
 | P4_9 · 4.9 Contract labour | live (gap) | the threshold and minimum age from `IN.CLRA` (verify), the licence block (law), `clra.licence_alerts`, the induction, the proofs due day and the hold; (CL-5) registrations with the 12-month peak (answer 673, added and changed in their sheet), `clra.threshold_warn`, `clra.attendance_source` and `clra.required_proofs` (answer 741); the per-site checklist ("Required at") stays design (question 751) |
 | P4_9_ReadOnly · 4.9 Contract labour · read-only | live (gap) | without `clra.settings.manage` or `org.settings.manage` (or while acting for someone else) |
+| P4_9_Registration · 4.9 Contract labour · registration (CL-5) | live | answer 673: `POST/PUT contract-labour/registrations`, `POST …/registrations/:id/remove` with the settings key; one active per site (409), version checked |
 
 ## 5. Two designs for one job
 

@@ -2,6 +2,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { SettingsGroupScreen, SettingsPageScreen } from './settings-screens';
 import { SETTINGS_GROUPS } from './settings-groups';
+import { RegistrationSheet } from '../ops/contract';
 import './settings.css';
 
 const meta: Meta = {
@@ -32,6 +33,8 @@ export const P4_8: S = { name: '4.8 Expenses & travel', render: () => <SettingsP
 export const P4_8_ReadOnly: S = { name: '4.8 Expenses & travel · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="4.8" readOnly /> };
 export const P4_9: S = { name: '4.9 Contract labour', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="4.9" /> };
 export const P4_9_ReadOnly: S = { name: '4.9 Contract labour · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="4.9" readOnly /> };
+// CL-5 (answer 673): Add or change a site's principal-employer registration from the Registrations list.
+export const P4_9_Registration: S = { name: '4.9 Contract labour · registration (CL-5)', render: () => <><SettingsPageScreen groups={SETTINGS_GROUPS} pageId="4.9" /><RegistrationSheet initial={{ id: 'r1', locationId: 'hosur', registrationNo: 'TN/OSH/REG/2026/0141', maxWorkers: 60, validTo: '2027-12-31', version: 1 }} sites={[{ id: 'hosur', name: 'Hosur plant' }, { id: 'blr', name: 'Bengaluru head office' }]} onClose={() => undefined} onSave={async () => undefined} onRemove={async () => undefined} /></> };
 export const P4_10: S = { name: '4.10 Earned wage access', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="4.10" /> };
 export const P4_10_ReadOnly: S = { name: '4.10 Earned wage access · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="4.10" readOnly /> };
 export const P4_11: S = { name: '4.11 Benefits & FBP', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="4.11" /> };
