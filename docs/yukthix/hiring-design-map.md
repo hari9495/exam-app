@@ -1719,6 +1719,8 @@ Founder approved, 10 Nov 2026 (questions 551, 571-575, all as suggested): keep 5
 Founder approved, 10 Nov 2026 (questions 561-565, all as suggested): (561) a "Message me on WhatsApp about jobs" tick on
 the apply form and the candidate page, off by default; keep 562, 563, 564 (counsel confirms), 565 (manual until counsel
 signs off the sourced-profile flow).
+Founder approved, 10 Nov 2026 (question 691): yes, the same WhatsApp tick on the candidate page (all their
+applications), in the next candidate-page change.
 ## HIR-27 bulk interview day and answer 392 built (14 Nov 2026, branch `feat/yukthix-hir-27`)
 - HIR-27: see its section above. Interview days open from Hiring › Interviews (a new "Interview days" button, drawn on the
   HIR-06 header).
