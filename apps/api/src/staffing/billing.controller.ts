@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Headers, HttpCode, Ip, Param, ParseUUIDPipe, Post, Put, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, HttpCode, Ip, Param, ParseUUIDPipe, Post, Put, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { TenantContext } from '@exam-platform/shared';
@@ -11,7 +12,7 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PUBLIC_API_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import { StaffingBillingService } from './billing.service';
 import { ClientPortalService } from './client-portal.service';
-import { ApproveHoursDto, ClientTermsDto, CollectionDto, ContactPortalDto, CreditNoteDto, DraftInvoiceDto, HoursDto, PortalDecisionDto, PortalEmailDto, PortalSendBackDto, PortalVerifyDto, ReceiptDto, ReissueDto, VendorBillDto, VendorBillPaidDto, VersionDto } from './staffing-dto';
+import { ApproveHoursDto, HireDto, LeftDto, PortalInterviewDto, VendorConsultantDto, ClientTermsDto, CollectionDto, ContactPortalDto, CreditNoteDto, DraftInvoiceDto, HoursDto, PortalDecisionDto, PortalEmailDto, PortalSendBackDto, PortalVerifyDto, ReceiptDto, ReissueDto, VendorBillDto, VendorBillPaidDto, VersionDto } from './staffing-dto';
 
 const who = (req: Request) => req.user as ScopeUser;
 const READ = ['ats.staffing.manage', 'ats.staffing.billing'] as const;
@@ -68,6 +69,41 @@ export class StaffingBillingController {
   @RequireAnyPermission(...READ)
   invoice(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.billing.one(ctx, who(req), id);
+  }
+
+  @Get('invoices/:id/pdf')
+  @RequireAnyPermission(...READ)
+  async invoicePdf(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Res({ passthrough: true }) res: Response) {
+    const f = await this.billing.pdf(ctx, who(req), id);
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${f.filename}"` });
+    return new StreamableFile(f.buffer);
+  }
+
+  @Post('placements/:id/hired')
+  @RequireAnyPermission('ats.staffing.manage')
+  hired(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: HireDto) {
+    assertOwnSession(req);
+    return this.billing.hired(ctx, who(req), id, dto);
+  }
+
+  @Post('placements/:id/left')
+  @RequireAnyPermission('ats.staffing.manage')
+  leftClient(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: LeftDto) {
+    assertOwnSession(req);
+    return this.billing.left(ctx, who(req), id, dto);
+  }
+
+  @Get('vendor-bills/consultants')
+  @RequireAnyPermission('ats.staffing.billing')
+  consultantOptions(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.billing.consultantOptions(ctx, who(req));
+  }
+
+  @Put('vendor-bills/vendors/:id/consultant')
+  @RequireAnyPermission('ats.staffing.billing')
+  linkConsultant(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: VendorConsultantDto) {
+    assertOwnSession(req);
+    return this.billing.linkConsultant(ctx, who(req), id, dto);
   }
 
   @Delete('invoices/:id')
@@ -203,6 +239,21 @@ export class PublicClientPortalController {
   @Throttle(PUBLIC_API_THROTTLE)
   sendBack(@Param('org') org: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PortalSendBackDto, @Headers('x-client-portal') token?: string) {
     return this.portal.timesheet(org.slice(0, 100), token, id, 'send_back', dto);
+  }
+
+  @Post(':org/interviews')
+  @HttpCode(200)
+  @Throttle(PUBLIC_API_THROTTLE)
+  bookInterview(@Param('org') org: string, @Body() dto: PortalInterviewDto, @Headers('x-client-portal') token?: string) {
+    return this.portal.bookInterview(org.slice(0, 100), token, dto);
+  }
+
+  @Get(':org/invoices/:id/pdf')
+  @Throttle(PUBLIC_API_THROTTLE)
+  async invoicePdf(@Param('org') org: string, @Param('id', ParseUUIDPipe) id: string, @Res({ passthrough: true }) res: Response, @Headers('x-client-portal') token?: string) {
+    const f = await this.portal.invoicePdf(org.slice(0, 100), token, id);
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${f.filename}"` });
+    return new StreamableFile(f.buffer);
   }
 
   @Post(':org/sign-out')

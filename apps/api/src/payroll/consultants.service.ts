@@ -681,6 +681,45 @@ export class ConsultantsService implements OnModuleInit {
     return k;
   }
 
+  /**
+   * Staffing answer 496: a vendor's confirmed invoice enters PAY 8 as a staff upload of its consultant record, so it is
+   * approved, taxed (TDS under the consultant's section), paid in a payout and certified there; nothing is duplicated.
+   * The staffing desk's finance user is the uploader (never an approver of their own upload).
+   */
+  async staffingSubmit(ctx: TenantContext, consultantId: string, dto: InvoiceDto, by: string) {
+    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const all = await tx.legalEntity.findMany({ where: { organizationId: c.organizationId }, select: { id: true } });
+      await payScope(tx, all.map((e) => e.id));
+      const k = await tx.consultant.findFirst({ where: { organizationId: c.organizationId, id: consultantId } });
+      if (!k) throw new NotFoundException('The linked consultant record is gone. Link the vendor again.');
+      await payScope(tx, [k.legalEntityId]);
+      return this.submitIn(tx, c, k, dto, 'staff', by, null);
+    });
+    await this.engine.send(ctx, out.notices);
+    return { id: out.invoice.id };
+  }
+
+  /** Staffing answer 496: the consultant records a vendor can be linked to (names only, every entity). */
+  async staffingOptions(ctx: TenantContext) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const all = await tx.legalEntity.findMany({ where: { organizationId: c.organizationId }, select: { id: true, name: true } });
+      await payScope(tx, all.map((e) => e.id));
+      const ks = await tx.consultant.findMany({ where: { organizationId: c.organizationId, status: 'active' }, orderBy: { name: 'asc' }, select: { id: true, name: true, panLast4: true, defaultSection: true, legalEntityId: true }, take: 1000 });
+      return ks.map((k) => ({ value: k.id, label: `${k.name}${k.panLast4 ? ` · PAN …${k.panLast4}` : ''} · ${k.defaultSection} · ${all.find((e) => e.id === k.legalEntityId)?.name ?? ''}` }));
+    });
+  }
+
+  /** Staffing answer 496: a linked vendor invoice's payroll state (approved, paid). */
+  async staffingStates(ctx: TenantContext, ids: string[]) {
+    if (!ids.length) return new Map<string, { status: string; paidOn: string | null; tdsAmount: string | null }>();
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const all = await tx.legalEntity.findMany({ where: { organizationId: c.organizationId }, select: { id: true } });
+      await payScope(tx, all.map((e) => e.id));
+      const rows = await tx.consultantInvoice.findMany({ where: { organizationId: c.organizationId, id: { in: ids } }, select: { id: true, status: true, paidOn: true, tdsAmount: true } });
+      return new Map(rows.map((r) => [r.id, { status: r.status, paidOn: r.paidOn ? r.paidOn.toISOString().slice(0, 10) : null, tdsAmount: r.tdsAmount?.toFixed(2) ?? null }]));
+    });
+  }
+
   /** Step 1: a code by email; the same answer whether or not the email is on the register. */
   async portalCode(slug: string, dto: ConsultantPortalEmailDto, ip: string | null) {
     const org = await this.orgOf(slug);

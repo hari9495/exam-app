@@ -244,7 +244,8 @@ export class ClientTermsDto {
 export class VendorBillDto {
   @IsUUID() placementId!: string;
   @Matches(MONTH) month!: string;
-  @trim() @IsString() @MinLength(1) @MaxLength(40) vendorInvoiceNo!: string;
+  @trim() @IsString() @Matches(/^[A-Za-z0-9/._-]{1,40}$/, { message: 'A vendor invoice number is up to 40 letters, digits, / . _ or -.' }) vendorInvoiceNo!: string;
+  @IsOptional() @Matches(DAY) invoiceDate?: string;
 }
 
 export class VendorBillPaidDto {
@@ -267,6 +268,28 @@ export class PortalVerifyDto {
 export class PortalDecisionDto {
   @IsIn(['shortlist', 'reject']) decision!: 'shortlist' | 'reject';
   @IsOptional() @trim() @IsString() @MaxLength(500) feedback?: string;
+}
+
+export class HireDto {
+  @Matches(DAY) hiredOn!: string;
+  @IsString() @Matches(MONEY) ctc!: string;
+  @IsUUID() seriesId!: string;
+  @IsOptional() @trim() @IsString() @MaxLength(60) po?: string;
+}
+
+export class LeftDto {
+  @Matches(DAY) leftOn!: string;
+}
+
+export class PortalInterviewDto {
+  @IsUUID() submissionId!: string;
+  @IsString() @Matches(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/) startsAt!: string;
+  @IsIn(['video', 'site', 'phone']) mode!: 'video' | 'site' | 'phone';
+  @IsOptional() @trim() @IsString() @MaxLength(300) panel?: string;
+}
+
+export class VendorConsultantDto {
+  @IsOptional() @IsUUID() consultantId!: string | null;
 }
 
 export class PortalSendBackDto {
