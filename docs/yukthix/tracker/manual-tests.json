@@ -19504,5 +19504,44 @@
       "Screens/Contract labour/CLB-05 · Convert worker to employee · End contract role"
     ],
     "note": "Positive. Answer 637."
+  },
+  {
+    "id": "MT-CL-6-01",
+    "area": "Contract labour · CL-6 (19 Nov 2026)",
+    "screen": "CLB-04 Registers",
+    "url": "http://localhost:3000/yx/contract-labour/registers",
+    "account": "The contract-labour compliance owner; then a reader (view key); then the payroll compliance owner (register signer, with step-up). Browser window 1278 x 635.",
+    "steps": [
+      "Choose last month; press Make registers and pick the establishment.",
+      "Look at the muster roll and wages when a contractor has not sent its wage register.",
+      "After the contractor sends it, press Make registers again without a reason; then with a reason.",
+      "Download a register PDF.",
+      "As a reader: look for Make registers, Freeze and Sign.",
+      "As the register signer: Freeze a register, then upload an unsigned PDF to Sign with DSC; then the DSC-signed file."
+    ],
+    "expected": "Step 1: the contractors and contract workers registers are Made. Step 2: \"Waiting for 1 contractor\". Step 3: refused without a reason; with it, all four made, the earlier ones replaced. Step 4: the PDF in the state format, \"verify\" on it. Step 5: none of them. Step 6: Frozen; the unsigned file refused; the signed one Signed.",
+    "stories": [
+      "Screens/Contract labour/CLB-04 · CLRA registers & returns · Registers"
+    ],
+    "note": "Positive and negative. Answer 629."
+  },
+  {
+    "id": "MT-CL-6-02",
+    "area": "Contract labour · CL-6 (19 Nov 2026)",
+    "screen": "CLB-04 Annual return",
+    "url": "http://localhost:3000/yx/contract-labour/registers",
+    "account": "The contract-labour compliance owner; then a reader. Browser window 1278 x 635.",
+    "steps": [
+      "Open the Returns tab for last year.",
+      "Press Open draft.",
+      "Press Record filing with nothing filled; then a reference of 2 letters; then a day in the future.",
+      "Record the real filing day and the portal reference.",
+      "Try Record filing again; sign in as a reader and look for the button."
+    ],
+    "expected": "Step 1: per establishment the contractors, most workers on a day, days worked and the due day. Step 2: the draft PDF. Step 3: each refused with the reason. Step 4: the card shows \"Filed on … · reference\". Step 5: no button for a filed return or for the reader.",
+    "stories": [
+      "Screens/Contract labour/CLB-04 · CLRA registers & returns · Annual return"
+    ],
+    "note": "Positive and negative. Answer 630."
   }
 ]
