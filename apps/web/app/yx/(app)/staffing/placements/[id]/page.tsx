@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams } from 'next/navigation';
-import { PlacementRecordScreen, type PlacementRowView } from '@yukthix/ui/hiring';
+import { PlacementRecordScreen, type HoursRowView, type PlacementRowView } from '@yukthix/ui/hiring';
 import { deskState, useStaffing, useStaffingWrite } from '../../../../../../lib/yx-staffing';
 import { useAuth } from '../../../../../../lib/auth-context';
 
@@ -13,6 +13,8 @@ export default function YxStaffingPlacementPage() {
   const { id } = useParams<{ id: string }>();
   const { impersonating, actingSuperAdmin } = useAuth();
   const one = useStaffing<One>(`/placements/${encodeURIComponent(id)}`);
+  // Slice 3: weekly hours (account managers and finance; others get 403 and see no hours card).
+  const hours = useStaffing<{ canEnter: boolean; contacts: { id: string; name: string; role: string }[]; rows: HoursRowView[] }>(`/placements/${encodeURIComponent(id)}/hours`, one.isSuccess);
   const write = useStaffingWrite();
   const path = `/placements/${encodeURIComponent(id)}`;
   return (
@@ -26,6 +28,15 @@ export default function YxStaffingPlacementPage() {
         today: new Date(),
         onExtend: (input) => write('POST', `${path}/extend`, input),
         onEnd: (input) => write('POST', `${path}/end`, { ...input, ...(input.note ? {} : { note: undefined }) }),
+        hours: hours.data
+          ? {
+              ...hours.data,
+              canEnter: hours.data.canEnter && !(impersonating || actingSuperAdmin),
+              today: new Date(),
+              onSave: ({ overtime, ...h }) => write('POST', `${path}/hours`, { ...h, ...(overtime ? { overtime } : {}) }),
+              onApprove: (hid, contactId, version) => write('POST', `/hours/${encodeURIComponent(hid)}/approve`, { contactId, version }),
+            }
+          : null,
       }}
     />
   );

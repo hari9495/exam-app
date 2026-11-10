@@ -18377,5 +18377,162 @@
       "Screens/Hiring/HIR-21 · Staffing vendors · Vendor submissions · duplicate and over cap"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-STAFF-13",
+    "area": "Hiring › Staffing desk slice 3: HIR-18 invoices, HIR-19 receivables, HIR-30 fees, HIR-31 e-invoice window, client portal (10 Nov 2026)",
+    "screen": "Weekly hours (placement record)",
+    "url": "http://localhost:3000/yx/staffing/placements",
+    "account": "admin-tester@demo-org.test (System Admin; has staffing finance). Browser window 1278 x 635, sidebar open. Staffing desk on; a client with a billing contact, a rate-card line, an invoice series for this year and an active placement.",
+    "steps": [
+      "1. Open a placement; Enter a week; choose a Tuesday; Send to client.",
+      "2. Choose last week's Monday, 40 hours and 2 overtime; Send to client.",
+      "3. Record client approval without choosing a contact; then choose the contact."
+    ],
+    "expected": "Step 1: \"Choose the Monday of a week that has started.\" Step 2: toast; the week shows \"Waiting for the client\". Step 3: \"Choose the client contact.\" first; then Approved.",
+    "stories": [
+      "Screens/Hiring/HIR-17 · Placements and bench board · Placement record · weekly hours"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-STAFF-14",
+    "area": "Hiring › Staffing desk slice 3: HIR-18 invoices, HIR-19 receivables, HIR-30 fees, HIR-31 e-invoice window, client portal (10 Nov 2026)",
+    "screen": "Client portal (T9-06)",
+    "url": "http://localhost:3000/yx/staffing/clients",
+    "account": "admin-tester@demo-org.test (System Admin; has staffing finance). Browser window 1278 x 635, sidebar open. Staffing desk on; a client with a billing contact, a rate-card line, an invoice series for this year and an active placement.",
+    "steps": [
+      "1. Open the client › Contacts; Invite the billing contact to the portal.",
+      "2. In a private window open the link from the invite email; sign in with the contact's email and the code.",
+      "3. Timesheets: approve one week; send another back.",
+      "4. Submissions: Reject without a reason; then with a reason.",
+      "5. Back in the workspace, Remove portal access; refresh the portal."
+    ],
+    "expected": "Step 1: toast; Portal: Invited. Step 2: the portal shows only this client's jobs, submissions, timesheets and invoices; no pay or vendor rates. Step 3: Approved and Sent back. Step 4: \"Choose a reason.\" first; then Rejected, and the Submissions board shows the reason. Step 5: the portal says the session ended.",
+    "stories": [
+      "Screens/Portals/T9-06 · Client portal · Sign in (email OTP)",
+      "Screens/Portals/T9-06 · Client portal · Timesheets · approve (incl. vendor workers)"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-STAFF-15",
+    "area": "Hiring › Staffing desk slice 3: HIR-18 invoices, HIR-19 receivables, HIR-30 fees, HIR-31 e-invoice window, client portal (10 Nov 2026)",
+    "screen": "Invoices (HIR-18)",
+    "url": "http://localhost:3000/yx/staffing/invoices",
+    "account": "admin-tester@demo-org.test (System Admin; has staffing finance). Browser window 1278 x 635, sidebar open. Staffing desk on; a client with a billing contact, a rate-card line, an invoice series for this year and an active placement.",
+    "steps": [
+      "1. Create invoices without choosing a client.",
+      "2. Choose the client, the month and the series; Create drafts.",
+      "3. Open the draft; check lines, GST (IGST or CGST + SGST); Issue invoice.",
+      "4. Try Raise credit note for more than the invoice; then for part with a reason."
+    ],
+    "expected": "Step 1: \"Choose the client.\" Step 2: a draft per the client's grouping. Step 3: the next number of the series and today's date; no Issue or Delete afterwards. Step 4: \"That is more than is left on the invoice.\"; then a CN number and the credit note listed on the invoice.",
+    "stories": [
+      "Screens/Hiring/HIR-18 · Invoices · Create invoices · from approved hours",
+      "Screens/Hiring/HIR-18 · Invoices · Invoice · CGST + SGST, credit note"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-STAFF-16",
+    "area": "Hiring › Staffing desk slice 3: HIR-18 invoices, HIR-19 receivables, HIR-30 fees, HIR-31 e-invoice window, client portal (10 Nov 2026)",
+    "screen": "E-invoice window (HIR-31)",
+    "url": "http://localhost:3000/yx/settings/staffing",
+    "account": "admin-tester@demo-org.test (System Admin; has staffing finance). Browser window 1278 x 635, sidebar open. Staffing desk on; a client with a billing contact, a rate-card line, an invoice series for this year and an active placement.",
+    "steps": [
+      "1. Turn on \"Our invoices need an IRN\" in Settings › Staffing desk; open an issued invoice.",
+      "2. Press Send for IRN."
+    ],
+    "expected": "Step 1: a banner \"Day N of 30 for IRN\" (warning from day 25). Step 2: \"The IRP is not connected\" with what to do.",
+    "stories": [
+      "Screens/Hiring/HIR-31 · E-invoice window banner · Day 10 · within window"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-STAFF-17",
+    "area": "Hiring › Staffing desk slice 3: HIR-18 invoices, HIR-19 receivables, HIR-30 fees, HIR-31 e-invoice window, client portal (10 Nov 2026)",
+    "screen": "Receivables (HIR-19)",
+    "url": "http://localhost:3000/yx/staffing/collections",
+    "account": "admin-tester@demo-org.test (System Admin; has staffing finance). Browser window 1278 x 635, sidebar open. Staffing desk on; a client with a billing contact, a rate-card line, an invoice series for this year and an active placement.",
+    "steps": [
+      "1. Record receipt: amount 1,000 with nothing allocated; Save receipt.",
+      "2. Allocate more than outstanding to an invoice.",
+      "3. Allocate amount + TDS exactly; Save receipt.",
+      "4. Update the invoice: 26AS amount and a dispute."
+    ],
+    "expected": "Step 1: \"Allocate ₹1,000 more…\". Step 2: \"More than is outstanding on …\". Step 3: toast; outstanding drops; TDS receivable shows. Step 4: 26AS match or mismatch shows; Next reminder is empty while disputed.",
+    "stories": [
+      "Screens/Hiring/HIR-19 · Receivables and collections · Record part payment"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-STAFF-18",
+    "area": "Hiring › Staffing desk slice 3: HIR-18 invoices, HIR-19 receivables, HIR-30 fees, HIR-31 e-invoice window, client portal (10 Nov 2026)",
+    "screen": "Fees and vendor invoices (HIR-30, answer 490)",
+    "url": "http://localhost:3000/yx/staffing/clients",
+    "account": "admin-tester@demo-org.test (System Admin; has staffing finance). Browser window 1278 x 635, sidebar open. Staffing desk on; a client with a billing contact, a rate-card line, an invoice series for this year and an active placement.",
+    "steps": [
+      "1. Open the client › Fees and guarantee; set row 2 of the taper above row 1; Save contract terms.",
+      "2. Fix it; Save contract terms.",
+      "3. Hiring › Vendors › Vendor invoices: press Vendor confirmed on a proposed month without a number; then with the vendor's number; then Mark paid.",
+      "4. Sign in as an account manager without staffing finance and open Collections."
+    ],
+    "expected": "Step 1: \"…no higher than the row before.\" Step 2: toast. Step 3: \"Enter the vendor's invoice number.\" first; then Vendor confirmed, then Paid. Step 4: no Collections in the menu; the page refuses.",
+    "stories": [
+      "Screens/Hiring/HIR-30 · Placement fee and replacement guarantee · Account manager · % of CTC, replacement",
+      "Screens/Hiring/HIR-21 · Staffing vendors · Vendor invoices · proposed from hours"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-STAFF-19",
+    "area": "Hiring › Staffing follow-ups: answers 482, 483, 484, 489 (10 Nov 2026)",
+    "screen": "Statutory cost default (answer 484)",
+    "url": "http://localhost:3000/yx/settings/staffing",
+    "account": "admin-tester@demo-org.test (System Admin). Browser window 1278 x 635, sidebar open. Staffing desk on.",
+    "steps": [
+      "1. With no PF or ESI registration on any legal entity, open Settings › Staffing desk.",
+      "2. Turn on a PF registration for a legal entity (Settings › Statutory); reopen Staffing desk.",
+      "3. Set the statutory cost to 5% and save; open an own-payroll placement."
+    ],
+    "expected": "Step 1: statutory cost None (starter). Step 2: 13% (starter). Step 3: toast; the placement shows statutory cost at 5% of the pay rate and the lower margin.",
+    "stories": [],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-STAFF-20",
+    "area": "Hiring › Staffing follow-ups: answers 482, 483, 484, 489 (10 Nov 2026)",
+    "screen": "Placement past its last day and bench pay (answers 482, 483)",
+    "url": "http://localhost:3000/yx/staffing/bench",
+    "account": "admin-tester@demo-org.test (System Admin). Browser window 1278 x 635, sidebar open. Staffing desk on.",
+    "steps": [
+      "1. Have an own-payroll placement whose last day was yesterday; wait for the night job (01:30) or ask the developer to run it.",
+      "2. Open Placements and the Bench.",
+      "3. After the month ends, open Payroll › Inputs › LOP for the person and month."
+    ],
+    "expected": "Step 2: the placement shows Ended (completed); the person is on the bench from today; a person already on the bench gets no second spell. Step 3: loss-of-pay days = bench days × (100 − bench pay %)/100, reason \"Bench N days at X% pay\", once only.",
+    "stories": [],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-STAFF-21",
+    "area": "Hiring › Staffing follow-ups: answers 482, 483, 484, 489 (10 Nov 2026)",
+    "screen": "Review dispute (answer 489)",
+    "url": "http://localhost:3000/yx/hiring/vendors?tab=submissions",
+    "account": "admin-tester@demo-org.test (System Admin). Browser window 1278 x 635, sidebar open. Staffing desk on.",
+    "steps": [
+      "1. As an account manager, press Review dispute on a duplicate; press Override with reason with no reason.",
+      "2. Give a reason; confirm.",
+      "3. Forward to client.",
+      "4. As a vendor manager without the staffing key, open the same tab."
+    ],
+    "expected": "Step 1: \"Say why…\". Step 2: toast; the badge reads Duplicate overridden with your reason. Step 3: forwarded (or refused if the same person is already submitted to that client job). Step 4: no Review dispute button.",
+    "stories": [
+      "Screens/Hiring/HIR-21 · Staffing vendors · Review dispute · override the duplicate with a reason"
+    ],
+    "note": "Positive and negative."
   }
 ]

@@ -2318,6 +2318,10 @@ model AgencySubmission {
   capExceptionReason  String?   @map("cap_exception_reason") @db.VarChar(500)
   capExceptionBy      String?   @map("cap_exception_by") @db.Uuid
   capExceptionAt      DateTime? @map("cap_exception_at") @db.Timestamptz(3)
+  /// Answer 489: an account manager overrode the duplicate (reason audited).
+  duplicateOverrideReason String?   @map("duplicate_override_reason") @db.VarChar(500)
+  duplicateOverrideBy     String?   @map("duplicate_override_by") @db.Uuid
+  duplicateOverrideAt     DateTime? @map("duplicate_override_at") @db.Timestamptz(3)
   agency           Agency    @relation(fields: [agencyId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   job              Job       @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
@@ -12340,6 +12344,9 @@ model StaffingClient {
   noticeDays             Int?                    @map("notice_days")
   slaFirstSubmissionDays Int?                    @map("sla_first_submission_days")
   slaFeedbackDays        Int?                    @map("sla_feedback_days")
+  /// Slice 3 (answer 454): the client's TDS section (rule set TDS.SECTIONS) and invoice grouping (month | placement).
+  tdsSection             String?                 @map("tds_section") @db.VarChar(8)
+  invoiceGrouping        String                  @default("month") @map("invoice_grouping") @db.VarChar(10)
   version                Int                     @default(1)
   createdBy              String?                 @map("created_by") @db.Uuid
   createdAt              DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -12360,6 +12367,9 @@ model StaffingClientContact {
   phone          String?        @db.VarChar(16)
   billing        Boolean        @default(false)
   archivedAt     DateTime?      @map("archived_at") @db.Timestamptz(3)
+  /// Slice 3 (answer 453): client portal access: none | invited | active.
+  portal          String    @default("none") @db.VarChar(8)
+  portalInvitedAt DateTime? @map("portal_invited_at") @db.Timestamptz(3)
   createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
   client         StaffingClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
@@ -12401,6 +12411,7 @@ model StaffingInvoiceSeries {
   financialYear  String   @map("financial_year") @db.VarChar(7)
   prefix         String   @db.VarChar(16)
   nextNumber     Int      @default(1) @map("next_number")
+  nextCreditNumber Int    @default(1) @map("next_credit_number")
   version        Int      @default(1)
   createdBy      String?  @map("created_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -12475,4 +12486,177 @@ model StaffingBench {
 
   @@index([organizationId, untilOn], map: "staffing_bench_org_idx")
   @@map("staffing_bench")
+}
+
+/// HIR-18 / T9-06: weekly hours of a placement, approved or sent back by the client contact (hundredths of an hour).
+model StaffingHours {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  placementId        String    @map("placement_id") @db.Uuid
+  clientId           String    @map("client_id") @db.Uuid
+  weekStart          DateTime  @map("week_start") @db.Date
+  hoursCenti         Int       @map("hours_centi")
+  overtimeCenti      Int       @default(0) @map("overtime_centi")
+  status             String    @default("waiting") @db.VarChar(10)
+  note               String?   @db.VarChar(500)
+  decidedByContactId String?   @map("decided_by_contact_id") @db.Uuid
+  decidedByUserId    String?   @map("decided_by_user_id") @db.Uuid
+  decidedAt          DateTime? @map("decided_at") @db.Timestamptz(3)
+  invoiceId          String?   @map("invoice_id") @db.Uuid
+  vendorBillId       String?   @map("vendor_bill_id") @db.Uuid
+  enteredBy          String?   @map("entered_by") @db.Uuid
+  version            Int       @default(1)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, clientId, status], map: "staffing_hours_org_idx")
+  @@map("staffing_hours")
+}
+
+/// HIR-18: a tax invoice or credit note, numbered from the series when issued; never edited once issued.
+model StaffingInvoice {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  clientId       String    @map("client_id") @db.Uuid
+  seriesId       String    @map("series_id") @db.Uuid
+  kind           String    @db.VarChar(12)
+  creditOf       String?   @map("credit_of") @db.Uuid
+  number         String?   @db.VarChar(16)
+  status         String    @default("draft") @db.VarChar(10)
+  periodStart    DateTime? @map("period_start") @db.Date
+  periodEnd      DateTime? @map("period_end") @db.Date
+  invoiceDate    DateTime? @map("invoice_date") @db.Date
+  supplierState  String    @map("supplier_state") @db.VarChar(6)
+  placeOfSupply  String    @map("place_of_supply") @db.VarChar(6)
+  gstPct         Decimal   @map("gst_pct") @db.Decimal(5, 2)
+  taxablePaise   BigInt    @map("taxable_paise")
+  cgstPaise      BigInt    @default(0) @map("cgst_paise")
+  sgstPaise      BigInt    @default(0) @map("sgst_paise")
+  igstPaise      BigInt    @default(0) @map("igst_paise")
+  totalPaise     BigInt    @map("total_paise")
+  po             String?   @db.VarChar(60)
+  reason         String?   @db.VarChar(500)
+  irn            String    @default("pending") @db.VarChar(12)
+  tds26asPaise   BigInt?   @map("tds_26as_paise")
+  dispute        String?   @db.VarChar(500)
+  issuedBy       String?   @map("issued_by") @db.Uuid
+  issuedAt       DateTime? @map("issued_at") @db.Timestamptz(3)
+  createdBy      String?   @map("created_by") @db.Uuid
+  version        Int       @default(1)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  lines          StaffingInvoiceLine[]
+
+  @@index([organizationId, clientId, status], map: "staffing_invoices_org_idx")
+  @@map("staffing_invoices")
+}
+
+model StaffingInvoiceLine {
+  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String          @map("organization_id") @db.Uuid
+  invoiceId      String          @map("invoice_id") @db.Uuid
+  placementId    String?         @map("placement_id") @db.Uuid
+  description    String          @db.VarChar(300)
+  qtyCenti       Int             @map("qty_centi")
+  ratePaise      BigInt          @map("rate_paise")
+  amountPaise    BigInt          @map("amount_paise")
+  position       Int
+  invoice        StaffingInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId], map: "staffing_invoice_lines_invoice_idx")
+  @@map("staffing_invoice_lines")
+}
+
+/// HIR-19: a client's payment and its TDS; allocations settle invoices (cash + TDS).
+model StaffingReceipt {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  clientId       String   @map("client_id") @db.Uuid
+  receivedOn     DateTime @map("received_on") @db.Date
+  amountPaise    BigInt   @map("amount_paise")
+  tdsPaise       BigInt   @default(0) @map("tds_paise")
+  reference      String?  @db.VarChar(60)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("staffing_receipts")
+}
+
+model StaffingReceiptAllocation {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  receiptId      String @map("receipt_id") @db.Uuid
+  invoiceId      String @map("invoice_id") @db.Uuid
+  amountPaise    BigInt @map("amount_paise")
+  tdsPaise       BigInt @default(0) @map("tds_paise")
+
+  @@index([invoiceId], map: "staffing_receipt_allocations_invoice_idx")
+  @@map("staffing_receipt_allocations")
+}
+
+/// HIR-30: per-client placement fee, conversion taper and replacement guarantee.
+model StaffingClientTerms {
+  clientId       String   @id @map("client_id") @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  feeKind        String   @map("fee_kind") @db.VarChar(8)
+  feePctBp       Int?     @map("fee_pct_bp")
+  feePaise       BigInt?  @map("fee_paise")
+  taper          Json     @default("[]")
+  guaranteeDays  Int      @map("guarantee_days")
+  remedy         String   @db.VarChar(8)
+  version        Int      @default(1)
+  updatedBy      String?  @map("updated_by") @db.Uuid
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@map("staffing_client_terms")
+}
+
+/// Answer 490: a vendor invoice for a vendor-supplied placement and month, proposed from approved hours.
+model StaffingVendorBill {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  agencyId        String    @map("agency_id") @db.Uuid
+  placementId     String    @map("placement_id") @db.Uuid
+  month           DateTime  @db.Date
+  qtyCenti        Int       @map("qty_centi")
+  ratePaise       BigInt    @map("rate_paise")
+  netPaise        BigInt    @map("net_paise")
+  gstPaise        BigInt    @map("gst_paise")
+  tdsSection      String    @map("tds_section") @db.VarChar(8)
+  tdsPaise        BigInt    @map("tds_paise")
+  status          String    @default("confirmed") @db.VarChar(10)
+  vendorInvoiceNo String    @map("vendor_invoice_no") @db.VarChar(40)
+  paidOn          DateTime? @map("paid_on") @db.Date
+  createdBy       String?   @map("created_by") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("staffing_vendor_bills")
+}
+
+/// Answer 453: a client contact's portal session (email one-time code; token stored hashed).
+model StaffingPortalSession {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  contactId      String    @map("contact_id") @db.Uuid
+  clientId       String    @map("client_id") @db.Uuid
+  tokenHash      String    @unique(map: "staffing_portal_sessions_token_key") @map("token_hash") @db.VarChar(64)
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(3)
+  endedAt        DateTime? @map("ended_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("staffing_portal_sessions")
+}
+
+/// Answer 482: a bench spell's pay month sent to payroll once (as loss-of-pay days on the LOP input).
+model StaffingBenchPay {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  benchId        String   @map("bench_id") @db.Uuid
+  employmentId   String   @map("employment_id") @db.Uuid
+  month          DateTime @db.Date
+  benchDays      Int      @map("bench_days")
+  lopDays        Decimal  @map("lop_days") @db.Decimal(5, 2)
+  payPct         Int      @map("pay_pct")
+  sentAt         DateTime @default(now()) @map("sent_at") @db.Timestamptz(3)
+
+  @@unique([benchId, month], map: "staffing_bench_pay_key")
+  @@map("staffing_bench_pay")
 }

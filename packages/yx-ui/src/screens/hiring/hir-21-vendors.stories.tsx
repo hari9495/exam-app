@@ -48,3 +48,32 @@ export const ShareClientJob: S = {
     </>
   ),
 };
+// Drawn for answer 489: the design's Review dispute opens an override with a reason (account managers).
+export const ReviewDispute: S = {
+  name: 'Review dispute · override the duplicate with a reason',
+  render: () => (
+    <VendorsScreen
+      live={{
+        state: 'ready',
+        onRetry: () => {},
+        vendors: [],
+        showRegister: false,
+        defaultTab: 'submissions',
+        defaultDisputeId: 'a2',
+        submissions: [{ id: 'a2', vendor: 'Konkan Talent', candidate: 'Ravi Kumar', job: 'Java Developer', jobId: 'j1', clientJob: true, at: '2026-11-09T10:00:00Z', quoted: '850.00', cap: '900.00', overBy: null, overCap: false, exception: null, duplicate: { holder: 'Sahyadri Staffing LLP', until: '2027-02-07' }, rightToRepresent: true, consent: true, status: 'pending' }],
+        canManage: true,
+        canForward: true,
+        canReview: false,
+        onAdd: () => {},
+        onEdit: () => {},
+        onShare: () => {},
+        onException: async () => {},
+        loadContacts: async () => [],
+        onForward: async () => {},
+        onAccept: async () => {},
+        onReject: async () => {},
+        onOverride: async () => {},
+      }}
+    />
+  ),
+};

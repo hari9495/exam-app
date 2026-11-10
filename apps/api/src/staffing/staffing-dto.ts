@@ -21,6 +21,8 @@ export class ClientDto {
   @IsOptional() @IsInt() @Min(0) @Max(365) noticeDays?: number | null;
   @IsOptional() @IsInt() @Min(1) @Max(60) slaFirstSubmissionDays?: number | null;
   @IsOptional() @IsInt() @Min(1) @Max(60) slaFeedbackDays?: number | null;
+  @IsOptional() @IsIn(['194C', '194J', null]) tdsSection?: '194C' | '194J' | null;
+  @IsOptional() @IsIn(['month', 'placement']) invoiceGrouping?: 'month' | 'placement';
 }
 
 export class UpdateClientDto extends ClientDto {
@@ -166,4 +168,107 @@ export class CapExceptionDto {
 
 export class ForwardDto {
   @IsUUID() contactId!: string;
+}
+
+/* ---------------- Slice 3: hours, invoices, receipts, fees, vendor invoices, client portal ---------------- */
+
+const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
+const QTY = /^\d{1,3}(\.\d{1,2})?$/;
+
+export class HoursDto {
+  @Matches(DAY) weekStart!: string;
+  @IsString() @Matches(QTY) hours!: string;
+  @IsOptional() @IsString() @Matches(QTY) overtime?: string;
+}
+
+export class ApproveHoursDto {
+  @IsUUID() contactId!: string;
+  @IsInt() @Min(1) version!: number;
+}
+
+export class DraftInvoiceDto {
+  @IsUUID() clientId!: string;
+  @Matches(MONTH) month!: string;
+  @IsUUID() seriesId!: string;
+  @IsOptional() @trim() @IsString() @MaxLength(60) po?: string;
+}
+
+export class VersionDto {
+  @IsInt() @Min(1) version!: number;
+}
+
+export class CreditNoteDto {
+  @IsString() @Matches(MONEY) amount!: string;
+  @trim() @IsString() @MinLength(3) @MaxLength(500) reason!: string;
+}
+
+export class ReissueDto {
+  @trim() @IsString() @MinLength(3) @MaxLength(500) reason!: string;
+}
+
+export class AllocationDto {
+  @IsUUID() invoiceId!: string;
+  @IsString() @Matches(MONEY) amount!: string;
+}
+
+export class ReceiptDto {
+  @IsUUID() clientId!: string;
+  @Matches(DAY) receivedOn!: string;
+  @IsString() @Matches(MONEY) amount!: string;
+  @IsOptional() @IsString() @Matches(MONEY) tds?: string;
+  @IsOptional() @trim() @IsString() @MaxLength(60) reference?: string;
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100) @ValidateNested({ each: true }) @Type(() => AllocationDto) allocations!: AllocationDto[];
+}
+
+export class CollectionDto {
+  @IsOptional() @IsString() @Matches(MONEY) tds26as?: string | null;
+  @IsOptional() @trim() @IsString() @MaxLength(500) dispute?: string | null;
+  @IsInt() @Min(1) version!: number;
+}
+
+export class TaperRowDto {
+  @IsInt() @Min(0) @Max(120) fromMonth!: number;
+  @IsString() @Matches(/^\d{1,3}(\.\d{1,2})?$/) pct!: string;
+}
+
+export class ClientTermsDto {
+  @IsIn(['percent', 'fixed']) feeKind!: 'percent' | 'fixed';
+  @IsOptional() @IsString() feePct?: string;
+  @IsOptional() @IsString() @Matches(MONEY) feeAmount?: string;
+  @IsArray() @ArrayMaxSize(12) @ValidateNested({ each: true }) @Type(() => TaperRowDto) taper!: TaperRowDto[];
+  @IsInt() @Min(0) @Max(365) guaranteeDays!: number;
+  @IsIn(['replace', 'refund']) remedy!: 'replace' | 'refund';
+  @IsOptional() @IsInt() @Min(1) version?: number;
+}
+
+export class VendorBillDto {
+  @IsUUID() placementId!: string;
+  @Matches(MONTH) month!: string;
+  @trim() @IsString() @MinLength(1) @MaxLength(40) vendorInvoiceNo!: string;
+}
+
+export class VendorBillPaidDto {
+  @Matches(DAY) paidOn!: string;
+}
+
+export class ContactPortalDto {
+  @IsBoolean() access!: boolean;
+}
+
+export class PortalEmailDto {
+  @trim() @IsEmail() @MaxLength(254) email!: string;
+}
+
+export class PortalVerifyDto {
+  @trim() @IsEmail() @MaxLength(254) email!: string;
+  @IsString() @Matches(/^\d{6}$/) code!: string;
+}
+
+export class PortalDecisionDto {
+  @IsIn(['shortlist', 'reject']) decision!: 'shortlist' | 'reject';
+  @IsOptional() @trim() @IsString() @MaxLength(500) feedback?: string;
+}
+
+export class PortalSendBackDto {
+  @IsOptional() @trim() @IsString() @MaxLength(500) note?: string;
 }

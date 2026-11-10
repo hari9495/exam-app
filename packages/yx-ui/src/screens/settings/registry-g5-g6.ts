@@ -911,7 +911,7 @@ const staffing: SettingsPageDef = {
       settings: [
         { key: 'staff.mask_contact', label: 'Hide phone and email from clients until they shortlist', kind: 'toggle', value: true, helper: 'The submission email names the people; their contact details follow once the client shortlists.', starter: true, scope: 'Company', synonyms: ['mask', 'submission email'] },
         { key: 'staff.ending_soon', label: 'A placement is ending soon within', kind: 'select', value: '30', options: ['15', '30', '45', '60'], optionLabels: { '15': '15 days', '30': '30 days', '45': '45 days', '60': '60 days' }, starter: true, scope: 'Company', synonyms: ['placement end', 'redeploy'] },
-        { key: 'staff.statutory_cost', label: 'Statutory cost on own-payroll pay', kind: 'select', value: '0', options: ['0', '5', '10', '13', '15', '20'], optionLabels: { '0': 'None', '5': '5%', '10': '10%', '13': '13%', '15': '15%', '20': '20%' }, helper: 'Employer PF, ESI and similar costs as a share of the pay rate; taken off the margin of own-payroll placements.', starter: true, scope: 'Company', synonyms: ['margin', 'pf', 'esi'] },
+        { key: 'staff.statutory_cost', label: 'Statutory cost on own-payroll pay', kind: 'select', value: '0', options: ['0', '5', '10', '13', '15', '20'], optionLabels: { '0': 'None', '5': '5%', '10': '10%', '13': '13%', '15': '15%', '20': '20%' }, helper: 'Employer PF, ESI and similar costs as a share of the pay rate; taken off the margin of own-payroll placements. Starts at 13% when a legal entity has a PF or ESI registration, else none.', starter: true, scope: 'Company', synonyms: ['margin', 'pf', 'esi'] },
       ],
     },
     {

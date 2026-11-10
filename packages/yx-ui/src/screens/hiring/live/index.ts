@@ -69,3 +69,9 @@ export type { AuditCategory } from '../hiring-logic';
 // Staffing desk slice 2 (HIR-16 submissions, HIR-17 placements and bench, HIR-21 vendors).
 export { BenchBoardScreen, PlacementRecordScreen, PlacementsScreen, SubmissionsBoardScreen, VendorsScreen, type BenchRowView, type LiveBench, type LivePlacementRecord, type LivePlacements, type LiveSubmissions, type LiveVendors, type PlacementEndInput, type PlacementExtendInput, type PlacementRowView, type SubmissionRowView, type SubmissionStage, type VendorRowView, type VendorSubmissionView } from '../hiring-staffing';
 export { BenchSheet, ClientJobSheet, PlacementSheet, ShareJobSheet, SubmitToClientSheet, VendorSheet, type BenchInput, type ClientJobInput, type PlaceableRow, type VendorLinks, type PlacementInput, type ShareInput, type ShareOptions, type SubmitInput, type SubmitOptions, type SubmitPerson, type VendorInput } from '../staffing-sheets';
+// Staffing desk slice 3 (HIR-18 invoices and vendor invoices, HIR-19 receivables, HIR-30 fees, HIR-31 the e-invoice
+// window, T9-06 the client portal per contact).
+export { CollectionsScreen, InvoiceRecordScreen, InvoicesScreen, LiveEInvoiceBanner, PlacementFeeSettingsScreen, type FeeTermsInput, type FeeTermsView, type HoursRowView, type InvoiceDetail, type InvoiceRowView, type LedgerRowView, type LiveCollections, type LiveFeeTerms, type LiveHours, type LiveInvoiceRecord, type LiveInvoices, type ReceiptInput, type VendorBillView, type WindowView } from '../hiring-staffing';
+export { CreateInvoicesSheet, type DraftInput, type InvoiceOptions } from '../staffing-sheets';
+export { ClientPortalScreen, type LiveClientPortal, type LiveClientTab } from '../../portals/t9-business';
+export { PortalSignInScreen } from '../../portals/portals-kit';

@@ -304,6 +304,13 @@ export class StaffingController {
     return this.vendorsSvc.exception(ctx, id, dto);
   }
 
+  @Post('vendor-submissions/:id/override')
+  @RequirePermissions('ats.staffing.manage')
+  overrideDuplicate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CapExceptionDto) {
+    assertOwnSession(req);
+    return this.vendorsSvc.overrideDuplicate(ctx, id, dto);
+  }
+
   @Post('vendor-submissions/:id/forward')
   @RequirePermissions('ats.staffing.manage')
   forward(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ForwardDto) {

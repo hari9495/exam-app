@@ -2695,6 +2695,12 @@ export const TEMPLATE_HISTORY: Record<string, string[][]> = {
       "payroll.equity.own"
     ]
   ],
+  "staffing_finance": [
+    [
+      "ats.staffing.billing",
+      "ats.staffing.view"
+    ]
+  ],
   "team_salary": [
     [
       "employee.salary.view",

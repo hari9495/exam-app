@@ -218,6 +218,7 @@ export class VendorsService {
           overBy: showRates && over ? toRupees(r.quotedRatePaise! - cap!) : null,
           overCap: over && !r.capExceptionAt,
           exception: r.capExceptionReason ? { reason: r.capExceptionReason, at: r.capExceptionAt } : null,
+          override: r.duplicateOverrideAt ? { reason: r.duplicateOverrideReason, at: r.duplicateOverrideAt } : null,
           duplicate: duplicate ? { holder: r.duplicateOfAgencyId ? (holders.get(r.duplicateOfAgencyId) ?? 'Another vendor') : 'Your own pipeline', until: iso(r.ownerUntil) } : null,
           rightToRepresent: r.rightToRepresent,
           consent: r.consent,
@@ -240,6 +241,20 @@ export class VendorsService {
     });
   }
 
+  /** Answer 489 (the design's Review dispute): an account manager overrides a duplicate with a reason (audited). */
+  async overrideDuplicate(ctx: TenantContext, id: string, dto: CapExceptionDto) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const r = await tx.agencySubmission.findFirst({ where: { id, organizationId: c.organizationId } });
+      if (!r) throw new NotFoundException('Vendor submission not found.');
+      if (!r.duplicateOfAgencyId && !r.ownerUntil) throw new ConflictException('This submission is not a duplicate.');
+      if (r.status !== 'pending') throw new ConflictException('This submission has already been reviewed.');
+      const { count } = await tx.agencySubmission.updateMany({ where: { id, duplicateOverrideAt: null }, data: { duplicateOverrideReason: dto.reason, duplicateOverrideBy: c.userId ?? null, duplicateOverrideAt: new Date() } });
+      if (!count) throw new ConflictException('The duplicate was already overridden.');
+      await audit(tx, c, 'staffing.vendor.duplicate_overridden', 'agency_submission', id, { holder: r.duplicateOfAgencyId ?? 'own pipeline', ownerUntil: r.ownerUntil?.toISOString().slice(0, 10) ?? null, reason: dto.reason });
+      return { id };
+    });
+  }
+
   /** Forward to the client: the checks first, then the existing accept, then a client submission (source: the vendor). */
   async forward(ctx: TenantContext, userId: string, id: string, dto: ForwardDto) {
     const prep = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
@@ -249,7 +264,7 @@ export class VendorsService {
       if (!r) throw new NotFoundException('Vendor submission not found.');
       if (!r.job.staffingClientId || !r.job.staffingLineId) throw new BadRequestException('Only a submission for a client job goes to a client. Accept it into the pipeline instead.');
       if (r.status !== 'pending') throw new ConflictException('This submission has already been reviewed.');
-      if (r.duplicateOfAgencyId || r.ownerUntil) throw new ConflictException('This candidate is a duplicate for this job. Review the dispute instead.');
+      if ((r.duplicateOfAgencyId || r.ownerUntil) && !r.duplicateOverrideAt) throw new ConflictException('This candidate is a duplicate for this job. Review the dispute instead.');
       if (!r.rightToRepresent || !r.consent) throw new BadRequestException('The vendor has not confirmed right to represent and the candidate’s consent.');
       const share = await tx.agencyJob.findFirst({ where: { agencyId: r.agencyId, jobId: r.jobId } });
       if (share?.rateCapPaise && r.quotedRatePaise != null && r.quotedRatePaise > share.rateCapPaise && !r.capExceptionAt) throw new ConflictException('The quote is over the rate cap. Approve an exception with a reason first.');
@@ -257,13 +272,19 @@ export class VendorsService {
       if (!contact) throw new BadRequestException('Choose a contact of this client.');
       const rate = await rateOn(tx, org, r.job.staffingLineId, todayIst());
       if (!rate) throw new BadRequestException('The rate card has no rate for this role today.');
+      // The same person already submitted to this client job (from another vendor or the pipeline): nothing to accept.
+      const known = await tx.candidate.findUnique({ where: { organizationId_email: { organizationId: org, email: r.candidateEmail } }, select: { id: true } });
+      if (known && (await tx.staffingSubmission.count({ where: { organizationId: org, jobId: r.jobId, candidateId: known.id, stage: { not: 'rejected' } } }))) throw new ConflictException('This person is already submitted to this client job.');
       return { r, contact, rate, clientId: r.job.staffingClientId, lineId: r.job.staffingLineId };
     });
     const accepted = (await this.agencySubmissions.accept(ctx, id, userId)) as { candidateId?: string };
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const candidateId = accepted.candidateId ?? (await tx.agencySubmission.findFirstOrThrow({ where: { id }, select: { candidateId: true } })).candidateId!;
       const mask = (await settingFor(tx, c, 'staffing.submission.mask_contact', { legalEntityId: '' })) === 'on';
-      const s = await tx.staffingSubmission.create({ data: { organizationId: c.organizationId, clientId: prep.clientId, jobId: prep.r.jobId, lineId: prep.lineId, candidateId, agencySubmissionId: id, contactId: prep.contact.id, billRatePaise: prep.rate.billRatePaise, masked: mask, submittedBy: c.userId ?? null } });
+      const s = await tx.staffingSubmission.create({ data: { organizationId: c.organizationId, clientId: prep.clientId, jobId: prep.r.jobId, lineId: prep.lineId, candidateId, agencySubmissionId: id, contactId: prep.contact.id, billRatePaise: prep.rate.billRatePaise, masked: mask, submittedBy: c.userId ?? null } }).catch((e: unknown) => {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('This person is already submitted to this client job.');
+        throw e;
+      });
       await audit(tx, c, 'staffing.vendor.forwarded', 'agency_submission', id, { submissionId: s.id, contactId: prep.contact.id });
       return { submissionId: s.id };
     });

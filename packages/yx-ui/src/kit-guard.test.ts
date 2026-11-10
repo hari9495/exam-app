@@ -35,7 +35,7 @@ const LEFT: Record<string, number> = {
   desk: 22,
   expenses: 0,
   growth: 11,
-  hiring: 7,
+  hiring: 6,
   history: 0,
   notifications: 1,
   ops: 0,

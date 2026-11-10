@@ -262,6 +262,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'staffing.statutory_cost_pct': { label: 'Staffing desk: statutory cost on own-payroll pay (%)', scopes: ['tenant'], dated: false, values: ['0', '5', '10', '13', '15', '20'], default: '0' },
   'staffing.bench.pay_pct': { label: 'Staffing desk: bench pay (% of fixed pay)', scopes: ['tenant'], dated: false, values: ['0', '25', '50', '60', '75', '100'], default: '50' },
   'staffing.bench.max_days': { label: 'Staffing desk: maximum bench days', scopes: ['tenant'], dated: false, values: ['15', '30', '45', '60', '90'], default: '30' },
+  // Staffing slice 3 (Settings 6.2 collections and e-invoicing).
+  'staffing.dunning.schedule': { label: 'Staffing desk: payment reminders to client billing contacts', scopes: ['tenant'], dated: false, values: ['standard', 'gentle', 'off'], default: 'standard' },
+  'staffing.einvoice.applies': { label: 'Staffing desk: our invoices need an IRN (e-invoicing applies)', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   'staffing.bench.after': { label: 'Staffing desk: after the maximum bench days', scopes: ['tenant'], dated: false, values: ['review', 'unpaid'], default: 'review' },
   'hiring.scorecard.overdue_hours': { label: 'Hiring: a scorecard is overdue this many hours after the interview', scopes: ['tenant'], dated: false, values: ['12', '24', '48', '72'], default: '24' },
   // HIR-02 founder answer 291 (Settings 6.1): a hiring manager's request starts with this recruiter, or with none until

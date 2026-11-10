@@ -331,6 +331,18 @@ describe('Staffing desk slice 2', () => {
     const fwd = (who: Who, id: string) => api(who, 'post', `/staffing/vendor-submissions/${id}/forward`).send({ contactId: ids.contact });
     await fwd('am', over.id).expect(409); // over the cap without an exception
     await fwd('am', dup.id).expect(409); // duplicate
+    // Answer 489: an account manager overrides the duplicate with a reason (audited); then it can be forwarded.
+    const ov = (who: Who, id: string, reason = 'The first vendor withdrew the candidate') => api(who, 'post', `/staffing/vendor-submissions/${id}/override`).send({ reason });
+    await ov('vm', dup.id).expect(403);
+    await ov('acting', dup.id).expect(403);
+    await ov('adminB', dup.id).expect(404);
+    await ov('am', dup.id, '').expect(400);
+    await ov('am', vm.find((x: { candidate: string }) => x.candidate === `two-${run}`).id).expect(409); // not a duplicate
+    await ov('am', dup.id).expect(want(201));
+    await ov('am', dup.id).expect(409);
+    expect((await api('am', 'get', '/staffing/vendor-submissions').expect(200)).body.find((x: { id: string }) => x.id === dup.id).override).toMatchObject({ reason: 'The first vendor withdrew the candidate' });
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'staffing.vendor.duplicate_overridden', entityId: dup.id } }))).toBe(1);
+    ids.vendorSub = (await fwd('am', dup.id).expect(want(201))).body.submissionId; // overridden duplicate: forwarded
     await fwd('vm', over.id).expect(403); // forwarding to a client is the account manager's
     await fwd('acting', over.id).expect(403);
     await fwd('adminB', over.id).expect(404);
@@ -341,10 +353,9 @@ describe('Staffing desk slice 2', () => {
     await api('vm', 'post', `/staffing/vendor-submissions/${over.id}/exception`).send({ reason: 'Rare skill; client agreed' }).expect(want(201));
     await api('vm', 'post', `/staffing/vendor-submissions/${over.id}/exception`).send({ reason: 'Again' }).expect(409);
     await api('am', 'post', `/staffing/vendor-submissions/${over.id}/forward`).send({ contactId: ids.contact2 }).expect(400); // another client's contact
-    ids.vendorSub = (await fwd('am', over.id).expect(want(201))).body.submissionId;
-    await fwd('am', over.id).expect(409); // already reviewed
+    await fwd('am', over.id).expect(409); // the same person is already submitted to this client job
     const board = (await api('rec', 'get', '/staffing/submissions').expect(200)).body;
-    expect(board.find((x: { id: string }) => x.id === ids.vendorSub)).toMatchObject({ person: `one-${run}`, source: `Vendor: Velocity Talent ${run}`, stage: 'submitted' });
+    expect(board.find((x: { id: string }) => x.id === ids.vendorSub)).toMatchObject({ person: `ONE-${run}`, source: `Vendor: Second Source ${run}`, stage: 'submitted' });
     expect(JSON.stringify(board)).not.toMatch(/950/);
   });
 
@@ -352,10 +363,10 @@ describe('Staffing desk slice 2', () => {
     await api('rec', 'post', `/staffing/submissions/${ids.vendorSub}/move`).send({ stage: 'selected' }).expect(want(201));
     const id = (await api('am', 'post', '/staffing/placements').send({ submissionId: ids.vendorSub, startOn: today, endOn: addDays(today, 180) }).expect(want(201))).body.id;
     const p = (await api('am', 'get', `/staffing/placements/${id}`).expect(200)).body.placement;
-    expect(p).toMatchObject({ supply: 'vendor', vendor: `Velocity Talent ${run}`, costRate: '950.00', statutory: '0.00', margin: '250.00', marginPct: '20.8', status: 'active' });
+    expect(p).toMatchObject({ supply: 'vendor', vendor: `Second Source ${run}`, costRate: '800.00', statutory: '0.00', margin: '400.00', marginPct: '33.3', status: 'active' });
     await api('am', 'post', `/staffing/placements/${id}/end`).send({ endOn: today, reason: 'performance', version: 1 }).expect(want(201));
     expect((await api('am', 'get', '/staffing/bench').expect(200)).body.rows).toEqual([]);
-    expect((await api('vm', 'get', '/staffing/vendors').expect(200)).body.find((x: { id: string }) => x.id === ids.v1)).toMatchObject({ submissions: 2, placements: 1, sharedJobs: 1 });
+    expect((await api('vm', 'get', '/staffing/vendors').expect(200)).body.find((x: { id: string }) => x.id === ids.v3)).toMatchObject({ submissions: 1, placements: 1, sharedJobs: 1 });
   });
 
   it('one vendor model: the older agency routes cannot bypass the client-job terms; link and sharing managed here', async () => {

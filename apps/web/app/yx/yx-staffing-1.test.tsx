@@ -68,7 +68,7 @@ describe('Staffing desk menu', () => {
     expect(links(buildNav({ ...base, has: am }))).not.toContain('/yx/staffing/clients');
     expect(links(buildNav({ ...base, has: am }))).toContain('/yx/settings/staffing');
     const on = buildNav({ ...base, has: am, staffing: true });
-    expect(on.find((a) => a.id === 'hire')!.sections.find((s) => s.label === 'Staffing desk')!.items.map((l) => l.label)).toEqual(['Clients', 'Rate cards', 'Submissions', 'Placements & bench']);
+    expect(on.find((a) => a.id === 'hire')!.sections.find((s) => s.label === 'Staffing desk')!.items.map((l) => l.label)).toEqual(['Clients', 'Rate cards', 'Submissions', 'Placements & bench', 'Invoices']);
     expect(links(buildNav({ ...base, has: () => false, staffing: true }))).not.toContain('/yx/staffing/clients');
     expect(links(buildNav({ ...base, has: am, staffing: true, support: true }))).not.toContain('/yx/staffing/clients');
   });

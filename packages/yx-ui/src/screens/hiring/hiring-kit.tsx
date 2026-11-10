@@ -560,3 +560,45 @@ export function StatusLine({ ok, children }: { ok: boolean; children: ReactNode 
 export function Columns({ children }: { children: ReactNode }) {
   return <div className="yx-hire-cols">{children}</div>;
 }
+
+/** The hiring screens' plain table (invoice lines, fee taper): a row header, cells, and label/value footer rows. */
+export function HireTable({ id, label, caption, hideCaption, head, rows, foot }: { id?: string; label: string; caption: string; hideCaption?: boolean; head: ReactNode[]; rows: { key: string | number; cells: ReactNode[] }[]; foot?: { label: ReactNode; value: ReactNode }[] }) {
+  return (
+    <div className="yx-scroll-x" tabIndex={0} role="region" aria-label={label} id={id}>
+      <table className="yx-hire-ctc">
+        <caption className={hideCaption ? 'yx-visually-hidden' : undefined}>{caption}</caption>
+        <thead>
+          <tr>
+            {head.map((h, i) => (
+              <th scope="col" key={i}>
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.key}>
+              <th scope="row">{r.cells[0]}</th>
+              {r.cells.slice(1).map((c, i) => (
+                <td key={i}>{c}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+        {foot && (
+          <tfoot>
+            {foot.map((f, i) => (
+              <tr key={i}>
+                <th scope="row" colSpan={head.length - 1}>
+                  {f.label}
+                </th>
+                <td>{f.value}</td>
+              </tr>
+            ))}
+          </tfoot>
+        )}
+      </table>
+    </div>
+  );
+}

@@ -8,7 +8,7 @@ import { settingFor } from '../people/probation';
 import { displayName } from '../employee-history/employee-history.service';
 import { EmailService } from '../email/email.service';
 import { escapeHtml } from '../notifications/notification-email-render';
-import { StaffingService } from './staffing.service';
+import { StaffingService, statutoryCostPct } from './staffing.service';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { marginPct, toPaise, toRupees } from './staffing-rules';
 import type { BenchAddDto, ClientJobDto, MoveSubmissionDto, PlacementCreateDto, PlacementEndDto, PlacementExtendDto, SubmitToClientDto } from './staffing-dto';
@@ -223,7 +223,7 @@ export class StaffingWorkService {
     const org = c.organizationId;
     const today = todayIst();
     const soon = Number(await settingFor(tx, c, 'staffing.placement.ending_soon_days', { legalEntityId: '' }));
-    const stat = Number(await settingFor(tx, c, 'staffing.statutory_cost_pct', { legalEntityId: '' }));
+    const stat = await statutoryCostPct(tx, org);
     const clients = new Map((await tx.staffingClient.findMany({ where: { organizationId: org, id: { in: [...new Set(rows.map((r) => r.clientId))] } }, select: { id: true, name: true } })).map((x) => [x.id, x.name]));
     const agencies = new Map((await tx.agency.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.agencyId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } })).map((x) => [x.id, x.name]));
     const out = [];
