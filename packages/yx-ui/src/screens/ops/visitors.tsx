@@ -19,6 +19,7 @@ import { FilterBar, type FilterFieldDef } from '../../components/filters';
 import { Card, DescriptionList, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { PageBanner } from '../../components/notify';
 import { BarChart, DonutChart } from '../../components/charts';
+import { FileUpload } from '../../components/upload';
 import { formatDate } from '../../lib/format';
 import type { FilterValue } from '../../lib/table';
 import { LivePage } from '../time/live/kit';
@@ -26,7 +27,7 @@ import { useRun } from '../org/org-kit';
 import { Actions, CameraFrame, CardGrid, Facts, OpsDesk, PhotoPlaceholder, QrPlaceholder, useSay } from './ops-kit';
 import { retentionLeft } from './ops-rules';
 import type { ListState } from './helpdesk';
-import { PURPOSE_CHOICES, visitOf, type Visit, type VisitStatus, type VisitView } from './visitors-data';
+import { ID_CHOICES, PURPOSE_CHOICES, visitOf, type Visit, type VisitStatus, type VisitView } from './visitors-data';
 import { LiveVisitorKioskView, type KioskNeeds, type LiveVisitorKiosk } from './visitor-kiosk';
 import { AddWalkInDrawer, DecideForHostDialog, type DeskWalkInParts } from './visitor-walkin';
 
@@ -34,6 +35,18 @@ const time = (d?: Date) => (d ? d.toLocaleTimeString('en-IN', { hour: 'numeric',
 const TONE: Record<VisitStatus, BadgeTone> = { Expected: 'neutral', 'Waiting for host': 'warning', 'On site': 'success', 'Checked out': 'neutral', Blocked: 'danger', Rejected: 'danger', 'No show': 'neutral', 'Not checked out': 'warning', Cancelled: 'neutral' };
 type Choice = { value: string; label: string };
 type LiveState = 'ready' | 'loading' | 'error' | 'no-access';
+/** Answer 603, per location: no ID, the type and last 4, or also a photo of the ID. */
+export type IdCapture = 'off' | 'on' | 'with_image';
+/** What reception confirms at check-in (slice 3: the ID shown, the adult with a visitor under 18). */
+export interface CheckInInput {
+  noticeAccepted: boolean;
+  adultPresent?: boolean;
+  idType?: string;
+  idLast4?: string;
+  /** Slice 2 (606): the visit type's NDA and induction ticked at the desk. */
+  ndaAccepted?: boolean;
+  inductionAccepted?: boolean;
+}
 
 /** Visitor badge preview (APX-F badge layout via P05). */
 export function VisitorBadge({ visit, today }: { visit: Visit; today: Date }) {
@@ -74,8 +87,12 @@ export interface LiveVisitorDesk {
   canChange: boolean;
   /** A pass code typed or scanned (the scanner types it). */
   onFind: (code: string) => Promise<VisitView>;
-  onCheckIn: (id: string, noticeAccepted: boolean, accepted?: { ndaAccepted: boolean; inductionAccepted: boolean }) => Promise<VisitView>;
+  onCheckIn: (id: string, input: CheckInInput) => Promise<VisitView>;
   onCheckOut: (id: string) => Promise<unknown>;
+  /** The location's ID rule (answer 603). */
+  idCapture: IdCapture;
+  /** Stores the photo of the ID with its type and last 4; resolves once stored (the virus check follows). */
+  onIdImage: (id: string, file: File, idType: string, idLast4: string) => Promise<unknown>;
   /** Visitors slice 2: walk-ins at the desk, deciding for the host, and the visit's type texts at check-in. */
   walkIns?: DeskWalkInParts & {
     onDecide: (id: string, approve: boolean, reason: string | null) => Promise<unknown>;
@@ -92,12 +109,14 @@ export interface VisitorDeskProps {
   blockedAlert?: boolean;
   /** Story: the "Scan QR pass" dialog open. */
   findOpen?: boolean;
+  /** Story: the location's ID rule (answer 603). */
+  idCapture?: IdCapture;
   /** Stories (slice 2): the Add walk-in drawer, and Decide for host. */
   walkInOpen?: boolean;
   decideOpen?: boolean;
   live?: LiveVisitorDesk;
 }
-export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab = 'expected', checkInId = null, blockedAlert, findOpen = false, walkInOpen = false, decideOpen = false, live }: VisitorDeskProps) {
+export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab = 'expected', checkInId = null, blockedAlert, findOpen = false, idCapture = 'on', walkInOpen = false, decideOpen = false, live }: VisitorDeskProps) {
   const { toast } = useSay();
   const visits = live ? live.visits.map(visitOf) : sample;
   const [current, setCurrent] = useState(tab);
@@ -106,6 +125,12 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
   const [finding, setFinding] = useState(findOpen);
   const [code, setCode] = useState('');
   const [found, setFound] = useState<VisitView | null>(null);
+  // Slice 3: a pass found at the desk that can't go ahead (answer 605), the ID shown (603), the adult with a minor (614).
+  const [stopped, setStopped] = useState<string | null>(null);
+  const [idType, setIdType] = useState<string | null>(null);
+  const [last4, setLast4] = useState('');
+  const [photoDone, setPhotoDone] = useState(false);
+  const [adult, setAdult] = useState(false);
   const { busy, error, run, clearError } = useRun();
   const [adding, setAdding] = useState(walkInOpen);
   const [deciding, setDeciding] = useState(decideOpen);
@@ -125,11 +150,22 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkIn]);
   const needsNotice = live ? !view?.noticeAcceptedAt : true;
-  const ndaEarly = useTooEarly([
-    !nda && needsNotice && { fieldId: 'vd-nda', message: live ? 'Tick that the visitor read and accepted the notice.' : 'Tick that the visitor accepted the NDA and safety notice.' },
-    typeNeeds?.nda && !typeTicks.nda && { fieldId: 'vd-type-nda', message: `Tick that the visitor accepted ${typeNeeds.nda.title}.` },
-    typeNeeds?.induction && !typeTicks.induction && { fieldId: 'vd-type-ind', message: `Tick that the visitor read ${typeNeeds.induction.title}.` },
-  ].filter(Boolean) as { fieldId: string; message: string }[]);
+  const shown = live ? (view ? visitOf(view) : undefined) : [...sample].find((v) => v.id === checkIn);
+  const idRule: IdCapture = live ? live.idCapture : idCapture;
+  const minorAdult = shown?.minorAdult;
+  const idNeeded = idRule !== 'off' && !minorAdult && !shown?.idText;
+  const photoNeeded = idNeeded && idRule === 'with_image' && idType !== 'aadhaar';
+  const ndaEarly = useTooEarly(
+    [
+      !nda && needsNotice && { fieldId: 'vd-nda', message: live ? 'Tick that the visitor read and accepted the notice.' : 'Tick that the visitor accepted the NDA and safety notice.' },
+      Boolean(minorAdult) && !adult && { fieldId: 'vd-adult', message: `Tick that ${minorAdult} is here with them.` },
+      idNeeded && !idType && { fieldId: 'vd-idtype', message: 'Choose the ID the visitor showed.' },
+      idNeeded && !/^[A-Za-z0-9]{4}$/.test(last4.trim()) && { fieldId: 'vd-last4', message: 'Enter only the last 4 characters of the ID number.' },
+      photoNeeded && !photoDone && { fieldId: 'vd-idphoto', message: 'Add a photo of the ID: this location keeps one.' },
+      typeNeeds?.nda && !typeTicks.nda && { fieldId: 'vd-type-nda', message: `Tick that the visitor accepted ${typeNeeds.nda.title}.` },
+      typeNeeds?.induction && !typeTicks.induction && { fieldId: 'vd-type-ind', message: `Tick that the visitor read ${typeNeeds.induction.title}.` },
+    ].filter(Boolean) as { fieldId: string; message: string }[],
+  );
   const groups = {
     expected: visits.filter((v) => v.status === 'Expected' || v.status === 'Waiting for host' || v.status === 'Blocked'),
     onsite: visits.filter((v) => v.status === 'On site'),
@@ -138,12 +174,12 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
   const visit = view ? visitOf(view) : visits.find((v) => v.id === checkIn);
   const waiting = visits.find((v) => v.status === 'Waiting for host');
   const canChange = !live || live.canChange;
-  const closeCheckIn = () => (setCheckIn(null), setNda(false), setFound(null), clearError());
+  const closeCheckIn = () => (setCheckIn(null), setNda(false), setFound(null), setIdType(null), setLast4(''), setPhotoDone(false), setAdult(false), clearError());
   const doCheckIn = () =>
     void (async () => {
       if (ndaEarly.stop() || !live || !visit) return;
       const ok = await run('in', async () => {
-        const done = typeNeeds && (typeNeeds.nda || typeNeeds.induction) ? await live.onCheckIn(visit.id, nda, { ndaAccepted: Boolean(typeNeeds.nda) && typeTicks.nda, inductionAccepted: Boolean(typeNeeds.induction) && typeTicks.induction }) : await live.onCheckIn(visit.id, nda);
+        const done = await live.onCheckIn(visit.id, { noticeAccepted: nda, ...(minorAdult ? { adultPresent: adult } : {}), ...(idNeeded && idType ? { idType, idLast4: last4.trim().toUpperCase() } : {}), ...(typeNeeds?.nda ? { ndaAccepted: typeTicks.nda } : {}), ...(typeNeeds?.induction ? { inductionAccepted: typeTicks.induction } : {}) });
         toast({ tone: 'success', title: `${done.name} checked in`, description: done.badge ? `Badge ${done.badge}` : undefined });
       });
       if (ok) closeCheckIn();
@@ -155,6 +191,7 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
         const v = await live.onFind(code);
         setFinding(false);
         setCode('');
+        if (v.status === 'blocked') return void setStopped(v.name);
         if (v.status !== 'expected') return void toast({ title: `${v.name}: ${v.statusText.toLowerCase()}`, description: 'This pass cannot be used to check in.' });
         setFound(v);
         setCheckIn(v.id);
@@ -219,6 +256,8 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
       )}
     </>
   );
+  // Answer 605: reception sees only that the visit can't go ahead, never the watch-list or its reason.
+  const stopNames = Array.from(new Set([...(live ? visits.filter((v) => v.status === 'Blocked').map((v) => v.name) : blockedAlert ? ['Manish Gupta'] : []), ...(stopped ? [stopped] : [])]));
   const place = live ? (live.locations.find((l) => l.value === live.locationId)?.label ?? '') : 'Chennai office';
   const facts = `${groups.expected.length} expected · ${groups.onsite.length} on site · ${groups.out.length} checked out`;
   const body = (
@@ -236,9 +275,9 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
           </PageBanner>
         );
       })()}
-      {blockedAlert && (
+      {stopNames.length > 0 && (
         <InlineAlert tone="danger" title="Stop at reception">
-          Manish Gupta matches the blocked-visitor list. Don't issue a badge. Call the admin on duty; the host is told only that the visit can't go ahead.
+          {stopNames.join(', ')} can't go ahead today. Don't issue a badge. Call the admin on duty; the host is told only that the visit can't go ahead.
         </InlineAlert>
       )}
       <Tabs value={current} onValueChange={(v) => setCurrent(v as typeof current)}>
@@ -295,18 +334,14 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
         {visit && (
           <div className="yx-ops-split">
             <div className="yx-ops-stack">
-              {!live && <CameraFrame subject="face" state="ready" />}
-              {!live && (
-                <FormField label="ID shown">
-                  <Select value="dl" onChange={() => {}} options={[{ value: 'dl', label: 'Driving licence' }, { value: 'pan', label: 'PAN card' }, { value: 'other', label: 'Other' }]} />
-                </FormField>
-              )}
+              {!live && !minorAdult && <CameraFrame subject="face" state="ready" />}
               {live && view && (
                 <DescriptionList
                   items={[
                     { label: 'Pass', value: view.passCode, mono: true },
                     { label: 'Purpose', value: visit.purpose },
                     ...(view.vehicle ? [{ label: 'Vehicle', value: view.vehicle }] : []),
+                    ...(view.idText ? [{ label: 'ID shown', value: view.idText }] : []),
                   ]}
                 />
               )}
@@ -338,6 +373,46 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
                   )}
                 </>
               )}
+              {minorAdult ? (
+                <>
+                  <InlineAlert tone="info" title="Under 18">
+                    Comes with {minorAdult}. No photo and no ID for them.
+                  </InlineAlert>
+                  <Checkbox id="vd-adult" checked={adult} onChange={setAdult} label={`${minorAdult} is here with them`} />
+                  {ndaEarly.errorOf('vd-adult') && <p className="yx-field__error">{ndaEarly.errorOf('vd-adult')}</p>}
+                </>
+              ) : (
+                idNeeded && (
+                  <>
+                    <FieldRow>
+                      <FormField id="vd-idtype" label="ID shown" required error={ndaEarly.errorOf('vd-idtype')}>
+                        <Select value={idType} onChange={(v) => (setIdType(v), setPhotoDone(false))} options={ID_CHOICES} placeholder="Choose the ID" />
+                      </FormField>
+                      <FormField id="vd-last4" label="Last 4 characters" required error={ndaEarly.errorOf('vd-last4')} helper="Never the full number.">
+                        <TextField value={last4} onChange={setLast4} maxLength={4} autoComplete="off" spellCheck={false} />
+                      </FormField>
+                    </FieldRow>
+                    {photoNeeded && (
+                      <FormField id="vd-idphoto" label="Photo of the ID" required error={ndaEarly.errorOf('vd-idphoto')} helper="JPG or PNG up to 5 MB. Kept privately, virus-checked, and deleted after the ID retention period.">
+                        <FileUpload
+                          key={idType ?? 'none'}
+                          multiple={false}
+                          accept={['.jpg', '.jpeg', '.png']}
+                          maxSize={5 * 1024 * 1024}
+                          capture="environment"
+                          onItemsChange={(items) => setPhotoDone(items.some((i) => i.status === 'done'))}
+                          upload={async (file, h) => {
+                            if (!idType || !/^[A-Za-z0-9]{4}$/.test(last4.trim())) throw new Error('Choose the ID type and enter its last 4 first.');
+                            if (live && visit) await live.onIdImage(visit.id, file, idType, last4.trim().toUpperCase());
+                            h.onScanning();
+                          }}
+                        />
+                      </FormField>
+                    )}
+                    {idRule === 'with_image' && idType === 'aadhaar' && <p className="yx-ops-muted">No photo of an Aadhaar card: it shows the full number. Only the last 4 are kept.</p>}
+                  </>
+                )
+              )}
               {needsNotice ? (
                 <>
                   <Checkbox id="vd-nda" checked={nda} onChange={setNda} label={live ? 'The visitor read and accepted the notice' : 'Visitor accepted the NDA and safety notice'} description={live ? 'They did not accept it on their link, so they read it here.' : 'Required at this location before entry'} />
@@ -346,13 +421,13 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
               ) : (
                 <InlineAlert tone="info" title="Notice accepted">The visitor accepted the notice on their link.</InlineAlert>
               )}
-              <p className="yx-ops-muted">{live ? "Visit details are deleted after the location's retention period (Settings › Visitors)." : 'ID images are deleted after 30 days; other visitor details after 90 days.'}</p>
+              <p className="yx-ops-muted">{live ? "Visit details are deleted after the location's retention period, ID details sooner (Settings › Visitors)." : 'ID images are deleted after 30 days; other visitor details after 90 days.'}</p>
             </div>
             <VisitorBadge visit={{ ...visit, badge: live ? (visit.badge ?? 'Given at check-in') : 'V-0413' }} today={today} />
           </div>
         )}
       </Drawer>
-      {adding && <AddWalkInDrawer open onClose={() => setAdding(false)} parts={live?.walkIns ? { ...live.walkIns, onAdd: (i) => live.walkIns!.onAdd({ ...i }) } : undefined} />}
+      {adding && <AddWalkInDrawer open idCapture={idRule} onClose={() => setAdding(false)} parts={live?.walkIns ? { ...live.walkIns, onAdd: (i) => live.walkIns!.onAdd({ ...i }) } : undefined} />}
       {deciding && waiting && <DecideForHostDialog open onClose={() => setDeciding(false)} name={waiting.name} host={waiting.host} onDecide={live?.walkIns ? (approve, reason) => live.walkIns!.onDecide(waiting.id, approve, reason) : undefined} />}
     </>
   );
@@ -390,6 +465,9 @@ export interface VisitorInviteInput {
   from: string;
   to: string;
   vehicle?: string;
+  /** Answer 614. */
+  minor?: boolean;
+  minorAdult?: string;
 }
 
 /** VIS-02 live: the host's own visitors and the invite. */
@@ -451,11 +529,13 @@ export interface PreRegisterProps {
   formOpen?: boolean;
   sent?: boolean;
   approval?: boolean;
+  /** Story: the invite of a visitor under 18 (answer 614). */
+  minor?: boolean;
   live?: LivePreRegister;
 }
 
-type InviteDraft = { name: string; mobile: string; email: string; company: string; purpose: string | null; day: Date | null; locationId: string | null; from: string | null; to: string | null; vehicle: string; typeId?: string | null };
-const blankDraft = (locations: Choice[]): InviteDraft => ({ name: '', mobile: '', email: '', company: '', purpose: 'meeting', day: null, locationId: locations.length === 1 ? locations[0]!.value : null, from: null, to: null, vehicle: '', typeId: null });
+type InviteDraft = { name: string; mobile: string; email: string; company: string; purpose: string | null; day: Date | null; locationId: string | null; from: string | null; to: string | null; vehicle: string; minor: boolean; minorAdult: string; typeId?: string | null };
+const blankDraft = (locations: Choice[]): InviteDraft => ({ name: '', mobile: '', email: '', company: '', purpose: 'meeting', day: null, locationId: locations.length === 1 ? locations[0]!.value : null, from: null, to: null, vehicle: '', minor: false, minorAdult: '', typeId: null });
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const inviteErrors = (d: InviteDraft) =>
   [
@@ -466,12 +546,29 @@ const inviteErrors = (d: InviteDraft) =>
     !d.locationId && { fieldId: 'vi-location', message: 'Choose the location.' },
     !d.from && { fieldId: 'vi-from', message: 'Enter when the visitor arrives.' },
     (!d.to || (d.from && d.to <= d.from)) && { fieldId: 'vi-to', message: d.to ? 'The visitor must leave after they arrive.' : 'Enter when the visitor leaves.' },
+    d.minor && d.minorAdult.trim().length < 2 && { fieldId: 'vi-adult', message: 'Name the adult who comes with them.' },
   ].filter(Boolean) as { fieldId: string; message: string }[];
 
 /** The invite form. Live, it is controlled by the screen; the story shows the drawn sample. */
-export function PreRegisterForm({ today, draft, onDraft, errorOf, locations, types }: { today: Date; draft?: InviteDraft; onDraft?: (d: InviteDraft) => void; errorOf?: (id: string) => string | null | undefined; locations?: Choice[]; types?: Choice[] }) {
+/** Answer 614: a visitor under 18 comes only with a named adult (no photo and no ID for them). */
+function MinorFields({ minor, adult, onMinor, onAdult, error }: { minor: boolean; adult: string; onMinor: (v: boolean) => void; onAdult: (v: string) => void; error?: string | null }) {
+  return (
+    <>
+      <Checkbox id="vi-minor" checked={minor} onChange={onMinor} label="The visitor is under 18" description="They come only with a named adult. No photo and no ID are taken from them." />
+      {minor && (
+        <FormField id="vi-adult" label="Adult who comes with them" required error={error}>
+          <TextField value={adult} onChange={onAdult} maxLength={200} />
+        </FormField>
+      )}
+    </>
+  );
+}
+
+export function PreRegisterForm({ today, draft, onDraft, errorOf, locations, minor: minorStory = false, types }: { today: Date; draft?: InviteDraft; onDraft?: (d: InviteDraft) => void; errorOf?: (id: string) => string | null | undefined; locations?: Choice[]; minor?: boolean; types?: Choice[] }) {
   const [date, setDate] = useState<Date | null>(new Date(2026, 9, 1));
   const [loc, setLoc] = useState<string | null>('maa');
+  const [minor, setMinor] = useState(minorStory);
+  const [adult, setAdult] = useState(minorStory ? 'Rahul Menon' : '');
   if (draft && onDraft) {
     const set = (p: Partial<InviteDraft>) => onDraft({ ...draft, ...p });
     const err = (id: string) => errorOf?.(id) ?? null;
@@ -522,6 +619,7 @@ export function PreRegisterForm({ today, draft, onDraft, errorOf, locations, typ
             <TimeField value={draft.to} onChange={(v) => set({ to: v })} />
           </FormField>
         </FieldRow>
+        <MinorFields minor={draft.minor} adult={draft.minorAdult} onMinor={(v) => set({ minor: v })} onAdult={(v) => set({ minorAdult: v })} error={err('vi-adult')} />
         <p className="yx-ops-muted">The visitor gets an email with a link: their details, the visitor notice and the QR pass for reception. Times are the location's local time.</p>
       </div>
     );
@@ -573,6 +671,7 @@ export function PreRegisterForm({ today, draft, onDraft, errorOf, locations, typ
           <TimeField value="15:00" onChange={() => {}} />
         </FormField>
       </FieldRow>
+      <MinorFields minor={minor} adult={adult} onMinor={setMinor} onAdult={setAdult} />
       <FieldRow>
         <FormField label="ID type" optional>
           <Select value={null} onChange={() => {}} options={[{ value: 'dl', label: 'Driving licence' }, { value: 'pan', label: 'PAN card' }]} placeholder="Not needed" />
@@ -585,7 +684,7 @@ export function PreRegisterForm({ today, draft, onDraft, errorOf, locations, typ
     </div>
   );
 }
-export function PreRegisterScreen({ device = 'desk', visits: sample, today, formOpen, sent, approval, live }: PreRegisterProps) {
+export function PreRegisterScreen({ device = 'desk', visits: sample, today, formOpen, sent, approval, minor, live }: PreRegisterProps) {
   const visits = live ? live.visits.map(visitOf) : sample;
   const [open, setOpen] = useState(!!formOpen);
   const { toast } = useSay();
@@ -599,9 +698,11 @@ export function PreRegisterScreen({ device = 'desk', visits: sample, today, form
     if (!live) return void (setOpen(false), saySent());
     if (early.stop()) return;
     void run('send', async () => {
-      const made = await live.onInvite({ ...(draft.typeId ? { typeId: draft.typeId } : {}), name: draft.name.trim(), mobile: draft.mobile.trim(), email: draft.email.trim(), ...(draft.company.trim() ? { company: draft.company.trim() } : {}), purpose: draft.purpose ?? 'meeting', locationId: draft.locationId!, day: iso(draft.day!), from: draft.from!, to: draft.to!, ...(draft.vehicle.trim() ? { vehicle: draft.vehicle.trim() } : {}) });
+      const made = await live.onInvite({ ...(draft.typeId ? { typeId: draft.typeId } : {}), name: draft.name.trim(), mobile: draft.mobile.trim(), email: draft.email.trim(), ...(draft.company.trim() ? { company: draft.company.trim() } : {}), purpose: draft.purpose ?? 'meeting', locationId: draft.locationId!, day: iso(draft.day!), from: draft.from!, to: draft.to!, ...(draft.vehicle.trim() ? { vehicle: draft.vehicle.trim() } : {}), ...(draft.minor ? { minor: true, minorAdult: draft.minorAdult.trim() } : {}) });
       setOpen(false);
       setDraft(blankDraft(live.locations));
+      // Answer 605: the host learns only that the visit can't go ahead.
+      if (made.status === 'blocked') return void toast({ tone: 'warning', title: "This visit can't go ahead", description: `No pass was sent to ${made.name}. HR or the Facility admin can tell you more.` });
       toast({ tone: made.emailed === false ? 'warning' : 'success', title: made.emailed === false ? 'Invite saved; the email did not go' : 'Invite sent', description: `${made.name}: pass ${made.passCode} for ${formatDate(new Date(made.startsAt))}, ${time(new Date(made.startsAt))} to ${time(new Date(made.endsAt))}, ${made.location}.` });
     });
   };
@@ -616,7 +717,9 @@ export function PreRegisterScreen({ device = 'desk', visits: sample, today, form
           <span className="yx-ops-muted">
             {v.company !== '—' ? `${v.company} · ` : ''}
             {v.purpose} · {formatDate(v.from)}, {time(v.from)} · {v.location}
+            {v.minorAdult ? ` · under 18, with ${v.minorAdult}` : ''}
           </span>
+          {v.status === 'Blocked' && <span className="yx-ops-muted">This visit can't go ahead. HR or the Facility admin can tell you more.</span>}
           {live && live.canChange && v.status === 'Expected' && (
             <div>
               <Button size="sm" loading={busy === `cancel-${v.id}`} onClick={() => void run(`cancel-${v.id}`, async () => (await live.onCancel(v.id), toast({ tone: 'success', title: `Visit cancelled`, description: `${v.name}'s pass no longer works.` })))}>
@@ -649,7 +752,7 @@ export function PreRegisterScreen({ device = 'desk', visits: sample, today, form
       </div>
     </Card>
   );
-  const form = live ? <PreRegisterForm today={today} draft={draft} onDraft={setDraft} errorOf={early.errorOf} locations={live.locations} types={live.types} /> : <PreRegisterForm today={today} types={[{ value: 'customer', label: 'Customer' }, { value: 'contractor', label: 'Contractor' }]} />;
+  const form = live ? <PreRegisterForm today={today} draft={draft} onDraft={setDraft} errorOf={early.errorOf} locations={live.locations} types={live.types} /> : <PreRegisterForm today={today} minor={minor} types={[{ value: 'customer', label: 'Customer' }, { value: 'contractor', label: 'Contractor' }]} />;
   // Slice 2 (604): the live approval cards, one per walk-in asking for this host.
   const liveCards = live?.approvals?.rows.map((a) => (
     <Card key={a.id} title="A walk-in is asking for you">
@@ -903,6 +1006,8 @@ export interface LiveVisitorLog {
   locations: Choice[];
   /** Downloads the log as CSV for an audit. */
   onExport: () => Promise<unknown>;
+  /** Opens the photo of the ID (answer 603; audited). */
+  onOpenIdImage: (id: string) => Promise<unknown>;
 }
 
 export function VisitorLogScreen({ log: sample, today, loading, tab = 'log', live }: { log: Visit[]; today: Date; loading?: boolean; tab?: 'log' | 'reports'; live?: LiveVisitorLog }) {
@@ -945,6 +1050,7 @@ export function VisitorLogScreen({ log: sample, today, loading, tab = 'log', liv
         { key: 'in', header: 'In', value: (v) => v.checkIn, render: (v) => time(v.checkIn) },
         { key: 'out', header: 'Out', value: (v) => v.checkOut, render: (v) => (v.checkOut ? time(v.checkOut) : v.status === 'Not checked out' ? <Badge tone="warning">Not checked out</Badge> : <Badge tone="success">On site</Badge>) },
         { key: 'nda', header: 'Notice accepted', value: (v) => (v.nda ? 'Yes' : live ? 'No' : 'Not required') },
+        { key: 'id', header: 'ID shown', value: (v) => v.idText ?? (v.minorAdult ? `Under 18, with ${v.minorAdult}` : '—') },
         {
           key: 'ret',
           header: 'Deleted in',
@@ -957,6 +1063,13 @@ export function VisitorLogScreen({ log: sample, today, loading, tab = 'log', liv
       ]}
       rows={rows}
       getRowId={(v) => v.id}
+      rowButtons={(v) =>
+        v.idImage ? (
+          <Button size="sm" loading={busy === `id-${v.id}`} onClick={() => live && void run(`id-${v.id}`, () => live.onOpenIdImage(v.id))}>
+            Photo of ID
+          </Button>
+        ) : null
+      }
       state={loading ? 'loading' : 'ready'}
       filtered={filters.length > 0}
       onClearFilters={() => setFilters([])}
@@ -968,7 +1081,7 @@ export function VisitorLogScreen({ log: sample, today, loading, tab = 'log', liv
   if (live)
     return (
       <LivePage title="Visitor log" description={description} actions={exportButton} state={live.state} onRetry={live.onRetry} what="the visitor log" grantedBy="an admin (the Reception or Facility admin role)">
-        {error && <InlineAlert tone="danger" title="Not exported">{error}</InlineAlert>}
+        {error && <InlineAlert tone="danger" title="Not done">{error}</InlineAlert>}
         {table}
       </LivePage>
     );

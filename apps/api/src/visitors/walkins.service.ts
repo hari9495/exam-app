@@ -9,6 +9,8 @@ import { VisitorsService } from './visitors.service';
 import { badgeText, dayBounds, localDay, normalCode, normalMobile, noticeVersion, passCode, passToken, PURPOSES, type Purpose } from './visitor-rules';
 import { NDA_VALID_DAYS, approvalDue, decider, inHours, photoProblem } from './walkin-rules';
 import { acknowledge, checkAccepted, needsView, outstanding, visitNeeds, type Needs } from './visit-needs';
+import { idLast4, idProblem, minorProblem, type IdCapture } from './visitor-guard-rules';
+import { watchHit } from './visitor-watchlist.service';
 
 // Visitors slice 2 (answers 601, 602, 604, 606, 610): walk-ins on a kiosk in visitor mode and at the reception desk.
 // A walk-in waits for the host (the location's minutes, then reception decides; audited either way). The photo is shown
@@ -27,6 +29,21 @@ export interface WalkInInput {
   noticeVersion: string;
   ndaVersionId?: string | null;
   inductionVersionId?: string | null;
+  /** Slice 3 (614): under 18, with the named adult (no photo and no ID for them). */
+  minor?: boolean | null;
+  minorAdult?: string | null;
+  /** Slice 3 (603): the ID type and its last 4, where the location takes ID proof. */
+  idType?: string | null;
+  idLast4?: string | null;
+}
+
+/** Slice 3 rules for a walk-in: under 18 needs the adult and gives no photo or ID; the location's ID rule. Null when fine. */
+function guardProblem(rule: IdCapture, input: WalkInInput, photo: boolean): string | null {
+  const minor = Boolean(input.minor);
+  const m = minorProblem(minor, input.minorAdult);
+  if (m) return m;
+  if (minor && photo) return 'No photo is taken of a visitor under 18.';
+  return idProblem(rule, minor, { type: input.idType ?? null, last4: input.idLast4 ?? null });
 }
 
 @Injectable()
@@ -111,6 +128,9 @@ export class WalkInsService {
           startsAt: now, endsAt: close, status: 'waiting', passToken: passToken(), passCode: code, walkIn: true, visitorTypeId: input.typeId || null,
           kioskDeviceId: extra.kioskDeviceId ?? null, approvalDueAt: approvalDue(now, minutes), hoursOverrideReason: extra.hoursOverrideReason ?? null,
           noticeAcceptedAt: now, noticeAcceptedVia: via, noticeVersion: n.notice.version, createdBy: extra.createdBy,
+          // Slice 3: under 18 with the adult named; the ID type and last 4 only.
+          minor: Boolean(input.minor), minorAdult: input.minor ? input.minorAdult!.trim() : null,
+          ...(!input.minor && input.idType && input.idLast4 ? { idType: input.idType, idLast4: idLast4(input.idLast4), idCapturedAt: now } : {}),
         },
       });
     }
@@ -164,6 +184,8 @@ export class WalkInsService {
       return {
         company: org?.name ?? '', location: loc.name, ...o, open: o.on && o.inHours,
         photo: (await this.visitors.setting(tx, c, 'visitors.photo', loc.id)) === 'on',
+        // Slice 3 (603): the kiosk asks the ID type and last 4 where the location takes ID proof.
+        idCapture: (await this.visitors.setting(tx, c, 'visitors.id_capture', loc.id)) as IdCapture,
         retentionDays: Number(await this.visitors.setting(tx, c, 'visitors.retention_days', loc.id)),
         types: types.map((t) => ({ value: t.id, label: t.name })),
       };
@@ -196,7 +218,17 @@ export class WalkInsService {
       const q = input.hostName.trim();
       const hosts = q.length < 2 ? [] : await tx.user.findMany({ where: { organizationId: c.organizationId, status: 'active', name: { contains: q, mode: 'insensitive' } }, select: { id: true, name: true }, take: 2 });
       if (hosts.length !== 1) return SEE_RECEPTION;
-      if ((await this.visitors.setting(tx, c, 'visitors.photo', loc.id)) === 'on' && !photo) throw new BadRequestException('Take your photo first.');
+      // Slice 3 (605): someone on the watch-list is sent to reception; the kiosk never says why, and nothing is kept.
+      if (await watchHit(tx, c.organizationId, { name: input.name, mobile })) {
+        await audit(tx, c, 'visitor.blocked', 'time_device', k.deviceId, { by: 'watchlist', via: 'kiosk' });
+        return SEE_RECEPTION;
+      }
+      // Slice 3 (603): a photo of the ID is taken only at reception.
+      const rule = (await this.visitors.setting(tx, c, 'visitors.id_capture', loc.id)) as IdCapture;
+      if (rule === 'with_image' && !input.minor) return SEE_RECEPTION;
+      const bad = guardProblem(rule, input, Boolean(photo));
+      if (bad) throw new BadRequestException(bad);
+      if ((await this.visitors.setting(tx, c, 'visitors.photo', loc.id)) === 'on' && !photo && !input.minor) throw new BadRequestException('Take your photo first.');
       const n = await this.needs(tx, c, loc.id, input.typeId || null, mobile, input.company || null);
       checkAccepted(n, input);
       const row = await this.create(tx, c, loc, hosts[0]!.id, input, mobile, n, 'kiosk', { kioskDeviceId: k.deviceId, createdBy: hosts[0]!.id });
@@ -324,12 +356,21 @@ export class WalkInsService {
       const outside = !inHours(new Date(), loc.timezone, from, to);
       const reason = input.hoursReason?.trim() || null;
       if (outside && !reason) throw new BadRequestException(`Visitors are allowed from ${from} to ${to}. Give the reason to let them in now.`);
+      // Slice 3 (605): a watch-list match stops here; reception sees the name only, never why.
+      // The audit is kept: the refusal is thrown only after this transaction commits.
+      if (await watchHit(tx, c.organizationId, { name: input.name, mobile })) {
+        await audit(tx, c, 'visitor.blocked', 'location', loc.id, { by: 'watchlist', via: 'desk' });
+        return { blocked: true as const };
+      }
+      const bad = guardProblem((await this.visitors.setting(tx, c, 'visitors.id_capture', loc.id)) as IdCapture, input, false);
+      if (bad) throw new BadRequestException(bad);
       const n = await this.needs(tx, c, loc.id, input.typeId || null, mobile, input.company || null);
       checkAccepted(n, input);
       const row = await this.create(tx, c, loc, host.id, input, mobile, n, 'desk', { hoursOverrideReason: outside ? reason : null, createdBy: user.userId! });
       if (outside) await audit(tx, c, 'visitor.hours_overridden', 'visit', row.id, { reason });
       return { row, loc };
     });
+    if ('blocked' in made) throw new ConflictException(`Stop at reception: ${input.name.trim()} can't come in. Don't issue a badge; call the admin on duty.`);
     await this.tellHost(ctx.organizationId!, made.row, made.loc.name);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => (await this.visitors.views(tx, c, [made.row]))[0]!);
   }

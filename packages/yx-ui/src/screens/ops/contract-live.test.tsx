@@ -2,8 +2,8 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
-import { ContractorsScreen } from './contract';
-import type { ContractorsData, ContractorsLive } from './contract-live';
+import { ContractorsScreen, WorkersScreen } from './contract';
+import type { ContractorsData, ContractorsLive, WorkersData, WorkersLive } from './contract-live';
 import { SettingsPageScreen } from '../settings/settings-screens';
 import { SETTINGS_GROUPS } from '../settings/settings-groups';
 import { clraSettingsChanges, clraSettingsPage, thresholdText, type ClraSettingsData } from '../settings/contract-labour-live';
@@ -39,7 +39,7 @@ const live = (p: Partial<ContractorsLive> = {}): ContractorsLive => ({
 const screenOf = (l: ContractorsLive) => <ContractorsScreen contractors={[]} establishments={[]} today={new Date()} live={l} />;
 
 describe('CLB-01 Contractors register (live)', () => {
-  it('lists contractors with their licence state from the server; no sample cards, work order or contractor login', async () => {
+  it('lists contractors with their licence state from the server; no sample cards or work order; the contractor login', async () => {
     show(screenOf(live()));
     expect(screen.getByText('Vetri Security Agency')).toBeInTheDocument();
     expect(screen.getByText('Expires in 21 days')).toBeInTheDocument();
@@ -49,8 +49,14 @@ describe('CLB-01 Contractors register (live)', () => {
     const drawer = screen.getByRole('dialog');
     expect(within(drawer).getByText('60, 30 and 7 days before expiry')).toBeInTheDocument();
     expect(within(drawer).queryByText('Work order')).not.toBeInTheDocument();
-    expect(within(drawer).queryByRole('button', { name: 'Invite to contractor login' })).not.toBeInTheDocument();
-    await ue.click(within(drawer).getByRole('button', { name: 'Licence copy' }));
+    // CL-3: the contractor login (answer 631).
+    expect(within(drawer).getByText(/No one from Vetri Security Agency can sign in yet/)).toBeInTheDocument();
+    await ue.click(within(drawer).getByRole('button', { name: 'Invite to contractor login' }));
+    const dlg = screen.getByRole('dialog', { name: 'Invite to contractor login' });
+    await ue.click(within(dlg).getByRole('button', { name: 'Send invitation' }));
+    expect(within(dlg).getByText('Enter the contact’s name.')).toBeInTheDocument();
+    await ue.click(within(dlg).getByRole('button', { name: 'Cancel' }));
+    await ue.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Licence copy' }));
   });
 
   it('an expired licence shows the deployment block; a renewal waits and is verified', async () => {
@@ -175,5 +181,102 @@ describe('Settings 4.9 Contract labour (live)', () => {
     expect(page.sections.flatMap((s) => s.settings.map((x) => x.key))).not.toContain('clra.licence_alerts');
     expect(clraSettingsChanges({ 'clra.licence_alerts': ['7', '90', '30'] })).toEqual([{ key: 'clra.licence_alerts', value: '90,30,7' }]);
     expect(clraSettingsChanges({ other: 'x' })).toEqual([]);
+  });
+});
+
+/* ---------------- CL-2: CLB-02 contract workers, work orders, site cards ---------------- */
+
+const WDATA: WorkersData = {
+  canManage: true,
+  today: '2026-09-29',
+  inductionRequired: true,
+  inductionMonths: 12,
+  contractors: [{ id: 'c1', name: 'Vetri Security Agency' }],
+  locations: [{ id: 'hosur', name: 'Hosur plant', state: 'IN-TN' }],
+  workers: [
+    { id: 'd1', personId: 'p1', name: 'Kannan S', contractor: { id: 'c1', name: 'Vetri Security Agency' }, site: { id: 'hosur', name: 'Hosur plant' }, skill: 'Unskilled', wage: '14820.00', fromOn: '2026-09-01', toOn: null, status: 'deployed', gatePass: 'GP-HSR-0001', gateValidTo: '2027-08-31', induction: { on: '2026-09-01', by: 'Safety officer' }, uan: null, esicIp: null, idMasked: 'XXXX XXXX 0123', releasedOn: null, releaseReason: null, version: 2 },
+    { id: 'd2', personId: 'p2', name: 'Selvi R', contractor: { id: 'c1', name: 'Vetri Security Agency' }, site: { id: 'hosur', name: 'Hosur plant' }, skill: 'Skilled', wage: null, fromOn: '2026-10-01', toOn: null, status: 'pending', gatePass: null, gateValidTo: null, induction: null, uan: null, esicIp: null, idMasked: 'XXXX XXXX 9876', releasedOn: null, releaseReason: null, version: 1 },
+  ],
+};
+const PASS = [{ id: 'age', status: 'pass' as const, label: 'Age 18 or over' }];
+const wlive = (p: Partial<WorkersLive> = {}): WorkersLive => ({ state: 'ready', data: WDATA, onRetry: vi.fn(), onCheck: vi.fn(async () => PASS), onSend: vi.fn(async () => undefined), onApprove: vi.fn(async () => undefined), onRelease: vi.fn(async () => undefined), ...p });
+const workersOfLive = (l: WorkersLive) => <WorkersScreen workers={[]} contractors={[]} today={new Date()} live={l} />;
+
+describe('CLB-02 Contract workers (live)', () => {
+  it('lists workers with the masked ID and the gate pass; pending ones wait for approval', () => {
+    show(workersOfLive(wlive()));
+    expect(screen.getByText('ID XXXX XXXX 0123')).toBeInTheDocument();
+    expect(screen.getByText('GP-HSR-0001')).toBeInTheDocument();
+    expect(screen.getByText('After approval')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
+  });
+
+  it('deploy: missing fields named, nothing checked or sent', async () => {
+    const l = wlive();
+    show(workersOfLive(l));
+    await ue.click(screen.getAllByRole('button', { name: 'Deploy worker' })[0]!);
+    const sheet = screen.getByRole('dialog');
+    await ue.click(within(sheet).getByRole('button', { name: 'Send for site approval' }));
+    for (const t of ['Choose the contractor.', 'Choose the site.', 'Enter the worker’s name.', /Enter the date of birth/, /Enter the 12-digit Aadhaar number/, 'Choose the first day.']) expect(within(sheet).getByText(t)).toBeInTheDocument();
+    expect(l.onCheck).not.toHaveBeenCalled();
+    expect(l.onSend).not.toHaveBeenCalled();
+  });
+
+  it('approve needs the induction; release needs a reason; a reader sees no buttons', async () => {
+    const l = wlive();
+    const { unmount } = show(workersOfLive(l));
+    await ue.click(screen.getByRole('button', { name: 'Approve' }));
+    const dlg = screen.getByRole('dialog');
+    await ue.click(within(dlg).getByRole('button', { name: 'Approve and issue gate pass' }));
+    expect(within(dlg).getByText('Enter the day of the safety induction.')).toBeInTheDocument();
+    expect(within(dlg).getByText('Enter who gave the induction.')).toBeInTheDocument();
+    expect(l.onApprove).not.toHaveBeenCalled();
+    await ue.click(within(dlg).getByRole('button', { name: 'Cancel' }));
+    await ue.click(screen.getByRole('button', { name: 'Release' }));
+    const rel = screen.getByRole('dialog');
+    await ue.click(within(rel).getByRole('button', { name: 'Release' }));
+    expect(within(rel).getByText('Say why.')).toBeInTheDocument();
+    await ue.type(within(rel).getByLabelText(/Reason/), 'Contract over');
+    await ue.click(within(rel).getByRole('button', { name: 'Release' }));
+    expect(l.onRelease).toHaveBeenCalledWith('d1', 2, '2026-09-29', 'Contract over');
+    unmount();
+    show(workersOfLive(wlive({ data: { ...WDATA, canManage: false } })));
+    expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Deploy worker' })).not.toBeInTheDocument();
+  });
+});
+
+describe('CLB-01 work orders and site cards (live, CL-2)', () => {
+  const data: ContractorsData = {
+    ...DATA,
+    establishments: [{ id: 'hosur', name: 'Hosur plant', state: 'IN-TN', workers: 21, licenceMax: 20, threshold: 50, verify: true }],
+    contractors: [{ ...DATA.contractors[0]!, workOrders: [{ id: 'wo1', number: 'WO/7', fromOn: '2026-04-01', toOn: '2027-03-31', headcount: 15, active: 16, sites: [{ id: 'hosur', name: 'Hosur plant' }], version: 1 }] }, DATA.contractors[1]!],
+  };
+  it('the site card shows workers against the licence maximum and the threshold', () => {
+    show(screenOf(live({ data })));
+    expect(screen.getByText('Licence maximum')).toBeInTheDocument();
+    expect(screen.getByText('Below threshold')).toBeInTheDocument();
+  });
+  it('the work order card warns over headcount; add work order names missing fields', async () => {
+    const l = live({ data, onSaveWorkOrder: vi.fn(async () => undefined) });
+    show(screenOf(l));
+    await ue.click(screen.getByText('Vetri Security Agency'));
+    const drawer = screen.getByRole('dialog');
+    expect(within(drawer).getByText('Over headcount')).toBeInTheDocument();
+    expect(within(drawer).getByText('16 of 15 deployed or waiting')).toBeInTheDocument();
+    await ue.click(within(drawer).getByRole('button', { name: 'Add work order' }));
+    const sheet = screen.getByRole('dialog');
+    await ue.click(within(sheet).getByRole('button', { name: 'Add work order' }));
+    for (const t of ['Enter the work order number.', 'Choose the first day.', 'Choose the last day.', 'Enter the headcount.', 'Choose the sites it covers.']) expect(within(sheet).getByText(t)).toBeInTheDocument();
+    expect(l.onSaveWorkOrder).not.toHaveBeenCalled();
+  });
+});
+
+describe('Settings 4.9 induction (live, CL-2)', () => {
+  it('shows the induction settings and saves them as company settings', () => {
+    const page = clraSettingsPage(design, { ...SETTINGS_DATA, values: { ...SETTINGS_DATA.values, 'clra.induction_required': 'on', 'clra.induction_months': '12' }, defaults: { ...SETTINGS_DATA.defaults, 'clra.induction_required': 'on', 'clra.induction_months': '12' }, choices: { ...SETTINGS_DATA.choices, 'clra.induction_months': ['6', '12', '24'] } });
+    const req = page.sections.flatMap((s) => s.settings).find((x) => x.key === 'clra.induction_required')!;
+    expect(req.value).toBe(true);
+    expect(clraSettingsChanges({ 'clra.induction_required': false, 'clra.induction_months': '24' })).toEqual([{ key: 'clra.induction_required', value: 'off' }, { key: 'clra.induction_months', value: '24' }]);
   });
 });

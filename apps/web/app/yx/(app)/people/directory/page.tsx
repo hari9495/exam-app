@@ -19,7 +19,7 @@ interface Ref {
 }
 interface Row {
   id: string;
-  kind: 'employee' | 'consultant';
+  kind: 'employee' | 'consultant' | 'contract_worker';
   name: string;
   designation: string | null;
   department: Ref | null;
@@ -33,6 +33,8 @@ interface Row {
   status?: string;
   phone?: string | null;
   via?: string | null;
+  /** CL-2 contract workers. */
+  deployment?: 'Deployed' | 'Pending approval';
 }
 interface Card {
   count: number;
@@ -41,7 +43,7 @@ interface Card {
 interface Workforce {
   me: { id: string; managerId: string | null; departmentId: string | null; locationId: string | null } | null;
   rows: Row[];
-  cards: { employees: Card; consultants: Card | null; persons: { roles: number; people: number; previous: number | null } };
+  cards: { employees: Card; consultants: Card | null; contractWorkers?: Card | null; persons: { roles: number; people: number; previous: number | null } };
   previousMonth: string | null;
 }
 
@@ -54,7 +56,7 @@ function toRow(r: Row): WorkforceRow {
     id: r.id,
     code: r.employeeCode ?? '',
     name: r.name,
-    kind: r.kind === 'consultant' ? 'Consultant' : 'Employee',
+    kind: r.kind === 'consultant' ? 'Consultant' : r.kind === 'contract_worker' ? 'Contract worker' : 'Employee',
     role: r.designation ?? '',
     department: r.department?.name ?? '',
     ...(r.departmentPath ? { departmentPath: r.departmentPath } : {}),
@@ -64,7 +66,7 @@ function toRow(r: Row): WorkforceRow {
     email: r.workEmail ?? '',
     phone: r.phone ?? '',
     ...(r.joinedOn ? { joined: new Date(`${r.joinedOn}T00:00:00`) } : {}),
-    status: r.status ?? '',
+    status: r.deployment ?? r.status ?? '',
     ...(r.via ? { via: r.via } : {}),
   };
 }
@@ -109,6 +111,8 @@ export default function YxDirectoryPage() {
     ? {
         Employee: { count: d.cards.employees.count, delta: delta(d.cards.employees.count, d.cards.employees.previous) },
         ...(isHr && d.cards.consultants ? { Consultant: { count: d.cards.consultants.count, delta: delta(d.cards.consultants.count, d.cards.consultants.previous) } } : {}),
+        // CL-2 (PPL-01): the contract labour keys of the whole company; the server decides.
+        ...(d.cards.contractWorkers ? { 'Contract worker': { count: d.cards.contractWorkers.count, delta: null } } : {}),
         ...(isHr ? { 'All persons': { count: d.cards.persons.people, delta: delta(d.cards.persons.people, d.cards.persons.previous) } } : {}),
       }
     : {};
@@ -118,10 +122,10 @@ export default function YxDirectoryPage() {
     cards,
     sinceMonth,
     ...(d ? { persons: { roles: d.cards.persons.roles, people: d.cards.persons.people } } : {}),
-    ...(canHire ? { onAdd: (kind: WorkforceFilter) => (kind === 'Consultant' ? router.push('/yx/payroll/consultants') : setAdding(true)), onImport: () => router.push('/yx/people/import') } : {}),
+    ...(canHire ? { onAdd: (kind: WorkforceFilter) => (kind === 'Consultant' ? router.push('/yx/payroll/consultants') : kind === 'Contract worker' ? router.push('/yx/contract-labour/workers') : setAdding(true)), onImport: () => router.push('/yx/people/import') } : {}),
     ...(isHr
       ? {
-          onOpenRecord: (r: WorkforceRow) => router.push(`/yx/people/directory/${id(r.id)}`),
+          onOpenRecord: (r: WorkforceRow) => router.push(r.kind === 'Contract worker' ? '/yx/contract-labour/workers' : `/yx/people/directory/${id(r.id)}`),
           // One person: their job history, where changes are raised; several: a bulk change.
           onStartChange: (ids: string[]) => router.push(ids.length === 1 ? `/yx/people/history?person=${id(ids[0])}` : '/yx/people/bulk-changes'),
           onIssueLetter: (ids: string[]) => router.push(`/yx/people/letters?people=${ids.map(id).join(',')}`),

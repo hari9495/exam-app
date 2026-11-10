@@ -18,13 +18,13 @@ API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Directory, record and changes | 9 | 139 | 0 | 0 | 2 | 0 | 141 |
+| A. Directory, record and changes | 9 | 140 | 0 | 0 | 1 | 0 | 141 |
 | B. Onboarding and probation | 7 | 69 | 2 | 0 | 0 | 0 | 71 |
 | C. Exits | 7 | 56 | 0 | 0 | 0 | 3 | 59 |
 | D. Assets, documents, letters and self-service | 9 | 55 | 2 | 0 | 0 | 9 | 66 |
 | E. Identity, same person and records | 6 | 18 | 3 | 0 | 2 | 0 | 23 |
 | F. Declarations, relations, special cases and checklists | 11 | 72 | 0 | 0 | 0 | 3 | 75 |
-| **All PPL groups (A–F)** | **49** | **409** | **7** | **0** | **4** | **15** | **435** |
+| **All PPL groups (A–F)** | **49** | **410** | **7** | **0** | **3** | **15** | **435** |
 | G. Other People stories (no PPL number) | 4 | 44 | 0 | 0 | 0 | 0 | 44 |
 
 Counted by script (3 Nov 2026, branch `feat/yukthix-perf-followups-b`: PPL-03 gains PerformanceHr, live (founder answer 9). Before that, branch `feat/yukthix-people-last`: the last rows we can build ourselves are live: PPL-28 Held (+ story LiveHeld), PPL-33 MyData (+ Correction, Nominate), PPL-36 Queue, PPL-44 Blocked (+ OfficerWindow), PPL-46 SplitPay, OnPayTab, OverSplit; four design stories added; the C row was already 56 live by the script (the table said 55); what is left needs a provider (penny drop and PAN check PPL-27, face match PPL-34/36) or another module (contract workers, learning). Before that, 2 Nov 2026, branch `feat/yukthix-people-changes`: builder 2 added 24 design stories (PPL-03 12, PPL-04 3, PPL-05 3, PPL-24 6) and made the 8 "wire design" stories live; earlier counts 30 Oct 2026, on `test/yukthix-main`; the script is in the appendix): every `export const` story in the 49 `ppl-NN.stories.tsx`
@@ -327,7 +327,7 @@ Live page: /yx/people/directory (menu People › Directory; HR and employees). U
 | story (sub-page) | verdict | note |
 |---|---|---|
 | HrEmployees · HR · employees with workforce card | live | as HR (`employee.profile.view`); cards are Employees, Consultants, All persons only (GET people/workforce has no contract workers or placements) |
-| HrContractWorkers · HR · contract workers | design only, feature not built | no contract-worker module or API; the live page shows no "Contract workers" card (`kinds` filters to cards the API sends) |
+| HrContractWorkers · HR · contract workers | live | CL-2 (10 Nov 2026): GET people/workforce sends contract workers (deployed or waiting) and the Contract workers card to holders of the contract labour keys for the whole company; a row opens Contract labour › Contract workers |
 | HrAllPersons · HR · all persons | live | "All persons" card (HR only); counts distinct persons from `cards.persons` |
 | Employee · Employee · public fields only | live | as an employee without `employee.profile.view`; the API sends public fields only |
 | QuickView · Quick view drawer | live | click a row; "Open record" for HR goes to /yx/people/directory/[id] |
@@ -906,7 +906,7 @@ Live page: /yx/people/directory/[id] (record side panel "Person roles", shown wh
 | story (sub-page) | verdict | note |
 |---|---|---|
 | OnRecord · On the person record | live | GET employees/:id/person: employee, consultant, candidate, joiner, former employee roles with dates |
-| Panel · Panel alone (contract worker to employee, nominee) | live (gap) | nothing creates contract_worker roles (contract workers module not built); nominees are F&F payees, not person roles |
+| Panel · Panel alone (contract worker to employee, nominee) | live (gap) | CL-2 creates contract_worker roles ("contractor · site"); they meet an employee role on one person after a same-person merge, and by conversion with CL-7; nominees are F&F payees, not person roles |
 
 #### PPL-36 · Possible same person
 

@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsEmail, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsEmail, IsIdentityCard, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { ESIC_CODE, LIN, PF_CODE } from './clra-rules';
 
 // Contract labour CL-1 request bodies. A licence comes as a multipart form (the licence copy is the file), so its numbers
@@ -59,4 +59,67 @@ export class SaveClraSettingsDto {
   @ValidateNested({ each: true })
   @Type(() => ClraSettingChangeDto)
   changes!: ClraSettingChangeDto[];
+}
+
+/* ---------------- CL-2 contract workers ---------------- */
+
+
+export class WorkerDto {
+  @IsUUID() contractorId!: string;
+  @IsUUID() locationId!: string;
+  @trim() @IsString() @MinLength(1) @MaxLength(100) givenName!: string;
+  @IsOptional() @trim() @IsString() @MaxLength(100) familyName?: string | null;
+  @Matches(DAY) dob!: string;
+  /** Answer 636: read once to keep the last 4 digits and a keyed hash; never stored. */
+  @Matches(/^[2-9][0-9]{11}$/, { message: 'An Aadhaar number has 12 digits.' }) @IsIdentityCard('IN', { message: 'That Aadhaar number fails its check digit.' }) aadhaar!: string;
+  @IsIn(['unskilled', 'semi_skilled', 'skilled', 'highly_skilled']) skill!: 'unskilled' | 'semi_skilled' | 'skilled' | 'highly_skilled';
+  @IsOptional() @Matches(/^\d{1,9}(\.\d{1,2})?$/, { message: 'Enter the wage in rupees.' }) wage?: string | null;
+  @IsOptional() @trim() @Matches(/^[0-9]{12}$/, { message: 'A UAN has 12 digits.' }) uan?: string | null;
+  @IsOptional() @trim() @Matches(/^[0-9]{10}$/, { message: 'An ESI IP number has 10 digits.' }) esicIp?: string | null;
+  @Matches(DAY) fromOn!: string;
+  @IsOptional() @Matches(DAY) toOn?: string | null;
+}
+
+export class ApproveWorkerDto {
+  @IsInt() @Min(1) version!: number;
+  @IsOptional() @Matches(DAY) inductionOn?: string | null;
+  @IsOptional() @trim() @IsString() @MaxLength(120) inductionBy?: string | null;
+}
+
+export class ReleaseWorkerDto {
+  @IsInt() @Min(1) version!: number;
+  @Matches(DAY) on!: string;
+  @trim() @IsString() @MinLength(3) @MaxLength(500) reason!: string;
+}
+
+/** Answer 675: a contractor's work order. */
+export class WorkOrderDto {
+  @trim() @IsString() @MinLength(1) @MaxLength(40) number!: string;
+  @Matches(DAY) fromOn!: string;
+  @Matches(DAY) toOn!: string;
+  @IsInt() @Min(1) @Max(100000) headcount!: number;
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100) @IsUUID('all', { each: true }) locationIds!: string[];
+  @IsOptional() @IsInt() @Min(1) version?: number;
+}
+
+/* ---------------- CL-3 contractor portal (answer 631) ---------------- */
+
+export class ContractorContactDto {
+  @trim() @IsString() @MinLength(1) @MaxLength(120) name!: string;
+  @trim() @IsEmail() @MaxLength(254) email!: string;
+}
+
+/** The portal's worker form: the contractor is the signed-in contact's own. */
+export class PortalWorkerDto {
+  @IsUUID() locationId!: string;
+  @trim() @IsString() @MinLength(1) @MaxLength(100) givenName!: string;
+  @IsOptional() @trim() @IsString() @MaxLength(100) familyName?: string | null;
+  @Matches(DAY) dob!: string;
+  @Matches(/^[2-9][0-9]{11}$/, { message: 'An Aadhaar number has 12 digits.' }) @IsIdentityCard('IN', { message: 'That Aadhaar number fails its check digit.' }) aadhaar!: string;
+  @IsIn(['unskilled', 'semi_skilled', 'skilled', 'highly_skilled']) skill!: 'unskilled' | 'semi_skilled' | 'skilled' | 'highly_skilled';
+  @IsOptional() @Matches(/^\d{1,9}(\.\d{1,2})?$/, { message: 'Enter the wage in rupees.' }) wage?: string | null;
+  @IsOptional() @trim() @Matches(/^[0-9]{12}$/, { message: 'A UAN has 12 digits.' }) uan?: string | null;
+  @IsOptional() @trim() @Matches(/^[0-9]{10}$/, { message: 'An ESI IP number has 10 digits.' }) esicIp?: string | null;
+  @Matches(DAY) fromOn!: string;
+  @IsOptional() @Matches(DAY) toOn?: string | null;
 }

@@ -6,7 +6,7 @@ import { Button } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
 import { Card, DescriptionList } from '../../components/shell';
 import { EmptyState, InlineAlert, Meter, NoAccessState } from '../../components/feedback';
-import { FieldRow, FormField } from '../../components/field';
+import { FieldRow, FormField, useTooEarly } from '../../components/field';
 import { CurrencyField, TextArea, TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup } from '../../components/choice';
 import { Select } from '../../components/select';
@@ -19,6 +19,8 @@ import { Icon } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { timeOf } from '../../lib/dates';
 import { daysUntil, deploymentBlock, licenceAlert, rateCapCheck, submissionBlock, vendorInvoice } from './portals-logic';
+import { ClDue, ClLicences, ClWorkerList, ClWorkOrders, type PortalDue, type PortalLicence, type PortalWorker, type PortalWorkOrder } from './contractor-portal';
+import { LiveContractorPortalView, type LiveContractorPortal } from './contractor-portal-live';
 import { BlockNote, CameraFrame, ConsentPanel, Fact, FactRow, QrCode, StepDots, TenantPortal, type CameraState } from './portals-kit';
 import type {
   ClEstablishment,
@@ -757,13 +759,25 @@ export interface ContractorPortalProps {
   bills: { no: string; month: string; amount: number; tds: number; status: 'On hold' | 'Paid' | 'Due'; reason: string }[];
   /** Adding a worker: show the add form with this DOB and establishment. */
   addWorker?: { dob: Date; establishmentId: string };
+  /** CL-3 (answer 631): what is due, the work orders, and a licence whose renewal is being uploaded. */
+  due?: PortalDue[];
+  workOrders?: PortalWorkOrder[];
+  renewingId?: string;
 }
+
+/** The design's sample establishments and workers as the portal parts take them. */
+const licencesOf = (xs: ClEstablishment[]): PortalLicence[] => xs.map((e) => ({ id: e.id, site: e.name, licenceNo: e.licenceNo, authority: e.authority, nature: e.nature, maxWorkers: e.maxWorkers, deployed: e.deployed, validTo: e.validTo, renewal: e.renewal ?? null }));
+const workersOf = (xs: ClWorker[]): PortalWorker[] => xs.map((w) => ({ id: w.id, name: w.name, idMasked: w.idMasked, uan: w.uan === 'Not linked' ? '' : w.uan, esic: w.esic, skill: w.skill, wage: w.wage, site: w.site, from: w.from, gatePass: w.gatePass, gateValidTo: w.gateValidTo, status: w.status ?? 'Deployed' }));
 
 // T9-13
 /** Contractor contact: own establishments, workers, monthly compliance packs, discrepancies, bills and licences (M13). */
-export function ContractorPortalScreen(p: ContractorPortalProps) {
+export function ContractorPortalScreen(props: ContractorPortalProps | { live: LiveContractorPortal }) {
+  if ('live' in props) return <LiveContractorPortalView live={props.live} />;
+  const p = props;
   const { tenant, accent, contractor, today, tab } = p;
   const held = p.bills.some((b) => b.status === 'On hold');
+  const est = p.addWorker ? p.establishments.find((e) => e.id === p.addWorker!.establishmentId)! : null;
+  const block = p.addWorker && est ? deploymentBlock({ dob: p.addWorker.dob, today, deployed: est.deployed, maxWorkers: est.maxWorkers }) : null;
   return (
     <TenantPortal
       tenant={tenant}
@@ -778,147 +792,24 @@ export function ContractorPortalScreen(p: ContractorPortalProps) {
           The August 2026 bill is held until the August pack's discrepancy is fixed.
         </InlineAlert>
       )}
-      {tab === 'establishments' && <ClEstablishments items={p.establishments} today={today} />}
-      {tab === 'workers' && <ClWorkers workers={p.workers} establishments={p.establishments} today={today} addWorker={p.addWorker} />}
+      {tab === 'establishments' && (
+        <div className="yx-ps-stack">
+          {p.due && <ClDue items={p.due} />}
+          <ClLicences items={licencesOf(p.establishments)} today={today} renewingId={p.renewingId ?? null} />
+          {p.workOrders && <ClWorkOrders items={p.workOrders} />}
+        </div>
+      )}
+      {tab === 'workers' && (
+        <ClWorkerList
+          workers={workersOf(p.workers)}
+          sites={p.establishments.map((e) => ({ id: e.id, name: `${e.name} (${e.deployed} of ${e.maxWorkers})` }))}
+          today={today}
+          design={p.addWorker ? { dob: p.addWorker.dob, siteId: p.addWorker.establishmentId, checks: [{ id: 'age', status: block?.includes('under 18') ? 'fail' : 'pass', label: 'Age 18 or over', detail: block?.includes('under 18') ? block : undefined }, { id: 'max', status: block && !block.includes('under 18') ? 'fail' : 'pass', label: 'Within the licence maximum', detail: block && !block.includes('under 18') ? block : undefined }, { id: 'dup', status: 'pass', label: 'Not already deployed', detail: 'Matched on the ID' }] } : undefined}
+        />
+      )}
       {tab === 'packs' && <ClPack pack={p.pack} today={today} />}
       {tab === 'bills' && <ClBills bills={p.bills} />}
     </TenantPortal>
-  );
-}
-
-function ClEstablishments({ items, today }: { items: ClEstablishment[]; today: Date }) {
-  return (
-    <div className="yx-ps-stack">
-      {items.map((e) => {
-        const a = licenceAlert(e.validTo, today);
-        return (
-          <Card
-            key={e.id}
-            title={e.name}
-            actions={
-              <Badge tone={a.band === 'ok' ? 'success' : a.band === '60' ? 'info' : a.band === '30' ? 'warning' : 'danger'}>
-                {a.band === 'expired' ? 'Licence expired' : a.band === 'ok' ? 'Licence valid' : `Licence ends in ${a.days} days`}
-              </Badge>
-            }
-          >
-            <div className="yx-ps-stack">
-              <DescriptionList
-                columns={2}
-                items={[
-                  { label: 'Licence number', value: e.licenceNo, mono: true },
-                  { label: 'Issued by', value: e.authority },
-                  { label: 'Nature of work', value: e.nature },
-                  { label: 'Valid until', value: formatDate(e.validTo) },
-                ]}
-              />
-              <Meter label={`Workers deployed at ${e.name}`} value={e.deployed} max={e.maxWorkers} warnAt={90} valueText={`${e.deployed} of ${e.maxWorkers} allowed`} />
-              {a.band !== 'ok' && (
-                <div className="yx-ps-row">
-                  <Button size="sm" icon={Upload}>
-                    Upload renewed licence
-                  </Button>
-                </div>
-              )}
-            </div>
-          </Card>
-        );
-      })}
-    </div>
-  );
-}
-
-function ClWorkers({ workers, establishments, today, addWorker }: { workers: ClWorker[]; establishments: ClEstablishment[]; today: Date; addWorker?: { dob: Date; establishmentId: string } }) {
-  const [adding, setAdding] = useState(!!addWorker);
-  const [dob, setDob] = useState<Date | null>(addWorker?.dob ?? null);
-  const [estId, setEstId] = useState<string | null>(addWorker?.establishmentId ?? establishments[0].id);
-  const est = establishments.find((e) => e.id === estId)!;
-  const block = dob ? deploymentBlock({ dob, today, deployed: est.deployed, maxWorkers: est.maxWorkers }) : null;
-  return (
-    <div className="yx-ps-stack">
-      <Card title={`Workers · ${workers.length}`} actions={<Button size="sm" icon={Plus} onClick={() => setAdding(true)}>Add worker</Button>}>
-        <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Workers, scrolls sideways on small screens">
-        <table className="yx-ps-slabgrid">
-          <caption className="yx-visually-hidden">Workers</caption>
-          <thead>
-            <tr>
-              <th scope="col">Name</th>
-              <th scope="col">ID</th>
-              <th scope="col">UAN</th>
-              <th scope="col">ESIC IP</th>
-              <th scope="col">Skill</th>
-              <th scope="col">Daily wage</th>
-              <th scope="col">Site</th>
-              <th scope="col">Gate pass</th>
-            </tr>
-          </thead>
-          <tbody>
-            {workers.map((w) => (
-              <tr key={w.id}>
-                <th scope="row">{w.name}</th>
-                <td>{w.idMasked}</td>
-                <td className="yx-ps-mono">{w.uan === 'Not linked' ? <Badge tone="warning">Not linked</Badge> : w.uan}</td>
-                <td className="yx-ps-mono">{w.esic}</td>
-                <td>{w.skill}</td>
-                <td data-num>{formatINR(w.wage)}</td>
-                <td>{w.site}</td>
-                <td>
-                  <span className="yx-ps-mono">{w.gatePass}</span> · to {formatDate(w.gateValidTo)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
-      </Card>
-      {adding && (
-        <Card
-          title="Add a worker"
-          footer={
-            <>
-              <Button onClick={() => setAdding(false)}>Cancel</Button>
-              <Button variant="primary" disabled={!!block || !dob}>
-                Add worker
-              </Button>
-            </>
-          }
-        >
-          <div className="yx-ps-stack">
-            {block && (
-              <InlineAlert tone="danger" title="This worker can't be deployed">
-                {block}
-              </InlineAlert>
-            )}
-            <FieldRow>
-              <FormField label="Full name" required>
-                <TextField defaultValue="Ramesh Pandi" />
-              </FormField>
-              <FormField label="Date of birth" required>
-                <DatePicker value={dob} onChange={setDob} max={today} />
-              </FormField>
-            </FieldRow>
-            <FieldRow>
-              <FormField label="Establishment" required>
-                <Select value={estId} onChange={setEstId} options={establishments.map((e) => ({ value: e.id, label: `${e.name} (${e.deployed} of ${e.maxWorkers})` }))} />
-              </FormField>
-              <FormField label="Skill category" required>
-                <Select value="Unskilled" onChange={() => undefined} options={opt(['Unskilled', 'Semi-skilled', 'Skilled', 'Highly skilled'])} />
-              </FormField>
-            </FieldRow>
-            <FieldRow>
-              <FormField label="ID type" required>
-                <Select value="Aadhaar" onChange={() => undefined} options={opt(['Aadhaar', 'Voter ID', 'Driving licence', 'Passport'])} />
-              </FormField>
-              <FormField label="Last 4 digits of ID" required helper="We store only the masked number.">
-                <TextField defaultValue="3318" inputMode="numeric" maxLength={4} />
-              </FormField>
-            </FieldRow>
-            <FormField label="Photo" required>
-              <FileUpload upload={fakeUpload} accept={['.jpg', '.png']} multiple={false} />
-            </FormField>
-          </div>
-        </Card>
-      )}
-    </div>
   );
 }
 
@@ -1041,14 +932,28 @@ export interface PublicVisitView {
   brand?: { orgName?: string; orgLogo?: string | null; accent?: string | null; whiteLabel?: boolean };
   /** Visitors slice 2 (606): the visitor type's NDA and safety induction still to accept (null: not needed). */
   needs?: { nda: { title: string; text: string; versionId: string } | null; induction: { title: string; text: string; versionId: string } | null };
+  /** Slice 3 (answer 603): the ID step where the location takes ID proof (never for a visitor under 18). */
+  idStep?: boolean;
+  idGiven?: { type: string; last4: string | null } | null;
+  idRetentionDays?: number;
 }
 export interface LiveVisitorPass {
   state: 'loading' | 'ready' | 'not-found' | 'error';
   onRetry: () => void;
   visit: PublicVisitView | null;
-  /** Accepts the notice (the version read) with the vehicle number; resolves with the page's new state. */
-  onAccept: (vehicle: string) => Promise<unknown>;
+  /** Accepts the notice (the version read) with the vehicle number and the ID given (603); resolves with the page's new state. */
+  onAccept: (vehicle: string, id?: { idType: string; idLast4: string }) => Promise<unknown>;
 }
+
+const VISIT_ID_TYPES = [
+  { value: 'aadhaar', label: 'Aadhaar' },
+  { value: 'driving_licence', label: 'Driving licence' },
+  { value: 'passport', label: 'Passport' },
+  { value: 'voter_id', label: 'Voter ID' },
+  { value: 'pan', label: 'PAN card' },
+  { value: 'company_id', label: 'Company ID card' },
+  { value: 'other', label: 'Other ID' },
+];
 
 const PURPOSE_WORDS: Record<string, string> = { meeting: 'a meeting', interview: 'an interview', vendor: 'a supplier visit', audit: 'an audit', delivery: 'a delivery', maintenance: 'maintenance work' };
 
@@ -1063,9 +968,21 @@ export function VisitorInviteScreen({ tenant: sampleTenant, accent: sampleAccent
     : sample;
   const [stage, setStage] = useState<VisitStage>(lv ? lv.state : initial);
   const [vehicle, setVehicle] = useState(lv?.vehicle ?? '');
-  // Live (slice 1): details, the notice, the pass; the ID and photo steps come with slice 3.
-  const steps = live ? ['Your details', 'Notice', 'Pass'] : ['Your details', 'ID', 'Photo', 'Notice', 'Pass'];
-  const idx = live ? { details: 0, id: 0, photo: 0, notice: 1, pass: 2, expired: 2, blocked: 0 }[stage] : { details: 0, id: 1, photo: 2, notice: 3, pass: 4, expired: 4, blocked: 0 }[stage];
+  // Slice 3 (603): the ID type and last 4 where the location takes ID proof; the photo step comes with slice 2.
+  const [idType, setIdType] = useState<string | null>(lv?.idGiven?.type ?? null);
+  const [last4, setLast4] = useState(lv?.idGiven?.last4 ?? '');
+  const idStep = Boolean(lv?.idStep);
+  const idEarly = useTooEarly(
+    live
+      ? ([
+          !idType && { fieldId: 'vp-idtype', message: 'Choose the ID you will bring.' },
+          !/^[A-Za-z0-9]{4}$/.test(last4.trim()) && { fieldId: 'vp-last4', message: 'Enter only the last 4 characters of the ID number.' },
+        ].filter(Boolean) as { fieldId: string; message: string }[])
+      : [],
+  );
+  const steps = live ? (idStep ? ['Your details', 'ID', 'Notice', 'Pass'] : ['Your details', 'Notice', 'Pass']) : ['Your details', 'ID', 'Photo', 'Notice', 'Pass'];
+  const n = idStep ? 1 : 0;
+  const idx = live ? { details: 0, id: 1, photo: 0, notice: 1 + n, pass: 2 + n, expired: 2 + n, blocked: 0 }[stage] : { details: 0, id: 1, photo: 2, notice: 3, pass: 4, expired: 4, blocked: 0 }[stage];
   const when = `${formatDate(visit.window.from)}, ${timeOf(visit.window.from)} to ${timeOf(visit.window.to)}`;
   if (live && (live.state !== 'ready' || !lv))
     return (
@@ -1091,11 +1008,11 @@ export function VisitorInviteScreen({ tenant: sampleTenant, accent: sampleAccent
       footer={{ privacy: 'Visitor privacy notice (G-27)', cookies: true }}
       pinned={
         stage === 'details' ? (
-          <Button variant="primary" onClick={() => setStage(live ? 'notice' : 'id')}>
+          <Button variant="primary" onClick={() => setStage(live && !idStep ? 'notice' : 'id')}>
             Continue
           </Button>
         ) : stage === 'id' ? (
-          <Button variant="primary" onClick={() => setStage('photo')}>
+          <Button variant="primary" onClick={() => (live ? !idEarly.stop() && setStage('notice') : setStage('photo'))}>
             Continue
           </Button>
         ) : stage === 'photo' ? (
@@ -1141,7 +1058,20 @@ export function VisitorInviteScreen({ tenant: sampleTenant, accent: sampleAccent
           {visit.rules.escort && <p className="yx-ps-muted">An escort will meet you at reception; plant areas need safety shoes.</p>}
         </>
       )}
-      {stage === 'id' && (
+      {stage === 'id' && live && (
+        <Card title="Your ID">
+          <div className="yx-ps-stack">
+            <p className="yx-ps-muted">Bring this ID: reception checks it on arrival. We keep only the ID type and its last 4 characters, and delete them after {lv?.idRetentionDays ?? 30} days. Never type the full number.</p>
+            <FormField id="vp-idtype" label="ID type" required error={idEarly.errorOf('vp-idtype')}>
+              <Select value={idType} onChange={setIdType} options={VISIT_ID_TYPES} placeholder="Choose your ID" />
+            </FormField>
+            <FormField id="vp-last4" label="Last 4 characters" required error={idEarly.errorOf('vp-last4')}>
+              <TextField value={last4} onChange={setLast4} maxLength={4} autoComplete="off" spellCheck={false} />
+            </FormField>
+          </div>
+        </Card>
+      )}
+      {stage === 'id' && !live && (
         <Card title="Your ID">
           <div className="yx-ps-stack">
             <p className="yx-ps-muted">Reception checks your ID on arrival. We store only the ID type and last 4 digits, and delete them after 30 days.</p>
@@ -1197,7 +1127,7 @@ export function VisitorInviteScreen({ tenant: sampleTenant, accent: sampleAccent
           acceptLabel="Get my pass"
           declineLabel="Not now"
           onAccept={async () => {
-            await live!.onAccept(vehicle.trim());
+            await live!.onAccept(vehicle.trim(), idStep && idType && !(lv?.idGiven?.type === idType && lv?.idGiven?.last4 === last4.trim().toUpperCase()) ? { idType, idLast4: last4.trim().toUpperCase() } : undefined);
             setStage('pass');
           }}
           declinedText={`Nothing was recorded. Reception will ask you to read the notice when you arrive.`}

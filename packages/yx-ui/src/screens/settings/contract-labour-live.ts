@@ -1,6 +1,6 @@
 // Settings 4.9 Contract labour made live (CL-1, answers 621 and 627): the designed 4.9 page with the company's values.
 // Shown: the registration threshold and the minimum age from the rule set IN.CLRA (read-only, marked verify), the
-// licence block (law, always on) and the licence expiry alerts (a company setting). Principal-employer registrations
+// licence block (law, always on), the licence expiry alerts and (CL-2) the safety induction (company settings). Principal-employer registrations
 // and the monthly compliance section come with later slices (questions 671, CL-4) and are left out, never shown with
 // sample values.
 import type { SettingDef, SettingsPageDef, SettingValue } from './settings-types';
@@ -32,7 +32,7 @@ export function thresholdText(law: ClraSettingsData['law']): string {
   return new Set(texts.map((x) => x.t)).size === 1 ? texts[0]!.t : texts.map((x) => `${STATE_NAMES[x.s] ?? x.s}: ${x.t}`).join('; ');
 }
 
-const LIVE = new Set(['clra.threshold', 'clra.licence_check', 'clra.licence_alerts', 'clra.min_age']);
+const LIVE = new Set(['clra.threshold', 'clra.licence_check', 'clra.licence_alerts', 'clra.min_age', 'clra.induction_required', 'clra.induction_months']);
 
 export function clraSettingsPage(design: SettingsPageDef, data: ClraSettingsData): SettingsPageDef {
   const verify = data.law.some((r) => r.verify) ? ' (verify)' : '';
@@ -44,6 +44,9 @@ export function clraSettingsPage(design: SettingsPageDef, data: ClraSettingsData
     if (d.key === 'clra.threshold') return { ...base, value: thresholdText(data.law), law: `${d.law}${verify}`, helper: `From the statutory rules for ${[...new Set(data.law.map((r) => STATE_NAMES[r.state] ?? r.state))].join(' and ')}.` };
     if (d.key === 'clra.min_age') return minAge.length === 1 ? { ...base, value: `${minAge[0]} years`, law: `${d.law}${verify}` } : base;
     if (d.key === 'clra.licence_check') return { ...base, law: `${laws.join('; ') || d.law}${verify}` };
+    // CL-2 (answer 632): the induction before the gate pass and how long it lasts.
+    if (d.key === 'clra.induction_required') return 'clra.induction_required' in data.values ? { ...base, kind: 'toggle', scope: 'Company', value: data.values['clra.induction_required'] === 'on', starter: data.values['clra.induction_required'] === data.defaults['clra.induction_required'] } : null;
+    if (d.key === 'clra.induction_months') return 'clra.induction_months' in data.values ? { ...base, kind: 'select', scope: 'Company', options: data.choices['clra.induction_months'] ?? [], value: data.values['clra.induction_months']!, starter: data.values['clra.induction_months'] === data.defaults['clra.induction_months'] } : null;
     if (!('clra.licence_alerts' in data.values)) return null; // an older API: never shown with a sample value
     const options = data.choices['clra.licence_alerts'] ?? [];
     const v = data.values['clra.licence_alerts']!;
@@ -62,5 +65,9 @@ export function clraSettingsPage(design: SettingsPageDef, data: ClraSettingsData
 /** The page's changes as company settings, for PUT /contract-labour/settings (days largest first). */
 export function clraSettingsChanges(values: Record<string, SettingValue>): { key: string; value: string }[] {
   const v = values['clra.licence_alerts'];
-  return Array.isArray(v) ? [{ key: 'clra.licence_alerts', value: [...v].map(String).sort((a, b) => Number(b) - Number(a)).join(',') }] : [];
+  return [
+    ...(Array.isArray(v) ? [{ key: 'clra.licence_alerts', value: [...v].map(String).sort((a, b) => Number(b) - Number(a)).join(',') }] : []),
+    ...('clra.induction_required' in values ? [{ key: 'clra.induction_required', value: values['clra.induction_required'] === true ? 'on' : 'off' }] : []),
+    ...('clra.induction_months' in values ? [{ key: 'clra.induction_months', value: String(values['clra.induction_months']) }] : []),
+  ];
 }

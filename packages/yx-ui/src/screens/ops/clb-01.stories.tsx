@@ -36,3 +36,5 @@ export const Renew: S = { name: 'Add renewal (CL-1)', render: () => <Contractors
 export const RenewalPending: S = { name: 'Renewal waiting for verification (CL-1)', render: () => <ContractorsScreen {...live} contractors={withRenewal} openId="c2" /> };
 export const Reject: S = { name: 'Reject a renewal with the reason (CL-1)', render: () => <ContractorsScreen {...live} contractors={withRenewal} sheet={{ kind: 'reject', licenceId: 'l2r' }} /> };
 export const ReadOnly: S = { name: 'Read only (view key, CL-1)', render: () => <ContractorsScreen {...live} contractors={withRenewal} openId="c2" readOnly /> };
+export const WorkOrder: S = { name: 'Add work order (CL-2)', render: () => <ContractorsScreen {...live} sheet={{ kind: 'workorder', contractorId: 'c2', id: null }} /> };
+export const InviteContact: S = { name: 'Invite to contractor login (CL-3)', render: () => <ContractorsScreen {...live} sheet={{ kind: 'contact', contractorId: 'c3' }} /> };

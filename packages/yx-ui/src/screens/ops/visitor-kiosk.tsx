@@ -13,7 +13,7 @@ import { Checkbox } from '../../components/choice';
 import { Select } from '../../components/select';
 import { Actions, CameraFrame } from './ops-kit';
 import { VisitorBadge } from './visitors';
-import type { Visit } from './visitors-data';
+import { ID_CHOICES, type Visit } from './visitors-data';
 
 type Choice = { value: string; label: string };
 export interface KioskDoc {
@@ -43,11 +43,16 @@ export interface KioskWalkInInput {
   noticeVersion: string;
   ndaVersionId: string | null;
   inductionVersionId: string | null;
+  /** Slice 3 (614, 603): under 18 with the adult; the ID type and last 4 where the location takes ID. */
+  minor?: boolean;
+  minorAdult?: string | null;
+  idType?: string | null;
+  idLast4?: string | null;
 }
 export interface LiveVisitorKiosk {
   state: 'loading' | 'ready' | 'error';
   onRetry: () => void;
-  info: { company: string; location: string; open: boolean; photo: boolean; retentionDays: number; types: Choice[] } | null;
+  info: { company: string; location: string; open: boolean; photo: boolean; retentionDays: number; types: Choice[]; idCapture?: 'off' | 'on' | 'with_image' } | null;
   needs: (q: { typeId: string | null; mobile: string; company: string | null }) => Promise<KioskNeeds>;
   walkIn: (input: KioskWalkInInput) => Promise<KioskResult>;
   status: (id: string) => Promise<KioskResult>;
@@ -58,7 +63,7 @@ export interface LiveVisitorKiosk {
 }
 
 type Step = 'welcome' | 'pass' | 'details' | 'photo' | 'notice' | 'waiting' | 'badge' | 'see-reception' | 'rejected';
-const blank = { name: '', mobile: '', company: '', typeId: null as string | null, host: '' };
+const blank = { name: '', mobile: '', company: '', typeId: null as string | null, host: '', minor: false, adult: '', idType: null as string | null, last4: '' };
 
 /** The camera for the visitor's photo: a JPEG of the face, kept only in memory until it is sent. */
 function PhotoTaker({ onPhoto, onProblem }: { onPhoto: (base64: string) => void; onProblem: () => void }) {
@@ -135,10 +140,15 @@ export function LiveVisitorKioskView({ live }: { live: LiveVisitorKiosk }) {
   const [host, setHost] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Slice 3 (603, 614): the ID where the location takes it, never from a visitor under 18 (who gives no photo either).
+  const idAsked = (info?.idCapture ?? 'off') !== 'off' && !d.minor;
   const detailsEarly = useTooEarly([
     !d.name.trim() && { fieldId: 'vk-name', message: 'Enter your name.' },
     !/^\+?[\d\s-]{10,16}$/.test(d.mobile.trim()) && { fieldId: 'vk-mobile', message: 'Enter your 10-digit mobile number.' },
     d.host.trim().length < 2 && { fieldId: 'vk-host', message: 'Enter the name of the person you are meeting.' },
+    d.minor && d.adult.trim().length < 2 && { fieldId: 'vk-adult', message: 'Enter the name of the adult who came with you.' },
+    idAsked && !d.idType && { fieldId: 'vk-idtype', message: 'Choose the ID you have with you.' },
+    idAsked && !/^[A-Za-z0-9]{4}$/.test(d.last4.trim()) && { fieldId: 'vk-last4', message: 'Enter only the last 4 characters of the ID number.' },
   ].filter(Boolean) as { fieldId: string; message: string }[]);
   const noticeEarly = useTooEarly(
     [
@@ -193,7 +203,7 @@ export function LiveVisitorKioskView({ live }: { live: LiveVisitorKiosk }) {
     const accepted = { noticeVersion: needs.notice.version, ndaVersionId: needs.nda?.versionId ?? null, inductionVersionId: needs.induction?.versionId ?? null };
     void run(async () => {
       if (passVisit) return result(await live.checkIn(passVisit.id, accepted));
-      const r = await live.walkIn({ name: d.name.trim(), mobile: d.mobile.trim(), company: d.company.trim() || null, typeId: d.typeId, hostName: d.host.trim(), photoBase64: photo, ...accepted });
+      const r = await live.walkIn({ name: d.name.trim(), mobile: d.mobile.trim(), company: d.company.trim() || null, typeId: d.typeId, hostName: d.host.trim(), photoBase64: d.minor ? null : photo, ...accepted, ...(d.minor ? { minor: true, minorAdult: d.adult.trim() } : {}), ...(idAsked ? { idType: d.idType, idLast4: d.last4.trim().toUpperCase() } : {}) });
       if (r.state === 'waiting') setWaiting({ id: r.id ?? '', host: r.host });
       result(r);
     });
@@ -276,9 +286,25 @@ export function LiveVisitorKioskView({ live }: { live: LiveVisitorKiosk }) {
                 <FormField id="vk-host" label="Who are you meeting?" required error={detailsEarly.errorOf('vk-host')}>
                   <TextField value={d.host} onChange={(h) => setD({ ...d, host: h })} maxLength={200} autoComplete="off" />
                 </FormField>
+                <Checkbox id="vk-minor" checked={d.minor} onChange={(minor) => setD({ ...d, minor })} label="I am under 18" description="You come in with an adult. No photo and no ID are taken." />
+                {d.minor && (
+                  <FormField id="vk-adult" label="The adult with you" required error={detailsEarly.errorOf('vk-adult')}>
+                    <TextField value={d.adult} onChange={(adult) => setD({ ...d, adult })} maxLength={200} autoComplete="off" />
+                  </FormField>
+                )}
+                {idAsked && (
+                  <>
+                    <FormField id="vk-idtype" label="ID you have with you" required error={detailsEarly.errorOf('vk-idtype')}>
+                      <Select aria-label="ID you have with you" value={d.idType} onChange={(idType) => setD({ ...d, idType })} options={ID_CHOICES} placeholder="Choose the ID" />
+                    </FormField>
+                    <FormField id="vk-last4" label="Last 4 characters of its number" required error={detailsEarly.errorOf('vk-last4')} helper="Never the full number.">
+                      <TextField value={d.last4} onChange={(last4) => setD({ ...d, last4 })} maxLength={4} autoComplete="off" spellCheck={false} />
+                    </FormField>
+                  </>
+                )}
                 <Actions end>
                   <Button onClick={reset}>Back</Button>
-                  <Button variant="primary" loading={busy} onClick={() => !detailsEarly.stop() && (info.photo ? setStep('photo') : toNotice())}>
+                  <Button variant="primary" loading={busy} onClick={() => !detailsEarly.stop() && (info.photo && !d.minor ? setStep('photo') : toNotice())}>
                     Next
                   </Button>
                 </Actions>

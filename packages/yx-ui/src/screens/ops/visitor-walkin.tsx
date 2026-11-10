@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../../components/button';
 import { InlineAlert } from '../../components/feedback';
-import { FormField, useTooEarly } from '../../components/field';
+import { FieldRow, FormField, useTooEarly } from '../../components/field';
 import { TextArea, TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup } from '../../components/choice';
 import { Select } from '../../components/select';
@@ -12,7 +12,7 @@ import { Drawer } from '../../components/drawer';
 import { Dialog } from '../../components/overlay';
 import { useRun } from '../org/org-kit';
 import { useSay } from './ops-kit';
-import { PURPOSE_CHOICES } from './visitors-data';
+import { ID_CHOICES, PURPOSE_CHOICES } from './visitors-data';
 import type { KioskNeeds } from './visitor-kiosk';
 
 type Choice = { value: string; label: string; description?: string };
@@ -28,6 +28,11 @@ export interface DeskWalkInInput {
   ndaVersionId: string | null;
   inductionVersionId: string | null;
   hoursReason: string | null;
+  /** Slice 3 (614, 603). */
+  minor?: boolean;
+  minorAdult?: string | null;
+  idType?: string | null;
+  idLast4?: string | null;
 }
 
 export interface DeskWalkInParts {
@@ -47,10 +52,13 @@ const SAMPLE_NEEDS: KioskNeeds & { inHours: boolean; hours: string } = {
   hours: '09:00 to 18:30',
 };
 
-export function AddWalkInDrawer({ open, onClose, parts }: { open: boolean; onClose: () => void; parts?: DeskWalkInParts }) {
+export function AddWalkInDrawer({ open, onClose, parts, idCapture = 'on' }: { open: boolean; onClose: () => void; parts?: DeskWalkInParts; idCapture?: 'off' | 'on' | 'with_image' }) {
   const { toast } = useSay();
   const { busy, error, run, clearError } = useRun();
-  const [d, setD] = useState({ name: '', mobile: '', company: '', typeId: null as string | null, purpose: 'meeting', hostUserId: null as string | null, reason: '' });
+  const [d, setD] = useState({ name: '', mobile: '', company: '', typeId: null as string | null, purpose: 'meeting', hostUserId: null as string | null, reason: '', minor: false, adult: '', idType: null as string | null, last4: '' });
+  // Slice 3 (603, 614): the ID type and last 4 where the location takes ID; none from a visitor under 18. The photo of
+  // the ID, where kept, is added at check-in.
+  const idAsked = idCapture !== 'off' && !d.minor;
   const [hostQ, setHostQ] = useState('');
   const [hostOptions, setHostOptions] = useState<Choice[]>(parts ? [] : [{ value: 'h1', label: 'Anita Desai', description: 'anita@kaveri.example' }]);
   const [needs, setNeeds] = useState<(KioskNeeds & { inHours: boolean; hours: string }) | null>(parts ? null : SAMPLE_NEEDS);
@@ -77,6 +85,9 @@ export function AddWalkInDrawer({ open, onClose, parts }: { open: boolean; onClo
       !d.name.trim() && { fieldId: 'wi-name', message: "Enter the visitor's name." },
       !/^\+?[\d\s-]{10,16}$/.test(d.mobile.trim()) && { fieldId: 'wi-mobile', message: "Enter the visitor's 10-digit mobile number." },
       !d.hostUserId && { fieldId: 'wi-host', message: 'Choose who they are visiting.' },
+      d.minor && d.adult.trim().length < 2 && { fieldId: 'wi-adult', message: 'Name the adult who came with them.' },
+      idAsked && !d.idType && { fieldId: 'wi-idtype', message: 'Choose the ID the visitor showed.' },
+      idAsked && !/^[A-Za-z0-9]{4}$/.test(d.last4.trim()) && { fieldId: 'wi-last4', message: 'Enter only the last 4 characters of the ID number.' },
       needs && !needs.inHours && !d.reason.trim() && { fieldId: 'wi-reason', message: `Visitors are allowed ${needs.hours}. Say why they come in now.` },
       !ticks.notice && { fieldId: 'wi-notice', message: 'Tick that the visitor read and accepted the notice.' },
       needs?.nda && !ticks.nda && { fieldId: 'wi-nda', message: `Tick that the visitor accepted ${needs.nda.title}.` },
@@ -87,7 +98,7 @@ export function AddWalkInDrawer({ open, onClose, parts }: { open: boolean; onClo
     if (early.stop()) return;
     if (!parts) return void (toast({ tone: 'success', title: `Priyanka Sethi is waiting for Anita Desai`, description: 'Anita has 10 minutes to answer; then you decide.' }), onClose());
     void run('add', async () => {
-      const made = await parts.onAdd({ name: d.name.trim(), mobile: d.mobile.trim(), company: d.company.trim() || null, typeId: d.typeId, purpose: d.purpose, hostUserId: d.hostUserId!, noticeVersion: needs!.notice.version, ndaVersionId: needs?.nda?.versionId ?? null, inductionVersionId: needs?.induction?.versionId ?? null, hoursReason: d.reason.trim() || null });
+      const made = await parts.onAdd({ name: d.name.trim(), mobile: d.mobile.trim(), company: d.company.trim() || null, typeId: d.typeId, purpose: d.purpose, hostUserId: d.hostUserId!, noticeVersion: needs!.notice.version, ndaVersionId: needs?.nda?.versionId ?? null, inductionVersionId: needs?.induction?.versionId ?? null, hoursReason: d.reason.trim() || null, ...(d.minor ? { minor: true, minorAdult: d.adult.trim() } : {}), ...(idAsked ? { idType: d.idType, idLast4: d.last4.trim().toUpperCase() } : {}) });
       toast({ tone: 'success', title: `${made.name} is waiting for the host`, description: 'The host is told now; after their minutes you decide.' });
       onClose();
     });
@@ -129,6 +140,22 @@ export function AddWalkInDrawer({ open, onClose, parts }: { open: boolean; onClo
         <FormField id="wi-host" label="Visiting" required error={early.errorOf('wi-host')}>
           <Select aria-label="Visiting" value={d.hostUserId} onChange={(hostUserId) => setD({ ...d, hostUserId })} options={hostOptions} searchable onSearchChange={setHostQ} placeholder="Search by name" emptyText="Nobody by that name." />
         </FormField>
+        <Checkbox id="wi-minor" checked={d.minor} onChange={(minor) => setD({ ...d, minor })} label="The visitor is under 18" description="They come in only with a named adult. No photo and no ID." />
+        {d.minor && (
+          <FormField id="wi-adult" label="Adult who came with them" required error={early.errorOf('wi-adult')}>
+            <TextField value={d.adult} onChange={(adult) => setD({ ...d, adult })} maxLength={200} />
+          </FormField>
+        )}
+        {idAsked && (
+          <FieldRow>
+            <FormField id="wi-idtype" label="ID shown" required error={early.errorOf('wi-idtype')}>
+              <Select aria-label="ID shown" value={d.idType} onChange={(idType) => setD({ ...d, idType })} options={ID_CHOICES} placeholder="Choose the ID" />
+            </FormField>
+            <FormField id="wi-last4" label="Last 4 characters" required error={early.errorOf('wi-last4')} helper="Never the full number.">
+              <TextField value={d.last4} onChange={(last4) => setD({ ...d, last4 })} maxLength={4} autoComplete="off" spellCheck={false} />
+            </FormField>
+          </FieldRow>
+        )}
         {needs && !needs.inHours && (
           <FormField id="wi-reason" label="Why now" required error={early.errorOf('wi-reason')} helper={`Outside the allowed hours (${needs.hours}). Recorded in the audit log.`}>
             <TextArea value={d.reason} onChange={(reason) => setD({ ...d, reason })} maxLength={300} rows={2} />

@@ -12875,6 +12875,15 @@ model Visit {
   decidedVia          String?   @map("decided_via") @db.VarChar(10)
   decisionReason      String?   @map("decision_reason") @db.VarChar(300)
   hoursOverrideReason String?   @map("hours_override_reason") @db.VarChar(300)
+  /// Slice 3 (603, 605, 614): watch-list block, ID type and last 4 (image only where asked), under 18 with an adult.
+  blockedAt           DateTime? @map("blocked_at") @db.Timestamptz(3)
+  idType              String?   @map("id_type") @db.VarChar(20)
+  idLast4             String?   @map("id_last4") @db.VarChar(4)
+  idFileId            String?   @map("id_file_id") @db.Uuid
+  idCapturedAt        DateTime? @map("id_captured_at") @db.Timestamptz(3)
+  minor               Boolean   @default(false)
+  minorAdult          String?   @map("minor_adult") @db.VarChar(200)
+  adultConfirmedAt    DateTime? @map("adult_confirmed_at") @db.Timestamptz(3)
 
   @@unique([organizationId, passCode], map: "visits_pass_code_key")
   @@index([organizationId, locationId, startsAt], map: "visits_desk_idx")
@@ -12926,4 +12935,105 @@ model VisitCount {
 
   @@id([organizationId, locationId, day, purpose])
   @@map("visit_counts")
+}
+
+/// Contract labour CL-2 (answers 624, 632, 633, 635, 636): a contract worker's deployment at one of our sites.
+model ContractDeployment {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  personId      String    @map("person_id") @db.Uuid
+  agencyId      String    @map("agency_id") @db.Uuid
+  locationId    String    @map("location_id") @db.Uuid
+  skill         String    @db.VarChar(14)
+  wagePaise     BigInt?   @map("wage_paise")
+  dob           DateTime  @db.Date
+  idLast4       String    @map("id_last4") @db.Char(4)
+  idHash        String    @map("id_hash") @db.Char(64)
+  uan           String?   @db.VarChar(12)
+  esicIp        String?   @map("esic_ip") @db.VarChar(10)
+  fromOn        DateTime  @map("from_on") @db.Date
+  toOn          DateTime? @map("to_on") @db.Date
+  status        String    @default("pending") @db.VarChar(10)
+  inductionOn   DateTime? @map("induction_on") @db.Date
+  inductionBy   String?   @map("induction_by") @db.VarChar(120)
+  gatePassNo    String?   @map("gate_pass_no") @db.VarChar(30)
+  gateValidTo   DateTime? @map("gate_valid_to") @db.Date
+  approvedBy    String?   @map("approved_by") @db.Uuid
+  approvedAt    DateTime? @map("approved_at") @db.Timestamptz(3)
+  releasedOn    DateTime? @map("released_on") @db.Date
+  releaseReason String?   @map("release_reason") @db.VarChar(500)
+  version       Int       @default(1)
+  createdBy     String?   @map("created_by") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, locationId, agencyId, status], map: "contract_deployments_site_idx")
+  @@index([organizationId, personId], map: "contract_deployments_person_idx")
+  @@map("contract_deployments")
+}
+
+/// Contract labour CL-2 (answer 675): a contractor's work order; deploying past its headcount warns.
+model ContractorWorkOrder {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  agencyId       String   @map("agency_id") @db.Uuid
+  number         String   @db.VarChar(40)
+  fromOn         DateTime @map("from_on") @db.Date
+  toOn           DateTime @map("to_on") @db.Date
+  headcount      Int
+  locationIds    String[] @map("location_ids") @db.Uuid
+  version        Int      @default(1)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("contractor_work_orders")
+}
+
+/// Contract labour CL-3 (answers 631, 678): a contractor's contact with access to the contractor portal.
+model ContractorContact {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  agencyId       String    @map("agency_id") @db.Uuid
+  name           String    @db.VarChar(120)
+  email          String    @db.Citext
+  portal         String    @default("invited") @db.VarChar(8)
+  invitedAt      DateTime? @map("invited_at") @db.Timestamptz(3)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([agencyId, email], map: "contractor_contacts_email_key")
+  @@map("contractor_contacts")
+}
+
+/// Contract labour CL-3: a contractor portal session (the token only as its SHA-256 hash).
+model ContractorPortalSession {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  contactId      String    @map("contact_id") @db.Uuid
+  agencyId       String    @map("agency_id") @db.Uuid
+  tokenHash      String    @unique(map: "contractor_portal_sessions_token_key") @map("token_hash") @db.VarChar(64)
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(3)
+  endedAt        DateTime? @map("ended_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("contractor_portal_sessions")
+}
+
+/// Answer 605: the blocked-visitor watch-list (RLS in the migration). Reviewed every review period or it lapses.
+model VisitorWatch {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  name           String    @db.VarChar(200)
+  nameKey        String    @map("name_key") @db.VarChar(200)
+  mobile         String?   @db.VarChar(20)
+  reason         String    @db.VarChar(500)
+  addedBy        String    @map("added_by") @db.Uuid
+  addedAt        DateTime  @default(now()) @map("added_at") @db.Timestamptz(3)
+  reviewedBy     String?   @map("reviewed_by") @db.Uuid
+  reviewedAt     DateTime? @map("reviewed_at") @db.Timestamptz(3)
+  reviewBy       DateTime  @map("review_by") @db.Timestamptz(3)
+
+  @@index([organizationId, mobile], map: "visitor_watchlist_mobile_idx")
+  @@index([organizationId, nameKey], map: "visitor_watchlist_name_idx")
+  @@index([reviewBy], map: "visitor_watchlist_review_idx")
+  @@map("visitor_watchlist")
 }

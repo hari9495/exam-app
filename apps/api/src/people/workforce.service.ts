@@ -5,7 +5,7 @@ import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platfor
 import { audit, CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { entityTimeZone, isoDate, localDate, todayIst } from '../org-structure/org-validation';
 import { displayName, EmployeeHistoryService, Viewer, type RequestUser } from '../employee-history/employee-history.service';
-import { has } from '../access/scope';
+import { buildViewer, has, tenantWide } from '../access/scope';
 import { entitiesFor, payViewer, withPayScope } from '../payroll/pay-access';
 
 // People › Directory on the designed screen (PPL-01, design audit step 2): the whole workforce in one list for the
@@ -23,7 +23,7 @@ type Status = 'Active' | 'Probation' | 'Notice period' | 'On leave';
 
 export interface WorkforceRow {
   id: string;
-  kind: 'employee' | 'consultant';
+  kind: 'employee' | 'consultant' | 'contract_worker';
   name: string;
   designation: string | null;
   department: { id: string; name: string | null } | null;
@@ -39,8 +39,10 @@ export interface WorkforceRow {
   status?: Status;
   /** Personal: employee.personal.view within its scope. */
   phone?: string | null;
-  /** Consultants: individual or firm. */
+  /** Consultants: individual or firm; contract workers: the contractor. */
   via?: string | null;
+  /** Contract workers (CL-2): the deployment's state. */
+  deployment?: 'Deployed' | 'Pending approval';
 }
 
 interface Counts {
@@ -128,6 +130,9 @@ export class WorkforceService {
         // (a plant HR sees the plant), never out-of-scope rows with blanked fields.
         const scoped = !own;
         const rows = await this.employeeRows(tx, c, v, days, legalEntityId, null, scoped);
+        // CL-2 (PPL-01): contract workers for the contract labour keys of the whole company, never while acting for someone else.
+        const cv = await buildViewer(this.prisma, this.tenantPrisma, user, ['clra.contractor.manage', 'clra.contractor.view']);
+        const cw = !cv.actingForOther && (tenantWide(cv, 'clra.contractor.manage') || tenantWide(cv, 'clra.contractor.view')) ? await this.contractWorkerRows(tx, c, legalEntityId) : null;
         const { k, now } = await withPayScope(tx, reach, async () => ({ k: consultants ? await this.consultantRows(tx, c, legalEntityId, null) : [], now: await this.counts(tx, c.organizationId, days, legalEntityId) }));
         const snap = await tx.workforceSnapshot.findFirst({ where: { organizationId: c.organizationId, legalEntityId, month: new Date(`${previousMonth(today)}T00:00:00Z`) } });
         const prev = snap ? { ...snap, consultants: fullReach ? snap.consultants : null, persons: fullReach ? snap.persons : null } : null;
@@ -136,10 +141,11 @@ export class WorkforceService {
           asOf: today,
           truncated: rows.length >= MAX,
           me: me ? { id: me.id, managerId: me.manager?.id ?? null, departmentId: me.department?.id ?? null, locationId: me.location?.id ?? null } : null,
-          rows: [...rows, ...k],
+          rows: [...rows, ...k, ...(cw ?? [])],
           cards: {
             employees: scoped && rows.length < now.employees ? { count: rows.length, previous: null } : { count: now.employees, previous: prev?.employees ?? null },
             consultants: consultants ? { count: now.consultants, previous: prev?.consultants ?? null } : null,
+            contractWorkers: cw ? { count: cw.length, previous: null } : null,
             persons: consultants
               ? { roles: now.employees + now.consultants, people: now.persons, previous: prev?.persons ?? null }
               : scoped && rows.length < now.employees
@@ -212,6 +218,41 @@ export class WorkforceService {
         : {}),
       ...(r.phone !== null ? { phone: r.phone } : {}),
     }));
+  }
+
+  /** CL-2: contract workers deployed or waiting for approval today, at the entity's sites when one is chosen. */
+  private async contractWorkerRows(tx: Tx, c: CompanyContext, legalEntityId: string | null): Promise<WorkforceRow[]> {
+    const org = c.organizationId;
+    const today = new Date(`${todayIst()}T00:00:00Z`);
+    const sites = legalEntityId ? (await tx.location.findMany({ where: { organizationId: org, legalEntityId }, select: { id: true } })).map((l) => l.id) : null;
+    const list = await tx.contractDeployment.findMany({ where: { organizationId: org, status: { in: ['pending', 'deployed'] }, OR: [{ toOn: null }, { toOn: { gte: today } }], ...(sites ? { locationId: { in: sites } } : {}) }, take: MAX });
+    const [persons, agencies, locs] = await Promise.all([
+      tx.person.findMany({ where: { organizationId: org, id: { in: [...new Set(list.map((d) => d.personId))] } }, select: { id: true, givenName: true, familyName: true } }),
+      tx.agency.findMany({ where: { organizationId: org, id: { in: [...new Set(list.map((d) => d.agencyId))] } }, select: { id: true, name: true } }),
+      tx.location.findMany({ where: { organizationId: org, id: { in: [...new Set(list.map((d) => d.locationId))] } }, select: { id: true, name: true, legalEntityId: true } }),
+    ]);
+    const ents = new Map((await tx.legalEntity.findMany({ where: { organizationId: org, id: { in: [...new Set(locs.map((l) => l.legalEntityId))] } }, select: { id: true, name: true } })).map((e) => [e.id, e.name]));
+    const SKILL: Record<string, string> = { unskilled: 'Unskilled', semi_skilled: 'Semi-skilled', skilled: 'Skilled', highly_skilled: 'Highly skilled' };
+    return list
+      .map((d) => {
+        const p = persons.find((x) => x.id === d.personId);
+        const l = locs.find((x) => x.id === d.locationId);
+        return {
+          id: d.id,
+          kind: 'contract_worker' as const,
+          name: p ? [p.givenName, p.familyName].filter(Boolean).join(' ') : 'Contract worker',
+          designation: `Contract worker · ${SKILL[d.skill] ?? d.skill}`,
+          department: null,
+          location: l ? { id: l.id, name: l.name } : null,
+          legalEntity: l ? { id: l.legalEntityId, name: ents.get(l.legalEntityId) ?? null } : null,
+          manager: null,
+          workEmail: null,
+          joinedOn: isoDate(d.fromOn),
+          via: agencies.find((a) => a.id === d.agencyId)?.name ?? null,
+          deployment: d.status === 'deployed' ? ('Deployed' as const) : ('Pending approval' as const),
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
 
   private async consultantRows(tx: Tx, c: CompanyContext, legalEntityId: string | null, ids: string[] | null): Promise<WorkforceRow[]> {

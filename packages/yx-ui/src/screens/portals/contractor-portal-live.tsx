@@ -1,0 +1,87 @@
+// T9-13 contractor portal, live (CL-3, answers 631, 636, 678): the designed ContractorPortalScreen renders this when the
+// page passes `live`. The same parts as the design (what is due, licences with the renewal upload, work orders, workers
+// with the add-worker form) with the contractor's own records. Monthly packs and bills come with CL-4 and are left out,
+// never shown with sample values. A call answered 401 part-way shows "sign in again".
+import { Button } from '../../components/button';
+import { EmptyState } from '../../components/feedback';
+import { TenantPortal } from './portals-kit';
+import { ClDue, ClLicences, ClWorkerList, ClWorkOrders, type PortalCheck, type PortalRenewalInput, type PortalWorkerInput } from './contractor-portal';
+
+export type LiveContractorTab = 'establishments' | 'workers';
+/** GET /public/contractor-portal/:org/me. */
+export interface ContractorPortalData {
+  company: string;
+  contractor: { name: string; work: string };
+  contact: { name: string; email: string };
+  today: string;
+  sites: { id: string; name: string }[];
+  establishments: { licenceId: string; site: { id: string; name: string }; licenceNo: string; scope: string; states: string[]; maxWorkers: number; deployed: number; validFrom: string; validTo: string; state: string; renewal: { id: string; licenceNo: string; status: 'pending' | 'verified' | 'rejected'; validTo: string; rejectReason: string | null } | null }[];
+  workOrders: { id: string; number: string; fromOn: string; toOn: string; headcount: number; active: number; sites: string[] }[];
+  workers: { id: string; name: string; idMasked: string; site: string; skill: string; wage: string | null; fromOn: string; toOn: string | null; status: 'pending' | 'deployed'; gatePass: string | null; gateValidTo: string | null; uan: string | null; esicIp: string | null }[];
+  due: { kind: string; tone: 'danger' | 'warning' | 'info'; text: string }[];
+}
+export interface LiveContractorPortal {
+  tenant: string;
+  tab: LiveContractorTab;
+  hrefFor: (tab: LiveContractorTab) => string;
+  state: 'ready' | 'loading' | 'error';
+  onRetry: () => void;
+  /** The session ended part-way (a call answered 401). */
+  ended: boolean;
+  onSignInAgain: () => void;
+  onSignOut: () => void;
+  data: ContractorPortalData | null;
+  onCheck: (input: PortalWorkerInput) => Promise<PortalCheck[]>;
+  onAdd: (input: PortalWorkerInput) => Promise<unknown>;
+  onRenew: (licenceId: string, input: PortalRenewalInput, file: File) => Promise<unknown>;
+}
+
+const TABS: { id: LiveContractorTab; label: string }[] = [
+  { id: 'establishments', label: 'Establishments and licences' },
+  { id: 'workers', label: 'Workers' },
+];
+const dOf = (s: string) => new Date(`${s}T00:00:00`);
+
+export function LiveContractorPortalView({ live }: { live: LiveContractorPortal }) {
+  const d = live.data;
+  const today = d ? dOf(d.today) : new Date();
+  const body = () => {
+    if (live.ended) return <EmptyState title="Your session ended." description="Sign in again with a new code." action={<Button variant="primary" onClick={live.onSignInAgain}>Sign in again</Button>} />;
+    if (live.state === 'error') return <EmptyState title="This page could not be loaded." action={<Button onClick={live.onRetry}>Try again</Button>} />;
+    if (live.state === 'loading' || !d) return <EmptyState compact title="Loading…" />;
+    if (live.tab === 'establishments')
+      return (
+        <div className="yx-ps-stack">
+          <ClDue items={d.due} />
+          <ClLicences
+            today={today}
+            items={d.establishments.map((e) => ({ id: e.licenceId, site: e.site.name, licenceNo: e.licenceNo, nature: e.scope, maxWorkers: e.maxWorkers, deployed: e.deployed, validTo: dOf(e.validTo), renewal: e.renewal ? { licenceNo: e.renewal.licenceNo, status: e.renewal.status, validTo: dOf(e.renewal.validTo), rejectReason: e.renewal.rejectReason } : null }))}
+            onRenew={live.onRenew}
+          />
+          <ClWorkOrders items={d.workOrders.map((w) => ({ id: w.id, number: w.number, from: dOf(w.fromOn), to: dOf(w.toOn), headcount: w.headcount, active: w.active, sites: w.sites }))} />
+        </div>
+      );
+    return (
+      <ClWorkerList
+        today={today}
+        sites={d.sites}
+        workers={d.workers.map((w) => ({ id: w.id, name: w.name, idMasked: w.idMasked, uan: w.uan ?? '', esic: w.esicIp ?? '', skill: w.skill, wage: w.wage === null ? null : Number(w.wage), site: w.site, from: dOf(w.fromOn), gatePass: w.gatePass, gateValidTo: w.gateValidTo ? dOf(w.gateValidTo) : null, status: w.status === 'pending' ? 'Pending approval' : 'Deployed' }))}
+        onCheck={live.onCheck}
+        onAdd={live.onAdd}
+      />
+    );
+  };
+  return (
+    <TenantPortal
+      tenant={d?.company ?? live.tenant}
+      portal={`Contractor portal${d ? ` · ${d.contractor.name}` : ''}`}
+      nav={TABS.map((t) => ({ label: t.label, active: t.id === live.tab, href: live.hrefFor(t.id) }))}
+      access={{ kind: 'otp', identity: d?.contact.email ?? '', endsOn: today, today, endsBecause: 'contract end' }}
+      footer={{ privacy: 'Privacy notice for contract-labour vendors (G-09)' }}
+      noLanguage
+      onSignOut={live.onSignOut}
+    >
+      {body()}
+    </TenantPortal>
+  );
+}

@@ -23,11 +23,12 @@ import { BarChart } from '../../components/charts';
 import { Stepper } from '../../components/stepper';
 import { formatDate, formatINR } from '../../lib/format';
 import type { FilterValue } from '../../lib/table';
-import { Actions, CardGrid, CheckList, Facts, OpsDesk, PhotoPlaceholder, ReceiptImage, StatusTrail, useSay } from './ops-kit';
+import { Actions, CardGrid, CheckList, Facts, OpsDesk, PhotoPlaceholder, ReceiptImage, StatusTrail, useSay, type CheckRow } from './ops-kit';
+import { Segment } from '../../components/segment';
 import { challanShortfall, deployBlocks, expiryTone } from './ops-rules';
 import type { ListState } from './helpdesk';
-import type { ContractWorker, Contractor, Licence, ProofStatus } from './contract-data';
-import { LiveContractors, type ContractorsLive } from './contract-live';
+import type { ContractWorker, Contractor, Licence, ProofStatus, WorkOrder } from './contract-data';
+import { LiveContractors, LiveWorkers, type ContractorsLive, type WorkersLive } from './contract-live';
 
 const multi = (key: string, label: string, values: string[]): FilterFieldDef => ({ key, label, type: 'multi', options: values.map((v) => ({ value: v, label: v })) });
 function applyFilters<R>(rows: R[], filters: FilterValue[]): R[] {
@@ -60,7 +61,7 @@ export function licenceBadge(l: Licence, today: Date): { tone: BadgeTone; text: 
 
 export interface ContractorsScreenProps {
   contractors: Contractor[];
-  establishments: { name: string; state: string; rc: string; family: string; workers: number; threshold: number; validTo: Date | null }[];
+  establishments: { name: string; state: string; rc: string; family: string; workers: number; threshold: number; validTo: Date | null; licenceMax?: number }[];
   today: Date;
   state?: ListState;
   openId?: string | null;
@@ -70,7 +71,7 @@ export interface ContractorsScreenProps {
   /** CL-1 live (the page passes it; docs/yukthix/contract-labour-design-map.md). */
   live?: ContractorsLive;
 }
-export type ContractorsSheet = { kind: 'contractor'; id: string | null } | { kind: 'licence'; contractorId: string } | { kind: 'renew'; licenceId: string } | { kind: 'reject'; licenceId: string };
+export type ContractorsSheet = { kind: 'contact'; contractorId: string } | { kind: 'workorder'; contractorId: string; id: string | null } | { kind: 'contractor'; id: string | null } | { kind: 'licence'; contractorId: string } | { kind: 'renew'; licenceId: string } | { kind: 'reject'; licenceId: string };
 
 /** What the view needs beyond the rows: the actions, each optional (the design shows them without doing anything). */
 export interface ContractorsViewProps {
@@ -81,10 +82,6 @@ export interface ContractorsViewProps {
   openId: string | null;
   sheet: ContractorsSheet | null;
   canManage: boolean;
-  /** The contractor portal (CL-3): until then no "Invite to contractor login". */
-  portal: boolean;
-  /** The work order card (design only until it is built). */
-  workOrder: boolean;
   locations: { id: string; name: string; state: string }[];
   states: { code: string; name: string }[];
   onRetry?: () => void;
@@ -94,6 +91,10 @@ export interface ContractorsViewProps {
   onVerify?: (licenceId: string) => Promise<unknown>;
   onReject?: (licenceId: string, reason: string) => Promise<unknown>;
   onOpenFile?: (licenceId: string) => void;
+  onSaveWorkOrder?: (contractorId: string, id: string | null, input: WorkOrderInput) => Promise<unknown>;
+  /** CL-3 (answer 631): give a contractor's contact the portal, or take it away. */
+  onAddContact?: (contractorId: string, input: { name: string; email: string }) => Promise<unknown>;
+  onRemoveContact?: (contractorId: string, contactId: string) => Promise<unknown>;
   /** "60, 30 and 7 days before expiry" from the company setting. */
   alertText?: string;
 }
@@ -119,8 +120,6 @@ export function ContractorsScreen({ contractors, establishments, today, state = 
       openId={openId}
       sheet={sheet}
       canManage={!readOnly}
-      portal
-      workOrder
       locations={SAMPLE_LOCATIONS}
       states={SAMPLE_STATES}
     />
@@ -161,7 +160,7 @@ export function ContractorsView(p: ContractorsViewProps) {
                 <h3 className="yx-ops-card__title">{e.name}</h3>
                 <Badge tone={e.rc === '—' ? (e.workers >= e.threshold ? 'danger' : 'neutral') : 'success'}>{e.rc === '—' ? (e.workers >= e.threshold ? 'Registration needed' : 'Below threshold') : 'Registered'}</Badge>
               </div>
-              <Facts items={[{ label: 'Contract workers', value: e.workers }, { label: 'Threshold (OSH Code, verify)', value: e.threshold }]} />
+              <Facts items={[{ label: 'Contract workers', value: e.workers }, ...(e.licenceMax !== undefined ? [{ label: 'Licence maximum', value: e.licenceMax, tone: e.workers > e.licenceMax ? ('danger' as const) : undefined }] : []), { label: 'Threshold (OSH Code, verify)', value: e.threshold }]} />
               <p className="yx-ops-muted">{e.rc === '—' ? `No registration needed below ${e.threshold} contract workers.` : `${e.family} registration ${e.rc}, valid to ${formatDate(e.validTo)}`}</p>
             </article>
           ))}
@@ -177,7 +176,7 @@ export function ContractorsView(p: ContractorsViewProps) {
         footer={
           c && canManage ? (
             <>
-              {p.portal && <Button>Invite to contractor login</Button>}
+              <Button onClick={() => setSheet({ kind: 'contact', contractorId: c.id })}>Invite to contractor login</Button>
               <Button onClick={() => setSheet({ kind: 'contractor', id: c.id })}>Change details</Button>
               <Button variant="primary" icon={Plus} onClick={() => setSheet({ kind: 'licence', contractorId: c.id })}>Add licence</Button>
             </>
@@ -186,7 +185,27 @@ export function ContractorsView(p: ContractorsViewProps) {
       >
         {c && (
           <div className="yx-ops-stack">
-            <DescriptionList columns={2} items={[{ label: 'PAN', value: c.pan || '—', mono: true }, { label: 'GSTIN', value: c.gstin || '—', mono: true }, { label: 'PF code', value: c.pfCode || '—', mono: true }, { label: 'ESIC code', value: c.esicCode || '—', mono: true }, { label: 'LIN', value: c.lin || '—', mono: true }, ...(p.portal ? [{ label: 'Contractor login', value: c.loginInvited ? 'Invited (OTP, own records only, not billed)' : 'Not invited' }] : [])]} />
+            <DescriptionList columns={2} items={[{ label: 'PAN', value: c.pan || '—', mono: true }, { label: 'GSTIN', value: c.gstin || '—', mono: true }, { label: 'PF code', value: c.pfCode || '—', mono: true }, { label: 'ESIC code', value: c.esicCode || '—', mono: true }, { label: 'LIN', value: c.lin || '—', mono: true }]} />
+            <Card title="Contractor login">
+              {(c.contacts ?? []).length === 0 ? (
+                <p className="yx-ops-muted">No one from {c.name} can sign in yet. Invite a contact: they sign in with a one-time code to their email and see only {c.name}'s licences, work orders and workers.</p>
+              ) : (
+                <ul className="yx-ops-plain yx-ops-stack" data-gap="sm" aria-label="Contractor login">
+                  {(c.contacts ?? []).map((x) => (
+                    <li key={x.id} className="yx-ops-row" data-between>
+                      <span className="yx-ops-stack" data-gap="sm">
+                        <strong>{x.name}</strong>
+                        <span className="yx-ops-muted">{x.email}</span>
+                      </span>
+                      <span className="yx-ops-row">
+                        <Badge tone={x.portal === 'active' ? 'success' : 'info'}>{x.portal === 'active' ? 'Signed in' : 'Invited'}</Badge>
+                        {canManage && <Button size="sm" onClick={() => void run(p.onRemoveContact && (() => p.onRemoveContact!(c.id, x.id)), `Access removed for ${x.name}`)}>Remove access</Button>}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
             {c.licences.length === 0 && <EmptyState title="No licence yet." description="Add the contractor's licence for your establishment. Workers can be deployed only under a verified licence." />}
             {c.licences.map((l) => {
               const t = licenceBadge(l, today);
@@ -226,10 +245,22 @@ export function ContractorsView(p: ContractorsViewProps) {
                 </Card>
               );
             })}
-            {p.workOrder && c.licences[0] && (
-              <Card title="Work order">
-                <DescriptionList items={[{ label: 'Scope', value: `${c.work}, ${c.licences[0].establishment}` }, { label: 'Headcount', value: c.licences[0].max }, { label: 'Period', value: '1 Apr 2026 to 31 Mar 2027' }]} />
+            {(c.workOrders ?? []).map((w) => (
+              <Card key={w.id} title={`Work order ${w.number}`} actions={w.active !== undefined && w.active > w.headcount ? <Badge tone="warning">Over headcount</Badge> : undefined}>
+                <div className="yx-ops-stack">
+                  <DescriptionList items={[{ label: 'Sites', value: w.sites.map((x) => x.name).join(', ') }, { label: 'Headcount', value: w.active !== undefined ? `${w.active} of ${w.headcount} deployed or waiting` : w.headcount }, { label: 'Period', value: `${formatDate(w.from)} to ${formatDate(w.to)}` }]} />
+                  {canManage && (
+                    <Actions>
+                      <Button size="sm" onClick={() => setSheet({ kind: 'workorder', contractorId: c.id, id: w.id })}>Change work order</Button>
+                    </Actions>
+                  )}
+                </div>
               </Card>
+            ))}
+            {canManage && (
+              <Actions>
+                <Button icon={Plus} onClick={() => setSheet({ kind: 'workorder', contractorId: c.id, id: null })}>Add work order</Button>
+              </Actions>
             )}
           </div>
         )}
@@ -247,6 +278,17 @@ export function ContractorsView(p: ContractorsViewProps) {
       )}
       {sheet?.kind === 'renew' && target && (
         <LicenceSheet mode="renew" current={target.l} locations={p.locations} states={p.states} contractor={target.c.name} onClose={() => setSheet(null)} onSave={(input, file) => (p.onRenew ? p.onRenew(sheet.licenceId, { licenceNo: input.licenceNo, maxWorkers: input.maxWorkers, validFrom: input.validFrom, validTo: input.validTo }, file) : Promise.resolve())} />
+      )}
+      {sheet?.kind === 'contact' && <ContactDialog contractor={contractors.find((x) => x.id === sheet.contractorId)?.name ?? ''} onClose={() => setSheet(null)} onSave={(input) => (p.onAddContact ? p.onAddContact(sheet.contractorId, input) : Promise.resolve())} />}
+      {sheet?.kind === 'workorder' && (
+        <WorkOrderSheet
+          key={sheet.id ?? 'new'}
+          contractor={contractors.find((x) => x.id === sheet.contractorId)?.name ?? ''}
+          initial={contractors.find((x) => x.id === sheet.contractorId)?.workOrders?.find((w) => w.id === sheet.id) ?? null}
+          locations={p.locations}
+          onClose={() => setSheet(null)}
+          onSave={(input) => (p.onSaveWorkOrder ? p.onSaveWorkOrder(sheet.contractorId, sheet.id, input) : Promise.resolve())}
+        />
       )}
       {sheet?.kind === 'reject' && target && <RejectLicenceDialog licence={target.l} onClose={() => setSheet(null)} onReject={(reason) => (p.onReject ? p.onReject(sheet.licenceId, reason) : Promise.resolve())} />}
     </OpsDesk>
@@ -444,6 +486,105 @@ export function LicenceSheet({ mode, current, contractor, locations, states, onC
   );
 }
 
+/** CL-3 (answer 631): invite a contractor's contact to the portal. */
+function ContactDialog({ contractor, onClose, onSave }: { contractor: string; onClose: () => void; onSave: (input: { name: string; email: string }) => Promise<unknown> }) {
+  const { say } = useSay();
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const bad = { name: !name.trim() ? 'Enter the contact’s name.' : null, email: !EMAIL_RE.test(email.trim()) ? 'Enter an email like ops@contractor.in.' : null };
+  const go = () => {
+    setTried(true);
+    if (bad.name) return focusOn('ct-name');
+    if (bad.email) return focusOn('ct-email');
+    setBusy(true);
+    setFailed(null);
+    onSave({ name: name.trim(), email: email.trim() })
+      .then(() => (say(`Invited ${name.trim()}`), onClose()))
+      .catch((e: unknown) => setFailed(errText(e)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} size="md" title="Invite to contractor login" description={`${contractor}. We email the portal link; they sign in with a one-time code and see only this contractor's records. Licence alerts go to them too.`} notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={go}>Send invitation</Button></>}>
+      <div className="yx-ops-stack">
+        <FormField id="ct-name" label="Name" required error={tried ? bad.name : null}>
+          <TextField value={name} onChange={setName} maxLength={120} />
+        </FormField>
+        <FormField id="ct-email" label="Email" required error={tried ? bad.email : null}>
+          <TextField value={email} onChange={setEmail} maxLength={254} type="email" />
+        </FormField>
+      </div>
+    </Dialog>
+  );
+}
+
+export interface WorkOrderInput {
+  number: string;
+  fromOn: string;
+  toOn: string;
+  headcount: number;
+  locationIds: string[];
+  version?: number;
+}
+
+/** Answer 675: a contractor's work order. Deploying past its headcount warns; the licence maximum is the legal limit. */
+export function WorkOrderSheet({ contractor, initial, locations, onClose, onSave }: { contractor: string; initial: WorkOrder | null; locations: { id: string; name: string }[]; onClose: () => void; onSave: (input: WorkOrderInput) => Promise<unknown> }) {
+  const { say } = useSay();
+  const [no, setNo] = useState(initial?.number ?? '');
+  const [from, setFrom] = useState<Date | null>(initial?.from ?? null);
+  const [to, setTo] = useState<Date | null>(initial?.to ?? null);
+  const [head, setHead] = useState<number | null>(initial?.headcount ?? null);
+  const [sites, setSites] = useState<string[]>(initial?.sites.map((x) => x.id) ?? []);
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const bad = {
+    no: !no.trim() ? 'Enter the work order number.' : null,
+    from: !from ? 'Choose the first day.' : null,
+    to: !to ? 'Choose the last day.' : from && to < from ? 'The work order ends before it starts.' : null,
+    head: !head || head < 1 ? 'Enter the headcount.' : null,
+    sites: !sites.length ? 'Choose the sites it covers.' : null,
+  };
+  const save = () => {
+    setTried(true);
+    const order: [keyof typeof bad, string][] = [['no', 'wo-no'], ['from', 'wo-from'], ['to', 'wo-to'], ['head', 'wo-head'], ['sites', 'wo-sites']];
+    const miss = order.find(([k]) => bad[k]);
+    if (miss) return focusOn(miss[1]);
+    setBusy(true);
+    setFailed(null);
+    onSave({ number: no.trim(), fromOn: isoDay(from), toOn: isoDay(to), headcount: head!, locationIds: sites, ...(initial?.version ? { version: initial.version } : {}) })
+      .then(() => (say(initial ? 'Work order saved' : 'Work order added'), onClose()))
+      .catch((e: unknown) => setFailed(errText(e)))
+      .finally(() => setBusy(false));
+  };
+  const err = (k: keyof typeof bad) => (tried ? bad[k] : null);
+  return (
+    <Drawer open onOpenChange={(o) => !o && onClose()} size="md" title={initial ? `Change work order ${initial.number}` : 'Add work order'} subtitle={contractor} dirty notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={save}>{initial ? 'Save work order' : 'Add work order'}</Button></>}>
+      <div className="yx-ops-stack">
+        <FormField id="wo-no" label="Work order number" required error={err('no')}>
+          <TextField value={no} onChange={setNo} maxLength={40} />
+        </FormField>
+        <FieldRow>
+          <FormField id="wo-from" label="From" required error={err('from')}>
+            <DatePicker value={from} onChange={setFrom} />
+          </FormField>
+          <FormField id="wo-to" label="To" required error={err('to')}>
+            <DatePicker value={to} onChange={setTo} />
+          </FormField>
+        </FieldRow>
+        <FormField id="wo-head" label="Headcount" required error={err('head')} helper="Deploying past it warns; the licence maximum still blocks.">
+          <NumberField value={head} onChange={setHead} min={1} max={100000} />
+        </FormField>
+        <FormField id="wo-sites" label="Sites" required error={err('sites')}>
+          <MultiSelect options={locations.map((l) => ({ value: l.id, label: l.name }))} value={sites} onChange={setSites} />
+        </FormField>
+      </div>
+    </Drawer>
+  );
+}
+
 /** Reject a licence or renewal with the reason (the contractor sees it once the portal is built). */
 export function RejectLicenceDialog({ licence, onClose, onReject }: { licence: Licence; onClose: () => void; onReject: (reason: string) => Promise<unknown> }) {
   const { say } = useSay();
@@ -480,15 +621,63 @@ export interface WorkersScreenProps {
   contractors: Contractor[];
   today: Date;
   state?: ListState;
-  deploy?: 'ok' | 'limit' | 'underage' | 'scope' | null;
+  deploy?: 'ok' | 'limit' | 'underage' | 'scope' | 'duplicate' | 'threshold' | null;
+  /** CL-2 states drawn first: site approval with the induction, release, and the reader without the key to change. */
+  sheet?: WorkersSheet | null;
+  readOnly?: boolean;
+  /** CL-2 live (the page passes it; docs/yukthix/contract-labour-design-map.md). */
+  live?: WorkersLive;
 }
-export function WorkersScreen({ workers, contractors, today, state = 'ready', deploy = null }: WorkersScreenProps) {
-  const [filters, setFilters] = useState<FilterValue[]>([]);
-  const [open, setOpen] = useState(!!deploy);
-  const [dob, setDob] = useState<Date | null>(deploy === 'underage' ? new Date(2009, 4, 12) : new Date(1994, 6, 3));
-  const lic = contractors[0].licences[0];
+export type WorkersSheet = { kind: 'deploy' } | { kind: 'approve'; id: string } | { kind: 'release'; id: string };
+
+/** The deploy form (answers 635, 636): the Aadhaar number is sent once; only its last 4 digits come back. */
+export interface WorkerInput {
+  contractorId: string;
+  locationId: string;
+  givenName: string;
+  familyName: string | null;
+  dob: string;
+  aadhaar: string;
+  skill: 'unskilled' | 'semi_skilled' | 'skilled' | 'highly_skilled';
+  wage: string | null;
+  uan: string | null;
+  esicIp: string | null;
+  fromOn: string;
+  toOn: string | null;
+}
+export interface WorkersViewProps {
+  workers: ContractWorker[];
+  contractors: { id: string; name: string }[];
+  locations: { id: string; name: string; state: string }[];
+  today: Date;
+  state: ListState;
+  sheet: WorkersSheet | null;
+  canManage: boolean;
+  inductionRequired: boolean;
+  inductionMonths: number;
+  /** The design's sample checks and form (live: none, the server checks). */
+  design?: { checks: CheckRow[]; dob: Date; site: string };
+  onRetry?: () => void;
+  onCheck?: (input: WorkerInput) => Promise<CheckRow[]>;
+  onSend?: (input: WorkerInput) => Promise<unknown>;
+  onApprove?: (id: string, version: number, induction: { on: string | null; by: string | null }) => Promise<unknown>;
+  onRelease?: (id: string, version: number, on: string, reason: string) => Promise<unknown>;
+}
+
+const SKILLS = [
+  { value: 'unskilled', label: 'Unskilled' },
+  { value: 'semi_skilled', label: 'Semi-skilled' },
+  { value: 'skilled', label: 'Skilled' },
+  { value: 'highly_skilled', label: 'Highly skilled' },
+] as const;
+const AADHAAR_RE = /^[2-9][0-9]{11}$/;
+
+export function WorkersScreen({ workers, contractors, today, state = 'ready', deploy = null, sheet = null, readOnly = false, live }: WorkersScreenProps) {
+  if (live) return <LiveWorkers live={live} />;
+  const lic = contractors[0]!.licences[0]!;
+  const dob = deploy === 'underage' ? new Date(2009, 4, 12) : new Date(1994, 6, 3);
   const blocks = deployBlocks({
-    dob: dob ?? new Date(1990, 0, 1),
+    dob,
     on: today,
     licenceValidTo: lic.validTo,
     licenceMax: lic.max,
@@ -496,77 +685,258 @@ export function WorkersScreen({ workers, contractors, today, state = 'ready', de
     licenceStates: lic.states,
     siteState: deploy === 'scope' ? 'Kerala' : 'Tamil Nadu',
   });
+  const checks: CheckRow[] = [
+    { id: 'age', status: blocks.some((b) => b.includes('under 18')) ? 'fail' : 'pass', label: 'Age 18 or over', detail: blocks.find((b) => b.includes('under 18')) },
+    { id: 'lic', status: blocks.some((b) => b.includes('not valid')) ? 'fail' : 'pass', label: `Licence ${lic.no} valid on ${formatDate(today)}` },
+    { id: 'scope', status: blocks.some((b) => b.includes('scope')) ? 'fail' : 'pass', label: 'Licence scope covers the site', detail: blocks.find((b) => b.includes('scope')) },
+    { id: 'max', status: blocks.some((b) => b.includes('allows')) ? 'fail' : 'pass', label: 'Within the licence maximum', detail: blocks.find((b) => b.includes('allows')) },
+    { id: 'dup', status: deploy === 'duplicate' ? 'fail' : 'pass', label: 'Not already deployed', detail: deploy === 'duplicate' ? 'The same ID is already deployed or waiting at Bengaluru head office.' : 'Matched on the ID' },
+    { id: 'threshold', status: deploy === 'threshold' ? 'warn' : 'pass', label: 'Principal-employer registration threshold', detail: deploy === 'threshold' ? 'This makes 50 contract workers at Hosur plant; registration is needed from 50. Make sure the site is registered.' : '42 of 50 before registration is needed.' },
+  ];
+  return (
+    <WorkersView
+      workers={workers}
+      contractors={contractors.map((c) => ({ id: c.id, name: c.name }))}
+      locations={[{ id: 'hosur', name: deploy === 'scope' ? 'Kochi warehouse' : 'Hosur plant', state: deploy === 'scope' ? 'IN-KL' : 'IN-TN' }, { id: 'blr', name: 'Bengaluru head office', state: 'IN-KA' }]}
+      today={today}
+      state={state}
+      sheet={deploy ? { kind: 'deploy' } : sheet}
+      canManage={!readOnly}
+      inductionRequired
+      inductionMonths={12}
+      design={deploy ? { checks, dob, site: 'hosur' } : undefined}
+    />
+  );
+}
+
+const WORKER_TONE: Record<ContractWorker['status'], 'success' | 'warning' | 'neutral'> = { Deployed: 'success', 'Pending approval': 'warning', Released: 'neutral' };
+
+export function WorkersView(p: WorkersViewProps) {
+  const { workers, today, state, canManage } = p;
+  const [filters, setFilters] = useState<FilterValue[]>([]);
+  const [sheet, setSheet] = useState<WorkersSheet | null>(p.sheet);
   const { say } = useSay();
   const cols: TableColumn<ContractWorker>[] = [
     { key: 'name', header: 'Worker', value: (w) => w.name, render: (w) => <span className="yx-ops-row"><PhotoPlaceholder name={w.name} size="sm" /><span className="yx-ops-stack" data-gap="sm"><strong>{w.name}</strong><span className="yx-ops-muted">ID {w.idMasked}</span></span></span>, width: 220 },
     { key: 'contractor', header: 'Contractor', value: (w) => w.contractor, groupable: true, width: 200 },
     { key: 'site', header: 'Site', value: (w) => w.site },
     { key: 'from', header: 'Deployed from', type: 'date', value: (w) => w.from },
-    { key: 'gate', header: 'Gate pass', type: 'id', value: (w) => w.gatePass },
+    { key: 'gate', header: 'Gate pass', type: 'id', value: (w) => w.gatePass ?? '', render: (w) => (w.gatePass ? <span className="yx-ops-stack" data-gap="sm"><span className="yx-ops-mono">{w.gatePass}</span>{w.gateValidTo && <span className="yx-ops-muted">to {formatDate(w.gateValidTo)}</span>}</span> : <span className="yx-ops-muted">After approval</span>), width: 170 },
     { key: 'skill', header: 'Skill', value: (w) => w.skill },
-    { key: 'wage', header: 'Wage (by contractor)', type: 'money', value: (w) => w.wage },
-    { key: 'uan', header: 'UAN', type: 'id', value: (w) => w.uan },
-    { key: 'ip', header: 'ESI IP', type: 'id', value: (w) => w.ip },
-    { key: 'status', header: 'Status', type: 'status', value: (w) => w.status, statusTone: (v) => (v === 'Deployed' ? 'success' : v === 'Pending approval' ? 'warning' : 'neutral') },
+    { key: 'wage', header: 'Wage (by contractor)', type: 'money', value: (w) => w.wage ?? 0, render: (w) => (w.wage === null ? '—' : formatINR(w.wage)) },
+    { key: 'uan', header: 'UAN', type: 'id', value: (w) => w.uan || '—' },
+    { key: 'ip', header: 'ESI IP', type: 'id', value: (w) => w.ip || '—' },
+    { key: 'status', header: 'Status', type: 'status', value: (w) => w.status, statusTone: (v) => WORKER_TONE[v as ContractWorker['status']] ?? 'neutral' },
   ];
   const rows = applyFilters(workers, filters);
+  const target = sheet && sheet.kind !== 'deploy' ? workers.find((w) => w.id === sheet.id) : undefined;
+  const add = canManage ? <Button variant="primary" icon={Plus} onClick={() => setSheet({ kind: 'deploy' })}>Deploy worker</Button> : undefined;
   return (
     <OpsDesk area="contract" active="Contract workers" counts={{ 'Contract workers': workers.filter((w) => w.status === 'Deployed').length }}>
-      <PageHeader title="Contract workers" description="Deployed by contractors. Not employees: their punches never create payroll inputs. Each worker is one person record, so history follows them." actions={<><Button icon={Upload}>Import list</Button><Button variant="primary" icon={Plus} onClick={() => setOpen(true)}>Deploy worker</Button></>} />
+      <PageHeader title="Contract workers" description="Deployed by contractors. Not employees: their punches never create payroll inputs. Each worker is one person record, so history follows them." actions={add} />
       <DataTable
         label="Contract workers"
         columns={cols}
         rows={state === 'empty' ? [] : rows}
         getRowId={(w) => w.id}
         state={state === 'empty' ? 'ready' : state}
-        onRetry={() => {}}
-        empty={<EmptyState title="No contract workers deployed." description="Contractors add workers from their login, or you import a list." />}
+        onRetry={p.onRetry ?? (() => {})}
+        empty={<EmptyState title="No contract workers deployed." description="Deploy a worker of a licensed contractor to one of your sites." action={add} />}
         filtered={filters.length > 0}
         onClearFilters={() => setFilters([])}
-        toolbar={<FilterBar fields={[multi('contractor', 'Contractor', contractors.map((c) => c.name)), multi('site', 'Site', ['Hosur plant', 'Bengaluru head office']), multi('status', 'Status', ['Deployed', 'Pending approval', 'Released'])]} value={filters} onChange={setFilters} searchPlaceholder="Search name, gate pass or UAN" />}
-        rowButtons={(w) => (w.status === 'Pending approval' ? <Button variant="approve" size="sm">Approve</Button> : w.status === 'Deployed' ? <Button size="sm">Release</Button> : null)}
-        onExport={() => {}}
+        toolbar={<FilterBar fields={[multi('contractor', 'Contractor', p.contractors.map((c) => c.name)), multi('site', 'Site', p.locations.map((l) => l.name)), multi('status', 'Status', ['Deployed', 'Pending approval', 'Released'])]} value={filters} onChange={setFilters} searchPlaceholder="Search name, gate pass or UAN" />}
+        rowButtons={(w) =>
+          !canManage ? null : w.status === 'Pending approval' ? (
+            <>
+              <Button size="sm" onClick={() => setSheet({ kind: 'release', id: w.id })}>Withdraw</Button>
+              <Button variant="approve" size="sm" onClick={() => setSheet({ kind: 'approve', id: w.id })}>Approve</Button>
+            </>
+          ) : w.status === 'Deployed' ? (
+            <Button size="sm" onClick={() => setSheet({ kind: 'release', id: w.id })}>Release</Button>
+          ) : null
+        }
       />
-      <Drawer open={open} onOpenChange={setOpen} size="lg" title="Deploy a worker" subtitle={`${contractors[0].name} · ${deploy === 'scope' ? 'Kochi warehouse (Kerala)' : 'Hosur plant'}`} footer={<><Button onClick={() => setOpen(false)}>Cancel</Button><Button variant="primary" onClick={() => say(blocks.length > 0 && `This worker can't be deployed yet. ${blocks.join(' ')}`)}>Send for site approval</Button></>}>
-        <div className="yx-ops-stack">
-          <FieldRow>
-            <FormField label="Name" required>
-              <TextField defaultValue="Kannan S." />
-            </FormField>
-            <FormField label="Date of birth" required>
-              <DatePicker value={dob} onChange={setDob} />
-            </FormField>
-          </FieldRow>
-          <FieldRow>
-            <FormField label="Skill category">
-              <Select value="unskilled" onChange={() => {}} options={[{ value: 'unskilled', label: 'Unskilled' }, { value: 'semi', label: 'Semi-skilled' }, { value: 'skilled', label: 'Skilled' }]} />
-            </FormField>
-            <FormField label="Wage rate paid by contractor" helper="Minimum for Tamil Nadu, zone B, unskilled: ₹14,820 a month">
-              <CurrencyField value={14820} onChange={() => {}} />
-            </FormField>
-          </FieldRow>
-          <FieldRow>
-            <FormField label="UAN" optional>
-              <TextField />
-            </FormField>
-            <FormField label="ESI IP number" optional>
-              <TextField />
-            </FormField>
-          </FieldRow>
-          <CheckList
-            label="Deployment checks"
-            items={[
-              { id: 'age', status: blocks.some((b) => b.includes('under 18')) ? 'fail' : 'pass', label: 'Age 18 or over' },
-              { id: 'lic', status: blocks.some((b) => b.includes('not valid')) ? 'fail' : 'pass', label: `Licence ${lic.no} valid on ${formatDate(today)}` },
-              { id: 'scope', status: blocks.some((b) => b.includes('scope')) ? 'fail' : 'pass', label: 'Licence scope covers the site', detail: blocks.find((b) => b.includes('scope')) },
-              { id: 'max', status: blocks.some((b) => b.includes('allows')) ? 'fail' : 'pass', label: 'Within licence and registration maximum', detail: blocks.find((b) => b.includes('allows')) },
-              { id: 'dup', status: 'pass', label: 'Not already deployed by another contractor', detail: 'Matched on the person record' },
-            ]}
-          />
-          {blocks.length > 0 && <InlineAlert tone="danger">{blocks.join(' ')}</InlineAlert>}
-        </div>
-      </Drawer>
+      {sheet?.kind === 'deploy' && <DeployWorkerSheet {...p} onClose={() => setSheet(null)} />}
+      {sheet?.kind === 'approve' && target && <ApproveWorkerDialog worker={target} today={today} required={p.inductionRequired} months={p.inductionMonths} onClose={() => setSheet(null)} onApprove={(induction) => (p.onApprove ? p.onApprove(target.id, target.version ?? 1, induction) : Promise.resolve(say('Approved')))} />}
+      {sheet?.kind === 'release' && target && <ReleaseWorkerDialog worker={target} today={today} onClose={() => setSheet(null)} onRelease={(on, reason) => (p.onRelease ? p.onRelease(target.id, target.version ?? 1, on, reason) : Promise.resolve())} />}
     </OpsDesk>
+  );
+}
+
+/** Deploy a worker: the server checks age, licence, licence maximum and the same ID before anything is saved (635). */
+function DeployWorkerSheet(p: WorkersViewProps & { onClose: () => void }) {
+  const { say } = useSay();
+  const [f, setF] = useState({ contractorId: p.design ? (p.contractors[0]?.id ?? null) : null as string | null, locationId: p.design ? p.design.site : null as string | null, givenName: p.design ? 'Kannan' : '', familyName: p.design ? 'S.' : '', aadhaar: p.design ? '234567890123' : '', skill: 'unskilled' as WorkerInput['skill'], uan: '', esicIp: '' });
+  const [dob, setDob] = useState<Date | null>(p.design?.dob ?? null);
+  const [from, setFrom] = useState<Date | null>(p.design ? p.today : null);
+  const [to, setTo] = useState<Date | null>(null);
+  const [wage, setWage] = useState<number | null>(p.design ? 14820 : null);
+  const [checks, setChecks] = useState<CheckRow[] | null>(p.design?.checks ?? null);
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const set = (x: Partial<typeof f>) => setF((o) => ({ ...o, ...x }));
+  const bad = {
+    contractor: !f.contractorId ? 'Choose the contractor.' : null,
+    site: !f.locationId ? 'Choose the site.' : null,
+    name: !f.givenName.trim() ? 'Enter the worker’s name.' : null,
+    dob: !dob ? 'Enter the date of birth: it is checked against the minimum age.' : null,
+    aadhaar: !AADHAAR_RE.test(f.aadhaar) ? 'Enter the 12-digit Aadhaar number. Only the last 4 digits are kept.' : null,
+    from: !from ? 'Choose the first day.' : null,
+    to: to && from && to < from ? 'The deployment ends before it starts.' : null,
+    uan: f.uan && !/^[0-9]{12}$/.test(f.uan) ? 'A UAN has 12 digits.' : null,
+    ip: f.esicIp && !/^[0-9]{10}$/.test(f.esicIp) ? 'An ESI IP number has 10 digits.' : null,
+  };
+  const input = (): WorkerInput => ({ contractorId: f.contractorId!, locationId: f.locationId!, givenName: f.givenName.trim(), familyName: f.familyName.trim() || null, dob: isoDay(dob), aadhaar: f.aadhaar, skill: f.skill, wage: wage ? wage.toFixed(2) : null, uan: f.uan || null, esicIp: f.esicIp || null, fromOn: isoDay(from), toOn: to ? isoDay(to) : null });
+  const send = () => {
+    setTried(true);
+    const order: [keyof typeof bad, string][] = [['contractor', 'dw-contractor'], ['site', 'dw-site'], ['name', 'dw-name'], ['dob', 'dw-dob'], ['aadhaar', 'dw-aadhaar'], ['from', 'dw-from'], ['to', 'dw-to'], ['uan', 'dw-uan'], ['ip', 'dw-ip']];
+    const miss = order.find(([k]) => bad[k]);
+    if (miss) return focusOn(miss[1]);
+    if (p.design) return say(checks?.some((c) => c.status === 'fail') ? `This worker can't be deployed yet. ${checks.filter((c) => c.status === 'fail').map((c) => c.detail ?? c.label).join(' ')}` : 'Sent for site approval');
+    setBusy(true);
+    setFailed(null);
+    // The checks first (shown in the list); only when nothing fails is the worker sent.
+    p.onCheck!(input())
+      .then(async (rows) => {
+        setChecks(rows);
+        if (rows.some((r) => r.status === 'fail')) return setFailed('This worker can’t be deployed. See the checks.');
+        await p.onSend!(input());
+        say('Sent for site approval');
+        p.onClose();
+      })
+      .catch((e: unknown) => setFailed(errText(e)))
+      .finally(() => setBusy(false));
+  };
+  const err = (k: keyof typeof bad) => (tried ? bad[k] : null);
+  const fails = checks?.filter((c) => c.status === 'fail') ?? [];
+  return (
+    <Drawer open onOpenChange={(o) => !o && p.onClose()} size="lg" title="Deploy a worker" subtitle="Contract workers" dirty notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined} footer={<><Button onClick={p.onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={send}>Send for site approval</Button></>}>
+      <div className="yx-ops-stack">
+        <FieldRow>
+          <FormField id="dw-contractor" label="Contractor" required error={err('contractor')}>
+            <Select options={p.contractors.map((c) => ({ value: c.id, label: c.name }))} value={f.contractorId} onChange={(v) => set({ contractorId: v })} />
+          </FormField>
+          <FormField id="dw-site" label="Site" required error={err('site')}>
+            <Select options={p.locations.map((l) => ({ value: l.id, label: l.name }))} value={f.locationId} onChange={(v) => set({ locationId: v })} />
+          </FormField>
+        </FieldRow>
+        <FieldRow>
+          <FormField id="dw-name" label="Name" required error={err('name')}>
+            <TextField value={f.givenName} onChange={(v) => set({ givenName: v })} maxLength={100} />
+          </FormField>
+          <FormField id="dw-family" label="Family name" optional>
+            <TextField value={f.familyName} onChange={(v) => set({ familyName: v })} maxLength={100} />
+          </FormField>
+        </FieldRow>
+        <FieldRow>
+          <FormField id="dw-dob" label="Date of birth" required error={err('dob')}>
+            <DatePicker value={dob} onChange={setDob} />
+          </FormField>
+          <FormField id="dw-aadhaar" label="Aadhaar number" required error={err('aadhaar')} helper="Only the last 4 digits are kept, with a check that finds the same person again.">
+            <TextField value={f.aadhaar} onChange={(v) => set({ aadhaar: v.replace(/\D/g, '').slice(0, 12) })} inputMode="numeric" autoComplete="off" maxLength={12} />
+          </FormField>
+        </FieldRow>
+        <FormField id="dw-skill" label="Skill category" required>
+          <Segment label="Skill category" options={[...SKILLS]} value={f.skill} onChange={(v) => set({ skill: v })} />
+        </FormField>
+        <FieldRow>
+          <FormField id="dw-from" label="First day" required error={err('from')}>
+            <DatePicker value={from} onChange={setFrom} />
+          </FormField>
+          <FormField id="dw-to" label="Last day" optional error={err('to')}>
+            <DatePicker value={to} onChange={setTo} />
+          </FormField>
+        </FieldRow>
+        <FormField id="dw-wage" label="Monthly wage paid by the contractor" optional helper="Checked against the minimum wage with the contractor's monthly proofs.">
+          <CurrencyField value={wage} onChange={setWage} />
+        </FormField>
+        <FieldRow>
+          <FormField id="dw-uan" label="UAN" optional error={err('uan')}>
+            <TextField value={f.uan} onChange={(v) => set({ uan: v.replace(/\D/g, '').slice(0, 12) })} inputMode="numeric" maxLength={12} />
+          </FormField>
+          <FormField id="dw-ip" label="ESI IP number" optional error={err('ip')}>
+            <TextField value={f.esicIp} onChange={(v) => set({ esicIp: v.replace(/\D/g, '').slice(0, 10) })} inputMode="numeric" maxLength={10} />
+          </FormField>
+        </FieldRow>
+        {checks ? <CheckList label="Deployment checks" items={checks} /> : <p className="yx-ops-muted">Age, the contractor's licence for the site, the licence maximum and the same ID are checked when you send. There is no override.</p>}
+        {fails.length > 0 && <InlineAlert tone="danger" title="Deployment blocked">{fails.map((c) => c.detail ?? c.label).join(' ')}</InlineAlert>}
+      </div>
+    </Drawer>
+  );
+}
+
+/** Site approval (632, 633): the safety induction is recorded and the gate pass is issued. */
+function ApproveWorkerDialog({ worker, today, required, months, onClose, onApprove }: { worker: ContractWorker; today: Date; required: boolean; months: number; onClose: () => void; onApprove: (induction: { on: string | null; by: string | null }) => Promise<unknown> }) {
+  const { say } = useSay();
+  const [on, setOn] = useState<Date | null>(worker.induction ? worker.induction.on : null);
+  const [by, setBy] = useState(worker.induction?.by ?? '');
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const bad = {
+    on: required && !on ? 'Enter the day of the safety induction.' : on && on > today ? 'The induction cannot be in the future.' : null,
+    by: required && !by.trim() ? 'Enter who gave the induction.' : null,
+  };
+  const go = () => {
+    setTried(true);
+    if (bad.on) return focusOn('ap-on');
+    if (bad.by) return focusOn('ap-by');
+    setBusy(true);
+    setFailed(null);
+    onApprove({ on: on ? isoDay(on) : null, by: by.trim() || null })
+      .then(() => (say(`${worker.name} approved; gate pass issued`), onClose()))
+      .catch((e: unknown) => setFailed(errText(e)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} size="md" title={`Approve ${worker.name}?`} description={`${worker.contractor} · ${worker.site}. The checks run again; the gate pass ends with the deployment, the licence or the induction (${months} months), whichever comes first.`} notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={go}>Approve and issue gate pass</Button></>}>
+      <div className="yx-ops-stack">
+        <FieldRow>
+          <FormField id="ap-on" label="Safety induction on" required={required} optional={!required} error={tried ? bad.on : null}>
+            <DatePicker value={on} onChange={setOn} />
+          </FormField>
+          <FormField id="ap-by" label="Given by" required={required} optional={!required} error={tried ? bad.by : null}>
+            <TextField value={by} onChange={setBy} maxLength={120} />
+          </FormField>
+        </FieldRow>
+      </div>
+    </Dialog>
+  );
+}
+
+/** Release a deployed worker, or withdraw one waiting for approval: the deployment and the role end on the day. */
+function ReleaseWorkerDialog({ worker, today, onClose, onRelease }: { worker: ContractWorker; today: Date; onClose: () => void; onRelease: (on: string, reason: string) => Promise<unknown> }) {
+  const { say } = useSay();
+  const pending = worker.status === 'Pending approval';
+  const [on, setOn] = useState<Date | null>(today);
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const bad = { on: !on ? 'Choose the last day.' : on > today ? 'Release on today or an earlier day.' : null, reason: reason.trim().length < 3 ? 'Say why.' : null };
+  const go = () => {
+    setTried(true);
+    if (bad.on) return focusOn('rl-on');
+    if (bad.reason) return focusOn('rl-reason');
+    setBusy(true);
+    setFailed(null);
+    onRelease(isoDay(on), reason.trim())
+      .then(() => (say(pending ? `${worker.name} withdrawn` : `${worker.name} released`), onClose()))
+      .catch((e: unknown) => setFailed(errText(e)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} size="md" title={pending ? `Withdraw ${worker.name}?` : `Release ${worker.name}?`} description={`${worker.contractor} · ${worker.site}. The gate pass stops working after the last day.`} notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={go}>{pending ? 'Withdraw' : 'Release'}</Button></>}>
+      <div className="yx-ops-stack">
+        <FormField id="rl-on" label="Last day" required error={tried ? bad.on : null}>
+          <DatePicker value={on} onChange={setOn} />
+        </FormField>
+        <FormField id="rl-reason" label="Reason" required error={tried ? bad.reason : null}>
+          <TextArea rows={2} value={reason} onChange={setReason} maxLength={500} />
+        </FormField>
+      </div>
+    </Dialog>
   );
 }
 

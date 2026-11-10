@@ -1,6 +1,8 @@
-import { Body, Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { Throttle } from '@nestjs/throttler';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { TenantContext } from '@exam-platform/shared';
 import type { ScopeUser } from '../access/scope';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -8,11 +10,13 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PublicApplicationsThrottlerGuard } from '../public-applications/public-applications.throttler.guard';
-import { STRICT_WALK_IN_THROTTLE } from '../rate-limit-tiers';
-import { AcceptVisitDto, CheckInDto, FindPassDto, InviteVisitorDto, SaveVisitorSettingsDto } from './visitors-dto';
+import { MODERATE_UPLOAD_THROTTLE, STRICT_WALK_IN_THROTTLE } from '../rate-limit-tiers';
+import { AcceptVisitDto, AddWatchDto, CheckInDto, FindPassDto, IdImageDto, InviteVisitorDto, SaveVisitorSettingsDto } from './visitors-dto';
+import { VisitorWatchlistService } from './visitor-watchlist.service';
 import { VisitorsService } from './visitors.service';
 
 const who = (req: Request) => req.user as ScopeUser;
+const UPLOAD = FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 } });
 const day = (s?: string) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : undefined);
 
 // Visitors slice 1 (M02 §B11). Hosts: any signed-in person of the company (their own invites). Reception:
@@ -71,6 +75,24 @@ export class VisitorsController {
     return this.visitors.checkOut(ctx, who(req), id);
   }
 
+  /** Answer 603: the photo of the ID where the location keeps one (reception, before check-in). */
+  @Post(':id/id-image')
+  @HttpCode(200)
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  @RequireAnyPermission('visitors.desk.manage')
+  @UseInterceptors(UPLOAD)
+  idImage(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: IdImageDto, @UploadedFile() file: Express.Multer.File | undefined) {
+    return this.visitors.addIdImage(ctx, who(req), id, dto, file ? { name: file.originalname, data: file.buffer } : null);
+  }
+
+  @Get(':id/id-image')
+  @RequireAnyPermission('visitors.desk.manage', 'visitors.log.view')
+  async openIdImage(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Res({ passthrough: true }) res: Response) {
+    const f = await this.visitors.idImage(ctx, who(req), id);
+    res.set({ 'Content-Type': f.contentType, 'Content-Disposition': `inline; filename="${f.name.replace(/[^A-Za-z0-9._-]/g, '_')}"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox" });
+    return new StreamableFile(f.file);
+  }
+
   @Get('log')
   @RequireAnyPermission('visitors.log.view', 'visitors.desk.manage')
   log(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query('locationId') locationId?: string, @Query('from') from?: string, @Query('to') to?: string) {
@@ -95,6 +117,36 @@ export class VisitorsController {
   @RequireAnyPermission('visitors.settings.manage', 'org.settings.manage')
   saveSettings(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: SaveVisitorSettingsDto) {
     return this.visitors.saveSettings(ctx, who(req), dto.changes);
+  }
+}
+
+// Answer 605: the blocked-visitor watch-list (visitors.watchlist.manage for the whole company; the service checks the
+// reach and refuses changes while acting).
+@Controller('visitors/watchlist')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequireAnyPermission('visitors.watchlist.manage')
+export class VisitorWatchlistController {
+  constructor(private readonly watchlist: VisitorWatchlistService) {}
+
+  @Get()
+  list(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.watchlist.list(ctx, who(req));
+  }
+
+  @Post()
+  add(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: AddWatchDto) {
+    return this.watchlist.add(ctx, who(req), dto);
+  }
+
+  @Post(':id/review')
+  @HttpCode(200)
+  review(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.watchlist.review(ctx, who(req), id);
+  }
+
+  @Delete(':id')
+  remove(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.watchlist.remove(ctx, who(req), id);
   }
 }
 

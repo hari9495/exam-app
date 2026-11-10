@@ -12,7 +12,8 @@ import { RequireAnyPermission } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import { ContractLabourService } from './contract-labour.service';
-import { ContractorDto, LicenceDto, RejectLicenceDto, RenewalDto, SaveClraSettingsDto } from './clra-dto';
+import { ApproveWorkerDto, ContractorContactDto, ContractorDto, LicenceDto, RejectLicenceDto, ReleaseWorkerDto, RenewalDto, SaveClraSettingsDto, WorkerDto, WorkOrderDto } from './clra-dto';
+import { WorkersService } from './workers.service';
 
 const who = (req: Request) => req.user as ScopeUser;
 const UPLOAD = FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 1 } });
@@ -24,7 +25,47 @@ const READ = ['clra.contractor.manage', 'clra.contractor.view'] as const;
 @Controller('contract-labour')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ContractLabourController {
-  constructor(private readonly svc: ContractLabourService) {}
+  constructor(
+    private readonly svc: ContractLabourService,
+    private readonly workers: WorkersService,
+  ) {}
+
+  /* ---------------- CL-2 contract workers (CLB-02) ---------------- */
+
+  @Get('workers')
+  @RequireAnyPermission(...READ)
+  listWorkers(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.workers.list(ctx, who(req));
+  }
+
+  @Post('workers/check')
+  @RequireAnyPermission('clra.contractor.manage')
+  checkWorker(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: WorkerDto) {
+    assertOwnSession(req);
+    return this.workers.check(ctx, who(req), dto);
+  }
+
+  @Post('workers')
+  @RequireAnyPermission('clra.contractor.manage')
+  createWorker(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: WorkerDto) {
+    assertOwnSession(req);
+    return this.workers.create(ctx, who(req), dto);
+  }
+
+  @Post('workers/:id/approve')
+  @RequireAnyPermission('clra.contractor.manage')
+  approveWorker(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ApproveWorkerDto) {
+    assertOwnSession(req);
+    return this.workers.approve(ctx, who(req), id, dto);
+  }
+
+  @Post('workers/:id/release')
+  @RequireAnyPermission('clra.contractor.manage')
+  releaseWorker(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ReleaseWorkerDto) {
+    assertOwnSession(req);
+    return this.workers.release(ctx, who(req), id, dto);
+  }
+
 
   @Get('contractors')
   @RequireAnyPermission(...READ)
@@ -44,6 +85,34 @@ export class ContractLabourController {
   update(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ContractorDto) {
     assertOwnSession(req);
     return this.svc.updateContractor(ctx, who(req), id, dto);
+  }
+
+  @Post('contractors/:id/contacts')
+  @RequireAnyPermission('clra.contractor.manage')
+  addContact(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ContractorContactDto) {
+    assertOwnSession(req);
+    return this.svc.addContact(ctx, who(req), id, dto);
+  }
+
+  @Post('contractors/:id/contacts/:contactId/remove')
+  @RequireAnyPermission('clra.contractor.manage')
+  removeContact(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('contactId', ParseUUIDPipe) contactId: string) {
+    assertOwnSession(req);
+    return this.svc.removeContact(ctx, who(req), id, contactId);
+  }
+
+  @Post('contractors/:id/work-orders')
+  @RequireAnyPermission('clra.contractor.manage')
+  addWorkOrder(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: WorkOrderDto) {
+    assertOwnSession(req);
+    return this.svc.saveWorkOrder(ctx, who(req), id, null, dto);
+  }
+
+  @Put('contractors/:id/work-orders/:orderId')
+  @RequireAnyPermission('clra.contractor.manage')
+  changeWorkOrder(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('orderId', ParseUUIDPipe) orderId: string, @Body() dto: WorkOrderDto) {
+    assertOwnSession(req);
+    return this.svc.saveWorkOrder(ctx, who(req), id, orderId, dto);
   }
 
   @Post('contractors/:id/licences')

@@ -14,6 +14,7 @@ import { PUBLIC_API_THROTTLE, STRICT_WALK_IN_THROTTLE } from '../rate-limit-tier
 import { CurrentKiosk, KioskGuard, KioskThrottlerGuard } from '../time/kiosk.guard';
 import type { Kiosk } from '../time/kiosk.service';
 import { PURPOSES } from './visitor-rules';
+import { ID_TYPES } from './visitor-guard-rules';
 import { WalkInsService } from './walkins.service';
 
 const who = (req: Request) => req.user as ScopeUser;
@@ -32,6 +33,12 @@ class WalkInBaseDto extends AcceptedDto {
   @IsOptional() @trim() @IsString() @MaxLength(200) @Matches(NO_TAGS) company?: string | null;
   @IsOptional() @IsUUID() typeId?: string | null;
   @IsOptional() @IsIn(PURPOSES) purpose?: string | null;
+  /** Slice 3 (614): under 18 with the named adult. */
+  @IsOptional() @IsBoolean() minor?: boolean | null;
+  @IsOptional() @trim() @IsString() @MaxLength(200) @Matches(NO_TAGS) minorAdult?: string | null;
+  /** Slice 3 (603): the ID type and its last 4 characters only. */
+  @IsOptional() @IsIn(ID_TYPES) idType?: string | null;
+  @IsOptional() @trim() @IsString() @Matches(/^[A-Za-z0-9]{4}$/, { message: 'Enter only the last 4 characters of the ID number.' }) idLast4?: string | null;
 }
 
 class DeskWalkInDto extends WalkInBaseDto {

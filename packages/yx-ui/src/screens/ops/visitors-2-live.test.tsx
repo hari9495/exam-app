@@ -117,7 +117,7 @@ const walkIns = (over = {}) => ({
 });
 const desk = (over = {}) => ({
   state: 'ready' as const, onRetry: vi.fn(), locations: [{ value: 'maa', label: 'Chennai office' }], locationId: 'maa', onLocation: vi.fn(), today: TODAY,
-  visits: [v()], canChange: true, onFind: vi.fn(), onCheckIn: vi.fn(async () => v({ status: 'on_site', statusText: 'On site' })), onCheckOut: vi.fn(), walkIns: walkIns(), ...over,
+  visits: [v()], canChange: true, idCapture: 'off' as const, onIdImage: vi.fn(), onFind: vi.fn(), onCheckIn: vi.fn(async () => v({ status: 'on_site', statusText: 'On site' })), onCheckOut: vi.fn(), walkIns: walkIns(), ...over,
 });
 
 describe('VIS-01 walk-ins at the desk (live)', () => {
@@ -175,7 +175,7 @@ describe('VIS-01 walk-ins at the desk (live)', () => {
     expect(await within(d).findByText('Tick that the visitor read Plant safety induction.')).toBeInTheDocument();
     await ue.click(within(d).getByRole('checkbox', { name: 'The visitor read Plant safety induction' }));
     await ue.click(within(d).getByRole('button', { name: 'Check in' }));
-    await waitFor(() => expect(live.onCheckIn).toHaveBeenCalledWith('e1', false, { ndaAccepted: false, inductionAccepted: true }));
+    await waitFor(() => expect(live.onCheckIn).toHaveBeenCalledWith('e1', { noticeAccepted: false, inductionAccepted: true }));
   });
 });
 

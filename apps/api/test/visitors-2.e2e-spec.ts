@@ -133,6 +133,7 @@ describe('Visitors slice 2', () => {
         await tx.session.deleteMany({ where: { userId: { in: all } } });
         await tx.visitAcknowledgement.deleteMany({ where: { organizationId: { in: [org.A.id, org.B.id] } } });
         await tx.visit.deleteMany({ where: { organizationId: { in: [org.A.id, org.B.id] } } });
+        await tx.visitorWatch.deleteMany({ where: { organizationId: { in: [org.A.id, org.B.id] } } });
         await tx.organization.deleteMany({ where: { id: { in: [org.A.id, org.B.id] } } });
       })
       .catch((e) => console.warn('cleanup', e));
@@ -262,6 +263,39 @@ describe('Visitors slice 2', () => {
     // The desk lists walk-ins with the rest of the day.
     const desk = (await api('reception', 'get', `/visitors/desk?locationId=${ids.maa}`).expect(200)).body.visits as { id: string; status: string }[];
     expect(desk.find((x) => x.id === made.id)?.status).toBe('declined');
+  });
+
+  it('slice 3 on walk-ins: the watch list stops them (kiosk: see reception; desk: the name only); under 18 and the ID rule', async () => {
+    await inA((tx) => tx.visitorWatch.create({ data: { organizationId: org.A.id, name: 'Manish Gupta', nameKey: 'manish gupta', mobile: '+919884500712', reason: 'Took photos of the packing line.', addedBy: users.facility!, reviewBy: new Date(Date.now() + 86_400_000) } }));
+    const notice = (await kiosk('visitor', 'post', '/needs').send({ mobile: '9884500712' }).expect(200)).body.notice.version;
+    const kioskBase = { mobile: '9000033333', hostName: 'anita desai', noticeVersion: notice, photoBase64: JPEG };
+    // The watch list: by name (any mobile) or by mobile (any name); the kiosk never says why.
+    for (const who of [{ name: 'manish  GUPTA' }, { name: 'M Gupta', mobile: '98845 00712' }])
+      expect((await kiosk('visitor', 'post', '/walk-ins').send({ ...kioskBase, ...who }).expect(200)).body).toEqual({ state: 'see-reception' });
+    const desk = { locationId: ids.maa, hostUserId: users.host, name: 'Manish Gupta', mobile: '9000022222', noticeVersion: notice };
+    const stop = (await api('reception', 'post', '/visitors/walk-ins').send(desk).expect(409)).body.message as string;
+    expect(stop).toBe("Stop at reception: Manish Gupta can't come in. Don't issue a badge; call the admin on duty.");
+    expect(await inA((tx) => tx.visit.count({ where: { visitorName: { contains: 'Gupta', mode: 'insensitive' } } }))).toBe(0);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'visitor.blocked', entityId: ids.maa, actorUserId: users.reception } }))).toBe(1);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'visitor.blocked', entityType: 'time_device' } }))).toBe(2);
+    // Under 18: only with a named adult; no photo and no ID from them.
+    const minor = { ...kioskBase, name: 'Arjun Rao', minor: true };
+    expect((await kiosk('visitor', 'post', '/walk-ins').send({ ...minor, photoBase64: undefined }).expect(400)).body.message).toMatch(/Name the adult/);
+    expect((await kiosk('visitor', 'post', '/walk-ins').send({ ...minor, minorAdult: 'Lakshmi Rao' }).expect(400)).body.message).toMatch(/No photo is taken/);
+    expect((await api('reception', 'post', '/visitors/walk-ins').send({ ...desk, name: 'Arjun Rao', minor: true, minorAdult: 'Lakshmi Rao', idType: 'pan', idLast4: '234F' }).expect(400)).body.message).toMatch(/under 18 do not give ID/);
+    const kid = (await kiosk('visitor', 'post', '/walk-ins').send({ ...minor, minorAdult: 'Lakshmi Rao', photoBase64: undefined }).expect(want(200))).body;
+    expect(await inA((tx) => tx.visit.findUniqueOrThrow({ where: { id: kid.id } }))).toMatchObject({ status: 'waiting', minor: true, minorAdult: 'Lakshmi Rao', photoPath: null, idType: null });
+    // The location takes ID: type and last 4 on the kiosk and at the desk; a photo of the ID only at reception.
+    await setting('visitors.id_capture', 'on');
+    const adult = { ...kioskBase, name: 'Kavitha Nair', mobile: '9000044444' };
+    expect((await kiosk('visitor', 'post', '/walk-ins').send(adult).expect(400)).body.message).toMatch(/Choose the ID type/);
+    const withId = (await kiosk('visitor', 'post', '/walk-ins').send({ ...adult, idType: 'pan', idLast4: '234f' }).expect(want(200))).body;
+    expect(await inA((tx) => tx.visit.findUniqueOrThrow({ where: { id: withId.id } }))).toMatchObject({ idType: 'pan', idLast4: '234F' });
+    expect((await api('reception', 'post', '/visitors/walk-ins').send({ ...desk, name: 'Kavitha Nair', mobile: '9000044444' }).expect(400)).body.message).toMatch(/Choose the ID type/);
+    await setting('visitors.id_capture', 'with_image');
+    expect((await kiosk('visitor', 'post', '/walk-ins').send({ ...adult, name: 'Sunil Rao', mobile: '9000055555', idType: 'pan', idLast4: '234F' }).expect(200)).body).toEqual({ state: 'see-reception' });
+    await setting('visitors.id_capture', 'off');
+    expect((await kiosk('visitor', 'post', '/walk-ins').send({ ...adult, name: 'Sunil Rao', mobile: '9000055555', idType: 'pan', idLast4: '234F' }).expect(400)).body.message).toMatch(/does not take ID/);
   });
 
   it('606: an invited visitor of a type reads the NDA on their link; the kiosk pass then asks only the rest', async () => {

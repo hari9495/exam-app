@@ -269,6 +269,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // from own-payroll margin as a share of pay. Bench: pay while between placements, how long, and what follows.
   // Contract labour CL-1 (answer 627, Settings 4.9): days before a contractor licence ends that the compliance owners are told.
   'clra.licence_alerts': { label: 'Contract labour: licence expiry alerts (days before)', scopes: ['tenant'], dated: false, multi: true, values: ['90', '60', '30', '15', '7'], default: '60,30,7' },
+  // CL-2 (answer 632): a recorded site safety induction before the first gate pass, and how long it lasts.
+  'clra.induction_required': { label: 'Contract labour: safety induction before the gate pass', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+  'clra.induction_months': { label: 'Contract labour: a safety induction lasts (months)', scopes: ['tenant'], dated: false, values: ['6', '12', '24'], default: '12' },
   'staffing.vendor.target_margin_pct': { label: 'Staffing desk: target margin for a vendor rate cap (%)', scopes: ['tenant'], dated: false, values: ['10', '15', '20', '25', '30', '35', '40'], default: '25' },
   'staffing.vendor.ownership_days': { label: 'Staffing desk: a vendor holds a submitted candidate for (days)', scopes: ['tenant'], dated: false, values: ['30', '60', '90', '180'], default: '90' },
   'staffing.submission.mask_contact': { label: 'Staffing desk: hide candidate phone and email from clients until shortlisted', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'on' },
@@ -306,7 +309,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // pages. Starter off.
   // Visitors slice 1 (M02 §B11; founder answers 602-610): Settings 3.12, per location where the founder said so.
   'visitors.host_timeout_minutes': { label: 'Visitors: the host approves a walk-in within (minutes)', scopes: ['tenant', 'location'], dated: false, values: ['2', '5', '10', '15', '30', '60'], default: '10' },
-  'visitors.id_capture': { label: 'Visitors: capture ID proof (type and last 4 only)', scopes: ['tenant', 'location'], dated: false, values: ['off', 'on'], default: 'off' },
+  // Answer 603: off by default; per location the ID type and last 4, or also a photo of the ID (deleted after the ID retention).
+  'visitors.id_capture': { label: 'Visitors: capture ID proof (type and last 4 only)', scopes: ['tenant', 'location'], dated: false, values: ['off', 'on', 'with_image'], default: 'off', labels: { off: 'Off', on: 'ID type and last 4', with_image: 'ID type, last 4 and a photo of the ID' } },
   'visitors.photo': { label: 'Visitors: capture a photo', scopes: ['tenant', 'location'], dated: false, values: ['on', 'off'], default: 'on' },
   'visitors.hours_from': { label: 'Visitors: allowed from', scopes: ['tenant', 'location'], dated: false, values: HOURS, default: '09:00' },
   'visitors.hours_to': { label: 'Visitors: allowed until', scopes: ['tenant', 'location'], dated: false, values: HOURS, default: '18:30' },
@@ -316,6 +320,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // Answer 601: visitors sign themselves in on a kiosk in visitor mode at this location (off: reception only).
   'visitors.kiosk': { label: 'Visitors: self check-in on a visitor kiosk', scopes: ['tenant', 'location'], dated: false, values: ['off', 'on'], default: 'off' },
   'visitors.id_retention_days': { label: 'Visitors: keep ID details for (days)', scopes: ['tenant', 'location'], dated: false, values: ['7', '15', '30', '60', '90'], default: '30' },
+  // Answer 605: a watch-list entry is reviewed within this many days or it lapses (company-wide: the list is).
+  'visitors.watchlist_review_days': { label: 'Visitors: review each watch-list entry every (days)', scopes: ['tenant'], dated: false, values: ['90', '180', '365'], default: '365' },
   'brand.white_label': { label: 'Hide "Powered by YukthiX" on the careers site and candidate pages', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off', platform: { feature: 'white_label' } },
   'home.pay_on_employee_home': { label: 'Show net pay on the employee home', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // P02 §4.5 fraud guard: a new bank account is used for payouts only after this cooling period (starter, D17).

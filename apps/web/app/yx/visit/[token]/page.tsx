@@ -8,7 +8,8 @@ import { publicGet, publicPost } from '../../../../lib/yx-careers';
 const EMPTY = { visitor: '', mobile: '', company: '', purpose: '', host: '', location: '', address: '', window: { from: new Date(0), to: new Date(0) }, passCode: '', rules: { idRequired: false, photoRequired: false, safetyInduction: false, nda: false, escort: false, hours: '' } };
 
 // T9-14 the visitor's pass page (Visitors slice 1): the link in the invite email. Public; the token is the only key.
-// Details (mobile masked), the visitor notice (accepted at its version), then the QR pass for reception.
+// Details (mobile masked), the ID type and last 4 where the location takes ID (slice 3), the visitor notice (accepted at
+// its version), then the QR pass for reception.
 export default function YxVisitPassPage() {
   const { token } = useParams<{ token: string }>();
   const [visit, setVisit] = useState<PublicVisitView | null>(null);
@@ -32,7 +33,7 @@ export default function YxVisitPassPage() {
         state,
         onRetry: load,
         visit,
-        onAccept: async (vehicle) => setVisit(await publicPost<PublicVisitView>(`/visits/${encodeURIComponent(token)}/accept`, { noticeVersion: visit!.noticeVersion, ...(visit!.needs?.nda ? { ndaVersionId: visit!.needs.nda.versionId } : {}), ...(visit!.needs?.induction ? { inductionVersionId: visit!.needs.induction.versionId } : {}), ...(vehicle ? { vehicle } : {}) })),
+        onAccept: async (vehicle, id) => setVisit(await publicPost<PublicVisitView>(`/visits/${encodeURIComponent(token)}/accept`, { noticeVersion: visit!.noticeVersion, ...(visit!.needs?.nda ? { ndaVersionId: visit!.needs.nda.versionId } : {}), ...(visit!.needs?.induction ? { inductionVersionId: visit!.needs.induction.versionId } : {}), ...(vehicle ? { vehicle } : {}), ...(id ?? {}) })),
       }}
     />
   );

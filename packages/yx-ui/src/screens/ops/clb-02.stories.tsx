@@ -15,3 +15,8 @@ export const Underage: S = { name: 'Deploy · under 18 blocked', render: () => <
 export const OutOfScope: S = { name: 'Deploy · licence scope excludes Kerala', render: () => <WorkersScreen {...base} deploy="scope" /> };
 export const Empty: S = { render: () => <WorkersScreen {...base} workers={[]} state="empty" /> };
 export const Error: S = { render: () => <WorkersScreen {...base} state="error" /> };
+export const Duplicate: S = { name: 'Deploy · same ID already deployed (CL-2)', render: () => <WorkersScreen {...base} deploy="duplicate" /> };
+export const Threshold: S = { name: 'Deploy · registration threshold warning (CL-2)', render: () => <WorkersScreen {...base} deploy="threshold" /> };
+export const Approve: S = { name: 'Site approval · induction and gate pass (CL-2)', render: () => <WorkersScreen {...base} sheet={{ kind: 'approve', id: 'w6' }} /> };
+export const Release: S = { name: 'Release a worker (CL-2)', render: () => <WorkersScreen {...base} sheet={{ kind: 'release', id: 'w1' }} /> };
+export const ReadOnly: S = { name: 'Read only (view key, CL-2)', render: () => <WorkersScreen {...base} readOnly /> };

@@ -7,8 +7,12 @@ import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
 import { EmailService } from '../email/email.service';
 import { escapeHtml } from '../notifications/notification-email-render';
 import { publicBrand } from '../public-applications/public-brand';
-import type { AcceptVisitDto, CheckInDto, FindPassDto, InviteVisitorDto } from './visitors-dto';
 import { acknowledge, checkAccepted, needsView, outstanding, visitNeeds } from './visit-needs';
+import { FilesService } from '../documents/files.service';
+import { FileStore } from '../documents/file-store';
+import type { AcceptVisitDto, CheckInDto, FindPassDto, IdImageDto, InviteVisitorDto } from './visitors-dto';
+import { ID_WORDS, idLast4, idProblem, imageAllowed, minorProblem, type IdCapture, type IdType } from './visitor-guard-rules';
+import { VisitorWatchlistService, watchHit } from './visitor-watchlist.service';
 import { STATUS_WORDS, badgeText, checkInProblem, dayBounds, localDay, maskMobile, normalCode, normalMobile, noticeVersion, passCode, passToken, visitWindow, type VisitStatus } from './visitor-rules';
 
 // Visitors slice 1 (M02 §B11, YX-AT-22; founder answers 601-617). Every employee may invite a visitor (they are the
@@ -19,10 +23,14 @@ import { STATUS_WORDS, badgeText, checkInProblem, dayBounds, localDay, maskMobil
 // end of their window (611).
 
 const KEYS = ['visitors.desk.manage', 'visitors.log.view', 'visitors.settings.manage', 'org.settings.manage'] as const;
-export const VISITOR_SETTING_KEYS = ['visitors.host_timeout_minutes', 'visitors.id_capture', 'visitors.photo', 'visitors.hours_from', 'visitors.hours_to', 'visitors.notice', 'visitors.badge', 'visitors.retention_days', 'visitors.id_retention_days', 'visitors.kiosk'] as const;
+export const VISITOR_SETTING_KEYS = ['visitors.host_timeout_minutes', 'visitors.id_capture', 'visitors.photo', 'visitors.hours_from', 'visitors.hours_to', 'visitors.notice', 'visitors.badge', 'visitors.retention_days', 'visitors.id_retention_days', 'visitors.watchlist_review_days', 'visitors.kiosk'] as const;
 type VisitorSettingKey = (typeof VISITOR_SETTING_KEYS)[number];
 const LOOKUP: TenantContext = { organizationId: null, isSuperAdmin: true };
 const frontend = () => process.env.FRONTEND_URL ?? 'http://localhost:3000';
+// Answer 605: nobody but HR and Facility admin learns why; reception calls the admin on duty.
+const BLOCKED_DESK = "Stop: this visit can't go ahead. Don't issue a badge; call the admin on duty.";
+const BLOCKED_VISITOR = "We can't issue a pass for this visit. Please contact your host.";
+const ID_IMAGE_TYPES = ['image/jpeg', 'image/png'] as const;
 
 type Loc = { id: string; name: string; timezone: string; address: unknown; legalEntityId: string };
 type VisitRow = Awaited<ReturnType<Tx['visit']['findFirstOrThrow']>>;
@@ -37,6 +45,9 @@ export class VisitorsService {
     private readonly settings: OrgSettingsService,
     private readonly email: EmailService,
     private readonly blob: BlobStorageService,
+    private readonly files: FilesService,
+    private readonly store: FileStore,
+    private readonly watchlist: VisitorWatchlistService,
   ) {}
 
   /* ---------------- access ---------------- */
@@ -106,6 +117,8 @@ export class VisitorsService {
     this.own(v, 'an invite');
     const mobile = normalMobile(dto.mobile);
     if (!mobile) throw new BadRequestException('Enter a 10-digit mobile number, or + and the country code for a number outside India.');
+    const young = minorProblem(Boolean(dto.minor), dto.minorAdult);
+    if (young) throw new BadRequestException(young);
     const made = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const loc = await tx.location.findFirst({ where: { organizationId: c.organizationId, id: dto.locationId, archivedAt: null }, select: { id: true, name: true, timezone: true } });
       if (!loc) throw new NotFoundException('Location not found.');
@@ -122,14 +135,20 @@ export class VisitorsService {
           data: {
             organizationId: c.organizationId, locationId: loc.id, hostUserId: host.id, visitorName: dto.name, visitorMobile: mobile, visitorEmail: dto.email.toLowerCase(), visitorCompany: dto.company || null,
             purpose: dto.purpose, vehicle: dto.vehicle?.toUpperCase() || null, visitorTypeId: dto.typeId || null, startsAt: w.startsAt, endsAt: w.endsAt, passToken: passToken(), passCode: code, createdBy: host.id,
+            minor: Boolean(dto.minor), minorAdult: dto.minor ? dto.minorAdult!.trim() : null,
           },
         });
       }
       if (!row) throw new ConflictException('Could not make a pass code. Try again.');
-      await audit(tx, c, 'visitor.invited', 'visit', row.id, { locationId: loc.id, day: dto.day, purpose: dto.purpose });
+      await audit(tx, c, 'visitor.invited', 'visit', row.id, { locationId: loc.id, day: dto.day, purpose: dto.purpose, minor: row.minor });
+      // 605: a watch-list match blocks the visit; no pass goes out and the host is told only that it can't go ahead.
+      if (await watchHit(tx, c.organizationId, { name: row.visitorName, mobile })) {
+        row = await tx.visit.update({ where: { id: row.id }, data: { blockedAt: new Date() } });
+        await audit(tx, c, 'visitor.blocked', 'visit', row.id, { by: 'watchlist' });
+      }
       return { row, loc, host };
     });
-    const sent = await this.sendInvite(ctx.organizationId!, made.row, made.loc, made.host.name || made.host.email);
+    const sent = made.row.blockedAt ? false : await this.sendInvite(ctx.organizationId!, made.row, made.loc, made.host.name || made.host.email);
     return { ...(await inCompany(this.tenantPrisma, ctx, async (tx, c) => (await this.views(tx, c, [made.row]))[0]!)), emailed: sent };
   }
 
@@ -188,7 +207,8 @@ export class VisitorsService {
         orderBy: { startsAt: 'asc' },
         take: 500,
       });
-      return { location: { id: loc.id, name: loc.name }, today, canChange: !v.actingForOther, visits: await this.views(tx, c, rows) };
+      const idCapture = (await this.setting(tx, c, 'visitors.id_capture', loc.id)) as IdCapture;
+      return { location: { id: loc.id, name: loc.name }, today, canChange: !v.actingForOther, idCapture, visits: await this.views(tx, c, rows) };
     });
   }
 
@@ -218,8 +238,19 @@ export class VisitorsService {
       const loc = await this.deskLoc(tx, c, v, row.locationId);
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`visit_badge:${c.organizationId}`}))`;
       const fresh = await this.find(tx, c, id);
+      if (fresh.status === 'expected' && (fresh.blockedAt || (await watchHit(tx, c.organizationId, { name: fresh.visitorName, mobile: fresh.visitorMobile })))) throw new ConflictException(BLOCKED_DESK);
       const problem = checkInProblem({ status: fresh.status as VisitStatus, startsAt: fresh.startsAt, endsAt: fresh.endsAt }, loc.timezone, new Date());
       if (problem) throw new ConflictException(problem);
+      // 614: under 18 only with the named adult there.
+      if (fresh.minor && !dto.adultPresent) throw new BadRequestException(`Tick that ${fresh.minorAdult}, the adult with them, is here.`);
+      // 603: the location's ID rule; the ID may already have been given on the link (or with the photo of it).
+      const rule = (await this.setting(tx, c, 'visitors.id_capture', loc.id)) as IdCapture;
+      const given = dto.idType || dto.idLast4 ? { type: dto.idType ?? null, last4: dto.idLast4 ?? null } : null;
+      const idBad = idProblem(rule, fresh.minor, given ?? { type: fresh.idType, last4: fresh.idLast4 });
+      if (idBad) throw new BadRequestException(idBad);
+      const type = given?.type ?? fresh.idType;
+      if (rule === 'with_image' && !fresh.minor && imageAllowed(type) && !fresh.idFileId) throw new BadRequestException('Add a photo of the ID first: this location keeps one.');
+      if (given && fresh.idFileId && given.type !== fresh.idType) throw new BadRequestException('The ID type differs from the photo of the ID added. Add the photo again.');
       const notice = (await this.setting(tx, c, 'visitors.notice', loc.id)).trim();
       const atDesk = !fresh.noticeAcceptedAt;
       if (atDesk && !dto.noticeAccepted) throw new BadRequestException('Tick that the visitor read and accepted the notice.');
@@ -234,9 +265,11 @@ export class VisitorsService {
         data: {
           status: 'on_site', checkedInAt: new Date(), checkedInBy: user.userId!, badgeSeq: (last._max.badgeSeq ?? 0) + 1,
           ...(atDesk ? { noticeAcceptedAt: new Date(), noticeAcceptedVia: 'desk', noticeVersion: noticeVersion(notice) } : {}),
+          ...(given ? { idType: given.type, idLast4: idLast4(given.last4!), idCapturedAt: new Date() } : {}),
+          ...(fresh.minor ? { adultConfirmedAt: new Date() } : {}),
         },
       });
-      await audit(tx, c, 'visitor.checked_in', 'visit', fresh.id, { locationId: loc.id, notice: atDesk ? 'desk' : 'link' });
+      await audit(tx, c, 'visitor.checked_in', 'visit', fresh.id, { locationId: loc.id, notice: atDesk ? 'desk' : 'link', id: given ? 'desk' : fresh.idType ? 'link' : 'none', minor: fresh.minor });
       return (await this.views(tx, c, [done]))[0]!;
     });
   }
@@ -252,6 +285,54 @@ export class VisitorsService {
       await audit(tx, c, 'visitor.checked_out', 'visit', row.id, {});
       return (await this.views(tx, c, [await this.find(tx, c, id)]))[0]!;
     });
+  }
+
+  /**
+   * Answer 603: where the location keeps one, reception adds a photo of the ID with its type and last 4 before check-in.
+   * Private storage, virus-scanned before anyone can open it, deleted after the ID retention period. Never of an
+   * Aadhaar card (it shows the full number) and never for a visitor under 18.
+   */
+  async addIdImage(ctx: TenantContext, user: ScopeUser, id: string, dto: IdImageDto, file: { name: string; data: Buffer } | null) {
+    const v = await this.viewer(user);
+    this.own(v, 'a visit');
+    if (!file?.data?.length) throw new BadRequestException('Choose the photo of the ID.');
+    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const row = await this.find(tx, c, id);
+      const loc = await this.deskLoc(tx, c, v, row.locationId);
+      if (row.status !== 'expected') throw new ConflictException('Add the photo of the ID before check-in.');
+      if (row.blockedAt) throw new ConflictException(BLOCKED_DESK);
+      if (row.minor) throw new BadRequestException('Visitors under 18 do not give ID proof.');
+      const rule = (await this.setting(tx, c, 'visitors.id_capture', loc.id)) as IdCapture;
+      if (rule !== 'with_image') throw new BadRequestException('This location does not keep a photo of the ID (Settings › Visitors).');
+      const bad = idProblem(rule, false, { type: dto.idType, last4: dto.idLast4 });
+      if (bad) throw new BadRequestException(bad);
+      if (!imageAllowed(dto.idType)) throw new BadRequestException('An Aadhaar card shows the full number, which is never kept. Record only its last 4, or photograph another ID.');
+      const f = await this.files.storeIn(tx, c, { area: 'visitor_id', name: file.name, data: file.data, allowedMime: ID_IMAGE_TYPES, maxMb: 5, via: 'staff' });
+      const old = row.idFileId ? await tx.file.findFirst({ where: { organizationId: c.organizationId, id: row.idFileId }, select: { id: true, storageRef: true } }) : null;
+      await tx.visit.update({ where: { id: row.id }, data: { idType: dto.idType, idLast4: idLast4(dto.idLast4)!, idFileId: f.id, idCapturedAt: new Date() } });
+      if (old) await tx.$queryRaw`SELECT erase_visitor_id_files(${c.organizationId}::uuid, ARRAY[${old.id}]::uuid[]) AS n`;
+      await audit(tx, c, 'visitor.id_image_added', 'visit', row.id, { fileId: f.id, idType: dto.idType, replaced: Boolean(old) });
+      return { org: c.organizationId, fileId: f.id, scan: f.scanStatus, oldRef: old?.storageRef ?? null };
+    });
+    if (out.oldRef) await this.store.drop(out.oldRef).catch((e: Error) => this.logger.warn(`old ID image not removed: ${e.message}`));
+    // Scanned once the file row is committed (the hourly sweep retries a pending scan).
+    void this.files.scan(out.org, out.fileId).catch(() => undefined);
+    return { scan: out.scan };
+  }
+
+  /** Opens the photo of the ID (desk or log key at the location): clean files only, every open audited. */
+  async idImage(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    const f = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const row = await this.find(tx, c, id);
+      if (!(await this.reach(tx, c, v, ['visitors.desk.manage', 'visitors.log.view'])).some((l) => l.id === row.locationId)) throw new ForbiddenException('The photo of the ID is for reception and the visitor log at this location.');
+      if (!row.idFileId) throw new NotFoundException('No photo of the ID is kept for this visit (it may have been deleted after the ID retention period).');
+      const file = await tx.file.findFirstOrThrow({ where: { organizationId: c.organizationId, id: row.idFileId } });
+      if (file.scanStatus !== 'clean') throw new ConflictException('This photo is still being checked for viruses, or failed the check.');
+      await audit(tx, c, 'visitor.id_image_opened', 'visit', row.id, { fileId: file.id });
+      return file;
+    });
+    return { file: await this.files.bytes(f), name: f.fileName, contentType: f.mime };
   }
 
   /* ---------------- log (VIS-04) ---------------- */
@@ -308,7 +389,8 @@ export class VisitorsService {
       const notice = (await this.setting(tx, c, 'visitors.notice', row.locationId)).trim();
       const hours = `${await this.setting(tx, c, 'visitors.hours_from', row.locationId)} to ${await this.setting(tx, c, 'visitors.hours_to', row.locationId)}`;
       const retention = await this.setting(tx, c, 'visitors.retention_days', row.locationId);
-      const state = row.status === 'cancelled' ? 'blocked' : row.status !== 'expected' && row.status !== 'on_site' ? 'expired' : row.endsAt <= new Date() ? 'expired' : row.noticeAcceptedAt ? 'pass' : 'details';
+      const idRule = (await this.setting(tx, c, 'visitors.id_capture', row.locationId)) as IdCapture;
+      const state = row.status === 'cancelled' || (row.status === 'expected' && row.blockedAt) ? 'blocked' : row.status !== 'expected' && row.status !== 'on_site' ? 'expired' : row.endsAt <= new Date() ? 'expired' : row.noticeAcceptedAt ? 'pass' : 'details';
       const addr = (loc.address ?? {}) as { lines?: string[]; city?: string; postalCode?: string };
       return {
         state,
@@ -329,6 +411,10 @@ export class VisitorsService {
         passCode: state === 'pass' ? row.passCode : null,
         // Slice 2 (606): the visitor type's NDA and safety induction still to accept for this visit.
         needs: needsView(await outstanding(tx, c, row.id, await visitNeeds(tx, c, (k, l) => this.setting(tx, c, k, l), row.locationId, row.visitorTypeId, row.visitorMobile, row.visitorCompany))),
+        // 603: the ID step shows where the location takes ID proof (never for a visitor under 18).
+        idStep: idRule !== 'off' && !row.minor,
+        idGiven: row.idType ? { type: row.idType, last4: row.idLast4 } : null,
+        idRetentionDays: Number(await this.setting(tx, c, 'visitors.id_retention_days', row.locationId)),
         brand: await publicBrand(this.tenantPrisma, this.blob, row.organizationId),
       };
     });
@@ -340,6 +426,7 @@ export class VisitorsService {
     const c = { organizationId: row.organizationId, isSuperAdmin: true } as CompanyContext;
     await this.tenantPrisma.forTenant(c, async (tx) => {
       if (row.status === 'cancelled') throw new ConflictException('This visit was cancelled. Please contact your host.');
+      if (row.blockedAt || (await watchHit(tx, row.organizationId, { name: row.visitorName, mobile: row.visitorMobile }))) throw new ConflictException(BLOCKED_VISITOR);
       if (row.status !== 'expected' || row.endsAt <= new Date()) throw new ConflictException('This visit pass has expired. Ask your host to invite you again.');
       const version = noticeVersion((await this.setting(tx, c, 'visitors.notice', row.locationId)).trim());
       if (dto.noticeVersion !== version) throw new ConflictException('The visitor notice changed while you were reading it. Reload the page and read it again.');
@@ -347,7 +434,14 @@ export class VisitorsService {
       const due = await outstanding(tx, c, row.id, await visitNeeds(tx, c, (k, l) => this.setting(tx, c, k, l), row.locationId, row.visitorTypeId, row.visitorMobile, row.visitorCompany));
       checkAccepted(due, dto);
       await acknowledge(tx, c, row.id, due, row.visitorMobile, row.visitorCompany, 'link');
-      await tx.visit.update({ where: { id: row.id }, data: { noticeAcceptedAt: row.noticeAcceptedAt ?? new Date(), noticeAcceptedVia: row.noticeAcceptedVia ?? 'link', noticeVersion: version, ...(dto.vehicle !== undefined ? { vehicle: dto.vehicle.toUpperCase() || null } : {}) } });
+      // 603: the ID type and last 4 where the location takes ID proof (the photo of it, if kept, is taken at the desk).
+      const rule = (await this.setting(tx, c, 'visitors.id_capture', row.locationId)) as IdCapture;
+      const given = dto.idType || dto.idLast4 ? { type: dto.idType ?? null, last4: dto.idLast4 ?? null } : null;
+      if (given && row.idFileId) throw new ConflictException('Reception already has your ID. Nothing more is needed.');
+      // On the link the ID may wait for the desk; only what is given is checked.
+      const idBad = given || row.minor || rule === 'off' ? idProblem(rule, row.minor, given ?? {}) : null;
+      if (idBad) throw new BadRequestException(idBad);
+      await tx.visit.update({ where: { id: row.id }, data: { noticeAcceptedAt: row.noticeAcceptedAt ?? new Date(), noticeAcceptedVia: row.noticeAcceptedVia ?? 'link', noticeVersion: version, ...(dto.vehicle !== undefined ? { vehicle: dto.vehicle.toUpperCase() || null } : {}), ...(given ? { idType: given.type, idLast4: idLast4(given.last4!), idCapturedAt: new Date() } : {}) } });
       if (!row.noticeAcceptedAt) await AuditService.recordIn(tx, c, { actorUserId: null, action: 'visitor.notice_accepted', entityType: 'visit', entityId: row.id, metadata: { version, via: 'link' } });
     });
     return this.publicVisit(token);
@@ -370,7 +464,7 @@ export class VisitorsService {
         values: Object.fromEntries(VISITOR_SETTING_KEYS.map((k) => [k, String(company(k)?.value ?? SETTINGS[k]!.default)])),
         defaults: Object.fromEntries(VISITOR_SETTING_KEYS.map((k) => [k, SETTINGS[k]!.default])),
         choices: Object.fromEntries(VISITOR_SETTING_KEYS.map((k) => [k, SETTINGS[k]!.values])),
-        labels: { 'visitors.badge': SETTINGS['visitors.badge']!.labels ?? {} },
+        labels: { 'visitors.badge': SETTINGS['visitors.badge']!.labels ?? {}, 'visitors.id_capture': SETTINGS['visitors.id_capture']!.labels ?? {} },
         // Locations with their own value (set on the company rules page), named on the field.
         overrides: Object.fromEntries(VISITOR_SETTING_KEYS.map((k) => [k, rows.filter((r) => r.key === k && r.scopeType === 'location').map((r) => locs.get(r.scopeId) ?? 'A location')])),
         lastChange: last ? { by: by?.name || by?.email || 'Someone', at: last.updatedAt, what: `Changed ${SETTINGS[last.key]!.label.replace(/^Visitors: /, '').toLowerCase()}` } : null,
@@ -425,6 +519,9 @@ export class VisitorsService {
    * left is a count by location, day and purpose, with no name.
    */
   async retentionSweep(now = new Date()): Promise<number> {
+    // Slice 3 rides the same nightly job: ID details past their own period (603), lapsed watch-list entries (605).
+    await this.idSweep(now);
+    await this.watchlist.lapseSweep(now);
     const places = await this.tenantPrisma.forTenant(LOOKUP, (tx) => tx.visit.groupBy({ by: ['organizationId', 'locationId'], where: { status: { in: ['checked_out', 'not_out', 'no_show', 'cancelled', 'declined'] } } }));
     let deleted = 0;
     for (const p of places) {
@@ -432,6 +529,8 @@ export class VisitorsService {
       deleted += await this.tenantPrisma.forTenant(c, async (tx) => {
         const days = Number(await this.setting(tx, c, 'visitors.retention_days', p.locationId));
         const cutoff = new Date(now.getTime() - days * 86_400_000);
+        // The ID photo goes before (or with) its visit, so no file is left behind.
+        await this.dropIds(tx, c, p.locationId, Math.min(days, Number(await this.setting(tx, c, 'visitors.id_retention_days', p.locationId))), now);
         const old = { organizationId: p.organizationId, locationId: p.locationId, status: { in: ['checked_out', 'not_out', 'no_show', 'cancelled', 'declined'] }, endsAt: { lt: cutoff } };
         // Slice 2 (602): the visitor's photo goes with the visit.
         for (const ph of await tx.visit.findMany({ where: { ...old, photoPath: { not: null } }, select: { photoPath: true } })) await this.blob.deleteByUrl(ph.photoPath!).catch(() => undefined);
@@ -449,6 +548,32 @@ export class VisitorsService {
       });
     }
     return deleted;
+  }
+
+  /** Answer 603: ID details (and the photo of the ID) go after the location's ID retention period; the visit stays. */
+  async idSweep(now = new Date()): Promise<number> {
+    const places = await this.tenantPrisma.forTenant(LOOKUP, (tx) => tx.visit.groupBy({ by: ['organizationId', 'locationId'], where: { OR: [{ idType: { not: null } }, { idFileId: { not: null } }] } }));
+    let n = 0;
+    for (const p of places) {
+      const c = { organizationId: p.organizationId, isSuperAdmin: true } as CompanyContext;
+      n += await this.tenantPrisma.forTenant(c, async (tx) => this.dropIds(tx, c, p.locationId, Number(await this.setting(tx, c, 'visitors.id_retention_days', p.locationId)), now));
+    }
+    return n;
+  }
+
+  private async dropIds(tx: Tx, c: CompanyContext, locationId: string, days: number, now: Date): Promise<number> {
+    const cutoff = new Date(now.getTime() - days * 86_400_000);
+    const rows = await tx.visit.findMany({ where: { organizationId: c.organizationId, locationId, endsAt: { lt: cutoff }, OR: [{ idType: { not: null } }, { idFileId: { not: null } }] }, select: { id: true, idFileId: true } });
+    if (!rows.length) return 0;
+    const fileIds = rows.map((r) => r.idFileId).filter((x): x is string => Boolean(x));
+    const refs = fileIds.length ? await tx.file.findMany({ where: { organizationId: c.organizationId, id: { in: fileIds } }, select: { storageRef: true } }) : [];
+    await tx.visit.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { idType: null, idLast4: null, idFileId: null } });
+    // The app may not delete stored files; the owner's function deletes visitor ID photos no visit points at.
+    if (fileIds.length) await tx.$queryRaw`SELECT erase_visitor_id_files(${c.organizationId}::uuid, ${fileIds}::uuid[]) AS n`;
+    // shortcut: a blob whose drop fails stays orphaned (logged); the file row is gone so nobody can open it.
+    for (const r of refs) await this.store.drop(r.storageRef).catch((e: Error) => this.logger.warn(`ID image not removed: ${e.message}`));
+    await AuditService.recordIn(tx, c, { actorUserId: null, action: 'visitor.id_deleted', entityType: 'visit', entityId: locationId, metadata: { visits: rows.length, images: fileIds.length, days } });
+    return rows.length;
   }
 
   /* ---------------- helpers ---------------- */
@@ -477,8 +602,9 @@ export class VisitorsService {
       timeZone: locs.get(r.locationId)?.timezone ?? 'Asia/Kolkata',
       startsAt: r.startsAt.toISOString(),
       endsAt: r.endsAt.toISOString(),
-      status: r.status as VisitStatus,
-      statusText: STATUS_WORDS[r.status as VisitStatus],
+      // 605: a blocked visit is still expected underneath; everyone sees only "Blocked", never why.
+      status: (r.status === 'expected' && r.blockedAt ? 'blocked' : r.status) as VisitStatus | 'blocked',
+      statusText: r.status === 'expected' && r.blockedAt ? 'Blocked' : STATUS_WORDS[r.status as VisitStatus],
       passCode: r.passCode,
       badge: badgeText(r.badgeSeq),
       vehicle: r.vehicle,
@@ -491,6 +617,11 @@ export class VisitorsService {
       approvalDueAt: r.approvalDueAt?.toISOString() ?? null,
       decidedVia: r.decidedVia,
       hoursOverride: r.hoursOverrideReason,
+      idType: r.idType,
+      idText: r.idType ? `${ID_WORDS[r.idType as IdType]} ··${r.idLast4}` : null,
+      hasIdImage: Boolean(r.idFileId),
+      minor: r.minor,
+      minorAdult: r.minorAdult,
     }));
   }
 }
