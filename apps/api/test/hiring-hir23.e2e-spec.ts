@@ -34,7 +34,7 @@ describe('Hiring HIR-23 bias audit', () => {
   const token: Partial<Record<Who, string>> = {};
   const users: Partial<Record<Who, string>> = {};
   const ids: Record<string, string> = {};
-  const api = (who: Who, method: 'get' | 'post' | 'put', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const api = (who: Who, method: 'get' | 'post' | 'put' | 'patch', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const inA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, fn);
   const want = (status: number) => (r: request.Response) => {
     if (r.status !== status) throw new Error(`${r.status}: ${JSON.stringify(r.body)}`);
@@ -114,6 +114,9 @@ describe('Hiring HIR-23 bias audit', () => {
     const t = (await api('admin', 'post', '/hiring/scorecard-templates').send({ name: 'QA round', scaleMax: 5, passBar: 3, items: [{ label: 'Test design', weight: 100 }] }).expect(want(201))).body;
     await api('admin', 'put', `/hiring/jobs/${ids.nycJob}/scorecard`).send({ templateId: t.id }).expect(want(200));
     const entry = (await api('admin', 'post', `/jobs/${ids.nycJob}/entries`).send({ newCandidate: { name: 'Ana Ruiz', email: `ana-${run}@x.test` } }).expect(201)).body.id;
+    ids.entry = entry;
+    // Answer 474: this application is older than the NYC notice days, so only the bias audit decides in the tests below.
+    await inA((tx) => tx.pipelineEntry.update({ where: { id: entry }, data: { createdAt: new Date(Date.now() - 20 * 86_400_000) } }));
     const slot = { startsAt: new Date(Date.now() - 3_600_000).toISOString(), endsAt: new Date().toISOString() };
     ids.iv = (await api('admin', 'post', `/pipeline/entries/${entry}/interviews`).send({ panelistUserIds: [users.int1], location: 'Video call', timeZone: 'America/New_York', slots: [slot] }).expect(want(201))).body.id;
   });
@@ -225,5 +228,51 @@ describe('Hiring HIR-23 bias audit', () => {
     await api('admin', 'get', '/hiring/bias-audits/not-a-uuid/report').expect(400);
     expect((await api('adminB', 'get', '/hiring/bias-audits').expect(200)).body.audits).toEqual([]);
     expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.biasAudit.count())).toBe(0);
+  });
+
+  it('answer 473: 6.1 lists the company’s New York City locations (not Albany) for the hint', async () => {
+    const v = (await api('admin', 'get', '/hiring/settings').expect(200)).body;
+    expect(v.nycLocations).toEqual(['Manhattan office']);
+    expect((await api('adminB', 'get', '/hiring/settings').expect(200)).body.nycLocations).toEqual([]);
+  });
+
+  it('answer 474: the NYC notice on the job page; "assess me another way" is kept on the application, audited, and the AI draft waits or skips', async () => {
+    // A valid audit, so only the notice decides; the NYC and Albany jobs take applications.
+    await api('admin', 'post', '/hiring/bias-audits').send(audit({ auditedOn: daysAgo(5) })).expect(want(201));
+    await api('admin', 'post', '/hiring/consent-notices').send({ purpose: 'application', text: 'We use your details only to consider you for this job.' }).expect(want(201));
+    const token = async (jobId: string) => (await api('admin', 'patch', `/jobs/${jobId}`).send({ publicApplyEnabled: true, salaryMin: 90000, salaryMax: 120000, salaryCurrency: 'USD' }).expect(want(200))).body.applyToken as string;
+    const nyc = await token(ids.nycJob);
+    const albany = await token(ids.albanyJob);
+    const pub = (path: string) => request(server()).get(`/api/v1/public${path}`);
+    const job = (await pub(`/jobs/${nyc}`).expect(200)).body;
+    expect(job.nycNotice).toEqual({ businessDays: 10, assesses: [expect.stringMatching(/AI draft of the interview scorecard/), expect.stringMatching(/AI notes/)] });
+    expect((await pub(`/jobs/${albany}`).expect(200)).body.nycNotice).toBeNull();
+    // Apply asking for another process: kept on the application and audited; Albany ignores the flag.
+    const apply = (t: string, email: string, alternativeProcess: boolean) =>
+      request(server()).post(`/api/v1/public/jobs/${t}/apply`).send({ name: 'Mia Chen', email, resumeBase64: Buffer.from(`%PDF-1.7 ${email}`).toString('base64'), consents: [{ purpose: 'application', version: 1 }], alternativeProcess });
+    await apply(nyc, `mia-${run}@x.test`, true).expect(201);
+    await apply(nyc, `leo-${run}@x.test`, false).expect(201);
+    await apply(albany, `ivy-${run}@x.test`, true).expect(201);
+    const entries = await inA((tx) => tx.pipelineEntry.findMany({ where: { candidate: { email: { in: [`mia-${run}@x.test`, `leo-${run}@x.test`, `ivy-${run}@x.test`] } } }, select: { id: true, alternativeRequestedAt: true, candidate: { select: { email: true } } } }));
+    const of = (e: string) => entries.find((x) => x.candidate.email === e)!;
+    expect(of(`mia-${run}@x.test`).alternativeRequestedAt).not.toBeNull();
+    expect(of(`leo-${run}@x.test`).alternativeRequestedAt).toBeNull();
+    expect(of(`ivy-${run}@x.test`).alternativeRequestedAt).toBeNull();
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'candidate.alternative_process.requested', entityId: of(`mia-${run}@x.test`).id } }))).toBe(1);
+    // The recruiter sees it on the board row.
+    const board = (await api('admin', 'get', `/hiring/jobs/${ids.nycJob}/board`).expect(200)).body;
+    const rows = Object.values(board.columns).flat() as { entryId: string; alternativeRequestedAt: string | null }[];
+    expect(rows.find((x) => x.entryId === of(`mia-${run}@x.test`).id)!.alternativeRequestedAt).toBeTruthy();
+    expect(rows.find((x) => x.entryId === of(`leo-${run}@x.test`).id)!.alternativeRequestedAt).toBeNull();
+    // The AI draft: Mia asked for another process; Leo applied today (inside the 10 business days).
+    const slot = { startsAt: new Date(Date.now() - 3_600_000).toISOString(), endsAt: new Date().toISOString() };
+    const iv = async (entryId: string) => (await api('admin', 'post', `/pipeline/entries/${entryId}/interviews`).send({ panelistUserIds: [users.int1], location: 'Video call', timeZone: 'America/New_York', slots: [slot] }).expect(want(201))).body.id as string;
+    const card = async (id: string) => (await api('int1', 'get', `/hiring/interviews/${id}/notetaker`).expect(200)).body.aiBlocked as string | null;
+    expect(await card(await iv(of(`mia-${run}@x.test`).id))).toMatch(/not used for this candidate: they asked for another process/);
+    expect(await card(await iv(of(`leo-${run}@x.test`).id))).toMatch(/can be used for this candidate from .+: New York City candidates are told 10 business days before\./);
+    // With the NYC setting off, no notice and nothing waits.
+    await setSetting('hiring.bias_audit.nyc', 'off');
+    expect((await pub(`/jobs/${nyc}`).expect(200)).body.nycNotice).toBeNull();
+    expect(await card(ids.iv)).toBeNull();
   });
 });
