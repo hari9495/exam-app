@@ -1,5 +1,8 @@
 import { BADGE_SIZE, badgePdf, rollCallPdf } from './visitor-pdf';
 
+// Each test renders up to three PDFs with embedded fonts: give it room when the whole suite runs at once.
+jest.setTimeout(30_000);
+
 describe('visitor PDFs (slice 4)', () => {
   it('the badge is one label-size page with an Indian-script name', async () => {
     const out = await badgePdf({ company: 'Kaveri Foods', location: 'Chennai office', name: 'ரவி குமார்', visitorCompany: null, host: 'Divya', validUntil: '6:30 pm, 2026-11-12', badge: 'V-0413', passCode: 'V-7KQ2-MX4P', minorAdult: 'Lakshmi Rao' });

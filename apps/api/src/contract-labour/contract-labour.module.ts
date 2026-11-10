@@ -1,3 +1,6 @@
+import { PayrollModule } from '../payroll/payroll.module';
+import { ClraRegistersController } from './registers.controller';
+import { ClraRegistersService } from './registers.service';
 import { Inject, Injectable, Logger, Module, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
@@ -59,9 +62,9 @@ export class ContractLabourJobs implements OnModuleInit, OnModuleDestroy {
 // Contract labour CL-1: contractors (the vendor record), their licences and renewals, Settings 4.9, expiry alerts.
 // CL-2: contract workers (persons with the contract_worker role) and their deployments, gate passes and inductions.
 @Module({
-  imports: [AuthModule, StatutoryModule, CryptoModule, DocumentsModule, EmailModule, NotificationsModule, OrgStructureModule],
-  controllers: [ContractLabourController, PublicContractorPortalController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, ContractLabourService, WorkersService, ComplianceService, ContractAttendanceService, ContractorPortalService, ContractLabourJobs],
+  imports: [AuthModule, StatutoryModule, CryptoModule, DocumentsModule, EmailModule, NotificationsModule, OrgStructureModule, PayrollModule],
+  controllers: [ContractLabourController, PublicContractorPortalController, ClraRegistersController],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, ContractLabourService, WorkersService, ComplianceService, ContractAttendanceService, ContractorPortalService, ContractLabourJobs, ClraRegistersService],
   exports: [ContractLabourService, ContractAttendanceService],
 })
 export class ContractLabourModule {}

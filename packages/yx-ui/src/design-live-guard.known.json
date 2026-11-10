@@ -79,7 +79,6 @@
     "hiring: TimesheetCorrectionScreen",
     "ops: ClientEstablishmentsScreen",
     "ops: ClientPacksScreen",
-    "ops: ClraRegistersScreen",
     "ops: ErrorCase",
     "ops: IcConsoleScreen",
     "ops: LoadingCase",

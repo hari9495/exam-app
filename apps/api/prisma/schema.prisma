@@ -13208,3 +13208,20 @@ model ClraSitePeak {
   @@id([organizationId, locationId])
   @@map("clra_site_peaks")
 }
+
+/// Contract labour CL-6 (answer 630): an establishment's annual return, recorded when filed on the portal by hand.
+model ClraAnnualReturn {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  locationId     String   @map("location_id") @db.Uuid
+  year           Int
+  figures        Json
+  formatVersion  String   @map("format_version") @db.VarChar(20)
+  filedOn        DateTime @map("filed_on") @db.Date
+  reference      String   @db.VarChar(60)
+  filedBy        String   @map("filed_by") @db.Uuid
+  filedAt        DateTime @default(now()) @map("filed_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, locationId, year], map: "clra_annual_returns_key")
+  @@map("clra_annual_returns")
+}

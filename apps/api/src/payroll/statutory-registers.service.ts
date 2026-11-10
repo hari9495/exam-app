@@ -187,42 +187,14 @@ export class StatutoryRegistersService {
         return slips.map((s) => ({ employeeId: s.employeeId, cells: [codes.get(s.employmentId) ?? '', people.get(s.employeeId) ?? '', String(monthDays), String(lop(s.id)), String(daysPaid(s.id))] }));
       };
       const types = rs.values.types as RegisterType[];
-      const current = await tx.statutoryRegister.findMany({ where: { organizationId: org, legalEntityId: e.id, locationId, periodStart, status: { not: 'superseded' } } });
+      // Contract labour registers (clra_*, CL-6) share the table, the freeze and the DSC signing, not this generation.
+      const current = await tx.statutoryRegister.findMany({ where: { organizationId: org, legalEntityId: e.id, locationId, periodStart, status: { not: 'superseded' }, NOT: { registerType: { startsWith: 'clra_' } } } });
       if (current.length && !reason) throw new BadRequestException('Registers for this month exist. Say why a new version is needed.');
       const made: { id: string; type: string; version: number; rows: number }[] = [];
       for (const t of types) {
         const rows = built(t);
         const old = current.find((x) => x.registerType === t.key);
-        const pdf = await renderRegister(
-          t.title,
-          e.name,
-          month,
-          place?.name ?? null,
-          t.columns,
-          rows.map((r) => r.cells),
-          `Format ${rs.version} (verify) · generated from approved payslips`,
-        );
-        const fileRef = await this.files.put(`registers/${org}/${e.id}/${randomBytes(12).toString('hex')}.pdf`, pdf);
-        if (old) await tx.statutoryRegister.update({ where: { id: old.id }, data: { status: 'superseded' } });
-        const reg = await tx.statutoryRegister.create({
-          data: {
-            organizationId: org,
-            legalEntityId: e.id,
-            locationId,
-            registerType: t.key,
-            periodStart,
-            formatVersion: rs.version,
-            version: (old?.version ?? 0) + 1,
-            supersedesId: old?.id ?? null,
-            reason: old ? reason! : null,
-            fileRef,
-            sha256: sha256(pdf),
-            unsignedSha256: sha256(pdf),
-            unsignedBytes: pdf.length,
-            rowCount: rows.length,
-            createdBy: v.userId!,
-          },
-        });
+        const reg = await this.storeIn(tx, c, { entity: e, locationId, place: place?.name ?? null, month, type: t.key, title: t.title, columns: t.columns, rows: rows.map((r) => r.cells), note: `Format ${rs.version} (verify) · generated from approved payslips`, formatVersion: rs.version, old: old ?? null, reason: reason ?? null, userId: v.userId! });
         if (rows.length)
           await tx.registerRow.createMany({
             data: rows.map((r) => ({ organizationId: org, legalEntityId: e.id, registerId: reg.id, employeeId: r.employeeId, data: { register: t.title, month, columns: t.columns, cells: r.cells } })),
@@ -232,6 +204,42 @@ export class StatutoryRegistersService {
       await audit(tx, c, 'statutory.registers.generated', 'legal_entity', e.id, { month, locationId, registers: made, reason: reason ?? null });
       return { month, registers: made };
     });
+  }
+
+  /**
+   * One register version: rendered, stored, the earlier version superseded. Payroll's registers and the contract labour
+   * registers (CL-6) both make their versions here, so freezing and the DSC signature work the same for both.
+   */
+  async storeIn(tx: Tx, c: CompanyContext, x: { entity: { id: string; name: string }; locationId: string | null; place: string | null; month: string; type: string; title: string; columns: string[]; rows: string[][]; note: string; formatVersion: string; old: { id: string; version: number } | null; reason: string | null; userId: string }) {
+    const pdf = await renderRegister(x.title, x.entity.name, x.month, x.place, x.columns, x.rows, x.note);
+    const fileRef = await this.files.put(`registers/${c.organizationId}/${x.entity.id}/${randomBytes(12).toString('hex')}.pdf`, pdf);
+    if (x.old) await tx.statutoryRegister.update({ where: { id: x.old.id }, data: { status: 'superseded' } });
+    return tx.statutoryRegister.create({
+      data: {
+        organizationId: c.organizationId,
+        legalEntityId: x.entity.id,
+        locationId: x.locationId,
+        registerType: x.type,
+        periodStart: asDate(`${x.month}-01`),
+        formatVersion: x.formatVersion,
+        version: (x.old?.version ?? 0) + 1,
+        supersedesId: x.old?.id ?? null,
+        reason: x.old ? x.reason : null,
+        fileRef,
+        sha256: sha256(pdf),
+        unsignedSha256: sha256(pdf),
+        unsignedBytes: pdf.length,
+        rowCount: x.rows.length,
+        createdBy: x.userId,
+      },
+    });
+  }
+
+  /** A register's stored file, checked against its recorded hash (CL-6 reads its own registers' files through this). */
+  async fileOf(r: { fileRef: string; sha256: string }) {
+    const file = await this.files.get(r.fileRef);
+    if (sha256(file) !== r.sha256) throw new ConflictException('This register does not match the file that was made.');
+    return file;
   }
 
   private view(r: Prisma.StatutoryRegisterGetPayload<object>) {
@@ -257,7 +265,7 @@ export class StatutoryRegistersService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       await this.entity(tx, c, v, 'statutory.filing.view', entityId);
       const rows = await tx.statutoryRegister.findMany({
-        where: { organizationId: c.organizationId, legalEntityId: entityId, ...(month ? { periodStart: asDate(`${month}-01`) } : {}) },
+        where: { organizationId: c.organizationId, legalEntityId: entityId, NOT: { registerType: { startsWith: 'clra_' } }, ...(month ? { periodStart: asDate(`${month}-01`) } : {}) },
         orderBy: [{ periodStart: 'desc' }, { registerType: 'asc' }, { version: 'desc' }],
         take: 300,
       });

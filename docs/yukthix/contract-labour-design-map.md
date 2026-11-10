@@ -9,6 +9,8 @@ nothing was built.
 
 ## What is live today (plain English)
 
+- **CL-6 is live (19 Nov 2026, branch `feat/yukthix-contract-labour-cl6`):** CLB-04, the contract-labour registers per
+  month and establishment (frozen and DSC-signed with payroll's) and the annual return draft with the filing recorded.
 - **CL-7 is live (18 Nov 2026, branch `feat/yukthix-contract-labour-cl7`):** CLB-05, a deployed contract worker becomes
   an employee through the joiner flow on the same person record (Contract workers › Make employee).
 - **CL-1 is live (10 Nov 2026, branch `feat/yukthix-contract-labour-1`):** CLB-01 Contractors register on
@@ -30,11 +32,12 @@ built** (no API for this feature) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Principal employer (contractors working at our sites) | 5 | 44 | 0 | 0 | 3 | 0 | 47 |
+| A. Principal employer (contractors working at our sites) | 5 | 39 | 3 | 0 | 0 | 0 | 42 |
 | B. We are the contractor (our staff at client sites) | 3 | 0 | 0 | 0 | 10 | 0 | 10 |
-| C. Contractor portal | 1 | 19 | 0 | 0 | 0 | 0 | 19 |
-| D. Settings | 1 | 1 | 2 | 0 | 0 | 0 | 3 |
-| **All** | 10 | 64 | 2 | 0 | 13 | 0 | 79 |
+| C. Contractor portal | 1 | 16 | 1 | 0 | 0 | 0 | 17 |
+| D. Settings | 1 | 0 | 2 | 0 | 0 | 0 | 2 |
+| **All** | 10 | 55 | 6 | 0 | 10 | 0 | 71 |
+Recounted by script 19 Nov 2026 on `feat/yukthix-contract-labour-cl6` after CL-6: CLB-04 live (Registers with a gap: the inspection pack stays in Compliance › Registers).
 
 Of the 57 stories under Screens/Contract labour, 44 are live (CL-1 to CL-5 and CL-7); with the portal and settings pages, 64 of 79.
 
@@ -144,9 +147,9 @@ All 46 stories in section 4: there is no contractor, licence, deployment, proof 
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Registers · Registers | design only, feature not built | reuse the statutory-registers service (freeze, DSC); new register types |
-| Returns · Annual return | design only, feature not built | drafted from the year's deployments and days; filing is outside the app |
-| Loading · Loading | design only, feature not built | |
+| Registers · Registers | live (gap) | live 19 Nov 2026 (CL-6) at /yx/contract-labour/registers: per month and establishment the registers of contractors, contract workers, the muster roll and wages (IN.CLRA.REGISTERS per state, verify) from the deployments and the contractors' wage registers; muster and wages wait for a contractor without one; frozen and DSC-signed through the payroll registers service; the muster's days are the wage registers' until CL-5; the drawn Inspection pack button is not on this page (question 783) |
+| Returns · Annual return | live | drafted from the year's deployments and wage registers (contractors, workers, most workers on a day, days worked, wages); "Open draft" is the PDF; "Record filing" keeps the day and the portal's reference once |
+| Loading · Loading | live | loading |
 
 #### CLB-05 · Convert worker to employee
 
@@ -570,3 +573,42 @@ pass" keeping the number; 681 block at the threshold once registrations exist, 6
 775. **PPL-12 Ready to onboard.** That queue lists accepted offers; conversions start from the worker and go straight to
      the Onboarding board, so its drawn "Contract worker conversion" row stays unused. *Suggested: drop that row from the
      PPL-12 drawing.*
+
+## CL-6 built (CLB-04, answers 629, 630; 19 Nov 2026, branch `feat/yukthix-contract-labour-cl6`)
+
+- **Formats:** rule set `IN.CLRA.REGISTERS` per state (Tamil Nadu, Karnataka; from 21 Nov 2025, verify): the four
+  registers with their columns and the annual return's due day (15 February). Migration
+  `202617x0000006_contract_labour_6`.
+- **Registers:** the compliance owner (`clra.contractor.manage`) makes a finished month's registers for one
+  establishment: contractors (with the verified licence and its maximum), contract workers, the muster roll and wages.
+  Workers are deployments approved and on site in the month. A contractor without a wage register for the month keeps the
+  muster and wages waiting ("Waiting for N contractors"). The muster's days are the wage registers' until CL-5's site
+  attendance lands (said on the register). The versions are `statutory_registers` rows (types `clra_*`) made through the
+  payroll registers service (`storeIn`, now shared by payroll's own registers), so freezing, the company DSC signature
+  and the inspection pack are payroll's routes with their key (`statutory.register.sign`, step-up); payroll's own
+  register list and generation leave the `clra_*` rows alone. A new version needs a reason; a frozen or signed one is
+  superseded, never changed. Readers (`clra.contractor.view`) download the PDFs (audited).
+- **Annual return (630):** per establishment and year: contractors, contract workers, most workers on any day, days
+  worked and wages from the wage registers; the draft as a PDF; filing stays on the portal: the filed day (in the next
+  year, not in the future) and the portal's reference are recorded once (`clra_annual_returns`, forced RLS), with the
+  figures as filed. Audited.
+- **Refused:** without the key 403, acting for someone else 403, another company 404, a month not yet over or a year not
+  yet over 400, a second filing 409.
+- **Tests:** kit and web tests, e2e `contract-labour-6` (4 scenarios, positive and negative).
+- **After CL-5 lands:** merge test main and take the muster's days from the confirmed attendance instead of the wage
+  registers (one place: `ClraRegistersService.make`).
+
+## Founder questions from CL-6 (19 Nov 2026)
+
+781. **Muster before CL-5.** Until site attendance is live, the muster roll's days come from the contractors' wage
+     registers, said on the register. *Suggested: keep until CL-5; then the confirmed attendance.*
+782. **Who signs.** Freezing and the DSC signature need the company's register-signing key (the payroll compliance
+     owner), not the contract-labour key. *Suggested: keep: one signer for all statutory registers.*
+783. **Inspection pack.** The payroll inspection pack already includes the signed contract-labour registers of the
+     same entity, place and month; the CLB-04 page has no button of its own. *Suggested: keep it in Compliance ›
+     Registers.*
+784. **A filed return is final.** A correction is filed again on the portal; YukthiX does not change the recorded
+     filing. *Suggested: keep; a support fix if a reference was mistyped.*
+785. **Register per contractor.** The drawing showed a register of workmen per contractor; YukthiX makes one register
+     for the establishment with the contractor named on each row. *Suggested: keep (inspectors accept the combined form;
+     verify with counsel).*
