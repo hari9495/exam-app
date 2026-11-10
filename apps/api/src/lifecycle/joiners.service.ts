@@ -68,7 +68,8 @@ export class JoinersService {
     if (d.managerEmployeeId && !(await tx.employment.findFirst({ where: { organizationId: org, employeeId: d.managerEmployeeId, exitedOn: null }, select: { id: true } }))) throw new BadRequestException('The manager must be a current employee.');
   }
 
-  private async addIn(tx: Tx, c: CompanyContext, v: Viewer, dto: JoinerInput, source: 'direct' | 'import' | 'offer', offerId: string | null = null) {
+  /** CL-7 (answer 637): a contract worker joins from their deployment (source 'contract_worker', on the same person). */
+  async addIn(tx: Tx, c: CompanyContext, v: Viewer, dto: JoinerInput, source: 'direct' | 'import' | 'offer' | 'contract_worker', offerId: string | null = null, contractDeploymentId: string | null = null) {
     const org = c.organizationId;
     if (!ISO.test(dto.joiningOn)) throw new BadRequestException('Give the joining day as a date.');
     if (dto.joiningOn < todayIst()) throw new BadRequestException('The joining day cannot be in the past. Add people who already joined as employees.');
@@ -102,6 +103,7 @@ export class JoinersService {
         hrOwnerUserId: c.userId!,
         status: 'invited',
         offerId,
+        contractDeploymentId,
         personType: rehireOf ? 'rehire' : 'new',
         rehireOf,
         batchId: dto.batchId ?? null,
@@ -133,7 +135,7 @@ export class JoinersService {
     return { id: res.pb.id, journeyId: res.journeyId };
   }
 
-  private async afterAdd(ctx: CompanyContext, user: ScopeUser, added: { pb: Prisma.PreboardingGetPayload<object>; journeyId: string }[]) {
+  async afterAdd(ctx: CompanyContext, user: ScopeUser, added: { pb: Prisma.PreboardingGetPayload<object>; journeyId: string }[]) {
     for (const a of added) {
       await this.journeys.afterStart(ctx, a.journeyId, user.userId ?? null);
       // LIFE-2.01: the joiner is invited to the pre-boarding portal (when HR gave a personal email).
