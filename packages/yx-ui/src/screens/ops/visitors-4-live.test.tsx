@@ -118,7 +118,8 @@ describe('VIS-02 invite outside the allowed hours (652)', () => {
   it('outside the hours: sent, with a warning in the toast', async () => {
     show(<PreRegisterScreen visits={[]} today={TODAY} live={pre('09:00 to 18:30')} />);
     await send();
-    expect(await screen.findByText(/outside the allowed hours \(09:00 to 18:30\)/)).toBeInTheDocument();
+    // The toast and its screen-reader announcement both carry it.
+    expect((await screen.findAllByText(/outside the allowed hours \(09:00 to 18:30\)/)).length).toBeGreaterThan(0);
   });
   it('inside the hours: no warning', async () => {
     show(<PreRegisterScreen visits={[]} today={TODAY} live={pre(null)} />);
