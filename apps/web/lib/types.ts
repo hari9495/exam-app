@@ -667,6 +667,8 @@ export interface ApplicationStatus {
   orgName?: string;
   careersSlug?: string | null;
   accent?: string | null;
+  /** Answer 502: the New York City automated-tool notice and when this candidate asked for another process. */
+  toolNotice?: { assesses: string[]; businessDays: number; requestedAt: string | null } | null;
 }
 
 // StageCounts mirrors apps/api/src/pipeline/pipeline.service.ts's StageCounts -- a job's

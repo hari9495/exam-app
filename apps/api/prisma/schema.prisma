@@ -1334,6 +1334,8 @@ model PipelineEntry {
   currentPay             Int?                    @map("current_pay")
   /// Answer 474: the candidate asked for another process than the automated tool (NYC notice), when.
   alternativeRequestedAt DateTime?               @map("alternative_requested_at") @db.Timestamptz(3)
+  /// Answer 502: when the automated-tool notice was emailed to a candidate added by hand (the notice days count from it).
+  toolNoticeAt           DateTime?               @map("tool_notice_at") @db.Timestamptz(3)
   assignedUserId         String?                 @map("assigned_user_id") @db.Uuid
   assignedGroupId        String?                 @map("assigned_group_id") @db.Uuid
   createdAt              DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)

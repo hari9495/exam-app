@@ -1,4 +1,5 @@
 import { hiddenFromManager } from '../internal-applications/internal-applications.service';
+import { nycNotice } from '../hiring/bias-audit';
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { audit, inCompany } from '../org-structure/org-structure.service';
@@ -46,7 +47,9 @@ export class HiringBoardService {
       const hidden = await hiddenFromManager(tx, c.organizationId, userId, entryIds);
       // Answer 474: New York City applicants who asked for another process than the automated tool.
       const alternative = new Map((await tx.pipelineEntry.findMany({ where: { organizationId: c.organizationId, id: { in: entryIds }, alternativeRequestedAt: { not: null } }, select: { id: true, alternativeRequestedAt: true } })).map((e) => [e.id, e.alternativeRequestedAt]));
-      return { results, next, pending, hidden, alternative };
+      // Answer 502: the notice applies to this job (the recruiter may record a request for another process).
+      const toolNotice = Boolean(await nycNotice(tx, c, jobId));
+      return { results, next, pending, hidden, alternative, toolNotice };
     });
     const columns = Object.fromEntries(
       Object.entries(b.columns).map(([stageId, rows]) => [
@@ -55,7 +58,7 @@ export class HiringBoardService {
           const res = extra.results.get(r.entryId);
           const slot = extra.next.find((s) => s.interview.pipelineEntryId === r.entryId && (!s.interview.confirmedSlotId || s.interview.confirmedSlotId === s.id));
           const p = extra.pending.find((x) => x.entryId === r.entryId);
-          return { ...r, scorecards: res ?? null, nextInterviewAt: slot?.startsAt ?? null, rejectionPendingUntil: p?.sendAt ?? null, alternativeRequestedAt: extra.alternative.get(r.entryId) ?? null };
+          return { ...r, scorecards: res ?? null, nextInterviewAt: slot?.startsAt ?? null, rejectionPendingUntil: p?.sendAt ?? null, alternativeRequestedAt: extra.alternative.get(r.entryId) ?? null, toolNotice: extra.toolNotice };
         }),
       ]),
     );
@@ -91,6 +94,23 @@ export class HiringBoardService {
   }
 
   /** Rejects with a reason; the optional message is sent now or after the delay (undo is possible until then). */
+  /**
+   * Answer 502: the recruiter records that a New York City candidate asked for another process (by phone or email). Only
+   * where the notice applies (409 otherwise); a second record changes nothing. Audited with who recorded it.
+   */
+  async recordAlternative(ctx: TenantContext, userId: string, entryId: string) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const e = await tx.pipelineEntry.findFirst({ where: { organizationId: c.organizationId, id: entryId }, select: { id: true, jobId: true, alternativeRequestedAt: true } });
+      if (!e) throw new NotFoundException('Application not found.');
+      if (!(await nycNotice(tx, c, e.jobId))) throw new ConflictException('No automated tool is used for this job (the New York City setting is off or the job is not in New York City).');
+      if (e.alternativeRequestedAt) return { alternativeRequestedAt: e.alternativeRequestedAt };
+      const at = new Date();
+      await tx.pipelineEntry.update({ where: { id: e.id }, data: { alternativeRequestedAt: at } });
+      await audit(tx, c, 'candidate.alternative_process.recorded', 'pipeline_entry', e.id, { jobId: e.jobId, by: userId });
+      return { alternativeRequestedAt: at };
+    });
+  }
+
   async reject(ctx: TenantContext, userId: string, entryId: string, dto: RejectDto & { fromStatusId?: string }) {
     if (!dto.reason?.trim()) throw new BadRequestException('Enter a reason. It is saved on the record.');
     const prev = await this.tenantPrisma.forTenant(ctx, (tx) => tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: ctx.organizationId as string }, select: { statusId: true, rejected: true } }));
