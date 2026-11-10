@@ -206,7 +206,9 @@ describe('buildNav: Settings', () => {
     expect(labels(nav(['ats.requisition.raise']), 'settings')).not.toContain('Hiring');
     // Visitors slice 1: an employee invites their visitors; reception gets the desk and log; Settings 3.12 for its holders.
     expect(labels(nav([], { employee: true }), 'visitors')).toEqual(['My visitors']);
-    expect(labels(nav(['visitors.desk.manage'], { employee: true }), 'visitors')).toEqual(["Today's visitors", 'My visitors', 'Visitor log']);
+    expect(labels(nav(['visitors.desk.manage'], { employee: true }), 'visitors')).toEqual(["Today's visitors", 'My visitors', 'Visitor log', 'Roll-call']);
+    // Slice 4: security and HR get only the roll-call.
+    expect(labels(nav(['visitors.rollcall.view']), 'visitors')).toEqual(['Roll-call']);
     expect(labels(nav(['visitors.log.view']), 'visitors')).toEqual(['Visitor log']);
     expect(labels(nav(['visitors.settings.manage']), 'settings')).toEqual(['Visitors']);
     // Slice 3: the watch-list only with its key; reception does not see it.
