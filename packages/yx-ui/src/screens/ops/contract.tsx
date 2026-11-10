@@ -71,7 +71,7 @@ export interface ContractorsScreenProps {
   /** CL-1 live (the page passes it; docs/yukthix/contract-labour-design-map.md). */
   live?: ContractorsLive;
 }
-export type ContractorsSheet = { kind: 'workorder'; contractorId: string; id: string | null } | { kind: 'contractor'; id: string | null } | { kind: 'licence'; contractorId: string } | { kind: 'renew'; licenceId: string } | { kind: 'reject'; licenceId: string };
+export type ContractorsSheet = { kind: 'contact'; contractorId: string } | { kind: 'workorder'; contractorId: string; id: string | null } | { kind: 'contractor'; id: string | null } | { kind: 'licence'; contractorId: string } | { kind: 'renew'; licenceId: string } | { kind: 'reject'; licenceId: string };
 
 /** What the view needs beyond the rows: the actions, each optional (the design shows them without doing anything). */
 export interface ContractorsViewProps {
@@ -82,8 +82,6 @@ export interface ContractorsViewProps {
   openId: string | null;
   sheet: ContractorsSheet | null;
   canManage: boolean;
-  /** The contractor portal (CL-3): until then no "Invite to contractor login". */
-  portal: boolean;
   locations: { id: string; name: string; state: string }[];
   states: { code: string; name: string }[];
   onRetry?: () => void;
@@ -94,6 +92,9 @@ export interface ContractorsViewProps {
   onReject?: (licenceId: string, reason: string) => Promise<unknown>;
   onOpenFile?: (licenceId: string) => void;
   onSaveWorkOrder?: (contractorId: string, id: string | null, input: WorkOrderInput) => Promise<unknown>;
+  /** CL-3 (answer 631): give a contractor's contact the portal, or take it away. */
+  onAddContact?: (contractorId: string, input: { name: string; email: string }) => Promise<unknown>;
+  onRemoveContact?: (contractorId: string, contactId: string) => Promise<unknown>;
   /** "60, 30 and 7 days before expiry" from the company setting. */
   alertText?: string;
 }
@@ -119,7 +120,6 @@ export function ContractorsScreen({ contractors, establishments, today, state = 
       openId={openId}
       sheet={sheet}
       canManage={!readOnly}
-      portal
       locations={SAMPLE_LOCATIONS}
       states={SAMPLE_STATES}
     />
@@ -176,7 +176,7 @@ export function ContractorsView(p: ContractorsViewProps) {
         footer={
           c && canManage ? (
             <>
-              {p.portal && <Button>Invite to contractor login</Button>}
+              <Button onClick={() => setSheet({ kind: 'contact', contractorId: c.id })}>Invite to contractor login</Button>
               <Button onClick={() => setSheet({ kind: 'contractor', id: c.id })}>Change details</Button>
               <Button variant="primary" icon={Plus} onClick={() => setSheet({ kind: 'licence', contractorId: c.id })}>Add licence</Button>
             </>
@@ -185,7 +185,27 @@ export function ContractorsView(p: ContractorsViewProps) {
       >
         {c && (
           <div className="yx-ops-stack">
-            <DescriptionList columns={2} items={[{ label: 'PAN', value: c.pan || '—', mono: true }, { label: 'GSTIN', value: c.gstin || '—', mono: true }, { label: 'PF code', value: c.pfCode || '—', mono: true }, { label: 'ESIC code', value: c.esicCode || '—', mono: true }, { label: 'LIN', value: c.lin || '—', mono: true }, ...(p.portal ? [{ label: 'Contractor login', value: c.loginInvited ? 'Invited (OTP, own records only, not billed)' : 'Not invited' }] : [])]} />
+            <DescriptionList columns={2} items={[{ label: 'PAN', value: c.pan || '—', mono: true }, { label: 'GSTIN', value: c.gstin || '—', mono: true }, { label: 'PF code', value: c.pfCode || '—', mono: true }, { label: 'ESIC code', value: c.esicCode || '—', mono: true }, { label: 'LIN', value: c.lin || '—', mono: true }]} />
+            <Card title="Contractor login">
+              {(c.contacts ?? []).length === 0 ? (
+                <p className="yx-ops-muted">No one from {c.name} can sign in yet. Invite a contact: they sign in with a one-time code to their email and see only {c.name}'s licences, work orders and workers.</p>
+              ) : (
+                <ul className="yx-ops-plain yx-ops-stack" data-gap="sm" aria-label="Contractor login">
+                  {(c.contacts ?? []).map((x) => (
+                    <li key={x.id} className="yx-ops-row" data-between>
+                      <span className="yx-ops-stack" data-gap="sm">
+                        <strong>{x.name}</strong>
+                        <span className="yx-ops-muted">{x.email}</span>
+                      </span>
+                      <span className="yx-ops-row">
+                        <Badge tone={x.portal === 'active' ? 'success' : 'info'}>{x.portal === 'active' ? 'Signed in' : 'Invited'}</Badge>
+                        {canManage && <Button size="sm" onClick={() => void run(p.onRemoveContact && (() => p.onRemoveContact!(c.id, x.id)), `Access removed for ${x.name}`)}>Remove access</Button>}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
             {c.licences.length === 0 && <EmptyState title="No licence yet." description="Add the contractor's licence for your establishment. Workers can be deployed only under a verified licence." />}
             {c.licences.map((l) => {
               const t = licenceBadge(l, today);
@@ -259,6 +279,7 @@ export function ContractorsView(p: ContractorsViewProps) {
       {sheet?.kind === 'renew' && target && (
         <LicenceSheet mode="renew" current={target.l} locations={p.locations} states={p.states} contractor={target.c.name} onClose={() => setSheet(null)} onSave={(input, file) => (p.onRenew ? p.onRenew(sheet.licenceId, { licenceNo: input.licenceNo, maxWorkers: input.maxWorkers, validFrom: input.validFrom, validTo: input.validTo }, file) : Promise.resolve())} />
       )}
+      {sheet?.kind === 'contact' && <ContactDialog contractor={contractors.find((x) => x.id === sheet.contractorId)?.name ?? ''} onClose={() => setSheet(null)} onSave={(input) => (p.onAddContact ? p.onAddContact(sheet.contractorId, input) : Promise.resolve())} />}
       {sheet?.kind === 'workorder' && (
         <WorkOrderSheet
           key={sheet.id ?? 'new'}
@@ -462,6 +483,40 @@ export function LicenceSheet({ mode, current, contractor, locations, states, onC
         </FormField>
       </div>
     </Drawer>
+  );
+}
+
+/** CL-3 (answer 631): invite a contractor's contact to the portal. */
+function ContactDialog({ contractor, onClose, onSave }: { contractor: string; onClose: () => void; onSave: (input: { name: string; email: string }) => Promise<unknown> }) {
+  const { say } = useSay();
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const bad = { name: !name.trim() ? 'Enter the contact’s name.' : null, email: !EMAIL_RE.test(email.trim()) ? 'Enter an email like ops@contractor.in.' : null };
+  const go = () => {
+    setTried(true);
+    if (bad.name) return focusOn('ct-name');
+    if (bad.email) return focusOn('ct-email');
+    setBusy(true);
+    setFailed(null);
+    onSave({ name: name.trim(), email: email.trim() })
+      .then(() => (say(`Invited ${name.trim()}`), onClose()))
+      .catch((e: unknown) => setFailed(errText(e)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} size="md" title="Invite to contractor login" description={`${contractor}. We email the portal link; they sign in with a one-time code and see only this contractor's records. Licence alerts go to them too.`} notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={go}>Send invitation</Button></>}>
+      <div className="yx-ops-stack">
+        <FormField id="ct-name" label="Name" required error={tried ? bad.name : null}>
+          <TextField value={name} onChange={setName} maxLength={120} />
+        </FormField>
+        <FormField id="ct-email" label="Email" required error={tried ? bad.email : null}>
+          <TextField value={email} onChange={setEmail} maxLength={254} type="email" />
+        </FormField>
+      </div>
+    </Dialog>
   );
 }
 

@@ -12,7 +12,7 @@ import { RequireAnyPermission } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import { ContractLabourService } from './contract-labour.service';
-import { ApproveWorkerDto, ContractorDto, LicenceDto, RejectLicenceDto, ReleaseWorkerDto, RenewalDto, SaveClraSettingsDto, WorkerDto, WorkOrderDto } from './clra-dto';
+import { ApproveWorkerDto, ContractorContactDto, ContractorDto, LicenceDto, RejectLicenceDto, ReleaseWorkerDto, RenewalDto, SaveClraSettingsDto, WorkerDto, WorkOrderDto } from './clra-dto';
 import { WorkersService } from './workers.service';
 
 const who = (req: Request) => req.user as ScopeUser;
@@ -85,6 +85,20 @@ export class ContractLabourController {
   update(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ContractorDto) {
     assertOwnSession(req);
     return this.svc.updateContractor(ctx, who(req), id, dto);
+  }
+
+  @Post('contractors/:id/contacts')
+  @RequireAnyPermission('clra.contractor.manage')
+  addContact(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ContractorContactDto) {
+    assertOwnSession(req);
+    return this.svc.addContact(ctx, who(req), id, dto);
+  }
+
+  @Post('contractors/:id/contacts/:contactId/remove')
+  @RequireAnyPermission('clra.contractor.manage')
+  removeContact(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('contactId', ParseUUIDPipe) contactId: string) {
+    assertOwnSession(req);
+    return this.svc.removeContact(ctx, who(req), id, contactId);
   }
 
   @Post('contractors/:id/work-orders')

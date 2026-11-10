@@ -12933,3 +12933,33 @@ model ContractorWorkOrder {
 
   @@map("contractor_work_orders")
 }
+
+/// Contract labour CL-3 (answers 631, 678): a contractor's contact with access to the contractor portal.
+model ContractorContact {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  agencyId       String    @map("agency_id") @db.Uuid
+  name           String    @db.VarChar(120)
+  email          String    @db.Citext
+  portal         String    @default("invited") @db.VarChar(8)
+  invitedAt      DateTime? @map("invited_at") @db.Timestamptz(3)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([agencyId, email], map: "contractor_contacts_email_key")
+  @@map("contractor_contacts")
+}
+
+/// Contract labour CL-3: a contractor portal session (the token only as its SHA-256 hash).
+model ContractorPortalSession {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  contactId      String    @map("contact_id") @db.Uuid
+  agencyId       String    @map("agency_id") @db.Uuid
+  tokenHash      String    @unique(map: "contractor_portal_sessions_token_key") @map("token_hash") @db.VarChar(64)
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(3)
+  endedAt        DateTime? @map("ended_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("contractor_portal_sessions")
+}

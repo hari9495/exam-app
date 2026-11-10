@@ -19252,5 +19252,44 @@
       "Screens/People/PPL-01 · Directory · HR · contract workers"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CLRA-08",
+    "area": "Contract labour · CL-3: contractor portal (10 Nov 2026)",
+    "screen": "Invite and sign in (CLB-01, T9-13)",
+    "url": "http://localhost:3000/yx/contract-labour/contractors",
+    "account": "admin-tester@demo-org.test (System Admin) and a mailbox you can read for the contractor contact. Browser window 1278 x 635, then a phone-width window.",
+    "steps": [
+      "1. Open a contractor, press Invite to contractor login and send with nothing filled; then invite your mailbox.",
+      "2. Open the emailed link, ask for a code with an email that was not invited.",
+      "3. Ask for a code with the invited email twice at once.",
+      "4. Enter a wrong code, then the right one.",
+      "5. Back in the contractor record, press Remove access; reload the portal."
+    ],
+    "expected": "Step 1: name and email asked for; then a toast and the contact shows Invited. Step 2: the same 'code sent' answer, no email arrives. Step 3: the second request is refused: wait and try again. Step 4: the wrong code is refused; the right one opens What is due. Step 5: the portal asks to sign in again.",
+    "stories": [
+      "Screens/Contract labour/CLB-01 · Contractors register · Invite to contractor login (CL-3)",
+      "Screens/Portals/T9-13 · Contract-labour vendor portal · Sign in (email OTP)"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CLRA-09",
+    "area": "Contract labour · CL-3: contractor portal (10 Nov 2026)",
+    "screen": "Portal: renewal and add worker (T9-13)",
+    "url": "http://localhost:3000/yx/contractor/demo-org",
+    "account": "The invited contractor contact (signed in). A licence of theirs ending within 60 days.",
+    "steps": [
+      "1. On Establishments and licences press Upload renewed licence and upload with nothing filled; then fill it with an end date after the current one and a PDF.",
+      "2. As the compliance owner, reject the renewal with a reason; reload the portal.",
+      "3. On Workers press Add worker, fill a date of birth 17 years ago and send; then 30 years ago.",
+      "4. Make the window phone width."
+    ],
+    "expected": "Step 1: every missing field is named; then 'Renewal uploaded; the company checks it' and What is due says it is being checked. Step 2: the reason shows and the upload button is back. Step 3: blocked: the worker is under 18; then 'Sent for site approval' and the worker waits for site approval. Step 4: everything fits with no sideways scroll except the workers table, which scrolls inside its box.",
+    "stories": [
+      "Screens/Portals/T9-13 · Contract-labour vendor portal · Upload a renewed licence (CL-3)",
+      "Screens/Portals/T9-13 · Contract-labour vendor portal · Add worker · under 18 blocked"
+    ],
+    "note": "Positive and negative."
   }
 ]

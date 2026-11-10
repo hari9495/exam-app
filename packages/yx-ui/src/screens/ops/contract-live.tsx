@@ -28,6 +28,7 @@ export interface ContractorsData {
     esicCode: string | null;
     lin: string | null;
     active: boolean;
+    contacts?: { id: string; name: string; email: string; portal: 'invited' | 'active' }[];
     workOrders?: { id: string; number: string; fromOn: string; toOn: string; headcount: number; active: number; sites: { id: string; name: string }[]; version: number }[];
     licences: {
       id: string;
@@ -61,6 +62,8 @@ export interface ContractorsLive {
   onReject: (licenceId: string, reason: string) => Promise<unknown>;
   onOpenFile: (licenceId: string) => void;
   onSaveWorkOrder?: (contractorId: string, id: string | null, input: WorkOrderInput) => Promise<unknown>;
+  onAddContact?: (contractorId: string, input: { name: string; email: string }) => Promise<unknown>;
+  onRemoveContact?: (contractorId: string, contactId: string) => Promise<unknown>;
 }
 
 const date = (s: string) => new Date(`${s}T00:00:00`);
@@ -83,6 +86,7 @@ export function contractorsOf(data: ContractorsData): Contractor[] {
     contactEmail: c.contactEmail,
     loginInvited: false,
     status: c.active ? 'Active' : 'Inactive',
+    contacts: c.contacts ?? [],
     workOrders: c.workOrders?.map((w) => ({ id: w.id, number: w.number, from: date(w.fromOn), to: date(w.toOn), headcount: w.headcount, active: w.active, sites: w.sites, version: w.version })),
     licences: c.licences.map((l) => ({
       id: l.id,
@@ -117,7 +121,6 @@ export function LiveContractors({ live }: { live: ContractorsLive }) {
       openId={null}
       sheet={null}
       canManage={Boolean(d?.canManage)}
-      portal={false}
       locations={d?.locations ?? []}
       states={d?.states ?? []}
       alertText={d ? listText(d.alertDays) : undefined}
@@ -129,6 +132,8 @@ export function LiveContractors({ live }: { live: ContractorsLive }) {
       onReject={live.onReject}
       onOpenFile={live.onOpenFile}
       onSaveWorkOrder={live.onSaveWorkOrder}
+      onAddContact={live.onAddContact}
+      onRemoveContact={live.onRemoveContact}
     />
   );
 }

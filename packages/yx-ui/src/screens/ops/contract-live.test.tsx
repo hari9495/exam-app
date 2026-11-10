@@ -39,7 +39,7 @@ const live = (p: Partial<ContractorsLive> = {}): ContractorsLive => ({
 const screenOf = (l: ContractorsLive) => <ContractorsScreen contractors={[]} establishments={[]} today={new Date()} live={l} />;
 
 describe('CLB-01 Contractors register (live)', () => {
-  it('lists contractors with their licence state from the server; no sample cards, work order or contractor login', async () => {
+  it('lists contractors with their licence state from the server; no sample cards or work order; the contractor login', async () => {
     show(screenOf(live()));
     expect(screen.getByText('Vetri Security Agency')).toBeInTheDocument();
     expect(screen.getByText('Expires in 21 days')).toBeInTheDocument();
@@ -49,8 +49,14 @@ describe('CLB-01 Contractors register (live)', () => {
     const drawer = screen.getByRole('dialog');
     expect(within(drawer).getByText('60, 30 and 7 days before expiry')).toBeInTheDocument();
     expect(within(drawer).queryByText('Work order')).not.toBeInTheDocument();
-    expect(within(drawer).queryByRole('button', { name: 'Invite to contractor login' })).not.toBeInTheDocument();
-    await ue.click(within(drawer).getByRole('button', { name: 'Licence copy' }));
+    // CL-3: the contractor login (answer 631).
+    expect(within(drawer).getByText(/No one from Vetri Security Agency can sign in yet/)).toBeInTheDocument();
+    await ue.click(within(drawer).getByRole('button', { name: 'Invite to contractor login' }));
+    const dlg = screen.getByRole('dialog', { name: 'Invite to contractor login' });
+    await ue.click(within(dlg).getByRole('button', { name: 'Send invitation' }));
+    expect(within(dlg).getByText('Enter the contact’s name.')).toBeInTheDocument();
+    await ue.click(within(dlg).getByRole('button', { name: 'Cancel' }));
+    await ue.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Licence copy' }));
   });
 
   it('an expired licence shows the deployment block; a renewal waits and is verified', async () => {

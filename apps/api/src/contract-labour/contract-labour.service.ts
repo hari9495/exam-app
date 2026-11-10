@@ -14,7 +14,8 @@ import { safeName } from '../service-desk/attachments.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { escapeHtml } from '../notifications/notification-email-render';
 import { alertDaysOf, alertDue, deployBlock, licenceState, type LicenceLike } from './clra-rules';
-import type { ContractorDto, LicenceDto, RenewalDto, WorkOrderDto } from './clra-dto';
+import type { ContractorContactDto, ContractorDto, LicenceDto, RenewalDto, WorkOrderDto } from './clra-dto';
+import { EmailService } from '../email/email.service';
 
 const KEYS = ['clra.contractor.manage', 'clra.contractor.view', 'clra.settings.manage', 'org.settings.manage'] as const;
 type Access = { manage: boolean; view: boolean; settings: boolean; actingForOther: boolean };
@@ -26,7 +27,7 @@ const NOT_FOUND = 'Contractor not found.';
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const day = (s: string) => new Date(`${s}T00:00:00Z`);
 const ANY_ENTITY = { legalEntityId: '' };
-type Upload = { name: string; data: Buffer } | null;
+export type Upload = { name: string; data: Buffer } | null;
 
 /**
  * Contract labour CL-1 (answers 621, 623, 627; CLB-01, Settings 4.9). A contractor is the existing vendor record
@@ -48,6 +49,7 @@ export class ContractLabourService {
     private readonly settings: OrgSettingsService,
     private readonly files: FilesService,
     private readonly notifications: NotificationsService,
+    private readonly email: EmailService,
   ) {}
 
   async access(user: ScopeUser): Promise<Access> {
@@ -77,6 +79,7 @@ export class ContractLabourService {
       const fileRows = await tx.file.findMany({ where: { organizationId: org, id: { in: licences.map((l) => l.fileId) } }, select: { id: true, fileName: true, scanStatus: true } });
       const consultants = await tx.consultant.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.consultantId).filter((x): x is string => Boolean(x)) } }, select: { id: true, panStatus: true } });
       const deciders = await tx.user.findMany({ where: { organizationId: org, id: { in: licences.map((l) => l.decidedBy).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true, email: true } });
+      const contacts = await tx.contractorContact.findMany({ where: { organizationId: org, agencyId: { in: rows.map((r) => r.id) }, portal: { not: 'none' } }, orderBy: { name: 'asc' } });
       const workOrders = await tx.contractorWorkOrder.findMany({ where: { organizationId: org, agencyId: { in: rows.map((r) => r.id) } }, orderBy: { fromOn: 'desc' } });
       const byAgencySite = await tx.contractDeployment.groupBy({ by: ['agencyId', 'locationId'], where: { organizationId: org, status: { in: ['pending', 'deployed'] } }, _count: { _all: true } });
       // Answer 674: the site cards: contract workers deployed or waiting against the licence maximums and the threshold.
@@ -111,6 +114,7 @@ export class ContractLabourService {
             esicCode: r.esicCode,
             lin: r.lin,
             active: r.active,
+            contacts: contacts.filter((x) => x.agencyId === r.id).map((x) => ({ id: x.id, name: x.name, email: x.email, portal: x.portal })),
             workOrders: workOrders.filter((w) => w.agencyId === r.id).map((w) => ({ id: w.id, number: w.number, fromOn: iso(w.fromOn), toOn: iso(w.toOn), headcount: w.headcount, active: byAgencySite.filter((x) => x.agencyId === w.agencyId && w.locationIds.includes(x.locationId)).reduce((n, x) => n + x._count._all, 0), sites: w.locationIds.map((id) => ({ id, name: locations.find((x) => x.id === id)?.name ?? 'Archived location' })), version: w.version })),
             licences: mine.map((l) => {
               const loc = locations.find((x) => x.id === l.locationId);
@@ -208,14 +212,50 @@ export class ContractLabourService {
     return row;
   }
 
-  private async store(tx: Tx, c: CompanyContext, file: Upload) {
+  async store(tx: Tx, c: CompanyContext, file: Upload) {
     if (!file?.data?.length) throw new BadRequestException('Attach a copy of the licence (PDF, JPG or PNG).');
-    return this.files.storeIn(tx, c, { area: 'clra-licence', name: safeName(file.name), data: file.data, allowedMime: LICENCE_TYPES, maxMb: FILE_MAX_MB, via: 'staff' });
+    return this.files.storeIn(tx, c, { area: 'clra-licence', name: safeName(file.name), data: file.data, allowedMime: LICENCE_TYPES, maxMb: FILE_MAX_MB, via: c.userId ? 'staff' : 'self' });
   }
 
   private dates(from: string, to: string, today: string) {
     if (to < from) throw new BadRequestException('The licence ends before it starts. Check the dates.');
     if (to < today) throw new BadRequestException('This licence has already ended. Add the renewed licence instead.');
+  }
+
+  /**
+   * Answer 631: give a contractor's contact the portal (invited; active on the first sign-in). The contact is emailed the
+   * portal link; signing in needs a one-time code to the same email. Removing access ends their sessions at once.
+   */
+  async addContact(ctx: TenantContext, user: ScopeUser, contractorId: string, dto: ContractorContactDto) {
+    await this.gate(user, 'manage');
+    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const a = await this.contractor(tx, c, contractorId);
+      const cur = await tx.contractorContact.findFirst({ where: { organizationId: c.organizationId, agencyId: a.id, email: { equals: dto.email, mode: 'insensitive' } } });
+      if (cur && cur.portal !== 'none') throw new ConflictException(`${dto.email} already has portal access for ${a.name}.`);
+      const row = cur
+        ? await tx.contractorContact.update({ where: { id: cur.id }, data: { name: dto.name, portal: 'invited', invitedAt: new Date() } })
+        : await tx.contractorContact.create({ data: { organizationId: c.organizationId, agencyId: a.id, name: dto.name, email: dto.email, invitedAt: new Date(), createdBy: c.userId ?? null } });
+      await audit(tx, c, 'clra.portal.invited', 'contractor_contact', row.id, { contractorId: a.id });
+      const org = await tx.organization.findUniqueOrThrow({ where: { id: c.organizationId }, select: { name: true, slug: true } });
+      return { id: row.id, email: row.email, contractor: a.name, org };
+    });
+    const link = `${process.env.WEB_APP_URL ?? 'http://localhost:3000'}/yx/contractor/${encodeURIComponent(out.org.slug)}`;
+    await this.email
+      .send({ to: out.email, subject: `${out.org.name}: your contractor portal`, html: `<p>${escapeHtml(out.org.name)} gave ${escapeHtml(out.contractor)} access to its contractor portal: your licences, work orders, workers and gate passes.</p><p><a href="${escapeHtml(link)}">${escapeHtml(link)}</a></p><p>Sign in with this email; we send you a one-time code.</p>`, organizationId: ctx.organizationId as string })
+      .catch((e: Error) => this.logger.warn(`contractor portal invite: ${e.message}`));
+    return { id: out.id, portal: 'invited' };
+  }
+
+  async removeContact(ctx: TenantContext, user: ScopeUser, contractorId: string, contactId: string) {
+    await this.gate(user, 'manage');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      await this.contractor(tx, c, contractorId);
+      const { count } = await tx.contractorContact.updateMany({ where: { id: contactId, organizationId: c.organizationId, agencyId: contractorId, portal: { not: 'none' } }, data: { portal: 'none' } });
+      if (!count) throw new NotFoundException('Contact not found.');
+      await tx.contractorPortalSession.updateMany({ where: { organizationId: c.organizationId, contactId, endedAt: null }, data: { endedAt: new Date() } });
+      await audit(tx, c, 'clra.portal.removed', 'contractor_contact', contactId, { contractorId });
+      return { portal: 'none' };
+    });
   }
 
   /** Answer 675: add or change a work order (number, dates, headcount, our sites it covers). */
@@ -278,10 +318,21 @@ export class ContractLabourService {
   /** Answer 627: a renewal of a verified licence, for the same establishment and states; it counts once verified. */
   async renew(ctx: TenantContext, user: ScopeUser, licenceId: string, dto: RenewalDto, file: Upload) {
     await this.gate(user, 'manage');
-    const today = todayIst();
-    this.dates(dto.validFrom, dto.validTo, today);
-    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+    this.dates(dto.validFrom, dto.validTo, todayIst());
+    const out = await inCompany(this.tenantPrisma, ctx, (tx, c) => this.renewIn(tx, c, licenceId, dto, file, null, null));
+    void this.files.scan(out.org, out.fileId).catch(() => undefined);
+    return { id: out.id };
+  }
+
+  /**
+   * A renewal inside a caller's transaction. From the contractor portal (CL-3) `onlyAgency` is the contact's contractor:
+   * another contractor's licence is not found. Scan the stored copy after the commit.
+   */
+  async renewIn(tx: Tx, c: CompanyContext, licenceId: string, dto: RenewalDto, file: Upload, onlyAgency: string | null, portalContactId: string | null) {
+    this.dates(dto.validFrom, dto.validTo, todayIst());
+    {
       const old = await this.licence(tx, c, licenceId);
+      if (onlyAgency && old.agencyId !== onlyAgency) throw new NotFoundException('Licence not found.');
       if (old.status !== 'verified') throw new ConflictException('Only a verified licence can be renewed. Verify or reject this one first.');
       if (await tx.contractorLicence.findFirst({ where: { organizationId: c.organizationId, renewalOfId: old.id, status: { not: 'rejected' } }, select: { id: true } })) throw new ConflictException('This licence already has a renewal.');
       if (dto.validTo <= iso(old.validTo)) throw new BadRequestException(`The renewal must end after the current licence (${iso(old.validTo)}).`);
@@ -290,11 +341,9 @@ export class ContractLabourService {
       const row = await tx.contractorLicence
         .create({ data: { organizationId: c.organizationId, agencyId: old.agencyId, locationId: old.locationId, licenceNo: dto.licenceNo, scope: old.scope, states: old.states, maxWorkers: dto.maxWorkers, validFrom: day(dto.validFrom), validTo: day(dto.validTo), fileId: f.id, renewalOfId: old.id, createdBy: c.userId ?? null } })
         .catch(this.duplicate);
-      await audit(tx, c, 'clra.licence.renewal_added', 'contractor_licence', row.id, { renews: old.id, licenceNo: dto.licenceNo, validTo: dto.validTo, fileId: f.id, sha256: f.sha256 });
+      await audit(tx, c, 'clra.licence.renewal_added', 'contractor_licence', row.id, { renews: old.id, licenceNo: dto.licenceNo, validTo: dto.validTo, fileId: f.id, sha256: f.sha256, ...(portalContactId ? { via: 'contractor_portal', contactId: portalContactId } : {}) });
       return { id: row.id, fileId: f.id, org: c.organizationId };
-    });
-    void this.files.scan(out.org, out.fileId).catch(() => undefined);
-    return { id: out.id };
+    }
   }
 
   /** Verify a licence or renewal after checking the copy (a clean file only); it then counts for deployment. */
@@ -388,12 +437,12 @@ export class ContractLabourService {
     const c: CompanyContext = { organizationId: org, isSuperAdmin: false, userId: null };
     const sends = await this.tenantPrisma.forTenant(c, async (tx) => {
       const [lock] = await tx.$queryRaw<{ ok: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtext(${`clra-licence-alerts:${org}`})) AS ok`;
-      if (!lock?.ok) return { out: [], to: [] };
+      if (!lock?.ok) return { out: [], company: null, to: [] };
       const days = alertDaysOf(await settingFor(tx, c, 'clra.licence_alerts', ANY_ENTITY));
       const rows = await tx.contractorLicence.findMany({ where: { organizationId: org, status: 'verified', validTo: { gte: day(today) } } });
       const renewed = new Set((await tx.contractorLicence.findMany({ where: { organizationId: org, status: 'verified', renewalOfId: { in: rows.map((r) => r.id) } }, select: { renewalOfId: true } })).map((r) => r.renewalOfId));
       const agencies = await tx.agency.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.agencyId) }, active: true, contractLabour: true }, select: { id: true, name: true } });
-      const out: { id: string; text: string }[] = [];
+      const out: { id: string; text: string; contacts: string[]; licenceNo: string; validTo: string; lead: number }[] = [];
       for (const l of rows) {
         const lead = alertDue(iso(l.validTo), today, days);
         const a = agencies.find((x) => x.id === l.agencyId);
@@ -401,10 +450,19 @@ export class ContractLabourService {
         const { count } = await tx.contractorLicenceAlert.createMany({ data: [{ organizationId: org, licenceId: l.id, daysBefore: lead }], skipDuplicates: true });
         if (!count) continue;
         await audit(tx, c, 'clra.licence.alerted', 'contractor_licence', l.id, { daysBefore: lead });
-        out.push({ id: l.id, text: `${a.name}: licence ${l.licenceNo} ends on ${iso(l.validTo)} (${lead} days). Deployments stop when it ends unless a renewal is verified.` });
+        const contacts = (await tx.contractorContact.findMany({ where: { organizationId: org, agencyId: a.id, portal: { in: ['invited', 'active'] } }, select: { email: true } })).map((x) => x.email);
+        out.push({ id: l.id, text: `${a.name}: licence ${l.licenceNo} ends on ${iso(l.validTo)} (${lead} days). Deployments stop when it ends unless a renewal is verified.`, contacts, licenceNo: l.licenceNo, validTo: iso(l.validTo), lead });
       }
-      return { out, to: out.length ? await this.owners(tx, org, today) : [] };
+      const company = out.length ? await tx.organization.findUniqueOrThrow({ where: { id: org }, select: { name: true, slug: true } }) : null;
+      return { out, company, to: out.length ? await this.owners(tx, org, today) : [] };
     });
+    // Answer 678: the contractor's portal contacts are told too, with the portal link to upload the renewal.
+    const portal = sends.company ? `${process.env.WEB_APP_URL ?? 'http://localhost:3000'}/yx/contractor/${encodeURIComponent(sends.company.slug)}` : '';
+    for (const s of sends.out)
+      for (const to of s.contacts)
+        await this.email
+          .send({ to, subject: `Your licence ${s.licenceNo} ends in ${s.lead} days`, html: `<p>Your contract labour licence ${escapeHtml(s.licenceNo)} with ${escapeHtml(sends.company!.name)} ends on ${s.validTo}. Workers cannot be deployed under it after that day.</p><p>Upload the renewed licence in the contractor portal: <a href="${escapeHtml(portal)}">${escapeHtml(portal)}</a></p>`, organizationId: org })
+          .catch((e: Error) => this.logger.warn(`contractor licence alert: ${e.message}`));
     for (const s of sends.out)
       await this.notifications
         .notifySystem({ organizationId: org, isSuperAdmin: false }, sends.to, 'clra.licence.expiring', { entityType: 'contractor_licence', entityId: s.id, contextText: s.text, linkPath: '/yx/contract-labour/contractors' }, { subject: 'A contractor licence ends soon', html: `<p>${escapeHtml(s.text)}</p><p>Open Contract labour › Contractors in YukthiX to add the renewal.</p>` })

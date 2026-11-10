@@ -187,7 +187,6 @@
     "portals: CommissionsScreen",
     "portals: ComplianceCalendarScreen",
     "portals: ContainTenantScreen",
-    "portals: ContractorPortalScreen",
     "portals: CostPerTenantScreen",
     "portals: CustomerSuccessScreen",
     "portals: DeveloperPortalScreen",

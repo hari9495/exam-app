@@ -139,15 +139,26 @@ export class WorkersService {
   /** The drawer's checks before sending (no write). */
   async check(ctx: TenantContext, user: ScopeUser, dto: WorkerDto) {
     await this.clra.gate(user, 'manage');
+    return inCompany(this.tenantPrisma, ctx, (tx, c) => this.checkIn(tx, c, dto));
+  }
+
+  /** The checks inside a caller's transaction (the contractor portal, CL-3, uses it with its own contractor). */
+  async checkIn(tx: Tx, c: CompanyContext, dto: WorkerDto) {
     this.input(dto);
-    return inCompany(this.tenantPrisma, ctx, async (tx, c) => ({ checks: (await this.checksFor(tx, c, { contractorId: dto.contractorId, locationId: dto.locationId, on: dto.fromOn, dob: dto.dob, idHash: this.hash(c.organizationId, dto.aadhaar) })).checks }));
+    return { checks: (await this.checksFor(tx, c, { contractorId: dto.contractorId, locationId: dto.locationId, on: dto.fromOn, dob: dto.dob, idHash: this.hash(c.organizationId, dto.aadhaar) })).checks };
   }
 
   /** Send a worker for site approval: every check passes or nothing is written; the same ID keeps the same person. */
   async create(ctx: TenantContext, user: ScopeUser, dto: WorkerDto) {
     await this.clra.gate(user, 'manage');
+    this.input(dto);
+    return inCompany(this.tenantPrisma, ctx, (tx, c) => this.sendIn(tx, c, dto, null));
+  }
+
+  /** Send inside a caller's transaction; `portalContactId` when a contractor's contact sends it (CL-3). */
+  async sendIn(tx: Tx, c: CompanyContext, dto: WorkerDto, portalContactId: string | null) {
     const wage = this.input(dto);
-    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+    {
       const org = c.organizationId;
       const idHash = this.hash(org, dto.aadhaar);
       // One deployment at a time per ID: two sends of the same worker never both pass the duplicate check.
@@ -161,9 +172,9 @@ export class WorkersService {
         data: { organizationId: org, personId, agencyId: dto.contractorId, locationId: dto.locationId, skill: dto.skill, wagePaise: wage, dob: day(dto.dob), idLast4: dto.aadhaar.slice(-4), idHash, uan: dto.uan || null, esicIp: dto.esicIp || null, fromOn: day(dto.fromOn), toOn: dto.toOn ? day(dto.toOn) : null, createdBy: c.userId ?? null },
       });
       await tx.personRole.create({ data: { organizationId: org, personId, roleType: 'contract_worker', sourceTable: 'contract_deployments', sourceId: row.id, startOn: day(dto.fromOn), endOn: dto.toOn ? day(dto.toOn) : null } });
-      await audit(tx, c, 'clra.worker.sent', 'contract_deployment', row.id, { personId, samePerson: Boolean(before), contractorId: dto.contractorId, locationId: dto.locationId, fromOn: dto.fromOn, warnings: checks.filter((x) => x.status === 'warn').map((x) => x.id) });
+      await audit(tx, c, 'clra.worker.sent', 'contract_deployment', row.id, { personId, samePerson: Boolean(before), contractorId: dto.contractorId, locationId: dto.locationId, fromOn: dto.fromOn, warnings: checks.filter((x) => x.status === 'warn').map((x) => x.id), ...(portalContactId ? { via: 'contractor_portal', contactId: portalContactId } : {}) });
       return { id: row.id, personId, checks };
-    });
+    }
   }
 
   private async deployment(tx: Tx, c: CompanyContext, id: string, version: number) {

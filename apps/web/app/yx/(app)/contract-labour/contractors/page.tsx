@@ -33,6 +33,8 @@ export default function YxContractorsPage() {
         onVerify: (id) => write('POST', `/licences/${enc(id)}/verify`),
         onReject: (id, reason) => write('POST', `/licences/${enc(id)}/reject`, { reason }),
         onSaveWorkOrder: (contractorId, id, input) => (id ? write('PUT', `/contractors/${enc(contractorId)}/work-orders/${enc(id)}`, input) : write('POST', `/contractors/${enc(contractorId)}/work-orders`, input)),
+        onAddContact: (id, input) => write('POST', `/contractors/${enc(id)}/contacts`, input),
+        onRemoveContact: (id, contactId) => write('POST', `/contractors/${enc(id)}/contacts/${enc(contactId)}/remove`),
         onOpenFile: (id) => void download(`/licences/${enc(id)}/file`, 'licence').catch((e: Error) => toast({ title: e.message })),
       }}
     />

@@ -101,3 +101,25 @@ export class WorkOrderDto {
   @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100) @IsUUID('all', { each: true }) locationIds!: string[];
   @IsOptional() @IsInt() @Min(1) version?: number;
 }
+
+/* ---------------- CL-3 contractor portal (answer 631) ---------------- */
+
+export class ContractorContactDto {
+  @trim() @IsString() @MinLength(1) @MaxLength(120) name!: string;
+  @trim() @IsEmail() @MaxLength(254) email!: string;
+}
+
+/** The portal's worker form: the contractor is the signed-in contact's own. */
+export class PortalWorkerDto {
+  @IsUUID() locationId!: string;
+  @trim() @IsString() @MinLength(1) @MaxLength(100) givenName!: string;
+  @IsOptional() @trim() @IsString() @MaxLength(100) familyName?: string | null;
+  @Matches(DAY) dob!: string;
+  @Matches(/^[2-9][0-9]{11}$/, { message: 'An Aadhaar number has 12 digits.' }) @IsIdentityCard('IN', { message: 'That Aadhaar number fails its check digit.' }) aadhaar!: string;
+  @IsIn(['unskilled', 'semi_skilled', 'skilled', 'highly_skilled']) skill!: 'unskilled' | 'semi_skilled' | 'skilled' | 'highly_skilled';
+  @IsOptional() @Matches(/^\d{1,9}(\.\d{1,2})?$/, { message: 'Enter the wage in rupees.' }) wage?: string | null;
+  @IsOptional() @trim() @Matches(/^[0-9]{12}$/, { message: 'A UAN has 12 digits.' }) uan?: string | null;
+  @IsOptional() @trim() @Matches(/^[0-9]{10}$/, { message: 'An ESI IP number has 10 digits.' }) esicIp?: string | null;
+  @Matches(DAY) fromOn!: string;
+  @IsOptional() @Matches(DAY) toOn?: string | null;
+}

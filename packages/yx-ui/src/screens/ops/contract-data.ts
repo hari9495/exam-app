@@ -41,6 +41,8 @@ export interface Contractor {
   status: 'Active' | 'Payment held' | 'Inactive';
   /** Answer 675: work orders (number, period, headcount, our sites it covers). */
   workOrders?: WorkOrder[];
+  /** CL-3 (answer 631): contacts with the contractor portal. */
+  contacts?: { id: string; name: string; email: string; portal: 'invited' | 'active' }[];
 }
 export interface WorkOrder {
   id: string;
@@ -64,6 +66,7 @@ export const CONTRACTORS: Contractor[] = [
 const SITE_ID: Record<string, string> = { 'Hosur plant': 'hosur', 'Bengaluru head office': 'blr' };
 for (const c of CONTRACTORS) {
   const l = c.licences[0]!;
+  c.contacts = c.loginInvited ? [{ id: `ct-${c.id}`, name: c.contact, email: `${c.contact.split(' ')[0]!.toLowerCase().replace(/[^a-z]/g, '')}@${c.name.split(' ')[0]!.toLowerCase()}.in`, portal: 'active' }] : [];
   c.workOrders = [{ id: `wo-${c.id}`, number: `WO/${c.id.toUpperCase()}/2026-27`, from: d(1, 3), to: d(31, 2, 2027), headcount: l.max, sites: [{ id: SITE_ID[l.establishment] ?? 'hosur', name: l.establishment }], active: l.active }];
 }
 
