@@ -53,14 +53,15 @@ built**.
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Plans, requisitions, jobs and costs | 4 | 37 | 1 | 0 | 0 | 0 | 38 |
-| B. Candidates, pipeline and interviews | 8 | 59 | 1 | 0 | 8 | 1 | 69 |
+| B. Candidates, pipeline and interviews | 8 | 60 | 1 | 0 | 8 | 1 | 70 |
 | C. Offers, BGV and joining | 4 | 24 | 4 | 0 | 1 | 0 | 29 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 30 | 0 | 0 | 0 | 4 | 34 |
-| E. Staffing agency | 8 | 49 | 15 | 0 | 0 | 0 | 64 |
+| E. Staffing agency | 8 | 56 | 12 | 0 | 0 | 0 | 68 |
 | F. Compliance and fairness | 5 | 21 | 4 | 0 | 6 | 0 | 31 |
-| G. Careers site, portals and settings | 4 | 64 | 4 | 2 | 9 | 0 | 79 |
-| **All Hiring design groups (A–G)** | **37** | **292** | **27** | **2** | **24** | **5** | **350** |
+| G. Careers site, portals and settings | 4 | 66 | 5 | 2 | 9 | 0 | 82 |
+| **All Hiring design groups (A–G)** | **37** | **294** | **27** | **2** | **24** | **5** | **352** |
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 11 | 0 | 0 | 4 | 0 | 15 |
+Recounted by script 10 Nov 2026 on `feat/yukthix-hiring-whatsapp-optin` (answer 561): 2 new stories drawn and live (Surfaces/Careers ApplyFormWhatsapp, T9-09 StatusWhatsapp): A–G 294 live, 27 gap, 2 wire, 24 not built, 5 phone, of 352 (rows B, E and G had fallen behind and are recounted from the script).
 Recounted by script on `test/yukthix-main` after merging hiring-rest (Talent CRM campaigns, sourced profiles, under 18, kit wire-ups): A–G 292 live, 27 gap, 2 wire, 24 not built, 5 phone, of 350.
 Recounted by script on `test/yukthix-main` after merging staffing round 5 (Tally/Zoho export, 528): A–G 285 live, 27 gap, 2 wire, 28 not built, 5 phone, of 347.
 Recounted by script on `test/yukthix-main` after merging 531, 532: A–G 284 live, 26 gap, 2 wire, 28 not built, 5 phone, of 345.
@@ -922,6 +923,7 @@ Google for Jobs JSON-LD and /yx/careers/[org]/sitemap.xml), /yx/apply/[token], a
 | StatusPhone · Application status · phone | live | same page at phone width |
 | StatusDecision · Application status · decision made | live | rejected or archived |
 | StatusNycNotice · Application status · New York City notice, ask for another process | live | drawn 16 Nov 2026 (answer 502): the link in the notice email (a candidate added by hand to a NYC job, setting on); the notice and "Assess me another way" (`POST public/applications/:token/alternative-process`, audited); once asked, the page says when |
+| StatusWhatsapp · Application status · Message me on WhatsApp about jobs | live | drawn 10 Nov 2026 (answer 561): tick or untick (`POST public/applications/:token/whatsapp`, audited, source status_page, toast); no mobile number on file: no tick, it says why (409 from the API) |
 | StatusNotFound · Application status · link not valid | live | unknown token |
 | Portal · Candidate page | live | /yx/candidate/[token]: details, resume, own applications, interviews, offers, other open jobs |
 | PortalPhone · Candidate page · phone | live | same page at phone width |
@@ -981,6 +983,7 @@ Google for Jobs JSON-LD and /yx/careers/[org]/sitemap.xml), /yx/apply/[token], a
 | ApplyFormMobile · ApplyFormMobile | live | same at phone width |
 | ApplyFormSent · ApplyFormSent | live | after apply |
 | ApplyFormFull · Apply form · notices, pay question and company questions | live | versioned notices, answer 224, candidate custom fields shown on apply |
+| ApplyFormWhatsapp · Apply form · Message me on WhatsApp about jobs | live | drawn 10 Nov 2026 (answer 561): optional tick, off by default; ticked with a mobile number the candidate is opted in (time and source apply, audited); withdrawn on the status page or the unsubscribe link (`POST public/unsubscribe/:token/whatsapp`); only then does a WhatsApp campaign reach them |
 | BrandPlaceholders · Logo and monogram (placeholders) | live (gap) | the company logo is not shown on the careers pages yet (question 357) |
 
 #### Group 6 · Hiring & Assessments
@@ -2094,4 +2097,11 @@ with In pipeline summed. Screenshots and the per-page results are in the walk re
      targeted messages to children). *Suggested: keep it; counsel confirms in the go-live line.*
 565. **Sourcing extension.** The design's browser extension is not built; recruiters add people by hand with a lawful
      source note. *Suggested: keep it manual until counsel signs off the sourced-profile flow.*
+
+## Founder answer 561 built (10 Nov 2026, branch `feat/yukthix-hiring-whatsapp-optin`)
+- "Message me on WhatsApp about jobs (optional)" on the apply form (off by default) and the status page (tick and
+  untick). Stored as `candidates.whatsapp_opted_in_at` with `whatsapp_opt_in_source` (apply, status_page, unsubscribe;
+  migration `202617v0000000_whatsapp_opt_in_source`), audited `candidate.whatsapp.opted_in` / `opted_out`. Opting in needs
+  a mobile number on file and clears an earlier WhatsApp opt-out; the unsubscribe page also stops WhatsApp
+  (`POST public/unsubscribe/:token/whatsapp`). Only an opted-in candidate is in a WhatsApp campaign audience (HIR-20).
 

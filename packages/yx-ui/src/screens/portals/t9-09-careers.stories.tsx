@@ -61,6 +61,8 @@ export const StatusNycNotice: S = {
   name: 'Application status · New York City notice, ask for another process',
   render: () => <ApplicationStatusScreen brand={CAND_BRAND} state="ready" status={{ ...APP_STATUS, location: 'New York office', toolNotice: { assesses: ['An AI draft of the interview scorecard, from the interview transcript (a person on the panel checks and submits it)'], businessDays: 10, requestedAt: null } }} onAskAlternative={async () => {}} />,
 };
+// Answer 561: the candidate ticks or unticks WhatsApp messages about jobs on their status page.
+export const StatusWhatsapp: S = { name: 'Application status · Message me on WhatsApp about jobs', render: () => <ApplicationStatusScreen brand={CAND_BRAND} state="ready" status={{ ...APP_STATUS, whatsapp: { optedIn: true, hasPhone: true } }} onWhatsapp={async () => {}} /> };
 export const StatusNotFound: S = { name: 'Application status · link not valid', render: () => <ApplicationStatusScreen brand={CAND_BRAND} state="not-found" status={null} /> };
 export const Portal: S = { name: 'Candidate page', render: () => <CandidatePortalScreen brand={CAND_BRAND} state="ready" portal={CAND_PORTAL} /> };
 export const PortalPhone: S = { name: 'Candidate page · phone', globals: phone, render: () => <CandidatePortalScreen brand={CAND_BRAND} state="ready" portal={CAND_PORTAL} /> };

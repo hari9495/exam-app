@@ -42,6 +42,9 @@ export class ApplyDto {
   /** Answer 474: a New York City applicant asks for another process than the automated tool. */
   @IsOptional() @IsBoolean() alternativeProcess?: boolean;
 
+  /** Answer 561: "Message me on WhatsApp about jobs" (off unless ticked; needs the mobile number). */
+  @IsOptional() @IsBoolean() whatsappOptIn?: boolean;
+
   /** Honeypot: a field people never see. A bot that fills it is answered as if it applied, and nothing is stored. */
   @IsOptional() @IsString() @MaxLength(500) website?: string;
 }

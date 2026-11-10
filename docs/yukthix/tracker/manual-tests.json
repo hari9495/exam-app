@@ -18965,5 +18965,50 @@
     "expected": "Three settings with their defaults (9 am to 9 pm IST, 200 a day, 30 days); the change saves with a toast; a new sourced profile then shows \"erased in 7 days\".",
     "stories": [],
     "note": "Positive."
+  },
+  {
+    "id": "MT-561-01",
+    "area": "Hiring · Answer 561 WhatsApp opt-in (10 Nov 2026)",
+    "screen": "Apply form · WhatsApp tick",
+    "url": "http://localhost:3000/yx/careers/<demo company slug> (open a job, Apply)",
+    "account": "A new applicant (not signed in). Browser window 1278 x 635.",
+    "steps": [
+      "Fill the apply form and leave \"Message me on WhatsApp about jobs\" unticked; send.",
+      "Apply again to another job with a new email and tick it; send."
+    ],
+    "expected": "Step 1: sent; the candidate record shows no WhatsApp opt-in. Step 2: sent; the candidate is opted in (Talent CRM engagement shows WhatsApp: opted in), and the audit log has candidate.whatsapp.opted_in.",
+    "stories": [
+      "Surfaces/Careers · Apply form · Message me on WhatsApp about jobs"
+    ],
+    "note": "Negative then positive."
+  },
+  {
+    "id": "MT-561-02",
+    "area": "Hiring · Answer 561 WhatsApp opt-in (10 Nov 2026)",
+    "screen": "Status page · WhatsApp tick",
+    "url": "http://localhost:3000/yx/application/<status link from the apply email>",
+    "account": "The applicant from MT-561-01 step 2.",
+    "steps": [
+      "Open the status link from the apply email.",
+      "Untick \"Message me on WhatsApp about jobs\", then tick it again."
+    ],
+    "expected": "Ticked at first; unticking shows \"WhatsApp messages off\" and ticking \"WhatsApp messages on\" (toasts). A candidate who gave no mobile number sees \"We have no mobile number for you…\" and no tick.",
+    "stories": [
+      "Screens/Portals/T9-09 · Careers site · Application status · Message me on WhatsApp about jobs"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-561-03",
+    "area": "Hiring · Answer 561 WhatsApp opt-in (10 Nov 2026)",
+    "screen": "Unsubscribe link · WhatsApp",
+    "url": "http://localhost:3000/unsubscribe/<link from a campaign email>",
+    "account": "The opted-in applicant.",
+    "steps": [
+      "Open the unsubscribe link and press Stop WhatsApp messages about jobs."
+    ],
+    "expected": "It says no WhatsApp messages about jobs will come; a WhatsApp campaign no longer counts them in Who gets it.",
+    "stories": [],
+    "note": "Positive."
   }
 ]

@@ -91,12 +91,29 @@ export interface ApplicationStatusView {
   portalHref?: string | null;
   /** Answer 502: the New York City automated-tool notice, and when this candidate asked for another process. */
   toolNotice?: (ToolNotice & { requestedAt: Date | null }) | null;
+  /** Answer 561: "Message me on WhatsApp about jobs": their choice, and whether we have a mobile number. */
+  whatsapp?: { optedIn: boolean; hasPhone: boolean } | null;
 }
 
 /** Where one application is, in candidate words; reached by the status link in the apply email. */
-export function ApplicationStatusScreen({ brand, state, status, onAskAlternative }: { brand: CandidateBrand; state: CandidatePageState; status: ApplicationStatusView | null; onAskAlternative?: () => Promise<unknown> }) {
+export function ApplicationStatusScreen({ brand, state, status, onAskAlternative, onWhatsapp }: { brand: CandidateBrand; state: CandidatePageState; status: ApplicationStatusView | null; onAskAlternative?: () => Promise<unknown>; onWhatsapp?: (optIn: boolean) => Promise<unknown> }) {
   const toast = useToastIfAny();
   const [asking, setAsking] = useState(false);
+  const [waBusy, setWaBusy] = useState(false);
+  const [waFailed, setWaFailed] = useState<string | null>(null);
+  const setWa = async (on: boolean) => {
+    if (!onWhatsapp) return;
+    setWaBusy(true);
+    setWaFailed(null);
+    try {
+      await onWhatsapp(on);
+      toast?.toast({ tone: 'success', title: on ? 'WhatsApp messages on' : 'WhatsApp messages off', description: on ? 'We may message you about jobs on WhatsApp.' : 'We will not message you on WhatsApp about jobs.' });
+    } catch (e) {
+      setWaFailed(e instanceof Error && e.message ? e.message : 'That did not go through. Try again.');
+    } finally {
+      setWaBusy(false);
+    }
+  };
   const [failed, setFailed] = useState<string | null>(null);
   const ask = async () => {
     if (!onAskAlternative) return;
@@ -155,6 +172,16 @@ export function ApplicationStatusScreen({ brand, state, status, onAskAlternative
                 )
               )}
             </>
+          )}
+          {status.whatsapp && onWhatsapp && (
+            <div>
+              {waFailed && <InlineAlert tone="danger" title="Not saved">{waFailed}</InlineAlert>}
+              {status.whatsapp.hasPhone ? (
+                <Checkbox checked={status.whatsapp.optedIn} onChange={(v) => !waBusy && void setWa(v)} label="Message me on WhatsApp about jobs" description="On the mobile number you gave us. Untick to stop." />
+              ) : (
+                <p className="yx-ps-muted">We have no mobile number for you, so we cannot message you on WhatsApp.</p>
+              )}
+            </div>
           )}
           <p className="yx-ps-muted">We email you when this changes. This page shows only this application; nobody else can see it.</p>
           {status.portalHref && (

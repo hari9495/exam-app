@@ -1143,6 +1143,8 @@ export interface JobApplication {
   website?: string;
   /** Answer 474: a New York City applicant asked for another process than the automated tool. */
   alternativeProcess?: boolean;
+  /** Answer 561: "Message me on WhatsApp about jobs" was ticked (off unless the applicant ticks it). */
+  whatsappOptIn?: boolean;
 }
 
 /** Answer 474: what a New York City job tells candidates about the company's automated tool (rule set HIR.BIAS_AUDIT). */
@@ -1221,6 +1223,8 @@ export interface JobApplyFormProps {
   onResumePicked?: (file: File) => Promise<Partial<Record<'name' | 'email' | 'phone', string>>>;
   /** Adds the hidden bot trap field. */
   honeypot?: boolean;
+  /** Answer 561: offer the "Message me on WhatsApp about jobs" tick (off by default). */
+  whatsappTick?: boolean;
 }
 
 type ApplyErrors = Partial<Record<string, string>>;
@@ -1243,6 +1247,7 @@ export function JobApplyForm({
   questions = [],
   onResumePicked,
   honeypot = false,
+  whatsappTick = false,
 }: JobApplyFormProps) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -1255,6 +1260,7 @@ export function JobApplyForm({
   const [answers, setAnswers] = useState<Record<string, string | number>>({});
   const [website, setWebsite] = useState('');
   const [another, setAnother] = useState(false);
+  const [whatsapp, setWhatsapp] = useState(false);
   const [errors, setErrors] = useState<ApplyErrors>({});
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(defaultSent);
@@ -1318,6 +1324,7 @@ export function JobApplyForm({
         answers: questions.length ? answers : undefined,
         website: honeypot && website ? website : undefined,
         alternativeProcess: toolNotice && another ? true : undefined,
+        whatsappOptIn: whatsappTick && whatsapp ? true : undefined,
       });
       setSent(true);
     } catch (err) {
@@ -1383,6 +1390,11 @@ export function JobApplyForm({
           <FormField label="Your current or last pay (₹ a year)" optional helper="You can leave this empty." id={fid('pay')}>
             <NumberField value={pay} onChange={setPay} min={0} max={1_000_000_000} />
           </FormField>
+        )}
+        {whatsappTick && (
+          <div className="yx-apply__consent">
+            <Checkbox id={fid('whatsapp')} checked={whatsapp} onChange={setWhatsapp} label="Message me on WhatsApp about jobs (optional)" description="On the mobile number above. Stop any time from your application page or the unsubscribe link in our emails." />
+          </div>
         )}
         {toolNotice && (
           <div className="yx-apply__consent">

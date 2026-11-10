@@ -367,4 +367,71 @@ describe('Hiring rest: campaigns, sourced profiles, under 18', () => {
       expect(Math.round((Date.parse(r.purgeAfter) - Date.now()) / 86_400_000)).toBe(7);
     });
   });
+
+  describe('answer 561: the WhatsApp opt-in', () => {
+    let applyToken = '';
+    const apply = (email: string, extra: Record<string, unknown>) =>
+      pub('post', `/jobs/${applyToken}/apply`).send({ name: 'Kiran Rao', email, resumeBase64: Buffer.from(`%PDF-1.7 ${email}`).toString('base64'), consents: [{ purpose: 'application', version: 1 }], ...extra });
+    const cand = (email: string) => inA((tx) => tx.candidate.findFirstOrThrow({ where: { email }, select: { id: true, whatsappOptedInAt: true, whatsappOptInSource: true, unsubscribeToken: true } }));
+    const statusToken = (candidateId: string) => inA(async (tx) => (await tx.pipelineEntry.findFirstOrThrow({ where: { candidateId } })).applicationToken!);
+    const waAudience = async () => (await api('rec', 'post', '/hiring/campaigns/audience').send({ poolId: ids.pool, channel: 'whatsapp' }).expect(200)).body.enrolled as number;
+
+    beforeAll(async () => {
+      await api('admin', 'post', '/hiring/consent-notices').send({ purpose: 'application', text: 'We use your details only to consider you for this job.' }).expect(want(201));
+      const jobId = (await api('admin', 'post', '/jobs').send({ title: 'Packer' }).expect(201)).body.id;
+      applyToken = (await api('admin', 'patch', `/jobs/${jobId}`).send({ publicApplyEnabled: true }).expect(want(200))).body.applyToken;
+    });
+
+    it('off by default: an unticked application, or a tick with no mobile number, opts nobody in', async () => {
+      await apply(`plain-${run}@x.test`, { phone: '9876543210' }).expect(201);
+      expect((await cand(`plain-${run}@x.test`)).whatsappOptedInAt).toBeNull();
+      await apply(`nophone-${run}@x.test`, { whatsappOptIn: true }).expect(201);
+      expect((await cand(`nophone-${run}@x.test`)).whatsappOptedInAt).toBeNull();
+      await apply(`bad-${run}@x.test`, { phone: '9876543210', whatsappOptIn: 'yes' }).expect(400);
+    });
+
+    it('ticked on the apply form: stored with the time and source, audited; only then in a WhatsApp campaign audience', async () => {
+      const before = await waAudience();
+      await apply(`wa-${run}@x.test`, { phone: '9876543211', whatsappOptIn: true }).expect(201);
+      const c = await cand(`wa-${run}@x.test`);
+      expect(c.whatsappOptedInAt).not.toBeNull();
+      expect(c.whatsappOptInSource).toBe('apply');
+      expect(await inA((tx) => tx.auditLog.count({ where: { action: 'candidate.whatsapp.opted_in', entityId: c.id } }))).toBe(1);
+      ids.wa = c.id;
+      // In a pool with talent-pool consent, they now count for WhatsApp.
+      await consent(c.id);
+      await inA((tx) => tx.talentPoolMember.create({ data: { organizationId: org.A.id, poolId: ids.pool, candidateId: c.id } }));
+      expect(await waAudience()).toBe(before + 1);
+    });
+
+    it('the status page shows the tick and withdraws it (audited); ticking again works; a bad token is 404', async () => {
+      const t = await statusToken(ids.wa);
+      expect((await pub('get', `/applications/${t}`).expect(200)).body.whatsapp).toEqual({ optedIn: true, hasPhone: true });
+      expect((await pub('post', `/applications/${t}/whatsapp`).send({ optIn: false }).expect(200)).body.whatsapp.optedIn).toBe(false);
+      expect(await waAudience()).toBe(0);
+      expect((await cand(`wa-${run}@x.test`)).whatsappOptInSource).toBe('status_page');
+      expect(await inA((tx) => tx.auditLog.count({ where: { action: 'candidate.whatsapp.opted_out', entityId: ids.wa } }))).toBe(1);
+      // The same answer twice changes nothing (no second audit).
+      await pub('post', `/applications/${t}/whatsapp`).send({ optIn: false }).expect(200);
+      expect(await inA((tx) => tx.auditLog.count({ where: { action: 'candidate.whatsapp.opted_out', entityId: ids.wa } }))).toBe(1);
+      await pub('post', `/applications/${t}/whatsapp`).send({ optIn: true }).expect(200);
+      await pub('post', `/applications/${t}/whatsapp`).send({}).expect(400);
+      await pub('post', `/applications/${randomUUID()}/whatsapp`).send({ optIn: true }).expect(404);
+      // No mobile number: refused with the reason.
+      const np = await cand(`nophone-${run}@x.test`);
+      expect((await pub('post', `/applications/${await statusToken(np.id)}/whatsapp`).send({ optIn: true }).expect(409)).body.message).toMatch(/mobile number/);
+    });
+
+    it('the unsubscribe link withdraws it too', async () => {
+      const unsubscribeToken = randomUUID();
+      await inA((tx) => tx.candidate.update({ where: { id: ids.wa }, data: { unsubscribeToken } }));
+      expect((await pub('get', `/unsubscribe/${unsubscribeToken}`).expect(200)).body.whatsappOptedIn).toBe(true);
+      await pub('post', `/unsubscribe/${unsubscribeToken}/whatsapp`).expect(200);
+      const c = await cand(`wa-${run}@x.test`);
+      expect(c.whatsappOptedInAt).toBeNull();
+      expect(c.whatsappOptInSource).toBe('unsubscribe');
+      await pub('post', `/unsubscribe/${randomUUID()}/whatsapp`).expect(404);
+    });
+  });
 });
+

@@ -27,6 +27,7 @@ import { todayIst } from '../org-structure/org-validation';
 import { poolConsented, withdrawConsent } from '../talent/pools.service';
 import { QuickApplyDto } from './dto/quick-apply.dto';
 import { CareersAssistantDto } from './dto/careers-assistant.dto';
+import { setWhatsappOptIn } from '../candidates/whatsapp-opt-in';
 
 // Job-feed fields are wrapped in CDATA (the aggregator-standard for free-text). The only way to
 // break out of CDATA is the literal "]]>", so split it so it can never terminate the section early.
@@ -527,6 +528,8 @@ export class PublicApplicationsService {
         await tx.pipelineEntry.update({ where: { id: entry.id }, data: { alternativeRequestedAt: new Date() } });
         await AuditService.recordIn(tx, context, { actorUserId: null, action: 'candidate.alternative_process.requested', entityType: 'pipeline_entry', entityId: entry.id, metadata: { jobId: job.id } });
       }
+      // Answer 561: the applicant ticked "Message me on WhatsApp about jobs" (never assumed; an unticked re-apply withdraws nothing).
+      if (dto.whatsappOptIn && candidate.phone?.trim()) await setWhatsappOptIn(tx, context, candidate.id, true, 'apply');
       // Last write in the tx: a public application always makes the candidate at least 'engaged'.
       await recomputeGlobalStage(tx, job.organizationId, candidate.id);
       return { entry, candidateId: candidate.id, isNewCandidate, portalToken, newResume };
@@ -932,20 +935,28 @@ If you did not apply, ignore this email.`,
   // Cross-tenant candidate-by-unsubscribeToken resolution, same LOOKUP_ORG/isSuperAdmin bypass
   // as resolvePortalCandidate -- there is no org context until the token resolves one, and the
   // token itself IS the authorization for an unauthenticated visitor.
-  private async resolveByUnsubscribeToken(token: string): Promise<{ id: string; organizationId: string; emailOptedOutAt: Date | null }> {
+  private async resolveByUnsubscribeToken(token: string): Promise<{ id: string; organizationId: string; emailOptedOutAt: Date | null; whatsappOptedInAt: Date | null }> {
     const candidate = await this.tenantPrisma.forTenant(
       { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
-      (tx) => tx.candidate.findUnique({ where: { unsubscribeToken: token }, select: { id: true, organizationId: true, emailOptedOutAt: true } }),
+      (tx) => tx.candidate.findUnique({ where: { unsubscribeToken: token }, select: { id: true, organizationId: true, emailOptedOutAt: true, whatsappOptedInAt: true } }),
     );
     if (!candidate) throw new NotFoundException('Unsubscribe link not found');
     return candidate;
   }
 
   // Minimal data only: opted-out state + org name for display, no other candidate PII.
-  async getUnsubscribe(token: string): Promise<{ optedOut: boolean; orgName: string }> {
+  async getUnsubscribe(token: string): Promise<{ optedOut: boolean; orgName: string; whatsappOptedIn: boolean }> {
     const candidate = await this.resolveByUnsubscribeToken(token);
     const org = await this.prisma.organization.findUnique({ where: { id: candidate.organizationId }, select: { name: true } });
-    return { optedOut: Boolean(candidate.emailOptedOutAt), orgName: org?.name ?? '' };
+    return { optedOut: Boolean(candidate.emailOptedOutAt), orgName: org?.name ?? '', whatsappOptedIn: Boolean(candidate.whatsappOptedInAt) };
+  }
+
+  /** Answer 561: the unsubscribe link also withdraws the WhatsApp opt-in (opting in is on the apply form and status page). */
+  async withdrawWhatsapp(token: string): Promise<{ whatsappOptedIn: false }> {
+    const candidate = await this.resolveByUnsubscribeToken(token);
+    const c = { organizationId: candidate.organizationId, isSuperAdmin: true };
+    await this.tenantPrisma.forTenant(c, (tx) => setWhatsappOptIn(tx, c, candidate.id, false, 'unsubscribe'));
+    return { whatsappOptedIn: false };
   }
 
   // Idempotent, reversible: re-posting the same optedOut value is a no-op write.
@@ -1177,6 +1188,7 @@ If you did not apply, ignore this email.`,
             jobId: true,
             alternativeRequestedAt: true,
             job: { select: { title: true, location: true } },
+            candidate: { select: { phone: true, whatsappOptedInAt: true } },
           },
         }),
     );
@@ -1190,7 +1202,18 @@ If you did not apply, ignore this email.`,
       ...(await this.brand(row.organizationId)),
       // Answer 502: the New York City automated-tool notice and whether this candidate asked for another process.
       toolNotice: await this.toolNoticeFor(row.organizationId, row.jobId, row.alternativeRequestedAt),
+      // Answer 561: the WhatsApp tick (whether they have a number, never the number).
+      whatsapp: { optedIn: Boolean(row.candidate.whatsappOptedInAt), hasPhone: Boolean(row.candidate.phone?.trim()) },
     };
+  }
+
+  /** Answer 561: the candidate ticks or unticks "Message me on WhatsApp about jobs" on their status page. Audited. */
+  async setStatusWhatsapp(statusToken: string, optIn: boolean) {
+    const row = await this.tenantPrisma.forTenant({ organizationId: this.LOOKUP_ORG, isSuperAdmin: true }, (tx) => tx.pipelineEntry.findUnique({ where: { applicationToken: statusToken }, select: { organizationId: true, candidateId: true } }));
+    if (!row) throw new NotFoundException('Application not found');
+    const c = { organizationId: row.organizationId, isSuperAdmin: true };
+    await this.tenantPrisma.forTenant(c, (tx) => setWhatsappOptIn(tx, c, row.candidateId, optIn, 'status_page'));
+    return this.getApplicationStatus(statusToken);
   }
 
   private async toolNoticeFor(organizationId: string, jobId: string, requestedAt: Date | null) {

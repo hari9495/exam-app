@@ -323,6 +323,16 @@ export const ApplyFormFull: S = {
   ),
 };
 
+// Answer 561 (10 Nov 2026): the optional WhatsApp tick, off until the applicant ticks it.
+export const ApplyFormWhatsapp: S = {
+  name: 'Apply form · Message me on WhatsApp about jobs',
+  render: () => (
+    <div style={{ display: 'flex', justifyContent: 'center' }}>
+      <JobApplyForm job={JOBS[2]} companyName="Nilgiri Foods" upload={fakeUpload} onSubmit={() => new Promise((r) => setTimeout(r, 600))} whatsappTick />
+    </div>
+  ),
+};
+
 /* ---------------- Brand placeholders ---------------- */
 
 export const BrandPlaceholders: S = {
