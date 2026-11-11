@@ -102,6 +102,8 @@ export interface KbArticle {
   keywords: string | null;
   /** HLP-04 "Use in assistant answers". */
   assistantUse: boolean;
+  /** Help H-1 (answer 942): the pages it explains (app addresses); the Help drawer's "This page" lists it there. */
+  pages?: string[];
   version: number;
   updatedAt: string;
   space: Omit<KbSpace, 'publicUrl' | 'canAuthor' | 'canPublish' | 'canManage' | 'categories'>;
@@ -121,6 +123,8 @@ export interface KbArticle {
 
 /** What PATCH /kb/articles/:id takes besides the article's version. Send only what changed. */
 export interface KbArticleMeta {
+  /** Help H-1: the pages it explains. */
+  pages?: string[];
   categoryId?: string | null;
   slug?: string;
   seoTitle?: string;

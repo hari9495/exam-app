@@ -39,7 +39,7 @@ describe('every Service Desk endpoint declares a permission (YX-SEC-01)', () => 
     expect(undeclared(PortalController).sort()).toEqual(['confirm', 'get', 'info', 'list', 'me', 'meToo', 'raise', 'reply', 'request', 'signIn', 'signOut', 'verify']);
     // Batch 4: the requester's own help, ratings and privacy requests; the portal's; and the public, keyless surfaces
     // (help centre, one-click rating link, wall screen link, sign-up, SCIM with its own bearer token).
-    expect(undeclared(MyHelpController).sort()).toEqual(['askPrivacy', 'kbArticle', 'kbClick', 'kbFeedback', 'kbHome', 'privacyExport', 'privacyRequests', 'rate', 'suggest']);
+    expect(undeclared(MyHelpController).sort()).toEqual(['askPrivacy', 'kbArticle', 'kbClick', 'kbFeedback', 'kbHome', 'kbPage', 'privacyExport', 'privacyRequests', 'rate', 'suggest']);
     expect(undeclared(PortalHelpController).sort()).toEqual(['article', 'feedback', 'privacyAsk', 'privacyExport', 'privacyList', 'rate', 'suggest']);
     expect(undeclared(PublicHelpController).sort()).toEqual(['article', 'feedback', 'home', 'search', 'sitemap']);
     expect(undeclared(RateLinkController).sort()).toEqual(['answer', 'comment', 'info']);

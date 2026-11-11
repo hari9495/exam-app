@@ -4602,6 +4602,8 @@ model SdKbArticle {
   outdatedReason   String?                  @map("outdated_reason") @db.VarChar(300)
   keywords         String?                  @db.VarChar(300)
   assistantUse     Boolean                  @default(true) @map("assistant_use")
+  /// Help H-1 (answer 942): the pages it explains (route prefixes); the Help drawer's "This page" lists it there.
+  pages            String[]                 @default([])
   sourceTicketId   String?                  @map("source_ticket_id") @db.Uuid
   deletedAt        DateTime?                @map("deleted_at") @db.Timestamptz(3)
   search           Unsupported("tsvector")?

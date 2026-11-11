@@ -32,7 +32,8 @@ import {
   variance,
   NO_DEDUCTIONS,
 } from './pay-logic';
-import { IrreversibleSheet, StateBlock, WhyThisNumber } from './pay-kit';
+import { StateBlock, WhyThisNumber } from './pay-kit';
+import { IrreversibleSheet } from '../../components/irreversible';
 import { entityHeadcount } from '../_kit/data';
 import { RegimeComparePanel, EwaRequestScreen, PayslipViewerScreen } from './employee-pay';
 import { RunReadinessScreen } from './payroll-run';

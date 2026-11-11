@@ -39,6 +39,15 @@ const healthTone = (n: number): BadgeTone => (n >= 70 ? 'success' : n >= 40 ? 'w
 const SLUG = /^[a-z0-9][a-z0-9-]{1,39}$/;
 const ARTICLE_SLUG = /^[a-z0-9][a-z0-9-]{0,79}$/;
 const KEYWORDS = /^[\p{L}\p{M}\p{N} ,'&/-]*$/u;
+/** Help H-1: app addresses such as /yx/time/leave, separated with commas (up to 20). */
+const PAGE = /^\/yx(\/[a-z0-9][a-z0-9-]*){0,8}$/;
+export const pagesOf = (text: string) => [...new Set(text.split(',').map((p) => p.trim().replace(/\/+$/, '')).filter(Boolean))];
+export const pagesProblem = (text: string) => {
+  const list = pagesOf(text);
+  if (list.length > 20) return 'At most 20 pages.';
+  const bad = list.find((p) => !PAGE.test(p));
+  return bad ? `${bad} is not an app address. Use one like /yx/time/leave.` : null;
+};
 const day = (iso: string | null) => (iso ? iso.slice(0, 10) : '');
 const dateText = (iso: string | null) => (iso ? formatDate(new Date(`${iso.slice(0, 10)}T00:00:00`)) : '—');
 /** ISO time → the value of an <input type="datetime-local"> in this browser's time zone. */
@@ -359,6 +368,8 @@ function ArticleEditor({ live, article: a, crumbs }: { live: LiveKb; article: Kb
   const [note, setNote] = useState('');
   const [categoryId, setCategoryId] = useState<string | null>(a.categoryId);
   const [keywords, setKeywords] = useState(a.keywords ?? '');
+  const [pages, setPages] = useState((a.pages ?? []).join(', '));
+  const pagesBad = pagesProblem(pages);
   const [assistantUse, setAssistantUse] = useState(a.assistantUse);
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [blockKey, setBlockKey] = useState<string | null>(null);
@@ -370,7 +381,7 @@ function ArticleEditor({ live, article: a, crumbs }: { live: LiveKb; article: Kb
   const { busy, error, run } = useRun();
   const { toast } = useToast();
   const keywordsOk = KEYWORDS.test(keywords);
-  const early = useTooEarly([...(title.trim() ? [] : [{ fieldId: 'ke-title', message: 'Give the article a title.' }]), ...(keywordsOk ? [] : [{ fieldId: 'ke-words', message: 'Use letters, digits, spaces and commas' }])]);
+  const early = useTooEarly([...(title.trim() ? [] : [{ fieldId: 'ke-title', message: 'Give the article a title.' }]), ...(keywordsOk ? [] : [{ fieldId: 'ke-words', message: 'Use letters, digits, spaces and commas' }]), ...(pagesBad ? [{ fieldId: 'ke-pages', message: pagesBad }] : [])]);
   const sendEarly = useTooEarly([...(title.trim() ? [] : [{ fieldId: 'ke-title', message: 'Give the article a title.' }]), ...(body.replace(/<[^>]*>/g, '').trim() ? [] : [{ fieldId: 'ke-body', message: 'Write the answer before sending it for review.' }]), ...(keywordsOk ? [] : [{ fieldId: 'ke-words', message: 'Use letters, digits, spaces and commas' }])]);
   const tplEarly = useTooEarly(templateId ? [] : [{ fieldId: 'ke-tpl', message: 'Choose a template first.' }]);
   const blockEarly = useTooEarly(blockKey ? [] : [{ fieldId: 'ke-block', message: 'Choose a block first.' }]);
@@ -379,6 +390,7 @@ function ArticleEditor({ live, article: a, crumbs }: { live: LiveKb; article: Kb
     ...(categoryId !== a.categoryId ? { categoryId } : {}),
     ...(keywords.trim() !== (a.keywords ?? '') ? { keywords: keywords.trim() } : {}),
     ...(assistantUse !== a.assistantUse ? { assistantUse } : {}),
+    ...(pagesOf(pages).join() !== (a.pages ?? []).join() ? { pages: pagesOf(pages) } : {}),
   });
   /** Save draft saves the words as a version and the "Where it shows" choices on the article. */
   const save = async () => {
@@ -536,6 +548,9 @@ function ArticleEditor({ live, article: a, crumbs }: { live: LiveKb; article: Kb
                     <FormField id="ke-words" label="Also suggest for these words" optional helper="Separate with commas" error={!keywordsOk ? 'Use letters, digits, spaces and commas' : null}>
                       <TextField value={keywords} onChange={setKeywords} maxLength={300} />
                     </FormField>
+                    <FormField id="ke-pages" label="Show in Help on these pages" optional helper="App addresses, separated with commas, e.g. /yx/time/leave. Pages under them count too." error={pagesBad}>
+                      <TextField value={pages} onChange={setPages} maxLength={2000} />
+                    </FormField>
                     <Switch checked={assistantUse} onChange={setAssistantUse} label="Use in assistant answers" description="The help assistant is not switched on yet. When it is, it uses this article only if this is on." />
                   </>
                 ) : (
@@ -543,6 +558,7 @@ function ArticleEditor({ live, article: a, crumbs }: { live: LiveKb; article: Kb
                     items={[
                       { label: 'Category', value: (a.categoryId && cats.find((t) => t.cat.id === a.categoryId)?.path) || 'No category' },
                       { label: 'Also suggest for', value: a.keywords || '—' },
+                      { label: 'Shown in Help on', value: a.pages?.length ? a.pages.join(', ') : '—' },
                       { label: 'Use in assistant answers', value: a.assistantUse ? 'Yes' : 'No' },
                     ]}
                   />

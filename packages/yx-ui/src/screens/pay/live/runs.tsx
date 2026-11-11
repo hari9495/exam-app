@@ -11,7 +11,8 @@ import { Card, Tabs, TabsContent, TabsList, TabsTrigger } from '../../../compone
 import { PlainTable } from '../../../components/plain-table';
 import { useRun } from '../../org/org-kit';
 import { LivePage, dateText } from '../../time/live/kit';
-import { IrreversibleSheet, RunStageTrack, type RunStage } from '../pay-kit';
+import { RunStageTrack, type RunStage } from '../pay-kit';
+import { IrreversibleSheet } from '../../../components/irreversible';
 import { monthText } from './periods';
 import type { Confirmation, LoadState } from './types';
 import { periodsOf } from './types-5j';
