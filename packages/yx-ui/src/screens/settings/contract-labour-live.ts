@@ -59,7 +59,7 @@ export function clraSettingsPage(design: SettingsPageDef, data: ClraSettingsData
       if (!data.registrations) return null;
       const name = (id: string) => data.sites?.find((x) => x.id === id)?.name ?? 'Site';
       const peak = (id: string) => data.peaks?.find((x) => x.locationId === id)?.peak;
-      return { ...base, scope: 'Company', columns: ['Establishment', 'Registration', 'Max contract workers', 'Valid to', 'Highest in 12 months'], rows: data.registrations.map((r) => [name(r.locationId), r.registrationNo, String(r.maxWorkers), r.validTo ? dayText(r.validTo) : 'No end', String(peak(r.locationId) ?? 0)]), starter: false, helper: 'At the threshold a site needs a registration before it takes more contract workers; a registered site is held to its maximum.' };
+      return { ...base, scope: 'Company', columns: ['Establishment', 'Registration', 'Max contract workers', 'Valid to', 'Highest in 12 months'], rows: data.registrations.map((r) => [name(r.locationId), r.registrationNo, String(r.maxWorkers), r.validTo ? dayText(r.validTo) : 'No end', String(peak(r.locationId) ?? 'Counted tonight')]), starter: false, helper: 'At the threshold a site needs a registration before it takes more contract workers; a registered site is held to its maximum.' };
     }
     // Answer 741: which monthly proofs are required.
     if (d.key === 'clra.required_proofs') {

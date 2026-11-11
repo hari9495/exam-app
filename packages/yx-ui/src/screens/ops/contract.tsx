@@ -25,7 +25,7 @@ import { formatDate, formatINR } from '../../lib/format';
 import type { FilterValue } from '../../lib/table';
 import { Actions, CardGrid, CheckList, Facts, OpsDesk, PhotoPlaceholder, StatusTrail, useSay, type CheckRow } from './ops-kit';
 import { Segment } from '../../components/segment';
-import { hintText, useMinWage, type MinWageHint } from '../portals/contractor-portal';
+import { belowMinimum, hintText, useMinWage, type MinWageHint } from '../portals/contractor-portal';
 import { FileButton } from '../pay/pay-kit';
 import { deployBlocks, expiryTone } from './ops-rules';
 import type { ListState } from './helpdesk';
@@ -67,7 +67,7 @@ export function licenceBadge(l: Licence, today: Date): { tone: BadgeTone; text: 
 
 export interface ContractorsScreenProps {
   contractors: Contractor[];
-  establishments: { name: string; state: string; rc: string; family: string; workers: number; threshold: number; validTo: Date | null; licenceMax?: number; peak?: number }[];
+  establishments: { name: string; state: string; rc: string; family: string; workers: number; threshold: number; validTo: Date | null; licenceMax?: number; /** null: not counted yet (answer 803: the nightly count). */ peak?: number | null }[];
   today: Date;
   state?: ListState;
   openId?: string | null;
@@ -166,7 +166,7 @@ export function ContractorsView(p: ContractorsViewProps) {
                 <h3 className="yx-ops-card__title">{e.name}</h3>
                 <Badge tone={e.rc === '—' ? (e.workers >= e.threshold ? 'danger' : 'neutral') : 'success'}>{e.rc === '—' ? (e.workers >= e.threshold ? 'Registration needed' : 'Below threshold') : 'Registered'}</Badge>
               </div>
-              <Facts items={[{ label: 'Contract workers', value: e.workers }, ...(e.licenceMax !== undefined ? [{ label: 'Licence maximum', value: e.licenceMax, tone: e.workers > e.licenceMax ? ('danger' as const) : undefined }] : []), ...(e.peak !== undefined ? [{ label: 'Highest in 12 months', value: e.peak }] : []), { label: 'Threshold (OSH Code, verify)', value: e.threshold }]} />
+              <Facts items={[{ label: 'Contract workers', value: e.workers }, ...(e.licenceMax !== undefined ? [{ label: 'Licence maximum', value: e.licenceMax, tone: e.workers > e.licenceMax ? ('danger' as const) : undefined }] : []), ...(e.peak !== undefined ? [{ label: 'Highest in 12 months', value: e.peak ?? 'Counted tonight' }] : []), { label: 'Threshold (OSH Code, verify)', value: e.threshold }]} />
               <p className="yx-ops-muted">{e.rc === '—' ? `No registration needed below ${e.threshold} contract workers.` : `${e.family} registration ${e.rc}${e.validTo ? `, valid to ${formatDate(e.validTo)}` : ''}`}</p>
             </article>
           ))}
@@ -634,7 +634,7 @@ export interface WorkersScreenProps {
   contractors: Contractor[];
   today: Date;
   state?: ListState;
-  deploy?: 'ok' | 'limit' | 'underage' | 'scope' | 'duplicate' | 'threshold' | null;
+  deploy?: 'ok' | 'limit' | 'underage' | 'scope' | 'duplicate' | 'threshold' | 'lowwage' | null;
   /** CL-2 states drawn first: site approval with the induction, release, and the reader without the key to change. */
   sheet?: WorkersSheet | null;
   readOnly?: boolean;
@@ -669,7 +669,7 @@ export interface WorkersViewProps {
   inductionRequired: boolean;
   inductionMonths: number;
   /** The design's sample checks and form (live: none, the server checks). */
-  design?: { checks: CheckRow[]; dob: Date; site: string };
+  design?: { checks: CheckRow[]; dob: Date; site: string; wage?: number };
   onRetry?: () => void;
   onCheck?: (input: WorkerInput) => Promise<CheckRow[]>;
   onSend?: (input: WorkerInput) => Promise<unknown>;
@@ -727,7 +727,7 @@ export function WorkersScreen({ workers, contractors, today, state = 'ready', de
       canManage={!readOnly}
       inductionRequired
       inductionMonths={12}
-      design={deploy ? { checks, dob, site: 'hosur' } : undefined}
+      design={deploy ? { checks, dob, site: 'hosur', ...(deploy === 'lowwage' ? { wage: 9000 } : {}) } : undefined}
     />
   );
 }
@@ -815,7 +815,7 @@ function DeployWorkerSheet(p: WorkersViewProps & { onClose: () => void }) {
   const [dob, setDob] = useState<Date | null>(p.design?.dob ?? null);
   const [from, setFrom] = useState<Date | null>(p.design ? p.today : null);
   const [to, setTo] = useState<Date | null>(null);
-  const [wage, setWage] = useState<number | null>(p.design ? 14820 : null);
+  const [wage, setWage] = useState<number | null>(p.design ? (p.design.wage ?? 14820) : null);
   const [checks, setChecks] = useState<CheckRow[] | null>(p.design?.checks ?? null);
   const hint = useMinWage(f.locationId, f.skill, p.onMinWage, p.design ? { monthly: '14820.00', daily: '570.00', source: 'TN 2026-04, zone A, unskilled', verify: true } : null);
   const [tried, setTried] = useState(false);
@@ -898,6 +898,7 @@ function DeployWorkerSheet(p: WorkersViewProps & { onClose: () => void }) {
         <FormField id="dw-wage" label="Monthly wage paid by the contractor" optional helper={hintText(hint) ?? "Checked against the minimum wage with the contractor's monthly proofs."}>
           <CurrencyField value={wage} onChange={setWage} />
         </FormField>
+        {belowMinimum(wage, hint) && <InlineAlert tone="warning" title="Below the minimum wage">{belowMinimum(wage, hint)}</InlineAlert>}
         <FieldRow>
           <FormField id="dw-uan" label="UAN" optional error={err('uan')}>
             <TextField value={f.uan} onChange={(v) => set({ uan: v.replace(/\D/g, '').slice(0, 12) })} inputMode="numeric" maxLength={12} />
@@ -2234,13 +2235,15 @@ export interface ClientPack {
   due: Date;
   uploaded: Date | null;
   ref: string;
+  /** Answer 821: statutes not filed for the month yet (e.g. 'ESI challan'). */
+  missing?: string[];
 }
 /** GET contract-labour/client-packs (answer 639). */
 export interface ClientPacksData {
   canManage: boolean;
   today: string;
   sites: Opt[];
-  packs: { id: string; client: string; site: string; clientSiteId: string; month: string; employees: number; due: string; channel: string; status: ClientPack['status']; uploadedOn: string | null; reference: string | null; version: number }[];
+  packs: { id: string; client: string; site: string; clientSiteId: string; month: string; employees: number; due: string; channel: string; status: ClientPack['status']; uploadedOn: string | null; reference: string | null; version: number; missing: string[]; challans: boolean }[];
 }
 export interface LiveClientPacks {
   state: 'ready' | 'loading' | 'error' | 'no-access';
@@ -2258,7 +2261,7 @@ export function ClientPacksScreen({ packs: sample, recordOpen, making: makingAtS
   const d = live?.data ?? null;
   type Card = ClientPack & { id: string; live?: ClientPacksData['packs'][number] };
   const packs: Card[] = d
-    ? d.packs.map((p) => ({ id: p.id, client: `${p.client} · ${p.site}`, month: new Date(`${p.month}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }), items: PACK_ITEMS_LIVE, status: p.status, due: dayOf(p.due), uploaded: p.uploadedOn ? dayOf(p.uploadedOn) : null, ref: p.reference ?? '', live: p }))
+    ? d.packs.map((p) => ({ id: p.id, client: `${p.client} · ${p.site}`, month: new Date(`${p.month}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }), items: p.challans ? [...PACK_ITEMS_LIVE, 'PF and ESI challans'] : PACK_ITEMS_LIVE, missing: p.missing, status: p.status, due: dayOf(p.due), uploaded: p.uploadedOn ? dayOf(p.uploadedOn) : null, ref: p.reference ?? '', live: p }))
     : sample.map((p, i) => ({ ...p, id: `s${i}` }));
   const [open, setOpen] = useState<string | null>(recordOpen ? (packs[0]?.id ?? null) : null);
   const [ack, setAck] = useState<string | null>(accepting ? (packs.find((p) => p.status === 'Uploaded')?.id ?? null) : null);
@@ -2303,6 +2306,7 @@ export function ClientPacksScreen({ packs: sample, recordOpen, making: makingAtS
                 </li>
               ))}
             </ul>
+            {p.missing && p.missing.length > 0 && <InlineAlert tone="warning" title={`Not filed yet: ${p.missing.join(', ')}`}>Not in this pack. Once it is filed in Payroll › Statutory filings, make the pack again.</InlineAlert>}
             {p.uploaded && <p className="yx-ops-muted">Uploaded {formatDate(p.uploaded)} · {p.ref}</p>}
             <Actions>
               <Button size="sm" icon={Download} loading={busy === `d-${p.id}`} onClick={() => download(p)}>Download pack</Button>
@@ -2471,6 +2475,13 @@ export interface AttendanceMonthProps {
   confirmOpen?: string | null;
 }
 
+// Answer 807: a month with no days asks "Confirm 0 days?" and names the workers with 0 days.
+const total = (r: AttendanceRow) => r.workers.reduce((n, w) => n + w.present, 0);
+const zeroOf = (r: AttendanceRow) => {
+  const z = r.workers.filter((w) => w.present === 0).map((w) => w.name);
+  return z.length ? `0 days: ${z.join(', ')}. ` : '';
+};
+
 export function AttendanceMonthScreen(p: AttendanceMonthProps) {
   const { say } = useSay();
   const [confirming, setConfirming] = useState<string | null>(p.confirmOpen ?? null);
@@ -2515,9 +2526,9 @@ export function AttendanceMonthScreen(p: AttendanceMonthProps) {
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setConfirming(null)}
-          title={`Confirm ${row.contractor}'s ${monthText(p.month)} at ${row.site.name}?`}
-          consequence={`${row.workers.reduce((n, w) => n + w.present, 0)} days on site for ${row.workers.length} ${row.workers.length === 1 ? 'worker' : 'workers'}. The month is then locked: no more punches or entries, and the wage check uses these days.`}
-          confirmLabel="Confirm month"
+          title={total(row) === 0 ? 'Confirm 0 days?' : `Confirm ${row.contractor}'s ${monthText(p.month)} at ${row.site.name}?`}
+          consequence={`${total(row) === 0 ? `No days on site in ${monthText(p.month)} for ${row.contractor} at ${row.site.name}. ` : `${total(row)} days on site for ${row.workers.length} ${row.workers.length === 1 ? 'worker' : 'workers'}. `}${zeroOf(row)}The month is then locked: no more punches or entries, and the wage check uses these days.`}
+          confirmLabel={total(row) === 0 ? 'Confirm 0 days' : 'Confirm month'}
           onConfirm={() => void (p.onConfirm ? p.onConfirm(row.contractorId, row.site.id, p.month) : Promise.resolve()).then(() => (say('Month confirmed'), setConfirming(null)), (e: unknown) => say(errText(e)))}
         />
       )}

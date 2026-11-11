@@ -117,7 +117,7 @@ export function LiveContractors({ live }: { live: ContractorsLive }) {
   return (
     <ContractorsView
       contractors={d ? contractorsOf(d) : []}
-      establishments={(d?.establishments ?? []).filter((e) => e.threshold !== null).map((e) => ({ name: e.name, state: e.state, rc: e.registration?.no ?? '—', family: 'OSH Code', workers: e.workers, threshold: e.threshold!, validTo: e.registration?.validTo ? date(e.registration.validTo) : null, licenceMax: e.licenceMax, peak: e.peak?.count }))}
+      establishments={(d?.establishments ?? []).filter((e) => e.threshold !== null).map((e) => ({ name: e.name, state: e.state, rc: e.registration?.no ?? '—', family: 'OSH Code', workers: e.workers, threshold: e.threshold!, validTo: e.registration?.validTo ? date(e.registration.validTo) : null, licenceMax: e.licenceMax, peak: e.peak === undefined ? undefined : (e.peak?.count ?? null) }))}
       today={d ? date(d.today) : new Date()}
       state={live.state === 'ready' ? (d && d.contractors.length ? 'ready' : 'empty') : live.state}
       openId={null}

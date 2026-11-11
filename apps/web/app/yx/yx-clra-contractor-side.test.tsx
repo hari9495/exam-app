@@ -25,7 +25,7 @@ const api = apiFetch as jest.Mock;
 const calls: [string, string][] = [];
 const SITES = { canManage: true, clients: [{ id: 'c1', name: 'Nilgiri Pharma Ltd' }], sites: [{ id: 's1', clientId: 'c1', client: 'Nilgiri Pharma Ltd', site: 'Ambattur unit', principal: 'Nilgiri Pharma Ltd', registrationNo: 'TN/OSH/REG/2025/77410', state: 'IN-TN', address: null, packChannel: 'Vendor portal', packDueDay: 10, deployed: 2, max: 50, licenceNo: 'TN/1' }] };
 const LICS = { canManage: true, today: '2026-11-11', entities: [{ value: 'e1', label: 'Kaveri Foods' }], sites: [{ value: 's1', label: 'Ambattur unit', state: 'IN-TN' }], licences: [{ id: 'l1', licenceNo: 'TN/OSH/CL/2026/2211', scope: 'Guards', clientSiteId: 's1', site: 'Ambattur unit', states: ['IN-TN'], maxWorkers: 50, deployed: 2, validFrom: '2026-01-01', validTo: '2027-03-31', authority: null, entity: 'Kaveri Foods' }] };
-const PACKS = { canManage: true, today: '2026-11-11', sites: [{ value: 's1', label: 'Nilgiri Pharma Ltd · Ambattur unit' }], packs: [{ id: 'p1', client: 'Nilgiri Pharma Ltd', site: 'Ambattur unit', clientSiteId: 's1', month: '2026-10', employees: 2, due: '2026-11-10', channel: 'Vendor portal', status: 'Overdue', uploadedOn: null, reference: null, version: 1 }] };
+const PACKS = { canManage: true, today: '2026-11-11', sites: [{ value: 's1', label: 'Nilgiri Pharma Ltd · Ambattur unit' }], packs: [{ id: 'p1', client: 'Nilgiri Pharma Ltd', site: 'Ambattur unit', clientSiteId: 's1', month: '2026-10', employees: 2, due: '2026-11-10', channel: 'Vendor portal', status: 'Overdue', uploadedOn: null, reference: null, version: 1, missing: [], challans: true }] };
 
 beforeEach(() => {
   api.mockReset();

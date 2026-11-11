@@ -84,8 +84,8 @@ const packData = (over: Partial<ClientPacksData> = {}): ClientPacksData => ({
   today: '2026-11-11',
   sites: [{ value: 's1', label: 'Nilgiri Pharma Ltd · Ambattur unit' }],
   packs: [
-    { id: 'p1', client: 'Nilgiri Pharma Ltd', site: 'Ambattur unit', clientSiteId: 's1', month: '2026-10', employees: 3, due: '2026-11-10', channel: 'Vendor portal', status: 'Overdue', uploadedOn: null, reference: null, version: 1 },
-    { id: 'p2', client: 'Nilgiri Pharma Ltd', site: 'Ambattur unit', clientSiteId: 's1', month: '2026-09', employees: 3, due: '2026-10-10', channel: 'Vendor portal', status: 'Uploaded', uploadedOn: '2026-10-08', reference: 'NPL/1', version: 1 },
+    { id: 'p1', client: 'Nilgiri Pharma Ltd', site: 'Ambattur unit', clientSiteId: 's1', month: '2026-10', employees: 3, due: '2026-11-10', channel: 'Vendor portal', status: 'Overdue', uploadedOn: null, reference: null, version: 1, missing: ['ESI challan'], challans: true },
+    { id: 'p2', client: 'Nilgiri Pharma Ltd', site: 'Ambattur unit', clientSiteId: 's1', month: '2026-09', employees: 3, due: '2026-10-10', channel: 'Vendor portal', status: 'Uploaded', uploadedOn: '2026-10-08', reference: 'NPL/1', version: 1, missing: [], challans: true },
   ],
   ...over,
 });
@@ -112,6 +112,12 @@ describe('CLB-08 client packs (live)', () => {
     await ue.click(screen.getByRole('button', { name: 'Save acceptance' }));
     expect(await screen.findByText('Attach the client’s acknowledgement.')).toBeInTheDocument();
     expect(l.onAcknowledge).not.toHaveBeenCalled();
+  });
+
+  it('821: the challans are listed; a statute not filed yet is named (only on that pack)', () => {
+    show(<ClientPacksScreen packs={[]} live={packLive()} />);
+    expect(screen.getAllByText('PF and ESI challans')).toHaveLength(2);
+    expect(screen.getAllByText('Not filed yet: ESI challan')).toHaveLength(1);
   });
 
   it('a remake of an existing month needs a reason (negative), then goes through', async () => {
