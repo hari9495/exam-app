@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { CompanyScreen, type CompanyDetail, type SupportSession } from '@yukthix/ui/console';
+import { CompanyScreen, type CompanyDetail, type CompanyFeature, type CompanySettingsView, type Product, type SupportSession } from '@yukthix/ui/console';
 import { useAuth } from '../../../../../lib/auth-context';
 import { loadState, useConsole, useConsoleKeys, useConsoleWrite } from '../../../../../lib/yx-console';
 
@@ -16,6 +16,17 @@ export default function ConsoleCompanyPage() {
   const can = useConsoleKeys();
   const sessions = useConsole<SupportSession[]>(`/support-sessions?organizationId=${encodeURIComponent(id)}`, can('platform.support.request'));
   const write = useConsoleWrite();
+  // Answer 1053: what is switched on: the plan's products, then the plan features YukthiX turns on (Company settings).
+  // shortcut: C-4's per-company feature switches are not merged yet; add them here as source 'switch' when they are.
+  const products = useConsole<Product[]>('/products');
+  const settings = useConsole<CompanySettingsView>(`${path}/settings`, can('platform.companies.view'));
+  const features: CompanyFeature[] | undefined =
+    company.data && products.data
+      ? [
+          ...products.data.map((p) => ({ key: `product:${p.code}`, label: p.name, on: company.data!.products.includes(p.code), source: 'product' as const, note: 'Not in the plan' })),
+          ...(settings.data?.settings ?? []).map((s) => ({ key: `setting:${s.key}`, label: s.label, on: s.included && s.value === 'on', source: 'setting' as const, note: s.included ? 'Off' : 'Not in the plan' })),
+        ]
+      : undefined;
   const session = (sessionId: string, what: 'end' | 'cancel') => write(`/support-sessions/${encodeURIComponent(sessionId)}/${what}`, 'POST').then(() => undefined);
   return (
     <CompanyScreen
@@ -37,6 +48,7 @@ export default function ConsoleCompanyPage() {
       onWithdrawRequest={(sessionId) => session(sessionId, 'cancel')}
       onOpenSettings={() => router.push(`/staff/companies/${encodeURIComponent(id)}/settings`)}
       onContain={can('platform.company.contain') ? () => router.push(`/staff/companies/${encodeURIComponent(id)}/contain`) : undefined}
+      features={features}
     />
   );
 }

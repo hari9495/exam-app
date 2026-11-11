@@ -56,8 +56,10 @@ export class PlatformController {
     return this.platform.company(actor, id);
   }
 
+  // Answer 1053 (PLT-09): creating a company sends the first System Admin's invite: step-up (P12 YX-IAM-02).
   @Post('companies')
   @RequirePermissions('platform.companies.manage')
+  @RequireStepUp()
   createCompany(@CurrentTenant() ctx: TenantContext, @CurrentUserId() actor: string, @Body() dto: CreateCompanyDto) {
     return this.platform.createCompany(ctx, actor, dto);
   }

@@ -73,17 +73,17 @@ built** · **phone view, mobile app not built**.
 
 ## Counts (sub-pages = stories)
 
-After C-1, C-2, C-3 and C-4 (12 Nov 2026, merged on test/yukthix-main; recounted by the appendix script, "ok").
+After C-1 to C-5 (12 Nov 2026, merged on test/yukthix-main; recounted by the appendix script, "ok").
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Live console | 2 | 21 | 0 | 0 | 0 | 0 | 21 |
+| A. Live console | 2 | 22 | 0 | 0 | 0 | 0 | 22 |
 | B. Rules engine (YX-01 to YX-03) | 3 | 25 | 5 | 0 | 0 | 0 | 30 |
 | C. Customers and containment (YX-04, YX-18) | 2 | 22 | 2 | 0 | 0 | 0 | 24 |
 | D. Partners (YX-06 to YX-08) | 3 | 0 | 0 | 0 | 10 | 0 | 10 |
 | E. Money (YX-14 to YX-17) | 4 | 0 | 0 | 0 | 8 | 0 | 8 |
-| F. The rest (YX-05, YX-09 to YX-13) | 6 | 0 | 0 | 0 | 19 | 0 | 19 |
-| **All A-F** | **20** | **68** | **7** | **0** | **37** | **0** | **112** |
+| F. The rest (YX-05, YX-09 to YX-13) | 6 | 6 | 0 | 0 | 17 | 0 | 23 |
+| **All A-F** | **20** | **75** | **7** | **0** | **35** | **0** | **117** |
 
 Counted by script on 11 Nov 2026 on `docs/yukthix-console-map` (the script is in the appendix). There are 87 stories in
 20 files whose title starts `Screens/YukthiX console/`: `screens/console/console.stories.tsx` (14),
@@ -157,6 +157,7 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 | Companies · Companies | live | `/staff/companies` renders `CompaniesScreen` with `GET /platform/companies` (`platform.companies.view`); New company is `POST` (`platform.companies.manage`) |
 | CompaniesLoading · Companies · loading | live | same page; `loadState` in `apps/web/lib/yx-console.ts` gives `loading` |
 | Company · Company · trial with an open support session | live | `/staff/companies/[id]`, `CompanyScreen`; suspend and close are step-up (`@RequireStepUp`) |
+| CompanyFeatures · Company · products and features (C-5) | live | `/staff/companies/[id]`: plan products and the plan features YukthiX switches on (Company settings); C-4 switches join here |
 | CompanyNoSession · Company · ask for support access | live | same page; `POST /platform/companies/:id/support-sessions` (`platform.support.request`) |
 | CompanySettings · Company settings · white-label in the plan | live | `/staff/companies/[id]/settings`, `CompanySettingsScreen`, `GET/PATCH …/settings` |
 | CompanySettingsNotInPlan · Company settings · not in the plan | live | same page; the API says what is in the plan |
@@ -347,8 +348,12 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 |---|---|---|
 | YX10List · Incidents and maintenance | design only, feature not built | no platform incidents or status page; `health/` is a liveness check |
 | YX10Compose · Incident update composer | design only, feature not built | as above |
-| YX10Maintenance · Maintenance · passes checks | design only, feature not built | no maintenance windows (needed by H-7 availability, answer 948) |
-| YX10MaintenanceBlocked · Maintenance · payroll window blocked | design only, feature not built | as above |
+| YX10Maintenance · Maintenance · passes checks | live | C-5: `/staff/maintenance`, `IncidentComposerScreen live` (the maintenance part); checks from platform settings; second staff member approves |
+| YX10MaintenanceBlocked · Maintenance · payroll window blocked | live | same page: the payroll-critical days, statutory dates and notice refuse the window with the reason |
+| YX10MaintenanceLive · Planned maintenance · schedule and approve (C-5) | live | `GET|POST platform/maintenance`, `POST .../:id/approve`, `POST .../:id/cancel`, `PUT .../settings` (`platform.maintenance.manage`) |
+| YX10MaintenanceTooSoon · Planned maintenance · too little notice (C-5) | live | same page, the notice rule (72 hours by default) |
+| YX10BannerBefore · What companies see · the day before (C-5) | live | every signed-in page: `GET /availability`, `AvailabilityBanner live` in the app layout |
+| YX10BannerDuring · What companies see · during the window (C-5) | live | same, during the window; never blocks sign-in |
 | YX10Probes · Probes | design only, feature not built | no probes |
 
 #### YX-11 · Help-centre editor
@@ -697,3 +702,52 @@ C-6 to C-8.
       Console › Platform settings page comes with the next platform setting.*
 1126. **Each staff member's own keys.** Today every YukthiX staff account holds every console key, so "without the key"
       means without the security key. *Suggested: give out the contain and flags keys by staff role with 1058.*
+## C-5 built: company wizard, products and features, planned maintenance (answers 948, 1053; 12 Nov 2026, branch `feat/yukthix-console-c5`)
+
+- **Company wizard (PLT-09):** Console › Companies › New company opens `/staff/companies/new`, the designed
+  `TenantWizardScreen` with `live`: company details (name, company code), the default legal entity (registered name,
+  PAN and GSTIN optional; the GSTIN must carry the PAN), the first System Admin, plan and products (with today's price),
+  review, then Create company. The old New company drawer is deleted (one version). The existing create API
+  (`POST platform/companies`) now takes the legal entity basics, needs a fresh step-up (security key) and is audited
+  (`platform.company.created` with the entity, PAN and GSTIN given or not). The first System Admin gets one email, the
+  invite to set their password, and nothing else. Done: the System Admin finishes set-up in Settings › Set-up hub (H-6).
+- **Products and features on the company page:** a "Products and features" card: every plan product (on, or Not in the
+  plan) and each plan feature YukthiX switches on (Company settings: on, off, or Not in the plan). C-4's per-company
+  feature switches are not merged; they join this card as source `switch` (hook in `companies/[id]/page.tsx`).
+- **Planned maintenance (YX-10, answer 948):** Console › Operations › Planned maintenance (`/staff/maintenance`), the
+  designed `IncidentComposerScreen` with `live` (its maintenance part; incidents are not built). Staff schedule a window
+  (title, day, start, 1 to 4 hours); the drawn checks come from platform settings with defaults: 72 hours' notice,
+  banner 24 hours before, at most 4 hours, never in the first 7 or last 3 days of the month (India days) nor on the
+  statutory dates 7, 15, 20. A second staff member (never the scheduler; service and database check) approves it;
+  anyone may cancel it with a reason; no overlaps; all audited. `maintenance_windows` (migration
+  `202617z0000061_console_maintenance`): platform data every session reads, only staff write, never deleted.
+- **What companies see:** one endpoint, `GET /availability` (every signed-in person): the 6.5 `AvailabilityBanner` (live)
+  from the banner time until the window ends, at the top of every page. It never blocks sign-in or a page by itself.
+- **Not built:** sample data (answer 950); go-live sign-off (1011: the drawing does not put it in the wizard; question
+  1142); the drawn wizard's company-side steps (locations, departments, grades, import; question 1141).
+- **Tests:** API unit (routes, keys, step-up on create, the rules at their boundaries and from settings, before and
+  during); kit (wizard input and steps, focus, review and create, refusal kept on screen; maintenance checks, send,
+  writer cannot approve, cancel needs a reason, rules; banner before and during; products and features); web (New
+  company opens the wizard, the wizard creates and opens the company, maintenance loads); e2e
+  `console-wizard-maintenance` (refused for a company admin, staff without the security key, without the companies or
+  maintenance key, without a fresh step-up; bad email, bad PAN, GSTIN without the PAN, taken code; the entity and one
+  invite only; audit; maintenance rules; second staff member; companies see nothing until approved, the same banner
+  for every company with no company data, nothing outside the banner time; sign-in works during a window; cancel;
+  RLS). Manual tests MT-CON-1053a and MT-CON-1053b.
+
+## Founder questions from C-5 (12 Nov 2026)
+
+1141. **The drawn wizard's other steps.** PLT-09 also draws locations, departments, grades and an employee import. The
+      console wizard stops after the first System Admin and products; the company does the rest in its own set-up pages
+      (the set-up hub lists them). *Suggested: keep it so; staff never type a company's people data.*
+1142. **Go-live and sign-off (1011).** The drawing does not put go-live in the wizard, so none was added; the hub stays a
+      progress view. *Suggested: add a go-live date on the company page when billing starts (trial to paid).*
+1143. **"Down for maintenance" pages.** The drawn 6.5 page state blocks a feature during maintenance; a window is not an
+      outage switch, so only the banner is shown. *Suggested: keep the banner only; blocking a page is an incident
+      decision for YX-10 incidents later.*
+1144. **Maintenance by product.** A window applies to every company. *Suggested: add products to a window (only those
+      companies see it) when a change touches one product only.*
+1145. **Approving maintenance needs the security key?** Approving a window does not ask for step-up (it changes no data).
+      *Suggested: keep.*
+1146. **Language and data region in the wizard.** The drawing shows a default language and the data region; region is
+      fixed to India and language is left to the company's own settings. *Suggested: keep.*

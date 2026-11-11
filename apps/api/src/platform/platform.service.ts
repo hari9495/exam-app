@@ -141,13 +141,18 @@ export class PlatformService {
     const known = await this.tenantPrisma.forTenant(PLATFORM, (tx) => tx.product.findMany({ where: { code: { in: dto.products } }, select: { code: true } }));
     const unknown = dto.products.filter((c) => !known.some((k) => k.code === c));
     if (unknown.length) throw new BadRequestException(`Unknown product: ${unknown.join(', ')}`);
+    // A GSTIN carries the entity's PAN (characters 3 to 12).
+    const le = dto.legalEntity;
+    if (le?.pan && le.gstin && le.gstin.slice(2, 12) !== le.pan) throw new BadRequestException('The GSTIN does not contain this PAN. Check both.');
     const actor = await staffActor(this.tenantPrisma, actorUserId);
     const org = await this.organizations.create(ctx, actorUserId, { name: dto.name, slug: dto.slug, adminEmail: dto.adminEmail, adminName: dto.adminName });
     const trialEndsAt = asDate(addDays(todayIst(), TRIAL_DAYS));
     await this.changeCompany(org.id, actorUserId, actor, async (tx) => {
       await tx.organization.update({ where: { id: org.id }, data: { lifecycle: 'trial', trialEndsAt } });
       await tx.organizationProduct.createMany({ data: dto.products.map((productCode) => ({ organizationId: org.id, productCode, addedBy: actorUserId })) });
-      return { result: null, audit: { action: 'platform.company.created', entityType: 'organization', entityId: org.id, metadata: { products: dto.products, trialEndsAt: trialEndsAt.toISOString().slice(0, 10) } } };
+      // PLT-09: the default legal entity's basics from the wizard.
+      if (le) await tx.legalEntity.updateMany({ where: { organizationId: org.id, isDefault: true }, data: { name: le.name.slice(0, 200), pan: le.pan ?? null, gstin: le.gstin ?? null } });
+      return { result: null, audit: { action: 'platform.company.created', entityType: 'organization', entityId: org.id, metadata: { products: dto.products, trialEndsAt: trialEndsAt.toISOString().slice(0, 10), ...(le ? { legalEntity: le.name, pan: Boolean(le.pan), gstin: Boolean(le.gstin) } : {}) } } };
     });
     return { id: org.id };
   }

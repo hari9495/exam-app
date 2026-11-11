@@ -2,7 +2,13 @@
 // Import the stylesheet once: '@yukthix/ui/styles.css'.
 export * from './types';
 export { ConsoleShell, CONSOLE_LINKS, type ConsoleShellProps, type ConsolePageId } from './console-shell';
-export { CompaniesScreen, companyInput, slugFrom, type CompaniesScreenProps } from './companies';
+export { CompaniesScreen, slugFrom, type CompaniesScreenProps } from './companies';
+// C-5 (answer 1053): New company is the PLT-09 company wizard.
+export { TenantWizardScreen } from '../platform-a/setup-admin';
+export { wizardInput, type LiveTenantWizard, type WizardInput, type WizardProduct } from '../platform-a/tenant-wizard-live';
+// C-5 (answers 948, 1053): planned maintenance (the designed YX-10 screen, live).
+export { IncidentComposerScreen } from '../portals/console-ops';
+export type { LiveMaintenance, MaintenanceRow, MaintenanceSettingRow, CurrentMaintenance } from '../portals/console-maintenance-live';
 export { CompanyScreen, supportInput, type CompanyScreenProps } from './company';
 export { CompanySettingsScreen, type CompanySettingsScreenProps } from './company-settings';
 export { PlansScreen, priceInput, type PlansScreenProps } from './plans';
@@ -12,7 +18,7 @@ export type { LiveCustomerSuccess, CsHealthRow, CsMessageRow, CsSettingRow } fro
 export { WhatsNewConsoleScreen, newsInput, NEWS_AUDIENCES, type WhatsNewConsoleScreenProps, type NewsEntryRow, type NewsInput } from './whats-new';
 export { SupportSessionsScreen, type SupportSessionsScreenProps } from './support';
 export { PlatformAuditScreen, type PlatformAuditScreenProps } from './audit';
-export { LIFECYCLE_LABEL, SUPPORT_LABEL, actionWords } from './console-kit';
+export { LIFECYCLE_LABEL, SUPPORT_LABEL, actionWords, ConsolePage } from './console-kit';
 // Batch 4: YukthiX support
 export { SupportDeskQueueScreen, SupportDeskTicketScreen, TenantPanel, textToParagraphs, sessionWords, type SupportDeskQueueScreenProps, type SupportDeskTicketScreenProps, type DeskQueueRow, type DeskConsoleTicket, type DeskConsoleMessage, type DeskTenantPanel, type DeskConsoleSession } from './support-desk';
 // Console C-1 (answers 1041 to 1044): the drawn YX-01 to YX-03 screens, live with `live`.

@@ -13,7 +13,7 @@ import { DataTable, type TableColumn } from '../../components/table';
 import { Timeline } from '../../components/timeline';
 import { EditorDrawer, useRun } from '../org/org-kit';
 import { ConsolePage, LifecycleBadge, SupportBadge, actionWords, day, daysLeft, productNames, useReasonDialog, when, LIFECYCLE_LABEL } from './console-kit';
-import type { CompanyDetail, LifecycleAction, LoadState, SupportRequestInput, SupportSession } from './types';
+import type { CompanyDetail, CompanyFeature, LifecycleAction, LoadState, SupportRequestInput, SupportSession } from './types';
 
 const HOURS = [
   { value: 4, label: '4 hours' },
@@ -97,6 +97,8 @@ export interface CompanyScreenProps {
   /** Answer 1050: opens Contain company (suspected compromise); shown to staff with the contain key. */
   onContain?: () => void;
   now?: Date;
+  /** C-5 (answer 1053): the products and features switched on for this company. */
+  features?: CompanyFeature[];
 }
 
 const MOVE: Record<LifecycleAction, { title: (n: string) => string; consequence: string; label: string; destructive?: boolean }> = {
@@ -216,6 +218,22 @@ export function CompanyScreen(props: CompanyScreenProps) {
 
           <div className="yx-console__split">
             <div className="yx-auth__stack">
+              {props.features && (
+                <Card title="Products and features">
+                  {props.features.length ? (
+                    <ul className="yx-console__list" aria-label="Products and features">
+                      {props.features.map((f) => (
+                        <li key={f.key}>
+                          <Text>{f.label}</Text>
+                          <Badge tone={f.on ? 'success' : 'neutral'}>{f.on ? 'On' : (f.note ?? 'Off')}</Badge>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <EmptyState compact title="No products yet." />
+                  )}
+                </Card>
+              )}
               <Card title="Support sessions">
                 <DataTable
                   label="Support sessions"

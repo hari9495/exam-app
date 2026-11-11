@@ -6,6 +6,8 @@ import { apiFetch } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
 import ConsoleLayout from './(console)/layout';
 import ConsoleCompaniesPage from './(console)/companies/page';
+import ConsoleNewCompanyPage from './(console)/companies/new/page';
+import ConsoleMaintenancePage from './(console)/maintenance/page';
 import ConsoleCompanyPage from './(console)/companies/[id]/page';
 import ConsolePlansPage from './(console)/plans/page';
 import ConsoleSupportPage from './(console)/support/page';
@@ -91,24 +93,29 @@ describe('console layout', () => {
 });
 
 describe('/staff/companies', () => {
-  it('lists companies and creates one, then opens it', async () => {
-    route({
-      'GET /platform/companies': [COMPANY],
-      'GET /platform/products': PRODUCTS,
-      'GET /rbac/me/permissions': STAFF_KEYS,
-      'POST /platform/companies': { id: 'c9' },
-    });
+  it('lists companies; New company opens the company wizard (answer 1053)', async () => {
+    route({ 'GET /platform/companies': [COMPANY], 'GET /platform/products': PRODUCTS, 'GET /rbac/me/permissions': STAFF_KEYS });
     wrap(<ConsoleCompaniesPage />);
     expect(await screen.findByText('Godavari Agro')).toBeInTheDocument();
     await ue.click(await screen.findByRole('button', { name: 'New company' }));
-    const drawer = await screen.findByRole('dialog');
-    await ue.type(within(drawer).getByRole('textbox', { name: /Company name/ }), 'Tunga Textiles');
-    await ue.click(within(drawer).getByRole('checkbox', { name: /YukthiX HR/ }));
-    await ue.type(within(drawer).getByRole('textbox', { name: /^Name/ }), 'Meena Pillai');
-    await ue.type(within(drawer).getByRole('textbox', { name: /Work email/ }), 'meena@tunga.test');
-    await ue.click(within(drawer).getByRole('button', { name: 'Create company' }));
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/staff/companies/c9'));
-    expect(calls).toContain(`POST /platform/companies ${JSON.stringify({ name: 'Tunga Textiles', slug: 'tunga-textiles', adminName: 'Meena Pillai', adminEmail: 'meena@tunga.test', products: ['hrms'] })}`);
+    expect(push).toHaveBeenCalledWith('/staff/companies/new');
+  });
+
+  it('the wizard creates the company with its legal entity, then opens it', async () => {
+    route({ 'GET /platform/products': PRODUCTS, 'GET /rbac/me/permissions': STAFF_KEYS, 'POST /platform/companies': { id: 'c9' } });
+    wrap(<ConsoleNewCompanyPage />);
+    await ue.type(await screen.findByRole('textbox', { name: /Company name/ }), 'Tunga Textiles');
+    await ue.click(screen.getByRole('button', { name: 'Continue' }));
+    await ue.type(screen.getByRole('textbox', { name: /^PAN/ }), 'AAECT1234F');
+    await ue.click(screen.getByRole('button', { name: 'Continue' }));
+    await ue.type(screen.getByRole('textbox', { name: /^Name/ }), 'Meena Pillai');
+    await ue.type(screen.getByRole('textbox', { name: /Work email/ }), 'meena@tunga.test');
+    await ue.click(screen.getByRole('button', { name: 'Continue' }));
+    await ue.click(screen.getByRole('button', { name: 'Continue' })); // the only product is ticked already
+    await ue.click(await screen.findByRole('button', { name: 'Create company' }));
+    await waitFor(() => expect(calls).toContain(`POST /platform/companies ${JSON.stringify({ name: 'Tunga Textiles', slug: 'tunga-textiles', legalEntity: { name: 'Tunga Textiles', pan: 'AAECT1234F' }, adminName: 'Meena Pillai', adminEmail: 'meena@tunga.test', products: ['hrms'] })}`));
+    await ue.click(await screen.findByRole('button', { name: 'Open the company' }));
+    expect(push).toHaveBeenCalledWith('/staff/companies/c9');
   });
 
   it('a 403 is shown as no access', async () => {
@@ -189,6 +196,17 @@ describe('/staff/whats-new', () => {
     wrap(<ConsoleWhatsNewPage />);
     expect(await screen.findByText('Press ? for shortcuts')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'New entry' })).toBeNull();
+  });
+});
+
+// C-5 (answers 948, 1053): planned maintenance.
+describe('/staff/maintenance', () => {
+  const OVERVIEW = { now: '2026-11-12T04:30:00.000Z', current: null, windows: [], settings: { numbers: [{ key: 'maintenance.notice_hours', label: 'Notice before a window (hours)', value: 72, default: 72, min: 24, max: 720 }], blockDates: [7, 15, 20] } };
+  it('loads the windows and rules from the console API', async () => {
+    route({ 'GET /platform/maintenance': OVERVIEW, 'GET /rbac/me/permissions': STAFF_KEYS });
+    wrap(<ConsoleMaintenancePage />);
+    expect(await screen.findByText('No maintenance windows.')).toBeInTheDocument();
+    expect(screen.getByText('Nothing: no window is close.')).toBeInTheDocument();
   });
 });
 

@@ -1,4 +1,5 @@
 // Set-up hub, tenant wizard, roles & access, approval policy editor, notification settings (PLT-08, 09, 11, 12, 13).
+import { LiveTenantWizardScreen, type LiveTenantWizard } from './tenant-wizard-live';
 import { useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, Copy, Plus, ShieldCheck, Trash2, UserCog, Workflow } from 'lucide-react';
 import { PageHeader, ObjectHeader, Card, Tabs, TabsContent, TabsList, TabsTrigger, DescriptionList } from '../../components/shell';
@@ -151,7 +152,8 @@ export interface ImportPreviewRow {
   message?: string;
 }
 
-export function TenantWizardScreen({ current = 'company', errorStep, preview = [] }: { current?: string; errorStep?: string; preview?: ImportPreviewRow[] }) {
+export function TenantWizardScreen({ current = 'company', errorStep, preview = [], live }: { current?: string; errorStep?: string; preview?: ImportPreviewRow[]; /** The YukthiX console's New company (C-5, answer 1053). */ live?: LiveTenantWizard }) {
+  if (live) return <LiveTenantWizardScreen live={live} />;
   const [company, setCompany] = useState('Kaveri Foods Pvt Ltd');
   const [pan, setPan] = useState(errorStep === 'entities' ? 'AAECK1234' : 'AAECK1234F');
   const [deptMode, setDeptMode] = useState('template');

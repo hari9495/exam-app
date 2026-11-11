@@ -11,6 +11,8 @@ import { Icon } from '../../components/foundations';
 import { TextArea } from '../../components/inputs';
 import { PageBanner } from '../../components/notify';
 import { Select } from '../../components/select';
+import { timeOf } from '../../lib/dates';
+import { formatDate } from '../../lib/format';
 import './settings.css';
 
 /* ============================== 6.1 First-run tours ============================== */
@@ -313,7 +315,20 @@ export function NotFoundState({ reference, actions }: { reference?: string | nul
 
 export type Availability = 'maintenance' | 'degraded' | 'read-only' | 'wave' | 'not-enabled' | 'setup-needed';
 
-export function AvailabilityBanner({ kind }: { kind: 'maintenance' | 'degraded' | 'read-only' }) {
+export function AvailabilityBanner({ kind, live }: { kind: 'maintenance' | 'degraded' | 'read-only'; /** Answer 948 (C-5): the planned window, before or during it. */ live?: { phase: 'upcoming' | 'now'; title: string; startsAt: string; endsAt: string } }) {
+  if (kind === 'maintenance' && live) {
+    const start = new Date(live.startsAt);
+    const end = new Date(live.endsAt);
+    return live.phase === 'now' ? (
+      <PageBanner tone="warning">
+        {live.title}: planned maintenance until {timeOf(end)}. Some pages may be slow; your saved work is safe.
+      </PageBanner>
+    ) : (
+      <PageBanner tone="info">
+        {live.title}: planned maintenance on {formatDate(start)}, {timeOf(start)} to {timeOf(end)}. Save your work before {timeOf(start)}.
+      </PageBanner>
+    );
+  }
   if (kind === 'maintenance')
     return <PageBanner tone="warning" action={<Button size="sm">Status page</Button>}>Scheduled maintenance tonight, 11:00 pm to 1:00 am. Save your work before 11:00 pm.</PageBanner>;
   if (kind === 'degraded')

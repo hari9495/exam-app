@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { CompaniesScreen, companyInput, slugFrom } from './companies';
+import { CompaniesScreen, slugFrom } from './companies';
 import { CompanyScreen, supportInput, type CompanyScreenProps } from './company';
 import { PlansScreen, priceInput } from './plans';
 import { SupportSessionsScreen } from './support';
@@ -16,11 +16,8 @@ const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const ok = () => vi.fn().mockResolvedValue(undefined);
 
 describe('platform console: inputs mirror the API rules', () => {
-  it('a company needs a name, a valid code, an admin and a product', () => {
+  it('a company code comes from its name (the wizard checks the rest: platform-a/tenant-wizard-live.test)', () => {
     expect(slugFrom('Godavari Agro Pvt. Ltd.')).toBe('godavari-agro-pvt-ltd');
-    const good = { name: 'Godavari Agro', slug: 'godavari-agro', adminName: 'Sunita Rao', adminEmail: 'sunita@godavari.test', products: ['hrms'] };
-    expect(companyInput(good).input).toEqual(good);
-    expect(companyInput({ ...good, slug: 'Bad Code', products: [], adminEmail: 'nope' }).errors.map((e) => e.fieldId)).toEqual(['co-slug', 'co-admin-email', 'co-products']);
   });
 
   it('a support request needs a real reason; the ticket is optional', () => {
@@ -49,32 +46,22 @@ describe('platform console: inputs mirror the API rules', () => {
 });
 
 describe('Companies', () => {
-  it('lists companies, filters by name, opens one and creates a company in trial', async () => {
+  it('lists companies, filters by name, opens one; New company opens the wizard (answer 1053)', async () => {
     const onOpen = vi.fn();
-    const onCreate = ok();
-    render(<CompaniesScreen state="ready" companies={COMPANIES} products={PRODUCTS} canManage onOpen={onOpen} onCreate={onCreate} />);
+    const onNew = vi.fn();
+    render(<CompaniesScreen state="ready" companies={COMPANIES} products={PRODUCTS} canManage onOpen={onOpen} onNew={onNew} />);
     expect(screen.getByText('Kaveri Foods')).toBeInTheDocument();
     await ue.type(screen.getByPlaceholderText('Search by name or code'), 'godavari');
     expect(screen.queryByText('Kaveri Foods')).not.toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Open' }));
     expect(onOpen).toHaveBeenCalledWith('c2');
-
     await ue.click(screen.getByRole('button', { name: 'New company' }));
-    const drawer = await screen.findByRole('dialog');
-    await ue.click(within(drawer).getByRole('button', { name: 'Create company' }));
-    expect(await within(drawer).findByText('Fix these before saving')).toBeInTheDocument();
-    expect(onCreate).not.toHaveBeenCalled();
-    await ue.type(within(drawer).getByRole('textbox', { name: /Company name/ }), 'Tunga Textiles');
-    expect(within(drawer).getByRole('textbox', { name: /Company code/ })).toHaveValue('tunga-textiles');
-    await ue.click(within(drawer).getByRole('checkbox', { name: /YukthiX HR/ }));
-    await ue.type(within(drawer).getByRole('textbox', { name: /^Name/ }), 'Meena Pillai');
-    await ue.type(within(drawer).getByRole('textbox', { name: /Work email/ }), 'meena@tunga.test');
-    await ue.click(within(drawer).getByRole('button', { name: 'Create company' }));
-    await waitFor(() => expect(onCreate).toHaveBeenCalledWith({ name: 'Tunga Textiles', slug: 'tunga-textiles', adminName: 'Meena Pillai', adminEmail: 'meena@tunga.test', products: ['hrms'] }));
+    expect(onNew).toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('staff without the manage key see no New company button', () => {
-    render(<CompaniesScreen state="ready" companies={COMPANIES} products={PRODUCTS} canManage={false} onOpen={vi.fn()} onCreate={ok()} />);
+    render(<CompaniesScreen state="ready" companies={COMPANIES} products={PRODUCTS} canManage={false} onOpen={vi.fn()} onNew={vi.fn()} />);
     expect(screen.queryByRole('button', { name: 'New company' })).not.toBeInTheDocument();
   });
 });

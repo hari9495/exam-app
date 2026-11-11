@@ -1,11 +1,11 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
-import { Building2, FileClock, HeartPulse, Inbox, LifeBuoy, Megaphone, MessageSquare, ReceiptIndianRupee, Scale, ScrollText, ShieldCheck, Tags, ToggleRight } from 'lucide-react';
+import { Building2, FileClock, HeartPulse, Inbox, LifeBuoy, Megaphone, MessageSquare, ReceiptIndianRupee, Scale, ScrollText, ShieldCheck, Tags, ToggleRight, Wrench } from 'lucide-react';
 import { Logo, Monogram } from '../../components/brand';
 import type { IconComponent } from '../../components/foundations';
 import { AppShell, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, TopBar, type DensityChoice, type RailItem, type ThemeChoice } from '../../components/shell';
 
-export type ConsolePageId = 'companies' | 'customers' | 'support-desk' | 'support' | 'plans' | 'whats-new' | 'rules' | 'channels' | 'feature-flags' | 'audit';
-type ConsoleGroup = 'Customers' | 'Catalogue' | 'Rules' | 'Channels' | 'Security';
+export type ConsolePageId = 'companies' | 'customers' | 'maintenance' | 'support-desk' | 'support' | 'plans' | 'whats-new' | 'rules' | 'channels' | 'feature-flags' | 'audit';
+type ConsoleGroup = 'Customers' | 'Catalogue' | 'Rules' | 'Operations' | 'Channels' | 'Security';
 
 interface ConsoleLink {
   id: ConsolePageId;
@@ -28,13 +28,15 @@ export const CONSOLE_LINKS: ConsoleLink[] = [
   { id: 'whats-new', label: "What's new", href: '/staff/whats-new', group: 'Catalogue', icon: Megaphone },
   // Console C-1 (answers 1041 to 1044): statutory rule sets, golden cases and review, publishing (YX-01 to YX-03).
   { id: 'rules', label: 'Rule sets', href: '/staff/rules', group: 'Rules', icon: Scale },
+  // C-5 (answers 948, 1053): planned maintenance windows.
+  { id: 'maintenance', label: 'Planned maintenance', href: '/staff/maintenance', group: 'Operations', icon: Wrench },
   { id: 'channels', label: 'Shared SMS account', href: '/staff/channels', group: 'Channels', icon: MessageSquare },
   // Console C-4 (answer 1049): switches for every company, one company, and the kill switch.
   { id: 'feature-flags', label: 'Feature flags', href: '/staff/feature-flags', group: 'Security', icon: ToggleRight },
   { id: 'audit', label: 'Audit log', href: '/staff/audit', group: 'Security', icon: ScrollText },
 ];
-const GROUPS: ConsoleGroup[] = ['Customers', 'Catalogue', 'Rules', 'Channels', 'Security'];
-const GROUP_ICONS: Record<ConsoleGroup, IconComponent> = { Customers: Building2, Catalogue: ReceiptIndianRupee, Rules: Scale, Channels: MessageSquare, Security: ShieldCheck };
+const GROUPS: ConsoleGroup[] = ['Customers', 'Catalogue', 'Rules', 'Operations', 'Channels', 'Security'];
+const GROUP_ICONS: Record<ConsoleGroup, IconComponent> = { Customers: Building2, Catalogue: ReceiptIndianRupee, Rules: Scale, Operations: Wrench, Channels: MessageSquare, Security: ShieldCheck };
 
 export interface ConsoleShellProps {
   active: ConsolePageId;

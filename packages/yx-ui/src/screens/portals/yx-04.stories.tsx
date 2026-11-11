@@ -41,7 +41,7 @@ const shell = (children: React.ReactNode) => (
     {children}
   </ConsoleShell>
 );
-const companies = (state: 'ready' | 'error') => shell(<CompaniesScreen state={state} onRetry={() => {}} companies={COMPANIES} products={PRODUCTS} canManage onOpen={() => {}} onCreate={() => wait()} />);
+const companies = (state: 'ready' | 'error') => shell(<CompaniesScreen state={state} onRetry={() => {}} companies={COMPANIES} products={PRODUCTS} canManage onOpen={() => {}} onNew={() => {}} />);
 const SESSION = SESSIONS[0]!;
 const company = (sessions: SupportSession[]) =>
   shell(
