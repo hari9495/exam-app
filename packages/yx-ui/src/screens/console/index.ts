@@ -11,6 +11,8 @@ export { IncidentComposerScreen, HelpEditorScreen } from '../portals/console-ops
 // C-8 (YX-11): the help-centre editor.
 export type { LiveHelpCentre, HelpRow, HelpDetail, HelpInput, HelpSettingRow } from '../portals/console-helpcentre-live';
 export type { LiveMaintenance, MaintenanceRow, MaintenanceSettingRow, CurrentMaintenance } from '../portals/console-maintenance-live';
+// C-8 (YX-10): incidents.
+export type { LiveIncidents, IncidentLiveRow, IncidentUpdateRow, ContainmentChoice, IncidentOpenInput, IncidentUpdateInput } from '../portals/console-incidents-live';
 export { CompanyScreen, supportInput, type CompanyScreenProps } from './company';
 export { CompanySettingsScreen, type CompanySettingsScreenProps } from './company-settings';
 export { PlansScreen, priceInput, type PlansScreenProps } from './plans';

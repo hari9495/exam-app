@@ -8,6 +8,7 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import { PlatformStaffGuard } from './platform-staff.guard';
 import { MaintenanceDecisionDto, MaintenanceSettingsDto, MaintenanceWindowDto } from './maintenance.dto';
 import { MaintenanceService } from './maintenance.service';
+import { IncidentsService } from './incidents.service';
 
 // YukthiX console C-5 (answers 948, 1053; YX-10 Maintenance): staff only, on their own platform session with their
 // security key, every route behind the maintenance key.
@@ -51,15 +52,20 @@ export class MaintenanceController {
 
 /**
  * Answer 948: what every signed-in person's app shows now (one endpoint): the maintenance banner the day before and
- * during a scheduled window, or nothing. It never blocks sign-in or any page by itself.
+ * during a scheduled window, and (C-8, YX-10) the latest posted update of an open incident on one of the company's
+ * products, or nothing. It never blocks sign-in or any page by itself.
  */
 @Controller('availability')
 @UseGuards(JwtAuthGuard)
 export class AvailabilityController {
-  constructor(private readonly maintenance: MaintenanceService) {}
+  constructor(
+    private readonly maintenance: MaintenanceService,
+    private readonly incidents: IncidentsService,
+  ) {}
 
   @Get()
-  current(@CurrentTenant() ctx: TenantContext) {
-    return this.maintenance.availability(ctx);
+  async current(@CurrentTenant() ctx: TenantContext) {
+    const [m, incident] = await Promise.all([this.maintenance.availability(ctx), this.incidents.current(ctx)]);
+    return { ...m, incident };
   }
 }

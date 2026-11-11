@@ -20477,5 +20477,46 @@
       "Screens/YukthiX console/YX-11 · Help-centre editor · Article · another staff member publishes it (C-8)"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CON-YX10a",
+    "area": "Console C-8 (12 Nov 2026)",
+    "screen": "Console › Incidents and the company banner",
+    "url": "http://localhost:3000/staff/incidents",
+    "account": "Two YukthiX staff accounts with their security keys; a company user whose company has YukthiX HR, and one whose company does not.",
+    "steps": [
+      "Press Declare incident and Send for approval with nothing filled in.",
+      "Fill title, Sev-2, YukthiX HR, the impact and what to do; Send for approval.",
+      "As the company user (with HR), open any page.",
+      "As the same staff member, open the incident.",
+      "As the other staff member, press Send back with no note, then Approve and post.",
+      "As both company users, reload any page.",
+      "Post a Resolved update and approve it as the other staff member; reload the company page."
+    ],
+    "expected": "Step 1: title, product and impact errors. Step 2: toast 'Incident declared'. Step 3: no banner. Step 4: 'Waiting: another staff member approves your update.', no Approve. Step 5: 'Say what to change before sending it back.', then toast 'Posted for companies'. Step 6: the banner with the title, stage, impact and next update for the HR company only. Step 7: the incident is Resolved and the banner is gone.",
+    "stories": [
+      "Screens/YukthiX console/YX-10 · Incidents, status admin and probes · Incidents · list and what companies see (C-8)",
+      "Screens/YukthiX console/YX-10 · Incidents, status admin and probes · What companies see · an open incident (C-8)"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CON-1124a",
+    "area": "Console C-8 (12 Nov 2026)",
+    "screen": "Console › Incidents › security breach",
+    "url": "http://localhost:3000/staff/incidents",
+    "account": "A YukthiX staff account with its security key; a test company that is contained (Console › Companies › Contain company).",
+    "steps": [
+      "Open an incident and press Mark as security breach without choosing a company.",
+      "Choose the contained company and mark it.",
+      "As a user of any company with the product, reload a page.",
+      "Set Breach reminders to 25, then to 0, and save.",
+      "Wait for the CERT-In due time (or set the lead so it is due) and check the staff mailbox."
+    ],
+    "expected": "Step 1: 'Choose the contained company.' Step 2: toast 'Marked as a security breach'; the red box with the CERT-In and DPDP due times. Step 3: no incident banner. Step 4: 25 is refused (0 to 24); 0 saves. Step 5: one email 'Breach reminder: INC-…' to each staff member with the incidents key, and the box shows 'reminded'.",
+    "stories": [
+      "Screens/YukthiX console/YX-10 · Incidents, status admin and probes · Incident · security breach and its reminders (C-8)"
+    ],
+    "note": "Positive and negative."
   }
 ]
