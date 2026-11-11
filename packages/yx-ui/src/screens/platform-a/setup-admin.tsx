@@ -1,10 +1,10 @@
 // Set-up hub, tenant wizard, roles & access, approval policy editor, notification settings (PLT-08, 09, 11, 12, 13).
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, Copy, Plus, ShieldCheck, Trash2, UserCog, Workflow } from 'lucide-react';
 import { PageHeader, ObjectHeader, Card, Tabs, TabsContent, TabsList, TabsTrigger, DescriptionList } from '../../components/shell';
 import { Button, IconButton, Link } from '../../components/button';
 import { Badge, PersonLabel } from '../../components/display';
-import { InlineAlert, Meter } from '../../components/feedback';
+import { ErrorState, InlineAlert, Meter, NoAccessState, Skeleton } from '../../components/feedback';
 import { Stepper, SetupChecklist, type ChecklistSection } from '../../components/stepper';
 import { FormField, FieldRow, FormSection } from '../../components/field';
 import { TextField, CurrencyField } from '../../components/inputs';
@@ -31,27 +31,57 @@ export interface ModuleCard {
   signedOff?: string;
 }
 
+/**
+ * Answer 952: the live hub. Each area's checks come from what the area already knows; nothing new is asked, so there
+ * is no sign-off or go-live here (the design's buttons stay in the stories only). Start on a check opens its set-up page.
+ */
+export interface LiveSetupHub {
+  state: 'loading' | 'error' | 'no-access' | 'ready';
+  onRetry: () => void;
+  onStart: (moduleId: string, checkId: string) => void;
+}
+
 export interface SetupHubProps {
   modules: ModuleCard[];
   openModule?: string;
+  live?: LiveSetupHub;
 }
 
-// PLT-08 · Set-up hub / go-live readiness (completeness card per module).
-export function SetupHubScreen({ modules, openModule }: SetupHubProps) {
+// PLT-08 · Set-up hub / go-live readiness (completeness card per module). data-tour marks what the HR / System Admin
+// first-run tour (6.1 TourAdmin) points at: the hub, the area cards and the starter defaults.
+export function SetupHubScreen({ modules, openModule, live }: SetupHubProps) {
+  const [picked, setPicked] = useState<string | undefined>(openModule);
   const all = modules.flatMap((m) => m.checks);
   const overall = readiness(all);
-  const open = modules.find((m) => m.id === openModule);
+  const open = modules.find((m) => m.id === picked);
   const sections: ChecklistSection[] = open
     ? [{ id: open.id, title: open.name, tasks: open.checks.map((c) => ({ id: c.id, title: c.label, status: c.done ? 'done' : c.blocking ? 'todo' : 'in-progress', optional: !c.blocking, description: c.starter ? 'YukthiX starter — review before go-live' : undefined })) }]
     : [];
-  return (
+  const frame = (body: ReactNode) => (
     <DesktopFrame area="settings" panelTitle="Settings" panel={settingsPanel('1.6 Set-up hub')}>
-      <PageHeader
-        title="Set-up hub"
-        description="Every module's set-up in one place. Go live when all blocking checks are done and each owner has signed off."
-        status={<Badge tone={overall.ready ? 'success' : 'warning'}>{overall.ready ? 'Ready for go-live' : `${overall.blockingOpen} blocking checks open`}</Badge>}
-        actions={<Button variant="primary" disabled={!overall.ready}>Go live on 1 Oct 2026</Button>}
-      />
+      {body}
+    </DesktopFrame>
+  );
+  const header = (
+    <PageHeader
+      title="Set-up hub"
+      description={live ? 'Every area\'s set-up in one place, from what each area already knows. Open an area to see what is left; each check opens its set-up page.' : "Every module's set-up in one place. Go live when all blocking checks are done and each owner has signed off."}
+      status={live?.state === 'ready' || !live ? <Badge tone={overall.ready ? 'success' : 'warning'}>{overall.ready ? 'Ready for go-live' : `${overall.blockingOpen} blocking checks open`}</Badge> : undefined}
+      actions={live ? undefined : <Button variant="primary" disabled={!overall.ready}>Go live on 1 Oct 2026</Button>}
+    />
+  );
+  if (live && live.state !== 'ready')
+    return frame(
+      <>
+        {header}
+        {live.state === 'loading' && <Skeleton height={240} />}
+        {live.state === 'error' && <ErrorState title="We couldn't load the set-up hub." description="Check your connection and try again." onRetry={live.onRetry} />}
+        {live.state === 'no-access' && <NoAccessState what="the set-up hub" grantedBy="your System Admin" />}
+      </>,
+    );
+  return frame(
+    <div className="yx-plt-stack" data-tour="setup-hub">
+      {header}
       <div className="yx-plt-grid" data-cols="3">
         <Tile title="Readiness score">
           <span className="yx-plt-score">{overall.score}%</span>
@@ -61,12 +91,14 @@ export function SetupHubScreen({ modules, openModule }: SetupHubProps) {
           <span className="yx-plt-score">{overall.blockingOpen}</span>
           <p className="yx-plt-muted">Must be done before go-live. Advisory checks can wait.</p>
         </Tile>
-        <Tile title="Starter templates to review">
-          <span className="yx-plt-score">{all.filter((c) => c.starter && !c.done).length}</span>
-          <p className="yx-plt-muted">Labelled “YukthiX starter — edit for your company”.</p>
-        </Tile>
+        <div data-tour="setup-starter">
+          <Tile title="Starter templates to review">
+            <span className="yx-plt-score">{all.filter((c) => c.starter && !c.done).length}</span>
+            <p className="yx-plt-muted">Labelled “YukthiX starter — edit for your company”.</p>
+          </Tile>
+        </div>
       </div>
-      <div className="yx-plt-grid" data-cols="3">
+      <div className="yx-plt-grid" data-cols="3" data-tour="setup-modules">
         {modules.map((m) => {
           const r = readiness(m.checks);
           return (
@@ -74,12 +106,14 @@ export function SetupHubScreen({ modules, openModule }: SetupHubProps) {
               key={m.id}
               title={m.name}
               tone={r.blockingOpen ? 'warning' : 'success'}
-              selected={m.id === openModule}
-              badge={<Badge tone={m.signedOff ? 'success' : r.ready ? 'info' : 'warning'}>{m.signedOff ? 'Signed off' : r.ready ? 'Ready to sign off' : `${r.blockingOpen} blocking`}</Badge>}
+              selected={m.id === picked}
+              badge={<Badge tone={m.signedOff ? 'success' : r.ready ? 'info' : 'warning'}>{m.signedOff ? 'Signed off' : r.ready ? (live ? 'Done' : 'Ready to sign off') : `${r.blockingOpen} blocking`}</Badge>}
               actions={
                 <>
-                  <Button size="sm">Open</Button>
-                  {r.ready && !m.signedOff && <Button size="sm">Sign off</Button>}
+                  <Button size="sm" aria-pressed={m.id === picked} onClick={() => setPicked(m.id === picked ? undefined : m.id)}>
+                    {live ? `Open ${m.name}` : 'Open'}
+                  </Button>
+                  {!live && r.ready && !m.signedOff && <Button size="sm">Sign off</Button>}
                 </>
               }
             >
@@ -89,8 +123,8 @@ export function SetupHubScreen({ modules, openModule }: SetupHubProps) {
           );
         })}
       </div>
-      {open && <SetupChecklist title={`${open.name}: checks`} sections={sections} onStart={() => {}} onSkip={() => {}} defaultShowDone />}
-    </DesktopFrame>
+      {open && <SetupChecklist title={`${open.name}: checks`} sections={sections} onStart={(id) => live?.onStart(open.id, id)} onSkip={live ? undefined : () => {}} defaultShowDone />}
+    </div>,
   );
 }
 

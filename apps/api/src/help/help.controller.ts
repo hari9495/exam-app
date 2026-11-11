@@ -4,7 +4,8 @@ import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { RequireAnyPermission } from '../rbac/permissions.decorator';
+import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
+import { SetupHubService } from './setup-hub.service';
 import { inCompany } from '../org-structure/org-structure.service';
 import { mintNotFoundRef, NOT_FOUND_CODE } from './not-found-ref';
 
@@ -37,5 +38,18 @@ export class HelpController {
       const user = row.userId ? await tx.user.findFirst({ where: { organizationId: c.organizationId, id: row.userId }, select: { name: true, email: true } }) : null;
       return { code: row.code, at: row.createdAt.toISOString(), who: user ? user.name?.trim() || user.email : null, path: row.path };
     });
+  }
+}
+
+// Answer 952: the set-up hub, for whoever sets up the company (Company rules: org.settings.manage).
+@Controller('help/setup-hub')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+export class SetupHubController {
+  constructor(private readonly hub: SetupHubService) {}
+
+  @Get()
+  @RequirePermissions('org.settings.manage')
+  get(@CurrentTenant() ctx: TenantContext) {
+    return this.hub.hub(ctx);
   }
 }

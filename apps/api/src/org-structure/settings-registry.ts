@@ -220,6 +220,10 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // P02 YX-SEC-18 (a): a role grant giving Confidential / Special access over more people than this warns first.
   // Answer 946 (11 Nov 2026): anyone on a "You don't have access" page may ask for access, for up to this many days; a
   // System Admin decides in Roles & access. Off hides Request access everywhere.
+  // Answer 952 (11 Nov 2026): the set-up hub shows these areas only when the company uses them (a company without payroll
+  // or time in YukthiX would otherwise never look complete).
+  'setup.hub.time': { label: 'Set-up hub shows Time & Leave', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+  'setup.hub.payroll': { label: 'Set-up hub shows Payroll', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'access.request.allowed': { label: 'Allow access requests', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', guard: 'access.role.manage' },
   'access.request.max_days': { label: 'Longest access (days)', scopes: ['tenant'], dated: false, values: ['7', '14', '30', '60', '90'], default: '30', guard: 'access.role.manage' },
   'access.risk.confidential_threshold': { label: 'Warn when a grant opens Confidential data of more than (people)', scopes: ['tenant'], dated: false, values: ['5', '10', '25', '50', '100', '250'], default: '25', guard: 'access.role.manage' },

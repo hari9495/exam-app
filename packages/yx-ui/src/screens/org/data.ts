@@ -136,6 +136,8 @@ export const SETTING_REGISTRY: Record<string, SettingDef> = {
   'access.manager.view_scope': { label: 'Managers can view', scopes: ['tenant'], dated: false, values: ['all_reports', 'direct_reports'], default: 'all_reports', guard: 'access.role.manage' },
   'pay_access.days': { label: 'Team pay access lasts (days)', scopes: ['tenant'], dated: false, values: ['7', '15', '30', '60', '90'], default: '30' },
   'pay_access.scope': { label: 'Team pay access covers', scopes: ['tenant'], dated: false, values: ['team', 'person'], default: 'team' },
+  'setup.hub.time': { label: 'Set-up hub shows Time & Leave', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+  'setup.hub.payroll': { label: 'Set-up hub shows Payroll', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'access.request.allowed': { label: 'Allow access requests', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', guard: 'access.role.manage' },
   'access.request.max_days': { label: 'Longest access (days)', scopes: ['tenant'], dated: false, values: ['7', '14', '30', '60', '90'], default: '30', guard: 'access.role.manage' },
   'access.risk.confidential_threshold': { label: 'Warn when a grant opens Confidential data of more than (people)', scopes: ['tenant'], dated: false, values: ['5', '10', '25', '50', '100', '250'], default: '25', guard: 'access.role.manage' },

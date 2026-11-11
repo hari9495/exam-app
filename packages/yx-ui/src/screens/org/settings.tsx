@@ -55,6 +55,8 @@ const VALUE_LABEL: Record<string, Record<string, string>> = {
   'access.manager.view_scope': { all_reports: 'Everyone under them', direct_reports: 'Direct reports only' },
   'privacy.who_accessed': { on: 'Shown', off: 'Hidden' },
   'access.request.allowed': { on: 'On', off: 'Off' },
+  'setup.hub.time': { on: 'Shown', off: 'Hidden' },
+  'setup.hub.payroll': { on: 'Shown', off: 'Hidden' },
   'access.request.max_days': { '7': '7 days', '14': '14 days', '30': '30 days', '60': '60 days', '90': '90 days' },
   'employee.profile_change.proof': { required: 'Required', optional: 'Optional' },
   'home.pay_on_employee_home': { off: 'Not shown', on: 'Shown, hidden until the employee asks' },
@@ -147,6 +149,7 @@ export const SETTING_SECTIONS: Record<SettingsArea, SettingsSection[]> = {
     // Founder answer 384: the referral settings live on Settings › Hiring & Assessments › Hiring (6.1) only.
     // Help H-4 (answer 943): YukthiX writes the entries; the company can turn the list off.
     { title: 'Help', description: "What's new in Help lists YukthiX's updates for each person's role and the products your company uses. Off hides it for everyone at the company.", keys: ['help.whats_new.show'] },
+    { title: 'Set-up hub', description: 'Settings › Set-up hub shows how much of each area is set up. Hide an area the company does not use in YukthiX, so the hub can reach complete.', keys: ['setup.hub.time', 'setup.hub.payroll'] },
     { title: 'Working week and language', description: 'A full-time week (part-time jobs show their share of it) and the language people see your company words in.', keys: ['work.normal_week_hours', 'people.language'] },
   ],
   access: [
