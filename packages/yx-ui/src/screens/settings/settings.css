@@ -135,6 +135,14 @@
 .yx-tour__body { margin: 0; }
 .yx-tour__foot { display: flex; justify-content: space-between; gap: var(--yx-space-2); flex-wrap: wrap; }
 .yx-tour__foot > div { display: flex; gap: var(--yx-space-2); }
+.yx-tour__hint { margin: 0; font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); }
+.yx-tour__title:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-space-1); }
+/* Answer 944: the live tour floats over the page, bottom right; never modal, never a trap. */
+.yx-tour--floating { position: fixed; right: var(--yx-space-6); bottom: var(--yx-space-6); z-index: calc(var(--yx-z-drawer) - 1); width: min(360px, calc(100vw - 2 * var(--yx-space-4))); }
+@media (max-width: 767px) { .yx-tour--floating { right: var(--yx-space-4); bottom: var(--yx-space-4); } }
+@media (prefers-reduced-motion: no-preference) { .yx-tour--floating { animation: yx-tour-in 160ms ease-out; } }
+@keyframes yx-tour-in { from { opacity: 0; transform: translateY(var(--yx-space-2)); } to { opacity: 1; transform: none; } }
+.yx-help-tours { display: flex; flex-direction: column; gap: var(--yx-space-4); }
 .yx-tour-stage { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--yx-space-6); align-items: start; }
 .yx-tour-target { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-space-1); border-radius: var(--yx-radius-card); }
 @media (max-width: 767px) { .yx-tour-stage { grid-template-columns: 1fr; } }

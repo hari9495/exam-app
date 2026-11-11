@@ -4,6 +4,8 @@ export * from './types';
 export { MyTicketScreen, FileList, BannerList, HelpDrawer, type MyTicketScreenProps, type HelpDrawerProps } from './help';
 // Help H-4 (answer 943): the What's new tab's content (PLT-50), for the one Help drawer.
 export { WhatsNewPanel, type LiveWhatsNew } from '../platform-b/growth-screens';
+// Help H-5 (answer 944): the Tours tab's content and the tour card the app floats on a tour's page.
+export { ToursPanel, TourCard, TOURS, type LiveTours, type TourDef } from '../settings/help';
 // HLP-01 Help centre: the designed screen with `live` (Helpdesk design wiring, round 1).
 export { HelpCentreScreen } from '../ops/helpdesk';
 export { topicOptions, rateCandidate, type LiveHelp } from '../ops/helpdesk-live';

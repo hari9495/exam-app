@@ -43,6 +43,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'policy.reminder.every_days': { label: 'Policies: remind people who have not acknowledged every (days)', scopes: ['tenant'], dated: false, values: ['off', '1', '2', '3', '7'], default: '3' },
   'policy.reminder.manager_after_days': { label: 'Policies: tell the manager when someone is this many days overdue', scopes: ['tenant'], dated: false, values: ['off', '3', '7', '14', '30'], default: '7' },
   // Help H-4, answer 943: What's new in the Help drawer (YukthiX writes the entries).
+  // Help H-5, answer 944: first-run tours (each person can also stop them for themselves).
+  'help.tours.show': { label: 'Help: first-run tours', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'help.whats_new.show': { label: "Help: show What's new", scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'policy.reack.default': { label: 'Policies: a new version asks everyone to acknowledge again', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'policy.ack.typed_name': { label: 'Policies: people type their name to acknowledge', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
