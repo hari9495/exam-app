@@ -37,6 +37,11 @@ export interface RolesAccessScreenProps {
   onReject: (grantId: string, reason: string) => Promise<void>;
   onRevoke: (grantId: string, reason: string) => Promise<void>;
   onFromTemplate: (templateKey: string, name: string) => Promise<void>;
+  /** Answer 795: deletes a role nobody holds, with a reason (the Delete button shows only when this is passed). */
+  onDeleteRole?: (roleId: string, reason: string) => Promise<void>;
+  /** Stories: the tab shown first, and a role whose Delete dialog is open. */
+  initialView?: 'people' | 'waiting' | 'roles';
+  deletingRoleId?: string;
   /** Makes the person a System Admin (true) or takes it away (false); the API asks for a second factor and refuses the last one. */
   onSystemAdmin: (userId: string, makeAdmin: boolean, reason: string) => Promise<void>;
 }
@@ -206,6 +211,32 @@ function ReasonDialog({ ask, onClose, onRevoke, onReject }: { ask: Ask; onClose:
   );
 }
 
+/** Answer 795: a role nobody holds goes, with a reason; one with past grants is kept out of sight for their history. */
+function DeleteRoleDialog({ role, onDelete, onClose }: { role: AccessRole; onDelete: (roleId: string, reason: string) => Promise<void>; onClose: () => void }) {
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`Delete the role ${role.name}?`}
+      consequence="Nobody holds it. It leaves the list and cannot be given again; past grants keep their history. Recorded in the audit log."
+      confirmLabel="Delete role"
+      destructive
+      onConfirm={async () => {
+        setTried(true);
+        if (!reason.trim()) return false;
+        await onDelete(role.id, reason.trim());
+        onClose();
+      }}
+    >
+      <FormField id="dr-reason" label="Reason" required error={tried && !reason.trim() ? 'Enter a reason.' : null}>
+        <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
+
 function SystemAdminDialog({ user, onSystemAdmin, onClose }: { user: AccessUser; onSystemAdmin: RolesAccessScreenProps['onSystemAdmin']; onClose: () => void }) {
   const [reason, setReason] = useState('');
   const remove = isSystemAdmin(user);
@@ -296,7 +327,8 @@ function Effective({ userId, loadEffective }: { userId: string; loadEffective: R
 
 export function RolesAccessScreen(props: RolesAccessScreenProps) {
   const { state, onRetry, users, roles, templates, grants, meId, loadEffective } = props;
-  const [view, setView] = useState<View>('people');
+  const [view, setView] = useState<View>(props.initialView ?? 'people');
+  const [deleting, setDeleting] = useState<AccessRole | null>(roles.find((r) => r.id === props.deletingRoleId) ?? null);
   const [picked, setUserId] = useState<string | null>(null);
   // The first person until one is picked (the list may arrive after the first render).
   const userId = picked ?? users[0]?.id ?? null;
@@ -419,7 +451,7 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
               <div className="yx-ppl2__row">
                 <Button onClick={() => setFromTemplate(true)}>New role from a template</Button>
               </div>
-              <DataTable label="Roles" columns={roleColumns} rows={roles} getRowId={(r) => r.id} rowNoun={['role', 'roles']} cardSummary empty={<EmptyState compact title="No roles yet." description="Start from a template." action={<Button onClick={() => setFromTemplate(true)}>New role from a template</Button>} />} />
+              <DataTable label="Roles" columns={roleColumns} rows={roles} getRowId={(r) => r.id} rowNoun={['role', 'roles']} cardSummary rowButtons={(r) => (props.onDeleteRole && r.grants + r.assignedUsers === 0 ? <Button size="sm" onClick={() => setDeleting(r)}>Delete</Button> : null)} empty={<EmptyState compact title="No roles yet." description="Start from a template." action={<Button onClick={() => setFromTemplate(true)}>New role from a template</Button>} />} />
             </>
           )}
         </>
@@ -427,6 +459,7 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
       {giving && <GrantDialog users={users} roles={roles} scopes={props.scopes} today={props.today} userId={userId} onGrant={said(props.onGrant, () => 'Access saved.')} onClose={() => setGiving(false)} />}
       {fromTemplate && <TemplateDialog templates={templates} onFromTemplate={said(props.onFromTemplate, (_key, name) => `Role "${name}" created.`)} onClose={() => setFromTemplate(false)} />}
       {adminAsk && <SystemAdminDialog user={adminAsk} onSystemAdmin={said(props.onSystemAdmin, () => 'System Admins saved.')} onClose={() => setAdminAsk(null)} />}
+      {deleting && props.onDeleteRole && <DeleteRoleDialog role={deleting} onDelete={said(props.onDeleteRole, () => `Role "${deleting.name}" deleted.`)} onClose={() => setDeleting(null)} />}
       {ask && <ReasonDialog ask={ask} onClose={() => setAsk(null)} onRevoke={said(props.onRevoke, () => 'Revoked.')} onReject={said(props.onReject, () => 'Rejected.')} />}
     </div>
   );

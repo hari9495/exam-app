@@ -45,6 +45,7 @@ export default function YxRolesAccessPage() {
       onReject={async (grantId, reason) => void (await write(`/grants/${id(grantId)}/reject`, { reason }))}
       onRevoke={async (grantId, reason) => void (await write(`/grants/${id(grantId)}/revoke`, { reason }))}
       onFromTemplate={async (templateKey, name) => void (await write('/roles/from-template', { templateKey, name }))}
+      onDeleteRole={async (roleId, reason) => void (await write(`/roles/${id(roleId)}/delete`, { reason }))}
       onSystemAdmin={async (userId, makeAdmin, reason) => void (await write(`/users/${id(userId)}/system-admin${makeAdmin ? '' : '/remove'}`, { reason }))}
     />
   );

@@ -340,6 +340,37 @@ describe('Access, visibility and privacy (P02 §4.2–4.6; R1)', () => {
       await up('adminA');
       await api('adminA', 'post', `/access/grants/${g.id}/revoke`).send({ reason: 'again' }).expect(409);
     });
+
+    it('795: a role nobody holds is deleted (archived when it has past grants, history kept); refused while held; audited', async () => {
+      const make = async (key: string, name: string) => (await up('adminA'), (await api('adminA', 'post', '/access/roles/from-template').send({ templateKey: key, name }).expect(201)).body.id as string);
+      roles.recep = await make('reception', `Reception ${runId}`);
+      await down('adminA');
+      await api('adminA', 'post', `/access/roles/${roles.recep}/delete`).send({ reason: 'x' }).expect(403); // step-up
+      await up('adminA');
+      await api('adminA', 'post', `/access/roles/${roles.recep}/delete`).send({}).expect(400); // a reason
+      await up('adminB');
+      await api('adminB', 'post', `/access/roles/${roles.recep}/delete`).send({ reason: 'x' }).expect(404); // another company
+      await api('hrAll', 'post', `/access/roles/${roles.recep}/delete`).send({ reason: 'x' }).expect(403); // no access.role.manage
+      await grant(201, 'outsider', 'recep', 'tenant');
+      await up('adminA');
+      expect((await api('adminA', 'post', `/access/roles/${roles.recep}/delete`).send({ reason: 'x' }).expect(409)).body.message).toMatch(/1 person holds this role/);
+      const g = (await api('adminA', 'get', `/access/grants?userId=${users.outsider}`).expect(200)).body.find((x: { role: { id: string } }) => x.role.id === roles.recep);
+      await up('adminA');
+      await api('adminA', 'post', `/access/grants/${g.id}/revoke`).send({ reason: 'Done' }).expect(201);
+      await up('adminA');
+      expect((await api('adminA', 'post', `/access/roles/${roles.recep}/delete`).send({ reason: 'Walk-through role' }).expect(201)).body).toEqual({ id: roles.recep, archived: true });
+      expect(((await api('adminA', 'get', '/access/roles').expect(200)).body as { id: string }[]).some((r) => r.id === roles.recep)).toBe(false);
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.roleGrant.count({ where: { id: g.id } }))).toBe(1); // history kept
+      await grant(400, 'outsider', 'recep', 'tenant'); // never granted again
+      await up('adminA');
+      await api('adminA', 'post', `/access/roles/${roles.recep}/delete`).send({ reason: 'again' }).expect(404);
+      // The name is free again; a role never granted is deleted outright.
+      const again = await make('reception', `Reception ${runId}`);
+      await up('adminA');
+      expect((await api('adminA', 'post', `/access/roles/${again}/delete`).send({ reason: 'Unused' }).expect(201)).body).toEqual({ id: again, archived: false });
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.permissionProfile.count({ where: { id: again } }))).toBe(0);
+      expect((await auditRows('access.role.deleted')).map((a) => a.metadata)).toEqual([expect.objectContaining({ keptForHistory: true, reason: 'Walk-through role' }), expect.objectContaining({ keptForHistory: false })]);
+    });
   });
 
   // =====================================================================================================

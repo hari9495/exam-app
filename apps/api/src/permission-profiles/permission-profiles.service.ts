@@ -42,7 +42,7 @@ export class PermissionProfilesService {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const organizationId = context.organizationId as string;
       const profiles = await tx.permissionProfile.findMany({
-        where: { organizationId },
+        where: { organizationId, archivedAt: null },
         orderBy: { name: 'asc' },
       });
       return Promise.all(

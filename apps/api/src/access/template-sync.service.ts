@@ -56,7 +56,7 @@ export class TemplateSyncService implements OnApplicationBootstrap {
     const ctx = { organizationId, isSuperAdmin: false };
     return this.tenantPrisma.forTenant(ctx, async (tx) => {
       let changed = 0;
-      for (const p of await tx.permissionProfile.findMany({ where: { organizationId, OR: [{ templateChecked: false }, { templateKey: { not: null } }] } })) {
+      for (const p of await tx.permissionProfile.findMany({ where: { organizationId, archivedAt: null, OR: [{ templateChecked: false }, { templateKey: { not: null } }] } })) {
         let templateKey = p.templateKey;
         let templateSet = p.templateSet;
         const keys = JSON.parse(p.permissionsJson) as string[];
