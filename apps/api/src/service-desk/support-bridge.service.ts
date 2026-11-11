@@ -6,6 +6,7 @@ import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import { planFor } from './customers.service';
 import { DeskActor, DeskRole, activeOn, audit, deskSystem, visibleTickets } from './desk-access';
+import { csatOf, npsOf, tenantHealth } from './tenant-health';
 import { ConsoleLinkDto, ConsoleMessageDto, SupportAccessDto, SupportRaiseDto, SupportReplyDto } from './dto-ops';
 import { RequesterService } from './requester.service';
 import { textToHtml } from './rich-text';
@@ -246,7 +247,7 @@ export class SupportBridgeService {
       const open = await tx.sdTicket.count({ where: { organizationId: org, customerAccountId: accountId, systemState: { in: ['new', 'open', 'pending', 'on_hold'] } } });
       const ratings = await tx.sdRating.findMany({ where: { organizationId: org, ticketId: { in: (await tx.sdTicket.findMany({ where: { organizationId: org, customerAccountId: accountId }, select: { id: true } })).map((r) => r.id) } }, select: { score: true } });
       const nps = await tx.sdSurveyResponse.findMany({ where: { organizationId: org, accountId }, select: { score: true }, orderBy: { createdAt: 'desc' }, take: 20 });
-      return x ? { name: x.name, tenantId: x.linkedTenantId, plan: plan ? { name: plan.plan, tier: plan.tier } : null, open, csat: ratings.length ? Math.round((ratings.reduce((s, r) => s + r.score, 0) / ratings.length) * 10) / 10 : null, nps: nps.length ? Math.round(((nps.filter((n) => n.score >= 9).length - nps.filter((n) => n.score <= 6).length) / nps.length) * 100) : null } : null;
+      return x ? { name: x.name, tenantId: x.linkedTenantId, plan: plan ? { name: plan.plan, tier: plan.tier } : null, open, csat: csatOf(ratings.map((r) => r.score)), nps: npsOf(nps.map((n) => n.score)) } : null;
     });
     if (!acc) return null;
     const company = acc.tenantId
@@ -257,17 +258,9 @@ export class SupportBridgeService {
           return o ? { ...o, products: products.map((p) => p.productCode), adminLastSignIn: lastSignIn?.lastLoginAt ?? null } : null;
         })
       : null;
-    // A simple health score from account signals only (P14 YX-CONSOLE-05 fills it from the tenant-health feed later).
-    const factors: string[] = [];
-    let health = 80;
-    if (company?.lifecycle === 'suspended' || company?.billingStatus !== 'active') (health -= 30), factors.push('Billing or account is not in good standing');
-    if (company?.lifecycle === 'trial') factors.push('In trial');
-    const idle = company?.adminLastSignIn ? (Date.now() - new Date(company.adminLastSignIn).getTime()) / 86_400_000 : 99;
-    if (idle > 30) (health -= 20), factors.push('No admin sign-in for 30 days');
-    if (acc.open > 3) (health -= 10), factors.push(`${acc.open} open tickets`);
-    if (acc.csat !== null && acc.csat < 3.5) (health -= 15), factors.push('Low ratings');
-    if (acc.nps !== null && acc.nps < 0) (health -= 15), factors.push('More detractors than promoters');
-    return { ...acc, company, health: Math.max(0, Math.min(100, health)), healthFactors: factors };
+    // One health score with the console's tenant health list (answer 1047): service-desk/tenant-health.ts.
+    const { health, factors } = tenantHealth({ lifecycle: company?.lifecycle ?? null, billingStatus: company?.billingStatus ?? null, adminLastSignIn: company?.adminLastSignIn ?? null, open: acc.open, csat: acc.csat, nps: acc.nps });
+    return { ...acc, company, health, healthFactors: factors };
   }
 
   private async sessionFor(staffUserId: string, tenantId: string, ticketNumber: string) {

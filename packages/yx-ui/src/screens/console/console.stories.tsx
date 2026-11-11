@@ -67,10 +67,15 @@ export const WhatsNewEmpty: S = { name: "What's new · none yet", render: () => 
 export const Support: S = { name: 'Support sessions', render: () => shell('support', <SupportSessionsScreen state="ready" sessions={SESSIONS} now={NOW} onOpenCompany={() => {}} onOpenSession={() => wait()} onEndSession={() => wait()} onWithdrawRequest={() => wait()} />) };
 export const Audit: S = { name: 'Audit log', render: () => shell('audit', <PlatformAuditScreen state="ready" entries={AUDIT} includeReads={false} onIncludeReadsChange={() => {}} hasMore loadingMore={false} onLoadMore={() => {}} />) };
 
-const access = (sessions = [REQUEST, ...SESSIONS.filter((s) => s.organizationId === 'c2')]) => (
+const access = (sessions = [REQUEST, ...SESSIONS.filter((s) => s.organizationId === 'c2')], messages?: { id: string; subject: string; body: string; sentAt: string }[]) => (
   <div className="yx-auth__page">
-    <SupportAccessScreen state="ready" sessions={sessions} now={NOW} onApprove={() => wait()} onDecline={() => wait()} onEnd={() => wait()} loadActivity={() => wait().then(() => ACTIVITY)} />
+    <SupportAccessScreen state="ready" sessions={sessions} now={NOW} onApprove={() => wait()} onDecline={() => wait()} onEnd={() => wait()} loadActivity={() => wait().then(() => ACTIVITY)} messages={messages} />
   </div>
 );
 export const CompanySupportAccess: S = { name: 'Company side · Support access (PLT-17)', render: () => access() };
+// Answer 1048: the messages YukthiX staff sent this company's System Admins.
+export const CompanySupportAccessMessages: S = {
+  name: 'Company side · Support access · messages from YukthiX (C-2)',
+  render: () => access(undefined, [{ id: 'cm1', subject: 'Payroll readiness before 25 Nov', body: 'Twelve employees have no verified bank details.\n\nFix them in People › Bank details before the run.', sentAt: '2026-11-12T09:30:00Z' }]),
+};
 export const CompanySupportAccessEmpty: S = { name: 'Company side · Support access · none yet', render: () => access([]) };

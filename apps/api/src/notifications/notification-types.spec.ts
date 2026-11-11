@@ -16,6 +16,8 @@ describe('notification catalog', () => {
       'reminder.offer_expiring',
       'reminder.interview_upcoming',
       'reminder.feedback_owed',
+      // Console C-2 (answer 1048).
+      'yukthix.admin_message',
       'helpdesk.note.mention',
       'helpdesk.ticket.assigned',
       'helpdesk.seat.granted',

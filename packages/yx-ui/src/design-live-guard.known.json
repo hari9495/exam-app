@@ -214,8 +214,6 @@
     "portals: RuleSetEditorScreen",
     "portals: SalesAssistScreen",
     "portals: StatusPageScreen",
-    "portals: TenantDetailScreen",
-    "portals: TenantsListScreen",
     "portals: TrainerPortalScreen",
     "portals: VendorPortalScreen",
     "proctoring: AccommodationQueueScreen",

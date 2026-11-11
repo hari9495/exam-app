@@ -11,8 +11,6 @@ import {
   ProbesScreen,
   ProductAnalyticsScreen,
   SalesAssistScreen,
-  TenantDetailScreen,
-  TenantsListScreen,
 } from './console-ops';
 import { CommissionsScreen, DirectoryModerationScreen, EInvoiceLogScreen, ExportBillingScreen, PartnerVerificationScreen, RegionCatalogueScreen } from './console-finance';
 import * as D from './console-data';
