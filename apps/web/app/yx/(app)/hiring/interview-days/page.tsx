@@ -43,6 +43,9 @@ export default function YxInterviewDaysPage() {
           onSend: () => write<{ sent: number; failed: number }>('POST', `/interview-days/${encodeURIComponent(picked!)}/send`),
           // Answer 423: take one slot out of the day (a lunch break).
           onRemoveSlot: (start) => write('DELETE', `/interview-days/${encodeURIComponent(picked!)}/slots/${start}`),
+          // Answers 422 and 421: swap two unsent candidates; the day's WhatsApp reminders.
+          onSwap: (a, b) => write('POST', `/interview-days/${encodeURIComponent(picked!)}/swap`, { a, b }),
+          onReminders: (on) => write('POST', `/interview-days/${encodeURIComponent(picked!)}/reminders`, { on }),
         }}
       />
       {planning && options.data && (

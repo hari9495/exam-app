@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { CalendarPlus, Plus, Send, Shuffle } from 'lucide-react';
 import { Badge, PersonLabel } from '../../components/display';
-import { Checkbox } from '../../components/choice';
+import { Checkbox, Switch } from '../../components/choice';
 import { Button } from '../../components/button';
 import { DatePicker } from '../../components/date';
 import { Drawer } from '../../components/drawer';
@@ -12,7 +12,7 @@ import { FormField } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { NumberField, TextField, TimeField } from '../../components/inputs';
 import { useToastIfAny } from '../../components/notify';
-import { ConfirmDialog } from '../../components/overlay';
+import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { MultiSelect, Select } from '../../components/select';
 import { PageHeader } from '../../components/shell';
 import { formatDate } from '../../lib/format';
@@ -25,11 +25,15 @@ const focus = (id: string) => setTimeout(() => document.getElementById(id)?.focu
 
 export type DayResult = 'ready' | 'sent' | 'failed';
 export interface DayPlaced {
+  /** The row (live): answer 422 swaps two rows. */
+  id?: string;
   candidate: string;
   panel: string;
   start: number;
   result: DayResult;
   error?: string | null;
+  /** Answer 421: the WhatsApp reminder's result. */
+  reminder?: 'sent' | 'failed' | 'not_opted_in' | 'no_phone' | 'not_connected' | null;
 }
 export type SendResult = { sent: number; failed: number };
 export interface DayPanel {
@@ -60,20 +64,53 @@ export interface DayBoardProps {
   onSend: () => Promise<SendResult | void> | SendResult | void;
   /** Answer 423: removes one slot (a lunch break); its unsent candidates go back to waiting for Auto-assign. */
   onRemoveSlot?: (start: number) => Promise<unknown>;
-  /** WhatsApp reminders: drawn; hidden live until reminders exist (question 421). */
+  /** WhatsApp reminders (answer 421): the drawn switch. */
   showReminders?: boolean;
+  /** Answer 421 (live): the day's switch; connected = a WhatsApp provider is set for the company. */
+  reminders?: { on: boolean; connected: boolean; onChange?: (on: boolean) => Promise<unknown> };
+  /** Answer 422: two unsent candidates change places (row ids). */
+  onSwap?: (a: string, b: string) => Promise<unknown>;
+  /** The design opens "Swap with…" for this candidate. */
+  swapOpen?: string | null;
 }
+
+const REMINDER: Record<NonNullable<DayPlaced['reminder']>, { tone: 'success' | 'danger' | 'neutral' | 'warning'; label: string }> = {
+  sent: { tone: 'success', label: 'Reminder sent' },
+  failed: { tone: 'danger', label: 'Reminder not sent' },
+  not_opted_in: { tone: 'neutral', label: 'No WhatsApp (not opted in)' },
+  no_phone: { tone: 'neutral', label: 'No mobile number' },
+  not_connected: { tone: 'warning', label: 'WhatsApp not connected' },
+};
 
 const RESULT: Record<Exclude<DayResult, 'ready'>, { tone: 'success' | 'danger'; label: string }> = { sent: { tone: 'success', label: 'Invite sent' }, failed: { tone: 'danger', label: 'Not sent' } };
 
 export function DayBoard(p: DayBoardProps) {
   const toast = useToastIfAny();
-  const [busy, setBusy] = useState<'assign' | 'send' | number | null>(null);
+  const [busy, setBusy] = useState<'assign' | 'send' | 'swap' | 'reminders' | number | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const toSend = p.placed.filter((x) => x.result !== 'sent');
   const notSent = p.placed.filter((x) => x.result === 'failed');
   const at = (panel: string, slot: number) => p.placed.find((a) => a.panel === panel && a.start === slot);
-  const run = async (which: 'assign' | 'send' | number, fn: () => unknown) => {
+  // Answer 422: unsent candidates can change places; by "Swap with…" (keyboard) or by dragging one cell onto another.
+  const canSwap = p.canManage && p.status !== 'sending' && Boolean(p.onSwap || p.swapOpen);
+  const unsent = p.placed.filter((x) => x.result !== 'sent' && (x.id ?? x.candidate));
+  const keyOf = (x: DayPlaced) => x.id ?? x.candidate;
+  const [swapFrom, setSwapFrom] = useState<string | null>(p.swapOpen ?? null);
+  const [swapTo, setSwapTo] = useState<string | null>(null);
+  const [swapTried, setSwapTried] = useState(false);
+  const [dragging, setDragging] = useState<string | null>(null);
+  const from = unsent.find((x) => keyOf(x) === swapFrom);
+  const doSwap = (a: string, b: string, names: [string, string]) =>
+    void run('swap', async () => {
+      if (!p.onSwap) return;
+      await p.onSwap(a, b);
+      toast?.toast({ tone: 'success', title: `${names[0]} and ${names[1]} swapped`, description: 'Their panels and slots changed places. Recorded in the audit log.' });
+      setSwapFrom(null);
+      setSwapTo(null);
+      setSwapTried(false);
+    });
+  const [remindersOn, setRemindersOn] = useState(p.reminders?.on ?? true);
+  const run = async (which: 'assign' | 'send' | 'swap' | 'reminders' | number, fn: () => unknown) => {
     setBusy(which);
     setFailed(null);
     try {
@@ -182,11 +219,26 @@ export function DayBoard(p: DayBoardProps) {
                   {p.panels.map((x) => {
                     const a = at(x.id, s);
                     return (
-                      <td key={x.id}>
+                      <td
+                        key={x.id}
+                        onDragOver={(e) => a && a.result !== 'sent' && dragging && dragging !== keyOf(a) && e.preventDefault()}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const src = unsent.find((u) => keyOf(u) === dragging);
+                          if (a && src && a.result !== 'sent' && keyOf(src) !== keyOf(a)) doSwap(keyOf(src), keyOf(a), [src.candidate, a.candidate]);
+                          setDragging(null);
+                        }}
+                      >
                         {a ? (
-                          <div className="yx-hire-stack">
+                          <div className="yx-hire-stack" draggable={canSwap && a.result !== 'sent'} onDragStart={() => setDragging(keyOf(a))} onDragEnd={() => setDragging(null)}>
                             <PersonLabel name={a.candidate} size={20} />
                             {a.result !== 'ready' && <Badge tone={RESULT[a.result].tone}>{RESULT[a.result].label}</Badge>}
+                            {a.reminder && <Badge tone={REMINDER[a.reminder].tone}>{REMINDER[a.reminder].label}</Badge>}
+                            {canSwap && a.result !== 'sent' && unsent.length > 1 && (
+                              <Button size="sm" onClick={() => (setSwapFrom(keyOf(a)), setSwapTo(null), setSwapTried(false))} aria-label={`Swap ${a.candidate} with someone`}>
+                                Swap with…
+                              </Button>
+                            )}
                           </div>
                         ) : (
                           <Text size="sm" tone="muted">Free</Text>
@@ -200,7 +252,56 @@ export function DayBoard(p: DayBoardProps) {
           </table>
         </div>
       )}
-      {p.showReminders && <Checkbox label="Send WhatsApp reminders 2 hours before each slot (only to candidates who opted in)" defaultChecked />}
+      {(p.showReminders || p.reminders) && (
+        <div className="yx-hire-stack">
+          <Switch
+            label="Send WhatsApp reminders 2 hours before each slot (only to candidates who opted in)"
+            checked={p.reminders?.connected === false ? false : remindersOn}
+            onChange={(on) => {
+              if (p.reminders?.connected === false) return setFailed('WhatsApp is not connected. Ask your admin to set up WhatsApp in Settings › Messages; until then no reminder can go.');
+              setRemindersOn(on);
+              if (p.reminders?.onChange) void run('reminders', async () => (await p.reminders!.onChange!(on), toast?.toast({ tone: 'success', title: on ? 'WhatsApp reminders on' : 'WhatsApp reminders off' })));
+            }}
+          />
+          {p.reminders?.connected === false && <InlineAlert tone="warning" title="WhatsApp is not connected">No reminder goes until your admin sets up WhatsApp (Settings › Messages). Each slot shows it was not sent.</InlineAlert>}
+        </div>
+      )}
+      {from && (
+        <Dialog
+          open
+          onOpenChange={(o) => !o && setSwapFrom(null)}
+          size="sm"
+          title={`Swap ${from.candidate} with…`}
+          description={`${from.candidate} is at ${minutesToLabel(from.start)} with ${p.panels.find((x) => x.id === from.panel)?.name ?? ''}. Only candidates not sent an invite can swap.`}
+          footer={
+            <>
+              <Button onClick={() => setSwapFrom(null)}>Cancel</Button>
+              <Button
+                variant="primary"
+                loading={busy === ('swap')}
+                onClick={() => {
+                  setSwapTried(true);
+                  const to = unsent.find((x) => keyOf(x) === swapTo);
+                  if (!to) return focus('day-swap-to');
+                  doSwap(keyOf(from), keyOf(to), [from.candidate, to.candidate]);
+                }}
+              >
+                Swap
+              </Button>
+            </>
+          }
+        >
+          <FormField id="day-swap-to" label="Swap with" required error={swapTried && !swapTo ? 'Choose who they swap with.' : null}>
+            <Select
+              aria-label="Swap with"
+              value={swapTo}
+              onChange={setSwapTo}
+              placeholder="Choose a candidate"
+              options={unsent.filter((x) => keyOf(x) !== keyOf(from)).map((x) => ({ value: keyOf(x), label: `${x.candidate} · ${minutesToLabel(x.start)} · ${p.panels.find((y) => y.id === x.panel)?.name ?? ''}` }))}
+            />
+          </FormField>
+        </Dialog>
+      )}
     </HireFrame>
   );
 }
@@ -376,7 +477,9 @@ export interface InterviewDayView {
   sending: boolean;
   slots: number[];
   panels: DayPanel[];
-  rows: { entryId: string; candidate: string; panelId: string | null; start: number | null; status: 'unassigned' | 'assigned' | 'sent' | 'failed'; error: string | null }[];
+  rows: { id?: string; entryId: string; candidate: string; panelId: string | null; start: number | null; status: 'unassigned' | 'assigned' | 'sent' | 'failed'; error: string | null; reminder?: DayPlaced['reminder'] }[];
+  /** Answer 421: the day's WhatsApp reminders, and whether a WhatsApp provider is set. */
+  reminders?: { on: boolean; connected: boolean };
 }
 
 export interface LiveInterviewDay {
@@ -391,6 +494,10 @@ export interface LiveInterviewDay {
   onSend: () => Promise<{ sent: number; failed: number }>;
   /** Answer 423: removes one slot of the chosen day. */
   onRemoveSlot?: (start: number) => Promise<unknown>;
+  /** Answer 422: two unsent candidates change places. */
+  onSwap?: (a: string, b: string) => Promise<unknown>;
+  /** Answer 421: the day's WhatsApp reminders on or off. */
+  onReminders?: (on: boolean) => Promise<unknown>;
 }
 
 export function LiveInterviewDayView({ live }: { live: LiveInterviewDay }) {
@@ -427,7 +534,7 @@ export function LiveInterviewDayView({ live }: { live: LiveInterviewDay }) {
       </HireFrame>
     );
   const d = live.day;
-  const placed: DayPlaced[] = d.rows.filter((r) => r.panelId && r.start != null).map((r) => ({ candidate: r.candidate, panel: r.panelId!, start: r.start!, result: r.status === 'sent' ? 'sent' : r.status === 'failed' ? 'failed' : 'ready', error: r.error }));
+  const placed: DayPlaced[] = d.rows.filter((r) => r.panelId && r.start != null).map((r) => ({ id: r.id, candidate: r.candidate, panel: r.panelId!, start: r.start!, result: r.status === 'sent' ? 'sent' : r.status === 'failed' ? 'failed' : 'ready', error: r.error, reminder: r.reminder ?? null }));
   return (
     <DayBoard
       drive={d.name}
@@ -445,6 +552,8 @@ export function LiveInterviewDayView({ live }: { live: LiveInterviewDay }) {
       onAssign={live.onAssign}
       onSend={live.onSend}
       onRemoveSlot={live.onRemoveSlot}
+      onSwap={live.onSwap}
+      reminders={d.reminders ? { ...d.reminders, onChange: live.onReminders } : undefined}
     />
   );
 }

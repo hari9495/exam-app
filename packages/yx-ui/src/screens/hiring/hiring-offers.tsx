@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ExternalLink, FileText, Plus, Scale, Send, UserPlus } from 'lucide-react';
 import { Button } from '../../components/button';
 import { AiBadge, Badge, PersonLabel, type BadgeTone } from '../../components/display';
-import { EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, Meter, NoAccessState, Skeleton } from '../../components/feedback';
 import { dayKey } from '../../lib/dates';
 import { FieldRow, FormField, useTooEarly } from '../../components/field';
 import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
@@ -424,6 +424,8 @@ export interface OfferRecordProps {
   activity?: TimelineItem[];
   defaultTab?: 'overview' | 'conditions' | 'versions';
   persona?: 'recruiter' | 'hr';
+  /** Answer 377: the drawn sealed copy of an e-signed acceptance. */
+  sealed?: 'made' | 'missing';
   /** Live (HIR-09 / HIR-29): the offer from the API and its actions. */
   live?: LiveOfferRecord;
 }
@@ -603,12 +605,12 @@ export function OfferRecordScreen(p: OfferRecordProps) {
   return live ? <LiveOfferRecordView live={live} defaultTab={p.defaultTab} /> : <SampleOfferRecord {...p} />;
 }
 
-function SampleOfferRecord({ candidate = '', job = '', status = 'Sent', ctc = 0, conditions = [], lapseDate = new Date(), today = new Date(), handoff, declineReason, activity = [], defaultTab = 'overview', persona = 'recruiter' }: OfferRecordProps) {
+function SampleOfferRecord({ candidate = '', job = '', status = 'Sent', ctc = 0, conditions = [], lapseDate = new Date(), today = new Date(), handoff, declineReason, activity = [], defaultTab = 'overview', persona = 'recruiter', sealed }: OfferRecordProps) {
   return (
     <HireFrame active="Offers & BGV">
       <RecordLayout
         banner={
-          status === 'Reneged' || status === 'Withdrawn' ? (
+          sealed ? <SealedCopyNote state={sealed} /> : status === 'Reneged' || status === 'Withdrawn' ? (
             <InlineAlert tone="danger" title={`Offer ${status.toLowerCase()}`}>
               Reason: {declineReason}. Pre-boarding was unwound, the plan line released and REQ-0142 reopened with its pipeline intact.
             </InlineAlert>
@@ -752,6 +754,7 @@ function LiveOfferRecordView({ live, defaultTab = 'overview' }: { live: LiveOffe
             ) : o.status === 'declined' ? (
               <InlineAlert tone="info" title="Offer declined">Counted in offer-acceptance analytics.</InlineAlert>
             ) : undefined}
+            {o.canSeePay && o.sealedCopy && <SealedCopyNote state={o.sealedCopy} busy={busy === 'make-sealed'} onDownload={() => live.onSealedCopy && void run('sealed', live.onSealedCopy, 'Sealed copy downloaded')} onMake={() => live.onMakeSealedCopy && void run('make-sealed', live.onMakeSealedCopy, 'Sealed copy made')} />}
           </>
         }
         header={
@@ -800,6 +803,7 @@ function LiveOfferRecordView({ live, defaultTab = 'overview' }: { live: LiveOffe
             menu={
               <>
                 {o.canSeePay && <MenuItem onSelect={() => void run('letter', live.onLetter, 'Letter opened')}>Download letter</MenuItem>}
+                {o.canSeePay && o.sealedCopy === 'made' && live.onSealedCopy && <MenuItem onSelect={() => void run('sealed', live.onSealedCopy!, 'Sealed copy downloaded')}>Download sealed copy</MenuItem>}
                 {o.status === 'pending_approval' && <MenuItem onSelect={() => setDialog('cancel')}>Take back from approval</MenuItem>}
                 {o.status === 'sent' && (
                   <MenuItem destructive onSelect={() => setDialog('withdraw')}>
@@ -916,16 +920,16 @@ export interface BulkResultRow {
   id: string;
   name: string;
   ctc: number | null;
-  result: 'Sent' | 'Waiting for extra approval' | 'Waiting for approval' | 'Approved, not emailed' | 'Held: no plan line' | 'Skipped: has an offer' | 'Not sent';
+  result: 'Sent' | 'Waiting for extra approval' | 'Waiting for approval' | 'Approved, not emailed' | 'Held: no plan line' | 'Skipped: has an offer' | 'Not sent' | 'Waiting to send';
   reason: string | null;
   offerId: string | null;
 }
-const RESULT_TONE: Record<BulkResultRow['result'], BadgeTone> = { Sent: 'success', 'Waiting for extra approval': 'warning', 'Waiting for approval': 'info', 'Approved, not emailed': 'warning', 'Held: no plan line': 'danger', 'Skipped: has an offer': 'neutral', 'Not sent': 'danger' };
+const RESULT_TONE: Record<BulkResultRow['result'], BadgeTone> = { Sent: 'success', 'Waiting for extra approval': 'warning', 'Waiting for approval': 'info', 'Approved, not emailed': 'warning', 'Held: no plan line': 'danger', 'Skipped: has an offer': 'neutral', 'Not sent': 'danger', 'Waiting to send': 'neutral' };
 const SAMPLE_RESULTS = (rows: BulkOfferRow[], band: Band): BulkResultRow[] =>
   rows.map((r) => ({ id: r.id, name: r.name, ctc: r.ctc, result: !r.planOk ? 'Held: no plan line' : bandCheck(r.ctc ?? 0, band).extraApproval ? 'Waiting for extra approval' : 'Sent', reason: !r.planOk ? 'No free place on the headcount-plan line. Held until the plan is revised.' : null, offerId: null }));
 
 const resultOf = (r: BulkBatchView['rows'][number]): BulkResultRow['result'] =>
-  r.status === 'sent' ? 'Sent' : r.status === 'pending_approval' ? (r.band?.startsWith('Above') ? 'Waiting for extra approval' : 'Waiting for approval') : r.status === 'approved' ? 'Approved, not emailed' : r.status === 'held' ? 'Held: no plan line' : r.status === 'skipped' ? 'Skipped: has an offer' : 'Not sent';
+  r.status === 'sent' ? 'Sent' : r.status === 'pending_approval' ? (r.band?.startsWith('Above') ? 'Waiting for extra approval' : 'Waiting for approval') : r.status === 'approved' ? 'Approved, not emailed' : r.status === 'held' ? 'Held: no plan line' : r.status === 'skipped' ? 'Skipped: has an offer' : r.status === 'draft' ? 'Waiting to send' : 'Not sent';
 
 // HIR-28
 export function BulkOfferScreen({ rows: sampleRows = [], band: sampleBand = { min: 0, max: 0 }, defaultStep = 'values', sent = false, live }: { rows?: BulkOfferRow[]; band?: Band; defaultStep?: string; sent?: boolean; live?: LiveBulkOffers }) {
@@ -963,7 +967,14 @@ function BulkOfferSent({ rows, band, live }: { rows: BulkOfferRow[]; band: Band;
   ];
   return (
     <HireFrame active="Offers & BGV">
-      <PageHeader title={b ? `Bulk offers · ${b.job.title}` : 'Bulk offers · GET 2027'} status={<Badge tone={failed ? 'warning' : 'success'}>{b?.status === 'running' ? 'Sending' : 'Sent'}</Badge>} />
+      <PageHeader title={b ? `Bulk offers · ${b.job.title}` : 'Bulk offers · GET 2027'} status={<Badge tone={b?.status === 'running' ? 'info' : failed ? 'warning' : 'success'}>{b?.status === 'running' ? 'Sending' : 'Sent'}</Badge>} />
+      {b?.status === 'running' && b.progress && (
+        <InlineAlert tone="info" title={`Sending in the background: ${b.progress.done} of ${b.progress.total} done`}>
+          <Meter label="Batch progress" value={b.progress.done} max={Math.max(1, b.progress.total)} valueText={`${b.progress.done} of ${b.progress.total}`} />
+          You can leave this page; each row keeps its result. Every offer still has its own checks and approval.
+        </InlineAlert>
+      )}
+      {b?.joinerBatch && <Text tone="secondary">Accepted offers join the People batch {b.joinerBatch.name} when HR makes them joiners.</Text>}
       <SummaryTiles
         label="Batch status"
         tiles={[
@@ -995,6 +1006,11 @@ function BulkOfferBuilder({ rows: sampleRows, band: sampleBand, defaultStep, liv
   const [tpl, setTpl] = useState<string | null>(setup ? (setup.structures[0]?.value ?? null) : 'get');
   const [letter, setLetter] = useState<string | null>(setup ? (setup.letters[0]?.value ?? null) : 't1');
   const [place, setPlace] = useState<string | null>(setup ? (setup.job.locationId ?? setup.locations[0]?.value ?? null) : 'hsr');
+  const [joiner, setJoiner] = useState<string | null>(setup ? null : 'jb1');
+  // Answer 401: the open People joiner batches on the joining day for the location's legal entity.
+  const entityOf = setup?.locations.find((l) => l.value === place)?.legalEntityId;
+  const batchChoices = setup ? (setup.joinerBatches ?? []).filter((j) => start && j.joiningOn === dayKey(start) && j.legalEntityId === entityOf) : [{ value: 'jb1', label: 'GET 2027 · 5 Jul batch' }];
+  const joinerId = joiner && batchChoices.some((j) => j.value === joiner) ? joiner : null;
   const [step, setStep] = useState(defaultStep);
   const [tried, setTried] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -1043,8 +1059,8 @@ function BulkOfferBuilder({ rows: sampleRows, band: sampleBand, defaultStep, liv
     setBusy(true);
     setFailed(null);
     try {
-      await live.onSend({ templateVersionId: tpl!, templateId: letter && letter !== 'default' ? letter : null, letterKind: kind as 'offer' | 'loi', startDate: dayKey(start!), locationId: place!, addConditions: true, rows: chosen.map((r) => ({ entryId: r.id, annualCtc: r.ctc! })) });
-      toast?.toast({ tone: 'success', title: 'Batch sent', description: 'Each candidate’s result is on the next page.' });
+      await live.onSend({ templateVersionId: tpl!, templateId: letter && letter !== 'default' ? letter : null, letterKind: kind as 'offer' | 'loi', startDate: dayKey(start!), locationId: place!, addConditions: true, ...(joinerId ? { joinerBatchId: joinerId } : {}), rows: chosen.map((r) => ({ entryId: r.id, annualCtc: r.ctc! })) });
+      toast?.toast({ tone: 'success', title: 'Batch started', description: 'It sends in the background; each candidate’s result shows on the next page as it is done.' });
     } catch (e) {
       setFailed(failure(e));
     } finally {
@@ -1084,6 +1100,9 @@ function BulkOfferBuilder({ rows: sampleRows, band: sampleBand, defaultStep, liv
                 </FormField>
                 <FormField id="bo-place" label="Work location" required error={err('bo-place')}>
                   {setup ? <Select aria-label="Work location" value={place} onChange={setPlace} options={setup.locations} placeholder="Choose the work location" /> : <Select value="hsr" onChange={() => {}} options={[{ value: 'hsr', label: 'Hosur plant' }]} />}
+                </FormField>
+                <FormField id="bo-joiner" label="People joiner batch" optional helper={batchChoices.length ? 'Accepted offers join this onboarding batch when HR makes them joiners (People › Onboarding).' : 'No open joiner batch on this joining day for this location. Make one in People › Onboarding, or go without.'}>
+                  <Select aria-label="People joiner batch" value={joinerId} onChange={setJoiner} options={batchChoices.map((j) => ({ value: j.value, label: j.label }))} placeholder="No batch" clearable />
                 </FormField>
                 <FormField id="bo-letter" label="Letter template" required error={err('bo-letter')} helper={chosenLetter ? (chosenLetter.esign ? 'Each candidate signs with a one-time code (e-sign is on for this letter).' : 'Each candidate accepts by the link in the email.') : 'One e-sign envelope per candidate.'}>
                   {setup ? <Select aria-label="Letter template" value={letter} onChange={setLetter} options={setup.letters.map((l) => ({ value: l.value, label: l.label }))} /> : <Select value="t1" onChange={() => {}} options={[{ value: 't1', label: 'Campus letter of intent' }]} />}
@@ -1148,6 +1167,7 @@ function BulkOfferBuilder({ rows: sampleRows, band: sampleBand, defaultStep, liv
                   { label: 'Approval', value: route ? `Per offer: ${route.steps.map((s) => s.name).join(', ') || 'no route in the range (sent at once)'}${outOfBand.length ? `, plus ${route.bandStep.name} for out-of-range offers` : ''}` : 'Per offer: HR, plus CFO for out-of-range offers' },
                   { label: 'E-sign', value: chosenLetter ? (chosenLetter.esign ? 'One envelope per candidate, signed with a one-time code' : 'Accepted by the link in each email') : 'One envelope per candidate, OTP accept' },
                   { label: 'Held', value: noPlan.length ? noPlan.map((r) => r.name).join(', ') : 'None' },
+                  { label: 'Joiner batch', value: joinerId ? (batchChoices.find((j) => j.value === joinerId)?.label ?? '') : 'None' },
                   ...(setup ? [{ label: 'Expires', value: `${setup.expiryDays} days after it is sent, never after joining` }] : []),
                 ]}
               />
@@ -2417,3 +2437,21 @@ export function BiasAuditScreen({ feature, nycOn, lastAudit, auditor, summaryUrl
     </HireFrame>
   );
 }
+
+/**
+ * Answer 377: the sealed copy of an e-signed acceptance: the letter with a last page of who signed, when, from which IP
+ * and device and how (the one-time code). Kept privately; HR downloads it from the offer. Missing means it could not
+ * be made at acceptance (the acceptance still stands): make it again.
+ */
+export function SealedCopyNote({ state, busy, onDownload, onMake }: { state: 'made' | 'missing'; busy?: boolean; onDownload?: () => void; onMake?: () => void }) {
+  return state === 'made' ? (
+    <InlineAlert tone="success" title="Signed: sealed copy kept" actions={<Button size="sm" icon={FileText} onClick={onDownload}>Download sealed copy</Button>}>
+      The letter with the signing page: who signed, when, from which IP address and device, and the one-time-code check.
+    </InlineAlert>
+  ) : (
+    <InlineAlert tone="warning" title="The sealed copy was not made" actions={<Button size="sm" loading={busy} onClick={onMake}>Make the sealed copy</Button>}>
+      The candidate's e-signed acceptance stands. Make the copy again; if it fails, tell your admin.
+    </InlineAlert>
+  );
+}
+

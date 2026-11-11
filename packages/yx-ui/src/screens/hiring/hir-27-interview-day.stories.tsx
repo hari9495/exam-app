@@ -26,6 +26,11 @@ export const SentSomeFailed: S = {
   name: 'Invites sent · some not sent',
   render: () => <BulkInterviewDayScreen drive={drive} date={D(2026, 10, 14)} candidates={CANDS.slice(0, 22)} panels={PANELS} slots={SLOTS} invitesSent failures={{ [CANDS[4]!]: 'The invite email did not go. Send again.', [CANDS[9]!]: 'No longer in the hiring process (rejected or archived).' }} />,
 };
+// Answer 422: two unsent candidates swap places ("Swap with…" from the keyboard, or drag one cell onto another).
+export const Swap: S = { name: 'Swap two unsent candidates (422)', render: () => <BulkInterviewDayScreen drive={drive} date={D(2026, 10, 14)} candidates={CANDS.slice(0, 22)} panels={PANELS} slots={SLOTS} swapOpen={CANDS[1]!} /> };
+// Answer 421: the reminder switch while WhatsApp is not connected, and each slot's reminder result once sent.
+export const RemindersNotConnected: S = { name: 'WhatsApp reminders · not connected (421)', render: () => <BulkInterviewDayScreen drive={drive} date={D(2026, 10, 14)} candidates={CANDS.slice(0, 22)} panels={PANELS} slots={SLOTS} whatsapp="not-connected" /> };
+export const RemindersSent: S = { name: 'WhatsApp reminders · results per slot (421)', render: () => <BulkInterviewDayScreen drive={drive} date={D(2026, 10, 14)} candidates={CANDS.slice(0, 22)} panels={PANELS} slots={SLOTS} invitesSent whatsapp="results" /> };
 const JOBS = [{ value: 'j1', label: 'Graduate Engineer Trainee', stages: [{ value: 's1', label: 'Shortlisted' }, { value: 's2', label: 'Panel interview' }] }];
 const PEOPLE = ['Prakash Menon', 'Deepa Das', 'Karthik Subramanian', 'Thomas George'].map((n, i) => ({ value: `u${i}`, label: n }));
 export const Plan: S = {
