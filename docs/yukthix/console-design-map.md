@@ -753,3 +753,5 @@ C-6 to C-8.
       fixed to India and language is left to the company's own settings. *Suggested: keep.*
 
 - 1061 to 1066 (C-1) and 1121 to 1126 (C-4) approved as suggested (12 Nov 2026, "ok for all"). To do from them: staff roles (1061, 1126; in progress); notices to companies on a rule change through the C-2 admin messages (1065); a Console › Platform settings page with the next platform setting (1125); confirm the DPDP 72-hour Board report timing with counsel (1124, founder).
+
+- 1141 to 1146 (C-5) and 1161 to 1166 (staff roles) approved as suggested (12 Nov 2026, "ok for all"). To do from them: keep two Security leads and take the role from the rest (1162, staff action after merge); Add staff and Deactivate in Staff and roles, then retire the old /v2 Platform admins page (1164); nightly health snapshot, 30-day change, CS owner and alert follow-up (1165); every staff member sees their own roles on My security (1166); a go-live date on the company page when billing starts (1142).
