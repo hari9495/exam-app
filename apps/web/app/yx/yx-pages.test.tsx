@@ -1070,8 +1070,12 @@ describe('/yx/home Needs your action (PLT-02, 5 Nov 2026)', () => {
 describe('/yx not found and error screens', () => {
   it('say YukthiX, never Prudent Hire, and lead back to YukthiX home', async () => {
     const retry = jest.fn();
+    // Answer 947: a signed-in person sees the reference support can look up.
+    (apiFetch as jest.Mock).mockImplementation(async (path: string) => (path === '/help/not-found' ? { reference: 'NF-7KQ2MP' } : null));
     const { unmount } = render(<YxNotFound />);
     expect(screen.getByRole('heading', { name: "We couldn't find that page" })).toBeInTheDocument();
+    expect(await screen.findByText('Reference NF-7KQ2MP')).toBeInTheDocument();
+    expect(apiFetch).toHaveBeenCalledWith('/help/not-found', expect.objectContaining({ method: 'POST' }), 'tok');
     expect(screen.getByRole('link', { name: 'Go to YukthiX home' })).toHaveAttribute('href', '/yx/home');
     expect(document.body.textContent).not.toMatch(/Prudent Hire/);
     unmount();

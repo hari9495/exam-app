@@ -132,7 +132,7 @@ export function ErrorState({ title, description, onRetry, reference }: ErrorStat
 /** Page or section the user cannot open: say who can grant access (§26). */
 /** `grantedBy` names who can give access ("HR"); `note` is an optional extra sentence (why, or what it needs). */
 export function NoAccessState({ grantedBy, what = 'this page', note }: { grantedBy: ReactNode; what?: ReactNode; note?: ReactNode }) {
-  const requests = useContext(AccessRequestContext);
+  const useRequests = useContext(AccessRequestContext);
   return (
     <div className="yx-empty">
       <Icon icon={Lock} size="md" />
@@ -140,7 +140,7 @@ export function NoAccessState({ grantedBy, what = 'this page', note }: { granted
       <p className="yx-empty__desc">
         {note ? <>{note} </> : null}Ask {grantedBy} to give you access.
       </p>
-      {requests && <RequestAccess requests={requests} what={typeof what === 'string' ? what : 'this page'} />}
+      {useRequests && <RequestAccessLoader useRequests={useRequests} what={typeof what === 'string' ? what : 'this page'} />}
     </div>
   );
 }
@@ -168,7 +168,13 @@ export interface AccessRequests {
   startOpen?: boolean;
 }
 
-export const AccessRequestContext = createContext<AccessRequests | null>(null);
+/** A hook the app provides: it loads the company's rules and the latest request only when a no-access state shows. */
+export const AccessRequestContext = createContext<(() => AccessRequests | null) | null>(null);
+
+function RequestAccessLoader({ useRequests, what }: { useRequests: () => AccessRequests | null; what: string }) {
+  const requests = useRequests();
+  return requests ? <RequestAccess requests={requests} what={what} /> : null;
+}
 
 const SENT_TEXT: Record<AccessRequestSent['state'], (s: AccessRequestSent) => { tone: AlertTone; title: string; text?: string }> = {
   waiting: () => ({ tone: 'info', title: 'Access requested', text: 'A System Admin decides it. You get a notification either way.' }),

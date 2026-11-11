@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback } from 'react';
-import { RolesAccessScreen, type AccessRole, type AccessUser, type EffectiveAccess, type Grant, type RoleTemplate } from '@yukthix/ui/access';
+import { useSearchParams } from 'next/navigation';
+import { RolesAccessScreen, type AccessRequestRow, type AccessRole, type AccessUser, type EffectiveAccess, type Grant, type RoleTemplate } from '@yukthix/ui/access';
 import type { LegalEntity, MasterRecord, OrgLocation } from '@yukthix/ui/org';
 import { useCurrentUser } from '../../../../../lib/hooks/useCurrentUser';
 import { useAccess, useAccessRead, useAccessWrite } from '../../../../../lib/yx-access';
@@ -18,6 +19,9 @@ export default function YxRolesAccessPage() {
   const roles = useAccess<AccessRole[]>('/roles');
   const templates = useAccess<RoleTemplate[]>('/role-templates');
   const grants = useAccess<Grant[]>('/grants');
+  // Answer 946: requests from "You don't have access" pages (the inbox and the bell link to ?view=requests).
+  const requests = useAccess<{ maxDays: number; rows: AccessRequestRow[] }>('/requests');
+  const view = useSearchParams()?.get('view');
   const entities = useOrg<LegalEntity[]>('/legal-entities');
   const locations = useOrg<OrgLocation[]>('/locations');
   const departments = useOrg<MasterRecord[]>('/masters/departments');
@@ -46,6 +50,15 @@ export default function YxRolesAccessPage() {
       onRevoke={async (grantId, reason) => void (await write(`/grants/${id(grantId)}/revoke`, { reason }))}
       onFromTemplate={async (templateKey, name) => void (await write('/roles/from-template', { templateKey, name }))}
       onDeleteRole={async (roleId, reason) => void (await write(`/roles/${id(roleId)}/delete`, { reason }))}
+      requests={requests.data?.rows ?? []}
+      maxDays={requests.data?.maxDays ?? 30}
+      initialView={view === 'requests' || view === 'waiting' ? view : undefined}
+      onApproveRequest={async (requestId, input) => {
+        const { userId: _person, ...grant } = input;
+        void _person;
+        await write(`/requests/${id(requestId)}/approve`, grant);
+      }}
+      onRefuseRequest={async (requestId, reason) => void (await write(`/requests/${id(requestId)}/refuse`, { reason }))}
       onSystemAdmin={async (userId, makeAdmin, reason) => void (await write(`/users/${id(userId)}/system-admin${makeAdmin ? '' : '/remove'}`, { reason }))}
     />
   );

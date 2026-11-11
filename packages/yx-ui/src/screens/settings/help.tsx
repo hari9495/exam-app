@@ -373,7 +373,7 @@ export interface AccessDeniedProps {
 export function AccessDeniedState({ recordType, ownerRole, defaultRequesting, sent: sentProp, maxDays = 30 }: AccessDeniedProps) {
   const [sent, setSent] = useState<AccessRequestSent | null>(sentProp ? { askedAt: '2026-11-11', state: 'waiting' } : null);
   return (
-    <AccessRequestContext.Provider value={{ maxDays, sent, startOpen: defaultRequesting, send: async () => setSent({ askedAt: '2026-11-11', state: 'waiting' }) }}>
+    <AccessRequestContext.Provider value={() => ({ maxDays, sent, startOpen: defaultRequesting, send: async () => setSent({ askedAt: '2026-11-11', state: 'waiting' }) })}>
       <NoAccessState what={`this ${recordType}`} grantedBy={`the ${ownerRole}`} />
     </AccessRequestContext.Provider>
   );

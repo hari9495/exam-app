@@ -237,55 +237,63 @@ export class AccessService {
   }
 
   async create(ctx: TenantContext, actorUserId: string, dto: GrantDto) {
-    const result = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const user = await tx.user.findFirst({ where: { id: dto.userId, organizationId: c.organizationId } });
-      if (!user || user.role === 'super_admin') throw new BadRequestException('Choose a user of this company.');
-      if (user.status !== 'active') throw new BadRequestException('That user is not active.');
-      const profile = await tx.permissionProfile.findFirst({ where: { id: dto.permissionProfileId, organizationId: c.organizationId, archivedAt: null } });
-      if (!profile) throw new BadRequestException('Choose a role of this company.');
-      const keys = JSON.parse(profile.permissionsJson) as string[];
-      const column = SCOPE_TARGET[dto.scopeType];
-      if (column ? !dto.scopeId : dto.scopeId) throw new BadRequestException(column ? 'Say which record the scope is for.' : 'This scope takes no record.');
-      if (dto.scopeType === 'legal_entity' && !(await tx.legalEntity.findFirst({ where: { id: dto.scopeId, organizationId: c.organizationId } }))) throw new BadRequestException('No such legal entity in this company.');
-      if (dto.scopeType === 'location' && !(await tx.location.findFirst({ where: { id: dto.scopeId, organizationId: c.organizationId } }))) throw new BadRequestException('No such location in this company.');
-      if (dto.scopeType === 'department_subtree' && !(await tx.department.findFirst({ where: { id: dto.scopeId, organizationId: c.organizationId } }))) throw new BadRequestException('No such department in this company.');
-      const granteeEmployee = await this.employeeOf(tx, c, user.id);
-      if ((dto.scopeType === 'all_reports' || dto.scopeType === 'direct_reports') && !granteeEmployee) throw new BadRequestException('A "reports" scope needs the user to have an employee record.');
-      // P02 §4.3: a key whose module has no record scope works company-wide only; say so instead of granting nothing.
-      const unscoped = keys.filter((k) => !grantScopesFor(k).includes(dto.scopeType));
-      if (unscoped.length) throw new BadRequestException({ statusCode: 400, code: 'KEYS_COMPANY_WIDE_ONLY', message: `These permissions work only for the whole company: ${unscoped.join(', ')}. Grant the role company-wide, or use a role without them.`, keys: unscoped });
-      const today = todayIst();
-      const validFrom = dto.validFrom ?? today;
-      if (validFrom < today) throw new BadRequestException('A grant starts today or later.');
-      if (dto.validTo && dto.validTo < validFrom) throw new BadRequestException('The end date is before the start date.');
-      // YX-SEC-18 (a): Confidential / Special access over many people warns first.
-      const confidential = holdsConfidential(keys);
-      const people = await this.peopleIn(tx, c, { type: dto.scopeType, id: dto.scopeId ?? null }, granteeEmployee);
-      const threshold = Number(await settingFor(tx, c, 'access.risk.confidential_threshold', { legalEntityId: '' }));
-      const warnings = confidential && people > threshold ? [`Lets them ${keys.filter((k) => CONFIDENTIAL_KEYS.includes(k)).map((k) => CONFIDENTIAL_LABEL[k] ?? 'open Confidential data').join(', ')} for ${people} people, more than the company's limit of ${threshold}.`] : [];
-      if (warnings.length && !dto.confirmRisk) {
-        throw new ConflictException({ statusCode: 409, code: 'RISK_CONFIRMATION_REQUIRED', message: warnings[0], warnings, people });
-      }
-      const selfGrant = user.id === actorUserId;
-      const row = await tx.roleGrant.create({
-        data: {
-          organizationId: c.organizationId,
-          userId: user.id,
-          permissionProfileId: profile.id,
-          scopeType: dto.scopeType,
-          ...(column ? { [column]: dto.scopeId } : {}),
-          validFrom: asDate(validFrom),
-          validTo: dto.validTo ? asDate(dto.validTo) : null,
-          // §4.6: Confidential access waits for a second admin; everything else counts at once.
-          status: confidential ? 'pending' : 'active',
-          reason: dto.reason.trim(),
-          grantedBy: actorUserId,
-        },
-      });
-      await audit(tx, c, 'access.grant.created', 'role_grant', row.id, { userId: user.id, role: profile.name, scopeType: dto.scopeType, scopeId: dto.scopeId ?? null, validFrom, validTo: dto.validTo ?? null, status: row.status, confidential, people, riskConfirmed: warnings.length > 0, selfGrant });
-      return { view: (await this.views(tx, c, [row]))[0], selfGrant, pending: confidential, notify: await this.otherAdmins(tx, c, [actorUserId, user.id]), organizationId: c.organizationId };
+    const result = await inCompany(this.tenantPrisma, ctx, (tx, c) => this.grantIn(tx, c, actorUserId, dto));
+    await this.tellAdmins(ctx, actorUserId, result);
+    return result.view;
+  }
+
+  /** Saves a grant with every rule of Give access, inside the caller's transaction (also used by access requests, answer 946). */
+  async grantIn(tx: Tx, c: CompanyContext, actorUserId: string, dto: GrantDto) {
+    const user = await tx.user.findFirst({ where: { id: dto.userId, organizationId: c.organizationId } });
+    if (!user || user.role === 'super_admin') throw new BadRequestException('Choose a user of this company.');
+    if (user.status !== 'active') throw new BadRequestException('That user is not active.');
+    const profile = await tx.permissionProfile.findFirst({ where: { id: dto.permissionProfileId, organizationId: c.organizationId, archivedAt: null } });
+    if (!profile) throw new BadRequestException('Choose a role of this company.');
+    const keys = JSON.parse(profile.permissionsJson) as string[];
+    const column = SCOPE_TARGET[dto.scopeType];
+    if (column ? !dto.scopeId : dto.scopeId) throw new BadRequestException(column ? 'Say which record the scope is for.' : 'This scope takes no record.');
+    if (dto.scopeType === 'legal_entity' && !(await tx.legalEntity.findFirst({ where: { id: dto.scopeId, organizationId: c.organizationId } }))) throw new BadRequestException('No such legal entity in this company.');
+    if (dto.scopeType === 'location' && !(await tx.location.findFirst({ where: { id: dto.scopeId, organizationId: c.organizationId } }))) throw new BadRequestException('No such location in this company.');
+    if (dto.scopeType === 'department_subtree' && !(await tx.department.findFirst({ where: { id: dto.scopeId, organizationId: c.organizationId } }))) throw new BadRequestException('No such department in this company.');
+    const granteeEmployee = await this.employeeOf(tx, c, user.id);
+    if ((dto.scopeType === 'all_reports' || dto.scopeType === 'direct_reports') && !granteeEmployee) throw new BadRequestException('A "reports" scope needs the user to have an employee record.');
+    // P02 §4.3: a key whose module has no record scope works company-wide only; say so instead of granting nothing.
+    const unscoped = keys.filter((k) => !grantScopesFor(k).includes(dto.scopeType));
+    if (unscoped.length) throw new BadRequestException({ statusCode: 400, code: 'KEYS_COMPANY_WIDE_ONLY', message: `These permissions work only for the whole company: ${unscoped.join(', ')}. Grant the role company-wide, or use a role without them.`, keys: unscoped });
+    const today = todayIst();
+    const validFrom = dto.validFrom ?? today;
+    if (validFrom < today) throw new BadRequestException('A grant starts today or later.');
+    if (dto.validTo && dto.validTo < validFrom) throw new BadRequestException('The end date is before the start date.');
+    // YX-SEC-18 (a): Confidential / Special access over many people warns first.
+    const confidential = holdsConfidential(keys);
+    const people = await this.peopleIn(tx, c, { type: dto.scopeType, id: dto.scopeId ?? null }, granteeEmployee);
+    const threshold = Number(await settingFor(tx, c, 'access.risk.confidential_threshold', { legalEntityId: '' }));
+    const warnings = confidential && people > threshold ? [`Lets them ${keys.filter((k) => CONFIDENTIAL_KEYS.includes(k)).map((k) => CONFIDENTIAL_LABEL[k] ?? 'open Confidential data').join(', ')} for ${people} people, more than the company's limit of ${threshold}.`] : [];
+    if (warnings.length && !dto.confirmRisk) {
+      throw new ConflictException({ statusCode: 409, code: 'RISK_CONFIRMATION_REQUIRED', message: warnings[0], warnings, people });
+    }
+    const selfGrant = user.id === actorUserId;
+    const row = await tx.roleGrant.create({
+      data: {
+        organizationId: c.organizationId,
+        userId: user.id,
+        permissionProfileId: profile.id,
+        scopeType: dto.scopeType,
+        ...(column ? { [column]: dto.scopeId } : {}),
+        validFrom: asDate(validFrom),
+        validTo: dto.validTo ? asDate(dto.validTo) : null,
+        // §4.6: Confidential access waits for a second admin; everything else counts at once.
+        status: confidential ? 'pending' : 'active',
+        reason: dto.reason.trim(),
+        grantedBy: actorUserId,
+      },
     });
-    // Q1: self-grants and grants waiting for approval are told to the other admins (bell + email, best effort).
+    await audit(tx, c, 'access.grant.created', 'role_grant', row.id, { userId: user.id, role: profile.name, scopeType: dto.scopeType, scopeId: dto.scopeId ?? null, validFrom, validTo: dto.validTo ?? null, status: row.status, confidential, people, riskConfirmed: warnings.length > 0, selfGrant });
+    return { view: (await this.views(tx, c, [row]))[0], selfGrant, pending: confidential, notify: await this.otherAdmins(tx, c, [actorUserId, user.id]), organizationId: c.organizationId };
+  }
+
+  /** Q1: self-grants and grants waiting for approval are told to the other admins (bell + email, best effort). */
+  async tellAdmins(ctx: TenantContext, actorUserId: string, result: Awaited<ReturnType<AccessService['grantIn']>>) {
     if (result.selfGrant || result.pending) {
       await this.notifications
         .notify(ctx, actorUserId, result.notify, 'access.grant', {
@@ -296,7 +304,6 @@ export class AccessService {
         })
         .catch((e) => this.logger.error(e));
     }
-    return result.view;
   }
 
   /** YX-SEC-11: approved by an admin who neither asked for it nor receives it. */

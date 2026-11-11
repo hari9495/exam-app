@@ -1,6 +1,7 @@
 import { humanizeHttpError, NetworkError } from './http-error-message';
 import { goTo } from './navigate';
 import { withNextHere } from './safe-next';
+import { noteNotFound } from './yx-not-found';
 
 // Exported for public, unauthenticated pages (e.g. the candidate apply/status pages) that hit
 // the backend with plain fetch instead of apiFetch -- there's no access token to attach.
@@ -88,6 +89,8 @@ async function throwForResponse(response: Response): Promise<never> {
   const details = Object.fromEntries(DETAIL_FIELDS.filter((k) => k in body).map((k) => [k, body[k]]));
   if (Object.keys(details).length) error.body = details;
   if (typeof body.code === 'string') error.code = body.code;
+  // Answer 947: a Not found answer's reference, for the page's Not found state.
+  if (response.status === 404) noteNotFound(body.reference);
   if (body.code === PASSWORD_CHANGE_REQUIRED && typeof body.resetToken === 'string' && /^[0-9a-f]{64}$/.test(body.resetToken) && typeof window !== 'undefined') {
     window.location.assign(`/yx/reset-password/${body.resetToken}`);
   }

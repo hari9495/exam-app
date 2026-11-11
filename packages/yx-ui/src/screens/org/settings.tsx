@@ -54,6 +54,8 @@ const VALUE_LABEL: Record<string, Record<string, string>> = {
   'probation.auto_confirm_after_days': { off: 'Never (HR confirms)', '0': 'On the end date', '7': '7 days after', '15': '15 days after', '30': '30 days after' },
   'access.manager.view_scope': { all_reports: 'Everyone under them', direct_reports: 'Direct reports only' },
   'privacy.who_accessed': { on: 'Shown', off: 'Hidden' },
+  'access.request.allowed': { on: 'On', off: 'Off' },
+  'access.request.max_days': { '7': '7 days', '14': '14 days', '30': '30 days', '60': '60 days', '90': '90 days' },
   'employee.profile_change.proof': { required: 'Required', optional: 'Optional' },
   'home.pay_on_employee_home': { off: 'Not shown', on: 'Shown, hidden until the employee asks' },
   'attendance.mode': { punch: 'Punch in and out', assumed_present: 'Present unless on leave', timesheet: 'Timesheet' },
@@ -147,6 +149,7 @@ export const SETTING_SECTIONS: Record<SettingsArea, SettingsSection[]> = {
   ],
   access: [
     { title: 'Manager access', description: 'Managers always see their own reports. The company can narrow it.', keys: ['access.manager.view_scope'] },
+    { title: 'Access requests', description: 'On a page someone cannot open, they can ask for access with a reason and how long. A System Admin approves it in Roles & access with a role that ends by itself on its last day, or refuses it; nobody decides their own. Roles that open pay, identity or bank details still wait for a second admin.', keys: ['access.request.allowed', 'access.request.max_days'] },
     { title: 'Special permissions', description: 'A role that opens identity or bank data for many people asks for a confirmation first.', keys: ['access.risk.confidential_threshold'] },
     { title: 'Privacy', description: 'Every look at identity, bank and pay data is recorded either way. Employees see how long each kind of data is kept on their Privacy page; pay documents follow the payroll rule. Special data is deleted only once you turn that on; read what it would delete below first.', keys: ['privacy.who_accessed', 'privacy.retention.internal_years', 'privacy.retention.personal_years', 'privacy.retention.special_years', 'privacy.erasure.enabled'] },
     { title: 'Bank details', description: 'Protects pay from a hijacked account change.', keys: ['employee.bank_change.cooling_hours'] },
