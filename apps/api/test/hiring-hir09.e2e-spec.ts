@@ -10,6 +10,7 @@ import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { LOGIN_PROTECTION_REDIS } from '../src/auth/login-protection.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
+import { pdfText } from './fixtures/pdf-text';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { OfferBuilderService } from '../src/offers/offer-builder.service';
 
@@ -396,6 +397,30 @@ describe('HIR-09 offer builder and HIR-29 conditions', () => {
     expect(o.esignEvidence).toMatchObject({ channel: 'email', assurance: 'one-time code', letterSha256: expect.stringMatching(/^[0-9a-f]{64}$/) });
     // Without e-sign (the default) no code is asked: offer 1 above was accepted by the link alone.
     expect((await inA((tx) => tx.offer.findFirstOrThrow({ where: { id: ids.o1 } }))).esignEvidence).toBeNull();
+  });
+
+  it('answer 377: the e-signed acceptance keeps a sealed copy (the letter and the signing page), private and downloadable', async () => {
+    const o = await inA((tx) => tx.offer.findFirstOrThrow({ where: { id: ids.o5 } }));
+    expect(o.acceptanceFileId).toBeTruthy();
+    const file = await inA((tx) => tx.file.findFirstOrThrow({ where: { id: o.acceptanceFileId! } }));
+    expect(file).toMatchObject({ area: 'offers', mime: 'application/pdf', uploadedVia: 'system', scanStatus: 'clean' });
+    const copy = (await api('rec', 'get', `/offers/${ids.o5}/acceptance-copy`).buffer(true).parse((res, cb) => { const c: Buffer[] = []; res.on('data', (d: Buffer) => c.push(d)); res.on('end', () => cb(null, Buffer.concat(c))); }).expect(200)).body as Buffer;
+    expect(copy.subarray(0, 5).toString()).toBe('%PDF-');
+    const text = pdfText(copy);
+    expect(text).toMatch(/Acceptance certificate/);
+    expect(text).toMatch(new RegExp(`esign-${run}@mail\.test`));
+    expect(text).toMatch(/one-time code sent by email/);
+    expect((await record('rec', ids.o5)).sealedCopy).toBe('made');
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'offer.esign_copy_made', entityId: ids.o5 } }))).toBe(1);
+    // Making it again keeps the one copy.
+    expect((await api('rec', 'post', `/offers/${ids.o5}/acceptance-copy`).expect(200)).body).toEqual({ fileId: o.acceptanceFileId });
+    // Refused: without the offer-pay key (the letter shows pay), another company, an offer accepted without e-sign.
+    await api('noPay', 'get', `/offers/${ids.o5}/acceptance-copy`).expect(403);
+    await api('recB', 'get', `/offers/${ids.o5}/acceptance-copy`).expect(404);
+    await api('recB', 'post', `/offers/${ids.o5}/acceptance-copy`).expect(404);
+    await api('rec', 'get', `/offers/${ids.o1}/acceptance-copy`).expect(404);
+    await api('rec', 'post', `/offers/${ids.o1}/acceptance-copy`).expect(409);
+    expect((await record('rec', ids.o1)).sealedCopy).toBeNull();
   });
 
   it('an older text offer stays readable as version 0, also after its first CTC version', async () => {

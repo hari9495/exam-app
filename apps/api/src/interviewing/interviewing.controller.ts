@@ -11,7 +11,7 @@ import { CurrentUserRole } from '../auth/current-user-role.decorator';
 import { HiringBoardService } from './hiring-board.service';
 import { ScorecardTemplatesService } from './scorecard-templates.service';
 import { ScorecardsService, type Viewer } from './scorecards.service';
-import { BoardRejectDto, BulkBoardDto, InterviewDayDto, InterviewRangeDto, JobScorecardDto, MoveDto, NotetakerConsentDto, NotetakerTranscriptDto, ScorecardCommentDto, ScorecardDto, ScorecardTemplateDto, SendOnStageDto } from './interviewing-dto';
+import { BoardRejectDto, BulkBoardDto, InterviewDayDto, InterviewRangeDto, JobScorecardDto, MoveDto, NotetakerConsentDto, NotetakerTranscriptDto, ScorecardCommentDto, ScorecardDto, ScorecardTemplateDto, SendOnStageDto, DayRemindersDto, DaySwapDto } from './interviewing-dto';
 import { InterviewDaysService } from './interview-days.service';
 import { NotetakerService } from './notetaker.service';
 
@@ -84,6 +84,24 @@ export class InterviewingController {
   removeDaySlot(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('start', ParseIntPipe) start: number) {
     notActing(req, DAYS);
     return this.days.removeSlot(ctx, id, start);
+  }
+
+  /** Answer 422: two unsent candidates change places (drag or "Swap with…"); audited. */
+  @Post('interview-days/:id/swap')
+  @HttpCode(200)
+  @RequirePermissions('pipeline:manage')
+  swapDay(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DaySwapDto) {
+    notActing(req, DAYS);
+    return this.days.swap(ctx, id, dto.a, dto.b);
+  }
+
+  /** Answer 421: the day's WhatsApp reminders on or off. */
+  @Post('interview-days/:id/reminders')
+  @HttpCode(200)
+  @RequirePermissions('pipeline:manage')
+  dayReminders(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DayRemindersDto) {
+    notActing(req, DAYS);
+    return this.days.setReminders(ctx, id, dto.on);
   }
 
   @Post('interview-days/:id/send')

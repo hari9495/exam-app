@@ -1,4 +1,4 @@
-import { assignDay, freeCells, memberOnTwoPanels, slotProblem } from './interview-day-rules';
+import { reminderDue, reminderText, assignDay, freeCells, memberOnTwoPanels, slotProblem } from './interview-day-rules';
 
 describe('HIR-27 interview day rules', () => {
   const panels = ['A', 'B'];
@@ -38,5 +38,20 @@ describe('HIR-27 interview day rules', () => {
   it('a member on two panels is refused; the same member twice in one panel is fine', () => {
     expect(memberOnTwoPanels([{ memberUserIds: ['u1', 'u1'] }, { memberUserIds: ['u2'] }])).toBeNull();
     expect(memberOnTwoPanels([{ memberUserIds: ['u1'] }, { memberUserIds: ['u2', 'u1'] }])).toBe('u1');
+  });
+});
+
+describe('WhatsApp reminders 2 hours before the slot (answer 421)', () => {
+  // 14 Nov 2026, Asia/Kolkata; the 10:00 slot is 600 minutes after midnight (04:30 UTC).
+  it('due from 08:00 until the slot starts', () => {
+    expect(reminderDue('2026-11-14', 'Asia/Kolkata', 600, new Date('2026-11-14T02:30:00Z'))).toBe(true); // 08:00 IST
+    expect(reminderDue('2026-11-14', 'Asia/Kolkata', 600, new Date('2026-11-14T04:29:00Z'))).toBe(true); // 09:59 IST
+  });
+  it('negative: not before the 2 hours, not once the slot started', () => {
+    expect(reminderDue('2026-11-14', 'Asia/Kolkata', 600, new Date('2026-11-14T02:29:00Z'))).toBe(false); // 07:59 IST
+    expect(reminderDue('2026-11-14', 'Asia/Kolkata', 600, new Date('2026-11-14T04:30:00Z'))).toBe(false); // 10:00 IST
+  });
+  it('the words: job, time, room', () => {
+    expect(reminderText('Graduate Engineer Trainee', 645, 'Training room 1')).toBe('Reminder: your interview for Graduate Engineer Trainee is today at 10:45, Training room 1. Please come 10 minutes early with a photo ID.');
   });
 });

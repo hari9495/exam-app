@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsISO8601, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsISO8601, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { RECOMMENDATIONS } from './scorecard-rules';
 
 // Recruitment batch AT5 request bodies (M10-BUILD-DESIGN §18.1).
@@ -266,3 +266,15 @@ export class NotetakerTranscriptDto {
   @MaxLength(200_000)
   text!: string;
 }
+
+/** Answer 422: two unsent candidates of a day change places. */
+export class DaySwapDto {
+  @IsUUID() a!: string;
+  @IsUUID() b!: string;
+}
+
+/** Answer 421: the day's WhatsApp reminder switch. */
+export class DayRemindersDto {
+  @IsBoolean() on!: boolean;
+}
+

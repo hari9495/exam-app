@@ -1,4 +1,7 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { CandidateWhatsappService } from '../candidate-whatsapp/candidate-whatsapp.service';
+import { WhatsappService } from '../whatsapp/whatsapp.service';
+import { reminderDue, reminderText } from './interview-day-rules';
 import { DateTime } from 'luxon';
 import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { audit, inCompany, Tx, CompanyContext } from '../org-structure/org-structure.service';
@@ -19,9 +22,14 @@ import type { InterviewDayDto } from './interviewing-dto';
  */
 @Injectable()
 export class InterviewDaysService {
+  private readonly logger = new Logger(InterviewDaysService.name);
+
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly interviews: InterviewsService,
+    // Answer 421: WhatsApp reminders (optional so older unit tests build without them).
+    @Optional() private readonly whatsapp?: WhatsappService,
+    @Optional() private readonly candidateWhatsapp?: CandidateWhatsappService,
   ) {}
 
   /** Days of the company, newest day first, with what the picker and the list need. */
@@ -78,6 +86,8 @@ export class InterviewDaysService {
           timeZone: tz,
           slots: [...dto.slots].sort((a, b) => a - b),
           slotMinutes,
+          // Answer 421: the company's default for a new day's WhatsApp reminders.
+          whatsappReminders: (await settingFor(tx, c, 'hiring.interview_day.whatsapp_reminders', { legalEntityId: '' })) === 'on',
           createdBy: c.userId ?? null,
           panels: { create: dto.panels.map((p, i) => ({ organizationId: org, position: i, name: p.name, room: p.room, memberUserIds: [...new Set(p.memberUserIds)] })) },
         },
@@ -110,9 +120,11 @@ export class InterviewDaysService {
         slotMinutes: day.slotMinutes,
         status: day.status,
         sending: Boolean(day.sendingAt && Date.now() - day.sendingAt.getTime() < SEND_CLAIM_MS),
+        // Answer 421: the switch, and whether a WhatsApp provider is set (else the board says not connected).
+        reminders: { on: day.whatsappReminders, connected: this.whatsapp ? await this.whatsapp.connected(org) : false },
         panels: day.panels.map((p) => ({ id: p.id, name: p.name, room: p.room, members: p.memberUserIds.map((u) => users.get(u) ?? 'Someone who left').join(', ') })),
         rows: day.rows
-          .map((r) => ({ id: r.id, entryId: r.pipelineEntryId, candidate: name.get(r.pipelineEntryId) ?? 'Candidate', panelId: r.panelId, start: r.slotStart, status: r.status, error: r.error, interviewId: r.interviewId, sentAt: r.sentAt }))
+          .map((r) => ({ id: r.id, entryId: r.pipelineEntryId, candidate: name.get(r.pipelineEntryId) ?? 'Candidate', panelId: r.panelId, start: r.slotStart, status: r.status, error: r.error, interviewId: r.interviewId, sentAt: r.sentAt, reminder: r.reminderStatus }))
           .sort((a, b) => (a.start ?? 1e9) - (b.start ?? 1e9) || a.candidate.localeCompare(b.candidate)),
       };
     });
@@ -228,6 +240,88 @@ export class InterviewDaysService {
       });
     }
     return { sent, failed, day: await this.get(ctx, id) };
+  }
+
+  /**
+   * Answer 422: two unsent candidates change places (panel and slot), audited. Refused for a row already sent (its
+   * interview exists), a row without a place, rows of another day, or while invites are being sent.
+   */
+  async swap(ctx: TenantContext, id: string, a: string, b: string) {
+    if (a === b) throw new BadRequestException('Choose two different candidates to swap.');
+    await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`interview_day:${id}`}))`;
+      const day = await tx.interviewDay.findFirst({ where: { id, organizationId: org } });
+      if (!day) throw new NotFoundException('Interview day not found.');
+      if (day.sendingAt && Date.now() - day.sendingAt.getTime() < SEND_CLAIM_MS) throw new ConflictException('Invites are being sent for this day. Wait a moment and reload.');
+      const rows = await tx.interviewDayRow.findMany({ where: { organizationId: org, dayId: id, id: { in: [a, b] } } });
+      if (rows.length !== 2) throw new NotFoundException('Those candidates are not on this day. Reload the page.');
+      if (rows.some((r) => r.interviewId || r.sentAt)) throw new ConflictException('An invite was already sent to one of them. Only unsent candidates can swap.');
+      if (rows.some((r) => r.panelId == null || r.slotStart == null)) throw new BadRequestException('Both candidates need a place on the board to swap.');
+      const [x, y] = [rows.find((r) => r.id === a)!, rows.find((r) => r.id === b)!];
+      // The cell index is unique: free x's cell first, then move y, then x.
+      await tx.interviewDayRow.update({ where: { id: x.id }, data: { panelId: null, slotStart: null } });
+      await tx.interviewDayRow.update({ where: { id: y.id }, data: { panelId: x.panelId, slotStart: x.slotStart } });
+      await tx.interviewDayRow.update({ where: { id: x.id }, data: { panelId: y.panelId, slotStart: y.slotStart } });
+      await audit(tx, c, 'ats.interview_day.swapped', 'interview_day', id, { a: { entry: x.pipelineEntryId, from: [x.panelId, x.slotStart], to: [y.panelId, y.slotStart] }, b: { entry: y.pipelineEntryId, from: [y.panelId, y.slotStart], to: [x.panelId, x.slotStart] } });
+    });
+    return this.get(ctx, id);
+  }
+
+  /** Answer 421: the day's WhatsApp reminder switch (the HIR-27 drawing). */
+  async setReminders(ctx: TenantContext, id: string, on: boolean) {
+    await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const n = await tx.interviewDay.updateMany({ where: { id, organizationId: c.organizationId }, data: { whatsappReminders: on } });
+      if (!n.count) throw new NotFoundException('Interview day not found.');
+      await audit(tx, c, 'ats.interview_day.reminders', 'interview_day', id, { on });
+    });
+    return this.get(ctx, id);
+  }
+
+  /**
+   * Answer 421 (scheduled every 5 minutes): a WhatsApp reminder 2 hours before each sent slot, once per row, only to a
+   * candidate who opted in (561). Every row gets its result: sent, failed, not_opted_in, no_phone, or not_connected
+   * when the company has no WhatsApp provider (never silent; the board shows it).
+   */
+  async remindersDue(now = new Date()): Promise<number> {
+    const SUPER = { organizationId: null, isSuperAdmin: true };
+    const days = await this.tenantPrisma.forTenant(SUPER, (tx) => tx.interviewDay.findMany({ where: { whatsappReminders: true, day: { gte: new Date(now.getTime() - 86_400_000), lte: new Date(now.getTime() + 86_400_000) } }, include: { panels: true, rows: { where: { status: 'sent', reminderStatus: null, slotStart: { not: null } } } } }));
+    let n = 0;
+    for (const day of days) {
+      const due = day.rows.filter((r) => reminderDue(iso(day.day), day.timeZone, r.slotStart!, now));
+      if (!due.length) continue;
+      const ctx = { organizationId: day.organizationId, isSuperAdmin: false };
+      const connected = this.whatsapp ? await this.whatsapp.connected(day.organizationId) : false;
+      for (const r of due) {
+        const mark = (status: string) => this.tenantPrisma.forTenant(ctx, (tx) => tx.interviewDayRow.updateMany({ where: { id: r.id, reminderStatus: null }, data: { reminderStatus: status, reminderAt: new Date() } }));
+        // Claim the row first so a second run never sends twice.
+        const claimed = await this.tenantPrisma.forTenant(ctx, (tx) => tx.interviewDayRow.updateMany({ where: { id: r.id, reminderStatus: null }, data: { reminderAt: new Date() } }));
+        if (!claimed.count) continue;
+        try {
+          if (!connected || !this.candidateWhatsapp) {
+            await mark('not_connected');
+            continue;
+          }
+          const c = await this.tenantPrisma.forTenant(ctx, (tx) => tx.pipelineEntry.findFirst({ where: { organizationId: day.organizationId, id: r.pipelineEntryId }, select: { job: { select: { title: true } }, candidate: { select: { phone: true, whatsappOptedInAt: true, whatsappOptedOutAt: true } } } }));
+          if (!c?.candidate.phone?.trim()) {
+            await mark('no_phone');
+            continue;
+          }
+          if (!c.candidate.whatsappOptedInAt || c.candidate.whatsappOptedOutAt) {
+            await mark('not_opted_in');
+            continue;
+          }
+          const panel = day.panels.find((p) => p.id === r.panelId);
+          const msg = await this.candidateWhatsapp.sendWhatsapp(ctx, null, r.pipelineEntryId, { body: reminderText(c.job.title, r.slotStart!, panel?.room ?? ''), source: 'stage_auto' });
+          await mark(msg?.status === 'sent' ? 'sent' : 'failed');
+          if (msg?.status === 'sent') n++;
+        } catch (e) {
+          this.logger.warn(`interview reminder ${r.id}: ${(e as Error).message}`);
+          await mark('failed');
+        }
+      }
+    }
+    return n;
   }
 
   private async jobNames(tx: Tx, c: CompanyContext, ids: string[]) {

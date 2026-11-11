@@ -43,6 +43,15 @@ describe('HIR-28 bulk offers', () => {
       if (value) await tx.setting.create({ data: { organizationId: org.A.id, scopeType: 'tenant', scopeId: org.A.id, key, value } });
     });
   const entry = async (k: string, jobKey = 'job') => (ids[k] = (await api('rec', 'post', `/jobs/${ids[jobKey]}/entries`).send({ newCandidate: { name: `Cand ${k}`, email: `${k}-${run}@mail.test` } }).expect(201)).body.id);
+  // Answer 405: a batch runs in the background; read it until it is done.
+  const finished = async (id: string) => {
+    for (let i = 0; i < 240; i++) {
+      const r = (await api('rec', 'get', `/hiring/offer-batches/${id}`).expect(200)).body;
+      if (r.status === 'done') return r;
+      await new Promise((ok) => setTimeout(ok, 250));
+    }
+    throw new Error(`batch ${id} did not finish`);
+  };
   const batch = (rows: [string, string][], over: Record<string, unknown> = {}) => ({ jobId: ids.job, batchKey: randomUUID(), templateVersionId: ids.tv, locationId: ids.blr, startDate: plus(40), letterKind: 'loi', templateId: ids.tplE, addConditions: true, rows: rows.map(([k, annualCtc]) => ({ entryId: ids[k], annualCtc })), ...over });
 
   beforeAll(async () => {
@@ -102,7 +111,7 @@ describe('HIR-28 bulk offers', () => {
     ids.job = (await api('rec', 'post', '/jobs').send({ title: 'Graduate Engineer Trainee' }).expect(201)).body.id;
     ids.job2 = (await api('rec', 'post', '/jobs').send({ title: 'Another job' }).expect(201)).body.id;
     await inA((tx) => tx.job.update({ where: { id: ids.job }, data: { legalEntityId: ids.entity, gradeId: ids.g3, locationId: ids.blr, headcountPlanLineId: ids.line } }));
-    for (const k of ['aditi', 'farhan', 'gayathri', 'harsha', 'ishita', 'joel', 'kavin']) await entry(k);
+    for (const k of ['aditi', 'farhan', 'gayathri', 'harsha', 'ishita', 'joel', 'kavin', 'lena', 'mohan']) await entry(k);
     await entry('elsewhere', 'job2');
     ids.tplE = (await api('rec', 'post', '/offer-template').send({ name: `Campus LOI ${run}`, subject: 'Your letter of intent', body: 'Dear {{candidateName}}, {{compensation}}. {{offerLink}}', esign: true }).expect(201)).body.id;
     // Gayathri already has an offer of her own: a batch skips her, never offers twice.
@@ -126,7 +135,7 @@ describe('HIR-28 bulk offers', () => {
   it('setup: the job, its grade range, the free places on the plan line, the candidates without an open offer', async () => {
     const s = (await api('rec', 'get', `/hiring/offer-batches/setup?jobId=${ids.job}`).expect(200)).body;
     expect(s).toMatchObject({ job: { title: 'Graduate Engineer Trainee' }, grade: 'G3', band: { min: 420_000, max: 500_000 }, plan: { check: 'hold', linked: true, free: 4 }, expiryDays: 7 });
-    expect(s.candidates.map((c: { name: string }) => c.name)).toEqual(['Cand aditi', 'Cand farhan', 'Cand harsha', 'Cand ishita', 'Cand joel', 'Cand kavin']);
+    expect(s.candidates.map((c: { name: string }) => c.name)).toEqual(['Cand aditi', 'Cand farhan', 'Cand harsha', 'Cand ishita', 'Cand joel', 'Cand kavin', 'Cand lena', 'Cand mohan']);
     expect(s.letters.find((l: { value: string }) => l.value === ids.tplE)).toMatchObject({ esign: true });
   });
 
@@ -143,8 +152,11 @@ describe('HIR-28 bulk offers', () => {
       ['joel', '480000'],
     ]);
     ids.key = body.batchKey;
-    const b = (await api('rec', 'post', '/hiring/offer-batches').send(body).expect(200)).body;
+    const started = (await api('rec', 'post', '/hiring/offer-batches').send(body).expect(200)).body;
+    expect(started.progress.total).toBe(6);
+    const b = await finished(started.id);
     ids.batch = b.id;
+    expect(b.progress).toEqual({ done: 6, total: 6 });
     expect(b.rows.map((r: { name: string; status: string }) => [r.name, r.status])).toEqual([
       ['Cand aditi', 'sent'],
       ['Cand farhan', 'pending_approval'],
@@ -200,8 +212,50 @@ describe('HIR-28 bulk offers', () => {
 
   it('with the plan check off, nothing is held', async () => {
     await setting('hiring.bulk_offer.plan_check', 'off');
-    const b = (await api('rec', 'post', '/hiring/offer-batches').send(batch([['ishita', '480000'], ['joel', '480000']])).expect(200)).body;
+    const b = await finished((await api('rec', 'post', '/hiring/offer-batches').send(batch([['ishita', '480000'], ['joel', '480000']])).expect(200)).body.id);
     expect(b.rows.map((r: { status: string }) => r.status)).toEqual(['sent', 'sent']);
+    await setting('hiring.bulk_offer.plan_check', null);
+  });
+
+  it('answers 401 and 405: a batch names an open People joiner batch on its day; accepted offers join it as joiners', async () => {
+    await setting('hiring.bulk_offer.plan_check', 'off');
+    const day = plus(40);
+    const jb = (o: string, name: string, joiningOn: string, status = 'open', entity = ids.entity) => at(o)((tx) => tx.joinerBatch.create({ data: { organizationId: o, name: `${name} ${run}`, legalEntityId: entity, joiningOn: new Date(`${joiningOn}T00:00:00Z`), status } }));
+    ids.jb = (await jb(org.A.id, 'GET 2027', day)).id;
+    const otherDay = (await jb(org.A.id, 'Later batch', plus(41))).id;
+    const closed = (await jb(org.A.id, 'Closed batch', day, 'closed')).id;
+    // The setup offers the open batches of the job's entity.
+    const setup = (await api('rec', 'get', `/hiring/offer-batches/setup?jobId=${ids.job}`).expect(200)).body;
+    expect(setup.joinerBatches).toEqual(expect.arrayContaining([expect.objectContaining({ value: ids.jb, joiningOn: day, legalEntityId: ids.entity })]));
+    expect(setup.joinerBatches.some((x: { value: string }) => x.value === closed)).toBe(false);
+    expect(setup.locations[0]).toMatchObject({ legalEntityId: ids.entity });
+    // Refused: another day 400, a closed batch 409, another company's batch 404; nothing is made.
+    await api('rec', 'post', '/hiring/offer-batches').send(batch([['lena', '480000']], { joinerBatchId: otherDay })).expect(400);
+    await api('rec', 'post', '/hiring/offer-batches').send(batch([['lena', '480000']], { joinerBatchId: closed })).expect(409);
+    const bBatch = await at(org.B.id)(async (tx) => {
+      const e = await tx.legalEntity.create({ data: { organizationId: org.B.id, name: 'Other Co', shortName: `OC${run.slice(0, 4).toUpperCase()}`, isDefault: true } });
+      return tx.joinerBatch.create({ data: { organizationId: org.B.id, name: 'B batch', legalEntityId: e.id, joiningOn: new Date(`${day}T00:00:00Z`) } });
+    });
+    await api('rec', 'post', '/hiring/offer-batches').send(batch([['lena', '480000']], { joinerBatchId: bBatch.id })).expect(404);
+    expect(await inA((tx) => tx.offer.count({ where: { pipelineEntryId: ids.lena } }))).toBe(0);
+    // The batch with the joiner batch, in the background (405): progress, then done.
+    const started = (await api('rec', 'post', '/hiring/offer-batches').send(batch([['lena', '480000'], ['mohan', '480000']], { joinerBatchId: ids.jb })).expect(200)).body;
+    expect(started.progress.total).toBe(2);
+    expect(started.joinerBatch).toEqual({ id: ids.jb, name: `GET 2027 ${run}` });
+    const b = await finished(started.id);
+    expect(b.rows.map((r: { status: string }) => r.status)).toEqual(['sent', 'sent']);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'ats.offer_batch.finished', entityId: b.id } }))).toBe(1);
+    // Both accept; HR makes them joiners: on the batch's day Lena joins the batch; Mohan on another day does not, and HR is told why.
+    await inA((tx) => tx.offer.updateMany({ where: { batchId: b.id }, data: { status: 'accepted', respondedAt: new Date() } }));
+    // An onboarding checklist, as every company has before adding joiners.
+    await api('adminA', 'post', '/lifecycle/journey-templates/from-starter').send({ starterKey: 'onboarding_standard' }).expect(201);
+    const joinerBody = (k: string, joiningOn: string) => ({ givenName: `Cand ${k}`, familyName: run, joiningOn, legalEntityId: ids.entity, locationId: ids.blr, departmentId: ids.hrDept, designationId: ids.desig, employmentTypeId: ids.perm });
+    const lena = (await api('adminA', 'post', `/lifecycle/ready-to-onboard/${b.rows[0].offerId}`).send(joinerBody('lena', day)).expect(201)).body;
+    expect(lena).toMatchObject({ batchId: ids.jb, batchNote: null });
+    expect((await inA((tx) => tx.preboarding.findFirstOrThrow({ where: { id: lena.id } }))).batchId).toBe(ids.jb);
+    const mohan = (await api('adminA', 'post', `/lifecycle/ready-to-onboard/${b.rows[1].offerId}`).send(joinerBody('mohan', plus(41))).expect(201)).body;
+    expect(mohan.batchId).toBeNull();
+    expect(mohan.batchNote).toMatch(new RegExp(`Not added to the batch GET 2027 ${run}: it joins on ${day}`));
     await setting('hiring.bulk_offer.plan_check', null);
   });
 

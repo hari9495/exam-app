@@ -9,6 +9,8 @@ import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platfor
 import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { LOGIN_PROTECTION_REDIS } from '../src/auth/login-protection.service';
+import { WhatsappService } from '../src/whatsapp/whatsapp.service';
+import { InterviewDaysService } from '../src/interviewing/interview-days.service';
 
 // HIR-27 bulk interview day end to end (docs/yukthix/hiring-design-map.md): recruiting plans a day (panels, rooms,
 // slots), Auto-assign places the job's candidates of one stage by the company setting, and Send makes each candidate an
@@ -47,7 +49,7 @@ describe('Hiring HIR-27 bulk interview day', () => {
     });
   // Tomorrow in India; slots at 10:00 and 10:45.
   const tomorrow = new Date(Date.now() + 330 * 60_000 + 86_400_000).toISOString().slice(0, 10);
-  type Day = { id: string; status: string; slotMinutes: number; panels: { id: string; name: string; room: string; members: string }[]; rows: { entryId: string; candidate: string; panelId: string | null; start: number | null; status: string; error: string | null; interviewId: string | null }[] };
+  type Day = { id: string; status: string; slotMinutes: number; panels: { id: string; name: string; room: string; members: string }[]; rows: { id: string; entryId: string; candidate: string; panelId: string | null; start: number | null; status: string; error: string | null; interviewId: string | null }[] };
   const body = (over: Record<string, unknown> = {}) => ({
     name: 'GET 2027 · Hosur campus',
     jobId: ids.job,
@@ -61,10 +63,14 @@ describe('Hiring HIR-27 bulk interview day', () => {
     ...over,
   });
   const rowOf = (d: Day, who: string) => d.rows.find((r) => r.entryId === entries[who])!;
+  // Answer 421: WhatsApp as the company would have it (not connected until a provider is set).
+  const waState = { on: false, sent: [] as { to: string; body: string }[] };
+  const wa = { set isOn(v: boolean) { waState.on = v; }, sent: waState.sent, connected: jest.fn(async (): Promise<boolean> => waState.on), send: jest.fn(async (m: { to: string; body: string }): Promise<{ success: boolean }> => (waState.sent.push(m), { success: true })) };
+  let days: InterviewDaysService;
 
   beforeAll(async () => {
     const email = { send: jest.fn(async (m: { to: string }) => (sent.push(m.to), { success: !m.to.includes('bounce') })) };
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).overrideProvider(EmailService).useValue(email).compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).overrideProvider(EmailService).useValue(email).overrideProvider(WhatsappService).useValue(wa).compile();
     app = moduleRef.createNestApplication();
     app.use(cookieParser());
     app.setGlobalPrefix('api/v1');
@@ -72,6 +78,7 @@ describe('Hiring HIR-27 bulk interview day', () => {
     await app.init();
     prisma = moduleRef.get(PrismaService);
     tenantPrisma = moduleRef.get(TenantPrismaService);
+    days = moduleRef.get(InterviewDaysService);
     const redis = moduleRef.get<Redis>(LOGIN_PROTECTION_REDIS);
     const ipKeys = await redis.keys('auth:otp:ip:*');
     if (ipKeys.length) await redis.del(...ipKeys);
@@ -273,5 +280,70 @@ describe('Hiring HIR-27 bulk interview day', () => {
     expect((await api('recruiter', 'delete', `/hiring/interview-days/${id}/slots/600`).expect(400)).body.message).toMatch(/at least one slot/);
     // The first day's 10:00 interviews were sent: that slot stays.
     expect((await api('recruiter', 'delete', `/hiring/interview-days/${ids.day}/slots/600`).expect(409)).body.message).toMatch(/already sent/);
+  });
+
+  it('answer 422: two unsent candidates swap places, audited; a sent one, an unplaced one, another day or company are refused', async () => {
+    const id = (await api('recruiter', 'post', '/hiring/interview-days').send(body({ name: 'Swap day', slots: [600, 645], panels: [{ name: 'Panel F', room: 'Room 6', memberUserIds: [users.int1] }, { name: 'Panel G', room: 'Room 7', memberUserIds: [users.int2] }] })).expect(want(201))).body.id as string;
+    const d = (await api('recruiter', 'post', `/hiring/interview-days/${id}/assign`).expect(want(200))).body as Day & { rows: { id: string }[] };
+    const placed = d.rows.filter((r) => r.panelId && r.start != null);
+    const [x, y] = [placed[0]!, placed[placed.length - 1]!];
+    await api('acting', 'post', `/hiring/interview-days/${id}/swap`).send({ a: x.id, b: y.id }).expect(403);
+    await api('adminB', 'post', `/hiring/interview-days/${id}/swap`).send({ a: x.id, b: y.id }).expect(404);
+    await api('recruiter', 'post', `/hiring/interview-days/${id}/swap`).send({ a: x.id, b: x.id }).expect(400);
+    await api('recruiter', 'post', `/hiring/interview-days/${id}/swap`).send({ a: x.id, b: 'nope' }).expect(400);
+    const after = (await api('recruiter', 'post', `/hiring/interview-days/${id}/swap`).send({ a: x.id, b: y.id }).expect(want(200))).body as Day & { rows: { id: string }[] };
+    expect(after.rows.find((r) => r.id === x.id)).toMatchObject({ panelId: y.panelId, start: y.start });
+    expect(after.rows.find((r) => r.id === y.id)).toMatchObject({ panelId: x.panelId, start: x.start });
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'ats.interview_day.swapped', entityId: id } }))).toBe(1);
+    // The first day: Asha's invite was sent (refused, 409); Dev and someone of another day are not on this day (404).
+    const first = (await api('recruiter', 'get', `/hiring/interview-days/${ids.day}`).expect(200)).body as Day & { rows: { id: string }[] };
+    const asha = first.rows.find((r) => r.entryId === entries.asha)!;
+    const bala = first.rows.find((r) => r.entryId === entries.bala)!;
+    expect((await api('recruiter', 'post', `/hiring/interview-days/${ids.day}/swap`).send({ a: asha.id, b: bala.id }).expect(409)).body.message).toMatch(/already sent/);
+    await api('recruiter', 'post', `/hiring/interview-days/${id}/swap`).send({ a: x.id, b: asha.id }).expect(404);
+    // Someone without a place cannot swap.
+    const waiting = after.rows.find((r) => r.panelId == null);
+    if (waiting) await api('recruiter', 'post', `/hiring/interview-days/${id}/swap`).send({ a: x.id, b: waiting.id }).expect(400);
+  });
+
+  it('answer 421: WhatsApp reminders 2 hours before each slot: on by the company default; not connected is recorded, never silent; only to those who opted in; once', async () => {
+    const d = (await api('recruiter', 'get', `/hiring/interview-days/${ids.day}`).expect(200)).body;
+    expect(d.reminders).toEqual({ on: true, connected: false });
+    // 08:30 in India on the day: the 10:00 slot is due (Asha and Bala were sent invites there).
+    const at0830 = new Date(`${tomorrow}T03:00:00Z`);
+    expect(await days.remindersDue(at0830)).toBe(0);
+    let rows = await inA((tx) => tx.interviewDayRow.findMany({ where: { dayId: ids.day, pipelineEntryId: { in: [entries.asha, entries.bala] } } }));
+    expect(rows.map((r) => r.reminderStatus)).toEqual(['not_connected', 'not_connected']);
+    expect(wa.send).not.toHaveBeenCalled();
+    // Connected: only Asha opted in (with a mobile number); Bala did not.
+    wa.isOn = true;
+    await inA(async (tx) => {
+      await tx.interviewDayRow.updateMany({ where: { dayId: ids.day }, data: { reminderStatus: null, reminderAt: null } });
+      const e = await tx.pipelineEntry.findUniqueOrThrow({ where: { id: entries.asha } });
+      await tx.candidate.update({ where: { id: e.candidateId }, data: { phone: '+919811044319', whatsappOptedInAt: new Date() } });
+      const f = await tx.pipelineEntry.findUniqueOrThrow({ where: { id: entries.bala } });
+      await tx.candidate.update({ where: { id: f.candidateId }, data: { phone: '+919811044320' } });
+    });
+    expect((await api('recruiter', 'get', `/hiring/interview-days/${ids.day}`).expect(200)).body.reminders.connected).toBe(true);
+    expect(await days.remindersDue(at0830)).toBe(1);
+    expect(wa.sent).toEqual([{ to: '+919811044319', body: expect.stringMatching(/^Reminder: your interview for .* is today at 10:00, Training room 1\./), organizationId: org.A.id }]);
+    rows = await inA((tx) => tx.interviewDayRow.findMany({ where: { dayId: ids.day, pipelineEntryId: { in: [entries.asha, entries.bala] } }, orderBy: { slotStart: 'asc' } }));
+    expect(Object.fromEntries(rows.map((r) => [r.pipelineEntryId === entries.asha ? 'asha' : 'bala', r.reminderStatus]))).toEqual({ asha: 'sent', bala: 'not_opted_in' });
+    // Once: a second run sends nothing; too early (07:00) nothing is due.
+    expect(await days.remindersDue(at0830)).toBe(0);
+    expect(wa.send).toHaveBeenCalledTimes(1);
+    expect((await api('recruiter', 'get', `/hiring/interview-days/${ids.day}`).expect(200)).body.rows.find((r: { entryId: string }) => r.entryId === entries.asha).reminder).toBe('sent');
+    // The switch: off by the planner; acting 403, another company 404, bad input 400; a day with it off sends nothing.
+    await api('acting', 'post', `/hiring/interview-days/${ids.day}/reminders`).send({ on: false }).expect(403);
+    await api('adminB', 'post', `/hiring/interview-days/${ids.day}/reminders`).send({ on: false }).expect(404);
+    await api('recruiter', 'post', `/hiring/interview-days/${ids.day}/reminders`).send({ on: 'no' }).expect(400);
+    expect((await api('recruiter', 'post', `/hiring/interview-days/${ids.day}/reminders`).send({ on: false }).expect(want(200))).body.reminders.on).toBe(false);
+    await inA((tx) => tx.interviewDayRow.updateMany({ where: { dayId: ids.day }, data: { reminderStatus: null, reminderAt: null } }));
+    expect(await days.remindersDue(at0830)).toBe(0);
+    expect(wa.send).toHaveBeenCalledTimes(1);
+    // The company default off: a new day starts with reminders off.
+    await setting('hiring.interview_day.whatsapp_reminders', 'off');
+    const quiet = (await api('recruiter', 'post', '/hiring/interview-days').send(body({ name: 'Quiet day', panels: [{ name: 'Panel H', room: 'Room 8', memberUserIds: [users.int3] }] })).expect(want(201))).body.id;
+    expect((await api('recruiter', 'get', `/hiring/interview-days/${quiet}`).expect(200)).body.reminders.on).toBe(false);
   });
 });

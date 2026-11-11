@@ -154,8 +154,22 @@ export class JoinersService {
       const { email, rehire } = await offerRehire(tx, c.organizationId, offerId);
       if (await tx.preboarding.findFirst({ where: { organizationId: c.organizationId, offerId, status: { not: 'cancelled' } }, select: { id: true } })) throw new ConflictException('This offer already has a joiner.');
       if (dto.rehire && !rehire) throw new BadRequestException('Rehire choices are only for someone who worked here before.');
+      // Answer 401: an offer from a bulk batch that names a People joiner batch joins it, when HR picked no batch and the
+      // joiner keeps the batch's legal entity and joining day (otherwise HR is told why it did not).
+      let batchId = dto.batchId;
+      let batchNote: string | null = null;
+      if (batchId === undefined) {
+        const o = await tx.offer.findFirst({ where: { organizationId: c.organizationId, id: offerId }, select: { batchId: true } });
+        const ob = o?.batchId ? await tx.offerBatch.findFirst({ where: { organizationId: c.organizationId, id: o.batchId }, select: { joinerBatchId: true } }) : null;
+        const jb = ob?.joinerBatchId ? await tx.joinerBatch.findFirst({ where: { organizationId: c.organizationId, id: ob.joinerBatchId } }) : null;
+        if (jb) {
+          const day = jb.joiningOn.toISOString().slice(0, 10);
+          if (jb.status === 'open' && jb.legalEntityId === dto.legalEntityId && day === dto.joiningOn) batchId = jb.id;
+          else batchNote = `Not added to the batch ${jb.name}: ${jb.status !== 'open' ? 'it is closed' : jb.legalEntityId !== dto.legalEntityId ? 'it is for another legal entity' : `it joins on ${day}`}.`;
+        }
+      }
       // An ex-employee joins on their own record (a rehire), never as a second person (PPL-12).
-      const res = await this.addIn(tx, c, v, { ...dto, email: dto.email ?? email, personId: rehire?.personId ?? dto.personId }, 'offer', offerId);
+      const res = await this.addIn(tx, c, v, { ...dto, batchId, email: dto.email ?? email, personId: rehire?.personId ?? dto.personId }, 'offer', offerId);
       // PPL-12: choices HR changed in the Create drawer's impact preview, each with its reason (as on the checklist).
       if (dto.rehire && Object.keys(dto.rehire).length) {
         const overrides = await rehireOverridesIn(tx, c, dto.legalEntityId, dto.rehire);
@@ -164,10 +178,10 @@ export class JoinersService {
           await audit(tx, c, 'preboarding.rehire.options', 'preboarding', res.pb.id, { overrides });
         }
       }
-      return res;
+      return { ...res, batchNote };
     });
     await this.afterAdd(ctx as CompanyContext, user, [res]);
-    return { id: res.pb.id, journeyId: res.journeyId };
+    return { id: res.pb.id, journeyId: res.journeyId, batchId: res.pb.batchId, batchNote: res.batchNote };
   }
 
   /** CSV import (Q1): a preview with every row's problems, then commit adds only the rows without problems. */

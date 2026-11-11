@@ -20,6 +20,8 @@ export class OfferBatchDto {
   @IsOptional() @IsIn(['offer', 'loi']) letterKind?: 'offer' | 'loi';
   @IsOptional() @IsUUID() templateId?: string;
   @IsOptional() @IsBoolean() addConditions?: boolean;
+  /** Answer 401: the People joiner batch the accepted offers join (an open one, same legal entity and joining day). */
+  @IsOptional() @IsUUID() joinerBatchId?: string;
   @IsArray() @ArrayMinSize(1, { message: 'Choose at least one candidate.' }) @ArrayMaxSize(100, { message: 'A batch has at most 100 candidates.' }) @ValidateNested({ each: true }) @Type(() => OfferBatchRowDto)
   rows!: OfferBatchRowDto[];
 }
