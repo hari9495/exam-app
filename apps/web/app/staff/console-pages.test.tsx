@@ -18,6 +18,7 @@ import ConsoleSupportDeskPage from './(console)/support-desk/page';
 import ConsoleContainPage from './(console)/companies/[id]/contain/page';
 import ConsoleFeatureFlagsPage from './(console)/feature-flags/page';
 import ConsoleHelpCentrePage from './(console)/help-centre/page';
+import ConsolePlatformSettingsPage from './(console)/platform-settings/page';
 import YxSupportAccessPage from '../yx/(app)/settings/support-access/page';
 import { ToastProvider } from '@yukthix/ui';
 
@@ -287,5 +288,38 @@ describe('/staff/help-centre', () => {
     api.mockRejectedValue(Object.assign(new Error('Forbidden'), { status: 403 }));
     wrap(<ConsoleHelpCentrePage />);
     expect(await screen.findByText("You don't have access to the help articles")).toBeInTheDocument();
+// Console follow-ups: the company card shows the feature switches (C-5 hook); Platform settings (1125).
+describe('Console follow-ups', () => {
+  it("the company's Products and features card shows a killed switch as off, with why", async () => {
+    (useParams as jest.Mock).mockReturnValue({ id: 'c2' });
+    route({
+      'GET /platform/companies/c2': { ...COMPANY, trialExtended: false, lifecycleChangedAt: '2026-10-08T09:00:00Z', admins: [], history: [] },
+      'GET /platform/support-sessions': [],
+      'GET /rbac/me/permissions': STAFF_KEYS,
+      'GET /platform/products': PRODUCTS,
+      'GET /platform/companies/c2/settings': { company: { id: 'c2', name: 'Godavari Agro' }, settings: [] },
+      'GET /platform/companies/c2/feature-switches': [{ key: 'help.tours', label: 'First-run tours', on: false, why: 'Killed for everyone' }],
+    });
+    wrap(<ConsoleCompanyPage />);
+    const card = await screen.findByRole('list', { name: 'Products and features' });
+    const tours = (await within(card).findByText('First-run tours')).closest('li') as HTMLElement;
+    expect(within(tours).getByText('Killed for everyone')).toBeInTheDocument();
+  });
+
+  it('platform settings list and save with a reason', async () => {
+    route({
+      'GET /platform/settings': [{ key: 'breach.certin_hours', label: 'CERT-In: report within (hours)', value: '6', default: '6', allowed: 'a whole number from 1 to 24', verify: false, editable: true }],
+      'GET /rbac/me/permissions': [...STAFF_KEYS, 'platform.settings.manage'],
+      'PUT /platform/settings/breach.certin_hours': [],
+    });
+    wrap(<ConsolePlatformSettingsPage />);
+    await ue.click(await screen.findByRole('button', { name: 'Change' }));
+    const dialog = await screen.findByRole('dialog');
+    const value = within(dialog).getByRole('textbox', { name: /Value/ });
+    await ue.clear(value);
+    await ue.type(value, '8');
+    await ue.type(within(dialog).getByRole('textbox', { name: /Reason/ }), 'Counsel confirmed');
+    await ue.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(calls).toContain('PUT /platform/settings/breach.certin_hours {"value":"8","reason":"Counsel confirmed"}'));
   });
 });

@@ -119,6 +119,21 @@ describe('Customer success (live)', () => {
   });
 });
 
+// Answer 1087: the writer withdraws their own waiting message; others only approve or send it back.
+describe('withdrawing a waiting message', () => {
+  it('the writer gets Withdraw (confirmed); another staff member does not', async () => {
+    const onWithdraw = vi.fn().mockResolvedValue(undefined);
+    const mine = { ...MESSAGES.find((m) => m.status === 'pending_approval')!, mine: true };
+    const { unmount } = wrap(live({ tab: 'messages', messages: [mine], onWithdraw }));
+    await userEvent.click(screen.getByRole('button', { name: 'Withdraw' }));
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Withdraw' }));
+    await waitFor(() => expect(onWithdraw).toHaveBeenCalledWith(mine.id, mine.version));
+    unmount();
+    wrap(live({ tab: 'messages', messages: [{ ...mine, mine: false }], onWithdraw }));
+    expect(screen.queryByRole('button', { name: 'Withdraw' })).toBeNull();
+  });
+});
+
 describe('the company side: messages from YukthiX (answer 1048)', () => {
   const base = { state: 'ready' as const, sessions: [], onApprove: ok(), onDecline: ok(), onEnd: ok(), loadActivity: vi.fn().mockResolvedValue([]) };
   it('lists what YukthiX sent its System Admins; none says so; no list without the data', () => {

@@ -28,3 +28,5 @@ export { RuleSetEditorScreen, GoldenCasesScreen, PublishSchedulerScreen, type Li
 export type { LiveRuleRow, LiveRuleDetail, LiveGoldenRun, LiveImpact, RuleUpdateInput, RuleState } from '../portals/console-rules-live';
 // Console C-4 (answers 1049, 1050): the drawn YX-04 Flags and YX-18 Contain tenant, made live.
 export { ContainTenantScreen, ContainedBanner, FeatureFlagsScreen, type ContainView, type LiveContain, type LiveFeatureFlags, type LiveFlag } from '../portals/console-ops';
+// Answer 1125: Console › Platform settings.
+export { PlatformSettingsScreen, type PlatformSettingRow, type PlatformSettingsScreenProps } from './platform-settings';

@@ -41,3 +41,5 @@ export const YX03LiveImpact: S = { name: 'C-1 · Impact · companies and employe
 export const YX03LiveNotCountable: S = { name: 'C-1 · Impact · a jurisdiction that cannot be counted', render: () => <PublishSchedulerScreen current="impact" live={live({ impact: { countable: false, companies: null, employees: null, bySize: [], pastDated: false, validFrom: '2027-04-01' } })} /> };
 export const YX03LiveNothing: S = { name: 'C-1 · Version · nothing to publish', render: () => <PublishSchedulerScreen live={live({ choices: [], chosen: null, detail: null, impact: null })} /> };
 export const YX03LiveDone: S = { name: 'C-1 · Published', render: () => <PublishSchedulerScreen live={live({ published: L.LIVE_ROWS[0]! })} /> };
+// Answer 1065: the drawn Notices step, after publishing, through the admin messages (C-2).
+export const YX03LiveNotice: S = { name: 'C-1 · Published · Notices to the companies in its state', render: () => <PublishSchedulerScreen live={live({ published: L.LIVE_ROWS[0]!, onNotice: async () => ({ companies: 3, waiting: true }) })} /> };

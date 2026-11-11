@@ -73,17 +73,18 @@ built** · **phone view, mobile app not built**.
 
 ## Counts (sub-pages = stories)
 
-After C-1 to C-5 and C-8 part 1 (12 Nov 2026; recounted by the appendix script, "ok").
+After C-1 to C-5, C-8 part 1 and the console follow-ups (12 Nov 2026, test/yukthix-main; appendix script "ok"). The
+follow-ups added a 21st story file (Platform settings, in group A).
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Live console | 2 | 22 | 0 | 0 | 0 | 0 | 22 |
-| B. Rules engine (YX-01 to YX-03) | 3 | 25 | 5 | 0 | 0 | 0 | 30 |
-| C. Customers and containment (YX-04, YX-18) | 2 | 22 | 2 | 0 | 0 | 0 | 24 |
+| A. Live console | 3 | 24 | 0 | 0 | 0 | 0 | 24 |
+| B. Rules engine (YX-01 to YX-03) | 3 | 26 | 5 | 0 | 0 | 0 | 31 |
+| C. Customers and containment (YX-04, YX-18) | 2 | 23 | 2 | 0 | 0 | 0 | 25 |
 | D. Partners (YX-06 to YX-08) | 3 | 0 | 0 | 0 | 10 | 0 | 10 |
 | E. Money (YX-14 to YX-17) | 4 | 0 | 0 | 0 | 8 | 0 | 8 |
 | F. The rest (YX-05, YX-09 to YX-13) | 6 | 10 | 0 | 0 | 15 | 0 | 25 |
-| **All A-F** | **20** | **79** | **7** | **0** | **33** | **0** | **119** |
+| **All A-F** | **21** | **83** | **7** | **0** | **33** | **0** | **123** |
 
 Counted by script on 11 Nov 2026 on `docs/yukthix-console-map` (the script is in the appendix). There are 87 stories in
 20 files whose title starts `Screens/YukthiX console/`: `screens/console/console.stories.tsx` (14),
@@ -183,6 +184,13 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 | Unlinked · Ticket · not linked | live | `POST …/tickets/:id/link` |
 | LookUpReference · Queue · look up a Not found reference (two companies) | live | C-3 (1051): `GET /platform/support-desk/references/:code` |
 
+#### Platform settings (1125)
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| List · Platform settings · list (one to verify with counsel) | live | `/staff/platform-settings`, `PlatformSettingsScreen` (added to the kit first: no drawn screen), `GET`/`PUT platform/settings` |
+| ReadOnly · Platform settings · without the key | live | the no-access state |
+
 ### B. Rules engine (YX-01 to YX-03)
 
 #### YX-01 · Rule-set editor
@@ -229,6 +237,7 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 | YX03LiveNotCountable · C-1 · Impact · a jurisdiction that cannot be counted | live | "EU", "GENERIC" and similar are not places with locations |
 | YX03LiveNothing · C-1 · Version · nothing to publish | live | nothing in review that someone else drafted |
 | YX03LiveDone · C-1 · Published | live | done, with its date |
+| YX03LiveNotice · C-1 · Published · Notices to the companies in its state | live | 1065: `POST platform/customers/rule-notices/:ruleSetId`, an admin message to the companies with a location in the rule's country or state |
 
 ### C. Customers and containment (YX-04, YX-18)
 
@@ -249,6 +258,7 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 | YX04HealthLive · Tenant health · from account signals (C-2) | live | `/staff/customers`: score, band, main factor, lifecycle, last admin sign-in, open tickets; Message admins from ticked rows |
 | YX04AlertRules · Churn-risk alerts · rules from platform settings (C-2) | live | `GET/PUT /platform/customers/settings` (audited `platform.cs.settings_changed`) |
 | YX04MessagesWaiting · Messages · waiting for a second staff member (C-2) | live | `POST /platform/customers/messages/:id/approve` (step-up) and `/reject` (reason) |
+| YX04MessagesMine · Messages · my message waiting, Withdraw (1087) | live | `POST platform/customers/messages/:id/withdraw` (writer only; audited) |
 | YX04ComposerTwo · Message composer · two companies need approval (C-2) | live | `POST /platform/customers/messages` |
 | YX04Flags · Feature flags | live | C-4 (1049): `/staff/feature-flags`, the drawn `FeatureFlagsScreen` with `live`; four real switches over existing company settings |
 | YX04KillSwitch · Feature flags · kill switch | live | C-4: kill switch with a reason and the security key again; a second staff member turns it back on |
@@ -798,3 +808,33 @@ C-6 to C-8.
 - 1061 to 1066 (C-1) and 1121 to 1126 (C-4) approved as suggested (12 Nov 2026, "ok for all"). To do from them: staff roles (1061, 1126; in progress); notices to companies on a rule change through the C-2 admin messages (1065); a Console › Platform settings page with the next platform setting (1125); confirm the DPDP 72-hour Board report timing with counsel (1124, founder).
 
 - 1141 to 1146 (C-5) and 1161 to 1166 (staff roles) approved as suggested (12 Nov 2026, "ok for all"). To do from them: keep two Security leads and take the role from the rest (1162, staff action after merge); Add staff and Deactivate in Staff and roles, then retire the old /v2 Platform admins page (1164); nightly health snapshot, 30-day change, CS owner and alert follow-up (1165); every staff member sees their own roles on My security (1166); a go-live date on the company page when billing starts (1142).
+## Console follow-ups as built (answers 1065, 1087, 1125 and C-5's hook; branch `feat/yukthix-console-followups`)
+
+- **1065 rule notices:** after publishing (Rule sets › Publish), the drawn Notices step: a subject and notice, sent with
+  `POST platform/customers/rule-notices/:ruleSetId` (Customer success key and Rules editor key). It goes to the System
+  Admins of every open company with a location in the rule's country (`IN`) or state (`IN-KA`), as a C-2 admin message:
+  more than one company waits for a second staff member; the same audit. Only a published rule set; one live notice per
+  rule set (`yukthix_messages.rule_set_id`, a database check); a withdrawn or sent-back one may be written again.
+- **1087 withdrawing:** the writer withdraws their own message while it waits (`POST …/messages/:id/withdraw`, status
+  `withdrawn`, audited `platform.message.withdrawn`); it can never be approved after; nobody else can withdraw it.
+- **1125 Platform settings:** Console › Security › Platform settings (`/staff/platform-settings`), `PlatformSettingsScreen`,
+  added to the kit first as a story (no drawn screen existed). Every value: C-2's alert rules, C-4's breach hours
+  (the DPDP timing marked "Verify with counsel"), C-5's maintenance rules and statutory dates. A change needs the new
+  key `platform.settings.manage`, the security key again and a reason; each value is checked against its own range
+  (breach: CERT-In 1-24 hours, DPDP 1-168 hours; question 1182); audited `platform.setting.changed` with before and after.
+- **C-5's hook:** the company page's Products and features card lists the C-4 switches for that company, each decided
+  by the one feature check, with why it is off: Killed for everyone, Off for this company, Off by default, Off in company
+  settings (`GET platform/companies/:id/feature-switches`).
+- **Tests:** e2e `console-followups` (9); kit (platform settings, rule notice, withdraw); web (the card, platform
+  settings); C-1, C-2, C-4 and C-5 e2e rerun.
+
+### Questions (from 1181)
+
+1181. **Notices to HR and Payroll Admins.** The drawing sends rule notices to Payroll and HR Admins with a reminder and a
+      banner; built: the System Admins, by the C-2 messages (1081). *Suggested: keep System Admins until message
+      audiences are built; then add Payroll Admins for pay rules.*
+1182. **Ranges for the breach hours.** *Suggested: CERT-In 1 to 24 hours and DPDP 1 to 168 hours, as built; counsel may
+      narrow them.*
+1183. **Platform settings in two places.** C-2's alert rules and C-5's maintenance rules can still be changed on their own
+      pages (no reason asked there). *Suggested: keep one place: those pages link to Platform settings, which asks for
+      the key and a reason.*
