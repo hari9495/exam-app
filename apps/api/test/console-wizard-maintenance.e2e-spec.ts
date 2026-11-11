@@ -1,11 +1,13 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import { Prisma } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { randomUUID } from 'crypto';
 import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { bootAdminApp } from './dual-app';
 import { EmailService } from '../src/email/email.service';
 import { markSteppedUp } from './fixtures/step-up';
+import { BLOCK_DATES_DEFAULT, BLOCK_DATES_KEY, MAINTENANCE_SETTINGS } from '../src/platform/maintenance.service';
 
 // YukthiX console C-5 (answers 948, 1053), end to end: the company wizard's create (staff only, step-up, audited; the
 // first System Admin gets one invite and nothing else) and planned maintenance (staff schedule, a second staff member
@@ -23,7 +25,11 @@ describe('Console C-5: company wizard and planned maintenance', () => {
   const users: Record<string, string> = {};
   const org = { A: '', B: '', W: '' };
   let planId = '';
+  /** The trial plan the wizard needs (seed data elsewhere); made here when the database has none, removed after. */
+  let trialPlanMade = '';
   const settingsBefore: { key: string; value: string }[] = [];
+  /** Windows already waiting or scheduled when the suite starts (another run's leftovers): our times never overlap them. */
+  const busy: { startsAt: Date; endsAt: Date }[] = [];
   const api = (who: string, method: 'get' | 'post' | 'put', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who] ?? who}`);
   const up = (who: string) => markSteppedUp(tenantPrisma, token[who]!);
   const down = async (who: string) => {
@@ -40,14 +46,19 @@ describe('Console C-5: company wizard and planned maintenance', () => {
       await tenantPrisma.forTenant(SUPER, (tx) => tx.rolePermission.create({ data: { role: 'super_admin', permissionId: p.id } }));
     }
   };
-  /** The next India day at least `minHours` ahead that passes the default rules (8th to month end less 3, not 15 or 20), 01:00 IST. */
+  /**
+   * The next India day at least `minHours` ahead that passes the default rules (8th to month end less 3, not 15 or 20),
+   * 01:00 IST, whose 01:00-06:00 never overlaps a window left waiting or scheduled by another run (so the suite reruns).
+   */
   const goodStart = (minHours = 80) => {
     for (let t = Date.now() + minHours * 3_600_000; ; t += 86_400_000) {
       const d = new Date(t + 330 * 60_000);
       const day = d.getUTCDate();
       const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
       const start = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), day, 1) - 330 * 60_000);
-      if (day > 7 && day <= last - 3 && ![15, 20].includes(day) && start.getTime() >= Date.now() + minHours * 3_600_000) return start;
+      const end = new Date(start.getTime() + 5 * 3_600_000);
+      const free = !busy.some((w) => w.startsAt < end && w.endsAt > start);
+      if (free && day > 7 && day <= last - 3 && ![15, 20].includes(day) && start.getTime() >= Date.now() + minHours * 3_600_000) return start;
     }
   };
 
@@ -56,6 +67,15 @@ describe('Console C-5: company wizard and planned maintenance', () => {
     prisma = app.get(PrismaService);
     tenantPrisma = app.get(TenantPrismaService);
     settingsBefore.push(...(await tenantPrisma.forTenant(SUPER, (tx) => tx.platformSetting.findMany({ where: { key: { startsWith: 'maintenance.' } }, select: { key: true, value: true } }))));
+    // An earlier run that stopped before its clean-up may have left windows (written by e2e staff, @platform.test): cancel
+    // them, or their banner shows in this run. Any other window stays; the times this run picks never overlap it.
+    await tenantPrisma.forTenant(SUPER, async (tx) => {
+      const e2eStaff = (await tx.user.findMany({ where: { organizationId: null, email: { endsWith: '@platform.test' } }, select: { id: true } })).map((u) => u.id);
+      await tx.maintenanceWindow.updateMany({ where: { writtenBy: { in: e2eStaff }, status: { not: 'cancelled' } }, data: { status: 'cancelled', cancelReason: 'e2e clean-up of an earlier run', cancelledAt: new Date() } });
+    });
+    busy.push(...(await tenantPrisma.forTenant(SUPER, (tx) => tx.maintenanceWindow.findMany({ where: { status: { not: 'cancelled' } }, select: { startsAt: true, endsAt: true } }))));
+    // The wizard creates the company on the trial plan: make one when this database has none.
+    if (!(await prisma.plan.findFirst({ where: { name: 'trial' } }))) trialPlanMade = (await prisma.plan.create({ data: { name: 'trial', candidateLimit: 1, aiCreditLimit: 1, proctoringMinutesLimit: 1 } })).id;
     const passwordHash = await argon2.hash(PASSWORD);
     for (const who of ['staff', 'staff2', 'staffNoKey'] as const) {
       const email = `${who.toLowerCase()}-${run}@platform.test`;
@@ -75,18 +95,29 @@ describe('Console C-5: company wizard and planned maintenance', () => {
   }, 180_000);
 
   afterAll(async () => {
-    await tenantPrisma
-      .forTenant(SUPER, async (tx) => {
-        await tx.maintenanceWindow.updateMany({ where: { writtenBy: { in: [users.staff!, users.staff2!].filter(Boolean) }, status: { not: 'cancelled' } }, data: { status: 'cancelled', cancelReason: 'e2e clean-up', cancelledAt: new Date() } });
-        await tx.platformSetting.deleteMany({ where: { key: { startsWith: 'maintenance.' } } });
-        for (const s of settingsBefore) await tx.platformSetting.create({ data: s });
-        const ids = Object.values(users);
-        await tx.refreshToken.deleteMany({ where: { userId: { in: ids } } });
-        await tx.session.deleteMany({ where: { userId: { in: ids } } });
-        await tx.organization.deleteMany({ where: { id: { in: Object.values(org).filter(Boolean) } } });
-      })
-      .catch(() => undefined);
+    // Each step in its own transaction, so one failure never undoes the others; failures are reported, not hidden.
+    const step = async (what: string, fn: (tx: Prisma.TransactionClient) => Promise<unknown>) => {
+      await tenantPrisma.forTenant(SUPER, fn).catch((e: unknown) => console.warn(`clean-up: ${what}:`, (e as Error).message));
+    };
+    // Every window this run made (by its staff) is cancelled first: windows are never deleted, and a left one blocks reruns.
+    await step('cancel windows', (tx) => tx.maintenanceWindow.updateMany({ where: { writtenBy: { in: [users.staff, users.staff2].filter((x): x is string => Boolean(x)) }, status: { not: 'cancelled' } }, data: { status: 'cancelled', cancelReason: 'e2e clean-up', cancelledAt: new Date() } }));
+    // Platform settings are never deleted: each maintenance value goes back to what it was, or to its default.
+    await step('settings', async (tx) => {
+      const now = await tx.platformSetting.findMany({ where: { key: { startsWith: 'maintenance.' } }, select: { key: true } });
+      const defaults: Record<string, string> = { ...Object.fromEntries(Object.entries(MAINTENANCE_SETTINGS).map(([k, d]) => [k, String(d.default)])), [BLOCK_DATES_KEY]: BLOCK_DATES_DEFAULT };
+      for (const { key } of now) {
+        const value = settingsBefore.find((b) => b.key === key)?.value ?? defaults[key];
+        if (value !== undefined) await tx.platformSetting.update({ where: { key }, data: { value } });
+      }
+    });
+    const ids = Object.values(users);
+    await step('sessions', async (tx) => {
+      await tx.refreshToken.deleteMany({ where: { userId: { in: ids } } });
+      await tx.session.deleteMany({ where: { userId: { in: ids } } });
+    });
+    await step('companies', (tx) => tx.organization.deleteMany({ where: { id: { in: Object.values(org).filter(Boolean) } } }));
     await prisma.plan.delete({ where: { id: planId } }).catch(() => undefined);
+    if (trialPlanMade) await prisma.plan.delete({ where: { id: trialPlanMade } }).catch((e: unknown) => console.warn('clean-up: trial plan:', (e as Error).message));
     await app.close();
   });
 
