@@ -55,7 +55,7 @@ export function SetupHubScreen({ modules, openModule, live }: SetupHubProps) {
   const overall = readiness(all);
   const open = modules.find((m) => m.id === picked);
   const sections: ChecklistSection[] = open
-    ? [{ id: open.id, title: open.name, tasks: open.checks.map((c) => ({ id: c.id, title: c.label, status: c.done ? 'done' : c.blocking ? 'todo' : 'in-progress', optional: !c.blocking, description: c.starter ? 'YukthiX starter — review before go-live' : undefined })) }]
+    ? [{ id: open.id, title: open.name, tasks: open.checks.map((c) => ({ id: c.id, title: c.label, status: c.done ? 'done' : c.blocking ? 'todo' : 'in-progress', optional: !c.blocking, description: c.starter ? (live ? 'YukthiX starter — review it for your company' : 'YukthiX starter — review before go-live') : undefined })) }]
     : [];
   const frame = (body: ReactNode) => (
     <DesktopFrame area="settings" panelTitle="Settings" panel={settingsPanel('1.6 Set-up hub')}>
@@ -65,8 +65,8 @@ export function SetupHubScreen({ modules, openModule, live }: SetupHubProps) {
   const header = (
     <PageHeader
       title="Set-up hub"
-      description={live ? 'Every area\'s set-up in one place, from what each area already knows. Open an area to see what is left; each check opens its set-up page.' : "Every module's set-up in one place. Go live when all blocking checks are done and each owner has signed off."}
-      status={live?.state === 'ready' || !live ? <Badge tone={overall.ready ? 'success' : 'warning'}>{overall.ready ? 'Ready for go-live' : `${overall.blockingOpen} blocking checks open`}</Badge> : undefined}
+      description={live ? 'How much of each area is set up. Open an area to see what is left.' : "Every module's set-up in one place. Go live when all blocking checks are done and each owner has signed off."}
+      status={live?.state === 'ready' || !live ? <Badge tone={overall.ready ? 'success' : 'warning'}>{overall.ready ? (live ? 'Set-up complete' : 'Ready for go-live') : `${overall.blockingOpen} blocking checks open`}</Badge> : undefined}
       actions={live ? undefined : <Button variant="primary" disabled={!overall.ready}>Go live on 1 Oct 2026</Button>}
     />
   );
@@ -89,12 +89,12 @@ export function SetupHubScreen({ modules, openModule, live }: SetupHubProps) {
         </Tile>
         <Tile title="Blocking checks">
           <span className="yx-plt-score">{overall.blockingOpen}</span>
-          <p className="yx-plt-muted">Must be done before go-live. Advisory checks can wait.</p>
+          <p className="yx-plt-muted">{live ? 'Must be done first; the rest can wait.' : 'Must be done before go-live. Advisory checks can wait.'}</p>
         </Tile>
         <div data-tour="setup-starter">
           <Tile title="Starter templates to review">
             <span className="yx-plt-score">{all.filter((c) => c.starter && !c.done).length}</span>
-            <p className="yx-plt-muted">Labelled “YukthiX starter — edit for your company”.</p>
+            <p className="yx-plt-muted">{live ? 'Still the YukthiX starter.' : 'Labelled “YukthiX starter — edit for your company”.'}</p>
           </Tile>
         </div>
       </div>
@@ -107,18 +107,30 @@ export function SetupHubScreen({ modules, openModule, live }: SetupHubProps) {
               title={m.name}
               tone={r.blockingOpen ? 'warning' : 'success'}
               selected={m.id === picked}
-              badge={<Badge tone={m.signedOff ? 'success' : r.ready ? 'info' : 'warning'}>{m.signedOff ? 'Signed off' : r.ready ? (live ? 'Done' : 'Ready to sign off') : `${r.blockingOpen} blocking`}</Badge>}
+              badge={<Badge tone={m.signedOff || (live && r.score === 100) ? 'success' : r.ready ? 'info' : 'warning'}>{m.signedOff ? 'Signed off' : r.ready ? (live ? (r.score === 100 ? 'Done' : `Nothing blocking · ${r.score}%`) : 'Ready to sign off') : `${r.blockingOpen} blocking`}</Badge>}
               actions={
-                <>
-                  <Button size="sm" aria-pressed={m.id === picked} onClick={() => setPicked(m.id === picked ? undefined : m.id)}>
-                    {live ? `Open ${m.name}` : 'Open'}
-                  </Button>
-                  {!live && r.ready && !m.signedOff && <Button size="sm">Sign off</Button>}
-                </>
+                live ? undefined : (
+                  <>
+                    <Button size="sm" aria-pressed={m.id === picked} onClick={() => setPicked(m.id === picked ? undefined : m.id)}>
+                      Open
+                    </Button>
+                    {r.ready && !m.signedOff && <Button size="sm">Sign off</Button>}
+                  </>
+                )
               }
             >
               <Meter value={r.score} max={100} label={`${m.name} complete`} warnAt={101} dangerAt={101} />
-              <p className="yx-plt-muted">Owner: {m.owner}{m.signedOff ? ` · signed off ${m.signedOff}` : ''}</p>
+              {live ? (
+                // 1033: owner and Open share one line, so both rows of cards fit 1278 x 635 without a page scroll.
+                <div className="yx-plt-row" data-justify="between">
+                  <p className="yx-plt-muted">Owner: {m.owner}</p>
+                  <Button size="sm" aria-pressed={m.id === picked} onClick={() => setPicked(m.id === picked ? undefined : m.id)}>
+                    {`Open ${m.name}`}
+                  </Button>
+                </div>
+              ) : (
+                <p className="yx-plt-muted">Owner: {m.owner}{m.signedOff ? ` · signed off ${m.signedOff}` : ''}</p>
+              )}
             </Tile>
           );
         })}

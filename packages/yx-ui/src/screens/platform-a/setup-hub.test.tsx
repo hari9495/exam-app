@@ -19,6 +19,25 @@ describe('Set-up hub (PLT-08)', () => {
     for (const a of ['setup-hub', 'setup-modules', 'setup-starter']) expect(container.querySelector(`[data-tour="${a}"]`)).not.toBeNull();
   });
 
+  // 1031 and 1032: no go-live words; "Done" only at 100%, "Nothing blocking" with the percentage below it.
+  it('live words: Set-up complete, Must be done first; Done only at 100%', () => {
+    const areas: ModuleCard[] = [
+      { id: 'org', name: 'Organisation', owner: 'HR', checks: [{ id: 'a', label: 'A', blocking: true, done: true }, { id: 'b', label: 'B', blocking: true, done: true }, { id: 'c', label: 'C', blocking: true, done: true }, { id: 'd', label: 'D', blocking: false, done: false }] },
+      { id: 'access', name: 'Roles & access', owner: 'System Admin', checks: [{ id: 'e', label: 'E', blocking: false, done: true }] },
+    ];
+    render(<SetupHubScreen modules={areas} live={live()} />);
+    expect(screen.getByText('Set-up complete')).toBeInTheDocument();
+    expect(screen.getByText(/^Must be done first/)).toBeInTheDocument();
+    expect(screen.queryByText(/go-live/)).toBeNull();
+    expect(screen.getByText('Nothing blocking · 75%')).toBeInTheDocument();
+    expect(screen.getAllByText('Done')).toHaveLength(1);
+  });
+
+  it('the design keeps its go-live words', () => {
+    render(<SetupHubScreen modules={AREAS.map((m) => ({ ...m, checks: m.checks.map((c) => ({ ...c, done: true })) }))} />);
+    expect(screen.getByText('Ready for go-live')).toBeInTheDocument();
+  });
+
   it('opening an area lists its checks; Start opens that check’s set-up page; nothing can be skipped', async () => {
     const l = live();
     render(<SetupHubScreen modules={AREAS} live={l} />);

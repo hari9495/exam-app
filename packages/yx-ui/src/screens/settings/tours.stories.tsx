@@ -48,17 +48,21 @@ export const FloatingApprovals: S = {
     </DesktopFrame>
   ),
 };
+// The live hub's five areas (H-6), as a company part-way through set-up sees them.
 const HUB: ModuleCard[] = [
-  { id: 'people', name: 'People', owner: 'Neha Joshi', checks: [{ id: 'p1', label: 'Legal entities and locations', done: true, blocking: true }, { id: 'p2', label: 'Employees imported', done: false, blocking: true }] },
-  { id: 'time', name: 'Time & Leave', owner: 'Neha Joshi', checks: [{ id: 't1', label: 'Leave policies', done: false, blocking: true, starter: true }, { id: 't2', label: 'Holiday calendar', done: true, blocking: true }] },
-  { id: 'pay', name: 'Payroll', owner: 'Arjun Rao', checks: [{ id: 'y1', label: 'Pay groups', done: false, blocking: true }, { id: 'y2', label: 'Payslip layout', done: false, blocking: false, starter: true }] },
+  { id: 'org', name: 'Organisation', owner: 'HR', checks: [{ id: 'o1', label: 'Legal entities', done: true, blocking: true }, { id: 'o2', label: 'Locations', done: true, blocking: true }, { id: 'o3', label: 'Departments, designations and employment types', done: true, blocking: true }, { id: 'o4', label: 'Company rules reviewed', done: false, blocking: false, starter: true }] },
+  { id: 'people', name: 'People', owner: 'HR', checks: [{ id: 'p1', label: 'Employees added', done: true, blocking: true }, { id: 'p2', label: 'A manager for everyone but the top person', done: true, blocking: false }, { id: 'p3', label: 'Letter templates', done: true, blocking: false, starter: true }, { id: 'p4', label: 'Employee record rules reviewed', done: false, blocking: false, starter: true }] },
+  { id: 'access', name: 'Roles & access', owner: 'System Admin', checks: [{ id: 'a1', label: 'A second System Admin', done: true, blocking: false }, { id: 'a2', label: 'Roles', done: true, blocking: false }, { id: 'a3', label: 'Access and privacy rules reviewed', done: true, blocking: false, starter: true }] },
+  { id: 'time', name: 'Time & Leave', owner: 'HR', checks: [{ id: 't1', label: 'Leave types', done: true, blocking: true }, { id: 't2', label: 'Leave policies', done: false, blocking: true }, { id: 't3', label: 'Holiday calendars', done: true, blocking: true }, { id: 't4', label: 'Shifts', done: false, blocking: false }] },
+  { id: 'payroll', name: 'Payroll', owner: 'Payroll admin', checks: [{ id: 'y1', label: 'Pay groups', done: true, blocking: true }, { id: 'y2', label: 'Salary components', done: true, blocking: true }, { id: 'y3', label: 'Salary templates', done: true, blocking: true }, { id: 'y4', label: 'Payroll rules reviewed', done: false, blocking: false, starter: true }] },
 ];
+const LIVE_HUB = { state: 'ready' as const, onRetry: () => {}, onStart: () => {} };
 // Answer 1001: the admin tour, version 2, on the set-up hub (H-6's data-tour anchors).
 export const FloatingSetupHub: S = {
   name: '6.1 Tour · on its page (set up your company, set-up hub, step 2)',
   render: () => (
     <>
-      <SetupHubScreen modules={HUB} />
+      <SetupHubScreen modules={HUB} live={LIVE_HUB} />
       <TourCard tour={tour('admin')} defaultStep={1} floating />
     </>
   ),

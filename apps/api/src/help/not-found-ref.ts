@@ -19,13 +19,25 @@ export const refPath = (url: string) => (url.split('?')[0] ?? '').slice(0, 300) 
  * Saves a reference for this person in their company and returns it. Answer 974: kept for the company's
  * help.not_found.keep_days (90 by default), then deleted nightly by NotFoundRetentionService.
  */
+/** Answer 1034: one reference per page visit. A person's 404s within this window share the reference they already have. */
+export const NOT_FOUND_REUSE_MS = 60_000;
+
 export async function mintNotFoundRef(tenantPrisma: TenantPrismaService, ctx: TenantContext, path: string): Promise<string | null> {
   if (!ctx.organizationId) return null;
   for (let tries = 0; tries < 3; tries++) {
     const code = newNotFoundCode();
     try {
-      await tenantPrisma.forTenant(ctx, (tx) => tx.notFoundRef.create({ data: { organizationId: ctx.organizationId!, code, userId: ctx.userId ?? null, path: refPath(path) } }));
-      return code;
+      return await tenantPrisma.forTenant(ctx, async (tx) => {
+        if (ctx.userId) {
+          // A page's background calls fail together: one lock per person, so they find the first one's reference. Reuse
+          // depends only on the person and the time, never on what they asked for, so it tells nothing about any record.
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`not-found:${ctx.organizationId}:${ctx.userId}`}))`;
+          const recent = await tx.notFoundRef.findFirst({ where: { organizationId: ctx.organizationId!, userId: ctx.userId, createdAt: { gt: new Date(Date.now() - NOT_FOUND_REUSE_MS) } }, orderBy: { createdAt: 'desc' }, select: { code: true } });
+          if (recent) return recent.code;
+        }
+        await tx.notFoundRef.create({ data: { organizationId: ctx.organizationId!, code, userId: ctx.userId ?? null, path: refPath(path) } });
+        return code;
+      });
     } catch (e) {
       // A clash with an earlier code in this company: draw again.
       if (!(e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')) throw e;
