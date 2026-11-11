@@ -326,3 +326,48 @@ describe('BlobStorageService.uploadDataUri', () => {
     expect(uploadData).not.toHaveBeenCalled();
   });
 });
+
+// Founder answer 792: with no blob store set, dev keeps files in a folder; production still fails.
+describe('BlobStorageService local folder (dev only)', () => {
+  const env = { ...process.env };
+  let dir: string;
+  beforeEach(() => {
+    dir = require('fs').mkdtempSync(require('path').join(require('os').tmpdir(), 'blob-'));
+    delete process.env.AZURE_STORAGE_CONNECTION_STRING;
+    delete process.env.AZURE_STORAGE_CONTAINER;
+    process.env.BLOB_LOCAL_DIR = dir;
+    process.env.NODE_ENV = 'development';
+  });
+  afterEach(() => {
+    process.env = { ...env };
+    require('fs').rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('stores, reads back and deletes a file in the folder', async () => {
+    const service = new BlobStorageService();
+    const ref = await service.upload('visitors/org-1/visit-1.jpg', Buffer.from('jpeg bytes'), 'image/jpeg');
+    expect(ref).toBe('local-blob:visitors/org-1/visit-1.jpg');
+    expect((await service.downloadToBuffer(ref)).toString()).toBe('jpeg bytes');
+    await expect(service.deleteByUrl(ref)).resolves.toBe('deleted');
+    await expect(service.deleteByUrl(ref)).resolves.toBe('not-found');
+    expect(service.isConfigured()).toBe(false);
+  });
+
+  it('refuses a name that climbs out of the folder', async () => {
+    const service = new BlobStorageService();
+    await expect(service.upload('../outside.jpg', Buffer.from('x'), 'image/jpeg')).rejects.toThrow(/outside the local store/);
+    await expect(service.downloadToBuffer('local-blob:../../etc/passwd')).rejects.toThrow(/outside the local store/);
+  });
+
+  it('is never used in production, nor when a blob store is set', async () => {
+    process.env.NODE_ENV = 'production';
+    const prod = new BlobStorageService();
+    expect(prod.localDir()).toBeNull();
+    await expect(prod.upload('visitors/a.jpg', Buffer.from('x'), 'image/jpeg')).rejects.toThrow(/not configured/);
+    await expect(prod.deleteByUrl('local-blob:visitors/a.jpg')).resolves.toBe('skipped-not-configured');
+    process.env.NODE_ENV = 'development';
+    process.env.AZURE_STORAGE_CONNECTION_STRING = 'UseDevelopmentStorage=true';
+    process.env.AZURE_STORAGE_CONTAINER = 'c';
+    expect(new BlobStorageService().localDir()).toBeNull();
+  });
+});

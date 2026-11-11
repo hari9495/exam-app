@@ -135,6 +135,28 @@ describe('Roles & access (P02 §4.2–4.3, §4.6)', () => {
     expect(screen.getAllByText('You asked: another admin decides').length).toBeGreaterThan(0);
   });
 
+  it('795: only a role nobody holds can be deleted; a reason is required; then it is gone with a toast', async () => {
+    const onDeleteRole = ok();
+    const unused = { id: 'r-recep', name: 'Reception', permissions: ['visitors.desk.manage'], confidential: false, companyWideOnly: [], grants: 0, assignedUsers: 0 };
+    roles({ roles: [...ROLES, unused], onDeleteRole, initialView: 'roles' });
+    expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(1);
+    expect(within(screen.getByRole('row', { name: /HR Admin/ })).queryByRole('button', { name: 'Delete' })).toBeNull();
+    await ue.click(within(screen.getByRole('row', { name: /Reception/ })).getByRole('button', { name: 'Delete' }));
+    const dialog = await screen.findByRole('alertdialog').catch(() => screen.getByRole('dialog'));
+    await ue.click(within(dialog).getByRole('button', { name: 'Delete role' }));
+    expect(within(dialog).getByText('Enter a reason.')).toBeInTheDocument();
+    expect(onDeleteRole).not.toHaveBeenCalled();
+    await ue.type(within(dialog).getByRole('textbox', { name: /Reason/ }), 'Walk-through role, not used');
+    await ue.click(within(dialog).getByRole('button', { name: 'Delete role' }));
+    await waitFor(() => expect(onDeleteRole).toHaveBeenCalledWith('r-recep', 'Walk-through role, not used'));
+    expect((await screen.findAllByText('Role "Reception" deleted.')).length).toBeGreaterThan(0);
+  });
+
+  it('795: without the delete action no Delete button shows', () => {
+    roles({ roles: [...ROLES, { id: 'r-x', name: 'Unused', permissions: [], confidential: false, companyWideOnly: [], grants: 0, assignedUsers: 0 }], initialView: 'roles' });
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+  });
+
   it('Give access is never disabled: pressed early it names each missing field and sends nothing', async () => {
     const onGrant = vi.fn();
     roles({ onGrant });

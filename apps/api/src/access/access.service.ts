@@ -110,10 +110,31 @@ export class AccessService {
     return role;
   }
 
+  /**
+   * Answer 795: a role nobody holds (no active or waiting grant, nobody assigned it) can be deleted, with a reason;
+   * audited. A role with past grants is archived instead: its grants keep their history, it leaves every list and
+   * its name is freed. Refused while anyone holds it.
+   */
+  async deleteRole(ctx: TenantContext, actorUserId: string, id: string, reason: string) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const role = await tx.permissionProfile.findFirst({ where: { id, organizationId: c.organizationId, archivedAt: null } });
+      if (!role) throw new NotFoundException('Role not found.');
+      const held = (await tx.roleGrant.count({ where: { organizationId: c.organizationId, permissionProfileId: id, status: { in: ['active', 'pending'] } } })) + (await tx.user.count({ where: { organizationId: c.organizationId, permissionProfileId: id } }));
+      if (held) throw new ConflictException(`${held} ${held === 1 ? 'person holds' : 'people hold'} this role. Revoke or change their access first.`);
+      const history = await tx.roleGrant.count({ where: { organizationId: c.organizationId, permissionProfileId: id } });
+      if (history) {
+        const day = new Date().toISOString().slice(0, 10);
+        await tx.permissionProfile.update({ where: { id }, data: { archivedAt: new Date(), name: `${role.name} · deleted ${day} · ${id.slice(0, 8)}`.slice(0, 200), templateKey: null } });
+      } else await tx.permissionProfile.delete({ where: { id } });
+      await audit(tx, { ...c, userId: actorUserId }, 'access.role.deleted', 'permission_profile', id, { name: role.name, reason: reason.trim(), keptForHistory: Boolean(history) });
+      return { id, archived: Boolean(history) };
+    });
+  }
+
   /** The company's roles with how many people hold each (base assignment or grant). */
   roles(ctx: TenantContext) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const rows = await tx.permissionProfile.findMany({ where: { organizationId: c.organizationId }, orderBy: { name: 'asc' } });
+      const rows = await tx.permissionProfile.findMany({ where: { organizationId: c.organizationId, archivedAt: null }, orderBy: { name: 'asc' } });
       const grants = await tx.roleGrant.groupBy({ by: ['permissionProfileId'], where: { organizationId: c.organizationId, status: { in: ['active', 'pending'] } }, _count: true });
       const users = await tx.user.groupBy({ by: ['permissionProfileId'], where: { organizationId: c.organizationId, permissionProfileId: { not: null } }, _count: true });
       return rows.map((p) => {
@@ -220,7 +241,7 @@ export class AccessService {
       const user = await tx.user.findFirst({ where: { id: dto.userId, organizationId: c.organizationId } });
       if (!user || user.role === 'super_admin') throw new BadRequestException('Choose a user of this company.');
       if (user.status !== 'active') throw new BadRequestException('That user is not active.');
-      const profile = await tx.permissionProfile.findFirst({ where: { id: dto.permissionProfileId, organizationId: c.organizationId } });
+      const profile = await tx.permissionProfile.findFirst({ where: { id: dto.permissionProfileId, organizationId: c.organizationId, archivedAt: null } });
       if (!profile) throw new BadRequestException('Choose a role of this company.');
       const keys = JSON.parse(profile.permissionsJson) as string[];
       const column = SCOPE_TARGET[dto.scopeType];

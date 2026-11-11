@@ -2287,6 +2287,8 @@ model PermissionProfile {
   templateSet          String?  @map("template_set") @db.Text
   /// Whether the start-up sync has looked at this role once for a template it matches.
   templateChecked      Boolean  @default(false) @map("template_checked")
+  /// Answer 795: deleted while it has past grants (their history stays); hidden from lists, never granted again.
+  archivedAt           DateTime? @map("archived_at") @db.Timestamptz(3)
   createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
   users                User[]

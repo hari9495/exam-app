@@ -21,6 +21,7 @@
   },
   "testTimeout": 30000,
   "setupFiles": [
+    "./fixtures/e2e-database.ts",
     "./fixtures/offline-hibp.ts",
     "./fixtures/bull-prefix.ts"
   ],

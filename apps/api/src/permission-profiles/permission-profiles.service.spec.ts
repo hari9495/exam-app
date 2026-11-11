@@ -63,7 +63,7 @@ describe('PermissionProfilesService', () => {
       const result = await service.list(context);
 
       expect(tenantPrisma.forTenant).toHaveBeenCalledWith(context, expect.any(Function));
-      expect(tx.permissionProfile.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { organizationId: 'org-1' } }));
+      expect(tx.permissionProfile.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { organizationId: 'org-1', archivedAt: null } }));
       expect(tx.user.count).toHaveBeenCalledWith({ where: { permissionProfileId: 'p1' } });
       expect(result).toEqual([
         {

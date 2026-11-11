@@ -33,6 +33,15 @@ export class AccessController {
     return this.access.fromTemplate(ctx, userId, dto.templateKey, dto.name);
   }
 
+  /** Answer 795: deletes a role nobody holds (archived when it has past grants), with a reason; audited. */
+  @Post('roles/:id/delete')
+  @RequirePermissions('access.role.manage')
+  @RequireStepUp()
+  deleteRole(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: GrantReasonDto) {
+    ownSession(req);
+    return this.access.deleteRole(ctx, userId, id, dto.reason);
+  }
+
   @Get('roles')
   @RequirePermissions('access.role.manage')
   roles(@CurrentTenant() ctx: TenantContext) {
