@@ -498,3 +498,8 @@ console.table(counts);
 if (errs.length) { console.error(errs.join('\n')); process.exit(1); }
 console.log('ok');
 ```
+
+## Founder approved (11 Nov 2026, "ok for all")
+1041 to 1060 approved as suggested. Build C-1 (rules engine), C-2 (customer health, alerts, admin messages) and C-3
+(cross-company reference look-up, support-session look-up, design-check for /staff pages) now; then C-4 and C-5; then
+C-6 to C-8.
