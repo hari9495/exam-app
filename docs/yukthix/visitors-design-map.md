@@ -353,6 +353,9 @@ Founder decided, 11 Nov 2026: build the "later" items now (871 "Show revoked" ki
 Built 11 Nov 2026 (871, branch `feat/yukthix-later-portal-tickets`): Devices & kiosks has "Show revoked (n)" above the
 kiosks; on, it lists revoked kiosks (newest first) with the date, who revoked them and the reason (`GET /time/devices`
 returns `revokedKiosks`). Story Kiosks · show revoked (871); kit and time-devices e2e tests; manual test MT-TIM-871.
+Founder approved, 12 Nov 2026 (questions 921-925, all as suggested): (921) route a portal ticket to the account manager
+only if they can work tickets, otherwise to the desk queue; keep 922, 924, 925; (923) the reply email links to the
+client portal's Tickets tab.
 
 ## Visitors slice 1 built (answers 601-617; 15 Nov 2026, branch `feat/yukthix-visitors-1`)
 
