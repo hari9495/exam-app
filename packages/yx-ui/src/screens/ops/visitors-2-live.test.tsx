@@ -185,12 +185,12 @@ describe('VIS-03 kiosk camera (walk-through 11 Nov 2026)', () => {
     let resolve!: (s: MediaStream) => void;
     Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: vi.fn(() => new Promise<MediaStream>((r) => (resolve = r))) } });
     const live = kiosk({ info: { company: 'Kaveri Foods', location: 'Chennai office', open: true, photo: true, retentionDays: 90, types: [] }, needs: vi.fn(async () => ({ ...NEEDS, nda: null, induction: null })) });
-    const r = show(<VisitorKioskScreen live={live} />);
+    const r = show(<VisitorKioskScreen visit={SAMPLE} today={TODAY} live={live} />);
     await ue.click(screen.getByRole('button', { name: "I don't have a pass" }));
     await ue.type(screen.getByLabelText(/^Your name/), 'Rekha Shah');
     await ue.type(screen.getByLabelText(/^Mobile/), '9000080102');
     await ue.type(screen.getByLabelText(/^Who are you meeting/), 'Anita');
-    await ue.click(screen.getByRole('button', { name: 'Next', exact: true }));
+    await ue.click(screen.getByRole('button', { name: /^Next$/ }));
     await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled());
     r.unmount();
     resolve({ getTracks: () => [{ stop }] } as unknown as MediaStream);
