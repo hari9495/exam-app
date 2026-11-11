@@ -1829,6 +1829,7 @@ Founder approved, 14 Nov 2026 (questions 441-444, all as suggested): keep 441 an
 white-label per company from the console with the plan; (443) draw the quarantine-email switch on 6.1.
 Founder approved, 10 Nov 2026 (question 701): seed one demo staffing client, placement and issued invoice in
 demo-org, shown only while the staffing desk is on.
+Founder decided, 11 Nov 2026: build the "later" items now (377 sealed e-sign PDF, 401 joiner batches, 405 bulk offers in the background, 421 WhatsApp interview reminders, 422 interview-day swap, 491 client portal tickets, 495 e-invoicing per entity, 497 timesheets from Time, 574 receipts in the export, 842 bank receipt upload).
 ## Offers round 3 built (answers 376, 402, 404, 423, 443; 14 Nov 2026, branch `feat/yukthix-offers-3`)
 - (376) Settings 6.1: a named approver above the range who left or lost the offer-pay key is named on the field ("Ravi
   Kumar (cannot approve)") with a warning, like the stale default recruiter; until HR chooses again the step goes to the

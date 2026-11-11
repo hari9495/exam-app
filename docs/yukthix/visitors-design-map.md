@@ -349,6 +349,7 @@ database and refuse to run against the test app database; (799) the kiosk detail
 (800) the watch-list check right after the details step, before any photo.
 Founder approved, 11 Nov 2026 (questions 861-862, 871-873, all as suggested): keep 861 (archived roles only in grant
 history and the audit log), 862 (the e2e database is seeded), 871 ("Show revoked" filter later if HR asks), 872, 873.
+Founder decided, 11 Nov 2026: build the "later" items now (871 "Show revoked" kiosks). The 4 phone views wait for the mobile app.
 
 ## Visitors slice 1 built (answers 601-617; 15 Nov 2026, branch `feat/yukthix-visitors-1`)
 

@@ -415,6 +415,7 @@ keep 843, 851, 853; (844) the below-minimum-wage warning also on site approval o
 team" on the three we-are-the-contractor pages too.
 Founder approved, 11 Nov 2026 (questions 881-882, as suggested): keep 881 (the warning for every worker below the
 minimum); (882) name PT as missing only in the state's PT due months (as rule-set data).
+Founder decided, 11 Nov 2026: build the "later" items now (753 reopen a confirmed month).
 
 ## CL-1 built (10 Nov 2026, branch `feat/yukthix-contract-labour-1`)
 
