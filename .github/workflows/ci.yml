@@ -21,12 +21,12 @@ jobs:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_DB: examapp
+          POSTGRES_DB: examapp_e2e
           POSTGRES_PASSWORD: ci-throwaway
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d examapp"
+          --health-cmd "pg_isready -U postgres -d examapp_e2e"
           --health-interval 5s --health-timeout 5s --health-retries 10
       redis:
         image: redis:7-alpine
@@ -70,13 +70,13 @@ jobs:
           PGHOST: localhost
           PGPASSWORD: ci-throwaway
           POSTGRES_USER: postgres
-          POSTGRES_DB: examapp
+          POSTGRES_DB: examapp_e2e
         run: |
           owner_pw=$(openssl rand -hex 24); app_pw=$(openssl rand -hex 24)
           echo "::add-mask::$owner_pw"; echo "::add-mask::$app_pw"
           APP_DB_OWNER_PASSWORD=$owner_pw APP_DB_APP_PASSWORD=$app_pw sh docker/postgres/init/01-roles.sh
-          echo "MIGRATION_DATABASE_URL=postgresql://examapp_owner:$owner_pw@localhost:5432/examapp?schema=public" >> "$GITHUB_ENV"
-          echo "DATABASE_URL=postgresql://examapp_app:$app_pw@localhost:5432/examapp?schema=public" >> "$GITHUB_ENV"
+          echo "MIGRATION_DATABASE_URL=postgresql://examapp_owner:$owner_pw@localhost:5432/examapp_e2e?schema=public" >> "$GITHUB_ENV"
+          echo "DATABASE_URL=postgresql://examapp_app:$app_pw@localhost:5432/examapp_e2e?schema=public" >> "$GITHUB_ENV"
           # Per-run key for encrypted org secrets (SSO client secrets, TOTP secrets) used by the e2e suites.
           org_key=$(openssl rand -hex 32); echo "::add-mask::$org_key"
           echo "ORG_SECRETS_ENCRYPTION_KEY=$org_key" >> "$GITHUB_ENV"
@@ -156,12 +156,12 @@ jobs:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_DB: examapp
+          POSTGRES_DB: examapp_e2e
           POSTGRES_PASSWORD: ci-throwaway
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d examapp"
+          --health-cmd "pg_isready -U postgres -d examapp_e2e"
           --health-interval 5s --health-timeout 5s --health-retries 10
       redis:
         image: redis:7-alpine
@@ -194,13 +194,13 @@ jobs:
           PGHOST: localhost
           PGPASSWORD: ci-throwaway
           POSTGRES_USER: postgres
-          POSTGRES_DB: examapp
+          POSTGRES_DB: examapp_e2e
         run: |
           owner_pw=$(openssl rand -hex 24); app_pw=$(openssl rand -hex 24)
           echo "::add-mask::$owner_pw"; echo "::add-mask::$app_pw"
           APP_DB_OWNER_PASSWORD=$owner_pw APP_DB_APP_PASSWORD=$app_pw sh docker/postgres/init/01-roles.sh
-          echo "MIGRATION_DATABASE_URL=postgresql://examapp_owner:$owner_pw@localhost:5432/examapp?schema=public" >> "$GITHUB_ENV"
-          echo "DATABASE_URL=postgresql://examapp_app:$app_pw@localhost:5432/examapp?schema=public" >> "$GITHUB_ENV"
+          echo "MIGRATION_DATABASE_URL=postgresql://examapp_owner:$owner_pw@localhost:5432/examapp_e2e?schema=public" >> "$GITHUB_ENV"
+          echo "DATABASE_URL=postgresql://examapp_app:$app_pw@localhost:5432/examapp_e2e?schema=public" >> "$GITHUB_ENV"
           # The suites boot the whole AppModule, which signs tokens: per-run secrets, never stored anywhere.
           for name in ORG_SECRETS_ENCRYPTION_KEY JWT_ACCESS_SECRET JWT_REFRESH_SECRET CANDIDATE_JWT_ACCESS_SECRET CANDIDATE_JWT_REFRESH_SECRET INTERNAL_SERVICE_SECRET; do
             value=$(openssl rand -hex 32); echo "::add-mask::$value"; echo "$name=$value" >> "$GITHUB_ENV"
