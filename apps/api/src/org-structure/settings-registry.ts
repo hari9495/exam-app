@@ -44,6 +44,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'policy.ack.due_days': { label: 'Policies: days to acknowledge a policy', scopes: ['tenant'], dated: false, values: ['7', '14', '15', '30', '45', '60'], default: '14' },
   'policy.reminder.every_days': { label: 'Policies: remind people who have not acknowledged every (days)', scopes: ['tenant'], dated: false, values: ['off', '1', '2', '3', '7'], default: '3' },
   'policy.reminder.manager_after_days': { label: 'Policies: tell the manager when someone is this many days overdue', scopes: ['tenant'], dated: false, values: ['off', '3', '7', '14', '30'], default: '7' },
+  // Help H-4, answer 943: What's new in the Help drawer (YukthiX writes the entries).
+  'help.whats_new.show': { label: "Help: show What's new", scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'policy.reack.default': { label: 'Policies: a new version asks everyone to acknowledge again', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'policy.ack.typed_name': { label: 'Policies: people type their name to acknowledge', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // HLP-14: draft policies with the company's own AI (founder decision 1); off offers the YukthiX starters instead.

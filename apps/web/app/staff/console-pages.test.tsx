@@ -11,6 +11,7 @@ import ConsolePlansPage from './(console)/plans/page';
 import ConsoleSupportPage from './(console)/support/page';
 import ConsoleAuditPage from './(console)/audit/page';
 import ConsoleChannelsPage from './(console)/channels/page';
+import ConsoleWhatsNewPage from './(console)/whats-new/page';
 import YxSupportAccessPage from '../yx/(app)/settings/support-access/page';
 import { ToastProvider } from '@yukthix/ui';
 
@@ -164,6 +165,27 @@ describe('other console pages', () => {
     audit.unmount();
     wrap(<ConsoleChannelsPage />);
     expect(await screen.findByRole('heading', { name: 'YukthiX shared SMS account' })).toBeInTheDocument();
+  });
+});
+
+// Help H-4 (answer 943): staff write the entries people see in Help › What's new.
+describe('/staff/whats-new', () => {
+  const ENTRY = { id: 'n1', title: 'Press ? for shortcuts', body: 'Every page lists them.', products: ['hrms'], audiences: ['everyone'], publishOn: '2026-11-12', state: 'published', version: 1 };
+  const LIST = { today: '2026-11-12', products: [{ code: 'hrms', name: 'YukthiX HR' }], entries: [ENTRY] };
+  it('lists the entries; withdrawing calls the console API', async () => {
+    route({ 'GET /platform/whats-new': LIST, 'GET /rbac/me/permissions': [...STAFF_KEYS, 'platform.news.manage'], 'POST /platform/whats-new/n1/withdraw': { ...LIST, entries: [{ ...ENTRY, state: 'withdrawn' }] } });
+    wrap(<ConsoleWhatsNewPage />);
+    expect(await screen.findByText('Press ? for shortcuts')).toBeInTheDocument();
+    await ue.click(await screen.findByRole('button', { name: 'More actions for Press ? for shortcuts' }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'Withdraw entry' }));
+    await ue.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Withdraw entry' }));
+    await waitFor(() => expect(calls).toContain('POST /platform/whats-new/n1/withdraw'));
+  });
+  it('without the key: no New entry', async () => {
+    route({ 'GET /platform/whats-new': LIST, 'GET /rbac/me/permissions': STAFF_KEYS });
+    wrap(<ConsoleWhatsNewPage />);
+    expect(await screen.findByText('Press ? for shortcuts')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'New entry' })).toBeNull();
   });
 });
 

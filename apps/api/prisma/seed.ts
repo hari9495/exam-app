@@ -77,6 +77,8 @@ export const PERMISSIONS = [
   { key: 'platform.support.request', description: 'Ask a company for a support session and use it (YukthiX staff)' },
   { key: 'platform.audit.view', description: 'See the platform audit log (YukthiX staff)' },
   { key: 'platform.support_desk.work', description: 'Work the YukthiX Support desk in the console (YukthiX staff)' },
+  // Help H-4 (answer 943): What's new entries (also in the help_whats_new migration).
+  { key: 'platform.news.manage', description: "Write the What's new entries people see in Help (YukthiX staff)" },
   { key: 'org.yukthix_support.raise', description: 'Contact YukthiX support for the company and follow its tickets' },
   { key: 'org.support_access.approve', description: 'Approve, decline and end YukthiX support sessions' },
   // P04 Q5: a company's branding and wording of the account emails.
@@ -116,6 +118,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'platform.statutory.manage',
     // M14 SD-1.31: the YukthiX Support desk in the console.
     'platform.support_desk.work',
+    // Help H-4: What's new entries.
+    'platform.news.manage',
   ],
   // org_admin is a full org-scoped superuser: their own admin features PLUS the complete
   // recruiter/panel capability set (exams, question bank, candidates, results).

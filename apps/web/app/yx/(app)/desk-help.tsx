@@ -1,14 +1,15 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { HelpDrawer, type KbSuggestion, type MyTicketRow, type PublicBanner, type RaiseDesk } from '@yukthix/ui/desk';
+import { HelpDrawer, WhatsNewPanel, type KbSuggestion, type MyTicketRow, type PublicBanner, type RaiseDesk } from '@yukthix/ui/desk';
 import { apiFetch } from '../../../lib/api-client';
 import { useAuth } from '../../../lib/auth-context';
 import { useDesk, useDeskWrite } from '../../../lib/yx-desk';
+import { useWhatsNew } from '../../../lib/yx-whats-new';
 
 // In-app Help (US-B-100, Help and onboarding H-1), opened from Help in the top bar on every page: known issues, This page
 // (help articles tagged with the page), Ask (raise a ticket that remembers the page) and my open tickets. Loads only when
-// opened. What's new and Tours come with H-4 and H-5.
+// opened. What's new (H-4) shows when there are entries; Tours come with H-5.
 export function DeskHelp({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const pathname = usePathname();
   const desks = useDesk<RaiseDesk[]>(open ? '/my/desks' : null);
@@ -18,6 +19,7 @@ export function DeskHelp({ open, onOpenChange }: { open: boolean; onOpenChange: 
   const route = (pathname ?? '').split('?')[0]!.toLowerCase().replace(/\/[0-9a-f-]{8,}(?=\/|$)/g, '').replace(/\/+$/, '');
   const page = useDesk<{ on: boolean; articles: KbSuggestion[] }>(open && /^\/yx(\/[a-z0-9][a-z0-9-]*){0,8}$/.test(route) ? `/my/kb/page?route=${encodeURIComponent(route)}` : null);
   const pageHelp = page.isError ? { state: 'error' as const, articles: [] } : !page.data ? (page.isLoading ? { state: 'loading' as const, articles: [] } : null) : page.data.on ? { state: 'ready' as const, articles: page.data.articles } : null;
+  const news = useWhatsNew(open); // Help H-4 (answer 943): the What's new tab shows only when there are entries
   const write = useDeskWrite();
   const { accessToken } = useAuth();
   // The API takes letters, digits, - . / _ and spaces, up to 100.
@@ -38,6 +40,7 @@ export function DeskHelp({ open, onOpenChange }: { open: boolean; onOpenChange: 
           onSuggest={(q) => apiFetch(`/desk/my/kb/suggest?q=${encodeURIComponent(q)}&from=drawer`, {}, accessToken ?? undefined) as Promise<KbSuggestion[]>}
           articleHref={(a) => `/yx/desk/help?article=${a.number}`}
           pageHelp={pageHelp}
+          whatsNew={news?.entries.length ? <WhatsNewPanel live={news} /> : undefined}
         />
       )}
     </>

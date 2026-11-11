@@ -6,6 +6,7 @@ export { CompaniesScreen, companyInput, slugFrom, type CompaniesScreenProps } fr
 export { CompanyScreen, supportInput, type CompanyScreenProps } from './company';
 export { CompanySettingsScreen, type CompanySettingsScreenProps } from './company-settings';
 export { PlansScreen, priceInput, type PlansScreenProps } from './plans';
+export { WhatsNewConsoleScreen, newsInput, NEWS_AUDIENCES, type WhatsNewConsoleScreenProps, type NewsEntryRow, type NewsInput } from './whats-new';
 export { SupportSessionsScreen, type SupportSessionsScreenProps } from './support';
 export { PlatformAuditScreen, type PlatformAuditScreenProps } from './audit';
 export { LIFECYCLE_LABEL, SUPPORT_LABEL, actionWords } from './console-kit';

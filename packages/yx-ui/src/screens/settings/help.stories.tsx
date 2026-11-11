@@ -6,7 +6,8 @@ import { ArrowUpRight } from 'lucide-react';
 import { Button } from '../../components/button';
 import { PageHeader } from '../../components/shell';
 import { DesktopFrame, PhoneFrame, type AreaId } from '../_kit/frames';
-import { AccessDeniedState, AvailabilityBanner, AvailabilityState, NEWS, NotFoundState, TOURS, TourCard, TourList, WhatsNewList, newsFor } from './help';
+import { AccessDeniedState, AvailabilityBanner, AvailabilityState, NotFoundState, TOURS, TourCard, TourList } from './help';
+import { WhatsNewPanel, type LiveWhatsNew } from '../platform-b/growth-screens';
 // Answers 941 and 945: the one Help drawer is the live desk drawer; irreversible actions are the pay kit's
 // IrreversibleSheet; bulk approve is the Approvals inbox; empty states are the kit's EmptyState.
 import { HelpDrawer, PageHelp } from '../desk/help';
@@ -23,6 +24,18 @@ const meta: Meta = { title: 'Screens/Help and onboarding/Patterns', parameters: 
 export default meta;
 type S = StoryObj;
 const phone = { globals: { viewport: { value: 'mobile2', isRotated: false } } };
+
+// What's new is H-4's live panel (PLT-50).
+const NEWS: LiveWhatsNew = {
+  state: 'ready',
+  onRetry: () => {},
+  onMarkAllRead: async () => {},
+  unread: 1,
+  entries: [
+    { id: 'n1', date: '2026-09-24', product: 'YukthiX HR', title: 'Fix a missed punch from the day card', body: 'Tap the red marker on any day to fix it; the effect on pay shows before you send.', unread: true },
+    { id: 'n2', date: '2026-09-17', product: 'YukthiX HR', title: 'Why is my pay different?', body: 'Your payslip now explains each line that changed from last month.', unread: false },
+  ],
+};
 
 const Desk = ({ area = 'home', title, children }: { area?: AreaId; title: string; children: ReactNode }) => (
   <DesktopFrame area={area} panelTitle={title} panel={[{ items: [{ label: title, active: true }] }]}>
@@ -120,7 +133,7 @@ const drawer = (over: Partial<Parameters<typeof HelpDrawer>[0]> = {}) => (
     ticketHref={(id) => `#${id}`}
     articleHref={(a) => `#article-${a.number}`}
     pageHelp={{ state: 'ready', articles: LEAVE_ARTICLES }}
-    whatsNew={<WhatsNewList items={newsFor(NEWS, 'Employee', ['Time', 'Pay'])} />}
+    whatsNew={<WhatsNewPanel live={NEWS} />}
     tours={<TourList />}
     {...over}
   />
@@ -144,8 +157,8 @@ export const HelpDrawerNews: S = {
   ),
 };
 export const HelpDrawerNewsEmpty: S = {
-  name: "6.2 Help drawer · what's new, nothing yet",
-  render: () => <Desk title="Home">{drawer({ defaultTab: 'new', whatsNew: <WhatsNewList items={[]} /> })}</Desk>,
+  name: "6.2 Help drawer · what's new, nothing yet (the tab is hidden)",
+  render: () => <Desk title="Home">{drawer({ whatsNew: undefined })}</Desk>,
 };
 export const HelpDrawerTours: S = {
   name: '6.2 Help drawer · tours (resume, replay)',
@@ -180,7 +193,7 @@ export const WhatsNewManager: S = {
   render: () => (
     <Desk title="What's new">
       <PageHeader title="What's new" description="Changes to the products you use" />
-      <WhatsNewList items={newsFor(NEWS, 'Manager', ['Time', 'Performance'])} />
+      <WhatsNewPanel live={NEWS} />
     </Desk>
   ),
 };

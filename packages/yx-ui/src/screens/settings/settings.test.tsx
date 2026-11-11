@@ -25,7 +25,7 @@ import {
   validateSetting,
 } from './settings-logic';
 import { SettingsHomeScreen, SettingsPageScreen } from './settings-screens';
-import { AccessDeniedState, TOURS, TourCard, accessVerdict, newsFor, NEWS, shouldShowTour } from './help';
+import { AccessDeniedState, TOURS, TourCard, accessVerdict, shouldShowTour } from './help';
 import type { SettingDef } from './settings-types';
 
 const G = SETTINGS_GROUPS;
@@ -172,9 +172,6 @@ describe('help and onboarding (APX-D §6)', () => {
     expect(screen.getByText(/Say why you need access/)).toBeTruthy();
   });
   // Irreversible actions: the pay kit's IrreversibleSheet and its tests (pay.test.tsx) are the one version (answer 945).
-  it("what's new is targeted by role and product", () => {
-    expect(newsFor(NEWS, 'Employee', ['Time']).map((n) => n.id)).toEqual(['n1']);
-  });
 });
 
 describe('plain words (founder review 30 Sep 2026)', () => {

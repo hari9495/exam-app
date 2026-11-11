@@ -265,36 +265,47 @@ export function BottomSheet({ open, defaultOpen = false, onOpenChange, trigger, 
 
 /* ---------- ShortcutHelp (§14) ---------- */
 
-const SHORTCUT_GROUPS: { title: string; items: [keys: string[], what: string][] }[] = [
-  {
-    title: 'Lists and approvals',
-    items: [
-      [['J', 'K'], 'Move down or up the list'],
-      [['Enter'], 'Open the selected item'],
-      [['A'], 'Approve the selected request'],
-      [['R'], 'Reject the selected request'],
-    ],
-  },
-  {
-    title: 'Go to',
-    items: [
-      [['G', 'P'], 'People'],
-      [['G', 'T'], 'Time'],
-      [['G', 'Y'], 'Pay'],
-    ],
-  },
+/** One shortcut: its keys, pressed one after the other ("then") or either of them ("or"). */
+export interface Shortcut {
+  keys: string[];
+  what: string;
+  join?: 'then' | 'or';
+}
+export interface ShortcutGroup {
+  title: string;
+  items: Shortcut[];
+}
+
+/**
+ * Answer 951: only shortcuts that work in the app (never a planned one). N L and N E work only for people who can apply
+ * for leave or claim expenses: pass `shortcutGroups(...)` with the live app's two-key shortcuts.
+ */
+export const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     title: 'Anywhere',
     items: [
-      [['/'], 'Search this list'],
-      [['Ctrl K'], 'Search everything and run actions'],
-      [['Ctrl J'], 'Ask YukthiX'],
-      [['N', 'L'], 'Apply for leave'],
-      [['N', 'E'], 'Claim an expense'],
-      [['?'], 'Show these shortcuts'],
+      { keys: ['Ctrl K'], what: 'Search everything and run actions (⌘ K on a Mac)' },
+      { keys: ['N', 'L'], what: 'Apply for leave' },
+      { keys: ['N', 'E'], what: 'Claim an expense' },
+      { keys: ['?'], what: 'Show these shortcuts' },
+      { keys: ['Esc'], what: 'Close a dialog, panel or menu' },
+    ],
+  },
+  {
+    title: 'Lists (after you move to a row)',
+    items: [
+      { keys: ['J', 'K'], what: 'Move down or up (or use the arrow keys)', join: 'or' },
+      { keys: ['Enter'], what: 'Open the row' },
+      { keys: ['Space', 'X'], what: 'Tick the row, where rows can be ticked', join: 'or' },
     ],
   },
 ];
+
+/** The list for the live app: the two-key shortcuts the person really has (for example ['N L']). */
+export function shortcutGroups(sequences: string[]): ShortcutGroup[] {
+  const has = new Set(sequences);
+  return SHORTCUT_GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => i.keys.length < 2 || i.join === 'or' || has.has(i.keys.join(' '))) }));
+}
 
 const isTyping = (el: EventTarget | null) =>
   el instanceof HTMLElement && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
@@ -315,20 +326,20 @@ export function useShortcutHelp() {
   return { open, onOpenChange: setOpen };
 }
 
-export function ShortcutHelp(props: Omit<OpenProps, 'trigger'> & { trigger?: ReactElement }) {
+export function ShortcutHelp({ groups = SHORTCUT_GROUPS, ...props }: Omit<OpenProps, 'trigger'> & { trigger?: ReactElement; groups?: ShortcutGroup[] }) {
   return (
     <Dialog {...props} title="Keyboard shortcuts" size="sm">
       <div className="yx-shortcuts">
-        {SHORTCUT_GROUPS.map((g) => (
+        {groups.map((g) => (
           <section key={g.title} className="yx-shortcuts__group">
             <h3 className="yx-shortcuts__title">{g.title}</h3>
             <dl className="yx-shortcuts__list">
-              {g.items.map(([keys, what]) => (
+              {g.items.map(({ keys, what, join = 'then' }) => (
                 <div key={what} className="yx-shortcuts__row">
                   <dt className="yx-shortcuts__keys">
                     {keys.map((k, i) => (
                       <span key={k}>
-                        {i > 0 && <span className="yx-shortcuts__then">{keys[0] === 'J' ? 'or' : 'then'}</span>}
+                        {i > 0 && <span className="yx-shortcuts__then">{join}</span>}
                         <Kbd>{k}</Kbd>
                       </span>
                     ))}

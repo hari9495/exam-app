@@ -5,13 +5,12 @@ import { useState, type ReactNode } from 'react';
 import { Construction, FileQuestion, KeyRound, Lock, Wrench } from 'lucide-react';
 import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
-import { EmptyState, InlineAlert } from '../../components/feedback';
+import { InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { Icon } from '../../components/foundations';
 import { TextArea } from '../../components/inputs';
 import { PageBanner } from '../../components/notify';
 import { Select } from '../../components/select';
-import { formatDate } from '../../lib/format';
 import './settings.css';
 
 /* ============================== 6.1 First-run tours ============================== */
@@ -134,51 +133,9 @@ export function TourCard({ tour, defaultStep = 0, onDone }: { tour: TourDef; def
   );
 }
 
-/* ============================== 6.2 What's new and tours (the Help drawer's tabs) ============================== */
+/* ============================== 6.2 Tours (the Help drawer's Tours tab, H-5) ============================== */
 
-export interface NewsItem {
-  id: string;
-  date: string;
-  product: string;
-  title: string;
-  body: string;
-  roles: string[];
-}
-
-export const NEWS: NewsItem[] = [
-  { id: 'n1', date: '2026-09-24', product: 'Time', title: 'Fix a missed punch from the day card', body: 'Tap the red marker on any day to fix it; the effect on pay shows before you send.', roles: ['Employee', 'Manager'] },
-  { id: 'n2', date: '2026-09-17', product: 'Pay', title: 'Why is my pay different?', body: 'Your payslip now explains each line that changed from last month.', roles: ['Employee'] },
-  { id: 'n3', date: '2026-09-10', product: 'Settings', title: 'Search every setting', body: 'Type a task word such as "probation" to jump to the exact field.', roles: ['HR', 'System Admin'] },
-  { id: 'n4', date: '2026-09-02', product: 'Performance', title: 'Suggested 1:1 agendas', body: 'Managers see agenda ideas from goals and recent feedback.', roles: ['Manager'] },
-];
-
-/** Entries targeted to the viewer's role and the products switched on (P20 YX-GRO-11). */
-export function newsFor(items: NewsItem[], role: string, products: string[]): NewsItem[] {
-  return items.filter((n) => n.roles.includes(role) && products.includes(n.product));
-}
-
-const iso = (s: string) => {
-  const [y, m, d] = s.split('-').map(Number);
-  return new Date(y, m - 1, d);
-};
-
-export function WhatsNewList({ items }: { items: NewsItem[] }) {
-  if (!items.length) return <EmptyState compact title="Nothing new for you yet." description="Changes to the products you use appear here with each release." />;
-  return (
-    <ul className="yx-news">
-      {items.map((n) => (
-        <li key={n.id}>
-          <span className="yx-news__meta">
-            <Badge tone="neutral">{n.product}</Badge>
-            {formatDate(iso(n.date))}
-          </span>
-          <p className="yx-news__title">{n.title}</p>
-          <p className="yx-news__body">{n.body}</p>
-        </li>
-      ))}
-    </ul>
-  );
-}
+// What's new is H-4's WhatsNewPanel (PLT-50, exported from desk); the drawn list is retired (answer 945).
 
 /** Answer 944 (H-5 fills it): the tours with each person's progress, for the Help drawer's Tours tab. */
 export function TourList({ tours = TOURS, history = [], onStart }: { tours?: TourDef[]; history?: TourProgress[]; onStart?: (tourId: string) => void }) {

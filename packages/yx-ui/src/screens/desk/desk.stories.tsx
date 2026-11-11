@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { LinksFrame, type StoryLink } from '../_kit/story-frame';
 import { pick, play, press, pressFirst, tab, type } from '../_kit/story-play';
 import { HelpDrawer, MyTicketScreen } from './help';
+import { WhatsNewPanel } from '../platform-b/growth-screens';
 import { DeskSetupScreen } from './setup';
 import { CAL_ITEMS, CANNED, COMPLIANCE, CONTEXT, DESK, DETAIL, HR_DESK, MY_ROWS, MY_TICKET, RAISE_DESKS, ROWS, SLA_SETUP, TEMPLATES, TICKET, TIMELINE, WORK } from './data';
 import { ResolveDialog } from './work';
@@ -167,6 +168,26 @@ export const PortalNoDesk: S = { name: 'SD-1.21 Help pages · New help page with
 export const BannerTooEarly: S = { name: 'SD-1.23 Banners · Post pressed with nothing written', render: BannerSetup.render, play: play(press('Post a banner'), press('Post banner')) };
 
 // Helpdesk founder rules (28 Oct 2026): too early says what is missing; done is a toast.
+// Help H-4 (answer 943): What's new in the Help drawer until H-1 gives it its own tab.
+export const HelpDrawerWhatsNew: S = {
+  name: "US-B-100 Help drawer · What's new (H-4)",
+  render: () =>
+    shell(
+      'desk-tickets',
+      <HelpDrawer
+        open
+        onOpenChange={() => {}}
+        desks={RAISE_DESKS}
+        tickets={MY_ROWS}
+        banners={MY_BANNERS}
+        onMeToo={noop}
+        onRaise={async () => ({ id: 'x', number: 'IT-1005' })}
+        ticketHref={(id) => `#${id}`}
+        defaultTab="new"
+        whatsNew={<WhatsNewPanel live={{ state: 'ready', onRetry: () => {}, unread: 1, onMarkAllRead: async () => {}, entries: [{ id: 'n1', date: '2026-11-10', product: 'YukthiX HR', title: 'Comp-off expiry on the balance card', body: 'Employees now see when comp-off days lapse, on web and mobile.', unread: true }, { id: 'n2', date: '2026-11-02', product: 'YukthiX HR', title: 'Press ? for keyboard shortcuts', body: 'Every page lists the shortcuts that work for you.', unread: false }] }} />}
+      />,
+    ),
+};
 export const HelpDrawerTooEarly: S = { name: 'US-B-100 Help drawer · Raise ticket pressed with nothing filled', render: () => shell('desk-tickets', <HelpDrawer open onOpenChange={() => {}} desks={RAISE_DESKS} tickets={MY_ROWS} banners={MY_BANNERS} onMeToo={noop} onRaise={async () => ({ id: 'x', number: 'IT-1005' })} ticketHref={(id) => `#${id}`} />), play: play(press('Raise ticket')) };
 export const MyTicketReplyTooEarly: S = { name: 'HLP-01 My ticket · Send reply pressed with nothing written', render: MyTicket.render, play: play(press('Send reply')) };
 export const MyTicketWatchTooEarly: S = { name: 'HLP-01 My ticket · Add colleague pressed with no email', render: MyTicket.render, play: play(press('Add')) };

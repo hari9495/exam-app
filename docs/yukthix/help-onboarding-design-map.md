@@ -43,13 +43,13 @@ job with another kit part (named in the note); the drawn component itself is not
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Tours, help and what's new (6.1, 6.2) | 2 | 1 | 0 | 0 | 7 | 3 | 11 |
+| A. Tours, help and what's new (6.1, 6.2) | 2 | 4 | 0 | 0 | 4 | 3 | 11 |
 | B. Access and not found (6.3) | 1 | 0 | 2 | 0 | 2 | 2 | 6 |
 | C. Irreversible actions (6.4) | 1 | 5 | 0 | 0 | 0 | 0 | 5 |
 | D. Availability (6.5) | 1 | 0 | 1 | 0 | 7 | 1 | 9 |
 | E. Empty states (6.6) | 1 | 1 | 7 | 0 | 1 | 1 | 10 |
-| **All A-E** | **6** | **7** | **10** | **0** | **17** | **7** | **41** |
-Recounted by script 11 Nov 2026 on `feat/yukthix-help-h1` after H-1: the one Help drawer (This page live), the irreversible and bulk-approve stories show the live parts.
+| **All A-E** | **6** | **10** | **10** | **0** | **14** | **7** | **41** |
+Recounted by script 12 Nov 2026 on `feat/yukthix-help-h1` after H-1 and the H-4 merge: the one Help drawer (This page and What's new live), the irreversible and bulk-approve stories show the live parts.
 
 Counted by script 11 Nov 2026 on `docs/yukthix-help-onboarding-map` (the script is in the appendix): the 41 stories
 under Screens/Help and onboarding/Patterns (one file, grouped by its section comments 6.1 … 6.6). The 7 phone views need
@@ -87,11 +87,11 @@ The 18 "design only" rows: tours (3), the help drawer's page help, what's new an
 | story (sub-page) | verdict | note |
 |---|---|---|
 | HelpDrawerPage · 6.2 Help drawer · this page (TIM-18 apply leave) | live | H-1 (11 Nov 2026): the one Help drawer (`screens/desk/help.tsx`, every page) opens on This page with the help articles tagged with the page (`GET desk/my/kb/page?route=`, answer 942), behind "Show page help" (on); the drawn topic body (steps, fields, glossary) is retired: page help is the articles |
-| HelpDrawerNews · 6.2 Help drawer · what's new | design only, feature not built | H-1: the drawer shows the What's new tab only when given its content; hidden in the app until H-4 |
-| HelpDrawerNewsEmpty · 6.2 Help drawer · what's new, nothing yet | design only, feature not built | as above |
+| HelpDrawerNews · 6.2 Help drawer · what's new | live | H-4's `WhatsNewPanel` (PLT-50) in the drawer's What's new tab (H-1 merge); the tab shows only when there are entries |
+| HelpDrawerNewsEmpty · 6.2 Help drawer · what's new, nothing yet (the tab is hidden) | live | with no entries (or What's new off) the drawer has no What's new tab |
 | HelpDrawerTours · 6.2 Help drawer · tours (resume, replay) | design only, feature not built | H-1: the Tours tab (`TourList`) is hidden in the app until H-5 |
 | HelpPhone · 6.2 Help · phone (bottom sheet content) | phone view, mobile app not built | the drawer’s This page content (`PageHelp`) in a bottom sheet |
-| WhatsNewManager · 6.2 What's new · manager | design only, feature not built | a second what's-new design exists in Platform (PLT-50, `WhatsNewDrawer`, `WhatsNewSheet`), not live either; question 943 |
+| WhatsNewManager · 6.2 What's new · manager | live | the story shows PLT-50's `WhatsNewPanel` (answer 943: the one version), live in the Help drawer's What's new tab; the drawn `WhatsNewList` is retired |
 
 ### B. Access and not found (6.3)
 
@@ -157,7 +157,7 @@ The 18 "design only" rows: tours (3), the help drawer's page help, what's new an
 |---|---|---|
 | Help drawer (US-B-100): known issues, raise a ticket, my tickets | Helpdesk, `screens/desk/help.tsx` | **live** on every page (Help in the top bar) |
 | Help centre (HLP-01), knowledge-base articles, assistant "not yet on" | Helpdesk map | live (the Helpdesk map holds its rows) |
-| Shortcut help ("press ?") | Overlays · Dialogs and sheets, `ShortcutHelp` / `useShortcutHelp` (kit) | not mounted in the app (Ctrl K is live) |
+| Shortcut help ("press ?") | Overlays · Dialogs and sheets, `ShortcutHelp` / `useShortcutHelp` (kit) | **live** on every signed-in page (H-3, answer 951) |
 | Table first-use empty state | Data · Table and filters | live (kit `DataTable`) |
 | Notification centre and Approvals inbox empty | Overlays · Notifications and approvals | live |
 | PLT-02 Role home · employee first login (tour) | Platform · Shell & homes, `RoleHomeScreen firstRun` | home is live; the first-run prompt is never turned on |
@@ -344,3 +344,52 @@ Build H-1 to H-3 now, then H-4 to H-6; H-7 later.
 964. **Articles in other languages.** "This page" lists the original articles; the Help centre opens them in the reader's
      language when a translation exists. *Suggested: keep.*
 
+## H-3 built: shortcut help on every page (answer 951; 12 Nov 2026, branch `feat/yukthix-help-h3`)
+- "?" opens Keyboard shortcuts on every page of the signed-in app (`apps/web/app/yx/(app)/layout.tsx`), never while typing
+  in a field or with Ctrl, Alt or ⌘. It is the kit's dialog: focus moves into it, Esc closes it and focus returns.
+- The list is only what works (drawn first in the kit, `SHORTCUT_GROUPS`; stories "Shortcut help · open" and "· without
+  leave or expenses"): Ctrl K (⌘ K) search, N L apply for leave and N E claim an expense (only for people who have those
+  actions, from the palette's own shortcuts), ? and Esc; in lists, after moving to a row, J / K or the arrows, Enter, and
+  Space or X to tick. The drawn A / R approve, G P / G T / G Y go-to, "/" and Ctrl J were never built and are removed.
+- Tests: kit (opens on ?, not while typing or with Ctrl; focus in and Esc closes; no unbuilt shortcut; N L / N E only for
+  those who have them). Manual test MT-HLP-951.
+
+## Founder questions from H-3 (12 Nov 2026)
+
+981. **Go-to keys.** The design's G P / G T / G Y (go to People, Time, Pay) were never built, so the list leaves them out.
+     *Suggested: do not build them; Ctrl K already finds every page.*
+982. **Shortcut help outside the app.** "?" works on the signed-in app only, not on the careers site, the client or vendor
+     portals, the kiosk or the public help centre. *Suggested: keep (those pages have no shortcuts to list).*
+
+Founder approved, 12 Nov 2026 (questions 981-982, as suggested): no go-to keys (Ctrl K finds every page); "?" only in the signed-in app.
+## H-4 built: What's new (answer 943; 12 Nov 2026, branch `feat/yukthix-help-h4`)
+- **Entries (platform data):** `whats_new_entries` (migration `202617z0000031_help_whats_new`): title, text, products,
+  who it is for (everyone, employees, managers, HR, payroll, System Admins), publish date; withdrawn, never deleted. No
+  company column: every signed-in session may read; only the platform (super-admin) context may insert or update (RLS
+  policies), and the runtime role cannot delete. Read marks: `whats_new_reads` (forced RLS).
+- **Console › What's new** (`/staff/whats-new`, key `platform.news.manage`, YukthiX staff with their security key):
+  list (Published / Planned / Withdrawn), New entry, Change entry (version-checked), Withdraw (confirmed, final). Every
+  change is in the platform audit log in plain words. Stories "What's new · entries / new entry / none yet".
+- **People:** `GET /help/whats-new`, `POST /help/whats-new/read`: the published entries for their audiences (worked out
+  from facts and keys: an employee record, direct reports, HR keys, payroll keys, System Admin) and their company's
+  products, newest 50, unread marked; Mark all read. 403 while acting for someone. The PLT-50 list is the one design:
+  `WhatsNewPanel` (stories "PLT-50 · What's new · Help tab"), exported from `@yukthix/ui/desk`; web hook
+  `useWhatsNew(open)` in `apps/web/lib/yx-whats-new.ts` (null when the company turned it off; `unread` for a count).
+- **Help drawer:** one optional `whatsNew` slot on `HelpDrawer` (shown as a "What's new" section, story "Help drawer ·
+  What's new (H-4)"); H-1 moves it into the drawer's What's new tab.
+- **Setting:** Settings › Organisation › Help: "Help: show What's new" (`help.whats_new.show`, default on).
+- Tests: kit (console inputs, add with field errors and focus, change with version, withdraw confirmed, no key no
+  actions, audit words; panel unread, mark all read, empty, error, failure); e2e `help-whats-new` (staff only, field
+  checks, audit, role and product targeting, another company, per-person read marks, RLS: a company cannot write
+  entries or see another's marks, version conflict, withdraw final, setting off, 403 while acting). Manual tests
+  MT-HLP-943a (console) and MT-HLP-943b (people).
+## Founder questions from H-4 (12 Nov 2026)
+991. **"See all updates".** The drawn drawer links to a page of all updates; the tab already lists the person's latest 50.
+     *Suggested: no separate page.*
+992. **When an entry counts as read.** Only Mark all read marks entries read; opening the tab does not. *Suggested: keep
+     (people decide), with a dot on Help while something is unread (with H-1).*
+993. **Who counts as HR, payroll and System Admin.** HR: holds leave settings or onboarding keys; payroll: prepares pay
+     runs; System Admin: the role. A System Admin also sees HR and payroll entries (they hold those keys).
+     *Suggested: keep.*
+994. **A new company's backlog.** A company that joins today sees every published entry for its products (latest 50).
+     *Suggested: show only entries from the last 6 months.*
