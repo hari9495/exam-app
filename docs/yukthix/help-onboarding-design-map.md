@@ -162,7 +162,7 @@ The 18 "design only" rows: tours (3), the help drawer's page help, what's new an
 | Table first-use empty state | Data · Table and filters | live (kit `DataTable`) |
 | Notification centre and Approvals inbox empty | Overlays · Notifications and approvals | live |
 | PLT-02 Role home · employee first login (tour) | Platform · Shell & homes, `RoleHomeScreen firstRun` | home is live; the first-run prompt is never turned on |
-| PLT-08 Set-up hub (3 stories) | Platform · Set-up & administration, `SetupHubScreen` | not live (design-live guard list) |
+| PLT-08 Set-up hub (3 stories) | Platform · Set-up & administration, `SetupHubScreen` | live (H-6, Settings › Set-up hub); off the design-live guard list |
 | PLT-09 Tenant wizard (5 stories) | same, `TenantWizardScreen` | not live (guard list) |
 | PLT-39 Quick-start lane, PLT-40 Switch on, PLT-42 trial extension, PLT-43 trial read-only, PLT-50 What's new | Platform · Jobs, trial & account (`growth-screens.tsx`) | not live |
 | PLT-47 Copilot action card; `AssistantPanel` (kit) | Platform; kit `notify.tsx` | used only in drawn screens (the drawn Help centre's "Ask the assistant" rail, send does nothing); the live Help centre (`LiveHelpCentre`) has no assistant |
@@ -395,3 +395,40 @@ of what's new to a new company.
      are kept for now).*
 975. **YukthiX support.** *Suggested: YukthiX staff look up a reference inside the company's support session, as built; a
      look-up across companies waits for the platform console.*
+
+## H-6 as built (answer 952; 11 Nov 2026)
+
+- **Settings › Set-up hub** (`/yx/settings/setup-hub`, first in Settings › Organisation) is the designed `SetupHubScreen`
+  with live data from `GET help/setup-hub`. Only people with Company rules (`org.settings.manage`: HR set-up and System
+  Admins) see it; everyone else, and anyone acting for someone without that key, is refused. Each company reads only its
+  own records (forced RLS).
+- **Areas and checks**, all from what the areas already hold; nothing new is asked:
+  - Organisation: legal entities, locations, structure (departments, designations, employment types) - blocking; company
+    rules reviewed - starter.
+  - People: employees added - blocking; a manager for everyone but the top person; letter templates (starter); employee
+    record rules reviewed (starter).
+  - Roles & access: a second System Admin; roles; access and privacy rules reviewed (starter).
+  - Time & Leave: leave types, leave policies, holiday calendars - blocking; shifts; attendance rules reviewed (starter).
+  - Payroll: pay groups, salary components, salary templates - blocking; payroll rules reviewed (starter). Only whether
+    pay set-up rows exist is read, server-side, past the pay guard; no pay data leaves it.
+  - "Reviewed" means the company has saved at least one company rule of that area (the settings registry); until then its
+    rules are YukthiX starter defaults and count in "Starter templates to review".
+- **Each check** has Start / Continue opening its set-up page. The design's Go live, Sign off and Skip stay in the stories
+  only (no go-live or sign-off exists; answer 952 asks nothing new).
+- **Settings** (Company rules › Set-up hub): "Set-up hub shows Time & Leave" and "Set-up hub shows Payroll" (both shown), so a
+  company that does not use an area in YukthiX can still reach complete.
+- **Tour anchors** for the HR / System Admin first-run tour (6.1 TourAdmin, H-5): `data-tour="setup-hub"` (the page),
+  `setup-modules` (the area cards) and `setup-starter` (the starter count).
+- **Tests:** kit (`setup-hub.test.tsx`, 4), web nav, and the e2e suite `help-h6` (5 tests: refused roles, a new company,
+  checks turning done, company isolation, hidden areas).
+
+### Questions (from 1011)
+
+1011. **Go-live and sign-off.** *Suggested: leave them out until the company wizard (PLT-09, H-7) brings a go-live date; the
+      hub stays a progress view.*
+1012. **What blocks.** *Suggested: keep blocking fixed as built (an area cannot work without them); make it a setting only if
+      a customer asks.*
+1013. **More areas.** *Suggested: add Hiring, Performance and Helpdesk cards when their set-up pages report completeness;
+      today they would have one weak check each.*
+1014. **"Reviewed" rules.** *Suggested: one saved rule marks an area's rules as reviewed, as built; a per-rule "confirmed"
+      mark would ask HR something new, which 952 rules out.*

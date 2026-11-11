@@ -124,7 +124,6 @@
     "platform-a: RequestSheetScreen",
     "platform-a: RequestTypeBuilderScreen",
     "platform-a: RuleBuilderScreen",
-    "platform-a: SetupHubScreen",
     "platform-a: TenantWizardScreen",
     "platform-b: AgentActionsLogScreen",
     "platform-b: AgentPlanDesk",

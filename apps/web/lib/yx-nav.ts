@@ -404,6 +404,7 @@ export function buildNav(n: NavInput): NavArea[] {
     title: 'Settings',
     sections: [
       ...sec('Organisation', [
+        ...when(settingsAdmin, L('setup-hub', 'Set-up hub', '/yx/settings/setup-hub')),
         ...when(orgPages, L('entities', 'Legal entities', '/yx/settings/legal-entities'), L('locations', 'Locations', '/yx/settings/locations'), L('structure', 'Structure', '/yx/settings/structure')),
         ...when(settingsAdmin, L('company-rules', 'Company rules', '/yx/settings/company-rules'), L('countries', 'Countries', '/yx/settings/countries'), L('translations', 'Translations', '/yx/settings/translations')),
         ...when(has('perf.setup.manage'), L('performance-setup', 'Performance', '/yx/settings/performance')),
