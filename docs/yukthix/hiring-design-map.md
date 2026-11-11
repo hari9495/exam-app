@@ -1839,8 +1839,11 @@ Founder decided, 11 Nov 2026: build the "later" items now (377 sealed e-sign PDF
   `202617z0000003_client_portal_tickets`) links a ticket to the client and contact. Every contact of the client sees the
   client's tickets; another client's answers 404. Internal notes are never shown; agents show by first name.
 - Routing (Settings 6.2 "Client portal tickets go to", `staffing.portal.tickets_team`, default the account manager): the
-  account manager on their help desk (assigned to them), or a chosen active Helpdesk team (its queue); otherwise the
+  account manager on a help desk where they can work tickets (assigned to them; a seat without the Helpdesk work right:
+  that desk's queue, answer 921), or a chosen active Helpdesk team (its queue); otherwise the
   first customer-support desk; no desk: 409 "Tickets are not set up yet". Audited `staffing.portal.ticket_raised`.
+- (923) An agent's reply emails the contact a link to the portal's Tickets tab (`?tab=tickets&ticket=<id>`): they sign in
+  and the ticket opens. Tickets raised any other way keep the Helpdesk link.
 - Routes: `GET|POST public/client-portal/:org/tickets`, `GET .../tickets/:id`, `POST .../tickets/:id/reply`.
 - Tests: kit (raise with field errors, toast, drawer, reply, failure, tab hidden without tickets, 6.2 mapping); e2e
   staffing-4 (no desk 409, bad input 400, no session 401, routing three ways, list order, other client empty and 404,

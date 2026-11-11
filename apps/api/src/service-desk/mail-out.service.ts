@@ -248,7 +248,9 @@ export class MailOutService implements OnModuleInit, OnModuleDestroy {
     const neutral = t.sensitive || t.private;
     const link = `${webOrigin()}/yx/desk/help/${t.id}`;
     const portal = await tx.sdPortalDesk.findFirst({ where: { organizationId: org, deskId: t.deskId } });
-    const portalLink = portal ? await this.portalLink(tx, org, portal.portalId, t.id) : link;
+    // Answer 923: a ticket a client contact raised in the staffing client portal links to that portal's Tickets tab.
+    const client = await tx.staffingClientTicket.findFirst({ where: { organizationId: org, ticketId: t.id }, select: { id: true } });
+    const portalLink = client ? await this.clientPortalLink(tx, org, t.id) : portal ? await this.portalLink(tx, org, portal.portalId, t.id) : link;
     let body: string;
     let subject = `[${t.number}] ${neutral ? 'Your ticket' : t.subject}`;
     // An email ticket gets the reply itself; a portal ticket's outside requester gets a notice with the portal link.
@@ -282,6 +284,12 @@ export class MailOutService implements OnModuleInit, OnModuleDestroy {
         ? { domainName: from.ownDomain.domain, keySelector: from.ownDomain.dkimSelector, privateKey: this.crypto.decrypt(from.ownDomain.dkimPrivateKeyEncrypted) }
         : undefined,
     };
+  }
+
+  /** The staffing client portal (sign in, then the ticket on the Tickets tab). */
+  private async clientPortalLink(tx: Tx, org: string, ticketId: string) {
+    const o = await tx.organization.findUnique({ where: { id: org }, select: { slug: true } });
+    return o ? `${webOrigin()}/yx/client/${o.slug}?tab=tickets&ticket=${ticketId}` : `${webOrigin()}/yx/desk/help/${ticketId}`;
   }
 
   private async portalLink(tx: Tx, org: string, portalId: string, ticketId: string) {

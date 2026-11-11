@@ -549,13 +549,21 @@ returns `revokedKiosks`). Story Kiosks · show revoked (871); kit and time-devic
 
 ## Founder questions from the later items 491 and 871 (11 Nov 2026)
 
+Founder approved, 11 Nov 2026 (questions 921-925, all as suggested): (921) and (923) built on
+`feat/yukthix-portal-ticket-routing`; keep 922, 924 and 925 as built.
+
 921. **An account manager who cannot work tickets.** Routing gives the ticket to the account manager when they hold a seat
      on an active help desk, even if their role lacks the Helpdesk work permission; they then cannot answer it.
      *Suggested: only route to an account manager who can work tickets; otherwise the desk's queue.*
+     Built 11 Nov 2026 as suggested (founder approved; branch `feat/yukthix-portal-ticket-routing`): the
+     account manager is assigned only on a desk where they hold a seat and the Helpdesk work right; otherwise the ticket
+     waits on their desk's queue.
 922. **Who sees a client's tickets.** Every contact of the client with portal access sees all the client's tickets, not
      only the ones they raised. *Suggested: keep (like invoices and timesheets).*
 923. **Reply emails for portal tickets.** Agent replies email the contact as a Helpdesk requester; that email was not
      changed to point to the client portal. *Suggested: link it to the portal's Tickets tab for client-portal tickets.*
+     Built 11 Nov 2026: an agent's reply on a ticket raised in the client portal emails the contact a link to
+     `/yx/client/<company>?tab=tickets&ticket=<id>` (sign in, then that ticket opens); other tickets keep their link.
 924. **Ticket categories.** The six drawn categories (Replacement, Billing, Timesheets, Access, Complaint about a worker,
      Other) are fixed. *Suggested: keep fixed now; a company list in 6.2 if asked.*
 925. **A revoked kiosk cannot come back.** Show revoked is a record only (latest 200). *Suggested: keep; register a new

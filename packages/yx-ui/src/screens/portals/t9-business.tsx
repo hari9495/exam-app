@@ -1,6 +1,6 @@
 // T9 portals for business contacts: client portal (T9-06), staffing vendor portal (T9-12),
 // contract-labour vendor portal (T9-13) and the visitor invite page (T9-14).
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, Download, FileText, Plus, Upload, X } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
@@ -413,6 +413,8 @@ export interface ClientTicketParts {
   onRaise: (input: { category: string; subject: string; details?: string }) => Promise<{ id: string; number: string }>;
   load: (id: string) => Promise<ClientTicketView>;
   onReply: (id: string, text: string) => Promise<unknown>;
+  /** Answer 923: the ticket the reply email linked to, opened once on arrival. */
+  openId?: string;
 }
 const TICKET_CATEGORIES = ['Replacement', 'Billing', 'Timesheets', 'Access', 'Complaint about a worker', 'Other'];
 const SAMPLE_TICKET: ClientTicketView = {
@@ -469,6 +471,8 @@ function ClientTickets({ items, defaultOpen, defaultOpenId, parts }: { items: (C
     });
   };
   const view = (id: string) => (parts ? void run(`v${id}`, async () => setViewing(await parts.load(id))) : setViewing(SAMPLE_TICKET));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- once, for the email's link
+  useEffect(() => void (parts?.openId && view(parts.openId)), []);
   const send = () => {
     if (replyEarly.stop() || !viewing) return;
     if (!parts) return setReply('');

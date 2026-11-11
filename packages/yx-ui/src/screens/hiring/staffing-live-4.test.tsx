@@ -193,6 +193,16 @@ describe('491: client portal tickets', () => {
     expect(k.onReply).toHaveBeenCalledWith('t1', 'Thanks');
     expect((await screen.findAllByText('Reply sent')).length).toBeGreaterThan(0);
   });
+  it('923: arriving from the reply email opens that ticket; a ticket not found shows the reason', async () => {
+    const k = { ...parts(), openId: 't1' };
+    const { unmount } = wrap(<ClientPortalScreen live={live(k)} />);
+    expect(await screen.findByText('Two people can start Monday.')).toBeInTheDocument();
+    expect(k.load).toHaveBeenCalledWith('t1');
+    unmount();
+    wrap(<ClientPortalScreen live={live({ ...parts(), openId: 'gone', load: vi.fn().mockRejectedValue(new Error('Ticket not found.')) })} />);
+    expect(await screen.findByText('Ticket not found.')).toBeInTheDocument();
+  });
+
   it('a failed raise shows the reason and keeps the dialog open', async () => {
     const k = { ...parts(), onRaise: vi.fn().mockRejectedValue(new Error('Tickets are not set up yet. Write to your account manager.')) };
     wrap(<ClientPortalScreen live={live(k)} />);
