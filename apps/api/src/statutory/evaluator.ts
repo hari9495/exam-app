@@ -589,13 +589,26 @@ export function tdsNonSalary(
 
 /** Runs one golden case; returns the fields that differ (empty when it passes). */
 export function runGolden(rs: RuleSet, g: GoldenCase): string[] {
+  return goldenResult(rs, g).problems;
+}
+
+/** Console answer 1043: one golden case with what the rule set gives for each expected field, and what differs. */
+export function goldenResult(rs: RuleSet, g: GoldenCase): { actual: Record<string, unknown>; problems: string[] } {
   const calc = CALCULATORS[g.fn];
-  if (!calc) return [`unknown calculator ${g.fn}`];
-  const got = calc(rs, g.input as never);
-  return Object.entries(g.expected).flatMap(([k, want]) => {
+  if (!calc) return { actual: {}, problems: [`unknown calculator ${g.fn}`] };
+  let got: Record<string, unknown>;
+  try {
+    got = calc(rs, g.input as never);
+  } catch (e) {
+    return { actual: {}, problems: [`${g.name}: the calculation failed (${e instanceof Error ? e.message : String(e)})`] };
+  }
+  const actual: Record<string, unknown> = {};
+  const problems = Object.entries(g.expected).flatMap(([k, want]) => {
     const v = got[k];
     const have = v instanceof Prisma.Decimal ? out(v) : v;
+    actual[k] = have ?? null;
     const ok = v instanceof Prisma.Decimal ? D(String(want)).eq(v) : have === want;
     return ok ? [] : [`${g.name}: ${k} is ${String(have)}, expected ${String(want)}`];
   });
+  return { actual, problems };
 }

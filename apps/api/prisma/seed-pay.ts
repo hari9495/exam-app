@@ -50,7 +50,7 @@ export const PAY_PERMISSIONS = [
   { key: 'payroll.component.manage', description: 'Manage the pay component library and its wage flags' },
   { key: 'payroll.template.manage', description: 'Build salary templates and their versions' },
   { key: 'payroll.import.run', description: 'Import opening balances, as-paid lines and previous-employer income for the legal entities in scope' },
-  { key: 'platform.statutory.manage', description: 'Draft and publish statutory rule sets (YukthiX staff; the publisher is never the drafter)' },
+  { key: 'platform.statutory.manage', description: 'Rules editor: draft, review and publish statutory rule sets (YukthiX staff; the publisher is never the drafter)' },
   // Batch 5c (also in the payroll_5c migration).
   { key: 'payroll.run.view', description: 'See payroll runs, payslips and their workings for the legal entities in scope' },
   { key: 'payroll.run.prepare', description: 'Create, calculate, review, submit and void payroll runs for the legal entities in scope' },

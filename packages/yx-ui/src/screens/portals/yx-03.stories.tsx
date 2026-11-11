@@ -16,6 +16,7 @@ import {
 } from './console-ops';
 import { CommissionsScreen, DirectoryModerationScreen, EInvoiceLogScreen, ExportBillingScreen, PartnerVerificationScreen, RegionCatalogueScreen } from './console-finance';
 import * as D from './console-data';
+import * as L from './console-rules-samples';
 import { TODAY } from './t9-data';
 import type { ActivityEntry } from '../../components/timeline';
 
@@ -34,3 +35,11 @@ export const YX03Impact: S = { name: 'Publish · tenant impact', render: () => <
 export const YX03PastDated: S = { name: 'Publish · past-dated (arrears proposals)', render: () => <PublishSchedulerScreen current="date" pastDated /> };
 export const YX03Review: S = { name: 'Publish · review', render: () => <PublishSchedulerScreen current="review" /> };
 export const YX03Done: S = { name: 'Published and scheduled', render: () => <PublishSchedulerScreen done /> };
+
+// Console C-1 (answers 1041, 1044): the live states, drawn in the same screen. The impact is numbers only.
+const live = (over: Partial<PublishLive> = {}): PublishLive => ({ state: 'ready', choices: [L.LIVE_ROWS[0]!], chosen: 'r1', onChoose: () => {}, detail: L.LIVE_DETAIL, impact: L.LIVE_IMPACT, onPublish: async () => {}, published: null, ...over });
+type PublishLive = NonNullable<Parameters<typeof PublishSchedulerScreen>[0]['live']>;
+export const YX03LiveImpact: S = { name: 'C-1 · Impact · companies and employees (numbers only)', render: () => <PublishSchedulerScreen current="impact" live={live()} /> };
+export const YX03LiveNotCountable: S = { name: 'C-1 · Impact · a jurisdiction that cannot be counted', render: () => <PublishSchedulerScreen current="impact" live={live({ impact: { countable: false, companies: null, employees: null, bySize: [], pastDated: false, validFrom: '2027-04-01' } })} /> };
+export const YX03LiveNothing: S = { name: 'C-1 · Version · nothing to publish', render: () => <PublishSchedulerScreen live={live({ choices: [], chosen: null, detail: null, impact: null })} /> };
+export const YX03LiveDone: S = { name: 'C-1 · Published', render: () => <PublishSchedulerScreen live={live({ published: L.LIVE_ROWS[0]! })} /> };
