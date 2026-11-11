@@ -28,6 +28,7 @@ import {
 import { PLATFORM, PlatformService } from './platform.service';
 import { PlatformStaffGuard } from './platform-staff.guard';
 import { SupportSessionsService } from './support-sessions.service';
+import { CustomerSuccessService } from './customer-success.service';
 
 // The YukthiX platform console API (P14 §7, YX-CONSOLE-01/02). Staff only, on their own platform session with their
 // security key (PlatformStaffGuard), and every route names its platform.* key (PermissionsGuard). Company data is
@@ -200,7 +201,17 @@ export class PlatformController {
 @Controller('support-access')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SupportAccessController {
-  constructor(private readonly support: SupportSessionsService) {}
+  constructor(
+    private readonly support: SupportSessionsService,
+    private readonly cs: CustomerSuccessService,
+  ) {}
+
+  // Answer 1048: the messages YukthiX staff sent to this company's System Admins (its own copies only).
+  @Get('messages')
+  @RequirePermissions('org.support_access.approve')
+  messages(@CurrentTenant() ctx: TenantContext) {
+    return this.cs.forCompany(ctx);
+  }
 
   @Get()
   @RequirePermissions('org.support_access.approve')

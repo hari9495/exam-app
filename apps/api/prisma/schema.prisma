@@ -3438,6 +3438,50 @@ model WhatsNewRead {
   @@map("whats_new_reads")
 }
 
+/// Console C-2 (answer 1047): platform-wide settings, e.g. the churn alert thresholds (YukthiX staff only; RLS).
+model PlatformSetting {
+  key       String   @id @db.VarChar(64)
+  value     String   @db.VarChar(200)
+  updatedBy String?  @map("updated_by") @db.Uuid
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("platform_settings")
+}
+
+/// Console C-2 (answer 1048): a message from YukthiX staff to the System Admins of one or more companies (staff only; RLS).
+model YukthixMessage {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subject      String    @db.VarChar(120)
+  body         String    @db.VarChar(4000)
+  companyIds   String[]  @map("company_ids") @db.Uuid
+  /// pending_approval, sent, rejected
+  status       String    @db.VarChar(20)
+  writtenBy    String    @map("written_by") @db.Uuid
+  decidedBy    String?   @map("decided_by") @db.Uuid
+  decidedAt    DateTime? @map("decided_at") @db.Timestamptz(3)
+  decisionNote String?   @map("decision_note") @db.VarChar(500)
+  sentAt       DateTime? @map("sent_at") @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  version      Int       @default(1)
+
+  @@index([createdAt(sort: Desc)], map: "yukthix_messages_created_idx")
+  @@map("yukthix_messages")
+}
+
+/// Console C-2 (answer 1048): a company's own copy of a message YukthiX sent to its System Admins (forced RLS).
+model CompanyMessage {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  messageId      String   @map("message_id") @db.Uuid
+  subject        String   @db.VarChar(120)
+  body           String   @db.VarChar(4000)
+  sentAt         DateTime @default(now()) @map("sent_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, messageId], map: "company_messages_org_message_key")
+  @@index([organizationId, sentAt(sort: Desc)], map: "company_messages_org_sent_idx")
+  @@map("company_messages")
+}
+
 model Product {
   code      String   @id @db.VarChar(32)
   name      String   @db.VarChar(100)

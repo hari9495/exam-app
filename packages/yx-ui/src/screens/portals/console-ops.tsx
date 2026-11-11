@@ -1,4 +1,4 @@
-// YukthiX console: tenants and customer success (YX-04, incl. tenant detail, support access with tenant consent, feature flags),
+// YukthiX console: customer success (YX-04: tenant health, churn alerts, admin messages; feature flags),
 // product analytics (YX-09), incidents / status / probes (YX-10), help-centre editor (YX-11), nudge editor (YX-12),
 // sales assist (YX-13), cost per tenant (YX-17) and contain tenant (YX-18).
 import { useState } from 'react';
@@ -25,6 +25,7 @@ import { BlockNote, Fact, FactRow, OtpInput, StatusBadge } from './portals-kit';
 import { FilteredTable, opts } from './list-kit';
 import { Console } from './console-kit';
 import type { TenantRow } from './console-data';
+import { LiveCustomerSuccessScreen, type LiveCustomerSuccess } from './console-cs-live';
 
 const STATE_TONE: Record<TenantRow['state'], BadgeTone> = { trial: 'info', active: 'success', 'past due': 'warning', restricted: 'danger', suspended: 'danger', cancelled: 'neutral' };
 const CHURN_TONE = { low: 'success', medium: 'warning', high: 'danger' } as const;
@@ -45,6 +46,7 @@ export function CustomerSuccessScreen({
   composerOpen,
   state = 'ready',
   me,
+  live,
 }: {
   tenants: TenantRow[];
   alerts: Alert[];
@@ -52,8 +54,11 @@ export function CustomerSuccessScreen({
   composerOpen?: boolean;
   state?: 'ready' | 'loading' | 'error';
   me: string;
+  /** The live console (C-2, answers 1047 and 1048): /staff/customers. */
+  live?: LiveCustomerSuccess;
 }) {
   const [composer, setComposer] = useState(!!composerOpen);
+  if (live) return <LiveCustomerSuccessScreen live={live} />;
   return (
     <Console page="Customer success">
       <PageHeader
@@ -189,145 +194,8 @@ function MessageComposer({ open, onOpenChange, me }: { open: boolean; onOpenChan
   );
 }
 
-/** Tenants list and one tenant: lifecycle, billing adjustment with a reason, support access that the tenant admin approves. */
-export function TenantDetailScreen({ tenant, support = 'none', now }: { tenant: TenantRow; support?: 'none' | 'requested' | 'approved' | 'declined' | 'request-form'; now: Date }) {
-  const [hours, setHours] = useState<number | null>(24);
-  const [open, setOpen] = useState(support === 'request-form');
-  const err = supportWindowError(hours ?? 0);
-  return (
-    <Console page="Tenants">
-      <ObjectHeader
-        name={tenant.name}
-        icon={Building2}
-        secondary={`${tenant.products} · region ${tenant.region} · since ${formatDate(tenant.signedUp)}`}
-        status={<Badge tone={STATE_TONE[tenant.state]}>{cap(tenant.state)}</Badge>}
-        facts={[
-          { label: 'Billed employees', value: tenant.employees.toLocaleString('en-IN') },
-          { label: 'Monthly revenue', value: formatINR(tenant.mrr) },
-          { label: 'Health', value: `${tenant.health} · ${HEALTH_LABEL[healthBand(tenant.health)]}` },
-          { label: 'CS owner', value: tenant.owner },
-        ]}
-        actions={
-          <>
-            <Button>Extend trial</Button>
-            <Button variant="primary" onClick={() => setOpen(true)}>
-              Request support access
-            </Button>
-          </>
-        }
-        menu={
-          <>
-            <MenuItem>Issue credit note</MenuItem>
-            <MenuItem>Pause dunning</MenuItem>
-            <MenuItem destructive>Suspend tenant</MenuItem>
-          </>
-        }
-      />
-      {support === 'approved' && (
-        <PageBanner tone="warning" action={<Button size="sm">End session</Button>}>
-          Support session active: approved by Lakshmi Venkatesan (System Admin) until 30 Sep 2026, 9:42 am. Confidential and Special data is masked; POSH and cases are excluded.
-        </PageBanner>
-      )}
-      {support === 'requested' && (
-        <InlineAlert tone="info" title="Waiting for the tenant to approve">
-          Sent to 2 System Admins at 9:31 am. Nothing is visible until one of them approves.
-        </InlineAlert>
-      )}
-      {support === 'declined' && (
-        <InlineAlert tone="warning" title="The tenant declined support access">
-          Lakshmi Venkatesan declined at 9:38 am: "Please walk us through it on a call instead." Book a guided session.
-        </InlineAlert>
-      )}
-      <div className="yx-split">
-        <div className="yx-split__main">
-          <Card title="Lifecycle">
-            <DescriptionList
-              columns={2}
-              items={[
-                { label: 'State', value: cap(tenant.state) },
-                { label: 'Dunning', value: tenant.state === 'past due' ? 'Reminder sent day +7; read-only from day +15, suspended from day +30' : 'Not in dunning' },
-                { label: 'Plan changes', value: 'Adds prorated now; removals at period end' },
-                { label: 'Renewal notices', value: '30 and 7 days before' },
-              ]}
-            />
-          </Card>
-          <Card title="Staff actions on this tenant">
-            <p className="yx-ps-muted">Every action needs a reason, is audited with your name and is visible to the tenant's admins.</p>
-            <ul className="yx-ps-list">
-              <li>28 Sep 2026 · Joseph Thomas extended trial by 14 days · "Set-up call booked"</li>
-              <li>12 Aug 2026 · Kavitha Rao issued credit note CN-0228 for ₹4,800 · "Duplicate SMS charges"</li>
-            </ul>
-          </Card>
-        </div>
-        <div className="yx-split__aside">
-          <Card title="Support access">
-            <p className="yx-ps-muted">A tenant admin approves every session. Default 24 hours, never more than 72. Restricted areas are always excluded.</p>
-          </Card>
-        </div>
-      </div>
-      <Drawer
-        open={open}
-        onOpenChange={setOpen}
-        title="Request support access"
-        subtitle={tenant.name}
-        footer={
-          <>
-            <Button onClick={() => setOpen(false)}>Cancel</Button>
-            <Button variant="primary" disabled={!!err}>
-              Send request to tenant
-            </Button>
-          </>
-        }
-      >
-        <div className="yx-ps-stack">
-          <FormField label="Reason" required helper="The tenant admin sees this.">
-            <TextArea rows={3} defaultValue="Ticket TKT-8841: September payroll run stuck at readiness; need to check the PF mapping." />
-          </FormField>
-          <FormField label="How long (hours)" required error={err}>
-            <NumberField value={hours} onChange={setHours} min={1} max={72} />
-          </FormField>
-          <FormField label="Areas">
-            <MultiSelect value={['payroll']} onChange={() => undefined} options={[{ value: 'payroll', label: 'Payroll set-up' }, { value: 'time', label: 'Time and leave set-up' }, { value: 'people', label: 'People (masked)' }]} />
-          </FormField>
-          <InlineAlert tone="info" title="Always excluded">
-            POSH, disciplinary, grievance, whistleblower and medical records. Confidential and Special fields stay masked.
-          </InlineAlert>
-          <p className="yx-ps-muted">Requested at {timeOf(now)}. The session ends on its own.</p>
-        </div>
-      </Drawer>
-    </Console>
-  );
-}
-
-/** Tenants list (T2): search, lifecycle and region filters, saved views. */
-export function TenantsListScreen({ tenants, state = 'ready' }: { tenants: TenantRow[]; state?: 'ready' | 'loading' | 'error' }) {
-  return (
-    <Console page="Tenants">
-      <PageHeader title="Tenants" description="Search across every tenant. Opening a tenant never shows HR data; use a support session for that." />
-      <FilteredTable
-        label="Tenants"
-        rows={tenants}
-        state={state}
-        getRowId={(r) => r.id}
-        searchText={(r) => r.name}
-        fields={[
-          { key: 'state', label: 'Lifecycle', type: 'multi', options: opts(['trial', 'active', 'past due', 'restricted', 'suspended', 'cancelled']) },
-          { key: 'region', label: 'Region', type: 'multi', options: opts(['IN', 'ME-AE', 'SG']) },
-        ]}
-        columns={[
-          { key: 'name', header: 'Tenant', value: (r) => r.name, width: 230 },
-          { key: 'products', header: 'Products', value: (r) => r.products, width: 140 },
-          { key: 'employees', header: 'Billed units', type: 'number', value: (r) => r.employees, width: 120, total: 'sum' },
-          { key: 'mrr', header: 'Monthly revenue', type: 'money', value: (r) => r.mrr, width: 150, total: 'sum' },
-          { key: 'region', header: 'Region', value: (r) => r.region, width: 90 },
-          { key: 'state', header: 'Lifecycle', type: 'status', value: (r) => cap(r.state), statusTone: (v) => STATE_TONE[String(v).toLowerCase() as TenantRow['state']], width: 110 },
-          { key: 'signedUp', header: 'Signed up', type: 'date', value: (r) => r.signedUp, width: 120 },
-        ]}
-        empty={<EmptyState title="No tenants yet." />}
-      />
-    </Console>
-  );
-}
+// Answer 1045: the drawn Tenants list and Tenant detail are retired; the live Companies pages (screens/console
+// CompaniesScreen, CompanyScreen) are the one version, and the YX-04 stories draw them.
 
 /** Feature flags: per-wave flags, tenant beta groups and kill switches (P13 #7). */
 export function FeatureFlagsScreen({ flags, killOpen }: { flags: { key: string; desc: string; scope: string; state: 'on' | 'off' | 'beta'; killSwitch: boolean }[]; killOpen?: boolean }) {

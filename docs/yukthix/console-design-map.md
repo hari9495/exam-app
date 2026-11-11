@@ -73,15 +73,18 @@ built** · **phone view, mobile app not built**.
 
 ## Counts (sub-pages = stories)
 
+After C-2 (12 Nov 2026): the YX-04 Tenants rows are live (answer 1045), tenant health, alerts and the composer are live,
+and five new stories were added (four YX-04, one company-side Support access).
+
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Live console | 2 | 19 | 0 | 0 | 0 | 0 | 19 |
+| A. Live console | 2 | 20 | 0 | 0 | 0 | 0 | 20 |
 | B. Rules engine (YX-01 to YX-03) | 3 | 0 | 0 | 12 | 3 | 0 | 15 |
-| C. Customers and containment (YX-04, YX-18) | 2 | 0 | 7 | 0 | 9 | 0 | 16 |
+| C. Customers and containment (YX-04, YX-18) | 2 | 14 | 0 | 0 | 6 | 0 | 20 |
 | D. Partners (YX-06 to YX-08) | 3 | 0 | 0 | 0 | 10 | 0 | 10 |
 | E. Money (YX-14 to YX-17) | 4 | 0 | 0 | 0 | 8 | 0 | 8 |
 | F. The rest (YX-05, YX-09 to YX-13) | 6 | 0 | 0 | 0 | 19 | 0 | 19 |
-| **All A-F** | **20** | **19** | **7** | **12** | **49** | **0** | **87** |
+| **All A-F** | **20** | **34** | **0** | **12** | **46** | **0** | **92** |
 
 Counted by script on 11 Nov 2026 on `docs/yukthix-console-map` (the script is in the appendix). There are 87 stories in
 20 files whose title starts `Screens/YukthiX console/`: `screens/console/console.stories.tsx` (14),
@@ -165,6 +168,7 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 | Support · Support sessions | live | `/staff/support`, `SupportSessionsScreen`, `GET /platform/support-sessions` |
 | Audit · Audit log | live | `/staff/audit`, `PlatformAuditScreen`, `GET /platform/audit?reads=` (`platform.audit.view`) |
 | CompanySupportAccess · Company side · Support access (PLT-17) | live | `/yx/settings/support-access`, `SupportAccessScreen`, `/support-access` (`org.support_access.approve`; approve is step-up) |
+| CompanySupportAccessMessages · Company side · Support access · messages from YukthiX (C-2) | live | `/yx/settings/support-access`, `GET /support-access/messages` (its own copies only, forced RLS); the bell links here |
 | CompanySupportAccessEmpty · Company side · Support access · none yet | live | same page with no sessions |
 
 #### Support desk (SD-1.31)
@@ -215,16 +219,20 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| YX04Tenants · Tenants list | live (gap) | **drawn twice**: the live `/staff/companies` renders `CompaniesScreen`, not `TenantsListScreen` |
-| YX04TenantsError · Tenants list · error | live (gap) | `CompaniesScreen` error state (`ConsolePage` `ErrorState`) |
-| YX04Health · Tenant health | design only, feature not built | no list of companies by health. A simple per-ticket score exists (`support-bridge.service.ts` `tenantPanel`) |
-| YX04Alerts · Churn-risk alerts | design only, feature not built | no alerts |
-| YX04Composer · Admin message composer (second approval) | design only, feature not built | no API for staff to message a company's admins |
-| YX04Tenant · Tenant detail | live (gap) | **drawn twice**: the live `CompanyScreen` (`/staff/companies/[id]`). Gap: the drawing has billed employees, monthly revenue, credit notes, pause dunning, dunning steps, plan changes and renewal notices; the live page has lifecycle, trial, support sessions, System Admins and history |
-| YX04SupportRequest · Support access · request | live (gap) | live in `CompanyScreen` (reason, ticket number, hours). Gap: the drawing lets staff pick "Areas"; live gives a fixed set of HR pages (`SUPPORT_READABLE`) |
-| YX04SupportWaiting · Support access · waiting for tenant consent | live (gap) | `CompanyScreen` "Waiting for the company to approve" |
-| YX04SupportActive · Support access · approved session | live (gap) | `CompanyScreen` open or end session |
-| YX04SupportDeclined · Support access · declined | live (gap) | shown as a "Declined" badge in the session list (`console-kit.tsx` `SUPPORT_TONE`) |
+| YX04Tenants · Tenants list | live | answer 1045: the story draws the live `CompaniesScreen` (`/staff/companies`); the drawn `TenantsListScreen` is retired |
+| YX04TenantsError · Tenants list · error | live | `CompaniesScreen` error state (`ConsolePage` `ErrorState`) |
+| YX04Health · Tenant health | live | C-2: `/staff/customers`, `CustomerSuccessScreen live`; the one health score (`service-desk/tenant-health.ts`, also the Support desk panel), read through `platformRead` (`customer_success.health`). Not built: 30-day change, churn band, CS owner (question 1082) |
+| YX04Alerts · Churn-risk alerts | live | C-2: alerts from the platform settings (score below 50, no System Admin sign-in for 30 days); "Log outreach" and alert owners not built (question 1083) |
+| YX04Composer · Admin message composer (second approval) | live | C-2: one company sends at once; more than one waits for another staff member (never the writer; approve is step-up). Not built: kind, channel, send-on date, the 2-a-week limit, a chosen approver (questions 1084, 1085) |
+| YX04Tenant · Tenant detail | live | answer 1045: the story draws the live `CompanyScreen`; the drawn `TenantDetailScreen` is retired. Money facts come with the money slices |
+| YX04SupportRequest · Support access · request | live | `CompanyScreen` (reason, ticket number, hours); fixed set of HR pages (answer 1046) |
+| YX04SupportWaiting · Support access · waiting for tenant consent | live | `CompanyScreen` with a requested session |
+| YX04SupportActive · Support access · approved session | live | `CompanyScreen` open or end session |
+| YX04SupportDeclined · Support access · declined | live | `CompanyScreen` with a declined session |
+| YX04HealthLive · Tenant health · from account signals (C-2) | live | `/staff/customers`: score, band, main factor, lifecycle, last admin sign-in, open tickets; Message admins from ticked rows |
+| YX04AlertRules · Churn-risk alerts · rules from platform settings (C-2) | live | `GET/PUT /platform/customers/settings` (audited `platform.cs.settings_changed`) |
+| YX04MessagesWaiting · Messages · waiting for a second staff member (C-2) | live | `POST /platform/customers/messages/:id/approve` (step-up) and `/reject` (reason) |
+| YX04ComposerTwo · Message composer · two companies need approval (C-2) | live | `POST /platform/customers/messages` |
 | YX04Flags · Feature flags | design only, feature not built | no feature flags (search `feature.?flag`: none). Company settings and products per company are live but are not flags |
 | YX04KillSwitch · Feature flags · kill switch | design only, feature not built | as above |
 
@@ -530,3 +538,54 @@ C-6 to C-8.
       it its own name when the staff roles of 1058 are built.*
 
 - 1101 to 1103 (C-3) approved as suggested (12 Nov 2026, "ok for all"): at most 20 companies newest first; staff never see who saw the page; keep platform.support_desk.work as the Support agent key until the staff roles (1058).
+## C-2 built: customers (answers 1045, 1047, 1048, 1058; 12 Nov 2026, branch `feat/yukthix-console-c2`)
+
+- **1045, one version:** the YX-04 Tenants list, Tenant detail and support-access stories draw the live `CompaniesScreen`
+  and `CompanyScreen`; the drawn `TenantsListScreen` and `TenantDetailScreen` are deleted.
+- **1047, tenant health and churn alerts:** Console › Customers › Customer success (`/staff/customers`) is the designed
+  `CustomerSuccessScreen` with `live`. One health score (`apps/api/src/service-desk/tenant-health.ts`), now shared by the
+  Support desk's company panel and this list: 80, less billing or account not in good standing (30), no admin sign-in
+  for 30 days (20), more than 3 open tickets (10), ratings under 3.5 (15), negative NPS (15). Read through the audited
+  `platformRead` (purpose `customer_success.health`); account facts only. Alerts: platform settings with defaults
+  (`platform_settings`, staff-only RLS): `cs.alert.health_below` 50 (1-99) and `cs.alert.admin_idle_days` 30 (7-365),
+  changed on the Alerts tab (audited before and after).
+- **1048, messages to company admins:** subject and plain-text message to the System Admins of one or more open
+  companies. One company: sent at once. More than one: waits until another staff member approves it (never the writer:
+  service check and a database check; approving is step-up, version-checked) or sends it back with a reason. Sent: each
+  company's own copy (`company_messages`, forced RLS) on Settings › Support access › Messages from YukthiX, its System
+  Admins' bell and email (`notifySystem`: their email choice and digest), and a `yukthix.message.received` row in the
+  company's audit log; the platform log has written, sent and sent back. Re-sending is safe (a company never gets it twice).
+- **1058:** a new staff key `platform.customers.success` (never in a company role). Until staff roles exist the one staff
+  role holds it, like every console key (question 1086).
+- **Routes:** `GET platform/customers/health`, `GET|PUT platform/customers/settings`, `GET|POST platform/customers/messages`,
+  `POST platform/customers/messages/:id/approve` (step-up), `POST .../:id/reject`: JwtAuthGuard, PlatformStaffGuard
+  (staff, security key), PermissionsGuard (`platform.customers.success`). Company: `GET support-access/messages`
+  (`org.support_access.approve`).
+- **Migration** `202617z0000051_console_customers`: `platform_settings`, `yukthix_messages` (staff only; no delete),
+  `company_messages` (forced RLS; no update), the key.
+- **Tests:** API unit (guards, every route's key, step-up on approve, key never assignable, alert boundaries and settings,
+  the shared score); kit (list and alerts, composer errors, one company Send and two Send for approval, the writer cannot
+  approve, send back needs a reason, alert rules range and save, read-only without the key, retry, the company's
+  messages card, the YX-04 stories render the live Companies screens); e2e `console-customers` (refused for no sign-in,
+  a company admin, staff without the security key and the key withdrawn; the audited read; alerts follow the settings;
+  bad input; one company delivered to its copy, bell, email and audit log only; two companies wait, writer refused,
+  step-up, stale version, delivered to both and not the third; send back; RLS keeps staff tables from companies and the
+  writer can never be the approver). Manual tests MT-CON-1047 and MT-CON-1048.
+
+## Founder questions from C-2 (12 Nov 2026)
+
+1081. **HR and Payroll Admins.** The drawing sends to System, HR and Payroll Admins and billing contacts; built: System
+      Admins only (answer 1048). *Suggested: keep System Admins only for now; add the others if customers ask.*
+1082. **The drawn columns not built.** 30-day change needs a nightly score history; churn band and CS owner need staff
+      roles. *Suggested: add a nightly score snapshot with the staff roles slice, then the 30-day change and owner.*
+1083. **Alert follow-up.** The drawing has an owner, a status and Log outreach per alert; built: alerts as a live list.
+      *Suggested: build follow-up with the staff roles slice, so each alert has a Customer success owner.*
+1084. **Message kind, channel and date.** The drawing has a kind, a channel (banner, inbox, email), a send-on date and a
+      limit of 2 non-critical messages a week. Built: bell and email, sent now. *Suggested: add the 2-a-week limit as a
+      platform setting with that default, and scheduled sending, when staff send regular messages.*
+1085. **Who approves.** The drawing names the second approver; built: any other staff member with the Customer success
+      key approves. *Suggested: keep (no waiting on one named person).*
+1086. **Everyone holds every console key.** Until staff roles exist (answer 1058), every staff account has the Customer
+      success key. *Suggested: build staff roles next in the console waves.*
+1087. **Withdrawing your own message.** A writer cannot pull back a message waiting for approval; another staff member
+      sends it back. *Suggested: let the writer withdraw it, audited.*

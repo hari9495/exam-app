@@ -20309,5 +20309,48 @@
       "Screens/Settings/Organisation · Access and privacy · Special data erasure · dry run (off), whose data"
     ],
     "note": "Positive and negative. Answer 974."
+  },
+  {
+    "id": "MT-CON-1047",
+    "area": "Console C-2: customers (12 Nov 2026)",
+    "screen": "Console › Customer success › Tenant health and alerts",
+    "url": "http://localhost:3000/staff/customers",
+    "account": "A YukthiX staff account with its security key; a company System Admin for the negative.",
+    "steps": [
+      "Open Customer success.",
+      "Open Churn-risk alerts; set the score rule to 0 and save.",
+      "Set it to 81 and save; look at the list.",
+      "Set it back to 50 and 30 days.",
+      "Open Console › Audit log.",
+      "As a company System Admin, open /staff/customers."
+    ],
+    "expected": "Step 1: every open company with score, band and main factor; never employee names. Step 2: the field shows an error; nothing saved. Step 3: toast 'Alert rules saved'; healthy companies under 81 now have an alert. Step 5: the changes with before and after, and the cross-company read with its purpose. Step 6: refused.",
+    "stories": [
+      "Screens/YukthiX console/YX-04 · Customer-success console and tenants · Tenant health · from account signals (C-2)",
+      "Screens/YukthiX console/YX-04 · Customer-success console and tenants · Churn-risk alerts · rules from platform settings (C-2)"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CON-1048",
+    "area": "Console C-2: customers (12 Nov 2026)",
+    "screen": "Console › Customer success › Message admins",
+    "url": "http://localhost:3000/staff/customers",
+    "account": "Two YukthiX staff accounts with their security keys; the System Admins of two demo companies (mailpit for email).",
+    "steps": [
+      "Press Message admins and Send with nothing filled.",
+      "Write to one company and send.",
+      "As that company's System Admin, open the bell and Settings › Support access.",
+      "Write to two companies.",
+      "As the writer, look for Approve.",
+      "As the second staff member, Send back with no reason, then approve (security key asked).",
+      "As a third company's System Admin, open Settings › Support access."
+    ],
+    "expected": "Step 1: field errors; nothing sent. Step 2: toast 'Message sent'. Step 3: the bell item and the full message under Messages from YukthiX; the email in mailpit if their email choice allows. Step 4: toast 'Sent for approval'. Step 5: no Approve; 'Another staff member approves it'. Step 6: 'Say why you are sending it back.'; after the key, 'Message sent' and both companies have it. Step 7: no messages.",
+    "stories": [
+      "Screens/YukthiX console/YX-04 · Customer-success console and tenants · Message composer · two companies need approval (C-2)",
+      "Screens/YukthiX console/Platform console (step 3) · Company side · Support access · messages from YukthiX (C-2)"
+    ],
+    "note": "Positive and negative."
   }
 ]

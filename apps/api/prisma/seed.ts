@@ -77,6 +77,8 @@ export const PERMISSIONS = [
   { key: 'platform.support.request', description: 'Ask a company for a support session and use it (YukthiX staff)' },
   { key: 'platform.audit.view', description: 'See the platform audit log (YukthiX staff)' },
   { key: 'platform.support_desk.work', description: 'Work the YukthiX Support desk in the console (YukthiX staff)' },
+  // Console C-2 (answer 1058): customer success (also in the console_customers migration).
+  { key: 'platform.customers.success', description: 'Customer success: tenant health, churn alerts and messages to company System Admins (YukthiX staff)' },
   // Help H-4 (answer 943): What's new entries (also in the help_whats_new migration).
   { key: 'platform.news.manage', description: "Write the What's new entries people see in Help (YukthiX staff)" },
   { key: 'org.yukthix_support.raise', description: 'Contact YukthiX support for the company and follow its tickets' },
@@ -118,6 +120,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'platform.statutory.manage',
     // M14 SD-1.31: the YukthiX Support desk in the console.
     'platform.support_desk.work',
+    // Console C-2: customer success.
+    'platform.customers.success',
     // Help H-4: What's new entries.
     'platform.news.manage',
   ],

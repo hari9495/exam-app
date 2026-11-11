@@ -6,6 +6,9 @@ export { CompaniesScreen, companyInput, slugFrom, type CompaniesScreenProps } fr
 export { CompanyScreen, supportInput, type CompanyScreenProps } from './company';
 export { CompanySettingsScreen, type CompanySettingsScreenProps } from './company-settings';
 export { PlansScreen, priceInput, type PlansScreenProps } from './plans';
+// C-2 (answers 1047, 1048): the designed YX-04 Customer success screen, live.
+export { CustomerSuccessScreen } from '../portals/console-ops';
+export type { LiveCustomerSuccess, CsHealthRow, CsMessageRow, CsSettingRow } from '../portals/console-cs-live';
 export { WhatsNewConsoleScreen, newsInput, NEWS_AUDIENCES, type WhatsNewConsoleScreenProps, type NewsEntryRow, type NewsInput } from './whats-new';
 export { SupportSessionsScreen, type SupportSessionsScreenProps } from './support';
 export { PlatformAuditScreen, type PlatformAuditScreenProps } from './audit';
