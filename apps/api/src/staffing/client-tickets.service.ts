@@ -5,6 +5,7 @@ import { settingFor } from '../people/probation';
 import { TicketsService } from '../service-desk/tickets.service';
 import { RequesterService } from '../service-desk/requester.service';
 import { deskRobot } from '../service-desk/catalog.service';
+import { DeskAccessService, canWork } from '../service-desk/desk-access';
 import { textToHtml } from '../service-desk/rich-text';
 import { ClientPortalService } from './client-portal.service';
 import type { PortalTicketDto, PortalTicketReplyDto } from './staffing-dto';
@@ -22,7 +23,7 @@ export function contactStatus(systemState: string): 'Waiting for you' | 'Resolve
  * Answer 491: a client contact raises and follows tickets in the staffing client portal. The tickets are the Helpdesk's
  * own (TicketsService.createIn, RequesterService.replyIn): never a second ticket model. staffing_client_tickets says which
  * client and contact a ticket belongs to: every contact of the client sees the client's tickets; another client's is
- * not found. Routing (Settings 6.2): the client's account manager (default: assigned to them on their help desk) or a
+ * not found. Routing (Settings 6.2): the client's account manager (default: assigned to them on a help desk where they can work tickets, else that desk's queue) or a
  * chosen Helpdesk team (its queue). Desk work runs as the desk system after the portal session is checked.
  */
 @Injectable()
@@ -31,6 +32,7 @@ export class ClientTicketsService {
     private readonly portal: ClientPortalService,
     private readonly tickets: TicketsService,
     private readonly requesters: RequesterService,
+    private readonly access: DeskAccessService,
   ) {}
 
   private desk(tx: Tx) {
@@ -56,8 +58,12 @@ export class ClientTicketsService {
     const today = new Date(`${todayIst()}T00:00:00Z`);
     if (managerUserId) {
       const seats = await tx.sdDeskMember.findMany({ where: { organizationId: org, userId: managerUserId, role: { in: ['agent', 'lead'] }, endedAt: null, validFrom: { lte: today }, OR: [{ validTo: null }, { validTo: { gte: today } }] }, orderBy: { createdAt: 'asc' }, select: { deskId: true } });
-      const desk = seats.length ? await tx.sdDesk.findFirst({ where: { organizationId: org, status: 'active', id: { in: seats.map((s) => s.deskId) } }, orderBy: { createdAt: 'asc' }, select: { id: true } }) : null;
+      const desks = seats.length ? await tx.sdDesk.findMany({ where: { organizationId: org, status: 'active', id: { in: seats.map((s) => s.deskId) } }, orderBy: { createdAt: 'asc' }, select: { id: true } }) : [];
+      // Answer 921: only a desk where the account manager can work tickets (seat and the Helpdesk work right); else the queue.
+      const actor = desks.length ? await this.access.actorFor(org, managerUserId) : null;
+      const desk = actor && desks.find((d) => canWork(actor, d.id));
       if (desk) return { deskId: desk.id, assignee: managerUserId, why: "Client portal: the client's account manager" };
+      if (desks.length) return { deskId: desks[0]!.id, why: 'Client portal: the account manager cannot work tickets on their help desk (its queue)' };
     }
     const fallback = (await tx.sdDesk.findFirst({ where: { organizationId: org, status: 'active', kind: 'customer_support' }, orderBy: { createdAt: 'asc' }, select: { id: true } })) ?? (await tx.sdDesk.findFirst({ where: { organizationId: org, status: 'active' }, orderBy: { createdAt: 'asc' }, select: { id: true } }));
     if (!fallback) throw new ConflictException('Tickets are not set up yet. Write to your account manager.');

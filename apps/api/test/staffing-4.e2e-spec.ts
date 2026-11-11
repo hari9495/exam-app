@@ -8,6 +8,8 @@ import type Redis from 'ioredis';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
+import { MailOutService } from '../src/service-desk/mail-out.service';
+import { TicketsService } from '../src/service-desk/tickets.service';
 import { LOGIN_PROTECTION_REDIS } from '../src/auth/login-protection.service';
 import { gstinCheckChar } from '../src/expenses/checks';
 import { financialYear } from '../src/staffing/staffing-rules';
@@ -245,8 +247,12 @@ describe('Staffing desk round 4', () => {
     const sd = <T>(fn: (tx: Tx) => Promise<T>) => tenantPrisma.forTenant(SUPER, fn);
     const first = (await raise({}).expect(want(200))).body;
     expect(await sd((tx) => tx.sdTicket.findUniqueOrThrow({ where: { id: first.id } }))).toMatchObject({ deskId: desk.id, assigneeUserId: null, channel: 'portal', tags: ['client-portal'] });
-    // The account manager on the desk: the next ticket is theirs.
+    // Answer 921: the account manager has a seat but not the Helpdesk work right: the ticket waits on that desk's queue.
     await api('admin', 'post', `/desk/desks/${desk.id}/members`).send({ userId: users.am, role: 'agent' }).expect(want(201));
+    const queued = (await raise({ category: 'Timesheets', subject: 'Week 44 timesheet missing' }).expect(want(200))).body;
+    expect(await sd((tx) => tx.sdTicket.findUniqueOrThrow({ where: { id: queued.id } }))).toMatchObject({ deskId: desk.id, assigneeUserId: null });
+    // With the work right too, the next ticket is theirs.
+    await sd((tx) => tx.permissionProfile.updateMany({ where: { organizationId: org.A.id, name: `am-${run}` }, data: { permissionsJson: JSON.stringify(['ats.staffing.manage', 'ats.staffing.view', 'desk.ticket.work']) } }));
     const second = (await raise({ category: 'Billing', subject: 'Invoice KS/1 has the wrong PO' }).expect(want(200))).body;
     expect((await sd((tx) => tx.sdTicket.findUniqueOrThrow({ where: { id: second.id } }))).assigneeUserId).toBe(users.am);
     // A team chosen in Settings 6.2 (an unknown one refused): the next ticket goes to its queue.
@@ -258,7 +264,7 @@ describe('Staffing desk round 4', () => {
     expect((await sd((tx) => tx.sdTicket.findUniqueOrThrow({ where: { id: third.id } }))).groupId).toBe(full.groups[0].id);
     // The client's tickets, newest first; another client's contact sees none and gets 404 on them.
     const list = (await portal('get', '/tickets', t).expect(200)).body;
-    expect(list.map((x: { id: string }) => x.id)).toEqual([third.id, second.id, first.id]);
+    expect(list.map((x: { id: string }) => x.id)).toEqual([third.id, second.id, queued.id, first.id]);
     expect(list[1]).toMatchObject({ subject: 'Invoice KS/1 has the wrong PO', category: 'Billing', status: 'Open', number: second.number });
     const tOther = await signIn(`uma-${run}@coromandel.test`);
     expect((await portal('get', '/tickets', tOther).expect(200)).body).toEqual([]);
@@ -269,6 +275,26 @@ describe('Staffing desk round 4', () => {
     const msg = (kind: 'reply' | 'note', bodyHtml: string) => sd((tx) => tx.sdTicketMessage.create({ data: { organizationId: org.A.id, deskId: desk.id, ticketId: first.id, kind, side: 'agent', authorUserId: users.am, bodyHtml, bodyText: bodyHtml.replace(/<[^>]+>/g, ''), channel: 'agent' } }));
     await msg('reply', '<p>We will send a replacement on Monday.</p>');
     await msg('note', '<p>Internal: check the bench first.</p>');
+    // Answer 923: the reply email to the contact links to the client portal's Tickets tab (sign in, then this ticket);
+    // a ticket raised any other way on the same desk keeps the plain Helpdesk link.
+    await sd((tx) => tx.sdMailbox.create({ data: { organizationId: org.A.id, deskId: desk.id, address: `support-${run}@staff4.test`, kind: 'hosted' } }));
+    const mailOut = app.get(MailOutService);
+    const mailFor = async (ticketId: string) => {
+      send.mockClear();
+      expect(await mailOut.sendForTicket({ organizationId: org.A.id, isSuperAdmin: false }, ticketId, 'reply', { html: '<p>We will send a replacement on Monday.</p>' })).toBe(true);
+      return send.mock.calls[0]![0];
+    };
+    const portalMail = await mailFor(first.id);
+    expect(portalMail.to).toBe(`meera-${run}@nilgiri.test`);
+    expect(portalMail.html).toContain(`/yx/client/${org.A.slug}?tab=tickets&amp;ticket=${first.id}`);
+    expect(portalMail.html).not.toContain('/yx/desk/help/');
+    const plain = await sd(async (tx) => {
+      const person = await tx.person.create({ data: { organizationId: org.A.id, givenName: 'Walk', familyName: 'In', primaryEmail: `walkin-${run}@outside.test` } });
+      return app.get(TicketsService).createIn(tx, { ctx: { organizationId: org.A.id, isSuperAdmin: false }, userId: null }, { deskId: desk.id, subject: 'Not from the client portal', bodyHtml: '<p>Hello</p>', requesterPersonId: person.id, openedByUserId: null, channel: 'portal', side: 'requester', authorPersonId: person.id, tags: [] });
+    });
+    const plainMail = await mailFor(plain.id);
+    expect(plainMail.to).toBe(`walkin-${run}@outside.test`);
+    expect(plainMail.html).not.toContain('/yx/client/');
     await portal('post', `/tickets/${first.id}/reply`, t).send({ text: '' }).expect(400);
     await portal('post', `/tickets/${first.id}/reply`, t).send({ text: 'Thank you, Monday works.' }).expect(want(200));
     const one = (await portal('get', `/tickets/${first.id}`, t).expect(200)).body;
@@ -277,7 +303,7 @@ describe('Staffing desk round 4', () => {
     expect(bodies).toContain('Monday works');
     expect(bodies).not.toContain('Internal');
     expect(one).toMatchObject({ id: first.id, category: 'Replacement', raisedBy: 'Meera Pillai' });
-    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'staffing.portal.ticket_raised', entityId: ids.tn } }))).toBe(3);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'staffing.portal.ticket_raised', entityId: ids.tn } }))).toBe(4);
   });
 
   it('493: payment reminders once per step to billing contacts, the latest step only; paused by a dispute; off sends none', async () => {

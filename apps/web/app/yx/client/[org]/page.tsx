@@ -100,6 +100,8 @@ export default function YxClientPortalPage() {
             .catch((e: { status?: number }) => e.status === 401 && setEnded(true)),
         tickets: {
           rows: tickets,
+          // Answer 923: the reply email links here (sign in, then this ticket).
+          openId: params.get('ticket') ?? undefined,
           onRaise: async (input) => {
             const made = await call<{ id: string; number: string }>('/tickets', token, { method: 'POST', body: JSON.stringify(input) });
             setTickets(await call<TicketRows>('/tickets', token));

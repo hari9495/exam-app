@@ -20008,11 +20008,13 @@
       "Create a customer support desk. Raise a ticket with no category, then with a 2-letter subject.",
       "Raise a ticket properly.",
       "Give the client's account manager a seat on the desk; raise another.",
+      "Give the account manager a help-desk seat but no Helpdesk work right; raise one. Then give the right; raise another.",
       "Settings 6.2: set 'Client portal tickets go to' to a Helpdesk team; raise another.",
       "In Helpdesk, reply to the first ticket and add an internal note. In the portal, open the ticket, send an empty reply, then a real one.",
-      "Sign in as a contact of another client and open Tickets; try the first ticket's address."
+      "Sign in as a contact of another client and open Tickets; try the first ticket's address.",
+      "Open the reply email in mailpit and follow its link."
     ],
-    "expected": "Step 1: 'Tickets are not set up yet. Write to your account manager.' Step 2: 'Choose a category.' / 'Add a short subject.' and nothing raised. Step 3: toast 'Ticket <number> raised'; it is a Helpdesk ticket (channel portal, tag client-portal) on the desk queue. Step 4: assigned to the account manager. Step 5: in the team's queue. Step 6: the reply shows (agent by first name), the note never; 'Write your reply first.'; then toast 'Reply sent' and the reply is on the Helpdesk ticket. Step 7: no tickets; the address answers not found.",
+    "expected": "Step 1: 'Tickets are not set up yet. Write to your account manager.' Step 2: 'Choose a category.' / 'Add a short subject.' and nothing raised. Step 3: toast 'Ticket <number> raised'; it is a Helpdesk ticket (channel portal, tag client-portal) on the desk queue. Step 4: assigned to the account manager. Step 5: without the work right the ticket waits on their desk's queue; with it, assigned to them (921). Step 6: in the team's queue. Step 7: the reply shows (agent by first name), the note never; 'Write your reply first.'; then toast 'Reply sent' and the reply is on the Helpdesk ticket. Step 8: no tickets; the address answers not found. Step 9: the link opens the client portal sign-in; after signing in, the Tickets tab shows that ticket (923).",
     "stories": [
       "Screens/Portals/T9-06 · Client portal · Tickets",
       "Screens/Portals/T9-06 · Client portal · Tickets · raise a ticket",
