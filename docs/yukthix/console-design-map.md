@@ -589,3 +589,5 @@ C-6 to C-8.
       success key. *Suggested: build staff roles next in the console waves.*
 1087. **Withdrawing your own message.** A writer cannot pull back a message waiting for approval; another staff member
       sends it back. *Suggested: let the writer withdraw it, audited.*
+
+- 1081 to 1087 (C-2) approved as suggested (12 Nov 2026, "ok for all"): System Admins only; 30-day change, churn band and CS owner with staff roles; alert follow-up with staff roles; weekly limit and scheduling later as a platform setting; any other staff member with the key approves; staff roles slice next after C-5; the writer may withdraw a pending message, audited (to build).
