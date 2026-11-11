@@ -528,3 +528,5 @@ C-6 to C-8.
       the company's own Helpdesk look-up (inside a support session staff see it there).*
 1103. **A Support agent key of its own.** *Suggested: keep `platform.support_desk.work` as the Support agent key; give
       it its own name when the staff roles of 1058 are built.*
+
+- 1101 to 1103 (C-3) approved as suggested (12 Nov 2026, "ok for all"): at most 20 companies newest first; staff never see who saw the page; keep platform.support_desk.work as the Support agent key until the staff roles (1058).
