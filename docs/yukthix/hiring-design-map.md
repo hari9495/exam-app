@@ -53,13 +53,14 @@ built**.
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Plans, requisitions, jobs and costs | 4 | 37 | 1 | 0 | 0 | 0 | 38 |
-| B. Candidates, pipeline and interviews | 8 | 60 | 1 | 0 | 8 | 1 | 70 |
-| C. Offers, BGV and joining | 4 | 24 | 4 | 0 | 1 | 0 | 29 |
+| B. Candidates, pipeline and interviews | 8 | 64 | 0 | 0 | 8 | 1 | 73 |
+| C. Offers, BGV and joining | 4 | 28 | 4 | 0 | 1 | 0 | 33 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 30 | 0 | 0 | 0 | 4 | 34 |
 | E. Staffing agency | 8 | 57 | 12 | 0 | 0 | 0 | 69 |
 | F. Compliance and fairness | 5 | 21 | 4 | 0 | 6 | 0 | 31 |
 | G. Careers site, portals and settings | 4 | 67 | 5 | 2 | 9 | 0 | 83 |
-| **All Hiring design groups (A–G)** | **37** | **296** | **27** | **2** | **24** | **5** | **354** |
+| **All Hiring design groups (A–G)** | **37** | **304** | **26** | **2** | **24** | **5** | **361** |
+Recounted by script 11 Nov 2026 on `feat/yukthix-later-offers` after 377, 401, 405, 421, 422 (seven new drawn stories; HIR-27 Sent no longer a gap).
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 11 | 0 | 0 | 4 | 0 | 15 |
 Recounted by script 10 Nov 2026 on `feat/yukthix-walk-2` (answer 691): T9-09 PortalWhatsapp drawn and live: A–G 295 live, 27 gap, 2 wire, 24 not built, 5 phone, of 353.
 Recounted by script 10 Nov 2026 on `feat/yukthix-hiring-whatsapp-optin` (answer 561): 2 new stories drawn and live (Surfaces/Careers ApplyFormWhatsapp, T9-09 StatusWhatsapp): A–G 294 live, 27 gap, 2 wire, 24 not built, 5 phone, of 352 (rows B, E and G had fallen behind and are recounted from the script).
@@ -449,8 +450,11 @@ retry reuses the interview already made; a second send while one runs is 409.
 | Assigned · Auto-assigned · ready to send | live | Auto-assign places the job's candidates of the chosen stage (oldest in the stage first; erased, rejected and archived left out) by the company rule; rows already sent keep their place |
 | OverCapacity · Over capacity · some unassigned | live | candidates who do not fit are listed (they get nothing) |
 | NotAssigned · Empty · not assigned yet | live | a new day; Auto-assign |
-| Sent · Invites sent | live (gap) | the WhatsApp reminder switch is hidden: no interview reminders exist (question 421) |
+| Sent · Invites sent | live | the WhatsApp reminder switch is live (answer 421): see RemindersNotConnected and RemindersSent |
 | SentSomeFailed · Invites sent · some not sent | live | new story (drawn): each row's badge (Invite sent / Not sent) and an alert listing each reason; Send again retries only those |
+| Swap · Swap two unsent candidates (422) | live | drawn 11 Nov 2026 (answer 422): "Swap with…" on each unsent candidate (keyboard: a dialog asks who) or drag one cell onto another; `POST hiring/interview-days/:id/swap` swaps their panel and slot, audited (`ats.interview_day.swapped`); a sent row 409, an unplaced row 400, another day's row 404 |
+| RemindersNotConnected · WhatsApp reminders · not connected (421) | live | drawn 11 Nov 2026 (answer 421): with no WhatsApp provider set, the switch stays off and says "WhatsApp is not connected"; each due slot records not_connected (never silent) |
+| RemindersSent · WhatsApp reminders · results per slot (421) | live | drawn 11 Nov 2026 (answer 421): every 5 minutes, a reminder 2 hours before each sent slot, once, only to candidates who opted in (561); each slot shows sent, failed, not opted in or no mobile; the day's switch (`POST …/reminders`), new days from `hiring.interview_day.whatsapp_reminders` (on) |
 | Plan · Plan an interview day | live | new story (drawn): `InterviewDaySheet`: name, job, stage, day, first slot and number of slots (length from 6.1), panels with room and members; checked and focused before saving; a member on two panels is refused |
 | NoDays · No interview days yet | live | new story (drawn): the empty page with Plan an interview day |
 | RemoveSlot · Remove a slot · lunch break | live | drawn 14 Nov 2026 (answer 423): the plan sheet lists each slot to untick; on the board, Remove takes one slot out (`DELETE hiring/interview-days/:id/slots/:start`, audited); its unsent candidates wait again and Auto-assign skips it; refused for a slot with a sent invite (409), the last slot (400) or while sending |
@@ -479,6 +483,8 @@ refused while acting for someone else); sending, the letter, withdraw and accept
 | AcceptedRehire · Accepted · alumni rehire | live (gap) | the rehire is found and chosen in People's create drawer (unchanged); the offer record does not name the person type yet |
 | PartialMatch · Accepted · partial match stops the hand-off | live (gap) | People's same-person check runs when HR creates the joiner; the offer record does not show a partial match |
 | Reneged · Reneged · pre-boarding unwound | live (gap) | withdrawn and declined banners are live; reneging after acceptance is closed on the joiner in People (joining.service.ts), the offer record does not show it |
+| AcceptedSealed · Accepted with e-sign · sealed copy (377) | live | drawn 11 Nov 2026 (answer 377): an e-signed acceptance keeps a sealed copy made with the letters' `acceptanceCopy` (the letter, then the signing page: who, when, IP, device, the one-time-code check, the letter's SHA-256), stored privately in files; `GET offers/:id/acceptance-copy` with the offer-pay key |
+| SealedMissing · Accepted with e-sign · sealed copy not made (377) | live | drawn 11 Nov 2026: a copy that could not be made is audited (`offer.esign_copy_failed`) and the record says so; "Make the sealed copy" (`POST offers/:id/acceptance-copy`) makes it once |
 | Versions · Versions tab | live | every version with who, when, the note and whether it needed approval; an older text offer reads as version 0 (amounts and text only with the key) |
 
 #### HIR-10 · BGV tracker
@@ -528,6 +534,8 @@ its reason; an application that already has an offer is skipped; the same batch 
 | Preview · Preview step | live | the chosen letter filled for the first selected candidate |
 | Sent · Sent · batch status | live | the counts and each candidate's result with its reason and Open offer (drawn 12 Nov 2026: the results table); pay column only with the key |
 | ValuesBlank · Per-candidate values · CTC left blank | live | drawn 16 Nov 2026 (answer 514): each Fixed CTC starts blank (never ₹0); Continue with a blank (or 0) names the rows and puts the cursor in the first one's cell (kit DataTable `openEdit`); the API refuses 0 or blank (400) |
+| JoinerBatch · Template step · join a People batch (401) | live | drawn 11 Nov 2026 (answer 401): an optional open People joiner batch (lifecycle `joiner_batches`) of the location's legal entity on the joining day; HR making a joiner from an accepted offer of the batch puts them in it (on that day and entity; otherwise the reason is returned) |
+| Running · Sending in the background (405) | live | drawn 11 Nov 2026 (answer 405): the batch runs on a job queue (one job per batch; the same batch key resumes, never sends twice); the batch page shows the progress and refreshes until done; rows still to go read "Waiting to send" |
 
 #### HIR-29 · Offer conditions tab
 
@@ -2126,4 +2134,37 @@ with In pipeline summed. Screenshots and the per-page results are in the walk re
 702. **The test app needs a restart after merges.** The web server on :3000 served an old apply form on the server side
      (a hydration error until it restarted), and the API has not re-run the role template sync. *Suggested: restart both
      after each merge that touches packages or apps/api, as the memory notes say for the API.*
+
+## Built from the founder's "later" list: offers and interviews (11 Nov 2026, branch `feat/yukthix-later-offers`)
+
+- **377 sealed e-sign copy:** when a candidate e-signs an offer, the letter's PDF plus the signing page (the letters'
+  `acceptanceCopy`, not a second path) is stored privately (`offers.acceptance_file_id`, a files row made by the system);
+  HR downloads it from the offer with the offer-pay key. A copy that cannot be made never undoes the acceptance: it is
+  audited and "Make the sealed copy" makes it once.
+- **401 joiner batches:** People already has joiner batches (lifecycle 6e, `joiner_batches`, members by
+  `preboarding.batch_id`). A bulk offer batch can name an open one of the location's legal entity on the joining day
+  (`offer_batches.joiner_batch_id`); when HR makes a joiner from an accepted offer of that batch (People › Ready to
+  onboard), the joiner joins it if they keep its legal entity and day, and HR is told why not otherwise.
+- **405 bulk offers in the background:** `POST hiring/offer-batches` checks and makes the batch, then queues one job (BullMQ,
+  job id = batch id); the rows run exactly as before, one by one with every single-offer rule; the same batch key returns
+  the same batch and resumes it. The batch page shows the progress and refreshes every 2 seconds until done.
+- **422 interview-day swap:** two unsent candidates change panel and slot ("Swap with…" from the keyboard, or drag);
+  audited.
+- **421 WhatsApp reminders:** every 5 minutes, a reminder 2 hours before each sent slot, once per row, only to candidates who
+  opted in (561), through the candidate WhatsApp service; each row keeps its result (sent, failed, not_opted_in, no_phone,
+  not_connected). The day's switch (default `hiring.interview_day.whatsapp_reminders`, on); with no WhatsApp provider the
+  board says not connected and nothing pretends to send.
+- Migration `202617z0000003_later_offers`. Tests: API unit (`interview-day-rules.spec`), kit tests, e2e hiring-hir09 (377),
+  hiring-hir28 (401, 405) and hiring-hir27 (421, 422).
+
+## Founder questions from the "later" offers and interviews (11 Nov 2026)
+
+901. **A batch's joiner on another day.** A joiner made on a different day from the batch is not added to it (HR is told).
+     *Suggested: keep; HR adds them later from the batch page (People › Onboarding) when the day moves.*
+902. **Reminder when WhatsApp connects late.** Slots that were due while WhatsApp was not connected stay "not connected"; they
+     are not sent later. *Suggested: keep (a late reminder is worse than none).*
+903. **Swapping a sent candidate.** Only unsent candidates swap; a sent invite is moved as a single interview (HIR-06
+     reschedule). *Suggested: keep.*
+904. **Sealed copy for link acceptances.** Offers accepted by the link alone (no e-sign) get no sealed copy; the audit log keeps
+     the acceptance. *Suggested: keep (the company turns e-sign on per letter template).*
 
