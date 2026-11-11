@@ -20409,5 +20409,43 @@
       "Screens/YukthiX console/YX-03 · Publish scheduler"
     ],
     "note": "Positive and negative. Answers 1041, 1044."
+  },
+  {
+    "id": "MT-CON-SR-01",
+    "area": "YukthiX console — staff roles (12 Nov 2026)",
+    "screen": "Console › Staff and roles",
+    "url": "http://localhost:3000/staff/staff",
+    "account": "Two Security leads (Anand Iyer super@platform.test, Kavitha Menon rules@platform.test) with their security keys; a staff account with only Rules editor. Window 1278 x 635.",
+    "steps": [
+      "As Anand open Console › Security › Staff and roles.",
+      "Open the menu on your own row.",
+      "Change roles of a Rules editor: add Customer success, leave Reason empty, press Save roles; then give a reason and save (use your security key).",
+      "As that member of staff open Console › Customers and Rule sets.",
+      "Take Customer success away again; as that member of staff reload Customers.",
+      "As the Rules editor open /staff/staff."
+    ],
+    "expected": "Step 1: every member of staff with their roles, and what each role holds. Step 2: no menu on your own row. Step 3: 'Say why'; then saved (toast) after the security key. Step 4: both open. Step 5: Customers says no access. Step 6: no access (not a Security lead).",
+    "stories": [
+      "Screens/YukthiX console/Platform console (step 3) · Staff and roles"
+    ],
+    "note": "Positive and negative. Answers 1058, 1086."
+  },
+  {
+    "id": "MT-CON-SR-02",
+    "area": "YukthiX console — staff roles (12 Nov 2026)",
+    "screen": "Console (every page) by role",
+    "url": "http://localhost:3000/staff/companies",
+    "account": "A Rules editor only; a Customer success only; a Finance only.",
+    "steps": [
+      "As the Rules editor open Companies, Plans, Rule sets.",
+      "As Customer success open Rule sets, Customers.",
+      "As Finance open Plans and change a price.",
+      "As any of them open the Audit log."
+    ],
+    "expected": "Step 1: Companies and Plans say no access; Rule sets opens. Step 2: Rule sets no access; Customers opens. Step 3: Plans opens and the price is scheduled after the security key. Step 4: no access (Security lead only).",
+    "stories": [
+      "Screens/YukthiX console/Platform console (step 3) · Companies"
+    ],
+    "note": "Positive and negative. Answer 1058."
   }
 ]

@@ -8,6 +8,7 @@ import { EmailService } from '../src/email/email.service';
 import { addDays, todayIst } from '../src/org-structure/org-validation';
 import { markSteppedUp } from './fixtures/step-up';
 import { sixMonthsBefore } from '../src/help/whats-new.service';
+import { giveStaffRoles } from './fixtures/staff-roles';
 
 // Help H-4, founder answer 943: What's new. YukthiX staff write the entries in the console (staff only, audited,
 // platform data that a company can read but never write); each person sees the published entries for their role and
@@ -39,6 +40,8 @@ describe("Help H-4: What's new (943)", () => {
     for (const who of ['staff', 'staffNoKey'] as const) {
       const email = `${who.toLowerCase()}-${run}@platform.test`;
       users[who] = (await tenantPrisma.forTenant(SUPER, (tx) => tx.user.create({ data: { email, name: `Staff ${who}`, passwordHash, role: 'super_admin', organizationId: null } }))).id;
+      // Staff roles (answer 1058): these suites test the console routes, so their staff hold every role.
+      await giveStaffRoles(users[who]!);
       token[who] = (await request(server()).post('/api/v1/auth/platform/login').send({ email, password: PASSWORD }).expect(200)).body.accessToken;
     }
     await up('staff');

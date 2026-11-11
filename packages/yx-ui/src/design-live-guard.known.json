@@ -172,7 +172,6 @@
     "portals: ComplianceCalendarScreen",
     "portals: ContainTenantScreen",
     "portals: CostPerTenantScreen",
-    "portals: CustomerSuccessScreen",
     "portals: DeveloperPortalScreen",
     "portals: DirectoryModerationScreen",
     "portals: EInvoiceLogScreen",

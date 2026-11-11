@@ -1,10 +1,10 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
-import { Building2, FileClock, HeartPulse, Inbox, LifeBuoy, Megaphone, MessageSquare, ReceiptIndianRupee, Scale, ScrollText, ShieldCheck, Tags } from 'lucide-react';
+import { Building2, FileClock, HeartPulse, Inbox, LifeBuoy, Megaphone, MessageSquare, ReceiptIndianRupee, Scale, ScrollText, ShieldCheck, Tags, UserCog } from 'lucide-react';
 import { Logo, Monogram } from '../../components/brand';
 import type { IconComponent } from '../../components/foundations';
 import { AppShell, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, TopBar, type DensityChoice, type RailItem, type ThemeChoice } from '../../components/shell';
 
-export type ConsolePageId = 'companies' | 'customers' | 'support-desk' | 'support' | 'plans' | 'whats-new' | 'rules' | 'channels' | 'audit';
+export type ConsolePageId = 'companies' | 'customers' | 'support-desk' | 'support' | 'plans' | 'whats-new' | 'rules' | 'channels' | 'audit' | 'staff';
 type ConsoleGroup = 'Customers' | 'Catalogue' | 'Rules' | 'Channels' | 'Security';
 
 interface ConsoleLink {
@@ -30,6 +30,8 @@ export const CONSOLE_LINKS: ConsoleLink[] = [
   { id: 'rules', label: 'Rule sets', href: '/staff/rules', group: 'Rules', icon: Scale },
   { id: 'channels', label: 'Shared SMS account', href: '/staff/channels', group: 'Channels', icon: MessageSquare },
   { id: 'audit', label: 'Audit log', href: '/staff/audit', group: 'Security', icon: ScrollText },
+  // Staff roles (answers 1058, 1086): who holds which console keys; a Security lead changes them.
+  { id: 'staff', label: 'Staff and roles', href: '/staff/staff', group: 'Security', icon: UserCog },
 ];
 const GROUPS: ConsoleGroup[] = ['Customers', 'Catalogue', 'Rules', 'Channels', 'Security'];
 const GROUP_ICONS: Record<ConsoleGroup, IconComponent> = { Customers: Building2, Catalogue: ReceiptIndianRupee, Rules: Scale, Channels: MessageSquare, Security: ShieldCheck };

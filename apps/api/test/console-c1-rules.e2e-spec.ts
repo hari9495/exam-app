@@ -6,6 +6,7 @@ import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { bootAdminApp } from './dual-app';
 import { EmailService } from '../src/email/email.service';
 import { markSteppedUp } from './fixtures/step-up';
+import { giveStaffRoles } from './fixtures/staff-roles';
 
 // YukthiX console C-1, the rules engine (founder answers 1041 to 1044, 1058), against the real database.
 // Staff only (PlatformStaffGuard + the Rules editor key, platform.statutory.manage); the drafter sends a draft for review;
@@ -55,6 +56,8 @@ describe('Console C-1: rules engine (1041 to 1044)', () => {
     for (const who of ['drafter', 'reviewer', 'staffNoKey'] as const) {
       const email = `c1-${who.toLowerCase()}-${run}@platform.test`;
       users[who] = (await tenantPrisma.forTenant(SUPER, (tx) => tx.user.create({ data: { email, name: `Staff ${who}`, passwordHash, role: 'super_admin', organizationId: null } }))).id;
+      // Staff roles (answer 1058): these suites test the console routes, so their staff hold every role.
+      await giveStaffRoles(users[who]!);
       token[who] = (await request(server()).post('/api/v1/auth/platform/login').send({ email, password: PASSWORD }).expect(200)).body.accessToken;
     }
     await markSteppedUp(tenantPrisma, token.drafter!);

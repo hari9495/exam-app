@@ -81,6 +81,8 @@ export const PERMISSIONS = [
   { key: 'platform.customers.success', description: 'Customer success: tenant health, churn alerts and messages to company System Admins (YukthiX staff)' },
   // Help H-4 (answer 943): What's new entries (also in the help_whats_new migration).
   { key: 'platform.news.manage', description: "Write the What's new entries people see in Help (YukthiX staff)" },
+  // Console staff roles (answers 1058, 1086): the Security lead gives and takes staff roles.
+  { key: 'platform.staff.manage', description: 'Security lead: give and take the YukthiX staff roles (YukthiX staff)' },
   { key: 'org.yukthix_support.raise', description: 'Contact YukthiX support for the company and follow its tickets' },
   { key: 'org.support_access.approve', description: 'Approve, decline and end YukthiX support sessions' },
   // P04 Q5: a company's branding and wording of the account emails.
@@ -103,28 +105,9 @@ export const PERMISSIONS = [
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
-  // P14 Console 1 (founder, 8 Oct 2026): one all-keys staff role until staff are hired, then Support / Billing /
-  // Security (P14 §4 platform_staff_roles, P12 Q7). Each route checks its own key.
-  super_admin: [
-    'platform:manage_organizations',
-    'org:manage_users',
-    'org:manage_settings',
-    'org:view',
-    'audit:view',
-    'platform.companies.view',
-    'platform.companies.manage',
-    'platform.plans.manage',
-    'platform.channels.manage',
-    'platform.support.request',
-    'platform.audit.view',
-    'platform.statutory.manage',
-    // M14 SD-1.31: the YukthiX Support desk in the console.
-    'platform.support_desk.work',
-    // Console C-2: customer success.
-    'platform.customers.success',
-    // Help H-4: What's new entries.
-    'platform.news.manage',
-  ],
+  // Console staff roles (answers 1058, 1086): the staff role no longer holds the platform.* console keys; staff hold
+  // the keys of their staff roles (platform_staff_roles, given by a Security lead).
+  super_admin: ['platform:manage_organizations', 'org:manage_users', 'org:manage_settings', 'org:view', 'audit:view'],
   // org_admin is a full org-scoped superuser: their own admin features PLUS the complete
   // recruiter/panel capability set (exams, question bank, candidates, results).
   org_admin: [
@@ -406,6 +389,10 @@ async function main() {
         (await tx.user.findFirst({ where: { email: 'rules@platform.test', organizationId: null } })) ??
         (await tx.user.create({ data: { email: 'rules@platform.test', name: 'Kavitha Menon', passwordHash: superAdminHash, role: 'super_admin', organizationId: null } }));
       const anand = await tx.user.findFirstOrThrow({ where: { email: 'super@platform.test', organizationId: null } });
+      // Console staff roles: Anand is the first Security lead (only while there is none), then each gives the other theirs.
+      await tx.$queryRaw`SELECT platform_bootstrap_security_lead(${anand.id}::uuid)`;
+      await tx.$queryRaw`SELECT platform_set_staff_roles(${reviewer.id}::uuid, ARRAY['security_lead', 'rules_editor', 'finance']::text[], ${anand.id}::uuid)`;
+      await tx.$queryRaw`SELECT platform_set_staff_roles(${anand.id}::uuid, ARRAY['security_lead', 'rules_editor', 'support_agent', 'customer_success']::text[], ${reviewer.id}::uuid)`;
       const minWages = (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in-min-wages.json'), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets;
       await loadRuleSets(tx, minWages, anand.id, reviewer.id);
       // 5b-D3: the India CCA roots (cca.gov.in) for USB-token signatures, by the same two-person flow.

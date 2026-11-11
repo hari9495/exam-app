@@ -73,3 +73,20 @@ export const AUDIT: PlatformAuditEntry[] = [
   { id: 'e2', at: at(-20), action: 'platform.company.lifecycle', entityType: 'organization', entityId: 'c3', actor: 'Anand Iyer', actorIsStaff: true, company: 'Malabar Spices Exports', companyId: 'c3', details: { from: 'active', to: 'suspended', reason: 'Invoice 45 days overdue' } },
   { id: 'e1', at: at(-30), action: 'platform.price.scheduled', entityType: 'product_price', entityId: 'p5', actor: 'Anand Iyer', actorIsStaff: true, company: null, companyId: null, details: { product: 'hrms', currency: 'INR', unitPrice: 109, validFrom: '2027-04-01', reason: 'New financial year' } },
 ];
+
+// Staff roles (answers 1058, 1086): what each role holds, and the staff.
+export const STAFF_ROLE_DEFS = [
+  { role: 'support_agent' as const, label: 'Support agent', keys: ['platform.companies.view', 'platform.support_desk.work', 'platform.support.request'] },
+  { role: 'customer_success' as const, label: 'Customer success', keys: ['platform.companies.view', 'platform.companies.manage', 'platform.customers.success', 'platform.news.manage'] },
+  { role: 'rules_editor' as const, label: 'Rules editor', keys: ['platform.statutory.manage'] },
+  { role: 'finance' as const, label: 'Finance', keys: ['platform.companies.view', 'platform.plans.manage'] },
+  { role: 'security_lead' as const, label: 'Security lead', keys: ['platform.companies.view', 'platform.companies.manage', 'platform.channels.manage', 'platform.audit.view', 'platform.staff.manage'] },
+];
+export const STAFF = [
+  { id: 'st1', name: 'Anand Iyer', email: 'anand.iyer@yukthix.test', active: true, me: true, roles: ['security_lead' as const, 'support_agent' as const], lastLead: false },
+  { id: 'st2', name: 'Kavitha Menon', email: 'kavitha.menon@yukthix.test', active: true, me: false, roles: ['security_lead' as const, 'rules_editor' as const], lastLead: false },
+  { id: 'st3', name: 'Farah Siddiqui', email: 'farah.siddiqui@yukthix.test', active: true, me: false, roles: ['rules_editor' as const], lastLead: false },
+  { id: 'st4', name: 'Rohit Bansal', email: 'rohit.bansal@yukthix.test', active: true, me: false, roles: ['customer_success' as const, 'finance' as const], lastLead: false },
+  { id: 'st5', name: 'Meera Pillai', email: 'meera.pillai@yukthix.test', active: false, me: false, roles: [], lastLead: false },
+];
+

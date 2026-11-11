@@ -126,3 +126,38 @@ describe('older hiring keys and the ats.* keys (M10 D2)', () => {
     expect(grantScopesFor('ats.candidate.manage')).toEqual(['tenant']);
   });
 });
+
+// Console staff roles (answers 1058, 1086): staff hold the platform keys of their staff roles; companies never hold one.
+describe('staff roles and platform keys', () => {
+  const build = (staffKeys: string[], grants: { scope_type: string; target: string | null; permissions_json: string }[] = []) => {
+    const prisma = { rolePermission: { findMany: jest.fn().mockResolvedValue([{ permission: { key: 'org:view' } }]) } };
+    const tx = {
+      orgRolePermission: { findUnique: jest.fn().mockResolvedValue({ permissionsJson: JSON.stringify(['org:view', 'platform.companies.view']) }) },
+      permissionProfile: { findUnique: jest.fn().mockResolvedValue({ permissionsJson: JSON.stringify(['org.structure.view', 'platform.staff.manage']) }) },
+      $queryRaw: jest.fn().mockResolvedValue(grants),
+    };
+    const staffTx = { $queryRaw: jest.fn().mockResolvedValue(staffKeys.map((key) => ({ key }))) };
+    const tenantPrisma = { forTenant: jest.fn(async (c: { organizationId: string | null }, fn: (t: unknown) => unknown) => fn(c.organizationId ? tx : staffTx)) };
+    return { prisma: prisma as never, tenantPrisma: tenantPrisma as never, staffTx };
+  };
+
+  it('a member of staff holds only the platform keys their roles give, outside any company', async () => {
+    const { prisma, tenantPrisma, staffTx } = build(['platform.statutory.manage']);
+    const keys = await resolvePermissionGrants(prisma, tenantPrisma, { role: 'super_admin', organizationId: null, userId: 's1' }, ['platform.statutory.manage', 'platform.customers.success']);
+    expect([...keys].sort()).toEqual(['org:view', 'platform.statutory.manage']);
+    expect(staffTx.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it('no staff lookup for company users, or when no platform key is asked', async () => {
+    const { prisma, tenantPrisma, staffTx } = build(['platform.staff.manage']);
+    await resolvePermissionGrants(prisma, tenantPrisma, { role: 'super_admin', organizationId: null, userId: 's1' }, ['org:view']);
+    await resolvePermissionGrants(prisma, tenantPrisma, { role: 'panel', organizationId: 'o1', userId: 'u1' }, ['platform.staff.manage']);
+    expect(staffTx.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('a company override, profile or role grant never confers a platform key', async () => {
+    const { prisma, tenantPrisma } = build([], [{ scope_type: 'tenant', target: null, permissions_json: '["platform.audit.view","org.structure.view"]' }]);
+    expect([...(await resolvePermissionGrants(prisma, tenantPrisma, { role: 'panel', organizationId: 'o1', userId: 'u1' }, []))].sort()).toEqual(['org.structure.view', 'org:view']);
+    expect([...(await resolvePermissionGrants(prisma, tenantPrisma, { role: 'panel', organizationId: 'o1', userId: 'u1', permissionProfileId: 'p1' }, []))].sort()).toEqual(['org.structure.view']);
+  });
+});

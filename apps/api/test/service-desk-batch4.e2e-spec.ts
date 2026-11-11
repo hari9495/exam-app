@@ -17,6 +17,7 @@ import { KbService } from '../src/service-desk/kb.service';
 import { seedYukthixSupport } from '../prisma/seed-service-desk-knowledge';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { markSteppedUp } from './fixtures/step-up';
+import { giveStaffRoles } from './fixtures/staff-roles';
 
 // M14 Service Desk, phase 3b-1 batch 4 (SD-1.24 … SD-1.27, SD-1.29 … SD-1.31), end to end against the real database
 // (forced RLS, the reader and portal policies, the app role, the SECURITY DEFINER bridge functions) and Redis.
@@ -127,6 +128,7 @@ describe('Service Desk batch 4: knowledge, ratings, reports, directory, privacy,
     for (const who of ['staff', 'staffOther'] as const) {
       const email = `${who}-${run}@platform.test`;
       users[who] = (await tenantPrisma.forTenant(SUPER, (tx) => tx.user.create({ data: { email, name: `Staff ${who}`, passwordHash, role: 'super_admin', organizationId: null } }))).id;
+      await giveStaffRoles(users[who]!);
       token[who] = (await request(server()).post('/api/v1/auth/platform/login').send({ email, password: PASSWORD }).expect(200)).body.accessToken;
       await markSteppedUp(tenantPrisma, token[who]);
     }

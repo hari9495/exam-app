@@ -12,6 +12,7 @@ import { PaySetupService } from '../src/payroll/setup.service';
 import { addDays } from '../src/time/time-maths';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { markSteppedUp } from './fixtures/step-up';
+import { giveStaffRoles } from './fixtures/staff-roles';
 
 // Payroll batch 5b end to end against the real database (forced RLS, the app role): the P07 rule store (the app reads
 // published rules only and never writes; publish runs the checks and is never the drafter's), entity statutory set-up
@@ -70,6 +71,8 @@ describe('Payroll batch 5b', () => {
     for (const who of ['staff', 'staff2'] as const) {
       const email = `${who}-${run}@pay5b-platform.test`;
       users[who] = (await tenantPrisma.forTenant(SUPER, (tx) => tx.user.create({ data: { email, name: `Staff ${who}`, passwordHash, role: 'super_admin', organizationId: null } }))).id;
+      // Staff roles (answer 1058): these suites test the console routes, so their staff hold every role.
+      await giveStaffRoles(users[who]!);
       token[who] = (await request(server()).post('/api/v1/auth/platform/login').send({ email, password: PASSWORD }).expect(200)).body.accessToken;
       await stepUp(who);
     }

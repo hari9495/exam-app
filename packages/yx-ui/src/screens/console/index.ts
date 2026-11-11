@@ -18,3 +18,5 @@ export { SupportDeskQueueScreen, SupportDeskTicketScreen, TenantPanel, textToPar
 // Console C-1 (answers 1041 to 1044): the drawn YX-01 to YX-03 screens, live with `live`.
 export { RuleSetEditorScreen, GoldenCasesScreen, PublishSchedulerScreen, type LiveRuleEditor, type LiveGolden, type LivePublish } from '../portals/console-rules';
 export type { LiveRuleRow, LiveRuleDetail, LiveGoldenRun, LiveImpact, RuleUpdateInput, RuleState } from '../portals/console-rules-live';
+// Staff roles (answers 1058, 1086).
+export { StaffRolesScreen, KEY_WORDS, rolesInput, type StaffRolesScreenProps, type StaffRoleDef, type StaffRoleId, type StaffRow } from './staff';

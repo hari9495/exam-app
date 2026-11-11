@@ -7,8 +7,9 @@ import { PlansScreen } from './plans';
 import { WhatsNewConsoleScreen, type NewsEntryRow } from './whats-new';
 import { SupportSessionsScreen } from './support';
 import { PlatformAuditScreen } from './audit';
+import { StaffRolesScreen } from './staff';
 import { SupportAccessScreen } from '../access/support-access';
-import { ACTIVITY, AUDIT, COMPANIES, COMPANY, COMPANY_SETTINGS, NOW, PRODUCTS, REQUEST, SESSIONS, TODAY } from './data';
+import { ACTIVITY, AUDIT, COMPANIES, COMPANY, COMPANY_SETTINGS, NOW, PRODUCTS, REQUEST, SESSIONS, STAFF, STAFF_ROLE_DEFS, TODAY } from './data';
 
 const meta: Meta = { title: 'Screens/YukthiX console/Platform console (step 3)', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -79,3 +80,12 @@ export const CompanySupportAccessMessages: S = {
   render: () => access(undefined, [{ id: 'cm1', subject: 'Payroll readiness before 25 Nov', body: 'Twelve employees have no verified bank details.\n\nFix them in People › Bank details before the run.', sentAt: '2026-11-12T09:30:00Z' }]),
 };
 export const CompanySupportAccessEmpty: S = { name: 'Company side · Support access · none yet', render: () => access([]) };
+// Staff roles (answers 1058, 1086): drawn first; who holds what, and a Security lead changing another's roles.
+export const StaffRoles: S = { name: 'Staff and roles', render: () => shell('staff', <StaffRolesScreen state="ready" roles={STAFF_ROLE_DEFS} staff={STAFF} onSave={() => wait()} />) };
+export const StaffRolesChange: S = { name: 'Staff and roles · change roles', render: () => shell('staff', <StaffRolesScreen state="ready" roles={STAFF_ROLE_DEFS} staff={STAFF} onSave={() => wait()} defaultOpenId="st3" />) };
+export const StaffRolesLastLead: S = {
+  name: 'Staff and roles · the last Security lead',
+  render: () => shell('staff', <StaffRolesScreen state="ready" roles={STAFF_ROLE_DEFS} staff={STAFF.map((s) => (s.id === 'st2' ? { ...s, lastLead: true } : s.id === 'st1' ? { ...s, roles: ['support_agent' as const] } : s))} onSave={() => wait()} defaultOpenId="st2" />),
+};
+export const StaffRolesNoKey: S = { name: 'Staff and roles · not a Security lead', render: () => shell('staff', <StaffRolesScreen state="no-access" roles={[]} staff={[]} onSave={() => wait()} />) };
+

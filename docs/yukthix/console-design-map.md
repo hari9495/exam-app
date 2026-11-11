@@ -78,13 +78,14 @@ Tenants rows, tenant health, alerts and the composer live (C-2, five new stories
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Live console | 2 | 21 | 0 | 0 | 0 | 0 | 21 |
+| A. Live console | 2 | 25 | 0 | 0 | 0 | 0 | 25 |
 | B. Rules engine (YX-01 to YX-03) | 3 | 25 | 5 | 0 | 0 | 0 | 30 |
 | C. Customers and containment (YX-04, YX-18) | 2 | 14 | 0 | 0 | 6 | 0 | 20 |
 | D. Partners (YX-06 to YX-08) | 3 | 0 | 0 | 0 | 10 | 0 | 10 |
 | E. Money (YX-14 to YX-17) | 4 | 0 | 0 | 0 | 8 | 0 | 8 |
 | F. The rest (YX-05, YX-09 to YX-13) | 6 | 0 | 0 | 0 | 19 | 0 | 19 |
-| **All A-F** | **20** | **60** | **5** | **0** | **43** | **0** | **108** |
+| **All A-F** | **20** | **64** | **5** | **0** | **43** | **0** | **112** |
+Recounted by script 12 Nov 2026 on `feat/yukthix-console-staff-roles` (4 Staff and roles stories; the C-3 reference look-up row added).
 Recounted 12 Nov 2026 on test/yukthix-main after merging C-1, C-2 and C-3 (C-3 added the Support desk look-up story).
 
 Counted by script on 11 Nov 2026 on `docs/yukthix-console-map` (the script is in the appendix). There are 87 stories in
@@ -171,6 +172,10 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 | CompanySupportAccess · Company side · Support access (PLT-17) | live | `/yx/settings/support-access`, `SupportAccessScreen`, `/support-access` (`org.support_access.approve`; approve is step-up) |
 | CompanySupportAccessMessages · Company side · Support access · messages from YukthiX (C-2) | live | `/yx/settings/support-access`, `GET /support-access/messages` (its own copies only, forced RLS); the bell links here |
 | CompanySupportAccessEmpty · Company side · Support access · none yet | live | same page with no sessions |
+| StaffRoles · Staff and roles | live | Staff roles (12 Nov 2026): `/staff/staff`, `StaffRolesScreen`; `GET /platform/staff` (Security lead key `platform.staff.manage`, an audited `platformRead`): every staff account with its roles and what each role holds (answer 1058) |
+| StaffRolesChange · Staff and roles · change roles | live | `PUT /platform/staff/:id/roles` with a reason and the security key again; never your own roles (no action on your row; API and database refuse) |
+| StaffRolesLastLead · Staff and roles · the last Security lead | live | the last active Security lead keeps the role (screen, API, database) |
+| StaffRolesNoKey · Staff and roles · not a Security lead | live | 403 from the API shows no access |
 
 #### Support desk (SD-1.31)
 
@@ -181,6 +186,7 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 | Ticket · Ticket · Priority Support | live | `/staff/support-desk/[id]`, `SupportDeskTicketScreen`; the tenant panel is an audited `platformRead` |
 | Asked · Ticket · access asked | live | `POST …/tickets/:id/request-access` (needs both `platform.support_desk.work` and `platform.support.request`) |
 | Unlinked · Ticket · not linked | live | `POST …/tickets/:id/link` |
+| LookUpReference · Queue · look up a Not found reference (two companies) | live | C-3 (answer 1051): the cross-company reference look-up in Console › Support desk (row added with the staff-roles recount) |
 
 ### B. Rules engine (YX-01 to YX-03)
 
@@ -656,3 +662,49 @@ C-6 to C-8.
       (`IN.…`, `IN` or `IN-XX`), so UAE, GST and hiring rules cannot be drafted in the console yet. *Suggested: allow
       the other packs' statutes when someone needs to change one.*
 
+
+## Staff roles built (answers 1058, 1061, 1086; 12 Nov 2026, branch `feat/yukthix-console-staff-roles`)
+- **Five roles, fixed keys** (`platform_role_keys`, changed only by a migration):
+  - Support agent: see companies, work the Support desk, ask for a support session.
+  - Customer success: see companies, create companies and change their lifecycle, customer health and messages, What's new.
+  - Rules editor: draft, review and publish rule sets.
+  - Finance: see companies, set prices.
+  - Security lead: see companies, create companies and change their lifecycle, the shared SMS account, the platform
+    audit log, and give and take staff roles (new key `platform.staff.manage`).
+- **Nobody holds every key by default.** The staff role (`super_admin`) no longer grants any `platform.x.y` key; a member
+  of staff holds the keys of their roles (`platform_staff_roles`), read in the one permission resolver
+  (`packages/shared/src/rbac/permission-grants.ts`). A new staff account has no console key until a Security lead gives
+  it a role. Old `platform:...` keys of the `/v2` pages are unchanged (question 1060).
+- **Moving existing staff** (migration `202617z0000071_console_staff_roles`): every staff account became a Security lead,
+  plus the roles its audit trail shows: Rules editor (any `platform.statutory.*`), Support agent (support sessions,
+  going into a company, Support desk tickets), Customer success (messages, customer-success settings, What's new, trial
+  extensions), Finance (prices). On this database: 13 Security leads, 4 Rules editors, 1 Support agent, 1 Customer
+  success, 1 Finance. A fresh installation makes its first Security lead with `platform_bootstrap_security_lead` (only
+  while there is none; the seed uses it).
+- **Changing roles:** Console › Security › Staff and roles (`/staff/staff`, kit `StaffRolesScreen`, drawn first: 4
+  stories). Only a Security lead, with the security key again and a reason; never their own (no action on your row; API
+  403; database `YX_STAFF_SELF`); the last active Security lead keeps the role (screen; database
+  `YX_STAFF_LAST_LEAD`; and since only another active Security lead may change roles, the last one can never lose it).
+  Audited as `platform.staff.roles_changed` with before, after and the reason. The list is an audited `platformRead`.
+- **Platform keys stay platform-only:** a company role, override or grant never confers a platform key (resolver), and
+  the database refuses one in `permission_profiles` and `org_role_permissions`. Staff role rows are only for staff
+  accounts (trigger) and only readable outside any company.
+- **Web:** `CONSOLE_KEYS` includes the Support desk and Security lead keys, so buttons follow the keys held.
+- **Tests:** e2e `console-staff-roles` (7), kit `staff.test.tsx` (4), web `console-staff.test.tsx` (2); the suites that
+  make their own staff now give them roles (`test/fixtures/staff-roles.ts`), and `console-customers` takes the Customer
+  success role away instead of the old staff-role key.
+
+### Questions from staff roles (from 1161)
+1161. **The key sets.** As above: creating companies and changing their lifecycle sit with Customer success and the
+      Security lead; the shared SMS account and the audit log with the Security lead only. *Suggested: keep.*
+1162. **Too many Security leads after the move.** Every existing staff account is now a Security lead so nobody was
+      locked out. *Suggested: after the move, the founder keeps two Security leads and the others lose the role.*
+1163. **New staff accounts.** They hold no console key until a Security lead gives a role. *Suggested: keep.*
+1164. **Adding and deactivating staff.** Staff accounts are still made outside the console (the old `/v2` pages or the
+      seed); a deactivated Security lead stops counting as one. *Suggested: add "Add staff" and "Deactivate" to Staff
+      and roles (Security lead key), then retire the old `/v2` Platform admins page (answer 1060).*
+1165. **Answers 1082 and 1083** (the nightly health snapshot, the 30-day change, the Customer success owner, and alert
+      follow-up) are not in this slice. *Suggested: the next small slice, with owners chosen from the Customer success
+      role.*
+1166. **Seeing your own roles.** Only Security leads see who holds what. *Suggested: show every member of staff their own
+      roles on My security.*

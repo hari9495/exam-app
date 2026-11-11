@@ -6,6 +6,7 @@ import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { bootAdminApp } from './dual-app';
 import { EmailService } from '../src/email/email.service';
 import { markSteppedUp } from './fixtures/step-up';
+import { giveStaffRoles } from './fixtures/staff-roles';
 
 // YukthiX console C-2, Customer success (answers 1047, 1048, 1058), end to end against the real database (forced RLS,
 // app role): staff only with the Customer success key; the health list read through the audited platformRead; churn
@@ -42,6 +43,8 @@ describe('Console C-2: customer success', () => {
     for (const who of ['staff', 'staff2', 'staffNoKey'] as const) {
       const email = `${who.toLowerCase()}-${run}@platform.test`;
       users[who] = (await tenantPrisma.forTenant(SUPER, (tx) => tx.user.create({ data: { email, name: `Staff ${who}`, passwordHash, role: 'super_admin', organizationId: null } }))).id;
+      // Staff roles (answer 1058): these suites test the console routes, so their staff hold every role.
+      await giveStaffRoles(users[who]!);
       token[who] = (await request(server()).post('/api/v1/auth/platform/login').send({ email, password: PASSWORD }).expect(200)).body.accessToken;
     }
     await up('staff');
@@ -83,15 +86,14 @@ describe('Console C-2: customer success', () => {
     await api('adminA', 'post', '/platform/customers/messages').send({ companyIds: [org.B], subject: 'Hello there', body: 'x' }).expect(403);
     expect((await api('staffNoKey', 'get', '/platform/customers/health').expect(403)).body.code).toBe('MFA_REQUIRED');
     await api('staff', 'get', '/platform/customers/health').expect(200);
-    // The key withdrawn from the staff role: every route refuses (restored straight after).
-    const key = await tenantPrisma.forTenant(SUPER, (tx) => tx.permission.findUniqueOrThrow({ where: { key: 'platform.customers.success' } }));
-    await tenantPrisma.forTenant(SUPER, (tx) => tx.rolePermission.deleteMany({ where: { role: 'super_admin', permissionId: key.id } }));
+    // Without the Customer success role (staff roles, answer 1058): every route refuses (restored straight after).
+    await giveStaffRoles(users.staff!, ['support_agent', 'rules_editor', 'finance', 'security_lead']);
     try {
       await api('staff', 'get', '/platform/customers/health').expect(403);
       await api('staff', 'get', '/platform/customers/messages').expect(403);
       await api('staff', 'put', '/platform/customers/settings').send({ values: { 'cs.alert.health_below': 60 } }).expect(403);
     } finally {
-      await tenantPrisma.forTenant(SUPER, (tx) => tx.rolePermission.create({ data: { role: 'super_admin', permissionId: key.id } }));
+      await giveStaffRoles(users.staff!);
     }
     await api('staff', 'get', '/platform/customers/health').expect(200);
   });
