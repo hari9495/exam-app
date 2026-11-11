@@ -27,6 +27,7 @@ import { Console } from './console-kit';
 import type { TenantRow } from './console-data';
 import { LiveCustomerSuccessScreen, type LiveCustomerSuccess } from './console-cs-live';
 import { LiveMaintenanceScreen, type LiveMaintenance } from './console-maintenance-live';
+import { LiveHelpCentreScreen, type LiveHelpCentre } from './console-helpcentre-live';
 
 const STATE_TONE: Record<TenantRow['state'], BadgeTone> = { trial: 'info', active: 'success', 'past due': 'warning', restricted: 'danger', suspended: 'danger', cancelled: 'neutral' };
 const CHURN_TONE = { low: 'success', medium: 'warning', high: 'danger' } as const;
@@ -602,7 +603,8 @@ type ArticleRow = { key: string; title: string; product: string; audience: strin
 
 // YX-11
 /** Articles keyed by screen ID, versions, captioned videos, no-result searches; articles unreviewed for 12 months are flagged. */
-export function HelpEditorScreen({ articles, noResults, editing, today }: { articles: ArticleRow[]; noResults: { term: string; count: number }[]; editing?: boolean; today: Date }) {
+export function HelpEditorScreen({ articles, noResults, editing, today, live }: { articles: ArticleRow[]; noResults: { term: string; count: number }[]; editing?: boolean; today: Date; /** The live console (C-8, YX-11). */ live?: LiveHelpCentre }) {
+  if (live) return <LiveHelpCentreScreen live={live} />;
   const stale = (d: Date) => today.getTime() - d.getTime() > 365 * 86_400_000;
   if (editing)
     return (

@@ -84,6 +84,9 @@ interface ReaderScope {
   personId: string | null;
 }
 
+/** YX-11 (C-8): the platform company's knowledge-base space whose published articles every company sees in Help. */
+export const PLATFORM_HELP_SPACE = 'yukthix-help';
+
 @Injectable()
 export class KbService {
   private readonly logger = new Logger(KbService.name);
@@ -936,7 +939,39 @@ export class KbService {
       const top = rows.slice(0, 6);
       // Answer 964: each article in the person's language when a published translation exists, else the original.
       const tr = language && language !== 'en' && top.length ? await tx.sdKbArticle.findMany({ where: { organizationId: org, translationOfId: { in: top.map((x) => x.id) }, language, state: 'published', deletedAt: null }, select: { id: true, number: true, slug: true, title: true, summary: true, translationOfId: true } }) : [];
-      return { on: true, articles: top.map((o) => tr.find((t) => t.translationOfId === o.id) ?? o).map(({ id, number, slug, title, summary }) => ({ id, number, slug, title, summary })) };
+      const own = top.map((o) => tr.find((t) => t.translationOfId === o.id) ?? o).map(({ id, number, slug, title, summary }) => ({ id, number, slug, title, summary }));
+      // Console C-8 (YX-11, answer 1057): YukthiX's own articles for the page, after the company's; a page the company
+      // explains itself shows only the company's (its article wins).
+      const covered = new Set(rows.flatMap((r) => r.pages.filter((x) => prefixes.includes(x))));
+      const yukthix = own.length >= 6 ? [] : (await this.platformPageArticles(prefixes)).filter((x) => !x.pages.some((p) => covered.has(p)));
+      return { on: true, articles: [...own, ...yukthix.slice(0, 6 - own.length).map(({ pages: _pages, ...x }) => x)] };
+    });
+  }
+
+  private platformOrgId: string | null | undefined;
+  /** The YukthiX (platform) company, or null when it is not set up here. */
+  async platformOrg(): Promise<string | null> {
+    if (this.platformOrgId !== undefined) return this.platformOrgId;
+    const o = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) => tx.organization.findFirst({ where: { isPlatform: true }, select: { id: true, slug: true } }));
+    this.platformOrgId = o?.id ?? null;
+    return this.platformOrgId;
+  }
+
+  /**
+   * YX-11: YukthiX's published help articles for these pages (the platform company's "YukthiX help" space, public): read
+   * in the platform company's own context, never the reader's. Each links to the public help centre.
+   */
+  private async platformPageArticles(prefixes: string[]) {
+    const org = await this.platformOrg();
+    if (!org || !prefixes.length) return [];
+    return this.tenantPrisma.forTenant({ organizationId: org, isSuperAdmin: false }, async (tx) => {
+      const space = await tx.sdKbSpace.findFirst({ where: { organizationId: org, slug: PLATFORM_HELP_SPACE, audience: 'public', status: 'active' } });
+      const o = await tx.organization.findUnique({ where: { id: org }, select: { slug: true } });
+      if (!space || !o) return [];
+      const rows = await tx.sdKbArticle.findMany({ where: { organizationId: org, spaceId: space.id, state: 'published', deletedAt: null, translationOfId: null, pages: { hasSome: prefixes } }, select: { id: true, number: true, slug: true, title: true, summary: true, pages: true, featured: true }, take: 50 });
+      const depth = (p: string[]) => Math.max(...p.filter((x) => prefixes.includes(x)).map((x) => x.length));
+      rows.sort((a, b) => depth(b.pages) - depth(a.pages) || Number(b.featured) - Number(a.featured) || a.number - b.number);
+      return rows.map((r) => ({ id: r.id, number: r.number, slug: r.slug, title: r.title, summary: r.summary, pages: r.pages, source: 'yukthix' as const, href: `/yx/help/${o.slug}/${space.slug}/${r.slug}` }));
     });
   }
 

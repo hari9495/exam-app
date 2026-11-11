@@ -73,18 +73,19 @@ built** · **phone view, mobile app not built**.
 
 ## Counts (sub-pages = stories)
 
-After C-1 to C-5 (12 Nov 2026, merged on test/yukthix-main; recounted by the appendix script, "ok").
+After C-1 to C-5, C-8 part 1 and the console follow-ups (12 Nov 2026, test/yukthix-main; appendix script "ok"). The
+follow-ups added a 21st story file (Platform settings, in group A).
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Live console | 2 | 27 | 0 | 0 | 0 | 0 | 27 |
-| B. Rules engine (YX-01 to YX-03) | 3 | 25 | 5 | 0 | 0 | 0 | 30 |
-| C. Customers and containment (YX-04, YX-18) | 2 | 22 | 2 | 0 | 0 | 0 | 24 |
+| A. Live console | 3 | 29 | 0 | 0 | 0 | 0 | 29 |
+| B. Rules engine (YX-01 to YX-03) | 3 | 26 | 5 | 0 | 0 | 0 | 31 |
+| C. Customers and containment (YX-04, YX-18) | 2 | 23 | 2 | 0 | 0 | 0 | 25 |
 | D. Partners (YX-06 to YX-08) | 3 | 0 | 0 | 0 | 10 | 0 | 10 |
 | E. Money (YX-14 to YX-17) | 4 | 0 | 0 | 0 | 8 | 0 | 8 |
-| F. The rest (YX-05, YX-09 to YX-13) | 6 | 7 | 0 | 0 | 17 | 0 | 24 |
-| **All A-F** | **20** | **81** | **7** | **0** | **35** | **0** | **123** |
-Recounted by script 12 Nov 2026 on `feat/yukthix-console-staff-roles` after merging C-4 and C-5, with Add staff and the maintenance view-only story.
+| F. The rest (YX-05, YX-09 to YX-13) | 6 | 11 | 0 | 0 | 15 | 0 | 26 |
+| **All A-F** | **21** | **89** | **7** | **0** | **33** | **0** | **129** |
+Recounted by script 12 Nov 2026 on `feat/yukthix-console-staff-roles` after merging the console follow-ups and C-8 (5 Staff and roles stories, the maintenance view-only story).
 
 Counted by script on 11 Nov 2026 on `docs/yukthix-console-map` (the script is in the appendix). There are 87 stories in
 20 files whose title starts `Screens/YukthiX console/`: `screens/console/console.stories.tsx` (14),
@@ -105,6 +106,7 @@ is a phone view.
 | `/staff/plans` | `PlansScreen` | `/platform/products`, prices (step-up) |
 | `/staff/whats-new` | `WhatsNewConsoleScreen` | `/platform/whats-new` (`WhatsNewStaffController`, `help/whats-new.controller.ts`) |
 | `/staff/audit` | `PlatformAuditScreen` | `GET /platform/audit` |
+| `/staff/help-centre` (C-8) | `HelpEditorScreen live` | `/platform/help-centre…` (`service-desk/help-centre.controller.ts`) |
 | `/yx/settings/support-access` (company side) | `SupportAccessScreen` (`screens/access/support-access.tsx`) | `/support-access` (approve is step-up) |
 
 ## 2. Live pages with no design in this group
@@ -189,6 +191,13 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 | Unlinked · Ticket · not linked | live | `POST …/tickets/:id/link` |
 | LookUpReference · Queue · look up a Not found reference (two companies) | live | C-3 (1051): `GET /platform/support-desk/references/:code` |
 
+#### Platform settings (1125)
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| List · Platform settings · list (one to verify with counsel) | live | `/staff/platform-settings`, `PlatformSettingsScreen` (added to the kit first: no drawn screen), `GET`/`PUT platform/settings` |
+| ReadOnly · Platform settings · without the key | live | the no-access state |
+
 ### B. Rules engine (YX-01 to YX-03)
 
 #### YX-01 · Rule-set editor
@@ -235,6 +244,7 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 | YX03LiveNotCountable · C-1 · Impact · a jurisdiction that cannot be counted | live | "EU", "GENERIC" and similar are not places with locations |
 | YX03LiveNothing · C-1 · Version · nothing to publish | live | nothing in review that someone else drafted |
 | YX03LiveDone · C-1 · Published | live | done, with its date |
+| YX03LiveNotice · C-1 · Published · Notices to the companies in its state | live | 1065: `POST platform/customers/rule-notices/:ruleSetId`, an admin message to the companies with a location in the rule's country or state |
 
 ### C. Customers and containment (YX-04, YX-18)
 
@@ -255,6 +265,7 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 | YX04HealthLive · Tenant health · from account signals (C-2) | live | `/staff/customers`: score, band, main factor, lifecycle, last admin sign-in, open tickets; Message admins from ticked rows |
 | YX04AlertRules · Churn-risk alerts · rules from platform settings (C-2) | live | `GET/PUT /platform/customers/settings` (audited `platform.cs.settings_changed`) |
 | YX04MessagesWaiting · Messages · waiting for a second staff member (C-2) | live | `POST /platform/customers/messages/:id/approve` (step-up) and `/reject` (reason) |
+| YX04MessagesMine · Messages · my message waiting, Withdraw (1087) | live | `POST platform/customers/messages/:id/withdraw` (writer only; audited) |
 | YX04ComposerTwo · Message composer · two companies need approval (C-2) | live | `POST /platform/customers/messages` |
 | YX04Flags · Feature flags | live | C-4 (1049): `/staff/feature-flags`, the drawn `FeatureFlagsScreen` with `live`; four real switches over existing company settings |
 | YX04KillSwitch · Feature flags · kill switch | live | C-4: kill switch with a reason and the security key again; a second staff member turns it back on |
@@ -368,8 +379,10 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| YX11List · Help articles and no-result searches | design only, feature not built | no console path. Each company's knowledge base and its "searches with no result" exist (`service-desk/kb.service.ts` `contentGaps`, `GET …/kb/gaps`) but only inside one company. Unsure whether YukthiX's starter articles (answer 942) should be written here or in the platform company's own Helpdesk |
-| YX11Edit · Article editor | design only, feature not built | as above; the company article editor (HLP-04) is reusable |
+| YX11List · Help articles and no-result searches | live | C-8: `/staff/help-centre`, `HelpEditorScreen live`: the platform company's "YukthiX help" articles, the pages each explains, and the searches with no result across companies (counts only, at least 5 companies) |
+| YX11ListLive · Help articles and no-result searches (C-8) | live | `GET platform/help-centre` (`platform.helpcentre.write`); the cross-company count is read through `platformRead` (purpose `helpcentre.no_result_searches`) |
+| YX11ReviewLive · Article · another staff member publishes it (C-8) | live | `POST platform/help-centre/articles/:id/review`: the knowledge base's four-eyes rule (never the writer) |
+| YX11Edit · Article editor | live | same page, the editor drawer: `POST|PATCH platform/help-centre/articles`, `.../submit`; the H-1 pages link |
 
 #### YX-12 · Nudge and switch-on copy editor
 
@@ -492,6 +505,46 @@ Order (at most three builders at once):
 
 Every slice draws any new state first, keeps RLS and the staff guard, audits every write, asks for the security key on
 risky actions, and adds positive and negative tests and an e2e suite.
+
+## C-8 part 1 built: help-centre editor (YX-11, answer 1057; 12 Nov 2026, branch `feat/yukthix-console-c8`)
+
+- **What staff do:** Console › Catalogue › Help centre (`/staff/help-centre`), the designed `HelpEditorScreen` with
+  `live`. Staff write a help article (title, pages it explains, summary, the rich-text body) and send it for review; a
+  different staff member publishes it or sends it back with a note. Toasts say each step is done.
+- **Reused, not rebuilt:** the articles are ordinary knowledge-base articles of the YukthiX (platform) company, in its
+  public space "YukthiX help" (slug `yukthix-help`, made on first use). The knowledge base's own rules apply: the H-1
+  pages link, versions, and four eyes (the writer can never publish; service check). Staff act as the YukthiX-company
+  user linked to them (`sd_console_agents`, the Support desk link); a staff member with no link is told to ask the
+  support lead. No new table; migration `202617z0000071_console_helpcentre` only adds the key.
+- **What companies see:** Help › This page (`GET /desk/my/kb/page`) lists the company's own articles for the page
+  first, then YukthiX's, up to 6. A page the company explains itself shows only the company's article (its own wins).
+  A YukthiX article is marked "From YukthiX" and opens on the public help centre (`/yx/help/<platform slug>/yukthix-help/<slug>`).
+  Platform data: every company reads it through this endpoint; only staff write it; RLS keeps the platform company's
+  rows out of every company's own reads and writes.
+- **Searches with no result:** counts only (the term, how many companies, how many searches), never a company or a
+  person, and only for terms at least 5 companies searched in the last 30 days. Both are platform settings with
+  defaults (`helpcentre.gaps_min_companies` 5, never under 5; `helpcentre.gaps_days` 30, 7 to 180); saves are audited
+  (`platform.helpcentre.settings_changed`). The read across companies goes through `platformRead`, audited with purpose
+  `helpcentre.no_result_searches`.
+- **Key and role (1058):** `platform.helpcentre.write` (every route; staff only, never assignable to a company role).
+  Role to hold it: **Support agent** (writes and publishes; four eyes still needs two people).
+- **Tests:** API unit (guards, key on every route, not assignable, the 5-company floor); kit (list and counts, new
+  article field errors, writer cannot publish, send back needs a note, settings); web (the page loads and opens an
+  article, no-access state; the Help drawer opens a YukthiX article on the help centre); e2e `console-helpcentre`
+  (16: company admin, no sign-in, staff without the security key, without the key, not linked all refused; bad pages;
+  A writes, A cannot publish, B publishes, audited; both companies see it with its address; the company's own article
+  wins; RLS; a term searched by 5 companies shows as counts, by 4 is hidden; the read is audited; the floor of 5).
+
+### Questions from C-8 (from 1201)
+
+1201. **Public or signed-in only.** YukthiX help articles live in a public space, so the help-centre link works without
+      signing in (good for search engines and for people who cannot sign in). *Suggested: keep public; nothing in them
+      is company data.*
+1202. **Languages.** Platform articles are English only for now; the company drawer shows a company translation when it
+      has one, but YukthiX articles have no translations yet. *Suggested: add Hindi when the first translator is in
+      place, through the same knowledge-base translations.*
+1203. **Retiring an article.** The console can write, review and publish; retiring a published YukthiX article is not
+      drawn on YX-11. *Suggested: add a Retire action in the editor drawer (four eyes as for publishing).*
 
 ## Appendix: the count script
 
@@ -814,7 +867,10 @@ C-6 to C-8.
 - **C-4 and C-5 keys on roles** (migration `202617z0000073_console_staff_roles_c4_c5`, after C-4 and C-5): containment
   (`platform.company.contain`) and feature switches (`platform.flags.manage`) go to the Security lead; planned
   maintenance is scheduled by the Security lead (`platform.maintenance.manage`) and seen by Customer success (new
-  `platform.maintenance.view`; the maintenance screen shows the windows without its buttons). The keys C-4 and C-5 gave
+  `platform.maintenance.view`; the maintenance screen shows the windows without its buttons). Later keys (migration
+  `202617z0000074_console_staff_roles_helpcentre`): the help-centre writers' key (`platform.helpcentre.write`, C-8) to
+  the Support agent, Platform settings (`platform.settings.manage`) to the Security lead; rule notices need both the
+  Customer success and Rules editor keys, by design. The keys C-4 and C-5 gave
   the staff account type are taken back. Every console key is on at least one role (checked on this database).
 - **1164, Add staff and Deactivate** in Console › Security › Staff and roles: only a Security lead, with the security key
   again and a reason, audited (`platform.staff.invited`, `platform.staff.deactivated`). A new member of staff gets an
@@ -840,3 +896,34 @@ C-6 to C-8.
 1174. **Customer success and maintenance.** Customer success sees planned maintenance but cannot schedule it.
       *Suggested: keep.*
 
+
+## Console follow-ups as built (answers 1065, 1087, 1125 and C-5's hook; branch `feat/yukthix-console-followups`)
+
+- **1065 rule notices:** after publishing (Rule sets › Publish), the drawn Notices step: a subject and notice, sent with
+  `POST platform/customers/rule-notices/:ruleSetId` (Customer success key and Rules editor key). It goes to the System
+  Admins of every open company with a location in the rule's country (`IN`) or state (`IN-KA`), as a C-2 admin message:
+  more than one company waits for a second staff member; the same audit. Only a published rule set; one live notice per
+  rule set (`yukthix_messages.rule_set_id`, a database check); a withdrawn or sent-back one may be written again.
+- **1087 withdrawing:** the writer withdraws their own message while it waits (`POST …/messages/:id/withdraw`, status
+  `withdrawn`, audited `platform.message.withdrawn`); it can never be approved after; nobody else can withdraw it.
+- **1125 Platform settings:** Console › Security › Platform settings (`/staff/platform-settings`), `PlatformSettingsScreen`,
+  added to the kit first as a story (no drawn screen existed). Every value: C-2's alert rules, C-4's breach hours
+  (the DPDP timing marked "Verify with counsel"), C-5's maintenance rules and statutory dates. A change needs the new
+  key `platform.settings.manage`, the security key again and a reason; each value is checked against its own range
+  (breach: CERT-In 1-24 hours, DPDP 1-168 hours; question 1182); audited `platform.setting.changed` with before and after.
+- **C-5's hook:** the company page's Products and features card lists the C-4 switches for that company, each decided
+  by the one feature check, with why it is off: Killed for everyone, Off for this company, Off by default, Off in company
+  settings (`GET platform/companies/:id/feature-switches`).
+- **Tests:** e2e `console-followups` (9); kit (platform settings, rule notice, withdraw); web (the card, platform
+  settings); C-1, C-2, C-4 and C-5 e2e rerun.
+
+### Questions (from 1181)
+
+1181. **Notices to HR and Payroll Admins.** The drawing sends rule notices to Payroll and HR Admins with a reminder and a
+      banner; built: the System Admins, by the C-2 messages (1081). *Suggested: keep System Admins until message
+      audiences are built; then add Payroll Admins for pay rules.*
+1182. **Ranges for the breach hours.** *Suggested: CERT-In 1 to 24 hours and DPDP 1 to 168 hours, as built; counsel may
+      narrow them.*
+1183. **Platform settings in two places.** C-2's alert rules and C-5's maintenance rules can still be changed on their own
+      pages (no reason asked there). *Suggested: keep one place: those pages link to Platform settings, which asks for
+      the key and a reason.*

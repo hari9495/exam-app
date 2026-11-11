@@ -5,7 +5,7 @@ import { RequireStepUp } from '../auth/step-up.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { PlatformStaffGuard } from './platform-staff.guard';
-import { CsDecisionDto, CsMessageDto, CsSettingsDto } from './customer-success.dto';
+import { CsDecisionDto, CsMessageDto, CsNoticeDto, CsSettingsDto } from './customer-success.dto';
 import { CustomerSuccessService } from './customer-success.service';
 
 // YukthiX console C-2, Customer success (answers 1047, 1048, 1058): staff only, on their own platform session with their
@@ -52,6 +52,20 @@ export class CustomerSuccessController {
   @RequireStepUp()
   approve(@CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CsDecisionDto) {
     return this.cs.approve(actor, id, dto);
+  }
+
+  @Post('messages/:id/withdraw')
+  @HttpCode(200)
+  @RequirePermissions('platform.customers.success')
+  withdraw(@CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CsDecisionDto) {
+    return this.cs.withdraw(actor, id, dto);
+  }
+
+  /** Answer 1065: the Notices step after publishing a rule set (also needs the Rules editor key). */
+  @Post('rule-notices/:ruleSetId')
+  @RequirePermissions('platform.customers.success', 'platform.statutory.manage')
+  ruleNotice(@CurrentUserId() actor: string, @Param('ruleSetId', ParseUUIDPipe) ruleSetId: string, @Body() dto: CsNoticeDto) {
+    return this.cs.ruleNotice(actor, ruleSetId, dto);
   }
 
   @Post('messages/:id/reject')

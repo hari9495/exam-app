@@ -6,7 +6,7 @@ import { Badge, type BadgeTone } from '../../components/display';
 import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { EmptyState, InlineAlert, Skeleton } from '../../components/feedback';
 import { useToast } from '../../components/notify';
-import { FieldRow, FormField } from '../../components/field';
+import { FieldRow, FormField, useTooEarly } from '../../components/field';
 import { TextArea, TextField } from '../../components/inputs';
 import { Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
@@ -780,6 +780,65 @@ export interface LivePublish {
   onPublish: (id: string) => Promise<void>;
   /** After publishing: what was published (shown as done). */
   published: LiveRuleRow | null;
+  /** Answer 1065: the Notices step after publishing: a message to the System Admins of the companies in the rule's place. */
+  onNotice?: (id: string, notice: { subject: string; body: string }) => Promise<{ companies: number; waiting: boolean }>;
+}
+
+/** Answer 1065: the drawn Notices step, after publishing: an admin message (C-2) to the companies in the rule's place. */
+function RuleNotice({ rule, onNotice }: { rule: LiveRuleRow; onNotice: NonNullable<LivePublish['onNotice']> }) {
+  const [subject, setSubject] = useState(`${rule.statute} · ${rule.jurisdiction} ${rule.version}: new rules from ${formatDate(day(rule.validFrom))}`.slice(0, 120));
+  const [body, setBody] = useState(`YukthiX has published ${rule.statute} for ${rule.jurisdiction}, version ${rule.version}. It applies from ${formatDate(day(rule.validFrom))}. Your payroll uses it from then; if your payroll has already run for months since then, you get arrears proposals to decide.`);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [sent, setSent] = useState<{ companies: number; waiting: boolean } | null>(null);
+  const early = useTooEarly(
+    [
+      subject.trim().length < 3 && { fieldId: 'rn-subject', message: 'Give a subject of at least 3 characters.' },
+      !body.trim() && { fieldId: 'rn-body', message: 'Write the notice.' },
+    ].filter(Boolean) as { fieldId: string; message: string }[],
+  );
+  if (sent)
+    return (
+      <InlineAlert tone="success" title={sent.waiting ? `Notice to ${sent.companies} companies is waiting for a second staff member` : 'Notice sent to 1 company'}>
+        {sent.waiting ? 'It goes to their System Admins once another staff member approves it in Customer success › Messages.' : 'Its System Admins get it in the bell and by email.'}
+      </InlineAlert>
+    );
+  return (
+    <Card
+      title="Notices"
+      footer={
+        <Button
+          variant="primary"
+          loading={busy}
+          onClick={async () => {
+            if (early.stop()) return;
+            setBusy(true);
+            setFailed(null);
+            try {
+              setSent(await onNotice(rule.id, { subject: subject.trim(), body: body.trim() }));
+            } catch (e) {
+              setFailed(e instanceof Error ? e.message : 'Not sent. Try again.');
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Send notice
+        </Button>
+      }
+    >
+      <div className="yx-ps-stack">
+        <p className="yx-ps-muted">To the System Admins of every open company with a location in {rule.jurisdiction}. More than one company waits for a second staff member.</p>
+        {failed && <InlineAlert tone="danger" title={failed} />}
+        <FormField id="rn-subject" label="Subject" required error={early.errorOf('rn-subject')}>
+          <TextField value={subject} onChange={setSubject} maxLength={120} />
+        </FormField>
+        <FormField id="rn-body" label="Notice" required error={early.errorOf('rn-body')}>
+          <TextArea rows={4} value={body} onChange={setBody} maxLength={4000} />
+        </FormField>
+      </div>
+    </Card>
+  );
 }
 
 // YX-03
@@ -799,6 +858,7 @@ export function PublishSchedulerScreen({ current = 'version', pastDated: drawnPa
             ? `It applies automatically on ${formatDate(day(live.published.validFrom))}.`
             : `It applies from ${formatDate(day(live.published.validFrom))}. Companies whose payroll already ran for months since then get arrears proposals to decide; nothing is recalculated silently.`}
         </InlineAlert>
+        {live.onNotice && <RuleNotice rule={live.published} onNotice={live.onNotice} />}
       </Frame>
     );
   if (done && !live)

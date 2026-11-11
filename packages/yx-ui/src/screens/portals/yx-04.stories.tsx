@@ -93,6 +93,8 @@ const cs = (o: Partial<LiveCustomerSuccess> = {}) => (
 export const YX04HealthLive: S = { name: 'Tenant health · from account signals (C-2)', render: () => cs() };
 export const YX04AlertRules: S = { name: 'Churn-risk alerts · rules from platform settings (C-2)', render: () => cs({ tab: 'alerts' }) };
 export const YX04MessagesWaiting: S = { name: 'Messages · waiting for a second staff member (C-2)', render: () => cs({ tab: 'messages' }) };
+// Answer 1087: the writer withdraws their own message while it waits.
+export const YX04MessagesMine: S = { name: 'Messages · my message waiting, Withdraw (1087)', render: () => cs({ tab: 'messages', messages: [{ ...CS_MESSAGES[0]!, mine: true, writtenBy: 'Kavitha Rao' }, { ...CS_MESSAGES[1]!, id: 'm3', subject: 'PF set-up check', status: 'withdrawn' }], onWithdraw: wait }) };
 export const YX04ComposerTwo: S = { name: 'Message composer · two companies need approval (C-2)', render: () => cs({ composerFor: ['c2', 'c3'] }) };
 export const YX04Flags: S = { name: 'Feature flags', render: () => <FeatureFlagsScreen flags={D.FLAGS} /> };
 export const YX04KillSwitch: S = { name: 'Feature flags · kill switch', render: () => <FeatureFlagsScreen flags={D.FLAGS} killOpen /> };

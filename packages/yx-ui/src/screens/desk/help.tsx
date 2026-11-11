@@ -280,6 +280,7 @@ export function PageHelp({ page, hrefOf, onAsk }: { page: NonNullable<HelpDrawer
               <span>{a.title}</span>
             )}
             {a.summary && <span className="yx-ops-list__sub">{a.summary}</span>}
+            {a.source === 'yukthix' && <span className="yx-ops-list__sub">From YukthiX</span>}
           </span>
         </li>
       ))}

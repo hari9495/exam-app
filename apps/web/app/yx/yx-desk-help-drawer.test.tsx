@@ -48,6 +48,14 @@ describe('Help drawer (live, H-1)', () => {
     expect(screen.getByRole('tab', { name: 'This page', selected: true })).toBeInTheDocument();
   });
 
+  it('a YukthiX article opens on the public help centre, marked From YukthiX (C-8, answer 1057)', async () => {
+    (usePathname as jest.Mock).mockReturnValue('/yx/time/leave');
+    serve({ on: true, articles: [{ id: 'k9', number: 7, title: 'Apply for leave', summary: null, source: 'yukthix', href: '/yx/help/yukthix/yukthix-help/apply-for-leave' }] });
+    wrap(<DeskHelp open onOpenChange={() => {}} />);
+    expect(await screen.findByRole('link', { name: /Apply for leave/ })).toHaveAttribute('href', '/yx/help/yukthix/yukthix-help/apply-for-leave');
+    expect(screen.getByText('From YukthiX')).toBeInTheDocument();
+  });
+
   it('negative: page help turned off by the company hides This page; the drawer opens on Ask', async () => {
     (usePathname as jest.Mock).mockReturnValue('/yx/time/leave');
     serve({ on: false, articles: [] });

@@ -1,10 +1,10 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
-import { Building2, FileClock, HeartPulse, Inbox, LifeBuoy, Megaphone, MessageSquare, ReceiptIndianRupee, Scale, ScrollText, ShieldCheck, Tags, ToggleRight, UserCog, Wrench } from 'lucide-react';
+import { BookOpen, Building2, FileClock, HeartPulse, Inbox, LifeBuoy, Megaphone, MessageSquare, ReceiptIndianRupee, Scale, ScrollText, ShieldCheck, SlidersHorizontal, Tags, ToggleRight, UserCog, Wrench } from 'lucide-react';
 import { Logo, Monogram } from '../../components/brand';
 import type { IconComponent } from '../../components/foundations';
 import { AppShell, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, TopBar, type DensityChoice, type RailItem, type ThemeChoice } from '../../components/shell';
 
-export type ConsolePageId = 'companies' | 'customers' | 'maintenance' | 'support-desk' | 'support' | 'plans' | 'whats-new' | 'rules' | 'channels' | 'feature-flags' | 'audit' | 'staff';
+export type ConsolePageId = 'companies' | 'customers' | 'help-centre' | 'maintenance' | 'support-desk' | 'support' | 'plans' | 'whats-new' | 'rules' | 'channels' | 'feature-flags' | 'platform-settings' | 'audit' | 'staff';
 type ConsoleGroup = 'Customers' | 'Catalogue' | 'Rules' | 'Operations' | 'Channels' | 'Security';
 
 interface ConsoleLink {
@@ -26,6 +26,8 @@ export const CONSOLE_LINKS: ConsoleLink[] = [
   { id: 'plans', label: 'Plans and prices', href: '/staff/plans', group: 'Catalogue', icon: Tags },
   // Help H-4 (answer 943): the entries people see in Help › What's new.
   { id: 'whats-new', label: "What's new", href: '/staff/whats-new', group: 'Catalogue', icon: Megaphone },
+  // C-8 (YX-11, answer 1057): the help articles every company sees.
+  { id: 'help-centre', label: 'Help centre', href: '/staff/help-centre', group: 'Catalogue', icon: BookOpen },
   // Console C-1 (answers 1041 to 1044): statutory rule sets, golden cases and review, publishing (YX-01 to YX-03).
   { id: 'rules', label: 'Rule sets', href: '/staff/rules', group: 'Rules', icon: Scale },
   // C-5 (answers 948, 1053): planned maintenance windows.
@@ -33,6 +35,8 @@ export const CONSOLE_LINKS: ConsoleLink[] = [
   { id: 'channels', label: 'Shared SMS account', href: '/staff/channels', group: 'Channels', icon: MessageSquare },
   // Console C-4 (answer 1049): switches for every company, one company, and the kill switch.
   { id: 'feature-flags', label: 'Feature flags', href: '/staff/feature-flags', group: 'Security', icon: ToggleRight },
+  // Answer 1125: every YukthiX-wide value (alerts, breach reminders, maintenance rules).
+  { id: 'platform-settings', label: 'Platform settings', href: '/staff/platform-settings', group: 'Security', icon: SlidersHorizontal },
   { id: 'audit', label: 'Audit log', href: '/staff/audit', group: 'Security', icon: ScrollText },
   // Staff roles (answers 1058, 1086): who holds which console keys; a Security lead changes them.
   { id: 'staff', label: 'Staff and roles', href: '/staff/staff', group: 'Security', icon: UserCog },

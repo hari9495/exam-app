@@ -37,7 +37,7 @@ export interface CsMessageRow {
   subject: string;
   body: string;
   companyIds: string[];
-  status: 'pending_approval' | 'sent' | 'rejected';
+  status: 'pending_approval' | 'sent' | 'rejected' | 'withdrawn';
   writtenBy: string;
   mine: boolean;
   decidedBy: string | null;
@@ -66,6 +66,8 @@ export interface LiveCustomerSuccess {
   onWrite: (input: { companyIds: string[]; subject: string; body: string }) => Promise<unknown>;
   onApprove: (id: string, version: number) => Promise<unknown>;
   onReject: (id: string, version: number, note: string) => Promise<unknown>;
+  /** Answer 1087: the writer takes back their own message while it waits. */
+  onWithdraw?: (id: string, version: number) => Promise<unknown>;
   onSaveSettings: (values: Record<string, number>) => Promise<unknown>;
   /** Stories: the tab shown first, the composer open with these companies. */
   tab?: 'health' | 'alerts' | 'messages';
@@ -73,7 +75,7 @@ export interface LiveCustomerSuccess {
 }
 
 const LIFE: Record<string, string> = { trial: 'Trial', active: 'Active', suspended: 'Suspended', closed: 'Closed' };
-const STATUS: Record<CsMessageRow['status'], { label: string; tone: 'warning' | 'success' | 'neutral' }> = { pending_approval: { label: 'Waiting for approval', tone: 'warning' }, sent: { label: 'Sent', tone: 'success' }, rejected: { label: 'Sent back', tone: 'neutral' } };
+const STATUS: Record<CsMessageRow['status'], { label: string; tone: 'warning' | 'success' | 'neutral' }> = { pending_approval: { label: 'Waiting for approval', tone: 'warning' }, sent: { label: 'Sent', tone: 'success' }, rejected: { label: 'Sent back', tone: 'neutral' }, withdrawn: { label: 'Withdrawn', tone: 'neutral' } };
 const errorText = (e: unknown) => (e instanceof Error && e.message ? e.message : 'That did not go through. Try again.');
 
 /** YX-04 live: tenant health, churn-risk alerts and the admin message composer (second approval for more than one company). */
@@ -167,7 +169,7 @@ export function LiveCustomerSuccessScreen({ live }: { live: LiveCustomerSuccess 
           </div>
         </TabsContent>
         <TabsContent value="messages">
-          <MessageList messages={live.messages} names={names} onApprove={live.onApprove} onReject={live.onReject} />
+          <MessageList messages={live.messages} names={names} onApprove={live.onApprove} onReject={live.onReject} onWithdraw={live.onWithdraw} />
         </TabsContent>
       </Tabs>
       {composer && <LiveComposer rows={live.rows} initial={composer} onClose={() => setComposer(null)} onWrite={live.onWrite} />}
@@ -216,8 +218,9 @@ function AlertRules({ settings, canManage, onSave }: { settings: CsSettingRow[];
 }
 
 /** Answer 1048: messages written by staff; one to more than one company waits for a second staff member. */
-function MessageList({ messages, names, onApprove, onReject }: { messages: CsMessageRow[]; names: Map<string, string>; onApprove: LiveCustomerSuccess['onApprove']; onReject: LiveCustomerSuccess['onReject'] }) {
+function MessageList({ messages, names, onApprove, onReject, onWithdraw }: { messages: CsMessageRow[]; names: Map<string, string>; onApprove: LiveCustomerSuccess['onApprove']; onReject: LiveCustomerSuccess['onReject']; onWithdraw?: LiveCustomerSuccess['onWithdraw'] }) {
   const [approving, setApproving] = useState<CsMessageRow | null>(null);
+  const [withdrawing, setWithdrawing] = useState<CsMessageRow | null>(null);
   const [rejecting, setRejecting] = useState<CsMessageRow | null>(null);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
@@ -243,7 +246,14 @@ function MessageList({ messages, names, onApprove, onReject }: { messages: CsMes
             <Badge tone={STATUS[m.status].tone}>{STATUS[m.status].label}</Badge>
             {m.status === 'pending_approval' &&
               (m.mine ? (
-                <span className="yx-ps-muted">Another staff member approves it</span>
+                <>
+                  <span className="yx-ps-muted">Another staff member approves it</span>
+                  {onWithdraw && (
+                    <Button size="sm" onClick={() => setWithdrawing(m)}>
+                      Withdraw
+                    </Button>
+                  )}
+                </>
               ) : (
                 <>
                   <Button size="sm" onClick={() => (setNote(''), setRejecting(m))}>
@@ -269,6 +279,24 @@ function MessageList({ messages, names, onApprove, onReject }: { messages: CsMes
             try {
               await onApprove(approving.id, approving.version);
               toast({ tone: 'success', title: 'Message sent', description: `To the System Admins of ${who(approving)}.` });
+            } catch (e) {
+              setFailed(errorText(e));
+            }
+          }}
+        />
+      )}
+      {withdrawing && onWithdraw && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setWithdrawing(null)}
+          title={`Withdraw “${withdrawing.subject}”?`}
+          consequence="Nothing is sent, and it can no longer be approved. You can write it again."
+          confirmLabel="Withdraw"
+          onConfirm={async () => {
+            setFailed(null);
+            try {
+              await onWithdraw(withdrawing.id, withdrawing.version);
+              toast({ tone: 'success', title: 'Message withdrawn' });
             } catch (e) {
               setFailed(errorText(e));
             }

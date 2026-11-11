@@ -42,7 +42,7 @@ export function DeskHelp({ open, onOpenChange }: { open: boolean; onOpenChange: 
           onRaise={(input) => write<{ id: string; number: string }>('/my/tickets', 'POST', { ...input, ...(screen ? { screen } : {}) })}
           ticketHref={(id) => `/yx/desk/help/${encodeURIComponent(id)}`}
           onSuggest={(q) => apiFetch(`/desk/my/kb/suggest?q=${encodeURIComponent(q)}&from=drawer`, {}, accessToken ?? undefined) as Promise<KbSuggestion[]>}
-          articleHref={(a) => `/yx/desk/help?article=${a.number}`}
+          articleHref={(a) => a.href ?? `/yx/desk/help?article=${a.number}`}
           pageHelp={pageHelp}
           whatsNew={news?.entries.length ? <WhatsNewPanel live={news} /> : undefined}
           tours={tours ? <ToursPanel live={{ ...tours, onStart: (id, step) => (onOpenChange(false), tours.onStart(id, step)) }} /> : undefined}
