@@ -1,5 +1,6 @@
 import { DateTime } from 'luxon';
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { AuditService, BlobStorageService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import type { ScopeUser } from '../access/scope';
 import { audit, inCompany, type CompanyContext, type Tx } from '../org-structure/org-structure.service';
@@ -108,7 +109,7 @@ export class WalkInsService {
 
   /* ---------------- the walk-in itself ---------------- */
 
-  private async create(tx: Tx, c: CompanyContext, loc: { id: string; timezone: string }, hostUserId: string, input: WalkInInput, mobile: string, n: Needs, via: 'kiosk' | 'desk', extra: { kioskDeviceId?: string; hoursOverrideReason?: string | null; createdBy: string }) {
+  private async create(tx: Tx, c: CompanyContext, loc: { id: string; timezone: string }, hostUserId: string, input: WalkInInput, mobile: string, n: Needs, via: 'kiosk' | 'desk', extra: { kioskDeviceId?: string; hoursOverrideReason?: string | null; createdBy: string; id?: string; photoPath?: string | null }) {
     const now = new Date();
     const minutes = Number(await this.visitors.setting(tx, c, 'visitors.host_timeout_minutes', loc.id));
     const to = await this.visitors.setting(tx, c, 'visitors.hours_to', loc.id);
@@ -124,6 +125,7 @@ export class WalkInsService {
       if (await tx.visit.findFirst({ where: { organizationId: c.organizationId, passCode: code }, select: { id: true } })) continue;
       row = await tx.visit.create({
         data: {
+          ...(extra.id ? { id: extra.id } : {}), ...(extra.photoPath ? { photoPath: extra.photoPath } : {}),
           organizationId: c.organizationId, locationId: loc.id, hostUserId, visitorName: input.name.trim(), visitorMobile: mobile, visitorCompany: input.company?.trim() || null, purpose,
           startsAt: now, endsAt: close, status: 'waiting', passToken: passToken(), passCode: code, walkIn: true, visitorTypeId: input.typeId || null,
           kioskDeviceId: extra.kioskDeviceId ?? null, approvalDueAt: approvalDue(now, minutes), hoursOverrideReason: extra.hoursOverrideReason ?? null,
@@ -212,6 +214,20 @@ export class WalkInsService {
       const p = photoProblem(photo);
       if (p) throw new BadRequestException(p);
     }
+    // Walk-through 11 Nov 2026: the photo is stored before the visit (under the visit's id). If storing fails nothing is
+    // created (a retry made a new waiting visit each time, none with a photo, and the host was never told); if the
+    // walk-in does not go ahead, the stored photo is deleted at once.
+    const visitId = randomUUID();
+    let photoPath: string | null = null;
+    if (photo) {
+      try {
+        photoPath = await this.uploadPhoto(c, visitId, photo);
+      } catch (e) {
+        this.logger.warn(`walk-in photo not stored: ${(e as Error).message}`);
+        throw new ServiceUnavailableException('We could not save your photo. Please see reception.');
+      }
+    }
+    const dropPhoto = async () => void (photoPath && (await this.blob.deleteByUrl(photoPath).catch(() => undefined)));
     const made = await this.tenantPrisma.forTenant(c, async (tx) => {
       const loc = await this.kioskLoc(tx, c, k);
       const o = await this.open(tx, c, loc);
@@ -233,11 +249,16 @@ export class WalkInsService {
       if ((await this.visitors.setting(tx, c, 'visitors.photo', loc.id)) === 'on' && !photo && !input.minor) throw new BadRequestException('Take your photo first.');
       const n = await this.needs(tx, c, loc.id, input.typeId || null, mobile, input.company || null);
       checkAccepted(n, input);
-      const row = await this.create(tx, c, loc, hosts[0]!.id, input, mobile, n, 'kiosk', { kioskDeviceId: k.deviceId, createdBy: hosts[0]!.id });
+      const row = await this.create(tx, c, loc, hosts[0]!.id, input, mobile, n, 'kiosk', { kioskDeviceId: k.deviceId, createdBy: hosts[0]!.id, id: visitId, photoPath });
       return { row, loc };
+    }).catch(async (e: unknown) => {
+      await dropPhoto();
+      throw e;
     });
-    if ('state' in made) return made;
-    if (photo) await this.savePhoto(c, made.row.id, photo);
+    if ('state' in made) {
+      await dropPhoto();
+      return made;
+    }
     await this.tellHost(c.organizationId, made.row, made.loc.name);
     return { state: 'waiting' as const, id: made.row.id, host: (await this.hostFirst(c, made.row.hostUserId)), dueAt: made.row.approvalDueAt };
   }
@@ -247,10 +268,9 @@ export class WalkInsService {
     return (u?.name || u?.email || 'Your host').split(' ')[0]!;
   }
 
-  private async savePhoto(c: CompanyContext, visitId: string, photo: Buffer) {
+  private uploadPhoto(c: CompanyContext, visitId: string, photo: Buffer): Promise<string> {
     const jpeg = photo[0] === 0xff;
-    const path = await this.blob.upload(`visitors/${c.organizationId}/${visitId}.${jpeg ? 'jpg' : 'png'}`, photo, jpeg ? 'image/jpeg' : 'image/png');
-    await this.tenantPrisma.forTenant(c, (tx) => tx.visit.update({ where: { id: visitId }, data: { photoPath: path } }));
+    return this.blob.upload(`visitors/${c.organizationId}/${visitId}.${jpeg ? 'jpg' : 'png'}`, photo, jpeg ? 'image/jpeg' : 'image/png');
   }
 
   /** The kiosk asks how its walk-in is doing (only the kiosk that made it; anything else is not found). */

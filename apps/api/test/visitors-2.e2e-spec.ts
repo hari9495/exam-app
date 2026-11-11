@@ -27,6 +27,7 @@ describe('Visitors slice 2', () => {
   let prisma: PrismaService;
   let tenantPrisma: TenantPrismaService;
   let walkIns: WalkInsService;
+  let blob: ReturnType<typeof createFakeBlobStorage>;
   const PASSWORD = 'Corr3ct-Horse-Battery';
   const run = randomUUID().slice(0, 8);
   const SUPER: TenantContext = { organizationId: null, isSuperAdmin: true };
@@ -58,7 +59,7 @@ describe('Visitors slice 2', () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(EmailService).useValue({ send: jest.fn(async (m: { to: string; subject: string; html: string }) => (mails.push(m), { success: true })) })
-      .overrideProvider(BlobStorageService).useValue(createFakeBlobStorage())
+      .overrideProvider(BlobStorageService).useValue((blob = createFakeBlobStorage()))
       .compile();
     app = moduleRef.createNestApplication();
     app.use(cookieParser());
@@ -298,6 +299,23 @@ describe('Visitors slice 2', () => {
     expect((await kiosk('visitor', 'post', '/walk-ins').send({ ...adult, name: 'Sunil Rao', mobile: '9000055555', idType: 'pan', idLast4: '234F' }).expect(200)).body).toEqual({ state: 'see-reception' });
     await setting('visitors.id_capture', 'off');
     expect((await kiosk('visitor', 'post', '/walk-ins').send({ ...adult, name: 'Sunil Rao', mobile: '9000055555', idType: 'pan', idLast4: '234F' }).expect(400)).body.message).toMatch(/does not take ID/);
+  });
+
+  it('a kiosk photo that cannot be stored creates nothing (the visitor sees reception); a stopped walk-in keeps no photo', async () => {
+    const notice = (await kiosk('visitor', 'post', '/needs').send({ mobile: '9000077001' }).expect(200)).body.notice.version;
+    const base = { name: 'Sneha Kulkarni', mobile: '9000077001', hostName: 'anita desai', noticeVersion: notice, photoBase64: JPEG };
+    blob.upload.mockRejectedValueOnce(new Error('storage down'));
+    const r = (await kiosk('visitor', 'post', '/walk-ins').send(base).expect(503)).body;
+    expect(r.message).toBe('We could not save your photo. Please see reception.');
+    expect(await inA((tx) => tx.visit.count({ where: { visitorName: 'Sneha Kulkarni' } }))).toBe(0);
+    // A walk-in that does not go ahead (a host nobody matches) leaves no photo behind.
+    const before = blob.blobs.size;
+    expect((await kiosk('visitor', 'post', '/walk-ins').send({ ...base, hostName: 'Nobody Here' }).expect(200)).body).toEqual({ state: 'see-reception' });
+    expect(blob.blobs.size).toBe(before);
+    // Stored: the visit carries its photo from the start.
+    const ok = (await kiosk('visitor', 'post', '/walk-ins').send(base).expect(want(200))).body;
+    expect(await inA((tx) => tx.visit.findUniqueOrThrow({ where: { id: ok.id } }))).toMatchObject({ status: 'waiting', photoPath: expect.stringContaining(ok.id) });
+    await api('host', 'post', `/visitors/walk-ins/${ok.id}/decide`).send({ approve: false }).expect(want(200));
   });
 
   it('606: an invited visitor of a type reads the NDA on their link; the kiosk pass then asks only the rest', async () => {
