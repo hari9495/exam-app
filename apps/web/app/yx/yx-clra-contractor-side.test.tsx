@@ -73,7 +73,12 @@ describe('We are the contractor pages (live)', () => {
     api.mockImplementation(async () => {
       throw Object.assign(new Error('forbidden'), { status: 403 });
     });
-    wrap(<YxClientPacksPage />);
-    expect(await screen.findByText(/the contract labour key/)).toBeInTheDocument();
+    // Answer 852: the same words as the other contract labour pages, on all three pages.
+    for (const Page of [YxClientSitesPage, YxOwnLicencesPage, YxClientPacksPage]) {
+      const { unmount } = wrap(<Page />);
+      expect(await screen.findByText(/Ask your HR team/)).toBeInTheDocument();
+      expect(screen.queryByText(/the contract labour key/)).not.toBeInTheDocument();
+      unmount();
+    }
   });
 });

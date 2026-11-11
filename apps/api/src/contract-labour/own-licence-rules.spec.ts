@@ -54,4 +54,15 @@ describe('client pack remittances (answer 821)', () => {
     expect(challanRows([reg[0]!], []).rows).toEqual([['PF', 'TNMAS0012345000', '', '', '', 'Not filed yet']]);
     expect(challanRows([], [])).toEqual({ rows: [], missing: [] });
   });
+  it('841: PT gives its row when registered (for the site’s state); not filed is named; not registered is left out', () => {
+    const pt = [...reg, { statute: 'IN.PT', registrationNo: 'PTTN998877' }];
+    const filed = [{ statute: 'IN.PF', reference: 'T1', amount: '1.00', filedOn: '2026-11-12' }, { statute: 'IN.ESI', reference: 'E1', amount: '2.00', filedOn: '2026-11-12' }];
+    expect(challanRows(pt, [...filed, { statute: 'IN.PT', reference: 'PT-1', amount: '416.00', filedOn: '2026-11-20' }]).rows.at(-1)).toEqual(['PT', 'PTTN998877', 'PT-1', '416.00', '2026-11-20', 'Filed']);
+    expect(challanRows(pt, filed).missing).toEqual(['PT challan']);
+    // Answer 882: outside the state's PT months an unfiled PT is not missing; a filed one still shows.
+    expect(challanRows(pt, filed, false)).toEqual({ rows: [...challanRows(reg, filed).rows, ['PT', 'PTTN998877', '', '', '', 'Not due this month']], missing: [] });
+    expect(challanRows(pt, [...filed, { statute: 'IN.PT', reference: 'PT-1', amount: '416.00', filedOn: '2026-09-30' }], false).rows.at(-1)).toEqual(['PT', 'PTTN998877', 'PT-1', '416.00', '2026-09-30', 'Filed']);
+    expect(challanRows(reg, filed, false).missing).toEqual([]);
+    expect(challanRows(reg, [...filed, { statute: 'IN.PT', reference: 'PT-1', amount: '416.00', filedOn: '2026-11-20' }]).rows.map((r) => r[0])).toEqual(['PF', 'ESI']);
+  });
 });
