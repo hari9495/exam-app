@@ -1830,6 +1830,21 @@ white-label per company from the console with the plan; (443) draw the quarantin
 Founder approved, 10 Nov 2026 (question 701): seed one demo staffing client, placement and issued invoice in
 demo-org, shown only while the staffing desk is on.
 Founder decided, 11 Nov 2026: build the "later" items now (377 sealed e-sign PDF, 401 joiner batches, 405 bulk offers in the background, 421 WhatsApp interview reminders, 422 interview-day swap, 491 client portal tickets, 495 e-invoicing per entity, 497 timesheets from Time, 574 receipts in the export, 842 bank receipt upload).
+## Client portal tickets built (answer 491; 11 Nov 2026, branch `feat/yukthix-later-portal-tickets`)
+- The drawn Tickets tab of the client portal (T9-06) is live. A contact raises a ticket (category, subject, details) and
+  follows it: the list (number, category, priority, raised, resolve-by or paused, status Open / Waiting for you /
+  Resolved) and a drawer with the public conversation and a reply box. Stories Tickets, RaiseTicket, TicketConversation.
+- The tickets are the Helpdesk's own (`TicketsService.createIn`, `RequesterService.replyIn`; channel portal, tag
+  client-portal); never a second ticket model. `staffing_client_tickets` (forced RLS; migration
+  `202617z0000003_client_portal_tickets`) links a ticket to the client and contact. Every contact of the client sees the
+  client's tickets; another client's answers 404. Internal notes are never shown; agents show by first name.
+- Routing (Settings 6.2 "Client portal tickets go to", `staffing.portal.tickets_team`, default the account manager): the
+  account manager on their help desk (assigned to them), or a chosen active Helpdesk team (its queue); otherwise the
+  first customer-support desk; no desk: 409 "Tickets are not set up yet". Audited `staffing.portal.ticket_raised`.
+- Routes: `GET|POST public/client-portal/:org/tickets`, `GET .../tickets/:id`, `POST .../tickets/:id/reply`.
+- Tests: kit (raise with field errors, toast, drawer, reply, failure, tab hidden without tickets, 6.2 mapping); e2e
+  staffing-4 (no desk 409, bad input 400, no session 401, routing three ways, list order, other client empty and 404,
+  note hidden, empty reply 400, audit). Manual test MT-STF-491.
 ## Offers round 3 built (answers 376, 402, 404, 423, 443; 14 Nov 2026, branch `feat/yukthix-offers-3`)
 - (376) Settings 6.1: a named approver above the range who left or lost the offer-pay key is named on the field ("Ravi
   Kumar (cannot approve)") with a warning, like the stale default recruiter; until HR chooses again the step goes to the

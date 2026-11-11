@@ -83,12 +83,16 @@ export class DevicesService {
     return this.setup.run(ctx, user, false, async (tx, c) => {
       const org = c.organizationId;
       const now = new Date();
-      const [kiosks, phones, locations] = await Promise.all([
+      const [kiosks, phones, locations, revoked] = await Promise.all([
         tx.timeDevice.findMany({ where: { organizationId: org, kind: 'kiosk', status: { in: ['pending', 'active'] } }, orderBy: { code: 'asc' } }),
         // Phones and, for web clock-in (DeviceNotApproved), computers: both are asked for by the person and approved here.
         tx.timeDevice.findMany({ where: { organizationId: org, kind: { in: ['phone', 'web'] }, status: { in: ['pending', 'active', 'lost', 'revoked'] } }, orderBy: { createdAt: 'desc' }, take: 1000 }),
         tx.location.findMany({ where: { organizationId: org, archivedAt: null }, select: { id: true, name: true, code: true, legalEntityId: true, timezone: true }, orderBy: { name: 'asc' } }),
+        // Answer 871: revoked kiosks for "Show revoked" (newest first).
+        tx.timeDevice.findMany({ where: { organizationId: org, kind: 'kiosk', status: 'revoked' }, orderBy: [{ decidedAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }], take: 200 }),
       ]);
+      const revokers = new Map((await tx.user.findMany({ where: { organizationId: org, id: { in: [...new Set(revoked.map((k) => k.decidedBy).filter((x): x is string => !!x))] } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name?.trim() || u.email]));
+      const allPlaces = new Map((await tx.location.findMany({ where: { organizationId: org, id: { in: revoked.map((k) => k.locationId!).filter(Boolean) } }, select: { id: true, name: true } })).map((l) => [l.id, l.name]));
       const entities = new Map((await tx.legalEntity.findMany({ where: { organizationId: org }, select: { id: true, name: true } })).map((e) => [e.id, e.name]));
       const locs = new Map(locations.map((l) => [l.id, l]));
       // Accepted check-ins today (the kiosk location's own date) from each kiosk's receipts.
@@ -125,6 +129,7 @@ export class DevicesService {
         phones: phones
           .filter((p) => p.status !== 'pending')
           .map((p) => ({ id: p.id, kind: p.kind, employeeId: p.employeeId, person: people.get(p.employeeId!) ?? '', model: p.model ?? '', appVersion: p.appVersion, lastSeenAt: p.lastSeenAt, status: p.status === 'active' && phoneInactive(p.lastSeenAt, p.decidedAt ?? p.createdAt, now) ? 'inactive' : p.status })),
+        revokedKiosks: revoked.map((k) => ({ id: k.id, code: k.code ?? '', place: k.place ?? '', location: (k.locationId && allPlaces.get(k.locationId)) ?? '', reason: k.decisionReason ?? '', by: (k.decidedBy && revokers.get(k.decidedBy)) ?? null, at: (k.decidedAt ?? k.createdAt).toISOString() })),
         locations: locations.map((l) => ({ id: l.id, name: l.name, entity: entities.get(l.legalEntityId) ?? '', zone: l.timezone })),
         entities: entities.size,
         // The places the web clock-in rule can be set for, and the rule as it stands.

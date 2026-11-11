@@ -15,6 +15,9 @@ import { DatePicker } from '../../components/date';
 import { TimeField } from '../../components/inputs';
 import { FileUpload } from '../../components/upload';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
+import { Drawer } from '../../components/drawer';
+import { MessageBody } from '../desk/desk-kit';
+import { useToast } from '../../components/notify';
 import { Icon } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { timeOf } from '../../lib/dates';
@@ -70,6 +73,8 @@ export interface ClientPortalProps {
   defaultRejectId?: string;
   defaultScheduleOpen?: boolean;
   defaultTicketOpen?: boolean;
+  /** Story (answer 491): a ticket open with its conversation. */
+  defaultTicketId?: string;
 }
 
 // T9-06
@@ -100,7 +105,7 @@ export function ClientPortalScreen(props: ClientPortalProps | { live: LiveClient
       ) : tab === 'invoices' ? (
         <ClientInvoices items={p.invoices} today={today} />
       ) : (
-        <ClientTickets items={p.tickets} defaultOpen={p.defaultTicketOpen} />
+        <ClientTickets items={p.tickets} defaultOpen={p.defaultTicketOpen} defaultOpenId={p.defaultTicketId} />
       )}
     </TenantPortal>
   );
@@ -390,13 +395,93 @@ function ClientInvoices({ items, today, pdf = true, onPdf }: { items: ClientInvo
   );
 }
 
-function ClientTickets({ items, defaultOpen }: { items: ClientPortalProps['tickets']; defaultOpen?: boolean }) {
+/** Answer 491: a ticket as the client contact sees it (the Helpdesk's own ticket: public replies only). */
+export interface ClientTicketView {
+  id: string;
+  number: string;
+  subject: string;
+  category: string;
+  priority: string;
+  status: string;
+  raisedOn: string;
+  raisedBy: string;
+  resolveBy: string | null;
+  canReply: boolean;
+  messages: { id: string; side: string; author: string; bodyHtml: string; at: string }[];
+}
+export interface ClientTicketParts {
+  onRaise: (input: { category: string; subject: string; details?: string }) => Promise<{ id: string; number: string }>;
+  load: (id: string) => Promise<ClientTicketView>;
+  onReply: (id: string, text: string) => Promise<unknown>;
+}
+const TICKET_CATEGORIES = ['Replacement', 'Billing', 'Timesheets', 'Access', 'Complaint about a worker', 'Other'];
+const SAMPLE_TICKET: ClientTicketView = {
+  id: 'TKT-3310',
+  number: 'TKT-3310',
+  subject: 'Replacement needed: warehouse associate left on day 4',
+  category: 'Replacement',
+  priority: 'High',
+  status: 'In progress',
+  raisedOn: '2026-09-26T09:12:00',
+  raisedBy: 'Meera Pillai',
+  resolveBy: '2026-09-26T13:12:00',
+  canReply: true,
+  messages: [
+    { id: 'm1', side: 'requester', author: 'Meera Pillai', bodyHtml: '<p>Arun left on day 4; we need someone for the warehouse shift from Monday.</p>', at: '2026-09-26T09:12:00' },
+    { id: 'm2', side: 'agent', author: 'Divya', bodyHtml: '<p>Two people from the bench can start Monday. I will send their profiles today.</p>', at: '2026-09-26T11:40:00' },
+  ],
+};
+
+/** The drawn Tickets tab (T9-06), and live (answer 491): the list, Raise a ticket, and a ticket with its conversation. */
+function ClientTickets({ items, defaultOpen, defaultOpenId, parts }: { items: (ClientPortalProps['tickets'][number] & { number?: string })[]; defaultOpen?: boolean; defaultOpenId?: string; parts?: ClientTicketParts }) {
   const [open, setOpen] = useState(!!defaultOpen);
   const [cat, setCat] = useState<string | null>(null);
   const [subject, setSubject] = useState('');
-  const [tried, setTried] = useState(false);
+  const [details, setDetails] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<ClientTicketView | null>(defaultOpenId && !parts ? SAMPLE_TICKET : null);
+  const [reply, setReply] = useState('');
+  const { toast } = useToast();
+  const early = useTooEarly([!cat && { fieldId: 'ct-cat', message: 'Choose a category.' }, subject.trim().length < 3 && { fieldId: 'ct-subject', message: 'Add a short subject.' }].filter(Boolean) as { fieldId: string; message: string }[]);
+  const replyEarly = useTooEarly(!reply.trim() ? [{ fieldId: 'ct-reply', message: 'Write your reply first.' }] : []);
+  const run = async (key: string, fn: () => Promise<void>) => {
+    setBusy(key);
+    setFailed(null);
+    try {
+      await fn();
+    } catch (e) {
+      setFailed(e instanceof Error && e.message ? e.message : 'That did not go through. Try again.');
+    } finally {
+      setBusy(null);
+    }
+  };
+  const raise = () => {
+    if (early.stop()) return;
+    if (!parts) return setOpen(false);
+    void run('raise', async () => {
+      const made = await parts.onRaise({ category: cat!, subject: subject.trim(), ...(details.trim() ? { details: details.trim() } : {}) });
+      setOpen(false);
+      setCat(null);
+      setSubject('');
+      setDetails('');
+      toast({ tone: 'success', title: `Ticket ${made.number} raised`, description: 'Your account manager or support team answers here and by email.' });
+    });
+  };
+  const view = (id: string) => (parts ? void run(`v${id}`, async () => setViewing(await parts.load(id))) : setViewing(SAMPLE_TICKET));
+  const send = () => {
+    if (replyEarly.stop() || !viewing) return;
+    if (!parts) return setReply('');
+    void run('reply', async () => {
+      await parts.onReply(viewing.id, reply.trim());
+      setReply('');
+      setViewing(await parts.load(viewing.id));
+      toast({ tone: 'success', title: 'Reply sent' });
+    });
+  };
   return (
     <Card title="Tickets" actions={<Button size="sm" icon={Plus} onClick={() => setOpen(true)}>Raise a ticket</Button>}>
+      {failed && !open && !viewing && <InlineAlert tone="danger" title={failed} />}
       {items.length === 0 ? (
         <EmptyState compact title="No tickets." description="Raise one for replacements, billing questions or access." />
       ) : (
@@ -406,10 +491,14 @@ function ClientTickets({ items, defaultOpen }: { items: ClientPortalProps['ticke
               <div className="yx-ps-list__main">
                 <span className="yx-ps-list__title">{t.subject}</span>
                 <span className="yx-ps-list__meta">
-                  <span className="yx-ps-mono">{t.id}</span> · {t.category} · {t.priority} priority · raised {formatDate(t.raisedOn)} · {t.sla}
+                  <span className="yx-ps-mono">{t.number ?? t.id}</span> · {t.category} · {t.priority} priority · raised {formatDate(t.raisedOn)}
+                  {t.sla ? ` · ${t.sla}` : ''}
                 </span>
               </div>
               <Badge tone={t.status === 'Resolved' ? 'success' : t.status === 'Waiting for you' ? 'warning' : 'info'}>{t.status}</Badge>
+              <Button size="sm" loading={busy === `v${t.id}`} onClick={() => view(t.id)}>
+                Open
+              </Button>
             </li>
           ))}
         </ul>
@@ -420,25 +509,70 @@ function ClientTickets({ items, defaultOpen }: { items: ClientPortalProps['ticke
         size="md"
         title="Raise a ticket"
         description="Response times follow your contract: high priority within 4 business hours."
+        notice={failed && open ? <InlineAlert tone="danger" title={failed} /> : undefined}
         footer={
           <>
             <Button onClick={() => setOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={() => (cat && subject ? setOpen(false) : setTried(true))}>
+            <Button variant="primary" loading={busy === 'raise'} onClick={raise}>
               Raise ticket
             </Button>
           </>
         }
       >
-        <FormField label="Category" required error={tried && !cat ? 'Choose a category.' : null}>
-          <Select value={cat} onChange={setCat} options={opt(['Replacement', 'Billing', 'Timesheets', 'Access', 'Complaint about a worker', 'Other'])} placeholder="Choose" />
+        <FormField id="ct-cat" label="Category" required error={early.errorOf('ct-cat')}>
+          <Select value={cat} onChange={setCat} options={opt(TICKET_CATEGORIES)} placeholder="Choose" />
         </FormField>
-        <FormField label="Subject" required error={tried && !subject ? 'Add a short subject.' : null}>
-          <TextField value={subject} onChange={setSubject} />
+        <FormField id="ct-subject" label="Subject" required error={early.errorOf('ct-subject')}>
+          <TextField value={subject} onChange={setSubject} maxLength={200} />
         </FormField>
         <FormField label="Details" optional>
-          <TextArea rows={4} />
+          <TextArea rows={4} value={details} onChange={setDetails} maxLength={4000} />
         </FormField>
       </Dialog>
+      <Drawer
+        open={Boolean(viewing)}
+        onOpenChange={(o) => !o && (setViewing(null), setReply(''), setFailed(null))}
+        size="md"
+        title={viewing?.subject ?? ''}
+        subtitle={viewing ? `${viewing.number} · ${viewing.category} · ${viewing.priority} priority · ${viewing.status}` : ''}
+        notice={failed && viewing ? <InlineAlert tone="danger" title={failed} /> : undefined}
+        footer={
+          viewing?.canReply ? (
+            <>
+              <Button onClick={() => setViewing(null)}>Close</Button>
+              <Button variant="primary" loading={busy === 'reply'} onClick={send}>
+                Send reply
+              </Button>
+            </>
+          ) : undefined
+        }
+      >
+        {viewing && (
+          <div className="yx-ps-stack">
+            <p className="yx-ps-muted">
+              Raised by {viewing.raisedBy} on {formatDate(new Date(viewing.raisedOn))}
+              {viewing.resolveBy ? ` · resolve by ${formatDate(new Date(viewing.resolveBy))}, ${timeOf(new Date(viewing.resolveBy))}` : ''}
+            </p>
+            <ul className="yx-ps-list" aria-label="Conversation">
+              {viewing.messages.map((m) => (
+                <li key={m.id}>
+                  <div className="yx-ps-list__main">
+                    <span className="yx-ps-list__title">
+                      {m.author || 'Support'} <span className="yx-ps-muted">· {formatDate(new Date(m.at))}, {timeOf(new Date(m.at))}</span>
+                    </span>
+                    <MessageBody html={m.bodyHtml} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {viewing.canReply && (
+              <FormField id="ct-reply" label="Your reply" required error={replyEarly.errorOf('ct-reply')}>
+                <TextArea rows={3} value={reply} onChange={setReply} maxLength={4000} />
+              </FormField>
+            )}
+          </div>
+        )}
+      </Drawer>
     </Card>
   );
 }
@@ -1134,7 +1268,7 @@ export function VisitorInviteScreen({ tenant: sampleTenant, accent: sampleAccent
 
 /* ================================================================== T9-06 made live (staffing slice 3, answer 453) */
 
-export type LiveClientTab = 'jobs' | 'submissions' | 'interviews' | 'timesheets' | 'invoices';
+export type LiveClientTab = 'jobs' | 'submissions' | 'interviews' | 'timesheets' | 'invoices' | 'tickets';
 export interface LiveClientPortal {
   tenant: string;
   tab: LiveClientTab;
@@ -1165,6 +1299,8 @@ export interface LiveClientPortal {
   onPdf?: (invoiceId: string) => void;
   onDecide: (id: string, decision: 'shortlist' | 'reject', feedback?: string) => Promise<unknown>;
   onTimesheet: (id: string, action: 'approve' | 'send_back') => Promise<unknown>;
+  /** Answer 491: the client's Helpdesk tickets (none: the tab is not shown). */
+  tickets?: ClientTicketParts & { rows: { id: string; number: string; subject: string; category: string; priority: string; raisedOn: string; resolveBy: string | null; paused: boolean; status: string }[] };
 }
 const LIVE_TABS: { id: LiveClientTab; label: string }[] = [
   { id: 'jobs', label: 'Jobs' },
@@ -1172,6 +1308,7 @@ const LIVE_TABS: { id: LiveClientTab; label: string }[] = [
   { id: 'interviews', label: 'Interviews' },
   { id: 'timesheets', label: 'Timesheets' },
   { id: 'invoices', label: 'Invoices' },
+  { id: 'tickets', label: 'Tickets' },
 ];
 const dOf = (s: string) => new Date(`${s}T00:00:00`);
 const weekLabel = (s: string) => `${formatDate(dOf(s))} – ${formatDate(new Date(dOf(s).getTime() + 6 * 86_400_000))}`;
@@ -1350,6 +1487,10 @@ function LiveClientPortalView({ live }: { live: LiveClientPortal }) {
         </Card>
       );
     }
+    if (live.tab === 'tickets' && live.tickets) {
+      const k = live.tickets;
+      return <ClientTickets parts={k} items={k.rows.map((r) => ({ id: r.id, number: r.number, subject: r.subject, category: r.category, priority: r.priority, raisedOn: new Date(r.raisedOn), sla: r.paused ? 'paused while waiting for you' : r.resolveBy ? `resolve by ${formatDate(new Date(r.resolveBy))}` : '', status: r.status }))} />;
+    }
     if (d.invoices.length === 0) return <EmptyState compact title="No invoices yet." />;
     return <ClientInvoices pdf={Boolean(live.onPdf)} onPdf={(no) => live.onPdf?.(d.invoices.find((x) => x.no === no)!.id)} today={live.today} items={d.invoices.map((x) => ({ no: x.no, period: x.period ?? '', kind: x.kind as ClientInvoice['kind'], amount: Number(x.amount), gst: Number(x.gst), issuedOn: dOf(x.issuedOn), dueOn: dOf(x.dueOn), status: x.status }))} />;
   };
@@ -1357,7 +1498,7 @@ function LiveClientPortalView({ live }: { live: LiveClientPortal }) {
     <TenantPortal
       tenant={live.tenant}
       portal={`Client portal${d ? ` · ${d.client.name}` : ''}`}
-      nav={LIVE_TABS.map((t) => ({ label: t.label, active: t.id === live.tab, href: live.hrefFor(t.id), onNavigate: live.onTab ? () => live.onTab!(t.id) : undefined }))}
+      nav={LIVE_TABS.filter((t) => t.id !== 'tickets' || live.tickets).map((t) => ({ label: t.label, active: t.id === live.tab, href: live.hrefFor(t.id), onNavigate: live.onTab ? () => live.onTab!(t.id) : undefined }))}
       access={{ kind: 'otp', identity: d?.client.email ?? '', endsOn: d?.client.contractEnds ? dOf(d.client.contractEnds) : live.today, today: live.today, endsBecause: 'contract end' }}
       footer={{ privacy: 'Privacy notice for client contacts (G-09)' }}
       noLanguage

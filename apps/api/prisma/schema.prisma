@@ -12601,6 +12601,21 @@ model StaffingPlacement {
   @@map("staffing_placements")
 }
 
+/// Answer 491: a Helpdesk ticket a client contact raised in the staffing client portal (the ticket itself is sd_tickets).
+model StaffingClientTicket {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  clientId       String   @map("client_id") @db.Uuid
+  contactId      String   @map("contact_id") @db.Uuid
+  ticketId       String   @unique(map: "staffing_client_tickets_ticket_key") @map("ticket_id") @db.Uuid
+  /// The portal's own category (Replacement, Billing, Timesheets, Access, Complaint about a worker, Other).
+  category       String   @db.VarChar(40)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, clientId, createdAt], map: "staffing_client_tickets_client_idx")
+  @@map("staffing_client_tickets")
+}
+
 /// HIR-17 bench: an employee or contractor between placements.
 model StaffingBench {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

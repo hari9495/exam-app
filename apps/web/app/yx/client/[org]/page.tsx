@@ -6,11 +6,12 @@ import { ClientPortalScreen, PortalSignInScreen, type LiveClientPortal, type Liv
 import { apiFetch, apiFetchBlob } from '../../../../lib/api-client';
 import { otpSignIn } from '../../../../lib/yx-portal';
 
-const TABS: LiveClientTab[] = ['jobs', 'submissions', 'interviews', 'timesheets', 'invoices'];
+const TABS: LiveClientTab[] = ['jobs', 'submissions', 'interviews', 'timesheets', 'invoices', 'tickets'];
+type TicketRows = NonNullable<LiveClientPortal['tickets']>['rows'];
 
 // T9-06 client portal (staffing slice 3, answer 453): a client contact the account manager gave access signs in with a
 // one-time code by email, then a session (this tab only) sees only their own company's jobs, submissions, timesheets
-// and invoices. A call answered 401 part-way (the session ended) shows "sign in again".
+// and invoices, and raises and follows Helpdesk tickets (answer 491). A call answered 401 part-way (the session ended) shows "sign in again".
 export default function YxClientPortalPage() {
   const router = useRouter();
   const { org } = useParams<{ org: string }>();
@@ -20,6 +21,7 @@ export default function YxClientPortalPage() {
   const [token, setToken] = useState<string | null>(null);
   const [data, setData] = useState<LiveClientPortal['data']>(null);
   const [state, setState] = useState<LiveClientPortal['state']>('loading');
+  const [tickets, setTickets] = useState<TicketRows>([]);
   const [ended, setEnded] = useState(false);
   const headers = (t: string) => ({ 'X-Client-Portal': t });
   const call = async <T,>(path: string, t: string, init: RequestInit = {}): Promise<T> => {
@@ -33,7 +35,9 @@ export default function YxClientPortalPage() {
   const load = async (t: string) => {
     setState('loading');
     try {
-      setData(await call<LiveClientPortal['data']>('/me', t));
+      const [me, rows] = await Promise.all([call<LiveClientPortal['data']>('/me', t), call<TicketRows>('/tickets', t)]);
+      setData(me);
+      setTickets(rows);
       setState('ready');
     } catch {
       setState('error');
@@ -94,6 +98,19 @@ export default function YxClientPortalPage() {
               URL.revokeObjectURL(url);
             })
             .catch((e: { status?: number }) => e.status === 401 && setEnded(true)),
+        tickets: {
+          rows: tickets,
+          onRaise: async (input) => {
+            const made = await call<{ id: string; number: string }>('/tickets', token, { method: 'POST', body: JSON.stringify(input) });
+            setTickets(await call<TicketRows>('/tickets', token));
+            return made;
+          },
+          load: (id) => call(`/tickets/${encodeURIComponent(id)}`, token),
+          onReply: async (id, text) => {
+            await call(`/tickets/${encodeURIComponent(id)}/reply`, token, { method: 'POST', body: JSON.stringify({ text }) });
+            setTickets(await call<TicketRows>('/tickets', token));
+          },
+        },
         onTimesheet: async (id, action) => {
           await call(`/timesheets/${encodeURIComponent(id)}/${action === 'approve' ? 'approve' : 'send-back'}`, token, { method: 'POST', body: JSON.stringify({}) });
           await load(token);

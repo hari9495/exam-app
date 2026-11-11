@@ -350,6 +350,9 @@ database and refuse to run against the test app database; (799) the kiosk detail
 Founder approved, 11 Nov 2026 (questions 861-862, 871-873, all as suggested): keep 861 (archived roles only in grant
 history and the audit log), 862 (the e2e database is seeded), 871 ("Show revoked" filter later if HR asks), 872, 873.
 Founder decided, 11 Nov 2026: build the "later" items now (871 "Show revoked" kiosks). The 4 phone views wait for the mobile app.
+Built 11 Nov 2026 (871, branch `feat/yukthix-later-portal-tickets`): Devices & kiosks has "Show revoked (n)" above the
+kiosks; on, it lists revoked kiosks (newest first) with the date, who revoked them and the reason (`GET /time/devices`
+returns `revokedKiosks`). Story Kiosks · show revoked (871); kit and time-devices e2e tests; manual test MT-TIM-871.
 
 ## Visitors slice 1 built (answers 601-617; 15 Nov 2026, branch `feat/yukthix-visitors-1`)
 
@@ -544,3 +547,16 @@ Founder decided, 11 Nov 2026: build the "later" items now (871 "Show revoked" ki
 873. **All day and the walk-in window.** An all-day location's walk-in pass runs to midnight that day. *Suggested: keep;
      a visitor still inside at midnight is closed as "Not checked out" by the nightly sweep as today.*
 
+## Founder questions from the later items 491 and 871 (11 Nov 2026)
+
+921. **An account manager who cannot work tickets.** Routing gives the ticket to the account manager when they hold a seat
+     on an active help desk, even if their role lacks the Helpdesk work permission; they then cannot answer it.
+     *Suggested: only route to an account manager who can work tickets; otherwise the desk's queue.*
+922. **Who sees a client's tickets.** Every contact of the client with portal access sees all the client's tickets, not
+     only the ones they raised. *Suggested: keep (like invoices and timesheets).*
+923. **Reply emails for portal tickets.** Agent replies email the contact as a Helpdesk requester; that email was not
+     changed to point to the client portal. *Suggested: link it to the portal's Tickets tab for client-portal tickets.*
+924. **Ticket categories.** The six drawn categories (Replacement, Billing, Timesheets, Access, Complaint about a worker,
+     Other) are fixed. *Suggested: keep fixed now; a company list in 6.2 if asked.*
+925. **A revoked kiosk cannot come back.** Show revoked is a record only (latest 200). *Suggested: keep; register a new
+     kiosk instead.*

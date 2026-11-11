@@ -13,6 +13,8 @@ export interface StaffingSettingsData {
   lastChange: { by: string; at: string; what: string } | null;
   financialYear: string;
   entities: { id: string; name: string; gstins: string[] }[];
+  /** Answer 491: the Helpdesk teams client portal tickets can go to. */
+  teams?: { value: string; label: string }[];
   series: { id: string; legalEntityId: string; entity: string; gstin: string; financialYear: string; prefix: string; nextNumber: number; version: number }[];
 }
 
@@ -44,6 +46,8 @@ const KEY = {
   'staff.exp_tds_ledger': 'staffing.export.ledger.tds',
   'staff.exp_round': 'staffing.export.round_off',
   'staff.exp_round_ledger': 'staffing.export.ledger.round_off',
+  // Answer 491: where client portal tickets go.
+  'staff.portal_tickets': 'staffing.portal.tickets_team',
 } as const;
 /** Free-text company settings (ledger names): shown as typed, saved as text. */
 const TEXTS = new Set(['staff.exp_sales', 'staff.exp_cgst', 'staff.exp_sgst', 'staff.exp_igst', 'staff.exp_gst', 'staff.exp_tds_ledger', 'staff.exp_round_ledger']);
@@ -63,6 +67,8 @@ export function staffingSettingsPage(design: SettingsPageDef, data: StaffingSett
     if (k && !(k in v)) return null; // an older API without this setting: never shown with a sample value
     if (d.key === 'staff.einvoice') return { ...base, kind: 'toggle', availability: undefined, value: v[k!] === 'on', starter: v[k!] === data.defaults[k!], helper: 'Our invoices need an IRN (aggregate turnover at or above the e-invoice limit in the rule set, verify with your CA). The invoice shows its reporting window; the IRP itself is not connected, so report on the IRP yourself.' };
     if (d.key === 'staff.dunning') return { ...base, kind: 'select', columns: undefined, rows: undefined, addLabel: undefined, options: data.choices[k!] ?? [], optionLabels: DUNNING_LABELS, value: v[k!]!, starter: v[k!] === data.defaults[k!], helper: 'Reminders go to the client’s billing contacts; a dispute pauses them for that invoice.' };
+    if (d.key === 'staff.portal_tickets')
+      return { ...base, kind: 'select', options: data.choices[k!] ?? ['account_manager'], optionLabels: { account_manager: "The client's account manager", ...Object.fromEntries((data.teams ?? []).map((t) => [t.value, t.label])) }, value: v[k!]!, starter: v[k!] === data.defaults[k!] };
     if (d.key === 'staff.ageing') return { ...base, readOnlyList: true, helper: 'How unpaid invoices are grouped on Receivables (fixed).' };
     if (k && TEXTS.has(d.key)) return { ...base, kind: 'text', value: v[k]!, starter: v[k] === data.defaults[k] };
     if (k && SEGMENTS.has(d.key)) return { ...base, kind: 'segment', value: v[k]!, starter: v[k] === data.defaults[k] };

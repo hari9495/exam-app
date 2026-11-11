@@ -28,6 +28,8 @@ import { TrainingTab, type TrainingTabProps } from './training-tab';
 export type KioskHealth = 'not_set_up' | 'online' | 'stale' | 'offline';
 export interface DevicesData {
   kiosks: { id: string; code: string; place: string; locationId: string; location: string; entity: string; mode: 'attendance' | 'visitor'; status: KioskHealth; lastSeenAt: string | null; setupExpiresAt: string | null; checkInsToday: number | null }[];
+  /** Answer 871: kiosks taken out of use, newest first, with the reason and who did it (an older API: absent). */
+  revokedKiosks?: RevokedKiosk[];
   /** kind 'web': a computer for web clock-in (DeviceNotApproved); phones otherwise. */
   requests: { id: string; kind?: 'phone' | 'web'; employeeId: string; person: string; site: string; model: string; oldModel: string | null; oldLastSeenAt: string | null; oldPhoneLost: boolean; reason: string; raisedAt: string }[];
   phones: { id: string; kind?: 'phone' | 'web'; employeeId: string; person: string; model: string; appVersion: string | null; lastSeenAt: string | null; status: 'active' | 'inactive' | 'lost' | 'revoked' }[];
@@ -194,6 +196,7 @@ export function LiveDevicesScreen({ live }: { live: LiveDevices }) {
   const [rejectTried, setRejectTried] = useState(false);
   const [resetting, setResetting] = useState<Kiosk | null>(null);
   const [revoking, setRevoking] = useState<Kiosk | null>(null);
+  const [showRevoked, setShowRevoked] = useState(false);
   const [registering, setRegistering] = useState(false);
   const [regTried, setRegTried] = useState(false);
   const [reg, setReg] = useState<{ place: string; locationId: string | null; mode: 'attendance' | 'visitor' }>({ place: '', locationId: null, mode: 'attendance' });
@@ -329,7 +332,9 @@ export function LiveDevicesScreen({ live }: { live: LiveDevices }) {
                 onRetry={live.onRetry}
                 empty={<EmptyState title="No kiosks registered" description="Register a site tablet so people without phones can check in with code and PIN." action={registerBtn} />}
                 rowButtons={(r) => <><Button size="sm" onClick={() => setResetting(r)}>{r.status === 'not_set_up' ? 'New set-up key' : 'Reset kiosk key'}</Button>{live.onRevoke && <Button size="sm" variant="danger" onClick={() => setRevoking(r)}>Revoke</Button>}</>}
+                toolbar={d?.revokedKiosks ? <ShowRevoked pressed={showRevoked} onPressedChange={setShowRevoked} count={d.revokedKiosks.length} /> : undefined}
               />
+              {showRevoked && d?.revokedKiosks && <RevokedKiosksTable rows={d.revokedKiosks} />}
               {live.state === 'ready' && kiosks.length > 0 && <p className="yx-tim-note">Check-ins: today so far. Stale: not seen for 15 min or more. Offline: not seen for an hour or more.</p>}
             </div>
           </TabsContent>
@@ -500,6 +505,31 @@ Only lost or inactive ({issueCount})
  * Answer 793: take a kiosk out of use (lost, stolen, replaced). Its key stops working at once and it leaves the list; the
  * reason is kept with the audit. Used by the drawn and the live Devices and kiosks pages.
  */
+/** Answer 871: a kiosk taken out of use (revoke), kept for the record. */
+export interface RevokedKiosk { id: string; code: string; place: string; location: string; reason: string; by: string | null; at: string }
+
+/** Answer 871: the "Show revoked" filter above the kiosks. */
+export function ShowRevoked({ pressed, onPressedChange, count }: { pressed: boolean; onPressedChange: (on: boolean) => void; count: number }) {
+  return (
+    <FilterBar fields={[]} value={[]} onChange={() => {}}>
+      <FilterToggle pressed={pressed} onPressedChange={onPressedChange}>
+        Show revoked ({count})
+      </FilterToggle>
+    </FilterBar>
+  );
+}
+
+/** Answer 871: revoked kiosks with the reason and who revoked them (drawn and live). */
+export function RevokedKiosksTable({ rows }: { rows: RevokedKiosk[] }) {
+  const cols: TableColumn<RevokedKiosk>[] = [
+    { key: 'code', header: 'Kiosk', type: 'id', width: 200, value: (r) => r.code, render: (r) => <span className="yx-tim-list__main"><strong>{r.code}</strong><span className="yx-tim-muted">{r.place} · {r.location}</span></span> },
+    { key: 'at', header: 'Revoked on', type: 'date', width: 130, value: (r) => r.at, render: (r) => formatDate(new Date(r.at)) },
+    { key: 'by', header: 'Revoked by', width: 160, value: (r) => r.by ?? 'Not recorded' },
+    { key: 'reason', header: 'Reason', value: (r) => r.reason },
+  ];
+  return <DataTable label="Revoked kiosks" columns={cols} rows={rows} getRowId={(r) => r.id} state="ready" onRetry={() => {}} empty={<EmptyState compact title="No kiosks revoked." description="A kiosk you revoke is listed here with the reason." />} />;
+}
+
 export function RevokeKioskDialog({ kiosk, onClose, onRevoke }: { kiosk: { code: string; place: string; location: string } | null; onClose: () => void; onRevoke: (reason: string) => Promise<unknown> }) {
   const [why, setWhy] = useState('');
   const [tried, setTried] = useState(false);

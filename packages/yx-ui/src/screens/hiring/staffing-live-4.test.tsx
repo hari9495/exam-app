@@ -5,6 +5,8 @@ import { ToastProvider } from '../../components/notify';
 import { InvoiceRecordScreen, PlacementFee, VendorInvoices, type InvoiceDetail, type LivePlacementFee } from './hiring-staffing';
 import { ClientPortalScreen, type LiveClientPortal } from '../portals/t9-business';
 import { ExportSheet } from './staffing-sheets';
+import { SETTINGS_GROUPS } from '../settings/settings-groups';
+import { staffingSettingsChanges, staffingSettingsPage, type StaffingSettingsData } from '../settings/staffing-live';
 
 // Staffing round 4 (answers 491, 492, 494, 496): live views, positive and negative.
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -139,5 +141,86 @@ describe('522: the export sheet', () => {
     await ue.click(screen.getByRole('radio', { name: 'Zoho Books (CSV)' }));
     await ue.click(screen.getByRole('button', { name: 'Download' }));
     await waitFor(() => expect(onExport).toHaveBeenCalledWith({ seriesId: 's1', month: '2026-10', format: 'zoho' }));
+  });
+});
+
+describe('491: client portal tickets', () => {
+  const view = { id: 't1', number: 'CS-7', subject: 'Replace the night operator', category: 'Replacement', priority: 'Normal', status: 'Open', raisedOn: '2026-11-10T04:00:00.000Z', raisedBy: 'Meera', resolveBy: null, canReply: true, messages: [{ id: 'm1', side: 'agent', author: 'Divya', bodyHtml: '<p>Two people can start Monday.</p>', at: '2026-11-10T05:00:00.000Z' }] };
+  const live = (tickets?: LiveClientPortal['tickets']): LiveClientPortal => ({
+    tenant: 'Kaveri',
+    tab: 'tickets',
+    hrefFor: (t) => `?tab=${t}`,
+    state: 'ready',
+    onRetry: vi.fn(),
+    ended: false,
+    onSignInAgain: vi.fn(),
+    onSignOut: vi.fn(),
+    today: new Date(2026, 10, 10),
+    data: { client: { name: 'Nilgiri', contact: 'Meera', email: 'meera@nilgiri.test', contractEnds: null }, jobs: [], submissions: [], timesheets: [], invoices: [], interviews: [], bookable: [] },
+    onDecide: vi.fn(),
+    onTimesheet: vi.fn(),
+    onBook: vi.fn(),
+    tickets,
+  });
+  const parts = () => ({ rows: [{ id: 't1', number: 'CS-7', subject: 'Replace the night operator', category: 'Replacement', priority: 'Normal', raisedOn: '2026-11-10T04:00:00.000Z', resolveBy: null, paused: false, status: 'Open' }], onRaise: vi.fn().mockResolvedValue({ id: 't2', number: 'CS-8' }), load: vi.fn().mockResolvedValue(view), onReply: vi.fn().mockResolvedValue({}) });
+  it('raising needs a category and a subject; then it is sent and a toast says the number', async () => {
+    const k = parts();
+    wrap(<ClientPortalScreen live={live(k)} />);
+    expect(screen.getByText('CS-7')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Raise a ticket' }));
+    const dialog = await screen.findByRole('dialog');
+    await ue.click(within(dialog).getByRole('button', { name: 'Raise ticket' }));
+    expect(within(dialog).getByText('Choose a category.')).toBeInTheDocument();
+    expect(within(dialog).getByText('Add a short subject.')).toBeInTheDocument();
+    expect(k.onRaise).not.toHaveBeenCalled();
+    await ue.click(within(dialog).getByRole('combobox'));
+    await ue.click(await screen.findByRole('option', { name: 'Billing' }));
+    await ue.type(within(dialog).getByRole('textbox', { name: /Subject/ }), 'GST number wrong');
+    await ue.click(within(dialog).getByRole('button', { name: 'Raise ticket' }));
+    expect(k.onRaise).toHaveBeenCalledWith({ category: 'Billing', subject: 'GST number wrong' });
+    expect((await screen.findAllByText('Ticket CS-8 raised')).length).toBeGreaterThan(0);
+  });
+  it('opens a ticket with its replies; an empty reply is stopped; a reply is sent', async () => {
+    const k = parts();
+    wrap(<ClientPortalScreen live={live(k)} />);
+    await ue.click(screen.getByRole('button', { name: 'Open' }));
+    expect(await screen.findByText('Two people can start Monday.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Send reply' }));
+    expect(screen.getByText('Write your reply first.')).toBeInTheDocument();
+    expect(k.onReply).not.toHaveBeenCalled();
+    await ue.type(screen.getByRole('textbox', { name: /Your reply/ }), 'Thanks');
+    await ue.click(screen.getByRole('button', { name: 'Send reply' }));
+    expect(k.onReply).toHaveBeenCalledWith('t1', 'Thanks');
+    expect((await screen.findAllByText('Reply sent')).length).toBeGreaterThan(0);
+  });
+  it('a failed raise shows the reason and keeps the dialog open', async () => {
+    const k = { ...parts(), onRaise: vi.fn().mockRejectedValue(new Error('Tickets are not set up yet. Write to your account manager.')) };
+    wrap(<ClientPortalScreen live={live(k)} />);
+    await ue.click(screen.getByRole('button', { name: 'Raise a ticket' }));
+    const dialog = await screen.findByRole('dialog');
+    await ue.click(within(dialog).getByRole('combobox'));
+    await ue.click(await screen.findByRole('option', { name: 'Access' }));
+    await ue.type(within(dialog).getByRole('textbox', { name: /Subject/ }), 'Add an approver');
+    await ue.click(within(dialog).getByRole('button', { name: 'Raise ticket' }));
+    expect(await within(dialog).findByText('Tickets are not set up yet. Write to your account manager.')).toBeInTheDocument();
+  });
+  it('without tickets the tab is not offered', () => {
+    wrap(<ClientPortalScreen live={{ ...live(), tab: 'jobs' }} />);
+    expect(screen.queryByRole('link', { name: 'Tickets' })).not.toBeInTheDocument();
+  });
+});
+
+describe('491: Settings 6.2 client portal tickets go to', () => {
+  const design = SETTINGS_GROUPS.flatMap((g) => g.pages).find((p) => p.id === '6.2')!;
+  const data = (values: Record<string, string>): StaffingSettingsData => ({ canEdit: true, values, defaults: { 'staffing.portal.tickets_team': 'account_manager' }, choices: { 'staffing.portal.tickets_team': ['account_manager', 'g1'] }, teams: [{ value: 'g1', label: 'Client support · Staffing team' }], lastChange: null, financialYear: '2026-27', entities: [], series: [] });
+  const field = (p: ReturnType<typeof staffingSettingsPage>) => p.sections.flatMap((s) => s.settings).find((s) => s.key === 'staff.portal_tickets');
+  it('offers the account manager and the Helpdesk teams by name, and saves the chosen team', () => {
+    const f = field(staffingSettingsPage(design, data({ 'staffing.portal.tickets_team': 'g1' })))!;
+    expect(f).toMatchObject({ kind: 'select', value: 'g1', options: ['account_manager', 'g1'], starter: false });
+    expect(f.optionLabels).toMatchObject({ account_manager: "The client's account manager", g1: 'Client support · Staffing team' });
+    expect(staffingSettingsChanges({ 'staff.portal_tickets': 'g1' })).toEqual([{ key: 'staffing.portal.tickets_team', value: 'g1' }]);
+  });
+  it('an older API without the setting: not shown', () => {
+    expect(field(staffingSettingsPage(design, data({})))).toBeUndefined();
   });
 });

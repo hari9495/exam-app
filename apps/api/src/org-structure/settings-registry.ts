@@ -292,6 +292,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // Staffing slice 3 (Settings 6.2 collections and e-invoicing).
   'staffing.dunning.schedule': { label: 'Staffing desk: payment reminders to client billing contacts', scopes: ['tenant'], dated: false, values: ['standard', 'gentle', 'off'], default: 'standard' },
   // Staffing answer 522 (Settings 6.2 Accounting export): ledger names, the GST split, TDS and round-off.
+  // Answer 491: where client portal tickets go: the client's account manager (default) or a Helpdesk team (its id).
+  'staffing.portal.tickets_team': { label: 'Staffing desk: client portal tickets go to', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 40 }, default: 'account_manager' },
   'staffing.export.ledger.sales': { label: 'Staffing desk export: sales ledger', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 100 }, default: 'Sales - Staffing Services' },
   'staffing.export.ledger.cgst': { label: 'Staffing desk export: CGST ledger', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 100 }, default: 'Output CGST' },
   'staffing.export.ledger.sgst': { label: 'Staffing desk export: SGST ledger', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 100 }, default: 'Output SGST' },

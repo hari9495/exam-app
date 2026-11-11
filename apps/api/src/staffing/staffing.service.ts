@@ -15,6 +15,8 @@ import type { ClientContactDto, ClientDto, InvoiceSeriesDto, RateChangeDto, Rate
 /** Settings 6.2 Staffing desk: the company settings the page shows (slice 1). */
 export const STAFFING_SETTING_KEYS = [
   'staffing.desk.enabled',
+  // Answer 491: where client portal tickets go.
+  'staffing.portal.tickets_team',
   'staffing.ot_multiplier',
   'staffing.holiday_multiplier',
   'staffing.payment_terms_days',
@@ -358,11 +360,14 @@ export class StaffingService {
       const entities = await tx.legalEntity.findMany({ where: { organizationId: org, archivedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true, gstin: true } });
       const regs = await tx.entityGstRegistration.findMany({ where: { organizationId: org, validTo: null }, select: { legalEntityId: true, gstin: true } });
       const series = await tx.staffingInvoiceSeries.findMany({ where: { organizationId: org }, orderBy: [{ financialYear: 'desc' }, { gstin: 'asc' }] });
+      const teams = await this.portalTeams(tx, org);
       return {
         canEdit: a.settings && !a.actingForOther,
         values,
         defaults: Object.fromEntries(STAFFING_SETTING_KEYS.map((k) => [k, dflt(k)])),
-        choices: Object.fromEntries(STAFFING_SETTING_KEYS.map((k) => [k, SETTINGS[k]!.values])),
+        choices: { ...Object.fromEntries(STAFFING_SETTING_KEYS.map((k) => [k, SETTINGS[k]!.values])), 'staffing.portal.tickets_team': ['account_manager', ...teams.map((t) => t.id)] },
+        // Answer 491: the Helpdesk teams client portal tickets can go to (labels for the choices above).
+        teams: teams.map((t) => ({ value: t.id, label: t.label })),
         lastChange: last ? { by: by?.name || by?.email || 'Someone', at: last.updatedAt, what: `Changed ${SETTINGS[last.key]!.label.replace(/^Staffing desk: /, '').toLowerCase()}` } : null,
         financialYear: financialYear(todayIst()),
         entities: entities.map((e) => ({ id: e.id, name: e.name, gstins: [...new Set([e.gstin, ...regs.filter((r) => r.legalEntityId === e.id).map((r) => r.gstin)].filter((g): g is string => Boolean(g)))] })),
@@ -383,12 +388,26 @@ export class StaffingService {
       seen.add(ch.key);
       const def = SETTINGS[ch.key]!;
       // A text setting (answer 522 ledger names): non-empty, short, no line breaks.
+      if (ch.key === 'staffing.portal.tickets_team') continue; // checked against the company's teams below
       if (def.text) {
         if (!ch.value.trim() || ch.value.length > def.text.maxLength || /[\r\n<>]/.test(ch.value)) throw new BadRequestException(`${def.label}: up to ${def.text.maxLength} characters, on one line.`);
       } else if (!def.values.includes(ch.value)) throw new BadRequestException(`${def.label} is one of: ${def.values.join(', ')}`);
     }
+    const team = changes.find((ch) => ch.key === 'staffing.portal.tickets_team');
+    if (team && team.value !== 'account_manager') {
+      const ok = await inCompany(this.tenantPrisma, ctx, async (tx, c) => (await this.portalTeams(tx, c.organizationId)).some((t) => t.id === team.value));
+      if (!ok) throw new BadRequestException('Choose the account manager or an active Helpdesk team.');
+    }
     for (const ch of changes) await this.settings.set(ctx, { key: ch.key, scopeType: 'tenant', value: ch.value } as Parameters<OrgSettingsService['set']>[1]);
     return this.readSettings(ctx, user);
+  }
+
+  /** Answer 491: the company's active Helpdesk teams on active desks (read as the desk system: only names and ids). */
+  async portalTeams(tx: Tx, org: string) {
+    await tx.$executeRaw`SELECT set_config('app.sd_system', 'on', true)`;
+    const groups = await tx.sdGroup.findMany({ where: { organizationId: org, active: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, deskId: true } });
+    const desks = new Map((await tx.sdDesk.findMany({ where: { organizationId: org, status: 'active', id: { in: groups.map((g) => g.deskId) } }, select: { id: true, name: true } })).map((d) => [d.id, d.name]));
+    return groups.filter((g) => desks.has(g.deskId)).map((g) => ({ id: g.id, deskId: g.deskId, label: `${desks.get(g.deskId)} · ${g.name}` }));
   }
 
   /**

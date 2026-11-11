@@ -302,6 +302,17 @@ export class ExportQueryDto {
   @IsIn(['tally', 'zoho']) format!: 'tally' | 'zoho';
 }
 
+/** Answer 491: a client contact raises a ticket (the drawn dialog: category, subject, details). */
+export class PortalTicketDto {
+  @IsIn(['Replacement', 'Billing', 'Timesheets', 'Access', 'Complaint about a worker', 'Other']) category!: string;
+  @trim() @IsString() @MinLength(3) @MaxLength(200) @Matches(/^[^<>]*$/, { message: 'Write the subject without < or >.' }) subject!: string;
+  @IsOptional() @trim() @IsString() @MaxLength(4000) details?: string;
+}
+
+export class PortalTicketReplyDto {
+  @trim() @IsString() @MinLength(1) @MaxLength(4000) text!: string;
+}
+
 export class PortalSendBackDto {
   @IsOptional() @trim() @IsString() @MaxLength(500) note?: string;
 }

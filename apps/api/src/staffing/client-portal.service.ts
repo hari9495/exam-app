@@ -27,7 +27,8 @@ const STAGE: Record<string, string> = { submitted: 'New', client_review: 'Shortl
  * Answer 453 (T9-06): a client contact's portal. The account manager gives a contact access (invited, then active on the
  * first sign-in); the contact signs in with a one-time code to their email (the drawn sign-in), and sees only their own
  * client's client jobs, submissions (shortlist or reject with feedback), timesheets (approve or send back) and issued
- * invoices. Never pay rates, vendor rates, margins or other clients. Interviews and tickets are not built (question 491).
+ * invoices; interviews and tickets (answer 491; tickets in client-tickets.service.ts). Never pay rates, vendor rates,
+ * margins or other clients.
  */
 @Injectable()
 export class ClientPortalService {
@@ -116,7 +117,7 @@ export class ClientPortalService {
   }
 
   /** Every portal call: a live session of a contact who still has access, for a company that runs the desk. */
-  private async inPortal<T>(slug: string, token: string | undefined, fn: (tx: Tx, s: Session) => Promise<T>): Promise<T> {
+  async inPortal<T>(slug: string, token: string | undefined, fn: (tx: Tx, s: Session) => Promise<T>): Promise<T> {
     if (!token) throw new UnauthorizedException('Sign in again.');
     const org = await this.orgOf(slug);
     return this.tenantPrisma.forTenant({ organizationId: org, isSuperAdmin: false }, async (tx) => {

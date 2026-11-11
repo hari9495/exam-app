@@ -180,6 +180,11 @@ describe('Time devices and kiosks', () => {
     await api('hrAdmin', 'post', `/time/devices/kiosks/${res.body.id}/revoke`).send({}).expect(400); // answer 793: the reason is required
     await api('hrAdmin', 'post', `/time/devices/kiosks/${res.body.id}/revoke`).send({ reason: 'Tablet stolen' }).expect(200);
     await api('hrAdmin', 'post', `/time/devices/kiosks/${res.body.id}/revoke`).send({ reason: 'Tablet stolen' }).expect(409);
+    // Answer 871: Show revoked lists it with the reason and who revoked it; it has left the kiosk list; another company sees none.
+    const after = (await api('hrAdmin', 'get', '/time/devices').expect(200)).body;
+    expect(after.kiosks.find((k: { id: string }) => k.id === res.body.id)).toBeUndefined();
+    expect(after.revokedKiosks.find((k: { id: string }) => k.id === res.body.id)).toEqual(expect.objectContaining({ code: res.body.code, reason: 'Tablet stolen', by: expect.any(String), at: expect.any(String) }));
+    expect((await api('adminB', 'get', '/time/devices').expect(200)).body.revokedKiosks).toEqual([]);
   });
 
   // ------------------------------------------------------------------------------------------ sign-in at the kiosk (TIM-13)

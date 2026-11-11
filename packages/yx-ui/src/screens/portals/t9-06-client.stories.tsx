@@ -42,6 +42,7 @@ export const Timesheets: S = { name: 'Timesheets · approve (incl. vendor worker
 export const Invoices: S = { name: 'Invoices · one overdue', render: () => <ClientPortalScreen {...base} tab="invoices" /> };
 export const Tickets: S = { render: () => <ClientPortalScreen {...base} tab="tickets" /> };
 export const RaiseTicket: S = { name: 'Tickets · raise a ticket', render: () => <ClientPortalScreen {...base} tab="tickets" defaultTicketOpen /> };
+export const TicketConversation: S = { name: 'Tickets · a ticket and its replies', render: () => <ClientPortalScreen {...base} tab="tickets" defaultTicketId="TKT-3310" /> };
 export const Phone: S = { name: 'Submissions · phone', globals: { viewport: { value: 'mobile2', isRotated: false } }, render: () => <ClientPortalScreen {...base} tab="submissions" /> };
 export const EmptyJobs: S = { name: 'Jobs · empty', render: () => <ClientPortalScreen {...base} jobs={[]} /> };
 export const OtherClientRecord: S = { name: "Another client's record (403)", render: () => <ClientPortalScreen {...base} tab="submissions" forbidden /> };

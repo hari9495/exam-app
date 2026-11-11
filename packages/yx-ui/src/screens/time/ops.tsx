@@ -30,7 +30,7 @@ import { balancesFor, CLAIM, HR_ADMIN, ME, myReports, NEGATIVE_BALANCES, PAYROLL
 import type { ViewState } from './attendance';
 import type { AttendanceReport, LeaveReport as LiveLeaveReport, LeaveReportKind, LeaveReportQuery, LeaveReportRow, LoadState, MyTimesheet, NightRegister, PayrollFeed, Registers, TimesheetLineInput } from './live/types';
 import { useRun } from '../org/org-kit';
-import { LiveDevicesScreen, RevokeKioskDialog, WebApprovalDialog, computerWords, type LiveDevices, type WebApproval } from './devices-live';
+import { LiveDevicesScreen, RevokeKioskDialog, RevokedKiosksTable, ShowRevoked, type RevokedKiosk, WebApprovalDialog, computerWords, type LiveDevices, type WebApproval } from './devices-live';
 import { TrainingTab, type TrainingRow, type TrainingTabProps } from './training-tab';
 import { LivePrefillDrawer, type LivePrefill, type PrefillProject } from './prefill-live';
 import './time.css';
@@ -139,11 +139,17 @@ const KIOSK_W = 320;
 // flex: none — the kit class's 256px flex-basis turns into a min-height when phone cards stack the cell.
 const pad = { paddingBlock: 'var(--yx-space-1)', flex: 'none' } as const;
 
-export function DevicesScreen({ live, ...story }: { persona?: 'hr' | 'sa'; tab?: 'kiosks' | 'binds' | 'phones' | 'training'; signOut?: boolean; state?: ViewState; /** Computers stories (DeviceNotApproved): a computer request and an approved computer; `removeComputer` opens its remove confirmation. */ computers?: boolean; removeComputer?: boolean; /** Computers · web clock-in rule: the rule dialog open. */ webRule?: boolean; /** Answer 793: the revoke dialog open for the first kiosk. */ revoke?: boolean; /** Training stories: the add form, a session's edit form, or its cancel confirmation. */ training?: TrainingTabProps['open']; /** The live app's /time/setup/devices. */ live?: LiveDevices }) {
+export function DevicesScreen({ live, ...story }: { persona?: 'hr' | 'sa'; tab?: 'kiosks' | 'binds' | 'phones' | 'training'; signOut?: boolean; state?: ViewState; /** Computers stories (DeviceNotApproved): a computer request and an approved computer; `removeComputer` opens its remove confirmation. */ computers?: boolean; removeComputer?: boolean; /** Computers · web clock-in rule: the rule dialog open. */ webRule?: boolean; /** Answer 793: the revoke dialog open for the first kiosk. */ revoke?: boolean; /** Answer 871: the Show revoked filter on. */ showRevoked?: boolean; /** Training stories: the add form, a session's edit form, or its cancel confirmation. */ training?: TrainingTabProps['open']; /** The live app's /time/setup/devices. */ live?: LiveDevices }) {
   return live ? <LiveDevicesScreen live={live} /> : <SampleDevicesScreen {...story} />;
 }
 
-function SampleDevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false, state = 'ready', training, computers = false, removeComputer = false, webRule = false, revoke = false }: { persona?: 'hr' | 'sa'; tab?: 'kiosks' | 'binds' | 'phones' | 'training'; signOut?: boolean; state?: ViewState; training?: TrainingTabProps['open']; computers?: boolean; removeComputer?: boolean; webRule?: boolean; revoke?: boolean }) {
+/** Answer 871: sample revoked kiosks. */
+const REVOKED_KIOSKS: RevokedKiosk[] = [
+  { id: 'rk1', code: 'KSK-04', place: 'Loading bay', location: 'Hosur plant', reason: 'Tablet stolen from the loading bay', by: 'Neha Joshi', at: '2026-10-28T10:15:00' },
+  { id: 'rk2', code: 'KSK-02', place: 'Old gate', location: 'Chennai office', reason: 'Replaced by KSK-07 at the new gate', by: 'Arjun Rao', at: '2026-09-14T16:40:00' },
+];
+
+function SampleDevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false, state = 'ready', training, computers = false, removeComputer = false, webRule = false, revoke = false, showRevoked: revokedOn = false }: { persona?: 'hr' | 'sa'; tab?: 'kiosks' | 'binds' | 'phones' | 'training'; signOut?: boolean; state?: ViewState; training?: TrainingTabProps['open']; computers?: boolean; removeComputer?: boolean; webRule?: boolean; revoke?: boolean; showRevoked?: boolean }) {
   const sa = persona === 'sa';
   const narrow = useNarrow(599);
   // The story opens the sign-out confirmation for Meera's lost Redmi (or the remove confirmation of Nisha's computer).
@@ -157,6 +163,7 @@ function SampleDevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false, 
   const [list, setList] = useState(KIOSKS);
   const [resetting, setResetting] = useState<Kiosk | null>(null);
   const [revoking, setRevoking] = useState<Kiosk | null>(revoke ? KIOSKS[0]! : null);
+  const [showRevoked, setShowRevoked] = useState(revokedOn);
   const [registering, setRegistering] = useState(false);
   const [reg, setReg] = useState<{ place: string; location: string | null; mode: Kiosk['mode'] }>({ place: '', location: null, mode: 'Attendance' });
   // Done is said with a toast (founder rule).
@@ -298,7 +305,9 @@ function SampleDevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false, 
               onRetry={() => {}}
               empty={<EmptyState title="No kiosks registered" description="Register a site tablet so people without phones can check in with code and PIN." action={registerBtn} />}
               rowButtons={(r) => <>{r.status === 'Not set up' ? null : <Button size="sm" onClick={() => setResetting(r)}>Reset kiosk key</Button>}<Button size="sm" variant="danger" onClick={() => setRevoking(r)}>Revoke</Button></>}
+              toolbar={<ShowRevoked pressed={showRevoked} onPressedChange={setShowRevoked} count={REVOKED_KIOSKS.length} />}
             />
+            {showRevoked && <RevokedKiosksTable rows={REVOKED_KIOSKS} />}
             {state === 'ready' && kiosks.length > 0 && <p className="yx-tim-note">Check-ins: today so far. Stale: not seen for 15 min or more. Offline: not seen for an hour or more.</p>}
           </div>
         </TabsContent>

@@ -50,6 +50,26 @@ describe('Devices and kiosks (TIM-14 live)', () => {
     expect(screen.queryByRole('button', { name: 'Revoke' })).toBeNull();
   });
 
+  it('871: Show revoked lists revoked kiosks with the reason and who revoked them', async () => {
+    render(<DevicesScreen live={devices({ data: { ...DATA, revokedKiosks: [{ id: 'rk1', code: 'HSR-K9', place: 'Loading bay', location: 'Hosur plant', reason: 'Tablet stolen', by: 'Neha Joshi', at: '2026-10-28T04:45:00.000Z' }] } })} />);
+    expect(screen.queryByText('HSR-K9')).toBeNull();
+    await ue.click(screen.getByRole('button', { name: 'Show revoked (1)' }));
+    expect(screen.getByRole('button', { name: 'Show revoked (1)' })).toHaveAttribute('aria-pressed', 'true');
+    const t = screen.getByRole('table', { name: 'Revoked kiosks' });
+    for (const x of ['HSR-K9', 'Tablet stolen', 'Neha Joshi']) expect(within(t).getByText(x)).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Show revoked (1)' }));
+    expect(screen.queryByRole('table', { name: 'Revoked kiosks' })).toBeNull();
+  });
+
+  it('871 (negative): an older API without revoked kiosks shows no filter; none revoked says so', async () => {
+    const { unmount } = render(<DevicesScreen live={devices()} />);
+    expect(screen.queryByRole('button', { name: /Show revoked/ })).toBeNull();
+    unmount();
+    render(<DevicesScreen live={devices({ data: { ...DATA, revokedKiosks: [] } })} />);
+    await ue.click(screen.getByRole('button', { name: 'Show revoked (0)' }));
+    expect(screen.getByText('No kiosks revoked.')).toBeInTheDocument();
+  });
+
   it('shows kiosks with health, an offline alert and today’s check-ins', () => {
     render(<DevicesScreen live={devices()} />);
     expect(screen.getByText('HR · Kaveri Foods')).toBeInTheDocument();

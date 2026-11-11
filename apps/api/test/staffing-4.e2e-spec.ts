@@ -218,6 +218,68 @@ describe('Staffing desk round 4', () => {
     await portal('get', `/invoices/${ids.inv}/pdf`).expect(401);
   });
 
+  it('491 tickets: a contact raises and follows Helpdesk tickets; routed to the account manager or a team; own client only', async () => {
+    const signIn = async (email: string) => {
+      send.mockClear();
+      await portal('post', '/code').send({ email }).expect(200);
+      let code = '';
+      for (let i = 0; i < 50 && !code; i++) {
+        const m = send.mock.calls.find(([x]) => x.to === email);
+        if (m) code = m[0].subject.slice(0, 6);
+        else await new Promise((r) => setTimeout(r, 100));
+      }
+      return (await portal('post', '/verify').send({ email, code }).expect(200)).body.token as string;
+    };
+    await api('am', 'post', `/staffing/clients/${ids.tn}/contacts/${ids.billing}/portal`).send({ access: true }).expect(want(201));
+    await api('am', 'post', `/staffing/clients/${ids.other}/contacts/${ids.otherContact}/portal`).send({ access: true }).expect(want(201));
+    const t = await signIn(`meera-${run}@nilgiri.test`);
+    const raise = (b: Record<string, unknown>, tok: string | undefined = t) => portal('post', '/tickets', tok).send({ category: 'Replacement', subject: 'Replace the night shift operator', details: 'He left on Friday.', ...b });
+    // Nothing set up yet: the contact is told plainly; bad input and no session are refused.
+    expect((await raise({}).expect(409)).body.message).toBe('Tickets are not set up yet. Write to your account manager.');
+    await raise({ category: 'Gossip' }).expect(400);
+    await raise({ subject: 'x' }).expect(400);
+    await raise({}, '').expect(401);
+    // A customer-support desk; the account manager has no seat yet: the ticket waits on the desk, unassigned.
+    const desk = (await api('admin', 'post', '/desk/desks').send({ name: 'Client support', key: 'CS', kind: 'customer_support' }).expect(want(201))).body;
+    const full = (await api('admin', 'get', `/desk/desks/${desk.id}`).expect(200)).body;
+    const sd = <T>(fn: (tx: Tx) => Promise<T>) => tenantPrisma.forTenant(SUPER, fn);
+    const first = (await raise({}).expect(want(200))).body;
+    expect(await sd((tx) => tx.sdTicket.findUniqueOrThrow({ where: { id: first.id } }))).toMatchObject({ deskId: desk.id, assigneeUserId: null, channel: 'portal', tags: ['client-portal'] });
+    // The account manager on the desk: the next ticket is theirs.
+    await api('admin', 'post', `/desk/desks/${desk.id}/members`).send({ userId: users.am, role: 'agent' }).expect(want(201));
+    const second = (await raise({ category: 'Billing', subject: 'Invoice KS/1 has the wrong PO' }).expect(want(200))).body;
+    expect((await sd((tx) => tx.sdTicket.findUniqueOrThrow({ where: { id: second.id } }))).assigneeUserId).toBe(users.am);
+    // A team chosen in Settings 6.2 (an unknown one refused): the next ticket goes to its queue.
+    await api('am', 'put', '/staffing/settings').send({ changes: [{ key: 'staffing.portal.tickets_team', value: randomUUID() }] }).expect(400);
+    const settings = (await api('am', 'put', '/staffing/settings').send({ changes: [{ key: 'staffing.portal.tickets_team', value: full.groups[0].id }] }).expect(want(200))).body;
+    expect(settings.values['staffing.portal.tickets_team']).toBe(full.groups[0].id);
+    expect(settings.teams).toEqual(expect.arrayContaining([expect.objectContaining({ value: full.groups[0].id })]));
+    const third = (await raise({ category: 'Access', subject: 'Portal access for our new HR' }).expect(want(200))).body;
+    expect((await sd((tx) => tx.sdTicket.findUniqueOrThrow({ where: { id: third.id } }))).groupId).toBe(full.groups[0].id);
+    // The client's tickets, newest first; another client's contact sees none and gets 404 on them.
+    const list = (await portal('get', '/tickets', t).expect(200)).body;
+    expect(list.map((x: { id: string }) => x.id)).toEqual([third.id, second.id, first.id]);
+    expect(list[1]).toMatchObject({ subject: 'Invoice KS/1 has the wrong PO', category: 'Billing', status: 'Open', number: second.number });
+    const tOther = await signIn(`uma-${run}@coromandel.test`);
+    expect((await portal('get', '/tickets', tOther).expect(200)).body).toEqual([]);
+    await portal('get', `/tickets/${first.id}`, tOther).expect(404);
+    await portal('post', `/tickets/${first.id}/reply`, tOther).send({ text: 'Hello' }).expect(404);
+    await portal('get', `/tickets/${randomUUID()}`, t).expect(404);
+    // The account manager answers and writes an internal note; the contact sees the answer, never the note, and replies.
+    const msg = (kind: 'reply' | 'note', bodyHtml: string) => sd((tx) => tx.sdTicketMessage.create({ data: { organizationId: org.A.id, deskId: desk.id, ticketId: first.id, kind, side: 'agent', authorUserId: users.am, bodyHtml, bodyText: bodyHtml.replace(/<[^>]+>/g, ''), channel: 'agent' } }));
+    await msg('reply', '<p>We will send a replacement on Monday.</p>');
+    await msg('note', '<p>Internal: check the bench first.</p>');
+    await portal('post', `/tickets/${first.id}/reply`, t).send({ text: '' }).expect(400);
+    await portal('post', `/tickets/${first.id}/reply`, t).send({ text: 'Thank you, Monday works.' }).expect(want(200));
+    const one = (await portal('get', `/tickets/${first.id}`, t).expect(200)).body;
+    const bodies = one.messages.map((m: { bodyHtml: string }) => m.bodyHtml).join(' ');
+    expect(bodies).toContain('replacement on Monday');
+    expect(bodies).toContain('Monday works');
+    expect(bodies).not.toContain('Internal');
+    expect(one).toMatchObject({ id: first.id, category: 'Replacement', raisedBy: 'Meera Pillai' });
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'staffing.portal.ticket_raised', entityId: ids.tn } }))).toBe(3);
+  });
+
   it('493: payment reminders once per step to billing contacts, the latest step only; paused by a dispute; off sends none', async () => {
     await inA(async (tx) => {
       await tx.staffingInvoice.update({ where: { id: ids.inv }, data: { invoiceDate: day(addDays(today, -40)) } }); // due 10 days ago: steps −3 and +7 have come

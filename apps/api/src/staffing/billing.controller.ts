@@ -12,7 +12,8 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PUBLIC_API_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import { StaffingBillingService } from './billing.service';
 import { ClientPortalService } from './client-portal.service';
-import { ApproveHoursDto, ExportQueryDto, HireDto, LeftDto, PortalInterviewDto, VendorConsultantDto, ClientTermsDto, CollectionDto, ContactPortalDto, CreditNoteDto, DraftInvoiceDto, HoursDto, PortalDecisionDto, PortalEmailDto, PortalSendBackDto, PortalVerifyDto, ReceiptDto, ReissueDto, VendorBillDto, VendorBillPaidDto, VersionDto } from './staffing-dto';
+import { ClientTicketsService } from './client-tickets.service';
+import { ApproveHoursDto, ExportQueryDto, HireDto, LeftDto, PortalInterviewDto, VendorConsultantDto, ClientTermsDto, CollectionDto, ContactPortalDto, CreditNoteDto, DraftInvoiceDto, HoursDto, PortalDecisionDto, PortalEmailDto, PortalSendBackDto, PortalTicketDto, PortalTicketReplyDto, PortalVerifyDto, ReceiptDto, ReissueDto, VendorBillDto, VendorBillPaidDto, VersionDto } from './staffing-dto';
 
 const who = (req: Request) => req.user as ScopeUser;
 const READ = ['ats.staffing.manage', 'ats.staffing.billing'] as const;
@@ -214,7 +215,10 @@ export class StaffingBillingController {
 /** Answer 453 (T9-06): the client contact's portal: a one-time code by email, then a session token in a header. */
 @Controller('public/client-portal')
 export class PublicClientPortalController {
-  constructor(private readonly portal: ClientPortalService) {}
+  constructor(
+    private readonly portal: ClientPortalService,
+    private readonly clientTickets: ClientTicketsService,
+  ) {}
 
   @Post(':org/code')
   @HttpCode(200)
@@ -270,6 +274,33 @@ export class PublicClientPortalController {
     const f = await this.portal.invoicePdf(org.slice(0, 100), token, id);
     res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${f.filename}"` });
     return new StreamableFile(f.buffer);
+  }
+
+  /* Answer 491: the client's tickets, through the Helpdesk. */
+  @Get(':org/tickets')
+  @Throttle(PUBLIC_API_THROTTLE)
+  tickets(@Param('org') org: string, @Headers('x-client-portal') token?: string) {
+    return this.clientTickets.list(org.slice(0, 100), token);
+  }
+
+  @Post(':org/tickets')
+  @HttpCode(200)
+  @Throttle(PUBLIC_API_THROTTLE)
+  raiseTicket(@Param('org') org: string, @Body() dto: PortalTicketDto, @Headers('x-client-portal') token?: string) {
+    return this.clientTickets.raise(org.slice(0, 100), token, dto);
+  }
+
+  @Get(':org/tickets/:id')
+  @Throttle(PUBLIC_API_THROTTLE)
+  ticket(@Param('org') org: string, @Param('id', ParseUUIDPipe) id: string, @Headers('x-client-portal') token?: string) {
+    return this.clientTickets.get(org.slice(0, 100), token, id);
+  }
+
+  @Post(':org/tickets/:id/reply')
+  @HttpCode(200)
+  @Throttle(PUBLIC_API_THROTTLE)
+  replyTicket(@Param('org') org: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PortalTicketReplyDto, @Headers('x-client-portal') token?: string) {
+    return this.clientTickets.reply(org.slice(0, 100), token, id, dto);
   }
 
   @Post(':org/sign-out')
