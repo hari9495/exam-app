@@ -2339,6 +2339,10 @@ export interface BulkDayProps {
   autoAssigned?: boolean;
   /** Drawn (HIR-27 live): candidates whose invite did not go, with the reason shown on their row. */
   failures?: Record<string, string>;
+  /** Answer 422: the design opens "Swap with…" for this candidate. */
+  swapOpen?: string;
+  /** Answer 421: the design shows WhatsApp not connected, or reminder results per row. */
+  whatsapp?: 'not-connected' | 'results';
 }
 
 // HIR-27: the sample board, or the live page (`live`): the same DayBoard (interview-day.tsx).
@@ -2346,7 +2350,7 @@ export function BulkInterviewDayScreen(props: BulkDayProps | { live: LiveIntervi
   return 'live' in props ? <LiveInterviewDayView live={props.live} /> : <SampleBulkInterviewDay {...props} />;
 }
 
-function SampleBulkInterviewDay({ drive, date, candidates, panels, slots, invitesSent = false, autoAssigned = true, failures = {} }: BulkDayProps) {
+function SampleBulkInterviewDay({ drive, date, candidates, panels, slots, invitesSent = false, autoAssigned = true, failures = {}, swapOpen, whatsapp }: BulkDayProps) {
   const [assigned, setAssigned] = useState(autoAssigned);
   const [sent, setSent] = useState(invitesSent);
   const plan = assignInterviewDay(candidates, panels, slots);
@@ -2356,7 +2360,7 @@ function SampleBulkInterviewDay({ drive, date, candidates, panels, slots, invite
       date={date}
       panels={panels}
       slots={slots}
-      placed={plan.assigned.map((a) => ({ candidate: a.candidate, panel: a.panel, start: a.start, result: failures[a.candidate] ? 'failed' : sent ? 'sent' : 'ready', error: failures[a.candidate] ?? null }))}
+      placed={plan.assigned.map((a, i) => ({ candidate: a.candidate, panel: a.panel, start: a.start, result: failures[a.candidate] ? 'failed' : sent ? 'sent' : 'ready', error: failures[a.candidate] ?? null, reminder: whatsapp === 'results' && sent ? (['sent', 'not_opted_in', 'sent', 'no_phone', 'sent', 'failed'] as const)[i % 6] : null }))}
       unassigned={assigned ? plan.unassigned : []}
       status={sent ? 'sent' : 'draft'}
       assignedYet={assigned}
@@ -2364,6 +2368,9 @@ function SampleBulkInterviewDay({ drive, date, candidates, panels, slots, invite
       onAssign={() => setAssigned(true)}
       onSend={() => (setSent(true), { sent: plan.assigned.length - Object.keys(failures).length, failed: Object.keys(failures).length })}
       showReminders
+      reminders={whatsapp === 'not-connected' ? { on: false, connected: false } : undefined}
+      swapOpen={swapOpen ?? null}
+      onSwap={swapOpen ? async () => undefined : undefined}
     />
   );
 }

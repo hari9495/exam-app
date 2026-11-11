@@ -1862,6 +1862,8 @@ model Offer {
   conditionsNoticeAt DateTime?        @map("conditions_notice_at") @db.Timestamptz(3)
   /// HIR-28: the bulk batch this offer was made in (null for a single offer).
   batchId            String?          @map("batch_id") @db.Uuid
+  /// Answer 377: the sealed copy (the letter and the signing evidence) of an e-signed acceptance; private.
+  acceptanceFileId   String?          @map("acceptance_file_id") @db.Uuid
   pipelineEntry      PipelineEntry    @relation(fields: [pipelineEntryId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   versions           OfferVersion[]
   conditions         OfferCondition[]
@@ -1919,6 +1921,8 @@ model OfferBatch {
   createdBy      String?   @map("created_by") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   finishedAt     DateTime? @map("finished_at") @db.Timestamptz(3)
+  /// Answer 401: the People joiner batch its accepted offers join (same legal entity and joining day).
+  joinerBatchId  String?   @map("joiner_batch_id") @db.Uuid
 
   @@unique([organizationId, batchKey], map: "offer_batches_org_key_key")
   @@index([organizationId, jobId], map: "offer_batches_org_job_idx")
@@ -12402,6 +12406,8 @@ model InterviewDay {
   slotMinutes    Int                 @map("slot_minutes")
   status         String              @default("draft") @db.VarChar(10)
   sendingAt      DateTime?           @map("sending_at") @db.Timestamptz(3)
+  /// Answer 421: WhatsApp reminders 2 hours before each slot (only to candidates who opted in).
+  whatsappReminders Boolean          @default(false) @map("whatsapp_reminders")
   createdBy      String?             @map("created_by") @db.Uuid
   createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -12438,6 +12444,9 @@ model InterviewDayRow {
   status          String             @default("unassigned") @db.VarChar(12)
   error           String?            @db.VarChar(300)
   sentAt          DateTime?          @map("sent_at") @db.Timestamptz(3)
+  /// Answer 421: the reminder's result: sent, failed, not_opted_in, no_phone, not_connected.
+  reminderAt      DateTime?          @map("reminder_at") @db.Timestamptz(3)
+  reminderStatus  String?            @map("reminder_status") @db.VarChar(14)
   day             InterviewDay       @relation(fields: [dayId], references: [id], onDelete: Cascade)
   panel           InterviewDayPanel? @relation(fields: [panelId], references: [id])
 

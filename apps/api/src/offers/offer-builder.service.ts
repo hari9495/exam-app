@@ -61,6 +61,8 @@ const ACTIVITY: Record<string, (m: Record<string, unknown>) => string> = {
   'offer.accepted': (m) => (m.esign ? 'the candidate signed and accepted the offer' : 'the candidate accepted the offer by the link'),
   'offer.declined': () => 'the candidate declined the offer',
   'offer.withdrawn': () => 'withdrew the offer',
+  'offer.esign_copy_made': () => 'the sealed copy of the e-signed offer was made',
+  'offer.esign_copy_failed': () => 'the sealed copy could not be made',
   'ats.offer.pay_handed_off': (m) => `the joiner's first salary went to Pay from version ${m.version}, for approval`,
   'ats.offer.pay_handoff_failed': (m) => `the offer pay did not go to Pay: ${m.reason}`,
   'ats.offer.joining_bonus_queued': (m) => `the joining bonus goes to Pay as one-time pay in ${m.month}`,
@@ -498,6 +500,8 @@ export class OfferBuilderService implements OnModuleInit {
         approval: route ? { requestId: route.id, status: route.status, steps: route.steps.map((s) => ({ name: s.name, state: s.state, approvers: [...new Set([...s.approvers.map((a) => a.name), ...s.waitingFor])].filter(Boolean) })), myTaskId: myTask?.id ?? null } : null,
         activity: logs.map((l) => ({ id: l.id, actor: l.actorName ?? (l.action.startsWith('offer.accepted') || l.action === 'offer.declined' ? o.pipelineEntry.candidate.name : 'YukthiX'), action: (ACTIVITY[l.action] ?? (() => l.action))(meta(l.metadataJson)), at: l.createdAt })),
         joiner,
+        // Answer 377: the sealed copy of an e-signed acceptance (missing = it could not be made; HR makes it again).
+        sealedCopy: o.status === 'accepted' && o.esign && o.esignEvidence ? (o.acceptanceFileId ? 'made' : 'missing') : null,
       };
     });
   }

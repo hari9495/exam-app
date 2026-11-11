@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
+import type { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { buildViewer, has, type ScopeUser } from '../access/scope';
@@ -33,6 +34,8 @@ export class OfferBatchService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly builder: OfferBuilderService,
     private readonly offers: OffersService,
+    // Answer 405: the rows run on this queue (the worker calls runRows); without it (unit tests) they run here.
+    @Optional() @Inject('OFFER_BATCHES_QUEUE') private readonly queue?: Queue,
   ) {}
 
   private async needPay(user: ScopeUser) {
@@ -73,7 +76,9 @@ export class OfferBatchService {
       const open = new Set((await tx.offer.findMany({ where: { organizationId: org, pipelineEntryId: { in: entries.map((e) => e.id) }, status: { in: ['draft', 'pending_approval', 'approved', 'sent', 'accepted'] } }, select: { pipelineEntryId: true } })).map((o) => o.pipelineEntryId));
       const check = await settingFor(tx, c, 'hiring.bulk_offer.plan_check', { legalEntityId: job.legalEntityId ?? '' });
       const free = check === 'hold' ? await this.planFree(tx, org, job.headcountPlanLineId) : null;
-      const locations = await tx.location.findMany({ where: { organizationId: org, archivedAt: null, ...(job.legalEntityId ? { legalEntityId: job.legalEntityId } : {}) }, select: { id: true, name: true }, orderBy: { name: 'asc' }, take: 200 });
+      const locations = await tx.location.findMany({ where: { organizationId: org, archivedAt: null, ...(job.legalEntityId ? { legalEntityId: job.legalEntityId } : {}) }, select: { id: true, name: true, legalEntityId: true }, orderBy: { name: 'asc' }, take: 200 });
+      // Answer 401: open People joiner batches the accepted offers can join (the screen offers those on the joining day).
+      const joinerBatches = await tx.joinerBatch.findMany({ where: { organizationId: org, status: 'open', joiningOn: { gte: new Date(`${today}T00:00:00Z`) }, legalEntityId: { in: [...new Set(locations.map((l) => l.legalEntityId))] } }, orderBy: { joiningOn: 'asc' }, take: 100 });
       const letters = await tx.offerTemplate.findMany({ where: { organizationId: org }, orderBy: [{ isDefault: 'desc' }, { name: 'asc' }] });
       return {
         job: { id: job.id, title: job.title, locationId: job.locationId },
@@ -81,7 +86,8 @@ export class OfferBatchService {
         grade: grade ? grade.code || grade.name : null,
         band: band ? { min: Number(band.min), max: Number(band.max) } : null,
         structures: await this.builder.structuresFor(tx, org, job.legalEntityId, today),
-        locations: locations.map((l) => ({ value: l.id, label: l.name })),
+        locations: locations.map((l) => ({ value: l.id, label: l.name, legalEntityId: l.legalEntityId })),
+        joinerBatches: joinerBatches.map((b) => ({ value: b.id, label: b.name, joiningOn: iso(b.joiningOn), legalEntityId: b.legalEntityId })),
         letters: letters.length ? letters.map((t) => ({ value: t.id, label: t.name, esign: t.esign, subject: t.subject, body: t.body })) : [{ value: 'default', label: 'Default offer letter', esign: false, ...DEFAULT_OFFER_TEMPLATE }],
         defaultConditions: conditionNames(await settingFor(tx, c, 'hiring.offer.default_conditions', { legalEntityId: job.legalEntityId ?? '' })),
         expiryDays: Number(await settingFor(tx, c, 'hiring.offer.expiry_days', { legalEntityId: job.legalEntityId ?? '' })),
@@ -116,11 +122,21 @@ export class OfferBatchService {
       const days = Number(await settingFor(tx, c, 'hiring.offer.expiry_days', { legalEntityId: job.legalEntityId ?? '' }));
       const expires = [plus(todayIst(), days), dto.startDate].sort()[0]!;
       const band = await this.builder.band(tx, org, job.gradeId, job.legalEntityId, dto.startDate);
+      let joinerBatchId: string | null = null;
+      if (dto.joinerBatchId && !kept) {
+        const loc = await tx.location.findFirst({ where: { organizationId: org, id: dto.locationId }, select: { legalEntityId: true } });
+        const jb = await tx.joinerBatch.findFirst({ where: { organizationId: org, id: dto.joinerBatchId } });
+        if (!jb) throw new NotFoundException('No such joiner batch.');
+        if (jb.status !== 'open') throw new ConflictException(`The joiner batch ${jb.name} is closed.`);
+        if (iso(jb.joiningOn) !== dto.startDate) throw new BadRequestException(`The joiner batch ${jb.name} joins on ${iso(jb.joiningOn)}; choose that joining day or no batch.`);
+        if (!loc || loc.legalEntityId !== jb.legalEntityId) throw new BadRequestException(`The joiner batch ${jb.name} is for another legal entity than the offer's location.`);
+        joinerBatchId = jb.id;
+      }
       const batch =
         kept ??
         (await tx.offerBatch.create({
           data: {
-            organizationId: org, jobId: job.id, batchKey: dto.batchKey, createdBy: userId,
+            organizationId: org, jobId: job.id, batchKey: dto.batchKey, createdBy: userId, joinerBatchId,
             choices: { templateVersionId: dto.templateVersionId, templateId: dto.templateId ?? null, letterKind: dto.letterKind ?? 'offer', startDate: dto.startDate, expiresAt: expires, locationId: dto.locationId, addConditions: Boolean(dto.addConditions), planCheck: check },
             results: dto.rows.map((r, i): RowResult => {
               const name = entries.find((e) => e.id === r.entryId)!.candidate.name;
@@ -129,9 +145,26 @@ export class OfferBatchService {
             }) as unknown as Prisma.InputJsonValue,
           },
         }));
-      if (!kept) await audit(tx, c, 'ats.offer_batch.started', 'offer_batch', batch.id, { jobId: job.id, rows: dto.rows.length, held: (batch.results as unknown as RowResult[]).filter((r) => r.status === 'held').length, band: band ? 'set' : 'none' });
+      if (!kept) await audit(tx, c, 'ats.offer_batch.started', 'offer_batch', batch.id, { jobId: job.id, joinerBatchId, rows: dto.rows.length, held: (batch.results as unknown as RowResult[]).filter((r) => r.status === 'held').length, band: band ? 'set' : 'none' });
       return { batch, expires };
     });
+    if (prep.batch.status === 'done') return this.read(ctx, user, prep.batch.id);
+    if (!this.queue) return this.runRows(ctx, user, prep.batch.id).then(() => this.read(ctx, user, prep.batch.id));
+    // Answer 405: the batch runs in the background; the batch page shows each row as it is done. The job id is the
+    // batch's, so the same batch key asked again (or a resume) never runs it twice at once.
+    await this.queue
+      .add('run', { batchId: prep.batch.id, organizationId: ctx.organizationId, user: { userId: user.userId, role: user.role, organizationId: user.organizationId ?? null, permissionProfileId: user.permissionProfileId ?? null, ...(user.impersonatorUserId ? { impersonatorUserId: user.impersonatorUserId } : {}) } }, { jobId: prep.batch.id, attempts: 1, removeOnComplete: 1000, removeOnFail: 1000 })
+      .catch(() => {
+        throw new ServiceUnavailableException('The batch could not be started. Send it again: the same batch resumes, nothing is sent twice.');
+      });
+    return this.read(ctx, user, prep.batch.id);
+  }
+
+  /** Answer 405: the rows of a batch, one by one (the worker runs this); a finished row is never run again. */
+  async runRows(ctx: TenantContext, user: ScopeUser, batchId: string) {
+    const userId = user.userId!;
+    const batch = await inCompany(this.tenantPrisma, ctx, (tx, c) => tx.offerBatch.findFirstOrThrow({ where: { organizationId: c.organizationId, id: batchId } }));
+    const prep = { batch };
     const rows = prep.batch.results as unknown as RowResult[];
     const ch = prep.batch.choices as { templateVersionId: string; templateId: string | null; letterKind: 'offer' | 'loi'; startDate: string; expiresAt: string; locationId: string; addConditions: boolean };
     for (const row of rows) {
@@ -160,7 +193,6 @@ export class OfferBatchService {
       await tx.offerBatch.update({ where: { id: prep.batch.id }, data: { status: 'done', finishedAt: new Date() } });
       if (prep.batch.status !== 'done') await audit(tx, c, 'ats.offer_batch.finished', 'offer_batch', prep.batch.id, Object.fromEntries(['sent', 'pending_approval', 'approved', 'held', 'skipped', 'failed'].map((s) => [s, rows.filter((r) => r.status === s).length])));
     });
-    return this.read(ctx, user, prep.batch.id);
   }
 
   private save(ctx: TenantContext, id: string, rows: RowResult[]) {
@@ -179,14 +211,18 @@ export class OfferBatchService {
       const offers = await tx.offer.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.offerId).filter((x): x is string => Boolean(x)) } }, select: { id: true, status: true, esign: true } });
       const ch = b.choices as { startDate: string; expiresAt: string; letterKind: string };
       const band = job ? await this.builder.band(tx, org, job.gradeId, job.legalEntityId, ch.startDate) : null;
+      const jb = b.joinerBatchId ? await tx.joinerBatch.findFirst({ where: { organizationId: org, id: b.joinerBatchId }, select: { id: true, name: true } }) : null;
       return {
         id: b.id,
         status: b.status,
+        joinerBatch: jb,
         job: { id: b.jobId, title: job?.title ?? '' },
         createdAt: b.createdAt,
         startDate: ch.startDate,
         expiresAt: ch.expiresAt,
         canSeePay: pay,
+        // Answer 405: how far the background run is (rows still to do are 'draft').
+        progress: { done: rows.filter((r) => r.status !== 'draft').length, total: rows.length },
         rows: rows.map((r) => {
           const o = offers.find((x) => x.id === r.offerId);
           return { ...r, annualCtc: pay ? r.annualCtc : null, offerStatus: o?.status ?? null, esign: Boolean(o?.esign), band: pay ? BAND_TEXT[bandPosition(r.annualCtc, band)] : null };

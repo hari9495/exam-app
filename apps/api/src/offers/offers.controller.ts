@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import type { ScopeUser } from '../access/scope';
 import { assertOwnSession } from '../service-desk/desk-access';
@@ -66,6 +66,26 @@ export class OffersController {
     const buffer = await this.offers.previewPdf(tenant, id);
     res.set({ 'Content-Type': 'application/pdf' });
     return new StreamableFile(buffer);
+  }
+
+  /** Answer 377: the sealed copy of an e-signed acceptance (the letter shows pay). */
+  @Get('offers/:id/acceptance-copy')
+  @RequirePermissions('pipeline:manage')
+  async acceptanceCopy(@CurrentTenant() tenant: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Res({ passthrough: true }) res: Response, @Req() req: Request): Promise<StreamableFile> {
+    if (!(await this.builder.canSeePay(req.user as ScopeUser))) throw new ForbiddenException('The offer letter shows pay: it needs ats.offer.compensation.view.');
+    const f = await this.offers.sealedCopy(tenant, id);
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${f.name}"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+    return new StreamableFile(f.file);
+  }
+
+  /** Answer 377: makes the sealed copy again when it could not be made at acceptance. */
+  @Post('offers/:id/acceptance-copy')
+  @HttpCode(200)
+  @RequirePermissions('pipeline:manage')
+  async remakeCopy(@CurrentTenant() tenant: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
+    assertOwnSession(req);
+    if (!(await this.builder.canSeePay(req.user as ScopeUser))) throw new ForbiddenException('The offer letter shows pay: it needs ats.offer.compensation.view.');
+    return this.offers.sealCopy(tenant.organizationId as string, id);
   }
 
   @Post('offers/:id/send')

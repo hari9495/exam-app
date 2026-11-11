@@ -1,3 +1,4 @@
+import { DateTime } from 'luxon';
 // HIR-27 bulk interview day: the pure rules (YX-ATS-40). No database here, so every rule has a unit test.
 
 export type AssignMode = 'by_slot' | 'by_panel';
@@ -43,3 +44,14 @@ export function memberOnTwoPanels(panels: { memberUserIds: string[] }[]): string
   }
   return null;
 }
+
+/** Answer 421: a reminder is due from 2 hours before the slot until it starts (the slot is minutes after midnight there). */
+export function reminderDue(day: string, zone: string, slotStart: number, now: Date): boolean {
+  const start = DateTime.fromISO(`${day}T00:00`, { zone }).plus({ minutes: slotStart }).toMillis();
+  return now.getTime() >= start - 2 * 3_600_000 && now.getTime() < start;
+}
+
+/** Answer 421: the reminder's words (plain, no links). */
+export const reminderText = (job: string, slotStart: number, room: string) =>
+  `Reminder: your interview for ${job} is today at ${String(Math.floor(slotStart / 60)).padStart(2, '0')}:${String(slotStart % 60).padStart(2, '0')}${room ? `, ${room}` : ''}. Please come 10 minutes early with a photo ID.`;
+

@@ -522,6 +522,8 @@ export interface OfferRecordView {
   approval: { requestId: string; status: string; steps: { name: string; state: string; approvers: string[] }[]; myTaskId: string | null } | null;
   activity: { id: string; actor: string; action: string; at: string }[];
   joiner: { id: string; status: string } | null;
+  /** Answer 377: the sealed copy of an e-signed acceptance; missing = not made yet (HR makes it again); null = none expected. */
+  sealedCopy?: 'made' | 'missing' | null;
 }
 
 export interface LiveOfferRecord {
@@ -537,6 +539,9 @@ export interface LiveOfferRecord {
   onWithdraw: () => Promise<void>;
   onCancelApproval: () => Promise<void>;
   onLetter: () => Promise<void>;
+  /** Answer 377: download the sealed copy, or make it again when it is missing. */
+  onSealedCopy?: () => Promise<void>;
+  onMakeSealedCopy?: () => Promise<void>;
   /** Answer 336: the company's reminder email (answer the offer, or what is still due); resolves with the toast text. */
   onRemind: () => Promise<string>;
   /** People › Ready to onboard, where HR adds the joiner from the accepted offer (PPL-12, unchanged). */
@@ -555,7 +560,10 @@ export interface BulkOfferSetup {
   grade: string | null;
   band: { min: number; max: number } | null;
   structures: Choice[];
-  locations: Choice[];
+  /** legalEntityId: answer 401 (a joiner batch is for one legal entity). */
+  locations: (Choice & { legalEntityId?: string })[];
+  /** Answer 401: open People joiner batches (offered when on the chosen joining day and the location's entity). */
+  joinerBatches?: { value: string; label: string; joiningOn: string; legalEntityId: string }[];
   letters: { value: string; label: string; esign: boolean; subject: string; body: string }[];
   defaultConditions: string[];
   expiryDays: number;
@@ -573,6 +581,8 @@ export interface BulkOfferInput {
   startDate: string;
   locationId: string;
   addConditions: boolean;
+  /** Answer 401: the People joiner batch the accepted offers join. */
+  joinerBatchId?: string;
   rows: { entryId: string; annualCtc: number }[];
 }
 
@@ -586,6 +596,10 @@ export interface BulkBatchView {
   startDate: string;
   expiresAt: string;
   canSeePay: boolean;
+  /** Answer 405: rows done of all while it runs in the background. */
+  progress?: { done: number; total: number };
+  /** Answer 401: the People joiner batch its accepted offers join. */
+  joinerBatch?: { id: string; name: string } | null;
   rows: { entryId: string; name: string; annualCtc: number | null; status: BulkRowStatus; offerId: string | null; reason: string | null; offerStatus: string | null; esign: boolean; band: string | null }[];
 }
 
@@ -596,7 +610,7 @@ export interface LiveBulkOffers {
   setup: BulkOfferSetup | null;
   /** The sent page: the batch and each row's result. */
   batch?: BulkBatchView | null;
-  /** Makes and sends the batch; resolves when every row has its result (the page then opens the batch). */
+  /** Makes the batch and starts it in the background (answer 405); the page then opens the batch and shows its progress. */
   onSend: (input: BulkOfferInput) => Promise<void>;
   onOpenOffer: (offerId: string) => void;
   now: Date;

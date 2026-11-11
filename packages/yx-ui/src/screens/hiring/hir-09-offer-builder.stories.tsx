@@ -20,4 +20,7 @@ export const AcceptedManual: S = { name: 'Accepted · manual hand-off, HR create
 export const AcceptedRehire: S = { name: 'Accepted · alumni rehire', render: () => <OfferRecordScreen {...rec} candidate="Fatima Shaikh" status="Accepted" persona="hr" handoff={{ mode: 'manual', personType: 'Alumni rehire' }} /> };
 export const PartialMatch: S = { name: 'Accepted · partial match stops the hand-off', render: () => <OfferRecordScreen {...rec} status="Accepted" persona="hr" handoff={{ mode: 'automatic', personType: 'Partial match' }} /> };
 export const Reneged: S = { name: 'Reneged · pre-boarding unwound', render: () => <OfferRecordScreen {...rec} status="Reneged" declineReason="Counter-offer from current employer" /> };
+// Answer 377: an e-signed acceptance keeps a sealed copy; one that could not be made is made again from here.
+export const AcceptedSealed: S = { name: 'Accepted with e-sign · sealed copy (377)', render: () => <OfferRecordScreen {...rec} status="Accepted" handoff={{ mode: 'manual', personType: 'New person' }} sealed="made" /> };
+export const SealedMissing: S = { name: 'Accepted with e-sign · sealed copy not made (377)', render: () => <OfferRecordScreen {...rec} status="Accepted" handoff={{ mode: 'manual', personType: 'New person' }} sealed="missing" /> };
 export const Versions: S = { name: 'Versions tab', render: () => <OfferRecordScreen {...rec} status="Sent" defaultTab="versions" /> };

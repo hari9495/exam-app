@@ -34,6 +34,7 @@ export default function YxBulkOffersPage() {
             letterKind: input.letterKind,
             addConditions: input.addConditions,
             ...(input.templateId ? { templateId: input.templateId } : {}),
+            ...(input.joinerBatchId ? { joinerBatchId: input.joinerBatchId } : {}),
             rows: input.rows.map((r) => ({ entryId: r.entryId, annualCtc: String(Math.round(r.annualCtc)) })),
           });
           router.push(`/yx/hiring/offer-batches/${encodeURIComponent(b.id)}`);

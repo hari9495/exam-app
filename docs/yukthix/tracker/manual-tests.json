@@ -20036,5 +20036,61 @@
       "Screens/Time/TIM-14 · Devices and kiosks · Kiosks · show revoked, with the reason and who (871)"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-L-01",
+    "area": "Hiring · the \"later\" list: offers and interviews (11 Nov 2026)",
+    "screen": "HIR-09 offer record; candidate offer page",
+    "url": "http://localhost:3000/yx/hiring/offers",
+    "account": "A recruiter with the offer-pay key (ats.offer.compensation.view); HR with onboarding (lifecycle.onboarding.manage); a recruiter without the pay key. Browser window 1278 x 635.",
+    "steps": [
+      "Send an offer whose letter template has e-sign on; as the candidate accept it with the emailed code.",
+      "Open the offer record; download the sealed copy.",
+      "As the recruiter without the pay key open the same offer.",
+      "Open an offer accepted by the link (no e-sign)."
+    ],
+    "expected": "Step 2: \"Signed: sealed copy kept\"; the PDF is the letter, then an acceptance page with the candidate, time, IP, device and the one-time-code check. Step 3: no sealed copy shown or downloadable. Step 4: no sealed copy note.",
+    "stories": [
+      "Screens/Hiring/HIR-09 · Offer builder"
+    ],
+    "note": "Positive and negative. Answer 377."
+  },
+  {
+    "id": "MT-HIR-L-02",
+    "area": "Hiring · the \"later\" list: offers and interviews (11 Nov 2026)",
+    "screen": "HIR-28 bulk offers; People › Ready to onboard",
+    "url": "http://localhost:3000/yx/hiring/jobs",
+    "account": "A recruiter with the offer-pay key (ats.offer.compensation.view); HR with onboarding (lifecycle.onboarding.manage); a recruiter without the pay key. Browser window 1278 x 635.",
+    "steps": [
+      "Make a People joiner batch for the joining day (People › Onboarding).",
+      "Bulk offers: pick that joining day and location; choose the batch; send 5 offers.",
+      "Watch the batch page.",
+      "Pick a joining day with no batch.",
+      "Accept an offer; HR makes the joiner on the batch day; another on a different day."
+    ],
+    "expected": "Step 2: the batch is offered only on its day and entity. Step 3: \"Sending in the background: n of 5 done\" until done; rows still to go say \"Waiting to send\". Step 4: \"No open joiner batch on this joining day\". Step 5: the first joiner is in the batch; the second is not and HR is told why.",
+    "stories": [
+      "Screens/Hiring/HIR-28 · Bulk offer screen"
+    ],
+    "note": "Positive and negative. Answers 401, 405."
+  },
+  {
+    "id": "MT-HIR-L-03",
+    "area": "Hiring · the \"later\" list: offers and interviews (11 Nov 2026)",
+    "screen": "HIR-27 interview day",
+    "url": "http://localhost:3000/yx/hiring/interview-days",
+    "account": "A recruiter (pipeline:manage); a candidate who opted in to WhatsApp. Browser window 1278 x 635.",
+    "steps": [
+      "Auto-assign a day; \"Swap with…\" on one candidate without choosing; then choose another unsent candidate.",
+      "Drag one unsent candidate onto another.",
+      "Try to swap a candidate whose invite was sent.",
+      "With WhatsApp not connected, look at the reminder switch.",
+      "Connect WhatsApp; send invites; 2 hours before the slot look at each slot."
+    ],
+    "expected": "Step 1: \"Choose who they swap with.\"; then they change places (toast). Step 2: they change places. Step 3: no Swap button on that candidate. Step 4: the switch is off with \"WhatsApp is not connected\". Step 5: opted-in candidates show \"Reminder sent\", others \"No WhatsApp (not opted in)\" or \"No mobile number\".",
+    "stories": [
+      "Screens/Hiring/HIR-27 · Bulk interview-day scheduler"
+    ],
+    "note": "Positive and negative. Answers 421, 422."
   }
 ]

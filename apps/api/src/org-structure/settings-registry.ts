@@ -314,6 +314,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // is revised (starter), or the check is off. A bulk offer expires this many days after it is sent (never after joining).
   'hiring.bulk_offer.plan_check': { label: 'Hiring: bulk offers beyond the free places on the plan line', scopes: ['tenant'], dated: false, values: ['hold', 'off'], default: 'hold', labels: { hold: 'Are held until the plan is revised', off: 'Are not checked against the plan' } },
   'hiring.offer.expiry_days': { label: 'Hiring: an offer expires after (days)', scopes: ['tenant'], dated: false, values: ['3', '5', '7', '10', '14', '30'], default: '7' },
+  // Answer 421: a new interview day's WhatsApp reminder switch starts on (sent only to candidates who opted in).
+  'hiring.interview_day.whatsapp_reminders': { label: 'Hiring: WhatsApp reminders 2 hours before each interview-day slot', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', labels: { on: 'On for a new interview day', off: 'Off for a new interview day' } },
   // Careers answer 352: when an applicant's résumé file fails the safety check, they are emailed a link to their
   // candidate page to upload another (starter on).
   'hiring.resume_quarantine.tell_applicant': { label: 'Hiring: tell applicants when their résumé file could not be accepted', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'on' },

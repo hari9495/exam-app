@@ -33,6 +33,16 @@ export default function YxOfferPage() {
           const { blob } = await apiFetchBlob(`/offers/${encodeURIComponent(id)}/pdf`, {}, accessToken ?? undefined);
           window.open(URL.createObjectURL(blob), '_blank', 'noopener');
         },
+        // Answer 377: the sealed copy of an e-signed acceptance (downloaded), or made again when it is missing.
+        onSealedCopy: async () => {
+          const { blob, filename } = await apiFetchBlob(`/offers/${encodeURIComponent(id)}/acceptance-copy`, {}, accessToken ?? undefined);
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = filename ?? 'offer-accepted.pdf';
+          a.click();
+          URL.revokeObjectURL(a.href);
+        },
+        onMakeSealedCopy: async () => void (await write('POST', `/offers/${encodeURIComponent(id)}/acceptance-copy`)),
         onRemind: async () => ((await write<{ kind: string }>('POST', `${path}/remind`)).kind === 'documents' ? 'Reminder sent: what is still due' : 'Reminder sent: answer the offer'),
         onCreateEmployee: () => router.push('/yx/people/ready-to-onboard'),
         onAddCondition: async (name, dueOn) => void (await write('POST', `${path}/conditions`, { name, dueOn })),
