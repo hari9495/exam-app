@@ -75,6 +75,9 @@ export interface DeskSetupScreenProps {
    *  Settings tab to the company's Service Desk owner (desk.desk.create); null: not theirs to change. */
   kbReviewMonths?: number | null;
   onKbReviewMonths?: (months: number) => Promise<unknown>;
+  /** Help H-1 (answer 942): "Show page help" in the Help drawer (company setting, on by default). */
+  pageHelp?: boolean | null;
+  onPageHelp?: (on: boolean) => Promise<unknown>;
   /** Batch 2 tabs: response targets, and resolution codes with templates. */
   sla?: Omit<SlaTabProps, 'detail' | 'calendars'>;
   workSetup?: Omit<WorkSetupProps, 'detail'>;
@@ -857,6 +860,7 @@ function SettingsTab(props: TabProps) {
         </div>
       )}
       {props.onKbReviewMonths && props.kbReviewMonths != null && <KbReviewRule key={props.kbReviewMonths} value={props.kbReviewMonths} onSave={props.onKbReviewMonths} />}
+      {props.onPageHelp && props.pageHelp != null && <PageHelpRule value={props.pageHelp} onChange={props.onPageHelp} />}
     </div>
   );
 }
@@ -866,6 +870,32 @@ const REVIEW_CHOICES = [3, 6, 12, 24];
 const AT_RISK_CHOICES = [50, 60, 70, 80, 90];
 
 /** Registry setting desk.kb.review_months: one value for the company, not per desk. */
+/** Help H-1 (answer 942): the Help drawer's "This page" tab, for the whole company. Takes effect at once (a switch). */
+function PageHelpRule({ value, onChange }: { value: boolean; onChange: (on: boolean) => Promise<unknown> }) {
+  const [on, setOn] = useState(value);
+  const { error, run } = useRun();
+  const { toast } = useToast();
+  return (
+    <Card title="Page help in the Help drawer">
+      <div className="yx-ops-stack">
+        {error && <InlineAlert tone="danger" title="It was not saved">{error}</InlineAlert>}
+        <Switch
+          checked={on}
+          onChange={(next) =>
+            void run('page-help', async () => {
+              await onChange(next);
+              setOn(next);
+              toast({ tone: 'success', title: next ? 'Page help is shown in the Help drawer.' : 'Page help is hidden from the Help drawer.' });
+            })
+          }
+          label="Show page help"
+          description="For the whole company. The Help drawer's This page tab lists the help articles tagged with the page someone is on (Show in Help on these pages, on each article)."
+        />
+      </div>
+    </Card>
+  );
+}
+
 function KbReviewRule({ value, onSave }: { value: number; onSave: (months: number) => Promise<unknown> }) {
   const [months, setMonths] = useState(String(value));
   const { busy, error, run } = useRun();

@@ -43,12 +43,13 @@ job with another kit part (named in the note); the drawn component itself is not
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Tours, help and what's new (6.1, 6.2) | 2 | 0 | 0 | 0 | 8 | 3 | 11 |
+| A. Tours, help and what's new (6.1, 6.2) | 2 | 4 | 0 | 0 | 4 | 3 | 11 |
 | B. Access and not found (6.3) | 1 | 5 | 0 | 0 | 0 | 2 | 7 |
-| C. Irreversible actions (6.4) | 1 | 0 | 5 | 0 | 0 | 0 | 5 |
+| C. Irreversible actions (6.4) | 1 | 5 | 0 | 0 | 0 | 0 | 5 |
 | D. Availability (6.5) | 1 | 0 | 1 | 0 | 7 | 1 | 9 |
-| E. Empty states (6.6) | 1 | 0 | 8 | 0 | 1 | 1 | 10 |
-| **All A-E** | **6** | **5** | **14** | **0** | **16** | **7** | **42** |
+| E. Empty states (6.6) | 1 | 1 | 7 | 0 | 1 | 1 | 10 |
+| **All A-E** | **6** | **15** | **8** | **0** | **12** | **7** | **42** |
+Recounted 11 Nov 2026 on test/yukthix-main after merging H-1 (help drawer, What's new tab, irreversible sheet) with H-2 (access and not found).
 
 Counted by script 11 Nov 2026 on `docs/yukthix-help-onboarding-map` (the script is in the appendix): the 41 stories
 under Screens/Help and onboarding/Patterns (one file, grouped by its section comments 6.1 … 6.6). The 7 phone views need
@@ -86,12 +87,12 @@ The 18 "design only" rows: tours (3), the help drawer's page help, what's new an
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| HelpDrawerPage · 6.2 Help drawer · this page (TIM-18 apply leave) | design only, feature not built | page help topics (steps, video, languages) do not exist; the live Help drawer is the service-desk one (known issues, raise a ticket, my tickets) and suggests knowledge-base articles only while typing a ticket; question 941 |
-| HelpDrawerNews · 6.2 Help drawer · what's new | built through PLT-50 (H-4) | entries, targeting by role and product, read marks; the tab itself comes with H-1 |
-| HelpDrawerNewsEmpty · 6.2 Help drawer · what's new, nothing yet | design only, feature not built | as above |
-| HelpDrawerTours · 6.2 Help drawer · tours (resume, replay) | design only, feature not built | needs tour progress per person (6.1) |
-| HelpPhone · 6.2 Help · phone (bottom sheet content) | phone view, mobile app not built | `HelpTopicBody` in a bottom sheet |
-| WhatsNewManager · 6.2 What's new · manager | retired (answer 943) | PLT-50 is the one version; live as the Help drawer's What's new (H-4) |
+| HelpDrawerPage · 6.2 Help drawer · this page (TIM-18 apply leave) | live | H-1 (11 Nov 2026): the one Help drawer (`screens/desk/help.tsx`, every page) opens on This page with the help articles tagged with the page (`GET desk/my/kb/page?route=`, answer 942), behind "Show page help" (on); the drawn topic body (steps, fields, glossary) is retired: page help is the articles |
+| HelpDrawerNews · 6.2 Help drawer · what's new | live | H-4's `WhatsNewPanel` (PLT-50) in the drawer's What's new tab (H-1 merge); the tab shows only when there are entries |
+| HelpDrawerNewsEmpty · 6.2 Help drawer · what's new, nothing yet (the tab is hidden) | live | with no entries (or What's new off) the drawer has no What's new tab |
+| HelpDrawerTours · 6.2 Help drawer · tours (resume, replay) | design only, feature not built | H-1: the Tours tab (`TourList`) is hidden in the app until H-5 |
+| HelpPhone · 6.2 Help · phone (bottom sheet content) | phone view, mobile app not built | the drawer’s This page content (`PageHelp`) in a bottom sheet |
+| WhatsNewManager · 6.2 What's new · manager | live | the story shows PLT-50's `WhatsNewPanel` (answer 943: the one version), live in the Help drawer's What's new tab; the drawn `WhatsNewList` is retired |
 
 ### B. Access and not found (6.3)
 
@@ -113,11 +114,11 @@ The 18 "design only" rows: tours (3), the help drawer's page help, what's new an
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| IrreversiblePublish · 6.4 Irreversible · publish payslips | live (gap) | live as the pay kit's `IrreversibleSheet` (payroll runs and records: impact, cannot undo, correction, typed phrase, maker and checker); the drawn `IrreversibleActionDialog` is a second version; question 945 |
-| IrreversibleTyped · 6.4 Irreversible · phrase typed, ready | live (gap) | as above |
-| IrreversibleSamePerson · 6.4 Irreversible · maker is the checker (blocked) | live (gap) | `IrreversibleSheet` names the block; the database also refuses the maker as checker on releases |
-| IrreversibleReopen · 6.4 Irreversible · reopen period (reason required) | live (gap) | `IrreversibleSheet` `reasonRequired`; Payroll › Reopen requests live |
-| BulkApprove · 6.4 Bulk approve · count confirmation | live (gap) | live in the Approvals inbox (PLT-04 `ApprovalsInboxScreen`, its own confirmation, high-risk types blocked); the drawn `BulkApproveConfirm` is not used |
+| IrreversiblePublish · 6.4 Irreversible · publish payslips | live | H-1: the story shows the live pay-kit `IrreversibleSheet` (payroll runs, payments, records, compliance, expenses); the drawn dialog is retired (answer 945) |
+| IrreversibleTyped · 6.4 Irreversible · phrase typed, ready | live | as above |
+| IrreversibleSamePerson · 6.4 Irreversible · maker is the checker (blocked) | live | `IrreversibleSheet` with maker = checker offers "Send to … for approval" |
+| IrreversibleReopen · 6.4 Irreversible · reopen period (reason required) | live | `IrreversibleSheet` `reasonRequired`; Payroll › Reopen requests |
+| BulkApprove · 6.4 Bulk approve · count confirmation | live | H-1: the story shows the live Approvals inbox (PLT-04) bulk confirmation; the drawn `BulkApproveConfirm` is retired |
 
 ### D. Availability (6.5)
 
@@ -141,12 +142,12 @@ The 18 "design only" rows: tours (3), the help drawer's page help, what's new an
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| EmptyEmployee · 6.6 Empty · first use, employee | live (gap) | `RoleEmptyState` only wraps the kit's `EmptyState`, which every live list uses with the page's own words and first action; the drawn "How it works" help link is not on live pages |
-| EmptyManager · 6.6 Empty · first use, manager | live (gap) | as above (Approvals inbox empty is live) |
-| EmptyHr · 6.6 Empty · first use, HR | live (gap) | as above |
-| EmptyPayroll · 6.6 Empty · first use, payroll admin | live (gap) | as above |
+| EmptyEmployee · 6.6 Empty · first use, employee | live (gap) | H-1: the story shows the kit `EmptyState` (as live lists); `RoleEmptyState` is retired; the "How it works" help link is not on live pages |
+| EmptyManager · 6.6 Empty · first use, manager | live (gap) | H-1: the story shows the kit `EmptyState` (as live lists); `RoleEmptyState` is retired; the "How it works" help link is not on live pages |
+| EmptyHr · 6.6 Empty · first use, HR | live (gap) | H-1: the story shows the kit `EmptyState` (as live lists); `RoleEmptyState` is retired; the "How it works" help link is not on live pages |
+| EmptyPayroll · 6.6 Empty · first use, payroll admin | live (gap) | H-1: the story shows the kit `EmptyState` (as live lists); `RoleEmptyState` is retired; the "How it works" help link is not on live pages |
 | EmptySandbox · 6.6 Empty · sandbox with sample data toggle | design only, feature not built | no sample data for a company; question 950 |
-| EmptyFiltered · 6.6 Empty · filtered to nothing | live (gap) | the kit `DataTable` shows "No results for these filters" when filtered |
+| EmptyFiltered · 6.6 Empty · filtered to nothing | live | the kit `DataTable` shows "No results for these filters" when filtered; the story shows the same `EmptyState` |
 | EmptyNotDue · 6.6 Empty · not due | live (gap) | `EmptyState` with the page's words; not checked page by page that each module says "not due" this way |
 | EmptyNotCovered · 6.6 Empty · not covered | live (gap) | as above (Payroll › Earned wage access is live) |
 | EmptyPending · 6.6 Empty · pending | live (gap) | as above |
@@ -310,6 +311,41 @@ longest 30 days); a not-found reference; availability states and module switches
 sample data; "press ?" shortcut help on; the set-up hub next, the company wizard after; phone views wait for the mobile app.
 Build H-1 to H-3 now, then H-4 to H-6; H-7 later.
 
+## H-1 built (answers 941, 942, 945; 11 Nov 2026, branch `feat/yukthix-help-h1`)
+
+- **One Help drawer** (941): the live drawer in `screens/desk/help.tsx` (Help in the top bar, every page) now has tabs:
+  known issues stay on top; **This page**, **Ask** (raise a ticket and my open tickets; Raise ticket shows only here),
+  **What's new** and **Tours**. What's new and Tours show only when their content is given: they are **hidden** in the
+  app until H-4 and H-5 (the design allows it; the stories still draw them with sample content). The drawer opens on
+  This page when the page has articles, otherwise on Ask.
+- **This page** (942): help articles tagged with the page. An article gets "Show in Help on these pages" (app addresses
+  such as /yx/time/leave, up to 20; the page and every page under it) in the knowledge-base editor (HLP-04, drawn first).
+  `GET desk/my/kb/page?route=` returns the published articles the person may read (same reader rules as article
+  suggestions), closest page first, then featured, at most 6. Record ids in the address are dropped before asking.
+  Company setting `help.page_help` ("Show page help", on by default) on Desk set-up › Settings (the Service Desk owner,
+  audited); off hides the tab. Migration `202617z0000012_help_h1` (`sd_kb_articles.pages`).
+- **Second versions retired** (945): the drawn help drawer and its page topic body (`HelpTopicBody`), the drawn
+  irreversible dialog (`IrreversibleActionDialog`), bulk confirmation (`BulkApproveConfirm`) and `RoleEmptyState` are
+  removed from `screens/settings/help.tsx`; their stories now show the live parts (the one drawer, the pay kit's
+  `IrreversibleSheet`, the Approvals inbox, the kit `EmptyState`).
+- **Design-live guard:** `IrreversibleActionDialog`, `BulkApproveConfirm` and `RoleEmptyState` left the not-live list;
+  `WhatsNewList` and `TourList` joined it. They were never live: the guard counted the drawn drawer as live because the
+  live one has the same name. Net one shorter.
+- **Tests:** kit (`help-h1.test.tsx`: tabs, empty and error, hidden tabs, the setting switch, the pages field) and web
+  (`yx-desk-help-drawer.test.tsx`), positive and negative; e2e `service-desk-hlp04` (tagging, the page lookup, another
+  company, the setting).
+
+## Founder questions from H-1 (11 Nov 2026)
+
+961. **Who writes page help.** Articles are written in the Service Desk knowledge base, so page help comes from desk
+     authors. *Suggested: keep; HR's own help articles live in an HR desk's knowledge space.*
+962. **Moving `IrreversibleSheet` into the kit.** It stays in the pay kit, used by Pay, Compliance and Expenses; the story
+     imports it from there. *Suggested: move it to the shared kit in a small tidy-up when the next area needs it.*
+963. **The guard's two new entries.** `WhatsNewList` and `TourList` are now listed as not live (they always were).
+     *Suggested: accept; H-4 and H-5 take them off.*
+964. **Articles in other languages.** "This page" lists the original articles; the Help centre opens them in the reader's
+     language when a translation exists. *Suggested: keep.*
+
 ## H-3 built: shortcut help on every page (answer 951; 12 Nov 2026, branch `feat/yukthix-help-h3`)
 - "?" opens Keyboard shortcuts on every page of the signed-in app (`apps/web/app/yx/(app)/layout.tsx`), never while typing
   in a field or with Ctrl, Alt or ⌘. It is the kit's dialog: focus moves into it, Esc closes it and focus returns.
@@ -395,3 +431,22 @@ of what's new to a new company.
      are kept for now).*
 975. **YukthiX support.** *Suggested: YukthiX staff look up a reference inside the company's support session, as built; a
      look-up across companies waits for the platform console.*
+
+## H-1 with H-4 merged, and answers 962, 964, 992 built (12 Nov 2026, branch `feat/yukthix-help-h1`)
+- **What's new in its tab:** H-4's `WhatsNewPanel` (PLT-50) is the content of the drawer's What's new tab; the tab shows
+  only when the person has entries (none, or What's new off: no tab). H-4's temporary section and its separate slot are
+  gone: `whatsNew` is the tab's one way in. The drawn `WhatsNewList` (and its sample `NEWS`, `newsFor`) is retired; the
+  6.2 stories show `WhatsNewPanel`, so it left the design-live guard's not-live list.
+- **Tours** stays a plain `tours` slot (any content), hidden until H-5 passes its panel in.
+- **962:** `IrreversibleSheet` (and `confirmPhraseMatches`) moved from the pay kit to the shared kit
+  (`components/irreversible.tsx` and `.css`, exported from `@yukthix/ui`); Pay runs, payroll records, consultants,
+  payments, Compliance and Expenses import it from there. Same behaviour; only its class names lost the `yx-pay-` prefix.
+- **964:** "This page" asks with the person's language: the browser's first language the help centre offers (en, hi, ta,
+  te). Each listed article is swapped for its published translation in that language when there is one (a draft
+  translation is not); otherwise the original shows. `GET desk/my/kb/page?route=&lang=` (other languages: 400).
+- **992:** a dot on Help in the top bar while What's new has unread entries (`TopBar helpUnread`, story "Top bar · Help
+  with something new in What's new"); the button's name says "Help, new in What's new". Gone after Mark all read; never in
+  a support session.
+- Tests: kit (dot and no dot; the moved sheet from the kit root, typed phrase), web (lang asked or not; What's new tab
+  shown or hidden), e2e `service-desk-hlp04` (translation shown once published; English, Hindi without a translation, and
+  a draft show the original; unknown language 400). Manual tests MT-HLP-H1-04 and MT-HLP-H1-05.

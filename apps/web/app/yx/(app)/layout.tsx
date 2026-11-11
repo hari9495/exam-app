@@ -26,6 +26,7 @@ import { ME_SECURITY, accountLinks, pageLink, buildNav, panelOf, samePersonInMen
 import { ScopeProvider, recentMonths, useScope, useWorkspaceCounts } from '../../../lib/yx-shell';
 import { DeskHelp } from './desk-help';
 import { YxPageHelp } from '../../../lib/yx-access-requests';
+import { useWhatsNew } from '../../../lib/yx-whats-new';
 
 // Pages outside the menu (a record, a sub-page) still light up their area.
 const AREA_BY_PATH: [string, AreaId][] = [['/yx/people', 'people'], ['/yx/time', 'time'], ['/yx/payroll', 'pay'], ['/yx/expenses', 'pay'], ['/yx/hiring', 'hire'], ['/yx/performance', 'performance'], ['/yx/desk', 'helpdesk'], ['/yx/contract-labour', 'contract'], ['/yx/settings', 'settings'], ['/yx/admin', 'settings'], ['/yx/support', 'settings']];
@@ -96,6 +97,8 @@ function Frame({ children }: { children: React.ReactNode }) {
   const shortcutHelp = useShortcutHelp();
 
   const support = actingSuperAdmin;
+  // Answer 992: a dot on Help while What's new has unread entries (null when the company turned What's new off).
+  const news = useWhatsNew(!support);
   const employee = Boolean(team.data?.managerId);
   const nav = useMemo(
     () =>
@@ -249,6 +252,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         onNavigate: go,
         onSearch: () => setPaletteOpen(true),
         onHelp: support ? undefined : () => setHelpOpen(true),
+        helpUnread: !support && (news?.unread ?? 0) > 0,
         scope: scopePicker,
         notifications: (
           <NotificationCentre

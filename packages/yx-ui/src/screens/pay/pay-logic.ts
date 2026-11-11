@@ -404,10 +404,6 @@ export function retrenchmentCompensation(monthlyPay: number, completedYears: num
   return Math.round((monthlyPay / dayBasis) * 15 * completedYears);
 }
 
-/** APX-D §6.4: the typed phrase must match exactly (entity + period in capitals). */
-export function confirmPhraseMatches(typed: string, phrase: string) {
-  return typed.trim() === phrase;
-}
 
 /** Salary optimiser (YX-AST-13): check a proposed split against law and company rules. */
 export interface SplitOption {

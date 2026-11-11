@@ -20096,6 +20096,59 @@
     "note": "Positive and negative. Answers 421, 422."
   },
   {
+    "id": "MT-HLP-H1-01",
+    "area": "Help — H-1: one Help drawer with page help (11 Nov 2026)",
+    "screen": "HLP-04 knowledge base editor",
+    "url": "http://localhost:3000/yx/desk/kb",
+    "account": "The Service Desk owner (or a KB author). Browser window 1278 x 635.",
+    "steps": [
+      "Open a published article, Edit details; in \"Show in Help on these pages\" type /yx/time/leave and save.",
+      "Type \"time/leave\" (no /yx) and save.",
+      "Type /yx/Time/Leave?x=1 and save."
+    ],
+    "expected": "Step 1: saved (toast); the details show \"Shown in Help on /yx/time/leave\". Steps 2 and 3: not saved; the field says \"… is not an app address. Use one like /yx/time/leave.\"",
+    "stories": [
+      "Screens/Helpdesk/HLP-04 · Knowledge base editor"
+    ],
+    "note": "Positive and negative. Answer 942."
+  },
+  {
+    "id": "MT-HLP-H1-02",
+    "area": "Help — H-1: one Help drawer with page help (11 Nov 2026)",
+    "screen": "Help drawer (top bar, every page)",
+    "url": "http://localhost:3000/yx/time/leave",
+    "account": "An employee who may read the article from MT-HLP-H1-01; then an employee of another company.",
+    "steps": [
+      "Open Leave, click Help in the top bar.",
+      "Open the article link.",
+      "Go to a page with no tagged article (e.g. /yx/home) and open Help.",
+      "Sign in as an employee of another company and open Help on Leave."
+    ],
+    "expected": "Step 1: the drawer opens on This page listing the article; tabs This page and Ask, plus What's new when there are entries for you (no Tours yet); no Raise ticket button on This page. Step 2: the article opens in a new tab. Step 3: the drawer opens on Ask; This page says \"No help is written for this page yet.\" with Ask a team. Step 4: the article is not listed.",
+    "stories": [
+      "Screens/Help and onboarding/Patterns · 6.2 Help drawer · this page (TIM-18 apply leave)"
+    ],
+    "note": "Positive and negative. Answers 941, 942."
+  },
+  {
+    "id": "MT-HLP-H1-03",
+    "area": "Help — H-1: one Help drawer with page help (11 Nov 2026)",
+    "screen": "Desk set-up › Settings",
+    "url": "http://localhost:3000/yx/desk/setup",
+    "account": "The Service Desk owner; then an employee without desk set-up rights.",
+    "steps": [
+      "Turn \"Show page help\" off.",
+      "Open Help on Leave.",
+      "Turn it back on.",
+      "As the employee, try to open Desk set-up."
+    ],
+    "expected": "Step 1: saved (toast, 5 s). Step 2: no This page tab; the drawer opens on Ask. Step 3: This page is back. Step 4: no access to the setting.",
+    "stories": [
+      "Screens/Service desk/Phase 3b-1 (wired screens) · Desk set-up · Settings · check help articles again every"
+    ],
+    "note": "Positive and negative. Setting help.page_help, on by default; audited."
+  },
+  {
     "id": "MT-HLP-951",
     "area": "Help and onboarding H-3 (12 Nov 2026)",
     "screen": "Any page · Keyboard shortcuts",
@@ -20145,16 +20198,52 @@
     "account": "arjun@ (employee), hr-tester (HR), admin-tester (System Admin); a staff account publishes the entries first.",
     "steps": [
       "Publish one entry for Employees and one for HR, both today, YukthiX HR.",
-      "As arjun@ open Help.",
+      "As arjun@ open Help, then the What's new tab.",
       "Press Mark all read.",
       "As hr-tester open Help.",
       "As admin-tester turn Settings › Organisation › Help: show What's new off; open Help as arjun@. Turn it on again."
     ],
-    "expected": "Step 2: the Employees entry with New, not the HR one. Step 3: toast 'Marked as read'; New goes. Step 4: the HR entry still New for hr-tester (marks are per person). Step 5: no What's new in Help while off.",
+    "expected": "Step 2: the Employees entry with New, not the HR one. Step 3: toast 'Marked as read'; New goes. Step 4: the HR entry still New for hr-tester (marks are per person). Step 5: no What's new tab in Help while off.",
     "stories": [
       "Screens/Platform/PLT-38…43, 50…54 · Jobs, trial & account · PLT-50 · What’s new · Help tab (live parts)",
       "Screens/Service desk/Phase 3b-1 (wired screens) · US-B-100 Help drawer · What's new (H-4)"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HLP-H1-04",
+    "area": "Help — H-1: one Help drawer with page help (11 Nov 2026)",
+    "screen": "Help drawer › This page (answer 964)",
+    "url": "http://localhost:3000/yx/time/leave",
+    "account": "A KB author and publisher; an employee (arjun@). Browser language set to Tamil first, then English. Window 1278 x 635.",
+    "steps": [
+      "Add Tamil to the space; write a Tamil translation of the article tagged /yx/time/leave; leave it as a draft.",
+      "With the browser in Tamil, open Help on Leave.",
+      "Publish the translation; open Help on Leave again.",
+      "Set the browser to English (or French); open Help on Leave."
+    ],
+    "expected": "Step 2: the English article (a draft translation is not shown). Step 3: the Tamil title; it opens the Tamil article. Step 4: the English article.",
+    "stories": [
+      "Screens/Help and onboarding/Patterns · 6.2 Help drawer · this page (TIM-18 apply leave)"
+    ],
+    "note": "Positive and negative. Answer 964."
+  },
+  {
+    "id": "MT-HLP-H1-05",
+    "area": "Help — H-1: one Help drawer with page help (11 Nov 2026)",
+    "screen": "Top bar › Help dot (answer 992)",
+    "url": "http://localhost:3000/yx/home",
+    "account": "A staff account publishes a What's new entry; arjun@ (employee); a System Admin; a support session.",
+    "steps": [
+      "Publish an entry for Employees; as arjun@ load any page.",
+      "Open Help, the What's new tab, press Mark all read; close Help.",
+      "As the System Admin turn What's new off; reload as arjun@ after a new entry.",
+      "Open the company in a support session."
+    ],
+    "expected": "Step 1: a dot on Help; a screen reader says \"Help, new in What's new\". Step 2: the dot goes. Step 3: no dot and no What's new tab. Step 4: no Help button and no dot.",
+    "stories": [
+      "Shell/App shell and navigation · Top bar · Help with something new in What's new"
+    ],
+    "note": "Positive and negative. Answer 992."
   }
 ]

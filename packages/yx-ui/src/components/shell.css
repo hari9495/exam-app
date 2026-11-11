@@ -157,6 +157,9 @@
 .yx-topbar__search:hover { border-color: var(--yx-color-border-strong); }
 .yx-topbar__search-text { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .yx-topbar__end { display: flex; align-items: center; gap: var(--yx-space-2); margin-left: auto; }
+/* Answer 992: an unread dot on Help while What's new has something new (the bell's colour, no count). */
+.yx-topbar__help { position: relative; display: inline-flex; }
+.yx-topbar__help-dot { position: absolute; top: var(--yx-space-1); right: var(--yx-space-1); width: var(--yx-space-2); height: var(--yx-space-2); border-radius: var(--yx-radius-round); background: var(--yx-color-action-primary); box-shadow: 0 0 0 var(--yx-border-width) var(--yx-color-bg-surface); pointer-events: none; }
 .yx-topbar__entity { width: calc(var(--yx-space-16) * 3 + var(--yx-space-8)); }
 .yx-topbar__profile {
   display: grid; place-items: center; padding: 0; border: 0; background: none; cursor: pointer;

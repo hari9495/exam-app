@@ -67,7 +67,7 @@ const setupProps: React.ComponentProps<typeof DeskSetupScreen> = {
 export const Setup: S = { name: 'Desk set-up', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} />) };
 // HLP-04 (founder 3 Nov 2026): the article review interval is a company setting, on the Settings tab for the company's
 // Service Desk owner (desk.desk.create).
-export const SetupKbReview: S = { name: 'Desk set-up · Settings · check help articles again every', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="settings" kbReviewMonths={12} onKbReviewMonths={noop} />) };
+export const SetupKbReview: S = { name: 'Desk set-up · Settings · check help articles again every', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="settings" kbReviewMonths={12} onKbReviewMonths={noop} pageHelp onPageHelp={noop} />) };
 // HLP-05b (founder 3 Nov 2026): each desk chooses its at-risk point (default 80 %), on the same Settings tab.
 export const SetupAtRisk: S = { name: 'Desk set-up · Settings · at risk from (per desk)', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="settings" detail={{ ...setupProps.detail!, desk: { ...setupProps.detail!.desk, atRiskPercent: 60 } }} />) };
 
@@ -183,6 +183,7 @@ export const HelpDrawerWhatsNew: S = {
         onMeToo={noop}
         onRaise={async () => ({ id: 'x', number: 'IT-1005' })}
         ticketHref={(id) => `#${id}`}
+        defaultTab="new"
         whatsNew={<WhatsNewPanel live={{ state: 'ready', onRetry: () => {}, unread: 1, onMarkAllRead: async () => {}, entries: [{ id: 'n1', date: '2026-11-10', product: 'YukthiX HR', title: 'Comp-off expiry on the balance card', body: 'Employees now see when comp-off days lapse, on web and mobile.', unread: true }, { id: 'n2', date: '2026-11-02', product: 'YukthiX HR', title: 'Press ? for keyboard shortcuts', body: 'Every page lists the shortcuts that work for you.', unread: false }] }} />}
       />,
     ),

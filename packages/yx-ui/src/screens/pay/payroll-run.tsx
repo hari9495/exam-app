@@ -29,7 +29,6 @@ import {
   Amount,
   DueDateStrip,
   FactRow,
-  IrreversibleSheet,
   PayFrame,
   RunProgress,
   RUN_STAGES,
@@ -44,6 +43,7 @@ import {
   type RunStage,
   type ViewState,
 } from './pay-kit';
+import { IrreversibleSheet } from '../../components/irreversible';
 import { CONFIRM_PHRASE, DUE_ITEMS, EWA_REMITTANCE, FIN_APPROVER, PAYROLL_ADMIN, RUN, RUN_HISTORY, RUN_PICKS, RUN_ROWS, d, type RunRow } from './pay-data';
 import { variance } from './pay-logic';
 import { DueBadge } from '../time/time-kit';

@@ -71,7 +71,7 @@ export class DeskInsightsController {
   @RequirePermissions('desk.desk.create')
   async setKbSettings(@Req() req: Request, @CurrentTenant() t: TenantContext, @Body() dto: KbSettingsDto) {
     assertOwnSession(req);
-    return this.kb.setKbSettings(await this.actor(req, t), dto.reviewMonths);
+    return this.kb.setKbSettings(await this.actor(req, t), dto);
   }
 
   @Get('kb/spaces')
