@@ -30,11 +30,11 @@ built.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Front desk and kiosk | 2 | 20 | 1 | 0 | 0 | 0 | 21 |
+| A. Front desk and kiosk | 2 | 21 | 1 | 0 | 0 | 0 | 22 |
 | B. Hosts | 2 | 7 | 1 | 0 | 0 | 4 | 12 |
 | C. The visitor's own pages | 1 | 7 | 0 | 0 | 2 | 0 | 9 |
 | D. Log, reports and settings | 4 | 12 | 2 | 0 | 0 | 0 | 14 |
-| **All Visitors design groups (A–D)** | **9** | **46** | **4** | **0** | **2** | **4** | **56** |
+| **All Visitors design groups (A–D)** | **9** | **47** | **4** | **0** | **2** | **4** | **57** |
 
 Recounted by script 10 Nov 2026 on `feat/yukthix-visitors-2` after 711 (VIS-02 ApprovalSend drawn and live): 46 live, 4 with a gap, 2 not built, 4 phone views of 56.
 Recounted by script 10 Nov 2026 on `feat/yukthix-visitors-2` after merging slice 4 (test main e26aaa556): 45 live, 4 with a gap, 2 not built (T9-14 Photo, PhotoBlocked), 4 phone views.
@@ -87,6 +87,7 @@ All 39 stories below.
 | Expected · Expected · walk-in waiting for host | live | live 15 Nov 2026 at /yx/visitors (Reception role, per location): expected visitors of the location's day; slice 2 (10 Nov 2026): the walk-in waiting for the host with the time reception decides from, Decide for host once it has passed |
 | OnSite · On site now (emergency list) | live | live: everyone checked in and not out (a walk-in with its photo for reception, 713: `GET visitors/desk/visits/:id/photo`, the desk key at the location, while waiting or on site, never cached), "Print badge" again (607), and the Roll-call button to the printable roll-call with employees (VIS-06, slice 4) |
 | CheckedOut · Checked out | live | live: checked out, and closed as "Not checked out" at the end of the window (611) |
+| Declined · Declined walk-ins counted on their own (797) | live | answer 797: a walk-in the host or reception declined has its own tab and count ("… checked out · N declined"), never counted as checked out |
 | CheckIn · Check in · notice and badge | live | live: check in (`POST visitors/:id/check-in`); the notice, and (slice 2) the visit type's NDA and induction, ticked at the desk when not accepted on the link; the ID type and last 4 where the location takes ID (slice 3, 603); under 18 the named adult (614); "Check in and print badge" opens the label-size badge PDF (slice 4, 607; none where the pass is on the phone only), a photo badge carries the walk-in's photo (713, never under 18); reception sees the walk-in's photo while it waits and while on site (713) |
 | CheckInIdPhoto · Check in · ID type, last 4 and photo of the ID | live | drawn 16 Nov 2026 (slice 3, 603): where the location keeps a photo of the ID, reception adds it (`POST visitors/:id/id-image`) with the type and last 4; private storage, virus-checked before it opens, deleted after the ID retention; never of an Aadhaar card |
 | CheckInMinor · Check in · visitor under 18 with an adult | live | drawn 16 Nov 2026 (slice 3, 614): no ID and no photo; reception ticks that the named adult is there |
@@ -511,3 +512,32 @@ database and refuse to run against the test app database; (799) the kiosk detail
      setting until someone needs it).*
 765. **Report period.** Reports cover the last 12 months by default, counted by the day the visit started (UTC, as the
      counts are kept). *Suggested: keep.*
+
+## Built from the walk-through answers 791, 793, 794, 797, 799, 800 (11 Nov 2026, branch `feat/yukthix-visitors-walk-answers`)
+
+- **791:** the hours run over the whole day: "allowed from" 00:00 to 23:30; "allowed until" 00:30 to "00:00 (midnight)" (kept as
+  24:00); a new setting "Visitors allowed all day" (company or location; off by default) admits visitors at any hour. One
+  place reads the hours (`VisitorsService.hours`); messages say "all day" or "from 09:00 to 00:00".
+- **793:** Devices and kiosks: Revoke on each kiosk row, with the reason (required, kept with the audit); the API route
+  now takes the reason.
+- **794:** visitor types are matched by name when saved. A type taken off the list that no visit used is removed; one
+  that visits used is archived (`visitor_types.archived_at`, migration `202617z0000002_visitors_walk`): kept on those
+  visits, hidden from the kiosk, the desk and invites; saving the name again brings it back. Settings names the archived
+  ones under the table.
+- **797:** the desk counts declined walk-ins on their own ("Declined" tab and count), not as checked out.
+- **799:** the kiosk's details step is two columns on a wide screen (1024 px column): at 1278 x 635 the ID fields show
+  and Next ends at 561 px with no scroll (measured in Storybook); one column below 640 px.
+- **800:** the kiosk sends the details (with the name) right after the details step; a watch-list match goes to "Please
+  see the reception desk" before any photo or notice (audited, never says why). The walk-in itself checks again.
+- **Tests:** API unit (`walkin-rules.spec`), kit tests (positive and negative), e2e visitors-2 (three new scenarios) and
+  time-devices (the reason).
+
+## Founder questions from the walk-through answers (11 Nov 2026)
+
+871. **A revoked kiosk's history.** A revoked kiosk leaves the list; its check-ins stay. *Suggested: a "Show revoked"
+     filter later if HR asks to see them.*
+872. **Renaming a used visitor type.** Types are matched by name, so renaming a type visits used archives the old name and
+     makes a new type. *Suggested: keep (old visits keep the name they had).*
+873. **All day and the walk-in window.** An all-day location's walk-in pass runs to midnight that day. *Suggested: keep;
+     a visitor still inside at midnight is closed as "Not checked out" by the nightly sweep as today.*
+

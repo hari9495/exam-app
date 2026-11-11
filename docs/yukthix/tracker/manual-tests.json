@@ -19905,5 +19905,61 @@
       "Screens/Hiring/HIR-17 · Placements and bench board"
     ],
     "note": "Positive and negative. Answers 821, 822."
+  },
+  {
+    "id": "MT-VIS-W-01",
+    "area": "Visitors · walk-through answers 791-800 (11 Nov 2026)",
+    "screen": "Settings 3.12 Visitors; VIS-03 kiosk",
+    "url": "http://localhost:3000/yx/settings/visitors",
+    "account": "Facility admin (visitors.settings.manage); a tablet in visitor mode at the same location. Browser window 1278 x 635.",
+    "steps": [
+      "Set Visitors allowed until to \"00:00 (midnight)\" and save.",
+      "Turn on Visitors allowed all day for the location; open the kiosk at night.",
+      "Turn all day off and set the hours to 09:00-18:30; open the kiosk after 18:30."
+    ],
+    "expected": "Step 1: saved; the kiosk takes walk-ins until midnight. Step 2: the kiosk is open at any hour. Step 3: the kiosk says see reception after 18:30.",
+    "stories": [
+      "Screens/Settings/Group 3 · Time & Leave",
+      "Screens/Visitors/VIS-03 · Visitor kiosk"
+    ],
+    "note": "Positive and negative. Answer 791."
+  },
+  {
+    "id": "MT-VIS-W-02",
+    "area": "Visitors · walk-through answers 791-800 (11 Nov 2026)",
+    "screen": "TIM-14 Devices and kiosks",
+    "url": "http://localhost:3000/yx/time/setup/devices",
+    "account": "HR with leave.settings.manage. Browser window 1278 x 635.",
+    "steps": [
+      "Revoke a kiosk without a reason.",
+      "Give the reason \"Tablet stolen\" and revoke.",
+      "Use the revoked tablet."
+    ],
+    "expected": "Step 1: \"Give the reason (at least 3 characters).\"; nothing revoked. Step 2: toast; the kiosk leaves the list. Step 3: the tablet is signed out.",
+    "stories": [
+      "Screens/Time/TIM-14 · Devices and kiosks"
+    ],
+    "note": "Positive and negative. Answer 793."
+  },
+  {
+    "id": "MT-VIS-W-03",
+    "area": "Visitors · walk-through answers 791-800 (11 Nov 2026)",
+    "screen": "Settings 3.12 visitor types; VIS-01 desk; VIS-03 kiosk",
+    "url": "http://localhost:3000/yx/settings/visitors",
+    "account": "Facility admin; reception at the location; a tablet in visitor mode. Browser window 1278 x 635.",
+    "steps": [
+      "Remove a visitor type no visit used; save.",
+      "Remove a type visits used; save; open the kiosk and the desk walk-in.",
+      "Add the archived type back by its name.",
+      "At the desk, have a host decline a walk-in.",
+      "On the kiosk, enter the details of a watch-listed person and press Next.",
+      "Enter the details of anyone else with ID required."
+    ],
+    "expected": "Step 1: gone. Step 2: named as archived under the table; not offered on the kiosk or the desk; old visits keep it. Step 3: back, not archived. Step 4: a Declined tab and count; checked out does not include them. Step 5: \"Please see the reception desk\" before any camera. Step 6: details in two columns with the ID fields, no scroll; then the camera.",
+    "stories": [
+      "Screens/Visitors/VIS-01 · Today's visitors",
+      "Screens/Visitors/VIS-03 · Visitor kiosk"
+    ],
+    "note": "Positive and negative. Answers 794, 797, 799, 800."
   }
 ]
