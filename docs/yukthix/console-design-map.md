@@ -73,19 +73,17 @@ built** · **phone view, mobile app not built**.
 
 ## Counts (sub-pages = stories)
 
-After C-1 and C-2 (12 Nov 2026, merged on test/yukthix-main): YX-01 to YX-03 live (C-1, 15 new stories); the YX-04
-Tenants rows, tenant health, alerts and the composer live (C-2, five new stories).
+After C-1, C-2, C-3 and C-4 (12 Nov 2026, merged on test/yukthix-main; recounted by the appendix script, "ok").
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Live console | 2 | 21 | 0 | 0 | 0 | 0 | 21 |
 | B. Rules engine (YX-01 to YX-03) | 3 | 25 | 5 | 0 | 0 | 0 | 30 |
-| C. Customers and containment (YX-04, YX-18) | 2 | 14 | 0 | 0 | 6 | 0 | 20 |
+| C. Customers and containment (YX-04, YX-18) | 2 | 22 | 2 | 0 | 0 | 0 | 24 |
 | D. Partners (YX-06 to YX-08) | 3 | 0 | 0 | 0 | 10 | 0 | 10 |
 | E. Money (YX-14 to YX-17) | 4 | 0 | 0 | 0 | 8 | 0 | 8 |
 | F. The rest (YX-05, YX-09 to YX-13) | 6 | 0 | 0 | 0 | 19 | 0 | 19 |
-| **All A-F** | **20** | **60** | **5** | **0** | **43** | **0** | **108** |
-Recounted 12 Nov 2026 on test/yukthix-main after merging C-1, C-2 and C-3 (C-3 added the Support desk look-up story).
+| **All A-F** | **20** | **68** | **7** | **0** | **37** | **0** | **112** |
 
 Counted by script on 11 Nov 2026 on `docs/yukthix-console-map` (the script is in the appendix). There are 87 stories in
 20 files whose title starts `Screens/YukthiX console/`: `screens/console/console.stories.tsx` (14),
@@ -181,6 +179,7 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 | Ticket · Ticket · Priority Support | live | `/staff/support-desk/[id]`, `SupportDeskTicketScreen`; the tenant panel is an audited `platformRead` |
 | Asked · Ticket · access asked | live | `POST …/tickets/:id/request-access` (needs both `platform.support_desk.work` and `platform.support.request`) |
 | Unlinked · Ticket · not linked | live | `POST …/tickets/:id/link` |
+| LookUpReference · Queue · look up a Not found reference (two companies) | live | C-3 (1051): `GET /platform/support-desk/references/:code` |
 
 ### B. Rules engine (YX-01 to YX-03)
 
@@ -249,17 +248,21 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 | YX04AlertRules · Churn-risk alerts · rules from platform settings (C-2) | live | `GET/PUT /platform/customers/settings` (audited `platform.cs.settings_changed`) |
 | YX04MessagesWaiting · Messages · waiting for a second staff member (C-2) | live | `POST /platform/customers/messages/:id/approve` (step-up) and `/reject` (reason) |
 | YX04ComposerTwo · Message composer · two companies need approval (C-2) | live | `POST /platform/customers/messages` |
-| YX04Flags · Feature flags | design only, feature not built | no feature flags (search `feature.?flag`: none). Company settings and products per company are live but are not flags |
-| YX04KillSwitch · Feature flags · kill switch | design only, feature not built | as above |
+| YX04Flags · Feature flags | live | C-4 (1049): `/staff/feature-flags`, the drawn `FeatureFlagsScreen` with `live`; four real switches over existing company settings |
+| YX04KillSwitch · Feature flags · kill switch | live | C-4: kill switch with a reason and the security key again; a second staff member turns it back on |
+| YX04FlagsLive · Feature flags · live (kill switch engaged) | live | C-4: the story of the live screen with sample data |
 
 #### YX-18 · Contain tenant
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| YX18StepUp · Contain tenant · step-up needed | design only, feature not built | step-up exists (`@RequireStepUp`) and so does Suspend company (signs everyone out with `revokeStaffSessions`), but there is no "contain" |
-| YX18Ready · Contain tenant · ready | design only, feature not built | the drawing also revokes API keys, OAuth apps and partner grants and starts the breach clock: none built |
-| YX18Contained · Contained + tenant banner | design only, feature not built | no hold on exports, bank changes or payouts; no banner |
-| YX18Lift · Lift (two people) | design only, feature not built | no two-person lift |
+| YX18StepUp · Contain tenant · step-up needed | live (gap) | C-4: the app's own step-up dialog asks for the security key (the drawn code box is not used) |
+| YX18Ready · Contain tenant · ready | live (gap) | C-4 (1050): `/staff/companies/[id]/contain`. Gap: whole company only (no one-entity scope); no API keys or partner grants exist to revoke; MFA is not forced (questions 1121-1123) |
+| YX18Contained · Contained + tenant banner | live | C-4: holds refused by the API (423 COMPANY_CONTAINED), breach clock from platform settings, banner on every page of the company's app |
+| YX18Lift · Lift (two people) | live | C-4: one staff member asks, another lifts (also a database check) |
+| YX18LiveReady · Contain company · live, ready | live | C-4: the story of the live screen |
+| YX18LiveContained · Contain company · live, contained | live | C-4: the story of the live screen |
+| YX18LiveLift · Contain company · live, lift waiting for you | live | C-4: the story of the live screen |
 
 ### D. Partners (YX-06 to YX-08)
 
@@ -656,3 +659,41 @@ C-6 to C-8.
       (`IN.…`, `IN` or `IN-XX`), so UAE, GST and hiring rules cannot be drafted in the console yet. *Suggested: allow
       the other packs' statutes when someone needs to change one.*
 
+## C-4 as built (answers 1049, 1050; branch `feat/yukthix-console-c4`)
+
+- **1049 feature switches** (`feature_flags`, `feature_flag_overrides`; forced RLS: every company reads the switches and
+  only its own overrides; only staff write). The one place: `featureOn(tx, company, key)` = not killed, then the
+  company's own value or the default, then the company's own setting. The four first switches are features that already
+  exist as company settings: First-run tours (`help.tours.show`), What's new (`help.whats_new.show`), Access requests
+  (`access.request.allowed`), Write policies with AI (`policy.ai_writer`); their services now ask `featureOn`, and the
+  screens follow the API's answers. Console › Feature flags: default on/off, a company's own value, the kill switch;
+  every change needs a reason and the security key again; a killed feature is turned back on only by another staff
+  member. Audited (`platform.flag.*`; a company's own value also in the company's log).
+- **1050 contain a company** (`company_containments`, one open per company; the company reads its own, only staff
+  write; two different people to lift, also a database check). Containing ends every session and refresh token and any
+  support session, revokes connected apps (webhooks to other systems off, automation webhooks off, work-tool connections
+  revoked, calendar tokens removed), and starts the breach clock from the platform settings `breach.certin_hours` (6) and
+  `breach.dpdp_board_report_hours` (72, marked verify; the DPDP Rules 2025 wording as in APX-G: the Board and the people
+  affected told without delay, the detailed report to the Board within 72 hours). While contained the API refuses with
+  423 `COMPANY_CONTAINED`: exports (every export route), payouts (making or releasing bank files and payout batches,
+  payout files, EWA draws marked paid), bank-detail changes (change requests and their approval, the joiner's bank
+  section). The company's app shows the banner on every page. Audited in the platform log and the company's log.
+- **Tests:** e2e `console-c4` (9: refusals, override beats default both ways, kill switch and second person, sessions
+  end, apps revoked, the three holds refused with the message, other company untouched, RLS, two-person lift); hold
+  route unit tests (20); kit live screens (5); web staff pages (2); help-h2, help-whats-new, help-tours and
+  platform-console e2e rerun.
+
+### Questions (from 1121)
+
+1121. **One legal entity.** The drawing offers containing one legal entity. *Suggested: whole company only, as built; one
+      entity needs the holds per entity and can come when a group of companies asks.*
+1122. **Force MFA after containment.** The drawing says everyone signs in again with MFA. *Suggested: not built; turning MFA
+      on for every employee (including shop-floor staff without a phone) is a company decision. Everyone is signed out.*
+1123. **API keys and partner grants.** YukthiX has no company API keys or partner grants yet. *Suggested: revoke them in
+      the same step when those features exist.*
+1124. **The DPDP timing.** *Suggested: keep 72 hours for the detailed Board report (verify with counsel), and add a
+      reminder at the CERT-In and DPDP due times when the incident tooling (YX-10) is built.*
+1125. **Editing the platform settings.** *Suggested: the two breach settings are changed by a migration for now; a
+      Console › Platform settings page comes with the next platform setting.*
+1126. **Each staff member's own keys.** Today every YukthiX staff account holds every console key, so "without the key"
+      means without the security key. *Suggested: give out the contain and flags keys by staff role with 1058.*

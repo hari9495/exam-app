@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { ConsoleOpsController } from './console-ops.controller';
+import { ConsoleOpsService } from './console-ops.service';
 import { AuditModule } from '@exam-platform/shared';
 import { AuthModule } from '../auth/auth.module';
 import { OrganizationsModule } from '../organizations/organizations.module';
@@ -14,8 +16,8 @@ import { NotificationsModule } from '../notifications/notifications.module';
 // Step 3: the YukthiX platform console (P14) and support sessions (P02 Q8).
 @Module({
   imports: [AuditModule, AuthModule, OrganizationsModule, SmsChannelModule, NotificationsModule],
-  providers: [PlatformService, SupportSessionsService, PlatformStaffGuard, CustomerSuccessService],
-  controllers: [PlatformController, SupportAccessController, CustomerSuccessController],
+  providers: [PlatformService, SupportSessionsService, PlatformStaffGuard, CustomerSuccessService, ConsoleOpsService],
+  controllers: [PlatformController, SupportAccessController, CustomerSuccessController, ConsoleOpsController],
   // SD-1.31: "Request access" from a YukthiX Support ticket asks for a support session.
   exports: [SupportSessionsService, PlatformStaffGuard],
 })

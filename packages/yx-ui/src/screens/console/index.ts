@@ -18,3 +18,5 @@ export { SupportDeskQueueScreen, SupportDeskTicketScreen, TenantPanel, textToPar
 // Console C-1 (answers 1041 to 1044): the drawn YX-01 to YX-03 screens, live with `live`.
 export { RuleSetEditorScreen, GoldenCasesScreen, PublishSchedulerScreen, type LiveRuleEditor, type LiveGolden, type LivePublish } from '../portals/console-rules';
 export type { LiveRuleRow, LiveRuleDetail, LiveGoldenRun, LiveImpact, RuleUpdateInput, RuleState } from '../portals/console-rules-live';
+// Console C-4 (answers 1049, 1050): the drawn YX-04 Flags and YX-18 Contain tenant, made live.
+export { ContainTenantScreen, ContainedBanner, FeatureFlagsScreen, type ContainView, type LiveContain, type LiveFeatureFlags, type LiveFlag } from '../portals/console-ops';

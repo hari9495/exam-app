@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { featureOn } from '../platform/features';
 import { Prisma } from '@prisma/client';
 import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { audit, CompanyContext, inCompany, Tx } from '../org-structure/org-structure.service';
@@ -49,7 +50,7 @@ export class AccessRequestsService implements OnModuleInit {
 
   private async rules(tx: Tx, c: CompanyContext) {
     return {
-      allowed: (await settingFor(tx, c, 'access.request.allowed', { legalEntityId: '' })) === 'on',
+      allowed: await featureOn(tx, c, 'access.requests'),
       maxDays: Number(await settingFor(tx, c, 'access.request.max_days', { legalEntityId: '' })),
     };
   }

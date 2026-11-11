@@ -8,6 +8,7 @@ import { Bell, Languages, Laptop, ShieldCheck, UserCheck } from 'lucide-react';
 import { Button, CommandPalette, InlineAlert, NoticeBar, NotificationCentre, ProfileMenu, ScopePicker, ShortcutHelp, shortcutGroups, Spinner, ToastProvider, useCommandPaletteShortcut, useShortcutHelp } from '@yukthix/ui';
 import { useAppearance, type MfaStatus } from '@yukthix/ui/auth';
 import { DesktopFrame, PALETTE_PLACEHOLDER, SCREEN_RAIL, type AreaId } from '@yukthix/ui/frame';
+import { ContainedBanner } from '@yukthix/ui/console';
 import type { LegalEntity } from '@yukthix/ui/org';
 import type { TeamMember } from '@yukthix/ui/workforce';
 import { apiFetch } from '../../../lib/api-client';
@@ -75,6 +76,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const bell = useBellItems(!actingSuperAdmin);
+  const contained = useQuery<{ contained: boolean }>({ queryKey: ['yx', 'containment'], queryFn: () => apiFetch('/help/containment', {}, accessToken ?? undefined), enabled: Boolean(accessToken), retry: false, staleTime: 60_000 });
   const markRead = useMarkNotificationRead();
   const markAll = useMarkAllNotificationsRead();
   const [collapsed, setCollapsedState] = useState(false);
@@ -314,6 +316,8 @@ function Frame({ children }: { children: React.ReactNode }) {
         ),
       }}
     >
+      {/* Answer 1050: while YukthiX has the company contained, every page says so. */}
+      {contained.data?.contained && <ContainedBanner />}
       <YxPageHelp pathname={pathname} requests={!support && !impersonating}>
         {children}
       </YxPageHelp>

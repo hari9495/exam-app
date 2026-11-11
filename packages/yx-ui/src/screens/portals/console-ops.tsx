@@ -6,7 +6,7 @@ import { Building2, Plus, ShieldAlert } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
 import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
-import { EmptyState, InlineAlert } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
 import { FieldRow, FormField } from '../../components/field';
 import { NumberField, TextArea, TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup, Switch } from '../../components/choice';
@@ -14,7 +14,7 @@ import { MultiSelect, Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
 import { Drawer } from '../../components/drawer';
 import { ConfirmDialog, TypeToConfirmDialog } from '../../components/overlay';
-import { PageBanner } from '../../components/notify';
+import { PageBanner, useToastIfAny } from '../../components/notify';
 import { MenuItem } from '../../components/menu';
 import { BarChart, Funnel, Heatmap, StatCard } from '../../components/charts';
 import { RichTextEditor } from '../../components/editor';
@@ -198,8 +198,133 @@ function MessageComposer({ open, onOpenChange, me }: { open: boolean; onOpenChan
 // CompaniesScreen, CompanyScreen) are the one version, and the YX-04 stories draw them.
 
 /** Feature flags: per-wave flags, tenant beta groups and kill switches (P13 #7). */
-export function FeatureFlagsScreen({ flags, killOpen }: { flags: { key: string; desc: string; scope: string; state: 'on' | 'off' | 'beta'; killSwitch: boolean }[]; killOpen?: boolean }) {
+/** Answer 1049: a feature switch as the console API gives it. */
+export interface LiveFlag {
+  key: string;
+  label: string;
+  description: string;
+  defaultOn: boolean;
+  killed: { at: string; by: string | null; reason: string | null } | null;
+  overrides: { organizationId: string; company: string; on: boolean; reason: string; at: string }[];
+}
+
+export interface LiveFeatureFlags {
+  state: 'loading' | 'error' | 'no-access' | 'ready';
+  onRetry: () => void;
+  flags: LiveFlag[];
+  companies: { id: string; name: string }[];
+  /** The signed-in staff member: who killed a feature never turns it back on. */
+  meId: string;
+  onDefault: (key: string, on: boolean, reason: string) => Promise<void>;
+  onOverride: (key: string, organizationId: string, on: boolean | null, reason: string) => Promise<void>;
+  onKill: (key: string, reason: string) => Promise<void>;
+  onRevive: (key: string, reason: string) => Promise<void>;
+}
+
+type FlagAsk = { kind: 'kill' | 'revive' | 'default' | 'company'; flag: LiveFlag };
+
+/** The reason every change asks for, and the company picker for a company's own value. */
+function FlagDialog({ ask, live, onClose }: { ask: FlagAsk; live: LiveFeatureFlags; onClose: () => void }) {
+  const { flag, kind } = ask;
+  const [reason, setReason] = useState('');
+  const [company, setCompany] = useState<string | null>(null);
+  const [value, setValue] = useState<string>('off');
+  const [tried, setTried] = useState(false);
+  const toast = useToastIfAny();
+  const reasonError = tried && reason.trim().length < 5 ? 'Give a reason of at least 5 characters: it is kept in the audit log.' : null;
+  const companyError = tried && kind === 'company' && !company ? 'Choose the company.' : null;
+  const words = {
+    kill: { title: `Engage the kill switch for ${flag.label}?`, consequence: `${flag.label} stops for every company at once, whatever its own value. Turning it back on takes another staff member.`, label: 'Engage kill switch' },
+    revive: { title: `Turn ${flag.label} back on?`, consequence: `It comes back for every company, on their own value or the default. The kill switch was engaged${flag.killed?.reason ? `: ${flag.killed.reason}` : '.'}`, label: 'Turn back on' },
+    default: { title: `Turn ${flag.label} ${flag.defaultOn ? 'off' : 'on'} for every company?`, consequence: `Companies with their own value keep it. ${flag.overrides.length} ${flag.overrides.length === 1 ? 'company has' : 'companies have'} one.`, label: flag.defaultOn ? 'Turn off by default' : 'Turn on by default' },
+    company: { title: `${flag.label} for one company`, consequence: 'Its own value beats the default; the kill switch still beats both.', label: 'Save' },
+  }[kind];
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      destructive={kind === 'kill'}
+      title={words.title}
+      consequence={words.consequence}
+      confirmLabel={words.label}
+      onConfirm={async () => {
+        setTried(true);
+        if (reason.trim().length < 5 || (kind === 'company' && !company)) return false;
+        const why = reason.trim();
+        if (kind === 'kill') await live.onKill(flag.key, why);
+        else if (kind === 'revive') await live.onRevive(flag.key, why);
+        else if (kind === 'default') await live.onDefault(flag.key, !flag.defaultOn, why);
+        else await live.onOverride(flag.key, company!, value === 'default' ? null : value === 'on', why);
+        toast?.toast({ tone: 'success', title: kind === 'kill' ? 'Kill switch engaged.' : kind === 'revive' ? 'Turned back on.' : 'Saved.' });
+        onClose();
+      }}
+    >
+      {kind === 'company' && (
+        <>
+          <FormField label="Company" required error={companyError}>
+            <Select aria-label="Company" value={company} onChange={setCompany} searchable options={live.companies.map((c) => ({ value: c.id, label: c.name }))} />
+          </FormField>
+          <FormField label="For this company">
+            <RadioGroup value={value} onChange={setValue} options={[{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }, { value: 'default', label: `The default (${flag.defaultOn ? 'on' : 'off'})` }]} />
+          </FormField>
+        </>
+      )}
+      <FormField label="Reason" required error={reasonError} helper="Kept in the audit log.">
+        <TextField value={reason} onChange={setReason} maxLength={500} />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
+
+function LiveFeatureFlagsScreen({ live }: { live: LiveFeatureFlags }) {
+  const [ask, setAsk] = useState<FlagAsk | null>(null);
+  const scope = (f: LiveFlag) => `${f.defaultOn ? 'On' : 'Off'} for every company${f.overrides.length ? ` · ${f.overrides.length} with their own value (${f.overrides.map((o) => `${o.company}: ${o.on ? 'on' : 'off'}`).join(', ')})` : ''}`;
+  return (
+    <>
+      <PageHeader title="Feature flags" description="A default for every company and a company's own value. The kill switch turns a feature off for everyone; another staff member turns it back on. Every change needs a reason and is audited." />
+      {live.state === 'loading' && <Skeleton height={240} />}
+      {live.state === 'error' && <ErrorState title="We couldn't load the feature flags." description="Nothing has changed. Try again in a moment." onRetry={live.onRetry} />}
+      {live.state === 'no-access' && <NoAccessState grantedBy="a YukthiX console owner" what="feature flags" />}
+      {live.state === 'ready' && (
+        <FilteredTable
+          label="Feature flags"
+          rows={live.flags}
+          getRowId={(r) => r.key}
+          searchText={(r) => r.key + r.label + r.description}
+          fields={[]}
+          columns={[
+            { key: 'key', header: 'Flag', type: 'id', value: (r) => r.key, width: 200 },
+            { key: 'desc', header: 'What it controls', value: (r) => r.description, width: 280 },
+            { key: 'scope', header: 'Who has it', value: (r) => scope(r), width: 260 },
+            { key: 'kill', header: 'Kill switch', value: (r) => (r.killed ? 'Engaged' : 'Ready'), render: (r) => (r.killed ? <Badge tone="danger">Engaged</Badge> : 'Ready'), width: 120 },
+          ]}
+          rowActions={(r) => (
+            <>
+              <MenuItem onSelect={() => setAsk({ kind: 'default', flag: r })}>{r.defaultOn ? 'Turn off by default' : 'Turn on by default'}</MenuItem>
+              <MenuItem onSelect={() => setAsk({ kind: 'company', flag: r })}>Set for one company</MenuItem>
+              {r.killed ? (
+                r.killed.by === live.meId ? (
+                  <MenuItem disabled>You engaged it: another staff member turns it back on</MenuItem>
+                ) : (
+                  <MenuItem onSelect={() => setAsk({ kind: 'revive', flag: r })}>Turn back on</MenuItem>
+                )
+              ) : (
+                <MenuItem destructive onSelect={() => setAsk({ kind: 'kill', flag: r })}>
+                  Engage kill switch
+                </MenuItem>
+              )}
+            </>
+          )}
+        />
+      )}
+      {ask && <FlagDialog ask={ask} live={live} onClose={() => setAsk(null)} />}
+    </>
+  );
+}
+
+export function FeatureFlagsScreen({ flags, killOpen, live }: { flags: { key: string; desc: string; scope: string; state: 'on' | 'off' | 'beta'; killSwitch: boolean }[]; killOpen?: boolean; live?: LiveFeatureFlags }) {
   const [kill, setKill] = useState(!!killOpen);
+  if (live) return <LiveFeatureFlagsScreen live={live} />;
   return (
     <Console page="Feature flags">
       <PageHeader title="Feature flags" description="Changes need a reason and are audited. Kill switches fall back to the non-AI or previous path." actions={<Button variant="primary" icon={Plus}>New flag</Button>} />
@@ -724,10 +849,153 @@ export function CostPerTenantScreen({ rows, alertShare = 35 }: { rows: CostRow[]
 /* YX-18 Contain tenant + tenant-side banner                           */
 /* ================================================================== */
 
+/** Answer 1050: a company's containment as the console API gives it. */
+export interface ContainView {
+  company: { id: string; name: string };
+  users: number;
+  apps: number;
+  breach: { certinHours: number; dpdpHours: number };
+  containment: {
+    open: boolean;
+    reason: string;
+    containedBy: string;
+    containedAt: string;
+    certinDueAt: string;
+    dpdpDueAt: string;
+    signedOut: number;
+    appsRevoked: number;
+    liftRequest: { by: string | null; byMe: boolean; at: string; reason: string | null } | null;
+    lifted: { by: string | null; at: string } | null;
+  } | null;
+}
+
+export interface LiveContain {
+  state: 'loading' | 'error' | 'no-access' | 'ready';
+  onRetry: () => void;
+  view: ContainView | null;
+  onContain: (reason: string) => Promise<void>;
+  onRequestLift: (reason: string) => Promise<void>;
+  onLift: () => Promise<void>;
+}
+
+const BANNER = "We've paused some actions to protect your company's data. Sign in again. Bank-detail changes, exports and payouts are on hold; your admin has details.";
+const at = (iso: string) => new Date(iso).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kolkata' });
+
+/** The company's banner while it is contained (shown on every page of the company's app). */
+export function ContainedBanner() {
+  return <PageBanner tone="danger">{BANNER}</PageBanner>;
+}
+
+function LiveContainScreen({ live }: { live: LiveContain }) {
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const [lifting, setLifting] = useState(false);
+  const [liftReason, setLiftReason] = useState('');
+  const [liftTried, setLiftTried] = useState(false);
+  const toast = useToastIfAny();
+  const v = live.view;
+  const c = v?.containment?.open ? v.containment : null;
+  const name = v?.company.name ?? '';
+  const reasonError = tried && reason.trim().length < 10 ? 'Say what happened, in a sentence (at least 10 characters).' : null;
+  return (
+    <>
+      <PageHeader title="Contain company" description={`For a suspected compromise. Opens the breach clock: CERT-In ${v?.breach.certinHours ?? 6} hours; DPDP Rules 2025 detailed report to the Data Protection Board ${v?.breach.dpdpHours ?? 72} hours.`} />
+      {live.state === 'loading' && <Skeleton height={240} />}
+      {live.state === 'error' && <ErrorState title="We couldn't load this company." description="Nothing has changed. Try again in a moment." onRetry={live.onRetry} />}
+      {live.state === 'no-access' && <NoAccessState grantedBy="a YukthiX console owner" what="containing companies" />}
+      {live.state === 'ready' && v && !c && (
+        <Card
+          title={name}
+          footer={
+            <TypeToConfirmDialog
+              objectName={`CONTAIN ${name.toUpperCase()}`}
+              trigger={<Button variant="danger" icon={ShieldAlert}>Contain company</Button>}
+              title={`Contain ${name} now?`}
+              consequence={`All ${v.users} people are signed out and must sign in again. ${v.apps} connected ${v.apps === 1 ? 'app is' : 'apps are'} revoked.`}
+              confirmLabel="Contain company"
+              onConfirm={async () => {
+                setTried(true);
+                if (reason.trim().length < 10) return false;
+                await live.onContain(reason.trim());
+                toast?.toast({ tone: 'success', title: `${name} is contained.` });
+              }}
+            />
+          }
+        >
+          <div className="yx-ps-stack">
+            <FormField label="Reason" required error={reasonError} helper="Kept in the audit log; the company's admins see it.">
+              <TextArea rows={3} value={reason} onChange={setReason} maxLength={500} />
+            </FormField>
+            <InlineAlert tone="warning" title="What happens at once">
+              Everyone signed out · connected apps revoked · bank-detail changes, exports and payouts held · a banner on every page of the company's app.
+            </InlineAlert>
+            {v.containment?.lifted && <p className="yx-ps-p">Last contained {at(v.containment.containedAt)}; lifted by {v.containment.lifted.by} on {at(v.containment.lifted.at)}.</p>}
+          </div>
+        </Card>
+      )}
+      {live.state === 'ready' && v && c && (
+        <>
+          <InlineAlert tone="danger" title={`${name} is contained since ${at(c.containedAt)}`} actions={!c.liftRequest ? <Button size="sm" onClick={() => setLifting(true)}>Request lift</Button> : undefined}>
+            Breach clock: CERT-In report due by {at(c.certinDueAt)}; DPDP Board report due by {at(c.dpdpDueAt)}. Contained by {c.containedBy}: {c.reason}. {c.signedOut} sessions ended, {c.appsRevoked} connected apps revoked. Frozen items resume only after a two-person lift.
+          </InlineAlert>
+          <Card title="What the company's people see">
+            <ContainedBanner />
+          </Card>
+          {c.liftRequest && (
+            <Card
+              title="Lift containment"
+              footer={
+                c.liftRequest.byMe ? undefined : (
+                  <ConfirmDialog
+                    trigger={<Button variant="primary">Lift containment</Button>}
+                    title={`Lift the containment of ${name}?`}
+                    consequence="Exports, bank-detail changes and payouts work again, and the banner goes. Revoked apps stay revoked until the company connects them again."
+                    confirmLabel="Lift containment"
+                    onConfirm={async () => {
+                      await live.onLift();
+                      toast?.toast({ tone: 'success', title: 'Containment lifted.' });
+                    }}
+                  />
+                )
+              }
+            >
+              <div className="yx-ps-stack">
+                <DescriptionList items={[{ label: 'Requested by', value: `${c.liftRequest.by}, ${at(c.liftRequest.at)}` }, { label: 'Why', value: c.liftRequest.reason ?? '' }, { label: 'Second approver', value: c.liftRequest.byMe ? 'Waiting for another staff member' : 'You' }]} />
+                <BlockNote>Lifting needs two different people. Frozen items resume after the second approval.</BlockNote>
+              </div>
+            </Card>
+          )}
+          {lifting && (
+            <ConfirmDialog
+              open
+              onOpenChange={(o) => !o && setLifting(false)}
+              title="Request the lift"
+              consequence="Another staff member then lifts it."
+              confirmLabel="Request lift"
+              onConfirm={async () => {
+                setLiftTried(true);
+                if (liftReason.trim().length < 10) return false;
+                await live.onRequestLift(liftReason.trim());
+                toast?.toast({ tone: 'success', title: 'Lift requested. Another staff member lifts it.' });
+                setLifting(false);
+              }}
+            >
+              <FormField label="Why it is safe now" required error={liftTried && liftReason.trim().length < 10 ? 'Say why, in a sentence (at least 10 characters).' : null}>
+                <TextArea rows={3} value={liftReason} onChange={setLiftReason} maxLength={500} />
+              </FormField>
+            </ConfirmDialog>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
 // YX-18
 /** One action revokes sessions, keys and grants, forces MFA, freezes bank changes, exports and payouts; needs reason + step-up. Lift needs two people. */
-export function ContainTenantScreen({ state = 'form', stepUpAt, now }: { state?: 'form' | 'contained' | 'lift'; stepUpAt: Date | null; now: Date }) {
+export function ContainTenantScreen({ state = 'form', stepUpAt, now, live }: { state?: 'form' | 'contained' | 'lift'; stepUpAt: Date | null; now: Date; live?: LiveContain }) {
   const [otp, setOtp] = useState('');
+  if (live) return <LiveContainScreen live={live} />;
   const fresh = stepUpFresh(stepUpAt, now);
   return (
     <Console page="Contain tenant">

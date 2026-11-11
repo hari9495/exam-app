@@ -13,6 +13,8 @@ import ConsoleAuditPage from './(console)/audit/page';
 import ConsoleChannelsPage from './(console)/channels/page';
 import ConsoleWhatsNewPage from './(console)/whats-new/page';
 import ConsoleSupportDeskPage from './(console)/support-desk/page';
+import ConsoleContainPage from './(console)/companies/[id]/contain/page';
+import ConsoleFeatureFlagsPage from './(console)/feature-flags/page';
 import YxSupportAccessPage from '../yx/(app)/settings/support-access/page';
 import { ToastProvider } from '@yukthix/ui';
 
@@ -219,5 +221,32 @@ describe('Support desk look-up', () => {
     await ue.click(screen.getByRole('button', { name: 'Look up' }));
     expect(await screen.findByText('Godavari Agro')).toBeInTheDocument();
     expect(calls).toContain('GET /platform/support-desk/references/NF-7KQ2MP');
+  });
+});
+
+// Console C-4 (answers 1049, 1050): the live Feature flags and Contain company pages call the console API.
+describe('Feature flags and Contain company', () => {
+  it('feature flags list from /platform/feature-flags', async () => {
+    route({
+      'GET /platform/feature-flags': [{ key: 'help.tours', label: 'First-run tours', description: 'Tours on first sign-in', defaultOn: true, killed: null, overrides: [] }],
+      'GET /platform/companies': [],
+      'GET /users/me': { id: 'me', email: 'anand@yukthix.test' },
+    });
+    wrap(<ConsoleFeatureFlagsPage />);
+    expect(await screen.findByText('help.tours')).toBeInTheDocument();
+  });
+
+  it('contain sends the reason to /platform/companies/<id>/contain', async () => {
+    (useParams as jest.Mock).mockReturnValue({ id: 'c2' });
+    route({
+      'GET /platform/companies/c2/containment': { company: { id: 'c2', name: 'Godavari Agro' }, users: 4, apps: 0, breach: { certinHours: 6, dpdpHours: 72 }, containment: null },
+      'POST /platform/companies/c2/contain': {},
+    });
+    wrap(<ConsoleContainPage />);
+    await ue.type(await screen.findByRole('textbox', { name: /Reason/ }), 'Admin signed in from three countries');
+    await ue.click(screen.getByRole('button', { name: 'Contain company' }));
+    await ue.type(within(await screen.findByRole('dialog')).getByRole('textbox'), 'CONTAIN GODAVARI AGRO');
+    await ue.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Contain company' }));
+    await waitFor(() => expect(calls).toContain('POST /platform/companies/c2/contain {"reason":"Admin signed in from three countries"}'));
   });
 });

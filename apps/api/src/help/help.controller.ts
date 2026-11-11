@@ -6,6 +6,7 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { SetupHubService } from './setup-hub.service';
+import { openContainment } from '../platform/containment';
 import { inCompany } from '../org-structure/org-structure.service';
 import { mintNotFoundRef, NOT_FOUND_CODE } from './not-found-ref';
 
@@ -51,5 +52,21 @@ export class SetupHubController {
   @RequirePermissions('org.settings.manage')
   get(@CurrentTenant() ctx: TenantContext) {
     return this.hub.hub(ctx);
+  }
+}
+
+// Answer 1050: the company's banner while YukthiX has it contained (every signed-in person of the company may ask).
+@Controller('help/containment')
+@UseGuards(JwtAuthGuard)
+export class ContainmentBannerController {
+  constructor(private readonly tenantPrisma: TenantPrismaService) {}
+
+  @Get()
+  banner(@CurrentTenant() ctx: TenantContext) {
+    if (!ctx.organizationId) return { contained: false };
+    return this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const open = await openContainment(tx, ctx.organizationId!);
+      return open ? { contained: true, since: open.containedAt.toISOString() } : { contained: false };
+    });
   }
 }

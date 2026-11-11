@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, ArrayUnique, IsArray, IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, ArrayUnique, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 // Platform console inputs (P14 §6 flow 5, P02 Q8). Every staff action that touches a company carries a reason
 // (YX-CONSOLE-02).
@@ -167,4 +167,33 @@ export class PlatformAuditQueryDto {
   @IsOptional()
   @IsIn(['true', 'false'])
   reads?: string;
+}
+
+// Console C-4 (answers 1049, 1050).
+export class FlagDefaultDto {
+  @IsBoolean()
+  on!: boolean;
+
+  @Reason(5)
+  reason!: string;
+}
+
+export class FlagOverrideDto {
+  /** true or false for this company; null puts it back on the default. */
+  @IsOptional()
+  @IsIn([true, false, null])
+  on!: boolean | null;
+
+  @Reason(5)
+  reason!: string;
+}
+
+export class FlagReasonDto {
+  @Reason(5)
+  reason!: string;
+}
+
+export class ContainDto {
+  @Reason(10)
+  reason!: string;
 }

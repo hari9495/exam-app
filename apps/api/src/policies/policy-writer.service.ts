@@ -1,4 +1,5 @@
 import { ConflictException, HttpException, Injectable, Logger, NotFoundException, BadRequestException, ServiceUnavailableException } from '@nestjs/common';
+import { featureOn } from '../platform/features';
 import { Prisma } from '@prisma/client';
 import { AiApiKeyResolverService, AiNotConfiguredError, AiProvider, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { AiInvocationService } from '../ai/ai-invocation.service';
@@ -82,7 +83,7 @@ export class PolicyWriterService {
 
   /** Off by the company setting, not set up (no provider), or on. Resolving builds the provider; it calls nothing. */
   private async aiState(tx: Tx, c: CompanyContext): Promise<AiState> {
-    if ((await settingFor(tx, c, 'policy.ai_writer', { legalEntityId: '00000000-0000-0000-0000-000000000000' })) === 'off') return 'off';
+    if (!(await featureOn(tx, c, 'policy.ai_writer'))) return 'off';
     try {
       await this.aiKeys.resolve(c.organizationId);
       return 'on';
