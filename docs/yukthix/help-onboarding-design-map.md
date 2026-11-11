@@ -578,3 +578,10 @@ console).
 1023. **Which holidays.** The company-wide holiday calendar (not each System Admin's location). *Suggested: keep.*
 1024. **Only one reminder.** After the one reminder the request stays overdue in the inbox; there is no second nudge.
       *Suggested: keep (answer 973 says once).*
+
+## Walk-through findings, founder approved (11 Nov 2026, "ok for all")
+- 1031: the hub says "Set-up complete" and "Must be done first", not go-live (until the company wizard, H-7).
+- 1032: an area shows "Done" only at 100%; below that "Nothing blocking" with its percentage.
+- 1033: the hub fits 1278 x 635 without a page scroll (shorter area cards).
+- 1034: one Not found reference per page visit, not one per failed background call.
+- 1035: three demo help articles linked to Home, Leave and the set-up hub (demo data approved).
