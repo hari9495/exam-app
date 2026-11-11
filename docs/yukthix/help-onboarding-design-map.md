@@ -585,3 +585,17 @@ console).
 - 1033: the hub fits 1278 x 635 without a page scroll (shorter area cards).
 - 1034: one Not found reference per page visit, not one per failed background call.
 - 1035: three demo help articles linked to Home, Leave and the set-up hub (demo data approved).
+
+### Walk-through fixes as built (branch `feat/yukthix-help-walkfix`)
+- 1031: the live hub says "Set-up complete" and "Must be done first; the rest can wait"; no go-live words (the PLT-08
+  design stories keep theirs; the tour story on the hub shows the live version).
+- 1032: an area card says "Done" only at 100%; with no blocking check left below that, "Nothing blocking · 75%".
+- 1033: shorter cards (owner and Open on one line, one-line tile notes). Measured by script at 1278 x 635 with the admin
+  tour open (the tour story on the live hub, five areas): no page scroll, the content area holds 578 px and nothing
+  overflows; the last card ends 8 px above the window's bottom (603 + 24 padding = 627 of 635). Before: 36 px over.
+- 1034: a person's 404s within 60 seconds share one reference (one row): a lock per person, then reuse. It depends only on
+  the person and the time, never on what was asked. e2e: one row and the same code within the window, a new code after it,
+  and another person always gets their own.
+- 1035: `prisma/scripts/demo-help-articles.ts` publishes three articles (Home, My leave, Set-up hub) in demo-org's
+  employee space, author and reviewer different, every write audited "demo set-up script, founder 11 Nov 2026"; run twice
+  on examapp_pay: the second run does nothing.

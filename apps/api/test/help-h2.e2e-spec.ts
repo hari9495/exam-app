@@ -204,23 +204,41 @@ describe('Help H-2: request access and Not found references', () => {
   describe('947 Not found references', () => {
     let missing: { body: Record<string, unknown> };
     let foreign: { body: Record<string, unknown> };
+    const unknownId = randomUUID();
 
-    it('a missing record and another company’s record give the same 404, each with a reference', async () => {
-      missing = await api('admin1', 'get', `/access/users/${randomUUID()}/effective`).expect(404);
+    it('a missing record and another company’s record give the same 404 and, on one page visit, the same reference', async () => {
+      missing = await api('admin1', 'get', `/access/users/${unknownId}/effective`).expect(404);
       foreign = await api('admin1', 'get', `/access/users/${users.adminB}/effective`).expect(404);
       for (const r of [missing, foreign]) expect(r.body.reference).toMatch(NF);
       expect(Object.keys(missing.body).sort()).toEqual(Object.keys(foreign.body).sort());
       expect(missing.body.message).toEqual(foreign.body.message);
-      expect(missing.body.reference).not.toEqual(foreign.body.reference);
-      // Written in the asker's company only, with the address they asked for (no query).
-      const rows = await tenantPrisma.forTenant(SUPER, (tx) => tx.notFoundRef.findMany({ where: { code: { in: [missing.body.reference as string, foreign.body.reference as string] } } }));
-      expect(rows.map((r) => r.organizationId)).toEqual([org.A.id, org.A.id]);
-      expect(rows.every((r) => r.userId === users.admin1 && r.path.startsWith('/api/v1/access/users/'))).toBe(true);
+      // Answer 1034: two 404s within the window are one reference and one row, whatever was asked.
+      expect(missing.body.reference).toEqual(foreign.body.reference);
+      // Written in the asker's company only, with the first address they asked for (no query).
+      const rows = await tenantPrisma.forTenant(SUPER, (tx) => tx.notFoundRef.findMany({ where: { code: missing.body.reference as string } }));
+      expect(rows).toEqual([expect.objectContaining({ organizationId: org.A.id, userId: users.admin1, path: `/api/v1/access/users/${unknownId}/effective` })]);
+    });
+
+    it('after the window a new reference; another person always gets their own', async () => {
+      const now = Date.now();
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(now + 61_000);
+      try {
+        const later = (await api('admin1', 'get', `/access/users/${randomUUID()}/effective`).expect(404)).body.reference;
+        expect(later).toMatch(NF);
+        expect(later).not.toEqual(missing.body.reference);
+      } finally {
+        clock.mockRestore();
+      }
+      const other = (await api('admin2', 'get', `/access/users/${unknownId}/effective`).expect(404)).body.reference;
+      expect(other).toMatch(NF);
+      expect(other).not.toEqual(missing.body.reference);
+      const mine = await tenantPrisma.forTenant(SUPER, (tx) => tx.notFoundRef.count({ where: { organizationId: org.A.id, userId: users.admin2 } }));
+      expect(mine).toBe(1);
     });
 
     it('support looks a reference up: who, when, which address; nothing about the record', async () => {
       const found = (await api('agent', 'get', `/help/not-found/${foreign.body.reference as string}`).expect(200)).body;
-      expect(found).toEqual({ code: foreign.body.reference, at: expect.any(String), who: 'Admin1', path: `/api/v1/access/users/${users.adminB}/effective` });
+      expect(found).toEqual({ code: foreign.body.reference, at: expect.any(String), who: 'Admin1', path: `/api/v1/access/users/${unknownId}/effective` });
       expect((await api('admin2', 'get', `/help/not-found/${(missing.body.reference as string).toLowerCase()}`).expect(200)).body.code).toBe(missing.body.reference);
     });
 
