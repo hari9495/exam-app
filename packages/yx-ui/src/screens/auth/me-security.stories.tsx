@@ -60,3 +60,9 @@ export const Empty: S = {
 };
 export const Phone: S = { name: 'My security · phone', globals: { viewport: { value: 'phone' } }, render: () => <Page /> };
 export const Tablet: S = { name: 'My security · tablet', globals: { viewport: { value: 'tablet' } }, render: () => <Page /> };
+// YukthiX staff (answer 1166): their own console roles on My security.
+export const StaffRoles: S = {
+  name: 'My security · YukthiX staff · your console roles',
+  render: () => <Page staffRoles={[{ label: 'Rules editor', does: ['Draft, review and publish rule sets'] }, { label: 'Finance', does: ['See companies', 'Set prices'] }]} />,
+};
+export const StaffNoRole: S = { name: 'My security · YukthiX staff · no role yet', render: () => <Page staffRoles={[]} /> };

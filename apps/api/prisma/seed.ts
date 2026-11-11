@@ -80,6 +80,8 @@ export const PERMISSIONS = [
   // Console C-2 (answer 1058): customer success (also in the console_customers migration).
   // Console C-5 (answers 948, 1053): planned maintenance (also in the console_maintenance migration).
   { key: 'platform.maintenance.manage', description: 'Schedule, approve and cancel planned maintenance windows (YukthiX staff)' },
+  // Staff roles: Customer success sees the windows.
+  { key: 'platform.maintenance.view', description: 'See the planned maintenance windows (YukthiX staff)' },
   { key: 'platform.customers.success', description: 'Customer success: tenant health, churn alerts and messages to company System Admins (YukthiX staff)' },
   // Help H-4 (answer 943): What's new entries (also in the help_whats_new migration).
   { key: 'platform.news.manage', description: "Write the What's new entries people see in Help (YukthiX staff)" },

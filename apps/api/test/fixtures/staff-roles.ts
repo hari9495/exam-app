@@ -18,3 +18,14 @@ export async function giveStaffRoles(userId: string, roles: readonly StaffRole[]
     await owner.$disconnect();
   }
 }
+
+/** The staff roles that do not hold `key` (read from platform_role_keys, the migrations' fixed sets). */
+export async function rolesWithout(key: string): Promise<StaffRole[]> {
+  const owner = new PrismaClient({ datasources: { db: { url: process.env.MIGRATION_DATABASE_URL } } });
+  try {
+    const rows = await owner.$queryRawUnsafe<{ role: StaffRole }[]>(`SELECT DISTINCT role FROM platform_role_keys WHERE key = $1`, key);
+    return ALL_STAFF_ROLES.filter((r) => !rows.some((x) => x.role === r));
+  } finally {
+    await owner.$disconnect();
+  }
+}

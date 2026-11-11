@@ -8,7 +8,7 @@ import { CodeField, PasswordField, TextField } from '../../components/inputs';
 import { ConfirmDialog } from '../../components/overlay';
 import { Segment } from '../../components/segment';
 import { MethodCards } from '../../components/choice';
-import { Card, PageHeader } from '../../components/shell';
+import { Card, DescriptionList, PageHeader } from '../../components/shell';
 import { formatPhone } from '../../lib/format';
 import { RecoveryCodes, day, deviceLabel, methodLabel, setupMethodOptions, useStep, when, type SetupMethod, ipLabel } from './kit';
 import { TotpConfirm, type TotpSetup } from './mfa';
@@ -45,6 +45,8 @@ export interface MeSecurityScreenProps {
   onSignOutOthers: () => Promise<void>;
   /** Fixed "today" for stories and tests. */
   now?: Date;
+  /** YukthiX staff (answer 1166): their console roles and what each lets them do. Omit for company people. */
+  staffRoles?: { label: string; does: string[] }[] | null;
 }
 
 /** Me › Security (P12 §7): sign-in methods (passkeys by name, authenticator app), recovery codes, mobile number, where you're signed in, sign-in history. */
@@ -62,6 +64,15 @@ export function MeSecurityScreen(props: MeSecurityScreenProps) {
       {state === 'error' && <ErrorState title="We couldn't load your security settings." description="Nothing has changed. Try again in a moment." onRetry={props.onRetry} />}
       {state === 'ready' && mfa && (
         <>
+          {props.staffRoles && (
+            <Card title="Your console roles">
+              {props.staffRoles.length ? (
+                <DescriptionList items={props.staffRoles.map((r) => ({ label: r.label, value: r.does.join(' · ') }))} />
+              ) : (
+                <p className="yx-auth__muted">No role yet, so the console opens no pages for you. A Security lead gives roles in Staff and roles.</p>
+              )}
+            </Card>
+          )}
           <TwoStepCard {...props} mfa={mfa} />
           {props.onChangePassword && <PasswordCard onChangePassword={props.onChangePassword} minLength={props.passwordMinLength ?? 12} />}
           <MobileCard {...props} mfa={mfa} />

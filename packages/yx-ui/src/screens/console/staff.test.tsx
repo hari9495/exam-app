@@ -20,7 +20,7 @@ describe('StaffRolesScreen', () => {
     expect(screen.getByText('Anand Iyer (you)')).toBeTruthy();
     expect(screen.getAllByText('Rules editor').length).toBeGreaterThan(0);
     expect(screen.getByText('No role: no console keys')).toBeTruthy();
-    expect(screen.getByText(/Give and take staff roles/)).toBeTruthy();
+    expect(screen.getByText(/Add, deactivate and give roles to staff/)).toBeTruthy();
   });
 
   it('changes another member of staff\'s roles with a reason', async () => {
@@ -49,5 +49,59 @@ describe('StaffRolesScreen', () => {
     wrap();
     expect(screen.queryByRole('button', { name: /More actions for Anand Iyer/ })).toBeNull();
     expect(screen.getByRole('button', { name: /More actions for Kavitha Menon/ })).toBeTruthy();
+  });
+});
+
+describe('Add staff and Deactivate (answer 1164)', () => {
+  const full = (over: Partial<Parameters<typeof StaffRolesScreen>[0]> = {}) =>
+    render(
+      <ToastProvider>
+        <StaffRolesScreen state="ready" roles={STAFF_ROLE_DEFS} staff={STAFF} onSave={vi.fn()} onInvite={vi.fn().mockResolvedValue(undefined)} onDeactivate={vi.fn().mockResolvedValue(undefined)} {...over} />
+      </ToastProvider>,
+    );
+
+  it('adds a member of staff with a name, a work email and a reason', async () => {
+    const onInvite = vi.fn().mockResolvedValue(undefined);
+    full({ onInvite });
+    await ue.click(screen.getByRole('button', { name: 'Add staff' }));
+    const drawer = screen.getByRole('dialog');
+    await ue.type(within(drawer).getByRole('textbox', { name: /Name/ }), 'Priya Nair');
+    await ue.type(within(drawer).getByRole('textbox', { name: /Work email/ }), 'priya.nair@yukthix.com');
+    await ue.type(within(drawer).getByRole('textbox', { name: /Reason/ }), 'Joins support');
+    await ue.click(within(drawer).getByRole('button', { name: 'Send invitation' }));
+    await waitFor(() => expect(onInvite).toHaveBeenCalledWith({ email: 'priya.nair@yukthix.com', name: 'Priya Nair', reason: 'Joins support' }));
+  });
+
+  it('negative: a bad email and no reason are refused with the reasons', async () => {
+    const onInvite = vi.fn();
+    full({ onInvite, defaultInvite: true });
+    const drawer = screen.getByRole('dialog');
+    await ue.type(within(drawer).getByRole('textbox', { name: /Work email/ }), 'priya');
+    await ue.click(within(drawer).getByRole('button', { name: 'Send invitation' }));
+    expect(within(drawer).getAllByText(/Give their work email/).length).toBeGreaterThan(0);
+    expect(within(drawer).getAllByText(/Give their name/).length).toBeGreaterThan(0);
+    expect(onInvite).not.toHaveBeenCalled();
+  });
+
+  it('deactivates another member of staff with a reason', async () => {
+    const onDeactivate = vi.fn().mockResolvedValue(undefined);
+    full({ onDeactivate });
+    await ue.click(screen.getByRole('button', { name: /More actions for Farah Siddiqui/ }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'Deactivate' }));
+    const dialog = await screen.findByRole('dialog');
+    await ue.type(within(dialog).getByRole('textbox'), 'Left YukthiX');
+    await ue.click(within(dialog).getByRole('button', { name: 'Deactivate' }));
+    await waitFor(() => expect(onDeactivate).toHaveBeenCalledWith('st3', 'Left YukthiX'));
+  });
+
+  it('negative: no Deactivate for yourself, the last Security lead or someone already inactive', async () => {
+    full({ staff: STAFF.map((s) => (s.id === 'st2' ? { ...s, lastLead: true } : s)) });
+    expect(screen.queryByRole('button', { name: /More actions for Anand Iyer/ })).toBeNull();
+    for (const name of ['Kavitha Menon', 'Meera Pillai']) {
+      await ue.click(screen.getByRole('button', { name: new RegExp(`More actions for ${name}`) }));
+      expect(await screen.findByRole('menuitem', { name: 'Change roles' })).toBeTruthy();
+      expect(screen.queryByRole('menuitem', { name: 'Deactivate' })).toBeNull();
+      await ue.keyboard('{Escape}');
+    }
   });
 });

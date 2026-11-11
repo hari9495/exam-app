@@ -6,6 +6,7 @@ import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { bootAdminApp } from './dual-app';
 import { EmailService } from '../src/email/email.service';
 import { markSteppedUp } from './fixtures/step-up';
+import { giveStaffRoles, rolesWithout } from './fixtures/staff-roles';
 
 // YukthiX console C-5 (answers 948, 1053), end to end: the company wizard's create (staff only, step-up, audited; the
 // first System Admin gets one invite and nothing else) and planned maintenance (staff schedule, a second staff member
@@ -31,13 +32,14 @@ describe('Console C-5: company wizard and planned maintenance', () => {
     await tenantPrisma.forTenant(SUPER, (tx) => tx.session.update({ where: { id: sid }, data: { mfaVerifiedAt: new Date(Date.now() - 3_600_000) } }));
   };
   const inOrg = <T>(id: string, fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: id, isSuperAdmin: false }, fn);
+  // Staff roles (answer 1058): staff without a key = without every role that holds it (restored straight after).
   const withoutKey = async (key: string, fn: () => Promise<void>) => {
-    const p = await tenantPrisma.forTenant(SUPER, (tx) => tx.permission.findUniqueOrThrow({ where: { key } }));
-    await tenantPrisma.forTenant(SUPER, (tx) => tx.rolePermission.deleteMany({ where: { role: 'super_admin', permissionId: p.id } }));
+    const keep = await rolesWithout(key);
+    for (const who of ['staff', 'staff2']) await giveStaffRoles(users[who]!, keep);
     try {
       await fn();
     } finally {
-      await tenantPrisma.forTenant(SUPER, (tx) => tx.rolePermission.create({ data: { role: 'super_admin', permissionId: p.id } }));
+      for (const who of ['staff', 'staff2']) await giveStaffRoles(users[who]!);
     }
   };
   /** The next India day at least `minHours` ahead that passes the default rules (8th to month end less 3, not 15 or 20), 01:00 IST. */
@@ -60,6 +62,7 @@ describe('Console C-5: company wizard and planned maintenance', () => {
     for (const who of ['staff', 'staff2', 'staffNoKey'] as const) {
       const email = `${who.toLowerCase()}-${run}@platform.test`;
       users[who] = (await tenantPrisma.forTenant(SUPER, (tx) => tx.user.create({ data: { email, name: `Staff ${who}`, passwordHash, role: 'super_admin', organizationId: null } }))).id;
+      await giveStaffRoles(users[who]!);
       token[who] = (await request(server()).post('/api/v1/auth/platform/login').send({ email, password: PASSWORD }).expect(200)).body.accessToken;
     }
     await up('staff');
@@ -136,8 +139,13 @@ describe('Console C-5: company wizard and planned maintenance', () => {
     await api('adminA', 'post', '/platform/maintenance').send({ title: 'Database upgrade', startsAt: goodStart().toISOString(), hours: 2 }).expect(403);
     expect((await api('staffNoKey', 'get', '/platform/maintenance').expect(403)).body.code).toBe('MFA_REQUIRED');
     await withoutKey('platform.maintenance.manage', async () => {
-      await api('staff', 'get', '/platform/maintenance').expect(403);
+      // Staff roles (answer 1058): without the manage key they still see the windows (Customer success's view key).
+      await api('staff', 'get', '/platform/maintenance').expect(200);
       await api('staff', 'post', '/platform/maintenance').send({ title: 'Database upgrade', startsAt: goodStart().toISOString(), hours: 2 }).expect(403);
+    });
+    await withoutKey('platform.maintenance.view', async () => {
+      for (const who of ['staff', 'staff2']) await giveStaffRoles(users[who]!, (await rolesWithout('platform.maintenance.manage')).filter((r) => r !== 'customer_success'));
+      await api('staff', 'get', '/platform/maintenance').expect(403);
     });
     await request(server()).get('/api/v1/availability').expect(401);
   });

@@ -14,14 +14,15 @@ import { AvailabilityController, MaintenanceController } from './maintenance.con
 import { MaintenanceService } from './maintenance.service';
 import { CustomerSuccessService } from './customer-success.service';
 import { NotificationsModule } from '../notifications/notifications.module';
-import { StaffRolesController } from './staff-roles.controller';
+import { MyStaffRolesController, StaffRolesController } from './staff-roles.controller';
 import { StaffRolesService } from './staff-roles.service';
+import { EmailModule } from '../email/email.module';
 
 // Step 3: the YukthiX platform console (P14) and support sessions (P02 Q8).
 @Module({
-  imports: [AuditModule, AuthModule, OrganizationsModule, SmsChannelModule, NotificationsModule],
+  imports: [AuditModule, EmailModule, AuthModule, OrganizationsModule, SmsChannelModule, NotificationsModule],
   providers: [PlatformService, SupportSessionsService, PlatformStaffGuard, CustomerSuccessService, ConsoleOpsService, MaintenanceService, StaffRolesService],
-  controllers: [PlatformController, SupportAccessController, CustomerSuccessController, ConsoleOpsController, MaintenanceController, AvailabilityController, StaffRolesController],
+  controllers: [PlatformController, SupportAccessController, CustomerSuccessController, ConsoleOpsController, MaintenanceController, AvailabilityController, StaffRolesController, MyStaffRolesController],
   // SD-1.31: "Request access" from a YukthiX Support ticket asks for a support session.
   exports: [SupportSessionsService, PlatformStaffGuard],
 })

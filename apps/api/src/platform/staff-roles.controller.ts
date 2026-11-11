@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Put, UseGuards } from '@nestjs/common';
-import { ArrayMaxSize, ArrayUnique, IsArray, IsIn, IsString, Length } from 'class-validator';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, UseGuards } from '@nestjs/common';
+import { ArrayMaxSize, ArrayUnique, IsArray, IsEmail, IsIn, IsString, Length, MaxLength } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
@@ -23,6 +23,33 @@ export class StaffRolesDto {
   reason!: string;
 }
 
+const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
+
+/** Answer 1164: a new member of staff (no role until a Security lead gives one). */
+export class InviteStaffDto {
+  @trim()
+  @IsEmail()
+  @MaxLength(254)
+  email!: string;
+
+  @trim()
+  @IsString()
+  @Length(2, 100)
+  name!: string;
+
+  @trim()
+  @IsString()
+  @Length(5, 300)
+  reason!: string;
+}
+
+export class StaffReasonDto {
+  @trim()
+  @IsString()
+  @Length(5, 300)
+  reason!: string;
+}
+
 // Console › Staff and roles (answers 1058, 1086): who holds which staff role, and changing them. Staff only, on their
 // platform session; the Security lead's key (platform.staff.manage) on every route; a change needs the key again.
 @Controller('platform/staff')
@@ -36,9 +63,36 @@ export class StaffRolesController {
     return this.staff.list(actor);
   }
 
+  /** Answer 1164: add a member of staff (invitation by email; the security key comes at first sign-in). */
+  @Post()
+  @RequireStepUp()
+  invite(@CurrentUserId() actor: string, @Body() dto: InviteStaffDto) {
+    return this.staff.invite(actor, dto);
+  }
+
+  /** Answer 1164: deactivate another member of staff (signed out everywhere). */
+  @Post(':id/deactivate')
+  @HttpCode(200)
+  @RequireStepUp()
+  deactivate(@CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: StaffReasonDto) {
+    return this.staff.deactivate(actor, id, dto.reason);
+  }
+
   @Put(':id/roles')
   @RequireStepUp()
   setRoles(@CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: StaffRolesDto) {
     return this.staff.setRoles(actor, id, dto.roles, dto.reason);
+  }
+}
+
+/** Answer 1166: every member of staff sees their own roles (no console key needed; staff only, on their session). */
+@Controller('platform/my-roles')
+@UseGuards(JwtAuthGuard, PlatformStaffGuard, PermissionsGuard)
+export class MyStaffRolesController {
+  constructor(private readonly staff: StaffRolesService) {}
+
+  @Get()
+  mine(@CurrentUserId() actor: string) {
+    return this.staff.mine(actor);
   }
 }

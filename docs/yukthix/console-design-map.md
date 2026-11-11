@@ -77,14 +77,14 @@ After C-1 to C-5 (12 Nov 2026, merged on test/yukthix-main; recounted by the app
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Live console | 2 | 26 | 0 | 0 | 0 | 0 | 26 |
+| A. Live console | 2 | 27 | 0 | 0 | 0 | 0 | 27 |
 | B. Rules engine (YX-01 to YX-03) | 3 | 25 | 5 | 0 | 0 | 0 | 30 |
 | C. Customers and containment (YX-04, YX-18) | 2 | 22 | 2 | 0 | 0 | 0 | 24 |
 | D. Partners (YX-06 to YX-08) | 3 | 0 | 0 | 0 | 10 | 0 | 10 |
 | E. Money (YX-14 to YX-17) | 4 | 0 | 0 | 0 | 8 | 0 | 8 |
-| F. The rest (YX-05, YX-09 to YX-13) | 6 | 6 | 0 | 0 | 17 | 0 | 23 |
-| **All A-F** | **20** | **79** | **7** | **0** | **35** | **0** | **121** |
-Recounted by script 12 Nov 2026 on `feat/yukthix-console-staff-roles` after merging C-4 and C-5 (4 Staff and roles stories).
+| F. The rest (YX-05, YX-09 to YX-13) | 6 | 7 | 0 | 0 | 17 | 0 | 24 |
+| **All A-F** | **20** | **81** | **7** | **0** | **35** | **0** | **123** |
+Recounted by script 12 Nov 2026 on `feat/yukthix-console-staff-roles` after merging C-4 and C-5, with Add staff and the maintenance view-only story.
 
 Counted by script on 11 Nov 2026 on `docs/yukthix-console-map` (the script is in the appendix). There are 87 stories in
 20 files whose title starts `Screens/YukthiX console/`: `screens/console/console.stories.tsx` (14),
@@ -115,7 +115,8 @@ is a phone view.
 - The older `/v2/(platform)` pages (Organizations, Plans, Platform admins, All users; "Workfox platform identity") are
   still in the app. They call older APIs such as `billing/plans.controller.ts` (`@Controller('platform')`, key
   `platform:manage_organizations`), which do **not** use `PlatformStaffGuard`. Unsure: I did not check whether those
-  routes still let a staff member in from inside a company. See question 1060.
+  routes still let a staff member in from inside a company. See question 1060. **Platform admins is marked for retirement**
+  (12 Nov 2026): Console › Staff and roles now adds and deactivates staff (answer 1164); not deleted yet.
 
 ## 3. Designs with no live page or API
 
@@ -175,6 +176,7 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 | StaffRolesChange · Staff and roles · change roles | live | `PUT /platform/staff/:id/roles` with a reason and the security key again; never your own roles (no action on your row; API and database refuse) |
 | StaffRolesLastLead · Staff and roles · the last Security lead | live | the last active Security lead keeps the role (screen, API, database) |
 | StaffRolesNoKey · Staff and roles · not a Security lead | live | 403 from the API shows no access |
+| StaffAdd · Staff and roles · add staff | live | Answer 1164: `POST /platform/staff` (Security lead, the security key again, a reason; audited): an invitation to set a password, then a security key at first sign-in; no role until one is given. Deactivate: `POST /platform/staff/:id/deactivate` (never yourself, never the last Security lead; signed out everywhere) |
 
 #### Support desk (SD-1.31)
 
@@ -357,6 +359,7 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 | YX10MaintenanceBlocked · Maintenance · payroll window blocked | live | same page: the payroll-critical days, statutory dates and notice refuse the window with the reason |
 | YX10MaintenanceLive · Planned maintenance · schedule and approve (C-5) | live | `GET|POST platform/maintenance`, `POST .../:id/approve`, `POST .../:id/cancel`, `PUT .../settings` (`platform.maintenance.manage`) |
 | YX10MaintenanceTooSoon · Planned maintenance · too little notice (C-5) | live | same page, the notice rule (72 hours by default) |
+| YX10MaintenanceViewOnly · Planned maintenance · Customer success sees the windows (staff roles) | live | Staff roles: `platform.maintenance.view` (Customer success) opens the list; scheduling, approving, cancelling and the rules stay with `platform.maintenance.manage` (Security lead) |
 | YX10BannerBefore · What companies see · the day before (C-5) | live | every signed-in page: `GET /availability`, `AvailabilityBanner live` in the app layout |
 | YX10BannerDuring · What companies see · during the window (C-5) | live | same, during the window; never blocks sign-in |
 | YX10Probes · Probes | design only, feature not built | no probes |
@@ -806,3 +809,34 @@ C-6 to C-8.
       role.*
 1166. **Seeing your own roles.** Only Security leads see who holds what. *Suggested: show every member of staff their own
       roles on My security.*
+
+## Staff roles, second part (answers 1161 to 1166; 12 Nov 2026, branch `feat/yukthix-console-staff-roles`)
+- **C-4 and C-5 keys on roles** (migration `202617z0000073_console_staff_roles_c4_c5`, after C-4 and C-5): containment
+  (`platform.company.contain`) and feature switches (`platform.flags.manage`) go to the Security lead; planned
+  maintenance is scheduled by the Security lead (`platform.maintenance.manage`) and seen by Customer success (new
+  `platform.maintenance.view`; the maintenance screen shows the windows without its buttons). The keys C-4 and C-5 gave
+  the staff account type are taken back. Every console key is on at least one role (checked on this database).
+- **1164, Add staff and Deactivate** in Console › Security › Staff and roles: only a Security lead, with the security key
+  again and a reason, audited (`platform.staff.invited`, `platform.staff.deactivated`). A new member of staff gets an
+  email to set a password and adds a security key at first sign-in; they hold no console key until given a role. A
+  deactivated member of staff is signed out everywhere at once. Nobody deactivates themselves, and the last active
+  Security lead is never deactivated (database `platform_deactivate_staff`; only another active Security lead may act).
+- **Retire `/v2` Platform admins (answer 1060):** marked for retirement. The console now adds and deactivates staff,
+  so the old `/v2/(platform)` Platform admins page (invite and promote with the old `platform:manage_organizations` key)
+  is no longer needed. Not deleted yet; retire it with the other `/v2` platform pages.
+- **1166:** every member of staff sees "Your console roles" on My security (`/staff/security`, `GET /platform/my-roles`,
+  no console key needed), with what each role lets them do; with no role it says so.
+- **Tests:** e2e `console-staff-roles` (now 12: also the C-4 and C-5 keys by role, my roles, add staff, deactivate, the
+  last Security lead), kit `staff.test.tsx` (8) and `auth.test.tsx` (My security roles), web `console-staff.test.tsx` (3)
+  and `console-my-roles.test.tsx` (2).
+
+### Questions from staff roles, second part (from 1171)
+1171. **Bringing someone back.** A deactivated member of staff cannot be reactivated in the console; they would be
+      invited again with a new email. *Suggested: add "Reactivate" (Security lead, the security key again, a reason).*
+1172. **Changing roles of a deactivated account.** A Security lead can still change the roles of a deactivated account
+      (it holds nothing while deactivated). *Suggested: keep (roles are ready if they come back).*
+1173. **Invitation that expired.** The invitation link works once for 72 hours; there is no "send again" yet.
+      *Suggested: add "Send the invitation again" for accounts that never signed in.*
+1174. **Customer success and maintenance.** Customer success sees planned maintenance but cannot schedule it.
+      *Suggested: keep.*
+

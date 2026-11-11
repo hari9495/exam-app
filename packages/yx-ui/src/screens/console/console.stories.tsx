@@ -109,11 +109,13 @@ export const CompanySupportAccessMessages: S = {
 };
 export const CompanySupportAccessEmpty: S = { name: 'Company side · Support access · none yet', render: () => access([]) };
 // Staff roles (answers 1058, 1086): drawn first; who holds what, and a Security lead changing another's roles.
-export const StaffRoles: S = { name: 'Staff and roles', render: () => shell('staff', <StaffRolesScreen state="ready" roles={STAFF_ROLE_DEFS} staff={STAFF} onSave={() => wait()} />) };
+export const StaffRoles: S = { name: 'Staff and roles', render: () => shell('staff', <StaffRolesScreen state="ready" roles={STAFF_ROLE_DEFS} staff={STAFF} onSave={() => wait()} onInvite={() => wait()} onDeactivate={() => wait()} />) };
 export const StaffRolesChange: S = { name: 'Staff and roles · change roles', render: () => shell('staff', <StaffRolesScreen state="ready" roles={STAFF_ROLE_DEFS} staff={STAFF} onSave={() => wait()} defaultOpenId="st3" />) };
 export const StaffRolesLastLead: S = {
   name: 'Staff and roles · the last Security lead',
   render: () => shell('staff', <StaffRolesScreen state="ready" roles={STAFF_ROLE_DEFS} staff={STAFF.map((s) => (s.id === 'st2' ? { ...s, lastLead: true } : s.id === 'st1' ? { ...s, roles: ['support_agent' as const] } : s))} onSave={() => wait()} defaultOpenId="st2" />),
 };
 export const StaffRolesNoKey: S = { name: 'Staff and roles · not a Security lead', render: () => shell('staff', <StaffRolesScreen state="no-access" roles={[]} staff={[]} onSave={() => wait()} />) };
+// Answer 1164: add staff (an invitation; no role until one is given) and deactivate.
+export const StaffAdd: S = { name: 'Staff and roles · add staff', render: () => shell('staff', <StaffRolesScreen state="ready" roles={STAFF_ROLE_DEFS} staff={STAFF} onSave={() => wait()} onInvite={() => wait()} onDeactivate={() => wait()} defaultInvite />) };
 

@@ -58,6 +58,8 @@ export interface LiveMaintenance {
   onSaveSettings: (input: { values: Record<string, number>; blockDates: number[] }) => Promise<unknown>;
   /** Stories: the schedule form filled with this start. */
   defaultStart?: Date;
+  /** Staff roles (answer 1058): false for someone who only sees the windows (Customer success); default true. */
+  canManage?: boolean;
 }
 
 const STATUS: Record<MaintenanceRow['status'], { label: string; tone: 'warning' | 'info' | 'success' | 'neutral' | 'danger' }> = {
@@ -100,9 +102,13 @@ export function LiveMaintenanceScreen({ live }: { live: LiveMaintenance }) {
         <Card title="What companies see now">
           {live.current ? <AvailabilityBanner kind="maintenance" live={live.current} /> : <p className="yx-ps-muted">Nothing: no window is close.</p>}
         </Card>
-        <ScheduleCard live={live} />
+        {live.canManage === false ? (
+          <p className="yx-ps-muted">You can see the windows. A Security lead schedules, approves and cancels them.</p>
+        ) : (
+          <ScheduleCard live={live} />
+        )}
         <WindowList live={live} />
-        <RulesCard live={live} />
+        {live.canManage !== false && <RulesCard live={live} />}
       </div>
     </ConsolePage>
   );
@@ -198,8 +204,8 @@ function WindowList({ live }: { live: LiveMaintenance }) {
                 </span>
               </div>
               <Badge tone={STATUS[w.status].tone}>{STATUS[w.status].label}</Badge>
-              {w.status === 'pending_approval' && (w.mine ? <span className="yx-ps-muted">Another staff member approves it</span> : <Button size="sm" variant="approve" onClick={() => setApproving(w)}>Approve</Button>)}
-              {(w.status === 'pending_approval' || w.status === 'scheduled' || w.status === 'in_progress') && (
+              {live.canManage !== false && w.status === 'pending_approval' && (w.mine ? <span className="yx-ps-muted">Another staff member approves it</span> : <Button size="sm" variant="approve" onClick={() => setApproving(w)}>Approve</Button>)}
+              {live.canManage !== false && (w.status === 'pending_approval' || w.status === 'scheduled' || w.status === 'in_progress') && (
                 <Button size="sm" onClick={() => (setReason(''), setCancelling(w))}>
                   Cancel window
                 </Button>

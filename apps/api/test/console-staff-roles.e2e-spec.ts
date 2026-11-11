@@ -20,11 +20,12 @@ describe('Console staff roles (1058, 1086)', () => {
   const PASSWORD = 'Corr3ct-Horse-Battery';
   const run = randomUUID().slice(0, 8);
   const server = () => app.getHttpServer();
+  const mailSend = jest.fn(async (_m: unknown) => ({ success: true }));
   const token: Record<string, string> = {};
   const users: Record<string, string> = {};
   let orgId = '';
   let planId = '';
-  type Who = 'lead' | 'lead2' | 'rules' | 'cs' | 'none' | 'adminA';
+  type Who = 'lead' | 'lead2' | 'rules' | 'cs' | 'none' | 'adminA' | 'gone';
   const api = (who: Who, method: 'get' | 'post' | 'put', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const roles = (body: { staff: { id: string; roles: string[] }[] }, who: Who) => body.staff.find((s) => s.id === users[who])?.roles;
   const rule = (version: string) => ({
@@ -40,10 +41,10 @@ describe('Console staff roles (1058, 1086)', () => {
   });
 
   beforeAll(async () => {
-    app = await bootAdminApp((b) => b.overrideProvider(EmailService).useValue({ send: jest.fn(async () => ({ success: true })) }));
+    app = await bootAdminApp((b) => b.overrideProvider(EmailService).useValue({ send: mailSend }));
     tenantPrisma = app.get(TenantPrismaService);
     const passwordHash = await argon2.hash(PASSWORD);
-    const staff: [Who, StaffRole[]][] = [['lead', ['security_lead']], ['lead2', ['security_lead']], ['rules', ['rules_editor']], ['cs', ['customer_success']], ['none', []]];
+    const staff: [Who, StaffRole[]][] = [['lead', ['security_lead']], ['lead2', ['security_lead']], ['rules', ['rules_editor']], ['cs', ['customer_success']], ['none', []], ['gone', ['support_agent']]];
     for (const [who, r] of staff) {
       const email = `sr-${who}-${run}@platform.test`;
       users[who] = (await tenantPrisma.forTenant(SUPER, (tx) => tx.user.create({ data: { email, name: `Staff ${who}`, passwordHash, role: 'super_admin', organizationId: null } }))).id;
@@ -184,5 +185,89 @@ describe('Console staff roles (1058, 1086)', () => {
     }
     // What a moved account can do with Security lead alone: companies, the audit log, staff roles.
     for (const path of ['/platform/companies', '/platform/audit', '/platform/staff']) await api('lead', 'get', path).expect(200);
+  });
+
+  describe('C-4 and C-5 keys follow the roles', () => {
+    it('containment and feature switches: Security lead only; maintenance: Security lead schedules, Customer success sees', async () => {
+      await api('lead', 'get', '/platform/feature-flags').expect(200);
+      for (const who of ['cs', 'rules', 'none'] as const) await api(who, 'get', '/platform/feature-flags').expect(403);
+      expect([200, 404]).toContain((await api('lead', 'get', `/platform/companies/${orgId}/containment`)).status);
+      for (const who of ['cs', 'rules', 'none'] as const) await api(who, 'get', `/platform/companies/${orgId}/containment`).expect(403);
+      for (const who of ['lead', 'cs'] as const) await api(who, 'get', '/platform/maintenance').expect(200);
+      for (const who of ['rules', 'none'] as const) await api(who, 'get', '/platform/maintenance').expect(403);
+      await api('cs', 'post', '/platform/maintenance').send({ title: 'Database upgrade', startsAt: new Date(Date.now() + 10 * 86_400_000).toISOString(), hours: 2 }).expect(403);
+      await api('cs', 'put', '/platform/maintenance/settings').send({ values: {}, blockDates: [] }).expect(403);
+    });
+  });
+
+  describe('1166: my own roles', () => {
+    it('every member of staff reads their own roles, with what each lets them do; no role is an empty list; a company admin never', async () => {
+      const rules = (await api('rules', 'get', '/platform/my-roles').expect(200)).body;
+      expect(rules).toEqual([{ role: 'rules_editor', label: 'Rules editor', does: ['Draft, review and publish rule sets'] }]);
+      expect((await api('none', 'get', '/platform/my-roles').expect(200)).body).toEqual([]);
+      expect((await api('cs', 'get', '/platform/my-roles').expect(200)).body[0].does).toEqual(expect.arrayContaining(['See planned maintenance']));
+      await api('adminA', 'get', '/platform/my-roles').expect(403);
+      await request(server()).get('/api/v1/platform/my-roles').expect(401);
+    });
+  });
+
+  describe('1164: add staff and deactivate', () => {
+    const email = `new-${run}@platform.test`;
+    it('a Security lead adds a member of staff by invitation (security key needed, no role yet); audited; others refused', async () => {
+      for (const who of ['cs', 'rules', 'none', 'adminA'] as const) await api(who, 'post', '/platform/staff').send({ email: `x-${who}-${run}@platform.test`, name: 'Someone', reason: 'Joins the team' }).expect(403);
+      await api('lead', 'post', '/platform/staff').send({ email: 'not-an-email', name: 'Priya', reason: 'Joins support' }).expect(400);
+      await api('lead', 'post', '/platform/staff').send({ email, name: 'Priya Nair' }).expect(400);
+      const { sid } = JSON.parse(Buffer.from(token.lead!.split('.')[1]!, 'base64url').toString()) as { sid: string };
+      await tenantPrisma.forTenant(SUPER, (tx) => tx.session.update({ where: { id: sid }, data: { mfaVerifiedAt: new Date(Date.now() - 20 * 60_000) } }));
+      expect((await api('lead', 'post', '/platform/staff').send({ email, name: 'Priya Nair', reason: 'Joins support' }).expect(403)).body.code).toBe('STEP_UP_REQUIRED');
+      await markSteppedUp(tenantPrisma, token.lead!);
+      mailSend.mockClear();
+      const made = (await api('lead', 'post', '/platform/staff').send({ email: email.toUpperCase(), name: 'Priya Nair', reason: 'Joins support' }).expect(201)).body;
+      users.priya = made.id;
+      expect(made).toEqual({ id: made.id, email, roles: [] });
+      const row = await tenantPrisma.forTenant(SUPER, (tx) => tx.user.findUniqueOrThrow({ where: { id: made.id } }));
+      expect(row).toMatchObject({ organizationId: null, role: 'super_admin', status: 'active', name: 'Priya Nair' });
+      expect(row.mfaEnrolmentDueAt).not.toBeNull();
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.passwordResetToken.count({ where: { userId: made.id } }))).toBe(1);
+      expect(mailSend).toHaveBeenCalledWith(expect.objectContaining({ to: email }));
+      const listed = (await api('lead', 'get', '/platform/staff').expect(200)).body as { staff: { id: string; roles: string[] }[] };
+      expect(listed.staff.find((x) => x.id === made.id)?.roles).toEqual([]);
+      const audit = await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findFirstOrThrow({ where: { entityId: made.id, action: 'platform.staff.invited' } }));
+      expect(audit).toMatchObject({ actorUserId: users.lead });
+      expect(JSON.parse(audit.metadataJson!)).toEqual({ email, name: 'Priya Nair', reason: 'Joins support' });
+      await api('lead', 'post', '/platform/staff').send({ email, name: 'Priya again', reason: 'Joins support' }).expect(409);
+    });
+
+    it('a Security lead deactivates another member of staff: signed out everywhere, audited; never themselves; others refused', async () => {
+      for (const who of ['cs', 'rules', 'none', 'adminA'] as const) await api(who, 'post', `/platform/staff/${users.gone}/deactivate`).send({ reason: 'Left YukthiX' }).expect(403);
+      await api('lead', 'post', `/platform/staff/${users.gone}/deactivate`).send({}).expect(400);
+      await api('gone', 'get', '/platform/my-roles').expect(200);
+      expect((await api('lead', 'post', `/platform/staff/${users.gone}/deactivate`).send({ reason: 'Left YukthiX' }).expect(200)).body).toEqual({ id: users.gone, active: false });
+      expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.user.findUniqueOrThrow({ where: { id: users.gone } }))).status).toBe('deactivated');
+      expect((await api('gone', 'get', '/platform/my-roles')).status).toBe(401);
+      const audit = await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findFirstOrThrow({ where: { entityId: users.gone, action: 'platform.staff.deactivated' } }));
+      expect(audit).toMatchObject({ actorUserId: users.lead });
+      expect(JSON.parse(audit.metadataJson!)).toMatchObject({ reason: 'Left YukthiX' });
+      await api('lead', 'post', `/platform/staff/${users.gone}/deactivate`).send({ reason: 'Again please' }).expect(409);
+      expect((await api('lead', 'post', `/platform/staff/${users.lead}/deactivate`).send({ reason: 'Leaving myself' }).expect(403)).body.message).toMatch(/deactivate yourself/);
+      await api('lead', 'post', `/platform/staff/${randomUUID()}/deactivate`).send({ reason: 'Nobody there' }).expect(404);
+    });
+
+    it('the last Security lead is never deactivated: in the database, with every other staff account inactive (rolled back), nobody can', async () => {
+      const owner = new PrismaClient({ datasources: { db: { url: process.env.MIGRATION_DATABASE_URL } } });
+      const attempt = (actor: string) =>
+        owner.$transaction(async (tx) => {
+          await tx.$executeRawUnsafe(`SELECT set_config('app.is_super_admin', 'on', true)`);
+          await tx.$executeRawUnsafe(`UPDATE users SET status = 'deactivated' WHERE organization_id IS NULL AND role = 'super_admin' AND id NOT IN ($1::uuid, $2::uuid)`, users.lead, actor);
+          await tx.$executeRawUnsafe(`SELECT platform_deactivate_staff($1::uuid, $2::uuid)`, users.lead, actor);
+        });
+      try {
+        await expect(attempt(users.lead!)).rejects.toThrow(/YX_STAFF_SELF/);
+        for (const who of ['rules', 'cs', 'none'] as const) await expect(attempt(users[who]!)).rejects.toThrow(/YX_STAFF_NOT_LEAD/);
+      } finally {
+        await owner.$disconnect();
+      }
+      expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.user.findUniqueOrThrow({ where: { id: users.lead } }))).status).toBe('active');
+    });
   });
 });

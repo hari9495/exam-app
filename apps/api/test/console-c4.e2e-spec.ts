@@ -6,6 +6,7 @@ import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { bootAdminApp } from './dual-app';
 import { EmailService } from '../src/email/email.service';
 import { markSteppedUp } from './fixtures/step-up';
+import { giveStaffRoles } from './fixtures/staff-roles';
 
 // Console C-4 (founder answers 1049 and 1050), against the real database (forced RLS, app role).
 // 1049: feature switches: a default for every company, an override per company that beats it, a kill switch for
@@ -41,6 +42,8 @@ describe('Console C-4: feature switches and containing a company', () => {
     for (const who of ['staff1', 'staff2', 'staffNoKey']) {
       const email = `${who.toLowerCase()}-${runId}@platform.test`;
       users[who] = (await tenantPrisma.forTenant(SUPER, (tx) => tx.user.create({ data: { email, name: `Staff ${who}`, passwordHash, role: 'super_admin', organizationId: null } }))).id;
+      // Staff roles (answer 1058): containment and feature switches are the Security lead's.
+      await giveStaffRoles(users[who]!);
       token[who] = (await request(server()).post('/api/v1/auth/platform/login').send({ email, password: PASSWORD }).expect(200)).body.accessToken;
     }
     await up('staff1');

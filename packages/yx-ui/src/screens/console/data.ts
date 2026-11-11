@@ -77,10 +77,10 @@ export const AUDIT: PlatformAuditEntry[] = [
 // Staff roles (answers 1058, 1086): what each role holds, and the staff.
 export const STAFF_ROLE_DEFS = [
   { role: 'support_agent' as const, label: 'Support agent', keys: ['platform.companies.view', 'platform.support_desk.work', 'platform.support.request'] },
-  { role: 'customer_success' as const, label: 'Customer success', keys: ['platform.companies.view', 'platform.companies.manage', 'platform.customers.success', 'platform.news.manage'] },
+  { role: 'customer_success' as const, label: 'Customer success', keys: ['platform.companies.view', 'platform.companies.manage', 'platform.customers.success', 'platform.news.manage', 'platform.maintenance.view'] },
   { role: 'rules_editor' as const, label: 'Rules editor', keys: ['platform.statutory.manage'] },
   { role: 'finance' as const, label: 'Finance', keys: ['platform.companies.view', 'platform.plans.manage'] },
-  { role: 'security_lead' as const, label: 'Security lead', keys: ['platform.companies.view', 'platform.companies.manage', 'platform.channels.manage', 'platform.audit.view', 'platform.staff.manage'] },
+  { role: 'security_lead' as const, label: 'Security lead', keys: ['platform.companies.view', 'platform.companies.manage', 'platform.channels.manage', 'platform.audit.view', 'platform.staff.manage', 'platform.company.contain', 'platform.flags.manage', 'platform.maintenance.manage'] },
 ];
 export const STAFF = [
   { id: 'st1', name: 'Anand Iyer', email: 'anand.iyer@yukthix.test', active: true, me: true, roles: ['security_lead' as const, 'support_agent' as const], lastLead: false },

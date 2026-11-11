@@ -61,4 +61,27 @@ describe('Console › Staff and roles', () => {
     expect(await screen.findByText(/a YukthiX console owner/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /More actions/ })).toBeNull();
   });
+
+  it('answer 1164: adds a member of staff by invitation and deactivates another, each with a reason', async () => {
+    route({
+      'GET /platform/staff': { roles: ROLES, staff: STAFF },
+      'POST /platform/staff': { id: 's3', email: 'priya@yukthix.test', roles: [] },
+      'POST /platform/staff/s2/deactivate': { id: 's2', active: false },
+    });
+    wrap(<ConsoleStaffPage />);
+    await ue.click(await screen.findByRole('button', { name: 'Add staff' }));
+    const drawer = await screen.findByRole('dialog');
+    await ue.type(within(drawer).getByRole('textbox', { name: /Name/ }), 'Priya Nair');
+    await ue.type(within(drawer).getByRole('textbox', { name: /Work email/ }), 'priya@yukthix.test');
+    await ue.type(within(drawer).getByRole('textbox', { name: /Reason/ }), 'Joins support');
+    await ue.click(within(drawer).getByRole('button', { name: 'Send invitation' }));
+    await waitFor(() => expect(calls).toContain('POST /platform/staff {"email":"priya@yukthix.test","name":"Priya Nair","reason":"Joins support"}'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await ue.click(screen.getByRole('button', { name: /More actions for Farah Siddiqui/ }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'Deactivate' }));
+    const confirm = await screen.findByRole('dialog');
+    await ue.type(within(confirm).getByRole('textbox'), 'Left YukthiX');
+    await ue.click(within(confirm).getByRole('button', { name: 'Deactivate' }));
+    await waitFor(() => expect(calls).toContain('POST /platform/staff/s2/deactivate {"reason":"Left YukthiX"}'));
+  });
 });

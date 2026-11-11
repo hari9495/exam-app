@@ -4,7 +4,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { RequirePermissions } from '../rbac/permissions.decorator';
+import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { PlatformStaffGuard } from './platform-staff.guard';
 import { MaintenanceDecisionDto, MaintenanceSettingsDto, MaintenanceWindowDto } from './maintenance.dto';
 import { MaintenanceService } from './maintenance.service';
@@ -17,7 +17,8 @@ export class MaintenanceController {
   constructor(private readonly maintenance: MaintenanceService) {}
 
   @Get()
-  @RequirePermissions('platform.maintenance.manage')
+  // Staff roles (answer 1058): Customer success sees the windows (view key); a Security lead manages them.
+  @RequireAnyPermission('platform.maintenance.view', 'platform.maintenance.manage')
   overview(@CurrentUserId() actor: string) {
     return this.maintenance.overview(actor);
   }

@@ -59,6 +59,7 @@ const mw = (o: Partial<LiveMaintenance> = {}) => (
 );
 export const YX10MaintenanceLive: S = { name: 'Planned maintenance · schedule and approve (C-5)', render: () => mw({ defaultStart: new Date(2026, 10, 18, 1, 0) }) };
 export const YX10MaintenanceTooSoon: S = { name: 'Planned maintenance · too little notice (C-5)', render: () => mw({ defaultStart: new Date(2026, 10, 13, 1, 0) }) };
+export const YX10MaintenanceViewOnly: S = { name: 'Planned maintenance · Customer success sees the windows (staff roles)', render: () => mw({ canManage: false }) };
 export const YX10BannerBefore: S = { name: 'What companies see · the day before (C-5)', render: () => <AvailabilityBanner kind="maintenance" live={MW_CURRENT} /> };
 export const YX10BannerDuring: S = { name: 'What companies see · during the window (C-5)', render: () => <AvailabilityBanner kind="maintenance" live={{ ...MW_CURRENT, phase: 'now' }} /> };
 export const YX10Probes: S = { name: 'Probes', render: () => <ProbesScreen probes={D.PROBES} /> };

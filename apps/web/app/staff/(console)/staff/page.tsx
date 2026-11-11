@@ -16,6 +16,9 @@ export default function ConsoleStaffPage() {
       roles={q.data?.roles ?? []}
       staff={q.data?.staff ?? []}
       onSave={(id, roles, reason) => write(`/staff/${encodeURIComponent(id)}/roles`, 'PUT', { roles, reason }).then(() => undefined)}
+      // Answer 1164: add (an invitation; no role until one is given) and deactivate, each with the security key again.
+      onInvite={(input) => write('/staff', 'POST', input).then(() => undefined)}
+      onDeactivate={(id, reason) => write(`/staff/${encodeURIComponent(id)}/deactivate`, 'POST', { reason }).then(() => undefined)}
     />
   );
 }
