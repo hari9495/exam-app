@@ -36,6 +36,12 @@ function PublishPage() {
           setPublished(row);
         },
         published,
+        // Answer 1065: the Notices step, an admin message to the companies in the rule's country or state.
+        onNotice: async (id, notice) => {
+          const rows = await write<{ ruleSetId: string | null; companyIds: string[]; status: string }[]>(`/customers/rule-notices/${encodeURIComponent(id)}`, 'POST', notice);
+          const m = rows.find((r) => r.ruleSetId === id && (r.status === 'pending_approval' || r.status === 'sent'));
+          return { companies: m?.companyIds.length ?? 0, waiting: m?.status === 'pending_approval' };
+        },
       }}
     />
   );

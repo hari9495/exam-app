@@ -3457,7 +3457,7 @@ model YukthixMessage {
   subject      String    @db.VarChar(120)
   body         String    @db.VarChar(4000)
   companyIds   String[]  @map("company_ids") @db.Uuid
-  /// pending_approval, sent, rejected
+  /// pending_approval, sent, rejected, withdrawn (answer 1087)
   status       String    @db.VarChar(20)
   writtenBy    String    @map("written_by") @db.Uuid
   decidedBy    String?   @map("decided_by") @db.Uuid
@@ -3466,6 +3466,8 @@ model YukthixMessage {
   sentAt       DateTime? @map("sent_at") @db.Timestamptz(3)
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   version      Int       @default(1)
+  /// Answer 1065: the published rule set this notice is about.
+  ruleSetId    String?   @map("rule_set_id") @db.Uuid
 
   @@index([createdAt(sort: Desc)], map: "yukthix_messages_created_idx")
   @@map("yukthix_messages")

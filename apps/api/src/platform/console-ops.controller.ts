@@ -55,6 +55,13 @@ export class ConsoleOpsController {
     return this.ops.revive(staff, key, dto.reason);
   }
 
+  /** C-5's Products and features card: this company's feature switches (answer 1053 hook). */
+  @Get('companies/:id/feature-switches')
+  @RequirePermissions('platform.companies.view')
+  companySwitches(@CurrentUserId() staff: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.ops.companySwitches(staff, id);
+  }
+
   @Get('companies/:id/containment')
   @RequirePermissions('platform.company.contain')
   containment(@CurrentUserId() staff: string, @Param('id', ParseUUIDPipe) id: string) {

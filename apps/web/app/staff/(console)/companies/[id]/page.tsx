@@ -17,7 +17,8 @@ export default function ConsoleCompanyPage() {
   const sessions = useConsole<SupportSession[]>(`/support-sessions?organizationId=${encodeURIComponent(id)}`, can('platform.support.request'));
   const write = useConsoleWrite();
   // Answer 1053: what is switched on: the plan's products, then the plan features YukthiX turns on (Company settings).
-  // shortcut: C-4's per-company feature switches are not merged yet; add them here as source 'switch' when they are.
+  // C-4's feature switches for this company, decided by the one feature check (killed, own value, default, setting).
+  const switches = useConsole<{ key: string; label: string; on: boolean; why: string | null }[]>(`${path}/feature-switches`, can('platform.companies.view'));
   const products = useConsole<Product[]>('/products');
   const settings = useConsole<CompanySettingsView>(`${path}/settings`, can('platform.companies.view'));
   const features: CompanyFeature[] | undefined =
@@ -25,6 +26,7 @@ export default function ConsoleCompanyPage() {
       ? [
           ...products.data.map((p) => ({ key: `product:${p.code}`, label: p.name, on: company.data!.products.includes(p.code), source: 'product' as const, note: 'Not in the plan' })),
           ...(settings.data?.settings ?? []).map((s) => ({ key: `setting:${s.key}`, label: s.label, on: s.included && s.value === 'on', source: 'setting' as const, note: s.included ? 'Off' : 'Not in the plan' })),
+          ...(switches.data ?? []).map((f) => ({ key: `switch:${f.key}`, label: f.label, on: f.on, source: 'switch' as const, note: f.why ?? 'Off' })),
         ]
       : undefined;
   const session = (sessionId: string, what: 'end' | 'cancel') => write(`/support-sessions/${encodeURIComponent(sessionId)}/${what}`, 'POST').then(() => undefined);

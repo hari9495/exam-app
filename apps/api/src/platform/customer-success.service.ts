@@ -140,21 +140,57 @@ export class CustomerSuccessService {
         sentAt: r.sentAt,
         createdAt: r.createdAt,
         version: r.version,
+        ruleSetId: r.ruleSetId,
       }));
     });
   }
 
   /** Writes a message. One company: sent at once. More than one: waits for a second staff member. */
-  async write(actorUserId: string, dto: CsMessageDto) {
+  async write(actorUserId: string, dto: CsMessageDto, ruleSetId: string | null = null) {
     const companyIds = [...new Set(dto.companyIds)];
     const id = await platformRead(this.tenantPrisma, actorUserId, 'customer_success.message', async (tx) => {
       const found = await tx.organization.findMany({ where: { id: { in: companyIds }, isPlatform: false, lifecycle: { not: 'closed' } }, select: { id: true } });
       if (found.length !== companyIds.length) throw new BadRequestException('Choose companies that are open (not closed).');
-      const m = await tx.yukthixMessage.create({ data: { subject: dto.subject.trim(), body: dto.body.trim(), companyIds, status: 'pending_approval', writtenBy: actorUserId } });
-      await AuditService.recordIn(tx, PLATFORM, { actorUserId, action: 'platform.message.written', entityType: 'yukthix_message', entityId: m.id, metadata: { subject: m.subject, companies: companyIds.length } });
+      if (ruleSetId && (await tx.yukthixMessage.findFirst({ where: { ruleSetId, status: { in: ['pending_approval', 'sent'] } }, select: { id: true } }))) {
+        throw new ConflictException('A notice about this rule set is already waiting or sent.');
+      }
+      const m = await tx.yukthixMessage.create({ data: { subject: dto.subject.trim(), body: dto.body.trim(), companyIds, status: 'pending_approval', writtenBy: actorUserId, ruleSetId } });
+      await AuditService.recordIn(tx, PLATFORM, { actorUserId, action: 'platform.message.written', entityType: 'yukthix_message', entityId: m.id, metadata: { subject: m.subject, companies: companyIds.length, ...(ruleSetId ? { ruleSetId } : {}) } });
       return m.id;
     });
     if (companyIds.length === 1) await this.send(actorUserId, id, null);
+    return this.messages(actorUserId);
+  }
+
+  /**
+   * Answer 1065: a notice about a published rule set, to the System Admins of every open company with a location in the
+   * rule's country (`IN`) or state (`IN-KA`). It is an admin message like any other: more than one company waits for a
+   * second staff member. One live notice per rule set.
+   */
+  async ruleNotice(actorUserId: string, ruleSetId: string, dto: Omit<CsMessageDto, 'companyIds'>) {
+    const companyIds = await platformRead(this.tenantPrisma, actorUserId, `rule notice: companies for rule set ${ruleSetId}`, async (tx) => {
+      const rule = await tx.statutoryRuleSet.findUnique({ where: { id: ruleSetId }, select: { status: true, jurisdiction: true } });
+      if (!rule) throw new NotFoundException('Rule set not found.');
+      if (rule.status !== 'published') throw new ConflictException('Send a notice once the rule set is published.');
+      const place = rule.jurisdiction.length === 2 ? { country: rule.jurisdiction } : { state: rule.jurisdiction };
+      const there = await tx.location.findMany({ where: { ...place, archivedAt: null }, distinct: ['organizationId'], select: { organizationId: true } });
+      const orgs = await tx.organization.findMany({ where: { id: { in: there.map((l) => l.organizationId) }, isPlatform: false, lifecycle: { not: 'closed' } }, select: { id: true } });
+      return orgs.map((o) => o.id);
+    });
+    if (!companyIds.length) throw new ConflictException('No open company has a location there, so nobody needs the notice.');
+    return this.write(actorUserId, { ...dto, companyIds }, ruleSetId);
+  }
+
+  /** Answer 1087: the writer takes back their own message while it waits for approval. It can never be approved after. */
+  async withdraw(actorUserId: string, id: string, dto: CsDecisionDto) {
+    await this.tenantPrisma.forTenant(PLATFORM, async (tx) => {
+      const m = await tx.yukthixMessage.findUnique({ where: { id } });
+      if (!m) throw new NotFoundException('Message not found.');
+      if (m.writtenBy !== actorUserId) throw new ForbiddenException('Only the writer withdraws a message.');
+      const done = await tx.yukthixMessage.updateMany({ where: { id, status: 'pending_approval', version: dto.version }, data: { status: 'withdrawn', decidedAt: new Date(), decisionNote: dto.note?.trim() || null, version: { increment: 1 } } });
+      if (!done.count) throw new ConflictException('This message is no longer waiting for approval.');
+      await AuditService.recordIn(tx, PLATFORM, { actorUserId, action: 'platform.message.withdrawn', entityType: 'yukthix_message', entityId: id, metadata: { subject: m.subject, companies: m.companyIds.length, reason: dto.note?.trim() || null } });
+    });
     return this.messages(actorUserId);
   }
 

@@ -20,3 +20,9 @@ export class CsDecisionDto {
   @Type(() => Number) @IsInt() @Min(1) version!: number;
   @IsOptional() @trim() @IsString() @MaxLength(500) note?: string;
 }
+
+/** Answer 1065: the notice about a published rule set (the companies come from the rule's country or state). */
+export class CsNoticeDto {
+  @trim() @IsString() @MinLength(3) @MaxLength(120) @Matches(/^[^<>]*$/, { message: 'Write the subject without < or >.' }) subject!: string;
+  @trim() @IsString() @MinLength(1) @MaxLength(4000) body!: string;
+}

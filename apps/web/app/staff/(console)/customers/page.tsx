@@ -28,6 +28,8 @@ export default function ConsoleCustomersPage() {
         onWrite: (input) => write('/customers/messages', 'POST', input),
         onApprove: (id, version) => write(`/customers/messages/${encodeURIComponent(id)}/approve`, 'POST', { version }),
         onReject: (id, version, note) => write(`/customers/messages/${encodeURIComponent(id)}/reject`, 'POST', { version, note }),
+        // Answer 1087: the writer withdraws their own message while it waits.
+        onWithdraw: (id, version) => write(`/customers/messages/${encodeURIComponent(id)}/withdraw`, 'POST', { version }),
         onSaveSettings: (values) => write('/customers/settings', 'PUT', { values }),
       }}
     />

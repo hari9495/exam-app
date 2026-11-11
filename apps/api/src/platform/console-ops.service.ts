@@ -2,7 +2,8 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Prisma } from '@prisma/client';
 import { AuditEntry, AuditService, TenantContext, TenantPrismaService, revokeStaffSessions } from '@exam-platform/shared';
 import { PLATFORM, platformRead, staffActor } from './platform.service';
-import { FEATURES, Feature } from './features';
+import { FEATURES, Feature, featureOn } from './features';
+import { CompanyContext } from '../org-structure/org-structure.service';
 
 type Tx = Prisma.TransactionClient;
 const HOUR = 3_600_000;
@@ -97,6 +98,27 @@ export class ConsoleOpsService {
       await tx.featureFlag.update({ where: { key }, data: { killedAt: null, killedBy: null, killReason: null, updatedBy: actorUserId, updatedAt: new Date() } });
       await audit(null, { action: 'platform.flag.revived', entityType: 'feature_flag', entityId: key, metadata: { reason, killedBy: f.killedBy, killReason: f.killReason } });
       return { key, killed: false };
+    });
+  }
+
+  /**
+   * C-5's company page (answer 1053): each switch for one company, decided by the one feature check (featureOn), with
+   * why it is off: killed for everyone, off for this company, off by default, or off in the company's own settings.
+   */
+  companySwitches(actorUserId: string, organizationId: string) {
+    return platformRead(this.tenantPrisma, actorUserId, `feature switches of company ${organizationId}`, async (tx) => {
+      if (!(await tx.organization.findUnique({ where: { id: organizationId }, select: { id: true } }))) throw new NotFoundException('Company not found');
+      const c = { organizationId } as CompanyContext;
+      const flags = await tx.featureFlag.findMany({ where: { key: { in: [...FEATURES] } }, orderBy: { key: 'asc' } });
+      const overrides = await tx.featureFlagOverride.findMany({ where: { organizationId } });
+      const out = [];
+      for (const f of flags) {
+        const o = overrides.find((x) => x.flagKey === f.key);
+        const on = await featureOn(tx, c, f.key as Feature);
+        const why = on ? null : f.killedAt ? 'Killed for everyone' : o ? (o.isOn ? 'Off in company settings' : 'Off for this company') : f.defaultOn ? 'Off in company settings' : 'Off by default';
+        out.push({ key: f.key, label: f.label, on, why, defaultOn: f.defaultOn, override: o ? o.isOn : null, killed: Boolean(f.killedAt) });
+      }
+      return out;
     });
   }
 
