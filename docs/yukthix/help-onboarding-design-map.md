@@ -156,7 +156,7 @@ The 18 "design only" rows: tours (3), the help drawer's page help, what's new an
 |---|---|---|
 | Help drawer (US-B-100): known issues, raise a ticket, my tickets | Helpdesk, `screens/desk/help.tsx` | **live** on every page (Help in the top bar) |
 | Help centre (HLP-01), knowledge-base articles, assistant "not yet on" | Helpdesk map | live (the Helpdesk map holds its rows) |
-| Shortcut help ("press ?") | Overlays · Dialogs and sheets, `ShortcutHelp` / `useShortcutHelp` (kit) | not mounted in the app (Ctrl K is live) |
+| Shortcut help ("press ?") | Overlays · Dialogs and sheets, `ShortcutHelp` / `useShortcutHelp` (kit) | **live** on every signed-in page (H-3, answer 951) |
 | Table first-use empty state | Data · Table and filters | live (kit `DataTable`) |
 | Notification centre and Approvals inbox empty | Overlays · Notifications and approvals | live |
 | PLT-02 Role home · employee first login (tour) | Platform · Shell & homes, `RoleHomeScreen firstRun` | home is live; the first-run prompt is never turned on |
@@ -307,3 +307,20 @@ version); four tours, at most 3 steps, once per version; retire the drawn duplic
 longest 30 days); a not-found reference; availability states and module switches later with the console and billing; no
 sample data; "press ?" shortcut help on; the set-up hub next, the company wizard after; phone views wait for the mobile app.
 Build H-1 to H-3 now, then H-4 to H-6; H-7 later.
+
+## H-3 built: shortcut help on every page (answer 951; 12 Nov 2026, branch `feat/yukthix-help-h3`)
+- "?" opens Keyboard shortcuts on every page of the signed-in app (`apps/web/app/yx/(app)/layout.tsx`), never while typing
+  in a field or with Ctrl, Alt or ⌘. It is the kit's dialog: focus moves into it, Esc closes it and focus returns.
+- The list is only what works (drawn first in the kit, `SHORTCUT_GROUPS`; stories "Shortcut help · open" and "· without
+  leave or expenses"): Ctrl K (⌘ K) search, N L apply for leave and N E claim an expense (only for people who have those
+  actions, from the palette's own shortcuts), ? and Esc; in lists, after moving to a row, J / K or the arrows, Enter, and
+  Space or X to tick. The drawn A / R approve, G P / G T / G Y go-to, "/" and Ctrl J were never built and are removed.
+- Tests: kit (opens on ?, not while typing or with Ctrl; focus in and Esc closes; no unbuilt shortcut; N L / N E only for
+  those who have them). Manual test MT-HLP-951.
+
+## Founder questions from H-3 (12 Nov 2026)
+
+981. **Go-to keys.** The design's G P / G T / G Y (go to People, Time, Pay) were never built, so the list leaves them out.
+     *Suggested: do not build them; Ctrl K already finds every page.*
+982. **Shortcut help outside the app.** "?" works on the signed-in app only, not on the careers site, the client or vendor
+     portals, the kiosk or the public help centre. *Suggested: keep (those pages have no shortcuts to list).*

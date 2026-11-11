@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, Languages, Laptop, ShieldCheck, UserCheck } from 'lucide-react';
-import { Button, CommandPalette, InlineAlert, NoticeBar, NotificationCentre, ProfileMenu, ScopePicker, Spinner, ToastProvider, useCommandPaletteShortcut } from '@yukthix/ui';
+import { Button, CommandPalette, InlineAlert, NoticeBar, NotificationCentre, ProfileMenu, ScopePicker, ShortcutHelp, shortcutGroups, Spinner, ToastProvider, useCommandPaletteShortcut, useShortcutHelp } from '@yukthix/ui';
 import { useAppearance, type MfaStatus } from '@yukthix/ui/auth';
 import { DesktopFrame, PALETTE_PLACEHOLDER, SCREEN_RAIL, type AreaId } from '@yukthix/ui/frame';
 import type { LegalEntity } from '@yukthix/ui/org';
@@ -91,6 +91,8 @@ function Frame({ children }: { children: React.ReactNode }) {
     }
   };
   useCommandPaletteShortcut(() => setPaletteOpen((o) => !o));
+  // Answer 951: "?" (not while typing) lists the shortcuts that work for this person.
+  const shortcutHelp = useShortcutHelp();
 
   const support = actingSuperAdmin;
   const employee = Boolean(team.data?.managerId);
@@ -296,6 +298,7 @@ function Frame({ children }: { children: React.ReactNode }) {
               }}
             />
             {!support && <DeskHelp open={helpOpen} onOpenChange={setHelpOpen} />}
+            <ShortcutHelp {...shortcutHelp} groups={shortcutGroups(palette.sequences)} />
           </>
         ),
       }}

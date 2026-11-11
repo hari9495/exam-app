@@ -20094,5 +20094,26 @@
       "Screens/Hiring/HIR-27 · Bulk interview-day scheduler"
     ],
     "note": "Positive and negative. Answers 421, 422."
+  },
+  {
+    "id": "MT-HLP-951",
+    "area": "Help and onboarding H-3 (12 Nov 2026)",
+    "screen": "Any page · Keyboard shortcuts",
+    "url": "http://localhost:3000/yx/home",
+    "account": "arjun@ (employee: leave and expenses); admin-tester (System Admin, no employee record).",
+    "steps": [
+      "On Home press ? (not in a field).",
+      "Press Esc.",
+      "Click into the Ctrl K search box or any text field and type ?.",
+      "Press Ctrl + ? (or Ctrl Shift /).",
+      "As arjun@, try every listed shortcut: Ctrl K, N L, N E, and J / K, Enter on a list row.",
+      "Sign in as admin-tester and press ?."
+    ],
+    "expected": "Step 1: 'Keyboard shortcuts' opens with focus inside it. Step 2: it closes and focus returns to the page. Steps 3-4: nothing opens; the ? is typed in the field. Step 5: each listed shortcut works; nothing listed fails. Step 6: no N L or N E in the list.",
+    "stories": [
+      "Overlays/Dialogs and sheets · Shortcut help · open",
+      "Overlays/Dialogs and sheets · Shortcut help · without leave or expenses"
+    ],
+    "note": "Positive and negative."
   }
 ]

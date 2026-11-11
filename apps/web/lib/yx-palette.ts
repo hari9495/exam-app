@@ -135,6 +135,8 @@ export function useYxPalette(o: UseYxPalette) {
   useKeySequences(Object.fromEntries(Object.entries(shortcuts).map(([k, href]) => [k, () => o.go(href)])));
   return {
     groups,
+    /** Answer 951: the two-key shortcuts this person has (for the shortcut help). */
+    sequences: Object.keys(shortcuts),
     loading: search.loading,
     onQueryChange: setTyped,
     reset: () => setTyped(''),
