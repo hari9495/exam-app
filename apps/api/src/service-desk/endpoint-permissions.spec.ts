@@ -70,6 +70,8 @@ describe('every Service Desk endpoint declares a permission (YX-SEC-01)', () => 
 
   it('the console desk needs the staff key; asking for access also needs the support-session key (SD-1.31)', () => {
     expect(Reflect.getMetadata(PERMISSIONS_KEY, ConsoleDeskController.prototype.requestAccess)).toEqual(['platform.support_desk.work', 'platform.support.request']);
+    // Answer 1051: the cross-company Not found look-up is a Support desk key route.
+    expect(Reflect.getMetadata(PERMISSIONS_KEY, ConsoleDeskController.prototype.reference)).toEqual(['platform.support_desk.work']);
     expect(Reflect.getMetadata(PERMISSIONS_KEY, YukthixSupportController.prototype.raise)).toEqual(['org.yukthix_support.raise']);
   });
 

@@ -1,6 +1,7 @@
 import { randomInt } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { platformRead } from '../platform/platform.service';
 
 // Answer 947: a short reference on every Not found answer, that support can look up (who, when, which address). It is
 // written in the asking person's own company with only what they asked for, so it reads the same whether the record is
@@ -44,4 +45,17 @@ export async function mintNotFoundRef(tenantPrisma: TenantPrismaService, ctx: Te
     }
   }
   return null;
+}
+
+/**
+ * Answer 1051: YukthiX staff look a reference up across companies (Console › Support desk). One code can exist in two
+ * companies, so every match is listed: the company, when and the page; never who, and never the record. The read across
+ * companies goes only through platformRead, which audits its purpose.
+ */
+export function lookUpAcrossCompanies(tenantPrisma: TenantPrismaService, staffUserId: string, code: string) {
+  return platformRead(tenantPrisma, staffUserId, `support desk: look up Not found reference ${code}`, async (tx) => {
+    const rows = await tx.notFoundRef.findMany({ where: { code }, orderBy: { createdAt: 'desc' }, take: 20, select: { organizationId: true, createdAt: true, path: true } });
+    const orgs = await tx.organization.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.organizationId))] } }, select: { id: true, name: true } });
+    return rows.map((r) => ({ code, company: orgs.find((o) => o.id === r.organizationId)?.name ?? 'A deleted company', at: r.createdAt.toISOString(), path: r.path }));
+  });
 }

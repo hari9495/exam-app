@@ -26,3 +26,21 @@ export const NotAgent: S = { name: 'Queue · not a support agent', render: () =>
 export const Ticket: S = { name: 'Ticket · Priority Support', render: () => shell(ticket()) };
 export const Asked: S = { name: 'Ticket · access asked', render: () => shell(ticket({ ...DESK_TICKET, session: { id: 's', status: 'requested', hours: 4, startsAt: null, endsAt: null, mine: true, requestedBy: 'You', decidedBy: null, decisionNote: null } })) };
 export const Unlinked: S = { name: 'Ticket · not linked', render: () => shell(ticket(UNLINKED_TICKET)) };
+
+// Answer 1051: staff look up a Not found reference across companies; one code can exist in two.
+export const LookUpReference: S = {
+  name: 'Queue · look up a Not found reference (two companies)',
+  render: () =>
+    shell(
+      <SupportDeskQueueScreen
+        state="ready"
+        rows={QUEUE}
+        show="open"
+        onShow={() => {}}
+        onOpen={() => {}}
+        now={DESK_NOW}
+        onLookUpReference={async () => []}
+        lookUp={{ code: 'NF-7KQ2MP', result: [{ code: 'NF-7KQ2MP', company: 'Kaveri Foods Pvt Ltd', at: '2026-11-11T05:42:00.000Z', path: '/api/v1/people/employees/3f2c9a1e/profile' }, { code: 'NF-7KQ2MP', company: 'Sahyadri Textiles', at: '2026-10-02T10:15:00.000Z', path: '/yx/no-such-page' }] }}
+      />,
+    ),
+};

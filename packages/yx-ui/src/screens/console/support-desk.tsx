@@ -14,6 +14,7 @@ import { Text } from '../../components/foundations';
 import { useRun } from '../org/org-kit';
 import { MessageBody } from '../desk/desk-kit';
 import { ConsolePage, LIFECYCLE_LABEL, productNames, when } from './console-kit';
+import { ReferenceLookupDialog, type NotFoundLookup } from '../ops/reference-lookup';
 import type { Lifecycle, LoadState, SupportStatus } from './types';
 
 // SD-1.31, YukthiX staff: the YukthiX Support desk in the console (US-B-116 … US-B-120, P14 YX-CONSOLE-01 … 05).
@@ -115,11 +116,16 @@ export interface SupportDeskQueueScreenProps {
   onShow: (v: 'open' | 'all') => void;
   onOpen: (id: string) => void;
   now?: Date;
+  /** Answer 1051: look up a Not found reference across companies (company, when, page; never the record). */
+  onLookUpReference?: (code: string) => Promise<NotFoundLookup[]>;
+  /** Stories: the look-up open with this code and result. */
+  lookUp?: { code: string; result: NotFoundLookup[] };
 }
 
 /** Console › Support desk: YukthiX's own support queue. */
 export function SupportDeskQueueScreen(props: SupportDeskQueueScreenProps) {
   const now = props.now ?? new Date();
+  const [lookingUp, setLookingUp] = useState(Boolean(props.lookUp));
   const late = (r: DeskQueueRow) => r.breached || (Boolean(r.dueAt) && new Date(r.dueAt!) < now);
   const columns: TableColumn<DeskQueueRow>[] = [
     { key: 'number', header: 'Ticket', value: (r) => r.number, render: (r) => <span className="yx-ops-mono">{r.number}</span>, width: 110, hideable: false },
@@ -132,7 +138,7 @@ export function SupportDeskQueueScreen(props: SupportDeskQueueScreenProps) {
     { key: 'due', header: 'Reply due', value: (r) => r.dueAt ?? '', render: (r) => (r.dueAt ? late(r) ? <Badge tone="danger">Late · {when(r.dueAt)}</Badge> : when(r.dueAt) : '—'), width: 210 },
   ];
   return (
-    <ConsolePage crumb="Support desk" title="Support desk" description="Companies' tickets with YukthiX. Most urgent first; Priority Support before Standard." state={props.blocked ? 'ready' : props.state} onRetry={props.onRetry} what="the support desk">
+    <ConsolePage crumb="Support desk" title="Support desk" description="Companies' tickets with YukthiX. Most urgent first; Priority Support before Standard." state={props.blocked ? 'ready' : props.state} onRetry={props.onRetry} what="the support desk" actions={props.onLookUpReference && !props.blocked ? <Button onClick={() => setLookingUp(true)}>Look up a reference</Button> : undefined}>
       {props.blocked ? (
         <Blocked message={props.blocked} />
       ) : (
@@ -148,6 +154,7 @@ export function SupportDeskQueueScreen(props: SupportDeskQueueScreenProps) {
           empty={<EmptyState compact title={props.show === 'open' ? 'No open tickets.' : 'No tickets yet.'} description="Tickets companies send from Contact YukthiX appear here." />}
         />
       )}
+      {lookingUp && props.onLookUpReference && <ReferenceLookupDialog onLookUp={props.onLookUpReference} onClose={() => setLookingUp(false)} initialCode={props.lookUp?.code} initialResult={props.lookUp?.result ?? null} />}
     </ConsolePage>
   );
 }

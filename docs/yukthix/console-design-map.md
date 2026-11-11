@@ -503,3 +503,28 @@ console.log('ok');
 1041 to 1060 approved as suggested. Build C-1 (rules engine), C-2 (customer health, alerts, admin messages) and C-3
 (cross-company reference look-up, support-session look-up, design-check for /staff pages) now; then C-4 and C-5; then
 C-6 to C-8.
+
+## C-3 as built (answers 1051, 1052, 1059; branch `feat/yukthix-console-c3`)
+
+- **1051:** Console › Support desk has "Look up a reference". Staff type an NF code (checked: `NF-` and 6 letters or
+  digits, else 400) and see every company that has it, each with the time and the page address; never who saw it and
+  never the record. Route `GET platform/support-desk/references/:code`, behind PlatformStaffGuard (security key) and the
+  Support desk key `platform.support_desk.work` (the "Support agent" key of 1058). The read across companies goes only
+  through `platformRead`, which writes `platform.cross_tenant_read` with the purpose "support desk: look up Not found
+  reference NF-…". An unknown code returns an empty list ("No company has this reference."). At most 20 matches.
+- **1052:** inside a company support session, only `GET /help/not-found/:code` is added to what the session may read
+  (`SUPPORT_READABLE_ROUTES`); What's new, tours, the set-up hub and every write under /help stay refused.
+- **1059:** the design-live guard now also reads `apps/web/app/staff`; the 9 console screens left its not-live list
+  (the change from `fix/design-guard-staff`, commit 1417ce1f2, taken over as is).
+- **Tests:** e2e `console-c3` (6: two companies with one code, audit row, empty and bad codes, company admin, company
+  user and no sign-in refused, the session look-up and refused /help routes); kit support desk and look-up tests; web
+  staff page test; endpoint permission spec.
+
+### Questions (from 1101)
+
+1101. **How many matches.** *Suggested: show at most 20 companies for one code, newest first, as built; a code is 6
+      characters from 32, so two companies sharing one is rare.*
+1102. **Who saw it, for staff.** *Suggested: staff see the company, time and page only, as built; who saw it stays with
+      the company's own Helpdesk look-up (inside a support session staff see it there).*
+1103. **A Support agent key of its own.** *Suggested: keep `platform.support_desk.work` as the Support agent key; give
+      it its own name when the staff roles of 1058 are built.*

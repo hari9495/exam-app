@@ -12,6 +12,7 @@ import ConsoleSupportPage from './(console)/support/page';
 import ConsoleAuditPage from './(console)/audit/page';
 import ConsoleChannelsPage from './(console)/channels/page';
 import ConsoleWhatsNewPage from './(console)/whats-new/page';
+import ConsoleSupportDeskPage from './(console)/support-desk/page';
 import YxSupportAccessPage from '../yx/(app)/settings/support-access/page';
 import { ToastProvider } from '@yukthix/ui';
 
@@ -202,5 +203,21 @@ describe('/yx/settings/support-access (the company)', () => {
     const dialog = await screen.findByRole('dialog');
     await ue.click(within(dialog).getByRole('button', { name: 'Approve for 4 hours' }));
     await waitFor(() => expect(calls).toContain(`POST /support-access/s4/approve ${JSON.stringify({ hours: 4 })}`));
+  });
+});
+
+// Answer 1051: Support desk › Look up a reference asks /platform/support-desk/references/<code>.
+describe('Support desk look-up', () => {
+  it('sends the typed code and lists each company', async () => {
+    route({
+      'GET /platform/support-desk/tickets': [],
+      'GET /platform/support-desk/references/NF-7KQ2MP': [{ code: 'NF-7KQ2MP', company: 'Godavari Agro', at: '2026-11-11T05:42:00.000Z', path: '/yx/no-such-page' }],
+    });
+    wrap(<ConsoleSupportDeskPage />);
+    await ue.click(await screen.findByRole('button', { name: 'Look up a reference' }));
+    await ue.type(screen.getByRole('textbox', { name: /Reference/ }), 'NF-7KQ2MP');
+    await ue.click(screen.getByRole('button', { name: 'Look up' }));
+    expect(await screen.findByText('Godavari Agro')).toBeInTheDocument();
+    expect(calls).toContain('GET /platform/support-desk/references/NF-7KQ2MP');
   });
 });

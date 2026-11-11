@@ -1,8 +1,9 @@
-import { Body, Controller, Delete, Get, Header, Headers, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Header, Headers, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { Tx } from '../org-structure/org-structure.service';
-import { TenantContext } from '@exam-platform/shared';
+import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { lookUpAcrossCompanies, NOT_FOUND_CODE } from '../help/not-found-ref';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
@@ -392,7 +393,19 @@ export class YukthixSupportController {
 @Controller('platform/support-desk')
 @UseGuards(JwtAuthGuard, PlatformStaffGuard, PermissionsGuard)
 export class ConsoleDeskController {
-  constructor(private readonly bridge: SupportBridgeService) {}
+  constructor(
+    private readonly bridge: SupportBridgeService,
+    private readonly tenantPrisma: TenantPrismaService,
+  ) {}
+
+  /** Answer 1051: a Not found reference in every company that has it (company, when, page). */
+  @Get('references/:code')
+  @RequirePermissions('platform.support_desk.work')
+  reference(@CurrentUserId() staff: string, @Param('code') raw: string) {
+    const code = raw.trim().toUpperCase();
+    if (!NOT_FOUND_CODE.test(code)) throw new BadRequestException('Type the reference as shown, like NF-7KQ2MP.');
+    return lookUpAcrossCompanies(this.tenantPrisma, staff, code);
+  }
 
   @Get('tickets')
   @RequirePermissions('platform.support_desk.work')
