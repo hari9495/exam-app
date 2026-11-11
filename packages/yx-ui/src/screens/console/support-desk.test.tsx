@@ -87,3 +87,32 @@ describe('SD-1.31 console support desk', () => {
     await waitFor(() => expect(props.onLink).toHaveBeenCalledWith('a2'));
   });
 });
+
+// Answer 1051: staff look a Not found reference up across companies.
+describe('Support desk · look up a reference', () => {
+  const hits = [
+    { code: 'NF-7KQ2MP', company: 'Kaveri Foods', at: '2026-11-11T05:42:00.000Z', path: '/yx/people/abc' },
+    { code: 'NF-7KQ2MP', company: 'Sahyadri Textiles', at: '2026-10-02T10:15:00.000Z', path: '/yx/no-such-page' },
+  ];
+  it('lists every company that has the code, with the page and no person', async () => {
+    const onLookUpReference = vi.fn().mockResolvedValueOnce(hits).mockResolvedValueOnce([]);
+    render(<SupportDeskQueueScreen state="ready" rows={[]} show="open" onShow={() => {}} onOpen={() => {}} onLookUpReference={onLookUpReference} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Look up a reference' }));
+    await userEvent.type(screen.getByRole('textbox', { name: /Reference/ }), 'nf-7kq2mp');
+    await userEvent.click(screen.getByRole('button', { name: 'Look up' }));
+    expect(onLookUpReference).toHaveBeenCalledWith('NF-7KQ2MP');
+    expect(await screen.findByText('Kaveri Foods')).toBeInTheDocument();
+    expect(screen.getByText('Sahyadri Textiles')).toBeInTheDocument();
+    expect(screen.queryByText('Who')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Look up' }));
+    expect(await screen.findByText('No company has this reference.')).toBeInTheDocument();
+  });
+
+  it('no look-up for staff who are not Support agents, or without the action', () => {
+    const { unmount } = render(<SupportDeskQueueScreen state="ready" blocked="You are not a YukthiX Support agent." rows={[]} show="open" onShow={() => {}} onOpen={() => {}} onLookUpReference={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: 'Look up a reference' })).toBeNull();
+    unmount();
+    render(<SupportDeskQueueScreen state="ready" rows={[]} show="open" onShow={() => {}} onOpen={() => {}} />);
+    expect(screen.queryByRole('button', { name: 'Look up a reference' })).toBeNull();
+  });
+});

@@ -10,8 +10,10 @@ import { DescriptionList } from '../../components/shell';
 export interface NotFoundLookup {
   code: string;
   at: string;
-  /** Who saw it (name or email), or null when the person is gone. */
-  who: string | null;
+  /** Who saw it (name or email), or null when the person is gone. Not given to YukthiX staff (answer 1051). */
+  who?: string | null;
+  /** The company it belongs to: YukthiX staff look across companies, and one code can exist in two (answer 1051). */
+  company?: string;
   /** The page or address they opened, without the query. */
   path: string;
 }
@@ -19,9 +21,10 @@ export interface NotFoundLookup {
 const CODE = /^NF-[A-Z2-9]{6}$/;
 
 /** Support types the reference a person read out from a Not found page and sees who, when and where. */
-export function ReferenceLookupDialog({ onLookUp, onClose, initialCode = '', initialResult = null }: { onLookUp: (code: string) => Promise<NotFoundLookup>; onClose: () => void; initialCode?: string; initialResult?: NotFoundLookup | null }) {
+export function ReferenceLookupDialog({ onLookUp, onClose, initialCode = '', initialResult = null }: { onLookUp: (code: string) => Promise<NotFoundLookup | NotFoundLookup[]>; onClose: () => void; initialCode?: string; initialResult?: NotFoundLookup | NotFoundLookup[] | null }) {
   const [code, setCode] = useState(initialCode);
-  const [found, setFound] = useState<NotFoundLookup | null>(initialResult);
+  const list = (r: NotFoundLookup | NotFoundLookup[] | null) => (r === null ? null : Array.isArray(r) ? r : [r]);
+  const [found, setFound] = useState<NotFoundLookup[] | null>(list(initialResult));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const clean = code.trim().toUpperCase();
@@ -32,7 +35,7 @@ export function ReferenceLookupDialog({ onLookUp, onClose, initialCode = '', ini
     setError(null);
     setFound(null);
     try {
-      setFound(await onLookUp(clean));
+      setFound(list(await onLookUp(clean)));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'We could not look it up.');
     } finally {
@@ -45,7 +48,7 @@ export function ReferenceLookupDialog({ onLookUp, onClose, initialCode = '', ini
       onOpenChange={(o) => !o && onClose()}
       size="sm"
       title="Look up a Not found reference"
-      description="The reference on a Not found page says who saw it, when and on which page. It never says whether the record exists."
+      description="The reference on a Not found page says when and on which page it was seen. It never says whether the record exists."
       notice={error && <InlineAlert tone="danger" title={error} />}
       footer={
         <>
@@ -59,16 +62,19 @@ export function ReferenceLookupDialog({ onLookUp, onClose, initialCode = '', ini
       <FormField id="nf-code" label="Reference" required error={early.errorOf('nf-code')}>
         <TextField value={code} onChange={setCode} placeholder="NF-7KQ2MP" maxLength={12} />
       </FormField>
-      {found && (
+      {found && found.length === 0 && <InlineAlert tone="info" title="No company has this reference." />}
+      {found?.map((f) => (
         <DescriptionList
+          key={`${f.company ?? ''}${f.at}`}
           items={[
-            { label: 'Reference', value: found.code },
-            { label: 'When', value: new Date(found.at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kolkata' }) },
-            { label: 'Who', value: found.who ?? 'A person no longer in the company' },
-            { label: 'Page', value: found.path },
+            ...(f.company !== undefined ? [{ label: 'Company', value: f.company }] : []),
+            { label: 'Reference', value: f.code },
+            { label: 'When', value: new Date(f.at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kolkata' }) },
+            ...(f.who !== undefined ? [{ label: 'Who', value: f.who ?? 'A person no longer in the company' }] : []),
+            { label: 'Page', value: f.path },
           ]}
         />
-      )}
+      ))}
     </Dialog>
   );
 }
