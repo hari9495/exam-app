@@ -312,11 +312,12 @@ export class DevicesService {
   }
 
   /** Takes a kiosk out of use for good (its code can be used again). */
-  revokeKiosk(ctx: TenantContext, user: ScopeUser, id: string) {
+  /** Answer 793: a kiosk taken out of use (lost, stolen, replaced), with the reason. */
+  revokeKiosk(ctx: TenantContext, user: ScopeUser, id: string, reason: string) {
     return this.setup.run(ctx, user, true, async (tx, c) => {
       const k = await this.kiosk(tx, c, id);
-      await tx.timeDevice.update({ where: { id: k.id }, data: { status: 'revoked', tokenHash: null, enrolCodeHash: null, enrolExpiresAt: null, decidedBy: c.userId ?? null, decidedAt: new Date(), version: { increment: 1 } } });
-      await audit(tx, c, 'time.kiosk.revoked', 'time_device', k.id, { code: k.code });
+      await tx.timeDevice.update({ where: { id: k.id }, data: { status: 'revoked', tokenHash: null, enrolCodeHash: null, enrolExpiresAt: null, decidedBy: c.userId ?? null, decidedAt: new Date(), decisionReason: reason, version: { increment: 1 } } });
+      await audit(tx, c, 'time.kiosk.revoked', 'time_device', k.id, { code: k.code, reason });
       return { id: k.id };
     });
   }

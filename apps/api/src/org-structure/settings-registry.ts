@@ -31,6 +31,8 @@ export interface SettingDef {
 
 /** Half-hour times for the visitor hours settings (05:00 to 23:30). */
 const HOURS = Array.from({ length: 38 }, (_, i) => `${String(5 + Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`);
+// Answer 791: visitor hours over the whole day; "until" may be midnight (kept as 24:00, shown 00:00).
+const DAY_HOURS = Array.from({ length: 48 }, (_, i) => `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`);
 
 export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // HLP-04 (founder 3 Nov 2026): how often a published help article is checked again (YX-GRO-07). Desk set-up › Settings.
@@ -320,8 +322,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // Answer 603: off by default; per location the ID type and last 4, or also a photo of the ID (deleted after the ID retention).
   'visitors.id_capture': { label: 'Visitors: capture ID proof (type and last 4 only)', scopes: ['tenant', 'location'], dated: false, values: ['off', 'on', 'with_image'], default: 'off', labels: { off: 'Off', on: 'ID type and last 4', with_image: 'ID type, last 4 and a photo of the ID' } },
   'visitors.photo': { label: 'Visitors: capture a photo', scopes: ['tenant', 'location'], dated: false, values: ['on', 'off'], default: 'on' },
-  'visitors.hours_from': { label: 'Visitors: allowed from', scopes: ['tenant', 'location'], dated: false, values: HOURS, default: '09:00' },
-  'visitors.hours_to': { label: 'Visitors: allowed until', scopes: ['tenant', 'location'], dated: false, values: HOURS, default: '18:30' },
+  'visitors.hours_from': { label: 'Visitors: allowed from', scopes: ['tenant', 'location'], dated: false, values: DAY_HOURS, default: '09:00' },
+  'visitors.hours_to': { label: 'Visitors: allowed until', scopes: ['tenant', 'location'], dated: false, values: [...DAY_HOURS.slice(1), '24:00'], labels: { '24:00': '00:00 (midnight)' }, default: '18:30' },
+  'visitors.all_day': { label: 'Visitors: allowed all day', scopes: ['tenant', 'location'], dated: false, values: ['off', 'on'], default: 'off' },
   'visitors.notice': { label: 'Visitors: notice shown before entry', scopes: ['tenant', 'location'], dated: false, values: [], default: 'Please wear your visitor badge at all times, follow the safety signs and your host, and hand in your badge when you leave. In an emergency, go to the assembly point and stay with your host.', text: { maxLength: 1000 } },
   'visitors.badge': { label: 'Visitors: badge', scopes: ['tenant', 'location'], dated: false, values: ['name_qr', 'photo_qr', 'phone_only'], default: 'name_qr', labels: { name_qr: 'Name badge with QR', photo_qr: 'Photo badge with QR', phone_only: 'Pass on the phone only' } },
   'visitors.retention_days': { label: 'Visitors: keep visit records for (days)', scopes: ['tenant', 'location'], dated: false, values: ['30', '60', '90', '180', '365', '730'], default: '90' },

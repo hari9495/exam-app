@@ -12,13 +12,16 @@ live page cannot reach yet (the reason is given).
 
 | | live | feature not built | phone view | gap |
 |---|---|---|---|---|
-| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 113 | 0 | 19 | 0 |
+| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 114 | 0 | 19 | 0 |
 | Leave (TIM-17…25) | 48 | 0 | 11 | 0 |
 | Set-up (TIM-26…29, 31, 42) | 36 | 0 | 0 | 0 |
 | Rosters and shifts (TIM-05, 06, 08, 34, 35, 38…41) | 46 | 0 | 10 | 0 |
 | Overtime, periods, reports, timesheets (TIM-09, 11, 15, 16, 30, 37, 43) | 49 | 0 | 3 | 0 |
 | Field force (TIM-32, 33) | 7 | 0 | 9 | 0 |
-| **All 45 design groups (351 sub-pages counted)** | **299** | **0** | **52** | **0** |
+| **All 45 design groups (352 sub-pages counted)** | **300** | **0** | **52** | **0** |
+
+11 Nov 2026 (branch `feat/yukthix-visitors-walk-answers`, Visitors walk answer 793): TIM-14 gains 1 story (Kiosks · revoke a kiosk with
+the reason), live: Attendance 113 → 114, All 299 → 300 live, 352 sub-pages.
 
 4 Nov 2026 (branch `feat/yukthix-hlp-12`, HLP-12 founder answer 62): TIM-28 gains 1 story (No injury leave type yet · Add
 injury leave), live: Set-up 35 → 36, All 298 → 299 live, 351 sub-pages.
@@ -347,6 +350,7 @@ Live at /yx/kiosk (outside the app shell; set up with HR's one-time key). Small 
 | Binds · New device requests | /yx/time/setup/devices, New device requests tab (renamed 3 Nov 2026, founder answer 2): approve (the old phone is signed out in the same step) or reject with a reason |
 | Phones · Employee devices | /yx/time/setup/devices, Employee devices tab (renamed 3 Nov 2026; phones and computers; inactive: not seen for 30 days) |
 | SignOut · Remote sign-out | /yx/time/setup/devices → Sign out remotely / Sign out phone: the phone stops and every sign-in of the person ends |
+| Revoke · Kiosks · revoke a kiosk with the reason (793) (new story, 11 Nov 2026) | /yx/time/setup/devices, Kiosks: Revoke on each row asks for the reason (required; "Give the reason" otherwise, nothing sent); `POST /time/devices/kiosks/:id/revoke` with `{ reason }` (leave.settings.manage; 409 when already revoked); the tablet's key stops at once, the kiosk leaves the list, the reason is kept on the device and in the audit (`time.kiosk.revoked`); toast |
 | SystemAdmin | /yx/time/setup/devices: the Entity column shows when the company has more than one legal entity (set-up is company-wide) |
 | Empty | /yx/time/setup/devices with no kiosks: "No kiosks registered" |
 | Loading | /yx/time/setup/devices while loading |

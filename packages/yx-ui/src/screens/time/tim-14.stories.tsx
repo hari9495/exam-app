@@ -14,6 +14,7 @@ export const ComputerRequest: S = { name: 'Computers · new computer request', a
 export const ComputerRemove: S = { name: "Computers · remove a computer's approval", args: { tab: 'phones', removeComputer: true } };
 // Founder answer 1 (3 Nov 2026): the rule's switch for the company and the places with their own.
 export const WebRule: S = { name: 'Computers · web clock-in rule', args: { webRule: true } };
+export const Revoke: S = { name: 'Kiosks · revoke a kiosk with the reason (793)', args: { revoke: true } };
 export const SystemAdmin: S = { name: 'System Admin', args: { persona: 'sa' } };
 export const Training: S = { name: 'Training · sessions', args: { tab: 'training' } };
 export const TrainingAdd: S = { name: 'Training · add a session', args: { tab: 'training', training: { form: 'new' } } };

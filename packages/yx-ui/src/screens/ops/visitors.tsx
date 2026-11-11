@@ -112,7 +112,7 @@ export interface VisitorDeskProps {
   visits: Visit[];
   today: Date;
   state?: ListState;
-  tab?: 'expected' | 'onsite' | 'out';
+  tab?: 'expected' | 'onsite' | 'out' | 'declined';
   checkInId?: string | null;
   blockedAlert?: boolean;
   /** Story: the "Scan QR pass" dialog open. */
@@ -178,7 +178,9 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
   const groups = {
     expected: visits.filter((v) => v.status === 'Expected' || v.status === 'Waiting for host' || v.status === 'Blocked'),
     onsite: visits.filter((v) => v.status === 'On site'),
-    out: visits.filter((v) => v.status === 'Checked out' || v.status === 'Not checked out' || v.status === 'Rejected'),
+    out: visits.filter((v) => v.status === 'Checked out' || v.status === 'Not checked out'),
+    // Answer 797: a walk-in the host (or reception) declined never came in: counted on its own, not as checked out.
+    declined: visits.filter((v) => v.status === 'Rejected'),
   };
   const visit = view ? visitOf(view) : visits.find((v) => v.id === checkIn);
   const waiting = visits.find((v) => v.status === 'Waiting for host');
@@ -291,7 +293,7 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
   // Answer 605: reception sees only that the visit can't go ahead, never the watch-list or its reason.
   const stopNames = Array.from(new Set([...(live ? visits.filter((v) => v.status === 'Blocked').map((v) => v.name) : blockedAlert ? ['Manish Gupta'] : []), ...(stopped ? [stopped] : [])]));
   const place = live ? (live.locations.find((l) => l.value === live.locationId)?.label ?? '') : 'Chennai office';
-  const facts = `${groups.expected.length} expected · ${groups.onsite.length} on site · ${groups.out.length} checked out`;
+  const facts = `${groups.expected.length} expected · ${groups.onsite.length} on site · ${groups.out.length} checked out${groups.declined.length ? ` · ${groups.declined.length} declined` : ''}`;
   const body = (
     <>
       {error && !checkIn && !finding && <InlineAlert tone="danger" title="Not done">{error}</InlineAlert>}
@@ -323,10 +325,16 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
           <TabsTrigger value="out" count={groups.out.length}>
             Checked out
           </TabsTrigger>
+          {groups.declined.length > 0 && (
+            <TabsTrigger value="declined" count={groups.declined.length}>
+              Declined
+            </TabsTrigger>
+          )}
         </TabsList>
         <TabsContent value="expected">{table(groups.expected, 'Expected visitors')}</TabsContent>
         <TabsContent value="onsite">{table(groups.onsite, 'Visitors on site now')}</TabsContent>
         <TabsContent value="out">{table(groups.out, 'Checked-out visitors')}</TabsContent>
+        <TabsContent value="declined">{table(groups.declined, 'Declined walk-ins')}</TabsContent>
       </Tabs>
       <Dialog
         open={finding}
@@ -914,7 +922,7 @@ function DrawnVisitorKiosk({ step, visit, today }: { step: KioskStep; visit: Vis
   ].filter(Boolean) as { fieldId: string; message: string }[]);
   return (
     <KioskFrame tenant="Kaveri Foods · Chennai office">
-      <div className="yx-ops-kiosk">
+      <div className={step === 'details' ? 'yx-ops-kiosk yx-ops-kiosk--wide' : 'yx-ops-kiosk'}>
         {step === 'welcome' && (
           <>
             <h1 className="yx-ops-kiosk__title">Welcome. Please check in.</h1>
@@ -943,21 +951,37 @@ function DrawnVisitorKiosk({ step, visit, today }: { step: KioskStep; visit: Vis
         {step === 'details' && (
           <>
             <h1 className="yx-ops-kiosk__title">Tell us who you are</h1>
-            <FormField label="Your name" required>
-              <TextField defaultValue="Priyanka Sethi" />
-            </FormField>
-            <FormField label="Mobile" required>
-              <TextField inputMode="tel" prefix="+91" defaultValue="98110 44319" />
-            </FormField>
-            <FormField label="Company" optional>
-              <TextField defaultValue="Fairview Auditors LLP" />
-            </FormField>
-            <FormField label="You are visiting as" optional>
-              <Select aria-label="You are visiting as" value="contractor" onChange={() => {}} options={[{ value: 'customer', label: 'Customer' }, { value: 'contractor', label: 'Contractor' }, { value: 'auditor', label: 'Food safety auditor' }]} />
-            </FormField>
-            <FormField label="Who are you meeting?" required>
-              <TextField defaultValue="Anita Desai" />
-            </FormField>
+            {/* Answer 799: two columns on a wide screen, so the step fits 1278 x 635 with the ID fields showing. */}
+            <FieldRow>
+              <FormField label="Your name" required>
+                <TextField defaultValue="Priyanka Sethi" />
+              </FormField>
+              <FormField label="Mobile" required>
+                <TextField inputMode="tel" prefix="+91" defaultValue="98110 44319" />
+              </FormField>
+            </FieldRow>
+            <FieldRow>
+              <FormField label="Company" optional>
+                <TextField defaultValue="Fairview Auditors LLP" />
+              </FormField>
+              <FormField label="You are visiting as" optional>
+                <Select aria-label="You are visiting as" value="contractor" onChange={() => {}} options={[{ value: 'customer', label: 'Customer' }, { value: 'contractor', label: 'Contractor' }, { value: 'auditor', label: 'Food safety auditor' }]} />
+              </FormField>
+            </FieldRow>
+            <FieldRow>
+              <FormField label="Who are you meeting?" required>
+                <TextField defaultValue="Anita Desai" />
+              </FormField>
+              <Checkbox checked={false} onChange={() => {}} label="I am under 18" description="You come in with an adult. No photo and no ID are taken." />
+            </FieldRow>
+            <FieldRow>
+              <FormField label="ID you have with you" required>
+                <Select aria-label="ID you have with you" value="driving_licence" onChange={() => {}} options={ID_CHOICES} />
+              </FormField>
+              <FormField label="Last 4 characters of its number" required helper="Never the full number.">
+                <TextField defaultValue="4417" />
+              </FormField>
+            </FieldRow>
             <Actions end>
               <Button>Back</Button>
               <Button variant="primary">Next</Button>

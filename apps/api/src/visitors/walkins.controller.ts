@@ -64,6 +64,8 @@ class NeedsDto {
   @IsOptional() @IsUUID() typeId?: string | null;
   @trim() @IsString() @MaxLength(20) mobile!: string;
   @IsOptional() @trim() @IsString() @MaxLength(200) company?: string | null;
+  /** Answer 800: the kiosk sends the name so the watch-list is checked before any photo is taken. */
+  @IsOptional() @trim() @IsString() @MaxLength(200) name?: string;
 }
 
 class TypeRowDto {

@@ -6,7 +6,7 @@ import { PreRegisterScreen, VisitorDeskScreen, VisitorKioskScreen } from './visi
 import type { VisitView } from './visitors-data';
 import type { KioskNeeds, LiveVisitorKiosk } from './visitor-kiosk';
 import { SETTINGS_GROUPS } from '../settings/settings-groups';
-import { visitorSettingsPage, visitorTypesFromRows, type VisitorSettingsData, type VisitorTypesData } from '../settings/visitors-live';
+import { visitorSettingsChanges, visitorSettingsPage, visitorTypesFromRows, type VisitorSettingsData, type VisitorTypesData } from '../settings/visitors-live';
 
 // Visitors slice 2 (answers 601, 602, 604, 606, 610): the visitor kiosk, walk-ins and deciding at the desk, the host's
 // approval card, visitor types on Settings 3.12. Positive and negative.
@@ -43,7 +43,7 @@ describe('VIS-03 kiosk (live)', () => {
     await ue.type(screen.getByLabelText(/^Who are you meeting/), 'Anita Desai');
     await ue.click(screen.getByRole('button', { name: 'Next' }));
     expect(await screen.findByText('Before you enter')).toBeInTheDocument();
-    expect(live.needs).toHaveBeenCalledWith({ typeId: null, mobile: '9811044319', company: 'Fairview' });
+    expect(live.needs).toHaveBeenCalledWith({ typeId: null, mobile: '9811044319', company: 'Fairview', name: 'Priyanka Sethi' });
     expect(screen.getByText(/Keep it confidential/)).toBeInTheDocument();
     await ue.click(screen.getByRole('checkbox', { name: 'I have read and accept the visitor notice' }));
     await ue.click(screen.getByRole('button', { name: 'Accept and continue' }));
@@ -198,6 +198,47 @@ describe('VIS-03 kiosk camera (walk-through 11 Nov 2026)', () => {
   });
 });
 
+describe('Visitors walk answers 800 and 797', () => {
+  it('800: a watch-listed walk-in is sent to reception right after the details; the camera never starts; no walk-in', async () => {
+    const getUserMedia = vi.fn();
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia } });
+    const live = kiosk({ info: { company: 'Kaveri Foods', location: 'Chennai office', open: true, photo: true, retentionDays: 90, types: [] }, needs: vi.fn(async () => ({ state: 'see-reception' as const })) });
+    show(<VisitorKioskScreen visit={SAMPLE} today={TODAY} live={live} />);
+    await ue.click(screen.getByRole('button', { name: "I don't have a pass" }));
+    await ue.type(screen.getByLabelText(/^Your name/), 'Manish Gupta');
+    await ue.type(screen.getByLabelText(/^Mobile/), '9000080102');
+    await ue.type(screen.getByLabelText(/^Who are you meeting/), 'Anita');
+    await ue.click(screen.getByRole('button', { name: /^Next$/ }));
+    expect(await screen.findByText('Please see the reception desk')).toBeInTheDocument();
+    expect(live.needs).toHaveBeenCalledWith(expect.objectContaining({ name: 'Manish Gupta' }));
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(screen.queryByText('Look at the camera')).toBeNull();
+    expect(live.walkIn).not.toHaveBeenCalled();
+  });
+  it('800 (negative): someone not on the list goes on to the photo', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: vi.fn(() => new Promise(() => undefined)) } });
+    const live = kiosk({ info: { company: 'Kaveri Foods', location: 'Chennai office', open: true, photo: true, retentionDays: 90, types: [] } });
+    show(<VisitorKioskScreen visit={SAMPLE} today={TODAY} live={live} />);
+    await ue.click(screen.getByRole('button', { name: "I don't have a pass" }));
+    await ue.type(screen.getByLabelText(/^Your name/), 'Rekha Shah');
+    await ue.type(screen.getByLabelText(/^Mobile/), '9000080102');
+    await ue.type(screen.getByLabelText(/^Who are you meeting/), 'Anita');
+    await ue.click(screen.getByRole('button', { name: /^Next$/ }));
+    expect(await screen.findByText('Look at the camera')).toBeInTheDocument();
+  });
+  it('797: a declined walk-in is counted as declined, not as checked out', () => {
+    const live = desk({ visits: [v({ id: 'd1', name: 'Rohit Menon', status: 'declined', statusText: 'Rejected' }), v({ id: 'o1', name: 'Kiran Rao', status: 'checked_out', statusText: 'Checked out', checkedInAt: '2026-11-12T08:31:00Z', checkedOutAt: '2026-11-12T09:10:00Z' })] });
+    show(<VisitorDeskScreen visits={[]} today={TODAY} live={live} />);
+    expect(screen.getByText(/1 checked out · 1 declined/)).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Declined/ })).toBeInTheDocument();
+  });
+  it('797 (negative): with none declined there is no declined tab or count', () => {
+    show(<VisitorDeskScreen visits={[]} today={TODAY} live={desk({ visits: [v({ id: 'o1', status: 'checked_out', statusText: 'Checked out', checkedInAt: '2026-11-12T08:31:00Z', checkedOutAt: '2026-11-12T09:10:00Z' })] })} />);
+    expect(screen.queryByRole('tab', { name: /Declined/ })).toBeNull();
+    expect(screen.queryByText(/declined/)).toBeNull();
+  });
+});
+
 describe('VIS-01 Decide now on each waiting row (walk-through 11 Nov 2026)', () => {
   it('each walk-in past its host time has Decide now for itself; one still in its host time has none', async () => {
     const past = new Date(Date.now() - 60_000).toISOString();
@@ -288,6 +329,27 @@ describe('VIS-02 the host approval card (live)', () => {
     expect(screen.getByText('A walk-in is asking for you')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
     expect(live.approvals.photo).not.toHaveBeenCalled();
+  });
+});
+
+describe('Settings 3.12: answers 791 and 794 (live)', () => {
+  const design = SETTINGS_GROUPS.flatMap((g) => g.pages).find((p) => p.id === '3.12')!;
+  it('791: all day is a toggle; until midnight reads "00:00 (midnight)"; both save as company settings', () => {
+    const data: VisitorSettingsData = { canEdit: true, values: { 'visitors.all_day': 'off', 'visitors.hours_from': '09:00', 'visitors.hours_to': '24:00' }, defaults: { 'visitors.all_day': 'off', 'visitors.hours_from': '09:00', 'visitors.hours_to': '18:30' }, choices: { 'visitors.hours_from': ['00:00', '09:00'], 'visitors.hours_to': ['18:30', '24:00'] }, labels: { 'visitors.hours_to': { '24:00': '00:00 (midnight)' } }, overrides: {}, lastChange: null };
+    const all = visitorSettingsPage(design, data).sections.flatMap((s) => s.settings);
+    expect(all.find((s) => s.key === 'vis.all_day')).toMatchObject({ kind: 'toggle', value: false, starter: true });
+    expect(all.find((s) => s.key === 'vis.hours_to')).toMatchObject({ kind: 'select', value: '24:00', optionLabels: { '24:00': '00:00 (midnight)' } });
+    expect(all.find((s) => s.key === 'vis.hours_from')!.options).toContain('00:00');
+    expect(visitorSettingsChanges({ 'vis.all_day': true })).toEqual([{ key: 'visitors.all_day', value: 'on' }]);
+  });
+  it('794: rows are matched to types by name, so removing one in the middle keeps the others; archived ones are named', () => {
+    const types: VisitorTypesData = { archived: ['Vendor demo'], types: [{ id: 'a', name: 'Customer', escort: false, ndaPolicyId: null, nda: null, inductionPolicyId: null, induction: null }, { id: 'b', name: 'Supplier', escort: false, ndaPolicyId: null, nda: null, inductionPolicyId: null, induction: null }, { id: 'c', name: 'Contractor', escort: true, ndaPolicyId: null, nda: null, inductionPolicyId: null, induction: null }], policies: [] };
+    expect(visitorTypesFromRows([['Customer', 'No', 'No', 'No'], ['Contractor', 'Yes', 'No', 'No']], types).map((r) => r.id)).toEqual(['a', 'c']);
+    const data: VisitorSettingsData = { canEdit: true, values: {}, defaults: {}, choices: {}, labels: {}, overrides: {}, lastChange: null };
+    const list = visitorSettingsPage(design, data, types).sections.flatMap((s) => s.settings).find((s) => s.key === 'vis.types')!;
+    expect(list.helper).toMatch(/A type visits used is archived/);
+    expect(list.helper).toMatch(/Archived: Vendor demo\./);
+    expect(visitorSettingsPage(design, data, { ...types, archived: [] }).sections.flatMap((s) => s.settings).find((s) => s.key === 'vis.types')!.helper).not.toMatch(/Archived:/);
   });
 });
 

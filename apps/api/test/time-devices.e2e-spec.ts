@@ -177,8 +177,9 @@ describe('Time devices and kiosks', () => {
     await kiosk(second, 'get', '/me').expect(200);
     await api('hrAdmin', 'post', `/time/devices/kiosks/${res.body.id}/reset`).expect(200);
     await kiosk(second, 'get', '/me').expect(401);
-    await api('hrAdmin', 'post', `/time/devices/kiosks/${res.body.id}/revoke`).expect(200);
-    await api('hrAdmin', 'post', `/time/devices/kiosks/${res.body.id}/revoke`).expect(409);
+    await api('hrAdmin', 'post', `/time/devices/kiosks/${res.body.id}/revoke`).send({}).expect(400); // answer 793: the reason is required
+    await api('hrAdmin', 'post', `/time/devices/kiosks/${res.body.id}/revoke`).send({ reason: 'Tablet stolen' }).expect(200);
+    await api('hrAdmin', 'post', `/time/devices/kiosks/${res.body.id}/revoke`).send({ reason: 'Tablet stolen' }).expect(409);
   });
 
   // ------------------------------------------------------------------------------------------ sign-in at the kiosk (TIM-13)
@@ -527,7 +528,7 @@ describe('Time devices and kiosks', () => {
   });
 
   it('a revoked kiosk stops at once', async () => {
-    await api('hrAdmin', 'post', `/time/devices/kiosks/${kioskId}/revoke`).expect(200);
+    await api('hrAdmin', 'post', `/time/devices/kiosks/${kioskId}/revoke`).send({ reason: 'Replaced by a new tablet' }).expect(200);
     await kiosk(kioskToken, 'get', '/me').expect(401);
     await kiosk(kioskToken, 'post', '/identify').send({ method: 'pin', code: codes.emp, pin: '4071' }).expect(401);
   });

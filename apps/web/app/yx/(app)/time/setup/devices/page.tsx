@@ -22,6 +22,7 @@ export default function YxTimeDevicesPage() {
         data: devices.data ?? null,
         onRegister: (input) => write<KioskKey>('/devices/kiosks', 'POST', input),
         onReset: (kid) => write<KioskKey>(`/devices/kiosks/${id(kid)}/reset`, 'POST'),
+        onRevoke: (kid, reason) => write(`/devices/kiosks/${id(kid)}/revoke`, 'POST', { reason }),
         onApprove: (rid) => write(`/devices/phones/${id(rid)}/approve`, 'POST'),
         onRefuse: (rid, reason) => write(`/devices/phones/${id(rid)}/refuse`, 'POST', { reason }),
         onSignOut: (pid) => write(`/devices/phones/${id(pid)}/sign-out`, 'POST'),

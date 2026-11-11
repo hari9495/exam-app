@@ -20,9 +20,10 @@ async function doc(tx: Tx, org: string, policyId: string | null): Promise<Doc | 
   return { policyId, versionId: ver.id, title: pol.title, text: policyText(ver.bodyHtml), sha: ver.bodySha256 ?? createHash('sha256').update(ver.bodyHtml).digest('hex') };
 }
 
-export async function visitNeeds(tx: Tx, c: CompanyContext, setting: (key: 'visitors.notice', locationId: string) => Promise<string>, locationId: string, typeId: string | null, mobile: string | null, company: string | null): Promise<Needs> {
+export async function visitNeeds(tx: Tx, c: CompanyContext, setting: (key: 'visitors.notice', locationId: string) => Promise<string>, locationId: string, typeId: string | null, mobile: string | null, company: string | null, newVisit = false): Promise<Needs> {
   const text = (await setting('visitors.notice', locationId)).trim();
-  const type = typeId ? await tx.visitorType.findFirst({ where: { organizationId: c.organizationId, id: typeId } }) : null;
+  // Answer 794: an archived type stays on its old visits; a new visit cannot take it.
+  const type = typeId ? await tx.visitorType.findFirst({ where: { organizationId: c.organizationId, id: typeId, ...(newVisit ? { archivedAt: null } : {}) } }) : null;
   if (typeId && !type) throw new NotFoundException('Visitor type not found.');
   let nda = await doc(tx, c.organizationId, type?.ndaPolicyId ?? null);
   if (nda && mobile) {

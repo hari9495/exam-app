@@ -12915,6 +12915,8 @@ model VisitorType {
   updatedBy         String?  @map("updated_by") @db.Uuid
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  /// Answer 794: in use when taken off the list: kept for its visits, hidden from new ones.
+  archivedAt        DateTime? @map("archived_at") @db.Timestamptz(3)
 
   @@map("visitor_types")
 }

@@ -10,6 +10,7 @@ type S = StoryObj;
 export const Expected: S = { name: 'Expected · walk-in waiting for host', render: () => <VisitorDeskScreen visits={VISITS} today={TODAY} /> };
 export const OnSite: S = { name: 'On site now (emergency list)', render: () => <VisitorDeskScreen visits={VISITS} today={TODAY} tab="onsite" /> };
 export const CheckedOut: S = { name: 'Checked out', render: () => <VisitorDeskScreen visits={VISITS} today={TODAY} tab="out" /> };
+export const Declined: S = { name: 'Declined walk-ins counted on their own (797)', render: () => <VisitorDeskScreen visits={[...VISITS, { ...VISITS.find((v) => v.status === 'Checked out')!, id: 'v-dec', name: 'Rohit Menon', company: 'Freelance', status: 'Rejected', checkIn: undefined, checkOut: undefined, badge: undefined }]} today={TODAY} tab="declined" /> };
 export const CheckIn: S = { name: 'Check in · notice and badge', render: () => <VisitorDeskScreen visits={VISITS} today={TODAY} checkInId="v1" /> };
 // Visitors slice 3: the location keeps a photo of the ID (answer 603; never of an Aadhaar card), and a visitor under 18 (614).
 export const CheckInIdPhoto: S = { name: 'Check in · ID type, last 4 and photo of the ID', render: () => <VisitorDeskScreen visits={VISITS} today={TODAY} checkInId="v1" idCapture="with_image" /> };

@@ -7,7 +7,7 @@ import { QrCode, UserPlus } from 'lucide-react';
 import { KioskFrame } from '../_kit/frames';
 import { Button } from '../../components/button';
 import { InlineAlert } from '../../components/feedback';
-import { FormField, useTooEarly } from '../../components/field';
+import { FieldRow, FormField, useTooEarly } from '../../components/field';
 import { TextField } from '../../components/inputs';
 import { Checkbox } from '../../components/choice';
 import { Select } from '../../components/select';
@@ -53,7 +53,8 @@ export interface LiveVisitorKiosk {
   state: 'loading' | 'ready' | 'error';
   onRetry: () => void;
   info: { company: string; location: string; open: boolean; photo: boolean; retentionDays: number; types: Choice[]; idCapture?: 'off' | 'on' | 'with_image' } | null;
-  needs: (q: { typeId: string | null; mobile: string; company: string | null }) => Promise<KioskNeeds>;
+  /** Answer 800: asked right after the details, with the name: the watch-list answers see-reception before any photo. */
+  needs: (q: { typeId: string | null; mobile: string; company: string | null; name: string }) => Promise<KioskNeeds | { state: 'see-reception' }>;
   walkIn: (input: KioskWalkInInput) => Promise<KioskResult>;
   status: (id: string) => Promise<KioskResult>;
   pass: (code: string) => Promise<KioskResult>;
@@ -194,10 +195,13 @@ export function LiveVisitorKioskView({ live }: { live: LiveVisitorKiosk }) {
     return () => clearTimeout(t);
   }, [step]);
 
-  const toNotice = () =>
+  // Answer 800: the details go to the server first; someone on the watch-list is sent to reception before any photo.
+  const afterDetails = () =>
     void run(async () => {
-      setNeeds(await live.needs({ typeId: d.typeId, mobile: d.mobile.trim(), company: d.company.trim() || null }));
-      setStep('notice');
+      const n = await live.needs({ typeId: d.typeId, mobile: d.mobile.trim(), company: d.company.trim() || null, name: d.name.trim() });
+      if ('state' in n) return setStep('see-reception');
+      setNeeds(n);
+      setStep(info?.photo && !d.minor ? 'photo' : 'notice');
     });
   const accept = () => {
     if (noticeEarly.stop() || !needs) return;
@@ -214,7 +218,7 @@ export function LiveVisitorKioskView({ live }: { live: LiveVisitorKiosk }) {
 
   return (
     <KioskFrame tenant={info ? `${info.company} · ${info.location}` : 'Visitor kiosk'}>
-      <div className="yx-ops-kiosk">
+      <div className={step === 'details' && !closed ? 'yx-ops-kiosk yx-ops-kiosk--wide' : 'yx-ops-kiosk'}>
         {error && <InlineAlert tone="danger" title="Not done">{error}</InlineAlert>}
         {live.state === 'loading' && <p className="yx-ops-kiosk__lead">Getting ready…</p>}
         {live.state === 'error' && (
@@ -270,42 +274,51 @@ export function LiveVisitorKioskView({ live }: { live: LiveVisitorKiosk }) {
             {step === 'details' && (
               <>
                 <h1 className="yx-ops-kiosk__title">Tell us who you are</h1>
-                <FormField id="vk-name" label="Your name" required error={detailsEarly.errorOf('vk-name')}>
-                  <TextField value={d.name} onChange={(name) => setD({ ...d, name })} maxLength={200} autoComplete="off" />
-                </FormField>
-                <FormField id="vk-mobile" label="Mobile" required error={detailsEarly.errorOf('vk-mobile')}>
-                  <TextField inputMode="tel" prefix="+91" value={d.mobile} onChange={(mobile) => setD({ ...d, mobile })} maxLength={16} autoComplete="off" />
-                </FormField>
-                <FormField id="vk-company" label="Company" optional>
-                  <TextField value={d.company} onChange={(company) => setD({ ...d, company })} maxLength={200} autoComplete="off" />
-                </FormField>
-                {info.types.length > 0 && (
-                  <FormField id="vk-type" label="You are visiting as" optional>
-                    <Select aria-label="You are visiting as" value={d.typeId} onChange={(typeId) => setD({ ...d, typeId })} options={info.types} placeholder="Choose" />
+                {/* Answer 799: two columns on a wide screen (one on a narrow one), so it fits with the ID fields showing. */}
+                <FieldRow>
+                  <FormField id="vk-name" label="Your name" required error={detailsEarly.errorOf('vk-name')}>
+                    <TextField value={d.name} onChange={(name) => setD({ ...d, name })} maxLength={200} autoComplete="off" />
                   </FormField>
-                )}
-                <FormField id="vk-host" label="Who are you meeting?" required error={detailsEarly.errorOf('vk-host')}>
-                  <TextField value={d.host} onChange={(h) => setD({ ...d, host: h })} maxLength={200} autoComplete="off" />
-                </FormField>
-                <Checkbox id="vk-minor" checked={d.minor} onChange={(minor) => setD({ ...d, minor })} label="I am under 18" description="You come in with an adult. No photo and no ID are taken." />
-                {d.minor && (
-                  <FormField id="vk-adult" label="The adult with you" required error={detailsEarly.errorOf('vk-adult')}>
-                    <TextField value={d.adult} onChange={(adult) => setD({ ...d, adult })} maxLength={200} autoComplete="off" />
+                  <FormField id="vk-mobile" label="Mobile" required error={detailsEarly.errorOf('vk-mobile')}>
+                    <TextField inputMode="tel" prefix="+91" value={d.mobile} onChange={(mobile) => setD({ ...d, mobile })} maxLength={16} autoComplete="off" />
                   </FormField>
-                )}
+                </FieldRow>
+                <FieldRow>
+                  <FormField id="vk-company" label="Company" optional>
+                    <TextField value={d.company} onChange={(company) => setD({ ...d, company })} maxLength={200} autoComplete="off" />
+                  </FormField>
+                  {info.types.length > 0 && (
+                    <FormField id="vk-type" label="You are visiting as" optional>
+                      <Select aria-label="You are visiting as" value={d.typeId} onChange={(typeId) => setD({ ...d, typeId })} options={info.types} placeholder="Choose" />
+                    </FormField>
+                  )}
+                </FieldRow>
+                <FieldRow>
+                  <FormField id="vk-host" label="Who are you meeting?" required error={detailsEarly.errorOf('vk-host')}>
+                    <TextField value={d.host} onChange={(h) => setD({ ...d, host: h })} maxLength={200} autoComplete="off" />
+                  </FormField>
+                  {d.minor ? (
+                    <FormField id="vk-adult" label="The adult with you" required error={detailsEarly.errorOf('vk-adult')}>
+                      <TextField value={d.adult} onChange={(adult) => setD({ ...d, adult })} maxLength={200} autoComplete="off" />
+                    </FormField>
+                  ) : (
+                    <Checkbox id="vk-minor" checked={d.minor} onChange={(minor) => setD({ ...d, minor })} label="I am under 18" description="You come in with an adult. No photo and no ID are taken." />
+                  )}
+                </FieldRow>
+                {d.minor && <Checkbox id="vk-minor" checked={d.minor} onChange={(minor) => setD({ ...d, minor })} label="I am under 18" description="You come in with an adult. No photo and no ID are taken." />}
                 {idAsked && (
-                  <>
+                  <FieldRow>
                     <FormField id="vk-idtype" label="ID you have with you" required error={detailsEarly.errorOf('vk-idtype')}>
                       <Select aria-label="ID you have with you" value={d.idType} onChange={(idType) => setD({ ...d, idType })} options={ID_CHOICES} placeholder="Choose the ID" />
                     </FormField>
                     <FormField id="vk-last4" label="Last 4 characters of its number" required error={detailsEarly.errorOf('vk-last4')} helper="Never the full number.">
                       <TextField value={d.last4} onChange={(last4) => setD({ ...d, last4 })} maxLength={4} autoComplete="off" spellCheck={false} />
                     </FormField>
-                  </>
+                  </FieldRow>
                 )}
                 <Actions end>
                   <Button onClick={reset}>Back</Button>
-                  <Button variant="primary" loading={busy} onClick={() => !detailsEarly.stop() && (info.photo && !d.minor ? setStep('photo') : toNotice())}>
+                  <Button variant="primary" loading={busy} onClick={() => !detailsEarly.stop() && afterDetails()}>
                     Next
                   </Button>
                 </Actions>
@@ -319,7 +332,7 @@ export function LiveVisitorKioskView({ live }: { live: LiveVisitorKiosk }) {
                     <img src={`data:image/jpeg;base64,${photo}`} alt="Your photo" style={{ width: '100%', borderRadius: 'var(--yx-radius-md)' }} />
                     <Actions end>
                       <Button onClick={() => setPhoto(null)}>Take again</Button>
-                      <Button variant="primary" loading={busy} onClick={toNotice}>
+                      <Button variant="primary" onClick={() => setStep('notice')}>
                         Use this photo
                       </Button>
                     </Actions>

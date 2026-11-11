@@ -14,6 +14,7 @@ import type { AcceptVisitDto, CheckInDto, FindPassDto, IdImageDto, InviteVisitor
 import { ID_WORDS, idLast4, idProblem, imageAllowed, minorProblem, type IdCapture, type IdType } from './visitor-guard-rules';
 import { VisitorWatchlistService, watchHit } from './visitor-watchlist.service';
 import { STATUS_WORDS, badgeText, checkInProblem, dayBounds, localDay, maskMobile, normalCode, normalMobile, noticeVersion, passCode, passToken, visitWindow, type VisitStatus } from './visitor-rules';
+import { hoursText } from './walkin-rules';
 
 // Visitors slice 1 (M02 §B11, YX-AT-22; founder answers 601-617). Every employee may invite a visitor (they are the
 // host); reception (visitors.desk.manage) runs the desk at the locations its grant reaches; the log needs
@@ -23,7 +24,7 @@ import { STATUS_WORDS, badgeText, checkInProblem, dayBounds, localDay, maskMobil
 // end of their window (611).
 
 const KEYS = ['visitors.desk.manage', 'visitors.log.view', 'visitors.settings.manage', 'org.settings.manage', 'visitors.rollcall.view'] as const;
-export const VISITOR_SETTING_KEYS = ['visitors.host_timeout_minutes', 'visitors.id_capture', 'visitors.photo', 'visitors.hours_from', 'visitors.hours_to', 'visitors.notice', 'visitors.badge', 'visitors.retention_days', 'visitors.id_retention_days', 'visitors.watchlist_review_days', 'visitors.kiosk'] as const;
+export const VISITOR_SETTING_KEYS = ['visitors.host_timeout_minutes', 'visitors.id_capture', 'visitors.photo', 'visitors.hours_from', 'visitors.hours_to', 'visitors.all_day', 'visitors.notice', 'visitors.badge', 'visitors.retention_days', 'visitors.id_retention_days', 'visitors.watchlist_review_days', 'visitors.kiosk'] as const;
 type VisitorSettingKey = (typeof VISITOR_SETTING_KEYS)[number];
 const LOOKUP: TenantContext = { organizationId: null, isSuperAdmin: true };
 /**
@@ -83,6 +84,14 @@ export class VisitorsService {
   }
 
   /** A location setting's value (the location's own, else the company's, else the default). */
+  /** Answer 791: a location's visitor hours (all day is 00:00 to 24:00) and how they are said. */
+  async hours(tx: Tx, c: CompanyContext, locationId: string | null): Promise<{ from: string; to: string; text: string }> {
+    if ((await this.setting(tx, c, 'visitors.all_day', locationId)) === 'on') return { from: '00:00', to: '24:00', text: 'all day' };
+    const from = await this.setting(tx, c, 'visitors.hours_from', locationId);
+    const to = await this.setting(tx, c, 'visitors.hours_to', locationId);
+    return { from, to, text: hoursText(from, to) };
+  }
+
   async setting(tx: Tx, c: CompanyContext, key: VisitorSettingKey, locationId: string | null): Promise<string> {
     const rows = await tx.setting.findMany({ where: { organizationId: c.organizationId, key } });
     const r = resolveSetting(SETTINGS[key]!, rows.map((x) => ({ id: x.id, scopeType: x.scopeType, scopeId: x.scopeId, value: x.value, validFrom: null })), { tenant: c.organizationId, ...(locationId ? { location: locationId } : {}) }, null);
@@ -132,7 +141,7 @@ export class VisitorsService {
       if ('problem' in w) throw new BadRequestException(w.problem);
       const host = await tx.user.findFirst({ where: { organizationId: c.organizationId, id: user.userId!, status: 'active' }, select: { id: true, name: true, email: true } });
       if (!host) throw new ForbiddenException('Only an active person of the company can invite a visitor.');
-      if (dto.typeId && !(await tx.visitorType.findFirst({ where: { organizationId: c.organizationId, id: dto.typeId }, select: { id: true } }))) throw new NotFoundException('Visitor type not found.');
+      if (dto.typeId && !(await tx.visitorType.findFirst({ where: { organizationId: c.organizationId, id: dto.typeId, archivedAt: null }, select: { id: true } }))) throw new NotFoundException('Visitor type not found.');
       let row: VisitRow | null = null;
       for (let i = 0; i < 5 && !row; i++) {
         const code = passCode();
@@ -153,9 +162,8 @@ export class VisitorsService {
         await audit(tx, c, 'visitor.blocked', 'visit', row.id, { by: 'watchlist' });
       }
       // Answer 652: a window outside the location's allowed hours is warned about, never refused.
-      const hFrom = await this.setting(tx, c, 'visitors.hours_from', loc.id);
-      const hTo = await this.setting(tx, c, 'visitors.hours_to', loc.id);
-      const outsideHours = dto.from < hFrom || dto.to > hTo ? `${hFrom} to ${hTo}` : null;
+      const h = await this.hours(tx, c, loc.id);
+      const outsideHours = dto.from < h.from || dto.to > h.to ? h.text : null;
       return { row, loc, host, outsideHours };
     });
     const sent = made.row.blockedAt ? false : await this.sendInvite(ctx.organizationId!, made.row, made.loc, made.host.name || made.host.email);
@@ -399,7 +407,7 @@ export class VisitorsService {
       const loc = await tx.location.findFirstOrThrow({ where: { organizationId: row.organizationId, id: row.locationId }, select: { name: true, timezone: true, address: true } });
       const host = await tx.user.findFirst({ where: { organizationId: row.organizationId, id: row.hostUserId }, select: { name: true, email: true } });
       const notice = (await this.setting(tx, c, 'visitors.notice', row.locationId)).trim();
-      const hours = `${await this.setting(tx, c, 'visitors.hours_from', row.locationId)} to ${await this.setting(tx, c, 'visitors.hours_to', row.locationId)}`;
+      const hours = (await this.hours(tx, c, row.locationId)).text;
       const retention = await this.setting(tx, c, 'visitors.retention_days', row.locationId);
       const idRule = (await this.setting(tx, c, 'visitors.id_capture', row.locationId)) as IdCapture;
       const state = row.status === 'cancelled' || (row.status === 'expected' && row.blockedAt) ? 'blocked' : row.status !== 'expected' && row.status !== 'on_site' ? 'expired' : row.endsAt <= new Date() ? 'expired' : row.noticeAcceptedAt ? 'pass' : 'details';
@@ -476,7 +484,7 @@ export class VisitorsService {
         values: Object.fromEntries(VISITOR_SETTING_KEYS.map((k) => [k, String(company(k)?.value ?? SETTINGS[k]!.default)])),
         defaults: Object.fromEntries(VISITOR_SETTING_KEYS.map((k) => [k, SETTINGS[k]!.default])),
         choices: Object.fromEntries(VISITOR_SETTING_KEYS.map((k) => [k, SETTINGS[k]!.values])),
-        labels: { 'visitors.badge': SETTINGS['visitors.badge']!.labels ?? {}, 'visitors.id_capture': SETTINGS['visitors.id_capture']!.labels ?? {} },
+        labels: { 'visitors.badge': SETTINGS['visitors.badge']!.labels ?? {}, 'visitors.id_capture': SETTINGS['visitors.id_capture']!.labels ?? {}, 'visitors.hours_to': SETTINGS['visitors.hours_to']!.labels ?? {} },
         // Locations with their own value (set on the company rules page), named on the field.
         overrides: Object.fromEntries(VISITOR_SETTING_KEYS.map((k) => [k, rows.filter((r) => r.key === k && r.scopeType === 'location').map((r) => locs.get(r.scopeId) ?? 'A location')])),
         lastChange: last ? { by: by?.name || by?.email || 'Someone', at: last.updatedAt, what: `Changed ${SETTINGS[last.key]!.label.replace(/^Visitors: /, '').toLowerCase()}` } : null,

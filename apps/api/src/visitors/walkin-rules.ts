@@ -13,6 +13,10 @@ export function personKey(org: string, mobile: string, company: string | null): 
 }
 
 /** Is the moment inside the location's allowed hours ("09:00" to "18:30", in its time zone)? */
+/** Answer 791: "from 09:00 to 18:30"; midnight is kept as 24:00 and said as 00:00. */
+export const hoursText = (from: string, to: string) => `${from} to ${to === '24:00' ? '00:00' : to}`;
+
+/** Inside the hours: from is in, to is out (to may be 24:00, the end of the day). */
 export function inHours(at: Date, zone: string, from: string, to: string): boolean {
   const t = DateTime.fromJSDate(at, { zone }).toFormat('HH:mm');
   return t >= from && t < to;

@@ -1174,6 +1174,8 @@ const visitors: SettingsPageDef = {
             ['Food safety auditor', 'Yes', 'Yes', 'Yes'],
           ],
           addLabel: 'Add visitor type',
+          // Answer 794.
+          helper: 'Removing a type no visit used deletes it. A type visits used is archived: kept on those visits, not offered for new ones. Archived: Vendor demo.',
           synonyms: ['guest', 'visitor category'],
         },
       ],
@@ -1205,6 +1207,8 @@ const visitors: SettingsPageDef = {
         { key: 'vis.photo', label: 'Capture photo', kind: 'toggle', value: true, starter: true },
         // Answer 601 (Visitors slice 2): visitors sign themselves in on a tablet in visitor mode, where the location allows it.
         { key: 'vis.kiosk', label: 'Visitors can check in on a visitor kiosk', kind: 'toggle', value: false, starter: true, helper: 'Off: reception checks every visitor in. Set up the tablet on Devices and kiosks in visitor mode.', scope: 'Overridden for Hosur plant', synonyms: ['kiosk', 'self check-in', 'walk-in'] },
+        // Answer 791: visitors at any hour (a 24-hour site), or until midnight (00:00).
+        { key: 'vis.all_day', label: 'Visitors allowed all day', kind: 'toggle', value: false, starter: true, helper: 'On: visitors can come at any hour and the hours below are not used. Off: until midnight is "00:00 (midnight)".', synonyms: ['24 hours', 'round the clock', 'night'] },
         { key: 'vis.hours_from', label: 'Visitors allowed from', kind: 'time', value: '09:00' },
         { key: 'vis.hours_to', label: 'Visitors allowed until', kind: 'time', value: '18:30', after: 'vis.hours_from' },
         {

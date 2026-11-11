@@ -78,8 +78,8 @@ export class DevicesController {
   @Post('kiosks/:id/revoke')
   @HttpCode(200)
   @RequirePermissions('leave.settings.manage')
-  revoke(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    return this.devices.revokeKiosk(ctx, this.user(req), id);
+  revoke(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ReasonDto) {
+    return this.devices.revokeKiosk(ctx, this.user(req), id, dto.reason);
   }
 
   @Post('phones/:id/approve')
