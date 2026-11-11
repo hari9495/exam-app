@@ -1,13 +1,13 @@
 // Help & onboarding UX patterns (APX-D §6, GAP H7): first-run tours, contextual help drawer, what's new,
 // permission denied vs not found with Request access, irreversible-action dialog, availability states, empty states.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ArrowUpRight, Construction, FileQuestion, KeyRound, Lock, PlayCircle, Wrench } from 'lucide-react';
+import { ArrowUpRight, Construction, FileQuestion, Lock, PlayCircle, Wrench } from 'lucide-react';
 import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
 import { Checkbox } from '../../components/choice';
 import { Dialog } from '../../components/overlay';
 import { Drawer } from '../../components/drawer';
-import { EmptyState, ErrorState, InlineAlert, Skeleton } from '../../components/feedback';
+import { AccessRequestContext, EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton, type AccessRequestSent } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { Icon } from '../../components/foundations';
 import { TextArea, TextField } from '../../components/inputs';
@@ -473,66 +473,28 @@ export interface AccessDeniedProps {
   maxDays?: number;
 }
 
+/**
+ * Answer 946: the drawn "Access denied" is the kit's NoAccessState with Request access, as every live page shows it when
+ * the company takes access requests. Stories send nothing.
+ */
 export function AccessDeniedState({ recordType, ownerRole, defaultRequesting, sent: sentProp, maxDays = 30 }: AccessDeniedProps) {
-  const [requesting, setRequesting] = useState(Boolean(defaultRequesting));
-  const [reason, setReason] = useState('');
-  const [days, setDays] = useState<string | null>('7');
-  const [error, setError] = useState<string | null>(null);
-  const [sent, setSent] = useState(Boolean(sentProp));
-  const send = () => {
-    if (reason.trim().length < 10) {
-      setError('Say why you need access, in a sentence or more.');
-      return;
-    }
-    setSent(true);
-  };
+  const [sent, setSent] = useState<AccessRequestSent | null>(sentProp ? { askedAt: '2026-11-11', state: 'waiting' } : null);
   return (
-    <div className="yx-state">
-      <Icon icon={Lock} size="md" />
-      <h1 className="yx-state__title">You don't have access to this {recordType}</h1>
-      <p className="yx-state__text">It's managed by the {ownerRole}. You can ask for access; if they agree, it's given for a limited time.</p>
-      {sent ? (
-        <InlineAlert tone="success" title="Access requested">
-          Your request went to the {ownerRole}, then the System Admin if they don't respond in 2 working days. You'll get a notification.
-        </InlineAlert>
-      ) : requesting ? (
-        <>
-          <FormField label="Why do you need access?" required error={error}>
-            <TextArea value={reason} onChange={setReason} rows={3} />
-          </FormField>
-          <FormField label="For how long" helper={`Your role allows up to ${maxDays} days.`}>
-            <Select value={days} onChange={setDays} options={['1', '7', '14', String(maxDays)].map((d) => ({ value: d, label: `${d} ${d === '1' ? 'day' : 'days'}` }))} />
-          </FormField>
-          <div className="yx-state__actions">
-            <Button onClick={() => setRequesting(false)}>Cancel</Button>
-            <Button variant="primary" onClick={send}>
-              Send request
-            </Button>
-          </div>
-        </>
-      ) : (
-        <div className="yx-state__actions">
-          <Button>Go back</Button>
-          <Button variant="primary" icon={KeyRound} onClick={() => setRequesting(true)}>
-            Request access
-          </Button>
-        </div>
-      )}
-    </div>
+    <AccessRequestContext.Provider value={() => ({ maxDays, sent, startOpen: defaultRequesting, send: async () => setSent({ askedAt: '2026-11-11', state: 'waiting' }) })}>
+      <NoAccessState what={`this ${recordType}`} grantedBy={`the ${ownerRole}`} />
+    </AccessRequestContext.Provider>
   );
 }
 
-export function NotFoundState({ reference = 'NF-40412' }: { reference?: string }) {
+/** Answer 947: Not found, with the reference support can look up (never saying whether the record exists). */
+export function NotFoundState({ reference, actions }: { reference?: string | null; actions?: ReactNode }) {
   return (
     <div className="yx-state" role="alert">
       <Icon icon={FileQuestion} size="md" />
       <h1 className="yx-state__title">Not found</h1>
       <p className="yx-state__text">This page or record doesn't exist, or the link is out of date. Check the link, or search for what you need.</p>
-      <div className="yx-state__actions">
-        <Button>Go to Home</Button>
-        <Button>Search</Button>
-      </div>
-      <span className="yx-state__ref">Reference {reference}</span>
+      <div className="yx-state__actions">{actions ?? <Button>Go to Home</Button>}</div>
+      {reference && <span className="yx-state__ref">Reference {reference}</span>}
     </div>
   );
 }

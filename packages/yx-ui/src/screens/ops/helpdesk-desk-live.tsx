@@ -27,6 +27,7 @@ import { useRun } from '../org/org-kit';
 import { OPEN_STATES, PRIORITY_LABEL, PriorityBadge, STATE_LABEL, StatusBadge, TicketFlags, when } from '../desk/desk-kit';
 import type { DeskDetail, DeskSummary, LoadState, Person, SavedTicketView, SystemState, TicketFilters, TicketPage, TicketRow } from '../desk/types';
 import { OpsDesk, SlaBadge, useSay } from './ops-kit';
+import { ReferenceLookupDialog, type NotFoundLookup } from './reference-lookup';
 
 export interface TicketQuery {
   viewId: string;
@@ -72,6 +73,8 @@ export interface LiveAgentDesk {
   onSearchPeople: (q: string) => Promise<Person[]>;
   onCreate: (input: { deskId: string; requesterPersonId: string; subject: string; bodyHtml: string; categoryId?: string }) => Promise<{ id: string }>;
   onLoadMore?: () => void;
+  /** Answer 947: look up a Not found reference a person read out (for agents who may; the button shows only then). */
+  onLookUpReference?: (code: string) => Promise<NotFoundLookup>;
   /** Stories and tests only: what is open or chosen on first render. */
   start?: { selected?: string[]; dialog?: 'tag' | 'priority' | 'move' | 'new'; openId?: string; bulkResult?: string };
 }
@@ -140,6 +143,7 @@ export function LiveAgentDesk({ live }: { live: LiveAgentDesk }) {
   const [selected, setSelected] = useState<string[]>(live.start?.selected ?? []);
   const [openId, setOpenId] = useState<string | null>(live.start?.openId ?? null);
   const [dialog, setDialog] = useState<'tag' | 'priority' | 'move' | 'new' | null>(live.start?.dialog ?? null);
+  const [lookUp, setLookUp] = useState(false);
   const [bulkResult, setBulkResult] = useState<{ tone: 'info' | 'warning'; text: string } | null>(live.start?.bulkResult ? { tone: 'warning', text: live.start.bulkResult } : null);
   const { busy, error, run } = useRun();
   const { toast } = useSay();
@@ -227,6 +231,7 @@ export function LiveAgentDesk({ live }: { live: LiveAgentDesk }) {
         facts={`${live.page?.total ?? rows.length} in this view · ${breached} past the target`}
         actions={
           <>
+            {live.onLookUpReference && <Button onClick={() => setLookUp(true)}>Look up a reference</Button>}
             <Segment label="Show as" options={[{ value: 'list', label: 'List' }, { value: 'board', label: 'Board' }]} value={query.layout} onChange={(layout) => live.onQueryChange({ ...query, layout })} />
             {working.length > 0 && (
               <Button variant="primary" icon={Plus} onClick={() => setDialog('new')}>
@@ -410,6 +415,7 @@ export function LiveAgentDesk({ live }: { live: LiveAgentDesk }) {
           live.onOpen(r.id);
         }}
       />
+      {lookUp && live.onLookUpReference && <ReferenceLookupDialog onLookUp={live.onLookUpReference} onClose={() => setLookUp(false)} />}
     </OpsDesk>
   );
 }

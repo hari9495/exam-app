@@ -63,6 +63,9 @@
 .yx-empty__desc { margin: 0; max-width: var(--yx-form-max); }
 .yx-empty__actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: var(--yx-space-3); margin-top: var(--yx-space-2); }
 .yx-empty__ref { margin: var(--yx-space-2) 0 0; font-family: var(--yx-font-mono); font-size: var(--yx-text-xs); color: var(--yx-color-text-muted); }
+/* Answer 946: the Request access form inside a no-access state; fields read left-aligned, as in any form. */
+.yx-empty__request { display: flex; flex-direction: column; gap: var(--yx-space-4); width: 100%; max-width: var(--yx-form-max); margin-top: var(--yx-space-2); text-align: left; }
+.yx-empty__request .yx-empty__actions { justify-content: flex-end; margin-top: 0; }
 .yx-empty__icon--danger { color: var(--yx-color-danger-text); }
 
 .yx-skeleton {

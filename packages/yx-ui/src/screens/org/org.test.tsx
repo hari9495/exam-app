@@ -452,10 +452,10 @@ describe('Company rules and access settings (P01 §4.6; YX-ORG-12/18)', () => {
     const { unmount } = render(<ToastProvider><CompanySettingsScreen {...base} section="access" heldGuards={[]} /></ToastProvider>);
     // Net pay on the home and the erasure switch are HR's settings, not access guards.
     const buttons = screen.getAllByRole('button', { name: 'Change' }).filter((b) => !/net pay|Delete Special data/.test(b.closest('.yx-org__rule')?.textContent ?? ''));
-    // 4 access guards + the 3 privacy retention periods (PPL-33).
-    expect(buttons).toHaveLength(7);
+    // 4 access guards + the 3 privacy retention periods (PPL-33) + the 2 access request settings (answer 946).
+    expect(buttons).toHaveLength(9);
     buttons.forEach((b) => expect(b).toBeDisabled());
-    expect(screen.getAllByText(/Only an admin who manages roles and access changes this/)).toHaveLength(7);
+    expect(screen.getAllByText(/Only an admin who manages roles and access changes this/)).toHaveLength(9);
     unmount();
     render(<ToastProvider><CompanySettingsScreen {...base} canManage={false} /></ToastProvider>);
     expect(screen.queryByRole('button', { name: 'Change' })).toBeNull();

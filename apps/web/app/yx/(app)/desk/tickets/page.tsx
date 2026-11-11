@@ -3,7 +3,7 @@
 import { useCallback, useState } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { AgentDeskScreen, BUILT_IN_VIEWS, type DeskDetail, type DeskSummary, type Person, type SavedTicketView, type TicketPage, type TicketQuery } from '@yukthix/ui/desk';
+import { AgentDeskScreen, BUILT_IN_VIEWS, type DeskDetail, type DeskSummary, type Person, type SavedTicketView, type NotFoundLookup, type TicketPage, type TicketQuery } from '@yukthix/ui/desk';
 import { apiFetch } from '../../../../../lib/api-client';
 import { useAuth } from '../../../../../lib/auth-context';
 import { useCurrentUser } from '../../../../../lib/hooks/useCurrentUser';
@@ -60,6 +60,8 @@ export default function YxDeskTicketsPage() {
         onSearchPeople: searchPeople,
         onCreate: (input) => write<{ id: string }>('/tickets', 'POST', input),
         onLoadMore: () => setLimit((l) => Math.min(200, l + 50)),
+        // Answer 947: the reference a person reads out from a Not found page (who, when, which page; never whether it exists).
+        onLookUpReference: (code) => apiFetch(`/help/not-found/${encodeURIComponent(code)}`, {}, token) as Promise<NotFoundLookup>,
       }}
     />
   );
