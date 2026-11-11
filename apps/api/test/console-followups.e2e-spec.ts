@@ -6,6 +6,7 @@ import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { bootAdminApp } from './dual-app';
 import { EmailService } from '../src/email/email.service';
 import { markSteppedUp } from './fixtures/step-up';
+import { giveStaffRoles } from './fixtures/staff-roles';
 
 // Console follow-ups (founder answers 1065, 1087, 1125 and C-5's hook), against the real database (forced RLS, app role).
 // 1065: a notice about a published rule set goes only to open companies with a location in its state, as an admin
@@ -40,6 +41,8 @@ describe('Console follow-ups: rule notices, withdrawing, platform settings, swit
     for (const who of ['staff1', 'staff2', 'staffNoKey']) {
       const email = `${who.toLowerCase()}-${runId}@platform.test`;
       users[who] = (await tenantPrisma.forTenant(SUPER, (tx) => tx.user.create({ data: { email, name: `Staff ${who}`, passwordHash, role: 'super_admin', organizationId: null } }))).id;
+      // Staff roles (answer 1058): the console keys come from staff roles.
+      await giveStaffRoles(users[who]!);
       token[who] = (await request(server()).post('/api/v1/auth/platform/login').send({ email, password: PASSWORD }).expect(200)).body.accessToken;
     }
     await up('staff1');

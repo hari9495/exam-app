@@ -197,6 +197,10 @@ describe('Console staff roles (1058, 1086)', () => {
       for (const who of ['rules', 'none'] as const) await api(who, 'get', '/platform/maintenance').expect(403);
       await api('cs', 'post', '/platform/maintenance').send({ title: 'Database upgrade', startsAt: new Date(Date.now() + 10 * 86_400_000).toISOString(), hours: 2 }).expect(403);
       await api('cs', 'put', '/platform/maintenance/settings').send({ values: {}, blockDates: [] }).expect(403);
+      // Platform settings: Security lead only. Help-centre writing: Support agent only (the key check comes first).
+      await api('lead', 'get', '/platform/settings').expect(200);
+      for (const who of ['cs', 'rules', 'none'] as const) await api(who, 'get', '/platform/settings').expect(403);
+      for (const who of ['lead', 'cs', 'rules'] as const) expect((await api(who, 'get', '/platform/help-centre').expect(403)).body.message).toMatch(/platform\.helpcentre\.write/);
     });
   });
 

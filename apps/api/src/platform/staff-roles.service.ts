@@ -53,6 +53,8 @@ export const KEY_WORDS: Record<string, string> = {
   'platform.flags.manage': 'Switch features on and off',
   'platform.maintenance.manage': 'Schedule planned maintenance',
   'platform.maintenance.view': 'See planned maintenance',
+  'platform.helpcentre.write': 'Write and publish the help-centre articles',
+  'platform.settings.manage': 'Change the platform settings',
 };
 
 @Injectable()
