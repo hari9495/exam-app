@@ -347,6 +347,8 @@ unused visitor type, archive a used one; (795) allow deleting a role nobody hold
 role to its template in the demo set-up; (797) a separate "declined" count; (798) automated e2e checks use their own
 database and refuse to run against the test app database; (799) the kiosk details step in two columns on wide screens;
 (800) the watch-list check right after the details step, before any photo.
+Founder approved, 11 Nov 2026 (questions 861-862, 871-873, all as suggested): keep 861 (archived roles only in grant
+history and the audit log), 862 (the e2e database is seeded), 871 ("Show revoked" filter later if HR asks), 872, 873.
 
 ## Visitors slice 1 built (answers 601-617; 15 Nov 2026, branch `feat/yukthix-visitors-1`)
 
