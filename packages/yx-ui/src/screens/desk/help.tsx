@@ -3,7 +3,7 @@ import { Paperclip, Send } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
 import { Drawer } from '../../components/drawer';
-import { InlineAlert } from '../../components/feedback';
+import { EmptyState, InlineAlert } from '../../components/feedback';
 import { FormField, useTooEarly } from '../../components/field';
 import { useToast } from '../../components/notify';
 import { TextArea, TextField } from '../../components/inputs';
@@ -11,7 +11,7 @@ import { Checkbox } from '../../components/choice';
 import { Select } from '../../components/select';
 import { Segment } from '../../components/segment';
 import { FileUpload } from '../../components/upload';
-import { Card } from '../../components/shell';
+import { Card, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { useRun } from '../org/org-kit';
 import { DeskPage, MessageBody, StatusBadge, sizeText, when } from './desk-kit';
 import { RateTicketCard, SuggestList, useSuggestions, type KbSuggestion } from './help-kb';
@@ -150,6 +150,8 @@ function useRaiseForm(desks: RaiseDesk[], suggest?: { onSuggest?: (q: string) =>
   };
 }
 
+export type HelpTab = 'page' | 'ask' | 'new' | 'tours';
+
 export interface HelpDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -163,68 +165,125 @@ export interface HelpDrawerProps {
   /** Batch 4: articles suggested while typing; they open in the Help centre in a new tab. */
   onSuggest?: (q: string) => Promise<KbSuggestion[]>;
   articleHref?: (a: KbSuggestion) => string;
+  /**
+   * Help H-1 (answer 942): "This page": help articles tagged with the page. Null or left out hides the tab (the company
+   * turned page help off).
+   */
+  pageHelp?: { state: 'loading' | 'ready' | 'error'; articles: KbSuggestion[] } | null;
+  /** Answers 943 and 944: the What's new and Tours tabs, shown only when their content is given (H-4, H-5). */
+  whatsNew?: ReactNode;
+  tours?: ReactNode;
+  /** The tab it opens on: This page when it has articles, else Ask. */
+  defaultTab?: HelpTab;
 }
 
-/** The in-app Help drawer (US-B-100), open from every page: known issues, raise a ticket, my open tickets. */
+/**
+ * The one Help drawer (US-B-100, Help and onboarding 941), open from every page: known issues on top, then the tabs This
+ * page (help articles for the page), Ask (raise a ticket, my open tickets), What's new and Tours.
+ */
 export function HelpDrawer(props: HelpDrawerProps) {
   const form = useRaiseForm(props.desks, { onSuggest: props.onSuggest, hrefOf: props.articleHref });
   const { toast } = useToast();
   const { busy, error, run } = useRun();
   const open = props.tickets.filter((t) => !['solved', 'closed'].includes(t.systemState));
+  const page = props.pageHelp ?? null;
+  const [tab, setTab] = useState<HelpTab>(props.defaultTab ?? (page && page.articles.length ? 'page' : 'ask'));
+  const raise = () =>
+    !form.stop() &&
+    void run('raise', async () => {
+      const r = await props.onRaise(form.input());
+      toast({ tone: 'success', title: 'Ticket raised', description: `Your ticket number is ${r.number}. The team will reply in the Help centre.` });
+      form.clear();
+    });
   return (
     <Drawer
       open={props.open}
       onOpenChange={props.onOpenChange}
       title="Help"
-      subtitle="Ask a team for help without leaving this page."
+      subtitle="Help for this page, or ask a team without leaving it."
       dirty={form.dirty}
       footer={
         <>
           <Button onClick={() => props.onOpenChange(false)}>Close</Button>
-          <Button
-            variant="primary"
-            loading={busy === 'raise'}
-            onClick={() =>
-              !form.stop() &&
-              void run('raise', async () => {
-                const r = await props.onRaise(form.input());
-                toast({ tone: 'success', title: 'Ticket raised', description: `Your ticket number is ${r.number}. The team will reply in the Help centre.` });
-                form.clear();
-              })
-            }
-          >
-            Raise ticket
-          </Button>
+          {tab === 'ask' && (
+            <Button variant="primary" loading={busy === 'raise'} onClick={raise}>
+              Raise ticket
+            </Button>
+          )}
         </>
       }
     >
       <div className="yx-ops-stack">
         <BannerList banners={props.banners} onMeToo={props.onMeToo} />
-
-        {error && <InlineAlert tone="danger" title="The ticket was not raised">{error}</InlineAlert>}
-        <h3 className="yx-ops-card__title">Raise a ticket</h3>
-        {form.fields}
-        <h3 className="yx-ops-card__title">My open tickets</h3>
-        {open.length ? (
-          <ul className="yx-ops-list" aria-label="My open tickets">
-            {open.map((t) => (
-              <li key={t.id} className="yx-ops-list__item">
-                <span className="yx-ops-list__main">
-                  <a className="yx-desk-link" href={props.ticketHref(t.id)}>
-                    {t.subject}
-                  </a>
-                  <span className="yx-ops-list__sub">
-                    <span className="yx-ops-mono">{t.number}</span> · {t.status}
-                  </span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="yx-ops-muted">You have no open tickets.</p>
-        )}
+        <Tabs value={tab} onValueChange={(v) => setTab(v as HelpTab)}>
+          <TabsList aria-label="Help sections">
+            {page && <TabsTrigger value="page">This page</TabsTrigger>}
+            <TabsTrigger value="ask">Ask</TabsTrigger>
+            {props.whatsNew !== undefined && <TabsTrigger value="new">What's new</TabsTrigger>}
+            {props.tours !== undefined && <TabsTrigger value="tours">Tours</TabsTrigger>}
+          </TabsList>
+          {page && (
+            <TabsContent value="page">
+              <PageHelp page={page} hrefOf={props.articleHref} onAsk={() => setTab('ask')} />
+            </TabsContent>
+          )}
+          <TabsContent value="ask">
+            <div className="yx-ops-stack">
+              {error && <InlineAlert tone="danger" title="The ticket was not raised">{error}</InlineAlert>}
+              <h3 className="yx-ops-card__title">Raise a ticket</h3>
+              {form.fields}
+              <h3 className="yx-ops-card__title">My open tickets</h3>
+              {open.length ? (
+                <ul className="yx-ops-list" aria-label="My open tickets">
+                  {open.map((t) => (
+                    <li key={t.id} className="yx-ops-list__item">
+                      <span className="yx-ops-list__main">
+                        <a className="yx-desk-link" href={props.ticketHref(t.id)}>
+                          {t.subject}
+                        </a>
+                        <span className="yx-ops-list__sub">
+                          <span className="yx-ops-mono">{t.number}</span> · {t.status}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="yx-ops-muted">You have no open tickets.</p>
+              )}
+            </div>
+          </TabsContent>
+          {props.whatsNew !== undefined && <TabsContent value="new">{props.whatsNew}</TabsContent>}
+          {props.tours !== undefined && <TabsContent value="tours">{props.tours}</TabsContent>}
+        </Tabs>
       </div>
     </Drawer>
+  );
+}
+
+/** Help H-1: the help articles written for this page (they open in the Help centre, in a new tab). */
+export function PageHelp({ page, hrefOf, onAsk }: { page: NonNullable<HelpDrawerProps['pageHelp']>; hrefOf?: (a: KbSuggestion) => string; onAsk?: () => void }) {
+  if (page.state === 'loading') return <p className="yx-ops-muted" aria-busy="true">Looking for help on this page…</p>;
+  if (page.state === 'error') return <InlineAlert tone="danger" title="Help for this page could not be loaded.">Try again, or ask a team.</InlineAlert>;
+  if (!page.articles.length)
+    return <EmptyState compact title="No help is written for this page yet." description="Ask a team, or search the Help centre." action={onAsk ? <Button onClick={onAsk}>Ask a team</Button> : undefined} />;
+  return (
+    <ul className="yx-ops-list" aria-label="Help for this page">
+      {page.articles.map((a) => (
+        <li key={a.id} className="yx-ops-list__item">
+          <span className="yx-ops-list__main">
+            {hrefOf ? (
+              <a className="yx-desk-link" href={hrefOf(a)} target="_blank" rel="noopener noreferrer">
+                {a.title}
+              </a>
+            ) : (
+              <span>{a.title}</span>
+            )}
+            {a.summary && <span className="yx-ops-list__sub">{a.summary}</span>}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

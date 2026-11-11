@@ -819,6 +819,10 @@ function SampleKbEditor({ article, html, versions, mode = 'draft', today }: KbEd
                 <FormField label="Also suggest for these words" helper="Separate with commas">
                   <TextField value={keywords} onChange={setKeywords} />
                 </FormField>
+                {/* Help H-1 (answer 942): the Help drawer's "This page" lists the article on these pages and the pages under them. */}
+                <FormField label="Show in Help on these pages" optional helper="App addresses, separated with commas, e.g. /yx/time/leave. Pages under them count too.">
+                  <TextField defaultValue="/yx/payroll/payslips, /yx/me/pay" />
+                </FormField>
                 <Switch defaultChecked label="Use in assistant answers" description="Private and sensitive tickets are never used as content." />
               </div>
             </Card>

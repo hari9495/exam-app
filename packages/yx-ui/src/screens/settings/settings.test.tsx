@@ -25,7 +25,7 @@ import {
   validateSetting,
 } from './settings-logic';
 import { SettingsHomeScreen, SettingsPageScreen } from './settings-screens';
-import { AccessDeniedState, TOURS, TourCard, accessVerdict, canConfirmIrreversible, newsFor, NEWS, shouldShowTour } from './help';
+import { AccessDeniedState, TOURS, TourCard, accessVerdict, newsFor, NEWS, shouldShowTour } from './help';
 import type { SettingDef } from './settings-types';
 
 const G = SETTINGS_GROUPS;
@@ -171,13 +171,7 @@ describe('help and onboarding (APX-D §6)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send request' }));
     expect(screen.getByText(/Say why you need access/)).toBeTruthy();
   });
-  it('irreversible actions need the exact phrase, a reason when required, and maker ≠ checker', () => {
-    const base = { phrase: 'KAVERI SEP 2026', typed: 'KAVERI SEP 2026', reason: '' };
-    expect(canConfirmIrreversible(base)).toBe(true);
-    expect(canConfirmIrreversible({ ...base, typed: 'kaveri sep 2026' })).toBe(false);
-    expect(canConfirmIrreversible({ ...base, reasonRequired: true })).toBe(false);
-    expect(canConfirmIrreversible({ ...base, sameAsMaker: true })).toBe(false);
-  });
+  // Irreversible actions: the pay kit's IrreversibleSheet and its tests (pay.test.tsx) are the one version (answer 945).
   it("what's new is targeted by role and product", () => {
     expect(newsFor(NEWS, 'Employee', ['Time']).map((n) => n.id)).toEqual(['n1']);
   });

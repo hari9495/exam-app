@@ -1,0 +1,52 @@
+import { render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ToastProvider } from '@yukthix/ui';
+import { usePathname } from 'next/navigation';
+import { apiFetch } from '../../lib/api-client';
+import { useAuth } from '../../lib/auth-context';
+import { DeskHelp } from './(app)/desk-help';
+
+jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn() }));
+jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn() }));
+jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
+
+// Help and onboarding H-1 (answers 941, 942): the one Help drawer asks for the help articles of the page it opens on.
+const wrap = (ui: React.ReactElement) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ToastProvider>{ui}</ToastProvider></QueryClientProvider>);
+const api = apiFetch as jest.Mock;
+const DESK = { id: 'd1', name: 'HR desk', key: 'HR', attachmentTypes: ['pdf'], attachmentMaxMb: 10, types: [], categories: [] };
+const asked: string[] = [];
+const serve = (page: unknown) =>
+  api.mockImplementation(async (path: string) => {
+    asked.push(path);
+    if (path.startsWith('/desk/my/kb/page')) return page;
+    if (path === '/desk/my/desks') return [DESK];
+    if (path === '/desk/my/tickets' || path === '/desk/my/banners') return [];
+    throw new Error(`unexpected ${path}`);
+  });
+
+beforeEach(() => {
+  api.mockReset();
+  asked.length = 0;
+  (useAuth as jest.Mock).mockReturnValue({ accessToken: 't' });
+});
+
+describe('Help drawer (live, H-1)', () => {
+  it('asks for the page without its record id, and opens on This page with its articles', async () => {
+    (usePathname as jest.Mock).mockReturnValue('/yx/time/leave/6f1c2a9e-0b7d-4d2a-9a77-3d1f0c1b2e44');
+    serve({ on: true, articles: [{ id: 'k1', number: 41, title: 'How leave is counted', summary: null }] });
+    wrap(<DeskHelp open onOpenChange={() => {}} />);
+    expect(await screen.findByRole('link', { name: 'How leave is counted' })).toHaveAttribute('href', '/yx/desk/help?article=41');
+    expect(asked).toContain('/desk/my/kb/page?route=%2Fyx%2Ftime%2Fleave');
+    expect(screen.getByRole('tab', { name: 'This page', selected: true })).toBeInTheDocument();
+  });
+
+  it('negative: page help turned off by the company hides This page; the drawer opens on Ask', async () => {
+    (usePathname as jest.Mock).mockReturnValue('/yx/time/leave');
+    serve({ on: false, articles: [] });
+    wrap(<DeskHelp open onOpenChange={() => {}} />);
+    await waitFor(() => expect(asked.some((p) => p.startsWith('/desk/my/kb/page'))).toBe(true));
+    await screen.findByRole('textbox', { name: /Subject/ });
+    expect(await screen.findByRole('tab', { name: 'Ask', selected: true })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'This page' })).toBeNull();
+  });
+});

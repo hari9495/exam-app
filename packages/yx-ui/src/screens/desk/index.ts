@@ -1,7 +1,7 @@
 // Service Desk (M14 phase 3b-1): help centre, agent tickets, ticket workspace, desk set-up.
 // Import the stylesheet once: '@yukthix/ui/styles.css'.
 export * from './types';
-export { MyTicketScreen, FileList, BannerList, HelpDrawer, type MyTicketScreenProps, type HelpDrawerProps } from './help';
+export { MyTicketScreen, FileList, BannerList, HelpDrawer, PageHelp, type MyTicketScreenProps, type HelpDrawerProps, type HelpTab } from './help';
 // HLP-01 Help centre: the designed screen with `live` (Helpdesk design wiring, round 1).
 export { HelpCentreScreen } from '../ops/helpdesk';
 export { topicOptions, rateCandidate, type LiveHelp } from '../ops/helpdesk-live';
