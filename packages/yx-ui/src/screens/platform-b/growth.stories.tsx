@@ -14,6 +14,8 @@ import {
   TrialReadOnlyScreen,
   WhatsNewDrawer,
   WhatsNewSheet,
+  WhatsNewPanel,
+  type LiveWhatsNew,
   type Beta,
   type FeatureRequest,
   type JobError,
@@ -107,6 +109,16 @@ export const Plt50Admin: S = { name: 'PLT-50 · What’s new · HR admin', rende
 export const Plt50Manager: S = { name: 'PLT-50 · What’s new · manager', render: () => <WhatsNewDrawer entries={NEWS} role="Manager" /> };
 export const Plt50Empty: S = { name: 'PLT-50 · What’s new · nothing yet', render: () => <WhatsNewDrawer entries={[]} role="Employee" /> };
 export const Plt50Phone: S = { ...phone, name: 'PLT-50 · What’s new · phone, employee', render: () => <WhatsNewSheet entries={NEWS} role="Employee" /> };
+// Answer 943 (H-4): the live tab content for the one Help drawer, from the person's entries (their role and products).
+const LIVE_NEWS: LiveWhatsNew = {
+  state: 'ready',
+  onRetry: () => {},
+  unread: 2,
+  onMarkAllRead: () => new Promise((r) => setTimeout(r, 600)),
+  entries: NEWS.map((n) => ({ id: n.id, date: n.date.toISOString().slice(0, 10), product: n.product, title: n.title, body: n.body, unread: Boolean(n.unread) })),
+};
+export const Plt50HelpTab: S = { name: 'PLT-50 · What’s new · Help tab (live parts)', render: () => <div style={{ maxWidth: 440, padding: 'var(--yx-space-4)' }}><WhatsNewPanel live={LIVE_NEWS} /></div> };
+export const Plt50HelpTabEmpty: S = { name: 'PLT-50 · What’s new · Help tab, nothing yet', render: () => <div style={{ maxWidth: 440, padding: 'var(--yx-space-4)' }}><WhatsNewPanel live={{ ...LIVE_NEWS, unread: 0, entries: [] }} /></div> };
 
 /* ---- PLT-51 ---- */
 const REQS: FeatureRequest[] = [

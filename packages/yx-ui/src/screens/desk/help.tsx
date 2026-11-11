@@ -163,6 +163,8 @@ export interface HelpDrawerProps {
   /** Batch 4: articles suggested while typing; they open in the Help centre in a new tab. */
   onSuggest?: (q: string) => Promise<KbSuggestion[]>;
   articleHref?: (a: KbSuggestion) => string;
+  /** Help H-4 (answer 943): What's new (`WhatsNewPanel`); H-1 moves it into the drawer's What's new tab. */
+  whatsNew?: ReactNode;
 }
 
 /** The in-app Help drawer (US-B-100), open from every page: known issues, raise a ticket, my open tickets. */
@@ -200,6 +202,12 @@ export function HelpDrawer(props: HelpDrawerProps) {
     >
       <div className="yx-ops-stack">
         <BannerList banners={props.banners} onMeToo={props.onMeToo} />
+        {props.whatsNew && (
+          <>
+            <h3 className="yx-ops-card__title">What's new</h3>
+            {props.whatsNew}
+          </>
+        )}
 
         {error && <InlineAlert tone="danger" title="The ticket was not raised">{error}</InlineAlert>}
         <h3 className="yx-ops-card__title">Raise a ticket</h3>

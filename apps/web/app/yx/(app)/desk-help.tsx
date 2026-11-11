@@ -1,10 +1,11 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { HelpDrawer, type KbSuggestion, type MyTicketRow, type PublicBanner, type RaiseDesk } from '@yukthix/ui/desk';
+import { HelpDrawer, WhatsNewPanel, type KbSuggestion, type MyTicketRow, type PublicBanner, type RaiseDesk } from '@yukthix/ui/desk';
 import { apiFetch } from '../../../lib/api-client';
 import { useAuth } from '../../../lib/auth-context';
 import { useDesk, useDeskWrite } from '../../../lib/yx-desk';
+import { useWhatsNew } from '../../../lib/yx-whats-new';
 
 // In-app Help (US-B-100), opened from Help in the top bar on every page: known issues, raise a ticket that remembers
 // the page it came from, and my open tickets. Loads only when opened.
@@ -13,6 +14,7 @@ export function DeskHelp({ open, onOpenChange }: { open: boolean; onOpenChange: 
   const desks = useDesk<RaiseDesk[]>(open ? '/my/desks' : null);
   const tickets = useDesk<MyTicketRow[]>(open ? '/my/tickets' : null);
   const banners = useDesk<PublicBanner[]>(open ? '/my/banners' : null);
+  const news = useWhatsNew(open); // Help H-4 (answer 943)
   const write = useDeskWrite();
   const { accessToken } = useAuth();
   // The API takes letters, digits, - . / _ and spaces, up to 100.
@@ -32,6 +34,7 @@ export function DeskHelp({ open, onOpenChange }: { open: boolean; onOpenChange: 
           ticketHref={(id) => `/yx/desk/help/${encodeURIComponent(id)}`}
           onSuggest={(q) => apiFetch(`/desk/my/kb/suggest?q=${encodeURIComponent(q)}&from=drawer`, {}, accessToken ?? undefined) as Promise<KbSuggestion[]>}
           articleHref={(a) => `/yx/desk/help?article=${a.number}`}
+          whatsNew={news ? <WhatsNewPanel live={news} /> : undefined}
         />
       )}
     </>

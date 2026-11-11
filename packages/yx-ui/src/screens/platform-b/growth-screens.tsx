@@ -4,7 +4,7 @@ import { AlertTriangle, CheckCircle2, Circle, Clock, Copy, ExternalLink, Lock, R
 import { Button, Link } from '../../components/button';
 import { Icon } from '../../components/foundations';
 import { Badge, type BadgeTone } from '../../components/display';
-import { EmptyState, InlineAlert, Meter } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, Meter, Skeleton } from '../../components/feedback';
 import { Drawer } from '../../components/drawer';
 import { DataTable, type TableColumn } from '../../components/table';
 import { FilterBar, SavedViewMenu } from '../../components/filters';
@@ -13,13 +13,14 @@ import { FormField } from '../../components/field';
 import { Checkbox, RadioGroup, Switch } from '../../components/choice';
 import { TextArea, TextField } from '../../components/inputs';
 import { BottomSheet, ConfirmDialog, Dialog, TypeToConfirmDialog } from '../../components/overlay';
-import { PageBanner } from '../../components/notify';
+import { PageBanner, useToast } from '../../components/notify';
 import { QuickStartLane, Stepper } from '../../components/stepper';
 import { MenuItem } from '../../components/menu';
 import { formatDate, formatINR } from '../../lib/format';
 import type { FilterValue } from '../../lib/table';
 import { DesktopFrame, PhoneFrame } from '../_kit/frames';
 import { TODAY } from '../_kit/data';
+import { useRun } from '../org/org-kit';
 import { SettingsFrame, payoutReadiness, readOnlyStatus, referralStatus, trialExtension, type PayoutChecks, type Referral, type ReferralStatus } from './platform-b-kit';
 
 /* ================================================================== PLT-38 Jobs & errors */
@@ -432,7 +433,8 @@ export interface NewsEntry {
   unread?: boolean;
 }
 
-function Feed({ entries }: { entries: NewsEntry[] }) {
+/** The PLT-50 list (desktop drawer, phone sheet and the Help drawer's What's new tab). */
+export function WhatsNewFeed({ entries }: { entries: NewsEntry[] }) {
   if (!entries.length) return <EmptyState compact title="Nothing new for you yet." description="Updates for the products your company uses appear here." />;
   return (
     <ol className="yxp-feed" aria-label="What's new">
@@ -458,10 +460,45 @@ export function WhatsNewDrawer({ entries, role }: { entries: NewsEntry[]; role: 
     <DesktopFrame area="home" panelTitle="Home" panel={[{ items: [{ label: 'Home', active: true }, { label: 'Approvals' }, { label: 'Notifications' }] }]}>
       <PageHeader title="Home" />
       <Drawer open onOpenChange={() => {}} title="Help" subtitle={`What's new · for ${role.toLowerCase()}s`} footer={<Button>Mark all read</Button>}>
-        <Feed entries={mine} />
+        <WhatsNewFeed entries={mine} />
         <Link href="#">See all updates</Link>
       </Drawer>
     </DesktopFrame>
+  );
+}
+
+/** Answer 943: the person's What's new as the API gives it (their role and company's products already applied). */
+export interface LiveWhatsNew {
+  state: 'loading' | 'ready' | 'error';
+  onRetry: () => void;
+  entries: { id: string; date: string; product: string; title: string; body: string; unread: boolean }[];
+  unread: number;
+  onMarkAllRead: () => Promise<unknown>;
+}
+
+/**
+ * Answer 943: the What's new tab of the one Help drawer (H-1 puts it in the tab): the PLT-50 list, newest first, unread
+ * marked New, and Mark all read (the drawn drawer footer's button, here at the top of the tab).
+ */
+export function WhatsNewPanel({ live }: { live: LiveWhatsNew }) {
+  const { busy, error, run } = useRun();
+  const { toast } = useToast();
+  if (live.state === 'error') return <ErrorState title="What's new could not load" description="Check your connection and try again." onRetry={live.onRetry} />;
+  if (live.state === 'loading') return <Skeleton height={120} />;
+  const entries: NewsEntry[] = live.entries.map((e) => ({ id: e.id, date: new Date(`${e.date}T00:00:00`), product: e.product, title: e.title, body: e.body, roles: [], unread: e.unread }));
+  return (
+    <div className="yxp-stack">
+      {error && <InlineAlert tone="danger" title="That did not go through">{error}</InlineAlert>}
+      {live.unread > 0 && (
+        <span className="yxp-row yxp-row--between">
+          <span className="yxp-muted">{live.unread === 1 ? '1 new update' : `${live.unread} new updates`}</span>
+          <Button size="sm" loading={busy === 'read'} onClick={() => void run('read', async () => (await live.onMarkAllRead(), toast({ tone: 'success', title: 'Marked as read' })))}>
+            Mark all read
+          </Button>
+        </span>
+      )}
+      <WhatsNewFeed entries={entries} />
+    </div>
   );
 }
 
@@ -470,7 +507,7 @@ export function WhatsNewSheet({ entries, role }: { entries: NewsEntry[]; role: s
   return (
     <PhoneFrame tab="me" title="Help">
       <BottomSheet defaultOpen title="What's new">
-        <Feed entries={entries.filter((e) => e.roles.includes(role))} />
+        <WhatsNewFeed entries={entries.filter((e) => e.roles.includes(role))} />
       </BottomSheet>
     </PhoneFrame>
   );

@@ -1,10 +1,10 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
-import { Building2, FileClock, Inbox, LifeBuoy, MessageSquare, ReceiptIndianRupee, ScrollText, ShieldCheck, Tags } from 'lucide-react';
+import { Building2, FileClock, Inbox, LifeBuoy, Megaphone, MessageSquare, ReceiptIndianRupee, ScrollText, ShieldCheck, Tags } from 'lucide-react';
 import { Logo, Monogram } from '../../components/brand';
 import type { IconComponent } from '../../components/foundations';
 import { AppShell, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, TopBar, type DensityChoice, type RailItem, type ThemeChoice } from '../../components/shell';
 
-export type ConsolePageId = 'companies' | 'support-desk' | 'support' | 'plans' | 'channels' | 'audit';
+export type ConsolePageId = 'companies' | 'support-desk' | 'support' | 'plans' | 'whats-new' | 'channels' | 'audit';
 type ConsoleGroup = 'Customers' | 'Catalogue' | 'Channels' | 'Security';
 
 interface ConsoleLink {
@@ -22,6 +22,8 @@ export const CONSOLE_LINKS: ConsoleLink[] = [
   { id: 'support-desk', label: 'Support desk', href: '/staff/support-desk', group: 'Customers', icon: Inbox },
   { id: 'support', label: 'Support sessions', href: '/staff/support', group: 'Customers', icon: LifeBuoy },
   { id: 'plans', label: 'Plans and prices', href: '/staff/plans', group: 'Catalogue', icon: Tags },
+  // Help H-4 (answer 943): the entries people see in Help › What's new.
+  { id: 'whats-new', label: "What's new", href: '/staff/whats-new', group: 'Catalogue', icon: Megaphone },
   { id: 'channels', label: 'Shared SMS account', href: '/staff/channels', group: 'Channels', icon: MessageSquare },
   { id: 'audit', label: 'Audit log', href: '/staff/audit', group: 'Security', icon: ScrollText },
 ];
