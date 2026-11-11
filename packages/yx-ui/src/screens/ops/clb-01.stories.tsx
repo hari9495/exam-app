@@ -38,3 +38,4 @@ export const Reject: S = { name: 'Reject a renewal with the reason (CL-1)', rend
 export const ReadOnly: S = { name: 'Read only (view key, CL-1)', render: () => <ContractorsScreen {...live} contractors={withRenewal} openId="c2" readOnly /> };
 export const WorkOrder: S = { name: 'Add work order (CL-2)', render: () => <ContractorsScreen {...live} sheet={{ kind: 'workorder', contractorId: 'c2', id: null }} /> };
 export const InviteContact: S = { name: 'Invite to contractor login (CL-3)', render: () => <ContractorsScreen {...live} sheet={{ kind: 'contact', contractorId: 'c3' }} /> };
+export const PeakNotCounted: S = { name: 'Highest in 12 months before the first nightly count (803)', render: () => <ContractorsScreen {...base} establishments={ESTABLISHMENTS.map((e, i) => ({ ...e, peak: i === 0 ? 71 : null }))} /> };

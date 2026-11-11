@@ -1,4 +1,4 @@
-import { coverOf, daysPresent, packDue, packState, placementBlock, type OwnLicenceLike } from './own-licence-rules';
+import { challanRows, coverOf, daysPresent, packDue, packState, placementBlock, type OwnLicenceLike } from './own-licence-rules';
 
 const lic = (over: Partial<OwnLicenceLike> = {}): OwnLicenceLike => ({ id: 'l1', licenceNo: 'TN/OSH/CL/2026/2211', clientSiteId: 's1', states: ['IN-TN'], maxWorkers: 50, validFrom: '2026-01-01', validTo: '2027-03-31', status: 'verified', ...over });
 
@@ -35,5 +35,23 @@ describe('own licence rules (CL-8)', () => {
 
   it('days present count half days as half', () => {
     expect(daysPresent(['present', 'half_day', 'absent', 'leave', 'present'])).toBe(2.5);
+  });
+});
+
+describe('client pack remittances (answer 821)', () => {
+  const reg = [{ statute: 'IN.PF', registrationNo: 'TNMAS0012345000' }, { statute: 'IN.ESI', registrationNo: '51000123450001001' }];
+  it('a filed PF and ESI each give a row with the challan; nothing missing', () => {
+    const out = challanRows(reg, [{ statute: 'IN.PF', reference: 'TRRN 3112600012345', amount: '48210.00', filedOn: '2026-11-12' }, { statute: 'IN.ESI', reference: 'ESIC-CH-778812', amount: '9120.00', filedOn: '2026-11-13' }]);
+    expect(out.missing).toEqual([]);
+    expect(out.rows).toEqual([
+      ['PF', 'TNMAS0012345000', 'TRRN 3112600012345', '48210.00', '2026-11-12', 'Filed'],
+      ['ESI', '51000123450001001', 'ESIC-CH-778812', '9120.00', '2026-11-13', 'Filed'],
+    ]);
+  });
+  it('negative: a registered statute not filed is named as missing; one not registered is left out', () => {
+    expect(challanRows(reg, [{ statute: 'IN.PF', reference: 'T1', amount: '1.00', filedOn: '2026-11-12' }]).missing).toEqual(['ESI challan']);
+    expect(challanRows(reg, []).missing).toEqual(['PF challan', 'ESI challan']);
+    expect(challanRows([reg[0]!], []).rows).toEqual([['PF', 'TNMAS0012345000', '', '', '', 'Not filed yet']]);
+    expect(challanRows([], [])).toEqual({ rows: [], missing: [] });
   });
 });

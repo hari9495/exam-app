@@ -45,6 +45,7 @@ export const LicenceFull: S = {
     />
   ),
 };
+export const LowWage: S = { name: 'Add worker · wage below the minimum, a warning (810)', render: () => <ContractorPortalScreen {...base} tab="workers" addWorker={{ dob: new Date(1996, 5, 11), establishmentId: 'hsr', wage: 9000 }} /> };
 export const Pack: S = { name: 'Monthly pack · short challan', render: () => <ContractorPortalScreen {...base} tab="packs" /> };
 export const PackVerified: S = {
   name: 'Monthly pack · verified',

@@ -19787,7 +19787,7 @@
     ],
     "expected": "Step 1: the PDF is refused (JPG or PNG); the worker is sent with the photo (toast says so). Step 2: the photo shows; approval refused until the tick. Step 3: approved, gate pass issued, the photo is the gate pass card photo (one photo). Step 4: no photo check asked.",
     "stories": [
-      "Screens/Portals/T9-13 · Contractor portal",
+      "Screens/Portals/T9-13 · Contract-labour vendor portal",
       "Screens/Contract labour/CLB-02 · Contract workers register · Site approval · induction and gate pass (CL-2)"
     ],
     "note": "Positive and negative. Answer 754."
@@ -19849,5 +19849,61 @@
     "stories": [
       "Screens/Contract labour/CLB-08 · Client compliance packs"
     ]
+  },
+  {
+    "id": "MT-CL-A-01",
+    "area": "Contract labour · founder answers 803-822 (11 Nov 2026)",
+    "screen": "CLB-01 Contractors; Settings 4.9; CLB-02 Attendance",
+    "url": "http://localhost:3000/yx/contract-labour/contractors",
+    "account": "The contract-labour compliance owner (clra.contractor.manage); for 822 also ats.staffing.manage; a contractor contact on the portal for 810. Browser window 1278 x 635.",
+    "steps": [
+      "Open Contractors the day a site gets its first contract worker (before the 08:30 job).",
+      "Open Settings › Contract labour registrations.",
+      "Attendance: Confirm month for a contractor with no days in the month.",
+      "Confirm month for a contractor where one worker has 0 days."
+    ],
+    "expected": "Steps 1-2: Highest in 12 months reads \"Counted tonight\", not 0; after the night job, the number. Step 3: the question is \"Confirm 0 days?\" with the button \"Confirm 0 days\". Step 4: the usual question, naming the worker with 0 days.",
+    "stories": [
+      "Screens/Contract labour/CLB-01 · Contractors register",
+      "Screens/Contract labour/CLB-02 · Contract workers register"
+    ],
+    "note": "Positive and negative. Answers 803, 807."
+  },
+  {
+    "id": "MT-CL-A-02",
+    "area": "Contract labour · founder answers 803-822 (11 Nov 2026)",
+    "screen": "CLB-02 Deploy worker; T9-13 portal Add worker",
+    "url": "http://localhost:3000/yx/contract-labour/workers",
+    "account": "The contract-labour compliance owner (clra.contractor.manage); for 822 also ats.staffing.manage; a contractor contact on the portal for 810. Browser window 1278 x 635.",
+    "steps": [
+      "Deploy a worker at a Karnataka site, unskilled, monthly wage 9,000.",
+      "Change the wage to the minimum shown under the field.",
+      "On the portal, Add worker with wage 9,000; send it."
+    ],
+    "expected": "Step 1: a warning \"Below the minimum wage\" naming the minimum; Deploy still works. Step 2: the warning goes. Step 3: the same warning; the worker is sent.",
+    "stories": [
+      "Screens/Contract labour/CLB-02 · Contract workers register",
+      "Screens/Portals/T9-13 · Contract-labour vendor portal"
+    ],
+    "note": "Positive and negative. Answer 810: a warning, never a block."
+  },
+  {
+    "id": "MT-CL-A-03",
+    "area": "Contract labour · founder answers 803-822 (11 Nov 2026)",
+    "screen": "CLB-08 Client packs; HIR-17 New placement",
+    "url": "http://localhost:3000/yx/contract-labour/client-packs",
+    "account": "The contract-labour compliance owner (clra.contractor.manage); for 822 also ats.staffing.manage; a contractor contact on the portal for 810. Browser window 1278 x 635.",
+    "steps": [
+      "With PF filed for last month and ESI not, Make pack for a client site; Download pack.",
+      "File ESI in Payroll › Statutory filings; Make pack again with a reason.",
+      "Staffing › New placement: our employee for a client that has sites, without choosing a site; then with a site.",
+      "New placement of a vendor worker without a site."
+    ],
+    "expected": "Step 1: the card says \"Not filed yet: ESI challan\"; the ZIP has the PF and ESI remittances register (PF with its TRRN and amount, ESI \"Not filed yet\") and the cover names ESI; no ECR file. Step 2: nothing missing. Step 3: \"Choose the client site where they will work.\"; then placed. Step 4: placed.",
+    "stories": [
+      "Screens/Contract labour/CLB-08 · Client compliance packs",
+      "Screens/Hiring/HIR-17 · Placements and bench board"
+    ],
+    "note": "Positive and negative. Answers 821, 822."
   }
 ]

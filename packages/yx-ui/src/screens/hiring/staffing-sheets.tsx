@@ -506,12 +506,15 @@ export function PlacementSheet({ open, onOpenChange, placeable, today, onSave }:
   const s = useSave(() => onOpenChange(false));
   const chosen = placeable.find((p) => p.id === sub);
   const sites = chosen?.sites ?? [];
+  // Answer 822: our own employee is placed at one of the client's sites once it has sites.
+  const siteNeeded = chosen?.source === 'employee' && sites.length > 0 && !sites.some((x) => x.id === site);
   const endBad = !end || Boolean(start && end < start);
   const save = () => {
     setTried(true);
     if (!sub) return focus('pl-sub');
     if (!start) return focus('pl-start');
     if (endBad) return focus('pl-end');
+    if (siteNeeded) return focus('pl-site');
     void s.run(() => onSave({ submissionId: sub, startOn: isoOf(start)!, endOn: isoOf(end)!, ...(site && sites.some((x) => x.id === site) ? { clientSiteId: site } : {}) }), 'Placement started');
   };
   const SOURCE = { employee: 'Own payroll', candidate: 'Pipeline candidate', vendor: 'Vendor supplied' } as const;
@@ -524,7 +527,7 @@ export function PlacementSheet({ open, onOpenChange, placeable, today, onSave }:
         </FormField>
         {chosen?.source === 'candidate' && <InlineAlert tone="warning">A pipeline candidate joins as an employee first (People › Onboarding); then submit them from the bench.</InlineAlert>}
         {sites.length > 0 && (
-          <FormField id="pl-site" label="Client site" optional helper="Where they work. Our own staff at a site count against our contractor licence there.">
+          <FormField id="pl-site" label="Client site" {...(chosen?.source === 'employee' ? { required: true } : { optional: true })} helper="Where they work. Our own staff at a site count against our contractor licence there." error={tried && siteNeeded ? 'Choose the client site where they will work.' : null}>
             <Select value={site} onChange={setSite} options={sites.map((x) => ({ value: x.id, label: x.name }))} placeholder="Choose a site" />
           </FormField>
         )}

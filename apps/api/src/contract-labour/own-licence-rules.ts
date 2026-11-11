@@ -47,3 +47,27 @@ export function packState(p: { uploadedOn: string | null; acceptedAt: string | n
 export function daysPresent(statuses: string[]): number {
   return statuses.reduce((n, s) => n + (s === 'present' ? 1 : s === 'half_day' ? 0.5 : 0), 0);
 }
+
+const STATUTE_NAME: Record<string, string> = { 'IN.PF': 'PF', 'IN.ESI': 'ESI' };
+
+/**
+ * Answer 821: the month's PF and ESI remittances for the pack, one row per filed return (challan or TRRN, amount, filed
+ * day), "Not filed yet" for a statute the entity is registered for with nothing filed; those are named as missing.
+ * Never the employee-level return file: it lists every employee of the entity, not only those at the client.
+ */
+export function challanRows(registered: { statute: string; registrationNo: string | null }[], filed: { statute: string; reference: string | null; amount: string | null; filedOn: string | null }[]): { rows: string[][]; missing: string[] } {
+  const rows: string[][] = [];
+  const missing: string[] = [];
+  for (const statute of ['IN.PF', 'IN.ESI']) {
+    const reg = registered.find((r) => r.statute === statute);
+    if (!reg) continue;
+    const name = STATUTE_NAME[statute]!;
+    const mine = filed.filter((f) => f.statute === statute);
+    if (!mine.length) {
+      rows.push([name, reg.registrationNo ?? '', '', '', '', 'Not filed yet']);
+      missing.push(`${name} challan`);
+    }
+    for (const f of mine) rows.push([name, reg.registrationNo ?? '', f.reference ?? '', f.amount ?? '', f.filedOn ?? '', 'Filed']);
+  }
+  return { rows, missing };
+}

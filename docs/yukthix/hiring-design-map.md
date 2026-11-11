@@ -56,10 +56,10 @@ built**.
 | B. Candidates, pipeline and interviews | 8 | 60 | 1 | 0 | 8 | 1 | 70 |
 | C. Offers, BGV and joining | 4 | 24 | 4 | 0 | 1 | 0 | 29 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 30 | 0 | 0 | 0 | 4 | 34 |
-| E. Staffing agency | 8 | 56 | 12 | 0 | 0 | 0 | 68 |
+| E. Staffing agency | 8 | 57 | 12 | 0 | 0 | 0 | 69 |
 | F. Compliance and fairness | 5 | 21 | 4 | 0 | 6 | 0 | 31 |
 | G. Careers site, portals and settings | 4 | 67 | 5 | 2 | 9 | 0 | 83 |
-| **All Hiring design groups (A–G)** | **37** | **295** | **27** | **2** | **24** | **5** | **353** |
+| **All Hiring design groups (A–G)** | **37** | **296** | **27** | **2** | **24** | **5** | **354** |
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 11 | 0 | 0 | 4 | 0 | 15 |
 Recounted by script 10 Nov 2026 on `feat/yukthix-walk-2` (answer 691): T9-09 PortalWhatsapp drawn and live: A–G 295 live, 27 gap, 2 wire, 24 not built, 5 phone, of 353.
 Recounted by script 10 Nov 2026 on `feat/yukthix-hiring-whatsapp-optin` (answer 561): 2 new stories drawn and live (Surfaces/Careers ApplyFormWhatsapp, T9-09 StatusWhatsapp): A–G 294 live, 27 gap, 2 wire, 24 not built, 5 phone, of 352 (rows B, E and G had fallen behind and are recounted from the script).
@@ -744,6 +744,7 @@ keep hours and fees; recruiters see none of it.
 | BenchEmpty · Bench · empty | live | |
 | Loading · Loading | live | |
 | NewPlacement · New placement · from a selected submission | live | new story (drawn): `PlacementSheet`: a selected submission, once; a rate on the first day; a pipeline candidate joins as an employee first (question 481); placing takes the person off the bench the day before |
+| NewPlacementSite · New placement · client site required for own staff (822) | live | new story (drawn): answers 638, 822: our own employee at a client with sites is placed at one (`SITE_REQUIRED` otherwise); counted against our contractor licence |
 | AddToBench · Add to bench | live | new story (drawn): `BenchSheet`: active employees not placed and not on the bench |
 | RecruiterView · Recruiter · no pay rates or margins | live | new story (drawn) |
 | FeeBeforeHire · Placement fee · before the hire | live | new story (drawn, answer 494): Client hired (date, first-year CTC, series) drafts the fee invoice |

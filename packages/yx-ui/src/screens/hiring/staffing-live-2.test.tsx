@@ -100,6 +100,19 @@ describe('HIR-17 placements and bench (live)', () => {
     await ue.click(screen.getByRole('button', { name: 'Start placement' }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith({ submissionId: 's1', startOn: '2026-11-10', endOn: '2027-11-30', clientSiteId: 'cs1' }));
   });
+  it('new placement sheet (822): our employee at a client with sites needs the site; a vendor worker does not', async () => {
+    const onSave = vi.fn(async () => undefined);
+    const { unmount } = wrap(<PlacementSheet open onOpenChange={vi.fn()} today={new Date(2026, 10, 10)} placeable={[{ id: 's1', person: 'Kiran', job: 'Guard', source: 'employee', sites: [{ id: 'cs1', name: 'Ambattur unit' }] }]} onSave={onSave} />);
+    await ue.type(screen.getByRole('textbox', { name: /Last day/ }), '30/11/2027{Enter}');
+    await ue.click(screen.getByRole('button', { name: 'Start placement' }));
+    expect(await screen.findByText('Choose the client site where they will work.')).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+    unmount();
+    wrap(<PlacementSheet open onOpenChange={vi.fn()} today={new Date(2026, 10, 10)} placeable={[{ id: 's3', person: 'Ravi', job: 'Guard', source: 'vendor', sites: [{ id: 'cs1', name: 'Ambattur unit' }] }]} onSave={onSave} />);
+    await ue.type(screen.getByRole('textbox', { name: /Last day/ }), '30/11/2027{Enter}');
+    await ue.click(screen.getByRole('button', { name: 'Start placement' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ submissionId: 's3', startOn: '2026-11-10', endOn: '2027-11-30' }));
+  });
   it('bench: days against the policy; over the limit says what to do; only managers take someone off', () => {
     const rows = [{ id: 'b1', employeeId: 'e1', person: 'Arun Kumar', sinceOn: '2026-09-01', days: 35, left: -5, overPolicy: true, lastClient: 'Nilgiri Retail', note: null }];
     const base = { state: 'ready' as const, onRetry: vi.fn(), rows, policy: { maxDays: 30, payPct: 50, after: 'review' as const }, onAdd: vi.fn(), onRemove: vi.fn(), onSubmit: vi.fn(), onPlacements: vi.fn() };

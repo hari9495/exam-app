@@ -30,3 +30,5 @@ const ATT_ROWS = [
 ];
 export const AttendanceMonth: S = { name: 'Attendance month (CL-5)', render: () => <AttendanceMonthScreen month="2026-09" rows={ATT_ROWS} canManage canConfirm /> };
 export const ConfirmMonth: S = { name: 'Confirm a month (CL-5)', render: () => <AttendanceMonthScreen month="2026-09" rows={ATT_ROWS} canManage canConfirm confirmOpen="c1:hosur" /> };
+export const ConfirmZeroDays: S = { name: 'Confirm a month with 0 days (807)', render: () => <AttendanceMonthScreen month="2026-09" rows={[{ ...ATT_ROWS[0]!, workers: ATT_ROWS[0]!.workers.map((w) => ({ ...w, present: 0 })) }]} canManage canConfirm confirmOpen="c1:hosur" /> };
+export const LowWage: S = { name: 'Deploy · wage below the minimum, a warning (810)', render: () => <WorkersScreen {...base} deploy="lowwage" /> };

@@ -28,6 +28,16 @@ export const NewPlacement: S = {
     </>
   ),
 };
+// Answers 638 and 822: our own employee at a client that has sites is placed at one (it counts against our licence).
+export const NewPlacementSite: S = {
+  name: 'New placement · client site required for own staff (822)',
+  render: () => (
+    <>
+      <PlacementsScreen rows={PLACEMENTS} />
+      <PlacementSheet open onOpenChange={() => {}} today={TODAY} placeable={[{ id: 's1', person: 'Kiran Joshi', job: 'Security guard', source: 'employee', sites: [{ id: 'cs1', name: 'Ambattur unit' }, { id: 'cs2', name: 'Peenya warehouse' }] }]} onSave={async () => {}} />
+    </>
+  ),
+};
 export const AddToBench: S = {
   name: 'Add to bench',
   render: () => (

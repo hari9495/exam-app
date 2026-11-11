@@ -111,6 +111,9 @@ export function useMinWage(site: string | null, skill: string, fetch?: (location
   }, [site, skill, fetch]);
   return hint;
 }
+/** Answer 810: a wage below the minimum is a clear warning at deploy, never a block (the monthly wage check flags it). */
+export const belowMinimum = (wage: number | null, h: MinWageHint | null) =>
+  wage && h && wage < Number(h.monthly) ? `₹${wage.toLocaleString('en-IN')} a month is below the minimum wage of ₹${Number(h.monthly).toLocaleString('en-IN')} (${h.source}${h.verify ? ', verify' : ''}). The worker can still be deployed; the monthly wage check will show the shortfall.` : null;
 export const hintText = (h: MinWageHint | null) => (h ? `Minimum ₹${h.monthly} a month (₹${h.daily} a day): ${h.source}${h.verify ? ', verify' : ''}.` : undefined);
 
 /** What the contractor has to do or is waiting for (licence renewals, gate passes, approvals). */
@@ -274,7 +277,7 @@ export function ClWorkerList({ workers, sites, today, adding: addingAtStart = fa
   today: Date;
   adding?: boolean;
   /** The design's sample form and checks. */
-  design?: { dob: Date; siteId: string; checks: PortalCheck[] };
+  design?: { dob: Date; siteId: string; checks: PortalCheck[]; wage?: number };
   onCheck?: (input: PortalWorkerInput) => Promise<PortalCheck[]>;
   /** Resolves with the new worker's id (for the photo). */
   onAdd?: (input: PortalWorkerInput) => Promise<unknown>;
@@ -364,7 +367,7 @@ function WithdrawForm({ worker, onClose, onWithdraw }: { worker: PortalWorker; o
   );
 }
 
-function AddWorkerForm({ sites, today, design, onCheck, onAdd, onPhoto, onMinWage, onClose }: { sites: { id: string; name: string }[]; today: Date; design?: { dob: Date; siteId: string; checks: PortalCheck[] }; onCheck?: (input: PortalWorkerInput) => Promise<PortalCheck[]>; onAdd?: (input: PortalWorkerInput) => Promise<unknown>; onPhoto?: (id: string, file: File) => Promise<unknown>; onMinWage?: (locationId: string, skill: string) => Promise<MinWageHint | null>; onClose: () => void }) {
+function AddWorkerForm({ sites, today, design, onCheck, onAdd, onPhoto, onMinWage, onClose }: { sites: { id: string; name: string }[]; today: Date; design?: { dob: Date; siteId: string; checks: PortalCheck[]; wage?: number }; onCheck?: (input: PortalWorkerInput) => Promise<PortalCheck[]>; onAdd?: (input: PortalWorkerInput) => Promise<unknown>; onPhoto?: (id: string, file: File) => Promise<unknown>; onMinWage?: (locationId: string, skill: string) => Promise<MinWageHint | null>; onClose: () => void }) {
   const toast = useToastIfAny();
   const [site, setSite] = useState<string | null>(design?.siteId ?? (sites.length === 1 ? sites[0]!.id : null));
   const [given, setGiven] = useState(design ? 'Ramesh' : '');
@@ -373,7 +376,7 @@ function AddWorkerForm({ sites, today, design, onCheck, onAdd, onPhoto, onMinWag
   const [aadhaar, setAadhaar] = useState(design ? '234567890123' : '');
   const [skill, setSkill] = useState<PortalWorkerInput['skill']>('unskilled');
   const [from, setFrom] = useState<Date | null>(design ? today : null);
-  const [wage, setWage] = useState<number | null>(null);
+  const [wage, setWage] = useState<number | null>(design?.wage ?? null);
   const [uan, setUan] = useState('');
   const [ip, setIp] = useState('');
   // Answer 754: kept here and sent once the worker exists.
@@ -459,6 +462,7 @@ function AddWorkerForm({ sites, today, design, onCheck, onAdd, onPhoto, onMinWag
         <FormField id="aw-wage" label="Monthly wage you pay" optional helper={hintText(hint)}>
           <CurrencyField value={wage} onChange={setWage} />
         </FormField>
+        {belowMinimum(wage, hint) && <InlineAlert tone="warning" title="Below the minimum wage">{belowMinimum(wage, hint)}</InlineAlert>}
         <FormField id="aw-photo" label="Photo" optional helper="JPG or PNG, a clear face, up to 5 MB. The site checks it against the worker before the gate pass.">
           <FileUpload
             id="aw-photo"

@@ -35,11 +35,12 @@ built** (no API for this feature) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Principal employer (contractors working at our sites) | 5 | 46 | 1 | 0 | 0 | 0 | 47 |
-| B. We are the contractor (our staff at client sites) | 3 | 13 | 1 | 0 | 0 | 0 | 14 |
-| C. Contractor portal | 1 | 19 | 0 | 0 | 0 | 0 | 19 |
+| A. Principal employer (contractors working at our sites) | 5 | 49 | 1 | 0 | 0 | 0 | 50 |
+| B. We are the contractor (our staff at client sites) | 3 | 14 | 1 | 0 | 0 | 0 | 15 |
+| C. Contractor portal | 1 | 20 | 0 | 0 | 0 | 0 | 20 |
 | D. Settings | 1 | 1 | 2 | 0 | 0 | 0 | 3 |
-| **All** | 10 | 79 | 4 | 0 | 0 | 0 | 83 |
+| **All** | 10 | 84 | 4 | 0 | 0 | 0 | 88 |
+Recounted by script 11 Nov 2026 on `feat/yukthix-contract-labour-approved-801-825` after answers 803, 807, 810, 821, 822 (five new drawn stories).
 Recounted by script 11 Nov 2026 on `feat/yukthix-contract-labour-cl8` after CL-8: group B live (four new drawn stories).
 Recounted by script 19 Nov 2026 on `feat/yukthix-contract-labour-cl6` after CL-6: CLB-04 live (Registers with a gap: the inspection pack stays in Compliance › Registers).
 
@@ -113,6 +114,7 @@ All 46 stories in section 4: there is no contractor, licence, deployment, proof 
 | ReadOnly · Read only (view key, CL-1) | live | `clra.contractor.view`: reads and opens the copy, no changes |
 | WorkOrder · Add work order (CL-2) | live | `POST/PUT contract-labour/contractors/:id/work-orders`; number, dates, headcount, sites |
 | InviteContact · Invite to contractor login (CL-3) | live | `POST …/contractors/:id/contacts` (emailed the portal link), `POST …/contacts/:cid/remove` (ends their sessions) |
+| PeakNotCounted · Highest in 12 months before the first nightly count (803) | live | answer 803: "Counted tonight" until the 08:30 count has a peak for the site (also in Settings 4.9 registrations) |
 
 #### CLB-02 · Contract workers register
 
@@ -135,6 +137,8 @@ All 46 stories in section 4: there is no contractor, licence, deployment, proof 
 | KioskPin · Kiosk PIN shown once (CL-5) | live | answer 625: `POST …/workers/:id/kiosk-pin`, a random 4-digit PIN kept only as its argon2 hash; five wrong tries lock it for 15 minutes |
 | AttendanceMonth · Attendance month (CL-5) | live | /yx/contract-labour/attendance (menu Contract labour › Attendance); `GET contract-labour/attendance?month=`: days on site per contractor and site, from the kiosk or the contractor |
 | ConfirmMonth · Confirm a month (CL-5) | live | `POST …/attendance/confirm`: a past month only, once (409 after); the month is then locked for the kiosk and the portal |
+| ConfirmZeroDays · Confirm a month with 0 days (807) | live | answer 807: a month with no days asks "Confirm 0 days?"; any confirmation names the workers with 0 days |
+| LowWage · Deploy · wage below the minimum, a warning (810) | live | answer 810: a clear warning under the wage when it is below the site's minimum (IN.MW, verify); never a block |
 
 #### CLB-03 · Vendor compliance tracker
 
@@ -191,9 +195,10 @@ All 46 stories in section 4: there is no contractor, licence, deployment, proof 
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Packs · Packs by client and month | live (gap) | wage register and muster from approved payslips and attendance; the drawing's PF ECR, ESI challan, payment proof and PT items are not in the pack (question 821) |
+| Packs · Packs by client and month | live (gap) | wage register, muster and (answer 821) the PF and ESI remittances from payroll's filed returns; the drawing's wage payment proof and PT are not in the pack (question 841) |
 | RecordUpload · Record portal upload | live | date, reference and acknowledgement file; no client-portal integration |
 | AllAccepted · All accepted | live | |
+| ChallanMissing · Pack · ESI challan not filed yet (821) | live | answer 821: the pack names a PF or ESI challan not filed for the month; made again once filed |
 | MakePack · Make pack | live | CL-8, drawn first; a remake before upload needs a reason |
 | RecordAcceptance · Record client acceptance | live | CL-8, drawn first |
 
@@ -208,6 +213,7 @@ All 46 stories in section 4: there is no contractor, licence, deployment, proof 
 | Workers · Workers | live | the own contractor's waiting and deployed workers, masked ID, gate pass |
 | UnderAge · Add worker · under 18 blocked | live | `POST …/workers/check` then `…/workers`: the CL-2 checks, no override; the contractor is always the contact's own |
 | LicenceFull · Add worker · licence maximum reached | live | as UnderAge |
+| LowWage · Add worker · wage below the minimum, a warning (810) | live | answer 810: the same warning as the staff deploy sheet |
 | Pack · Monthly pack · short challan | live | `GET public/contractor-portal/:org/packs`, `…/pack?locationId&month`: the five proofs (the company's required ones; the others read "Optional") with their checks, days paid against days on site (CL-5) |
 | PackVerified · Monthly pack · verified | live | |
 | Bills · Bills · payment on hold | live | `GET …/bills`: the contractor's PAY 8 bills with TDS, wages we paid taken back, and the hold |
@@ -729,4 +735,34 @@ wrong field (`7bb97c964`); "1 workers" (`248bb3636`).
      is only a hint until the monthly wage check. Suggested: keep, with the hint in red on the approval dialog.
 811. **Registers no-access text.** "Ask an admin (the contract labour key)" while the other pages say "Ask your HR team".
      Suggested: the same words everywhere.
+
+## Built from the founder's answers 803, 807, 810, 821, 822 (11 Nov 2026, branch `feat/yukthix-contract-labour-approved-801-825`)
+
+- **803:** before the 08:30 job has counted a site, "Highest in 12 months" reads "Counted tonight" (Contractors cards and
+  Settings 4.9 registrations), not 0.
+- **807:** confirming a month with no days on site asks "Confirm 0 days?" (button "Confirm 0 days"); every month
+  confirmation names the workers with 0 days.
+- **810:** at deploy, a wage below the site's minimum (IN.MW, verify) shows a clear warning under the wage on the staff
+  deploy sheet and the portal's Add worker; it never blocks (the monthly wage check flags the shortfall).
+- **821:** a client pack also carries the month's PF and ESI remittances: a third register `clpk_challans` (statute,
+  registration, challan or TRRN, amount, filed day), from payroll's filed returns of the licence's legal entity, for the
+  statutes the entity is registered for. One not filed yet reads "Not filed yet", is named on the pack card and the ZIP
+  cover, and the pack can be made again once it is filed. The employee-level ECR / ESI return file is never put in the
+  pack: it lists every employee of the entity, not only those at the client. Migration
+  `202617z0000001_contract_labour_approved` (`client_packs.challans_register_id`, `missing`).
+- **822:** once a client has sites, our own employee's placement needs one (`SITE_REQUIRED`, 400; the sheet asks for
+  it). A vendor's worker does not.
+- **Tests:** API unit (`own-licence-rules.spec`), kit and web tests (positive and negative), e2e `contract-labour-8`.
+
+## Founder questions from answers 803 … 822 (11 Nov 2026)
+
+841. **Wage payment proof and PT in the pack.** The drawing also lists the wage payment proof and professional tax.
+     *Suggested: PT from payroll's PT filing in the same register when the state has PT; the payment proof stays by hand.*
+842. **Challan receipt copies.** Payroll records each return's portal reference (TRRN or challan number), amount and
+     filed day, not the bank's challan receipt PDF; the pack shows those. *Suggested: keep; add an optional receipt
+     upload to Payroll › Statutory filings later if clients ask for the PDF.*
+843. **A pack before the challans are filed.** PF and ESI are due on the 15th, client packs often on the 10th; the pack is
+     made without them and names them, rather than waiting. *Suggested: keep; remake it once filed.*
+844. **Warning at site approval.** 810 warns where the wage is typed (staff sheet, portal). *Suggested: show the same
+     warning on the site approval dialog for a portal-added worker.*
 

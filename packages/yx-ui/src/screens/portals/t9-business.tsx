@@ -753,7 +753,7 @@ export interface ContractorPortalProps {
   };
   bills: { no: string; month: string; amount: number; tds: number; status: 'On hold' | 'Paid' | 'Due'; reason: string }[];
   /** Adding a worker: show the add form with this DOB and establishment. */
-  addWorker?: { dob: Date; establishmentId: string };
+  addWorker?: { dob: Date; establishmentId: string; wage?: number };
   /** CL-3 (answer 631): what is due, the work orders, and a licence whose renewal is being uploaded. */
   due?: PortalDue[];
   workOrders?: PortalWorkOrder[];
@@ -822,7 +822,7 @@ export function ContractorPortalScreen(props: ContractorPortalProps | { live: Li
           sites={p.establishments.map((e) => ({ id: e.id, name: `${e.name} (${e.deployed} of ${e.maxWorkers})` }))}
           today={today}
           withdrawingId={p.withdrawingId ?? null}
-          design={p.addWorker ? { dob: p.addWorker.dob, siteId: p.addWorker.establishmentId, checks: [{ id: 'age', status: block?.includes('under 18') ? 'fail' : 'pass', label: 'Age 18 or over', detail: block?.includes('under 18') ? block : undefined }, { id: 'max', status: block && !block.includes('under 18') ? 'fail' : 'pass', label: 'Within the licence maximum', detail: block && !block.includes('under 18') ? block : undefined }, { id: 'dup', status: 'pass', label: 'Not already deployed', detail: 'Matched on the ID' }] } : undefined}
+          design={p.addWorker ? { dob: p.addWorker.dob, siteId: p.addWorker.establishmentId, wage: p.addWorker.wage, checks: [{ id: 'age', status: block?.includes('under 18') ? 'fail' : 'pass', label: 'Age 18 or over', detail: block?.includes('under 18') ? block : undefined }, { id: 'max', status: block && !block.includes('under 18') ? 'fail' : 'pass', label: 'Within the licence maximum', detail: block && !block.includes('under 18') ? block : undefined }, { id: 'dup', status: 'pass', label: 'Not already deployed', detail: 'Matched on the ID' }] } : undefined}
         />
       )}
       {tab === 'packs' && <ClPackView pack={packOf(p.pack, p.workers)} today={today} uploading={p.uploading ?? null} />}

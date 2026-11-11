@@ -13260,6 +13260,9 @@ model ClientPack {
   legalEntityId    String    @map("legal_entity_id") @db.Uuid
   wagesRegisterId  String    @map("wages_register_id") @db.Uuid
   musterRegisterId String    @map("muster_register_id") @db.Uuid
+  /// Answer 821: the PF and ESI remittances register, and the statutes not filed yet for the month.
+  challansRegisterId String? @map("challans_register_id") @db.Uuid
+  missing          String[]  @default([])
   employees        Int
   madeBy           String    @map("made_by") @db.Uuid
   madeAt           DateTime  @default(now()) @map("made_at") @db.Timestamptz(3)
