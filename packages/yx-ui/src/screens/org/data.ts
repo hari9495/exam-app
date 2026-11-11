@@ -127,6 +127,7 @@ export const SETTING_REGISTRY: Record<string, SettingDef> = {
   'privacy.retention.personal_years': { label: 'Keep personal details after someone leaves (years)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '3', '5', '8'], default: '3', guard: 'access.role.manage' },
   'privacy.retention.special_years': { label: 'Keep Special data (Aadhaar, background checks) after someone leaves (years)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '1', '3'], default: '1', guard: 'access.role.manage' },
   'privacy.erasure.enabled': { label: 'Delete Special data when its period ends', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
+  'help.not_found.keep_days': { label: 'Keep Not found references for (days)', scopes: ['tenant'], dated: false, values: ['30', '60', '90', '180', '365'], default: '90', guard: 'access.role.manage' },
   'contract.max_years': { label: 'A fixed-term contract lasts at most (years from joining)', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['1', '2', '3', '4', '5', 'none'], default: '3' },
   'contract_end.action': { label: 'When a fixed-term contract ends', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['alert', 'auto_exit'], default: 'alert' },
   'joining.reporting_time': { label: 'Joiners report on their first day at', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00'], default: '09:30' },

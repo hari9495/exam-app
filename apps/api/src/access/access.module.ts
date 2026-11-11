@@ -13,7 +13,7 @@ import { TemplateSyncService } from './template-sync.service';
 @Module({
   imports: [PermissionProfilesModule, NotificationsModule, EmailModule, WorkflowModule],
   providers: [AccessService, AccessRequestsService, TemplateSyncService],
-  exports: [TemplateSyncService],
+  exports: [TemplateSyncService, AccessRequestsService],
   controllers: [AccessController, AccessRequestsController],
 })
 export class AccessModule {}

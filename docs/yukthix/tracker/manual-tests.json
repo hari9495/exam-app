@@ -20245,5 +20245,44 @@
       "Shell/App shell and navigation · Top bar · Help with something new in What's new"
     ],
     "note": "Positive and negative. Answer 992."
+  },
+  {
+    "id": "MT-HLP-973",
+    "area": "Help — H-2b: access request reminders and Not found retention (12 Nov 2026)",
+    "screen": "Bell and Approvals inbox (System Admin)",
+    "url": "http://localhost:3000/yx/approvals",
+    "account": "An employee (arjun@) asks; two System Admins (admin-tester and a second admin). The test database clock or a request dated back by the lead. Window 1278 x 635.",
+    "steps": [
+      "As arjun@ open a page without access and Request access (Monday).",
+      "On Tuesday look at the System Admins' bell and inbox.",
+      "On Wednesday (after the hourly job) look again.",
+      "Let the job run again on Thursday.",
+      "Refuse another request sent on Monday; look on Wednesday.",
+      "Look at arjun@'s bell."
+    ],
+    "expected": "Step 2: no reminder; the inbox shows it due Wednesday. Step 3: each System Admin has one notice 'Arjun has waited 2 working days for access to …' that opens Roles & access › Requests; the inbox shows it due today, then overdue. Step 4: no second notice. Step 5: no reminder for the refused one. Step 6: arjun@ gets no reminder.",
+    "stories": [
+      "Screens/Platform/Inbox & requests"
+    ],
+    "note": "Positive and negative. Answer 973. Weekends and the company holiday calendar are skipped."
+  },
+  {
+    "id": "MT-HLP-974",
+    "area": "Help — H-2b: access request reminders and Not found retention (12 Nov 2026)",
+    "screen": "Settings › Access and privacy › Privacy",
+    "url": "http://localhost:3000/yx/settings/access",
+    "account": "admin-tester (System Admin); an HR user without access.role.manage.",
+    "steps": [
+      "Look at 'Keep Not found references for (days)'.",
+      "Change it to 180 and save.",
+      "As the HR user try to change it.",
+      "Change it back to 90; after the nightly job, look up a reference older than 90 days in Helpdesk › Tickets › Look up a reference.",
+      "Look up a reference from last week."
+    ],
+    "expected": "Step 1: 90 (default). Step 2: saved (toast). Step 3: not allowed. Step 4: 'not found' (deleted). Step 5: found with who, when and the address.",
+    "stories": [
+      "Screens/Settings/Organisation · Access and privacy · Special data erasure · dry run (off), whose data"
+    ],
+    "note": "Positive and negative. Answer 974."
   }
 ]

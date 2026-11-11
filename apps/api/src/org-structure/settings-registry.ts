@@ -46,6 +46,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'policy.reminder.manager_after_days': { label: 'Policies: tell the manager when someone is this many days overdue', scopes: ['tenant'], dated: false, values: ['off', '3', '7', '14', '30'], default: '7' },
   // Help H-4, answer 943: What's new in the Help drawer (YukthiX writes the entries).
   'help.whats_new.show': { label: "Help: show What's new", scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+  // Answer 974: Not found references (who asked for which address) are deleted after this period, like the platform logs.
+  'help.not_found.keep_days': { label: 'Keep Not found references for (days)', scopes: ['tenant'], dated: false, values: ['30', '60', '90', '180', '365'], default: '90', guard: 'access.role.manage' },
   'policy.reack.default': { label: 'Policies: a new version asks everyone to acknowledge again', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'policy.ack.typed_name': { label: 'Policies: people type their name to acknowledge', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // HLP-14: draft policies with the company's own AI (founder decision 1); off offers the YukthiX starters instead.

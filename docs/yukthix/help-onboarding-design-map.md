@@ -461,3 +461,31 @@ of what's new to a new company.
   for the mobile app.
 - 1011 to 1014 (H-6): no go-live or sign-off on the hub until the company wizard (H-7); the checks are fixed; Hiring,
   Performance and Helpdesk cards come later; one saved rule marks an area's rules reviewed.
+
+## H-2b built: reminders and Not found retention (answers 973, 974; 12 Nov 2026, branch `feat/yukthix-help-h2b`)
+- **973, the reminder.** An access request still waiting on the 2nd working day after the IST day it was sent reminds
+  everyone who can grant access (`access.role.manage`, not the person who asked) once: a bell notice "… has waited 2
+  working days for access to …" that opens Roles & access › Requests (and an email, by each person's own email choices),
+  and in their Approvals inbox the request now has that day as its due date, so it shows overdue after it.
+  Working days are Monday to Friday less the company's company-wide holiday calendar: the app keeps no company working
+  week, so Saturday and Sunday are off for every company (question 1022). Hourly job `access-request-reminders`; each
+  company is read and written in its own context; `reminded_at` is set in the statement that claims the reminder, so a
+  rerun or a second server never sends it twice. A decided request is never reminded. Audit `access.request.reminded`.
+- **974, retention.** Nightly job `not-found-retention` deletes Not found references older than the company's setting
+  "Keep Not found references for (days)" (`help.not_found.keep_days`: 30, 60, 90, 180 or 365; 90 by default; System
+  Admins; Settings › Access and privacy › Privacy), following the audit log's own retention setting. The app still may not
+  delete them: only the database function `purge_not_found_refs` does, inside one company's context and never under 30
+  days. Audit `help.not_found.purged` with the count. Migration `202617z0000041_help_h2b`.
+- Tests: unit (`remindOn`: weekends, holidays, the IST day; the sweep registry), e2e `help-h2b` (not at 1 working day,
+  at 2 once in bell and inbox, not the asker, never a decided request, never twice nor with two servers at once, holiday
+  and weekend skipped, each company in its own run; references at 89 days kept and 91 deleted, another company untouched,
+  the app cannot delete, 180-day company keeps them, only a System Admin sets it). Manual tests MT-HLP-973, MT-HLP-974.
+
+### Questions from H-2b (from 1021)
+1021. **Email too.** The reminder is a bell notice and also an email, by each System Admin's own email choices (as every
+      system notice). *Suggested: keep.*
+1022. **Six-day weeks.** Working days are Monday to Friday for every company; the app has no company working week yet.
+      *Suggested: use the company's weekly offs once a company working week exists.*
+1023. **Which holidays.** The company-wide holiday calendar (not each System Admin's location). *Suggested: keep.*
+1024. **Only one reminder.** After the one reminder the request stays overdue in the inbox; there is no second nudge.
+      *Suggested: keep (answer 973 says once).*

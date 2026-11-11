@@ -25,6 +25,8 @@ import { CampaignsService } from '../talent-crm/campaigns.service';
 import { CrmConsentsService } from '../talent-crm/consents.service';
 import { VisitorsService } from '../visitors/visitors.service';
 import { WalkInsService } from '../visitors/walkins.service';
+import { AccessRequestsService } from '../access/access-requests.service';
+import { NotFoundRetentionService } from '../help/not-found-retention.service';
 
 function msg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -64,6 +66,8 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     crmConsents: CrmConsentsService,
     visitors: VisitorsService,
     walkIns: WalkInsService,
+    accessRequests: AccessRequestsService,
+    notFoundRetention: NotFoundRetentionService,
   ) {
     // Keys MUST match SWEEP_SCHEDULE ids.
     this.handlers = {
@@ -96,6 +100,9 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       'visitors-close': () => visitors.closeSweep(),
       'visitors-retention': () => visitors.retentionSweep(),
       'visitors-walkins': () => walkIns.sweep(),
+      // Help answers 973 and 974.
+      'access-request-reminders': () => accessRequests.remindSweep(),
+      'not-found-retention': () => notFoundRetention.prune(),
     };
     this.worker = logBullErrors(new Worker(SCHEDULED_SWEEPS_QUEUE_NAME, (job) => this.dispatch(job), bullOpts(this.connection)), SCHEDULED_SWEEPS_QUEUE_NAME);
     this.worker.on('failed', (job, err) => this.logger.error(`Sweep "${job?.name}" failed: ${msg(err)}`));

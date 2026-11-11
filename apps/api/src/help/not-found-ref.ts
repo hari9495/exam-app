@@ -16,8 +16,8 @@ export const newNotFoundCode = () => `NF-${Array.from({ length: 6 }, () => ALPHA
 export const refPath = (url: string) => (url.split('?')[0] ?? '').slice(0, 300) || '/';
 
 /**
- * Saves a reference for this person in their company and returns it. shortcut: rows are kept (they are small and
- * nothing personal beyond who and which address); add a retention purge with the platform log retention.
+ * Saves a reference for this person in their company and returns it. Answer 974: kept for the company's
+ * help.not_found.keep_days (90 by default), then deleted nightly by NotFoundRetentionService.
  */
 export async function mintNotFoundRef(tenantPrisma: TenantPrismaService, ctx: TenantContext, path: string): Promise<string | null> {
   if (!ctx.organizationId) return null;
