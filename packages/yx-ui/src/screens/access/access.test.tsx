@@ -135,6 +135,18 @@ describe('Roles & access (P02 §4.2–4.3, §4.6)', () => {
     expect(screen.getAllByText('You asked: another admin decides').length).toBeGreaterThan(0);
   });
 
+  it('Give access is never disabled: pressed early it names each missing field and sends nothing', async () => {
+    const onGrant = vi.fn();
+    roles({ onGrant });
+    await ue.click(screen.getByRole('button', { name: 'Give access' }));
+    const dialog = await screen.findByRole('dialog');
+    const send = within(dialog).getByRole('button', { name: 'Give access' });
+    expect(send).toBeEnabled();
+    await ue.click(send);
+    for (const t of ['Choose the role.', 'Choose over whom.', 'Say why: it is kept on the record.']) expect(within(dialog).getByText(t)).toBeInTheDocument();
+    expect(onGrant).not.toHaveBeenCalled();
+  });
+
   it('a risk warning (YX-SEC-18) must be confirmed before the grant is sent again', async () => {
     const onGrant = vi.fn().mockRejectedValueOnce(coded('RISK_CONFIRMATION_REQUIRED', 'Opens Confidential data of 120 people, more than the limit of 25.')).mockResolvedValueOnce(undefined);
     roles({ onGrant });

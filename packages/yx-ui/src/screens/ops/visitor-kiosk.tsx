@@ -79,7 +79,8 @@ function PhotoTaker({ onPhoto, onProblem }: { onPhoto: (base64: string) => void;
     void navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } }).then(
       (s) => {
         stream = s;
-        if (done || !video.current) return;
+        // The step may have closed while the camera started: stop it, or the camera stays on for the next visitor.
+        if (done || !video.current) return void s.getTracks().forEach((t) => t.stop());
         video.current.srcObject = s;
         void video.current.play();
         setState('ready');

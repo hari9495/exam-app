@@ -7,10 +7,10 @@ import type { DayStatus, LeaveStatus, LoadState } from './types';
 
 // Small shared pieces of the wired time screens: the page frame with its load states, and plain-English labels.
 
-export function LivePage({ title, description, actions, state, onRetry, what, grantedBy = 'HR', children }: { title: ReactNode; description?: ReactNode; actions?: ReactNode; state: LoadState; onRetry?: () => void; what: string; grantedBy?: string; children: ReactNode }) {
+export function LivePage({ title, description, facts, actions, state, onRetry, what, grantedBy = 'HR', children }: { title: ReactNode; description?: ReactNode; /** The header's facts line (counts), as the designed PageHeader shows it. */ facts?: ReactNode; actions?: ReactNode; state: LoadState; onRetry?: () => void; what: string; grantedBy?: string; children: ReactNode }) {
   return (
     <div className="yx-auth__page yx-tim-live">
-      <PageHeader title={title} description={description} actions={state === 'ready' ? actions : undefined} />
+      <PageHeader title={title} description={description} facts={state === 'ready' ? facts : undefined} actions={state === 'ready' ? actions : undefined} />
       {state === 'loading' && (
         <div className="yx-tim-stack" role="status" aria-busy="true" aria-label={`Loading ${what}`}>
           <Skeleton height={96} />

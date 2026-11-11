@@ -126,11 +126,10 @@ export function RollCallScreen({ data: sample, state = 'ready', live }: { data: 
     </>
   );
   const title = 'Roll-call';
-  const description = `${data?.location.name ?? ''}: everyone on site now, visitors and employees, for an evacuation. Print it and tick each person at the assembly point.`;
+  const description = `${data?.location.name ? `${data.location.name}: everyone` : 'Everyone'} on site now, visitors and employees, for an evacuation. Print it and tick each person at the assembly point.`;
   if (live)
     return (
-      <LivePage title={title} description={description} actions={actions} state={live.state} onRetry={live.onRetry} what="the roll-call" grantedBy="an admin (the Reception, Security, HR admin or Facility admin role)">
-        <p className="yx-ops-muted">{facts}</p>
+      <LivePage title={title} description={description} facts={facts || undefined} actions={actions} state={live.state} onRetry={live.onRetry} what="the roll-call" grantedBy="an admin (the Reception, Security, HR admin or Facility admin role)">
         {body}
       </LivePage>
     );

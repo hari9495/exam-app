@@ -197,7 +197,7 @@ describe('Visitors slice 4', () => {
     expect(before.byPurpose).toEqual([{ label: 'Meeting', visits: 2 }]);
     expect(JSON.stringify(before)).not.toMatch(/Rahul|Ganesh|host /);
     // The visit goes after its retention; its count stays (608), so the report does not change.
-    expect(await visitors.retentionSweep(new Date(Date.now() + 400 * 86_400_000))).toBeGreaterThanOrEqual(1);
+    expect(await visitors.retentionSweep(new Date(Date.now() + 400 * 86_400_000), [org.A.id, org.B.id])).toBeGreaterThanOrEqual(1);
     expect(await inA((tx) => tx.visit.count({ where: { id: ids.v1 } }))).toBe(0);
     const after = (await api('admin', 'get', '/visitors/reports').expect(200)).body;
     expect(after.byLocation.find((x: { label: string }) => x.label === 'Chennai office').visits).toBe(1);
