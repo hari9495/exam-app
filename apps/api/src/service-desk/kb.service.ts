@@ -921,7 +921,7 @@ export class KbService {
    * route (a page and every page under it), the closest page first, then featured, then by number; at most 6. Nothing
    * when the company turned page help off (on: false hides the tab).
    */
-  async employeePage(r: Requester, route: string) {
+  async employeePage(r: Requester, route: string, language?: string) {
     return this.asReader(r.ctx.organizationId, 'requester', async (tx) => {
       const org = r.ctx.organizationId;
       if (!(await this.pageHelpOn(tx, org))) return { on: false, articles: [] };
@@ -933,7 +933,10 @@ export class KbService {
       });
       const depth = (p: string[]) => Math.max(...p.filter((x) => prefixes.includes(x)).map((x) => x.length));
       rows.sort((a, b) => depth(b.pages) - depth(a.pages) || Number(b.featured) - Number(a.featured) || a.number - b.number);
-      return { on: true, articles: rows.slice(0, 6).map(({ id, number, slug, title, summary }) => ({ id, number, slug, title, summary })) };
+      const top = rows.slice(0, 6);
+      // Answer 964: each article in the person's language when a published translation exists, else the original.
+      const tr = language && language !== 'en' && top.length ? await tx.sdKbArticle.findMany({ where: { organizationId: org, translationOfId: { in: top.map((x) => x.id) }, language, state: 'published', deletedAt: null }, select: { id: true, number: true, slug: true, title: true, summary: true, translationOfId: true } }) : [];
+      return { on: true, articles: top.map((o) => tr.find((t) => t.translationOfId === o.id) ?? o).map(({ id, number, slug, title, summary }) => ({ id, number, slug, title, summary })) };
     });
   }
 

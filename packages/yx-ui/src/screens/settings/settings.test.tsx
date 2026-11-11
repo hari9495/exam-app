@@ -171,7 +171,7 @@ describe('help and onboarding (APX-D §6)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send request' }));
     expect(screen.getByText(/Say why you need access/)).toBeTruthy();
   });
-  // Irreversible actions: the pay kit's IrreversibleSheet and its tests (pay.test.tsx) are the one version (answer 945).
+  // Irreversible actions: the kit's IrreversibleSheet and its tests (pay.test.tsx) are the one version (answer 945).
 });
 
 describe('plain words (founder review 30 Sep 2026)', () => {

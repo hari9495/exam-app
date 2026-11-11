@@ -90,3 +90,33 @@ describe('H-1: the pages an article explains', () => {
     expect(pagesProblem(Array.from({ length: 21 }, (_, i) => `/yx/p${i}`).join(','))).toBe('At most 20 pages.');
   });
 });
+
+describe('Help button unread dot (answer 992)', () => {
+  it('shows a dot and says so while What\'s new has something unread', async () => {
+    const { TopBar } = await import('../../components/shell');
+    const onHelp = vi.fn();
+    const { container } = render(<TopBar onHelp={onHelp} helpUnread />);
+    await ue.click(screen.getByRole('button', { name: "Help, new in What's new" }));
+    expect(onHelp).toHaveBeenCalled();
+    expect(container.querySelector('.yx-topbar__help-dot')).not.toBeNull();
+  });
+  it('negative: no dot and the plain name when nothing is unread', async () => {
+    const { TopBar } = await import('../../components/shell');
+    const { container } = render(<TopBar onHelp={() => {}} />);
+    expect(screen.getByRole('button', { name: 'Help' })).toBeTruthy();
+    expect(container.querySelector('.yx-topbar__help-dot')).toBeNull();
+  });
+});
+
+describe('IrreversibleSheet in the shared kit (answer 962)', () => {
+  it('is exported from the kit root and still asks for the typed phrase', async () => {
+    const { IrreversibleSheet } = await import('../../index');
+    const onConfirm = vi.fn();
+    render(<IrreversibleSheet open onOpenChange={() => {}} title="Approve and lock September 2026" impact={[{ label: 'People', value: 42 }]} cannotUndo="Locked." correction="Use a correction run." phrase="KF SEP 2026" maker="Asha" checker="Ravi" confirmLabel="Approve and lock" onConfirm={onConfirm} />);
+    await ue.click(screen.getByRole('button', { name: 'Approve and lock' }));
+    expect(onConfirm).not.toHaveBeenCalled();
+    await ue.type(screen.getByRole('textbox', { name: /Type KF SEP 2026/ }), 'KF SEP 2026');
+    await ue.click(screen.getByRole('button', { name: 'Approve and lock' }));
+    expect(onConfirm).toHaveBeenCalledWith('');
+  });
+});

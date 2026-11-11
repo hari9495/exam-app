@@ -8,11 +8,11 @@ import { PageHeader } from '../../components/shell';
 import { DesktopFrame, PhoneFrame, type AreaId } from '../_kit/frames';
 import { AccessDeniedState, AvailabilityBanner, AvailabilityState, NotFoundState, TOURS, TourCard, TourList } from './help';
 import { WhatsNewPanel, type LiveWhatsNew } from '../platform-b/growth-screens';
-// Answers 941 and 945: the one Help drawer is the live desk drawer; irreversible actions are the pay kit's
+// Answers 941 and 945: the one Help drawer is the live desk drawer; irreversible actions are the kit's
 // IrreversibleSheet; bulk approve is the Approvals inbox; empty states are the kit's EmptyState.
 import { HelpDrawer, PageHelp } from '../desk/help';
 import { MY_BANNERS, MY_ROWS, RAISE_DESKS } from '../desk/data';
-import { IrreversibleSheet } from '../pay/pay-kit';
+import { IrreversibleSheet } from '../../components/irreversible';
 import { ApprovalsInboxScreen } from '../platform-a/inbox';
 import { APPROVALS, SENT_BY_ME } from '../platform-a/platform-data';
 import { EmptyState } from '../../components/feedback';

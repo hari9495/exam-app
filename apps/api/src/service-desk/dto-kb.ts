@@ -233,6 +233,11 @@ export class KbSettingsDto {
 export class KbPageQueryDto {
   @Matches(PAGE, { message: 'A page is an app address such as /yx/time/leave.' })
   route!: string;
+
+  /** Answer 964: the person's language; a published translation is shown instead of the original when there is one. */
+  @IsOptional()
+  @IsIn(LANGS)
+  lang?: string;
 }
 
 export class VersionDto {

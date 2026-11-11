@@ -1,5 +1,5 @@
 // Help & onboarding UX patterns (APX-D §6, GAP H7): first-run tours, what's new, permission denied vs not found with
-// Request access, availability states. The Help drawer is desk/help.tsx; irreversible actions are the pay kit's
+// Request access, availability states. The Help drawer is desk/help.tsx; irreversible actions are the kit's
 // IrreversibleSheet; empty states are the kit's EmptyState (H-1, answers 941 and 945: never a second version).
 import { useState, type ReactNode } from 'react';
 import { Construction, FileQuestion, KeyRound, Lock, Wrench } from 'lucide-react';
@@ -248,7 +248,7 @@ export function NotFoundState({ reference = 'NF-40412' }: { reference?: string }
   );
 }
 
-/* 6.4: irreversible actions are the pay kit's IrreversibleSheet; bulk approve is the Approvals inbox (answer 945). */
+/* 6.4: irreversible actions are the kit's IrreversibleSheet; bulk approve is the Approvals inbox (answer 945). */
 
 /* ============================== 6.5 Availability states ============================== */
 

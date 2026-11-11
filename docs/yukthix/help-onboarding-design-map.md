@@ -399,3 +399,22 @@ help as tagged articles, YukthiX starter articles later; (962) move Irreversible
 two honest guard entries; (964) "This page" shows the article in the person's language when a translation exists; (991) no
 separate updates page; (992) keep "Mark all read" and add an unread dot on Help; keep 993; (994) show only the last 6 months
 of what's new to a new company.
+
+## H-1 with H-4 merged, and answers 962, 964, 992 built (12 Nov 2026, branch `feat/yukthix-help-h1`)
+- **What's new in its tab:** H-4's `WhatsNewPanel` (PLT-50) is the content of the drawer's What's new tab; the tab shows
+  only when the person has entries (none, or What's new off: no tab). H-4's temporary section and its separate slot are
+  gone: `whatsNew` is the tab's one way in. The drawn `WhatsNewList` (and its sample `NEWS`, `newsFor`) is retired; the
+  6.2 stories show `WhatsNewPanel`, so it left the design-live guard's not-live list.
+- **Tours** stays a plain `tours` slot (any content), hidden until H-5 passes its panel in.
+- **962:** `IrreversibleSheet` (and `confirmPhraseMatches`) moved from the pay kit to the shared kit
+  (`components/irreversible.tsx` and `.css`, exported from `@yukthix/ui`); Pay runs, payroll records, consultants,
+  payments, Compliance and Expenses import it from there. Same behaviour; only its class names lost the `yx-pay-` prefix.
+- **964:** "This page" asks with the person's language: the browser's first language the help centre offers (en, hi, ta,
+  te). Each listed article is swapped for its published translation in that language when there is one (a draft
+  translation is not); otherwise the original shows. `GET desk/my/kb/page?route=&lang=` (other languages: 400).
+- **992:** a dot on Help in the top bar while What's new has unread entries (`TopBar helpUnread`, story "Top bar · Help
+  with something new in What's new"); the button's name says "Help, new in What's new". Gone after Mark all read; never in
+  a support session.
+- Tests: kit (dot and no dot; the moved sheet from the kit root, typed phrase), web (lang asked or not; What's new tab
+  shown or hidden), e2e `service-desk-hlp04` (translation shown once published; English, Hindi without a translation, and
+  a draft show the original; unknown language 400). Manual tests MT-HLP-H1-04 and MT-HLP-H1-05.

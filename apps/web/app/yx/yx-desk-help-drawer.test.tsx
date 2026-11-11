@@ -15,17 +15,21 @@ const wrap = (ui: React.ReactElement) => render(<QueryClientProvider client={new
 const api = apiFetch as jest.Mock;
 const DESK = { id: 'd1', name: 'HR desk', key: 'HR', attachmentTypes: ['pdf'], attachmentMaxMb: 10, types: [], categories: [] };
 const asked: string[] = [];
-const serve = (page: unknown) =>
+const NONE = { show: true, unread: 0, entries: [] };
+const serve = (page: unknown, news: unknown = NONE) =>
   api.mockImplementation(async (path: string) => {
     asked.push(path);
     if (path.startsWith('/desk/my/kb/page')) return page;
+    if (path === '/help/whats-new') return news;
     if (path === '/desk/my/desks') return [DESK];
     if (path === '/desk/my/tickets' || path === '/desk/my/banners') return [];
     throw new Error(`unexpected ${path}`);
   });
 
+const langs = (list: string[]) => Object.defineProperty(navigator, 'languages', { value: list, configurable: true });
 beforeEach(() => {
   api.mockReset();
+  langs(['en-IN', 'en']);
   asked.length = 0;
   (useAuth as jest.Mock).mockReturnValue({ accessToken: 't' });
 });
@@ -48,5 +52,39 @@ describe('Help drawer (live, H-1)', () => {
     await screen.findByRole('textbox', { name: /Subject/ });
     expect(await screen.findByRole('tab', { name: 'Ask', selected: true })).toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'This page' })).toBeNull();
+  });
+
+  it("answer 964: asks for the articles in the person's language (the browser's first one offered)", async () => {
+    (usePathname as jest.Mock).mockReturnValue('/yx/time/leave');
+    langs(['ta-IN', 'en']);
+    serve({ on: true, articles: [{ id: 'k9', number: 77, title: 'விடுப்பு எப்படி கணக்கிடப்படுகிறது', summary: null }] });
+    wrap(<DeskHelp open onOpenChange={() => {}} />);
+    expect(await screen.findByRole('link', { name: 'விடுப்பு எப்படி கணக்கிடப்படுகிறது' })).toHaveAttribute('href', '/yx/desk/help?article=77');
+    expect(asked).toContain('/desk/my/kb/page?route=%2Fyx%2Ftime%2Fleave&lang=ta');
+  });
+
+  it("negative 964: English or a language the help centre does not offer asks without lang", async () => {
+    (usePathname as jest.Mock).mockReturnValue('/yx/time/leave');
+    langs(['fr-FR', 'de']);
+    serve({ on: true, articles: [] });
+    wrap(<DeskHelp open onOpenChange={() => {}} />);
+    await waitFor(() => expect(asked).toContain('/desk/my/kb/page?route=%2Fyx%2Ftime%2Fleave'));
+  });
+
+  it("H-4 merge: What's new is a tab, shown when there are entries", async () => {
+    (usePathname as jest.Mock).mockReturnValue('/yx/home');
+    serve({ on: true, articles: [] }, { show: true, unread: 1, entries: [{ id: 'n1', date: '2026-11-10', product: 'YukthiX HR', title: 'Comp-off expiry on the balance card', body: 'Shown on web and mobile.', unread: true }] });
+    wrap(<DeskHelp open onOpenChange={() => {}} />);
+    expect(await screen.findByRole('tab', { name: "What's new" })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Tours' })).toBeNull();
+  });
+
+  it("negative: no What's new tab with no entries, or with What's new turned off", async () => {
+    (usePathname as jest.Mock).mockReturnValue('/yx/home');
+    serve({ on: true, articles: [] }, { show: false, unread: 0, entries: [] });
+    wrap(<DeskHelp open onOpenChange={() => {}} />);
+    await waitFor(() => expect(asked).toContain('/help/whats-new'));
+    await screen.findByRole('tab', { name: 'Ask' });
+    expect(screen.queryByRole('tab', { name: "What's new" })).toBeNull();
   });
 });

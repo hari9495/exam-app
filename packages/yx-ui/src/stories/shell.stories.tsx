@@ -341,6 +341,11 @@ export const TopBarAlone: S = {
   ),
 };
 
+export const TopBarHelpUnread: S = {
+  name: "Top bar · Help with something new in What's new",
+  render: () => <TopBar onSearch={() => {}} notifications={<IconButton icon={Bell} label="Notifications" />} onHelp={() => {}} helpUnread profile={<ProfileMenu name="Lakshmi Venkatesan" />} />,
+};
+
 export const ProfileMenuOpen: S = {
   name: 'Profile menu open',
   render: () => {

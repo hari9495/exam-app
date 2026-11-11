@@ -62,7 +62,7 @@ export class MyHelpController {
   @Get('kb/page')
   @Throttle(PUBLIC_API_THROTTLE)
   kbPage(@Req() req: Request, @CurrentTenant() t: TenantContext, @Query() q: KbPageQueryDto) {
-    return this.kb.employeePage(this.requesters.who(req, t), q.route);
+    return this.kb.employeePage(this.requesters.who(req, t), q.route, q.lang);
   }
 
   @Get('kb/articles/:number')

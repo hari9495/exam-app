@@ -17,7 +17,9 @@ export function DeskHelp({ open, onOpenChange }: { open: boolean; onOpenChange: 
   const banners = useDesk<PublicBanner[]>(open ? '/my/banners' : null);
   // Help H-1 (answer 942): help articles tagged with this page; the tab is hidden when the company turned it off.
   const route = (pathname ?? '').split('?')[0]!.toLowerCase().replace(/\/[0-9a-f-]{8,}(?=\/|$)/g, '').replace(/\/+$/, '');
-  const page = useDesk<{ on: boolean; articles: KbSuggestion[] }>(open && /^\/yx(\/[a-z0-9][a-z0-9-]*){0,8}$/.test(route) ? `/my/kb/page?route=${encodeURIComponent(route)}` : null);
+  // Answer 964: the person's language is the browser's first one the help centre offers; English needs no lang.
+  const lang = typeof navigator === 'undefined' ? undefined : (navigator.languages?.length ? navigator.languages : [navigator.language]).map((l) => l.slice(0, 2).toLowerCase()).find((l) => ['en', 'hi', 'ta', 'te'].includes(l));
+  const page = useDesk<{ on: boolean; articles: KbSuggestion[] }>(open && /^\/yx(\/[a-z0-9][a-z0-9-]*){0,8}$/.test(route) ? `/my/kb/page?route=${encodeURIComponent(route)}${lang && lang !== 'en' ? `&lang=${lang}` : ''}` : null);
   const pageHelp = page.isError ? { state: 'error' as const, articles: [] } : !page.data ? (page.isLoading ? { state: 'loading' as const, articles: [] } : null) : page.data.on ? { state: 'ready' as const, articles: page.data.articles } : null;
   const news = useWhatsNew(open); // Help H-4 (answer 943): the What's new tab shows only when there are entries
   const write = useDeskWrite();

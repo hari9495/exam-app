@@ -239,5 +239,17 @@ describe('Service Desk HLP-04 Knowledge base editor: keywords, assistant use, ma
       await api('adminA', 'put', '/desk/kb/settings').send({ pageHelp: true }).expect(200);
       expect((await page('divya', '/yx/time/leave').expect(200)).body.articles).toHaveLength(1);
     });
+    it('answer 964: in the person language when a published translation exists; English or a missing translation shows the original', async () => {
+      await api('deskAdmin', 'patch', `/desk/kb/spaces/${ids.space}`).send({ name: 'IT help', slug: 'it-help', audience: 'requesters', languages: ['en', 'ta'] }).expect(200);
+      const ta = (await api('agent', 'post', '/desk/kb/articles').send({ spaceId: ids.space, language: 'ta', translationOfId: ids.art, title: `அலுவலக வலையமைப்பு ${run}`, bodyHtml: '<p>நிறுவன தளத்திலிருந்து நிறுவவும்.</p>' }).expect(201)).body.id as string;
+      const inLang = (lang: string) => api('divya', 'get', `/desk/my/kb/page?route=${encodeURIComponent('/yx/time/leave')}&lang=${lang}`);
+      // A draft translation is not shown yet.
+      expect((await inLang('ta').expect(200)).body.articles).toEqual([expect.objectContaining({ title })]);
+      await api('agent', 'post', `/desk/kb/articles/${ta}/submit`).send({ version: 1 }).expect(200);
+      await api('lead', 'post', `/desk/kb/articles/${ta}/review`).send({ version: 1, approve: true }).expect(200);
+      expect((await inLang('ta').expect(200)).body.articles).toEqual([expect.objectContaining({ id: ta, title: `அலுவலக வலையமைப்பு ${run}` })]);
+      for (const lang of ['en', 'hi']) expect((await inLang(lang).expect(200)).body.articles).toEqual([expect.objectContaining({ id: ids.art, title })]);
+      await inLang('fr').expect(400);
+    });
   });
 });

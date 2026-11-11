@@ -15,7 +15,8 @@ import { Card, DescriptionList, PageHeader } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { formatDate } from '../../lib/format';
 import { useRun } from '../org/org-kit';
-import { IrreversibleSheet, PayFrame, SectionTitle, type PayPage, type PayPersona } from './pay-kit';
+import { PayFrame, SectionTitle, type PayPage, type PayPersona } from './pay-kit';
+import { IrreversibleSheet } from '../../components/irreversible';
 import { PersonPicker, type PersonHit } from './live/inputs';
 import type { AuditEntry, AuditFilters, AuditPage, ChainStatus, Confirmation, LoadState, PayDocument, PayDocuments, PayPeriods, PeriodHistory, ReopenRequest, Stage } from './live/types';
 

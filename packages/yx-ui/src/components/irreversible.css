@@ -1,0 +1,13 @@
+/* Irreversible action sheet (APX-D §6.4; moved from pay.css, answer 962). */
+.yx-irrev { display: flex; flex-direction: column; gap: var(--yx-space-4); }
+.yx-irrev__title { margin: 0; font-size: var(--yx-text-md); line-height: var(--yx-leading-md); font-weight: var(--yx-weight-semibold); color: var(--yx-color-text); }
+.yx-irrev__impact { margin: var(--yx-space-2) 0 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--yx-space-3); }
+.yx-irrev__impact > div { padding: var(--yx-space-3); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-subtle); }
+.yx-irrev__impact dt { font-size: var(--yx-text-xs); color: var(--yx-color-text-secondary); }
+.yx-irrev__impact dd { margin: var(--yx-space-1) 0 0; font-size: var(--yx-text-lg); font-weight: var(--yx-weight-semibold); font-variant-numeric: tabular-nums; }
+.yx-irrev__mc { display: flex; flex-direction: column; gap: var(--yx-space-1); align-items: flex-start; font-size: var(--yx-text-sm); }
+.yx-irrev__mc p { margin: 0; }
+.yx-irrev__note { color: var(--yx-color-text-secondary); }
+.yx-irrev__k { color: var(--yx-color-text-secondary); font-size: var(--yx-text-xs); display: inline-block; min-width: calc(var(--yx-space-16) + var(--yx-space-6)); }
+/* Why the confirm button is not ready yet, beside it in the footer (B7). */
+.yx-irrev__why { margin-right: auto; align-self: center; font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); }
