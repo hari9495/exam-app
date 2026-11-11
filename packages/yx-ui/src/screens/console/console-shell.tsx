@@ -1,11 +1,11 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
-import { Building2, FileClock, HeartPulse, Inbox, LifeBuoy, Megaphone, MessageSquare, ReceiptIndianRupee, ScrollText, ShieldCheck, Tags } from 'lucide-react';
+import { Building2, FileClock, HeartPulse, Inbox, LifeBuoy, Megaphone, MessageSquare, ReceiptIndianRupee, ScrollText, ShieldCheck, Tags, Wrench } from 'lucide-react';
 import { Logo, Monogram } from '../../components/brand';
 import type { IconComponent } from '../../components/foundations';
 import { AppShell, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, TopBar, type DensityChoice, type RailItem, type ThemeChoice } from '../../components/shell';
 
-export type ConsolePageId = 'companies' | 'customers' | 'support-desk' | 'support' | 'plans' | 'whats-new' | 'channels' | 'audit';
-type ConsoleGroup = 'Customers' | 'Catalogue' | 'Channels' | 'Security';
+export type ConsolePageId = 'companies' | 'customers' | 'maintenance' | 'support-desk' | 'support' | 'plans' | 'whats-new' | 'channels' | 'audit';
+type ConsoleGroup = 'Customers' | 'Catalogue' | 'Operations' | 'Channels' | 'Security';
 
 interface ConsoleLink {
   id: ConsolePageId;
@@ -26,11 +26,13 @@ export const CONSOLE_LINKS: ConsoleLink[] = [
   { id: 'plans', label: 'Plans and prices', href: '/staff/plans', group: 'Catalogue', icon: Tags },
   // Help H-4 (answer 943): the entries people see in Help › What's new.
   { id: 'whats-new', label: "What's new", href: '/staff/whats-new', group: 'Catalogue', icon: Megaphone },
+  // C-5 (answers 948, 1053): planned maintenance windows.
+  { id: 'maintenance', label: 'Planned maintenance', href: '/staff/maintenance', group: 'Operations', icon: Wrench },
   { id: 'channels', label: 'Shared SMS account', href: '/staff/channels', group: 'Channels', icon: MessageSquare },
   { id: 'audit', label: 'Audit log', href: '/staff/audit', group: 'Security', icon: ScrollText },
 ];
-const GROUPS: ConsoleGroup[] = ['Customers', 'Catalogue', 'Channels', 'Security'];
-const GROUP_ICONS: Record<ConsoleGroup, IconComponent> = { Customers: Building2, Catalogue: ReceiptIndianRupee, Channels: MessageSquare, Security: ShieldCheck };
+const GROUPS: ConsoleGroup[] = ['Customers', 'Catalogue', 'Operations', 'Channels', 'Security'];
+const GROUP_ICONS: Record<ConsoleGroup, IconComponent> = { Customers: Building2, Catalogue: ReceiptIndianRupee, Operations: Wrench, Channels: MessageSquare, Security: ShieldCheck };
 
 export interface ConsoleShellProps {
   active: ConsolePageId;

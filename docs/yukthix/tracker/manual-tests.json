@@ -20352,5 +20352,50 @@
       "Screens/YukthiX console/Platform console (step 3) · Company side · Support access · messages from YukthiX (C-2)"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CON-1053a",
+    "area": "Console C-5 (12 Nov 2026)",
+    "screen": "Console › Companies › New company",
+    "url": "http://localhost:3000/staff/companies/new",
+    "account": "A YukthiX staff account with its security key; a company System Admin for the negative; mailpit.",
+    "steps": [
+      "Press Continue with nothing filled.",
+      "Type a company name; look at the code and the registered name.",
+      "Type a PAN of 9 characters, then a GSTIN that does not contain the PAN.",
+      "Use a company code that exists, finish, and press Create company.",
+      "Use a new code and create (the security key is asked).",
+      "Open mailpit and the company page.",
+      "As a company System Admin, open /staff/companies/new."
+    ],
+    "expected": "Step 1: 'Enter the company name' and focus there. Step 2: both follow the name. Step 3: field errors; Continue stays. Step 4: 'The company was not created' with the reason; typing kept. Step 5: toast 'Company created', then '<company> is ready' with the set-up hub next. Step 6: one email to the admin (the invite); the page shows Products and features. Step 7: refused.",
+    "stories": [
+      "Screens/Platform/Set-up & administration · PLT-09 · New company (console) · company details",
+      "Screens/Platform/Set-up & administration · PLT-09 · New company (console) · created, the set-up hub next"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CON-1053b",
+    "area": "Console C-5 (12 Nov 2026)",
+    "screen": "Console › Planned maintenance and the company banner",
+    "url": "http://localhost:3000/staff/maintenance",
+    "account": "Two YukthiX staff accounts with their security keys; a company user (any role).",
+    "steps": [
+      "Schedule a window for tomorrow.",
+      "Schedule one on the 15th of next month.",
+      "Schedule a valid one 4 days ahead.",
+      "As the same staff member, look for Approve.",
+      "As the other staff member, approve it.",
+      "Set the banner to 168 hours; as the company user open any page.",
+      "Cancel the window with no reason, then with a reason; reload the company page.",
+      "Set the banner back to 24 hours."
+    ],
+    "expected": "Step 1: 'This window can't be used' (notice). Step 2: the statutory date reason. Step 3: toast 'Sent for approval'. Step 4: 'Another staff member approves it'. Step 5: Scheduled. Step 6: the banner with the date and times; sign-in and every page still work. Step 7: 'Say why it is cancelled.'; then the banner is gone.",
+    "stories": [
+      "Screens/YukthiX console/YX-10 · Incidents, status admin and probes · Planned maintenance · schedule and approve (C-5)",
+      "Screens/YukthiX console/YX-10 · Incidents, status admin and probes · What companies see · the day before (C-5)"
+    ],
+    "note": "Positive and negative."
   }
 ]

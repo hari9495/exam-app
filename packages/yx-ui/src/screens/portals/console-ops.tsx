@@ -26,6 +26,7 @@ import { FilteredTable, opts } from './list-kit';
 import { Console } from './console-kit';
 import type { TenantRow } from './console-data';
 import { LiveCustomerSuccessScreen, type LiveCustomerSuccess } from './console-cs-live';
+import { LiveMaintenanceScreen, type LiveMaintenance } from './console-maintenance-live';
 
 const STATE_TONE: Record<TenantRow['state'], BadgeTone> = { trial: 'info', active: 'success', 'past due': 'warning', restricted: 'danger', suspended: 'danger', cancelled: 'neutral' };
 const CHURN_TONE = { low: 'success', medium: 'warning', high: 'danger' } as const;
@@ -310,13 +311,17 @@ export function IncidentComposerScreen({
   me,
   maintenanceStart,
   now,
+  live,
 }: {
   incidents: IncidentRow[];
   mode?: 'list' | 'incident' | 'maintenance';
   me: string;
   maintenanceStart?: Date;
   now: Date;
+  /** The live console's Planned maintenance (C-5, answers 948 and 1053). Incidents are not built yet. */
+  live?: LiveMaintenance;
 }) {
+  if (live) return <LiveMaintenanceScreen live={live} />;
   const [approver, setApprover] = useState<string | null>(null);
   const [stage, setStage] = useState<string | null>('identified');
   const [start, setStart] = useState<Date | null>(maintenanceStart ?? new Date(2026, 9, 11, 1, 0));

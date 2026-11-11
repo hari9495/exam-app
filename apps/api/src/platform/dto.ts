@@ -1,5 +1,5 @@
-import { Transform } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, ArrayUnique, IsArray, IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { ArrayMaxSize, ArrayMinSize, ArrayUnique, IsArray, IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 
 // Platform console inputs (P14 §6 flow 5, P02 Q8). Every staff action that touches a company carries a reason
 // (YX-CONSOLE-02).
@@ -26,6 +26,25 @@ export class CompaniesQueryDto {
   @IsOptional()
   @IsIn(LIFECYCLE_STATES)
   lifecycle?: string;
+}
+
+/** PLT-09 (answer 1053): the default legal entity's basics, set as the company is created. */
+export class NewLegalEntityDto {
+  @trim()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(200)
+  name!: string;
+
+  @IsOptional()
+  @trim()
+  @Matches(/^[A-Z]{5}[0-9]{4}[A-Z]$/, { message: 'PAN is 5 letters, 4 digits, 1 letter, like ABCDE1234F' })
+  pan?: string;
+
+  @IsOptional()
+  @trim()
+  @Matches(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/, { message: 'GSTIN is 15 characters, like 29ABCDE1234F1Z5' })
+  gstin?: string;
 }
 
 export class CreateCompanyDto {
@@ -56,6 +75,12 @@ export class CreateCompanyDto {
   @ArrayUnique()
   @Matches(/^[a-z][a-z0-9_]{1,31}$/, { each: true })
   products!: string[];
+
+  /** PLT-09 (answer 1053): the default legal entity's basics; without them it is named after the company. */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => NewLegalEntityDto)
+  legalEntity?: NewLegalEntityDto;
 }
 
 /** Careers answer 442: one company setting YukthiX staff change (console › Company settings). */

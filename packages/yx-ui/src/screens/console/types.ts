@@ -132,3 +132,14 @@ export interface PlatformAuditEntry {
   companyId: string | null;
   details: Record<string, unknown> | null;
 }
+
+/** C-5 (answer 1053): one product or feature on a company's page, and whether it is on. */
+export interface CompanyFeature {
+  key: string;
+  label: string;
+  on: boolean;
+  /** product: in the company's plan; setting: a plan feature YukthiX turns on (Company settings). C-4 adds 'switch'. */
+  source: 'product' | 'setting' | 'switch';
+  /** Why it is off, e.g. "Not in the plan". */
+  note?: string;
+}

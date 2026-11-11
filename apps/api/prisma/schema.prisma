@@ -3482,6 +3482,27 @@ model CompanyMessage {
   @@map("company_messages")
 }
 
+/// Console C-5 (answers 948, 1053): a planned maintenance window (platform data; every session reads, only staff write).
+model MaintenanceWindow {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title        String    @db.VarChar(120)
+  startsAt     DateTime  @map("starts_at") @db.Timestamptz(3)
+  endsAt       DateTime  @map("ends_at") @db.Timestamptz(3)
+  /// pending_approval, scheduled, cancelled
+  status       String    @db.VarChar(20)
+  writtenBy    String    @map("written_by") @db.Uuid
+  decidedBy    String?   @map("decided_by") @db.Uuid
+  decidedAt    DateTime? @map("decided_at") @db.Timestamptz(3)
+  cancelledBy  String?   @map("cancelled_by") @db.Uuid
+  cancelledAt  DateTime? @map("cancelled_at") @db.Timestamptz(3)
+  cancelReason String?   @map("cancel_reason") @db.VarChar(500)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  version      Int       @default(1)
+
+  @@index([startsAt], map: "maintenance_windows_starts_idx")
+  @@map("maintenance_windows")
+}
+
 model Product {
   code      String   @id @db.VarChar(32)
   name      String   @db.VarChar(100)
