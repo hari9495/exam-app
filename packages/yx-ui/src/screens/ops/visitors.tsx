@@ -211,7 +211,7 @@ export function VisitorDeskScreen({ visits: sample, today, state = 'ready', tab 
         setFinding(false);
         setCode('');
         if (v.status === 'blocked') return void setStopped(v.name);
-        if (v.status !== 'expected') return void toast({ title: `${v.name}: ${v.statusText.toLowerCase()}`, description: 'This pass cannot be used to check in.' });
+        if (v.status !== 'expected') return void toast({ tone: 'default', title: `${v.name}: ${v.statusText.toLowerCase()}`, description: 'This pass cannot be used to check in.' });
         setFound(v);
         setCheckIn(v.id);
       });

@@ -179,11 +179,11 @@ export function LiveTicketWorkspace({ live }: { live: LiveTicket }) {
               )}
               {!done &&
                 (paused ? (
-                  <Button onClick={() => (openStatus ? update({ statusId: openStatus.id }, 'The clock runs again.') : toast({ title: `${t.desk.name} has no open status. Add one in Desk set-up.` }))}>Resume</Button>
+                  <Button onClick={() => (openStatus ? update({ statusId: openStatus.id }, 'The clock runs again.') : toast({ tone: 'default', title: `${t.desk.name} has no open status. Add one in Desk set-up.` }))}>Resume</Button>
                 ) : (
-                  <Button onClick={() => (waitStatus ? update({ statusId: waitStatus.id }, `Waiting on ${first}. The clock is paused.`) : toast({ title: `${t.desk.name} has no "waiting" status. Add one in Desk set-up.` }))}>Wait on employee</Button>
+                  <Button onClick={() => (waitStatus ? update({ statusId: waitStatus.id }, `Waiting on ${first}. The clock is paused.`) : toast({ tone: 'default', title: `${t.desk.name} has no "waiting" status. Add one in Desk set-up.` }))}>Wait on employee</Button>
                 ))}
-              <Button variant="primary" onClick={() => (done ? toast({ title: 'This ticket is already resolved.' }) : live.onResolveClick())}>
+              <Button variant="primary" onClick={() => (done ? toast({ tone: 'default', title: 'This ticket is already resolved.' }) : live.onResolveClick())}>
                 Resolve
               </Button>
             </>

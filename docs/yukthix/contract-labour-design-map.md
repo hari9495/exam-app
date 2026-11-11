@@ -35,13 +35,14 @@ built** (no API for this feature) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Principal employer (contractors working at our sites) | 5 | 49 | 1 | 0 | 0 | 0 | 50 |
-| B. We are the contractor (our staff at client sites) | 3 | 14 | 1 | 0 | 0 | 0 | 15 |
-| C. Contractor portal | 1 | 20 | 0 | 0 | 0 | 0 | 20 |
+| A. Principal employer (contractors working at our sites) | 5 | 47 | 1 | 0 | 0 | 0 | 48 |
+| B. We are the contractor (our staff at client sites) | 3 | 13 | 1 | 0 | 0 | 0 | 14 |
+| C. Contractor portal | 1 | 19 | 0 | 0 | 0 | 0 | 19 |
 | D. Settings | 1 | 1 | 2 | 0 | 0 | 0 | 3 |
-| **All** | 10 | 84 | 4 | 0 | 0 | 0 | 88 |
+| **All** | 10 | 80 | 4 | 0 | 0 | 0 | 84 |
 Recounted by script 11 Nov 2026 on `feat/yukthix-contract-labour-approved-801-825` after answers 803, 807, 810, 821, 822 (five new drawn stories).
 Recounted by script 11 Nov 2026 on `feat/yukthix-contract-labour-cl8` after CL-8: group B live (four new drawn stories).
+Recounted by script 11 Nov 2026 on `feat/yukthix-cl-walk-ui`: CLB-05 SamePersonPhoto drawn and live (answer 809).
 Recounted by script 19 Nov 2026 on `feat/yukthix-contract-labour-cl6` after CL-6: CLB-04 live (Registers with a gap: the inspection pack stays in Compliance › Registers).
 
 Of the 57 stories under Screens/Contract labour, 44 are live (CL-1 to CL-5 and CL-7); with the portal and settings pages, 64 of 79.
@@ -164,6 +165,7 @@ All 46 stories in section 4: there is no contractor, licence, deployment, proof 
 | story (sub-page) | verdict | note |
 |---|---|---|
 | SamePerson · Same person kept | live | live 18 Nov 2026 (CL-7) at /yx/contract-labour/workers/[id]/convert: the same `persons` row; refused when not deployed, already an employee or already joining (GET lifecycle/joiners/from-contract-worker/:deploymentId) |
+| SamePersonPhoto · Same person kept · with the gate pass photo | live | answer 809: `GET lifecycle/joiners/from-contract-worker/:id/photo` (the onboarding key; another company 404; none yet 404) |
 | EndRole · End contract role | live | the last day is the day before joining (answer 637), shown, not chosen; the deployment, the gate pass and the role end on the joining day |
 | Employee · Employee details | live | the PPL-12 joiner fields, entity and location pre-filled from the deployment's site; the drawn CTC is gone (pay is set in Pay after joining, question 772) |
 | CarryOver · Identity and documents carried over | live | the same person; UAN and ESIC IP raised on the employee record on the joining day for HR to approve; only the last 4 ID digits exist, so the original is checked on the joining day |
@@ -737,7 +739,6 @@ wrong field (`7bb97c964`); "1 workers" (`248bb3636`).
      Suggested: the same words everywhere.
 
 ## Built from the founder's answers 803, 807, 810, 821, 822 (11 Nov 2026, branch `feat/yukthix-contract-labour-approved-801-825`)
-
 - **803:** before the 08:30 job has counted a site, "Highest in 12 months" reads "Counted tonight" (Contractors cards and
   Settings 4.9 registrations), not 0.
 - **807:** confirming a month with no days on site asks "Confirm 0 days?" (button "Confirm 0 days"); every month
@@ -753,9 +754,7 @@ wrong field (`7bb97c964`); "1 workers" (`248bb3636`).
 - **822:** once a client has sites, our own employee's placement needs one (`SITE_REQUIRED`, 400; the sheet asks for
   it). A vendor's worker does not.
 - **Tests:** API unit (`own-licence-rules.spec`), kit and web tests (positive and negative), e2e `contract-labour-8`.
-
 ## Founder questions from answers 803 … 822 (11 Nov 2026)
-
 841. **Wage payment proof and PT in the pack.** The drawing also lists the wage payment proof and professional tax.
      *Suggested: PT from payroll's PT filing in the same register when the state has PT; the payment proof stays by hand.*
 842. **Challan receipt copies.** Payroll records each return's portal reference (TRRN or challan number), amount and
@@ -765,4 +764,22 @@ wrong field (`7bb97c964`); "1 workers" (`248bb3636`).
      made without them and names them, rather than waiting. *Suggested: keep; remake it once filed.*
 844. **Warning at site approval.** 810 warns where the wage is typed (staff sheet, portal). *Suggested: show the same
      warning on the site approval dialog for a portal-added worker.*
+## Walk answers built (802, 805, 806, 808, 809, 811; 11 Nov 2026, branch `feat/yukthix-cl-walk-ui`)
+- **802:** the ops toast hook (`useSay` in `ops-kit.tsx`) has `done()` (success) and `fail()` (error) beside `say()` (a
+  neutral "why not"); contract labour's done messages use `done()` and every toast in `screens/ops` names its tone.
+  Guard: `ops-toast-guard.test.ts` (a toast without a tone, or `say()` after a successful action, fails).
+- **805:** the menu reads "CLRA registers & returns", as drawn.
+- **806:** a pack still owed reads "To upload" on the portal (it said "Open" beside the Open button).
+- **808:** Make employee fits 1278 x 635: Manager sits beside the joining date, designation, department and employment
+  type open from a button, the review has one note box and one summary, and the failure shows once above the steps.
+- **809:** the gate pass photo on the same-person step (`GET lifecycle/joiners/from-contract-worker/:id/photo`, the
+  onboarding key; drawn as CLB-05 SamePersonPhoto).
+- **811:** Registers & returns without access says "Ask your HR team", as the other pages do.
+## Founder questions from the walk answers (11 Nov 2026)
+851. **"To upload", not "Not started".** A pack is "open" also when some proofs are in, so "Not started" would be wrong
+     for those; the portal says "To upload". *Suggested: keep.*
+852. **Group B pages without access.** Client establishments, own licences and client packs (CL-8) still say "Ask an
+     admin (the contract labour key)". *Suggested: the same "Ask your HR team" there too.*
+853. **Optional details on request.** Designation, department and employment type open from a button on Make employee
+     (they stay open once one is chosen). *Suggested: keep; the checklist can add them before joining.*
 

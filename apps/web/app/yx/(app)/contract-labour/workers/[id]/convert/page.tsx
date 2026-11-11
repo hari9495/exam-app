@@ -5,6 +5,7 @@ import { ConvertWorkerScreen, type ConversionData } from '@yukthix/ui/desk';
 import { loadState } from '../../../../../../../lib/yx-org';
 import { useAuth } from '../../../../../../../lib/auth-context';
 import { useJoinerPlaces, useLife, useLifeWrite } from '../../../../../../../lib/yx-lifecycle';
+import { apiFetchBlob } from '../../../../../../../lib/api-client';
 
 // Contract labour › Contract workers › Make employee (CLB-05, CL-7, answer 637): the designed stepper with `live`. The
 // joiner flow with the contract_worker source, pre-filled from the person and the deployment; the same person record.
@@ -12,7 +13,7 @@ import { useJoinerPlaces, useLife, useLifeWrite } from '../../../../../../../lib
 export default function YxConvertWorkerPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { impersonating, actingSuperAdmin } = useAuth();
+  const { impersonating, actingSuperAdmin, accessToken } = useAuth();
   const q = useLife<ConversionData>(`/lifecycle/joiners/from-contract-worker/${encodeURIComponent(id)}`);
   const places = useJoinerPlaces(q.isSuccess);
   const write = useLifeWrite();
@@ -28,6 +29,8 @@ export default function YxConvertWorkerPage() {
         canChange: Boolean(q.data?.canStart) && !impersonating && !actingSuperAdmin,
         onStart: (input) => write<{ id: string }>('POST', `/lifecycle/joiners/from-contract-worker/${encodeURIComponent(id)}`, input),
         onDone: (preboardingId) => router.push(`/yx/people/onboarding/${encodeURIComponent(preboardingId)}`),
+        // Answer 809: the gate pass photo on the same-person step.
+        photoUrl: () => apiFetchBlob(`/lifecycle/joiners/from-contract-worker/${encodeURIComponent(id)}/photo`, {}, accessToken ?? undefined).then(({ blob }) => URL.createObjectURL(blob), () => null),
       }}
     />
   );

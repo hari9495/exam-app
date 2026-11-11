@@ -222,6 +222,7 @@ function LiveSpeakUpForm({
   const file = async () => {
     if (!ready)
       return toast({
+        tone: "default",
         title:
           kind === "posh"
             ? "Your company has not set up its Internal Committee yet."
@@ -725,7 +726,7 @@ export function LiveCheckReport({ live }: { live: LiveCheckReport }) {
       });
     else if (err.code === "SPEAKUP_WRONG_CODE")
       setProblem({ kind: "wrong", triesLeft: err.body?.triesLeft ?? 0 });
-    else toast({ title: errorText(e) });
+    else toast({ tone: 'error', title: errorText(e) });
   };
   const open = async () => {
     if (codeEarly.stop()) return;
@@ -859,6 +860,7 @@ export function LiveCheckReport({ live }: { live: LiveCheckReport }) {
                 onClick={() =>
                   problem?.kind === "locked" && problem.until > new Date()
                     ? toast({
+                        tone: 'warning',
                         title: `Too many tries. Try again after ${time(problem.until)}.`,
                       })
                     : void open()
@@ -1100,7 +1102,7 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
                                   description:
                                     "Reports already routed to them stay with them.",
                                 }),
-                              (e) => toast({ title: errorText(e) }),
+                              (e) => toast({ tone: 'error', title: errorText(e) }),
                             )
                           }
                         >

@@ -376,7 +376,7 @@ export function buildNav(n: NavInput): NavArea[] {
   const contract: NavArea = {
     id: 'contract',
     title: 'Contract labour',
-    sections: support ? [] : sec(undefined, when(any('clra.contractor.manage', 'clra.contractor.view'), L('clra-contractors', 'Contractors', '/yx/contract-labour/contractors'), L('clra-workers', 'Contract workers', '/yx/contract-labour/workers'), L('clra-attendance', 'Attendance', '/yx/contract-labour/attendance'), L('clra-compliance', 'Vendor compliance', '/yx/contract-labour/compliance'), L('clra-registers', 'Registers & returns', '/yx/contract-labour/registers'))),
+    sections: support ? [] : sec(undefined, when(any('clra.contractor.manage', 'clra.contractor.view'), L('clra-contractors', 'Contractors', '/yx/contract-labour/contractors'), L('clra-workers', 'Contract workers', '/yx/contract-labour/workers'), L('clra-attendance', 'Attendance', '/yx/contract-labour/attendance'), L('clra-compliance', 'Vendor compliance', '/yx/contract-labour/compliance'), L('clra-registers', 'CLRA registers & returns', '/yx/contract-labour/registers'))),
   };
   // CL-8 (CLB-06 … 08): we are the contractor, our employees at clients' sites.
   if (!support) contract.sections.push(...sec('We are the contractor', when(any('clra.contractor.manage', 'clra.contractor.view'), L('clra-client-sites', 'Client establishments', '/yx/contract-labour/client-sites'), L('clra-own-licences', 'Own licences', '/yx/contract-labour/own-licences'), L('clra-client-packs', 'Client compliance packs', '/yx/contract-labour/client-packs'))));

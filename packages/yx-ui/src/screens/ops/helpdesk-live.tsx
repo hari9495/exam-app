@@ -88,7 +88,7 @@ export function LiveHelpCentre({ live }: { live: LiveHelp }) {
   const [article, setArticle] = useState<KbArticleView | null>(null);
   const { toast } = useSay();
   const kb = live.kb;
-  const openArticle = (n: number, lang?: string) => void kb.onArticle(n, lang).then(setArticle, () => toast({ title: 'That article is not available. It may have been taken down.' }));
+  const openArticle = (n: number, lang?: string) => void kb.onArticle(n, lang).then(setArticle, () => toast({ tone: 'default', title: 'That article is not available. It may have been taken down.' }));
   useEffect(() => {
     if (kb.openNumber) openArticle(kb.openNumber);
     // Only when the link changes.
@@ -97,7 +97,7 @@ export function LiveHelpCentre({ live }: { live: LiveHelp }) {
   useEffect(() => {
     if (live.startRaise) setRaising(true);
   }, [live.startRaise]);
-  const raise = () => (live.desks.length ? setRaising(true) : toast({ title: 'No team takes tickets here yet. Ask your HR or IT admin.' }));
+  const raise = () => (live.desks.length ? setRaising(true) : toast({ tone: 'default', title: 'No team takes tickets here yet. Ask your HR or IT admin.' }));
 
   if (live.state === 'no-access')
     return (

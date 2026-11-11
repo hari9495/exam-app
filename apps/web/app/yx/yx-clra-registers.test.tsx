@@ -54,6 +54,6 @@ describe('Contract labour registers page (live)', () => {
       throw Object.assign(new Error('forbidden'), { status: 403 });
     });
     wrap(<YxClraRegistersPage />);
-    expect(await screen.findByText(/the contract labour key/)).toBeInTheDocument();
+    expect(await screen.findByText(/Ask your HR team/)).toBeInTheDocument();
   });
 });

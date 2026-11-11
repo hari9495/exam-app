@@ -14,7 +14,15 @@ import './ops.css';
 /** Never a greyed-out button (founder rule): pressed when it cannot act, it says why in a toast. */
 export function useSay() {
   const { toast } = useToast();
-  return { toast, say: (why: string | false | undefined, act?: () => void) => (why ? void toast({ title: why }) : act?.()) };
+  return {
+    toast,
+    /** Why something cannot happen yet (or, with no reason, do it): a neutral note. */
+    say: (why: string | false | undefined, act?: () => void) => (why ? void toast({ tone: 'default', title: why }) : act?.()),
+    /** Founder answer 802: a done message is a success toast. */
+    done: (title: string) => void toast({ tone: 'success', title }),
+    /** Something failed: the reason as an error toast. */
+    fail: (title: string) => void toast({ tone: 'error', title }),
+  };
 }
 
 /* ---------------- Desktop frame per area (APX-D §1.2 panel links) ---------------- */

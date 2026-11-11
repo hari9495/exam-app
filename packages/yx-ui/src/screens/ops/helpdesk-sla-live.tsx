@@ -393,7 +393,7 @@ function ReassignDialog({ ticket, live, onClose }: { ticket: SlaAtRiskRow; live:
               !early.stop() &&
               void run('save', async () => {
                 await live.onReassign(ticket, to!);
-                toast({ title: `${ticket.number} is now with ${options.find((o) => o.value === to)?.label ?? 'them'}.` });
+                toast({ tone: 'success', title: `${ticket.number} is now with ${options.find((o) => o.value === to)?.label ?? 'them'}.` });
                 onClose();
               })
             }
@@ -558,7 +558,7 @@ function TargetDialog({ kpi, onClose, onSave }: { kpi: Kpi; onClose: () => void;
               !early.stop() &&
               void run('save', async () => {
                 await onSave({ metric: kpi.metric, target: target!, amber: amber! });
-                toast({ title: 'Target saved.' });
+                toast({ tone: 'success', title: 'Target saved.' });
                 onClose();
               })
             }
@@ -701,7 +701,7 @@ function MyReportsView({ live }: { live: LiveSla }) {
                           {s.lastResult ? ` · last time: ${s.lastResult}` : ''}
                         </span>
                         {own && (
-                          <Button size="sm" loading={busy === `end:${s.id}`} onClick={() => void run(`end:${s.id}`, async () => { await live.onEndSchedule(s.id); toast({ title: 'Schedule ended.' }); })}>
+                          <Button size="sm" loading={busy === `end:${s.id}`} onClick={() => void run(`end:${s.id}`, async () => { await live.onEndSchedule(s.id); toast({ tone: 'success', title: 'Schedule ended.' }); })}>
                             End schedule
                           </Button>
                         )}
@@ -730,7 +730,7 @@ function MyReportsView({ live }: { live: LiveSla }) {
                             destructive
                             onConfirm={async () => {
                               await live.onDeleteCustom(r.id);
-                              toast({ title: 'Report deleted.' });
+                              toast({ tone: 'success', title: 'Report deleted.' });
                             }}
                           />
                         </>
@@ -755,7 +755,7 @@ function MyReportsView({ live }: { live: LiveSla }) {
           onClose={() => setEdit(null)}
           onSave={async (input) => {
             await live.onSaveCustom(edit === 'new' ? null : edit, input);
-            toast({ title: 'Report saved.' });
+            toast({ tone: 'success', title: 'Report saved.' });
             setEdit(null);
           }}
         />
@@ -767,7 +767,7 @@ function MyReportsView({ live }: { live: LiveSla }) {
           onClose={() => setScheduling(null)}
           onSave={async (input) => {
             await live.onSchedule(scheduling.id, input);
-            toast({ title: 'Schedule started.' });
+            toast({ tone: 'success', title: 'Schedule started.' });
             setScheduling(null);
           }}
         />
@@ -955,7 +955,7 @@ function WallsView({ live }: { live: LiveSla }) {
                       consequence="Its link stops working at once. You can't switch it back on; make a new wall screen instead."
                       confirmLabel="Switch off"
                       destructive
-                      onConfirm={() => run(`off:${w.id}`, async () => { await live.onRevokeWallboard(w.id); toast({ title: `${w.name} is switched off.` }); }).then(() => undefined)}
+                      onConfirm={() => run(`off:${w.id}`, async () => { await live.onRevokeWallboard(w.id); toast({ tone: 'success', title: `${w.name} is switched off.` }); }).then(() => undefined)}
                     />
                   )}
                 </span>
@@ -1110,7 +1110,7 @@ function SurveysView({ live }: { live: LiveSla }) {
           onClose={() => setEdit(null)}
           onSave={async (input) => {
             await live.onSaveSurvey(edit === 'new' ? null : edit, input);
-            toast({ title: 'Survey saved.' });
+            toast({ tone: 'success', title: 'Survey saved.' });
             setEdit(null);
           }}
         />
