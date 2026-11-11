@@ -1,8 +1,8 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { CompaniesScreen, type CompanyRow, type NewCompany, type Product } from '@yukthix/ui/console';
-import { loadState, useConsole, useConsoleKeys, useConsoleWrite } from '../../../../lib/yx-console';
+import { CompaniesScreen, type CompanyRow, type Product } from '@yukthix/ui/console';
+import { loadState, useConsole, useConsoleKeys } from '../../../../lib/yx-console';
 
 // Console › Companies (P14 §7).
 export default function ConsoleCompaniesPage() {
@@ -10,7 +10,6 @@ export default function ConsoleCompaniesPage() {
   const companies = useConsole<CompanyRow[]>('/companies');
   const products = useConsole<Product[]>('/products');
   const can = useConsoleKeys();
-  const write = useConsoleWrite();
   return (
     <CompaniesScreen
       state={loadState(companies)}
@@ -19,10 +18,8 @@ export default function ConsoleCompaniesPage() {
       products={products.data ?? []}
       canManage={can('platform.companies.manage')}
       onOpen={(id) => router.push(`/staff/companies/${encodeURIComponent(id)}`)}
-      onCreate={async (input: NewCompany) => {
-        const { id } = await write<{ id: string }>('/companies', 'POST', input);
-        router.push(`/staff/companies/${encodeURIComponent(id)}`);
-      }}
+      // Answer 1053: New company is the company wizard (PLT-09).
+      onNew={() => router.push('/staff/companies/new')}
     />
   );
 }

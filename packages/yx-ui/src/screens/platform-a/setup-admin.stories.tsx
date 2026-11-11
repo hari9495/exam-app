@@ -1,3 +1,4 @@
+import type { LiveTenantWizard } from './tenant-wizard-live';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { d } from './platform-data';
 import {
@@ -35,6 +36,19 @@ export const PLT09Company: S = { name: 'PLT-09 · Tenant wizard · company detai
 export const PLT09EntityError: S = { name: 'PLT-09 · Tenant wizard · entity PAN error', render: () => <TenantWizardScreen current="entities" errorStep="entities" /> };
 export const PLT09Locations: S = { name: 'PLT-09 · Tenant wizard · locations', render: () => <TenantWizardScreen current="locations" /> };
 export const PLT09Import: S = { name: 'PLT-09 · Tenant wizard · import validation preview', render: () => <TenantWizardScreen current="import" preview={PREVIEW} /> };
+// C-5 (answer 1053): the console's New company is the PLT-09 wizard with the console's steps.
+const WIZ: LiveTenantWizard = {
+  products: [{ code: 'hrms', name: 'YukthiX HR', unit: 'employee', inr: 99 }, { code: 'service_desk', name: 'YukthiX Service Desk', unit: 'agent', inr: 999 }],
+  onCreate: () => new Promise((r) => setTimeout(() => r({ id: 'c9' }), 500)),
+  onCancel: () => {},
+  onOpenCompany: () => {},
+};
+const FILLED = { name: 'Tunga Textiles', slug: 'tunga-textiles', leName: 'Tunga Textiles Pvt Ltd', pan: 'AAECT1234F', gstin: '29AAECT1234F1Z5', adminName: 'Meena Pillai', adminEmail: 'meena@tunga.test', products: ['hrms'] };
+export const PLT09ConsoleCompany: S = { name: 'PLT-09 · New company (console) · company details', render: () => <TenantWizardScreen live={WIZ} /> };
+export const PLT09ConsoleEntity: S = { name: 'PLT-09 · New company (console) · legal entity', render: () => <TenantWizardScreen live={{ ...WIZ, defaultStep: 'entity', defaults: { ...FILLED, pan: 'AAECT1234', gstin: '' } }} /> };
+export const PLT09ConsoleAdmin: S = { name: 'PLT-09 · New company (console) · first System Admin', render: () => <TenantWizardScreen live={{ ...WIZ, defaultStep: 'admin', defaults: FILLED }} /> };
+export const PLT09ConsoleProducts: S = { name: 'PLT-09 · New company (console) · plan and products', render: () => <TenantWizardScreen live={{ ...WIZ, defaultStep: 'products', defaults: FILLED }} /> };
+export const PLT09ConsoleCreated: S = { name: 'PLT-09 · New company (console) · created, the set-up hub next', render: () => <TenantWizardScreen live={{ ...WIZ, created: { id: 'c9', name: 'Tunga Textiles', adminEmail: 'meena@tunga.test' } }} /> };
 export const PLT09Review: S = { name: 'PLT-09 · Tenant wizard · review', render: () => <TenantWizardScreen current="review" preview={PREVIEW.filter((p) => p.result !== 'Error')} /> };
 
 /* PLT-11 */

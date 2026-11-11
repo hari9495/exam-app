@@ -22,8 +22,8 @@ const shell = (active: ConsolePageId, children: React.ReactNode) => (
   </ConsoleShell>
 );
 
-export const Companies: S = { name: 'Companies', render: () => shell('companies', <CompaniesScreen state="ready" companies={COMPANIES} products={PRODUCTS} canManage onOpen={() => {}} onCreate={() => wait()} />) };
-export const CompaniesLoading: S = { name: 'Companies · loading', render: () => shell('companies', <CompaniesScreen state="loading" companies={[]} products={PRODUCTS} canManage onOpen={() => {}} onCreate={() => wait()} />) };
+export const Companies: S = { name: 'Companies', render: () => shell('companies', <CompaniesScreen state="ready" companies={COMPANIES} products={PRODUCTS} canManage onOpen={() => {}} onNew={() => {}} />) };
+export const CompaniesLoading: S = { name: 'Companies · loading', render: () => shell('companies', <CompaniesScreen state="loading" companies={[]} products={PRODUCTS} canManage onOpen={() => {}} onNew={() => {}} />) };
 
 const company = (sessions = SESSIONS.filter((s) => s.organizationId === 'c2')) =>
   shell(
@@ -45,6 +45,34 @@ const company = (sessions = SESSIONS.filter((s) => s.organizationId === 'c2')) =
     />,
   );
 export const Company: S = { name: 'Company · trial with an open support session', render: () => company() };
+// C-5 (answer 1053): what is switched on for the company (plan products, plan features; C-4 switches join later).
+export const CompanyFeatures: S = {
+  name: 'Company · products and features (C-5)',
+  render: () =>
+    shell(
+      'companies',
+      <CompanyScreen
+        state="ready"
+        company={COMPANY}
+        sessions={[]}
+        canManage
+        canSupport
+        now={NOW}
+        features={[
+          { key: 'product:hrms', label: 'YukthiX HR', on: true, source: 'product' },
+          { key: 'product:service_desk', label: 'YukthiX Service Desk', on: false, source: 'product', note: 'Not in the plan' },
+          { key: 'setting:brand.white_label', label: 'White-label (your brand only)', on: false, source: 'setting' },
+        ]}
+        onBack={() => {}}
+        onLifecycle={() => wait()}
+        onExtendTrial={() => wait()}
+        onRequestSupport={() => wait()}
+        onOpenSession={() => wait()}
+        onEndSession={() => wait()}
+        onWithdrawRequest={() => wait()}
+      />,
+    ),
+};
 export const CompanyNoSession: S = { name: 'Company · ask for support access', render: () => company([]) };
 // Careers answer 442: settings only YukthiX changes, each allowed by the company's plan.
 export const CompanySettings: S = { name: 'Company settings · white-label in the plan', render: () => shell('companies', <CompanySettingsScreen state="ready" company={COMPANY_SETTINGS} canManage onBack={() => {}} onChange={() => wait()} />) };

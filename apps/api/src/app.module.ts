@@ -2,6 +2,7 @@ import { ServiceDeskModule } from './service-desk/service-desk.module';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, HttpAdapterHost } from '@nestjs/core';
 import { SupportMaskInterceptor } from './hiring/support-mask.interceptor';
+import { ContainmentInterceptor } from './platform/containment';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, seconds } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
@@ -221,6 +222,8 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     { provide: APP_GUARD, useClass: FailOpenThrottlerGuard },
     // M10 AT1 (D14): candidate contact details masked in hiring responses during a YukthiX support session.
     { provide: APP_INTERCEPTOR, useClass: SupportMaskInterceptor },
+    // Answer 1050: a contained company's exports, bank-detail changes and payouts are refused at the server.
+    { provide: APP_INTERCEPTOR, useClass: ContainmentInterceptor },
     {
       provide: SentryReporter,
       useFactory: () => {

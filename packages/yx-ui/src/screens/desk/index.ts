@@ -6,6 +6,8 @@ export { MyTicketScreen, FileList, BannerList, HelpDrawer, PageHelp, type MyTick
 export { WhatsNewPanel, type LiveWhatsNew } from '../platform-b/growth-screens';
 // Help H-5 (answer 944): the Tours tab's content and the tour card the app floats on a tour's page.
 export { ToursPanel, TourCard, TOURS, type LiveTours, type TourDef } from '../settings/help';
+// C-5 (answer 948): the 6.5 availability banner for a planned maintenance window.
+export { AvailabilityBanner } from '../settings/help';
 // HLP-01 Help centre: the designed screen with `live` (Helpdesk design wiring, round 1).
 export { HelpCentreScreen } from '../ops/helpdesk';
 export { topicOptions, rateCandidate, type LiveHelp } from '../ops/helpdesk-live';

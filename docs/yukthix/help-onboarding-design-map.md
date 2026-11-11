@@ -126,7 +126,7 @@ The 18 "design only" rows: tours (3), the help drawer's page help, what's new an
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Maintenance · 6.5 Availability · maintenance banner | design only, feature not built | no maintenance window or status feed; the kit's `PageBanner` (system-wide states) exists and is not mounted for it |
+| Maintenance · 6.5 Availability · maintenance banner | live (C-5) | `AvailabilityBanner live` on every signed-in page from `GET /availability`, before and during a planned window (console C-5) |
 | MaintenancePage · 6.5 Availability · down for maintenance | design only, feature not built | as above |
 | Degraded · 6.5 Availability · degraded | design only, feature not built | the API health check reports degraded internally; nothing tells users |
 | ReadOnly · 6.5 Availability · read-only account | design only, feature not built | no read-only company mode (a suspended company cannot sign in at all); Platform PLT-43 draws a trial read-only banner too |
@@ -164,7 +164,7 @@ The 18 "design only" rows: tours (3), the help drawer's page help, what's new an
 | Notification centre and Approvals inbox empty | Overlays · Notifications and approvals | live |
 | PLT-02 Role home · employee first login (tour) | Platform · Shell & homes, `RoleHomeScreen firstRun` | home is live; the first-run prompt is never turned on |
 | PLT-08 Set-up hub (3 stories) | Platform · Set-up & administration, `SetupHubScreen` | live (H-6, Settings › Set-up hub); off the design-live guard list |
-| PLT-09 Tenant wizard (5 stories) | same, `TenantWizardScreen` | not live (guard list) |
+| PLT-09 Tenant wizard (5 stories) | same, `TenantWizardScreen` | live in the console (C-5): Companies › New company |
 | PLT-39 Quick-start lane, PLT-40 Switch on, PLT-42 trial extension, PLT-43 trial read-only, PLT-50 What's new | Platform · Jobs, trial & account (`growth-screens.tsx`) | not live |
 | PLT-47 Copilot action card; `AssistantPanel` (kit) | Platform; kit `notify.tsx` | used only in drawn screens (the drawn Help centre's "Ask the assistant" rail, send does nothing); the live Help centre (`LiveHelpCentre`) has no assistant |
 | Service Desk getting started (set-up checklist, first-desk wizard) | `screens/desk/setup-start.tsx` (`SetupStart`) | in the kit; the live desk set-up page uses `DeskSetupScreen` |

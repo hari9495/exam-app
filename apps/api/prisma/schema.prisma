@@ -3440,8 +3440,11 @@ model WhatsNewRead {
 
 /// Console C-2 (answer 1047): platform-wide settings, e.g. the churn alert thresholds (YukthiX staff only; RLS).
 model PlatformSetting {
-  key       String   @id @db.VarChar(64)
+  key       String   @id @db.VarChar(100)
   value     String   @db.VarChar(200)
+  /// Console C-4: a plain label, and whether the value must be verified with counsel (DPDP timing, answer 1124).
+  label     String   @default("") @db.VarChar(300)
+  verify    Boolean  @default(false)
   updatedBy String?  @map("updated_by") @db.Uuid
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -3480,6 +3483,27 @@ model CompanyMessage {
   @@unique([organizationId, messageId], map: "company_messages_org_message_key")
   @@index([organizationId, sentAt(sort: Desc)], map: "company_messages_org_sent_idx")
   @@map("company_messages")
+}
+
+/// Console C-5 (answers 948, 1053): a planned maintenance window (platform data; every session reads, only staff write).
+model MaintenanceWindow {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title        String    @db.VarChar(120)
+  startsAt     DateTime  @map("starts_at") @db.Timestamptz(3)
+  endsAt       DateTime  @map("ends_at") @db.Timestamptz(3)
+  /// pending_approval, scheduled, cancelled
+  status       String    @db.VarChar(20)
+  writtenBy    String    @map("written_by") @db.Uuid
+  decidedBy    String?   @map("decided_by") @db.Uuid
+  decidedAt    DateTime? @map("decided_at") @db.Timestamptz(3)
+  cancelledBy  String?   @map("cancelled_by") @db.Uuid
+  cancelledAt  DateTime? @map("cancelled_at") @db.Timestamptz(3)
+  cancelReason String?   @map("cancel_reason") @db.VarChar(500)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  version      Int       @default(1)
+
+  @@index([startsAt], map: "maintenance_windows_starts_idx")
+  @@map("maintenance_windows")
 }
 
 model Product {
@@ -13468,4 +13492,57 @@ model PlatformStaffRole {
 
   @@id([userId, role])
   @@map("platform_staff_roles")
+}
+
+/// Console C-4 (answer 1050): YukthiX-wide values with defaults (breach reminders); staff only.
+
+/// Console C-4 (answer 1049): a feature switch; on for a company = not killed, its override or the default, and its company setting.
+model FeatureFlag {
+  key         String    @id @db.VarChar(60)
+  label       String    @db.VarChar(200)
+  description String    @db.VarChar(300)
+  settingKey  String?   @map("setting_key") @db.VarChar(100)
+  defaultOn   Boolean   @default(true) @map("default_on")
+  killedAt    DateTime? @map("killed_at") @db.Timestamptz(3)
+  killedBy    String?   @map("killed_by") @db.Uuid
+  killReason  String?   @map("kill_reason") @db.VarChar(500)
+  updatedBy   String?   @map("updated_by") @db.Uuid
+  updatedAt   DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@map("feature_flags")
+}
+
+model FeatureFlagOverride {
+  organizationId String   @map("organization_id") @db.Uuid
+  flagKey        String   @map("flag_key") @db.VarChar(60)
+  isOn           Boolean  @map("is_on")
+  reason         String   @db.VarChar(500)
+  setBy          String   @map("set_by") @db.Uuid
+  setAt          DateTime @default(now()) @map("set_at") @db.Timestamptz(3)
+
+  @@id([organizationId, flagKey])
+  @@map("feature_flag_overrides")
+}
+
+/// Console C-4 (answer 1050): a company contained after a suspected compromise; lifting takes two staff members.
+model CompanyContainment {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId      String    @map("organization_id") @db.Uuid
+  reason              String    @db.VarChar(500)
+  containedBy         String    @map("contained_by") @db.Uuid
+  containedByName     String    @map("contained_by_name") @db.VarChar(200)
+  containedAt         DateTime  @default(now()) @map("contained_at") @db.Timestamptz(3)
+  certinDueAt         DateTime  @map("certin_due_at") @db.Timestamptz(3)
+  dpdpDueAt           DateTime  @map("dpdp_due_at") @db.Timestamptz(3)
+  signedOut           Int       @default(0) @map("signed_out")
+  appsRevoked         Int       @default(0) @map("apps_revoked")
+  liftRequestedBy     String?   @map("lift_requested_by") @db.Uuid
+  liftRequestedByName String?   @map("lift_requested_by_name") @db.VarChar(200)
+  liftRequestedAt     DateTime? @map("lift_requested_at") @db.Timestamptz(3)
+  liftReason          String?   @map("lift_reason") @db.VarChar(500)
+  liftedBy            String?   @map("lifted_by") @db.Uuid
+  liftedByName        String?   @map("lifted_by_name") @db.VarChar(200)
+  liftedAt            DateTime? @map("lifted_at") @db.Timestamptz(3)
+
+  @@map("company_containments")
 }

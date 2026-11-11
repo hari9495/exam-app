@@ -1,9 +1,9 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { featureOn } from '../platform/features';
 import { Prisma } from '@prisma/client';
 import { AuditService, PrismaService, TenantContext, TenantPrismaService, resolvePermissionGrants } from '@exam-platform/shared';
 import { inCompany } from '../org-structure/org-structure.service';
 import { asDate, todayIst } from '../org-structure/org-validation';
-import { settingFor } from '../people/probation';
 import { PLATFORM } from '../platform/platform.service';
 import type { NewsAudience, WhatsNewEntryDto, WhatsNewUpdateDto } from './whats-new.dto';
 
@@ -144,7 +144,7 @@ export class WhatsNewService {
 
   mine(ctx: TenantContext, me: NewsReader) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      if ((await settingFor(tx, c, 'help.whats_new.show', { legalEntityId: '' })) !== 'on') return { show: false, unread: 0, entries: [] };
+      if (!(await featureOn(tx, c, 'help.whats_new'))) return { show: false, unread: 0, entries: [] };
       const { rows, codes } = await this.visible(tx, c.organizationId, me);
       const read = new Set((await tx.whatsNewRead.findMany({ where: { organizationId: c.organizationId, userId: me.userId, entryId: { in: rows.map((r) => r.id) } }, select: { entryId: true } })).map((r) => r.entryId));
       const names = new Map((await tx.product.findMany({ select: { code: true, name: true } })).map((p) => [p.code, p.name]));

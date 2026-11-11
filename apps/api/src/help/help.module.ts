@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { PlatformModule } from '../platform/platform.module';
-import { HelpController, SetupHubController } from './help.controller';
+import { ContainmentBannerController, HelpController, SetupHubController } from './help.controller';
 import { SetupHubService } from './setup-hub.service';
 import { ToursController, WhatsNewController, WhatsNewStaffController } from './whats-new.controller';
 import { ToursService } from './tours.service';
@@ -14,6 +14,6 @@ import { NotFoundRetentionService } from './not-found-retention.service';
   imports: [AuthModule, PlatformModule],
   providers: [WhatsNewService, ToursService, SetupHubService, NotFoundRetentionService],
   exports: [NotFoundRetentionService],
-  controllers: [WhatsNewController, WhatsNewStaffController, HelpController, ToursController, SetupHubController],
+  controllers: [WhatsNewController, WhatsNewStaffController, HelpController, ToursController, SetupHubController, ContainmentBannerController],
 })
 export class HelpModule {}

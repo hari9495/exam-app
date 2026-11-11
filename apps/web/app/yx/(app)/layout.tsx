@@ -8,6 +8,7 @@ import { Bell, Languages, Laptop, ShieldCheck, UserCheck } from 'lucide-react';
 import { Button, CommandPalette, InlineAlert, NoticeBar, NotificationCentre, ProfileMenu, ScopePicker, ShortcutHelp, shortcutGroups, Spinner, ToastProvider, useCommandPaletteShortcut, useShortcutHelp } from '@yukthix/ui';
 import { useAppearance, type MfaStatus } from '@yukthix/ui/auth';
 import { DesktopFrame, PALETTE_PLACEHOLDER, SCREEN_RAIL, type AreaId } from '@yukthix/ui/frame';
+import { ContainedBanner } from '@yukthix/ui/console';
 import type { LegalEntity } from '@yukthix/ui/org';
 import type { TeamMember } from '@yukthix/ui/workforce';
 import { apiFetch } from '../../../lib/api-client';
@@ -17,6 +18,7 @@ import { useMarkAllNotificationsRead, useMarkNotificationRead } from '../../../l
 import { useBellItems } from '../../../lib/yx-bell';
 import { useYxPalette } from '../../../lib/yx-palette';
 import { TourHost } from '../../../lib/yx-tours';
+import { AvailabilityBanner } from '@yukthix/ui/desk';
 import { decodeJwtPayload } from '../../../lib/jwt';
 import { withNextHere } from '../../../lib/safe-next';
 import { todayIst, useOrg, useYxPermissions, type Reference } from '../../../lib/yx-org';
@@ -72,9 +74,12 @@ function Frame({ children }: { children: React.ReactNode }) {
   const staffingDesk = useQuery<{ enabled: boolean }>({ queryKey: ['staffing', '/desk'], queryFn: () => apiFetch('/staffing/desk', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && staffingKeys && !actingSuperAdmin, retry: false });
   // Shares the cache with My security, so the banner clears as soon as a factor is added there.
   const mfa = useQuery<MfaStatus>({ queryKey: ['yx', 'mfa'], queryFn: () => apiFetch('/auth/mfa', {}, accessToken ?? undefined), enabled: Boolean(accessToken) });
+  // Answer 948 (C-5): planned maintenance, the day before and during a window. Never blocks anything by itself.
+  const availability = useQuery<{ maintenance: { phase: 'upcoming' | 'now'; title: string; startsAt: string; endsAt: string } | null }>({ queryKey: ['yx', 'availability'], queryFn: () => apiFetch('/availability', {}, accessToken ?? undefined), enabled: Boolean(accessToken), retry: false, refetchInterval: 15 * 60_000 });
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const bell = useBellItems(!actingSuperAdmin);
+  const contained = useQuery<{ contained: boolean }>({ queryKey: ['yx', 'containment'], queryFn: () => apiFetch('/help/containment', {}, accessToken ?? undefined), enabled: Boolean(accessToken), retry: false, staleTime: 60_000 });
   const markRead = useMarkNotificationRead();
   const markAll = useMarkAllNotificationsRead();
   const [collapsed, setCollapsedState] = useState(false);
@@ -186,6 +191,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   const supportEndsAt = support ? (decodeJwtPayload(accessToken)?.supportEndsAt as string | undefined) : undefined;
   const banner = (
     <>
+      {availability.data?.maintenance && <AvailabilityBanner kind="maintenance" live={availability.data.maintenance} />}
       {support && (
         <InlineAlert
           tone="warning"
@@ -314,6 +320,8 @@ function Frame({ children }: { children: React.ReactNode }) {
         ),
       }}
     >
+      {/* Answer 1050: while YukthiX has the company contained, every page says so. */}
+      {contained.data?.contained && <ContainedBanner />}
       <YxPageHelp pathname={pathname} requests={!support && !impersonating}>
         {children}
       </YxPageHelp>

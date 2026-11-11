@@ -6,6 +6,8 @@ import { apiFetch } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
 import ConsoleLayout from './(console)/layout';
 import ConsoleCompaniesPage from './(console)/companies/page';
+import ConsoleNewCompanyPage from './(console)/companies/new/page';
+import ConsoleMaintenancePage from './(console)/maintenance/page';
 import ConsoleCompanyPage from './(console)/companies/[id]/page';
 import ConsolePlansPage from './(console)/plans/page';
 import ConsoleSupportPage from './(console)/support/page';
@@ -13,6 +15,8 @@ import ConsoleAuditPage from './(console)/audit/page';
 import ConsoleChannelsPage from './(console)/channels/page';
 import ConsoleWhatsNewPage from './(console)/whats-new/page';
 import ConsoleSupportDeskPage from './(console)/support-desk/page';
+import ConsoleContainPage from './(console)/companies/[id]/contain/page';
+import ConsoleFeatureFlagsPage from './(console)/feature-flags/page';
 import YxSupportAccessPage from '../yx/(app)/settings/support-access/page';
 import { ToastProvider } from '@yukthix/ui';
 
@@ -89,24 +93,29 @@ describe('console layout', () => {
 });
 
 describe('/staff/companies', () => {
-  it('lists companies and creates one, then opens it', async () => {
-    route({
-      'GET /platform/companies': [COMPANY],
-      'GET /platform/products': PRODUCTS,
-      'GET /rbac/me/permissions': STAFF_KEYS,
-      'POST /platform/companies': { id: 'c9' },
-    });
+  it('lists companies; New company opens the company wizard (answer 1053)', async () => {
+    route({ 'GET /platform/companies': [COMPANY], 'GET /platform/products': PRODUCTS, 'GET /rbac/me/permissions': STAFF_KEYS });
     wrap(<ConsoleCompaniesPage />);
     expect(await screen.findByText('Godavari Agro')).toBeInTheDocument();
     await ue.click(await screen.findByRole('button', { name: 'New company' }));
-    const drawer = await screen.findByRole('dialog');
-    await ue.type(within(drawer).getByRole('textbox', { name: /Company name/ }), 'Tunga Textiles');
-    await ue.click(within(drawer).getByRole('checkbox', { name: /YukthiX HR/ }));
-    await ue.type(within(drawer).getByRole('textbox', { name: /^Name/ }), 'Meena Pillai');
-    await ue.type(within(drawer).getByRole('textbox', { name: /Work email/ }), 'meena@tunga.test');
-    await ue.click(within(drawer).getByRole('button', { name: 'Create company' }));
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/staff/companies/c9'));
-    expect(calls).toContain(`POST /platform/companies ${JSON.stringify({ name: 'Tunga Textiles', slug: 'tunga-textiles', adminName: 'Meena Pillai', adminEmail: 'meena@tunga.test', products: ['hrms'] })}`);
+    expect(push).toHaveBeenCalledWith('/staff/companies/new');
+  });
+
+  it('the wizard creates the company with its legal entity, then opens it', async () => {
+    route({ 'GET /platform/products': PRODUCTS, 'GET /rbac/me/permissions': STAFF_KEYS, 'POST /platform/companies': { id: 'c9' } });
+    wrap(<ConsoleNewCompanyPage />);
+    await ue.type(await screen.findByRole('textbox', { name: /Company name/ }), 'Tunga Textiles');
+    await ue.click(screen.getByRole('button', { name: 'Continue' }));
+    await ue.type(screen.getByRole('textbox', { name: /^PAN/ }), 'AAECT1234F');
+    await ue.click(screen.getByRole('button', { name: 'Continue' }));
+    await ue.type(screen.getByRole('textbox', { name: /^Name/ }), 'Meena Pillai');
+    await ue.type(screen.getByRole('textbox', { name: /Work email/ }), 'meena@tunga.test');
+    await ue.click(screen.getByRole('button', { name: 'Continue' }));
+    await ue.click(screen.getByRole('button', { name: 'Continue' })); // the only product is ticked already
+    await ue.click(await screen.findByRole('button', { name: 'Create company' }));
+    await waitFor(() => expect(calls).toContain(`POST /platform/companies ${JSON.stringify({ name: 'Tunga Textiles', slug: 'tunga-textiles', legalEntity: { name: 'Tunga Textiles', pan: 'AAECT1234F' }, adminName: 'Meena Pillai', adminEmail: 'meena@tunga.test', products: ['hrms'] })}`));
+    await ue.click(await screen.findByRole('button', { name: 'Open the company' }));
+    expect(push).toHaveBeenCalledWith('/staff/companies/c9');
   });
 
   it('a 403 is shown as no access', async () => {
@@ -190,6 +199,17 @@ describe('/staff/whats-new', () => {
   });
 });
 
+// C-5 (answers 948, 1053): planned maintenance.
+describe('/staff/maintenance', () => {
+  const OVERVIEW = { now: '2026-11-12T04:30:00.000Z', current: null, windows: [], settings: { numbers: [{ key: 'maintenance.notice_hours', label: 'Notice before a window (hours)', value: 72, default: 72, min: 24, max: 720 }], blockDates: [7, 15, 20] } };
+  it('loads the windows and rules from the console API', async () => {
+    route({ 'GET /platform/maintenance': OVERVIEW, 'GET /rbac/me/permissions': STAFF_KEYS });
+    wrap(<ConsoleMaintenancePage />);
+    expect(await screen.findByText('No maintenance windows.')).toBeInTheDocument();
+    expect(screen.getByText('Nothing: no window is close.')).toBeInTheDocument();
+  });
+});
+
 describe('/yx/settings/support-access (the company)', () => {
   it('approves a request for the hours asked, then shows what was done', async () => {
     (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'org_admin', actingSuperAdmin: false, isLoading: false });
@@ -219,5 +239,32 @@ describe('Support desk look-up', () => {
     await ue.click(screen.getByRole('button', { name: 'Look up' }));
     expect(await screen.findByText('Godavari Agro')).toBeInTheDocument();
     expect(calls).toContain('GET /platform/support-desk/references/NF-7KQ2MP');
+  });
+});
+
+// Console C-4 (answers 1049, 1050): the live Feature flags and Contain company pages call the console API.
+describe('Feature flags and Contain company', () => {
+  it('feature flags list from /platform/feature-flags', async () => {
+    route({
+      'GET /platform/feature-flags': [{ key: 'help.tours', label: 'First-run tours', description: 'Tours on first sign-in', defaultOn: true, killed: null, overrides: [] }],
+      'GET /platform/companies': [],
+      'GET /users/me': { id: 'me', email: 'anand@yukthix.test' },
+    });
+    wrap(<ConsoleFeatureFlagsPage />);
+    expect(await screen.findByText('help.tours')).toBeInTheDocument();
+  });
+
+  it('contain sends the reason to /platform/companies/<id>/contain', async () => {
+    (useParams as jest.Mock).mockReturnValue({ id: 'c2' });
+    route({
+      'GET /platform/companies/c2/containment': { company: { id: 'c2', name: 'Godavari Agro' }, users: 4, apps: 0, breach: { certinHours: 6, dpdpHours: 72 }, containment: null },
+      'POST /platform/companies/c2/contain': {},
+    });
+    wrap(<ConsoleContainPage />);
+    await ue.type(await screen.findByRole('textbox', { name: /Reason/ }), 'Admin signed in from three countries');
+    await ue.click(screen.getByRole('button', { name: 'Contain company' }));
+    await ue.type(within(await screen.findByRole('dialog')).getByRole('textbox'), 'CONTAIN GODAVARI AGRO');
+    await ue.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Contain company' }));
+    await waitFor(() => expect(calls).toContain('POST /platform/companies/c2/contain {"reason":"Admin signed in from three countries"}'));
   });
 });

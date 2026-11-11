@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { assertNotHeld } from '../platform/containment';
 import { Prisma } from '@prisma/client';
 import { OrgSecretsCryptoService, TenantContext, maskShaped, maskTail } from '@exam-platform/shared';
 import { audit, CompanyContext, Tx } from '../org-structure/org-structure.service';
@@ -546,6 +547,8 @@ export class ProfileService {
    * record on the joining day, inside that transaction, so the usual approval (maker ≠ checker, cooling hours) applies.
    */
   async raiseIn(tx: Tx, c: CompanyContext, employeeId: string, kind: RequestKind, value: ProposedValueDto, reason: string) {
+    // Answer 1050: no bank-detail change while YukthiX has the company contained.
+    if (BANK[kind]) await assertNotHeld(tx, c.organizationId, 'bank');
     const p = this.proposal(kind, value);
     if (await this.sameAsOnFile(tx, c, employeeId, kind, p)) return null;
     const row = await tx.employeeProfileRequest.create({
@@ -681,6 +684,7 @@ export class ProfileService {
       }
       const now = new Date();
       if (BANK[kind]) {
+        await assertNotHeld(tx, c.organizationId, 'bank');
         const purpose = BANK[kind];
         const old = await tx.employeeBankAccount.findFirst({ where: { organizationId: c.organizationId, employeeId: r.employeeId, purpose, validTo: null } });
         if (old) await tx.employeeBankAccount.update({ where: { id: old.id }, data: { validTo: now } });

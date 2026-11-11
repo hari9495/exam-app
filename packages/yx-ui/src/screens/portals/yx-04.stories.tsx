@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { CONTAIN_LIFT, CONTAIN_OPEN, CONTAIN_READY, liveContain, liveFlags } from './console-c4-data';
 import { AiGovernanceScreen, GoldenCasesScreen, PublishSchedulerScreen, RuleSetEditorScreen } from './console-rules';
 import {
   ContainTenantScreen,
@@ -40,7 +41,7 @@ const shell = (children: React.ReactNode) => (
     {children}
   </ConsoleShell>
 );
-const companies = (state: 'ready' | 'error') => shell(<CompaniesScreen state={state} onRetry={() => {}} companies={COMPANIES} products={PRODUCTS} canManage onOpen={() => {}} onCreate={() => wait()} />);
+const companies = (state: 'ready' | 'error') => shell(<CompaniesScreen state={state} onRetry={() => {}} companies={COMPANIES} products={PRODUCTS} canManage onOpen={() => {}} onNew={() => {}} />);
 const SESSION = SESSIONS[0]!;
 const company = (sessions: SupportSession[]) =>
   shell(
@@ -95,3 +96,6 @@ export const YX04MessagesWaiting: S = { name: 'Messages · waiting for a second 
 export const YX04ComposerTwo: S = { name: 'Message composer · two companies need approval (C-2)', render: () => cs({ composerFor: ['c2', 'c3'] }) };
 export const YX04Flags: S = { name: 'Feature flags', render: () => <FeatureFlagsScreen flags={D.FLAGS} /> };
 export const YX04KillSwitch: S = { name: 'Feature flags · kill switch', render: () => <FeatureFlagsScreen flags={D.FLAGS} killOpen /> };
+
+// Console C-4 (answer 1049): the live switches, one with the kill switch engaged by someone else.
+export const YX04FlagsLive: S = { name: 'Feature flags · live (kill switch engaged)', render: () => <FeatureFlagsScreen flags={[]} live={liveFlags()} /> };
