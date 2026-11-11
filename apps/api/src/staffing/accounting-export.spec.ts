@@ -1,6 +1,6 @@
-import { ledgerLines, roundOff, tallyXml, zohoCsv, type ExportDoc, type ExportSettings } from './accounting-export';
+import { ledgerLines, receiptLines, roundOff, tallyXml, zohoCsv, zohoPaymentsCsv, type ExportDoc, type ExportReceipt, type ExportSettings } from './accounting-export';
 
-const S: ExportSettings = { sales: 'Sales - Staffing Services', cgst: 'Output CGST', sgst: 'Output SGST', igst: 'Output IGST', gst: 'Output GST', gstSplit: 'separate', tds: 'TDS Receivable', tdsMode: 'none', roundOff: 'rupee', roundOffLedger: 'Round Off' };
+const S: ExportSettings = { sales: 'Sales - Staffing Services', cgst: 'Output CGST', sgst: 'Output SGST', igst: 'Output IGST', gst: 'Output GST', gstSplit: 'separate', tds: 'TDS Receivable', tdsMode: 'none', roundOff: 'rupee', roundOffLedger: 'Round Off', bank: 'HDFC Current A/c' };
 const INV: ExportDoc = {
   kind: 'invoice', number: 'KS/7', date: '2026-10-31', party: 'Nilgiri Retail & Co', gstin: '33AAFCN4521K1Z2', stateCode: '33', stateName: 'Tamil Nadu', original: null, reason: null, sac: '998519', gstPct: '18',
   lines: [
@@ -56,3 +56,29 @@ describe('accounting export (answer 522)', () => {
     expect(zohoCsv([{ ...INV, party: 'A, "B" Ltd' }], 'invoice', S, rule)).toContain('"A, ""B"" Ltd"');
   });
 });
+
+describe('receipts in the export (answer 574)', () => {
+  const R: ExportReceipt = { number: 'UTR123', date: '2026-11-20', party: 'Nilgiri Retail & Co', reference: 'UTR123', invoices: [{ number: 'KS/7', amount: 10266029n, tds: 177001n }] };
+  it('a receipt balances: bank and TDS debited, the client credited; with TDS booked at invoice only the bank', () => {
+    const none = receiptLines(R, S);
+    expect(none.party + none.lines.reduce((n, l) => n + l.amount, 0n)).toBe(0n);
+    expect(none.lines).toEqual([{ ledger: 'HDFC Current A/c', amount: -10266029n }, { ledger: 'TDS Receivable', amount: -177001n }]);
+    expect(none.party).toBe(10443030n);
+    const expected = receiptLines(R, { ...S, tdsMode: 'expected' });
+    expect(expected).toEqual({ party: 10266029n, lines: [{ ledger: 'HDFC Current A/c', amount: -10266029n }] });
+  });
+  it('Tally: a Receipt voucher from the rule; none without receipts', () => {
+    const xml = tallyXml([INV], S, { voucherType: { invoice: 'Sales', credit_note: 'Credit Note' }, dateFormat: 'YYYYMMDD', company: 'Kaveri', receiptVoucherType: 'Receipt' }, [R]);
+    expect(xml).toContain('<VOUCHERTYPENAME>Receipt</VOUCHERTYPENAME>');
+    expect(xml).toContain('<NARRATION>Against KS/7</NARRATION>');
+    expect(xml).toMatch(/<LEDGERNAME>HDFC Current A\/c<\/LEDGERNAME>\s*<ISDEEMEDPOSITIVE>Yes<\/ISDEEMEDPOSITIVE>\s*<AMOUNT>-102660\.29<\/AMOUNT>/);
+    expect(tallyXml([INV], S, { voucherType: { invoice: 'Sales', credit_note: 'Credit Note' }, dateFormat: 'YYYYMMDD', company: 'Kaveri' })).not.toContain('Receipt');
+  });
+  it('Zoho customer payments: a row per invoice paid, columns from the rule; negative: no columns gives just the header', () => {
+    const cols = [{ header: 'Date', field: 'date' }, { header: 'Customer Name', field: 'customer' }, { header: 'Deposit To', field: 'depositTo' }, { header: 'Invoice Number', field: 'invoice' }, { header: 'Amount Applied to Invoice', field: 'applied' }, { header: 'Withholding Tax Amount', field: 'tds' }];
+    const csv = zohoPaymentsCsv([{ ...R, invoices: [...R.invoices, { number: 'KS/8', amount: 100000n, tds: 0n }] }], S, { invoiceColumns: [], creditNoteColumns: [], paymentColumns: cols }).trim().split(/\r\n/);
+    expect(csv).toEqual(['Date,Customer Name,Deposit To,Invoice Number,Amount Applied to Invoice,Withholding Tax Amount', '2026-11-20,Nilgiri Retail & Co,HDFC Current A/c,KS/7,104430.30,1770.01', '2026-11-20,Nilgiri Retail & Co,HDFC Current A/c,KS/8,1000.00,0.00']);
+    expect(zohoPaymentsCsv([R], S, { invoiceColumns: [], creditNoteColumns: [] }).trim()).toBe('');
+  });
+});
+

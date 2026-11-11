@@ -239,7 +239,8 @@ export interface LiveSettingsPage {
   state?: LoadState;
   onRetry?: () => void;
   /** The changed values (by setting key) and the edited lists (rows by key). Rejects with a plain message. */
-  onSave: (values: Record<string, SettingValue>, rows: Record<string, string[][]>) => Promise<void>;
+  /** `overrides`: values changed while a "Different for" scope was chosen (answer 495), as key, scope label and value. */
+  onSave: (values: Record<string, SettingValue>, rows: Record<string, string[][]>, overrides?: { key: string; scope: string; value: SettingValue }[]) => Promise<void>;
   /** list kind: a row's extra button (`rowAction`), e.g. Stage targets of a pipeline. */
   onRowAction?: (key: string, rowIndex: number) => void;
   /**
@@ -409,7 +410,15 @@ function SettingsForm({
     setStatus({ kind: 'saving' });
     if (live) {
       try {
-        await live.onSave(Object.fromEntries(changed.map((k) => [k, draft[k] ?? null])), rows);
+        const overrides = Object.keys(draft)
+          .filter((k) => k.includes('@'))
+          .map((k) => {
+            const [key, sc] = k.split('@') as [string, string];
+            return { key, scope: sc, value: draft[k] ?? null, was: defsAll.find((d) => d.key === key)?.overrides?.find((x) => x.scope === sc)?.value };
+          })
+          .filter((o) => JSON.stringify(o.value) !== JSON.stringify(o.was ?? null))
+          .map(({ key, scope: sc, value }) => ({ key, scope: sc, value }));
+        await live.onSave(Object.fromEntries(changed.map((k) => [k, draft[k] ?? null])), rows, overrides);
         setRows({});
         setStatus({ kind: 'idle' });
         toaster?.toast({ tone: 'success', title: live.savedTitle ?? 'Settings saved', description: 'Recorded in the audit log with before and after values.' });
@@ -466,6 +475,8 @@ function SettingsForm({
       : scope !== (page.scopes?.[0] ?? 'Company') && !d.scope
         ? { ...d, scope: 'Inherited from Kaveri Foods Pvt Ltd' }
         : d;
+    // Answer 495 (live): with another scope chosen, a setting that is one value for the company is shown, not changed.
+    const companyOnly = Boolean(live) && !ov && scope !== (page.scopes?.[0] ?? 'Company');
     return (
     <SettingField
       key={d.key}
@@ -477,7 +488,7 @@ function SettingsForm({
         if (status.kind !== 'saving') setStatus({ kind: 'idle' });
       }}
       error={saveErrors.errorOf(`setting-${d.key}`) ?? null}
-      readOnly={readOnly}
+      readOnly={readOnly || companyOnly}
       highlighted={highlightKey === d.key}
       onResetScope={() => setDraft((x) => ({ ...x, [d.key]: d.value ?? null }))}
       rows={rows[d.key]}
@@ -513,7 +524,7 @@ function SettingsForm({
       {page.scopes && page.scopes.length > 1 && (
         <div className="yx-set-toolbar">
           <FormField label="Apply changes to" helper="Anything you don't change here keeps the value from the level above.">
-            <Select value={scope} onChange={(v) => v && setScope(v)} options={[...page.scopes, ...overrideScopes].map((s) => ({ value: s, label: s }))} disabled={readOnly} />
+            <Select value={scope} onChange={(v) => v && setScope(v)} options={[...new Set([...page.scopes, ...overrideScopes])].map((s) => ({ value: s, label: s }))} disabled={readOnly} />
           </FormField>
         </div>
       )}

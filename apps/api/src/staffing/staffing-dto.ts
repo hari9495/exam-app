@@ -62,6 +62,8 @@ export class RateChangeDto {
 export class StaffingSettingChangeDto {
   @IsString() @Matches(/^[a-z][a-z0-9_.]{2,79}$/) key!: string;
   @IsString() @MaxLength(40) value!: string;
+  /** Answer 495: the legal entity this value is for (e-invoicing only); left out for the company. */
+  @IsOptional() @IsUUID() legalEntityId?: string;
 }
 
 export class SaveStaffingSettingsDto {

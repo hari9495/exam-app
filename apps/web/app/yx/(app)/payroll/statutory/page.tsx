@@ -55,6 +55,13 @@ export default function YxPayStatutoryPage() {
         onCorrect: (c, x) => write('/statutory/filings', { legalEntityId: entityId, statute: c.statute, ...(c.state ? { state: c.state } : {}), month, kind: x.kind, reason: x.reason, ...(x.amount ? { amount: x.amount } : {}) }),
         onUploaded: (fid, reference) => write(`/statutory/filings/${id(fid)}/uploaded`, { reference }),
         onFiled: (fid, confirmation) => write(`/statutory/filings/${id(fid)}/filed`, { confirmation }),
+        // Answer 842: the bank's challan receipt PDF (PF, ESI, PT), and opening it.
+        onReceipt: (fid, file) => {
+          const body = new FormData();
+          body.append('file', file);
+          return write(`/statutory/filings/${id(fid)}/receipt`, body);
+        },
+        onOpenReceipt: (fid, name) => download(`/statutory/filings/${id(fid)}/receipt`, `${name}.pdf`),
         onDownload: async (fileId, name) => {
           const link = await payWrite<{ path: string }>(`/files/${id(fileId)}/link`);
           await download(link.path, name);

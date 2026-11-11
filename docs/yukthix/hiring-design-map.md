@@ -56,12 +56,13 @@ built**.
 | B. Candidates, pipeline and interviews | 8 | 64 | 0 | 0 | 8 | 1 | 73 |
 | C. Offers, BGV and joining | 4 | 28 | 4 | 0 | 1 | 0 | 33 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 30 | 0 | 0 | 0 | 4 | 34 |
-| E. Staffing agency | 8 | 57 | 12 | 0 | 0 | 0 | 69 |
+| E. Staffing agency | 8 | 58 | 12 | 0 | 0 | 0 | 70 |
 | F. Compliance and fairness | 5 | 21 | 4 | 0 | 6 | 0 | 31 |
 | G. Careers site, portals and settings | 4 | 67 | 5 | 2 | 9 | 0 | 83 |
-| **All Hiring design groups (A–G)** | **37** | **304** | **26** | **2** | **24** | **5** | **361** |
+| **All Hiring design groups (A–G)** | **37** | **297** | **27** | **2** | **24** | **5** | **355** |
 Recounted by script 11 Nov 2026 on `feat/yukthix-later-offers` after 377, 401, 405, 421, 422 (seven new drawn stories; HIR-27 Sent no longer a gap).
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 11 | 0 | 0 | 4 | 0 | 15 |
+Recounted by script 11 Nov 2026 on `feat/yukthix-later-staffing` (answer 497): HIR-17 HoursFromTime drawn and live: A–G 297 live, 27 gap, 2 wire, 24 not built, 5 phone, of 355.
 Recounted by script 10 Nov 2026 on `feat/yukthix-walk-2` (answer 691): T9-09 PortalWhatsapp drawn and live: A–G 295 live, 27 gap, 2 wire, 24 not built, 5 phone, of 353.
 Recounted by script 10 Nov 2026 on `feat/yukthix-hiring-whatsapp-optin` (answer 561): 2 new stories drawn and live (Surfaces/Careers ApplyFormWhatsapp, T9-09 StatusWhatsapp): A–G 294 live, 27 gap, 2 wire, 24 not built, 5 phone, of 352 (rows B, E and G had fallen behind and are recounted from the script).
 Recounted by script on `test/yukthix-main` after merging hiring-rest (Talent CRM campaigns, sourced profiles, under 18, kit wire-ups): A–G 292 live, 27 gap, 2 wire, 24 not built, 5 phone, of 350.
@@ -755,9 +756,10 @@ keep hours and fees; recruiters see none of it.
 | NewPlacementSite · New placement · client site required for own staff (822) | live | new story (drawn): answers 638, 822: our own employee at a client with sites is placed at one (`SITE_REQUIRED` otherwise); counted against our contractor licence |
 | AddToBench · Add to bench | live | new story (drawn): `BenchSheet`: active employees not placed and not on the bench |
 | RecruiterView · Recruiter · no pay rates or margins | live | new story (drawn) |
+| Hours · Placement record · weekly hours | live | new story (drawn): `PlacementHours`: account managers enter a week (Monday start, inside the placement); the client approves or sends it back in the portal, or the account manager records an approval naming the contact; an approved week is never changed |
+| HoursFromTime · Placement record · weekly hours from Time (497) | live | answer 497: an own-payroll worker's approved Time timesheet becomes the week (waiting for the client, "From the Time timesheet"), once per timesheet; a week already entered stays; the account manager may change it and the timesheet's hours stay shown |
 | FeeBeforeHire · Placement fee · before the hire | live | new story (drawn, answer 494): Client hired (date, first-year CTC, series) drafts the fee invoice |
 | FeeGuarantee · Placement fee · left inside the guarantee | live | new story (drawn, answer 494): the fee invoice and the guarantee outcome |
-| Hours · Placement record · weekly hours | live | new story (drawn): `PlacementHours`: account managers enter a week (Monday start, inside the placement); the client approves or sends it back in the portal, or the account manager records an approval naming the contact; an approved week is never changed |
 
 #### HIR-18 · Invoices
 
@@ -2156,7 +2158,6 @@ with In pipeline summed. Screenshots and the per-page results are in the walk re
      after each merge that touches packages or apps/api, as the memory notes say for the API.*
 
 ## Built from the founder's "later" list: offers and interviews (11 Nov 2026, branch `feat/yukthix-later-offers`)
-
 - **377 sealed e-sign copy:** when a candidate e-signs an offer, the letter's PDF plus the signing page (the letters'
   `acceptanceCopy`, not a second path) is stored privately (`offers.acceptance_file_id`, a files row made by the system);
   HR downloads it from the offer with the offer-pay key. A copy that cannot be made never undoes the acceptance: it is
@@ -2176,9 +2177,7 @@ with In pipeline summed. Screenshots and the per-page results are in the walk re
   board says not connected and nothing pretends to send.
 - Migration `202617z0000003_later_offers`. Tests: API unit (`interview-day-rules.spec`), kit tests, e2e hiring-hir09 (377),
   hiring-hir28 (401, 405) and hiring-hir27 (421, 422).
-
 ## Founder questions from the "later" offers and interviews (11 Nov 2026)
-
 901. **A batch's joiner on another day.** A joiner made on a different day from the batch is not added to it (HR is told).
      *Suggested: keep; HR adds them later from the batch page (People › Onboarding) when the day moves.*
 902. **Reminder when WhatsApp connects late.** Slots that were due while WhatsApp was not connected stay "not connected"; they
@@ -2187,4 +2186,26 @@ with In pipeline summed. Screenshots and the per-page results are in the walk re
      reschedule). *Suggested: keep.*
 904. **Sealed copy for link acceptances.** Offers accepted by the link alone (no e-sign) get no sealed copy; the audit log keeps
      the acceptance. *Suggested: keep (the company turns e-sign on per letter template).*
+## The "later" list built: 495, 497 and 574 (11 Nov 2026, branch `feat/yukthix-later-staffing`)
+- **495:** e-invoicing is set per legal entity on Settings 6.2 ("Apply changes to" a legal entity, as drawn); an entity
+  without its own value follows the company. Issuing uses the series' entity, and the invoice's reporting window follows
+  that entity's setting (rule data GST.EINVOICE_WINDOW stays verify). While an entity is chosen, the company-only settings
+  are read-only.
+- **497:** an own-payroll worker's approved Time timesheet becomes the placement's week of hours (waiting for the client,
+  "From the Time timesheet"), once per timesheet; a week already entered is left alone, so nothing is counted twice. The
+  account manager can still change it; the timesheet's hours stay shown. Drawn as HIR-17 HoursFromTime.
+- **574:** the accounting export carries the month's receipts against the series' invoices: Tally Receipt vouchers (bank
+  debited, the client's TDS to the TDS ledger unless booked at invoice) and a Zoho customer payments CSV, from new versions
+  of the rule sets EXPORT.TALLY_XML and EXPORT.ZOHO_CSV (marked verify). The bank ledger is a setting (default "Bank
+  Account").
+- Migration `202617z0000011_later_staffing`. Tests: `accounting-export.spec`, kit and web, e2e `staffing-3`, `staffing-5`.
+## Founder questions from the "later" list, staffing (11 Nov 2026)
+913. **A worker on two placements in one week.** The Time week flows in only when the worker has exactly one own
+     placement that week; otherwise the account manager enters it. *Suggested: keep until weeks are split by placement.*
+914. **Which timesheet hours.** The whole approved week (all projects) becomes the placement's hours. *Suggested: keep;
+     count only the client's project lines once Time projects are linked to clients.*
+915. **Receipt-only months in the export.** The month list on the export sheet shows months with issued invoices; a month
+     with receipts but no invoices is not offered. *Suggested: offer it too.*
+916. **Receipt number.** A receipt has no number of its own; the export uses its bank reference (or RCPT-…). *Suggested:
+     number receipts per series later if the CA asks.*
 

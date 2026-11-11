@@ -963,6 +963,7 @@ const staffing: SettingsPageDef = {
         { key: 'staff.exp_gst', label: 'GST ledger (one for all)', kind: 'text', value: 'Output GST', starter: true, scope: 'Company' },
         { key: 'staff.exp_tds', label: 'TDS the client deducts', kind: 'segment', value: 'none', options: ['none', 'expected'], optionLabels: { none: 'Leave out', expected: 'Show the expected TDS' }, helper: 'Expected TDS: the client\'s section rate on the taxable value, to a TDS receivable ledger.', starter: true, scope: 'Company' },
         { key: 'staff.exp_tds_ledger', label: 'TDS receivable ledger', kind: 'text', value: 'TDS Receivable', starter: true, scope: 'Company' },
+        { key: 'staff.exp_bank', label: 'Bank ledger (receipts)', kind: 'text', value: 'Bank Account', helper: 'Receipts are exported as receipt vouchers into this ledger, with the client’s TDS.', starter: true, scope: 'Company' },
         { key: 'staff.exp_round', label: 'Round each total', kind: 'segment', value: 'rupee', options: ['rupee', 'none'], optionLabels: { rupee: 'To the rupee', none: 'Keep paise' }, starter: true, scope: 'Company' },
         { key: 'staff.exp_round_ledger', label: 'Round-off ledger', kind: 'text', value: 'Round Off', starter: true, scope: 'Company' },
       ],

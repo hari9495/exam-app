@@ -113,6 +113,23 @@ export class StatutoryController {
     return this.filings.uploaded(ctx, this.user(req), id, dto.reference);
   }
 
+  /** Answer 842: the bank's challan receipt PDF for a PF, ESI or PT return. */
+  @Post('filings/:id/receipt')
+  @RequirePermissions('statutory.filing.mark_filed')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024, files: 1 } }))
+  addReceipt(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @UploadedFile() file?: { originalname?: string; buffer?: Buffer }) {
+    if (this.user(req).impersonatorUserId || this.user(req).actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
+    return this.filings.addReceipt(ctx, this.user(req), id, file);
+  }
+
+  @Get('filings/:id/receipt')
+  @RequirePermissions('statutory.filing.view')
+  async receipt(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Res({ passthrough: true }) res: Response) {
+    const f = await this.filings.receipt(ctx, this.user(req), id);
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${f.name.replace(/[^A-Za-z0-9._-]/g, '_')}"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+    return new StreamableFile(f.file);
+  }
+
   @Post('filings/:id/filed')
   @HttpCode(200)
   @RequirePermissions('statutory.filing.mark_filed')

@@ -97,6 +97,9 @@ export interface LiveStatutoryHub {
   onGenerate: (card: HubCard, reason?: string) => Promise<unknown>;
   onUploaded: (filingId: string, reference: string) => Promise<unknown>;
   onFiled: (filingId: string, confirmation: Confirmation) => Promise<unknown>;
+  /** Answer 842: the bank's challan receipt PDF for an uploaded or filed PF, ESI or PT return; and opening it. */
+  onReceipt?: (filingId: string, file: File) => Promise<unknown>;
+  onOpenReceipt?: (filingId: string, name: string) => Promise<unknown>;
   onDownload: (fileId: string, name: string) => Promise<unknown>;
   onCreateReturn: (taxYear: string, quarter: number) => Promise<unknown>;
   onReconcile: (id: string) => Promise<unknown>;
@@ -229,6 +232,16 @@ export function LiveStatutoryHubScreen({ live: p }: { live: LiveStatutoryHub }) 
         <Button size="sm" variant="primary" onClick={() => setFiling(f)}>
           Mark filed
         </Button>
+      )}
+      {f && (c.status === 'uploaded' || c.status === 'filed') && ['IN.PF', 'IN.ESI', 'IN.PT'].includes(c.statute) && (
+        <>
+          {f.receipt && p.onOpenReceipt && (
+            <Button size="sm" icon={Download} loading={busy === `ro-${f.id}`} onClick={() => void run(`ro-${f.id}`, () => p.onOpenReceipt!(f.id, `${c.label}-${p.month}-bank-receipt`))}>
+              Bank receipt
+            </Button>
+          )}
+          {p.can.markFiled && p.onReceipt && <FileButton label={f.receipt ? 'Replace bank receipt' : 'Add bank receipt'} accept=".pdf,application/pdf" ariaLabel={`Add the bank challan receipt for ${c.label}`} loading={busy === `rc-${f.id}`} onFile={(file) => go(`rc-${f.id}`, () => p.onReceipt!(f.id, file), 'Bank receipt added.')} />}
+        </>
       )}
       {c.status === 'filed' && (c.statute === 'IN.PF' || c.statute === 'IN.ESI') && p.can.generate && p.onCorrect && (
         <Button size="sm" onClick={() => setCorrecting(c)}>

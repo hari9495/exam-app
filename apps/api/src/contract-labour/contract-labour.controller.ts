@@ -12,7 +12,7 @@ import { RequireAnyPermission } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import { ContractLabourService } from './contract-labour.service';
-import { AttendanceConfirmDto, RegistrationDto, DirectPaymentDto, DiscrepancyDto, HoldReleaseDto, MinWageQueryDto, MonthQueryDto, ProofDecisionDto, ApproveWorkerDto, ContractorContactDto, ContractorDto, LicenceDto, RejectLicenceDto, ReleaseWorkerDto, RenewalDto, SaveClraSettingsDto, WorkerDto, WorkOrderDto } from './clra-dto';
+import { AttendanceConfirmDto, AttendanceReopenDto, RegistrationDto, DirectPaymentDto, DiscrepancyDto, HoldReleaseDto, MinWageQueryDto, MonthQueryDto, ProofDecisionDto, ApproveWorkerDto, ContractorContactDto, ContractorDto, LicenceDto, RejectLicenceDto, ReleaseWorkerDto, RenewalDto, SaveClraSettingsDto, WorkerDto, WorkOrderDto } from './clra-dto';
 import { WorkersService } from './workers.service';
 import { ContractAttendanceService } from './attendance.service';
 import { ComplianceService } from './compliance.service';
@@ -47,6 +47,14 @@ export class ContractLabourController {
   confirmAttendance(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: AttendanceConfirmDto) {
     assertOwnSession(req);
     return this.attendance.confirm(ctx, who(req), dto);
+  }
+
+  /** Answer 753: reopen a confirmed month (the compliance owner, with a reason). */
+  @Post('attendance/reopen')
+  @RequireAnyPermission('clra.contractor.manage')
+  reopenAttendance(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: AttendanceReopenDto) {
+    assertOwnSession(req);
+    return this.attendance.reopen(ctx, who(req), dto);
   }
 
   @Post('workers/:id/gate-pass')

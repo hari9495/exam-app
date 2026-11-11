@@ -22,6 +22,8 @@ export interface StatuteItem {
   mode: FilingMode;
   step: FilingStep;
   reference?: string;
+  /** Answer 842: the bank's challan receipt PDF is kept (PF, ESI, PT). */
+  receipt?: boolean;
   estimatedPenalty?: number;
   penaltyRule?: string;
   children?: SupplementaryFiling[];

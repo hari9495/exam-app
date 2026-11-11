@@ -195,12 +195,12 @@ export class ContractorSideService {
       const statutes = ['IN.PF', 'IN.ESI', 'IN.PT'];
       const inState = (x: { statute: string; state: string | null }) => x.statute !== 'IN.PT' || x.state === site.state;
       const registered = (await tx.statutoryRegistration.findMany({ where: { organizationId: org, legalEntityId: entity.id, statute: { in: statutes }, status: { not: 'off' } }, select: { statute: true, state: true, registrationNo: true } })).filter(inState);
-      const filings = (await tx.statutoryFiling.findMany({ where: { organizationId: org, legalEntityId: entity.id, statute: { in: statutes }, periodStart: day(from), status: 'filed' }, orderBy: { filedAt: 'asc' }, select: { statute: true, state: true, reference: true, amount: true, filedAt: true } })).filter(inState);
+      const filings = (await tx.statutoryFiling.findMany({ where: { organizationId: org, legalEntityId: entity.id, statute: { in: statutes }, periodStart: day(from), status: 'filed' }, orderBy: { filedAt: 'asc' }, select: { statute: true, state: true, reference: true, amount: true, filedAt: true, receiptFileId: true } })).filter(inState);
       // Answer 882: PT is named as missing only in the state's PT months (IN.PT deductMonths; none means every month; verify).
       const ptRules = inForce(await this.rules.published(), 'IN.PT', [site.state], from);
       const ptMonths = (ptRules?.values as { deductMonths?: number[] } | undefined)?.deductMonths;
       const ptDue = !ptMonths || ptMonths.includes(Number(from.slice(5, 7)));
-      const ch = challanRows(registered, filings.map((f) => ({ statute: f.statute, reference: f.reference, amount: f.amount ? rupees(f.amount) : null, filedOn: f.filedAt ? todayIst(f.filedAt) : null })), ptDue);
+      const ch = challanRows(registered, filings.map((f) => ({ statute: f.statute, reference: f.reference, amount: f.amount ? rupees(f.amount) : null, filedOn: f.filedAt ? todayIst(f.filedAt) : null, receipt: Boolean(f.receiptFileId) })), ptDue);
       const r = ch.rows.length ? await store('clpk_challans', 'PF, ESI and PT remittances (contract labour at the client)', ['Statute', 'Registration', 'Challan / TRRN', 'Amount', 'Filed on', 'Status'], ch.rows) : null;
       const data = { legalEntityId: entity.id, wagesRegisterId: w.id, musterRegisterId: m.id, challansRegisterId: r?.id ?? null, missing: ch.missing, employees: employees.length, madeBy: user.userId!, madeAt: new Date() };
       const pack = existing
@@ -228,6 +228,15 @@ export class ContractorSideService {
       const zip = new JSZip();
       zip.file('cover.txt', [`Client compliance pack · ${month}`, ...regs.map((r) => `${r.registerType} v${r.version} SHA-256 ${r.sha256}`), ...(p.missing.length ? [`Not in this pack yet: ${p.missing.join(', ')} (not filed for the month)`] : [])].join('\r\n'));
       for (const r of regs) zip.file(`${r.registerType}-${month}-v${r.version}.pdf`, await this.registers.fileOf(r));
+      // Answer 842: the bank challan receipts of the month's filed PF, ESI and PT returns (clean copies only); the
+      // return file itself never goes in.
+      const site = await tx.staffingClientSite.findFirst({ where: { organizationId: c.organizationId, id: p.clientSiteId }, select: { state: true } });
+      const filed = (await tx.statutoryFiling.findMany({ where: { organizationId: c.organizationId, legalEntityId: p.legalEntityId, statute: { in: ['IN.PF', 'IN.ESI', 'IN.PT'] }, periodStart: p.month, status: 'filed', receiptFileId: { not: null } }, select: { statute: true, state: true, receiptFileId: true } })).filter((f) => f.statute !== 'IN.PT' || f.state === site?.state);
+      const receipts = await tx.file.findMany({ where: { organizationId: c.organizationId, id: { in: filed.map((f) => f.receiptFileId!) }, scanStatus: 'clean' } });
+      for (const f of filed) {
+        const r = receipts.find((x) => x.id === f.receiptFileId);
+        if (r) zip.file(`bank-receipt-${f.statute.slice(3)}-${month}.pdf`, await this.files.bytes(r));
+      }
       await audit(tx, c, 'clra.client_pack.downloaded', 'client_pack', p.id, {});
       return { file: await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }), name: `client-pack-${month}.zip` };
     });

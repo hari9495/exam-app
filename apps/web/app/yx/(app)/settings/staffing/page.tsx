@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { InvoiceSeriesSheet, SETTINGS_GROUPS, SettingsPageScreen, staffingSettingsChanges, staffingSettingsPage, type StaffingSettingsData } from '@yukthix/ui/hiring';
+import { InvoiceSeriesSheet, SETTINGS_GROUPS, SettingsPageScreen, staffingEntityChanges, staffingSettingsChanges, staffingSettingsPage, type StaffingSettingsData } from '@yukthix/ui/hiring';
 import { loadState } from '../../../../../lib/yx-org';
 import { useStaffing, useStaffingWrite } from '../../../../../lib/yx-staffing';
 import { useAuth } from '../../../../../lib/auth-context';
@@ -36,8 +36,9 @@ export default function YxStaffingSettingsPage() {
           state: state === 'ready' ? 'ready' : state === 'loading' ? 'loading' : 'error',
           onRetry: () => void data.refetch(),
           savedTitle: 'Staffing desk settings saved',
-          onSave: async (values) => {
-            const changes = staffingSettingsChanges(values);
+          onSave: async (values, _rows, overrides) => {
+            // Answer 495: e-invoicing chosen per legal entity goes with the company values.
+            const changes = [...staffingSettingsChanges(values), ...staffingEntityChanges(overrides ?? [], data.data?.entities ?? [])];
             if (changes.length) await write('PUT', '/settings', { changes });
           },
           listEditors: canEdit ? { 'staff.invoice_series': setSeries } : undefined,

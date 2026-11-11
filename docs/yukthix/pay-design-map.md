@@ -1328,6 +1328,7 @@ Live page: /yx/payroll/statutory
 | Calendar · Due-date calendar | live | the month after the pay month |
 | AllOnTrack · All on track | live | |
 | SetupNeeded · Empty (set-up needed) | live | GET statutory/hub carries `setupMissing` (PF, ESI, TDS unless the entity has a TAN, PT / LWF for each state of the entity where a published rule charges it; "not registered" counts as recorded). With something missing and nothing owed, the hub shows the design's `SetupNeededState` naming what to register, and "Open payroll set-up" for `payroll.setup.manage` holders. (The old note was out of date: "Nothing to file" never showed, as PF, ESI and TDS cards always come back.) |
+| BankReceipt · Filed · bank challan receipt kept (842) | live | answer 842: `POST/GET statutory/filings/:id/receipt` (PDF, 5 MB, the mark-filed key; once uploaded or filed; PF, ESI and PT); a client compliance pack carries it, never the return file |
 | Loading · Loading | live | |
 
 ### CMP-02 · Statutory set-up

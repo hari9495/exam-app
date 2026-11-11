@@ -1,3 +1,4 @@
+import { FilesService } from '../documents/files.service';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { OrgSecretsCryptoService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
@@ -129,6 +130,7 @@ export class StatutoryFilingsService {
     private readonly files: ExchangeFilesService,
     private readonly crypto: OrgSecretsCryptoService,
     private readonly fvu: FvuRunner,
+    private readonly docs: FilesService,
   ) {}
 
   private async viewer(user: ScopeUser) {
@@ -780,6 +782,8 @@ export class StatutoryFilingsService {
         reference: f.reference,
         filingMode: f.filingMode,
         filedAt: f.filedAt,
+        // Answer 842: the bank's challan receipt PDF, when added.
+        receipt: Boolean(f.receiptFileId),
         penalties: pens.filter((p) => p.filingId === f.id).map((p) => ({ kind: p.kind, daysLate: p.daysLate, rate: p.rate, amount: p.amount.toFixed(2) })),
       }));
     });
@@ -831,6 +835,39 @@ export class StatutoryFilingsService {
       });
       return { id, status: 'filed', periodStage: p ? 'filed' : null };
     });
+  }
+
+  /**
+   * Answer 842: the bank's challan receipt (PDF, up to 5 MB) for a PF, ESI or PT return once it is uploaded on the portal
+   * or filed; a new one replaces the last (both kept as files). It goes in a client pack where present; the return file
+   * itself never does.
+   */
+  async addReceipt(ctx: TenantContext, user: ScopeUser, id: string, file: { originalname?: string; buffer?: Buffer } | undefined) {
+    if (!file?.buffer?.length) throw new BadRequestException('Choose the bank challan receipt (PDF).');
+    const v = await this.viewer(user);
+    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const f = await this.filingFor(tx, c, v, id, 'statutory.filing.mark_filed');
+      if (!['IN.PF', 'IN.ESI', 'IN.PT'].includes(f.statute)) throw new BadRequestException('A bank challan receipt is kept for PF, ESI and PT returns.');
+      if (f.status !== 'uploaded' && f.status !== 'filed') throw new ConflictException('Add the receipt once the return is uploaded on the portal.');
+      const stored = await this.docs.storeIn(tx, c, { area: 'challan-receipt', name: file.originalname || 'challan-receipt.pdf', data: file.buffer!, allowedMime: ['application/pdf'], maxMb: 5, via: 'staff' });
+      await tx.statutoryFiling.update({ where: { id }, data: { receiptFileId: stored.id } });
+      await audit(tx, c, 'statutory.filing.receipt_added', 'statutory_filing', id, { statute: f.statute, fileId: stored.id, sha256: stored.sha256, replaced: f.receiptFileId });
+      return { id, receipt: true, fileId: stored.id };
+    });
+    void this.docs.scan(ctx.organizationId as string, out.fileId).catch(() => undefined);
+    return out;
+  }
+
+  async receipt(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    const row = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const f = await this.filingFor(tx, c, v, id, 'statutory.filing.view');
+      if (!f.receiptFileId) throw new NotFoundException('No bank receipt yet.');
+      const file = await tx.file.findFirstOrThrow({ where: { organizationId: c.organizationId, id: f.receiptFileId } });
+      if (file.scanStatus !== 'clean') throw new ConflictException('The receipt is still being checked for viruses, or failed the check.');
+      return file;
+    });
+    return { file: await this.docs.bytes(row), name: row.fileName };
   }
 
   /** PAY-6.06 partner path. Founder decision 5f-D2 (10 Oct 2026): self-filing for the pilot, so no partner is connected. */

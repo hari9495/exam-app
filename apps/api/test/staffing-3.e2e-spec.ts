@@ -7,6 +7,7 @@ import { randomUUID } from 'crypto';
 import type Redis from 'ioredis';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { AppModule } from '../src/app.module';
+import { hoursFromTimesheet } from '../src/staffing/hours-from-time';
 import { EmailService } from '../src/email/email.service';
 import { LOGIN_PROTECTION_REDIS } from '../src/auth/login-protection.service';
 import { gstinCheckChar } from '../src/expenses/checks';
@@ -324,6 +325,21 @@ describe('Staffing desk slice 3', () => {
     expect((await api('fin', 'get', `/staffing/invoices/${ids.kaInv}`).expect(200)).body.invoice.window.state).toBe('not_applicable');
   });
 
+  it('495: e-invoicing per legal entity; the company value for an entity without its own; others refused', async () => {
+    const set = (who: Who, changes: Record<string, unknown>[]) => api(who, 'put', '/staffing/settings').send({ changes });
+    await set('rec', [{ key: 'staffing.einvoice.applies', value: 'on', legalEntityId: ids.entity }]).expect(403);
+    await set('am', [{ key: 'staffing.payment_terms_days', value: '30', legalEntityId: ids.entity }]).expect(400); // a company-only setting
+    await set('am', [{ key: 'staffing.einvoice.applies', value: 'on', legalEntityId: randomUUID() }]).expect(404);
+    await set('am', [{ key: 'staffing.einvoice.applies', value: 'on', legalEntityId: 'nope' }]).expect(400);
+    // The company says off; the entity says on: its invoices are in the window.
+    const s = (await set('am', [{ key: 'staffing.einvoice.applies', value: 'on', legalEntityId: ids.entity }]).expect(want(200))).body;
+    expect(s.values['staffing.einvoice.applies']).toBe('off');
+    expect(s.einvoiceByEntity).toEqual([{ legalEntityId: ids.entity, value: 'on' }]);
+    expect((await api('fin', 'get', `/staffing/invoices/${ids.kaInv}`).expect(200)).body.invoice.window).toEqual({ days: 33, state: 'blocked' });
+    await set('am', [{ key: 'staffing.einvoice.applies', value: 'off', legalEntityId: ids.entity }]).expect(want(200));
+    expect((await api('fin', 'get', `/staffing/invoices/${ids.kaInv}`).expect(200)).body.invoice.window.state).toBe('not_applicable');
+  });
+
   it('receipts: cash + TDS settle invoices exactly; ledger ageing, 26AS and disputes; finance only', async () => {
     const r = (who: Who, b: Record<string, unknown>) => api(who, 'post', '/staffing/receipts').send({ clientId: ids.tn, receivedOn: today, amount: '100000', tds: '2730', allocations: [{ invoiceId: ids.inv, amount: '102730' }], ...b });
     await r('am', {}).expect(403);
@@ -468,6 +484,29 @@ describe('Staffing desk slice 3', () => {
     expect(await jobs.benchPay(today)).toBe(0); // once per spell per month
     expect(Number((await inA(async (tx) => (await payScope(tx, [ids.entity!]), tx.lopInput.findFirstOrThrow({ where: { employeeId: ids.bhavna, periodStart: day(`${month}-01`) } })))).lopDays)).toBe((days - 20) * 0.5);
     expect(await inA((tx) => tx.auditLog.count({ where: { action: 'staffing.bench_pay.sent' } }))).toBe(2);
+  });
+
+  it('497: an own worker’s approved Time timesheet becomes the week’s hours once; the account manager may change it; never twice', async () => {
+    const w3 = addDays(w1, -14); // inside the placement, before the weeks the other tests use
+    const c = { organizationId: org.A.id, isSuperAdmin: false };
+    const ts = await inA((tx) => tx.timesheet.create({ data: { organizationId: org.A.id, employeeId: ids.arun!, weekStart: day(w3), status: 'approved', totalMinutes: 2430 } }));
+    const id = await inA((tx) => hoursFromTimesheet(tx, c, ts));
+    expect(id).toBeTruthy();
+    expect(await inA((tx) => hoursFromTimesheet(tx, c, ts))).toBeNull(); // the same timesheet again
+    const list = (await api('am', 'get', `/staffing/placements/${ids.pOwn}/hours`).expect(200)).body;
+    expect(list.rows.find((r: { weekStart: string }) => r.weekStart === w3)).toMatchObject({ hours: '40.5', status: 'waiting', source: 'time', timeHours: '40.5' });
+    // The account manager changes it; the source and the timesheet's hours stay shown.
+    await api('am', 'post', `/staffing/placements/${ids.pOwn}/hours`).send({ weekStart: w3, hours: '38' }).expect(want(201));
+    const after = (await api('am', 'get', `/staffing/placements/${ids.pOwn}/hours`).expect(200)).body.rows.find((r: { weekStart: string }) => r.weekStart === w3);
+    expect(after).toMatchObject({ hours: '38', source: 'time', timeHours: '40.5' });
+    // Negative: a week the account manager entered stays theirs; a vendor worker, a week not on a Monday and no hours are left out.
+    const manualWeek = await inA((tx) => tx.timesheet.create({ data: { organizationId: org.A.id, employeeId: ids.arun!, weekStart: day(w1), status: 'approved', totalMinutes: 600 } }));
+    expect(await inA((tx) => hoursFromTimesheet(tx, c, manualWeek))).toBeNull();
+    expect(await inA((tx) => hoursFromTimesheet(tx, c, { ...ts, id: randomUUID(), weekStart: day(addDays(w3, 2)) }))).toBeNull();
+    expect(await inA((tx) => hoursFromTimesheet(tx, c, { ...ts, id: randomUUID(), weekStart: day(addDays(w3, 7)), totalMinutes: 0 }))).toBeNull();
+    expect(await inA((tx) => hoursFromTimesheet(tx, c, { ...ts, id: randomUUID(), employeeId: randomUUID(), weekStart: day(addDays(w3, 7)) }))).toBeNull();
+    expect(await inA((tx) => tx.staffingHours.count({ where: { placementId: ids.pOwn!, source: 'time' } }))).toBe(1);
+    expect(await inA((tx) => tx.staffingHours.count({ where: { placementId: ids.pOwn!, weekStart: day(w1) } }))).toBe(1);
   });
 
   it('row-level security: company B sees none of the new rows', async () => {

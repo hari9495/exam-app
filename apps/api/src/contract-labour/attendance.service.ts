@@ -1,3 +1,4 @@
+import { withPayScope } from '../payroll/pay-access';
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
@@ -103,6 +104,27 @@ export class ContractAttendanceService {
       await tx.contractAttendanceConfirmation.create({ data: { organizationId: c.organizationId, agencyId: a.id, locationId: dto.locationId, month: day(month), days, confirmedBy: c.userId! } });
       await audit(tx, c, 'clra.attendance.confirmed', 'agency', a.id, { locationId: dto.locationId, month: dto.month, days });
       return { confirmed: true, days };
+    });
+  }
+
+  /**
+   * Answer 753: the compliance owner reopens a confirmed month with a reason (audited, with what was confirmed); refused
+   * once the site's contract labour registers for the month are frozen or signed.
+   */
+  async reopen(ctx: TenantContext, user: ScopeUser, dto: { contractorId: string; locationId: string; month: string; reason: string }) {
+    await this.clra.gate(user, 'manage');
+    const month = `${dto.month}-01`;
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const conf = await tx.contractAttendanceConfirmation.findFirst({ where: { organizationId: c.organizationId, agencyId: dto.contractorId, locationId: dto.locationId, month: day(month) } });
+      if (!conf) throw new NotFoundException('This month is not confirmed.');
+      const loc = await tx.location.findFirst({ where: { organizationId: c.organizationId, id: dto.locationId }, select: { legalEntityId: true } });
+      await withPayScope(tx, loc?.legalEntityId ? [loc.legalEntityId] : [], async () => {
+        const locked = await tx.statutoryRegister.findFirst({ where: { organizationId: c.organizationId, locationId: dto.locationId, periodStart: day(month), registerType: { startsWith: 'clra_' }, status: { in: ['frozen', 'signed'] } }, select: { id: true } });
+        if (locked) throw new ConflictException('The contract labour registers for this month are frozen or signed, so the month cannot be reopened.');
+      });
+      await tx.contractAttendanceConfirmation.delete({ where: { id: conf.id } });
+      await audit(tx, c, 'clra.attendance.reopened', 'agency', conf.agencyId, { locationId: dto.locationId, month: dto.month, reason: dto.reason, confirmed: { days: conf.days, by: conf.confirmedBy, at: conf.confirmedAt.toISOString() } });
+      return { reopened: true };
     });
   }
 

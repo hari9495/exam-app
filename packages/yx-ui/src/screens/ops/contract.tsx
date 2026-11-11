@@ -2504,6 +2504,10 @@ export interface AttendanceMonthProps {
   onConfirm?: (contractorId: string, locationId: string, month: string) => Promise<unknown>;
   /** The design opens the confirmation for this row. */
   confirmOpen?: string | null;
+  /** Answer 753: the compliance owner reopens a confirmed month, with the reason. */
+  onReopen?: (contractorId: string, locationId: string, month: string, reason: string) => Promise<unknown>;
+  /** The design opens the reopen dialog for this row. */
+  reopenOpen?: string | null;
 }
 
 // Answer 807: a month with no days asks "Confirm 0 days?" and names the workers with 0 days.
@@ -2517,6 +2521,8 @@ export function AttendanceMonthScreen(p: AttendanceMonthProps) {
   const { done, fail } = useSay();
   const [confirming, setConfirming] = useState<string | null>(p.confirmOpen ?? null);
   const row = p.rows.find((r) => `${r.contractorId}:${r.site.id}` === confirming);
+  const [reopening, setReopening] = useState<string | null>(p.reopenOpen ?? null);
+  const reopenRow = p.rows.find((r) => `${r.contractorId}:${r.site.id}` === reopening);
   return (
     <OpsDesk area="contract" active="Contract workers">
       <PageHeader
@@ -2536,6 +2542,7 @@ export function AttendanceMonthScreen(p: AttendanceMonthProps) {
             actions={
               <span className="yx-ops-row">
                 <Badge tone="neutral">{r.contractorEnters ? 'Entered by the contractor' : 'Kiosk'}</Badge>
+                {r.confirmed && p.canManage && p.canConfirm && <Button size="sm" onClick={() => setReopening(`${r.contractorId}:${r.site.id}`)}>Reopen</Button>}
                 {r.confirmed ? <Badge tone="success">Confirmed</Badge> : p.canManage && p.canConfirm ? <Button size="sm" variant="primary" onClick={() => setConfirming(`${r.contractorId}:${r.site.id}`)}>Confirm month</Button> : <Badge tone="info">Open</Badge>}
               </span>
             }
@@ -2563,7 +2570,35 @@ export function AttendanceMonthScreen(p: AttendanceMonthProps) {
           onConfirm={() => void (p.onConfirm ? p.onConfirm(row.contractorId, row.site.id, p.month) : Promise.resolve()).then(() => (done('Month confirmed'), setConfirming(null)), (e: unknown) => fail(errText(e)))}
         />
       )}
+      {reopenRow && <ReopenMonthDialog row={reopenRow} month={p.month} onClose={() => setReopening(null)} onReopen={(reason) => (p.onReopen ? p.onReopen(reopenRow.contractorId, reopenRow.site.id, p.month, reason) : Promise.resolve())} />}
     </OpsDesk>
+  );
+}
+
+/** Answer 753: reopen a confirmed month with the reason (refused once the month's registers are frozen or signed). */
+function ReopenMonthDialog({ row, month, onClose, onReopen }: { row: AttendanceRow; month: string; onClose: () => void; onReopen: (reason: string) => Promise<unknown> }) {
+  const { done } = useSay();
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const bad = reason.trim().length < 3 ? 'Say why the month is reopened.' : null;
+  const go = () => {
+    setTried(true);
+    if (bad) return focusOn('ro-reason');
+    setBusy(true);
+    setFailed(null);
+    onReopen(reason.trim())
+      .then(() => (done(`${monthText(month)} reopened`), onClose()))
+      .catch((e: unknown) => setFailed(errText(e)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} size="md" title={`Reopen ${row.contractor}'s ${monthText(month)} at ${row.site.name}?`} description="Punches and the contractor's entries can be changed again; confirm the month once it is right. The reopening and its reason are recorded. Refused once the month's contract labour registers are frozen or signed." notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={go}>Reopen month</Button></>}>
+      <FormField id="ro-reason" label="Reason" required error={tried ? bad : null}>
+        <TextArea rows={2} value={reason} onChange={setReason} maxLength={500} />
+      </FormField>
+    </Dialog>
   );
 }
 

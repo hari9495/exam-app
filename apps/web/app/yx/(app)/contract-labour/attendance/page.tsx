@@ -39,6 +39,8 @@ export default function YxContractAttendancePage() {
       state={state === 'ready' ? 'ready' : state === 'loading' ? 'loading' : 'error'}
       onRetry={() => void q.refetch()}
       onConfirm={(contractorId, locationId, m) => write('POST', '/attendance/confirm', { contractorId, locationId, month: m })}
+      // Answer 753: reopen a confirmed month with the reason.
+      onReopen={(contractorId, locationId, m, reason) => write('POST', '/attendance/reopen', { contractorId, locationId, month: m, reason })}
     />
   );
 }

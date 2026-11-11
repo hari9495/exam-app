@@ -717,3 +717,28 @@ describe('CMP-07 Missing IDs (live, founder answer 22)', () => {
     expect(screen.getByText(/your compliance owner/)).toBeInTheDocument();
   });
 });
+
+describe('CMP-01 bank challan receipt (answer 842)', () => {
+  it('an uploaded PF return takes the receipt; once kept it opens', async () => {
+    const onReceipt = ok();
+    const onOpenReceipt = ok();
+    const { unmount } = showHub({ onReceipt, onOpenReceipt });
+    const pf = screen.getByRole('article', { name: /Provident fund/ });
+    expect(within(pf).getByText('Add bank receipt')).toBeInTheDocument();
+    expect(within(pf).queryByRole('button', { name: 'Bank receipt' })).not.toBeInTheDocument();
+    unmount();
+    showHub({ onReceipt, onOpenReceipt, filings: FILINGS.map((f) => (f.id === 'fl1' ? { ...f, receipt: true } : f)) });
+    const pf2 = screen.getByRole('article', { name: /Provident fund/ });
+    expect(within(pf2).getByText('Replace bank receipt')).toBeInTheDocument();
+    await ue.click(within(pf2).getByRole('button', { name: 'Bank receipt' }));
+    expect(onOpenReceipt).toHaveBeenCalledWith('fl1', 'Provident fund-2026-09-bank-receipt');
+  });
+  it('negative: not before upload, not without the mark-filed key', () => {
+    const { unmount } = showHub({ onReceipt: ok(), onOpenReceipt: ok() });
+    expect(within(screen.getByRole('article', { name: /Professional tax/ })).queryByText('Add bank receipt')).not.toBeInTheDocument(); // generated only
+    unmount();
+    showHub({ onReceipt: ok(), onOpenReceipt: ok(), can: { generate: true, markFiled: false, challan: true } });
+    expect(within(screen.getByRole('article', { name: /Provident fund/ })).queryByText('Add bank receipt')).not.toBeInTheDocument();
+  });
+});
+

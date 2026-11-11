@@ -126,6 +126,8 @@ export function StatuteCard({ item, today, onOpenChild, onAction, actions }: { i
                 Filed file
               </Button>
               {(item.statute === 'PF' || item.statute === 'ESI') && <Button size="sm">Correct this month</Button>}
+              {/* Answer 842: the bank's challan receipt PDF, kept with the filing and put in client packs. */}
+              {(item.statute === 'PF' || item.statute === 'ESI' || item.statute === 'PT') && (item.receipt ? <Button size="sm" icon={Download}>Bank receipt</Button> : <Button size="sm" icon={Upload}>Add bank receipt</Button>)}
             </>
           ) : (
             <Button size="sm" onClick={() => onAction?.(item)}>
