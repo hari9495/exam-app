@@ -91,7 +91,8 @@ function QrReader({ onCode }: { onCode: (text: string) => void }) {
       .getUserMedia({ video: { facingMode: 'user' } })
       .then((s) => {
         stream = s;
-        if (done || !video.current) return;
+        // Closed while the camera started: stop it, or the camera stays on (visitors walk-through 11 Nov 2026).
+        if (done || !video.current) return void s.getTracks().forEach((t) => t.stop());
         video.current.srcObject = s;
         void video.current.play();
         const detector = new Detector({ formats: ['qr_code'] });

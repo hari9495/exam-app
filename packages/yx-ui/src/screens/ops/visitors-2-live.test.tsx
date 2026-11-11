@@ -179,6 +179,25 @@ describe('VIS-01 walk-ins at the desk (live)', () => {
   });
 });
 
+describe('VIS-03 kiosk camera (walk-through 11 Nov 2026)', () => {
+  it('a camera that starts after the photo step closed is stopped, not left on for the next visitor', async () => {
+    const stop = vi.fn();
+    let resolve!: (s: MediaStream) => void;
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: vi.fn(() => new Promise<MediaStream>((r) => (resolve = r))) } });
+    const live = kiosk({ info: { company: 'Kaveri Foods', location: 'Chennai office', open: true, photo: true, retentionDays: 90, types: [] }, needs: vi.fn(async () => ({ ...NEEDS, nda: null, induction: null })) });
+    const r = show(<VisitorKioskScreen live={live} />);
+    await ue.click(screen.getByRole('button', { name: "I don't have a pass" }));
+    await ue.type(screen.getByLabelText(/^Your name/), 'Rekha Shah');
+    await ue.type(screen.getByLabelText(/^Mobile/), '9000080102');
+    await ue.type(screen.getByLabelText(/^Who are you meeting/), 'Anita');
+    await ue.click(screen.getByRole('button', { name: 'Next', exact: true }));
+    await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled());
+    r.unmount();
+    resolve({ getTracks: () => [{ stop }] } as unknown as MediaStream);
+    await waitFor(() => expect(stop).toHaveBeenCalled());
+  });
+});
+
 describe('VIS-01 Decide now on each waiting row (walk-through 11 Nov 2026)', () => {
   it('each walk-in past its host time has Decide now for itself; one still in its host time has none', async () => {
     const past = new Date(Date.now() - 60_000).toISOString();
