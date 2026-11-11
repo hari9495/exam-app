@@ -392,6 +392,13 @@ conversion row from the drawing; (781) muster days from confirmed attendance onc
 stays in Compliance.
 Founder decided, 11 Nov 2026: build CL-8 ("we are the contractor": CLB-06 client establishments, CLB-07 own licences,
 CLB-08 client compliance packs) now, instead of waiting for a customer (changes answer 638).
+Founder approved, 11 Nov 2026 (questions 801-811 and 821-825, all as suggested): keep 801, 823, 824 (counsel verifies
+the number), 825; (802) done toasts use the success style across the ops areas; (803) show "Counted tonight" instead of 0
+before the first nightly count; (805) use the drawing's menu name, the inspection pack stays in Compliance; (806) drop the
+duplicate "Open"; (807) a 0-day month asks "Confirm 0 days?" first; (808) the Make employee steps fit 1278 x 635; (809) show
+the worker's photo in Make employee; (810) a clear warning at deploy when the wage is below the minimum, not a block; (811)
+the same no-access text as the other pages; (821) add the month's PF and ESI challan copies to the client pack; (822) the
+client site is required for our own staff once a client has sites.
 
 ## CL-1 built (10 Nov 2026, branch `feat/yukthix-contract-labour-1`)
 
