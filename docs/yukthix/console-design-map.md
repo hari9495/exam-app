@@ -73,18 +73,19 @@ built** · **phone view, mobile app not built**.
 
 ## Counts (sub-pages = stories)
 
-After C-2 (12 Nov 2026): the YX-04 Tenants rows are live (answer 1045), tenant health, alerts and the composer are live,
-and five new stories were added (four YX-04, one company-side Support access).
+After C-1 and C-2 (12 Nov 2026, merged on test/yukthix-main): YX-01 to YX-03 live (C-1, 15 new stories); the YX-04
+Tenants rows, tenant health, alerts and the composer live (C-2, five new stories).
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Live console | 2 | 20 | 0 | 0 | 0 | 0 | 20 |
-| B. Rules engine (YX-01 to YX-03) | 3 | 0 | 0 | 12 | 3 | 0 | 15 |
+| A. Live console | 2 | 21 | 0 | 0 | 0 | 0 | 21 |
+| B. Rules engine (YX-01 to YX-03) | 3 | 25 | 5 | 0 | 0 | 0 | 30 |
 | C. Customers and containment (YX-04, YX-18) | 2 | 14 | 0 | 0 | 6 | 0 | 20 |
 | D. Partners (YX-06 to YX-08) | 3 | 0 | 0 | 0 | 10 | 0 | 10 |
 | E. Money (YX-14 to YX-17) | 4 | 0 | 0 | 0 | 8 | 0 | 8 |
 | F. The rest (YX-05, YX-09 to YX-13) | 6 | 0 | 0 | 0 | 19 | 0 | 19 |
-| **All A-F** | **20** | **34** | **0** | **12** | **46** | **0** | **92** |
+| **All A-F** | **20** | **60** | **5** | **0** | **43** | **0** | **108** |
+Recounted 12 Nov 2026 on test/yukthix-main after merging C-1, C-2 and C-3 (C-3 added the Support desk look-up story).
 
 Counted by script on 11 Nov 2026 on `docs/yukthix-console-map` (the script is in the appendix). There are 87 stories in
 20 files whose title starts `Screens/YukthiX console/`: `screens/console/console.stories.tsx` (14),
@@ -187,31 +188,46 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| YX01List · Rule sets list | wire design | `GET /platform/statutory/rule-sets` (`platform.statutory.manage`) returns every version with status, drafter, reviewer and golden-case count. Gap: the drawing shows "in review"; the table has only draft and published (and `withdrawnAt`) |
-| YX01Loading · Rule sets list · loading | wire design | the same list |
-| YX01Draft · Slab editor · draft | wire design | `POST /platform/statutory/rule-sets` saves a draft (`statutory_save_draft`), checking its shape first |
-| YX01Invalid · Slab editor · overlap, no source | wire design | the API answers `RULE_SHAPE` with the problems (`checkShape`, `statutory/evaluator.ts`); `source` is required |
-| YX01Published · Published version (locked) | wire design | published rows are read-only to the app (`StatutoryRuleSet`, "read-only to the app") |
+| YX01List · Rule sets list | live | C-1 (12 Nov 2026): `/staff/rules`, `RuleSetEditorScreen` with `live`; `GET /platform/statutory/rule-sets` (Rules editor key) with the review states and the drafter named; a new version starts as "Copy as new version" |
+| YX01Loading · Rule sets list · loading | live | the same list while it loads |
+| YX01Draft · Slab editor · draft | live | `/staff/rules/[id]`: the drafter changes their draft (`PATCH …/rule-sets/:id`, only the drafter, only a draft) and sends it for review (`POST …/send-for-review`); the valid-from and valid-to dates are a card on the live editor |
+| YX01Invalid · Slab editor · overlap, no source | live (gap) | the API answers `RULE_SHAPE` with the problems and the editor lists them (pressed too early, never disabled); the source is a text naming the notification and its link, not an uploaded file (question 1062) |
+| YX01Published · Published version (locked) | live | read-only, with "Copy as new version" (a draft under a new version name) |
+| YX01LiveList · C-1 · Rule sets list (live: in review, changes requested) | live | the review states of answer 1042 in the list |
+| YX01ChangesRequested · C-1 · Changes requested · the drafter reads the note | live | `POST …/request-changes` returns it to draft with the reviewer's note (answer 1042) |
+| YX01InReviewOther · C-1 · In review · a second member of staff | live | Review opens YX-02's review drawer |
+| YX01InReviewMine · C-1 · In review · the drafter waits | live | the drafter cannot change it or review it |
+| YX01OtherKind · C-1 · Draft of another kind (values as data) | live | rule kinds other than PT slabs are edited as data (JSON); the shape checks run on save (question 1063) |
+| YX01NoKey · C-1 · Without the Rules editor key | live | 403 from the API shows this |
 
 #### YX-02 · Golden-case runner and review
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| YX02Runner · Golden cases · 2 failing | design only, feature not built | golden cases are saved with a draft and run only when someone publishes (`runGolden` in `statutory.service.ts`). There is no "run now" endpoint. Small to add: the engine exists |
-| YX02Running · Golden cases · running | design only, feature not built | as above |
-| YX02Queue · Review queue | wire design | the list above (drafts with drafter and golden count). Gap: no "changes requested" state |
-| YX02Review · Review drawer (checker) | wire design | `POST …/rule-sets/:id/publish` (step-up) is the checker's approve; "request changes" is not in the API |
-| YX02SelfReview · Maker cannot review own change | wire design | the service refuses the drafter, and the database does too (`statutory_publish`, `YX_MAKER_CHECKER`) |
+| YX02Runner · Golden cases · 2 failing | live | C-1 (12 Nov 2026): `/staff/rules/golden?id=`; "Run all cases" is `POST …/rule-sets/:id/run`, a dry run that saves nothing but its audit row (answer 1043) |
+| YX02Running · Golden cases · running | live | while the dry run runs |
+| YX02Queue · Review queue | live | in review and changes requested, from the same list |
+| YX02Review · Review drawer (checker) | live | Approve goes on to YX-03 to publish; Request changes needs a note of 10 characters or more the drafter reads (answer 1042) |
+| YX02SelfReview · Maker cannot review own change | live | the drafter is refused by the screen, the API (403) and the database (`YX_MAKER_CHECKER`) |
+| YX02DryRunNotRun · C-1 · Dry run · not run yet | live | the cases of the version before a run |
+| YX02DryRun · C-1 · Dry run · 1 failing (nothing saved) | live | each case's expected and actual result |
+| YX02LiveReview · C-1 · Review drawer · ask for changes | live | `POST …/request-changes` |
+| YX02LiveSelf · C-1 · Review drawer · the drafter cannot review | live | as YX02SelfReview |
+| YX02LiveQueueEmpty · C-1 · Review queue · nothing waits | live | the empty queue |
 
 #### YX-03 · Publish scheduler
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| YX03Version · Publish · version | wire design | the draft carries version, valid from and valid to |
-| YX03Impact · Publish · tenant impact | design only, feature not built | no endpoint counts the companies or employees a rule change touches |
-| YX03PastDated · Publish · past-dated (arrears proposals) | wire design | a past "valid from" can be published; companies then get arrears proposals (`StatutoryArrearsProposal`, `payroll/arrears.service.ts` `refresh`, PAY-7.03) |
-| YX03Review · Publish · review | wire design | publish runs the shape checks and golden cases and needs the key again |
-| YX03Done · Published and scheduled | wire design | a future "valid from" is the schedule; publishing clears the 5-minute cache |
+| YX03Version · Publish · version | live | C-1 (12 Nov 2026): `/staff/rules/publish`; only versions in review that someone else drafted (answer 1041) |
+| YX03Impact · Publish · tenant impact | live (gap) | `GET …/rule-sets/:id/impact` through `platformRead` (audited with its purpose): companies and employees working in the jurisdiction today, and by company size, numbers only (answer 1044). Not shown: how many people's PT changes (pay data stays behind the pay guard; question 1064) |
+| YX03PastDated · Publish · past-dated (arrears proposals) | live (gap) | a past valid-from says companies get arrears proposals (PAY-7.03); how many is not shown (pay data, question 1064) |
+| YX03Review · Publish · review | live (gap) | `POST …/publish` asks for the security key again (step-up) and runs the shape checks and golden cases; the Notices step is not built (question 1065) |
+| YX03Done · Published and scheduled | live (gap) | published, applying on its date; no notices to companies yet (question 1065) |
+| YX03LiveImpact · C-1 · Impact · companies and employees (numbers only) | live | the impact step with its chart (sizes with fewer than 5 companies are hidden) |
+| YX03LiveNotCountable · C-1 · Impact · a jurisdiction that cannot be counted | live | "EU", "GENERIC" and similar are not places with locations |
+| YX03LiveNothing · C-1 · Version · nothing to publish | live | nothing in review that someone else drafted |
+| YX03LiveDone · C-1 · Published | live | done, with its date |
 
 ### C. Customers and containment (YX-04, YX-18)
 
@@ -591,3 +607,52 @@ C-6 to C-8.
       sends it back. *Suggested: let the writer withdraw it, audited.*
 
 - 1081 to 1087 (C-2) approved as suggested (12 Nov 2026, "ok for all"): System Admins only; 30-day change, churn band and CS owner with staff roles; alert follow-up with staff roles; weekly limit and scheduling later as a platform setting; any other staff member with the key approves; staff roles slice next after C-5; the writer may withdraw a pending message, audited (to build).
+## C-1 built: the rules engine (answers 1041 to 1044, 1058; 12 Nov 2026, branch `feat/yukthix-console-c1`)
+- **Pages** (`/staff/rules`, Console › Rules › Rule sets): the list (YX-01), one version (YX-01 editor), Golden cases
+  and review (YX-02, `/staff/rules/golden`) and Publish (YX-03, `/staff/rules/publish`), all the drawn screens with a
+  `live` prop. New C-1 states were drawn first in the same story files.
+- **Review (1042).** The drafter sends a draft for review ("in review"). A second member of staff publishes it or asks
+  for changes with a note (10 to 500 characters): it goes back to draft, shown as "Changes requested" with the note, and
+  only its drafter changes it and sends it again. Only a version in review is published (also the pack loader). The
+  drafter can neither ask for changes on nor publish their own (screen, API and database).
+- **Publishing (1041)** needs the security key again (step-up); the drafter never publishes.
+- **Dry run (1043).** "Run all cases" runs the shape checks and every golden case on a version and returns each case's
+  expected and actual result; it saves nothing but the audit row `platform.statutory.golden_run`.
+- **Impact (1044).** Companies and employees working in the rule's jurisdiction today (current assignments at locations
+  in that country or state; closed companies left out), and the same by company size. Numbers only: no company or
+  person, no id. It is read through `platformRead`, audited as `platform.cross_tenant_read` with its purpose
+  (`statutory.impact <statute> <jurisdiction> <version>`).
+- **Key (1058).** The existing `platform.statutory.manage` is the "Rules editor" key (renamed in its description). Every
+  route: `JwtAuthGuard`, `PlatformStaffGuard`, `PermissionsGuard` with that key. No new use of the RLS bypass: the rule
+  store writes stay in their SECURITY DEFINER functions (new: `statutory_update_draft`, `statutory_send_for_review`,
+  `statutory_request_changes`; `statutory_publish` now needs "in review"); the cross-company count is `platformRead`.
+- **Audit:** drafted, draft changed, sent for review, changes requested (with the note), golden run, published; each names
+  the member of staff.
+- **Migration** `202617z0000061_console_c1_rules` (change note and review columns, the three functions).
+- **Design-live guard:** the guard now also reads the staff console (`apps/web/app/staff`, answer 1059, shared with
+  C-3): YX-01 to YX-03 and the 9 live console screens left the not-live list (12 fewer).
+- **Tests:** API unit (routes and keys, only publish steps up, states, places, sizes), e2e `console-c1-rules` (8: refusals
+  for no session, a company user, a company admin and staff without their security key; the drafter cannot publish or
+  review; publishing a draft not in review is refused; changes requested goes back to draft with the note; step-up;
+  the dry run changes nothing; the impact is numbers only and audited), kit `console-rules-live.test.tsx` (10), web
+  `console-rules.test.tsx` (5). `payroll-5b` now sends for review before publishing.
+
+### Questions from C-1 (from 1061)
+1061. **Who holds the Rules editor key.** Every YukthiX staff account holds every console key today (the staff role
+      grants them all), so "staff without the key" cannot happen yet. *Suggested: build the staff roles of answer 1058
+      (Support agent, Customer success, Rules editor, Finance, Security lead) in a small slice, so only rules editors
+      draft and publish.*
+1062. **The source as a file.** The drawing uploads the gazette notification; the store keeps a source text (the
+      notification and its link). *Suggested: keep the text now; store the PDF with the version when the document
+      store is used for platform files.*
+1063. **Rules other than PT slabs.** Only PT slabs have the drawn grid; every other kind (PF, ESI, TDS, minimum wages and
+      the rest) is edited as data (JSON) with the shape checks on save. *Suggested: keep; draw a form per kind when a
+      kind is changed often.*
+1064. **Impact numbers from pay.** "Employees whose PT changes" and "arrears proposals" need payroll data, which staff
+      never read (the pay guard). *Suggested: leave them out; the companies see their own arrears proposals.*
+1065. **Notices to companies.** The drawn Notices step (email and in-app notice to payroll and HR admins, a reminder, a
+      banner) is not built. *Suggested: build it with the admin messages of C-2 (answer 1048), using its composer.*
+1066. **Copying across countries.** A copy keeps the statute and jurisdiction; the draft API takes Indian statutes only
+      (`IN.…`, `IN` or `IN-XX`), so UAE, GST and hiring rules cannot be drafted in the console yet. *Suggested: allow
+      the other packs' statutes when someone needs to change one.*
+

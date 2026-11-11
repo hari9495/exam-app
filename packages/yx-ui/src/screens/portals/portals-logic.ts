@@ -459,7 +459,8 @@ export function slabErrors(rows: SlabRow[]): { row: number; message: string }[] 
       const prev = rows[i - 1];
       if (prev.to == null) errs.push({ row: i - 1, message: `Row ${i}: only the last row can have no upper limit.` });
       else if (r.from <= prev.to) errs.push({ row: i, message: `Row ${i + 1} overlaps row ${i}.` });
-      else if (r.from !== prev.to + 1) errs.push({ row: i, message: `Gap between row ${i} and row ${i + 1}.` });
+      // A gap of up to ₹1 is fine (25,000 after 24,999.99), as the rule store checks it.
+      else if (r.from - prev.to > 1) errs.push({ row: i, message: `Gap between row ${i} and row ${i + 1}.` });
     }
   });
   if (rows.length && rows[rows.length - 1].to != null) errs.push({ row: rows.length - 1, message: 'The last row needs no upper limit so every salary is covered.' });

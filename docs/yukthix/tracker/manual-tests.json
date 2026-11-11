@@ -20352,5 +20352,62 @@
       "Screens/YukthiX console/Platform console (step 3) · Company side · Support access · messages from YukthiX (C-2)"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CON-C1-01",
+    "area": "YukthiX console — C-1: rules engine (12 Nov 2026)",
+    "screen": "YX-01 Rule sets",
+    "url": "http://localhost:3000/staff/rules",
+    "account": "Two YukthiX staff accounts with their security keys (the drafter and the reviewer); a company admin (admin-tester). Window 1278 x 635.",
+    "steps": [
+      "As the drafter open Console › Rules › Rule sets.",
+      "Open IN.PT · IN-KA, choose Copy as new version, leave the name empty and press Copy; then name it v2099-test.",
+      "In the draft change the second slab to start at 26,000 and press Save draft.",
+      "Put it back to 25,000, change the valid-from date to 1 Apr 2099 and press Send for review.",
+      "As the company admin open /staff/rules."
+    ],
+    "expected": "Step 1: every version with its status and who drafted it. Step 2: 'Name the version' error; then the draft opens. Step 3: not saved; the problems are listed (gap between slabs). Step 4: toasts 'Draft saved' and 'Sent for review'; the status is In review and nothing can be changed. Step 5: the company admin cannot use the console.",
+    "stories": [
+      "Screens/YukthiX console/YX-01 · Rule-set editor"
+    ],
+    "note": "Positive and negative. Answers 1041, 1042."
+  },
+  {
+    "id": "MT-CON-C1-02",
+    "area": "YukthiX console — C-1: rules engine (12 Nov 2026)",
+    "screen": "YX-02 Golden cases and review",
+    "url": "http://localhost:3000/staff/rules/golden",
+    "account": "Two YukthiX staff accounts with their security keys (the drafter and the reviewer); a company admin (admin-tester). Window 1278 x 635.",
+    "steps": [
+      "As the drafter open the draft and press Run golden cases, then Run all cases.",
+      "As the drafter open the review queue and press Review on your own version.",
+      "As the reviewer press Review, choose Request changes, write 'short' and press Record decision.",
+      "Write what to change (at least 10 characters) and press Record decision.",
+      "As the drafter open the version."
+    ],
+    "expected": "Step 1: each case with expected and actual; 'saves nothing'; the version is unchanged. Step 2: 'You drafted this change'; nothing is recorded. Step 3: 'Say what to change (at least 10 characters).' Step 4: toast 'Sent back with your note'. Step 5: status Changes requested with the reviewer's note; the drafter can change it and send it again.",
+    "stories": [
+      "Screens/YukthiX console/YX-02 · Golden-case runner and review"
+    ],
+    "note": "Positive and negative. Answers 1042, 1043."
+  },
+  {
+    "id": "MT-CON-C1-03",
+    "area": "YukthiX console — C-1: rules engine (12 Nov 2026)",
+    "screen": "YX-03 Publish",
+    "url": "http://localhost:3000/staff/rules/publish",
+    "account": "Two YukthiX staff accounts with their security keys (the drafter and the reviewer); a company admin (admin-tester). Window 1278 x 635.",
+    "steps": [
+      "As the drafter open Publish.",
+      "As the reviewer open Publish and choose the version in review.",
+      "Look at Tenant impact.",
+      "Go to Review and press Publish rule set; when asked, use your security key.",
+      "Cancel the security key prompt once, then publish again."
+    ],
+    "expected": "Step 1: 'Nothing to publish' (your own version is not offered). Step 2: the version and its date. Step 3: companies and employees affected as numbers only; no company or person is named. Step 4: published; the list shows it as Published by the reviewer. Step 5: cancelling does not publish.",
+    "stories": [
+      "Screens/YukthiX console/YX-03 · Publish scheduler"
+    ],
+    "note": "Positive and negative. Answers 1041, 1044."
   }
 ]
