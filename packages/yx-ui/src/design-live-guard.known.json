@@ -300,8 +300,6 @@
     "settings: NotFoundState",
     "settings: SettingsGroupScreen",
     "settings: SettingsHomeScreen",
-    "settings: TourCard",
-    "settings: TourList",
     "time: AttendanceCalendarPhone",
     "time: D",
     "time: DayCardPhone",
