@@ -43,7 +43,7 @@ describe('Settings 6.2 e-invoicing per legal entity (answer 495)', () => {
     await ue.click(toggle);
     await ue.click(screen.getByRole('button', { name: /^Save/ }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
-    const overrides = (onSave.mock.calls[0] as unknown[])[2] as { key: string; scope: string; value: unknown }[];
+    const overrides = (onSave.mock.calls[0] as unknown[])[2] as Parameters<typeof staffingEntityChanges>[0];
     expect(overrides).toEqual([{ key: 'staff.einvoice', scope: 'Kaveri Staffing Pvt Ltd', value: true }]);
     expect(staffingEntityChanges(overrides, DATA.entities)).toEqual([{ key: 'staffing.einvoice.applies', value: 'on', legalEntityId: 'e1' }]);
   });
