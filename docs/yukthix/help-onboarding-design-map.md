@@ -450,3 +450,14 @@ of what's new to a new company.
 - Tests: kit (dot and no dot; the moved sheet from the kit root, typed phrase), web (lang asked or not; What's new tab
   shown or hidden), e2e `service-desk-hlp04` (translation shown once published; English, Hindi without a translation, and
   a draft show the original; unknown language 400). Manual tests MT-HLP-H1-04 and MT-HLP-H1-05.
+
+## Founder approved (11 Nov 2026, "ok for all")
+- 971 to 975 (H-2): System Admins decide requests, as built; the page does not name its permission; remind the System
+  Admins once after 2 working days (to build); delete Not found references after 90 days (to build); YukthiX staff look
+  up a reference inside the company's support session, as built, and a look-up across companies comes with the YukthiX
+  staff console.
+- 1001 to 1004 (H-5): the admin tour starts in Settings now and points at the Set-up hub as version 2 once H-6 is in
+  (to build); the first-approval tour shows to anyone a request comes to; Esc counts as skipped; the phone tour waits
+  for the mobile app.
+- 1011 to 1014 (H-6): no go-live or sign-off on the hub until the company wizard (H-7); the checks are fixed; Hiring,
+  Performance and Helpdesk cards come later; one saved rule marks an area's rules reviewed.
