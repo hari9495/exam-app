@@ -328,6 +328,9 @@ export class StaffingWorkService {
         if (!site) throw new NotFoundException('Client site not found.');
         if (data.supply === 'own') await ownLicenceCheckIn(tx, org, site, dto.startOn);
         data = { ...data, clientSiteId: site.id };
+      } else if (data.supply === 'own' && (await tx.staffingClientSite.count({ where: { organizationId: org, clientId: s.clientId, archivedAt: null } }))) {
+        // Answer 822: once the client has sites, our own staff are placed at one (it counts against our licence).
+        throw new BadRequestException({ statusCode: 400, code: 'SITE_REQUIRED', message: 'Choose the client site where they will work.' });
       }
       const p = await tx.staffingPlacement.create({ data }).catch((e: unknown) => {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('This person already has an active placement.');
