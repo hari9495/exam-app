@@ -86,11 +86,11 @@ The 18 "design only" rows: tours (3), the help drawer's page help, what's new an
 | story (sub-page) | verdict | note |
 |---|---|---|
 | HelpDrawerPage · 6.2 Help drawer · this page (TIM-18 apply leave) | design only, feature not built | page help topics (steps, video, languages) do not exist; the live Help drawer is the service-desk one (known issues, raise a ticket, my tickets) and suggests knowledge-base articles only while typing a ticket; question 941 |
-| HelpDrawerNews · 6.2 Help drawer · what's new | design only, feature not built | no what's-new entries, no targeting by role and product, no read marks |
+| HelpDrawerNews · 6.2 Help drawer · what's new | built through PLT-50 (H-4) | entries, targeting by role and product, read marks; the tab itself comes with H-1 |
 | HelpDrawerNewsEmpty · 6.2 Help drawer · what's new, nothing yet | design only, feature not built | as above |
 | HelpDrawerTours · 6.2 Help drawer · tours (resume, replay) | design only, feature not built | needs tour progress per person (6.1) |
 | HelpPhone · 6.2 Help · phone (bottom sheet content) | phone view, mobile app not built | `HelpTopicBody` in a bottom sheet |
-| WhatsNewManager · 6.2 What's new · manager | design only, feature not built | a second what's-new design exists in Platform (PLT-50, `WhatsNewDrawer`, `WhatsNewSheet`), not live either; question 943 |
+| WhatsNewManager · 6.2 What's new · manager | retired (answer 943) | PLT-50 is the one version; live as the Help drawer's What's new (H-4) |
 
 ### B. Access and not found (6.3)
 
@@ -326,3 +326,34 @@ Build H-1 to H-3 now, then H-4 to H-6; H-7 later.
      portals, the kiosk or the public help centre. *Suggested: keep (those pages have no shortcuts to list).*
 
 Founder approved, 12 Nov 2026 (questions 981-982, as suggested): no go-to keys (Ctrl K finds every page); "?" only in the signed-in app.
+## H-4 built: What's new (answer 943; 12 Nov 2026, branch `feat/yukthix-help-h4`)
+- **Entries (platform data):** `whats_new_entries` (migration `202617z0000031_help_whats_new`): title, text, products,
+  who it is for (everyone, employees, managers, HR, payroll, System Admins), publish date; withdrawn, never deleted. No
+  company column: every signed-in session may read; only the platform (super-admin) context may insert or update (RLS
+  policies), and the runtime role cannot delete. Read marks: `whats_new_reads` (forced RLS).
+- **Console › What's new** (`/staff/whats-new`, key `platform.news.manage`, YukthiX staff with their security key):
+  list (Published / Planned / Withdrawn), New entry, Change entry (version-checked), Withdraw (confirmed, final). Every
+  change is in the platform audit log in plain words. Stories "What's new · entries / new entry / none yet".
+- **People:** `GET /help/whats-new`, `POST /help/whats-new/read`: the published entries for their audiences (worked out
+  from facts and keys: an employee record, direct reports, HR keys, payroll keys, System Admin) and their company's
+  products, newest 50, unread marked; Mark all read. 403 while acting for someone. The PLT-50 list is the one design:
+  `WhatsNewPanel` (stories "PLT-50 · What's new · Help tab"), exported from `@yukthix/ui/desk`; web hook
+  `useWhatsNew(open)` in `apps/web/lib/yx-whats-new.ts` (null when the company turned it off; `unread` for a count).
+- **Help drawer:** one optional `whatsNew` slot on `HelpDrawer` (shown as a "What's new" section, story "Help drawer ·
+  What's new (H-4)"); H-1 moves it into the drawer's What's new tab.
+- **Setting:** Settings › Organisation › Help: "Help: show What's new" (`help.whats_new.show`, default on).
+- Tests: kit (console inputs, add with field errors and focus, change with version, withdraw confirmed, no key no
+  actions, audit words; panel unread, mark all read, empty, error, failure); e2e `help-whats-new` (staff only, field
+  checks, audit, role and product targeting, another company, per-person read marks, RLS: a company cannot write
+  entries or see another's marks, version conflict, withdraw final, setting off, 403 while acting). Manual tests
+  MT-HLP-943a (console) and MT-HLP-943b (people).
+## Founder questions from H-4 (12 Nov 2026)
+991. **"See all updates".** The drawn drawer links to a page of all updates; the tab already lists the person's latest 50.
+     *Suggested: no separate page.*
+992. **When an entry counts as read.** Only Mark all read marks entries read; opening the tab does not. *Suggested: keep
+     (people decide), with a dot on Help while something is unread (with H-1).*
+993. **Who counts as HR, payroll and System Admin.** HR: holds leave settings or onboarding keys; payroll: prepares pay
+     runs; System Admin: the role. A System Admin also sees HR and payroll entries (they hold those keys).
+     *Suggested: keep.*
+994. **A new company's backlog.** A company that joins today sees every published entry for its products (latest 50).
+     *Suggested: show only entries from the last 6 months.*

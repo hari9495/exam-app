@@ -3353,6 +3353,38 @@ model EmployeeProfileRequest {
 }
 
 /// P14 §4 catalogue: one plan per product (YX-BILL-01), so the product is the plan. Platform table (no RLS).
+/// Help H-4, answer 943: a What's new entry YukthiX staff write (platform data, no company; read by everyone signed in).
+model WhatsNewEntry {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title       String    @db.VarChar(120)
+  body        String    @db.VarChar(1000)
+  /// Product codes (products.code), at least one.
+  products    String[]  @db.VarChar(32)
+  /// everyone, employee, manager, hr, payroll, admin.
+  audiences   String[]  @db.VarChar(16)
+  publishOn   DateTime  @map("publish_on") @db.Date
+  withdrawnAt DateTime? @map("withdrawn_at") @db.Timestamptz(3)
+  createdBy   String?   @map("created_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version     Int       @default(1)
+
+  @@index([publishOn(sort: Desc)], map: "whats_new_entries_publish_idx")
+  @@map("whats_new_entries")
+}
+
+/// Help H-4: which What's new entries a person has read (company data, forced RLS).
+model WhatsNewRead {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  entryId        String   @map("entry_id") @db.Uuid
+  readAt         DateTime @default(now()) @map("read_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, userId, entryId], map: "whats_new_reads_user_entry_key")
+  @@map("whats_new_reads")
+}
+
 model Product {
   code      String   @id @db.VarChar(32)
   name      String   @db.VarChar(100)

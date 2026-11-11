@@ -53,6 +53,13 @@ export function actionWords(action: string, details: Record<string, unknown> | n
       return `Set a new ${PRODUCT_LABEL[String(d.product)] ?? d.product} price (${d.currency} ${d.unitPrice}) from ${d.validFrom}`;
     case 'platform.price.withdrawn':
       return `Withdrew the ${PRODUCT_LABEL[String(d.product)] ?? d.product} price planned from ${d.validFrom}`;
+    // Help H-4 (answer 943).
+    case 'platform.whats_new.created':
+      return `Added the What's new entry “${d.title}” (from ${d.publishOn})`;
+    case 'platform.whats_new.updated':
+      return `Changed the What's new entry “${(d.after as { title?: string } | undefined)?.title ?? ''}”`;
+    case 'platform.whats_new.withdrawn':
+      return `Withdrew the What's new entry “${d.title}”`;
     case 'platform.cross_tenant_read':
       return `Looked across companies (${d.purpose})`;
     case 'support_session.requested':

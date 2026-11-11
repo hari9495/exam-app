@@ -4,6 +4,7 @@ import { CompaniesScreen } from './companies';
 import { CompanyScreen } from './company';
 import { CompanySettingsScreen } from './company-settings';
 import { PlansScreen } from './plans';
+import { WhatsNewConsoleScreen, type NewsEntryRow } from './whats-new';
 import { SupportSessionsScreen } from './support';
 import { PlatformAuditScreen } from './audit';
 import { SupportAccessScreen } from '../access/support-access';
@@ -52,6 +53,17 @@ export const CompanySettingsNotInPlan: S = {
 };
 
 export const Plans: S = { name: 'Plans and prices', render: () => shell('plans', <PlansScreen state="ready" products={PRODUCTS} canManage today={TODAY} onSchedule={() => wait()} onWithdraw={() => wait()} />) };
+// Help H-4 (answer 943): the What's new entries YukthiX staff write.
+const NEWS_PRODUCTS = [{ code: 'hrms', name: 'YukthiX HR' }, { code: 'service_desk', name: 'YukthiX Service Desk' }];
+const NEWS_ROWS: NewsEntryRow[] = [
+  { id: 'n1', title: 'Comp-off expiry on the balance card', body: 'Employees now see when comp-off days lapse, on web and mobile.', products: ['hrms'], audiences: ['employee', 'manager'], publishOn: '2026-11-20', state: 'scheduled', version: 1 },
+  { id: 'n2', title: 'Press ? for keyboard shortcuts', body: 'Every page lists the shortcuts that work for you.', products: ['hrms', 'service_desk'], audiences: ['everyone'], publishOn: '2026-11-12', state: 'published', version: 2 },
+  { id: 'n3', title: 'Variance check explains each change', body: 'Payroll sees why a net pay moved more than the threshold.', products: ['hrms'], audiences: ['payroll'], publishOn: '2026-10-30', state: 'withdrawn', version: 3 },
+];
+const news = (extra: Partial<Parameters<typeof WhatsNewConsoleScreen>[0]> = {}) => shell('whats-new', <WhatsNewConsoleScreen state="ready" entries={NEWS_ROWS} products={NEWS_PRODUCTS} today="2026-11-12" canManage onCreate={() => wait()} onUpdate={() => wait()} onWithdraw={() => wait()} {...extra} />);
+export const WhatsNew: S = { name: "What's new · entries", render: () => news() };
+export const WhatsNewAdd: S = { name: "What's new · new entry", render: () => news({ defaultNew: true }) };
+export const WhatsNewEmpty: S = { name: "What's new · none yet", render: () => news({ entries: [] }) };
 export const Support: S = { name: 'Support sessions', render: () => shell('support', <SupportSessionsScreen state="ready" sessions={SESSIONS} now={NOW} onOpenCompany={() => {}} onOpenSession={() => wait()} onEndSession={() => wait()} onWithdrawRequest={() => wait()} />) };
 export const Audit: S = { name: 'Audit log', render: () => shell('audit', <PlatformAuditScreen state="ready" entries={AUDIT} includeReads={false} onIncludeReadsChange={() => {}} hasMore loadingMore={false} onLoadMore={() => {}} />) };
 

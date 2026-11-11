@@ -34,6 +34,7 @@
     "console: SupportDeskQueueScreen",
     "console: SupportDeskTicketScreen",
     "console: SupportSessionsScreen",
+    "console: WhatsNewConsoleScreen",
     "growth: ActionPlanScreen",
     "growth: AiCourseDraftScreen",
     "growth: AnnouncementScreen",
