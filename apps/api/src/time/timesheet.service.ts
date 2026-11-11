@@ -1,3 +1,4 @@
+import { hoursFromTimesheet } from '../staffing/hours-from-time';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
@@ -202,6 +203,8 @@ export class TimesheetService implements OnModuleInit {
       const c: CompanyContext = { organizationId: wf.organizationId, isSuperAdmin: false };
       // The day engine skips locked days and stops at today.
       await this.days.evaluate(tx, c, s.employeeId, week, addDays(week, 6));
+      // Answer 497: an own-payroll worker placed at a client: the week flows into the placement's hours (once).
+      await hoursFromTimesheet(tx, c, s);
     }
   }
 }

@@ -190,4 +190,29 @@ describe('Staffing accounting export', () => {
     expect(cn[1]).toContain('KS/CN1,KS/1,Half an hour less');
     expect(await inA((tx) => tx.auditLog.count({ where: { action: 'staffing.invoices.exported' } }))).toBe(3);
   });
+
+  it('574: the month’s receipts go in as Receipt vouchers (Tally) and customer payments (Zoho); another month’s are left out', async () => {
+    const inv = await inA((tx) => tx.staffingInvoice.findFirstOrThrow({ where: { id: ids.inv } }));
+    await inA(async (tx) => {
+      const r = await tx.staffingReceipt.create({ data: { organizationId: org.A.id, clientId: ids.client!, receivedOn: day(today), amountPaise: 100000n, tdsPaise: 2000n, reference: `UTR${run}` } });
+      await tx.staffingReceiptAllocation.create({ data: { organizationId: org.A.id, receiptId: r.id, invoiceId: inv.id, amountPaise: 100000n, tdsPaise: 2000n } });
+      const old = await tx.staffingReceipt.create({ data: { organizationId: org.A.id, clientId: ids.client!, receivedOn: day(addDays(`${month}-01`, -1)), amountPaise: 5000n, reference: `OLD${run}` } });
+      await tx.staffingReceiptAllocation.create({ data: { organizationId: org.A.id, receiptId: old.id, invoiceId: inv.id, amountPaise: 5000n } });
+    });
+    await settings('am', [{ key: 'staffing.export.ledger.bank', value: '<Bank>' }]).expect(400);
+    await settings('am', [{ key: 'staffing.export.tds', value: 'none' }, { key: 'staffing.export.ledger.bank', value: 'HDFC Current' }]).expect(want(200));
+    const xml = (await exp('fin', {}).expect(200)).body.toString('utf8');
+    expect(xml).toContain('<VOUCHERTYPENAME>Receipt</VOUCHERTYPENAME>');
+    expect(xml).toContain(`<VOUCHERNUMBER>UTR${run}</VOUCHERNUMBER>`);
+    expect(xml).toMatch(/<LEDGERNAME>HDFC Current<\/LEDGERNAME>\s*<ISDEEMEDPOSITIVE>Yes<\/ISDEEMEDPOSITIVE>\s*<AMOUNT>-1000\.00<\/AMOUNT>/);
+    expect(xml).not.toContain(`OLD${run}`);
+    const zip = await JSZip.loadAsync((await exp('fin', { format: 'zoho' }).expect(200)).body as Buffer);
+    expect(Object.keys(zip.files).sort()).toEqual([`KS-${month}-credit-notes.csv`, `KS-${month}-customer-payments.csv`, `KS-${month}-invoices.csv`]);
+    const pay = (await zip.file(`KS-${month}-customer-payments.csv`)!.async('string')).trim().split(/\r\n/);
+    expect(pay[0]).toBe('Date,Payment Number,Customer Name,Payment Mode,Deposit To,Reference Number,Amount,Invoice Number,Amount Applied to Invoice,Withholding Tax Amount');
+    expect(pay).toHaveLength(2);
+    expect(pay[1]).toContain(`UTR${run}`);
+    expect(pay[1]).toContain(`,${inv.number},1020.00,20.00`);
+  });
 });
+

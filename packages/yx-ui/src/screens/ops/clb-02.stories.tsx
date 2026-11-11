@@ -36,6 +36,8 @@ const ATT_ROWS = [
   { contractorId: 'c4', contractor: 'Annapoorna Canteen Services', site: { id: 'blr', name: 'Bengaluru head office' }, contractorEnters: true, confirmed: { at: '2026-10-02T10:00:00', days: 52 }, workers: WORKERS.slice(3, 5).map((w) => ({ deploymentId: w.id, name: w.name, gatePass: w.gatePass, present: 26, days: [] })) },
 ];
 export const AttendanceMonth: S = { name: 'Attendance month (CL-5)', render: () => <AttendanceMonthScreen month="2026-09" rows={ATT_ROWS} canManage canConfirm /> };
+// Answer 753: the compliance owner reopens a confirmed month with the reason.
+export const ReopenMonth: S = { name: 'Reopen a confirmed month (753)', render: () => <AttendanceMonthScreen month="2026-09" rows={ATT_ROWS} canManage canConfirm reopenOpen="c4:blr" /> };
 export const ConfirmMonth: S = { name: 'Confirm a month (CL-5)', render: () => <AttendanceMonthScreen month="2026-09" rows={ATT_ROWS} canManage canConfirm confirmOpen="c1:hosur" /> };
 export const ConfirmZeroDays: S = { name: 'Confirm a month with 0 days (807)', render: () => <AttendanceMonthScreen month="2026-09" rows={[{ ...ATT_ROWS[0]!, workers: ATT_ROWS[0]!.workers.map((w) => ({ ...w, present: 0 })) }]} canManage canConfirm confirmOpen="c1:hosur" /> };
 export const LowWage: S = { name: 'Deploy · wage below the minimum, a warning (810)', render: () => <WorkersScreen {...base} deploy="lowwage" /> };

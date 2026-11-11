@@ -3086,6 +3086,9 @@ export interface HoursRowView {
   note: string | null;
   invoiced: boolean;
   version: number;
+  /** Answer 497: 'time' when the week came from the worker's approved Time timesheet (its hours in `timeHours`). */
+  source?: 'manual' | 'time';
+  timeHours?: string | null;
 }
 export interface LiveHours {
   canEnter: boolean;
@@ -3142,8 +3145,10 @@ export function PlacementHours({ live }: { live: LiveHours }) {
                   {r.hours} h{Number(r.overtime) ? ` + ${r.overtime} h overtime` : ''}
                   {r.note ? ` · client: ${r.note}` : ''}
                   {r.invoiced ? ' · invoiced' : ''}
+                  {r.source === 'time' && r.timeHours && r.timeHours !== r.hours ? ` · the timesheet had ${r.timeHours} h` : ''}
                 </Text>
               </div>
+              {r.source === 'time' && <Badge tone="neutral">From the Time timesheet</Badge>}
               <Badge tone={r.status === 'approved' ? 'success' : r.status === 'sent_back' ? 'danger' : 'warning'}>{H_WORD[r.status]}</Badge>
               {live.canEnter && r.status === 'waiting' && live.contacts.length > 0 && <Button size="sm" onClick={() => (setApproving(r), setContact(live.contacts.length === 1 ? live.contacts[0]!.id : null), setTried(false))}>Record client approval</Button>}
             </li>

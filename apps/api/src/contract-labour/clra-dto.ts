@@ -216,6 +216,14 @@ export class PortalAttendanceDto {
 }
 
 /** Answer 673: a site's principal-employer registration. */
+/** Answer 753: reopen a confirmed month, with the reason. */
+export class AttendanceReopenDto {
+  @IsUUID() contractorId!: string;
+  @IsUUID() locationId!: string;
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/) month!: string;
+  @trim() @IsString() @MinLength(3) @MaxLength(500) reason!: string;
+}
+
 export class RegistrationDto {
   @IsUUID() locationId!: string;
   @trim() @IsString() @MinLength(1) @MaxLength(60) registrationNo!: string;

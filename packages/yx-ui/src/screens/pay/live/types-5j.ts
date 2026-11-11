@@ -268,6 +268,8 @@ export interface FilingRow {
   fileId: string | null;
   rows?: number;
   reference?: string | null;
+  /** Answer 842: the bank's challan receipt PDF is kept. */
+  receipt?: boolean;
 }
 
 export interface TdsReturnRow {

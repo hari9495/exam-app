@@ -8641,6 +8641,8 @@ model StatutoryFiling {
   uploadedAt         DateTime? @map("uploaded_at") @db.Timestamptz(3)
   filedBy            String?   @map("filed_by") @db.Uuid
   filedAt            DateTime? @map("filed_at") @db.Timestamptz(3)
+  /// Answer 842: the bank's challan receipt PDF, when added.
+  receiptFileId      String?   @map("receipt_file_id") @db.Uuid
   createdBy          String    @map("created_by") @db.Uuid
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
@@ -12634,6 +12636,10 @@ model StaffingHours {
   invoiceId          String?   @map("invoice_id") @db.Uuid
   vendorBillId       String?   @map("vendor_bill_id") @db.Uuid
   enteredBy          String?   @map("entered_by") @db.Uuid
+  /// Answer 497: 'time' when the week came from the worker's approved Time timesheet (kept once per timesheet).
+  source             String    @default("manual") @db.VarChar(6)
+  timesheetId        String?   @map("timesheet_id") @db.Uuid
+  timeHoursCenti     Int?      @map("time_hours_centi")
   version            Int       @default(1)
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 

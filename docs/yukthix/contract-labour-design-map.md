@@ -35,11 +35,11 @@ built** (no API for this feature) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Principal employer (contractors working at our sites) | 5 | 51 | 1 | 0 | 0 | 0 | 52 |
+| A. Principal employer (contractors working at our sites) | 5 | 52 | 1 | 0 | 0 | 0 | 53 |
 | B. We are the contractor (our staff at client sites) | 3 | 14 | 1 | 0 | 0 | 0 | 15 |
 | C. Contractor portal | 1 | 20 | 0 | 0 | 0 | 0 | 20 |
 | D. Settings | 1 | 1 | 2 | 0 | 0 | 0 | 3 |
-| **All** | 10 | 86 | 4 | 0 | 0 | 0 | 90 |
+| **All** | 10 | 87 | 4 | 0 | 0 | 0 | 91 |
 Recounted by script 11 Nov 2026 on `feat/yukthix-cl-841`: CLB-02 ApproveBelowMinimum drawn and live (answer 844).
 Recounted by script 11 Nov 2026 on `feat/yukthix-contract-labour-approved-801-825` after answers 803, 807, 810, 821, 822 (five new drawn stories).
 Recounted by script 11 Nov 2026 on `feat/yukthix-contract-labour-cl8` after CL-8: group B live (four new drawn stories).
@@ -139,6 +139,7 @@ All 46 stories in section 4: there is no contractor, licence, deployment, proof 
 | RenewPass · Renew gate pass (CL-5) | live | answer 684: `POST …/workers/:id/gate-pass` keeps the number; the new end must be later (otherwise 409); a new induction when the last ran out |
 | KioskPin · Kiosk PIN shown once (CL-5) | live | answer 625: `POST …/workers/:id/kiosk-pin`, a random 4-digit PIN kept only as its argon2 hash; five wrong tries lock it for 15 minutes |
 | AttendanceMonth · Attendance month (CL-5) | live | /yx/contract-labour/attendance (menu Contract labour › Attendance); `GET contract-labour/attendance?month=`: days on site per contractor and site, from the kiosk or the contractor |
+| ReopenMonth · Reopen a confirmed month (753) | live | answer 753: `POST …/attendance/reopen` with the reason (the compliance owner; audited with what was confirmed); refused (409) once the month's contract labour registers are frozen or signed |
 | ConfirmMonth · Confirm a month (CL-5) | live | `POST …/attendance/confirm`: a past month only, once (409 after); the month is then locked for the kiosk and the portal |
 | ConfirmZeroDays · Confirm a month with 0 days (807) | live | answer 807: a month with no days asks "Confirm 0 days?"; any confirmation names the workers with 0 days |
 | LowWage · Deploy · wage below the minimum, a warning (810) | live | answer 810: a clear warning under the wage when it is below the site's minimum (IN.MW, verify); never a block |
@@ -819,4 +820,22 @@ wrong field (`7bb97c964`); "1 workers" (`248bb3636`).
   every month (no `deductMonths`). Outside a PT month an unfiled PT row reads "Not due this month"; a filed one shows.
 - Tests: `own-licence-rules.spec` (due and not-due months, filed and not filed), e2e `contract-labour-8` (the pack made
   again without the PT return names PT only in a PT month).
+
+## The "later" list built: 753 and 842 (11 Nov 2026, branch `feat/yukthix-later-staffing`)
+
+- **753:** the compliance owner reopens a confirmed attendance month with a reason (`POST contract-labour/attendance/reopen`,
+  audited with what had been confirmed); refused (409) once the site's contract labour registers for the month are frozen
+  or signed. Drawn as CLB-02 ReopenMonth.
+- **842:** payroll keeps an optional bank challan receipt PDF on an uploaded or filed PF, ESI or PT return (CMP-01
+  BankReceipt; `POST/GET statutory/filings/:id/receipt`, the mark-filed key, scanned). A client pack puts the receipts of
+  the month's filed returns in its ZIP (`bank-receipt-PF-<month>.pdf`) and its remittances register says "Filed; bank
+  receipt in the pack"; the return file itself never goes in.
+- Tests: kit (reopen, receipt actions), e2e `contract-labour-5`, `contract-labour-8`, `payroll-5f`.
+
+## Founder questions from the "later" list (11 Nov 2026)
+
+911. **What reopening keeps.** Reopening deletes the confirmation (the audit entry keeps the days, who and when). The
+     wage check reads "not yet confirmed" again until the month is confirmed again. *Suggested: keep.*
+912. **A receipt added after the pack is made.** The ZIP picks up a receipt added later, but the remittances register in
+     it still reads "Filed" until the pack is made again. *Suggested: keep; make the pack again when the client needs it.*
 

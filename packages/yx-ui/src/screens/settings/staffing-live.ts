@@ -14,6 +14,8 @@ export interface StaffingSettingsData {
   financialYear: string;
   entities: { id: string; name: string; gstins: string[] }[];
   series: { id: string; legalEntityId: string; entity: string; gstin: string; financialYear: string; prefix: string; nextNumber: number; version: number }[];
+  /** Answer 495: e-invoicing per legal entity (an entity left out follows the company). */
+  einvoiceByEntity?: { legalEntityId: string; value: string }[];
 }
 
 const KEY = {
@@ -44,9 +46,11 @@ const KEY = {
   'staff.exp_tds_ledger': 'staffing.export.ledger.tds',
   'staff.exp_round': 'staffing.export.round_off',
   'staff.exp_round_ledger': 'staffing.export.ledger.round_off',
+  // Answer 574: receipts in the export.
+  'staff.exp_bank': 'staffing.export.ledger.bank',
 } as const;
 /** Free-text company settings (ledger names): shown as typed, saved as text. */
-const TEXTS = new Set(['staff.exp_sales', 'staff.exp_cgst', 'staff.exp_sgst', 'staff.exp_igst', 'staff.exp_gst', 'staff.exp_tds_ledger', 'staff.exp_round_ledger']);
+const TEXTS = new Set(['staff.exp_bank', 'staff.exp_sales', 'staff.exp_cgst', 'staff.exp_sgst', 'staff.exp_igst', 'staff.exp_gst', 'staff.exp_tds_ledger', 'staff.exp_round_ledger']);
 const SEGMENTS = new Set(['staff.exp_split', 'staff.exp_tds', 'staff.exp_round']);
 const TOGGLES = new Set(['staff.desk_enabled', 'staff.mask_contact', 'staff.einvoice']);
 /** The design's own option labels are kept for these (the stored values are the same). */
@@ -61,7 +65,8 @@ export function staffingSettingsPage(design: SettingsPageDef, data: StaffingSett
     const base: SettingDef = { ...d, overrides: undefined, dated: undefined, scope: d.kind === 'law' || d.kind === 'link' ? d.scope : 'Company' };
     const k = KEY[d.key as keyof typeof KEY];
     if (k && !(k in v)) return null; // an older API without this setting: never shown with a sample value
-    if (d.key === 'staff.einvoice') return { ...base, kind: 'toggle', availability: undefined, value: v[k!] === 'on', starter: v[k!] === data.defaults[k!], helper: 'Our invoices need an IRN (aggregate turnover at or above the e-invoice limit in the rule set, verify with your CA). The invoice shows its reporting window; the IRP itself is not connected, so report on the IRP yourself.' };
+    // Answer 495: per legal entity, as drawn: choose the entity under "Different for".
+    if (d.key === 'staff.einvoice') return { ...base, scope: data.einvoiceByEntity ? 'Legal entity' : 'Company', overrides: data.einvoiceByEntity ? data.entities.map((e) => ({ scope: e.name, value: (data.einvoiceByEntity!.find((x) => x.legalEntityId === e.id)?.value ?? v[k!]) === 'on' })) : undefined, kind: 'toggle', availability: undefined, value: v[k!] === 'on', starter: v[k!] === data.defaults[k!], helper: 'Our invoices need an IRN (aggregate turnover at or above the e-invoice limit in the rule set, verify with your CA). The invoice shows its reporting window; the IRP itself is not connected, so report on the IRP yourself.' };
     if (d.key === 'staff.dunning') return { ...base, kind: 'select', columns: undefined, rows: undefined, addLabel: undefined, options: data.choices[k!] ?? [], optionLabels: DUNNING_LABELS, value: v[k!]!, starter: v[k!] === data.defaults[k!], helper: 'Reminders go to the client’s billing contacts; a dispute pauses them for that invoice.' };
     if (d.key === 'staff.ageing') return { ...base, readOnlyList: true, helper: 'How unpaid invoices are grouped on Receivables (fixed).' };
     if (k && TEXTS.has(d.key)) return { ...base, kind: 'text', value: v[k]!, starter: v[k] === data.defaults[k] };
@@ -83,7 +88,7 @@ export function staffingSettingsPage(design: SettingsPageDef, data: StaffingSett
     summary: 'Turn the staffing desk on; rate-card defaults, submissions, placements, vendors and the bench policy; payment terms, invoice numbering per GSTIN, payment reminders and e-invoicing.',
     note: undefined,
     related: [{ label: 'Clients', screenId: 'HIR-14' }, { label: 'Placements and bench', screenId: 'HIR-17' }, { label: 'Vendors', screenId: 'HIR-21' }],
-    scopes: undefined,
+    scopes: data.einvoiceByEntity && data.entities.length ? ['Company', ...data.entities.map((e) => e.name)] : undefined,
     sections: design.sections.map((sec) => ({ ...sec, settings: sec.settings.map(fill).filter((x): x is SettingDef => x !== null) })).filter((sec) => sec.settings.length > 0),
   };
 }
@@ -94,3 +99,12 @@ export function staffingSettingsChanges(values: Record<string, SettingValue>): {
     .filter(([f]) => f in KEY)
     .map(([f, value]) => ({ key: KEY[f as keyof typeof KEY], value: TOGGLES.has(f) ? (value === true ? 'on' : 'off') : String(value) }));
 }
+
+/** Answer 495: the e-invoicing values chosen per legal entity (scope label = the entity's name), for PUT /staffing/settings. */
+export function staffingEntityChanges(overrides: { key: string; scope: string; value: SettingValue }[], entities: { id: string; name: string }[]): { key: string; value: string; legalEntityId: string }[] {
+  return overrides
+    .filter((o) => o.key === 'staff.einvoice')
+    .map((o) => ({ key: KEY['staff.einvoice'], value: o.value === true ? 'on' : 'off', legalEntityId: entities.find((e) => e.name === o.scope)?.id ?? '' }))
+    .filter((c) => c.legalEntityId);
+}
+

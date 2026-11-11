@@ -76,6 +76,26 @@ export const Hours: S = {
     />
   ),
 };
+// Answer 497: an own-payroll worker's approved Time timesheet becomes the week's hours (changed here if needed).
+export const HoursFromTime: S = {
+  name: 'Placement record · weekly hours from Time (497)',
+  render: () => (
+    <PlacementHours
+      live={{
+        canEnter: true,
+        today: TODAY,
+        contacts: [{ id: 'k1', name: 'Rekha Balan', role: 'Engineering manager' }],
+        rows: [
+          { id: 'h3', weekStart: '2026-09-28', hours: '40.5', overtime: '0', status: 'waiting', note: null, invoiced: false, version: 1, source: 'time', timeHours: '40.5' },
+          { id: 'h2', weekStart: '2026-09-21', hours: '38', overtime: '0', status: 'waiting', note: null, invoiced: false, version: 2, source: 'time', timeHours: '40' },
+          { id: 'h1', weekStart: '2026-09-14', hours: '40', overtime: '0', status: 'approved', note: null, invoiced: true, version: 2, source: 'manual', timeHours: null },
+        ],
+        onSave: async () => {},
+        onApprove: async () => {},
+      }}
+    />
+  ),
+};
 // Drawn for answer 494: the client hires the person (fee invoice from HIR-30 terms) and the guarantee on leaving.
 const FEE = { series: [{ value: 's1', label: 'KF/TN/26-27/ · 33AABCK1234F1Z9' }], terms: true, today: TODAY, onHired: async () => {}, onLeft: async () => {}, onOpenInvoice: () => {} };
 export const FeeBeforeHire: S = { name: 'Placement fee · before the hire', render: () => <PlacementFee canManage person="Aravind Kumar" fee={{ ...FEE, hiredOn: null, ctc: null, feeInvoice: null, leftOn: null, guarantee: null }} /> };

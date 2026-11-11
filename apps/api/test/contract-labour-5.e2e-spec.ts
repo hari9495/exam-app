@@ -201,6 +201,33 @@ describe('Contract labour CL-5', () => {
     expect(p.checks.find((x: { id: string }) => x.id === 'days')).toMatchObject({ status: 'fail', label: 'Days paid ≥ days on site (confirmed)' });
   });
 
+  it('753: the compliance owner reopens a confirmed month with a reason; refused once its registers are frozen', async () => {
+    const r = { contractorId: ids.vetri, locationId: ids.chennai, month: lastMonth, reason: 'A punch was missed on the 3rd' };
+    await api('reader', 'post', '/contract-labour/attendance/reopen').send(r).expect(403);
+    await api('acting', 'post', '/contract-labour/attendance/reopen').send(r).expect(403);
+    await api('adminB', 'post', '/contract-labour/attendance/reopen').send(r).expect(404);
+    await api('owner', 'post', '/contract-labour/attendance/reopen').send({ ...r, reason: 'x' }).expect(400);
+    await api('owner', 'post', '/contract-labour/attendance/reopen').send({ ...r, locationId: ids.hosur }).expect(404); // not confirmed there
+    // A frozen register for the site and month: refused.
+    const loc = await inA((tx) => tx.location.findFirstOrThrow({ where: { id: ids.chennai }, select: { legalEntityId: true } }));
+    const reg = await tenantPrisma.forTenant(SUPER, async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${loc.legalEntityId}}`}, true)`;
+      return tx.statutoryRegister.create({ data: { organizationId: org.A.id, legalEntityId: loc.legalEntityId!, locationId: ids.chennai!, registerType: 'clra_muster', periodStart: new Date(`${lastMonth}-01T00:00:00Z`), formatVersion: 'test', status: 'frozen', fileRef: 'test', sha256: 'a'.repeat(64), unsignedSha256: 'a'.repeat(64), unsignedBytes: 1, rowCount: 1, createdBy: users.owner!, frozenAt: new Date() } });
+    });
+    await api('owner', 'post', '/contract-labour/attendance/reopen').send(r).expect(409);
+    await tenantPrisma.forTenant(SUPER, async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${loc.legalEntityId}}`}, true)`;
+      await tx.statutoryRegister.update({ where: { id: reg.id }, data: { status: 'superseded' } });
+    });
+    expect((await api('owner', 'post', '/contract-labour/attendance/reopen').send(r).expect(want(201))).body).toEqual({ reopened: true });
+    const month = (await api('reader', 'get', `/contract-labour/attendance?month=${lastMonth}`).expect(200)).body;
+    expect(month.rows.find((x: { site: { id: string } }) => x.site.id === ids.chennai).confirmed).toBeNull();
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'clra.attendance.reopened' } }))).toBe(1);
+    // Open again: the contractor may enter days; then it is confirmed again.
+    await portal('post', '/attendance').send({ locationId: ids.chennai, month: lastMonth, entries: [{ deploymentId: ids.c1, days: [`${lastMonth}-01`, `${lastMonth}-02`, `${lastMonth}-03`] }] }).expect(want(200));
+    expect((await api('owner', 'post', '/contract-labour/attendance/confirm').send({ contractorId: ids.vetri, locationId: ids.chennai, month: lastMonth }).expect(want(201))).body).toEqual({ confirmed: true, days: 3 });
+  });
+
   it('673 registrations on 4.9: the settings key; one per site; others refused', async () => {
     const r = { locationId: ids.hosur, registrationNo: `TN/OSH/REG/${run}`, maxWorkers: 2 };
     await api('owner', 'post', '/contract-labour/registrations').send(r).expect(403);

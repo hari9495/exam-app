@@ -31,6 +31,7 @@ export const STAFFING_SETTING_KEYS = [
   'staffing.dunning.schedule',
   'staffing.einvoice.applies',
   'staffing.export.ledger.sales',
+  'staffing.export.ledger.bank',
   'staffing.export.ledger.cgst',
   'staffing.export.ledger.sgst',
   'staffing.export.ledger.igst',
@@ -358,7 +359,10 @@ export class StaffingService {
       const entities = await tx.legalEntity.findMany({ where: { organizationId: org, archivedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true, gstin: true } });
       const regs = await tx.entityGstRegistration.findMany({ where: { organizationId: org, validTo: null }, select: { legalEntityId: true, gstin: true } });
       const series = await tx.staffingInvoiceSeries.findMany({ where: { organizationId: org }, orderBy: [{ financialYear: 'desc' }, { gstin: 'asc' }] });
+      // Answer 495: e-invoicing per legal entity (an entity without its own value follows the company's).
+      const perEntity = await tx.setting.findMany({ where: { organizationId: org, key: 'staffing.einvoice.applies', scopeType: 'legal_entity' }, select: { scopeId: true, value: true } });
       return {
+        einvoiceByEntity: perEntity.filter((r) => entities.some((e) => e.id === r.scopeId)).map((r) => ({ legalEntityId: r.scopeId, value: String(r.value) })),
         canEdit: a.settings && !a.actingForOther,
         values,
         defaults: Object.fromEntries(STAFFING_SETTING_KEYS.map((k) => [k, dflt(k)])),
@@ -372,22 +376,29 @@ export class StaffingService {
   }
 
   /** Several settings at once: every key and value checked first; each a company setting, audited with before and after. */
-  async saveSettings(ctx: TenantContext, user: ScopeUser, changes: { key: string; value: string }[]) {
+  async saveSettings(ctx: TenantContext, user: ScopeUser, changes: { key: string; value: string; legalEntityId?: string }[]) {
     const a = await this.access(user);
     if (a.actingForOther) throw new ForbiddenException('Not available while acting for someone else. Sign in as yourself.');
     if (!a.settings) throw new ForbiddenException('Only account managers or HR with the settings key for the whole company can change these settings.');
     const seen = new Set<string>();
     for (const ch of changes) {
       if (!(STAFFING_SETTING_KEYS as readonly string[]).includes(ch.key)) throw new BadRequestException(`${ch.key} is not a staffing desk setting.`);
-      if (seen.has(ch.key)) throw new BadRequestException(`${SETTINGS[ch.key]!.label} is in the list twice.`);
-      seen.add(ch.key);
+      const at = `${ch.key}@${ch.legalEntityId ?? ''}`;
+      if (seen.has(at)) throw new BadRequestException(`${SETTINGS[ch.key]!.label} is in the list twice.`);
+      seen.add(at);
       const def = SETTINGS[ch.key]!;
+      if (ch.legalEntityId && !def.scopes.includes('legal_entity')) throw new BadRequestException(`${def.label} is one value for the company, not per legal entity.`);
       // A text setting (answer 522 ledger names): non-empty, short, no line breaks.
       if (def.text) {
         if (!ch.value.trim() || ch.value.length > def.text.maxLength || /[\r\n<>]/.test(ch.value)) throw new BadRequestException(`${def.label}: up to ${def.text.maxLength} characters, on one line.`);
       } else if (!def.values.includes(ch.value)) throw new BadRequestException(`${def.label} is one of: ${def.values.join(', ')}`);
     }
-    for (const ch of changes) await this.settings.set(ctx, { key: ch.key, scopeType: 'tenant', value: ch.value } as Parameters<OrgSettingsService['set']>[1]);
+    const entityIds = [...new Set(changes.map((ch) => ch.legalEntityId).filter((x): x is string => Boolean(x)))];
+    if (entityIds.length) {
+      const found = await inCompany(this.tenantPrisma, ctx, (tx, c) => tx.legalEntity.count({ where: { organizationId: c.organizationId, id: { in: entityIds }, archivedAt: null } }));
+      if (found !== entityIds.length) throw new NotFoundException('Legal entity not found.');
+    }
+    for (const ch of changes) await this.settings.set(ctx, (ch.legalEntityId ? { key: ch.key, scopeType: 'legal_entity', scopeId: ch.legalEntityId, value: ch.value } : { key: ch.key, scopeType: 'tenant', value: ch.value }) as Parameters<OrgSettingsService['set']>[1]);
     return this.readSettings(ctx, user);
   }
 

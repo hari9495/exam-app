@@ -12,6 +12,7 @@ import { EmailService } from '../src/email/email.service';
 import { LOGIN_PROTECTION_REDIS } from '../src/auth/login-protection.service';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { pdfText } from './fixtures/pdf-text';
+import { FilesService } from '../src/documents/files.service';
 
 // Contract labour CL-8 end to end (CLB-06 … 08, founder answers 638, 639): we are the contractor. A staffing client's
 // site carries the client's registration number; our own licences sit in contractor_licences with our legal entity as
@@ -27,6 +28,7 @@ describe('Contract labour CL-8: we are the contractor', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let tenantPrisma: TenantPrismaService;
+  let files: FilesService;
   const PASSWORD = 'Corr3ct-Horse-Battery';
   const run = randomUUID().slice(0, 8);
   const SUPER: TenantContext = { organizationId: null, isSuperAdmin: true };
@@ -77,6 +79,7 @@ describe('Contract labour CL-8: we are the contractor', () => {
     await app.init();
     prisma = moduleRef.get(PrismaService);
     tenantPrisma = moduleRef.get(TenantPrismaService);
+    files = moduleRef.get(FilesService);
     const redis = moduleRef.get<Redis>(LOGIN_PROTECTION_REDIS);
     const ipKeys = await redis.keys('auth:otp:ip:*');
     if (ipKeys.length) await redis.del(...ipKeys);
@@ -219,7 +222,10 @@ describe('Contract labour CL-8: we are the contractor', () => {
       await tx.attendanceDay.createMany({ data: [...mark('arun', 20, 'present', 1), ...mark('arun', 1, 'half_day', 21), ...mark('arun', 2, 'leave', 22), ...mark('bhavna', 18, 'present', 1), ...mark('bhavna', 3, 'absent', 19)] });
       // Answer 821: registered for PF and ESI; the month's PF return is filed (TRRN), ESI not yet.
       for (const [statute, no] of [['IN.PF', 'TNMAS0012345000'], ['IN.ESI', '51000123450001001']] as const) await tx.statutoryRegistration.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity!, statute, registrationNo: no, status: 'on' } });
-      await tx.statutoryFiling.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity!, statute: 'IN.PF', periodStart: day(monthStart), formatVersion: 'ecr-2', status: 'filed', reference: `TRRN${run}`, amount: 4810, uploadedBy: users.owner!, uploadedAt: new Date(), filedBy: users.owner!, filedAt: new Date(), createdBy: users.owner! } });
+      // Answer 842: the PF return carries the bank's challan receipt PDF (checked clean).
+      const receipt = await files.storeIn(tx, { organizationId: org.A.id, isSuperAdmin: false, userId: users.owner! }, { area: 'challan-receipt', name: 'pf-challan.pdf', data: Buffer.from(`%PDF-1.4\n% receipt ${run}\n%%EOF\n`), allowedMime: ['application/pdf'], maxMb: 5, via: 'staff' });
+      await tx.file.update({ where: { id: receipt.id }, data: { scanStatus: 'clean', scannedAt: new Date() } });
+      await tx.statutoryFiling.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity!, statute: 'IN.PF', periodStart: day(monthStart), formatVersion: 'ecr-2', status: 'filed', reference: `TRRN${run}`, amount: 4810, uploadedBy: users.owner!, uploadedAt: new Date(), filedBy: users.owner!, filedAt: new Date(), createdBy: users.owner!, receiptFileId: receipt.id } });
       // Answer 841: PT for the site's state (Tamil Nadu) is filed and goes in; Karnataka's PT (another state) stays out.
       for (const [state, no] of [['IN-TN', 'PTTN998877'], ['IN-KA', 'PTKA112233']] as const) await tx.statutoryRegistration.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity!, statute: 'IN.PT', state, registrationNo: no, status: 'on' } });
       for (const [state, ref, amount] of [['IN-TN', `PTTN-${run}`, 416], ['IN-KA', `PTKA-${run}`, 400]] as const) await tx.statutoryFiling.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity!, statute: 'IN.PT', state, periodStart: day(monthStart), formatVersion: 'pt-1', status: 'filed', reference: ref, amount, uploadedBy: users.owner!, uploadedAt: new Date(), filedBy: users.owner!, filedAt: new Date(), createdBy: users.owner! } });
@@ -239,12 +245,13 @@ describe('Contract labour CL-8: we are the contractor', () => {
     expect((await api('adminB', 'get', '/contract-labour/client-packs').expect(200)).body.packs).toEqual([]);
     // The ZIP: a cover with the fingerprints, the wage register and the muster with the days from attendance.
     const zip = await JSZip.loadAsync((await binary(api('reader', 'get', `/contract-labour/client-packs/${ids.pack}/file`)).expect(200)).body as Buffer);
-    expect(Object.keys(zip.files).sort()).toEqual(['clpk_challans-' + month + '-v2.pdf', 'clpk_muster-' + month + '-v2.pdf', 'clpk_wages-' + month + '-v2.pdf', 'cover.txt']);
+    expect(Object.keys(zip.files).sort()).toEqual(['bank-receipt-PF-' + month + '.pdf', 'clpk_challans-' + month + '-v2.pdf', 'clpk_muster-' + month + '-v2.pdf', 'clpk_wages-' + month + '-v2.pdf', 'cover.txt']);
+    expect(await zip.file(`bank-receipt-PF-${month}.pdf`)!.async('string')).toContain(`receipt ${run}`);
     const cover = await zip.file('cover.txt')!.async('string');
     expect(cover).toMatch(/clpk_wages v2 SHA-256 [0-9a-f]{64}/);
     expect(cover).toMatch(/Not in this pack yet: ESI challan/);
     const challans = pdfText(await zip.file(`clpk_challans-${month}-v2.pdf`)!.async('nodebuffer'));
-    expect(challans).toMatch(new RegExp(`PF TNMAS0012345000 TRRN${run} 4810\\.00 \\d{4}-\\d{2}-\\d{2} Filed`));
+    expect(challans).toMatch(new RegExp(`PF TNMAS0012345000 TRRN${run} 4810\\.00 \\d{4}-\\d{2}-\\d{2} Filed; bank receipt in the pack`));
     expect(challans).toMatch(/ESI 51000123450001001 Not filed yet/);
     expect(challans).toMatch(new RegExp(`PT PTTN998877 PTTN-${run} 416\\.00 \\d{4}-\\d{2}-\\d{2} Filed`));
     expect(challans).not.toMatch(/PTKA/);

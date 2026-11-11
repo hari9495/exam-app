@@ -1,4 +1,4 @@
-// Answer 522: a month's issued invoices and credit notes of one GSTIN series as a Tally XML import and a Zoho Books CSV.
+// Answers 522 and 574: a month's issued invoices, credit notes and receipts of one GSTIN series as a Tally XML import and a Zoho Books CSV.
 // Ledger names, the GST split, TDS and round-off are company settings (6.2); the formats (Tally voucher type names and
 // date format, Zoho column headers) are the rule sets EXPORT.TALLY_XML and EXPORT.ZOHO_CSV, marked verify. Money is
 // paise in, rupee text out (two decimals); nothing is rounded except the optional whole-rupee round-off.
@@ -36,6 +36,8 @@ export interface ExportSettings {
   tdsMode: 'none' | 'expected';
   roundOff: 'none' | 'rupee';
   roundOffLedger: string;
+  /** Answer 574: the bank ledger receipts are debited to. */
+  bank: string;
 }
 
 export interface TallyRule {
@@ -43,11 +45,34 @@ export interface TallyRule {
   /** e.g. "YYYYMMDD" */
   dateFormat: string;
   company: string | null;
+  /** Answer 574 (rule data, verify): the receipt voucher type. */
+  receiptVoucherType?: string;
 }
 export interface ZohoRule {
   /** Column headers in order, each with the field it carries. */
   invoiceColumns: { header: string; field: string }[];
   creditNoteColumns: { header: string; field: string }[];
+  /** Answer 574 (rule data, verify): the customer payments import, one row per invoice a receipt pays. */
+  paymentColumns?: { header: string; field: string }[];
+}
+
+/** Answer 574: a receipt as exported: what it pays of this series' invoices (the client's TDS with it). */
+export interface ExportReceipt {
+  number: string;
+  date: string; // YYYY-MM-DD
+  party: string;
+  reference: string | null;
+  invoices: { number: string; amount: bigint; tds: bigint }[];
+}
+
+/**
+ * A receipt's ledger lines (positive = credit), summing to zero: the bank is debited with what came in; the client's TDS
+ * is debited to the TDS ledger unless it was already booked at invoice (TDS mode "expected"); the client is credited.
+ */
+export function receiptLines(r: ExportReceipt, s: ExportSettings) {
+  const amount = r.invoices.reduce((n, i) => n + i.amount, 0n);
+  const tds = s.tdsMode === 'expected' ? 0n : r.invoices.reduce((n, i) => n + i.tds, 0n);
+  return { party: amount + tds, lines: [{ ledger: s.bank, amount: -amount }, ...(tds ? [{ ledger: s.tds, amount: -tds }] : [])] };
 }
 
 const rs = (p: bigint) => {
@@ -94,7 +119,7 @@ const entry = (ledger: string, credit: bigint) => `      <ALLLEDGERENTRIES.LIST>
        <AMOUNT>${rs(credit)}</AMOUNT>
       </ALLLEDGERENTRIES.LIST>`;
 
-export function tallyXml(docs: ExportDoc[], s: ExportSettings, rule: TallyRule) {
+export function tallyXml(docs: ExportDoc[], s: ExportSettings, rule: TallyRule, receipts: ExportReceipt[] = []) {
   const vouchers = docs.map((d) => {
     const { party, lines } = ledgerLines(d, s);
     const type = rule.voucherType[d.kind];
@@ -114,6 +139,22 @@ ${lines.map((l) => entry(l.ledger, l.amount)).join('\n')}
      </VOUCHER>
     </TALLYMESSAGE>`;
   });
+  const type = rule.receiptVoucherType ?? 'Receipt';
+  for (const r of receipts) {
+    const { party, lines } = receiptLines(r, s);
+    vouchers.push(`    <TALLYMESSAGE xmlns:UDF="TallyUDF">
+     <VOUCHER VCHTYPE="${xml(type)}" ACTION="Create">
+      <DATE>${tallyDate(r.date, rule.dateFormat)}</DATE>
+      <VOUCHERTYPENAME>${xml(type)}</VOUCHERTYPENAME>
+      <VOUCHERNUMBER>${xml(r.number)}</VOUCHERNUMBER>
+      <REFERENCE>${xml(r.reference ?? r.number)}</REFERENCE>
+      <PARTYLEDGERNAME>${xml(r.party)}</PARTYLEDGERNAME>
+      <NARRATION>${xml(`Against ${r.invoices.map((i) => i.number).join(', ')}`.slice(0, 500))}</NARRATION>
+${entry(r.party, party)}
+${lines.map((l) => entry(l.ledger, l.amount)).join('\n')}
+     </VOUCHER>
+    </TALLYMESSAGE>`);
+  }
   return `<?xml version="1.0" encoding="UTF-8"?>
 <ENVELOPE>
  <HEADER>
@@ -176,6 +217,20 @@ export function zohoCsv(docs: ExportDoc[], kind: 'invoice' | 'credit_note', s: E
       };
       rows.push(cols.map((c) => csvCell(v[c.field] ?? '')).join(','));
     });
+  }
+  return rows.join('\r\n') + '\r\n';
+}
+
+/** Answer 574: Zoho Books customer payments, a row per invoice a receipt pays (the receipt's totals on each row). */
+export function zohoPaymentsCsv(receipts: ExportReceipt[], s: ExportSettings, rule: ZohoRule) {
+  const cols = rule.paymentColumns ?? [];
+  const rows: string[] = [cols.map((c) => csvCell(c.header)).join(',')];
+  for (const r of receipts) {
+    const amount = r.invoices.reduce((n, i) => n + i.amount, 0n);
+    for (const i of r.invoices) {
+      const v: Record<string, string> = { date: r.date, number: r.number, customer: r.party, mode: 'Bank Transfer', depositTo: s.bank, reference: r.reference ?? '', amount: rs(amount), invoice: i.number, applied: rs(i.amount + (s.tdsMode === 'expected' ? 0n : i.tds)), tds: rs(s.tdsMode === 'expected' ? 0n : i.tds) };
+      rows.push(cols.map((c) => csvCell(v[c.field] ?? '')).join(','));
+    }
   }
   return rows.join('\r\n') + '\r\n';
 }

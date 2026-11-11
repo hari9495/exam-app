@@ -59,7 +59,7 @@ const STATUTE_NAME: Record<string, string> = { 'IN.PF': 'PF', 'IN.ESI': 'ESI', '
  * `ptDue` (answer 882): whether the site's state collects PT for the month (the IN.PT rule set's deduction months, e.g.
  * Tamil Nadu in September and March only). In another month an unfiled PT is not missing: it reads "Not due this month".
  */
-export function challanRows(registered: { statute: string; registrationNo: string | null }[], filed: { statute: string; reference: string | null; amount: string | null; filedOn: string | null }[], ptDue = true): { rows: string[][]; missing: string[] } {
+export function challanRows(registered: { statute: string; registrationNo: string | null }[], filed: { statute: string; reference: string | null; amount: string | null; filedOn: string | null; receipt?: boolean }[], ptDue = true): { rows: string[][]; missing: string[] } {
   const rows: string[][] = [];
   const missing: string[] = [];
   // Answer 841: PT too, for the client site's state (the caller passes only that state's registration and filings).
@@ -76,7 +76,8 @@ export function challanRows(registered: { statute: string; registrationNo: strin
       rows.push([name, reg.registrationNo ?? '', '', '', '', 'Not filed yet']);
       missing.push(`${name} challan`);
     }
-    for (const f of mine) rows.push([name, reg.registrationNo ?? '', f.reference ?? '', f.amount ?? '', f.filedOn ?? '', 'Filed']);
+    // Answer 842: a filed return with the bank's challan receipt says so (the receipt PDF is in the pack).
+    for (const f of mine) rows.push([name, reg.registrationNo ?? '', f.reference ?? '', f.amount ?? '', f.filedOn ?? '', f.receipt ? 'Filed; bank receipt in the pack' : 'Filed']);
   }
   return { rows, missing };
 }

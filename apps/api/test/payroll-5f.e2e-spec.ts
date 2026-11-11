@@ -319,6 +319,23 @@ describe('Payroll batch 5f (statutory files, returns, registers)', () => {
     expect((await api('payAdmin', 'post', '/statutory/filings').send({ legalEntityId: ids.entity, statute: 'IN.PF', month, reason: 'Try again' }).expect(409)).body.message).toMatch(/supplementary/);
   });
 
+  it('842: the bank challan receipt PDF on an uploaded or filed PF / ESI / PT return; others refused', async () => {
+    const pdf = Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n');
+    const add = (who: Who, id: string, data = pdf, name = 'challan.pdf', type = 'application/pdf') => api(who, 'post', `/statutory/filings/${id}/receipt`).attach('file', data, { filename: name, contentType: type });
+    await add('payAdmin', ids.pf!).expect(403); // the mark-filed key only
+    expect([403, 404]).toContain((await add('adminB', ids.pf!)).status); // another company
+    await api('compliance', 'post', `/statutory/filings/${ids.pf}/receipt`).expect(400); // no file
+    await add('compliance', ids.pf!, Buffer.from('not a pdf'), 'c.txt', 'text/plain').expect(400);
+    expect((await add('compliance', ids.pf!).expect(201)).body).toMatchObject({ receipt: true });
+    const list = (await api('payAdmin', 'get', `/statutory/filings?entityId=${ids.entity}&month=${month}`).expect(200)).body;
+    expect(list.find((f: { id: string }) => f.id === ids.pf).receipt).toBe(true);
+    // The receipt is scanned after the upload; once clean it downloads.
+    await inA(async (tx) => tx.file.updateMany({ where: { area: 'challan-receipt' }, data: { scanStatus: 'clean', scannedAt: new Date() } }));
+    const r = await api('compliance', 'get', `/statutory/filings/${ids.pf}/receipt`).expect(200);
+    expect(r.headers['content-type']).toMatch(/application\/pdf/);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'statutory.filing.receipt_added' } }))).toBe(1);
+  });
+
   it('supplementary: what changed after the filed return, as its own file; an excess is recorded', async () => {
     await api('payAdmin', 'post', '/statutory/filings').send({ legalEntityId: ids.entity, statute: 'IN.PF', month, kind: 'supplementary', reason: 'Nothing new' }).expect(409);
     // An off-cycle payment approved after the return (batch 5g makes these; here it is written directly).

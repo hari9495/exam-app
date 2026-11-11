@@ -891,14 +891,14 @@ export function ExportSheet({ open, onOpenChange, options, onExport }: { open: b
         <FormField id="ex-series" label="Invoice series (GSTIN)" required error={tried && !series ? 'Choose the series.' : null}>
           <Select value={series} onChange={(v) => (setSeries(v), setMonth(options.series.find((x) => x.id === v)?.months[0] ?? null))} options={options.series.map((x) => ({ value: x.id, label: x.label }))} placeholder="Choose a series" />
         </FormField>
-        <FormField id="ex-month" label="Month" required helper="Invoices and credit notes issued in the month." error={tried && (!month || !s?.months.includes(month)) ? (s && !s.months.length ? 'Nothing is issued in this series yet.' : 'Choose the month.') : null}>
+        <FormField id="ex-month" label="Month" required helper="Invoices and credit notes issued in the month, and the receipts received in it against them." error={tried && (!month || !s?.months.includes(month)) ? (s && !s.months.length ? 'Nothing is issued in this series yet.' : 'Choose the month.') : null}>
           <Select value={month} onChange={setMonth} options={(s?.months ?? []).map((m) => ({ value: m, label: label(m) }))} placeholder={series ? 'Choose a month' : 'Choose a series first'} />
         </FormField>
         <FormField id="ex-format" label="For">
           <Segment label="For" value={format} onChange={setFormat} options={[{ value: 'tally', label: 'Tally (XML)' }, { value: 'zoho', label: 'Zoho Books (CSV)' }]} />
         </FormField>
         {s && s.drafts > 0 && <InlineAlert tone="warning">{s.drafts} draft{s.drafts === 1 ? ' is' : 's are'} not exported: issue {s.drafts === 1 ? 'it' : 'them'} first.</InlineAlert>}
-        <Text size="sm" tone="secondary">Ledger names, GST ledgers, TDS and round-off come from Settings › Staffing desk › Accounting export. Create the ledgers in Tally first; Zoho Books takes invoices and credit notes as two files.</Text>
+        <Text size="sm" tone="secondary">Ledger names, GST ledgers, TDS, round-off and the bank ledger come from Settings › Staffing desk › Accounting export. Create the ledgers in Tally first; Zoho Books takes invoices, credit notes and customer payments as separate files.</Text>
       </div>
     </Drawer>
   );

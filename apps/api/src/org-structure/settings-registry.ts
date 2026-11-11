@@ -298,11 +298,14 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'staffing.export.ledger.igst': { label: 'Staffing desk export: IGST ledger', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 100 }, default: 'Output IGST' },
   'staffing.export.ledger.gst': { label: 'Staffing desk export: GST ledger (one ledger for all GST)', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 100 }, default: 'Output GST' },
   'staffing.export.ledger.tds': { label: 'Staffing desk export: TDS receivable ledger', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 100 }, default: 'TDS Receivable' },
+  // Answer 574: receipts in the export debit this bank ledger.
+  'staffing.export.ledger.bank': { label: 'Staffing desk export: bank ledger (receipts)', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 100 }, default: 'Bank Account' },
   'staffing.export.ledger.round_off': { label: 'Staffing desk export: round-off ledger', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 100 }, default: 'Round Off' },
   'staffing.export.gst_split': { label: 'Staffing desk export: GST in separate CGST, SGST and IGST ledgers or one', scopes: ['tenant'], dated: false, values: ['separate', 'combined'], default: 'separate' },
   'staffing.export.tds': { label: 'Staffing desk export: show the TDS the client is expected to deduct', scopes: ['tenant'], dated: false, values: ['none', 'expected'], default: 'none' },
   'staffing.export.round_off': { label: 'Staffing desk export: round each total to the rupee', scopes: ['tenant'], dated: false, values: ['none', 'rupee'], default: 'rupee' },
-  'staffing.einvoice.applies': { label: 'Staffing desk: our invoices need an IRN (e-invoicing applies)', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
+  // Answer 495: per legal entity (a company may have entities on both sides of the e-invoicing limit).
+  'staffing.einvoice.applies': { label: 'Staffing desk: our invoices need an IRN (e-invoicing applies)', scopes: ['legal_entity', 'tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   'staffing.bench.after': { label: 'Staffing desk: after the maximum bench days', scopes: ['tenant'], dated: false, values: ['review', 'unpaid'], default: 'review' },
   'hiring.scorecard.overdue_hours': { label: 'Hiring: a scorecard is overdue this many hours after the interview', scopes: ['tenant'], dated: false, values: ['12', '24', '48', '72'], default: '24' },
   // HIR-02 founder answer 291 (Settings 6.1): a hiring manager's request starts with this recruiter, or with none until

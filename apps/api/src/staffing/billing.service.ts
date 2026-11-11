@@ -14,7 +14,7 @@ import { conversionFee, guaranteeOutcome, placementFee } from './billing-rules';
 import { addDays, ageingBucket, creditProblem, daysBetween, eInvoiceState, gstSplit, lineAmount, mondayOf, nextReminder, pctToBp, splitTds, taperProblem } from './billing-rules';
 import { buildInvoicePdf, type InvoicePdfField } from './invoice-pdf';
 import JSZip from 'jszip';
-import { tallyXml, zohoCsv, type ExportDoc, type ExportSettings, type TallyRule, type ZohoRule } from './accounting-export';
+import { tallyXml, zohoCsv, type ExportDoc, type ExportSettings, type TallyRule, type ZohoRule, zohoPaymentsCsv, type ExportReceipt } from './accounting-export';
 import type { HireDto, LeftDto } from './staffing-dto';
 import type { ApproveHoursDto, ClientTermsDto, CollectionDto, CreditNoteDto, DraftInvoiceDto, HoursDto, ReceiptDto, ReissueDto, VendorBillDto, VendorBillPaidDto, VersionDto } from './staffing-dto';
 
@@ -72,7 +72,8 @@ export class StaffingBillingService {
   /* ---------------- hours ---------------- */
 
   private hoursView(h: Prisma.StaffingHoursGetPayload<object>) {
-    return { id: h.id, placementId: h.placementId, weekStart: iso(h.weekStart), hours: qty(h.hoursCenti), overtime: qty(h.overtimeCenti), status: h.status, note: h.note, decidedAt: h.decidedAt, invoiced: Boolean(h.invoiceId), version: h.version };
+    // Answer 497: where the week came from; for a Time week, the timesheet's hours (the account manager may change them).
+    return { id: h.id, placementId: h.placementId, weekStart: iso(h.weekStart), hours: qty(h.hoursCenti), overtime: qty(h.overtimeCenti), status: h.status, note: h.note, decidedAt: h.decidedAt, invoiced: Boolean(h.invoiceId), version: h.version, source: h.source as 'manual' | 'time', timeHours: h.timeHoursCenti === null ? null : qty(h.timeHoursCenti) };
   }
 
   hours(ctx: TenantContext, user: ScopeUser, placementId: string) {
@@ -229,7 +230,9 @@ export class StaffingBillingService {
       if (inv.status !== 'draft') throw new ConflictException('This invoice is issued already.');
       const today = todayIst();
       const number = await this.nextNumber(tx, inv.seriesId, today, 'invoice');
-      const applies = (await settingFor(tx, c, 'staffing.einvoice.applies', { legalEntityId: '' })) === 'on';
+      // Answer 495: e-invoicing is the issuing entity's setting (the company's when the entity has none).
+      const entityId = (await tx.staffingInvoiceSeries.findFirstOrThrow({ where: { id: inv.seriesId }, select: { legalEntityId: true } })).legalEntityId;
+      const applies = (await settingFor(tx, c, 'staffing.einvoice.applies', { legalEntityId: entityId })) === 'on';
       const { count } = await tx.staffingInvoice.updateMany({ where: { id, version: dto.version, status: 'draft' }, data: { status: 'issued', number, invoiceDate: day(today), irn: applies ? 'pending' : 'not_needed', issuedBy: c.userId ?? null, issuedAt: new Date(), version: { increment: 1 } } });
       if (!count) throw new ConflictException('Someone changed this invoice meanwhile. Reload it.');
       await audit(tx, c, 'staffing.invoice.issued', 'staffing_invoice', id, { number, total: toRupees(inv.totalPaise) });
@@ -309,8 +312,16 @@ export class StaffingBillingService {
     };
   }
 
-  private async window(tx: Tx, c: CompanyContext) {
-    return { applies: (await settingFor(tx, c, 'staffing.einvoice.applies', { legalEntityId: '' })) === 'on', rule: await ruleValues<{ reportWithinDays: number; warnFromDay: number }>(tx, 'GST.EINVOICE_WINDOW') };
+  /** Answer 495: whether e-invoicing applies is each legal entity's setting (the company's when the entity has none). */
+  private async appliesFor(tx: Tx, c: CompanyContext, seriesIds: string[]) {
+    const series = await tx.staffingInvoiceSeries.findMany({ where: { organizationId: c.organizationId, id: { in: [...new Set(seriesIds)] } }, select: { id: true, legalEntityId: true } });
+    const byEntity = new Map<string, boolean>();
+    for (const e of new Set(series.map((x) => x.legalEntityId))) byEntity.set(e, (await settingFor(tx, c, 'staffing.einvoice.applies', { legalEntityId: e })) === 'on');
+    return (seriesId: string) => byEntity.get(series.find((x) => x.id === seriesId)?.legalEntityId ?? '') ?? false;
+  }
+
+  private async window(tx: Tx, _c: CompanyContext) {
+    return { rule: await ruleValues<{ reportWithinDays: number; warnFromDay: number }>(tx, 'GST.EINVOICE_WINDOW') };
   }
 
   private invoiceStatus(inv: { status: string; kind: string }, o: { paid: bigint; outstanding: bigint }) {
@@ -325,6 +336,7 @@ export class StaffingBillingService {
       const clients = new Map((await tx.staffingClient.findMany({ where: { organizationId: c.organizationId }, select: { id: true, name: true } })).map((x) => [x.id, x.name]));
       const of = await this.paidOf(tx, rows.map((r) => r.id));
       const w = await this.window(tx, c);
+      const applies = await this.appliesFor(tx, c, rows.map((r) => r.seriesId));
       const today = todayIst();
       return {
         canCreate: a.billing && !a.actingForOther,
@@ -333,7 +345,8 @@ export class StaffingBillingService {
           return {
             id: r.id, number: r.number, client: clients.get(r.clientId) ?? '', kind: r.kind, date: iso(r.invoiceDate), period: r.periodStart ? iso(r.periodStart)!.slice(0, 7) : null,
             taxable: toRupees(r.taxablePaise), gst: toRupees(r.totalPaise - r.taxablePaise), total: toRupees(r.totalPaise), status: this.invoiceStatus(r, o),
-            irn: r.status === 'draft' ? null : r.irn === 'not_needed' ? 'not_needed' : eInvoiceState(iso(r.invoiceDate)!, today, w.applies, w.rule),
+            // Answer 495: the issuing entity's e-invoicing setting.
+            irn: r.status === 'draft' ? null : r.irn === 'not_needed' ? 'not_needed' : eInvoiceState(iso(r.invoiceDate)!, today, applies(r.seriesId), w.rule),
           };
         }),
       };
@@ -348,6 +361,7 @@ export class StaffingBillingService {
       const credits = await tx.staffingInvoice.findMany({ where: { creditOf: id }, orderBy: { createdAt: 'asc' } });
       const o = (await this.paidOf(tx, [id]))(id, inv.totalPaise);
       const w = await this.window(tx, c);
+      const applies = (await this.appliesFor(tx, c, [inv.seriesId]))(inv.seriesId);
       const dueDays = await this.dueDays(tx, c, inv.clientId);
       return {
         canEdit: a.billing && !a.actingForOther,
@@ -356,7 +370,7 @@ export class StaffingBillingService {
           interState: inv.supplierState !== inv.placeOfSupply, gstPct: inv.gstPct.toString(), date: iso(inv.invoiceDate), dueOn: inv.invoiceDate ? addDays(iso(inv.invoiceDate)!, dueDays) : null, period: inv.periodStart ? `${iso(inv.periodStart)} to ${iso(inv.periodEnd)}` : null, po: inv.po, reason: inv.reason,
           taxable: toRupees(inv.taxablePaise), cgst: toRupees(inv.cgstPaise), sgst: toRupees(inv.sgstPaise), igst: toRupees(inv.igstPaise), total: toRupees(inv.totalPaise),
           paid: toRupees(o.paid), outstanding: toRupees(o.outstanding < 0n ? 0n : o.outstanding), status: this.invoiceStatus(inv, o), irn: inv.irn, version: inv.version,
-          window: inv.status === 'issued' && inv.irn !== 'not_needed' ? eInvoiceState(iso(inv.invoiceDate)!, todayIst(), w.applies, w.rule) : null,
+          window: inv.status === 'issued' && inv.irn !== 'not_needed' ? eInvoiceState(iso(inv.invoiceDate)!, todayIst(), applies, w.rule) : null,
         },
         lines: inv.lines.map((l) => ({ description: l.description, qty: qty(l.qtyCenti), rate: toRupees(l.ratePaise), amount: toRupees(l.amountPaise) })),
         creditNotes: credits.map((x) => ({ id: x.id, number: x.number, date: iso(x.invoiceDate), amount: toRupees(x.totalPaise), reason: x.reason })),
@@ -742,14 +756,19 @@ export class StaffingBillingService {
       const from = day(`${q.month}-01`);
       const to = day(addDays(new Date(Date.UTC(Number(q.month.slice(0, 4)), Number(q.month.slice(5, 7)), 1)).toISOString().slice(0, 10), -1));
       const invs = await tx.staffingInvoice.findMany({ where: { organizationId: org, seriesId: series.id, status: 'issued', invoiceDate: { gte: from, lte: to } }, include: { lines: { orderBy: { position: 'asc' } } }, orderBy: [{ invoiceDate: 'asc' }, { createdAt: 'asc' }] });
-      if (!invs.length) throw new BadRequestException('Nothing issued in this series and month. Drafts are not exported; issue them first.');
+      // Answer 574: the month's receipts, as far as they pay this series' invoices (a receipt may pay several series).
+      const recs = await tx.staffingReceipt.findMany({ where: { organizationId: org, receivedOn: { gte: from, lte: to } }, orderBy: [{ receivedOn: 'asc' }, { createdAt: 'asc' }] });
+      const allocs = recs.length ? await tx.staffingReceiptAllocation.findMany({ where: { organizationId: org, receiptId: { in: recs.map((r) => r.id) } } }) : [];
+      const paid = allocs.length ? await tx.staffingInvoice.findMany({ where: { organizationId: org, seriesId: series.id, id: { in: allocs.map((a) => a.invoiceId) } }, select: { id: true, number: true } }) : [];
+      const mine = allocs.filter((a) => paid.some((p) => p.id === a.invoiceId));
+      if (!invs.length && !mine.length) throw new BadRequestException('Nothing issued or received in this series and month. Drafts are not exported; issue them first.');
       const g = async (k: string) => settingFor(tx, c, k, { legalEntityId: '' });
       const s: ExportSettings = {
         sales: await g('staffing.export.ledger.sales'), cgst: await g('staffing.export.ledger.cgst'), sgst: await g('staffing.export.ledger.sgst'), igst: await g('staffing.export.ledger.igst'), gst: await g('staffing.export.ledger.gst'),
         gstSplit: (await g('staffing.export.gst_split')) as ExportSettings['gstSplit'], tds: await g('staffing.export.ledger.tds'), tdsMode: (await g('staffing.export.tds')) as ExportSettings['tdsMode'],
-        roundOff: (await g('staffing.export.round_off')) as ExportSettings['roundOff'], roundOffLedger: await g('staffing.export.ledger.round_off'),
+        roundOff: (await g('staffing.export.round_off')) as ExportSettings['roundOff'], roundOffLedger: await g('staffing.export.ledger.round_off'), bank: await g('staffing.export.ledger.bank'),
       };
-      const clients = await tx.staffingClient.findMany({ where: { organizationId: org, id: { in: [...new Set(invs.map((i) => i.clientId))] } } });
+      const clients = await tx.staffingClient.findMany({ where: { organizationId: org, id: { in: [...new Set([...invs.map((i) => i.clientId), ...recs.map((r) => r.clientId)])] } } });
       const codes = await ruleValues<Record<string, string>>(tx, 'GST.STATE_CODES');
       const sac = (await ruleValues<{ sac: string }>(tx, 'GST.STAFFING_RATE')).sac;
       const tdsRule = await ruleValues<Record<string, { otherPct: string }>>(tx, 'TDS.SECTIONS');
@@ -765,20 +784,33 @@ export class StaffingBillingService {
           tds: pct && i.kind !== 'credit_note' ? lineAmount(pctToBp(pct)!, i.taxablePaise) / 100n : 0n,
         };
       });
+      const receipts: ExportReceipt[] = recs
+        .filter((r) => mine.some((a) => a.receiptId === r.id))
+        .map((r) => {
+          const cl = clients.find((x) => x.id === r.clientId)!;
+          return {
+            number: r.reference || `RCPT-${r.id.slice(0, 8).toUpperCase()}`,
+            date: iso(r.receivedOn)!,
+            party: cl.legalName || cl.name,
+            reference: r.reference,
+            invoices: mine.filter((a) => a.receiptId === r.id).map((a) => ({ number: paid.find((p) => p.id === a.invoiceId)!.number!, amount: a.amountPaise, tds: a.tdsPaise })),
+          };
+        });
       const entity = await tx.legalEntity.findFirst({ where: { id: series.legalEntityId }, select: { name: true } });
       const base = `${series.prefix.replace(/[^A-Za-z0-9]+/g, '-').replace(/-+$/, '')}-${q.month}`;
       let file: { buffer: Buffer; filename: string; type: string };
       if (q.format === 'tally') {
         const rule = await ruleValues<Omit<TallyRule, 'company'>>(tx, 'EXPORT.TALLY_XML');
-        file = { buffer: Buffer.from(tallyXml(docs, s, { ...rule, company: entity?.name ?? null }), 'utf8'), filename: `${base}-tally.xml`, type: 'application/xml' };
+        file = { buffer: Buffer.from(tallyXml(docs, s, { ...rule, company: entity?.name ?? null }, receipts), 'utf8'), filename: `${base}-tally.xml`, type: 'application/xml' };
       } else {
         const rule = await ruleValues<ZohoRule>(tx, 'EXPORT.ZOHO_CSV');
         const zip = new JSZip();
         zip.file(`${base}-invoices.csv`, zohoCsv(docs, 'invoice', s, rule));
         zip.file(`${base}-credit-notes.csv`, zohoCsv(docs, 'credit_note', s, rule));
+        if (receipts.length) zip.file(`${base}-customer-payments.csv`, zohoPaymentsCsv(receipts, s, rule));
         file = { buffer: await zip.generateAsync({ type: 'nodebuffer' }), filename: `${base}-zoho.zip`, type: 'application/zip' };
       }
-      await audit(tx, c, 'staffing.invoices.exported', 'staffing_invoice_series', series.id, { format: q.format, month: q.month, invoices: docs.filter((d) => d.kind === 'invoice').length, creditNotes: docs.filter((d) => d.kind === 'credit_note').length, ledgers: { gstSplit: s.gstSplit, tds: s.tdsMode, roundOff: s.roundOff } });
+      await audit(tx, c, 'staffing.invoices.exported', 'staffing_invoice_series', series.id, { format: q.format, month: q.month, invoices: docs.filter((d) => d.kind === 'invoice').length, creditNotes: docs.filter((d) => d.kind === 'credit_note').length, receipts: receipts.length, ledgers: { gstSplit: s.gstSplit, tds: s.tdsMode, roundOff: s.roundOff } });
       return file;
     }, true);
   }

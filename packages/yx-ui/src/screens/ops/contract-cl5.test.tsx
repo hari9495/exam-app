@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
@@ -247,6 +247,33 @@ describe('Site approval below the minimum wage (answer 844)', () => {
       expect(screen.queryByText('Below the minimum wage')).not.toBeInTheDocument();
       unmount();
     }
+  });
+});
+
+describe('Reopen a confirmed month (answer 753)', () => {
+  it('the reason is required (focus moves to it); then the month is reopened', async () => {
+    const onReopen = vi.fn(async () => undefined);
+    show(<AttendanceMonthScreen month="2026-09" rows={ROWS} canManage canConfirm onReopen={onReopen} />);
+    await ue.click(screen.getByRole('button', { name: 'Reopen' }));
+    const dlg = screen.getByRole('dialog');
+    await ue.click(within(dlg).getByRole('button', { name: 'Reopen month' }));
+    expect(within(dlg).getByText('Say why the month is reopened.')).toBeInTheDocument();
+    await waitFor(() => expect(document.activeElement?.id).toBe('ro-reason'));
+    expect(onReopen).not.toHaveBeenCalled();
+    await ue.type(within(dlg).getByLabelText(/Reason/), 'A punch was missed');
+    await ue.click(within(dlg).getByRole('button', { name: 'Reopen month' }));
+    expect(onReopen).toHaveBeenCalledWith('c1', 'maa', '2026-09', 'A punch was missed');
+  });
+  it('negative: without the key no Reopen; an open month has none; a refusal is shown in the dialog', async () => {
+    const { unmount } = show(<AttendanceMonthScreen month="2026-09" rows={ROWS} canManage={false} canConfirm={false} />);
+    expect(screen.queryByRole('button', { name: 'Reopen' })).not.toBeInTheDocument();
+    unmount();
+    show(<AttendanceMonthScreen month="2026-09" rows={ROWS} canManage canConfirm onReopen={vi.fn(async () => { throw new Error('The contract labour registers for this month are frozen or signed, so the month cannot be reopened.'); })} />);
+    expect(screen.getAllByRole('button', { name: 'Reopen' })).toHaveLength(1); // only the confirmed row
+    await ue.click(screen.getByRole('button', { name: 'Reopen' }));
+    await ue.type(within(screen.getByRole('dialog')).getByLabelText(/Reason/), 'Wrong punch');
+    await ue.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Reopen month' }));
+    expect(await screen.findByText(/so the month cannot be reopened/)).toBeInTheDocument();
   });
 });
 
