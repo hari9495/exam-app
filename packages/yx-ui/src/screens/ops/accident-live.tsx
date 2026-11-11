@@ -262,7 +262,7 @@ function LiveAccidentWorkspace({ live, c }: { live: LiveAccidentWorkspace; c: Ac
       setForm(await live.onEsicForm());
       setDialog('form');
     } catch (e) {
-      toast({ title: errorText(e) });
+      toast({ tone: 'error', title: errorText(e) });
     }
   };
   const closeCase = async () => {
@@ -270,7 +270,7 @@ function LiveAccidentWorkspace({ live, c }: { live: LiveAccidentWorkspace; c: Ac
       await live.onClose();
       toast({ tone: 'success', title: `${c.number} is closed`, description: 'The record stays; nothing can be added now.' });
     } catch (e) {
-      toast({ title: errorText(e) });
+      toast({ tone: 'error', title: errorText(e) });
     }
   };
 
@@ -442,7 +442,7 @@ function LiveAccidentWorkspace({ live, c }: { live: LiveAccidentWorkspace; c: Ac
                   {c.photos.length > 0 && (
                     <div className="yx-ops-row" role="group" aria-label="Photos">
                       {c.photos.map((p) => (
-                        <Button key={p.id} icon={Camera} onClick={() => (p.scan === 'clean' ? live.onOpenFile(p.id) : toast({ title: 'This photo is still being checked for viruses. Try again in a minute.' }))}>
+                        <Button key={p.id} icon={Camera} onClick={() => (p.scan === 'clean' ? live.onOpenFile(p.id) : toast({ tone: 'default', title: 'This photo is still being checked for viruses. Try again in a minute.' }))}>
                           {p.scan === 'clean' ? p.name : `${p.name} (being checked)`}
                         </Button>
                       ))}
@@ -465,7 +465,7 @@ function LiveAccidentWorkspace({ live, c }: { live: LiveAccidentWorkspace; c: Ac
                             </span>
                             {m.file && (
                               <span className="yx-ops-row">
-                                <Button size="sm" icon={FileText} onClick={() => (m.file!.scan === 'clean' ? live.onOpenFile(m.file!.id) : toast({ title: 'This file is still being checked for viruses. Try again in a minute.' }))}>
+                                <Button size="sm" icon={FileText} onClick={() => (m.file!.scan === 'clean' ? live.onOpenFile(m.file!.id) : toast({ tone: 'default', title: 'This file is still being checked for viruses. Try again in a minute.' }))}>
                                   {m.file.name}
                                 </Button>
                                 <span className="yx-ops-mono yx-ops-muted" title="SHA-256 fingerprint">
@@ -855,7 +855,7 @@ function ReportForm({ live, f, device }: { live: LiveReportAccident; f: Accident
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const send = async () => {
-    if (!f.ready) return toast({ title: 'Your company has not named its safety team yet. Tell your safety officer in person.' });
+    if (!f.ready) return toast({ tone: 'default', title: 'Your company has not named its safety team yet. Tell your safety officer in person.' });
     if (early.stop()) return;
     setBusy(true);
     setError(null);

@@ -782,7 +782,7 @@ function DetailsDrawer({ live, article: a, onClose }: { live: LiveKb; article: K
             onClick={() =>
               !early.stop() &&
               (Object.keys(change()).length === 0
-                ? toast({ title: 'Nothing has changed yet.' })
+                ? toast({ tone: 'default', title: 'Nothing has changed yet.' })
                 : void run('save', async () => {
                     await live.onUpdateMeta(a.id, a.version, change());
                     toast({ tone: 'success', title: 'Details saved.' });
@@ -1050,8 +1050,8 @@ function CategoriesCard({ live, space: s }: { live: LiveKb; space: KbSpace }) {
                     <span className="yx-ops-list__sub">{depth === 0 ? 'Category' : depth === 1 ? `Section in ${path.split(' › ')[0]}` : `Sub-section in ${path.split(' › ').slice(0, 2).join(' › ')}`}</span>
                   </span>
                   <span className="yx-ops-row">
-                    <IconButton size="sm" icon={ArrowUp} label={`Move ${c.name} up`} onClick={() => (i === 0 ? toast({ title: `${c.name} is already first.` }) : void move(c, -1))} />
-                    <IconButton size="sm" icon={ArrowDown} label={`Move ${c.name} down`} onClick={() => (i === level.length - 1 ? toast({ title: `${c.name} is already last.` }) : void move(c, 1))} />
+                    <IconButton size="sm" icon={ArrowUp} label={`Move ${c.name} up`} onClick={() => (i === 0 ? toast({ tone: 'default', title: `${c.name} is already first.` }) : void move(c, -1))} />
+                    <IconButton size="sm" icon={ArrowDown} label={`Move ${c.name} down`} onClick={() => (i === level.length - 1 ? toast({ tone: 'default', title: `${c.name} is already last.` }) : void move(c, 1))} />
                     <Button size="sm" aria-label={`Rename ${c.name}`} onClick={() => setRenaming({ id: c.id, name: c.name })}>
                       Rename
                     </Button>

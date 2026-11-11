@@ -188,7 +188,7 @@ export function LiveAgentDesk({ live }: { live: LiveAgentDesk }) {
     });
   const waiting = (t: TicketRow) => {
     const s = statusOf(t.deskId, 'pending');
-    if (!s) return toast({ title: `${t.desk} has no "waiting" status. Add one in Desk set-up.` });
+    if (!s) return toast({ tone: 'default', title: `${t.desk} has no "waiting" status. Add one in Desk set-up.` });
     void run(`wait:${t.id}`, async () => {
       await live.onMove(t, s.id);
       toast({ tone: 'success', title: `${t.number} is waiting on the employee. Its clock is paused.` });
@@ -258,7 +258,7 @@ export function LiveAgentDesk({ live }: { live: LiveAgentDesk }) {
                 const t = rows.find((r) => r.id === cardId);
                 const s = t && statusOf(t.deskId, to as SystemState);
                 if (t && s) void run('move', () => live.onMove(t, s.id));
-                else if (t) toast({ title: `${t.desk} has no status for ${STATE_LABEL[to as SystemState].toLowerCase()}.` });
+                else if (t) toast({ tone: 'default', title: `${t.desk} has no status for ${STATE_LABEL[to as SystemState].toLowerCase()}.` });
               }}
             />
           )}
@@ -290,7 +290,7 @@ export function LiveAgentDesk({ live }: { live: LiveAgentDesk }) {
               <Button size="sm" onClick={() => setDialog('priority')}>
                 Change priority
               </Button>
-              <Button size="sm" onClick={() => (targets.length ? setDialog('move') : toast({ title: oneDesk ? 'This desk may not move tickets to another desk. Set it up in Desk set-up.' : 'Choose tickets of one desk to move them.' }))}>
+              <Button size="sm" onClick={() => (targets.length ? setDialog('move') : toast({ tone: 'default', title: oneDesk ? 'This desk may not move tickets to another desk. Set it up in Desk set-up.' : 'Choose tickets of one desk to move them.' }))}>
                 Move to queue
               </Button>
               <Button size="sm" onClick={() => setDialog('tag')}>

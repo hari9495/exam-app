@@ -5,6 +5,7 @@ import { audit, inCompany, type CompanyContext, type Tx } from '../org-structure
 import { todayIst } from '../org-structure/org-validation';
 import { JoinersService } from './joiners.service';
 import { LifecycleJourneysService } from './journeys.service';
+import { FilesService } from '../documents/files.service';
 
 // Contract labour CL-7 (CLB-05, founder answer 637): a contract worker becomes an employee through the PPL-12 joiner flow.
 // HR with the onboarding key starts it from the worker's deployment: the joiner (source "contract_worker") is the same
@@ -66,6 +67,7 @@ export class ContractConversionService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly joiners: JoinersService,
     private readonly journeys: LifecycleJourneysService,
+    private readonly files: FilesService,
   ) {}
 
   private async deployment(tx: Tx, c: CompanyContext, id: string) {
@@ -107,9 +109,25 @@ export class ContractConversionService {
         uan: dep.uan,
         esicIp: dep.esicIp,
         idMasked: `XXXX XXXX ${dep.idLast4}`,
+        // Answer 809: the gate pass photo is shown on the same-person step.
+        photo: Boolean(dep.photoFileId),
         today: todayIst(),
       };
     });
+  }
+
+  /** Answer 809: the worker's gate pass photo for the same-person step (the onboarding key; another company: 404). */
+  async photo(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.journeys.viewer(user);
+    if (!v.grants.has('lifecycle.onboarding.manage')) throw new ForbiddenException('Converting a contract worker needs the onboarding key.');
+    const f = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const dep = await this.deployment(tx, c, id);
+      if (!dep.photoFileId) throw new NotFoundException('No photo yet.');
+      const file = await tx.file.findFirstOrThrow({ where: { organizationId: c.organizationId, id: dep.photoFileId } });
+      if (file.scanStatus !== 'clean') throw new ConflictException('The photo is still being checked for viruses, or failed the check.');
+      return file;
+    });
+    return { file: await this.files.bytes(f), contentType: f.mime };
   }
 
   /** Starts the joiner from the deployment (the PPL-12 flow with the contract_worker source). */

@@ -547,7 +547,7 @@ const STATE_TONE: Record<'submitted' | 'verified' | 'discrepancy' | 'missing', {
   discrepancy: { tone: 'danger', text: 'Discrepancy' },
   missing: { tone: 'warning', text: 'Not uploaded' },
 };
-const PACK_TONE: Record<PortalPackStatus, { tone: BadgeTone; text: string }> = { open: { tone: 'neutral', text: 'Open' }, submitted: { tone: 'info', text: 'Submitted' }, verified: { tone: 'success', text: 'Verified' }, discrepancy: { tone: 'danger', text: 'Discrepancy' }, overdue: { tone: 'danger', text: 'Overdue' } };
+const PACK_TONE: Record<PortalPackStatus, { tone: BadgeTone; text: string }> = { open: { tone: 'neutral', text: 'To upload' }, submitted: { tone: 'info', text: 'Submitted' }, verified: { tone: 'success', text: 'Verified' }, discrepancy: { tone: 'danger', text: 'Discrepancy' }, overdue: { tone: 'danger', text: 'Overdue' } };
 const CHECK_STATE: Record<'pass' | 'fail' | 'pending', { tone: BadgeTone; text: string }> = { pass: { tone: 'success', text: 'Passed' }, fail: { tone: 'danger', text: 'Failed' }, pending: { tone: 'neutral', text: 'Waiting' } };
 const monthText = (m: string) => new Date(`${m}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 

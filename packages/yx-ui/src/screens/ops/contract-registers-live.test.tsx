@@ -92,3 +92,12 @@ describe('CLB-04 annual return (live)', () => {
     expect(screen.queryByRole('button', { name: 'Record filing' })).not.toBeInTheDocument();
   });
 });
+
+describe('Registers & returns without access (answer 811)', () => {
+  it('says the same as the other contract labour pages', () => {
+    show(<ClraRegistersScreen live={live({ state: 'no-access', data: null })} />);
+    expect(screen.getByText(/Ask your HR team/)).toBeInTheDocument();
+    expect(screen.queryByText(/the contract labour key/)).not.toBeInTheDocument();
+  });
+});
+

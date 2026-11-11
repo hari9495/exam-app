@@ -88,3 +88,47 @@ describe('CLB-05 convert a contract worker (live)', () => {
     expect(within(document.body).getAllByRole('button', { name: 'Release' }).length).toBeGreaterThan(0);
   });
 });
+
+describe('CLB-05 after the walk (answers 808, 809)', () => {
+  it('809: the gate pass photo on the same-person step; without one the placeholder', async () => {
+    const photoUrl = vi.fn(async () => 'blob:photo-1');
+    const { unmount } = show(<ConvertWorkerScreen worker={WORKERS[0]} live={live({ data: data({ photo: true }), photoUrl })} />);
+    expect(await screen.findByAltText('Photo of Murugan S')).toHaveAttribute('src', 'blob:photo-1');
+    expect(photoUrl).toHaveBeenCalledTimes(1);
+    unmount();
+    const none = vi.fn(async () => 'blob:x');
+    show(<ConvertWorkerScreen worker={WORKERS[0]} live={live({ data: data({ photo: false }), photoUrl: none })} />);
+    expect(document.querySelector('img')).toBeNull();
+    expect(none).not.toHaveBeenCalled();
+  });
+
+  it('808: designation, department and employment type open on request; the review has one note box and short summaries', async () => {
+    show(<ConvertWorkerScreen worker={WORKERS[0]} live={live()} />);
+    await next();
+    await next();
+    expect(screen.queryByText('Designation')).not.toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Designation, department and employment type' }));
+    for (const t of ['Designation', 'Department', 'Employment type']) expect(screen.getByText(t)).toBeInTheDocument();
+    await ue.type(screen.getByLabelText(/^Joining date/), '01/12/2026');
+    await next();
+    await next();
+    expect(screen.getByText(/joins the Onboarding board on the same person record/)).toBeInTheDocument();
+    expect(document.querySelectorAll('.yx-stepper__review-step [role="status"] [role="status"], .yx-stepper__review-step .yx-alert .yx-alert')).toHaveLength(0);
+    expect(screen.getByText(/Joins 1 Dec 2026 at Hosur plant/)).toBeInTheDocument();
+    expect(screen.queryByText('Murugan S, same person record')).not.toBeInTheDocument();
+  });
+
+  it('a failed start shows "Not started" once, above the steps', async () => {
+    const l = live({ onStart: vi.fn(async () => { throw new Error('This person is already joining.'); }) });
+    show(<ConvertWorkerScreen worker={WORKERS[0]} live={l} />);
+    await next();
+    await next();
+    await ue.type(screen.getByLabelText(/^Joining date/), '01/12/2026');
+    await next();
+    await next();
+    await ue.click(screen.getByRole('button', { name: 'Start pre-boarding' }));
+    expect(await screen.findByText('This person is already joining.')).toBeInTheDocument();
+    expect(screen.getAllByText('Not started')).toHaveLength(1);
+  });
+});
+

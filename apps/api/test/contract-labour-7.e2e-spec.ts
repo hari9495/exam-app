@@ -132,6 +132,19 @@ describe('Contract labour CL-7: convert a contract worker to an employee', () =>
     await api('hr', 'get', path('nope')).expect(400);
   });
 
+  it('809: the gate pass photo on the same-person step; only the onboarding key; another company 404; none yet 404', async () => {
+    expect((await api('hr', 'get', path(ids.dep)).expect(200)).body.photo).toBe(false);
+    const jpg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01]), Buffer.alloc(200, 1), Buffer.from([0xff, 0xd9])]);
+    await api('admin', 'post', `/contract-labour/workers/${ids.dep}/photo`).attach('file', jpg, { filename: 'm.jpg', contentType: 'image/jpeg' }).expect(want(201));
+    await inA(async (tx) => tx.file.updateMany({ where: { id: (await tx.contractDeployment.findFirstOrThrow({ where: { id: ids.dep } })).photoFileId!, scanStatus: 'pending' }, data: { scanStatus: 'clean', scannedAt: new Date() } }));
+    expect((await api('hr', 'get', path(ids.dep)).expect(200)).body.photo).toBe(true);
+    const r = await api('hr', 'get', `${path(ids.dep)}/photo`).expect(want(200));
+    expect(r.headers['content-type']).toMatch(/image\/jpeg/);
+    await api('reader', 'get', `${path(ids.dep)}/photo`).expect(403);
+    await api('adminB', 'get', `${path(ids.dep)}/photo`).expect(404);
+    await api('hr', 'get', `${path(ids.pending)}/photo`).expect(404);
+  });
+
   it('starting it: refused while acting, without the key, for another company, when not deployed, and on a day not after the deployment start', async () => {
     await api('acting', 'post', path(ids.dep)).send(body()).expect(403);
     await api('reader', 'post', path(ids.dep)).send(body()).expect(403);

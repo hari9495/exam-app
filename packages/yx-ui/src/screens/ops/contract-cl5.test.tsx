@@ -217,3 +217,13 @@ describe('Contractor portal shell (walk findings)', () => {
     expect(screen.queryByText(/Access ends/)).not.toBeInTheDocument();
   });
 });
+
+describe('Portal packs list (answer 806)', () => {
+  it('the status no longer repeats the Open button', () => {
+    show(<ContractorPortalScreen live={plive({ pack: null, packs: [{ month: '2026-10', site: { id: 'blr', name: 'Bengaluru head office' }, due: '2026-11-15', status: 'open' }] })} />);
+    expect(screen.getByText('To upload')).toBeInTheDocument();
+    expect(screen.getAllByText('Open')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Open' })).toBeInTheDocument();
+  });
+});
+

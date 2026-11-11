@@ -136,7 +136,7 @@ export function ContractorsView(p: ContractorsViewProps) {
   const { contractors, establishments, today, state, canManage } = p;
   const [open, setOpen] = useState<string | null>(p.openId);
   const [sheet, setSheet] = useState<ContractorsSheet | null>(p.sheet);
-  const { say } = useSay();
+  const { done, fail } = useSay();
   const c = contractors.find((x) => x.id === open);
   const licences = contractors.flatMap((x) => x.licences.map((l) => ({ l, c: x })));
   const expiring = contractors.filter((x) => x.licences.some((l) => (l.state ? l.state === 'expiring' || l.state === 'expired' : expiryTone(l.validTo, today).tone !== 'success')));
@@ -153,7 +153,7 @@ export function ContractorsView(p: ContractorsViewProps) {
   const renewalOf = (id: string) => licences.find((x) => x.l.id === id)?.l;
   const target = sheet && (sheet.kind === 'renew' || sheet.kind === 'reject') ? licences.find((x) => x.l.id === sheet.licenceId) : undefined;
   const editing = sheet?.kind === 'contractor' && sheet.id ? contractors.find((x) => x.id === sheet.id) : undefined;
-  const run = (fn: (() => Promise<unknown>) | undefined, title: string) => (fn ? fn().then(() => say(title), (e: unknown) => say(errText(e))) : Promise.resolve(say(title)));
+  const run = (fn: (() => Promise<unknown>) | undefined, title: string) => (fn ? fn().then(() => done(title), (e: unknown) => fail(errText(e))) : Promise.resolve(done(title)));
   return (
     <OpsDesk area="contract" active="Contractors">
       <PageHeader title="Contractors" description="Licensed contractors supplying workers to your sites. You are the principal employer." actions={add} />
@@ -340,7 +340,7 @@ const errText = (e: unknown) => (e instanceof Error && e.message ? e.message : '
 
 /** Add or change a contractor: the vendor record with its statutory codes (answer 623). */
 export function ContractorSheet({ initial, onClose, onSave }: { initial: ContractorInput | null; onClose: () => void; onSave: (input: ContractorInput) => Promise<unknown> }) {
-  const { say } = useSay();
+  const { done } = useSay();
   const [f, setF] = useState<ContractorInput>(initial ?? { name: '', work: '', contactEmail: null, pan: null, gstin: null, pfCode: null, esicCode: null, lin: null, active: true });
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -364,7 +364,7 @@ export function ContractorSheet({ initial, onClose, onSave }: { initial: Contrac
     setBusy(true);
     setFailed(null);
     onSave({ ...f, name: f.name.trim(), work: f.work.trim(), contactEmail: f.contactEmail?.trim() || null })
-      .then(() => (say(initial ? 'Contractor saved' : 'Contractor added'), onClose()))
+      .then(() => (done(initial ? 'Contractor saved' : 'Contractor added'), onClose()))
       .catch((e: unknown) => setFailed(errText(e)))
       .finally(() => setBusy(false));
   };
@@ -411,7 +411,7 @@ export function ContractorSheet({ initial, onClose, onSave }: { initial: Contrac
 
 /** A licence for one of our establishments, or its renewal (answer 627: it counts once verified). */
 export function LicenceSheet({ mode, current, contractor, locations, states, onClose, onSave }: { mode: 'add' | 'renew'; current?: Licence; contractor: string; locations: { id: string; name: string; state: string }[]; states: { code: string; name: string }[]; onClose: () => void; onSave: (input: LicenceInput, file: File) => Promise<unknown> }) {
-  const { say } = useSay();
+  const { done } = useSay();
   const [loc, setLoc] = useState<string | null>(current?.locationId ?? null);
   const [no, setNo] = useState(mode === 'renew' ? (current?.no ?? '') : '');
   const [scope, setScope] = useState(current?.scope ?? '');
@@ -448,7 +448,7 @@ export function LicenceSheet({ mode, current, contractor, locations, states, onC
     setBusy(true);
     setFailed(null);
     onSave({ locationId: loc ?? '', licenceNo: no.trim(), scope: scope.trim(), issuedBy: office.trim() || null, states: covered, maxWorkers: max!, validFrom: isoDay(from), validTo: isoDay(to) }, file!)
-      .then(() => (say(mode === 'renew' ? 'Renewal added, waiting for verification' : 'Licence added, waiting for verification'), onClose()))
+      .then(() => (done(mode === 'renew' ? 'Renewal added, waiting for verification' : 'Licence added, waiting for verification'), onClose()))
       .catch((e: unknown) => setFailed(errText(e)))
       .finally(() => setBusy(false));
   };
@@ -501,7 +501,7 @@ export function LicenceSheet({ mode, current, contractor, locations, states, onC
 
 /** CL-3 (answer 631): invite a contractor's contact to the portal. */
 function ContactDialog({ contractor, onClose, onSave }: { contractor: string; onClose: () => void; onSave: (input: { name: string; email: string }) => Promise<unknown> }) {
-  const { say } = useSay();
+  const { done } = useSay();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [tried, setTried] = useState(false);
@@ -515,7 +515,7 @@ function ContactDialog({ contractor, onClose, onSave }: { contractor: string; on
     setBusy(true);
     setFailed(null);
     onSave({ name: name.trim(), email: email.trim() })
-      .then(() => (say(`Invited ${name.trim()}`), onClose()))
+      .then(() => (done(`Invited ${name.trim()}`), onClose()))
       .catch((e: unknown) => setFailed(errText(e)))
       .finally(() => setBusy(false));
   };
@@ -544,7 +544,7 @@ export interface WorkOrderInput {
 
 /** Answer 675: a contractor's work order. Deploying past its headcount warns; the licence maximum is the legal limit. */
 export function WorkOrderSheet({ contractor, initial, locations, onClose, onSave }: { contractor: string; initial: WorkOrder | null; locations: { id: string; name: string }[]; onClose: () => void; onSave: (input: WorkOrderInput) => Promise<unknown> }) {
-  const { say } = useSay();
+  const { done } = useSay();
   const [no, setNo] = useState(initial?.number ?? '');
   const [from, setFrom] = useState<Date | null>(initial?.from ?? null);
   const [to, setTo] = useState<Date | null>(initial?.to ?? null);
@@ -568,7 +568,7 @@ export function WorkOrderSheet({ contractor, initial, locations, onClose, onSave
     setBusy(true);
     setFailed(null);
     onSave({ number: no.trim(), fromOn: isoDay(from), toOn: isoDay(to), headcount: head!, locationIds: sites, ...(initial?.version ? { version: initial.version } : {}) })
-      .then(() => (say(initial ? 'Work order saved' : 'Work order added'), onClose()))
+      .then(() => (done(initial ? 'Work order saved' : 'Work order added'), onClose()))
       .catch((e: unknown) => setFailed(errText(e)))
       .finally(() => setBusy(false));
   };
@@ -600,7 +600,7 @@ export function WorkOrderSheet({ contractor, initial, locations, onClose, onSave
 
 /** Reject a licence or renewal with the reason (the contractor sees it once the portal is built). */
 export function RejectLicenceDialog({ licence, onClose, onReject }: { licence: Licence; onClose: () => void; onReject: (reason: string) => Promise<unknown> }) {
-  const { say } = useSay();
+  const { done } = useSay();
   const [reason, setReason] = useState('');
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -612,7 +612,7 @@ export function RejectLicenceDialog({ licence, onClose, onReject }: { licence: L
     setBusy(true);
     setFailed(null);
     onReject(reason.trim())
-      .then(() => (say('Licence rejected'), onClose()))
+      .then(() => (done('Licence rejected'), onClose()))
       .catch((e: unknown) => setFailed(errText(e)))
       .finally(() => setBusy(false));
   };
@@ -738,7 +738,7 @@ export function WorkersView(p: WorkersViewProps) {
   const { workers, today, state, canManage } = p;
   const [filters, setFilters] = useState<FilterValue[]>([]);
   const [sheet, setSheet] = useState<WorkersSheet | null>(p.sheet);
-  const { say } = useSay();
+  const { done } = useSay();
   const cols: TableColumn<ContractWorker>[] = [
     { key: 'name', header: 'Worker', value: (w) => w.name, render: (w) => <span className="yx-ops-row"><PhotoPlaceholder name={w.name} size="sm" /><span className="yx-ops-stack" data-gap="sm"><strong>{w.name}</strong><span className="yx-ops-muted">ID {w.idMasked}</span></span></span>, width: 220 },
     { key: 'contractor', header: 'Contractor', value: (w) => w.contractor, groupable: true, width: 200 },
@@ -784,7 +784,7 @@ export function WorkersView(p: WorkersViewProps) {
         }
       />
       {sheet?.kind === 'deploy' && <DeployWorkerSheet {...p} onClose={() => setSheet(null)} />}
-      {sheet?.kind === 'approve' && target && <ApproveWorkerDialog photoUrl={p.photoUrl} worker={target} today={today} required={p.inductionRequired} months={p.inductionMonths} onClose={() => setSheet(null)} onApprove={(induction) => (p.onApprove ? p.onApprove(target.id, target.version ?? 1, induction) : Promise.resolve(say('Approved')))} />}
+      {sheet?.kind === 'approve' && target && <ApproveWorkerDialog photoUrl={p.photoUrl} worker={target} today={today} required={p.inductionRequired} months={p.inductionMonths} onClose={() => setSheet(null)} onApprove={(induction) => (p.onApprove ? p.onApprove(target.id, target.version ?? 1, induction) : Promise.resolve(done('Approved')))} />}
       {sheet?.kind === 'card' && target && (
         <GatePassCard
           worker={target}
@@ -810,7 +810,7 @@ export function WorkersView(p: WorkersViewProps) {
 
 /** Deploy a worker: the server checks age, licence, licence maximum and the same ID before anything is saved (635). */
 function DeployWorkerSheet(p: WorkersViewProps & { onClose: () => void }) {
-  const { say } = useSay();
+  const { say, done } = useSay();
   const [f, setF] = useState({ contractorId: p.design ? (p.contractors[0]?.id ?? null) : null as string | null, locationId: p.design ? p.design.site : null as string | null, givenName: p.design ? 'Kannan' : '', familyName: p.design ? 'S.' : '', aadhaar: p.design ? '234567890123' : '', skill: 'unskilled' as WorkerInput['skill'], uan: '', esicIp: '' });
   const [dob, setDob] = useState<Date | null>(p.design?.dob ?? null);
   const [from, setFrom] = useState<Date | null>(p.design ? p.today : null);
@@ -849,7 +849,7 @@ function DeployWorkerSheet(p: WorkersViewProps & { onClose: () => void }) {
         // Walk finding: the checks sit below the fold of the sheet, so the alert names what failed.
         if (rows.some((r) => r.status === 'fail')) return setFailed(`This worker can’t be deployed. ${rows.filter((r) => r.status === 'fail').map((r) => r.detail ?? r.label).join(' ')}`);
         await p.onSend!(input());
-        say('Sent for site approval');
+        done('Sent for site approval');
         p.onClose();
       })
       .catch((e: unknown) => setFailed(errText(e)))
@@ -915,7 +915,7 @@ function DeployWorkerSheet(p: WorkersViewProps & { onClose: () => void }) {
 
 /** Site approval (632, 633): the safety induction is recorded and the gate pass is issued. */
 function ApproveWorkerDialog({ worker, today, required, months, renew = false, photoUrl, onClose, onApprove }: { worker: ContractWorker; today: Date; required: boolean; months: number; renew?: boolean; photoUrl?: (id: string) => Promise<string | null>; onClose: () => void; onApprove: (induction: { on: string | null; by: string | null; photoChecked?: boolean }) => Promise<unknown> }) {
-  const { say } = useSay();
+  const { done } = useSay();
   const [on, setOn] = useState<Date | null>(worker.induction ? worker.induction.on : null);
   const [by, setBy] = useState(worker.induction?.by ?? '');
   const [tried, setTried] = useState(false);
@@ -946,7 +946,7 @@ function ApproveWorkerDialog({ worker, today, required, months, renew = false, p
     setBusy(true);
     setFailed(null);
     onApprove({ on: on ? isoDay(on) : null, by: by.trim() || null, ...(checkPhoto ? { photoChecked: true } : {}) })
-      .then(() => (say(renew ? `${worker.name}'s gate pass renewed` : `${worker.name} approved; gate pass issued`), onClose()))
+      .then(() => (done(renew ? `${worker.name}'s gate pass renewed` : `${worker.name} approved; gate pass issued`), onClose()))
       .catch((e: unknown) => setFailed(errText(e)))
       .finally(() => setBusy(false));
   };
@@ -977,7 +977,7 @@ function ApproveWorkerDialog({ worker, today, required, months, renew = false, p
 
 /** Answers 684, 735, 625: the gate pass card (photo, name, number, site, end) with its actions; printable. */
 function GatePassCard({ worker, today, canManage, photoUrl, onClose, onRenew, onPin, onPhoto }: { worker: ContractWorker; today: Date; canManage: boolean; photoUrl?: (id: string) => Promise<string | null>; onClose: () => void; onRenew: () => void; onPin: () => Promise<unknown>; onPhoto: (file: File) => Promise<unknown> }) {
-  const { say } = useSay();
+  const { done, fail } = useSay();
   const [url, setUrl] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   useEffect(() => {
@@ -999,7 +999,7 @@ function GatePassCard({ worker, today, canManage, photoUrl, onClose, onRenew, on
       footer={
         <>
           <Button onClick={() => window.print()}>Print card</Button>
-          {canManage && <Button onClick={() => void onPin().catch((e: unknown) => say(errText(e)))}>{worker.kioskPin ? 'New kiosk PIN' : 'Kiosk PIN'}</Button>}
+          {canManage && <Button onClick={() => void onPin().catch((e: unknown) => fail(errText(e)))}>{worker.kioskPin ? 'New kiosk PIN' : 'Kiosk PIN'}</Button>}
           {canManage && <Button variant="primary" onClick={onRenew}>Renew gate pass</Button>}
         </>
       }
@@ -1017,7 +1017,7 @@ function GatePassCard({ worker, today, canManage, photoUrl, onClose, onRenew, on
         )}
         {canManage && (adding || worker.photo) && (
           <FormField id="gp-photo" label={worker.photo ? 'Replace the photo' : 'Photo'} optional helper="A clear face.">
-            <FileUpload id="gp-photo" multiple={false} accept={['.jpg', '.png']} maxSize={5 * 1024 * 1024} upload={async (f) => { await onPhoto(f); say('Photo saved'); }} />
+            <FileUpload id="gp-photo" multiple={false} accept={['.jpg', '.png']} maxSize={5 * 1024 * 1024} upload={async (f) => { await onPhoto(f); done('Photo saved'); }} />
           </FormField>
         )}
       </div>
@@ -1027,7 +1027,7 @@ function GatePassCard({ worker, today, canManage, photoUrl, onClose, onRenew, on
 
 /** Release a deployed worker, or withdraw one waiting for approval: the deployment and the role end on the day. */
 function ReleaseWorkerDialog({ worker, today, onClose, onRelease }: { worker: ContractWorker; today: Date; onClose: () => void; onRelease: (on: string, reason: string) => Promise<unknown> }) {
-  const { say } = useSay();
+  const { done } = useSay();
   const pending = worker.status === 'Pending approval';
   const [on, setOn] = useState<Date | null>(today);
   const [reason, setReason] = useState('');
@@ -1042,7 +1042,7 @@ function ReleaseWorkerDialog({ worker, today, onClose, onRelease }: { worker: Co
     setBusy(true);
     setFailed(null);
     onRelease(isoDay(on), reason.trim())
-      .then(() => (say(pending ? `${worker.name} withdrawn` : `${worker.name} released`), onClose()))
+      .then(() => (done(pending ? `${worker.name} withdrawn` : `${worker.name} released`), onClose()))
       .catch((e: unknown) => setFailed(errText(e)))
       .finally(() => setBusy(false));
   };
@@ -1165,13 +1165,13 @@ export function VendorComplianceView(p: VendorComplianceViewProps) {
   const [verify, setVerify] = useState(p.verify ?? null);
   const [release, setRelease] = useState<string | null>(p.release ?? null);
   const [pay, setPay] = useState<string | null>(p.pay ?? null);
-  const { say } = useSay();
+  const { done, fail } = useSay();
   const row = verify ? p.rows.find((r) => r.key === verify.row) : undefined;
   const cell = row?.cells.find((c) => c.label === verify?.label);
   const rel = release ? p.rows.find((r) => r.key === release) : undefined;
   const alert = pay ? p.alerts.find((a) => a.id === pay) : undefined;
   const exposure = p.alerts.reduce((s, a) => s + (a.liability ?? 0), 0);
-  const run = (fn: (() => Promise<unknown>) | undefined, title: string, after?: () => void) => (fn ? fn().then(() => (say(title), after?.()), (e: unknown) => say(errText(e))) : Promise.resolve(say(title)));
+  const run = (fn: (() => Promise<unknown>) | undefined, title: string, after?: () => void) => (fn ? fn().then(() => (done(title), after?.()), (e: unknown) => fail(errText(e))) : Promise.resolve(done(title)));
   return (
     <OpsDesk area="contract" active="Vendor compliance" counts={{ 'Vendor compliance': p.alerts.length }}>
       <PageHeader
@@ -1264,7 +1264,7 @@ export function VendorComplianceView(p: VendorComplianceViewProps) {
 
 /** Verify a proof or raise a discrepancy with a note (a short challan cannot be verified). */
 function ProofDrawer({ title, cell, checks, canManage, onClose, onOpenFile, onVerify, onDiscrepancy }: { title: string; cell: VcRow['cells'][number]; checks: CheckRow[]; canManage: boolean; onClose: () => void; onOpenFile: () => void; onVerify: () => Promise<unknown>; onDiscrepancy: (note: string) => Promise<unknown> }) {
-  const { say } = useSay();
+  const { done } = useSay();
   const [raising, setRaising] = useState(false);
   const [note, setNote] = useState('');
   const [tried, setTried] = useState(false);
@@ -1277,7 +1277,7 @@ function ProofDrawer({ title, cell, checks, canManage, onClose, onOpenFile, onVe
     setBusy(true);
     setFailed(null);
     onDiscrepancy(note.trim())
-      .then(() => (say('Discrepancy raised; the contractor is asked to replace the proof'), onClose()))
+      .then(() => (done('Discrepancy raised; the contractor is asked to replace the proof'), onClose()))
       .catch((e: unknown) => setFailed(errText(e)))
       .finally(() => setBusy(false));
   };
@@ -1324,7 +1324,7 @@ function ProofDrawer({ title, cell, checks, canManage, onClose, onOpenFile, onVe
 
 /** Answer 634: release a month's hold on the contractor's bills, with a reason (the compliance owner only). */
 function ReleaseHoldDialog({ contractor, month, onClose, onRelease }: { contractor: string; month: string; onClose: () => void; onRelease: (reason: string) => Promise<unknown> }) {
-  const { say } = useSay();
+  const { done } = useSay();
   const [reason, setReason] = useState('');
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -1335,7 +1335,7 @@ function ReleaseHoldDialog({ contractor, month, onClose, onRelease }: { contract
     setBusy(true);
     setFailed(null);
     onRelease(reason.trim())
-      .then(() => (say(`${contractor}'s ${month} bill released`), onClose()))
+      .then(() => (done(`${contractor}'s ${month} bill released`), onClose()))
       .catch((e: unknown) => setFailed(errText(e)))
       .finally(() => setBusy(false));
   };
@@ -1350,7 +1350,7 @@ function ReleaseHoldDialog({ contractor, month, onClose, onRelease }: { contract
 
 /** Answer 626: wages the company paid a worker itself; taken off the contractor's next bill. */
 function PayByUsDialog({ alert, onClose, onSave }: { alert: VcAlert; onClose: () => void; onSave: (input: { amount: string; paidOn: string; reference: string; reason: string }) => Promise<unknown> }) {
-  const { say } = useSay();
+  const { done } = useSay();
   const [amount, setAmount] = useState<number | null>(alert.liability);
   const [paidOn, setPaidOn] = useState<Date | null>(null);
   const [reference, setReference] = useState('');
@@ -1367,7 +1367,7 @@ function PayByUsDialog({ alert, onClose, onSave }: { alert: VcAlert; onClose: ()
     setBusy(true);
     setFailed(null);
     onSave({ amount: amount!.toFixed(2), paidOn: isoDay(paidOn), reference: reference.trim(), reason: reason.trim() })
-      .then(() => (say('Payment recorded; it comes off the contractor’s next bill'), onClose()))
+      .then(() => (done('Payment recorded; it comes off the contractor’s next bill'), onClose()))
       .catch((e: unknown) => setFailed(errText(e)))
       .finally(() => setBusy(false));
   };
@@ -1580,7 +1580,7 @@ export function ClraRegistersScreen({ loading, tab = 'registers', live }: { load
   const description = 'Generated from contractor, worker and wage records in the format valid for each state and period; frozen and signed with the company DSC.';
   if (live)
     return (
-      <LivePage title={title} description={description} actions={actions} state={live.state} onRetry={live.onRetry} what="the contract labour registers" grantedBy="an admin (the contract labour key)">
+      <LivePage title={title} description={description} actions={actions} state={live.state} onRetry={live.onRetry} what="the contract labour registers" grantedBy="your HR team">
         {body}
       </LivePage>
     );
@@ -1682,6 +1682,8 @@ export interface ConversionData {
   uan: string | null;
   esicIp: string | null;
   idMasked: string;
+  /** Answer 809: the worker has a gate pass photo (fetched with `photoUrl`). */
+  photo?: boolean;
   today: string;
 }
 export interface ConversionInput {
@@ -1706,6 +1708,8 @@ export interface LiveConvert {
   onStart: (input: ConversionInput) => Promise<{ id: string }>;
   /** Opens the new joiner's onboarding checklist. */
   onDone: (preboardingId: string) => void;
+  /** Answer 809: the gate pass photo as an object URL (null when there is none or it cannot be shown). */
+  photoUrl?: () => Promise<string | null>;
 }
 
 const dayOf = (s: string) => new Date(`${s}T00:00:00`);
@@ -1715,7 +1719,7 @@ const dayBefore = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate
 const NO_WORKER: ContractWorker = { id: '', name: '', contractor: '', site: '', skill: 'Unskilled', wage: null, from: new Date(0), to: null, gatePass: null, gateValidTo: null, uan: '', ip: '', idMasked: '', status: 'Deployed' };
 
 /** The design's sample worker, or (live) the worker loaded from the API. */
-export function ConvertWorkerScreen({ worker = NO_WORKER, current = 'person', finishing, live }: { worker?: ContractWorker; current?: string; finishing?: boolean; live?: LiveConvert }) {
+export function ConvertWorkerScreen({ worker = NO_WORKER, current = 'person', finishing, photoUrl, live }: { worker?: ContractWorker; current?: string; finishing?: boolean; /** The design's photo (answer 809). */ photoUrl?: string; live?: LiveConvert }) {
   const d = live?.data ?? null;
   const name = d ? d.person.name : worker.name;
   const contractor = d ? d.contractor : worker.contractor;
@@ -1731,6 +1735,19 @@ export function ConvertWorkerScreen({ worker = NO_WORKER, current = 'person', fi
   const [manager, setManager] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Answer 808: the optional details open on request, so the step fits the screen.
+  const [more, setMore] = useState(false);
+  const [photo, setPhoto] = useState<string | null>(photoUrl ?? null);
+  useEffect(() => {
+    if (!live?.photoUrl || !d?.photo) return;
+    let on = true;
+    live.photoUrl().then((u) => on && setPhoto(u), () => undefined);
+    return () => {
+      on = false;
+    };
+    // Once per worker: `live` is a new object on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d?.deploymentId, d?.photo]);
   const { toast } = useSay();
   const from = d ? dayOf(d.fromOn) : worker.from;
   const lastDay = joining ? dayBefore(joining) : null;
@@ -1758,13 +1775,12 @@ export function ConvertWorkerScreen({ worker = NO_WORKER, current = 'person', fi
   };
   const carry = d
     ? [
-        { id: 'person', status: 'pass' as const, label: 'Same person record', detail: d.rehire ? 'Worked here before as an employee: joins again on the same record (rehire)' : 'No second record is made' },
+        ...(d.rehire ? [{ id: 'person', status: 'pass' as const, label: 'Same person record', detail: 'Worked here before as an employee: joins again on the same record (rehire)' }] : []),
         { id: 'uan', status: d.uan ? ('pass' as const) : ('warn' as const), label: d.uan ? `UAN ${d.uan}` : 'No UAN on the deployment', detail: d.uan ? 'Raised on the employee record on the joining day for HR to approve' : 'HR adds it after joining if the person has one' },
         { id: 'ip', status: d.esicIp ? ('pass' as const) : ('warn' as const), label: d.esicIp ? `ESIC IP ${d.esicIp}` : 'No ESIC IP number on the deployment', detail: d.esicIp ? 'Raised on the employee record on the joining day for HR to approve' : 'HR adds it after joining if the person has one' },
         { id: 'id', status: 'warn' as const, label: `ID ${d.idMasked}`, detail: 'Only the last 4 digits are kept; check the original ID on the joining day' },
       ]
     : [
-        { id: 'person', status: 'pass' as const, label: 'Same person record', detail: 'No second record is made' },
         { id: 'uan', status: 'pass' as const, label: `UAN ${worker.uan}`, detail: 'Raised on the employee record on the joining day for HR to approve' },
         { id: 'ip', status: 'pass' as const, label: `ESIC IP ${worker.ip}`, detail: 'Raised on the employee record on the joining day for HR to approve' },
         { id: 'id', status: 'warn' as const, label: `ID ${worker.idMasked}`, detail: 'Only the last 4 digits are kept; check the original ID on the joining day' },
@@ -1784,7 +1800,7 @@ export function ConvertWorkerScreen({ worker = NO_WORKER, current = 'person', fi
       finishLabel="Start pre-boarding"
       finishing={finishing || busy}
       onFinish={finish}
-      review={{ title: 'Check and start', note: failed ? <InlineAlert tone="danger" title="Not started">{failed}</InlineAlert> : <InlineAlert tone="info">{name} joins the Onboarding board as a joiner. Nothing changes for them as a contract worker until the joining day.</InlineAlert> }}
+      review={{ title: 'Check and start', note: `${name} joins the Onboarding board on the same person record (UAN and ESIC IP go to the employee record). Nothing changes until the joining day.` }}
       steps={[
         {
           id: 'person',
@@ -1792,8 +1808,8 @@ export function ConvertWorkerScreen({ worker = NO_WORKER, current = 'person', fi
           content: (
             <div className="yx-ops-stack">
               <span className="yx-ops-row">
-                <PhotoPlaceholder name={name} size="lg" />
-                <DescriptionList items={[{ label: 'Person', value: `${name} · ID ${d ? d.idMasked : worker.idMasked}` }, { label: 'Now', value: `Contract worker, ${contractor}, ${site}` }, { label: 'UAN', value: (d ? d.uan : worker.uan) || '—', mono: true }]} />
+                {photo ? <img className="yx-ops-gatepass__photo" src={photo} alt={`Photo of ${name}`} /> : <PhotoPlaceholder name={name} size="lg" />}
+                <DescriptionList items={[{ label: 'Person', value: `${name} · ID ${d ? d.idMasked : worker.idMasked}` }, { label: 'Now', value: `Contract worker, ${contractor}, ${site}` }]} />
               </span>
               {d?.block ? (
                 <InlineAlert tone="danger" title="Can't convert now">{d.block}</InlineAlert>
@@ -1802,7 +1818,6 @@ export function ConvertWorkerScreen({ worker = NO_WORKER, current = 'person', fi
               )}
             </div>
           ),
-          summary: `${name}, same person record`,
         },
         {
           id: 'end',
@@ -1813,7 +1828,6 @@ export function ConvertWorkerScreen({ worker = NO_WORKER, current = 'person', fi
               <InlineAlert tone="info">On the joining day the deployment with {contractor} ends, the gate pass stops working after the last day, and the contract-worker role closes. Earlier punches, deployments and register rows stay as contract-worker records.</InlineAlert>
             </div>
           ),
-          summary: lastDay ? `Contract role ends ${formatDate(lastDay)}` : 'Contract role ends the day before joining',
         },
         {
           id: 'employee',
@@ -1829,34 +1843,45 @@ export function ConvertWorkerScreen({ worker = NO_WORKER, current = 'person', fi
                 </FormField>
               </FieldRow>
               <FieldRow>
-                <FormField id="cv-joining" label="Joining date" required error={show(joinErr)} helper="The contract role ends the day before.">
+                <FormField id="cv-joining" label="Joining date" required error={show(joinErr)} helper="The contract role ends the day before. Pay is set in Pay after joining.">
                   <DatePicker value={joining} onChange={setJoining} />
                 </FormField>
-                <FormField label="Designation" optional>
-                  <Select value={desig} onChange={setDesig} options={places ? places.designations : [{ value: 'hk', label: 'Housekeeping associate' }]} placeholder="Choose" />
+                <FormField label="Manager" optional>
+                  <Select value={manager} onChange={setManager} options={places ? places.managers : [{ value: 'm', label: 'Ravi Shankar' }]} placeholder="Choose" />
                 </FormField>
               </FieldRow>
-              <FieldRow>
-                <FormField label="Department" optional>
-                  <Select value={dept} onChange={setDept} options={places ? places.departments : [{ value: 'fac', label: 'Facilities' }]} placeholder="Choose" />
-                </FormField>
-                <FormField label="Employment type" optional>
-                  <Select value={type} onChange={setType} options={places ? places.employmentTypes : [{ value: 'perm', label: 'Permanent' }]} placeholder="Choose" />
-                </FormField>
-              </FieldRow>
-              <FormField label="Manager" optional>
-                <Select value={manager} onChange={setManager} options={places ? places.managers : [{ value: 'm', label: 'Ravi Shankar' }]} placeholder="Choose" />
-              </FormField>
-              <p className="yx-ops-muted">Department, designation and employment type can be added on the checklist before the joining day. Pay is set in Pay after joining.</p>
+              {more || dept || desig || type ? (
+                <>
+                  <FieldRow>
+                    <FormField label="Designation" optional>
+                      <Select value={desig} onChange={setDesig} options={places ? places.designations : [{ value: 'hk', label: 'Housekeeping associate' }]} placeholder="Choose" />
+                    </FormField>
+                    <FormField label="Department" optional>
+                      <Select value={dept} onChange={setDept} options={places ? places.departments : [{ value: 'fac', label: 'Facilities' }]} placeholder="Choose" />
+                    </FormField>
+                  </FieldRow>
+                  <FieldRow>
+                    <FormField label="Employment type" optional>
+                      <Select value={type} onChange={setType} options={places ? places.employmentTypes : [{ value: 'perm', label: 'Permanent' }]} placeholder="Choose" />
+                    </FormField>
+                  </FieldRow>
+                </>
+              ) : (
+                <Actions>
+                  <Button size="sm" icon={Plus} aria-expanded={false} onClick={() => setMore(true)}>
+                    Designation, department and employment type
+                  </Button>
+                </Actions>
+              )}
             </div>
           ),
-          summary: joining ? `Joins ${formatDate(joining)}` : 'Joining date not chosen',
+          // Answer 808: one summary, so Check and start fits the screen.
+          summary: joining ? `Joins ${formatDate(joining)} at ${(places ? entityLocs.find((l) => l.value === location)?.label : site) ?? site}; the contract role and gate pass end ${formatDate(lastDay!)}` : 'Joining date not chosen',
         },
         {
           id: 'carry',
           title: 'Carry over',
           content: <CheckList label="Carried over" items={carry} />,
-          summary: 'The same person; UAN and ESIC IP raised on the employee record',
         },
       ]}
     />
@@ -1867,6 +1892,7 @@ export function ConvertWorkerScreen({ worker = NO_WORKER, current = 'person', fi
     return (
       <LivePage title={title} description={description} state={live.state} onRetry={live.onRetry} what="this contract worker" grantedBy="an admin (the onboarding key)">
         {!live.canChange && <InlineAlert tone="info">You are acting for someone else: you can read this, not convert.</InlineAlert>}
+        {failed && <InlineAlert tone="danger" title="Not started">{failed}</InlineAlert>}
         {stepper}
       </LivePage>
     );
@@ -2472,7 +2498,7 @@ export interface AttendanceMonthProps {
 }
 
 export function AttendanceMonthScreen(p: AttendanceMonthProps) {
-  const { say } = useSay();
+  const { done, fail } = useSay();
   const [confirming, setConfirming] = useState<string | null>(p.confirmOpen ?? null);
   const row = p.rows.find((r) => `${r.contractorId}:${r.site.id}` === confirming);
   return (
@@ -2518,7 +2544,7 @@ export function AttendanceMonthScreen(p: AttendanceMonthProps) {
           title={`Confirm ${row.contractor}'s ${monthText(p.month)} at ${row.site.name}?`}
           consequence={`${row.workers.reduce((n, w) => n + w.present, 0)} days on site for ${row.workers.length} ${row.workers.length === 1 ? 'worker' : 'workers'}. The month is then locked: no more punches or entries, and the wage check uses these days.`}
           confirmLabel="Confirm month"
-          onConfirm={() => void (p.onConfirm ? p.onConfirm(row.contractorId, row.site.id, p.month) : Promise.resolve()).then(() => (say('Month confirmed'), setConfirming(null)), (e: unknown) => say(errText(e)))}
+          onConfirm={() => void (p.onConfirm ? p.onConfirm(row.contractorId, row.site.id, p.month) : Promise.resolve()).then(() => (done('Month confirmed'), setConfirming(null)), (e: unknown) => fail(errText(e)))}
         />
       )}
     </OpsDesk>
@@ -2534,7 +2560,7 @@ export interface RegistrationInput {
   version?: number;
 }
 export function RegistrationSheet({ initial, sites, onClose, onSave, onRemove }: { initial: (RegistrationInput & { id: string }) | null; sites: { id: string; name: string }[]; onClose: () => void; onSave: (input: RegistrationInput) => Promise<unknown>; onRemove?: () => Promise<unknown> }) {
-  const { say } = useSay();
+  const { done } = useSay();
   const [site, setSite] = useState<string | null>(initial?.locationId ?? null);
   const [no, setNo] = useState(initial?.registrationNo ?? '');
   const [max, setMax] = useState<number | null>(initial?.maxWorkers ?? null);
@@ -2551,12 +2577,12 @@ export function RegistrationSheet({ initial, sites, onClose, onSave, onRemove }:
     setBusy(true);
     setFailed(null);
     onSave({ locationId: site!, registrationNo: no.trim(), maxWorkers: max!, validTo: to ? isoDay(to) : null, ...(initial?.version ? { version: initial.version } : {}) })
-      .then(() => (say(initial ? 'Registration saved' : 'Registration added'), onClose()))
+      .then(() => (done(initial ? 'Registration saved' : 'Registration added'), onClose()))
       .catch((e: unknown) => setFailed(errText(e)))
       .finally(() => setBusy(false));
   };
   return (
-    <Drawer open onOpenChange={(o) => !o && onClose()} size="md" title={initial ? 'Change registration' : 'Add registration'} subtitle="Principal-employer registration" dirty notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined} footer={<>{initial && onRemove && <Button onClick={() => void onRemove().then(() => (say('Registration removed'), onClose()), (e: unknown) => setFailed(errText(e)))}>Remove</Button>}<Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={save}>{initial ? 'Save registration' : 'Add registration'}</Button></>}>
+    <Drawer open onOpenChange={(o) => !o && onClose()} size="md" title={initial ? 'Change registration' : 'Add registration'} subtitle="Principal-employer registration" dirty notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined} footer={<>{initial && onRemove && <Button onClick={() => void onRemove().then(() => (done('Registration removed'), onClose()), (e: unknown) => setFailed(errText(e)))}>Remove</Button>}<Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={save}>{initial ? 'Save registration' : 'Add registration'}</Button></>}>
       <div className="yx-ops-stack">
         <FormField id="rg-site" label="Establishment" required error={tried ? bad.site : null}>
           <Select options={sites.map((s) => ({ value: s.id, label: s.name }))} value={site} onChange={setSite} />

@@ -170,7 +170,7 @@ function PaperButton({ p, onOpen }: { p: DisputePaper; onOpen: (fileId: string) 
   const { toast } = useSay();
   return (
     <span className="yx-ops-row">
-      <Button size="sm" icon={FileText} onClick={() => (p.scan === 'clean' ? onOpen(p.id) : toast({ title: 'This file is still being checked for viruses. Try again in a minute.' }))}>
+      <Button size="sm" icon={FileText} onClick={() => (p.scan === 'clean' ? onOpen(p.id) : toast({ tone: 'default', title: 'This file is still being checked for viruses. Try again in a minute.' }))}>
         {p.scan === 'clean' ? p.name : `${p.name} (being checked)`}
       </Button>
       <span className="yx-ops-mono yx-ops-muted" title="SHA-256 fingerprint">
@@ -250,7 +250,7 @@ function LiveDisputeWorkspace({ live, d }: { live: LiveDispute; d: DisputeDetail
       await live.onApprove();
       toast({ tone: 'success', title: 'Settlement approved and sent to payroll arrears', description: 'Payroll checks it in Special pay › Settlements and pays it in a pay run as usual. Nothing is paid until then.' });
     } catch (e) {
-      toast({ title: errorText(e) });
+      toast({ tone: 'error', title: errorText(e) });
     }
   };
   const agreed = d.demands.filter((x) => x.status === 'agreed').length;
@@ -351,7 +351,7 @@ function LiveDisputeWorkspace({ live, d }: { live: LiveDispute; d: DisputeDetail
             ) : s.status === 'approved' ? (
               <>
                 {s.terms?.paper && (
-                  <Button icon={FileText} onClick={() => (s.terms!.paper!.scan === 'clean' ? live.onOpenFile(s.terms!.paper!.id) : toast({ title: 'This file is still being checked for viruses. Try again in a minute.' }))}>
+                  <Button icon={FileText} onClick={() => (s.terms!.paper!.scan === 'clean' ? live.onOpenFile(s.terms!.paper!.id) : toast({ tone: 'default', title: 'This file is still being checked for viruses. Try again in a minute.' }))}>
                     Open signed settlement
                   </Button>
                 )}

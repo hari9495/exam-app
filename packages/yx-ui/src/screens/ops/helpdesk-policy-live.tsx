@@ -794,7 +794,7 @@ export function LivePolicyAdmin({ live }: { live: LivePolicyAdmin }) {
       toast({ tone: 'success', title: r.sent ? `Reminder sent to ${r.sent} ${r.sent === 1 ? 'person' : 'people'}` : 'Nobody needed a reminder now', description: r.skipped ? `${r.skipped} already got one today.` : undefined });
       setChosen([]);
     } catch (e) {
-      toast({ title: errorText(e) });
+      toast({ tone: 'error', title: errorText(e) });
     } finally {
       setBusy(null);
     }
@@ -844,7 +844,7 @@ export function LivePolicyAdmin({ live }: { live: LivePolicyAdmin }) {
         }
         menu={
           live.canManage && (
-            <MenuItem icon={Download} onSelect={() => void live.onExport(p.id).then(() => toast({ tone: 'success', title: 'Evidence downloaded', description: 'Every acknowledgement of every version, with its time and fingerprint.' }), (e) => toast({ title: errorText(e) }))}>
+            <MenuItem icon={Download} onSelect={() => void live.onExport(p.id).then(() => toast({ tone: 'success', title: 'Evidence downloaded', description: 'Every acknowledgement of every version, with its time and fingerprint.' }), (e) => toast({ tone: 'error', title: errorText(e) }))}>
               Export evidence (CSV)
             </MenuItem>
           )
