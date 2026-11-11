@@ -300,3 +300,10 @@ console.table(counts);
 if (errs.length) { console.error(errs.join('\n')); process.exit(1); }
 console.log('ok');
 ```
+
+Founder approved, 12 Nov 2026 (questions 941-953, all as suggested): one Help drawer (the live one) with This page, Ask,
+What's new and Tours tabs; page help from tagged knowledge-base articles; what's new written by YukthiX (PLT-50 the one
+version); four tours, at most 3 steps, once per version; retire the drawn duplicates; a general Request access (default on,
+longest 30 days); a not-found reference; availability states and module switches later with the console and billing; no
+sample data; "press ?" shortcut help on; the set-up hub next, the company wizard after; phone views wait for the mobile app.
+Build H-1 to H-3 now, then H-4 to H-6; H-7 later.
