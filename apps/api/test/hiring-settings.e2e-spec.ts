@@ -127,6 +127,10 @@ describe('Settings 6.1 Hiring', () => {
     'hiring.notetaker.ai_draft': 'off',
     'hiring.notetaker.keep_days': '90',
     'hiring.bias_audit.nyc': 'off',
+    // HIR-20 rest: Talent CRM send window and daily cap; sourced profiles kept 30 days without consent.
+    'hiring.crm.send_window': '09-21',
+    'hiring.crm.daily_cap': '200',
+    'hiring.sourced.keep_days': '30',
   };
 
   it('reads: recruiting and hiring admins see the defaults; only the settings keys may edit; employees and managers are refused', async () => {
@@ -198,6 +202,9 @@ describe('Settings 6.1 Hiring', () => {
       'hiring.offer.expiry_days': '14',
       'hiring.resume_quarantine.tell_applicant': 'off',
       'hiring.bias_audit.nyc': 'on',
+      'hiring.crm.send_window': '09-21',
+      'hiring.crm.daily_cap': '200',
+      'hiring.sourced.keep_days': '30',
     });
     // Answer 362: the BGV tracker reads the same company setting.
     expect(await inA((tx) => tx.setting.findFirstOrThrow({ where: { organizationId: org.A.id, key: 'hiring.bgv.decider_other_person' } }))).toMatchObject({ value: 'off' });
