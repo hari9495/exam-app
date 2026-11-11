@@ -417,6 +417,9 @@ team" on the three we-are-the-contractor pages too.
 Founder approved, 11 Nov 2026 (questions 881-882, as suggested): keep 881 (the warning for every worker below the
 minimum); (882) name PT as missing only in the state's PT due months (as rule-set data).
 Founder decided, 11 Nov 2026: build the "later" items now (753 reopen a confirmed month).
+Founder approved, 12 Nov 2026 (questions 911-916, all as suggested): keep 911, 912, 913 (until weeks can be split),
+916 (number receipts later if the accountant asks); (914) count only the client's project lines once Time projects are
+linked to clients (later); (915) the export also offers a month with receipts but no invoices.
 
 ## CL-1 built (10 Nov 2026, branch `feat/yukthix-contract-labour-1`)
 
