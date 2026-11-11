@@ -14,7 +14,8 @@ import { DataTable, type TableColumn } from '../../components/table';
 import { dayKey } from '../../lib/dates';
 import { dateLabel, errorText } from '../org/org-kit';
 import { codeOf, ConfidentialBadge, GrantStatusBadge, isSystemAdmin, SCOPE_LABEL, SCOPE_TARGET, SystemAdminBadge } from './access-kit';
-import type { AccessRole, AccessUser, EffectiveAccess, Grant, GrantInput, LoadState, RoleTemplate, ScopeChoices, ScopeType } from './types';
+import { Badge } from '../../components/display';
+import type { AccessRequestRow, AccessRole, AccessUser, EffectiveAccess, Grant, GrantInput, LoadState, RoleTemplate, ScopeChoices, ScopeType } from './types';
 
 // Settings › Roles & access (PLT-11; P02 §4.2–4.3, §4.6, §7): who holds which role over which people. A role
 // opening Confidential data waits for a second admin (never the one who asked, never the person receiving it);
@@ -39,14 +40,30 @@ export interface RolesAccessScreenProps {
   onFromTemplate: (templateKey: string, name: string) => Promise<void>;
   /** Answer 795: deletes a role nobody holds, with a reason (the Delete button shows only when this is passed). */
   onDeleteRole?: (roleId: string, reason: string) => Promise<void>;
+  /**
+   * Answer 946: requests from "You don't have access" pages. Approve gives a role (the usual rules: a Confidential role
+   * waits for a second admin), until a last day within the company's longest access; refuse says why.
+   */
+  requests?: AccessRequestRow[];
+  /** The company setting "Longest access" (days). */
+  maxDays?: number;
+  onApproveRequest?: (requestId: string, input: GrantInput) => Promise<void>;
+  onRefuseRequest?: (requestId: string, reason: string) => Promise<void>;
   /** Stories: the tab shown first, and a role whose Delete dialog is open. */
-  initialView?: 'people' | 'waiting' | 'roles';
+  initialView?: View;
   deletingRoleId?: string;
   /** Makes the person a System Admin (true) or takes it away (false); the API asks for a second factor and refuses the last one. */
   onSystemAdmin: (userId: string, makeAdmin: boolean, reason: string) => Promise<void>;
 }
 
-type View = 'people' | 'waiting' | 'roles';
+type View = 'people' | 'waiting' | 'requests' | 'roles';
+const REQUEST_STATE: Record<AccessRequestRow['state'], { label: string; tone: 'info' | 'warning' | 'success' | 'neutral' | 'danger' }> = {
+  waiting: { label: 'Waiting for you', tone: 'warning' },
+  approval: { label: 'Given · second admin approves', tone: 'info' },
+  open: { label: 'Open', tone: 'success' },
+  refused: { label: 'Refused', tone: 'danger' },
+  ended: { label: 'Ended', tone: 'neutral' },
+};
 const userLabel = (u: AccessUser) => `${u.name ? `${u.name} · ${u.email}` : u.email}${isSystemAdmin(u) ? ' · System Admin' : ''}`;
 const SCOPE_TYPES = (Object.keys(SCOPE_LABEL) as ScopeType[]).filter((t) => t !== 'one_report');
 const scopeText = (g: Grant) => (g.scope.name ? `${SCOPE_LABEL[g.scope.type]}: ${g.scope.name}` : SCOPE_LABEL[g.scope.type]);
@@ -55,14 +72,22 @@ const period = (g: Grant) => {
   return end ? `${dateLabel(g.validFrom)} to ${dateLabel(end)}` : `From ${dateLabel(g.validFrom)}`;
 };
 
-function GrantDialog({ users, roles, scopes, userId, today, onGrant, onClose }: Pick<RolesAccessScreenProps, 'users' | 'roles' | 'scopes' | 'today' | 'onGrant'> & { userId: string | null; onClose: () => void }) {
-  const [user, setUser] = useState<string | null>(userId);
+const dayAfter = (today: string, n: number) => {
+  const d = new Date(`${today}T00:00:00`);
+  d.setDate(d.getDate() + n);
+  return d;
+};
+
+function GrantDialog({ users, roles, scopes, userId, today, onGrant, onClose, request, maxDays = 30 }: Pick<RolesAccessScreenProps, 'users' | 'roles' | 'scopes' | 'today' | 'onGrant' | 'maxDays'> & { userId: string | null; onClose: () => void; request?: AccessRequestRow }) {
+  const [user, setUser] = useState<string | null>(request?.user.id ?? userId);
   const [role, setRole] = useState<string | null>(null);
   const [scopeType, setScopeType] = useState<ScopeType | null>(null);
   const [target, setTarget] = useState<string | null>(null);
   const [from, setFrom] = useState<Date | null>(new Date(`${today}T00:00:00`));
-  const [to, setTo] = useState<Date | null>(null);
-  const [reason, setReason] = useState('');
+  // A request's access ends by itself: the last day is the asked length, never past the company's longest access.
+  const last = request ? dayAfter(today, maxDays - 1) : undefined;
+  const [to, setTo] = useState<Date | null>(request ? dayAfter(today, Math.min(request.days, maxDays) - 1) : null);
+  const [reason, setReason] = useState(request ? `Access request: ${request.reason}`.slice(0, 500) : '');
   const [risk, setRisk] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -76,6 +101,8 @@ function GrantDialog({ users, roles, scopes, userId, today, onGrant, onClose }: 
       !scopeType && { fieldId: 'ga-scope', message: 'Choose over whom.' },
       targetList && !target && { fieldId: 'ga-target', message: `Choose the ${SCOPE_LABEL[scopeType!].toLowerCase()}.` },
       !from && { fieldId: 'ga-from', message: 'Choose the start date.' },
+      request && !to && { fieldId: 'ga-to', message: 'Choose the last day: access from a request always ends.' },
+      request && to && last && to > last && { fieldId: 'ga-to', message: `At most ${maxDays} days from today.` },
       !reason.trim() && { fieldId: 'ga-reason', message: 'Say why: it is kept on the record.' },
     ].filter(Boolean) as { fieldId: string; message: string }[],
   );
@@ -98,8 +125,8 @@ function GrantDialog({ users, roles, scopes, userId, today, onGrant, onClose }: 
       open
       onOpenChange={(o) => !o && onClose()}
       size="md"
-      title="Give access"
-      description="A role over a set of people, from a date. Roles that open pay, identity or bank details wait for another admin's approval."
+      title={request ? `Give ${request.user.name} access` : 'Give access'}
+      description={request ? `They asked for ${request.what} for ${request.days} ${request.days === 1 ? 'day' : 'days'}. Choose the role that opens it; roles that open pay, identity or bank details wait for another admin's approval.` : "A role over a set of people, from a date. Roles that open pay, identity or bank details wait for another admin's approval."}
       preventClose={busy}
       // Above the buttons, never scrolled out of sight (founder review 14 Oct 2026).
       notice={
@@ -121,9 +148,11 @@ function GrantDialog({ users, roles, scopes, userId, today, onGrant, onClose }: 
         </>
       }
     >
-      <FormField id="ga-user" error={early.errorOf('ga-user')} label="Person" required>
-        <Select aria-label="Person" value={user} onChange={setUser} searchable options={users.map((u) => ({ value: u.id, label: userLabel(u) }))} />
-      </FormField>
+      {!request && (
+        <FormField id="ga-user" error={early.errorOf('ga-user')} label="Person" required>
+          <Select aria-label="Person" value={user} onChange={setUser} searchable options={users.map((u) => ({ value: u.id, label: userLabel(u) }))} />
+        </FormField>
+      )}
       <FormField id="ga-role" error={early.errorOf('ga-role')} label="Role" required helper={picked?.confidential ? 'Opens Confidential data: another admin approves it.' : undefined}>
         <Select aria-label="Role" value={role} onChange={(v) => (setRole(v), setRisk(null))} options={roles.map((r) => ({ value: r.id, label: r.confidential ? `${r.name} (Confidential)` : r.name }))} />
       </FormField>
@@ -138,8 +167,8 @@ function GrantDialog({ users, roles, scopes, userId, today, onGrant, onClose }: 
       <FormField id="ga-from" error={early.errorOf('ga-from')} label="From" required>
         <DatePicker value={from} onChange={setFrom} min={new Date(`${today}T00:00:00`)} />
       </FormField>
-      <FormField id="ga-to" label="Until" optional helper="Leave empty for no end date. Auditors and cover roles should have one.">
-        <DatePicker value={to} onChange={setTo} min={from ?? undefined} />
+      <FormField id="ga-to" error={early.errorOf('ga-to')} label="Until" {...(request ? { required: true, helper: `The last day; access ends by itself. At most ${maxDays} days.` } : { optional: true, helper: 'Leave empty for no end date. Auditors and cover roles should have one.' })}>
+        <DatePicker value={to} onChange={setTo} min={from ?? undefined} max={last} />
       </FormField>
       <FormField id="ga-reason" error={early.errorOf('ga-reason')} label="Reason" required helper="Kept on the record.">
         <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
@@ -184,6 +213,31 @@ function TemplateDialog({ templates, onFromTemplate, onClose }: { templates: Rol
 }
 
 type Ask = { kind: 'revoke' | 'reject'; grant: Grant };
+
+/** Answer 946: refuse a request with a reason the person reads. */
+function RefuseRequestDialog({ request, onRefuse, onClose }: { request: AccessRequestRow; onRefuse: (id: string, reason: string) => Promise<void>; onClose: () => void }) {
+  const [reason, setReason] = useState('');
+  const early = useTooEarly(reason.trim() ? [] : [{ fieldId: 'rr-reason', message: 'Say why: they read it.' }]);
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`Refuse ${request.user.name}'s request?`}
+      consequence={`They asked for ${request.what}. They are told, with your reason, and can ask again.`}
+      confirmLabel="Refuse"
+      destructive
+      onConfirm={async () => {
+        if (early.stop()) return false;
+        await onRefuse(request.id, reason.trim());
+        onClose();
+      }}
+    >
+      <FormField id="rr-reason" label="Reason" required error={early.errorOf('rr-reason')} helper="They read it; it is kept on the record.">
+        <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
 
 function ReasonDialog({ ask, onClose, onRevoke, onReject }: { ask: Ask; onClose: () => void; onRevoke: RolesAccessScreenProps['onRevoke']; onReject: RolesAccessScreenProps['onReject'] }) {
   const [reason, setReason] = useState('');
@@ -336,6 +390,10 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
   const [fromTemplate, setFromTemplate] = useState(false);
   const [ask, setAsk] = useState<Ask | null>(null);
   const [adminAsk, setAdminAsk] = useState<AccessUser | null>(null);
+  const [approving, setApproving] = useState<AccessRequestRow | null>(null);
+  const [refusing, setRefusing] = useState<AccessRequestRow | null>(null);
+  const requests = props.requests;
+  const open = (requests ?? []).filter((r) => r.state === 'waiting');
   const person = users.find((u) => u.id === userId) ?? null;
   const admins = users.filter(isSystemAdmin);
   const [busy, setBusy] = useState<string | null>(null);
@@ -373,6 +431,11 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
     { key: 'scope', header: 'Over', value: (g) => scopeText(g), width: 230 },
     { key: 'asked', header: 'Asked by', value: (g) => g.grantedBy, render: (g) => <span className="yx-auth__item-main"><Text>{g.grantedBy ?? '—'}</Text><Text tone="secondary" size="sm">{g.reason}</Text></span>, width: 240, optional: true },
   ];
+  const requestColumns: TableColumn<AccessRequestRow>[] = [
+    { key: 'who', header: 'Person', type: 'person', value: (r) => r.user.name, person: (r) => ({ name: r.user.name, secondary: r.what }), width: 240, hideable: false },
+    { key: 'reason', header: 'Why', value: (r) => r.reason, render: (r) => <span className="yx-auth__item-main"><Text>{r.reason}</Text><Text tone="secondary" size="sm">{`${r.days} ${r.days === 1 ? 'day' : 'days'} · asked ${dateLabel(r.askedAt.slice(0, 10))}`}</Text></span>, width: 300 },
+    { key: 'state', header: 'Status', value: (r) => r.state, render: (r) => <span className="yx-auth__item-main"><Badge tone={REQUEST_STATE[r.state].tone}>{REQUEST_STATE[r.state].label}</Badge>{r.state === 'open' && r.validTo && <Text tone="secondary" size="sm">{`Until ${dateLabel(r.validTo)}`}</Text>}{r.state === 'refused' && r.decisionNote && <Text tone="secondary" size="sm">{r.decisionNote}</Text>}</span>, width: 200 },
+  ];
   const roleColumns: TableColumn<AccessRole>[] = [
     { key: 'name', header: 'Role', value: (r) => r.name, render: (r) => <span className="yx-ppl2__row"><Text>{r.name}</Text>{r.confidential && <ConfidentialBadge />}</span>, width: 260, hideable: false },
     { key: 'perms', header: 'Permissions', value: (r) => r.permissions.length, render: (r) => `${r.permissions.length} ${r.permissions.length === 1 ? 'permission' : 'permissions'}`, width: 140 }, // worded like Held by: a right-aligned bare number ran into it ("14 1 person")
@@ -391,7 +454,7 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
       {state === 'no-access' && <NoAccessState grantedBy="your System Admin" what="roles and access" />}
       {state === 'ready' && (
         <>
-          <Segment label="Show" value={view} onChange={setView} options={[{ value: 'people', label: 'People' }, { value: 'waiting', label: `Waiting (${waiting.length})` }, { value: 'roles', label: 'Roles' }]} />
+          <Segment label="Show" value={view} onChange={setView} options={[{ value: 'people', label: 'People' }, { value: 'waiting', label: `Waiting (${waiting.length})` }, ...(requests ? [{ value: 'requests' as const, label: `Requests (${open.length})` }] : []), { value: 'roles', label: 'Roles' }]} />
           {error && <InlineAlert tone="danger" title={error} />}
           {view === 'people' && (
             <>
@@ -446,6 +509,31 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
               }}
             />
           )}
+          {view === 'requests' && requests && (
+            <DataTable
+              label="Access requests"
+              columns={requestColumns}
+              rows={requests}
+              getRowId={(r) => r.id}
+              rowNoun={['request', 'requests']}
+              cardSummary
+              empty={<EmptyState compact title="No access requests." description={'People ask from a page that says "You don\'t have access".'} />}
+              rowButtons={(r) =>
+                r.state !== 'waiting' ? null : r.user.id === meId ? (
+                  <Text tone="secondary" size="sm">Yours: another admin decides</Text>
+                ) : (
+                  <>
+                    <Button size="sm" variant="approve" onClick={() => setApproving(r)}>
+                      Approve
+                    </Button>
+                    <Button size="sm" onClick={() => setRefusing(r)}>
+                      Refuse
+                    </Button>
+                  </>
+                )
+              }
+            />
+          )}
           {view === 'roles' && (
             <>
               <div className="yx-ppl2__row">
@@ -457,6 +545,10 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
         </>
       )}
       {giving && <GrantDialog users={users} roles={roles} scopes={props.scopes} today={props.today} userId={userId} onGrant={said(props.onGrant, () => 'Access saved.')} onClose={() => setGiving(false)} />}
+      {approving && props.onApproveRequest && (
+        <GrantDialog users={users} roles={roles} scopes={props.scopes} today={props.today} userId={approving.user.id} request={approving} maxDays={props.maxDays} onGrant={said((input: GrantInput) => props.onApproveRequest!(approving.id, input), () => 'Access given.')} onClose={() => setApproving(null)} />
+      )}
+      {refusing && props.onRefuseRequest && <RefuseRequestDialog request={refusing} onRefuse={said(props.onRefuseRequest, () => 'Request refused.')} onClose={() => setRefusing(null)} />}
       {fromTemplate && <TemplateDialog templates={templates} onFromTemplate={said(props.onFromTemplate, (_key, name) => `Role "${name}" created.`)} onClose={() => setFromTemplate(false)} />}
       {adminAsk && <SystemAdminDialog user={adminAsk} onSystemAdmin={said(props.onSystemAdmin, () => 'System Admins saved.')} onClose={() => setAdminAsk(null)} />}
       {deleting && props.onDeleteRole && <DeleteRoleDialog role={deleting} onDelete={said(props.onDeleteRole, () => `Role "${deleting.name}" deleted.`)} onClose={() => setDeleting(null)} />}

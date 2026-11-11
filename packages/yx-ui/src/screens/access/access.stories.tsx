@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { RolesAccessScreen } from './roles-access';
 import { ProfileRequestsScreen } from './profile-requests';
-import { EFFECTIVE, GRANTS, REQUESTS, ROLES, SCOPES, TEMPLATES, TODAY_ISO, USERS } from './data';
+import { ACCESS_REQUESTS, EFFECTIVE, GRANTS, REQUESTS, ROLES, SCOPES, TEMPLATES, TODAY_ISO, USERS } from './data';
 
 const meta: Meta = { title: 'Screens/People/Access and privacy', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -33,6 +33,7 @@ const roles = (meId = 'u-admin', more: Partial<Parameters<typeof RolesAccessScre
 );
 export const RolesAccess: S = { name: 'Roles & access · people, waiting, roles', render: () => roles() };
 export const RolesAccessOther: S = { name: 'Roles & access · another admin decides', render: () => roles('u-other') };
+export const RolesAccessRequests: S = { name: 'Roles & access · requests from no-access pages (946)', render: () => roles('u-admin', { initialView: 'requests', requests: ACCESS_REQUESTS, maxDays: 30, onApproveRequest: () => wait(), onRefuseRequest: () => wait() }) };
 export const RolesAccessDelete: S = { name: 'Roles & access · delete a role nobody holds', render: () => roles('u-admin', { initialView: 'roles', deletingRoleId: 'r-recep' }) };
 
 export const Requests: S = { name: 'Identity and bank changes · payroll queue', render: () => <ProfileRequestsScreen state="ready" rows={REQUESTS} canDecide onApprove={() => wait()} onReject={() => wait()} onOpenProfile={() => {}} onProof={() => wait()} /> };

@@ -6,7 +6,7 @@ import { dateLabel } from '../org/org-kit';
 import { RolesAccessScreen, type RolesAccessScreenProps } from './roles-access';
 import { CancelDialog, ChangeDialog, PERSONAL_REQUIRED_DEFAULT, PersonalDialog } from './profile';
 import { ProfileRequestsScreen } from './profile-requests';
-import { EFFECTIVE, GRANTS, PROFILE_SELF, REQUESTS, ROLES, SCOPES, TEMPLATES, TODAY_ISO, USERS } from './data';
+import { ACCESS_REQUESTS, EFFECTIVE, GRANTS, PROFILE_SELF, REQUESTS, ROLES, SCOPES, TEMPLATES, TODAY_ISO, USERS } from './data';
 
 // Radix dialogs and popovers toggle pointer-events while they open; the check is for real users, not here.
 const ue = userEvent.setup({ pointerEventsCheck: 0, delay: null }); // no pause per keystroke: form-filling tests ran past 5 s when the suite runs in parallel
@@ -45,6 +45,50 @@ const pick = async (label: string, option: string) => {
 };
 
 describe('Roles & access (P02 §4.2–4.3, §4.6)', () => {
+  // Answer 946: requests from "You don't have access" pages.
+  it('requests: approve gives the asker a role until a last day within the longest access', async () => {
+    const onApproveRequest = ok();
+    roles({ requests: ACCESS_REQUESTS, maxDays: 30, onApproveRequest, onRefuseRequest: ok(), initialView: 'requests' });
+    expect(screen.getByRole('radio', { name: 'Requests (1)' })).toBeChecked();
+    const row = screen.getByText('I cover for Suresh during the October run while he is on leave.').closest('tr') as HTMLElement;
+    await ue.click(within(row).getByRole('button', { name: 'Approve' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Give Anitha Rao access' });
+    expect(within(dialog).queryByRole('combobox', { name: 'Person' })).toBeNull();
+    await ue.click(within(dialog).getByRole('button', { name: /Give access|Send for approval/ }));
+    expect(within(dialog).getByText('Choose the role.')).toBeInTheDocument(); // never a disabled button
+    expect(onApproveRequest).not.toHaveBeenCalled();
+    await pick('Role', ROLES[0]!.confidential ? `${ROLES[0]!.name} (Confidential)` : ROLES[0]!.name);
+    await pick('Over', 'Whole company');
+    await ue.click(within(dialog).getByRole('button', { name: /Give access|Send for approval/ }));
+    await waitFor(() => expect(onApproveRequest).toHaveBeenCalledWith('ar-1', expect.objectContaining({ userId: 'u-anitha', permissionProfileId: ROLES[0]!.id, scopeType: 'tenant', validFrom: TODAY_ISO, validTo: '2026-10-12', reason: 'Access request: I cover for Suresh during the October run while he is on leave.' })));
+    expect(await within(screen.getByRole('region', { name: 'Notifications' })).findByText('Access given.')).toBeInTheDocument();
+  });
+
+  it('requests: refusing needs a reason; one’s own request is decided by another admin; decided ones have no buttons', async () => {
+    const onRefuseRequest = ok();
+    roles({ meId: 'u-anitha', requests: ACCESS_REQUESTS, onApproveRequest: ok(), onRefuseRequest, initialView: 'requests' });
+    const own = screen.getByText('I cover for Suresh during the October run while he is on leave.').closest('tr') as HTMLElement;
+    expect(within(own).getByText('Yours: another admin decides')).toBeInTheDocument();
+    expect(within(own).queryByRole('button', { name: 'Approve' })).toBeNull();
+    const done = screen.getByText('I want to see who is lined up for my role.').closest('tr') as HTMLElement;
+    expect(within(done).queryByRole('button')).toBeNull();
+    expect(within(done).getByText('Succession plans stay with HR leadership.')).toBeInTheDocument();
+  });
+
+  it('requests: refuse asks why first', async () => {
+    const onRefuseRequest = ok();
+    roles({ requests: ACCESS_REQUESTS, onApproveRequest: ok(), onRefuseRequest, initialView: 'requests' });
+    const row = screen.getByText('I cover for Suresh during the October run while he is on leave.').closest('tr') as HTMLElement;
+    await ue.click(within(row).getByRole('button', { name: 'Refuse' }));
+    const dialog = await screen.findByRole('dialog');
+    await ue.click(within(dialog).getByRole('button', { name: 'Refuse' }));
+    expect(within(dialog).getByText('Say why: they read it.')).toBeInTheDocument();
+    expect(onRefuseRequest).not.toHaveBeenCalled();
+    await ue.type(within(dialog).getByRole('textbox', { name: /Reason/ }), 'Payroll runs stay with payroll.');
+    await ue.click(within(dialog).getByRole('button', { name: 'Refuse' }));
+    await waitFor(() => expect(onRefuseRequest).toHaveBeenCalledWith('ar-1', 'Payroll runs stay with payroll.'));
+  });
+
   it('a revoked grant shows when it ended', async () => {
     const mine = GRANTS.find((g) => g.userId === 'u-anitha')!;
     roles({ grants: [{ ...mine, status: 'revoked', revokedAt: '2026-10-14T09:30:00Z' }] });

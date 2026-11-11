@@ -76,6 +76,7 @@ import { OrgStructureModule } from './org-structure/org-structure.module';
 import { EmployeeHistoryModule } from './employee-history/employee-history.module';
 import { GlobalModule } from './global/global.module';
 import { AccessModule } from './access/access.module';
+import { HelpModule } from './help/help.module';
 import { PeopleModule } from './people/people.module';
 import { WorkspaceModule } from './workspace/workspace.module';
 import { FieldPermissionsModule } from './field-permissions/field-permissions.module';
@@ -90,7 +91,6 @@ import { AgencyPortalModule } from './agency-portal/agency-portal.module';
 import { AgencySubmissionsModule } from './agency-submissions/agency-submissions.module';
 import { CalendarSyncModule } from './calendar-sync/calendar-sync.module';
 import { PlatformModule } from './platform/platform.module';
-import { HelpModule } from './help/help.module';
 import { EmailTemplatesModule } from './email-templates/email-templates.module';
 import { TimeModule } from './time/time.module';
 import { PayrollModule } from './payroll/payroll.module';
@@ -187,6 +187,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     PeopleModule,
     ServiceDeskModule,
     AccessModule,
+    HelpModule,
     FieldPermissionsModule,
     RecycleBinModule,
     RemindersModule,
@@ -199,8 +200,6 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     AgencySubmissionsModule,
     CalendarSyncModule,
     PlatformModule,
-    // Help and onboarding H-4: What's new (answer 943).
-    HelpModule,
     EmailTemplatesModule,
     TimeModule,
     PayrollModule,

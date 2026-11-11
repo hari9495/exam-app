@@ -69,6 +69,23 @@ export interface EffectiveAccess {
   keys: { key: string; label: string; people: number; scopes: { type: ScopeType; id: string | null }[] }[];
 }
 
+/** Answer 946: a request sent from a "You don't have access" page, decided in Roles & access › Requests. */
+export interface AccessRequestRow {
+  id: string;
+  user: { id: string; name: string };
+  /** The page it was asked from ("/yx/payroll/runs") and what that page called itself ("payroll runs"). */
+  page: string;
+  what: string;
+  reason: string;
+  days: number;
+  askedAt: string;
+  /** waiting: for a System Admin; approval: granted, the Confidential role waits for a second admin (Waiting); open: until validTo. */
+  state: 'waiting' | 'approval' | 'open' | 'refused' | 'ended';
+  validTo: string | null;
+  decidedBy: string | null;
+  decisionNote: string | null;
+}
+
 export interface GrantInput {
   userId: string;
   permissionProfileId: string;

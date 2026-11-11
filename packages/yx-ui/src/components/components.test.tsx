@@ -443,4 +443,66 @@ describe('NoAccessState', () => {
     expect(screen.getByText("You don't have access to the annual increment")).toBeInTheDocument();
     expect(screen.getByText('It needs the salary grant and the right to change jobs. Ask HR to give you access.')).toBeInTheDocument();
   });
+
+  // Answer 946: Request access, only where the app provides it.
+  it('shows no Request access without the app (stories, a company that turned it off)', async () => {
+    const { NoAccessState, AccessRequestContext } = await import('./feedback');
+    render(<NoAccessState what="payroll runs" grantedBy="HR" />);
+    expect(screen.queryByRole('button', { name: 'Request access' })).toBeNull();
+    render(<AccessRequestContext.Provider value={() => null}><NoAccessState what="payroll runs" grantedBy="HR" /></AccessRequestContext.Provider>);
+    expect(screen.queryByRole('button', { name: 'Request access' })).toBeNull();
+  });
+
+  it('sends a reason and how long; pressed early it names the field and moves focus there', async () => {
+    const { NoAccessState, AccessRequestContext } = await import('./feedback');
+    const send = vi.fn().mockResolvedValue(undefined);
+    render(<AccessRequestContext.Provider value={() => ({ maxDays: 30, send })}><NoAccessState what="payroll runs" grantedBy="HR" /></AccessRequestContext.Provider>);
+    await userEvent.click(screen.getByRole('button', { name: 'Request access' }));
+    await userEvent.type(screen.getByRole('textbox', { name: /Why do you need access/ }), 'short');
+    const sendButton = screen.getByRole('button', { name: 'Send request' });
+    expect(sendButton).not.toBeDisabled();
+    await userEvent.click(sendButton);
+    expect(screen.getByText('Say why you need access, in a sentence or more.')).toBeInTheDocument();
+    expect(document.activeElement?.id).toBe('ra-reason');
+    expect(send).not.toHaveBeenCalled();
+    await userEvent.type(screen.getByRole('textbox', { name: /Why do you need access/ }), ' I cover the October run.');
+    await userEvent.click(screen.getByRole('button', { name: 'Send request' }));
+    expect(send).toHaveBeenCalledWith({ what: 'payroll runs', reason: 'short I cover the October run.', days: 7 });
+  });
+
+  it('a refusal from the server stays on the form; a waiting request says so; a refused one may ask again', async () => {
+    const { NoAccessState, AccessRequestContext } = await import('./feedback');
+    const send = vi.fn().mockRejectedValue(new Error('You already asked for access to this page.'));
+    const { unmount } = render(<AccessRequestContext.Provider value={() => ({ maxDays: 7, send, startOpen: true })}><NoAccessState what="payroll runs" grantedBy="HR" /></AccessRequestContext.Provider>);
+    await userEvent.type(screen.getByRole('textbox', { name: /Why do you need access/ }), 'I cover the October run.');
+    await userEvent.click(screen.getByRole('button', { name: 'Send request' }));
+    expect(await screen.findByText('You already asked for access to this page.')).toBeInTheDocument();
+    unmount();
+    const { unmount: again } = render(<AccessRequestContext.Provider value={() => ({ maxDays: 7, send, sent: { askedAt: '2026-11-11', state: 'waiting' } })}><NoAccessState what="payroll runs" grantedBy="HR" /></AccessRequestContext.Provider>);
+    expect(screen.getByText('Access requested')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Request access|Ask again/ })).toBeNull();
+    again();
+    render(<AccessRequestContext.Provider value={() => ({ maxDays: 7, send, sent: { askedAt: '2026-11-11', state: 'refused', note: 'Not for this role.' } })}><NoAccessState what="payroll runs" grantedBy="HR" /></AccessRequestContext.Provider>);
+    expect(screen.getByText('Not for this role.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ask again' })).toBeInTheDocument();
+  });
+});
+
+describe('Not found reference (answer 947)', () => {
+  it('a "Not found" state shows the app reference; other empty states never do', async () => {
+    const { EmptyState, NotFoundReferenceContext } = await import('./feedback');
+    render(
+      <NotFoundReferenceContext.Provider value="NF-7KQ2MP">
+        <EmptyState title="Not found" description="This person doesn't exist in your company." />
+        <EmptyState title="No leave types yet." />
+      </NotFoundReferenceContext.Provider>,
+    );
+    expect(screen.getAllByText('Reference NF-7KQ2MP')).toHaveLength(1);
+  });
+
+  it('without a reference nothing is shown', async () => {
+    const { EmptyState } = await import('./feedback');
+    render(<EmptyState title="Not found" />);
+    expect(screen.queryByText(/Reference/)).toBeNull();
+  });
 });

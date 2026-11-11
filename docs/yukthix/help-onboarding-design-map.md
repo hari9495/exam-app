@@ -44,15 +44,16 @@ job with another kit part (named in the note); the drawn component itself is not
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Tours, help and what's new (6.1, 6.2) | 2 | 0 | 0 | 0 | 8 | 3 | 11 |
-| B. Access and not found (6.3) | 1 | 0 | 2 | 0 | 2 | 2 | 6 |
+| B. Access and not found (6.3) | 1 | 5 | 0 | 0 | 0 | 2 | 7 |
 | C. Irreversible actions (6.4) | 1 | 0 | 5 | 0 | 0 | 0 | 5 |
 | D. Availability (6.5) | 1 | 0 | 1 | 0 | 7 | 1 | 9 |
 | E. Empty states (6.6) | 1 | 0 | 8 | 0 | 1 | 1 | 10 |
-| **All A-E** | **6** | **0** | **16** | **0** | **18** | **7** | **41** |
+| **All A-E** | **6** | **5** | **14** | **0** | **16** | **7** | **42** |
 
 Counted by script 11 Nov 2026 on `docs/yukthix-help-onboarding-map` (the script is in the appendix): the 41 stories
 under Screens/Help and onboarding/Patterns (one file, grouped by its section comments 6.1 … 6.6). The 7 phone views need
-the phone app, which is not built.
+the phone app, which is not built. Recounted after H-2 (11 Nov 2026, branch `feat/yukthix-help-h2`): 42 stories (one
+added, NotFoundRecord), and group B is live apart from its two phone views.
 
 ## 1. Live pages
 
@@ -98,11 +99,12 @@ The 18 "design only" rows: tours (3), the help drawer's page help, what's new an
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| AccessDenied · 6.3 Access denied · with Request access | live (gap) | live pages show the kit's `NoAccessState` (who to ask), in 77 files; the drawn `AccessDeniedState` with Request access is not used; question 946 |
-| AccessRequestForm · 6.3 Request access · form | design only, feature not built | no general access request; only Payroll reports (`POST payroll/reports/access-request`), Pay access and the support console have one each |
-| AccessRequestSent · 6.3 Request access · sent | design only, feature not built | as above |
+| AccessDenied · 6.3 Access denied · with Request access | live | H-2 (946): every live `NoAccessState` offers Request access when the company allows it (the app frame provides it); the drawn `AccessDeniedState` now renders that same state |
+| AccessRequestForm · 6.3 Request access · form | live | H-2: reason (10 to 500 characters) and how long, up to Longest access; `POST access/requests`; decided in Roles & access › Requests |
+| AccessRequestSent · 6.3 Request access · sent | live | H-2: the state says waiting, given until a day, refused with the reason (Ask again), or ended (Ask again) |
 | AccessDeniedPhone · 6.3 Access denied · phone | phone view, mobile app not built | |
-| NotFound · 6.3 Not found (missing or restricted, identical) | live (gap) | the API answers 404 for missing and other-company records alike; pages show their own `EmptyState` "Not found", without the drawn reference code (`NotFoundState`); question 947 |
+| NotFound · 6.3 Not found (missing or restricted, identical) | live | H-2 (947): every API 404 to a signed-in person carries a reference (`NF-` and 6 characters), the same for missing and other-company records; the web's own Not found page asks `POST help/not-found` for one |
+| NotFoundRecord · 6.3 Not found · a record page, with its reference | live | H-2: a page's own `EmptyState` "Not found" shows the reference of the 404 on that page (kit `NotFoundReferenceContext`); support looks it up in Helpdesk › Tickets › Look up a reference |
 | NotFoundPhone · 6.3 Not found · phone | phone view, mobile app not built | |
 
 ### C. Irreversible actions (6.4)
@@ -317,14 +319,11 @@ Build H-1 to H-3 now, then H-4 to H-6; H-7 later.
   Space or X to tick. The drawn A / R approve, G P / G T / G Y go-to, "/" and Ctrl J were never built and are removed.
 - Tests: kit (opens on ?, not while typing or with Ctrl; focus in and Esc closes; no unbuilt shortcut; N L / N E only for
   those who have them). Manual test MT-HLP-951.
-
 ## Founder questions from H-3 (12 Nov 2026)
-
 981. **Go-to keys.** The design's G P / G T / G Y (go to People, Time, Pay) were never built, so the list leaves them out.
      *Suggested: do not build them; Ctrl K already finds every page.*
 982. **Shortcut help outside the app.** "?" works on the signed-in app only, not on the careers site, the client or vendor
      portals, the kiosk or the public help centre. *Suggested: keep (those pages have no shortcuts to list).*
-
 Founder approved, 12 Nov 2026 (questions 981-982, as suggested): no go-to keys (Ctrl K finds every page); "?" only in the signed-in app.
 ## H-4 built: What's new (answer 943; 12 Nov 2026, branch `feat/yukthix-help-h4`)
 - **Entries (platform data):** `whats_new_entries` (migration `202617z0000031_help_whats_new`): title, text, products,
@@ -357,9 +356,42 @@ Founder approved, 12 Nov 2026 (questions 981-982, as suggested): no go-to keys (
      *Suggested: keep.*
 994. **A new company's backlog.** A company that joins today sees every published entry for its products (latest 50).
      *Suggested: show only entries from the last 6 months.*
-
 Founder approved, 12 Nov 2026 (questions 961-964 and 991-994, all as suggested): (961) HR or the help-desk team writes page
 help as tagged articles, YukthiX starter articles later; (962) move IrreversibleSheet into the shared kit; (963) accept the
 two honest guard entries; (964) "This page" shows the article in the person's language when a translation exists; (991) no
 separate updates page; (992) keep "Mark all read" and add an unread dot on Help; keep 993; (994) show only the last 6 months
 of what's new to a new company.
+## H-2 as built (answers 946, 947; 11 Nov 2026)
+- **Request access (946).** Every live "You don't have access" page (the kit's `NoAccessState`, 125 places) offers
+  Request access when the company allows it: the app frame provides it, so no page changed. The person gives a reason
+  (10 to 500 characters) and how long (1 day up to Longest access). One open request per person and page. Never while
+  acting for someone or in a YukthiX support session (403).
+- **Who decides.** Whoever can grant access (`access.role.manage`: the System Admins), in Settings › Roles & access ›
+  Requests, and in their Approvals inbox and bell. Approve opens Give access for the person who asked, with the last day
+  set from the request; it must end within Longest access. Every Give access rule applies: a Confidential role waits for a
+  second admin who neither gave nor receives it, a grant over many people asks for the risk confirmation. Refuse needs a
+  reason the person reads. Nobody decides their own request (also a database check). The grant ends by itself on its last
+  day; the person's page then says it ended and they can ask again.
+- **Settings.** Settings › Access and privacy › Access requests: "Allow access requests" (on) and "Longest access"
+  (30 days), both System Admin settings. Payroll's own request (Team pay access) is unchanged.
+- **Audit.** `access.request.sent`, `access.request.approved` (with the grant), `access.request.refused`, and the grant's
+  own `access.grant.created` / approvals.
+- **Not found reference (947).** Every 404 the API sends to a signed-in person of a company carries `reference`
+  (`NF-` and 6 letters or digits, no 0, O, 1 or I). It is saved in that person's company with only who, when and the
+  address they asked for (no query), so a missing record and another company's record give the same answer. Record
+  pages show it under their own "Not found"; the web's own Not found page asks for one. Helpdesk agents and System Admins
+  look one up in Helpdesk › Tickets › Look up a reference (another company's reference is "not found").
+- **Tables.** `access_requests` and `not_found_refs`, both with forced row-level security; neither can be deleted by the
+  app. Tests: kit (Request access, Roles & access requests, the lookup, the reference), web (the reference store, the Not
+  found page), and the e2e suite `help-h2` (16 tests, positive and negative).
+### Questions (from 971)
+971. **Who decides a request.** *Suggested: the System Admins, as built. The drawing says "the owner of that area" (for
+     example the Payroll Manager) with the System Admin after 2 working days; pages do not know an area owner yet. Later,
+     each area could name who decides its requests.*
+972. **Which role.** *Suggested: the admin picks the role on approval, as built (the page does not say which permission it
+     needs). Later, pages could name their permission so the smallest role is picked first.*
+973. **A reminder.** *Suggested: remind the System Admins once if a request waits 2 working days (not built).*
+974. **Keeping references.** *Suggested: delete Not found references after 90 days, with the platform log retention (they
+     are kept for now).*
+975. **YukthiX support.** *Suggested: YukthiX staff look up a reference inside the company's support session, as built; a
+     look-up across companies waits for the platform console.*

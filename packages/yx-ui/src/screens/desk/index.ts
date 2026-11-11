@@ -10,6 +10,7 @@ export { topicOptions, rateCandidate, type LiveHelp } from '../ops/helpdesk-live
 // HLP-02 Agent desk: the designed screen with `live` (Helpdesk design wiring, round 2).
 export { AgentDeskScreen } from '../ops/helpdesk';
 export { BUILT_IN_VIEWS, toFilters, type TicketQuery, type LiveAgentDesk, type BulkAction, type BulkResult } from '../ops/helpdesk-desk-live';
+export { ReferenceLookupDialog, type NotFoundLookup } from '../ops/reference-lookup';
 export { eventText } from './ticket';
 // HLP-03 Ticket workspace: the designed screen with `live` (Helpdesk design wiring, round 3).
 export { TicketWorkspaceScreen } from '../ops/helpdesk';
