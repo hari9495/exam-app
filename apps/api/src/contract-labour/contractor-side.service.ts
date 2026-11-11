@@ -9,7 +9,7 @@ import { StatutoryRegistersService } from '../payroll/statutory-registers.servic
 import { payScope } from '../payroll/pay-access';
 import { monthRange } from '../time/time-core';
 import { ContractLabourService, type Upload } from './contract-labour.service';
-import { coverOf, daysPresent, packDue, packState, type OwnLicenceLike } from './own-licence-rules';
+import { challanRows, coverOf, daysPresent, packDue, packState, type OwnLicenceLike } from './own-licence-rules';
 import { ownLicences, placedOn } from './own-licence-check';
 
 // Contract labour CL-8 (CLB-06, CLB-07, CLB-08; founder answers 638, 639): we are the contractor. Client sites hang off
@@ -135,7 +135,7 @@ export class ContractorSideService {
           const s = sites.find((x) => x.id === p.clientSiteId)!;
           const month = iso(p.month).slice(0, 7);
           const due = packDue(month, s.packDueDay);
-          return { id: p.id, ...name(p.clientSiteId), clientSiteId: p.clientSiteId, month, employees: p.employees, due, channel: s.packChannel, status: packState({ uploadedOn: p.uploadedOn ? iso(p.uploadedOn) : null, acceptedAt: p.acceptedAt?.toISOString() ?? null }, due, today), uploadedOn: p.uploadedOn ? iso(p.uploadedOn) : null, reference: p.reference, version: p.version };
+          return { id: p.id, ...name(p.clientSiteId), clientSiteId: p.clientSiteId, month, employees: p.employees, due, channel: s.packChannel, status: packState({ uploadedOn: p.uploadedOn ? iso(p.uploadedOn) : null, acceptedAt: p.acceptedAt?.toISOString() ?? null }, due, today), missing: p.missing, challans: Boolean(p.challansRegisterId), uploadedOn: p.uploadedOn ? iso(p.uploadedOn) : null, reference: p.reference, version: p.version };
         }),
       };
     });
@@ -167,7 +167,7 @@ export class ContractorSideService {
       await payScope(tx, [...new Set([entityId, ...employments.map((e) => e.legalEntityId)])]);
       const slips = await tx.payslip.findMany({ where: { organizationId: org, employeeId: { in: employees }, periodStart: day(from), status: 'approved' }, select: { id: true, employeeId: true, employmentId: true, gross: true, deductions: true, net: true } });
       const missing = employees.filter((e) => !slips.some((s) => s.employeeId === e));
-      if (missing.length) throw new ConflictException(`Payroll for ${dto.month} is not approved yet for ${missing.map(nameOf).join(', ')}.`);
+      if (missing.length) throw new ConflictException(`Payroll for ${dto.month} is not approved yet for ${missing.map(nameOf).sort().join(', ')}.`);
       const lines = await tx.payslipLine.findMany({ where: { organizationId: org, payslipId: { in: slips.map((s) => s.id) }, componentCode: 'basic' }, select: { payslipId: true, quantity: true } });
       const att = await tx.attendanceDay.findMany({ where: { organizationId: org, employeeId: { in: employees }, workOn: { gte: day(from), lte: day(to) } }, select: { employeeId: true, status: true } });
       const code = (s: { employmentId: string }) => employments.find((e) => e.id === s.employmentId)?.employeeCode ?? '';
@@ -181,18 +181,23 @@ export class ContractorSideService {
       const existing = await tx.clientPack.findFirst({ where: { organizationId: org, clientSiteId: site.id, month: day(from) } });
       if (existing?.uploadedOn) throw new ConflictException('This pack is recorded as uploaded to the client; it is final.');
       if (existing && !dto.reason?.trim()) throw new BadRequestException('A pack for this month exists. Say why a new version is needed.');
-      const old = existing ? await tx.statutoryRegister.findMany({ where: { organizationId: org, id: { in: [existing.wagesRegisterId, existing.musterRegisterId] } }, select: { id: true, version: true, registerType: true } }) : [];
+      const old = existing ? await tx.statutoryRegister.findMany({ where: { organizationId: org, id: { in: [existing.wagesRegisterId, existing.musterRegisterId, ...(existing.challansRegisterId ? [existing.challansRegisterId] : [])] } }, select: { id: true, version: true, registerType: true } }) : [];
       const place = `${site.name} (client: ${site.principalName}, registration ${site.registrationNo})`;
       const store = (type: string, title: string, columns: string[], rows: string[][]) =>
         this.registers.storeIn(tx, c, { entity, locationId: null, place, month: dto.month, type, title, columns, rows, note: `Client compliance pack · from approved payroll and attendance · ${rows.length} employees`, formatVersion: 'client-pack-v1', old: old.find((o) => o.registerType === type) ?? null, reason: dto.reason?.trim() ?? null, userId: user.userId! });
       const w = await store('clpk_wages', 'Register of wages (contract labour at the client)', ['Employee code', 'Name', 'Days paid', 'Gross', 'Deductions', 'Net'], wages);
       const m = await store('clpk_muster', 'Muster roll (contract labour at the client)', ['Employee code', 'Name', 'Days present', 'Days on leave', 'Days absent'], muster);
-      const data = { legalEntityId: entity.id, wagesRegisterId: w.id, musterRegisterId: m.id, employees: employees.length, madeBy: user.userId!, madeAt: new Date() };
+      // Answer 821: the month's PF and ESI remittances of the entity (challan or TRRN, amount, filed day); not filed yet is named.
+      const registered = await tx.statutoryRegistration.findMany({ where: { organizationId: org, legalEntityId: entity.id, statute: { in: ['IN.PF', 'IN.ESI'] }, status: { not: 'off' } }, select: { statute: true, registrationNo: true } });
+      const filings = await tx.statutoryFiling.findMany({ where: { organizationId: org, legalEntityId: entity.id, statute: { in: ['IN.PF', 'IN.ESI'] }, periodStart: day(from), status: 'filed' }, orderBy: { filedAt: 'asc' }, select: { statute: true, reference: true, amount: true, filedAt: true } });
+      const ch = challanRows(registered, filings.map((f) => ({ statute: f.statute, reference: f.reference, amount: f.amount ? rupees(f.amount) : null, filedOn: f.filedAt ? todayIst(f.filedAt) : null })));
+      const r = ch.rows.length ? await store('clpk_challans', 'PF and ESI remittances (contract labour at the client)', ['Statute', 'Registration', 'Challan / TRRN', 'Amount', 'Filed on', 'Status'], ch.rows) : null;
+      const data = { legalEntityId: entity.id, wagesRegisterId: w.id, musterRegisterId: m.id, challansRegisterId: r?.id ?? null, missing: ch.missing, employees: employees.length, madeBy: user.userId!, madeAt: new Date() };
       const pack = existing
         ? await tx.clientPack.update({ where: { id: existing.id }, data: { ...data, version: { increment: 1 } } })
         : await tx.clientPack.create({ data: { organizationId: org, clientSiteId: site.id, month: day(from), ...data } });
-      await audit(tx, c, 'clra.client_pack.made', 'client_pack', pack.id, { clientSiteId: site.id, month: dto.month, employees: employees.length, version: pack.version, reason: dto.reason ?? null });
-      return { id: pack.id, employees: employees.length, version: pack.version };
+      await audit(tx, c, 'clra.client_pack.made', 'client_pack', pack.id, { clientSiteId: site.id, month: dto.month, employees: employees.length, version: pack.version, reason: dto.reason ?? null, missing: ch.missing });
+      return { id: pack.id, employees: employees.length, version: pack.version, missing: ch.missing };
     });
   }
 
@@ -208,10 +213,10 @@ export class ContractorSideService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const p = await this.pack(tx, c, id);
       await payScope(tx, [p.legalEntityId]);
-      const regs = await tx.statutoryRegister.findMany({ where: { organizationId: c.organizationId, id: { in: [p.wagesRegisterId, p.musterRegisterId] } } });
+      const regs = await tx.statutoryRegister.findMany({ where: { organizationId: c.organizationId, id: { in: [p.wagesRegisterId, p.musterRegisterId, ...(p.challansRegisterId ? [p.challansRegisterId] : [])] } } });
       const month = iso(p.month).slice(0, 7);
       const zip = new JSZip();
-      zip.file('cover.txt', [`Client compliance pack · ${month}`, ...regs.map((r) => `${r.registerType} v${r.version} SHA-256 ${r.sha256}`)].join('\r\n'));
+      zip.file('cover.txt', [`Client compliance pack · ${month}`, ...regs.map((r) => `${r.registerType} v${r.version} SHA-256 ${r.sha256}`), ...(p.missing.length ? [`Not in this pack yet: ${p.missing.join(', ')} (not filed for the month)`] : [])].join('\r\n'));
       for (const r of regs) zip.file(`${r.registerType}-${month}-v${r.version}.pdf`, await this.registers.fileOf(r));
       await audit(tx, c, 'clra.client_pack.downloaded', 'client_pack', p.id, {});
       return { file: await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }), name: `client-pack-${month}.zip` };

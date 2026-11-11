@@ -193,8 +193,8 @@ describe('Contract labour CL-8: we are the contractor', () => {
     const none = (await place('owner', 'sub_dev', 'ka').expect(400)).body;
     expect(none).toMatchObject({ code: 'NO_LICENCE' });
     expect(none.message).toMatch(/No licence of ours covers Peenya warehouse, and 50 placed would reach the licence threshold \(50\)/);
-    // Without a site the placement is as before.
-    await place('owner', 'sub_dev', null).expect(want(201));
+    // Answer 822: once the client has sites, our own employee is placed at one.
+    expect((await place('owner', 'sub_dev', null).expect(400)).body).toMatchObject({ code: 'SITE_REQUIRED', message: 'Choose the client site where they will work.' });
     const sites = (await api('owner', 'get', '/contract-labour/client-sites').expect(200)).body.sites;
     expect(sites.find((s: { id: string }) => s.id === ids.tn)).toMatchObject({ deployed: 2, max: 2 });
     expect(sites.find((s: { id: string }) => s.id === ids.ka)).toMatchObject({ deployed: 49, max: 0 });
@@ -217,24 +217,32 @@ describe('Contract labour CL-8: we are the contractor', () => {
       }
       const mark = (k: string, n: number, status: string, from: number) => Array.from({ length: n }, (_, i) => ({ organizationId: org.A.id, employeeId: ids[k]!, workOn: day(`${month}-${String(from + i).padStart(2, '0')}`), mode: 'punch', status }));
       await tx.attendanceDay.createMany({ data: [...mark('arun', 20, 'present', 1), ...mark('arun', 1, 'half_day', 21), ...mark('arun', 2, 'leave', 22), ...mark('bhavna', 18, 'present', 1), ...mark('bhavna', 3, 'absent', 19)] });
+      // Answer 821: registered for PF and ESI; the month's PF return is filed (TRRN), ESI not yet.
+      for (const [statute, no] of [['IN.PF', 'TNMAS0012345000'], ['IN.ESI', '51000123450001001']] as const) await tx.statutoryRegistration.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity!, statute, registrationNo: no, status: 'on' } });
+      await tx.statutoryFiling.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity!, statute: 'IN.PF', periodStart: day(monthStart), formatVersion: 'ecr-2', status: 'filed', reference: `TRRN${run}`, amount: 4810, uploadedBy: users.owner!, uploadedAt: new Date(), filedBy: users.owner!, filedAt: new Date(), createdBy: users.owner! } });
     });
     const made = (await make('owner').expect(want(201))).body;
-    expect(made).toMatchObject({ employees: 2, version: 1 });
+    expect(made).toMatchObject({ employees: 2, version: 1, missing: ['ESI challan'] });
     ids.pack = made.id;
     await make('owner').expect(400); // a remake needs a reason
     expect((await make('owner', { reason: 'Attendance corrected' }).expect(want(201))).body).toMatchObject({ id: ids.pack, version: 2 });
     // The pack is two payroll registers (never in payroll's own list), held by the licence's entity.
     const regs = await asSuper(async (tx) => (await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`, tx.statutoryRegister.findMany({ where: { organizationId: org.A.id }, orderBy: [{ registerType: 'asc' }, { version: 'asc' }] })));
-    expect(regs.map((r) => `${r.registerType} v${r.version}`)).toEqual(['clpk_muster v1', 'clpk_muster v2', 'clpk_wages v1', 'clpk_wages v2']);
+    expect(regs.map((r) => `${r.registerType} v${r.version}`)).toEqual(['clpk_challans v1', 'clpk_challans v2', 'clpk_muster v1', 'clpk_muster v2', 'clpk_wages v1', 'clpk_wages v2']);
     expect(regs.every((r) => r.legalEntityId === ids.entity && r.locationId === null)).toBe(true);
     const list = (await api('reader', 'get', '/contract-labour/client-packs').expect(200)).body;
-    expect(list.packs).toEqual([expect.objectContaining({ id: ids.pack, month, employees: 2, due: `${today.slice(0, 7)}-10`, channel: 'Client vendor portal', uploadedOn: null })]);
+    expect(list.packs).toEqual([expect.objectContaining({ id: ids.pack, month, employees: 2, due: `${today.slice(0, 7)}-10`, channel: 'Client vendor portal', uploadedOn: null, missing: ['ESI challan'], challans: true })]);
     expect(['Generated', 'Overdue']).toContain(list.packs[0].status);
     expect((await api('adminB', 'get', '/contract-labour/client-packs').expect(200)).body.packs).toEqual([]);
     // The ZIP: a cover with the fingerprints, the wage register and the muster with the days from attendance.
     const zip = await JSZip.loadAsync((await binary(api('reader', 'get', `/contract-labour/client-packs/${ids.pack}/file`)).expect(200)).body as Buffer);
-    expect(Object.keys(zip.files).sort()).toEqual(['clpk_muster-' + month + '-v2.pdf', 'clpk_wages-' + month + '-v2.pdf', 'cover.txt']);
-    expect(await zip.file('cover.txt')!.async('string')).toMatch(/clpk_wages v2 SHA-256 [0-9a-f]{64}/);
+    expect(Object.keys(zip.files).sort()).toEqual(['clpk_challans-' + month + '-v2.pdf', 'clpk_muster-' + month + '-v2.pdf', 'clpk_wages-' + month + '-v2.pdf', 'cover.txt']);
+    const cover = await zip.file('cover.txt')!.async('string');
+    expect(cover).toMatch(/clpk_wages v2 SHA-256 [0-9a-f]{64}/);
+    expect(cover).toMatch(/Not in this pack yet: ESI challan/);
+    const challans = pdfText(await zip.file(`clpk_challans-${month}-v2.pdf`)!.async('nodebuffer'));
+    expect(challans).toMatch(new RegExp(`PF TNMAS0012345000 TRRN${run} 4810\\.00 \\d{4}-\\d{2}-\\d{2} Filed`));
+    expect(challans).toMatch(/ESI 51000123450001001 Not filed yet/);
     const muster = pdfText(await zip.file(`clpk_muster-${month}-v2.pdf`)!.async('nodebuffer'));
     expect(muster).toMatch(/Arun Kumar 20\.5 2 0/);
     expect(muster).toMatch(/Bhavna Rao 18 0 3/);
