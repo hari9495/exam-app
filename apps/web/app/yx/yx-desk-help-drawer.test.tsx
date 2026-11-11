@@ -1,10 +1,12 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ToastProvider } from '@yukthix/ui';
 import { usePathname } from 'next/navigation';
 import { apiFetch } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
 import { DeskHelp } from './(app)/desk-help';
+import { TourHost } from '../../lib/yx-tours';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn() }));
@@ -16,9 +18,11 @@ const api = apiFetch as jest.Mock;
 const DESK = { id: 'd1', name: 'HR desk', key: 'HR', attachmentTypes: ['pdf'], attachmentMaxMb: 10, types: [], categories: [] };
 const asked: string[] = [];
 const NONE = { show: true, unread: 0, entries: [] };
-const serve = (page: unknown, news: unknown = NONE) =>
+const TOURS_OFF = { show: false, stopped: false, tours: [] };
+const serve = (page: unknown, news: unknown = NONE, tours: unknown = TOURS_OFF) =>
   api.mockImplementation(async (path: string) => {
     asked.push(path);
+    if (path === '/help/tours') return tours;
     if (path.startsWith('/desk/my/kb/page')) return page;
     if (path === '/help/whats-new') return news;
     if (path === '/desk/my/desks') return [DESK];
@@ -86,5 +90,36 @@ describe('Help drawer (live, H-1)', () => {
     await waitFor(() => expect(asked).toContain('/help/whats-new'));
     await screen.findByRole('tab', { name: 'Ask' });
     expect(screen.queryByRole('tab', { name: "What's new" })).toBeNull();
+  });
+
+  it('answer 944 (H-5): the Tours tab lists the person\'s tours; starting one closes Help and shows the tour', async () => {
+    (usePathname as jest.Mock).mockReturnValue('/yx/time/leave');
+    serve({ on: true, articles: [] }, NONE, { show: true, stopped: false, tours: [{ id: 'employee', version: 1, page: '/yx/home', status: 'completed', step: 2 }] });
+    const onOpenChange = jest.fn();
+    wrap(
+      <TourHost pathname="/yx/time/leave">
+        <DeskHelp open onOpenChange={onOpenChange} />
+      </TourHost>,
+    );
+    // The drawer remounts once the desks load (it is keyed on them); click Tours after that.
+    await waitFor(() => expect(asked).toContain('/desk/my/desks'));
+    await screen.findByRole('textbox', { name: /Subject/ });
+    await userEvent.setup({ pointerEventsCheck: 0 }).click(await screen.findByRole('tab', { name: 'Tours' }));
+    await userEvent.setup({ pointerEventsCheck: 0 }).click(await screen.findByRole('button', { name: 'Replay tour' }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(await screen.findByRole('heading', { name: 'Clock in from Home' })).toBeInTheDocument();
+  });
+
+  it('negative 944: no Tours tab while the company has tours off', async () => {
+    (usePathname as jest.Mock).mockReturnValue('/yx/time/leave');
+    serve({ on: true, articles: [] });
+    wrap(
+      <TourHost pathname="/yx/time/leave">
+        <DeskHelp open onOpenChange={() => {}} />
+      </TourHost>,
+    );
+    await waitFor(() => expect(asked).toContain('/help/tours'));
+    await screen.findByRole('tab', { name: 'Ask' });
+    expect(screen.queryByRole('tab', { name: 'Tours' })).toBeNull();
   });
 });

@@ -21,12 +21,24 @@ const HR_KEYS = ['lifecycle.onboarding.manage', 'leave.settings.manage'];
 const PAYROLL_KEYS = ['payroll.run.prepare'];
 
 const day = (d: Date) => d.toISOString().slice(0, 10);
+
+/**
+ * Founder answer 994: a person sees entries published in the last 6 months only (still at most 50), so a company that
+ * joins today does not get the whole backlog. 31 Aug less 6 months is the last day of February.
+ */
+export function sixMonthsBefore(today: string): string {
+  const [y, m, d] = today.split('-').map(Number) as [number, number, number];
+  const back = new Date(Date.UTC(y, m - 1 - 6, 1));
+  const last = new Date(Date.UTC(back.getUTCFullYear(), back.getUTCMonth() + 1, 0)).getUTCDate();
+  back.setUTCDate(Math.min(d, last));
+  return day(back);
+}
 const stateOf = (e: { publishOn: Date; withdrawnAt: Date | null }, today: string) => (e.withdrawnAt ? 'withdrawn' : day(e.publishOn) > today ? 'scheduled' : 'published');
 
 /**
  * Help H-4, founder answer 943: What's new. YukthiX staff write the entries in the console (audited, platform data);
  * each person sees the published entries for their audiences and their company's products, newest first, with unread
- * marked. The company setting help.whats_new.show (default on) turns the list off for everyone at the company.
+ * marked; only entries from the last 6 months (answer 994). The company setting help.whats_new.show (default on) turns the list off for everyone at the company.
  */
 @Injectable()
 export class WhatsNewService {
@@ -125,7 +137,8 @@ export class WhatsNewService {
   private async visible(tx: Tx, org: string, me: NewsReader) {
     const [audiences, codes] = await Promise.all([this.audiences(tx, org, me), tx.organizationProduct.findMany({ where: { organizationId: org }, select: { productCode: true } }).then((r) => r.map((p) => p.productCode))]);
     if (!codes.length) return { rows: [], codes };
-    const rows = await tx.whatsNewEntry.findMany({ where: { withdrawnAt: null, publishOn: { lte: asDate(todayIst()) }, products: { hasSome: codes }, audiences: { hasSome: audiences } }, orderBy: [{ publishOn: 'desc' }, { createdAt: 'desc' }], take: 50 });
+    const today = todayIst();
+    const rows = await tx.whatsNewEntry.findMany({ where: { withdrawnAt: null, publishOn: { lte: asDate(today), gte: asDate(sixMonthsBefore(today)) }, products: { hasSome: codes }, audiences: { hasSome: audiences } }, orderBy: [{ publishOn: 'desc' }, { createdAt: 'desc' }], take: 50 });
     return { rows, codes };
   }
 

@@ -20245,5 +20245,30 @@
       "Shell/App shell and navigation · Top bar · Help with something new in What's new"
     ],
     "note": "Positive and negative. Answer 992."
+  },
+  {
+    "id": "MT-HLP-944",
+    "area": "Help and onboarding H-5 (12 Nov 2026)",
+    "screen": "First-run tours",
+    "url": "http://localhost:3000/yx/home",
+    "account": "arjun@ (employee), panel@ (manager with a request to approve), hr-tester (HR), admin-tester (System Admin).",
+    "steps": [
+      "Sign in as arjun@ and open Home.",
+      "Press Next; reload the page.",
+      "Press Esc.",
+      "Open Help › Tours; press Replay tour, then Tab past the tour's last button.",
+      "As panel@ open Approvals; finish the tour; open Approvals again.",
+      "In Help › Tours press Stop tours; as hr-tester open Home with a fresh account that never saw a tour, then press Start tours again.",
+      "As admin-tester turn Settings › Organisation › Help: first-run tours off; open Home as hr-tester; turn it on again.",
+      "With the computer set to reduce motion, open a tour.",
+      "As admin-tester (who finished the version 1 admin tour) open Settings › Set-up hub; press Next twice."
+    ],
+    "expected": "Step 1: 'Your first day in the app · 1 of 3' floats bottom right with focus on its title. Step 2: it comes back at step 2. Step 3: it closes, focus returns to the page; Help › Tours says Skipped. Step 4: it opens again; Tab leaves it to the page (no trap). Step 5: the approval tour shows once, then never by itself. Step 6: no tour starts by itself while stopped; replay still works. Step 7: no tour and no Tours list while off. Step 8: the card appears without sliding. Step 9: 'Set up your company · 1 of 3' shows once on the hub; each step outlines the hub, the starter templates tile, then the area cards; an HR person without company settings gets no admin tour.",
+    "stories": [
+      "Screens/Help and onboarding/Tours (H-5) · 6.1 Tour · on its page (employee, Home)",
+      "Screens/Help and onboarding/Tours (H-5) · 6.2 Help · Tours tab (resume, replay, start)",
+      "Screens/Help and onboarding/Tours (H-5) · 6.1 Tour · on its page (set up your company, set-up hub, step 2)"
+    ],
+    "note": "Positive and negative."
   }
 ]

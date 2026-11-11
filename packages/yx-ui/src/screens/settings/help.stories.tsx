@@ -7,7 +7,7 @@ import { Button } from '../../components/button';
 import { PageHeader } from '../../components/shell';
 import { EmptyState, NotFoundReferenceContext } from '../../components/feedback';
 import { DesktopFrame, PhoneFrame, type AreaId } from '../_kit/frames';
-import { AccessDeniedState, AvailabilityBanner, AvailabilityState, NotFoundState, TOURS, TourCard, TourList } from './help';
+import { AccessDeniedState, AvailabilityBanner, AvailabilityState, NotFoundState, TOURS, TourCard, ToursPanel, type LiveTours } from './help';
 import { WhatsNewPanel, type LiveWhatsNew } from '../platform-b/growth-screens';
 // Answers 941 and 945: the one Help drawer is the live desk drawer; irreversible actions are the kit's
 // IrreversibleSheet; bulk approve is the Approvals inbox; empty states are the kit's EmptyState.
@@ -134,10 +134,23 @@ const drawer = (over: Partial<Parameters<typeof HelpDrawer>[0]> = {}) => (
     articleHref={(a) => `#article-${a.number}`}
     pageHelp={{ state: 'ready', articles: LEAVE_ARTICLES }}
     whatsNew={<WhatsNewPanel live={NEWS} />}
-    tours={<TourList />}
+    tours={<ToursPanel live={TOURS_LIVE} />}
     {...over}
   />
 );
+// Answer 944 (H-5): the Tours tab's content, as the live app fills it.
+const TOURS_LIVE: LiveTours = {
+  state: 'ready',
+  onRetry: () => {},
+  stopped: false,
+  onStart: () => {},
+  onStopped: async () => undefined,
+  tours: [
+    { id: 'employee', status: 'completed', step: 2 },
+    { id: 'manager', status: 'in_progress', step: 1 },
+    { id: 'payroll', status: 'skipped', step: 0 },
+  ],
+};
 export const HelpDrawerPage: S = {
   name: '6.2 Help drawer · this page (TIM-18 apply leave)',
   render: () => (
@@ -167,13 +180,7 @@ export const HelpDrawerTours: S = {
       {drawer({
         defaultTab: 'tours',
         tours: (
-          <TourList
-            history={[
-              { tourId: 'employee', version: 2, status: 'completed' },
-              { tourId: 'manager', version: 1, status: 'in-progress', step: 1 },
-              { tourId: 'payroll', version: 3, status: 'skipped' },
-            ]}
-          />
+          <ToursPanel live={TOURS_LIVE} />
         ),
       })}
     </Desk>

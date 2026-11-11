@@ -1,11 +1,11 @@
 // Help & onboarding UX patterns (APX-D §6, GAP H7): first-run tours, what's new, permission denied vs not found with
 // Request access, availability states. The Help drawer is desk/help.tsx; irreversible actions are the kit's
 // IrreversibleSheet; empty states are the kit's EmptyState (H-1, answers 941 and 945: never a second version).
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Construction, FileQuestion, Lock, Wrench } from 'lucide-react';
 import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
-import { AccessRequestContext, EmptyState, NoAccessState, type AccessRequestSent } from '../../components/feedback';
+import { AccessRequestContext, EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton, type AccessRequestSent } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { Icon } from '../../components/foundations';
 import { TextArea } from '../../components/inputs';
@@ -18,6 +18,8 @@ import './settings.css';
 export interface TourStep {
   title: string;
   body: string;
+  /** The page part the step points at (its data-tour value); the floating card outlines it. */
+  anchor?: string;
 }
 export interface TourDef {
   id: 'employee' | 'manager' | 'payroll' | 'admin';
@@ -28,50 +30,55 @@ export interface TourDef {
   steps: TourStep[];
 }
 
-/** Calm tours: at most 3 steps (the product rule is ≤ 5; we keep 3), skippable, resumable from Help. */
+/**
+ * Calm tours: at most 3 steps (the product rule is ≤ 5; we keep 3), skippable, resumable from Help. Answer 944 (H-5):
+ * every step names only what works in the app today (the drawn set-up hub is not built yet); the versions are the API's
+ * (apps/api/src/help/tours.service.ts TOUR_DEFS): raise both when the words change in a way people should see again.
+ */
 export const TOURS: TourDef[] = [
   {
     id: 'employee',
     name: 'Your first day in the app',
-    version: 2,
-    trigger: 'First sign-in',
+    version: 1,
+    trigger: 'Your employee record is ready',
     steps: [
-      { title: 'Check in from Home', body: 'Tap Check in when you reach work. We only check your location at that moment.' },
-      { title: 'Balances and requests', body: 'Leave balances are on Time. Every request you raise shows its status under Requests.' },
-      { title: 'Your payslip and language', body: 'Payslips are on Pay the day they are published. Change the language any time in Me › Settings.' },
+      { title: 'Clock in from Home', body: 'Use Clock in on Home when you start work, and Clock out when you leave.' },
+      { title: 'Balances and requests', body: 'Leave balances are on Time › Leave. Every request you raise shows its status in Me › Requests.' },
+      { title: 'Your payslip and language', body: 'Payslips are in Me › Payslips once payroll publishes them. Change your language any time in Me › Language.' },
     ],
   },
   {
     id: 'manager',
     name: 'Your first approval',
     version: 1,
-    trigger: 'First item in your approvals inbox',
+    trigger: 'A request comes to you to approve',
     steps: [
-      { title: 'Read the card', body: 'Each card shows the request, its effect on balances or cost, and what policy says.' },
-      { title: 'Approve, reject or send back', body: 'Send back asks for a change without closing the request. Low-risk types can be approved in bulk.' },
+      { title: 'Read the request', body: 'Each request shows who asked, what for and the details you need to decide.' },
+      { title: 'Approve, reject or send back', body: 'Send back asks for a change without closing the request. You can also tick several and approve them together.' },
       { title: 'Going on leave?', body: 'Set a delegate in Me › Delegation so nothing waits for you.' },
     ],
   },
   {
     id: 'payroll',
     name: 'Your first payroll run',
-    version: 3,
-    trigger: 'First payroll run created',
+    version: 1,
+    trigger: 'Your company has a payroll run',
     steps: [
       { title: 'Readiness and variance', body: 'Fix readiness items first, then review people whose pay changed more than your variance threshold.' },
-      { title: 'Approve and lock', body: 'A second approver locks the run. After that, changes go to next month as arrears.' },
+      { title: 'Approve and lock', body: 'A second person approves the run. After that, changes go to next month as arrears.' },
       { title: 'Bank file and publish', body: 'Release the bank file, then publish payslips. Both ask you to type a confirmation phrase.' },
     ],
   },
   {
+    // Answer 1001: version 2 starts at the set-up hub (H-6), so admins who saw version 1 see it once more.
     id: 'admin',
     name: 'Set up your company',
-    version: 1,
-    trigger: 'First HR or System Admin sign-in',
+    version: 2,
+    trigger: 'You can change company settings',
     steps: [
-      { title: 'Start at the set-up hub', body: 'Each product has a card with what is left before go-live.' },
-      { title: 'Starter defaults are yours to change', body: 'Settings marked Starter default came from our template. The law is a floor; everything above it is your choice.' },
-      { title: 'Invite your team', body: 'Import employees, then invite them. They sign in with a one-time code.' },
+      { title: 'Start at the set-up hub', body: 'Settings › Set-up hub shows how much of each area is set up, from what each area already knows.', anchor: 'setup-hub' },
+      { title: 'Starter templates are yours to change', body: 'The hub counts the YukthiX starter templates still to review. The law is a floor; everything above it is your choice.', anchor: 'setup-starter' },
+      { title: 'Open an area', body: 'Open an area to see what is left; each check opens its set-up page. Add your people in People › Import.', anchor: 'setup-modules' },
     ],
   },
 ];
@@ -90,27 +97,72 @@ export function shouldShowTour(tour: TourDef, eventHappened: boolean, history: T
   return !seen || seen.status === 'in-progress';
 }
 
-export function TourCard({ tour, defaultStep = 0, onDone }: { tour: TourDef; defaultStep?: number; onDone?: (status: 'completed' | 'skipped', step: number) => void }) {
+export interface TourCardProps {
+  tour: TourDef;
+  defaultStep?: number;
+  onDone?: (status: 'completed' | 'skipped', step: number) => void;
+  /** Answer 944: each step reached (progress is kept per person, so the tour resumes there). */
+  onStep?: (step: number) => void;
+  /** Answer 944: floating on the page (bottom right), focus moved into it, Esc dismisses (as Skip tour). */
+  floating?: boolean;
+}
+
+/**
+ * A tour step card. Never modal and never a focus trap: Tab leaves it like any other part of the page. Floating, it takes
+ * focus when it appears and Esc dismisses it; it moves only when the person has not asked for reduced motion.
+ */
+export function TourCard({ tour, defaultStep = 0, onDone, onStep, floating }: TourCardProps) {
   const [step, setStep] = useState(Math.min(defaultStep, tour.steps.length - 1));
   const [closed, setClosed] = useState<null | 'completed' | 'skipped'>(null);
-  const s = tour.steps[step];
+  const title = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (floating) title.current?.focus();
+  }, [floating]);
+  const s = tour.steps[step]!;
   const last = step === tour.steps.length - 1;
-  if (closed)
+  // The step's page part is outlined while the step shows (and brought into view, without motion if asked).
+  useEffect(() => {
+    if (!floating || closed || !s.anchor) return;
+    const el = document.querySelector<HTMLElement>(`[data-tour="${s.anchor}"]`);
+    if (!el) return;
+    el.setAttribute('data-tour-active', '');
+    const still = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView?.({ block: 'nearest', behavior: still ? 'auto' : 'smooth' });
+    return () => el.removeAttribute('data-tour-active');
+  }, [floating, closed, s.anchor]);
+  if (closed && !floating)
     return (
       <p className="yx-m-muted" role="status">
         {closed === 'completed' ? 'Tour finished.' : 'Tour skipped.'} You can replay it from Help › Tours.
       </p>
     );
+  if (closed) return null;
   const finish = (status: 'completed' | 'skipped') => {
     setClosed(status);
     onDone?.(status, step);
   };
+  const go = (n: number) => {
+    setStep(n);
+    onStep?.(n);
+    if (floating) title.current?.focus();
+  };
   return (
-    <div className="yx-tour" role="dialog" aria-modal="false" aria-labelledby={`tour-${tour.id}-t`}>
+    <div
+      className={floating ? 'yx-tour yx-tour--floating' : 'yx-tour'}
+      role="dialog"
+      aria-modal="false"
+      aria-labelledby={`tour-${tour.id}-t`}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && floating) {
+          e.stopPropagation();
+          finish('skipped');
+        }
+      }}
+    >
       <p className="yx-tour__progress">
         {tour.name} · {step + 1} of {tour.steps.length}
       </p>
-      <h2 className="yx-tour__title" id={`tour-${tour.id}-t`}>
+      <h2 className="yx-tour__title" id={`tour-${tour.id}-t`} ref={title} tabIndex={floating ? -1 : undefined}>
         {s.title}
       </h2>
       <p className="yx-tour__body">{s.body}</p>
@@ -120,15 +172,83 @@ export function TourCard({ tour, defaultStep = 0, onDone }: { tour: TourDef; def
         </Button>
         <div>
           {step > 0 && (
-            <Button size="sm" onClick={() => setStep(step - 1)}>
+            <Button size="sm" onClick={() => go(step - 1)}>
               Back
             </Button>
           )}
-          <Button size="sm" variant="primary" onClick={() => (last ? finish('completed') : setStep(step + 1))}>
+          <Button size="sm" variant="primary" onClick={() => (last ? finish('completed') : go(step + 1))}>
             {last ? 'Finish' : 'Next'}
           </Button>
         </div>
       </div>
+      {floating && <p className="yx-tour__hint">Esc closes the tour. Replay it any time from Help › Tours.</p>}
+    </div>
+  );
+}
+
+/** Answer 944: the person's tours as the API gives them (only the tours whose event has happened). */
+export interface LiveTours {
+  state: 'loading' | 'ready' | 'error';
+  onRetry: () => void;
+  tours: { id: TourDef['id']; status: 'in_progress' | 'completed' | 'skipped' | null; step: number }[];
+  /** The person turned tours off for themselves (replay still works). */
+  stopped: boolean;
+  onStart: (id: TourDef['id'], step: number) => void;
+  onStopped: (stopped: boolean) => Promise<unknown>;
+}
+
+/** Answer 944: the Help drawer's Tours tab (H-1 puts it in the tab): resume or replay each tour, stop or restart them. */
+export function ToursPanel({ live }: { live: LiveTours }) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  if (live.state === 'error') return <ErrorState title="Tours could not load" description="Check your connection and try again." onRetry={live.onRetry} />;
+  if (live.state === 'loading') return <Skeleton height={120} />;
+  const mine = live.tours.flatMap((x) => {
+    const t = TOURS.find((d) => d.id === x.id);
+    return t ? [{ t, x }] : [];
+  });
+  const toggle = async () => {
+    setBusy(true);
+    setFailed(null);
+    try {
+      await live.onStopped(!live.stopped);
+    } catch (e) {
+      setFailed(e instanceof Error && e.message ? e.message : 'That did not go through. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="yx-help-tours">
+      {failed && <InlineAlert tone="danger" title={failed} />}
+      {mine.length === 0 ? (
+        <EmptyState compact title="No tours for you yet." description="A tour appears when you first reach the part it explains." />
+      ) : (
+        <ul className="yx-news" aria-label="Tours">
+          {mine.map(({ t, x }) => (
+            <li key={t.id}>
+              <span className="yx-news__meta">
+                <Badge tone={x.status === 'completed' ? 'success' : x.status === 'in_progress' ? 'info' : 'neutral'}>
+                  {x.status === 'completed' ? 'Done' : x.status === 'in_progress' ? `Stopped at step ${x.step + 1}` : x.status === 'skipped' ? 'Skipped' : 'Not started'}
+                </Badge>
+                {t.steps.length} steps · {t.trigger.toLowerCase()}
+              </span>
+              <p className="yx-news__title">{t.name}</p>
+              <div>
+                <Button size="sm" onClick={() => live.onStart(t.id, x.status === 'in_progress' ? x.step : 0)}>
+                  {x.status === 'in_progress' ? 'Resume tour' : x.status ? 'Replay tour' : 'Start tour'}
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="yx-m-muted">
+        {live.stopped ? 'Tours do not start by themselves for you.' : 'Each tour starts once by itself, the first time you reach its page.'}{' '}
+        <Button size="sm" loading={busy} onClick={() => void toggle()}>
+          {live.stopped ? 'Start tours again' : 'Stop tours'}
+        </Button>
+      </p>
     </div>
   );
 }
@@ -137,30 +257,7 @@ export function TourCard({ tour, defaultStep = 0, onDone }: { tour: TourDef; def
 
 // What's new is H-4's WhatsNewPanel (PLT-50, exported from desk); the drawn list is retired (answer 945).
 
-/** Answer 944 (H-5 fills it): the tours with each person's progress, for the Help drawer's Tours tab. */
-export function TourList({ tours = TOURS, history = [], onStart }: { tours?: TourDef[]; history?: TourProgress[]; onStart?: (tourId: string) => void }) {
-  return (
-    <ul className="yx-news">
-      {tours.map((t) => {
-        const h = history.find((x) => x.tourId === t.id);
-        return (
-          <li key={t.id}>
-            <span className="yx-news__meta">
-              <Badge tone={h?.status === 'completed' ? 'success' : h?.status === 'in-progress' ? 'info' : 'neutral'}>
-                {h?.status === 'completed' ? 'Done' : h?.status === 'in-progress' ? `Stopped at step ${(h.step ?? 0) + 1}` : h?.status === 'skipped' ? 'Skipped' : 'Not started'}
-              </Badge>
-              {t.steps.length} steps · starts on: {t.trigger.toLowerCase()}
-            </span>
-            <p className="yx-news__title">{t.name}</p>
-            <div>
-              <Button size="sm" onClick={() => onStart?.(t.id)}>{h?.status === 'in-progress' ? 'Resume tour' : 'Replay tour'}</Button>
-            </div>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
+// The Tours tab's content is ToursPanel (6.1 above, answer 944): one version.
 
 /* ============================== 6.3 Permission denied vs not found ============================== */
 

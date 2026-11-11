@@ -7,6 +7,7 @@ import { bootAdminApp } from './dual-app';
 import { EmailService } from '../src/email/email.service';
 import { addDays, todayIst } from '../src/org-structure/org-validation';
 import { markSteppedUp } from './fixtures/step-up';
+import { sixMonthsBefore } from '../src/help/whats-new.service';
 
 // Help H-4, founder answer 943: What's new. YukthiX staff write the entries in the console (staff only, audited,
 // platform data that a company can read but never write); each person sees the published entries for their role and
@@ -132,6 +133,20 @@ describe("Help H-4: What's new (943)", () => {
     expect(hr.entries.filter((e: { title: string; unread: boolean }) => e.title.endsWith(run) && e.unread)).toHaveLength(2);
     // Another company never sees company A's read marks (forced RLS).
     expect(await tenantPrisma.forTenant({ organizationId: org.B, isSuperAdmin: false }, (tx) => tx.whatsNewRead.count({ where: { organizationId: org.A } }))).toBe(0);
+  });
+
+  it('answer 994: only entries from the last 6 months reach people', async () => {
+    const make = async (title: string, publishOn: string) => {
+      const row = (await api('staff', 'post', '/platform/whats-new').send(entry({ title: t(title), publishOn })).expect(201)).body.entries.find((e: { title: string }) => e.title === t(title));
+      entries.push(row.id);
+    };
+    await make('Five months ago', addDays(sixMonthsBefore(today), 30));
+    await make('Seven months ago', addDays(sixMonthsBefore(today), -30));
+    const seen = titles((await api('hrA', 'get', '/help/whats-new').expect(200)).body);
+    expect(seen).toContain(t('Five months ago'));
+    expect(seen).not.toContain(t('Seven months ago'));
+    // Staff still see every entry in the console.
+    expect((await api('staff', 'get', '/platform/whats-new').expect(200)).body.entries.map((e: { title: string }) => e.title)).toContain(t('Seven months ago'));
   });
 
   it('a company can read entries but never write them (RLS)', async () => {

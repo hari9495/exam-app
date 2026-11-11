@@ -79,8 +79,8 @@ The 18 "design only" rows: tours (3), the help drawer's page help, what's new an
 |---|---|---|
 | TourEmployee · 6.1 Tour · employee first sign-in (phone) | phone view, mobile app not built | `TourCard` on the phone home; no tour engine exists |
 | TourEmployeeStep3 · 6.1 Tour · employee, last step | phone view, mobile app not built | as above (step 3 of 3) |
-| TourManager · 6.1 Tour · manager first approval | design only, feature not built | no tour progress, no events, no `TourCard` mounted; the live Approvals inbox has no first-time prompt |
-| TourPayroll · 6.1 Tour · payroll admin first run | design only, feature not built | as above, on the payroll run page |
+| TourManager · 6.1 Tour · manager first approval | live (H-5) | floats on Approvals once a request has come to the person |
+| TourPayroll · 6.1 Tour · payroll admin first run | live (H-5) | floats on Payroll › Runs once a run exists, for people who work runs |
 | TourAdmin · 6.1 Tour · HR / System Admin first sign-in | design only, feature not built | drawn on the set-up hub (PLT-08), which is not live either; the live home (`RoleHomeScreen`) has a drawn `firstRun` tour prompt the web page never turns on |
 
 #### 6.2 help drawer and what's new
@@ -503,3 +503,51 @@ of what's new to a new company.
   for the mobile app.
 - 1011 to 1014 (H-6): no go-live or sign-off on the hub until the company wizard (H-7); the checks are fixed; Hiring,
   Performance and Helpdesk cards come later; one saved rule marks an area's rules reviewed.
+
+Founder approved, 12 Nov 2026 (questions 991-994, all as suggested): 991 and 993 stay as built; 992's dot on Help comes
+with H-1; 994 built: people see entries published in the last 6 months only, still at most 50 (staff see all in the
+console).
+
+## H-5 built: first-run tours (answer 944; 12 Nov 2026, branch `feat/yukthix-help-h5`)
+- **The four tours** (kit `TOURS`, at most 3 steps, version 1 each): employee (Home), first approval (Approvals),
+  payroll run (Payroll › Runs), set up your company (Home). The words were redrawn so each step names only what works
+  today: the admin tour no longer starts at the set-up hub (not built) and the employee tour no longer promises a
+  location check (question 1001).
+- **Events, worked out by the API:** employee: an employee record; first approval: a request has come to the person;
+  payroll: a pay run exists and the person can see or prepare runs; admin: HR keys or System Admin. A tour applies only
+  after its event; it floats once on its page (per tour version) and resumes at the step reached.
+- **Progress per person:** `tour_progress` (migration `202617z0000041_help_tours`, forced RLS): in progress at a step,
+  finished or skipped, per tour and version; a person can stop tours for themselves (Help › Tours › Stop tours) and
+  start them again. `GET /help/tours`, `PUT /help/tours/:id`, `PUT /help/tours/stopped`; 403 while acting.
+- **Accessible:** the tour is never modal and never a focus trap (Tab leaves it); focus moves into it when it appears and
+  goes back where it was when it closes; Esc dismisses it (saved as skipped; replay from Help); it animates only when
+  reduced motion is not asked for.
+- **Web:** `TourHost` (`apps/web/lib/yx-tours.tsx`) in the app layout floats the tour; `useToursPanel()` fills H-1's
+  Tours tab (`ToursPanel`; starting a tour closes Help). H-1's placeholder `TourList` is retired (one version). Kit `ToursPanel` (resume, replay, start, stop / start again), exported from `@yukthix/ui/desk`.
+  Stories in `screens/settings/tours.stories.tsx` (the tour on its page, the Tours tab, stopped, none yet).
+- **Setting:** Settings › Organisation › Help: "Help: first-run tours" (`help.tours.show`, default on).
+- Tests: kit (four tours, ≤ 3 steps, no unbuilt page named; focus in, steps saved, Finish; Esc as skipped, not modal,
+  Tab leaves; inline card ignores Esc; motion only without reduced motion; panel resume / replay / start, stop and start
+  again, none, error, failed stop); web (which tour starts where, Esc saves skipped and gives focus back, Next saves the
+  step, nothing on other pages, replay from Help, setting off); e2e `help-tours` (events: none, HR, payroll key without a
+  run, first approval; per-person progress; version, step, status and owner checks; RLS; stop and start again; setting
+  off; 403 while acting). Manual test MT-HLP-944.
+
+- **Answer 1001 (built after H-6):** the admin tour is version 2 on Settings › Set-up hub: start at the hub, the starter
+  templates to review, open an area (steps point at H-6's `data-tour` anchors `setup-hub`, `setup-starter`,
+  `setup-modules`; the floating card outlines each and brings it into view, without motion when reduced motion is
+  asked). It is for whoever can open the hub (`org.settings.manage`); someone who finished version 1 sees version 2
+  once. Story "6.1 Tour · on its page (set up your company, set-up hub, step 2)"; kit, web and e2e tests.
+
+## Founder questions from H-5 (12 Nov 2026)
+
+1001. **Tour words changed from the drawing.** The admin tour now starts at Settings (the set-up hub is not built) and the
+      employee tour no longer mentions a location check (it depends on the company's rule). *Suggested: when the set-up
+      hub is built, point the admin tour at it as version 2 (everyone sees it once more).*
+1002. **Who gets the first-approval tour.** Anyone a request comes to (an HR approver too), not only managers.
+      *Suggested: keep.*
+1003. **Esc.** Esc closes the tour and counts as skipped; Help › Tours replays it. *Suggested: keep.*
+1004. **Tours on the phone.** The drawn employee tour is on the phone home; it waits for the mobile app. *Suggested: keep.*
+1005. **HR without company settings.** The admin tour now lives on the set-up hub, which needs the company settings key;
+      HR people without it get no admin tour (they still get the employee, approval or payroll tour when those apply).
+      *Suggested: keep (the hub is the set-up person's page).*

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -8,7 +8,8 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { ownSession } from '../org-structure/org-structure.controller';
 import { PlatformStaffGuard } from '../platform/platform-staff.guard';
-import { WhatsNewEntryDto, WhatsNewReadDto, WhatsNewUpdateDto } from './whats-new.dto';
+import { TourProgressDto, ToursStoppedDto, WhatsNewEntryDto, WhatsNewReadDto, WhatsNewUpdateDto } from './whats-new.dto';
+import { ToursService } from './tours.service';
 import { WhatsNewService, type NewsReader } from './whats-new.service';
 
 const reader = (req: Request): NewsReader => {
@@ -64,5 +65,27 @@ export class WhatsNewStaffController {
   @RequirePermissions('platform.news.manage')
   withdraw(@CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.news.withdraw(actor, id);
+  }
+}
+
+/** Help H-5 (answer 944): the signed-in person's first-run tours. Every signed-in person; no key; 403 while acting. */
+@Controller('help/tours')
+@UseGuards(JwtAuthGuard)
+export class ToursController {
+  constructor(private readonly tours: ToursService) {}
+
+  @Get()
+  mine(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.tours.mine(ctx, reader(req));
+  }
+
+  @Put('stopped')
+  setStopped(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: ToursStoppedDto) {
+    return this.tours.setStopped(ctx, reader(req), dto.stopped);
+  }
+
+  @Put(':id')
+  save(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id') id: string, @Body() dto: TourProgressDto) {
+    return this.tours.save(ctx, reader(req), id.slice(0, 16), dto);
   }
 }

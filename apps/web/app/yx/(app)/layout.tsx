@@ -16,6 +16,7 @@ import { useCurrentUser } from '../../../lib/hooks/useCurrentUser';
 import { useMarkAllNotificationsRead, useMarkNotificationRead } from '../../../lib/hooks/useNotifications';
 import { useBellItems } from '../../../lib/yx-bell';
 import { useYxPalette } from '../../../lib/yx-palette';
+import { TourHost } from '../../../lib/yx-tours';
 import { decodeJwtPayload } from '../../../lib/jwt';
 import { withNextHere } from '../../../lib/safe-next';
 import { todayIst, useOrg, useYxPermissions, type Reference } from '../../../lib/yx-org';
@@ -302,7 +303,12 @@ function Frame({ children }: { children: React.ReactNode }) {
                 go(`/yx/search?q=${encodeURIComponent(q.trim().replace(/^[@#>?]\s*/, ''))}`);
               }}
             />
-            {!support && <DeskHelp open={helpOpen} onOpenChange={setHelpOpen} />}
+            {!support && (
+              // Help H-5 (answer 944): first-run tours float on their page; Help › Tours reads them (useToursPanel).
+              <TourHost pathname={pathname}>
+                <DeskHelp open={helpOpen} onOpenChange={setHelpOpen} />
+              </TourHost>
+            )}
             <ShortcutHelp {...shortcutHelp} groups={shortcutGroups(palette.sequences)} />
           </>
         ),

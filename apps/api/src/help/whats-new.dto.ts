@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 
@@ -23,4 +23,16 @@ export class WhatsNewUpdateDto extends WhatsNewEntryDto {
 /** Mark entries read: the given ones, or every entry the person sees. */
 export class WhatsNewReadDto {
   @IsOptional() @IsArray() @ArrayMaxSize(100) @IsUUID('all', { each: true }) ids?: string[];
+}
+
+/** Help H-5 (answer 944): where the person is in a tour. */
+export class TourProgressDto {
+  @Type(() => Number) @IsInt() @Min(1) @Max(1000) version!: number;
+  @IsIn(['in_progress', 'completed', 'skipped']) status!: 'in_progress' | 'completed' | 'skipped';
+  @Type(() => Number) @IsInt() @Min(0) @Max(2) step!: number;
+}
+
+/** Help H-5: the person stops tours for themselves, or starts them again. */
+export class ToursStoppedDto {
+  @IsBoolean() stopped!: boolean;
 }

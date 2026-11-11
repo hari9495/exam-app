@@ -3406,6 +3406,23 @@ model WhatsNewEntry {
   @@map("whats_new_entries")
 }
 
+/// Help H-5, answer 944: a person's progress through one first-run tour version (company data, forced RLS).
+/// tourId 'all' with status 'stopped': the person turned tours off for themselves.
+model TourProgress {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  tourId         String   @map("tour_id") @db.VarChar(16)
+  version        Int
+  /// in_progress, completed, skipped, stopped
+  status         String   @db.VarChar(12)
+  step           Int      @default(0) @db.SmallInt
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, userId, tourId, version], map: "tour_progress_user_tour_key")
+  @@map("tour_progress")
+}
+
 /// Help H-4: which What's new entries a person has read (company data, forced RLS).
 model WhatsNewRead {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
