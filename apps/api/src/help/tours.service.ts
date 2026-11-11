@@ -1,8 +1,8 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { featureOn } from '../platform/features';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService, resolvePermissionGrants } from '@exam-platform/shared';
 import { inCompany } from '../org-structure/org-structure.service';
-import { settingFor } from '../people/probation';
 import { WhatsNewService, type NewsReader } from './whats-new.service';
 
 type Tx = Prisma.TransactionClient;
@@ -54,7 +54,7 @@ export class ToursService {
 
   mine(ctx: TenantContext, me: NewsReader) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      if ((await settingFor(tx, c, 'help.tours.show', { legalEntityId: '' })) !== 'on') return { show: false, stopped: false, tours: [] };
+      if (!(await featureOn(tx, c, 'help.tours'))) return { show: false, stopped: false, tours: [] };
       const ready = await this.ready(tx, c.organizationId, me);
       const rows = await tx.tourProgress.findMany({ where: { organizationId: c.organizationId, userId: me.userId } });
       const stopped = rows.some((r) => r.tourId === 'all' && r.status === 'stopped');

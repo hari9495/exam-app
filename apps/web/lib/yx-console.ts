@@ -16,7 +16,7 @@ export function useConsole<T>(path: string, enabled = true) {
 export function useConsoleWrite() {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
-  return async <T = unknown>(path: string, method: 'POST' | 'PATCH' | 'DELETE', body?: unknown): Promise<T> => {
+  return async <T = unknown>(path: string, method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', body?: unknown): Promise<T> => {
     const result = await apiFetch(`/platform${path}`, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }, accessToken ?? undefined);
     await queryClient.invalidateQueries({ queryKey: ['console'] });
     return result as T;
@@ -34,7 +34,7 @@ export function loadState(q: { isError: boolean; error: unknown; data: unknown }
 /** Today in India (YYYY-MM-DD): prices start on Indian dates. */
 export const todayIst = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
-const CONSOLE_KEYS = ['platform.companies.view', 'platform.companies.manage', 'platform.plans.manage', 'platform.channels.manage', 'platform.support.request', 'platform.audit.view', 'platform.news.manage'] as const;
+const CONSOLE_KEYS = ['platform.companies.view', 'platform.companies.manage', 'platform.plans.manage', 'platform.channels.manage', 'platform.support.request', 'platform.audit.view', 'platform.news.manage', 'platform.company.contain', 'platform.flags.manage'] as const;
 export type ConsoleKey = (typeof CONSOLE_KEYS)[number];
 
 /** Which console keys the staff member holds (for buttons only; the API checks every call). */

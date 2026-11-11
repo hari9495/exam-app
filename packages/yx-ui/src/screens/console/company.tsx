@@ -32,7 +32,8 @@ export function supportInput(d: { reason: string; ticket: string; hours: number 
 
 function SupportRequestDrawer({ company, onClose, onSend }: { company: string; onClose: () => void; onSend: (input: SupportRequestInput) => Promise<void> }) {
   const [draft, setDraft] = useState({ reason: '', ticket: '', hours: 24 });
-  const [dirty, setDirty] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
   const { busy, error, run } = useRun();
   const set = (patch: Partial<typeof draft>) => {
     setDraft((d) => ({ ...d, ...patch }));
@@ -93,6 +94,8 @@ export interface CompanyScreenProps {
   onWithdrawRequest: (id: string) => Promise<void>;
   /** Careers answer 442: opens Company settings (white-label and other plan settings). */
   onOpenSettings?: () => void;
+  /** Answer 1050: opens Contain company (suspected compromise); shown to staff with the contain key. */
+  onContain?: () => void;
   now?: Date;
 }
 
@@ -162,6 +165,7 @@ export function CompanyScreen(props: CompanyScreenProps) {
             actions={
               <>
                 {props.onOpenSettings && <Button onClick={props.onOpenSettings}>Company settings</Button>}
+                {props.onContain && <Button onClick={props.onContain}>Contain company</Button>}
                 {props.canSupport && c.signInAllowed && !open && !waiting && <Button onClick={() => setRequesting(Date.now())}>Ask for support access</Button>}
                 {props.canManage && c.lifecycle === 'trial' && <Button variant="primary" onClick={move('activate')}>Switch on</Button>}
                 {props.canManage && c.lifecycle === 'suspended' && <Button variant="primary" onClick={move('reinstate')}>Reinstate</Button>}

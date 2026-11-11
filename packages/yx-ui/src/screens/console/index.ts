@@ -12,3 +12,5 @@ export { PlatformAuditScreen, type PlatformAuditScreenProps } from './audit';
 export { LIFECYCLE_LABEL, SUPPORT_LABEL, actionWords } from './console-kit';
 // Batch 4: YukthiX support
 export { SupportDeskQueueScreen, SupportDeskTicketScreen, TenantPanel, textToParagraphs, sessionWords, type SupportDeskQueueScreenProps, type SupportDeskTicketScreenProps, type DeskQueueRow, type DeskConsoleTicket, type DeskConsoleMessage, type DeskTenantPanel, type DeskConsoleSession } from './support-desk';
+// Console C-4 (answers 1049, 1050): the drawn YX-04 Flags and YX-18 Contain tenant, made live.
+export { ContainTenantScreen, ContainedBanner, FeatureFlagsScreen, type ContainView, type LiveContain, type LiveFeatureFlags, type LiveFlag } from '../portals/console-ops';

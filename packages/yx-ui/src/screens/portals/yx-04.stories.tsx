@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { CONTAIN_LIFT, CONTAIN_OPEN, CONTAIN_READY, liveContain, liveFlags } from './console-c4-data';
 import { AiGovernanceScreen, GoldenCasesScreen, PublishSchedulerScreen, RuleSetEditorScreen } from './console-rules';
 import {
   ContainTenantScreen,
@@ -41,3 +42,6 @@ export const YX04SupportActive: S = { name: 'Support access · approved session'
 export const YX04SupportDeclined: S = { name: 'Support access · declined', render: () => <TenantDetailScreen tenant={D.TENANTS[1]} support="declined" now={TODAY} /> };
 export const YX04Flags: S = { name: 'Feature flags', render: () => <FeatureFlagsScreen flags={D.FLAGS} /> };
 export const YX04KillSwitch: S = { name: 'Feature flags · kill switch', render: () => <FeatureFlagsScreen flags={D.FLAGS} killOpen /> };
+
+// Console C-4 (answer 1049): the live switches, one with the kill switch engaged by someone else.
+export const YX04FlagsLive: S = { name: 'Feature flags · live (kill switch engaged)', render: () => <FeatureFlagsScreen flags={[]} live={liveFlags()} /> };

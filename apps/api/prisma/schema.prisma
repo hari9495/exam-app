@@ -13398,3 +13398,66 @@ model ClientPack {
   @@unique([organizationId, clientSiteId, month], map: "client_packs_key")
   @@map("client_packs")
 }
+
+/// Console C-4 (answer 1050): YukthiX-wide values with defaults (breach reminders); staff only.
+model PlatformSetting {
+  key       String   @id @db.VarChar(100)
+  value     String   @db.VarChar(200)
+  label     String   @db.VarChar(300)
+  verify    Boolean  @default(false)
+  updatedBy String?  @map("updated_by") @db.Uuid
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@map("platform_settings")
+}
+
+/// Console C-4 (answer 1049): a feature switch; on for a company = not killed, its override or the default, and its company setting.
+model FeatureFlag {
+  key         String    @id @db.VarChar(60)
+  label       String    @db.VarChar(200)
+  description String    @db.VarChar(300)
+  settingKey  String?   @map("setting_key") @db.VarChar(100)
+  defaultOn   Boolean   @default(true) @map("default_on")
+  killedAt    DateTime? @map("killed_at") @db.Timestamptz(3)
+  killedBy    String?   @map("killed_by") @db.Uuid
+  killReason  String?   @map("kill_reason") @db.VarChar(500)
+  updatedBy   String?   @map("updated_by") @db.Uuid
+  updatedAt   DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@map("feature_flags")
+}
+
+model FeatureFlagOverride {
+  organizationId String   @map("organization_id") @db.Uuid
+  flagKey        String   @map("flag_key") @db.VarChar(60)
+  isOn           Boolean  @map("is_on")
+  reason         String   @db.VarChar(500)
+  setBy          String   @map("set_by") @db.Uuid
+  setAt          DateTime @default(now()) @map("set_at") @db.Timestamptz(3)
+
+  @@id([organizationId, flagKey])
+  @@map("feature_flag_overrides")
+}
+
+/// Console C-4 (answer 1050): a company contained after a suspected compromise; lifting takes two staff members.
+model CompanyContainment {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId      String    @map("organization_id") @db.Uuid
+  reason              String    @db.VarChar(500)
+  containedBy         String    @map("contained_by") @db.Uuid
+  containedByName     String    @map("contained_by_name") @db.VarChar(200)
+  containedAt         DateTime  @default(now()) @map("contained_at") @db.Timestamptz(3)
+  certinDueAt         DateTime  @map("certin_due_at") @db.Timestamptz(3)
+  dpdpDueAt           DateTime  @map("dpdp_due_at") @db.Timestamptz(3)
+  signedOut           Int       @default(0) @map("signed_out")
+  appsRevoked         Int       @default(0) @map("apps_revoked")
+  liftRequestedBy     String?   @map("lift_requested_by") @db.Uuid
+  liftRequestedByName String?   @map("lift_requested_by_name") @db.VarChar(200)
+  liftRequestedAt     DateTime? @map("lift_requested_at") @db.Timestamptz(3)
+  liftReason          String?   @map("lift_reason") @db.VarChar(500)
+  liftedBy            String?   @map("lifted_by") @db.Uuid
+  liftedByName        String?   @map("lifted_by_name") @db.VarChar(200)
+  liftedAt            DateTime? @map("lifted_at") @db.Timestamptz(3)
+
+  @@map("company_containments")
+}

@@ -1,10 +1,10 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
-import { Building2, FileClock, Inbox, LifeBuoy, Megaphone, MessageSquare, ReceiptIndianRupee, ScrollText, ShieldCheck, Tags } from 'lucide-react';
+import { Building2, FileClock, Inbox, LifeBuoy, Megaphone, MessageSquare, ReceiptIndianRupee, ScrollText, ShieldCheck, Tags, ToggleRight } from 'lucide-react';
 import { Logo, Monogram } from '../../components/brand';
 import type { IconComponent } from '../../components/foundations';
 import { AppShell, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, TopBar, type DensityChoice, type RailItem, type ThemeChoice } from '../../components/shell';
 
-export type ConsolePageId = 'companies' | 'support-desk' | 'support' | 'plans' | 'whats-new' | 'channels' | 'audit';
+export type ConsolePageId = 'companies' | 'support-desk' | 'support' | 'plans' | 'whats-new' | 'channels' | 'feature-flags' | 'audit';
 type ConsoleGroup = 'Customers' | 'Catalogue' | 'Channels' | 'Security';
 
 interface ConsoleLink {
@@ -25,6 +25,8 @@ export const CONSOLE_LINKS: ConsoleLink[] = [
   // Help H-4 (answer 943): the entries people see in Help › What's new.
   { id: 'whats-new', label: "What's new", href: '/staff/whats-new', group: 'Catalogue', icon: Megaphone },
   { id: 'channels', label: 'Shared SMS account', href: '/staff/channels', group: 'Channels', icon: MessageSquare },
+  // Console C-4 (answer 1049): switches for every company, one company, and the kill switch.
+  { id: 'feature-flags', label: 'Feature flags', href: '/staff/feature-flags', group: 'Security', icon: ToggleRight },
   { id: 'audit', label: 'Audit log', href: '/staff/audit', group: 'Security', icon: ScrollText },
 ];
 const GROUPS: ConsoleGroup[] = ['Customers', 'Catalogue', 'Channels', 'Security'];
