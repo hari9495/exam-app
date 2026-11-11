@@ -4,7 +4,7 @@ import { ConsoleShell } from './console-shell';
 import { PlatformSettingsScreen, type PlatformSettingRow } from './platform-settings';
 
 // Answer 1125: Console › Platform settings, added to the kit first (no drawn screen existed).
-const meta: Meta = { title: 'Screens/YukthiX console/Platform settings (1125)', parameters: { layout: 'fullscreen' } };
+const meta: Meta = { title: 'Screens/YukthiX console/Platform settings (1125)', parameters: { layout: 'fullscreen' }, excludeStories: ['settingRows'] };
 export default meta;
 type S = StoryObj;
 

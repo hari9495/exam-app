@@ -133,6 +133,8 @@ export interface ReasonAsk {
   destructive?: boolean;
   /** Field label; the reason is kept in the audit log and shown to the company's admins. */
   label?: string;
+  /** Under the field; default: kept in the audit log, the company's admins can see it. */
+  helper?: string;
   action: (reason: string) => Promise<void>;
 }
 
@@ -157,7 +159,7 @@ export function useReasonDialog(min = 5): [ReactNode, (ask: ReasonAsk) => void] 
         await ask.action(reason.trim());
       }}
     >
-      <FormField label={ask.label ?? 'Reason'} required helper="Kept in the audit log. The company's admins can see it." error={tried && short ? `Write at least ${min} characters` : undefined}>
+      <FormField label={ask.label ?? 'Reason'} required helper={ask.helper ?? "Kept in the audit log. The company's admins can see it."} error={tried && short ? `Write at least ${min} characters` : undefined}>
         <TextArea value={reason} onChange={setReason} rows={3} maxLength={500} />
       </FormField>
     </ConfirmDialog>

@@ -1,10 +1,10 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
-import { BookOpen, Building2, FileClock, HeartPulse, Inbox, LifeBuoy, Megaphone, MessageSquare, ReceiptIndianRupee, Scale, ScrollText, ShieldCheck, Siren, SlidersHorizontal, Tags, ToggleRight, Wrench } from 'lucide-react';
+import { BookOpen, Building2, FileClock, HeartPulse, Inbox, LifeBuoy, Megaphone, MessageSquare, ReceiptIndianRupee, Scale, ScrollText, ShieldCheck, Siren, SlidersHorizontal, Tags, ToggleRight, UserCog, Wrench } from 'lucide-react';
 import { Logo, Monogram } from '../../components/brand';
 import type { IconComponent } from '../../components/foundations';
 import { AppShell, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, TopBar, type DensityChoice, type RailItem, type ThemeChoice } from '../../components/shell';
 
-export type ConsolePageId = 'companies' | 'customers' | 'help-centre' | 'incidents' | 'maintenance' | 'support-desk' | 'support' | 'plans' | 'whats-new' | 'rules' | 'channels' | 'feature-flags' | 'platform-settings' | 'audit';
+export type ConsolePageId = 'companies' | 'customers' | 'help-centre' | 'incidents' | 'maintenance' | 'support-desk' | 'support' | 'plans' | 'whats-new' | 'rules' | 'channels' | 'feature-flags' | 'platform-settings' | 'audit' | 'staff';
 type ConsoleGroup = 'Customers' | 'Catalogue' | 'Rules' | 'Operations' | 'Channels' | 'Security';
 
 interface ConsoleLink {
@@ -40,6 +40,8 @@ export const CONSOLE_LINKS: ConsoleLink[] = [
   // Answer 1125: every YukthiX-wide value (alerts, breach reminders, maintenance rules).
   { id: 'platform-settings', label: 'Platform settings', href: '/staff/platform-settings', group: 'Security', icon: SlidersHorizontal },
   { id: 'audit', label: 'Audit log', href: '/staff/audit', group: 'Security', icon: ScrollText },
+  // Staff roles (answers 1058, 1086): who holds which console keys; a Security lead changes them.
+  { id: 'staff', label: 'Staff and roles', href: '/staff/staff', group: 'Security', icon: UserCog },
 ];
 const GROUPS: ConsoleGroup[] = ['Customers', 'Catalogue', 'Rules', 'Operations', 'Channels', 'Security'];
 const GROUP_ICONS: Record<ConsoleGroup, IconComponent> = { Customers: Building2, Catalogue: ReceiptIndianRupee, Rules: Scale, Operations: Wrench, Channels: MessageSquare, Security: ShieldCheck };

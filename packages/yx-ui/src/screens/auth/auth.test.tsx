@@ -475,6 +475,18 @@ function Me(over: Partial<MeSecurityScreenProps>) {
 }
 
 describe('MeSecurityScreen', () => {
+  it('YukthiX staff see their own console roles (answer 1166); with none it says so; company people see no such card', () => {
+    const { unmount } = render(<Me staffRoles={[{ label: 'Rules editor', does: ['Draft, review and publish rule sets'] }]} />);
+    expect(screen.getByText('Your console roles')).toBeInTheDocument();
+    expect(screen.getByText('Draft, review and publish rule sets')).toBeInTheDocument();
+    unmount();
+    const none = render(<Me staffRoles={[]} />);
+    expect(screen.getByText(/No role yet/)).toBeInTheDocument();
+    none.unmount();
+    render(<Me />);
+    expect(screen.queryByText('Your console roles')).toBeNull();
+  });
+
   it('lists sign-in methods, sessions and history', () => {
     render(<Me />);
     expect(within(screen.getByRole('list', { name: 'Your sign-in methods' })).getAllByRole('listitem')).toHaveLength(2);

@@ -20411,6 +20411,44 @@
     "note": "Positive and negative. Answers 1041, 1044."
   },
   {
+    "id": "MT-CON-SR-01",
+    "area": "YukthiX console — staff roles (12 Nov 2026)",
+    "screen": "Console › Staff and roles",
+    "url": "http://localhost:3000/staff/staff",
+    "account": "Two Security leads (Anand Iyer super@platform.test, Kavitha Menon rules@platform.test) with their security keys; a staff account with only Rules editor. Window 1278 x 635.",
+    "steps": [
+      "As Anand open Console › Security › Staff and roles.",
+      "Open the menu on your own row.",
+      "Change roles of a Rules editor: add Customer success, leave Reason empty, press Save roles; then give a reason and save (use your security key).",
+      "As that member of staff open Console › Customers and Rule sets.",
+      "Take Customer success away again; as that member of staff reload Customers.",
+      "As the Rules editor open /staff/staff."
+    ],
+    "expected": "Step 1: every member of staff with their roles, and what each role holds. Step 2: no menu on your own row. Step 3: 'Say why'; then saved (toast) after the security key. Step 4: both open. Step 5: Customers says no access. Step 6: no access (not a Security lead).",
+    "stories": [
+      "Screens/YukthiX console/Platform console (step 3) · Staff and roles"
+    ],
+    "note": "Positive and negative. Answers 1058, 1086."
+  },
+  {
+    "id": "MT-CON-SR-02",
+    "area": "YukthiX console — staff roles (12 Nov 2026)",
+    "screen": "Console (every page) by role",
+    "url": "http://localhost:3000/staff/companies",
+    "account": "A Rules editor only; a Customer success only; a Finance only.",
+    "steps": [
+      "As the Rules editor open Companies, Plans, Rule sets.",
+      "As Customer success open Rule sets, Customers.",
+      "As Finance open Plans and change a price.",
+      "As any of them open the Audit log."
+    ],
+    "expected": "Step 1: Companies and Plans say no access; Rule sets opens. Step 2: Rule sets no access; Customers opens. Step 3: Plans opens and the price is scheduled after the security key. Step 4: no access (Security lead only).",
+    "stories": [
+      "Screens/YukthiX console/Platform console (step 3) · Companies"
+    ],
+    "note": "Positive and negative. Answer 1058."
+  },
+  {
     "id": "MT-CON-1053a",
     "area": "Console C-5 (12 Nov 2026)",
     "screen": "Console › Companies › New company",
@@ -20454,6 +20492,44 @@
       "Screens/YukthiX console/YX-10 · Incidents, status admin and probes · What companies see · the day before (C-5)"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CON-SR-03",
+    "area": "YukthiX console — staff roles (12 Nov 2026)",
+    "screen": "Console › Staff and roles › Add staff, Deactivate",
+    "url": "http://localhost:3000/staff/staff",
+    "account": "Two Security leads (Anand, Kavitha) with security keys; a Rules editor. A mailbox you can read.",
+    "steps": [
+      "As Anand press Add staff, leave the email as 'priya' and press Send invitation.",
+      "Give a name, a work email and a reason; send (use your security key).",
+      "Open the invitation, set a password, sign in at /staff/sign-in.",
+      "As Anand deactivate the Rules editor with a reason.",
+      "As the Rules editor (still signed in elsewhere) reload a console page.",
+      "As Anand open the menu on your own row; as Kavitha try to deactivate Anand while Anand is the only other Security lead."
+    ],
+    "expected": "Step 1: 'Give their work email'. Step 2: toast 'Invitation sent'; the new account shows 'No role: no console keys'. Step 3: they must add a security key before any page; every page says no access until a role is given. Step 4: toast; the row shows Inactive. Step 5: signed out. Step 6: no Deactivate on your own row; Kavitha can deactivate Anand only while she is an active Security lead herself (the last Security lead is never deactivated).",
+    "stories": [
+      "Screens/YukthiX console/Platform console (step 3) · Staff and roles · add staff"
+    ],
+    "note": "Positive and negative. Answer 1164."
+  },
+  {
+    "id": "MT-CON-SR-04",
+    "area": "YukthiX console — staff roles (12 Nov 2026)",
+    "screen": "Console › My security (your console roles)",
+    "url": "http://localhost:3000/staff/security",
+    "account": "A Rules editor; a staff account with no role; a company admin.",
+    "steps": [
+      "As the Rules editor open My security.",
+      "As the staff account with no role open My security.",
+      "As Customer success open Planned maintenance.",
+      "As the company admin open /staff/security."
+    ],
+    "expected": "Step 1: 'Your console roles: Rules editor — Draft, review and publish rule sets'. Step 2: 'No role yet'. Step 3: the windows show without Schedule, Approve or Cancel. Step 4: the company admin cannot use the console.",
+    "stories": [
+      "Screens/Security/My security · My security · YukthiX staff · your console roles"
+    ],
+    "note": "Positive and negative. Answers 1166, 1058."
   },
   {
     "id": "MT-CON-1057a",

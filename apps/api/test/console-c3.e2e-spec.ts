@@ -6,6 +6,7 @@ import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { bootAdminApp } from './dual-app';
 import { EmailService } from '../src/email/email.service';
 import { markSteppedUp } from './fixtures/step-up';
+import { giveStaffRoles } from './fixtures/staff-roles';
 
 // Console C-3, support (founder answers 1051 and 1052), against the real database (forced RLS, app role).
 // 1051: YukthiX staff look a Not found reference up across companies in Console › Support desk: every company that has
@@ -36,6 +37,7 @@ describe('Console C-3: Not found references for YukthiX support', () => {
     tenantPrisma = app.get(TenantPrismaService);
     const passwordHash = await argon2.hash(PASSWORD);
     users.staff = (await tenantPrisma.forTenant(SUPER, (tx) => tx.user.create({ data: { email: `staff-${runId}@platform.test`, name: 'Staff C3', passwordHash, role: 'super_admin', organizationId: null } }))).id;
+    await giveStaffRoles(users.staff!);
     token.staff = (await request(server()).post('/api/v1/auth/platform/login').send({ email: `staff-${runId}@platform.test`, password: PASSWORD }).expect(200)).body.accessToken;
     await up('staff');
     planId = (await prisma.plan.create({ data: { name: `c3-plan-${runId}`, candidateLimit: 1, aiCreditLimit: 1, proctoringMinutesLimit: 1 } })).id;

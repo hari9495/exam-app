@@ -13520,6 +13520,27 @@ model ClientPack {
   @@map("client_packs")
 }
 
+/// Console staff roles (answers 1058, 1086): the fixed platform.* keys of each staff role (set by migrations only).
+model PlatformRoleKey {
+  role String @db.VarChar(20)
+  key  String @db.VarChar(100)
+
+  @@id([role, key])
+  @@map("platform_role_keys")
+}
+
+/// Console staff roles (answers 1058, 1086): which YukthiX staff account holds which role. Written only by
+/// platform_set_staff_roles (a Security lead, never their own, never the last Security lead).
+model PlatformStaffRole {
+  userId    String   @map("user_id") @db.Uuid
+  role      String   @db.VarChar(20)
+  grantedBy String?  @map("granted_by") @db.Uuid
+  grantedAt DateTime @default(now()) @map("granted_at") @db.Timestamptz(3)
+
+  @@id([userId, role])
+  @@map("platform_staff_roles")
+}
+
 /// Console C-4 (answer 1050): YukthiX-wide values with defaults (breach reminders); staff only.
 
 /// Console C-4 (answer 1049): a feature switch; on for a company = not killed, its override or the default, and its company setting.

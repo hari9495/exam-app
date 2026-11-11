@@ -32,3 +32,5 @@ export type { LiveRuleRow, LiveRuleDetail, LiveGoldenRun, LiveImpact, RuleUpdate
 export { ContainTenantScreen, ContainedBanner, FeatureFlagsScreen, type ContainView, type LiveContain, type LiveFeatureFlags, type LiveFlag } from '../portals/console-ops';
 // Answer 1125: Console › Platform settings.
 export { PlatformSettingsScreen, type PlatformSettingRow, type PlatformSettingsScreenProps } from './platform-settings';
+// Staff roles (answers 1058, 1086).
+export { StaffRolesScreen, KEY_WORDS, rolesInput, type StaffRolesScreenProps, type StaffRoleDef, type StaffRoleId, type StaffRow } from './staff';

@@ -28,6 +28,13 @@ export function dueReminders(i: { certinRemindedAt: Date | null; dpdpRemindedAt:
  * endpoint, `GET /availability`). A security breach is never shown to other companies. Answer 1124: an incident marked as
  * a security breach and linked to a containment reminds the incident staff before the CERT-In and DPDP due times.
  */
+/** Staff roles (answer 1058): the active staff whose roles hold the incidents key (the Security leads) get the reminders. */
+async function incidentHolders(tx: Prisma.TransactionClient) {
+  const roles = (await tx.platformRoleKey.findMany({ where: { key: 'platform.incidents.manage' }, select: { role: true } })).map((r) => r.role);
+  const ids = [...new Set((await tx.platformStaffRole.findMany({ where: { role: { in: roles } }, select: { userId: true } })).map((r) => r.userId))];
+  return tx.user.findMany({ where: { id: { in: ids }, organizationId: null, role: 'super_admin', status: 'active' }, select: { email: true } });
+}
+
 @Injectable()
 export class IncidentsService {
   private readonly logger = new Logger(IncidentsService.name);
@@ -181,7 +188,7 @@ export class IncidentsService {
           out.push({ incident: r, clocks, due: { certin: c.certinDueAt, dpdp: c.dpdpDueAt }, company });
         }
         const to = out.length
-          ? await tx.user.findMany({ where: { organizationId: null, status: 'active', role: { in: (await tx.rolePermission.findMany({ where: { permission: { key: 'platform.incidents.manage' } }, select: { role: true } })).map((x) => x.role) } }, select: { email: true } })
+          ? await incidentHolders(tx)
           : [];
         return { out, to: to.map((u) => u.email) };
       });

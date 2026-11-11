@@ -7,6 +7,7 @@ import { bootAdminApp } from './dual-app';
 import { EmailService } from '../src/email/email.service';
 import { markSteppedUp } from './fixtures/step-up';
 import { seedYukthixSupport } from '../prisma/seed-service-desk-knowledge';
+import { giveStaffRoles, rolesWithout } from './fixtures/staff-roles';
 
 // Console C-8, YX-11 (answer 1057), against the real database (forced RLS, app role). YukthiX staff write help articles
 // every company sees in Help › This page; one staff member writes, a different one publishes; a company's own article
@@ -34,13 +35,14 @@ describe('Console C-8 YX-11: help-centre editor', () => {
       await tx.$executeRaw`SELECT set_config('app.sd_system', 'on', true)`;
       return fn(tx);
     });
+  // Staff roles (answer 1058): staff without a key = without every role that holds it (restored straight after).
   const withoutKey = async (key: string, fn: () => Promise<void>) => {
-    const p = await tenantPrisma.forTenant(SUPER, (tx) => tx.permission.findUniqueOrThrow({ where: { key } }));
-    await tenantPrisma.forTenant(SUPER, (tx) => tx.rolePermission.deleteMany({ where: { role: 'super_admin', permissionId: p.id } }));
+    const keep = await rolesWithout(key);
+    for (const who of ['staffA', 'staffB']) await giveStaffRoles(users[who]!, keep);
     try {
       await fn();
     } finally {
-      await tenantPrisma.forTenant(SUPER, (tx) => tx.rolePermission.create({ data: { role: 'super_admin', permissionId: p.id } }));
+      for (const who of ['staffA', 'staffB']) await giveStaffRoles(users[who]!);
     }
   };
   const article = { title: `Apply for leave ${run}`, summary: 'Pick the days and the type.', bodyHtml: '<p>Open Time › Leave and press Apply.</p>', pages: [PAGE] };
@@ -59,6 +61,8 @@ describe('Console C-8 YX-11: help-centre editor', () => {
     for (const who of ['staffA', 'staffB', 'staffUnlinked', 'staffNoKey']) {
       const email = `${who.toLowerCase()}-${run}@platform.test`;
       users[who] = (await tenantPrisma.forTenant(SUPER, (tx) => tx.user.create({ data: { email, name: `Staff ${who}`, passwordHash, role: 'super_admin', organizationId: null } }))).id;
+      // Staff roles (answer 1058): the console keys come from staff roles.
+      await giveStaffRoles(users[who]!);
       token[who] = (await request(server()).post('/api/v1/auth/platform/login').send({ email, password: PASSWORD }).expect(200)).body.accessToken;
       if (who !== 'staffNoKey') await markSteppedUp(tenantPrisma, token[who]);
     }
@@ -126,9 +130,10 @@ describe('Console C-8 YX-11: help-centre editor', () => {
       expect((await api('staffUnlinked', 'get', '/platform/help-centre').expect(403)).body.message).toMatch(/not linked to the YukthiX company/);
     });
 
-    it('the key is a platform key: no company role holds it', async () => {
+    it('the key is a platform key: no company role holds it; staff hold it through the Support agent role', async () => {
       const rows = await tenantPrisma.forTenant(SUPER, (tx) => tx.rolePermission.findMany({ where: { permission: { key: 'platform.helpcentre.write' } }, select: { role: true } }));
-      expect(rows.map((r) => r.role)).toEqual(['super_admin']);
+      expect(rows).toEqual([]);
+      expect(await rolesWithout('platform.helpcentre.write')).toEqual(['customer_success', 'rules_editor', 'finance', 'security_lead']);
     });
   });
 

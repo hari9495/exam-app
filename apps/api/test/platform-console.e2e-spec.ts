@@ -7,6 +7,7 @@ import { bootAdminApp } from './dual-app';
 import { EmailService } from '../src/email/email.service';
 import { addDays, todayIst } from '../src/org-structure/org-validation';
 import { markSteppedUp } from './fixtures/step-up';
+import { giveStaffRoles } from './fixtures/staff-roles';
 
 // Step 3, the YukthiX platform console, end to end against the real database (forced RLS, app role): staff-only
 // access (P14 YX-CONSOLE-01, P12 Q7), company lifecycle and prices with reasons and audit (YX-CONSOLE-02, YX-TEN-08,
@@ -51,6 +52,8 @@ describe('YukthiX platform console (step 3)', () => {
     for (const who of ['staff', 'staff2', 'staffNoKey'] as const) {
       const email = `${who.toLowerCase()}-${runId}@platform.test`;
       users[who] = (await tenantPrisma.forTenant(SUPER, (tx) => tx.user.create({ data: { email, name: `Staff ${who}`, passwordHash, role: 'super_admin', organizationId: null } }))).id;
+      // Staff roles (answer 1058): these suites test the console routes, so their staff hold every role.
+      await giveStaffRoles(users[who]!);
       token[who] = (await request(server()).post('/api/v1/auth/platform/login').send({ email, password: PASSWORD }).expect(200)).body.accessToken;
     }
     // A security key proven on the session (AAL2) for the two working staff members.

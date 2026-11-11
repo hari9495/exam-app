@@ -7,6 +7,7 @@ import { bootAdminApp } from './dual-app';
 import { EmailService } from '../src/email/email.service';
 import { IncidentsService } from '../src/platform/incidents.service';
 import { markSteppedUp } from './fixtures/step-up';
+import { giveStaffRoles, rolesWithout } from './fixtures/staff-roles';
 
 // Console C-8, YX-10 incidents and answer 1124, against the real database (forced RLS, app role). Staff declare an
 // incident; a second staff member approves each update; only companies with an affected product see the banner while it
@@ -29,13 +30,14 @@ describe('Console C-8 YX-10: incidents and breach reminders', () => {
   let leadBefore: string | null = null;
   const api = (who: string, method: 'get' | 'post' | 'put', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who] ?? who}`);
   const inOrg = <T>(id: string, fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: id, isSuperAdmin: false }, fn);
+  // Staff roles (answer 1058): staff without a key = without every role that holds it (restored straight after).
   const withoutKey = async (key: string, fn: () => Promise<void>) => {
-    const p = await tenantPrisma.forTenant(SUPER, (tx) => tx.permission.findUniqueOrThrow({ where: { key } }));
-    await tenantPrisma.forTenant(SUPER, (tx) => tx.rolePermission.deleteMany({ where: { role: 'super_admin', permissionId: p.id } }));
+    const keep = await rolesWithout(key);
+    for (const who of ['staff', 'staff2']) await giveStaffRoles(users[who]!, keep);
     try {
       await fn();
     } finally {
-      await tenantPrisma.forTenant(SUPER, (tx) => tx.rolePermission.create({ data: { role: 'super_admin', permissionId: p.id } }));
+      for (const who of ['staff', 'staff2']) await giveStaffRoles(users[who]!);
     }
   };
   const first = { title: `Payslip PDFs slow ${run}`, severity: 2, products: [PRODUCT], stage: 'identified', impact: 'Payslip PDFs take up to 40 seconds to open.', action: 'No action needed.', nextUpdateMinutes: 30 };
@@ -51,6 +53,8 @@ describe('Console C-8 YX-10: incidents and breach reminders', () => {
     for (const who of ['staff', 'staff2', 'staffNoKey']) {
       const email = `${who.toLowerCase()}-${run}@platform.test`;
       users[who] = (await tenantPrisma.forTenant(SUPER, (tx) => tx.user.create({ data: { email, name: `Staff ${who}`, passwordHash, role: 'super_admin', organizationId: null } }))).id;
+      // Staff roles (answer 1058): the Security lead holds the incidents key; staffNoKey is only a Rules editor.
+      await giveStaffRoles(users[who]!, who === 'staffNoKey' ? ['rules_editor'] : undefined);
       token[who] = (await request(server()).post('/api/v1/auth/platform/login').send({ email, password: PASSWORD }).expect(200)).body.accessToken;
       if (who !== 'staffNoKey') await markSteppedUp(tenantPrisma, token[who]!);
     }
@@ -203,6 +207,8 @@ describe('Console C-8 YX-10: incidents and breach reminders', () => {
       const mine = sent.filter((m) => m.subject.includes(title));
       expect(mine.map((m) => m.to)).toEqual(expect.arrayContaining([`staff-${run}@platform.test`, `staff2-${run}@platform.test`]));
       expect(mine.some((m) => m.to.endsWith('@c8i.test'))).toBe(false);
+      // Staff roles: only staff whose roles hold the incidents key (Security leads) get them.
+      expect(mine.some((m) => m.to === `staffnokey-${run}@platform.test`)).toBe(false);
       const row = find((await api('staff', 'get', '/platform/incidents').expect(200)).body, title);
       expect(row.breach!.certinRemindedAt).not.toBeNull();
       expect(row.breach!.dpdpRemindedAt).toBeNull();

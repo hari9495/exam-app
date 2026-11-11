@@ -1,7 +1,7 @@
 'use client';
 
 import { IncidentComposerScreen, type CurrentMaintenance, type MaintenanceRow, type MaintenanceSettingRow } from '@yukthix/ui/console';
-import { loadState, useConsole, useConsoleWrite } from '../../../../lib/yx-console';
+import { loadState, useConsole, useConsoleKeys, useConsoleWrite } from '../../../../lib/yx-console';
 
 interface Overview {
   now: string;
@@ -16,6 +16,7 @@ interface Overview {
 export default function ConsoleMaintenancePage() {
   const data = useConsole<Overview>('/maintenance');
   const write = useConsoleWrite();
+  const can = useConsoleKeys();
   const now = data.data ? new Date(data.data.now) : new Date();
   return (
     <IncidentComposerScreen
@@ -24,6 +25,8 @@ export default function ConsoleMaintenancePage() {
       now={now}
       live={{
         state: loadState(data),
+        // Staff roles (answer 1058): Customer success sees the windows; a Security lead schedules them.
+        canManage: can('platform.maintenance.manage'),
         onRetry: () => void data.refetch(),
         now,
         windows: data.data?.windows ?? [],
