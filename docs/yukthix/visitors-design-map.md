@@ -340,6 +340,12 @@ who keep the watch-list get the Facility admin role; (664) remove the ID type fi
 at check-in and on the photo badge, never on the host's phone after the decision.
 Founder approved, 10 Nov 2026 (questions 761-765, all as suggested): (761) the slice-2 photo is wired into the badge
 after the merge; keep 762, 763, 764, 765.
+Founder approved, 11 Nov 2026 (questions 791-800, all as suggested): (791) allow 00:00 and an "all day" choice for
+visitor hours; (792) configure photo storage on the test app; (793) Revoke with a reason on the kiosk row; (794) remove an
+unused visitor type, archive a used one; (795) allow deleting a role nobody holds, audited; (796) link the demo Recruiter
+role to its template in the demo set-up; (797) a separate "declined" count; (798) automated e2e checks use their own
+database and refuse to run against the test app database; (799) the kiosk details step in two columns on wide screens;
+(800) the watch-list check right after the details step, before any photo.
 
 ## Visitors slice 1 built (answers 601-617; 15 Nov 2026, branch `feat/yukthix-visitors-1`)
 

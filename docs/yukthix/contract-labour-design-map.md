@@ -407,6 +407,10 @@ duplicate "Open"; (807) a 0-day month asks "Confirm 0 days?" first; (808) the Ma
 the worker's photo in Make employee; (810) a clear warning at deploy when the wage is below the minimum, not a block; (811)
 the same no-access text as the other pages; (821) add the month's PF and ESI challan copies to the client pack; (822) the
 client site is required for our own staff once a client has sites.
+Founder approved, 11 Nov 2026 (questions 841-844, 851-853, all as suggested): (841) PT from payroll's PT filing in
+the client pack, the wage payment proof stays by hand; (842) optional bank receipt upload in payroll later if clients ask;
+keep 843, 851, 853; (844) the below-minimum-wage warning also on site approval of a portal-added worker; (852) "Ask your HR
+team" on the three we-are-the-contractor pages too.
 
 ## CL-1 built (10 Nov 2026, branch `feat/yukthix-contract-labour-1`)
 
