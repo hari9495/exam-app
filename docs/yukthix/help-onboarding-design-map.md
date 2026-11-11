@@ -357,3 +357,6 @@ Founder approved, 12 Nov 2026 (questions 981-982, as suggested): no go-to keys (
      *Suggested: keep.*
 994. **A new company's backlog.** A company that joins today sees every published entry for its products (latest 50).
      *Suggested: show only entries from the last 6 months.*
+Founder approved, 12 Nov 2026 (questions 991-994, all as suggested): 991 and 993 stay as built; 992's dot on Help comes
+with H-1; 994 built: people see entries published in the last 6 months only, still at most 50 (staff see all in the
+console).
