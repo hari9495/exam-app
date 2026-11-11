@@ -22,7 +22,7 @@ import { formatDate } from '../../lib/format';
 import type { FilterValue } from '../../lib/table';
 import { errorText } from '../org/org-kit';
 import { useAct } from '../growth/perf-live';
-import { IrreversibleSheet } from '../pay/pay-kit';
+import { IrreversibleSheet } from '../../components/irreversible';
 import { Actions, CardGrid, OpsDesk } from './ops-kit';
 import { PAYMENT, amount, day, money, monthName, sumMoney, type LoadState } from './expenses-live-data';
 import type { ExpenseJournalView, ExpenseReport, PayoutBatchRow, PayoutResultInput, ReportKind, ToPayClaim, ToPayData } from '../expenses/live/types';

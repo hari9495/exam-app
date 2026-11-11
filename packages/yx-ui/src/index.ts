@@ -42,6 +42,7 @@ export * from './components/document';
 export * from './components/condition';
 export * from './components/editor';
 export * from './components/builder';
+export * from './components/irreversible';
 export * from './lib/dates';
 export * from './lib/rules';
 export * from './lib/format';

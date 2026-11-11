@@ -105,6 +105,8 @@ export interface LiveFrame {
   /** <ProfileMenu>. */
   profile: ReactNode;
   onHelp?: () => void;
+  /** Answer 992: What's new has unread entries (a dot on Help). */
+  helpUnread?: boolean;
   /** Notices above every page, e.g. a support session or "Secure your account". */
   banner?: ReactNode;
   /** Below the top level: Area › Page. */
@@ -203,7 +205,7 @@ function LiveDesktopFrame({ area, panelTitle, panel, railItems, live, children }
             ))}
           </SidePanel>
         }
-        topBar={<TopBar onSearch={live.onSearch} entity={live.scope} notifications={live.notifications} onHelp={live.onHelp} profile={live.profile} />}
+        topBar={<TopBar onSearch={live.onSearch} entity={live.scope} notifications={live.notifications} onHelp={live.onHelp} helpUnread={live.helpUnread} profile={live.profile} />}
         mobileTabBar={mobileTabs.length ? <MobileTabBar items={mobileTabs} activeId={mobileActive} onSelect={(id) => go(tabs[id as keyof typeof tabs])} /> : undefined}
         panelCollapsed={live.panelCollapsed}
         onPanelCollapsedChange={live.onPanelCollapsedChange}

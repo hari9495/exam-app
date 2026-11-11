@@ -36,6 +36,8 @@ const DAY_HOURS = Array.from({ length: 48 }, (_, i) => `${String(Math.floor(i / 
 
 export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // HLP-04 (founder 3 Nov 2026): how often a published help article is checked again (YX-GRO-07). Desk set-up › Settings.
+  // Help H-1 (answer 942): the Help drawer's "This page" tab (help articles tagged with the page).
+  'help.page_help': { label: 'Help: show page help in the Help drawer', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', labels: { on: 'Shown', off: 'Hidden' } },
   'desk.kb.review_months': { label: 'Check help articles again every (months)', scopes: ['tenant'], dated: false, values: ['3', '6', '12', '24'], default: '12' },
   // HLP-10 / HLP-11 company policies (docs/yukthix/helpdesk-design-map.md 4d): when acknowledgements fall due, reminders,
   // re-acknowledging a new version, typing one's name, and the second person who publishes (loosening that is access).

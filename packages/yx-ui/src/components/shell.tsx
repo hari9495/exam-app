@@ -511,6 +511,8 @@ export interface TopBarProps {
   /** Notification bell. */
   notifications?: ReactNode;
   onHelp?: () => void;
+  /** Answer 992: a dot on Help while What's new has unread entries. */
+  helpUnread?: boolean;
   /** <ProfileMenu>. */
   profile?: ReactNode;
 }
@@ -524,6 +526,7 @@ export function TopBar({
   onAsk,
   notifications,
   onHelp,
+  helpUnread,
   profile,
 }: TopBarProps) {
   const shell = useContext(ShellContext);
@@ -546,7 +549,12 @@ export function TopBar({
         {/* Ask AI sits in the bar with the other tools, never floating over the page (R8). */}
         {onAsk && <IconButton icon={MessageCircleQuestionMark} label="Ask AI" variant="secondary" className="yx-ask-fab" onClick={onAsk} />}
         {notifications}
-        {onHelp && <IconButton icon={CircleHelp} label="Help" onClick={onHelp} />}
+        {onHelp && (
+          <span className="yx-topbar__help">
+            <IconButton icon={CircleHelp} label={helpUnread ? "Help, new in What's new" : 'Help'} onClick={onHelp} />
+            {helpUnread && <span className="yx-topbar__help-dot" aria-hidden="true" />}
+          </span>
+        )}
         {profile}
       </div>
     </header>

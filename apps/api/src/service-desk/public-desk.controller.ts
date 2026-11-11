@@ -12,7 +12,7 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import { PUBLIC_API_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import { assertOwnSession, companyOf } from './desk-access';
 import { DirectoryService } from './directory.service';
-import { KbArticleQueryDto, KbClickDto, KbFeedbackDto, KbSearchDto } from './dto-kb';
+import { KbArticleQueryDto, KbClickDto, KbFeedbackDto, KbPageQueryDto, KbSearchDto } from './dto-kb';
 import { ConsoleLinkDto, ConsoleMessageDto, ConsoleQueueDto, ConsoleResolveDto, LinkAnswerDto, LinkCommentDto, PrivacyRequestDto, RatingDto, SignUpDto, SupportAccessDto, SupportRaiseDto, SupportReplyDto } from './dto-ops';
 import { KbService } from './kb.service';
 import { PortalService } from './portal.service';
@@ -56,6 +56,13 @@ export class MyHelpController {
   @Throttle(PUBLIC_API_THROTTLE)
   suggest(@Req() req: Request, @CurrentTenant() t: TenantContext, @Query() q: KbSearchDto, @Query('from') from?: string) {
     return this.kb.employeeSuggest(this.requesters.who(req, t), q.q, from === 'drawer' ? 'drawer' : 'help');
+  }
+
+  /** Help H-1 (answer 942): the Help drawer's "This page": articles tagged with the page the person is on. */
+  @Get('kb/page')
+  @Throttle(PUBLIC_API_THROTTLE)
+  kbPage(@Req() req: Request, @CurrentTenant() t: TenantContext, @Query() q: KbPageQueryDto) {
+    return this.kb.employeePage(this.requesters.who(req, t), q.route, q.lang);
   }
 
   @Get('kb/articles/:number')
