@@ -6,6 +6,9 @@ import { isoDate, todayIst } from '../org-structure/org-validation';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ApprovalsEngine, InboxItem } from '../workflow/approvals-engine.service';
 import { settingFor } from '../people/probation';
+import { holidaysNear } from '../lifecycle/settlement';
+import { wagesDueBy } from '../lifecycle/exit-rules';
+import { escapeHtml } from '../notifications/notification-email-render';
 import { AccessService } from './access.service';
 import { AccessRequestApproveDto, AccessRequestAskDto } from './dto';
 
@@ -18,6 +21,14 @@ import { AccessRequestApproveDto, AccessRequestAskDto } from './dto';
 
 const KEY = 'access.role.manage';
 type Row = Prisma.AccessRequestGetPayload<object>;
+
+const LOOKUP: TenantContext = { organizationId: null, isSuperAdmin: true };
+/**
+ * Answer 973: the IST day a waiting request is overdue: 2 working days after the day it was sent. Working days are
+ * Monday to Friday less the company's holidays (its company-wide holiday calendar); the app keeps no company working
+ * week, so Saturday and Sunday are off for every company here.
+ */
+export const remindOn = (sentAt: Date, holidays: ReadonlySet<string>) => wagesDueBy(todayIst(sentAt), holidays);
 
 const daysBetween = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1;
 
@@ -146,6 +157,7 @@ export class AccessRequestsService implements OnModuleInit {
     const granters = await this.granters(tx, c);
     if (!granters.includes(userId)) return [];
     const views = await this.views(tx, c, rows);
+    const holidays = await holidaysNear(tx, c.organizationId, null, todayIst(rows[0]!.createdAt), todayIst());
     return rows.map((r, i) => ({
       taskId: r.id,
       requestId: r.id,
@@ -160,10 +172,55 @@ export class AccessRequestsService implements OnModuleInit {
       onBehalfOf: null,
       person: views[i]!.user.name,
       step: { index: 1, of: 1, name: 'System Admin', need: 1, approvers: granters.filter((g) => g !== r.requestedBy).length },
-      dueAt: null,
+      // Answer 973: due 2 working days after it was sent; the inbox shows it overdue after that.
+      dueAt: new Date(`${remindOn(r.createdAt, holidays)}T00:00:00+05:30`),
       submittedAt: r.createdAt,
       decideAt: '/yx/settings/access?view=requests',
     }));
+  }
+
+  /**
+   * Answer 973 (nightly and hourly safe to rerun): a request still waiting 2 working days after it was sent reminds the
+   * people who can grant access once, in the bell (and by email, by their own email choices). The reminder is claimed
+   * by setting reminded_at in the same statement, so a rerun or a second server never sends it twice. Each company is
+   * read and written in its own context. `only` limits the run to these companies (tests).
+   */
+  async remindSweep(now = new Date(), only?: string[]): Promise<number> {
+    // A cheap first cut: due is at least the 2nd IST day after the day it was sent, so never within 24 hours.
+    const oldest = new Date(now.getTime() - 86_400_000);
+    const orgs = await this.tenantPrisma.forTenant(LOOKUP, (tx) => tx.accessRequest.groupBy({ by: ['organizationId'], where: { status: 'pending', remindedAt: null, createdAt: { lt: oldest }, ...(only ? { organizationId: { in: only } } : {}) } }));
+    let sent = 0;
+    for (const { organizationId } of orgs) {
+      const ctx: TenantContext = { organizationId, isSuperAdmin: false };
+      try {
+        const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+          const rows = await tx.accessRequest.findMany({ where: { organizationId, status: 'pending', remindedAt: null, createdAt: { lt: oldest } }, orderBy: { createdAt: 'asc' }, take: 200 });
+          if (!rows.length) return [];
+          const today = todayIst(now);
+          const holidays = await holidaysNear(tx, organizationId, null, todayIst(rows[0]!.createdAt), today);
+          const due = rows.filter((r) => remindOn(r.createdAt, holidays) <= today);
+          const claimed: Row[] = [];
+          for (const r of due) {
+            const { count } = await tx.accessRequest.updateMany({ where: { organizationId, id: r.id, status: 'pending', remindedAt: null }, data: { remindedAt: now } });
+            if (!count) continue;
+            await audit(tx, c, 'access.request.reminded', 'access_request', r.id, { sentOn: todayIst(r.createdAt), dueOn: remindOn(r.createdAt, holidays) });
+            claimed.push(r);
+          }
+          if (!claimed.length) return [];
+          const granters = await this.granters(tx, c);
+          const views = await this.views(tx, c, claimed);
+          return claimed.map((r, i) => ({ r, name: views[i]!.user.name, to: granters.filter((g) => g !== r.requestedBy) }));
+        });
+        for (const { r, name, to } of out) {
+          const text = `${name} has waited 2 working days for access to ${r.what}. Approve or refuse it in Roles & access › Requests.`;
+          await this.notifications.notifySystem(ctx, to, 'access.request.reminder', { entityType: 'access_request', entityId: r.id, contextText: text, linkPath: '/yx/settings/access?view=requests' }, { subject: 'An access request is waiting', html: `<p>${escapeHtml(text)}</p>` }, r.requestedBy).catch((e: unknown) => this.logger.error(e));
+          sent++;
+        }
+      } catch (e) {
+        this.logger.error(`Access request reminders failed for ${organizationId}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    return sent;
   }
 
   private async tell(ctx: TenantContext, actor: string, to: string[], type: string, id: string, text: string) {

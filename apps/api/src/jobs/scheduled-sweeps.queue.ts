@@ -63,4 +63,9 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'visitors-retention', cron: '50 22 * * *' },
   // Visitors slice 2: walk-ins nobody decided by the end of their day, and acknowledgements past their use.
   { id: 'visitors-walkins', cron: '5,20,35,50 * * * *' },
+  // Help answer 973: access requests waiting 2 working days remind the System Admins once (hourly at :25, so a request
+  // is reminded early on its due IST day).
+  { id: 'access-request-reminders', cron: '25 * * * *' },
+  // Help answer 974: Not found references past the company's period are deleted (04:35 IST).
+  { id: 'not-found-retention', cron: '5 23 * * *' },
 ];

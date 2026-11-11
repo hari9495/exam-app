@@ -48,6 +48,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // Help H-5, answer 944: first-run tours (each person can also stop them for themselves).
   'help.tours.show': { label: 'Help: first-run tours', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'help.whats_new.show': { label: "Help: show What's new", scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+  // Answer 974: Not found references (who asked for which address) are deleted after this period, like the platform logs.
+  'help.not_found.keep_days': { label: 'Keep Not found references for (days)', scopes: ['tenant'], dated: false, values: ['30', '60', '90', '180', '365'], default: '90', guard: 'access.role.manage' },
   'policy.reack.default': { label: 'Policies: a new version asks everyone to acknowledge again', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'policy.ack.typed_name': { label: 'Policies: people type their name to acknowledge', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // HLP-14: draft policies with the company's own AI (founder decision 1); off offers the YukthiX starters instead.

@@ -6,12 +6,14 @@ import { SetupHubService } from './setup-hub.service';
 import { ToursController, WhatsNewController, WhatsNewStaffController } from './whats-new.controller';
 import { ToursService } from './tours.service';
 import { WhatsNewService } from './whats-new.service';
+import { NotFoundRetentionService } from './not-found-retention.service';
 
 // Help and onboarding: What's new (H-4, answer 943), Not found references (H-2, answer 947), first-run tours (H-5,
 // answer 944) and the set-up hub (H-6, answer 952).
 @Module({
   imports: [AuthModule, PlatformModule],
-  providers: [WhatsNewService, ToursService, SetupHubService],
+  providers: [WhatsNewService, ToursService, SetupHubService, NotFoundRetentionService],
+  exports: [NotFoundRetentionService],
   controllers: [WhatsNewController, WhatsNewStaffController, HelpController, ToursController, SetupHubController],
 })
 export class HelpModule {}

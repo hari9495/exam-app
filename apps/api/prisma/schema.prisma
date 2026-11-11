@@ -3154,6 +3154,8 @@ model AccessRequest {
   decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
   decisionNote   String?   @map("decision_note") @db.VarChar(500)
   grantId        String?   @map("grant_id") @db.Uuid
+  /// Answer 973: when the System Admins were reminded (once, after 2 working days).
+  remindedAt     DateTime? @map("reminded_at") @db.Timestamptz(3)
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("access_requests")
@@ -3169,6 +3171,7 @@ model NotFoundRef {
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([organizationId, code])
+  @@index([organizationId, createdAt], map: "not_found_refs_created_idx")
   @@map("not_found_refs")
 }
 
