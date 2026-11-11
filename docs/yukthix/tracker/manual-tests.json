@@ -20454,5 +20454,28 @@
       "Screens/YukthiX console/YX-10 · Incidents, status admin and probes · What companies see · the day before (C-5)"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CON-1057a",
+    "area": "Console C-8 (12 Nov 2026)",
+    "screen": "Console › Help centre and the company Help drawer",
+    "url": "http://localhost:3000/staff/help-centre",
+    "account": "Two YukthiX staff accounts with their security keys, both linked to the YukthiX company (Support desk agents); a company user (any role).",
+    "steps": [
+      "Press New article and Save draft with nothing filled in.",
+      "Type the title, pages 'time/leave', and save.",
+      "Change pages to /yx/time/leave, save, then Send for review.",
+      "As the same staff member, open it again and look for Publish.",
+      "As the other staff member, press Send back with no note.",
+      "Press Publish.",
+      "As the company user, open Time › Leave and the Help drawer › This page.",
+      "Open the YukthiX article."
+    ],
+    "expected": "Step 1: 'Write a title of at least 3 characters.' and the pages error. Step 2: 'Pages are app addresses…'. Step 3: toasts 'Draft saved' and 'Sent for review'. Step 4: 'In review: another staff member publishes it.', no Publish. Step 5: 'Say what to change before sending it back.' Step 6: toast 'Published for every company'. Step 7: the article, marked 'From YukthiX' (after the company's own, if any; a page the company explains itself shows only the company's). Step 8: it opens on the public help centre.",
+    "stories": [
+      "Screens/YukthiX console/YX-11 · Help-centre editor · Help articles and no-result searches (C-8)",
+      "Screens/YukthiX console/YX-11 · Help-centre editor · Article · another staff member publishes it (C-8)"
+    ],
+    "note": "Positive and negative."
   }
 ]

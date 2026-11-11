@@ -73,7 +73,7 @@ built** · **phone view, mobile app not built**.
 
 ## Counts (sub-pages = stories)
 
-After C-1 to C-5 (12 Nov 2026, merged on test/yukthix-main; recounted by the appendix script, "ok").
+After C-1 to C-5 and C-8 part 1 (12 Nov 2026; recounted by the appendix script, "ok").
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
@@ -82,8 +82,8 @@ After C-1 to C-5 (12 Nov 2026, merged on test/yukthix-main; recounted by the app
 | C. Customers and containment (YX-04, YX-18) | 2 | 22 | 2 | 0 | 0 | 0 | 24 |
 | D. Partners (YX-06 to YX-08) | 3 | 0 | 0 | 0 | 10 | 0 | 10 |
 | E. Money (YX-14 to YX-17) | 4 | 0 | 0 | 0 | 8 | 0 | 8 |
-| F. The rest (YX-05, YX-09 to YX-13) | 6 | 6 | 0 | 0 | 17 | 0 | 23 |
-| **All A-F** | **20** | **75** | **7** | **0** | **35** | **0** | **117** |
+| F. The rest (YX-05, YX-09 to YX-13) | 6 | 10 | 0 | 0 | 15 | 0 | 25 |
+| **All A-F** | **20** | **79** | **7** | **0** | **33** | **0** | **119** |
 
 Counted by script on 11 Nov 2026 on `docs/yukthix-console-map` (the script is in the appendix). There are 87 stories in
 20 files whose title starts `Screens/YukthiX console/`: `screens/console/console.stories.tsx` (14),
@@ -104,6 +104,7 @@ is a phone view.
 | `/staff/plans` | `PlansScreen` | `/platform/products`, prices (step-up) |
 | `/staff/whats-new` | `WhatsNewConsoleScreen` | `/platform/whats-new` (`WhatsNewStaffController`, `help/whats-new.controller.ts`) |
 | `/staff/audit` | `PlatformAuditScreen` | `GET /platform/audit` |
+| `/staff/help-centre` (C-8) | `HelpEditorScreen live` | `/platform/help-centre…` (`service-desk/help-centre.controller.ts`) |
 | `/yx/settings/support-access` (company side) | `SupportAccessScreen` (`screens/access/support-access.tsx`) | `/support-access` (approve is step-up) |
 
 ## 2. Live pages with no design in this group
@@ -360,8 +361,10 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| YX11List · Help articles and no-result searches | design only, feature not built | no console path. Each company's knowledge base and its "searches with no result" exist (`service-desk/kb.service.ts` `contentGaps`, `GET …/kb/gaps`) but only inside one company. Unsure whether YukthiX's starter articles (answer 942) should be written here or in the platform company's own Helpdesk |
-| YX11Edit · Article editor | design only, feature not built | as above; the company article editor (HLP-04) is reusable |
+| YX11List · Help articles and no-result searches | live | C-8: `/staff/help-centre`, `HelpEditorScreen live`: the platform company's "YukthiX help" articles, the pages each explains, and the searches with no result across companies (counts only, at least 5 companies) |
+| YX11ListLive · Help articles and no-result searches (C-8) | live | `GET platform/help-centre` (`platform.helpcentre.write`); the cross-company count is read through `platformRead` (purpose `helpcentre.no_result_searches`) |
+| YX11ReviewLive · Article · another staff member publishes it (C-8) | live | `POST platform/help-centre/articles/:id/review`: the knowledge base's four-eyes rule (never the writer) |
+| YX11Edit · Article editor | live | same page, the editor drawer: `POST|PATCH platform/help-centre/articles`, `.../submit`; the H-1 pages link |
 
 #### YX-12 · Nudge and switch-on copy editor
 
@@ -484,6 +487,46 @@ Order (at most three builders at once):
 
 Every slice draws any new state first, keeps RLS and the staff guard, audits every write, asks for the security key on
 risky actions, and adds positive and negative tests and an e2e suite.
+
+## C-8 part 1 built: help-centre editor (YX-11, answer 1057; 12 Nov 2026, branch `feat/yukthix-console-c8`)
+
+- **What staff do:** Console › Catalogue › Help centre (`/staff/help-centre`), the designed `HelpEditorScreen` with
+  `live`. Staff write a help article (title, pages it explains, summary, the rich-text body) and send it for review; a
+  different staff member publishes it or sends it back with a note. Toasts say each step is done.
+- **Reused, not rebuilt:** the articles are ordinary knowledge-base articles of the YukthiX (platform) company, in its
+  public space "YukthiX help" (slug `yukthix-help`, made on first use). The knowledge base's own rules apply: the H-1
+  pages link, versions, and four eyes (the writer can never publish; service check). Staff act as the YukthiX-company
+  user linked to them (`sd_console_agents`, the Support desk link); a staff member with no link is told to ask the
+  support lead. No new table; migration `202617z0000071_console_helpcentre` only adds the key.
+- **What companies see:** Help › This page (`GET /desk/my/kb/page`) lists the company's own articles for the page
+  first, then YukthiX's, up to 6. A page the company explains itself shows only the company's article (its own wins).
+  A YukthiX article is marked "From YukthiX" and opens on the public help centre (`/yx/help/<platform slug>/yukthix-help/<slug>`).
+  Platform data: every company reads it through this endpoint; only staff write it; RLS keeps the platform company's
+  rows out of every company's own reads and writes.
+- **Searches with no result:** counts only (the term, how many companies, how many searches), never a company or a
+  person, and only for terms at least 5 companies searched in the last 30 days. Both are platform settings with
+  defaults (`helpcentre.gaps_min_companies` 5, never under 5; `helpcentre.gaps_days` 30, 7 to 180); saves are audited
+  (`platform.helpcentre.settings_changed`). The read across companies goes through `platformRead`, audited with purpose
+  `helpcentre.no_result_searches`.
+- **Key and role (1058):** `platform.helpcentre.write` (every route; staff only, never assignable to a company role).
+  Role to hold it: **Support agent** (writes and publishes; four eyes still needs two people).
+- **Tests:** API unit (guards, key on every route, not assignable, the 5-company floor); kit (list and counts, new
+  article field errors, writer cannot publish, send back needs a note, settings); web (the page loads and opens an
+  article, no-access state; the Help drawer opens a YukthiX article on the help centre); e2e `console-helpcentre`
+  (16: company admin, no sign-in, staff without the security key, without the key, not linked all refused; bad pages;
+  A writes, A cannot publish, B publishes, audited; both companies see it with its address; the company's own article
+  wins; RLS; a term searched by 5 companies shows as counts, by 4 is hidden; the read is audited; the floor of 5).
+
+### Questions from C-8 (from 1201)
+
+1201. **Public or signed-in only.** YukthiX help articles live in a public space, so the help-centre link works without
+      signing in (good for search engines and for people who cannot sign in). *Suggested: keep public; nothing in them
+      is company data.*
+1202. **Languages.** Platform articles are English only for now; the company drawer shows a company translation when it
+      has one, but YukthiX articles have no translations yet. *Suggested: add Hindi when the first translator is in
+      place, through the same knowledge-base translations.*
+1203. **Retiring an article.** The console can write, review and publish; retiring a published YukthiX article is not
+      drawn on YX-11. *Suggested: add a Retire action in the editor drawer (four eyes as for publishing).*
 
 ## Appendix: the count script
 

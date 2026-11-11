@@ -176,7 +176,6 @@
     "portals: ExportBillingScreen",
     "portals: ExternalPartyCaseScreen",
     "portals: FirstRunScreen",
-    "portals: HelpEditorScreen",
     "portals: IcMemberPortalScreen",
     "portals: IdentityVerificationScreen",
     "portals: IntegrationsDirectoryScreen",

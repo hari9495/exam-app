@@ -14,6 +14,8 @@ import {
 } from './console-ops';
 import { CommissionsScreen, DirectoryModerationScreen, EInvoiceLogScreen, ExportBillingScreen, PartnerVerificationScreen, RegionCatalogueScreen } from './console-finance';
 import * as D from './console-data';
+import { ConsoleShell } from '../console/console-shell';
+import type { HelpDetail, HelpRow, LiveHelpCentre } from './console-helpcentre-live';
 import { TODAY } from './t9-data';
 import type { ActivityEntry } from '../../components/timeline';
 
@@ -28,4 +30,18 @@ const AI_HISTORY: ActivityEntry[] = [
 ];
 
 export const YX11List: S = { name: 'Help articles and no-result searches', render: () => <HelpEditorScreen articles={D.HELP_ARTICLES_ADMIN} noResults={D.NO_RESULT_SEARCHES} today={TODAY} /> };
+// C-8 (answer 1057): the help-centre editor, live.
+const HC_ROWS: HelpRow[] = [
+  { id: 'h1', number: 12, title: 'Approve and lock a payroll run', state: 'published', pages: ['/yx/payroll/runs'], publishedAt: '2026-11-02T09:00:00Z', updatedAt: '2026-11-02T09:00:00Z' },
+  { id: 'h2', number: 13, title: 'Apply for leave', state: 'in_review', pages: ['/yx/time/leave'], publishedAt: null, updatedAt: '2026-11-12T08:00:00Z' },
+];
+const HC_DETAIL: HelpDetail = { id: 'h2', title: 'Apply for leave', summary: 'Pick the days and the type.', pages: ['/yx/time/leave'], state: 'in_review', publicUrl: null, versions: [{ version: 2, title: 'Apply for leave', summary: 'Pick the days and the type.', bodyHtml: '<p>Open Time › Leave and press Apply.</p>', author: 'Joseph Thomas', mine: false, reviewNote: null, state: 'in_review' }] };
+const hcWait = () => new Promise<HelpDetail>((r) => setTimeout(() => r(HC_DETAIL), 400));
+const hc = (o: Partial<LiveHelpCentre> = {}) => (
+  <ConsoleShell active="help-centre" name="Anand Iyer" email="anand.iyer@yukthix.test" securityHref="#" onSignOut={() => {}} onNavigate={() => {}}>
+    <HelpEditorScreen articles={[]} noResults={[]} today={TODAY} live={{ state: 'ready', onRetry: () => {}, articles: HC_ROWS, gaps: [{ query: 'esi challan', companies: 7, times: 31 }], settings: [{ key: 'helpcentre.gaps_min_companies', label: 'Show a no-result search once this many companies searched it', value: 5, default: 5, min: 5, max: 100 }, { key: 'helpcentre.gaps_days', label: 'No-result searches over the last (days)', value: 30, default: 30, min: 7, max: 180 }], loadArticle: hcWait, onCreate: hcWait, onSave: hcWait, onSubmit: hcWait, onReview: hcWait, onSaveSettings: hcWait, ...o }} />
+  </ConsoleShell>
+);
+export const YX11ListLive: S = { name: 'Help articles and no-result searches (C-8)', render: () => hc() };
+export const YX11ReviewLive: S = { name: 'Article · another staff member publishes it (C-8)', render: () => hc({ defaultOpen: HC_DETAIL }) };
 export const YX11Edit: S = { name: 'Article editor', render: () => <HelpEditorScreen articles={D.HELP_ARTICLES_ADMIN} noResults={D.NO_RESULT_SEARCHES} today={TODAY} editing /> };
