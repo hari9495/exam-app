@@ -751,3 +751,5 @@ C-6 to C-8.
       *Suggested: keep.*
 1146. **Language and data region in the wizard.** The drawing shows a default language and the data region; region is
       fixed to India and language is left to the company's own settings. *Suggested: keep.*
+
+- 1061 to 1066 (C-1) and 1121 to 1126 (C-4) approved as suggested (12 Nov 2026, "ok for all"). To do from them: staff roles (1061, 1126; in progress); notices to companies on a rule change through the C-2 admin messages (1065); a Console › Platform settings page with the next platform setting (1125); confirm the DPDP 72-hour Board report timing with counsel (1124, founder).
