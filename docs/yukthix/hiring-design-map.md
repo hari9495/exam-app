@@ -1838,6 +1838,8 @@ white-label per company from the console with the plan; (443) draw the quarantin
 Founder approved, 10 Nov 2026 (question 701): seed one demo staffing client, placement and issued invoice in
 demo-org, shown only while the staffing desk is on.
 Founder decided, 11 Nov 2026: build the "later" items now (377 sealed e-sign PDF, 401 joiner batches, 405 bulk offers in the background, 421 WhatsApp interview reminders, 422 interview-day swap, 491 client portal tickets, 495 e-invoicing per entity, 497 timesheets from Time, 574 receipts in the export, 842 bank receipt upload).
+Founder approved, 12 Nov 2026 (questions 901-904, all as suggested): (901) HR adds a joiner on another day to the batch
+later from the batch page; keep 902 (no late reminders), 904; (903) a sent interview is moved as a single reschedule.
 ## Client portal tickets built (answer 491; 11 Nov 2026, branch `feat/yukthix-later-portal-tickets`)
 - The drawn Tickets tab of the client portal (T9-06) is live. A contact raises a ticket (category, subject, details) and
   follows it: the list (number, category, priority, raised, resolve-by or paused, status Open / Waiting for you /
