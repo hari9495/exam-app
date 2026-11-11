@@ -93,7 +93,7 @@ export default function YxKioskPage() {
           state: vState,
           onRetry: loadVisitor,
           info: vInfo,
-          needs: (q) => call<KioskNeeds>('/visitor-kiosk/needs', { method: 'POST', body: { mobile: q.mobile, ...(q.typeId ? { typeId: q.typeId } : {}), ...(q.company ? { company: q.company } : {}) } }),
+          needs: (q) => call<KioskNeeds | { state: 'see-reception' }>('/visitor-kiosk/needs', { method: 'POST', body: { name: q.name, mobile: q.mobile, ...(q.typeId ? { typeId: q.typeId } : {}), ...(q.company ? { company: q.company } : {}) } }),
           walkIn: (input) =>
             call<KioskResult>('/visitor-kiosk/walk-ins', {
               method: 'POST',

@@ -23,6 +23,8 @@ const KEY = {
   'vis.photo': 'visitors.photo',
   'vis.hours_from': 'visitors.hours_from',
   'vis.hours_to': 'visitors.hours_to',
+  // Answer 791: all day (00:00 to midnight) per location.
+  'vis.all_day': 'visitors.all_day',
   'vis.notice': 'visitors.notice',
   'vis.badge': 'visitors.badge',
   'vis.retention_days': 'visitors.retention_days',
@@ -32,7 +34,7 @@ const KEY = {
   'vis.kiosk': 'visitors.kiosk',
 } as const;
 type Field = keyof typeof KEY;
-const TOGGLE: Partial<Record<Field, [on: string, off: string]>> = { 'vis.photo': ['on', 'off'], 'vis.kiosk': ['on', 'off'] };
+const TOGGLE: Partial<Record<Field, [on: string, off: string]>> = { 'vis.photo': ['on', 'off'], 'vis.kiosk': ['on', 'off'], 'vis.all_day': ['on', 'off'] };
 const UNIT: Partial<Record<Field, (v: string) => string>> = {
   'vis.host_approval_timeout': (v) => `${v} minutes`,
   'vis.retention_days': (v) => `${v} days`,
@@ -43,15 +45,18 @@ const LIVE = new Set<string>([...Object.keys(KEY), 'vis.desk', 'vis.log', 'vis.w
 
 /** Slice 2 (606): GET /visitors/types. */
 export interface VisitorTypesData {
+  /** Answer 794: types taken off the list that visits used (kept on those visits). */
+  archived?: string[];
   types: { id: string; name: string; escort: boolean; ndaPolicyId: string | null; nda: string | null; inductionPolicyId: string | null; induction: string | null }[];
   policies: { id: string; title: string }[];
 }
 const NO = 'No';
 
-/** The edited list back to PUT /visitors/types (a row keeps its id by its place; added rows are new). */
+/** The edited list back to PUT /visitors/types (answer 794: a row is the type with its name; a removed type is deleted or archived). */
 export function visitorTypesFromRows(rows: string[][], data: VisitorTypesData): { id?: string; name: string; escort: boolean; ndaPolicyId: string | null; inductionPolicyId: string | null }[] {
   const policy = (title: string | undefined) => (title && title !== NO ? (data.policies.find((p) => p.title === title)?.id ?? null) : null);
-  return rows.map((r, i) => ({ ...(data.types[i] ? { id: data.types[i]!.id } : {}), name: (r[0] ?? '').trim(), escort: r[1] === 'Yes', ndaPolicyId: policy(r[2]), inductionPolicyId: policy(r[3]) }));
+  const idOf = (name: string) => data.types.find((t) => t.name.trim().toLowerCase() === name.trim().toLowerCase())?.id;
+  return rows.map((r) => ({ ...(idOf(r[0] ?? '') ? { id: idOf(r[0] ?? '')! } : {}), name: (r[0] ?? '').trim(), escort: r[1] === 'Yes', ndaPolicyId: policy(r[2]), inductionPolicyId: policy(r[3]) }));
 }
 
 /** The designed 3.12 page with the company's values, for SettingsPageScreen `live`. */
@@ -61,7 +66,7 @@ export function visitorSettingsPage(design: SettingsPageDef, data: VisitorSettin
     if (d.key === 'vis.types') {
       if (!types) return null;
       const titles = [NO, ...types.policies.map((p) => p.title)];
-      return { ...d, rows: types.types.map((t) => [t.name, t.escort ? 'Yes' : 'No', t.nda ?? NO, t.induction ?? NO]), columnOptions: { Escort: ['Yes', 'No'], NDA: titles, 'Safety induction': titles }, helper: 'The NDA and the safety induction are published company policies (Policies). An NDA counts for a year for the same person and company; the induction is every visit.' };
+      return { ...d, rows: types.types.map((t) => [t.name, t.escort ? 'Yes' : 'No', t.nda ?? NO, t.induction ?? NO]), columnOptions: { Escort: ['Yes', 'No'], NDA: titles, 'Safety induction': titles }, helper: `The NDA and the safety induction are published company policies (Policies). An NDA counts for a year for the same person and company; the induction is every visit. Removing a type no visit used deletes it. A type visits used is archived: kept on those visits, not offered for new ones.${types.archived?.length ? ` Archived: ${types.archived.join(', ')}.` : ''}` };
     }
     if (d.key === 'vis.desk' || d.key === 'vis.log' || d.key === 'vis.watchlist') return d;
     const f = d.key as Field;

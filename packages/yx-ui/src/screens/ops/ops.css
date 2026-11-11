@@ -185,6 +185,8 @@
 .yx-ops-kiosk__choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(var(--yx-space-16) * 4)), 1fr)); gap: var(--yx-space-4); }
 .yx-ops-kiosk__notice { max-height: calc(var(--yx-space-16) * 4); overflow: auto; padding: var(--yx-space-4); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); font-size: var(--yx-text-md); line-height: var(--yx-leading-body); }
 .yx-ops-kiosk input { min-height: var(--yx-space-12); font-size: var(--yx-text-lg); }
+/* Answer 799: the walk-in details step in two columns on a wide screen (the field row is one column below 640 px). */
+.yx-ops-kiosk--wide { max-width: calc(var(--yx-space-16) * 16); gap: var(--yx-space-4); }
 
 /* Editor side-by-side */
 .yx-ops-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--yx-space-6); align-items: start; }

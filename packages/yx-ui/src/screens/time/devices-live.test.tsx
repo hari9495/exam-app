@@ -32,6 +32,24 @@ const KEY = { code: 'HSR-K3', setupCode: 'K7PQ-M2XD-9RTA', setupExpiresAt: mins(
 const devices = (o: Partial<LiveDevices> = {}): LiveDevices => ({ state: 'ready', data: DATA, company: 'Kaveri Foods', now: NOW, onRetry: vi.fn(), onRegister: vi.fn(async () => KEY), onReset: vi.fn(async () => KEY), onApprove: vi.fn(async () => ({})), onRefuse: vi.fn(async () => ({})), onSignOut: vi.fn(async () => ({})), ...o });
 
 describe('Devices and kiosks (TIM-14 live)', () => {
+  it('793: Revoke asks for the reason (nothing sent without it), then sends it for that kiosk', async () => {
+    const live = devices({ onRevoke: vi.fn(async () => ({})) });
+    render(<DevicesScreen live={live} />);
+    await ue.click(screen.getAllByRole('button', { name: 'Revoke' })[0]!);
+    const d = screen.getByRole('dialog', { name: 'Revoke HSR-K1?' });
+    await ue.click(within(d).getByRole('button', { name: 'Revoke kiosk' }));
+    expect(within(d).getByText('Give the reason (at least 3 characters).')).toBeInTheDocument();
+    expect(live.onRevoke).not.toHaveBeenCalled();
+    await ue.type(within(d).getByRole('textbox', { name: /Reason/ }), 'Tablet stolen');
+    await ue.click(within(d).getByRole('button', { name: 'Revoke kiosk' }));
+    await waitFor(() => expect(live.onRevoke).toHaveBeenCalledWith('k1', 'Tablet stolen'));
+  });
+
+  it('793 (negative): without the revoke action there is no Revoke button', () => {
+    render(<DevicesScreen live={devices()} />);
+    expect(screen.queryByRole('button', { name: 'Revoke' })).toBeNull();
+  });
+
   it('shows kiosks with health, an offline alert and today’s check-ins', () => {
     render(<DevicesScreen live={devices()} />);
     expect(screen.getByText('HR · Kaveri Foods')).toBeInTheDocument();

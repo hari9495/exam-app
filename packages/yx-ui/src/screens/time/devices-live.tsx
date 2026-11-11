@@ -11,7 +11,7 @@ import { FieldRow, FormField, FormSection } from '../../components/field';
 import { Switch } from '../../components/choice';
 import { useToast } from '../../components/notify';
 import { Icon } from '../../components/foundations';
-import { TextField } from '../../components/inputs';
+import { TextArea, TextField } from '../../components/inputs';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { useNarrow } from '../../components/stepper';
 import { PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
@@ -49,6 +49,8 @@ export interface LiveDevices {
   company?: string;
   onRegister: (input: { place: string; locationId: string; mode: 'attendance' | 'visitor' }) => Promise<KioskKey>;
   onReset: (kioskId: string) => Promise<KioskKey>;
+  /** Answer 793: take a kiosk out of use (lost, stolen, replaced), with the reason (POST /time/devices/kiosks/:id/revoke). */
+  onRevoke?: (kioskId: string, reason: string) => Promise<unknown>;
   onApprove: (requestId: string) => Promise<unknown>;
   onRefuse: (requestId: string, reason: string) => Promise<unknown>;
   onSignOut: (phoneId: string) => Promise<unknown>;
@@ -191,6 +193,7 @@ export function LiveDevicesScreen({ live }: { live: LiveDevices }) {
   const [rejectWhy, setRejectWhy] = useState<string | null>(null);
   const [rejectTried, setRejectTried] = useState(false);
   const [resetting, setResetting] = useState<Kiosk | null>(null);
+  const [revoking, setRevoking] = useState<Kiosk | null>(null);
   const [registering, setRegistering] = useState(false);
   const [regTried, setRegTried] = useState(false);
   const [reg, setReg] = useState<{ place: string; locationId: string | null; mode: 'attendance' | 'visitor' }>({ place: '', locationId: null, mode: 'attendance' });
@@ -325,7 +328,7 @@ export function LiveDevicesScreen({ live }: { live: LiveDevices }) {
                 state={tableState}
                 onRetry={live.onRetry}
                 empty={<EmptyState title="No kiosks registered" description="Register a site tablet so people without phones can check in with code and PIN." action={registerBtn} />}
-                rowButtons={(r) => <Button size="sm" onClick={() => setResetting(r)}>{r.status === 'not_set_up' ? 'New set-up key' : 'Reset kiosk key'}</Button>}
+                rowButtons={(r) => <><Button size="sm" onClick={() => setResetting(r)}>{r.status === 'not_set_up' ? 'New set-up key' : 'Reset kiosk key'}</Button>{live.onRevoke && <Button size="sm" variant="danger" onClick={() => setRevoking(r)}>Revoke</Button>}</>}
               />
               {live.state === 'ready' && kiosks.length > 0 && <p className="yx-tim-note">Check-ins: today so far. Stale: not seen for 15 min or more. Offline: not seen for an hour or more.</p>}
             </div>
@@ -380,6 +383,7 @@ Only lost or inactive ({issueCount})
           )}
         </Tabs>
       )}
+      <RevokeKioskDialog kiosk={revoking} onClose={() => setRevoking(null)} onRevoke={async (reason) => { const k = revoking!; await live.onRevoke!(k.id, reason); note(`${k.code} revoked · the ${k.place} tablet no longer works.`); }} />
       <ConfirmDialog
         open={!!resetting}
         onOpenChange={(o) => !o && setResetting(null)}
@@ -489,5 +493,40 @@ Only lost or inactive ({issueCount})
         onConfirm={() => { if (approving) void approve(approving); }}
       />
     </TimePage>
+  );
+}
+
+/**
+ * Answer 793: take a kiosk out of use (lost, stolen, replaced). Its key stops working at once and it leaves the list; the
+ * reason is kept with the audit. Used by the drawn and the live Devices and kiosks pages.
+ */
+export function RevokeKioskDialog({ kiosk, onClose, onRevoke }: { kiosk: { code: string; place: string; location: string } | null; onClose: () => void; onRevoke: (reason: string) => Promise<unknown> }) {
+  const [why, setWhy] = useState('');
+  const [tried, setTried] = useState(false);
+  const { busy, error, run } = useRun();
+  const close = () => (setWhy(''), setTried(false), onClose());
+  const go = () => {
+    setTried(true);
+    if (why.trim().length < 3) return void document.getElementById('yx-dev-revoke-why')?.focus();
+    void run('revoke', async () => (await onRevoke(why.trim()), close()));
+  };
+  return (
+    <Dialog
+      open={!!kiosk}
+      onOpenChange={(o) => !o && close()}
+      title={`Revoke ${kiosk?.code ?? ''}?`}
+      description={kiosk ? `The ${kiosk.place} tablet at ${kiosk.location} stops working at once and leaves this list. To use a tablet there again, register a new kiosk.` : undefined}
+      notice={error ? <InlineAlert tone="danger" title={error} /> : undefined}
+      footer={
+        <>
+          <Button onClick={close}>Cancel</Button>
+          <Button variant="danger" loading={busy === 'revoke'} onClick={go}>Revoke kiosk</Button>
+        </>
+      }
+    >
+      <FormField id="yx-dev-revoke-why" label="Reason" required helper="For example: tablet stolen, replaced, site closed. Kept with the audit." error={tried && why.trim().length < 3 ? 'Give the reason (at least 3 characters).' : undefined}>
+        <TextArea value={why} onChange={setWhy} rows={2} maxLength={300} />
+      </FormField>
+    </Dialog>
   );
 }
