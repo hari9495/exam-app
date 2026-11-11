@@ -357,3 +357,9 @@ Founder approved, 12 Nov 2026 (questions 981-982, as suggested): no go-to keys (
      *Suggested: keep.*
 994. **A new company's backlog.** A company that joins today sees every published entry for its products (latest 50).
      *Suggested: show only entries from the last 6 months.*
+
+Founder approved, 12 Nov 2026 (questions 961-964 and 991-994, all as suggested): (961) HR or the help-desk team writes page
+help as tagged articles, YukthiX starter articles later; (962) move IrreversibleSheet into the shared kit; (963) accept the
+two honest guard entries; (964) "This page" shows the article in the person's language when a translation exists; (991) no
+separate updates page; (992) keep "Mark all read" and add an unread dot on Help; keep 993; (994) show only the last 6 months
+of what's new to a new company.
