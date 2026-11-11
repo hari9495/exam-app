@@ -288,6 +288,9 @@ describe('/staff/help-centre', () => {
     api.mockRejectedValue(Object.assign(new Error('Forbidden'), { status: 403 }));
     wrap(<ConsoleHelpCentrePage />);
     expect(await screen.findByText("You don't have access to the help articles")).toBeInTheDocument();
+  });
+});
+
 // Console follow-ups: the company card shows the feature switches (C-5 hook); Platform settings (1125).
 describe('Console follow-ups', () => {
   it("the company's Products and features card shows a killed switch as off, with why", async () => {
