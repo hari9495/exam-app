@@ -809,3 +809,11 @@ wrong field (`7bb97c964`); "1 workers" (`248bb3636`).
      with no PT return due, the pack would still say "PT challan not filed yet". *Suggested: name PT as missing only in
      the state's due months, from the IN.PT rule set's periods.*
 
+## Answer 882 built (11 Nov 2026, branch `feat/yukthix-cl-841`)
+
+- PT is named missing in a client pack only in the client site's state's PT months. The months come from the existing
+  IN.PT rule sets (`deductMonths`, verify): Tamil Nadu September and March; Karnataka, Maharashtra, Telangana and Delhi
+  every month (no `deductMonths`). Outside a PT month an unfiled PT row reads "Not due this month"; a filed one shows.
+- Tests: `own-licence-rules.spec` (due and not-due months, filed and not filed), e2e `contract-labour-8` (the pack made
+  again without the PT return names PT only in a PT month).
+

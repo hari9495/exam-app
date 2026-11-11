@@ -6,6 +6,8 @@ import { audit, inCompany, type CompanyContext, type Tx } from '../org-structure
 import { todayIst } from '../org-structure/org-validation';
 import { FilesService } from '../documents/files.service';
 import { StatutoryRegistersService } from '../payroll/statutory-registers.service';
+import { StatutoryRulesService } from '../statutory/statutory.service';
+import { inForce } from '../statutory/evaluator';
 import { payScope } from '../payroll/pay-access';
 import { monthRange } from '../time/time-core';
 import { ContractLabourService, type Upload } from './contract-labour.service';
@@ -32,6 +34,7 @@ export class ContractorSideService {
     private readonly clra: ContractLabourService,
     private readonly files: FilesService,
     private readonly registers: StatutoryRegistersService,
+    private readonly rules: StatutoryRulesService,
   ) {}
 
   private async site(tx: Tx, c: CompanyContext, id: string) {
@@ -193,7 +196,11 @@ export class ContractorSideService {
       const inState = (x: { statute: string; state: string | null }) => x.statute !== 'IN.PT' || x.state === site.state;
       const registered = (await tx.statutoryRegistration.findMany({ where: { organizationId: org, legalEntityId: entity.id, statute: { in: statutes }, status: { not: 'off' } }, select: { statute: true, state: true, registrationNo: true } })).filter(inState);
       const filings = (await tx.statutoryFiling.findMany({ where: { organizationId: org, legalEntityId: entity.id, statute: { in: statutes }, periodStart: day(from), status: 'filed' }, orderBy: { filedAt: 'asc' }, select: { statute: true, state: true, reference: true, amount: true, filedAt: true } })).filter(inState);
-      const ch = challanRows(registered, filings.map((f) => ({ statute: f.statute, reference: f.reference, amount: f.amount ? rupees(f.amount) : null, filedOn: f.filedAt ? todayIst(f.filedAt) : null })));
+      // Answer 882: PT is named as missing only in the state's PT months (IN.PT deductMonths; none means every month; verify).
+      const ptRules = inForce(await this.rules.published(), 'IN.PT', [site.state], from);
+      const ptMonths = (ptRules?.values as { deductMonths?: number[] } | undefined)?.deductMonths;
+      const ptDue = !ptMonths || ptMonths.includes(Number(from.slice(5, 7)));
+      const ch = challanRows(registered, filings.map((f) => ({ statute: f.statute, reference: f.reference, amount: f.amount ? rupees(f.amount) : null, filedOn: f.filedAt ? todayIst(f.filedAt) : null })), ptDue);
       const r = ch.rows.length ? await store('clpk_challans', 'PF, ESI and PT remittances (contract labour at the client)', ['Statute', 'Registration', 'Challan / TRRN', 'Amount', 'Filed on', 'Status'], ch.rows) : null;
       const data = { legalEntityId: entity.id, wagesRegisterId: w.id, musterRegisterId: m.id, challansRegisterId: r?.id ?? null, missing: ch.missing, employees: employees.length, madeBy: user.userId!, madeAt: new Date() };
       const pack = existing

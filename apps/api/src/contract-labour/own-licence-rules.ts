@@ -55,7 +55,11 @@ const STATUTE_NAME: Record<string, string> = { 'IN.PF': 'PF', 'IN.ESI': 'ESI', '
  * day), "Not filed yet" for a statute the entity is registered for with nothing filed; those are named as missing.
  * Never the employee-level return file: it lists every employee of the entity, not only those at the client.
  */
-export function challanRows(registered: { statute: string; registrationNo: string | null }[], filed: { statute: string; reference: string | null; amount: string | null; filedOn: string | null }[]): { rows: string[][]; missing: string[] } {
+/**
+ * `ptDue` (answer 882): whether the site's state collects PT for the month (the IN.PT rule set's deduction months, e.g.
+ * Tamil Nadu in September and March only). In another month an unfiled PT is not missing: it reads "Not due this month".
+ */
+export function challanRows(registered: { statute: string; registrationNo: string | null }[], filed: { statute: string; reference: string | null; amount: string | null; filedOn: string | null }[], ptDue = true): { rows: string[][]; missing: string[] } {
   const rows: string[][] = [];
   const missing: string[] = [];
   // Answer 841: PT too, for the client site's state (the caller passes only that state's registration and filings).
@@ -64,6 +68,10 @@ export function challanRows(registered: { statute: string; registrationNo: strin
     if (!reg) continue;
     const name = STATUTE_NAME[statute]!;
     const mine = filed.filter((f) => f.statute === statute);
+    if (!mine.length && statute === 'IN.PT' && !ptDue) {
+      rows.push([name, reg.registrationNo ?? '', '', '', '', 'Not due this month']);
+      continue;
+    }
     if (!mine.length) {
       rows.push([name, reg.registrationNo ?? '', '', '', '', 'Not filed yet']);
       missing.push(`${name} challan`);

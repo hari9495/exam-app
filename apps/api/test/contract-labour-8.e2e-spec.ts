@@ -256,6 +256,11 @@ describe('Contract labour CL-8: we are the contractor', () => {
     expect(wages).toMatch(/Arun Kumar 21 20,?000/);
     await api('adminB', 'get', `/contract-labour/client-packs/${ids.pack}/file`).expect(404);
     expect(await inA((tx) => tx.auditLog.count({ where: { action: 'clra.client_pack.downloaded' } }))).toBe(1);
+    // Answer 882: without the Tamil Nadu PT return, PT is named missing only in a PT month (TN: September and March).
+    await asSuper(async (tx) => (await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`, tx.statutoryFiling.updateMany({ where: { organizationId: org.A.id, statute: 'IN.PT', state: 'IN-TN' }, data: { status: 'uploaded', filedAt: null, filedBy: null } })));
+    const remade = (await make('owner', { reason: 'PT return withdrawn' }).expect(want(201))).body;
+    const ptMonth = [9, 3].includes(Number(month.slice(5, 7)));
+    expect(remade.missing).toEqual(ptMonth ? ['ESI challan', 'PT challan'] : ['ESI challan']);
   });
 
   it('CLB-08: the portal upload is recorded once (day, reference); the acknowledgement makes it accepted; then final', async () => {
@@ -287,6 +292,6 @@ describe('Contract labour CL-8: we are the contractor', () => {
     expect((await api('reader', 'get', '/contract-labour/client-packs').expect(200)).body.packs[0].status).toBe('Accepted');
     // Uploaded is final: no new version.
     expect((await api('owner', 'post', '/contract-labour/client-packs').send({ clientSiteId: ids.tn, month, reason: 'again' }).expect(409)).body.message).toMatch(/final/);
-    expect(await inA((tx) => tx.auditLog.count({ where: { action: { in: ['clra.client_pack.made', 'clra.client_pack.uploaded', 'clra.client_pack.accepted'] } } }))).toBe(4);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: { in: ['clra.client_pack.made', 'clra.client_pack.uploaded', 'clra.client_pack.accepted'] } } }))).toBe(5); // three makes (882 adds one)
   });
 });
