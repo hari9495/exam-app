@@ -3,6 +3,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import type { ReactNode } from 'react';
 import { Button } from '../../components/button';
 import { PageHeader } from '../../components/shell';
+import { EmptyState, NotFoundReferenceContext } from '../../components/feedback';
 import { DesktopFrame, PhoneFrame, type AreaId } from '../_kit/frames';
 import {
   APPLY_LEAVE_HELP,
@@ -205,11 +206,22 @@ export const NotFound: S = {
   name: '6.3 Not found (missing or restricted, identical)',
   render: () => (
     <Desk area="helpdesk" title="Helpdesk">
-      <NotFoundState />
+      <NotFoundState reference="NF-7KQ2MP" />
     </Desk>
   ),
 };
-export const NotFoundPhone: S = { name: '6.3 Not found · phone', ...phone, render: () => <PhoneFrame tab="home" title="Not found"><NotFoundState /></PhoneFrame> };
+// Answer 947: a record page's own Not found shows the reference the API sent with its 404.
+export const NotFoundRecord: S = {
+  name: '6.3 Not found · a record page, with its reference',
+  render: () => (
+    <Desk area="people" title="People">
+      <NotFoundReferenceContext.Provider value="NF-7KQ2MP">
+        <EmptyState title="Not found" description="This person doesn't exist in your company, or the link is out of date." />
+      </NotFoundReferenceContext.Provider>
+    </Desk>
+  ),
+};
+export const NotFoundPhone: S = { name: '6.3 Not found · phone', ...phone, render: () => <PhoneFrame tab="home" title="Not found"><NotFoundState reference="NF-7KQ2MP" /></PhoneFrame> };
 
 /* 6.4 irreversible */
 const PUBLISH = {

@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { AgentDeskScreen } from './helpdesk';
 import { TICKETS } from './helpdesk-data';
 import { DESK_ROWS, liveDesk } from './helpdesk-desk-live-samples';
+import { ReferenceLookupDialog } from './reference-lookup';
 
 const meta: Meta = { title: 'Screens/Helpdesk/HLP-02 · Agent desk', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -41,3 +42,8 @@ export const NewTicket: S = { name: 'New ticket for an employee', render: () => 
 export const QuickViewLive: S = { name: 'Quick view · both response targets, assign to me', render: () => <AgentDeskScreen live={liveDesk({ start: { openId: 't2' } })} /> };
 export const AgentNotLead: S = { name: 'Agent (not a team lead) · no bulk selection', render: () => <AgentDeskScreen live={liveDesk({ page: { items: DESK_ROWS.map((r) => ({ ...r, canBulk: false })), total: 3, nextCursor: null } })} /> };
 export const NoAccess: S = { name: 'No access (no desk seat)', render: () => <AgentDeskScreen live={liveDesk({ state: 'no-access' })} /> };
+
+// Answer 947: an agent looks up the reference a person read out from a Not found page.
+const LOOKED_UP = { code: 'NF-7KQ2MP', at: '2026-11-11T05:42:00.000Z', who: 'Anitha Rao', path: '/yx/people/3f2c9a1e-7b44-4c1d-9a55-0e6b1f2d8c11' };
+export const LookUpButton: S = { name: 'Look up a Not found reference · button', render: () => <AgentDeskScreen live={liveDesk({ onLookUpReference: async () => LOOKED_UP })} /> };
+export const LookUpResult: S = { name: 'Look up a Not found reference · found', render: () => <ReferenceLookupDialog initialCode="NF-7KQ2MP" initialResult={LOOKED_UP} onLookUp={async () => LOOKED_UP} onClose={() => {}} /> };
