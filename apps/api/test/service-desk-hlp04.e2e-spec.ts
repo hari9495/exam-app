@@ -33,7 +33,7 @@ describe('Service Desk HLP-04 Knowledge base editor: keywords, assistant use, ma
   const ids: Record<string, string> = {};
   const api = (who: Who, method: 'get' | 'post' | 'patch' | 'put', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const asA = (): TenantContext => ({ organizationId: org.A.id, isSuperAdmin: false, userId: null });
-  const article = async (who: Who = 'agent') => (await api(who, 'get', `/desk/kb/articles/${ids.art}`).expect(200)).body as { version: number; keywords: string | null; assistantUse: boolean; reviewDueOn: string | null; state: string };
+  const article = async (who: Who = 'agent') => (await api(who, 'get', `/desk/kb/articles/${ids.art}`).expect(200)).body as { version: number; keywords: string | null; assistantUse: boolean; reviewDueOn: string | null; state: string; pages: string[] };
   const today = new Date(Date.now() + 5.5 * 3_600_000).toISOString().slice(0, 10);
 
   beforeAll(async () => {
@@ -205,6 +205,39 @@ describe('Service Desk HLP-04 Knowledge base editor: keywords, assistant use, ma
       await api('adminB', 'put', '/desk/kb/settings').send({ reviewMonths: 3 }).expect(200);
       expect((await api('agent', 'get', '/desk/kb/settings').expect(200)).body.reviewMonths).toBe(24);
       expect((await api('agentB', 'get', '/desk/kb/settings').expect(200)).body.reviewMonths).toBe(3);
+    });
+  });
+
+  describe('Help H-1 (answer 942): the Help drawer "This page" tab lists the articles tagged with the page', () => {
+    const title = `Connect to the office network ${run}`;
+    const page = (who: Who, route: string) => api(who, 'get', `/desk/my/kb/page?route=${encodeURIComponent(route)}`);
+    it('an author tags the published article with pages (cleaned of repeats); bad pages are refused', async () => {
+      const { version } = await article();
+      for (const pages of [['https://example.com/leave'], ['/yx/Time'], ['yx/time'], Array.from({ length: 21 }, (_, i) => `/yx/p${i}`), '/yx/time']) await api('agent', 'patch', `/desk/kb/articles/${ids.art}`).send({ version, pages }).expect(400);
+      await api('divya', 'patch', `/desk/kb/articles/${ids.art}`).send({ version, pages: ['/yx/time/leave'] }).expect(403);
+      await api('agent', 'patch', `/desk/kb/articles/${ids.art}`).send({ version, pages: ['/yx/time/leave', '/yx/me/pay'] }).expect(200);
+      expect((await article()).pages).toEqual(['/yx/time/leave', '/yx/me/pay']);
+    });
+    it('the employee sees it on the page and every page under it, not elsewhere; another company never', async () => {
+      for (const route of ['/yx/time/leave', '/yx/time/leave/apply', '/yx/me/pay']) expect((await page('divya', route).expect(200)).body).toEqual({ on: true, articles: [expect.objectContaining({ title, number: expect.any(Number) })] });
+      for (const route of ['/yx/time', '/yx/time/leaves', '/yx/payroll']) expect((await page('divya', route).expect(200)).body).toEqual({ on: true, articles: [] });
+      expect((await page('adminB', '/yx/time/leave').expect(200)).body).toEqual({ on: true, articles: [] });
+      for (const bad of ['https://example.com', '/yx/Time', '/yx/time?x=1', '']) await page('divya', bad).expect(400);
+      await api('divya', 'get', '/desk/my/kb/page').expect(400);
+      await request(server()).get('/api/v1/desk/my/kb/page?route=%2Fyx%2Ftime%2Fleave').expect(401);
+    });
+    it('"Show page help" is on by default; the Service Desk owner turns it off (audited) and nobody gets page help; others may not', async () => {
+      expect((await api('agent', 'get', '/desk/kb/settings').expect(200)).body.pageHelp).toBe(true);
+      for (const who of ['agent', 'deskAdmin', 'divya'] as const) await api(who, 'put', '/desk/kb/settings').send({ pageHelp: false }).expect(403);
+      await api('adminA', 'put', '/desk/kb/settings').send({ pageHelp: 'no' }).expect(400);
+      const r = (await api('adminA', 'put', '/desk/kb/settings').send({ pageHelp: false }).expect(200)).body;
+      expect(r).toMatchObject({ pageHelp: false, reviewMonths: 24 });
+      expect((await page('divya', '/yx/time/leave').expect(200)).body).toEqual({ on: false, articles: [] });
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'desk.kb.settings_changed', entityId: 'help.page_help' } }))).toBe(1);
+      // Another company keeps its own (on).
+      expect((await api('agentB', 'get', '/desk/kb/settings').expect(200)).body.pageHelp).toBe(true);
+      await api('adminA', 'put', '/desk/kb/settings').send({ pageHelp: true }).expect(200);
+      expect((await page('divya', '/yx/time/leave').expect(200)).body.articles).toHaveLength(1);
     });
   });
 });

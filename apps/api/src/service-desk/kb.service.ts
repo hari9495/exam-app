@@ -35,6 +35,7 @@ export function keywordList(raw: string): string {
 
 // YX-GRO-07: a published article is checked again after the company's interval (registry desk.kb.review_months).
 export const REVIEW_KEY = 'desk.kb.review_months';
+export const PAGE_HELP_KEY = 'help.page_help';
 const REVIEW_CHOICES = [3, 6, 12, 24];
 const REVIEW_DEFAULT = 12;
 /** The stored value (text from the registry screen, or a number) as months; anything else is the default. */
@@ -387,6 +388,7 @@ export class KbService {
       outdatedReason: r.outdatedReason,
       keywords: r.keywords,
       assistantUse: r.assistantUse,
+      pages: r.pages,
       version: r.version,
       updatedAt: r.updatedAt,
     };
@@ -505,6 +507,7 @@ export class KbService {
         ...(dto.ownerUserId ? { ownerUserId: dto.ownerUserId } : {}),
         ...(dto.keywords !== undefined ? { keywords: keywordList(dto.keywords) || null } : {}),
         ...(dto.assistantUse !== undefined ? { assistantUse: dto.assistantUse } : {}),
+        ...(dto.pages !== undefined ? { pages: dto.pages } : {}),
         version: { increment: 1 },
       };
       if (dto.slug && dto.slug !== art.slug) {
@@ -531,22 +534,39 @@ export class KbService {
     return reviewMonthsOf(row?.value);
   }
 
-  /** HLP-04: the company's review interval. Anyone who reads knowledge may see it; desk.desk.create changes it. */
-  async kbSettings(a: DeskActor) {
-    return this.tx(a, async (tx) => ({ reviewMonths: await this.reviewMonths(tx, a.ctx.organizationId), choices: REVIEW_CHOICES, defaultMonths: REVIEW_DEFAULT }));
+  /** Help H-1 (answer 942): "Show page help" (company setting, on by default). */
+  private async pageHelpOn(tx: Tx, org: string): Promise<boolean> {
+    const row = await tx.setting.findFirst({ where: { organizationId: org, key: PAGE_HELP_KEY, scopeType: 'tenant', scopeId: org }, select: { value: true } });
+    return (row?.value ?? 'on') === 'on';
   }
 
-  async setKbSettings(a: DeskActor, reviewMonths: number) {
+  /** HLP-04: the company's review interval. Anyone who reads knowledge may see it; desk.desk.create changes it. */
+  async kbSettings(a: DeskActor) {
+    return this.tx(a, async (tx) => ({ reviewMonths: await this.reviewMonths(tx, a.ctx.organizationId), choices: REVIEW_CHOICES, defaultMonths: REVIEW_DEFAULT, pageHelp: await this.pageHelpOn(tx, a.ctx.organizationId) }));
+  }
+
+  async setKbSettings(a: DeskActor, dto: { reviewMonths?: number; pageHelp?: boolean }) {
+    if (dto.reviewMonths === undefined && dto.pageHelp === undefined) throw new BadRequestException('Nothing to change.');
     return this.tx(a, async (tx) => {
       const org = a.ctx.organizationId;
-      const from = await this.reviewMonths(tx, org);
       // Stored as the registry stores it (text), so Settings › registry shows the same value.
-      const where = { organizationId: org, key: REVIEW_KEY, scopeType: 'tenant', scopeId: org, validFrom: null };
-      const row = await tx.setting.findFirst({ where, select: { id: true } });
-      if (row) await tx.setting.update({ where: { id: row.id }, data: { value: String(reviewMonths), updatedBy: a.userId } });
-      else await tx.setting.create({ data: { ...where, value: String(reviewMonths), updatedBy: a.userId } });
-      await audit(tx, a, 'desk.kb.settings_changed', 'setting', REVIEW_KEY, { reviewMonths: { from, to: reviewMonths } });
-      return { reviewMonths, choices: REVIEW_CHOICES, defaultMonths: REVIEW_DEFAULT };
+      const put = async (key: string, value: string) => {
+        const where = { organizationId: org, key, scopeType: 'tenant', scopeId: org, validFrom: null };
+        const row = await tx.setting.findFirst({ where, select: { id: true } });
+        if (row) await tx.setting.update({ where: { id: row.id }, data: { value, updatedBy: a.userId } });
+        else await tx.setting.create({ data: { ...where, value, updatedBy: a.userId } });
+      };
+      if (dto.reviewMonths !== undefined) {
+        const from = await this.reviewMonths(tx, org);
+        await put(REVIEW_KEY, String(dto.reviewMonths));
+        await audit(tx, a, 'desk.kb.settings_changed', 'setting', REVIEW_KEY, { reviewMonths: { from, to: dto.reviewMonths } });
+      }
+      if (dto.pageHelp !== undefined) {
+        const from = await this.pageHelpOn(tx, org);
+        await put(PAGE_HELP_KEY, dto.pageHelp ? 'on' : 'off');
+        await audit(tx, a, 'desk.kb.settings_changed', 'setting', PAGE_HELP_KEY, { pageHelp: { from, to: dto.pageHelp } });
+      }
+      return { reviewMonths: await this.reviewMonths(tx, org), choices: REVIEW_CHOICES, defaultMonths: REVIEW_DEFAULT, pageHelp: await this.pageHelpOn(tx, org) };
     });
   }
 
@@ -894,6 +914,27 @@ export class KbService {
 
   async employeeSuggest(r: Requester, q: string, source: 'help' | 'drawer') {
     return this.asReader(r.ctx.organizationId, 'requester', async (tx) => this.suggestFor(tx, { org: r.ctx.organizationId, spaceIds: await this.employeeScope(tx, r.ctx.organizationId), source, personId: null }, q, true));
+  }
+
+  /**
+   * Help H-1 (answer 942): the Help drawer's "This page": published articles the person may read whose pages include the
+   * route (a page and every page under it), the closest page first, then featured, then by number; at most 6. Nothing
+   * when the company turned page help off (on: false hides the tab).
+   */
+  async employeePage(r: Requester, route: string) {
+    return this.asReader(r.ctx.organizationId, 'requester', async (tx) => {
+      const org = r.ctx.organizationId;
+      if (!(await this.pageHelpOn(tx, org))) return { on: false, articles: [] };
+      const prefixes = route.split('/').slice(2).map((_, i, parts) => `/yx/${parts.slice(0, i + 1).join('/')}`);
+      const rows = await tx.sdKbArticle.findMany({
+        where: { organizationId: org, spaceId: { in: await this.employeeScope(tx, org) }, state: 'published', deletedAt: null, translationOfId: null, pages: { hasSome: prefixes } },
+        select: { id: true, number: true, slug: true, title: true, summary: true, featured: true, pages: true },
+        take: 50,
+      });
+      const depth = (p: string[]) => Math.max(...p.filter((x) => prefixes.includes(x)).map((x) => x.length));
+      rows.sort((a, b) => depth(b.pages) - depth(a.pages) || Number(b.featured) - Number(a.featured) || a.number - b.number);
+      return { on: true, articles: rows.slice(0, 6).map(({ id, number, slug, title, summary }) => ({ id, number, slug, title, summary })) };
+    });
   }
 
   async employeeHome(r: Requester) {

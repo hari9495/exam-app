@@ -1,6 +1,9 @@
 import { Transform, Type } from 'class-transformer';
 import { ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 
+/** An app address: /yx and lower-case path parts (no ids are expected; up to 120 characters). */
+const PAGE = /^\/yx(\/[a-z0-9][a-z0-9-]*){0,8}$/;
+
 // Service Desk batch 4 knowledge inputs (M14 §12.1 /kb/…). Whitelisted by the global ValidationPipe.
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
@@ -204,12 +207,32 @@ export class ArticleMetaDto {
   @IsOptional()
   @IsBoolean()
   assistantUse?: boolean;
+
+  /** Help H-1 (answer 942): the pages it explains, as app addresses (/yx/time/leave); up to 20. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20, { message: 'At most 20 pages.' })
+  @ArrayUnique()
+  @Matches(PAGE, { each: true, message: 'A page is an app address such as /yx/time/leave.' })
+  pages?: string[];
 }
 
 /** HLP-04: the company's article review interval (the registry key desk.kb.review_months). */
 export class KbSettingsDto {
+  @IsOptional()
   @IsIn([3, 6, 12, 24])
-  reviewMonths!: 3 | 6 | 12 | 24;
+  reviewMonths?: 3 | 6 | 12 | 24;
+
+  /** Help H-1 (answer 942): "Show page help" in the Help drawer (company setting help.page_help, on by default). */
+  @IsOptional()
+  @IsBoolean()
+  pageHelp?: boolean;
+}
+
+/** Help H-1: the page the Help drawer was opened on. */
+export class KbPageQueryDto {
+  @Matches(PAGE, { message: 'A page is an app address such as /yx/time/leave.' })
+  route!: string;
 }
 
 export class VersionDto {
