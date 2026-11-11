@@ -73,8 +73,7 @@ built** · **phone view, mobile app not built**.
 
 ## Counts (sub-pages = stories)
 
-After C-1 to C-5, C-8 part 1 and the console follow-ups (12 Nov 2026, test/yukthix-main; appendix script "ok"). The
-follow-ups added a 21st story file (Platform settings, in group A).
+After C-1 to C-5, the console follow-ups and C-8 parts 1 and 2 (12 Nov 2026, test/yukthix-main; appendix script "ok").
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
@@ -83,8 +82,8 @@ follow-ups added a 21st story file (Platform settings, in group A).
 | C. Customers and containment (YX-04, YX-18) | 2 | 23 | 2 | 0 | 0 | 0 | 25 |
 | D. Partners (YX-06 to YX-08) | 3 | 0 | 0 | 0 | 10 | 0 | 10 |
 | E. Money (YX-14 to YX-17) | 4 | 0 | 0 | 0 | 8 | 0 | 8 |
-| F. The rest (YX-05, YX-09 to YX-13) | 6 | 10 | 0 | 0 | 15 | 0 | 25 |
-| **All A-F** | **21** | **83** | **7** | **0** | **33** | **0** | **123** |
+| F. The rest (YX-05, YX-09 to YX-13) | 6 | 16 | 0 | 0 | 13 | 0 | 29 |
+| **All A-F** | **21** | **89** | **7** | **0** | **31** | **0** | **127** |
 
 Counted by script on 11 Nov 2026 on `docs/yukthix-console-map` (the script is in the appendix). There are 87 stories in
 20 files whose title starts `Screens/YukthiX console/`: `screens/console/console.stories.tsx` (14),
@@ -105,6 +104,7 @@ is a phone view.
 | `/staff/plans` | `PlansScreen` | `/platform/products`, prices (step-up) |
 | `/staff/whats-new` | `WhatsNewConsoleScreen` | `/platform/whats-new` (`WhatsNewStaffController`, `help/whats-new.controller.ts`) |
 | `/staff/audit` | `PlatformAuditScreen` | `GET /platform/audit` |
+| `/staff/incidents` (C-8) | `IncidentComposerScreen liveIncidents` | `/platform/incidents…` (`platform/incidents.controller.ts`) |
 | `/staff/help-centre` (C-8) | `HelpEditorScreen live` | `/platform/help-centre…` (`service-desk/help-centre.controller.ts`) |
 | `/yx/settings/support-access` (company side) | `SupportAccessScreen` (`screens/access/support-access.tsx`) | `/support-access` (approve is step-up) |
 
@@ -357,15 +357,19 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| YX10List · Incidents and maintenance | design only, feature not built | no platform incidents or status page; `health/` is a liveness check |
-| YX10Compose · Incident update composer | design only, feature not built | as above |
+| YX10List · Incidents and maintenance | live | C-8: `/staff/incidents`, `IncidentComposerScreen liveIncidents` (the incident list; maintenance is its own page, C-5) |
+| YX10Compose · Incident update composer | live | same page: Declare incident and Post an update (stage, impact, what to do, next update; products; severity), the preview, a second staff member approves. Regions and the payroll-day note are not built (questions 1205, 1206) |
 | YX10Maintenance · Maintenance · passes checks | live | C-5: `/staff/maintenance`, `IncidentComposerScreen live` (the maintenance part); checks from platform settings; second staff member approves |
 | YX10MaintenanceBlocked · Maintenance · payroll window blocked | live | same page: the payroll-critical days, statutory dates and notice refuse the window with the reason |
 | YX10MaintenanceLive · Planned maintenance · schedule and approve (C-5) | live | `GET|POST platform/maintenance`, `POST .../:id/approve`, `POST .../:id/cancel`, `PUT .../settings` (`platform.maintenance.manage`) |
 | YX10MaintenanceTooSoon · Planned maintenance · too little notice (C-5) | live | same page, the notice rule (72 hours by default) |
 | YX10BannerBefore · What companies see · the day before (C-5) | live | every signed-in page: `GET /availability`, `AvailabilityBanner live` in the app layout |
 | YX10BannerDuring · What companies see · during the window (C-5) | live | same, during the window; never blocks sign-in |
-| YX10Probes · Probes | design only, feature not built | no probes |
+| YX10IncidentsLive · Incidents · list and what companies see (C-8) | live | `GET|POST platform/incidents` (`platform.incidents.manage`) |
+| YX10IncidentApproveLive · Incident · another staff member approves the update (C-8) | live | `POST platform/incidents/:id/updates`, `.../updates/:updateId/review` (never the writer; service and database check) |
+| YX10BreachLive · Incident · security breach and its reminders (C-8) | live | answer 1124: `POST platform/incidents/:id/breach`; the containment's CERT-In and DPDP clocks; sweep `incident-breach-reminders` emails staff with the key; lead time a platform setting |
+| YX10BannerIncident · What companies see · an open incident (C-8) | live | `GET /availability` `incident` (companies with an affected product only; never a breach), `AvailabilityBanner kind="degraded" incident` in the app layout |
+| YX10Probes · Probes | design only, feature not built | no probes and no probe data in the API (question 1204) |
 
 #### YX-11 · Help-centre editor
 
@@ -537,6 +541,54 @@ risky actions, and adds positive and negative tests and an e2e suite.
       place, through the same knowledge-base translations.*
 1203. **Retiring an article.** The console can write, review and publish; retiring a published YukthiX article is not
       drawn on YX-11. *Suggested: add a Retire action in the editor drawer (four eyes as for publishing).*
+
+## C-8 part 2 built: incidents and breach reminders (YX-10, answer 1124; 12 Nov 2026, branch `feat/yukthix-console-c8`)
+
+- **What staff do:** Console › Operations › Incidents (`/staff/incidents`), the designed `IncidentComposerScreen` with
+  `liveIncidents`. Declare incident: title, severity (Sev-1 to 3), affected products, and the first update (stage,
+  impact in plain words, what companies should do, next update in 30 minutes to 4 hours), with a preview of the banner.
+  Every update waits until a second staff member (never the writer; service check and a database check) approves it or
+  sends it back with a note. One update waits at a time. An approved "resolved" update resolves the incident. All
+  audited (`platform.incident.*`).
+- **What companies see:** the C-5 endpoint and banner, no second banner. `GET /availability` now returns `incident`
+  next to `maintenance`: the latest approved update of the most severe open incident on one of the company's products
+  (`organization_products`), shown by `AvailabilityBanner kind="degraded"` at the top of every page (Sev-1 as an alert).
+  A company without an affected product sees nothing. It never blocks sign-in or a page.
+- **Breach reminders (answer 1124):** in the incident, "Mark as security breach" links it to an open containment (C-4).
+  The incident then shows the containment's CERT-In and DPDP due times (set from `breach.certin_hours` and
+  `breach.dpdp_board_report_hours` when contained) and is never shown to companies. A sweep every 5 minutes
+  (`incident-breach-reminders`) emails every staff member holding the incidents key once per clock,
+  `incident.breach_reminder_lead_hours` before each due time (platform setting, default 1, 0 to 24; 0 = at the due
+  time); each reminder is marked and audited.
+- **Data:** `platform_incidents`, `platform_incident_updates` (migration `202617z0000072_console_incidents`): staff-only
+  (super-admin RLS policy; the breach link names a company), never deleted; companies get only the banner fields through
+  the service.
+- **Key and role (1058):** `platform.incidents.manage` (every route; staff only, never assignable to a company role).
+  Role to hold it: **Security lead** (and whoever is on call; the reminders go to everyone holding it).
+- **Not built:** probes (no probe data in the API; question 1204); regions (India only, as the wizard; 1205); the
+  payroll-day note (1206).
+- **Tests:** API unit (guards, key on every route, not assignable, references, the reminder times at their boundaries,
+  each once, lead 0, a late link); kit (list, what companies see, never a breach or an unapproved update, the most
+  severe first, declare field errors, writer cannot approve, send back needs a note, breach needs the company and shows
+  both clocks, the lead rule; the banner as alert and status); web (the page loads, no-access state); e2e
+  `console-incidents` (15: company admin, no sign-in, no security key, no key refused; bad input; nothing until
+  approved; the writer cannot approve; note needed; one waiting update; only the company with the product sees it, with
+  banner fields only; audited; resolved hides it and closes it; RLS; containment offered; a breach is hidden from
+  companies; lead setting; CERT-In reminder 1 hour before, once, to staff only; DPDP reminder; audited). C-5's
+  `console-wizard-maintenance` updated for the new `incident` field and passes.
+
+### Questions from C-8 part 2 (from 1204)
+
+1204. **Probes.** The drawn Probes page needs synthetic checks running every 5 minutes per region and confirmed from two
+      places; the API has no such data, so it is not built. *Suggested: decide the monitoring tool first (for example an
+      uptime service with an API); then the page reads its results.*
+1205. **Regions.** The drawing picks regions per incident; YukthiX runs in India only, so incidents pick products only.
+      *Suggested: add regions when a second region exists.*
+1206. **The payroll-day note.** The drawing has a checkbox "Add the payroll-day note (last 3 and first 7 days of the
+      month)" without its words. *Suggested: give the sentence; it is then added to the banner when ticked.*
+1207. **Telling the breached company.** A breach incident is hidden from every company, including the contained one;
+      its admins are told by the containment and directly. *Suggested: keep; a message to that company's admins goes
+      through the C-2 admin messages.*
 
 ## Appendix: the count script
 

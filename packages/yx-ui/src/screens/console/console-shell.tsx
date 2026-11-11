@@ -1,10 +1,10 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
-import { BookOpen, Building2, FileClock, HeartPulse, Inbox, LifeBuoy, Megaphone, MessageSquare, ReceiptIndianRupee, Scale, ScrollText, ShieldCheck, SlidersHorizontal, Tags, ToggleRight, Wrench } from 'lucide-react';
+import { BookOpen, Building2, FileClock, HeartPulse, Inbox, LifeBuoy, Megaphone, MessageSquare, ReceiptIndianRupee, Scale, ScrollText, ShieldCheck, Siren, SlidersHorizontal, Tags, ToggleRight, Wrench } from 'lucide-react';
 import { Logo, Monogram } from '../../components/brand';
 import type { IconComponent } from '../../components/foundations';
 import { AppShell, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, TopBar, type DensityChoice, type RailItem, type ThemeChoice } from '../../components/shell';
 
-export type ConsolePageId = 'companies' | 'customers' | 'help-centre' | 'maintenance' | 'support-desk' | 'support' | 'plans' | 'whats-new' | 'rules' | 'channels' | 'feature-flags' | 'platform-settings' | 'audit';
+export type ConsolePageId = 'companies' | 'customers' | 'help-centre' | 'incidents' | 'maintenance' | 'support-desk' | 'support' | 'plans' | 'whats-new' | 'rules' | 'channels' | 'feature-flags' | 'platform-settings' | 'audit';
 type ConsoleGroup = 'Customers' | 'Catalogue' | 'Rules' | 'Operations' | 'Channels' | 'Security';
 
 interface ConsoleLink {
@@ -32,6 +32,8 @@ export const CONSOLE_LINKS: ConsoleLink[] = [
   { id: 'rules', label: 'Rule sets', href: '/staff/rules', group: 'Rules', icon: Scale },
   // C-5 (answers 948, 1053): planned maintenance windows.
   { id: 'maintenance', label: 'Planned maintenance', href: '/staff/maintenance', group: 'Operations', icon: Wrench },
+  // C-8 (YX-10, answer 1124): incidents and the breach reminders.
+  { id: 'incidents', label: 'Incidents', href: '/staff/incidents', group: 'Operations', icon: Siren },
   { id: 'channels', label: 'Shared SMS account', href: '/staff/channels', group: 'Channels', icon: MessageSquare },
   // Console C-4 (answer 1049): switches for every company, one company, and the kill switch.
   { id: 'feature-flags', label: 'Feature flags', href: '/staff/feature-flags', group: 'Security', icon: ToggleRight },
