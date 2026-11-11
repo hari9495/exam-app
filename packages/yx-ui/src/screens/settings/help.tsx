@@ -18,6 +18,8 @@ import './settings.css';
 export interface TourStep {
   title: string;
   body: string;
+  /** The page part the step points at (its data-tour value); the floating card outlines it. */
+  anchor?: string;
 }
 export interface TourDef {
   id: 'employee' | 'manager' | 'payroll' | 'admin';
@@ -68,14 +70,15 @@ export const TOURS: TourDef[] = [
     ],
   },
   {
+    // Answer 1001: version 2 starts at the set-up hub (H-6), so admins who saw version 1 see it once more.
     id: 'admin',
     name: 'Set up your company',
-    version: 1,
-    trigger: 'You manage HR or the company',
+    version: 2,
+    trigger: 'You can change company settings',
     steps: [
-      { title: 'Your company settings', body: 'Settings holds the rules for each area, from leave to payroll. Change them where your policy differs.' },
-      { title: 'Starter defaults are yours to change', body: 'Settings marked Starter default came from our template. The law is a floor; everything above it is your choice.' },
-      { title: 'Add your people', body: 'Import employees in People › Import. They sign in with a one-time code sent to their email.' },
+      { title: 'Start at the set-up hub', body: 'Settings › Set-up hub shows how much of each area is set up, from what each area already knows.', anchor: 'setup-hub' },
+      { title: 'Starter templates are yours to change', body: 'The hub counts the YukthiX starter templates still to review. The law is a floor; everything above it is your choice.', anchor: 'setup-starter' },
+      { title: 'Open an area', body: 'Open an area to see what is left; each check opens its set-up page. Add your people in People › Import.', anchor: 'setup-modules' },
     ],
   },
 ];
@@ -117,6 +120,16 @@ export function TourCard({ tour, defaultStep = 0, onDone, onStep, floating }: To
   }, [floating]);
   const s = tour.steps[step]!;
   const last = step === tour.steps.length - 1;
+  // The step's page part is outlined while the step shows (and brought into view, without motion if asked).
+  useEffect(() => {
+    if (!floating || closed || !s.anchor) return;
+    const el = document.querySelector<HTMLElement>(`[data-tour="${s.anchor}"]`);
+    if (!el) return;
+    el.setAttribute('data-tour-active', '');
+    const still = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView?.({ block: 'nearest', behavior: still ? 'auto' : 'smooth' });
+    return () => el.removeAttribute('data-tour-active');
+  }, [floating, closed, s.anchor]);
   if (closed && !floating)
     return (
       <p className="yx-m-muted" role="status">

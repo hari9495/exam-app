@@ -38,7 +38,7 @@ describe('Help H-5: first-run tours (944)', () => {
       const at = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org[k], isSuperAdmin: false }, fn);
       const people: [string, string, string[] | null][] =
         k === 'A'
-          ? [['adminA', 'org_admin', null], ['plainA', 'panel', []], ['hrA', 'panel', ['leave.settings.manage', 'leave.view']], ['approverA', 'panel', []], ['payA', 'panel', ['payroll.run.view']]]
+          ? [['adminA', 'org_admin', null], ['plainA', 'panel', []], ['hrA', 'panel', ['leave.settings.manage', 'leave.view']], ['setupA', 'panel', ['org.settings.manage', 'org:view']], ['approverA', 'panel', []], ['payA', 'panel', ['payroll.run.view']]]
           : [['adminB', 'org_admin', null]];
       for (const [who, role, keys] of people) {
         const permissionProfileId = keys ? (await at((tx) => tx.permissionProfile.create({ data: { organizationId: org[k], name: `${who}-${run}`, permissionsJson: JSON.stringify(keys) } }))).id : null;
@@ -67,7 +67,9 @@ describe('Help H-5: first-run tours (944)', () => {
   it('a tour applies only once its event has happened', async () => {
     await request(server()).get('/api/v1/help/tours').expect(401);
     expect((await api('plainA', 'get', '/help/tours').expect(200)).body).toEqual({ show: true, stopped: false, tours: [] });
-    expect(ids((await api('hrA', 'get', '/help/tours').expect(200)).body)).toEqual(['admin']);
+    // Answer 1001: the admin tour is on the set-up hub, so it is for whoever can open the hub (not HR keys alone).
+    expect(ids((await api('hrA', 'get', '/help/tours').expect(200)).body)).toEqual([]);
+    expect(tourOf((await api('setupA', 'get', '/help/tours').expect(200)).body, 'admin')).toEqual({ id: 'admin', version: 2, page: '/yx/settings/setup-hub', status: null, step: 0 });
     expect(ids((await api('adminA', 'get', '/help/tours').expect(200)).body)).toContain('admin');
     // Payroll: the key alone is not the event; a pay run must exist.
     expect(ids((await api('payA', 'get', '/help/tours').expect(200)).body)).not.toContain('payroll');
@@ -83,19 +85,28 @@ describe('Help H-5: first-run tours (944)', () => {
 
   it('progress is saved per person at the current version; only a tour that is theirs; bad input refused', async () => {
     const save = (who: string, id: string, body: Record<string, unknown>) => api(who, 'put', `/help/tours/${id}`).send(body);
-    await save('hrA', 'admin', { version: 2, status: 'in_progress', step: 1 }).expect(400);
-    await save('hrA', 'admin', { version: 1, status: 'in_progress', step: 3 }).expect(400);
-    await save('hrA', 'admin', { version: 1, status: 'stopped', step: 0 }).expect(400);
-    await save('hrA', 'admin', { version: 1, status: 'in_progress', step: 0, extra: 1 }).expect(400);
-    await save('hrA', 'nosuch', { version: 1, status: 'in_progress', step: 0 }).expect(400);
-    await save('plainA', 'admin', { version: 1, status: 'completed', step: 2 }).expect(400); // not their tour
-    expect(tourOf((await save('hrA', 'admin', { version: 1, status: 'in_progress', step: 1 }).expect(200)).body, 'admin')).toMatchObject({ status: 'in_progress', step: 1 });
-    expect(tourOf((await save('hrA', 'admin', { version: 1, status: 'completed', step: 2 }).expect(200)).body, 'admin')).toMatchObject({ status: 'completed', step: 2 });
+    await save('setupA', 'admin', { version: 1, status: 'in_progress', step: 1 }).expect(400); // version 1 is gone
+    await save('setupA', 'admin', { version: 2, status: 'in_progress', step: 3 }).expect(400);
+    await save('setupA', 'admin', { version: 2, status: 'stopped', step: 0 }).expect(400);
+    await save('setupA', 'admin', { version: 2, status: 'in_progress', step: 0, extra: 1 }).expect(400);
+    await save('setupA', 'nosuch', { version: 2, status: 'in_progress', step: 0 }).expect(400);
+    await save('plainA', 'admin', { version: 2, status: 'completed', step: 2 }).expect(400); // not their tour
+    await save('hrA', 'admin', { version: 2, status: 'completed', step: 2 }).expect(400); // HR keys alone: not the hub
+    expect(tourOf((await save('setupA', 'admin', { version: 2, status: 'in_progress', step: 1 }).expect(200)).body, 'admin')).toMatchObject({ status: 'in_progress', step: 1 });
+    expect(tourOf((await save('setupA', 'admin', { version: 2, status: 'completed', step: 2 }).expect(200)).body, 'admin')).toMatchObject({ status: 'completed', step: 2 });
     // Another person's progress is their own.
     expect(tourOf((await api('adminA', 'get', '/help/tours').expect(200)).body, 'admin')).toMatchObject({ status: null, step: 0 });
     // Another company never sees company A's progress (forced RLS).
     expect(await tenantPrisma.forTenant({ organizationId: org.B, isSuperAdmin: false }, (tx) => tx.tourProgress.count({ where: { organizationId: org.A } }))).toBe(0);
-    expect(await inA((tx) => tx.tourProgress.count({ where: { userId: users.hrA } }))).toBe(1);
+    expect(await inA((tx) => tx.tourProgress.count({ where: { userId: users.setupA } }))).toBe(1);
+  });
+
+  it('answer 1001: someone who finished version 1 of the admin tour is offered version 2 once', async () => {
+    await inA((tx) => tx.tourProgress.create({ data: { organizationId: org.A, userId: users.adminA!, tourId: 'admin', version: 1, status: 'completed', step: 2 } }));
+    expect(tourOf((await api('adminA', 'get', '/help/tours').expect(200)).body, 'admin')).toMatchObject({ version: 2, status: null });
+    await api('adminA', 'put', '/help/tours/admin').send({ version: 2, status: 'completed', step: 2 }).expect(200);
+    expect(tourOf((await api('adminA', 'get', '/help/tours').expect(200)).body, 'admin')).toMatchObject({ version: 2, status: 'completed' });
+    expect(await inA((tx) => tx.tourProgress.count({ where: { userId: users.adminA, tourId: 'admin' } }))).toBe(2);
   });
 
   it('a person can stop tours for themselves and start them again', async () => {
@@ -110,8 +121,8 @@ describe('Help H-5: first-run tours (944)', () => {
     expect((await api('hrA', 'get', '/help/tours').expect(200)).body).toEqual({ show: false, stopped: false, tours: [] });
     expect((await api('adminB', 'get', '/help/tours').expect(200)).body.show).toBe(true);
     await api('adminA', 'put', '/org/settings').send({ key: 'help.tours.show', scopeType: 'tenant', value: 'on' }).expect(200);
-    token.acting = (await api('adminA', 'post', `/auth/impersonate/${users.hrA}`).expect(200)).body.accessToken;
+    token.acting = (await api('adminA', 'post', `/auth/impersonate/${users.setupA}`).expect(200)).body.accessToken;
     await api('acting', 'get', '/help/tours').expect(403);
-    await api('acting', 'put', '/help/tours/admin').send({ version: 1, status: 'completed', step: 2 }).expect(403);
+    await api('acting', 'put', '/help/tours/admin').send({ version: 2, status: 'completed', step: 2 }).expect(403);
   });
 });

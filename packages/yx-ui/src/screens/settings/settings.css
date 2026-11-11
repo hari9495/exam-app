@@ -142,6 +142,7 @@
 @media (max-width: 767px) { .yx-tour--floating { right: var(--yx-space-4); bottom: var(--yx-space-4); } }
 @media (prefers-reduced-motion: no-preference) { .yx-tour--floating { animation: yx-tour-in 160ms ease-out; } }
 @keyframes yx-tour-in { from { opacity: 0; transform: translateY(var(--yx-space-2)); } to { opacity: 1; transform: none; } }
+[data-tour-active] { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-space-1); border-radius: var(--yx-radius-card); }
 .yx-help-tours { display: flex; flex-direction: column; gap: var(--yx-space-4); }
 .yx-tour-stage { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--yx-space-6); align-items: start; }
 .yx-tour-target { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-space-1); border-radius: var(--yx-radius-card); }

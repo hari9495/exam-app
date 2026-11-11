@@ -17,15 +17,18 @@ export const TOUR_DEFS: Record<TourId, { version: number; page: string; steps: n
   employee: { version: 1, page: '/yx/home', steps: 3 },
   manager: { version: 1, page: '/yx/approvals', steps: 3 },
   payroll: { version: 1, page: '/yx/payroll/runs', steps: 3 },
-  admin: { version: 1, page: '/yx/home', steps: 3 },
+  // Answer 1001: version 2 on the set-up hub (H-6); everyone who saw version 1 sees it once more.
+  admin: { version: 2, page: '/yx/settings/setup-hub', steps: 3 },
 };
 const ORDER: TourId[] = ['admin', 'employee', 'manager', 'payroll'];
 const PAYROLL_KEYS = ['payroll.run.prepare', 'payroll.run.view'];
+/** Who sets up the company: the set-up hub's own key (answer 952). */
+const SETUP_KEY = 'org.settings.manage';
 
 /**
  * Help H-5, founder answer 944: first-run tours. A tour applies once its event has happened (employee: has an employee
- * record; manager: an approval has come to them; payroll: a pay run exists and they work runs; admin: HR or System
- * Admin), shows once per tour version on its page, and can be resumed or replayed from Help › Tours. The company
+ * record; manager: an approval has come to them; payroll: a pay run exists and they work runs; admin: they can open
+ * the set-up hub, org.settings.manage, answer 1001), shows once per tour version on its page, and can be resumed or replayed from Help › Tours. The company
  * setting help.tours.show (default on) stops every tour at the company; each person can stop them for themselves.
  */
 @Injectable()
@@ -40,10 +43,11 @@ export class ToursService {
   private async ready(tx: Tx, org: string, me: NewsReader): Promise<TourId[]> {
     const audiences = await this.news.audiences(tx, org, me);
     const out: TourId[] = [];
-    if (audiences.includes('hr') || audiences.includes('admin')) out.push('admin');
+    const keys = await resolvePermissionGrants(this.prisma, this.tenantPrisma, { role: me.role ?? '', organizationId: org, permissionProfileId: me.permissionProfileId ?? null, userId: me.userId }, [...PAYROLL_KEYS, SETUP_KEY]);
+    // Answer 1001: the admin tour is on the set-up hub, so it is for whoever can open the hub.
+    if (keys.has(SETUP_KEY)) out.push('admin');
     if (audiences.includes('employee')) out.push('employee');
     if (await tx.wfTask.findFirst({ where: { organizationId: org, assigneeUserId: me.userId }, select: { id: true } })) out.push('manager');
-    const keys = await resolvePermissionGrants(this.prisma, this.tenantPrisma, { role: me.role ?? '', organizationId: org, permissionProfileId: me.permissionProfileId ?? null, userId: me.userId }, PAYROLL_KEYS);
     if (PAYROLL_KEYS.some((k) => keys.has(k)) && (await tx.payrollRun.findFirst({ where: { organizationId: org }, select: { id: true } }))) out.push('payroll');
     return ORDER.filter((t) => out.includes(t));
   }

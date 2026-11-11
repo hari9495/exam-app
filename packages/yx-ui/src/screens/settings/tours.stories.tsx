@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { PageHeader } from '../../components/shell';
 import { DesktopFrame } from '../_kit/frames';
 import { TOURS, TourCard, ToursPanel, type LiveTours } from './help';
+import { SetupHubScreen, type ModuleCard } from '../platform-a/setup-admin';
 import './settings.css';
 
 // Help H-5, founder answer 944: the four tours live. The tour floats on its page (never modal: Tab leaves it, Esc closes
@@ -45,6 +46,21 @@ export const FloatingApprovals: S = {
       <PageHeader title="Approvals" description="1 waiting for you" />
       <TourCard tour={tour('manager')} defaultStep={1} floating />
     </DesktopFrame>
+  ),
+};
+const HUB: ModuleCard[] = [
+  { id: 'people', name: 'People', owner: 'Neha Joshi', checks: [{ id: 'p1', label: 'Legal entities and locations', done: true, blocking: true }, { id: 'p2', label: 'Employees imported', done: false, blocking: true }] },
+  { id: 'time', name: 'Time & Leave', owner: 'Neha Joshi', checks: [{ id: 't1', label: 'Leave policies', done: false, blocking: true, starter: true }, { id: 't2', label: 'Holiday calendar', done: true, blocking: true }] },
+  { id: 'pay', name: 'Payroll', owner: 'Arjun Rao', checks: [{ id: 'y1', label: 'Pay groups', done: false, blocking: true }, { id: 'y2', label: 'Payslip layout', done: false, blocking: false, starter: true }] },
+];
+// Answer 1001: the admin tour, version 2, on the set-up hub (H-6's data-tour anchors).
+export const FloatingSetupHub: S = {
+  name: '6.1 Tour · on its page (set up your company, set-up hub, step 2)',
+  render: () => (
+    <>
+      <SetupHubScreen modules={HUB} />
+      <TourCard tour={tour('admin')} defaultStep={1} floating />
+    </>
   ),
 };
 export const ToursTab: S = { name: '6.2 Help · Tours tab (resume, replay, start)', render: () => panel(LIVE) };

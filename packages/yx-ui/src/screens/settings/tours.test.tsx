@@ -3,19 +3,52 @@ import { join } from 'node:path';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { TOURS, TourCard, ToursPanel, type LiveTours } from './help';
+import { TOURS, TourCard, ToursPanel, shouldShowTour, type LiveTours } from './help';
 
 // Help H-5, founder answer 944: the four tours, live parts. Positive and negative.
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const tour = (id: string) => TOURS.find((t) => t.id === id)!;
 
 describe('first-run tours (944)', () => {
-  it('four tours, each at most 3 steps, and none names the set-up hub, which is not built', () => {
+  it('four tours, each at most 3 steps; the admin tour is version 2 on the set-up hub, at the anchors it marks', () => {
     expect(TOURS.map((t) => t.id)).toEqual(['employee', 'manager', 'payroll', 'admin']);
-    for (const t of TOURS) {
-      expect(t.steps.length).toBeLessThanOrEqual(3);
-      expect(JSON.stringify(t)).not.toMatch(/set-up hub/i);
-    }
+    for (const t of TOURS) expect(t.steps.length).toBeLessThanOrEqual(3);
+    const admin = tour('admin');
+    expect(admin.version).toBe(2);
+    // The anchors the set-up hub screen marks (platform-a/setup-admin.tsx, data-tour).
+    expect(admin.steps.map((s) => s.anchor)).toEqual(['setup-hub', 'setup-starter', 'setup-modules']);
+    for (const t of TOURS.filter((x) => x.id !== 'admin')) expect(JSON.stringify(t)).not.toMatch(/set-up hub/i);
+  });
+
+  it('answer 1001: someone who finished version 1 is offered version 2 once', () => {
+    const admin = tour('admin');
+    expect(shouldShowTour(admin, true, [{ tourId: 'admin', version: 1, status: 'completed' }])).toBe(true);
+    expect(shouldShowTour(admin, true, [{ tourId: 'admin', version: 1, status: 'completed' }, { tourId: 'admin', version: 2, status: 'completed' }])).toBe(false);
+    expect(shouldShowTour(admin, true, [{ tourId: 'admin', version: 2, status: 'skipped' }])).toBe(false);
+  });
+
+  it("each step outlines the page part it points at; the outline goes when the tour closes", async () => {
+    render(
+      <>
+        <div data-tour="setup-hub">Hub</div>
+        <div data-tour="setup-starter">Starter</div>
+        <TourCard tour={tour('admin')} floating />
+      </>,
+    );
+    const hub = screen.getByText('Hub');
+    const starter = screen.getByText('Starter');
+    expect(hub).toHaveAttribute('data-tour-active');
+    await ue.click(screen.getByRole('button', { name: 'Next' }));
+    expect(hub).not.toHaveAttribute('data-tour-active');
+    expect(starter).toHaveAttribute('data-tour-active');
+    await ue.click(screen.getByRole('button', { name: 'Skip tour' }));
+    expect(starter).not.toHaveAttribute('data-tour-active');
+  });
+
+  it('a step whose page part is missing still shows (nothing outlined)', () => {
+    render(<TourCard tour={tour('admin')} floating />);
+    expect(screen.getByRole('heading', { name: 'Start at the set-up hub' })).toBeInTheDocument();
+    expect(document.querySelector('[data-tour-active]')).toBeNull();
   });
 
   it('floating: focus moves into the tour, steps are reported, Finish completes it', async () => {

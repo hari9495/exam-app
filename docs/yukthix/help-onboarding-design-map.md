@@ -533,6 +533,12 @@ console).
   run, first approval; per-person progress; version, step, status and owner checks; RLS; stop and start again; setting
   off; 403 while acting). Manual test MT-HLP-944.
 
+- **Answer 1001 (built after H-6):** the admin tour is version 2 on Settings › Set-up hub: start at the hub, the starter
+  templates to review, open an area (steps point at H-6's `data-tour` anchors `setup-hub`, `setup-starter`,
+  `setup-modules`; the floating card outlines each and brings it into view, without motion when reduced motion is
+  asked). It is for whoever can open the hub (`org.settings.manage`); someone who finished version 1 sees version 2
+  once. Story "6.1 Tour · on its page (set up your company, set-up hub, step 2)"; kit, web and e2e tests.
+
 ## Founder questions from H-5 (12 Nov 2026)
 
 1001. **Tour words changed from the drawing.** The admin tour now starts at Settings (the set-up hub is not built) and the
@@ -542,3 +548,6 @@ console).
       *Suggested: keep.*
 1003. **Esc.** Esc closes the tour and counts as skipped; Help › Tours replays it. *Suggested: keep.*
 1004. **Tours on the phone.** The drawn employee tour is on the phone home; it waits for the mobile app. *Suggested: keep.*
+1005. **HR without company settings.** The admin tour now lives on the set-up hub, which needs the company settings key;
+      HR people without it get no admin tour (they still get the employee, approval or payroll tour when those apply).
+      *Suggested: keep (the hub is the set-up person's page).*

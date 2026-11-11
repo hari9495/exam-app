@@ -40,6 +40,10 @@ describe('tours (944)', () => {
     expect(autoTour(data() as never, '/yx/home')?.id).toBe('employee');
     expect(autoTour(data() as never, '/yx/approvals')).toBeNull(); // the manager tour is done
     expect(autoTour(data({ stopped: true }) as never, '/yx/home')).toBeNull();
+    // Answer 1001: the admin tour (version 2) starts on the set-up hub, not on Home.
+    const admin = data({ tours: [{ id: 'admin', version: 2, page: '/yx/settings/setup-hub', status: null, step: 0 }] }) as never;
+    expect(autoTour(admin, '/yx/settings/setup-hub')?.id).toBe('admin');
+    expect(autoTour(admin, '/yx/home')).toBeNull();
     expect(autoTour(data({ show: false }) as never, '/yx/home')).toBeNull();
   });
 
