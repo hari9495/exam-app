@@ -170,6 +170,9 @@ describe('Payroll batch 5b', () => {
     expect(await inA((tx) => tx.statutoryRuleSet.findFirst({ where: { id } }))).toBeNull();
 
     await api('staff', 'post', `/platform/statutory/rule-sets/${id}/publish`).expect(403);
+    // Console answer 1042: only a version in review is published.
+    await api('staff2', 'post', `/platform/statutory/rule-sets/${id}/publish`).expect(409);
+    await api('staff', 'post', `/platform/statutory/rule-sets/${id}/send-for-review`).expect(200);
     await api('staff2', 'post', `/platform/statutory/rule-sets/${id}/publish`).expect(200);
     const after = await inA((tx) => tx.statutoryRuleSet.findFirst({ where: { id } }));
     expect(after).toMatchObject({ status: 'published', draftedBy: users.staff, reviewedBy: users.staff2 });
@@ -353,6 +356,7 @@ describe('Payroll batch 5b', () => {
     // A Karnataka rule (the place of work) in force on the date, published after madeAt: stale, naming the rule.
     const rule = { ...ptRule(goodSlabs), jurisdiction: 'IN-KA', version: `s${run}`, validFrom: '2099-04-01' };
     const { id } = (await api('staff', 'post', '/platform/statutory/rule-sets').send(rule).expect(201)).body;
+    await api('staff', 'post', `/platform/statutory/rule-sets/${id}/send-for-review`).expect(200);
     await api('staff2', 'post', `/platform/statutory/rule-sets/${id}/publish`).expect(200);
     const stale = (await check('payAdmin', { employeeId: ids.empEmp, effectiveDate: on, madeAt }).expect(200)).body;
     expect(stale).toMatchObject({ stale: true, changes: [{ statute: 'IN.PT', jurisdiction: 'IN-KA', version: `s${run}`, validFrom: '2099-04-01' }] });

@@ -5369,6 +5369,12 @@ model StatutoryRuleSet {
   reviewedBy   String?   @map("reviewed_by") @db.Uuid
   publishedAt  DateTime? @map("published_at") @db.Timestamptz(3)
   withdrawnAt  DateTime? @map("withdrawn_at") @db.Timestamptz(3)
+  /// Console C-1 (answer 1042): what changed and why; the review (send for review, changes requested with a note).
+  changeNote      String?   @map("change_note") @db.VarChar(500)
+  sentForReviewAt DateTime? @map("sent_for_review_at") @db.Timestamptz(3)
+  reviewNote      String?   @map("review_note") @db.VarChar(500)
+  reviewNoteBy    String?   @map("review_note_by") @db.Uuid
+  reviewNoteAt    DateTime? @map("review_note_at") @db.Timestamptz(3)
 
   @@map("statutory_rule_sets")
 }

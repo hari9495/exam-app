@@ -462,4 +462,55 @@ export class RuleDraftDto {
   @ArrayMaxSize(100)
   @IsObject({ each: true })
   golden!: { name: string; fn: string; input: Record<string, unknown>; expected: Record<string, unknown> }[];
+
+  /** Console C-1: what changed and why (shown to the reviewer). */
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(500)
+  changeNote?: string;
+}
+
+/** Console C-1 (answer 1042): the drafter changes their draft; the statute, jurisdiction and version stay. */
+export class RuleUpdateDto {
+  @IsDateString(DATE)
+  validFrom!: string;
+
+  @IsOptional()
+  @IsDateString(DATE)
+  validTo?: string;
+
+  @IsObject()
+  values!: Record<string, unknown> & { kind: string };
+
+  @trim()
+  @IsString()
+  @Length(20, 500)
+  source!: string;
+
+  @IsIn(['OLD-ACT', 'CODE', 'IT-1961', 'IT-2025'])
+  lawVersion!: string;
+
+  @IsBoolean()
+  verify!: boolean;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @IsObject({ each: true })
+  golden!: { name: string; fn: string; input: Record<string, unknown>; expected: Record<string, unknown> }[];
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(500)
+  changeNote?: string;
+}
+
+/** Console C-1 (answer 1042): the reviewer asks for changes with a note the drafter reads. */
+export class RuleChangesDto {
+  @trim()
+  @IsString()
+  @Length(10, 500)
+  note!: string;
 }

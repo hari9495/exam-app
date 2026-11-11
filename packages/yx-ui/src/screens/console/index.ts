@@ -21,3 +21,6 @@ export { PlatformAuditScreen, type PlatformAuditScreenProps } from './audit';
 export { LIFECYCLE_LABEL, SUPPORT_LABEL, actionWords, ConsolePage } from './console-kit';
 // Batch 4: YukthiX support
 export { SupportDeskQueueScreen, SupportDeskTicketScreen, TenantPanel, textToParagraphs, sessionWords, type SupportDeskQueueScreenProps, type SupportDeskTicketScreenProps, type DeskQueueRow, type DeskConsoleTicket, type DeskConsoleMessage, type DeskTenantPanel, type DeskConsoleSession } from './support-desk';
+// Console C-1 (answers 1041 to 1044): the drawn YX-01 to YX-03 screens, live with `live`.
+export { RuleSetEditorScreen, GoldenCasesScreen, PublishSchedulerScreen, type LiveRuleEditor, type LiveGolden, type LivePublish } from '../portals/console-rules';
+export type { LiveRuleRow, LiveRuleDetail, LiveGoldenRun, LiveImpact, RuleUpdateInput, RuleState } from '../portals/console-rules-live';
