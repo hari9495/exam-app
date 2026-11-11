@@ -1,4 +1,4 @@
-import { approvalDue, decider, inHours, personKey, photoProblem, policyText } from './walkin-rules';
+import { hoursText, approvalDue, decider, inHours, personKey, photoProblem, policyText } from './walkin-rules';
 
 describe('Visitors slice 2 rules', () => {
   it('610: allowed hours in the location time zone (from inclusive, to exclusive)', () => {
@@ -36,5 +36,19 @@ describe('Visitors slice 2 rules', () => {
     expect(photoProblem(Buffer.from('GIF89a'))).toMatch(/JPEG or PNG/);
     expect(photoProblem(Buffer.alloc(0))).toMatch(/empty/);
     expect(photoProblem(Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.alloc(700 * 1024)]))).toMatch(/too large/);
+  });
+});
+
+describe('visitor hours over the whole day (answer 791)', () => {
+  const at = (iso: string) => new Date(iso);
+  it('until midnight (24:00) lets in a visitor at 23:45; all day (00:00 to 24:00) at any hour', () => {
+    expect(inHours(at('2026-11-11T18:15:00Z'), 'Asia/Kolkata', '09:00', '24:00')).toBe(true); // 23:45 IST
+    expect(inHours(at('2026-11-10T18:45:00Z'), 'Asia/Kolkata', '00:00', '24:00')).toBe(true); // 00:15 IST
+    expect(hoursText('09:00', '24:00')).toBe('09:00 to 00:00');
+  });
+  it('negative: outside the hours stays outside; 18:30 closes at 18:30', () => {
+    expect(inHours(at('2026-11-11T13:00:00Z'), 'Asia/Kolkata', '09:00', '18:30')).toBe(false); // 18:30 IST
+    expect(inHours(at('2026-11-10T18:45:00Z'), 'Asia/Kolkata', '09:00', '24:00')).toBe(false); // 00:15 IST
+    expect(hoursText('09:00', '18:30')).toBe('09:00 to 18:30');
   });
 });

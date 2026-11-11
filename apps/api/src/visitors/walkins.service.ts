@@ -63,10 +63,11 @@ export class WalkInsService {
   /** The company's visitor types, and (for the settings page) the published policies to choose from. */
   async types(ctx: TenantContext) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const rows = await tx.visitorType.findMany({ where: { organizationId: c.organizationId }, orderBy: [{ position: 'asc' }, { name: 'asc' }] });
+      const all = await tx.visitorType.findMany({ where: { organizationId: c.organizationId }, orderBy: [{ position: 'asc' }, { name: 'asc' }] });
+      const rows = all.filter((r) => !r.archivedAt);
       const policies = await this.publishedPolicies(tx, c);
       const title = (id: string | null) => (id ? (policies.find((p) => p.id === id)?.title ?? 'A policy no longer published') : null);
-      return { types: rows.map((r) => ({ id: r.id, name: r.name, escort: r.escort, ndaPolicyId: r.ndaPolicyId, nda: title(r.ndaPolicyId), inductionPolicyId: r.inductionPolicyId, induction: title(r.inductionPolicyId) })), policies: policies.map((p) => ({ id: p.id, title: p.title })) };
+      return { archived: all.filter((r) => r.archivedAt).map((r) => r.name), types: rows.map((r) => ({ id: r.id, name: r.name, escort: r.escort, ndaPolicyId: r.ndaPolicyId, nda: title(r.ndaPolicyId), inductionPolicyId: r.inductionPolicyId, induction: title(r.inductionPolicyId) })), policies: policies.map((p) => ({ id: p.id, title: p.title })) };
     });
   }
 
@@ -88,14 +89,29 @@ export class WalkInsService {
     await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const ok = new Set((await this.publishedPolicies(tx, c)).map((p) => p.id));
       for (const r of rows) for (const id of [r.ndaPolicyId, r.inductionPolicyId]) if (id && !ok.has(id)) throw new BadRequestException(`${r.name}: choose a published policy for the NDA and the induction.`);
+      // Answer 794: a row is matched to an existing type by its name (a row's place can shift when another is removed).
+      const existing = await tx.visitorType.findMany({ where: { organizationId: c.organizationId } });
+      const byName = (n: string) => existing.find((t) => t.name.trim().toLowerCase() === n.trim().toLowerCase());
+      if (rows.some((r) => r.id && !existing.some((t) => t.id === r.id))) throw new NotFoundException('Visitor type not found.');
       for (const [i, r] of rows.entries()) {
-        const data = { name: r.name.trim(), escort: r.escort, ndaPolicyId: r.ndaPolicyId || null, inductionPolicyId: r.inductionPolicyId || null, position: i, updatedBy: c.userId ?? null };
-        if (r.id) {
-          const { count } = await tx.visitorType.updateMany({ where: { id: r.id, organizationId: c.organizationId }, data });
-          if (!count) throw new NotFoundException('Visitor type not found.');
-        } else await tx.visitorType.create({ data: { organizationId: c.organizationId, ...data } });
+        const data = { name: r.name.trim(), escort: r.escort, ndaPolicyId: r.ndaPolicyId || null, inductionPolicyId: r.inductionPolicyId || null, position: i, updatedBy: c.userId ?? null, archivedAt: null };
+        const same = byName(r.name);
+        if (same) await tx.visitorType.update({ where: { id: same.id }, data });
+        else await tx.visitorType.create({ data: { organizationId: c.organizationId, ...data } });
       }
-      await audit(tx, c, 'visitor.types_saved', 'visitor_type', c.organizationId, { types: rows.map((r) => ({ name: r.name.trim(), escort: r.escort, nda: Boolean(r.ndaPolicyId), induction: Boolean(r.inductionPolicyId) })) });
+      const kept = new Set(rows.map((r) => r.name.trim().toLowerCase()));
+      const removed: string[] = [];
+      const archived: string[] = [];
+      for (const t of existing.filter((x) => !x.archivedAt && !kept.has(x.name.trim().toLowerCase()))) {
+        if (await tx.visit.count({ where: { organizationId: c.organizationId, visitorTypeId: t.id } })) {
+          await tx.visitorType.update({ where: { id: t.id }, data: { archivedAt: new Date(), updatedBy: c.userId ?? null } });
+          archived.push(t.name);
+        } else {
+          await tx.visitorType.delete({ where: { id: t.id } });
+          removed.push(t.name);
+        }
+      }
+      await audit(tx, c, 'visitor.types_saved', 'visitor_type', c.organizationId, { types: rows.map((r) => ({ name: r.name.trim(), escort: r.escort, nda: Boolean(r.ndaPolicyId), induction: Boolean(r.inductionPolicyId) })), removed, archived });
     });
     return this.types(ctx);
   }
@@ -103,8 +119,8 @@ export class WalkInsService {
   /* ---------------- what a visitor reads and accepts ---------------- */
 
   /** The notice, and the type's NDA (unless this person signed it for this company within a year) and induction. */
-  needs(tx: Tx, c: CompanyContext, locationId: string, typeId: string | null, mobile: string | null, company: string | null): Promise<Needs> {
-    return visitNeeds(tx, c, (k, l) => this.visitors.setting(tx, c, k, l), locationId, typeId, mobile, company);
+  needs(tx: Tx, c: CompanyContext, locationId: string, typeId: string | null, mobile: string | null, company: string | null, newVisit = false): Promise<Needs> {
+    return visitNeeds(tx, c, (k, l) => this.visitors.setting(tx, c, k, l), locationId, typeId, mobile, company, newVisit);
   }
 
   /* ---------------- the walk-in itself ---------------- */
@@ -112,11 +128,11 @@ export class WalkInsService {
   private async create(tx: Tx, c: CompanyContext, loc: { id: string; timezone: string }, hostUserId: string, input: WalkInInput, mobile: string, n: Needs, via: 'kiosk' | 'desk', extra: { kioskDeviceId?: string; hoursOverrideReason?: string | null; createdBy: string; id?: string; photoPath?: string | null }) {
     const now = new Date();
     const minutes = Number(await this.visitors.setting(tx, c, 'visitors.host_timeout_minutes', loc.id));
-    const to = await this.visitors.setting(tx, c, 'visitors.hours_to', loc.id);
+    const { to } = await this.visitors.hours(tx, c, loc.id);
     const today = localDay(now, loc.timezone);
     const end = dayBounds(today, loc.timezone).to;
     // The walk-in's window runs to the location's closing time (at least an hour, never past midnight there).
-    const closing = DateTime.fromISO(`${today}T${to}`, { zone: loc.timezone }).toJSDate();
+    const closing = to === '24:00' ? end : DateTime.fromISO(`${today}T${to}`, { zone: loc.timezone }).toJSDate();
     const close = new Date(Math.min(end.getTime(), Math.max(now.getTime() + 60 * 60_000, closing.getTime())));
     const purpose = (input.purpose && (PURPOSES as readonly string[]).includes(input.purpose) ? input.purpose : 'meeting') as Purpose;
     let row = null;
@@ -173,9 +189,8 @@ export class WalkInsService {
   /** Answers 601 and 610: is self check-in on here, and is it inside the allowed hours now? */
   private async open(tx: Tx, c: CompanyContext, loc: { id: string; timezone: string }) {
     const on = (await this.visitors.setting(tx, c, 'visitors.kiosk', loc.id)) === 'on';
-    const from = await this.visitors.setting(tx, c, 'visitors.hours_from', loc.id);
-    const to = await this.visitors.setting(tx, c, 'visitors.hours_to', loc.id);
-    return { on, inHours: inHours(new Date(), loc.timezone, from, to), hours: `${from} to ${to}` };
+    const h = await this.visitors.hours(tx, c, loc.id);
+    return { on, inHours: inHours(new Date(), loc.timezone, h.from, h.to), hours: h.text };
   }
 
   async kioskInfo(k: Kiosk) {
@@ -184,7 +199,7 @@ export class WalkInsService {
       const loc = await this.kioskLoc(tx, c, k);
       const o = await this.open(tx, c, loc);
       const org = await tx.organization.findUnique({ where: { id: c.organizationId }, select: { name: true } });
-      const types = await tx.visitorType.findMany({ where: { organizationId: c.organizationId }, orderBy: [{ position: 'asc' }, { name: 'asc' }], select: { id: true, name: true } });
+      const types = await tx.visitorType.findMany({ where: { organizationId: c.organizationId, archivedAt: null }, orderBy: [{ position: 'asc' }, { name: 'asc' }], select: { id: true, name: true } });
       return {
         company: org?.name ?? '', location: loc.name, ...o, open: o.on && o.inHours,
         photo: (await this.visitors.setting(tx, c, 'visitors.photo', loc.id)) === 'on',
@@ -197,11 +212,19 @@ export class WalkInsService {
   }
 
   /** What this visitor must read before they go in (the kiosk shows it after their details). */
-  async kioskNeeds(k: Kiosk, q: { typeId?: string | null; mobile: string; company?: string | null }) {
+  async kioskNeeds(k: Kiosk, q: { typeId?: string | null; mobile: string; company?: string | null; name?: string }) {
     const c = this.kioskCtx(k);
     const mobile = normalMobile(q.mobile);
     if (!mobile) throw new BadRequestException('Enter a 10-digit mobile number, or + and the country code.');
-    return this.tenantPrisma.forTenant(c, async (tx) => needsView(await this.needs(tx, c, k.locationId, q.typeId || null, mobile, q.company || null)));
+    return this.tenantPrisma.forTenant(c, async (tx) => {
+      // Answer 800: right after the details, before the photo and the notice: someone on the watch-list is sent to
+      // reception (never told why) and no photo of them is ever taken. The walk-in itself checks again.
+      if (q.name && (await watchHit(tx, c.organizationId, { name: q.name, mobile }))) {
+        await audit(tx, c, 'visitor.blocked', 'time_device', k.deviceId, { by: 'watchlist', via: 'kiosk', step: 'details' });
+        return SEE_RECEPTION;
+      }
+      return needsView(await this.needs(tx, c, k.locationId, q.typeId || null, mobile, q.company || null, true));
+    });
   }
 
   /** A walk-in on the kiosk: details, photo and what they accepted in one go; the host is told. Problems: see reception. */
@@ -247,7 +270,7 @@ export class WalkInsService {
       const bad = guardProblem(rule, input, Boolean(photo));
       if (bad) throw new BadRequestException(bad);
       if ((await this.visitors.setting(tx, c, 'visitors.photo', loc.id)) === 'on' && !photo && !input.minor) throw new BadRequestException('Take your photo first.');
-      const n = await this.needs(tx, c, loc.id, input.typeId || null, mobile, input.company || null);
+      const n = await this.needs(tx, c, loc.id, input.typeId || null, mobile, input.company || null, true);
       checkAccepted(n, input);
       const row = await this.create(tx, c, loc, hosts[0]!.id, input, mobile, n, 'kiosk', { kioskDeviceId: k.deviceId, createdBy: hosts[0]!.id, id: visitId, photoPath });
       return { row, loc };
@@ -347,9 +370,8 @@ export class WalkInsService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const loc = await this.visitors.deskLoc(tx, c, v, q.locationId);
       const mobile = q.mobile ? normalMobile(q.mobile) : null;
-      const from = await this.visitors.setting(tx, c, 'visitors.hours_from', loc.id);
-      const to = await this.visitors.setting(tx, c, 'visitors.hours_to', loc.id);
-      return { ...needsView(await this.needs(tx, c, loc.id, q.typeId || null, mobile, q.company || null)), inHours: inHours(new Date(), loc.timezone, from, to), hours: `${from} to ${to}` };
+      const h = await this.visitors.hours(tx, c, loc.id);
+      return { ...needsView(await this.needs(tx, c, loc.id, q.typeId || null, mobile, q.company || null, true)), inHours: inHours(new Date(), loc.timezone, h.from, h.to), hours: h.text };
     });
   }
 
@@ -373,11 +395,10 @@ export class WalkInsService {
       const loc = await this.visitors.deskLoc(tx, c, v, input.locationId);
       const host = await tx.user.findFirst({ where: { organizationId: c.organizationId, id: input.hostUserId, status: 'active' }, select: { id: true } });
       if (!host) throw new NotFoundException('Choose who they are visiting.');
-      const from = await this.visitors.setting(tx, c, 'visitors.hours_from', loc.id);
-      const to = await this.visitors.setting(tx, c, 'visitors.hours_to', loc.id);
-      const outside = !inHours(new Date(), loc.timezone, from, to);
+      const h = await this.visitors.hours(tx, c, loc.id);
+      const outside = !inHours(new Date(), loc.timezone, h.from, h.to);
       const reason = input.hoursReason?.trim() || null;
-      if (outside && !reason) throw new BadRequestException(`Visitors are allowed from ${from} to ${to}. Give the reason to let them in now.`);
+      if (outside && !reason) throw new BadRequestException(`Visitors are allowed ${h.text === 'all day' ? 'all day' : `from ${h.text}`}. Give the reason to let them in now.`);
       // Slice 3 (605): a watch-list match stops here; reception sees the name only, never why.
       // The audit is kept: the refusal is thrown only after this transaction commits.
       if (await watchHit(tx, c.organizationId, { name: input.name, mobile })) {
@@ -386,7 +407,7 @@ export class WalkInsService {
       }
       const bad = guardProblem((await this.visitors.setting(tx, c, 'visitors.id_capture', loc.id)) as IdCapture, input, false);
       if (bad) throw new BadRequestException(bad);
-      const n = await this.needs(tx, c, loc.id, input.typeId || null, mobile, input.company || null);
+      const n = await this.needs(tx, c, loc.id, input.typeId || null, mobile, input.company || null, true);
       checkAccepted(n, input);
       const row = await this.create(tx, c, loc, host.id, input, mobile, n, 'desk', { hoursOverrideReason: outside ? reason : null, createdBy: user.userId! });
       if (outside) await audit(tx, c, 'visitor.hours_overridden', 'visit', row.id, { reason });

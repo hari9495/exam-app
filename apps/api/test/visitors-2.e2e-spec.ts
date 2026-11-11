@@ -396,4 +396,55 @@ describe('Visitors slice 2', () => {
     expect((await inA((tx) => tx.visit.findUniqueOrThrow({ where: { id: w.id } }))).status).toBe('declined');
     expect(await inA((tx) => tx.visitAcknowledgement.count({ where: { organizationId: org.A.id } }))).toBe(kept);
   });
+
+  it('walk answer 800: the kiosk checks the watch-list with the details, before any photo; someone else goes on', async () => {
+    const before = await inA((tx) => tx.auditLog.count({ where: { action: 'visitor.blocked', entityType: 'time_device' } }));
+    expect((await kiosk('visitor', 'post', '/needs').send({ name: 'Manish Gupta', mobile: '9000077777' }).expect(200)).body).toEqual({ state: 'see-reception' });
+    expect((await kiosk('visitor', 'post', '/needs').send({ name: 'Somebody Else', mobile: '98845 00712' }).expect(200)).body).toEqual({ state: 'see-reception' }); // by mobile
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'visitor.blocked', entityType: 'time_device' } }))).toBe(before + 2);
+    const ok = (await kiosk('visitor', 'post', '/needs').send({ name: 'Rekha Shah', mobile: '9000077777' }).expect(200)).body;
+    expect(ok.notice.version).toBeTruthy();
+    expect(await inA((tx) => tx.visit.count({ where: { visitorName: { contains: 'Gupta', mode: 'insensitive' } } }))).toBe(0);
+  });
+
+  it('walk answer 791: visitor hours over the whole day: until midnight, and all day; bad values 400', async () => {
+    const s = (await api('facility', 'get', '/visitors/settings').expect(200)).body;
+    expect(s.choices['visitors.hours_from']).toContain('00:00');
+    expect(s.choices['visitors.hours_to']).toContain('24:00');
+    expect(s.choices['visitors.hours_to']).not.toContain('00:00');
+    expect(s.labels['visitors.hours_to']).toEqual({ '24:00': '00:00 (midnight)' });
+    for (const changes of [[{ key: 'visitors.hours_from', value: '24:00' }], [{ key: 'visitors.hours_to', value: '00:00' }], [{ key: 'visitors.all_day', value: 'yes' }]])
+      await api('facility', 'put', '/visitors/settings').send({ changes }).expect(400);
+    await api('reception', 'put', '/visitors/settings').send({ changes: [{ key: 'visitors.all_day', value: 'on' }] }).expect(403);
+    await api('facility', 'put', '/visitors/settings').send({ changes: [{ key: 'visitors.hours_from', value: '09:00' }, { key: 'visitors.hours_to', value: '24:00' }] }).expect(want(200));
+    // A location closed by its own hours opens all day once the location says so.
+    await setting('visitors.hours_to', '00:00');
+    expect((await kiosk('visitor', 'get', '/me').expect(200)).body).toMatchObject({ inHours: false });
+    await setting('visitors.all_day', 'on');
+    expect((await kiosk('visitor', 'get', '/me').expect(200)).body).toMatchObject({ inHours: true, open: true, hours: 'all day' });
+    await setting('visitors.all_day', 'off');
+    await setting('visitors.hours_to', '23:59');
+  });
+
+  it('walk answer 794: a type no visit used is removed; a used one is archived (kept on its visits, not offered for new ones)', async () => {
+    const before = (await api('host', 'get', '/visitors/types').expect(200)).body;
+    expect(before.types.map((t: { name: string }) => t.name)).toEqual(['Contractor', 'Customer', 'Interview candidate']);
+    // Interview candidate was never used: removed. Contractor was used by a walk-in: archived.
+    const saved = (await api('facility', 'put', '/visitors/types').send({ types: [{ name: 'Customer', escort: false, ndaPolicyId: ids.ndaPolicy }] }).expect(want(200))).body;
+    expect(saved.types.map((t: { id: string; name: string }) => [t.id, t.name])).toEqual([[ids.customer, 'Customer']]);
+    expect(saved.archived).toEqual(['Contractor']);
+    expect(await inA((tx) => tx.visitorType.findMany({ where: { organizationId: org.A.id }, select: { name: true, archivedAt: true } }))).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'Contractor', archivedAt: expect.any(Date) })]));
+    expect(await inA((tx) => tx.visitorType.count({ where: { organizationId: org.A.id, name: 'Interview candidate' } }))).toBe(0);
+    expect(await inA((tx) => tx.visit.count({ where: { organizationId: org.A.id, visitorTypeId: ids.contractor } }))).toBeGreaterThan(0);
+    // Hidden from new visits: the kiosk's list, its needs, the desk's needs and an invite.
+    expect((await kiosk('visitor', 'get', '/me').expect(200)).body.types.map((t: { label: string }) => t.label)).toEqual(['Customer']);
+    await kiosk('visitor', 'post', '/needs').send({ typeId: ids.contractor, mobile: MOBILE }).expect(404);
+    await api('reception', 'get', `/visitors/desk/needs?locationId=${ids.maa}&typeId=${ids.contractor}&mobile=9000011111`).expect(404);
+    const audit = await inA((tx) => tx.auditLog.findFirstOrThrow({ where: { action: 'visitor.types_saved' }, orderBy: { createdAt: 'desc' } }));
+    expect(JSON.parse(audit.metadataJson ?? '{}')).toMatchObject({ removed: ['Interview candidate'], archived: ['Contractor'] });
+    // Put back by its name: the same type again, not archived.
+    const back = (await api('facility', 'put', '/visitors/types').send({ types: [{ name: 'Customer', escort: false, ndaPolicyId: ids.ndaPolicy }, { name: 'contractor', escort: true }] }).expect(want(200))).body;
+    expect(back.types.map((t: { id: string }) => t.id)).toEqual([ids.customer, ids.contractor]);
+    expect(back.archived).toEqual([]);
+  });
 });
