@@ -2209,3 +2209,9 @@ with In pipeline summed. Screenshots and the per-page results are in the walk re
 916. **Receipt number.** A receipt has no number of its own; the export uses its bank reference (or RCPT-…). *Suggested:
      number receipts per series later if the CA asks.*
 
+## Answer 915 built (11 Nov 2026, branch `feat/yukthix-staffing-915`)
+
+- The export sheet offers a month that has receipts against the series' invoices but no invoices of its own; its export
+  is just the receipts (Tally receipt vouchers; for Zoho Books only the customer payments file). A month with neither is
+  still refused. Tests: e2e `staffing-5` (positive and negative).
+

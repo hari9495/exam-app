@@ -214,5 +214,24 @@ describe('Staffing accounting export', () => {
     expect(pay[1]).toContain(`UTR${run}`);
     expect(pay[1]).toContain(`,${inv.number},1020.00,20.00`);
   });
+
+  it('915: a month with receipts but no invoices is offered and exports just the receipts; an empty month is refused', async () => {
+    // The receipt dated the day before this month (from the 574 test) pays this series' invoice.
+    const prev = addDays(`${month}-01`, -1).slice(0, 7);
+    const o = (await api('fin', 'get', '/staffing/exports/options').expect(200)).body;
+    const series = o.series.find((x: { id: string }) => x.id === ids.series);
+    expect(series.months).toEqual(expect.arrayContaining([month, prev]));
+    const xml = ((await exp('fin', { month: prev }).expect(200)).body as Buffer).toString('utf8');
+    expect(xml).toContain(`<VOUCHERNUMBER>OLD${run}</VOUCHERNUMBER>`);
+    expect(xml).toContain('<VOUCHERTYPENAME>Receipt</VOUCHERTYPENAME>');
+    expect(xml).not.toContain('<VOUCHERTYPENAME>Sales</VOUCHERTYPENAME>');
+    const zip = await JSZip.loadAsync((await exp('fin', { month: prev, format: 'zoho' }).expect(200)).body as Buffer);
+    expect(Object.keys(zip.files)).toEqual([`KS-${prev}-customer-payments.csv`]);
+    // Negative: a month with neither invoices nor receipts, and someone without the finance key.
+    const empty = addDays(`${prev}-01`, -40).slice(0, 7);
+    expect(series.months).not.toContain(empty);
+    await exp('fin', { month: empty }).expect(400);
+    await exp('am', { month: prev }).expect(403);
+  });
 });
 

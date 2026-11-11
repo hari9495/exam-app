@@ -738,8 +738,13 @@ export class StaffingBillingService {
       const series = await tx.staffingInvoiceSeries.findMany({ where: { organizationId: org }, orderBy: [{ financialYear: 'desc' }, { prefix: 'asc' }] });
       const issued = await tx.staffingInvoice.findMany({ where: { organizationId: org, status: 'issued' }, select: { seriesId: true, invoiceDate: true } });
       const drafts = await tx.staffingInvoice.groupBy({ by: ['seriesId'], where: { organizationId: org, status: 'draft' }, _count: { _all: true } });
+      // Answer 915: a month with receipts against the series' invoices is offered too, even without invoices of its own.
+      const allocs = await tx.staffingReceiptAllocation.findMany({ where: { organizationId: org }, select: { receiptId: true, invoiceId: true } });
+      const paidInv = allocs.length ? await tx.staffingInvoice.findMany({ where: { organizationId: org, id: { in: [...new Set(allocs.map((a) => a.invoiceId))] } }, select: { id: true, seriesId: true } }) : [];
+      const recs = allocs.length ? await tx.staffingReceipt.findMany({ where: { organizationId: org, id: { in: [...new Set(allocs.map((a) => a.receiptId))] } }, select: { id: true, receivedOn: true } }) : [];
+      const receiptMonths = (seriesId: string) => allocs.filter((a) => paidInv.find((i) => i.id === a.invoiceId)?.seriesId === seriesId).map((a) => iso(recs.find((r) => r.id === a.receiptId)!.receivedOn)!.slice(0, 7));
       return {
-        series: series.map((s) => ({ id: s.id, label: `${s.prefix} · ${s.gstin} · ${s.financialYear}`, months: [...new Set(issued.filter((i) => i.seriesId === s.id).map((i) => iso(i.invoiceDate)!.slice(0, 7)))].sort().reverse(), drafts: drafts.find((d) => d.seriesId === s.id)?._count._all ?? 0 })),
+        series: series.map((s) => ({ id: s.id, label: `${s.prefix} · ${s.gstin} · ${s.financialYear}`, months: [...new Set([...issued.filter((i) => i.seriesId === s.id).map((i) => iso(i.invoiceDate)!.slice(0, 7)), ...receiptMonths(s.id)])].sort().reverse(), drafts: drafts.find((d) => d.seriesId === s.id)?._count._all ?? 0 })),
       };
     });
   }
@@ -805,8 +810,11 @@ export class StaffingBillingService {
       } else {
         const rule = await ruleValues<ZohoRule>(tx, 'EXPORT.ZOHO_CSV');
         const zip = new JSZip();
-        zip.file(`${base}-invoices.csv`, zohoCsv(docs, 'invoice', s, rule));
-        zip.file(`${base}-credit-notes.csv`, zohoCsv(docs, 'credit_note', s, rule));
+        // Answer 915: a month with receipts only is just the customer payments file.
+        if (docs.length) {
+          zip.file(`${base}-invoices.csv`, zohoCsv(docs, 'invoice', s, rule));
+          zip.file(`${base}-credit-notes.csv`, zohoCsv(docs, 'credit_note', s, rule));
+        }
         if (receipts.length) zip.file(`${base}-customer-payments.csv`, zohoPaymentsCsv(receipts, s, rule));
         file = { buffer: await zip.generateAsync({ type: 'nodebuffer' }), filename: `${base}-zoho.zip`, type: 'application/zip' };
       }
