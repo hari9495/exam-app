@@ -19,6 +19,7 @@ import ConsoleContainPage from './(console)/companies/[id]/contain/page';
 import ConsoleFeatureFlagsPage from './(console)/feature-flags/page';
 import ConsoleHelpCentrePage from './(console)/help-centre/page';
 import ConsolePlatformSettingsPage from './(console)/platform-settings/page';
+import ConsoleIncidentsPage from './(console)/incidents/page';
 import YxSupportAccessPage from '../yx/(app)/settings/support-access/page';
 import { ToastProvider } from '@yukthix/ui';
 
@@ -324,5 +325,22 @@ describe('Console follow-ups', () => {
     await ue.type(within(dialog).getByRole('textbox', { name: /Reason/ }), 'Counsel confirmed');
     await ue.click(within(dialog).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(calls).toContain('PUT /platform/settings/breach.certin_hours {"value":"8","reason":"Counsel confirmed"}'));
+  });
+});
+
+// C-8 (YX-10, answer 1124): incidents.
+describe('/staff/incidents', () => {
+  const OVERVIEW = { incidents: [], containments: [], products: [{ code: 'hrms', name: 'YukthiX HR' }], settings: { leadHours: 1, leadHoursDefault: 1 } };
+  it('loads from /platform/incidents', async () => {
+    route({ 'GET /platform/incidents': OVERVIEW, 'POST /platform/incidents': OVERVIEW });
+    wrap(<ConsoleIncidentsPage />);
+    expect(await screen.findByText('No incidents.')).toBeInTheDocument();
+    expect(screen.getByText('Nothing: no open incident has an approved update.')).toBeInTheDocument();
+  });
+
+  it('negative: without the incidents key the page says so', async () => {
+    api.mockRejectedValue(Object.assign(new Error('Forbidden'), { status: 403 }));
+    wrap(<ConsoleIncidentsPage />);
+    expect(await screen.findByText("You don't have access to incidents")).toBeInTheDocument();
   });
 });

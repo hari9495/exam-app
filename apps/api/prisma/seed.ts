@@ -80,6 +80,8 @@ export const PERMISSIONS = [
   // Console C-2 (answer 1058): customer success (also in the console_customers migration).
   // Console C-5 (answers 948, 1053): planned maintenance (also in the console_maintenance migration).
   // Console C-8 (YX-11): the help-centre editor (also in the console_helpcentre migration).
+  // Console C-8 (YX-10): incidents and status updates (also in the console_incidents migration).
+  { key: 'platform.incidents.manage', description: 'Open incidents, post and approve status updates, and link a security breach to a containment (YukthiX staff)' },
   { key: 'platform.helpcentre.write', description: 'Write and publish the help articles every company sees in Help (YukthiX staff)' },
   { key: 'platform.maintenance.manage', description: 'Schedule, approve and cancel planned maintenance windows (YukthiX staff)' },
   // Staff roles: Customer success sees the windows.

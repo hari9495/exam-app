@@ -205,7 +205,7 @@ describe('Console C-5: company wizard and planned maintenance', () => {
     const w = body.windows.find((x: { title: string }) => x.title === `Database upgrade ${run}`);
     windowId = w.id;
     expect(w).toMatchObject({ status: 'pending_approval', mine: true, version: 1 });
-    expect((await api('adminA', 'get', '/availability').expect(200)).body).toEqual({ maintenance: null });
+    expect((await api('adminA', 'get', '/availability').expect(200)).body).toEqual({ maintenance: null, incident: null });
     expect((await api('staff', 'post', `/platform/maintenance/${windowId}/approve`).send({ version: 1 }).expect(403)).body.message).toBe('You scheduled this window. Another staff member approves it.');
     await api('staff2', 'post', `/platform/maintenance/${windowId}/approve`).send({ version: 9 }).expect(409);
     expect((await api('staff2', 'post', `/platform/maintenance/${windowId}/approve`).send({ version: 1 }).expect(200)).body.windows.find((x: { id: string }) => x.id === windowId)).toMatchObject({ status: 'scheduled', decidedBy: 'Staff staff2' });
@@ -214,10 +214,10 @@ describe('Console C-5: company wizard and planned maintenance', () => {
     const a = (await api('adminA', 'get', '/availability').expect(200)).body;
     const b = (await api('adminB', 'get', '/availability').expect(200)).body;
     expect(a).toEqual(b);
-    expect(a).toEqual({ maintenance: { phase: 'upcoming', title: `Database upgrade ${run}`, startsAt: start.toISOString(), endsAt: new Date(start.getTime() + 2 * 3_600_000).toISOString() } });
+    expect(a).toEqual({ maintenance: { phase: 'upcoming', title: `Database upgrade ${run}`, startsAt: start.toISOString(), endsAt: new Date(start.getTime() + 2 * 3_600_000).toISOString() }, incident: null });
     // Back to the 24-hour banner: the window is days away, so nothing shows yet.
     await api('staff', 'put', '/platform/maintenance/settings').send({ values: { 'maintenance.banner_hours': 24 } }).expect(200);
-    expect((await api('adminA', 'get', '/availability').expect(200)).body).toEqual({ maintenance: null });
+    expect((await api('adminA', 'get', '/availability').expect(200)).body).toEqual({ maintenance: null, incident: null });
     const audit = await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findMany({ where: { entityId: windowId }, select: { action: true } }));
     expect(audit.map((x) => x.action).sort()).toEqual(['platform.maintenance.approved', 'platform.maintenance.scheduled']);
   });
@@ -229,7 +229,7 @@ describe('Console C-5: company wizard and planned maintenance', () => {
     await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: `c5-a-${run}`, email: `admin-a-${run}@c5.test`, password: PASSWORD }).expect(200);
     await api('staff', 'post', `/platform/maintenance/${live.id}/cancel`).send({ version: 1 }).expect(400);
     await api('staff', 'post', `/platform/maintenance/${live.id}/cancel`).send({ version: 1, reason: 'Finished early' }).expect(200);
-    expect((await api('adminB', 'get', '/availability').expect(200)).body).toEqual({ maintenance: null });
+    expect((await api('adminB', 'get', '/availability').expect(200)).body).toEqual({ maintenance: null, incident: null });
     await api('staff', 'post', `/platform/maintenance/${live.id}/cancel`).send({ version: 2, reason: 'Again' }).expect(409);
   });
 

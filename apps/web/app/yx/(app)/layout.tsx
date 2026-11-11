@@ -18,7 +18,7 @@ import { useMarkAllNotificationsRead, useMarkNotificationRead } from '../../../l
 import { useBellItems } from '../../../lib/yx-bell';
 import { useYxPalette } from '../../../lib/yx-palette';
 import { TourHost } from '../../../lib/yx-tours';
-import { AvailabilityBanner } from '@yukthix/ui/desk';
+import { AvailabilityBanner, type CurrentIncident } from '@yukthix/ui/desk';
 import { decodeJwtPayload } from '../../../lib/jwt';
 import { withNextHere } from '../../../lib/safe-next';
 import { todayIst, useOrg, useYxPermissions, type Reference } from '../../../lib/yx-org';
@@ -75,7 +75,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   // Shares the cache with My security, so the banner clears as soon as a factor is added there.
   const mfa = useQuery<MfaStatus>({ queryKey: ['yx', 'mfa'], queryFn: () => apiFetch('/auth/mfa', {}, accessToken ?? undefined), enabled: Boolean(accessToken) });
   // Answer 948 (C-5): planned maintenance, the day before and during a window. Never blocks anything by itself.
-  const availability = useQuery<{ maintenance: { phase: 'upcoming' | 'now'; title: string; startsAt: string; endsAt: string } | null }>({ queryKey: ['yx', 'availability'], queryFn: () => apiFetch('/availability', {}, accessToken ?? undefined), enabled: Boolean(accessToken), retry: false, refetchInterval: 15 * 60_000 });
+  const availability = useQuery<{ maintenance: { phase: 'upcoming' | 'now'; title: string; startsAt: string; endsAt: string } | null; incident?: CurrentIncident | null }>({ queryKey: ['yx', 'availability'], queryFn: () => apiFetch('/availability', {}, accessToken ?? undefined), enabled: Boolean(accessToken), retry: false, refetchInterval: 15 * 60_000 });
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const bell = useBellItems(!actingSuperAdmin);
@@ -192,6 +192,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   const banner = (
     <>
       {availability.data?.maintenance && <AvailabilityBanner kind="maintenance" live={availability.data.maintenance} />}
+      {availability.data?.incident && <AvailabilityBanner kind="degraded" incident={availability.data.incident} />}
       {support && (
         <InlineAlert
           tone="warning"

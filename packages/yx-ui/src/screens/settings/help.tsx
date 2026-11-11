@@ -315,7 +315,25 @@ export function NotFoundState({ reference, actions }: { reference?: string | nul
 
 export type Availability = 'maintenance' | 'degraded' | 'read-only' | 'wave' | 'not-enabled' | 'setup-needed';
 
-export function AvailabilityBanner({ kind, live }: { kind: 'maintenance' | 'degraded' | 'read-only'; /** Answer 948 (C-5): the planned window, before or during it. */ live?: { phase: 'upcoming' | 'now'; title: string; startsAt: string; endsAt: string } }) {
+/** Console C-8 (YX-10): the latest posted update of an open incident on one of the company's products. */
+export interface CurrentIncident {
+  title: string;
+  severity: number;
+  stage: string;
+  impact: string;
+  action: string;
+  nextUpdateAt: string | null;
+  updatedAt: string;
+}
+
+export function AvailabilityBanner({ kind, live, incident }: { kind: 'maintenance' | 'degraded' | 'read-only'; /** Answer 948 (C-5): the planned window, before or during it. */ live?: { phase: 'upcoming' | 'now'; title: string; startsAt: string; endsAt: string }; /** C-8 (YX-10): an open incident, with kind "degraded". */ incident?: CurrentIncident }) {
+  if (kind === 'degraded' && incident)
+    return (
+      <PageBanner tone={incident.severity === 1 ? 'danger' : 'warning'}>
+        <strong>{incident.title}</strong> ({incident.stage}): {incident.impact} {incident.action}
+        {incident.nextUpdateAt ? ` Next update by ${timeOf(new Date(incident.nextUpdateAt))}.` : ''}
+      </PageBanner>
+    );
   if (kind === 'maintenance' && live) {
     const start = new Date(live.startsAt);
     const end = new Date(live.endsAt);

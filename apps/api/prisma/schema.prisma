@@ -3487,6 +3487,51 @@ model CompanyMessage {
   @@map("company_messages")
 }
 
+/// Console C-8 (YX-10): an incident YukthiX staff open (staff-only data; companies see only the banner through /availability).
+model PlatformIncident {
+  id               String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  number           Int                      @unique @default(autoincrement())
+  title            String                   @db.VarChar(120)
+  severity         Int                      @db.SmallInt
+  products         String[]
+  /// open, resolved
+  status           String                   @default("open") @db.VarChar(10)
+  /// Answer 1124: a security breach linked to a containment gets the CERT-In and DPDP reminders.
+  securityBreach   Boolean                  @default(false) @map("security_breach")
+  containmentId    String?                  @map("containment_id") @db.Uuid
+  certinRemindedAt DateTime?                @map("certin_reminded_at") @db.Timestamptz(3)
+  dpdpRemindedAt   DateTime?                @map("dpdp_reminded_at") @db.Timestamptz(3)
+  openedBy         String                   @map("opened_by") @db.Uuid
+  openedAt         DateTime                 @default(now()) @map("opened_at") @db.Timestamptz(3)
+  resolvedAt       DateTime?                @map("resolved_at") @db.Timestamptz(3)
+  version          Int                      @default(1)
+  updates          PlatformIncidentUpdate[]
+
+  @@map("platform_incidents")
+}
+
+/// One status update; companies see it only after a second staff member approves it.
+model PlatformIncidentUpdate {
+  id           String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  incidentId   String           @map("incident_id") @db.Uuid
+  incident     PlatformIncident @relation(fields: [incidentId], references: [id])
+  /// investigating, identified, monitoring, resolved
+  stage        String           @db.VarChar(15)
+  impact       String           @db.VarChar(500)
+  action       String           @db.VarChar(300)
+  nextUpdateAt DateTime?        @map("next_update_at") @db.Timestamptz(3)
+  /// pending, posted, sent_back
+  status       String           @default("pending") @db.VarChar(10)
+  writtenBy    String           @map("written_by") @db.Uuid
+  reviewedBy   String?          @map("reviewed_by") @db.Uuid
+  reviewedAt   DateTime?        @map("reviewed_at") @db.Timestamptz(3)
+  reviewNote   String?          @map("review_note") @db.VarChar(300)
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([incidentId, createdAt])
+  @@map("platform_incident_updates")
+}
+
 /// Console C-5 (answers 948, 1053): a planned maintenance window (platform data; every session reads, only staff write).
 model MaintenanceWindow {
   id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

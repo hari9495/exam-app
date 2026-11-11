@@ -54,6 +54,7 @@ export const KEY_WORDS: Record<string, string> = {
   'platform.maintenance.view': 'See planned maintenance',
   'platform.helpcentre.write': 'Write and publish the help-centre articles',
   'platform.settings.manage': 'Change the platform settings',
+  'platform.incidents.manage': 'Run incidents and the status page; breach reminders',
 };
 
 /** Answer 1164: the checks for adding a member of staff. */
