@@ -17,6 +17,7 @@ import ConsoleWhatsNewPage from './(console)/whats-new/page';
 import ConsoleSupportDeskPage from './(console)/support-desk/page';
 import ConsoleContainPage from './(console)/companies/[id]/contain/page';
 import ConsoleFeatureFlagsPage from './(console)/feature-flags/page';
+import ConsoleHelpCentrePage from './(console)/help-centre/page';
 import YxSupportAccessPage from '../yx/(app)/settings/support-access/page';
 import { ToastProvider } from '@yukthix/ui';
 
@@ -266,5 +267,25 @@ describe('Feature flags and Contain company', () => {
     await ue.type(within(await screen.findByRole('dialog')).getByRole('textbox'), 'CONTAIN GODAVARI AGRO');
     await ue.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Contain company' }));
     await waitFor(() => expect(calls).toContain('POST /platform/companies/c2/contain {"reason":"Admin signed in from three countries"}'));
+  });
+});
+
+// C-8 (YX-11, answer 1057): the help-centre editor.
+describe('/staff/help-centre', () => {
+  const OVERVIEW = { articles: [{ id: 'h1', number: 12, title: 'Approve and lock a payroll run', state: 'published', pages: ['/yx/payroll/runs'], publishedAt: '2026-11-02T09:00:00Z', updatedAt: '2026-11-02T09:00:00Z' }], gaps: [], settings: [] };
+  const DETAIL = { id: 'h1', title: 'Approve and lock a payroll run', summary: null, pages: ['/yx/payroll/runs'], state: 'published', publicUrl: null, versions: [{ version: 3, title: 'Approve and lock a payroll run', summary: null, bodyHtml: '<p>x</p>', author: 'Joseph Thomas', mine: false, reviewNote: null, state: 'published' }] };
+  it('lists the articles and opens one from /platform/help-centre', async () => {
+    route({ 'GET /platform/help-centre': OVERVIEW, 'GET /platform/help-centre/articles/h1': DETAIL });
+    wrap(<ConsoleHelpCentrePage />);
+    expect(await screen.findByText('Approve and lock a payroll run')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Open' }));
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(calls).toContain('GET /platform/help-centre/articles/h1');
+  });
+
+  it('negative: without the help-centre key the page says so', async () => {
+    api.mockRejectedValue(Object.assign(new Error('Forbidden'), { status: 403 }));
+    wrap(<ConsoleHelpCentrePage />);
+    expect(await screen.findByText("You don't have access to the help articles")).toBeInTheDocument();
   });
 });

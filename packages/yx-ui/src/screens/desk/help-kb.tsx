@@ -22,6 +22,9 @@ export interface KbSuggestion {
   slug?: string;
   title: string;
   summary: string | null;
+  /** YX-11 (C-8): an article YukthiX wrote for every company, read on the public help centre at this address. */
+  source?: 'yukthix';
+  href?: string;
 }
 
 export interface KbArticleView {

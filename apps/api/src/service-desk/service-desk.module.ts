@@ -22,6 +22,8 @@ import { MailInService } from './mail-in.service';
 import { MailOutService, SD_DNS_RESOLVER, dnsResolverFactory } from './mail-out.service';
 import { PortalService } from './portal.service';
 import { PlatformModule } from '../platform/platform.module';
+import { HelpCentreController } from './help-centre.controller';
+import { HelpCentreService } from './help-centre.service';
 import { OrganizationsModule } from '../organizations/organizations.module';
 import { DirectoryService } from './directory.service';
 import { DeskInsightsController } from './insights.controller';
@@ -64,6 +66,8 @@ import { WidgetService } from './widget.service';
 @Module({
   imports: [AuditModule, StorageModule, NotificationsModule, CryptoModule, EmailModule, AuthModule, PlatformModule, OrganizationsModule, RulesEngineModule, WorkflowModule, JwtModule.register({})],
   controllers: [
+    // Console C-8, YX-11: the help-centre editor (staff).
+    HelpCentreController,
     DeskSetupController,
     DeskTicketsController,
     DeskWorkController,
@@ -96,6 +100,7 @@ import { WidgetService } from './widget.service';
     ReplyLinkController,
   ],
   providers: [
+    HelpCentreService,
     { provide: REDIS_CONNECTION, useFactory: createRedisConnection },
     DeskAccessService,
     DesksService,
