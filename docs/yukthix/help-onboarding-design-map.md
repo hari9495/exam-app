@@ -324,3 +324,5 @@ Build H-1 to H-3 now, then H-4 to H-6; H-7 later.
      *Suggested: do not build them; Ctrl K already finds every page.*
 982. **Shortcut help outside the app.** "?" works on the signed-in app only, not on the careers site, the client or vendor
      portals, the kiosk or the public help centre. *Suggested: keep (those pages have no shortcuts to list).*
+
+Founder approved, 12 Nov 2026 (questions 981-982, as suggested): no go-to keys (Ctrl K finds every page); "?" only in the signed-in app.
