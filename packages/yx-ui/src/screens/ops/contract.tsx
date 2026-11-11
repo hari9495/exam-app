@@ -784,7 +784,7 @@ export function WorkersView(p: WorkersViewProps) {
         }
       />
       {sheet?.kind === 'deploy' && <DeployWorkerSheet {...p} onClose={() => setSheet(null)} />}
-      {sheet?.kind === 'approve' && target && <ApproveWorkerDialog photoUrl={p.photoUrl} worker={target} today={today} required={p.inductionRequired} months={p.inductionMonths} onClose={() => setSheet(null)} onApprove={(induction) => (p.onApprove ? p.onApprove(target.id, target.version ?? 1, induction) : Promise.resolve(done('Approved')))} />}
+      {sheet?.kind === 'approve' && target && <ApproveWorkerDialog photoUrl={p.photoUrl} onMinWage={p.onMinWage} worker={target} today={today} required={p.inductionRequired} months={p.inductionMonths} onClose={() => setSheet(null)} onApprove={(induction) => (p.onApprove ? p.onApprove(target.id, target.version ?? 1, induction) : Promise.resolve(done('Approved')))} />}
       {sheet?.kind === 'card' && target && (
         <GatePassCard
           worker={target}
@@ -915,7 +915,7 @@ function DeployWorkerSheet(p: WorkersViewProps & { onClose: () => void }) {
 }
 
 /** Site approval (632, 633): the safety induction is recorded and the gate pass is issued. */
-function ApproveWorkerDialog({ worker, today, required, months, renew = false, photoUrl, onClose, onApprove }: { worker: ContractWorker; today: Date; required: boolean; months: number; renew?: boolean; photoUrl?: (id: string) => Promise<string | null>; onClose: () => void; onApprove: (induction: { on: string | null; by: string | null; photoChecked?: boolean }) => Promise<unknown> }) {
+function ApproveWorkerDialog({ worker, today, required, months, renew = false, photoUrl, onMinWage, onClose, onApprove }: { worker: ContractWorker; today: Date; required: boolean; months: number; renew?: boolean; photoUrl?: (id: string) => Promise<string | null>; onMinWage?: (locationId: string, skill: string) => Promise<MinWageHint | null>; onClose: () => void; onApprove: (induction: { on: string | null; by: string | null; photoChecked?: boolean }) => Promise<unknown> }) {
   const { done } = useSay();
   const [on, setOn] = useState<Date | null>(worker.induction ? worker.induction.on : null);
   const [by, setBy] = useState(worker.induction?.by ?? '');
@@ -926,6 +926,10 @@ function ApproveWorkerDialog({ worker, today, required, months, renew = false, p
   const checkPhoto = !renew && Boolean(worker.photo);
   const [matches, setMatches] = useState(false);
   const [url, setUrl] = useState<string | null>(null);
+  // Answer 844: a wage below the site's minimum is warned at approval too (a contractor's portal entry was not seen at deploy).
+  const skillCode = SKILLS.find((s) => s.label === worker.skill || s.value === (worker.skill as string))?.value ?? 'unskilled';
+  const hint = useMinWage(renew ? null : (worker.siteId ?? null), skillCode, onMinWage);
+  const low = belowMinimum(worker.wage, hint);
   useEffect(() => {
     if (!checkPhoto || !photoUrl) return;
     let live = true;
@@ -954,6 +958,7 @@ function ApproveWorkerDialog({ worker, today, required, months, renew = false, p
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()} size="md" title={renew ? `Renew ${worker.name}'s gate pass?` : `Approve ${worker.name}?`} description={renew ? `${worker.gatePass ?? ''} keeps its number. The new end is the first of the deployment's last day, the licence in force and the induction (${months} months). Record a new induction if the last one has run out.` : `${worker.contractor} · ${worker.site}. The checks run again; the gate pass ends with the deployment, the licence or the induction (${months} months), whichever comes first.`} notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={go}>{renew ? 'Renew gate pass' : 'Approve and issue gate pass'}</Button></>}>
       <div className="yx-ops-stack">
+        {low && <InlineAlert tone="warning" title="Below the minimum wage">{low}</InlineAlert>}
         <FieldRow>
           <FormField id="ap-on" label="Safety induction on" required={required} optional={!required} error={tried ? bad.on : null}>
             <DatePicker value={on} onChange={setOn} />
@@ -1989,7 +1994,7 @@ export function ClientEstablishmentsScreen({ clients: sample, state = 'ready', o
   );
   if (live)
     return (
-      <LivePage title={title} description={description} actions={actions} state={live.state} onRetry={live.onRetry} what="client establishments" grantedBy="an admin (the contract labour key)">
+      <LivePage title={title} description={description} actions={actions} state={live.state} onRetry={live.onRetry} what="client establishments" grantedBy="your HR team">
         {body}
       </LivePage>
     );
@@ -2149,7 +2154,7 @@ export function OwnLicencesScreen({ licences: sample, today, blocked, adding: ad
   );
   if (live)
     return (
-      <LivePage title={title} description={description} actions={actions} state={live.state} onRetry={live.onRetry} what="your contractor licences" grantedBy="an admin (the contract labour key)">
+      <LivePage title={title} description={description} actions={actions} state={live.state} onRetry={live.onRetry} what="your contractor licences" grantedBy="your HR team">
         {body}
       </LivePage>
     );
@@ -2357,7 +2362,7 @@ export function ClientPacksScreen({ packs: sample, recordOpen, making: makingAtS
   );
   if (live)
     return (
-      <LivePage title={title} description={description} actions={actions} state={live.state} onRetry={live.onRetry} what="client compliance packs" grantedBy="an admin (the contract labour key)">
+      <LivePage title={title} description={description} actions={actions} state={live.state} onRetry={live.onRetry} what="client compliance packs" grantedBy="your HR team">
         {body}
       </LivePage>
     );

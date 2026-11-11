@@ -82,6 +82,8 @@ export interface ContractWorker {
   name: string;
   contractor: string;
   site: string;
+  /** The site's id (live): the minimum wage at site approval (answer 844). */
+  siteId?: string;
   skill: 'Unskilled' | 'Semi-skilled' | 'Skilled' | 'Highly skilled';
   /** Monthly, paid by the contractor; null when not given. */
   wage: number | null;

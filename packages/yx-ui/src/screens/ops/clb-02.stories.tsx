@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { AttendanceMonthScreen, WorkersScreen } from './contract';
+import { AttendanceMonthScreen, WorkersScreen, WorkersView } from './contract';
 import { CONTRACTORS, WORKERS } from './contract-data';
 import { TODAY } from '../_kit/data';
 
@@ -18,6 +18,13 @@ export const Error: S = { render: () => <WorkersScreen {...base} state="error" /
 export const Duplicate: S = { name: 'Deploy · same ID already deployed (CL-2)', render: () => <WorkersScreen {...base} deploy="duplicate" /> };
 export const Threshold: S = { name: 'Deploy · registration threshold warning (CL-2)', render: () => <WorkersScreen {...base} deploy="threshold" /> };
 export const Approve: S = { name: 'Site approval · induction and gate pass (CL-2)', render: () => <WorkersScreen {...base} sheet={{ kind: 'approve', id: 'w6' }} /> };
+// Answer 844: the minimum-wage warning also at site approval (a worker the contractor added on the portal).
+export const ApproveBelowMinimum: S = {
+  name: 'Site approval · below the minimum wage (844)',
+  render: () => (
+    <WorkersView workers={WORKERS.map((w) => (w.id === 'w6' ? { ...w, siteId: 'hsr', wage: 12000 } : w))} contractors={CONTRACTORS.map((c) => ({ id: c.id, name: c.name }))} locations={[{ id: 'hsr', name: 'Hosur plant', state: 'TN' }]} today={TODAY} state="ready" sheet={{ kind: 'approve', id: 'w6' }} canManage inductionRequired inductionMonths={12} onMinWage={async () => ({ monthly: '14820.00', daily: '570.00', source: 'TN 2026-04, zone A, unskilled', verify: true })} />
+  ),
+};
 export const Release: S = { name: 'Release a worker (CL-2)', render: () => <WorkersScreen {...base} sheet={{ kind: 'release', id: 'w1' }} /> };
 export const ReadOnly: S = { name: 'Read only (view key, CL-2)', render: () => <WorkersScreen {...base} readOnly /> };
 // CL-5 (answers 625, 684, 735): the gate pass card with the photo, renewal keeping the number, the kiosk PIN shown once.

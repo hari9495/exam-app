@@ -199,6 +199,7 @@ export function workersOf(data: WorkersData): ContractWorker[] {
     name: w.name,
     contractor: w.contractor.name,
     site: w.site.name,
+    siteId: w.site.id,
     skill: w.skill as ContractWorker['skill'],
     wage: w.wage === null ? null : Number(w.wage),
     from: date(w.fromOn),

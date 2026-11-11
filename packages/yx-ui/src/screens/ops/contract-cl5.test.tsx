@@ -227,3 +227,26 @@ describe('Portal packs list (answer 806)', () => {
   });
 });
 
+describe('Site approval below the minimum wage (answer 844)', () => {
+  const pending = (wage: string) => ({ ...WDATA, workers: [{ ...WDATA.workers[0]!, id: 'd9', status: 'pending' as const, gatePass: null, gateValidTo: null, induction: null, wage }] });
+  const hint = vi.fn(async () => ({ monthly: '16137.03', daily: '620.66', source: 'KA KA-SHOPS-2026-27, zone 1, Unskilled', verify: true }));
+  it('a wage below the site minimum is warned on the approval dialog, and approval still works', async () => {
+    const l = wlive({ data: pending('9000.00'), onMinWage: hint });
+    show(workers(l));
+    await ue.click(screen.getByRole('button', { name: 'Approve' }));
+    const dlg = screen.getByRole('dialog');
+    expect(await within(dlg).findByText('Below the minimum wage')).toBeInTheDocument();
+    expect(within(dlg).getByText(/₹9,000 a month is below the minimum wage of ₹16,137/)).toBeInTheDocument();
+    expect(hint).toHaveBeenCalledWith('hosur', 'unskilled');
+  });
+  it('negative: at or above the minimum, or without a wage, no warning', async () => {
+    for (const wage of ['16500.00', null]) {
+      const { unmount } = show(workers(wlive({ data: { ...pending('1'), workers: [{ ...pending('1').workers[0]!, wage }] }, onMinWage: hint })));
+      await ue.click(screen.getByRole('button', { name: 'Approve' }));
+      await new Promise((r) => setTimeout(r, 50));
+      expect(screen.queryByText('Below the minimum wage')).not.toBeInTheDocument();
+      unmount();
+    }
+  });
+});
+

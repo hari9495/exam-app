@@ -220,6 +220,9 @@ describe('Contract labour CL-8: we are the contractor', () => {
       // Answer 821: registered for PF and ESI; the month's PF return is filed (TRRN), ESI not yet.
       for (const [statute, no] of [['IN.PF', 'TNMAS0012345000'], ['IN.ESI', '51000123450001001']] as const) await tx.statutoryRegistration.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity!, statute, registrationNo: no, status: 'on' } });
       await tx.statutoryFiling.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity!, statute: 'IN.PF', periodStart: day(monthStart), formatVersion: 'ecr-2', status: 'filed', reference: `TRRN${run}`, amount: 4810, uploadedBy: users.owner!, uploadedAt: new Date(), filedBy: users.owner!, filedAt: new Date(), createdBy: users.owner! } });
+      // Answer 841: PT for the site's state (Tamil Nadu) is filed and goes in; Karnataka's PT (another state) stays out.
+      for (const [state, no] of [['IN-TN', 'PTTN998877'], ['IN-KA', 'PTKA112233']] as const) await tx.statutoryRegistration.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity!, statute: 'IN.PT', state, registrationNo: no, status: 'on' } });
+      for (const [state, ref, amount] of [['IN-TN', `PTTN-${run}`, 416], ['IN-KA', `PTKA-${run}`, 400]] as const) await tx.statutoryFiling.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity!, statute: 'IN.PT', state, periodStart: day(monthStart), formatVersion: 'pt-1', status: 'filed', reference: ref, amount, uploadedBy: users.owner!, uploadedAt: new Date(), filedBy: users.owner!, filedAt: new Date(), createdBy: users.owner! } });
     });
     const made = (await make('owner').expect(want(201))).body;
     expect(made).toMatchObject({ employees: 2, version: 1, missing: ['ESI challan'] });
@@ -243,6 +246,8 @@ describe('Contract labour CL-8: we are the contractor', () => {
     const challans = pdfText(await zip.file(`clpk_challans-${month}-v2.pdf`)!.async('nodebuffer'));
     expect(challans).toMatch(new RegExp(`PF TNMAS0012345000 TRRN${run} 4810\\.00 \\d{4}-\\d{2}-\\d{2} Filed`));
     expect(challans).toMatch(/ESI 51000123450001001 Not filed yet/);
+    expect(challans).toMatch(new RegExp(`PT PTTN998877 PTTN-${run} 416\\.00 \\d{4}-\\d{2}-\\d{2} Filed`));
+    expect(challans).not.toMatch(/PTKA/);
     const muster = pdfText(await zip.file(`clpk_muster-${month}-v2.pdf`)!.async('nodebuffer'));
     expect(muster).toMatch(/Arun Kumar 20\.5 2 0/);
     expect(muster).toMatch(/Bhavna Rao 18 0 3/);

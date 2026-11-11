@@ -48,7 +48,7 @@ export function daysPresent(statuses: string[]): number {
   return statuses.reduce((n, s) => n + (s === 'present' ? 1 : s === 'half_day' ? 0.5 : 0), 0);
 }
 
-const STATUTE_NAME: Record<string, string> = { 'IN.PF': 'PF', 'IN.ESI': 'ESI' };
+const STATUTE_NAME: Record<string, string> = { 'IN.PF': 'PF', 'IN.ESI': 'ESI', 'IN.PT': 'PT' };
 
 /**
  * Answer 821: the month's PF and ESI remittances for the pack, one row per filed return (challan or TRRN, amount, filed
@@ -58,7 +58,8 @@ const STATUTE_NAME: Record<string, string> = { 'IN.PF': 'PF', 'IN.ESI': 'ESI' };
 export function challanRows(registered: { statute: string; registrationNo: string | null }[], filed: { statute: string; reference: string | null; amount: string | null; filedOn: string | null }[]): { rows: string[][]; missing: string[] } {
   const rows: string[][] = [];
   const missing: string[] = [];
-  for (const statute of ['IN.PF', 'IN.ESI']) {
+  // Answer 841: PT too, for the client site's state (the caller passes only that state's registration and filings).
+  for (const statute of ['IN.PF', 'IN.ESI', 'IN.PT']) {
     const reg = registered.find((r) => r.statute === statute);
     if (!reg) continue;
     const name = STATUTE_NAME[statute]!;

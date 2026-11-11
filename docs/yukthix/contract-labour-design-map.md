@@ -35,11 +35,12 @@ built** (no API for this feature) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Principal employer (contractors working at our sites) | 5 | 47 | 1 | 0 | 0 | 0 | 48 |
-| B. We are the contractor (our staff at client sites) | 3 | 13 | 1 | 0 | 0 | 0 | 14 |
-| C. Contractor portal | 1 | 19 | 0 | 0 | 0 | 0 | 19 |
+| A. Principal employer (contractors working at our sites) | 5 | 51 | 1 | 0 | 0 | 0 | 52 |
+| B. We are the contractor (our staff at client sites) | 3 | 14 | 1 | 0 | 0 | 0 | 15 |
+| C. Contractor portal | 1 | 20 | 0 | 0 | 0 | 0 | 20 |
 | D. Settings | 1 | 1 | 2 | 0 | 0 | 0 | 3 |
-| **All** | 10 | 80 | 4 | 0 | 0 | 0 | 84 |
+| **All** | 10 | 86 | 4 | 0 | 0 | 0 | 90 |
+Recounted by script 11 Nov 2026 on `feat/yukthix-cl-841`: CLB-02 ApproveBelowMinimum drawn and live (answer 844).
 Recounted by script 11 Nov 2026 on `feat/yukthix-contract-labour-approved-801-825` after answers 803, 807, 810, 821, 822 (five new drawn stories).
 Recounted by script 11 Nov 2026 on `feat/yukthix-contract-labour-cl8` after CL-8: group B live (four new drawn stories).
 Recounted by script 11 Nov 2026 on `feat/yukthix-cl-walk-ui`: CLB-05 SamePersonPhoto drawn and live (answer 809).
@@ -131,6 +132,7 @@ All 46 stories in section 4: there is no contractor, licence, deployment, proof 
 | Duplicate · Deploy · same ID already deployed (CL-2) | live | the keyed Aadhaar hash: pending or deployed anywhere in the company |
 | Threshold · Deploy · registration threshold warning (CL-2) | live | (CL-5, answers 622 and 681) warns at `clra.threshold_warn` (default 80 %) of the `IN.CLRA` threshold; without a registration the threshold blocks; a registered site is held to its maximum |
 | Approve · Site approval · induction and gate pass (CL-2) | live | `POST …/workers/:id/approve`: induction within `clra.induction_months`; gate pass GP-<site>-<n> ending first of deployment, licence and induction |
+| ApproveBelowMinimum · Site approval · below the minimum wage (844) | live | answer 844: the 810 warning on the approval dialog when the wage (a portal-added worker's included) is below the site's minimum (IN.MW, verify); never blocks |
 | Release · Release a worker (CL-2) | live | `POST …/workers/:id/release` (or withdraw before approval): the deployment and the contract_worker role end |
 | ReadOnly · Read only (view key, CL-2) | live | `clra.contractor.view` |
 | GatePassCard · Gate pass card (CL-5) | live | answer 735: the card with the worker's photo (`POST/GET …/workers/:id/photo`, JPG or PNG up to 5 MB, a new file each time), printable |
@@ -786,4 +788,24 @@ wrong field (`7bb97c964`); "1 workers" (`248bb3636`).
      admin (the contract labour key)". *Suggested: the same "Ask your HR team" there too.*
 853. **Optional details on request.** Designation, department and employment type open from a button on Make employee
      (they stay open once one is chosen). *Suggested: keep; the checklist can add them before joining.*
+
+## Answers 841, 844 and 852 built (11 Nov 2026, branch `feat/yukthix-cl-841`)
+
+- **841:** the client pack's remittances register (`clpk_challans`, now "PF, ESI and PT remittances") also carries PT
+  from payroll's filed PT return, for the client site's state only (another state's PT is left out); a PT registration
+  with no filing for the month reads "Not filed yet" and is named on the pack ("PT challan"). The wage payment proof
+  stays by hand.
+- **844:** the site approval dialog shows the 810 below-the-minimum-wage warning (drawn as CLB-02 ApproveBelowMinimum);
+  it never blocks.
+- **852:** client establishments, own licences and client packs without access say "Ask your HR team".
+- **Tests:** `own-licence-rules.spec` (PT rows), kit and web tests (positive and negative), e2e `contract-labour-8`.
+
+## Founder questions from answers 841, 844, 852 (11 Nov 2026)
+
+881. **The warning for every approval.** The approval dialog warns for any worker whose wage is below the minimum, not
+     only for workers the contractor added on the portal (staff were warned at deploy, but the wage may have been typed
+     there regardless). *Suggested: keep.*
+882. **PT paid half-yearly or yearly.** Some states collect PT half-yearly or yearly (Tamil Nadu: half-yearly). In a month
+     with no PT return due, the pack would still say "PT challan not filed yet". *Suggested: name PT as missing only in
+     the state's due months, from the IN.PT rule set's periods.*
 
