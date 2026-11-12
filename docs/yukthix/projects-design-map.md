@@ -584,3 +584,6 @@ console.log('ok');
       *Suggested: keep; a rate per role when a client needs it.*
 1711. **The menu.** Billing workbench shows to Projects finance and to account managers who can open Projects.
       *Suggested: keep.*
+
+- 1701 to 1711 approved as suggested (12 Nov 2026, "ok for all"). 1707: payroll reads recorded pay recovery as a recovery input in its next slice.
+- Founder asked why "live (gap)" and "not built" (12 Nov 2026). Checked in code: FinanceList gap is now buildable (the live list hides the Margin column behind !live, though P-5/P-6 now supply cost and billed revenue); the workspace Billing tab IS drawn (prj-01 story "Workspace · billing, hours held for client approval", defaultTab billing) and must be built. OldDraft stays a gap by design: live drafts take their date at issue, so the drawn redate warning cannot arise. Phone waits for the mobile app.
