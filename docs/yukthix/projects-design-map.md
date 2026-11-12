@@ -587,3 +587,14 @@ console.log('ok');
 
 - 1701 to 1711 approved as suggested (12 Nov 2026, "ok for all"). 1707: payroll reads recorded pay recovery as a recovery input in its next slice.
 - Founder asked why "live (gap)" and "not built" (12 Nov 2026). Checked in code: FinanceList gap is now buildable (the live list hides the Margin column behind !live, though P-5/P-6 now supply cost and billed revenue); the workspace Billing tab IS drawn (prj-01 story "Workspace · billing, hours held for client approval", defaultTab billing) and must be built. OldDraft stays a gap by design: live drafts take their date at issue, so the drawn redate warning cannot arise. Phone waits for the mobile app.
+
+## Founder request: a required timesheet note (12 Nov 2026, "ok for all")
+- 1731: one note per project row (each PM reads only their own project's work).
+- 1732: company setting on Settings › Projects & timesheets, "Timesheet note: required, at least N words", defaults
+  required and 200 words.
+- 1733: Save draft works without it; Submit week is refused until every row with hours has a note of at least N words;
+  a live word count ("142 of 200 words"); the API checks it too. The note column widens from 200 characters.
+- 1734: the person, that row's approver and finance (billing workbench) see it; the client in the portal only when a
+  per-project setting "show notes to the client" is on (off by default).
+- 1735: rows pre-filled from work tools still need the person's own note; the pre-filled items are a starting point.
+- 1736: drawn in the timesheet design first, then made live.
