@@ -68,6 +68,19 @@ export const SETTINGS_HOME = '/yx/settings';
  * do its job today, in order; the first one the viewer may open is where it leads. A page with no live editor yet is
  * not listed (its own slice builds it). Never a second copy of a live page.
  */
+/** S-2: the drawn Time & Leave pages that show the company's settings (id, title, address under /yx/settings/time). */
+export const TIME_SETTINGS_PAGES: [string, string, string][] = [
+  ['3.2', 'Check-in & devices', 'check-in-and-devices'],
+  ['3.3', 'Shifts & patterns', 'shifts-and-patterns'],
+  ['3.4', 'Weekly offs', 'weekly-offs'],
+  ['3.5', 'Late & regularisation', 'late-and-regularisation'],
+  ['3.6', 'Leave types', 'leave-types'],
+  ['3.8', 'Holiday calendars', 'holiday-calendars'],
+  ['3.9', 'Leave year', 'leave-year'],
+  ['3.11', 'Projects & timesheets', 'projects-and-timesheets'],
+];
+const timePage = (id: string) => TIME_SETTINGS_PAGES.filter((p) => p[0] === id).map((p) => `${SETTINGS_HOME}/time/${p[2]}`);
+
 export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '1.1': ['/yx/settings/countries', '/yx/settings/translations', '/yx/settings/emails'],
   '1.2': ['/yx/settings/legal-entities'],
@@ -83,15 +96,16 @@ export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '2.9': ['/yx/settings/company-rules', '/yx/desk/speakup-setup'],
   '2.10': ['/yx/settings/access-settings'],
   '3.1': ['/yx/settings/company-rules'],
-  '3.2': ['/yx/time/setup/devices', '/yx/time/setup/locations'],
-  '3.3': ['/yx/time/shifts-setup'],
-  '3.4': ['/yx/time/setup/locations', '/yx/time/shifts-setup'],
-  '3.6': ['/yx/time/setup'],
+  '3.2': [...timePage('3.2'), '/yx/time/setup/devices', '/yx/time/setup/locations'],
+  '3.3': [...timePage('3.3'), '/yx/time/shifts-setup'],
+  '3.4': [...timePage('3.4'), '/yx/time/setup/locations', '/yx/time/shifts-setup'],
+  '3.5': timePage('3.5'),
+  '3.6': [...timePage('3.6'), '/yx/time/setup'],
   '3.7': ['/yx/time/setup'],
-  '3.8': ['/yx/time/setup/holidays', '/yx/time/setup/holiday-feeds'],
-  '3.9': ['/yx/time/setup/year-end'],
+  '3.8': [...timePage('3.8'), '/yx/time/setup/holidays', '/yx/time/setup/holiday-feeds'],
+  '3.9': [...timePage('3.9'), '/yx/time/setup/year-end'],
   '3.10': ['/yx/time/periods'],
-  '3.11': ['/yx/time/shifts-setup'],
+  '3.11': [...timePage('3.11'), '/yx/time/shifts-setup'],
   '3.12': ['/yx/settings/visitors'],
   '4.1': ['/yx/payroll/pay-groups', '/yx/payroll/periods'],
   '4.2': ['/yx/payroll/components', '/yx/payroll/templates'],
@@ -471,7 +485,11 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(has('org.support_access.approve') && !support, L('support-access', 'Support access', '/yx/settings/support-access')),
       ]),
       // 3.12 Visitors: Facility admins and HR change it; reception reads it.
-      ...sec('Time & Leave', when(!support && any('visitors.settings.manage', 'org.settings.manage', 'visitors.desk.manage'), L('visitor-settings', 'Visitors', '/yx/settings/visitors'))),
+      ...sec('Time & Leave', [
+        // S-2 (answer 1323): the Time & Leave settings pages; HR's settings key changes them.
+        ...when(settingsAdmin, ...TIME_SETTINGS_PAGES.map(([id, label, slug]) => L(`time-settings-${id}`, label, `${SETTINGS_HOME}/time/${slug}`))),
+        ...when(!support && any('visitors.settings.manage', 'org.settings.manage', 'visitors.desk.manage'), L('visitor-settings', 'Visitors', '/yx/settings/visitors')),
+      ]),
       ...sec('Payroll & Statutory', [
         ...when(pay, ...[
           ...when(any('payroll.setup.manage', 'payroll.statutory.setup'), L('pay-setup', 'Payroll set-up', '/yx/payroll/setup')),

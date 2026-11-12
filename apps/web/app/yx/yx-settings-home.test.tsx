@@ -101,10 +101,10 @@ describe('Settings S-1: group pages', () => {
     show(<YxSettingsGroupPage />, ADMIN);
     expect(screen.getByRole('heading', { name: 'Time & Leave', level: 1 })).toBeInTheDocument();
     const link = screen.getByRole('link', { name: 'Shifts & patterns' });
-    expect(link).toHaveAttribute('href', '/yx/time/shifts-setup');
+    expect(link).toHaveAttribute('href', '/yx/settings/time/shifts-and-patterns'); // S-2: the settings page first
     await ue.click(link);
-    expect(push).toHaveBeenCalledWith('/yx/time/shifts-setup');
-    expect(screen.queryByRole('link', { name: 'Late & regularisation' })).toBeNull(); // no live editor yet (S-2)
+    expect(push).toHaveBeenCalledWith('/yx/settings/time/shifts-and-patterns');
+    expect(screen.getByRole('link', { name: 'Late & regularisation' })).toHaveAttribute('href', '/yx/settings/time/late-and-regularisation');
   });
 
   it('negative: a payroll-only admin opening People & Access, or an unknown group, gets no access', () => {

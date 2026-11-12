@@ -78,6 +78,24 @@ async function bonusRatesInOrder(tx: Tx, org: string, key: string, value: string
 }
 
 
+/** Answer 1324: the legal floor or ceiling of a setting, from the country's rule set (YukthiX sets it, never the company). */
+export type SettingLimit = { min?: number; max?: number; act: string };
+export const LIMITS_STATUTE = 'IN.SETTINGS.LIMITS';
+export async function settingLimits(tx: Tx): Promise<Record<string, SettingLimit>> {
+  const today = asDate(todayIst());
+  const rs = await tx.statutoryRuleSet.findFirst({ where: { statute: LIMITS_STATUTE, jurisdiction: 'IN', status: 'published', validFrom: { lte: today }, OR: [{ validTo: null }, { validTo: { gte: today } }] }, orderBy: { validFrom: 'desc' } });
+  return ((rs?.values ?? {}) as { limits?: Record<string, SettingLimit> }).limits ?? {};
+}
+
+/** The refusal for a value past its legal limit, naming the Act; null when the law allows it (more generous is fine). */
+export function pastLimit(label: string, value: string, limit: SettingLimit | undefined): string | null {
+  const n = Number(value);
+  if (!limit || value.trim() === '' || Number.isNaN(n)) return null;
+  if (limit.max != null && n > limit.max) return `${label} can be at most ${limit.max} by law (${limit.act}). Choose ${limit.max} or less.`;
+  if (limit.min != null && n < limit.min) return `${label} must be at least ${limit.min} by law (${limit.act}). Choose ${limit.min} or more.`;
+  return null;
+}
+
 /** The registry with the platform lists filled in (HLP-14: the industries a company may choose). */
 async function withLists(tx: Tx): Promise<Record<string, SettingDef>> {
   const industries = await tx.policyIndustry.findMany({ where: { active: true }, orderBy: [{ sort: 'asc' }, { label: 'asc' }] });
@@ -111,7 +129,7 @@ export class OrgSettingsService {
       const rows = await tx.setting.findMany({ where: { organizationId: c.organizationId }, orderBy: [{ key: 'asc' }, { scopeType: 'asc' }, { validFrom: 'asc' }] });
       // Answer 151: a location's own Factories Act value is no longer needed once the location is a registered factory.
       const flagged = new Set((await tx.location.findMany({ where: { organizationId: c.organizationId, registeredFactory: true }, select: { id: true } })).map((l) => l.id));
-      return { registry: await withLists(tx), overrides: rows.map((r) => ({ ...rowView(r), ...(r.key === 'attendance.factories_act' && r.scopeType === 'location' && flagged.has(r.scopeId) ? { noLongerNeeded: 'registered_factory' as const } : {}) })) };
+      return { registry: await withLists(tx), limits: await settingLimits(tx), overrides: rows.map((r) => ({ ...rowView(r), ...(r.key === 'attendance.factories_act' && r.scopeType === 'location' && flagged.has(r.scopeId) ? { noLongerNeeded: 'registered_factory' as const } : {}) })) };
     });
   }
 
@@ -144,6 +162,8 @@ export class OrgSettingsService {
         if (!def.values.includes(dto.value) && !(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(dto.value) && (await tx.user.findFirst({ where: { organizationId: c.organizationId, id: dto.value, status: 'active' }, select: { id: true } }))))
           throw new NotFoundException('That person is not an active user of your company. Choose someone from the list.');
       } else if (def.oneOf && def.oneOf !== 'company_users' && !(await withLists(tx))[dto.key].values.includes(dto.value)) throw new BadRequestException(`Choose ${def.label.toLowerCase()} from the list.`);
+      const tooFar = pastLimit(def.label, dto.value, (await settingLimits(tx))[dto.key]);
+      if (tooFar) throw new BadRequestException(tooFar);
       const scopeId = scopeType === 'tenant' ? c.organizationId : dto.scopeId!;
       if (scopeType !== 'tenant') await this.scopeExists(tx, c, scopeType, scopeId, true);
       const validFrom = dto.validFrom ? asDate(dto.validFrom) : null;

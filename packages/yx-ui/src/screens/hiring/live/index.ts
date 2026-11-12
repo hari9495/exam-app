@@ -79,3 +79,6 @@ export { PlacementFee, type LivePlacementFee } from '../hiring-staffing';
 export { ClientPortalScreen, type LiveClientPortal, type LiveClientTab } from '../../portals/t9-business';
 export { PortalSignInScreen } from '../../portals/portals-kit';
 export type { SettingsGroupDef } from '../../settings/settings-types';
+// Settings S-2 (answers 1323, 1324): the Time & Leave pages with the company's settings.
+export { TIME_SETTINGS, timeSettingsChanges, timeSettingsPage, type RegistryDef, type TimeSettingsData } from '../../settings/time-settings-live';
+export { TIME_REGISTRY_SAMPLE } from '../../settings/time-settings-sample';
