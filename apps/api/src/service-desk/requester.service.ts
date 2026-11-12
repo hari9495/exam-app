@@ -99,7 +99,7 @@ export class RequesterService {
   }
 
   /** Employee help desks the person can raise to, with the parts of their set-up the raise form shows. */
-  async desks(r: Requester) {
+  async desks(r: Requester, forPersonId?: string) {
     const org = r.ctx.organizationId;
     return this.tx(r, async (tx) => {
       const desks = await tx.sdDesk.findMany({ where: { organizationId: org, status: 'active', kind: { not: 'customer_support' } }, orderBy: { name: 'asc' } });
@@ -108,8 +108,13 @@ export class RequesterService {
       const cats = await tx.sdCategory.findMany({ where: { organizationId: org, deskId: { in: ids }, active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
       const cache = new Map();
       const closed = new Map(await Promise.all(desks.map(async (d) => [d.id, await this.tickets.sla.closedNow(tx, org, d, new Date(), cache)] as const)));
-      const me = desks.some((d) => d.kind === 'it') ? await this.personOf(tx, r, false) : null;
-      const hasDevice = Boolean(me && (await assetsOf(tx, org, me, '')).length);
+      // Answer 1685: asked for the person the ticket is for (raising for someone else needs the on-behalf right).
+      let whose = desks.some((d) => d.kind === 'it') || forPersonId ? await this.personOf(tx, r, Boolean(forPersonId)) : null;
+      if (forPersonId && forPersonId !== whose) {
+        await this.checkOnBehalf(tx, r, forPersonId, whose!);
+        whose = forPersonId;
+      }
+      const hasDevice = Boolean(whose && (await assetsOf(tx, org, whose, '')).length);
       return desks.map((d) => ({
         id: d.id,
         name: d.name,

@@ -527,14 +527,17 @@ export class CatalogService implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ live-data pickers (SD-2.02)
 
-  async pick(r: Requester, kind: 'people' | 'locations' | 'cost-centres' | 'assets', q = '') {
+  async pick(r: Requester, kind: 'people' | 'locations' | 'cost-centres' | 'assets', q = '', forPersonId?: string) {
     const org = r.ctx.organizationId;
     const l = like(q.trim());
     return this.tx(r, async (tx) => {
       if (kind === 'assets') {
         // Helpdesk item 2: only the devices assigned to the person now (People asset register), never anyone else's.
-        const me = await this.requesters.personOf(tx, r, false);
-        return me ? (await assetsOf(tx, org, me, q)).map(assetOption) : [];
+        // Answer 1685: or those of the person it is for, when this person may raise for them.
+        const me = await this.requesters.personOf(tx, r, Boolean(forPersonId));
+        if (forPersonId && forPersonId !== me) await this.requesters.checkOnBehalf(tx, r, forPersonId, me!);
+        const whose = forPersonId ?? me;
+        return whose ? (await assetsOf(tx, org, whose, q)).map(assetOption) : [];
       }
       if (kind === 'people') {
         // Colleagues only (an employee or a login), never applicants or outside contacts; names and department only.
