@@ -7,7 +7,7 @@ import { SETTINGS_GROUPS } from './settings-groups';
 import { TIME_SETTINGS, timeSettingsChanges, timeSettingsPage, type TimeSettingsData } from './time-settings-live';
 import { TIME_REGISTRY_SAMPLE } from './time-settings-sample';
 import { allSettings } from './settings-logic';
-import { PREFILL_FIELD, prefillChange, projectSettingsPage } from './projects-live';
+import { projectSettingsPage } from './projects-live';
 
 // Settings S-2 (answers 1323, 1324): the drawn Time & Leave pages with the company's settings. Positive and negative.
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -29,11 +29,10 @@ describe('Time & Leave settings (S-2): every hidden setting has a field', () => 
     expect(keys).toHaveLength(39);
     expect(new Set(keys).size).toBe(39);
     expect(TIME_SETTINGS['3.11']).toBeUndefined();
-    const projects = projectSettingsPage(pageOf('3.11'), { canEdit: true, values: {}, defaults: {}, choices: {}, lastChange: null }, { value: 'off', default: 'off', canEdit: true });
-    expect(allSettings(projects).find((d) => d.key === PREFILL_FIELD)).toMatchObject({ kind: 'toggle', value: false, starter: true });
-    expect(allSettings(projectSettingsPage(pageOf('3.11'), { canEdit: true, values: {}, defaults: {}, choices: {}, lastChange: null }, { value: 'on', default: 'off', canEdit: false })).find((d) => d.key === PREFILL_FIELD)).toMatchObject({ value: true, starter: false, locked: expect.any(String) });
-    expect(prefillChange({ [PREFILL_FIELD]: true })).toEqual({ key: 'timesheet.tool_suggestions', value: 'on', scopeType: 'tenant' });
-    expect(prefillChange({ 'prj.enabled': true })).toBeNull();
+    // The one 3.11 is Projects' page: its pre-fill switch is owned by the projects API since P-3 (answer 1409).
+    const v = { 'projects.enabled': 'on', 'timesheet.tool_suggestions': 'off' };
+    const projects = projectSettingsPage(pageOf('3.11'), { canEdit: true, values: v, defaults: v, choices: {}, lastChange: null });
+    expect(allSettings(projects).find((d) => d.key === 'prj.prefill_enabled')).toMatchObject({ kind: 'toggle', value: false, starter: true });
     for (const [id, spec] of Object.entries(TIME_SETTINGS)) {
       const fields = allSettings(timeSettingsPage(pageOf(id), DATA, ALL_LINKS));
       for (const s of spec.settings) {

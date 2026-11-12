@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { OrgStructureModule } from '../org-structure/org-structure.module';
 import { REDIS_CONNECTION, createRedisConnection } from './redis-connection';
 import { SCHEDULED_SWEEPS_QUEUE, createScheduledSweepsQueue } from './scheduled-sweeps.queue';
 import { ScheduledSweepsWorkerService } from './scheduled-sweeps.worker.service';
@@ -52,6 +53,7 @@ import { ProjectsModule } from '../projects/projects.module';
     AccessModule,
     HelpModule,
     PlatformModule,
+    OrgStructureModule,
   ],
   providers: [
     { provide: REDIS_CONNECTION, useFactory: createRedisConnection },

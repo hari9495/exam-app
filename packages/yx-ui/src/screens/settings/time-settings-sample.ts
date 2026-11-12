@@ -1,4 +1,4 @@
-// Story and test sample: the Time & Leave and Payroll entries of the API's settings registry
+// Story and test sample: the Time & Leave, Payroll and People entries of the API's settings registry
 // (apps/api/src/org-structure/settings-registry.ts), as GET /org/settings sends them.
 import type { RegistryDef } from './time-settings-live';
 
@@ -536,6 +536,16 @@ export const TIME_REGISTRY_SAMPLE: Record<string, RegistryDef> = {
     "default": "on",
     "guard": "access.role.manage"
   },
+  "payroll.settings.lapse_days": {
+    "label": "A payroll setting change nobody decides lapses after (days)",
+    "values": [
+      "7",
+      "14",
+      "21",
+      "30"
+    ],
+    "default": "14"
+  },
   "payroll.payslip_email": {
     "label": "Email payslips as password-protected PDFs",
     "values": [
@@ -585,5 +595,160 @@ export const TIME_REGISTRY_SAMPLE: Record<string, RegistryDef> = {
       "03-15"
     ],
     "default": "02-28"
+  },
+  "exit.notice.probation": {
+    "label": "Notice period during probation",
+    "values": [
+      "0d",
+      "7d",
+      "15d",
+      "30d",
+      "45d",
+      "60d",
+      "90d",
+      "1m",
+      "2m",
+      "3m"
+    ],
+    "default": "15d",
+    "dated": true
+  },
+  "exit.notice.confirmed": {
+    "label": "Notice period once confirmed",
+    "values": [
+      "0d",
+      "7d",
+      "15d",
+      "30d",
+      "45d",
+      "60d",
+      "90d",
+      "1m",
+      "2m",
+      "3m"
+    ],
+    "default": "30d",
+    "dated": true
+  },
+  "retirement.age": {
+    "label": "Retirement age",
+    "values": [
+      "58",
+      "60",
+      "62",
+      "65"
+    ],
+    "default": "58"
+  },
+  "retirement.alert_months": {
+    "label": "Open the retirement exit this many months before",
+    "values": [
+      "1",
+      "3",
+      "6"
+    ],
+    "default": "6"
+  },
+  "vrs.benefit_days": {
+    "label": "VRS benefit: days of basic + DA per completed year",
+    "values": [
+      "30",
+      "45",
+      "60",
+      "90"
+    ],
+    "default": "45"
+  },
+  "absconding.days": {
+    "label": "Absconding timeline (days: hold, notice 1, notice 2, abandonment)",
+    "values": [
+      "3,7,14,21",
+      "3,7,14,30",
+      "5,10,20,30"
+    ],
+    "default": "3,7,14,21"
+  },
+  "alumni.access_years": {
+    "label": "Alumni can read their documents for (years after leaving)",
+    "values": [
+      "3",
+      "5",
+      "7",
+      "10"
+    ],
+    "default": "7"
+  },
+  "rehire.pf": {
+    "label": "Rehire: PF membership (the UAN is always kept)",
+    "values": [
+      "continue",
+      "transfer",
+      "fresh"
+    ],
+    "default": "continue"
+  },
+  "rehire.same_fy_tax": {
+    "label": "Rehire in the same financial year: tax",
+    "values": [
+      "combine",
+      "previous_employer"
+    ],
+    "default": "combine"
+  },
+  "rehire.service": {
+    "label": "Rehire: service",
+    "values": [
+      "fresh",
+      "continuous",
+      "break_counted"
+    ],
+    "default": "fresh"
+  },
+  "rehire.gratuity": {
+    "label": "Rehire: gratuity service",
+    "values": [
+      "fresh",
+      "add_prior"
+    ],
+    "default": "fresh"
+  },
+  "rehire.leave": {
+    "label": "Rehire: leave balance",
+    "values": [
+      "fresh",
+      "carry"
+    ],
+    "default": "fresh"
+  },
+  "rehire.probation": {
+    "label": "Rehire: probation",
+    "values": [
+      "normal",
+      "skip_if_break_lt_6m",
+      "never"
+    ],
+    "default": "normal"
+  },
+  "rehire.prior_records": {
+    "label": "Rehire: earlier warnings and PIPs",
+    "values": [
+      "hr_only",
+      "manager",
+      "hidden"
+    ],
+    "default": "hr_only"
+  },
+  "audit.retention_years": {
+    "label": "Keep the audit log for (years)",
+    "values": [
+      "8",
+      "9",
+      "10",
+      "12",
+      "15",
+      "20"
+    ],
+    "default": "8",
+    "guard": "access.role.manage"
   }
 };

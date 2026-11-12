@@ -6,7 +6,8 @@ import { KeyRound, Lock } from 'lucide-react';
 import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
 import { ConfirmDialog } from '../../components/overlay';
-import { ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
+import { Icon } from '../../components/foundations';
 import { ErrorSummary, FormField, StickySaveBar, useUnsavedChangesGuard, useSaveErrors } from '../../components/field';
 import { Breadcrumbs, Card, PageHeader } from '../../components/shell';
 import { Select } from '../../components/select';
@@ -32,7 +33,8 @@ import type { LastChange, SettingDef, SettingValue, SettingsGroupDef, SettingsPa
 import './settings.css';
 
 /** no-access: the API refused this page (Hiring walk, answer 476): the page says so, never a load error. */
-export type LoadState = 'ready' | 'loading' | 'error' | 'no-access';
+/** mfa: the company asks for a second factor before admin pages open (the API's MFA_REQUIRED 403); not a load failure. */
+export type LoadState = 'ready' | 'loading' | 'error' | 'no-access' | 'mfa';
 
 /**
  * Settings panel (founder review 30 Sep 2026): the 8 groups, and only the open group's pages, so it isn't a 71-line
@@ -332,6 +334,8 @@ export interface LiveSettingsPage {
   onOpenScreen?: (screenId: string) => void;
   /** Title of the success toast. */
   savedTitle?: string;
+  /** state 'mfa': opens My security, where the second factor is added. */
+  onSetUpMfa?: () => void;
   /** Answer 1325: saving sends the changes to a second person instead; nothing changes until they approve. */
   secondPerson?: boolean;
   /** Answer 1325: changes waiting for a second person (mine: the viewer asked, so they may only withdraw it). */
@@ -394,6 +398,14 @@ export function SettingsPageScreen({
         facts={lastChange ? <AuditLine compact change={lastChange} history={history} /> : undefined}
       />
       {state === 'no-access' && <NoAccessState grantedBy="your System Admin" what={`${page.title} settings`} />}
+      {state === 'mfa' && (
+        <EmptyState
+          icon={<Icon icon={KeyRound} size="md" />}
+          title="Add a passkey or an authenticator app to open this page"
+          description="Your company asks for a second step at sign-in before its admin pages open. Set it up once in My security, then come back here."
+          action={live?.onSetUpMfa ? <Button variant="primary" onClick={live.onSetUpMfa}>Set it up</Button> : undefined}
+        />
+      )}
       {state === 'loading' && <SettingsSkeleton />}
       {state === 'error' && (
         <ErrorState title={`We couldn't load ${page.title}.`} description="Retry in a moment. Nothing has changed on this page." onRetry={live?.onRetry ?? (() => {})} reference="SET-P3E77" />

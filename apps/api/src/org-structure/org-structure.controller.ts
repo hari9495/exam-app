@@ -26,6 +26,7 @@ import { OrgSettingsService } from './org-settings.service';
 import { LEAVE_PAGE_KEYS, SETTINGS } from './settings-registry';
 import { OrgStructureService } from './org-structure.service';
 import { OrgScopeService } from '../access/org-scope.service';
+import { SettingChangeNoticesService } from './setting-change-notices.service';
 
 // Settings › Organisation (P01 §8, APX-D 1.2–1.4) and the scoped-settings API (P01 §4.6). Every route
 // declares its permission (P02 YX-SEC-01):
@@ -62,6 +63,7 @@ export class OrgStructureController {
     private readonly org: OrgStructureService,
     private readonly settings: OrgSettingsService,
     private readonly scope: OrgScopeService,
+    private readonly notices: SettingChangeNoticesService,
   ) {}
 
   private manage(req: Request, entityId: string | null) {
@@ -359,7 +361,10 @@ export class OrgStructureController {
     ownSession(req);
     await this.manageSetting(req, dto.key, await this.scope.settingEntity(ctx, dto.scopeType, dto.scopeId));
     await this.settingGuard(req, dto.key);
-    return this.settings.set(ctx, dto);
+    const out = await this.settings.set(ctx, dto);
+    // Answer 1522: the others with HR's settings key hear that a payroll change waits for them.
+    if ('pending' in out && out.pending) await this.notices.waiting(ctx, ctx.userId!, { id: out.id, key: dto.key, value: dto.value });
+    return out;
   }
 
   // Answer 1325: a payroll setting change waiting for a second person (never the one who asked; the API and the database check).
@@ -371,7 +376,9 @@ export class OrgStructureController {
     const r = await this.settings.request(ctx, id);
     await this.manageSetting(req, r.key, await this.scope.settingEntity(ctx, r.scopeType, r.scopeType === 'tenant' ? undefined : r.scopeId));
     await this.settingGuard(req, r.key);
-    return this.settings.approve(ctx, id);
+    const row = await this.settings.approve(ctx, id);
+    await this.notices.decided(ctx, ctx.userId!, { id, ...r }, 'approved');
+    return row;
   }
 
   @Post('settings/requests/:id/reject')
@@ -382,6 +389,7 @@ export class OrgStructureController {
     const r = await this.settings.request(ctx, id);
     await this.manageSetting(req, r.key, await this.scope.settingEntity(ctx, r.scopeType, r.scopeType === 'tenant' ? undefined : r.scopeId));
     await this.settings.reject(ctx, id, dto.note);
+    await this.notices.decided(ctx, ctx.userId!, { id, ...r }, 'rejected');
   }
 
   @Delete('settings/:id')

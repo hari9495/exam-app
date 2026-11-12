@@ -14,6 +14,8 @@ export interface RegistryDef {
   labels?: Record<string, string>;
   multi?: true;
   guard?: string;
+  /** Dated (S-4): a change applies from today; earlier days keep the old value. */
+  dated?: boolean;
 }
 
 export interface TimeSettingsData {
@@ -119,6 +121,7 @@ export const PAY_SETTINGS: Record<string, { links: string[]; settings: Place[] }
       { section: 'Mid-month changes', key: 'payroll.mid_period.revision', synonyms: ['increment', 'arrears'] },
       { section: 'Mid-month changes', key: 'payroll.mid_period.cutoff_day', synonyms: ['cut-off'] },
       { section: 'Changes to these settings', key: 'payroll.settings.second_person', synonyms: ['second approver', 'maker checker', 'four eyes'] },
+      { section: 'Changes to these settings', key: 'payroll.settings.lapse_days', synonyms: ['expire', 'pending change'] },
     ],
   },
   '4.4': {
@@ -138,12 +141,48 @@ export const PAY_SETTINGS: Record<string, { links: string[]; settings: Place[] }
   },
 };
 
+/**
+ * Settings S-4 (answer 1323): the People pages with settings that had no screen: 2.7 Exit & lifecycle policies and 2.10
+ * Audit & data retention. Their other settings stay on Company rules and Access and privacy until those move with
+ * "Different for" (answers 1321, 1484, S-7); the page links there.
+ */
+export const PEOPLE_SETTINGS: Record<string, { links: string[]; settings: Place[]; related?: { label: string; screenId: string }[] }> = {
+  '2.7': {
+    links: [],
+    related: [{ label: 'Company rules (fixed-term contracts, probation)', screenId: 'company-rules' }],
+    settings: [
+      { section: 'Notice and resignation', key: 'exit.notice.probation', synonyms: ['notice period', 'resignation'] },
+      { section: 'Notice and resignation', key: 'exit.notice.confirmed', synonyms: ['notice period', 'resignation'] },
+      { section: 'Company lifecycle policies', key: 'retirement.age', synonyms: ['superannuation'] },
+      { section: 'Company lifecycle policies', key: 'retirement.alert_months' },
+      { section: 'Company lifecycle policies', key: 'vrs.benefit_days', synonyms: ['voluntary retirement'] },
+      { section: 'Company lifecycle policies', key: 'absconding.days', synonyms: ['abandonment', 'unauthorised absence'] },
+      { section: 'Company lifecycle policies', key: 'alumni.access_years', synonyms: ['former employees'] },
+      { section: 'Rehire', key: 'rehire.pf', synonyms: ['boomerang', 'rejoin'] },
+      { section: 'Rehire', key: 'rehire.same_fy_tax' },
+      { section: 'Rehire', key: 'rehire.service' },
+      { section: 'Rehire', key: 'rehire.gratuity' },
+      { section: 'Rehire', key: 'rehire.leave' },
+      { section: 'Rehire', key: 'rehire.probation' },
+      { section: 'Rehire', key: 'rehire.prior_records' },
+    ],
+  },
+  '2.10': {
+    links: [],
+    related: [{ label: 'Access and privacy (retention of personal data)', screenId: 'access-settings' }],
+    settings: [{ section: 'Audit log', key: 'audit.retention_years', synonyms: ['audit trail'] }],
+  },
+};
+
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const WORDS: Record<string, string> = { on: 'On', off: 'Off', yes: 'Yes', no: 'No', any: 'Any time', never: 'Never', any_month: 'Any month', calendar: 'Days in the month', none: 'None', basic_da: 'Basic and DA', next_month_arrears: 'As arrears next month' };
 const pretty = (key: string, o: string): string => {
   if ((key === 'leave.year_start_month' || key === 'leave.encashment.window') && /^\d+$/.test(o)) return MONTHS[Number(o) - 1]!;
   // S-3: tax dates are month-day ('05-31' is 31 May); amounts in rupees.
   if (/^\d{2}-\d{2}$/.test(o)) return `${Number(o.slice(3))} ${MONTHS[Number(o.slice(0, 2)) - 1]!.slice(0, 3)}`;
+  // S-4: notice periods ('15d', '1m') and the absconding timeline ('3,7,14,21').
+  if (/^\d+[dm]$/.test(o)) { const n = Number(o.slice(0, -1)); return `${n} ${o.endsWith('d') ? 'day' : 'month'}${n === 1 ? '' : 's'}`; }
+  if (key === 'absconding.days') { const [h, a, b, x] = o.split(','); return `Hold after ${h} days, notices at ${a} and ${b}, abandonment at ${x}`; }
   if (key === 'payroll.one_time_review_above') return o === 'none' ? 'Never' : `₹${Number(o).toLocaleString('en-IN')}`;
   if (WORDS[o]) return WORDS[o];
   if (/^[\d.]+$/.test(o)) return o;
@@ -156,7 +195,7 @@ const falsy = (d: RegistryDef) => (d.values.includes('off') ? 'off' : 'no');
 
 /** The drawn Time & Leave page with the company's settings, for SettingsPageScreen `live`. `links`: drawn editor links the viewer may open. */
 export function timeSettingsPage(design: SettingsPageDef, data: TimeSettingsData, links: Set<string>): SettingsPageDef {
-  const spec = TIME_SETTINGS[design.id] ?? PAY_SETTINGS[design.id];
+  const spec = TIME_SETTINGS[design.id] ?? PAY_SETTINGS[design.id] ?? PEOPLE_SETTINGS[design.id];
   if (!spec) return design;
   const field = (p: Place): SettingDef | null => {
     const d = data.registry[p.key];
@@ -173,6 +212,7 @@ export function timeSettingsPage(design: SettingsPageDef, data: TimeSettingsData
       scope: n ? `Company · own value at ${n} ${n === 1 ? 'place' : 'places'} (Company rules)` : 'Company',
       ...(limit ? { legal: { value: limit.max ?? limit.min!, kind: limit.max != null ? ('max' as const) : ('min' as const), statute: limit.act } } : {}),
       ...(d.guard && !data.canGuard ? { locked: 'Changed by whoever manages access (Roles & access).' } : {}),
+      ...(d.dated ? { helper: 'A change applies from today. Earlier days keep the value they had.' } : {}),
     };
     const labels = Object.fromEntries(d.values.map((o) => [o, d.labels?.[o] ?? pretty(p.key, o)]));
     if (isToggle(d)) return { ...base, kind: 'toggle', value: value === truthy(d) };
@@ -190,7 +230,7 @@ export function timeSettingsPage(design: SettingsPageDef, data: TimeSettingsData
     return { title, description: drawn?.description, tone: drawn?.tone, settings };
   });
   // The drawn note (e.g. "Changes need a second approver") describes sample data; live, the page's own state says it.
-  return { ...design, note: undefined, related: undefined, scopes: undefined, sections: sections.filter((s) => s.settings.length > 0) };
+  return { ...design, note: undefined, related: (spec as { related?: { label: string; screenId: string }[] }).related, scopes: undefined, sections: sections.filter((s) => s.settings.length > 0) };
 }
 
 /** The page's changes as company-wide settings, for PUT /org/settings (one each). */

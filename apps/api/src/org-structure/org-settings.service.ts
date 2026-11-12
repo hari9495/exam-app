@@ -84,7 +84,7 @@ export type SettingLimit = { min?: number; max?: number; act: string };
 export const LIMITS_STATUTE = 'IN.SETTINGS.LIMITS';
 export async function settingLimits(tx: Tx): Promise<Record<string, SettingLimit>> {
   const today = asDate(todayIst());
-  const rs = await tx.statutoryRuleSet.findFirst({ where: { statute: LIMITS_STATUTE, jurisdiction: 'IN', status: 'published', validFrom: { lte: today }, OR: [{ validTo: null }, { validTo: { gte: today } }] }, orderBy: { validFrom: 'desc' } });
+  const rs = await tx.statutoryRuleSet.findFirst({ where: { statute: LIMITS_STATUTE, jurisdiction: 'IN', status: 'published', validFrom: { lte: today }, OR: [{ validTo: null }, { validTo: { gte: today } }] }, orderBy: [{ validFrom: 'desc' }, { publishedAt: 'desc' }] }); // versions from the same day: the latest published
   return ((rs?.values ?? {}) as { limits?: Record<string, SettingLimit> }).limits ?? {};
 }
 
@@ -208,7 +208,7 @@ export class OrgSettingsService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const r = await tx.settingChangeRequest.findFirst({ where: { id, organizationId: c.organizationId, status: 'pending' } });
       if (!r) throw new NotFoundException('No change with this reference is waiting for approval.');
-      return { key: r.key, scopeType: r.scopeType, scopeId: r.scopeId };
+      return { key: r.key, scopeType: r.scopeType, scopeId: r.scopeId, value: String(r.value), requestedBy: r.requestedBy };
     });
   }
 

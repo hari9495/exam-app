@@ -89,6 +89,27 @@ describe('Settings S-3: Payroll pages', () => {
     await waitFor(() => expect(calls).toHaveLength(1));
   });
 
+  // Walk of S-3: someone without a second factor yet is told to add one, never "couldn't load"; real failures still are.
+  it('the MFA floor shows "add a passkey" with Set it up; a real failure still says it could not load', async () => {
+    api.mockImplementation(async (path: string) => {
+      if (path.startsWith('/rbac/me/permissions')) return ['payroll.setup.manage'];
+      throw Object.assign(new Error('Set up two-step verification to continue.'), { status: 403, code: 'MFA_REQUIRED' });
+    });
+    const { unmount } = show('payroll-policies');
+    expect(await screen.findByText('Add a passkey or an authenticator app to open this page')).toBeInTheDocument();
+    expect(screen.queryByText(/couldn't load/)).toBeNull();
+    await ue.click(screen.getByRole('button', { name: 'Set it up' }));
+    expect(push).toHaveBeenCalledWith('/yx/me/security');
+    unmount();
+    api.mockImplementation(async (path: string) => {
+      if (path.startsWith('/rbac/me/permissions')) return ['payroll.setup.manage'];
+      throw Object.assign(new Error('Server error'), { status: 500 });
+    });
+    show('payroll-policies');
+    expect(await screen.findByText("We couldn't load Payroll policies.")).toBeInTheDocument();
+    expect(screen.queryByText('Add a passkey or an authenticator app to open this page')).toBeNull();
+  });
+
   it('negative: payroll set-up reads the page (view only, no Approve); the layout editor link still opens', async () => {
     routes(['payroll.setup.manage'], PENDING);
     show('payslip-layout');

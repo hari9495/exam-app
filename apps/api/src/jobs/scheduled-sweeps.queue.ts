@@ -74,6 +74,8 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'cs-health-snapshot', cron: '0 20 * * *' },
   // Console 1243: invited staff who never signed in are deactivated after staff.invite.expire_days (02:15 IST).
   { id: 'staff-invite-expiry', cron: '45 20 * * *' },
+  // Settings 1523: payroll setting changes nobody decided lapse (02:00 IST).
+  { id: 'settings-change-lapse', cron: '30 20 * * *' },
   // Projects P-1 (answer 1405): budget burn alerts at the company's levels (80% and 100% by default), hourly at :35.
   { id: 'project-burn', cron: '35 * * * *' },
 ];

@@ -107,6 +107,9 @@ describe('notification catalog', () => {
       'clra.alert.new',
       // Visitors slice 2 (604).
       'visitor.walkin.approval.host',
+      // Settings (1522, 1523).
+      'settings.change.waiting',
+      'settings.change.decided',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);

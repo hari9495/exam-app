@@ -3,9 +3,10 @@
 import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { SETTINGS_GROUPS, SettingsPageScreen, pendingOnPage, timeSettingsChanges, timeSettingsPage, type PendingSettingChange, type RegistryDef, type SettingsGroupDef, type TimeSettingsData } from '@yukthix/ui/hiring';
-import { loadState, useOrg, useOrgWrite, useYxPermissions } from './yx-org';
+import { loadState, todayIst, useOrg, useOrgWrite, useYxPermissions } from './yx-org';
 import { useYxNav } from './yx-shell';
 import { groupSlug } from './yx-settings-home';
+import { ME_SECURITY } from './yx-nav';
 
 // Settings S-2 and S-3 (answers 1323 to 1325): a drawn settings page with the company's settings from the registry
 // (GET /org/settings), each marked Starter default until changed, with the legal limits from the country's rule set.
@@ -15,12 +16,14 @@ import { groupSlug } from './yx-settings-home';
 type Overview = { registry: Record<string, RegistryDef>; limits: TimeSettingsData['limits']; pending?: PendingSettingChange[]; overrides: { key: string; scopeType: string; validFrom: string | null; value: unknown }[] };
 type Page = SettingsGroupDef['pages'][number];
 
-export function RegistrySettingsPage({ slug, pageIds, links, canEdit, secondPerson }: {
+export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, secondPerson }: {
   slug: string;
   /** The drawn pages this route serves. */
   pageIds: readonly string[];
   /** Drawn editor links → the live page (shown when the viewer's menu has it). */
   links: Record<string, string>;
+  /** The page's Related links (screen id → live page), e.g. Company rules where its other settings still are. */
+  screens?: Record<string, string>;
   /** Whether the viewer may change this page, given their keys. */
   canEdit: (has: (key: string) => boolean, page: Page) => boolean;
   /** Answer 1325: the page's changes wait for a second person while the company switch is on. */
@@ -38,9 +41,14 @@ export function RegistrySettingsPage({ slug, pageIds, links, canEdit, secondPers
     if (!d || !design) return null;
     const company: Record<string, string> = {};
     const elsewhere: Record<string, number> = {};
+    // A dated setting (S-4) holds the company value in force today: the latest one from today or before.
+    const today = todayIst();
+    const since: Record<string, string> = {};
     for (const o of d.overrides)
-      if (o.scopeType === 'tenant' && !o.validFrom) company[o.key] = String(o.value);
-      else if (o.scopeType !== 'tenant') elsewhere[o.key] = (elsewhere[o.key] ?? 0) + 1;
+      if (o.scopeType === 'tenant' && (!o.validFrom || (o.validFrom <= today && o.validFrom >= (since[o.key] ?? '')))) {
+        company[o.key] = String(o.value);
+        if (o.validFrom) since[o.key] = o.validFrom;
+      } else if (o.scopeType !== 'tenant') elsewhere[o.key] = (elsewhere[o.key] ?? 0) + 1;
     return { registry: d.registry, limits: d.limits ?? {}, company, elsewhere, canEdit: canEdit((k) => perms.has(k as never), design), canGuard: perms.has('access.role.manage'), lastChange: null };
   }, [settings.data, perms, design, canEdit]);
   const shown = useMemo(() => new Set(Object.entries(links).filter(([, href]) => mine.has(href)).map(([k]) => k)), [mine, links]);
@@ -57,7 +65,9 @@ export function RegistrySettingsPage({ slug, pageIds, links, canEdit, secondPers
         page,
         canEdit: Boolean(data?.canEdit),
         lastChange: null,
-        state: loadState(settings),
+        // The MFA floor is its own state (add a second factor), never "couldn't load" (walk of S-3).
+        state: settings.isError && (settings.error as { code?: string }).code === 'MFA_REQUIRED' ? 'mfa' : loadState(settings),
+        onSetUpMfa: () => router.push(ME_SECURITY),
         onRetry: () => void settings.refetch(),
         savedTitle: `${design.title} saved`,
         secondPerson: Boolean(switchOn),
@@ -65,10 +75,11 @@ export function RegistrySettingsPage({ slug, pageIds, links, canEdit, secondPers
         onApprove: data?.canEdit ? async (id) => void (await write('POST', `/settings/requests/${encodeURIComponent(id)}/approve`, {})) : undefined,
         onReject: data?.canEdit ? async (id) => void (await write('POST', `/settings/requests/${encodeURIComponent(id)}/reject`, {})) : undefined,
         onSave: async (values) => {
-          for (const c of timeSettingsChanges(values, data!)) await write('PUT', '/settings', { key: c.key, value: c.value, scopeType: 'tenant' });
+          // A dated setting starts today (S-4); earlier days keep the old value.
+          for (const c of timeSettingsChanges(values, data!)) await write('PUT', '/settings', { key: c.key, value: c.value, scopeType: 'tenant', ...(data!.registry[c.key]?.dated ? { validFrom: todayIst() } : {}) });
         },
         onOpenScreen: (screenId) => {
-          const href = linkOf(screenId);
+          const href = linkOf(screenId) ?? screens?.[screenId];
           if (href) router.push(href);
         },
       }}

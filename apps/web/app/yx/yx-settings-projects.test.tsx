@@ -11,12 +11,12 @@ jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), apiFetchBlob: jest.fn() }));
 jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
 
-// Settings S-2 follow-up (answers 1323, 1409): 3.11's "Pre-fill from work tools" lives on the one 3.11 page,
-// /yx/settings/projects, as the company setting timesheet.tool_suggestions (off by default), saved through /org/settings.
+// Settings S-2 follow-up and Projects P-3 (answers 1323, 1409): 3.11's "Pre-fill from work tools" lives on the one 3.11
+// page, /yx/settings/projects, as timesheet.tool_suggestions (off by default), owned by the projects settings API.
 const api = apiFetch as jest.Mock;
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const calls: [string, unknown][] = [];
-const PROJECTS = { canEdit: true, values: { 'projects.enabled': 'on', 'projects.booking.allocated_only': 'on', 'projects.burn.warn_pct': '80', 'projects.burn.over_pct': '100' }, defaults: { 'projects.enabled': 'off', 'projects.booking.allocated_only': 'on', 'projects.burn.warn_pct': '80', 'projects.burn.over_pct': '100' }, choices: { 'projects.burn.warn_pct': ['70', '80', '90'], 'projects.burn.over_pct': ['100', '110'] }, lastChange: null };
+const PROJECTS = { canEdit: true, values: { 'timesheet.tool_suggestions': 'off', 'projects.enabled': 'on', 'projects.booking.allocated_only': 'on', 'projects.burn.warn_pct': '80', 'projects.burn.over_pct': '100' }, defaults: { 'timesheet.tool_suggestions': 'off', 'projects.enabled': 'off', 'projects.booking.allocated_only': 'on', 'projects.burn.warn_pct': '80', 'projects.burn.over_pct': '100' }, choices: { 'projects.burn.warn_pct': ['70', '80', '90'], 'projects.burn.over_pct': ['100', '110'] }, lastChange: null };
 const routes = (perms: string[], overrides: object[] = []) =>
   api.mockImplementation(async (path: string, init?: RequestInit) => {
     if (init?.method === 'PUT') return (calls.push([`PUT ${path}`, JSON.parse(String(init.body))]), {});
@@ -42,22 +42,22 @@ beforeEach(() => {
 });
 
 describe('Settings 3.11: pre-fill from work tools on the Projects settings page', () => {
-  it('is off by default (Starter default) and HR saves it on through /org/settings', async () => {
+  it('is off by default (Starter default) and is saved with the Projects settings, once (never also through /org/settings)', async () => {
     routes(['org.settings.manage']);
     show();
     const box = await screen.findByRole('checkbox', { name: /Timesheet pre-fill/ });
     expect(box).not.toBeChecked();
     await ue.click(box);
     await ue.click(screen.getAllByRole('button', { name: 'Save changes' })[0]!);
-    await waitFor(() => expect(calls).toContainEqual(['PUT /org/settings', { key: 'timesheet.tool_suggestions', value: 'on', scopeType: 'tenant' }]));
-    expect(calls.some(([c]) => c === 'PUT /projects/settings')).toBe(false);
+    await waitFor(() => expect(calls).toEqual([['PUT /projects/settings', { changes: [{ key: 'timesheet.tool_suggestions', value: 'on' }] }]]));
   });
 
-  it('negative: someone who cannot read the company settings never sees it; the Projects fields still show', async () => {
+  it('negative: someone who may only read Projects settings sees the switch but cannot change it', async () => {
     routes([]);
+    api.mockImplementation(async (path: string) => (path.startsWith('/rbac/me/permissions') ? [] : path === '/projects/settings' ? { ...PROJECTS, canEdit: false } : Promise.reject(new Error(path))));
     show();
-    expect(await screen.findByText(/Switch Projects on/)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Pre-fill from work tools' })).toBeInTheDocument();
+    expect(screen.getByText('View only')).toBeInTheDocument();
     expect(screen.queryByRole('checkbox', { name: /Timesheet pre-fill/ })).toBeNull();
-    expect(calls).toEqual([]);
   });
 });
