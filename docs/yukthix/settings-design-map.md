@@ -667,3 +667,6 @@ const missing = keys.filter((k) => !text.includes(k));
 console.log(`${keys.length} keys, ${missing.length} named nowhere:`);
 console.log(missing.join(' '));
 ```
+
+## Founder approved (12 Nov 2026, "ok for all")
+1321 to 1335 approved as suggested. Waves: S-1 to S-3 first (S-1 started), then S-4 to S-6, then S-7 to S-9, then S-10; S-11 with each feature. 1335: founder to decide whether assessments stay a YukthiX product before 6.5 is wired.
