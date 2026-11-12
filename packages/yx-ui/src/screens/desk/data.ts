@@ -178,6 +178,8 @@ export const WORK: TicketWork = {
       ],
     },
   ],
+  // Answer 1648: fuller timing (business time on the desk calendar).
+  timing: { averageReplySeconds: 5400, agentReplies: 2, onHoldSeconds: 7200, moves: 2, agents: ['Imran Sheikh', 'Suresh Pillai'] },
   reminders: [{ id: 'r1', kind: 'remind', remindAt: '2026-10-09T04:30:00Z', note: 'Chase the vendor' }],
   maskedValues: [{ id: 'v1', kind: 'pan', masked: '[PAN ••234F]', messageId: 'm1' }],
   canUnmask: true,

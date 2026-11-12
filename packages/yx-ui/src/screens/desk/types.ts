@@ -485,6 +485,17 @@ export interface TaskView {
   ticket?: { id: string; number: string; subject: string | null } | null;
 }
 
+/** Answer 1648: the ticket's timing in business time (the SLA engine's clock). */
+export interface TicketTiming {
+  /** Average wait from the opening or a requester message to the next agent reply; null before any agent reply. */
+  averageReplySeconds: number | null;
+  agentReplies: number;
+  onHoldSeconds: number;
+  /** Queue changes and hand-overs. */
+  moves: number;
+  agents: string[];
+}
+
 export interface TicketWork {
   parent: TicketBrief | null;
   children: TicketBrief[];
@@ -494,6 +505,8 @@ export interface TicketWork {
   sideConversations: { id: string; channel: 'note_thread' | 'child_ticket'; subject: string; withWhom: string | null; state: 'open' | 'closed'; createdBy: string; createdAt: string; childTicket: TicketBrief | null; messages: { id: string; author: string; bodyHtml: string; createdAt: string }[] }[];
   tasks: TaskView[];
   sla: SlaTimerView[];
+  /** Answer 1648: fuller timing for agents (null for observers and collaborators; absent from an older API). */
+  timing?: TicketTiming | null;
   reminders: { id: string; kind: 'remind' | 'snooze'; remindAt: string; note: string | null }[];
   maskedValues: { id: string; kind: string; masked: string; messageId: string | null }[];
   canUnmask: boolean;

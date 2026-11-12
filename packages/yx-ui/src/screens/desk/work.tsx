@@ -9,7 +9,7 @@ import { Switch } from '../../components/choice';
 import { Select } from '../../components/select';
 import { Segment } from '../../components/segment';
 import { Dialog } from '../../components/overlay';
-import { Card } from '../../components/shell';
+import { Card, DescriptionList } from '../../components/shell';
 import { X } from 'lucide-react';
 import { useRun } from '../org/org-kit';
 import { MessageBody, STATE_LABEL, minutesText, when } from './desk-kit';
@@ -56,6 +56,24 @@ const TASK_STATES: { value: TaskView['state']; label: string }[] = [
 const html = (text: string) => `<p>${text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</p>`;
 /** "2026-10-09T15:00" in the viewer's zone, for datetime-local inputs. */
 const localInput = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+
+/** Answer 1648: the ticket's timing for agents, in business time (the desk calendar, as the targets above). */
+export function TimingFacts({ timing }: { timing: NonNullable<TicketWork['timing']> }) {
+  const span = (s: number) => (s < 60 ? 'under a minute' : minutesText(Math.round(s / 60)));
+  return (
+    <section aria-label="Ticket timing" className="yx-ops-stack" data-gap="sm">
+      <strong>Timing</strong>
+      <DescriptionList
+      items={[
+        { label: 'Average wait for a reply', value: timing.averageReplySeconds == null ? 'No agent reply yet' : `${span(timing.averageReplySeconds)} (${timing.agentReplies} ${timing.agentReplies === 1 ? 'reply' : 'replies'})` },
+        { label: 'On hold', value: timing.onHoldSeconds ? span(timing.onHoldSeconds) : 'Never' },
+        { label: 'Moved', value: timing.moves ? `${timing.moves} ${timing.moves === 1 ? 'time' : 'times'} (queue or owner)` : 'Never' },
+        { label: 'Agents involved', value: timing.agents.length ? timing.agents.join(', ') : 'None yet' },
+      ]}
+      />
+    </section>
+  );
+}
 
 /** US-G-016: each target with its running, paused and missed stretches, the reasons, and what a lead may approve. */
 export function SlaCard({ work, canWork, onBreachReason, onExclude }: { work: TicketWork; canWork: boolean; onBreachReason: TicketWorkProps['onBreachReason']; onExclude: TicketWorkProps['onExclude'] }) {
@@ -130,6 +148,7 @@ export function SlaCard({ work, canWork, onBreachReason, onExclude }: { work: Ti
           })}
         </ul>
       )}
+      {work.timing && <TimingFacts timing={work.timing} />}
     </Card>
   );
 }

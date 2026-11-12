@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, Languages, Laptop, ShieldCheck, UserCheck } from 'lucide-react';
-import { Button, CommandPalette, InlineAlert, NoticeBar, NotificationCentre, ProfileMenu, ScopePicker, ShortcutHelp, shortcutGroups, Spinner, ToastProvider, useCommandPaletteShortcut, useShortcutHelp } from '@yukthix/ui';
+import { Button, CommandPalette, InlineAlert, NoticeBar, NotificationCentre, ProfileMenu, ScopePicker, ShortcutHelp, shortcutGroups, Spinner, ToastProvider, useCommandPaletteShortcut, useShortcutHelp, useToast } from '@yukthix/ui';
 import { useAppearance, type MfaStatus } from '@yukthix/ui/auth';
 import { DesktopFrame, PALETTE_PLACEHOLDER, SCREEN_RAIL, type AreaId } from '@yukthix/ui/frame';
 import { ContainedBanner } from '@yukthix/ui/console';
@@ -56,6 +56,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   const { accessToken, role, actingSuperAdmin, actingOrgName, isLoading, signedOut, logout, switchOutOfOrg, impersonating } = useAuth();
   const me = useCurrentUser();
   const perms = useYxPermissions();
+  const { toast } = useToast();
   const appearance = useAppearance();
   const { scope, setScope } = useScope();
   // Job history is for HR, and for anyone with an employee record (themselves and their team, P02 §4.3).
@@ -134,7 +135,14 @@ function Frame({ children }: { children: React.ReactNode }) {
     [perms.data, role, support, employee, team.data, people.data, myClearance.data, myTasks.data, firstDays.data, counts.data, staffingDesk.data, projectsOn.data, myInterviews.data],
   );
   // Ctrl K as designed (PLT-20): Recent, Actions, people, requests and tickets, pages when typed.
-  const palette = useYxPalette({ nav: withAccount(nav, { support, employee }), pathname, open: paletteOpen, userId: me.data?.id, orgId: me.data?.organizationId, waiting: counts.data?.approvals, self: employee && !support, help: !support, go: (href) => {
+  const palette = useYxPalette({ nav: withAccount(nav, { support, employee }), pathname, open: paletteOpen, userId: me.data?.id, orgId: me.data?.organizationId, waiting: counts.data?.approvals, self: employee && !support, help: !support,
+    // Answer 1649: desk actions only with the desk keys, never on a support session.
+    desk: support ? undefined : { view: perms.has('desk.ticket.view'), work: perms.has('desk.ticket.work') },
+    notify: (title, tone) => {
+      setPaletteOpen(false);
+      toast({ tone: tone === 'error' ? 'error' : 'success', title });
+    },
+    go: (href) => {
       setPaletteOpen(false); // whatever search opens, the search box closes first (founder, 19 Oct 2026)
       router.push(href);
     },

@@ -273,7 +273,7 @@ follow-ups, articles, related tickets and the rest of the work rail) sit in the 
 | RequestApprovals · Request and approvals · ask a colleague to approve | live | new story: the ordered items with their approval route and tasks; "Ask for approval" (any or all, the question; pressed too early says so) |
 | MoveShareDocs · Move, share, documents and follow-ups | live | new story: the HR summary, move to another desk (reason), share with another desk, documents to sign, follow-up sequences |
 | Articles · Articles used · solved by, out of date, make one | live | new story: articles used on the ticket, "Solved by this", "Out of date" with a reason, make a draft article |
-| RelatedTickets · Related tickets, merge, tasks, side conversations, targets, reminders | live | new story: link, merge (the design's "Merge into another ticket"), split, parent, tracker; tasks; side conversations; Response targets with breach reasons; reminders and snooze; hidden personal data |
+| RelatedTickets · Related tickets, merge, tasks, side conversations, targets, reminders | live | new story: link, merge (the design's "Merge into another ticket"), split, parent, tracker; tasks; side conversations; Response targets with breach reasons; reminders and snooze; hidden personal data; answer 1648 (13 Nov 2026): the response targets card ends with "Timing" for agents: the average wait for a reply, time on hold, moves (queue or owner) and the agents involved, in the SLA engine's business time |
 | Escalate · Move to another support level | live | new story: the header menu's "Move to another support level" (L1 / L2 / L3, group, reason; pressed with no reason says so) |
 | ResolveWithCode · Resolve · code and note | live | new story: the resolve dialog |
 | ResolvedRated · Resolved · closes on, the rating | live | new story |
@@ -2047,3 +2047,25 @@ Draw kit designs for the five live pages that still render stand-ins (service ca
 - Founder (12 Nov 2026, "ok for all"): 1661 to 1663 approved as suggested. To build: a "Device" field on IT desk tickets, set or changed by IT agents and shown in the ticket details, drawn first (1661); "Which device?" on plain IT tickets when the person has a device assigned (1662).
 - Founder (12 Nov 2026, "Ok for all"): 1681 to 1685 approved as suggested. To build: "Search words" moves to its own knowledge-base settings page (1681); rating reason in the one-click email rating and the chat rating (1682); "outside hours" flag only on tickets the person raised themselves, not agent-logged ones (1683); a "Searches that led to tickets" list, counts only (1684); "Which device?" shows when the person the ticket is for has a device (1685).
 - Founder (13 Nov 2026, "Ok for all"): 1801 to 1804 approved as suggested. To build: "On behalf of" on the help-centre raise form for people allowed to raise for others (1801); ask "Who is this for?" before the item form when an item has a device field (1802); a search shows in "Searches that led to tickets" only once at least 2 different people used it (1803); split desk Settings into "Tickets" and "Requesters" tabs (1804).
+
+## 1648 and 1649 built (13 Nov 2026, `feat/yukthix-helpdesk-timing-palette`): questions for the founder
+
+1648: on a ticket's response targets card, agents see "Timing": the average wait for a reply, time on hold, how many
+times it moved (queue or owner) and the agents involved, in business time on the calendar of the ticket's resolution
+target (the SLA engine's clock), from the work panel (`GET /desk/tickets/:id/work`, agents only; observers,
+collaborators and requesters never get it). 1649: in Ctrl K, an agent types a ticket number to open it (only a ticket
+they may open, `GET /desk/tickets/by-number/:number`); on an open ticket, "Insert saved reply: …" and "Run scenario: …";
+and "Set my status: …". Each shows only with its key (viewing or working tickets), and the API checks it again. Drawn
+first: the command palette's "desk actions" story and timing on the HLP-03 work panel story.
+
+1861. **The average wait.** From the ticket opening, or a requester's message, to the next public agent reply (notes
+      and side conversations do not count); several requester messages in a row count from the first. *Suggested: keep.*
+1862. **Time on hold** counts only the "On hold" status (not "Waiting on the requester"), in business time.
+      *Suggested: keep; add the waiting time as its own line if you want it.*
+1863. **Moves.** Each change of group, and each change of owner after the first (the first assignment is not a move;
+      taking the owner away is). *Suggested: keep.*
+1864. **Agents involved.** Everyone who replied or wrote a note, was the owner, or logged time on the ticket.
+      *Suggested: keep.*
+1865. **Palette saved replies** list the desk's and the agent's own active saved replies, all of them; Ctrl K's search
+      narrows them as the agent types. *Suggested: keep.*
+

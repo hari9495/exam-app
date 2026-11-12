@@ -37,6 +37,7 @@ import { apiFetch } from '../../../../../../lib/api-client';
 import { useAuth } from '../../../../../../lib/auth-context';
 import { useCurrentUser } from '../../../../../../lib/hooks/useCurrentUser';
 import { deskState, useDesk, useDeskFile, useDeskUpload, useDeskWrite } from '../../../../../../lib/yx-desk';
+import { setDeskPaletteTicket } from '../../../../../../lib/yx-desk-palette';
 
 // Helpdesk › Tickets › one ticket: the designed HLP-03 workspace with `live` (Helpdesk design wiring, round 3). Reply,
 // note, assign, files, time, the requester's other tickets, who else is on it (YX-SD-07, every 15 seconds); the side
@@ -93,6 +94,25 @@ export default function YxDeskTicketPage() {
   const t = ticket.data;
   const version = t?.version ?? 0;
   const d = detail.data;
+  // Answer 1649: Ctrl K's saved replies and scenarios for this ticket (the page's own handlers; the API checks the key).
+  const [insertReply, setInsertReply] = useState<{ key: number; cannedId: string } | null>(null);
+  const runScenario = useRef<(id: string) => Promise<void>>(async () => undefined);
+  runScenario.current = async (scenarioId) => {
+    await write(`${path}/scenarios/${encodeURIComponent(scenarioId)}`, 'POST', { version });
+  };
+  useEffect(() => {
+    if (!t) return;
+    setDeskPaletteTicket({
+      id: t.id,
+      number: t.number,
+      canWork: Boolean(t.canWork),
+      canned: (canned.data ?? []).filter((c) => c.active).map((c) => ({ id: c.id, title: c.title })),
+      scenarios: (d?.scenarios ?? []).filter((x) => x.active).map((x) => ({ id: x.id, name: x.name })),
+      insertReply: (cannedId) => setInsertReply((x) => ({ key: (x?.key ?? 0) + 1, cannedId })),
+      runScenario: (id) => runScenario.current(id),
+    });
+  }, [t, canned.data, d]);
+  useEffect(() => () => setDeskPaletteTicket(null), []);
   const deskRules = desks.data?.find((x) => x.id === deskId);
   const open = (other: string) => router.push(`/yx/desk/tickets/${encodeURIComponent(other)}`);
   return (
@@ -105,6 +125,7 @@ export default function YxDeskTicketPage() {
         detail: d ?? null,
         work: work.data ?? null,
         canned: canned.data ?? [],
+        insertReply,
         timeline: timeline.data ?? [],
         context: context.data ?? null,
         others,
