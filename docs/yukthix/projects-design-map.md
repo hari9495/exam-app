@@ -523,7 +523,7 @@ console.log('ok');
       apart; people whose attendance comes from their timesheet are never flagged. *Suggested: keep; make the hour a
       setting only if asked.*
 
-1581 to 1587: pending; P-5 builds as suggested.
+- 1581 to 1587 approved as suggested (12 Nov 2026, "ok for all").
 
 ## P-5 built (12 Nov 2026): questions for the founder
 
