@@ -228,7 +228,7 @@ export class RateLinkController {
   @HttpCode(200)
   @Throttle(PUBLIC_API_THROTTLE)
   answer(@Param('org', ParseUUIDPipe) org: string, @Param('token') token: string, @Body() dto: LinkAnswerDto) {
-    return this.surveys.answerLink(org, token, dto.score);
+    return this.surveys.answerLink(org, token, dto.score, undefined, dto.reason);
   }
 
   @Post(':org/:token/comment')

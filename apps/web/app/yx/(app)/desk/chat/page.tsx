@@ -53,7 +53,7 @@ function YxDeskChatInner() {
       onOpenFile={(fileId) => void openFile(`/my/chat/${encodeURIComponent(sel!)}/files/${encodeURIComponent(fileId)}/link`)}
       onTyping={() => sel && chat.typing(sel)}
       onEnd={() => write(`/my/chat/${encodeURIComponent(sel!)}/end`, 'POST')}
-      onRate={(score, comment) => write(`/my/chat/${encodeURIComponent(sel!)}/rate`, 'POST', { score, ...(comment ? { comment } : {}) })}
+      onRate={(score, comment, reason) => write(`/my/chat/${encodeURIComponent(sel!)}/rate`, 'POST', { score, ...(comment ? { comment } : {}), ...(reason ? { reason } : {}) })}
       onOpenTicket={(ticketId) => router.push(`/yx/desk/help/${encodeURIComponent(ticketId)}`)}
       onPick={(kind, q) => apiFetch(`/desk/my/pick/${kind}?q=${encodeURIComponent(q)}`, {}, accessToken ?? undefined) as Promise<PickOption[]>}
     />

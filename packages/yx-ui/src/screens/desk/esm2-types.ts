@@ -179,6 +179,9 @@ export interface ChatSession {
   agentUserId: string | null;
   ticketId: string | null;
   rating: number | null;
+  /** Answer 1682: the reason picked with the rating, and the desk's preset reasons while it can still be rated. */
+  ratingReason?: string | null;
+  ratingReasons?: string[];
   endReason: string | null;
   requesterSeenAt: string | null;
   agentSeenAt: string | null;

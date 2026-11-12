@@ -193,7 +193,7 @@ export interface RequesterChatProps {
   onOpenFile: (fileId: string) => void;
   onTyping: () => void;
   onEnd: () => Promise<unknown>;
-  onRate: (score: number, comment: string) => Promise<unknown>;
+  onRate: (score: number, comment: string, reason?: string) => Promise<unknown>;
   onOpenTicket: (ticketId: string) => void;
   onPick: (kind: PickKind, q: string) => Promise<PickOption[]>;
 }
@@ -207,6 +207,7 @@ export function RequesterChatScreen(props: RequesterChatProps) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [score, setScore] = useState<number | null>(null);
   const [comment, setComment] = useState('');
+  const [reason, setReason] = useState<string | null>(null);
   const { busy, error, run } = useRun();
   const queue = props.queues.find((q) => q.id === queueId) ?? null;
   const startEarly = useTooEarly(queue ? [] : [{ fieldId: 'chat-queue', message: 'Choose who to chat with.' }]);
@@ -300,11 +301,16 @@ export function RequesterChatScreen(props: RequesterChatProps) {
                   <FormField id="chat-score" label="How was this chat?" hideLabel error={rateEarly.errorOf('chat-score')}>
                     <Segment label="How was this chat?" value={score} onChange={setScore} options={[1, 2, 3, 4, 5].map((n) => ({ value: n, label: <span aria-label={`${n} out of 5`}>{'★'.repeat(n)}</span> }))} />
                   </FormField>
+                  {(c.ratingReasons ?? []).length > 0 && (
+                    <FormField label="The main reason" optional>
+                      <Select value={reason} onChange={setReason} clearable placeholder="Choose a reason" options={c.ratingReasons!.map((r) => ({ value: r, label: r }))} />
+                    </FormField>
+                  )}
                   <FormField label="Anything to add?" optional>
                     <TextField value={comment} onChange={setComment} maxLength={500} />
                   </FormField>
                   <div className="yx-ops-row">
-                    <Button icon={Star} loading={busy === 'rate'} onClick={() => !rateEarly.stop() && void run('rate', () => props.onRate(score!, comment.trim()))}>
+                    <Button icon={Star} loading={busy === 'rate'} onClick={() => !rateEarly.stop() && void run('rate', () => props.onRate(score!, comment.trim(), reason ?? undefined))}>
                       Rate this chat
                     </Button>
                   </div>

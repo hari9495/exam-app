@@ -542,6 +542,11 @@ export class RateChatDto {
   @IsOptional()
   @Text(0, 500)
   comment?: string;
+
+  /** Answer 1682: one of the desk's preset reasons (checked in the service). */
+  @IsOptional()
+  @Text(1, 40)
+  reason?: string;
 }
 
 export class PromptQueryDto {

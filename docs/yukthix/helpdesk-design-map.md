@@ -624,7 +624,7 @@ File: `packages/yx-ui/src/screens/ops/hlp-16.stories.tsx`. Drawn 12 Nov 2026 (th
 | RequesterChatNewMissing · Requester, start pressed with no subject | live | same page |
 | RequesterChatSendMissing · Requester, Send pressed with nothing written | live | same page |
 | RequesterChatRateMissing · Requester, Rate pressed with no stars | live | same page |
-| RequesterChatEnded · Requester, ended (rate it) | live | same page |
+| RequesterChatEnded · Requester, ended (rate it) | live | same page. Answer 1682: an optional "The main reason" from the desk's preset list (`ratingReasons` on the ended chat); `POST desk/my/chat/:id/rate {score, reason}` refuses a reason not on the list; the one-click email rating page offers the same list (`GET desk/rate/:org/:token` gives `reasons`) |
 | RequesterChatSendFailed · Requester, a message not sent | live | same page |
 | RequesterChatEmpty · Requester, no chats yet | live | same page |
 | RequesterChatLoading · Requester, loading | live | same page |

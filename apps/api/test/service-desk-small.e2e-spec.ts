@@ -9,6 +9,7 @@ import { BlobStorageService, PrismaService, TenantContext, TenantPrismaService }
 import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
+import { SurveysService } from '../src/service-desk/surveys.service';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 
 // The small Helpdesk items (founder answers 1642, 1643, 1646, 1647, 1661, 1662), end to end against the real database
@@ -341,6 +342,60 @@ describe('Helpdesk small items', () => {
       expect([403, 404]).toContain((await api('agentB', 'put', `/desk/tickets/${ids.devTicket}/device`).send({ assetId: ids.myLaptop })).status);
       await api('divya', 'put', `/desk/tickets/${ids.devTicket}/device`).send({ assetId: ids.myLaptop }).expect(403);
       expect((await api('agent', 'get', `/desk/tickets/${ids.devTicket}`).expect(200)).body.device).toBeNull();
+    });
+  });
+  // ------------------------------------------------------------------------------------------ 1682 reasons by email and chat
+  describe('1682: the rating reason in the one-click email rating and the chat rating', () => {
+    const sys = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) =>
+      tenantPrisma.forTenant(asA(), async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.sd_system', 'on', true)`;
+        return fn(tx);
+      });
+    const linkFor = async (subject: string) => {
+      const id = await raiseAndSolve(subject);
+      const send = app.get(EmailService).send as jest.Mock;
+      send.mockClear();
+      await app.get(SurveysService).askRatings();
+      const html = (send.mock.calls.map((c) => c[0]).find((m: { subject: string; html: string }) => m.subject === 'How did we do?' && m.html.includes(subject)) as { html: string }).html;
+      const [, o, tok] = /\/yx\/rate\/([0-9a-f-]{36})\/([A-Za-z0-9_-]+)\?score=/.exec(html)!;
+      return { id, url: `/api/v1/desk/rate/${o}/${tok}` };
+    };
+
+    it('the email link offers the desk reasons and keeps the one picked (matched without case); the link is then used up', async () => {
+      const reasons = (await api('deskAdmin', 'get', `/desk/desks/${ids.desk}`).expect(200)).body.desk.ratingReasons as string[];
+      expect(reasons.length).toBeGreaterThan(0);
+      const { id, url } = await linkFor(`Mail rating ${run}`);
+      expect((await request(server()).get(url).expect(200)).body).toMatchObject({ kind: 'csat', reasons });
+      await request(server()).post(url).send({ score: 2, reason: reasons[0].toUpperCase() }).expect(200);
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.sdRating.findFirstOrThrow({ where: { ticketId: id }, select: { score: true, reason: true, channel: true } }))).toEqual({ score: 2, reason: reasons[0], channel: 'email' });
+      await request(server()).post(url).send({ score: 5 }).expect(409);
+    });
+
+    it('negative: a reason not on the list is refused and the link stays unused (it still works without a reason)', async () => {
+      const { id, url } = await linkFor(`Mail rating bad ${run}`);
+      expect((await request(server()).post(url).send({ score: 1, reason: 'Rude' }).expect(400)).body.message).toMatch(/reasons shown/);
+      expect((await request(server()).get(url).expect(200)).body.used).toBe(false);
+      await request(server()).post(url).send({ score: 1, reason: 'x'.repeat(41) }).expect(400);
+      await request(server()).post(url).send({ score: 3 }).expect(200);
+      expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.sdRating.findFirstOrThrow({ where: { ticketId: id } }))).reason).toBeNull();
+    });
+
+    it('a chat: the ended chat offers the reasons; the reason is kept and audited; a wrong one or someone else is refused', async () => {
+      const chatId = await sys(async (tx) => {
+        const q = await tx.sdChatQueue.create({ data: { organizationId: org.A.id, deskId: ids.desk, name: `Chat ${run}` } });
+        return (await tx.sdChatSession.create({ data: { organizationId: org.A.id, deskId: ids.desk, queueId: q.id, requesterUserId: users.divya, personId: ids.divyaPerson, agentUserId: users.agent, state: 'ended', subject: 'Laptop slow', endReason: 'resolved', endedAt: new Date() } })).id;
+      });
+      const reasons = (await api('deskAdmin', 'get', `/desk/desks/${ids.desk}`).expect(200)).body.desk.ratingReasons as string[];
+      expect((await api('divya', 'get', `/desk/my/chat/${chatId}`).expect(200)).body.ratingReasons).toEqual(reasons);
+      expect((await api('divya', 'post', `/desk/my/chat/${chatId}/rate`).send({ score: 2, reason: 'Rude' }).expect(400)).body.message).toMatch(/reasons shown/);
+      await api('agent', 'post', `/desk/my/chat/${chatId}/rate`).send({ score: 5, reason: reasons[0] }).expect(404);
+      await api('divya', 'post', `/desk/my/chat/${chatId}/rate`).send({ score: 2, reason: reasons[reasons.length - 1] }).expect(200);
+      const row = await sys((tx) => tx.sdChatSession.findFirstOrThrow({ where: { id: chatId }, select: { rating: true, ratingReason: true } }));
+      expect(row).toEqual({ rating: 2, ratingReason: reasons[reasons.length - 1] });
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'desk.chat.rated', entityId: chatId, metadataJson: { contains: `"reason":"${reasons[reasons.length - 1]}"` } } }))).toBe(1);
+      const after = (await api('divya', 'get', `/desk/my/chat/${chatId}`).expect(200)).body;
+      expect(after).toMatchObject({ rating: 2, ratingReason: reasons[reasons.length - 1], ratingReasons: [] });
+      await api('divya', 'post', `/desk/my/chat/${chatId}/rate`).send({ score: 4 }).expect(409);
     });
   });
 });
