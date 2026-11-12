@@ -1073,3 +1073,5 @@ C-6 to C-8.
       member of staff approves it. *Suggested: let the asker withdraw it, audited, as for messages (1087).*
 1264. **Putting a retired article back.** The knowledge base can republish a retired article; the console does not offer
       it yet. *Suggested: "Put back" with the same two-person approval when someone needs it.*
+
+- 1241 to 1243 and 1261 to 1264 approved as suggested (12 Nov 2026, "ok for all"). To build: auto-deactivate invited staff who never sign in after 30 days, a platform setting (1243); move the help-centre search setting and the incident reminder lead time to Platform settings (1261); withdraw your own retire request, audited (1263). Later, when needed: "Put back" a retired article with two-person approval (1264).
