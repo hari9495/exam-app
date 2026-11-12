@@ -1427,6 +1427,38 @@ Built 4 Nov 2026 (`feat/yukthix-hlp-14`) from the founder decisions of 4 Nov 202
 1603. **The help article picture.** `ArticleBody` is still a "Live ·" picture (help centre, portal, knowledge pages).
       *Suggested: draw it with HLP-04's article view next.*
 
+## 4k. Helpdesk items 1 and 2 as built (12 Nov 2026, branch `feat/yukthix-helpdesk-it`)
+
+- **1. IT starter catalogue:** an `it` entry in `STARTER_PACKS` (`apps/api/src/service-desk/starter.ts`), installed on
+  a new IT desk like the other kinds (adds only what is missing on a re-install): first response 30 minutes, 2, 4 and 8
+  hours; resolution 4, 8, 24 and 40 hours (priorities 1 to 4, on the desk's calendar: Indian working days, Monday to
+  Friday with its holidays). Items, each with its tasks: New laptop (5 working days), Software install (2) and VPN
+  access (1), each approved by the manager first; Password reset (1); New-joiner IT kit (3, journeys only, never in the
+  catalogue).
+- **2. A device on a ticket:** a form field type "One of their devices (live list)" (`asset`) for catalogue items.
+  `GET desk/my/pick/assets` returns the devices assigned to the person now (People asset register: handed over, not
+  returned), searchable by tag or name; at checkout a device must be one assigned to the person the request is for
+  (else "Choose one of your own devices from the list"). The chosen device shows on the ticket as its name and tag (the
+  request's answers in the first message, the approval summary). `GET desk/pick/assets?deskId` lets an agent of an IT
+  desk search the company's devices by tag, name or serial (not retired or lost); agents of other desks and requesters
+  are refused (403). The agent's ticket context now lists the requester's devices ("Devices" in the requester panel,
+  replacing "Assets show here from phase 3b-3"), only for those who may see the ticket. RLS keeps every read to the
+  company.
+- **Tests:** API e2e `service-desk-it` (the IT pack's items, approvals, tasks and targets; HR and Admin unchanged; a
+  requester sees only their own devices; another company never sees these and its agent cannot search them; an IT
+  agent searches by tag and name without retired ones; an HR agent and a requester cannot search; a picked device shows
+  on the ticket, someone else's is refused, the IT agent sees the requester's devices and the HR agent does not).
+
+### Questions (from 1661)
+
+1661. **Where an IT agent picks a device.** The search exists for IT agents, but no agent screen offers it yet (the
+      device field is filled by the requester on a catalogue form). *Suggested: a "Device" field on the ticket itself
+      for IT desks (raised with it, changed by IT agents, shown in the ticket's details), drawn first.*
+1662. **A plain ticket.** "Raise a ticket" (HLP-01) has no device question; only catalogue items do. *Suggested: offer
+      "Which device?" on IT desk tickets when the person has a device assigned.*
+1663. **IT starter targets.** First response 30 minutes for priority 1 and 8 working hours for priority 4.
+      *Suggested: keep; each desk changes them in Response targets.*
+
 ## 5. Two designs for one job
 
 HLP-02 … 05 (founder-approved Helpdesk designs, `screens/ops/helpdesk.tsx`) and the Service desk designs (Phase 3b-1,

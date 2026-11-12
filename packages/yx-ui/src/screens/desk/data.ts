@@ -120,7 +120,7 @@ export const CONTEXT: RequesterContext = {
   vip: false,
   employee: { code: 'KF-0001', designation: 'Quality Manager', department: 'Quality', location: 'Bengaluru HQ' },
   otherTickets: [{ id: 't2', number: 'IT-1002', subject: 'New laptop for Arjun', systemState: 'new', createdAt: '2026-10-08T02:00:00Z' }],
-  assets: [],
+  assets: [{ id: 'as1', name: 'Dell Latitude 5440', tag: 'KF-LT-0142', category: 'Laptop' }],
 };
 
 export const CANNED: CannedResponse[] = [{ id: 'cr1', title: 'Password reset steps', bodyHtml: '<p>Hi {{requester.first_name}}, open My security and choose Change password.</p>', personal: false, active: true }];

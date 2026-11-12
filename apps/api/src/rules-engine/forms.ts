@@ -7,10 +7,11 @@ import { FIELD_KEY, FieldDef, Group, RecordValues, RuleError, Value, evaluate, p
 // fields apply, drops answers to hidden fields, checks every answer by type and computes formula fields. The browser
 // shows the same thing live (yx-ui lib/forms.ts, display only).
 
-export const FIELD_TYPES = ['text', 'textarea', 'number', 'email', 'phone', 'url', 'date', 'choice', 'multi_choice', 'checkbox', 'person', 'location', 'cost_centre', 'formula', 'separator'] as const;
+export const FIELD_TYPES = ['text', 'textarea', 'number', 'email', 'phone', 'url', 'date', 'choice', 'multi_choice', 'checkbox', 'person', 'location', 'cost_centre', 'asset', 'formula', 'separator'] as const;
 export type FormFieldType = (typeof FIELD_TYPES)[number];
 /** Live-data pickers (SD-2.02): the value is an id the module checks against its own records. */
-export const PICKERS: FormFieldType[] = ['person', 'location', 'cost_centre'];
+// Helpdesk item 2: 'asset' picks a device from the People asset register (the requester's own; an IT agent any).
+export const PICKERS: FormFieldType[] = ['person', 'location', 'cost_centre', 'asset'];
 export const LANGS = ['hi', 'ta', 'te'] as const;
 export const COLOURS = ['grey', 'blue', 'green', 'amber', 'red', 'purple'] as const;
 type Lang = (typeof LANGS)[number];
@@ -375,8 +376,8 @@ export function computeFormula(f: Formula, values: Answers): number | string | n
 }
 
 /** Ids the module must check against live data (people, locations, cost centres). */
-export function pickedIds(def: FormDef, values: Answers): Record<'person' | 'location' | 'cost_centre', string[]> {
-  const out = { person: [] as string[], location: [] as string[], cost_centre: [] as string[] };
+export function pickedIds(def: FormDef, values: Answers): Record<'person' | 'location' | 'cost_centre' | 'asset', string[]> {
+  const out = { person: [] as string[], location: [] as string[], cost_centre: [] as string[], asset: [] as string[] };
   for (const f of def.sections.flatMap((s) => s.fields)) if ((PICKERS as string[]).includes(f.type) && typeof values[f.key] === 'string') out[f.type as keyof typeof out].push(values[f.key] as string);
   return out;
 }

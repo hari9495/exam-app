@@ -150,7 +150,23 @@ export function RequesterPanel({ ticket, context, onOpenTicket }: { ticket: Tick
       ) : (
         <p className="yx-ops-muted">None you can see.</p>
       )}
-      <p className="yx-ops-muted">Assets show here from phase 3b-3.</p>
+      <p className="yx-ops-muted">Devices</p>
+      {context && context.assets.length ? (
+        <ul className="yx-ops-list" aria-label="The requester's devices">
+          {context.assets.map((d) => (
+            <li key={d.id} className="yx-ops-list__item">
+              <span className="yx-ops-list__main">
+                {d.name}
+                <span className="yx-ops-list__sub">
+                  {d.tag} · {d.category}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="yx-ops-muted">None assigned in the asset register.</p>
+      )}
     </div>
   );
 }

@@ -55,6 +55,22 @@ const HIGH_VALUE_DEFAULT = 50_000;
 const rupees = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const like = (q: string) => `%${q.replace(/[\\%_]/g, (c) => '\\' + c)}%`;
 
+/**
+ * Helpdesk item 2: the devices assigned now to a person in the People asset register (handed over, not returned), with
+ * an optional search by tag or name. RLS keeps it to the company; the person filter keeps it to their own.
+ */
+export async function assetsOf(tx: Tx, org: string, personId: string, q: string) {
+  const term = q.trim();
+  const held = (await tx.assetAssignment.findMany({ where: { organizationId: org, personId, returnedOn: null }, select: { assetId: true } })).map((x) => x.assetId);
+  return tx.asset.findMany({
+    where: { organizationId: org, id: { in: held }, ...(term ? { OR: [{ tag: { contains: term, mode: 'insensitive' as const } }, { name: { contains: term, mode: 'insensitive' as const } }] } : {}) },
+    select: { id: true, name: true, tag: true, category: true },
+    orderBy: { name: 'asc' },
+    take: 20,
+  });
+}
+export const assetOption = (x: { id: string; name: string; tag: string; category: string }) => ({ id: x.id, label: `${x.name} (${x.tag})`, detail: x.category });
+
 /** A rule or form problem the admin must fix: 400 with the plain message (sync or async). */
 function plain<T>(fn: () => T): T {
   const map = (e: unknown) => {
@@ -525,10 +541,15 @@ export class CatalogService implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ live-data pickers (SD-2.02)
 
-  async pick(r: Requester, kind: 'people' | 'locations' | 'cost-centres', q = '') {
+  async pick(r: Requester, kind: 'people' | 'locations' | 'cost-centres' | 'assets', q = '') {
     const org = r.ctx.organizationId;
     const l = like(q.trim());
     return this.tx(r, async (tx) => {
+      if (kind === 'assets') {
+        // Helpdesk item 2: only the devices assigned to the person now (People asset register), never anyone else's.
+        const me = await this.requesters.personOf(tx, r, false);
+        return me ? (await assetsOf(tx, org, me, q)).map(assetOption) : [];
+      }
       if (kind === 'people') {
         // Colleagues only (an employee or a login), never applicants or outside contacts; names and department only.
         const rows = await tx.$queryRaw<{ id: string; name: string; department: string | null }[]>`
@@ -551,6 +572,24 @@ export class CatalogService implements OnModuleInit {
     });
   }
 
+  /** Helpdesk item 2: an agent of an IT desk searches the company's devices (any holder) by tag or name. */
+  async searchAssets(a: DeskActor, deskId: string, q: string) {
+    requireWork(a, deskId);
+    return this.tx(a, async (tx) => {
+      const desk = await tx.sdDesk.findFirst({ where: { organizationId: a.ctx.organizationId, id: deskId }, select: { kind: true } });
+      if (!desk) throw new NotFoundException('No such desk.');
+      if (desk.kind !== 'it') throw new ForbiddenException("Only the IT desk's agents search the company's devices.");
+      const term = q.trim();
+      const rows = await tx.asset.findMany({
+        where: { organizationId: a.ctx.organizationId, status: { notIn: ['retired', 'lost'] }, ...(term ? { OR: [{ tag: { contains: term, mode: 'insensitive' } }, { name: { contains: term, mode: 'insensitive' } }, { serial: { contains: term, mode: 'insensitive' } }] } : {}) },
+        select: { id: true, name: true, tag: true, category: true },
+        orderBy: [{ tag: 'asc' }],
+        take: 20,
+      });
+      return rows.map(assetOption);
+    });
+  }
+
   /** Picked ids must be this company's live records; returns their names for summaries. */
   private async checkPicks(tx: Tx, org: string, def: FormDef, values: Answers): Promise<Map<string, string>> {
     const ids = pickedIds(def, values);
@@ -564,6 +603,10 @@ export class CatalogService implements OnModuleInit {
     const ccs = ids.cost_centre.length ? await tx.costCentre.findMany({ where: { organizationId: org, id: { in: ids.cost_centre }, archivedAt: null }, select: { id: true, name: true } }) : [];
     if (ccs.length !== new Set(ids.cost_centre).size) throw new BadRequestException('Choose a cost centre from the list.');
     for (const x of [...locs, ...ccs]) names.set(x.id, x.name);
+    // Helpdesk item 2: a picked device must be this company's (shown on the ticket as its name and tag).
+    const assets = ids.asset.length ? await tx.asset.findMany({ where: { organizationId: org, id: { in: ids.asset } }, select: { id: true, name: true, tag: true } }) : [];
+    if (assets.length !== new Set(ids.asset).size) throw new BadRequestException('Choose a device from the list.');
+    for (const x of assets) names.set(x.id, `${x.name} (${x.tag})`);
     return names;
   }
 
@@ -595,7 +638,12 @@ export class CatalogService implements OnModuleInit {
         const form = v.form as unknown as FormDef;
         const { values, errors: e } = checkAnswers(form, line.answers ?? {}, profile);
         if (Object.keys(e).length) errors[i] = e;
-        else lines.push({ item, v, form, values, quantity: line.quantity ?? 1, names: await this.checkPicks(tx, org, form, values) });
+        else {
+          // Helpdesk item 2: a device picked on the form is one assigned now to the person the request is for.
+          const mine = new Set((await assetsOf(tx, org, forPerson, '')).map((x) => x.id));
+          if (pickedIds(form, values).asset.some((id) => !mine.has(id))) errors[i] = Object.fromEntries(form.sections.flatMap((s) => s.fields).filter((f) => f.type === 'asset' && typeof values[f.key] === 'string' && !mine.has(values[f.key] as string)).map((f) => [f.key, 'Choose one of your own devices from the list.']));
+          else lines.push({ item, v, form, values, quantity: line.quantity ?? 1, names: await this.checkPicks(tx, org, form, values) });
+        }
       }
       if (Object.keys(errors).length) throw new BadRequestException({ statusCode: 400, code: 'FORM_ERRORS', message: 'Check the answers in your cart.', errors });
       const byDesk = new Map<string, typeof lines>();
