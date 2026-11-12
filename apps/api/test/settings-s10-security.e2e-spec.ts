@@ -22,7 +22,7 @@ describe('Settings S-10: the integration routes are safe', () => {
   const users: Record<string, string> = {};
   const org: Record<'A' | 'B', string> = { A: '', B: '' };
   let planId = '';
-  const api = (who: string, method: 'get' | 'post' | 'patch' | 'delete', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const api = (who: string, method: 'get' | 'post' | 'patch' | 'put' | 'delete', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const codeOf = (r: request.Response) => (r.body as { code?: string }).code;
   const EVENT = INTEGRATION_EVENT_TYPES[0];
   const HOOK = { type: 'webhook', label: 'Ops hook', targetUrl: 'https://example.com/hooks/SECRET-TOKEN-9876', events: [EVENT] };
@@ -78,6 +78,8 @@ describe('Settings S-10: the integration routes are safe', () => {
       ['delete', '/organizations/integrations/api-key', undefined],
       ['patch', '/organizations/integrations/ai-key', { provider: 'anthropic', apiKey: 'sk-test' }],
       ['post', '/organizations/integrations/connected-apps', HOOK],
+      ['put', '/organizations/sms-config', { smsEnabled: false }],
+      ['put', '/organizations/whatsapp-config', { whatsappEnabled: false }],
     ] as const) {
       const r = await api('fresh', method, path).send(body as object);
       expect([path, r.status, codeOf(r)]).toEqual([path, 403, 'STEP_UP_REQUIRED']);
@@ -127,5 +129,28 @@ describe('Settings S-10: the integration routes are safe', () => {
     expect(body).toMatchObject({ apiKeyConfigured: true, apiKeyPrefix: k.apiKeyPrefix });
     expect(JSON.stringify(body)).not.toContain(k.apiKey);
     await api('admin', 'delete', '/organizations/integrations/api-key').expect(200);
+  });
+
+  it('7.1 SMS: the provider token is never returned after save (a blank keeps it); another company has none', async () => {
+    const cfg = { smsEnabled: true, smsProvider: 'twilio', config: { accountSid: 'AC123', authToken: 'TOKEN-NEVER-BACK-55', from: '+15005550006' } };
+    await api('admin', 'put', '/organizations/sms-config').send(cfg).expect(200);
+    const back = (await api('admin', 'get', '/organizations/sms-config').expect(200)).body;
+    expect(back).toMatchObject({ smsEnabled: true, smsProvider: 'twilio', configured: true });
+    expect(back.config).not.toHaveProperty('authToken');
+    expect(JSON.stringify(back)).not.toContain('TOKEN-NEVER-BACK');
+    await api('admin', 'put', '/organizations/sms-config').send({ ...cfg, config: { accountSid: 'AC123', authToken: '', from: '+15005550007' } }).expect(200);
+    expect((await api('admin', 'get', '/organizations/sms-config').expect(200)).body).toMatchObject({ configured: true, config: { from: '+15005550007' } });
+    expect((await api('adminB', 'get', '/organizations/sms-config').expect(200)).body).toMatchObject({ configured: false });
+  });
+
+  it('7.5: a calendar connection belongs to one person: another person, or another company, never sees it', async () => {
+    await tenantPrisma.forTenant({ organizationId: org.A, isSuperAdmin: false }, (tx) =>
+      tx.calendarConnection.create({ data: { organizationId: org.A, userId: users.admin!, provider: 'google', connectedEmail: 'admin@calendar.test', accessTokenEncrypted: 'x', refreshTokenEncrypted: 'y', tokenExpiresAt: new Date() } as never }),
+    );
+    const mine = (await api('admin', 'get', '/calendar/connections').expect(200)).body as { provider: string; connected: boolean; connectedEmail: string | null }[];
+    expect(mine.find((c) => c.provider === 'google')).toMatchObject({ connected: true, connectedEmail: 'admin@calendar.test' });
+    expect(JSON.stringify(mine)).not.toMatch(/accessToken|refreshToken/);
+    expect((await api('panel', 'get', '/calendar/connections').expect(200)).body.find((c: { provider: string }) => c.provider === 'google')).toMatchObject({ connected: false });
+    expect((await api('adminB', 'get', '/calendar/connections').expect(200)).body.find((c: { provider: string }) => c.provider === 'google')).toMatchObject({ connected: false });
   });
 });

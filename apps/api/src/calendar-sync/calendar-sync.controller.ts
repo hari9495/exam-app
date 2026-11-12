@@ -63,7 +63,8 @@ export class CalendarSyncController {
     @Res() res: Response,
   ): Promise<void> {
     const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
-    const settings = `${frontendUrl}/v2/calendar`;
+    // S-10: the calendar page is Settings › Calendar & chat now (the /v2 page redirects there too).
+    const settings = `${frontendUrl}/yx/settings/integrations/calendar-and-chat`;
     if (error || !code || !state) {
       res.redirect(`${settings}?calendarError=denied`);
       return;

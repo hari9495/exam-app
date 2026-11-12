@@ -134,6 +134,8 @@ export class OrganizationsController {
 
   @Put('sms-config')
   @RequirePermissions('org:manage_settings')
+  @RequireStepUp()
+  @UseGuards(OwnSessionGuard)
   putSmsConfig(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateSmsConfigDto) {
     return this.organizationsService.putSmsConfig(tenant, userId, dto);
   }
@@ -289,6 +291,8 @@ export class OrganizationsController {
 
   @Put('whatsapp-config')
   @RequirePermissions('org:manage_settings')
+  @RequireStepUp()
+  @UseGuards(OwnSessionGuard)
   updateWhatsappConfig(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateWhatsappConfigDto) {
     return this.organizationsService.putWhatsappConfig(tenant, userId, dto);
   }

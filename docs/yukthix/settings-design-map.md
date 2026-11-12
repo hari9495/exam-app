@@ -1021,6 +1021,8 @@ the step-up check. Isolation = how another company is kept out. **Before → aft
 | PATCH integrations/webhook | `org:manage_settings` | older | **before: no → after: yes** | own company id | public https only (already); the response now masked |
 | POST integrations/webhook-secret | `org:manage_settings` | older | **before: no → after: yes** | own company id | shown once; stored encrypted |
 | PATCH integrations/hris-config | `org:manage_settings` | older | **before: no → after: yes** | own company id | auth header encrypted; target URL public https (already); masked when read |
+| GET/PUT organizations/sms-config, GET sms-providers | `org:manage_settings` | older | **PUT before: no → after: yes** | own company id | secret fields never returned (a blank keeps the stored one) |
+| GET/PUT organizations/whatsapp-config, GET whatsapp-providers | `org:manage_settings` | older | **PUT before: no → after: yes** | own company id | as SMS |
 | GET integrations/webhook-deliveries | `org:manage_settings` | older | no (read) | `webhook_deliveries` forced RLS and the company id | none |
 | GET/POST/PATCH/DELETE integrations/connected-apps (+ test, deliveries) | `org:manage_settings` | older | **before: no → after: yes** for add, change and remove | `org_integrations`, `integration_deliveries` forced RLS; **before: another company's id gave a database error (500) → after: 404**; ids must be UUIDs | target URL encrypted and never returned |
 | GET calendar/connections, GET calendar/:provider/connect, DELETE calendar/:provider | signed in only | n/a (personal: one's own calendar) | no (personal) | `calendar_connections` forced RLS and the user's own id | tokens encrypted, never returned |

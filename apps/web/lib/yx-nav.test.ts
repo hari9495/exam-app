@@ -202,7 +202,7 @@ describe('buildNav: Settings', () => {
     expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['All settings', 'Set-up hub', 'Legal entities', 'Locations', 'Structure', 'Countries', 'Translations', 'Company & branding', 'Employee records', 'Set-up hub settings', 'Document types', 'Notifications', 'Policies', 'Help and tips', 'Expense settings', 'Performance settings', 'Custom fields', 'Approvals', 'Access requests', 'Directory & privacy', 'Security rules', 'Onboarding & probation', 'Job changes & transfers', 'Exit & lifecycle policies', 'Employee relations & cases', 'Audit & data retention', 'Approval policies', 'Attendance modes', 'Check-in & devices', 'Shifts & patterns', 'Weekly offs', 'Late & regularisation', 'Leave types', 'Holiday calendars', 'Leave year', 'Projects & timesheets', 'Visitors', 'Payroll policies', 'Payslip settings', 'Tax', 'Bonus & loan rules', 'Contract labour', 'Hiring', 'Staffing desk']);
     // Settings 6.1 Hiring: recruiting, hiring admins and HR read it (the API decides who changes it).
     expect(labels(nav(['ats.settings.manage']), 'settings')).toEqual(['All settings', 'Hiring']);
-    expect(labels(nav(['pipeline:manage']), 'settings')).toEqual(['All settings', 'Hiring']);
+    expect(labels(nav(['pipeline:manage']), 'settings')).toEqual(['All settings', 'Calendar & chat', 'Hiring']); // S-10: a recruiter's own calendar
     expect(labels(nav(['ats.requisition.raise']), 'settings')).not.toContain('Hiring');
     // Visitors slice 1: an employee invites their visitors; reception gets the desk and log; Settings 3.12 for its holders.
     expect(labels(nav([], { employee: true }), 'visitors')).toEqual(['My visitors']);
