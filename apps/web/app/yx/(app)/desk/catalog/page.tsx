@@ -25,7 +25,7 @@ export default function YxDeskCatalogPage() {
       onOpenGuide={(guideId) => apiFetch(`/desk/my/catalog/guides/${id(guideId)}`, {}, token) as Promise<OrderGuideView>}
       onResolveGuide={(guideId, answers) => write(`/my/catalog/guides/${id(guideId)}/resolve`, 'POST', { answers })}
       onCheckout={(input) => write('/my/catalog/checkout', 'POST', input)}
-      onPick={(kind, q) => apiFetch(`/desk/my/pick/${kind}?q=${encodeURIComponent(q)}`, {}, token) as Promise<PickOption[]>}
+      onPick={(kind, q, forPersonId) => apiFetch(`/desk/my/pick/${kind}?q=${encodeURIComponent(q)}${forPersonId ? `&for=${encodeURIComponent(forPersonId)}` : ''}`, {}, token) as Promise<PickOption[]>}
       onOpenRequest={(ticketId) => router.push(`/yx/desk/help/${id(ticketId)}`)}
     />
   );

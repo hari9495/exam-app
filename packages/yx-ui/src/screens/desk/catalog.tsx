@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ExternalLink, ShoppingCart, Trash2 } from 'lucide-react';
 import { Button, IconButton } from '../../components/button';
 import { Badge } from '../../components/display';
@@ -37,7 +37,8 @@ export interface CatalogScreenProps {
   onOpenGuide: (id: string) => Promise<OrderGuideView>;
   onResolveGuide: (id: string, answers: Answers) => Promise<{ id: string; name: string; shortText: string | null; cost: number | null }[]>;
   onCheckout: (input: { forPersonId?: string; items: { itemId: string; quantity: number; answers: Answers }[] }) => Promise<{ requests: { ticketId: string; number: string }[] }>;
-  onPick: (kind: PickKind, q: string) => Promise<PickOption[]>;
+  /** Answer 1802: 'assets' for someone else lists that person's devices (forPersonId). */
+  onPick: (kind: PickKind, q: string, forPersonId?: string) => Promise<PickOption[]>;
   onOpenRequest: (ticketId: string) => void;
 }
 
@@ -53,6 +54,11 @@ export function CatalogScreen(props: CatalogScreenProps) {
   const [forPerson, setForPerson] = useState<string | null>(null);
   const { toast } = useToast();
   const forEarly = useTooEarly(forOther && !forPerson ? [{ fieldId: 'cat-for', message: 'Choose who it is for.' }] : []);
+  // Answer 1802: a device picked for one person is cleared when the request is for someone else.
+  useEffect(() => {
+    const keys = open?.form.sections.flatMap((sec) => sec.fields.filter((f) => f.type === 'asset').map((f) => f.key)) ?? [];
+    if (keys.length) setAnswers((a) => Object.fromEntries(Object.entries(a).filter(([k]) => !keys.includes(k))));
+  }, [forOther, forPerson]); // eslint-disable-line react-hooks/exhaustive-deps
   const [guide, setGuide] = useState<OrderGuideView | null>(null);
   const [guideAnswers, setGuideAnswers] = useState<Answers>({});
   const [suggested, setSuggested] = useState<{ id: string; name: string; shortText: string | null; cost: number | null }[] | null>(null);
@@ -232,7 +238,18 @@ export function CatalogScreen(props: CatalogScreenProps) {
               </ul>
             )}
             <p className="yx-ops-muted">{open.approvals.length ? `Approved by: ${open.approvals.join(', then ')}.` : 'No approval needed.'}</p>
-            <ServiceForm form={open.form} values={answers} onChange={setAnswers} requester={open.profile} lang={lang} errors={errors} onPick={props.onPick} />
+            {/* Answer 1802: an item that asks for a device asks who it is for first, so the device list is theirs. */}
+            {open.form.sections.some((sec) => sec.fields.some((f) => f.type === 'asset')) && (
+              <div className="yx-ops-stack" data-gap="sm">
+                <Segment label="Who is this for" options={[{ value: 'me', label: 'For me' }, { value: 'other', label: 'For someone else' }]} value={forOther ? 'other' : 'me'} onChange={(v) => setForOther(v === 'other')} />
+                {forOther && (
+                  <FormField label="Who it is for" helper="Choose them first: the device list below is theirs.">
+                    <LivePicker kind="people" value={forPerson} onChange={setForPerson} label="Person it is for" onPick={props.onPick} />
+                  </FormField>
+                )}
+              </div>
+            )}
+            <ServiceForm key={forOther ? (forPerson ?? 'other') : 'me'} form={open.form} values={answers} onChange={setAnswers} requester={open.profile} lang={lang} errors={errors} onPick={(kind, q) => props.onPick(kind, q, kind === 'assets' && forOther && forPerson ? forPerson : undefined)} />
             <FormField label="How many" helper="Up to 20.">
               <NumberField value={quantity} onChange={setQuantity} min={1} max={20} />
             </FormField>

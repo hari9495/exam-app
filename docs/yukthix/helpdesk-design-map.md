@@ -608,6 +608,7 @@ File: `packages/yx-ui/src/screens/ops/hlp-15.stories.tsx`. Drawn 12 Nov 2026 (th
 | CatalogItemFailed · The item could not be opened | live | same page |
 | CatalogSent · Request sent (toast with Follow) | live | same page |
 | CatalogForOtherMissing · Send request for someone else with nobody chosen | live | same page |
+| CatalogDeviceForWhom · An item with a device field asks who it is for first | live | Answer 1802: an item whose form has a device field shows "Who is this for" above the form; for someone else, the device picker lists that person's devices (`GET desk/my/pick/assets?for=`, the on-behalf right checked) and a device picked earlier is cleared; the cart's "Who is this for" is the same choice |
 | CatalogEmpty · Nothing to order | live | same page |
 | CatalogLoading · Loading | live | same page |
 | CatalogError · Could not load | live | same page |

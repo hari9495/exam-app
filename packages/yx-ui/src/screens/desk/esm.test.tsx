@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { answersToSend, formProblems, fromServerGroup, resolveForm, toServerGroup, type FormDef } from '../../lib/forms';
@@ -74,6 +74,26 @@ describe('service catalogue (SD-2.03, SD-2.04)', () => {
     await ue.click(screen.getByRole('button', { name: 'Send request' }));
     expect(p.onCheckout).toHaveBeenCalledWith({ items: [{ itemId: 'i1', quantity: 1, answers: { model: 'std' } }] });
     expect(await screen.findByRole('button', { name: 'Follow IT-1020' })).toBeInTheDocument();
+  });
+
+  it('1802: an item with a device field asks who it is for first; the device list is then that person list', async () => {
+    const DEVICE_PAGE: CatalogItemPage = { ...PAGE, id: 'i2', name: 'Laptop repair', form: { sections: [{ id: 's', columns: 1, fields: [{ key: 'device', type: 'asset', label: 'Which device?' }] }], rules: [] } };
+    const p = { ...props(), onOpenItem: vi.fn(async () => DEVICE_PAGE), onPick: vi.fn(async (kind: string) => (kind === 'people' ? [{ id: 'p-ravi', label: 'Ravi Kumar', detail: null }] : [{ id: 'as9', label: 'HP EliteBook (KF-LT-0009)', detail: null }])) };
+    render(<CatalogScreen {...p} />);
+    await ue.click(screen.getByRole('button', { name: 'Open New laptop' }));
+    const dialog = await screen.findByRole('dialog');
+    await ue.click(within(dialog).getByRole('radio', { name: 'For someone else' }));
+    await ue.click(within(dialog).getByRole('combobox', { name: 'Person it is for' }));
+    await ue.click(await screen.findByRole('option', { name: /Ravi Kumar/ }));
+    await waitFor(() => expect(p.onPick).toHaveBeenCalledWith('assets', '', 'p-ravi'));
+  });
+
+  it('1802: an item without a device field has no "Who is this for" on its page', async () => {
+    const p = props();
+    render(<CatalogScreen {...p} />);
+    await ue.click(screen.getByRole('button', { name: 'Open New laptop' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByRole('radiogroup', { name: 'Who is this for' })).toBeNull();
   });
 
   it('Send request for someone else with nobody chosen says so, and sends nothing', async () => {

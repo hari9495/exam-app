@@ -23,6 +23,9 @@ export const CatalogItemFailed: S = { name: 'The item could not be opened', rend
 const toCart = [press('Open New laptop'), pick(/^Model/, /Standard/), press('Add to cart')];
 export const CatalogSent: S = { name: 'Request sent (toast with Follow)', render: () => catalog(), play: play(...toCart, press('Send request')) };
 export const CatalogForOtherMissing: S = { name: 'Send request for someone else with nobody chosen', render: () => catalog(), play: play(...toCart, choose('For someone else'), press('Send request')) };
+// Answer 1802: an item that asks for a device asks who it is for first (the device list is then theirs).
+const DEVICE_PAGE = { ...LAPTOP_PAGE, name: 'Laptop repair', form: { sections: [{ id: 's', columns: 1 as const, fields: [{ key: 'device', type: 'asset' as const, label: 'Which device?' }, { key: 'what', type: 'textarea' as const, label: 'What is wrong?' }] }], rules: [] } };
+export const CatalogDeviceForWhom: S = { name: 'An item with a device field asks who it is for first', render: () => catalog({ onOpenItem: async () => DEVICE_PAGE }), play: play(press('Open New laptop'), choose('For someone else')) };
 export const CatalogEmpty: S = { name: 'Nothing to order', render: () => catalog({ catalogue: { items: [], guides: [] } }) };
 export const CatalogLoading: S = { name: 'Loading', render: () => catalog({ state: 'loading' }) };
 export const CatalogError: S = { name: 'Could not load', render: () => catalog({ state: 'error', onRetry: () => undefined }) };
