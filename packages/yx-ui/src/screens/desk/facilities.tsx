@@ -134,9 +134,9 @@ export function FacilitiesScreen(p: FacilitiesProps) {
                 {r.equipment.map((e) => (
                   <li key={e.id} className="yx-ops-list__item">
                     <span className="yx-ops-list__main">
-                      <button type="button" className="yx-desk-link" onClick={() => open(e.id)}>
+                      <span className="yx-ops-list__title">
                         {e.name} ({e.tag})
-                      </button>
+                      </span>
                       <span className="yx-ops-list__sub">
                         {e.building}
                         {e.area ? ` · ${e.area}` : ''} · {e.ownerTeam}
@@ -144,6 +144,9 @@ export function FacilitiesScreen(p: FacilitiesProps) {
                       </span>
                     </span>
                     {e.status === 'retired' && <Badge tone="neutral">Retired</Badge>}
+                    <Button size="sm" aria-label={`Open ${e.name}`} onClick={() => open(e.id)}>
+                      Open
+                    </Button>
                     {e.canEdit && (
                       <Button size="sm" aria-label={`Edit ${e.name}`} onClick={() => setEdit(e)}>
                         Edit
@@ -353,9 +356,9 @@ function EquipmentDrawer({ page, onClose, onOpenTicket }: { page: EquipmentPageV
                 {page.workOrders.map((t) => (
                   <li key={t.id} className="yx-ops-list__item">
                     <span className="yx-ops-list__main">
-                      <button type="button" className="yx-desk-link" onClick={() => onOpenTicket(t.id)}>
+                      <span className="yx-ops-list__title">
                         {t.number} · {t.subject}
-                      </button>
+                      </span>
                       <span className="yx-ops-list__sub">
                         Raised {when(t.createdAt)}
                         {t.resolvedAt ? ` · solved ${when(t.resolvedAt)}` : ''}
@@ -363,6 +366,9 @@ function EquipmentDrawer({ page, onClose, onOpenTicket }: { page: EquipmentPageV
                       </span>
                     </span>
                     <StatusBadge label="" state={t.systemState} />
+                    <Button size="sm" aria-label={`Open ${t.number}`} onClick={() => onOpenTicket(t.id)}>
+                      Open
+                    </Button>
                   </li>
                 ))}
               </ul>

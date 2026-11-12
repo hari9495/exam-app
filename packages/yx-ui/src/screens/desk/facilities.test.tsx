@@ -59,10 +59,10 @@ describe('buildings and equipment (Helpdesk plan item 4)', () => {
   it('the equipment page shows its maintenance and its work orders; a work order opens the ticket', async () => {
     const onOpenTicket = vi.fn();
     show({ onOpenTicket });
-    await ue.click(screen.getByRole('button', { name: 'Passenger lift (LIFT-1)' }));
+    await ue.click(screen.getByRole('button', { name: 'Open Passenger lift' }));
     const drawer = await screen.findByRole('dialog');
     expect(within(drawer).getByText('Lift monthly service', { selector: '.yx-ops-list__main, .yx-ops-list__main *' })).toBeInTheDocument();
-    await ue.click(within(drawer).getByRole('button', { name: 'FAC-1042 · Lift monthly service' }));
+    await ue.click(within(drawer).getByRole('button', { name: 'Open FAC-1042' }));
     expect(onOpenTicket).toHaveBeenCalledWith('t1');
   });
 
