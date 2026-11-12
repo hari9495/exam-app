@@ -18,8 +18,9 @@ export function monthCost(entries: { employeeId: string; minutes: number }[], ra
   const people = new Set<string>();
   let minutes = 0;
   for (const e of entries) {
-    if (e.minutes <= 0) continue;
-    people.add(e.employeeId);
+    // P-6 (1416): a locked month's correction lands in a later month and may take minutes off (negative).
+    if (!e.minutes) continue;
+    if (e.minutes > 0) people.add(e.employeeId);
     minutes += e.minutes;
     const r = rateFor(e.employeeId);
     if (!r || !r.final) final = false;

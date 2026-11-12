@@ -98,3 +98,6 @@ export { BenchRequestsScreen } from '../projects-billing';
 export type { LiveRequests, LiveResourceRequest, RequestInput, RequestMatches, ResourceRequestsData } from '../resourcing-live';
 // Projects P-5 (answers 1412, 1413, 1419): PRJ-04 cost and margin, live with `live`.
 export { CostingMarginScreen, type LiveCosts, type LiveCostsData } from '../projects';
+// Projects P-6 (answers 1414 to 1416): PRJ-05 billing workbench and PRJ-06 timesheet correction, live with `live`.
+export { BillingWorkbenchScreen, TimesheetCorrectionScreen } from '../projects-billing';
+export type { LiveBilling, LiveBillingData, LiveBillingDraft, LiveCorrection, LiveCorrectionFacts, LiveCorrectionLine, LiveWipRow } from '../billing-live';

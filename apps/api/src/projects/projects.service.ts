@@ -32,7 +32,7 @@ const hoursOf = (minutes: number) => Math.round((minutes / 60) * 100) / 100;
 export const BURN_WARN = 'projects.burn.warn_pct';
 export const BURN_OVER = 'projects.burn.over_pct';
 /** Settings 3.11 Projects & timesheets: the company settings P-1 puts behind the designed page. */
-export const PROJECT_SETTING_KEYS = ['projects.enabled', 'projects.booking.allocated_only', BURN_WARN, BURN_OVER, 'timesheet.tool_suggestions', 'projects.default_billing_model', 'projects.bulk.within_allocation', 'projects.utilisation.target_pct', 'projects.small_team.limit', 'projects.cost.min_people', 'projects.expenses.enabled'] as const;
+export const PROJECT_SETTING_KEYS = ['projects.enabled', 'projects.booking.allocated_only', BURN_WARN, BURN_OVER, 'timesheet.tool_suggestions', 'projects.default_billing_model', 'projects.bulk.within_allocation', 'projects.utilisation.target_pct', 'projects.small_team.limit', 'projects.cost.min_people', 'projects.expenses.enabled', 'projects.billing.am_approval', 'projects.correction.pay_recovery'] as const;
 
 /** Answer 1405: the burn level reached (0, the warning level or the over level) for hours used against the budget. */
 export function burnLevel(usedHours: number, budgetHours: number | null, warn: number, over: number): number {
@@ -153,7 +153,7 @@ export class ProjectsService {
       clientAcceptsMilestones: p.clientAcceptsMilestones,
       clientApprovesHours: p.clientApprovesHours,
       // Answer 1412: fee and cost only for Projects finance.
-      ...(w.finance ? { fee: num(p.fee), budgetCost: num(p.budgetCost) } : {}),
+      ...(w.finance ? { fee: num(p.fee), budgetCost: num(p.budgetCost), billRate: p.billRatePaise == null ? null : Number(p.billRatePaise) / 100 } : {}),
       version: p.version,
       mine: p.managerUserId === w.userId,
     };
@@ -264,7 +264,7 @@ export class ProjectsService {
   async create(ctx: TenantContext, user: ScopeUser, dto: ProjectInputDto) {
     const w = await this.who(user);
     if (!w.manage) throw new ForbiddenException('You need the key to manage projects.');
-    if (!w.finance && (dto.fee != null || dto.budgetCost != null)) throw new ForbiddenException('Only Projects finance sets the fee and the cost budget.');
+    if (!w.finance && (dto.fee != null || dto.budgetCost != null || dto.billRate != null)) throw new ForbiddenException('Only Projects finance sets the fee, the bill rate and the cost budget.');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       await this.needOn(tx, c);
       const org = c.organizationId;
@@ -288,6 +288,7 @@ export class ProjectsService {
           budgetHours: dto.budgetHours ?? null,
           budgetCost: dto.budgetCost ?? null,
           fee: dto.fee ?? null,
+          billRatePaise: dto.billRate == null ? null : BigInt(Math.round(dto.billRate * 100)),
           clientAcceptsMilestones: dto.clientAcceptsMilestones ?? false,
           clientApprovesHours: dto.clientApprovesHours ?? false,
           createdBy: c.userId ?? null,
@@ -310,6 +311,7 @@ export class ProjectsService {
       if (p.version !== dto.version) throw new ConflictException('Someone changed this project. Reload to see the latest.');
       if (dto.code !== p.code) throw new BadRequestException('A project keeps its code.');
       if (!w.finance && ((dto.fee ?? null) !== num(p.fee) || (dto.budgetCost ?? null) !== num(p.budgetCost)) && (dto.fee !== undefined || dto.budgetCost !== undefined)) throw new ForbiddenException('Only Projects finance sets the fee and the cost budget.');
+      if (!w.finance && dto.billRate !== undefined && (dto.billRate == null ? null : BigInt(Math.round(dto.billRate * 100))) !== p.billRatePaise) throw new ForbiddenException('Only Projects finance sets the bill rate.');
       await this.checkPeople(tx, org, dto);
       const data = {
         name: dto.name,
@@ -320,7 +322,7 @@ export class ProjectsService {
         startOn: dto.startOn ? asDate(dto.startOn) : null,
         endOn: dto.endOn ? asDate(dto.endOn) : null,
         budgetHours: dto.budgetHours ?? null,
-        ...(w.finance ? { budgetCost: dto.budgetCost ?? null, fee: dto.fee ?? null } : {}),
+        ...(w.finance ? { budgetCost: dto.budgetCost ?? null, fee: dto.fee ?? null, ...(dto.billRate !== undefined ? { billRatePaise: dto.billRate == null ? null : BigInt(Math.round(dto.billRate * 100)) } : {}) } : {}),
         clientAcceptsMilestones: dto.clientAcceptsMilestones ?? p.clientAcceptsMilestones,
         clientApprovesHours: dto.clientApprovesHours ?? p.clientApprovesHours,
         version: { increment: 1 },
@@ -329,7 +331,7 @@ export class ProjectsService {
       await tx.timesheetProject.update({ where: { id }, data });
       await audit(tx, c, 'projects.project.changed', 'timesheet_project', id, {
         from: { name: p.name, managerUserId: p.managerUserId, clientId: p.clientId, billingModel: p.billingModel, budgetHours: num(p.budgetHours), ...(w.finance ? { fee: num(p.fee), budgetCost: num(p.budgetCost) } : {}) },
-        to: { name: dto.name, managerUserId: dto.managerUserId ?? null, clientId: dto.clientId ?? null, billingModel: dto.billingModel, budgetHours: dto.budgetHours ?? null, ...(w.finance ? { fee: dto.fee ?? null, budgetCost: dto.budgetCost ?? null } : {}) },
+        to: { name: dto.name, managerUserId: dto.managerUserId ?? null, clientId: dto.clientId ?? null, billingModel: dto.billingModel, budgetHours: dto.budgetHours ?? null, ...(w.finance ? { fee: dto.fee ?? null, budgetCost: dto.budgetCost ?? null, billRate: dto.billRate ?? null } : {}) },
       });
       return { id, version: p.version + 1 };
     });

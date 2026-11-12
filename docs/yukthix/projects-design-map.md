@@ -91,10 +91,10 @@ named in the note) · **wire design** (the API exists and the screen is not wire
 |---|---|---|---|---|---|---|---|
 | A. Projects and timesheets (PRJ-01, PRJ-02, PRJ-08) | 3 | 62 | 1 | 0 | 1 | 1 | 65 |
 | B. Capacity and bench (PRJ-03, PRJ-07) | 2 | 20 | 0 | 0 | 0 | 0 | 20 |
-| C. Cost and billing (PRJ-04 to PRJ-06) | 3 | 9 | 5 | 0 | 6 | 0 | 20 |
-| **All A-C** | **8** | **91** | **6** | **0** | **7** | **1** | **105** |
+| C. Cost and billing (PRJ-04 to PRJ-06) | 3 | 32 | 1 | 0 | 0 | 0 | 33 |
+| **All A-C** | **8** | **114** | **2** | **0** | **1** | **1** | **118** |
 
-Counted by script on 12 Nov 2026 on `docs/yukthix-projects-map` (the script is in the appendix; it prints "ok"). Recounted on 12 Nov 2026 on `feat/yukthix-projects-p1` after P-1: PRJ-01 has 30 stories (16 live-state stories added), 68 in all. Recounted after P-3 on `feat/yukthix-projects-p3`: PRJ-08 has 15 (10 live-state stories added), 78 in all. After the walk fixes and P-2 (`feat/yukthix-projects-p2`): PRJ-02 has 12 (5 live-state stories added), 86 in all. After P-4 (`feat/yukthix-projects-p4`): PRJ-03 8, PRJ-07 12, PRJ-01 and PRJ-02 one more each, 98 in all. After P-5 (`feat/yukthix-projects-p5`): PRJ-04 9, PRJ-01 three more, 105 in all. There
+Counted by script on 12 Nov 2026 on `docs/yukthix-projects-map` (the script is in the appendix; it prints "ok"). Recounted on 12 Nov 2026 on `feat/yukthix-projects-p1` after P-1: PRJ-01 has 30 stories (16 live-state stories added), 68 in all. Recounted after P-3 on `feat/yukthix-projects-p3`: PRJ-08 has 15 (10 live-state stories added), 78 in all. After the walk fixes and P-2 (`feat/yukthix-projects-p2`): PRJ-02 has 12 (5 live-state stories added), 86 in all. After P-4 (`feat/yukthix-projects-p4`): PRJ-03 8, PRJ-07 12, PRJ-01 and PRJ-02 one more each, 98 in all. After P-5 (`feat/yukthix-projects-p5`): PRJ-04 9, PRJ-01 three more, 105 in all. After P-6 (`feat/yukthix-projects-p6`): PRJ-05 13 and PRJ-06 11 (13 live-state stories added), 118 in all. There
 are 52 stories in 8 files whose title starts `Screens/Projects/`: `packages/yx-ui/src/screens/hiring/prj-01-projects`
 (14), `prj-02-timesheet-approvals` (7), `prj-03-capacity` (4), `prj-04-costing` (5), `prj-05-billing-workbench` (6),
 `prj-06-timesheet-correction` (5), `prj-07-bench-requests` (6), `prj-08-mapping-rules` (5), all `.stories.tsx`. The
@@ -135,7 +135,7 @@ screens are in `screens/hiring/projects.tsx` and `projects-billing.tsx`. One sto
 | PmList · PM · my projects | live | P-1: a project manager without a key sees only the projects they manage (`GET /projects`) |
 | HrList · HR · no fee or margin | live | P-1: without Projects finance the list has no fee, cost or margin (answer 1412) |
 | PmOverview · Workspace · PM overview, burn alert | live | P-1: `/yx/projects/[id]` hours budget bar and the burn alert at the company levels (1405); alerts to the PM and Projects finance by the hourly sweep |
-| FinanceOverview · Workspace · finance overview with margin | live | P-5 (1412, 1413): cost to date from the nightly job against the cost budget, provisional until payroll is final; margin is on PRJ-04 (revenue from accepted fixed-fee milestones until billing, question 1621) |
+| FinanceOverview · Workspace · finance overview with margin | live | P-5 (1412, 1413): cost to date from the nightly job against the cost budget, provisional until payroll is final; margin is on PRJ-04 (P-6, 1621: revenue is billed project revenue for every billing model) |
 | Team · Workspace · team and allocations | live | P-1: allocations add, change and end; only allocated people book time (1404) |
 | FixedFeeMilestones · Workspace · fixed fee, tasks and milestones (over budget) | live | P-1: tasks (Time activities) with used hours; milestones on fixed-fee projects, client acceptance per project (1420) |
 | Timesheets · Workspace · timesheets with attendance mismatch | live | P-4 (answer 1541): `GET /projects/:id/timesheets`, each allocated person's week on the project against the allocation, their line decisions, and the whole week against attendance (an hour or more apart is flagged; pay never changes) |
@@ -245,7 +245,7 @@ screens are in `screens/hiring/projects.tsx` and `projects-billing.tsx`. One sto
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Finance · Finance · provisional September | live | P-5: `/yx/projects/costs` (`CostingMarginScreen` live, `GET /projects/costs`): project totals from the nightly job (`project-cost`, payroll access; no session reads a rate), provisional on the last final rate until the month's payroll is final (1413), with approved project expenses (1419); revenue and margin for Projects finance only. The period choices are months; quarters and the cost journal export are not built (question 1622) |
+| Finance · Finance · provisional September | live | P-5: `/yx/projects/costs` (`CostingMarginScreen` live, `GET /projects/costs`): project totals from the nightly job (`project-cost`, payroll access; no session reads a rate), provisional on the last final rate until the month's payroll is final (1413), with approved project expenses (1419); revenue and margin for Projects finance only. P-6 (1621, 1622): revenue is billed revenue for every model (issued project invoice lines less credit notes, by invoice date); quarters (`?quarter=`) and the month's project cost journal (`GET /projects/costs/journal`, CSV, audited; "Export project cost journal") are built |
 | Pm · PM · one-person project cost hidden | live | P-5 (1412): a project's manager sees totals for their projects; a month with fewer people than `projects.cost.min_people` (default 2) shows "Hidden"; checked in the API |
 | Final · Finance · August final, NRP-WEB restated | live | P-5 (1413): when the month's payroll is final the job recomputes it, keeps the provisional total as "restated from" and audits it once |
 | Empty · Empty | live | P-5 live state |
@@ -259,22 +259,35 @@ screens are in `screens/hiring/projects.tsx` and `projects-billing.tsx`. One sto
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Wip · Finance · WIP by client, held items | design only, feature not built | no project WIP (hours, milestones, retainers). The staffing equivalent is `CreateInvoicesSheet` from client-approved placement hours |
-| Drafts · Draft invoices · CGST/SGST and IGST | live (gap) | staffing drafts split CGST/SGST or IGST by supplier state and place of supply (`billing-rules.ts gstSplit`, `billing.service.ts draft`). Gap: from placement hours only, not project WIP |
-| Approve · Approve and issue · e-invoice window | live (gap) | **duplicate:** staffing issue (`issue()`, next number of the series, `staffing.einvoice.applies`) and the HIR-31 window (rule `GST.EINVOICE_WINDOW`). Gaps: one step (finance issues), the drawn account manager then finance approval is not built (question 1415); the IRP is not connected |
+| Wip · Finance · WIP by client, held items | live | P-6 (1414): `/yx/projects/billing` (`BillingWorkbenchScreen` live, `GET /projects/billing`): the month's unbilled project work for Projects finance: time-and-material hours at the project's bill rate (one row per person and project), fixed-fee milestones, the month's retainer, re-billed expenses (P-5); held items say why (client approval, client acceptance, no rate, fee or client) |
+| Drafts · Draft invoices · CGST/SGST and IGST | live | P-6 (1414): `POST /projects/billing/drafts`: one staffing invoice per client (the one invoice engine: series, GST split by supplier state and place of supply), each line naming its project; `project_billings` records each item once (unique source), so nothing is billed twice; a deleted draft frees its work |
+| Approve · Approve and issue · e-invoice window | live | P-6 (1415): the account manager approves before finance issues when the company switched it on (`projects.billing.am_approval`, default off); finance issues through the staffing engine (`issueIn`: next number, e-invoice state); the staffing desk's own Issue is held the same way |
 | OldDraft · Approve · draft dated 27 Aug, IRN blocked | live (gap) | live drafts take their date when issued, so an old draft cannot block; past the window an issued invoice is cancelled and reissued (`reissue()`). The drawn "redate before issue" warning is not built |
-| Issued · Issued | live (gap) | **duplicate:** issued invoices show in `/yx/staffing/invoices` and the client portal, with PDF and accounting export; the drawn "Issued" summary of the run is not built |
-| Empty · Empty · nothing to bill | design only, feature not built | as Wip |
+| Issued · Issued | live | P-6: the issued run (tiles per invoice) with "Open invoices" to Staffing desk › Invoices, the one invoice list; the PDF, client portal and Tally/Zoho export are the staffing engine's |
+| Empty · Empty · nothing to bill | live | P-6 live state |
+| LiveWip · Live · finance, unbilled work with held items | live | P-6 live state |
+| LiveDrafts · Live · drafts, CGST/SGST and IGST | live | P-6 live state |
+| LiveApprove · Live · account manager approval on, one waiting | live | P-6 live state (1415) |
+| LiveApprover · Live · account manager approves | live | P-6 live state (1415): an account manager without Projects finance sees only the drafts |
+| LiveIssued · Live · issued | live | P-6 live state |
+| LiveEmpty · Live · nothing to bill | live | P-6 live state |
+| LiveNoAccess · Live · no access | live | P-6 live state |
 
 #### PRJ-06 · Timesheet correction and credit note
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| CreditWithRecovery · PM · down 8 h, credit note and pay recovery | design only, feature not built | approved weeks cannot change (`timesheet.service.ts`: "approved and can no longer change"); no pay recovery |
-| CreditNoRecovery · Finance · credit note, policy none | live (gap) | finance raises a credit note by amount on the invoice record (`creditNote()`, never an edit). Gap: the hours themselves are not corrected and the amount is typed, not worked out from the hours |
-| Supplementary · Up 4 h · supplementary invoice | design only, feature not built | no supplementary invoice from corrected hours |
-| Locked · Period locked · adjustment line | design only, feature not built | locked months are enforced (P08 `lockedDates`), but no adjustment line in an open period |
-| Review · Review documents | design only, feature not built | as CreditWithRecovery |
+| CreditWithRecovery · PM · down 8 h, credit note and pay recovery | live | P-6 (1416): `/yx/projects/billing/correct` (`TimesheetCorrectionScreen` live, `POST /projects/billing/lines/:id/correct`): fewer billed hours make a credit note against the invoice (the staffing engine's `credit()`, never more than is left), worked out from the hours at the billed rate; pay recovery is a setting (`projects.correction.pay_recovery`, default none), recorded in hours (no rate leaves payroll). Projects finance corrects (question 1706) |
+| CreditNoRecovery · Finance · credit note, policy none | live | P-6 (1416): the same, with no recovery |
+| Supplementary · Up 4 h · supplementary invoice | live | P-6 (1416): more billed hours make a supplementary draft on the same series and client, in the workbench to issue |
+| Locked · Period locked · adjustment line | live | P-6 (1416): a week in a frozen or locked month (`lockedDates`) is never changed: the correction is an adjustment counted in the current month by the cost job; an unbilled line bills at the corrected hours |
+| Review · Review documents | live | P-6: before and after, the document, pay recovery, audit; the employee is told |
+| LivePick · Live · choose the line | live | P-6 live state: a time-and-material project, a month, its approved lines with what was billed |
+| LiveCredit · Live · down 8 h, credit note | live | P-6 live state |
+| LiveRecovery · Live · credit note and pay recovery | live | P-6 live state |
+| LiveSupplementary · Live · up 4 h, supplementary invoice | live | P-6 live state |
+| LiveLocked · Live · month locked, adjustment | live | P-6 live state |
+| LiveNoAccess · Live · no access | live | P-6 live state |
 
 ## 4. What can be reused, and what is missing
 
@@ -540,4 +553,33 @@ console.log('ok');
       a project with a client. *Suggested: keep; limit it to people allocated to the project if you prefer.*
 1626. **Cost burn alerts.** Cost (people and expenses, all months) against the cost budget at the same 80% and 100%
       levels as hours, to Projects finance, and to the project's manager only when the latest month has enough people.
+      *Suggested: keep.*
+
+## P-6 built (12 Nov 2026): questions for the founder
+
+1701. **Which work a run shows.** Hours by their week's Monday, expenses by the day they were spent, the month's
+      retainer; an accepted milestone shows in every month until it is billed. *Suggested: keep.*
+1702. **Invoice lines.** One invoice per client per run; one line per person and project for hours, one per milestone,
+      retainer month and expense. *Suggested: keep; one invoice per project only if a client asks.*
+1703. **Retainers.** The project's fee is the monthly retainer, billed for each month the project runs (start to end),
+      a part month in full. *Suggested: keep; pro-rate part months if asked.*
+1704. **Revenue for margin (1621).** Billed revenue: issued project invoice lines less their credit notes, in the month
+      of the invoice date; unbilled work is not revenue yet. *Suggested: keep; show unbilled work beside it later if
+      wanted.*
+1705. **Who approves (1415).** Anyone with the Staffing desk manage key approves any project draft (clients have no
+      named account manager yet); they see only the drafts. *Suggested: keep until clients have a named account
+      manager.*
+1706. **Who corrects.** Only Projects finance (the drawn PM persona asks finance). *Suggested: keep.*
+1707. **Pay recovery.** With "In the next payroll" the correction records the hours to recover and tells the
+      employee; payroll does not deduct it yet (a person's rate stays in payroll). *Suggested: payroll reads it as a
+      recovery input in its next slice.*
+1708. **Time on a draft invoice** cannot be corrected: delete the draft (its work comes back) or issue it first.
+      *Suggested: keep.*
+1709. **The cost journal (1622).** A monthly CSV of project totals (people cost against payroll cost clearing,
+      expenses against employee expenses clearing, the project as cost centre), its own download on PRJ-04, not inside
+      the staffing Tally/Zoho export (that one is per invoice series). *Suggested: keep; account names as settings if
+      your accountant asks.*
+1710. **Bill rate.** One hourly rate per time-and-material project, set by Projects finance in the project drawer.
+      *Suggested: keep; a rate per role when a client needs it.*
+1711. **The menu.** Billing workbench shows to Projects finance and to account managers who can open Projects.
       *Suggested: keep.*

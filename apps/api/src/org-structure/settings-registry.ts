@@ -317,6 +317,10 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'projects.cost.min_people': { label: 'Projects: show cost to the project manager only for months with at least this many people', scopes: ['tenant'], dated: false, values: ['1', '2', '3', '4', '5'], default: '2' },
   // Answer 1419: expense lines may name a project (and whether it is re-billed to the client).
   'projects.expenses.enabled': { label: 'Projects: expense lines can name a project', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
+  // Answer 1415: an account manager approves a project invoice before finance issues it (off by default, as today).
+  'projects.billing.am_approval': { label: 'Projects: the account manager approves project invoices before finance issues them', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
+  // Answer 1416: recover pay from the employee when invoiced hours are corrected down (none by default).
+  'projects.correction.pay_recovery': { label: 'Projects: pay recovery when invoiced hours are corrected down', scopes: ['tenant'], dated: false, values: ['none', 'next_payroll'], default: 'none' },
   'projects.bulk.within_allocation': { label: 'Projects: bulk approve only hours within the allocation', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'projects.burn.warn_pct': { label: 'Projects: first burn alert when a budget reaches (%)', scopes: ['tenant'], dated: false, values: ['50', '60', '70', '75', '80', '85', '90'], default: '80' },
   // Answer 1444: the billing model a new project starts with (a client is needed only for a billable model).

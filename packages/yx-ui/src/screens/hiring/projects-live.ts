@@ -32,6 +32,8 @@ export interface LiveProjectRow {
   /** Projects finance only (answer 1412). */
   fee?: number | null;
   budgetCost?: number | null;
+  /** P-6 (1621): the time-and-material bill rate per hour (Projects finance only). */
+  billRate?: number | null;
   version: number;
   mine: boolean;
 }
@@ -94,6 +96,7 @@ export interface ProjectInput {
   budgetHours: number | null;
   budgetCost?: number | null;
   fee?: number | null;
+  billRate?: number | null;
   clientAcceptsMilestones: boolean;
   clientApprovesHours?: boolean;
 }

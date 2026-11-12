@@ -6171,6 +6171,8 @@ model TimesheetProject {
   clientApprovesHours     Boolean   @default(false) @map("client_approves_hours")
   /// Answer 1445: the cost burn level already alerted (0, the warning level or the over level).
   costAlertedPct          Int       @default(0) @map("cost_alerted_pct") @db.SmallInt
+  /// Projects P-6 (1621): the time-and-material bill rate per hour, in paise (Projects finance).
+  billRatePaise           BigInt?   @map("bill_rate_paise")
   burnAlertedPct          Int       @default(0) @map("burn_alerted_pct") @db.SmallInt
   closedAt                DateTime? @map("closed_at") @db.Timestamptz(3)
   version                 Int       @default(1)
@@ -6209,6 +6211,47 @@ model ProjectTask {
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("project_tasks")
+}
+
+/// Projects P-6 (PRJ-06, answer 1416): a correction of approved (often invoiced) time, with its document.
+model ProjectCorrection {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  projectId       String   @map("project_id") @db.Uuid
+  employeeId      String   @map("employee_id") @db.Uuid
+  lineId          String   @map("line_id") @db.Uuid
+  beforeMinutes   Int      @map("before_minutes")
+  afterMinutes    Int      @map("after_minutes")
+  /// The month was locked: the line stays and this is an adjustment counted in the effective month.
+  adjustment      Boolean  @default(false)
+  effectiveMonth  DateTime @map("effective_month") @db.Date
+  reason          String   @db.VarChar(300)
+  documentId      String?  @map("document_id") @db.Uuid
+  documentKind    String?  @map("document_kind") @db.VarChar(14)
+  recoveryMinutes Int      @default(0) @map("recovery_minutes")
+  createdBy       String?  @map("created_by") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, lineId], map: "project_corrections_line_idx")
+  @@map("project_corrections")
+}
+
+/// Projects P-6 (1414): which unbilled item went on which invoice, once (never billed twice).
+model ProjectBilling {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  projectId      String   @map("project_id") @db.Uuid
+  sourceType     String   @map("source_type") @db.VarChar(10)
+  sourceId       String   @map("source_id") @db.VarChar(80)
+  invoiceId      String   @map("invoice_id") @db.Uuid
+  minutes        Int?
+  ratePaise      BigInt?  @map("rate_paise")
+  amountPaise    BigInt   @map("amount_paise")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, sourceType, sourceId], map: "project_billings_source_key")
+  @@index([organizationId, invoiceId], map: "project_billings_invoice_idx")
+  @@map("project_billings")
 }
 
 /// Projects P-5 (PRJ-04, answers 1412, 1413): a project's cost for one month, totals only (no person's rate), from the nightly job.
@@ -13077,6 +13120,9 @@ model StaffingInvoice {
   issuedBy       String?               @map("issued_by") @db.Uuid
   issuedAt       DateTime?             @map("issued_at") @db.Timestamptz(3)
   createdBy      String?               @map("created_by") @db.Uuid
+  /// Projects P-6 (1415): the account manager's approval before finance issues (when the company asks for it).
+  amApprovedBy   String?               @map("am_approved_by") @db.Uuid
+  amApprovedAt   DateTime?             @map("am_approved_at") @db.Timestamptz(3)
   version        Int                   @default(1)
   createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
   lines          StaffingInvoiceLine[]
@@ -13090,6 +13136,8 @@ model StaffingInvoiceLine {
   organizationId String          @map("organization_id") @db.Uuid
   invoiceId      String          @map("invoice_id") @db.Uuid
   placementId    String?         @map("placement_id") @db.Uuid
+  /// Projects P-6 (1414): the project a line bills.
+  projectId      String?         @map("project_id") @db.Uuid
   description    String          @db.VarChar(300)
   qtyCenti       Int             @map("qty_centi")
   ratePaise      BigInt          @map("rate_paise")

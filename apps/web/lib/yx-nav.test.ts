@@ -420,3 +420,13 @@ describe('buildNav: Costing & margin (P-5, PRJ-04)', () => {
     expect(labels(nav(['projects.finance']), 'projects')).not.toContain('Costing & margin');
   });
 });
+
+describe('buildNav: Billing workbench (P-6, PRJ-05)', () => {
+  it('for Projects finance and account managers once Projects is on; never otherwise', () => {
+    expect(labels(nav(['projects.finance'], { projects: true }), 'projects')).toContain('Billing workbench');
+    expect(labels(nav(['ats.staffing.manage'], { projects: true }), 'projects')).toContain('Billing workbench');
+    expect(labels(nav(['projects.manage'], { projects: true }), 'projects')).not.toContain('Billing workbench');
+    expect(labels(nav(['projects.finance']), 'projects')).not.toContain('Billing workbench');
+    expect(areas(nav(['projects.finance'], { projects: true, support: true }))).not.toContain('projects');
+  });
+});

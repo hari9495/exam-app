@@ -9,6 +9,8 @@ import { escapeHtml } from '../notifications/notification-email-render';
 import { withPayScope } from '../payroll/pay-access';
 import { lineApproved } from '../time/line-rules';
 import { costShown, marginPct, monthCost, restatedFrom, type RateOf } from './cost';
+import { quarterMonths } from './billing';
+import { toCsv } from '../performance/calibration-rules';
 import { BURN_OVER, BURN_WARN, burnLevel, ProjectsService } from './projects.service';
 
 // Projects P-5 (PRJ-04, founder answers 1412, 1413, 1419, 1445). A nightly job with payroll access works out each
@@ -73,6 +75,12 @@ export class ProjectCostService {
             minutes.set(l.projectId, per);
           });
         }
+      }
+      // P-6 (1416): corrections of a locked month count in the month they were made (an adjustment).
+      for (const a of await tx.projectCorrection.findMany({ where: { organizationId: org, adjustment: true, effectiveMonth: asDate(m) } })) {
+        const per = minutes.get(a.projectId) ?? new Map<string, number>();
+        per.set(a.employeeId, (per.get(a.employeeId) ?? 0) + a.afterMinutes - a.beforeMinutes);
+        minutes.set(a.projectId, per);
       }
       const people = [...new Set([...minutes.values()].flatMap((x) => [...x.keys()]))];
       // The only place a person's rate is read: inside the job, with the pay guard opened; it never leaves this function.
@@ -172,31 +180,54 @@ export class ProjectCostService {
     return { userId: user.userId!, finance: has(v, 'projects.finance') };
   }
 
-  /** Revenue a month: fixed-fee milestones accepted (or invoiced) in it. T&M and retainer revenue come with billing (P-6). */
-  private async revenue(tx: Tx, org: string, m: string, projectIds: string[]) {
-    const end = plus(nextMonth(m), -1);
-    const ps = await tx.timesheetProject.findMany({ where: { organizationId: org, id: { in: projectIds }, billingModel: 'fixed_fee', fee: { not: null } }, select: { id: true, fee: true } });
-    const ms = await tx.projectMilestone.findMany({ where: { organizationId: org, projectId: { in: ps.map((p) => p.id) }, status: { in: ['accepted', 'invoiced'] }, completedAt: { gte: asDate(m), lt: asDate(plus(end, 1)) } }, select: { projectId: true, pct: true } });
-    return new Map(ps.map((p) => [p.id, Math.round(ms.filter((x) => x.projectId === p.id).reduce((t, x) => t + Number(x.pct.toString()), 0) * paiseOf(p.fee) / 100)]));
+  /**
+   * Revenue over months (P-6, answer 1621): every billing model's billed revenue, the issued project invoice lines
+   * (taxable value) dated in the period, less credit notes.
+   */
+  private async revenue(tx: Tx, org: string, months: string[], projectIds: string[]) {
+    const from = months[0]!;
+    const end = plus(nextMonth(months[months.length - 1]!), -1);
+    const rows = projectIds.length
+      ? await tx.$queryRaw<{ project_id: string; total: string }[]>`
+      SELECT l.project_id::text, sum(CASE WHEN i.kind = 'credit_note' THEN -l.amount_paise ELSE l.amount_paise END)::text AS total
+      FROM staffing_invoice_lines l JOIN staffing_invoices i ON i.organization_id = l.organization_id AND i.id = l.invoice_id
+      WHERE l.organization_id = ${org}::uuid AND l.project_id = ANY(${projectIds}::uuid[]) AND i.status = 'issued'
+        AND i.invoice_date BETWEEN ${from}::date AND ${end}::date
+      GROUP BY 1`
+      : [];
+    return new Map(rows.map((r) => [r.project_id, Number(r.total)]));
+  }
+
+  /** The period asked for: a month (YYYY-MM, default last month) or a quarter (YYYY-Qn, answer 1622). */
+  private period(monthIn?: string, quarterIn?: string) {
+    if (quarterIn) return { label: quarterIn, months: quarterMonths(quarterIn) };
+    const m = monthStart(monthIn ?? prevMonth(monthStart(todayIst())));
+    return { label: m.slice(0, 7), months: [m] };
   }
 
   /** PRJ-04: a month's projects. Projects finance: everything; a project's manager: their projects' totals only. */
-  async month(ctx: TenantContext, user: ScopeUser, monthIn?: string) {
+  async month(ctx: TenantContext, user: ScopeUser, monthIn?: string, quarterIn?: string) {
     const w = await this.who(user);
+    const period = this.period(monthIn, quarterIn);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       if (!(await ProjectsService.on(tx, c))) throw new ForbiddenException({ statusCode: 403, code: 'PROJECTS_OFF', message: 'Projects is switched off for your company.' });
       const org = c.organizationId;
       const managed = (await tx.timesheetProject.findMany({ where: { organizationId: org, managerUserId: w.userId }, select: { id: true } })).map((p) => p.id);
       if (!w.finance && !managed.length) throw new ForbiddenException('You do not have access to project cost.');
-      const m = monthStart(monthIn ?? prevMonth(monthStart(todayIst())));
       const minPeople = Number(await settingFor(tx, c, 'projects.cost.min_people', { legalEntityId: '' }));
-      const rows = await tx.projectCost.findMany({ where: { organizationId: org, month: asDate(m), ...(w.finance ? {} : { projectId: { in: managed } }) } });
+      const raw = await tx.projectCost.findMany({ where: { organizationId: org, month: { in: period.months.map(asDate) }, ...(w.finance ? {} : { projectId: { in: managed } }) } });
+      // A quarter adds its months per project (people: the largest month; provisional if any month is).
+      const rows = [...new Set(raw.map((r) => r.projectId))].map((pid) => {
+        const rs = raw.filter((r) => r.projectId === pid);
+        const sum = (k: 'costPaise' | 'expensesPaise' | 'rebillPaise') => rs.reduce((t, r) => t + r[k], 0n);
+        return { projectId: pid, minutes: rs.reduce((t, r) => t + r.minutes, 0), people: Math.max(...rs.map((r) => r.people)), costPaise: sum('costPaise'), expensesPaise: sum('expensesPaise'), rebillPaise: sum('rebillPaise'), basis: rs.some((r) => r.basis === 'provisional') ? 'provisional' : 'final', restatedFromPaise: rs.length === 1 ? rs[0]!.restatedFromPaise : null };
+      });
       const projects = await tx.timesheetProject.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.projectId) } }, select: { id: true, code: true, name: true, clientId: true, managerUserId: true, fee: true } });
       const clients = await tx.staffingClient.findMany({ where: { organizationId: org, id: { in: projects.map((p) => p.clientId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } });
       const managers = await tx.user.findMany({ where: { organizationId: org, id: { in: projects.map((p) => p.managerUserId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true, email: true } });
-      const revenue = w.finance ? await this.revenue(tx, org, m, projects.map((p) => p.id)) : new Map<string, number>();
+      const revenue = w.finance ? await this.revenue(tx, org, period.months, projects.map((p) => p.id)) : new Map<string, number>();
       return {
-        month: m.slice(0, 7),
+        month: period.label,
         finance: w.finance,
         minPeople,
         rows: rows
@@ -249,6 +280,34 @@ export class ProjectCostService {
         total: rupees(total),
         months: visible.map((r) => ({ month: iso(r.month)!.slice(0, 7), cost: rupees(r.costPaise), expenses: rupees(r.expensesPaise), basis: r.basis, restatedFrom: w.finance && r.restatedFromPaise != null ? rupees(r.restatedFromPaise) : null })),
       };
+    });
+  }
+
+  /**
+   * Answer 1622: the project cost journal for a month (Projects finance), for the accounting system: people cost moved
+   * from payroll to each project, and project expenses from employee expenses, with the project as the cost centre.
+   * Totals only (never a person's rate). Audited, like every finance export.
+   */
+  async journal(ctx: TenantContext, user: ScopeUser, monthIn: string) {
+    const w = await this.who(user);
+    if (!w.finance) throw new ForbiddenException('Only Projects finance exports the cost journal.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      if (!(await ProjectsService.on(tx, c))) throw new ForbiddenException({ statusCode: 403, code: 'PROJECTS_OFF', message: 'Projects is switched off for your company.' });
+      const org = c.organizationId;
+      const m = monthStart(monthIn);
+      const end = plus(nextMonth(m), -1);
+      const rows = await tx.projectCost.findMany({ where: { organizationId: org, month: asDate(m) } });
+      const projects = await tx.timesheetProject.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.projectId) } }, select: { id: true, code: true, name: true } });
+      const out: unknown[][] = [];
+      for (const r of [...rows].sort((a, b) => (projects.find((p) => p.id === a.projectId)?.code ?? '').localeCompare(projects.find((p) => p.id === b.projectId)?.code ?? ''))) {
+        const p = projects.find((x) => x.id === r.projectId)!;
+        const v = `PRJ-${m.slice(0, 7)}-${p.code}`;
+        const note = `${p.code} ${p.name}, ${m.slice(0, 7)}${r.basis === 'provisional' ? ' (provisional)' : ''}`;
+        if (r.costPaise > 0n) out.push([end, v, 'Project cost: people', p.code, rupees(r.costPaise), '', note], [end, v, 'Payroll cost clearing', p.code, '', rupees(r.costPaise), note]);
+        if (r.expensesPaise > 0n) out.push([end, v, 'Project cost: expenses', p.code, rupees(r.expensesPaise), '', note], [end, v, 'Employee expenses clearing', p.code, '', rupees(r.expensesPaise), note]);
+      }
+      await audit(tx, c, 'projects.cost.journal_exported', 'organization', org, { month: m.slice(0, 7), lines: out.length });
+      return { filename: `project-cost-journal-${m.slice(0, 7)}.csv`, buffer: Buffer.from(toCsv(['Date', 'Voucher', 'Account', 'Cost centre', 'Debit', 'Credit', 'Narration'], out), 'utf8') };
     });
   }
 

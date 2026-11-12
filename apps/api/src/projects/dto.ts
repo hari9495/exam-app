@@ -61,6 +61,13 @@ export class ProjectInputDto {
   @Max(10_000_000_000)
   fee?: number | null;
 
+  /** Projects P-6 (1621): the time-and-material bill rate per hour in rupees (Projects finance only). */
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(1)
+  @Max(1_000_000)
+  billRate?: number | null;
+
   /** Answer 1420: the client accepts milestones in the portal (off by default). */
   @IsOptional()
   @IsBoolean()
@@ -238,4 +245,42 @@ export class MappingRuleUpdateDto extends MappingRuleDto {
   @IsInt()
   @Min(1)
   version!: number;
+}
+
+// ---- Projects P-6 (PRJ-05, PRJ-06; answers 1414 to 1416) ----
+
+export class BillingDraftDto {
+  @IsUUID()
+  seriesId!: string;
+
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, { message: 'Give the month as YYYY-MM.' })
+  month!: string;
+
+  /** Workbench item ids (as the workbench lists them). */
+  @IsArray()
+  @ArrayMinSize(1, { message: 'Choose the work to bill.' })
+  @ArrayMaxSize(500)
+  @IsString({ each: true })
+  @MaxLength(120, { each: true })
+  items!: string[];
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(60)
+  po?: string;
+}
+
+export class CorrectionDto {
+  /** The correct hours for the line's week. */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(168)
+  hours!: number;
+
+  @trim()
+  @IsString()
+  @MinLength(3, { message: 'Enter why the hours change (3 characters at least).' })
+  @MaxLength(300)
+  reason!: string;
 }

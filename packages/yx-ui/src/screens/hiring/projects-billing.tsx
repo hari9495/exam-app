@@ -9,6 +9,7 @@ import { ProjectsOffState } from './projects';
 import { LiveRequestsView, type LiveRequests } from './resourcing-live';
 import { ConfirmDialog } from '../../components/overlay';
 import { useToast } from '../../components/notify';
+import { LiveBillingView, LiveCorrectionView, type LiveBilling, type LiveCorrection } from './billing-live';
 import { MappingRuleDrawer, type LiveMappingRule, type MappingRuleInput, type MappingRulesData, type MappingTestResult } from './mapping-live';
 import { FieldRow, FormField } from '../../components/field';
 import { NumberField, TextArea, TextField } from '../../components/inputs';
@@ -49,10 +50,17 @@ export interface BillingWorkbenchProps {
   issued?: boolean;
   draftDate?: Date;
   now?: Date;
+  /** P-6 live (answers 1414, 1415). */
+  live?: LiveBilling;
 }
 
 // PRJ-05
-export function BillingWorkbenchScreen({ rows, today, defaultStep = 'wip', issued = false, draftDate, now }: BillingWorkbenchProps) {
+export function BillingWorkbenchScreen(props: BillingWorkbenchProps) {
+  if (props.live) return <LiveBillingView live={props.live} />;
+  return <DrawnBillingWorkbench {...props} />;
+}
+
+function DrawnBillingWorkbench({ rows, today, defaultStep = 'wip', issued = false, draftDate, now }: BillingWorkbenchProps) {
   const billable = rows.filter((r) => !r.held);
   const [selected, setSelected] = useState<string[]>(billable.map((r) => r.id));
   const chosen = rows.filter((r) => selected.includes(r.id) && !r.held);
@@ -171,7 +179,12 @@ export interface CorrectionProps {
 }
 
 // PRJ-06
-export function TimesheetCorrectionScreen({ person, project, week, invoiceNo, invoiceDate, invoicedHours, rate, costRate, defaultCorrected, policy, periodLocked = false, monthRevenue, monthCost, defaultStep = 'correct' }: CorrectionProps) {
+export function TimesheetCorrectionScreen(props: CorrectionProps | { live: LiveCorrection }) {
+  if ('live' in props) return <LiveCorrectionView live={props.live} />;
+  return <DrawnTimesheetCorrection {...props} />;
+}
+
+function DrawnTimesheetCorrection({ person, project, week, invoiceNo, invoiceDate, invoicedHours, rate, costRate, defaultCorrected, policy, periodLocked = false, monthRevenue, monthCost, defaultStep = 'correct' }: CorrectionProps) {
   const [hours, setHours] = useState<number | null>(defaultCorrected);
   const [reason, setReason] = useState('Stand-up booked twice on 14 Aug');
   const eff = correctionEffect({ invoicedHours, correctedHours: hours ?? invoicedHours, rate, costRate, recoveryPolicy: policy });

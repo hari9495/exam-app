@@ -21015,5 +21015,85 @@
       "Screens/Projects/PRJ-01 · Projects and project workspace · Live · finance overview with cost against budget"
     ],
     "note": "Positive and negative. Answers 1412, 1445."
+  },
+  {
+    "id": "MT-PRJ6-01",
+    "area": "Projects P-6, billing workbench and corrections (12 Nov 2026)",
+    "screen": "Projects › Billing workbench",
+    "url": "http://localhost:3000/yx/projects/billing",
+    "account": "Projects finance; a time-and-material project with a client and a bill rate, approved hours last month; a fixed-fee project with an accepted milestone; a retainer project; an approved re-billed expense.",
+    "steps": [
+      "Open the workbench on last month.",
+      "Untick nothing; choose the series; Create draft invoices.",
+      "Open the Draft invoices step; delete one draft.",
+      "Create the drafts again for the same work twice (two tabs).",
+      "Approve and issue."
+    ],
+    "expected": "Step 1: unbilled work by client: hours at the bill rate, the milestone, the retainer, the expense; held items (client approval, client acceptance, no rate) say why and cannot be billed. Step 2: one draft per client, CGST + SGST in state and IGST across states; toast. Step 3: its work is back in WIP. Step 4: the second tab is refused (billed already), nothing is billed twice. Step 5: each invoice takes the next number of the series and shows in Staffing desk › Invoices and the client portal.",
+    "stories": [
+      "Screens/Projects/PRJ-05 · Billing workbench · Live · finance, unbilled work with held items",
+      "Screens/Projects/PRJ-05 · Billing workbench · Live · drafts, CGST/SGST and IGST",
+      "Screens/Projects/PRJ-05 · Billing workbench · Live · issued"
+    ],
+    "note": "Positive and negative. Answers 1414, 1621."
+  },
+  {
+    "id": "MT-PRJ6-02",
+    "area": "Projects P-6, billing workbench and corrections (12 Nov 2026)",
+    "screen": "Settings › Projects & timesheets; Projects › Billing workbench",
+    "url": "http://localhost:3000/yx/settings/projects",
+    "account": "The System Admin; Projects finance; an account manager (Staffing desk manage key); a project manager without Projects finance.",
+    "steps": [
+      "Switch on 'The account manager approves project invoices before finance issues them'.",
+      "As finance, try to issue a project draft.",
+      "As the account manager open the workbench and approve it.",
+      "As finance issue it.",
+      "As the project manager open /yx/projects/billing."
+    ],
+    "expected": "Step 2: refused, the account manager approves first. Step 3: drafts only, no unbilled work; toast. Step 4: issued. Step 5: no access (and no menu item).",
+    "stories": [
+      "Screens/Projects/PRJ-05 · Billing workbench · Live · account manager approval on, one waiting",
+      "Screens/Projects/PRJ-05 · Billing workbench · Live · account manager approves",
+      "Screens/Projects/PRJ-05 · Billing workbench · Live · no access"
+    ],
+    "note": "Positive and negative. Answer 1415 (off by default)."
+  },
+  {
+    "id": "MT-PRJ6-03",
+    "area": "Projects P-6, billing workbench and corrections (12 Nov 2026)",
+    "screen": "Projects › Billing workbench › Correct invoiced time",
+    "url": "http://localhost:3000/yx/projects/billing/correct",
+    "account": "Projects finance; a time-and-material line on an issued invoice; another in a locked month; one on a draft invoice.",
+    "steps": [
+      "Choose the project and month; open the invoiced line; enter fewer hours and a reason; create the credit note.",
+      "Enter more hours on another invoiced line.",
+      "Switch pay recovery to 'In the next payroll' and correct a line down.",
+      "Open the line in the locked month and correct it.",
+      "Open the line on a draft invoice; try to correct it. Try with no reason, and with the same hours."
+    ],
+    "expected": "Step 1: a credit note against the invoice worked out from the hours (never more than is left on the invoice); the employee is told. Step 2: a supplementary draft in the workbench. Step 3: the recovery in hours, never a rate. Step 4: 'month is locked': the line stays, the adjustment counts in this month. Step 5: refused with the reason; no reason or the same hours never saves.",
+    "stories": [
+      "Screens/Projects/PRJ-06 · Timesheet correction and credit note · Live · down 8 h, credit note",
+      "Screens/Projects/PRJ-06 · Timesheet correction and credit note · Live · up 4 h, supplementary invoice",
+      "Screens/Projects/PRJ-06 · Timesheet correction and credit note · Live · month locked, adjustment"
+    ],
+    "note": "Positive and negative. Answer 1416 (pay recovery default none)."
+  },
+  {
+    "id": "MT-PRJ6-04",
+    "area": "Projects P-6, billing workbench and corrections (12 Nov 2026)",
+    "screen": "Projects › Costing & margin",
+    "url": "http://localhost:3000/yx/projects/costs",
+    "account": "Projects finance; a project manager.",
+    "steps": [
+      "As finance choose this month, then a quarter.",
+      "Export project cost journal on a month, then on a quarter.",
+      "As the project manager open the page."
+    ],
+    "expected": "Step 1: revenue and margin for every billing model from issued project invoices less credit notes; the quarter adds its months. Step 2: a CSV with debit and credit per project; a quarter asks for a month. Step 3: no revenue, margin or export.",
+    "stories": [
+      "Screens/Projects/PRJ-04 · Project costing and margin · Live · finance, one month restated"
+    ],
+    "note": "Positive and negative. Answers 1621, 1622."
   }
 ]

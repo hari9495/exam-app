@@ -22,8 +22,8 @@ const MODELS: { value: BillingModel; label: string }[] = [
 export function ProjectDrawer({ project, choices, finance, onClose, onSave }: { project: LiveProjectRow | null; choices: ProjectChoices; finance: boolean; onClose: () => void; onSave: (input: ProjectInput) => Promise<void> }) {
   const [v, setV] = useState<ProjectInput>(
     project
-      ? { code: project.code, name: project.name, managerUserId: project.managerUserId, clientId: project.clientId, billingModel: project.billingModel, startOn: project.startOn, endOn: project.endOn, budgetHours: project.budgetHours, budgetCost: project.budgetCost ?? null, fee: project.fee ?? null, clientAcceptsMilestones: project.clientAcceptsMilestones, clientApprovesHours: project.clientApprovesHours ?? false }
-      : { code: '', name: '', managerUserId: null, clientId: null, billingModel: choices.defaultBillingModel ?? 'time_material', startOn: null, endOn: null, budgetHours: null, budgetCost: null, fee: null, clientAcceptsMilestones: false, clientApprovesHours: false },
+      ? { code: project.code, name: project.name, managerUserId: project.managerUserId, clientId: project.clientId, billingModel: project.billingModel, startOn: project.startOn, endOn: project.endOn, budgetHours: project.budgetHours, budgetCost: project.budgetCost ?? null, fee: project.fee ?? null, billRate: project.billRate ?? null, clientAcceptsMilestones: project.clientAcceptsMilestones, clientApprovesHours: project.clientApprovesHours ?? false }
+      : { code: '', name: '', managerUserId: null, clientId: null, billingModel: choices.defaultBillingModel ?? 'time_material', startOn: null, endOn: null, budgetHours: null, budgetCost: null, fee: null, billRate: null, clientAcceptsMilestones: false, clientApprovesHours: false },
   );
   const [dirty, setDirty] = useState(false);
   const { busy, error, run } = useRun();
@@ -50,6 +50,7 @@ export function ProjectDrawer({ project, choices, finance, onClose, onSave }: { 
         if (!finance) {
           delete input.fee;
           delete input.budgetCost;
+          delete input.billRate;
         }
         void run('save', () => onSave(input)).then((ok) => ok && onClose());
       }}
@@ -94,9 +95,14 @@ export function ProjectDrawer({ project, choices, finance, onClose, onSave }: { 
             <FormField id="prj-cost" label="Cost budget (₹)" optional helper="Seen only with Projects finance.">
               <NumberField value={v.budgetCost ?? null} onChange={(budgetCost) => set({ budgetCost })} min={0} />
             </FormField>
-            <FormField id="prj-fee" label="Fee (₹)" optional helper="Seen only with Projects finance.">
+            <FormField id="prj-fee" label={v.billingModel === 'retainer' ? 'Monthly retainer (₹)' : 'Fee (₹)'} optional helper={v.billingModel === 'retainer' ? 'Billed each month the project runs. Seen only with Projects finance.' : 'Seen only with Projects finance.'}>
               <NumberField value={v.fee ?? null} onChange={(fee) => set({ fee })} min={0} />
             </FormField>
+            {v.billingModel === 'time_material' && (
+              <FormField id="prj-rate" label="Bill rate per hour (₹)" optional helper="Approved hours are billed at this rate. Seen only with Projects finance.">
+                <NumberField value={v.billRate ?? null} onChange={(billRate) => set({ billRate })} min={1} max={1_000_000} decimals />
+              </FormField>
+            )}
           </>
         )}
       </FormSection>

@@ -26,7 +26,7 @@ import { REDIS_CONNECTION, createRedisConnection } from '../jobs/redis-connectio
   imports: [AuthModule, OrgStructureModule, EmailModule, PipelineModule, AgencySubmissionsModule, InterviewsModule, PayrollModule, ServiceDeskModule],
   controllers: [StaffingController, StaffingBillingController, PublicClientPortalController],
   providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, StaffingService, StaffingWorkService, VendorsService, StaffingBillingService, ClientPortalService, ClientTicketsService, StaffingJobsService],
-  exports: [StaffingService],
+  exports: [StaffingService, StaffingBillingService],
 })
 export class StaffingModule implements OnModuleInit {
   constructor(private readonly ref: ModuleRef) {}
