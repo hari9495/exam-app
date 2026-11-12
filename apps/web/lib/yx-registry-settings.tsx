@@ -6,6 +6,7 @@ import { SETTINGS_GROUPS, SettingsPageScreen, pendingOnPage, timeSettingsChanges
 import { loadState, todayIst, useOrg, useOrgWrite, useYxPermissions } from './yx-org';
 import { useYxNav } from './yx-shell';
 import { groupSlug } from './yx-settings-home';
+import { ME_SECURITY } from './yx-nav';
 
 // Settings S-2 and S-3 (answers 1323 to 1325): a drawn settings page with the company's settings from the registry
 // (GET /org/settings), each marked Starter default until changed, with the legal limits from the country's rule set.
@@ -64,7 +65,9 @@ export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, s
         page,
         canEdit: Boolean(data?.canEdit),
         lastChange: null,
-        state: loadState(settings),
+        // The MFA floor is its own state (add a second factor), never "couldn't load" (walk of S-3).
+        state: settings.isError && (settings.error as { code?: string }).code === 'MFA_REQUIRED' ? 'mfa' : loadState(settings),
+        onSetUpMfa: () => router.push(ME_SECURITY),
         onRetry: () => void settings.refetch(),
         savedTitle: `${design.title} saved`,
         secondPerson: Boolean(switchOn),
