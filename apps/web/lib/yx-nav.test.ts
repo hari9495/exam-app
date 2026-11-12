@@ -199,7 +199,7 @@ describe('buildNav: Settings', () => {
   });
 
   it('the settings admin gets company rules, Countries and Translations; set-up pages follow their keys', () => {
-    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['Set-up hub', 'Legal entities', 'Locations', 'Structure', 'Company rules', 'Countries', 'Translations', 'Access and privacy', 'Custom fields', 'Visitors', 'Payroll rules', 'Contract labour', 'Hiring', 'Staffing desk']);
+    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['Set-up hub', 'Legal entities', 'Locations', 'Structure', 'Company rules', 'Countries', 'Translations', 'Access and privacy', 'Custom fields', 'Projects & timesheets', 'Visitors', 'Payroll rules', 'Contract labour', 'Hiring', 'Staffing desk']);
     // Settings 6.1 Hiring: recruiting, hiring admins and HR read it (the API decides who changes it).
     expect(labels(nav(['ats.settings.manage']), 'settings')).toEqual(['Hiring']);
     expect(labels(nav(['pipeline:manage']), 'settings')).toEqual(['Hiring']);
@@ -376,5 +376,21 @@ describe('pageLink: Speak up and its set-up name themselves (HLP-06)', () => {
     expect(areas(nav(['clra.settings.manage']))).not.toContain('contract');
     expect(areas(nav([]))).not.toContain('contract');
     expect(areas(nav(['clra.contractor.manage'], { support: true }))).not.toContain('contract');
+  });
+});
+
+describe('buildNav: Projects (P-1, answer 1401)', () => {
+  it('Projects shows only when the server says it is on and this person may open it; never on a support session', () => {
+    expect(areas(nav(['projects.manage']))).not.toContain('projects');
+    expect(labels(nav([], { projects: true }), 'projects')).toEqual(['Projects']);
+    expect(areas(nav([], { projects: true, support: true }))).not.toContain('projects');
+    const n = nav(['pipeline:manage'], { projects: true });
+    expect(areas(n).indexOf('projects')).toBe(areas(n).indexOf('hire') + 1);
+  });
+
+  it('Settings › Projects & timesheets for System Admins and Projects managers, even while Projects is off', () => {
+    expect(labels(nav(['org.settings.manage']), 'settings')).toContain('Projects & timesheets');
+    expect(labels(nav(['projects.manage']), 'settings')).toEqual(['Projects & timesheets']);
+    expect(labels(nav(['projects.view']), 'settings')).not.toContain('Projects & timesheets');
   });
 });

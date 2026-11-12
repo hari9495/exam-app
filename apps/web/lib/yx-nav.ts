@@ -51,6 +51,8 @@ export interface NavInput {
   panellist?: boolean;
   /** The company turned the staffing desk on (Settings › Staffing desk; the server decides). */
   staffing?: boolean;
+  /** Projects P-1: Projects is on and this person holds a Projects key or manages a project (the server decides). */
+  projects?: boolean;
 }
 
 /** Possible same person is in the menu when the server sends its count: company-wide HR while a pair waits or for 90 days after any merge, even at 0. */
@@ -398,6 +400,9 @@ export function buildNav(n: NavInput): NavArea[] {
     ],
   };
 
+  // Projects P-1 (answer 1401): only once the company switched Projects on.
+  const projects: NavArea = { id: 'projects', title: 'Projects', sections: sec(undefined, when(!support && Boolean(n.projects), L('projects', 'Projects', '/yx/projects'))) };
+
   // Settings, pinned at the bottom of the rail, in the designed settings groups.
   const settings: NavArea = {
     id: 'settings',
@@ -418,7 +423,11 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(has('org.support_access.approve') && !support, L('support-access', 'Support access', '/yx/settings/support-access')),
       ]),
       // 3.12 Visitors: Facility admins and HR change it; reception reads it.
-      ...sec('Time & Leave', when(!support && any('visitors.settings.manage', 'org.settings.manage', 'visitors.desk.manage'), L('visitor-settings', 'Visitors', '/yx/settings/visitors'))),
+      // 3.11 Projects & timesheets: where Projects is switched on, so it shows while Projects is off (answer 1401).
+      ...sec('Time & Leave', [
+        ...when(!support && any('org.settings.manage', 'projects.manage'), L('project-settings', 'Projects & timesheets', '/yx/settings/projects')),
+        ...when(!support && any('visitors.settings.manage', 'org.settings.manage', 'visitors.desk.manage'), L('visitor-settings', 'Visitors', '/yx/settings/visitors')),
+      ]),
       ...sec('Payroll & Statutory', [
         ...when(pay, ...[
           ...when(any('payroll.setup.manage', 'payroll.statutory.setup'), L('pay-setup', 'Payroll set-up', '/yx/payroll/setup')),
@@ -447,7 +456,7 @@ export function buildNav(n: NavInput): NavArea[] {
     ],
   };
 
-  return [home, people, time, pays, compliance, contract, hire, performance, helpdesk, visitors, settings].filter((a) => a.sections.some((s) => s.items.length));
+  return [home, people, time, pays, compliance, contract, hire, projects, performance, helpdesk, visitors, settings].filter((a) => a.sections.some((s) => s.items.length));
 }
 
 /** The area and link a path belongs to: the longest link that is the path or a parent of it. A page linked from two

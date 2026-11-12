@@ -32,7 +32,7 @@ import { YxPageHelp } from '../../../lib/yx-access-requests';
 import { useWhatsNew } from '../../../lib/yx-whats-new';
 
 // Pages outside the menu (a record, a sub-page) still light up their area.
-const AREA_BY_PATH: [string, AreaId][] = [['/yx/people', 'people'], ['/yx/time', 'time'], ['/yx/payroll', 'pay'], ['/yx/expenses', 'pay'], ['/yx/hiring', 'hire'], ['/yx/performance', 'performance'], ['/yx/desk', 'helpdesk'], ['/yx/contract-labour', 'contract'], ['/yx/settings', 'settings'], ['/yx/admin', 'settings'], ['/yx/support', 'settings']];
+const AREA_BY_PATH: [string, AreaId][] = [['/yx/people', 'people'], ['/yx/time', 'time'], ['/yx/payroll', 'pay'], ['/yx/expenses', 'pay'], ['/yx/hiring', 'hire'], ['/yx/projects', 'projects'], ['/yx/performance', 'performance'], ['/yx/desk', 'helpdesk'], ['/yx/contract-labour', 'contract'], ['/yx/settings', 'settings'], ['/yx/admin', 'settings'], ['/yx/support', 'settings']];
 const COLLAPSE_KEY = 'yx-panel-collapsed';
 
 export default function YxAppLayout({ children }: { children: React.ReactNode }) {
@@ -72,6 +72,8 @@ function Frame({ children }: { children: React.ReactNode }) {
   // Staffing desk: its menu group only once the company turned the desk on (asked only by staffing key holders).
   const staffingKeys = perms.has('ats.staffing.manage' as never) || perms.has('ats.staffing.view' as never);
   const staffingDesk = useQuery<{ enabled: boolean }>({ queryKey: ['staffing', '/desk'], queryFn: () => apiFetch('/staffing/desk', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && staffingKeys && !actingSuperAdmin, retry: false });
+  // Projects P-1: the menu shows Projects once the company switched it on, to key holders and project managers.
+  const projectsOn = useQuery<{ enabled: boolean; canOpen: boolean }>({ queryKey: ['projects', '/status'], queryFn: () => apiFetch('/projects/status', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false });
   // Shares the cache with My security, so the banner clears as soon as a factor is added there.
   const mfa = useQuery<MfaStatus>({ queryKey: ['yx', 'mfa'], queryFn: () => apiFetch('/auth/mfa', {}, accessToken ?? undefined), enabled: Boolean(accessToken) });
   // Answer 948 (C-5): planned maintenance, the day before and during a window. Never blocks anything by itself.
@@ -123,11 +125,12 @@ function Frame({ children }: { children: React.ReactNode }) {
         caseTeam: counts.data?.casesOpen !== undefined,
         ethicsDesk: counts.data?.ethicsReports !== undefined,
         staffing: Boolean(staffingDesk.data?.enabled),
+        projects: Boolean(projectsOn.data?.canOpen),
         panellist: Boolean(myInterviews.data?.length),
       }),
     // perms.data drives perms.has
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [perms.data, role, support, employee, team.data, people.data, myClearance.data, myTasks.data, firstDays.data, counts.data, staffingDesk.data, myInterviews.data],
+    [perms.data, role, support, employee, team.data, people.data, myClearance.data, myTasks.data, firstDays.data, counts.data, staffingDesk.data, projectsOn.data, myInterviews.data],
   );
   // Ctrl K as designed (PLT-20): Recent, Actions, people, requests and tickets, pages when typed.
   const palette = useYxPalette({ nav: withAccount(nav, { support, employee }), pathname, open: paletteOpen, userId: me.data?.id, orgId: me.data?.organizationId, waiting: counts.data?.approvals, self: employee && !support, help: !support, go: (href) => {

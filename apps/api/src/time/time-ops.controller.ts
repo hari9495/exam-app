@@ -9,7 +9,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import { ActiveDto, ConsentDto, EligibilityOverrideDto, MonthQueryDto, NightConfirmDto, NightOptInDto, OtClaimDto, OtPlanDto, OtRuleDto, OverrideDto, PatternAssignDto, PatternDto, PeriodDto, ProjectDto, RegisterQueryDto, RosterCellsDto, RosterCopyDto, SafeguardDto, ShiftDetailsDto, ShiftDto, ShiftTimesDto, SwapDto, TimesheetDto, UnlockDto, WeekQueryDto, WithdrawConsentDto, YearQueryDto, MonthEntityQueryDto, YearEntityQueryDto } from './dto';
+import { ActiveDto, ConsentDto, EligibilityOverrideDto, MonthQueryDto, NightConfirmDto, NightOptInDto, OtClaimDto, OtPlanDto, OtRuleDto, OverrideDto, PatternAssignDto, PatternDto, PeriodDto, RegisterQueryDto, RosterCellsDto, RosterCopyDto, SafeguardDto, ShiftDetailsDto, ShiftDto, ShiftTimesDto, SwapDto, TimesheetDto, UnlockDto, WeekQueryDto, WithdrawConsentDto, YearQueryDto, MonthEntityQueryDto, YearEntityQueryDto } from './dto';
 import { LeaveService } from './leave.service';
 import { RosterPublishDto } from './roster-ops.dto';
 import { NightWorkService } from './night-work.service';
@@ -23,7 +23,7 @@ import { TimesheetService } from './timesheet.service';
 //                                  and consents (opt-in, confirm with a one-time code, withdraw)
 //   implicit (YX-SEC-04)           a manager plans and publishes their team's roster and sees its overtime
 //   roster.manage                  HR plans and publishes rosters of the people in scope
-//   leave.settings.manage          company-wide set-up: shifts, patterns, OT rules, projects, night-work records
+//   leave.settings.manage          company-wide set-up: shifts, patterns, OT rules, night-work records (projects: Projects P-1)
 //   leave.approve                  HR overrides an OT limit with a reason (never one's own)
 //   leave.eligibility.override     HR lets a person through a leave eligibility check with a reason
 //   attendance.view                HR: overtime review, the payroll feed preview and the registers of people in scope
@@ -110,17 +110,7 @@ export class TimeOpsController {
     return this.overtime.removeRule(ctx, this.user(req), id);
   }
 
-  @Post('projects')
-  @RequirePermissions('leave.settings.manage')
-  createProject(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: ProjectDto) {
-    return this.timesheets.createProject(ctx, this.user(req), dto);
-  }
-
-  @Put('projects/:id')
-  @RequirePermissions('leave.settings.manage')
-  updateProject(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ProjectDto) {
-    return this.timesheets.updateProject(ctx, this.user(req), id, dto);
-  }
+  // Projects P-1 (answer 1402): Time's project editor moved to Projects (POST|PUT /projects).
 
   @Post('night/consents')
   @RequirePermissions('leave.settings.manage')

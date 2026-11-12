@@ -85,6 +85,11 @@ export const PERMISSIONS = [
   { key: 'platform.helpcentre.write', description: 'Write and publish the help articles every company sees in Help (YukthiX staff)' },
   { key: 'platform.maintenance.manage', description: 'Schedule, approve and cancel planned maintenance windows (YukthiX staff)' },
   // Staff roles: Customer success sees the windows.
+  // Projects P-1 (answer 1412): also in the projects_p1 migration.
+  { key: 'projects.view', description: 'See projects, their team, tasks and milestones (no fee, cost or margin)' },
+  { key: 'projects.manage', description: 'Create and change projects, budgets, team, tasks and milestones' },
+  { key: 'projects.finance', description: 'Projects finance: see and set fees, cost and margin' },
+  { key: 'projects.resource', description: 'Resource manager: allocate people across projects' },
   { key: 'platform.maintenance.view', description: 'See the planned maintenance windows (YukthiX staff)' },
   { key: 'platform.customers.success', description: 'Customer success: tenant health, churn alerts and messages to company System Admins (YukthiX staff)' },
   // Help H-4 (answer 943): What's new entries (also in the help_whats_new migration).
@@ -119,6 +124,10 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
   // org_admin is a full org-scoped superuser: their own admin features PLUS the complete
   // recruiter/panel capability set (exams, question bank, candidates, results).
   org_admin: [
+    'projects.view',
+    'projects.manage',
+    'projects.finance',
+    'projects.resource',
     'org:manage_users',
     'org:manage_settings',
     'org:view',

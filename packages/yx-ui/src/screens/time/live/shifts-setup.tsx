@@ -11,7 +11,7 @@ import { Select } from '../../../components/select';
 import { Card } from '../../../components/shell';
 import { useRun } from '../../org/org-kit';
 import { dateText } from './kit';
-import type { LoadState, OtRuleInput, OtRuleRow, ProjectRow, ShiftInput, ShiftSetup } from './types';
+import type { LoadState, OtRuleInput, OtRuleRow, ShiftInput, ShiftSetup } from './types';
 
 // HR › Shifts set-up (M02 §B2, Q2, Q7, §B7), the parts with no design of their own yet: overtime rules by scope and
 // date, timesheet projects, and the women's night-work records the law needs (consents and the establishment's
@@ -31,7 +31,6 @@ export interface LiveShiftSetup {
   onRemoveAssignment: (id: string) => Promise<unknown>;
   onCreateOtRule: (input: OtRuleInput) => Promise<unknown>;
   onRemoveOtRule: (id: string) => Promise<unknown>;
-  onSaveProject: (id: string | null, input: { code: string; name: string; managerUserId: string | null; billable: boolean; activities: string[]; active: boolean }) => Promise<unknown>;
   onAddConsent: (input: { employeeId: string; locationId: string; givenOn: string; reference: string }) => Promise<unknown>;
   onWithdrawConsent: (id: string, on: string) => Promise<unknown>;
   onAttest: (input: { locationId: string; item: string; attestedOn: string; reviewDue: string; note: string }) => Promise<unknown>;
@@ -221,107 +220,12 @@ function OtDrawer({ data, onClose, onCreate }: { data: ShiftSetup; onClose: () =
 
 // ------------------------------------------------------------------------------------------ timesheet projects
 
-export function ProjectsTab({ data, onSaveProject }: { data: ShiftSetup } & Pick<LiveShiftSetup, 'onSaveProject'>) {
-  const [editing, setEditing] = useState<ProjectRow | 'new' | null>(null);
+/** Projects P-1 (answer 1402): timesheet projects are set up in Projects now; this tab only says where they went. */
+export function ProjectsTab() {
   return (
-    <div className="yx-tim-stack">
-      <div>
-        <Button variant="primary" onClick={() => setEditing('new')}>
-          Add a project
-        </Button>
-      </div>
-      {data.projects.length ? (
-        <table className="yx-tim-table" aria-label="Timesheet projects">
-          <thead>
-            <tr>
-              <th>Code</th>
-              <th>Name</th>
-              <th>Approved by</th>
-              <th>Activities</th>
-              <th>
-                <span className="yx-visually-hidden">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.projects.map((x) => (
-              <tr key={x.id}>
-                <td>{x.code}</td>
-                <td>
-                  {x.name} {x.billable && <Badge tone="info">Billable</Badge>} {!x.active && <Badge tone="neutral">Closed</Badge>}
-                </td>
-                <td>{x.managerName ?? "The person's manager"}</td>
-                <td className="yx-tim-note">{x.activities.join(', ') || 'Any'}</td>
-                <td>
-                  <Button size="sm" onClick={() => setEditing(x)}>
-                    Change
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <EmptyState compact title="No projects yet" description="People in Timesheet mode log their hours against these." />
-      )}
-      {editing && <ProjectDrawer data={data} row={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSave={onSaveProject} />}
-    </div>
-  );
-}
-
-function ProjectDrawer({ data, row, onClose, onSave }: { data: ShiftSetup; row: ProjectRow | null; onClose: () => void; onSave: LiveShiftSetup['onSaveProject'] }) {
-  const [code, setCode] = useState(row?.code ?? '');
-  const [name, setName] = useState(row?.name ?? '');
-  const [manager, setManager] = useState<string | null>(row?.managerUserId ?? null);
-  const [billable, setBillable] = useState(row?.billable ?? false);
-  const [activities, setActivities] = useState((row?.activities ?? []).join(', '));
-  const [active, setActive] = useState(row?.active ?? true);
-  const { busy, error, run } = useRun();
-  const errors = [...(!/^[A-Z][A-Z0-9-]{0,11}$/.test(code) ? [{ fieldId: 'pr-code', message: 'Use 1 to 12 capital letters, digits or dashes, starting with a letter.' }] : []), ...(!name.trim() ? [{ fieldId: 'pr-name', message: 'Name the project.' }] : [])];
-  const saveErrors = useSaveErrors(errors);
-  return (
-    <Drawer
-      open
-      onOpenChange={(o) => !o && onClose()}
-      title={row ? `Change ${row.name}` : 'Add a project'}
-      footer={
-        <>
-          <Button onClick={onClose}>Cancel</Button>
-          <Button
-            variant="primary"
-            loading={busy === 'save'}
-            onClick={() => {
-              if (errors.length) return saveErrors.reveal();
-              void run('save', async () => {
-                await onSave(row?.id ?? null, { code, name: name.trim(), managerUserId: manager, billable, activities: activities.split(',').map((a) => a.trim()).filter(Boolean), active });
-                onClose();
-              });
-            }}
-          >
-            Save
-          </Button>
-        </>
-      }
-    >
-      <div className="yx-tim-form">
-        <ErrorSummary errors={saveErrors.shownErrors} />
-        {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
-        <FormField id="pr-code" label="Code" required helper={row ? 'A code never changes.' : undefined} error={saveErrors.errorOf('pr-code')}>
-          <TextField value={code} onChange={(x) => setCode(x.toUpperCase())} disabled={Boolean(row)} maxLength={12} />
-        </FormField>
-        <FormField id="pr-name" label="Name" required error={saveErrors.errorOf('pr-name')}>
-          <TextField value={name} onChange={setName} maxLength={100} />
-        </FormField>
-        <FormField id="pr-manager" label="Project manager" optional helper="Approves the hours. Without one, the person's manager does.">
-          <Select value={manager} onChange={setManager} options={data.users.map((u) => ({ value: u.id, label: u.name }))} />
-        </FormField>
-        <FormField id="pr-acts" label="Activities" optional helper="Separate with commas, e.g. Documentation, Line checks.">
-          <TextArea value={activities} onChange={setActivities} rows={2} maxLength={1200} />
-        </FormField>
-        <Checkbox label="Billable" checked={billable} onChange={setBillable} />
-        {row && <Checkbox label="Open for hours" checked={active} onChange={setActive} />}
-      </div>
-    </Drawer>
+    <InlineAlert tone="info" title="Timesheet projects moved to Projects">
+      Projects, their teams, tasks and budgets are set up in Projects (in the main menu). If you don't see Projects, a System Admin switches it on in Settings › Projects & timesheets.
+    </InlineAlert>
   );
 }
 

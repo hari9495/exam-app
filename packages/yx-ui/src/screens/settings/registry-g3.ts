@@ -1051,6 +1051,7 @@ const projects: SettingsPageDef = {
     {
       title: 'Projects and codes',
       settings: [
+        { key: 'prj.enabled', label: 'Projects', kind: 'toggle', value: true, starter: false, helper: 'Off by default. On, Projects shows in the menu for people with a Projects key and for project managers.', synonyms: ['turn on projects', 'project management'] },
         { key: 'prj.projects', label: 'Projects and tasks', kind: 'link', linkScreenId: 'PRJ-01', linkLabel: 'Open projects' },
         {
           key: 'prj.activity_codes',
@@ -1084,7 +1085,7 @@ const projects: SettingsPageDef = {
           synonyms: ['non-project time', 'bench'],
         },
         { key: 'prj.billable_default', label: 'New projects are billable', kind: 'toggle', value: true, starter: true },
-        { key: 'prj.booking_rule', label: 'Time on projects someone is not allocated to', kind: 'radio', value: 'Block', options: ['Block', 'Allow with project manager approval'], starter: true },
+        { key: 'prj.booking_rule', label: 'Time on projects someone is not allocated to', kind: 'radio', value: 'Block', options: ['Block', 'Allow'], starter: true, helper: 'Block: people book time only to projects they are allocated to, on the days of their allocation.' },
         { key: 'prj.daily_max', label: 'Refuse more hours in a day than', kind: 'number', value: 14, unit: 'hours', min: 8, max: 20, starter: true, helper: 'A warning already shows above the shift’s expected hours; this is the hard stop.' },
       ],
     },
