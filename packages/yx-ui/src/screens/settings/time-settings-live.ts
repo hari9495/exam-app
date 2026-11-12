@@ -4,7 +4,7 @@
 // Act. The drawn links to the live editors (shifts, leave types, holidays...) stay; drawn fields with no setting behind
 // them yet are left out until their slice. Values are read from GET /org/settings and saved with PUT /org/settings.
 // 3.11's one hidden setting (timesheet.tool_suggestions) is on the Projects settings page (projects-live.ts).
-import type { SettingDef, SettingsPageDef, SettingValue } from './settings-types';
+import type { LastChange, SettingDef, SettingsPageDef, SettingValue } from './settings-types';
 
 /** One registry entry as GET /org/settings sends it. */
 export interface RegistryDef {
@@ -266,4 +266,41 @@ export function pendingOnPage(page: SettingsPageDef, pending: PendingSettingChan
     const from = p.from ?? (typeof d.value === 'boolean' ? (d.value ? 'on' : 'off') : d.value);
     return [{ id: p.id, label: d.label, from: words(from), to: words(p.to), by: p.by, at: p.at, mine: p.mine }];
   });
+}
+
+/** Settings S-5 (answers 1326, 1461): one change of a setting, from the audit log (GET /org/settings/history). */
+export interface SettingChangeRow {
+  id: string;
+  at: string;
+  by: string;
+  role: string | null;
+  key: string;
+  label: string;
+  scope: string;
+  from: unknown;
+  to: unknown;
+}
+
+/** The person's role in words, for the "(System Admin)" after their name; unknown roles say nothing. */
+const ROLE_WORDS: Record<string, string> = { org_admin: 'System Admin', super_admin: 'YukthiX support', auditor: 'Auditor' };
+
+/** A change in the page's words: "Weekly offs a week: 1 → 2", with the place when it is not the whole company. */
+export function changeWords(page: SettingsPageDef | null, r: SettingChangeRow): { what: string; from: string; to: string } {
+  const d = page?.sections.flatMap((s) => s.settings).find((f) => f.key === r.key);
+  const words = (v: unknown) => {
+    if (v === null || v === undefined) return 'Starter default';
+    if (!d) return String(v);
+    return d.kind === 'toggle' ? (v === 'on' || v === 'yes' || v === true ? 'On' : 'Off') : (d.optionLabels?.[String(v)] ?? String(v));
+  };
+  const label = d?.label ?? r.label;
+  return { what: `${label}${r.scope && r.scope !== 'Company' ? ` (${r.scope})` : ''}`, from: words(r.from), to: words(r.to) };
+}
+
+/** Answer 1326: a page's "Last changed by" line and its history drawer, newest first. */
+export function historyOnPage(page: SettingsPageDef, rows: SettingChangeRow[]): { lastChange: LastChange | null; history: (LastChange & { id: string })[] } {
+  const all = rows.map((r) => {
+    const w = changeWords(page, r);
+    return { id: r.id, by: r.by, role: ROLE_WORDS[r.role ?? ''] ?? '', at: r.at.slice(0, 16), what: `Changed ${w.what} from ${w.from} to ${w.to}` };
+  });
+  return { lastChange: all[0] ? { by: all[0].by, role: all[0].role, at: all[0].at, what: all[0].what } : null, history: all.slice(1) };
 }

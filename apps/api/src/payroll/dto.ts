@@ -182,6 +182,18 @@ export class AuditQueryDto {
   @IsOptional()
   @Matches(/^\d{1,18}$/)
   before?: string;
+
+  /** Settings S-5 (answer 1563): one area of the company audit log (AUDIT_AREAS). */
+  @IsOptional()
+  @IsIn(['settings', 'access', 'people', 'time', 'payroll', 'hiring', 'performance', 'expenses', 'helpdesk', 'approvals', 'projects'])
+  area?: string;
+
+  /** Answer 1563: a person, by any part of their name or email. */
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(100)
+  actor?: string;
 }
 
 export class TimelineQueryDto {

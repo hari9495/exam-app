@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseEnumPipe, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseEnumPipe, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -19,6 +19,7 @@ import {
   ResolveSettingQueryDto,
   SettingDto,
   SettingRejectDto,
+  SettingsHistoryQueryDto,
   masterBody,
 } from './dto';
 import { IN_STATES, REGIONS } from './org-validation';
@@ -345,6 +346,33 @@ export class OrgStructureController {
   @RequireAnyPermission(...VIEW, 'payroll.setup.manage', 'leave.settings.manage')
   listSettings(@CurrentTenant() ctx: TenantContext) {
     return this.settings.list(ctx);
+  }
+
+  /**
+   * Settings S-5 (answers 1326, 1461): the last changes of the given settings (a page's, or every page the person may
+   * open for the home). Only settings the person may read: the Projects settings (3.11) need the company settings key
+   * or Projects manage; every other one the keys that read the company settings (as GET settings).
+   */
+  @Get('settings/history')
+  @RequireAnyPermission(...VIEW, 'payroll.setup.manage', 'leave.settings.manage', 'projects.manage')
+  async settingsHistory(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: SettingsHistoryQueryDto) {
+    const keys = [...new Set(q.keys.split(',').map((k) => k.trim()).filter(Boolean))];
+    if (!keys.length || keys.length > 300) throw new BadRequestException('Name between 1 and 300 settings.');
+    const holds = async (...ks: string[]) => {
+      for (const k of ks) {
+        const r = await this.scope.reach(req, k);
+        if (r === 'all' || r.size > 0) return true;
+      }
+      return false;
+    };
+    const projectKey = (k: string) => k.startsWith('projects.') || k === 'timesheet.tool_suggestions';
+    const readsCompany = await holds(...VIEW, 'payroll.setup.manage', 'leave.settings.manage');
+    const readsProjects = await holds('org.settings.manage', 'projects.manage');
+    for (const k of keys) {
+      if (!SETTINGS[k]) throw new BadRequestException(`Unknown setting ${k}`);
+      if (projectKey(k) ? !readsProjects : !readsCompany) throw new ForbiddenException(`You cannot see the changes to ${SETTINGS[k]!.label}.`);
+    }
+    return this.settings.history(ctx, keys, q.limit ?? 20);
   }
 
   @Get('settings/resolve')

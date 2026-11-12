@@ -70,7 +70,6 @@
     "platform-a: AccessStatePhone",
     "platform-a: AccessStateScreen",
     "platform-a: ApprovalsInboxPhone",
-    "platform-a: AuditLogScreen",
     "platform-a: BillingScreen",
     "platform-a: ChatAppSettingsScreen",
     "platform-a: ChatAppView",

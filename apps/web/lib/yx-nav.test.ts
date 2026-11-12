@@ -430,3 +430,18 @@ describe('buildNav: Billing workbench (P-6, PRJ-05)', () => {
     expect(areas(nav(['projects.finance'], { projects: true, support: true }))).not.toContain('projects');
   });
 });
+
+// Settings S-5 (answers 1333, 1563).
+describe('buildNav: Settings S-5', () => {
+  it('a Time admin opens every Time & Leave settings page (the attendance ones read-only); the structure key alone opens none', () => {
+    const t = labels(nav(['leave.settings.manage']), 'settings');
+    for (const l of ['Check-in & devices', 'Weekly offs', 'Leave types', 'Leave year']) expect(t).toContain(l);
+    expect(areas(nav(['org.structure.view']))).not.toContain('settings');
+  });
+
+  it('HR who read the structure open the People settings pages read-only; the audit log needs audit.view', () => {
+    expect(labels(nav(['employee.profile.view', 'org.structure.view']), 'settings')).toEqual(expect.arrayContaining(['Exit & lifecycle policies', 'Audit & data retention']));
+    expect(labels(nav(['audit.view']), 'settings')).toContain('Audit log');
+    expect(labels(nav(['org.settings.manage']), 'settings')).not.toContain('Audit log');
+  });
+});

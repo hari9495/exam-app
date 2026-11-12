@@ -83,9 +83,9 @@ export type { SettingsGroupDef } from '../../settings/settings-types';
 // and Settings 3.11 Projects & timesheets.
 export { ProjectsListScreen, ProjectWorkspaceScreen, type LiveProjectsList, type LiveProjectWorkspace } from '../projects';
 export type { AllocationInput as ProjectAllocationInput, LiveProjectDetail, LiveProjectRow, MilestoneInput as ProjectMilestoneInput, ProjectChoices, ProjectInput, ProjectStatus, TaskInput as ProjectTaskInput } from '../projects-live';
-export { projectSettingsChanges, projectSettingsPage, type ProjectSettingsData } from '../../settings/projects-live';
+export { PROJECT_SETTING_KEYS, projectSettingsChanges, projectSettingsPage, type ProjectSettingsData } from '../../settings/projects-live';
 // Settings S-2 (answers 1323, 1324): the Time & Leave pages with the company's settings.
-export { PAY_SETTINGS, PEOPLE_SETTINGS, TIME_SETTINGS, pendingOnPage, timeSettingsChanges, timeSettingsPage, type PendingSettingChange, type RegistryDef, type TimeSettingsData } from '../../settings/time-settings-live';
+export { PAY_SETTINGS, PEOPLE_SETTINGS, TIME_SETTINGS, changeWords, historyOnPage, type SettingChangeRow, pendingOnPage, timeSettingsChanges, timeSettingsPage, type PendingSettingChange, type RegistryDef, type TimeSettingsData } from '../../settings/time-settings-live';
 export { TIME_REGISTRY_SAMPLE } from '../../settings/time-settings-sample';
 // Projects P-3 (answers 1409, 1410): the designed PRJ-08 mapping rules, live with `live`.
 export { MappingRulesScreen, type LiveMappingRules } from '../projects-billing';
@@ -101,3 +101,7 @@ export { CostingMarginScreen, type LiveCosts, type LiveCostsData } from '../proj
 // Projects P-6 (answers 1414 to 1416): PRJ-05 billing workbench and PRJ-06 timesheet correction, live with `live`.
 export { BillingWorkbenchScreen, TimesheetCorrectionScreen } from '../projects-billing';
 export type { LiveBilling, LiveBillingData, LiveBillingDraft, LiveCorrection, LiveCorrectionFacts, LiveCorrectionLine, LiveWipRow } from '../billing-live';
+
+// Settings S-5 (answer 1563): the company audit log (PLT-16), live.
+export { AuditLogScreen } from '../../platform-a/integrations';
+export type { LiveAuditLog, LiveAuditEntry, LiveAuditFilters } from '../../platform-a/audit-log-live';

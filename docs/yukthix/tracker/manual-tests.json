@@ -21137,5 +21137,43 @@
       "Screens/Projects/PRJ-04 · Project costing and margin · Live · finance, one month restated"
     ],
     "note": "Positive and negative. Answers 1621, 1622."
+  },
+  {
+    "id": "MT-SET-S5a",
+    "area": "Settings S-5 (13 Nov 2026)",
+    "screen": "Settings pages: change history, view only, Recently changed",
+    "url": "http://localhost:3000/yx/settings/time/weekly-offs",
+    "account": "The System Admin of the demo company; a Time admin (Leave types & policies, without Company settings); an employee.",
+    "steps": [
+      "As the System Admin change Weekly offs and save.",
+      "Open View history on the page.",
+      "Open Settings (All settings).",
+      "As the Time admin open Settings › Weekly offs.",
+      "As the Time admin try to change it.",
+      "As the employee open /yx/settings/time/weekly-offs."
+    ],
+    "expected": "Step 1: toast saved. Step 2: the change with your name, today, from and to, newest first. Step 3: Recently changed shows it first and links to the page. Step 4: the page opens with View only and the history. Step 5: no save bar (the API also refuses). Step 6: no access.",
+    "stories": [
+      "Screens/Settings/Settings home & page states · Page · change history"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-SET-S5b",
+    "area": "Settings S-5 (13 Nov 2026)",
+    "screen": "Settings › Audit log",
+    "url": "http://localhost:3000/yx/settings/audit-log",
+    "account": "A person with audit.view (Auditor or System Admin with audit.view); one without it.",
+    "steps": [
+      "Open Settings › Audit log.",
+      "Choose Area: Settings.",
+      "Type a colleague's name in Person and press Enter.",
+      "Set From after To.",
+      "Open a setting change.",
+      "As the person without audit.view open the address."
+    ],
+    "expected": "Step 1: entries newest first. Step 2: only settings changes. Step 3: only that person's entries. Step 4: 'From is after To, so nothing matches.' Step 5: before and after. Step 6: no access.",
+    "stories": [],
+    "note": "Positive and negative."
   }
 ]

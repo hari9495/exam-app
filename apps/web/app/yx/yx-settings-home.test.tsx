@@ -1,4 +1,6 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { apiFetch } from '../../lib/api-client';
 import userEvent from '@testing-library/user-event';
 import { useParams, useRouter } from 'next/navigation';
 import { SETTINGS_GROUPS } from '@yukthix/ui/hiring';
@@ -21,11 +23,17 @@ const EMPLOYEE = navOf([], { employee: true });
 const PAYROLL_ONLY = navOf(['payroll.setup.manage', 'payroll.component.manage', 'payroll.template.manage', 'payroll.loan.manage', 'payroll.run.view']);
 const push = jest.fn();
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
-const show = (ui: React.ReactElement, nav: ReturnType<typeof buildNav>, ready = true) => render(<YxNavContext.Provider value={{ nav, ready }}>{ui}</YxNavContext.Provider>);
+const show = (ui: React.ReactElement, nav: ReturnType<typeof buildNav>, ready = true) =>
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><YxNavContext.Provider value={{ nav, ready }}>{ui}</YxNavContext.Provider></QueryClientProvider>);
+const api = apiFetch as jest.Mock;
+// Settings S-5: the home asks for its recent changes and the viewer's keys; by default none.
+const serve = (history: unknown[] = [], keys: string[] = []) => api.mockImplementation(async (path: string) => (path.startsWith('/rbac/me/permissions') ? keys : path.startsWith('/org/settings/history') ? history : []));
 const pages = (nav: ReturnType<typeof buildNav>) => settingsForViewer(nav).groups.flatMap((g) => g.pages.map((p) => p.id));
 
 beforeEach(() => {
   push.mockReset();
+  api.mockReset();
+  serve();
   (useRouter as jest.Mock).mockReturnValue({ push, replace: jest.fn() });
 });
 
@@ -115,5 +123,27 @@ describe('Settings S-1: group pages', () => {
     (useParams as jest.Mock).mockReturnValue({ group: 'canteen' });
     show(<YxSettingsGroupPage />, ADMIN);
     expect(screen.getByText("You don't have access to the pages of this settings group")).toBeInTheDocument();
+  });
+});
+
+// Settings S-5 (answers 1461, 1563): Recently changed on the home, only for pages the person may open.
+describe('Settings S-5: Recently changed', () => {
+  const ROW = { id: 'h1', at: '2026-11-12T10:05:00.000Z', by: 'Lakshmi Venkatesan', role: 'org_admin', key: 'roster.min_weekly_offs', label: 'Weekly offs', scope: 'Company', from: '1', to: '2' };
+  it('the latest change links to its page; the audit log link shows with audit.view', async () => {
+    serve([ROW], ['audit.view']);
+    show(<YxSettingsHomePage />, ADMIN);
+    const card = (await screen.findByText('Recently changed')).closest('section, div')!.parentElement as HTMLElement;
+    expect(within(card).getByRole('link', { name: /1 → 2/ })).toHaveAttribute('href', '/yx/settings/time/weekly-offs');
+    expect(within(card).getByRole('link', { name: 'Audit log' })).toHaveAttribute('href', '/yx/settings/audit-log');
+    expect(api.mock.calls.some(([p]) => String(p).startsWith('/org/settings/history?keys=') && String(p).includes('roster.min_weekly_offs'))).toBe(true);
+  });
+
+  it('negative: a payroll-only admin never asks for the Time & Leave history; no audit link without audit.view', async () => {
+    serve([]);
+    show(<YxSettingsHomePage />, PAYROLL_ONLY);
+    await waitFor(() => expect(api.mock.calls.some(([p]) => String(p).startsWith('/org/settings/history'))).toBe(true));
+    const asked = api.mock.calls.map(([p]) => decodeURIComponent(String(p))).filter((p) => p.startsWith('/org/settings/history'));
+    expect(asked.every((p) => !p.includes('roster.min_weekly_offs'))).toBe(true);
+    expect(screen.queryByRole('link', { name: 'Audit log' })).toBeNull();
   });
 });
