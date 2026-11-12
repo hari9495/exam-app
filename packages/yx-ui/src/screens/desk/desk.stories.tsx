@@ -64,9 +64,6 @@ export const Setup: S = { name: 'Desk set-up', render: () => shell('desk-setup',
 export const SetupKbReview: S = { name: 'Desk set-up · Settings · check help articles again every', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="settings" kbReviewMonths={12} onKbReviewMonths={noop} pageHelp onPageHelp={noop} />) };
 // HLP-05b (founder 3 Nov 2026): each desk chooses its at-risk point (default 80 %), on the same Settings tab.
 export const SetupAtRisk: S = { name: 'Desk set-up · Settings · at risk from (per desk)', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="settings" detail={{ ...setupProps.detail!, desk: { ...setupProps.detail!.desk, atRiskPercent: 60 } }} />) };
-// Answer 1642: the company's search words that mean the same (an Indian HR starter list until HR changes it).
-const SYNONYMS = ['pf, provident fund, epf', 'uan, universal account number', 'cl, casual leave', 'payslip, salary slip, pay slip', 'form 16, form16'].join('\n');
-export const SetupSynonyms: S = { name: 'Desk set-up · Settings · search words that mean the same', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="settings" synonyms={{ value: SYNONYMS, starter: SYNONYMS }} onSynonyms={noop} />) };
 // Answer 1643: the reasons a requester may pick after a rating, per desk (a starter list until changed).
 export const SetupRatingReasons: S = { name: 'Desk set-up · Settings · reasons to pick after a rating', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="settings" detail={{ ...setupProps.detail!, desk: { ...setupProps.detail!.desk, ratingReasons: ['Quick help', 'Solved my problem', 'Friendly and clear', 'Slow', 'Not solved', 'Had to explain again'] } }} />) };
 // Answer 1646: the message the help centre and portal show while the desk is closed.

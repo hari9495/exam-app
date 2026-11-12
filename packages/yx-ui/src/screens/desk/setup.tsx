@@ -78,9 +78,6 @@ export interface DeskSetupScreenProps {
   /** Help H-1 (answer 942): "Show page help" in the Help drawer (company setting, on by default). */
   pageHelp?: boolean | null;
   onPageHelp?: (on: boolean) => Promise<unknown>;
-  /** Answer 1642: words that mean the same in a knowledge search (one group a line), and the starter list. */
-  synonyms?: { value: string; starter: string } | null;
-  onSynonyms?: (text: string) => Promise<unknown>;
   /** Batch 2 tabs: response targets, and resolution codes with templates. */
   sla?: Omit<SlaTabProps, 'detail' | 'calendars'>;
   workSetup?: Omit<WorkSetupProps, 'detail'>;
@@ -874,7 +871,6 @@ function SettingsTab(props: TabProps) {
       )}
       {props.onKbReviewMonths && props.kbReviewMonths != null && <KbReviewRule key={props.kbReviewMonths} value={props.kbReviewMonths} onSave={props.onKbReviewMonths} />}
       {props.onPageHelp && props.pageHelp != null && <PageHelpRule value={props.pageHelp} onChange={props.onPageHelp} />}
-      {props.onSynonyms && props.synonyms && <SynonymsRule key={props.synonyms.value} value={props.synonyms.value} starter={props.synonyms.starter} onSave={props.onSynonyms} />}
     </div>
   );
 }
@@ -885,40 +881,6 @@ const AT_RISK_CHOICES = [50, 60, 70, 80, 90];
 
 /** Registry setting desk.kb.review_months: one value for the company, not per desk. */
 /** Help H-1 (answer 942): the Help drawer's "This page" tab, for the whole company. Takes effect at once (a switch). */
-/** Answer 1642: the company's search words that mean the same (PF and provident fund); the starter list until changed. */
-function SynonymsRule({ value, starter, onSave }: { value: string; starter: string; onSave: (text: string) => Promise<unknown> }) {
-  const [text, setText] = useState(value);
-  const { busy, error, run } = useRun();
-  const { toast } = useToast();
-  const early = useTooEarly(text.trim() ? [] : [{ fieldId: 'kb-synonyms', message: 'Write at least one line, or press Use the starter list.' }]);
-  return (
-    <Card title="Search words that mean the same">
-      <div className="yx-ops-stack">
-        {error && <InlineAlert tone="danger" title="It was not saved">{error}</InlineAlert>}
-        <FormField id="kb-synonyms" label="Words, one group a line" helper="Separate the words with commas, e.g. pf, provident fund. Help search finds an article by any word of its line. For the whole company." error={early.errorOf('kb-synonyms')}>
-          <TextArea value={text} onChange={setText} rows={8} />
-        </FormField>
-        <div className="yx-ops-row">
-          <Button onClick={() => setText(starter)}>Use the starter list</Button>
-          <Button
-            variant="primary"
-            loading={busy === 'synonyms'}
-            onClick={() => {
-              if (early.stop()) return;
-              void run('synonyms', async () => {
-                await onSave(text);
-                toast({ tone: 'success', title: 'Search words saved.' });
-              });
-            }}
-          >
-            Save search words
-          </Button>
-        </div>
-      </div>
-    </Card>
-  );
-}
-
 function PageHelpRule({ value, onChange }: { value: boolean; onChange: (on: boolean) => Promise<unknown> }) {
   const [on, setOn] = useState(value);
   const { error, run } = useRun();

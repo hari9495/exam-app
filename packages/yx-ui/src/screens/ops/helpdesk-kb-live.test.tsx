@@ -120,6 +120,27 @@ describe('HLP-04 Knowledge base editor (live)', () => {
     await waitFor(() => expect(screen.getAllByText('Nothing in this period.')).toHaveLength(4));
   });
 
+  it('1642, 1681: search words have their own tab; an empty list is stopped, the starter list fills it in and is saved', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    show(<KbEditorScreen live={liveKb({ searchWords: { value: 'cl, casual leave', starter: 'pf, provident fund', onSave } })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Search words' }));
+    const box = await screen.findByLabelText('Words, one group a line');
+    expect(box).toHaveValue('cl, casual leave');
+    await ue.clear(box);
+    await ue.click(screen.getByRole('button', { name: 'Save search words' }));
+    expect((await screen.findAllByText('Write at least one line, or press Use the starter list.')).length).toBeGreaterThan(0);
+    expect(onSave).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('button', { name: 'Use the starter list' }));
+    await ue.click(screen.getByRole('button', { name: 'Save search words' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith('pf, provident fund'));
+    expect((await screen.findAllByText('Search words saved.')).length).toBeGreaterThan(0);
+  });
+
+  it('1681: without the right (no searchWords) there is no Search words tab', () => {
+    show(<KbEditorScreen live={liveKb()} />);
+    expect(screen.queryByRole('tab', { name: 'Search words' })).toBeNull();
+  });
+
   it('no access (403) shows the kit no-access state', () => {
     show(<KbEditorScreen live={liveKb({ state: 'no-access' })} />);
     expect(screen.getByText(/You don't have access to the knowledge base/)).toBeInTheDocument();
