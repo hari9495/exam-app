@@ -78,4 +78,6 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'settings-change-lapse', cron: '30 20 * * *' },
   // Projects P-1 (answer 1405): budget burn alerts at the company's levels (80% and 100% by default), hourly at :35.
   { id: 'project-burn', cron: '35 * * * *' },
+  // Projects P-5 (1412, 1413, 1445): project cost totals (payroll access) and cost burn alerts, nightly.
+  { id: 'project-cost', cron: '20 2 * * *' },
 ];

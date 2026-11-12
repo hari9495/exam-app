@@ -6169,6 +6169,8 @@ model TimesheetProject {
   clientAcceptsMilestones Boolean   @default(false) @map("client_accepts_milestones")
   /// Answer 1408: the client approves this project's hours in the client portal (off by default).
   clientApprovesHours     Boolean   @default(false) @map("client_approves_hours")
+  /// Answer 1445: the cost burn level already alerted (0, the warning level or the over level).
+  costAlertedPct          Int       @default(0) @map("cost_alerted_pct") @db.SmallInt
   burnAlertedPct          Int       @default(0) @map("burn_alerted_pct") @db.SmallInt
   closedAt                DateTime? @map("closed_at") @db.Timestamptz(3)
   version                 Int       @default(1)
@@ -6207,6 +6209,25 @@ model ProjectTask {
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("project_tasks")
+}
+
+/// Projects P-5 (PRJ-04, answers 1412, 1413): a project's cost for one month, totals only (no person's rate), from the nightly job.
+model ProjectCost {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String   @map("organization_id") @db.Uuid
+  projectId         String   @map("project_id") @db.Uuid
+  month             DateTime @db.Date
+  minutes           Int      @default(0)
+  people            Int      @default(0)
+  costPaise         BigInt   @default(0) @map("cost_paise")
+  expensesPaise     BigInt   @default(0) @map("expenses_paise")
+  rebillPaise       BigInt   @default(0) @map("rebill_paise")
+  basis             String   @default("provisional") @db.VarChar(11)
+  restatedFromPaise BigInt?  @map("restated_from_paise")
+  computedAt        DateTime @default(now()) @map("computed_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, projectId, month], map: "project_costs_key")
+  @@map("project_costs")
 }
 
 /// Projects P-4 (PRJ-07, answers 1417, 1418): a project manager's request for a share of someone's week; filled by Projects resource.
@@ -9343,6 +9364,9 @@ model ExpenseLine {
   receiptSha256    String?   @map("receipt_sha256") @db.Char(64)
   selfDeclared     Boolean   @default(false) @map("self_declared")
   ocr              Json?
+  /// Projects P-5 (answer 1419): the project the spend is for, and whether it is re-billed to the client.
+  projectId        String?   @map("project_id") @db.Uuid
+  rebill           Boolean   @default(false)
   claimed          Decimal   @db.Decimal(14, 2)
   approved         Decimal?  @db.Decimal(14, 2)
   reduceReason     String?   @map("reduce_reason") @db.VarChar(300)

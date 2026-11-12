@@ -235,6 +235,8 @@ export class ExpenseClaimsService implements OnModuleInit {
       id: l.id,
       lineNo: l.lineNo,
       categoryCode: l.categoryCode,
+      projectId: l.projectId,
+      rebill: l.rebill,
       spentOn: iso(l.spentOn),
       merchant: l.merchant,
       city: l.city,
@@ -263,6 +265,22 @@ export class ExpenseClaimsService implements OnModuleInit {
     };
   }
 
+  /** Answer 1419: the project named on a line (switched on, not closed; re-billing needs its client). */
+  private async projectFor(tx: Tx, c: CompanyContext, projectId: string) {
+    if ((await settingFor(tx, c, 'projects.expenses.enabled', { legalEntityId: '' })) !== 'on') throw new BadRequestException('Expenses are not linked to projects in your company.');
+    const p = await tx.timesheetProject.findFirst({ where: { organizationId: c.organizationId, id: projectId }, select: { id: true, status: true, code: true, clientId: true } });
+    if (!p) throw new BadRequestException('Choose a project of this company.');
+    if (p.status === 'closed') throw new BadRequestException(`${p.code} is closed. Choose an open project.`);
+    return p;
+  }
+
+  /** Answer 1419: the projects a claimant may name (open projects; none when the company has it off). */
+  private async projectChoices(tx: Tx, c: CompanyContext) {
+    if ((await settingFor(tx, c, 'projects.expenses.enabled', { legalEntityId: '' })) !== 'on' || (await settingFor(tx, c, 'projects.enabled', { legalEntityId: '' })) !== 'on') return null;
+    const ps = await tx.timesheetProject.findMany({ where: { organizationId: c.organizationId, status: { in: ['active', 'on_hold'] } }, select: { id: true, code: true, name: true, clientId: true }, orderBy: { code: 'asc' }, take: 500 });
+    return ps.map((p) => ({ id: p.id, code: p.code, name: p.name, client: Boolean(p.clientId) }));
+  }
+
   private async view(tx: Tx, c: CompanyContext, claim: Claim, a: Access) {
     const org = c.organizationId;
     const lines = await tx.expenseLine.findMany({ where: { organizationId: org, claimId: claim.id, removedAt: null }, orderBy: { lineNo: 'asc' } });
@@ -278,6 +296,8 @@ export class ExpenseClaimsService implements OnModuleInit {
       ...this.summary(claim, person),
       decisionNote: claim.decisionNote,
       lines: lines.map((l) => this.lineView(l, true, mimes.get(l.receiptFileId ?? ''))),
+      // Answer 1419: the projects a line can name (null: the company has it off).
+      projects: await this.projectChoices(tx, c),
       changes: changes.map((x) => ({ lineId: x.lineId, from: x.oldAmount.toFixed(2), to: x.newAmount.toFixed(2), reason: x.reason, at: x.createdAt.toISOString() })),
       // Flags name other claims only by reference, so nothing of another person leaks (§15).
       flags: flags.map((f) => ({ id: f.id, lineId: f.lineId, kind: f.kind, detail: f.detail, status: f.status, note: f.note })),
@@ -478,7 +498,12 @@ export class ExpenseClaimsService implements OnModuleInit {
       const ours = (await tx.entityGstRegistration.findMany({ where: { organizationId: org, legalEntityId: claim.legalEntityId }, select: { gstin: true } })).map((x) => x.gstin);
       const itc = itcStatusOf({ gstOn, gstEligible: cat.gstEligible, blocked: Boolean(cat.itcBlockedReason), supplierGstin: g.supplierGstin ?? null, invoiceNo: g.invoiceNo ?? null, billedTo: g.billedToGstin ?? null, placeOfSupply: g.placeOfSupply ?? null, ourGstins: ours });
       const prevOcr = (cur?.ocr ?? null) as Record<string, unknown> | null;
+      // Projects P-5 (answer 1419): a line may name a project only when the company switched it on.
+      const project = dto.projectId ? await this.projectFor(tx, c, dto.projectId) : null;
+      if (dto.rebill && !project?.clientId) throw new BadRequestException('Re-billing needs a project with a client.');
       const data = {
+        projectId: project?.id ?? null,
+        rebill: Boolean(project && dto.rebill),
         categoryCode: cat.code,
         spentOn: asDate(dto.spentOn),
         merchant: dto.merchant ?? null,

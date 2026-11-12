@@ -44,7 +44,6 @@
     "growth: TrainingNeedsScreen",
     "hiring: AiInterviewReviewScreen",
     "hiring: BillingWorkbenchScreen",
-    "hiring: CostingMarginScreen",
     "hiring: InternalJobsPhone",
     "hiring: ReferralsPhone",
     "hiring: ScorecardPhone",

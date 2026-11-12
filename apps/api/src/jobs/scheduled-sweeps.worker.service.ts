@@ -33,6 +33,7 @@ import { StaffRolesService } from '../platform/staff-roles.service';
 import { SettingChangeNoticesService } from '../org-structure/setting-change-notices.service';
 
 import { ProjectsService } from '../projects/projects.service';
+import { ProjectCostService } from '../projects/project-cost.service';
 
 function msg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -79,11 +80,14 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     staffRoles: StaffRolesService,
     projects: ProjectsService,
     settingNotices: SettingChangeNoticesService,
+    projectCost: ProjectCostService,
   ) {
     // Keys MUST match SWEEP_SCHEDULE ids.
     this.handlers = {
       // Projects P-1 (answer 1405).
       'project-burn': () => projects.burnSweep(),
+      // Projects P-5 (1412, 1413, 1445).
+      'project-cost': () => projectCost.costSweep(),
       'notification-digests': () => notificationDigest.sweep(),
       'staff-reminders': () => reminders.sweep(),
       'scheduled-reports': () => scheduledReports.sweep(),

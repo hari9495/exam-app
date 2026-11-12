@@ -412,3 +412,11 @@ describe('buildNav: timesheet approvals (P-2, PRJ-02)', () => {
     expect(areas(nav([], { lineApprovals: 2, support: true }))).not.toContain('projects');
   });
 });
+
+describe('buildNav: Costing & margin (P-5, PRJ-04)', () => {
+  it('only for Projects finance, once Projects is on', () => {
+    expect(labels(nav(['projects.finance'], { projects: true }), 'projects')).toContain('Costing & margin');
+    expect(labels(nav(['projects.manage'], { projects: true }), 'projects')).not.toContain('Costing & margin');
+    expect(labels(nav(['projects.finance']), 'projects')).not.toContain('Costing & margin');
+  });
+});

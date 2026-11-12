@@ -28,9 +28,9 @@ feature not built** (no API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Claims, trips and advances (EXP-01 … 05, rounds 1 and 2b) | 5 | 44 | 0 | 0 | 0 | 3 | 47 |
+| A. Claims, trips and advances (EXP-01 … 05, rounds 1 and 2b; Projects P-5) | 5 | 45 | 0 | 0 | 0 | 3 | 48 |
 | B. Finance (EXP-06 … 09, rounds 2, policy view and card import) | 4 | 47 | 0 | 0 | 0 | 0 | 47 |
-| **All EXP groups (A–B)** | **9** | **91** | **0** | **0** | **0** | **3** | **94** |
+| **All EXP groups (A–B)** | **9** | **92** | **0** | **0** | **0** | **3** | **95** |
 
 Policy-view recount (script, 3 Nov 2026, `feat/yukthix-exp-policy-view`): EXP-07 "HR (read only)" is live with the new
 view-only key `expense.policy.view` (founder answer, round 2), so no "live (gap)" row is left in Expenses.
@@ -155,6 +155,7 @@ goes back to the home with a toast saying so.
 | Phone · Claim · phone (you will receive) | live | under 768 px: lead first, lines, "Add another receipt" and "Submit claim", bottom sheet |
 | AddLine · Add a line · what are you adding | live | a receipt (upload, read by OCR into a line to confirm), mileage, per diem, or a bill without a receipt (declared) |
 | CheckReadLine · Line read from a receipt · check and confirm | live | "Check and confirm" opens the line form with what was read and low-confidence fields marked; saving confirms it |
+| AddLineProject · Add a line · project and re-bill (Projects on) | live | Projects P-5 (answer 1419): with `projects.expenses.enabled` on, a line names an open project and, for a project with a client, whether it is re-billed; the project's cost includes it |
 
 #### EXP-03 · Claim review
 

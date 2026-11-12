@@ -198,6 +198,10 @@ export interface LiveProjectWorkspace {
   onChangeTask: (id: string, input: TaskInput) => Promise<void>;
   onAddMilestone: (input: MilestoneInput) => Promise<void>;
   onCompleteMilestone: (id: string, version: number) => Promise<void>;
+  /** Answer 1412: GET /projects/:id/cost (absent: no cost shown; finance or the manager with enough people only). */
+  cost?: { finance: boolean; hiddenMonths: number; provisional: boolean; total: string; months: { month: string; cost: string; expenses: string; basis: 'provisional' | 'final'; restatedFrom: string | null }[] } | null;
+  /** Answer 1419: GET /projects/:id/expenses (absent: no Expenses tab). */
+  expenses?: { id: string; person: string; what: string; spentOn: string; amount: string; rebill: boolean; status: 'Approved' | 'Pending' }[] | null;
   /** Answer 1541: the Timesheets tab, a week at a time (absent: no tab). */
   timesheets?: { week: string; rows: LiveTimesheetRow[] } | null;
   onTimesheetWeek?: (week: string) => void;
@@ -367,8 +371,8 @@ export function ProjectWorkspaceScreen({ project: drawnProject, persona: drawnPe
             <TabsTrigger value="tasks">Tasks & milestones</TabsTrigger>
             {(!live || live.timesheets !== undefined) && <TabsTrigger value="timesheets">Timesheets</TabsTrigger>}
             {!live && persona !== 'hr' && <TabsTrigger value="billing">Billing</TabsTrigger>}
-            {!live && (
-              <TabsTrigger value="expenses" count={expenses.length}>
+            {(!live || live.expenses !== undefined) && (
+              <TabsTrigger value="expenses" count={live ? (live.expenses?.length ?? 0) : expenses.length}>
                 Expenses
               </TabsTrigger>
             )}
@@ -398,7 +402,18 @@ export function ProjectWorkspaceScreen({ project: drawnProject, persona: drawnPe
                   ]}
                 />
               )}
-              {persona === 'pm' && <Text size="sm" tone="secondary">You see project cost as totals. Individual cost rates are visible to payroll and finance only.</Text>}
+              {/* Projects P-5 (1412, 1413): cost to date, totals only, from the nightly job. */}
+              {live?.cost && (
+                <>
+                  {live.cost.finance && p.budgetCost > 0 ? (
+                    <BudgetBars rows={[{ label: `Cost${live.cost.provisional ? ' (provisional until payroll is final)' : ''}`, used: Number(live.cost.total), budget: p.budgetCost, money: true }]} />
+                  ) : (
+                    <SummaryTiles label="Cost" tiles={[{ label: 'Cost to date', value: formatINR(Number(live.cost.total)), sub: live.cost.provisional ? 'provisional' : 'final' }, ...(live.cost.finance && p.fee ? [{ label: 'Fee', value: formatINR(p.fee) }] : [])]} />
+                  )}
+                  {live.cost.hiddenMonths > 0 && <Text size="sm" tone="secondary">{live.cost.hiddenMonths} {live.cost.hiddenMonths === 1 ? 'month is' : 'months are'} left out: too few people on the project, so a person's rate could be worked out.</Text>}
+                </>
+              )}
+              {(persona === 'pm' || (live?.cost && !live.cost.finance)) && <Text size="sm" tone="secondary">You see project cost as totals. Individual cost rates are visible to payroll and finance only.</Text>}
             </div>
           </TabsContent>
           <TabsContent value="team">
@@ -600,6 +615,28 @@ export function ProjectWorkspaceScreen({ project: drawnProject, persona: drawnPe
                   Rates: person override, then project role, then project default. Unapproved, non-billable and already-invoiced hours are never billed.
                 </Text>
               </div>
+            </TabsContent>
+          )}
+          {live && live.expenses !== undefined && (
+            <TabsContent value="expenses">
+              {!live.expenses ? (
+                <Skeleton height={200} />
+              ) : (
+                <DataTable
+                  label="Project expenses"
+                  rows={live.expenses}
+                  getRowId={(r) => r.id}
+                  columns={[
+                    { key: 'person', header: 'Claimed by', type: 'person', value: (r) => r.person, person: (r) => ({ name: r.person }) },
+                    { key: 'what', header: 'Expense', value: (r) => r.what },
+                    { key: 'date', header: 'Date', value: (r) => r.spentOn, render: (r) => formatDate(new Date(`${r.spentOn}T00:00:00`)) },
+                    { key: 'amount', header: 'Amount', type: 'money', value: (r) => Number(r.amount), total: 'sum' },
+                    { key: 'rebill', header: 'Rebill to client', type: 'status', value: (r) => (r.rebill ? 'Rebill' : 'Cost only'), statusTone: (v) => (v === 'Rebill' ? 'info' : 'neutral') },
+                    { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (v === 'Approved' ? 'success' : 'warning') },
+                  ]}
+                  empty={<EmptyState title="No expenses tagged to this project." description="Expense lines that name the project appear here once submitted." />}
+                />
+              )}
             </TabsContent>
           )}
           {!live && (
@@ -1104,8 +1141,88 @@ export interface CostRow {
   restated?: number;
 }
 
+/** Projects P-5 (answers 1412, 1413): GET /projects/costs, totals only. */
+export interface LiveCostsData {
+  month: string;
+  finance: boolean;
+  minPeople: number;
+  rows: { projectId: string; code: string; name: string; client: string | null; manager: string | null; hours: number; people: number; hidden: boolean; cost: string | null; expenses: string | null; rebill: string | null; revenue: string | null; margin: number | null; basis: 'provisional' | 'final'; restatedFrom: string | null }[];
+}
+export interface LiveCosts {
+  state: 'ready' | 'loading' | 'error' | 'no-access' | 'off';
+  onRetry?: () => void;
+  data: LiveCostsData | null;
+  /** The months to choose from (YYYY-MM, newest first). */
+  months: string[];
+  onMonth: (month: string) => void;
+  onOpen: (projectId: string) => void;
+}
+
+const monthLabel = (ym: string) => new Date(`${ym}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+
+/** PRJ-04 live: totals only. Finance sees revenue, margin and restatements; a PM sees totals, hidden under the people limit. */
+function LiveCostsView({ live }: { live: LiveCosts }) {
+  const d = live.data;
+  type Row = LiveCostsData['rows'][number];
+  const money = (x: string | null) => (x == null ? null : Number(x));
+  const cols: TableColumn<Row>[] = [
+    { key: 'code', header: 'Project', type: 'id', value: (r) => r.code, width: 130 },
+    { key: 'name', header: 'Name', value: (r) => r.name, render: (r) => <span className="yx-hire-clip" title={r.name}>{r.name}</span> },
+    { key: 'client', header: 'Client', value: (r) => r.client ?? 'Internal', groupable: true, optional: true },
+    { key: 'hours', header: 'Hours', type: 'number', value: (r) => r.hours, total: 'sum', width: 100 },
+    { key: 'cost', header: 'People cost', type: 'money', value: (r) => money(r.cost), render: (r) => (r.hidden ? <Text tone="muted">Hidden</Text> : formatINR(Number(r.cost))), total: 'sum' },
+    { key: 'expenses', header: 'Expenses', type: 'money', value: (r) => money(r.expenses), render: (r) => (r.hidden ? <Text tone="muted">Hidden</Text> : formatINR(Number(r.expenses))), total: 'sum' },
+    ...(d?.finance
+      ? [
+          { key: 'revenue', header: 'Revenue', type: 'money', value: (r: Row) => money(r.revenue), render: (r: Row) => (r.revenue ? formatINR(Number(r.revenue)) : <Text tone="muted">—</Text>), total: 'sum' } as TableColumn<Row>,
+          { key: 'margin', header: 'Margin', type: 'number', value: (r: Row) => r.margin, render: (r: Row) => (r.margin == null ? '—' : `${r.margin}%`) } as TableColumn<Row>,
+        ]
+      : []),
+    { key: 'basis', header: 'Cost basis', type: 'status', value: (r) => (r.restatedFrom ? 'Restated' : r.basis === 'provisional' ? 'Provisional' : 'Final'), statusTone: (v) => (v === 'Final' ? 'success' : v === 'Restated' ? 'info' : 'warning') },
+  ];
+  const head = (
+    <PageHeader
+      title="Costing and margin"
+      description="Cost = approved hours × each person's cost rate for the month (provisional until the month's payroll is final) + approved project expenses. Worked out nightly; only totals are kept."
+      facts={
+        live.months.length ? (
+          <div className="yx-hire-actions">
+            <Select aria-label="Month" value={d?.month ?? live.months[0]!} onChange={(m) => m && live.onMonth(m)} options={live.months.map((m) => ({ value: m, label: monthLabel(m) }))} />
+          </div>
+        ) : undefined
+      }
+    />
+  );
+  if (!d)
+    return (
+      <ProjectsFrame active="Costing & margin">
+        {head}
+        {live.state === 'error' ? <ErrorState title="We couldn't load project cost." onRetry={live.onRetry ?? (() => {})} /> : live.state === 'off' ? <ProjectsOffState /> : live.state === 'no-access' ? <NoAccessState what="project cost" grantedBy="your System Admin" /> : <Skeleton height={320} />}
+      </ProjectsFrame>
+    );
+  const restated = d.rows.filter((r) => r.restatedFrom);
+  return (
+    <ProjectsFrame active="Costing & margin">
+      {head}
+      {!d.finance && <InlineAlert tone="info">You see totals for your projects. A month with fewer than {d.minPeople} people on a project shows no cost, so nobody's rate can be worked out.</InlineAlert>}
+      {d.rows.some((r) => r.basis === 'provisional') && <InlineAlert tone="warning">{monthLabel(d.month)} costs are provisional. They are restated from final cost rates once the month's payroll is final.</InlineAlert>}
+      {restated.length > 0 && (
+        <InlineAlert tone="info" title="Restated">
+          {restated.map((r) => `${r.code}: provisional ${formatINR(Number(r.restatedFrom))}, final ${formatINR(Number(r.cost))}`).join('; ')}.
+        </InlineAlert>
+      )}
+      <DataTable label="Project cost" columns={cols} rows={d.rows} getRowId={(r) => r.projectId} onRowClick={(r) => live.onOpen(r.projectId)} empty={<EmptyState title="No project costs for this month." description="Costs post nightly from approved timesheets and approved project expenses." />} />
+    </ProjectsFrame>
+  );
+}
+
 // PRJ-04
-export function CostingMarginScreen({ rows, persona, period = 'Sep 2026', loading }: { rows: CostRow[]; persona: 'finance' | 'pm'; period?: string; loading?: boolean }) {
+export function CostingMarginScreen(props: { rows?: CostRow[]; persona?: 'finance' | 'pm'; period?: string; loading?: boolean; live?: LiveCosts }) {
+  if (props.live) return <LiveCostsView live={props.live} />;
+  return <DrawnCostingMargin rows={props.rows ?? []} persona={props.persona ?? 'finance'} period={props.period} loading={props.loading} />;
+}
+
+function DrawnCostingMargin({ rows, persona, period = 'Sep 2026', loading }: { rows: CostRow[]; persona: 'finance' | 'pm'; period?: string; loading?: boolean }) {
   const [groupBy, setGroupBy] = useState<string | null>('project');
   const visible = (r: CostRow) => costVisible(r.peopleInMonth, persona);
   const cols: TableColumn<CostRow>[] = [

@@ -9,13 +9,15 @@ import { WORK_TOOLS, workToolsFromEnv } from '../time/providers/work-tools';
 import { ProjectsService } from './projects.service';
 import { ResourcingController } from './resourcing.controller';
 import { ResourcingService } from './resourcing.service';
+import { CostController } from './cost.controller';
+import { ProjectCostService } from './project-cost.service';
 
 // Projects P-1 (answers 1401 to 1405, 1412, 1420): projects core.
 @Module({
   imports: [AuthModule, NotificationsModule, OrgStructureModule],
   // P-3: its own work-tools adapter (stateless) for "Test against last week".
-  providers: [ProjectsService, ProjectMappingService, ResourcingService, { provide: WORK_TOOLS, useFactory: workToolsFromEnv }],
-  controllers: [MappingRulesController, ResourcingController, ProjectsController],
-  exports: [ProjectsService],
+  providers: [ProjectsService, ProjectMappingService, ResourcingService, ProjectCostService, { provide: WORK_TOOLS, useFactory: workToolsFromEnv }],
+  controllers: [MappingRulesController, ResourcingController, CostController, ProjectsController],
+  exports: [ProjectsService, ProjectCostService],
 })
 export class ProjectsModule {}

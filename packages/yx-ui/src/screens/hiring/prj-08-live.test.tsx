@@ -109,6 +109,7 @@ describe('Settings 3.11: pre-fill switch and the rules link (P-3)', () => {
     expect(all.map((x) => x.key)).toContain('prj.mapping_rules');
     const off = projectSettingsPage(design, { canEdit: true, values: { ...v, 'projects.enabled': 'off' }, defaults: v, choices: {}, lastChange: null }).sections.flatMap((s) => s.settings);
     expect(off.map((x) => x.key)).not.toContain('prj.mapping_rules');
+    // One way (Settings S-4): pre-fill saves with the Projects settings.
     expect(projectSettingsChanges({ 'prj.prefill_enabled': true })).toEqual([{ key: 'timesheet.tool_suggestions', value: 'on' }]);
   });
 });

@@ -197,6 +197,8 @@ export const YX_KEYS = [
   'ats.staffing.view',
   // Projects P-1: Settings › Projects & timesheets.
   'projects.manage',
+  // Projects P-5: Costing & margin.
+  'projects.finance',
   // HIR-21 vendors (the recruitment agencies).
   'ats.agency.manage',
   // Staffing slice 3: staffing finance (invoices, receipts, vendor invoices).

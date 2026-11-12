@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
-import { ProjectWorkspaceScreen, type LiveProjectDetail, type LiveTimesheetRow, type ProjectChoices } from '@yukthix/ui/hiring';
+import { ProjectWorkspaceScreen, type LiveProjectDetail, type LiveProjectWorkspace, type LiveTimesheetRow, type ProjectChoices } from '@yukthix/ui/hiring';
 import { loadState } from '../../../../../lib/yx-org';
 import { useProjects, useProjectsWrite } from '../../../../../lib/yx-projects';
 
@@ -24,6 +24,9 @@ export default function YxProjectPage() {
     t.setDate(t.getDate() - ((t.getDay() + 6) % 7));
     return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
   });
+  // Answers 1412, 1419: cost (finance, or the manager; the API refuses others) and the project's expenses.
+  const cost = useProjects<NonNullable<LiveProjectWorkspace['cost']>>(detail.data && (can?.finance || can?.run) ? `${p}/cost` : null);
+  const expenses = useProjects<NonNullable<LiveProjectWorkspace['expenses']>>(detail.data ? `${p}/expenses` : null);
   const ts = useProjects<{ week: string; rows: LiveTimesheetRow[] }>(detail.data ? `${p}/timesheets?week=${week}` : null);
   return (
     <ProjectWorkspaceScreen
@@ -43,6 +46,8 @@ export default function YxProjectPage() {
         onAddTask: async (input) => void (await write('POST', `${p}/tasks`, input)),
         onChangeTask: async (tid, input) => void (await write('PUT', `${p}/tasks/${encodeURIComponent(tid)}`, input)),
         onAddMilestone: async (input) => void (await write('POST', `${p}/milestones`, input)),
+        cost: cost.isError || !(can?.finance || can?.run) ? undefined : (cost.data ?? null),
+        expenses: expenses.isError ? undefined : (expenses.data ?? null),
         timesheets: ts.data ?? null,
         onTimesheetWeek: setWeek,
         onCompleteMilestone: async (mid, version) => void (await write('POST', `${p}/milestones/${encodeURIComponent(mid)}/complete`, { version })),

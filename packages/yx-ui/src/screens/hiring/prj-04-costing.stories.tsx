@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { CostingMarginScreen, type CostRow } from './projects';
+import { CostingMarginScreen, type CostRow, type LiveCosts } from './projects';
+import { LIVE_COSTS } from './projects-live-fixtures';
 
 const meta: Meta = { title: 'Screens/Projects/PRJ-04 · Project costing and margin', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -18,3 +19,10 @@ export const Pm: S = { name: 'PM · one-person project cost hidden', render: () 
 export const Final: S = { name: 'Finance · August final, NRP-WEB restated', render: () => <CostingMarginScreen rows={AUG} persona="finance" period="Aug 2026" /> };
 export const Empty: S = { name: 'Empty', render: () => <CostingMarginScreen rows={[]} persona="finance" /> };
 export const Loading: S = { name: 'Loading', render: () => <CostingMarginScreen rows={ROWS} persona="finance" loading /> };
+
+// Projects P-5 (answers 1412, 1413): the live states (totals only).
+const live = (over: Partial<LiveCosts> = {}): LiveCosts => ({ state: 'ready', data: LIVE_COSTS, months: ['2026-11', '2026-10', '2026-09'], onMonth: () => {}, onOpen: () => {}, ...over });
+export const LiveFinance: S = { name: 'Live · finance, one month restated', render: () => <CostingMarginScreen live={live()} /> };
+export const LivePm: S = { name: 'Live · project manager, totals only (small month hidden)', render: () => <CostingMarginScreen live={live({ data: { ...LIVE_COSTS, finance: false, rows: LIVE_COSTS.rows.map((r) => ({ ...r, rebill: null, revenue: null, margin: null, restatedFrom: null, ...(r.people < 2 ? { hidden: true, cost: null, expenses: null } : {}) })) } })} /> };
+export const LiveEmpty: S = { name: 'Live · no costs this month', render: () => <CostingMarginScreen live={live({ data: { ...LIVE_COSTS, rows: [] } })} /> };
+export const LiveNoAccess: S = { name: 'Live · no access', render: () => <CostingMarginScreen live={live({ state: 'no-access', data: null })} /> };

@@ -20962,5 +20962,58 @@
       "Screens/YukthiX console/YX-12 · Nudge and switch-on copy editor · What a company admin sees (C-8)"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRJ5-01",
+    "area": "Projects P-5, cost and margin, project expenses (12 Nov 2026)",
+    "screen": "Projects › Costing & margin",
+    "url": "http://localhost:3000/yx/projects/costs",
+    "account": "A Projects finance person; a PM of a 2-person and a 1-person project; a Projects manager without finance; approved timesheets last month; cost rates for the month before only (payroll not final).",
+    "steps": [
+      "Let the nightly job run (or run project-cost).",
+      "As finance open Costing & margin, last month.",
+      "As the PM open it.",
+      "As the Projects manager without finance open it.",
+      "Finalise last month's payroll; let the job run; open it as finance."
+    ],
+    "expected": "Step 2: both projects with cost, expenses, revenue (fixed fee only) and margin; 'costs are provisional'. Step 3: totals only; the 1-person project shows Hidden; no revenue or margin; no rates anywhere. Step 4: no access (Request access). Step 5: cost basis Final, 'Restated' with the provisional and final totals.",
+    "stories": [
+      "Screens/Projects/PRJ-04 · Project costing and margin · Live · finance, one month restated"
+    ],
+    "note": "Positive and negative. Answers 1412, 1413."
+  },
+  {
+    "id": "MT-PRJ5-02",
+    "area": "Projects P-5, cost and margin, project expenses (12 Nov 2026)",
+    "screen": "Settings › Projects & timesheets; a claim's line form",
+    "url": "http://localhost:3000/yx/settings/projects",
+    "account": "The System Admin; an employee with a draft claim.",
+    "steps": [
+      "With 'Expense lines can name a project' off, add a line.",
+      "Switch it on; add a line naming a project with a client; tick Re-bill.",
+      "Name an internal project."
+    ],
+    "expected": "Step 1: no Project field. Step 2: the project and Re-bill are saved; once approved the project's Expenses tab lists it and its cost includes it. Step 3: no Re-bill choice for a project without a client.",
+    "stories": [
+      "Screens/Expenses/EXP-02 · Claim composer · Add a line · project and re-bill (Projects on)"
+    ],
+    "note": "Positive and negative. Answer 1419."
+  },
+  {
+    "id": "MT-PRJ5-03",
+    "area": "Projects P-5, cost and margin, project expenses (12 Nov 2026)",
+    "screen": "Project workspace › Overview",
+    "url": "http://localhost:3000/yx/projects",
+    "account": "A project with a cost budget; Projects finance; its PM.",
+    "steps": [
+      "As finance open the project.",
+      "As the PM open it.",
+      "Let costs pass 80% of the cost budget and the job run."
+    ],
+    "expected": "Step 1: cost to date against the cost budget, provisional until payroll is final. Step 2: the cost total and how many months are left out; never a rate. Step 3: 'Cost burn 80%' to finance (and the PM when the month has enough people), once.",
+    "stories": [
+      "Screens/Projects/PRJ-01 · Projects and project workspace · Live · finance overview with cost against budget"
+    ],
+    "note": "Positive and negative. Answers 1412, 1445."
   }
 ]
