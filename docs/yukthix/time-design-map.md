@@ -961,6 +961,10 @@ Builder E, 29 Oct 2026.
 | Locked · August week (`Locked`) | /yx/time/timesheet, a week in a locked month (grid locked); a week partly locked names the locked days. Gap: "Add correction" for a locked week is not in the API. |
 | Phone · sent back, resubmit (`PhoneSentBack`) | Phone view, mobile app not built. |
 | Phone · day list, submit week (`Phone`) | Phone view, mobile app not built. |
+| Notes · required, 200 words, live count (`NoteRequired`) | /yx/time/timesheet (founder 12 Nov, answers 1731 to 1736): a note under each row with "142 of 200 words"; the rule is the company's (Settings › Projects & timesheets, required and 200 words by default). |
+| Notes · resubmit refused until each row has 200 words (`NoteRefused`) | /yx/time/timesheet: Submit week names each short row; the API refuses it too (`NOTE_TOO_SHORT`); Save draft never asks. |
+| Notes · optional (company setting off) (`NoteOptional`) | /yx/time/timesheet with the setting off: "N words · optional". |
+| Phone · notes under each project (`PhoneNote`) | Phone view, mobile app not built. |
 
 Also not live from this design: "Copy last week" (the API returns only last weeks' totals, not their lines). "Pre-fill from my tools" is live since 29 Oct 2026 (TIM-43 drawer, work-tool providers: to decide).
 

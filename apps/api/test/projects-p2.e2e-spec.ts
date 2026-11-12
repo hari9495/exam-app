@@ -119,7 +119,8 @@ describe('Projects P-2 line approvals', () => {
     });
     // Projects on; three projects: NRP (Nilgiri, PM A, client approves hours), KAV (Coromandel, PM B, client approves
     // hours) and INT (internal, no manager: the person's manager approves).
-    await api('admin', 'put', '/projects/settings').send({ changes: [{ key: 'projects.enabled', value: 'on' }] }).expect(want(200));
+    // The timesheet note (1731 to 1736) has its own suite (timesheet-note); these weeks go without notes.
+    await api('admin', 'put', '/projects/settings').send({ changes: [{ key: 'projects.enabled', value: 'on' }, { key: 'timesheet.note.required', value: 'off' }] }).expect(want(200));
     const project = async (code: string, body: Record<string, unknown>) => {
       const id = (await api('pmA', 'post', '/projects').send({ code, name: `Project ${code}`, ...body }).expect(want(201))).body.id as string;
       await api('pmA', 'post', `/projects/${id}/status`).send({ status: 'active', version: 1 }).expect(want(200));

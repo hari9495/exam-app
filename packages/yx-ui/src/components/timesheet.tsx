@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
+import { Fragment, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { ChevronLeft, ChevronRight, Copy, Plus, Trash2 } from 'lucide-react';
 import { cx } from '../lib/cx';
 import { formatDate } from '../lib/format';
@@ -8,6 +8,7 @@ import { Checkbox } from './choice';
 import { Badge, DayDate, type BadgeTone } from './display';
 import { InlineAlert } from './feedback';
 import { Select } from './select';
+import { TextArea } from './inputs';
 
 export interface TimesheetTask {
   id: string;
@@ -38,6 +39,14 @@ export interface TimesheetLine {
    */
   correctionFor?: string;
   correctionHours?: number | null;
+  /** Answers 1731 to 1736: what the person did on this row, in their own words (pre-filled rows start empty). */
+  note?: string;
+}
+
+/** The company's note rule (Settings › Projects & timesheets): required by default, at least 200 words. */
+export interface TimesheetNoteRule {
+  required: boolean;
+  minWords: number;
 }
 
 export interface TimesheetDay {
@@ -90,6 +99,8 @@ export interface TimesheetGridProps {
   onAddCorrection?: () => void;
   /** Days before this are past: a working day below its expected hours shows "N h short" in amber. */
   today?: Date;
+  /** Answers 1731 to 1736: a note under each row with a live word count; Submit checks it (Save draft never does). */
+  noteRule?: TimesheetNoteRule;
 }
 
 const DAY = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -124,10 +135,15 @@ interface Problem {
 /** Hours a line adds: its seven days, or its single correction field. */
 const lineHours = (l: TimesheetLine) => (l.correctionFor ? l.correctionHours ?? 0 : sum(l.hours));
 
-export function checkTimesheet(lines: TimesheetLine[], dailyMax = 24): Problem[] {
+/** Words in a note (runs of non-space characters). */
+export const wordCount = (note: string | null | undefined) => (note ?? '').trim().split(/\s+/).filter(Boolean).length;
+
+export function checkTimesheet(lines: TimesheetLine[], dailyMax = 24, noteRule?: TimesheetNoteRule): Problem[] {
   const out: Problem[] = [];
   lines.forEach((l, i) => {
     if (lineHours(l) > 0 && !l.projectId) out.push({ message: `Choose a project for row ${i + 1}`, lineId: l.id });
+    else if (noteRule?.required && lineHours(l) > 0 && wordCount(l.note) < noteRule.minWords)
+      out.push({ message: `Row ${i + 1}: write at least ${noteRule.minWords} words about the work (${wordCount(l.note)} so far)`, lineId: l.id });
   });
   // Corrections belong to another week: they never count toward a day here.
   const dayLines = lines.filter((l) => !l.correctionFor);
@@ -234,6 +250,7 @@ export function TimesheetGrid(props: TimesheetGridProps) {
     sentBackCell,
     onAddCorrection,
     today,
+    noteRule,
   } = props;
   const narrow = useNarrow();
   const asDays = layout === 'days' || (layout === 'auto' && narrow);
@@ -294,9 +311,25 @@ export function TimesheetGrid(props: TimesheetGridProps) {
     patch(l.id, { taskId, billable: t?.billable ?? p?.billable ?? false });
   };
   const submit = () => {
-    const p = checkTimesheet(lines, dailyMax);
+    const p = checkTimesheet(lines, dailyMax, noteRule);
     setProblems(p);
     if (!p.length) onSubmit?.();
+  };
+
+  /** The row's note: a text box with a live word count while the week is open, the text once it is sent. */
+  const noteBox = (l: TimesheetLine, rowName: string) => {
+    if (!noteRule) return null;
+    const n = wordCount(l.note);
+    const short = noteRule.required && lineHours(l) > 0 && n < noteRule.minWords;
+    if (!editable) return l.note ? <p className="yx-ts__note-text">{l.note}</p> : <span className="yx-ts__muted">No note</span>;
+    return (
+      <div className="yx-ts__note">
+        <TextArea aria-label={`Note for ${rowName}`} rows={2} value={l.note ?? ''} placeholder="What did you do? In your own words." onChange={(note) => patch(l.id, { note })} />
+        <span className="yx-ts__note-count" aria-live="polite" data-tone={short ? 'short' : undefined}>
+          {noteRule.required ? `${n} of ${noteRule.minWords} words` : `${n} words · optional`}
+        </span>
+      </div>
+    );
   };
 
   const range = `${longDate(dates[0])} – ${longDate(dates[6])}`;
@@ -413,6 +446,7 @@ export function TimesheetGrid(props: TimesheetGridProps) {
                     disabled={!p}
                     clearable
                   />
+                  {noteBox(l, p ? p.name : `row ${r + 1}`)}
                   <div className="yx-ts__pick-foot">
                     {p?.billable ? <Checkbox label="Billable" checked={l.billable} onChange={(billable) => patch(l.id, { billable })} /> : p ? billText(l, p) : <span />}
                     <IconButton icon={Trash2} label={`Remove row ${r + 1}`} onClick={() => onLinesChange(lines.filter((x) => x.id !== l.id))} />
@@ -540,7 +574,8 @@ export function TimesheetGrid(props: TimesheetGridProps) {
               const p = l.projectId ? byId.get(l.projectId) : undefined;
               const rowName = p ? p.name : `Row ${r + 1}`;
               return (
-                <tr key={l.id} data-invalid={badLines.has(l.id) || undefined}>
+                <Fragment key={l.id}>
+                <tr data-invalid={badLines.has(l.id) || undefined}>
                   <td>
                     {editable ? (
                       <Select
@@ -600,6 +635,12 @@ export function TimesheetGrid(props: TimesheetGridProps) {
                     </td>
                   )}
                 </tr>
+                {noteRule && (
+                  <tr className="yx-ts__note-row" data-invalid={badLines.has(l.id) || undefined}>
+                    <td colSpan={11 + (editable ? 1 : 0)}>{noteBox(l, rowName)}</td>
+                  </tr>
+                )}
+                </Fragment>
               );
             })}
           </tbody>

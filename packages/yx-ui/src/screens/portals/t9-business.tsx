@@ -1293,7 +1293,7 @@ export interface LiveClientPortal {
     submissions: { id: string; candidate: string; job: string; submittedOn: string; status: ClientSubmission['status']; feedback: string | null }[];
     timesheets: { id: string; worker: string; role: string; weekStart: string; hours: string; overtime: string; vendor: string | null; status: ClientTimesheet['status']; note: string | null }[];
     /** Answer 1408 (914): hours on this client's own projects that ask the client to approve them, line by line. */
-    projectHours?: { id: string; worker: string; project: string; task: string | null; weekStart: string; hours: string; status: ClientTimesheet['status']; note: string | null }[];
+    projectHours?: { id: string; worker: string; project: string; task: string | null; weekStart: string; hours: string; status: ClientTimesheet['status']; note: string | null; /** Answer 1734: the person's note, only when the project shows notes to the client. */ workNote?: string | null }[];
     invoices: { id: string; no: string; period: string | null; kind: string; amount: string; gst: string; issuedOn: string; dueOn: string; status: 'Paid' | 'Due' | 'Overdue' | 'Credit' }[];
     /** Answer 491: HIR-06 interviews for this client's jobs, and who can be booked. */
     interviews?: { id: string; candidate: string; job: string; at: string | null; mode: string; panel: string | null; status: string }[];
@@ -1514,6 +1514,7 @@ function LiveClientPortalView({ live }: { live: LiveClientPortal }) {
                       <span className="yx-ps-list__meta">
                         {weekLabel(t.weekStart)} · {t.hours} hours{t.note ? ` · your note: ${t.note}` : ''}
                       </span>
+                      {t.workNote && <span className="yx-ps-list__meta">Work done: {t.workNote}</span>}
                     </div>
                     <Badge tone={t.status === 'Approved' ? 'success' : t.status === 'Sent back' ? 'danger' : 'warning'}>{t.status}</Badge>
                     {t.status === 'Waiting for you' && live.onProjectHours && (

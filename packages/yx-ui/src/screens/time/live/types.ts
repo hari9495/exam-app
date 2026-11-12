@@ -724,12 +724,16 @@ export interface MyTimesheet {
   projects: { id: string; code: string; name: string; billable: boolean; activities: string[]; active: boolean }[];
   days: { on: string; holiday: string | null; leave: string | null; locked: boolean }[];
   recent: { id: string; week: string; status: string; totalMinutes: number }[];
+  /** Answers 1731 to 1733: the company's note rule (absent from an older API: no notes asked). */
+  noteRule?: { required: boolean; minWords: number };
 }
 export interface TimesheetLineInput {
   projectId: string;
   activity: string | null;
   billable: boolean;
   minutes: number[];
+  /** Answers 1731 to 1736: the row's note, in the person's own words. */
+  note?: string | null;
 }
 
 export interface Periods {

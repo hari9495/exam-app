@@ -210,6 +210,8 @@ describe('Projects P-1', () => {
   });
 
   it('burn alerts fire once per level at the thresholds (80% then 100%) to the manager and Projects finance', async () => {
+    // The timesheet note (1731 to 1736) has its own suite (timesheet-note); this week goes without notes.
+    await settings('admin', [{ key: 'timesheet.note.required', value: 'off' }]).expect(want(200));
     await api('emp', 'post', '/time/me/timesheet/submit').send({ week }).expect(want(200)); // 16 h of 20 h = 80%
     notify.mockClear();
     expect(await projects.burnSweep([org.A.id])).toBe(1);

@@ -334,7 +334,10 @@ describe('Time and leave batch 2', () => {
       const line = { projectId: ids.project, activity: 'Docs', billable: false, minutes: [480, 480, 0, 0, 0, 0, 0] };
       await api('emp', 'put', '/time/me/timesheet').send({ week: addDays(week, 1), lines: [line] }).expect(400);
       await api('emp', 'put', '/time/me/timesheet').send({ week, lines: [{ ...line, activity: 'Golf' }] }).expect(400);
+      // Answers 1731 to 1733: a note on every row with hours (required, 200 words, by default); Save draft never asks.
       await api('emp', 'put', '/time/me/timesheet').send({ week, lines: [line] }).expect(200);
+      expect((await api('emp', 'post', '/time/me/timesheet/submit').send({ week }).expect(400)).body.code).toBe('NOTE_TOO_SHORT');
+      await api('emp', 'put', '/time/me/timesheet').send({ week, lines: [{ ...line, note: Array.from({ length: 200 }, (_, i) => `docs${i}`).join(' ') }] }).expect(200);
       const sheet = (await api('emp', 'post', '/time/me/timesheet/submit').send({ week }).expect(200)).body;
       expect(sheet.status).toBe('pending');
       await api('emp', 'put', '/time/me/timesheet').send({ week, lines: [line] }).expect(409);

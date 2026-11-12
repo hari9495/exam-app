@@ -515,3 +515,10 @@ td .yx-badge, .yx-table td[data-type="date"] { white-space: nowrap; }
 .yx-plain-table tr[data-tone='selected'] { --yx-plain-tone-bg: var(--yx-color-bg-selected); --yx-plain-tone-bar: var(--yx-color-action-primary); }
 .yx-plain-table .yx-number-field, .yx-plain-table input { min-width: 0; }
 .yx-plain-table__caption { caption-side: top; text-align: start; padding-bottom: var(--yx-space-2); color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); }
+/* Answers 1731 to 1736: the row's note and its live word count. */
+.yx-ts__note-row td { padding-top: 0; }
+/* The note stays in view as the grid scrolls sideways, at a readable width. */
+.yx-ts__note { display: grid; gap: var(--yx-space-1); position: sticky; left: 0; max-width: min(var(--yx-form-max), 100%); }
+.yx-ts__note-count { color: var(--yx-color-text-muted); font-size: var(--yx-text-sm); }
+.yx-ts__note-count[data-tone='short'] { color: var(--yx-color-warning-text); }
+.yx-ts__note-text { margin: 0; white-space: pre-wrap; }

@@ -649,6 +649,8 @@ export interface TimesheetApprovalLine {
   task?: string;
   hours: number;
   billable?: boolean;
+  /** Answer 1734: the person's note for this row (the approver of the row reads it). */
+  note?: string | null;
 }
 
 export type LineDecision =
@@ -746,6 +748,7 @@ function TimesheetLineRow({ line, decision, onDecide }: { line: TimesheetApprova
         <span className="yx-tsa__project">{line.project}</span>
         {line.task && <span className="yx-tsa__task">{line.task}</span>}
         {line.billable && <span className="yx-tsa__task">Billable</span>}
+        {line.note && <span className="yx-tsa__note">{line.note}</span>}
       </div>
       <div className="yx-tsa__hours">
         {decision?.status === 'reduced' ? (

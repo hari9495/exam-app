@@ -42,3 +42,13 @@ export function weekOutcome(lines: { status: string | null; minutes: number[]; a
   if (lines.some((l) => l.status === 'pending' || l.status === null)) return null;
   return lines.some((l) => lineApproved(l).some((m) => m > 0)) ? 'approved' : 'rejected';
 }
+
+/** Answers 1731 to 1733: words in a timesheet note (runs of non-space characters). */
+export const wordCount = (note: string | null | undefined) => (note ?? '').trim().split(/\s+/).filter(Boolean).length;
+
+/** Why a row with hours cannot be submitted for its note, or null (the company's rule: required, at least N words). */
+export function noteProblem(rule: { required: boolean; minWords: number }, minutes: number[], note: string | null | undefined): string | null {
+  if (!rule.required || !minutes.some((m) => m > 0)) return null;
+  const n = wordCount(note);
+  return n >= rule.minWords ? null : `write at least ${rule.minWords} words about the work (${n} so far)`;
+}
