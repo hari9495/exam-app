@@ -26,7 +26,7 @@ describe('Helpdesk: IT starter catalogue and devices on a ticket', () => {
   const run = randomUUID().slice(0, 8);
   const SUPER: TenantContext = { organizationId: null, isSuperAdmin: true };
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'adminB' | 'itAgent' | 'hrAgent' | 'emp' | 'other' | 'empB' | 'agentB';
+  type Who = 'adminA' | 'adminB' | 'itAgent' | 'hrAgent' | 'emp' | 'other' | 'empB' | 'agentB' | 'helper';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
@@ -68,6 +68,8 @@ describe('Helpdesk: IT starter catalogue and devices on a ticket', () => {
       ['hrAgent', 'A', 'panel', tpl('desk_agent')],
       ['emp', 'A', 'panel', null],
       ['other', 'A', 'panel', null],
+      // Answer 1685: someone with no device who may raise tickets for others.
+      ['helper', 'A', 'panel', ['request.raise_on_behalf']],
       ['empB', 'B', 'panel', null],
       ['agentB', 'B', 'panel', tpl('desk_agent')],
     ];
@@ -99,6 +101,7 @@ describe('Helpdesk: IT starter catalogue and devices on a ticket', () => {
     };
     ids.empPerson = await hire('A', 'emp');
     ids.otherPerson = await hire('A', 'other');
+    ids.helperPerson = await hire('A', 'helper');
     ids.empBPerson = await hire('B', 'empB');
     // The People asset register: a laptop each for emp and other, one in stock, one retired; in company B a laptop for empB.
     const asset = (k: 'A' | 'B', name: string, tag: string, status: string, holder?: string) =>
@@ -211,5 +214,27 @@ describe('Helpdesk: IT starter catalogue and devices on a ticket', () => {
     const ctx = (await api('itAgent', 'get', `/desk/tickets/${ticketId}/context`).expect(200)).body as { assets: { id: string; tag: string }[] };
     expect(ctx.assets.map((x) => x.id)).toEqual([ids.empLaptop]);
     await api('hrAgent', 'get', `/desk/tickets/${ticketId}/context`).expect((r) => expect([403, 404]).toContain(r.status));
+  });
+  // ------------------------------------------------------------------------------------------ answer 1685
+  describe('1685: "Which device?" for the person the ticket is for', () => {
+    it('someone with no device raising for a colleague is asked, sees only the colleague devices and may name one', async () => {
+      const mine = (await api('helper', 'get', '/desk/my/desks').expect(200)).body.find((d: { id: string }) => d.id === ids.it);
+      expect(mine.askDevice).toBe(false);
+      const forEmp = (await api('helper', 'get', `/desk/my/desks?for=${ids.empPerson}`).expect(200)).body.find((d: { id: string }) => d.id === ids.it);
+      expect(forEmp.askDevice).toBe(true);
+      expect((await api('helper', 'get', `/desk/my/pick/assets?for=${ids.empPerson}&q=`).expect(200)).body.map((x: { id: string }) => x.id)).toEqual([ids.empLaptop]);
+      expect((await api('helper', 'get', '/desk/my/pick/assets?q=').expect(200)).body).toEqual([]);
+      const t = (await api('helper', 'post', '/desk/my/tickets').send({ deskId: ids.it, subject: 'Her laptop will not start', description: 'Raised for her.', requestedForPersonId: ids.empPerson, assetId: ids.empLaptop }).expect(201)).body;
+      expect((await api('itAgent', 'get', `/desk/tickets/${t.id}`).expect(200)).body.device.id).toBe(ids.empLaptop);
+    });
+
+    it('negative: a device of another person is refused for her; without the right "for" is refused; a bad id is refused', async () => {
+      expect((await api('helper', 'post', '/desk/my/tickets').send({ deskId: ids.it, subject: 'x', description: 'x', requestedForPersonId: ids.empPerson, assetId: ids.otherLaptop }).expect(400)).body.message).toMatch(/your own devices/);
+      await api('emp', 'get', `/desk/my/desks?for=${ids.otherPerson}`).expect(403);
+      await api('emp', 'get', `/desk/my/pick/assets?for=${ids.otherPerson}&q=`).expect(403);
+      // For oneself it is simply one's own devices (none here).
+      expect((await api('helper', 'get', `/desk/my/pick/assets?for=${ids.helperPerson}&q=`).expect(200)).body).toEqual([]);
+      await api('helper', 'get', '/desk/my/desks?for=not-a-uuid').expect(400);
+    });
   });
 });

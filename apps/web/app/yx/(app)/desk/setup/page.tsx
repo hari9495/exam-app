@@ -63,7 +63,7 @@ function YxDeskSetupPageInner() {
   const items = useDesk<CatalogItemAdmin[]>(selected && canCatalog ? `/catalog/admin/items?deskId=${selected}` : null);
   const catalogRules = useDesk<{ highValueAbove: number }>(selected && canCatalog ? '/catalog/admin/settings' : null);
   // HLP-04 (founder 3 Nov 2026): the company's help-article review interval (registry desk.kb.review_months).
-  const kbSettings = useDesk<{ reviewMonths: number; pageHelp?: boolean; synonyms?: string; synonymsDefault?: string }>(perms.has('desk.desk.create') ? '/kb/settings' : null);
+  const kbSettings = useDesk<{ reviewMonths: number; pageHelp?: boolean }>(perms.has('desk.desk.create') ? '/kb/settings' : null);
   const catalogSchema = useDesk<CatalogSchema>(selected && canCatalog ? `/catalog/admin/schema?deskId=${selected}` : null);
   const rules = useDesk<DeskRule[]>(selected && canRules ? `/rules?deskId=${selected}` : null);
   const ruleSchema = useDesk<DeskRuleSchema>(selected && canRules ? `/rules/schema?deskId=${selected}` : null);
@@ -97,8 +97,6 @@ function YxDeskSetupPageInner() {
       pageHelp={kbSettings.data?.pageHelp ?? null}
       onPageHelp={perms.has('desk.desk.create') ? (pageHelp) => write('/kb/settings', 'PUT', { pageHelp }) : undefined}
       // Answer 1642: the company's search words that mean the same.
-      synonyms={kbSettings.data?.synonyms != null ? { value: kbSettings.data.synonyms, starter: kbSettings.data.synonymsDefault ?? '' } : null}
-      onSynonyms={perms.has('desk.desk.create') ? (synonyms) => write('/kb/settings', 'PUT', { synonyms }) : undefined}
       state={deskState(desks)}
       onRetry={() => void desks.refetch()}
       desks={desks.data ?? []}

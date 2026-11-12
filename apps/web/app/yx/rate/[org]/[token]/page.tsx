@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { Button, FormField, InlineAlert, Segment, Spinner, TextArea } from '@yukthix/ui';
+import { Button, FormField, InlineAlert, Segment, Select, Spinner, TextArea } from '@yukthix/ui';
 import { API_BASE } from '../../../../../lib/api-client';
 
 // The rating link from a "How did we do?" or NPS email (SD-1.26, D9: no tracking pixels). Founder decision 8 Oct 2026:
@@ -16,6 +16,8 @@ interface LinkInfo {
   min: number;
   max: number;
   used: boolean;
+  /** Answer 1682: the desk's preset reasons (ratings only). */
+  reasons?: string[];
 }
 
 function RatePage() {
@@ -26,12 +28,13 @@ function RatePage() {
   const [state, setState] = useState<'loading' | 'ask' | 'sending' | 'sent' | 'used' | 'gone' | 'error'>('loading');
   const [score, setScore] = useState<number | null>(null);
   const [comment, setComment] = useState('');
+  const [reason, setReason] = useState<string | null>(null);
   const [commented, setCommented] = useState(false);
   const once = useRef(false);
 
   const answer = async (s: number) => {
     setState('sending');
-    const r = await fetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ score: s }) }).catch(() => null);
+    const r = await fetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ score: s, ...(reason ? { reason } : {}) }) }).catch(() => null);
     setState(!r ? 'error' : r.ok ? 'sent' : r.status === 409 ? 'used' : r.status === 404 ? 'gone' : 'error');
   };
 
@@ -70,6 +73,11 @@ function RatePage() {
             value={score}
             onChange={setScore}
           />
+          {(info.reasons ?? []).length > 0 && (
+            <FormField label="The main reason" optional>
+              <Select value={reason} onChange={setReason} clearable placeholder="Choose a reason" options={info.reasons!.map((r) => ({ value: r, label: r }))} />
+            </FormField>
+          )}
           <div className="yx-ops-row">
             <Button variant="primary" disabled={score === null || state === 'sending'} onClick={() => score !== null && void answer(score)}>
               Confirm my rating

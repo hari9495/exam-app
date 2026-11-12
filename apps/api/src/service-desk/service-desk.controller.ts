@@ -76,6 +76,7 @@ import {
   UpdateSlaPolicyDto,
   UpdateTaskDto,
 } from './dto';
+import { MyDesksQueryDto } from './dto-esm';
 import { MeService } from './me.service';
 import { SlaService } from './sla.service';
 import { WorkService } from './work.service';
@@ -583,8 +584,8 @@ export class MyTicketsController {
   }
 
   @Get('desks')
-  desks(@Req() req: Request, @CurrentTenant() t: TenantContext) {
-    return this.requesters.desks(this.requesters.who(req, t));
+  desks(@Req() req: Request, @CurrentTenant() t: TenantContext, @Query() q: MyDesksQueryDto) {
+    return this.requesters.desks(this.requesters.who(req, t), q.for);
   }
 
   @Get('tickets')

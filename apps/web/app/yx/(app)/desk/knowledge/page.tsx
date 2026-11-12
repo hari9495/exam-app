@@ -42,6 +42,8 @@ function Knowledge() {
   const bin = useDesk<BinItem[]>(perms.has('desk.kb.publish') || perms.has('desk.desk.create') || perms.has('desk.settings.manage') || perms.has('desk.ticket.view') ? '/recycle-bin' : null);
   const desks = useDesk<DeskSummary[]>('/desks');
   const write = useDeskWrite();
+  // Answers 1642, 1681: the company's search words, for its Service Desk owner.
+  const words = useDesk<{ synonyms: string; synonymsDefault: string }>(perms.has('desk.desk.create') ? '/kb/settings' : null);
   const open = (a: string | null) => router.replace(a ? `/yx/desk/knowledge?article=${id(a)}` : '/yx/desk/knowledge');
   // A search answers from every state, so the state and out-of-date filters are applied here too.
   const rows = (articles.data ?? []).filter((r) => (filters.state === 'all' || r.state === filters.state) && (!filters.outdated || r.outdated));
@@ -69,6 +71,7 @@ function Knowledge() {
         blocks: writer ? (blocks.data ?? []) : null,
         templates: writer ? (templates.data ?? []) : null,
         canSeeGaps: perms.has('desk.report.view') || perms.has('desk.kb.publish'),
+        searchWords: words.data ? { value: words.data.synonyms, starter: words.data.synonymsDefault, onSave: (synonyms) => write('/kb/settings', 'PUT', { synonyms }) } : null,
         canMakeTask: perms.has('desk.task.work'),
         onLoadGaps: (from, to) => apiFetch(`/desk/kb/gaps?from=${id(from)}&to=${id(to)}`, {}, token) as Promise<KbGaps>,
         onGapTask: async (deskId, text) => {

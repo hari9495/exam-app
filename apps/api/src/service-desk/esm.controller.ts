@@ -319,6 +319,6 @@ export class MyCatalogController {
   @Throttle(PUBLIC_API_THROTTLE)
   pick(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('kind') kind: string, @Query() q: PickQueryDto) {
     if (kind !== 'people' && kind !== 'locations' && kind !== 'cost-centres' && kind !== 'assets') throw new BadRequestException('Pick people, locations, cost centres or your devices.');
-    return this.catalog.pick(this.requesters.who(req, t), kind, q.q ?? '');
+    return this.catalog.pick(this.requesters.who(req, t), kind, q.q ?? '', q.for);
   }
 }

@@ -59,7 +59,7 @@ export const liveKb = (over: Partial<LiveKb> = {}): LiveKb => ({
   templates: KB_TEMPLATES,
   canSeeGaps: true,
   canMakeTask: true,
-  onLoadGaps: async () => ({ noResult: [{ query: 'vpn token', times: 7 }], noClick: [], noArticle: [{ desk: 'IT help desk', category: 'Printers', tickets: 5 }], ledToTickets: [{ articleId: 'a12', number: 12, title: 'Connect to the office VPN from home', tickets: 4 }] }),
+  onLoadGaps: async () => ({ noResult: [{ query: 'vpn token', times: 7 }], noClick: [], noArticle: [{ desk: 'IT help desk', category: 'Printers', tickets: 5 }], ledToTickets: [{ articleId: 'a12', number: 12, title: 'Connect to the office VPN from home', tickets: 4 }], searchesToTickets: [{ query: 'form 16 not visible', tickets: 3 }, { query: 'gratuity', tickets: 1 }] }),
   onGapTask: ok,
   bin: KB_BIN,
   onRestore: ok,

@@ -249,6 +249,18 @@ export class PickQueryDto {
   @IsString()
   @MaxLength(60)
   q?: string;
+
+  /** Answer 1685: devices of the person a ticket is for (raising for someone else; the on-behalf right is checked). */
+  @IsOptional()
+  @IsUUID()
+  for?: string;
+}
+
+/** Answer 1685: "Which device?" is asked for the person the ticket is for. */
+export class MyDesksQueryDto {
+  @IsOptional()
+  @IsUUID()
+  for?: string;
 }
 
 export class AdhocApprovalDto {

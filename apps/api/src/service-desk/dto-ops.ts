@@ -56,6 +56,11 @@ export class LinkAnswerDto {
   @Min(0)
   @Max(10)
   score!: number;
+
+  /** Answer 1682: one of the desk's preset reasons (ratings only; checked in the service). */
+  @IsOptional()
+  @Text(1, 40)
+  reason?: string;
 }
 
 export class LinkCommentDto {

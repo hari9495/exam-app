@@ -25,7 +25,8 @@ export const RequesterChatNew: S = { name: 'Requester, start a new chat', render
 export const RequesterChatNewMissing: S = { name: 'Requester, start pressed with no subject', render: () => requester({ current: null }), play: play(press(/^Start (the )?chat/)) };
 export const RequesterChatSendMissing: S = { name: 'Requester, Send pressed with nothing written', render: () => requester(), play: play(press('Send')) };
 export const RequesterChatRateMissing: S = { name: 'Requester, Rate pressed with no stars', render: () => requester({ current: { ...CHAT_ENDED, rating: null } }), play: play(press('Rate this chat')) };
-export const RequesterChatEnded: S = { name: 'Requester, ended (rate it)', render: () => requester({ current: { ...CHAT_ENDED, rating: null } }) };
+// Answer 1682: the desk's preset reasons go with the chat's rating too.
+export const RequesterChatEnded: S = { name: 'Requester, ended (rate it)', render: () => requester({ current: { ...CHAT_ENDED, rating: null, ratingReasons: ['Quick help', 'Solved my problem', 'Friendly and clear', 'Slow', 'Not solved', 'Had to explain again'] } }) };
 export const RequesterChatSendFailed: S = { name: 'Requester, a message not sent', render: () => requester({ onSend: fails('The chat ended on the agent’s side.') }), play: play(type(/^Message/, 'Still dropping on home Wi-Fi'), press('Send')) };
 export const RequesterChatEmpty: S = { name: 'Requester, no chats yet', render: () => requester({ chats: [], current: null }) };
 export const RequesterChatLoading: S = { name: 'Requester, loading', render: () => requester({ state: 'loading' }) };

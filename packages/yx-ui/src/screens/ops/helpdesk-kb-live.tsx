@@ -75,7 +75,7 @@ export function articleStatus(a: Pick<KbArticle, 'state' | 'reviewOverdue'>): { 
   return { label: ARTICLE_STATE_LABEL[a.state], tone: ARTICLE_TONE[a.state] };
 }
 
-export type KbTab = 'articles' | 'categories' | 'blocks' | 'templates' | 'gaps' | 'bin';
+export type KbTab = 'articles' | 'categories' | 'blocks' | 'templates' | 'gaps' | 'search-words' | 'bin';
 export type KbDialog = 'new-article' | 'new-space' | 'edit-space' | 'preview' | 'compare' | 'details' | 'publish' | 'send-back' | 'flag' | 'delete';
 
 export interface LiveKb {
@@ -104,6 +104,11 @@ export interface LiveKb {
   canMakeTask: boolean;
   onLoadGaps: (from: string, to: string) => Promise<KbGaps>;
   onGapTask: (deskId: string, query: string) => Promise<void>;
+  /**
+   * Answers 1642, 1681: the company's search words that mean the same, on their own tab (the company's Service Desk
+   * owner, desk.desk.create); null or absent: not shown.
+   */
+  searchWords?: { value: string; starter: string; onSave: (text: string) => Promise<unknown> } | null;
   /** null: no recycle bin for this person. */
   bin: BinItem[] | null;
   onRestore: (id: string) => Promise<void>;
@@ -192,6 +197,7 @@ function KbHome({ live }: { live: LiveKb }) {
           {writer && <TabsTrigger value="blocks">Blocks</TabsTrigger>}
           {writer && <TabsTrigger value="templates">Templates</TabsTrigger>}
           {live.canSeeGaps && <TabsTrigger value="gaps">Content gaps</TabsTrigger>}
+          {live.searchWords && <TabsTrigger value="search-words">Search words</TabsTrigger>}
           {live.bin && <TabsTrigger value="bin">Recycle bin</TabsTrigger>}
         </TabsList>
         <TabsContent value="articles">
@@ -219,6 +225,11 @@ function KbHome({ live }: { live: LiveKb }) {
         {live.canSeeGaps && (
           <TabsContent value="gaps">
             <GapsCard live={live} />
+          </TabsContent>
+        )}
+        {live.searchWords && (
+          <TabsContent value="search-words">
+            <SearchWordsCard key={live.searchWords.value} {...live.searchWords} />
           </TabsContent>
         )}
         {live.bin && (
@@ -1274,9 +1285,47 @@ function GapsCard({ live }: { live: LiveKb }) {
             (gaps.ledToTickets ?? []).map((r) => ({ key: r.articleId, title: `KB-${r.number} · ${r.title}`, sub: `${r.tickets} ${r.tickets === 1 ? 'ticket was' : 'tickets were'} raised while reading it` })),
             false,
           )}
+          {list(
+            'Searches that led to tickets',
+            (gaps.searchesToTickets ?? []).map((r) => ({ key: r.query, title: `“${r.query}”`, sub: `${r.tickets} ${r.tickets === 1 ? 'ticket was' : 'tickets were'} raised after this search` })),
+          )}
         </>
       )}
     </div>
+  );
+}
+
+/** Answers 1642, 1681: the company's search words that mean the same (PF and provident fund); the starter list until changed. */
+function SearchWordsCard({ value, starter, onSave }: { value: string; starter: string; onSave: (text: string) => Promise<unknown> }) {
+  const [text, setText] = useState(value);
+  const { busy, error, run } = useRun();
+  const { toast } = useToast();
+  const early = useTooEarly(text.trim() ? [] : [{ fieldId: 'kb-synonyms', message: 'Write at least one line, or press Use the starter list.' }]);
+  return (
+    <Card title="Search words that mean the same">
+      <div className="yx-ops-stack">
+        {error && <InlineAlert tone="danger" title="It was not saved">{error}</InlineAlert>}
+        <FormField id="kb-synonyms" label="Words, one group a line" helper="Separate the words with commas, e.g. pf, provident fund. Help search finds an article by any word of its line. For the whole company." error={early.errorOf('kb-synonyms')}>
+          <TextArea value={text} onChange={setText} rows={7} />
+        </FormField>
+        <div className="yx-ops-row">
+          <Button onClick={() => setText(starter)}>Use the starter list</Button>
+          <Button
+            variant="primary"
+            loading={busy === 'synonyms'}
+            onClick={() => {
+              if (early.stop()) return;
+              void run('synonyms', async () => {
+                await onSave(text);
+                toast({ tone: 'success', title: 'Search words saved.' });
+              });
+            }}
+          >
+            Save search words
+          </Button>
+        </div>
+      </div>
+    </Card>
   );
 }
 

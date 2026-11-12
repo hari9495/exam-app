@@ -7027,6 +7027,8 @@ model SdChatSession {
   ticketId        String?   @map("ticket_id") @db.Uuid
   rating          Int?      @db.SmallInt
   ratingComment   String?   @map("rating_comment") @db.VarChar(500)
+  /// Answer 1682: the preset reason picked with the chat's rating (the desk's list, 1643).
+  ratingReason    String?   @map("rating_reason") @db.VarChar(40)
   endReason       String?   @map("end_reason") @db.VarChar(12)
   requesterSeenAt DateTime? @map("requester_seen_at") @db.Timestamptz(3)
   agentSeenAt     DateTime? @map("agent_seen_at") @db.Timestamptz(3)
