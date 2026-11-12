@@ -129,10 +129,18 @@ describe('Helpdesk: IT starter catalogue and devices on a ticket', () => {
         await tx.refreshToken.deleteMany({ where: { userId: { in: all } } });
         await tx.session.deleteMany({ where: { userId: { in: all } } });
         await tx.organization.deleteMany({ where: { id: { in: [org.A.id, org.B.id] } } });
+        await tx.user.deleteMany({ where: { id: { in: all } } });
       })
       .catch((e) => console.warn('cleanup', e));
     await prisma.plan.delete({ where: { id: ids.plan } }).catch(() => undefined);
+    // The suites after this one build their own IT desks: nothing of this suite's companies (desks, starter items) may stay.
+    const left = await tenantPrisma.forTenant(SUPER, async (tx) => ({
+      orgs: await tx.organization.count({ where: { id: { in: [org.A.id, org.B.id] } } }),
+      desks: await tx.sdDesk.count({ where: { organizationId: { in: [org.A.id, org.B.id] } } }),
+      items: await tx.sdCatalogItem.count({ where: { organizationId: { in: [org.A.id, org.B.id] } } }),
+    }));
     await app.close();
+    expect(left).toEqual({ orgs: 0, desks: 0, items: 0 });
   });
 
   // ------------------------------------------------------------------------------------------ item 1: IT starter catalogue
