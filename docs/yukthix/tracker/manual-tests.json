@@ -21282,5 +21282,61 @@
     "expected": "Step 1: Sent for approval; the value is unchanged. Step 2: refused: another person must approve. Step 3: applied and in the history with both names. Step 4: View only, no Approve. Step 5: the built-in steps in words (Manager; HR too when the leave is longer than its leave type allows without HR), on the company hours. Step 6: the manager is reminded at 4 hours.",
     "stories": [],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-SET-S8a",
+    "area": "Settings S-8 (13 Nov 2026)",
+    "screen": "Settings › 4.8 Expenses & travel and 6.3 Performance",
+    "url": "http://localhost:3000/yx/settings/finance/expenses-and-travel",
+    "account": "An expense set-up person (Expense policy key); a performance set-up person; an HR admin; an expense policy viewer (the demo company).",
+    "steps": [
+      "As expense set-up, open Settings › Expense settings; change 'finance check of claims' to All; Save.",
+      "Open the policy matrix link.",
+      "Negative: as expense set-up, open Settings › Performance settings.",
+      "As performance set-up, change 'the manager approves a person's goals' to No approval; Save.",
+      "Negative: as the expense policy viewer, open Expense settings.",
+      "As HR, open both pages and change one setting on each."
+    ],
+    "expected": "Step 1: saved at once (toast), shown without Starter default, in the page history. Step 2: the policy matrix opens. Step 3: not in the menu; the address shows view only or no access. Step 4: saved. Step 5: View only, no Save. Step 6: both save.",
+    "stories": [],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-SET-S8b",
+    "area": "Settings S-8 (13 Nov 2026)",
+    "screen": "Settings › 5.4 Notifications",
+    "url": "http://localhost:3000/yx/settings/documents/notifications",
+    "account": "An HR admin; an employee and their manager (the demo company).",
+    "steps": [
+      "Turn off 'also send them by email'; Save.",
+      "As the employee, apply for leave.",
+      "Check the manager's bell and email.",
+      "Turn emails back on; repeat steps 2 and 3.",
+      "Set the digest time to 18:00; as a manager on the daily digest, check the digest arrives after 18:00 India time, once.",
+      "Negative: as expense set-up, open Notifications."
+    ],
+    "expected": "Step 3: the bell shows the request; no email. Step 4: the email arrives. Step 5: one digest, after 18:00, not before. Step 6: View only.",
+    "stories": [],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-SET-S8c",
+    "area": "Settings S-8 (13 Nov 2026)",
+    "screen": "Settings › 5.1 Document types",
+    "url": "http://localhost:3000/yx/settings/documents/document-types",
+    "account": "An HR admin; an employee; someone who only reads the company settings (the demo company).",
+    "steps": [
+      "Add document type with no name.",
+      "Add 'FSSAI food handler certificate': Internal, HR verifies, has an expiry date, remind 30 days before, HR only.",
+      "Ask the employee for it (Documents › Request) and upload it with an expiry date.",
+      "Open Passport.",
+      "Retire the FSSAI type.",
+      "Add and then retire an unused type 'Gate pass'.",
+      "Negative: add a type called Passport.",
+      "Negative: as the reader, open the page."
+    ],
+    "expected": "Step 1: 'Give the type a name of at least 2 characters.' and focus on Name. Step 2: added (toast), listed as Your company. Step 3: it waits in the verification queue. Step 4: read-only, 'A YukthiX starter type: it cannot be changed or removed.' Step 5: refused: a document uses it. Step 6: retired, gone from the list. Step 7: 'A document type called Passport already exists.' Step 8: the list without Add or Edit.",
+    "stories": [],
+    "note": "Positive and negative."
   }
 ]

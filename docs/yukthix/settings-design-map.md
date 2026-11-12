@@ -55,14 +55,14 @@ means the live page passes no manage flag that I could see and I did not read th
 
 ## Counts (sub-pages = stories)
 
-After S-1 (Settings home, search and the eight group pages live; four live stories added) S-2 (the Time & Leave pages with their settings; one live story added) S-3 (the Payroll pages, a second person for payroll changes; two live stories added) and S-4 (2.7 and 2.10 with their settings; one live story added) and S-5 (page history live; appendix script "ok").
+After S-1 (Settings home, search and the eight group pages live; four live stories added) S-2 (the Time & Leave pages with their settings; one live story added) S-3 (the Payroll pages, a second person for payroll changes; two live stories added) and S-4 (2.7 and 2.10 with their settings; one live story added) and S-5 (page history live; appendix script "ok"), and S-8 (13 Nov 2026: the retired Company rules, Access and privacy and Payroll rules stories deleted, answer 1781; 4.8, 5.1, 5.4 and 6.3 live; four 5.1 stories added; appendix script "ok").
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Settings home and page states | 1 | 18 | 3 | 3 | 0 | 0 | 24 |
-| B. Organisation and Global core | 2 | 25 | 0 | 0 | 0 | 0 | 25 |
-| C. Settings map, groups 1 to 8 | 8 | 34 | 95 | 14 | 30 | 0 | 173 |
-| **All A-C** | **11** | **77** | **98** | **17** | **30** | **0** | **222** |
+| B. Organisation and Global core | 2 | 11 | 0 | 0 | 0 | 0 | 11 |
+| C. Settings map, groups 1 to 8 | 8 | 38 | 97 | 14 | 28 | 0 | 177 |
+| **All A-C** | **11** | **67** | **100** | **17** | **28** | **0** | **212** |
 
 Per group (C):
 
@@ -72,16 +72,16 @@ Per group (C):
 | Group 2 · People & Access | 3 | 18 | 0 | 4 | 25 |
 | Group 3 · Time & Leave | 3 | 24 | 0 | 0 | 27 |
 | Group 4 · Payroll & Statutory | 5 | 20 | 0 | 2 | 27 |
-| Group 5 · Documents & Communication | 2 | 12 | 0 | 6 | 20 |
+| Group 5 · Documents & Communication | 6 | 14 | 0 | 4 | 24 |
 | Group 6 · Hiring & Assessments | 15 | 3 | 0 | 4 | 22 |
 | Group 7 · Integrations & Developers | 2 | 4 | 8 | 6 | 20 |
 | Group 8 · Billing & Account | 2 | 2 | 6 | 4 | 14 |
 
-Counted by script 12 Nov 2026 on `docs/yukthix-settings-map` (the script is in the appendix). There are 214 stories in
+Counted by script 13 Nov 2026 on `feat/yukthix-settings-s8` (the script is in the appendix). There are 212 stories in
 11 files whose title starts `Screens/Settings/`, one file per title (checked: no title spans two files):
-`screens/settings/settings-home.stories.tsx` (20), `screens/global/global.stories.tsx` (3),
-`screens/org/org.stories.tsx` (22) and `screens/settings/settings-g1.stories.tsx` to `settings-g8.stories.tsx`
-(18, 24, 26, 25, 20, 22, 20, 14). Story names are the exported names that start with a capital letter. None is a phone
+`screens/settings/settings-home.stories.tsx` (24), `screens/global/global.stories.tsx` (3),
+`screens/org/org.stories.tsx` (8) and `screens/settings/settings-g1.stories.tsx` to `settings-g8.stories.tsx`
+(18, 25, 27, 27, 24, 22, 20, 14). Story names are the exported names that start with a capital letter. None is a phone
 view (the phone settings screens are under other titles).
 
 Cross-checked with the area maps: `hiring-design-map.md` (6.1, 6.2 and the group 6 overview), `visitors-design-map.md`
@@ -243,22 +243,8 @@ File: `packages/yx-ui/src/screens/org/org.stories.tsx`.
 | Structure · Structure | live | /yx/settings/structure, `StructureScreen`, `org/masters/:kind` |
 | StructureWithPay · Structure With Pay | live | same page with `pay` (changed with `pay.range.manage`), `org/grades/:id/pay-ranges` |
 | NoAccess · No Access | live | `loadState` turns a 403 into the no-access state (`apps/web/lib/yx-org`) |
-| CompanyRules · Company Rules | live | retired in S-7 (answer 1321): /yx/settings/company-rules redirects to /yx/settings; every setting has one home on a drawn page (question 1781) |
-| CompanyRulesBringOnDayOne · Company rules · joining day · what to bring (text) | live | same page, `joining.bring_on_day_one` (a text setting) |
-| AccessAndPrivacy · Access And Privacy | live | retired in S-7 (answer 1321): /yx/settings/access-settings redirects to 2.2 Directory & privacy (question 1781) |
-| AccessAndPrivacyErasureDryRun · Access and privacy · Special data erasure · dry run (off), whose data | live | same page; `GET people/privacy-erasure` for org.settings.manage |
-| AccessAndPrivacyErasureOn · Access and privacy · Special data erasure · on, no one due, last run | live | same |
-| AccessAndPrivacyErasureOnDue · Access and privacy · Special data erasure · on, people due at the next run | live | same |
-| AccessAndPrivacyErasureNoAccess · Access and privacy · Special data erasure · no company-wide settings rights (no card) | live | a 403 on the dry run hides the card |
-| AccessAndPrivacyGuarded · Access And Privacy Guarded | live | `heldGuards` from `access.role.manage`; the API checks the guard key as well |
-| PayrollRules · Payroll Rules | live | retired in S-7 (answer 1321): /yx/settings/payroll-rules redirects to 4.6 (question 1781) |
-| PayrollRulesLoanTooEarly · Payroll rules · loan interest · pressed too early | live | same page; the setting editor's save errors |
-| PayrollRulesBonusRule · Payroll rules · bonus eligibility rule editor | live | same page; `payroll.bonus.eligibility_rate_on` |
-| PayrollRulesReadOnly · Payroll rules · read only | live | payroll set-up without org.settings.manage only reads it |
-| PayrollRulesLoading · Payroll rules · loading | live | `loadState` |
-| PayrollRulesError · Payroll rules · error | live | `loadState`; Retry loads again |
-| CompanyRulesLoading · Company Rules Loading | live | `loadState` |
-| CompanyRulesError · Company Rules Error | live | `loadState` |
+| ErasureDryRun · Erasure Dry Run | live | /yx/settings/people/directory-and-privacy (2.2) renders `ErasureCard` from `GET people/privacy-erasure` (moved out of the retired Access and privacy screen, answer 1781) |
+| ErasureOnDue · Erasure On Due | live | same card, on, with people due and one not done |
 
 ### C. Settings map, groups 1 to 8
 
@@ -375,8 +361,8 @@ File: `packages/yx-ui/src/screens/settings/settings-g4.stories.tsx`.
 | P4_6_ReadOnly · 4.6 Loans & advances · read-only | live (gap) | payroll set-up reads it (View only, no Approve) |
 | P4_7 · 4.7 Statutory set-up | live (gap) | /yx/payroll/statutory (`StatutoryHubScreen`), entity registrations on Legal entities (`PUT org/legal-entities/:id/statutory`), set-by-law values on /yx/payroll/statutory-rules (`RulesBrowserScreen`) |
 | P4_7_ReadOnly · 4.7 Statutory set-up · read-only | live (gap) | read-only: unsure |
-| P4_8 · 4.8 Expenses & travel | live (gap) | /yx/settings/expenses (`PolicyMatrixScreen`); 14 company choices (`expense.finance_audit`, `expense.route.*`, `expense.card.*`, `expense.advance.*`, `expense.gst.capture` and others) have no screen |
-| P4_8_ReadOnly · 4.8 Expenses & travel · read-only | live (gap) | read-only: `canEdit` = expense.policy.manage; viewing with expense.policy.view |
+| P4_8 · 4.8 Expenses & travel | live (gap) | S-8 (answer 1323): /yx/settings/finance/expenses-and-travel: the 14 company expense choices (`expense.*`), the link to the policy matrix (/yx/settings/expenses, `PolicyMatrixScreen`); expense set-up (expense.policy.manage) changes them too. Gap: the drawn categories, mileage, per diem and travel desk rows are on the policy matrix, not this page |
+| P4_8_ReadOnly · 4.8 Expenses & travel · read-only | live (gap) | View only for expense policy viewers and HR who read the company settings |
 | P4_9 · 4.9 Contract labour | live (gap) | contract-labour map: /yx/settings/contract-labour renders this designed page (`SettingsPageScreen` pageId 4.9, `GET/PUT contract-labour/settings`); the per-site checklist stays design (question 751 there) |
 | P4_9_ReadOnly · 4.9 Contract labour · read-only | live (gap) | contract-labour map: without the settings key, or while acting |
 | P4_9_Registration · 4.9 Contract labour · registration (CL-5) | live | contract-labour map: `RegistrationSheet` on /yx/settings/contract-labour; `POST/PUT contract-labour/registrations` |
@@ -395,14 +381,14 @@ File: `packages/yx-ui/src/screens/settings/settings-g5.stories.tsx`.
 |---|---|---|
 | Overview · Group 5 · Documents & Communication | live | S-1: /yx/settings/<group> renders `SettingsGroupScreen` with `live`: the group's pages the viewer may open, each linking to its live editor; a group with none says no access |
 | OverviewLoading · Group 5 · loading | live | same, loading |
-| P5_1 · 5.1 Document types | design only, feature not built | `GET documents/types` lists a fixed starter list; no API adds or changes a type (searched `documentType.(create|update|upsert)`: none) |
-| P5_1_ReadOnly · 5.1 Document types · read-only | design only, feature not built | as the page |
+| P5_1 · 5.1 Document types | live (gap) | S-8 (answer 1331): /yx/settings/documents/document-types: the starter types (read-only) and the company's own, added, changed and retired in `DocumentTypeDrawer` (`POST/PUT documents/types`, `POST documents/types/:key/retire`). Gap: the drawn Verification, Expiry and Retention sections are not built |
+| P5_1_ReadOnly · 5.1 Document types · read-only | live (gap) | without HR's settings key the list shows without Add or Edit |
 | P5_2 · 5.2 Letters | live (gap) | /yx/settings/letters (`LetterTemplatesList`: Word templates, paragraphs, preview; `letters` API); letter types and reference numbers: unsure |
 | P5_2_ReadOnly · 5.2 Letters · read-only | live (gap) | read-only: unsure |
 | P5_3 · 5.3 Signatories & e-sign | live (gap) | signatories on the same page (`SignatoriesDrawer`, `letter.signatory.manage`); the company DSC is a flag on letters (`companyDsc`); Aadhaar eSign: none found |
 | P5_3_ReadOnly · 5.3 Signatories & e-sign · read-only | live (gap) | read-only: unsure |
-| P5_4 · 5.4 Notifications | live (gap) | /yx/settings/emails (`EmailSettingsScreen`: templates, wording, branding; `notifications/email`); each person's digest and choices on /yx/me/notifications; company channel defaults and quiet hours: none found |
-| P5_4_ReadOnly · 5.4 Notifications · read-only | live (gap) | read-only: support staff may open it (menu) |
+| P5_4 · 5.4 Notifications | live (gap) | S-8: /yx/settings/documents/notifications: notification emails on or off company-wide (`notify.email.enabled`) and the daily digest time (`notify.digest.time`), with the link to the wording editor (/yx/settings/emails). Gap: quiet hours, WhatsApp events, field staff and the email sender are not built (no push, WhatsApp or SMS for employees yet) |
+| P5_4_ReadOnly · 5.4 Notifications · read-only | live (gap) | View only without HR's settings key |
 | P5_5 · 5.5 WhatsApp & SMS | live (gap) | /yx/settings/sms (`SmsSettingsScreen`, `notifications/sms`: accounts, DLT, deliveries); WhatsApp only as the older candidate WhatsApp set-up (`organizations/whatsapp-config`, /v2) |
 | P5_5_ReadOnly · 5.5 WhatsApp & SMS · read-only | live (gap) | read-only: unsure |
 | P5_6 · 5.6 Announcements | design only, feature not built | searched `announcement` in apps/api/src: none |
@@ -413,6 +399,10 @@ File: `packages/yx-ui/src/screens/settings/settings-g5.stories.tsx`.
 | P5_8_ReadOnly · 5.8 Helpdesk · read-only | live (gap) | read-only: unsure |
 | P5_9 · 5.9 Engage | design only, feature not built | searched `kudos|recognition` in apps/api/src: none; the growth screens (feed, rewards, recognition) are on the not-live list |
 | P5_9_ReadOnly · 5.9 Engage · read-only | design only, feature not built | as the page |
+| P5_1_Live · 5.1 Document types · live | live | the drawn 5.1 page with `documentTypesPage` (starter and company types) |
+| DocumentTypeAdd · 5.1 · Add document type | live | `DocumentTypeDrawer`; a name is required (field error and focus) |
+| DocumentTypeOwn · 5.1 · Change a company type | live | the same drawer with Retire (refused while a document uses the type) |
+| DocumentTypeStarter · 5.1 · A starter type (read-only) | live | read-only, "A YukthiX starter type: it cannot be changed or removed." |
 
 #### Group 6 · Hiring & Assessments
 
@@ -436,8 +426,8 @@ File: `packages/yx-ui/src/screens/settings/settings-g6.stories.tsx`.
 | P6_2 · 6.2 Staffing desk | live (gap) | hiring map: /yx/settings/staffing renders this designed page (pageId 6.2, `GET/PUT staffing/settings`); gap: collections, dunning, client-portal times and e-invoicing (staffing slice 3) |
 | P6_2_ReadOnly · 6.2 Staffing desk · read-only | live | hiring map: recruiters (`ats.staffing.view`) read it |
 | P6_2_InvoiceSeries · 6.2 Staffing desk · add invoice series | live | hiring map: `InvoiceSeriesSheet` |
-| P6_3 · 6.3 Performance | live (gap) | /yx/settings/performance (`PerformanceSetupScreen`: rating scales and review templates); 14 company choices (`perf.goal.approval`, `perf.anonymity.min_responses`, `perf.pay_band.visible` and others) have no screen |
-| P6_3_ReadOnly · 6.3 Performance · read-only | live (gap) | read-only: unsure |
+| P6_3 · 6.3 Performance | live (gap) | S-8 (answer 1323): /yx/settings/talent/performance: the 18 company performance choices (`perf.*`), links to review cycles, the comp review and competencies; performance set-up (perf.setup.manage) changes them too. Rating scales and templates stay on /yx/settings/performance (`PerformanceSetupScreen`). Gap: the drawn stages, 360° limits and calibration guide are not company settings yet |
+| P6_3_ReadOnly · 6.3 Performance · read-only | live (gap) | View only for HR who read the company settings without a change key |
 | P6_4 · 6.4 Learning | design only, feature not built | learning is not built: searched `course|learning` in apps/api/src (the hits are MFA enrolment only); the course screens are on the not-live list |
 | P6_4_ReadOnly · 6.4 Learning · read-only | design only, feature not built | as the page |
 | P6_5 · 6.5 Assessments | design only, feature not built | unsure: the older exam product has per-test APIs (`questions`, `exams`, `proctoring-retention`) used by /v2 pages, but no company-wide defaults for the question bank, delivery, proctoring or results; `ProctoringSettingsScreen` is on the not-live list |
@@ -915,6 +905,58 @@ approver for payroll settings; approval policies per request type; and the not-b
       pay or leave). *Suggested: keep; a back-dated change stays a System Admin correction.*
 1784. **Different for by department.** Departments are offered only where the registry allows them (none of the moved
       settings do). *Suggested: add department where a customer asks.*
+
+## S-8 as built (answers 1323, 1331, 1781; branch `feat/yukthix-settings-s8`)
+
+- **1781, the retired screen deleted:** `CompanySettingsScreen` (`screens/org/settings.tsx`), its 16 stories, its tests
+  and the sample data only they used are gone; nothing live imported them. `ErasureCard`, live on 2.2, moved to
+  `screens/org/erasure-card.tsx` with two stories and its own tests. The S-7 move tests read the frozen list of the old
+  pages' 79 keys (`screens/settings/retired-page-keys.ts`).
+- **4.8 Expenses & travel (1323):** /yx/settings/finance/expenses-and-travel shows the 14 company expense choices that had
+  no screen, with Starter default, and links to the policy matrix. Besides HR's settings key, expense set-up
+  (expense.policy.manage) changes them (as leave set-up does for leave); expense policy viewers read them.
+- **6.3 Performance (1323):** /yx/settings/talent/performance shows the 18 company performance choices, with links to
+  review cycles, the comp review and competencies; performance set-up (perf.setup.manage) changes them too. Each set-up
+  key changes only its own settings.
+- **5.4 Notifications:** /yx/settings/documents/notifications. Employees get notices in the app and by email only (no
+  push, WhatsApp or SMS yet), so the page has the two choices that work: notification emails on or off company-wide
+  (`notify.email.enabled`; the in-app bell always keeps every notice) and the daily digest time (`notify.digest.time`,
+  07:00 India time by default; the digest sweep now runs hourly and sends each person once per India day at the first
+  run at or after that time). The wording editor (Emails) is linked.
+- **5.1 Document types (1331):** /yx/settings/documents/document-types lists YukthiX's starter types (read-only) and the
+  company's own. HR's settings key adds a type and chooses its sensitivity (internal, personal or confidential), whether
+  HR verifies it, whether it expires and when to remind (60, 30 and 7 days and other offered sets), and who uploads it
+  (HR always can); changes it; or retires it while no document uses it (rows are never deleted). The types live in the
+  existing `document_types` table under tenant RLS (no migration), so the verification queue, the payroll pre-flight
+  check and the expiry reminders treat a company type like a starter one. Audited: `document.type.created`, `.changed`
+  (before and after) and `.retired`.
+- **Tests:** API e2e `settings-s8-modules` (7: each set-up key changes its own settings and not the other's, nor payroll
+  or leave; viewers read only; HR changes both; 14 and 18 keys listed; with emails off the bell gets the notice and no
+  email goes, back on it does; set-up keys cannot change the notification settings, a time not offered is refused) and
+  `settings-s8-doctypes` (6). Unit: notifications (company switch) and the digest (the company time, once per India
+  day, switch off). Kit: `settings-s8.test`, `org.test` (ErasureCard), the S-7 move tests on the frozen list; design,
+  design-live, kit and UI-rule guards green. Web: `yx-settings-s8.test` (4.8, 6.3, 5.4 and 5.1, positive and negative),
+  `yx-nav.test`, the settings home.
+
+### Questions (from 1821)
+
+1821. **The Factories Act "no longer needed" hint.** The retired Company rules page marked a location's own Factories
+      Act value as "No longer needed: the location is a registered factory". 3.1 Attendance modes lists location values
+      under "Different for" but does not show that hint yet. *Suggested: show it beside that location's value on 3.1.*
+1822. **Starter document types per company.** A company cannot change a starter type (for example, remind about
+      passports at 90 days instead of 60, 30 and 7). *Suggested: let HR set verification and reminders on a starter type
+      for their company, kept as the company's own copy of those two choices; the type itself stays.*
+1823. **Special sensitivity for company types.** A company type can be Internal, Personal or Confidential, not Special
+      (Special is for Aadhaar, health and similar data, seen only by named HR people). *Suggested: keep; ask when a
+      customer needs a Special type of their own.*
+1824. **Quiet hours, WhatsApp and SMS.** The drawn 5.4 also has quiet hours, WhatsApp events and field staff. They apply
+      to push, WhatsApp and SMS, which employees do not get yet. *Suggested: build each with its channel (answer 1329).*
+1825. **Who reads the company settings.** Expense policy viewers and performance set-up can now read every company
+      setting (`GET org/settings` returns them all), as leave and payroll set-up already can. *Suggested: keep (none
+      is confidential); filter by page later if a customer asks.*
+1826. **A company default for the digest.** Each person still chooses an email per notice or the daily digest; new
+      people start with an email per notice. *Suggested: a company default for new people (per notice or daily
+      digest), changeable by each person.*
 
 ## 7. Build plan (slices, max 3 builders at once)
 
