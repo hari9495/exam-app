@@ -70,11 +70,12 @@ describe('Settings S-4: People pages', () => {
     await waitFor(() => expect(calls).toEqual([['PUT /org/settings', { key: 'exit.notice.confirmed', value: '2m', scopeType: 'tenant', validFrom: todayIst() }]]));
   });
 
-  it('the related link opens Company rules, where the page\'s other settings still are', async () => {
+  it('negative (S-7): the page no longer points to the retired Company rules page; its contract settings live here', async () => {
     routes(['org.settings.manage']);
     show('exit-and-lifecycle-policies');
-    await ue.click(await screen.findByRole('link', { name: /Company rules/ }));
-    expect(push).toHaveBeenCalledWith('/yx/settings/company-rules');
+    expect(await screen.findByRole('combobox', { name: /Notice period once confirmed/ })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Company rules/ })).toBeNull();
+    expect(PEOPLE_SETTINGS['2.7']!.settings.map((s) => s.key)).toEqual(expect.arrayContaining(['contract.max_years', 'contract_end.action']));
   });
 
   it('negative: without HR\'s settings key the page is view only', async () => {

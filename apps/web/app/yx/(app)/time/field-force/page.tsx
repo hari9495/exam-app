@@ -21,7 +21,7 @@ export default function YxFieldForcePage() {
         onOpen: setOpenId,
         person: { state: openId ? timeState(person) : 'loading', data: person.data ?? null },
         onReview: (employeeId) => write(`/field/people/${employeeId}/flags/review`, 'POST', undefined, true, 'Flags marked reviewed'),
-        settingsHref: '/yx/settings/company-rules',
+        settingsHref: '/yx/settings/time/check-in-and-devices',
       }}
     />
   );

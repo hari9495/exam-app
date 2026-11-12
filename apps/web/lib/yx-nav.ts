@@ -74,6 +74,8 @@ export const SETTINGS_HOME = '/yx/settings';
  */
 /** S-2: the drawn Time & Leave pages that show the company's settings (id, title, address under /yx/settings/time). */
 export const TIME_SETTINGS_PAGES: [string, string, string][] = [
+  // S-7 (answer 1321): from Company rules.
+  ['3.1', 'Attendance modes', 'attendance-modes'],
   ['3.2', 'Check-in & devices', 'check-in-and-devices'],
   ['3.3', 'Shifts & patterns', 'shifts-and-patterns'],
   ['3.4', 'Weekly offs', 'weekly-offs'],
@@ -90,38 +92,56 @@ export const PAY_SETTINGS_PAGES: [string, string, string][] = [
   // Menu name differs from the drawn title so it is not mistaken for the layout editor (Payroll › Payslip layout).
   ['4.4', 'Payslip settings', 'payslip-layout'],
   ['4.5', 'Tax', 'tax'],
+  // S-7 (answers 1321, 1521): Payroll rules' settings, under the second person.
+  ['4.6', 'Bonus & loan rules', 'loans-and-advances'],
 ];
 const payPage = (id: string) => PAY_SETTINGS_PAGES.filter((p) => p[0] === id).map((p) => `${SETTINGS_HOME}/payroll/${p[2]}`);
 /** S-4: the drawn People & Access pages that show the company's settings (address under /yx/settings/people). */
 export const PEOPLE_SETTINGS_PAGES: [string, string, string][] = [
   // S-6 (answer 1330): approval steps per request type, reminders and escalation.
   ['2.4', 'Approvals', 'approvals'],
+  // S-7 (answers 1321, 1561): from Company rules and Access and privacy.
+  ['2.1', 'Access requests', 'roles-and-access'],
+  ['2.2', 'Directory & privacy', 'directory-and-privacy'],
+  ['2.3', 'Security rules', 'security'],
+  ['2.5', 'Onboarding & probation', 'onboarding-and-probation'],
+  ['2.6', 'Job changes & transfers', 'job-changes-and-transfers'],
   ['2.7', 'Exit & lifecycle policies', 'exit-and-lifecycle-policies'],
+  ['2.9', 'Employee relations & cases', 'employee-relations-and-cases'],
   ['2.10', 'Audit & data retention', 'audit-and-data-retention'],
 ];
 const peoplePage = (id: string) => PEOPLE_SETTINGS_PAGES.filter((p) => p[0] === id).map((p) => `${SETTINGS_HOME}/people/${p[2]}`);
+/** S-7 (answer 1321): the Organisation, Documents and Account pages that hold settings (address per group). */
+export const MORE_SETTINGS_PAGES: [string, string, string, string][] = [
+  ['1.1', 'Company & branding', 'org', 'company-and-branding'],
+  ['1.5', 'Employee records', 'org', 'employee-records'],
+  ['1.6', 'Set-up hub settings', 'org', 'set-up-hub'],
+  ['5.7', 'Policies', 'documents', 'policies'],
+  ['8.6', 'Help and tips', 'account', 'analytics-status-and-tips'],
+];
+const morePage = (id: string) => MORE_SETTINGS_PAGES.filter((p) => p[0] === id).map((p) => `${SETTINGS_HOME}/${p[2]}/${p[3]}`);
 const timePage = (id: string) => TIME_SETTINGS_PAGES.filter((p) => p[0] === id).map((p) => `${SETTINGS_HOME}/time/${p[2]}`);
 
 /** Answer 1563: the company audit log. */
 export const AUDIT_LOG = `${SETTINGS_HOME}/audit-log`;
 
 export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
-  '1.1': ['/yx/settings/countries', '/yx/settings/translations', '/yx/settings/emails'],
+  '1.1': [...morePage('1.1'), '/yx/settings/countries', '/yx/settings/translations', '/yx/settings/emails'],
   '1.2': ['/yx/settings/legal-entities'],
   '1.3': ['/yx/settings/locations', '/yx/time/setup/locations'],
   '1.4': ['/yx/settings/structure'],
-  '1.5': ['/yx/settings/custom-fields', '/yx/settings/company-rules'],
-  '1.6': ['/yx/settings/setup-hub'],
-  '2.1': ['/yx/settings/access', '/yx/settings/access-settings'],
-  '2.2': ['/yx/settings/access-settings'],
-  '2.3': ['/yx/settings/security', '/yx/settings/identity-providers', '/yx/settings/support-access'],
+  '1.5': [...morePage('1.5'), '/yx/settings/custom-fields'],
+  '1.6': ['/yx/settings/setup-hub', ...morePage('1.6')],
+  '2.1': ['/yx/settings/access', ...peoplePage('2.1')],
+  '2.2': peoplePage('2.2'),
+  '2.3': ['/yx/settings/security', ...peoplePage('2.3'), '/yx/settings/identity-providers', '/yx/settings/support-access'],
   '2.4': [...peoplePage('2.4'), '/yx/settings/approval-policies'],
-  '2.5': ['/yx/settings/company-rules', '/yx/settings/checklists'],
-  '2.6': ['/yx/settings/company-rules'],
+  '2.5': [...peoplePage('2.5'), '/yx/settings/checklists'],
+  '2.6': peoplePage('2.6'),
   '2.7': peoplePage('2.7'),
-  '2.9': ['/yx/settings/company-rules', '/yx/desk/speakup-setup'],
-  '2.10': [...peoplePage('2.10'), '/yx/settings/access-settings', AUDIT_LOG],
-  '3.1': ['/yx/settings/company-rules'],
+  '2.9': [...peoplePage('2.9'), '/yx/desk/speakup-setup'],
+  '2.10': [...peoplePage('2.10'), AUDIT_LOG],
+  '3.1': timePage('3.1'),
   '3.2': [...timePage('3.2'), '/yx/time/setup/devices', '/yx/time/setup/locations'],
   '3.3': [...timePage('3.3'), '/yx/time/shifts-setup'],
   '3.4': [...timePage('3.4'), '/yx/time/setup/locations', '/yx/time/shifts-setup'],
@@ -138,7 +158,7 @@ export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '4.3': payPage('4.3'),
   '4.4': [...payPage('4.4'), '/yx/payroll/payslip-layout'],
   '4.5': payPage('4.5'),
-  '4.6': ['/yx/settings/payroll-rules', '/yx/payroll/loans'],
+  '4.6': [...payPage('4.6'), '/yx/payroll/loans'],
   '4.7': ['/yx/payroll/statutory', '/yx/payroll/statutory-rules'],
   '4.8': ['/yx/settings/expenses'],
   '4.9': ['/yx/settings/contract-labour'],
@@ -147,14 +167,14 @@ export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '5.3': ['/yx/settings/letters'],
   '5.4': ['/yx/settings/emails'],
   '5.5': ['/yx/settings/sms'],
-  '5.7': ['/yx/settings/company-rules', '/yx/desk/policy-admin'],
+  '5.7': [...morePage('5.7'), '/yx/desk/policy-admin'],
   '5.8': ['/yx/desk/setup'],
   '6.1': ['/yx/settings/hiring'],
   '6.2': ['/yx/settings/staffing'],
   '6.3': ['/yx/settings/performance'],
   '7.2': ['/yx/time/setup/devices'],
   '7.3': ['/yx/payroll/payment-modes'],
-  '8.6': ['/yx/settings/company-rules'],
+  '8.6': morePage('8.6'),
 };
 const ME = 'Me';
 
@@ -507,12 +527,14 @@ export function buildNav(n: NavInput): NavArea[] {
       ...sec('Organisation', [
         ...when(settingsAdmin, L('setup-hub', 'Set-up hub', '/yx/settings/setup-hub')),
         ...when(orgPages, L('entities', 'Legal entities', '/yx/settings/legal-entities'), L('locations', 'Locations', '/yx/settings/locations'), L('structure', 'Structure', '/yx/settings/structure')),
-        ...when(settingsAdmin, L('company-rules', 'Company rules', '/yx/settings/company-rules'), L('countries', 'Countries', '/yx/settings/countries'), L('translations', 'Translations', '/yx/settings/translations')),
+        ...when(settingsAdmin, L('countries', 'Countries', '/yx/settings/countries'), L('translations', 'Translations', '/yx/settings/translations')),
+        // S-7 (answer 1321): the Organisation, Documents and Account settings pages (Company rules retired).
+        ...when(settingsView, ...MORE_SETTINGS_PAGES.map(([id, label, folder, slug]) => L(`more-settings-${id}`, label, `${SETTINGS_HOME}/${folder}/${slug}`))),
         ...when(has('perf.setup.manage'), L('performance-setup', 'Performance', '/yx/settings/performance')),
       ]),
       ...sec('People & Access', [
         ...when(has('access.role.manage'), L('access', 'Roles & access', '/yx/settings/access')),
-        ...when(settingsAdmin, L('access-settings', 'Access and privacy', '/yx/settings/access-settings'), L('custom-fields', 'Custom fields', '/yx/settings/custom-fields')),
+        ...when(settingsAdmin, L('custom-fields', 'Custom fields', '/yx/settings/custom-fields')),
         // S-4 (answer 1323): the People & Access settings pages; HR's settings key changes them.
         ...when(settingsView, ...PEOPLE_SETTINGS_PAGES.map(([id, label, slug]) => L(`people-settings-${id}`, label, `${SETTINGS_HOME}/people/${slug}`))),
         // S-6 (answer 1330): the approval policy editor, beside 2.4 Approvals.
@@ -539,7 +561,6 @@ export function buildNav(n: NavInput): NavArea[] {
       ...sec('Payroll & Statutory', [
         ...when(pay, ...[
           ...when(any('payroll.setup.manage', 'payroll.statutory.setup'), L('pay-setup', 'Payroll set-up', '/yx/payroll/setup')),
-          ...when(any('payroll.setup.manage', 'org.settings.manage'), L('payroll-rules', 'Payroll rules', '/yx/settings/payroll-rules')),
           // S-3 (answers 1323 to 1325): HR changes them (a second person approves); payroll set-up reads them.
           ...when(any('payroll.setup.manage', 'org.settings.manage'), ...PAY_SETTINGS_PAGES.map(([id, label, slug]) => L(`pay-settings-${id}`, label, `${SETTINGS_HOME}/payroll/${slug}`))),
           ...when(has('payroll.setup.manage'), L('pay-groups', 'Pay groups', '/yx/payroll/pay-groups'), L('pay-layout', 'Payslip layout', '/yx/payroll/payslip-layout'), L('pay-country-packs', 'Country packs', '/yx/payroll/country-packs')),

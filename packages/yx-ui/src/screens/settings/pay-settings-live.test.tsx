@@ -7,6 +7,10 @@ import { SETTINGS_GROUPS } from './settings-groups';
 import { PAY_SETTINGS, TIME_SETTINGS, pendingOnPage, timeSettingsChanges, timeSettingsPage, type TimeSettingsData } from './time-settings-live';
 import { TIME_REGISTRY_SAMPLE } from './time-settings-sample';
 import { allSettings } from './settings-logic';
+import { SETTING_SECTIONS } from '../org/settings';
+// S-7 moved the old Company rules, Access and privacy and Payroll rules settings onto drawn pages; these counts are the ones that had no screen at all.
+const MOVED = new Set(Object.values(SETTING_SECTIONS).flat().flatMap((s) => s.keys));
+const unmoved = (keys: string[]) => keys.filter((k) => !MOVED.has(k));
 
 // Settings S-3 (answers 1323 to 1325): the Payroll & Statutory pages with the company's settings, the legal limits and a
 // second person for every change. Positive and negative.
@@ -24,12 +28,12 @@ const show = (id: string, over: Partial<LiveSettingsPage> = {}) =>
 
 describe('Payroll settings (S-3): every hidden setting has a field', () => {
   it('the 16 payroll and tax settings with no screen, the second-person switch and the lapse days, each sit on one drawn page', () => {
-    const keys = Object.values(PAY_SETTINGS).flatMap((p) => p.settings.map((s) => s.key));
+    const keys = unmoved(Object.values(PAY_SETTINGS).flatMap((p) => p.settings.map((s) => s.key)));
     expect(keys).toHaveLength(18); // 16 hidden, the second-person switch (1325) and the lapse days (1523)
-    expect(new Set([...keys, ...Object.values(TIME_SETTINGS).flatMap((p) => p.settings.map((s) => s.key))]).size).toBe(18 + 39);
+    expect(new Set([...keys, ...unmoved(Object.values(TIME_SETTINGS).flatMap((p) => p.settings.map((s) => s.key)))]).size).toBe(18 + 39);
     for (const [id, spec] of Object.entries(PAY_SETTINGS)) {
       const fields = allSettings(page(id));
-      for (const s of spec.settings) expect([s.key, fields.find((d) => d.key === s.key)?.starter]).toEqual([s.key, DATA.company[s.key] === undefined]);
+      for (const s of spec.settings.filter((x) => !MOVED.has(x.key))) expect([s.key, fields.find((d) => d.key === s.key)?.starter]).toEqual([s.key, DATA.company[s.key] === undefined]);
     }
   });
 

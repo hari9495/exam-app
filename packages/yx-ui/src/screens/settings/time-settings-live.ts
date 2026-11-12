@@ -18,6 +18,8 @@ export interface RegistryDef {
   dated?: boolean;
   /** Where it may have values of its own (registry scopes: tenant, legal_entity, location, employment_type, grade...). */
   scopes?: readonly string[];
+  /** Short text HR writes (one thing a line), up to this many characters. */
+  text?: { maxLength: number };
 }
 
 export interface TimeSettingsData {
@@ -68,6 +70,21 @@ export const TIME_SETTINGS: Record<string, { links: string[]; settings: Place[] 
       { section: 'Overtime policy', key: 'standby.call_out_minimum_hours', synonyms: ['on call', 'standby'] },
       { section: 'Patterns and roster', key: 'roster.change_notice_hours' },
       { section: 'Patterns and roster', key: 'roster.open_shift_rule' },
+      // S-7 (answer 1321): from Company rules.
+      { section: 'Flexi and split shifts', key: 'attendance.shift_types.flexi', synonyms: ['flexi'] },
+      { section: 'Flexi and split shifts', key: 'attendance.shift_types.split', synonyms: ['split shift'] },
+      { section: 'Flexi and split shifts', key: 'attendance.flexi.late_from' },
+      { section: 'Flexi and split shifts', key: 'attendance.flexi.short_by' },
+      { section: 'Flexi and split shifts', key: 'attendance.split.min_gap_minutes' },
+    ],
+  },
+  // S-7 (answer 1321): 3.1 Attendance modes, from Company rules.
+  '3.1': {
+    links: [],
+    settings: [
+      { section: 'Attendance', key: 'attendance.mode', synonyms: ['attendance mode'] },
+      { section: 'Attendance', key: 'attendance.missing_punch_effect', synonyms: ['missing punch'] },
+      { section: 'Attendance', key: 'attendance.factories_act', synonyms: ['factories act'] },
     ],
   },
   '3.4': { links: [], settings: [{ section: 'Location defaults', key: 'roster.min_weekly_offs', synonyms: ['weekly holiday', 'day off'] }] },
@@ -147,6 +164,61 @@ export const PAY_SETTINGS: Record<string, { links: string[]; settings: Place[] }
       { section: 'Declarations and proofs', key: 'tax.proof_cutoff', synonyms: ['investment proof'] },
     ],
   },
+  // S-7 (answers 1321, 1521): 4.6 with Payroll rules' bonus, loan and reports-access settings, under the second person.
+  '4.6': {
+    links: [],
+    settings: [
+      { section: 'Statutory bonus', key: 'payroll.bonus.eligibility_rate_on', synonyms: ['bonus'] },
+      { section: 'Statutory bonus', key: 'payroll.bonus.eligibility_wage' },
+      { section: 'Statutory bonus', key: 'payroll.bonus.calculation_ceiling' },
+      { section: 'Statutory bonus', key: 'payroll.bonus.min_rate' },
+      { section: 'Statutory bonus', key: 'payroll.bonus.max_rate' },
+      { section: 'Statutory bonus', key: 'payroll.bonus.min_working_days' },
+      { section: 'Statutory bonus', key: 'payroll.bonus.min_amount' },
+      { section: 'Statutory bonus', key: 'payroll.bonus.allocable_percent' },
+      { section: 'Statutory bonus', key: 'payroll.bonus.carry_years' },
+      { section: 'Statutory bonus', key: 'payroll.bonus.year_start_month' },
+      { section: 'Statutory bonus', key: 'payroll.bonus.due_months' },
+      { section: 'Loans and advances', key: 'payroll.loan.max_gross_months', synonyms: ['loan', 'advance'] },
+      { section: 'Loans and advances', key: 'payroll.loan.after_probation' },
+      { section: 'Loans and advances', key: 'payroll.loan.interest_rate.advance' },
+      { section: 'Loans and advances', key: 'payroll.loan.interest_rate.loan' },
+      { section: 'Payroll reports access', key: 'payroll.reports_access.days', synonyms: ['reports access'] },
+    ],
+  },
+};
+
+/** Settings S-7 (answer 1321): the Organisation, Documents and Account pages that hold settings from Company rules. */
+export const MORE_SETTINGS: Record<string, { links: string[]; settings: Place[]; related?: { label: string; screenId: string }[] }> = {
+  '1.1': {
+    links: [],
+    settings: [
+      { section: 'Working week and language', key: 'work.normal_week_hours', synonyms: ['full-time week'] },
+      { section: 'Working week and language', key: 'people.language', synonyms: ['language'] },
+    ],
+  },
+  '1.5': {
+    links: [],
+    settings: [
+      { section: 'Employee records', key: 'employee.personal.required', synonyms: ['required fields'] },
+      { section: 'Work permits and visas', key: 'work_auth.reminder_days', synonyms: ['visa', 'work permit'] },
+    ],
+  },
+  '1.6': { links: [], settings: [{ section: 'Set-up hub', key: 'setup.hub.time' }, { section: 'Set-up hub', key: 'setup.hub.payroll' }] },
+  '5.7': {
+    links: [],
+    settings: [
+      { section: 'Company policies', key: 'policy.ack.due_days', synonyms: ['acknowledge'] },
+      { section: 'Company policies', key: 'policy.reminder.every_days' },
+      { section: 'Company policies', key: 'policy.reminder.manager_after_days' },
+      { section: 'Company policies', key: 'policy.reack.default' },
+      { section: 'Company policies', key: 'policy.ack.typed_name' },
+      { section: 'Company policies', key: 'policy.publish.second_person' },
+      { section: 'Company policies', key: 'policy.ai_writer', synonyms: ['AI policy'] },
+      { section: 'Company policies', key: 'company.industry', synonyms: ['industry'] },
+    ],
+  },
+  '8.6': { links: [], settings: [{ section: 'Help', key: 'help.whats_new.show', synonyms: ["what's new"] }, { section: 'Help', key: 'help.tours.show', synonyms: ['tours'] }] },
 };
 
 /**
@@ -157,7 +229,6 @@ export const PAY_SETTINGS: Record<string, { links: string[]; settings: Place[] }
 export const PEOPLE_SETTINGS: Record<string, { links: string[]; settings: Place[]; related?: { label: string; screenId: string }[] }> = {
   '2.7': {
     links: [],
-    related: [{ label: 'Company rules (fixed-term contracts, probation)', screenId: 'company-rules' }],
     settings: [
       { section: 'Notice and resignation', key: 'exit.notice.probation', synonyms: ['notice period', 'resignation'] },
       { section: 'Notice and resignation', key: 'exit.notice.confirmed', synonyms: ['notice period', 'resignation'] },
@@ -173,6 +244,71 @@ export const PEOPLE_SETTINGS: Record<string, { links: string[]; settings: Place[
       { section: 'Rehire', key: 'rehire.leave' },
       { section: 'Rehire', key: 'rehire.probation' },
       { section: 'Rehire', key: 'rehire.prior_records' },
+      // S-7 (answer 1321): from Company rules.
+      { section: 'Fixed-term contracts', key: 'contract.max_years', synonyms: ['fixed-term', 'contract'] },
+      { section: 'Fixed-term contracts', key: 'contract_end.action' },
+    ],
+  },
+  // Settings S-7 (answers 1321, 1561, 1564): the settings that were on Company rules and Access and privacy.
+  '2.2': {
+    links: [],
+    settings: [
+      { section: 'Manager access', key: 'access.manager.view_scope', synonyms: ['manager sees'] },
+      { section: 'Team pay access', key: 'pay_access.days', synonyms: ['team pay'] },
+      { section: 'Team pay access', key: 'pay_access.scope' },
+      { section: 'Privacy', key: 'privacy.who_accessed', synonyms: ['who looked'] },
+      { section: 'Privacy', key: 'privacy.retention.internal_years', synonyms: ['retention'] },
+      { section: 'Privacy', key: 'privacy.retention.personal_years' },
+      { section: 'Privacy', key: 'privacy.retention.special_years' },
+      { section: 'Privacy', key: 'privacy.erasure.enabled', synonyms: ['erasure', 'delete special data'] },
+      { section: 'Home page', key: 'home.pay_on_employee_home', synonyms: ['net pay on home'] },
+    ],
+  },
+  '2.1': {
+    links: [],
+    settings: [
+      { section: 'Access requests', key: 'access.request.allowed', synonyms: ['request access'] },
+      { section: 'Access requests', key: 'access.request.max_days' },
+      { section: 'Special permissions', key: 'access.risk.confidential_threshold', synonyms: ['confirmation'] },
+    ],
+  },
+  '2.3': { links: [], settings: [{ section: 'Bank details', key: 'employee.bank_change.cooling_hours', synonyms: ['bank change', 'cooling'] }] },
+  '2.5': {
+    links: [],
+    settings: [
+      { section: 'Probation', key: 'probation.default_months', synonyms: ['probation length'] },
+      { section: 'Probation', key: 'probation.max_total_months', synonyms: ['probation extension'] },
+      { section: 'Probation', key: 'probation.review_lead_days' },
+      { section: 'Probation', key: 'probation.auto_confirm_after_days', synonyms: ['confirm automatically'] },
+      { section: 'Joining day', key: 'joining.reporting_time', synonyms: ['reporting time'] },
+      { section: 'Joining day', key: 'joining.bring_on_day_one', synonyms: ['documents to bring'] },
+    ],
+  },
+  '2.6': {
+    links: [],
+    settings: [
+      { section: 'Job changes', key: 'employee_change.retro_limit', synonyms: ['back-dated change'] },
+      { section: 'Job changes', key: 'promotion.must_change', synonyms: ['promotion'] },
+      { section: 'Inter-entity transfer defaults', key: 'transfer.leave', synonyms: ['transfer'] },
+      { section: 'Inter-entity transfer defaults', key: 'transfer.service' },
+      { section: 'Inter-entity transfer defaults', key: 'transfer.code' },
+      { section: 'Inter-entity transfer defaults', key: 'transfer.salary' },
+      { section: 'Pay ranges', key: 'pay.band.above_max', synonyms: ['pay range', 'above max'] },
+    ],
+  },
+  '2.9': {
+    links: [],
+    settings: [
+      { section: 'Speak-up', key: 'speakup.anonymous', synonyms: ['anonymous', 'grievance'] },
+      { section: 'Speak-up', key: 'speakup.ack_days' },
+      { section: 'Speak-up', key: 'speakup.categories.grievance' },
+      { section: 'Speak-up', key: 'speakup.categories.ethics' },
+      { section: 'Speak-up', key: 'cases.reply_days' },
+      { section: 'Speak-up', key: 'cases.disciplinary.reply_days', synonyms: ['disciplinary'] },
+      { section: 'Regulated declarations', key: 'bfsi.declaration_due', synonyms: ['BFSI', 'declarations'] },
+      { section: 'Regulated declarations', key: 'bfsi.preclearance_threshold', synonyms: ['pre-clearance'] },
+      { section: 'Regulated declarations', key: 'bfsi.preclearance_valid_days' },
+      { section: 'Regulated declarations', key: 'bfsi.preclearance_decide_days' },
     ],
   },
   // Settings S-6 (answer 1330): 2.4 Approvals, the reminder and escalation hours; the policies list comes from the API.
@@ -186,8 +322,11 @@ export const PEOPLE_SETTINGS: Record<string, { links: string[]; settings: Place[
   },
   '2.10': {
     links: [],
-    related: [{ label: 'Access and privacy (retention of personal data)', screenId: 'access-settings' }],
-    settings: [{ section: 'Audit log', key: 'audit.retention_years', synonyms: ['audit trail'] }],
+    settings: [
+      { section: 'Audit log', key: 'audit.retention_years', synonyms: ['audit trail'] },
+      // S-7: the Not found references (who asked for which address), from Access and privacy.
+      { section: 'Not found references', key: 'help.not_found.keep_days', synonyms: ['not found'] },
+    ],
   },
 };
 
@@ -212,7 +351,7 @@ const falsy = (d: RegistryDef) => (d.values.includes('off') ? 'off' : 'no');
 
 /** The drawn Time & Leave page with the company's settings, for SettingsPageScreen `live`. `links`: drawn editor links the viewer may open. */
 export function timeSettingsPage(design: SettingsPageDef, data: TimeSettingsData, links: Set<string>): SettingsPageDef {
-  const spec = TIME_SETTINGS[design.id] ?? PAY_SETTINGS[design.id] ?? PEOPLE_SETTINGS[design.id];
+  const spec = TIME_SETTINGS[design.id] ?? PAY_SETTINGS[design.id] ?? PEOPLE_SETTINGS[design.id] ?? MORE_SETTINGS[design.id];
   if (!spec) return design;
   const field = (p: Place): SettingDef | null => {
     const d = data.registry[p.key];
@@ -242,6 +381,8 @@ export function timeSettingsPage(design: SettingsPageDef, data: TimeSettingsData
           scopeable: data.scopes.filter((s) => d.scopes?.includes(s.type)).map((s) => s.label),
         }
       : {};
+    // S-7: text HR writes (topics one a line, what joiners bring).
+    if (d.text) return { ...base, ...scoped, kind: d.text.maxLength > 100 ? 'textarea' : 'text', value };
     if (isToggle(d)) return { ...base, ...scoped, kind: 'toggle', value: value === truthy(d) };
     if (d.multi) return { ...base, ...scoped, kind: 'multiselect', options: [...d.values], optionLabels: labels, value: value ? value.split(',') : [] };
     return { ...base, ...scoped, options: [...d.values], optionLabels: labels, value };

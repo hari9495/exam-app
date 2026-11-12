@@ -20,7 +20,7 @@ export default function YxSpeakUpSetupPage() {
         onRemove: async (m) => {
           await write(`/speakup/setup/members/${encodeURIComponent(m)}/remove`, 'POST');
         },
-        rulesHref: '/yx/settings/company-rules',
+        rulesHref: '/yx/settings/people/employee-relations-and-cases',
       }}
     />
   );

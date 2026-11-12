@@ -17,10 +17,10 @@ import { PAGE_SETTING_KEYS, useSettingsHistory } from './yx-settings-history';
 type Overview = { registry: Record<string, RegistryDef>; limits: TimeSettingsData['limits']; pending?: PendingSettingChange[]; overrides: { key: string; scopeType: string; scopeId: string; validFrom: string | null; value: unknown }[] };
 type Named = { id: string; name: string; archivedAt?: string | null }[];
 /** S-7 (answer 1484): the places a setting may have a value of its own, in words (an entity by its name). */
-const PLACE: Record<string, (name: string) => string> = { legal_entity: (n) => n, location: (n) => `${n} (location)`, employment_type: (n) => `${n} (employment type)`, grade: (n) => `Grade ${n}` };
+const PLACE: Record<string, (name: string) => string> = { legal_entity: (n) => n, location: (n) => `${n} (location)`, department: (n) => `${n} (department)`, employment_type: (n) => `${n} (employment type)`, grade: (n) => `Grade ${n}` };
 type Page = SettingsGroupDef['pages'][number];
 
-export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, secondPerson, decorate }: {
+export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, secondPerson, decorate, extra }: {
   slug: string;
   /** The drawn pages this route serves. */
   pageIds: readonly string[];
@@ -34,6 +34,8 @@ export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, s
   secondPerson?: boolean;
   /** S-6 (answer 1330): adds what the page shows beside its settings (2.4: the approval policies). */
   decorate?: (page: Page) => Page;
+  /** S-7: a block the page shows besides its settings (2.2: the Special data erasure report). */
+  extra?: React.ReactNode;
 }) {
   const router = useRouter();
   const design = SETTINGS_GROUPS.flatMap((g) => g.pages).find((p) => pageIds.includes(p.id) && groupSlug(p.title) === slug);
@@ -44,6 +46,7 @@ export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, s
   const entities = useOrg<Named>('/legal-entities');
   const locations = useOrg<Named>('/locations');
   const types = useOrg<Named>('/masters/employment-types');
+  const departments = useOrg<Named>('/masters/departments');
   const grades = useOrg<Named>('/masters/grades');
   const write = useOrgWrite();
   const mine = useMemo(() => new Set(nav.flatMap((a) => a.sections.flatMap((s) => s.items.map((l) => l.href)))), [nav]);
@@ -61,7 +64,7 @@ export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, s
         if (o.validFrom) since[o.key] = o.validFrom;
       } else if (o.scopeType !== 'tenant') elsewhere[o.key] = (elsewhere[o.key] ?? 0) + 1;
     // S-7 (answer 1484): each place's own value in force today (a dated one: the latest from today or before).
-    const scopes = ([['legal_entity', entities.data], ['location', locations.data], ['employment_type', types.data], ['grade', grades.data]] as const).flatMap(([type, rows]) =>
+    const scopes = ([['legal_entity', entities.data], ['location', locations.data], ['department', departments.data], ['employment_type', types.data], ['grade', grades.data]] as const).flatMap(([type, rows]) =>
       (rows ?? []).filter((r) => !r.archivedAt).map((r) => ({ label: PLACE[type]!(r.name), type, id: r.id })),
     );
     const byScope: NonNullable<TimeSettingsData['byScope']> = {};
@@ -76,7 +79,7 @@ export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, s
       list.push({ scope: place.label, value: String(o.value), validFrom: o.validFrom });
     }
     return { registry: d.registry, limits: d.limits ?? {}, company, elsewhere, canEdit: canEdit((k) => perms.has(k as never), design), canGuard: perms.has('access.role.manage'), lastChange: null, scopes, byScope };
-  }, [settings.data, perms, design, canEdit, entities.data, locations.data, types.data, grades.data]);
+  }, [settings.data, perms, design, canEdit, entities.data, locations.data, departments.data, types.data, grades.data]);
   const shown = useMemo(() => new Set(Object.entries(links).filter(([, href]) => mine.has(href)).map(([k]) => k)), [mine, links]);
   // Answer 1326: the page's last 20 changes (only its own settings that the registry knows).
   const keys = useMemo(() => (design && settings.data ? (PAGE_SETTING_KEYS[design.id] ?? []).filter((k) => settings.data!.registry[k]) : []), [design, settings.data]);
@@ -103,6 +106,7 @@ export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, s
         onSetUpMfa: () => router.push(ME_SECURITY),
         onRetry: () => void settings.refetch(),
         savedTitle: `${design.title} saved`,
+        extra,
         secondPerson: Boolean(switchOn),
         pending: waiting,
         onApprove: data?.canEdit ? async (id) => void (await write('POST', `/settings/requests/${encodeURIComponent(id)}/approve`, {})) : undefined,

@@ -666,7 +666,9 @@ export class ExitsService implements OnModuleInit {
     // The employee's own pay: the pay guard opens to their entity for this read only.
     const pay = await withPayScope(tx, [e.legalEntityId], () => payOn(tx, org, e.id, today));
     if (pay.gratuityWage.lte(0)) return null;
-    const scope = { legalEntityId: e.legalEntityId };
+    // Answer 1564: the retirement age may differ by grade or employment type, as on the retirement sweep.
+    const a = await tx.employeeAssignment.findFirst({ where: { organizationId: org, employmentId: e.id, supersededAt: null }, orderBy: { validFrom: 'desc' } });
+    const scope = { legalEntityId: e.legalEntityId, employmentTypeId: a?.employmentTypeId, gradeId: a?.gradeId };
     const D = (x: Prisma.Decimal.Value) => new Prisma.Decimal(x);
     const r0 = (x: Prisma.Decimal) => x.toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP).toFixed(0);
     const years = serviceYears(iso(e.joinedOn), today).completed;

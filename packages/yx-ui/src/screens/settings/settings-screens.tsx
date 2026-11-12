@@ -354,6 +354,8 @@ export interface LiveSettingsPage {
   onSave: (values: Record<string, SettingValue>, rows: Record<string, string[][]>, overrides?: { key: string; scope: string; value: SettingValue }[], appliesFrom?: string) => Promise<void>;
   /** Settings S-7 (answer 1562): the page has dated settings; their changes apply from this day (today by default). */
   appliesFrom?: { today: string };
+  /** Settings S-7: what the page shows besides its settings (2.2: the Special data erasure report). */
+  extra?: React.ReactNode;
   /** list kind: a row's extra button (`rowAction`), e.g. Stage targets of a pipeline. */
   onRowAction?: (key: string, rowIndex: number) => void;
   /**
@@ -743,6 +745,7 @@ function SettingsForm({
         </InlineAlert>
       )}
       {live?.pending && live.pending.length > 0 && <PendingChanges live={live} />}
+      {live?.extra}
       <ErrorSummary errors={saveErrors.shownErrors} />
       {status.kind === 'saved' && (
         <InlineAlert tone="success" title={status.approval ? 'Changes sent for approval' : 'Changes saved'}>

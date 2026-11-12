@@ -118,7 +118,7 @@ describe('buildNav: Time, Pay, Compliance', () => {
 
   it('payroll set-up pages sit in Settings › Payroll & Statutory, by the batch-5b keys', () => {
     const n = nav(['payroll.setup.manage', 'payroll.template.manage', 'employee.salary.manage']);
-    expect(labels(n, 'settings')).toEqual(['All settings', 'Payroll set-up', 'Payroll rules', 'Payroll policies', 'Payslip settings', 'Tax', 'Pay groups', 'Payslip layout', 'Country packs', 'Salary templates']);
+    expect(labels(n, 'settings')).toEqual(['All settings', 'Payroll set-up', 'Payroll policies', 'Payslip settings', 'Tax', 'Bonus & loan rules', 'Pay groups', 'Payslip layout', 'Country packs', 'Salary templates']);
     // Founder answer 19 (30 Oct 2026): the item opens the rules page, so it is "Statutory rules"; registrations stay in Payroll set-up.
     expect(labels(n, 'compliance')).toEqual(['Statutory rules', 'Statutory coverage']);
     expect(activeLink(n, '/yx/payroll/statutory-rules')?.link.label).toBe('Statutory rules');
@@ -198,8 +198,8 @@ describe('buildNav: Settings', () => {
     expect(areas(nav(['org.structure.view']))).not.toContain('settings');
   });
 
-  it('the settings admin gets company rules, Countries and Translations; set-up pages follow their keys', () => {
-    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['All settings', 'Set-up hub', 'Legal entities', 'Locations', 'Structure', 'Company rules', 'Countries', 'Translations', 'Access and privacy', 'Custom fields', 'Approvals', 'Exit & lifecycle policies', 'Audit & data retention', 'Approval policies', 'Check-in & devices', 'Shifts & patterns', 'Weekly offs', 'Late & regularisation', 'Leave types', 'Holiday calendars', 'Leave year', 'Projects & timesheets', 'Visitors', 'Payroll rules', 'Payroll policies', 'Payslip settings', 'Tax', 'Contract labour', 'Hiring', 'Staffing desk']);
+  it('the settings admin gets the S-7 pages (no retired Company rules), Countries and Translations; set-up pages follow their keys', () => {
+    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['All settings', 'Set-up hub', 'Legal entities', 'Locations', 'Structure', 'Countries', 'Translations', 'Company & branding', 'Employee records', 'Set-up hub settings', 'Policies', 'Help and tips', 'Custom fields', 'Approvals', 'Access requests', 'Directory & privacy', 'Security rules', 'Onboarding & probation', 'Job changes & transfers', 'Exit & lifecycle policies', 'Employee relations & cases', 'Audit & data retention', 'Approval policies', 'Attendance modes', 'Check-in & devices', 'Shifts & patterns', 'Weekly offs', 'Late & regularisation', 'Leave types', 'Holiday calendars', 'Leave year', 'Projects & timesheets', 'Visitors', 'Payroll policies', 'Payslip settings', 'Tax', 'Bonus & loan rules', 'Contract labour', 'Hiring', 'Staffing desk']);
     // Settings 6.1 Hiring: recruiting, hiring admins and HR read it (the API decides who changes it).
     expect(labels(nav(['ats.settings.manage']), 'settings')).toEqual(['All settings', 'Hiring']);
     expect(labels(nav(['pipeline:manage']), 'settings')).toEqual(['All settings', 'Hiring']);

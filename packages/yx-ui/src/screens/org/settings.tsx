@@ -395,7 +395,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
  * Follow-up 12 and the founder's answers (30 Oct 2026): what the nightly job would delete today and from whom (name,
  * employee code, last day or the day the joining was cancelled; never a value), what it keeps, and its last run.
  */
-function ErasureCard({ report }: { report: ErasureReport }) {
+export function ErasureCard({ report }: { report: ErasureReport }) {
   const last = report.lastRun;
   const due = report.enabled ? 'Due at the next run' : 'If it ran today, it would delete';
   return (

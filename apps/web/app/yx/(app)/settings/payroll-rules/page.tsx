@@ -1,9 +1,7 @@
-'use client';
+import { redirect } from 'next/navigation';
 
-import { CompanySettingsPage } from '../../../../../lib/yx-settings-page';
-
-// Settings › Payroll & Statutory › Payroll rules (founder 30 Oct 2026, last 10, items 1 and 5): statutory bonus rules and
-// loans and advances, per company or legal entity. HR changes them (org.settings.manage); payroll set-up reads them (payroll.setup.manage).
+// Settings S-7 (answers 1321, 1521): Payroll rules is retired; its bonus, loan and reports-access settings are on 4.6
+// Loans & advances, where a change waits for a second person. The old address opens 4.6.
 export default function YxPayrollRulesPage() {
-  return <CompanySettingsPage section="payroll" />;
+  redirect('/yx/settings/payroll/loans-and-advances');
 }
