@@ -1306,7 +1306,7 @@ function SearchWordsCard({ value, starter, onSave }: { value: string; starter: s
       <div className="yx-ops-stack">
         {error && <InlineAlert tone="danger" title="It was not saved">{error}</InlineAlert>}
         <FormField id="kb-synonyms" label="Words, one group a line" helper="Separate the words with commas, e.g. pf, provident fund. Help search finds an article by any word of its line. For the whole company." error={early.errorOf('kb-synonyms')}>
-          <TextArea value={text} onChange={setText} rows={12} />
+          <TextArea value={text} onChange={setText} rows={7} />
         </FormField>
         <div className="yx-ops-row">
           <Button onClick={() => setText(starter)}>Use the starter list</Button>
