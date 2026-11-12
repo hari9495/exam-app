@@ -19,6 +19,9 @@ export default function ConsoleStaffPage() {
       // Answer 1164: add (an invitation; no role until one is given) and deactivate, each with the security key again.
       onInvite={(input) => write('/staff', 'POST', input).then(() => undefined)}
       onDeactivate={(id, reason) => write(`/staff/${encodeURIComponent(id)}/deactivate`, 'POST', { reason }).then(() => undefined)}
+      // Answers 1171 and 1173: reactivate (with the roles they held) and send the invitation again (the old link dies).
+      onReactivate={(id, reason) => write(`/staff/${encodeURIComponent(id)}/reactivate`, 'POST', { reason }).then(() => undefined)}
+      onResend={(id, reason) => write(`/staff/${encodeURIComponent(id)}/resend-invitation`, 'POST', { reason }).then(() => undefined)}
     />
   );
 }

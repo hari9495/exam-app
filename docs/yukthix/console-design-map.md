@@ -77,13 +77,13 @@ After C-1 to C-5, the console follow-ups and C-8 parts 1 and 2 (12 Nov 2026, tes
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Live console | 3 | 29 | 0 | 0 | 0 | 0 | 29 |
+| A. Live console | 3 | 30 | 0 | 0 | 0 | 0 | 30 |
 | B. Rules engine (YX-01 to YX-03) | 3 | 26 | 5 | 0 | 0 | 0 | 31 |
 | C. Customers and containment (YX-04, YX-18) | 2 | 25 | 2 | 0 | 0 | 0 | 27 |
 | D. Partners (YX-06 to YX-08) | 3 | 0 | 0 | 0 | 10 | 0 | 10 |
 | E. Money (YX-14 to YX-17) | 4 | 0 | 0 | 0 | 8 | 0 | 8 |
 | F. The rest (YX-05, YX-09 to YX-13) | 6 | 17 | 0 | 0 | 13 | 0 | 30 |
-| **All A-F** | **21** | **97** | **7** | **0** | **31** | **0** | **135** |
+| **All A-F** | **21** | **98** | **7** | **0** | **31** | **0** | **136** |
 
 Counted by script on 11 Nov 2026 on `docs/yukthix-console-map` (the script is in the appendix). There are 87 stories in
 20 files whose title starts `Screens/YukthiX console/`: `screens/console/console.stories.tsx` (14),
@@ -178,6 +178,7 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 | StaffRolesLastLead · Staff and roles · the last Security lead | live | the last active Security lead keeps the role (screen, API, database) |
 | StaffRolesNoKey · Staff and roles · not a Security lead | live | 403 from the API shows no access |
 | StaffAdd · Staff and roles · add staff | live | Answer 1164: `POST /platform/staff` (Security lead, the security key again, a reason; audited): an invitation to set a password, then a security key at first sign-in; no role until one is given. Deactivate: `POST /platform/staff/:id/deactivate` (never yourself, never the last Security lead; signed out everywhere) |
+| StaffInvitedAndInactive · Staff and roles · invited and deactivated (send again, reactivate) | live | Answers 1171, 1173: `POST /platform/staff/:id/reactivate` (the roles they held; they sign in again with their security key) and `POST /platform/staff/:id/resend-invitation` (only for someone who never signed in; the old link stops; 3 a day by default), each with the security key again and a reason, audited |
 
 #### Support desk (SD-1.31)
 
@@ -1016,3 +1017,26 @@ C-6 to C-8.
       their new alerts, later.*
 
 - 1171 to 1174, 1181 to 1183, 1201 to 1207 and 1221 to 1224 approved as suggested (12 Nov 2026, "ok for all"). To build now: Reactivate staff (1171); send a staff invitation again (1173); Platform settings as the one place to change settings, the alert and maintenance pages link to it (1183); Retire a YukthiX help article with second-staff approval (1203); "Owner left" with a reassignment list (1223). Later: Payroll Admins on pay-rule notices (1181); Hindi help articles (1202); probes after a monitoring tool is chosen (1204); regions (1205); daily owner email of new alerts (1224); churn drop rule after a few months of history (1221). Founder to give: the payroll-day banner sentence (1206); which two staff stay Security leads (1162).
+
+## Staff, third part (answers 1171, 1173; 13 Nov 2026, branch `feat/yukthix-console-staff-2`)
+- **1171, Reactivate** (Staff and roles, on a deactivated row): only a Security lead, with the security key again and a
+  reason; audited as `platform.staff.reactivated` with the roles they come back with. Never yourself; an active account
+  is refused (database `platform_reactivate_staff`, migration `202617z0000091_console_staff_2`). **They come back with
+  the roles they held**: answer 1172 kept roles on deactivation so a Security lead decides on purpose, and the dialog asks
+  them to check the roles first. Their sessions stay ended; they sign in again and the console waits for their
+  security key.
+- **1173, Send the invitation again** (on an "Invited" row: active and never signed in): same guard, step-up, reason and
+  audit (`platform.staff.invite_resent`). The new link retires every earlier one. At most
+  `staff.invite.resends_per_day` sends a day per person (an India day; platform setting, 3 by default, 1 to 10); the
+  next one is refused with 429 and when to try again. Someone who already signed in, or a deactivated account, is
+  refused.
+- **Tests:** e2e `console-staff-2` (6), kit `staff.test.tsx` (11), web `console-staff.test.tsx` (4).
+
+### Questions (from 1241)
+1241. **What the daily limit counts.** Only "Send the invitation again" counts; the first invitation (Add staff) does
+      not. *Suggested: keep.*
+1242. **Reactivating with fewer roles.** Reactivate brings back every role held; to bring someone back with less, the
+      Security lead changes the roles first (allowed on a deactivated account, answer 1172). *Suggested: keep.*
+1243. **Invited accounts that never come.** An invited account stays "Invited" until someone deactivates it.
+      *Suggested: deactivate invited accounts automatically after 30 days without a sign-in (a platform setting).*
+

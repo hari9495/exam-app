@@ -84,4 +84,23 @@ describe('Console › Staff and roles', () => {
     await ue.click(within(confirm).getByRole('button', { name: 'Deactivate' }));
     await waitFor(() => expect(calls).toContain('POST /platform/staff/s2/deactivate {"reason":"Left YukthiX"}'));
   });
+
+  it('answers 1171 and 1173: reactivates a deactivated person and sends an invitation again, each with a reason', async () => {
+    const staff = [...STAFF, { id: 's3', name: 'Meera Pillai', email: 'meera@yukthix.test', active: false, me: false, roles: ['rules_editor'], lastLead: false }, { id: 's4', name: 'Priya Nair', email: 'priya@yukthix.test', active: true, me: false, roles: [], lastLead: false, invited: true }];
+    route({ 'GET /platform/staff': { roles: ROLES, staff }, 'POST /platform/staff/s3/reactivate': { id: 's3', active: true, roles: ['rules_editor'] }, 'POST /platform/staff/s4/resend-invitation': { id: 's4', sent: true } });
+    wrap(<ConsoleStaffPage />);
+    await ue.click(await screen.findByRole('button', { name: /More actions for Meera Pillai/ }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'Reactivate' }));
+    let dialog = await screen.findByRole('dialog');
+    await ue.type(within(dialog).getByRole('textbox'), 'Back from leave');
+    await ue.click(within(dialog).getByRole('button', { name: 'Reactivate' }));
+    await waitFor(() => expect(calls).toContain('POST /platform/staff/s3/reactivate {"reason":"Back from leave"}'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await ue.click(screen.getByRole('button', { name: /More actions for Priya Nair/ }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'Send the invitation again' }));
+    dialog = await screen.findByRole('dialog');
+    await ue.type(within(dialog).getByRole('textbox'), 'Link expired');
+    await ue.click(within(dialog).getByRole('button', { name: 'Send again' }));
+    await waitFor(() => expect(calls).toContain('POST /platform/staff/s4/resend-invitation {"reason":"Link expired"}'));
+  });
 });

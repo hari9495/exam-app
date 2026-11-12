@@ -20594,5 +20594,42 @@
       "Screens/YukthiX console/YX-10 · Incidents, status admin and probes · Incident · security breach and its reminders (C-8)"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CON-SR-05",
+    "area": "YukthiX console — staff, third part (13 Nov 2026)",
+    "screen": "Console › Staff and roles › Reactivate",
+    "url": "http://localhost:3000/staff/staff",
+    "account": "Two Security leads with security keys; a deactivated staff account with roles; a Customer success account.",
+    "steps": [
+      "As a Security lead open the deactivated row's menu and choose Reactivate; press Reactivate with the reason empty, then with a reason (security key).",
+      "As the reactivated person sign in at /staff/sign-in.",
+      "Open the menu of an active row.",
+      "As Customer success open /staff/staff."
+    ],
+    "expected": "Step 1: 'Write at least 5 characters'; then toast 'reactivated'; the row is Active with the roles they held. Step 2: they must use their security key before any page. Step 3: no Reactivate. Step 4: no access.",
+    "stories": [
+      "Screens/YukthiX console/Platform console (step 3) · Staff and roles · invited and deactivated (send again, reactivate)"
+    ],
+    "note": "Positive and negative. Answer 1171."
+  },
+  {
+    "id": "MT-CON-SR-06",
+    "area": "YukthiX console — staff, third part (13 Nov 2026)",
+    "screen": "Console › Staff and roles › Send the invitation again",
+    "url": "http://localhost:3000/staff/staff",
+    "account": "A Security lead; an invited staff account that never signed in; a mailbox you can read.",
+    "steps": [
+      "On the Invited row choose Send the invitation again with a reason (security key).",
+      "Open the first invitation's link.",
+      "Open the newest link and set a password.",
+      "Send again three more times the same day for another invited person.",
+      "Try Send again for someone who has signed in."
+    ],
+    "expected": "Step 1: toast 'Invitation sent again'. Step 2: the link no longer works. Step 3: the password is set. Step 4: the fourth send that day is refused ('already sent 3 times today'). Step 5: no Send again in their menu.",
+    "stories": [
+      "Screens/YukthiX console/Platform console (step 3) · Staff and roles · invited and deactivated (send again, reactivate)"
+    ],
+    "note": "Positive and negative. Answer 1173."
   }
 ]
