@@ -148,6 +148,16 @@ export class UpdateDeskDto {
   @ValidateIf((_, v) => v !== undefined) // null is refused, not skipped
   @IsIn(AT_RISK_CHOICES, { message: 'The at-risk point is 50, 60, 70, 80 or 90 %.' })
   atRiskPercent?: number;
+
+  /** Answer 1643: the preset reasons a requester may pick after the stars; empty asks for none. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(12, { message: 'Keep to 12 reasons.' })
+  @ArrayUnique((x: string) => x.trim().toLowerCase(), { message: 'Each reason only once.' })
+  @IsString({ each: true })
+  @MinLength(2, { each: true, message: 'A reason needs at least 2 letters.' })
+  @MaxLength(40, { each: true, message: 'Keep a reason to 40 letters.' })
+  ratingReasons?: string[];
 }
 
 export class AddMemberDto {

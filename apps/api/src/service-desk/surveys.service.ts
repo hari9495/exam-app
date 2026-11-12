@@ -96,17 +96,23 @@ export class SurveysService {
   }
 
   /** Records a CSAT once per ticket; a low score gives the lead a follow-up task. */
-  private async rateIn(tx: Tx, org: string, ticketId: string, personId: string, score: number, comment: string | null, channel: 'email' | 'app' | 'portal') {
+  private async rateIn(tx: Tx, org: string, ticketId: string, personId: string, score: number, comment: string | null, channel: 'email' | 'app' | 'portal', reason: string | null = null) {
     const t = await tx.sdTicket.findFirst({ where: { organizationId: org, id: ticketId } });
     if (!t) throw new NotFoundException('No such ticket.');
     if (!['solved', 'closed'].includes(t.systemState)) throw new BadRequestException('Rate a ticket once it is solved.');
+    // Answer 1643: a reason is one of the desk's own list (matched without case), kept as the desk words it.
+    if (reason) {
+      const list = (await tx.sdDesk.findFirstOrThrow({ where: { organizationId: org, id: t.deskId }, select: { ratingReasons: true } })).ratingReasons;
+      reason = list.find((x) => x.toLowerCase() === reason!.trim().toLowerCase()) ?? null;
+      if (!reason) throw new BadRequestException('Choose one of the reasons shown.');
+    }
     // CSAT per agent: the owner, or else the agent who answered last.
     const agentUserId = t.assigneeUserId ?? (await tx.sdTicketMessage.findFirst({ where: { organizationId: org, ticketId: t.id, kind: 'reply', side: 'agent', authorUserId: { not: null } }, orderBy: { createdAt: 'desc' }, select: { authorUserId: true } }))?.authorUserId ?? null;
-    const created = await tx.sdRating.createMany({ data: [{ organizationId: org, deskId: t.deskId, ticketId: t.id, personId, agentUserId, groupId: t.groupId, score, comment: comment ? maskPii(comment).text : null, channel }], skipDuplicates: true });
+    const created = await tx.sdRating.createMany({ data: [{ organizationId: org, deskId: t.deskId, ticketId: t.id, personId, agentUserId, groupId: t.groupId, score, comment: comment ? maskPii(comment).text : null, reason, channel }], skipDuplicates: true });
     if (!created.count) throw new ConflictException('This ticket is already rated. Thank you.');
     await tx.sdTicketEvent.create({ data: { organizationId: org, deskId: t.deskId, ticketId: t.id, kind: 'rated', toValue: String(score), requesterVisible: true, byPersonId: personId } });
     await emit(tx, org, 'helpdesk.ticket.rated', { ticketId: t.id, deskId: t.deskId, score });
-    await audit(tx, { ctx: { organizationId: org, isSuperAdmin: false }, userId: null as unknown as string }, 'desk.ticket.rated', 'sd_ticket', t.id, { score, channel, personId });
+    await audit(tx, { ctx: { organizationId: org, isSuperAdmin: false }, userId: null as unknown as string }, 'desk.ticket.rated', 'sd_ticket', t.id, { score, reason, channel, personId });
     if (score <= 2) {
       const lead = await this.leadOf(tx, org, t.deskId);
       await tx.sdTask.create({ data: { organizationId: org, deskId: t.deskId, ticketId: t.id, sensitive: t.sensitive, private: t.private, title: `Follow up a low rating (${score} of 5) on ${t.number}`, assigneeUserId: lead, dueAt: new Date(Date.now() + 2 * 86_400_000) } });
@@ -127,23 +133,23 @@ export class SurveysService {
   }
 
   /** In the app: the requester rates their own solved ticket. */
-  async rateMine(r: Requester, ticketId: string, score: number, comment?: string) {
+  async rateMine(r: Requester, ticketId: string, score: number, comment?: string, reason?: string) {
     if (r.acting) throw new ForbiddenException('Not available while acting for someone else');
     const res = await this.tenantPrisma.forTenant(r.ctx, async (tx) => {
       const { t, personId } = await this.requesters.ownTicket(tx, r, ticketId);
       if (t.requesterPersonId !== personId) throw new ForbiddenException('Only the person who raised the ticket rates it.');
-      return this.rateIn(tx, r.ctx.organizationId, t.id, personId, score, comment ?? null, 'app');
+      return this.rateIn(tx, r.ctx.organizationId, t.id, personId, score, comment ?? null, 'app', reason ?? null);
     });
     await this.tellLead(r.ctx.organizationId, res);
     return { thanks: true };
   }
 
   /** In the portal: the outside requester rates their own solved ticket. */
-  async ratePortal(s: PortalSession, ticketId: string, score: number, comment: string | undefined, run: <T>(fn: (tx: Tx) => Promise<T>) => Promise<T>) {
+  async ratePortal(s: PortalSession, ticketId: string, score: number, comment: string | undefined, run: <T>(fn: (tx: Tx) => Promise<T>) => Promise<T>, reason?: string) {
     const res = await run(async (tx) => {
       const t = await tx.sdTicket.findFirst({ where: { organizationId: s.organizationId, id: ticketId, requesterPersonId: s.personId } });
       if (!t) throw new NotFoundException('No such ticket.');
-      return this.rateIn(tx, s.organizationId, t.id, s.personId, score, comment ?? null, 'portal');
+      return this.rateIn(tx, s.organizationId, t.id, s.personId, score, comment ?? null, 'portal', reason ?? null);
     });
     await this.tellLead(s.organizationId, res);
     return { thanks: true };

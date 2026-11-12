@@ -7,6 +7,7 @@ import { FormField } from '../../components/field';
 import { useToast } from '../../components/notify';
 import { TextArea, TextField } from '../../components/inputs';
 import { Segment } from '../../components/segment';
+import { Select } from '../../components/select';
 import { Card } from '../../components/shell';
 import { useRun } from '../org/org-kit';
 import { MessageBody, when } from './desk-kit';
@@ -243,8 +244,9 @@ const STARS = [1, 2, 3, 4, 5] as const;
 const STAR_WORDS = ['', 'Very poor', 'Poor', 'OK', 'Good', 'Very good'];
 
 /** Rate a solved ticket (US-B-108). One answer per ticket. */
-export function RateTicketCard({ rating, onRate }: { rating: number | null; onRate: (score: number, comment?: string) => Promise<unknown> }) {
+export function RateTicketCard({ rating, reasons = [], onRate }: { rating: number | null; reasons?: string[]; onRate: (score: number, comment?: string, reason?: string) => Promise<unknown> }) {
   const [score, setScore] = useState<number>(5);
+  const [reason, setReason] = useState<string | null>(null);
   const [comment, setComment] = useState('');
   const [done, setDone] = useState<number | null>(rating);
   const { busy, error, run } = useRun();
@@ -261,11 +263,16 @@ export function RateTicketCard({ rating, onRate }: { rating: number | null; onRa
           <p className="yx-ops-muted">
             {score} = {STAR_WORDS[score].toLowerCase()}
           </p>
+          {reasons.length > 0 && (
+            <FormField label="The main reason" optional>
+              <Select value={reason} onChange={setReason} clearable placeholder="Choose a reason" options={reasons.map((r) => ({ value: r, label: r }))} />
+            </FormField>
+          )}
           <FormField label="Anything to add?" optional>
             <TextArea value={comment} onChange={setComment} rows={3} maxLength={1000} />
           </FormField>
           <div className="yx-ops-row">
-            <Button variant="primary" loading={busy === 'rate'} onClick={() => void run('rate', async () => { await onRate(score, comment.trim() || undefined); setDone(score); })}>
+            <Button variant="primary" loading={busy === 'rate'} onClick={() => void run('rate', async () => { await onRate(score, comment.trim() || undefined, reason ?? undefined); setDone(score); })}>
               Send rating
             </Button>
           </div>

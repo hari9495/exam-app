@@ -55,7 +55,7 @@ export interface DeskSetupScreenProps {
   calendars: Calendar[];
   canCalendars: boolean;
   onCreateDesk: (input: { name: string; key: string; kind: DeskKind }) => Promise<void>;
-  onUpdateDesk: (change: Partial<Pick<DeskSummary, 'name' | 'privacy' | 'numberPrefix' | 'numberSuffix' | 'attachmentTypes' | 'attachmentMaxMb' | 'vipRaisesPriority' | 'calendarId' | 'resolutionRequired' | 'reopenWindowDays' | 'requesterCanReopen' | 'autoCloseDays' | 'routingWaitMinutes' | 'atRiskPercent'>> & { nextNumber?: number }) => Promise<void>;
+  onUpdateDesk: (change: Partial<Pick<DeskSummary, 'name' | 'privacy' | 'numberPrefix' | 'numberSuffix' | 'attachmentTypes' | 'attachmentMaxMb' | 'vipRaisesPriority' | 'calendarId' | 'resolutionRequired' | 'reopenWindowDays' | 'requesterCanReopen' | 'autoCloseDays' | 'routingWaitMinutes' | 'atRiskPercent' | 'ratingReasons'>> & { nextNumber?: number }) => Promise<void>;
   onSearchUsers: (q: string) => Promise<{ id: string; name: string | null; email: string }[]>;
   onSeatCost: (userId: string, role: DeskRole) => Promise<SeatCost>;
   onAddMember: (input: { userId: string; role: DeskRole; tier?: string }) => Promise<void>;
@@ -786,6 +786,7 @@ function SettingsTab(props: TabProps) {
   const [closeDays, setCloseDays] = useState<number | null>(x.autoCloseDays === undefined ? 3 : x.autoCloseDays);
   const [waitMinutes, setWaitMinutes] = useState<number | null>(x.routingWaitMinutes ?? 2);
   const [atRisk, setAtRisk] = useState(String(x.atRiskPercent ?? 80));
+  const [reasons, setReasons] = useState((x.ratingReasons ?? []).join('\n'));
   const { busy, error, run } = useRun();
   const { toast } = useToast();
   const can = props.detail.canSetUp;
@@ -830,6 +831,9 @@ function SettingsTab(props: TabProps) {
       <FormField label="Wait for the best-matched agent (minutes)" helper="When nobody free has the skills and language a ticket needs, it waits this long before going to anyone free. 0: at once.">
         <NumberField value={waitMinutes} onChange={setWaitMinutes} min={0} max={60} disabled={!can} />
       </FormField>
+      <FormField label="Reasons to pick after a rating" helper="One a line, up to 12. After the stars a requester may pick one; reports count them. Empty: no reasons asked." optional>
+        <TextArea value={reasons} onChange={setReasons} rows={4} disabled={!can} />
+      </FormField>
       {can && (
         <div className="yx-ops-row">
           <Button
@@ -852,6 +856,7 @@ function SettingsTab(props: TabProps) {
                   autoCloseDays: closeDays,
                   routingWaitMinutes: waitMinutes ?? 2,
                   atRiskPercent: Number(atRisk),
+                  ratingReasons: reasons.split('\n').map((r) => r.trim()).filter(Boolean),
                   ...(next ? { nextNumber: next } : {}),
                 });
                 toast({ tone: 'success', title: 'Desk settings saved.' });

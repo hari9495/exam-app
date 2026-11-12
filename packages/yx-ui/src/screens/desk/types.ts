@@ -27,6 +27,8 @@ export interface DeskSummary {
   routingWaitMinutes?: number;
   /** HLP-05b: a clock is at risk once this share (%) of its target is used (50, 60, 70, 80 or 90; default 80). */
   atRiskPercent?: number;
+  /** Answer 1643: the preset reasons a requester may pick after the stars (empty: none asked). */
+  ratingReasons?: string[];
   status: 'active' | 'archived';
   version: number;
   myRole?: DeskRole | null;
@@ -261,6 +263,8 @@ export interface TicketDetail {
   /** HLP-03: a solved ticket closes by itself on this day (the desk's setting); the requester's rating once given. */
   closesOn?: string | null;
   rating?: number | null;
+  /** Answer 1643: the reason the requester picked with the rating. */
+  ratingReason?: string | null;
   desk: { id: string; key: string; name: string; audience: 'employee' | 'customer' };
   type: { id: string; name: string } | null;
   status: { id: string; label: string } | null;
@@ -362,6 +366,8 @@ export interface MyTicketRow {
   rating?: number | null;
   /** The person who raised it can still rate it. */
   canRate?: boolean;
+  /** Answer 1643: the desk's preset reasons, offered after the stars. */
+  ratingReasons?: string[];
 }
 
 export interface MyTicket {
@@ -390,6 +396,8 @@ export interface MyTicket {
   /** SD-1.26: the person's rating (1–5), and whether they may rate it now. */
   rating?: number | null;
   canRate?: boolean;
+  /** Answer 1643: the desk's preset reasons, offered after the stars. */
+  ratingReasons?: string[];
 }
 
 export interface RaiseInput {
@@ -795,6 +803,8 @@ export interface PortalTicket {
   /** SD-1.26: the person's rating (1–5), and whether they may rate it now. */
   rating?: number | null;
   canRate?: boolean;
+  /** Answer 1643: the desk's preset reasons, offered after the stars. */
+  ratingReasons?: string[];
   id: string;
   number: string;
   subject: string;

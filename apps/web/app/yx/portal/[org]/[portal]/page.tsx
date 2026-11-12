@@ -97,8 +97,8 @@ function PortalPage() {
         onFeedback: (id, helpful) => post(`/kb/articles/${encodeURIComponent(id)}/feedback`, { helpful }),
         onSolved: (id) => post(`/kb/articles/${encodeURIComponent(id)}/feedback`, { solved: true }),
       }}
-      onRate={async (score, comment) => {
-        await signedIn(post(`/tickets/${encodeURIComponent(ticketId!)}/rating`, { score, ...(comment ? { comment } : {}) }));
+      onRate={async (score, comment, reason) => {
+        await signedIn(post(`/tickets/${encodeURIComponent(ticketId!)}/rating`, { score, ...(comment ? { comment } : {}), ...(reason ? { reason } : {}) }));
         await refresh();
       }}
       privacy={

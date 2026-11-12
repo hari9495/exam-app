@@ -209,7 +209,7 @@ export function LiveTicketWorkspace({ live }: { live: LiveTicket }) {
       {done && (
         <InlineAlert tone="info" title={t.systemState === 'closed' ? 'Closed' : 'Resolved'}>
           {t.systemState === 'solved' && closesOn ? `Closes on ${formatDate(new Date(closesOn))} if ${first} doesn't reply. ` : ''}
-          {t.rating ? `${first} rated this ticket ${t.rating} of 5.` : `${first} has not rated it yet.`}
+          {t.rating ? `${first} rated this ticket ${t.rating} of 5${t.ratingReason ? ` (${t.ratingReason})` : ''}.` : `${first} has not rated it yet.`}
         </InlineAlert>
       )}
       {live.others.length > 0 && (

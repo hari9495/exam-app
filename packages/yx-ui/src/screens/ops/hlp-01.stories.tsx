@@ -24,4 +24,6 @@ export const PhoneRaise: S = { name: 'Raise ticket · phone', globals: PHONE, re
 export const KnownIssue: S = { name: 'Known issue · Me too, reading aids and my data', render: () => <HelpCentreScreen live={liveHelp({ banners: HELP_BANNERS })} /> };
 export const ArticleOpen: S = { name: 'Article open · was it helpful, this solved it', render: () => <HelpCentreScreen live={liveHelp({ kb: { ...liveHelp().kb, openNumber: 12 } })} /> };
 export const ChatAndPhone: S = { name: 'Chat offer and help on WhatsApp or SMS', render: () => <HelpCentreScreen live={liveHelp({ chatPrompt: HELP_CHAT, channels: HELP_CHANNELS })} /> };
+// Answer 1643: after the stars, an optional reason from the desk's own list.
+export const RateWithReason: S = { name: 'Resolved ticket · rate with a reason', render: () => <HelpCentreScreen live={liveHelp()} /> };
 export const NoAccess: S = { name: 'No access (acting for someone else)', render: () => <HelpCentreScreen live={liveHelp({ state: 'no-access' })} /> };

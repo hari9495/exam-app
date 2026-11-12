@@ -39,7 +39,7 @@ export interface LiveHelp {
   /** Files chosen in the raise form go to the new ticket once it is made (they are virus-checked there). */
   onUpload: (ticketId: string, file: File) => Promise<unknown>;
   onOpen: (ticketId: string) => void;
-  onRate: (ticketId: string, score: number) => Promise<unknown>;
+  onRate: (ticketId: string, score: number, reason?: string) => Promise<unknown>;
   /** The company's help articles (null while loading or when there is no knowledge base). */
   kb: {
     home: KbHome | null;
@@ -109,7 +109,7 @@ export function LiveHelpCentre({ live }: { live: LiveHelp }) {
 
   const search = <ArticleSearch home={kb.home} query={query} onQuery={setQuery} onSearch={kb.onSearch} onOpen={openArticle} hrefOf={live.articleHref} />;
   const candidate = live.state === 'ready' ? rateCandidate(live.tickets) : null;
-  const rating = candidate && <ResolvedCard key={candidate.id} ticket={candidate} onRate={(s) => live.onRate(candidate.id, s)} onReopen={() => live.onOpen(candidate.id)} />;
+  const rating = candidate && <ResolvedCard key={candidate.id} ticket={candidate} onRate={(s, r) => live.onRate(candidate.id, s, r)} onReopen={() => live.onOpen(candidate.id)} />;
   const tickets = <MyTickets live={live} />;
   const form = (
     <RaiseForm
@@ -294,8 +294,10 @@ function MyTickets({ live }: { live: LiveHelp }) {
 }
 
 /** The design's resolved-ticket card: when it closes, until when a reply reopens it, and the 1–5 rating. */
-function ResolvedCard({ ticket: t, onRate, onReopen }: { ticket: MyTicketRow; onRate: (score: number) => Promise<unknown>; onReopen: () => void }) {
+function ResolvedCard({ ticket: t, onRate, onReopen }: { ticket: MyTicketRow; onRate: (score: number, reason?: string) => Promise<unknown>; onReopen: () => void }) {
   const [score, setScore] = useState('');
+  const [reason, setReason] = useState<string | null>(null);
+  const reasons = t.ratingReasons ?? [];
   const [sent, setSent] = useState<number | null>(t.rating ?? null);
   const { busy, error, run } = useRun();
   const { toast } = useSay();
@@ -328,6 +330,11 @@ function ResolvedCard({ ticket: t, onRate, onReopen }: { ticket: MyTicketRow; on
             />
           </FormField>
         ) : null}
+        {!sent && t.canRate && reasons.length > 0 && (
+          <FormField label="The main reason" optional>
+            <Select value={reason} onChange={setReason} clearable placeholder="Choose a reason" options={reasons.map((r) => ({ value: r, label: r }))} />
+          </FormField>
+        )}
         <Actions>
           {!sent && t.canRate && (
             <Button
@@ -335,7 +342,7 @@ function ResolvedCard({ ticket: t, onRate, onReopen }: { ticket: MyTicketRow; on
               onClick={() =>
                 !early.stop() &&
                 void run('rate', async () => {
-                  await onRate(Number(score));
+                  await onRate(Number(score), reason ?? undefined);
                   setSent(Number(score));
                   toast({ tone: 'success', title: 'Thanks. Your rating is saved.' });
                 })

@@ -166,7 +166,7 @@ export class RequesterService {
       const watched = await this.visibleIds(tx, org, ids);
       const rows = await tx.sdTicket.findMany({ where: { organizationId: org, OR: [...(this.mine(org, ids).OR ?? []), { id: { in: watched }, private: false, sensitive: false }] }, orderBy: { updatedAt: 'desc' }, take: 200 });
       const statuses = new Map((await tx.sdStatus.findMany({ where: { organizationId: org, id: { in: rows.map((t) => t.statusId) } }, select: { id: true, label: true } })).map((s) => [s.id, s.label]));
-      const desks = new Map((await tx.sdDesk.findMany({ where: { organizationId: org, id: { in: rows.map((t) => t.deskId) } }, select: { id: true, name: true, reopenWindowDays: true, requesterCanReopen: true, autoCloseDays: true } })).map((d) => [d.id, d]));
+      const desks = new Map((await tx.sdDesk.findMany({ where: { organizationId: org, id: { in: rows.map((t) => t.deskId) } }, select: { id: true, name: true, reopenWindowDays: true, requesterCanReopen: true, autoCloseDays: true, ratingReasons: true } })).map((d) => [d.id, d]));
       // HLP-01: the resolution promise on open tickets, and on solved ones when it closes, until when a reply reopens
       // it (the desk's own settings) and whether the person who raised it can still rate it.
       const clocks = await this.tickets.sla.requesterClocks(tx, org, rows.filter((t) => !['solved', 'closed'].includes(t.systemState)).map((t) => t.id));
@@ -195,6 +195,7 @@ export class RequesterService {
           reopenUntil: solved && d?.requesterCanReopen ? new Date(t.resolvedAt!.getTime() + d.reopenWindowDays * day) : null,
           rating: rated.get(t.id) ?? null,
           canRate: isRequester && !rated.has(t.id) && ['solved', 'closed'].includes(t.systemState),
+          ratingReasons: d?.ratingReasons ?? [],
         };
       });
     });
@@ -229,6 +230,7 @@ export class RequesterService {
         desk: { name: desk.name, attachmentTypes: desk.attachmentTypes, attachmentMaxMb: desk.attachmentMaxMb },
         rating: rating?.score ?? null,
         canRate: !rating && ['solved', 'closed'].includes(t.systemState) && ids.includes(t.requesterPersonId),
+        ratingReasons: desk.ratingReasons,
         status: status?.label ?? '',
         systemState: t.systemState,
         private: t.private || t.sensitive,

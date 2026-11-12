@@ -3753,6 +3753,8 @@ model SdDesk {
   atRiskPercent      Int      @default(80) @map("at_risk_percent") @db.SmallInt
   /// SD-2.10: desks this desk may move tickets to.
   forwardTo          String[] @default([]) @map("forward_to") @db.Uuid
+  /// Answer 1643: the preset reasons a requester may pick after the stars (at most 12).
+  ratingReasons      String[] @default(["Quick help", "Solved my problem", "Friendly and clear", "Slow", "Not solved", "Had to explain again"]) @map("rating_reasons") @db.VarChar(40)
   status             String   @default("active") @db.VarChar(10)
   version            Int      @default(1)
   createdBy          String?  @map("created_by") @db.Uuid
@@ -4895,6 +4897,8 @@ model SdRating {
   groupId        String?  @map("group_id") @db.Uuid
   score          Int      @db.SmallInt
   comment        String?  @db.VarChar(1000)
+  /// Answer 1643: the preset reason picked after the stars (one of the desk's list at the time).
+  reason         String?  @db.VarChar(40)
   channel        String   @db.VarChar(6)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 

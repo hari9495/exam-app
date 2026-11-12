@@ -124,4 +124,65 @@ describe('Helpdesk small items', () => {
       for (const who of ['agent', 'deskAdmin', 'divya'] as const) await api(who, 'put', '/desk/kb/settings').send({ synonyms: 'a1, b1' }).expect(403);
     });
   });
+
+  // ------------------------------------------------------------------------------------------ 1643 rating reasons
+  const raiseAndSolve = async (subject: string) => {
+    const t = (await api('divya', 'post', '/desk/my/tickets').send({ deskId: ids.desk, subject, description: 'Please help with this.' }).expect(201)).body;
+    await api('agent', 'post', `/desk/tickets/${t.id}/messages`).send({ kind: 'reply', bodyHtml: '<p>Done. Try again now.</p>' }).expect(201);
+    const fresh = (await api('agent', 'get', `/desk/tickets/${t.id}`).expect(200)).body;
+    await api('agent', 'post', `/desk/tickets/${t.id}/resolve`).send({ version: fresh.version }).expect(200);
+    return t.id as string;
+  };
+  const deskVersion = async () => (await api('deskAdmin', 'get', `/desk/desks/${ids.desk}`).expect(200)).body.desk.version as number;
+
+  describe('1643: a preset reason with the rating', () => {
+    it('a desk starts with the starter reasons; the requester sees them on a solved ticket and rates with one; the agent, the reports and the audit show it', async () => {
+      const desk = (await api('deskAdmin', 'get', `/desk/desks/${ids.desk}`).expect(200)).body.desk;
+      expect(desk.ratingReasons).toEqual(['Quick help', 'Solved my problem', 'Friendly and clear', 'Slow', 'Not solved', 'Had to explain again']);
+      const id = await raiseAndSolve(`Printer jams ${run}`);
+      const mine = (await api('divya', 'get', `/desk/my/tickets/${id}`).expect(200)).body;
+      expect(mine).toMatchObject({ canRate: true, ratingReasons: desk.ratingReasons });
+      expect((await api('divya', 'get', '/desk/my/tickets').expect(200)).body.find((x: { id: string }) => x.id === id).ratingReasons).toEqual(desk.ratingReasons);
+      // Matched without case; kept as the desk words it.
+      await api('divya', 'post', `/desk/my/tickets/${id}/rating`).send({ score: 2, reason: 'slow' }).expect(200);
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.sdRating.findFirstOrThrow({ where: { ticketId: id }, select: { score: true, reason: true } }))).toEqual({ score: 2, reason: 'Slow' });
+      expect((await api('agent', 'get', `/desk/tickets/${id}`).expect(200)).body).toMatchObject({ rating: 2, ratingReason: 'Slow' });
+      const csat = (await api('lead', 'get', '/desk/reports/library/csat').expect(200)).body as { columns: string[]; rows: unknown[][] };
+      const col = csat.columns.indexOf('Reasons given');
+      expect(col).toBeGreaterThan(-1);
+      expect(csat.rows.map((r) => r[col])).toContain('Slow 1');
+      const rep = (await api('lead', 'post', '/desk/reports/custom').send({ name: `Ratings ${run}`, columns: ['number', 'rating', 'rating_reason'], filters: { deskIds: [ids.desk] } }).expect(201)).body.id;
+      const out = (await api('lead', 'get', `/desk/reports/custom/${rep}/run`).expect(200)).body as { columns: string[]; rows: unknown[][] };
+      expect(out.columns).toEqual(['Number', 'Rating', 'Rating reason']);
+      expect(out.rows.some((r) => r[1] === 2 && r[2] === 'Slow')).toBe(true);
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'desk.ticket.rated', entityId: id, metadataJson: { contains: '"reason":"Slow"' } } }))).toBe(1);
+    });
+
+    it('the desk admin changes the list (audited); an empty list asks for none; a rating without a reason still works', async () => {
+      await api('deskAdmin', 'patch', `/desk/desks/${ids.desk}`).send({ version: await deskVersion(), ratingReasons: ['  Great   help ', 'Too slow'] }).expect(200);
+      expect((await api('deskAdmin', 'get', `/desk/desks/${ids.desk}`).expect(200)).body.desk.ratingReasons).toEqual(['Great help', 'Too slow']);
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'desk.desk.updated', entityId: ids.desk } }))).toBeGreaterThan(0);
+      const id = await raiseAndSolve(`Mouse broken ${run}`);
+      await api('divya', 'post', `/desk/my/tickets/${id}/rating`).send({ score: 5 }).expect(200);
+      expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.sdRating.findFirstOrThrow({ where: { ticketId: id } }))).reason).toBeNull();
+      await api('deskAdmin', 'patch', `/desk/desks/${ids.desk}`).send({ version: await deskVersion(), ratingReasons: [] }).expect(200);
+      const id2 = await raiseAndSolve(`Monitor flickers ${run}`);
+      expect((await api('divya', 'get', `/desk/my/tickets/${id2}`).expect(200)).body.ratingReasons).toEqual([]);
+      await api('divya', 'post', `/desk/my/tickets/${id2}/rating`).send({ score: 3, reason: 'Slow' }).expect(400);
+    });
+
+    it('negative: a reason not on the list is refused; a list too long, repeated or with a one-letter reason is refused; an agent or another company cannot change it', async () => {
+      await api('deskAdmin', 'patch', `/desk/desks/${ids.desk}`).send({ version: await deskVersion(), ratingReasons: ['Quick help', 'Slow'] }).expect(200);
+      const id = await raiseAndSolve(`Keyboard sticky ${run}`);
+      expect((await api('divya', 'post', `/desk/my/tickets/${id}/rating`).send({ score: 1, reason: 'Rude' }).expect(400)).body.message).toMatch(/reasons shown/);
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.sdRating.count({ where: { ticketId: id } }))).toBe(0);
+      const v = await deskVersion();
+      await api('deskAdmin', 'patch', `/desk/desks/${ids.desk}`).send({ version: v, ratingReasons: Array.from({ length: 13 }, (_, i) => `Reason ${i}`) }).expect(400);
+      await api('deskAdmin', 'patch', `/desk/desks/${ids.desk}`).send({ version: v, ratingReasons: ['Slow', 'slow '] }).expect(400);
+      await api('deskAdmin', 'patch', `/desk/desks/${ids.desk}`).send({ version: v, ratingReasons: ['A'] }).expect(400);
+      await api('agent', 'patch', `/desk/desks/${ids.desk}`).send({ version: v, ratingReasons: ['Lovely'] }).expect(403);
+      await api('adminB', 'patch', `/desk/desks/${ids.desk}`).send({ version: v, ratingReasons: ['Lovely'] }).expect(404);
+      expect((await api('deskAdmin', 'get', `/desk/desks/${ids.desk}`).expect(200)).body.desk.ratingReasons).toEqual(['Quick help', 'Slow']);
+    });
+  });
 });

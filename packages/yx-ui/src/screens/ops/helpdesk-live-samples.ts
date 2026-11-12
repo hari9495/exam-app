@@ -25,7 +25,7 @@ export const HELP_ARTICLE: KbArticleView = { id: 'a1', number: 12, title: 'Why i
 export const HELP_TICKETS: MyTicketRow[] = [
   { id: 't1', number: 'IT-1001', subject: 'VPN keeps disconnecting from home', desk: 'IT help desk', status: 'In progress', systemState: 'open', private: false, role: 'requester', createdAt: '2026-10-07T04:30:00Z', updatedAt: '2026-10-08T05:10:00Z', clock: { usedMinutes: 410, targetMinutes: 480, paused: false } },
   { id: 't5', number: 'HR-1001', subject: 'LOP on my September payslip', desk: 'HR help desk', status: 'Waiting on you', systemState: 'pending', private: true, role: 'requester', createdAt: '2026-10-07T00:30:00Z', updatedAt: '2026-10-07T00:30:00Z', clock: { usedMinutes: 300, targetMinutes: 960, paused: true } },
-  { id: 't7', number: 'IT-0998', subject: 'Laptop battery drains fast', desk: 'IT help desk', status: 'Solved', systemState: 'solved', private: false, role: 'requester', createdAt: '2026-09-30T04:30:00Z', updatedAt: '2026-10-06T04:30:00Z', resolvedAt: '2026-10-06T04:30:00Z', closesOn: '2026-10-09T04:30:00Z', reopenUntil: '2099-10-13T04:30:00Z', rating: null, canRate: true },
+  { id: 't7', number: 'IT-0998', subject: 'Laptop battery drains fast', desk: 'IT help desk', status: 'Solved', systemState: 'solved', private: false, role: 'requester', createdAt: '2026-09-30T04:30:00Z', updatedAt: '2026-10-06T04:30:00Z', resolvedAt: '2026-10-06T04:30:00Z', closesOn: '2026-10-09T04:30:00Z', reopenUntil: '2099-10-13T04:30:00Z', rating: null, canRate: true, ratingReasons: ['Quick help', 'Solved my problem', 'Friendly and clear', 'Slow', 'Not solved', 'Had to explain again'] },
 ];
 
 export function liveHelp(over: Partial<LiveHelp> = {}): LiveHelp {

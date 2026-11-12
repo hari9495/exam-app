@@ -117,8 +117,18 @@ describe('HLP-01 Help centre (live)', () => {
     expect(await screen.findByText('Choose a rating from 1 to 5.')).toBeInTheDocument();
     await ue.click(screen.getByRole('radio', { name: '4' }));
     await ue.click(screen.getByRole('button', { name: 'Send rating' }));
-    await waitFor(() => expect(onRate).toHaveBeenCalledWith('t7', 4));
+    await waitFor(() => expect(onRate).toHaveBeenCalledWith('t7', 4, undefined));
     expect(await screen.findByText('You rated the help 4 of 5. Thank you.')).toBeInTheDocument();
+  });
+
+  it('rating (1643): the main reason is optional and goes with the stars', async () => {
+    const onRate = vi.fn().mockResolvedValue(undefined);
+    render(<HelpCentreScreen live={liveHelp({ onRate })} />);
+    await ue.click(screen.getByRole('radio', { name: '2' }));
+    await ue.click(screen.getByRole('combobox', { name: /The main reason/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Not solved' }));
+    await ue.click(screen.getByRole('button', { name: 'Send rating' }));
+    await waitFor(() => expect(onRate).toHaveBeenCalledWith('t7', 2, 'Not solved'));
   });
 
   it('Reopen ticket opens the ticket to reply', async () => {

@@ -425,7 +425,7 @@ export class PortalService {
       const messages = await tx.sdTicketMessage.findMany({ where: { organizationId: org, ticketId: t.id, kind: { in: ['reply', 'system'] } }, orderBy: { createdAt: 'asc' } });
       const files = await tx.sdAttachment.findMany({ where: { organizationId: org, ticketId: t.id, OR: [{ side: 'requester' }, { messageId: { in: messages.filter((m) => m.kind === 'reply').map((m) => m.id) } }] }, orderBy: { createdAt: 'asc' } });
       const status = await tx.sdStatus.findFirst({ where: { organizationId: org, id: t.statusId }, select: { label: true } });
-      const desk = await tx.sdDesk.findFirstOrThrow({ where: { organizationId: org, id: t.deskId }, select: { name: true } });
+      const desk = await tx.sdDesk.findFirstOrThrow({ where: { organizationId: org, id: t.deskId }, select: { name: true, ratingReasons: true } });
       const people = await this.tickets.personNames(tx, org, [t.requesterPersonId, ...messages.map((m) => m.authorPersonId)]);
       const users = await this.tickets.userNames(tx, org, messages.map((m) => m.authorUserId));
       const due = await this.tickets.sla.requesterDue(tx, org, t.id);
@@ -443,6 +443,7 @@ export class PortalService {
         mine: t.requesterPersonId === s.personId,
         canReply: !t.mergedIntoId,
         rating: rated?.score ?? null,
+        ratingReasons: desk.ratingReasons,
         canRate: !rated && ['solved', 'closed'].includes(t.systemState) && t.requesterPersonId === s.personId,
         resolveBy: due?.resolveBy ?? null,
         messages: messages.map((m) => ({

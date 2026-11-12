@@ -42,7 +42,7 @@ function YxDeskHelpPageInner() {
         onRaise: (input) => write<{ id: string; number: string }>('/my/tickets', 'POST', input),
         onUpload: (id, file) => upload(`/my/tickets/${encodeURIComponent(id)}/attachments`, file),
         onOpen: (id) => router.push(`/yx/desk/help/${encodeURIComponent(id)}`),
-        onRate: (id, score) => write(`/my/tickets/${encodeURIComponent(id)}/rating`, 'POST', { score }),
+        onRate: (id, score, reason) => write(`/my/tickets/${encodeURIComponent(id)}/rating`, 'POST', { score, ...(reason ? { reason } : {}) }),
         kb: {
           home: home.data ?? null,
           openNumber: Number(params?.get('article')) || null,

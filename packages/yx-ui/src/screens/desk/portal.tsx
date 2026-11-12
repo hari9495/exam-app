@@ -43,7 +43,7 @@ export interface PortalScreenProps {
   /** Batch 4: help articles (public ones before sign-in; the desk's own after), suggestions while typing. */
   kb?: PortalKbProps;
   /** SD-1.26: rate a solved ticket. */
-  onRate?: (score: number, comment?: string) => Promise<unknown>;
+  onRate?: (score: number, comment?: string, reason?: string) => Promise<unknown>;
   /** SD-1.30: ask for a copy of one's data, or its erasure. */
   privacy?: { requests: { id: string; kind: string; status: string; createdAt: string; decisionNote: string | null }[]; onAsk: (kind: 'access' | 'erasure', note?: string) => Promise<unknown>; onDownload: (id: string) => Promise<void> };
 }
@@ -453,7 +453,7 @@ export function PortalTicketView(props: PortalScreenProps) {
             </ol>
             {t.files.length > 0 && <p className="yx-ops-muted">Files on this ticket: {t.files.map((f) => f.fileName).join(', ')}</p>}
           </Card>
-          {props.onRate && (t.canRate || t.rating) && <RateTicketCard rating={t.rating ?? null} onRate={props.onRate} />}
+          {props.onRate && (t.canRate || t.rating) && <RateTicketCard rating={t.rating ?? null} reasons={t.ratingReasons} onRate={props.onRate} />}
           {t.canReply ? (
             <Card title="Reply">
               <div className="yx-ops-stack">

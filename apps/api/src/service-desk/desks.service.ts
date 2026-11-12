@@ -99,6 +99,7 @@ export class DesksService {
       autoCloseDays: d.autoCloseDays,
       routingWaitMinutes: d.routingWaitMinutes,
       atRiskPercent: d.atRiskPercent,
+      ratingReasons: d.ratingReasons,
       status: d.status,
       version: d.version,
     };
@@ -213,6 +214,7 @@ export class DesksService {
       }
       if (dto.calendarId && !(await tx.businessCalendar.findFirst({ where: { organizationId: org, id: dto.calendarId }, select: { id: true } }))) throw new BadRequestException('No such calendar.');
       const { version, nextNumber, ...fields } = dto;
+      if (fields.ratingReasons) fields.ratingReasons = fields.ratingReasons.map((x) => x.trim().replace(/\s+/g, ' '));
       const res = await tx.sdDesk.updateMany({ where: { organizationId: org, id, version }, data: { ...fields, version: { increment: 1 } } });
       if (res.count === 0) throw new ConflictException('Someone else changed this desk. Reload to see the latest.');
       if (nextNumber !== undefined) {
