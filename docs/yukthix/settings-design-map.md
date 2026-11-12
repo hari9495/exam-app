@@ -55,14 +55,14 @@ means the live page passes no manage flag that I could see and I did not read th
 
 ## Counts (sub-pages = stories)
 
-After S-1 (Settings home, search and the eight group pages live; four live stories added) S-2 (the Time & Leave pages with their settings; one live story added) S-3 (the Payroll pages, a second person for payroll changes; two live stories added) and S-4 (2.7 and 2.10 with their settings; one live story added) and S-5 (page history live; appendix script "ok"), and S-8 (13 Nov 2026: the retired Company rules, Access and privacy and Payroll rules stories deleted, answer 1781; 4.8, 5.1, 5.4 and 6.3 live; four 5.1 stories added; appendix script "ok"), and S-9 (group 8 live: 8.1 to 8.3 read-only, 8.5; six live stories added; appendix script "ok").
+After S-1 (Settings home, search and the eight group pages live; four live stories added) S-2 (the Time & Leave pages with their settings; one live story added) S-3 (the Payroll pages, a second person for payroll changes; two live stories added) and S-4 (2.7 and 2.10 with their settings; one live story added) and S-5 (page history live; appendix script "ok"), and S-8 (13 Nov 2026: the retired Company rules, Access and privacy and Payroll rules stories deleted, answer 1781; 4.8, 5.1, 5.4 and 6.3 live; four 5.1 stories added; appendix script "ok"), and S-9 (group 8 live: 8.1 to 8.3 read-only, 8.5; six live stories added; appendix script "ok"), and S-10 (group 7: 7.1, 7.5, 7.6, 7.7 live after the security check; six stories added; appendix script "ok").
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Settings home and page states | 1 | 18 | 3 | 3 | 0 | 0 | 24 |
 | B. Organisation and Global core | 2 | 11 | 0 | 0 | 0 | 0 | 11 |
-| C. Settings map, groups 1 to 8 | 8 | 44 | 105 | 8 | 26 | 0 | 183 |
-| **All A-C** | **11** | **73** | **108** | **11** | **26** | **0** | **218** |
+| C. Settings map, groups 1 to 8 | 8 | 50 | 113 | 0 | 26 | 0 | 189 |
+| **All A-C** | **11** | **79** | **116** | **3** | **26** | **0** | **224** |
 
 Per group (C):
 
@@ -74,14 +74,14 @@ Per group (C):
 | Group 4 · Payroll & Statutory | 5 | 20 | 0 | 2 | 27 |
 | Group 5 · Documents & Communication | 6 | 14 | 0 | 4 | 24 |
 | Group 6 · Hiring & Assessments | 15 | 3 | 0 | 4 | 22 |
-| Group 7 · Integrations & Developers | 2 | 4 | 8 | 6 | 20 |
+| Group 7 · Integrations & Developers | 8 | 12 | 0 | 6 | 26 |
 | Group 8 · Billing & Account | 8 | 8 | 0 | 2 | 20 |
 
-Counted by script 13 Nov 2026 on `feat/yukthix-settings-s9` (the script is in the appendix). There are 218 stories in
+Counted by script 13 Nov 2026 on `feat/yukthix-settings-s10` (the script is in the appendix). There are 224 stories in
 11 files whose title starts `Screens/Settings/`, one file per title (checked: no title spans two files):
 `screens/settings/settings-home.stories.tsx` (24), `screens/global/global.stories.tsx` (3),
 `screens/org/org.stories.tsx` (8) and `screens/settings/settings-g1.stories.tsx` to `settings-g8.stories.tsx`
-(18, 25, 27, 27, 24, 22, 20, 20). Story names are the exported names that start with a capital letter. None is a phone
+(18, 25, 27, 27, 24, 22, 26, 20). Story names are the exported names that start with a capital letter. None is a phone
 view (the phone settings screens are under other titles).
 
 Cross-checked with the area maps: `hiring-design-map.md` (6.1, 6.2 and the group 6 overview), `visitors-design-map.md`
@@ -441,24 +441,30 @@ File: `packages/yx-ui/src/screens/settings/settings-g7.stories.tsx`.
 |---|---|---|
 | Overview · Group 7 · Integrations & Developers | live | S-1: /yx/settings/<group> renders `SettingsGroupScreen` with `live`: the group's pages the viewer may open, each linking to its live editor; a group with none says no access |
 | OverviewLoading · Group 7 · loading | live | same, loading |
-| P7_1 · 7.1 Integrations | wire design | connected apps and webhooks exist in the older API (`organizations/integrations/connected-apps…`, `…/webhook`, `…/webhook-deliveries`, `…/hris-config`) and only the /v2 Integrations page uses them; unsure whether those routes check the YukthiX keys (they are older) |
-| P7_1_ReadOnly · 7.1 Integrations · read-only | wire design | same |
+| P7_1 · 7.1 Integrations | live (gap) | S-10 (answer 1327): /yx/settings/integrations/integrations: connected apps (add, change, remove, test), the company mail server, candidate SMS and WhatsApp providers and the HR system export, on the checked routes. Gap: the catalogue, a connection owner, retries and the health card are not built |
+| P7_1_ReadOnly · 7.1 Integrations · read-only | live (gap) | System Admins only (org:manage_settings); others are refused by the API |
 | P7_2 · 7.2 Biometric devices | live (gap) | /yx/time/setup/devices (`DevicesScreen`, `time/devices`, device punches and backfills) |
 | P7_2_ReadOnly · 7.2 Biometric devices · read-only | live (gap) | read-only: unsure |
 | P7_3 · 7.3 Payouts, banks & accounting | live (gap) | bank files on /yx/payroll/payment-modes (`PaymentsScreen`); the expense journal and the staffing accounting export are live in their areas; payout partner: the penny-drop provider seam has none wired (`payroll/payout.service.ts` line 557) |
 | P7_3_ReadOnly · 7.3 Payouts, banks & accounting · read-only | live (gap) | read-only: unsure |
 | P7_4 · 7.4 Verification | design only, feature not built | no automatic verification provider ("none is wired", `payroll/payout.service.ts` line 557); identity checks are manual (`people/identity-checks.service.ts`); hiring background checks have their own page |
 | P7_4_ReadOnly · 7.4 Verification · read-only | design only, feature not built | as the page |
-| P7_5 · 7.5 Calendar & chat | wire design | calendar connections exist (`calendar/connections`, `calendar/:provider/connect`; only the /v2 recruiter calendar uses them) and so do approval chat links (`workflow/channel-links`); `timesheet.tool_suggestions` has no screen |
-| P7_5_ReadOnly · 7.5 Calendar & chat · read-only | wire design | same |
-| P7_6 · 7.6 AI | wire design | a company AI key (`organizations/integrations/ai-key`, /v2) and AI credit use (`AiCreditUsage`, `ai/ai-invocation.service.ts`) exist; the AI switches live inside areas (Hiring 6.1, `policy.ai_writer`); no page gathers them |
-| P7_6_ReadOnly · 7.6 AI · read-only | wire design | same |
-| P7_7 · 7.7 Developers | wire design | API keys (`POST/DELETE organizations/integrations/api-key`), the webhook and its secret, and API usage (`organizations/api-usage`, `ApiUsageDaily`) are used only by the /v2 Integrations page |
-| P7_7_ReadOnly · 7.7 Developers · read-only | wire design | same |
+| P7_5 · 7.5 Calendar & chat | live (gap) | S-10 (answer 1327): /yx/settings/integrations/calendar-and-chat: each person's own work calendar (connect, disconnect) and a link to approving from chat. Gap: a company calendar, chat mirroring, mailbox sync and timesheet connectors are not built |
+| P7_5_ReadOnly · 7.5 Calendar & chat · read-only | live (gap) | personal: each person sees only their own connection |
+| P7_6 · 7.6 AI | live (gap) | S-10 (answer 1327): /yx/settings/integrations/ai: the company's own AI key (public https base address) and embeddings, never shown again. Gap: the AI feature switches, region and data-handling sections are not built here (the switches live in their areas) |
+| P7_6_ReadOnly · 7.6 AI · read-only | live (gap) | System Admins only |
+| P7_7 · 7.7 Developers | live (gap) | S-10 (answer 1327): /yx/settings/integrations/developers: the API key (shown once), the webhook (masked; signing secret shown once), deliveries and API use. Gap: several keys with expiry and rotation overlap, OAuth apps and thin payloads are not built |
+| P7_7_ReadOnly · 7.7 Developers · read-only | live (gap) | System Admins only |
 | P7_8 · 7.8 Analytics | design only, feature not built | searched `attrition` in apps/api/src: none |
 | P7_8_ReadOnly · 7.8 Analytics · read-only | design only, feature not built | as the page |
 | P7_9 · 7.9 Deepfake detection | design only, feature not built | searched `deepfake` in apps/api/src: none |
 | P7_9_ReadOnly · 7.9 Deepfake detection · read-only | design only, feature not built | as the page |
+| P7_1_Live · 7.1 Integrations · live | live | `integrationsPage` on organizations/integrations, connected-apps, sms-config, whatsapp-config |
+| P7_5_Live · 7.5 Calendar & chat · live | live | `calendarPage` on calendar/connections |
+| P7_6_Live · 7.6 AI · live | live | `aiPage` |
+| P7_7_Live · 7.7 Developers · live | live | `developersPage` with deliveries and API use |
+| ConnectionSecretKept · 7.1 · Set up SMS (secret kept) | live | `ConnectionDrawer`: a saved secret starts blank; blank keeps it |
+| SecretShownOnce · 7.7 · API key shown once | live | `ShownOnceDrawer` |
 
 #### Group 8 · Billing & Account
 
@@ -1033,6 +1039,34 @@ Also: none of these changes could be made while acting for someone else before �
 the same rule as `ownSession` on the YukthiX routes). YukthiX support sessions were already read-only (the token
 layer). `org:manage_settings` is MFA-sensitive and inside the admin-network allow-list; only System Admins hold it.
 Tests: API e2e `settings-s10-security` (6), `webhook-delivery` (the admin confirms the security key first).
+
+## S-10 as built (answer 1327; branch `feat/yukthix-settings-s10`)
+
+- **Step 1, the security check:** see the table above. Fixed: the security key and "not while acting" on every
+  integration change; public addresses only for the AI and embeddings base URLs and the SMTP host; masked webhook and HRIS
+  URLs; a 404 for another company's connected app.
+- **Step 2, group 7 live:** 7.1 Integrations, 7.5 Calendar & chat, 7.6 AI and 7.7 Developers (see their rows). Secrets
+  are written, never read back: a new key or signing secret is shown once; a saved password or token stays blank and a
+  blank keeps it.
+- **Retired:** /v2/settings/integrations and /v2/calendar redirect to the new pages; the calendar sign-in returns to 7.5.
+- **Tests:** API e2e `settings-s10-security` (8) and `webhook-delivery`; unit specs for organizations, connected apps
+  and the calendar; kit `integrations-live.test`; web `yx-settings-s10.test`.
+
+### Questions (from 1901)
+
+1901. **A YukthiX key for integrations.** The routes use the older `org:manage_settings` (System Admins only).
+      *Suggested: a YukthiX key "integration.manage" so IT can run integrations without being a System Admin.*
+1902. **AI address checked at save, not at each call.** The base URL is checked when saved; a name that later points
+      inside the network would not be caught at call time. *Suggested: send AI calls through the same pinned public-only
+      lookup the webhooks use.*
+1903. **Removing the company's own AI key.** There is no way to go back to YukthiX AI once a key is saved.
+      *Suggested: add "Stop using our key".*
+1904. **One API key per company.** The drawing has several keys with expiry, rotation overlap and OAuth apps.
+      *Suggested: several named keys with expiry first, when a customer needs two integrations.*
+1905. **The other /v2 org-admin pages.** Branding, sign-in (SSO), users, roles, billing and others are still /v2 pages.
+      *Suggested: retire each when its YukthiX page is live, with a redirect, as here.*
+1906. **A company calendar and chat mirroring.** 7.5 shows each person's own calendar; the drawn company calendar,
+      chat mirroring and mailbox sync are not built. *Suggested: build them with the features that need them.*
 
 ## 7. Build plan (slices, max 3 builders at once)
 

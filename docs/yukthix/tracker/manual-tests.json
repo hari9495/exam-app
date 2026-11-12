@@ -21424,5 +21424,24 @@
     "expected": "Step 2: one JSON file of the company's records, no passwords or keys. Step 3: the wrong name is refused at the field; the right one is sent; the company stays open. Step 4: refused: already asked. Step 5: withdrawn. Step 6: 'This export link has expired.'",
     "stories": [],
     "note": "Positive and negative. Closing itself is a console test (staff)."
+  },
+  {
+    "id": "MT-SET-S10a",
+    "area": "Settings S-10 (13 Nov 2026)",
+    "screen": "Settings › Integrations, AI, Developers",
+    "url": "http://localhost:3000/yx/settings/integrations/developers",
+    "account": "The System Admin (with a passkey); an HR admin; the System Admin of another company.",
+    "steps": [
+      "Create API key; confirm with the security key; copy it.",
+      "Reload the page.",
+      "Set the webhook address; reload.",
+      "On AI, use an OpenAI-compatible key with base address http://10.0.0.5.",
+      "On Integrations, add a Slack app; reload; open it.",
+      "Negative: as the HR admin, open the three pages.",
+      "Old bookmark: open /v2/settings/integrations and /v2/calendar."
+    ],
+    "expected": "Step 1: the key in a drawer, once. Step 2: only its first characters. Step 3: only the start and last 4 characters of the address. Step 4: refused before saving: a full https address. Step 5: the address is not shown; Leave it blank to keep it. Step 6: no access. Step 7: the new pages open.",
+    "stories": [],
+    "note": "Positive and negative. The security check itself is in the API tests."
   }
 ]
