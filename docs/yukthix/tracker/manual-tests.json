@@ -21392,5 +21392,37 @@
     "expected": "Step 1: 'Give the type a name of at least 2 characters.' and focus on Name. Step 2: added (toast), listed as Your company. Step 3: it waits in the verification queue. Step 4: read-only, 'A YukthiX starter type: it cannot be changed or removed.' Step 5: refused: a document uses it. Step 6: retired, gone from the list. Step 7: 'A document type called Passport already exists.' Step 8: the list without Add or Edit.",
     "stories": [],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-SET-S9a",
+    "area": "Settings S-9 (13 Nov 2026)",
+    "screen": "Settings › Plan & add-ons, Usage & caps, Invoices",
+    "url": "http://localhost:3000/yx/settings/account/plan-and-add-ons",
+    "account": "The System Admin; an HR admin without the billing key (the demo company).",
+    "steps": [
+      "Open Plan & add-ons, then Usage & caps, then Invoices.",
+      "Negative: as the HR admin, open the same three addresses."
+    ],
+    "expected": "Step 1: the plan, products, this month's use and the invoices, read only, with no Pay or Save. Step 2: no access, and none of them in the menu.",
+    "stories": [],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-SET-S9b",
+    "area": "Settings S-9 (13 Nov 2026)",
+    "screen": "Settings › Data export & closure",
+    "url": "http://localhost:3000/yx/settings/account/data-export-and-closure",
+    "account": "The System Admin (with a passkey); a second System Admin; YukthiX staff in the console.",
+    "steps": [
+      "Start full export; confirm with the security key.",
+      "Download it; open the file.",
+      "Ask YukthiX to close the account with a wrong company name, then the right one.",
+      "As the second admin, ask again.",
+      "Withdraw the request.",
+      "Negative: the next day, download the export from step 1."
+    ],
+    "expected": "Step 2: one JSON file of the company's records, no passwords or keys. Step 3: the wrong name is refused at the field; the right one is sent; the company stays open. Step 4: refused: already asked. Step 5: withdrawn. Step 6: 'This export link has expired.'",
+    "stories": [],
+    "note": "Positive and negative. Closing itself is a console test (staff)."
   }
 ]
