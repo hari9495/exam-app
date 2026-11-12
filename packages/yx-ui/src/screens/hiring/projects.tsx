@@ -56,6 +56,7 @@ export function ProjectsListScreen({ rows: drawnRows = [], persona: drawnPersona
   // Live: everyone sees all projects (a manager without a key gets only theirs from the API); fee only for finance.
   const persona: PrjPersona = live ? (live.can.finance ? 'finance' : 'hr') : drawnPersona;
   const rows = live ? live.rows.map(toProject) : drawnRows;
+  const marginOf = (id: string) => live?.rows.find((x) => x.id === id)?.margin ?? null;
   const base = !live && persona === 'pm' ? rows.filter((r) => r.pm === me) : rows;
   const list = useListControls({
     rows: base,
@@ -114,6 +115,13 @@ export function ProjectsListScreen({ rows: drawnRows = [], persona: drawnPersona
         ]
       : []),
     ...(live && persona === 'finance' ? [{ key: 'feeLive', header: 'Fee', type: 'money', value: (r: Project) => r.fee } as TableColumn<Project>] : []),
+    // P-6 (FinanceList): fee billed and margin from the stored project totals, Projects finance only.
+    ...(live && persona === 'finance'
+      ? [
+          { key: 'fee', header: 'Fee billed', value: (r: Project) => (r.fee ? burnState(r.billed, r.fee).pct : 0), width: 160, optional: true, render: (r: Project) => (r.fee ? <Meter value={r.billed} max={r.fee} label={`${r.code} fee billed`} warnAt={101} dangerAt={200} valueText={formatINR(r.billed)} /> : r.billed ? formatINR(r.billed) : <Text tone="muted">—</Text>) } as TableColumn<Project>,
+          { key: 'margin', header: 'Margin', type: 'number', value: (r: Project) => marginOf(r.id), render: (r: Project) => (marginOf(r.id) == null ? '—' : `${marginOf(r.id)}%`) } as TableColumn<Project>,
+        ]
+      : []),
     ...(live ? [{ key: 'people', header: 'People', type: 'number', value: (r: Project) => r.people, width: 104 } as TableColumn<Project>] : [{ key: 'util', header: 'Utilisation', type: 'number', value: (r: Project) => r.utilisation, render: (r: Project) => (r.utilisation ? `${r.utilisation}%` : '—') } as TableColumn<Project>]),
     ...(persona === 'finance' && !live ? [{ key: 'margin', header: 'Margin', type: 'number', value: (r: Project) => marginPct(r.billed + r.wip, r.cost), render: (r: Project) => (r.fee ? `${marginPct(r.billed + r.wip, r.cost)}%` : '—') } as TableColumn<Project>] : []),
   ];
@@ -202,11 +210,27 @@ export interface LiveProjectWorkspace {
   cost?: { finance: boolean; hiddenMonths: number; provisional: boolean; total: string; months: { month: string; cost: string; expenses: string; basis: 'provisional' | 'final'; restatedFrom: string | null }[] } | null;
   /** Answer 1419: GET /projects/:id/expenses (absent: no Expenses tab). */
   expenses?: { id: string; person: string; what: string; spentOn: string; amount: string; rebill: boolean; status: 'Approved' | 'Pending' }[] | null;
+  /** P-6: GET /projects/billing/project/:id, the Billing tab for Projects finance and account managers (absent: no tab). */
+  billing?: LiveProjectBilling | null;
+  /** Opens an invoice in Staffing desk › Invoices (the one invoice list). */
+  onOpenInvoice?: (id: string) => void;
   /** Answer 1541: the Timesheets tab, a week at a time (absent: no tab). */
   timesheets?: { week: string; rows: LiveTimesheetRow[] } | null;
   onTimesheetWeek?: (week: string) => void;
   /** Stories: a drawer open. */
   defaultDrawer?: 'edit' | 'allocate' | 'task' | 'milestone';
+}
+
+/** GET /projects/billing/project/:id (P-6): one project's unbilled work, waiting hours, billed to date and invoices. */
+export interface LiveProjectBilling {
+  model: 'time_material' | 'fixed_fee' | 'retainer' | 'non_billable';
+  fee: string | null;
+  ready: string;
+  readyHours: number;
+  waitingHours: number;
+  billed: string;
+  unbilled: { id: string; source: string; detail: string; hours: number | null; amount: string; held: string | null }[];
+  invoices: { id: string; number: string | null; kind: 'Invoice' | 'Credit note'; status: 'draft' | 'issued'; date: string | null; amount: string }[];
 }
 
 /** GET /projects/:id/timesheets row (answer 1541). */
@@ -370,7 +394,7 @@ export function ProjectWorkspaceScreen({ project: drawnProject, persona: drawnPe
             </TabsTrigger>
             <TabsTrigger value="tasks">Tasks & milestones</TabsTrigger>
             {(!live || live.timesheets !== undefined) && <TabsTrigger value="timesheets">Timesheets</TabsTrigger>}
-            {!live && persona !== 'hr' && <TabsTrigger value="billing">Billing</TabsTrigger>}
+            {((!live && persona !== 'hr') || (live && live.billing !== undefined)) && <TabsTrigger value="billing">Billing</TabsTrigger>}
             {(!live || live.expenses !== undefined) && (
               <TabsTrigger value="expenses" count={live ? (live.expenses?.length ?? 0) : expenses.length}>
                 Expenses
@@ -587,6 +611,62 @@ export function ProjectWorkspaceScreen({ project: drawnProject, persona: drawnPe
                   { key: 'flag', header: 'Attendance check', value: (r) => (r.person === 'Rohit Bhat' ? '42 h booked vs 40 h worked: flagged, not changed' : '—') },
                 ]}
               />
+            </TabsContent>
+          )}
+          {live && live.billing !== undefined && (
+            <TabsContent value="billing">
+              {!live.billing ? (
+                <Skeleton height={200} />
+              ) : (
+                <div className="yx-hire-stack">
+                  <SummaryTiles
+                    label="Billing"
+                    tiles={
+                      live.billing.model === 'time_material'
+                        ? [
+                            { label: 'Ready to bill', value: formatINR(Number(live.billing.ready)), sub: `${live.billing.readyHours} approved billable hours` },
+                            { label: 'Waiting for client approval', value: `${live.billing.waitingHours} h`, sub: 'stays in WIP until the client approves', tone: live.billing.waitingHours ? 'warning' : 'default' },
+                            { label: 'Billed to date', value: formatINR(Number(live.billing.billed)) },
+                          ]
+                        : [
+                            { label: live.billing.model === 'retainer' ? 'Retainers to bill' : 'Billable milestones', value: formatINR(Number(live.billing.ready)) },
+                            { label: 'Billed to date', value: formatINR(Number(live.billing.billed)) },
+                            { label: live.billing.model === 'retainer' ? 'Monthly retainer' : 'Contract value', value: live.billing.fee ? formatINR(Number(live.billing.fee)) : '—' },
+                          ]
+                    }
+                  />
+                  <DataTable
+                    label="Unbilled work"
+                    rows={live.billing.unbilled}
+                    getRowId={(r) => r.id}
+                    columns={[
+                      { key: 'source', header: 'Source', value: (r) => r.source },
+                      { key: 'detail', header: 'Detail', value: (r) => r.detail },
+                      { key: 'hours', header: 'Hours', type: 'number', value: (r) => r.hours, total: 'sum' },
+                      { key: 'amount', header: 'Amount', type: 'money', value: (r) => Number(r.amount), total: 'sum' },
+                      { key: 'held', header: 'Status', type: 'status', value: (r) => (r.held ? `Held: ${r.held}` : 'Ready'), statusTone: (v) => (v === 'Ready' ? 'success' : 'warning') },
+                    ]}
+                    empty={<EmptyState title="Nothing to bill." description="Approved billable hours, accepted milestones, retainers and re-billed expenses appear here." />}
+                  />
+                  <DataTable
+                    label="Invoices"
+                    rows={live.billing.invoices}
+                    getRowId={(r) => r.id}
+                    onRowClick={live.onOpenInvoice ? (r) => live.onOpenInvoice!(r.id) : undefined}
+                    columns={[
+                      { key: 'number', header: 'Number', type: 'id', value: (r) => r.number ?? 'Draft' },
+                      { key: 'kind', header: 'Kind', value: (r) => r.kind },
+                      { key: 'date', header: 'Date', value: (r) => r.date, render: (r) => (r.date ? formatDate(new Date(`${r.date}T00:00:00`)) : '—') },
+                      { key: 'amount', header: 'This project', type: 'money', value: (r) => Number(r.amount) },
+                      { key: 'status', header: 'Status', type: 'status', value: (r) => (r.status === 'issued' ? 'Issued' : 'Draft'), statusTone: (v) => (v === 'Issued' ? 'success' : 'neutral') },
+                    ]}
+                    empty={<EmptyState title="No invoices yet." description="Invoices made in the billing workbench appear here; each opens in Staffing desk › Invoices." />}
+                  />
+                  <Text size="sm" tone="secondary">
+                    Unapproved, non-billable and already-invoiced hours are never billed. Invoices open in Staffing desk › Invoices.
+                  </Text>
+                </div>
+              )}
             </TabsContent>
           )}
           {!live && persona !== 'hr' && (

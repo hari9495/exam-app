@@ -34,6 +34,9 @@ export interface LiveProjectRow {
   budgetCost?: number | null;
   /** P-6 (1621): the time-and-material bill rate per hour (Projects finance only). */
   billRate?: number | null;
+  /** P-6, Projects finance: billed to date (issued invoices less credit notes) and margin on it from stored cost. */
+  billed?: number;
+  margin?: number | null;
   version: number;
   mine: boolean;
 }
@@ -140,7 +143,7 @@ export function toProject(r: LiveProjectRow): Project {
     budgetCost: r.budgetCost ?? 0,
     cost: 0,
     fee: r.fee ?? 0,
-    billed: 0,
+    billed: r.billed ?? 0,
     wip: 0,
     utilisation: 0,
     people: r.people,

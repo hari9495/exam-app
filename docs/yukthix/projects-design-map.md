@@ -89,12 +89,12 @@ named in the note) · **wire design** (the API exists and the screen is not wire
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Projects and timesheets (PRJ-01, PRJ-02, PRJ-08) | 3 | 62 | 1 | 0 | 1 | 1 | 65 |
+| A. Projects and timesheets (PRJ-01, PRJ-02, PRJ-08) | 3 | 66 | 0 | 0 | 0 | 1 | 67 |
 | B. Capacity and bench (PRJ-03, PRJ-07) | 2 | 20 | 0 | 0 | 0 | 0 | 20 |
-| C. Cost and billing (PRJ-04 to PRJ-06) | 3 | 32 | 1 | 0 | 0 | 0 | 33 |
-| **All A-C** | **8** | **114** | **2** | **0** | **1** | **1** | **118** |
+| C. Cost and billing (PRJ-04 to PRJ-06) | 3 | 33 | 0 | 0 | 0 | 0 | 33 |
+| **All A-C** | **8** | **119** | **0** | **0** | **0** | **1** | **120** |
 
-Counted by script on 12 Nov 2026 on `docs/yukthix-projects-map` (the script is in the appendix; it prints "ok"). Recounted on 12 Nov 2026 on `feat/yukthix-projects-p1` after P-1: PRJ-01 has 30 stories (16 live-state stories added), 68 in all. Recounted after P-3 on `feat/yukthix-projects-p3`: PRJ-08 has 15 (10 live-state stories added), 78 in all. After the walk fixes and P-2 (`feat/yukthix-projects-p2`): PRJ-02 has 12 (5 live-state stories added), 86 in all. After P-4 (`feat/yukthix-projects-p4`): PRJ-03 8, PRJ-07 12, PRJ-01 and PRJ-02 one more each, 98 in all. After P-5 (`feat/yukthix-projects-p5`): PRJ-04 9, PRJ-01 three more, 105 in all. After P-6 (`feat/yukthix-projects-p6`): PRJ-05 13 and PRJ-06 11 (13 live-state stories added), 118 in all. There
+Counted by script on 12 Nov 2026 on `docs/yukthix-projects-map` (the script is in the appendix; it prints "ok"). Recounted on 12 Nov 2026 on `feat/yukthix-projects-p1` after P-1: PRJ-01 has 30 stories (16 live-state stories added), 68 in all. Recounted after P-3 on `feat/yukthix-projects-p3`: PRJ-08 has 15 (10 live-state stories added), 78 in all. After the walk fixes and P-2 (`feat/yukthix-projects-p2`): PRJ-02 has 12 (5 live-state stories added), 86 in all. After P-4 (`feat/yukthix-projects-p4`): PRJ-03 8, PRJ-07 12, PRJ-01 and PRJ-02 one more each, 98 in all. After P-5 (`feat/yukthix-projects-p5`): PRJ-04 9, PRJ-01 three more, 105 in all. After P-6 (`feat/yukthix-projects-p6`): PRJ-05 13 and PRJ-06 11 (13 live-state stories added), 118 in all. On `feat/yukthix-ops-small` (founder 12 Nov): PRJ-01 two Billing-tab live stories, 120 in all; FinanceList, Billing and the redrawn PRJ-05 IssuedToday are live; only the phone view waits (the mobile app). There
 are 52 stories in 8 files whose title starts `Screens/Projects/`: `packages/yx-ui/src/screens/hiring/prj-01-projects`
 (14), `prj-02-timesheet-approvals` (7), `prj-03-capacity` (4), `prj-04-costing` (5), `prj-05-billing-workbench` (6),
 `prj-06-timesheet-correction` (5), `prj-07-bench-requests` (6), `prj-08-mapping-rules` (5), all `.stories.tsx`. The
@@ -131,7 +131,7 @@ screens are in `screens/hiring/projects.tsx` and `projects-billing.tsx`. One sto
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| FinanceList · Finance · all projects with margin | live (gap) | P-1: `/yx/projects` (`ProjectsListScreen` live) shows fee to Projects finance; margin and fee billed come with cost and billing (P-4, P-5) |
+| FinanceList · Finance · all projects with margin | live | P-1: `/yx/projects` (`ProjectsListScreen` live) shows fee to Projects finance; founder 12 Nov (after P-6): fee billed and margin too, from the stored totals only (issued project invoice lines less credit notes; the nightly job's cost and expenses); never to a project manager or anyone else (checked in the API) |
 | PmList · PM · my projects | live | P-1: a project manager without a key sees only the projects they manage (`GET /projects`) |
 | HrList · HR · no fee or margin | live | P-1: without Projects finance the list has no fee, cost or margin (answer 1412) |
 | PmOverview · Workspace · PM overview, burn alert | live | P-1: `/yx/projects/[id]` hours budget bar and the burn alert at the company levels (1405); alerts to the PM and Projects finance by the hourly sweep |
@@ -139,7 +139,7 @@ screens are in `screens/hiring/projects.tsx` and `projects-billing.tsx`. One sto
 | Team · Workspace · team and allocations | live | P-1: allocations add, change and end; only allocated people book time (1404) |
 | FixedFeeMilestones · Workspace · fixed fee, tasks and milestones (over budget) | live | P-1: tasks (Time activities) with used hours; milestones on fixed-fee projects, client acceptance per project (1420) |
 | Timesheets · Workspace · timesheets with attendance mismatch | live | P-4 (answer 1541): `GET /projects/:id/timesheets`, each allocated person's week on the project against the allocation, their line decisions, and the whole week against attendance (an hour or more apart is flagged; pay never changes) |
-| Billing · Workspace · billing, hours held for client approval | design only, feature not built | P-5 |
+| Billing · Workspace · billing, hours held for client approval | live | founder 12 Nov (after P-6): the workspace Billing tab (`GET /projects/billing/project/:id`) for Projects finance and account managers: unbilled work of every month, hours waiting for client approval, billed to date, and the project's draft and issued invoices, each opening in Staffing desk › Invoices (never a copy) |
 | Expenses · Workspace · expenses | live | P-5 (1419): `GET /projects/:id/expenses`, submitted and approved lines naming the project, with re-billing |
 | Closed · Workspace · closed project | live | P-1: closed status; no new time, team, tasks or milestones; reopen |
 | Empty · Empty | live | P-1: the live list empty state |
@@ -167,6 +167,8 @@ screens are in `screens/hiring/projects.tsx` and `projects-billing.tsx`. One sto
 | LiveCostFinance · Live · finance overview with cost against budget | live | P-5 live state |
 | LiveCostPm · Live · project manager, cost totals (one month left out) | live | P-5 live state (1412) |
 | LiveExpenses · Live · expenses tagged to the project | live | P-5 live state (1419) |
+| LiveBilling · Live · billing, hours held for client approval | live | P-6 follow-up live state |
+| LiveBillingEmpty · Live · billing, nothing to bill yet | live | P-6 follow-up live state |
 
 #### PRJ-02 · Timesheet approvals
 
@@ -262,7 +264,7 @@ screens are in `screens/hiring/projects.tsx` and `projects-billing.tsx`. One sto
 | Wip · Finance · WIP by client, held items | live | P-6 (1414): `/yx/projects/billing` (`BillingWorkbenchScreen` live, `GET /projects/billing`): the month's unbilled project work for Projects finance: time-and-material hours at the project's bill rate (one row per person and project), fixed-fee milestones, the month's retainer, re-billed expenses (P-5); held items say why (client approval, client acceptance, no rate, fee or client) |
 | Drafts · Draft invoices · CGST/SGST and IGST | live | P-6 (1414): `POST /projects/billing/drafts`: one staffing invoice per client (the one invoice engine: series, GST split by supplier state and place of supply), each line naming its project; `project_billings` records each item once (unique source), so nothing is billed twice; a deleted draft frees its work |
 | Approve · Approve and issue · e-invoice window | live | P-6 (1415): the account manager approves before finance issues when the company switched it on (`projects.billing.am_approval`, default off); finance issues through the staffing engine (`issueIn`: next number, e-invoice state); the staffing desk's own Issue is held the same way |
-| OldDraft · Approve · draft dated 27 Aug, IRN blocked | live (gap) | live drafts take their date when issued, so an old draft cannot block; past the window an issued invoice is cancelled and reissued (`reissue()`). The drawn "redate before issue" warning is not built |
+| IssuedToday · Approve · drafts dated when issued; an old invoice cancelled and reissued | live | redrawn 12 Nov 2026 (founder) to what the app does: a draft takes today's date and the series' next number when issued ("Issued today"); an issued invoice past the 30-day window is cancelled and reissued (`reissue()`, "Cancel and reissue" on the invoice record) |
 | Issued · Issued | live | P-6: the issued run (tiles per invoice) with "Open invoices" to Staffing desk › Invoices, the one invoice list; the PDF, client portal and Tally/Zoho export are the staffing engine's |
 | Empty · Empty · nothing to bill | live | P-6 live state |
 | LiveWip · Live · finance, unbilled work with held items | live | P-6 live state |

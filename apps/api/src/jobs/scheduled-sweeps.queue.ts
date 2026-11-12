@@ -80,4 +80,6 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'project-burn', cron: '35 * * * *' },
   // Projects P-5 (1412, 1413, 1445): project cost totals (payroll access) and cost burn alerts, nightly.
   { id: 'project-cost', cron: '20 2 * * *' },
+  // Console 1216: the product-analytics summary per company, feature family and India day (00:40 IST).
+  { id: 'analytics-summary', cron: '10 19 * * *' },
 ];

@@ -360,7 +360,7 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| YX09 · Product analytics | live (gap) | C-8: `/staff/analytics`, `ProductAnalyticsScreen live` shows the drawn adoption-by-size chart plus by-feature and by-company counts; the drawn funnel, cohorts, quick-start and the three stat cards have no data in the API (question 1214) |
+| YX09 · Product analytics | live (gap) | C-8: `/staff/analytics`, `ProductAnalyticsScreen live` shows the drawn adoption-by-size chart plus by-feature and by-company counts, read from the nightly summary `product_usage_daily` (per company, action family and India day; 1216, built 12 Nov 2026 on `feat/yukthix-ops-small`) instead of scanning audit_logs across companies; the drawn funnel, cohorts, quick-start and the three stat cards have no data in the API (question 1214) |
 | YX09Live · Which features companies use (C-8) | live | `GET platform/analytics` (`platform.analytics.view`), read through `platformRead` (`analytics.feature_use`) |
 | YX09SmallGroupsLive · Small groups hidden (C-8) | live | same page: any group of fewer than `analytics.min_companies` (never under 5) arrives hidden and says so |
 | YX09Loading · Product analytics · loading | live | same page while it loads (`ConsolePage` state) |
@@ -1259,3 +1259,14 @@ C-6 to C-8.
 - 1208 to 1211 (C-8 nudges) approved as suggested (12 Nov 2026, "ok for all"). To build: "Talk to us" on nudge cards, landing in the sales-assist queue, with part 4 (1210). Later: trial-day email nudges with trial and billing (1208); A/B copy when volume allows (1209).
 
 - 1212 to 1216 approved as suggested (12 Nov 2026, "ok for all"). To build: a nightly per-company per-feature daily summary table for product analytics, so the page reads the summary instead of scanning audit_logs across companies (1216, about 1 day; next free builder). Later with trial and billing work: call-time booking (1212), automatic size triggers with platform-setting thresholds (1213), funnel, cohorts and stat cards (1214). No analytics export (1215).
+
+## Console 1216 built (12 Nov 2026, `feat/yukthix-ops-small`): questions for the founder
+
+1741. **The analytics window.** Product analytics now counts whole India days, today included (the last 30 days by
+      default), from the nightly summary; before, it counted the last 30 x 24 hours. Today's actions show after the
+      next nightly run (00:40 IST). *Suggested: keep; a midday refresh only if staff ask for same-day numbers.*
+1742. **How long the summary is kept.** 366 days, then dropped; a longer `analytics.window_days` reads what is there.
+      *Suggested: keep.*
+1743. **What is stored.** Counts per company, action family (the part of an audit action before the first dot, only
+      the families product analytics maps to features) and day, with the last action's time; never the record, the
+      metadata or a person. *Suggested: keep.*

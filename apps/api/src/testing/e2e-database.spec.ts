@@ -1,4 +1,4 @@
-import { databaseName, e2eDatabase, e2eDatabaseProblem } from './e2e-database';
+import { e2eClientIp, databaseName, e2eDatabase, e2eDatabaseProblem } from './e2e-database';
 
 const pg = (db: string, user = 'examapp_app') => `postgresql://${user}:pw@127.0.0.1:5432/${db}?schema=public`;
 
@@ -31,5 +31,14 @@ describe('e2e database guard (answer 798)', () => {
     expect(() => e2eDatabase({})).toThrow(/No database/);
     expect(e2eDatabaseProblem('examapp_org_e2e', {})).toBeNull();
     expect(e2eDatabaseProblem('Examapp_Org', {})).toMatch(/neither/);
+  });
+
+  it('each e2e database signs in from a loopback address of its own, never 127.0.0.1', () => {
+    const names = ['examapp_org_e2e', 'examapp_pay_check', 'examapp_timeleave', 'examapp_ops_e2e', 'examapp_desk', 'examapp_time2', 'examapp_pay', 'ci_e2e'];
+    const ips = names.map(e2eClientIp);
+    for (const ip of ips) expect(ip).toMatch(/^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/);
+    expect(ips).not.toContain('127.0.0.1');
+    expect(new Set(ips).size).toBe(names.length);
+    expect(e2eClientIp('examapp_org_e2e')).toBe(e2eClientIp('examapp_org_e2e'));
   });
 });

@@ -6,6 +6,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { audit, CompanyContext, inCompany, Tx } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
+import { marginPct } from './cost';
 import { buildViewer, has, type ScopeUser } from '../access/scope';
 import { settingFor } from '../people/probation';
 import { OrgSettingsService } from '../org-structure/org-settings.service';
@@ -134,7 +135,24 @@ export class ProjectsService {
       GROUP BY 1, 2, 3`;
   }
 
-  private row(p: Prisma.TimesheetProjectGetPayload<object>, w: Who, extra: { clientName: string | null; managerName: string | null; usedHours: number; people: number }) {
+  /**
+   * PRJ-01 FinanceList (P-6): billed revenue (issued project invoice lines less credit notes) and cost (the nightly job's
+   * stored totals: people cost and expenses, all months) per project, in paise. Projects finance only.
+   */
+  private async money(tx: Tx, org: string, ids: string[]) {
+    if (!ids.length) return new Map<string, { billed: number; cost: number }>();
+    const billed = await tx.$queryRaw<{ id: string; v: string }[]>`
+      SELECT l.project_id::text AS id, sum(CASE WHEN i.kind = 'credit_note' THEN -l.amount_paise ELSE l.amount_paise END)::text AS v
+      FROM staffing_invoice_lines l JOIN staffing_invoices i ON i.organization_id = l.organization_id AND i.id = l.invoice_id
+      WHERE l.organization_id = ${org}::uuid AND l.project_id = ANY(${ids}::uuid[]) AND i.status = 'issued' GROUP BY 1`;
+    const cost = await tx.projectCost.groupBy({ by: ['projectId'], where: { organizationId: org, projectId: { in: ids } }, _sum: { costPaise: true, expensesPaise: true } });
+    return new Map(ids.map((id) => {
+      const c = cost.find((x) => x.projectId === id)?._sum;
+      return [id, { billed: Number(billed.find((b) => b.id === id)?.v ?? 0), cost: Number((c?.costPaise ?? 0n) + (c?.expensesPaise ?? 0n)) }];
+    }));
+  }
+
+  private row(p: Prisma.TimesheetProjectGetPayload<object>, w: Who, extra: { clientName: string | null; managerName: string | null; usedHours: number; people: number; money?: { billed: number; cost: number } }) {
     return {
       id: p.id,
       code: p.code,
@@ -154,6 +172,8 @@ export class ProjectsService {
       clientApprovesHours: p.clientApprovesHours,
       // Answer 1412: fee and cost only for Projects finance.
       ...(w.finance ? { fee: num(p.fee), budgetCost: num(p.budgetCost), billRate: p.billRatePaise == null ? null : Number(p.billRatePaise) / 100 } : {}),
+      // P-6: billed to date and margin on it (finance; null margin without billed revenue).
+      ...(w.finance && extra.money ? { billed: extra.money.billed / 100, margin: marginPct(extra.money.billed, extra.money.cost) } : {}),
       version: p.version,
       mine: p.managerUserId === w.userId,
     };
@@ -177,6 +197,7 @@ export class ProjectsService {
         tx.user.findMany({ where: { organizationId: org, id: { in: projects.map((p) => p.managerUserId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true, email: true } }),
         tx.projectAllocation.groupBy({ by: ['projectId'], where: { organizationId: org, projectId: { in: ids }, OR: [{ toOn: null }, { toOn: { gte: asDate(todayIst()) } }] }, _count: { _all: true } }),
       ]);
+      const money = w.finance ? await this.money(tx, org, ids) : null;
       return {
         can: { create: w.manage, finance: w.finance },
         rows: projects.map((p) =>
@@ -188,6 +209,7 @@ export class ProjectsService {
             })(),
             usedHours: hoursOf(booked.filter((b) => b.project_id === p.id).reduce((t, b) => t + b.minutes, 0)),
             people: allocs.find((a) => a.projectId === p.id)?._count._all ?? 0,
+            money: money?.get(p.id),
           }),
         ),
       };

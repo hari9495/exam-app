@@ -385,4 +385,26 @@ describe('Projects P-6 billing workbench and corrections', () => {
     expect(text).toContain('Project cost: expenses');
     expect(await inA((tx) => tx.auditLog.count({ where: { action: 'projects.cost.journal_exported' } }))).toBe(1);
   });
+
+  it('PRJ-01 (founder 12 Nov): finance sees billed and margin in the list and the Billing tab; a PM or an employee never does', async () => {
+    const tm = ((await api('fin', 'get', '/projects').expect(200)).body.rows as { code: string; billed?: number; margin?: number | null }[]).find((r) => r.code === 'TM')!;
+    // Billed: 33,200 (as above); cost: the stored totals (no rates here, so the ₹1,200 expense): margin 96%.
+    expect(tm).toMatchObject({ billed: 33200, margin: 96 });
+    const asPm = ((await api('boss', 'get', '/projects').expect(200)).body.rows as Record<string, unknown>[]).find((r) => r.code === 'TM')!;
+    expect(asPm).not.toHaveProperty('billed');
+    expect(asPm).not.toHaveProperty('margin');
+    const tab = (await api('fin', 'get', `/projects/billing/project/${ids.tm}`).expect(want(200))).body;
+    expect(tab).toMatchObject({ model: 'time_material', billed: '33200.00', waitingHours: 0, ready: '9600.00', readyHours: 6 });
+    expect(tab.unbilled).toEqual([expect.objectContaining({ source: 'Timesheet hours', hours: 6, amount: '9600.00', held: null })]);
+    expect((tab.invoices as { number: string | null; kind: string }[]).map((i) => i.number).sort()).toEqual(['P6/7', 'P6/9', 'P6/CN1', 'P6/CN2']);
+    // The account manager sees it too; a project manager without Projects finance and an employee do not.
+    await api('am', 'get', `/projects/billing/project/${ids.tm}`).expect(want(200));
+    await api('boss', 'get', `/projects/billing/project/${ids.tm}`).expect(403);
+    await api('e1', 'get', `/projects/billing/project/${ids.tm}`).expect(403);
+    await api('fin', 'get', `/projects/billing/project/${randomUUID()}`).expect(404);
+    // Hours waiting for the client show on the tab.
+    await inA((tx) => tx.timesheetLine.update({ where: { id: ids.lh }, data: { clientStatus: 'waiting' } }));
+    expect((await api('fin', 'get', `/projects/billing/project/${ids.tmh}`).expect(200)).body).toMatchObject({ waitingHours: 4, ready: '0.00' });
+  });
 });
+

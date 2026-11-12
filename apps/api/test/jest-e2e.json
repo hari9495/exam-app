@@ -26,7 +26,8 @@
     "./fixtures/bull-prefix.ts"
   ],
   "setupFilesAfterEnv": [
-    "./fixtures/bull-cleanup.ts"
+    "./fixtures/bull-cleanup.ts",
+    "./fixtures/sign-in-limits.ts"
   ],
   "maxWorkers": 1,
   "workerIdleMemoryLimit": "1GB",
