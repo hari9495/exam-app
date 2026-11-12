@@ -134,6 +134,41 @@ describe('withdrawing a waiting message', () => {
   });
 });
 
+// Answers 1082, 1083 (1165): history columns, owners and alert follow-up.
+describe('health history and follow-up', () => {
+  const FOLLOW = { id: 'a1', organizationId: 'c2', company: 'Godavari Agro', rule: 'admin_idle', text: 'No System Admin has ever signed in', status: 'open' as const, owner: null, openedAt: '2026-11-11T20:00:00Z', resolvedAt: null, autoResolved: false, version: 1, notes: [] };
+  const OWNERS = [{ id: 'u1', name: 'Kavitha Rao' }];
+
+  it('shows the 30-day change (or no history), the churn risk and the CS owner', () => {
+    wrap(live({ rows: [{ ...ROWS[0]!, trend: -12, churn: 'low', owner: OWNERS[0]! }, { ...ROWS[1]!, trend: null, churn: 'high', owner: null }] }));
+    expect(screen.getByText('-12')).toBeInTheDocument();
+    expect(screen.getByText('No history yet')).toBeInTheDocument();
+    expect(screen.getByText('High')).toBeInTheDocument();
+    expect(screen.getByText('Kavitha Rao')).toBeInTheDocument();
+    expect(screen.getByText('Nobody yet')).toBeInTheDocument();
+  });
+
+  it('Log outreach needs a note (field error, focus), then sends it', async () => {
+    const onOutreach = vi.fn().mockResolvedValue(undefined);
+    wrap(live({ tab: 'alerts', followups: [FOLLOW], owners: OWNERS, onOutreach, onUpdateAlert: ok() }));
+    await userEvent.click(screen.getByRole('button', { name: 'Log outreach' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Log outreach' }));
+    expect(within(dialog).getByText('Write what you did or agreed.')).toBeInTheDocument();
+    expect(document.activeElement?.id).toBe('cs-outreach');
+    expect(onOutreach).not.toHaveBeenCalled();
+    await userEvent.type(within(dialog).getByRole('textbox', { name: /Note/ }), 'Called the HR head');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Log outreach' }));
+    await waitFor(() => expect(onOutreach).toHaveBeenCalledWith('a1', 'Called the HR head'));
+  });
+
+  it('a resolved alert offers no actions; an alert that cleared by itself says so', () => {
+    wrap(live({ tab: 'alerts', followups: [{ ...FOLLOW, status: 'resolved', resolvedAt: '2026-11-12T00:00:00Z', autoResolved: true }], owners: OWNERS, onOutreach: ok(), onUpdateAlert: ok() }));
+    expect(screen.queryByRole('button', { name: 'Log outreach' })).toBeNull();
+    expect(screen.getByText(/resolved by itself/)).toBeInTheDocument();
+  });
+});
+
 describe('the company side: messages from YukthiX (answer 1048)', () => {
   const base = { state: 'ready' as const, sessions: [], onApprove: ok(), onDecline: ok(), onEnd: ok(), loadActivity: vi.fn().mockResolvedValue([]) };
   it('lists what YukthiX sent its System Admins; none says so; no list without the data', () => {

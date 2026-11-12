@@ -1,6 +1,6 @@
 'use client';
 
-import { CustomerSuccessScreen, type CsHealthRow, type CsMessageRow, type CsSettingRow } from '@yukthix/ui/console';
+import { CustomerSuccessScreen, type CsFollowup, type CsHealthRow, type CsMessageRow, type CsSettingRow } from '@yukthix/ui/console';
 import { loadState, useConsole, useConsoleKeys, useConsoleWrite } from '../../../../lib/yx-console';
 
 // Console › Customer success (C-2, answers 1047 and 1048): tenant health from account signals, churn alerts from the
@@ -10,6 +10,9 @@ export default function ConsoleCustomersPage() {
   const health = useConsole<{ rows: CsHealthRow[] }>('/customers/health');
   const messages = useConsole<CsMessageRow[]>('/customers/messages');
   const settings = useConsole<CsSettingRow[]>('/customers/settings');
+  // Answers 1082, 1083 (1165): Customer success owners and alert follow-up.
+  const owners = useConsole<{ id: string; name: string }[]>('/customers/owners');
+  const followups = useConsole<CsFollowup[]>('/customers/alerts');
   const can = useConsoleKeys();
   const write = useConsoleWrite();
   const state = [health, messages, settings].map(loadState).find((s) => s !== 'ready') ?? 'ready';
@@ -31,6 +34,11 @@ export default function ConsoleCustomersPage() {
         // Answer 1087: the writer withdraws their own message while it waits.
         onWithdraw: (id, version) => write(`/customers/messages/${encodeURIComponent(id)}/withdraw`, 'POST', { version }),
         onSaveSettings: (values) => write('/customers/settings', 'PUT', { values }),
+        owners: owners.data ?? [],
+        followups: followups.data,
+        onSetOwner: (companyId, ownerUserId) => write(`/customers/companies/${encodeURIComponent(companyId)}/owner`, 'PUT', { ownerUserId }),
+        onUpdateAlert: (id, version, change) => write(`/customers/alerts/${encodeURIComponent(id)}`, 'PUT', { version, ...change }),
+        onOutreach: (id, note) => write(`/customers/alerts/${encodeURIComponent(id)}/outreach`, 'POST', { note }),
       }}
     />
   );

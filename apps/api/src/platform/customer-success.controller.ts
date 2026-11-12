@@ -5,7 +5,8 @@ import { RequireStepUp } from '../auth/step-up.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { PlatformStaffGuard } from './platform-staff.guard';
-import { CsDecisionDto, CsMessageDto, CsNoticeDto, CsSettingsDto } from './customer-success.dto';
+import { CsAlertDto, CsDecisionDto, CsMessageDto, CsNoticeDto, CsOutreachDto, CsOwnerDto, CsSettingsDto } from './customer-success.dto';
+import { CsFollowupService } from './cs-followup.service';
 import { CustomerSuccessService } from './customer-success.service';
 
 // YukthiX console C-2, Customer success (answers 1047, 1048, 1058): staff only, on their own platform session with their
@@ -14,7 +15,41 @@ import { CustomerSuccessService } from './customer-success.service';
 @Controller('platform/customers')
 @UseGuards(JwtAuthGuard, PlatformStaffGuard, PermissionsGuard)
 export class CustomerSuccessController {
-  constructor(private readonly cs: CustomerSuccessService) {}
+  constructor(
+    private readonly cs: CustomerSuccessService,
+    private readonly followup: CsFollowupService,
+  ) {}
+
+  // Answers 1082, 1083 (1165): Customer success owners and alert follow-up.
+  @Get('owners')
+  @RequirePermissions('platform.customers.success')
+  owners(@CurrentUserId() actor: string) {
+    return this.followup.owners(actor);
+  }
+
+  @Put('companies/:id/owner')
+  @RequirePermissions('platform.customers.success')
+  setOwner(@CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CsOwnerDto) {
+    return this.followup.setOwner(actor, id, dto.ownerUserId ?? null);
+  }
+
+  @Get('alerts')
+  @RequirePermissions('platform.customers.success')
+  alerts(@CurrentUserId() actor: string) {
+    return this.followup.alerts(actor);
+  }
+
+  @Put('alerts/:id')
+  @RequirePermissions('platform.customers.success')
+  updateAlert(@CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CsAlertDto) {
+    return this.followup.updateAlert(actor, id, dto);
+  }
+
+  @Post('alerts/:id/outreach')
+  @RequirePermissions('platform.customers.success')
+  outreach(@CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CsOutreachDto) {
+    return this.followup.outreach(actor, id, dto.note);
+  }
 
   @Get('health')
   @RequirePermissions('platform.customers.success')

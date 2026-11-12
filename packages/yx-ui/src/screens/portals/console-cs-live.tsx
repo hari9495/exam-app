@@ -9,7 +9,8 @@ import { Card, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components
 import { EmptyState, InlineAlert } from '../../components/feedback';
 import { FieldRow, FormField, useTooEarly } from '../../components/field';
 import { NumberField, TextArea, TextField } from '../../components/inputs';
-import { MultiSelect } from '../../components/select';
+import { MultiSelect, Select } from '../../components/select';
+import { Segment } from '../../components/segment';
 import { Drawer } from '../../components/drawer';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { useToast } from '../../components/notify';
@@ -31,6 +32,25 @@ export interface CsHealthRow {
   adminLastSignIn: string | null;
   openTickets: number;
   alerts: string[];
+  /** Answer 1082 (1165): the score less the snapshot of 30 days before (null without one), the churn risk, the owner. */
+  trend?: number | null;
+  churn?: 'low' | 'medium' | 'high';
+  owner?: { id: string; name: string } | null;
+}
+/** Answer 1083 (1165): an alert's follow-up. */
+export interface CsFollowup {
+  id: string;
+  organizationId: string;
+  company: string;
+  rule: string;
+  text: string;
+  status: 'open' | 'contacted' | 'resolved';
+  owner: { id: string; name: string | null } | null;
+  openedAt: string;
+  resolvedAt: string | null;
+  autoResolved: boolean;
+  version: number;
+  notes: { id: string; note: string; by: string | null; at: string }[];
 }
 export interface CsMessageRow {
   id: string;
@@ -69,6 +89,12 @@ export interface LiveCustomerSuccess {
   /** Answer 1087: the writer takes back their own message while it waits. */
   onWithdraw?: (id: string, version: number) => Promise<unknown>;
   onSaveSettings: (values: Record<string, number>) => Promise<unknown>;
+  /** Answers 1082, 1083 (1165): who may own (active staff with the Customer success role), the alert follow-ups. */
+  owners?: { id: string; name: string }[];
+  followups?: CsFollowup[];
+  onSetOwner?: (companyId: string, ownerUserId: string | null) => Promise<unknown>;
+  onUpdateAlert?: (id: string, version: number, change: { status?: CsFollowup['status']; ownerUserId?: string | null }) => Promise<unknown>;
+  onOutreach?: (id: string, note: string) => Promise<unknown>;
   /** Stories: the tab shown first, the composer open with these companies. */
   tab?: 'health' | 'alerts' | 'messages';
   composerFor?: string[];
@@ -81,6 +107,7 @@ const errorText = (e: unknown) => (e instanceof Error && e.message ? e.message :
 /** YX-04 live: tenant health, churn-risk alerts and the admin message composer (second approval for more than one company). */
 export function LiveCustomerSuccessScreen({ live }: { live: LiveCustomerSuccess }) {
   const [composer, setComposer] = useState<string[] | null>(live.composerFor ?? null);
+  const [assigning, setAssigning] = useState<string[] | null>(null);
   const names = new Map(live.rows.map((r) => [r.id, r.name]));
   const alerting = live.rows.filter((r) => r.alerts.length);
   const waiting = live.messages.filter((m) => m.status === 'pending_approval');
@@ -129,21 +156,34 @@ export function LiveCustomerSuccessScreen({ live }: { live: LiveCustomerSuccess 
               { key: 'name', header: 'Company', value: (r) => r.name, width: 220 },
               { key: 'health', header: 'Score', type: 'number', value: (r) => r.health, width: 80 },
               { key: 'band', header: 'Band', type: 'status', value: (r) => HEALTH_LABEL[healthBand(r.health)], statusTone: (v) => (v === 'Healthy' ? 'success' : v === 'Watch' ? 'warning' : 'danger'), width: 100 },
+              { key: 'trend', header: '30-day change', type: 'number', value: (r) => r.trend ?? 0, render: (r) => (r.trend === null || r.trend === undefined ? 'No history yet' : `${r.trend > 0 ? '+' : ''}${r.trend}`), width: 130 },
+              { key: 'churn', header: 'Churn risk', type: 'status', value: (r) => (r.churn ? CHURN_LABEL[r.churn] : ''), statusTone: (v) => (v === 'High' ? 'danger' : v === 'Medium' ? 'warning' : 'success'), width: 110 },
               { key: 'factors', header: 'Main factor', value: (r) => r.factors[0] ?? 'No issues', width: 260 },
               { key: 'lifecycle', header: 'Lifecycle', type: 'status', value: (r) => LIFE[r.lifecycle] ?? r.lifecycle, statusTone: (v) => (v === 'Active' ? 'success' : v === 'Trial' ? 'info' : 'danger'), width: 110 },
               { key: 'signin', header: 'Last admin sign-in', value: (r) => r.adminLastSignIn ?? '', render: (r) => (r.adminLastSignIn ? formatDate(new Date(r.adminLastSignIn)) : 'Never'), width: 150 },
               { key: 'tickets', header: 'Open tickets', type: 'number', value: (r) => r.openTickets, width: 110 },
+              { key: 'owner', header: 'CS owner', value: (r) => r.owner?.name ?? 'Nobody yet', width: 150 },
             ]}
             empty={<EmptyState title="No customer companies yet." />}
             bulkActions={(ids) => (
-              <Button size="sm" onClick={() => setComposer(ids)}>
-                Message admins
-              </Button>
+              <>
+                {live.onSetOwner && (
+                  <Button size="sm" onClick={() => setAssigning(ids)}>
+                    Assign owner
+                  </Button>
+                )}
+                <Button size="sm" onClick={() => setComposer(ids)}>
+                  Message admins
+                </Button>
+              </>
             )}
           />
         </TabsContent>
         <TabsContent value="alerts">
           <div className="yx-ps-stack">
+            {live.followups ? (
+              <Followups items={live.followups} owners={live.owners ?? []} onUpdate={live.onUpdateAlert} onOutreach={live.onOutreach} />
+            ) : (
             <Card title="Companies with alerts">
               {alerting.length ? (
                 <ul className="yx-ps-list" aria-label="Churn-risk alerts">
@@ -165,6 +205,7 @@ export function LiveCustomerSuccessScreen({ live }: { live: LiveCustomerSuccess 
                 <EmptyState compact title="No churn-risk alerts." description="Alerts appear here when a company crosses one of the rules below." />
               )}
             </Card>
+            )}
             <AlertRules settings={live.settings} canManage={live.canManage} onSave={live.onSaveSettings} />
           </div>
         </TabsContent>
@@ -172,8 +213,165 @@ export function LiveCustomerSuccessScreen({ live }: { live: LiveCustomerSuccess 
           <MessageList messages={live.messages} names={names} onApprove={live.onApprove} onReject={live.onReject} onWithdraw={live.onWithdraw} />
         </TabsContent>
       </Tabs>
+      {assigning && live.onSetOwner && <AssignOwner ids={assigning} owners={live.owners ?? []} onSetOwner={live.onSetOwner} onClose={() => setAssigning(null)} />}
       {composer && <LiveComposer rows={live.rows} initial={composer} onClose={() => setComposer(null)} onWrite={live.onWrite} />}
     </ConsolePage>
+  );
+}
+
+const CHURN_LABEL: Record<NonNullable<CsHealthRow['churn']>, string> = { low: 'Low', medium: 'Medium', high: 'High' };
+const FOLLOWUP: Record<CsFollowup['status'], { label: string; tone: 'warning' | 'info' | 'success' }> = { open: { label: 'Open', tone: 'warning' }, contacted: { label: 'Contacted', tone: 'info' }, resolved: { label: 'Resolved', tone: 'success' } };
+
+/** Answer 1082: the drawn "Assign owner" bulk action; owners are active staff with the Customer success role. */
+function AssignOwner({ ids, owners, onSetOwner, onClose }: { ids: string[]; owners: { id: string; name: string }[]; onSetOwner: NonNullable<LiveCustomerSuccess['onSetOwner']>; onClose: () => void }) {
+  const [owner, setOwner] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const { toast } = useToast();
+  const early = useTooEarly(owner ? [] : [{ fieldId: 'cs-owner', message: 'Choose the owner.' }]);
+  return (
+    <Dialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      size="sm"
+      title={`Assign an owner to ${ids.length} ${ids.length === 1 ? 'company' : 'companies'}`}
+      description="Only active staff with the Customer success role. New alerts for these companies go to the owner."
+      notice={failed && <InlineAlert tone="danger" title={failed} />}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            loading={busy}
+            onClick={async () => {
+              if (early.stop()) return;
+              setBusy(true);
+              setFailed(null);
+              try {
+                for (const id of ids) await onSetOwner(id, owner);
+                toast({ tone: 'success', title: 'Owner assigned' });
+                onClose();
+              } catch (e) {
+                setFailed(errorText(e));
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Assign
+          </Button>
+        </>
+      }
+    >
+      <FormField id="cs-owner" label="CS owner" required error={early.errorOf('cs-owner')}>
+        <Select aria-label="CS owner" value={owner} onChange={setOwner} options={owners.map((o) => ({ value: o.id, label: o.name }))} />
+      </FormField>
+    </Dialog>
+  );
+}
+
+/** Answer 1083: each alert's owner, status and outreach, as drawn (Log outreach). Resolved alerts close by themselves. */
+function Followups({ items, owners, onUpdate, onOutreach }: { items: CsFollowup[]; owners: { id: string; name: string }[]; onUpdate?: LiveCustomerSuccess['onUpdateAlert']; onOutreach?: LiveCustomerSuccess['onOutreach'] }) {
+  const [logging, setLogging] = useState<CsFollowup | null>(null);
+  const [editing, setEditing] = useState<CsFollowup | null>(null);
+  const [note, setNote] = useState('');
+  const [status, setStatus] = useState<CsFollowup['status']>('open');
+  const [owner, setOwner] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const { toast } = useToast();
+  const noteEarly = useTooEarly(note.trim() ? [] : [{ fieldId: 'cs-outreach', message: 'Write what you did or agreed.' }]);
+  const run = async (fn: () => Promise<unknown>, done: string, close: () => void) => {
+    setBusy(true);
+    setFailed(null);
+    try {
+      await fn();
+      toast({ tone: 'success', title: done });
+      close();
+    } catch (e) {
+      setFailed(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (!items.length) return <Card title="Churn-risk alerts"><EmptyState compact title="No churn-risk alerts." description="Alerts appear here when a company crosses one of the rules below." /></Card>;
+  return (
+    <Card title="Churn-risk alerts">
+      {failed && !logging && !editing && <InlineAlert tone="danger" title={failed} />}
+      <ul className="yx-ps-list" aria-label="Churn-risk alerts">
+        {items.map((a) => (
+          <li key={a.id}>
+            <div className="yx-ps-list__main">
+              <span className="yx-ps-list__title">
+                {a.company} · {a.text}
+              </span>
+              <span className="yx-ps-list__meta">
+                {a.owner?.name ? `Owner ${a.owner.name}` : 'No owner yet'} · opened {formatDate(new Date(a.openedAt))}
+                {a.autoResolved ? ' · resolved by itself' : ''}
+                {a.notes[0] ? ` · last note: “${a.notes[0].note}”` : ''}
+              </span>
+            </div>
+            <Badge tone={FOLLOWUP[a.status].tone}>{FOLLOWUP[a.status].label}</Badge>
+            {a.status !== 'resolved' && onUpdate && (
+              <Button size="sm" onClick={() => (setStatus(a.status), setOwner(a.owner?.id ?? null), setFailed(null), setEditing(a))}>
+                Owner and status
+              </Button>
+            )}
+            {a.status !== 'resolved' && onOutreach && (
+              <Button size="sm" onClick={() => (setNote(''), setFailed(null), noteEarly.reset(), setLogging(a))}>
+                Log outreach
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {logging && onOutreach && (
+        <Dialog
+          open
+          onOpenChange={(o) => !o && setLogging(null)}
+          size="sm"
+          title={`Log outreach: ${logging.company}`}
+          description="What you did or agreed. Kept with the alert and in the audit log; an open alert becomes Contacted."
+          notice={failed && <InlineAlert tone="danger" title={failed} />}
+          footer={
+            <>
+              <Button onClick={() => setLogging(null)}>Cancel</Button>
+              <Button variant="primary" loading={busy} onClick={() => !noteEarly.stop() && void run(() => onOutreach(logging.id, note.trim()), 'Outreach logged', () => setLogging(null))}>
+                Log outreach
+              </Button>
+            </>
+          }
+        >
+          <FormField id="cs-outreach" label="Note" required error={noteEarly.errorOf('cs-outreach')}>
+            <TextArea rows={3} value={note} onChange={setNote} maxLength={1000} />
+          </FormField>
+        </Dialog>
+      )}
+      {editing && onUpdate && (
+        <Dialog
+          open
+          onOpenChange={(o) => !o && setEditing(null)}
+          size="sm"
+          title={`${editing.company} · ${editing.text}`}
+          notice={failed && <InlineAlert tone="danger" title={failed} />}
+          footer={
+            <>
+              <Button onClick={() => setEditing(null)}>Cancel</Button>
+              <Button variant="primary" loading={busy} onClick={() => void run(() => onUpdate(editing.id, editing.version, { status, ownerUserId: owner }), 'Alert saved', () => setEditing(null))}>
+                Save
+              </Button>
+            </>
+          }
+        >
+          <FormField label="Status">
+            <Segment label="Status" value={status} onChange={(v) => setStatus(v as CsFollowup['status'])} options={[{ value: 'open', label: 'Open' }, { value: 'contacted', label: 'Contacted' }, { value: 'resolved', label: 'Resolved' }]} />
+          </FormField>
+          <FormField id="cs-alert-owner" label="Owner">
+            <Select aria-label="Owner" value={owner} onChange={setOwner} options={owners.map((o) => ({ value: o.id, label: o.name }))} />
+          </FormField>
+        </Dialog>
+      )}
+    </Card>
   );
 }
 

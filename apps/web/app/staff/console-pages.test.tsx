@@ -19,6 +19,7 @@ import ConsoleContainPage from './(console)/companies/[id]/contain/page';
 import ConsoleFeatureFlagsPage from './(console)/feature-flags/page';
 import ConsoleHelpCentrePage from './(console)/help-centre/page';
 import ConsolePlatformSettingsPage from './(console)/platform-settings/page';
+import ConsoleCustomersPage from './(console)/customers/page';
 import ConsoleIncidentsPage from './(console)/incidents/page';
 import YxSupportAccessPage from '../yx/(app)/settings/support-access/page';
 import { ToastProvider } from '@yukthix/ui';
@@ -342,5 +343,27 @@ describe('/staff/incidents', () => {
     api.mockRejectedValue(Object.assign(new Error('Forbidden'), { status: 403 }));
     wrap(<ConsoleIncidentsPage />);
     expect(await screen.findByText("You don't have access to incidents")).toBeInTheDocument();
+  });
+});
+
+// Answers 1082, 1083 (1165): Customer success follow-up calls the console API.
+describe('Customer success follow-up', () => {
+  it('Log outreach posts the note for the alert', async () => {
+    route({
+      'GET /platform/customers/health': { settings: {}, rows: [] },
+      'GET /platform/customers/messages': [],
+      'GET /platform/customers/settings': [],
+      'GET /platform/customers/owners': [{ id: 'u1', name: 'Kavitha Rao' }],
+      'GET /platform/customers/alerts': [{ id: 'a1', organizationId: 'c2', company: 'Godavari Agro', rule: 'admin_idle', text: 'No System Admin has ever signed in', status: 'open', owner: null, openedAt: '2026-11-11T20:00:00Z', resolvedAt: null, autoResolved: false, version: 1, notes: [] }],
+      'GET /rbac/me/permissions': [...STAFF_KEYS, 'platform.customers.success'],
+      'POST /platform/customers/alerts/a1/outreach': [],
+    });
+    wrap(<ConsoleCustomersPage />);
+    await ue.click(await screen.findByRole('tab', { name: /Churn-risk alerts/ }));
+    await ue.click(await screen.findByRole('button', { name: 'Log outreach' }));
+    const dialog = await screen.findByRole('dialog');
+    await ue.type(within(dialog).getByRole('textbox', { name: /Note/ }), 'Called them');
+    await ue.click(within(dialog).getByRole('button', { name: 'Log outreach' }));
+    await waitFor(() => expect(calls).toContain('POST /platform/customers/alerts/a1/outreach {"note":"Called them"}'));
   });
 });

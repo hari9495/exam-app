@@ -13593,3 +13593,54 @@ model CompanyContainment {
 
   @@map("company_containments")
 }
+
+/// Console 1165 (answer 1082): a company's health score once a day (IST), score and band only; kept cs.snapshot.keep_days.
+model CsHealthSnapshot {
+  organizationId String   @map("organization_id") @db.Uuid
+  day            DateTime @db.Date
+  score          Int
+  /// healthy, watch, at_risk
+  band           String   @db.VarChar(10)
+  takenAt        DateTime @default(now()) @map("taken_at") @db.Timestamptz(3)
+
+  @@id([organizationId, day])
+  @@map("cs_health_snapshots")
+}
+
+/// Console 1165 (answer 1082): the company's Customer success owner (active staff with the Customer success role).
+model CsAccount {
+  organizationId String   @id @map("organization_id") @db.Uuid
+  ownerUserId    String?  @map("owner_user_id") @db.Uuid
+  setBy          String   @map("set_by") @db.Uuid
+  setAt          DateTime @default(now()) @map("set_at") @db.Timestamptz(3)
+
+  @@map("cs_accounts")
+}
+
+/// Console 1165 (answer 1083): a churn alert's follow-up: owner, status, outreach notes; resolved by itself when it clears.
+model CsAlert {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  /// health_below, admin_idle
+  rule           String    @db.VarChar(20)
+  text           String    @db.VarChar(200)
+  /// open, contacted, resolved
+  status         String    @default("open") @db.VarChar(10)
+  ownerUserId    String?   @map("owner_user_id") @db.Uuid
+  openedAt       DateTime  @default(now()) @map("opened_at") @db.Timestamptz(3)
+  resolvedAt     DateTime? @map("resolved_at") @db.Timestamptz(3)
+  autoResolved   Boolean   @default(false) @map("auto_resolved")
+  version        Int       @default(1)
+
+  @@map("cs_alerts")
+}
+
+model CsAlertNote {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  alertId   String   @map("alert_id") @db.Uuid
+  note      String   @db.VarChar(1000)
+  writtenBy String   @map("written_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("cs_alert_notes")
+}

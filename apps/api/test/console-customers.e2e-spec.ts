@@ -105,7 +105,8 @@ describe('Console C-2: customer success', () => {
     expect(mine.map((r: { name: string }) => r.name).sort()).toEqual([`CS A ${run}`, `CS B ${run}`, `CS C ${run}`]); // Z is closed
     const c = mine.find((r: { name: string }) => r.name === `CS C ${run}`);
     expect(c).toMatchObject({ health: 60, factors: ['No admin sign-in for 30 days'], openTickets: 0 });
-    expect(Object.keys(c).sort()).toEqual(['adminLastSignIn', 'alerts', 'factors', 'health', 'id', 'lifecycle', 'name', 'openTickets', 'products', 'slug']);
+    // 1165 adds the band, churn risk, 30-day change and CS owner: account facts only, still no HR data.
+    expect(Object.keys(c).sort()).toEqual(['adminLastSignIn', 'alerts', 'band', 'churn', 'factors', 'health', 'id', 'lifecycle', 'name', 'openTickets', 'owner', 'products', 'slug', 'trend']);
     const after = await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findMany({ where: { actorUserId: users.staff, action: 'platform.cross_tenant_read' }, orderBy: { createdAt: 'desc' }, take: 1 }));
     expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.count({ where: { actorUserId: users.staff, action: 'platform.cross_tenant_read' } }))).toBeGreaterThan(before);
     expect(JSON.parse(after[0]!.metadataJson!)).toMatchObject({ purpose: 'customer_success.health' });

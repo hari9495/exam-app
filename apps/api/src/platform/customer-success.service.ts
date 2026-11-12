@@ -16,6 +16,8 @@ type Tx = Prisma.TransactionClient;
 export const CS_SETTINGS = {
   'cs.alert.health_below': { label: 'Alert when the health score is below', default: 50, min: 1, max: 99 },
   'cs.alert.admin_idle_days': { label: 'Alert when no System Admin has signed in for (days)', default: 30, min: 7, max: 365 },
+  // Answer 1165: how long the nightly health snapshots are kept before the nightly purge.
+  'cs.snapshot.keep_days': { label: 'Keep daily health snapshots for (days)', default: 400, min: 31, max: 1825 },
 } as const;
 export type CsSettingKey = keyof typeof CS_SETTINGS;
 export type CsSettings = Record<CsSettingKey, number>;
@@ -23,13 +25,40 @@ export type CsSettings = Record<CsSettingKey, number>;
 const OPEN_STATES = ['new', 'open', 'pending', 'on_hold'];
 const companyCtx = (organizationId: string): TenantContext => ({ organizationId, isSuperAdmin: false });
 
+export type AlertRule = 'health_below' | 'admin_idle';
+
+/** The churn alerts for one company's row, each with its rule (answer 1047; the rule keeps a follow-up, 1165). */
+export function alertRulesFor(row: { health: number; adminLastSignIn: Date | null }, s: CsSettings, now = new Date()): { rule: AlertRule; text: string }[] {
+  const out: { rule: AlertRule; text: string }[] = [];
+  if (row.health < s['cs.alert.health_below']) out.push({ rule: 'health_below', text: `Health score below ${s['cs.alert.health_below']}` });
+  const idle = row.adminLastSignIn ? Math.floor((now.getTime() - row.adminLastSignIn.getTime()) / 86_400_000) : null;
+  if (idle === null || idle >= s['cs.alert.admin_idle_days']) out.push({ rule: 'admin_idle', text: idle === null ? 'No System Admin has ever signed in' : `No System Admin sign-in for ${idle} days` });
+  return out;
+}
+
 /** The churn alerts for one company's row (answer 1047). */
 export function alertsFor(row: { health: number; adminLastSignIn: Date | null }, s: CsSettings, now = new Date()): string[] {
-  const out: string[] = [];
-  if (row.health < s['cs.alert.health_below']) out.push(`Health score below ${s['cs.alert.health_below']}`);
-  const idle = row.adminLastSignIn ? Math.floor((now.getTime() - row.adminLastSignIn.getTime()) / 86_400_000) : null;
-  if (idle === null || idle >= s['cs.alert.admin_idle_days']) out.push(idle === null ? 'No System Admin has ever signed in' : `No System Admin sign-in for ${idle} days`);
-  return out;
+  return alertRulesFor(row, s, now).map((a) => a.text);
+}
+
+export type HealthBandKey = 'healthy' | 'watch' | 'at_risk';
+/** The drawn bands (YX-04 healthBand): 70 and up healthy, 45 to 69 watch, below 45 at risk. */
+export const bandOf = (score: number): HealthBandKey => (score >= 70 ? 'healthy' : score >= 45 ? 'watch' : 'at_risk');
+/** The drawn churn risk column, from the band (answer 1082). */
+export const CHURN_OF: Record<HealthBandKey, 'low' | 'medium' | 'high'> = { healthy: 'low', watch: 'medium', at_risk: 'high' };
+
+/** India day "YYYY-MM-DD" plus n days (calendar arithmetic in UTC on the date only, so month ends are exact). */
+export const dayPlus = (day: string, n: number) => new Date(Date.parse(`${day}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+export const istDay = (now = new Date()) => new Date(now.getTime() + 330 * 60_000).toISOString().slice(0, 10);
+
+/**
+ * Answer 1082: the 30-day change: today's score less the score of the latest snapshot on or before 30 days ago (a missed
+ * night uses the one before); null without one.
+ */
+export function thirtyDayChange(today: string, score: number, snapshots: { day: string; score: number }[]): number | null {
+  const cut = dayPlus(today, -30);
+  const base = snapshots.filter((s) => s.day <= cut).sort((a, b) => (a.day < b.day ? 1 : -1))[0];
+  return base ? score - base.score : null;
 }
 
 /**
@@ -87,6 +116,36 @@ export class CustomerSuccessService {
   /** Every customer company with its health score and churn alerts. One audited cross-company read. */
   async health(actorUserId: string, now = new Date()) {
     return platformRead(this.tenantPrisma, actorUserId, 'customer_success.health', async (tx) => {
+      const { settings, rows } = await this.healthRows(tx, now);
+      const today = istDay(now);
+      const ids = rows.map((r) => r.id);
+      const [snaps, accounts] = await Promise.all([
+        tx.csHealthSnapshot.findMany({ where: { organizationId: { in: ids }, day: { lte: new Date(`${dayPlus(today, -30)}T00:00:00Z`), gte: new Date(`${dayPlus(today, -60)}T00:00:00Z`) } }, select: { organizationId: true, day: true, score: true } }),
+        tx.csAccount.findMany({ where: { organizationId: { in: ids } } }),
+      ]);
+      const owners = await tx.user.findMany({ where: { id: { in: accounts.map((a) => a.ownerUserId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true, email: true } });
+      return {
+        settings,
+        rows: rows.map(({ alertRules: _rules, ...r }) => {
+          void _rules;
+          const band = bandOf(r.health);
+          const ownerId = accounts.find((a) => a.organizationId === r.id)?.ownerUserId ?? null;
+          const owner = owners.find((o) => o.id === ownerId);
+          return {
+            ...r,
+            band,
+            churn: CHURN_OF[band],
+            trend: thirtyDayChange(today, r.health, snaps.filter((s) => s.organizationId === r.id).map((s) => ({ day: s.day.toISOString().slice(0, 10), score: s.score }))),
+            owner: owner ? { id: owner.id, name: owner.name?.trim() || owner.email } : null,
+          };
+        }),
+      };
+    });
+  }
+
+  /** Every customer company's score, factors and alerts (no audit row: the caller's read is audited, or the nightly job). */
+  async healthRows(tx: Tx, now = new Date()) {
+    {
       const settings = await this.readSettings(tx);
       const orgs = await tx.organization.findMany({ where: { isPlatform: false, lifecycle: { not: 'closed' } }, select: { id: true, name: true, slug: true, lifecycle: true, billingStatus: true }, orderBy: { name: 'asc' }, take: 2000 });
       const ids = orgs.map((o) => o.id);
@@ -114,10 +173,11 @@ export class CustomerSuccessService {
         const adminLastSignIn = admins.find((a) => a.organizationId === o.id)?._max.lastLoginAt ?? null;
         const { health, factors } = tenantHealth({ lifecycle: o.lifecycle, billingStatus: o.billingStatus, adminLastSignIn, open, csat, nps }, now);
         const row = { id: o.id, name: o.name, slug: o.slug, lifecycle: o.lifecycle, products: products.filter((p) => p.organizationId === o.id).map((p) => p.productCode), health, factors, adminLastSignIn, openTickets: open };
-        return { ...row, alerts: alertsFor(row, settings, now) };
+        const rules = alertRulesFor(row, settings, now);
+        return { ...row, alerts: rules.map((a) => a.text), alertRules: rules };
       });
       return { settings, rows };
-    });
+    }
   }
 
   // ------------------------------------------------------------------------------------------ messages

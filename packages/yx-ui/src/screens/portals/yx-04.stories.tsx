@@ -19,7 +19,7 @@ import { CompaniesScreen } from '../console/companies';
 import { CompanyScreen } from '../console/company';
 import { ConsoleShell } from '../console/console-shell';
 import { COMPANIES, COMPANY, NOW, PRODUCTS, SESSIONS } from '../console/data';
-import type { CsHealthRow, CsMessageRow, CsSettingRow, LiveCustomerSuccess } from './console-cs-live';
+import type { CsFollowup, CsHealthRow, CsMessageRow, CsSettingRow, LiveCustomerSuccess } from './console-cs-live';
 import type { SupportSession } from '../console/types';
 import { TODAY } from './t9-data';
 import type { ActivityEntry } from '../../components/timeline';
@@ -95,6 +95,17 @@ export const YX04AlertRules: S = { name: 'Churn-risk alerts · rules from platfo
 export const YX04MessagesWaiting: S = { name: 'Messages · waiting for a second staff member (C-2)', render: () => cs({ tab: 'messages' }) };
 // Answer 1087: the writer withdraws their own message while it waits.
 export const YX04MessagesMine: S = { name: 'Messages · my message waiting, Withdraw (1087)', render: () => cs({ tab: 'messages', messages: [{ ...CS_MESSAGES[0]!, mine: true, writtenBy: 'Kavitha Rao' }, { ...CS_MESSAGES[1]!, id: 'm3', subject: 'PF set-up check', status: 'withdrawn' }], onWithdraw: wait }) };
+// Answers 1082, 1083 (1165): the drawn 30-day change, churn risk and CS owner; alert follow-up with Log outreach.
+const CS_OWNERS = [{ id: 'u-kavitha', name: 'Kavitha Rao' }, { id: 'u-joseph', name: 'Joseph Thomas' }];
+const CS_HISTORY = CS_ROWS.map((r, i) => ({ ...r, trend: [-12, 4, null][i % 3] ?? null, churn: (r.health >= 70 ? 'low' : r.health >= 45 ? 'medium' : 'high') as 'low' | 'medium' | 'high', owner: i % 2 ? CS_OWNERS[0]! : null }));
+const CS_FOLLOWUPS: CsFollowup[] = [
+  { id: 'a1', organizationId: 'c2', company: 'Godavari Agro', rule: 'admin_idle', text: 'No System Admin has ever signed in', status: 'contacted', owner: { id: 'u-kavitha', name: 'Kavitha Rao' }, openedAt: '2026-11-08T20:00:00Z', resolvedAt: null, autoResolved: false, version: 2, notes: [{ id: 'n1', note: 'Called the HR head; sign-in planned this week.', by: 'Kavitha Rao', at: '2026-11-10T06:00:00Z' }] },
+  { id: 'a2', organizationId: 'c2', company: 'Godavari Agro', rule: 'health_below', text: 'Health score below 50', status: 'open', owner: null, openedAt: '2026-11-11T20:00:00Z', resolvedAt: null, autoResolved: false, version: 1, notes: [] },
+  { id: 'a3', organizationId: 'c3', company: 'Kaveri Foods', rule: 'admin_idle', text: 'No System Admin sign-in for 31 days', status: 'resolved', owner: { id: 'u-joseph', name: 'Joseph Thomas' }, openedAt: '2026-10-20T20:00:00Z', resolvedAt: '2026-11-02T20:00:00Z', autoResolved: true, version: 3, notes: [] },
+];
+const followup = { owners: CS_OWNERS, onSetOwner: wait, onUpdateAlert: wait, onOutreach: wait };
+export const YX04HealthHistory: S = { name: 'Tenant health · 30-day change, churn risk and CS owner (1165)', render: () => cs({ rows: CS_HISTORY, ...followup, followups: CS_FOLLOWUPS }) };
+export const YX04AlertFollowUp: S = { name: 'Churn-risk alerts · owner, status and Log outreach (1165)', render: () => cs({ tab: 'alerts', rows: CS_HISTORY, ...followup, followups: CS_FOLLOWUPS }) };
 export const YX04ComposerTwo: S = { name: 'Message composer · two companies need approval (C-2)', render: () => cs({ composerFor: ['c2', 'c3'] }) };
 export const YX04Flags: S = { name: 'Feature flags', render: () => <FeatureFlagsScreen flags={D.FLAGS} /> };
 export const YX04KillSwitch: S = { name: 'Feature flags · kill switch', render: () => <FeatureFlagsScreen flags={D.FLAGS} killOpen /> };

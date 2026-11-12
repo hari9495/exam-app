@@ -13,6 +13,7 @@ import { CustomerSuccessController } from './customer-success.controller';
 import { AvailabilityController, MaintenanceController } from './maintenance.controller';
 import { MaintenanceService } from './maintenance.service';
 import { CustomerSuccessService } from './customer-success.service';
+import { CsFollowupService } from './cs-followup.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { MyStaffRolesController, StaffRolesController } from './staff-roles.controller';
 import { StaffRolesService } from './staff-roles.service';
@@ -24,9 +25,9 @@ import { IncidentsService } from './incidents.service';
 // Step 3: the YukthiX platform console (P14) and support sessions (P02 Q8).
 @Module({
   imports: [AuditModule, EmailModule, AuthModule, OrganizationsModule, SmsChannelModule, NotificationsModule],
-  providers: [PlatformService, SupportSessionsService, PlatformStaffGuard, CustomerSuccessService, ConsoleOpsService, MaintenanceService, PlatformSettingsService, IncidentsService, StaffRolesService],
+  providers: [PlatformService, SupportSessionsService, PlatformStaffGuard, CustomerSuccessService, ConsoleOpsService, MaintenanceService, PlatformSettingsService, IncidentsService, StaffRolesService, CsFollowupService],
   controllers: [PlatformController, SupportAccessController, CustomerSuccessController, ConsoleOpsController, MaintenanceController, AvailabilityController, PlatformSettingsController, IncidentsController, StaffRolesController, MyStaffRolesController],
   // SD-1.31: "Request access" from a YukthiX Support ticket asks for a support session.
-  exports: [SupportSessionsService, PlatformStaffGuard, IncidentsService],
+  exports: [SupportSessionsService, PlatformStaffGuard, IncidentsService, CsFollowupService],
 })
 export class PlatformModule {}

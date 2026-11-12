@@ -7,7 +7,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { isAssignableKey } from '../rbac/assignable-permissions';
 import { tenantHealth } from '../service-desk/tenant-health';
 import { CustomerSuccessController } from './customer-success.controller';
-import { CS_SETTINGS, alertsFor } from './customer-success.service';
+import { CS_SETTINGS, alertsFor, CHURN_OF, bandOf, dayPlus, istDay, thirtyDayChange } from './customer-success.service';
 import { PlatformStaffGuard } from './platform-staff.guard';
 
 // YukthiX console C-2, Customer success (answers 1047, 1048, 1058).
@@ -24,7 +24,7 @@ describe('Customer success routes', () => {
 
   it('every route needs the Customer success key, and that key is never part of a company role', () => {
     const list = handlers(CustomerSuccessController);
-    expect(list.map(([n]) => n).sort()).toEqual(['approve', 'health', 'messages', 'reject', 'ruleNotice', 'saveSettings', 'settings', 'withdraw', 'write']);
+    expect(list.map(([n]) => n).sort()).toEqual(['alerts', 'approve', 'health', 'messages', 'outreach', 'owners', 'reject', 'ruleNotice', 'saveSettings', 'setOwner', 'settings', 'updateAlert', 'withdraw', 'write']);
     // Answer 1065: a rule notice also needs the Rules editor key.
     for (const [name, h] of list) expect({ name, keys: keysOf(h) }).toEqual({ name, keys: name === 'ruleNotice' ? ['platform.customers.success', 'platform.statutory.manage'] : ['platform.customers.success'] });
     expect(isAssignableKey('platform.customers.success')).toBe(false);
@@ -41,10 +41,10 @@ describe('Customer success routes', () => {
 describe('churn alerts (answer 1047)', () => {
   const now = new Date('2026-11-12T00:00:00Z');
   const ago = (d: number) => new Date(now.getTime() - d * 86_400_000);
-  const defaults = { 'cs.alert.health_below': CS_SETTINGS['cs.alert.health_below'].default, 'cs.alert.admin_idle_days': CS_SETTINGS['cs.alert.admin_idle_days'].default };
+  const defaults = { 'cs.alert.health_below': CS_SETTINGS['cs.alert.health_below'].default, 'cs.alert.admin_idle_days': CS_SETTINGS['cs.alert.admin_idle_days'].default, 'cs.snapshot.keep_days': CS_SETTINGS['cs.snapshot.keep_days'].default };
 
-  it('the defaults are below 50 and 30 days', () => {
-    expect(defaults).toEqual({ 'cs.alert.health_below': 50, 'cs.alert.admin_idle_days': 30 });
+  it('the defaults are below 50 and 30 days; snapshots kept 400 days', () => {
+    expect(defaults).toEqual({ 'cs.alert.health_below': 50, 'cs.alert.admin_idle_days': 30, 'cs.snapshot.keep_days': 400 });
   });
 
   it('score: below the threshold alerts, at it does not', () => {
@@ -59,7 +59,7 @@ describe('churn alerts (answer 1047)', () => {
   });
 
   it('the thresholds come from the settings', () => {
-    const strict = { 'cs.alert.health_below': 81, 'cs.alert.admin_idle_days': 7 };
+    const strict = { 'cs.alert.health_below': 81, 'cs.alert.admin_idle_days': 7, 'cs.snapshot.keep_days': 400 };
     expect(alertsFor({ health: 80, adminLastSignIn: ago(8) }, strict, now)).toEqual(['Health score below 81', 'No System Admin sign-in for 8 days']);
   });
 });
@@ -72,5 +72,29 @@ describe('the one health score (Support desk panel and the console list)', () =>
     expect(bad.health).toBe(0);
     expect(bad.factors).toEqual(['Billing or account is not in good standing', 'No admin sign-in for 30 days', '4 open tickets', 'Low ratings', 'More detractors than promoters']);
     expect(tenantHealth({ lifecycle: 'trial', billingStatus: 'active', adminLastSignIn: now, open: 3, csat: 3.5, nps: 0 }, now)).toEqual({ health: 80, factors: ['In trial'] });
+  });
+});
+
+// Answer 1082 (1165): the 30-day change and the drawn bands.
+describe('health history', () => {
+  it('the 30-day change compares with the snapshot of 30 India days before, across a month end and a short month', () => {
+    // 1 Mar 2027 less 30 days is 30 Jan 2027 (February has 28 days).
+    expect(dayPlus('2027-03-01', -30)).toBe('2027-01-30');
+    expect(thirtyDayChange('2027-03-01', 62, [{ day: '2027-01-30', score: 70 }, { day: '2027-01-31', score: 90 }])).toBe(-8);
+    // 31 Dec less 30 is 1 Dec; a later snapshot (2 Dec) is not used.
+    expect(thirtyDayChange('2026-12-31', 55, [{ day: '2026-12-01', score: 40 }, { day: '2026-12-02', score: 99 }])).toBe(15);
+    // A missed night uses the snapshot before it; none at all gives no change.
+    expect(thirtyDayChange('2026-12-31', 55, [{ day: '2026-11-28', score: 50 }])).toBe(5);
+    expect(thirtyDayChange('2026-12-31', 55, [{ day: '2026-12-15', score: 50 }])).toBeNull();
+  });
+
+  it('the India day turns at midnight IST', () => {
+    expect(istDay(new Date('2026-11-30T18:29:00Z'))).toBe('2026-11-30');
+    expect(istDay(new Date('2026-11-30T18:30:00Z'))).toBe('2026-12-01');
+  });
+
+  it('bands and churn risk follow the drawn thresholds', () => {
+    expect([bandOf(70), bandOf(69), bandOf(45), bandOf(44)]).toEqual(['healthy', 'watch', 'watch', 'at_risk']);
+    expect(CHURN_OF.at_risk).toBe('high');
   });
 });
