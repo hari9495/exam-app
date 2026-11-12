@@ -663,6 +663,8 @@ approver for payroll settings; approval policies per request type; and the not-b
   "Pre-fill from work tools" section of /yx/settings/projects, the Projects P-1 page. Only the settings page files
   changed (`projects-live.ts` and the page): the switch is read and saved through /org/settings with HR's settings key,
   locked without it, and left out for someone who cannot read the company settings. The projects API is untouched.
+  Since the S-3 merge, Projects P-3 owns this switch in the projects settings API, so the page's separate /org/settings
+  path was taken out again (both had been merged; the page now has one way to read and save it, the P-3 one).
   Every hidden Time & Leave setting still has a field (39 on the Time & Leave pages, 1 on Projects; kit test).
 - **1485, leave admins:** HR's leave admins (`leave.settings.manage`, the key that opens Time › Leave types & policies)
   open and change the leave pages (3.6 Leave types, 3.8 Holiday calendars, 3.9 Leave year): `PUT/DELETE org/settings`
@@ -751,6 +753,27 @@ approver for payroll settings; approval policies per request type; and the not-b
       *Suggested: build the company audit log with 1326 (change history), readable with audit.view.*
 1564. **Retirement age per grade.** Retirement age can differ per employment type and grade (set on Company rules
       today). *Suggested: keep it there until S-7, as 1561.*
+
+## 1522, 1523 and the second-factor state as built (branch `feat/yukthix-settings-s4`, own commits)
+
+- **1522, who is told:** when a payroll setting change waits for a second person, each other active holder of HR's
+  settings key (System Admins, profiles with `org.settings.manage`, role grants in force) gets a bell notice and an
+  email (`settings.change.waiting`, linking to the page); the person who asked never does. When it is approved or
+  rejected, the person who asked is told (`settings.change.decided`); a withdrawal is their own act, so no notice. Both
+  types are in the notification catalogue, so each person's email choices apply (`SettingChangeNoticesService`).
+- **1523, lapsing:** a new company setting "A payroll setting change nobody decides lapses after (days)"
+  (`payroll.settings.lapse_days`: 7, 14, 21, 30; default 14) on 4.3 Payroll policies, itself a payroll setting (a second
+  person approves its change). The nightly sweep `settings-change-lapse` (02:00 IST) lapses a change still waiting more
+  than N IST days after it was asked: status `lapsed` (migration `202617z0000142`; the database checks that a lapsed
+  change has no person deciding it), nothing changes, audited as the system (`org.setting.change_lapsed`, with the
+  setting value) and the person who asked is told. A rerun finds nothing new.
+- **The second-factor state (walk of S-3):** on the Time & Leave, Payroll and People settings pages, the API's
+  MFA-required 403 now shows "Add a passkey or an authenticator app to open this page" with Set it up (My security),
+  as the top banner says; a real failure still says "We couldn't load ..." with Retry.
+- **Tests:** API e2e `settings-notices` (each other holder gets one notice and one email, the asker and payroll set-up
+  none; the asker is told approved and rejected; a change lapses at 15 days but not at 14, audited as the system, the
+  asker told, a rerun lapses nothing more and the lapsed change cannot be approved; at 7 days a change of 8 days
+  lapses). Kit `settings-mfa-state` and web `yx-settings-payroll` (the MFA state and a real failure).
 
 ## 7. Build plan (slices, max 3 builders at once)
 
