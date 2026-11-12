@@ -79,8 +79,9 @@ export const TIME_SETTINGS_PAGES: [string, string, string][] = [
   ['3.6', 'Leave types', 'leave-types'],
   ['3.8', 'Holiday calendars', 'holiday-calendars'],
   ['3.9', 'Leave year', 'leave-year'],
-  ['3.11', 'Projects & timesheets', 'projects-and-timesheets'],
 ];
+/** Answer 1485: HR's leave admins (leave.settings.manage) also open and change the leave pages; the rest stay with HR's settings key. */
+export const LEAVE_SETTINGS_PAGES: readonly string[] = ['3.6', '3.8', '3.9'];
 const timePage = (id: string) => TIME_SETTINGS_PAGES.filter((p) => p[0] === id).map((p) => `${SETTINGS_HOME}/time/${p[2]}`);
 
 export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
@@ -493,7 +494,7 @@ export function buildNav(n: NavInput): NavArea[] {
       // 3.11 Projects & timesheets: where Projects is switched on, so it shows while Projects is off (answer 1401).
       ...sec('Time & Leave', [
         // S-2 (answer 1323): the Time & Leave settings pages; HR's settings key changes them. 3.11 is the Projects page.
-        ...when(settingsAdmin, ...TIME_SETTINGS_PAGES.filter(([id]) => id !== '3.11').map(([id, label, slug]) => L(`time-settings-${id}`, label, `${SETTINGS_HOME}/time/${slug}`))),
+        ...TIME_SETTINGS_PAGES.filter(([id]) => settingsAdmin || (has('leave.settings.manage') && LEAVE_SETTINGS_PAGES.includes(id))).map(([id, label, slug]) => L(`time-settings-${id}`, label, `${SETTINGS_HOME}/time/${slug}`)),
         ...when(!support && any('org.settings.manage', 'projects.manage'), L('project-settings', 'Projects & timesheets', '/yx/settings/projects')),
         ...when(!support && any('visitors.settings.manage', 'org.settings.manage', 'visitors.desk.manage'), L('visitor-settings', 'Visitors', '/yx/settings/visitors')),
       ]),

@@ -7,6 +7,7 @@ import { SETTINGS_GROUPS } from './settings-groups';
 import { TIME_SETTINGS, timeSettingsChanges, timeSettingsPage, type TimeSettingsData } from './time-settings-live';
 import { TIME_REGISTRY_SAMPLE } from './time-settings-sample';
 import { allSettings } from './settings-logic';
+import { PREFILL_FIELD, prefillChange, projectSettingsPage } from './projects-live';
 
 // Settings S-2 (answers 1323, 1324): the drawn Time & Leave pages with the company's settings. Positive and negative.
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -24,8 +25,16 @@ const show = (id: string, over: Partial<LiveSettingsPage> = {}, data = DATA) =>
 describe('Time & Leave settings (S-2): every hidden setting has a field', () => {
   it('the 40 settings that had no screen each sit on exactly one drawn page, with the starter value marked', () => {
     const keys = Object.values(TIME_SETTINGS).flatMap((p) => p.settings.map((s) => s.key));
-    expect(keys).toHaveLength(40);
-    expect(new Set(keys).size).toBe(40);
+    // 39 here; 3.11's one (timesheet.tool_suggestions) is on the Projects settings page, the one live 3.11.
+    expect(keys).toHaveLength(39);
+    expect(new Set(keys).size).toBe(39);
+    expect(TIME_SETTINGS['3.11']).toBeUndefined();
+    const projects = projectSettingsPage(pageOf('3.11'), { canEdit: true, values: {}, defaults: {}, choices: {}, lastChange: null }, { value: 'off', default: 'off', canEdit: true });
+    expect(allSettings(projects).find((d) => d.key === PREFILL_FIELD)).toMatchObject({ kind: 'toggle', value: false, starter: true });
+    expect(allSettings(projectSettingsPage(pageOf('3.11'), { canEdit: true, values: {}, defaults: {}, choices: {}, lastChange: null }, { value: 'on', default: 'off', canEdit: false })).find((d) => d.key === PREFILL_FIELD)).toMatchObject({ value: true, starter: false, locked: expect.any(String) });
+    expect(prefillChange({ [PREFILL_FIELD]: true })).toEqual({ key: 'timesheet.tool_suggestions', value: 'on', scopeType: 'tenant' });
+    expect(prefillChange({ 'prj.enabled': true })).toBeNull();
+    expect(Object.keys(TIME_REGISTRY_SAMPLE).filter((k) => !keys.includes(k))).toEqual(['timesheet.tool_suggestions']);
     for (const [id, spec] of Object.entries(TIME_SETTINGS)) {
       const fields = allSettings(timeSettingsPage(pageOf(id), DATA, ALL_LINKS));
       for (const s of spec.settings) {

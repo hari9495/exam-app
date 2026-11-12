@@ -34,6 +34,16 @@ const HOURS = Array.from({ length: 38 }, (_, i) => `${String(5 + Math.floor(i / 
 // Answer 791: visitor hours over the whole day; "until" may be midnight (kept as 24:00, shown 00:00).
 const DAY_HOURS = Array.from({ length: 48 }, (_, i) => `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`);
 
+/**
+ * Answer 1485: the settings on the leave pages (Settings 3.6 Leave types, 3.8 Holiday calendars, 3.9 Leave year) may also
+ * be changed by HR's leave admins (leave.settings.manage); attendance and roster limits stay with org.settings.manage.
+ */
+export const LEAVE_PAGE_KEYS: ReadonlySet<string> = new Set([
+  'leave.notice_days.default', 'leave.on_behalf.approval', 'leave.send_back', 'leave.encashment.window', 'leave.year_end.encash_excess',
+  'leave.liability.divisor', 'leave.probation.leave', 'leave.comp_off.claim_within_days', 'leave.comp_off.expiry_days', 'leave.block_leave.days',
+  'leave.optional_holiday.prorate_on_move', 'leave.year_start_month', 'leave.block_dates.mode',
+]);
+
 export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // HLP-04 (founder 3 Nov 2026): how often a published help article is checked again (YX-GRO-07). Desk set-up › Settings.
   // Help H-1 (answer 942): the Help drawer's "This page" tab (help articles tagged with the page).

@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { SETTINGS_GROUPS, SettingsPageScreen, TIME_SETTINGS, timeSettingsChanges, timeSettingsPage, type RegistryDef, type TimeSettingsData } from '@yukthix/ui/hiring';
 import { loadState, useOrg, useOrgWrite, useYxPermissions } from '../../../../../../lib/yx-org';
 import { useYxNav } from '../../../../../../lib/yx-shell';
+import { LEAVE_SETTINGS_PAGES } from '../../../../../../lib/yx-nav';
 import { groupSlug } from '../../../../../../lib/yx-settings-home';
 
 // Settings › Time & Leave pages (S-2, answers 1323 and 1324): the drawn page with the company's settings from the
@@ -22,7 +23,6 @@ const LINKS: Record<string, string> = {
   'leave.year_end_wizard': '/yx/time/setup/year-end',
   'holiday.calendar_editor': '/yx/time/setup/holidays',
   'holiday.feed': '/yx/time/setup/holiday-feeds',
-  'prj.projects': '/yx/time/shifts-setup',
 };
 type Overview = { registry: Record<string, RegistryDef>; limits: TimeSettingsData['limits']; overrides: { key: string; scopeType: string; validFrom: string | null; value: unknown }[] };
 
@@ -43,8 +43,8 @@ export default function YxTimeSettingsPage() {
     for (const o of d.overrides)
       if (o.scopeType === 'tenant' && !o.validFrom) company[o.key] = String(o.value);
       else if (o.scopeType !== 'tenant') elsewhere[o.key] = (elsewhere[o.key] ?? 0) + 1;
-    return { registry: d.registry, limits: d.limits ?? {}, company, elsewhere, canEdit: perms.has('org.settings.manage'), canGuard: perms.has('access.role.manage'), lastChange: null };
-  }, [settings.data, perms]);
+    return { registry: d.registry, limits: d.limits ?? {}, company, elsewhere, canEdit: perms.has('org.settings.manage') || (perms.has('leave.settings.manage') && LEAVE_SETTINGS_PAGES.includes(design?.id ?? '')), canGuard: perms.has('access.role.manage'), lastChange: null };
+  }, [settings.data, perms, design]);
   const links = useMemo(() => new Set(Object.entries(LINKS).filter(([, href]) => mine.has(href)).map(([k]) => k)), [mine]);
   if (!design) return <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="3.1" state="no-access" />;
   const page = data ? timeSettingsPage(design, data, links) : design;

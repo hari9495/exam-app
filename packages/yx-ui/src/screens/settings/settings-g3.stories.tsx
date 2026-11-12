@@ -41,9 +41,9 @@ export const P3_11_ReadOnly: S = { name: '3.11 Projects & timesheets · read-onl
 export const P3_12: S = { name: '3.12 Visitors', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="3.12" /> };
 export const P3_12_ReadOnly: S = { name: '3.12 Visitors · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="3.12" readOnly /> };
 
-// S-2 (answers 1323, 1324): the Time & Leave pages with the company's settings. `page` picks one (0 to 7); a few values
+// S-2 (answers 1323, 1324): the Time & Leave pages with the company's settings. `page` picks one (0 to 6); a few values
 // changed from the starter default, one value elsewhere, and the legal limits from the country's rule set.
-const TIME_PAGES = ['3.2', '3.3', '3.4', '3.5', '3.6', '3.8', '3.9', '3.11'];
+const TIME_PAGES = ['3.2', '3.3', '3.4', '3.5', '3.6', '3.8', '3.9'];
 const TIME_DATA: TimeSettingsData = {
   registry: TIME_REGISTRY_SAMPLE,
   company: { 'attendance.wfh_monthly_limit': '6', 'leave.notice_days.default': '3', 'roster.max_weekly_hours': '45' },

@@ -352,11 +352,11 @@ File: `packages/yx-ui/src/screens/settings/settings-g3.stories.tsx`.
 | P3_9_ReadOnly · 3.9 Leave year · read-only | live (gap) | read-only: without HR's settings key (org.settings.manage) the page is View only; a guarded setting (phone binding, kiosk PIN tries) also needs the access key |
 | P3_10 · 3.10 Periods & locks | live (gap) | /yx/time/periods (`PeriodsScreen`: lock, unlock, freeze); `payroll.late_request_max_days` has no screen |
 | P3_10_ReadOnly · 3.10 Periods & locks · read-only | live (gap) | read-only: unsure |
-| P3_11 · 3.11 Projects & timesheets | live (gap) | S-2: /yx/settings/time/projects-and-timesheets: calendars and work tools for timesheet suggestions; link to project codes. Gap: approvals, utilisation and budgets |
-| P3_11_ReadOnly · 3.11 Projects & timesheets · read-only | live (gap) | read-only: without HR's settings key (org.settings.manage) the page is View only; a guarded setting (phone binding, kiosk PIN tries) also needs the access key |
+| P3_11 · 3.11 Projects & timesheets | live (gap) | /yx/settings/projects (Projects P-1, `projectSettingsPage`) is the one 3.11: the Projects switch, the booking rule, the burn alerts and, since the S-2 follow-up, "Timesheet pre-fill" (`timesheet.tool_suggestions`, off by default, answer 1409; read and saved through /org/settings with HR's settings key); link to Projects. Gap: approvals, utilisation target and the work tool connectors |
+| P3_11_ReadOnly · 3.11 Projects & timesheets · read-only | live (gap) | read-only: Projects managers read it (projects API); the pre-fill switch is locked without HR's settings key and hidden from someone who cannot read the company settings |
 | P3_12 · 3.12 Visitors | live (gap) | visitors map: /yx/settings/visitors renders this designed page (`SettingsPageScreen` pageId 3.12, `GET/PUT visitors/settings`); its gap is listed there |
 | P3_12_ReadOnly · 3.12 Visitors · read-only | live (gap) | visitors map: reception reads it |
-| TimeLive · Time & Leave page · live with the company settings (S-2) | live | the eight S-2 pages with sample company values (`page` 0 to 7): Starter default chips, legal maximums and minimums naming the Act, the drawn editor links |
+| TimeLive · Time & Leave page · live with the company settings (S-2) | live | the seven S-2 pages with sample company values (`page` 0 to 6): Starter default chips, legal maximums and minimums naming the Act, the drawn editor links |
 
 #### Group 4 · Payroll & Statutory
 
@@ -617,7 +617,7 @@ approver for payroll settings; approval policies per request type; and the not-b
   no scroll.
 - **The Time & Leave pages, live:** /yx/settings/time/<page> renders the drawn `SettingsPageScreen` for 3.2 Check-in &
   devices, 3.3 Shifts & patterns, 3.4 Weekly offs, 3.5 Late & regularisation, 3.6 Leave types, 3.8 Holiday calendars,
-  3.9 Leave year and 3.11 Projects & timesheets (`timeSettingsPage`, `TIME_SETTINGS`). Each is the front door of its page
+  3.9 Leave year (`timeSettingsPage`, `TIME_SETTINGS`; 3.11 is the Projects settings page, see the follow-up below). Each is the front door of its page
   (Settings home, group page and search lead there first) and keeps the drawn links to the live editors (shift editor,
   roster, leave types, year end, holidays, devices, geofences, projects), shown when the viewer's menu has them.
 - **1323, every hidden setting has a field:** the 40 leave, attendance, roster, kiosk and field settings that worked with
@@ -658,6 +658,20 @@ approver for payroll settings; approval policies per request type; and the not-b
 1485. **Who changes Time & Leave settings.** Today HR's company settings key; Time admins (leave settings key) can open
       the editors but not these settings. *Suggested: let the leave settings key change the leave settings (3.6, 3.8,
       3.9) and keep attendance and roster limits with HR.*
+
+## S-2 follow-ups (answers 1409, 1485; branch `feat/yukthix-settings-s3`, first commit)
+
+- **One 3.11:** /yx/settings/time/projects-and-timesheets is gone (3.11 left `TIME_SETTINGS` and `TIME_SETTINGS_PAGES`).
+  Its one setting, "Timesheet pre-fill" (`timesheet.tool_suggestions`, off by default, answer 1409), is now in the drawn
+  "Pre-fill from work tools" section of /yx/settings/projects, the Projects P-1 page. Only the settings page files
+  changed (`projects-live.ts` and the page): the switch is read and saved through /org/settings with HR's settings key,
+  locked without it, and left out for someone who cannot read the company settings. The projects API is untouched.
+  Every hidden Time & Leave setting still has a field (39 on the Time & Leave pages, 1 on Projects; kit test).
+- **1485, leave admins:** HR's leave admins (`leave.settings.manage`, the key that opens Time › Leave types & policies)
+  open and change the leave pages (3.6 Leave types, 3.8 Holiday calendars, 3.9 Leave year): `PUT/DELETE org/settings`
+  accept it for those 13 settings (`LEAVE_PAGE_KEYS`, same legal-entity reach), `GET org/settings` lets them read.
+  Attendance and roster limits (3.2 to 3.5) stay with HR's company settings key. Tested both ways: a leave admin saves
+  Leave year (audited as them) and is refused Weekly offs (403); the menu offers them only the three leave pages.
 
 ## 7. Build plan (slices, max 3 builders at once)
 

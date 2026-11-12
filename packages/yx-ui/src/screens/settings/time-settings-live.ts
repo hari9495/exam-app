@@ -3,6 +3,7 @@
 // default" until HR changes it; a legal floor or ceiling comes from the country's rule set and blocks saving, naming the
 // Act. The drawn links to the live editors (shifts, leave types, holidays...) stay; drawn fields with no setting behind
 // them yet are left out until their slice. Values are read from GET /org/settings and saved with PUT /org/settings.
+// 3.11's one hidden setting (timesheet.tool_suggestions) is on the Projects settings page (projects-live.ts).
 import type { SettingDef, SettingsPageDef, SettingValue } from './settings-types';
 
 /** One registry entry as GET /org/settings sends it. */
@@ -96,7 +97,6 @@ export const TIME_SETTINGS: Record<string, { links: string[]; settings: Place[] 
       { section: 'Blackout dates', key: 'leave.block_dates.mode', synonyms: ['blackout'] },
     ],
   },
-  '3.11': { links: ['prj.projects'], settings: [{ section: 'Pre-fill from work tools', key: 'timesheet.tool_suggestions', synonyms: ['calendar', 'jira'] }] },
 };
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];

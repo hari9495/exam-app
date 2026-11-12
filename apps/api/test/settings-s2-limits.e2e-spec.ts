@@ -85,6 +85,16 @@ describe('Settings S-2: Time & Leave settings and legal limits (1323, 1324)', ()
     expect(meta.find((m) => m.key === 'leave.comp_off.expiry_days')).toMatchObject({ to: '90' });
   });
 
+  // Answer 1485: HR's leave admins change the leave pages' settings; attendance and roster limits stay with HR's settings key.
+  it('a leave admin saves Leave year (audited as them) but not Weekly offs', async () => {
+    await api('time', 'get', '/org/settings').expect(200);
+    await put('time', 'leave.year_start_month', '4').expect(200);
+    await put('time', 'leave.block_dates.mode', 'warn').expect(200);
+    expect((await put('time', 'roster.min_weekly_offs', '2').expect(403)).body.message).toMatch(/org\.settings\.manage/);
+    const a = await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.auditLog.findFirst({ where: { organizationId: orgId, action: 'org.setting.changed', actorUserId: users.time }, orderBy: { createdAt: 'asc' } }));
+    expect(JSON.parse(a!.metadataJson ?? '{}')).toMatchObject({ key: 'leave.year_start_month', to: '4' });
+  });
+
   it('negative: a Time admin without the company settings key, or anyone else, is refused', async () => {
     await put('time', 'roster.max_weekly_hours', '40').expect(403);
     await put('plain', 'leave.comp_off.expiry_days', '30').expect(403);

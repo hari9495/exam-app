@@ -83,7 +83,7 @@ export type { SettingsGroupDef } from '../../settings/settings-types';
 // and Settings 3.11 Projects & timesheets.
 export { ProjectsListScreen, ProjectWorkspaceScreen, type LiveProjectsList, type LiveProjectWorkspace } from '../projects';
 export type { AllocationInput as ProjectAllocationInput, LiveProjectDetail, LiveProjectRow, MilestoneInput as ProjectMilestoneInput, ProjectChoices, ProjectInput, ProjectStatus, TaskInput as ProjectTaskInput } from '../projects-live';
-export { projectSettingsChanges, projectSettingsPage, type ProjectSettingsData } from '../../settings/projects-live';
+export { PREFILL_KEY, prefillChange, projectSettingsChanges, projectSettingsPage, type PrefillSetting, type ProjectSettingsData } from '../../settings/projects-live';
 // Settings S-2 (answers 1323, 1324): the Time & Leave pages with the company's settings.
 export { TIME_SETTINGS, timeSettingsChanges, timeSettingsPage, type RegistryDef, type TimeSettingsData } from '../../settings/time-settings-live';
 export { TIME_REGISTRY_SAMPLE } from '../../settings/time-settings-sample';
