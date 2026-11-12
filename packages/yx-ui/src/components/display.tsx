@@ -105,11 +105,12 @@ export function PersonLabel({ name, src, secondary, size = 24 }: { name: string;
 
 const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 /** A date with its weekday as a separate small muted label: "Mon" beside (or, stacked, above) "26 Oct 2026". Never merge the two into one string. */
-export function DayDate({ date, stacked = false }: { date: Date; stacked?: boolean }) {
+/** `year={false}` where the year is already shown nearby (a week's columns under its date range). */
+export function DayDate({ date, stacked = false, year = true }: { date: Date; stacked?: boolean; year?: boolean }) {
   return (
     <span className={cx('yx-daydate', stacked && 'yx-daydate--stacked')}>
       <span className="yx-daydate__wd">{WEEKDAY[date.getDay()]}</span>{' '}
-      <span>{formatDate(date)}</span>
+      <span>{year ? formatDate(date) : formatDate(date).replace(/ \d{4}$/, '')}</span>
     </span>
   );
 }

@@ -72,3 +72,21 @@ describe('the timesheet note (1731 to 1736)', () => {
     expect(screen.getByText('Built the checkout page.')).toBeInTheDocument();
   });
 });
+
+// Founder walk (13 Nov 2026): at 1278 x 635 the grid fits, Total in view. jsdom has no layout, so these hold the parts
+// that make it fit: day headers without the year (the week's range above has it) and one-line day labels with a tooltip.
+describe('the timesheet grid fits a laptop screen', () => {
+  it('day headers show the day and month, not the year; the week range keeps the year', () => {
+    show(sheet(MY_TIMESHEET));
+    const heads = screen.getAllByRole('columnheader').map((h) => h.textContent ?? '');
+    const days = heads.filter((t) => /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)/.test(t));
+    expect(days).toHaveLength(7);
+    expect(days.some((t) => /\d{4}/.test(t))).toBe(false);
+    expect(screen.getAllByText(/\d{4} – \d{1,2} \w{3} \d{4}/).length).toBeGreaterThan(0);
+  });
+
+  it('negative: a long holiday name keeps its full text in the tooltip, never cut away', () => {
+    show(sheet(MY_TIMESHEET));
+    for (const el of document.querySelectorAll('.yx-ts__dayexp')) expect(el.getAttribute('title')).toBe(el.textContent);
+  });
+});
