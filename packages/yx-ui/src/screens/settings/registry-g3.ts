@@ -1110,6 +1110,7 @@ const projects: SettingsPageDef = {
     {
       title: 'Utilisation and budgets',
       settings: [
+        { key: 'prj.small_team', label: 'Hide per-person figures from the project manager for teams smaller than', kind: 'select', value: '5', options: ['2', '3', '4', '5', '6', '8', '10'], optionLabels: { '2': '2 people', '3': '3 people', '4': '4 people', '5': '5 people', '6': '6 people', '8': '8 people', '10': '10 people' }, starter: true, helper: 'HR (Projects manage or resource) still sees them.' },
         { key: 'prj.utilisation_target', label: 'Utilisation target for billable roles', kind: 'percent', value: 75, starter: true, synonyms: ['utilization', 'billability'] },
         { key: 'prj.burn_alert_1', label: 'First budget alert at', kind: 'percent', value: 80, starter: true, synonyms: ['burn alert', 'budget overrun'] },
         { key: 'prj.burn_alert_2', label: 'Second budget alert at', kind: 'percent', value: 100, starter: true },

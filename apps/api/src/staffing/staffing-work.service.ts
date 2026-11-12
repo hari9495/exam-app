@@ -387,12 +387,15 @@ export class StaffingWorkService {
       const clients = new Map((await tx.staffingClient.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.lastClientId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } })).map((x) => [x.id, x.name]));
       const max = Number(await settingFor(tx, c, 'staffing.bench.max_days', { legalEntityId: '' }));
       const today = todayIst();
+      // Answer 1417: the one bench shows each person's project allocation today (partly allocated: 1 to 99%).
+      const allocs = await tx.projectAllocation.findMany({ where: { organizationId: org, tentative: false, employeeId: { in: rows.map((r) => r.employeeId) }, fromOn: { lte: new Date(`${today}T00:00:00Z`) }, OR: [{ toOn: null }, { toOn: { gte: new Date(`${today}T00:00:00Z`) } }] }, select: { employeeId: true, percent: true } });
+      const allocated = (eid: string) => Math.min(100, allocs.filter((a) => a.employeeId === eid).reduce((t, a) => t + a.percent, 0));
       return {
         canManage: a.manage && !a.actingForOther,
         policy: { maxDays: max, payPct: Number(await settingFor(tx, c, 'staffing.bench.pay_pct', { legalEntityId: '' })), after: await settingFor(tx, c, 'staffing.bench.after', { legalEntityId: '' }) },
         rows: rows.map((r) => {
           const days = Math.max(0, daysBetween(iso(r.sinceOn)!, today));
-          return { id: r.id, employeeId: r.employeeId, person: n.emp.get(r.employeeId) ?? 'Employee', sinceOn: iso(r.sinceOn), days, left: max - days, overPolicy: days >= max, lastClient: r.lastClientId ? (clients.get(r.lastClientId) ?? null) : null, note: r.note };
+          return { id: r.id, employeeId: r.employeeId, person: n.emp.get(r.employeeId) ?? 'Employee', sinceOn: iso(r.sinceOn), days, left: max - days, overPolicy: days >= max, lastClient: r.lastClientId ? (clients.get(r.lastClientId) ?? null) : null, note: r.note, allocatedPct: allocated(r.employeeId) };
         }),
       };
     });

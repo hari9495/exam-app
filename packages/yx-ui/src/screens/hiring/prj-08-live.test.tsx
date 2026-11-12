@@ -6,7 +6,7 @@ import { MappingRulesScreen, type LiveMappingRules } from './projects-billing';
 import { ProjectDrawer } from './projects-drawers';
 import { LIVE_PROJECT_CHOICES } from './projects-live-fixtures';
 import { LIVE_MAPPING_DATA, LIVE_MAPPING_TEST, ruleProblems } from './mapping-live';
-import { projectSettingsChanges, projectSettingsPage } from '../settings/projects-live';
+import { prefillChange, projectSettingsChanges, projectSettingsPage } from '../settings/projects-live';
 import { SETTINGS_GROUPS } from '../settings/settings-groups';
 
 // Projects P-3 (PRJ-08, answers 1409, 1410): the designed mapping rules page with `live`, positive and negative.
@@ -103,13 +103,16 @@ describe('Settings 3.11: pre-fill switch and the rules link (P-3)', () => {
   const design = SETTINGS_GROUPS.flatMap((g) => g.pages).find((p) => p.id === '3.11')!;
   const v = { 'projects.enabled': 'on', 'projects.booking.allocated_only': 'on', 'projects.burn.warn_pct': '80', 'projects.burn.over_pct': '100', 'timesheet.tool_suggestions': 'off' };
   it('pre-fill shows off (its default, 1409) with no "Wave 5" note; the mapping rules link once Projects is on', () => {
-    const all = projectSettingsPage(design, { canEdit: true, values: v, defaults: v, choices: {}, lastChange: null }).sections.flatMap((s) => s.settings);
+    // Settings S-3: the pre-fill switch is HR's company setting, passed on its own.
+    const all = projectSettingsPage(design, { canEdit: true, values: v, defaults: v, choices: {}, lastChange: null }, { value: 'off', default: 'off', canEdit: true }).sections.flatMap((s) => s.settings);
     const prefill = all.find((x) => x.key === 'prj.prefill_enabled')!;
     expect(prefill).toMatchObject({ value: false, starter: true, availability: undefined });
     expect(all.map((x) => x.key)).toContain('prj.mapping_rules');
     const off = projectSettingsPage(design, { canEdit: true, values: { ...v, 'projects.enabled': 'off' }, defaults: v, choices: {}, lastChange: null }).sections.flatMap((s) => s.settings);
     expect(off.map((x) => x.key)).not.toContain('prj.mapping_rules');
-    expect(projectSettingsChanges({ 'prj.prefill_enabled': true })).toEqual([{ key: 'timesheet.tool_suggestions', value: 'on' }]);
+    // Settings S-3: pre-fill saves through /org/settings, never with the Projects settings.
+    expect(projectSettingsChanges({ 'prj.prefill_enabled': true })).toEqual([]);
+    expect(prefillChange({ 'prj.prefill_enabled': true })).toEqual({ key: 'timesheet.tool_suggestions', value: 'on', scopeType: 'tenant' });
   });
 });
 

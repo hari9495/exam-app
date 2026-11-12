@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -48,6 +48,13 @@ export class ProjectsController {
   @Post()
   create(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: ProjectInputDto) {
     return this.projects.create(ctx, this.user(req), dto);
+  }
+
+  /** Answer 1541: PRJ-01's Timesheets tab for a week. */
+  @Get(':id/timesheets')
+  timesheets(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Query('week') week: string) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(week ?? '')) throw new BadRequestException('Give the week as YYYY-MM-DD (a Monday).');
+    return this.projects.timesheets(ctx, this.user(req), id, week);
   }
 
   @Get(':id')

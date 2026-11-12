@@ -103,3 +103,27 @@ export const FeeGuarantee: S = {
   name: 'Placement fee · left inside the guarantee',
   render: () => <PlacementFee canManage person="Aravind Kumar" fee={{ ...FEE, hiredOn: '2026-09-01', ctc: '1800000.00', feeInvoice: { id: 'f1', number: 'KF/TN/26-27/0201', status: 'issued', total: '176929.20' }, leftOn: '2026-10-01', guarantee: 'credit' }} />,
 };
+
+// Projects P-4 (answer 1417): the one bench shows project allocation, and who is partly allocated.
+export const LiveBenchAllocated: S = {
+  name: 'Live · bench with project allocation (partly allocated)',
+  render: () => (
+    <BenchBoardScreen
+      live={{
+        state: 'ready',
+        onRetry: () => {},
+        policy: { maxDays: 30, payPct: 50, after: 'review' },
+        canManage: true,
+        onAdd: () => {},
+        onRemove: async () => {},
+        onSubmit: () => {},
+        onPlacements: () => {},
+        rows: [
+          { id: 'b1', employeeId: 'e1', person: 'Arjun Das', sinceOn: '2026-10-01', days: 42, left: -12, overPolicy: true, lastClient: 'Nilgiri Retail', note: null, allocatedPct: 0 },
+          { id: 'b2', employeeId: 'e2', person: 'Sana Nizami', sinceOn: '2026-10-26', days: 17, left: 13, overPolicy: false, lastClient: null, note: 'Helping INT-ERP part time', allocatedPct: 50 },
+          { id: 'b3', employeeId: 'e3', person: 'Meera Iyer', sinceOn: '2026-11-09', days: 3, left: 27, overPolicy: false, lastClient: 'Coromandel', note: null, allocatedPct: 100 },
+        ],
+      }}
+    />
+  ),
+};

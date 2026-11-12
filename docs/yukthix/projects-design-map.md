@@ -89,12 +89,12 @@ named in the note) · **wire design** (the API exists and the screen is not wire
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Projects and timesheets (PRJ-01, PRJ-02, PRJ-08) | 3 | 54 | 1 | 0 | 4 | 1 | 60 |
-| B. Capacity and bench (PRJ-03, PRJ-07) | 2 | 0 | 1 | 0 | 9 | 0 | 10 |
+| A. Projects and timesheets (PRJ-01, PRJ-02, PRJ-08) | 3 | 57 | 1 | 0 | 3 | 1 | 62 |
+| B. Capacity and bench (PRJ-03, PRJ-07) | 2 | 20 | 0 | 0 | 0 | 0 | 20 |
 | C. Cost and billing (PRJ-04 to PRJ-06) | 3 | 0 | 5 | 0 | 11 | 0 | 16 |
-| **All A-C** | **8** | **54** | **7** | **0** | **24** | **1** | **86** |
+| **All A-C** | **8** | **77** | **6** | **0** | **14** | **1** | **98** |
 
-Counted by script on 12 Nov 2026 on `docs/yukthix-projects-map` (the script is in the appendix; it prints "ok"). Recounted on 12 Nov 2026 on `feat/yukthix-projects-p1` after P-1: PRJ-01 has 30 stories (16 live-state stories added), 68 in all. Recounted after P-3 on `feat/yukthix-projects-p3`: PRJ-08 has 15 (10 live-state stories added), 78 in all. After the walk fixes and P-2 (`feat/yukthix-projects-p2`): PRJ-02 has 12 (5 live-state stories added), 86 in all. There
+Counted by script on 12 Nov 2026 on `docs/yukthix-projects-map` (the script is in the appendix; it prints "ok"). Recounted on 12 Nov 2026 on `feat/yukthix-projects-p1` after P-1: PRJ-01 has 30 stories (16 live-state stories added), 68 in all. Recounted after P-3 on `feat/yukthix-projects-p3`: PRJ-08 has 15 (10 live-state stories added), 78 in all. After the walk fixes and P-2 (`feat/yukthix-projects-p2`): PRJ-02 has 12 (5 live-state stories added), 86 in all. After P-4 (`feat/yukthix-projects-p4`): PRJ-03 8, PRJ-07 12, PRJ-01 and PRJ-02 one more each, 98 in all. There
 are 52 stories in 8 files whose title starts `Screens/Projects/`: `packages/yx-ui/src/screens/hiring/prj-01-projects`
 (14), `prj-02-timesheet-approvals` (7), `prj-03-capacity` (4), `prj-04-costing` (5), `prj-05-billing-workbench` (6),
 `prj-06-timesheet-correction` (5), `prj-07-bench-requests` (6), `prj-08-mapping-rules` (5), all `.stories.tsx`. The
@@ -138,7 +138,7 @@ screens are in `screens/hiring/projects.tsx` and `projects-billing.tsx`. One sto
 | FinanceOverview · Workspace · finance overview with margin | design only, feature not built | cost and margin come with P-4 (nightly cost job); P-1 shows the fee fact to finance only |
 | Team · Workspace · team and allocations | live | P-1: allocations add, change and end; only allocated people book time (1404) |
 | FixedFeeMilestones · Workspace · fixed fee, tasks and milestones (over budget) | live | P-1: tasks (Time activities) with used hours; milestones on fixed-fee projects, client acceptance per project (1420) |
-| Timesheets · Workspace · timesheets with attendance mismatch | design only, feature not built | P-2 |
+| Timesheets · Workspace · timesheets with attendance mismatch | live | P-4 (answer 1541): `GET /projects/:id/timesheets`, each allocated person's week on the project against the allocation, their line decisions, and the whole week against attendance (an hour or more apart is flagged; pay never changes) |
 | Billing · Workspace · billing, hours held for client approval | design only, feature not built | P-5 |
 | Expenses · Workspace · expenses | design only, feature not built | expense lines have no project yet (P-5) |
 | Closed · Workspace · closed project | live | P-1: closed status; no new time, team, tasks or milestones; reopen |
@@ -163,12 +163,13 @@ screens are in `screens/hiring/projects.tsx` and `projects-billing.tsx`. One sto
 | LiveReader · Live · Projects view only (no edits) | live | P-1: `projects.view` reads; no actions |
 | LiveLoading · Live · workspace loading | live | P-1 live state |
 | LiveError · Live · workspace error | live | P-1 live state |
+| LiveTimesheets · Live · timesheets this week, attendance check | live | P-4 live state (1541) |
 
 #### PRJ-02 · Timesheet approvals
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| ByProjectWeek · PM · grouped by project and week | live | P-2: `/yx/projects/approvals` (`TimesheetApprovalsScreen` live, `GET /time/line-approvals`): each approver sees only their own lines (the project manager; else the person's manager; else HR) and approves, reduces or rejects each with a reason the person sees (1406). The attendance mismatch note is not built (question 1541) |
+| ByProjectWeek · PM · grouped by project and week | live | P-2: `/yx/projects/approvals` (`TimesheetApprovalsScreen` live, `GET /time/line-approvals`): each approver sees only their own lines (the project manager; else the person's manager; else HR) and approves, reduces or rejects each with a reason the person sees (1406). P-4 (1541): each card flags the week against attendance |
 | ClientApproval · Client approval after PM | live | P-2: a per-project "client approves the hours" (off by default); approved lines wait for the client in the client portal, line by line, only that client's own project lines (1408). A placed worker's week counts only that client's project lines (914, `hours-from-time.ts`) |
 | BulkConfirm · Bulk approve within allocation | live | P-2: only lines within the person's allocation share (a setting, on by default, 1407); hours outside an allocation (1442) never in bulk |
 | Empty · Empty · all caught up | live | P-2 live state |
@@ -180,6 +181,7 @@ screens are in `screens/hiring/projects.tsx` and `projects-billing.tsx`. One sto
 | LiveEmpty · Live · all caught up | live | P-2 live state |
 | LiveLoading · Live · loading | live | P-2 live state |
 | LiveError · Live · error | live | P-2 live state |
+| LiveMismatch · Live · timesheet against attendance | live | P-4 live state (1541) |
 
 #### PRJ-08 · Timesheet mapping rules
 
@@ -208,21 +210,31 @@ screens are in `screens/hiring/projects.tsx` and `projects-billing.tsx`. One sto
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Hr · HR · heatmap and utilisation vs target | design only, feature not built | no allocations and no utilisation target; available hours could come from Time (expected hours, leave, holidays) |
-| Pm · PM · team of 7 | design only, feature not built | as above |
-| Suppressed · PM · small team suppressed | design only, feature not built | the rule ("fewer than 5") is not built; `suppress()` in `performance/calibration-rules.ts` is the pattern |
-| Loading · Loading | design only, feature not built | as Hr |
+| Hr · HR · heatmap and utilisation vs target | live | P-4: `/yx/projects/capacity` (`CapacityBoardScreen` live, `GET /projects/capacity`): six weeks of allocated against available hours (weekdays less holidays and leave), last month's approved billable utilisation against the company target (1411, default 75%). The skill, role and location filters wait for skills (1418, question 1581) |
+| Pm · PM · team of 7 | live | P-4: a project manager sees the people allocated to their projects |
+| Suppressed · PM · small team suppressed | live | P-4: under the company limit (1411, default 5) per-person figures are hidden from the PM; Projects manage and resource (HR's view) always see them |
+| Loading · Loading | live | P-4 live state |
+| LiveHr · Live · HR view (Projects resource) | live | P-4 live state |
+| LiveSuppressed · Live · PM, small team hidden | live | P-4 live state |
+| LiveEmpty · Live · no one allocated | live | P-4 live state |
+| LiveNoAccess · Live · no access | live | P-4 live state |
 
 #### PRJ-07 · Bench board and resource requests
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Bench · Bench board with ageing | live (gap) | **duplicate:** Staffing desk › Bench (`/yx/staffing/bench`, `BenchBoardScreen`) lists people between placements with days on bench against the bench policy. Gaps: bench comes from placements, not project allocations; no "partly allocated"; skills not shown (question 1417) |
-| Requests · Resource manager · requests | design only, feature not built | no resource requests (section 2) |
-| Match · Match · bench first, confirmed skill | design only, feature not built | no allocations and no person skills (question 1418) |
-| NoMatch · Match · no one free | design only, feature not built | as Match |
-| Raise · PM · raise request | design only, feature not built | as Requests |
-| Empty · Empty requests | design only, feature not built | as Requests |
+| Bench · Bench board with ageing | live | P-4 (1417): the one bench is Staffing desk › Bench (`BenchBoardScreen`), which now shows each person's project allocation and "Partly allocated" (kit first, HIR-17 `LiveBenchAllocated`); the live PRJ-07 page links there and draws no second bench |
+| Requests · Resource manager · requests | live | P-4: `/yx/projects/requests` (`BenchRequestsScreen` live): a project's manager (or Projects manage) raises a request with a role, a share and dates; Projects resource or manage fill it |
+| Match · Match · bench first, confirmed skill | live | P-4 (1418): people with at least the asked share free over the dates, bench first; the skill match waits for Growth's skills profile (question 1581) |
+| NoMatch · Match · no one free | live | P-4 live state |
+| Raise · PM · raise request | live | P-4: kit `RaiseDrawer` (role instead of the skills library until skills exist) |
+| Empty · Empty requests | live | P-4 live state |
+| LiveList · Live · resource requests (link to the one bench) | live | P-4 live state |
+| LiveRaise · Live · raise request drawer | live | P-4 live state |
+| LiveMatch · Live · people with free time, bench first | live | P-4 live state |
+| LiveNoMatch · Live · no one has this much free time | live | P-4 live state |
+| LivePm · Live · project manager (raises, cannot fill) | live | P-4 live state |
+| LiveEmpty · Live · no requests | live | P-4 live state |
 
 ### C. Cost and billing (PRJ-04 to PRJ-06)
 
@@ -480,3 +492,26 @@ console.log('ok');
       approvals inbox finish there as before. *Suggested: keep.*
 
 - 1541 to 1548 approved as suggested (12 Nov 2026, "ok for all"). To build: Timesheets tab and the timesheet-vs-attendance warning with P-4 (1541); show "the client approves the hours" only when the staffing desk is on (1547).
+1541 to 1548 approved as suggested (12 Nov 2026); 1541 (the Timesheets tab and the attendance check) and 1547 (the client-approval switch only with the staffing desk on) are built in P-4.
+
+## P-4 built (12 Nov 2026): questions for the founder
+
+1581. **Skills in capacity and matching.** The drawn skill, role and location filters on PRJ-03 and the "confirmed skill"
+      match on PRJ-07 need people's skills, which Growth has not built. P-4 matches on free capacity only, bench first,
+      and a request names a role in words. *Suggested: add the skill filter and match when Growth's skills profile is
+      live (1418).*
+1582. **Available hours.** An 8-hour Monday-to-Friday day less holidays and leave, not each person's shift or roster.
+      *Suggested: keep until rosters feed Projects; then use the person's expected hours.*
+1583. **Free capacity over a period.** A person's free share is 100% less every confirmed allocation that overlaps the
+      requested dates at any point (the busiest case). *Suggested: keep (never over-allocates); a day-by-day view can
+      come later.*
+1584. **Who sees capacity in full.** Projects manage and Projects resource are "HR's view" and always see per-person
+      figures; a project manager sees their own team, hidden under the small-team limit. *Suggested: keep.*
+1585. **Who fills a request.** Only Projects resource or Projects manage; a project's manager without those keys raises
+      and withdraws but cannot fill (P-1 still lets them add their own team directly on the project). *Suggested: keep;
+      say if a PM should no longer allocate directly once requests exist.*
+1586. **Bench.** "On the bench" in matching means on Staffing desk › Bench or with no allocation at all. The bench page
+      shows allocation today; the 30-day warning stays the bench policy's maximum days (1417). *Suggested: keep.*
+1587. **Attendance check.** Flagged when the week's timesheet and the worked hours from check-ins are an hour or more
+      apart; people whose attendance comes from their timesheet are never flagged. *Suggested: keep; make the hour a
+      setting only if asked.*

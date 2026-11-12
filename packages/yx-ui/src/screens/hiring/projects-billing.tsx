@@ -6,6 +6,7 @@ import { Button } from '../../components/button';
 import { Badge, PersonLabel } from '../../components/display';
 import { EmptyState, ErrorState, InlineAlert, Meter, NoAccessState, Skeleton } from '../../components/feedback';
 import { ProjectsOffState } from './projects';
+import { LiveRequestsView, type LiveRequests } from './resourcing-live';
 import { ConfirmDialog } from '../../components/overlay';
 import { useToast } from '../../components/notify';
 import { MappingRuleDrawer, type LiveMappingRule, type MappingRuleInput, type MappingRulesData, type MappingTestResult } from './mapping-live';
@@ -262,17 +263,24 @@ export interface ResourceRequest {
 }
 
 export interface BenchRequestsProps {
-  people: ResourcePerson[];
-  requests: ResourceRequest[];
-  today: Date;
-  persona: 'pm' | 'resource-manager';
+  people?: ResourcePerson[];
+  requests?: ResourceRequest[];
+  today?: Date;
+  persona?: 'pm' | 'resource-manager';
   matchFor?: string | null;
   raiseOpen?: boolean;
   defaultTab?: 'bench' | 'requests';
+  /** Projects P-4 (1417, 1418): the live page keeps only Resource requests and links to the one bench. */
+  live?: LiveRequests;
 }
 
 // PRJ-07
-export function BenchRequestsScreen({ people, requests, today, persona, matchFor = null, raiseOpen = false, defaultTab = 'bench' }: BenchRequestsProps) {
+export function BenchRequestsScreen(props: BenchRequestsProps) {
+  if (props.live) return <LiveRequestsView live={props.live} />;
+  return <DrawnBenchRequests {...props} />;
+}
+
+function DrawnBenchRequests({ people = [], requests = [], today = new Date(), persona = 'pm', matchFor = null, raiseOpen = false, defaultTab = 'bench' }: BenchRequestsProps) {
   const [match, setMatch] = useState<string | null>(matchFor);
   const [raise, setRaise] = useState(raiseOpen);
   const [confirmed, setConfirmed] = useState<string | null>(null);

@@ -1,7 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import { useParams } from 'next/navigation';
-import { ProjectWorkspaceScreen, type LiveProjectDetail, type ProjectChoices } from '@yukthix/ui/hiring';
+import { ProjectWorkspaceScreen, type LiveProjectDetail, type LiveTimesheetRow, type ProjectChoices } from '@yukthix/ui/hiring';
 import { loadState } from '../../../../../lib/yx-org';
 import { useProjects, useProjectsWrite } from '../../../../../lib/yx-projects';
 
@@ -17,6 +18,13 @@ export default function YxProjectPage() {
   const write = useProjectsWrite();
   const state = loadState(detail);
   const v = settings.data?.values;
+  // Answer 1541: the Timesheets tab, a week at a time (this week first).
+  const [week, setWeek] = useState(() => {
+    const t = new Date();
+    t.setDate(t.getDate() - ((t.getDay() + 6) % 7));
+    return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+  });
+  const ts = useProjects<{ week: string; rows: LiveTimesheetRow[] }>(detail.data ? `${p}/timesheets?week=${week}` : null);
   return (
     <ProjectWorkspaceScreen
       live={{
@@ -35,6 +43,8 @@ export default function YxProjectPage() {
         onAddTask: async (input) => void (await write('POST', `${p}/tasks`, input)),
         onChangeTask: async (tid, input) => void (await write('PUT', `${p}/tasks/${encodeURIComponent(tid)}`, input)),
         onAddMilestone: async (input) => void (await write('POST', `${p}/milestones`, input)),
+        timesheets: ts.data ?? null,
+        onTimesheetWeek: setWeek,
         onCompleteMilestone: async (mid, version) => void (await write('POST', `${p}/milestones/${encodeURIComponent(mid)}/complete`, { version })),
       }}
     />

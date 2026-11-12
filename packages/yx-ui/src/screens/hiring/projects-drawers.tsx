@@ -75,7 +75,7 @@ export function ProjectDrawer({ project, choices, finance, onClose, onSave }: { 
         {v.billingModel === 'fixed_fee' && (
           <Switch checked={v.clientAcceptsMilestones} onChange={(clientAcceptsMilestones) => set({ clientAcceptsMilestones })} label="The client accepts each milestone" description="A completed milestone then waits for the client in the client portal before it is billed." />
         )}
-        {v.clientId && (
+        {v.clientId && choices.staffingDesk && (
           <Switch checked={!!v.clientApprovesHours} onChange={(clientApprovesHours) => set({ clientApprovesHours })} label="The client approves the hours" description="After the project manager, each approved line waits for the client in the client portal. The client sees only this project's hours." />
         )}
       </FormSection>

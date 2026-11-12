@@ -310,6 +310,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // Answer 1442: 'approval' lets unallocated hours through, each line waiting for the project manager (never in bulk).
   'projects.booking.allocated_only': { label: 'Projects: only people allocated to a project book time to it', scopes: ['tenant'], dated: false, values: ['on', 'off', 'approval'], default: 'on' },
   // Answer 1407: bulk approve only weeks within the person's allocation.
+  // Answer 1411: the billable utilisation target and the small-team limit (fewer people: per-person figures hidden from the PM).
+  'projects.utilisation.target_pct': { label: 'Projects: billable utilisation target (%)', scopes: ['tenant'], dated: false, values: ['50', '60', '65', '70', '75', '80', '85', '90'], default: '75' },
+  'projects.small_team.limit': { label: 'Projects: hide per-person figures from the PM for teams smaller than', scopes: ['tenant'], dated: false, values: ['2', '3', '4', '5', '6', '8', '10'], default: '5' },
   'projects.bulk.within_allocation': { label: 'Projects: bulk approve only hours within the allocation', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'projects.burn.warn_pct': { label: 'Projects: first burn alert when a budget reaches (%)', scopes: ['tenant'], dated: false, values: ['50', '60', '70', '75', '80', '85', '90'], default: '80' },
   // Answer 1444: the billing model a new project starts with (a client is needed only for a billable model).

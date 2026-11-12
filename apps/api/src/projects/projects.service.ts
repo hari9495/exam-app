@@ -1,4 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { allocatedMinutes, attendanceMismatch } from './capacity';
+import { lineApproved } from '../time/line-rules';
+import { mondayOf } from '../time/time-rules';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { audit, CompanyContext, inCompany, Tx } from '../org-structure/org-structure.service';
@@ -22,13 +25,14 @@ import { AllocationDto, AllocationUpdateDto, MilestoneDto, ProjectInputDto, Proj
 const KEYS = ['projects.view', 'projects.manage', 'projects.finance', 'projects.resource'] as const;
 const day = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : null);
 const asDate = (s: string) => new Date(`${s}T00:00:00Z`);
+const addDaysIso = (s: string, n: number) => new Date(Date.parse(`${s}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 const num = (d: Prisma.Decimal | null | undefined) => (d == null ? null : Number(d.toString()));
 const hoursOf = (minutes: number) => Math.round((minutes / 60) * 100) / 100;
 
 export const BURN_WARN = 'projects.burn.warn_pct';
 export const BURN_OVER = 'projects.burn.over_pct';
 /** Settings 3.11 Projects & timesheets: the company settings P-1 puts behind the designed page. */
-export const PROJECT_SETTING_KEYS = ['projects.enabled', 'projects.booking.allocated_only', BURN_WARN, BURN_OVER, 'timesheet.tool_suggestions', 'projects.default_billing_model', 'projects.bulk.within_allocation'] as const;
+export const PROJECT_SETTING_KEYS = ['projects.enabled', 'projects.booking.allocated_only', BURN_WARN, BURN_OVER, 'timesheet.tool_suggestions', 'projects.default_billing_model', 'projects.bulk.within_allocation', 'projects.utilisation.target_pct', 'projects.small_team.limit'] as const;
 
 /** Answer 1405: the burn level reached (0, the warning level or the over level) for hours used against the budget. */
 export function burnLevel(usedHours: number, budgetHours: number | null, warn: number, over: number): number {
@@ -562,6 +566,53 @@ export class ProjectsService {
     return sent;
   }
 
+  /**
+   * Answer 1541: PRJ-01's Timesheets tab. A week's hours on this project for each person allocated to it, against their
+   * allocation, with their line decisions; and their whole week's timesheet against attendance (flagged an hour or more
+   * apart; pay never changes). Anyone who may open the project.
+   */
+  async timesheets(ctx: TenantContext, user: ScopeUser, id: string, weekIn: string) {
+    const w = await this.who(user);
+    const week = mondayOf(weekIn);
+    if (week !== weekIn) throw new BadRequestException('A week starts on a Monday.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      await this.needOn(tx, c);
+      const org = c.organizationId;
+      await this.project(tx, org, id, w);
+      const end = addDaysIso(week, 6);
+      const allocs = await tx.projectAllocation.findMany({ where: { organizationId: org, projectId: id, tentative: false, fromOn: { lte: asDate(end) }, OR: [{ toOn: null }, { toOn: { gte: asDate(week) } }] } });
+      const ids = [...new Set(allocs.map((a) => a.employeeId))];
+      const [people, sheets, days] = await Promise.all([
+        tx.employee.findMany({ where: { organizationId: org, id: { in: ids } }, select: { id: true, givenName: true, familyName: true, preferredName: true } }),
+        tx.timesheet.findMany({ where: { organizationId: org, employeeId: { in: ids }, weekStart: asDate(week) } }),
+        tx.attendanceDay.findMany({ where: { organizationId: org, employeeId: { in: ids }, workOn: { gte: asDate(week), lte: asDate(end) } }, select: { employeeId: true, mode: true, workedMinutes: true } }),
+      ]);
+      const lines = sheets.length ? await tx.timesheetLine.findMany({ where: { organizationId: org, timesheetId: { in: sheets.map((s) => s.id) } } }) : [];
+      const weekdays = Array.from({ length: 7 }, (_, k) => ({ on: addDaysIso(week, k), weekday: k < 5 }));
+      return {
+        week,
+        rows: ids.map((eid) => {
+          const e = people.find((x) => x.id === eid)!;
+          const s = sheets.find((x) => x.employeeId === eid);
+          const mine = lines.filter((l) => l.timesheetId === s?.id);
+          const here = mine.filter((l) => l.projectId === id);
+          const worked = days.filter((d) => d.employeeId === eid && d.mode !== 'timesheet' && d.workedMinutes != null);
+          const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+          const status = !s ? 'missing' : s.status === 'draft' ? 'draft' : here.some((l) => l.status === 'pending') ? 'pending' : here.some((l) => l.status === 'reduced') ? 'reduced' : here.some((l) => l.status === 'rejected') && !here.some((l) => l.status === 'approved') ? 'rejected' : s.status;
+          return {
+            employeeId: eid,
+            person: [e.preferredName ?? e.givenName, e.familyName].filter(Boolean).join(' '),
+            bookedHours: hoursOf(sum(here.flatMap((l) => l.minutes))),
+            approvedHours: hoursOf(sum(here.flatMap((l) => (l.status ? lineApproved(l) : s?.status === 'approved' ? l.minutes : [])))),
+            allocatedHours: hoursOf(allocatedMinutes(weekdays, allocs.filter((a) => a.employeeId === eid).map((a) => ({ percent: a.percent, fromOn: day(a.fromOn)!, toOn: day(a.toOn) })))),
+            status,
+            mismatch: s && worked.length ? attendanceMismatch(sum(mine.flatMap((l) => l.minutes)), sum(worked.map((d) => d.workedMinutes!))) : null,
+          };
+        }),
+      };
+    });
+  }
+
   /** People and clients to choose from in the forms (names only). */
   async choices(ctx: TenantContext, user: ScopeUser) {
     const w = await this.who(user);
@@ -578,6 +629,8 @@ export class ProjectsService {
       return {
         // Answer 1444: the new-project form starts on the company's default billing model.
         defaultBillingModel: await settingFor(tx, c, 'projects.default_billing_model', { legalEntityId: '' }),
+        // Answer 1547: "the client approves the hours" goes through the client portal, which needs the staffing desk.
+        staffingDesk: (await settingFor(tx, c, 'staffing.desk.enabled', { legalEntityId: '' })) === 'on',
         clients,
         managers: users.map((u) => ({ id: u.id, name: u.name?.trim() || u.email })),
         people: employees.map((e) => ({ id: e.id, name: [e.givenName, e.familyName].filter(Boolean).join(' ') })),
