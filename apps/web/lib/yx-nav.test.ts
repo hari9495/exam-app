@@ -390,7 +390,7 @@ describe('buildNav: Projects (P-1, answer 1401)', () => {
 
   it('Settings › Projects & timesheets for System Admins and Projects managers, even while Projects is off', () => {
     expect(labels(nav(['org.settings.manage']), 'settings')).toContain('Projects & timesheets');
-    expect(labels(nav(['projects.manage']), 'settings')).toEqual(['Projects & timesheets']);
+    expect(labels(nav(['projects.manage']), 'settings')).toEqual(['All settings', 'Projects & timesheets']);
     expect(labels(nav(['projects.view']), 'settings')).not.toContain('Projects & timesheets');
   });
 });
