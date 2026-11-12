@@ -10,6 +10,7 @@ import { EmptyState, InlineAlert } from '../../components/feedback';
 import { FieldRow, FormField, useTooEarly } from '../../components/field';
 import { NumberField, TextArea, TextField } from '../../components/inputs';
 import { MultiSelect, Select } from '../../components/select';
+import { Checkbox } from '../../components/choice';
 import { Drawer } from '../../components/drawer';
 import { useToast } from '../../components/notify';
 import { formatDate } from '../../lib/format';
@@ -26,6 +27,7 @@ export interface IncidentUpdateRow {
   impact: string;
   action: string;
   nextUpdateAt: string | null;
+  payrollNote: boolean;
   status: 'pending' | 'posted' | 'sent_back';
   writtenBy: string;
   mine: boolean;
@@ -61,6 +63,7 @@ export interface IncidentUpdateInput {
   impact: string;
   action: string;
   nextUpdateMinutes?: number;
+  payrollNote?: boolean;
 }
 export interface IncidentOpenInput extends IncidentUpdateInput {
   title: string;
@@ -99,7 +102,7 @@ export function companyView(rows: IncidentLiveRow[]): CurrentIncident | null {
   const open = rows.filter((r) => r.status === 'open' && !r.securityBreach && r.updates.some((u) => u.status === 'posted')).sort((a, b) => a.severity - b.severity);
   const i = open[0];
   const u = i?.updates.find((x) => x.status === 'posted');
-  return i && u ? { title: i.title, severity: i.severity, stage: u.stage, impact: u.impact, action: u.action, nextUpdateAt: u.nextUpdateAt, updatedAt: u.createdAt } : null;
+  return i && u ? { title: i.title, severity: i.severity, stage: u.stage, impact: u.impact, action: u.action, nextUpdateAt: u.nextUpdateAt, payrollNote: u.payrollNote, updatedAt: u.createdAt } : null;
 }
 
 export function LiveIncidentsScreen({ live }: { live: LiveIncidents }) {
@@ -158,14 +161,15 @@ function useUpdateForm(prefix: string, title: string, severity: number) {
   const [impact, setImpact] = useState('');
   const [action, setAction] = useState('');
   const [next, setNext] = useState<string | null>('30');
+  const [payroll, setPayroll] = useState(false);
   const issues = [
     !stage && { fieldId: `${prefix}-stage`, message: 'Choose the stage.' },
     impact.trim().length < 10 && { fieldId: `${prefix}-impact`, message: 'Say in plain words what companies notice (at least 10 characters).' },
     action.trim().length < 3 && { fieldId: `${prefix}-action`, message: 'Say what companies should do, for example "No action needed".' },
     /[<>]/.test(impact + action) && { fieldId: `${prefix}-impact`, message: 'Write it without < or >.' },
   ].filter(Boolean) as { fieldId: string; message: string }[];
-  const input = (): IncidentUpdateInput => ({ stage: stage!, impact: impact.trim(), action: action.trim(), ...(stage !== 'resolved' && next ? { nextUpdateMinutes: Number(next) } : {}) });
-  const preview: CurrentIncident = { title: title.trim() || 'Title', severity, stage: stage ?? 'investigating', impact: impact.trim() || 'What companies notice.', action: action.trim(), nextUpdateAt: stage !== 'resolved' && next ? new Date(Date.now() + Number(next) * 60_000).toISOString() : null, updatedAt: new Date().toISOString() };
+  const input = (): IncidentUpdateInput => ({ stage: stage!, impact: impact.trim(), action: action.trim(), ...(stage !== 'resolved' && next ? { nextUpdateMinutes: Number(next) } : {}), payrollNote: payroll });
+  const preview: CurrentIncident = { title: title.trim() || 'Title', severity, stage: stage ?? 'investigating', impact: impact.trim() || 'What companies notice.', action: action.trim(), nextUpdateAt: stage !== 'resolved' && next ? new Date(Date.now() + Number(next) * 60_000).toISOString() : null, payrollNote: payroll, updatedAt: new Date().toISOString() };
   const fields = (errorOf: (id: string) => string | null | undefined) => (
     <>
       <FieldRow>
@@ -182,6 +186,7 @@ function useUpdateForm(prefix: string, title: string, severity: number) {
       <FormField id={`${prefix}-action`} label="What companies should do" required error={errorOf(`${prefix}-action`)}>
         <TextArea rows={2} value={action} onChange={setAction} maxLength={300} />
       </FormField>
+      <Checkbox checked={payroll} onChange={setPayroll} label="Add the payroll-day note (last 3 and first 7 days of the month)" />
       <Card title="Preview: what companies see">
         <AvailabilityBanner kind="degraded" incident={preview} />
       </Card>
@@ -309,7 +314,7 @@ function IncidentDrawer({ live, incident, productName, onClose }: { live: LiveIn
         {pending ? (
           <Card title={`Waiting for approval · ${cap(pending.stage)} · by ${pending.mine ? 'you' : pending.writtenBy}`}>
             <div className="yx-ps-stack">
-              <AvailabilityBanner kind="degraded" incident={{ title: incident.title, severity: incident.severity, stage: pending.stage, impact: pending.impact, action: pending.action, nextUpdateAt: pending.nextUpdateAt, updatedAt: pending.createdAt }} />
+              <AvailabilityBanner kind="degraded" incident={{ title: incident.title, severity: incident.severity, stage: pending.stage, impact: pending.impact, action: pending.action, nextUpdateAt: pending.nextUpdateAt, payrollNote: pending.payrollNote, updatedAt: pending.createdAt }} />
               {!pending.mine && (
                 <FormField id="iu-note" label="Note for the writer" helper="Needed only to send it back." error={noteEarly.errorOf('iu-note')}>
                   <TextArea rows={2} value={note} onChange={setNote} maxLength={300} />

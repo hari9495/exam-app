@@ -4,12 +4,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { IncidentComposerScreen } from './console-ops';
 import { companyView, type IncidentLiveRow, type LiveIncidents } from './console-incidents-live';
-import { AvailabilityBanner } from '../settings/help';
+import { AvailabilityBanner, PAYROLL_DAY_NOTE } from '../settings/help';
 
 // Console C-8, YX-10 incidents and answer 1124: the live incidents screen and the company banner.
 const wrap = (ui: React.ReactElement) => render(<ToastProvider>{ui}</ToastProvider>);
 const iso = (h: number, m = 0) => new Date(2026, 10, 12, h, m).toISOString();
-const update = (o: Partial<IncidentLiveRow['updates'][number]> = {}): IncidentLiveRow['updates'][number] => ({ id: 'u1', stage: 'identified', impact: 'Payslip PDFs take up to 40 seconds to open.', action: 'No action needed.', nextUpdateAt: iso(10, 30), status: 'posted', writtenBy: 'Anand Iyer', mine: false, reviewedBy: 'Farah Siddiqui', reviewNote: null, createdAt: iso(9), ...o });
+const update = (o: Partial<IncidentLiveRow['updates'][number]> = {}): IncidentLiveRow['updates'][number] => ({ id: 'u1', stage: 'identified', impact: 'Payslip PDFs take up to 40 seconds to open.', action: 'No action needed.', nextUpdateAt: iso(10, 30), payrollNote: false, status: 'posted', writtenBy: 'Anand Iyer', mine: false, reviewedBy: 'Farah Siddiqui', reviewNote: null, createdAt: iso(9), ...o });
 const row = (o: Partial<IncidentLiveRow> = {}): IncidentLiveRow => ({ id: 'i1', ref: 'INC-044', title: 'Payslip PDFs slow to open', severity: 2, products: ['hrms'], status: 'open', stage: 'identified', openedAt: iso(8, 51), openedBy: 'Anand Iyer', resolvedAt: null, securityBreach: false, breach: null, updates: [update()], ...o });
 const live = (o: Partial<LiveIncidents> = {}): LiveIncidents => ({
   state: 'ready',
@@ -108,5 +108,31 @@ describe('What companies see (banner)', () => {
     unmount();
     render(<AvailabilityBanner kind="degraded" incident={{ title: 'Slow PDFs', severity: 2, stage: 'identified', impact: 'Slow.', action: 'No action needed.', nextUpdateAt: iso(10, 30), updatedAt: iso(9) }} />);
     expect(screen.getByRole('status')).toHaveTextContent(/Next update by/);
+  });
+});
+
+describe('Answer 1206: the payroll-day note', () => {
+  const base = { title: 'Slow PDFs', severity: 2, stage: 'identified', impact: 'Slow.', action: 'No action needed.', nextUpdateAt: null, updatedAt: iso(9) };
+  it('ticked: the banner adds the sentence word for word', () => {
+    render(<AvailabilityBanner kind="degraded" incident={{ ...base, payrollNote: true }} />);
+    expect(screen.getByRole('status')).toHaveTextContent('Payroll is not affected: pay runs, payslips and bank files continue as normal.');
+    expect(PAYROLL_DAY_NOTE).toBe('Payroll is not affected: pay runs, payslips and bank files continue as normal.');
+  });
+
+  it('unticked: no payroll sentence', () => {
+    render(<AvailabilityBanner kind="degraded" incident={{ ...base, payrollNote: false }} />);
+    expect(screen.getByRole('status')).not.toHaveTextContent('Payroll is not affected');
+  });
+
+  it('staff tick it in the update form and it is sent', async () => {
+    const onUpdate = vi.fn().mockResolvedValue(undefined);
+    show(live({ defaultOpen: 'i1', onUpdate }));
+    const drawer = await screen.findByRole('dialog');
+    await userEvent.type(within(drawer).getByRole('textbox', { name: /Impact in plain words/ }), 'Payslip PDFs are slow to open.');
+    await userEvent.type(within(drawer).getByRole('textbox', { name: /What companies should do/ }), 'No action needed.');
+    await userEvent.click(within(drawer).getByRole('checkbox', { name: /payroll-day note/ }));
+    expect(within(drawer).getByText(/Payroll is not affected/)).toBeInTheDocument();
+    await userEvent.click(within(drawer).getByRole('button', { name: 'Send for approval' }));
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith('i1', expect.objectContaining({ payrollNote: true })));
   });
 });

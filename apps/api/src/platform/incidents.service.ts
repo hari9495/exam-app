@@ -83,6 +83,7 @@ export class IncidentsService {
               impact: u.impact,
               action: u.action,
               nextUpdateAt: u.nextUpdateAt?.toISOString() ?? null,
+              payrollNote: u.payrollNote,
               status: u.status,
               writtenBy: names.get(u.writtenBy) ?? '',
               mine: u.writtenBy === actorUserId,
@@ -109,7 +110,7 @@ export class IncidentsService {
       const known = await tx.product.findMany({ where: { code: { in: products } }, select: { code: true } });
       if (known.length !== products.length) throw new BadRequestException('Choose products from the list.');
       const i = await tx.platformIncident.create({ data: { title: dto.title, severity: dto.severity, products, openedBy: actorUserId } });
-      await tx.platformIncidentUpdate.create({ data: { incidentId: i.id, stage: dto.stage, impact: dto.impact, action: dto.action, nextUpdateAt: this.nextAt(dto), writtenBy: actorUserId } });
+      await tx.platformIncidentUpdate.create({ data: { incidentId: i.id, stage: dto.stage, impact: dto.impact, action: dto.action, nextUpdateAt: this.nextAt(dto), payrollNote: dto.payrollNote ?? false, writtenBy: actorUserId } });
       await AuditService.recordIn(tx, PLATFORM, { actorUserId, action: 'platform.incident.opened', entityType: 'platform_incident', entityId: i.id, metadata: { ref: incidentRef(i.number), title: i.title, severity: i.severity, products } });
     });
     return this.overview(actorUserId);
@@ -121,7 +122,7 @@ export class IncidentsService {
       if (!i) throw new NotFoundException('Incident not found.');
       if (i.status !== 'open') throw new ConflictException('This incident is resolved.');
       if (await tx.platformIncidentUpdate.findFirst({ where: { incidentId: id, status: 'pending' }, select: { id: true } })) throw new ConflictException('An update is already waiting for approval. Approve or send it back first.');
-      const u = await tx.platformIncidentUpdate.create({ data: { incidentId: id, stage: dto.stage, impact: dto.impact, action: dto.action, nextUpdateAt: this.nextAt(dto), writtenBy: actorUserId } });
+      const u = await tx.platformIncidentUpdate.create({ data: { incidentId: id, stage: dto.stage, impact: dto.impact, action: dto.action, nextUpdateAt: this.nextAt(dto), payrollNote: dto.payrollNote ?? false, writtenBy: actorUserId } });
       await AuditService.recordIn(tx, PLATFORM, { actorUserId, action: 'platform.incident.update_written', entityType: 'platform_incident', entityId: id, metadata: { updateId: u.id, stage: u.stage } });
     });
     return this.overview(actorUserId);
@@ -224,7 +225,7 @@ export class IncidentsService {
       });
       const i = rows[0];
       const u = i?.updates[0];
-      return i && u ? { title: i.title, severity: i.severity, stage: u.stage, impact: u.impact, action: u.action, nextUpdateAt: u.nextUpdateAt?.toISOString() ?? null, updatedAt: (u.reviewedAt ?? u.createdAt).toISOString() } : null;
+      return i && u ? { title: i.title, severity: i.severity, stage: u.stage, impact: u.impact, action: u.action, nextUpdateAt: u.nextUpdateAt?.toISOString() ?? null, payrollNote: u.payrollNote, updatedAt: (u.reviewedAt ?? u.createdAt).toISOString() } : null;
     });
   }
 }

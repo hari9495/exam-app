@@ -12,6 +12,8 @@ export class IncidentUpdateDto {
   @trim() @IsString() @MinLength(3) @MaxLength(300) @Matches(/^[^<>]*$/, PLAIN) action!: string;
   /** Minutes until the next update (none once resolved). */
   @IsOptional() @Type(() => Number) @IsInt() @Min(15) @Max(1440) nextUpdateMinutes?: number;
+  /** Answer 1206: add the payroll-day note to the banner. */
+  @IsOptional() @IsBoolean() payrollNote?: boolean;
 }
 
 /** Open an incident with its first update. */

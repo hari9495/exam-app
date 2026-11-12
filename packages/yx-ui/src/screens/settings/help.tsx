@@ -323,14 +323,20 @@ export interface CurrentIncident {
   impact: string;
   action: string;
   nextUpdateAt: string | null;
+  /** Answer 1206: staff ticked the payroll-day note. */
+  payrollNote?: boolean;
   updatedAt: string;
 }
+
+/** Founder answer 1206: the payroll-day note, word for word. */
+export const PAYROLL_DAY_NOTE = 'Payroll is not affected: pay runs, payslips and bank files continue as normal.';
 
 export function AvailabilityBanner({ kind, live, incident }: { kind: 'maintenance' | 'degraded' | 'read-only'; /** Answer 948 (C-5): the planned window, before or during it. */ live?: { phase: 'upcoming' | 'now'; title: string; startsAt: string; endsAt: string }; /** C-8 (YX-10): an open incident, with kind "degraded". */ incident?: CurrentIncident }) {
   if (kind === 'degraded' && incident)
     return (
       <PageBanner tone={incident.severity === 1 ? 'danger' : 'warning'}>
         <strong>{incident.title}</strong> ({incident.stage}): {incident.impact} {incident.action}
+        {incident.payrollNote ? ` ${PAYROLL_DAY_NOTE}` : ''}
         {incident.nextUpdateAt ? ` Next update by ${timeOf(new Date(incident.nextUpdateAt))}.` : ''}
       </PageBanner>
     );

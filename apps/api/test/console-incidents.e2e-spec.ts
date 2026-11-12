@@ -40,7 +40,7 @@ describe('Console C-8 YX-10: incidents and breach reminders', () => {
       for (const who of ['staff', 'staff2']) await giveStaffRoles(users[who]!);
     }
   };
-  const first = { title: `Payslip PDFs slow ${run}`, severity: 2, products: [PRODUCT], stage: 'identified', impact: 'Payslip PDFs take up to 40 seconds to open.', action: 'No action needed.', nextUpdateMinutes: 30 };
+  const first = { title: `Payslip PDFs slow ${run}`, severity: 2, products: [PRODUCT], stage: 'identified', impact: 'Payslip PDFs take up to 40 seconds to open.', action: 'No action needed.', nextUpdateMinutes: 30, payrollNote: true };
   type Row = { id: string; title: string; status: string; updates: { id: string; status: string; mine: boolean }[]; breach: { certinRemindedAt: string | null; dpdpRemindedAt: string | null } | null };
   const find = (body: { incidents: Row[] }, title: string) => body.incidents.find((i) => i.title === title)!;
 
@@ -142,7 +142,8 @@ describe('Console C-8 YX-10: incidents and breach reminders', () => {
       await api('staff2', 'post', `/platform/incidents/${id}/updates/${u.id}/review`).send({ approve: true }).expect(200);
       const a = (await api('adminA', 'get', '/availability').expect(200)).body.incident;
       expect(a).toMatchObject({ title: first.title, severity: 2, stage: 'identified', impact: first.impact, action: first.action });
-      expect(Object.keys(a).sort()).toEqual(['action', 'impact', 'nextUpdateAt', 'severity', 'stage', 'title', 'updatedAt']);
+      expect(a.payrollNote).toBe(true);
+      expect(Object.keys(a).sort()).toEqual(['action', 'impact', 'nextUpdateAt', 'payrollNote', 'severity', 'stage', 'title', 'updatedAt']);
       expect((await api('adminB', 'get', '/availability').expect(200)).body.incident).toBeNull();
     });
 
@@ -174,7 +175,7 @@ describe('Console C-8 YX-10: incidents and breach reminders', () => {
     beforeAll(async () => {
       // A containment of company A, as C-4 makes it (clocks from the platform settings: 6 and 72 hours).
       containmentId = (await tenantPrisma.forTenant(SUPER, (tx) => tx.companyContainment.create({ data: { organizationId: org.A, reason: 'Admin signed in from three countries (e2e)', containedBy: users.staff!, containedByName: 'Staff staff', containedAt: new Date(contained), certinDueAt: new Date(contained + 6 * 3_600_000), dpdpDueAt: new Date(contained + 72 * 3_600_000) } }))).id;
-      id = find((await api('staff', 'post', '/platform/incidents').send({ ...first, title, severity: 1 }).expect(201)).body, title).id;
+      id = find((await api('staff', 'post', '/platform/incidents').send({ ...first, title, severity: 1, payrollNote: false }).expect(201)).body, title).id;
       const u = find((await api('staff2', 'get', '/platform/incidents').expect(200)).body, title).updates[0]!;
       await api('staff2', 'post', `/platform/incidents/${id}/updates/${u.id}/review`).send({ approve: true }).expect(200);
     });
@@ -185,7 +186,7 @@ describe('Console C-8 YX-10: incidents and breach reminders', () => {
     it('the open containment is offered; marking it hides the incident from companies', async () => {
       const before = (await api('staff', 'get', '/platform/incidents').expect(200)).body;
       expect(before.containments.some((c: { id: string; company: string }) => c.id === containmentId && c.company === `C8I A ${run}`)).toBe(true);
-      expect((await api('adminA', 'get', '/availability').expect(200)).body.incident).toMatchObject({ title });
+      expect((await api('adminA', 'get', '/availability').expect(200)).body.incident).toMatchObject({ title, payrollNote: false });
       await api('staff', 'post', `/platform/incidents/${id}/breach`).send({ containmentId: randomUUID() }).expect(400);
       const after = (await api('staff', 'post', `/platform/incidents/${id}/breach`).send({ containmentId }).expect(200)).body;
       expect(find(after, title).breach).toMatchObject({ certinRemindedAt: null, dpdpRemindedAt: null });

@@ -366,7 +366,7 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 | story (sub-page) | verdict | note |
 |---|---|---|
 | YX10List · Incidents and maintenance | live | C-8: `/staff/incidents`, `IncidentComposerScreen liveIncidents` (the incident list; maintenance is its own page, C-5) |
-| YX10Compose · Incident update composer | live | same page: Declare incident and Post an update (stage, impact, what to do, next update; products; severity), the preview, a second staff member approves. Regions and the payroll-day note are not built (questions 1205, 1206) |
+| YX10Compose · Incident update composer | live | same page: Declare incident and Post an update (stage, impact, what to do, next update; products; severity), the preview, a second staff member approves. Regions are not built (question 1205); the payroll-day note is built (answer 1206) |
 | YX10Maintenance · Maintenance · passes checks | live | C-5: `/staff/maintenance`, `IncidentComposerScreen live` (the maintenance part); checks from platform settings; second staff member approves |
 | YX10MaintenanceBlocked · Maintenance · payroll window blocked | live | same page: the payroll-critical days, statutory dates and notice refuse the window with the reason |
 | YX10MaintenanceLive · Planned maintenance · schedule and approve (C-5) | live | `GET|POST platform/maintenance`, `POST .../:id/approve`, `POST .../:id/cancel`, `PUT .../settings` (`platform.maintenance.manage`) |
@@ -574,8 +574,8 @@ risky actions, and adds positive and negative tests and an e2e suite.
   the service.
 - **Key and role (1058):** `platform.incidents.manage` (every route; staff only, never assignable to a company role).
   Role to hold it: **Security lead** (and whoever is on call; the reminders go to everyone holding it).
-- **Not built:** probes (no probe data in the API; question 1204); regions (India only, as the wizard; 1205); the
-  payroll-day note (1206).
+- **Not built:** probes (no probe data in the API; question 1204); regions (India only, as the wizard; 1205). The
+  payroll-day note is built (answer 1206).
 - **Tests:** API unit (guards, key on every route, not assignable, references, the reminder times at their boundaries,
   each once, lead 0, a late link); kit (list, what companies see, never a breach or an unapproved update, the most
   severe first, declare field errors, writer cannot approve, send back needs a note, breach needs the company and shows
@@ -595,6 +595,9 @@ risky actions, and adds positive and negative tests and an e2e suite.
       *Suggested: add regions when a second region exists.*
 1206. **The payroll-day note.** The drawing has a checkbox "Add the payroll-day note (last 3 and first 7 days of the
       month)" without its words. *Suggested: give the sentence; it is then added to the banner when ticked.*
+      **Answered 12 Nov 2026:** the sentence is "Payroll is not affected: pay runs, payslips and bank files continue as
+      normal." Built: staff tick it on an update (staff routes only; migration `202617z0000073_incident_payroll_note`
+      adds `payroll_note`); the company banner adds the sentence word for word (`PAYROLL_DAY_NOTE` in the kit).
 1207. **Telling the breached company.** A breach incident is hidden from every company, including the contained one;
       its admins are told by the containment and directly. *Suggested: keep; a message to that company's admins goes
       through the C-2 admin messages.*
