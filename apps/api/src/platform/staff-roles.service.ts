@@ -4,6 +4,7 @@ import * as argon2 from 'argon2';
 import { AuditService, TenantPrismaService, revokeStaffSessions } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 import { appUrl, staffInviteEmail } from '../email/account-emails';
+import { escapeHtml } from '../notifications/notification-email-render';
 import { ACCOUNT_SETUP_EXPIRY_HOURS, issuePasswordToken } from '../auth/password-tokens';
 import { PLATFORM, platformRead } from './platform.service';
 
@@ -230,7 +231,7 @@ export class StaffRolesService {
    * who has signed in, nor the last active Security lead; a rerun finds nobody new. Audited per person and once per run.
    */
   async expireInvites(now = new Date()) {
-    return this.tenantPrisma.forTenant(PLATFORM, async (tx) => {
+    const out = await this.tenantPrisma.forTenant(PLATFORM, async (tx) => {
       const v = Number((await tx.platformSetting.findUnique({ where: { key: INVITE_EXPIRE_KEY } }))?.value);
       const days = Number.isInteger(v) && v >= 7 && v <= 90 ? v : INVITE_EXPIRE_DEFAULT;
       const rows = await tx.$queryRaw<{ id: string }[]>`SELECT platform_expire_invited_staff(${days}::int, ${now}::timestamptz) AS id`;
@@ -238,8 +239,37 @@ export class StaffRolesService {
         await AuditService.recordIn(tx, PLATFORM, { actorUserId: null, action: 'platform.staff.deactivated', entityType: 'user', entityId: r.id, metadata: { automatically: true, reason: `Invited and never signed in for more than ${days} days`, [INVITE_EXPIRE_KEY]: days } });
       }
       await AuditService.recordIn(tx, PLATFORM, { actorUserId: null, action: 'platform.staff.invites_expired', entityType: 'platform_setting', entityId: INVITE_EXPIRE_KEY, metadata: { [INVITE_EXPIRE_KEY]: days, deactivated: rows.map((r) => r.id) } });
-      return { days, deactivated: rows.map((r) => r.id) };
+      if (!rows.length) return { days, deactivated: [] as string[], gone: [], leads: [] };
+      const gone = await tx.user.findMany({ where: { id: { in: rows.map((r) => r.id) } }, select: { email: true, createdAt: true }, orderBy: { createdAt: 'asc' } });
+      const leadIds = (await tx.platformStaffRole.findMany({ where: { role: 'security_lead' }, select: { userId: true } })).map((r) => r.userId);
+      const leads = await tx.user.findMany({ where: { id: { in: leadIds }, organizationId: null, status: 'active' }, select: { id: true, email: true } });
+      return { days, deactivated: rows.map((r) => r.id), gone, leads };
     });
+    if (out.deactivated.length) await this.mailExpired(out.days, out.gone, out.leads);
+    return { days: out.days, deactivated: out.deactivated };
+  }
+
+  /**
+   * Answer 1281: one email to every active Security lead listing the staff the job deactivated that night (nothing on a
+   * quiet night; a rerun deactivates nobody new, so sends nothing). Staff have no email choices: preferences belong to a
+   * company user. Audited once per send.
+   */
+  private async mailExpired(days: number, gone: { email: string; createdAt: Date }[], leads: { id: string; email: string }[]) {
+    const day = (d: Date) => d.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric' });
+    const subject = `${gone.length} invited staff account${gone.length === 1 ? '' : 's'} deactivated: never signed in`;
+    const html = `<p>Tonight these invited YukthiX staff accounts were deactivated because nobody signed in within ${days} days of the invitation:</p><ul>${gone.map((g) => `<li>${escapeHtml(g.email)} (invited ${day(g.createdAt)})</li>`).join('')}</ul><p>To bring one back, open Console › Staff and roles, Reactivate, then Send the invitation again.</p>`;
+    const sentTo: string[] = [];
+    for (const l of leads) {
+      try {
+        await this.email.send({ to: l.email, subject, html });
+        sentTo.push(l.id);
+      } catch (e) {
+        this.logger.error(`Failed to send the expired invitations list to a Security lead`, e as Error);
+      }
+    }
+    await this.tenantPrisma.forTenant(PLATFORM, (tx) =>
+      AuditService.recordIn(tx, PLATFORM, { actorUserId: null, action: 'platform.staff.invites_expired_notified', entityType: 'platform_setting', entityId: INVITE_EXPIRE_KEY, metadata: { accounts: gone.map((g) => g.email), sentTo, failed: leads.length - sentTo.length } }),
+    );
   }
 
 }

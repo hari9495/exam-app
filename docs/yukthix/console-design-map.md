@@ -1114,3 +1114,21 @@ C-6 to C-8.
       *Suggested: keep (the audit log is enough).*
 
 - 1281 to 1284 approved as suggested (12 Nov 2026, "ok for all"). To build: a daily email to the Security leads listing invited staff the expiry job deactivated, only when there are some (1281).
+
+## 1281 as built (branch `feat/yukthix-console-1281`)
+
+- After the nightly `staff-invite-expiry` job, every active Security lead gets one email listing the staff it deactivated
+  that night (email address and invited date, in IST), with how to bring one back. Nothing on a night when nobody was
+  deactivated; a rerun the same night finds nobody new, so it sends nothing again. Sent through the existing email
+  service; audited once per send as `platform.staff.invites_expired_notified` (the accounts, who it reached, failures).
+- Email choices: staff have none. Notification preferences belong to a company user (the table needs a company), so
+  every active Security lead gets it.
+- **Tests:** e2e `console-staff-expiry` (2 deactivated: one email to the Security lead listing both, none to a non-lead
+  or to the just-deactivated lead; audited; a rerun sends nothing; sending the invitation again restarts the count).
+
+### Questions (from 1301)
+
+1301. **The invited date in the list.** The list shows when the account was first invited, though the count runs from
+      the latest invitation (resends restart it). *Suggested: keep the first date and add "last sent" only if leads ask.*
+1302. **Email choices for staff.** Staff cannot turn emails off; this list and the breach reminders always arrive.
+      *Suggested: keep (both are security emails a Security lead should not miss).*
