@@ -555,8 +555,9 @@ export function TimesheetGrid(props: TimesheetGridProps) {
               {dates.map((date, d) => (
                 <th key={d} scope="col" className="yx-ts__col-day" data-kind={days[d].kind} data-invalid={badDays.has(d) || undefined}>
                   {/* The weekday as a small label above the date ("Wed" / "30 Sep 2026"), then one hint line. */}
-                  <span className="yx-ts__dayname"><DayDate date={date} stacked /></span>
-                  <span className="yx-ts__dayexp">{dayExp(d)}</span>
+                  {/* The year is in the week's range above: without it a day column fits the hours box (1278 px wide, founder walk). */}
+                  <span className="yx-ts__dayname"><DayDate date={date} stacked year={false} /></span>
+                  <span className="yx-ts__dayexp" title={dayExp(d)}>{dayExp(d)}</span>
                 </th>
               ))}
               <th scope="col" className="yx-ts__col-total">

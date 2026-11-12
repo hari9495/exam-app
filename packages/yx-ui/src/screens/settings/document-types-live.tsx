@@ -24,8 +24,12 @@ export interface DocTypeRow {
   expiryTracked: boolean;
   reminderDays: number[];
   uploadBy: string[];
-  /** A YukthiX starter type (cannot be changed or removed). */
+  /** A YukthiX starter type (cannot be removed; the company may set its verification and reminders, answer 1822). */
   system: boolean;
+  /** The company set its own verification or reminders for this starter type. */
+  ownChoices?: boolean;
+  /** HR always verifies it before payroll uses it (PAN, Aadhaar, bank proof, education, experience). */
+  verifyLocked?: boolean;
 }
 
 export type DocTypeInput = Pick<DocTypeRow, 'name' | 'sensitivity' | 'requiresVerification' | 'expiryTracked' | 'reminderDays' | 'uploadBy'>;
@@ -42,15 +46,15 @@ export function documentTypesPage(design: SettingsPageDef, types: DocTypeRow[]):
   const list: SettingDef = {
     ...def,
     columns: ['Type', 'Sensitivity', 'HR verifies', 'Expiry reminder', 'Who uploads', 'From'],
-    rows: types.map((t) => [t.name, SENSITIVITY[t.sensitivity], t.requiresVerification ? 'Yes' : 'No', t.expiryTracked ? daysText(t.reminderDays) : '—', t.uploadBy.includes('person') ? 'Employee and HR' : 'HR only', t.system ? 'YukthiX starter' : 'Your company']),
+    rows: types.map((t) => [t.name, SENSITIVITY[t.sensitivity], t.requiresVerification ? 'Yes' : 'No', t.expiryTracked ? daysText(t.reminderDays) : '—', t.uploadBy.includes('person') ? 'Employee and HR' : 'HR only', t.system ? (t.ownChoices ? 'YukthiX starter, your choices' : 'YukthiX starter') : 'Your company']),
     starter: false,
-    helper: 'YukthiX starter types cannot be changed or removed. Your own types can be changed, or retired while no document uses them.',
+    helper: 'For a YukthiX starter type you choose whether HR verifies it and when to remind; the rest stays as YukthiX set it. Your own types can be changed, or retired while no document uses them.',
   };
   return { ...design, note: undefined, sections: [{ title: drawn!.title, description: drawn!.description, settings: [list] }] };
 }
 
-/** Add, change or retire a company document type; a starter type opens read-only. */
-export function DocumentTypeDrawer({ initial, onClose, onSave, onRetire }: { initial: DocTypeRow | null; onClose: () => void; onSave: (input: DocTypeInput) => Promise<unknown>; onRetire?: () => Promise<unknown> }) {
+/** Add, change or retire a company document type; a starter type opens with only its verification and reminders to choose. */
+export function DocumentTypeDrawer({ initial, onClose, onSave, onRetire, onReset }: { initial: DocTypeRow | null; onClose: () => void; onSave: (input: DocTypeInput) => Promise<unknown>; onRetire?: () => Promise<unknown>; onReset?: () => Promise<unknown> }) {
   const { toast } = useToast();
   const locked = Boolean(initial?.system);
   const [name, setName] = useState(initial?.name ?? '');
@@ -76,6 +80,8 @@ export function DocumentTypeDrawer({ initial, onClose, onSave, onRetire }: { ini
   };
   const retire = () =>
     onRetire?.().then(() => (toast({ tone: 'success', title: 'Document type retired' }), onClose()), fail);
+  const reset = () =>
+    onReset?.().then(() => (toast({ tone: 'success', title: 'Back to YukthiX’s choices' }), onClose()), fail);
   const title = locked ? initial!.name : initial ? 'Change document type' : 'Add document type';
   return (
     <Drawer
@@ -84,11 +90,15 @@ export function DocumentTypeDrawer({ initial, onClose, onSave, onRetire }: { ini
       size="md"
       title={title}
       subtitle={locked ? 'YukthiX starter type' : 'Your company’s document type'}
-      dirty={!locked}
-      notice={failed ? <InlineAlert tone="danger" title={failed} /> : locked ? <InlineAlert tone="info" title="A YukthiX starter type: it cannot be changed or removed." /> : undefined}
+      dirty
+      notice={failed ? <InlineAlert tone="danger" title={failed} /> : locked ? <InlineAlert tone="info" title="A YukthiX starter type: choose whether HR verifies it and when to remind. The rest stays as YukthiX set it, and it cannot be removed." /> : undefined}
       footer={
         locked ? (
-          <Button onClick={onClose}>Close</Button>
+          <>
+            {initial?.ownChoices && onReset && <Button onClick={() => void reset()}>Back to YukthiX’s choices</Button>}
+            <Button onClick={onClose}>Cancel</Button>
+            <Button variant="primary" loading={busy} onClick={save}>Save your choices</Button>
+          </>
         ) : (
           <>
             {initial && onRetire && <Button onClick={() => void retire()}>Retire</Button>}
@@ -105,11 +115,11 @@ export function DocumentTypeDrawer({ initial, onClose, onSave, onRetire }: { ini
         <FormField id="dt-sensitivity" label="Sensitivity" helper="Internal: the employee and all HR. Personal: the employee and HR. Confidential: the employee and HR admins.">
           {locked ? <span>{SENSITIVITY[sensitivity]}</span> : <Segment label="Sensitivity" options={(['internal', 'personal', 'confidential'] as const).map((v) => ({ value: v, label: SENSITIVITY[v] }))} value={sensitivity} onChange={setSensitivity} />}
         </FormField>
-        <Checkbox checked={verify} onChange={setVerify} label="HR verifies it" description="It waits in the verification queue until HR verifies it." disabled={locked} />
+        <Checkbox checked={verify} onChange={setVerify} label="HR verifies it" description={initial?.verifyLocked ? 'Always: HR verifies it before payroll uses it.' : 'It waits in the verification queue until HR verifies it.'} disabled={Boolean(initial?.verifyLocked)} />
         <Checkbox checked={expires} onChange={setExpires} label="It has an expiry date" description="The person gives the expiry date when uploading; it turns Expired on that day." disabled={locked} />
         {expires && (
           <FormField id="dt-remind" label="Remind the person">
-            <Select aria-label="Remind the person" options={REMINDER_CHOICES.map((d) => ({ value: d.join(','), label: daysText(d) }))} value={remind} onChange={(v) => v && setRemind(v)} disabled={locked} />
+            <Select aria-label="Remind the person" options={[...REMINDER_CHOICES.map((d) => d.join(',')), ...(REMINDER_CHOICES.some((d) => d.join(',') === remind) ? [] : [remind])].map((v) => ({ value: v, label: daysText(v.split(',').map(Number)) }))} value={remind} onChange={(v) => v && setRemind(v)} />
           </FormField>
         )}
         <FormField id="dt-who" label="Who uploads it">

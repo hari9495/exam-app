@@ -59,6 +59,15 @@ export class DocumentsController {
     return this.documents.updateType(ctx, typeKeyOf(key), dto);
   }
 
+  // Answer 1822: back to YukthiX's own verification and reminders for a starter type.
+  @Post('types/:key/reset')
+  @HttpCode(204)
+  @RequirePermissions('org.settings.manage')
+  async resetStarter(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('key') key: string) {
+    ownSession(req);
+    await this.documents.resetStarter(ctx, typeKeyOf(key));
+  }
+
   @Post('types/:key/retire')
   @HttpCode(204)
   @RequirePermissions('org.settings.manage')

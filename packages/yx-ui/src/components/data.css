@@ -418,33 +418,39 @@ td .yx-badge, .yx-table td[data-type="date"] { white-space: nowrap; }
 .yx-ts__range { font-weight: var(--yx-weight-semibold); padding: 0 var(--yx-space-1); font-variant-numeric: tabular-nums; }
 .yx-ts__problems { margin: 0; padding-left: var(--yx-space-5); }
 .yx-ts__scroll { overflow-x: auto; border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); }
-.yx-ts__table { width: 100%; border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; }
+.yx-ts__table { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; }
 .yx-ts__table th, .yx-ts__table td { padding: var(--yx-space-2); border-bottom: var(--yx-border-width) solid var(--yx-color-border); vertical-align: middle; }
 .yx-ts__table th { font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); font-weight: var(--yx-weight-medium); color: var(--yx-color-text-muted); text-align: left; }
 .yx-ts__table tfoot td { border-bottom: 0; background: var(--yx-color-bg-subtle); font-weight: var(--yx-weight-medium); }
-.yx-ts__col-proj { width: 20%; }
-.yx-ts__col-task { width: 14%; }
+/* Fixed layout (founder walk, 1278 x 635): the week, Billable, Total and Remove take what they need; Task a set width;
+   Project the rest, so Total stays in view without a sideways scroll. */
+.yx-ts__col-proj { width: auto; }
+.yx-ts__col-task { width: calc(var(--yx-space-16) + var(--yx-space-12)); }
 /* Narrow day columns so the whole week fits at 1440 even when every day is an input (sent-back weeks). */
-.yx-ts__table .yx-ts__col-day { padding-left: var(--yx-space-1); padding-right: var(--yx-space-1); }
+.yx-ts__table .yx-ts__col-day { width: var(--yx-space-12); padding-left: var(--yx-space-1); padding-right: var(--yx-space-1); }
 .yx-ts__table { min-width: calc(var(--yx-space-16) * 13); }
 .yx-ts__daytotal[data-tone="short"] { color: var(--yx-color-warning-text); }
 .yx-ts__dayhint[data-tone="short"] { color: var(--yx-color-warning-text); }
 /* Correction line: one hours field across the day columns, not counted in the day totals. */
 .yx-ts__correction { display: flex; align-items: center; justify-content: space-between; gap: var(--yx-space-2); color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); }
-.yx-ts__col-bill { width: var(--yx-space-16); text-align: center !important; }
+.yx-ts__col-bill { width: var(--yx-space-12); text-align: center !important; }
 .yx-ts__table .yx-ts__col-day { text-align: center; }
 .yx-ts__table th.yx-ts__col-day { text-align: center; }
-.yx-ts__col-total { width: calc(var(--yx-space-16) + var(--yx-space-6)); text-align: right !important; white-space: nowrap; }
+.yx-ts__col-total { width: calc(var(--yx-space-16) + var(--yx-space-4)); text-align: right !important; white-space: nowrap; }
 .yx-ts__col-remove { width: var(--yx-space-10); }
 .yx-ts__col-day[data-kind="weekend"], .yx-ts__col-day[data-kind="holiday"], .yx-ts__col-day[data-kind="leave"] { background: var(--yx-color-bg-subtle); }
 .yx-ts__table th.yx-ts__col-day[data-invalid] { color: var(--yx-color-danger-text); }
 .yx-ts__dayname { display: block; color: var(--yx-color-text); font-weight: var(--yx-weight-semibold); white-space: nowrap; }
 .yx-ts__daydate, .yx-ts__dayexp { display: block; }
+/* One line each (a long holiday name ends in …, its full name in the tooltip), and no paragraph margins: the grid and
+   its error box fit 1278 x 635 (founder walk). */
+.yx-ts__dayexp, .yx-ts__dayhint { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.yx-ts p.yx-ts__muted { margin: 0; }
 .yx-ts__col-day[data-kind="holiday"] .yx-ts__dayexp, .yx-ts__col-day[data-kind="leave"] .yx-ts__dayexp { color: var(--yx-color-info-text); }
 .yx-ts__table tr[data-invalid] > td { background: var(--yx-color-danger-bg); }
 .yx-ts__hours {
   box-sizing: border-box;
-  width: var(--yx-space-12);
+  width: var(--yx-space-10);
   height: var(--yx-control-sm);
   padding: 0 var(--yx-space-2);
   border: var(--yx-border-width) solid var(--yx-color-border-input);

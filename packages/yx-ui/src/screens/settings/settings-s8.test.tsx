@@ -38,7 +38,7 @@ describe('S-8: Expenses & travel (4.8) and Performance (6.3)', () => {
   });
 
   it('5.4 Notifications: the email switch and the digest time, with the link to the wording editor', () => {
-    expect(keysOf('5.4')).toEqual(['notify.email.enabled', 'notify.digest.time']);
+    expect(keysOf('5.4')).toEqual(['notify.email.enabled', 'notify.email.default_cadence', 'notify.digest.time']);
     const reg = { 'notify.email.enabled': def(['on', 'off'], 'on'), 'notify.digest.time': def(['06:00', '07:00', '18:00'], '07:00') };
     const page = timeSettingsPage(pageOf('5.4'), data(reg), new Set(['ntf.templates']));
     const keys = allSettings(page).map((d) => d.key);

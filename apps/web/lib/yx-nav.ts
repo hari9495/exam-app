@@ -178,6 +178,11 @@ export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '6.3': ['/yx/settings/talent/performance', '/yx/settings/performance'],
   '7.2': ['/yx/time/setup/devices'],
   '7.3': ['/yx/payroll/payment-modes'],
+  // S-9 (answers 1328, 1332): group 8 live; billing read-only for the billing key, 8.5 for System Admins.
+  '8.1': [`${SETTINGS_HOME}/account/plan-and-add-ons`],
+  '8.2': [`${SETTINGS_HOME}/account/usage-and-caps`],
+  '8.3': [`${SETTINGS_HOME}/account/invoices-and-payment`],
+  '8.5': [`${SETTINGS_HOME}/account/data-export-and-closure`],
   '8.6': morePage('8.6'),
 };
 const ME = 'Me';
@@ -538,6 +543,9 @@ export function buildNav(n: NavInput): NavArea[] {
         // S-8 (answer 1323): the company's expense and performance choices (4.8, 6.3); their set-up keys change them too.
         ...when(settingsView || has('expense.policy.manage') || has('expense.policy.view'), L('expense-settings', 'Expense settings', `${SETTINGS_HOME}/finance/expenses-and-travel`)),
         ...when(settingsView || has('perf.setup.manage'), L('performance-settings', 'Performance settings', `${SETTINGS_HOME}/talent/performance`)),
+        // S-9 (answers 1328, 1332): the plan, usage and invoices (read-only) and, for System Admins, export and closure.
+        ...when(has('org:manage_billing'), L('plan', 'Plan & add-ons', `${SETTINGS_HOME}/account/plan-and-add-ons`), L('usage', 'Usage & caps', `${SETTINGS_HOME}/account/usage-and-caps`), L('invoices', 'Invoices', `${SETTINGS_HOME}/account/invoices-and-payment`)),
+        ...when(has('org:manage_billing') && n.role === 'org_admin' && !support, L('data-export', 'Data export & closure', `${SETTINGS_HOME}/account/data-export-and-closure`)),
       ]),
       ...sec('People & Access', [
         ...when(has('access.role.manage'), L('access', 'Roles & access', '/yx/settings/access')),

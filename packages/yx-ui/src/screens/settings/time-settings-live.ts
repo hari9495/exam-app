@@ -39,7 +39,7 @@ export interface TimeSettingsData {
    * locations, employment types, grades), and the values of their own already set, by key.
    */
   scopes?: { label: string; type: string; id: string }[];
-  byScope?: Record<string, { scope: string; value: string; validFrom: string | null }[]>;
+  byScope?: Record<string, { scope: string; value: string; validFrom: string | null; note?: string }[]>;
 }
 
 type Place = { section: string; key: string; synonyms?: string[] };
@@ -225,6 +225,7 @@ export const MORE_SETTINGS: Record<string, { links: string[]; settings: Place[];
     links: ['ntf.templates'],
     settings: [
       { section: 'Channels and defaults', key: 'notify.email.enabled', synonyms: ['notification channel', 'email notifications'] },
+      { section: 'Digests and quiet hours', key: 'notify.email.default_cadence', synonyms: ['digest default', 'new people'] },
       { section: 'Digests and quiet hours', key: 'notify.digest.time', synonyms: ['summary email', 'digest'] },
     ],
   },
@@ -432,7 +433,7 @@ export function timeSettingsPage(design: SettingsPageDef, data: TimeSettingsData
     const scoped = data.scopes
       ? {
           scope: 'Company',
-          overrides: own?.length ? own.map((o) => ({ scope: o.scope, value: conv(o.value), ...(o.validFrom ? { validFrom: o.validFrom } : {}) })) : undefined,
+          overrides: own?.length ? own.map((o) => ({ scope: o.scope, value: conv(o.value), ...(o.validFrom ? { validFrom: o.validFrom } : {}), ...(o.note ? { note: o.note } : {}) })) : undefined,
           scopeable: data.scopes.filter((s) => d.scopes?.includes(s.type)).map((s) => s.label),
         }
       : {};

@@ -106,6 +106,7 @@ export function SettingField({ def, value, onChange, error, readOnly, highlighte
           {def.overrides.map((o) => (
             <button key={o.scope} type="button" className="yx-set-overrides__item" onClick={() => onPickOverride?.(o.scope)}>
               {o.scope}: {formatValue(def, o.value)}
+              {o.note && <span className="yx-set-overrides__note"> · {o.note}</span>}
             </button>
           ))}
         </span>

@@ -127,13 +127,17 @@ describe('Settings S-8: Expenses & travel (4.8) and Performance (6.3)', () => {
     await waitFor(() => expect(calls).toEqual([['POST /documents/types', { name: 'Driving licence', sensitivity: 'personal', requiresVerification: true, expiryTracked: true, reminderDays: [60, 30, 7], uploadBy: ['person', 'hr'] }]]));
   });
 
-  it('negative (5.1): a starter type opens read-only; a reader gets no Add button', async () => {
+  it('5.1 (answer 1822): a starter type opens with only verification and reminders to choose, saved for the company; never retired; a reader gets no Add button', async () => {
     routes(['org.settings.manage']);
     const { unmount } = show(YxDocumentTypesPage as never, 'document-types');
     await ue.click(await screen.findByRole('button', { name: 'Edit Passport' }));
     const drawer = await screen.findByRole('dialog');
-    expect(within(drawer).getByText('A YukthiX starter type: it cannot be changed or removed.')).toBeInTheDocument();
-    expect(within(drawer).queryByRole('button', { name: /Save|Retire/ })).toBeNull();
+    expect(within(drawer).getByText(/A YukthiX starter type: choose whether HR verifies it and when to remind/)).toBeInTheDocument();
+    expect(within(drawer).getByRole('textbox', { name: /Name/ })).toBeDisabled();
+    expect(within(drawer).queryByRole('button', { name: 'Retire' })).toBeNull();
+    await ue.click(within(drawer).getByRole('checkbox', { name: /HR verifies it/ }));
+    await ue.click(within(drawer).getByRole('button', { name: 'Save your choices' }));
+    await waitFor(() => expect(calls).toEqual([['PUT /documents/types/passport', expect.objectContaining({ name: 'Passport', requiresVerification: true, reminderDays: [60, 30, 7] })]]));
     unmount();
     routes(['org.structure.view']);
     show(YxDocumentTypesPage as never, 'document-types');

@@ -99,13 +99,32 @@ describe('Settings S-8: document types (5.1)', () => {
     expect((await types()).filter((t) => !t.system).map((t) => t.key)).toEqual([key]);
   });
 
-  it('HR changes its own type (audited with before and after); negative: a starter type cannot be changed or retired', async () => {
+  it('HR changes its own type (audited with before and after); negative: a starter type cannot be retired', async () => {
     await api('hr2', 'put', `/documents/types/${key}`).send({ ...FSSAI, reminderDays: [60, 30, 7], uploadBy: ['person', 'hr'] }).expect(200);
     expect((await types()).find((t) => t.key === key)).toMatchObject({ reminderDays: [60, 30, 7], uploadBy: ['person', 'hr'] });
     expect((await audits('document.type.changed'))[0]!.meta).toMatchObject({ key, before: { reminderDays: [30] }, after: { reminderDays: [60, 30, 7] } });
-    expect((await api('hr2', 'put', '/documents/types/passport').send({ ...FSSAI, name: 'Passport' }).expect(403)).body.message).toMatch(/starter types cannot be changed/);
-    await api('hr2', 'post', '/documents/types/passport/retire').expect(403);
+    expect((await api('hr2', 'post', '/documents/types/passport/retire').expect(403)).body.message).toMatch(/starter types cannot be changed or removed/);
     expect((await types()).find((t) => t.key === 'passport')).toMatchObject({ reminderDays: [60, 30, 7], system: true });
+  });
+
+  // Answer 1822: the company's own verification and reminders for a starter type; the type itself stays YukthiX's.
+  it('1822: HR sets verification and reminders on a starter type for the company only (audited); the rest stays', async () => {
+    await api('hr2', 'put', '/documents/types/passport').send({ ...FSSAI, name: 'Renamed', sensitivity: 'internal', requiresVerification: true, expiryTracked: true, reminderDays: [90, 30, 7], uploadBy: ['hr'] }).expect(200);
+    const p = (await types()).find((t) => t.key === 'passport') as T & { ownChoices: boolean };
+    expect(p).toMatchObject({ name: 'Passport', sensitivity: 'confidential', uploadBy: ['person', 'hr'], requiresVerification: true, reminderDays: [90, 30, 7], system: true, ownChoices: true });
+    expect((await types()).filter((t) => t.key === 'passport')).toHaveLength(1);
+    expect((await audits('document.type.starter_changed'))[0]!.meta).toMatchObject({ key: 'passport', before: { requiresVerification: false, reminderDays: [60, 30, 7] }, after: { requiresVerification: true, reminderDays: [90, 30, 7] } });
+  });
+
+  it('negative (1822): payroll proofs stay verified, reminders must be offered ones, and no key changes nothing; back to YukthiX resets it', async () => {
+    expect((await api('hr2', 'put', '/documents/types/pan_card').send({ ...FSSAI, requiresVerification: false, expiryTracked: false, reminderDays: [] }).expect(400)).body.message).toMatch(/always verifies the PAN card/);
+    await api('hr2', 'put', '/documents/types/passport').send({ ...FSSAI, reminderDays: [45] }).expect(400);
+    await api('plain', 'put', '/documents/types/passport').send({ ...FSSAI, reminderDays: [30] }).expect(403);
+    expect((await types()).find((t) => t.key === 'pan_card')).toMatchObject({ requiresVerification: true, verifyLocked: true });
+    await api('hr2', 'post', '/documents/types/passport/reset').expect(204);
+    expect((await types()).find((t) => t.key === 'passport')).toMatchObject({ requiresVerification: false, reminderDays: [60, 30, 7], ownChoices: false });
+    await api('hr2', 'put', '/documents/types/passport').send({ ...FSSAI, requiresVerification: true, expiryTracked: true, reminderDays: [30, 7] }).expect(200);
+    expect((await types()).find((t) => t.key === 'passport')).toMatchObject({ requiresVerification: true, reminderDays: [30, 7], ownChoices: true });
   });
 
   it('a type no document uses is retired and leaves the list; negative: one in use stays', async () => {
@@ -123,6 +142,9 @@ describe('Settings S-8: document types (5.1)', () => {
     otherOrg = (await prisma.organization.create({ data: { name: `S8D other ${run}`, slug: `s8d-o-${run}`, planId } })).id;
     const seen = await tenantPrisma.forTenant({ organizationId: otherOrg, isSuperAdmin: false }, (tx) => tx.documentType.findMany({ where: { key } }));
     expect(seen).toEqual([]);
+    // 1822: the other company still has YukthiX's own choices for the starter type.
+    const theirs = await tenantPrisma.forTenant({ organizationId: otherOrg, isSuperAdmin: false }, (tx) => tx.documentType.findMany({ where: { key: 'passport' } }));
+    expect(theirs.map((t) => [t.organizationId, t.reminderDays])).toEqual([[null, [60, 30, 7]]]);
     await expect(inOrg((tx) => tx.documentType.updateMany({ where: { key: 'passport', organizationId: null }, data: { reminderDays: [1] } }))).resolves.toEqual({ count: 0 });
   });
 });

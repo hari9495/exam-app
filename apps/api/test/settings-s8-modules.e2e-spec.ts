@@ -24,7 +24,7 @@ describe('Settings S-8: expenses and performance settings and who changes them',
   const users: Record<string, string> = {};
   let orgId = '';
   let planId = '';
-  const api = (who: string, method: 'get' | 'put' | 'post', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const api = (who: string, method: 'get' | 'put' | 'post' | 'patch', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const put = (who: string, key: string, value: string) => api(who, 'put', '/org/settings').send({ key, value, scopeType: 'tenant' });
   const inOrg = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, fn);
   const valueOf = async (key: string) => (await inOrg((tx) => tx.setting.findFirst({ where: { organizationId: orgId, key, scopeType: 'tenant' } })))?.value ?? null;
@@ -62,6 +62,7 @@ describe('Settings S-8: expenses and performance settings and who changes them',
         const u = Object.values(users);
         await tx.refreshToken.deleteMany({ where: { userId: { in: u } } });
         await tx.session.deleteMany({ where: { userId: { in: u } } });
+        await tx.user.deleteMany({ where: { organizationId: orgId } });
         await tx.organization.deleteMany({ where: { id: orgId } });
         await tx.user.deleteMany({ where: { id: { in: u } } });
       })
@@ -126,5 +127,24 @@ describe('Settings S-8: expenses and performance settings and who changes them',
     await put('perf', 'notify.digest.time', '08:00').expect(403);
     await put('hr2', 'notify.digest.time', '03:00').expect(400);
     expect(await valueOf('notify.email.enabled')).toBe('on');
+  });
+
+  // Answer 1826: what new people start with; applied when the account is made; each person changes their own.
+  it('1826: with the company default on the daily digest, a new person starts on it and can change their own; people already there keep theirs', async () => {
+    const make = async (who: string) => (await inOrg((tx) => tx.user.create({ data: { organizationId: orgId, email: `${who}-${run}@s8.test`, name: who, passwordHash: 'x', role: 'panel' }, select: { notificationDigest: true } }))).notificationDigest;
+    expect(await make('new1')).toBe('immediate');
+    await put('hr2', 'notify.email.default_cadence', 'daily').expect(200);
+    expect(await make('new2')).toBe('daily');
+    const existing = await inOrg((tx) => tx.user.findUniqueOrThrow({ where: { id: users.plain! }, select: { notificationDigest: true } }));
+    expect(existing.notificationDigest).toBe('immediate');
+    await api('plain', 'patch', '/notifications/digest').send({ mode: 'daily' }).expect(200);
+    await put('hr2', 'notify.email.default_cadence', 'immediate').expect(200);
+    expect(await make('new3')).toBe('immediate');
+  });
+
+  it('negative (1826): a value not offered is refused; set-up keys cannot change it', async () => {
+    await put('hr2', 'notify.email.default_cadence', 'weekly').expect(400);
+    await put('exp', 'notify.email.default_cadence', 'daily').expect(403);
+    expect(await valueOf('notify.email.default_cadence')).toBe('immediate');
   });
 });

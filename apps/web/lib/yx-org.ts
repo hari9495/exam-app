@@ -7,6 +7,8 @@ import { useAuth } from './auth-context';
 
 /** Keys the YukthiX navigation and screens care about; the API checks each call anyway. */
 export const YX_KEYS = [
+  // S-9: the billing pages of Settings › Billing & Account (8.1 to 8.3, 8.5).
+  'org:manage_billing',
   'org.structure.view',
   'org.settings.manage',
   'org.entity.statutory.manage',

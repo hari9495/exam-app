@@ -13,6 +13,6 @@ import { StripeWebhookController } from './stripe-webhook.controller';
   imports: [EmailModule], // QuotaService injects EmailService
   controllers: [BillingController, PlansController, StripeWebhookController],
   providers: [UsageService, QuotaService, PlansService, StripeClient, BillingCheckoutService],
-  exports: [UsageService, QuotaService], // consumed by processors / other modules for enforcement
+  exports: [UsageService, QuotaService, BillingCheckoutService], // consumed by processors / other modules; S-9 reads invoices
 })
 export class BillingModule {}

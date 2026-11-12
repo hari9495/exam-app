@@ -107,6 +107,8 @@ export class PlatformService {
         select: { id: true, name: true, slug: true, lifecycle: true, status: true, trialEndsAt: true, trialExtendedAt: true, lifecycleChangedAt: true, createdAt: true },
       });
       if (!o) throw new NotFoundException('Company not found');
+      // S-9 (answer 1332): the company's own request to close its account, for the staff who close it.
+      const closure = await tx.accountClosureRequest.findFirst({ where: { organizationId: id, status: { in: ['requested', 'closed'] } }, orderBy: { createdAt: 'desc' }, select: { status: true, reason: true, createdAt: true, keepUntil: true } });
       const [products, employees, admins, history] = await Promise.all([
         tx.organizationProduct.findMany({ where: { organizationId: id }, select: { productCode: true, addedAt: true }, orderBy: { addedAt: 'asc' } }),
         tx.employee.count({ where: { organizationId: id } }),
@@ -129,6 +131,7 @@ export class PlatformService {
         lifecycleChangedAt: o.lifecycleChangedAt,
         createdAt: o.createdAt,
         products: products.map((p) => p.productCode),
+        closureRequest: closure ? { status: closure.status, reason: closure.reason, askedAt: closure.createdAt, keepUntil: closure.keepUntil?.toISOString().slice(0, 10) ?? null } : null,
         employees,
         admins,
         history: history.map((h) => ({ id: h.id, action: h.action, by: h.actorName || h.actorEmail || 'YukthiX', at: h.createdAt, details: h.metadataJson ? (JSON.parse(h.metadataJson) as Record<string, unknown>) : null })),
@@ -171,11 +174,21 @@ export class PlatformService {
       // session (nobody there could end it any more).
       const stopping = to === 'suspended' || to === 'closed';
       const signedOut = stopping ? await revokeStaffSessions(tx, { organizationId: id }, `company_${to}`) : 0;
+      // S-9 (answer 1332): closing answers the company's own request; its data is kept for the platform's days.
+      let keepUntil: string | null = null;
+      if (to === 'closed') {
+        const v = Number((await tx.platformSetting.findUnique({ where: { key: 'account.closure.keep_days' } }))?.value);
+        keepUntil = addDays(todayIst(), Number.isInteger(v) && v > 0 ? v : 30);
+        // Only YukthiX staff answer a closure request (the table's RLS): this staff-only path says so for this one write.
+        await tx.$executeRaw`SELECT set_config('app.is_super_admin', 'on', true)`;
+        await tx.accountClosureRequest.updateMany({ where: { organizationId: id, status: 'requested' }, data: { status: 'closed', decidedBy: actorUserId, decidedAt: new Date(), keepUntil: asDate(keepUntil) } });
+        await tx.$executeRaw`SELECT set_config('app.is_super_admin', 'off', true)`;
+      }
       if (stopping) {
         await tx.supportSession.updateMany({ where: { organizationId: id, status: 'approved' }, data: { status: 'ended', endedBy: actorUserId, endedByName: actor.label.slice(0, 200), endedAt: new Date() } });
         await tx.supportSession.updateMany({ where: { organizationId: id, status: 'requested' }, data: { status: 'cancelled' } });
       }
-      return { result: null, audit: { action: 'platform.company.lifecycle', entityType: 'organization', entityId: id, metadata: { from: o.lifecycle, to, reason: dto.reason.trim(), signedOut } } };
+      return { result: null, audit: { action: 'platform.company.lifecycle', entityType: 'organization', entityId: id, metadata: { from: o.lifecycle, to, reason: dto.reason.trim(), signedOut, ...(keepUntil ? { keepUntil } : {}) } } };
     });
     return this.company(actorUserId, id);
   }

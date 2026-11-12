@@ -14017,3 +14017,35 @@ model SdTicketField {
   @@index([organizationId, deskId, sortOrder])
   @@map("sd_ticket_fields")
 }
+
+/// Settings S-9, 8.5 (answer 1332): a whole-company export; the link works until expires_at (platform setting).
+model CompanyExport {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  requestedBy    String   @map("requested_by") @db.Uuid
+  fileRef        String   @map("file_ref") @db.VarChar(500)
+  sizeBytes      BigInt   @map("size_bytes")
+  tables         Int
+  rows           Int
+  downloads      Int      @default(0)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt      DateTime @map("expires_at") @db.Timestamptz(3)
+
+  @@index([organizationId, createdAt])
+  @@map("company_exports")
+}
+
+/// Settings S-9, 8.5 (answer 1332): a System Admin asks YukthiX to close the account; only staff close it.
+model AccountClosureRequest {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  requestedBy    String    @map("requested_by") @db.Uuid
+  reason         String    @db.VarChar(500)
+  status         String    @default("requested") @db.VarChar(12)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  keepUntil      DateTime? @map("keep_until") @db.Date
+
+  @@map("account_closure_requests")
+}

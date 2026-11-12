@@ -55,14 +55,14 @@ means the live page passes no manage flag that I could see and I did not read th
 
 ## Counts (sub-pages = stories)
 
-After S-1 (Settings home, search and the eight group pages live; four live stories added) S-2 (the Time & Leave pages with their settings; one live story added) S-3 (the Payroll pages, a second person for payroll changes; two live stories added) and S-4 (2.7 and 2.10 with their settings; one live story added) and S-5 (page history live; appendix script "ok"), and S-8 (13 Nov 2026: the retired Company rules, Access and privacy and Payroll rules stories deleted, answer 1781; 4.8, 5.1, 5.4 and 6.3 live; four 5.1 stories added; appendix script "ok").
+After S-1 (Settings home, search and the eight group pages live; four live stories added) S-2 (the Time & Leave pages with their settings; one live story added) S-3 (the Payroll pages, a second person for payroll changes; two live stories added) and S-4 (2.7 and 2.10 with their settings; one live story added) and S-5 (page history live; appendix script "ok"), and S-8 (13 Nov 2026: the retired Company rules, Access and privacy and Payroll rules stories deleted, answer 1781; 4.8, 5.1, 5.4 and 6.3 live; four 5.1 stories added; appendix script "ok"), and S-9 (group 8 live: 8.1 to 8.3 read-only, 8.5; six live stories added; appendix script "ok").
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Settings home and page states | 1 | 18 | 3 | 3 | 0 | 0 | 24 |
 | B. Organisation and Global core | 2 | 11 | 0 | 0 | 0 | 0 | 11 |
-| C. Settings map, groups 1 to 8 | 8 | 38 | 97 | 14 | 28 | 0 | 177 |
-| **All A-C** | **11** | **67** | **100** | **17** | **28** | **0** | **212** |
+| C. Settings map, groups 1 to 8 | 8 | 44 | 105 | 8 | 26 | 0 | 183 |
+| **All A-C** | **11** | **73** | **108** | **11** | **26** | **0** | **218** |
 
 Per group (C):
 
@@ -75,13 +75,13 @@ Per group (C):
 | Group 5 · Documents & Communication | 6 | 14 | 0 | 4 | 24 |
 | Group 6 · Hiring & Assessments | 15 | 3 | 0 | 4 | 22 |
 | Group 7 · Integrations & Developers | 2 | 4 | 8 | 6 | 20 |
-| Group 8 · Billing & Account | 2 | 2 | 6 | 4 | 14 |
+| Group 8 · Billing & Account | 8 | 8 | 0 | 2 | 20 |
 
-Counted by script 13 Nov 2026 on `feat/yukthix-settings-s8` (the script is in the appendix). There are 212 stories in
+Counted by script 13 Nov 2026 on `feat/yukthix-settings-s9` (the script is in the appendix). There are 218 stories in
 11 files whose title starts `Screens/Settings/`, one file per title (checked: no title spans two files):
 `screens/settings/settings-home.stories.tsx` (24), `screens/global/global.stories.tsx` (3),
 `screens/org/org.stories.tsx` (8) and `screens/settings/settings-g1.stories.tsx` to `settings-g8.stories.tsx`
-(18, 25, 27, 27, 24, 22, 20, 14). Story names are the exported names that start with a capital letter. None is a phone
+(18, 25, 27, 27, 24, 22, 20, 20). Story names are the exported names that start with a capital letter. None is a phone
 view (the phone settings screens are under other titles).
 
 Cross-checked with the area maps: `hiring-design-map.md` (6.1, 6.2 and the group 6 overview), `visitors-design-map.md`
@@ -468,18 +468,24 @@ File: `packages/yx-ui/src/screens/settings/settings-g8.stories.tsx`.
 |---|---|---|
 | Overview · Group 8 · Billing & Account | live | S-1: /yx/settings/<group> renders `SettingsGroupScreen` with `live`: the group's pages the viewer may open, each linking to its live editor; a group with none says no access |
 | OverviewLoading · Group 8 · loading | live | same, loading |
-| P8_1 · 8.1 Plan & add-ons | wire design | `organizations/billing/plans`, `…/checkout`, `…/portal` (Stripe) are used only by /v2 Settings › Billing; each company's products are set by YukthiX staff in the console |
-| P8_1_ReadOnly · 8.1 Plan & add-ons · read-only | wire design | same |
-| P8_2 · 8.2 Usage & caps | wire design | `organizations/billing/usage`, `organizations/api-usage` and SMS deliveries (`notifications/sms/deliveries`, shown on /yx/settings/sms) exist; there is no usage page |
-| P8_2_ReadOnly · 8.2 Usage & caps · read-only | wire design | same |
-| P8_3 · 8.3 Invoices & payment | wire design | `organizations/billing/invoices` (Stripe) is used only by /v2 Billing |
-| P8_3_ReadOnly · 8.3 Invoices & payment · read-only | wire design | same |
+| P8_1 · 8.1 Plan & add-ons | live (gap) | S-9 (answer 1328): /yx/settings/account/plan-and-add-ons, read-only (`GET account/billing`, the billing key): the plan YukthiX set, the trial end, the products switched on. Gap: add-ons, switching a product on, billing period and bundle discount are not built (no payment here) |
+| P8_1_ReadOnly · 8.1 Plan & add-ons · read-only | live (gap) | the page is read-only for everyone with the billing key |
+| P8_2 · 8.2 Usage & caps | live (gap) | S-9 (answer 1328): /yx/settings/account/usage-and-caps, read-only: people who can sign in, candidates, AI credits and proctoring minutes against the plan this month. Gap: usage alerts, SMS billing and caps, top-ups and API limits are not built |
+| P8_2_ReadOnly · 8.2 Usage & caps · read-only | live (gap) | as the page |
+| P8_3 · 8.3 Invoices & payment | live (gap) | S-9 (answer 1328): /yx/settings/account/invoices-and-payment, read-only: the invoices from the payment provider (none, or "could not be read", is no error). Gap: billing contacts, GST details per entity, PO number and the group statement are not built |
+| P8_3_ReadOnly · 8.3 Invoices & payment · read-only | live (gap) | as the page |
 | P8_4 · 8.4 Sandbox | design only, feature not built | searched `sandbox` in apps/api/src: only Content-Security-Policy headers |
 | P8_4_ReadOnly · 8.4 Sandbox · read-only | design only, feature not built | as the page |
-| P8_5 · 8.5 Data export & closure | design only, feature not built | searched `close.?account|tenant.close|whole.?company export` in apps/api/src: none (closing a company is staff-only, in the console) |
-| P8_5_ReadOnly · 8.5 Data export & closure · read-only | design only, feature not built | as the page |
+| P8_5 · 8.5 Data export & closure | live (gap) | S-9 (answer 1332): /yx/settings/account/data-export-and-closure, System Admins: the whole-company export (security key; link works `account.export.link_hours`, 24) and asking YukthiX to close the account (staff close it; data kept `account.closure.keep_days`, 30). Gap: export formats, the per-employee document pack and legal holds are not built; deletion after the kept days is not automatic (questions 1881 to 1883) |
+| P8_5_ReadOnly · 8.5 Data export & closure · read-only | live (gap) | someone with the billing key who is not a System Admin sees the page; starting an export or asking to close says only a System Admin can |
 | P8_6 · 8.6 Analytics, status & tips | live (gap) | the maintenance banner is live (`GET /availability`); S-7 (answer 1321): What's new and tours switches on /yx/settings/account/analytics-status-and-tips. Gap: product analytics and status settings are not on the page |
 | P8_6_ReadOnly · 8.6 Analytics, status & tips · read-only | live (gap) | View only without HR's settings key |
+| P8_1_Live · 8.1 Plan & add-ons · live, read-only | live | `planPage` with GET account/billing |
+| P8_2_Live · 8.2 Usage & caps · live, read-only | live | `usagePage` |
+| P8_3_Live · 8.3 Invoices & payment · live, read-only | live | `invoicesPage` |
+| P8_5_Live · 8.5 Data export & closure · live | live | `dataPage` with GET account/data: start an export, download while the link works |
+| P8_5_Asked · 8.5 · closing asked for | live | the request with who asked, and Withdraw |
+| ClosureRequest · 8.5 · Ask YukthiX to close the account | live | `ClosureRequestDrawer`: the company name typed and why (field errors, focus) |
 
 ## 5. What can be reused, and what is missing
 
@@ -957,6 +963,45 @@ approver for payroll settings; approval policies per request type; and the not-b
 1826. **A company default for the digest.** Each person still chooses an email per notice or the daily digest; new
       people start with an email per notice. *Suggested: a company default for new people (per notice or daily
       digest), changeable by each person.*
+
+## S-9 as built (answers 1328, 1332, 1821, 1822, 1826; branch `feat/yukthix-settings-s9`)
+
+- **8.1 to 8.3, read-only (1328):** Plan & add-ons, Usage & caps and Invoices & payment show what the company has from
+  `GET account/billing` (the billing key, `org:manage_billing`, which System Admins hold): the plan and products YukthiX
+  set, this month's use against the allowance, and the invoices. There is no payment and nothing to change here.
+- **Whole-company export (1332):** a System Admin with the security key starts it on 8.5. Every table with the company's
+  rows is read in one pass under the company's RLS and filtered by its id too; sign-in material, secrets, encrypted
+  fields and file references are left out (`apps/api/src/account/export-rules.ts`). The file (gzip JSON) is kept in the
+  file store; its link works `account.export.link_hours` (24) and is 410 after. Starting and every download are audited.
+- **Closing (1332):** a System Admin asks (types the company name, says why; audited; can withdraw). Nothing closes until
+  YukthiX staff use Close in the console; that answers the request and keeps the data `account.closure.keep_days` (30).
+  The database refuses a company marking its own request closed. Both periods are platform settings.
+- **1821:** 3.1 shows "No longer needed: the location is a registered factory" beside that location's own value.
+- **1822:** HR sets verification and expiry reminders on starter document types for their own company; the type stays
+  YukthiX's; PAN, Aadhaar, bank proof, education and experience proofs stay always verified; "Back to YukthiX's choices".
+- **1826:** 5.4 has the company default for new people (an email per notice, or one daily digest), applied when the
+  account is made; each person changes their own.
+- **Timesheet:** the weekly grid fits 1278 x 635 with Total in view (measured; see the commit).
+- **Tests:** API e2e `settings-s9-account` (7), `settings-s8-doctypes` (+2), `settings-s8-modules` (+2); unit
+  `export-rules.spec`. Kit `account-live.test`, `settings-s9-items.test`, timesheet grid tests. Web
+  `yx-settings-s9.test` (group 8 positive and negative, 1821).
+
+### Questions (from 1881)
+
+1881. **The closure request in the console.** The console's company API now returns the company's request, but the
+      console screen does not show it yet. *Suggested: show it on the company page beside Close.*
+1882. **Deleting after the kept days.** The kept-until day is recorded; nothing deletes a closed company's data yet.
+      *Suggested: a staff-confirmed deletion that issues a deletion certificate, once the founder approves it.*
+1883. **What the export leaves out.** Encrypted fields, file contents and sign-in material are left out, and a table
+      stops at 50,000 rows (the manifest says when). *Suggested: a document archive and the personal fields in readable
+      form in a later version, behind an extra confirmation.*
+1884. **The billing key.** The pages use the older `org:manage_billing`, which only System Admins hold. *Suggested: a
+      YukthiX key "billing.view" so finance people can read the plan and invoices.*
+1885. **The old /v2 billing pages.** They still offer online checkout through the payment provider. *Suggested: retire
+      them now that 8.1 to 8.3 are live and payment is by bank transfer.*
+1886. **Timesheet with several rows and an error box.** One row with the error box fits 1278 x 635; three rows with it
+      need 76 px more, partly because "Submit opens Thu 1 Oct ..." shows both in the box and under the grid.
+      *Suggested: show it once.*
 
 ## 7. Build plan (slices, max 3 builders at once)
 
