@@ -44,6 +44,7 @@ describe('ScheduledSweepsWorkerService', () => {
       accessRequests: { remindSweep: jest.fn().mockResolvedValue(0) },
       notFoundRetention: { prune: jest.fn().mockResolvedValue(0) },
       incidents: { remindSweep: jest.fn().mockResolvedValue(0) },
+      csFollowup: { nightly: jest.fn().mockResolvedValue({ companies: 0, opened: 0, resolved: 0, purged: 0 }) },
     };
     const service = new ScheduledSweepsWorkerService(
       connection as never,
@@ -73,6 +74,7 @@ describe('ScheduledSweepsWorkerService', () => {
       services.accessRequests as never,
       services.notFoundRetention as never,
       services.incidents as never,
+      services.csFollowup as never,
     );
     return { service, queue, connection, services };
   };
@@ -121,6 +123,7 @@ describe('ScheduledSweepsWorkerService', () => {
       'access-request-reminders': services.accessRequests.remindSweep,
       'not-found-retention': services.notFoundRetention.prune,
       'incident-breach-reminders': services.incidents.remindSweep,
+      'cs-health-snapshot': services.csFollowup.nightly,
     };
     for (const { id } of SWEEP_SCHEDULE) {
       await mockWorker.processor!({ name: id });

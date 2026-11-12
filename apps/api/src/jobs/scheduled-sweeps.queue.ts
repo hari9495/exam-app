@@ -70,4 +70,6 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'not-found-retention', cron: '5 23 * * *' },
   // Console C-8 (answer 1124): breach reminders before the CERT-In and DPDP due times, every 5 minutes.
   { id: 'incident-breach-reminders', cron: '*/5 * * * *' },
+  // Console 1165: each company's health snapshot for the India day, alert follow-up sync and the snapshot purge (01:30 IST).
+  { id: 'cs-health-snapshot', cron: '0 20 * * *' },
 ];

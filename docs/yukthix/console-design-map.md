@@ -79,11 +79,11 @@ After C-1 to C-5, the console follow-ups and C-8 parts 1 and 2 (12 Nov 2026, tes
 |---|---|---|---|---|---|---|---|
 | A. Live console | 3 | 29 | 0 | 0 | 0 | 0 | 29 |
 | B. Rules engine (YX-01 to YX-03) | 3 | 26 | 5 | 0 | 0 | 0 | 31 |
-| C. Customers and containment (YX-04, YX-18) | 2 | 23 | 2 | 0 | 0 | 0 | 25 |
+| C. Customers and containment (YX-04, YX-18) | 2 | 25 | 2 | 0 | 0 | 0 | 27 |
 | D. Partners (YX-06 to YX-08) | 3 | 0 | 0 | 0 | 10 | 0 | 10 |
 | E. Money (YX-14 to YX-17) | 4 | 0 | 0 | 0 | 8 | 0 | 8 |
 | F. The rest (YX-05, YX-09 to YX-13) | 6 | 17 | 0 | 0 | 13 | 0 | 30 |
-| **All A-F** | **21** | **95** | **7** | **0** | **31** | **0** | **133** |
+| **All A-F** | **21** | **97** | **7** | **0** | **31** | **0** | **135** |
 
 Counted by script on 11 Nov 2026 on `docs/yukthix-console-map` (the script is in the appendix). There are 87 stories in
 20 files whose title starts `Screens/YukthiX console/`: `screens/console/console.stories.tsx` (14),
@@ -265,6 +265,8 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 | YX04AlertRules · Churn-risk alerts · rules from platform settings (C-2) | live | `GET/PUT /platform/customers/settings` (audited `platform.cs.settings_changed`) |
 | YX04MessagesWaiting · Messages · waiting for a second staff member (C-2) | live | `POST /platform/customers/messages/:id/approve` (step-up) and `/reject` (reason) |
 | YX04MessagesMine · Messages · my message waiting, Withdraw (1087) | live | `POST platform/customers/messages/:id/withdraw` (writer only; audited) |
+| YX04HealthHistory · Tenant health · 30-day change, churn risk and CS owner (1165) | live | 1165: nightly snapshot (`cs_health_snapshots`), owner (`cs_accounts`), Assign owner |
+| YX04AlertFollowUp · Churn-risk alerts · owner, status and Log outreach (1165) | live | 1165: `cs_alerts`, `cs_alert_notes`; resolved by itself when the alert clears |
 | YX04ComposerTwo · Message composer · two companies need approval (C-2) | live | `POST /platform/customers/messages` |
 | YX04Flags · Feature flags | live | C-4 (1049): `/staff/feature-flags`, the drawn `FeatureFlagsScreen` with `live`; four real switches over existing company settings |
 | YX04KillSwitch · Feature flags · kill switch | live | C-4: kill switch with a reason and the security key again; a second staff member turns it back on |
@@ -980,3 +982,32 @@ C-6 to C-8.
 1183. **Platform settings in two places.** C-2's alert rules and C-5's maintenance rules can still be changed on their own
       pages (no reason asked there). *Suggested: keep one place: those pages link to Platform settings, which asks for
       the key and a reason.*
+
+## 1165 as built (answers 1082, 1083; branch `feat/yukthix-console-1165`)
+
+- **Nightly health snapshot:** scheduled sweep `cs-health-snapshot` (01:30 IST): one row per company per India day in
+  `cs_health_snapshots` (score and band only; a rerun the same day replaces it), the alert follow-up sync, and the purge
+  of snapshots older than the platform setting `cs.snapshot.keep_days` (400 by default, 31 to 1825; also on Console ›
+  Platform settings). Audited once per run (`platform.cs.snapshot_taken`).
+- **The drawn columns:** 30-day change (today's score less the latest snapshot on or before 30 India days ago; "No history
+  yet" without one), churn risk (from the drawn bands: healthy low, watch medium, at risk high) and CS owner.
+- **Customer success owner** (`cs_accounts`): Assign owner (the drawn bulk action); only active staff holding the
+  Customer success role; audited before and after.
+- **Alert follow-up** (`cs_alerts`, `cs_alert_notes`): each alert opens a follow-up owned by the company's owner; Owner
+  and status (open, contacted, resolved) and Log outreach (a note; an open alert becomes contacted); all audited; a
+  follow-up whose alert cleared is resolved by itself (`auto_resolved`). One live follow-up per company and rule
+  (database). All four tables are platform-only (forced RLS); companies never read them.
+- **Tests:** e2e `console-cs-followup` (8): Support agent and company admin refused; owner must hold the role (inactive and
+  Support agent refused); snapshot idempotent within a day; 30-day change from the snapshot; purge keeps 400 days and
+  deletes 401; outreach audited and contacted; owner and version checks; auto-resolve; RLS. Unit: 30-day change across a
+  month end and February, the India day boundary, the bands. Kit: columns, outreach note, resolved alert.
+
+### Questions (from 1221)
+
+1221. **Churn risk.** Built from the score's band only (healthy low, watch medium, at risk high). *Suggested: keep; add the
+      30-day drop (for example 15 points or more makes it high) once a few months of history exist.*
+1222. **Who can own.** Only staff holding the Customer success role; a Security lead without it cannot. *Suggested: keep.*
+1223. **When an owner leaves.** A deactivated owner keeps their companies and alerts until reassigned. *Suggested: show
+      "Owner left" and list those companies for reassignment.*
+1224. **Alert notices.** New alerts reach their owner only in the console list. *Suggested: a daily email to each owner with
+      their new alerts, later.*
