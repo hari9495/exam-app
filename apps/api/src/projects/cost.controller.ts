@@ -16,7 +16,8 @@ export class CostController {
 
   @Get('costs')
   month(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query('month') month?: string) {
-    if (month && !/^\d{4}-\d{2}$/.test(month)) throw new BadRequestException('Give the month as YYYY-MM.');
+    // A real month only (2026-13 would otherwise reach the database as an invalid date).
+    if (month && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new BadRequestException('Give the month as YYYY-MM.');
     return this.cost.month(ctx, req.user as ScopeUser, month);
   }
 
