@@ -26,7 +26,8 @@ export interface SweepDefinition {
 // self-limits internally via scheduledReportLastSentAt, so running its sweep daily is correct).
 // The `id`s here MUST match the handler keys in ScheduledSweepsWorkerService.
 export const SWEEP_SCHEDULE: SweepDefinition[] = [
-  { id: 'notification-digests', cron: '0 1 * * *' },
+  // S-8 (5.4): hourly; each company's digest goes out at its own time (notify.digest.time).
+  { id: 'notification-digests', cron: '0 * * * *' },
   { id: 'staff-reminders', cron: '30 1 * * *' },
   { id: 'scheduled-reports', cron: '0 2 * * *' },
   { id: 'system-events-retention', cron: '0 3 * * *' },

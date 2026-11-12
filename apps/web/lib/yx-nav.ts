@@ -116,6 +116,7 @@ export const MORE_SETTINGS_PAGES: [string, string, string, string][] = [
   ['1.1', 'Company & branding', 'org', 'company-and-branding'],
   ['1.5', 'Employee records', 'org', 'employee-records'],
   ['1.6', 'Set-up hub settings', 'org', 'set-up-hub'],
+  ['5.4', 'Notifications', 'documents', 'notifications'],
   ['5.7', 'Policies', 'documents', 'policies'],
   ['8.6', 'Help and tips', 'account', 'analytics-status-and-tips'],
 ];
@@ -165,7 +166,7 @@ export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '4.10': ['/yx/payroll/ewa'],
   '5.2': ['/yx/settings/letters'],
   '5.3': ['/yx/settings/letters'],
-  '5.4': ['/yx/settings/emails'],
+  '5.4': [...morePage('5.4'), '/yx/settings/emails'],
   '5.5': ['/yx/settings/sms'],
   '5.7': [...morePage('5.7'), '/yx/desk/policy-admin'],
   '5.8': ['/yx/desk/setup'],

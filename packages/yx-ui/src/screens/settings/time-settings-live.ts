@@ -219,6 +219,15 @@ export const MORE_SETTINGS: Record<string, { links: string[]; settings: Place[];
     ],
   },
   '8.6': { links: [], settings: [{ section: 'Help', key: 'help.whats_new.show', synonyms: ["what's new"] }, { section: 'Help', key: 'help.tours.show', synonyms: ['tours'] }] },
+  // Settings S-8: 5.4 Notifications, the company switches for the channels that exist (in-app and email); the wording
+  // stays on its editor (PLT-13, Emails).
+  '5.4': {
+    links: ['ntf.templates'],
+    settings: [
+      { section: 'Channels and defaults', key: 'notify.email.enabled', synonyms: ['notification channel', 'email notifications'] },
+      { section: 'Digests and quiet hours', key: 'notify.digest.time', synonyms: ['summary email', 'digest'] },
+    ],
+  },
   // Settings S-8 (answer 1323): 4.8 Expenses & travel with the 14 company choices that had no screen; the policy matrix
   // stays on its own editor (EXP-07). Expense set-up (expense.policy.manage) changes them too.
   '4.8': {

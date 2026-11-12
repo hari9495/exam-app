@@ -9,6 +9,7 @@ import { buildNav, type NavInput } from '../../lib/yx-nav';
 import { YxNavContext } from '../../lib/yx-shell';
 import YxFinanceSettingsPage from './(app)/settings/finance/[page]/page';
 import YxTalentSettingsPage from './(app)/settings/talent/[page]/page';
+import YxDocumentsSettingsPage from './(app)/settings/documents/[page]/page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), apiFetchBlob: jest.fn() }));
@@ -22,6 +23,7 @@ const ADMIN = buildNav({ ...base, has: () => true, role: 'org_admin' });
 const REGISTRY = {
   'expense.gst.capture': { label: 'Expenses: capture GST for input credit', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', 'on'], default: 'off' },
   'expense.finance_audit': { label: 'Expenses: finance check of claims', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', 'flagged_only', 'all'], default: 'flagged_only' },
+  'notify.email.enabled': { label: 'Notifications: also send them by email (the in-app bell always shows them)', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'perf.goal.approval': { label: 'Performance: the manager approves a person’s goals', scopes: ['tenant'], dated: false, values: ['manager', 'none'], default: 'manager' },
   'payroll.settings.second_person': { label: 'Payroll setting changes need a second person', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
 };
@@ -84,5 +86,21 @@ describe('Settings S-8: Expenses & travel (4.8) and Performance (6.3)', () => {
     show(YxTalentSettingsPage, 'expenses-and-travel');
     expect(await screen.findByText(/You don't have access to/)).toBeInTheDocument();
     expect(screen.queryByText(/finance check of claims/)).toBeNull();
+  });
+
+  it('5.4 Notifications: HR turns notification emails off, saved at once; the wording editor is linked', async () => {
+    routes(['org.settings.manage']);
+    show(YxDocumentsSettingsPage, 'notifications');
+    await ue.click(await screen.findByRole('checkbox', { name: /also send them by email/ }));
+    expect(screen.getByRole('button', { name: /Edit notification wording/ })).toBeInTheDocument();
+    await ue.click(screen.getAllByRole('button', { name: 'Save changes' })[0]!);
+    await waitFor(() => expect(calls).toEqual([['PUT /org/settings', { key: 'notify.email.enabled', value: 'off', scopeType: 'tenant' }]]));
+  });
+
+  it('negative (5.4): expense set-up alone sees Notifications view only', async () => {
+    routes(['expense.policy.manage']);
+    show(YxDocumentsSettingsPage, 'notifications');
+    expect(await screen.findByText(/also send them by email/)).toBeInTheDocument();
+    expect(screen.getByText('View only')).toBeInTheDocument();
   });
 });

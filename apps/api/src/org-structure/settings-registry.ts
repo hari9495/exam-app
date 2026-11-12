@@ -233,6 +233,11 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'hiring.internal.months_in_role': { label: 'Hiring: months in their current role before someone can apply for internal jobs', scopes: ['tenant'], dated: false, values: ['0', '3', '6', '9', '12', '18', '24'], default: '12' },
   'hiring.internal.tell_manager': { label: 'Hiring: the current manager is told about an internal application', scopes: ['tenant'], dated: false, values: ['on_apply', 'at_offer'], default: 'on_apply' },
   'perf.goal.checkin_days': { label: 'Performance: remind about goal check-ins after (days)', scopes: ['tenant'], dated: false, values: ['14', '30', '90'], default: '30' },
+  // Settings S-8, 5.4 Notifications (answer 1323): the company switches for the channels that exist (in-app and email).
+  // Notification emails can be turned off company-wide (the in-app bell always works); the daily digest goes out at
+  // this time (India time) to those who chose it.
+  'notify.email.enabled': { label: 'Notifications: also send them by email (the in-app bell always shows them)', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+  'notify.digest.time': { label: 'Notifications: the daily digest email goes out at (India time)', scopes: ['tenant'], dated: false, values: ['06:00', '07:00', '08:00', '09:00', '10:00', '18:00'], default: '07:00' },
   'alumni.access_years': { label: 'Alumni can read their documents for (years after leaving)', scopes: ['tenant'], dated: false, values: ['3', '5', '7', '10'], default: '7' },
   // M01 YX-LC-18 (lifecycle 6e): the rehire policy. Starter template "fresh start, same record, code and UAN"; HR may
   // change any option for one rehire with a reason.

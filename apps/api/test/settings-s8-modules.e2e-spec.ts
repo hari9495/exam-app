@@ -7,6 +7,7 @@ import { bootAdminApp } from './dual-app';
 import { EmailService } from '../src/email/email.service';
 import { markSteppedUp } from './fixtures/step-up';
 import { SETTINGS } from '../src/org-structure/settings-registry';
+import { NotificationsService } from '../src/notifications/notifications.service';
 
 // Settings S-8 (answer 1323), against the real database: 4.8 Expenses & travel and 6.3 Performance. Expense set-up
 // (expense.policy.manage) changes the expenses settings, performance set-up (perf.setup.manage) the performance ones;
@@ -104,5 +105,26 @@ describe('Settings S-8: expenses and performance settings and who changes them',
     await put('hr2', 'expense.payroll_cutoff_day', '25').expect(200);
     await put('hr2', 'perf.coach.frequency', 'off').expect(200);
     expect([await valueOf('expense.payroll_cutoff_day'), await valueOf('perf.coach.frequency')]).toEqual(['25', 'off']);
+  });
+
+  it('5.4: with notification emails off the bell still gets the notice and no email goes; back on, the email goes', async () => {
+    const send = app.get(EmailService).send as jest.Mock;
+    const eid = randomUUID();
+    const notify = () => app.get(NotificationsService).notifySystem({ organizationId: orgId, isSuperAdmin: false }, [users.plain!], 'expense.payment.update', { entityType: 'test', entityId: eid, contextText: 'S-8 test', linkPath: '/yx' }, { subject: `S-8 ${run}`, html: '<p>x</p>' });
+    const bells = () => inOrg((tx) => tx.userNotification.count({ where: { organizationId: orgId, recipientUserId: users.plain!, entityId: eid } }));
+    const mailsTo = () => send.mock.calls.filter((c) => c[0]?.subject === `S-8 ${run}`).length;
+    await put('hr2', 'notify.email.enabled', 'off').expect(200);
+    await notify();
+    expect([await bells(), mailsTo()]).toEqual([1, 0]);
+    await put('hr2', 'notify.email.enabled', 'on').expect(200);
+    await notify();
+    expect([await bells(), mailsTo()]).toEqual([2, 1]);
+  });
+
+  it('negative (5.4): expense or performance set-up cannot change the notification settings; a digest time not offered is refused', async () => {
+    await put('exp', 'notify.email.enabled', 'off').expect(403);
+    await put('perf', 'notify.digest.time', '08:00').expect(403);
+    await put('hr2', 'notify.digest.time', '03:00').expect(400);
+    expect(await valueOf('notify.email.enabled')).toBe('on');
   });
 });

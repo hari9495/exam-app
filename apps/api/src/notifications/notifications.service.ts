@@ -2,7 +2,9 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { TenantPrismaService, TenantContext, isApprovalEmailEventType, renderTemplateString } from '@exam-platform/shared';
 import { NOTIFICATION_TYPES, NOTIFICATION_TYPE_BY_KEY } from './notification-types';
 import { renderNotificationEmail, escapeHtml, buildNotificationEmailFooter } from './notification-email-render';
+import { Prisma } from '@prisma/client';
 import { EmailService } from '../email/email.service';
+import { companySetting } from '../time/time-core';
 
 export const DIGEST_MODES = ['immediate', 'daily', 'off'];
 
@@ -57,6 +59,8 @@ export class NotificationsService {
         where: { id: { in: ids }, organizationId: context.organizationId as string },
         select: { id: true, email: true, name: true, notificationDigest: true },
       });
+      // S-8 (5.4): the company may turn notification emails off; the bell row below is always written.
+      const emailsOn = await this.emailsOn(tx, context);
       const outbox: { to: string; prefMap: Map<string, boolean>; digest: string }[] = [];
       let actorName: string | null = null;
       if (valid.length > 0) {
@@ -82,7 +86,7 @@ export class NotificationsService {
             linkPath: target.linkPath,
           },
         });
-        if (u.email) {
+        if (u.email && emailsOn) {
           const prefMap = await this.resolveEmailEnabledByType(tx, u.id);
           outbox.push({ to: u.email, prefMap, digest: u.notificationDigest });
         }
@@ -140,6 +144,7 @@ export class NotificationsService {
         where: { id: { in: ids }, organizationId: context.organizationId as string },
         select: { id: true, email: true, notificationDigest: true },
       });
+      const emailsOn = await this.emailsOn(tx, context);
       const box: { to: string; prefMap: Map<string, boolean>; digest: string }[] = [];
       for (const u of valid) {
         await tx.userNotification.create({
@@ -154,7 +159,7 @@ export class NotificationsService {
             linkPath: target.linkPath,
           },
         });
-        if (u.email) {
+        if (u.email && emailsOn) {
           const prefMap = await this.resolveEmailEnabledByType(tx, u.id);
           box.push({ to: u.email, prefMap, digest: u.notificationDigest });
         }
@@ -176,6 +181,11 @@ export class NotificationsService {
     } catch (error) {
       this.logger.error('Failed to send reminder email(s)', error as Error);
     }
+  }
+
+  /** S-8 (5.4): whether the company sends notification emails (`notify.email.enabled`, on by default). */
+  async emailsOn(tx: Prisma.TransactionClient, context: TenantContext): Promise<boolean> {
+    return (await companySetting(tx, { organizationId: context.organizationId as string, isSuperAdmin: false } as never, 'notify.email.enabled')) === 'on';
   }
 
   // Renders an org-configured approval email template: plain-text subject (no escaping needed --
