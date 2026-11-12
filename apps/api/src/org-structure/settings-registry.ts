@@ -83,6 +83,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'policy.reack.default': { label: 'Policies: a new version asks everyone to acknowledge again', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'policy.ack.typed_name': { label: 'Policies: people type their name to acknowledge', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // HLP-14: draft policies with the company's own AI (founder decision 1); off offers the YukthiX starters instead.
+  // Settings S-6, 2.4 (answer 1330): approval steps a company set itself remind and escalate after these hours.
+  'approval.remind_hours': { label: 'Approvals: remind the approver after (hours)', scopes: ['tenant'], dated: false, values: ['4', '8', '12', '24', '48'], default: '24' },
+  'approval.escalate_hours': { label: 'Approvals: escalate to the approver\u2019s manager after (hours)', scopes: ['tenant'], dated: false, values: ['24', '48', '72', '96', '120'], default: '48' },
   'policy.ai_writer': { label: 'Policies: write policy drafts with the company’s AI', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   // HLP-14 (answer 106): unapproved policy drafts are discarded by the daily clean-up after this many days untouched.
   'policy.ai_draft.discard_days': { label: 'Policies: discard unapproved AI drafts after (days untouched)', scopes: ['tenant'], dated: false, values: ['30', '60', '90', '180', '365'], default: '90' },

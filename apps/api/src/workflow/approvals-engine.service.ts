@@ -7,6 +7,7 @@ import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import { FieldDef, Group, RecordValues, RuleError, evaluate, parseGroup } from '../rules-engine/conditions';
 import { ApprovalCards } from './approval-channels';
+import { ApprovalPolicies } from './approval-policies';
 
 // P03 approvals engine (shared platform engine, built first for the Service Desk catalogue, SD-2.05; leave, expenses
 // and the rest plug in later by registering a request type). A request freezes its route at submit (YX-WF-02): every
@@ -20,7 +21,7 @@ import { ApprovalCards } from './approval-channels';
 //   - approvers see only the summary the module chose for them (never the record itself, never sensitive answers);
 //   - auto-approve / auto-reject after a timeout only for request types that allow it and are not high risk (P03 Q2).
 
-export type ApproverSpec = { kind: 'manager'; level?: number } | { kind: 'cost_centre_owner'; field: string } | { kind: 'users'; userIds: string[] } | { kind: 'user_group'; groupId: string };
+export type ApproverSpec = { kind: 'manager'; level?: number } | { kind: 'cost_centre_owner'; field: string } | { kind: 'users'; userIds: string[] } | { kind: 'user_group'; groupId: string } | { kind: 'hr' };
 export interface StepSpec {
   name: string;
   approvers: ApproverSpec[];
@@ -277,6 +278,7 @@ export class ApprovalsEngine {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly notifications: NotificationsService,
     private readonly cards: ApprovalCards,
+    private readonly policies?: ApprovalPolicies,
   ) {}
 
   /** SD-2.06: whether a request's words may leave the app (fails closed). */
@@ -340,6 +342,8 @@ export class ApprovalsEngine {
       return row?.ownerUserId ? [row.ownerUserId] : [];
     }
     if (a.kind === 'users') return a.userIds;
+    // S-6 (answer 1330): the company's HR Admins.
+    if (a.kind === 'hr') return this.hrAdmins(tx, org);
     return (await tx.userGroupMember.findMany({ where: { organizationId: org, groupId: a.groupId }, select: { userId: true }, take: MAX.users })).map((m) => m.userId);
   }
 
@@ -385,7 +389,10 @@ export class ApprovalsEngine {
     const fallback = await this.active(tx, org, input.fallbackUserIds);
     const steps: FrozenStep[] = [];
     const noApprover: string[] = [];
-    for (const s of input.steps) {
+    // Settings S-6 (answer 1330): the company's own steps for this request type, when it set them (a request the module
+    // decides at once, with no steps, stays that way).
+    const own = input.steps.length && this.policies ? await this.policies.stepsFor(tx, ctx, input.type) : null;
+    for (const s of own ?? input.steps) {
       const skip = s.skipIf ? evaluate(s.skipIf, input.payload, input.payloadFields).pass : false;
       let ids = await this.active(tx, org, (await Promise.all(s.approvers.map((a) => this.resolve(tx, org, a, input)))).flat());
       const self = s.selfApproval === 'allowed';

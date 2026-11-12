@@ -5,6 +5,8 @@ import { AuditModule } from '@exam-platform/shared';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { REDIS_CONNECTION, createRedisConnection, logBullErrors, bullOpts } from '../jobs/redis-connection';
 import { ApprovalsEngine } from './approvals-engine.service';
+import { ApprovalPolicies } from './approval-policies';
+import { ApprovalPoliciesController } from './approval-policies.controller';
 import { WorkflowController } from './workflow.controller';
 import { ApprovalCards } from './approval-channels';
 import { ActionLinkController, ChannelLinksController } from './approval-links.controller';
@@ -49,8 +51,8 @@ export class WorkflowJobs implements OnModuleInit, OnModuleDestroy {
 // P03 approvals engine (shared platform engine): modules register request types with ApprovalsEngine.
 @Module({
   imports: [AuditModule, NotificationsModule],
-  controllers: [WorkflowController, ActionLinkController, ChannelLinksController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, ApprovalCards, ApprovalsEngine, WorkflowJobs],
+  controllers: [WorkflowController, ActionLinkController, ChannelLinksController, ApprovalPoliciesController],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, ApprovalCards, ApprovalPolicies, ApprovalsEngine, WorkflowJobs],
   exports: [ApprovalsEngine, ApprovalCards],
 })
 export class WorkflowModule {}

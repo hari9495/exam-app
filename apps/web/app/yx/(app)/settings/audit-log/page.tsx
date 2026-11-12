@@ -54,7 +54,7 @@ export default function YxAuditLogPage() {
         },
         onMore: page.data?.next ? () => setBefore(page.data!.next!) : undefined,
         onOpenPayroll: perms.has('audit.view') ? () => router.push('/yx/payroll/audit') : undefined,
-        chain: chain.data?.checks[0] ?? null,
+        chain: chain.data?.checks?.[0] ?? null,
         onExport: perms.has('audit.export') ? () => download(`/payroll/audit/export?${query(filters)}`, 'audit-log.csv') : undefined,
       }}
     />

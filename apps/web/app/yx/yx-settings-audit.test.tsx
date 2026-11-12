@@ -32,6 +32,7 @@ describe('Settings › Audit log', () => {
     api.mockImplementation(async (path: string) => {
       asked.push(path);
       if (path.startsWith('/rbac/me/permissions')) return ['audit.view'];
+      if (path === '/payroll/audit/chain') return { canVerify: true, checks: [] };
       if (path.startsWith('/payroll/audit')) return { entries: [ENTRY], next: null };
       throw new Error(`unexpected ${path}`);
     });

@@ -94,6 +94,8 @@ export const PAY_SETTINGS_PAGES: [string, string, string][] = [
 const payPage = (id: string) => PAY_SETTINGS_PAGES.filter((p) => p[0] === id).map((p) => `${SETTINGS_HOME}/payroll/${p[2]}`);
 /** S-4: the drawn People & Access pages that show the company's settings (address under /yx/settings/people). */
 export const PEOPLE_SETTINGS_PAGES: [string, string, string][] = [
+  // S-6 (answer 1330): approval steps per request type, reminders and escalation.
+  ['2.4', 'Approvals', 'approvals'],
   ['2.7', 'Exit & lifecycle policies', 'exit-and-lifecycle-policies'],
   ['2.10', 'Audit & data retention', 'audit-and-data-retention'],
 ];
@@ -113,6 +115,7 @@ export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '2.1': ['/yx/settings/access', '/yx/settings/access-settings'],
   '2.2': ['/yx/settings/access-settings'],
   '2.3': ['/yx/settings/security', '/yx/settings/identity-providers', '/yx/settings/support-access'],
+  '2.4': [...peoplePage('2.4'), '/yx/settings/approval-policies'],
   '2.5': ['/yx/settings/company-rules', '/yx/settings/checklists'],
   '2.6': ['/yx/settings/company-rules'],
   '2.7': peoplePage('2.7'),
@@ -512,6 +515,8 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(settingsAdmin, L('access-settings', 'Access and privacy', '/yx/settings/access-settings'), L('custom-fields', 'Custom fields', '/yx/settings/custom-fields')),
         // S-4 (answer 1323): the People & Access settings pages; HR's settings key changes them.
         ...when(settingsView, ...PEOPLE_SETTINGS_PAGES.map(([id, label, slug]) => L(`people-settings-${id}`, label, `${SETTINGS_HOME}/people/${slug}`))),
+        // S-6 (answer 1330): the approval policy editor, beside 2.4 Approvals.
+        ...when(settingsView, L('approval-policies', 'Approval policies', '/yx/settings/approval-policies')),
         // Answer 1563: the company audit log.
         ...when(has('audit.view') && !support, L('audit-log', 'Audit log', AUDIT_LOG)),
         ...when(has('lifecycle.journey.template.manage'), L('checklists', 'Onboarding checklists', '/yx/settings/checklists')),

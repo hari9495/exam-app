@@ -167,6 +167,15 @@ export const PEOPLE_SETTINGS: Record<string, { links: string[]; settings: Place[
       { section: 'Rehire', key: 'rehire.prior_records' },
     ],
   },
+  // Settings S-6 (answer 1330): 2.4 Approvals, the reminder and escalation hours; the policies list comes from the API.
+  '2.4': {
+    links: ['approval.policy_editor'],
+    related: [{ label: 'Approvals inbox', screenId: 'PLT-04' }],
+    settings: [
+      { section: 'Reminders and escalation', key: 'approval.remind_hours', synonyms: ['reminder', 'SLA'] },
+      { section: 'Reminders and escalation', key: 'approval.escalate_hours', synonyms: ['escalation', 'escalate'] },
+    ],
+  },
   '2.10': {
     links: [],
     related: [{ label: 'Access and privacy (retention of personal data)', screenId: 'access-settings' }],
@@ -303,4 +312,28 @@ export function historyOnPage(page: SettingsPageDef, rows: SettingChangeRow[]): 
     return { id: r.id, by: r.by, role: ROLE_WORDS[r.role ?? ''] ?? '', at: r.at.slice(0, 16), what: `Changed ${w.what} from ${w.from} to ${w.to}` };
   });
   return { lastChange: all[0] ? { by: all[0].by, role: all[0].role, at: all[0].at, what: all[0].what } : null, history: all.slice(1) };
+}
+
+/**
+ * Settings S-6 (answer 1330): 2.4 shows each request type's approval steps as the drawn read-only list (change them in
+ * the policy editor), from GET /workflow/policies.
+ */
+export function withApprovalPolicies(page: SettingsPageDef, data: { remindHours: number; escalateHours: number; types: { label: string; steps: { mode: string }[] | null; approvers: string }[] }): SettingsPageDef {
+  const list: SettingDef = {
+    key: 'approval.policies',
+    label: 'Active policies',
+    kind: 'list',
+    readOnlyList: true,
+    helper: 'Change these in the approval policy editor. A change applies to new requests only.',
+    columns: ['Request type', 'Approvers', 'Who must approve', 'Time to decide', 'If no decision'],
+    rows: data.types.map((t) =>
+      t.steps
+        ? [t.label, t.approvers, t.steps.map((s) => (s.mode === 'all' ? 'All' : 'Any one')).join(' → '), `${data.escalateHours} hours a step`, `Reminder at ${data.remindHours} hours, then their manager too`]
+        : [t.label, t.approvers, 'Built in', 'Built in', 'Built in'],
+    ),
+  };
+  const title = 'Policies per request type';
+  const has = page.sections.some((s) => s.title === title);
+  const sections = has ? page.sections.map((s) => (s.title === title ? { ...s, settings: [...s.settings, list] } : s)) : [{ title, settings: [list] }, ...page.sections];
+  return { ...page, sections };
 }

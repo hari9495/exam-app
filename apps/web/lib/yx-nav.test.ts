@@ -199,7 +199,7 @@ describe('buildNav: Settings', () => {
   });
 
   it('the settings admin gets company rules, Countries and Translations; set-up pages follow their keys', () => {
-    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['All settings', 'Set-up hub', 'Legal entities', 'Locations', 'Structure', 'Company rules', 'Countries', 'Translations', 'Access and privacy', 'Custom fields', 'Exit & lifecycle policies', 'Audit & data retention', 'Check-in & devices', 'Shifts & patterns', 'Weekly offs', 'Late & regularisation', 'Leave types', 'Holiday calendars', 'Leave year', 'Projects & timesheets', 'Visitors', 'Payroll rules', 'Payroll policies', 'Payslip settings', 'Tax', 'Contract labour', 'Hiring', 'Staffing desk']);
+    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['All settings', 'Set-up hub', 'Legal entities', 'Locations', 'Structure', 'Company rules', 'Countries', 'Translations', 'Access and privacy', 'Custom fields', 'Approvals', 'Exit & lifecycle policies', 'Audit & data retention', 'Approval policies', 'Check-in & devices', 'Shifts & patterns', 'Weekly offs', 'Late & regularisation', 'Leave types', 'Holiday calendars', 'Leave year', 'Projects & timesheets', 'Visitors', 'Payroll rules', 'Payroll policies', 'Payslip settings', 'Tax', 'Contract labour', 'Hiring', 'Staffing desk']);
     // Settings 6.1 Hiring: recruiting, hiring admins and HR read it (the API decides who changes it).
     expect(labels(nav(['ats.settings.manage']), 'settings')).toEqual(['All settings', 'Hiring']);
     expect(labels(nav(['pipeline:manage']), 'settings')).toEqual(['All settings', 'Hiring']);
@@ -443,5 +443,14 @@ describe('buildNav: Settings S-5', () => {
     expect(labels(nav(['employee.profile.view', 'org.structure.view']), 'settings')).toEqual(expect.arrayContaining(['Exit & lifecycle policies', 'Audit & data retention']));
     expect(labels(nav(['audit.view']), 'settings')).toContain('Audit log');
     expect(labels(nav(['org.settings.manage']), 'settings')).not.toContain('Audit log');
+  });
+});
+
+// Settings S-6 (answer 1330).
+describe('buildNav: Settings S-6', () => {
+  it('HR with the settings key, and those who read the company settings, see Approvals and Approval policies', () => {
+    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(expect.arrayContaining(['Approvals', 'Approval policies']));
+    expect(labels(nav(['employee.profile.view', 'org.structure.view']), 'settings')).toEqual(expect.arrayContaining(['Approvals', 'Approval policies']));
+    expect(labels(nav(['leave.settings.manage']), 'settings')).not.toContain('Approval policies');
   });
 });

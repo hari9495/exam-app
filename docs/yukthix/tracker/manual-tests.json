@@ -21175,5 +21175,25 @@
     "expected": "Step 1: entries newest first. Step 2: only settings changes. Step 3: only that person's entries. Step 4: 'From is after To, so nothing matches.' Step 5: before and after. Step 6: no access.",
     "stories": [],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-SET-S6a",
+    "area": "Settings S-6 (13 Nov 2026)",
+    "screen": "Settings › Approvals and Approval policies",
+    "url": "http://localhost:3000/yx/settings/approval-policies",
+    "account": "The System Admin; two HR admins; a manager; an employee (the demo company); someone who only reads the company settings.",
+    "steps": [
+      "Open Approval policies, choose Leave, remove every step and Save.",
+      "Give Leave two steps: Manager (any one) and HR Admins (all); Save.",
+      "Open Settings › Approvals.",
+      "Set the reminder to 4 hours; save.",
+      "As the employee apply for leave.",
+      "As the employee look for an Approve button on your own request.",
+      "As the manager approve; then as each HR admin approve.",
+      "As the read-only person open both pages."
+    ],
+    "expected": "Step 1: 'Add at least one step…'. Step 2: toast saved, version 1. Step 3: Leave shows Manager → HR Admins. Step 4: saved, in View history. Step 5: the manager gets it. Step 6: none. Step 7: it waits for both HR admins, then is approved. Step 8: View only, no save.",
+    "stories": [],
+    "note": "Positive and negative."
   }
 ]
