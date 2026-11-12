@@ -1794,3 +1794,4 @@ exclusion applies at every flagged site.
 
 ## Founder decision (12 Nov 2026, "ok for all")
 Draw kit designs for the five live pages that still render stand-ins (service catalogue, live chat requester and agent, agent team and shifts, the set-up admin tabs, the request tracker and documents on a ticket), then make the drawn screens live. Also add rows for the 3 newer stories the count script flags (HLP-02 x2, Phase 3b-1 x1). Queued for the next free builder.
+- Founder (12 Nov 2026, "ok for all"): after drawing the five designs, move every remaining "Screens/Service desk/" story into "Screens/Helpdesk/" with plain names (Desk set-up, Customer portal, Approval links, Contact YukthiX; the Reports tabs under HLP-05), then remove the empty Service desk folder. Storybook titles only; no live behaviour changes. Queued with the five designs for the next free builder.
