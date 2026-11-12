@@ -14,7 +14,7 @@ import { PAGE_SETTING_KEYS, useSettingsHistory } from './yx-settings-history';
 // Saving is PUT /org/settings per setting (audited); a value past the legal limit is refused by the page and the API,
 // naming the Act. On the payroll pages a change waits for a second person while the company switch is on (1325): the
 // page says so and lists what waits, with Approve and Reject (Withdraw for the person who asked).
-type Overview = { registry: Record<string, RegistryDef>; limits: TimeSettingsData['limits']; pending?: PendingSettingChange[]; overrides: { key: string; scopeType: string; scopeId: string; validFrom: string | null; value: unknown }[] };
+type Overview = { registry: Record<string, RegistryDef>; limits: TimeSettingsData['limits']; pending?: PendingSettingChange[]; overrides: { key: string; scopeType: string; scopeId: string; validFrom: string | null; value: unknown; noLongerNeeded?: 'registered_factory' }[] };
 type Named = { id: string; name: string; archivedAt?: string | null }[];
 /** S-7 (answer 1484): the places a setting may have a value of its own, in words (an entity by its name). */
 const PLACE: Record<string, (name: string) => string> = { legal_entity: (n) => n, location: (n) => `${n} (location)`, department: (n) => `${n} (department)`, employment_type: (n) => `${n} (employment type)`, grade: (n) => `Grade ${n}` };
@@ -76,7 +76,8 @@ export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, s
       const was = list.find((x) => x.scope === place.label);
       if (was && (was.validFrom ?? '') > (o.validFrom ?? '')) continue;
       if (was) list.splice(list.indexOf(was), 1);
-      list.push({ scope: place.label, value: String(o.value), validFrom: o.validFrom });
+      // Answer 1821: a location's own Factories Act value once the location is marked a registered factory.
+      list.push({ scope: place.label, value: String(o.value), validFrom: o.validFrom, ...(o.noLongerNeeded === 'registered_factory' ? { note: 'No longer needed: the location is a registered factory' } : {}) });
     }
     return { registry: d.registry, limits: d.limits ?? {}, company, elsewhere, canEdit: canEdit((k) => perms.has(k as never), design), canGuard: perms.has('access.role.manage'), lastChange: null, scopes, byScope };
   }, [settings.data, perms, design, canEdit, entities.data, locations.data, departments.data, types.data, grades.data]);

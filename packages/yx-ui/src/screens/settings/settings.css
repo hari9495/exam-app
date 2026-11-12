@@ -238,6 +238,7 @@ html:has(.yx-phone) { scroll-padding-bottom: calc(var(--yx-space-16) + var(--yx-
 .yx-set-overrides { display: flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-1) var(--yx-space-2); margin-top: var(--yx-space-1); font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); }
 .yx-set-overrides__item { min-height: var(--yx-space-6); padding: 0 var(--yx-space-2); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-badge); background: var(--yx-color-bg-surface); color: var(--yx-color-link); font: inherit; cursor: pointer; }
 .yx-set-overrides__item:hover { background: var(--yx-color-bg-subtle); }
+.yx-set-overrides__note { color: var(--yx-color-text-secondary); }
 .yx-set-overrides__item:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-space-half); }
 .yx-set-lawtable__rule { text-align: left; font-weight: var(--yx-weight-medium); color: var(--yx-color-text); background: none; white-space: normal; }
 .yx-set-list__table th.yx-set-lawtable__rule { background: none; color: var(--yx-color-text); border-bottom: var(--yx-border-width) solid var(--yx-color-border); }

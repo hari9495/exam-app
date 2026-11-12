@@ -97,7 +97,8 @@ export interface SettingDef {
   /** list kind: columns shown but not editable in the row editor. */
   lockedColumns?: string[];
   /** Values that differ for a location, department or type. Shown once, under the company value, as "Different for: …". */
-  overrides?: { scope: string; value: SettingValue; validFrom?: string }[];
+  /** Answer 1821: `note` says why that place's own value is no longer needed. */
+  overrides?: { scope: string; value: SettingValue; validFrom?: string; note?: string }[];
   /** Settings S-7 (answer 1484, live): the scopes (labels) where this setting may take a value of its own. */
   scopeable?: string[];
   /** A YukthiX product rule (not a law): read-only, labelled "Built-in rule". Set from "YukthiX rule: …" text. */

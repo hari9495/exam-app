@@ -10,6 +10,8 @@ import type { DocumentTypeDto as DocumentTypeInput } from './dto';
 
 /** 5.1 (answer 1331): the reminder sets a company type may choose (days before the expiry date). */
 export const REMINDER_SETS: readonly (readonly number[])[] = [[90, 30, 7], [60, 30, 7], [30, 7], [30], [15, 7]];
+/** P05 Q7: proofs HR always verifies before payroll uses them (a company cannot turn this off, answer 1822). */
+export const ALWAYS_VERIFIED: ReadonlySet<string> = new Set(['pan_card', 'aadhaar', 'bank_proof', 'education', 'experience']);
 import { CLASS_KEY, ownOf, reachesDocument, reachesPerson } from './person-access';
 import { covers, implicitPeriods } from '../access/scope';
 
@@ -39,7 +41,9 @@ export async function documentsBlockingPay(tx: Tx, organizationId: string, emplo
     FROM employments em
     JOIN employees e ON e.organization_id = em.organization_id AND e.id = em.employee_id
     JOIN documents d ON d.organization_id = e.organization_id AND d.person_id = e.person_id
-    JOIN document_types t ON t.key = d.type_key AND (t.organization_id IS NULL OR t.organization_id = d.organization_id)
+    -- Answer 1822: the company's own choices for a starter type win over YukthiX's.
+    JOIN document_types t ON t.key = d.type_key AND ((t.organization_id = d.organization_id AND t.active)
+      OR (t.organization_id IS NULL AND NOT EXISTS (SELECT 1 FROM document_types o WHERE o.key = t.key AND o.organization_id = d.organization_id AND o.active)))
     WHERE em.organization_id = ${organizationId}::uuid AND em.id = ANY(${[...employmentIds]}::uuid[])
       AND t.requires_verification AND d.status <> 'verified'
     ORDER BY 1, 2`;
@@ -59,7 +63,15 @@ export class DocumentsService {
   }
 
   private async types(tx: Tx, org: string): Promise<DocType[]> {
-    return tx.documentType.findMany({ where: { active: true, OR: [{ organizationId: null }, { organizationId: org }] }, orderBy: [{ organizationId: { sort: 'asc', nulls: 'first' } }, { name: 'asc' }] });
+    const rows = await tx.documentType.findMany({ where: { active: true, OR: [{ organizationId: null }, { organizationId: org }] }, orderBy: [{ organizationId: { sort: 'asc', nulls: 'first' } }, { name: 'asc' }] });
+    // Answer 1822: a company's own choices for a starter type (a company row with its key) replace YukthiX's, in place.
+    const byKey = new Map<string, DocType>();
+    for (const r of rows) byKey.set(r.key, r);
+    return [...byKey.values()];
+  }
+
+  private async starterKeys(tx: Tx): Promise<Set<string>> {
+    return new Set((await tx.documentType.findMany({ where: { organizationId: null }, select: { key: true } })).map((t) => t.key));
   }
 
   private async type(tx: Tx, org: string, key: string): Promise<DocType> {
@@ -140,9 +152,24 @@ export class DocumentsService {
   // ------------------------------------------------------------------------------------------ reads
 
   async typeList(ctx: TenantContext) {
-    return inCompany(this.tenantPrisma, ctx, async (tx, c) =>
-      (await this.types(tx, c.organizationId)).map((t) => ({ key: t.key, name: t.name, sensitivity: t.sensitivity, requiresVerification: t.requiresVerification, allowedMime: t.allowedMime, maxMb: t.maxMb, expiryTracked: t.expiryTracked, reminderDays: t.reminderDays, uploadBy: t.uploadBy, system: t.organizationId === null })),
-    );
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const starter = await this.starterKeys(tx);
+      return (await this.types(tx, c.organizationId)).map((t) => ({
+        key: t.key,
+        name: t.name,
+        sensitivity: t.sensitivity,
+        requiresVerification: t.requiresVerification,
+        allowedMime: t.allowedMime,
+        maxMb: t.maxMb,
+        expiryTracked: t.expiryTracked,
+        reminderDays: t.reminderDays,
+        uploadBy: t.uploadBy,
+        system: starter.has(t.key),
+        // Answer 1822: the company set its own verification or reminders for this starter type.
+        ownChoices: starter.has(t.key) && t.organizationId !== null,
+        verifyLocked: ALWAYS_VERIFIED.has(t.key),
+      }));
+    });
   }
 
   // ---------------------------------------------------------------- 5.1 company document types (answer 1331)
@@ -185,8 +212,39 @@ export class DocumentsService {
     });
   }
 
+  /**
+   * Answer 1822: the company's choices for a starter type, verification and expiry reminders only (the type itself stays
+   * YukthiX's). Kept as a company row with the starter's key; PAN, Aadhaar, bank proof, education and experience proofs
+   * are always verified before payroll uses them.
+   */
+  private async starterChoices(tx: Tx, c: CompanyContext, key: string, dto: Pick<DocumentTypeInput, 'requiresVerification' | 'reminderDays'>) {
+    const s = await tx.documentType.findFirstOrThrow({ where: { key, organizationId: null } });
+    if (ALWAYS_VERIFIED.has(key) && !dto.requiresVerification) throw new BadRequestException(`HR always verifies the ${s.name} before payroll uses it.`);
+    const days = s.expiryTracked ? dto.reminderDays : [];
+    if (s.expiryTracked && !REMINDER_SETS.some((r) => r.join() === days.join())) throw new BadRequestException('Choose when to remind from the offered days.');
+    const own = await tx.documentType.findFirst({ where: { key, organizationId: c.organizationId } });
+    const before = own?.active ? { requiresVerification: own.requiresVerification, reminderDays: own.reminderDays } : { requiresVerification: s.requiresVerification, reminderDays: s.reminderDays };
+    const after = { requiresVerification: dto.requiresVerification, reminderDays: days };
+    if (own) await tx.documentType.update({ where: { id: own.id }, data: { ...after, active: true } });
+    else await tx.documentType.create({ data: { organizationId: c.organizationId, key, name: s.name, sensitivity: s.sensitivity, allowedMime: s.allowedMime, maxMb: s.maxMb, expiryTracked: s.expiryTracked, uploadBy: s.uploadBy, ...after } });
+    await audit(tx, c, 'document.type.starter_changed', 'document_type', key, { key, before, after });
+    return { key };
+  }
+
+  /** Answer 1822: back to YukthiX's own choices for a starter type. */
+  async resetStarter(ctx: TenantContext, key: string) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      if (!(await this.starterKeys(tx)).has(key)) throw new NotFoundException('No such starter document type.');
+      const own = await tx.documentType.findFirst({ where: { key, organizationId: c.organizationId, active: true } });
+      if (!own) return;
+      await tx.documentType.update({ where: { id: own.id }, data: { active: false } });
+      await audit(tx, c, 'document.type.starter_reset', 'document_type', key, { key, before: { requiresVerification: own.requiresVerification, reminderDays: own.reminderDays } });
+    });
+  }
+
   async updateType(ctx: TenantContext, key: string, dto: DocumentTypeInput) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      if ((await this.starterKeys(tx)).has(key)) return this.starterChoices(tx, c, key, dto);
       const before = await this.ownType(tx, c.organizationId, key);
       const data = this.typeData(dto);
       await this.nameFree(tx, c.organizationId, data.name, key);
@@ -200,6 +258,7 @@ export class DocumentsService {
   /** Retires a company type no document uses (rows are never deleted). */
   async retireType(ctx: TenantContext, key: string) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      if ((await this.starterKeys(tx)).has(key)) throw new ForbiddenException('YukthiX starter types cannot be changed or removed.');
       const t = await this.ownType(tx, c.organizationId, key);
       const used = await tx.document.count({ where: { organizationId: c.organizationId, typeKey: key } });
       if (used) throw new ConflictException(`${used} ${used === 1 ? 'document uses' : 'documents use'} this type, so it stays.`);

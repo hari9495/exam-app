@@ -42,6 +42,7 @@ export default function YxDocumentTypesPage() {
           onClose={() => setOpen(null)}
           onSave={(input) => (current ? write('PUT', `/documents/types/${current.key}`, input) : write('POST', '/documents/types', input))}
           onRetire={current && !current.system ? () => write('POST', `/documents/types/${current.key}/retire`) : undefined}
+          onReset={current?.ownChoices ? () => write('POST', `/documents/types/${current.key}/reset`) : undefined}
         />
       )}
     </>

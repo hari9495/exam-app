@@ -8,6 +8,7 @@ import { useAuth } from '../../lib/auth-context';
 import { buildNav, type NavInput } from '../../lib/yx-nav';
 import { YxNavContext } from '../../lib/yx-shell';
 import YxAccountSettingsPage from './(app)/settings/account/[page]/page';
+import YxTimeSettingsPage from './(app)/settings/time/[page]/page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), apiFetchBlob: jest.fn() }));
@@ -102,5 +103,44 @@ describe('Settings S-9: Billing & Account', () => {
     expect(items('panel')).toEqual(expect.arrayContaining(['Plan & add-ons', 'Usage & caps', 'Invoices']));
     expect(items('panel')).not.toContain('Data export & closure');
     expect(items('org_admin')).toContain('Data export & closure');
+  });
+
+  // Answer 1821: the registered-factory hint on 3.1, from the API's flag on a location's own value.
+  it("1821: a location's own Factories Act value says it is no longer needed once the location is a registered factory; negative: not without the flag", async () => {
+    const FA = { label: 'Factories Act applies', scopes: ['tenant', 'location'], dated: true, values: ['covered', 'not_covered'], default: 'not_covered' };
+    const time = (flag: boolean) =>
+      api.mockImplementation(async (path: string) => {
+        if (path.startsWith('/rbac/me/permissions')) return ['org.settings.manage', 'leave.settings.manage'];
+        if (path === '/org/settings') return { registry: { 'attendance.factories_act': FA }, limits: {}, pending: [], overrides: [{ key: 'attendance.factories_act', scopeType: 'location', scopeId: 'l1', validFrom: '2026-01-01', value: 'covered', ...(flag ? { noLongerNeeded: 'registered_factory' } : {}) }] };
+        if (path === '/org/locations') return [{ id: 'l1', name: 'Hosur plant' }];
+        if (path.startsWith('/org/')) return [];
+        throw new Error(`unexpected ${path}`);
+      });
+    time(true);
+    (useAuth as jest.Mock).mockReturnValue({ accessToken: 't', role: 'org_admin', impersonating: false, actingSuperAdmin: false });
+    (useParams as jest.Mock).mockReturnValue({ page: 'attendance-modes' });
+    const view = render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <ToastProvider>
+          <YxNavContext.Provider value={{ nav: ADMIN, ready: true }}>
+            <YxTimeSettingsPage />
+          </YxNavContext.Provider>
+        </ToastProvider>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText(/No longer needed: the location is a registered factory/)).toBeInTheDocument();
+    view.unmount();
+    time(false);
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <ToastProvider>
+          <YxNavContext.Provider value={{ nav: ADMIN, ready: true }}>
+            <YxTimeSettingsPage />
+          </YxNavContext.Provider>
+        </ToastProvider>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText(/Hosur plant \(location\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/No longer needed/)).toBeNull();
   });
 });
