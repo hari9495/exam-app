@@ -21037,5 +21037,25 @@
       "Screens/YukthiX console/YX-13 · Sales-assist queue · Talk to us from a nudge card (C-8)"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CON-YX09a",
+    "area": "Console C-8 (13 Nov 2026)",
+    "screen": "Console › Product analytics",
+    "url": "http://localhost:3000/staff/analytics",
+    "account": "A YukthiX staff account with the Customer success role and its security key; one without that role.",
+    "steps": [
+      "As the staff member without the role, open Product analytics.",
+      "As the Customer success staff member, open it.",
+      "Look for any feature or size band used by fewer than 5 companies.",
+      "In Platform settings set 'Product analytics: hide any group of fewer than…' to 4, then to 10; reopen Product analytics.",
+      "Set it back to 5."
+    ],
+    "expected": "Step 1: 'You don't have access to product analytics'. Step 2: counts by feature, the adoption chart by size band, and by company; no names or HR details. Step 3: shown as 'Fewer than 5' or named as hidden, never a number under 5. Step 4: 4 is refused (5 to 50); with 10 every count is hidden or at least 10.",
+    "stories": [
+      "Screens/YukthiX console/YX-09 · Product analytics · Which features companies use (C-8)",
+      "Screens/YukthiX console/YX-09 · Product analytics · Small groups hidden (C-8)"
+    ],
+    "note": "Positive and negative."
   }
 ]

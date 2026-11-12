@@ -73,7 +73,7 @@ built** · **phone view, mobile app not built**.
 
 ## Counts (sub-pages = stories)
 
-After C-1 to C-5, C-8 parts 1 to 4 (with the payroll-day note), staff roles parts 1 and 2, 1165 and the console tidy-ups
+After C-1 to C-5, C-8 parts 1 to 5 (with the payroll-day note), staff roles parts 1 and 2, 1165 and the console tidy-ups
 1 and 2 (12 Nov 2026; tidy 2 adds the withdraw story; appendix script "ok").
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
@@ -83,8 +83,8 @@ After C-1 to C-5, C-8 parts 1 to 4 (with the payroll-day note), staff roles part
 | C. Customers and containment (YX-04, YX-18) | 2 | 26 | 2 | 0 | 0 | 0 | 28 |
 | D. Partners (YX-06 to YX-08) | 3 | 0 | 0 | 0 | 10 | 0 | 10 |
 | E. Money (YX-14 to YX-17) | 4 | 0 | 0 | 0 | 8 | 0 | 8 |
-| F. The rest (YX-05, YX-09 to YX-13) | 6 | 29 | 0 | 0 | 9 | 0 | 38 |
-| **All A-F** | **21** | **111** | **7** | **0** | **27** | **0** | **145** |
+| F. The rest (YX-05, YX-09 to YX-13) | 6 | 33 | 1 | 0 | 6 | 0 | 40 |
+| **All A-F** | **21** | **115** | **8** | **0** | **24** | **0** | **147** |
 
 Counted by script on 11 Nov 2026 on `docs/yukthix-console-map` (the script is in the appendix). There are 87 stories in
 20 files whose title starts `Screens/YukthiX console/`: `screens/console/console.stories.tsx` (14),
@@ -360,9 +360,11 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| YX09 · Product analytics | design only, feature not built | no product analytics (search: none). `analytics/` is hiring and question analytics for companies |
-| YX09Loading · Product analytics · loading | design only, feature not built | as above |
-| YX09NoAccess · No product analytics role | design only, feature not built | as above |
+| YX09 · Product analytics | live (gap) | C-8: `/staff/analytics`, `ProductAnalyticsScreen live` shows the drawn adoption-by-size chart plus by-feature and by-company counts; the drawn funnel, cohorts, quick-start and the three stat cards have no data in the API (question 1214) |
+| YX09Live · Which features companies use (C-8) | live | `GET platform/analytics` (`platform.analytics.view`), read through `platformRead` (`analytics.feature_use`) |
+| YX09SmallGroupsLive · Small groups hidden (C-8) | live | same page: any group of fewer than `analytics.min_companies` (never under 5) arrives hidden and says so |
+| YX09Loading · Product analytics · loading | live | same page while it loads (`ConsolePage` state) |
+| YX09NoAccess · No product analytics role | live | same page without the key (`ConsolePage` no-access) |
 
 #### YX-10 · Incidents, status admin and probes
 
@@ -694,6 +696,39 @@ risky actions, and adds positive and negative tests and an e2e suite.
 1213. **Automatic size triggers.** The drawing also queues trials with 200+ employees, 3 entities, 10 recruiters or 2,000
       test attempts. *Suggested: add them as a nightly check with the thresholds as platform settings, after the trial
       and billing work.*
+
+## C-8 part 5 built: product analytics (YX-09; 13 Nov 2026, branch `feat/yukthix-console-c8`)
+
+- **What staff see:** Console › Customers › Product analytics (`/staff/analytics`), the designed
+  `ProductAnalyticsScreen` with `live`: which features companies use over the last `analytics.window_days` (default 30):
+  by feature (companies using it, actions), the drawn "Feature adoption by size band" chart (% of the band's companies),
+  and by company (actions per feature, size band, last active).
+- **Where the counts come from:** there is no product event tracking in the app, so use is counted from the audit log's
+  action families only (the part before the first dot, for example `leave` or `payroll`), mapped to nine features
+  (`AREAS` in `platform/analytics.service.ts`). Never the record, the metadata, a person or any HR content; sign-ins,
+  staff actions and settings are not features. Counts only.
+- **Small groups:** any group of fewer than `analytics.min_companies` (default 5, never under 5; Platform settings)
+  companies is hidden server-side: a feature's count, a size band, and a band's share of a feature. The screen says
+  "Fewer than 5" or names the hidden band. (The per-company table is each company's own counts, not a group.)
+- **Read:** through `platformRead`, audited with purpose `analytics.feature_use`.
+- **Key and role (1058):** `platform.analytics.view` (staff only, never assignable). Role: **Customer success**
+  (migration `202617z0000171_console_analytics`; no new table).
+- **Not built:** the drawn funnel (sign-up to paid), cohort retention, quick-start completion, time to first value,
+  activation and trial-to-paid cards: the API has no such data (question 1214); Export (question 1215).
+- **Tests:** API unit (guard and key, not assignable; a feature used by 5 companies counted and by 4 hidden; a band of
+  fewer than 5 hidden with its shares; non-feature families never counted; by company counts only); kit (counts, "Fewer
+  than 5", hidden band named, every band hidden says why); web (loads, no-access state); e2e `console-analytics` (5:
+  company admin, no sign-in, no security key, no key refused; by company counts per feature only, sign-ins not counted,
+  idle company not listed; no names, emails or metadata in the answer; every feature and band count hidden or at least
+  the minimum at 5 and at 50, the setting refused under 5; the read audited with its purpose).
+
+### Questions from C-8 part 5 (from 1214)
+
+1214. **The drawn funnel, cohorts and cards.** Sign-up to paid, cohort retention, quick-start completion, time to first
+      value, activation and trial to paid need trial, billing and product events the app does not record. *Suggested:
+      build them with the trial and billing work, from the company lifecycle and the set-up hub, under the same rules.*
+1215. **Export.** The drawing has Export. *Suggested: leave it out; the counts stay in the console where every read is
+      audited.*
 
 ## Appendix: the count script
 

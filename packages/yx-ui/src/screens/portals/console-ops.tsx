@@ -31,6 +31,7 @@ import { LiveHelpCentreScreen, type LiveHelpCentre } from './console-helpcentre-
 import { LiveIncidentsScreen, type LiveIncidents } from './console-incidents-live';
 import { LiveNudgesScreen, type LiveNudges } from './console-nudges-live';
 import { LiveSalesScreen, type LiveSales } from './console-sales-live';
+import { LiveAnalyticsScreen, type LiveAnalytics } from './console-analytics-live';
 
 const STATE_TONE: Record<TenantRow['state'], BadgeTone> = { trial: 'info', active: 'success', 'past due': 'warning', restricted: 'danger', suspended: 'danger', cancelled: 'neutral' };
 const CHURN_TONE = { low: 'success', medium: 'warning', high: 'danger' } as const;
@@ -377,6 +378,7 @@ export function ProductAnalyticsScreen({
   quickstart,
   loading,
   noAccess,
+  live,
 }: {
   funnel: { step: string; n: number }[];
   cohorts: { cohort: string; m: number[] }[];
@@ -384,7 +386,10 @@ export function ProductAnalyticsScreen({
   quickstart: { step: string; done: number }[];
   loading?: boolean;
   noAccess?: boolean;
+  /** The live console (C-8, YX-09): which features companies use, counts only. */
+  live?: LiveAnalytics;
 }) {
+  if (live) return <LiveAnalyticsScreen live={live} />;
   if (noAccess)
     return (
       <Console page="Product analytics">

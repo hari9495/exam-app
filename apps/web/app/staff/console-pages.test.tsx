@@ -23,6 +23,7 @@ import ConsoleCustomersPage from './(console)/customers/page';
 import ConsoleIncidentsPage from './(console)/incidents/page';
 import ConsoleNudgesPage from './(console)/nudges/page';
 import ConsoleSalesPage from './(console)/sales/page';
+import ConsoleAnalyticsPage from './(console)/analytics/page';
 import YxSupportAccessPage from '../yx/(app)/settings/support-access/page';
 import { ToastProvider } from '@yukthix/ui';
 
@@ -429,5 +430,20 @@ describe('/staff/sales', () => {
     api.mockRejectedValue(Object.assign(new Error('Forbidden'), { status: 403 }));
     wrap(<ConsoleSalesPage />);
     expect(await screen.findByText("You don't have access to the sales-assist queue")).toBeInTheDocument();
+  });
+});
+
+// C-8 (YX-09): product analytics, counts only.
+describe('/staff/analytics', () => {
+  it('loads from /platform/analytics; a small group says it is hidden', async () => {
+    route({ 'GET /platform/analytics': { windowDays: 30, minCompanies: 5, totalCompanies: 12, areas: [{ key: 'time', label: 'Time and leave' }], byFeature: [{ area: 'time', label: 'Time and leave', companies: null, actions: null }], bySize: { bands: [], adoption: [] }, byCompany: [] } });
+    wrap(<ConsoleAnalyticsPage />);
+    expect(await screen.findByText('Fewer than 5')).toBeInTheDocument();
+  });
+
+  it('negative: without the analytics key the page says so', async () => {
+    api.mockRejectedValue(Object.assign(new Error('Forbidden'), { status: 403 }));
+    wrap(<ConsoleAnalyticsPage />);
+    expect(await screen.findByText("You don't have access to product analytics")).toBeInTheDocument();
   });
 });

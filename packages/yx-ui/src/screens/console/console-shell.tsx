@@ -1,10 +1,10 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
-import { BellRing, BookOpen, Handshake, Building2, FileClock, HeartPulse, Inbox, LifeBuoy, Megaphone, MessageSquare, ReceiptIndianRupee, Scale, ScrollText, ShieldCheck, Siren, SlidersHorizontal, Tags, ToggleRight, UserCog, Wrench } from 'lucide-react';
+import { BarChart3, BellRing, BookOpen, Handshake, Building2, FileClock, HeartPulse, Inbox, LifeBuoy, Megaphone, MessageSquare, ReceiptIndianRupee, Scale, ScrollText, ShieldCheck, Siren, SlidersHorizontal, Tags, ToggleRight, UserCog, Wrench } from 'lucide-react';
 import { Logo, Monogram } from '../../components/brand';
 import type { IconComponent } from '../../components/foundations';
 import { AppShell, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, TopBar, type DensityChoice, type RailItem, type ThemeChoice } from '../../components/shell';
 
-export type ConsolePageId = 'companies' | 'customers' | 'help-centre' | 'nudges' | 'sales' | 'incidents' | 'maintenance' | 'support-desk' | 'support' | 'plans' | 'whats-new' | 'rules' | 'channels' | 'feature-flags' | 'platform-settings' | 'audit' | 'staff';
+export type ConsolePageId = 'companies' | 'customers' | 'help-centre' | 'nudges' | 'sales' | 'analytics' | 'incidents' | 'maintenance' | 'support-desk' | 'support' | 'plans' | 'whats-new' | 'rules' | 'channels' | 'feature-flags' | 'platform-settings' | 'audit' | 'staff';
 type ConsoleGroup = 'Customers' | 'Catalogue' | 'Rules' | 'Operations' | 'Channels' | 'Security';
 
 interface ConsoleLink {
@@ -22,6 +22,8 @@ export const CONSOLE_LINKS: ConsoleLink[] = [
   { id: 'customers', label: 'Customer success', href: '/staff/customers', group: 'Customers', icon: HeartPulse },
   // C-8 (YX-13, answer 1210): Talk to us requests.
   { id: 'sales', label: 'Sales assist', href: '/staff/sales', group: 'Customers', icon: Handshake },
+  // C-8 (YX-09): product analytics, counts only.
+  { id: 'analytics', label: 'Product analytics', href: '/staff/analytics', group: 'Customers', icon: BarChart3 },
   // Before Support sessions: the layout picks the first link whose href starts the path.
   { id: 'support-desk', label: 'Support desk', href: '/staff/support-desk', group: 'Customers', icon: Inbox },
   { id: 'support', label: 'Support sessions', href: '/staff/support', group: 'Customers', icon: LifeBuoy },
