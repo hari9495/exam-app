@@ -125,14 +125,20 @@ export function ArticleBody({ article, onLanguage, onFeedback, onSolved, onStill
   const vote = (yes: boolean) => (voted !== null ? toast({ title: 'You have already told us. Thank you.' }) : void run(yes ? 'yes' : 'no', async () => { await onFeedback!(yes); setVoted(yes); }));
   const langs = article.languages.length > 1 && article.languages.length <= 4 ? article.languages : null;
   return (
+    // 1603 (founder, 12 Nov 2026): drawn in the HLP-04 article look: the number and date first (as the editor's header),
+    // the answer in a card, then the feedback.
     <article className="yx-ops-stack yx-desk-kb-article" aria-label={article.title}>
+      <p className="yx-ops-muted">
+        <BookOpen size={14} aria-hidden="true" /> <span className="yx-ops-mono">KB-{article.number}</span> · updated {when(article.updatedAt, timeZone)}
+      </p>
       {langs && onLanguage && <Segment label="Language" options={langs.map((l) => ({ value: l, label: LANGUAGE_LABEL[l] ?? l }))} value={article.language} onChange={onLanguage} />}
       {article.fallback && <InlineAlert tone="info">This article is not in your language yet, so it is shown in English.</InlineAlert>}
-      {article.summary && <p className="yx-ops-muted">{article.summary}</p>}
-      <MessageBody html={article.bodyHtml} />
-      <p className="yx-ops-muted">
-        Article KB-{article.number} · updated {when(article.updatedAt, timeZone)}
-      </p>
+      <Card>
+        <div className="yx-ops-stack">
+          {article.summary && <p className="yx-ops-muted">{article.summary}</p>}
+          <MessageBody html={article.bodyHtml} />
+        </div>
+      </Card>
       {error && <InlineAlert tone="danger">{error}</InlineAlert>}
       {onFeedback && (
         <div className="yx-ops-row" role="group" aria-label="Was this helpful?">

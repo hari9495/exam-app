@@ -190,7 +190,7 @@ portal designs also wait: `settings: MobileHelpTicketsScreen`, `MobilePolicyAckS
 
 ## 4. Design groups, story by story
 
-### A. Helpdesk HLP-01 … 19
+### A. Helpdesk HLP-01 … 20
 
 #### HLP-01 · Help centre
 
@@ -714,6 +714,17 @@ File: `packages/yx-ui/src/screens/ops/hlp-19.stories.tsx`. Drawn 12 Nov 2026 (th
 | DocumentsSignMissing · Send me a code pressed with nothing filled | live | same page |
 | DocumentsCodeFailed · The code could not be sent | live | same page |
 | DocumentsNone · No documents | live | same page |
+
+#### HLP-20 · Help article
+
+File: `packages/yx-ui/src/screens/ops/hlp-20.stories.tsx`. Drawn 12 Nov 2026 (answer 1603) in the HLP-04 article look: number and date first, the answer in a card, then the feedback; the help centre, the portal and the knowledge pages render this same `ArticleBody` (it left `liveCopies`; the "Live · Help article" pictures are gone).
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| ArticleRead · Was this helpful? | live | /yx/desk/help, the portal and /yx/desk/knowledge open `ArticleDrawer` (`GET desk/my/kb/articles/:id`, feedback `POST …/feedback`) |
+| ArticleVoteAgain · A second vote (toast) | live | one vote per article |
+| ArticleSolved · This solved it (toast) | live | `POST …/solved`, no ticket made |
+| ArticleFallback · Not in your language yet (shown in English) | live | the article in the company's default language when the person's is missing |
 
 ### B. Other Helpdesk designs (were "Service desk")
 
