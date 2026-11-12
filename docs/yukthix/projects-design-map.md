@@ -89,12 +89,12 @@ named in the note) · **wire design** (the API exists and the screen is not wire
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Projects and timesheets (PRJ-01, PRJ-02, PRJ-08) | 3 | 0 | 8 | 0 | 17 | 1 | 26 |
+| A. Projects and timesheets (PRJ-01, PRJ-02, PRJ-08) | 3 | 25 | 8 | 0 | 8 | 1 | 42 |
 | B. Capacity and bench (PRJ-03, PRJ-07) | 2 | 0 | 1 | 0 | 9 | 0 | 10 |
 | C. Cost and billing (PRJ-04 to PRJ-06) | 3 | 0 | 5 | 0 | 11 | 0 | 16 |
-| **All A-C** | **8** | **0** | **14** | **0** | **37** | **1** | **52** |
+| **All A-C** | **8** | **25** | **14** | **0** | **28** | **1** | **68** |
 
-Counted by script on 12 Nov 2026 on `docs/yukthix-projects-map` (the script is in the appendix; it prints "ok"). There
+Counted by script on 12 Nov 2026 on `docs/yukthix-projects-map` (the script is in the appendix; it prints "ok"). Recounted on 12 Nov 2026 on `feat/yukthix-projects-p1` after P-1: PRJ-01 has 30 stories (16 live-state stories added), 68 in all. There
 are 52 stories in 8 files whose title starts `Screens/Projects/`: `packages/yx-ui/src/screens/hiring/prj-01-projects`
 (14), `prj-02-timesheet-approvals` (7), `prj-03-capacity` (4), `prj-04-costing` (5), `prj-05-billing-workbench` (6),
 `prj-06-timesheet-correction` (5), `prj-07-bench-requests` (6), `prj-08-mapping-rules` (5), all `.stories.tsx`. The
@@ -131,20 +131,36 @@ screens are in `screens/hiring/projects.tsx` and `projects-billing.tsx`. One sto
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| FinanceList · Finance · all projects with margin | design only, feature not built | no projects list with client, budgets, fee or margin (searches in section 2) |
-| PmList · PM · my projects | design only, feature not built | no "my projects" page for a PM; `timesheet_projects.manager_user_id` exists but no list reads it for the PM |
-| HrList · HR · no fee or margin | live (gap) | HR sees and edits projects in HR › Shifts set-up (`ShiftEditorScreen`, `POST|PUT /projects`): code, name, PM, billable, activities. Gap: no client, billing model, budgets, status, people count; not the designed list |
-| PmOverview · Workspace · PM overview, burn alert | design only, feature not built | no budgets, so no burn; no workspace page |
-| FinanceOverview · Workspace · finance overview with margin | design only, feature not built | no project cost or margin (cost rates exist, payroll only: `employee_cost_rates`) |
-| Team · Workspace · team and allocations | design only, feature not built | no allocation table; today anyone may book any active project |
-| FixedFeeMilestones · Workspace · fixed fee, tasks and milestones (over budget) | design only, feature not built | no tasks, milestones or billing model |
-| Timesheets · Workspace · timesheets with attendance mismatch | design only, feature not built | the hours exist (`timesheet_lines` by `project_id`) and the day engine knows attendance, but no API lists a project's timesheets or compares them |
-| Billing · Workspace · billing, hours held for client approval | design only, feature not built | no project WIP; the staffing equivalent is placement hours waiting for the client |
-| Expenses · Workspace · expenses | design only, feature not built | expense lines have no project |
-| Closed · Workspace · closed project | design only, feature not built | `timesheet_projects.active` false stops new time, but there is no closed status, no adjustment week and no workspace |
-| Empty · Empty | design only, feature not built | as FinanceList |
-| Loading · Loading | design only, feature not built | as FinanceList |
-| Error · Error | design only, feature not built | as FinanceList |
+| FinanceList · Finance · all projects with margin | live (gap) | P-1: `/yx/projects` (`ProjectsListScreen` live) shows fee to Projects finance; margin and fee billed come with cost and billing (P-4, P-5) |
+| PmList · PM · my projects | live | P-1: a project manager without a key sees only the projects they manage (`GET /projects`) |
+| HrList · HR · no fee or margin | live | P-1: without Projects finance the list has no fee, cost or margin (answer 1412) |
+| PmOverview · Workspace · PM overview, burn alert | live | P-1: `/yx/projects/[id]` hours budget bar and the burn alert at the company levels (1405); alerts to the PM and Projects finance by the hourly sweep |
+| FinanceOverview · Workspace · finance overview with margin | design only, feature not built | cost and margin come with P-4 (nightly cost job); P-1 shows the fee fact to finance only |
+| Team · Workspace · team and allocations | live | P-1: allocations add, change and end; only allocated people book time (1404) |
+| FixedFeeMilestones · Workspace · fixed fee, tasks and milestones (over budget) | live | P-1: tasks (Time activities) with used hours; milestones on fixed-fee projects, client acceptance per project (1420) |
+| Timesheets · Workspace · timesheets with attendance mismatch | design only, feature not built | P-2 |
+| Billing · Workspace · billing, hours held for client approval | design only, feature not built | P-5 |
+| Expenses · Workspace · expenses | design only, feature not built | expense lines have no project yet (P-5) |
+| Closed · Workspace · closed project | live | P-1: closed status; no new time, team, tasks or milestones; reopen |
+| Empty · Empty | live | P-1: the live list empty state |
+| Loading · Loading | live | P-1: the live list loading state |
+| Error · Error | live | P-1: the live list error state |
+| LiveList · Live · list (Projects manage) | live | P-1 live state |
+| LiveListFinance · Live · list (Projects finance, with fee) | live | P-1 live state (1412) |
+| LiveListNoAccess · Live · no access or Projects off | live | P-1: Projects off (1401) or no key and no project managed |
+| LiveNewProject · Live · new project drawer | live | P-1: `ProjectDrawer`, starts as a draft |
+| LiveWorkspace · Live · workspace overview with burn alert | live | P-1 live state |
+| LiveTeam · Live · team and allocations | live | P-1 live state |
+| LiveAllocate · Live · add allocation drawer | live | P-1: `AllocationDrawer`, overlaps refused by the API |
+| LiveEdit · Live · edit details and budgets drawer | live | P-1: `ProjectDrawer` in edit |
+| LiveTasks · Live · tasks | live | P-1 live state |
+| LiveTaskDrawer · Live · add task drawer | live | P-1: `TaskDrawer`, at most 20 in use |
+| LiveMilestones · Live · fixed fee milestones (client accepts) | live | P-1 live state (1420) |
+| LiveMilestoneDrawer · Live · add milestone drawer | live | P-1: `MilestoneDrawer`, total at most 100% |
+| LiveClosed · Live · closed project (read-only) | live | P-1 live state |
+| LiveReader · Live · Projects view only (no edits) | live | P-1: `projects.view` reads; no actions |
+| LiveLoading · Live · workspace loading | live | P-1 live state |
+| LiveError · Live · workspace error | live | P-1 live state |
 
 #### PRJ-02 · Timesheet approvals
 
@@ -380,3 +396,22 @@ console.log('ok');
 
 ## Founder approved (12 Nov 2026, "ok for all, start both together")
 1401 to 1421 approved as suggested. Build P-1 first, then P-3, then P-2, P-4 and P-5 together, then P-6 (at most 3 builders, shared with Settings).
+
+## P-1 built (12 Nov 2026): questions for the founder
+
+1441. **Companies that already keep Time's projects.** The migration switched Projects on for them (so HR keeps the
+      project editor that moved out of Shifts set-up) and, because nobody is allocated yet, set "only allocated people
+      book time" off for them; new companies get it on. *Suggested: keep; their System Admin turns the rule on in
+      Settings › Projects & timesheets once teams are in.*
+1442. **The booking rule's second choice.** The drawn 3.11 page offered "Allow with project manager approval"; P-1 has
+      Block or Allow. *Suggested: keep the two choices; project manager approval of unallocated hours comes with P-2's
+      line decisions if still wanted.*
+1443. **Who changes Settings 3.11.** The design names a `projects.settings.manage` key. P-1 lets System Admins
+      (`org.settings.manage`) change it and Projects managers read it. *Suggested: keep, no extra key.*
+1444. **New projects billable by default.** The drawn page starts "New projects are billable" on, so the new-project
+      form starts on Time & material and asks for a client. *Suggested: keep; make it a company setting with the
+      other P-3 settings.*
+1445. **Burn alerts on hours only.** P-1 has no cost, so alerts compare booked hours (submitted and approved weeks) with
+      the hours budget, checked every hour. *Suggested: add the cost budget to the same alerts with P-4's nightly cost.*
+1446. **Who sees a project without a key.** A person who neither holds a Projects key nor manages the project gets "not
+      found" for it, not "no access", so its name is never confirmed. *Suggested: keep.*

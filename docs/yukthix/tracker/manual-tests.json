@@ -20631,5 +20631,102 @@
       "Screens/YukthiX console/Platform console (step 3) · Staff and roles · invited and deactivated (send again, reactivate)"
     ],
     "note": "Positive and negative. Answer 1173."
+  },
+  {
+    "id": "MT-PRJ1-01",
+    "area": "Projects P-1, projects core (12 Nov 2026)",
+    "screen": "Settings › Projects & timesheets (3.11)",
+    "url": "http://localhost:3000/yx/settings/projects",
+    "account": "The System Admin of a company with no Time projects; a Projects manager; an employee with no keys.",
+    "steps": [
+      "As the employee, look for Projects in the menu and open /yx/projects.",
+      "As the System Admin open Settings › Projects & timesheets.",
+      "Switch Projects on and save.",
+      "Set the second burn alert to 90% while the first is 90% and save.",
+      "As the Projects manager open the same page."
+    ],
+    "expected": "Step 1: no Projects in the menu; the page says you can't open Projects. Step 2: Projects off, booking rule Block, alerts 80% and 100% (starter values). Step 3: toast 'Projects settings saved'; Projects appears in the menu for key holders. Step 4: refused, 'The second burn alert must be above the first.', nothing saved. Step 5: the values read-only.",
+    "stories": [
+      "Screens/Settings/Group 3 · Time & Leave · 3.11 Projects & timesheets"
+    ],
+    "note": "Positive and negative. Answers 1401, 1404, 1405."
+  },
+  {
+    "id": "MT-PRJ1-02",
+    "area": "Projects P-1, projects core (12 Nov 2026)",
+    "screen": "Projects › list and new project",
+    "url": "http://localhost:3000/yx/projects",
+    "account": "A Projects manager (projects.manage); a Projects finance person; a project manager with no key.",
+    "steps": [
+      "As the Projects manager press New project, then Create project with nothing filled in.",
+      "Fill code and name, keep Time & material, Create project.",
+      "Choose Non-billable and Create project.",
+      "As Projects finance open the list.",
+      "As the project manager with no key open Projects."
+    ],
+    "expected": "Step 1: the form says what is missing; nothing is created. Step 2: 'A billable project needs a client.' Step 3: toast '<code> created as a draft' and the workspace opens. Step 4: a Fee column; others never see fee or cost. Step 5: only the projects they manage; no New project.",
+    "stories": [
+      "Screens/Projects/PRJ-01 · Projects and project workspace · Live · list (Projects manage)",
+      "Screens/Projects/PRJ-01 · Projects and project workspace · Live · new project drawer",
+      "Screens/Projects/PRJ-01 · Projects and project workspace · Live · list (Projects finance, with fee)"
+    ],
+    "note": "Positive and negative. Answers 1401, 1403, 1412."
+  },
+  {
+    "id": "MT-PRJ1-03",
+    "area": "Projects P-1, projects core (12 Nov 2026)",
+    "screen": "Projects › workspace › team and booking time",
+    "url": "http://localhost:3000/yx/projects",
+    "account": "The project's manager; two employees in Timesheet mode, one allocated and one not.",
+    "steps": [
+      "Start the project (More actions › Start project).",
+      "Team & allocations › Add allocation for employee 1, tentative.",
+      "As employee 1 book hours to the project this week.",
+      "Change the allocation to confirmed and book again.",
+      "As employee 2 book hours to the project.",
+      "Add a second allocation for employee 1 overlapping the first."
+    ],
+    "expected": "Step 1: Active. Step 3: refused, 'you are not allocated to <code> on <day>'. Step 4: saved. Step 5: refused the same way. Step 6: refused (overlap).",
+    "stories": [
+      "Screens/Projects/PRJ-01 · Projects and project workspace · Live · team and allocations",
+      "Screens/Projects/PRJ-01 · Projects and project workspace · Live · add allocation drawer"
+    ],
+    "note": "Positive and negative. Answer 1404."
+  },
+  {
+    "id": "MT-PRJ1-04",
+    "area": "Projects P-1, projects core (12 Nov 2026)",
+    "screen": "Projects › workspace › burn alert",
+    "url": "http://localhost:3000/yx/projects",
+    "account": "A project with a 20 hour budget, an allocated person, its manager and a Projects finance person.",
+    "steps": [
+      "Submit a week with 16 hours on the project.",
+      "Wait for the hourly sweep (35 minutes past) or run the project-burn job.",
+      "Run the job again.",
+      "Book 4 more hours and run the job."
+    ],
+    "expected": "Step 2: the manager and Projects finance get 'Budget burn 80%: <code>'; the workspace shows the burn alert. Step 3: nothing new. Step 4: 'Budget burn 100%'. The employee never gets an alert.",
+    "stories": [
+      "Screens/Projects/PRJ-01 · Projects and project workspace · Live · workspace overview with burn alert"
+    ],
+    "note": "Positive and negative. Answer 1405."
+  },
+  {
+    "id": "MT-PRJ1-05",
+    "area": "Projects P-1, projects core (12 Nov 2026)",
+    "screen": "Projects › workspace › close; Shifts set-up",
+    "url": "http://localhost:3000/yx/time/shifts-setup",
+    "account": "A Projects manager; HR on Shifts set-up.",
+    "steps": [
+      "Close a project (More actions › Close project) and confirm.",
+      "As its manager try Add task.",
+      "Reopen it.",
+      "As HR open Shifts set-up › Timesheet projects."
+    ],
+    "expected": "Step 1: Closed note; no Add allocation, Add task or Add milestone. Step 3: actions back. Step 4: a note that projects moved to Projects; no editor; Time's old projects are in the Projects list once, not twice.",
+    "stories": [
+      "Screens/Projects/PRJ-01 · Projects and project workspace · Live · closed project (read-only)"
+    ],
+    "note": "Positive and negative. Answers 1402, 1420."
   }
 ]

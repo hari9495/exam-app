@@ -46,7 +46,7 @@ const LEFT: Record<string, number> = {
   portals: 17,
   proctoring: 20,
   settings: 6,
-  time: 16,
+  time: 15,
 };
 
 const files = (dir: string): string[] =>

@@ -23,7 +23,6 @@ export default function YxShiftsSetupPage() {
         onRemoveAssignment: (aid) => write(`/pattern-assignments/${id(aid)}/remove`, 'POST', undefined, true, 'Pattern removed from there'),
         onCreateOtRule: (input) => write('/ot-rules', 'POST', input, true, 'Overtime rule added'),
         onRemoveOtRule: (rid) => write(`/ot-rules/${id(rid)}/remove`, 'POST', undefined, true, 'Overtime rule removed'),
-        onSaveProject: (pid, input) => (pid ? write(`/projects/${id(pid)}`, 'PUT', input, true, 'Project saved') : write('/projects', 'POST', input, true, 'Project added')),
         onAddConsent: (input) => write('/night/consents', 'POST', input, true, 'Night-work consent recorded'),
         onWithdrawConsent: (cid, on) => write(`/night/consents/${id(cid)}/withdraw`, 'POST', { on }, true, 'Withdrawal of consent recorded'),
         onAttest: (input) => write('/night/safeguards', 'POST', input, true, 'Safeguard check recorded'),

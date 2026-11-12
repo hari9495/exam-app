@@ -46,7 +46,6 @@ const live = (data: ShiftSetup): LiveShiftSetup => ({
   onRemoveAssignment: vi.fn(async () => ({})),
   onCreateOtRule: vi.fn(async () => ({})),
   onRemoveOtRule: vi.fn(async () => ({})),
-  onSaveProject: vi.fn(async () => ({})),
   onAddConsent: vi.fn(async () => ({})),
   onWithdrawConsent: vi.fn(async () => ({})),
   onAttest: vi.fn(async () => ({})),

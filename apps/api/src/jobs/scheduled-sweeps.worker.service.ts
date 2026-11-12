@@ -31,6 +31,8 @@ import { IncidentsService } from '../platform/incidents.service';
 import { CsFollowupService } from '../platform/cs-followup.service';
 import { StaffRolesService } from '../platform/staff-roles.service';
 
+import { ProjectsService } from '../projects/projects.service';
+
 function msg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
@@ -74,9 +76,12 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     incidents: IncidentsService,
     csFollowup: CsFollowupService,
     staffRoles: StaffRolesService,
+    projects: ProjectsService,
   ) {
     // Keys MUST match SWEEP_SCHEDULE ids.
     this.handlers = {
+      // Projects P-1 (answer 1405).
+      'project-burn': () => projects.burnSweep(),
       'notification-digests': () => notificationDigest.sweep(),
       'staff-reminders': () => reminders.sweep(),
       'scheduled-reports': () => scheduledReports.sweep(),

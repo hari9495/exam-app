@@ -7,11 +7,12 @@ import { todayIst } from '../org-structure/org-validation';
 import type { ScopeUser } from '../access/scope';
 import { ApprovalsEngine, Notice } from '../workflow/approvals-engine.service';
 import { DayEngine } from './day-engine.service';
-import { ProjectDto, TimesheetLineDto } from './dto';
+import { TimesheetLineDto } from './dto';
 import { lockedDates } from './schedule';
 import { TimeSetupService } from './setup.service';
 import { asDate, dateOf, factsOn, holidaysFor, hrApprovers, leaveDays, myEmployeeId, settingOn } from './time-core';
 import { addDays } from './time-maths';
+import { settingFor } from '../people/probation';
 import { mondayOf } from './time-rules';
 
 // M02 §B7 basic timesheets: simple projects with activities (no M12 project accounting), a weekly grid per person,
@@ -35,35 +36,7 @@ export class TimesheetService implements OnModuleInit {
     this.engine.register({ key: TIMESHEET, label: 'Timesheet', risk: 'normal', quickApprove: true, autoActions: false, onDecided: (tx, req, outcome) => this.decided(tx, req, outcome), requesterLink: () => '/yx/time/timesheet' });
   }
 
-  // ------------------------------------------------------------------------------------------ projects (set-up)
-
-  private async checkManager(tx: Tx, org: string, id: string | null | undefined) {
-    if (id && !(await tx.user.findFirst({ where: { organizationId: org, id, status: 'active' }, select: { id: true } }))) throw new BadRequestException('Choose an active person of this company as the project manager.');
-  }
-
-  createProject(ctx: TenantContext, user: ScopeUser, dto: ProjectDto) {
-    return this.setup.run(ctx, user, true, async (tx, c) => {
-      await this.checkManager(tx, c.organizationId, dto.managerUserId);
-      if (await tx.timesheetProject.findFirst({ where: { organizationId: c.organizationId, code: dto.code } })) throw new ConflictException(`The code ${dto.code} is already used.`);
-      const activities = [...new Set(dto.activities.map((a) => a.trim()).filter(Boolean))];
-      const p = await tx.timesheetProject.create({ data: { organizationId: c.organizationId, code: dto.code, name: dto.name, managerUserId: dto.managerUserId ?? null, billable: dto.billable, activities, active: dto.active ?? true, createdBy: c.userId ?? null } });
-      await audit(tx, c, 'time.project.created', 'timesheet_project', p.id, { code: dto.code, name: dto.name, managerUserId: dto.managerUserId ?? null });
-      return { id: p.id };
-    });
-  }
-
-  updateProject(ctx: TenantContext, user: ScopeUser, id: string, dto: ProjectDto) {
-    return this.setup.run(ctx, user, true, async (tx, c) => {
-      const p = await tx.timesheetProject.findFirst({ where: { organizationId: c.organizationId, id } });
-      if (!p) throw new NotFoundException('No such project.');
-      if (dto.code !== p.code) throw new BadRequestException('A project keeps its code.');
-      await this.checkManager(tx, c.organizationId, dto.managerUserId);
-      const activities = [...new Set(dto.activities.map((a) => a.trim()).filter(Boolean))];
-      await tx.timesheetProject.update({ where: { id }, data: { name: dto.name, managerUserId: dto.managerUserId ?? null, billable: dto.billable, activities, active: dto.active ?? p.active, updatedAt: new Date() } });
-      await audit(tx, c, 'time.project.changed', 'timesheet_project', id, { from: { name: p.name, managerUserId: p.managerUserId, active: p.active }, to: { name: dto.name, managerUserId: dto.managerUserId ?? null, active: dto.active ?? p.active } });
-      return { id };
-    });
-  }
+  // Projects P-1 (answer 1402): projects are created and changed in Projects (ProjectsService); Time books to them.
 
   // ------------------------------------------------------------------------------------------ me › timesheet
 
@@ -113,6 +86,20 @@ export class TimesheetService implements OnModuleInit {
         const p = projects.get(l.projectId);
         if (!p || !p.active) throw new BadRequestException(`Line ${i + 1}: choose a project in use.`);
         if (l.activity && p.activities.length && !p.activities.includes(l.activity)) throw new BadRequestException(`Line ${i + 1}: choose one of the project's activities.`);
+      }
+      // Projects P-1 (answer 1404): with Projects on, only people allocated to a project book time to it, on the days
+      // of their (confirmed) allocation; a company may switch this off (projects.booking.allocated_only).
+      if (lines.length && (await settingFor(tx, c, 'projects.enabled', { legalEntityId: '' })) === 'on' && (await settingFor(tx, c, 'projects.booking.allocated_only', { legalEntityId: '' })) === 'on') {
+        const allocs = await tx.projectAllocation.findMany({ where: { organizationId: org, employeeId: me, tentative: false, projectId: { in: lines.map((l) => l.projectId) }, fromOn: { lte: asDate(addDays(week, 6)) }, OR: [{ toOn: null }, { toOn: { gte: asDate(week) } }] } });
+        for (const [i, l] of lines.entries()) {
+          for (let k = 0; k < 7; k++) {
+            if (!l.minutes[k]) continue;
+            const d = addDays(week, k);
+            if (!allocs.some((a) => a.projectId === l.projectId && dateOf(a.fromOn) <= d && (!a.toOn || dateOf(a.toOn) >= d))) {
+              throw new BadRequestException(`Line ${i + 1}: you are not allocated to ${projects.get(l.projectId)!.code} on ${fmt(d)}. Ask the project manager to add you to the team.`);
+            }
+          }
+        }
       }
       const perDay = Array.from({ length: 7 }, (_, k) => lines.reduce((s, l) => s + l.minutes[k], 0));
       if (perDay.some((m) => m > 1440)) throw new BadRequestException('A day has at most 24 hours.');

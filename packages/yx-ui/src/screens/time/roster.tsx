@@ -1689,7 +1689,7 @@ function LiveShiftEditor({ live: p, data: d }: { live: LiveShiftSetup; data: Set
         <TabsContent value="shift">{shift.body}</TabsContent>
         <TabsContent value="patterns">{patterns.body}</TabsContent>
         <TabsContent value="overtime"><OvertimeRulesTab data={d} onCreateOtRule={p.onCreateOtRule} onRemoveOtRule={p.onRemoveOtRule} /></TabsContent>
-        <TabsContent value="projects"><ProjectsTab data={d} onSaveProject={p.onSaveProject} /></TabsContent>
+        <TabsContent value="projects"><ProjectsTab /></TabsContent>
         <TabsContent value="night"><NightWorkTab data={d} onAddConsent={p.onAddConsent} onWithdrawConsent={p.onWithdrawConsent} onAttest={p.onAttest} /></TabsContent>
       </Tabs>
     </TimePage>

@@ -2,6 +2,8 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { ProjectsListScreen, ProjectWorkspaceScreen, type ProjectExpense } from './projects';
 import { ALLOCATIONS, MILESTONES, PD, PROJECTS, RATE_CARD_PRJ, TASKS, WIP_LINES } from './projects-data';
 import { TODAY } from '../_kit/data';
+import { LIVE_FIXED_FEE_DETAIL, LIVE_PROJECT_CHOICES, LIVE_PROJECT_DETAIL, LIVE_PROJECT_ROWS, LIVE_PROJECT_ROWS_FINANCE } from './projects-live-fixtures';
+import type { LiveProjectWorkspace, LiveProjectsList } from './projects';
 import type { TimelineItem } from '../../components/timeline';
 
 const meta: Meta = { title: 'Screens/Projects/PRJ-01 · Projects and project workspace', parameters: { layout: 'fullscreen' } };
@@ -34,3 +36,24 @@ export const Closed: S = { name: 'Workspace · closed project', render: () => <P
 export const Empty: S = { name: 'Empty', render: () => <ProjectsListScreen rows={[]} persona="pm" /> };
 export const Loading: S = { name: 'Loading', render: () => <ProjectsListScreen rows={[]} persona="finance" state="loading" /> };
 export const Error: S = { name: 'Error', render: () => <ProjectsListScreen rows={[]} persona="finance" state="error" /> };
+
+// Projects P-1 (answers 1401 to 1405, 1412, 1420): the live states. No cost, billing, timesheets or expenses until their slices.
+const ok = async () => undefined;
+const liveList = (over: Partial<LiveProjectsList> = {}): LiveProjectsList => ({ state: 'ready', rows: LIVE_PROJECT_ROWS, can: { create: true, finance: false }, choices: LIVE_PROJECT_CHOICES, onOpen: () => {}, onCreate: async () => 'p9', ...over });
+const liveWs = (over: Partial<LiveProjectWorkspace> = {}): LiveProjectWorkspace => ({ state: 'ready', detail: LIVE_PROJECT_DETAIL, choices: LIVE_PROJECT_CHOICES, burn: { warn: 80, over: 100 }, onUpdate: ok, onStatus: ok, onAllocate: ok, onChangeAllocation: ok, onEndAllocation: ok, onAddTask: ok, onChangeTask: ok, onAddMilestone: ok, onCompleteMilestone: ok, ...over });
+export const LiveList: S = { name: 'Live · list (Projects manage)', render: () => <ProjectsListScreen live={liveList()} /> };
+export const LiveListFinance: S = { name: 'Live · list (Projects finance, with fee)', render: () => <ProjectsListScreen live={liveList({ rows: LIVE_PROJECT_ROWS_FINANCE, can: { create: false, finance: true } })} /> };
+export const LiveListNoAccess: S = { name: 'Live · no access or Projects off', render: () => <ProjectsListScreen live={liveList({ state: 'no-access', rows: [] })} /> };
+export const LiveNewProject: S = { name: 'Live · new project drawer', render: () => <ProjectsListScreen live={liveList({ defaultNew: true })} /> };
+export const LiveWorkspace: S = { name: 'Live · workspace overview with burn alert', render: () => <ProjectWorkspaceScreen live={liveWs()} /> };
+export const LiveTeam: S = { name: 'Live · team and allocations', render: () => <ProjectWorkspaceScreen live={liveWs()} defaultTab="team" /> };
+export const LiveAllocate: S = { name: 'Live · add allocation drawer', render: () => <ProjectWorkspaceScreen live={liveWs({ defaultDrawer: 'allocate' })} defaultTab="team" /> };
+export const LiveEdit: S = { name: 'Live · edit details and budgets drawer', render: () => <ProjectWorkspaceScreen live={liveWs({ defaultDrawer: 'edit' })} /> };
+export const LiveTasks: S = { name: 'Live · tasks', render: () => <ProjectWorkspaceScreen live={liveWs()} defaultTab="tasks" /> };
+export const LiveTaskDrawer: S = { name: 'Live · add task drawer', render: () => <ProjectWorkspaceScreen live={liveWs({ defaultDrawer: 'task' })} defaultTab="tasks" /> };
+export const LiveMilestones: S = { name: 'Live · fixed fee milestones (client accepts)', render: () => <ProjectWorkspaceScreen live={liveWs({ detail: LIVE_FIXED_FEE_DETAIL })} defaultTab="tasks" /> };
+export const LiveMilestoneDrawer: S = { name: 'Live · add milestone drawer', render: () => <ProjectWorkspaceScreen live={liveWs({ detail: LIVE_FIXED_FEE_DETAIL, defaultDrawer: 'milestone' })} defaultTab="tasks" /> };
+export const LiveClosed: S = { name: 'Live · closed project (read-only)', render: () => <ProjectWorkspaceScreen live={liveWs({ detail: { ...LIVE_PROJECT_DETAIL, project: { ...LIVE_PROJECT_DETAIL.project, status: 'closed' } } })} /> };
+export const LiveReader: S = { name: 'Live · Projects view only (no edits)', render: () => <ProjectWorkspaceScreen live={liveWs({ detail: { ...LIVE_PROJECT_DETAIL, can: { edit: false, run: false, team: false, finance: false } } })} /> };
+export const LiveLoading: S = { name: 'Live · workspace loading', render: () => <ProjectWorkspaceScreen live={liveWs({ state: 'loading', detail: null })} /> };
+export const LiveError: S = { name: 'Live · workspace error', render: () => <ProjectWorkspaceScreen live={liveWs({ state: 'error', detail: null })} /> };

@@ -27,8 +27,11 @@ import { PlatformModule } from '../platform/platform.module';
 // worker), replacing the per-service unref'd setInterval timers. Imports each owning module for its
 // sweep/prune service; owns its own queue + worker reusing the shared Redis-connection factory
 // (mirrors HrisModule / BulkCandidateEmailModule).
+import { ProjectsModule } from '../projects/projects.module';
+
 @Module({
   imports: [
+    ProjectsModule,
     RemindersModule,
     ScheduledReportsModule,
     NotificationsModule,

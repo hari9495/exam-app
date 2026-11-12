@@ -51,6 +51,8 @@ export interface NavInput {
   panellist?: boolean;
   /** The company turned the staffing desk on (Settings › Staffing desk; the server decides). */
   staffing?: boolean;
+  /** Projects P-1: Projects is on and this person holds a Projects key or manages a project (the server decides). */
+  projects?: boolean;
 }
 
 /** Possible same person is in the menu when the server sends its count: company-wide HR while a pair waits or for 90 days after any merge, even at 0. */
@@ -91,7 +93,7 @@ export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '3.8': ['/yx/time/setup/holidays', '/yx/time/setup/holiday-feeds'],
   '3.9': ['/yx/time/setup/year-end'],
   '3.10': ['/yx/time/periods'],
-  '3.11': ['/yx/time/shifts-setup'],
+  '3.11': ['/yx/settings/projects'],
   '3.12': ['/yx/settings/visitors'],
   '4.1': ['/yx/payroll/pay-groups', '/yx/payroll/periods'],
   '4.2': ['/yx/payroll/components', '/yx/payroll/templates'],
@@ -451,6 +453,9 @@ export function buildNav(n: NavInput): NavArea[] {
     ],
   };
 
+  // Projects P-1 (answer 1401): only once the company switched Projects on.
+  const projects: NavArea = { id: 'projects', title: 'Projects', sections: sec(undefined, when(!support && Boolean(n.projects), L('projects', 'Projects', '/yx/projects'))) };
+
   // Settings, pinned at the bottom of the rail, in the designed settings groups.
   const settings: NavArea = {
     id: 'settings',
@@ -471,7 +476,11 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(has('org.support_access.approve') && !support, L('support-access', 'Support access', '/yx/settings/support-access')),
       ]),
       // 3.12 Visitors: Facility admins and HR change it; reception reads it.
-      ...sec('Time & Leave', when(!support && any('visitors.settings.manage', 'org.settings.manage', 'visitors.desk.manage'), L('visitor-settings', 'Visitors', '/yx/settings/visitors'))),
+      // 3.11 Projects & timesheets: where Projects is switched on, so it shows while Projects is off (answer 1401).
+      ...sec('Time & Leave', [
+        ...when(!support && any('org.settings.manage', 'projects.manage'), L('project-settings', 'Projects & timesheets', '/yx/settings/projects')),
+        ...when(!support && any('visitors.settings.manage', 'org.settings.manage', 'visitors.desk.manage'), L('visitor-settings', 'Visitors', '/yx/settings/visitors')),
+      ]),
       ...sec('Payroll & Statutory', [
         ...when(pay, ...[
           ...when(any('payroll.setup.manage', 'payroll.statutory.setup'), L('pay-setup', 'Payroll set-up', '/yx/payroll/setup')),
@@ -500,7 +509,7 @@ export function buildNav(n: NavInput): NavArea[] {
     ],
   };
 
-  const areas = [home, people, time, pays, compliance, contract, hire, performance, helpdesk, visitors, settings];
+  const areas = [home, people, time, pays, compliance, contract, hire, projects, performance, helpdesk, visitors, settings];
   // Settings S-1 (answer 1322): Settings opens the home, for anyone who may open at least one settings page.
   const mine = new Set(areas.flatMap((a) => a.sections.flatMap((s) => s.items.map((l) => l.href))));
   if (Object.values(SETTINGS_PAGE_EDITORS).some((hrefs) => hrefs.some((h) => mine.has(h)))) settings.sections.unshift({ items: [L('settings-home', 'All settings', SETTINGS_HOME)] });

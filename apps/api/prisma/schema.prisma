@@ -6136,8 +6136,71 @@ model TimesheetProject {
   createdBy      String?  @map("created_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+  /// Projects P-1 (answers 1402, 1403, 1420): the designed project.
+  clientId                String?   @map("client_id") @db.Uuid
+  billingModel            String    @default("non_billable") @map("billing_model") @db.VarChar(15)
+  status                  String    @default("active") @db.VarChar(10)
+  startOn                 DateTime? @map("start_on") @db.Date
+  endOn                   DateTime? @map("end_on") @db.Date
+  budgetHours             Decimal?  @map("budget_hours") @db.Decimal(10, 2)
+  budgetCost              Decimal?  @map("budget_cost") @db.Decimal(14, 2)
+  fee                     Decimal?  @db.Decimal(14, 2)
+  clientAcceptsMilestones Boolean   @default(false) @map("client_accepts_milestones")
+  burnAlertedPct          Int       @default(0) @map("burn_alerted_pct") @db.SmallInt
+  closedAt                DateTime? @map("closed_at") @db.Timestamptz(3)
+  version                 Int       @default(1)
 
   @@map("timesheet_projects")
+}
+
+/// Projects P-1 (answer 1404): who works on a project, from when, at what share of their week.
+model ProjectAllocation {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  projectId      String    @map("project_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  role           String?   @db.VarChar(80)
+  fromOn         DateTime  @map("from_on") @db.Date
+  toOn           DateTime? @map("to_on") @db.Date
+  percent        Int       @db.SmallInt
+  tentative      Boolean   @default(false)
+  version        Int       @default(1)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@map("project_allocations")
+}
+
+/// Projects P-1: a project's tasks (Time's activities), each with an optional budget in hours.
+model ProjectTask {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  projectId      String   @map("project_id") @db.Uuid
+  name           String   @db.VarChar(60)
+  budgetHours    Decimal? @map("budget_hours") @db.Decimal(10, 2)
+  billable       Boolean  @default(true)
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("project_tasks")
+}
+
+/// Projects P-1 (answer 1420): a fixed-fee milestone; client acceptance is a per-project choice.
+model ProjectMilestone {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  projectId      String    @map("project_id") @db.Uuid
+  name           String    @db.VarChar(120)
+  pct            Decimal   @db.Decimal(5, 2)
+  dueOn          DateTime  @map("due_on") @db.Date
+  status         String    @default("planned") @db.VarChar(10)
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz(3)
+  completedBy    String?   @map("completed_by") @db.Uuid
+  version        Int       @default(1)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("project_milestones")
 }
 
 model Timesheet {

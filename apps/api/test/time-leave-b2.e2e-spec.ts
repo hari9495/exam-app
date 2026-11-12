@@ -327,7 +327,9 @@ describe('Time and leave batch 2', () => {
 
   describe('timesheets (§B7)', () => {
     it('a week goes to the project manager through P03; approved hours are fixed', async () => {
-      ids.project = (await api('hrAdmin', 'post', '/time/projects').send({ code: 'AUDIT', name: 'Audit readiness', managerUserId: users.boss, billable: false, activities: ['Docs', 'Checks'] }).expect(201)).body.id;
+      // Projects P-1 (answer 1402): projects are set up in Projects now; this company has Projects off, so anyone books.
+      await api('hrAdmin', 'post', '/time/projects').send({ code: 'GONE', name: 'Old editor' }).expect(404);
+      ids.project = (await inA((tx) => tx.timesheetProject.create({ data: { organizationId: org.A.id, code: 'AUDIT', name: 'Audit readiness', managerUserId: users.boss, billable: false, activities: ['Docs', 'Checks'] } }))).id;
       const week = mondayOf(today);
       const line = { projectId: ids.project, activity: 'Docs', billable: false, minutes: [480, 480, 0, 0, 0, 0, 0] };
       await api('emp', 'put', '/time/me/timesheet').send({ week: addDays(week, 1), lines: [line] }).expect(400);

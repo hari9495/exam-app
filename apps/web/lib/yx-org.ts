@@ -195,6 +195,8 @@ export const YX_KEYS = [
   // Staffing desk (HIR-14, HIR-15, Settings 6.2).
   'ats.staffing.manage',
   'ats.staffing.view',
+  // Projects P-1: Settings › Projects & timesheets.
+  'projects.manage',
   // HIR-21 vendors (the recruitment agencies).
   'ats.agency.manage',
   // Staffing slice 3: staffing finance (invoices, receipts, vendor invoices).

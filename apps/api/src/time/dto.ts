@@ -772,35 +772,6 @@ export class OverrideDto {
 
 // ------------------------------------------------------------------------------------------ batch 2: timesheets
 
-export class ProjectDto {
-  @trim()
-  @Matches(/^[A-Z][A-Z0-9-]{0,11}$/, { message: 'A project code is 1 to 12 capital letters, digits or dashes, starting with a letter.' })
-  code!: string;
-
-  @trim()
-  @IsString()
-  @MinLength(1)
-  @MaxLength(100)
-  name!: string;
-
-  @IsOptional()
-  @IsUUID()
-  managerUserId?: string | null;
-
-  @IsBoolean()
-  billable!: boolean;
-
-  @IsArray()
-  @ArrayMaxSize(20)
-  @IsString({ each: true })
-  @MaxLength(60, { each: true })
-  activities!: string[];
-
-  @IsOptional()
-  @IsBoolean()
-  active?: boolean;
-}
-
 export class TimesheetLineDto {
   @IsUUID()
   projectId!: string;
