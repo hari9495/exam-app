@@ -89,12 +89,12 @@ named in the note) · **wire design** (the API exists and the screen is not wire
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Projects and timesheets (PRJ-01, PRJ-02, PRJ-08) | 3 | 57 | 1 | 0 | 3 | 1 | 62 |
+| A. Projects and timesheets (PRJ-01, PRJ-02, PRJ-08) | 3 | 62 | 1 | 0 | 1 | 1 | 65 |
 | B. Capacity and bench (PRJ-03, PRJ-07) | 2 | 20 | 0 | 0 | 0 | 0 | 20 |
-| C. Cost and billing (PRJ-04 to PRJ-06) | 3 | 0 | 5 | 0 | 11 | 0 | 16 |
-| **All A-C** | **8** | **77** | **6** | **0** | **14** | **1** | **98** |
+| C. Cost and billing (PRJ-04 to PRJ-06) | 3 | 9 | 5 | 0 | 6 | 0 | 20 |
+| **All A-C** | **8** | **91** | **6** | **0** | **7** | **1** | **105** |
 
-Counted by script on 12 Nov 2026 on `docs/yukthix-projects-map` (the script is in the appendix; it prints "ok"). Recounted on 12 Nov 2026 on `feat/yukthix-projects-p1` after P-1: PRJ-01 has 30 stories (16 live-state stories added), 68 in all. Recounted after P-3 on `feat/yukthix-projects-p3`: PRJ-08 has 15 (10 live-state stories added), 78 in all. After the walk fixes and P-2 (`feat/yukthix-projects-p2`): PRJ-02 has 12 (5 live-state stories added), 86 in all. After P-4 (`feat/yukthix-projects-p4`): PRJ-03 8, PRJ-07 12, PRJ-01 and PRJ-02 one more each, 98 in all. There
+Counted by script on 12 Nov 2026 on `docs/yukthix-projects-map` (the script is in the appendix; it prints "ok"). Recounted on 12 Nov 2026 on `feat/yukthix-projects-p1` after P-1: PRJ-01 has 30 stories (16 live-state stories added), 68 in all. Recounted after P-3 on `feat/yukthix-projects-p3`: PRJ-08 has 15 (10 live-state stories added), 78 in all. After the walk fixes and P-2 (`feat/yukthix-projects-p2`): PRJ-02 has 12 (5 live-state stories added), 86 in all. After P-4 (`feat/yukthix-projects-p4`): PRJ-03 8, PRJ-07 12, PRJ-01 and PRJ-02 one more each, 98 in all. After P-5 (`feat/yukthix-projects-p5`): PRJ-04 9, PRJ-01 three more, 105 in all. There
 are 52 stories in 8 files whose title starts `Screens/Projects/`: `packages/yx-ui/src/screens/hiring/prj-01-projects`
 (14), `prj-02-timesheet-approvals` (7), `prj-03-capacity` (4), `prj-04-costing` (5), `prj-05-billing-workbench` (6),
 `prj-06-timesheet-correction` (5), `prj-07-bench-requests` (6), `prj-08-mapping-rules` (5), all `.stories.tsx`. The
@@ -135,12 +135,12 @@ screens are in `screens/hiring/projects.tsx` and `projects-billing.tsx`. One sto
 | PmList · PM · my projects | live | P-1: a project manager without a key sees only the projects they manage (`GET /projects`) |
 | HrList · HR · no fee or margin | live | P-1: without Projects finance the list has no fee, cost or margin (answer 1412) |
 | PmOverview · Workspace · PM overview, burn alert | live | P-1: `/yx/projects/[id]` hours budget bar and the burn alert at the company levels (1405); alerts to the PM and Projects finance by the hourly sweep |
-| FinanceOverview · Workspace · finance overview with margin | design only, feature not built | cost and margin come with P-4 (nightly cost job); P-1 shows the fee fact to finance only |
+| FinanceOverview · Workspace · finance overview with margin | live | P-5 (1412, 1413): cost to date from the nightly job against the cost budget, provisional until payroll is final; margin is on PRJ-04 (revenue from accepted fixed-fee milestones until billing, question 1621) |
 | Team · Workspace · team and allocations | live | P-1: allocations add, change and end; only allocated people book time (1404) |
 | FixedFeeMilestones · Workspace · fixed fee, tasks and milestones (over budget) | live | P-1: tasks (Time activities) with used hours; milestones on fixed-fee projects, client acceptance per project (1420) |
 | Timesheets · Workspace · timesheets with attendance mismatch | live | P-4 (answer 1541): `GET /projects/:id/timesheets`, each allocated person's week on the project against the allocation, their line decisions, and the whole week against attendance (an hour or more apart is flagged; pay never changes) |
 | Billing · Workspace · billing, hours held for client approval | design only, feature not built | P-5 |
-| Expenses · Workspace · expenses | design only, feature not built | expense lines have no project yet (P-5) |
+| Expenses · Workspace · expenses | live | P-5 (1419): `GET /projects/:id/expenses`, submitted and approved lines naming the project, with re-billing |
 | Closed · Workspace · closed project | live | P-1: closed status; no new time, team, tasks or milestones; reopen |
 | Empty · Empty | live | P-1: the live list empty state |
 | Loading · Loading | live | P-1: the live list loading state |
@@ -164,6 +164,9 @@ screens are in `screens/hiring/projects.tsx` and `projects-billing.tsx`. One sto
 | LiveLoading · Live · workspace loading | live | P-1 live state |
 | LiveError · Live · workspace error | live | P-1 live state |
 | LiveTimesheets · Live · timesheets this week, attendance check | live | P-4 live state (1541) |
+| LiveCostFinance · Live · finance overview with cost against budget | live | P-5 live state |
+| LiveCostPm · Live · project manager, cost totals (one month left out) | live | P-5 live state (1412) |
+| LiveExpenses · Live · expenses tagged to the project | live | P-5 live state (1419) |
 
 #### PRJ-02 · Timesheet approvals
 
@@ -242,11 +245,15 @@ screens are in `screens/hiring/projects.tsx` and `projects-billing.tsx`. One sto
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Finance · Finance · provisional September | design only, feature not built | no project cost; inputs exist: approved `timesheet_lines` and `employee_cost_rates` (payroll scope only) |
-| Pm · PM · one-person project cost hidden | design only, feature not built | the one-person rule is not built (question 1412) |
-| Final · Finance · August final, NRP-WEB restated | design only, feature not built | cost rates are written at payroll finalise (`runs.service.ts` line 1270), so a restatement job has its trigger; not built |
-| Empty · Empty | design only, feature not built | as Finance |
-| Loading · Loading | design only, feature not built | as Finance |
+| Finance · Finance · provisional September | live | P-5: `/yx/projects/costs` (`CostingMarginScreen` live, `GET /projects/costs`): project totals from the nightly job (`project-cost`, payroll access; no session reads a rate), provisional on the last final rate until the month's payroll is final (1413), with approved project expenses (1419); revenue and margin for Projects finance only. The period choices are months; quarters and the cost journal export are not built (question 1622) |
+| Pm · PM · one-person project cost hidden | live | P-5 (1412): a project's manager sees totals for their projects; a month with fewer people than `projects.cost.min_people` (default 2) shows "Hidden"; checked in the API |
+| Final · Finance · August final, NRP-WEB restated | live | P-5 (1413): when the month's payroll is final the job recomputes it, keeps the provisional total as "restated from" and audits it once |
+| Empty · Empty | live | P-5 live state |
+| Loading · Loading | live | P-5 live state |
+| LiveFinance · Live · finance, one month restated | live | P-5 live state |
+| LivePm · Live · project manager, totals only (small month hidden) | live | P-5 live state |
+| LiveEmpty · Live · no costs this month | live | P-5 live state |
+| LiveNoAccess · Live · no access | live | P-5 live state |
 
 #### PRJ-05 · Billing workbench
 
@@ -515,3 +522,22 @@ console.log('ok');
 1587. **Attendance check.** Flagged when the week's timesheet and the worked hours from check-ins are an hour or more
       apart; people whose attendance comes from their timesheet are never flagged. *Suggested: keep; make the hour a
       setting only if asked.*
+
+1581 to 1587: pending; P-5 builds as suggested.
+
+## P-5 built (12 Nov 2026): questions for the founder
+
+1621. **Revenue for margin.** Billing (P-6) is not built, so revenue is the fixed fee's share of milestones accepted in
+      the month; time-and-material and retainer projects show cost but no margin yet. *Suggested: keep until P-6 brings
+      billed and unbilled revenue.*
+1622. **Periods and the cost journal.** PRJ-04 offers single months (the last twelve); the drawn quarter view and
+      "Export project cost journal" are not built. *Suggested: add both with P-6's accounting export.*
+1623. **Which months are recomputed.** Every night the last three months, and any older month still provisional, so a
+      late payroll is restated when it becomes final. *Suggested: keep.*
+1624. **Expenses in cost.** Approved claim lines naming the project, at the approved amount, in the month they were
+      spent; re-billed lines are counted separately for P-6. *Suggested: keep.*
+1625. **Who names a project on an expense.** Anyone, any open project, when the company switched it on; re-billing needs
+      a project with a client. *Suggested: keep; limit it to people allocated to the project if you prefer.*
+1626. **Cost burn alerts.** Cost (people and expenses, all months) against the cost budget at the same 80% and 100%
+      levels as hours, to Projects finance, and to the project's manager only when the latest month has enough people.
+      *Suggested: keep.*

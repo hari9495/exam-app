@@ -32,7 +32,7 @@ const hoursOf = (minutes: number) => Math.round((minutes / 60) * 100) / 100;
 export const BURN_WARN = 'projects.burn.warn_pct';
 export const BURN_OVER = 'projects.burn.over_pct';
 /** Settings 3.11 Projects & timesheets: the company settings P-1 puts behind the designed page. */
-export const PROJECT_SETTING_KEYS = ['projects.enabled', 'projects.booking.allocated_only', BURN_WARN, BURN_OVER, 'timesheet.tool_suggestions', 'projects.default_billing_model', 'projects.bulk.within_allocation', 'projects.utilisation.target_pct', 'projects.small_team.limit'] as const;
+export const PROJECT_SETTING_KEYS = ['projects.enabled', 'projects.booking.allocated_only', BURN_WARN, BURN_OVER, 'timesheet.tool_suggestions', 'projects.default_billing_model', 'projects.bulk.within_allocation', 'projects.utilisation.target_pct', 'projects.small_team.limit', 'projects.cost.min_people', 'projects.expenses.enabled'] as const;
 
 /** Answer 1405: the burn level reached (0, the warning level or the over level) for hours used against the budget. */
 export function burnLevel(usedHours: number, budgetHours: number | null, warn: number, over: number): number {
@@ -501,7 +501,8 @@ export class ProjectsService {
   // ---- burn alerts (answer 1405) ----
 
   /** Who gets burn alerts besides the manager: everyone holding Projects finance (role, profile or an in-date grant). */
-  private async financeHolders(tx: Tx, org: string): Promise<string[]> {
+  /** Projects finance key holders (and org admins), active today; also used by the P-5 cost alerts. */
+  async financeHolders(tx: Tx, org: string): Promise<string[]> {
     const today = todayIst();
     const like = '%"projects.finance"%';
     const rows = await tx.$queryRaw<{ id: string }[]>`

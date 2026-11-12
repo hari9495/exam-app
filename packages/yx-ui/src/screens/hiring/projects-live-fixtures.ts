@@ -110,3 +110,15 @@ export const LIVE_MATCHES: import('./resourcing-live').RequestMatches = {
     { employeeId: 'e6', name: 'Divya Raghunathan', free: 100, onBench: false },
   ],
 };
+
+/** P-5: GET /projects/costs (Projects finance) in the API's shape. */
+export const LIVE_COSTS: import('./projects').LiveCostsData = {
+  month: '2026-10',
+  finance: true,
+  minPeople: 2,
+  rows: [
+    { projectId: 'p1', code: 'NRP-WEB', name: 'Nilgiri Retail web rebuild', client: 'Nilgiri Retail', manager: 'Karthik Subramanian', hours: 612, people: 5, hidden: false, cost: '459000.00', expenses: '12400.00', rebill: '8200.00', revenue: null, margin: null, basis: 'final', restatedFrom: '451200.00' },
+    { projectId: 'p2', code: 'KAV-ERP', name: 'Kaveri ERP roll-out', client: 'Kaveri Mills', manager: 'Anita Kurian', hours: 240, people: 3, hidden: false, cost: '168000.00', expenses: '0.00', rebill: '0.00', revenue: '720000.00', margin: 77, basis: 'provisional', restatedFrom: null },
+    { projectId: 'p3', code: 'OLDAUDIT', name: 'Audit readiness', client: null, manager: null, hours: 16, people: 1, hidden: false, cost: '9600.00', expenses: '0.00', rebill: '0.00', revenue: null, margin: null, basis: 'provisional', restatedFrom: null },
+  ],
+};

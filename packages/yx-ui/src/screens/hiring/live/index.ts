@@ -96,3 +96,5 @@ export { TimesheetApprovalsScreen, type LiveApprovalsData, type LiveLineDecision
 export { CapacityBoardScreen, type LiveCapacity, type LiveCapacityData, type LiveTimesheetRow } from '../projects';
 export { BenchRequestsScreen } from '../projects-billing';
 export type { LiveRequests, LiveResourceRequest, RequestInput, RequestMatches, ResourceRequestsData } from '../resourcing-live';
+// Projects P-5 (answers 1412, 1413, 1419): PRJ-04 cost and margin, live with `live`.
+export { CostingMarginScreen, type LiveCosts, type LiveCostsData } from '../projects';

@@ -515,6 +515,11 @@ function LineSheet({ phone, line, start, categories, today, currency, onClose, l
   const [part, setPart] = useState<number | null>(line?.perDiem?.partialDays ?? 0);
   const [declared, setDeclared] = useState(line?.selfDeclared ?? kind === 'bill');
   const [companyPaid, setCompanyPaid] = useState(line?.payMode === 'company_paid');
+  // Projects P-5 (answer 1419): the project the spend is for, when the company lets lines name one.
+  const projects = live.claim?.projects ?? null;
+  const [projectId, setProjectId] = useState<string | null>(line?.projectId ?? null);
+  const [rebill, setRebill] = useState(Boolean(line?.rebill));
+  const withClient = Boolean(projects?.find((x) => x.id === projectId)?.client);
   const [gstin, setGstin] = useState(line?.gst?.supplierGstin ?? '');
   const [invoice, setInvoice] = useState(line?.gst?.invoiceNo ?? '');
   const [taxable, setTaxable] = useState(line?.gst?.taxableValue ?? '');
@@ -561,6 +566,7 @@ function LineSheet({ phone, line, start, categories, today, currency, onClose, l
         payMode: companyPaid ? 'company_paid' : line?.payMode === 'company_card' ? 'company_card' : 'personal',
         description: line?.description ?? null,
         justification: line?.justification ?? null,
+        ...(projects ? { projectId, rebill: withClient && rebill } : {}),
         ...(ck === 'mileage' ? { mileage: { vehicle: vehicle ?? 'car', km: km! } } : ck === 'per_diem' ? { perDiem: { fullDays: full ?? 0, partialDays: part ?? 0 } } : foreign ? { fx: { currency: billCur, amount: moneyInput(amt)!, ...(rate ? { rate } : {}) } } : { amount: moneyInput(amt)! }),
         ...(line?.hasReceipt || ck === 'mileage' || ck === 'per_diem' ? {} : { selfDeclared: declared }),
         ...(cat?.gstEligible ? { gst: { supplierGstin: n(gstin.toUpperCase()), invoiceNo: n(invoice.toUpperCase()), taxableValue: n(taxable), cgst: n(cgst), sgst: n(sgst), igst: n(igst), billedToGstin: line?.gst?.billedToGstin ?? null } } : {}),
@@ -649,6 +655,14 @@ function LineSheet({ phone, line, start, categories, today, currency, onClose, l
               <TextField value={city} onChange={setCity} maxLength={60} />
             </FormField>
           </FieldRow>
+          {projects && (
+            <>
+              <FormField id="ln-project" label="Project" optional helper="The project this spend is for. Its cost includes it.">
+                <Select value={projectId} onChange={(v) => (setProjectId(v), v ? undefined : setRebill(false))} clearable placeholder="No project" options={projects.map((x) => ({ value: x.id, label: `${x.code} · ${x.name}` }))} />
+              </FormField>
+              {withClient && <Checkbox checked={rebill} onChange={setRebill} label="Re-bill to the client" description="The project's client is charged for it on the next invoice." />}
+            </>
+          )}
           {line && !line.hasReceipt && ck !== 'mileage' && ck !== 'per_diem' && (
             <FormField label="Receipt" optional helper="Add the receipt if you have it. A photo or PDF, up to 10 MB.">
               <FileUpload accept={['.jpg', '.jpeg', '.png', '.pdf']} multiple={false} capture="environment" upload={(file) => upload(file, line.id)} />

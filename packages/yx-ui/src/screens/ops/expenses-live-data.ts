@@ -120,6 +120,8 @@ export function toLineInput(l: ClaimLine, change: Partial<LineInput> = {}): Line
     payMode: l.payMode,
     description: l.description,
     justification: l.justification,
+    // Answer 1419: a line keeps its project when another part of it changes.
+    ...(l.projectId ? { projectId: l.projectId, rebill: Boolean(l.rebill) } : {}),
     ...(l.mileage ? { mileage: { vehicle: l.mileage.vehicle, km: l.mileage.km, ...(l.mileage.from ? { from: l.mileage.from } : {}), ...(l.mileage.to ? { to: l.mileage.to } : {}) } } : l.perDiem ? { perDiem: { fullDays: l.perDiem.fullDays, partialDays: l.perDiem.partialDays } } : l.fx?.amount ? { fx: { currency: l.fx.currency, amount: l.fx.amount, ...(l.fx.source === 'manual' ? { rate: l.fx.rate } : {}) } } : { amount: l.claimed }),
     ...(l.hasReceipt ? {} : { selfDeclared: l.selfDeclared }),
     ...(l.gst ? { gst: { supplierGstin: l.gst.supplierGstin, invoiceNo: l.gst.invoiceNo, taxableValue: l.gst.taxableValue, cgst: l.gst.cgst, sgst: l.gst.sgst, igst: l.gst.igst, billedToGstin: l.gst.billedToGstin } } : {}),

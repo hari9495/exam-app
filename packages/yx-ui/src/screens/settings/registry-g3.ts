@@ -1110,6 +1110,8 @@ const projects: SettingsPageDef = {
     {
       title: 'Utilisation and budgets',
       settings: [
+        { key: 'prj.cost_min_people', label: 'Show cost to the project manager only for months with at least', kind: 'select', value: '2', options: ['1', '2', '3', '4', '5'], optionLabels: { '1': '1 person', '2': '2 people', '3': '3 people', '4': '4 people', '5': '5 people' }, starter: true, helper: 'Fewer people, and one person’s rate could be worked out. Projects finance always sees cost.' },
+        { key: 'prj.expenses_projects', label: 'Expense lines can name a project', kind: 'toggle', value: false, starter: true, helper: 'Off by default. On, people pick the project and whether it is re-billed to the client; the project’s cost includes it.' },
         { key: 'prj.small_team', label: 'Hide per-person figures from the project manager for teams smaller than', kind: 'select', value: '5', options: ['2', '3', '4', '5', '6', '8', '10'], optionLabels: { '2': '2 people', '3': '3 people', '4': '4 people', '5': '5 people', '6': '6 people', '8': '8 people', '10': '10 people' }, starter: true, helper: 'HR (Projects manage or resource) still sees them.' },
         { key: 'prj.utilisation_target', label: 'Utilisation target for billable roles', kind: 'percent', value: 75, starter: true, synonyms: ['utilization', 'billability'] },
         { key: 'prj.burn_alert_1', label: 'First budget alert at', kind: 'percent', value: 80, starter: true, synonyms: ['burn alert', 'budget overrun'] },

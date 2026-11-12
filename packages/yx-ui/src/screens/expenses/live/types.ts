@@ -175,6 +175,9 @@ export interface ClaimLine {
   id: string;
   lineNo: number;
   categoryCode: string;
+  /** Projects P-5 (answer 1419): the project the spend is for, and whether it is re-billed to the client. */
+  projectId?: string | null;
+  rebill?: boolean;
   spentOn: string;
   merchant: string | null;
   city: string | null;
@@ -216,6 +219,8 @@ export interface ClaimFlag {
 export interface ClaimDetail extends ClaimSummary {
   decisionNote: string | null;
   lines: ClaimLine[];
+  /** Answer 1419: the projects a line can name (absent or null: the company has it off). */
+  projects?: { id: string; code: string; name: string; client: boolean }[] | null;
   changes: { lineId: string; from: string; to: string; reason: string; at: string }[];
   flags: ClaimFlag[];
   route: { status: string; currentStep: number; steps: { name: string; state: string; approvers?: string[]; decidedAt?: string | null }[] } | null;
@@ -227,6 +232,9 @@ export interface ClaimDetail extends ClaimSummary {
 /** What a line save sends (the API works out mileage and per diem). */
 export interface LineInput {
   categoryCode: string;
+  /** Answer 1419: only when the company lets lines name a project. */
+  projectId?: string | null;
+  rebill?: boolean;
   spentOn: string;
   merchant: string | null;
   city: string | null;

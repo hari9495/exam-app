@@ -356,7 +356,12 @@ describe('Staffing desk slice 2', () => {
     await fwd('am', over.id).expect(409); // the same person is already submitted to this client job
     const board = (await api('rec', 'get', '/staffing/submissions').expect(200)).body;
     expect(board.find((x: { id: string }) => x.id === ids.vendorSub)).toMatchObject({ person: `ONE-${run}`, source: `Vendor: Second Source ${run}`, stage: 'submitted' });
-    expect(JSON.stringify(board)).not.toMatch(/950/);
+    // Recruiters never see a vendor's quote: no quote field, and no field holding the quoted 950 (checked per field, so a
+    // random id that happens to contain "950" never fails it).
+    for (const row of board as Record<string, unknown>[]) {
+      expect(Object.keys(row).filter((k) => /quote|vendorRate|cap|overBy/i.test(k))).toEqual([]);
+      expect(Object.values(row).filter((v) => v === 950 || v === '950' || v === '950.00')).toEqual([]);
+    }
   });
 
   it('a vendor-supplied placement costs the vendor quote; no bench for a vendor worker', async () => {

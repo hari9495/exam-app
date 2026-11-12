@@ -35,3 +35,12 @@ export const CheckReadLine: S = {
     />
   ),
 };
+// Projects P-5 (answer 1419): with project expenses switched on, a line names its project and may be re-billed.
+export const AddLineProject: S = {
+  name: 'Add a line · project and re-bill (Projects on)',
+  render: () => (
+    <ClaimComposerScreen
+      live={{ state: 'ready', onRetry: () => {}, claim: { ...DRAFT, projects: [{ id: 'p1', code: 'NRP-WEB', name: 'Nilgiri Retail web rebuild', client: true }, { id: 'p3', code: 'INT-ADM', name: 'Internal administration', client: false }] }, categories: CATEGORIES, today: '2026-09-20', startAdd: 'bill', onBack: () => {}, onUploadReceipt: noop, onSaveLine: noop, onRemoveLine: noop, onSubmit: noop, onWithdraw: noop, onOpenReceipt: noop, onApproveAmount: noop, onDecide: noop, onFlag: noop }}
+    />
+  ),
+};

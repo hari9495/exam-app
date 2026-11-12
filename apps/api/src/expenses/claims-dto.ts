@@ -153,6 +153,16 @@ export class LineDto {
   @Matches(/^[a-z][a-z0-9_]{1,29}$/)
   categoryCode!: string;
 
+  /** Projects P-5 (answer 1419): the project the spend is for (only when the company switched it on). */
+  @IsOptional()
+  @IsUUID()
+  projectId?: string | null;
+
+  /** Projects P-5 (answer 1419): re-bill this spend to the project's client. */
+  @IsOptional()
+  @IsBoolean()
+  rebill?: boolean;
+
   @Matches(ISO)
   spentOn!: string;
 
