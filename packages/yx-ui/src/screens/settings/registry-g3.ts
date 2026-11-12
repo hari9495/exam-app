@@ -1119,6 +1119,14 @@ const projects: SettingsPageDef = {
       ],
     },
     {
+      // Projects P-6 (answers 1415, 1416): billing approval and corrections of invoiced time.
+      title: 'Billing and corrections',
+      settings: [
+        { key: 'prj.am_approval', label: 'The account manager approves project invoices before finance issues them', kind: 'toggle', value: false, starter: true, helper: 'Off by default: Projects finance issues alone. On, each draft waits for an account manager (Staffing desk manage key) in the billing workbench.' },
+        { key: 'prj.pay_recovery', label: 'When invoiced hours are corrected down, recover pay from the employee', kind: 'select', value: 'none', options: ['none', 'next_payroll'], optionLabels: { none: 'No recovery', next_payroll: 'In the next payroll' }, starter: true, helper: 'The correction always makes a credit note for the client; this only decides the employee’s pay.' },
+      ],
+    },
+    {
       title: 'Pre-fill from work tools',
       description: 'Suggestions only fill a draft. The employee always submits.',
       settings: [

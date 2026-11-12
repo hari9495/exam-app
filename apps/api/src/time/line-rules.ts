@@ -3,7 +3,8 @@
 /** A line's minutes per day as approved: the submitted minutes (approved), none (rejected), or fewer (reduced). */
 export function lineApproved(l: { minutes: number[]; status: string | null; approvedMinutes: number[] }): number[] {
   if (l.status === 'rejected') return l.minutes.map(() => 0);
-  if (l.status === 'reduced' && l.approvedMinutes.length === l.minutes.length) return l.approvedMinutes;
+  // Projects P-6 (1416): a corrected line counts its corrected minutes, like a reduced one.
+  if ((l.status === 'reduced' || l.status === 'corrected') && l.approvedMinutes.length === l.minutes.length) return l.approvedMinutes;
   return l.minutes;
 }
 

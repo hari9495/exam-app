@@ -41,7 +41,7 @@ describe('PRJ-04 Costing and margin (live)', () => {
     a.unmount();
     const l = costs();
     show(<CostingMarginScreen live={l} />);
-    expect(screen.getByRole('combobox', { name: 'Month' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Period' })).toBeInTheDocument();
   });
 });
 

@@ -11,13 +11,16 @@ import { ResourcingController } from './resourcing.controller';
 import { ResourcingService } from './resourcing.service';
 import { CostController } from './cost.controller';
 import { ProjectCostService } from './project-cost.service';
+import { StaffingModule } from '../staffing/staffing.module';
+import { ProjectBillingController } from './billing.controller';
+import { ProjectBillingService } from './project-billing.service';
 
-// Projects P-1 (answers 1401 to 1405, 1412, 1420): projects core.
+// Projects P-1 (answers 1401 to 1405, 1412, 1420): projects core. P-6: billing on the staffing invoice engine (1414).
 @Module({
-  imports: [AuthModule, NotificationsModule, OrgStructureModule],
+  imports: [AuthModule, NotificationsModule, OrgStructureModule, StaffingModule],
   // P-3: its own work-tools adapter (stateless) for "Test against last week".
-  providers: [ProjectsService, ProjectMappingService, ResourcingService, ProjectCostService, { provide: WORK_TOOLS, useFactory: workToolsFromEnv }],
-  controllers: [MappingRulesController, ResourcingController, CostController, ProjectsController],
+  providers: [ProjectsService, ProjectMappingService, ResourcingService, ProjectCostService, ProjectBillingService, { provide: WORK_TOOLS, useFactory: workToolsFromEnv }],
+  controllers: [MappingRulesController, ResourcingController, CostController, ProjectBillingController, ProjectsController],
   exports: [ProjectsService, ProjectCostService],
 })
 export class ProjectsModule {}

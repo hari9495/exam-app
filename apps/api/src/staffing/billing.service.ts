@@ -123,7 +123,8 @@ export class StaffingBillingService {
 
   /* ---------------- invoices ---------------- */
 
-  private async supplierState(tx: Tx, gstin: string) {
+  /** Also used by Projects P-6 (one invoice engine, 1414). */
+  async supplierState(tx: Tx, gstin: string) {
     const codes = await ruleValues<Record<string, string>>(tx, 'GST.STATE_CODES');
     const s = codes[gstin.slice(0, 2)];
     if (!s) throw new BadRequestException('The series GSTIN has no known state code.');
@@ -131,7 +132,7 @@ export class StaffingBillingService {
   }
 
   /** Taxes for a taxable value at the invoice's rate and supply (stored on the invoice). */
-  private taxes(taxable: bigint, gstPct: string, supplierState: string, placeOfSupply: string) {
+  taxes(taxable: bigint, gstPct: string, supplierState: string, placeOfSupply: string) {
     return gstSplit(taxable, pctToBp(gstPct)!, supplierState !== placeOfSupply);
   }
 
@@ -224,10 +225,18 @@ export class StaffingBillingService {
 
   /** Issue: today's date and the next number of its series (one per GSTIN per year; only up; never reused). */
   async issue(ctx: TenantContext, user: ScopeUser, id: string, dto: VersionDto) {
-    return this.run(ctx, user, 'billing', async (tx, c) => {
+    return this.run(ctx, user, 'billing', (tx, c) => this.issueIn(tx, c, id, dto), true);
+  }
+
+  /** Issue in the company's transaction (Projects P-6 issues project invoices through here, 1414). */
+  async issueIn(tx: Tx, c: CompanyContext, id: string, dto: VersionDto) {
+    {
       const inv = await tx.staffingInvoice.findFirst({ where: { id, organizationId: c.organizationId } });
       if (!inv) throw new NotFoundException('Invoice not found.');
       if (inv.status !== 'draft') throw new ConflictException('This invoice is issued already.');
+      // Answer 1415: a project invoice waits for the account manager's approval when the company asks for it.
+      if (!inv.amApprovedAt && (await tx.staffingInvoiceLine.count({ where: { invoiceId: id, projectId: { not: null } } })) && (await settingFor(tx, c, 'projects.billing.am_approval', { legalEntityId: '' })) === 'on')
+        throw new ConflictException('The account manager approves this project invoice before it is issued.');
       const today = todayIst();
       const number = await this.nextNumber(tx, inv.seriesId, today, 'invoice');
       // Answer 495: e-invoicing is the issuing entity's setting (the company's when the entity has none).
@@ -237,11 +246,11 @@ export class StaffingBillingService {
       if (!count) throw new ConflictException('Someone changed this invoice meanwhile. Reload it.');
       await audit(tx, c, 'staffing.invoice.issued', 'staffing_invoice', id, { number, total: toRupees(inv.totalPaise) });
       return { id, number };
-    }, true);
+    }
   }
 
   /** The series' next number, taken under the row lock (concurrent issues wait); the series' year must be the date's. */
-  private async nextNumber(tx: Tx, seriesId: string, date: string, kind: 'invoice' | 'credit') {
+  async nextNumber(tx: Tx, seriesId: string, date: string, kind: 'invoice' | 'credit') {
     const s = await tx.staffingInvoiceSeries.findFirst({ where: { id: seriesId } });
     if (!s) throw new BadRequestException('The invoice series is gone.');
     if (s.financialYear !== financialYear(date)) throw new BadRequestException(`The series is for ${s.financialYear}; open the ${financialYear(date)} series for this GSTIN first (Settings › Staffing desk).`);
@@ -259,7 +268,8 @@ export class StaffingBillingService {
     return this.run(ctx, user, 'billing', (tx, c) => this.credit(tx, c, id, amount, dto.reason), true);
   }
 
-  private async credit(tx: Tx, c: CompanyContext, id: string, amount: bigint, reason: string) {
+  /** A credit note in the company's transaction; Projects P-6 corrections name the project on its line. */
+  async credit(tx: Tx, c: CompanyContext, id: string, amount: bigint, reason: string, projectId: string | null = null) {
     const inv = await tx.staffingInvoice.findFirst({ where: { id, organizationId: c.organizationId } });
     if (!inv) throw new NotFoundException('Invoice not found.');
     if (inv.status !== 'issued' || inv.kind === 'credit_note') throw new ConflictException('Only an issued invoice takes a credit note.');
@@ -273,7 +283,7 @@ export class StaffingBillingService {
       data: {
         organizationId: c.organizationId, clientId: inv.clientId, seriesId: inv.seriesId, kind: 'credit_note', creditOf: inv.id, number, status: 'issued', invoiceDate: day(today), supplierState: inv.supplierState, placeOfSupply: inv.placeOfSupply, gstPct: inv.gstPct,
         taxablePaise: amount, cgstPaise: t.cgst, sgstPaise: t.sgst, igstPaise: t.igst, totalPaise: t.total, reason: reason.trim(), irn: inv.irn === 'not_needed' ? 'not_needed' : 'pending', issuedBy: c.userId ?? null, issuedAt: new Date(), createdBy: c.userId ?? null,
-        lines: { create: [{ organizationId: c.organizationId, description: `Credit against ${inv.number}: ${reason.trim()}`.slice(0, 300), qtyCenti: 100, ratePaise: amount, amountPaise: amount, position: 1 }] },
+        lines: { create: [{ organizationId: c.organizationId, projectId, description: `Credit against ${inv.number}: ${reason.trim()}`.slice(0, 300), qtyCenti: 100, ratePaise: amount, amountPaise: amount, position: 1 }] },
       },
     });
     await audit(tx, c, 'staffing.invoice.credit_note', 'staffing_invoice', inv.id, { creditNote: number, amount: toRupees(amount), reason });

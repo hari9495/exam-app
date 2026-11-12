@@ -122,3 +122,48 @@ export const LIVE_COSTS: import('./projects').LiveCostsData = {
     { projectId: 'p3', code: 'OLDAUDIT', name: 'Audit readiness', client: null, manager: null, hours: 16, people: 1, hidden: false, cost: '9600.00', expenses: '0.00', rebill: '0.00', revenue: null, margin: null, basis: 'provisional', restatedFrom: null },
   ],
 };
+
+// Projects P-6 (PRJ-05, PRJ-06): the workbench and a correction, as the API returns them.
+export const LIVE_BILLING: import('./billing-live').LiveBillingData = {
+  month: '2026-10',
+  approver: false,
+  amApproval: false,
+  series: [{ id: 's1', label: 'KF/TN/ · 33AABCK1234F1Z5 · 2026-27' }],
+  wip: [
+    { id: 'hours:p1:e1', client: 'Nilgiri Retail Pvt Ltd', clientState: 'IN-TN', project: 'NRP-WEB', projectId: 'p1', source: 'Timesheet hours', detail: 'Priya Nair, 120 h × ₹2,200', hours: 120, amount: '264000.00', held: null },
+    { id: 'hours:p1:e2', client: 'Nilgiri Retail Pvt Ltd', clientState: 'IN-TN', project: 'NRP-WEB', projectId: 'p1', source: 'Timesheet hours', detail: 'Rohit Bhat, 160 h × ₹2,200', hours: 160, amount: '352000.00', held: null },
+    { id: 'hours:p1:e3:held', client: 'Nilgiri Retail Pvt Ltd', clientState: 'IN-TN', project: 'NRP-WEB', projectId: 'p1', source: 'Timesheet hours', detail: 'Sana Nizami, 40 h × ₹2,200', hours: 40, amount: '88000.00', held: 'waiting for client approval' },
+    { id: 'expense:x1', client: 'Nilgiri Retail Pvt Ltd', clientState: 'IN-TN', project: 'NRP-WEB', projectId: 'p1', source: 'Expense rebill', detail: 'Travel to client, 2026-10-10', hours: null, amount: '4860.00', held: null },
+    { id: 'milestone:m1', client: 'Coromandel Logistics Ltd', clientState: 'IN-KA', project: 'CLL-WMS', projectId: 'p2', source: 'Milestone', detail: 'Integration live in 3 warehouses (40%)', hours: null, amount: '1200000.00', held: 'waiting for client acceptance' },
+    { id: 'retainer:p3:2026-10', client: 'Deccan Pharma Pvt Ltd', clientState: 'IN-TG', project: 'DPH-QMS', projectId: 'p3', source: 'Retainer', detail: 'October 2026 retainer', hours: null, amount: '120000.00', held: null },
+  ],
+  drafts: [],
+};
+
+export const LIVE_BILLING_DRAFTS: import('./billing-live').LiveBillingDraft[] = [
+  { id: 'i1', client: 'Nilgiri Retail Pvt Ltd', createdAt: '2026-11-02T10:00:00Z', lines: [{ description: 'NRP-WEB · Timesheet hours · Priya Nair, 120 h × ₹2,200', amount: '264000.00' }, { description: 'NRP-WEB · Expense rebill · Travel to client, 2026-10-10', amount: '4860.00' }], taxable: '268860.00', cgst: '24197.40', sgst: '24197.40', igst: '0.00', total: '317254.80', amApprovedBy: null, amApprovedAt: null, version: 1 },
+  { id: 'i2', client: 'Deccan Pharma Pvt Ltd', createdAt: '2026-11-02T10:00:00Z', lines: [{ description: 'DPH-QMS · Retainer · October 2026 retainer', amount: '120000.00' }], taxable: '120000.00', cgst: '0.00', sgst: '0.00', igst: '21600.00', total: '141600.00', amApprovedBy: 'Anita Kurian', amApprovedAt: '2026-11-02T12:00:00Z', version: 2 },
+];
+
+export const LIVE_CORRECTION_FACTS: import('./billing-live').LiveCorrectionFacts = {
+  lineId: 'l1',
+  person: 'Rohit Bhat',
+  project: 'NRP-WEB',
+  projectId: 'p1',
+  week: '2026-08-10',
+  hours: 44,
+  rate: '1600.00',
+  gstPct: 18,
+  invoice: { id: 'i0', number: 'KF/TN/151', date: '2026-09-01', status: 'issued' },
+  locked: false,
+  recovery: false,
+  month: '2026-08',
+  monthRevenue: '940000.00',
+  monthCost: '610000.00',
+  corrections: [],
+};
+
+export const LIVE_CORRECTION_LINES: import('./billing-live').LiveCorrectionLine[] = [
+  { lineId: 'l1', person: 'Rohit Bhat', week: '2026-08-10', hours: 44, invoice: { id: 'i0', number: 'KF/TN/151', status: 'issued' }, corrected: false },
+  { lineId: 'l2', person: 'Priya Nair', week: '2026-08-10', hours: 40, invoice: null, corrected: false },
+];

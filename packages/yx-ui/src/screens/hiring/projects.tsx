@@ -1152,17 +1152,35 @@ export interface LiveCosts {
   state: 'ready' | 'loading' | 'error' | 'no-access' | 'off';
   onRetry?: () => void;
   data: LiveCostsData | null;
-  /** The months to choose from (YYYY-MM, newest first). */
+  /** The periods to choose from: months (YYYY-MM) and P-6 quarters (YYYY-Qn), newest first. */
   months: string[];
   onMonth: (month: string) => void;
   onOpen: (projectId: string) => void;
+  /** P-6 (1622): download the month's project cost journal (Projects finance). */
+  onExport?: (month: string) => Promise<void>;
 }
 
-const monthLabel = (ym: string) => new Date(`${ym}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+const QUARTER = ['Jan–Mar', 'Apr–Jun', 'Jul–Sep', 'Oct–Dec'];
+const monthLabel = (ym: string) => (/^\d{4}-Q[1-4]$/.test(ym) ? `${QUARTER[Number(ym.slice(6)) - 1]} ${ym.slice(0, 4)}` : new Date(`${ym}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }));
 
 /** PRJ-04 live: totals only. Finance sees revenue, margin and restatements; a PM sees totals, hidden under the people limit. */
 function LiveCostsView({ live }: { live: LiveCosts }) {
   const d = live.data;
+  const { toast } = useToast();
+  const [exporting, setExporting] = useState(false);
+  const exportJournal = async () => {
+    const period = d?.month ?? live.months[0]!;
+    if (period.includes('Q')) return toast({ tone: 'error', title: 'The journal is by month. Choose a month to export it.' });
+    setExporting(true);
+    try {
+      await live.onExport!(period);
+      toast({ tone: 'success', title: `Project cost journal for ${monthLabel(period)} downloaded` });
+    } catch (e) {
+      toast({ tone: 'error', title: e instanceof Error && e.message ? e.message : 'We could not export the journal.' });
+    } finally {
+      setExporting(false);
+    }
+  };
   type Row = LiveCostsData['rows'][number];
   const money = (x: string | null) => (x == null ? null : Number(x));
   const cols: TableColumn<Row>[] = [
@@ -1187,8 +1205,15 @@ function LiveCostsView({ live }: { live: LiveCosts }) {
       facts={
         live.months.length ? (
           <div className="yx-hire-actions">
-            <Select aria-label="Month" value={d?.month ?? live.months[0]!} onChange={(m) => m && live.onMonth(m)} options={live.months.map((m) => ({ value: m, label: monthLabel(m) }))} />
+            <Select aria-label="Period" value={d?.month ?? live.months[0]!} onChange={(m) => m && live.onMonth(m)} options={live.months.map((m) => ({ value: m, label: monthLabel(m) }))} />
           </div>
+        ) : undefined
+      }
+      actions={
+        d?.finance && live.onExport ? (
+          <Button loading={exporting} onClick={() => void exportJournal()}>
+            Export project cost journal
+          </Button>
         ) : undefined
       }
     />
