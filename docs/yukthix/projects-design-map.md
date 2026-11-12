@@ -445,3 +445,5 @@ console.log('ok');
 1506. **Billing model for new projects (1444).** Built in P-3 on Settings 3.11, default Time & material. An API call that
       leaves the model out uses the company's choice for a new project and keeps the project's own on a change.
       *Suggested: keep.*
+
+- 1501 to 1506 approved as suggested (12 Nov 2026, "ok for all").
