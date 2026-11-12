@@ -194,9 +194,13 @@ describe('Console C-8 YX-10: incidents and breach reminders', () => {
       expect((await api('adminA', 'get', '/availability').expect(200)).body.incident).toBeNull();
     });
 
-    it('the lead time is a platform setting (0 to 24 hours)', async () => {
-      await api('staff', 'put', '/platform/incidents/settings').send({ leadHours: 25 }).expect(400);
-      expect((await api('staff', 'put', '/platform/incidents/settings').send({ leadHours: 1 }).expect(200)).body.settings).toEqual({ leadHours: 1, leadHoursDefault: 1 });
+    // Answer 1261: the lead time changes only on Console › Platform settings (security key and a reason), 0 to 24 hours.
+    it('the lead time is a platform setting (0 to 24 hours); the old direct save is refused', async () => {
+      await api('staff', 'put', '/platform/incidents/settings').send({ leadHours: 1 }).expect(404);
+      await markSteppedUp(tenantPrisma, token.staff!);
+      await api('staff', 'put', '/platform/settings/incident.breach_reminder_lead_hours').send({ value: '25', reason: 'Testing the lead time' }).expect(400);
+      await api('staff', 'put', '/platform/settings/incident.breach_reminder_lead_hours').send({ value: '1', reason: 'Testing the lead time' }).expect(200);
+      expect((await api('staff', 'get', '/platform/incidents').expect(200)).body.settings).toEqual({ leadHours: 1, leadHoursDefault: 1 });
     });
 
     it('nothing before the lead time; the CERT-In reminder 1 hour before, once, to staff with the key', async () => {

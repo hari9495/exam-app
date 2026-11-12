@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsInt, IsObject, IsOptional, IsString, Matches, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsInt, IsOptional, IsString, Matches, MaxLength, Min, MinLength } from 'class-validator';
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 /** The H-1 pages link: app addresses such as /yx/time/leave (the page and every page under it). */
@@ -27,10 +27,6 @@ export class HelpReviewDto {
 
 export class HelpSubmitDto {
   @Type(() => Number) @IsInt() @Min(1) version!: number;
-}
-
-export class HelpSettingsDto {
-  @IsObject() values!: Record<string, number>;
 }
 
 /** Answer 1203: why the article is retired (kept in the audit log). */

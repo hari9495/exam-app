@@ -73,8 +73,8 @@ built** · **phone view, mobile app not built**.
 
 ## Counts (sub-pages = stories)
 
-After C-1 to C-5, C-8 parts 1 and 2 (with the payroll-day note), staff roles parts 1 and 2, 1165 and the console tidy-up
-(12 Nov 2026, test/yukthix-main; appendix script "ok").
+After C-1 to C-5, C-8 parts 1 and 2 (with the payroll-day note), staff roles parts 1 and 2, 1165 and the console tidy-ups
+1 and 2 (12 Nov 2026; tidy 2 adds the withdraw story; appendix script "ok").
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
@@ -83,8 +83,8 @@ After C-1 to C-5, C-8 parts 1 and 2 (with the payroll-day note), staff roles par
 | C. Customers and containment (YX-04, YX-18) | 2 | 26 | 2 | 0 | 0 | 0 | 28 |
 | D. Partners (YX-06 to YX-08) | 3 | 0 | 0 | 0 | 10 | 0 | 10 |
 | E. Money (YX-14 to YX-17) | 4 | 0 | 0 | 0 | 8 | 0 | 8 |
-| F. The rest (YX-05, YX-09 to YX-13) | 6 | 18 | 0 | 0 | 13 | 0 | 31 |
-| **All A-F** | **21** | **100** | **7** | **0** | **31** | **0** | **138** |
+| F. The rest (YX-05, YX-09 to YX-13) | 6 | 19 | 0 | 0 | 13 | 0 | 32 |
+| **All A-F** | **21** | **101** | **7** | **0** | **31** | **0** | **139** |
 
 Counted by script on 11 Nov 2026 on `docs/yukthix-console-map` (the script is in the appendix). There are 87 stories in
 20 files whose title starts `Screens/YukthiX console/`: `screens/console/console.stories.tsx` (14),
@@ -391,6 +391,7 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 | YX11ListLive · Help articles and no-result searches (C-8) | live | `GET platform/help-centre` (`platform.helpcentre.write`); the cross-company count is read through `platformRead` (purpose `helpcentre.no_result_searches`) |
 | YX11ReviewLive · Article · another staff member publishes it (C-8) | live | `POST platform/help-centre/articles/:id/review`: the knowledge base's four-eyes rule (never the writer) |
 | YX11RetireLive · Article · retire waiting for you to approve (1203) | live | 1203: `POST platform/help-centre/articles/:id/retire`, then `…/retire/approve` by another staff member (`help_article_retirements`) |
+| YX11RetireMineLive · Article · your retire request, withdraw it (1263) | live | 1263: `POST platform/help-centre/articles/:id/retire/withdraw`, only by the person who asked, while it waits; audited; a withdrawn request can never be approved |
 | YX11Edit · Article editor | live | same page, the editor drawer: `POST|PATCH platform/help-centre/articles`, `.../submit`; the H-1 pages link |
 
 #### YX-12 · Nudge and switch-on copy editor
@@ -1075,3 +1076,39 @@ C-6 to C-8.
       it yet. *Suggested: "Put back" with the same two-person approval when someone needs it.*
 
 - 1241 to 1243 and 1261 to 1264 approved as suggested (12 Nov 2026, "ok for all"). To build: auto-deactivate invited staff who never sign in after 30 days, a platform setting (1243); move the help-centre search setting and the incident reminder lead time to Platform settings (1261); withdraw your own retire request, audited (1263). Later, when needed: "Put back" a retired article with two-person approval (1264).
+
+## Console tidy 2 as built (answers 1243, 1261, 1263; branch `feat/yukthix-console-tidy-2`)
+
+- **1261 two more settings on Platform settings:** `PUT platform/help-centre/settings` and `PUT platform/incidents/settings`
+  are gone (404). The help-centre no-result search rules (`helpcentre.gaps_min_companies`, 5 to 100, default 5;
+  `helpcentre.gaps_days`) and the breach reminder lead time (`incident.breach_reminder_lead_hours`, 0 to 24, default 1)
+  are in the Platform settings registry. Their pages show the value (and the default) and "Change in Platform settings"
+  for holders of the Platform settings key; the change needs the security key and a reason, audited before and after.
+- **1263 withdrawing a retire request:** while it waits, the person who asked sees "Withdraw request" in the editor drawer
+  (`POST platform/help-centre/articles/:id/retire/withdraw`). Anyone else gets 403; the request becomes `withdrawn`
+  (a new status in `help_article_retirements`, migration `202617z0000102`), audited as
+  `platform.helpcentre.retire_withdrawn`; a withdrawn request can never be approved (404), and the article can be asked
+  again.
+- **1243 invitations expire:** the nightly sweep `staff-invite-expiry` (02:15 IST) deactivates invited staff who never
+  signed in, more than `staff.invite.expire_days` (Platform settings, default 30, 7 to 90) after their latest invitation
+  (a resent invitation restarts the count). The database function `platform_expire_invited_staff` (migration
+  `202617z0000101`, platform only) never touches anyone who has signed in, nor the last active Security lead, and a
+  rerun finds nobody new. Audited by the system (no person) per account (`platform.staff.deactivated`, with the reason
+  and the setting value) and once per run (`platform.staff.invites_expired`).
+- **Tests:** e2e `console-helpcentre` (old route 404; minimum 5 refused on Platform settings; the value shows on the page;
+  withdraw: someone else 403, the asker 200, approve after withdrawal 404, withdraw twice 404, audited),
+  `console-incidents` (old route 404; 25 refused; the value shows), new `console-staff-expiry` (not at N days, yes at N+1;
+  skips a signed-in account; skips the last Security lead, rolled back; 6 and 91 refused by the database; audited with
+  the setting value; a rerun is safe), `console-staff-roles`, `console-staff-2`. Kit and web tests (read-only cards and
+  the link only with the key; Withdraw only for the asker).
+
+### Questions (from 1281)
+
+1281. **Telling someone their invitation expired.** The job deactivates quietly; nobody is told. *Suggested: email the
+      Security leads a daily list of accounts the job deactivated (none on quiet nights).*
+1282. **A warning before it happens.** An invited person gets no reminder before the account goes. *Suggested: none for
+      now; a Security lead can send the invitation again (1173) from Staff and roles, which restarts the count.*
+1283. **Bringing an expired account back.** An expired invitation is an ordinary deactivated account. *Suggested: keep:
+      Reactivate (1171) and then Send the invitation again, both by a Security lead.*
+1284. **Seeing a withdrawn request later.** A withdrawn retire request shows only in the audit log, not on the article.
+      *Suggested: keep (the audit log is enough).*

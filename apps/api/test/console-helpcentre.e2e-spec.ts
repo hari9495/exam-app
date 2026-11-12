@@ -216,11 +216,18 @@ describe('Console C-8 YX-11: help-centre editor', () => {
       // Still in the drawer until the second person approves.
       expect((await api('adminB', 'get', `/desk/my/kb/page?route=${encodeURIComponent(PAGE)}`).expect(200)).body.articles.map((x: { id: string }) => x.id)).toContain(articleId);
       expect((await api('staffA', 'post', `/platform/help-centre/articles/${articleId}/retire/approve`).send({}).expect(403)).body.message).toMatch(/another staff member/);
+      // Answer 1263: only the person who asked withdraws; a withdrawn request can never be approved.
+      await api('staffB', 'post', `/platform/help-centre/articles/${articleId}/retire/withdraw`).send({}).expect(403);
+      expect((await api('staffA', 'post', `/platform/help-centre/articles/${articleId}/retire/withdraw`).send({}).expect(200)).body).toMatchObject({ state: 'published', retire: null });
+      await api('staffB', 'post', `/platform/help-centre/articles/${articleId}/retire/approve`).send({}).expect(404);
+      await api('staffA', 'post', `/platform/help-centre/articles/${articleId}/retire/withdraw`).send({}).expect(404);
+      // Asked again, then retired by the second person.
+      await api('staffA', 'post', `/platform/help-centre/articles/${articleId}/retire`).send({ reason: 'Replaced by the new leave guide' }).expect(200);
       const done = (await api('staffB', 'post', `/platform/help-centre/articles/${articleId}/retire/approve`).send({}).expect(200)).body;
       expect(done).toMatchObject({ state: 'retired', retire: null });
       await api('staffB', 'post', `/platform/help-centre/articles/${articleId}/retire/approve`).send({}).expect(404);
       const actions = (await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findMany({ where: { entityId: articleId, action: { startsWith: 'platform.helpcentre.retire' } }, select: { action: true } }))).map((x) => x.action).sort();
-      expect(actions).toEqual(['platform.helpcentre.retire_requested', 'platform.helpcentre.retired']);
+      expect(actions).toEqual(['platform.helpcentre.retire_requested', 'platform.helpcentre.retire_requested', 'platform.helpcentre.retire_withdrawn', 'platform.helpcentre.retired']);
     });
 
     it('a retired article is gone from every company’s Help drawer; only a published article can be retired', async () => {
@@ -256,11 +263,17 @@ describe('Console C-8 YX-11: help-centre editor', () => {
       expect(rows.some((r) => (r.metadataJson ?? '').includes('helpcentre.no_result_searches'))).toBe(true);
     });
 
-    it('the minimum cannot go under 5 companies', async () => {
-      await api('staffA', 'put', '/platform/help-centre/settings').send({ values: { 'helpcentre.gaps_min_companies': 4 } }).expect(400);
-      await api('staffA', 'put', '/platform/help-centre/settings').send({ values: { 'helpcentre.unknown': 7 } }).expect(400);
-      const saved = (await api('staffA', 'put', '/platform/help-centre/settings').send({ values: { 'helpcentre.gaps_days': 30 } }).expect(200)).body;
-      expect(saved.settings.find((s: { key: string }) => s.key === 'helpcentre.gaps_min_companies')).toMatchObject({ value: 5, default: 5, min: 5 });
+    // Answer 1261: the settings change only on Console › Platform settings (security key and a reason), within range.
+    it('the old direct save is refused; Platform settings keeps the minimum at 5 companies and the page shows the value', async () => {
+      await api('staffA', 'put', '/platform/help-centre/settings').send({ values: { 'helpcentre.gaps_days': 30 } }).expect(404);
+      await markSteppedUp(tenantPrisma, token.staffA!);
+      const set = (key: string, value: string) => api('staffA', 'put', `/platform/settings/${key}`).send({ value, reason: 'Testing the no-result searches' });
+      await set('helpcentre.gaps_min_companies', '4').expect(400);
+      await set('helpcentre.gaps_days', '45').expect(200);
+      const shown = (await api('staffA', 'get', '/platform/help-centre').expect(200)).body.settings as { key: string; value: number; default: number; min: number }[];
+      expect(shown.find((s) => s.key === 'helpcentre.gaps_days')).toMatchObject({ value: 45, default: 30 });
+      expect(shown.find((s) => s.key === 'helpcentre.gaps_min_companies')).toMatchObject({ value: 5, default: 5, min: 5 });
+      await set('helpcentre.gaps_days', '30').expect(200);
     });
   });
 });

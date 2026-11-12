@@ -291,6 +291,19 @@ describe('/staff/help-centre', () => {
     wrap(<ConsoleHelpCentrePage />);
     expect(await screen.findByText("You don't have access to the help articles")).toBeInTheDocument();
   });
+
+  // Answers 1261 and 1263: the rules link to Platform settings; the person who asked withdraws a retire request.
+  it('the rules link to Platform settings; the requester withdraws a retire request', async () => {
+    const settings = [{ key: 'helpcentre.gaps_min_companies', label: 'Show a no-result search once this many companies searched it', value: 5, default: 5, min: 5, max: 100 }];
+    const mine = { ...DETAIL, retire: { requestedBy: 'You', mine: true, reason: 'Old', at: '2026-11-12T08:00:00Z' } };
+    route({ 'GET /platform/help-centre': { ...OVERVIEW, settings }, 'GET /platform/help-centre/articles/h1': mine, 'POST /platform/help-centre/articles/h1/retire/withdraw': { ...DETAIL, retire: null }, 'GET /rbac/me/permissions': [...STAFF_KEYS, 'platform.settings.manage'] });
+    wrap(<ConsoleHelpCentrePage />);
+    await ue.click(await screen.findByRole('button', { name: 'Change in Platform settings' }));
+    expect(push).toHaveBeenCalledWith('/staff/platform-settings');
+    await ue.click(screen.getByRole('button', { name: 'Open' }));
+    await ue.click(await screen.findByRole('button', { name: 'Withdraw request' }));
+    await waitFor(() => expect(calls).toContain('POST /platform/help-centre/articles/h1/retire/withdraw {}'));
+  });
 });
 
 // Console follow-ups: the company card shows the feature switches (C-5 hook); Platform settings (1125).
@@ -343,6 +356,19 @@ describe('/staff/incidents', () => {
     api.mockRejectedValue(Object.assign(new Error('Forbidden'), { status: 403 }));
     wrap(<ConsoleIncidentsPage />);
     expect(await screen.findByText("You don't have access to incidents")).toBeInTheDocument();
+  });
+
+  // Answer 1261: the lead time links to Platform settings, only for someone who may change it.
+  it('the lead time links to Platform settings only with the settings key', async () => {
+    route({ 'GET /platform/incidents': OVERVIEW, 'GET /rbac/me/permissions': [...STAFF_KEYS, 'platform.settings.manage'] });
+    const first = wrap(<ConsoleIncidentsPage />);
+    await ue.click(await screen.findByRole('button', { name: 'Change in Platform settings' }));
+    expect(push).toHaveBeenCalledWith('/staff/platform-settings');
+    first.unmount();
+    route({ 'GET /platform/incidents': OVERVIEW, 'GET /rbac/me/permissions': STAFF_KEYS });
+    wrap(<ConsoleIncidentsPage />);
+    expect(await screen.findByText('1 (the default)')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Change in Platform settings' })).toBeNull();
   });
 });
 

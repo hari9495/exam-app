@@ -12,6 +12,9 @@ import { ownSession } from '../org-structure/org-structure.controller';
 import { CS_SETTINGS } from './customer-success.service';
 import { BLOCK_DATES_DEFAULT, BLOCK_DATES_KEY, MAINTENANCE_SETTINGS } from './maintenance.service';
 import { PLATFORM } from './platform.service';
+import { HELP_SETTINGS } from '../service-desk/help-centre.service';
+import { LEAD_DEFAULT, LEAD_KEY } from './incidents.service';
+import { INVITE_EXPIRE_KEY } from './staff-roles.service';
 import { PlatformStaffGuard } from './platform-staff.guard';
 
 // Answer 1125: Console › Platform settings. Every YukthiX-wide value in one list: the customer-success alerts (C-2), the
@@ -56,6 +59,11 @@ export const PLATFORM_SETTING_DEFS: Record<string, Def> = {
   'breach.dpdp_board_report_hours': whole('DPDP Rules 2025: detailed report to the Data Protection Board within (hours)', 72, 1, 168),
   // Answer 1173: "Send the invitation again" (Staff and roles), per person per India day.
   'staff.invite.resends_per_day': whole('Staff invitations: times a day the invitation may be sent again to one person', 3, 1, 10),
+  // Answer 1243: invited staff who never sign in are deactivated by the nightly job after this many days.
+  [INVITE_EXPIRE_KEY]: whole('Staff invitations: deactivate invited staff who never signed in after (days)', 30, 7, 90),
+  // Answer 1261: the help-centre no-result searches (YX-11) and the incident breach reminders (C-8).
+  ...Object.fromEntries(Object.entries(HELP_SETTINGS).map(([k, d]) => [k, whole(d.label, d.default, d.min, d.max)])),
+  [LEAD_KEY]: whole('Breach reminders: hours before the CERT-In and DPDP due times', LEAD_DEFAULT, 0, 24),
 };
 
 export class PlatformSettingDto {

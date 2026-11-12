@@ -14,7 +14,7 @@ describe('incident routes', () => {
     expect(Reflect.getMetadata(GUARDS_METADATA, IncidentsController)).toEqual([JwtAuthGuard, PlatformStaffGuard, PermissionsGuard]);
     const proto = IncidentsController.prototype as unknown as Record<string, object>;
     const list = Object.getOwnPropertyNames(proto).filter((m) => m !== 'constructor' && Reflect.getMetadata(PATH_METADATA, proto[m]) !== undefined);
-    expect(list.sort()).toEqual(['markBreach', 'open', 'overview', 'postUpdate', 'review', 'saveSettings']);
+    expect(list.sort()).toEqual(['markBreach', 'open', 'overview', 'postUpdate', 'review']);
     for (const name of list) {
       const keys = [...(Reflect.getMetadata(PERMISSIONS_KEY, proto[name]) ?? []), ...(Reflect.getMetadata(PERMISSIONS_ANY_KEY, proto[name]) ?? [])];
       expect({ name, keys }).toEqual({ name, keys: ['platform.incidents.manage'] });

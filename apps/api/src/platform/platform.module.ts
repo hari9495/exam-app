@@ -28,6 +28,6 @@ import { IncidentsService } from './incidents.service';
   providers: [PlatformService, SupportSessionsService, PlatformStaffGuard, CustomerSuccessService, ConsoleOpsService, MaintenanceService, PlatformSettingsService, IncidentsService, StaffRolesService, CsFollowupService],
   controllers: [PlatformController, SupportAccessController, CustomerSuccessController, ConsoleOpsController, MaintenanceController, AvailabilityController, PlatformSettingsController, IncidentsController, StaffRolesController, MyStaffRolesController],
   // SD-1.31: "Request access" from a YukthiX Support ticket asks for a support session.
-  exports: [SupportSessionsService, PlatformStaffGuard, IncidentsService, CsFollowupService],
+  exports: [SupportSessionsService, PlatformStaffGuard, IncidentsService, CsFollowupService, StaffRolesService],
 })
 export class PlatformModule {}

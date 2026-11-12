@@ -29,6 +29,7 @@ import { AccessRequestsService } from '../access/access-requests.service';
 import { NotFoundRetentionService } from '../help/not-found-retention.service';
 import { IncidentsService } from '../platform/incidents.service';
 import { CsFollowupService } from '../platform/cs-followup.service';
+import { StaffRolesService } from '../platform/staff-roles.service';
 
 function msg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -72,6 +73,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     notFoundRetention: NotFoundRetentionService,
     incidents: IncidentsService,
     csFollowup: CsFollowupService,
+    staffRoles: StaffRolesService,
   ) {
     // Keys MUST match SWEEP_SCHEDULE ids.
     this.handlers = {
@@ -110,6 +112,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       // Console C-8 (answer 1124).
       'incident-breach-reminders': () => incidents.remindSweep(),
       'cs-health-snapshot': () => csFollowup.nightly(),
+      'staff-invite-expiry': () => staffRoles.expireInvites(),
     };
     this.worker = logBullErrors(new Worker(SCHEDULED_SWEEPS_QUEUE_NAME, (job) => this.dispatch(job), bullOpts(this.connection)), SCHEDULED_SWEEPS_QUEUE_NAME);
     this.worker.on('failed', (job, err) => this.logger.error(`Sweep "${job?.name}" failed: ${msg(err)}`));
