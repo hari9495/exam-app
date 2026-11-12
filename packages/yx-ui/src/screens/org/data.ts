@@ -1,6 +1,6 @@
 // Story and test data in the YukthiX story world (review/RULES.md "Data facts"): Kaveri Foods, fictional
 // identifiers, documentation IP ranges. TODAY is 29 Sep 2026.
-import type { CompanyRules, ErasureReport, LegalEntity, MasterLists, OrgLocation, PayRange, SettingDef, SettingOverride, SettingScopeChoices, StateOption } from './types';
+import type { CompanyRules, ErasureReport, LegalEntity, MasterLists, OrgLocation, PayRange, StateOption } from './types';
 
 export const TODAY_ISO = '2026-09-29';
 
@@ -117,94 +117,6 @@ export const PAY_RANGES: PayRange[] = [
 ];
 
 /** GET /org/settings registry (P01 §4.6), as the API sends it. */
-export const SETTING_REGISTRY: Record<string, SettingDef> = {
-  'employee_change.retro_limit': { label: 'Past-dated changes may go back to', scopes: ['tenant'], dated: false, values: ['current_fy', 'previous_fy'], default: 'current_fy' },
-  'pay.band.above_max': { label: 'A raise above the pay range maximum', scopes: ['tenant', 'legal_entity'], dated: false, values: ['warn', 'cap', 'block'], default: 'warn' },
-  'promotion.must_change': { label: 'A promotion must change', scopes: ['tenant', 'legal_entity'], dated: false, values: ['either', 'both', 'grade', 'designation'], default: 'either' },
-  'probation.default_months': { label: 'Probation lasts (months)', scopes: ['tenant', 'legal_entity', 'employment_type', 'grade'], dated: false, values: ['3', '6', '9', '12'], default: '6' },
-  'probation.review_lead_days': { label: 'Probation review reminder (days before the end)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['7', '15', '30'], default: '15' },
-  'privacy.retention.internal_years': { label: 'Keep employment records after someone leaves (years)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['3', '5', '8', '10'], default: '8', guard: 'access.role.manage' },
-  'privacy.retention.personal_years': { label: 'Keep personal details after someone leaves (years)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '3', '5', '8'], default: '3', guard: 'access.role.manage' },
-  'privacy.retention.special_years': { label: 'Keep Special data (Aadhaar, background checks) after someone leaves (years)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '1', '3'], default: '1', guard: 'access.role.manage' },
-  'privacy.erasure.enabled': { label: 'Delete Special data when its period ends', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
-  'help.not_found.keep_days': { label: 'Keep Not found references for (days)', scopes: ['tenant'], dated: false, values: ['30', '60', '90', '180', '365'], default: '90', guard: 'access.role.manage' },
-  'contract.max_years': { label: 'A fixed-term contract lasts at most (years from joining)', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['1', '2', '3', '4', '5', 'none'], default: '3' },
-  'contract_end.action': { label: 'When a fixed-term contract ends', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['alert', 'auto_exit'], default: 'alert' },
-  'joining.reporting_time': { label: 'Joiners report on their first day at', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00'], default: '09:30' },
-  'joining.bring_on_day_one': { label: 'Joiners bring on their first day', scopes: ['tenant', 'legal_entity'], dated: false, values: [], text: { maxLength: 500 }, default: 'Original PAN and Aadhaar (to be seen, not kept)\nTwo passport photos\nBank passbook or cancelled cheque' },
-  'probation.max_total_months': { label: 'Probation with extensions lasts at most (months)', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['6', '9', '12', '18', '24'], default: '12' },
-  'probation.auto_confirm_after_days': { label: 'Confirm automatically after the end date', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', '0', '7', '15', '30'], default: 'off' },
-  'access.manager.view_scope': { label: 'Managers can view', scopes: ['tenant'], dated: false, values: ['all_reports', 'direct_reports'], default: 'all_reports', guard: 'access.role.manage' },
-  'pay_access.days': { label: 'Team pay access lasts (days)', scopes: ['tenant'], dated: false, values: ['7', '15', '30', '60', '90'], default: '30' },
-  'pay_access.scope': { label: 'Team pay access covers', scopes: ['tenant'], dated: false, values: ['team', 'person'], default: 'team' },
-  'setup.hub.time': { label: 'Set-up hub shows Time & Leave', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
-  'setup.hub.payroll': { label: 'Set-up hub shows Payroll', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
-  'access.request.allowed': { label: 'Allow access requests', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', guard: 'access.role.manage' },
-  'access.request.max_days': { label: 'Longest access (days)', scopes: ['tenant'], dated: false, values: ['7', '14', '30', '60', '90'], default: '30', guard: 'access.role.manage' },
-  'access.risk.confidential_threshold': { label: 'Warn when a grant opens Confidential data of more than (people)', scopes: ['tenant'], dated: false, values: ['5', '10', '25', '50', '100', '250'], default: '25', guard: 'access.role.manage' },
-  'privacy.who_accessed': { label: 'Show "Who accessed my data" to employees', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', guard: 'access.role.manage' },
-  'employee.bank_change.cooling_hours': { label: 'New bank accounts are used for pay after (hours)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '24', '48', '72'], default: '48', guard: 'access.role.manage' },
-  'employee.personal.required': { label: 'Personal details everyone must have', scopes: ['tenant'], dated: false, multi: true, values: ['dateOfBirth', 'gender', 'maritalStatus', 'personalEmail', 'personalPhone', 'addressLine1', 'addressLine2', 'city', 'stateCode', 'postalCode'], default: 'dateOfBirth,gender,personalPhone,addressLine1,city,stateCode' },
-  'employee.profile_change.proof': { label: 'Proof with an identity or bank change', scopes: ['tenant', 'legal_entity'], dated: false, values: ['required', 'optional'], default: 'required', guard: 'access.role.manage' },
-  'bfsi.declaration_due': { label: 'Annual BFSI declarations are due on', scopes: ['tenant', 'legal_entity'], dated: false, values: ['04-30', '06-30', '09-30', '10-15', '12-31'], default: '10-15' },
-  'bfsi.preclearance_threshold': { label: 'Pre-clearance is needed for trades in a quarter above (₹)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['500000', '1000000', '2500000'], default: '1000000' },
-  'bfsi.preclearance_valid_days': { label: 'A pre-clearance is valid for (trading days)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['5', '7', '10'], default: '7' },
-  'bfsi.preclearance_decide_days': { label: 'The compliance officer decides within (working days)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '2', '3'], default: '2' },
-  'work_auth.reminder_days': { label: 'Remind before a work permit or visa expires (days)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['90,60,30', '60,30', '30', 'off'], default: '90,60,30' },
-  'transfer.leave': { label: 'Leave balance', scopes: ['tenant'], dated: false, values: ['carry', 'lapse'], default: 'carry' },
-  'transfer.service': { label: 'Service continuity', scopes: ['tenant'], dated: false, values: ['keep', 'restart'], default: 'keep' },
-  'transfer.code': { label: 'Employee code', scopes: ['tenant'], dated: false, values: ['keep', 'new'], default: 'keep' },
-  'transfer.salary': { label: 'Salary structure', scopes: ['tenant'], dated: false, values: ['keep', 'new'], default: 'keep' },
-  'home.pay_on_employee_home': { label: 'Show net pay on the employee home', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
-  'attendance.mode': { label: 'Attendance mode', scopes: ['tenant', 'legal_entity', 'location', 'department', 'employment_type'], dated: true, values: ['punch', 'assumed_present', 'timesheet'], default: 'punch' },
-  'attendance.missing_punch_effect': { label: 'Missing punches', scopes: ['tenant', 'legal_entity', 'location', 'department', 'employment_type'], dated: true, values: ['block_payroll_approval', 'warning_only'], default: 'block_payroll_approval' },
-  'attendance.factories_act': { label: 'Factories Act (overtime is paid at the legal rate)', scopes: ['tenant', 'legal_entity', 'location', 'department', 'employment_type'], dated: true, values: ['covered', 'not_covered'], default: 'not_covered' },
-  'attendance.shift_types.flexi': { label: 'Flexi shifts (core hours) can be set up', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
-  'attendance.shift_types.split': { label: 'Split shifts (two parts a day) can be set up', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
-  'attendance.flexi.late_from': { label: 'On a flexi shift, late is', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['core_start', 'never'], default: 'core_start' },
-  'attendance.flexi.short_by': { label: 'On a flexi shift, the day is short when', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['shift_hours', 'core_hours'], default: 'shift_hours' },
-  'attendance.split.min_gap_minutes': { label: 'Shortest gap between the two parts of a split shift (minutes)', scopes: ['tenant'], dated: false, values: ['30', '60', '90', '120', '180'], default: '60' },
-  // Settings › Payroll & Statutory › Payroll rules (the API's registry entries, founder 30 Oct 2026 last 10, items 1 and 5).
-  'payroll.bonus.eligibility_rate_on': { label: 'Bonus eligibility uses the salary rate on', scopes: ['tenant', 'legal_entity'], dated: false, values: ['last_day', 'first_day', 'highest_in_month'], default: 'last_day' },
-  'payroll.bonus.eligibility_wage': { label: 'Bonus is paid to people whose wage a month is at most (₹)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['21000', '25000', '30000', '35000', '40000', '50000'], default: '21000' },
-  'payroll.bonus.calculation_ceiling': { label: 'Bonus is worked out on the wage up to (₹ a month, or the minimum wage if higher)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['7000', '10000', '15000', '21000'], default: '7000' },
-  'payroll.bonus.min_rate': { label: 'Lowest bonus rate (%)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['8.33', '10', '12', '15', '20'], default: '8.33' },
-  'payroll.bonus.max_rate': { label: 'Highest bonus rate (%)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['8.33', '10', '12', '15', '20'], default: '20' },
-  'payroll.bonus.min_working_days': { label: 'Working days in the year needed for bonus', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '15', '30'], default: '30' },
-  'payroll.bonus.min_amount': { label: 'Least bonus for a whole year (₹)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['100', '500', '1000'], default: '100' },
-  'payroll.bonus.allocable_percent': { label: 'Allocable surplus is this share of the available surplus (%)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['60', '67'], default: '60' },
-  'payroll.bonus.carry_years': { label: 'Set-on and set-off are carried for (years)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['4'], default: '4' },
-  'payroll.bonus.year_start_month': { label: 'The bonus accounting year starts in (month number)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'], default: '4' },
-  'payroll.bonus.due_months': { label: 'Bonus is paid within (months after the year end)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '2', '3', '4', '5', '6', '7', '8'], default: '8' },
-  'payroll.loan.max_gross_months': { label: 'A loan or advance may be at most (months of gross pay)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['none', '1', '2', '3', '4', '6', '12'], default: '2' },
-  'payroll.loan.after_probation': { label: 'Who may ask for a loan or advance', scopes: ['tenant', 'legal_entity'], dated: false, values: ['confirmed', 'everyone'], default: 'confirmed' },
-  'payroll.loan.interest_rate.advance': { label: 'Interest on a salary advance (% a year)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '4', '5', '6', '7', '7.5', '8', '8.5', '9', '10', '12'], default: '0' },
-  'payroll.reports_access.days': { label: 'Payroll reports access given on request lasts (days)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['7', '30', '60', '90', '180', '365'], default: '90' },
-  'payroll.loan.interest_rate.loan': { label: 'Interest on a personal loan (% a year)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '4', '5', '6', '7', '7.5', '8', '8.5', '9', '10', '12'], default: '0' },
-};
-
-export const SETTING_OVERRIDES: SettingOverride[] = [
-  { id: 's-1', key: 'probation.default_months', scopeType: 'legal_entity', scopeId: 'le-tn', value: '3', validFrom: null },
-  { id: 's-2', key: 'probation.default_months', scopeType: 'grade', scopeId: 'gr-m1', value: '12', validFrom: null },
-  { id: 's-3', key: 'attendance.mode', scopeType: 'tenant', scopeId: 'org', value: 'punch', validFrom: '2026-04-01' },
-  { id: 's-4', key: 'attendance.mode', scopeType: 'location', scopeId: 'loc-blr', value: 'assumed_present', validFrom: '2026-04-01' },
-  { id: 's-5', key: 'attendance.mode', scopeType: 'location', scopeId: 'loc-hsr', value: 'timesheet', validFrom: '2026-11-01' },
-  { id: 's-6', key: 'access.manager.view_scope', scopeType: 'tenant', scopeId: 'org', value: 'direct_reports', validFrom: null },
-  // Kaveri Foods: personal loans at 7.5 % a year (8 % in Tamil Nadu), up to 3 months' gross; bonus on the highest rate in Tamil Nadu.
-  { id: 's-7', key: 'payroll.loan.interest_rate.loan', scopeType: 'tenant', scopeId: 'org', value: '7.5', validFrom: null },
-  { id: 's-8', key: 'payroll.loan.interest_rate.loan', scopeType: 'legal_entity', scopeId: 'le-tn', value: '8', validFrom: null },
-  { id: 's-9', key: 'payroll.loan.max_gross_months', scopeType: 'tenant', scopeId: 'org', value: '3', validFrom: null },
-  { id: 's-10', key: 'payroll.bonus.eligibility_rate_on', scopeType: 'legal_entity', scopeId: 'le-tn', value: 'highest_in_month', validFrom: null },
-];
-
-export const SETTING_CHOICES: SettingScopeChoices = {
-  legal_entity: ENTITIES.filter((e) => !e.archivedAt).map((e) => ({ value: e.id, label: e.name })),
-  location: LOCATIONS.map((l) => ({ value: l.id, label: l.name })),
-  department: MASTERS.departments.map((d) => ({ value: d.id, label: d.name })),
-  employment_type: MASTERS['employment-types'].map((t) => ({ value: t.id, label: t.name })),
-  grade: MASTERS.grades.map((g) => ({ value: g.id, label: g.name })),
-};
-
 const ERASURE_WHO: ErasureReport['who'] = [
   { name: 'Ravi Kumar', employeeCode: 'YX-0142', day: '2024-03-31', neverJoined: false },
   { name: 'Meena Iyer', employeeCode: 'YX-0207', day: '2024-08-15', neverJoined: false },
@@ -214,7 +126,6 @@ const ERASURE_WHO: ErasureReport['who'] = [
 /** Settings › Access and privacy: the Special data erasure, off, before HR's first run (dry run only, with who). */
 export const ERASURE_DRY_RUN: ErasureReport = { enabled: false, due: { people: 4, aadhaar: 4, documents: 7, backgroundChecks: 3, disability: 1 }, who: ERASURE_WHO, lastRun: null };
 /** On, after a night's run in which one person could not be done; no one is due now. */
-export const ERASURE_ON: ErasureReport = { enabled: true, due: { people: 0, aadhaar: 0, documents: 0, backgroundChecks: 0, disability: 0 }, who: [], lastRun: { at: '2026-10-29T22:45:00Z', people: 4, aadhaar: 4, documents: 7, backgroundChecks: 3, disability: 1, failed: 1 } };
 /** On, with two people due at the next run (one an offer that never joined). */
 export const ERASURE_ON_DUE: ErasureReport = {
   enabled: true,

@@ -116,6 +116,9 @@ export const MORE_SETTINGS_PAGES: [string, string, string, string][] = [
   ['1.1', 'Company & branding', 'org', 'company-and-branding'],
   ['1.5', 'Employee records', 'org', 'employee-records'],
   ['1.6', 'Set-up hub settings', 'org', 'set-up-hub'],
+  // S-8 (answer 1331): 5.1 has its own route (the type list and drawer), under the same folder.
+  ['5.1', 'Document types', 'documents', 'document-types'],
+  ['5.4', 'Notifications', 'documents', 'notifications'],
   ['5.7', 'Policies', 'documents', 'policies'],
   ['8.6', 'Help and tips', 'account', 'analytics-status-and-tips'],
 ];
@@ -160,18 +163,19 @@ export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '4.5': payPage('4.5'),
   '4.6': [...payPage('4.6'), '/yx/payroll/loans'],
   '4.7': ['/yx/payroll/statutory', '/yx/payroll/statutory-rules'],
-  '4.8': ['/yx/settings/expenses'],
+  '4.8': ['/yx/settings/finance/expenses-and-travel', '/yx/settings/expenses'],
   '4.9': ['/yx/settings/contract-labour'],
   '4.10': ['/yx/payroll/ewa'],
+  '5.1': morePage('5.1'),
   '5.2': ['/yx/settings/letters'],
   '5.3': ['/yx/settings/letters'],
-  '5.4': ['/yx/settings/emails'],
+  '5.4': [...morePage('5.4'), '/yx/settings/emails'],
   '5.5': ['/yx/settings/sms'],
   '5.7': [...morePage('5.7'), '/yx/desk/policy-admin'],
   '5.8': ['/yx/desk/setup'],
   '6.1': ['/yx/settings/hiring'],
   '6.2': ['/yx/settings/staffing'],
-  '6.3': ['/yx/settings/performance'],
+  '6.3': ['/yx/settings/talent/performance', '/yx/settings/performance'],
   '7.2': ['/yx/time/setup/devices'],
   '7.3': ['/yx/payroll/payment-modes'],
   '8.6': morePage('8.6'),
@@ -531,6 +535,9 @@ export function buildNav(n: NavInput): NavArea[] {
         // S-7 (answer 1321): the Organisation, Documents and Account settings pages (Company rules retired).
         ...when(settingsView, ...MORE_SETTINGS_PAGES.map(([id, label, folder, slug]) => L(`more-settings-${id}`, label, `${SETTINGS_HOME}/${folder}/${slug}`))),
         ...when(has('perf.setup.manage'), L('performance-setup', 'Performance', '/yx/settings/performance')),
+        // S-8 (answer 1323): the company's expense and performance choices (4.8, 6.3); their set-up keys change them too.
+        ...when(settingsView || has('expense.policy.manage') || has('expense.policy.view'), L('expense-settings', 'Expense settings', `${SETTINGS_HOME}/finance/expenses-and-travel`)),
+        ...when(settingsView || has('perf.setup.manage'), L('performance-settings', 'Performance settings', `${SETTINGS_HOME}/talent/performance`)),
       ]),
       ...sec('People & Access', [
         ...when(has('access.role.manage'), L('access', 'Roles & access', '/yx/settings/access')),

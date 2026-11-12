@@ -6,6 +6,10 @@ import { todayIst } from '../org-structure/org-validation';
 import { ScopeUser, Viewer, buildViewer } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
 import { FilesService } from './files.service';
+import type { DocumentTypeDto as DocumentTypeInput } from './dto';
+
+/** 5.1 (answer 1331): the reminder sets a company type may choose (days before the expiry date). */
+export const REMINDER_SETS: readonly (readonly number[])[] = [[90, 30, 7], [60, 30, 7], [30, 7], [30], [15, 7]];
 import { CLASS_KEY, ownOf, reachesDocument, reachesPerson } from './person-access';
 import { covers, implicitPeriods } from '../access/scope';
 
@@ -137,8 +141,71 @@ export class DocumentsService {
 
   async typeList(ctx: TenantContext) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) =>
-      (await this.types(tx, c.organizationId)).map((t) => ({ key: t.key, name: t.name, sensitivity: t.sensitivity, requiresVerification: t.requiresVerification, allowedMime: t.allowedMime, maxMb: t.maxMb, expiryTracked: t.expiryTracked, uploadBy: t.uploadBy, system: t.organizationId === null })),
+      (await this.types(tx, c.organizationId)).map((t) => ({ key: t.key, name: t.name, sensitivity: t.sensitivity, requiresVerification: t.requiresVerification, allowedMime: t.allowedMime, maxMb: t.maxMb, expiryTracked: t.expiryTracked, reminderDays: t.reminderDays, uploadBy: t.uploadBy, system: t.organizationId === null })),
     );
+  }
+
+  // ---------------------------------------------------------------- 5.1 company document types (answer 1331)
+
+  /** Checks a company type: the reminders are one of the offered sets, only with an expiry; HR always uploads. */
+  private typeData(dto: DocumentTypeInput) {
+    const days = dto.expiryTracked ? dto.reminderDays : [];
+    if (dto.expiryTracked && !REMINDER_SETS.some((r) => r.join() === days.join())) throw new BadRequestException('Choose when to remind from the offered days.');
+    if (!dto.uploadBy.includes('hr')) throw new BadRequestException('HR can always upload a document for the person.');
+    const uploadBy = dto.uploadBy.includes('person') ? ['person', 'hr'] : ['hr'];
+    return { name: dto.name, sensitivity: dto.sensitivity, requiresVerification: dto.requiresVerification, expiryTracked: dto.expiryTracked, reminderDays: days, uploadBy };
+  }
+
+  private async nameFree(tx: Tx, org: string, name: string, except?: string) {
+    const clash = (await this.types(tx, org)).find((t) => t.key !== except && t.name.trim().toLowerCase() === name.trim().toLowerCase());
+    if (clash) throw new ConflictException(`A document type called ${clash.name} already exists.`);
+  }
+
+  /** A company type, never a YukthiX starter one (those cannot be changed or removed). */
+  private async ownType(tx: Tx, org: string, key: string) {
+    const rows = await tx.documentType.findMany({ where: { key, OR: [{ organizationId: org }, { organizationId: null }] } });
+    const t = rows.find((r) => r.organizationId === org) ?? rows[0];
+    if (!t || !t.active) throw new NotFoundException('No such document type.');
+    if (t.organizationId === null) throw new ForbiddenException('YukthiX starter types cannot be changed or removed.');
+    return t;
+  }
+
+  async createType(ctx: TenantContext, dto: DocumentTypeInput) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const data = this.typeData(dto);
+      await this.nameFree(tx, c.organizationId, data.name);
+      // A company key never takes a starter one's: "c_" and the name in lower case (a number added when taken).
+      const base = `c_${data.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 30) || 'type'}`;
+      const taken = new Set((await tx.documentType.findMany({ where: { key: { startsWith: base }, OR: [{ organizationId: c.organizationId }, { organizationId: null }] }, select: { key: true } })).map((t) => t.key));
+      let key = base;
+      for (let i = 2; taken.has(key); i++) key = `${base}_${i}`;
+      const row = await tx.documentType.create({ data: { organizationId: c.organizationId, key, allowedMime: ['application/pdf', 'image/jpeg', 'image/png'], maxMb: 10, ...data } });
+      await audit(tx, c, 'document.type.created', 'document_type', row.id, { key, ...data });
+      return { key };
+    });
+  }
+
+  async updateType(ctx: TenantContext, key: string, dto: DocumentTypeInput) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const before = await this.ownType(tx, c.organizationId, key);
+      const data = this.typeData(dto);
+      await this.nameFree(tx, c.organizationId, data.name, key);
+      await tx.documentType.update({ where: { id: before.id }, data });
+      const was = { name: before.name, sensitivity: before.sensitivity, requiresVerification: before.requiresVerification, expiryTracked: before.expiryTracked, reminderDays: before.reminderDays, uploadBy: before.uploadBy };
+      await audit(tx, c, 'document.type.changed', 'document_type', before.id, { key, before: was, after: data });
+      return { key };
+    });
+  }
+
+  /** Retires a company type no document uses (rows are never deleted). */
+  async retireType(ctx: TenantContext, key: string) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const t = await this.ownType(tx, c.organizationId, key);
+      const used = await tx.document.count({ where: { organizationId: c.organizationId, typeKey: key } });
+      if (used) throw new ConflictException(`${used} ${used === 1 ? 'document uses' : 'documents use'} this type, so it stays.`);
+      await tx.documentType.update({ where: { id: t.id }, data: { active: false } });
+      await audit(tx, c, 'document.type.retired', 'document_type', t.id, { key, name: t.name });
+    });
   }
 
   /** A person's documents the viewer may see, plus the types HR could still ask for. */

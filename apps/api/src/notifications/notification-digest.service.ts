@@ -4,19 +4,19 @@ import { EmailService } from '../email/email.service';
 import { NotificationsService } from './notifications.service';
 import { NOTIFICATION_TYPE_BY_KEY } from './notification-types';
 import { escapeHtml, buildNotificationEmailFooter } from './notification-email-render';
+import { companySetting } from '../time/time-core';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-// Send at most once per ~day: a user is due when their last digest is older than this (slightly under
-// 24h so a daily sweep never skips a day on minor drift). First-ever digest (null anchor) is due.
-const DIGEST_DUE_MS = 23 * 60 * 60 * 1000;
+const IST_MS = 330 * 60 * 1000;
 const SUPER_ADMIN = { organizationId: null, isSuperAdmin: true };
 const MAX_ITEMS = 100;
 
 // Daily notification-digest sweep. Users on notificationDigest='daily' get one email batching the
 // unread notifications created since their last digest, instead of an email per event (notify() /
 // notifySystem suppress the immediate send for them). Opt-in per user; the in-app bell is unaffected.
-// Scheduled as a nightly BullMQ job scheduler by ScheduledSweepsModule; the DIGEST_DUE_MS anchor
-// keeps a duplicate/early run from double-sending.
+// Scheduled hourly by ScheduledSweepsModule. S-8 (5.4): each company sends at its own time (notify.digest.time, India
+// time, 07:00 by default): a user is due once per India day, at the first run at or after that time (the anchor keeps
+// a duplicate run from double-sending); none when the company turned notification emails off.
 @Injectable()
 export class NotificationDigestService {
   private readonly logger = new Logger(NotificationDigestService.name);
@@ -48,17 +48,20 @@ export class NotificationDigestService {
   }
 
   private async sweepOrg(ctx: TenantContext, now: Date): Promise<void> {
-    const dueBefore = new Date(now.getTime() - DIGEST_DUE_MS);
-    const users = await this.tenantPrisma.forTenant(ctx, (tx) =>
-      tx.user.findMany({
+    const ist = new Date(now.getTime() + IST_MS);
+    const dayStart = new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate()) - IST_MS);
+    const users = await this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const at = await companySetting(tx, ctx as never, 'notify.digest.time');
+      if (ist.getUTCHours() < Number(at.slice(0, 2)) || !(await this.notifications.emailsOn(tx, ctx))) return [];
+      return tx.user.findMany({
         where: {
           notificationDigest: 'daily',
           email: { not: '' },
-          OR: [{ lastDigestSentAt: null }, { lastDigestSentAt: { lte: dueBefore } }],
+          OR: [{ lastDigestSentAt: null }, { lastDigestSentAt: { lt: dayStart } }],
         },
         select: { id: true, email: true, lastDigestSentAt: true },
-      }),
-    );
+      });
+    });
     for (const user of users) {
       try {
         await this.digestUser(ctx, user, now);

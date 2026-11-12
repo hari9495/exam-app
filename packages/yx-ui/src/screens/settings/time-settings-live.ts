@@ -219,6 +219,61 @@ export const MORE_SETTINGS: Record<string, { links: string[]; settings: Place[];
     ],
   },
   '8.6': { links: [], settings: [{ section: 'Help', key: 'help.whats_new.show', synonyms: ["what's new"] }, { section: 'Help', key: 'help.tours.show', synonyms: ['tours'] }] },
+  // Settings S-8: 5.4 Notifications, the company switches for the channels that exist (in-app and email); the wording
+  // stays on its editor (PLT-13, Emails).
+  '5.4': {
+    links: ['ntf.templates'],
+    settings: [
+      { section: 'Channels and defaults', key: 'notify.email.enabled', synonyms: ['notification channel', 'email notifications'] },
+      { section: 'Digests and quiet hours', key: 'notify.digest.time', synonyms: ['summary email', 'digest'] },
+    ],
+  },
+  // Settings S-8 (answer 1323): 4.8 Expenses & travel with the 14 company choices that had no screen; the policy matrix
+  // stays on its own editor (EXP-07). Expense set-up (expense.policy.manage) changes them too.
+  '4.8': {
+    links: ['exp.policy_matrix_editor'],
+    settings: [
+      { section: 'Receipts, OCR and GST', key: 'expense.gst.capture', synonyms: ['GST', 'input tax credit', 'GSTIN'] },
+      { section: 'Receipts, OCR and GST', key: 'expense.fx_tolerance_pct', synonyms: ['forex', 'currency', 'exchange rate'] },
+      { section: 'Approval and finance check', key: 'expense.cc_owner_above', synonyms: ['cost centre owner'] },
+      { section: 'Approval and finance check', key: 'expense.finance_audit', synonyms: ['finance check', 'audit'] },
+      { section: 'Approval and finance check', key: 'expense.claim_window_days', synonyms: ['old bills'] },
+      { section: 'Over-limit and payment', key: 'expense.route.default', synonyms: ['reimbursement', 'pay claims'] },
+      { section: 'Over-limit and payment', key: 'expense.route.payout_above', synonyms: ['direct payout'] },
+      { section: 'Over-limit and payment', key: 'expense.payroll_cutoff_day', synonyms: ['payroll cut-off'] },
+      { section: 'Advances, travel and cards', key: 'expense.advance.settle_days', synonyms: ['advance settlement', 'imprest'] },
+      { section: 'Advances, travel and cards', key: 'expense.advance.recovery_instalments' },
+      { section: 'Advances, travel and cards', key: 'expense.card.match_amount_within', synonyms: ['corporate card', 'card statement'] },
+      { section: 'Advances, travel and cards', key: 'expense.card.match_days' },
+      { section: 'Advances, travel and cards', key: 'expense.card.reminder_days' },
+      { section: 'Advances, travel and cards', key: 'expense.card.recovery_instalments' },
+    ],
+  },
+  // S-8 (answer 1323): 6.3 Performance with its 19 company choices; scales, templates and competencies stay on their editors.
+  // Performance set-up (perf.setup.manage) changes them too.
+  '6.3': {
+    links: ['perf.templates', 'perf.comp_matrix', 'perf.competencies'],
+    settings: [
+      { section: 'Goals and reviews', key: 'perf.goal.approval', synonyms: ['goal approval'] },
+      { section: 'Goals and reviews', key: 'perf.goal.checkin_days', synonyms: ['check-in'] },
+      { section: 'Goals and reviews', key: 'perf.self_review.visible_to_manager', synonyms: ['self review'] },
+      { section: 'Goals and reviews', key: 'perf.disagreement.days', synonyms: ['disagree', 'appeal'] },
+      { section: 'Goals and reviews', key: 'perf.dispute.escalate_days', synonyms: ['dispute'] },
+      { section: '360° and calibration', key: 'perf.anonymity.min_responses', synonyms: ['360 anonymity'] },
+      { section: '360° and calibration', key: 'perf.report.min_cell', synonyms: ['distribution'] },
+      { section: '360° and calibration', key: 'perf.feedback.default_visibility', synonyms: ['feedback'] },
+      { section: 'Compensation review and PIP', key: 'perf.comp.budget_overrun', synonyms: ['comp budget', 'increment budget'] },
+      { section: 'Compensation review and PIP', key: 'perf.pay_band.visible', synonyms: ['pay band'] },
+      { section: 'Compensation review and PIP', key: 'perf.pay_equity.flag_pct', synonyms: ['pay equity'] },
+      { section: 'Compensation review and PIP', key: 'perf.comp.market_stale_months', synonyms: ['market data'] },
+      { section: 'Compensation review and PIP', key: 'perf.pip.lengths', synonyms: ['pip', 'improvement plan'] },
+      { section: 'Compensation review and PIP', key: 'perf.pip.extend_days' },
+      { section: 'Compensation review and PIP', key: 'perf.pip.after_not_met_days' },
+      { section: 'Competencies and 1:1s', key: 'perf.one_on_one.cadence_days', synonyms: ['one on one'] },
+      { section: 'Manager assistants', key: 'perf.coach.frequency', synonyms: ['manager coach', 'nudges'] },
+      { section: 'Manager assistants', key: 'perf.ai.review_assistant', synonyms: ['help me draft'] },
+    ],
+  },
 };
 
 /**

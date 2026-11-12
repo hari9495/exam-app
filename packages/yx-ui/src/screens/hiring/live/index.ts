@@ -86,6 +86,7 @@ export type { AllocationInput as ProjectAllocationInput, LiveProjectDetail, Live
 export { PROJECT_SETTING_KEYS, projectSettingsChanges, projectSettingsPage, type ProjectSettingsData } from '../../settings/projects-live';
 // Settings S-2 (answers 1323, 1324): the Time & Leave pages with the company's settings.
 export { MORE_SETTINGS, PAY_SETTINGS, PEOPLE_SETTINGS, TIME_SETTINGS, timeSettingsOverrides, changeWords, historyOnPage, withApprovalPolicies, type SettingChangeRow, pendingOnPage, timeSettingsChanges, timeSettingsPage, type PendingSettingChange, type RegistryDef, type TimeSettingsData } from '../../settings/time-settings-live';
+export { DocumentTypeDrawer, REMINDER_CHOICES, documentTypesPage, type DocTypeInput, type DocTypeRow } from '../../settings/document-types-live';
 export { TIME_REGISTRY_SAMPLE } from '../../settings/time-settings-sample';
 // Projects P-3 (answers 1409, 1410): the designed PRJ-08 mapping rules, live with `live`.
 export { MappingRulesScreen, type LiveMappingRules } from '../projects-billing';

@@ -3,8 +3,8 @@ import { LinksFrame, type StoryLink } from '../_kit/story-frame';
 import { LegalEntitiesScreen } from './entities';
 import { LocationsScreen } from './locations';
 import { StructureScreen } from './structure';
-import { CompanySettingsScreen, type CompanySettingsScreenProps } from './settings';
-import { ENTITIES, ERASURE_DRY_RUN, ERASURE_ON, ERASURE_ON_DUE, LOCATIONS, MASTERS, PAY_RANGES, RULES, SETTING_CHOICES, SETTING_OVERRIDES, SETTING_REGISTRY, STATES, TODAY_ISO } from './data';
+import { ENTITIES, ERASURE_DRY_RUN, ERASURE_ON_DUE, LOCATIONS, MASTERS, PAY_RANGES, RULES, STATES, TODAY_ISO } from './data';
+import { ErasureCard } from './erasure-card';
 
 const meta: Meta = { title: 'Screens/Settings/Organisation', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -17,9 +17,6 @@ const LINKS: StoryLink[] = [
   { id: 'entities', label: 'Legal entities', href: '#entities', group: 'Organisation' },
   { id: 'locations', label: 'Locations', href: '#locations', group: 'Organisation' },
   { id: 'structure', label: 'Structure', href: '#structure', group: 'Organisation' },
-  { id: 'company-rules', label: 'Company rules', href: '#rules', group: 'Organisation' },
-  { id: 'access-settings', label: 'Access and privacy', href: '#privacy', group: 'Access' },
-  { id: 'payroll-rules', label: 'Payroll rules', href: '#payroll-rules', group: 'Payroll & Statutory' },
 ];
 const Frame = ({ active, children }: { active: StoryLink['id']; children: React.ReactNode }) => (
   <LinksFrame active={active} links={LINKS}>
@@ -110,166 +107,8 @@ export const NoAccess: S = {
   ),
 };
 
-const settings: Omit<CompanySettingsScreenProps, 'section'> = {
-  state: 'ready',
-  registry: SETTING_REGISTRY,
-  overrides: SETTING_OVERRIDES,
-  choices: SETTING_CHOICES,
-  canManage: true,
-  heldGuards: ['access.role.manage'],
-  today: TODAY_ISO,
-  onSave: () => wait(),
-  onRemove: () => wait(),
-};
+/** Answer 1781: the erasure dry run on Settings › 2.2 Directory & privacy, off (what it would delete today). */
+export const ErasureDryRun: S = { render: () => <ErasureCard report={ERASURE_DRY_RUN} /> };
 
-/** Group 1: probation per entity and grade, a scheduled attendance mode for the Hosur plant. */
-export const CompanyRules: S = {
-  render: () => (
-    <Frame active="company-rules">
-      <CompanySettingsScreen section="organisation" {...settings} />
-    </Frame>
-  ),
-};
-
-/** Joining day (founder 2 Nov 2026): what joiners bring on day one, short text HR writes, one thing a line. */
-export const CompanyRulesBringOnDayOne: S = {
-  name: 'Company rules · joining day · what to bring (text)',
-  render: () => (
-    <Frame active="company-rules">
-      <CompanySettingsScreen section="organisation" {...settings} story={{ editing: 'joining.bring_on_day_one' }} />
-    </Frame>
-  ),
-};
-
-/** Group 2: manager access narrowed to direct reports. */
-export const AccessAndPrivacy: S = {
-  render: () => (
-    <Frame active="access-settings">
-      <CompanySettingsScreen section="access" {...settings} />
-    </Frame>
-  ),
-};
-
-const ERASURE_SWITCH_ON = { id: 's-erase', key: 'privacy.erasure.enabled', scopeType: 'tenant' as const, scopeId: 'org', value: 'on', validFrom: null };
-
-/** Follow-up 12: Special data erasure is off; HR reads the dry run (what it would delete today, and whose) before turning it on. */
-export const AccessAndPrivacyErasureDryRun: S = {
-  name: 'Access and privacy · Special data erasure · dry run (off), whose data',
-  render: () => (
-    <Frame active="access-settings">
-      <CompanySettingsScreen section="access" {...settings} erasure={ERASURE_DRY_RUN} />
-    </Frame>
-  ),
-};
-
-/** Erasure on: no one due (empty list); the last night's run, with one person not done (tried again the next night). */
-export const AccessAndPrivacyErasureOn: S = {
-  name: 'Access and privacy · Special data erasure · on, no one due, last run',
-  render: () => (
-    <Frame active="access-settings">
-      <CompanySettingsScreen section="access" {...settings} overrides={[...SETTING_OVERRIDES, ERASURE_SWITCH_ON]} erasure={ERASURE_ON} />
-    </Frame>
-  ),
-};
-
-/** Erasure on: two people due at the next run, one an offer that never joined (counted from the day it was cancelled). */
-export const AccessAndPrivacyErasureOnDue: S = {
-  name: 'Access and privacy · Special data erasure · on, people due at the next run',
-  render: () => (
-    <Frame active="access-settings">
-      <CompanySettingsScreen section="access" {...settings} overrides={[...SETTING_OVERRIDES, ERASURE_SWITCH_ON]} erasure={ERASURE_ON_DUE} />
-    </Frame>
-  ),
-};
-
-/** Without company-wide settings rights the dry run is not sent, so the card is not drawn (the switch still shows, read-only). */
-export const AccessAndPrivacyErasureNoAccess: S = {
-  name: 'Access and privacy · Special data erasure · no company-wide settings rights (no card)',
-  render: () => (
-    <Frame active="access-settings">
-      <CompanySettingsScreen section="access" {...settings} canManage={false} />
-    </Frame>
-  ),
-};
-
-/** Settings admin without access management: guarded settings are disabled with the reason. */
-export const AccessAndPrivacyGuarded: S = {
-  render: () => (
-    <Frame active="access-settings">
-      <CompanySettingsScreen section="access" {...settings} heldGuards={[]} />
-    </Frame>
-  ),
-};
-
-/** Group 4 · Payroll rules (founder 30 Oct 2026, last 10, items 1 and 5): statutory bonus and loans and advances, per company or legal entity. */
-export const PayrollRules: S = {
-  render: () => (
-    <Frame active="payroll-rules">
-      <CompanySettingsScreen section="payroll" {...settings} />
-    </Frame>
-  ),
-};
-
-/** Payroll rules: changing a loan interest rate; Save pressed before a value was chosen shows the field error and focuses it. */
-export const PayrollRulesLoanTooEarly: S = {
-  name: 'Payroll rules · loan interest · pressed too early',
-  render: () => (
-    <Frame active="payroll-rules">
-      <CompanySettingsScreen section="payroll" {...settings} story={{ editing: 'payroll.loan.interest_rate.loan', tooEarly: true }} />
-    </Frame>
-  ),
-};
-
-/** Payroll rules: the bonus eligibility rule editor (last day, first day or the highest rate in the month). */
-export const PayrollRulesBonusRule: S = {
-  name: 'Payroll rules · bonus eligibility rule editor',
-  render: () => (
-    <Frame active="payroll-rules">
-      <CompanySettingsScreen section="payroll" {...settings} story={{ editing: 'payroll.bonus.eligibility_rate_on' }} />
-    </Frame>
-  ),
-};
-
-/** Someone who may see the payroll rules but not change them: no Change buttons. */
-export const PayrollRulesReadOnly: S = {
-  name: 'Payroll rules · read only',
-  render: () => (
-    <Frame active="payroll-rules">
-      <CompanySettingsScreen section="payroll" {...settings} canManage={false} />
-    </Frame>
-  ),
-};
-
-export const PayrollRulesLoading: S = {
-  name: 'Payroll rules · loading',
-  render: () => (
-    <Frame active="payroll-rules">
-      <CompanySettingsScreen section="payroll" {...settings} state="loading" />
-    </Frame>
-  ),
-};
-
-export const PayrollRulesError: S = {
-  name: 'Payroll rules · error',
-  render: () => (
-    <Frame active="payroll-rules">
-      <CompanySettingsScreen section="payroll" {...settings} state="error" onRetry={() => {}} />
-    </Frame>
-  ),
-};
-
-export const CompanyRulesLoading: S = {
-  render: () => (
-    <Frame active="company-rules">
-      <CompanySettingsScreen section="organisation" {...settings} state="loading" />
-    </Frame>
-  ),
-};
-
-export const CompanyRulesError: S = {
-  render: () => (
-    <Frame active="company-rules">
-      <CompanySettingsScreen section="organisation" {...settings} state="error" onRetry={() => {}} />
-    </Frame>
-  ),
-};
+/** On, with people due at the next run and one not done last night. */
+export const ErasureOnDue: S = { render: () => <ErasureCard report={ERASURE_ON_DUE} /> };
