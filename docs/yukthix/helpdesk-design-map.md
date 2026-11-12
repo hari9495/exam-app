@@ -1980,3 +1980,15 @@ Draw kit designs for the five live pages that still render stand-ins (service ca
   4. Buildings and equipment for facilities work orders, with recurring maintenance on them; design first (about 4 days).
   5. IT change requests and problem records (ITSM change and problem); design and founder questions first (larger).
   Queued after the five stand-in designs and the one-folder move, for the next free builder.
+- Founder (12 Nov 2026, "ok for all"): 1601 to 1603 approved as suggested (founder looks at HLP-15 to HLP-19 in
+  Storybook; changes go into the drawing and the page together; long set-up pages scroll with header and tabs in view;
+  draw the help article view from HLP-04 next).
+- Founder (12 Nov 2026, "ok for all"): from the Frappe Helpdesk feature comparison (features only; AGPL code never
+  copied), approved as suggested: 1641 custom fields on tickets with dependent drop-downs; 1642 search synonyms with an
+  Indian HR starter list; 1643 preset reasons with a rating; 1645 Exotel click-to-call and call log on tickets (needs the
+  company's Exotel account); 1646 "we're closed now" with the next opening time and an outside-hours flag; 1647 store
+  where a ticket came from (article or search) and show it in content gaps; 1648 fuller per-ticket timing; 1649 desk
+  actions in the command palette; 1650 field-level hiding for custom fields (after 1641). Check before building: a note
+  on the ticket when a reply bounces; customer admins inviting colleagues to the portal. (1644 dropped: desk automation
+  rules already call webhooks with ids only.) Order after IT items 1-2: 1603, 1642, 1643, 1646, 1647, 1641, 1650,
+  1648, 1649, then items 3-5 of the IT/facilities plan, then 1645.
