@@ -4,6 +4,7 @@ import { play, press, pressFirst, tab, type } from '../_kit/story-play';
 import { DeskSetupScreen } from './setup';
 import { CANNED, COMPLIANCE, DESK, DETAIL, HR_DESK, SLA_SETUP } from './data';
 import { SlaTab } from './setup-sla';
+import { SAMPLE_FIELDS } from './ticket-fields-sample';
 import { BannersTab, EmailTab, PortalTab, type EmailSetupProps } from './setup-channels';
 import { BANNERS, BOUNCES, CS_DESK, INBOUND, MAILBOXES, PORTALS, SENDING_DOMAINS } from './data';
 
@@ -68,6 +69,10 @@ export const SetupAtRisk: S = { name: 'Desk set-up · Tickets · at risk from (p
 export const SetupRatingReasons: S = { name: 'Desk set-up · Requesters · reasons to pick after a rating', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="requesters" detail={{ ...setupProps.detail!, desk: { ...setupProps.detail!.desk, ratingReasons: ['Quick help', 'Solved my problem', 'Friendly and clear', 'Slow', 'Not solved', 'Had to explain again'] } }} />) };
 // Answer 1646: the message the help centre and portal show while the desk is closed.
 export const SetupClosedMessage: S = { name: 'Desk set-up · Requesters · message while closed', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="requesters" detail={{ ...setupProps.detail!, desk: { ...setupProps.detail!.desk, closedMessage: "We're closed now. We open again {opens}. You can still raise a ticket; we answer it when we open." } }} />) };
+// Answers 1641, 1650: the desk's own ticket fields (a drop-down narrowing the next; who sees each).
+export const SetupFields: S = { name: 'Desk set-up · Fields', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="fields" detail={{ ...setupProps.detail!, fields: SAMPLE_FIELDS }} onSaveField={noop} />) };
+export const SetupFieldEdit: S = { name: 'Desk set-up · Fields · a drop-down narrowed by another', render: SetupFields.render, play: play(press('Edit Floor')) };
+export const SetupFieldNewMissing: S = { name: 'Desk set-up · Fields · Save pressed with nothing filled', render: SetupFields.render, play: play(press('New field'), press('Save field')) };
 export const SlaSetupTab: S = { name: 'SD-1.14 Response targets (desk set-up tab)', render: () => shell('desk-setup', <SlaTab detail={DETAIL} calendars={[]} setup={SLA_SETUP} compliance={COMPLIANCE} month="2026-10" onMonth={() => {}} onCreatePolicy={noop} onAddVersion={noop} onUpdatePolicy={noop} onSaveTargets={noop} />) };
 
 // ---- batch 3 (SD-1.18 to SD-1.23, SD-1.28) ----

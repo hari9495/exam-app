@@ -435,4 +435,102 @@ describe('Helpdesk small items', () => {
       await gaps('divya').expect(403);
     });
   });
+  // ------------------------------------------------------------------------------------------ 1641, 1650 desk fields
+  describe('1641 and 1650: the desk own ticket fields, dependent drop-downs and who sees them', () => {
+    const OFFICE = { key: 'office', label: 'Office', fieldType: 'choice', options: [{ value: 'blr', label: 'Bengaluru' }, { value: 'che', label: 'Chennai' }], visibility: 'all' };
+    const FLOOR = { key: 'floor', label: 'Floor', fieldType: 'choice', options: [{ value: 'b1', label: 'BLR 1' }, { value: 'c1', label: 'CHE G' }], dependsOn: 'office', optionsBy: { blr: ['b1'], che: ['c1'] }, visibility: 'all' };
+    const VENDOR = { key: 'vendor_ref', label: 'Vendor ref', fieldType: 'text', visibility: 'agents' };
+    const COST = { key: 'cost', label: 'Cost', fieldType: 'number', visibility: 'leads' };
+    const add = (who: Who, deskId: string, f: object) => api(who, 'post', `/desk/desks/${deskId}/fields`).send(f);
+    const ticket = () => api('divya', 'post', '/desk/my/tickets').send({ deskId: ids.desk, subject: `Fields ${run}`, description: 'Help.' }).expect(201).then((r) => r.body.id as string);
+    const setF = (who: Who, id: string, values: Record<string, unknown>) => api(who, 'put', `/desk/tickets/${id}/fields`).send({ values });
+
+    it('set-up: the desk admin adds fields; the set is checked (a dependent list needs a drop-down parent and only its own values); others may not', async () => {
+      for (const f of [OFFICE, FLOOR, VENDOR, COST]) await add('deskAdmin', ids.desk, f).expect(201);
+      expect((await add('deskAdmin', ids.desk, { ...FLOOR, key: 'floor2', optionsBy: { blr: ['zz'] } }).expect(400)).body.message).toMatch(/only its own values/);
+      expect((await add('deskAdmin', ids.desk, { ...FLOOR, key: 'floor3', optionsBy: { mum: ['b1'] } }).expect(400)).body.message).toMatch(/not a value of/);
+      expect((await add('deskAdmin', ids.desk, { ...FLOOR, key: 'floor4', dependsOn: 'vendor_ref', visibility: 'agents' }).expect(400)).body.message).toMatch(/depend only on a pick-list/);
+      // A child everyone sees cannot hang on a parent the requester cannot see (it would give the parent away).
+      expect((await add('deskAdmin', ids.desk, { ...FLOOR, key: 'floor6', dependsOn: 'vendor_ref' }).expect(400)).body.message).toMatch(/which the requester cannot see/);
+      await add('deskAdmin', ids.desk, { ...FLOOR, key: 'floor5' }).expect(201);
+      expect((await add('deskAdmin', ids.desk, { key: 'sub_vendor', label: 'Sub', fieldType: 'choice', options: [{ value: 'x', label: 'X' }], dependsOn: 'floor5', optionsBy: {}, visibility: 'all' }).expect(201)));
+      await add('deskAdmin', ids.desk, OFFICE).expect(409);
+      await add('agent', ids.desk, { ...VENDOR, key: 'nope' }).expect(403);
+      await add('adminB', ids.desk, { ...VENDOR, key: 'nope' }).expect(404);
+      const detail = (await api('deskAdmin', 'get', `/desk/desks/${ids.desk}`).expect(200)).body;
+      const f5 = detail.fields.find((f: { key: string }) => f.key === 'floor5');
+      await api('deskAdmin', 'patch', `/desk/desks/${ids.desk}/fields/${f5.id}`).send({ ...FLOOR, key: 'floor5', fieldType: 'text', version: f5.version }).expect(400);
+      // Another field depends on floor5: it cannot be switched off first.
+      expect((await api('deskAdmin', 'patch', `/desk/desks/${ids.desk}/fields/${f5.id}`).send({ ...FLOOR, key: 'floor5', active: false, version: f5.version }).expect(400)).body.message).toMatch(/depends on this one/);
+      const sub = detail.fields.find((f: { key: string }) => f.key === 'sub_vendor');
+      await api('deskAdmin', 'patch', `/desk/desks/${ids.desk}/fields/${sub.id}`).send({ key: 'sub_vendor', label: 'Sub', fieldType: 'choice', options: [{ value: 'x', label: 'X' }], dependsOn: 'floor5', optionsBy: {}, active: false, version: sub.version }).expect(200);
+      await api('deskAdmin', 'patch', `/desk/desks/${ids.desk}/fields/${f5.id}`).send({ ...FLOOR, key: 'floor5', active: false, version: f5.version }).expect(200);
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: { in: ['desk.field.created', 'desk.field.updated'] } } }))).toBe(8);
+    });
+
+    it('a dependent drop-down refuses a value outside its parent; a changed parent clears it; a lead-only field never reaches a first-line agent', async () => {
+      const id = await ticket();
+      await setF('agent', id, { office: 'blr', floor: 'b1', vendor_ref: 'DELL-1' }).expect(200);
+      expect((await setF('agent', id, { floor: 'c1' }).expect(400)).body).toMatchObject({ code: 'FIELD_ERRORS', errors: { floor: 'Choose one of the options offered.' } });
+      expect((await setF('agent', id, { cost: 999 }).expect(403)).body.message).toMatch(/team leads/);
+      await setF('agent', id, { nope: 'x' }).expect(400);
+      await setF('lead', id, { cost: 84500 }).expect(200);
+      const agentView = (await api('agent', 'get', `/desk/tickets/${id}`).expect(200)).body;
+      expect(agentView.deskFields.map((f: { key: string }) => f.key)).toEqual(['office', 'floor', 'vendor_ref']);
+      expect(JSON.stringify(agentView)).not.toContain('84500');
+      const leadView = (await api('lead', 'get', `/desk/tickets/${id}`).expect(200)).body;
+      expect(leadView.deskFields.find((f: { key: string }) => f.key === 'cost').value).toBe(84500);
+      // The agent changes the office: the floor no longer fits and is cleared; the lead's cost stays.
+      const after = (await setF('agent', id, { office: 'che' }).expect(200)).body.deskFields as { key: string; value: unknown }[];
+      expect(after.find((f) => f.key === 'floor')!.value).toBeNull();
+      expect((await api('lead', 'get', `/desk/tickets/${id}`).expect(200)).body.deskFields.find((f: { key: string }) => f.key === 'cost').value).toBe(84500);
+      const events = await tenantPrisma.forTenant(SUPER, (tx) => tx.sdTicketEvent.findMany({ where: { ticketId: id, kind: { in: ['field_changed', 'lead_field_changed'] } } }));
+      expect(events.find((e) => e.kind === 'lead_field_changed')).toMatchObject({ fromValue: null, toValue: 'Cost' });
+      expect(JSON.stringify(events)).not.toContain('84500');
+      ids.fieldTicket = id;
+    });
+
+    it('a hidden field never reaches the requester in the help centre; lists filter by a field only where the person may see it', async () => {
+      const mine = (await api('divya', 'get', `/desk/my/tickets/${ids.fieldTicket}`).expect(200)).body;
+      expect(mine.deskFields).toEqual([{ label: 'Office', value: 'Chennai' }]);
+      expect(JSON.stringify(mine)).not.toMatch(/DELL-1|84500|vendor_ref/);
+      expect(JSON.stringify((await api('divya', 'get', '/desk/my/tickets').expect(200)).body)).not.toMatch(/DELL-1|84500/);
+      const list = (who: Who, q: string) => api(who, 'get', `/desk/tickets?${q}`);
+      const ids_ = async (who: Who, q: string) => ((await list(who, q).expect(200)).body.items as { id: string }[]).map((t) => t.id);
+      expect(await ids_('agent', 'fieldKey=office&fieldValues=che')).toContain(ids.fieldTicket);
+      expect(await ids_('agent', 'fieldKey=office&fieldValues=blr')).not.toContain(ids.fieldTicket);
+      expect(await ids_('agent', 'fieldKey=vendor_ref&fieldValues=DELL-1')).toContain(ids.fieldTicket);
+      await list('agent', 'fieldKey=cost&fieldValues=84500').expect(400);
+      expect(await ids_('lead', 'fieldKey=cost&fieldValues=84500')).toContain(ids.fieldTicket);
+      const view = (await api('agent', 'post', '/desk/views').send({ name: `Chennai ${run}`, filters: { fieldKey: 'office', fieldValues: ['che'] } }).expect(201)).body.id;
+      expect(await ids_('agent', `viewId=${view}`)).toContain(ids.fieldTicket);
+    });
+
+    it('a hidden field never reaches the requester in the portal', async () => {
+      await add('adminA', ids.care, OFFICE).expect(201);
+      await add('adminA', ids.care, VENDOR).expect(201);
+      const email = `cust-${run}@cust-${run}.test`;
+      const portal = `/api/v1/desk/portal/${org.A.slug}/care`;
+      await request(server()).post(`${portal}/sign-in`).send({ email }).expect(200);
+      let code = '';
+      for (let i = 0; i < 50 && !code; i++) {
+        const m = (app.get(EmailService).send as jest.Mock).mock.calls.map((c) => c[0] as { to: string; text?: string; html: string }).reverse().find((x) => x.to === email && /\b\d{6}\b/.test(x.text ?? x.html));
+        if (m) code = /\b(\d{6})\b/.exec(m.text ?? m.html)![1];
+        else await new Promise((r) => setTimeout(r, 100));
+      }
+      const tok = (await request(server()).post(`${portal}/verify`).send({ email, code }).expect(200)).body.token as string;
+      const t = (await request(server()).post(`${portal}/tickets`).set('x-portal-session', tok).send({ deskId: ids.care, subject: `Portal fields ${run}`, description: 'Hello.' }).expect(201)).body;
+      await tenantPrisma.forTenant(SUPER, (tx) => tx.sdTicket.update({ where: { id: t.id }, data: { fieldValues: { office: 'blr', vendor_ref: 'SECRET-77' } } }));
+      const seen = (await request(server()).get(`${portal}/tickets/${t.id}`).set('x-portal-session', tok).expect(200)).body;
+      expect(seen.deskFields).toEqual([{ label: 'Office', value: 'Bengaluru' }]);
+      expect(JSON.stringify(seen)).not.toContain('SECRET-77');
+    });
+
+    it('one company fields never apply to another', async () => {
+      await api('agentB', 'get', '/desk/tickets?fieldKey=office&fieldValues=che').expect(400);
+      expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.sdTicketField.count())).toBe(0);
+      expect((await api('adminB', 'get', `/desk/desks/${ids.deskB}`).expect(200)).body.fields).toEqual([]);
+      await api('agentB', 'put', `/desk/tickets/${ids.fieldTicket}/fields`).send({ values: { office: 'blr' } }).expect(404);
+    });
+  });
 });

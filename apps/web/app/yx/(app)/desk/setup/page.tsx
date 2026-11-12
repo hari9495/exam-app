@@ -122,6 +122,9 @@ function YxDeskSetupPageInner() {
       onEndMember={async (memberId) => {
         await write(`${base}/members/${encodeURIComponent(memberId)}`, 'DELETE');
       }}
+      onSaveField={async (id, input) => {
+        await write(id ? `${base}/fields/${id}` : `${base}/fields`, id ? 'PATCH' : 'POST', input);
+      }}
       onSaveGroup={async (id, input) => {
         await write(id ? `${base}/groups/${id}` : `${base}/groups`, id ? 'PATCH' : 'POST', input);
       }}

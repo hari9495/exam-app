@@ -280,6 +280,9 @@ follow-ups, articles, related tickets and the rest of the work rail) sit in the 
 | ResolvedRated · Resolved · closes on, the rating | live | new story |
 | OutsideHours · Raised outside hours | live | Answer 1646: `sd_tickets.raised_outside_hours`, set when the person raises it themselves while the desk's calendar is closed (portal, help centre, email, chat; answer 1683: never on tickets agents log); a neutral badge beside the flags |
 | Device · IT ticket · device set by an IT agent | live | Answer 1661: Details card, Device: an IT desk's agent searches any live company device (`GET desk/pick/assets`, tag, name or serial) and sets or clears it (`PUT desk/tickets/:id/device`, audited, a timeline event, toast); others see it read only; agents of other desks are refused (403) |
+| FieldsLead · Fields · a team lead sets them (drop-down narrowed by another) | live | Answers 1641, 1650: Fields card, the catalogue's form (ServiceForm) with the dependent list; `PUT desk/tickets/:id/fields` refuses a value outside its parent (400) and a team-lead-only field from anyone else (403); timeline event (no value for team-lead-only), audited, toast |
+| FieldsAgent · Fields · a first-line agent (no team-lead-only field) | live | Answer 1650: the server leaves the team-lead-only field out of the ticket for anyone but the desk's leads |
+| FieldsReadOnly · Fields · read only | live | values only |
 | Collaborator · Collaborator · notes only | live | new story: no Reply tab, no work controls (the server refuses a collaborator's reply, e2e) |
 | ReadOnly · Desk admin · read only | live | new story: "Read-only: you set this desk up"; no Respond card (the server refuses their notes) |
 | SenderUnverified · Email from an unproven sender, customer | live | new story: the warning; customer, plan and product in the rail |
@@ -747,6 +750,9 @@ File: `packages/yx-ui/src/screens/desk/desk.stories.tsx` (from "Phase 3b-1 (wire
 | SetupAtRisk · Desk set-up · Tickets · at risk from (per desk) | live | HLP-05b (founder 3 Nov 2026): Settings tab, `desk.settings.manage` like the other desk settings: Segment 50 / 60 / 70 / 80 / 90 % (default 80), saved with Save settings (`PATCH desk/desks/:id`, version check, audited), toast |
 | SetupRatingReasons · Desk set-up · Requesters · reasons to pick after a rating | live | Answer 1643: Settings tab, `desk.settings.manage`: one reason a line, up to 12 (starter: Quick help, Solved my problem, Friendly and clear, Slow, Not solved, Had to explain again; empty asks none); saved with Save settings (`PATCH desk/desks/:id {ratingReasons}`, version check, audited); reasons show in the Ratings report ("Reasons given") and as a custom-report column |
 | SetupClosedMessage · Desk set-up · Requesters · message while closed | live | Answer 1646: Settings tab, `desk.settings.manage`: one line, 2 to 300 letters, {opens} becomes the next opening time (default: "We're closed now. We open again {opens}. …"); saved with Save settings (`PATCH desk/desks/:id {closedMessage}`, audited); needs a business-hours calendar (none: never closed) |
+| SetupFields · Desk set-up · Fields | live | Answers 1641, 1650: the desk's own ticket fields (text, number, date, drop-down), for every ticket or one type; who sees each (everyone, desk staff only, team leads only); `POST/PATCH desk/desks/:id/fields` (`desk.settings.manage`), the whole set checked by the forms engine, audited, toast |
+| SetupFieldEdit · Desk set-up · Fields · a drop-down narrowed by another | live | Answer 1641: "Narrowed by" a drop-down of the same tickets, and its choices under each parent choice (the forms engine's dependent list); a child of a hidden parent must be as hidden |
+| SetupFieldNewMissing · Desk set-up · Fields · Save pressed with nothing filled | live | too-early: name, key |
 | SlaSetupTab · SD-1.14 Response targets (desk set-up tab) | live | /yx/desk/setup, SLA tab (`desk.sla.manage`) |
 | EmailSetup · SD-1.18 Email (desk set-up tab) | live | /yx/desk/setup, Email tab (`desk.mailbox.manage`) |
 | PortalSetup · SD-1.21 Help pages (desk set-up tab) | live | /yx/desk/setup, Help pages tab (`desk.portal.manage`) |
@@ -769,6 +775,7 @@ File: `packages/yx-ui/src/screens/desk/desk-portal.stories.tsx` (from "Phase 3b-
 | PortalLogin · US-G-021 Outside portal · sign in | live | /yx/portal/[org]/[portal] renders PortalScreen |
 | PortalHomeStory · US-G-021 Outside portal · my tickets | live | the portal's own sign-in, then my tickets |
 | PortalTicketStory · US-G-021 Outside portal · one ticket | live | |
+| PortalTicketFields · US-G-021 Outside portal · one ticket with its fields | live | Answers 1641, 1650: the portal ticket gives only filled fields meant for everyone |
 | PortalRaiseClosed · US-G-021 Outside portal · raise while the team is closed | live | Answer 1646: the portal's `info` gives each team's `closed {message, opensAt}`; the raise form (and Ask without an account) shows it under the team |
 | CustomersPlanTooEarly · SD-1.22 Customers · Add plan pressed with nothing filled | live | |
 | CustomersPersonTooEarly · SD-1.22 Customers · Add person pressed with nothing filled | live | |
@@ -786,6 +793,7 @@ File: `packages/yx-ui/src/screens/desk/desk-mine.stories.tsx` (from "Phase 3b-1 
 | ResolveTooEarly · SD-1.10 Resolve · pressed without a code or note | live | `ResolveDialog` when the desk needs a resolution code |
 | HelpDrawerWhatsNew · US-B-100 Help drawer · What's new (H-4) | live | Help H-4 (answer 943): the Help drawer's What's new tab (`WhatsNewPanel`), for each person's role and the company's products |
 | HelpDrawerTooEarly · US-B-100 Help drawer · Raise ticket pressed with nothing filled | live | |
+| MyTicketFields · HLP-01 My ticket · the desk fields I may see | live | Answers 1641, 1650: `GET desk/my/tickets/:id` gives only filled fields meant for everyone (`deskFields`); staff-only and team-lead-only values never leave the server |
 | MyTicketReplyTooEarly · HLP-01 My ticket · Send reply pressed with nothing written | live | |
 | MyTicketWatchTooEarly · HLP-01 My ticket · Add colleague pressed with no email | live | |
 

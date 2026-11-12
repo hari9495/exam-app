@@ -10,6 +10,7 @@ import { DeskActor, audit, companyOf, emit } from './desk-access';
 import { RaiseTicketDto, RequesterReplyDto, WatcherDto } from './dto';
 import { Ticket, TicketsService } from './tickets.service';
 import { assetsOf } from './asset-pick';
+import { fieldsFor, shownFields } from './ticket-fields';
 
 // The requester's side (M14 §6.1 implicit role, YX-SD-16): raise, follow, reply and add watchers. No permission key:
 // every route works only on the person's own records (requester, requested-for or watcher) and never returns internal
@@ -253,6 +254,8 @@ export class RequesterService {
         rating: rating?.score ?? null,
         canRate: !rating && ['solved', 'closed'].includes(t.systemState) && ids.includes(t.requesterPersonId),
         ratingReasons: desk.ratingReasons,
+        // Answers 1641, 1650: only the fields the requester may see, and only filled ones (never the staff-only values).
+        deskFields: shownFields(await fieldsFor(tx, org, t.deskId, t.typeId), t.fieldValues, 'requester', true).map((f) => ({ label: f.label, value: f.display })),
         status: status?.label ?? '',
         systemState: t.systemState,
         private: t.private || t.sensitive,

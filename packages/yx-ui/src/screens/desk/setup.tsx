@@ -1,3 +1,4 @@
+import { FieldsTab, type DeskFieldInput } from './ticket-fields';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Plus } from 'lucide-react';
 import { Button } from '../../components/button';
@@ -55,6 +56,8 @@ export interface DeskSetupScreenProps {
   calendars: Calendar[];
   canCalendars: boolean;
   onCreateDesk: (input: { name: string; key: string; kind: DeskKind }) => Promise<void>;
+  /** Answers 1641, 1650: add or change one of the desk's own ticket fields. */
+  onSaveField?: (id: string | null, input: DeskFieldInput) => Promise<unknown>;
   onUpdateDesk: (change: Partial<Pick<DeskSummary, 'name' | 'privacy' | 'numberPrefix' | 'numberSuffix' | 'attachmentTypes' | 'attachmentMaxMb' | 'vipRaisesPriority' | 'calendarId' | 'resolutionRequired' | 'reopenWindowDays' | 'requesterCanReopen' | 'autoCloseDays' | 'routingWaitMinutes' | 'atRiskPercent' | 'ratingReasons' | 'closedMessage'>> & { nextNumber?: number }) => Promise<void>;
   onSearchUsers: (q: string) => Promise<{ id: string; name: string | null; email: string }[]>;
   onSeatCost: (userId: string, role: DeskRole) => Promise<SeatCost>;
@@ -227,6 +230,7 @@ function DeskTabs(props: DeskSetupScreenProps & { detail: DeskDetail }) {
           <TabsTrigger value="groups">Groups</TabsTrigger>
           <TabsTrigger value="categories">Categories</TabsTrigger>
           <TabsTrigger value="types">Types and statuses</TabsTrigger>
+          <TabsTrigger value="fields">Fields</TabsTrigger>
           <TabsTrigger value="priority">Priority</TabsTrigger>
           <TabsTrigger value="replies">Saved replies</TabsTrigger>
           <TabsTrigger value="settings">Tickets</TabsTrigger>
@@ -262,6 +266,9 @@ function DeskTabs(props: DeskSetupScreenProps & { detail: DeskDetail }) {
         </TabsContent>
         <TabsContent value="replies">
           <RepliesTab {...props} />
+        </TabsContent>
+        <TabsContent value="fields">
+          <FieldsTab fields={props.detail.fields ?? []} types={props.detail.types.filter((t) => t.active)} canSetUp={props.detail.canSetUp} onSave={props.onSaveField} />
         </TabsContent>
         <TabsContent value="settings">
           <SettingsTab {...props} part="tickets" />

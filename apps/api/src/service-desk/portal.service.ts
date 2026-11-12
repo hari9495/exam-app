@@ -12,6 +12,7 @@ import { BannerDto, OpenRequestDto, PortalDto, PortalEmailDto, PortalRaiseDto, P
 import { Requester, RequesterService } from './requester.service';
 import { textToHtml } from './rich-text';
 import { TicketsService } from './tickets.service';
+import { fieldsFor, shownFields } from './ticket-fields';
 
 // SD-1.21 portals, SD-1.22 the open portal and external requesters, SD-1.23 banners (US-B-099, US-B-103, US-G-020 …
 // US-G-022; §9.3, §14.4). An outside customer is a P02 external login (YX-SEC-21): a one-time code to their email (P12
@@ -446,6 +447,8 @@ export class PortalService {
         canReply: !t.mergedIntoId,
         rating: rated?.score ?? null,
         ratingReasons: desk.ratingReasons,
+        // Answers 1641, 1650: only the fields the requester may see, and only filled ones.
+        deskFields: shownFields(await fieldsFor(tx, org, t.deskId, t.typeId), t.fieldValues, 'requester', true).map((f) => ({ label: f.label, value: f.display })),
         canRate: !rated && ['solved', 'closed'].includes(t.systemState) && t.requesterPersonId === s.personId,
         resolveBy: due?.resolveBy ?? null,
         messages: messages.map((m) => ({

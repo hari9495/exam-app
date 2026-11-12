@@ -13,6 +13,7 @@ import { DeskPage, MessageBody, StatusBadge, browserTimeZone, when } from './des
 import { BannerList } from './help';
 import { ReadingAidsCard, ReadingAidsFrame, useReadingAids } from './reading-aids';
 import { ArticleDrawer, DeskClosedNotice, RateTicketCard, SuggestList, useSuggestions, type KbArticleView, type KbSuggestion } from './help-kb';
+import { RequesterFields } from './ticket-fields';
 import type { LoadState, PortalHome, PortalMe, PortalRaiseInput, PortalTicket, PortalTicketRow } from './types';
 
 // The outside help page (§9.3, US-G-021): a company's customers sign in with a 6-digit email code (no password, no
@@ -464,6 +465,11 @@ export function PortalTicketView(props: PortalScreenProps) {
             </ol>
             {t.files.length > 0 && <p className="yx-ops-muted">Files on this ticket: {t.files.map((f) => f.fileName).join(', ')}</p>}
           </Card>
+          {(t.deskFields ?? []).length > 0 && (
+            <Card title="Details">
+              <RequesterFields fields={t.deskFields} />
+            </Card>
+          )}
           {props.onRate && (t.canRate || t.rating) && <RateTicketCard rating={t.rating ?? null} reasons={t.ratingReasons} onRate={props.onRate} />}
           {t.canReply ? (
             <Card title="Reply">
