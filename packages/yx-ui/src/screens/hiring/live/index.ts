@@ -51,7 +51,7 @@ export { RediscoveryPanel, RequisitionsScreen, type LiveRediscovery, type LiveRe
 export { PipelineBoardScreen, type LivePipelineBoard, type LivePipelineCard, type LivePipelineStage } from '../hiring-pipeline';
 export type { Score as PipelineScore } from '../hiring-kit';
 // Settings 6.1 Hiring: the designed settings page made live with `live` (founder answers 291 and 302).
-export { SettingsPageScreen, type LiveSettingsPage } from '../../settings/settings-screens';
+export { SettingsGroupScreen, SettingsHomeScreen, SettingsPageScreen, type LiveSettingsNav, type LiveSettingsPage } from '../../settings/settings-screens';
 export { SETTINGS_GROUPS } from '../../settings/settings-groups';
 export { hiringSettingsPage, hiringSettingsChanges, type HiringSettingsData } from '../../settings/hiring-live';
 // HIR-10 and HIR-20: the designed BGV tracker and Talent CRM (hiring-offers.tsx), live with their `live` prop (the
@@ -78,3 +78,4 @@ export { CreateInvoicesSheet, ExportSheet, type DraftInput, type ExportInput, ty
 export { PlacementFee, type LivePlacementFee } from '../hiring-staffing';
 export { ClientPortalScreen, type LiveClientPortal, type LiveClientTab } from '../../portals/t9-business';
 export { PortalSignInScreen } from '../../portals/portals-kit';
+export type { SettingsGroupDef } from '../../settings/settings-types';

@@ -248,3 +248,16 @@ html:has(.yx-phone) { scroll-padding-bottom: calc(var(--yx-space-16) + var(--yx-
 
 button.yx-m-row:hover, a.yx-m-row:hover { background: var(--yx-color-bg-subtle); }
 .yx-set-recent a:hover { background: var(--yx-color-bg-subtle); }
+
+/* Settings S-1 live (answer 1322): the home, its results and a group page fit 1278 x 635 (no page scroll). */
+.yx-set-groups--live { grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(var(--yx-space-16) * 3)), 1fr)); gap: var(--yx-space-3); }
+.yx-set-group-card--live .yx-card__title a { color: var(--yx-color-text); }
+.yx-set-group-card--live li a { padding: 0; }
+.yx-set-group-card__more { color: var(--yx-color-link); }
+.yx-set-group-card__more { white-space: nowrap; }
+.yx-set-results--live .yx-set-result__value, .yx-set-pages--live .yx-set-page-row__meta { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.yx-set-results--live .yx-set-results__list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(var(--yx-space-16) * 5)), 1fr)); }
+.yx-set-results--live .yx-set-results__list li + li { border-top: 0; }
+.yx-set-results--live .yx-set-results__list li { border-bottom: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-set-pages--live { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(var(--yx-space-16) * 4)), 1fr)); gap: var(--yx-space-3); border: 0; background: none; }
+.yx-set-pages--live .yx-set-page-row, .yx-set-pages--live .yx-set-page-row + .yx-set-page-row { border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); padding: var(--yx-space-3); }

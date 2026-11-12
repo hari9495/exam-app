@@ -1,6 +1,6 @@
 // Settings home (search across every setting) and the shared page states (APX-D §3 rules 3–6).
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { SettingsHomeScreen, SettingsPageScreen } from './settings-screens';
+import { SettingsGroupScreen, SettingsHomeScreen, SettingsPageScreen, type LiveSettingsNav } from './settings-screens';
 import { SETTINGS_GROUPS } from './settings-groups';
 import type { HistoryEntry } from './settings-kit';
 import './settings.css';
@@ -29,6 +29,16 @@ export const HomeLimited: S = {
 };
 export const HomeLoading: S = { name: 'Settings home · loading', render: () => <SettingsHomeScreen groups={G} state="loading" /> };
 export const HomeError: S = { name: 'Settings home · error', render: () => <SettingsHomeScreen groups={G} state="error" /> };
+
+// S-1 (answer 1322), live: only the pages the viewer may open (those with a live editor today), each linking to it.
+const OPENABLE = ['1.1', '1.2', '1.3', '1.4', '1.5', '1.6', '2.1', '2.2', '2.3', '2.5', '2.6', '2.9', '2.10', '3.1', '3.2', '3.3', '3.4', '3.6', '3.7', '3.8', '3.9', '3.10', '3.11', '3.12', '4.1', '4.2', '4.4', '4.6', '4.7', '4.8', '4.9', '4.10', '5.2', '5.3', '5.4', '5.5', '5.7', '5.8', '6.1', '6.2', '6.3', '7.2', '7.3', '8.6'];
+const PAYROLL_ONLY = ['4.1', '4.2', '4.4', '4.6', '4.7', '7.3'];
+const only = (ids: string[]) => G.map((g) => ({ ...g, pages: g.pages.filter((p) => ids.includes(p.id)) })).filter((g) => g.pages.length);
+const LIVE_NAV: LiveSettingsNav = { pageHref: (id) => `#live/${id}`, groupHref: (id) => `#live/group/${id}`, onNavigate: () => {} };
+export const HomeLive: S = { name: 'Settings home · live, System Admin (S-1)', render: () => <SettingsHomeScreen groups={only(OPENABLE)} live={LIVE_NAV} /> };
+export const HomeLiveSearch: S = { name: 'Settings home · live, search "probation" (S-1)', render: () => <SettingsHomeScreen groups={only(OPENABLE)} defaultQuery="probation" live={LIVE_NAV} /> };
+export const HomeLivePayroll: S = { name: 'Settings home · live, payroll admin only (S-1)', render: () => <SettingsHomeScreen groups={only(PAYROLL_ONLY)} live={LIVE_NAV} /> };
+export const GroupLive: S = { name: 'Group page · live, Time & Leave (S-1)', render: () => <SettingsGroupScreen groups={only(OPENABLE)} groupId={3} live={LIVE_NAV} /> };
 
 export const PageFromSearch: S = {
   name: 'Page · opened from search (field highlighted)',

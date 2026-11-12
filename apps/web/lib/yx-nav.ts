@@ -61,6 +61,59 @@ const when = <T,>(ok: boolean, ...items: T[]): T[] => (ok ? items : []);
 const sec = (label: string | undefined, items: NavLink[]): NavSection[] => (items.length ? [{ ...(label ? { label } : {}), items }] : []);
 
 export const ME_SECURITY = '/yx/me/security';
+export const SETTINGS_HOME = '/yx/settings';
+
+/**
+ * Settings S-1 (answers 1321, 1322): each drawn settings page (by its number) is the front door to the live editors that
+ * do its job today, in order; the first one the viewer may open is where it leads. A page with no live editor yet is
+ * not listed (its own slice builds it). Never a second copy of a live page.
+ */
+export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
+  '1.1': ['/yx/settings/countries', '/yx/settings/translations', '/yx/settings/emails'],
+  '1.2': ['/yx/settings/legal-entities'],
+  '1.3': ['/yx/settings/locations', '/yx/time/setup/locations'],
+  '1.4': ['/yx/settings/structure'],
+  '1.5': ['/yx/settings/custom-fields', '/yx/settings/company-rules'],
+  '1.6': ['/yx/settings/setup-hub'],
+  '2.1': ['/yx/settings/access', '/yx/settings/access-settings'],
+  '2.2': ['/yx/settings/access-settings'],
+  '2.3': ['/yx/settings/security', '/yx/settings/identity-providers', '/yx/settings/support-access'],
+  '2.5': ['/yx/settings/company-rules', '/yx/settings/checklists'],
+  '2.6': ['/yx/settings/company-rules'],
+  '2.9': ['/yx/settings/company-rules', '/yx/desk/speakup-setup'],
+  '2.10': ['/yx/settings/access-settings'],
+  '3.1': ['/yx/settings/company-rules'],
+  '3.2': ['/yx/time/setup/devices', '/yx/time/setup/locations'],
+  '3.3': ['/yx/time/shifts-setup'],
+  '3.4': ['/yx/time/setup/locations', '/yx/time/shifts-setup'],
+  '3.6': ['/yx/time/setup'],
+  '3.7': ['/yx/time/setup'],
+  '3.8': ['/yx/time/setup/holidays', '/yx/time/setup/holiday-feeds'],
+  '3.9': ['/yx/time/setup/year-end'],
+  '3.10': ['/yx/time/periods'],
+  '3.11': ['/yx/time/shifts-setup'],
+  '3.12': ['/yx/settings/visitors'],
+  '4.1': ['/yx/payroll/pay-groups', '/yx/payroll/periods'],
+  '4.2': ['/yx/payroll/components', '/yx/payroll/templates'],
+  '4.4': ['/yx/payroll/payslip-layout'],
+  '4.6': ['/yx/settings/payroll-rules', '/yx/payroll/loans'],
+  '4.7': ['/yx/payroll/statutory', '/yx/payroll/statutory-rules'],
+  '4.8': ['/yx/settings/expenses'],
+  '4.9': ['/yx/settings/contract-labour'],
+  '4.10': ['/yx/payroll/ewa'],
+  '5.2': ['/yx/settings/letters'],
+  '5.3': ['/yx/settings/letters'],
+  '5.4': ['/yx/settings/emails'],
+  '5.5': ['/yx/settings/sms'],
+  '5.7': ['/yx/settings/company-rules', '/yx/desk/policy-admin'],
+  '5.8': ['/yx/desk/setup'],
+  '6.1': ['/yx/settings/hiring'],
+  '6.2': ['/yx/settings/staffing'],
+  '6.3': ['/yx/settings/performance'],
+  '7.2': ['/yx/time/setup/devices'],
+  '7.3': ['/yx/payroll/payment-modes'],
+  '8.6': ['/yx/settings/company-rules'],
+};
 const ME = 'Me';
 
 /**
@@ -447,7 +500,11 @@ export function buildNav(n: NavInput): NavArea[] {
     ],
   };
 
-  return [home, people, time, pays, compliance, contract, hire, performance, helpdesk, visitors, settings].filter((a) => a.sections.some((s) => s.items.length));
+  const areas = [home, people, time, pays, compliance, contract, hire, performance, helpdesk, visitors, settings];
+  // Settings S-1 (answer 1322): Settings opens the home, for anyone who may open at least one settings page.
+  const mine = new Set(areas.flatMap((a) => a.sections.flatMap((s) => s.items.map((l) => l.href))));
+  if (Object.values(SETTINGS_PAGE_EDITORS).some((hrefs) => hrefs.some((h) => mine.has(h)))) settings.sections.unshift({ items: [L('settings-home', 'All settings', SETTINGS_HOME)] });
+  return areas.filter((a) => a.sections.some((s) => s.items.length));
 }
 
 /** The area and link a path belongs to: the longest link that is the path or a parent of it. A page linked from two

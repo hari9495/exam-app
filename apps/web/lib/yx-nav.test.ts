@@ -118,7 +118,7 @@ describe('buildNav: Time, Pay, Compliance', () => {
 
   it('payroll set-up pages sit in Settings › Payroll & Statutory, by the batch-5b keys', () => {
     const n = nav(['payroll.setup.manage', 'payroll.template.manage', 'employee.salary.manage']);
-    expect(labels(n, 'settings')).toEqual(['Payroll set-up', 'Payroll rules', 'Pay groups', 'Payslip layout', 'Country packs', 'Salary templates']);
+    expect(labels(n, 'settings')).toEqual(['All settings', 'Payroll set-up', 'Payroll rules', 'Pay groups', 'Payslip layout', 'Country packs', 'Salary templates']);
     // Founder answer 19 (30 Oct 2026): the item opens the rules page, so it is "Statutory rules"; registrations stay in Payroll set-up.
     expect(labels(n, 'compliance')).toEqual(['Statutory rules', 'Statutory coverage']);
     expect(activeLink(n, '/yx/payroll/statutory-rules')?.link.label).toBe('Statutory rules');
@@ -186,23 +186,23 @@ describe('buildNav: Time, Pay, Compliance', () => {
     expect(areas(s)).toEqual(['home', 'people', 'performance', 'settings']);
     expect(labels(s, 'home')).toEqual(['Home', 'Search']);
     expect(meOf(s)).toEqual(ME6);
-    expect(labels(s, 'settings')).toEqual(['Legal entities', 'Locations', 'Structure', 'Security settings', 'Single sign-on providers', 'Login activity', 'Emails', 'Text messages (SMS)']);
+    expect(labels(s, 'settings')).toEqual(['All settings', 'Legal entities', 'Locations', 'Structure', 'Security settings', 'Single sign-on providers', 'Login activity', 'Emails', 'Text messages (SMS)']);
   });
 });
 
 describe('buildNav: Settings', () => {
   it('a Payroll Admin profile on a non-admin role sees the organisation pages; pay-range access alone does too', () => {
-    expect(labels(nav(['org.structure.view', 'pay.range.view']), 'settings')).toEqual(['Legal entities', 'Locations', 'Structure']);
-    expect(labels(nav(['pay.range.view']), 'settings')).toEqual(['Legal entities', 'Locations', 'Structure']);
+    expect(labels(nav(['org.structure.view', 'pay.range.view']), 'settings')).toEqual(['All settings', 'Legal entities', 'Locations', 'Structure']);
+    expect(labels(nav(['pay.range.view']), 'settings')).toEqual(['All settings', 'Legal entities', 'Locations', 'Structure']);
     // A manager who only reads the structure for pickers gets no Organisation pages (founder review 8 Oct 2026).
     expect(areas(nav(['org.structure.view']))).not.toContain('settings');
   });
 
   it('the settings admin gets company rules, Countries and Translations; set-up pages follow their keys', () => {
-    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['Set-up hub', 'Legal entities', 'Locations', 'Structure', 'Company rules', 'Countries', 'Translations', 'Access and privacy', 'Custom fields', 'Visitors', 'Payroll rules', 'Contract labour', 'Hiring', 'Staffing desk']);
+    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['All settings', 'Set-up hub', 'Legal entities', 'Locations', 'Structure', 'Company rules', 'Countries', 'Translations', 'Access and privacy', 'Custom fields', 'Visitors', 'Payroll rules', 'Contract labour', 'Hiring', 'Staffing desk']);
     // Settings 6.1 Hiring: recruiting, hiring admins and HR read it (the API decides who changes it).
-    expect(labels(nav(['ats.settings.manage']), 'settings')).toEqual(['Hiring']);
-    expect(labels(nav(['pipeline:manage']), 'settings')).toEqual(['Hiring']);
+    expect(labels(nav(['ats.settings.manage']), 'settings')).toEqual(['All settings', 'Hiring']);
+    expect(labels(nav(['pipeline:manage']), 'settings')).toEqual(['All settings', 'Hiring']);
     expect(labels(nav(['ats.requisition.raise']), 'settings')).not.toContain('Hiring');
     // Visitors slice 1: an employee invites their visitors; reception gets the desk and log; Settings 3.12 for its holders.
     expect(labels(nav([], { employee: true }), 'visitors')).toEqual(['My visitors']);
@@ -210,14 +210,14 @@ describe('buildNav: Settings', () => {
     // Slice 4: security and HR get only the roll-call.
     expect(labels(nav(['visitors.rollcall.view']), 'visitors')).toEqual(['Roll-call']);
     expect(labels(nav(['visitors.log.view']), 'visitors')).toEqual(['Visitor log']);
-    expect(labels(nav(['visitors.settings.manage']), 'settings')).toEqual(['Visitors']);
+    expect(labels(nav(['visitors.settings.manage']), 'settings')).toEqual(['All settings', 'Visitors']);
     // Slice 3: the watch-list only with its key; reception does not see it.
     expect(labels(nav(['visitors.watchlist.manage', 'visitors.log.view']), 'visitors')).toEqual(['Visitor log', 'Watch-list']);
     expect(labels(nav(['visitors.desk.manage']), 'visitors')).not.toContain('Watch-list');
     // Founder 30 Oct 2026 (last 10, item 5): Payroll rules for HR (org.settings.manage) or payroll set-up, never for others.
     expect(labels(nav(['payroll.run.view']), 'settings')).not.toContain('Payroll rules');
-    expect(labels(nav(['perf.setup.manage']), 'settings')).toEqual(['Performance']);
-    expect(labels(nav(['access.role.manage']), 'settings')).toEqual(['Roles & access']);
+    expect(labels(nav(['perf.setup.manage']), 'settings')).toEqual(['All settings', 'Performance']);
+    expect(labels(nav(['access.role.manage']), 'settings')).toEqual(['All settings', 'Roles & access']);
   });
 
   it('Restructure: HR plans it; payroll opens the done ones for its checklist (founder 28 Oct 2026); others do not see it', () => {
@@ -241,7 +241,7 @@ describe('buildNav: Settings', () => {
   });
   it('a System Admin finds security, Support access, Emails and Contact YukthiX', () => {
     const n = nav(['org.support_access.approve', 'notification.template.manage', 'org.yukthix_support.raise'], { role: 'org_admin' });
-    expect(labels(n, 'settings')).toEqual(['Security settings', 'Single sign-on providers', 'Login activity', 'Support access', 'Emails', 'Text messages (SMS)', 'Contact YukthiX']);
+    expect(labels(n, 'settings')).toEqual(['All settings', 'Security settings', 'Single sign-on providers', 'Login activity', 'Support access', 'Emails', 'Text messages (SMS)', 'Contact YukthiX']);
     expect(labels(nav([], { role: 'auditor' }), 'settings')).toEqual(['Login activity']);
     expect(labels(nav(), 'settings')).toEqual([]);
   });

@@ -276,8 +276,6 @@
     "settings: MobileTodosScreen",
     "settings: MobileVisitorsScreen",
     "settings: NotFoundState",
-    "settings: SettingsGroupScreen",
-    "settings: SettingsHomeScreen",
     "time: AttendanceCalendarPhone",
     "time: D",
     "time: DayCardPhone",
