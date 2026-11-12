@@ -160,7 +160,7 @@ export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '4.5': payPage('4.5'),
   '4.6': [...payPage('4.6'), '/yx/payroll/loans'],
   '4.7': ['/yx/payroll/statutory', '/yx/payroll/statutory-rules'],
-  '4.8': ['/yx/settings/expenses'],
+  '4.8': ['/yx/settings/finance/expenses-and-travel', '/yx/settings/expenses'],
   '4.9': ['/yx/settings/contract-labour'],
   '4.10': ['/yx/payroll/ewa'],
   '5.2': ['/yx/settings/letters'],
@@ -171,7 +171,7 @@ export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '5.8': ['/yx/desk/setup'],
   '6.1': ['/yx/settings/hiring'],
   '6.2': ['/yx/settings/staffing'],
-  '6.3': ['/yx/settings/performance'],
+  '6.3': ['/yx/settings/talent/performance', '/yx/settings/performance'],
   '7.2': ['/yx/time/setup/devices'],
   '7.3': ['/yx/payroll/payment-modes'],
   '8.6': morePage('8.6'),
@@ -531,6 +531,9 @@ export function buildNav(n: NavInput): NavArea[] {
         // S-7 (answer 1321): the Organisation, Documents and Account settings pages (Company rules retired).
         ...when(settingsView, ...MORE_SETTINGS_PAGES.map(([id, label, folder, slug]) => L(`more-settings-${id}`, label, `${SETTINGS_HOME}/${folder}/${slug}`))),
         ...when(has('perf.setup.manage'), L('performance-setup', 'Performance', '/yx/settings/performance')),
+        // S-8 (answer 1323): the company's expense and performance choices (4.8, 6.3); their set-up keys change them too.
+        ...when(settingsView || has('expense.policy.manage') || has('expense.policy.view'), L('expense-settings', 'Expense settings', `${SETTINGS_HOME}/finance/expenses-and-travel`)),
+        ...when(settingsView || has('perf.setup.manage'), L('performance-settings', 'Performance settings', `${SETTINGS_HOME}/talent/performance`)),
       ]),
       ...sec('People & Access', [
         ...when(has('access.role.manage'), L('access', 'Roles & access', '/yx/settings/access')),

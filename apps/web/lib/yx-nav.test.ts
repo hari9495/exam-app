@@ -199,7 +199,7 @@ describe('buildNav: Settings', () => {
   });
 
   it('the settings admin gets the S-7 pages (no retired Company rules), Countries and Translations; set-up pages follow their keys', () => {
-    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['All settings', 'Set-up hub', 'Legal entities', 'Locations', 'Structure', 'Countries', 'Translations', 'Company & branding', 'Employee records', 'Set-up hub settings', 'Policies', 'Help and tips', 'Custom fields', 'Approvals', 'Access requests', 'Directory & privacy', 'Security rules', 'Onboarding & probation', 'Job changes & transfers', 'Exit & lifecycle policies', 'Employee relations & cases', 'Audit & data retention', 'Approval policies', 'Attendance modes', 'Check-in & devices', 'Shifts & patterns', 'Weekly offs', 'Late & regularisation', 'Leave types', 'Holiday calendars', 'Leave year', 'Projects & timesheets', 'Visitors', 'Payroll policies', 'Payslip settings', 'Tax', 'Bonus & loan rules', 'Contract labour', 'Hiring', 'Staffing desk']);
+    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['All settings', 'Set-up hub', 'Legal entities', 'Locations', 'Structure', 'Countries', 'Translations', 'Company & branding', 'Employee records', 'Set-up hub settings', 'Policies', 'Help and tips', 'Expense settings', 'Performance settings', 'Custom fields', 'Approvals', 'Access requests', 'Directory & privacy', 'Security rules', 'Onboarding & probation', 'Job changes & transfers', 'Exit & lifecycle policies', 'Employee relations & cases', 'Audit & data retention', 'Approval policies', 'Attendance modes', 'Check-in & devices', 'Shifts & patterns', 'Weekly offs', 'Late & regularisation', 'Leave types', 'Holiday calendars', 'Leave year', 'Projects & timesheets', 'Visitors', 'Payroll policies', 'Payslip settings', 'Tax', 'Bonus & loan rules', 'Contract labour', 'Hiring', 'Staffing desk']);
     // Settings 6.1 Hiring: recruiting, hiring admins and HR read it (the API decides who changes it).
     expect(labels(nav(['ats.settings.manage']), 'settings')).toEqual(['All settings', 'Hiring']);
     expect(labels(nav(['pipeline:manage']), 'settings')).toEqual(['All settings', 'Hiring']);
@@ -216,7 +216,7 @@ describe('buildNav: Settings', () => {
     expect(labels(nav(['visitors.desk.manage']), 'visitors')).not.toContain('Watch-list');
     // Founder 30 Oct 2026 (last 10, item 5): Payroll rules for HR (org.settings.manage) or payroll set-up, never for others.
     expect(labels(nav(['payroll.run.view']), 'settings')).not.toContain('Payroll rules');
-    expect(labels(nav(['perf.setup.manage']), 'settings')).toEqual(['All settings', 'Performance']);
+    expect(labels(nav(['perf.setup.manage']), 'settings')).toEqual(['All settings', 'Performance', 'Performance settings']);
     expect(labels(nav(['access.role.manage']), 'settings')).toEqual(['All settings', 'Roles & access']);
   });
 

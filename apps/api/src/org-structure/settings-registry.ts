@@ -44,6 +44,14 @@ export const LEAVE_PAGE_KEYS: ReadonlySet<string> = new Set([
   'leave.optional_holiday.prorate_on_move', 'leave.year_start_month', 'leave.block_dates.mode',
 ]);
 
+/** The module key that may change a setting besides HR's settings key (answer 1485; S-8, answer 1323), or null. */
+export function moduleSettingKey(key: string): string | null {
+  if (LEAVE_PAGE_KEYS.has(key)) return 'leave.settings.manage';
+  if (key.startsWith('expense.')) return 'expense.policy.manage';
+  if (key.startsWith('perf.')) return 'perf.setup.manage';
+  return null;
+}
+
 /** Answer 1325: on (the default), a change to a payroll setting waits for a second person with HR's settings key. */
 export const SECOND_PERSON_KEY = 'payroll.settings.second_person';
 /** Answer 1523: a waiting payroll setting change lapses after this many days (the nightly sweep). */

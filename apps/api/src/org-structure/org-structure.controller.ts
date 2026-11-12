@@ -24,7 +24,7 @@ import {
 } from './dto';
 import { IN_STATES, REGIONS } from './org-validation';
 import { OrgSettingsService } from './org-settings.service';
-import { LEAVE_PAGE_KEYS, SETTINGS } from './settings-registry';
+import { SETTINGS, moduleSettingKey } from './settings-registry';
 import { OrgStructureService } from './org-structure.service';
 import { OrgScopeService } from '../access/org-scope.service';
 import { SettingChangeNoticesService } from './setting-change-notices.service';
@@ -41,6 +41,8 @@ import { SettingChangeNoticesService } from './setting-change-notices.service';
 // Each key may be held for the whole company or one legal entity (P02 §4.3): writes and pay / Confidential
 // reads are checked against the record's entity here (OrgScopeService) before the service runs.
 const VIEW = ['org.structure.view', 'org.settings.manage'] as const;
+// S-8 (answer 1323): the expenses and performance set-up keys read the company settings (their pages 4.8 and 6.3).
+const MODULE_READ = ['expense.policy.view', 'expense.policy.manage', 'perf.setup.manage'] as const;
 const KIND = new ParseEnumPipe(Object.fromEntries(MASTER_KINDS.map((k) => [k, k])));
 
 interface RequestUser {
@@ -71,13 +73,18 @@ export class OrgStructureController {
     return this.scope.require(req, 'org.settings.manage', entityId);
   }
 
-  /** Answer 1485: a leave-page setting may be changed with leave.settings.manage instead (same entity reach); others need org.settings.manage. */
+  /**
+   * Answer 1485: a leave-page setting may be changed with leave.settings.manage instead (same entity reach); S-8 (answer
+   * 1323): an expenses setting with expense.policy.manage, a performance setting with perf.setup.manage. Others need
+   * org.settings.manage.
+   */
   private async manageSetting(req: Request, key: string, entityId: string | null) {
-    if (!LEAVE_PAGE_KEYS.has(key)) return this.manage(req, entityId);
+    const module = moduleSettingKey(key);
+    if (!module) return this.manage(req, entityId);
     try {
       await this.manage(req, entityId);
     } catch {
-      await this.scope.require(req, 'leave.settings.manage', entityId);
+      await this.scope.require(req, module, entityId);
     }
   }
 
@@ -343,7 +350,7 @@ export class OrgStructureController {
   // ---- scoped settings (P01 §4.6) ----
 
   @Get('settings')
-  @RequireAnyPermission(...VIEW, 'payroll.setup.manage', 'leave.settings.manage')
+  @RequireAnyPermission(...VIEW, 'payroll.setup.manage', 'leave.settings.manage', ...MODULE_READ)
   listSettings(@CurrentTenant() ctx: TenantContext) {
     return this.settings.list(ctx);
   }
@@ -354,7 +361,7 @@ export class OrgStructureController {
    * or Projects manage; every other one the keys that read the company settings (as GET settings).
    */
   @Get('settings/history')
-  @RequireAnyPermission(...VIEW, 'payroll.setup.manage', 'leave.settings.manage', 'projects.manage')
+  @RequireAnyPermission(...VIEW, 'payroll.setup.manage', 'leave.settings.manage', 'projects.manage', ...MODULE_READ)
   async settingsHistory(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: SettingsHistoryQueryDto) {
     const keys = [...new Set(q.keys.split(',').map((k) => k.trim()).filter(Boolean))];
     if (!keys.length || keys.length > 300) throw new BadRequestException('Name between 1 and 300 settings.');
@@ -366,7 +373,7 @@ export class OrgStructureController {
       return false;
     };
     const projectKey = (k: string) => k.startsWith('projects.') || k === 'timesheet.tool_suggestions';
-    const readsCompany = await holds(...VIEW, 'payroll.setup.manage', 'leave.settings.manage');
+    const readsCompany = await holds(...VIEW, 'payroll.setup.manage', 'leave.settings.manage', ...MODULE_READ);
     const readsProjects = await holds('org.settings.manage', 'projects.manage');
     for (const k of keys) {
       if (!SETTINGS[k]) throw new BadRequestException(`Unknown setting ${k}`);
@@ -384,7 +391,7 @@ export class OrgStructureController {
   }
 
   @Put('settings')
-  @RequireAnyPermission('org.settings.manage', 'leave.settings.manage')
+  @RequireAnyPermission('org.settings.manage', 'leave.settings.manage', 'expense.policy.manage', 'perf.setup.manage')
   async setSetting(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: SettingDto) {
     ownSession(req);
     await this.manageSetting(req, dto.key, await this.scope.settingEntity(ctx, dto.scopeType, dto.scopeId));

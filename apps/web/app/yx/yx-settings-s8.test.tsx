@@ -1,0 +1,88 @@
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ToastProvider } from '@yukthix/ui';
+import { useParams, useRouter } from 'next/navigation';
+import { apiFetch } from '../../lib/api-client';
+import { useAuth } from '../../lib/auth-context';
+import { buildNav, type NavInput } from '../../lib/yx-nav';
+import { YxNavContext } from '../../lib/yx-shell';
+import YxFinanceSettingsPage from './(app)/settings/finance/[page]/page';
+import YxTalentSettingsPage from './(app)/settings/talent/[page]/page';
+
+jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn() }));
+jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), apiFetchBlob: jest.fn() }));
+jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
+
+// Settings S-8 (answer 1323): 4.8 Expenses & travel and 6.3 Performance with the company choices that had no screen.
+const api = apiFetch as jest.Mock;
+const ue = userEvent.setup({ pointerEventsCheck: 0 });
+const base: NavInput = { has: () => false, role: 'panel', support: false, employee: false, manager: false, history: false, clearance: false, tasks: false, firstDays: false };
+const ADMIN = buildNav({ ...base, has: () => true, role: 'org_admin' });
+const REGISTRY = {
+  'expense.gst.capture': { label: 'Expenses: capture GST for input credit', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', 'on'], default: 'off' },
+  'expense.finance_audit': { label: 'Expenses: finance check of claims', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', 'flagged_only', 'all'], default: 'flagged_only' },
+  'perf.goal.approval': { label: 'Performance: the manager approves a person’s goals', scopes: ['tenant'], dated: false, values: ['manager', 'none'], default: 'manager' },
+  'payroll.settings.second_person': { label: 'Payroll setting changes need a second person', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+};
+const calls: [string, unknown][] = [];
+const routes = (perms: string[]) =>
+  api.mockImplementation(async (path: string, init?: RequestInit) => {
+    if (init?.method === 'PUT' || init?.method === 'POST') return (calls.push([`${init.method} ${path}`, JSON.parse(String(init.body))]), { pending: true });
+    if (path.startsWith('/rbac/me/permissions')) return perms;
+    if (path === '/org/settings') return { registry: REGISTRY, limits: {}, pending: [], overrides: [] };
+    if (path === '/org/legal-entities') return [{ id: 'e1', name: 'Kaveri Foods Pvt Ltd' }];
+    if (path === '/org/locations') return [{ id: 'l1', name: 'Hosur plant' }];
+    if (path.startsWith('/org/masters/')) return [];
+    throw new Error(`unexpected ${path}`);
+  });
+const show = (Page: () => JSX.Element, slug: string) => {
+  (useParams as jest.Mock).mockReturnValue({ page: slug });
+  return render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <ToastProvider>
+        <YxNavContext.Provider value={{ nav: ADMIN, ready: true }}>
+          <Page />
+        </YxNavContext.Provider>
+      </ToastProvider>
+    </QueryClientProvider>,
+  );
+};
+
+beforeEach(() => {
+  api.mockReset();
+  calls.length = 0;
+  (useAuth as jest.Mock).mockReturnValue({ accessToken: 't' });
+  (useRouter as jest.Mock).mockReturnValue({ push: jest.fn(), replace: jest.fn() });
+});
+
+describe('Settings S-8: Expenses & travel (4.8) and Performance (6.3)', () => {
+  it('expense set-up changes a setting on 4.8 at once (no second person), with the link to the policy matrix', async () => {
+    routes(['expense.policy.manage']);
+    show(YxFinanceSettingsPage, 'expenses-and-travel');
+    expect(await screen.findByRole('combobox', { name: /finance check of claims/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Open policy matrix/ })).toBeInTheDocument();
+    await ue.click(screen.getByRole('checkbox', { name: /capture GST/ }));
+    expect(screen.queryByRole('button', { name: 'Send for approval' })).toBeNull();
+    await ue.click(screen.getAllByRole('button', { name: 'Save changes' })[0]!);
+    await waitFor(() => expect(calls).toEqual([['PUT /org/settings', { key: 'expense.gst.capture', value: 'on', scopeType: 'tenant' }]]));
+  });
+
+  it('negative: an expense policy viewer sees 4.8 view only', async () => {
+    routes(['expense.policy.view']);
+    show(YxFinanceSettingsPage, 'expenses-and-travel');
+    expect(await screen.findByText(/finance check of claims/)).toBeInTheDocument();
+    expect(screen.getByText('View only')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();
+  });
+
+  it('performance set-up opens 6.3 with its settings; negative: an address for another page under it shows no access, never another page', async () => {
+    routes(['perf.setup.manage']);
+    const { unmount } = show(YxTalentSettingsPage, 'performance');
+    expect(await screen.findByText(/the manager approves a person/)).toBeInTheDocument();
+    unmount();
+    show(YxTalentSettingsPage, 'expenses-and-travel');
+    expect(await screen.findByText(/You don't have access to/)).toBeInTheDocument();
+    expect(screen.queryByText(/finance check of claims/)).toBeNull();
+  });
+});
