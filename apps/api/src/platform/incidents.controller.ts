@@ -1,10 +1,10 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { PlatformStaffGuard } from './platform-staff.guard';
-import { IncidentBreachDto, IncidentOpenDto, IncidentReviewDto, IncidentSettingsDto, IncidentUpdateDto } from './incidents.dto';
+import { IncidentBreachDto, IncidentOpenDto, IncidentReviewDto, IncidentUpdateDto } from './incidents.dto';
 import { IncidentsService } from './incidents.service';
 
 // YukthiX console C-8, YX-10 incidents (and answer 1124): staff only, on their own platform session with their security
@@ -46,9 +46,4 @@ export class IncidentsController {
     return this.incidents.markBreach(actor, id, dto.containmentId);
   }
 
-  @Put('settings')
-  @RequirePermissions('platform.incidents.manage')
-  saveSettings(@CurrentUserId() actor: string, @Body() dto: IncidentSettingsDto) {
-    return this.incidents.saveSettings(actor, dto.leadHours);
-  }
 }

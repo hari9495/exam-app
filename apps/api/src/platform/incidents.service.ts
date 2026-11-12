@@ -6,8 +6,8 @@ import { PLATFORM, platformRead } from './platform.service';
 import type { IncidentOpenDto, IncidentReviewDto, IncidentUpdateDto } from './incidents.dto';
 
 type Tx = Prisma.TransactionClient;
-const LEAD_KEY = 'incident.breach_reminder_lead_hours';
-const LEAD_DEFAULT = 1;
+export const LEAD_KEY = 'incident.breach_reminder_lead_hours';
+export const LEAD_DEFAULT = 1;
 const HOUR = 3_600_000;
 export const incidentRef = (n: number) => `INC-${String(n).padStart(3, '0')}`;
 const istTime = (d: Date) => d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
@@ -153,15 +153,6 @@ export class IncidentsService {
       if (!c) throw new BadRequestException('Choose a containment from the list.');
       await tx.platformIncident.update({ where: { id }, data: { securityBreach: true, containmentId, version: { increment: 1 } } });
       await AuditService.recordIn(tx, PLATFORM, { actorUserId, action: 'platform.incident.marked_breach', entityType: 'platform_incident', entityId: id, metadata: { containmentId, organizationId: c.organizationId, certinDueAt: c.certinDueAt.toISOString(), dpdpDueAt: c.dpdpDueAt.toISOString() } });
-    });
-    return this.overview(actorUserId);
-  }
-
-  async saveSettings(actorUserId: string, leadHours: number) {
-    await this.tenantPrisma.forTenant(PLATFORM, async (tx) => {
-      const before = await this.leadHours(tx);
-      await tx.platformSetting.upsert({ where: { key: LEAD_KEY }, create: { key: LEAD_KEY, value: String(leadHours), label: 'Breach reminders: hours before the CERT-In and DPDP due times', updatedBy: actorUserId }, update: { value: String(leadHours), updatedBy: actorUserId } });
-      await AuditService.recordIn(tx, PLATFORM, { actorUserId, action: 'platform.incident.settings_changed', entityType: 'platform_setting', entityId: LEAD_KEY, metadata: { before, after: leadHours } });
     });
     return this.overview(actorUserId);
   }

@@ -5,10 +5,10 @@ import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
-import { Card } from '../../components/shell';
+import { Card, DescriptionList } from '../../components/shell';
 import { EmptyState, InlineAlert } from '../../components/feedback';
 import { FieldRow, FormField, useTooEarly } from '../../components/field';
-import { NumberField, TextArea, TextField } from '../../components/inputs';
+import { TextArea, TextField } from '../../components/inputs';
 import { Drawer } from '../../components/drawer';
 import { Dialog } from '../../components/overlay';
 import { RichTextEditor } from '../../components/editor';
@@ -77,7 +77,10 @@ export interface LiveHelpCentre {
   /** Answer 1203: ask to retire a published article (a reason); another staff member approves it. */
   onRetire?: (id: string, reason: string) => Promise<HelpDetail>;
   onApproveRetire?: (id: string) => Promise<HelpDetail>;
-  onSaveSettings: (values: Record<string, number>) => Promise<unknown>;
+  /** Answer 1263: the person who asked takes the request back while it waits. */
+  onWithdrawRetire?: (id: string) => Promise<HelpDetail>;
+  /** Answer 1261: the rules change only in Console › Platform settings (absent without platform.settings.manage). */
+  onOpenPlatformSettings?: () => void;
   /** Stories: open the editor on this article (or a new one). */
   defaultOpen?: HelpDetail | 'new';
 }
@@ -232,6 +235,11 @@ function Editor({ live, detail, initialTitle, onClose, onChanged }: { live: Live
           Retire
         </Button>
       )}
+      {detail?.state === 'published' && retire?.mine && live.onWithdrawRetire && (
+        <Button loading={busy === 'withdraw'} onClick={() => void act('withdraw', () => live.onWithdrawRetire!(detail.id), 'Retire request withdrawn')}>
+          Withdraw request
+        </Button>
+      )}
       {detail?.state === 'published' && retire && !retire.mine && live.onApproveRetire && (
         <Button variant="danger" loading={busy === 'retire'} onClick={() => void act('retire', () => live.onApproveRetire!(detail.id), 'Retired for every company')}>
           Approve retire
@@ -317,51 +325,15 @@ function Editor({ live, detail, initialTitle, onClose, onChanged }: { live: Live
   );
 }
 
+/** Answer 1261: read here, changed in Console › Platform settings with the security key and a reason. */
 function SettingsCard({ live }: { live: LiveHelpCentre }) {
-  const [draft, setDraft] = useState<Record<string, number | null>>(Object.fromEntries(live.settings.map((s) => [s.key, s.value])));
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState<string | null>(null);
-  const { toast } = useToast();
-  const early = useTooEarly(
-    live.settings.flatMap((s) => {
-      const v = draft[s.key];
-      return v === null || v === undefined || !Number.isInteger(v) || v < s.min || v > s.max ? [{ fieldId: `hcs-${s.key}`, message: `Give a whole number from ${s.min} to ${s.max}.` }] : [];
-    }),
-  );
   if (!live.settings.length) return null;
   return (
-    <Card
-      title="No-result search rules"
-      actions={
-        <Button
-          size="sm"
-          loading={busy}
-          onClick={async () => {
-            if (early.stop()) return;
-            setBusy(true);
-            setFailed(null);
-            try {
-              await live.onSaveSettings(Object.fromEntries(live.settings.map((s) => [s.key, draft[s.key]!])));
-              toast({ tone: 'success', title: 'Rules saved' });
-            } catch (e) {
-              setFailed(errorText(e));
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          Save rules
-        </Button>
-      }
-    >
-      {failed && <InlineAlert tone="danger" title={failed} />}
-      <FieldRow>
-        {live.settings.map((s) => (
-          <FormField key={s.key} id={`hcs-${s.key}`} label={s.label} helper={`Default ${s.default}.`} error={early.errorOf(`hcs-${s.key}`)}>
-            <NumberField value={draft[s.key] ?? null} onChange={(v) => setDraft((d) => ({ ...d, [s.key]: v }))} min={s.min} max={s.max} />
-          </FormField>
-        ))}
-      </FieldRow>
+    <Card title="No-result search rules" actions={live.onOpenPlatformSettings ? <Button size="sm" onClick={live.onOpenPlatformSettings}>Change in Platform settings</Button> : undefined}>
+      <div className="yx-ps-stack">
+        <DescriptionList items={live.settings.map((s) => ({ label: s.label, value: s.value === s.default ? `${s.value} (the default)` : `${s.value} (default ${s.default})` }))} />
+        <p className="yx-ps-muted">Changed in Console › Platform settings, with your security key and a reason.</p>
+      </div>
     </Card>
   );
 }

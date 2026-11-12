@@ -1,10 +1,10 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { PlatformStaffGuard } from '../platform/platform-staff.guard';
-import { HelpArticleDto, HelpReviewDto, HelpSaveDto, HelpSettingsDto, HelpSubmitDto, HelpRetireDto } from './help-centre.dto';
+import { HelpArticleDto, HelpReviewDto, HelpSaveDto, HelpSubmitDto, HelpRetireDto } from './help-centre.dto';
 import { HelpCentreService } from './help-centre.service';
 
 // YukthiX console C-8, YX-11 (answer 1057): the help-centre editor. Staff only, on their own platform session with their
@@ -60,6 +60,13 @@ export class HelpCentreController {
     return this.help.requestRetire(actor, id, dto.reason);
   }
 
+  @Post('articles/:id/retire/withdraw')
+  @HttpCode(200)
+  @RequirePermissions('platform.helpcentre.write')
+  withdrawRetire(@CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.help.withdrawRetire(actor, id);
+  }
+
   @Post('articles/:id/retire/approve')
   @HttpCode(200)
   @RequirePermissions('platform.helpcentre.write')
@@ -67,9 +74,4 @@ export class HelpCentreController {
     return this.help.approveRetire(actor, id);
   }
 
-  @Put('settings')
-  @RequirePermissions('platform.helpcentre.write')
-  saveSettings(@CurrentUserId() actor: string, @Body() dto: HelpSettingsDto) {
-    return this.help.saveSettings(actor, dto);
-  }
 }

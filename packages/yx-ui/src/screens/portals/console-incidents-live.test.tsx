@@ -22,7 +22,6 @@ const live = (o: Partial<LiveIncidents> = {}): LiveIncidents => ({
   onUpdate: vi.fn().mockResolvedValue(undefined),
   onReview: vi.fn().mockResolvedValue(undefined),
   onMarkBreach: vi.fn().mockResolvedValue(undefined),
-  onSaveSettings: vi.fn().mockResolvedValue(undefined),
   ...o,
 });
 const show = (l: LiveIncidents) => wrap(<IncidentComposerScreen incidents={[]} me="" now={new Date()} liveIncidents={l} />);
@@ -88,16 +87,18 @@ describe('Incidents (live)', () => {
     expect(within(d2).getByText(/Other companies never see this incident/)).toBeInTheDocument();
   });
 
-  it('the reminder lead cannot be saved empty; a valid one is saved', async () => {
-    const onSaveSettings = vi.fn().mockResolvedValue(undefined);
-    show(live({ onSaveSettings }));
-    const field = screen.getByRole('textbox', { name: /Hours before the CERT-In and DPDP due times/ });
-    await userEvent.clear(field);
-    await userEvent.click(screen.getByRole('button', { name: 'Save rule' }));
-    expect(onSaveSettings).not.toHaveBeenCalled();
-    await userEvent.type(field, '2');
-    await userEvent.click(screen.getByRole('button', { name: 'Save rule' }));
-    await waitFor(() => expect(onSaveSettings).toHaveBeenCalledWith(2));
+  // Answer 1261: the lead time is read here and changed in Console › Platform settings.
+  it('the reminder lead shows its value and default; only someone who may change it gets the link', async () => {
+    const onOpenPlatformSettings = vi.fn();
+    const first = show(live({ settings: { leadHours: 3, leadHoursDefault: 1 }, onOpenPlatformSettings }));
+    expect(screen.getByText('3 (default 1)')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: /Hours before the CERT-In/ })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Change in Platform settings' }));
+    expect(onOpenPlatformSettings).toHaveBeenCalled();
+    first.unmount();
+    show(live());
+    expect(screen.getByText('1 (the default)')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Change in Platform settings' })).toBeNull();
   });
 });
 

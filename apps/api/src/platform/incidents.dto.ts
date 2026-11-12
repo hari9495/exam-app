@@ -34,6 +34,3 @@ export class IncidentBreachDto {
   @IsUUID() containmentId!: string;
 }
 
-export class IncidentSettingsDto {
-  @Type(() => Number) @IsInt() @Min(0) @Max(24) leadHours!: number;
-}

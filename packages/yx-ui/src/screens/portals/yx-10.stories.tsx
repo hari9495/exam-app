@@ -80,7 +80,7 @@ const INC_ROWS: IncidentLiveRow[] = [
 ];
 const inc = (o: Partial<LiveIncidents> = {}) => (
   <ConsoleShell active="incidents" name="Anand Iyer" email="anand.iyer@yukthix.test" securityHref="#" onSignOut={() => {}} onNavigate={() => {}}>
-    <IncidentComposerScreen incidents={[]} me="Anand Iyer" now={MW_NOW} liveIncidents={{ state: 'ready', onRetry: () => {}, incidents: INC_ROWS, containments: [], products: [{ code: 'hrms', name: 'YukthiX HR' }, { code: 'hire', name: 'YukthiX Hire' }], settings: { leadHours: 1, leadHoursDefault: 1 }, onOpen: wait, onUpdate: wait, onReview: wait, onMarkBreach: wait, onSaveSettings: wait, ...o }} />
+    <IncidentComposerScreen incidents={[]} me="Anand Iyer" now={MW_NOW} liveIncidents={{ state: 'ready', onRetry: () => {}, incidents: INC_ROWS, containments: [], products: [{ code: 'hrms', name: 'YukthiX HR' }, { code: 'hire', name: 'YukthiX Hire' }], settings: { leadHours: 1, leadHoursDefault: 1 }, onOpen: wait, onUpdate: wait, onReview: wait, onMarkBreach: wait, onOpenPlatformSettings: () => {}, ...o }} />
   </ConsoleShell>
 );
 export const YX10IncidentsLive: S = { name: 'Incidents · list and what companies see (C-8)', render: () => inc() };

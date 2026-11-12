@@ -28,7 +28,6 @@ const live = (o: Partial<LiveHelpCentre> = {}): LiveHelpCentre => ({
   onSave: vi.fn(),
   onSubmit: vi.fn(),
   onReview: vi.fn(),
-  onSaveSettings: vi.fn().mockResolvedValue(undefined),
   ...o,
 });
 const show = (l: LiveHelpCentre) => wrap(<HelpEditorScreen articles={[]} noResults={[]} today={new Date('2026-11-12')} live={l} />);
@@ -82,16 +81,18 @@ describe('Help centre (live)', () => {
     expect((await screen.findAllByText('Published for every company')).length).toBeGreaterThan(0);
   });
 
-  it('the rule cannot be saved empty; a valid one is saved', async () => {
-    const onSaveSettings = vi.fn().mockResolvedValue(undefined);
-    show(live({ onSaveSettings }));
-    const field = screen.getByRole('textbox', { name: /Show a no-result search/ });
-    await userEvent.clear(field);
-    await userEvent.click(screen.getByRole('button', { name: 'Save rules' }));
-    expect(onSaveSettings).not.toHaveBeenCalled();
-    await userEvent.type(field, '6');
-    await userEvent.click(screen.getByRole('button', { name: 'Save rules' }));
-    await waitFor(() => expect(onSaveSettings).toHaveBeenCalledWith({ 'helpcentre.gaps_min_companies': 6 }));
+  // Answer 1261: the rule is read here and changed in Console › Platform settings.
+  it('the rule shows its value and default; only someone who may change it gets the link', async () => {
+    const onOpenPlatformSettings = vi.fn();
+    const first = show(live({ settings: [{ key: 'helpcentre.gaps_min_companies', label: 'Show a no-result search once this many companies searched it', value: 7, default: 5, min: 5, max: 100 }], onOpenPlatformSettings }));
+    expect(screen.getByText('7 (default 5)')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: /Show a no-result search/ })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Change in Platform settings' }));
+    expect(onOpenPlatformSettings).toHaveBeenCalled();
+    first.unmount();
+    show(live());
+    expect(screen.getByText('5 (the default)')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Change in Platform settings' })).toBeNull();
   });
 });
 
@@ -122,5 +123,18 @@ describe('retiring an article', () => {
     show(live({ defaultOpen: published({ requestedBy: 'Joseph Thomas', mine: false, reason: 'Old', at: '2026-11-12T08:00:00Z' }), onRetire: vi.fn(), onApproveRetire }));
     await userEvent.click(screen.getByRole('button', { name: 'Approve retire' }));
     await waitFor(() => expect(onApproveRetire).toHaveBeenCalledWith('h1'));
+  });
+
+  // Answer 1263: the person who asked withdraws while it waits; nobody else sees Withdraw.
+  it('the person who asked withdraws the request; someone else cannot', async () => {
+    const onWithdrawRetire = vi.fn().mockResolvedValue(published(null));
+    const theirs = show(live({ defaultOpen: published({ requestedBy: 'Joseph Thomas', mine: false, reason: 'Old', at: '2026-11-12T08:00:00Z' }), onRetire: vi.fn(), onApproveRetire: vi.fn(), onWithdrawRetire }));
+    expect(screen.queryByRole('button', { name: 'Withdraw request' })).toBeNull();
+    theirs.unmount();
+    show(live({ defaultOpen: published({ requestedBy: 'You', mine: true, reason: 'Old', at: '2026-11-12T08:00:00Z' }), onRetire: vi.fn(), onApproveRetire: vi.fn(), onWithdrawRetire }));
+    await userEvent.click(screen.getByRole('button', { name: 'Withdraw request' }));
+    await waitFor(() => expect(onWithdrawRetire).toHaveBeenCalledWith('h1'));
+    expect((await screen.findAllByText('Retire request withdrawn')).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'Retire' })).toBeInTheDocument();
   });
 });

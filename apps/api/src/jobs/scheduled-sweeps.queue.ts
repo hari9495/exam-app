@@ -72,4 +72,6 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'incident-breach-reminders', cron: '*/5 * * * *' },
   // Console 1165: each company's health snapshot for the India day, alert follow-up sync and the snapshot purge (01:30 IST).
   { id: 'cs-health-snapshot', cron: '0 20 * * *' },
+  // Console 1243: invited staff who never signed in are deactivated after staff.invite.expire_days (02:15 IST).
+  { id: 'staff-invite-expiry', cron: '45 20 * * *' },
 ];

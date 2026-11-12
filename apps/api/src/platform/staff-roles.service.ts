@@ -62,6 +62,9 @@ export const KEY_WORDS: Record<string, string> = {
 
 /** Answer 1173: how many times a day the invitation may be sent again to one person (platform setting). */
 export const RESEND_KEY = 'staff.invite.resends_per_day';
+/** Answer 1243: days after the latest invitation before an invited member of staff who never signed in is deactivated. */
+export const INVITE_EXPIRE_KEY = 'staff.invite.expire_days';
+export const INVITE_EXPIRE_DEFAULT = 30;
 export const RESEND_DEFAULT = 3;
 /** The start of today in India (IST, UTC+5:30). */
 const istDayStart = (now: Date) => {
@@ -220,4 +223,23 @@ export class StaffRolesService {
       return { id: userId, roles: STAFF_ROLES.filter((r) => want.includes(r)) };
     });
   }
+
+  /**
+   * Answer 1243 (nightly sweep 'staff-invite-expiry'): deactivates invited staff who never signed in, more than
+   * staff.invite.expire_days after their latest invitation, as the system. The database function never touches anyone
+   * who has signed in, nor the last active Security lead; a rerun finds nobody new. Audited per person and once per run.
+   */
+  async expireInvites(now = new Date()) {
+    return this.tenantPrisma.forTenant(PLATFORM, async (tx) => {
+      const v = Number((await tx.platformSetting.findUnique({ where: { key: INVITE_EXPIRE_KEY } }))?.value);
+      const days = Number.isInteger(v) && v >= 7 && v <= 90 ? v : INVITE_EXPIRE_DEFAULT;
+      const rows = await tx.$queryRaw<{ id: string }[]>`SELECT platform_expire_invited_staff(${days}::int, ${now}::timestamptz) AS id`;
+      for (const r of rows) {
+        await AuditService.recordIn(tx, PLATFORM, { actorUserId: null, action: 'platform.staff.deactivated', entityType: 'user', entityId: r.id, metadata: { automatically: true, reason: `Invited and never signed in for more than ${days} days`, [INVITE_EXPIRE_KEY]: days } });
+      }
+      await AuditService.recordIn(tx, PLATFORM, { actorUserId: null, action: 'platform.staff.invites_expired', entityType: 'platform_setting', entityId: INVITE_EXPIRE_KEY, metadata: { [INVITE_EXPIRE_KEY]: days, deactivated: rows.map((r) => r.id) } });
+      return { days, deactivated: rows.map((r) => r.id) };
+    });
+  }
+
 }

@@ -4,7 +4,7 @@ import { AuditService, TenantPrismaService } from '@exam-platform/shared';
 import { platformRead, PLATFORM } from '../platform/platform.service';
 import { audit, type DeskActor } from './desk-access';
 import { KbService, PLATFORM_HELP_SPACE } from './kb.service';
-import type { HelpArticleDto, HelpReviewDto, HelpSaveDto, HelpSettingsDto } from './help-centre.dto';
+import type { HelpArticleDto, HelpReviewDto, HelpSaveDto } from './help-centre.dto';
 
 type Tx = Prisma.TransactionClient;
 
@@ -113,6 +113,20 @@ export class HelpCentreService {
     return this.get(staffUserId, id);
   }
 
+  /** Answer 1263: the person who asked takes the retire request back while it waits; it can never be approved after. */
+  async withdrawRetire(staffUserId: string, id: string) {
+    await this.actor(staffUserId);
+    await this.tenantPrisma.forTenant(PLATFORM, async (tx) => {
+      const req = await tx.helpArticleRetirement.findFirst({ where: { articleId: id, status: 'pending' } });
+      if (!req) throw new NotFoundException('No retire request is waiting for this article.');
+      if (req.requestedBy !== staffUserId) throw new ForbiddenException('Only the person who asked withdraws the request.');
+      const done = await tx.helpArticleRetirement.updateMany({ where: { id: req.id, status: 'pending' }, data: { status: 'withdrawn', decidedAt: new Date() } });
+      if (!done.count) throw new ConflictException('This retire request was already decided.');
+      await AuditService.recordIn(tx, PLATFORM, { actorUserId: staffUserId, action: 'platform.helpcentre.retire_withdrawn', entityType: 'sd_kb_article', entityId: id, metadata: { requestId: req.id } });
+    });
+    return this.get(staffUserId, id);
+  }
+
   /** The second staff member approves: the article is retired and leaves every company's Help drawer. Never the asker. */
   async approveRetire(staffUserId: string, id: string) {
     const a = await this.actor(staffUserId);
@@ -160,17 +174,4 @@ export class HelpCentreService {
     return this.kb.get(a, id);
   }
 
-  async saveSettings(staffUserId: string, dto: HelpSettingsDto) {
-    for (const [k, v] of Object.entries(dto.values)) {
-      const def = HELP_SETTINGS[k as HelpKey];
-      if (!def) throw new BadRequestException(`Unknown setting: ${k}.`);
-      if (!Number.isInteger(v) || v < def.min || v > def.max) throw new BadRequestException(`${def.label}: give a whole number from ${def.min} to ${def.max}.`);
-    }
-    await this.tenantPrisma.forTenant(PLATFORM, async (tx) => {
-      const before = await this.settings(tx);
-      for (const [key, v] of Object.entries(dto.values)) await tx.platformSetting.upsert({ where: { key }, create: { key, value: String(v), updatedBy: staffUserId }, update: { value: String(v), updatedBy: staffUserId } });
-      await AuditService.recordIn(tx, PLATFORM, { actorUserId: staffUserId, action: 'platform.helpcentre.settings_changed', entityType: 'platform_setting', metadata: { before, after: await this.settings(tx) } });
-    });
-    return this.overview(staffUserId);
-  }
 }

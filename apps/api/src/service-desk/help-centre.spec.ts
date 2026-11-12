@@ -14,7 +14,7 @@ describe('help-centre routes', () => {
     expect(Reflect.getMetadata(GUARDS_METADATA, HelpCentreController)).toEqual([JwtAuthGuard, PlatformStaffGuard, PermissionsGuard]);
     const proto = HelpCentreController.prototype as unknown as Record<string, object>;
     const list = Object.getOwnPropertyNames(proto).filter((m) => m !== 'constructor' && Reflect.getMetadata(PATH_METADATA, proto[m]) !== undefined);
-    expect(list.sort()).toEqual(['approveRetire', 'create', 'get', 'overview', 'requestRetire', 'review', 'save', 'saveSettings', 'submit']);
+    expect(list.sort()).toEqual(['approveRetire', 'create', 'get', 'overview', 'requestRetire', 'review', 'save', 'submit', 'withdrawRetire']);
     for (const name of list) {
       const keys = [...(Reflect.getMetadata(PERMISSIONS_KEY, proto[name]) ?? []), ...(Reflect.getMetadata(PERMISSIONS_ANY_KEY, proto[name]) ?? [])];
       expect({ name, keys }).toEqual({ name, keys: ['platform.helpcentre.write'] });

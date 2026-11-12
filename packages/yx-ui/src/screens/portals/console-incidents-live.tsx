@@ -5,10 +5,10 @@
 import { useState } from 'react';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
-import { Card } from '../../components/shell';
+import { Card, DescriptionList } from '../../components/shell';
 import { EmptyState, InlineAlert } from '../../components/feedback';
 import { FieldRow, FormField, useTooEarly } from '../../components/field';
-import { NumberField, TextArea, TextField } from '../../components/inputs';
+import { TextArea, TextField } from '../../components/inputs';
 import { MultiSelect, Select } from '../../components/select';
 import { Checkbox } from '../../components/choice';
 import { Drawer } from '../../components/drawer';
@@ -81,7 +81,8 @@ export interface LiveIncidents {
   onUpdate: (id: string, input: IncidentUpdateInput) => Promise<unknown>;
   onReview: (id: string, updateId: string, approve: boolean, note?: string) => Promise<unknown>;
   onMarkBreach: (id: string, containmentId: string) => Promise<unknown>;
-  onSaveSettings: (leadHours: number) => Promise<unknown>;
+  /** Answer 1261: the lead time changes only in Console › Platform settings (absent without platform.settings.manage). */
+  onOpenPlatformSettings?: () => void;
   /** Stories: open the drawer on this incident (or a new one). */
   defaultOpen?: string | 'new';
 }
@@ -376,40 +377,13 @@ function BreachCard({ incident, live, containment, setContainment, errorOf, busy
 
 /** Answer 1124: how long before each due time the reminder goes (a platform setting with a default). */
 function LeadCard({ live }: { live: LiveIncidents }) {
-  const [lead, setLead] = useState<number | null>(live.settings.leadHours);
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState<string | null>(null);
-  const { toast } = useToast();
-  const early = useTooEarly(lead === null || !Number.isInteger(lead) || lead < 0 || lead > 24 ? [{ fieldId: 'inc-lead', message: 'Give a whole number from 0 to 24.' }] : []);
+  const { leadHours: v, leadHoursDefault: d } = live.settings;
   return (
-    <Card
-      title="Breach reminders"
-      actions={
-        <Button
-          size="sm"
-          loading={busy}
-          onClick={async () => {
-            if (early.stop()) return;
-            setBusy(true);
-            setFailed(null);
-            try {
-              await live.onSaveSettings(lead!);
-              toast({ tone: 'success', title: 'Reminder rule saved' });
-            } catch (e) {
-              setFailed(errorText(e));
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          Save rule
-        </Button>
-      }
-    >
-      {failed && <InlineAlert tone="danger" title={failed} />}
-      <FormField id="inc-lead" label="Hours before the CERT-In and DPDP due times" helper={`Default ${live.settings.leadHoursDefault}. 0 sends it at the due time.`} error={early.errorOf('inc-lead')}>
-        <NumberField value={lead} onChange={setLead} min={0} max={24} />
-      </FormField>
+    <Card title="Breach reminders" actions={live.onOpenPlatformSettings ? <Button size="sm" onClick={live.onOpenPlatformSettings}>Change in Platform settings</Button> : undefined}>
+      <div className="yx-ps-stack">
+        <DescriptionList items={[{ label: 'Hours before the CERT-In and DPDP due times', value: v === d ? `${v} (the default)` : `${v} (default ${d})` }]} />
+        <p className="yx-ps-muted">Changed in Console › Platform settings, with your security key and a reason. 0 sends it at the due time.</p>
+      </div>
     </Card>
   );
 }
