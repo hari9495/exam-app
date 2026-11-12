@@ -4,6 +4,7 @@ import { TicketWorkspaceScreen } from './helpdesk';
 import { ARTICLES, MACROS, TICKETS, TICKET_ACTIVITY, TICKET_MESSAGES } from './helpdesk-data';
 import { TODAY } from '../_kit/data';
 import { liveTicket } from './helpdesk-ticket-live-samples';
+import { AGENT_TICKET_FIELDS, LEAD_TICKET_FIELDS } from '../desk/ticket-fields-sample';
 import { DESK, DETAIL, TICKET, WORK } from '../desk/data';
 import { DOCS_VIEW, HR_SUMMARY, KB_LINKS, PICKS, SEQUENCES, SEQUENCE_RUNS, SHARES, TICKET_REQUEST } from '../desk/esm-data';
 import { RequestPanel } from '../desk/request-panel';
@@ -120,6 +121,11 @@ export const ResolvedRated: S = { name: 'Resolved · closes on, the rating', ren
 export const OutsideHours: S = { name: 'Raised outside hours', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, raisedOutsideHours: true } })} /> };
 // Answer 1661: an IT desk's agent sets or changes the device a ticket is about (any company device, by tag or name).
 export const Device: S = { name: 'IT ticket · device set by an IT agent', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, device: { id: 'as1', label: 'Dell Latitude 5440 (KF-LT-0142)', detail: 'Laptop' }, canSetDevice: true }, onPickDevice: async () => [{ id: 'as1', label: 'Dell Latitude 5440 (KF-LT-0142)', detail: 'Laptop' }, { id: 'as2', label: 'Logitech headset (KF-HS-0077)', detail: 'Accessory' }], onSetDevice: async () => undefined })} /> };
+// Answers 1641, 1650: the desk's own fields on the ticket: a team lead sees and sets every field, a first-line agent
+// not the team-lead-only one; someone who only reads sees the values.
+export const FieldsLead: S = { name: 'Fields · a team lead sets them (drop-down narrowed by another)', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, deskFields: LEAD_TICKET_FIELDS, canSetFields: true }, onSetFields: async () => undefined })} /> };
+export const FieldsAgent: S = { name: 'Fields · a first-line agent (no team-lead-only field)', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, deskFields: AGENT_TICKET_FIELDS, canSetFields: true }, onSetFields: async () => undefined })} /> };
+export const FieldsReadOnly: S = { name: 'Fields · read only', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, access: 'observer', canWork: false, deskFields: AGENT_TICKET_FIELDS, canSetFields: false } })} /> };
 export const Collaborator: S = { name: 'Collaborator · notes only', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, access: 'collaborator', canWork: false }, rail: sampleRail({ canWork: false, only: 'kb' }) })} /> };
 export const ReadOnly: S = { name: 'Desk admin · read only', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, access: 'observer', canWork: false, canNote: false } })} /> };
 export const SenderUnverified: S = { name: 'Email from an unproven sender, customer', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, channel: 'email', senderVerified: false, customer: { account: { id: 'ac1', name: 'Sunrise Retail' }, plan: 'gold' }, product: { id: 'pr1', name: 'Kaveri billing app' } } })} /> };

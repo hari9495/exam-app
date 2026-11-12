@@ -11,7 +11,7 @@ jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), apiFetchBlob: jest.fn(), API_BASE: '' }));
 jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
 
-// Desk set-up › Settings: the company's help-article review interval (HLP-04, founder 3 Nov 2026; registry
+// Desk set-up › Requesters (answer 1804): the company's help-article review interval (HLP-04, founder 3 Nov 2026; registry
 // desk.kb.review_months), for the company's Service Desk owner (desk.desk.create).
 const DESK = { id: 'd1', key: 'IT', name: 'IT help desk', kind: 'it', privacy: 'standard', numberPrefix: 'IT-', numberSuffix: '', attachmentTypes: ['pdf'], attachmentMaxMb: 10, vipRaisesPriority: false, calendarId: null, version: 1, myRole: 'admin', canWork: false };
 const DETAIL = { desk: DESK, types: [], statuses: [], categories: [], groups: [], matrix: [], members: [], scenarios: [], myRole: 'admin', canSetUp: true, canManageMembers: false };
@@ -46,7 +46,7 @@ beforeEach(() => {
   api.mockReset();
   calls.length = 0;
   (useRouter as jest.Mock).mockReturnValue({ push: jest.fn(), replace: jest.fn() });
-  (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('tab=settings'));
+  (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('tab=requesters'));
   (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok' });
 });
 

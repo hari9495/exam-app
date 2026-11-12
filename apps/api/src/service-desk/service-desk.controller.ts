@@ -25,6 +25,8 @@ import {
   CategoryDto,
   CollaboratorDto,
   ConvertDto,
+  TicketFieldDto,
+  TicketFieldValuesDto,
   TicketDeviceDto,
   CreateDeskDto,
   EditNoteDto,
@@ -156,6 +158,21 @@ export class DeskSetupController {
   async endMember(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('memberId', ParseUUIDPipe) memberId: string) {
     assertOwnSession(req);
     return this.desks.endMember(await this.access.actor(req, t), id, memberId);
+  }
+
+  /** Answers 1641, 1650: the desk's own ticket fields. */
+  @Post('desks/:id/fields')
+  @RequirePermissions('desk.settings.manage')
+  async addField(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: TicketFieldDto) {
+    assertOwnSession(req);
+    return this.desks.saveField(await this.access.actor(req, t), id, null, dto);
+  }
+
+  @Patch('desks/:id/fields/:fieldId')
+  @RequirePermissions('desk.settings.manage')
+  async editField(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('fieldId', ParseUUIDPipe) fieldId: string, @Body() dto: TicketFieldDto) {
+    assertOwnSession(req);
+    return this.desks.saveField(await this.access.actor(req, t), id, fieldId, dto);
   }
 
   @Post('desks/:id/groups')
@@ -413,6 +430,14 @@ export class DeskTicketsController {
   async setDevice(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: TicketDeviceDto) {
     assertOwnSession(req);
     return this.tickets.setDevice(await this.access.actor(req, t), id, dto.assetId);
+  }
+
+  /** Answers 1641, 1650: an agent sets the ticket's own field values (the ones their role may see). */
+  @Put('tickets/:id/fields')
+  @RequirePermissions('desk.ticket.work')
+  async setFields(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: TicketFieldValuesDto) {
+    assertOwnSession(req);
+    return this.tickets.setFields(await this.access.actor(req, t), id, dto.values);
   }
 
   @Post('tickets/:id/convert')

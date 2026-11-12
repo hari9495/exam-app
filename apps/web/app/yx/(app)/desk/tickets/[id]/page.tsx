@@ -128,6 +128,9 @@ export default function YxDeskTicketPage() {
         onRunScenario: async (scenarioId) => {
           await write(`${path}/scenarios/${encodeURIComponent(scenarioId)}`, 'POST', { version });
         },
+        onSetFields: async (values) => {
+          await write(`${path}/fields`, 'PUT', { values });
+        },
         onConvert: async (typeId, reason) => {
           await write(`${path}/convert`, 'POST', { typeId, reason });
         },

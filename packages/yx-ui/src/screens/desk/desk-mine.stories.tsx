@@ -4,6 +4,7 @@ import { play, press, tab, type } from '../_kit/story-play';
 import { HelpDrawer, MyTicketScreen } from './help';
 import { WhatsNewPanel } from '../platform-b/growth-screens';
 import { CAL_ITEMS, MY_ROWS, MY_TICKET, RAISE_DESKS, TEMPLATES, TICKET, WORK } from './data';
+import { REQUESTER_TICKET_FIELDS } from './ticket-fields-sample';
 import { ResolveDialog } from './work';
 import { MyCalendarScreen } from './calendar';
 import { MY_BANNERS } from './data';
@@ -64,5 +65,7 @@ export const HelpDrawerWhatsNew: S = {
     ),
 };
 export const HelpDrawerTooEarly: S = { name: 'US-B-100 Help drawer · Raise ticket pressed with nothing filled', render: () => shell('desk-tickets', <HelpDrawer open onOpenChange={() => {}} desks={RAISE_DESKS} tickets={MY_ROWS} banners={MY_BANNERS} onMeToo={noop} onRaise={async () => ({ id: 'x', number: 'IT-1005' })} ticketHref={(id) => `#${id}`} />), play: play(press('Raise ticket')) };
+// Answers 1641, 1650: the requester sees only the filled fields meant for everyone.
+export const MyTicketFields: S = { name: 'HLP-01 My ticket · the desk fields I may see', render: () => shell('desk-help', <MyTicketScreen state="ready" ticket={{ ...MY_TICKET, deskFields: REQUESTER_TICKET_FIELDS }} onBack={() => {}} onReply={noop} onUpload={async () => ({ ...MY_TICKET.attachments[0], id: 'n', scanStatus: 'pending' as const })} onOpenFile={noop} onAddWatcher={noop} />) };
 export const MyTicketReplyTooEarly: S = { name: 'HLP-01 My ticket · Send reply pressed with nothing written', render: MyTicket.render, play: play(press('Send reply')) };
 export const MyTicketWatchTooEarly: S = { name: 'HLP-01 My ticket · Add colleague pressed with no email', render: MyTicket.render, play: play(press('Add')) };

@@ -3986,6 +3986,8 @@ model SdTicket {
   originQuery          String?                  @map("origin_query") @db.VarChar(200)
   /// Answers 1661, 1662: the device (People asset register) an IT desk ticket is about.
   assetId              String?                  @map("asset_id") @db.Uuid
+  /// Answers 1641, 1650: the desk's own field values, keyed by the field's key (the API strips what a viewer may not see).
+  fieldValues          Json                     @default("{}") @map("field_values")
   contentRemovedAt     DateTime?                @map("content_removed_at") @db.Timestamptz(3)
   /// SD-2.10: the site set-up used (requester's location).
   branchId             String?                  @map("branch_id") @db.Uuid
@@ -13988,4 +13990,30 @@ model HelpArticleRetirement {
   decidedAt   DateTime? @map("decided_at") @db.Timestamptz(3)
 
   @@map("help_article_retirements")
+}
+
+/// Answers 1641, 1650: a desk's own ticket field (for every ticket of the desk, or for one ticket type).
+model SdTicketField {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  deskId         String   @map("desk_id") @db.Uuid
+  ticketTypeId   String?  @map("ticket_type_id") @db.Uuid
+  key            String   @db.VarChar(40)
+  label          String   @db.VarChar(100)
+  fieldType      String   @map("field_type") @db.VarChar(10)
+  options        Json     @default("[]")
+  dependsOn      String?  @map("depends_on") @db.VarChar(40)
+  optionsBy      Json?    @map("options_by")
+  /// all: everyone on the ticket; agents: the desk's staff (hidden from the requester); leads: team leads only.
+  visibility     String   @default("all") @db.VarChar(10)
+  sortOrder      Int      @default(0) @map("sort_order") @db.SmallInt
+  active         Boolean  @default(true)
+  version        Int      @default(1)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, deskId, key])
+  @@index([organizationId, deskId, sortOrder])
+  @@map("sd_ticket_fields")
 }

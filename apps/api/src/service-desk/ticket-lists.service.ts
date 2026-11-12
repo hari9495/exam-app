@@ -7,6 +7,7 @@ import { Tx } from '../org-structure/org-structure.service';
 import { DeskActor, audit, canLead, has, visibleTickets } from './desk-access';
 import { TicketFiltersDto, TicketListQueryDto, ViewDto } from './dto';
 import { MeService } from './me.service';
+import { sees } from './ticket-fields';
 import { SlaService, clockState } from './sla.service';
 
 // SD-1.07 agent desk lists (US-B-089, US-G-002, US-G-010): filters, saved views, the board, CSV export. Every list
@@ -66,6 +67,15 @@ export class TicketListsService {
       if ((from && isNaN(+from)) || (to && isNaN(+to))) throw new BadRequestException('Give real dates for Raised.');
       if (from && to && from > to) throw new BadRequestException('Raised from must be on or before Raised to.');
       and.push({ createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lt: new Date(to.getTime() + 86_400_000) } : {}) } });
+    }
+    if (f.fieldKey || f.fieldValues?.length) {
+      // Answers 1641, 1650: only on desks where this person may see the field (a team-lead-only field filters for leads).
+      if (!f.fieldKey || !f.fieldValues?.length) throw new BadRequestException('Choose a field and a value.');
+      const defs = await tx.sdTicketField.findMany({ where: { organizationId: a.ctx.organizationId, key: f.fieldKey, active: true, deskId: { in: [...a.roles.keys()] } } });
+      const allowed = defs.filter((d) => ['agent', 'lead'].includes(a.roles.get(d.deskId) ?? '') && sees(d, a.roles.get(d.deskId) === 'lead' ? 'lead' : 'agent'));
+      if (!allowed.length) throw new BadRequestException('No such field on your desks.');
+      const value = (d: (typeof allowed)[number], v: string) => (d.fieldType === 'number' ? Number(v) : v.trim());
+      and.push({ OR: allowed.flatMap((d) => f.fieldValues!.map((v) => ({ deskId: d.deskId, fieldValues: { path: [d.key], equals: value(d, v) } }))) });
     }
     if (f.assignee === 'me') and.push({ assigneeUserId: a.userId });
     else if (f.assignee === 'none') and.push({ assigneeUserId: null });

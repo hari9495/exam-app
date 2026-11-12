@@ -15,6 +15,7 @@ import { Card, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components
 import { useRun } from '../org/org-kit';
 import { DeskPage, MessageBody, StatusBadge, sizeText, when } from './desk-kit';
 import { RateTicketCard, SuggestList, useSuggestions, type KbSuggestion } from './help-kb';
+import { RequesterFields } from './ticket-fields';
 import type { Attachment, BannerSeverity, LoadState, MyTicket, MyTicketRow, PublicBanner, RaiseDesk, RaiseInput } from './types';
 
 // The requester's side of the desk: known-issue banners with "Me too" (US-G-020), the in-app Help drawer (US-B-100) and
@@ -398,7 +399,12 @@ export function MyTicketScreen(props: MyTicketScreenProps) {
             )}
           </div>
           <div className="yx-ops-ws__rail">
-            {props.onRate && (t.canRate || t.rating) && <RateTicketCard rating={t.rating ?? null} reasons={t.ratingReasons} onRate={props.onRate} />}
+            {(t.deskFields ?? []).length > 0 && (
+            <Card title="Details">
+              <RequesterFields fields={t.deskFields} />
+            </Card>
+          )}
+          {props.onRate && (t.canRate || t.rating) && <RateTicketCard rating={t.rating ?? null} reasons={t.ratingReasons} onRate={props.onRate} />}
             <Card title="Status">
               <div className="yx-ops-stack" data-gap="sm">
                 <StatusBadge label={t.status} state={t.systemState} />

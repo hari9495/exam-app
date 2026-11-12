@@ -1,3 +1,4 @@
+import { FieldsTab, type DeskFieldInput } from './ticket-fields';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Plus } from 'lucide-react';
 import { Button } from '../../components/button';
@@ -55,6 +56,8 @@ export interface DeskSetupScreenProps {
   calendars: Calendar[];
   canCalendars: boolean;
   onCreateDesk: (input: { name: string; key: string; kind: DeskKind }) => Promise<void>;
+  /** Answers 1641, 1650: add or change one of the desk's own ticket fields. */
+  onSaveField?: (id: string | null, input: DeskFieldInput) => Promise<unknown>;
   onUpdateDesk: (change: Partial<Pick<DeskSummary, 'name' | 'privacy' | 'numberPrefix' | 'numberSuffix' | 'attachmentTypes' | 'attachmentMaxMb' | 'vipRaisesPriority' | 'calendarId' | 'resolutionRequired' | 'reopenWindowDays' | 'requesterCanReopen' | 'autoCloseDays' | 'routingWaitMinutes' | 'atRiskPercent' | 'ratingReasons' | 'closedMessage'>> & { nextNumber?: number }) => Promise<void>;
   onSearchUsers: (q: string) => Promise<{ id: string; name: string | null; email: string }[]>;
   onSeatCost: (userId: string, role: DeskRole) => Promise<SeatCost>;
@@ -227,9 +230,11 @@ function DeskTabs(props: DeskSetupScreenProps & { detail: DeskDetail }) {
           <TabsTrigger value="groups">Groups</TabsTrigger>
           <TabsTrigger value="categories">Categories</TabsTrigger>
           <TabsTrigger value="types">Types and statuses</TabsTrigger>
+          <TabsTrigger value="fields">Fields</TabsTrigger>
           <TabsTrigger value="priority">Priority</TabsTrigger>
           <TabsTrigger value="replies">Saved replies</TabsTrigger>
-          <TabsTrigger value="settings">Settings</TabsTrigger>
+          <TabsTrigger value="settings">Tickets</TabsTrigger>
+          <TabsTrigger value="requesters">Requesters</TabsTrigger>
           {props.canCalendars && <TabsTrigger value="calendars">Calendars</TabsTrigger>}
           {props.sla && <TabsTrigger value="sla">Response targets</TabsTrigger>}
           {props.workSetup && <TabsTrigger value="resolve">Codes and templates</TabsTrigger>}
@@ -262,8 +267,14 @@ function DeskTabs(props: DeskSetupScreenProps & { detail: DeskDetail }) {
         <TabsContent value="replies">
           <RepliesTab {...props} />
         </TabsContent>
+        <TabsContent value="fields">
+          <FieldsTab fields={props.detail.fields ?? []} types={props.detail.types.filter((t) => t.active)} canSetUp={props.detail.canSetUp} onSave={props.onSaveField} />
+        </TabsContent>
         <TabsContent value="settings">
-          <SettingsTab {...props} />
+          <SettingsTab {...props} part="tickets" />
+        </TabsContent>
+        <TabsContent value="requesters">
+          <SettingsTab {...props} part="requesters" />
         </TabsContent>
         {props.canCalendars && (
           <TabsContent value="calendars">
@@ -766,7 +777,11 @@ function RepliesTab(props: TabProps) {
   );
 }
 
-function SettingsTab(props: TabProps) {
+/**
+ * Answer 1804: the desk's settings in two tabs, "Tickets" (how tickets are numbered, timed, routed and filed) and
+ * "Requesters" (what the people who raise tickets get). Each tab saves only its own settings.
+ */
+function SettingsTab(props: TabProps & { part: 'tickets' | 'requesters' }) {
   const x = props.detail.desk;
   const [name, setName] = useState(x.name);
   const [privacy, setPrivacy] = useState(x.privacy);
@@ -788,89 +803,106 @@ function SettingsTab(props: TabProps) {
   const { busy, error, run } = useRun();
   const { toast } = useToast();
   const can = props.detail.canSetUp;
+  const tickets = props.part === 'tickets';
+  const save = () =>
+    void run('save', async () => {
+      await props.onUpdateDesk(
+        tickets
+          ? {
+              name: name.trim(),
+              privacy,
+              numberPrefix: prefix,
+              numberSuffix: suffix,
+              attachmentTypes: types.split(',').map((t) => t.trim().toLowerCase().replace(/^\./, '')).filter(Boolean),
+              attachmentMaxMb: maxMb ?? x.attachmentMaxMb,
+              vipRaisesPriority: vip,
+              calendarId,
+              resolutionRequired: needCode,
+              routingWaitMinutes: waitMinutes ?? 2,
+              atRiskPercent: Number(atRisk),
+              ...(next ? { nextNumber: next } : {}),
+            }
+          : {
+              requesterCanReopen: canReopen,
+              reopenWindowDays: reopenDays ?? 7,
+              autoCloseDays: closeDays,
+              ratingReasons: reasons.split('\n').map((r) => r.trim()).filter(Boolean),
+              ...(closedMessage.trim() && closedMessage.trim() !== x.closedMessage ? { closedMessage: closedMessage.trim() } : {}),
+            },
+      );
+      toast({ tone: 'success', title: 'Desk settings saved.' });
+    });
   return (
     <div className="yx-ops-stack">
       <ReadOnly show={!can} />
       {error && <InlineAlert tone="danger">{error}</InlineAlert>}
-      <FormField label="Desk name" required>
-        <TextField value={name} onChange={setName} maxLength={100} disabled={!can} />
-      </FormField>
-      <FormField label="Who can see its tickets" helper="Restricted: only the desk’s agents and leads, never desk admins or company admins.">
-        <Segment label="Who can see its tickets" options={[{ value: 'standard', label: 'Standard' }, { value: 'restricted', label: 'Restricted' }]} value={privacy} onChange={(v) => can && setPrivacy(v)} />
-      </FormField>
-      <FormField label="Ticket numbers" helper={`Next ticket looks like ${prefix}1234${suffix}. Old numbers keep working.`}>
-        <span className="yx-ops-row">
-          <TextField size="sm" aria-label="Prefix" value={prefix} onChange={(v) => setPrefix(v.toUpperCase())} maxLength={12} disabled={!can} />
-          <TextField size="sm" aria-label="Suffix" value={suffix} onChange={(v) => setSuffix(v.toUpperCase())} maxLength={12} disabled={!can} placeholder="Suffix (optional)" />
-          <NumberField size="sm" aria-label="Jump to number" value={next} onChange={setNext} min={1} disabled={!can} placeholder="Next number (only up)" />
-        </span>
-      </FormField>
-      <FormField label="Business hours" helper="The calendar this desk’s response targets will use.">
-        <Select value={calendarId} onChange={setCalendarId} clearable disabled={!can} options={props.calendars.map((c) => ({ value: c.id, label: `${c.name} · ${c.timeZone}` }))} />
-      </FormField>
-      <FormField label="Message while closed" helper="The help centre and portal show it outside business hours. {opens} becomes the next opening time. Tickets people raise themselves then are marked “Raised outside hours” (not ones agents log).">
-        <TextField value={closedMessage} onChange={setClosedMessage} maxLength={300} disabled={!can} />
-      </FormField>
-      <FormField label="At risk from" helper="A ticket shows as at risk once this share of a response target is used, on the SLA dashboard and the agent desk. Missed stays at 100 %.">
-        <Segment label="At risk from" options={AT_RISK_CHOICES.map((p) => ({ value: String(p), label: `${p} %` }))} value={atRisk} onChange={(v) => can && setAtRisk(v)} />
-      </FormField>
-      <FormField label="Files people may add" helper="File endings, separated by commas. Every file is checked for viruses too.">
-        <TextField value={types} onChange={setTypes} disabled={!can} />
-      </FormField>
-      <FormField label="Largest file (MB)">
-        <NumberField value={maxMb} onChange={setMaxMb} min={1} max={25} disabled={!can} />
-      </FormField>
-      <Switch label="VIP requesters get one step higher priority" checked={vip} onChange={setVip} disabled={!can} />
-      <Switch label="Resolving needs a resolution code and a note" checked={needCode} onChange={setNeedCode} disabled={!can} />
-      <Switch label="Requesters may reopen a resolved ticket by replying" checked={canReopen} onChange={setCanReopen} disabled={!can} />
-      <FormField label="Days a requester may reopen" helper="After this, or once closed, a reply starts a new linked ticket.">
-        <NumberField value={reopenDays} onChange={setReopenDays} min={0} max={90} disabled={!can} />
-      </FormField>
-      <FormField label="Close resolved tickets after (days without a reply)" helper="Empty: never close by itself.">
-        <NumberField value={closeDays} onChange={setCloseDays} min={1} max={90} disabled={!can} />
-      </FormField>
-      <FormField label="Wait for the best-matched agent (minutes)" helper="When nobody free has the skills and language a ticket needs, it waits this long before going to anyone free. 0: at once.">
-        <NumberField value={waitMinutes} onChange={setWaitMinutes} min={0} max={60} disabled={!can} />
-      </FormField>
-      <FormField label="Reasons to pick after a rating" helper="One a line, up to 12. After the stars a requester may pick one; reports count them. Empty: no reasons asked." optional>
-        <TextArea value={reasons} onChange={setReasons} rows={4} disabled={!can} />
-      </FormField>
+      {tickets ? (
+        <>
+          <span className="yx-ops-row">
+            <FormField label="Desk name" required>
+              <TextField value={name} onChange={setName} maxLength={100} disabled={!can} />
+            </FormField>
+            <FormField label="Who can see its tickets" helper="Restricted: only the desk’s agents and leads, never desk admins or company admins.">
+              <Segment label="Who can see its tickets" options={[{ value: 'standard', label: 'Standard' }, { value: 'restricted', label: 'Restricted' }]} value={privacy} onChange={(v) => can && setPrivacy(v)} />
+            </FormField>
+          </span>
+          <FormField label="Ticket numbers" helper={`Next ticket looks like ${prefix}1234${suffix}. Old numbers keep working.`}>
+            <span className="yx-ops-row">
+              <TextField size="sm" aria-label="Prefix" value={prefix} onChange={(v) => setPrefix(v.toUpperCase())} maxLength={12} disabled={!can} />
+              <TextField size="sm" aria-label="Suffix" value={suffix} onChange={(v) => setSuffix(v.toUpperCase())} maxLength={12} disabled={!can} placeholder="Suffix (optional)" />
+              <NumberField size="sm" aria-label="Jump to number" value={next} onChange={setNext} min={1} disabled={!can} placeholder="Next number (only up)" />
+            </span>
+          </FormField>
+          <span className="yx-ops-row">
+            <FormField label="Business hours" helper="The calendar this desk’s response targets will use.">
+              <Select value={calendarId} onChange={setCalendarId} clearable disabled={!can} options={props.calendars.map((c) => ({ value: c.id, label: `${c.name} · ${c.timeZone}` }))} />
+            </FormField>
+            <FormField label="Wait for the best-matched agent (minutes)" helper="When nobody free has the skills and language a ticket needs, it waits this long first. 0: at once.">
+              <NumberField value={waitMinutes} onChange={setWaitMinutes} min={0} max={60} disabled={!can} />
+            </FormField>
+          </span>
+          <FormField label="At risk from" helper="A ticket shows as at risk once this share of a response target is used, on the SLA dashboard and the agent desk. Missed stays at 100 %.">
+            <Segment label="At risk from" options={AT_RISK_CHOICES.map((p) => ({ value: String(p), label: `${p} %` }))} value={atRisk} onChange={(v) => can && setAtRisk(v)} />
+          </FormField>
+          <span className="yx-ops-row">
+            <FormField label="Files people may add" helper="File endings, separated by commas. Every file is checked for viruses too.">
+              <TextField value={types} onChange={setTypes} disabled={!can} />
+            </FormField>
+            <FormField label="Largest file (MB)">
+              <NumberField value={maxMb} onChange={setMaxMb} min={1} max={25} disabled={!can} />
+            </FormField>
+          </span>
+          <Switch label="VIP requesters get one step higher priority" checked={vip} onChange={setVip} disabled={!can} />
+          <Switch label="Resolving needs a resolution code and a note" checked={needCode} onChange={setNeedCode} disabled={!can} />
+        </>
+      ) : (
+        <>
+          <Switch label="Requesters may reopen a resolved ticket by replying" checked={canReopen} onChange={setCanReopen} disabled={!can} />
+          <span className="yx-ops-row">
+            <FormField label="Days a requester may reopen" helper="After this, or once closed, a reply starts a new linked ticket.">
+              <NumberField value={reopenDays} onChange={setReopenDays} min={0} max={90} disabled={!can} />
+            </FormField>
+            <FormField label="Close resolved tickets after (days without a reply)" helper="Empty: never close by itself.">
+              <NumberField value={closeDays} onChange={setCloseDays} min={1} max={90} disabled={!can} />
+            </FormField>
+          </span>
+          <FormField label="Message while closed" helper="The help centre and portal show it outside business hours. {opens} becomes the next opening time. Tickets people raise themselves then are marked “Raised outside hours” (not ones agents log).">
+            <TextField value={closedMessage} onChange={setClosedMessage} maxLength={300} disabled={!can} />
+          </FormField>
+          <FormField label="Reasons to pick after a rating" helper="One a line, up to 12. After the stars a requester may pick one; reports count them. Empty: no reasons asked." optional>
+            <TextArea value={reasons} onChange={setReasons} rows={4} disabled={!can} />
+          </FormField>
+        </>
+      )}
       {can && (
         <div className="yx-ops-row">
-          <Button
-            variant="primary"
-            loading={busy === 'save'}
-            onClick={() =>
-              void run('save', async () => {
-                await props.onUpdateDesk({
-                  name: name.trim(),
-                  privacy,
-                  numberPrefix: prefix,
-                  numberSuffix: suffix,
-                  attachmentTypes: types.split(',').map((t) => t.trim().toLowerCase().replace(/^\./, '')).filter(Boolean),
-                  attachmentMaxMb: maxMb ?? x.attachmentMaxMb,
-                  vipRaisesPriority: vip,
-                  calendarId,
-                  resolutionRequired: needCode,
-                  requesterCanReopen: canReopen,
-                  reopenWindowDays: reopenDays ?? 7,
-                  autoCloseDays: closeDays,
-                  routingWaitMinutes: waitMinutes ?? 2,
-                  atRiskPercent: Number(atRisk),
-                  ratingReasons: reasons.split('\n').map((r) => r.trim()).filter(Boolean),
-                  ...(closedMessage.trim() && closedMessage.trim() !== x.closedMessage ? { closedMessage: closedMessage.trim() } : {}),
-                  ...(next ? { nextNumber: next } : {}),
-                });
-                toast({ tone: 'success', title: 'Desk settings saved.' });
-              })
-            }
-          >
+          <Button variant="primary" loading={busy === 'save'} onClick={save}>
             Save settings
           </Button>
         </div>
       )}
-      {props.onKbReviewMonths && props.kbReviewMonths != null && <KbReviewRule key={props.kbReviewMonths} value={props.kbReviewMonths} onSave={props.onKbReviewMonths} />}
-      {props.onPageHelp && props.pageHelp != null && <PageHelpRule value={props.pageHelp} onChange={props.onPageHelp} />}
+      {!tickets && props.onKbReviewMonths && props.kbReviewMonths != null && <KbReviewRule key={props.kbReviewMonths} value={props.kbReviewMonths} onSave={props.onKbReviewMonths} />}
+      {!tickets && props.onPageHelp && props.pageHelp != null && <PageHelpRule value={props.pageHelp} onChange={props.onPageHelp} />}
     </div>
   );
 }

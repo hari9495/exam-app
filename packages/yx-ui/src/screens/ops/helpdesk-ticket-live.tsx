@@ -27,6 +27,7 @@ import { FileList } from '../desk/help';
 import { InsertArticleButton, articleLinkHtml, type ArticleOption } from '../desk/ticket-kb';
 import { ConvertDialog, PeoplePanel, PriorityDialog, RequesterPanel, SourceCard, TagEditor, TimePanel, eventText } from '../desk/ticket';
 import { LivePicker } from '../desk/service-form';
+import { TicketFieldsPanel } from '../desk/ticket-fields';
 import type { PickOption } from '../desk/esm-types';
 import type { Attachment, CannedResponse, DeskDetail, LoadState, Person, Presence, RequesterContext, TicketChange, TicketDetail, TicketWork, TimelineEntry } from '../desk/types';
 import { OpsDesk, SlaBadge, Workspace, useSay } from './ops-kit';
@@ -69,6 +70,8 @@ export interface LiveTicket {
   /** Answer 1661: an IT agent finds a company device (tag, name or serial) and sets or clears it. */
   onPickDevice?: (q: string) => Promise<PickOption[]>;
   onSetDevice?: (assetId: string | null) => Promise<unknown>;
+  /** Answers 1641, 1650: change the desk's own fields (only the ones this person may see). */
+  onSetFields?: (values: Record<string, string | number | null>) => Promise<unknown>;
   /** The side cards under the design's rail: related articles, request and approvals, move and share, related tickets… */
   rail?: ReactNode;
   /** The desk's auto-close days, for the resolved note when the server sends no date. */
@@ -381,6 +384,11 @@ export function LiveTicketWorkspace({ live }: { live: LiveTicket }) {
                 {work && <Switch label="Private" description="Only this desk’s agents and the ticket’s collaborators see it." checked={t.private} onChange={(p) => update({ private: p }, p ? 'The ticket is private now.' : 'The ticket is no longer private.')} />}
               </div>
             </Card>
+            {(t.deskFields ?? []).length > 0 && (
+              <Card title="Fields">
+                <TicketFieldsPanel key={`${t.id}-${t.version}`} fields={t.deskFields!} canSet={Boolean(t.canSetFields)} onSave={live.onSetFields} />
+              </Card>
+            )}
             {live.rail}
             <Card title="Activity">{live.timeline.length ? <ActivityFeed entries={activityOf(live.timeline)} /> : <p className="yx-ops-muted">Nothing yet.</p>}</Card>
             <SourceCard ticket={t} />

@@ -1,3 +1,4 @@
+import type { DeskField, TicketFieldView } from './ticket-fields';
 // Service Desk (M14 phase 3b-1): the shapes the /api/v1/desk routes return and accept. Dates arrive as ISO strings.
 export type { LoadState } from '../org/types';
 
@@ -104,6 +105,8 @@ export interface DeskDetail {
   myRole: DeskRole | null;
   canSetUp: boolean;
   canManageMembers: boolean;
+  /** Answers 1641, 1650: the desk's own ticket fields (set-up sees all; a seat those its role may see). */
+  fields?: DeskField[];
 }
 
 export interface CannedResponse {
@@ -199,6 +202,9 @@ export interface TicketFilters {
   /** HLP-02 "Raised": days (yyyy-mm-dd), both included. */
   createdFrom?: string;
   createdTo?: string;
+  /** Answers 1641, 1650: one desk field and the values it may have. */
+  fieldKey?: string;
+  fieldValues?: string[];
 }
 
 export interface SavedTicketView {
@@ -272,6 +278,9 @@ export interface TicketDetail {
   /** Answers 1661, 1662: the device it is about, and whether this person may set it (an IT desk's agent). */
   device?: { id: string; label: string; detail: string | null } | null;
   canSetDevice?: boolean;
+  /** Answers 1641, 1650: the desk's own fields this person may see, and whether they may change them. */
+  deskFields?: TicketFieldView[];
+  canSetFields?: boolean;
   desk: { id: string; key: string; name: string; audience: 'employee' | 'customer' };
   type: { id: string; name: string } | null;
   status: { id: string; label: string } | null;
@@ -415,6 +424,8 @@ export interface MyTicket {
   canRate?: boolean;
   /** Answer 1643: the desk's preset reasons, offered after the stars. */
   ratingReasons?: string[];
+  /** Answers 1641, 1650: the filled desk fields the requester may see. */
+  deskFields?: { label: string; value: string | null }[];
 }
 
 export interface RaiseInput {
@@ -431,6 +442,8 @@ export interface RaiseInput {
   originQuery?: string;
   /** Answer 1662: one of the person's own devices (IT desks). */
   assetId?: string;
+  /** Answer 1801: raised for this colleague (the on-behalf right is checked by the server). */
+  requestedForPersonId?: string;
 }
 
 // ---- batch 2 (SD-1.09 to SD-1.17) ----
@@ -827,6 +840,8 @@ export interface PortalTicket {
   canRate?: boolean;
   /** Answer 1643: the desk's preset reasons, offered after the stars. */
   ratingReasons?: string[];
+  /** Answers 1641, 1650: the filled desk fields the requester may see. */
+  deskFields?: { label: string; value: string | null }[];
   id: string;
   number: string;
   subject: string;

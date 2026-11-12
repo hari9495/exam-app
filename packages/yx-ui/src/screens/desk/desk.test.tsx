@@ -222,7 +222,7 @@ describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
 
   it('settings: the company review interval for help articles is a Segment; unchanged says so, a change is saved', async () => {
     const onKbReviewMonths = ok();
-    render(<ToastProvider><DeskSetupScreen state="ready" initialTab="settings" kbReviewMonths={12} onKbReviewMonths={onKbReviewMonths} desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, canSetUp: true }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={ok()} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} /></ToastProvider>);
+    render(<ToastProvider><DeskSetupScreen state="ready" initialTab="requesters" kbReviewMonths={12} onKbReviewMonths={onKbReviewMonths} desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, canSetUp: true }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={ok()} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} /></ToastProvider>);
     const card = screen.getByText('Check help articles again every', { selector: '.yx-card__title, h2, h3' }).closest('section, .yx-card') as HTMLElement;
     const g = within(card).getByRole('radiogroup', { name: 'Check help articles again every' });
     expect(within(g).getByRole('radio', { name: '12 months' })).toBeChecked();
@@ -237,7 +237,7 @@ describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
 
   it('settings (1643): the reasons to pick after a rating, one a line, are saved with the desk settings (blank lines dropped)', async () => {
     const onUpdateDesk = ok();
-    render(<ToastProvider><DeskSetupScreen state="ready" initialTab="settings" desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, canSetUp: true, desk: { ...DETAIL.desk, ratingReasons: ['Slow'] } }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={onUpdateDesk} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} /></ToastProvider>);
+    render(<ToastProvider><DeskSetupScreen state="ready" initialTab="requesters" desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, canSetUp: true, desk: { ...DETAIL.desk, ratingReasons: ['Slow'] } }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={onUpdateDesk} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} /></ToastProvider>);
     const box = screen.getByLabelText(/Reasons to pick after a rating/);
     expect(box).toHaveValue('Slow');
     await ue.type(box, '{Enter}{Enter}  Great help  ');
@@ -247,7 +247,7 @@ describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
 
   it('settings (1646): the message while closed is saved only when changed; unchanged it is not sent', async () => {
     const onUpdateDesk = ok();
-    render(<ToastProvider><DeskSetupScreen state="ready" initialTab="settings" desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, canSetUp: true, desk: { ...DETAIL.desk, closedMessage: 'Closed. Back {opens}.' } }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={onUpdateDesk} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} /></ToastProvider>);
+    render(<ToastProvider><DeskSetupScreen state="ready" initialTab="requesters" desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, canSetUp: true, desk: { ...DETAIL.desk, closedMessage: 'Closed. Back {opens}.' } }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={onUpdateDesk} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} /></ToastProvider>);
     const box = screen.getByRole('textbox', { name: /Message while closed/ });
     expect(box).toHaveValue('Closed. Back {opens}.');
     await ue.click(screen.getByRole('button', { name: 'Save settings' }));
@@ -257,6 +257,22 @@ describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
     await ue.type(box, 'Shut till {{opens}');
     await ue.click(screen.getByRole('button', { name: 'Save settings' }));
     await waitFor(() => expect(onUpdateDesk).toHaveBeenLastCalledWith(expect.objectContaining({ closedMessage: 'Shut till {opens}' })));
+  });
+
+  it('1804: desk settings are two tabs; Tickets saves only ticket settings, Requesters only requester settings', async () => {
+    const onUpdateDesk = ok();
+    render(<ToastProvider><DeskSetupScreen state="ready" initialTab="settings" desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, canSetUp: true }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={onUpdateDesk} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} /></ToastProvider>);
+    expect(screen.getByRole('tab', { name: 'Tickets' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByLabelText(/Days a requester may reopen/)).toBeNull();
+    await ue.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(onUpdateDesk).toHaveBeenCalledTimes(1));
+    expect(Object.keys(onUpdateDesk.mock.calls[0][0])).toEqual(expect.arrayContaining(['name', 'atRiskPercent', 'calendarId']));
+    expect(onUpdateDesk.mock.calls[0][0]).not.toHaveProperty('ratingReasons');
+    await ue.click(screen.getByRole('tab', { name: 'Requesters' }));
+    expect(screen.queryByLabelText(/Desk name/)).toBeNull();
+    await ue.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(onUpdateDesk).toHaveBeenCalledTimes(2));
+    expect(Object.keys(onUpdateDesk.mock.calls[1][0]).sort()).toEqual(['autoCloseDays', 'ratingReasons', 'reopenWindowDays', 'requesterCanReopen']);
   });
 
   it('settings: the at-risk point of a desk is a Segment of 50 to 90 %, saved with the other settings and a toast', async () => {

@@ -4,6 +4,7 @@ import { play, press, pressFirst, tab, type } from '../_kit/story-play';
 import { DeskSetupScreen } from './setup';
 import { CANNED, COMPLIANCE, DESK, DETAIL, HR_DESK, SLA_SETUP } from './data';
 import { SlaTab } from './setup-sla';
+import { SAMPLE_FIELDS } from './ticket-fields-sample';
 import { BannersTab, EmailTab, PortalTab, type EmailSetupProps } from './setup-channels';
 import { BANNERS, BOUNCES, CS_DESK, INBOUND, MAILBOXES, PORTALS, SENDING_DOMAINS } from './data';
 
@@ -61,13 +62,17 @@ const setupProps: React.ComponentProps<typeof DeskSetupScreen> = {
 export const Setup: S = { name: 'Desk set-up', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} />) };
 // HLP-04 (founder 3 Nov 2026): the article review interval is a company setting, on the Settings tab for the company's
 // Service Desk owner (desk.desk.create).
-export const SetupKbReview: S = { name: 'Desk set-up · Settings · check help articles again every', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="settings" kbReviewMonths={12} onKbReviewMonths={noop} pageHelp onPageHelp={noop} />) };
+export const SetupKbReview: S = { name: 'Desk set-up · Requesters · check help articles again every', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="requesters" kbReviewMonths={12} onKbReviewMonths={noop} pageHelp onPageHelp={noop} />) };
 // HLP-05b (founder 3 Nov 2026): each desk chooses its at-risk point (default 80 %), on the same Settings tab.
-export const SetupAtRisk: S = { name: 'Desk set-up · Settings · at risk from (per desk)', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="settings" detail={{ ...setupProps.detail!, desk: { ...setupProps.detail!.desk, atRiskPercent: 60 } }} />) };
+export const SetupAtRisk: S = { name: 'Desk set-up · Tickets · at risk from (per desk)', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="settings" detail={{ ...setupProps.detail!, desk: { ...setupProps.detail!.desk, atRiskPercent: 60 } }} />) };
 // Answer 1643: the reasons a requester may pick after a rating, per desk (a starter list until changed).
-export const SetupRatingReasons: S = { name: 'Desk set-up · Settings · reasons to pick after a rating', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="settings" detail={{ ...setupProps.detail!, desk: { ...setupProps.detail!.desk, ratingReasons: ['Quick help', 'Solved my problem', 'Friendly and clear', 'Slow', 'Not solved', 'Had to explain again'] } }} />) };
+export const SetupRatingReasons: S = { name: 'Desk set-up · Requesters · reasons to pick after a rating', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="requesters" detail={{ ...setupProps.detail!, desk: { ...setupProps.detail!.desk, ratingReasons: ['Quick help', 'Solved my problem', 'Friendly and clear', 'Slow', 'Not solved', 'Had to explain again'] } }} />) };
 // Answer 1646: the message the help centre and portal show while the desk is closed.
-export const SetupClosedMessage: S = { name: 'Desk set-up · Settings · message while closed', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="settings" detail={{ ...setupProps.detail!, desk: { ...setupProps.detail!.desk, closedMessage: "We're closed now. We open again {opens}. You can still raise a ticket; we answer it when we open." } }} />) };
+export const SetupClosedMessage: S = { name: 'Desk set-up · Requesters · message while closed', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="requesters" detail={{ ...setupProps.detail!, desk: { ...setupProps.detail!.desk, closedMessage: "We're closed now. We open again {opens}. You can still raise a ticket; we answer it when we open." } }} />) };
+// Answers 1641, 1650: the desk's own ticket fields (a drop-down narrowing the next; who sees each).
+export const SetupFields: S = { name: 'Desk set-up · Fields', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="fields" detail={{ ...setupProps.detail!, fields: SAMPLE_FIELDS }} onSaveField={noop} />) };
+export const SetupFieldEdit: S = { name: 'Desk set-up · Fields · a drop-down narrowed by another', render: SetupFields.render, play: play(press('Edit Floor')) };
+export const SetupFieldNewMissing: S = { name: 'Desk set-up · Fields · Save pressed with nothing filled', render: SetupFields.render, play: play(press('New field'), press('Save field')) };
 export const SlaSetupTab: S = { name: 'SD-1.14 Response targets (desk set-up tab)', render: () => shell('desk-setup', <SlaTab detail={DETAIL} calendars={[]} setup={SLA_SETUP} compliance={COMPLIANCE} month="2026-10" onMonth={() => {}} onCreatePolicy={noop} onAddVersion={noop} onUpdatePolicy={noop} onSaveTargets={noop} />) };
 
 // ---- batch 3 (SD-1.18 to SD-1.23, SD-1.28) ----

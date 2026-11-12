@@ -15,6 +15,7 @@ import { Select } from '../../components/select';
 import { Segment } from '../../components/segment';
 import { DataTable, type TableColumn } from '../../components/table';
 import { FilterBar, SavedViewMenu, type FilterFieldDef } from '../../components/filters';
+import { fieldFilterOf, fieldFilters } from '../desk/ticket-fields';
 import { KanbanBoard, type KanbanColumn } from '../../components/kanban';
 import { RichTextEditor, STYLE_TOOLS } from '../../components/editor';
 import { MenuItem } from '../../components/menu';
@@ -82,8 +83,12 @@ export interface LiveAgentDesk {
 const DONE: SystemState[] = ['solved', 'closed'];
 const PRIORITY_TONE = (v: unknown) => (String(v).startsWith('P1') ? 'danger' : String(v).startsWith('P2') ? 'warning' : 'neutral');
 
-const fromFilters = (f: TicketFilters): FilterValue[] => [
+const fromFilters = (f: TicketFilters, defs: FilterFieldDef[] = []): FilterValue[] => [
   ...(f.deskIds?.length ? [{ key: 'queue', type: 'multi' as const, values: f.deskIds }] : []),
+  // Answers 1641, 1650: one desk field (a drop-down as its choices, others as text).
+  ...(f.fieldKey && f.fieldValues?.length
+    ? [defs.find((d) => d.key === `field:${f.fieldKey}`)?.type === 'text' ? { key: `field:${f.fieldKey}`, type: 'text' as const, contains: f.fieldValues[0] } : { key: `field:${f.fieldKey}`, type: 'multi' as const, values: f.fieldValues }]
+    : []),
   ...(f.priorities?.length ? [{ key: 'priority', type: 'multi' as const, values: f.priorities.map(String) }] : []),
   ...(f.states?.length ? [{ key: 'status', type: 'multi' as const, values: f.states }] : []),
   ...(f.createdFrom || f.createdTo ? [{ key: 'created', type: 'date' as const, from: f.createdFrom ?? null, to: f.createdTo ?? null }] : []),
@@ -92,7 +97,8 @@ const fromFilters = (f: TicketFilters): FilterValue[] => [
 export const toFilters = (base: TicketFilters, v: FilterValue[], search: string): TicketFilters => {
   const multi = (k: string) => (v.find((x) => x.key === k && x.type === 'multi') as { values: string[] } | undefined)?.values ?? [];
   const date = v.find((x) => x.key === 'created' && x.type === 'date') as { from: string | null; to: string | null } | undefined;
-  return { ...base, deskIds: multi('queue'), priorities: multi('priority').map(Number), states: multi('status') as SystemState[], createdFrom: date?.from || undefined, createdTo: date?.to || undefined, search: search || undefined };
+  const { fieldKey, fieldValues } = fieldFilterOf(v);
+  return { ...base, deskIds: multi('queue'), priorities: multi('priority').map(Number), states: multi('status') as SystemState[], createdFrom: date?.from || undefined, createdTo: date?.to || undefined, search: search || undefined, fieldKey: fieldKey ?? base.fieldKey, fieldValues: fieldValues ?? base.fieldValues };
 };
 
 /** The design's columns with the real record. */
@@ -173,8 +179,9 @@ export function LiveAgentDesk({ live }: { live: LiveAgentDesk }) {
     { key: 'priority', label: 'Priority', type: 'multi', options: [1, 2, 3, 4].map((p) => ({ value: String(p), label: PRIORITY_LABEL[p] })) },
     { key: 'status', label: 'Status', type: 'multi', options: (Object.keys(STATE_LABEL) as SystemState[]).map((s) => ({ value: s, label: STATE_LABEL[s] })) },
     { key: 'created', label: 'Raised', type: 'date' },
+    ...fieldFilters(live.details.flatMap((d) => d.fields ?? [])),
   ];
-  const toolbar = <FilterBar fields={fields} value={fromFilters(query.filters)} onChange={(v) => setFilters(v)} search={search} onSearchChange={(s) => (setSearch(s), setFilters(fromFilters(query.filters), s))} searchPlaceholder="Search ticket, subject or person" />;
+  const toolbar = <FilterBar fields={fields} value={fromFilters(query.filters, fields)} onChange={(v) => setFilters(v)} search={search} onSearchChange={(s) => (setSearch(s), setFilters(fromFilters(query.filters, fields), s))} searchPlaceholder="Search ticket, subject or person" />;
   const bulk = (action: BulkAction) =>
     void run('bulk', async () => {
       const r = await live.onBulk(selected, action);

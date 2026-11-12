@@ -9,6 +9,7 @@ import {
   IsEmail,
   IsIn,
   IsInt,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -961,6 +962,19 @@ export class TicketFiltersDto {
   @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   createdTo?: string;
+
+  /** Answers 1641, 1650: one of the desks' own fields (by key) and the values it may have (any of them). */
+  @IsOptional()
+  @Matches(/^[a-z][a-z0-9_]{0,39}$/)
+  fieldKey?: string;
+
+  @IsOptional()
+  @csv()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MaxLength(100, { each: true })
+  fieldValues?: string[];
 }
 
 export class TicketListQueryDto extends TicketFiltersDto {
@@ -1511,4 +1525,63 @@ export class TicketDeviceDto {
   @ValidateIf((_, v) => v !== null)
   @IsUUID()
   assetId!: string | null;
+}
+
+/** Answers 1641, 1650: one of a desk's own ticket fields (the set is checked by the forms engine in the service). */
+export class TicketFieldDto {
+  /** Set once, when the field is made. */
+  @IsOptional()
+  @Matches(/^[a-z][a-z0-9_]{0,39}$/, { message: 'A field key is lower-case letters, digits and _ (up to 40), starting with a letter.' })
+  key?: string;
+
+  @Text(1, 100)
+  label!: string;
+
+  @IsIn(['text', 'number', 'date', 'choice'], { message: 'A field is text, a number, a date or a drop-down.' })
+  fieldType!: 'text' | 'number' | 'date' | 'choice';
+
+  /** null: every ticket of the desk; else one ticket type of it. */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsUUID()
+  ticketTypeId?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  options?: { value: string; label: string }[];
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @Matches(/^[a-z][a-z0-9_]{0,39}$/)
+  dependsOn?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsObject()
+  optionsBy?: Record<string, string[]> | null;
+
+  @IsOptional()
+  @IsIn(['all', 'agents', 'leads'], { message: 'A field shows to everyone, to the desk staff only, or to team leads only.' })
+  visibility?: 'all' | 'agents' | 'leads';
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(999)
+  sortOrder?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  version?: number;
+}
+
+/** Answers 1641, 1650: changed field values of one ticket, by key; null clears one. */
+export class TicketFieldValuesDto {
+  @IsObject()
+  values!: Record<string, string | number | null>;
 }

@@ -10,6 +10,7 @@ import { cleanHtml, htmlToText } from './rich-text';
 import { PiiFound, maskPii, maskPiiHtml, unmaskHealth } from './pii';
 import { SlaService } from './sla.service';
 import { assetOption, liveAsset } from './asset-pick';
+import { Viewer, applyFieldChange, fieldsFor, sees, shownFields } from './ticket-fields';
 import { MailOutService } from './mail-out.service';
 import { contactAccount, planFor, planUsedUp } from './customers.service';
 import { Transition, checkMove } from './lifecycle';
@@ -537,7 +538,11 @@ export class TicketsService {
       const rating = ['solved', 'closed'].includes(t.systemState) ? await tx.sdRating.findFirst({ where: { organizationId: org, ticketId: t.id }, select: { score: true, reason: true } }) : null;
       // Answers 1661, 1662: the device it is about; only an IT desk's agents set or change it.
       const device = t.assetId ? await tx.asset.findFirst({ where: { organizationId: org, id: t.assetId }, select: { id: true, name: true, tag: true, category: true } }) : null;
+      // Answers 1641, 1650: the desk's own fields this person may see (team-lead-only ones to the desk's leads only).
+      const fieldViewer = this.fieldViewer(a, t.deskId, access);
       return {
+        deskFields: shownFields(await fieldsFor(tx, org, t.deskId, t.typeId), t.fieldValues, fieldViewer),
+        canSetFields: access === 'agent' && canWork(a, t.deskId),
         device: device ? assetOption(device) : null,
         canSetDevice: desk.kind === 'it' && access === 'agent' && canWork(a, t.deskId),
         ...this.summary(t),
@@ -930,6 +935,43 @@ export class TicketsService {
     const last = await tx.sdTicketEvent.findFirst({ where: { organizationId: a.ctx.organizationId, ticketId: t.id, byUserId: { not: null } }, orderBy: { at: 'desc' }, select: { byUserId: true } });
     const by = last?.byUserId ? (await this.userNames(tx, a.ctx.organizationId, [last.byUserId])).get(last.byUserId) : null;
     throw new ConflictException({ statusCode: 409, code: 'TICKET_CHANGED', message: `${by ?? 'Someone'} changed this ticket. Reload to see the latest.` });
+  }
+
+  /** Answers 1641, 1650: a lead on the desk sees team-lead-only fields; anyone else working it sees the staff fields. */
+  private fieldViewer(a: DeskActor, deskId: string, access: string): Viewer {
+    return access === 'agent' && a.roles.get(deskId) === 'lead' ? 'lead' : 'agent';
+  }
+
+  /**
+   * Answers 1641, 1650: an agent changes the ticket's own field values. Only fields their role may see; the forms
+   * engine checks the result (a dependent drop-down takes only a value under its parent). Team-lead-only changes keep
+   * their values out of the ticket's timeline.
+   */
+  async setFields(a: DeskActor, id: string, change: Record<string, unknown>) {
+    return this.tx(a, async (tx) => {
+      const org = a.ctx.organizationId;
+      const { t, access } = await this.load(tx, a, id);
+      if (access !== 'agent') throw new ForbiddenException(SEAT_REQUIRED);
+      requireWork(a, t.deskId);
+      if (!Object.keys(change).length || Object.keys(change).length > 60) throw new BadRequestException('Change 1 to 60 fields at a time.');
+      const fields = await fieldsFor(tx, org, t.deskId, t.typeId);
+      const who = this.fieldViewer(a, t.deskId, access);
+      const res = applyFieldChange(fields, t.fieldValues, change, who);
+      if (res.unknown.length) throw new BadRequestException('That field is not on tickets like this one.');
+      if (res.forbidden.length) throw new ForbiddenException("Only the desk's team leads set that field.");
+      if (Object.keys(res.errors).length) throw new BadRequestException({ statusCode: 400, code: 'FIELD_ERRORS', message: 'Check the fields.', errors: Object.fromEntries(Object.entries(res.errors).filter(([k]) => fields.some((f) => f.key === k && sees(f, who)))) });
+      const before = (t.fieldValues ?? {}) as Record<string, unknown>;
+      const changed = fields.filter((f) => JSON.stringify(before[f.key] ?? null) !== JSON.stringify(res.values[f.key] ?? null));
+      if (!changed.length) return { deskFields: shownFields(fields, t.fieldValues, who) };
+      const upd = await tx.sdTicket.updateMany({ where: { organizationId: org, id: t.id, version: t.version }, data: { fieldValues: res.values as Prisma.InputJsonValue, version: { increment: 1 }, updatedAt: new Date() } });
+      if (!upd.count) throw new ConflictException('Someone else changed this ticket. Reload to see the latest.');
+      for (const f of changed) {
+        const lead = f.visibility === 'leads';
+        await tx.sdTicketEvent.create({ data: { organizationId: org, deskId: t.deskId, ticketId: t.id, sensitive: t.sensitive, private: t.private, kind: lead ? 'lead_field_changed' : 'field_changed', fromValue: lead ? null : `${f.label}: ${before[f.key] ?? '—'}`.slice(0, 300), toValue: lead ? f.label.slice(0, 300) : `${f.label}: ${res.values[f.key] ?? '—'}`.slice(0, 300), byUserId: a.userId } });
+      }
+      await audit(tx, a, 'desk.ticket.fields_set', 'sd_ticket', t.id, { keys: changed.map((f) => f.key) });
+      return { deskFields: shownFields(fields, res.values as Prisma.JsonValue, who) };
+    });
   }
 
   /** Answer 1661: an IT desk's agent sets or clears the device a ticket is about (any live company device). */

@@ -128,6 +128,35 @@ describe('HLP-01 Help centre (live)', () => {
     expect(screen.queryByRole('combobox', { name: 'Which device?' })).toBeNull();
   });
 
+  it('1801: on behalf of a colleague; nobody chosen stops it; the device asked follows the colleague; sent with the colleague', async () => {
+    const onRaise = vi.fn().mockResolvedValue({ id: 'n1', number: 'IT-1009' });
+    const onPickDevice = vi.fn().mockResolvedValue([{ id: 'as9', label: 'HP EliteBook (KF-LT-0009)', detail: 'Laptop' }]);
+    const onDesksFor = vi.fn().mockResolvedValue([{ ...RAISE_DESKS[0], categories: [], askDevice: true }]);
+    const onPickPeople = vi.fn().mockResolvedValue([{ id: 'p-ravi', label: 'Ravi Kumar', detail: 'Sales' }]);
+    render(<HelpCentreScreen live={liveHelp({ onRaise, onPickDevice, startRaise: true, desks: [{ ...RAISE_DESKS[0], categories: [], askDevice: false }], onBehalf: { onPickPeople, onDesksFor } })} />);
+    expect(screen.queryByRole('combobox', { name: 'Which device?' })).toBeNull();
+    await ue.click(await screen.findByRole('radio', { name: 'On behalf of someone' }));
+    await ue.type(screen.getByRole('textbox', { name: /Subject/ }), 'Laptop for Ravi');
+    await ue.type(screen.getByRole('textbox', { name: /Details/ }), 'It will not start');
+    await ue.click(screen.getByRole('button', { name: 'Raise ticket' }));
+    expect((await screen.findAllByText('Choose who it is for.')).length).toBeGreaterThan(0);
+    expect(onRaise).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('combobox', { name: 'Colleague' }));
+    await ue.click(await screen.findByRole('option', { name: /Ravi Kumar/ }));
+    await waitFor(() => expect(onDesksFor).toHaveBeenCalledWith('p-ravi'));
+    await ue.click(await screen.findByRole('combobox', { name: 'Which device?' }));
+    await ue.click(await screen.findByRole('option', { name: /KF-LT-0009/ }));
+    expect(onPickDevice).toHaveBeenCalledWith(expect.any(String), 'p-ravi');
+    await ue.click(screen.getByRole('button', { name: 'Raise ticket' }));
+    await waitFor(() => expect(onRaise).toHaveBeenCalledWith(expect.objectContaining({ requestedForPersonId: 'p-ravi', assetId: 'as9' })));
+  });
+
+  it('1801: without the right there is no "Who is this for"', async () => {
+    render(<HelpCentreScreen live={liveHelp({ startRaise: true })} />);
+    await screen.findByRole('textbox', { name: /Subject/ });
+    expect(screen.queryByRole('radiogroup', { name: 'Who is this for' })).toBeNull();
+  });
+
   it('a refused raise stays in the drawer with the reason', async () => {
     const onRaise = vi.fn().mockRejectedValue(new Error('This desk is closed for new tickets.'));
     render(<HelpCentreScreen live={liveHelp({ onRaise, desks: [RAISE_DESKS[0]] })} />);

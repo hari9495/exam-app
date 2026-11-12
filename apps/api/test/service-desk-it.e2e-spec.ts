@@ -228,6 +228,14 @@ describe('Helpdesk: IT starter catalogue and devices on a ticket', () => {
       expect((await api('itAgent', 'get', `/desk/tickets/${t.id}`).expect(200)).body.device.id).toBe(ids.empLaptop);
     });
 
+    it('1802: in the catalogue, ordering a device item for a colleague takes their device and refuses anyone else (both ways)', async () => {
+      const item = await inOrg(org.A.id, (tx) => tx.sdCatalogItem.findFirstOrThrow({ where: { deskId: ids.it, name: 'Password reset' } }));
+      const bad = await api('helper', 'post', '/desk/my/catalog/checkout').send({ forPersonId: ids.empPerson, items: [{ itemId: item.id, quantity: 1, answers: { device: ids.otherLaptop } }] }).expect(400);
+      expect(JSON.stringify(bad.body.errors)).toMatch(/your own devices/);
+      await api('helper', 'post', '/desk/my/catalog/checkout').send({ forPersonId: ids.empPerson, items: [{ itemId: item.id, quantity: 1, answers: { device: ids.empLaptop } }] }).expect(201);
+      await api('emp', 'post', '/desk/my/catalog/checkout').send({ forPersonId: ids.otherPerson, items: [{ itemId: item.id, quantity: 1, answers: { device: ids.otherLaptop } }] }).expect(403);
+    });
+
     it('negative: a device of another person is refused for her; without the right "for" is refused; a bad id is refused', async () => {
       expect((await api('helper', 'post', '/desk/my/tickets').send({ deskId: ids.it, subject: 'x', description: 'x', requestedForPersonId: ids.empPerson, assetId: ids.otherLaptop }).expect(400)).body.message).toMatch(/your own devices/);
       await api('emp', 'get', `/desk/my/desks?for=${ids.otherPerson}`).expect(403);

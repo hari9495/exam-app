@@ -7,6 +7,7 @@ import { HelpCentreScreen, type DevOutboxItem, type MyChannels, type KbArticleVi
 import { apiFetch } from '../../../../../lib/api-client';
 import { useAuth } from '../../../../../lib/auth-context';
 import { deskState, useDesk, useDeskUpload, useDeskWrite } from '../../../../../lib/yx-desk';
+import { useYxPermissions } from '../../../../../lib/yx-org';
 
 // Helpdesk › Help centre: the designed HLP-01 screen with `live` (Helpdesk design wiring, round 1). Open to everyone in
 // the company (the requester's implicit role); the API returns only the person's own records. Search the company's
@@ -18,6 +19,7 @@ function YxDeskHelpPageInner() {
   const params = useSearchParams();
   const { accessToken } = useAuth();
   const token = accessToken ?? undefined;
+  const perms = useYxPermissions();
   const home = useDesk<KbHome>('/my/kb');
   const privacy = useDesk<{ id: string; kind: string; status: string; createdAt: string; decisionNote: string | null }[]>('/my/privacy-requests');
   const desks = useDesk<RaiseDesk[]>('/my/desks');
@@ -42,7 +44,14 @@ function YxDeskHelpPageInner() {
         onRaise: (input) => write<{ id: string; number: string }>('/my/tickets', 'POST', input),
         onUpload: (id, file) => upload(`/my/tickets/${encodeURIComponent(id)}/attachments`, file),
         onOpen: (id) => router.push(`/yx/desk/help/${encodeURIComponent(id)}`),
-        onPickDevice: (q) => apiFetch(`/desk/my/pick/assets?q=${encodeURIComponent(q)}`, {}, token) as Promise<PickOption[]>,
+        onPickDevice: (q, forPersonId) => apiFetch(`/desk/my/pick/assets?q=${encodeURIComponent(q)}${forPersonId ? `&for=${encodeURIComponent(forPersonId)}` : ''}`, {}, token) as Promise<PickOption[]>,
+        // Answer 1801: raising on behalf of a colleague, for people holding request.raise_on_behalf.
+        onBehalf: perms.has('request.raise_on_behalf')
+          ? {
+              onPickPeople: (q) => apiFetch(`/desk/my/pick/people?q=${encodeURIComponent(q)}`, {}, token) as Promise<PickOption[]>,
+              onDesksFor: (personId) => apiFetch(`/desk/my/desks?for=${encodeURIComponent(personId)}`, {}, token) as Promise<RaiseDesk[]>,
+            }
+          : null,
         onRate: (id, score, reason) => write(`/my/tickets/${encodeURIComponent(id)}/rating`, 'POST', { score, ...(reason ? { reason } : {}) }),
         kb: {
           home: home.data ?? null,
