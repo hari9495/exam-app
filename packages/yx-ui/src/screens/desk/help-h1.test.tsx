@@ -70,7 +70,7 @@ describe('H-1: Show page help (Desk set-up)', () => {
     const onPageHelp = vi.fn().mockResolvedValue(undefined);
     render(
       <ToastProvider>
-        <DeskSetupScreen state="ready" initialTab="settings" kbReviewMonths={12} onKbReviewMonths={ok()} pageHelp onPageHelp={onPageHelp} desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, canSetUp: true }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={ok()} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} />
+        <DeskSetupScreen state="ready" initialTab="requesters" kbReviewMonths={12} onKbReviewMonths={ok()} pageHelp onPageHelp={onPageHelp} desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, canSetUp: true }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={ok()} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} />
       </ToastProvider>,
     );
     await ue.click(await screen.findByRole('switch', { name: /Show page help/ }));
