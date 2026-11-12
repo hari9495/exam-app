@@ -619,3 +619,11 @@ timesheet notes to the client" is on (off by default); pre-filled rows start wit
       resubmitted. *Suggested: keep.*
 1775. **Without Projects switched on** (basic timesheets) the same rule applies, because the setting is the company's.
       *Suggested: keep; or ask notes only when Projects is on.*
+
+## Founder change: a comment per day, not per row (13 Nov 2026, from a reference picture)
+Replaces 1731 and 1733's per-row note. Each day cell with hours has a COMMENT link under it that opens a small comment
+box for that day on that project row. Days with 0 hours have no link and need no comment. The per-row note box is
+removed (one way only). 1787 (founder chose option 3, "ok for all"): a per-day minimum, a company setting, default 20
+words per day with hours; Submit week is refused (page and API) until every day with hours has its comment; a live
+count in the box. The required switch, client visibility (1734), approver and finance visibility, and pre-fill (1735)
+stay as built. Drawn in the timesheet design first.
