@@ -147,6 +147,12 @@ describe('Service Desk 3b-2 batch 1: catalogue, approvals, automation', () => {
 
     ids.it = (await api('adminA', 'post', '/desk/desks').send({ name: 'IT help', key: 'IT', kind: 'it' }).expect(201)).body.id;
     ids.itB = (await api('adminB', 'post', '/desk/desks').send({ name: 'B IT', key: 'BIT', kind: 'it' }).expect(201)).body.id;
+    // Since Helpdesk item 1 a new IT desk gets the IT starter items; this suite builds its own catalogue from nothing, so
+    // the starter items are set aside (retired, renamed) before it starts.
+    for (const [desk, o] of [[ids.it, org.A.id], [ids.itB, org.B.id]] as const)
+      await system(async (tx) => {
+        for (const i of await tx.sdCatalogItem.findMany({ where: { deskId: desk } })) await tx.sdCatalogItem.update({ where: { id: i.id }, data: { state: 'retired', name: `Starter ${i.name}` } });
+      }, o);
     for (const [who, role] of [['agent', 'agent'], ['lead', 'lead'], ['deskAdmin', 'admin']] as const) await api('adminA', 'post', `/desk/desks/${ids.it}/members`).send({ userId: users[who], role }).expect(201);
     await system(async (tx) => {
       const g = await tx.sdGroup.findFirstOrThrow({ where: { deskId: ids.it } });

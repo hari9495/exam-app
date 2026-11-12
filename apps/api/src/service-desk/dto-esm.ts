@@ -380,6 +380,18 @@ export class WebhookActiveDto {
   active!: boolean;
 }
 
+/** Helpdesk item 2: an IT agent's device search. */
+export class AssetPickQueryDto {
+  @IsUUID()
+  deskId!: string;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(60)
+  q?: string;
+}
+
 export class DeskQueryDto {
   @IsUUID()
   deskId!: string;

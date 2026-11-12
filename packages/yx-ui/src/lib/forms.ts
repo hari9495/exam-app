@@ -3,7 +3,7 @@
 // while the person fills the form. Keep the semantics in step by hand with rules-engine/conditions.ts and forms.ts.
 import type { RuleField, RuleGroup, RuleCondition, Scalar as UiScalar } from './rules';
 
-export type FormFieldType = 'text' | 'textarea' | 'number' | 'email' | 'phone' | 'url' | 'date' | 'choice' | 'multi_choice' | 'checkbox' | 'person' | 'location' | 'cost_centre' | 'formula' | 'separator';
+export type FormFieldType = 'text' | 'textarea' | 'number' | 'email' | 'phone' | 'url' | 'date' | 'choice' | 'multi_choice' | 'checkbox' | 'person' | 'location' | 'cost_centre' | 'asset' | 'formula' | 'separator';
 export type FormLang = 'en' | 'hi' | 'ta' | 'te';
 export type OptionColour = 'grey' | 'blue' | 'green' | 'amber' | 'red' | 'purple';
 

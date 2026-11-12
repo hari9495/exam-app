@@ -693,8 +693,15 @@ export class TicketsService {
         // Public directory fields only (P02 Q4): code, designation, department, location.
         employee: employee ?? null,
         otherTickets: others,
-        // Assets and CIs join in phase 3b-3 (US-G-003).
-        assets: [],
+        // Helpdesk item 2: the requester's devices now (People asset register), for whoever may see this ticket.
+        assets: (
+          await tx.asset.findMany({
+            where: { organizationId: org, id: { in: (await tx.assetAssignment.findMany({ where: { organizationId: org, personId: t.requesterPersonId, returnedOn: null }, select: { assetId: true } })).map((x) => x.assetId) } },
+            select: { id: true, name: true, tag: true, category: true },
+            orderBy: { name: 'asc' },
+            take: 20,
+          })
+        ).map((x) => ({ id: x.id, name: x.name, tag: x.tag, category: x.category })),
       };
     });
   }

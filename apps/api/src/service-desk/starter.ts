@@ -100,6 +100,19 @@ export const STARTER_PACKS: Record<string, StarterPack> = {
       { name: 'Exit settlement', shortText: 'Full and final settlement and the relieving letter for a leaver.', category: 'Joining and leaving', deliveryDays: 5, journeyOnly: true, tasks: [{ title: 'Prepare the full and final settlement', olaHours: 40 }, { title: 'Issue the relieving and experience letters', olaHours: 40 }] },
     ],
   },
+  // Helpdesk item 1 (founder, 12 Nov 2026): the IT starter catalogue. Delivery days are Indian working days (the
+  // desk's calendar: Monday to Friday, its holidays); task times are working hours.
+  it: {
+    firstResponse: [30, 2 * H, 4 * H, 8 * H],
+    resolution: [4 * H, 8 * H, 24 * H, 40 * H],
+    items: [
+      { name: 'New laptop', shortText: 'A new or replacement work laptop, set up with your accounts and the usual software.', category: 'Laptop and devices', deliveryDays: 5, managerApproves: true, tasks: [{ title: 'Take a laptop from stock or order one', olaHours: 16 }, { title: 'Set up the laptop and hand it over', olaHours: 8 }] },
+      { name: 'Software install', shortText: 'Install software you need for work. Say which and why.', category: 'Software', deliveryDays: 2, managerApproves: true, tasks: [{ title: 'Check the licence and install the software', olaHours: 8 }] },
+      { name: 'VPN access', shortText: 'Work from outside the office on the company network.', category: 'Access and accounts', deliveryDays: 1, managerApproves: true, tasks: [{ title: 'Give VPN access and send the set-up steps', olaHours: 4 }] },
+      { name: 'Password reset', shortText: 'You cannot sign in to a work system and need a new password.', category: 'Access and accounts', deliveryDays: 1, tasks: [{ title: 'Check who is asking and reset the password', olaHours: 2 }] },
+      { name: 'New-joiner IT kit', shortText: 'For a new joiner: laptop, email, sign-in and the usual software, ready on the first day.', category: 'Laptop and devices', deliveryDays: 3, journeyOnly: true, tasks: [{ title: 'Make the email and sign-in accounts', olaHours: 8 }, { title: 'Ready the laptop and software', olaHours: 16 }] },
+    ],
+  },
   admin: {
     firstResponse: [H, 4 * H, 8 * H, 16 * H],
     resolution: [8 * H, 16 * H, 40 * H, 80 * H],

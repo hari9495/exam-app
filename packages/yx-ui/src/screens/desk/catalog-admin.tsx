@@ -57,6 +57,8 @@ const TYPE_OPTIONS: { value: FormFieldType; label: string }[] = [
   { value: 'person', label: 'A colleague (live list)' },
   { value: 'location', label: 'A location (live list)' },
   { value: 'cost_centre', label: 'A cost centre (live list)' },
+  // Helpdesk item 2: the requester's own devices from the People asset register.
+  { value: 'asset', label: 'One of their devices (live list)' },
   { value: 'formula', label: 'Worked out (formula)' },
   { value: 'separator', label: 'Heading between fields' },
 ];
@@ -86,7 +88,7 @@ function formRuleFields(form: FormDef, extra: RuleField[] = []): RuleField[] {
     else if (f.type === 'date') out.push({ key: f.key, label: f.label, type: 'date' });
     else if (f.type === 'checkbox') out.push({ key: f.key, label: f.label, type: 'choice', options: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }] });
     else if (f.type === 'choice' || f.type === 'multi_choice') out.push({ key: f.key, label: f.label, type: 'choice', options: f.options?.map((o) => ({ value: o.value, label: o.label })) ?? [] });
-    else if (f.type !== 'person' && f.type !== 'location' && f.type !== 'cost_centre') out.push({ key: f.key, label: f.label, type: 'text' });
+    else if (f.type !== 'person' && f.type !== 'location' && f.type !== 'cost_centre' && f.type !== 'asset') out.push({ key: f.key, label: f.label, type: 'text' });
   }
   return [...out, ...extra];
 }

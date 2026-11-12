@@ -300,7 +300,8 @@ export interface RequesterContext {
   vip: boolean;
   employee: { code: string | null; designation: string | null; department: string | null; location: string | null } | null;
   otherTickets: { id: string; number: string; subject: string; systemState: SystemState; createdAt: string }[];
-  assets: unknown[];
+  /** Helpdesk item 2: the requester's devices now, from the People asset register. */
+  assets: { id: string; name: string; tag: string; category: string }[];
 }
 
 export interface Presence {

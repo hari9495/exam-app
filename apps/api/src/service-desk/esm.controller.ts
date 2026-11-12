@@ -30,6 +30,7 @@ import {
   VersionOnlyDto,
   WebhookActiveDto,
   WebhookDto,
+  AssetPickQueryDto,
 } from './dto-esm';
 import { RequesterService } from './requester.service';
 
@@ -43,6 +44,16 @@ export class DeskCatalogController {
     private readonly access: DeskAccessService,
     private readonly catalog: CatalogService,
   ) {}
+
+  /**
+   * Helpdesk item 2: an agent of an IT desk finds any of the company's devices by tag or name (to fill a device field for
+   * someone). Agents of other desks are refused: they see only what the requester picked.
+   */
+  @Get('pick/assets')
+  @RequirePermissions('desk.ticket.work')
+  async pickAssets(@Req() req: Request, @CurrentTenant() t: TenantContext, @Query() q: AssetPickQueryDto) {
+    return this.catalog.searchAssets(await this.access.actor(req, t), q.deskId, q.q ?? '');
+  }
 
   @Get('catalog/admin/items')
   @RequirePermissions('desk.catalog.manage')
@@ -303,12 +314,11 @@ export class MyCatalogController {
     return this.catalog.cancel(this.requesters.who(req, t), id, itemId, dto.reason);
   }
 
-  /** SD-2.02 live-data pickers. My devices and CMDB pickers switch on in 3b-3. */
+  /** SD-2.02 live-data pickers; Helpdesk item 2: 'assets' is the person's own devices (People asset register). */
   @Get('pick/:kind')
   @Throttle(PUBLIC_API_THROTTLE)
   pick(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('kind') kind: string, @Query() q: PickQueryDto) {
-    if (kind === 'assets') return [];
-    if (kind !== 'people' && kind !== 'locations' && kind !== 'cost-centres') throw new BadRequestException('Pick people, locations or cost centres.');
+    if (kind !== 'people' && kind !== 'locations' && kind !== 'cost-centres' && kind !== 'assets') throw new BadRequestException('Pick people, locations, cost centres or your devices.');
     return this.catalog.pick(this.requesters.who(req, t), kind, q.q ?? '');
   }
 }
