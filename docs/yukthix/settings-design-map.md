@@ -929,3 +929,21 @@ console.log(missing.join(' '));
 - 1561 to 1564 approved as suggested (12 Nov 2026, "ok for all"). With S-7: Onboarding & probation, Job changes and Employee relations move with "Different for" (1561); "Applies from" on dated settings (1562); retirement age per grade (1564). With 1326: a company-wide audit log page readable with audit.view (1563).
 
 - 1721 to 1724 approved as suggested (12 Nov 2026, "ok for all"). To build: chain badge and Export (audit.export) on the company audit log (1722); record the channel (web, phone, API) with audit entries from now on and show it when present (1723); "See all in the audit log" from each history drawer (1724). 1721: readers per page as built; add one when a role asks.
+
+## 1722 to 1724 as built (branch `feat/yukthix-settings-s6`, first commit)
+
+- **1722:** the company audit log shows the latest daily integrity check ("Chain verified …", or "Chain check failed" with
+  what it found) and Export CSV for people with audit.export, both from the existing payroll audit endpoints
+  (`GET payroll/audit/chain`, `GET payroll/audit/export`, with the page's area, person and date filters).
+- **1723:** every audit row written for a request now records where it came from: `web`, `phone` (a phone browser or app,
+  by its user agent) or `api` (the public API). The app keeps the request's channel for the whole request
+  (`recordRequestChannel`, `@exam-platform/shared`) and sets `app.channel` with each tenant transaction; the new column
+  `audit_logs.channel` takes it by default (migration `202617z0000171_audit_channel`), so every writer records it
+  unchanged. Earlier rows and jobs have none. The column is outside the hash chain; the append-only trigger still refuses
+  any change. The audit log shows a "From" column once an entry has it, and the entry drawer says it.
+- **1724:** each page's history drawer ends with "See all in the audit log" (the company audit log with the Settings
+  area chosen), for people with audit.view.
+- **Tests:** API e2e `settings-s5-history` (11: plus a phone change records Phone and a desktop one Web, shown in the log;
+  the channel can never be changed; the check for audit.view; Export needs audit.export and holds only the company's
+  rows); kit `settings-history-live.test` (13: plus the badge and Export, a failed check, From only when present, See all
+  only for audit.view).

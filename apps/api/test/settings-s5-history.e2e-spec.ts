@@ -39,7 +39,7 @@ describe('Settings S-5: change history, view-only pages and the company audit lo
       const at = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org[k]!, isSuperAdmin: false }, fn);
       // hr: changes settings; viewer: the view key only (1333); auditor: audit.view only; projects: Projects manage only.
       const people: [string, string[]][] = k === 'A'
-        ? [['hr', ['org.settings.manage', 'org.structure.view']], ['viewer', ['org.structure.view']], ['auditor', ['audit.view']], ['projects', ['projects.manage']], ['plain', []]]
+        ? [['hr', ['org.settings.manage', 'org.structure.view']], ['viewer', ['org.structure.view']], ['auditor', ['audit.view']], ['exporter', ['audit.view', 'audit.export']], ['projects', ['projects.manage']], ['plain', []]]
         : [['hr', ['org.settings.manage', 'org.structure.view', 'audit.view']]];
       for (const [who, keys] of people) {
         const permissionProfileId = (await at((tx) => tx.permissionProfile.create({ data: { organizationId: org[k]!, name: `${who}-${k}-${run}`, permissionsJson: JSON.stringify(keys) } }))).id;
@@ -139,6 +139,35 @@ describe('Settings S-5: change history, view-only pages and the company audit lo
       expect(a.some((e) => e.actor === `hr B ${run}`)).toBe(false);
       const b = (await api('hrB', 'get', '/payroll/audit?area=settings').expect(200)).body.entries as { actor: string }[];
       expect(b.some((e) => e.actor === `hr A ${run}`)).toBe(false);
+    });
+  });
+
+  // Founder answers 1722 and 1723 (S-5 follow-ups): the chain check and Export on the company audit log; the channel.
+  describe('1722, 1723: chain, export and where an entry came from', () => {
+    const PHONE_UA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Mobile Safari/537.36';
+    const WEB_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36';
+
+    it('a change from a phone records Phone, from a desktop browser Web; the audit log shows it', async () => {
+      await api('hrA', 'put', '/org/settings').set('User-Agent', PHONE_UA).send({ key: 'roster.max_daily_hours', value: '8', scopeType: 'tenant' }).expect(200);
+      await api('hrA', 'put', '/org/settings').set('User-Agent', WEB_UA).send({ key: 'roster.max_daily_hours', value: '9', scopeType: 'tenant' }).expect(200);
+      const rows = await tenantPrisma.forTenant({ organizationId: org.A!, isSuperAdmin: false }, (tx) => tx.auditLog.findMany({ where: { organizationId: org.A!, action: 'org.setting.changed', metadataJson: { contains: 'roster.max_daily_hours' } }, select: { channel: true, metadataJson: true } }));
+      const byTo = Object.fromEntries(rows.map((r) => [JSON.parse(r.metadataJson ?? '{}').to as string, r.channel]));
+      expect(byTo).toEqual({ '8': 'phone', '9': 'web' });
+      const entries = (await api('auditorA', 'get', '/payroll/audit?area=settings').expect(200)).body.entries as { channel: string | null; details: { to?: string } }[];
+      expect(entries.find((e) => e.details?.to === '8')?.channel).toBe('phone');
+    });
+
+    it('the channel can never be changed afterwards (append-only)', async () => {
+      await expect(tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.updateMany({ where: { organizationId: org.A!, action: 'org.setting.changed' }, data: { channel: 'api' } }))).rejects.toThrow(/YX_AUDIT_APPEND_ONLY|permission denied/);
+    });
+
+    it('the daily check is shown to audit.view; Export needs audit.export too', async () => {
+      await api('auditorA', 'get', '/payroll/audit/chain').expect(200);
+      await api('auditorA', 'get', '/payroll/audit/export?area=settings').expect(403);
+      const csv = await api('exporterA', 'get', '/payroll/audit/export?area=settings').expect(200);
+      expect(String(csv.headers['content-type'])).toMatch(/text\/csv/);
+      expect(csv.text).toContain('org.setting.changed');
+      expect(csv.text).not.toContain(`hr B ${run}`);
     });
   });
 });

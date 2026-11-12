@@ -4,6 +4,7 @@ import { softDeleteExtension } from '../soft-delete/soft-delete.extension';
 import { PrismaService } from './prisma.service';
 import { TenantContext } from './tenant-context';
 import { isRecordVisibilityGoverned } from '../record-visibility/record-visibility';
+import { requestChannel } from '../audit/request-channel';
 
 // A client extended with `softDeleteExtension` structurally gains the same model delegates and
 // `$executeRaw`/`$transaction` as the base `PrismaService` -- the extension only adds
@@ -114,7 +115,8 @@ export class TenantPrismaService {
       set_config('app.is_super_admin', ${context.isSuperAdmin ? 'on' : 'off'}, true),
       set_config('app.current_user_id', ${context.userId ?? ''}, true),
       set_config('app.record_visibility_governed', ${isRecordVisibilityGoverned(context.role) ? 'on' : 'off'}, true),
-      set_config('app.support_session', ${context.supportSessionId ?? ''}, true)`;
+      set_config('app.support_session', ${context.supportSessionId ?? ''}, true),
+      set_config('app.channel', ${requestChannel.getStore() ?? ''}, true)`;
   }
 
   // For call sites whose isolation already comes from an ID chain resolved

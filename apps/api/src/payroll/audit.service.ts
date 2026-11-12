@@ -216,7 +216,7 @@ export class PayAuditService {
   }
 
   private view(r: Prisma.AuditLogGetPayload<object>, m: { canPay: boolean; canIdentity: boolean }) {
-    return { id: r.id, seq: r.chainSeq?.toString() ?? null, at: r.createdAt, action: r.action, entityType: r.entityType, entityId: r.entityId, actor: r.actorName || r.actorEmail || 'YukthiX system', actorRole: r.actorRole, details: maskMetadata(parse(r.metadataJson), m.canPay, m.canIdentity) };
+    return { id: r.id, seq: r.chainSeq?.toString() ?? null, at: r.createdAt, action: r.action, entityType: r.entityType, entityId: r.entityId, actor: r.actorName || r.actorEmail || 'YukthiX system', actorRole: r.actorRole, channel: r.channel, details: maskMetadata(parse(r.metadataJson), m.canPay, m.canIdentity) };
   }
 
   /** Audit search in scope, newest first, by chain position (YX-AUD-06). */

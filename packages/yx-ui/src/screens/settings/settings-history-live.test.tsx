@@ -105,3 +105,42 @@ describe('1563: the company audit log', () => {
     expect(diffOf(null)).toEqual([]);
   });
 });
+
+// Founder answers 1722 to 1724 (S-5 follow-ups).
+describe('1722 to 1724: chain, export, where from, and See all', () => {
+  const base = { state: 'ready' as const, onRetry: () => {}, areas: [], filters: {}, onFilters: vi.fn() };
+  const entry = { id: 'e1', at: '2026-11-12T10:05:00Z', action: 'org.setting.changed', entityType: 'setting', entityId: 's1', actor: 'Lakshmi', actorRole: null, details: null };
+  it('a verified chain shows its badge; Export is offered only with the export key', async () => {
+    const onExport = vi.fn();
+    const { unmount } = render(<AuditLogScreen rows={[]} live={{ ...base, entries: [], chain: { result: 'ok', at: '2026-11-13T02:00:00Z', problem: null }, onExport }} />);
+    expect(screen.getByText(/Chain verified/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Export CSV' }));
+    expect(onExport).toHaveBeenCalled();
+    unmount();
+    render(<AuditLogScreen rows={[]} live={{ ...base, entries: [], chain: { result: 'broken', at: '2026-11-13T02:00:00Z', problem: 'Row 9 no longer matches' } }} />);
+    expect(screen.getByText('Chain check failed')).toBeInTheDocument();
+    expect(screen.getByText(/Row 9 no longer matches/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Export CSV' })).toBeNull();
+  });
+
+  it('From shows only once an entry has it', () => {
+    const { unmount } = render(<AuditLogScreen rows={[]} live={{ ...base, entries: [entry] }} />);
+    expect(screen.queryByRole('columnheader', { name: /^From/ })).toBeNull();
+    unmount();
+    render(<AuditLogScreen rows={[]} live={{ ...base, entries: [{ ...entry, channel: 'phone' }] }} />);
+    expect(screen.getByRole('columnheader', { name: /^From/ })).toBeInTheDocument();
+    expect(screen.getByText('Phone')).toBeInTheDocument();
+  });
+
+  it('the history drawer says See all in the audit log only for those who may read it', async () => {
+    const past = historyOnPage(page, ROWS);
+    const { unmount } = render(<ToastProvider><SettingsPageScreen groups={SETTINGS_GROUPS} pageId="3.4" live={{ page, canEdit: true, lastChange: past.lastChange, history: past.history, auditHref: '/yx/settings/audit-log?area=settings', onSave: vi.fn() }} /></ToastProvider>);
+    await ue.click(screen.getByRole('button', { name: 'View history' }));
+    expect(await screen.findByRole('link', { name: 'See all in the audit log' })).toHaveAttribute('href', '/yx/settings/audit-log?area=settings');
+    unmount();
+    show(true);
+    await ue.click(screen.getByRole('button', { name: 'View history' }));
+    await screen.findByRole('dialog', { name: 'Change history' });
+    expect(screen.queryByRole('link', { name: 'See all in the audit log' })).toBeNull();
+  });
+});

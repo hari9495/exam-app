@@ -543,6 +543,8 @@ model AuditLog {
   actorName      String?       @map("actor_name") @db.VarChar(1000)
   actorRole      String?       @map("actor_role") @db.VarChar(1000)
   metadataJson   String?       @map("metadata_json") @db.Text
+  /// Answer 1723: where the request came from (web, phone, api); none for jobs and rows before it was recorded.
+  channel        String?       @default(dbgenerated("NULLIF(current_setting('app.channel'::text, true), ''::text)")) @db.VarChar(8)
   createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   // P08 YX-AUD-03 hash chain, set by the database on insert (audit_chain_link); never written by the app.
   chainKey       String?       @map("chain_key") @db.Uuid

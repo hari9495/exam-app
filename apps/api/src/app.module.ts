@@ -1,3 +1,4 @@
+import { recordRequestChannel } from '@exam-platform/shared';
 import { ServiceDeskModule } from './service-desk/service-desk.module';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, HttpAdapterHost } from '@nestjs/core';
@@ -277,6 +278,8 @@ export class AppModule implements NestModule {
   // property of undefined and answer 500. An empty object lets validation answer 400 / the handler 401.
   configure(consumer: MiddlewareConsumer): void {
     consumer.apply(emptyBodyAsObject).forRoutes('{*splat}');
+    // Answer 1723: every audit row written for a request records where it came from (web, phone or the public API).
+    consumer.apply(recordRequestChannel).forRoutes('{*splat}');
   }
 }
 

@@ -4,6 +4,8 @@ import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { PROJECT_SETTING_KEYS, SETTINGS_GROUPS, SettingsPageScreen, historyOnPage, projectSettingsChanges, projectSettingsPage, type ProjectSettingsData } from '@yukthix/ui/hiring';
 import { useSettingsHistory } from '../../../../../lib/yx-settings-history';
+import { loadState as _ls, useYxPermissions } from '../../../../../lib/yx-org';
+import { AUDIT_LOG } from '../../../../../lib/yx-nav';
 import { loadState } from '../../../../../lib/yx-org';
 import { useAuth } from '../../../../../lib/auth-context';
 import { useProjects, useProjectsWrite } from '../../../../../lib/yx-projects';
@@ -16,6 +18,7 @@ export default function YxProjectSettingsPage() {
   const router = useRouter();
   const { impersonating, actingSuperAdmin } = useAuth();
   const data = useProjects<ProjectSettingsData>('/settings');
+  const perms = useYxPermissions();
   const write = useProjectsWrite();
   const state = loadState(data);
   const page = useMemo(() => (data.data ? projectSettingsPage(design, data.data) : design), [data.data]);
@@ -31,6 +34,7 @@ export default function YxProjectSettingsPage() {
         canEdit: Boolean(data.data?.canEdit) && !impersonating && !actingSuperAdmin,
         lastChange: past ? past.lastChange : data.data?.lastChange ? { by: data.data.lastChange.by, role: '', at: data.data.lastChange.at, what: data.data.lastChange.what } : null,
         history: past?.history ?? [],
+        auditHref: perms.has('audit.view') ? `${AUDIT_LOG}?area=settings` : undefined,
         state: state === 'ready' ? 'ready' : state === 'loading' ? 'loading' : state === 'no-access' ? 'no-access' : 'error',
         onRetry: () => void data.refetch(),
         savedTitle: 'Projects settings saved',

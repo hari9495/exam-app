@@ -6,7 +6,7 @@ import { SETTINGS_GROUPS, SettingsPageScreen, historyOnPage, pendingOnPage, time
 import { loadState, todayIst, useOrg, useOrgWrite, useYxPermissions } from './yx-org';
 import { useYxNav } from './yx-shell';
 import { groupSlug } from './yx-settings-home';
-import { ME_SECURITY } from './yx-nav';
+import { AUDIT_LOG, ME_SECURITY } from './yx-nav';
 import { PAGE_SETTING_KEYS, useSettingsHistory } from './yx-settings-history';
 
 // Settings S-2 and S-3 (answers 1323 to 1325): a drawn settings page with the company's settings from the registry
@@ -71,6 +71,7 @@ export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, s
         canEdit: Boolean(data?.canEdit),
         lastChange: past.lastChange,
         history: past.history,
+        auditHref: perms.has('audit.view') ? `${AUDIT_LOG}?area=settings` : undefined,
         // The MFA floor is its own state (add a second factor), never "couldn't load" (walk of S-3).
         state: settings.isError && (settings.error as { code?: string }).code === 'MFA_REQUIRED' ? 'mfa' : loadState(settings),
         onSetUpMfa: () => router.push(ME_SECURITY),
