@@ -879,3 +879,5 @@ console.log(missing.join(' '));
 - 1521 to 1525 approved as suggested (12 Nov 2026, "ok for all"). To build: bell and email to the other HR settings holders when a payroll setting change waits, and to the asker when decided (1522); waiting changes lapse after 14 days, a company setting, audited, asker told (1523). With S-7: Payroll rules bonus and loan settings move to 4.6 under the second person (1521).
 
 - 1561 to 1564 approved as suggested (12 Nov 2026, "ok for all"). With S-7: Onboarding & probation, Job changes and Employee relations move with "Different for" (1561); "Applies from" on dated settings (1562); retirement age per grade (1564). With 1326: a company-wide audit log page readable with audit.view (1563).
+
+- 1721 to 1724 approved as suggested (12 Nov 2026, "ok for all"). To build: chain badge and Export (audit.export) on the company audit log (1722); record the channel (web, phone, API) with audit entries from now on and show it when present (1723); "See all in the audit log" from each history drawer (1724). 1721: readers per page as built; add one when a role asks.
