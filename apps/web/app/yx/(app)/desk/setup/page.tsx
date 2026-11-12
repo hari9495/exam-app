@@ -289,6 +289,7 @@ function YxDeskSetupPageInner() {
                           recurring={recurring.data ?? []}
                           sequences={sequences.data ?? []}
                           onCreate={(input) => write('/recurring', 'POST', { deskId: selected, ...input })}
+                          onPickEquipment={detail.data?.desk.kind === 'facilities' ? (q) => apiFetch(`/desk/facilities/pick?kind=equipment&deskId=${encodeURIComponent(selected ?? '')}&q=${encodeURIComponent(q)}`, {}, token) as Promise<PickOption[]> : undefined}
                           onState={(r, state) => write(`/recurring/${encodeURIComponent(r.id)}`, 'PATCH', { version: r.version, state })}
                           onSaveSequence={(seq, input) => (seq ? write(`/sequences/${encodeURIComponent(seq.id)}`, 'PATCH', { version: seq.version, ...input }) : write('/sequences', 'POST', { deskId: selected, ...input }))}
                         />

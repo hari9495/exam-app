@@ -12,6 +12,8 @@ import { MultiSelect, Select } from '../../components/select';
 import { Card } from '../../components/shell';
 import { useRun } from '../org/org-kit';
 import { when } from './desk-kit';
+import { LivePicker } from './service-form';
+import type { PickOption } from './esm-types';
 import type { ActionLinkView, BranchView, ChannelLinkView, ChatPrompt, ChatQueue, DocTemplate, DocumentsView, HrSummary, JourneySetup, LifecycleSetup, LifecycleTransition, LifecycleView, RecurringView, RequestDocument, SequenceDef, SequenceRunView, TicketShare } from './esm2-types';
 
 // Service Desk 3b-2 batch 2 screens (plain simple English; single choices use the joined Segment; nothing is checked
@@ -642,7 +644,9 @@ export interface SchedulesAdminProps {
   groups: { id: string; name: string }[];
   recurring: RecurringView[];
   sequences: SequenceDef[];
-  onCreate: (input: { name: string; rrule: string; timeZone: string; startsAt: string; template: { subject: string; bodyHtml: string; groupId?: string } }) => Promise<unknown>;
+  onCreate: (input: { name: string; rrule: string; timeZone: string; startsAt: string; template: { subject: string; bodyHtml: string; groupId?: string; equipmentId?: string } }) => Promise<unknown>;
+  /** Helpdesk plan item 4: maintenance of one piece of equipment (a facilities desk's own register). */
+  onPickEquipment?: (q: string) => Promise<PickOption[]>;
   onState: (r: RecurringView, state: RecurringView['state']) => Promise<unknown>;
   onSaveSequence: (s: SequenceDef | null, input: { name: string; steps: { afterHours: number; bodyHtml: string }[]; active?: boolean }) => Promise<unknown>;
 }
@@ -658,6 +662,7 @@ export function SchedulesAdmin(p: SchedulesAdminProps) {
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [groupId, setGroupId] = useState<string | null>(null);
+  const [equipmentId, setEquipmentId] = useState<string | null>(null);
   const [seqName, setSeqName] = useState('');
   const [steps, setSteps] = useState<{ afterHours: number | null; text: string }[]>([{ afterHours: 24, text: '' }]);
   const { busy, error, run } = useRun();
@@ -750,6 +755,11 @@ export function SchedulesAdmin(p: SchedulesAdminProps) {
           <FormField label="Team" optional>
             <Select value={groupId} onChange={setGroupId} clearable options={p.groups.map((g) => ({ value: g.id, label: g.name }))} />
           </FormField>
+          {p.onPickEquipment && (
+            <FormField label="Equipment" optional helper="Each ticket names it, with its building and area. Retired equipment pauses the schedule.">
+              <LivePicker kind="equipment" label="Equipment" value={equipmentId} onChange={setEquipmentId} onPick={(_k, q) => p.onPickEquipment!(q)} />
+            </FormField>
+          )}
           <div className="yx-ops-row">
             <Button
               variant="primary"
@@ -758,7 +768,7 @@ export function SchedulesAdmin(p: SchedulesAdminProps) {
                 !schedEarly.stop() &&
                 void run('create', async () => {
                   const offset = zoneOffset(p.timeZone, `${start}T${time}:00`);
-                  await p.onCreate({ name: name.trim(), rrule: rule, timeZone: p.timeZone, startsAt: new Date(Date.parse(`${start}T${time}:00Z`) - offset).toISOString(), template: { subject: subject.trim(), bodyHtml: `<p>${esc(body.trim())}</p>`, ...(groupId ? { groupId } : {}) } });
+                  await p.onCreate({ name: name.trim(), rrule: rule, timeZone: p.timeZone, startsAt: new Date(Date.parse(`${start}T${time}:00Z`) - offset).toISOString(), template: { subject: subject.trim(), bodyHtml: `<p>${esc(body.trim())}</p>`, ...(groupId ? { groupId } : {}), ...(equipmentId ? { equipmentId } : {}) } });
                   setName('');
                   setSubject('');
                   setBody('');

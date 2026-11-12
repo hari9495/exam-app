@@ -261,6 +261,12 @@ export class RecurringTemplateDto {
   @Text(1, 200)
   subject!: string;
 
+  /** Helpdesk plan item 4: maintenance of one piece of equipment (its tickets name it, its building and area). */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsUUID()
+  equipmentId?: string | null;
+
   @IsString()
   @MaxLength(20000)
   bodyHtml!: string;
@@ -565,4 +571,94 @@ export class StarterPackDto {
   @IsOptional()
   @IsBoolean()
   restrict?: boolean;
+}
+
+// ---------------------------------------------------------------------------------------------- Helpdesk plan item 4
+
+export class FacilityAreaDto {
+  @IsUUID()
+  locationId!: string;
+
+  @Text(1, 100)
+  name!: string;
+
+  @IsOptional()
+  @IsIn(['active', 'retired'])
+  status?: 'active' | 'retired';
+
+  @IsOptional()
+  @IsInt()
+  version?: number;
+}
+
+export class EquipmentDto {
+  @IsUUID()
+  deskId!: string;
+
+  @IsUUID()
+  ownerGroupId!: string;
+
+  @IsUUID()
+  locationId!: string;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsUUID()
+  areaId?: string | null;
+
+  @Text(1, 100)
+  name!: string;
+
+  @Matches(/^[A-Za-z0-9][A-Za-z0-9 _./-]{0,39}$/, { message: 'A tag is letters, digits, spaces and - _ . / (up to 40).' })
+  tag!: string;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @Text(0, 60)
+  category?: string | null;
+
+  @IsOptional()
+  @IsIn(['active', 'retired'])
+  status?: 'active' | 'retired';
+
+  @IsOptional()
+  @IsInt()
+  version?: number;
+}
+
+/** The building, area and equipment a facilities ticket is about; null clears one. */
+export class TicketPlaceDto {
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsUUID()
+  locationId?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsUUID()
+  areaId?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsUUID()
+  equipmentId?: string | null;
+}
+
+export class PlacePickDto {
+  @IsIn(['buildings', 'areas', 'equipment'])
+  kind!: 'buildings' | 'areas' | 'equipment';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  q?: string;
+
+  @IsOptional()
+  @IsUUID()
+  locationId?: string;
+
+  /** Equipment of one facilities desk only (its maintenance schedules). */
+  @IsOptional()
+  @IsUUID()
+  deskId?: string;
 }

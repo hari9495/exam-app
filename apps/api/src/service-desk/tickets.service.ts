@@ -10,6 +10,7 @@ import { cleanHtml, htmlToText } from './rich-text';
 import { PiiFound, maskPii, maskPiiHtml, unmaskHealth } from './pii';
 import { SlaService } from './sla.service';
 import { assetOption, liveAsset } from './asset-pick';
+import { checkPlace } from './facilities.service';
 import { Viewer, applyFieldChange, fieldsFor, sees, shownFields } from './ticket-fields';
 import { MailOutService } from './mail-out.service';
 import { contactAccount, planFor, planUsedUp } from './customers.service';
@@ -104,6 +105,10 @@ export interface CreateInput {
   originQuery?: string;
   /** Answer 1662: the device it is about (checked by the caller). */
   assetId?: string;
+  /** Helpdesk plan item 4: the building, area and equipment it is about (checked by the caller). */
+  locationId?: string | null;
+  areaId?: string | null;
+  equipmentId?: string | null;
 }
 
 interface Notice {
@@ -217,6 +222,9 @@ export class TicketsService {
         raisedOutsideHours: input.side === 'requester' && Boolean(await this.sla.closedNow(tx, org, desk)),
         originArticleId: input.originArticleId ?? null,
         assetId: input.assetId ?? null,
+        locationId: input.locationId ?? null,
+        areaId: input.areaId ?? null,
+        equipmentId: input.equipmentId ?? null,
         originQuery: input.originQuery?.trim() || null,
         sensitive: Boolean(cat?.sensitive),
         // SD-2.09 (M08): some categories make every ticket in them private.
@@ -540,7 +548,15 @@ export class TicketsService {
       const device = t.assetId ? await tx.asset.findFirst({ where: { organizationId: org, id: t.assetId }, select: { id: true, name: true, tag: true, category: true } }) : null;
       // Answers 1641, 1650: the desk's own fields this person may see (team-lead-only ones to the desk's leads only).
       const fieldViewer = this.fieldViewer(a, t.deskId, access);
+      // Helpdesk plan item 4: the building, area and equipment a facilities ticket names.
+      const [placeLoc, placeArea, placeEq] = await Promise.all([
+        t.locationId ? tx.location.findFirst({ where: { organizationId: org, id: t.locationId }, select: { id: true, name: true } }) : null,
+        t.areaId ? tx.sdFacilityArea.findFirst({ where: { organizationId: org, id: t.areaId }, select: { id: true, name: true } }) : null,
+        t.equipmentId ? tx.sdEquipment.findFirst({ where: { organizationId: org, id: t.equipmentId }, select: { id: true, name: true, tag: true } }) : null,
+      ]);
       return {
+        place: { building: placeLoc, area: placeArea, equipment: placeEq ? { id: placeEq.id, name: `${placeEq.name} (${placeEq.tag})` } : null },
+        canSetPlace: desk.kind === 'facilities' && access === 'agent' && canWork(a, t.deskId),
         deskFields: shownFields(await fieldsFor(tx, org, t.deskId, t.typeId), t.fieldValues, fieldViewer),
         canSetFields: access === 'agent' && canWork(a, t.deskId),
         device: device ? assetOption(device) : null,
@@ -971,6 +987,27 @@ export class TicketsService {
       }
       await audit(tx, a, 'desk.ticket.fields_set', 'sd_ticket', t.id, { keys: changed.map((f) => f.key) });
       return { deskFields: shownFields(fields, res.values as Prisma.JsonValue, who) };
+    });
+  }
+
+  /**
+   * Helpdesk plan item 4: a facilities desk's agent sets the building, area and equipment a ticket is about. Equipment
+   * brings its own building and area; retired areas and equipment are refused. Audited, a timeline event.
+   */
+  async setPlace(a: DeskActor, id: string, dto: { locationId?: string | null; areaId?: string | null; equipmentId?: string | null }) {
+    return this.tx(a, async (tx) => {
+      const org = a.ctx.organizationId;
+      const { t, access } = await this.load(tx, a, id);
+      if (access !== 'agent') throw new ForbiddenException(SEAT_REQUIRED);
+      requireWork(a, t.deskId);
+      const desk = await tx.sdDesk.findFirstOrThrow({ where: { organizationId: org, id: t.deskId }, select: { kind: true } });
+      if (desk.kind !== 'facilities') throw new ForbiddenException("Only a facilities desk's agents name a building or equipment.");
+      const place = await checkPlace(tx, org, { locationId: dto.locationId ?? null, areaId: dto.areaId ?? null, equipmentId: dto.equipmentId ?? null });
+      const upd = await tx.sdTicket.updateMany({ where: { organizationId: org, id: t.id, version: t.version }, data: { ...place, version: { increment: 1 }, updatedAt: new Date() } });
+      if (!upd.count) throw new ConflictException('Someone else changed this ticket. Reload to see the latest.');
+      await tx.sdTicketEvent.create({ data: { organizationId: org, deskId: t.deskId, ticketId: t.id, sensitive: t.sensitive, private: t.private, kind: 'place_changed', fromValue: t.equipmentId ?? t.areaId ?? t.locationId, toValue: place.equipmentId ?? place.areaId ?? place.locationId, byUserId: a.userId } });
+      await audit(tx, a, 'desk.ticket.place_set', 'sd_ticket', t.id, { from: { locationId: t.locationId, areaId: t.areaId, equipmentId: t.equipmentId }, to: place });
+      return place;
     });
   }
 

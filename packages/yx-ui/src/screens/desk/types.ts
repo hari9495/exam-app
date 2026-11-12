@@ -1,3 +1,4 @@
+import type { TicketPlace } from './facilities';
 import type { DeskField, TicketFieldView } from './ticket-fields';
 // Service Desk (M14 phase 3b-1): the shapes the /api/v1/desk routes return and accept. Dates arrive as ISO strings.
 export type { LoadState } from '../org/types';
@@ -278,6 +279,9 @@ export interface TicketDetail {
   /** Answers 1661, 1662: the device it is about, and whether this person may set it (an IT desk's agent). */
   device?: { id: string; label: string; detail: string | null } | null;
   canSetDevice?: boolean;
+  /** Helpdesk plan item 4: the building, area and equipment a facilities ticket names, and whether this person sets them. */
+  place?: TicketPlace;
+  canSetPlace?: boolean;
   /** Answers 1641, 1650: the desk's own fields this person may see, and whether they may change them. */
   deskFields?: TicketFieldView[];
   canSetFields?: boolean;

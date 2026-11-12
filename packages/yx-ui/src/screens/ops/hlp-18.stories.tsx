@@ -26,6 +26,8 @@ export const LifecycleEmpty: S = { name: 'No lifecycle yet', render: () => <Life
 export const LifecycleLoading: S = { name: 'Lifecycle loading', render: () => <LifecycleAdmin setup={undefined} onCreate={ok} onSave={ok} onCheck={async () => ({ ok: true, problem: null })} onPublish={ok} onRetire={ok} /> };
 const schedules = (over: Partial<Parameters<typeof SchedulesAdmin>[0]> = {}) => <SchedulesAdmin timeZone="Asia/Kolkata" groups={GROUPS} recurring={RECURRING} sequences={SEQUENCES} onCreate={ok} onState={ok} onSaveSequence={ok} {...over} />;
 export const Schedules: S = { name: 'Recurring tickets and follow-ups', render: () => schedules() };
+// Helpdesk plan item 4: recurring maintenance of one piece of equipment (a ticket per due date naming it).
+export const SchedulesEquipment: S = { name: 'Recurring maintenance of a piece of equipment', render: () => schedules({ onPickEquipment: async () => [{ id: 'e1', label: 'Passenger lift (BLR-LIFT-01)', detail: 'Lift' }] }) };
 export const SchedulesEmpty: S = { name: 'No schedules yet', render: () => schedules({ recurring: [], sequences: [] }) };
 export const SchedulesMissing: S = { name: 'Recurring ticket Save pressed with nothing filled', render: () => schedules(), play: play(pressFirst(/^Save$/)) };
 export const SequenceMissing: S = { name: 'Save sequence pressed with nothing filled', render: () => schedules(), play: play(press('Save sequence')) };

@@ -494,6 +494,8 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(any('desk.customer.manage', 'desk.ticket.view'), L('desk-customers', 'Customers', '/yx/desk/customers')),
           ...when(any('desk.report.view', 'desk.survey.manage'), L('desk-reports', 'SLAs', '/yx/desk/reports')),
           ...when(has('desk.directory.manage'), L('desk-people-list', 'People list', '/yx/desk/people-list')),
+          // Helpdesk plan item 4: buildings, areas and equipment (the facilities desks' staff; their admins edit).
+          ...when(any('desk.desk.create', 'desk.ticket.view'), L('desk-facilities', 'Buildings and equipment', '/yx/desk/facilities')),
           ...when(has('desk.desk.create'), L('desk-privacy', 'Privacy requests', '/yx/desk/privacy')),
           ...when(deskSetup, L('desk-setup', 'Desk set-up', '/yx/desk/setup')),
         ]),

@@ -61,7 +61,7 @@ export interface PickOption {
   detail: string | null;
 }
 /** 'assets': the requester's own devices (People asset register); an IT agent searches all (Helpdesk item 2). */
-export type PickKind = 'people' | 'locations' | 'cost-centres' | 'assets';
+export type PickKind = 'people' | 'locations' | 'cost-centres' | 'assets' | 'buildings' | 'areas' | 'equipment';
 
 export type ItemStage = 'submitted' | 'approval' | 'fulfilment' | 'delivered' | 'cancelled' | 'rejected';
 export interface ApprovalRoute {

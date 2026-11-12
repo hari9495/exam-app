@@ -190,7 +190,7 @@ portal designs also wait: `settings: MobileHelpTicketsScreen`, `MobilePolicyAckS
 
 ## 4. Design groups, story by story
 
-### A. Helpdesk HLP-01 … 20
+### A. Helpdesk HLP-01 … 22
 
 #### HLP-01 · Help centre
 
@@ -283,6 +283,7 @@ follow-ups, articles, related tickets and the rest of the work rail) sit in the 
 | FieldsLead · Fields · a team lead sets them (drop-down narrowed by another) | live | Answers 1641, 1650: Fields card, the catalogue's form (ServiceForm) with the dependent list; `PUT desk/tickets/:id/fields` refuses a value outside its parent (400) and a team-lead-only field from anyone else (403); timeline event (no value for team-lead-only), audited, toast |
 | FieldsAgent · Fields · a first-line agent (no team-lead-only field) | live | Answer 1650: the server leaves the team-lead-only field out of the ticket for anyone but the desk's leads |
 | FieldsReadOnly · Fields · read only | live | values only |
+| Place · Facilities work order · building, area and equipment | live | Helpdesk plan item 4: Place card for a facilities desk's agents: building, floor or area, equipment (`GET desk/facilities/pick`, active only); equipment brings its building and area; `PUT desk/tickets/:id/place` (other desks 403, retired refused), audited, a timeline event, toast |
 | Collaborator · Collaborator · notes only | live | new story: no Reply tab, no work controls (the server refuses a collaborator's reply, e2e) |
 | ReadOnly · Desk admin · read only | live | new story: "Read-only: you set this desk up"; no Respond card (the server refuses their notes) |
 | SenderUnverified · Email from an unproven sender, customer | live | new story: the warning; customer, plan and product in the rail |
@@ -674,6 +675,7 @@ File: `packages/yx-ui/src/screens/ops/hlp-18.stories.tsx`. Drawn 12 Nov 2026 (th
 | LifecycleEmpty · No lifecycle yet | live | same page |
 | LifecycleLoading · Lifecycle loading | live | same page |
 | Schedules · Recurring tickets and follow-ups | live | same page |
+| SchedulesEquipment · Recurring maintenance of a piece of equipment | live | Helpdesk plan item 4: an optional Equipment on a recurring record (active, of the desk's own register); each due date makes one ticket naming it, its building and area; retired equipment pauses the schedule |
 | SchedulesEmpty · No schedules yet | live | same page |
 | SchedulesMissing · Recurring ticket Save pressed with nothing filled | live | same page |
 | SequenceMissing · Save sequence pressed with nothing filled | live | same page |
@@ -736,6 +738,25 @@ File: `packages/yx-ui/src/screens/ops/hlp-20.stories.tsx`. Drawn 12 Nov 2026 (an
 | ArticleVoteAgain · A second vote (toast) | live | one vote per article |
 | ArticleSolved · This solved it (toast) | live | `POST …/solved`, no ticket made |
 | ArticleFallback · Not in your language yet (shown in English) | live | the article in the company's default language when the person's is missing |
+
+#### HLP-22 · Buildings and equipment
+
+File: `packages/yx-ui/src/screens/ops/hlp-22.stories.tsx`. Drawn 13 Nov 2026 (Helpdesk plan item 4) at /yx/desk/facilities: buildings are the company's locations; their floors or areas and the equipment (owned by a team of a facilities desk) are kept here. Read by the facilities desks' staff and the company's Service Desk owner; changed only by a facilities desk's admins (equipment: the admins of its own desk). RLS keeps it to the company.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Equipment · Equipment | live | `GET desk/facilities` |
+| EquipmentPage · An equipment page: maintenance and work orders | live | `GET desk/facilities/equipment/:id`: its tickets (only those the person may see), newest first, and the recurring maintenance on it |
+| EquipmentNew · New equipment | live | `POST desk/facilities/equipment`: desk, owner team (a team of that desk), building, area of that building, tag once per company; audited, toast |
+| EquipmentNewMissing · Save pressed with nothing filled | live | too-early: name, tag, desk, team, building |
+| EquipmentEdit · Edit or retire equipment | live | `PATCH desk/facilities/equipment/:id` (version check); retired equipment drops out of every picker and pauses its maintenance |
+| EquipmentSaveFailed · Saving refused (tag already used) | live | 409 |
+| Buildings · Buildings and their areas | live | the company's locations with their areas |
+| AreaNew · New area in a building | live | `POST/PATCH desk/facilities/areas` (a facilities desk's admins), a name once per building |
+| ReadOnly · Desk staff: read only | live | no New or Edit without a facilities desk admin seat |
+| Empty · No equipment yet | live | |
+| Loading · Loading | live | |
+| Error · Could not load | live | |
 
 ### B. Other Helpdesk designs (were "Service desk")
 
