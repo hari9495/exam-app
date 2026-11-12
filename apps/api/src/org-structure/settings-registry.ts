@@ -568,8 +568,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'field.max_accuracy_m': { label: 'Ignore places less accurate than (metres)', scopes: ['tenant'], dated: false, values: ['50', '100', '200', '500'], default: '100' },
   // TIM-43: people may connect their calendar or work tools so the timesheet suggests lines (each person opts in).
   // Answers 1732, 1733: a note on every timesheet row with hours, of at least N words, before the week is submitted.
-  'timesheet.note.required': { label: 'Timesheet note: required on every row with hours', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'on' },
-  'timesheet.note.min_words': { label: 'Timesheet note: at least this many words', scopes: ['tenant'], dated: false, values: ['10', '25', '50', '100', '150', '200', '250', '300'], default: '200' },
+  'timesheet.note.required': { label: 'Timesheet comment: required on every day with hours', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'on' },
+  // Answer 1787 (founder change, 13 Nov 2026): the minimum is per day with hours.
+  'timesheet.note.min_words_per_day': { label: 'Timesheet comment: at least this many words per day with hours', scopes: ['tenant'], dated: false, values: ['5', '10', '15', '20', '25', '30', '50', '100'], default: '20' },
   'timesheet.tool_suggestions': { label: 'People may connect calendars and work tools for timesheet suggestions', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', 'on'], default: 'off' },
   // Founder decision 9 Oct 2026: where the Factories Act / OSH Code covers the place (a factory), approved overtime of the
   // employment categories P07 IN.FACTORIES counts as workers is always paid at the legal rate, never comp-off. Dated.

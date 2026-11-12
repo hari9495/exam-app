@@ -21285,43 +21285,43 @@
   },
   {
     "id": "MT-TSN-01",
-    "area": "Required timesheet note (13 Nov 2026)",
+    "area": "Required timesheet comment per day (13 Nov 2026)",
     "screen": "My timesheet",
     "url": "http://localhost:3000/yx/time/timesheet",
     "account": "An employee allocated to two projects; the company's rule at its defaults (required, 200 words).",
     "steps": [
-      "Enter hours on both rows; Save draft with no notes.",
-      "Write 199 words on one row and 200 on the other; Submit week.",
-      "Add one word to the short row; Submit week.",
+      "Enter hours on two days of one row and one day of another; Save draft with no comments.",
+      "Open the Comment link under each day with hours; write 19 words on one day and 20 on the others; Submit week.",
+      "Add one word to the short day; Submit week.",
       "Pre-fill a row from your tools."
     ],
-    "expected": "Step 1: saved (toast). Step 2: refused, naming the short row, with the count (\"199 of 200 words\"). Step 3: sent. Step 4: the pre-filled row's note is empty until you write it.",
+    "expected": "Step 1: saved (toast); days with no hours have no Comment link. Step 2: refused, naming the short day, with the count (\"19 of 20 words\"). Step 3: sent. Step 4: the pre-filled days' comments are empty until you write them.",
     "stories": [
-      "Screens/Time/TIM-15 · Timesheets · Notes · required, 200 words, live count",
-      "Screens/Time/TIM-15 · Timesheets · Notes · resubmit refused until each row has 200 words"
+      "Screens/Time/TIM-15 · Timesheets · Comments · a link under each day with hours, live count",
+      "Screens/Time/TIM-15 · Timesheets · Comments · resubmit refused until each day has 20 words"
     ],
-    "note": "Positive and negative. Answers 1731 to 1735."
+    "note": "Positive and negative. Answers 1735, 1787."
   },
   {
     "id": "MT-TSN-02",
-    "area": "Required timesheet note (13 Nov 2026)",
+    "area": "Required timesheet comment per day (13 Nov 2026)",
     "screen": "Settings › Projects & timesheets; My timesheet",
     "url": "http://localhost:3000/yx/settings/projects",
     "account": "The System Admin; an employee.",
     "steps": [
-      "Switch \"Timesheet note: required\" off.",
-      "As the employee submit a week with no notes.",
-      "Switch it on with 25 words."
+      "Switch \"Timesheet comment: required\" off.",
+      "As the employee submit a week with no comments.",
+      "Switch it on with 10 words per day."
     ],
-    "expected": "Step 2: sent; the rows say \"0 words · optional\". Step 3: the employee's count reads \"of 25 words\".",
+    "expected": "Step 2: sent; an open comment says \"0 words · optional\". Step 3: the employee's count reads \"of 10 words\".",
     "stories": [
-      "Screens/Time/TIM-15 · Timesheets · Notes · optional (company setting off)"
+      "Screens/Time/TIM-15 · Timesheets · Comments · optional (company setting off)"
     ],
-    "note": "Positive and negative. Answer 1732."
+    "note": "Positive and negative. Answers 1732, 1787."
   },
   {
     "id": "MT-TSN-03",
-    "area": "Required timesheet note (13 Nov 2026)",
+    "area": "Required timesheet comment per day (13 Nov 2026)",
     "screen": "Projects › Timesheet approvals; client portal; Billing workbench",
     "url": "http://localhost:3000/yx/projects/approvals",
     "account": "Two project managers; Projects finance; the client contact of a project that asks the client to approve hours.",
@@ -21331,7 +21331,7 @@
       "Switch the project's \"Show timesheet notes to the client\" on; open the portal again.",
       "As finance open the billing workbench."
     ],
-    "expected": "Step 1: each sees the notes of their own project's rows only. Step 2: hours, no notes. Step 3: the notes show. Step 4: the notes show under the unbilled hours.",
+    "expected": "Step 1: each sees the day comments of their own project's rows only. Step 2: hours, no comments. Step 3: the comments show, by day. Step 4: the comments show under the unbilled hours.",
     "stories": [
       "Screens/Projects/PRJ-02 · Timesheet approvals · PM · grouped by project and week"
     ],

@@ -46,9 +46,27 @@ export function weekOutcome(lines: { status: string | null; minutes: number[]; a
 /** Answers 1731 to 1733: words in a timesheet note (runs of non-space characters). */
 export const wordCount = (note: string | null | undefined) => (note ?? '').trim().split(/\s+/).filter(Boolean).length;
 
-/** Why a row with hours cannot be submitted for its note, or null (the company's rule: required, at least N words). */
-export function noteProblem(rule: { required: boolean; minWords: number }, minutes: number[], note: string | null | undefined): string | null {
-  if (!rule.required || !minutes.some((m) => m > 0)) return null;
-  const n = wordCount(note);
-  return n >= rule.minWords ? null : `write at least ${rule.minWords} words about the work (${n} so far)`;
+export const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+
+/**
+ * Answer 1787: the days of a row whose comment is short (the company's rule: required, at least N words on each day
+ * with hours); days with no hours need none.
+ */
+export function dayCommentProblems(rule: { required: boolean; minWords: number }, minutes: number[], comments: readonly (string | null | undefined)[]): { day: number; words: number }[] {
+  if (!rule.required) return [];
+  return minutes.flatMap((m, day) => {
+    if (!(m > 0)) return [];
+    const words = wordCount(comments[day]);
+    return words >= rule.minWords ? [] : [{ day, words }];
+  });
 }
+
+/** Seven comments, Monday to Sunday, trimmed (an empty text for none). */
+export const sevenComments = (c: readonly (string | null | undefined)[] | null | undefined) => Array.from({ length: 7 }, (_, k) => (c?.[k] ?? '').trim());
+
+/** The day comments as one text for readers outside the timesheet ("Mon: …; Tue: …"). */
+export const commentsText = (c: readonly (string | null | undefined)[] | null | undefined) =>
+  sevenComments(c)
+    .map((t, k) => (t ? `${DAY_NAMES[k]}: ${t}` : ''))
+    .filter(Boolean)
+    .join('\n');

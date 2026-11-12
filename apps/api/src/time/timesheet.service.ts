@@ -11,7 +11,7 @@ import { TimesheetLineDto } from './dto';
 import { lockedDates } from './schedule';
 import { TimeSetupService } from './setup.service';
 import { LineApprovalsService } from './line-approvals.service';
-import { lineApproved, noteProblem } from './line-rules';
+import { DAY_NAMES, dayCommentProblems, lineApproved, sevenComments } from './line-rules';
 import { asDate, dateOf, factsOn, holidaysFor, hrApprovers, leaveDays, myEmployeeId, settingOn } from './time-core';
 import { addDays } from './time-maths';
 import { settingFor } from '../people/probation';
@@ -44,9 +44,9 @@ export class TimesheetService implements OnModuleInit {
 
   // Projects P-1 (answer 1402): projects are created and changed in Projects (ProjectsService); Time books to them.
 
-  /** Answers 1732, 1733: the company's note rule (required by default, at least 200 words). */
+  /** Answers 1732 and 1787: the company's comment rule (required by default, at least 20 words on each day with hours). */
   static async noteRule(tx: Tx, c: CompanyContext) {
-    return { required: (await settingFor(tx, c, 'timesheet.note.required', { legalEntityId: '' })) === 'on', minWords: Number(await settingFor(tx, c, 'timesheet.note.min_words', { legalEntityId: '' })) };
+    return { required: (await settingFor(tx, c, 'timesheet.note.required', { legalEntityId: '' })) === 'on', minWords: Number(await settingFor(tx, c, 'timesheet.note.min_words_per_day', { legalEntityId: '' })) };
   }
 
   // ------------------------------------------------------------------------------------------ me › timesheet
@@ -72,7 +72,7 @@ export class TimesheetService implements OnModuleInit {
         mode: await settingOn(tx, c, 'attendance.mode', f, week),
         sheet: sheet ? { id: sheet.id, status: sheet.status, totalMinutes: sheet.totalMinutes, submittedAt: sheet.submittedAt, decidedAt: sheet.decidedAt } : null,
         // Projects P-2 (1406): each line's decision with its reason, and the hours approved.
-        lines: lines.map((l) => ({ id: l.id, projectId: l.projectId, activity: l.activity, billable: l.billable, minutes: l.minutes, note: l.note, decision: l.status, reason: l.reason, approvedMinutes: l.status ? lineApproved(l) : null, unallocated: l.unallocated, clientStatus: l.clientStatus, clientNote: l.clientNote })),
+        lines: lines.map((l) => ({ id: l.id, projectId: l.projectId, activity: l.activity, billable: l.billable, minutes: l.minutes, comments: sevenComments(l.dayComments), decision: l.status, reason: l.reason, approvedMinutes: l.status ? lineApproved(l) : null, unallocated: l.unallocated, clientStatus: l.clientStatus, clientNote: l.clientNote })),
         projects: projects.map((p) => ({ id: p.id, code: p.code, name: p.name, billable: p.billable, activities: p.activities, active: p.active })),
         days: Array.from({ length: 7 }, (_, k) => {
           const on = addDays(week, k);
@@ -128,7 +128,7 @@ export class TimesheetService implements OnModuleInit {
       }
       const s = sheet ?? (await tx.timesheet.create({ data: { organizationId: org, employeeId: me, weekStart: asDate(week) } }));
       await tx.timesheetLine.deleteMany({ where: { organizationId: org, timesheetId: s.id } });
-      if (lines.length) await tx.timesheetLine.createMany({ data: lines.map((l) => ({ organizationId: org, timesheetId: s.id, projectId: l.projectId, activity: l.activity || null, billable: l.billable, minutes: l.minutes, note: l.note || null })) });
+      if (lines.length) await tx.timesheetLine.createMany({ data: lines.map((l) => ({ organizationId: org, timesheetId: s.id, projectId: l.projectId, activity: l.activity || null, billable: l.billable, minutes: l.minutes, dayComments: sevenComments(l.comments) })) });
       await tx.timesheet.update({ where: { id: s.id }, data: { status: 'draft', totalMinutes: total, version: { increment: 1 }, updatedAt: new Date() } });
       return { id: s.id, status: 'draft', totalMinutes: total };
     });
@@ -150,10 +150,10 @@ export class TimesheetService implements OnModuleInit {
       if (!f) throw new BadRequestException('You were not working here that week.');
       const lines = await tx.timesheetLine.findMany({ where: { organizationId: org, timesheetId: sheet.id }, orderBy: { id: 'asc' } });
       const projects = await tx.timesheetProject.findMany({ where: { organizationId: org, id: { in: lines.map((l) => l.projectId) } } });
-      // Answers 1731 to 1733: every row with hours has its note before the week goes (Save draft never asks).
+      // Answer 1787: every day with hours has its comment of N words before the week goes (Save draft never asks).
       const rule = await TimesheetService.noteRule(tx, c);
-      const short = lines.map((l) => ({ l, why: noteProblem(rule, l.minutes, l.note) })).filter((x) => x.why);
-      if (short.length) throw new BadRequestException({ statusCode: 400, code: 'NOTE_TOO_SHORT', message: short.map((x) => `${projects.find((p) => p.id === x.l.projectId)?.code ?? 'A row'}${x.l.activity ? ` · ${x.l.activity}` : ''}: ${x.why}`).join('; ') + '.' });
+      const short = lines.flatMap((l) => dayCommentProblems(rule, l.minutes, l.dayComments).map((x) => `${projects.find((p) => p.id === l.projectId)?.code ?? 'A row'}${l.activity ? ` · ${l.activity}` : ''}, ${DAY_NAMES[x.day]} ${fmt(addDays(week, x.day))}: write at least ${rule.minWords} words (${x.words} so far)`));
+      if (short.length) throw new BadRequestException({ statusCode: 400, code: 'NOTE_TOO_SHORT', message: short.join('; ') + '.' });
       // The person never approves their own hours, even as a project's manager.
       const pms = [...new Set(projects.map((p) => p.managerUserId).filter((x): x is string => Boolean(x) && x !== c.userId))];
       const byProject = projects.map((p) => `${p.code}: ${hours(lines.filter((l) => l.projectId === p.id).reduce((s, l) => s + l.minutes.reduce((a, b) => a + b, 0), 0))}`).join(', ');

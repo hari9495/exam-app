@@ -627,3 +627,22 @@ removed (one way only). 1787 (founder chose option 3, "ok for all"): a per-day m
 words per day with hours; Submit week is refused (page and API) until every day with hours has its comment; a live
 count in the box. The required switch, client visibility (1734), approver and finance visibility, and pre-fill (1735)
 stay as built. Drawn in the timesheet design first.
+
+## The comment per day built (13 Nov 2026, `feat/yukthix-timesheet-day-comments`): questions for the founder
+
+Built as asked (1787, replacing the per-row note): under each day with hours a "Comment" link opens a small box below
+the cell, with a live count ("12 of 20 words"); days with 0 hours have no link and need no comment; the per-row note box
+is gone. Settings › Projects & timesheets: "Timesheet comment: required on every day with hours" (on) and "at least, per
+day with hours" (20 words). Save draft never asks; Submit week is refused by the page and the API until every day with
+hours has enough words, naming each short day. Comments are kept per day beside the minutes (`timesheet_lines.day_comments`,
+seven entries); a row note from before moved to the row's first day with hours. Who reads them is unchanged: the
+person, the row's approver (each day on the approval card), Projects finance (billing workbench) and the client only
+with the project's switch. Pre-filled days start with no comment. Drawn first in TIM-15 (`CommentDays`,
+`CommentRefused`, `CommentOptional`, `PhoneComments`).
+
+1881. **Moving the old notes.** A row note written before this change now sits on the row's first day with hours; the
+      other days of that row are empty. Weeks already submitted are not asked again. *Suggested: keep.*
+1882. **The choices for N** per day: 5, 10, 15, 20, 25, 30, 50 or 100 words. *Suggested: keep.*
+1883. **Approved and locked weeks** show each day's comment under a "Comment · N words" link, read-only.
+      *Suggested: keep.*
+1884. **One box open at a time** in the grid, so the grid stays readable. *Suggested: keep.*

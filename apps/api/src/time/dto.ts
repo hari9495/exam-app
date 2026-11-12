@@ -793,12 +793,13 @@ export class TimesheetLineDto {
   @Max(1440, { each: true })
   minutes!: number[];
 
-  /** Answers 1731 to 1733: the row's note; at least N words to submit when the company asks for it. */
+  /** Answer 1787: a comment per day, Monday to Sunday; at least N words on each day with hours to submit. */
   @IsOptional()
-  @trim()
-  @IsString()
-  @MaxLength(4000)
-  note?: string | null;
+  @IsArray()
+  @ArrayMaxSize(7)
+  @IsString({ each: true })
+  @MaxLength(2000, { each: true })
+  comments?: string[];
 }
 
 export class TimesheetDto {

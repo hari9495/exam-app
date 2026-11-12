@@ -248,8 +248,8 @@ export const MY_TIMESHEET: MyTimesheet = {
   mode: 'timesheet',
   sheet: { id: 'ts1', status: 'draft', totalMinutes: 1200 },
   lines: [
-    { id: 'tl1', projectId: 'pr1', activity: 'Documentation', billable: false, minutes: [240, 240, 120, 0, 0, 0, 0], note: null },
-    { id: 'tl2', projectId: 'pr2', activity: 'Trials', billable: true, minutes: [240, 240, 120, 0, 0, 0, 0], note: null },
+    { id: 'tl1', projectId: 'pr1', activity: 'Documentation', billable: false, minutes: [240, 240, 120, 0, 0, 0, 0] },
+    { id: 'tl2', projectId: 'pr2', activity: 'Trials', billable: true, minutes: [240, 240, 120, 0, 0, 0, 0] },
   ],
   projects: SHIFT_SETUP.projects.map(({ id, code, name, billable, activities, active }) => ({ id, code, name, billable, activities, active })),
   days: Array.from({ length: 7 }, (_, i) => ({ on: addDays(WEEK, i), holiday: null, leave: null, locked: false })),

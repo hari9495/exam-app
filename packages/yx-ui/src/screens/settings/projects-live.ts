@@ -34,7 +34,7 @@ const KEY = {
   'prj.pay_recovery': 'projects.correction.pay_recovery',
   // Answers 1732, 1733: the timesheet note rule.
   'prj.note_required': 'timesheet.note.required',
-  'prj.note_min_words': 'timesheet.note.min_words',
+  'prj.note_min_words': 'timesheet.note.min_words_per_day',
 } as const;
 type Field = keyof typeof KEY;
 /** Settings S-5 (answers 1326, 1461): the company settings behind 3.11, for its change history. */

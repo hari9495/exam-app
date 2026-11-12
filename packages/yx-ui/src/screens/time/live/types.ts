@@ -720,11 +720,11 @@ export interface MyTimesheet {
   mode: string;
   sheet: { id: string; status: 'draft' | 'pending' | 'approved' | 'rejected'; totalMinutes: number } | null;
   /** Projects P-2 (1406): each line's decision, its reason (the person sees it) and the hours approved; 1408: the client's decision. */
-  lines: { id: string; projectId: string; activity: string | null; billable: boolean; minutes: number[]; note: string | null; decision?: 'pending' | 'approved' | 'reduced' | 'rejected' | null; reason?: string | null; approvedMinutes?: number[] | null; unallocated?: boolean; clientStatus?: 'waiting' | 'approved' | 'sent_back' | null; clientNote?: string | null }[];
+  lines: { id: string; projectId: string; activity: string | null; billable: boolean; minutes: number[]; /** Answer 1787: a comment per day, Monday to Sunday. */ comments?: string[]; decision?: 'pending' | 'approved' | 'reduced' | 'rejected' | null; reason?: string | null; approvedMinutes?: number[] | null; unallocated?: boolean; clientStatus?: 'waiting' | 'approved' | 'sent_back' | null; clientNote?: string | null }[];
   projects: { id: string; code: string; name: string; billable: boolean; activities: string[]; active: boolean }[];
   days: { on: string; holiday: string | null; leave: string | null; locked: boolean }[];
   recent: { id: string; week: string; status: string; totalMinutes: number }[];
-  /** Answers 1731 to 1733: the company's note rule (absent from an older API: no notes asked). */
+  /** Answer 1787: the company's comment rule, per day with hours (absent from an older API: none asked). */
   noteRule?: { required: boolean; minWords: number };
 }
 export interface TimesheetLineInput {
@@ -732,8 +732,8 @@ export interface TimesheetLineInput {
   activity: string | null;
   billable: boolean;
   minutes: number[];
-  /** Answers 1731 to 1736: the row's note, in the person's own words. */
-  note?: string | null;
+  /** Answer 1787: a comment per day, Monday to Sunday, in the person's own words. */
+  comments?: string[];
 }
 
 export interface Periods {
