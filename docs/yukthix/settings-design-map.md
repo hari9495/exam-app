@@ -55,14 +55,14 @@ means the live page passes no manage flag that I could see and I did not read th
 
 ## Counts (sub-pages = stories)
 
-After S-1 (Settings home, search and the eight group pages live; four live stories added; appendix script "ok").
+After S-1 (Settings home, search and the eight group pages live; four live stories added) and S-2 (the Time & Leave pages with their settings; one live story added; appendix script "ok").
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Settings home and page states | 1 | 17 | 2 | 4 | 1 | 0 | 24 |
 | B. Organisation and Global core | 2 | 25 | 0 | 0 | 0 | 0 | 25 |
-| C. Settings map, groups 1 to 8 | 8 | 30 | 85 | 22 | 32 | 0 | 169 |
-| **All A-C** | **11** | **72** | **87** | **26** | **33** | **0** | **218** |
+| C. Settings map, groups 1 to 8 | 8 | 31 | 87 | 20 | 32 | 0 | 170 |
+| **All A-C** | **11** | **73** | **89** | **24** | **33** | **0** | **219** |
 
 Per group (C):
 
@@ -70,7 +70,7 @@ Per group (C):
 |---|---|---|---|---|---|
 | Group 1 · Organisation | 2 | 12 | 0 | 4 | 18 |
 | Group 2 · People & Access | 2 | 14 | 2 | 6 | 24 |
-| Group 3 · Time & Leave | 2 | 22 | 2 | 0 | 26 |
+| Group 3 · Time & Leave | 3 | 24 | 0 | 0 | 27 |
 | Group 4 · Payroll & Statutory | 3 | 16 | 4 | 2 | 25 |
 | Group 5 · Documents & Communication | 2 | 12 | 0 | 6 | 20 |
 | Group 6 · Hiring & Assessments | 15 | 3 | 0 | 4 | 22 |
@@ -137,24 +137,13 @@ Cross-checked with the area maps: `hiring-design-map.md` (6.1, 6.2 and the group
 each) and the payroll second-approver page state.
 
 **Wire design** (50 rows): Settings home (8) and the search highlight, the 8 group pages (16), the legal-floor states
-(2), change history (1), and the pages whose settings are in the API with no screen: 2.7, 3.5, 4.3, 4.5, 7.1, 7.5, 7.6,
+(2), change history (1), and the pages whose settings are in the API with no screen: 2.7, 4.3, 4.5, 7.1, 7.5, 7.6,
 7.7, 8.1, 8.2, 8.3.
 
 **Registry keys with no screen** (105; exact-key search over `apps/web` and `packages/yx-ui/src`, with tests, stories,
 e2e and the kit's settings-map sample data left out; `help.page_help` left out by hand, see above):
 
-- Leave (13): `leave.year_start_month`, `leave.probation.leave`, `leave.block_dates.mode`,
-  `leave.comp_off.claim_within_days`, `leave.comp_off.expiry_days`, `leave.encashment.window`,
-  `leave.year_end.encash_excess`, `leave.notice_days.default`, `leave.on_behalf.approval`, `leave.liability.divisor`,
-  `leave.optional_holiday.prorate_on_move`, `leave.send_back`, `leave.block_leave.days`.
-- Attendance, roster, kiosk and field (27): `attendance.regularise_monthly_limit`, `attendance.wfh_monthly_limit`,
-  `attendance.overtime.pre_approval`, `attendance.on_duty.ahead_days`, `attendance.on_duty.back_days`,
-  `attendance.on_duty.send_back`, `attendance.wfh_same_day`, `attendance.check_in_opens_minutes`,
-  `attendance.min_rest_hours`, `attendance.phone_binding`, `attendance.late_mark_penalty`, `attendance.presence`,
-  `roster.max_daily_hours`, `roster.max_weekly_hours`, `roster.max_spread_over_hours`, `roster.min_weekly_offs`,
-  `roster.change_notice_hours`, `roster.open_shift_rule`, `standby.call_out_minimum_hours`, `kiosk.methods`,
-  `kiosk.training_opens_minutes`, `kiosk.pin_tries`, `field.tracking`, `field.trail_retention_days`,
-  `field.ping_minutes`, `field.max_accuracy_m`, `timesheet.tool_suggestions`.
+- Leave (13) and attendance, roster, kiosk and field (27): on their Time & Leave pages since S-2 (answer 1323, see "S-2 as built").
 - Safety and disputes (4): `accident.injury_types`, `accident.injury_leave_type`, `accident.contractor_reminder_days`,
   `dispute.lawyer_may_approve`.
 - Payroll and tax (16): `payroll.variance_threshold_pct`, `payroll.protected_net_percent`, `payroll.net_rounding`,
@@ -345,28 +334,29 @@ File: `packages/yx-ui/src/screens/settings/settings-g3.stories.tsx`.
 | OverviewLoading · Group 3 · loading | live | same, loading |
 | P3_1 · 3.1 Attendance modes | live (gap) | the Attendance section of /yx/settings/company-rules (`attendance.mode`, `attendance.missing_punch_effect`, `attendance.factories_act`, dated); this 3.1 page is not rendered |
 | P3_1_ReadOnly · 3.1 Attendance modes · read-only | live (gap) | read-only: `canManage` |
-| P3_2 · 3.2 Check-in & devices | live (gap) | devices on /yx/time/setup/devices (`DevicesScreen`, `time/devices`), geofence and networks on /yx/time/setup/locations; `attendance.phone_binding`, `kiosk.methods`, `kiosk.pin_tries`, `kiosk.training_opens_minutes` and `field.*` (4 keys) are in the registry with no screen |
-| P3_2_ReadOnly · 3.2 Check-in & devices · read-only | live (gap) | read-only: unsure |
-| P3_3 · 3.3 Shifts & patterns | live (gap) | /yx/time/shifts-setup (`ShiftEditorScreen`: shifts, versions, patterns, OT rules; `time/shifts…`, `time/ot-rules`); flexi and split switches on Company rules; the limits `roster.max_daily_hours`, `roster.max_weekly_hours`, `roster.max_spread_over_hours`, `roster.min_weekly_offs`, `roster.change_notice_hours`, `roster.open_shift_rule` and `attendance.min_rest_hours` have no screen (used by `time/roster-guard.ts`) |
-| P3_3_ReadOnly · 3.3 Shifts & patterns · read-only | live (gap) | read-only: unsure |
-| P3_4 · 3.4 Weekly offs | live (gap) | weekly offs per location on /yx/time/setup/locations (`POST time/setup/locations/:id/rule`, `weeklyOffs`); patterns on Shifts set-up; no precedence or custom-rule screen |
-| P3_4_ReadOnly · 3.4 Weekly offs · read-only | live (gap) | read-only: unsure |
-| P3_5 · 3.5 Late & regularisation | wire design | `attendance.late_mark_penalty`, `attendance.regularise_monthly_limit`, `attendance.wfh_monthly_limit`, `attendance.wfh_same_day`, `attendance.on_duty.*` (3) and `attendance.overtime.pre_approval` are in the registry and used by the time services, but no screen sets them (exact-key search); `attendance.late_marks_free` is only shown to employees as a count |
-| P3_5_ReadOnly · 3.5 Late & regularisation · read-only | wire design | same |
-| P3_6 · 3.6 Leave types | live (gap) | /yx/time/setup (`LeavePoliciesScreen`) and /yx/time/setup/types/[id] (`LeaveTypeEditorScreen`, `time/setup/types`); company choices such as `leave.probation.leave`, `leave.comp_off.*`, `leave.encashment.window`, `leave.notice_days.default`, `leave.on_behalf.approval`, `leave.send_back` and `leave.liability.divisor` have no screen |
-| P3_6_ReadOnly · 3.6 Leave types · read-only | live (gap) | read-only: unsure |
+| P3_2 · 3.2 Check-in & devices | live (gap) | S-2: /yx/settings/time/check-in-and-devices renders this page (`SettingsPageScreen` with `live`, `timeSettingsPage`): check-in opening, phone binding, the kiosk sign-in ways, training check-in and PIN tries, and a Field staff tracking section (4 settings), each marked Starter default until changed; links to Locations & geofences and Devices. Gap: drawn methods, offline age, face check-in fields have no setting yet |
+| P3_2_ReadOnly · 3.2 Check-in & devices · read-only | live (gap) | read-only: without HR's settings key (org.settings.manage) the page is View only; a guarded setting (phone binding, kiosk PIN tries) also needs the access key |
+| P3_3 · 3.3 Shifts & patterns | live (gap) | S-2: /yx/settings/time/shifts-and-patterns: the working-hour limits (with the legal maximums from IN.SETTINGS.LIMITS: 9 h a day, 48 h a week, 10.5 h spread-over, Factories Act 1948), least rest, overtime pre-approval, call-out minimum, roster notice and open shifts; links to the shift editor and the roster. Gap: breaks, grace, OT rate and rounding fields stay on Shifts set-up |
+| P3_3_ReadOnly · 3.3 Shifts & patterns · read-only | live (gap) | read-only: without HR's settings key (org.settings.manage) the page is View only; a guarded setting (phone binding, kiosk PIN tries) also needs the access key |
+| P3_4 · 3.4 Weekly offs | live (gap) | S-2: /yx/settings/time/weekly-offs: weekly offs each week at least (legal minimum 1, Factories Act 1948 s.52). Gap: precedence, location defaults and custom rules (weekly offs per location are on Time › Locations) |
+| P3_4_ReadOnly · 3.4 Weekly offs · read-only | live (gap) | read-only: without HR's settings key (org.settings.manage) the page is View only; a guarded setting (phone binding, kiosk PIN tries) also needs the access key |
+| P3_5 · 3.5 Late & regularisation | live (gap) | S-2: /yx/settings/time/late-and-regularisation: late-mark penalty, fixes a month, work from home limit and same-day WFH, presence on WFH days and the on-duty windows (8 settings that had no screen). Gap: the drawn free late marks, deduction order, fix types, look-back and shift swaps have no setting yet |
+| P3_5_ReadOnly · 3.5 Late & regularisation · read-only | live (gap) | read-only: without HR's settings key (org.settings.manage) the page is View only; a guarded setting (phone binding, kiosk PIN tries) also needs the access key |
+| P3_6 · 3.6 Leave types | live (gap) | S-2: /yx/settings/time/leave-types: request rules, year end and company choices (10 settings that had no screen); links to the leave type editor and the year-end wizard. Gap: the drawn crediting, statutory templates and maternity fields are on the leave type editor |
+| P3_6_ReadOnly · 3.6 Leave types · read-only | live (gap) | read-only: without HR's settings key (org.settings.manage) the page is View only; a guarded setting (phone binding, kiosk PIN tries) also needs the access key |
 | P3_7 · 3.7 Leave policies | live (gap) | /yx/time/setup, `LeavePoliciesScreen` (`time/setup/policies`, versions, assign, `setup/policy-order`) |
 | P3_7_ReadOnly · 3.7 Leave policies · read-only | live (gap) | read-only: unsure |
-| P3_8 · 3.8 Holiday calendars | live (gap) | /yx/time/setup/holidays (`HolidayCalendarsScreen`) and /yx/time/setup/holiday-feeds (`holiday.feeds`) |
-| P3_8_ReadOnly · 3.8 Holiday calendars · read-only | live (gap) | read-only: unsure |
-| P3_9 · 3.9 Leave year | live (gap) | /yx/time/setup/year-end (`YearEnd`, `YearChangePreview`; `time/setup/year-end`, `…/year-change`); `leave.year_start_month` and `leave.block_dates.mode` have no screen |
-| P3_9_ReadOnly · 3.9 Leave year · read-only | live (gap) | read-only: unsure |
+| P3_8 · 3.8 Holiday calendars | live (gap) | S-2: /yx/settings/time/holiday-calendars: optional holidays after a move; links to the calendars and the holiday feed. Gap: optional holiday counts and weekly-off clash rules |
+| P3_8_ReadOnly · 3.8 Holiday calendars · read-only | live (gap) | read-only: without HR's settings key (org.settings.manage) the page is View only; a guarded setting (phone binding, kiosk PIN tries) also needs the access key |
+| P3_9 · 3.9 Leave year | live (gap) | S-2: /yx/settings/time/leave-year: the month the leave year starts and planned leave on block dates. Gap: blackout date lists |
+| P3_9_ReadOnly · 3.9 Leave year · read-only | live (gap) | read-only: without HR's settings key (org.settings.manage) the page is View only; a guarded setting (phone binding, kiosk PIN tries) also needs the access key |
 | P3_10 · 3.10 Periods & locks | live (gap) | /yx/time/periods (`PeriodsScreen`: lock, unlock, freeze); `payroll.late_request_max_days` has no screen |
 | P3_10_ReadOnly · 3.10 Periods & locks · read-only | live (gap) | read-only: unsure |
-| P3_11 · 3.11 Projects & timesheets | live (gap) | project codes on /yx/time/shifts-setup (`POST/PUT time/projects`), timesheets at /yx/time/timesheet; `timesheet.tool_suggestions` has no screen; utilisation budgets: none found |
-| P3_11_ReadOnly · 3.11 Projects & timesheets · read-only | live (gap) | read-only: unsure |
+| P3_11 · 3.11 Projects & timesheets | live (gap) | S-2: /yx/settings/time/projects-and-timesheets: calendars and work tools for timesheet suggestions; link to project codes. Gap: approvals, utilisation and budgets |
+| P3_11_ReadOnly · 3.11 Projects & timesheets · read-only | live (gap) | read-only: without HR's settings key (org.settings.manage) the page is View only; a guarded setting (phone binding, kiosk PIN tries) also needs the access key |
 | P3_12 · 3.12 Visitors | live (gap) | visitors map: /yx/settings/visitors renders this designed page (`SettingsPageScreen` pageId 3.12, `GET/PUT visitors/settings`); its gap is listed there |
 | P3_12_ReadOnly · 3.12 Visitors · read-only | live (gap) | visitors map: reception reads it |
+| TimeLive · Time & Leave page · live with the company settings (S-2) | live | the eight S-2 pages with sample company values (`page` 0 to 7): Starter default chips, legal maximums and minimums naming the Act, the drawn editor links |
 
 #### Group 4 · Payroll & Statutory
 
@@ -591,7 +581,7 @@ approver for payroll settings; approval policies per request type; and the not-b
   one of them, and leads to the first. So the grants are the menu's (the API still checks every call). A payroll-only
   admin sees Payroll & Statutory (and Payouts) only; an unknown group or one with nothing to open says no access.
 - **Front door, never a second copy:** every page row, card link and search result links to the live editor, which
-  stays as it is. Pages with no live editor yet (2.4, 2.7, 3.5, 4.3, 4.5, groups 7 and 8 mostly, the not-built
+  stays as it is. Pages with no live editor yet (2.4, 2.7, 4.3, 4.5, groups 7 and 8 mostly, the not-built
   features) are not listed until their slice builds them.
 - **Fits 1278 x 635:** measured by script in Storybook (`HomeLive`, `HomeLiveSearch`, `HomeLivePayroll`, `GroupLive`,
   msedge at 1278 x 635): no page or content scroll; the last card ends at 589 px of 635, the "probation" results at
@@ -618,6 +608,56 @@ approver for payroll settings; approval policies per request type; and the not-b
       screen; that list scrolls. *Suggested: keep (it is content that needs the room), sorted best match first.*
 1465. **Home on a phone.** The home and group pages work at phone width but the phone app has no Settings tab.
       *Suggested: keep settings a desktop task; the phone keeps Me › Language and notification choices.*
+
+## S-2 as built (answers 1323, 1324; branch `feat/yukthix-settings-s2`)
+
+- **Walk fixes from S-1:** on the home, "+N more" stays on the title's first line and every card in a row starts its
+  links at the same height (the cards share the row's title height, CSS subgrid); the header search says "Search, e.g.
+  probation" and fits its box (137 of 152 px). Measured at 1278 x 635: link lists start at 254 and 448 px in both rows;
+  no scroll.
+- **The Time & Leave pages, live:** /yx/settings/time/<page> renders the drawn `SettingsPageScreen` for 3.2 Check-in &
+  devices, 3.3 Shifts & patterns, 3.4 Weekly offs, 3.5 Late & regularisation, 3.6 Leave types, 3.8 Holiday calendars,
+  3.9 Leave year and 3.11 Projects & timesheets (`timeSettingsPage`, `TIME_SETTINGS`). Each is the front door of its page
+  (Settings home, group page and search lead there first) and keeps the drawn links to the live editors (shift editor,
+  roster, leave types, year end, holidays, devices, geofences, projects), shown when the viewer's menu has them.
+- **1323, every hidden setting has a field:** the 40 leave, attendance, roster, kiosk and field settings that worked with
+  their starter value and had no screen each sit on one drawn page, in the drawn section they belong to (a "Field staff
+  tracking" section is added on 3.2). Each shows "Starter default" until HR changes it, and "own value at N places
+  (Company rules)" when a legal entity or location has its own. Saving is `PUT org/settings` company-wide, one per
+  setting: HR's settings key (org.settings.manage), the access key too for phone binding and kiosk PIN tries; audited
+  `org.setting.changed` with before and after.
+- **1324, legal limits:** a new rule set `IN.SETTINGS.LIMITS` (migration `202617z0000111`, YukthiX's, marked verify):
+  at most 9 hours of shifts a day (Factories Act, 1948 s.54), 48 a week (s.51), a 10.5-hour spread-over (s.56), and at
+  least 1 weekly off (s.52). `GET org/settings` returns the limits; the page shows "Legal maximum: 48 (Factories Act,
+  1948 s.51)" and blocks saving past it; the API refuses it too ("... can be at most 48 by law (Factories Act, 1948
+  s.51). Choose 48 or less."). The limit itself and anything more generous are saved.
+- **Page scroll at 1278 x 635** (Storybook `TimeLive`, all eight pages): 3.4, 3.8, 3.9 and 3.11 fit (578 of 578);
+  3.5 needs 895 px, 3.2 1616, 3.6 1546 and 3.3 1520: 8 to 10 settings with their help and legal lines need the room
+  (question 1481).
+- **Tests:** API e2e `settings-s2-limits` (the hidden settings and the limits are listed; 54 hours, no weekly off and a
+  12-hour spread-over refused naming the Act, nothing saved; 48 and 45 hours, 2 weekly offs and a comp-off change saved
+  and audited with before and after; a Time admin without the company settings key and anyone else refused) and unit
+  `org-settings-limits.spec`. Kit `time-settings-live.test` (all 40 settings once each with Starter default; toggles,
+  several choices and months; the guarded ones locked without the access key; the page refuses 54 and no weekly off
+  naming the Act and saves 45; view only without the key). Web `yx-settings-time.test` (reads and saves through
+  `/org/settings`, the API refusal stays on the page, the drawn link opens the shift editor, view only, unknown page)
+  and the S-1 tests updated (the Time & Leave front doors).
+
+### Questions (from 1481)
+
+1481. **Long settings pages scroll.** Four Time & Leave pages need more than one screen (8 to 10 settings each).
+      *Suggested: keep one column with the save bar fixed at the bottom (the page is a form people read top to bottom);
+      if HR finds it long, show the page's sections as tabs.*
+1482. **State rules on working hours.** The limits are the Factories Act's; shops and offices follow each state's
+      Shops and Establishments Act (Karnataka allows a 12-hour spread-over, for example). *Suggested: a state rule set
+      can narrow or widen a limit per location's state; until then the Factories Act limits apply to every location.*
+1483. **Choices past the law.** The lists still offer 54 and 60 hours a week (refused when saved). *Suggested: keep
+      them listed for companies with a state exemption once 1482 is built; for now the page says why on save.*
+1484. **Values per location on these pages.** A location's own value is named ("own value at 2 places") and changed on
+      Company rules. *Suggested: move "Different for" (answer 495) onto these pages in S-7, when Company rules retires.*
+1485. **Who changes Time & Leave settings.** Today HR's company settings key; Time admins (leave settings key) can open
+      the editors but not these settings. *Suggested: let the leave settings key change the leave settings (3.6, 3.8,
+      3.9) and keep attendance and roster limits with HR.*
 
 ## 7. Build plan (slices, max 3 builders at once)
 

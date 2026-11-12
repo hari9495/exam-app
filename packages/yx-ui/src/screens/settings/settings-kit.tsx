@@ -595,7 +595,7 @@ export function Highlight({ text, query }: { text: string; query: string }) {
   );
 }
 
-export function SettingsSearchBox({ value, onChange, autoFocus }: { value: string; onChange: (v: string) => void; autoFocus?: boolean }) {
+export function SettingsSearchBox({ value, onChange, autoFocus, placeholder = 'Search settings, e.g. probation, late coming, PF ceiling' }: { value: string; onChange: (v: string) => void; autoFocus?: boolean; placeholder?: string }) {
   return (
     <div className="yx-set-search" role="search">
       <FormField label="Search settings" hideLabel>
@@ -603,7 +603,7 @@ export function SettingsSearchBox({ value, onChange, autoFocus }: { value: strin
           value={value}
           onChange={onChange}
           prefix={<Icon icon={Search} />}
-          placeholder="Search settings, e.g. probation, late coming, PF ceiling"
+          placeholder={placeholder}
           autoFocus={autoFocus}
           type="search"
         />

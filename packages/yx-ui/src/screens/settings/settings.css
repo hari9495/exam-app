@@ -261,3 +261,7 @@ button.yx-m-row:hover, a.yx-m-row:hover { background: var(--yx-color-bg-subtle);
 .yx-set-results--live .yx-set-results__list li { border-bottom: var(--yx-border-width) solid var(--yx-color-border); }
 .yx-set-pages--live { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(var(--yx-space-16) * 4)), 1fr)); gap: var(--yx-space-3); border: 0; background: none; }
 .yx-set-pages--live .yx-set-page-row, .yx-set-pages--live .yx-set-page-row + .yx-set-page-row { border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); padding: var(--yx-space-3); }
+/* Walk fix (S-1): "+N more" stays on the title's first line, and every card in a row starts its links at the same height. */
+.yx-set-groups--live .yx-set-group-card--live { display: grid; grid-row: span 2; grid-template-rows: subgrid; row-gap: 0; }
+.yx-set-group-card--live .yx-card__head { flex-wrap: nowrap; align-items: flex-start; }
+.yx-set-group-card--live .yx-card__actions { flex-shrink: 0; }

@@ -132,7 +132,7 @@ export function SettingsHomeScreen({ groups, defaultQuery = '', manageable, stat
       <PageHeader
         title="Settings"
         description={live ? 'Every company policy has one place to change it. Search, or open a group.' : 'Every company policy has one place to change it. Values marked Starter default came from the YukthiX starter template and are yours to edit.'}
-        actions={live && state === 'ready' ? <SettingsSearchBox value={query} onChange={setQuery} /> : undefined}
+        actions={live && state === 'ready' ? <SettingsSearchBox value={query} onChange={setQuery} placeholder="Search, e.g. probation" /> : undefined}
         facts={live ? `${groups.length} group${groups.length === 1 ? '' : 's'} · ${total} page${total === 1 ? '' : 's'} you can open` : `${groups.length} groups · ${total} pages · Kaveri Foods Pvt Ltd`}
       />
       {state === 'loading' && <SettingsSkeleton />}

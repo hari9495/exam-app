@@ -115,8 +115,13 @@ describe('TIM-35 open shifts and TIM-38 standby', () => {
     ids.otherEmp = await hire('adminA', 'other', ids.bossEmp);
     ids.hrEmp = await hire('adminA', 'hrAdmin', ids.bossEmp);
     ids.empBEmp = await hire('adminB', 'empB', null, 'B');
-    // Company A: 60 h a week, no weekly-off minimum, 72 h notice (so the moves below are always inside it).
-    for (const [key, value] of [['roster.max_weekly_hours', '60'], ['roster.min_weekly_offs', '0'], ['roster.change_notice_hours', '72']]) await api('adminA', 'put', '/org/settings').send({ key, scopeType: 'tenant', value }).expect(200);
+    // Company A: 60 h a week, no weekly-off minimum, 72 h notice (so the moves below are always inside it). Since S-2
+    // (answer 1324) the API refuses the first two (past the Factories Act limits), so they are stored directly: this suite
+    // tests the roster moves, not the limits.
+    await api('adminA', 'put', '/org/settings').send({ key: 'roster.change_notice_hours', scopeType: 'tenant', value: '72' }).expect(200);
+    await inA(async (tx) => {
+      for (const [key, value] of [['roster.max_weekly_hours', '60'], ['roster.min_weekly_offs', '0']]) await tx.setting.create({ data: { organizationId: org.A.id, key, scopeType: 'tenant', scopeId: org.A.id, value } });
+    });
     ids.M = (await api('hrAdmin', 'post', '/time/shifts').send({ code: 'M', name: 'Morning', colour: 'orange', night: false, ...times(360, 840) }).expect(201)).body.id;
     ids.N = (await api('hrAdmin', 'post', '/time/shifts').send({ code: 'N', name: 'Night', colour: 'purple', night: true, ...times(1320, 360) }).expect(201)).body.id;
     await inA(async (tx) => {
