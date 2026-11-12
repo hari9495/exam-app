@@ -5,7 +5,7 @@ import type { ActionLinkView, ChannelLinkView } from './esm2-types';
 
 // The page behind an approval card in Teams, Slack or a phone push (SD-2.06) and "Approve from chat apps" (under the
 // Approvals list). No earlier design had them; these stories are their design, with Kaveri Foods data (3 Nov 2026).
-const meta: Meta = { title: 'Screens/Service desk/Approval link and chat apps', parameters: { layout: 'fullscreen' } };
+const meta: Meta = { title: 'Screens/Helpdesk/Approval links', parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj;
 

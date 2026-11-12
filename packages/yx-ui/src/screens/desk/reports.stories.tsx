@@ -3,7 +3,7 @@ import { WallScreen } from './reports';
 import { WALL } from './report-data';
 
 // The wall screen (/yx/wall/[org]/[token]). The report tabs moved into HLP-05 SLA dashboard (Helpdesk design wiring).
-const meta: Meta = { title: 'Screens/Service desk/Reports (HLP-05)', parameters: { layout: 'fullscreen' } };
+const meta: Meta = { title: 'Screens/Helpdesk/HLP-05 · Wall screen', parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj;
 
