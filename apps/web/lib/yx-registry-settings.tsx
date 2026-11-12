@@ -2,11 +2,12 @@
 
 import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { SETTINGS_GROUPS, SettingsPageScreen, pendingOnPage, timeSettingsChanges, timeSettingsPage, type PendingSettingChange, type RegistryDef, type SettingsGroupDef, type TimeSettingsData } from '@yukthix/ui/hiring';
+import { SETTINGS_GROUPS, SettingsPageScreen, historyOnPage, pendingOnPage, timeSettingsChanges, timeSettingsPage, type PendingSettingChange, type RegistryDef, type SettingsGroupDef, type TimeSettingsData } from '@yukthix/ui/hiring';
 import { loadState, todayIst, useOrg, useOrgWrite, useYxPermissions } from './yx-org';
 import { useYxNav } from './yx-shell';
 import { groupSlug } from './yx-settings-home';
 import { ME_SECURITY } from './yx-nav';
+import { PAGE_SETTING_KEYS, useSettingsHistory } from './yx-settings-history';
 
 // Settings S-2 and S-3 (answers 1323 to 1325): a drawn settings page with the company's settings from the registry
 // (GET /org/settings), each marked Starter default until changed, with the legal limits from the country's rule set.
@@ -52,10 +53,14 @@ export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, s
     return { registry: d.registry, limits: d.limits ?? {}, company, elsewhere, canEdit: canEdit((k) => perms.has(k as never), design), canGuard: perms.has('access.role.manage'), lastChange: null };
   }, [settings.data, perms, design, canEdit]);
   const shown = useMemo(() => new Set(Object.entries(links).filter(([, href]) => mine.has(href)).map(([k]) => k)), [mine, links]);
+  // Answer 1326: the page's last 20 changes (only its own settings that the registry knows).
+  const keys = useMemo(() => (design && settings.data ? (PAGE_SETTING_KEYS[design.id] ?? []).filter((k) => settings.data!.registry[k]) : []), [design, settings.data]);
+  const history = useSettingsHistory(keys);
   if (!design) return <SettingsPageScreen groups={SETTINGS_GROUPS} pageId={pageIds[0]!} state="no-access" />;
   const page = data ? timeSettingsPage(design, data, shown) : design;
   const linkOf = (screenId: string) => Object.entries(links).find(([k]) => design.sections.some((s) => s.settings.some((d) => d.key === k && d.linkScreenId === screenId)))?.[1];
   const waiting = secondPerson && settings.data ? pendingOnPage(page, settings.data.pending ?? []) : [];
+  const past = history.data ? historyOnPage(page, history.data) : { lastChange: null, history: [] };
   const switchOn = secondPerson && (data?.company['payroll.settings.second_person'] ?? data?.registry['payroll.settings.second_person']?.default) === 'on';
   return (
     <SettingsPageScreen
@@ -64,7 +69,8 @@ export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, s
       live={{
         page,
         canEdit: Boolean(data?.canEdit),
-        lastChange: null,
+        lastChange: past.lastChange,
+        history: past.history,
         // The MFA floor is its own state (add a second factor), never "couldn't load" (walk of S-3).
         state: settings.isError && (settings.error as { code?: string }).code === 'MFA_REQUIRED' ? 'mfa' : loadState(settings),
         onSetUpMfa: () => router.push(ME_SECURITY),

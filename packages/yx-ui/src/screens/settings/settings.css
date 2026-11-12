@@ -271,3 +271,6 @@ button.yx-m-row:hover, a.yx-m-row:hover { background: var(--yx-color-bg-subtle);
 .yx-set-pending__row + .yx-set-pending__row { border-top: var(--yx-border-width) solid var(--yx-color-border); padding-top: var(--yx-space-3); }
 .yx-set-pending__actions { display: flex; gap: var(--yx-space-2); }
 .yx-set-pending__what { display: grid; gap: var(--yx-space-1); }
+
+/* S-5 (1461): the live home's Recently changed, one line per change so the home keeps to one screen. */
+.yx-set-recent--live a { flex-direction: row; flex-wrap: wrap; column-gap: var(--yx-space-2); padding: var(--yx-space-1) 0; }

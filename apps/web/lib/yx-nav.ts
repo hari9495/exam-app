@@ -100,6 +100,9 @@ export const PEOPLE_SETTINGS_PAGES: [string, string, string][] = [
 const peoplePage = (id: string) => PEOPLE_SETTINGS_PAGES.filter((p) => p[0] === id).map((p) => `${SETTINGS_HOME}/people/${p[2]}`);
 const timePage = (id: string) => TIME_SETTINGS_PAGES.filter((p) => p[0] === id).map((p) => `${SETTINGS_HOME}/time/${p[2]}`);
 
+/** Answer 1563: the company audit log. */
+export const AUDIT_LOG = `${SETTINGS_HOME}/audit-log`;
+
 export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '1.1': ['/yx/settings/countries', '/yx/settings/translations', '/yx/settings/emails'],
   '1.2': ['/yx/settings/legal-entities'],
@@ -114,7 +117,7 @@ export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '2.6': ['/yx/settings/company-rules'],
   '2.7': peoplePage('2.7'),
   '2.9': ['/yx/settings/company-rules', '/yx/desk/speakup-setup'],
-  '2.10': [...peoplePage('2.10'), '/yx/settings/access-settings'],
+  '2.10': [...peoplePage('2.10'), '/yx/settings/access-settings', AUDIT_LOG],
   '3.1': ['/yx/settings/company-rules'],
   '3.2': [...timePage('3.2'), '/yx/time/setup/devices', '/yx/time/setup/locations'],
   '3.3': [...timePage('3.3'), '/yx/time/shifts-setup'],
@@ -168,6 +171,9 @@ export function buildNav(n: NavInput): NavArea[] {
   const self = employee && !support;
   const settingsAdmin = has('org.settings.manage');
   const hr = support || any('employee.profile.view', 'employee.change.manage', 'employee.change.approve');
+  // Answer 1333: HR who read the structure open the People settings pages read-only (only the change key edits); the
+  // structure key alone (managers' pickers) opens no settings page (founder review, 8 Oct 2026).
+  const settingsView = settingsAdmin || (hr && has('org.structure.view'));
   const orgPages = settingsAdmin || has('pay.range.view') || support || (hr && has('org.structure.view'));
   const exitView = any('lifecycle.exit.view', 'lifecycle.exit.manage');
   const onboardView = any('lifecycle.onboarding.view', 'lifecycle.onboarding.manage');
@@ -505,7 +511,9 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(has('access.role.manage'), L('access', 'Roles & access', '/yx/settings/access')),
         ...when(settingsAdmin, L('access-settings', 'Access and privacy', '/yx/settings/access-settings'), L('custom-fields', 'Custom fields', '/yx/settings/custom-fields')),
         // S-4 (answer 1323): the People & Access settings pages; HR's settings key changes them.
-        ...when(settingsAdmin, ...PEOPLE_SETTINGS_PAGES.map(([id, label, slug]) => L(`people-settings-${id}`, label, `${SETTINGS_HOME}/people/${slug}`))),
+        ...when(settingsView, ...PEOPLE_SETTINGS_PAGES.map(([id, label, slug]) => L(`people-settings-${id}`, label, `${SETTINGS_HOME}/people/${slug}`))),
+        // Answer 1563: the company audit log.
+        ...when(has('audit.view') && !support, L('audit-log', 'Audit log', AUDIT_LOG)),
         ...when(has('lifecycle.journey.template.manage'), L('checklists', 'Onboarding checklists', '/yx/settings/checklists')),
         ...when(adminRole, L('settings', 'Security settings', '/yx/settings/security'), L('identity-providers', 'Single sign-on providers', '/yx/settings/identity-providers')),
         ...when(adminRole || n.role === 'auditor', L('activity', 'Login activity', '/yx/admin/login-activity')),
@@ -515,7 +523,9 @@ export function buildNav(n: NavInput): NavArea[] {
       // 3.11 Projects & timesheets: where Projects is switched on, so it shows while Projects is off (answer 1401).
       ...sec('Time & Leave', [
         // S-2 (answer 1323): the Time & Leave settings pages; HR's settings key changes them. 3.11 is the Projects page.
-        ...TIME_SETTINGS_PAGES.filter(([id]) => settingsAdmin || (has('leave.settings.manage') && LEAVE_SETTINGS_PAGES.includes(id))).map(([id, label, slug]) => L(`time-settings-${id}`, label, `${SETTINGS_HOME}/time/${slug}`)),
+        // Answer 1333: Time admins (leave.settings.manage) open every Time & Leave page; they change only the leave pages
+        // (3.6, 3.8, 3.9, answer 1485) and read the others.
+        ...TIME_SETTINGS_PAGES.filter(() => settingsAdmin || has('leave.settings.manage')).map(([id, label, slug]) => L(`time-settings-${id}`, label, `${SETTINGS_HOME}/time/${slug}`)),
         ...when(!support && any('org.settings.manage', 'projects.manage'), L('project-settings', 'Projects & timesheets', '/yx/settings/projects')),
         // P-3 (PRJ-08): the mapping rules, once Projects is on for this person (also linked from 3.11).
         ...when(!support && Boolean(n.projects) && any('org.settings.manage', 'projects.manage'), L('mapping-rules', 'Timesheet mapping rules', '/yx/settings/projects/mapping-rules')),

@@ -32,6 +32,17 @@ const rowView = (r: Row): SettingRow & { key: string; updatedAt: Date } => ({
   updatedAt: r.updatedAt,
 });
 
+/** Settings S-5 (answers 1326, 1461): how many audit rows are scanned for a page's last changes. */
+// shortcut: the newest 2,000 setting changes of the company are scanned in memory; filter in SQL on the key when a company passes that.
+const HISTORY_SCAN = 2000;
+const parseMeta = (s: string | null): Record<string, unknown> => {
+  try {
+    return s ? (JSON.parse(s) as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+};
+
 function definition(key: string): SettingDef {
   const def = SETTINGS[key];
   if (!def) throw new BadRequestException(`Unknown setting ${key}`);
@@ -132,6 +143,36 @@ export class OrgSettingsService {
   }
 
   /** The registry with every override, for the settings screens. */
+  /**
+   * Settings S-5 (answers 1326, 1461): the last changes of these settings at the company, newest first, from the audit
+   * log (`org.setting.changed`): who, when, where it applies, before and after. The caller checks the keys may be read.
+   */
+  async history(ctx: TenantContext, keys: string[], limit: number) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const want = new Set(keys);
+      const rows = await tx.auditLog.findMany({ where: { organizationId: c.organizationId, action: 'org.setting.changed' }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: HISTORY_SCAN, select: { id: true, createdAt: true, actorName: true, actorEmail: true, actorRole: true, metadataJson: true } });
+      const hits = rows.map((r) => ({ r, m: parseMeta(r.metadataJson) })).filter((x) => want.has(String(x.m.key))).slice(0, limit);
+      const ids = (t: string) => [...new Set(hits.filter((x) => x.m.scopeType === t).map((x) => String(x.m.scopeId)))];
+      const [entities, locations] = await Promise.all([
+        tx.legalEntity.findMany({ where: { organizationId: c.organizationId, id: { in: ids('legal_entity') } }, select: { id: true, name: true } }),
+        tx.location.findMany({ where: { organizationId: c.organizationId, id: { in: ids('location') } }, select: { id: true, name: true } }),
+      ]);
+      const names = new Map([...entities, ...locations].map((x) => [x.id, x.name]));
+      return hits.map(({ r, m }) => ({
+        id: r.id,
+        at: r.createdAt.toISOString(),
+        by: r.actorName || r.actorEmail || 'YukthiX system',
+        role: r.actorRole,
+        key: String(m.key),
+        label: SETTINGS[String(m.key)]?.label ?? String(m.key),
+        scope: m.scopeType === 'tenant' || !m.scopeType ? 'Company' : (names.get(String(m.scopeId)) ?? 'Another place'),
+        from: m.from ?? null,
+        to: m.to ?? null,
+        validFrom: m.validFrom ?? null,
+      }));
+    });
+  }
+
   list(ctx: TenantContext) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const rows = await tx.setting.findMany({ where: { organizationId: c.organizationId }, orderBy: [{ key: 'asc' }, { scopeType: 'asc' }, { validFrom: 'asc' }] });

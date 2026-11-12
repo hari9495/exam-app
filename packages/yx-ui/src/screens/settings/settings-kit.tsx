@@ -554,7 +554,7 @@ export function AuditLine({ change, history = [], defaultHistoryOpen = false, co
     id: h.id,
     at: parseIso(h.at),
     actor: { name: h.by },
-    action: `(${h.role}) ${h.what.charAt(0).toLowerCase()}${h.what.slice(1)}`,
+    action: `${h.role ? `(${h.role}) ` : ''}${h.what.charAt(0).toLowerCase()}${h.what.slice(1)}`,
   }));
   const drawer = (
     <Drawer open={open} onOpenChange={setOpen} title="Change history" subtitle="Every change is recorded with before and after values.">
@@ -575,7 +575,7 @@ export function AuditLine({ change, history = [], defaultHistoryOpen = false, co
     <div className="yx-set-audit">
       <Icon icon={History} />
       <span>
-        Last changed by <strong>{change.by}</strong> ({change.role}) on {formatStamp(change.at)}. {change.what}.
+        Last changed by <strong>{change.by}</strong>{change.role ? ` (${change.role})` : ''} on {formatStamp(change.at)}. {change.what}.
       </span>
       <Button size="sm" onClick={() => setOpen(true)}>
         View history

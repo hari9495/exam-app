@@ -31,6 +31,8 @@ const KEY = {
   'prj.expenses_projects': 'projects.expenses.enabled',
 } as const;
 type Field = keyof typeof KEY;
+/** Settings S-5 (answers 1326, 1461): the company settings behind 3.11, for its change history. */
+export const PROJECT_SETTING_KEYS: string[] = Object.values(KEY);
 const LIVE = new Set<string>([...Object.keys(KEY), 'prj.projects', 'prj.mapping_rules']);
 /** The drawn radio's words for the stored on/off. */
 const BOOKING: Record<string, string> = { on: 'Block', off: 'Allow', approval: 'Allow with project manager approval' };

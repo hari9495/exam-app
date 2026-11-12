@@ -55,14 +55,14 @@ means the live page passes no manage flag that I could see and I did not read th
 
 ## Counts (sub-pages = stories)
 
-After S-1 (Settings home, search and the eight group pages live; four live stories added) S-2 (the Time & Leave pages with their settings; one live story added) S-3 (the Payroll pages, a second person for payroll changes; two live stories added) and S-4 (2.7 and 2.10 with their settings; one live story added; appendix script "ok").
+After S-1 (Settings home, search and the eight group pages live; four live stories added) S-2 (the Time & Leave pages with their settings; one live story added) S-3 (the Payroll pages, a second person for payroll changes; two live stories added) and S-4 (2.7 and 2.10 with their settings; one live story added) and S-5 (page history live; appendix script "ok").
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Settings home and page states | 1 | 17 | 3 | 4 | 0 | 0 | 24 |
+| A. Settings home and page states | 1 | 18 | 3 | 3 | 0 | 0 | 24 |
 | B. Organisation and Global core | 2 | 25 | 0 | 0 | 0 | 0 | 25 |
 | C. Settings map, groups 1 to 8 | 8 | 34 | 93 | 14 | 32 | 0 | 173 |
-| **All A-C** | **11** | **76** | **96** | **18** | **32** | **0** | **222** |
+| **All A-C** | **11** | **77** | **96** | **17** | **32** | **0** | **222** |
 
 Per group (C):
 
@@ -194,7 +194,7 @@ File: `packages/yx-ui/src/screens/settings/settings-home.stories.tsx`.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Home · Settings home | live | S-1: /yx/settings renders `SettingsHomeScreen` with `live`: only the pages the viewer may open (those whose live editor is in their menu, `SETTINGS_PAGE_EDITORS` in `apps/web/lib/yx-nav.ts`), each linking to its live editor; the drawn examples (recently changed, starter count, set-up alert) are left out in live (questions 1461, 1462) |
+| Home · Settings home | live | S-1: /yx/settings renders `SettingsHomeScreen` with `live`: only the pages the viewer may open (those whose live editor is in their menu, `SETTINGS_PAGE_EDITORS` in `apps/web/lib/yx-nav.ts`), each linking to its live editor. S-5 (answer 1461): Recently changed is live (the last three changes on pages the viewer may open, each to its page; Audit log for audit.view). The starter count and set-up alert stay out (question 1462) |
 | HomeSearch · Settings home · search "probation" | live | S-1: search over the page list and its words; each result opens its page's live editor; drawn example values are not shown in live (question 1463) |
 | HomeSearchPf · Settings home · search "PF ceiling" | live | same |
 | HomeSearchLate · Settings home · search "late coming" | live | same (finds pages with a live editor; 3.5 has none yet, S-2) |
@@ -214,8 +214,8 @@ File: `packages/yx-ui/src/screens/settings/settings-home.stories.tsx`.
 | PageSaveFailed · Page · save failed (edits kept) | live | the live save shows the refusal and keeps the edits (`settings-screens.tsx` around line 425) |
 | PageSecurity · Page · security change asks to confirm | live (gap) | the "confirm it's you" step works on live pages for `sensitive` fields (3.12 watch-list); the drawn example is 2.3 Security, whose live page is `SecuritySettingsScreen` instead |
 | PageScopeOverride · Page · editing overrides for a location | live (gap) | "Different for" values are live on 6.2 per legal entity (answer 495, `staffingEntityChanges`) and visitors shows own values per location; the drawn example (3.1 per location) is not wired |
-| PageHistory · Page · change history | wire design | live pages show only the last change (`lastChange` from each area service); every write is audited and `GET audit-logs` exists (`audit:view`), but no page lists a page's history |
-| PageReadOnly · Page · read-only (no permission) | live | read-only by key works on the four live pages; the drawn example (4.7) is not wired |
+| PageHistory · Page · change history | live | S-5 (answer 1326): the S-2, S-3 and S-4 pages and 3.11 show "Last changed by" and View history with the last 20 changes (who, role, when, where, before and after) from the audit log (`GET org/settings/history`, only settings the viewer may read) |
+| PageReadOnly · Page · read-only (no permission) | live | read-only by key works on the live pages; S-5 (answer 1333): Time admins open every Time & Leave page (the attendance ones read-only) and HR who read the structure open 2.7 and 2.10 read-only; the API refuses their saves. The drawn example (4.7) is not wired |
 | PageLoading · Page · loading | live | `live.state` from `loadState` |
 | PageError · Page · error | live | the error state with Retry (`live.onRetry`) |
 
@@ -774,6 +774,54 @@ approver for payroll settings; approval policies per request type; and the not-b
   none; the asker is told approved and rejected; a change lapses at 15 days but not at 14, audited as the system, the
   asker told, a rerun lapses nothing more and the lapsed change cannot be approved; at 7 days a change of 8 days
   lapses). Kit `settings-mfa-state` and web `yx-settings-payroll` (the MFA state and a real failure).
+
+## S-5 as built (answers 1326, 1333, 1461, 1563; branch `feat/yukthix-settings-s5`)
+
+- **1326, change history on each page:** the Time & Leave (S-2), Payroll (S-3) and People (S-4) settings pages and 3.11
+  Projects show "Last changed by … on …" under the title and View history with the last 20 changes: who (with "System
+  Admin" when known), when, where it applies (Company or the entity or location) and before and after in the page's
+  words ("from Starter default to 48"). Source: the audit log's `org.setting.changed` rows, through one endpoint,
+  `GET org/settings/history?keys=…&limit=` (at most 20). It answers only for settings the person may read: the
+  Projects settings for the company settings key or Projects manage; every other setting for the keys that read the
+  company settings (as `GET org/settings`); anything else is refused (403). Each page asks only for its own settings.
+- **1461, Recently changed on the home:** the last three changes on pages the person may open (the same endpoint, only
+  those pages' settings), each linking to its page; "Audit log" beside it for audit.view.
+- **1333, view-only pages:** Time admins (`leave.settings.manage`, who set up shifts, devices and leave) now open every
+  Time & Leave settings page: the leave pages (3.6, 3.8, 3.9) they change (answer 1485), the attendance ones (3.2 to
+  3.5) read-only. HR who read the structure (`org.structure.view` with an HR key) open 2.7 and 2.10 read-only. The
+  structure key alone still opens no settings page (managers use it for pickers; founder review 8 Oct 2026). Read-only
+  pages show View only, no save bar, and their history; the API refuses a save (`PUT org/settings`, 403).
+- **1563, the company audit log:** Settings › People & Access › Audit log (`/yx/settings/audit-log`, also 2.10's front
+  door for audit.view), the drawn PLT-16 `AuditLogScreen` with `live`. It reuses the existing audit query (the one behind
+  Payroll's audit page, `GET payroll/audit`), so the same rules apply: audit.view, company-wide or per legal entity,
+  restricted areas (POSH, disciplinary, grievance, whistleblower, medical leave) only for their members, pay and
+  identity values masked without their keys. New filters on that query: area (Settings, Access & security, People,
+  Time and leave, Payroll, Hiring, Performance, Expenses, Helpdesk, Approvals, Projects, by action family) and person
+  (any part of a name or email), with the date range it already had. Payroll's own page stays (chain check, holds,
+  export) and is linked.
+- **Not built:** the drawn chain badge and Export on the company page (Payroll's page has both; question 1722); the
+  drawn "From" channel column (not recorded; question 1723).
+- **Tests:** API e2e `settings-s5-history` (8: history newest first with who, where, before and after, only the asked
+  settings; the limit and unknown settings refused; the view key reads it, Projects manage reads 3.11 only, the view key
+  is refused 3.11, no key and audit.view alone refused; another company's change never shows; the view key cannot save;
+  the audit log refused without audit.view; filtered by area, person and date; a bad area refused; one company never
+  sees another's entries). Kit `settings-history-live.test` (10). Web `yx-settings-time` (history asked for the page's
+  own settings only; none when nothing changed), `yx-settings-home` (Recently changed links to its page; a payroll-only
+  admin never asks for the Time & Leave history; no audit link without the key), `yx-settings-audit` (reads, filters by
+  area; no access without the key), `yx-nav` (a Time admin opens the Time & Leave pages; the structure key alone opens
+  none; HR with the structure key open 2.7 and 2.10; the audit log needs audit.view).
+
+### Questions (from 1721)
+
+1721. **Who else may read a page.** The drawing names only the key that edits each page. Built: Time admins read the
+      attendance pages, HR with the structure key read 2.7 and 2.10, payroll set-up reads the payroll pages, Projects
+      managers read 3.11. *Suggested: keep; add a reader per page when a role asks for one.*
+1722. **Chain badge and Export on the company audit log.** Both live on Payroll's audit page today. *Suggested: show the
+      chain result and Export (audit.export) here too, and keep Payroll's page for holds.*
+1723. **"From" (web, phone, API).** The drawn column needs the channel recorded with each audit row; it is not.
+      *Suggested: record it from now on (no back-fill) and show it when present.*
+1724. **History older than the last 20.** Each page shows the last 20 changes; older ones are on the audit log page.
+      *Suggested: keep, with a "See all in the audit log" link from the history drawer.*
 
 ## 7. Build plan (slices, max 3 builders at once)
 

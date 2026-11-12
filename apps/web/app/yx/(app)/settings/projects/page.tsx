@@ -2,7 +2,8 @@
 
 import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { SETTINGS_GROUPS, SettingsPageScreen, projectSettingsChanges, projectSettingsPage, type ProjectSettingsData } from '@yukthix/ui/hiring';
+import { PROJECT_SETTING_KEYS, SETTINGS_GROUPS, SettingsPageScreen, historyOnPage, projectSettingsChanges, projectSettingsPage, type ProjectSettingsData } from '@yukthix/ui/hiring';
+import { useSettingsHistory } from '../../../../../lib/yx-settings-history';
 import { loadState } from '../../../../../lib/yx-org';
 import { useAuth } from '../../../../../lib/auth-context';
 import { useProjects, useProjectsWrite } from '../../../../../lib/yx-projects';
@@ -18,6 +19,9 @@ export default function YxProjectSettingsPage() {
   const write = useProjectsWrite();
   const state = loadState(data);
   const page = useMemo(() => (data.data ? projectSettingsPage(design, data.data) : design), [data.data]);
+  // Answer 1326: the last 20 changes, asked once the page itself opened (the same readers).
+  const history = useSettingsHistory(data.data ? PROJECT_SETTING_KEYS : []);
+  const past = history.data ? historyOnPage(page, history.data) : null;
   return (
     <SettingsPageScreen
       groups={SETTINGS_GROUPS}
@@ -25,13 +29,15 @@ export default function YxProjectSettingsPage() {
       live={{
         page,
         canEdit: Boolean(data.data?.canEdit) && !impersonating && !actingSuperAdmin,
-        lastChange: data.data?.lastChange ? { by: data.data.lastChange.by, role: '', at: data.data.lastChange.at, what: data.data.lastChange.what } : null,
+        lastChange: past ? past.lastChange : data.data?.lastChange ? { by: data.data.lastChange.by, role: '', at: data.data.lastChange.at, what: data.data.lastChange.what } : null,
+        history: past?.history ?? [],
         state: state === 'ready' ? 'ready' : state === 'loading' ? 'loading' : state === 'no-access' ? 'no-access' : 'error',
         onRetry: () => void data.refetch(),
         savedTitle: 'Projects settings saved',
         onSave: async (values) => {
           const changes = projectSettingsChanges(values);
           if (changes.length) await write('PUT', '/settings', { changes });
+          void history.refetch();
         },
         onOpenScreen: (screenId) => (screenId === 'PRJ-01' ? router.push('/yx/projects') : screenId === 'PRJ-08' ? router.push('/yx/settings/projects/mapping-rules') : undefined),
       }}

@@ -23,6 +23,7 @@ import { DesktopFrame } from '../_kit/frames';
 import { TODAY } from '../_kit/data';
 import { DiffTable, ListPage, Tile, settingsPanel, toneFor, type DiffRow } from './platform-kit';
 import { at } from './platform-data';
+import { LiveAuditLogScreen, type LiveAuditLog } from './audit-log-live';
 
 const stamp = (x: Date) => `${formatDate(x)}, ${timeOf(x)}`;
 
@@ -404,7 +405,8 @@ const auditColumns: TableColumn<AuditRow>[] = [
   { key: 'channel', header: 'From', value: (r) => r.channel },
 ];
 
-export function AuditLogScreen({ rows, openId, chain = 'verified', state = 'ready', masked }: { rows: AuditRow[]; openId?: string; chain?: 'verified' | 'broken'; state?: 'ready' | 'loading' | 'error'; masked?: boolean }) {
+export function AuditLogScreen({ rows, openId, chain = 'verified', state = 'ready', masked, live }: { rows: AuditRow[]; openId?: string; chain?: 'verified' | 'broken'; state?: 'ready' | 'loading' | 'error'; masked?: boolean; /** Settings S-5 (answer 1563): the company's audit log. */ live?: LiveAuditLog }) {
+  if (live) return <LiveAuditLogScreen live={live} />;
   const [open, setOpen] = useState<string | null>(openId ?? null);
   const current = rows.find((r) => r.id === open);
   return (

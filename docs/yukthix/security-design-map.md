@@ -255,7 +255,7 @@ lock-out tries and minutes, session limits, password length, IP lists, SSO only,
 | item | why | size |
 |---|---|---|
 | SEC-01 Hindi sign-in | wording (question 1) | M |
-| PLT-16 Audit log (7 stories, `platform-a: AuditLogScreen`, Platform group) | in the Platform group, not Security; `GET audit-logs` exists, the screen has no `live` path or page yet, and its "chain check" state needs a hash chain the audit table does not have | M (page + live prop), L with the chain |
+| PLT-16 Audit log (7 stories, `platform-a: AuditLogScreen`, Platform group) | Settings S-5 (answer 1563): live at /yx/settings/audit-log with `live`, on the existing audit query (`GET payroll/audit`, audit.view, scope and masking) with area and person filters; the chain badge and Export stay on Payroll's audit page (question 1722) | done |
 | PLT-01 Access states (`platform-a: AccessStateScreen`, `AccessStatePhone`) | Platform group; the live pages use the kit's `NoAccessState`. Making the PLT-01 design the no-access state everywhere touches every area | M |
 
 ## Appendix: the count script

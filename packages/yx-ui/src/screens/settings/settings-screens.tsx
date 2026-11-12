@@ -84,6 +84,10 @@ export interface LiveSettingsNav {
   /** In-app navigation; a Ctrl or Cmd click keeps the browser's own new tab. */
   onNavigate: (href: string) => void;
   onRetry?: () => void;
+  /** Answer 1461: the last changes on pages the viewer may open, newest first (from the audit log). */
+  recent?: { id: string; what: string; from: string; to: string; who: string; at: string; pageId: string }[];
+  /** Answer 1563: the company audit log, for those who may read it. */
+  auditHref?: string;
 }
 
 /** Pages a live home card lists before "N more" (the rest are on the group page). */
@@ -172,6 +176,22 @@ export function SettingsHomeScreen({ groups, defaultQuery = '', manageable, stat
                 </Button>
               </Card>
             </div>
+          )}
+          {!query.trim() && live?.recent && live.recent.length > 0 && (
+            <Card title="Recently changed" actions={live.auditHref ? <a className="yx-link" {...liveLink(live, live.auditHref)}>Audit log</a> : undefined}>
+              <ul className="yx-set-recent yx-set-recent--live">
+                {live.recent.slice(0, 3).map((c) => (
+                  <li key={c.id}>
+                    <a {...liveLink(live, live.pageHref(c.pageId))}>
+                      <span className="yx-set-recent__what">{c.what}</span>
+                      <span className="yx-set-helper">
+                        {c.from} → {c.to} · {c.who} · {formatDate(parseIso(c.at.slice(0, 16)))}
+                      </span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </Card>
           )}
           <SearchResults
             results={results}
@@ -319,6 +339,8 @@ export interface LiveSettingsPage {
   canEdit: boolean;
   /** Who changed the page last (none yet: not shown). */
   lastChange: LastChange | null;
+  /** Answer 1326: the page's earlier changes (the last 20 with lastChange), newest first. */
+  history?: HistoryEntry[];
   state?: LoadState;
   onRetry?: () => void;
   /** The changed values (by setting key) and the edited lists (rows by key). Rejects with a plain message. */
@@ -383,6 +405,7 @@ export function SettingsPageScreen({
   const group = found.group;
   const page = live?.page ?? found.page;
   if (live) {
+    history = live.history;
     readOnly = !live.canEdit;
     state = live.state ?? 'ready';
     onOpenScreen = live.onOpenScreen;

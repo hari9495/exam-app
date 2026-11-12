@@ -392,3 +392,17 @@ export class SettingRejectDto {
   @MaxLength(500)
   note?: string;
 }
+
+/** Settings S-5 (1326, 1461): the settings whose last changes to list (comma-separated keys) and how many. */
+export class SettingsHistoryQueryDto {
+  @IsString()
+  @MaxLength(8000)
+  keys!: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(20)
+  limit?: number;
+}
