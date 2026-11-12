@@ -90,7 +90,7 @@ export function liveSetup(over: Partial<LiveSpeakUpSetup> = {}): LiveSpeakUpSetu
     },
     onAdd: async () => undefined,
     onRemove: async () => undefined,
-    rulesHref: '/yx/settings/company-rules',
+    rulesHref: '/yx/settings/people/employee-relations-and-cases',
     ...over,
   };
 }

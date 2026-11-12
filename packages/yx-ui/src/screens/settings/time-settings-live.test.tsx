@@ -8,6 +8,10 @@ import { TIME_SETTINGS, timeSettingsChanges, timeSettingsPage, type TimeSettings
 import { TIME_REGISTRY_SAMPLE } from './time-settings-sample';
 import { allSettings } from './settings-logic';
 import { projectSettingsPage } from './projects-live';
+import { SETTING_SECTIONS } from '../org/settings';
+// S-7 moved the old Company rules, Access and privacy and Payroll rules settings onto drawn pages; these counts are the ones that had no screen at all.
+const MOVED = new Set(Object.values(SETTING_SECTIONS).flat().flatMap((s) => s.keys));
+const unmoved = (keys: string[]) => keys.filter((k) => !MOVED.has(k));
 
 // Settings S-2 (answers 1323, 1324): the drawn Time & Leave pages with the company's settings. Positive and negative.
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -24,7 +28,7 @@ const show = (id: string, over: Partial<LiveSettingsPage> = {}, data = DATA) =>
 
 describe('Time & Leave settings (S-2): every hidden setting has a field', () => {
   it('the 40 settings that had no screen each sit on exactly one drawn page, with the starter value marked', () => {
-    const keys = Object.values(TIME_SETTINGS).flatMap((p) => p.settings.map((s) => s.key));
+    const keys = unmoved(Object.values(TIME_SETTINGS).flatMap((p) => p.settings.map((s) => s.key)));
     // 39 here; 3.11's one (timesheet.tool_suggestions) is on the Projects settings page, the one live 3.11.
     expect(keys).toHaveLength(39);
     expect(new Set(keys).size).toBe(39);
@@ -35,7 +39,7 @@ describe('Time & Leave settings (S-2): every hidden setting has a field', () => 
     expect(allSettings(projects).find((d) => d.key === 'prj.prefill_enabled')).toMatchObject({ kind: 'toggle', value: false, starter: true });
     for (const [id, spec] of Object.entries(TIME_SETTINGS)) {
       const fields = allSettings(timeSettingsPage(pageOf(id), DATA, ALL_LINKS));
-      for (const s of spec.settings) {
+      for (const s of spec.settings.filter((x) => !MOVED.has(x.key))) {
         const f = fields.find((d) => d.key === s.key);
         expect([s.key, Boolean(f)]).toEqual([s.key, true]);
         expect([s.key, f!.starter]).toEqual([s.key, DATA.company[s.key] === undefined]);

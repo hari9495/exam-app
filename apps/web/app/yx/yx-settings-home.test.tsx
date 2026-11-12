@@ -91,9 +91,9 @@ describe('Settings S-1: home and search', () => {
     await ue.type(screen.getByRole('searchbox', { name: 'Search settings' }), 'probation');
     const results = screen.getByRole('region', { name: 'Search results' });
     const hit = within(results).getAllByRole('link').find((a) => a.textContent?.includes('Onboarding & probation'))!;
-    expect(hit).toHaveAttribute('href', '/yx/settings/company-rules');
+    expect(hit).toHaveAttribute('href', '/yx/settings/people/onboarding-and-probation');
     await ue.click(hit);
-    expect(push).toHaveBeenCalledWith('/yx/settings/company-rules');
+    expect(push).toHaveBeenCalledWith('/yx/settings/people/onboarding-and-probation');
   });
 
   it('negative: search shows nothing from pages the viewer may not open', async () => {

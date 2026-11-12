@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { SETTINGS_GROUPS, SettingsPageScreen, historyOnPage, pendingOnPage, timeSettingsChanges, timeSettingsPage, type PendingSettingChange, type RegistryDef, type SettingsGroupDef, type TimeSettingsData } from '@yukthix/ui/hiring';
+import { SETTINGS_GROUPS, SettingsPageScreen, historyOnPage, pendingOnPage, timeSettingsChanges, timeSettingsOverrides, timeSettingsPage, type PendingSettingChange, type RegistryDef, type SettingsGroupDef, type TimeSettingsData } from '@yukthix/ui/hiring';
 import { loadState, todayIst, useOrg, useOrgWrite, useYxPermissions } from './yx-org';
 import { useYxNav } from './yx-shell';
 import { groupSlug } from './yx-settings-home';
@@ -14,10 +14,13 @@ import { PAGE_SETTING_KEYS, useSettingsHistory } from './yx-settings-history';
 // Saving is PUT /org/settings per setting (audited); a value past the legal limit is refused by the page and the API,
 // naming the Act. On the payroll pages a change waits for a second person while the company switch is on (1325): the
 // page says so and lists what waits, with Approve and Reject (Withdraw for the person who asked).
-type Overview = { registry: Record<string, RegistryDef>; limits: TimeSettingsData['limits']; pending?: PendingSettingChange[]; overrides: { key: string; scopeType: string; validFrom: string | null; value: unknown }[] };
+type Overview = { registry: Record<string, RegistryDef>; limits: TimeSettingsData['limits']; pending?: PendingSettingChange[]; overrides: { key: string; scopeType: string; scopeId: string; validFrom: string | null; value: unknown }[] };
+type Named = { id: string; name: string; archivedAt?: string | null }[];
+/** S-7 (answer 1484): the places a setting may have a value of its own, in words (an entity by its name). */
+const PLACE: Record<string, (name: string) => string> = { legal_entity: (n) => n, location: (n) => `${n} (location)`, department: (n) => `${n} (department)`, employment_type: (n) => `${n} (employment type)`, grade: (n) => `Grade ${n}` };
 type Page = SettingsGroupDef['pages'][number];
 
-export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, secondPerson, decorate }: {
+export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, secondPerson, decorate, extra }: {
   slug: string;
   /** The drawn pages this route serves. */
   pageIds: readonly string[];
@@ -31,12 +34,20 @@ export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, s
   secondPerson?: boolean;
   /** S-6 (answer 1330): adds what the page shows beside its settings (2.4: the approval policies). */
   decorate?: (page: Page) => Page;
+  /** S-7: a block the page shows besides its settings (2.2: the Special data erasure report). */
+  extra?: React.ReactNode;
 }) {
   const router = useRouter();
   const design = SETTINGS_GROUPS.flatMap((g) => g.pages).find((p) => pageIds.includes(p.id) && groupSlug(p.title) === slug);
   const perms = useYxPermissions();
   const { nav } = useYxNav();
   const settings = useOrg<Overview>('/settings');
+  // S-7 (answer 1484): the records a value of its own can be set for ("Different for").
+  const entities = useOrg<Named>('/legal-entities');
+  const locations = useOrg<Named>('/locations');
+  const types = useOrg<Named>('/masters/employment-types');
+  const departments = useOrg<Named>('/masters/departments');
+  const grades = useOrg<Named>('/masters/grades');
   const write = useOrgWrite();
   const mine = useMemo(() => new Set(nav.flatMap((a) => a.sections.flatMap((s) => s.items.map((l) => l.href)))), [nav]);
   const data = useMemo<TimeSettingsData | null>(() => {
@@ -52,8 +63,23 @@ export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, s
         company[o.key] = String(o.value);
         if (o.validFrom) since[o.key] = o.validFrom;
       } else if (o.scopeType !== 'tenant') elsewhere[o.key] = (elsewhere[o.key] ?? 0) + 1;
-    return { registry: d.registry, limits: d.limits ?? {}, company, elsewhere, canEdit: canEdit((k) => perms.has(k as never), design), canGuard: perms.has('access.role.manage'), lastChange: null };
-  }, [settings.data, perms, design, canEdit]);
+    // S-7 (answer 1484): each place's own value in force today (a dated one: the latest from today or before).
+    const scopes = ([['legal_entity', entities.data], ['location', locations.data], ['department', departments.data], ['employment_type', types.data], ['grade', grades.data]] as const).flatMap(([type, rows]) =>
+      (rows ?? []).filter((r) => !r.archivedAt).map((r) => ({ label: PLACE[type]!(r.name), type, id: r.id })),
+    );
+    const byScope: NonNullable<TimeSettingsData['byScope']> = {};
+    for (const o of d.overrides) {
+      if (o.scopeType === 'tenant' || (o.validFrom && o.validFrom > today)) continue;
+      const place = scopes.find((s) => s.type === o.scopeType && s.id === o.scopeId);
+      if (!place) continue;
+      const list = (byScope[o.key] ??= []);
+      const was = list.find((x) => x.scope === place.label);
+      if (was && (was.validFrom ?? '') > (o.validFrom ?? '')) continue;
+      if (was) list.splice(list.indexOf(was), 1);
+      list.push({ scope: place.label, value: String(o.value), validFrom: o.validFrom });
+    }
+    return { registry: d.registry, limits: d.limits ?? {}, company, elsewhere, canEdit: canEdit((k) => perms.has(k as never), design), canGuard: perms.has('access.role.manage'), lastChange: null, scopes, byScope };
+  }, [settings.data, perms, design, canEdit, entities.data, locations.data, departments.data, types.data, grades.data]);
   const shown = useMemo(() => new Set(Object.entries(links).filter(([, href]) => mine.has(href)).map(([k]) => k)), [mine, links]);
   // Answer 1326: the page's last 20 changes (only its own settings that the registry knows).
   const keys = useMemo(() => (design && settings.data ? (PAGE_SETTING_KEYS[design.id] ?? []).filter((k) => settings.data!.registry[k]) : []), [design, settings.data]);
@@ -80,13 +106,18 @@ export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, s
         onSetUpMfa: () => router.push(ME_SECURITY),
         onRetry: () => void settings.refetch(),
         savedTitle: `${design.title} saved`,
+        extra,
         secondPerson: Boolean(switchOn),
         pending: waiting,
         onApprove: data?.canEdit ? async (id) => void (await write('POST', `/settings/requests/${encodeURIComponent(id)}/approve`, {})) : undefined,
         onReject: data?.canEdit ? async (id) => void (await write('POST', `/settings/requests/${encodeURIComponent(id)}/reject`, {})) : undefined,
-        onSave: async (values) => {
-          // A dated setting starts today (S-4); earlier days keep the old value.
-          for (const c of timeSettingsChanges(values, data!)) await write('PUT', '/settings', { key: c.key, value: c.value, scopeType: 'tenant', ...(data!.registry[c.key]?.dated ? { validFrom: todayIst() } : {}) });
+        // S-7 (answer 1562): dated settings change from the day chosen (today by default).
+        appliesFrom: design.sections.length && Object.values(data?.registry ?? {}).some((r) => r.dated) ? { today: todayIst() } : undefined,
+        onSave: async (values, _rows, overrides, appliesFrom) => {
+          const from = appliesFrom && appliesFrom >= todayIst() ? appliesFrom : todayIst();
+          for (const c of timeSettingsChanges(values, data!)) await write('PUT', '/settings', { key: c.key, value: c.value, scopeType: 'tenant', ...(data!.registry[c.key]?.dated ? { validFrom: from } : {}) });
+          // S-7 (answer 1484): values of their own for one place ("Different for").
+          for (const o of timeSettingsOverrides(overrides ?? [], data!)) await write('PUT', '/settings', { key: o.key, value: o.value, scopeType: o.scopeType, scopeId: o.scopeId, ...(data!.registry[o.key]?.dated ? { validFrom: from } : {}) });
         },
         onOpenScreen: (screenId) => {
           const href = linkOf(screenId) ?? screens?.[screenId];

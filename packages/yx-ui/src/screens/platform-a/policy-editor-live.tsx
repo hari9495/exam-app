@@ -124,7 +124,7 @@ function Steps({ live, row }: { live: LivePolicyEditor; row: PolicyTypeRow }) {
       <div className="yx-plt-stack">
         {failed && <InlineAlert tone="danger" title={failed} />}
         <p className="yx-plt-muted">
-          {row.steps ? `Version ${row.version}${row.updatedBy ? `, by ${row.updatedBy}` : ''}${row.updatedAt ? ` on ${formatDate(new Date(row.updatedAt))}` : ''}.` : 'Built in: the module decides who approves (usually the manager). Add steps to set your own.'}
+          {row.steps ? `Version ${row.version}${row.updatedBy ? `, by ${row.updatedBy}` : ''}${row.updatedAt ? ` on ${formatDate(new Date(row.updatedAt))}` : ''}.` : `Built in: ${row.approvers}. Add steps to set your own.`}
         </p>
         {steps.length === 0 && !live.canEdit && <EmptyState compact title="Built-in steps" description="This request type uses the steps its module sets." />}
         {steps.map((s, i) => (

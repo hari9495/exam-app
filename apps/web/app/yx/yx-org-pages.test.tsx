@@ -15,7 +15,7 @@ import YxAccessSettingsPage from './(app)/settings/access-settings/page';
 import YxCustomFieldsPage from './(app)/settings/custom-fields/page';
 import YxPayrollRulesPage from './(app)/settings/payroll-rules/page';
 
-jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn() }));
+jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), redirect: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn() }));
 jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
 jest.mock('../../lib/hooks/useCurrentUser', () => ({ useCurrentUser: () => ({ data: { name: 'Arjun Kulkarni', email: 'arjun.k@kaverifoods.in' } }) }));
@@ -148,127 +148,14 @@ describe('/yx/settings/structure', () => {
   });
 });
 
-describe('/yx/settings/company-rules and /yx/settings/access-settings (P01 §4.6, P02 §4.2)', () => {
-  const REGISTRY = {
-    'probation.default_months': { label: 'Probation lasts (months)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['3', '6'], default: '6' },
-    'privacy.who_accessed': { label: 'Show "Who accessed my data" to employees', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', guard: 'access.role.manage' },
-  };
-  const lists = { 'GET /org/legal-entities': [ENTITY], 'GET /org/locations': [LOCATION], 'GET /org/masters/departments': [], 'GET /org/masters/employment-types': [], 'GET /org/masters/grades': [GRADE] };
-
-  it('shows each value with its source and entity overrides by name; Remove sends DELETE after confirming', async () => {
-    const del = jest.fn().mockResolvedValue(undefined);
-    route({ ...lists, 'GET /org/settings': { registry: REGISTRY, overrides: [{ id: 's-1', key: 'probation.default_months', scopeType: 'legal_entity', scopeId: 'le-1', value: '3', validFrom: null }] }, 'DELETE /org/settings/s-1': del, [`GET ${PERMS_PATH}`]: ['org.structure.view', 'org.settings.manage'] });
-    wrap(<YxCompanyRulesPage />);
-    expect((await screen.findAllByText('Starter value')).length).toBeGreaterThan(0);
-    const table = screen.getByRole('table', { name: /Probation lasts/ });
-    expect(within(table).getByText('Kaveri Foods Pvt Ltd')).toBeInTheDocument();
-    await userEvent.click(within(table).getAllByRole('button').at(-1)!);
-    await userEvent.click(await screen.findByRole('menuitem', { name: 'Remove' }));
-    await userEvent.click(await screen.findByRole('button', { name: 'Remove' }));
-    await waitFor(() => expect(del).toHaveBeenCalled());
-  });
-
-  it('YX-SEC-02: guarded settings stay disabled without access.role.manage; view-only readers get no buttons', async () => {
-    route({ ...lists, 'GET /org/settings': { registry: REGISTRY, overrides: [] }, [`GET ${PERMS_PATH}`]: ['org.structure.view', 'org.settings.manage'] });
-    const { unmount } = wrap(<YxAccessSettingsPage />);
-    expect(await screen.findByText(/Only an admin who manages roles and access changes this/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Change' })).toBeDisabled();
-    unmount();
-    route({ ...lists, 'GET /org/settings': { registry: REGISTRY, overrides: [] }, [`GET ${PERMS_PATH}`]: ['org.structure.view'] });
-    wrap(<YxCompanyRulesPage />);
-    await screen.findAllByText('Starter value');
-    expect(screen.queryByRole('button', { name: 'Change' })).toBeNull();
-  });
-
-  it('Access and privacy: company-wide settings managers see the Special data erasure dry run and whose data; turning it on saves and refreshes it; a 403 hides the card', async () => {
-    const reg = { ...REGISTRY, 'privacy.erasure.enabled': { label: 'Delete Special data when its period ends', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' } };
-    const put = jest.fn().mockResolvedValue({ id: 's-9' });
-    const report = jest.fn().mockResolvedValue({
-      enabled: false,
-      due: { people: 2, aadhaar: 2, documents: 3, backgroundChecks: 1, disability: 1 },
-      who: [
-        { name: 'Ravi Kumar', employeeCode: 'YX-0142', day: '2024-03-31', neverJoined: false },
-        { name: 'Farhan Ali', employeeCode: null, day: '2025-01-10', neverJoined: true },
-      ],
-      lastRun: null,
-    });
-    route({ ...lists, 'GET /org/settings': { registry: reg, overrides: [] }, 'GET /people/privacy-erasure': report, 'PUT /org/settings': (_p: string, init: RequestInit) => put(JSON.parse(String(init.body))), [`GET ${PERMS_PATH}`]: ['org.structure.view', 'org.settings.manage'] });
-    const { unmount } = wrap(<YxAccessSettingsPage />);
-    const dry = await screen.findByRole('table', { name: 'If it ran today, it would delete' });
-    expect(within(dry).getByText('Aadhaar copies, background check reports and disability certificates').closest('tr')?.textContent).toContain('3');
-    expect(within(dry).getByText('Disability details (the yes or no answer stays)').closest('tr')?.textContent).toContain('1');
-    const who = screen.getByRole('table', { name: 'Whose data' });
-    expect(within(who).getAllByRole('row').slice(1).map((r) => r.textContent)).toEqual(['Ravi KumarYX-014231 Mar 2024', 'Farhan AliNone (never joined)Joining cancelled 10 Jan 2025']);
-    const block = screen.getByText('Delete Special data when its period ends').closest('.yx-org__rule') as HTMLElement;
-    await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
-    const dialog = await screen.findByRole('dialog');
-    await userEvent.click(within(dialog).getByRole('radio', { name: 'On: deleted every night' }));
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(put).toHaveBeenCalledWith({ key: 'privacy.erasure.enabled', scopeType: 'tenant', value: 'on' }));
-    await waitFor(() => expect(report).toHaveBeenCalledTimes(2));
-    unmount();
-    route({ ...lists, 'GET /org/settings': { registry: reg, overrides: [] }, 'GET /people/privacy-erasure': forbidden(), [`GET ${PERMS_PATH}`]: ['org.structure.view', 'org.settings.manage'] });
-    wrap(<YxAccessSettingsPage />);
-    await screen.findByText('Delete Special data when its period ends');
-    expect(screen.queryByText('Deleting Special data')).toBeNull();
-  });
-
-  it('a 403 on the settings shows no access', async () => {
-    route({ ...lists, 'GET /org/settings': forbidden(), [`GET ${PERMS_PATH}`]: [] });
-    wrap(<YxCompanyRulesPage />);
-    expect(await screen.findByText("You don't have access to the company rules")).toBeInTheDocument();
-  });
-});
-
-describe('/yx/settings/payroll-rules (founder 30 Oct 2026, last 10, items 1 and 5)', () => {
-  const REGISTRY = {
-    'payroll.bonus.eligibility_rate_on': { label: 'Bonus eligibility uses the salary rate on', scopes: ['tenant', 'legal_entity'], dated: false, values: ['last_day', 'first_day', 'highest_in_month'], default: 'last_day' },
-    'payroll.loan.after_probation': { label: 'Who may ask for a loan or advance', scopes: ['tenant', 'legal_entity'], dated: false, values: ['confirmed', 'everyone'], default: 'confirmed' },
-    'payroll.loan.interest_rate.loan': { label: 'Interest on a personal loan (% a year)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '7.5', '8'], default: '0' },
-  };
-  const lists = { 'GET /org/legal-entities': [ENTITY], 'GET /org/locations': [LOCATION], 'GET /org/masters/departments': [], 'GET /org/masters/employment-types': [], 'GET /org/masters/grades': [GRADE] };
-
-  it('HR sees the bonus and loan panels with defaults; Save too early shows the error and focuses it; a save is sent and toasted', async () => {
-    const put = jest.fn().mockResolvedValue({ id: 's-9' });
-    route({ ...lists, 'GET /org/settings': { registry: REGISTRY, overrides: [{ id: 's-1', key: 'payroll.loan.interest_rate.loan', scopeType: 'legal_entity', scopeId: 'le-1', value: '8', validFrom: null }] }, 'PUT /org/settings': (_p: string, init: RequestInit) => put(JSON.parse(String(init.body))), [`GET ${PERMS_PATH}`]: ['org.structure.view', 'org.settings.manage'] });
-    wrap(<YxPayrollRulesPage />);
-    expect(await screen.findByRole('heading', { name: 'Statutory bonus' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Loans and advances' })).toBeInTheDocument();
-    expect(screen.getByText("Rate on the month's last day")).toBeInTheDocument();
-    expect(screen.getByText('Interest-free')).toBeInTheDocument();
-    expect(within(screen.getByRole('table', { name: /Interest on a personal loan/ })).getByText('8% a year')).toBeInTheDocument();
-    const block = screen.getByText('Who may ask for a loan or advance').closest('.yx-org__rule') as HTMLElement;
-    await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
-    const drawer = await screen.findByRole('dialog');
-    expect(within(drawer).getByText('Starter value: Confirmed employees only (after probation)')).toBeInTheDocument();
-    await userEvent.click(within(drawer).getByRole('button', { name: 'Save' }));
-    expect((await within(drawer).findAllByText('Choose the value')).length).toBeGreaterThan(0);
-    await waitFor(() => expect(within(drawer).getByText('New value').closest('.yx-field')?.contains(document.activeElement)).toBe(true));
-    expect(put).not.toHaveBeenCalled();
-    await userEvent.click(within(drawer).getByRole('radio', { name: 'Everyone, during probation too' }));
-    await userEvent.click(within(drawer).getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(put).toHaveBeenCalledWith({ key: 'payroll.loan.after_probation', scopeType: 'tenant', value: 'everyone' }));
-    expect((await screen.findAllByText('Saved.'))[0]).toBeInTheDocument();
-  });
-
-  it('payroll set-up reads the rules but gets no Change buttons; a 403 shows no access; a refused save shows why', async () => {
-    route({ ...lists, 'GET /org/settings': { registry: REGISTRY, overrides: [] }, [`GET ${PERMS_PATH}`]: ['org.structure.view', 'payroll.setup.manage'] });
-    const { unmount } = wrap(<YxPayrollRulesPage />);
-    await screen.findAllByText('Starter value');
-    expect(screen.queryByRole('button', { name: 'Change' })).toBeNull();
-    unmount();
-    route({ ...lists, 'GET /org/settings': forbidden(), [`GET ${PERMS_PATH}`]: [] });
-    const r2 = wrap(<YxPayrollRulesPage />);
-    expect(await screen.findByText("You don't have access to the payroll rules")).toBeInTheDocument();
-    r2.unmount();
-    route({ ...lists, 'GET /org/settings': { registry: REGISTRY, overrides: [] }, 'PUT /org/settings': Object.assign(new Error('Who may ask for a loan or advance is one of: confirmed, everyone'), { status: 400 }), [`GET ${PERMS_PATH}`]: ['org.settings.manage'] });
-    wrap(<YxPayrollRulesPage />);
-    const block = (await screen.findByText('Who may ask for a loan or advance')).closest('.yx-org__rule') as HTMLElement;
-    await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
-    const drawer = await screen.findByRole('dialog');
-    await userEvent.click(within(drawer).getByRole('radio', { name: 'Everyone, during probation too' }));
-    await userEvent.click(within(drawer).getByRole('button', { name: 'Save' }));
-    expect(await within(drawer).findByText('Who may ask for a loan or advance is one of: confirmed, everyone')).toBeInTheDocument();
+// Settings S-7 (answer 1321): the three retired pages send their old addresses to the pages that hold their settings now.
+describe('retired settings pages redirect (S-7)', () => {
+  it('Company rules opens Settings; Access and privacy opens 2.2; Payroll rules opens 4.6', () => {
+    const go = jest.requireMock('next/navigation').redirect as jest.Mock;
+    YxCompanyRulesPage();
+    YxAccessSettingsPage();
+    YxPayrollRulesPage();
+    expect(go.mock.calls.map((c) => c[0])).toEqual(['/yx/settings', '/yx/settings/people/directory-and-privacy', '/yx/settings/payroll/loans-and-advances']);
   });
 });
 

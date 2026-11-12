@@ -58,6 +58,11 @@ export const PAYROLL_APPROVAL_KEYS: ReadonlySet<string> = new Set([
   'payroll.standard_daily_hours', 'payroll.one_time_review_above', 'payroll.mid_period.join', 'payroll.mid_period.exit', 'payroll.mid_period.revision',
   'payroll.mid_period.cutoff_day', 'payroll.payslip_email', 'payroll.document_retention_years', 'tax.regime_cutoff', 'tax.proof_window_opens',
   'tax.proof_cutoff', SECOND_PERSON_KEY, LAPSE_DAYS_KEY,
+  // Settings S-7 (answer 1521): Payroll rules' bonus, loan and reports-access settings, now on 4.6, wait for a second person too.
+  'payroll.bonus.eligibility_rate_on', 'payroll.bonus.eligibility_wage', 'payroll.bonus.calculation_ceiling', 'payroll.bonus.min_rate', 'payroll.bonus.max_rate',
+  'payroll.bonus.min_working_days', 'payroll.bonus.min_amount', 'payroll.bonus.allocable_percent', 'payroll.bonus.carry_years', 'payroll.bonus.year_start_month',
+  'payroll.bonus.due_months', 'payroll.loan.max_gross_months', 'payroll.loan.after_probation', 'payroll.loan.interest_rate.advance', 'payroll.loan.interest_rate.loan',
+  'payroll.reports_access.days',
 ]);
 
 export const SETTINGS: Readonly<Record<string, SettingDef>> = {

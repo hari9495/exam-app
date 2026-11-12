@@ -12,7 +12,7 @@ import { SETTINGS_GROUPS } from '../settings/settings-groups';
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const TYPES: PolicyTypeRow[] = [
   { key: 'leave.request', label: 'Leave', steps: [{ name: 'Manager', approver: 'manager', mode: 'any' }], approvers: 'Manager', version: 1, updatedBy: 'Lakshmi', updatedAt: '2026-11-12T10:00:00Z' },
-  { key: 'expense.claim', label: 'Expense claim', steps: null, approvers: 'Built in (the module decides)', version: 0, updatedBy: null, updatedAt: null },
+  { key: 'expense.claim', label: 'Expense claim', steps: null, approvers: 'Manager; then the cost-centre owner above the set amount', version: 0, updatedBy: null, updatedAt: null },
 ];
 const live = (o: Partial<LivePolicyEditor> = {}): LivePolicyEditor => ({ state: 'ready', onRetry: () => {}, types: TYPES, remindHours: 24, escalateHours: 48, canEdit: true, onSave: vi.fn().mockResolvedValue(undefined), onReset: vi.fn().mockResolvedValue(undefined), ...o });
 const show = (l: LivePolicyEditor) => render(<ToastProvider><PolicyEditorScreen live={l} /></ToastProvider>);
@@ -62,13 +62,15 @@ describe('Approval policy editor (live)', () => {
 });
 
 describe('2.4 Approvals page: the policies list', () => {
-  it('each type with its steps, or Built in', () => {
+  it('each type with its steps, or its built-in steps in words on the company hours (answers 1764, 1765)', () => {
     const design = SETTINGS_GROUPS.flatMap((g) => g.pages).find((p) => p.id === '2.4')!;
     const page = withApprovalPolicies({ ...design, sections: [] }, { remindHours: 24, escalateHours: 48, types: TYPES });
     render(<ToastProvider><SettingsPageScreen groups={SETTINGS_GROUPS} pageId="2.4" live={{ page, canEdit: false, lastChange: null, onSave: vi.fn() }} /></ToastProvider>);
     const table = screen.getByRole('table');
     expect(within(table).getByText('Expense claim')).toBeInTheDocument();
-    expect(within(table).getAllByText('Built in').length).toBeGreaterThan(0);
-    expect(within(table).getByText('48 hours a step')).toBeInTheDocument();
+    expect(within(table).getByText(/cost-centre owner above/)).toBeInTheDocument();
+    expect(within(table).getAllByText('As built in').length).toBeGreaterThan(0);
+    expect(within(table).getByText("48 hours a manager's step")).toBeInTheDocument();
+    expect(within(table).queryByText('Built in')).toBeNull();
   });
 });

@@ -21244,5 +21244,43 @@
       "Screens/YukthiX console/YX-09 · Product analytics · Product analytics"
     ],
     "note": "Positive and negative. Answer 1216."
+  },
+  {
+    "id": "MT-SET-S7a",
+    "area": "Settings S-7 (13 Nov 2026)",
+    "screen": "Settings › the pages that replaced Company rules, Access and privacy and Payroll rules",
+    "url": "http://localhost:3000/yx/settings/company-rules",
+    "account": "An HR admin with HR's settings key; someone who only reads the company settings (the demo company).",
+    "steps": [
+      "Open the old address /yx/settings/company-rules, then /yx/settings/access-settings, then /yx/settings/payroll-rules.",
+      "Search Settings for 'probation' and open the result.",
+      "On 2.5 Onboarding & probation, choose Apply changes to: an entity; change the probation length; save.",
+      "Reopen the page with Apply changes to: Company.",
+      "On 2.7, choose Apply changes to: a grade; set the retirement age to 60; save.",
+      "On 3.1 Attendance modes, change the missing-punch effect: check Applies from shows today; save.",
+      "Negative: choose Apply changes to: a location on 5.7 Policies.",
+      "Negative: as the reader, open 5.7 Policies."
+    ],
+    "expected": "Step 1: Settings, 2.2 Directory & privacy and 4.6 open; no old page. Step 2: 2.5 opens. Step 3: saved for that entity only. Step 4: the company value is unchanged and the entity's own value is listed. Step 5: saved for that grade. Step 6: Applies from today, saved. Step 7: the policy settings say they are one company value. Step 8: View only, no Save.",
+    "stories": [],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-SET-S7b",
+    "area": "Settings S-7 (13 Nov 2026)",
+    "screen": "Settings › 4.6 Bonus & loan rules and 2.4 Approvals",
+    "url": "http://localhost:3000/yx/settings/payroll/loans-and-advances",
+    "account": "Two HR admins; payroll set-up; an employee and their manager (the demo company).",
+    "steps": [
+      "As HR admin 1, change the most a loan may be to 3 months and Send for approval.",
+      "Negative: as HR admin 1, try to approve it.",
+      "As HR admin 2, approve it.",
+      "Negative: as payroll set-up, open 4.6.",
+      "Open 2.4 Approvals and read the Leave row.",
+      "Set the reminder to 4 hours; as the employee apply for leave; check the manager's task the next morning."
+    ],
+    "expected": "Step 1: Sent for approval; the value is unchanged. Step 2: refused: another person must approve. Step 3: applied and in the history with both names. Step 4: View only, no Approve. Step 5: the built-in steps in words (Manager; HR too when the leave is longer than its leave type allows without HR), on the company hours. Step 6: the manager is reminded at 4 hours.",
+    "stories": [],
+    "note": "Positive and negative."
   }
 ]

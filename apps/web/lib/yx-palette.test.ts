@@ -40,7 +40,8 @@ describe('buildPalette', () => {
     const admin = buildPalette(input({ nav: buildNav({ ...base, role: 'org_admin', has: (k) => k === 'org.settings.manage' }), typed: '?company' }));
     const help = admin.groups.find((g) => g.heading === 'Help and settings')!;
     expect(help.prefix).toBe('?');
-    expect(help.items.map((i) => i.label)).toContain('Company rules');
+    expect(help.items.map((i) => i.label)).toContain('Onboarding & probation');
+    expect(help.items.map((i) => i.label)).not.toContain('Company rules'); // retired in S-7
   });
 
   it('server results: people (and candidates) under @, requests and tickets under #, opened ones remembered without details', () => {

@@ -75,7 +75,7 @@ describe('Settings S-6: approval policies', () => {
     it('the settings key changes them; the view key reads them; nobody else', async () => {
       const list = (await api('viewerA', 'get', '/workflow/policies').expect(200)).body;
       expect(list).toMatchObject({ remindHours: 24, escalateHours: 48 });
-      expect(list.types.find((t: { key: string }) => t.key === 'leave.request')).toMatchObject({ steps: null, version: 0 });
+      expect(list.types.find((t: { key: string }) => t.key === 'leave.request')).toMatchObject({ steps: null, version: 0, approvers: expect.stringMatching(/^Manager; HR too when the leave is longer/) });
       await api('viewerA', 'put', '/workflow/policies/leave.request').send({ steps: TWO_STEPS, version: 0 }).expect(403);
       await api('plainA', 'get', '/workflow/policies').expect(403);
     });
@@ -153,6 +153,34 @@ describe('Settings S-6: approval policies', () => {
       expect((await tasks(sent.id)).find((x) => x.id === t!.id)!.escalatedAt).not.toBeNull();
       const log = await tenantPrisma.forTenant(ctxA(), (tx) => tx.wfAction.findMany({ where: { organizationId: org.A!, requestId: sent.id }, select: { action: true } }));
       expect(log.map((a) => a.action)).toEqual(expect.arrayContaining(['reminded', 'escalated']));
+    });
+
+    it('answer 1765: a leave request on built-in steps reminds and escalates at the company hours, not the module ones', async () => {
+      await api('hr1A', 'post', '/workflow/policies/leave.request/reset').send({ version: 1 }).expect(200);
+      const start = Date.now();
+      const sent = await submit('hr1A', [{ name: 'Built-in manager', approvers: [{ kind: 'users' as const, userIds: [users.hr2A!] }], mode: 'any' as const, remindAfterHours: 24, timeoutHours: 72, onTimeout: 'escalate' as const } as never]);
+      const req = await tenantPrisma.forTenant(ctxA(), (tx) => tx.wfRequest.findFirstOrThrow({ where: { id: sent.id } }));
+      expect((req.steps as { name: string }[]).map((s) => s.name)).toEqual(['Built-in manager']);
+      const [t] = await tasks(sent.id);
+      expect(Math.round((t!.remindAt!.getTime() - start) / 3_600_000)).toBe(4);
+      expect(Math.round((t!.dueAt!.getTime() - start) / 3_600_000)).toBe(24);
+      await engine.tick(new Date(start + 4 * 3_600_000 + 60_000));
+      expect((await tasks(sent.id)).find((x) => x.id === t!.id)!.reminders).toBe(1);
+    });
+
+    it('negative (1765): a step for named people only is reminded but never escalated past them; a request type outside the 13 keeps its module hours', async () => {
+      const start = Date.now();
+      const named = await submit('hr1A', [{ name: 'Colleague agrees', approvers: [{ kind: 'users' as const, userIds: [users.hr2A!] }], mode: 'any' as const, remindAfterHours: 12 } as never]);
+      const [n] = await tasks(named.id);
+      expect(Math.round((n!.remindAt!.getTime() - start) / 3_600_000)).toBe(4);
+      expect(n!.dueAt).toBeNull();
+            // Payroll one-time pay is outside the 13 (its module is registered with the app; the request is only routed here).
+      const other = await tenantPrisma.forTenant(ctxA(), (tx) =>
+        engine.submit(tx, ctxA(), { type: 'payroll.one_time', subjectType: 'test', subjectId: randomUUID(), title: `Guarded ${run}`, summary: [], subjectPersonId: null, requesterUserId: users.hr1A!, raisedByUserId: users.hr1A!, steps: [{ name: 'Payroll approval', approvers: [{ kind: 'users', userIds: [users.hr2A!] }], mode: 'any', remindAfterHours: 24 }], payload: {}, payloadFields: [], fallbackUserIds: [] }),
+      );
+      const [o] = await tasks(other.id);
+      expect(Math.round((o!.remindAt!.getTime() - start) / 3_600_000)).toBe(24);
+      expect(o!.dueAt).toBeNull();
     });
   });
 });

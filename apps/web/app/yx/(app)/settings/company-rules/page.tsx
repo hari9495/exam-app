@@ -1,8 +1,7 @@
-'use client';
+import { redirect } from 'next/navigation';
 
-import { CompanySettingsPage } from '../../../../../lib/yx-settings-page';
-
-// Settings › Organisation › Company rules (P01 §4.6; YX-ORG-12/18).
+// Settings S-7 (answer 1321): Company rules is retired; each of its settings is on its drawn settings page now (search
+// finds any of them). The old address opens Settings.
 export default function YxCompanyRulesPage() {
-  return <CompanySettingsPage section="organisation" />;
+  redirect('/yx/settings');
 }

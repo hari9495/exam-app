@@ -7,6 +7,10 @@ import { SETTINGS_GROUPS } from './settings-groups';
 import { PAY_SETTINGS, PEOPLE_SETTINGS, TIME_SETTINGS, timeSettingsChanges, timeSettingsPage, type TimeSettingsData } from './time-settings-live';
 import { TIME_REGISTRY_SAMPLE } from './time-settings-sample';
 import { allSettings } from './settings-logic';
+import { SETTING_SECTIONS } from '../org/settings';
+// S-7 moved the old Company rules, Access and privacy and Payroll rules settings onto drawn pages; these counts are the ones that had no screen at all.
+const MOVED = new Set(Object.values(SETTING_SECTIONS).flat().flatMap((s) => s.keys));
+const unmoved = (keys: string[]) => keys.filter((k) => !MOVED.has(k));
 
 // Settings S-4 (answers 1323, 1324): 2.7 Exit & lifecycle policies and 2.10 Audit & data retention with the company's
 // settings that had no screen. Positive and negative.
@@ -26,22 +30,22 @@ describe('People settings (S-4): every hidden setting has a field', () => {
   it('the 15 lifecycle and audit settings that had no screen each sit on one drawn page, marked Starter default', () => {
     // 2.4 (S-6) holds new approval settings, not lifecycle ones that had no screen.
     const S4 = Object.fromEntries(Object.entries(PEOPLE_SETTINGS).filter(([id]) => id !== '2.4'));
-    const keys = Object.values(S4).flatMap((p) => p.settings.map((s) => s.key));
+    const keys = unmoved(Object.values(S4).flatMap((p) => p.settings.map((s) => s.key)));
     expect(keys).toHaveLength(15);
     const all = [...keys, ...Object.values(TIME_SETTINGS).flatMap((p) => p.settings.map((s) => s.key)), ...Object.values(PAY_SETTINGS).flatMap((p) => p.settings.map((s) => s.key))];
     expect(new Set(all).size).toBe(all.length);
     for (const [id, spec] of Object.entries(S4)) {
       const fields = allSettings(page(id));
-      for (const s of spec.settings) expect([s.key, fields.find((d) => d.key === s.key)?.starter]).toEqual([s.key, DATA.company[s.key] === undefined]);
+      for (const s of spec.settings.filter((x) => !MOVED.has(x.key))) expect([s.key, fields.find((d) => d.key === s.key)?.starter]).toEqual([s.key, DATA.company[s.key] === undefined]);
     }
   });
 
-  it('notice periods and the absconding timeline read as words; a dated setting says it applies from today; Company rules is related', () => {
+  it('notice periods and the absconding timeline read as words; a dated setting says it applies from today; the retired Company rules page is no longer linked (S-7)', () => {
     const f = (key: string) => allSettings(page('2.7')).find((d) => d.key === key)!;
     expect(f('exit.notice.confirmed')).toMatchObject({ value: '30d', optionLabels: expect.objectContaining({ '30d': '30 days', '1m': '1 month', '3m': '3 months' }), helper: expect.stringMatching(/applies from today/) });
     expect(f('absconding.days').optionLabels).toMatchObject({ '3,7,14,21': 'Hold after 3 days, notices at 7 and 14, abandonment at 21' });
     expect(f('retirement.age')).toMatchObject({ value: '60', starter: false, scope: 'Company · own value at 1 place (Company rules)' });
-    expect(page('2.7').related).toEqual([{ label: 'Company rules (fixed-term contracts, probation)', screenId: 'company-rules' }]);
+    expect(page('2.7').related ?? []).toEqual([]);
     expect(allSettings(page('2.10')).find((d) => d.key === 'audit.retention_years')!.legal).toEqual({ value: 8, kind: 'min', statute: LIMITS['audit.retention_years'].act });
   });
 
