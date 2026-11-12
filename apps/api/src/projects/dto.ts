@@ -28,8 +28,10 @@ export class ProjectInputDto {
   @IsUUID()
   clientId?: string | null;
 
+  /** Answer 1444: left out on a new project, the company's default (projects.default_billing_model). */
+  @IsOptional()
   @IsIn(BILLING_MODELS)
-  billingModel!: (typeof BILLING_MODELS)[number];
+  billingModel?: (typeof BILLING_MODELS)[number];
 
   @IsOptional()
   @IsDateString(DATE)
@@ -196,4 +198,39 @@ export class SaveProjectSettingsDto {
   @ValidateNested({ each: true })
   @Type(() => SettingChangeDto)
   changes!: SettingChangeDto[];
+}
+
+/** Projects P-3 (PRJ-08): a timesheet mapping rule. */
+export class MappingRuleDto {
+  @IsIn(['calendar', 'issues', 'code'])
+  source!: 'calendar' | 'issues' | 'code';
+
+  @trim()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  @Matches(/^[^<>]*$/, { message: 'Write the pattern without < or >.' })
+  pattern!: string;
+
+  @IsUUID()
+  projectId!: string;
+
+  @IsOptional()
+  @IsUUID()
+  taskId?: string | null;
+
+  @IsInt()
+  @Min(1)
+  @Max(999)
+  priority!: number;
+
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+}
+
+export class MappingRuleUpdateDto extends MappingRuleDto {
+  @IsInt()
+  @Min(1)
+  version!: number;
 }

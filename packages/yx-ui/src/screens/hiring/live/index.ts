@@ -84,3 +84,6 @@ export type { SettingsGroupDef } from '../../settings/settings-types';
 export { ProjectsListScreen, ProjectWorkspaceScreen, type LiveProjectsList, type LiveProjectWorkspace } from '../projects';
 export type { AllocationInput as ProjectAllocationInput, LiveProjectDetail, LiveProjectRow, MilestoneInput as ProjectMilestoneInput, ProjectChoices, ProjectInput, ProjectStatus, TaskInput as ProjectTaskInput } from '../projects-live';
 export { projectSettingsChanges, projectSettingsPage, type ProjectSettingsData } from '../../settings/projects-live';
+// Projects P-3 (answers 1409, 1410): the designed PRJ-08 mapping rules, live with `live`.
+export { MappingRulesScreen, type LiveMappingRules } from '../projects-billing';
+export type { LiveMappingRule, MappingRuleInput, MappingRulesData, MappingTestResult } from '../mapping-live';

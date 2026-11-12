@@ -1084,7 +1084,7 @@ const projects: SettingsPageDef = {
           starter: true,
           synonyms: ['non-project time', 'bench'],
         },
-        { key: 'prj.billable_default', label: 'New projects are billable', kind: 'toggle', value: true, starter: true },
+        { key: 'prj.billable_default', label: 'Billing model for new projects', kind: 'select', value: 'time_material', options: ['time_material', 'fixed_fee', 'retainer', 'non_billable'], optionLabels: { time_material: 'Time & material', fixed_fee: 'Fixed fee', retainer: 'Retainer', non_billable: 'Non-billable' }, starter: true, helper: 'A client is needed only for a billable model. People can change it on each project.' },
         { key: 'prj.booking_rule', label: 'Time on projects someone is not allocated to', kind: 'radio', value: 'Block', options: ['Block', 'Allow'], starter: true, helper: 'Block: people book time only to projects they are allocated to, on the days of their allocation.' },
         { key: 'prj.daily_max', label: 'Refuse more hours in a day than', kind: 'number', value: 14, unit: 'hours', min: 8, max: 20, starter: true, helper: 'A warning already shows above the shift’s expected hours; this is the hard stop.' },
       ],

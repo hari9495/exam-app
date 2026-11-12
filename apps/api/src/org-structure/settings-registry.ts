@@ -279,6 +279,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'projects.enabled': { label: 'Projects: client and internal projects with budgets, team, tasks and milestones', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   'projects.booking.allocated_only': { label: 'Projects: only people allocated to a project book time to it', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'projects.burn.warn_pct': { label: 'Projects: first burn alert when a budget reaches (%)', scopes: ['tenant'], dated: false, values: ['50', '60', '70', '75', '80', '85', '90'], default: '80' },
+  // Answer 1444: the billing model a new project starts with (a client is needed only for a billable model).
+  'projects.default_billing_model': { label: 'Projects: billing model for new projects', scopes: ['tenant'], dated: false, values: ['time_material', 'fixed_fee', 'retainer', 'non_billable'], default: 'time_material' },
   'projects.burn.over_pct': { label: 'Projects: second burn alert when a budget reaches (%)', scopes: ['tenant'], dated: false, values: ['90', '95', '100', '110', '120'], default: '100' },
   // Rate-card defaults for a new line (each line keeps its own), the client's payment terms when a client has none, and
   // how far back a rate change may start (0: today or later, so billed timesheets keep their rate).

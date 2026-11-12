@@ -6186,6 +6186,25 @@ model ProjectTask {
   @@map("project_tasks")
 }
 
+/// Projects P-3 (PRJ-08, answer 1410): a company rule mapping a work-tool item to a project and task, by priority.
+model ProjectMappingRule {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  source         String   @db.VarChar(10)
+  pattern        String   @db.VarChar(120)
+  projectId      String   @map("project_id") @db.Uuid
+  taskId         String?  @map("task_id") @db.Uuid
+  priority       Int
+  enabled        Boolean  @default(true)
+  version        Int      @default(1)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@index([organizationId, priority, createdAt], map: "project_mapping_rules_order_idx")
+  @@map("project_mapping_rules")
+}
+
 /// Projects P-1 (answer 1420): a fixed-fee milestone; client acceptance is a per-project choice.
 model ProjectMilestone {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

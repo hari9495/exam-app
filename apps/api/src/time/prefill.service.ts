@@ -8,6 +8,8 @@ import { TOOL_LABEL, TOOL_PROVIDERS, WORK_TOOLS, matchProject, type ToolProvider
 import { addDays } from './time-maths';
 import { mondayOf } from './time-rules';
 import { factsOn, myEmployeeId, settingOn, todayIn } from './time-core';
+import { settingFor } from '../people/probation';
+import { inOrder, ruleFor } from '../projects/mapping-rules';
 
 // TIM-43 Timesheet pre-fill from my tools (design-map rule 16). The signed-in person connects their own work tools and
 // asks for suggestions for a week; the server maps them onto the company's active timesheet projects and writes
@@ -109,14 +111,26 @@ export class PrefillService {
         tx.toolConnection.findMany({ where: { organizationId: org, userId: c.userId!, status: 'connected' } }),
         tx.timesheetProject.findMany({ where: { organizationId: org, active: true }, select: { id: true, code: true, name: true, activities: true } }),
       ]);
+      // Projects P-3 (PRJ-08, answer 1410): with Projects on, the company's mapping rules go first, by priority. A rule
+      // (or a name match) never maps to a project that is not active, nor, when only allocated people book time, to one
+      // the person is not allocated to on that day. No match: the person chooses a project.
+      const projectsOn = (await settingFor(tx, c, 'projects.enabled', { legalEntityId: '' })) === 'on';
+      const rules = projectsOn ? inOrder(await tx.projectMappingRule.findMany({ where: { organizationId: org } })) : [];
+      const tasks = rules.length ? await tx.projectTask.findMany({ where: { organizationId: org, active: true, id: { in: rules.map((r) => r.taskId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } }) : [];
+      const allocatedOnly = projectsOn && (await settingFor(tx, c, 'projects.booking.allocated_only', { legalEntityId: '' })) === 'on';
+      const allocs = allocatedOnly ? await tx.projectAllocation.findMany({ where: { organizationId: org, employeeId: await myEmployeeId(tx, org, c.userId), tentative: false }, select: { projectId: true, fromOn: true, toOn: true } }) : [];
+      const day = (d: Date) => d.toISOString().slice(0, 10);
+      const allowedOn = (date: string) => (pid: string) => projects.some((p) => p.id === pid) && (!allocatedOnly || allocs.some((a) => a.projectId === pid && day(a.fromOn) <= date && (!a.toOn || day(a.toOn) >= date)));
       const lines = [];
       for (const x of live) {
         const provider = x.provider as ToolProvider;
         for (const [i, l] of (await this.tools.suggestions(c.userId!, provider, week, upTo)).entries()) {
           // A tool's line outside the week, in the future or with no time is dropped.
           if (l.date < week || l.date > upTo || !(l.minutes > 0)) continue;
-          const m = matchProject(l.projectHint, l.activityHint, projects);
-          lines.push({ id: `${provider}-${l.date}-${i}`, provider, date: l.date, minutes: Math.min(Math.round(l.minutes), 1440), projectId: m.projectId, activity: m.activity, projectHint: l.projectHint, source: l.source.slice(0, 200), kind: l.kind });
+          const allowed = allowedOn(l.date);
+          const rule = ruleFor(rules, provider, [l.projectHint, l.source], allowed);
+          const m = rule ? { projectId: rule.projectId, activity: tasks.find((t) => t.id === rule.taskId)?.name ?? null } : matchProject(l.projectHint, l.activityHint, projects.filter((p) => allowed(p.id)));
+          lines.push({ id: `${provider}-${l.date}-${i}`, provider, date: l.date, minutes: Math.min(Math.round(l.minutes), 1440), projectId: m.projectId, activity: m.activity, projectHint: l.projectHint, source: l.source.slice(0, 200), kind: l.kind, ruleId: rule?.id ?? null });
         }
       }
       return { week, upTo, lines: lines.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id)) };

@@ -28,7 +28,7 @@ const hoursOf = (minutes: number) => Math.round((minutes / 60) * 100) / 100;
 export const BURN_WARN = 'projects.burn.warn_pct';
 export const BURN_OVER = 'projects.burn.over_pct';
 /** Settings 3.11 Projects & timesheets: the company settings P-1 puts behind the designed page. */
-export const PROJECT_SETTING_KEYS = ['projects.enabled', 'projects.booking.allocated_only', BURN_WARN, BURN_OVER] as const;
+export const PROJECT_SETTING_KEYS = ['projects.enabled', 'projects.booking.allocated_only', BURN_WARN, BURN_OVER, 'timesheet.tool_suggestions', 'projects.default_billing_model'] as const;
 
 /** Answer 1405: the burn level reached (0, the warning level or the over level) for hours used against the budget. */
 export function burnLevel(usedHours: number, budgetHours: number | null, warn: number, over: number): number {
@@ -258,6 +258,8 @@ export class ProjectsService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       await this.needOn(tx, c);
       const org = c.organizationId;
+      // Answer 1444: without a billing model, the company's default for new projects.
+      dto.billingModel ??= (await settingFor(tx, c, 'projects.default_billing_model', { legalEntityId: '' })) as ProjectInputDto['billingModel'];
       await this.checkPeople(tx, org, dto);
       if (await tx.timesheetProject.findFirst({ where: { organizationId: org, code: dto.code }, select: { id: true } })) throw new ConflictException('A project with this code already exists.');
       const p = await tx.timesheetProject.create({
@@ -293,6 +295,7 @@ export class ProjectsService {
       await this.needOn(tx, c);
       const org = c.organizationId;
       const p = await this.project(tx, org, id, w);
+      dto.billingModel ??= p.billingModel as ProjectInputDto['billingModel']; // a change that leaves it out keeps the project's
       if (p.version !== dto.version) throw new ConflictException('Someone changed this project. Reload to see the latest.');
       if (dto.code !== p.code) throw new BadRequestException('A project keeps its code.');
       if (!w.finance && ((dto.fee ?? null) !== num(p.fee) || (dto.budgetCost ?? null) !== num(p.budgetCost)) && (dto.fee !== undefined || dto.budgetCost !== undefined)) throw new ForbiddenException('Only Projects finance sets the fee and the cost budget.');
@@ -565,6 +568,8 @@ export class ProjectsService {
         tx.employee.findMany({ where: { organizationId: org }, select: { id: true, givenName: true, familyName: true }, orderBy: { givenName: 'asc' }, take: 5000 }),
       ]);
       return {
+        // Answer 1444: the new-project form starts on the company's default billing model.
+        defaultBillingModel: await settingFor(tx, c, 'projects.default_billing_model', { legalEntityId: '' }),
         clients,
         managers: users.map((u) => ({ id: u.id, name: u.name?.trim() || u.email })),
         people: employees.map((e) => ({ id: e.id, name: [e.givenName, e.familyName].filter(Boolean).join(' ') })),
