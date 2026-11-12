@@ -24,7 +24,7 @@ describe('Helpdesk small items', () => {
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'adminB' | 'agent' | 'lead' | 'deskAdmin' | 'divya' | 'agentB';
+  type Who = 'adminA' | 'adminB' | 'agent' | 'lead' | 'deskAdmin' | 'divya' | 'agentB' | 'priya';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
@@ -62,6 +62,7 @@ describe('Helpdesk small items', () => {
       ['lead', 'A', 'panel', 'desk_lead'],
       ['deskAdmin', 'A', 'panel', 'desk_admin'],
       ['divya', 'A', 'panel', null],
+      ['priya', 'A', 'panel', null],
       ['agentB', 'B', 'panel', 'desk_agent'],
     ];
     for (const [who, k, role, tpl] of roster) {
@@ -74,6 +75,10 @@ describe('Helpdesk small items', () => {
       const p = await tx.person.create({ data: { organizationId: org.A.id, givenName: 'Divya', primaryEmail: `divya-${run}@small.test` } });
       ids.divyaPerson = p.id;
       await tx.personRole.create({ data: { organizationId: org.A.id, personId: p.id, roleType: 'login', sourceTable: 'users', sourceId: users.divya, startOn: new Date('2026-01-01') } });
+      // Answer 1803: a second requester.
+      const q = await tx.person.create({ data: { organizationId: org.A.id, givenName: 'Priya', primaryEmail: `priya-${run}@small.test` } });
+      ids.priyaPerson = q.id;
+      await tx.personRole.create({ data: { organizationId: org.A.id, personId: q.id, roleType: 'login', sourceTable: 'users', sourceId: users.priya, startOn: new Date('2026-01-01') } });
     });
     ids.desk = (await api('adminA', 'post', '/desk/desks').send({ name: 'IT help desk', key: 'IT', kind: 'it' }).expect(201)).body.id;
     for (const [who, role] of [['agent', 'agent'], ['lead', 'lead'], ['deskAdmin', 'admin']] as const) await api('adminA', 'post', `/desk/desks/${ids.desk}/members`).send({ userId: users[who], role }).expect(201);
@@ -416,15 +421,16 @@ describe('Helpdesk small items', () => {
   describe('1684: searches that led to tickets, in content gaps', () => {
     const today = new Date().toISOString().slice(0, 10);
     const gaps = (who: Who) => api(who, 'get', `/desk/kb/gaps?from=${today}&to=${today}`);
-    it('counts tickets per search (the same words counted together, without case), most first; another company sees none; the employee is refused', async () => {
-      const raise = (q: string) => api('divya', 'post', '/desk/my/tickets').send({ deskId: ids.desk, subject: `After search ${run}`, description: 'Still stuck.', originQuery: q }).expect(201);
-      await raise(`Leave encashment ${run}`);
-      await raise(`  leave ENCASHMENT ${run} `);
-      await raise(`Bonus date ${run}`);
-      const rows = (await gaps('lead').expect(200)).body.searchesToTickets as { query: string; tickets: number }[];
-      const mine = rows.filter((r) => r.query.endsWith(run));
-      expect(mine).toEqual([{ query: `leave encashment ${run}`, tickets: 2 }, { query: `bonus date ${run}`, tickets: 1 }]);
-      expect(Object.keys(rows[0]).sort()).toEqual(['query', 'tickets']);
+    it('1684, 1803: counts tickets per search (same words together, without case), only once 2 different people used the words; another company sees none; the employee is refused', async () => {
+      const raise = (who: Who, q: string) => api(who, 'post', '/desk/my/tickets').send({ deskId: ids.desk, subject: `After search ${run}`, description: 'Still stuck.', originQuery: q }).expect(201);
+      await raise('divya', `Leave encashment ${run}`);
+      await raise('divya', `  leave ENCASHMENT ${run} `);
+      await raise('divya', `Bonus date ${run}`);
+      const mine = async () => ((await gaps('lead').expect(200)).body.searchesToTickets as { query: string; tickets: number }[]).filter((r) => r.query.endsWith(run));
+      // One person's words never show, however often they searched them.
+      expect(await mine()).toEqual([]);
+      await raise('priya', `leave encashment ${run}`);
+      expect(await mine()).toEqual([{ query: `leave encashment ${run}`, tickets: 3 }]);
       expect((await gaps('adminB').expect(200)).body.searchesToTickets).toEqual([]);
       await gaps('divya').expect(403);
     });

@@ -87,6 +87,9 @@ interface ReaderScope {
 /** YX-11 (C-8): the platform company's knowledge-base space whose published articles every company sees in Help. */
 export const PLATFORM_HELP_SPACE = 'yukthix-help';
 
+/** Answer 1803: a search shows in "Searches that led to tickets" only once this many different people used it (a privacy floor, not a setting). */
+const MIN_SEARCH_PEOPLE = 2;
+
 @Injectable()
 export class KbService {
   private readonly logger = new Logger(KbService.name);
@@ -1158,10 +1161,12 @@ export class KbService {
         WHERE t.organization_id = ${org}::uuid AND t.created_at >= ${from}::date AND t.created_at < ${to}::date + 1 AND a.deleted_at IS NULL
         GROUP BY a.id, a.number, a.title ORDER BY tickets DESC, a.number LIMIT 50`;
       // Answer 1684: the words people searched before they still raised a ticket (counts only, same words counted together).
+      // Answer 1803: only words at least 2 different people used, so one person's own words never show.
       const searchesToTickets = await tx.$queryRaw<{ query: string; tickets: number }[]>`
         SELECT lower(btrim(t.origin_query)) AS query, count(*)::int AS tickets FROM sd_tickets t
         WHERE t.organization_id = ${org}::uuid AND t.created_at >= ${from}::date AND t.created_at < ${to}::date + 1 AND t.origin_query IS NOT NULL
-        GROUP BY lower(btrim(t.origin_query)) ORDER BY tickets DESC, query LIMIT 50`;
+        GROUP BY lower(btrim(t.origin_query)) HAVING count(DISTINCT t.requester_person_id) >= ${MIN_SEARCH_PEOPLE}
+        ORDER BY tickets DESC, query LIMIT 50`;
       return { noResult, noClick, noArticle, ledToTickets, searchesToTickets };
     });
   }
