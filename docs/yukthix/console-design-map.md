@@ -1270,3 +1270,5 @@ C-6 to C-8.
 1743. **What is stored.** Counts per company, action family (the part of an audit action before the first dot, only
       the families product analytics maps to features) and day, with the last action's time; never the record, the
       metadata or a person. *Suggested: keep.*
+
+- 1741 to 1743 approved as suggested (13 Nov 2026, "Ok for all").

@@ -1042,3 +1042,5 @@ console.log(missing.join(' '));
   only for audit.view).
 
 - 1761 to 1765 approved as suggested (12 Nov 2026, "Ok for all"). To build: describe each module's built-in steps in words on 2.4 (1764); apply the company reminder and escalation hours to built-in steps of people requests too (1765). Later slice: conditions plus Simulate, starting with expense claims (1762). When a customer asks: the other 2.4 fields (1761), named people and groups (1763).
+
+- 1781 to 1784 approved as suggested (13 Nov 2026, "Ok for all"). To do: delete the unused CompanyRules, AccessAndPrivacy and PayrollRules stories and screen in the next kit clean-up (1781).
