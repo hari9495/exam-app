@@ -67,3 +67,25 @@ export const LiveTimesheets: S = { name: 'Live · timesheets this week, attendan
 export const LiveCostFinance: S = { name: 'Live · finance overview with cost against budget', render: () => <ProjectWorkspaceScreen live={liveWs({ detail: { ...LIVE_PROJECT_DETAIL, can: { ...LIVE_PROJECT_DETAIL.can, finance: true }, project: { ...LIVE_PROJECT_DETAIL.project, budgetCost: 2400000, fee: 3600000 } }, cost: { finance: true, hiddenMonths: 0, provisional: true, total: '1650400.00', months: [{ month: '2026-09', cost: '742000.00', expenses: '9000.00', basis: 'final', restatedFrom: null }, { month: '2026-10', cost: '890000.00', expenses: '9400.00', basis: 'provisional', restatedFrom: null }] } })} /> };
 export const LiveCostPm: S = { name: 'Live · project manager, cost totals (one month left out)', render: () => <ProjectWorkspaceScreen live={liveWs({ cost: { finance: false, hiddenMonths: 1, provisional: false, total: '742000.00', months: [{ month: '2026-09', cost: '742000.00', expenses: '0.00', basis: 'final', restatedFrom: null }] } })} /> };
 export const LiveExpenses: S = { name: 'Live · expenses tagged to the project', render: () => <ProjectWorkspaceScreen defaultTab="expenses" live={liveWs({ expenses: [{ id: 'x1', person: 'Priya Nair', what: 'Travel · Chennai to Coimbatore', spentOn: '2026-10-10', amount: '4860.00', rebill: true, status: 'Approved' }, { id: 'x2', person: 'Rohit Bhat', what: 'Client workshop lunch', spentOn: '2026-10-24', amount: '2150.00', rebill: true, status: 'Pending' }] })} /> };
+// Projects P-6: the Billing tab (Projects finance and account managers): unbilled work, hours waiting for the client,
+// and the project's invoices (they open in Staffing desk › Invoices).
+const LIVE_BILLING_TAB = {
+  model: 'time_material' as const,
+  fee: null,
+  ready: '616000.00',
+  readyHours: 280,
+  waitingHours: 40,
+  billed: '1240000.00',
+  unbilled: [
+    { id: 'hours:p1:e1', source: 'Timesheet hours', detail: 'Priya Nair, 120 h × ₹2,200', hours: 120, amount: '264000.00', held: null },
+    { id: 'hours:p1:e2', source: 'Timesheet hours', detail: 'Rohit Bhat, 160 h × ₹2,200', hours: 160, amount: '352000.00', held: null },
+    { id: 'hours:p1:e3:held', source: 'Timesheet hours', detail: 'Sana Nizami, 40 h × ₹2,200', hours: 40, amount: '88000.00', held: 'waiting for client approval' },
+  ],
+  invoices: [
+    { id: 'i1', number: null, kind: 'Invoice' as const, status: 'draft' as const, date: null, amount: '268860.00' },
+    { id: 'i0', number: 'KF/TN/151', kind: 'Invoice' as const, status: 'issued' as const, date: '2026-10-01', amount: '1252800.00' },
+    { id: 'c0', number: 'KF/TN/CN12', kind: 'Credit note' as const, status: 'issued' as const, date: '2026-10-09', amount: '12800.00' },
+  ],
+};
+export const LiveBilling: S = { name: 'Live · billing, hours held for client approval', render: () => <ProjectWorkspaceScreen defaultTab="billing" live={liveWs({ detail: { ...LIVE_PROJECT_DETAIL, can: { ...LIVE_PROJECT_DETAIL.can, finance: true } }, billing: LIVE_BILLING_TAB, onOpenInvoice: () => {} })} /> };
+export const LiveBillingEmpty: S = { name: 'Live · billing, nothing to bill yet', render: () => <ProjectWorkspaceScreen defaultTab="billing" live={liveWs({ billing: { ...LIVE_BILLING_TAB, ready: '0.00', readyHours: 0, waitingHours: 0, billed: '0.00', unbilled: [], invoices: [] } })} /> };

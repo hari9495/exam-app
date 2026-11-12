@@ -13919,6 +13919,19 @@ model CsHealthSnapshot {
   @@map("cs_health_snapshots")
 }
 
+/// Console 1216: product-analytics counts per company, action family and India day (platform only; nightly job).
+model ProductUsageDaily {
+  day            DateTime @db.Date
+  organizationId String   @map("organization_id") @db.Uuid
+  family         String   @db.VarChar(40)
+  actions        Int
+  lastAt         DateTime @map("last_at") @db.Timestamptz(3)
+
+  @@id([day, organizationId, family])
+  @@index([organizationId], map: "product_usage_daily_org_idx")
+  @@map("product_usage_daily")
+}
+
 /// Console 1165 (answer 1082): the company's Customer success owner (active staff with the Customer success role).
 model CsAccount {
   organizationId String   @id @map("organization_id") @db.Uuid

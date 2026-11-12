@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { ProjectWorkspaceScreen, type LiveProjectDetail, type LiveProjectWorkspace, type LiveTimesheetRow, type ProjectChoices } from '@yukthix/ui/hiring';
-import { loadState } from '../../../../../lib/yx-org';
+import { loadState, useYxPermissions } from '../../../../../lib/yx-org';
 import { useProjects, useProjectsWrite } from '../../../../../lib/yx-projects';
 
 // Projects P-1 (answers 1401 to 1405, 1412, 1420): the designed PRJ-01 workspace, live (overview, team, tasks and
@@ -28,6 +28,11 @@ export default function YxProjectPage() {
   const cost = useProjects<NonNullable<LiveProjectWorkspace['cost']>>(detail.data && (can?.finance || can?.run) ? `${p}/cost` : null);
   const expenses = useProjects<NonNullable<LiveProjectWorkspace['expenses']>>(detail.data ? `${p}/expenses` : null);
   const ts = useProjects<{ week: string; rows: LiveTimesheetRow[] }>(detail.data ? `${p}/timesheets?week=${week}` : null);
+  // P-6: the Billing tab for Projects finance and account managers (the API checks it again).
+  const router = useRouter();
+  const perms = useYxPermissions();
+  const mayBill = Boolean(detail.data && (can?.finance || perms.has('ats.staffing.manage')));
+  const billing = useProjects<NonNullable<LiveProjectWorkspace['billing']>>(mayBill ? `/billing/project/${encodeURIComponent(id)}` : null);
   return (
     <ProjectWorkspaceScreen
       live={{
@@ -49,6 +54,8 @@ export default function YxProjectPage() {
         cost: cost.isError || !(can?.finance || can?.run) ? undefined : (cost.data ?? null),
         expenses: expenses.isError ? undefined : (expenses.data ?? null),
         timesheets: ts.data ?? null,
+        billing: !mayBill || billing.isError ? undefined : (billing.data ?? null),
+        onOpenInvoice: (iid) => router.push(`/yx/staffing/invoices/${encodeURIComponent(iid)}`),
         onTimesheetWeek: setWeek,
         onCompleteMilestone: async (mid, version) => void (await write('POST', `${p}/milestones/${encodeURIComponent(mid)}/complete`, { version })),
       }}

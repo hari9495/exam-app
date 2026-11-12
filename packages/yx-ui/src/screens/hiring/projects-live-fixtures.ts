@@ -7,7 +7,7 @@ export const LIVE_PROJECT_ROWS: LiveProjectRow[] = [
   { id: 'p3', code: 'OLDAUDIT', name: 'Audit readiness', clientId: null, client: null, billingModel: 'non_billable', managerUserId: null, manager: null, status: 'active', startOn: null, endOn: null, budgetHours: null, usedHours: 64, people: 2, clientAcceptsMilestones: false, version: 1, mine: false },
 ];
 /** Projects finance sees fee and cost (answer 1412). */
-export const LIVE_PROJECT_ROWS_FINANCE: LiveProjectRow[] = LIVE_PROJECT_ROWS.map((r, i) => ({ ...r, fee: [3_600_000, 2_400_000, null][i] ?? null, budgetCost: [2_400_000, 1_500_000, null][i] ?? null }));
+export const LIVE_PROJECT_ROWS_FINANCE: LiveProjectRow[] = LIVE_PROJECT_ROWS.map((r, i) => ({ ...r, fee: [3_600_000, 2_400_000, null][i] ?? null, budgetCost: [2_400_000, 1_500_000, null][i] ?? null, billed: [2_160_000, 0, 0][i] ?? 0, margin: [31, null, null][i] ?? null }));
 
 export const LIVE_PROJECT_CHOICES: ProjectChoices = {
   staffingDesk: true,

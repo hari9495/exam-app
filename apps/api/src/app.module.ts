@@ -8,6 +8,7 @@ import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, seconds } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import Redis from 'ioredis';
+import { whenReady } from './jobs/redis-connection';
 import {
   PrismaModule,
   AuditModule,
@@ -116,16 +117,18 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ThrottlerModule.forRootAsync({
-      useFactory: () => ({
-        throttlers: [{ name: 'default', ttl: seconds(60), limit: DEFAULT_THROTTLE_LIMIT }],
+      useFactory: async () => {
         // Fast-fail options: ioredis defaults (offline queue + 20 retries/request) would
         // stall every request ~10s during a Redis outage before FailOpenThrottlerGuard's
         // fail-open path engages -- reject immediately instead.
-        storage: new ThrottlerStorageRedisService(process.env.REDIS_URL ?? 'redis://localhost:6379', {
+        const storage = new ThrottlerStorageRedisService(process.env.REDIS_URL ?? 'redis://localhost:6379', {
           maxRetriesPerRequest: 1,
           enableOfflineQueue: false,
-        }),
-      }),
+        });
+        // Connected before the first request, so a fresh app does not skip rate limits while it connects.
+        await whenReady(storage.redis as Redis);
+        return { throttlers: [{ name: 'default', ttl: seconds(60), limit: DEFAULT_THROTTLE_LIMIT }], storage };
+      },
     }),
     StaticUploadsModule,
     PrismaModule,

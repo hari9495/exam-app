@@ -46,6 +46,12 @@ export class ProjectBillingController {
     return this.billing.issue(ctx, req.user as ScopeUser, id, dto.version);
   }
 
+  /** PRJ-01 workspace Billing tab. */
+  @Get('project/:id')
+  projectTab(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.billing.projectTab(ctx, req.user as ScopeUser, id);
+  }
+
   @Get('lines')
   lines(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query('projectId', ParseUUIDPipe) projectId: string, @Query('month') m?: string) {
     if (!m) throw new BadRequestException('Give the month as YYYY-MM.');

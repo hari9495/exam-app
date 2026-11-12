@@ -45,3 +45,16 @@ export function e2eDatabase(env: Record<string, string | undefined>): E2eDatabas
   const mig = env.E2E_MIGRATION_DATABASE_URL ?? (env.MIGRATION_DATABASE_URL ? withName(env.MIGRATION_DATABASE_URL, name) : undefined);
   return { name, url, migrationUrl: mig };
 }
+
+/**
+ * The client address the API e2e suites sign in from, one per e2e database. Every worktree's suites run on this machine
+ * against one shared Redis, and they all came from 127.0.0.1: the per-IP sign-in lock (30 failures in 15 min), the OTP
+ * per-IP counter and the per-IP throttles added up across worktrees, so one builder's run could make another's sign-ins
+ * fail with 429 or 503. A loopback address of the database's own (127.x.y.z, never 127.0.0.1) keeps those counters
+ * apart without changing any limit; production never uses this.
+ */
+export function e2eClientIp(databaseName: string): string {
+  let h = 2166136261;
+  for (const ch of databaseName) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
+  return `127.${(h >>> 16) & 255}.${(h >>> 8) & 255}.${2 + ((h & 255) % 253)}`;
+}

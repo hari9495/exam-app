@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { PLATFORM, platformRead } from './platform.service';
+import { AuditService } from '@exam-platform/shared';
+import { dayPlus, istDay } from './customer-success.service';
 
 type Tx = Prisma.TransactionClient;
 export const ANALYTICS_WINDOW_KEY = 'analytics.window_days';
@@ -24,6 +26,9 @@ export const AREAS: { key: string; label: string; families: string[] }[] = [
   { key: 'approvals', label: 'Approvals', families: ['workflow'] },
   { key: 'projects', label: 'Projects', families: ['project', 'timesheet'] },
 ];
+const FAMILIES = AREAS.flatMap((a) => a.families);
+/** The longest window the summary keeps ready (a longer analytics.window_days reads what is there). */
+export const SUMMARY_MAX_DAYS = 366;
 const AREA_OF = new Map(AREAS.flatMap((a) => a.families.map((f) => [f, a.key] as const)));
 export const BANDS = ['Under 200 employees', '200+ employees'] as const;
 const bandOf = (employees: number) => (employees < 200 ? 0 : 1);
@@ -72,7 +77,8 @@ export function summarise(companies: { id: string; employees: number }[], uses: 
 
 /**
  * YukthiX console C-8, YX-09: product analytics. Which features companies use, from the audit log's action families
- * only: counts by feature (and size band) and by company, over `analytics.window_days`. Never personal data and never HR
+ * only: counts by feature (and size band) and by company, over `analytics.window_days` India days (today included), read
+ * from the nightly summary (1216). Never personal data and never HR
  * content; groups of fewer than `analytics.min_companies` (never under 5) companies are hidden. Read through
  * `platformRead`, audited with its purpose.
  */
@@ -85,17 +91,47 @@ export class AnalyticsService {
     return Number.isInteger(v) && v >= floor ? v : def;
   }
 
+  /**
+   * Console 1216, nightly (IST): (re)counts each India day from the last day already summarised (it may have been
+   * partial) through today, or the whole window the first time, into product_usage_daily. Each day's rows are replaced,
+   * never added to, so a rerun is safe. Families outside the analytics mapping are never stored.
+   */
+  async summariseNightly(now = new Date()) {
+    return this.tenantPrisma.forTenant(PLATFORM, async (tx) => {
+      const today = istDay(now);
+      const days = await this.num(tx, ANALYTICS_WINDOW_KEY, ANALYTICS_WINDOW_DEFAULT, 1);
+      const oldest = dayPlus(today, -(Math.min(days, SUMMARY_MAX_DAYS) - 1));
+      const latest = (await tx.productUsageDaily.aggregate({ _max: { day: true } }))._max.day?.toISOString().slice(0, 10);
+      const from = latest && latest > oldest ? latest : oldest;
+      await tx.$executeRaw`DELETE FROM product_usage_daily WHERE day >= ${from}::date`;
+      const written = await tx.$executeRaw`
+        INSERT INTO product_usage_daily (day, organization_id, family, actions, last_at)
+        SELECT (a.created_at AT TIME ZONE 'Asia/Kolkata')::date, a.organization_id, split_part(a.action, '.', 1), count(*)::int, max(a.created_at)
+        FROM audit_logs a JOIN organizations o ON o.id = a.organization_id
+        WHERE a.created_at >= (${from}::date::timestamp AT TIME ZONE 'Asia/Kolkata') AND split_part(a.action, '.', 1) = ANY(${FAMILIES}::text[])
+        GROUP BY 1, 2, 3`;
+      // Kept a little past the longest window, then dropped.
+      const { count: purged } = await tx.productUsageDaily.deleteMany({ where: { day: { lt: new Date(`${dayPlus(today, -SUMMARY_MAX_DAYS)}T00:00:00Z`) } } });
+      await AuditService.recordIn(tx, PLATFORM, { actorUserId: null, action: 'platform.analytics.summarised', entityType: 'product_usage_daily', metadata: { from, to: today, rows: written, purged } });
+      return { from, to: today, rows: written, purged };
+    });
+  }
+
+  /** Use per company and action family over the window's India days (today included), from the summary. */
+  static usage(tx: Tx, days: number, now = new Date()) {
+    return tx.$queryRaw<Use[]>`
+      SELECT organization_id AS "organizationId", family, sum(actions)::int AS actions, max(last_at) AS last
+      FROM product_usage_daily WHERE day >= ${dayPlus(istDay(now), -(days - 1))}::date
+      GROUP BY 1, 2`;
+  }
+
   async overview(actorUserId: string) {
     const { days, min } = await this.tenantPrisma.forTenant(PLATFORM, async (tx) => ({ days: await this.num(tx, ANALYTICS_WINDOW_KEY, ANALYTICS_WINDOW_DEFAULT, 1), min: await this.num(tx, ANALYTICS_MIN_KEY, ANALYTICS_MIN_DEFAULT, 5) }));
     return platformRead(this.tenantPrisma, actorUserId, 'analytics.feature_use', async (tx) => {
       const orgs = await tx.organization.findMany({ where: { isPlatform: false }, select: { id: true, name: true }, take: 2000 });
       const people = await tx.employee.groupBy({ by: ['organizationId'], where: { organizationId: { in: orgs.map((o) => o.id) } }, _count: { _all: true } });
-      const families = AREAS.flatMap((a) => a.families);
-      const uses = await tx.$queryRaw<{ organizationId: string; family: string; actions: number; last: Date }[]>`
-        SELECT organization_id AS "organizationId", split_part(action, '.', 1) AS family, count(*)::int AS actions, max(created_at) AS last
-        FROM audit_logs
-        WHERE organization_id IS NOT NULL AND created_at >= now() - make_interval(days => ${days}::int) AND split_part(action, '.', 1) = ANY(${families}::text[])
-        GROUP BY 1, 2`;
+      // Console 1216: the nightly summary, never a scan of audit_logs across companies.
+      const uses = await AnalyticsService.usage(tx, days);
       const companies = orgs.map((o) => ({ id: o.id, employees: people.find((p) => p.organizationId === o.id)?._count._all ?? 0 }));
       const s = summarise(companies, uses, min);
       const names = new Map(orgs.map((o) => [o.id, o.name]));

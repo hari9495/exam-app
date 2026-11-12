@@ -85,9 +85,11 @@ export class ProjectBillingService {
   }
 
   /** The month's billable work not yet billed (hours by their week's Monday, expenses by their date, the month's retainer) and every accepted milestone not yet billed. */
-  private async wip(tx: Tx, org: string, month: string): Promise<WipItem[]> {
+  private async wip(tx: Tx, org: string, month: string, only?: { projectId: string; allMonths: true }): Promise<WipItem[]> {
     const end = monthEnd(month);
-    const projects = await tx.timesheetProject.findMany({ where: { organizationId: org, billingModel: { not: 'non_billable' } } });
+    // The workspace Billing tab: one project, every month up to this one.
+    const from = only ? '2000-01-01' : `${month.slice(0, 7)}-01`;
+    const projects = await tx.timesheetProject.findMany({ where: { organizationId: org, billingModel: { not: 'non_billable' }, ...(only ? { id: only.projectId } : {}) } });
     if (!projects.length) return [];
     const clients = await tx.staffingClient.findMany({ where: { organizationId: org, id: { in: projects.map((p) => p.clientId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true, state: true } });
     const billed = new Set((await tx.projectBilling.findMany({ where: { organizationId: org, projectId: { in: projects.map((p) => p.id) } }, select: { sourceType: true, sourceId: true } })).map((b) => `${b.sourceType}:${b.sourceId}`));
@@ -101,7 +103,7 @@ export class ProjectBillingService {
     const tm = projects.filter((p) => p.billingModel === 'time_material');
     if (tm.length) {
       const lines = await tx.timesheetLine.findMany({ where: { organizationId: org, projectId: { in: tm.map((p) => p.id) }, OR: [{ status: null }, { status: { in: ['approved', 'reduced', 'corrected'] } }] } });
-      const sheets = await tx.timesheet.findMany({ where: { organizationId: org, id: { in: [...new Set(lines.map((l) => l.timesheetId))] }, status: 'approved', weekStart: { gte: asDate(`${month.slice(0, 7)}-01`), lte: asDate(end) } }, select: { id: true, employeeId: true } });
+      const sheets = await tx.timesheet.findMany({ where: { organizationId: org, id: { in: [...new Set(lines.map((l) => l.timesheetId))] }, status: 'approved', weekStart: { gte: asDate(from), lte: asDate(end) } }, select: { id: true, employeeId: true } });
       const open = lines.filter((l) => sheets.some((s) => s.id === l.timesheetId) && !billed.has(`hours:${l.id}`));
       const corrections = await tx.projectCorrection.findMany({ where: { organizationId: org, lineId: { in: open.map((l) => l.id) } }, select: { lineId: true, afterMinutes: true, createdAt: true } });
       const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: [...new Set(sheets.map((s) => s.employeeId))] } }, select: { id: true, givenName: true, familyName: true, preferredName: true } });
@@ -137,13 +139,18 @@ export class ProjectBillingService {
 
     // Retainer: the project's monthly fee for this month, while the project runs.
     for (const p of projects.filter((x) => x.billingModel === 'retainer' && ['active', 'on_hold', 'closed'].includes(x.status))) {
-      const sid = `${p.id}:${month.slice(0, 7)}`;
-      if (billed.has(`retainer:${sid}`)) continue;
-      if ((p.startOn && iso(p.startOn)! > end) || (p.endOn && iso(p.endOn)! < `${month.slice(0, 7)}-01`)) continue;
-      const fee = p.fee == null ? null : Number(p.fee.toString());
-      const amount = fee ? BigInt(Math.round(fee * 100)) : 0n;
-      const label = new Date(`${month.slice(0, 7)}-01T00:00:00Z`).toLocaleString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' });
-      items.push({ id: `retainer:${sid}`, type: 'retainer', ...base(p), detail: `${label} retainer`, minutes: null, ratePaise: null, amountPaise: amount, held: heldReason({ clientId: p.clientId, needsFee: true, fee }), parts: [{ sourceId: sid, minutes: null, amountPaise: amount }] });
+      // shortcut: the Billing tab looks back at most 36 months, enough for a running retainer; widen if a client needs more.
+      const months: string[] = [];
+      for (let m = `${month.slice(0, 7)}-01`; months.length < (only ? 36 : 1) && m >= from; m = `${prevMonth(m)}-01`) months.unshift(m);
+      for (const m of months) {
+        const sid = `${p.id}:${m.slice(0, 7)}`;
+        if (billed.has(`retainer:${sid}`)) continue;
+        if ((p.startOn && iso(p.startOn)! > monthEnd(m)) || (p.endOn && iso(p.endOn)! < m)) continue;
+        const fee = p.fee == null ? null : Number(p.fee.toString());
+        const amount = fee ? BigInt(Math.round(fee * 100)) : 0n;
+        const label = new Date(`${m}T00:00:00Z`).toLocaleString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+        items.push({ id: `retainer:${sid}`, type: 'retainer', ...base(p), detail: `${label} retainer`, minutes: null, ratePaise: null, amountPaise: amount, held: heldReason({ clientId: p.clientId, needsFee: true, fee }), parts: [{ sourceId: sid, minutes: null, amountPaise: amount }] });
+      }
     }
 
     // Re-billed expenses (P-5, answer 1419): approved claim lines naming a billable project.
@@ -151,7 +158,7 @@ export class ProjectBillingService {
       SELECT l.id::text, l.project_id::text, coalesce(l.approved, l.claimed)::text AS amount, l.spent_on, coalesce(l.description, l.merchant, l.category_code) AS what
       FROM expense_lines l JOIN expense_claims c ON c.organization_id = l.organization_id AND c.id = l.claim_id
       WHERE l.organization_id = ${org}::uuid AND l.rebill AND l.removed_at IS NULL AND l.project_id = ANY(${projects.map((p) => p.id)}::uuid[])
-        AND c.status = ANY(${APPROVED_CLAIMS}::text[]) AND l.spent_on BETWEEN ${`${month.slice(0, 7)}-01`}::date AND ${end}::date
+        AND c.status = ANY(${APPROVED_CLAIMS}::text[]) AND l.spent_on BETWEEN ${from}::date AND ${end}::date
       ORDER BY l.spent_on`;
     for (const e of exp.filter((x) => !billed.has(`expense:${x.id}`))) {
       const p = projects.find((x) => x.id === e.project_id)!;
@@ -306,6 +313,39 @@ export class ProjectBillingService {
     return this.finance(ctx, user, async (tx, c) => {
       await this.projectDraft(tx, c.organizationId, id);
       return this.engine.issueIn(tx, c, id, { version });
+    });
+  }
+
+  /**
+   * The workspace Billing tab (PRJ-01): one project's unbilled work (every month), the hours waiting for the client, what
+   * was billed, and its invoices (links to Staffing desk › Invoices, never a copy). Projects finance and account managers.
+   */
+  async projectTab(ctx: TenantContext, user: ScopeUser, id: string) {
+    if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else. Sign in as yourself.');
+    const v = await buildViewer(this.prisma, this.tenantPrisma, user, ['projects.finance']);
+    if (!has(v, 'projects.finance') && !(await this.staffing.access(user)).manage) throw new ForbiddenException('Only Projects finance and account managers see project billing.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      if (!(await ProjectsService.on(tx, c))) throw new ForbiddenException({ statusCode: 403, code: 'PROJECTS_OFF', message: 'Projects is switched off for your company.' });
+      const org = c.organizationId;
+      const p = await tx.timesheetProject.findFirst({ where: { organizationId: org, id } });
+      if (!p) throw new NotFoundException('No such project.');
+      const wip = await this.wip(tx, org, todayIst(), { projectId: id, allMonths: true });
+      const lines = await tx.staffingInvoiceLine.findMany({ where: { organizationId: org, projectId: id }, select: { invoiceId: true, amountPaise: true } });
+      const invs = await tx.staffingInvoice.findMany({ where: { organizationId: org, id: { in: [...new Set(lines.map((l) => l.invoiceId))] } }, orderBy: [{ invoiceDate: { sort: 'desc', nulls: 'first' } }, { createdAt: 'desc' }] });
+      const amountOf = (invoiceId: string) => lines.filter((l) => l.invoiceId === invoiceId).reduce((t, l) => t + l.amountPaise, 0n);
+      const billed = invs.filter((i) => i.status === 'issued').reduce((t, i) => t + (i.kind === 'credit_note' ? -amountOf(i.id) : amountOf(i.id)), 0n);
+      const ready = wip.filter((w) => !w.held);
+      const waiting = wip.filter((w) => w.held === 'waiting for client approval');
+      return {
+        model: p.billingModel,
+        fee: p.fee == null ? null : p.fee.toFixed(2),
+        ready: toRupees(ready.reduce((t, w) => t + w.amountPaise, 0n)),
+        readyHours: hoursOf(ready.reduce((t, w) => t + (w.minutes ?? 0), 0)),
+        waitingHours: hoursOf(waiting.reduce((t, w) => t + (w.minutes ?? 0), 0)),
+        billed: toRupees(billed),
+        unbilled: wip.map((w) => ({ id: w.id, source: SOURCE[w.type], detail: w.detail, hours: w.minutes == null ? null : hoursOf(w.minutes), amount: toRupees(w.amountPaise), held: w.held })),
+        invoices: invs.map((i) => ({ id: i.id, number: i.number, kind: i.kind === 'credit_note' ? 'Credit note' : 'Invoice', status: i.status, date: iso(i.invoiceDate), amount: toRupees(amountOf(i.id)) })),
+      };
     });
   }
 

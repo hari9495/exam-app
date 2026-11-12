@@ -30,6 +30,7 @@ import { NotFoundRetentionService } from '../help/not-found-retention.service';
 import { IncidentsService } from '../platform/incidents.service';
 import { CsFollowupService } from '../platform/cs-followup.service';
 import { StaffRolesService } from '../platform/staff-roles.service';
+import { AnalyticsService } from '../platform/analytics.service';
 import { SettingChangeNoticesService } from '../org-structure/setting-change-notices.service';
 
 import { ProjectsService } from '../projects/projects.service';
@@ -81,6 +82,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     projects: ProjectsService,
     settingNotices: SettingChangeNoticesService,
     projectCost: ProjectCostService,
+    analytics: AnalyticsService,
   ) {
     // Keys MUST match SWEEP_SCHEDULE ids.
     this.handlers = {
@@ -125,6 +127,8 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       'cs-health-snapshot': () => csFollowup.nightly(),
       'staff-invite-expiry': () => staffRoles.expireInvites(),
       'settings-change-lapse': () => settingNotices.lapseSweep(),
+      // Console 1216.
+      'analytics-summary': () => analytics.summariseNightly(),
     };
     this.worker = logBullErrors(new Worker(SCHEDULED_SWEEPS_QUEUE_NAME, (job) => this.dispatch(job), bullOpts(this.connection)), SCHEDULED_SWEEPS_QUEUE_NAME);
     this.worker.on('failed', (job, err) => this.logger.error(`Sweep "${job?.name}" failed: ${msg(err)}`));

@@ -203,3 +203,47 @@ describe('Settings 3.11 and Shifts set-up (Projects P-1)', () => {
     expect(screen.queryByRole('button', { name: 'Add a project' })).toBeNull();
   });
 });
+
+// P-6 (founder 12 Nov): the FinanceList margin and the workspace Billing tab, live.
+const BILLING_TAB: NonNullable<LiveProjectWorkspace['billing']> = {
+  model: 'time_material',
+  fee: null,
+  ready: '616000.00',
+  readyHours: 280,
+  waitingHours: 40,
+  billed: '1240000.00',
+  unbilled: [
+    { id: 'h1', source: 'Timesheet hours', detail: 'Priya Nair, 120 h × ₹2,200', hours: 120, amount: '264000.00', held: null },
+    { id: 'h2', source: 'Timesheet hours', detail: 'Sana Nizami, 40 h × ₹2,200', hours: 40, amount: '88000.00', held: 'waiting for client approval' },
+  ],
+  invoices: [{ id: 'i0', number: 'KF/TN/151', kind: 'Invoice', status: 'issued', date: '2026-10-01', amount: '1252800.00' }],
+};
+
+describe('P-6: margin in the finance list, and the Billing tab', () => {
+  it('Projects finance sees fee billed and margin from the stored totals; others never do', () => {
+    const a = show(<ProjectsListScreen live={list({ rows: LIVE_PROJECT_ROWS_FINANCE, can: { create: false, finance: true } })} />);
+    const heads = screen.getAllByRole('columnheader').map((h) => h.textContent);
+    expect(heads).toEqual(expect.arrayContaining(['Fee billed', 'Margin']));
+    expect(screen.getByText('31%')).toBeInTheDocument();
+    a.unmount();
+    show(<ProjectsListScreen live={list({ rows: LIVE_PROJECT_ROWS_FINANCE.map(({ billed: _b, margin: _m, ...r }) => r) })} />);
+    const plain = screen.getAllByRole('columnheader').map((h) => h.textContent);
+    expect(plain).not.toContain('Margin');
+    expect(plain).not.toContain('Fee billed');
+  });
+
+  it('the Billing tab: unbilled work, hours waiting for the client, billed to date and invoices that open in Staffing desk', async () => {
+    const onOpenInvoice = vi.fn();
+    show(<ProjectWorkspaceScreen defaultTab="billing" live={ws({ billing: BILLING_TAB, onOpenInvoice })} />);
+    expect(screen.getByRole('tab', { name: 'Billing' })).toBeInTheDocument();
+    expect(screen.getByText('40 h')).toBeInTheDocument();
+    expect(screen.getByText('Held: waiting for client approval')).toBeInTheDocument();
+    await ue.click(screen.getByText('KF/TN/151'));
+    expect(onOpenInvoice).toHaveBeenCalledWith('i0');
+  });
+
+  it('no Billing tab for a project manager or an employee (the page passes no billing)', () => {
+    show(<ProjectWorkspaceScreen live={ws()} />);
+    expect(screen.queryByRole('tab', { name: 'Billing' })).toBeNull();
+  });
+});

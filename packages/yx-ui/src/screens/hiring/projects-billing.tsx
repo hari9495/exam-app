@@ -48,7 +48,8 @@ export interface BillingWorkbenchProps {
   today: Date;
   defaultStep?: string;
   issued?: boolean;
-  draftDate?: Date;
+  /** An issued invoice already past the 30-day e-invoice window: it is cancelled and reissued (the staffing `reissue()`). */
+  pastWindow?: { invoiceNo: string; invoiceDate: Date };
   now?: Date;
   /** P-6 live (answers 1414, 1415). */
   live?: LiveBilling;
@@ -60,7 +61,7 @@ export function BillingWorkbenchScreen(props: BillingWorkbenchProps) {
   return <DrawnBillingWorkbench {...props} />;
 }
 
-function DrawnBillingWorkbench({ rows, today, defaultStep = 'wip', issued = false, draftDate, now }: BillingWorkbenchProps) {
+function DrawnBillingWorkbench({ rows, today, defaultStep = 'wip', issued = false, pastWindow, now }: BillingWorkbenchProps) {
   const billable = rows.filter((r) => !r.held);
   const [selected, setSelected] = useState<string[]>(billable.map((r) => r.id));
   const chosen = rows.filter((r) => selected.includes(r.id) && !r.held);
@@ -90,7 +91,7 @@ function DrawnBillingWorkbench({ rows, today, defaultStep = 'wip', issued = fals
           label="Issued"
           tiles={drafts.map((d) => ({ label: d.client, value: formatINR(d.totals.total), sub: d.totals.interState ? 'IGST' : 'CGST + SGST' }))}
         />
-        <EInvoiceBanner invoiceDate={draftDate ?? today} today={today} invoiceNo="KF/TN/26-27/0192" />
+        <EInvoiceBanner invoiceDate={today} today={today} invoiceNo="KF/TN/26-27/0192" />
       </ProjectsFrame>
     );
   return (
@@ -146,7 +147,11 @@ function DrawnBillingWorkbench({ rows, today, defaultStep = 'wip', issued = fals
             content: (
               <div className="yx-hire-stack">
                 <ApprovalTimeline steps={steps} now={now} />
-                <EInvoiceBanner invoiceDate={draftDate ?? today} today={today} invoiceNo="each invoice" />
+                {/* A draft is never dated: it takes today's date and the series' next number when it is issued. */}
+                <InlineAlert tone="info" title="Issued today">
+                  Each draft takes today&rsquo;s date ({formatDate(today)}) and the next number of its series when it is issued, so a draft never runs out of its e-invoice window.
+                </InlineAlert>
+                {pastWindow && <EInvoiceBanner invoiceDate={pastWindow.invoiceDate} today={today} invoiceNo={pastWindow.invoiceNo} />}
                 <Text size="sm" tone="secondary">
                   Issued invoices are never edited. They go to the client&rsquo;s billing contacts and the client portal, and to accounting with the project dimension.
                 </Text>

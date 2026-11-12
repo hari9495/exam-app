@@ -228,14 +228,17 @@ describe('account lockout settings and admin unlock (P12 YX-IAM-07)', () => {
       await setPolicy(orgA().id, { maxFailedAttempts: 3, lockMinutes: 60 });
       const ghost = emailOf('nobody');
       const real = await failTimes(orgA().slug, RECRUITER_A, 3);
+      const realLockedAt = Date.now();
       const fake = await failTimes(orgA().slug, ghost, 3);
+      // The second lock starts after three more sign-ins (argon2 each): its countdown is that much longer.
+      const gap = Math.ceil((Date.now() - realLockedAt) / 1000) + 1;
       expect(fake.map((r) => [r.status, r.body])).toEqual(real.map((r) => [r.status, r.body]));
       const [realBlocked, fakeBlocked] = [await login(orgA().slug, RECRUITER_A, { password: WRONG }), await login(orgA().slug, ghost, { password: WRONG })];
-      // Same status and body; the countdown may differ by the second that passed between the calls.
+      // Same status and body; the countdowns differ only by the time between the two locks.
       const { retryAfterSeconds: fakeWait, ...fakeRest } = fakeBlocked.body;
       const { retryAfterSeconds: realWait, ...realRest } = realBlocked.body;
       expect([fakeBlocked.status, fakeRest]).toEqual([realBlocked.status, realRest]);
-      expect(Math.abs(fakeWait - realWait)).toBeLessThanOrEqual(1);
+      expect(Math.abs(fakeWait - realWait)).toBeLessThanOrEqual(gap);
       expect(fakeWait).toBeGreaterThanOrEqual(3599);
 
       // An unknown organisation gets the YukthiX default (3 failures: delay only, no lock). The email's

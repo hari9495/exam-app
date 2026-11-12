@@ -7,6 +7,7 @@ import { bootAdminApp } from './dual-app';
 import { EmailService } from '../src/email/email.service';
 import { markSteppedUp } from './fixtures/step-up';
 import { giveStaffRoles, rolesWithout } from './fixtures/staff-roles';
+import { AREAS, AnalyticsService } from '../src/platform/analytics.service';
 
 // Console C-8, YX-09, against the real database (forced RLS, app role): which features companies use, counts only, by
 // feature and by company; never a name or HR content; no group of fewer than the minimum (never under 5) companies.
@@ -55,6 +56,8 @@ describe('Console C-8 YX-09: product analytics', () => {
         await tx.auditLog.create({ data: { organizationId: org.A, actorUserId: users.adminA!, actorName: `Priya A ${run}`, action, entityType: 'test', metadataJson: JSON.stringify({ note: SECRET }) } });
       }
     });
+    // Console 1216: the page reads the nightly summary.
+    await app.get(AnalyticsService).summariseNightly();
   }, 180_000);
 
   afterAll(async () => {
@@ -115,5 +118,54 @@ describe('Console C-8 YX-09: product analytics', () => {
   it('the read is audited with its purpose', async () => {
     const rows = await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findMany({ where: { actorUserId: users.staff!, action: 'platform.cross_tenant_read' } }));
     expect(rows.some((r) => (r.metadataJson ?? '').includes('analytics.feature_use'))).toBe(true);
+  });
+
+  describe('the nightly summary (1216)', () => {
+    const IST = 330 * 60_000;
+    const istDay = (d: Date) => new Date(d.getTime() + IST).toISOString().slice(0, 10);
+    const minus = (day: string, n: number) => new Date(Date.parse(`${day}T00:00:00Z`) - n * 86_400_000).toISOString().slice(0, 10);
+    /** The old answer: a scan of audit_logs over the same India days. */
+    const scan = (days: number) =>
+      tenantPrisma.forTenant(SUPER, (tx) => tx.$queryRaw<{ organizationId: string; family: string; actions: number; last: Date }[]>`
+        SELECT organization_id AS "organizationId", split_part(action, '.', 1) AS family, count(*)::int AS actions, max(created_at) AS last
+        FROM audit_logs a WHERE organization_id IS NOT NULL AND EXISTS (SELECT 1 FROM organizations o WHERE o.id = a.organization_id)
+          AND created_at >= (${minus(istDay(new Date()), days - 1)}::date::timestamp AT TIME ZONE 'Asia/Kolkata')
+          AND split_part(action, '.', 1) = ANY(${AREAS.flatMap((a) => a.families)}::text[])
+        GROUP BY 1, 2`);
+    const summary = (days: number) => tenantPrisma.forTenant(SUPER, (tx) => AnalyticsService.usage(tx, days));
+    const key = (r: { organizationId: string; family: string; actions: number; last: Date }) => `${r.organizationId}|${r.family}|${r.actions}|${new Date(r.last).toISOString()}`;
+
+    it('gives the same answer as the scan, across India day edges and the window, and a rerun never double-counts', async () => {
+      // Company B: one action at 00:05 IST two days ago (18:35 UTC the day before), one 40 days ago (outside 30 days).
+      const twoDaysAgo = minus(istDay(new Date()), 2);
+      const edge = new Date(Date.parse(`${twoDaysAgo}T00:05:00Z`) - IST);
+      await inOrg(org.B, async (tx) => {
+        await tx.auditLog.create({ data: { organizationId: org.B, action: 'expense.claim_submitted', entityType: 'test', createdAt: edge } });
+        await tx.auditLog.create({ data: { organizationId: org.B, action: 'expense.claim_submitted', entityType: 'test', createdAt: new Date(Date.now() - 40 * 86_400_000) } });
+      });
+      // The first run only fills from the last summarised day; refill the whole window as a fresh table would.
+      await tenantPrisma.forTenant(SUPER, (tx) => tx.productUsageDaily.deleteMany({}));
+      await app.get(AnalyticsService).summariseNightly();
+      for (const days of [1, 3, 30]) expect((await summary(days)).map(key).sort()).toEqual((await scan(days)).map(key).sort());
+      const b = (await summary(30)).filter((r) => r.organizationId === org.B);
+      expect(b).toEqual([expect.objectContaining({ family: 'expense', actions: 1 })]);
+      expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.productUsageDaily.findFirstOrThrow({ where: { organizationId: org.B } }))).day.toISOString().slice(0, 10)).toBe(twoDaysAgo);
+      // Run again, twice: the same rows and counts.
+      const before = (await summary(30)).map(key).sort();
+      await app.get(AnalyticsService).summariseNightly();
+      await app.get(AnalyticsService).summariseNightly();
+      expect((await summary(30)).map(key).sort()).toEqual(before);
+      // The page's answer for company A is unchanged.
+      expect(((await api('staff', '/platform/analytics').expect(200)).body as Body).byCompany.find((c) => c.id === org.A)!.areas).toEqual({ time: 2, payroll: 1 });
+    });
+
+    it('platform only: a company never sees the summary', async () => {
+      expect(await inOrg(org.A, (tx) => tx.productUsageDaily.count())).toBe(0);
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.productUsageDaily.count({ where: { organizationId: org.A } }))).toBeGreaterThan(0);
+      const rows = await prisma.$queryRaw<{ forced: boolean; policy: boolean }[]>`
+        SELECT c.relforcerowsecurity AS forced, EXISTS (SELECT 1 FROM pg_policies p WHERE p.tablename = c.relname AND p.policyname = 'platform_only') AS policy
+        FROM pg_class c WHERE c.relname = 'product_usage_daily'`;
+      expect(rows).toEqual([{ forced: true, policy: true }]);
+    });
   });
 });

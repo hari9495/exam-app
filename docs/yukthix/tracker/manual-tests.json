@@ -21195,5 +21195,54 @@
     "expected": "Step 1: 'Add at least one step…'. Step 2: toast saved, version 1. Step 3: Leave shows Manager → HR Admins. Step 4: saved, in View history. Step 5: the manager gets it. Step 6: none. Step 7: it waits for both HR admins, then is approved. Step 8: View only, no save.",
     "stories": [],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRJ6-05",
+    "area": "Projects follow-up: finance list margin and the workspace Billing tab (12 Nov 2026)",
+    "screen": "Projects › Projects (list)",
+    "url": "http://localhost:3000/yx/projects",
+    "account": "Projects finance; a project manager without Projects finance.",
+    "steps": [
+      "As finance open the list.",
+      "As the project manager open the list."
+    ],
+    "expected": "Step 1: Fee, Fee billed (against the fee) and Margin, from issued invoices less credit notes and the stored cost totals. Step 2: no fee, fee billed or margin.",
+    "stories": [
+      "Screens/Projects/PRJ-01 · Projects and project workspace · Finance · all projects with margin"
+    ],
+    "note": "Positive and negative. Founder 12 Nov."
+  },
+  {
+    "id": "MT-PRJ6-06",
+    "area": "Projects follow-up: finance list margin and the workspace Billing tab (12 Nov 2026)",
+    "screen": "Project workspace › Billing",
+    "url": "http://localhost:3000/yx/projects",
+    "account": "Projects finance; an account manager; a project manager; an employee. A time-and-material project with approved hours, some waiting for the client, and an issued invoice.",
+    "steps": [
+      "As finance open the project's Billing tab; click an invoice.",
+      "As the account manager open it.",
+      "As the project manager, and as an employee, open the project."
+    ],
+    "expected": "Step 1: ready to bill, hours waiting for client approval, billed to date, the unbilled work and the project's invoices; the invoice opens in Staffing desk › Invoices. Step 2: the same. Step 3: no Billing tab.",
+    "stories": [
+      "Screens/Projects/PRJ-01 · Projects and project workspace · Workspace · billing, hours held for client approval"
+    ],
+    "note": "Positive and negative. Founder 12 Nov."
+  },
+  {
+    "id": "MT-CON-1216",
+    "area": "Console 1216, product analytics summary (12 Nov 2026)",
+    "screen": "Console › Product analytics",
+    "url": "http://localhost:3000/staff/analytics",
+    "account": "YukthiX staff with the Customer success role and a security key.",
+    "steps": [
+      "Open Product analytics after the nightly summary has run.",
+      "Open it again after a second run of the summary."
+    ],
+    "expected": "Step 1: the same features, size bands and company counts as before, groups under the minimum hidden. Step 2: the same numbers (a rerun never double-counts).",
+    "stories": [
+      "Screens/YukthiX console/YX-09 · Product analytics · Product analytics"
+    ],
+    "note": "Positive and negative. Answer 1216."
   }
 ]

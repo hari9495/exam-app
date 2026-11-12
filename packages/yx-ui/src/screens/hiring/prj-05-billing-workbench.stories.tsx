@@ -22,7 +22,7 @@ const WIP: WipRow[] = [
 export const Wip: S = { name: 'Finance · WIP by client, held items', render: () => <BillingWorkbenchScreen rows={WIP} today={TODAY} now={TODAY} /> };
 export const Drafts: S = { name: 'Draft invoices · CGST/SGST and IGST', render: () => <BillingWorkbenchScreen rows={WIP} today={TODAY} defaultStep="drafts" now={TODAY} /> };
 export const Approve: S = { name: 'Approve and issue · e-invoice window', render: () => <BillingWorkbenchScreen rows={WIP} today={TODAY} defaultStep="approve" now={TODAY} /> };
-export const OldDraft: S = { name: 'Approve · draft dated 27 Aug, IRN blocked', render: () => <BillingWorkbenchScreen rows={WIP} today={TODAY} defaultStep="approve" draftDate={PD(2026, 8, 27)} now={TODAY} /> };
+export const IssuedToday: S = { name: 'Approve · drafts dated when issued; an old invoice cancelled and reissued', render: () => <BillingWorkbenchScreen rows={WIP} today={TODAY} defaultStep="approve" pastWindow={{ invoiceNo: 'KF/TN/26-27/0151', invoiceDate: PD(2026, 8, 27) }} now={TODAY} /> };
 export const Issued: S = { name: 'Issued', render: () => <BillingWorkbenchScreen rows={WIP} today={TODAY} issued now={TODAY} /> };
 export const Empty: S = { name: 'Empty · nothing to bill', render: () => <BillingWorkbenchScreen rows={[]} today={TODAY} now={TODAY} /> };
 
