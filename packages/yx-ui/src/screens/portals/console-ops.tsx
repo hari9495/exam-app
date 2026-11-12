@@ -29,6 +29,7 @@ import { LiveCustomerSuccessScreen, type LiveCustomerSuccess } from './console-c
 import { LiveMaintenanceScreen, type LiveMaintenance } from './console-maintenance-live';
 import { LiveHelpCentreScreen, type LiveHelpCentre } from './console-helpcentre-live';
 import { LiveIncidentsScreen, type LiveIncidents } from './console-incidents-live';
+import { LiveNudgesScreen, type LiveNudges } from './console-nudges-live';
 
 const STATE_TONE: Record<TenantRow['state'], BadgeTone> = { trial: 'info', active: 'success', 'past due': 'warning', restricted: 'danger', suspended: 'danger', cancelled: 'neutral' };
 const CHURN_TONE = { low: 'success', medium: 'warning', high: 'danger' } as const;
@@ -698,7 +699,8 @@ export function HelpEditorScreen({ articles, noResults, editing, today, live }: 
 
 // YX-12
 /** Trial nudges per day and trigger, switch-on cards, preview, second approval, A/B off by default. */
-export function NudgeEditorScreen({ nudges, me, editing }: { nudges: { key: string; day: number; product: string; condition: string; channels: string; version: string; approvedBy: string | null }[]; me: string; editing?: boolean }) {
+export function NudgeEditorScreen({ nudges, me, editing, live }: { nudges: { key: string; day: number; product: string; condition: string; channels: string; version: string; approvedBy: string | null }[]; me: string; editing?: boolean; /** The live console (C-8, YX-12). */ live?: LiveNudges }) {
+  if (live) return <LiveNudgesScreen live={live} />;
   const [ab, setAb] = useState(false);
   const [approver, setApprover] = useState<string | null>(me);
   return (

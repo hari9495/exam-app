@@ -20939,5 +20939,28 @@
     "expected": "Step 1: 'The client approves the hours' is offered. Step 2: it is not shown.",
     "stories": [],
     "note": "Positive and negative. Answer 1547."
+  },
+  {
+    "id": "MT-CON-YX12a",
+    "area": "Console C-8 (13 Nov 2026)",
+    "screen": "Console › Nudges and the company Home",
+    "url": "http://localhost:3000/staff/nudges",
+    "account": "Two YukthiX staff accounts with the Customer success role and their security keys; in one company with Access requests off (Settings › Access settings): its System Admin and an employee.",
+    "steps": [
+      "Press New copy on Switch-on cards and Send for approval with nothing filled in.",
+      "Choose Access requests, write a heading and body; Send for approval.",
+      "As the same staff member, look for Review.",
+      "As the other staff member, Review: Send back with no note, then Approve.",
+      "As the System Admin, open Home.",
+      "As the employee, open Home.",
+      "As the System Admin press Not now and reload Home.",
+      "In the console, Feature flags: engage the kill switch on Access requests; as another System Admin of that company open Home; then turn it back on."
+    ],
+    "expected": "Step 1: feature, heading and body errors. Step 2: toast 'Sent for approval'. Step 3: 'Another staff member approves it', no Review. Step 4: 'Say what to change before sending it back.', then 'Approved: it is live'. Step 5: the card first on Home with Switch on (opens Access settings) and Not now. Step 6: no card. Step 7: the card is gone. Step 8: no card while killed.",
+    "stories": [
+      "Screens/YukthiX console/YX-12 · Nudge and switch-on copy editor · Switch-on cards and suggestions (C-8)",
+      "Screens/YukthiX console/YX-12 · Nudge and switch-on copy editor · What a company admin sees (C-8)"
+    ],
+    "note": "Positive and negative."
   }
 ]

@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ActionItem } from '@yukthix/ui';
 import type { ApprovalTask } from '@yukthix/ui/desk';
 import { RoleHomeScreen, type LiveHome, type RoleHomeScreenProps } from '@yukthix/ui/frame';
+import { NudgeCard } from '@yukthix/ui/console';
 import { HomeClockCard, type MyAttendance, type MyLeave, type Muster, type PunchResult, type TeamCalendar, type TeamLeaveHome } from '@yukthix/ui/time';
 import type { TeamMember } from '@yukthix/ui/workforce';
 import { apiFetch } from '../../../../lib/api-client';
@@ -55,6 +56,9 @@ export default function YxHomePage() {
   const team = usePeople<{ managerId: string | null; members: TeamMember[] }>('/team');
   const employee = Boolean(team.data?.managerId) && !actingSuperAdmin;
   const isManager = Boolean(team.data?.members.length) && !actingSuperAdmin;
+  // C-8 (YX-12): the one nudge for this person, if any (the API applies the switches, who can act and the weekly limit).
+  const nudge = useQuery<{ nudge: { id: string; heading: string; body: string; switchHref: string | null } | null }>({ queryKey: ['yx', 'nudge'], queryFn: () => apiFetch('/help/nudge', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false, staleTime: Infinity });
+  const n = nudge.data?.nudge;
   const inbox = useQuery<ApprovalTask[]>({ queryKey: ['workflow', '/approvals/inbox'], queryFn: () => apiFetch('/workflow/approvals/inbox', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false });
   // The India date as state: at midnight the page re-renders and the attendance card moves to the new day (founder, 21 Oct).
   const [today, setToday] = useState(todayIndia);
@@ -136,6 +140,17 @@ export default function YxHomePage() {
       void qc.invalidateQueries({ queryKey: ['yx', 'workspace', 'counts'] });
     },
     onReview: () => router.push('/yx/approvals'),
+    nudge: n ? (
+      <NudgeCard
+        heading={n.heading}
+        body={n.body}
+        switchHref={n.switchHref}
+        onDismiss={() => {
+          qc.setQueryData(['yx', 'nudge'], { nudge: null });
+          void apiFetch(`/help/nudge/${encodeURIComponent(n.id)}/dismiss`, { method: 'POST' }, accessToken ?? undefined).catch(() => undefined);
+        }}
+      />
+    ) : undefined,
     clock: attendance.data ? (
       <HomeClockCard
         data={attendance.data}

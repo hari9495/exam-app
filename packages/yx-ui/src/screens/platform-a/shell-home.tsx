@@ -710,6 +710,8 @@ export interface LiveHome {
   onReview?: (item: ActionItem) => void;
   /** The person's "Attendance today" card; left out for people with no attendance. */
   clock?: ReactNode;
+  /** C-8 (YX-12): the one nudge for this person (a suggestion or switch-on card), first on the page; absent when none. */
+  nudge?: ReactNode;
   /** Count cards. previous: last period's number, only when it is on record. empty: nothing to count yet, in words. money: a rupee amount, masked by "Hide amounts". */
   stats?: { id: string; title: string; label: string; value: number; unit?: string; money?: boolean; previous?: number; previousLabel?: string; empty?: string; drill: { label: string; href: string } }[];
   /** Finance: the "Hide amounts" button; the page remembers the choice for the person. */
@@ -789,6 +791,7 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
   const laterHiring = hiring.filter((w) => !besideActions.includes(w) && w.id !== 'interviewsToday');
   const pair = (ws: DashboardWidget[]) => (ws.length === 1 ? [{ ...ws[0], size: 12 as const }] : ws);
   const widgets: DashboardWidget[] = [
+    ...(live.nudge ? [{ id: 'nudge', pinned: true, bare: true, title: 'For you', size: 12 as const, content: live.nudge }] : []),
     {
       id: 'actions',
       title: 'Needs your action',

@@ -14,6 +14,7 @@ import { BLOCK_DATES_DEFAULT, BLOCK_DATES_KEY, MAINTENANCE_SETTINGS } from './ma
 import { PLATFORM } from './platform.service';
 import { HELP_SETTINGS } from '../service-desk/help-centre.service';
 import { LEAD_DEFAULT, LEAD_KEY } from './incidents.service';
+import { NUDGE_LIMIT_DEFAULT, NUDGE_LIMIT_KEY, NUDGE_RETURN_DEFAULT, NUDGE_RETURN_KEY } from './nudges.service';
 import { INVITE_EXPIRE_KEY } from './staff-roles.service';
 import { PlatformStaffGuard } from './platform-staff.guard';
 
@@ -64,6 +65,9 @@ export const PLATFORM_SETTING_DEFS: Record<string, Def> = {
   // Answer 1261: the help-centre no-result searches (YX-11) and the incident breach reminders (C-8).
   ...Object.fromEntries(Object.entries(HELP_SETTINGS).map(([k, d]) => [k, whole(d.label, d.default, d.min, d.max)])),
   [LEAD_KEY]: whole('Breach reminders: hours before the CERT-In and DPDP due times', LEAD_DEFAULT, 0, 24),
+  // C-8 (YX-12): how many nudges one person sees in 7 days at most (0 = none).
+  [NUDGE_LIMIT_KEY]: whole('Nudges: the most one person sees in 7 days', NUDGE_LIMIT_DEFAULT, 0, 7),
+  [NUDGE_RETURN_KEY]: whole('Nudges: days before a nudge put away with Not now may show again (0 = never)', NUDGE_RETURN_DEFAULT, 0, 90),
 };
 
 export class PlatformSettingDto {

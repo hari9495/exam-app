@@ -21,6 +21,7 @@ import ConsoleHelpCentrePage from './(console)/help-centre/page';
 import ConsolePlatformSettingsPage from './(console)/platform-settings/page';
 import ConsoleCustomersPage from './(console)/customers/page';
 import ConsoleIncidentsPage from './(console)/incidents/page';
+import ConsoleNudgesPage from './(console)/nudges/page';
 import YxSupportAccessPage from '../yx/(app)/settings/support-access/page';
 import { ToastProvider } from '@yukthix/ui';
 
@@ -391,5 +392,23 @@ describe('Customer success follow-up', () => {
     await ue.type(within(dialog).getByRole('textbox', { name: /Note/ }), 'Called them');
     await ue.click(within(dialog).getByRole('button', { name: 'Log outreach' }));
     await waitFor(() => expect(calls).toContain('POST /platform/customers/alerts/a1/outreach {"note":"Called them"}'));
+  });
+});
+
+// C-8 (YX-12): nudges per feature switch.
+describe('/staff/nudges', () => {
+  const OVERVIEW = { features: [{ key: 'access.requests', label: 'Access requests', killed: false }], nudges: [{ id: 'n1', featureKey: 'access.requests', kind: 'switch_on', heading: 'Let people ask for access', body: 'Switch on access requests.', status: 'live', writtenBy: 'Joseph Thomas', mine: false, reviewedBy: 'Anand Iyer', reviewNote: null, createdAt: '2026-11-10T00:00:00Z' }], weeklyLimit: 2 };
+  it('loads from /platform/nudges and takes a live one down', async () => {
+    route({ 'GET /platform/nudges': OVERVIEW, 'POST /platform/nudges/n1/retire': OVERVIEW });
+    wrap(<ConsoleNudgesPage />);
+    expect(await screen.findByText('Let people ask for access')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Take down' }));
+    await waitFor(() => expect(calls).toContain('POST /platform/nudges/n1/retire {}'));
+  });
+
+  it('negative: without the nudges key the page says so', async () => {
+    api.mockRejectedValue(Object.assign(new Error('Forbidden'), { status: 403 }));
+    wrap(<ConsoleNudgesPage />);
+    expect(await screen.findByText("You don't have access to the nudges")).toBeInTheDocument();
   });
 });

@@ -160,7 +160,6 @@
     "portals: IcMemberPortalScreen",
     "portals: IdentityVerificationScreen",
     "portals: IntegrationsDirectoryScreen",
-    "portals: NudgeEditorScreen",
     "portals: PartnerBillingScreen",
     "portals: PartnerClientsScreen",
     "portals: PartnerProfileScreen",

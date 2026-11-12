@@ -13704,6 +13704,43 @@ model FeatureFlag {
   @@map("feature_flags")
 }
 
+/// Console C-8 (YX-12): the in-app nudge copy YukthiX staff write per feature switch (staff-only data; companies get the
+/// one nudge meant for them through /help/nudge).
+model FeatureNudge {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  featureKey String    @map("feature_key") @db.VarChar(60)
+  /// suggest (the feature is on: try it), switch_on (YukthiX allows it, the company has it off: how to switch it on)
+  kind       String    @db.VarChar(10)
+  heading    String    @db.VarChar(80)
+  body       String    @db.VarChar(300)
+  /// pending, live, sent_back, retired
+  status     String    @default("pending") @db.VarChar(10)
+  writtenBy  String    @map("written_by") @db.Uuid
+  reviewedBy String?   @map("reviewed_by") @db.Uuid
+  reviewedAt DateTime? @map("reviewed_at") @db.Timestamptz(3)
+  reviewNote String?   @map("review_note") @db.VarChar(300)
+  retiredBy  String?   @map("retired_by") @db.Uuid
+  retiredAt  DateTime? @map("retired_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  version    Int       @default(1)
+
+  @@map("feature_nudges")
+}
+
+/// Which nudge a person was shown, and whether they put it away (Not now); the weekly limit counts these.
+model NudgeView {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  nudgeId        String    @map("nudge_id") @db.Uuid
+  shownAt        DateTime  @default(now()) @map("shown_at") @db.Timestamptz(3)
+  dismissedAt    DateTime? @map("dismissed_at") @db.Timestamptz(3)
+
+  @@unique([userId, nudgeId])
+  @@index([organizationId, userId, shownAt])
+  @@map("nudge_views")
+}
+
 model FeatureFlagOverride {
   organizationId String   @map("organization_id") @db.Uuid
   flagKey        String   @map("flag_key") @db.VarChar(60)
