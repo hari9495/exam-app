@@ -5,7 +5,7 @@ import { play, press, type } from '../_kit/story-play';
 import { YukthixSupportScreen } from './yukthix-support';
 import { YX_ROWS, YX_TICKET } from './yukthix-support-data';
 
-const meta: Meta = { title: 'Screens/Service desk/Contact YukthiX (SD-1.31)', parameters: { layout: 'fullscreen' } };
+const meta: Meta = { title: 'Screens/Helpdesk/Contact YukthiX', parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj;
 

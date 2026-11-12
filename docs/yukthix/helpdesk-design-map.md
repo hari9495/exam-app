@@ -115,7 +115,7 @@ groups them).
 | page | screen it renders | design | API (permission) | verdict |
 |---|---|---|---|---|
 | /yx/desk/help (?new=1, ?article=) | the designed `HelpCentreScreen` (HLP-01) with `live`: Find an answer, resolved-ticket card, My tickets with the resolution promise, the raise drawer (phone: bottom sheet); known issues, the chat offer, WhatsApp / SMS, reading aids and My data in the same layout | HLP-01 | `GET desk/my/tickets` (now with `clock`, `closesOn`, `reopenUntil`, `rating`, `canRate`), `POST desk/my/tickets`, `POST desk/my/tickets/:id/attachments`, `POST desk/my/tickets/:id/rating`, `GET desk/my/desks`, `GET desk/my/kb`, `/kb/suggest`, `/kb/articles/:n`, `POST /kb/articles/:id/feedback`, `GET desk/my/banners`, `POST …/me-too`, `GET/POST desk/my/privacy-requests`, `GET desk/my/chat/prompt`, `desk/my/messaging` (all implicit: the signed-in person's own records; 403 while acting for someone else) | live |
-| /yx/desk/help/[id] | `MyTicketScreen` with `RequestTracker`, `MyDocumentsCard` (stand-ins) | Phase 3b-1 MyTicket | `GET desk/my/tickets/:id`, `POST …/messages`, `/watchers`, `/attachments`, `GET desk/my/requests/:id`, `/documents`, `POST desk/my/documents/:id/sign` (implicit: the requester or a watcher) | live |
+| /yx/desk/help/[id] | `MyTicketScreen` with `RequestTracker`, `MyDocumentsCard` (HLP-19, drawn 12 Nov 2026) | Phase 3b-1 MyTicket | `GET desk/my/tickets/:id`, `POST …/messages`, `/watchers`, `/attachments`, `GET desk/my/requests/:id`, `/documents`, `POST desk/my/documents/:id/sign` (implicit: the requester or a watcher) | live |
 | /yx/desk/tickets | the designed `AgentDeskScreen` (HLP-02) with `live`: views, filters (queue, priority, status, raised), table or board, quick view, bulk for team leads, move to another queue, new ticket for an employee, CSV | HLP-02 | `GET desk/tickets` (`desk.ticket.view`; now with `firstResponse`, `resolution`, `firstResponseAt`, and `createdFrom` / `createdTo`), `GET/POST desk/views` (`desk.ticket.view`), `POST desk/tickets`, `/:id/assign`, `PATCH desk/tickets/:id` (`desk.ticket.work`), `POST desk/tickets/bulk` (`desk.ticket.bulk`, lead of the desk), `POST desk/tickets/:id/move` (`desk.ticket.move`), `GET desk/tickets/export` (`desk.ticket.export`) | live |
 | /yx/desk/tickets/[id] | `TicketScreen` with `TicketWorkRail`, `ResolveDialog`, `EscalateDialog`, `RequestPanel`, `TicketEsmRail`, `TicketKbCard` (the last four are stand-ins) | Phase 3b-1 Workspace; HLP-03 not wired | `GET desk/tickets/:id`, `/timeline`, `/context`, `/sla`, `/work` (`desk.ticket.view`), `POST …/messages` (`desk.ticket.work` or `desk.ticket.note`), `/resolve`, `/escalate`, `/assign` (`desk.ticket.work`), `/merge` (`desk.ticket.merge`) | live (B); wire design (HLP-03) |
 | /yx/desk/knowledge | `KnowledgeScreen` (spaces, articles, editor with review, gaps, recycle bin) | HLP-04 Knowledge; HLP-04 Knowledge base editor not wired | `GET desk/kb/spaces`, `/articles` (`desk.kb.view_internal`, `desk.kb.author` or `desk.kb.publish`), `POST desk/kb/articles`, `/versions`, `/submit` (`desk.kb.author`), `/review`, `/retire` (`desk.kb.publish`), `GET desk/kb/gaps` (`desk.report.view` or `desk.kb.publish`) | live (B); wire design (HLP-04) |
@@ -131,7 +131,7 @@ groups them).
 | /yx/desk/cases, /yx/desk/cases/[id] | the designed `CaseListScreen` and `CaseWorkspaceScreen` (HLP-08) with `live` | HLP-08 | `GET desk/cases`, `/:id`, `POST …/messages`, `/notice`, `/notice/delay`, `/more-time`, `/outcome`, `/outcome/approve`, `/outcome/send-back`, `/ic-report`, `/ic-report/vote`, `/ic-report/sign`, `/relief`, `/relief/:reliefId/done`, `/recuse`, `/members`, `/files`, `GET …/files/:fileId` (no key: a member who has not stepped aside; 404 otherwise; 403 while acting for someone else) | live |
 | /yx/desk/ethics | the designed `EthicsDeskScreen` (HLP-09) with `live` | HLP-09 | `GET desk/ethics/reports`, `POST …/:id/route`, `POST …/:id/severity` (no key: an officer on the report; severity only an ethics officer); in the menu only for the ethics or escalation list (`GET workspace/counts` → `ethicsReports`) | live |
 | /yx/wall/[org]/[token] | `WallScreen` | Reports (HLP-05) Wall | `GET desk/wall/:org/:token` (the secret link; counts only) | live |
-| /yx/desk/setup | `DeskSetupScreen` (desks, calendars, SLA, email, help pages, banners, `SetupStart`) and the stand-ins `CatalogAdmin`, `RulesAdmin`, `LifecycleAdmin`, `ChatQueuesAdmin`, `DeskOrgAdmin`, `SchedulesAdmin`, `MessagingAdmin` | Phase 3b-1 Setup and set-up tabs; Batch 4 GetStarted | desk set-up routes (`desk.settings.manage`, `desk.desk.create`, `desk.sla.manage`, `desk.mailbox.manage`, `desk.portal.manage`, `desk.catalog.manage`, `desk.rule.manage`, `desk.lifecycle.manage`, `desk.channel.manage`) | live |
+| /yx/desk/setup | `DeskSetupScreen` (desks, calendars, SLA, email, help pages, banners, `SetupStart`) and the tabs `CatalogAdmin`, `RulesAdmin`, `LifecycleAdmin`, `ChatQueuesAdmin`, `DeskOrgAdmin`, `SchedulesAdmin`, `MessagingAdmin` (HLP-18, drawn 12 Nov 2026) | Phase 3b-1 Setup and set-up tabs; Batch 4 GetStarted | desk set-up routes (`desk.settings.manage`, `desk.desk.create`, `desk.sla.manage`, `desk.mailbox.manage`, `desk.portal.manage`, `desk.catalog.manage`, `desk.rule.manage`, `desk.lifecycle.manage`, `desk.channel.manage`) | live |
 | /yx/desk/calendar | `MyCalendarScreen` | Phase 3b-1 Calendar | `GET desk/me/calendar`, `GET desk/tasks` (implicit: an agent) | live |
 | /yx/desk/customers | `CustomersScreen` | Phase 3b-1 Customers | `GET desk/customers/*` (`desk.customer.manage` or `desk.ticket.view`; changes `desk.customer.manage`) | live |
 | /yx/desk/known-issues | `KnownIssuesScreen` | Batch 4 KnownIssues | `GET/POST desk/desks/:id/banners` (`desk.ticket.work`) | live |
@@ -143,13 +143,16 @@ groups them).
 | /yx/act/[token] | `ActionLinkScreen` | Approval link and chat apps | `GET/POST workflow/act/:token` (the single-use signed token) | live |
 | /yx/support | `YukthixSupportScreen` | Contact YukthiX (SD-1.31) | `GET/POST desk/support/yukthix/tickets` (`org.yukthix_support.raise`) | live |
 | every signed-in page | `HelpDrawer` (in-app Help, `desk-help.tsx`) | Phase 3b-1 HelpDrawerOpen | the same `desk/my` routes as /yx/desk/help | live |
-| /yx/desk/catalog | `CatalogScreen` (stand-in) | none | `GET desk/my/catalog`, `/items/:id`, `/guides/:id` (implicit) | no design (section 2) |
-| /yx/desk/chat | `RequesterChatScreen` (stand-in) | none | `GET desk/my/chat*` (implicit) | no design (section 2) |
-| /yx/desk/live-chat | `AgentChatScreen` (stand-in) | none | `GET desk/chat/sessions*` (`desk.chat.work`) | no design (section 2) |
-| /yx/desk/team | `TeamScreen` (stand-in) | none | `GET desk/desks/:id/team` (`desk.ticket.assign` or `desk.report.view`), shifts (`desk.ticket.assign`), `PUT desk/me/presence` | no design (section 2) |
+| /yx/desk/catalog | `CatalogScreen` | HLP-15 | `GET desk/my/catalog`, `/items/:id`, `/guides/:id` (implicit) | live |
+| /yx/desk/chat | `RequesterChatScreen` | HLP-16 | `GET desk/my/chat*` (implicit) | live |
+| /yx/desk/live-chat | `AgentChatScreen` | HLP-16 | `GET desk/chat/sessions*` (`desk.chat.work`) | live |
+| /yx/desk/team | `TeamScreen` | HLP-17 | `GET desk/desks/:id/team` (`desk.ticket.assign` or `desk.report.view`), shifts (`desk.ticket.assign`), `PUT desk/me/presence` | live |
 | /yx/desk/confirm-chat | a small page of kit parts (Button, InlineAlert) | none | the chat confirm link | no design (too small to need one) |
 
 ## 2. Live pages with no design (stand-in copies still)
+
+**12 Nov 2026:** the five below were drawn as HLP-15 to HLP-19 (section 4) and left `liveCopies`; only `ArticleBody` stays (its
+three "Live · Help article" stories). The table is kept for the record.
 
 The design-live guard (`packages/yx-ui/src/design-live-guard.known.json`) lists 14 desk screens (18 before HLP-03, which took `EscalateDialog`, `RequestPanel`, `TicketEsmRail` and `TicketKbCard` into its design; 20 before HLP-01: `ChatPromptBanner` and `MyChannelsCard` left with their 7 Live stories) under `liveCopies`:
 live, but drawn only as "Live ·" pictures in `esm-live.stories.tsx`. Grouped by the design that should replace them:
@@ -187,7 +190,7 @@ portal designs also wait: `settings: MobileHelpTicketsScreen`, `MobilePolicyAckS
 
 ## 4. Design groups, story by story
 
-### A. Helpdesk HLP-01 … 14
+### A. Helpdesk HLP-01 … 19
 
 #### HLP-01 · Help centre
 
@@ -244,6 +247,8 @@ the quick view with both targets, an agent who is not a lead, no access).
 | QuickViewLive · Quick view · both response targets, assign to me | live | new story: a ticket past both targets |
 | AgentNotLead · Agent (not a team lead) · no bulk selection | live | new story: no tick boxes; row actions Assign to me, Set waiting on employee (the desk's waiting status, pauses the clock, toast), Open ticket (reply, merge, resolve) |
 | NoAccess · No access (no desk seat) | live | new story: the API refuses (403) anyone without `desk.ticket.view`; the kit's no-access state |
+| LookUpButton · Look up a Not found reference · button | live | Help H-2 (answer 971): an agent's "Look up a reference" on the desk opens the dialog (`GET desk/not-found/:code`, agents only) |
+| LookUpResult · Look up a Not found reference · found | live | the dialog with a found reference: who asked for which address and when, never another company's |
 
 #### HLP-03 · Ticket workspace
 
@@ -584,30 +589,147 @@ Live page: /yx/desk/policy-writer (?draft=), menu Helpdesk › Write policies wi
 | Discard · Draft · Discard (confirm) | live | new story (answer 106): `POST …/:id/discard` (version check; audited); toast, back to the questions |
 | Discarded · Discarded by the daily clean-up | live | new story (answer 106): read-only; by a person or by the morning clean-up after the company's `policy.ai_draft.discard_days` (default 90) |
 
-### B. Service desk designs
+#### HLP-15 · Service catalogue
 
-#### Phase 3b-1 (wired screens)
-
-The six old Help centre stories (Help, HelpEmpty, HelpWithBanner, HelpRaiseTooEarly, HelpRaised, HelpMeTooAgain) go with
-the HLP-01 stand-in and are not rows.
+File: `packages/yx-ui/src/screens/ops/hlp-15.stories.tsx`. Drawn 12 Nov 2026 (the founder's "draw the five stand-ins"): the live component in the Helpdesk frame with Kaveri Foods data; the page renders this same screen.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| MyTicket · HLP-01 My ticket (requester view) | live | /yx/desk/help/[id] renders MyTicketScreen; replies, colleagues, files through `desk/my/tickets/:id` |
+| Catalog · Items and a guide | live | /yx/desk/catalog renders `CatalogScreen` (`GET desk/my/catalog`, `/items/:id`, `/guides/:id`, `POST desk/my/catalog/checkout`; implicit, the requester's own) |
+| CatalogItem · An item open | live | same page |
+| CatalogItemMissing · Add to cart pressed with a required answer missing | live | same page |
+| CatalogItemFailed · The item could not be opened | live | same page |
+| CatalogSent · Request sent (toast with Follow) | live | same page |
+| CatalogForOtherMissing · Send request for someone else with nobody chosen | live | same page |
+| CatalogEmpty · Nothing to order | live | same page |
+| CatalogLoading · Loading | live | same page |
+| CatalogError · Could not load | live | same page |
+
+#### HLP-16 · Chat with a desk
+
+File: `packages/yx-ui/src/screens/ops/hlp-16.stories.tsx`. Drawn 12 Nov 2026 (the founder's "draw the five stand-ins"): the live component in the Helpdesk frame with Kaveri Foods data; the page renders this same screen.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| RequesterChat · Requester, talking to IT | live | /yx/desk/chat renders `RequesterChatScreen` (`desk/my/chat*`, implicit) and /yx/desk/live-chat `AgentChatScreen` (`desk/chat/sessions*`, `desk.chat.work`) |
+| RequesterChatTyping · Requester, the agent is typing | live | same page |
+| RequesterChatOffline · Requester, connection lost | live | same page |
+| RequesterChatNew · Requester, start a new chat | live | same page |
+| RequesterChatNewMissing · Requester, start pressed with no subject | live | same page |
+| RequesterChatSendMissing · Requester, Send pressed with nothing written | live | same page |
+| RequesterChatRateMissing · Requester, Rate pressed with no stars | live | same page |
+| RequesterChatEnded · Requester, ended (rate it) | live | same page |
+| RequesterChatSendFailed · Requester, a message not sent | live | same page |
+| RequesterChatEmpty · Requester, no chats yet | live | same page |
+| RequesterChatLoading · Requester, loading | live | same page |
+| RequesterChatError · Requester, could not load | live | same page |
+| AgentChat · Agent, in a chat | live | same page |
+| AgentChatWaiting · Agent, a chat waiting to be taken | live | same page |
+| AgentChatTakeFailed · Agent, Take refused | live | same page |
+| AgentChatHandMissing · Agent, Hand over pressed with nobody chosen | live | same page |
+| AgentCallMissing · Agent, calls · Save pressed with no subject | live | same page |
+| AgentChatEmpty · Agent, no chats | live | same page |
+| AgentChatLoading · Agent, loading | live | same page |
+| AgentChatError · Agent, could not load | live | same page |
+| AgentChatNoAccess · No access | live | same page |
+
+#### HLP-17 · Desk team and shifts
+
+File: `packages/yx-ui/src/screens/ops/hlp-17.stories.tsx`. Drawn 12 Nov 2026 (the founder's "draw the five stand-ins"): the live component in the Helpdesk frame with Kaveri Foods data; the page renders this same screen.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Team · Lead (capacity, shifts, forecast) | live | /yx/desk/team renders `TeamScreen` (`GET desk/desks/:id/team`, shifts with `desk.ticket.assign`, `PUT desk/me/presence`) |
+| TeamAgent · Agent (my presence only) | live | same page |
+| TeamRouting · Change capacity and languages | live | same page |
+| TeamShiftMissing · Add the shift pressed with nothing filled | live | same page |
+| TeamImportMissing · Import shifts pressed with nothing pasted | live | same page |
+| TeamImported · Shifts imported (toast) | live | same page |
+| TeamPresenceFailed · Presence change refused | live | same page |
+| TeamEmpty · No one on the desk | live | same page |
+| TeamLoading · Loading | live | same page |
+| TeamError · Could not load | live | same page |
+| TeamWorking · Saving presence | live | same page |
+
+#### HLP-18 · Desk set-up tabs
+
+File: `packages/yx-ui/src/screens/ops/hlp-18.stories.tsx`. Drawn 12 Nov 2026 (the founder's "draw the five stand-ins"): the live component in the Helpdesk frame with Kaveri Foods data; the page renders this same screen.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Lifecycle · Ticket lifecycle designer | live | /yx/desk/setup renders the tab (`CatalogAdmin`, `RulesAdmin`, `LifecycleAdmin`, `ChatQueuesAdmin`, `DeskOrgAdmin`, `SchedulesAdmin`, `MessagingAdmin`) with its own key (`desk.catalog.manage`, `desk.rule.manage`, `desk.lifecycle.manage`, `desk.channel.manage`, `desk.desk.create`) |
+| LifecycleProblem · Lifecycle check finds a problem | live | same page |
+| LifecycleReady · Lifecycle check passes (toast) | live | same page |
+| LifecycleEmpty · No lifecycle yet | live | same page |
+| LifecycleLoading · Lifecycle loading | live | same page |
+| Schedules · Recurring tickets and follow-ups | live | same page |
+| SchedulesEmpty · No schedules yet | live | same page |
+| SchedulesMissing · Recurring ticket Save pressed with nothing filled | live | same page |
+| SequenceMissing · Save sequence pressed with nothing filled | live | same page |
+| SchedulesStateFailed · Pausing a schedule refused | live | same page |
+| ChatQueues · Chat queues and prompts | live | same page |
+| ChatQueuesEdit · Edit a chat queue | live | same page |
+| ChatQueuesNewMissing · New chat queue saved with no name | live | same page |
+| ChatQueuesEmpty · No chat queues yet | live | same page |
+| Messaging · WhatsApp, SMS and web chat widget | live | same page |
+| MessagingEmpty · No messaging lines yet | live | same page |
+| MessagingAddMissing · Add the line pressed with nothing filled | live | same page |
+| MessagingWidgetMissing · Add the widget pressed with no name | live | same page |
+| MessagingLoading · Messaging loading | live | same page |
+| Org · Desks, branches, document templates, journeys | live | same page |
+| OrgStarter · Starter pack asks about a restricted HR desk | live | same page |
+| OrgStarterDone · Starter pack added (toast) | live | same page |
+| OrgSiteMissing · Add site pressed with no location | live | same page |
+| OrgTemplateMissing · Save template pressed with nothing filled | live | same page |
+| OrgJourneyMissing · Save journey pressed with nothing filled | live | same page |
+| OrgCloneMissing · Copy desk pressed with nothing filled | live | same page |
+| OrgNoCreate · Someone who cannot make desks | live | same page |
+| CatalogSetup · Catalogue items | live | same page |
+| CatalogSetupEdit · Catalogue item editor | live | same page |
+| CatalogSetupAddMissing · Add item pressed with no name | live | same page |
+| CatalogSetupLimitStep · Moving the first section up says it is already first | live | same page |
+| CatalogSetupEmpty · No catalogue items yet | live | same page |
+| CatalogSetupSaveFailed · Saving an item refused | live | same page |
+| Rules · Rules | live | same page |
+| RulesEdit · Rule editor | live | same page |
+| RulesRuns · What a rule did | live | same page |
+| RulesEmpty · No rules yet (recipes) | live | same page |
+| RulesSaveFailed · Saving a rule refused | live | same page |
+| RulesTooEarly · New rule saved with no name | live | same page |
+| WebhookTooEarly · Add webhook pressed with nothing filled | live | same page |
+| WebhookAdded · Webhook added, secret to copy | live | same page |
+
+#### HLP-19 · My request
+
+File: `packages/yx-ui/src/screens/ops/hlp-19.stories.tsx`. Drawn 12 Nov 2026 (the founder's "draw the five stand-ins"): the live component in the Helpdesk frame with Kaveri Foods data; the page renders this same screen.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Tracker · Tracker with the approval route | live | /yx/desk/help/[id] renders `RequestTracker` and `MyDocumentsCard` beside the ticket (`GET desk/my/requests/:id`, `/documents`, `POST desk/my/documents/:id/sign`; the requester or a watcher) |
+| TrackerCancel · Cancel, asks why | live | same page |
+| TrackerCancelFailed · Cancel refused | live | same page |
+| TrackerReadOnly · Cannot cancel any more | live | same page |
+| Documents · Documents to sign | live | same page |
+| DocumentsSign · Read and sign, open | live | same page |
+| DocumentsSignMissing · Send me a code pressed with nothing filled | live | same page |
+| DocumentsCodeFailed · The code could not be sent | live | same page |
+| DocumentsNone · No documents | live | same page |
+
+### B. Other Helpdesk designs (were "Service desk")
+
+#### Desk set-up
+
+File: `packages/yx-ui/src/screens/desk/desk.stories.tsx` (from "Phase 3b-1 (wired screens)", 12 Nov 2026): /yx/desk/setup: desks, calendars, response targets, email, help pages and banners; the other tabs are HLP-18.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
 | Setup · Desk set-up | live | /yx/desk/setup renders DeskSetupScreen |
 | SetupKbReview · Desk set-up · Settings · check help articles again every | live | HLP-04b (founder 3 Nov 2026): Settings tab, company's Service Desk owner (`desk.desk.create`): Segment 3, 6, 12 or 24 months; `GET/PUT desk/kb/settings` (registry `desk.kb.review_months`, default 12), toast |
 | SetupAtRisk · Desk set-up · Settings · at risk from (per desk) | live | HLP-05b (founder 3 Nov 2026): Settings tab, `desk.settings.manage` like the other desk settings: Segment 50 / 60 / 70 / 80 / 90 % (default 80), saved with Save settings (`PATCH desk/desks/:id`, version check, audited), toast |
-| Calendar · SD-1.11 My calendar | live | /yx/desk/calendar; the calendar feed link can be made and revoked |
 | SlaSetupTab · SD-1.14 Response targets (desk set-up tab) | live | /yx/desk/setup, SLA tab (`desk.sla.manage`) |
 | EmailSetup · SD-1.18 Email (desk set-up tab) | live | /yx/desk/setup, Email tab (`desk.mailbox.manage`) |
 | PortalSetup · SD-1.21 Help pages (desk set-up tab) | live | /yx/desk/setup, Help pages tab (`desk.portal.manage`) |
 | BannerSetup · SD-1.23 Banners (desk set-up tab) | live | /yx/desk/setup, Banners tab |
-| Customers · SD-1.22 Customers | live | /yx/desk/customers |
-| HelpDrawerOpen · US-B-100 In-app Help drawer | live | `HelpDrawer` on every signed-in page (`desk-help.tsx`) |
-| PortalLogin · US-G-021 Outside portal · sign in | live | /yx/portal/[org]/[portal] renders PortalScreen |
-| PortalHomeStory · US-G-021 Outside portal · my tickets | live | the portal's own sign-in, then my tickets |
-| PortalTicketStory · US-G-021 Outside portal · one ticket | live | |
-| ResolveTooEarly · SD-1.10 Resolve · pressed without a code or note | live | `ResolveDialog` when the desk needs a resolution code |
 | NewDeskTooEarly · Desk set-up · Create desk pressed with nothing filled | live | |
 | HolidayTooEarly · Desk set-up · Add holiday pressed with no date or name | live | |
 | MailboxTooEarly · SD-1.18 Email · Add mailbox pressed with nothing filled | live | |
@@ -615,14 +737,37 @@ the HLP-01 stand-in and are not rows.
 | PortalTooEarly · SD-1.21 Help pages · Save pressed with nothing filled | live | |
 | PortalNoDesk · SD-1.21 Help pages · New help page with no customer desk (toast) | live | |
 | BannerTooEarly · SD-1.23 Banners · Post pressed with nothing written | live | |
-| HelpDrawerTooEarly · US-B-100 Help drawer · Raise ticket pressed with nothing filled | live | |
-| MyTicketReplyTooEarly · HLP-01 My ticket · Send reply pressed with nothing written | live | |
-| MyTicketWatchTooEarly · HLP-01 My ticket · Add colleague pressed with no email | live | |
+
+#### Customer portal
+
+File: `packages/yx-ui/src/screens/desk/desk-portal.stories.tsx` (from "Phase 3b-1 (wired screens)", 12 Nov 2026): the outside portal (/yx/portal/[org]/[portal]) and /yx/desk/customers.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Customers · SD-1.22 Customers | live | /yx/desk/customers |
+| PortalLogin · US-G-021 Outside portal · sign in | live | /yx/portal/[org]/[portal] renders PortalScreen |
+| PortalHomeStory · US-G-021 Outside portal · my tickets | live | the portal's own sign-in, then my tickets |
+| PortalTicketStory · US-G-021 Outside portal · one ticket | live | |
 | CustomersPlanTooEarly · SD-1.22 Customers · Add plan pressed with nothing filled | live | |
 | CustomersPersonTooEarly · SD-1.22 Customers · Add person pressed with nothing filled | live | |
 | CustomersProductTooEarly · SD-1.22 Customers · Add product pressed with no name | live | |
 
-#### Reports (HLP-05)
+#### My ticket, help drawer and calendar
+
+File: `packages/yx-ui/src/screens/desk/desk-mine.stories.tsx` (from "Phase 3b-1 (wired screens)", 12 Nov 2026): a requester's ticket (/yx/desk/help/[id]), the in-app Help drawer, an agent's calendar and the resolve dialog.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| MyTicket · HLP-01 My ticket (requester view) | live | /yx/desk/help/[id] renders MyTicketScreen; replies, colleagues, files through `desk/my/tickets/:id` |
+| Calendar · SD-1.11 My calendar | live | /yx/desk/calendar; the calendar feed link can be made and revoked |
+| HelpDrawerOpen · US-B-100 In-app Help drawer | live | `HelpDrawer` on every signed-in page (`desk-help.tsx`) |
+| ResolveTooEarly · SD-1.10 Resolve · pressed without a code or note | live | `ResolveDialog` when the desk needs a resolution code |
+| HelpDrawerWhatsNew · US-B-100 Help drawer · What's new (H-4) | live | Help H-4 (answer 943): the Help drawer's What's new tab (`WhatsNewPanel`), for each person's role and the company's products |
+| HelpDrawerTooEarly · US-B-100 Help drawer · Raise ticket pressed with nothing filled | live | |
+| MyTicketReplyTooEarly · HLP-01 My ticket · Send reply pressed with nothing written | live | |
+| MyTicketWatchTooEarly · HLP-01 My ticket · Add colleague pressed with no email | live | |
+
+#### HLP-05 · Wall screen
 
 Live page: the wall screen at /yx/wall/[org]/[token]. The report tabs moved into HLP-05 SLA dashboard (round 5); their 14
 stories were deleted with `ReportsScreen`.
@@ -632,7 +777,7 @@ stories were deleted with `ReportsScreen`.
 | Wall · Wall screen (TV) | live | /yx/wall/[org]/[token], counts only, no session |
 | WallOff · Wall screen · switched off | live | a revoked link |
 
-#### Approval link and chat apps
+#### Approval links
 
 Live pages: /yx/approvals (the chat apps card) and /yx/act/[token] (the approval link from an email or chat card).
 
@@ -651,7 +796,7 @@ Live pages: /yx/approvals (the chat apps card) and /yx/act/[token] (the approval
 | LinkInvalid · Approval link · not valid | live | |
 | LinkLoading · Approval link · loading | live | |
 
-#### Batch 4 standalone and privacy
+#### People list, privacy and sign-up
 
 | story (sub-page) | verdict | note |
 |---|---|---|
@@ -667,7 +812,7 @@ Live pages: /yx/approvals (the chat apps card) and /yx/act/[token] (the approval
 | GetStartedTooEarly · Get started · Create desk pressed with nothing filled | live | |
 | SignUpTooEarly · Sign up · Start free trial pressed with nothing filled | live | |
 
-#### Contact YukthiX (SD-1.31)
+#### Contact YukthiX
 
 Live page: /yx/support (Security › Contact YukthiX), with `org.yukthix_support.raise`.
 
@@ -1250,6 +1395,38 @@ Built 4 Nov 2026 (`feat/yukthix-hlp-14`) from the founder decisions of 4 Nov 202
   registered factory". Nothing is flagged or removed by itself; removing the value afterwards changes nothing for the
   flagged location. demo-org's Hosur plant shows the alert today.
 
+## 4j. HLP-15 to HLP-19 as built, and the one Helpdesk folder (12 Nov 2026)
+
+- **The five stand-ins, drawn:** HLP-15 Service catalogue, HLP-16 Chat with a desk (requester and agent; the title avoids
+  the word "Live", which the guard reads as a picture of the live app), HLP-17 Desk team and shifts, HLP-18 Desk set-up
+  tabs (catalogue items, rules, lifecycle, chat queues, desks and branches, schedules, messaging) and HLP-19 My request
+  (tracker and documents), as story files in `screens/ops/` (91 stories, from the 91 "Live ·" pictures), each in the
+  Helpdesk frame (`OpsDesk`, whose panel now lists Service catalogue, Chat, Live chat, Desk team and Desk set-up) with
+  Kaveri Foods data, names without the old "Catalogue ·" style prefixes. The drawing is the component the page renders,
+  so there is one version: the 13 screens left `liveCopies` in `design-live-guard.known.json`. These screens take their
+  live data as props (they were built that way), not through a separate `live` object; no stand-in copy existed to delete
+  beyond the "Live ·" stories, which went.
+- **One folder:** every "Screens/Service desk/" story moved under "Screens/Helpdesk/" with plain names: Desk set-up,
+  Customer portal, and My ticket, help drawer and calendar (the old Phase 3b-1 file in three), Approval links, Contact
+  YukthiX, People list, privacy and sign-up, and HLP-05 · Wall screen (the reports' wall, next to HLP-05). The help
+  article's three pictures are "Helpdesk/Live · Help article". Titles and files only; no live behaviour changed.
+- **The count:** rows for HLP-02's two look-up stories and Phase 3b-1's "Help drawer · What's new"; the script reads the
+  three new desk files and prints "ok" (A: 19 groups, 357 stories; B: 7 groups, 58).
+- **Tests:** web `yx-desk-esm-pages.test` (the catalogue lists and opens an item, a refused load says so; a requester's
+  chats; an agent without the chat key gets no access; a lead sees the team and shifts, someone else's page never asks
+  for the team; a request shows its stages and documents, a ticket without them shows neither). The kit's own tests of
+  these screens (`esm.test`, `esm2.test`, `esm3.test`, `rules-admin.test`) and the desk set-up page tests stay.
+
+### Questions (from 1601)
+
+1601. **A deeper redesign.** The drawings keep the screens' present layout (built from the kit) in the Helpdesk frame.
+      *Suggested: walk them as drawn; anything that should look different is changed in the drawing and the page at
+      once (one version).*
+1602. **Long set-up tabs.** Several set-up tabs and the team page need more than one screen at 1278 x 635 (lists of
+      items, rules and shifts). *Suggested: keep them as lists that scroll; the page header and tab bar stay in view.*
+1603. **The help article picture.** `ArticleBody` is still a "Live ·" picture (help centre, portal, knowledge pages).
+      *Suggested: draw it with HLP-04's article view next.*
+
 ## 5. Two designs for one job
 
 HLP-02 … 05 (founder-approved Helpdesk designs, `screens/ops/helpdesk.tsx`) and the Service desk designs (Phase 3b-1,
@@ -1599,7 +1776,7 @@ and Service desk design story file has exactly one row per story, in file order,
 // every Helpdesk (screens/ops/hlp-NN) and Service desk design story file has exactly one row per story, in file order.
 const fs = require('fs');
 const OPS = 'packages/yx-ui/src/screens/ops/', DESK = 'packages/yx-ui/src/screens/desk/';
-const DESK_FILES = ['desk', 'reports', 'approval-links', 'people-privacy', 'yukthix-support'].map((f) => DESK + f + '.stories.tsx');
+const DESK_FILES = ['desk', 'desk-portal', 'desk-mine', 'reports', 'approval-links', 'people-privacy', 'yukthix-support'].map((f) => DESK + f + '.stories.tsx');
 const files = [...fs.readdirSync(OPS).filter((f) => /^hlp-\d+\.stories\.tsx$/.test(f)).map((f) => OPS + f), ...DESK_FILES];
 const want = {};
 for (const f of files) {

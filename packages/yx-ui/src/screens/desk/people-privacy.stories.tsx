@@ -6,7 +6,7 @@ import { PrivacyScreen, type PrivacyRequestRow, type PrivacyStatus } from './pri
 import { DeskSignUpScreen, KnownIssuesScreen, SetupStart, type SetupChecklist } from './setup-start';
 import { BANNERS, DESK } from './data';
 
-const meta: Meta = { title: 'Screens/Service desk/Batch 4 standalone and privacy', parameters: { layout: 'fullscreen' } };
+const meta: Meta = { title: 'Screens/Helpdesk/People list, privacy and sign-up', parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj;
 
