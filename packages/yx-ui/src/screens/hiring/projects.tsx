@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { CheckCheck, FolderKanban, Plus } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
-import { EmptyState, ErrorState, InlineAlert, Meter, Skeleton } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, Meter, NoAccessState, Skeleton } from '../../components/feedback';
 import { Select } from '../../components/select';
 import { ConfirmDialog } from '../../components/overlay';
 import { DataTable, type TableColumn } from '../../components/table';
@@ -27,6 +27,11 @@ import './hiring.css';
 type ListState = 'ready' | 'loading' | 'error';
 export type PrjPersona = 'pm' | 'finance' | 'hr';
 const STATUS_TONE: Record<Project['status'], BadgeTone> = { Draft: 'neutral', Active: 'success', 'On hold': 'warning', Closed: 'neutral' };
+
+/** Projects switched off for the company, shown only to people who would otherwise open the page (answer 1401). */
+export function ProjectsOffState() {
+  return <EmptyState title="Projects is switched off" description="Your company has not switched Projects on yet. A System Admin switches it on in Settings › Projects & timesheets." />;
+}
 
 /* ================================================================== PRJ-01 · Projects list */
 
@@ -67,11 +72,29 @@ export function ProjectsListScreen({ rows: drawnRows = [], persona: drawnPersona
     searchPlaceholder: 'Search projects or clients',
   });
   const cols: TableColumn<Project>[] = [
-    { key: 'code', header: 'Code', type: 'id', value: (r) => r.code, width: 100 },
-    { key: 'name', header: 'Project', value: (r) => r.name, render: (r) => <PersonLabel name={r.name} secondary={r.client ?? 'Internal'} /> },
-    { key: 'model', header: 'Billing', value: (r) => r.model, groupable: true },
-    { key: 'pm', header: 'Project manager', type: 'person', value: (r) => r.pm, person: (r) => ({ name: r.pm }) },
-    { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => STATUS_TONE[v as Project['status']] },
+    { key: 'code', header: 'Code', type: 'id', value: (r) => r.code, width: 150, render: (r) => <span className="yx-hire-clip" title={r.code}>{r.code}</span> },
+    {
+      key: 'name',
+      header: 'Project',
+      value: (r) => r.name,
+      width: 340,
+      render: (r) =>
+        live ? (
+          <span className="yx-hire-clip2">
+            <span title={r.name}>{r.name}</span>
+            <span title={r.client ?? 'Internal'}>
+              <Text as="span" size="sm" tone="secondary">
+                {r.client ?? 'Internal'}
+              </Text>
+            </span>
+          </span>
+        ) : (
+          <PersonLabel name={r.name} secondary={r.client ?? 'Internal'} />
+        ),
+    },
+    { key: 'model', header: 'Billing', value: (r) => r.model, groupable: true, optional: Boolean(live) },
+    { key: 'pm', header: 'Project manager', type: 'person', value: (r) => r.pm, person: (r) => ({ name: r.pm }), optional: Boolean(live) },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => STATUS_TONE[v as Project['status']], width: live ? 120 : undefined },
     {
       key: 'burn',
       header: 'Hours burn',
@@ -91,17 +114,14 @@ export function ProjectsListScreen({ rows: drawnRows = [], persona: drawnPersona
         ]
       : []),
     ...(live && persona === 'finance' ? [{ key: 'feeLive', header: 'Fee', type: 'money', value: (r: Project) => r.fee } as TableColumn<Project>] : []),
-    ...(live ? [{ key: 'people', header: 'People', type: 'number', value: (r: Project) => r.people } as TableColumn<Project>] : [{ key: 'util', header: 'Utilisation', type: 'number', value: (r: Project) => r.utilisation, render: (r: Project) => (r.utilisation ? `${r.utilisation}%` : '—') } as TableColumn<Project>]),
+    ...(live ? [{ key: 'people', header: 'People', type: 'number', value: (r: Project) => r.people, width: 104 } as TableColumn<Project>] : [{ key: 'util', header: 'Utilisation', type: 'number', value: (r: Project) => r.utilisation, render: (r: Project) => (r.utilisation ? `${r.utilisation}%` : '—') } as TableColumn<Project>]),
     ...(persona === 'finance' && !live ? [{ key: 'margin', header: 'Margin', type: 'number', value: (r: Project) => marginPct(r.billed + r.wip, r.cost), render: (r: Project) => (r.fee ? `${marginPct(r.billed + r.wip, r.cost)}%` : '—') } as TableColumn<Project>] : []),
   ];
   const canCreate = live ? live.can.create : persona !== 'hr';
   const newButton = canCreate ? <Button variant="primary" icon={Plus} onClick={() => setCreating(true)}>New project</Button> : undefined;
-  if (live?.state === 'no-access')
-    return (
-      <ProjectsFrame active="Projects">
-        <EmptyState title="You can't open Projects." description="Projects needs a Projects key, or a project you manage. If Projects is switched off, a System Admin switches it on in Settings › Projects &amp; timesheets." />
-      </ProjectsFrame>
-    );
+  // Walk 12 Nov (answers 946, 972): the kit's no-access page (Request access), never naming a key.
+  if (live?.state === 'no-access' || live?.state === 'off')
+    return <ProjectsFrame active="Projects">{live.state === 'off' ? <ProjectsOffState /> : <NoAccessState what="Projects" grantedBy="your System Admin" />}</ProjectsFrame>;
   return (
     <ProjectsFrame active="Projects">
       <PageHeader title="Projects" description="Client and internal projects with budgets in hours, cost and fee. Burn alerts at 80% and 100%." actions={newButton} />
@@ -213,7 +233,7 @@ export function ProjectWorkspaceScreen({ project: drawnProject, persona: drawnPe
   if (live && !d)
     return (
       <ProjectsFrame active="Projects">
-        {live.state === 'error' ? <ErrorState title="We couldn't load the project." onRetry={live.onRetry} /> : live.state === 'no-access' ? <EmptyState title="You can't open this project." description="It needs a Projects key, or to be its manager." /> : <Skeleton height={320} />}
+        {live.state === 'error' ? <ErrorState title="We couldn't load the project." onRetry={live.onRetry} /> : live.state === 'off' ? <ProjectsOffState /> : live.state === 'no-access' ? <NoAccessState what="this project" grantedBy="your System Admin" /> : <Skeleton height={320} />}
       </ProjectsFrame>
     );
   const p = d ? toProject(d.project) : drawnProject!;

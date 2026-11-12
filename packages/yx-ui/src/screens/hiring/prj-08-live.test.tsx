@@ -78,10 +78,13 @@ describe('PRJ-08 Timesheet mapping rules (live)', () => {
     expect(screen.getByText('No tools connected')).toBeInTheDocument();
   });
 
-  it('no access and error', () => {
-    const { unmount } = show(<MappingRulesScreen live={live({ state: 'no-access', data: null })} />);
-    expect(screen.getByText("You can't open the mapping rules.")).toBeInTheDocument();
-    unmount();
+  it('no access (kit page), Projects off and error', () => {
+    const one = show(<MappingRulesScreen live={live({ state: 'no-access', data: null })} />);
+    expect(screen.getByText("You don't have access to the timesheet mapping rules")).toBeInTheDocument();
+    one.unmount();
+    const two = show(<MappingRulesScreen live={live({ state: 'off', data: null })} />);
+    expect(screen.getByText('Projects is switched off')).toBeInTheDocument();
+    two.unmount();
     show(<MappingRulesScreen live={live({ state: 'error', data: null })} />);
     expect(screen.getByText("We couldn't load the mapping rules.")).toBeInTheDocument();
   });

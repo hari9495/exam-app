@@ -43,7 +43,9 @@ const liveList = (over: Partial<LiveProjectsList> = {}): LiveProjectsList => ({ 
 const liveWs = (over: Partial<LiveProjectWorkspace> = {}): LiveProjectWorkspace => ({ state: 'ready', detail: LIVE_PROJECT_DETAIL, choices: LIVE_PROJECT_CHOICES, burn: { warn: 80, over: 100 }, onUpdate: ok, onStatus: ok, onAllocate: ok, onChangeAllocation: ok, onEndAllocation: ok, onAddTask: ok, onChangeTask: ok, onAddMilestone: ok, onCompleteMilestone: ok, ...over });
 export const LiveList: S = { name: 'Live · list (Projects manage)', render: () => <ProjectsListScreen live={liveList()} /> };
 export const LiveListFinance: S = { name: 'Live · list (Projects finance, with fee)', render: () => <ProjectsListScreen live={liveList({ rows: LIVE_PROJECT_ROWS_FINANCE, can: { create: false, finance: true } })} /> };
-export const LiveListNoAccess: S = { name: 'Live · no access or Projects off', render: () => <ProjectsListScreen live={liveList({ state: 'no-access', rows: [] })} /> };
+export const LiveListNoAccess: S = { name: 'Live · no access (Request access)', render: () => <ProjectsListScreen live={liveList({ state: 'no-access', rows: [] })} /> };
+export const LiveListOff: S = { name: 'Live · Projects switched off', render: () => <ProjectsListScreen live={liveList({ state: 'off', rows: [] })} /> };
+export const LiveListLongNames: S = { name: 'Live · long codes and names (ellipsis)', render: () => <ProjectsListScreen live={liveList({ rows: [{ ...LIVE_PROJECT_ROWS[0]!, id: 'pl', code: 'FSSAI-AUDIT', name: 'FSSAI audit readiness for the Hosur and Kolar plants', client: 'Nilgiri Retail Private Limited' }, ...LIVE_PROJECT_ROWS] })} /> };
 export const LiveNewProject: S = { name: 'Live · new project drawer', render: () => <ProjectsListScreen live={liveList({ defaultNew: true })} /> };
 export const LiveWorkspace: S = { name: 'Live · workspace overview with burn alert', render: () => <ProjectWorkspaceScreen live={liveWs()} /> };
 export const LiveTeam: S = { name: 'Live · team and allocations', render: () => <ProjectWorkspaceScreen live={liveWs()} defaultTab="team" /> };

@@ -126,3 +126,8 @@
 }
 
 .yx-hire-qlist__btn:hover:not([aria-current]) { background: var(--yx-color-bg-subtle); }
+
+/* PRJ-01 list (walk 12 Nov): a long code or project name ends in an ellipsis; the full text is its tooltip. */
+.yx-hire-clip { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.yx-hire-clip2 { display: flex; flex-direction: column; min-width: 0; }
+.yx-hire-clip2 > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

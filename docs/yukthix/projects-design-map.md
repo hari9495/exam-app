@@ -89,10 +89,10 @@ named in the note) · **wire design** (the API exists and the screen is not wire
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Projects and timesheets (PRJ-01, PRJ-02, PRJ-08) | 3 | 40 | 7 | 0 | 4 | 1 | 52 |
+| A. Projects and timesheets (PRJ-01, PRJ-02, PRJ-08) | 3 | 43 | 7 | 0 | 4 | 1 | 55 |
 | B. Capacity and bench (PRJ-03, PRJ-07) | 2 | 0 | 1 | 0 | 9 | 0 | 10 |
 | C. Cost and billing (PRJ-04 to PRJ-06) | 3 | 0 | 5 | 0 | 11 | 0 | 16 |
-| **All A-C** | **8** | **40** | **13** | **0** | **24** | **1** | **78** |
+| **All A-C** | **8** | **43** | **13** | **0** | **24** | **1** | **81** |
 
 Counted by script on 12 Nov 2026 on `docs/yukthix-projects-map` (the script is in the appendix; it prints "ok"). Recounted on 12 Nov 2026 on `feat/yukthix-projects-p1` after P-1: PRJ-01 has 30 stories (16 live-state stories added), 68 in all. Recounted after P-3 on `feat/yukthix-projects-p3`: PRJ-08 has 15 (10 live-state stories added), 78 in all. There
 are 52 stories in 8 files whose title starts `Screens/Projects/`: `packages/yx-ui/src/screens/hiring/prj-01-projects`
@@ -147,7 +147,9 @@ screens are in `screens/hiring/projects.tsx` and `projects-billing.tsx`. One sto
 | Error · Error | live | P-1: the live list error state |
 | LiveList · Live · list (Projects manage) | live | P-1 live state |
 | LiveListFinance · Live · list (Projects finance, with fee) | live | P-1 live state (1412) |
-| LiveListNoAccess · Live · no access or Projects off | live | P-1: Projects off (1401) or no key and no project managed |
+| LiveListNoAccess · Live · no access (Request access) | live | The kit's `NoAccessState` with Request access (answers 946, 972; walk 12 Nov) |
+| LiveListOff · Live · Projects switched off | live | Shown only to people who could otherwise open Projects (walk 12 Nov) |
+| LiveListLongNames · Live · long codes and names (ellipsis) | live | Code and Project sized for 1278 px; a longer name ends in an ellipsis with the full text as its tooltip (walk 12 Nov) |
 | LiveNewProject · Live · new project drawer | live | P-1: `ProjectDrawer`, starts as a draft |
 | LiveWorkspace · Live · workspace overview with burn alert | live | P-1 live state |
 | LiveTeam · Live · team and allocations | live | P-1 live state |
@@ -191,7 +193,8 @@ screens are in `screens/hiring/projects.tsx` and `projects-billing.tsx`. One sto
 | LivePrefillOff · Live · pre-fill off (System Admin) | live | P-3 live state |
 | LiveManager · Live · Projects manager (pre-fill read-only) | live | P-3 live state |
 | LiveEmpty · Live · no rules yet | live | P-3 live state |
-| LiveNoAccess · Live · no access or Projects off | live | P-3 live state |
+| LiveNoAccess · Live · no access (Request access) | live | The kit's `NoAccessState` with Request access (walk 12 Nov) |
+| LiveOff · Live · Projects switched off | live | Shown only to Projects managers and System Admins (walk 12 Nov) |
 | LiveError · Live · error | live | P-3 live state |
 
 ### B. Capacity and bench (PRJ-03, PRJ-07)

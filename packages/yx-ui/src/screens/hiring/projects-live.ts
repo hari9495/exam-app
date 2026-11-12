@@ -5,7 +5,8 @@ import type { Milestone } from './projects-logic';
 
 export type BillingModel = 'time_material' | 'fixed_fee' | 'retainer' | 'non_billable';
 export type ProjectStatus = 'draft' | 'active' | 'on_hold' | 'closed';
-export type LiveLoad = 'ready' | 'loading' | 'error' | 'no-access';
+/** 'off': Projects is switched off for the company (a person who could otherwise open the page). */
+export type LiveLoad = 'ready' | 'loading' | 'error' | 'no-access' | 'off';
 
 export const MODEL_LABEL: Record<BillingModel, Project['model']> = { time_material: 'Time & material', fixed_fee: 'Fixed fee', retainer: 'Retainer', non_billable: 'Non-billable' };
 export const STATUS_LABEL: Record<ProjectStatus, Project['status']> = { draft: 'Draft', active: 'Active', on_hold: 'On hold', closed: 'Closed' };

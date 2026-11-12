@@ -156,6 +156,9 @@ export class ProjectsService {
   async list(ctx: TenantContext, user: ScopeUser) {
     const w = await this.who(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      // Walk 12 Nov: someone with no Projects key is told they have no access (the page offers Request access); only
+      // people who could otherwise open Projects learn that it is switched off.
+      if (!w.any && !(await ProjectsService.on(tx, c))) throw new ForbiddenException('You do not have access to Projects.');
       await this.needOn(tx, c);
       const org = c.organizationId;
       const projects = await tx.timesheetProject.findMany({ where: { organizationId: org, ...(w.any ? {} : { managerUserId: w.userId }) }, orderBy: [{ status: 'asc' }, { code: 'asc' }] });

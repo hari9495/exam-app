@@ -14,7 +14,8 @@ export default function YxMappingRulesPage() {
   return (
     <MappingRulesScreen
       live={{
-        state: state === 'no-access' ? 'no-access' : state === 'error' ? 'error' : state === 'loading' ? 'loading' : 'ready',
+        // Walk 12 Nov: Projects switched off is its own plain state; no access gets the kit's Request access page.
+        state: (data.error as { code?: string } | null)?.code === 'PROJECTS_OFF' ? 'off' : state === 'no-access' ? 'no-access' : state === 'error' ? 'error' : state === 'loading' ? 'loading' : 'ready',
         onRetry: () => void data.refetch(),
         data: data.data ?? null,
         onSwitchPrefill: async (on) => void (await write('PUT', '/settings', { changes: [{ key: 'timesheet.tool_suggestions', value: on ? 'on' : 'off' }] })),
