@@ -415,3 +415,5 @@ console.log('ok');
       the hours budget, checked every hour. *Suggested: add the cost budget to the same alerts with P-4's nightly cost.*
 1446. **Who sees a project without a key.** A person who neither holds a Projects key nor manages the project gets "not
       found" for it, not "no access", so its name is never confirmed. *Suggested: keep.*
+
+- 1441 to 1446 approved as suggested (12 Nov 2026, "ok for all"). To build: manager approval of unallocated hours with P-2 (1442); the default billing model as a company setting in P-3 (1444); cost in burn alerts with P-4 (1445).
