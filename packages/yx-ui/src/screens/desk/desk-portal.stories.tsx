@@ -81,6 +81,8 @@ const ME = { name: 'Kiran Shetty', email: 'kiran@sunrise.example', account: 'Sun
 export const PortalLogin: S = { name: 'US-G-021 Outside portal · sign in', render: () => portal({}) };
 export const PortalHomeStory: S = { name: 'US-G-021 Outside portal · my tickets', render: () => portal({ me: ME, notice: 'Ticket CS-1004 is open.' }) };
 export const PortalTicketStory: S = { name: 'US-G-021 Outside portal · one ticket', render: () => portal({ me: ME, ticket: PORTAL_TICKET, ticketState: 'ready' }) };
+// Answer 1646: the portal's raise form while the team is closed.
+export const PortalRaiseClosed: S = { name: 'US-G-021 Outside portal · raise while the team is closed', render: () => portal({ me: ME, home: { ...PORTAL_HOME, desks: PORTAL_HOME.desks.map((d) => ({ ...d, closed: { message: "We're closed now. We open again {opens}. You can still raise a ticket; we answer it when we open.", opensAt: '2026-10-13T03:30:00Z' } })) } }), play: play(press('Raise a ticket')) };
 export const CustomersPlanTooEarly: S = { name: 'SD-1.22 Customers · Add plan pressed with nothing filled', render: Customers.render, play: play(press('Add plan')) };
 export const CustomersPersonTooEarly: S = { name: 'SD-1.22 Customers · Add person pressed with nothing filled', render: Customers.render, play: play(press('Add person')) };
 export const CustomersProductTooEarly: S = { name: 'SD-1.22 Customers · Add product pressed with no name', render: Customers.render, play: play(press('Add product')) };

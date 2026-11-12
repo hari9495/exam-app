@@ -25,6 +25,7 @@ import {
   CategoryDto,
   CollaboratorDto,
   ConvertDto,
+  TicketDeviceDto,
   CreateDeskDto,
   EditNoteDto,
   GroupDto,
@@ -403,6 +404,14 @@ export class DeskTicketsController {
   async assign(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AssignDto) {
     assertOwnSession(req);
     return this.tickets.assign(await this.access.actor(req, t), id, dto);
+  }
+
+  /** Answer 1661: an IT desk's agent sets or clears the device a ticket is about. */
+  @Put('tickets/:id/device')
+  @RequirePermissions('desk.ticket.work')
+  async setDevice(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: TicketDeviceDto) {
+    assertOwnSession(req);
+    return this.tickets.setDevice(await this.access.actor(req, t), id, dto.assetId);
   }
 
   @Post('tickets/:id/convert')

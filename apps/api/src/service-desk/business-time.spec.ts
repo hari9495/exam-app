@@ -1,4 +1,4 @@
-import { CalendarSpec, addBusinessSeconds, businessSecondsBetween, isValidZone } from './business-time';
+import { CalendarSpec, addBusinessSeconds, businessSecondsBetween, isValidZone, nextOpening } from './business-time';
 
 // §15.2 business time: weekends, holidays, half days, midnight, DST zones (Europe, US), a calendar version change.
 const H = 3600;
@@ -85,5 +85,23 @@ describe('business time (§8.2)', () => {
     expect(businessSecondsBetween(morningOff, at("2026-10-07T09:00:00+05:30"), at("2026-10-07T13:30:00+05:30"))).toBe(0);
     expect(businessSecondsBetween(afternoonOff, at("2026-10-07T13:30:00+05:30"), at("2026-10-07T18:00:00+05:30"))).toBe(0);
     expect(businessSecondsBetween({ ...ist, leave: [{ on: "2026-10-07", part: "full" }] }, ...day)).toBe(0);
+  });
+});
+
+describe('next opening (answer 1646)', () => {
+  it('is null while open; the same evening, the night, the weekend and a holiday give the next working start', () => {
+    expect(nextOpening(ist, at('2026-10-05T10:00:00+05:30'))).toBeNull();
+    expect(nextOpening(ist, at('2026-10-05T09:00:00+05:30'))).toBeNull();
+    expect(nextOpening(ist, at('2026-10-05T18:00:00+05:30'))).toEqual(at('2026-10-06T09:00:00+05:30'));
+    expect(nextOpening(ist, at('2026-10-06T07:30:00+05:30'))).toEqual(at('2026-10-06T09:00:00+05:30'));
+    expect(nextOpening(ist, at('2026-10-10T12:00:00+05:30'))).toEqual(at('2026-10-12T09:00:00+05:30'));
+    const cal: CalendarSpec = { ...ist, holidays: [{ on: '2026-10-12', halfDay: false }] };
+    expect(nextOpening(cal, at('2026-10-10T12:00:00+05:30'))).toEqual(at('2026-10-13T09:00:00+05:30'));
+  });
+
+  it('a lunch break is closed until the afternoon; a calendar with no hours never opens (null)', () => {
+    const split: CalendarSpec = { zone: 'Asia/Kolkata', hours: [...weekdays(9 * 60, 13 * 60), ...weekdays(14 * 60, 18 * 60)], holidays: [] };
+    expect(nextOpening(split, at('2026-10-05T13:30:00+05:30'))).toEqual(at('2026-10-05T14:00:00+05:30'));
+    expect(nextOpening({ zone: 'Asia/Kolkata', hours: [], holidays: [] }, at('2026-10-05T13:30:00+05:30'))).toBeNull();
   });
 });

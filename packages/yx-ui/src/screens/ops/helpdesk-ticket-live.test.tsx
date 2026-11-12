@@ -79,6 +79,31 @@ describe('HLP-03 Ticket workspace (live)', () => {
     expect(screen.getByText(/Closes on 11 Oct 2026 if Divya doesn't reply. Divya rated this ticket 4 of 5./)).toBeInTheDocument();
   });
 
+  it('1643 and 1646: the rating shows its reason; a ticket raised while closed carries the badge, others do not', () => {
+    const { unmount } = render(<TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, systemState: 'solved', resolvedAt: '2026-10-08T05:00:00Z', closesOn: '2026-10-11T05:00:00Z', rating: 2, ratingReason: 'Slow', raisedOutsideHours: true } })} />);
+    expect(screen.getByText(/Divya rated this ticket 2 of 5 \(Slow\)\./)).toBeInTheDocument();
+    expect(screen.getByText('Raised outside hours')).toBeInTheDocument();
+    unmount();
+    render(<TicketWorkspaceScreen live={liveTicket()} />);
+    expect(screen.queryByText('Raised outside hours')).toBeNull();
+  });
+
+  it('1661: an IT agent picks the device and it is saved with a toast; without the right it is read only; no device and no right shows nothing', async () => {
+    const onSetDevice = vi.fn().mockResolvedValue(undefined);
+    const { unmount } = render(<TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, canSetDevice: true, device: null }, onPickDevice: async () => [{ id: 'as1', label: 'Dell Latitude 5440 (KF-LT-0142)', detail: 'Laptop' }, { id: 'as2', label: 'Logitech headset (KF-HS-0077)', detail: 'Accessory' }], onSetDevice })} />);
+    await ue.click(screen.getByRole('combobox', { name: 'Device' }));
+    await ue.click(await screen.findByRole('option', { name: /KF-HS-0077/ }));
+    await waitFor(() => expect(onSetDevice).toHaveBeenCalledWith('as2'));
+    expect((await screen.findAllByText('Device saved.')).length).toBeGreaterThan(0);
+    unmount();
+    const r2 = render(<TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, canSetDevice: false, device: { id: 'as1', label: 'Dell Latitude 5440 (KF-LT-0142)', detail: 'Laptop' } }, onSetDevice })} />);
+    expect(screen.getByText('Dell Latitude 5440 (KF-LT-0142)')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Device' })).toBeNull();
+    r2.unmount();
+    render(<TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, canSetDevice: false, device: null } })} />);
+    expect(screen.queryByText('Device')).toBeNull();
+  });
+
   it('an unproven email sender is warned about; customer and product show', () => {
     render(<TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, senderVerified: false, customer: { account: { id: 'ac1', name: 'Sunrise Retail' }, plan: 'gold' }, product: { id: 'pr1', name: 'Kaveri billing app' } } })} />);
     expect(screen.getByText('We could not prove who sent this email. Do not share private details until you are sure.')).toBeInTheDocument();

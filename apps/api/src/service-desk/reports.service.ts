@@ -88,6 +88,7 @@ export const REPORT_COLUMNS: Record<string, string> = {
   first_response: 'First reply',
   resolved: 'Solved',
   rating: 'Rating',
+  rating_reason: 'Rating reason',
   tags: 'Tags',
 };
 
@@ -444,12 +445,17 @@ export class ReportsService {
           return { columns: ['Requester', 'Tickets', 'Still open', 'Average rating'], rows: r.map((x) => [x.who, Number(x.n), Number(x.open), num(x.rating)]) };
         }
         case 'csat': {
-          const r = await tx.$queryRaw<{ desk: string; who: string | null; n: bigint; avg: unknown; happy: bigint }[]>`
-            SELECT d.name AS desk, coalesce(u.name, u.email, 'Nobody') AS who, count(*) AS n, avg(r.score) AS avg, count(*) FILTER (WHERE r.score >= 4) AS happy
+          // Answer 1643: the reasons given, most often first ("Slow 3 · Not solved 1").
+          const r = await tx.$queryRaw<{ desk: string; who: string | null; n: bigint; avg: unknown; happy: bigint; reasons: string | null }[]>`
+            SELECT d.name AS desk, coalesce(u.name, u.email, 'Nobody') AS who, count(*) AS n, avg(r.score) AS avg, count(*) FILTER (WHERE r.score >= 4) AS happy,
+              (SELECT string_agg(x.reason || ' ' || x.c, ' · ' ORDER BY x.c DESC, x.reason) FROM (
+                SELECT q.reason, count(*) AS c FROM sd_ratings q
+                WHERE q.organization_id = r.organization_id AND q.desk_id = r.desk_id AND q.agent_user_id IS NOT DISTINCT FROM r.agent_user_id AND q.reason IS NOT NULL
+                  AND q.created_at >= ${from} AND q.created_at < ${to} GROUP BY q.reason) x) AS reasons
             FROM sd_ratings r JOIN sd_desks d ON d.organization_id = r.organization_id AND d.id = r.desk_id LEFT JOIN users u ON u.organization_id = r.organization_id AND u.id = r.agent_user_id
             WHERE r.organization_id = ${org}::uuid AND r.desk_id = ANY(${desks}::uuid[]) AND r.created_at >= ${from} AND r.created_at < ${to}
-            GROUP BY d.name, u.name, u.email ORDER BY d.name, n DESC`;
-          return { columns: ['Desk', 'Agent', 'Ratings', 'Average (1–5)', 'Happy %'], rows: r.map((x) => [x.desk, x.who ?? '', Number(x.n), num(x.avg), Number(x.n) ? Math.round((Number(x.happy) * 1000) / Number(x.n)) / 10 : null]) };
+            GROUP BY r.organization_id, r.desk_id, r.agent_user_id, d.name, u.name, u.email ORDER BY d.name, n DESC`;
+          return { columns: ['Desk', 'Agent', 'Ratings', 'Average (1–5)', 'Happy %', 'Reasons given'], rows: r.map((x) => [x.desk, x.who ?? '', Number(x.n), num(x.avg), Number(x.n) ? Math.round((Number(x.happy) * 1000) / Number(x.n)) / 10 : null, x.reasons ?? '']) };
         }
         case 'funnel': {
           const f = await this.funnelIn(tx, org, desks, from, to);
@@ -591,7 +597,7 @@ export class ReportsService {
         tx.user.findMany({ where: { organizationId: org, id: { in: ids('assigneeUserId') } }, select: { id: true, name: true, email: true } }),
         tx.person.findMany({ where: { organizationId: org, id: { in: ids('requesterPersonId') } }, select: { id: true, givenName: true, familyName: true } }),
         tx.sdCustomerAccount.findMany({ where: { organizationId: org, id: { in: ids('customerAccountId') } }, select: { id: true, name: true } }),
-        tx.sdRating.findMany({ where: { organizationId: org, ticketId: { in: tickets.map((t) => t.id) } }, select: { ticketId: true, score: true } }),
+        tx.sdRating.findMany({ where: { organizationId: org, ticketId: { in: tickets.map((t) => t.id) } }, select: { ticketId: true, score: true, reason: true } }),
       ]);
       const name = <T extends { id: string }>(list: T[], id: string | null, pick: (x: T) => string) => (id ? (list.find((x) => x.id === id) ? pick(list.find((x) => x.id === id)!) : '') : '');
       const cell = (t: (typeof tickets)[number], c: string): string | number | null => {
@@ -612,6 +618,7 @@ export class ReportsService {
           case 'first_response': return t.firstResponseAt?.toISOString() ?? null;
           case 'resolved': return t.resolvedAt?.toISOString() ?? null;
           case 'rating': return ratings.find((x) => x.ticketId === t.id)?.score ?? null;
+          case 'rating_reason': return ratings.find((x) => x.ticketId === t.id)?.reason ?? null;
           case 'tags': return t.tags.join(' ');
           default: return null;
         }

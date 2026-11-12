@@ -9,6 +9,7 @@ import { cleanHtml, htmlToText, textToHtml } from './rich-text';
 import { DeskActor, audit, companyOf, emit } from './desk-access';
 import { RaiseTicketDto, RequesterReplyDto, WatcherDto } from './dto';
 import { Ticket, TicketsService } from './tickets.service';
+import { assetsOf } from './asset-pick';
 
 // The requester's side (M14 §6.1 implicit role, YX-SD-16): raise, follow, reply and add watchers. No permission key:
 // every route works only on the person's own records (requester, requested-for or watcher) and never returns internal
@@ -105,6 +106,10 @@ export class RequesterService {
       const ids = desks.map((d) => d.id);
       const types = await tx.sdTicketType.findMany({ where: { organizationId: org, deskId: { in: ids }, active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
       const cats = await tx.sdCategory.findMany({ where: { organizationId: org, deskId: { in: ids }, active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
+      const cache = new Map();
+      const closed = new Map(await Promise.all(desks.map(async (d) => [d.id, await this.tickets.sla.closedNow(tx, org, d, new Date(), cache)] as const)));
+      const me = desks.some((d) => d.kind === 'it') ? await this.personOf(tx, r, false) : null;
+      const hasDevice = Boolean(me && (await assetsOf(tx, org, me, '')).length);
       return desks.map((d) => ({
         id: d.id,
         name: d.name,
@@ -113,6 +118,9 @@ export class RequesterService {
         attachmentMaxMb: d.attachmentMaxMb,
         types: types.filter((t) => t.deskId === d.id).map((t) => ({ id: t.id, name: t.name })),
         categories: cats.filter((c) => c.deskId === d.id).map((c) => ({ id: c.id, name: c.name, parentId: c.parentId, sensitive: c.sensitive })),
+        closed: closed.get(d.id) ?? null,
+        // Answer 1662: an IT desk asks "Which device?" when the person has one assigned.
+        askDevice: d.kind === 'it' && hasDevice,
       }));
     });
   }
@@ -124,6 +132,12 @@ export class RequesterService {
       if (!desk || desk.kind === 'customer_support') throw new NotFoundException('No such desk.');
       const personId = (await this.personOf(tx, r, true))!;
       if (dto.requestedForPersonId) await this.checkOnBehalf(tx, r, dto.requestedForPersonId, personId);
+      // Answer 1662: "Which device?" on an IT desk, one of the devices assigned now to the person it is for.
+      if (dto.assetId) {
+        if (desk.kind !== 'it') throw new BadRequestException('Only IT desk tickets name a device.');
+        const mine = await assetsOf(tx, r.ctx.organizationId, dto.requestedForPersonId ?? personId, '');
+        if (!mine.some((x) => x.id === dto.assetId)) throw new BadRequestException('Choose one of your own devices from the list.');
+      }
       return this.tickets.createIn(tx, r, {
         deskId: dto.deskId,
         typeId: dto.typeId,
@@ -142,6 +156,9 @@ export class RequesterService {
         authorPersonId: personId,
         // US-B-100: the screen the in-app help drawer was opened on.
         custom: dto.screen ? { screen: dto.screen } : undefined,
+        originArticleId: dto.originArticleId,
+        originQuery: dto.originQuery,
+        assetId: dto.assetId,
       });
     });
     return { id: t.id, number: t.number };
@@ -166,7 +183,7 @@ export class RequesterService {
       const watched = await this.visibleIds(tx, org, ids);
       const rows = await tx.sdTicket.findMany({ where: { organizationId: org, OR: [...(this.mine(org, ids).OR ?? []), { id: { in: watched }, private: false, sensitive: false }] }, orderBy: { updatedAt: 'desc' }, take: 200 });
       const statuses = new Map((await tx.sdStatus.findMany({ where: { organizationId: org, id: { in: rows.map((t) => t.statusId) } }, select: { id: true, label: true } })).map((s) => [s.id, s.label]));
-      const desks = new Map((await tx.sdDesk.findMany({ where: { organizationId: org, id: { in: rows.map((t) => t.deskId) } }, select: { id: true, name: true, reopenWindowDays: true, requesterCanReopen: true, autoCloseDays: true } })).map((d) => [d.id, d]));
+      const desks = new Map((await tx.sdDesk.findMany({ where: { organizationId: org, id: { in: rows.map((t) => t.deskId) } }, select: { id: true, name: true, reopenWindowDays: true, requesterCanReopen: true, autoCloseDays: true, ratingReasons: true } })).map((d) => [d.id, d]));
       // HLP-01: the resolution promise on open tickets, and on solved ones when it closes, until when a reply reopens
       // it (the desk's own settings) and whether the person who raised it can still rate it.
       const clocks = await this.tickets.sla.requesterClocks(tx, org, rows.filter((t) => !['solved', 'closed'].includes(t.systemState)).map((t) => t.id));
@@ -195,6 +212,7 @@ export class RequesterService {
           reopenUntil: solved && d?.requesterCanReopen ? new Date(t.resolvedAt!.getTime() + d.reopenWindowDays * day) : null,
           rating: rated.get(t.id) ?? null,
           canRate: isRequester && !rated.has(t.id) && ['solved', 'closed'].includes(t.systemState),
+          ratingReasons: d?.ratingReasons ?? [],
         };
       });
     });
@@ -229,6 +247,7 @@ export class RequesterService {
         desk: { name: desk.name, attachmentTypes: desk.attachmentTypes, attachmentMaxMb: desk.attachmentMaxMb },
         rating: rating?.score ?? null,
         canRate: !rating && ['solved', 'closed'].includes(t.systemState) && ids.includes(t.requesterPersonId),
+        ratingReasons: desk.ratingReasons,
         status: status?.label ?? '',
         systemState: t.systemState,
         private: t.private || t.sensitive,

@@ -44,6 +44,11 @@ export class RatingDto {
   @IsOptional()
   @Text(0, 1000)
   comment?: string;
+
+  /** Answer 1643: one of the desk's preset reasons (checked in the service). */
+  @IsOptional()
+  @Text(1, 40)
+  reason?: string;
 }
 
 export class LinkAnswerDto {

@@ -27,6 +27,10 @@ export interface DeskSummary {
   routingWaitMinutes?: number;
   /** HLP-05b: a clock is at risk once this share (%) of its target is used (50, 60, 70, 80 or 90; default 80). */
   atRiskPercent?: number;
+  /** Answer 1643: the preset reasons a requester may pick after the stars (empty: none asked). */
+  ratingReasons?: string[];
+  /** Answer 1646: what the help centre and portal say while the desk is closed ({opens}: the next opening time). */
+  closedMessage?: string;
   status: 'active' | 'archived';
   version: number;
   myRole?: DeskRole | null;
@@ -239,6 +243,8 @@ export interface TicketDetail {
   urgency: number | null;
   assigneeUserId: string | null;
   channel: string;
+  /** Answer 1646: raised while the desk was closed. */
+  raisedOutsideHours?: boolean;
   sensitive: boolean;
   private: boolean;
   vip: boolean;
@@ -261,6 +267,11 @@ export interface TicketDetail {
   /** HLP-03: a solved ticket closes by itself on this day (the desk's setting); the requester's rating once given. */
   closesOn?: string | null;
   rating?: number | null;
+  /** Answer 1643: the reason the requester picked with the rating. */
+  ratingReason?: string | null;
+  /** Answers 1661, 1662: the device it is about, and whether this person may set it (an IT desk's agent). */
+  device?: { id: string; label: string; detail: string | null } | null;
+  canSetDevice?: boolean;
   desk: { id: string; key: string; name: string; audience: 'employee' | 'customer' };
   type: { id: string; name: string } | null;
   status: { id: string; label: string } | null;
@@ -330,7 +341,17 @@ export interface TicketChange {
 
 // ---- the requester's side ----
 
+/** Answer 1646: the desk's calendar is closed now; it opens again at `opensAt`. */
+export interface DeskClosed {
+  message: string;
+  opensAt: string | null;
+}
+
 export interface RaiseDesk {
+  /** Answer 1646: set while the desk is closed. */
+  closed?: DeskClosed | null;
+  /** Answer 1662: an IT desk asks "Which device?" when the person has one assigned. */
+  askDevice?: boolean;
   id: string;
   name: string;
   key: string;
@@ -362,6 +383,8 @@ export interface MyTicketRow {
   rating?: number | null;
   /** The person who raised it can still rate it. */
   canRate?: boolean;
+  /** Answer 1643: the desk's preset reasons, offered after the stars. */
+  ratingReasons?: string[];
 }
 
 export interface MyTicket {
@@ -390,6 +413,8 @@ export interface MyTicket {
   /** SD-1.26: the person's rating (1–5), and whether they may rate it now. */
   rating?: number | null;
   canRate?: boolean;
+  /** Answer 1643: the desk's preset reasons, offered after the stars. */
+  ratingReasons?: string[];
 }
 
 export interface RaiseInput {
@@ -401,6 +426,11 @@ export interface RaiseInput {
   impact?: number;
   urgency?: number;
   private?: boolean;
+  /** Answer 1647: raised from this help article, or after this knowledge search. */
+  originArticleId?: string;
+  originQuery?: string;
+  /** Answer 1662: one of the person's own devices (IT desks). */
+  assetId?: string;
 }
 
 // ---- batch 2 (SD-1.09 to SD-1.17) ----
@@ -768,7 +798,7 @@ export interface Product {
 export interface PortalHome {
   company: string;
   portal: { name: string; accentColour: string | null; loginTitle: string | null; loginText: string | null; readingAids: boolean; openRequests: boolean; signUp: PortalSignUp };
-  desks: { id: string; name: string; categories: { id: string; name: string; parentId: string | null }[]; products: { id: string; name: string }[] }[];
+  desks: { id: string; name: string; closed?: DeskClosed | null; categories: { id: string; name: string; parentId: string | null }[]; products: { id: string; name: string }[] }[];
   banners: PublicBanner[];
 }
 
@@ -795,6 +825,8 @@ export interface PortalTicket {
   /** SD-1.26: the person's rating (1–5), and whether they may rate it now. */
   rating?: number | null;
   canRate?: boolean;
+  /** Answer 1643: the desk's preset reasons, offered after the stars. */
+  ratingReasons?: string[];
   id: string;
   number: string;
   subject: string;
@@ -816,4 +848,7 @@ export interface PortalRaiseInput {
   productId?: string;
   subject: string;
   description: string;
+  /** Answer 1647: raised from this help article, or after this search. */
+  originArticleId?: string;
+  originQuery?: string;
 }

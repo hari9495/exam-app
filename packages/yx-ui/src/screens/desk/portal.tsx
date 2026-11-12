@@ -1,4 +1,4 @@
-import { type CSSProperties, type ReactNode, useEffect, useState } from 'react';
+import { type CSSProperties, type ReactNode, createContext, useContext, useEffect, useState } from 'react';
 import { LogOut, Send } from 'lucide-react';
 import { Button } from '../../components/button';
 import { EmptyState, InlineAlert } from '../../components/feedback';
@@ -12,7 +12,7 @@ import { useRun } from '../org/org-kit';
 import { DeskPage, MessageBody, StatusBadge, browserTimeZone, when } from './desk-kit';
 import { BannerList } from './help';
 import { ReadingAidsCard, ReadingAidsFrame, useReadingAids } from './reading-aids';
-import { ArticleDrawer, RateTicketCard, SuggestList, useSuggestions, type KbArticleView, type KbSuggestion } from './help-kb';
+import { ArticleDrawer, DeskClosedNotice, RateTicketCard, SuggestList, useSuggestions, type KbArticleView, type KbSuggestion } from './help-kb';
 import type { LoadState, PortalHome, PortalMe, PortalRaiseInput, PortalTicket, PortalTicketRow } from './types';
 
 // The outside help page (§9.3, US-G-021): a company's customers sign in with a 6-digit email code (no password, no
@@ -43,7 +43,7 @@ export interface PortalScreenProps {
   /** Batch 4: help articles (public ones before sign-in; the desk's own after), suggestions while typing. */
   kb?: PortalKbProps;
   /** SD-1.26: rate a solved ticket. */
-  onRate?: (score: number, comment?: string) => Promise<unknown>;
+  onRate?: (score: number, comment?: string, reason?: string) => Promise<unknown>;
   /** SD-1.30: ask for a copy of one's data, or its erasure. */
   privacy?: { requests: { id: string; kind: string; status: string; createdAt: string; decisionNote: string | null }[]; onAsk: (kind: 'access' | 'erasure', note?: string) => Promise<unknown>; onDownload: (id: string) => Promise<void> };
 }
@@ -58,12 +58,16 @@ export interface PortalKbProps {
 }
 
 const ACCENT = /^#[0-9a-fA-F]{6}$/;
+type Origin = Pick<PortalRaiseInput, 'originArticleId' | 'originQuery'>;
+/** Answer 1647: what the person read or searched in "Find an answer" before raising, for the raise forms. */
+const OriginCtx = createContext<Origin>({});
 
 export function PortalScreen(props: PortalScreenProps) {
   const [aids, setAids] = useReadingAids();
   const h = props.home;
   const style = h?.portal.accentColour && ACCENT.test(h.portal.accentColour) ? ({ '--yx-portal-accent': h.portal.accentColour } as CSSProperties) : undefined;
   const { busy, run } = useRun();
+  const [origin, setOrigin] = useState<Origin>({});
   let body: ReactNode;
   if (props.state === 'not-found') body = <EmptyState title="No such help page" description="Check the web address, or ask the company for the right link." />;
   else if (props.state !== 'ready' || !h) body = <DeskPage state={props.state} onRetry={props.onRetry} what="this help page">{null}</DeskPage>;
@@ -85,8 +89,8 @@ export function PortalScreen(props: PortalScreenProps) {
           )}
         </header>
         <main className="yx-desk-portal__main">
-          {props.kb && props.state === 'ready' && h && !props.ticket && !props.ticketState && <PortalKbCard kb={props.kb} />}
-          {body}
+          {props.kb && props.state === 'ready' && h && !props.ticket && !props.ticketState && <PortalKbCard kb={props.kb} onOrigin={setOrigin} />}
+          <OriginCtx.Provider value={origin}>{body}</OriginCtx.Provider>
           {h?.portal.readingAids && <ReadingAidsCard value={aids} onChange={setAids} />}
         </main>
       </div>
@@ -95,8 +99,10 @@ export function PortalScreen(props: PortalScreenProps) {
 }
 
 /** "Find an answer": search the help articles; an article opens in a side panel with "This solved it". */
-function PortalKbCard({ kb }: { kb: PortalKbProps }) {
+function PortalKbCard({ kb, onOrigin }: { kb: PortalKbProps; onOrigin: (o: Origin) => void }) {
   const [q, setQ] = useState('');
+  const query = (): Origin => (q.trim() ? { originQuery: q.trim().slice(0, 200) } : {});
+  useEffect(() => onOrigin(query()), [q]); // eslint-disable-line react-hooks/exhaustive-deps
   const found = useSuggestions(q, kb.onSearch);
   const [article, setArticle] = useState<KbArticleView | null>(null);
   const open = (n: number, lang?: string) => void kb.onArticle(n, lang).then(setArticle, () => setArticle(null));
@@ -122,7 +128,10 @@ function PortalKbCard({ kb }: { kb: PortalKbProps }) {
           onLanguage={(l) => open(article.number, l)}
           onFeedback={(h) => kb.onFeedback(article.id, h)}
           onSolved={() => kb.onSolved(article.id)}
-          onStillNeedHelp={() => setArticle(null)}
+          onStillNeedHelp={() => {
+            onOrigin({ ...query(), originArticleId: article.id });
+            setArticle(null);
+          }}
         />
       )}
     </Card>
@@ -137,6 +146,7 @@ function usePortalRaiseForm(desks: PortalHome['desks'], onSuggest: ((q: string) 
   const [subject, setSubject] = useState('');
   const [details, setDetails] = useState('');
   const desk = desks.find((d) => d.id === deskId);
+  const origin = useContext(OriginCtx);
   const suggestions = useSuggestions(`${subject} ${details.slice(0, 200)}`, onSuggest);
   const early = useTooEarly([
     ...before,
@@ -148,7 +158,7 @@ function usePortalRaiseForm(desks: PortalHome['desks'], onSuggest: ((q: string) 
     /** True when something is missing (now shown, focus on the first); the caller stops there. */
     stop: early.stop,
     errorOf: early.errorOf,
-    input: (): PortalRaiseInput => ({ deskId: deskId!, ...(categoryId ? { categoryId } : {}), ...(productId ? { productId } : {}), subject: subject.trim(), description: details.trim() }),
+    input: (): PortalRaiseInput => ({ deskId: deskId!, ...(categoryId ? { categoryId } : {}), ...(productId ? { productId } : {}), subject: subject.trim(), description: details.trim(), ...origin }),
     clear: () => {
       setSubject('');
       setDetails('');
@@ -170,6 +180,7 @@ function usePortalRaiseForm(desks: PortalHome['desks'], onSuggest: ((q: string) 
             />
           </FormField>
         )}
+        {desk?.closed && <DeskClosedNotice closed={desk.closed} />}
         {desk && desk.categories.length > 0 && (
           <FormField label="What is it about?" optional>
             <Select value={categoryId} onChange={setCategoryId} clearable options={desk.categories.map((c) => ({ value: c.id, label: c.parentId ? `· ${c.name}` : c.name }))} placeholder="Choose a topic" />
@@ -453,7 +464,7 @@ export function PortalTicketView(props: PortalScreenProps) {
             </ol>
             {t.files.length > 0 && <p className="yx-ops-muted">Files on this ticket: {t.files.map((f) => f.fileName).join(', ')}</p>}
           </Card>
-          {props.onRate && (t.canRate || t.rating) && <RateTicketCard rating={t.rating ?? null} onRate={props.onRate} />}
+          {props.onRate && (t.canRate || t.rating) && <RateTicketCard rating={t.rating ?? null} reasons={t.ratingReasons} onRate={props.onRate} />}
           {t.canReply ? (
             <Card title="Reply">
               <div className="yx-ops-stack">

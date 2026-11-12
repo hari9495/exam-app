@@ -301,7 +301,7 @@ export interface MyTicketScreenProps {
   onAddWatcher: (email: string) => Promise<void>;
   timeZone?: string;
   /** SD-1.26: rate a solved ticket (shown when the ticket says it can be rated or was rated). */
-  onRate?: (score: number, comment?: string) => Promise<unknown>;
+  onRate?: (score: number, comment?: string, reason?: string) => Promise<unknown>;
   /** 3b-2: what was ordered on this request, with its stages (shown above the conversation). */
   request?: ReactNode;
 }
@@ -398,7 +398,7 @@ export function MyTicketScreen(props: MyTicketScreenProps) {
             )}
           </div>
           <div className="yx-ops-ws__rail">
-            {props.onRate && (t.canRate || t.rating) && <RateTicketCard rating={t.rating ?? null} onRate={props.onRate} />}
+            {props.onRate && (t.canRate || t.rating) && <RateTicketCard rating={t.rating ?? null} reasons={t.ratingReasons} onRate={props.onRate} />}
             <Card title="Status">
               <div className="yx-ops-stack" data-gap="sm">
                 <StatusBadge label={t.status} state={t.systemState} />

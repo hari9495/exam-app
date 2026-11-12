@@ -88,7 +88,7 @@ export class MyHelpController {
   @Post('tickets/:id/rating')
   @HttpCode(200)
   rate(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RatingDto) {
-    return this.surveys.rateMine(this.requesters.who(req, t), id, dto.score, dto.comment);
+    return this.surveys.rateMine(this.requesters.who(req, t), id, dto.score, dto.comment, dto.reason);
   }
 
   @Get('privacy-requests')
@@ -153,7 +153,7 @@ export class PortalHelpController {
   @Throttle(PUBLIC_API_THROTTLE)
   async rate(@Param('org') org: string, @Param('portal') portal: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RatingDto, @Headers('x-portal-session') token?: string) {
     const s = await this.portals.session(slug(org), slug(portal), token);
-    return this.surveys.ratePortal(s, id, dto.score, dto.comment, (fn) => this.portals.asPortal(s, fn));
+    return this.surveys.ratePortal(s, id, dto.score, dto.comment, (fn) => this.portals.asPortal(s, fn), dto.reason);
   }
 
   @Get(':org/:portal/privacy-requests')

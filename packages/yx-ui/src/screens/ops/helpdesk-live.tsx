@@ -21,12 +21,14 @@ import { useNarrow } from '../../components/stepper';
 import { formatDate } from '../../lib/format';
 import { useRun } from '../org/org-kit';
 import { BannerList } from '../desk/help';
-import { ArticleDrawer, useSuggestions, type KbArticleView, type KbHome, type KbSuggestion } from '../desk/help-kb';
+import { ArticleDrawer, DeskClosedNotice, useSuggestions, type KbArticleView, type KbHome, type KbSuggestion } from '../desk/help-kb';
 import { ReadingAidsCard, ReadingAidsFrame, useReadingAids } from '../desk/reading-aids';
 import { PrivacyRequestCard, type PortalScreenProps } from '../desk/portal';
 import { ChatPromptBanner } from '../desk/chat';
 import { MyChannelsCard, type MyChannelsCardProps } from '../desk/esm3';
 import { StatusBadge } from '../desk/desk-kit';
+import { LivePicker } from '../desk/service-form';
+import type { PickOption } from '../desk/esm-types';
 import type { LoadState, MyTicketRow, PublicBanner, RaiseDesk, RaiseInput } from '../desk/types';
 import { Actions, OpsDesk, SlaBadge, Workspace, useSay } from './ops-kit';
 
@@ -39,7 +41,7 @@ export interface LiveHelp {
   /** Files chosen in the raise form go to the new ticket once it is made (they are virus-checked there). */
   onUpload: (ticketId: string, file: File) => Promise<unknown>;
   onOpen: (ticketId: string) => void;
-  onRate: (ticketId: string, score: number) => Promise<unknown>;
+  onRate: (ticketId: string, score: number, reason?: string) => Promise<unknown>;
   /** The company's help articles (null while loading or when there is no knowledge base). */
   kb: {
     home: KbHome | null;
@@ -60,6 +62,8 @@ export interface LiveHelp {
   startRaise?: boolean;
   /** Phone: the back arrow goes to Me. */
   onBack?: () => void;
+  /** Answer 1662: the person's own devices, for "Which device?" on an IT desk. */
+  onPickDevice?: (q: string) => Promise<PickOption[]>;
 }
 
 const DONE = ['solved', 'closed'];
@@ -97,7 +101,13 @@ export function LiveHelpCentre({ live }: { live: LiveHelp }) {
   useEffect(() => {
     if (live.startRaise) setRaising(true);
   }, [live.startRaise]);
-  const raise = () => (live.desks.length ? setRaising(true) : toast({ tone: 'default', title: 'No team takes tickets here yet. Ask your HR or IT admin.' }));
+  // Answer 1647: where the ticket came from: the article being read, else the words searched.
+  const [origin, setOrigin] = useState<Pick<RaiseInput, 'originArticleId' | 'originQuery'>>({});
+  const raise = (from: { articleId?: string } = {}) => {
+    if (!live.desks.length) return toast({ tone: 'default', title: 'No team takes tickets here yet. Ask your HR or IT admin.' });
+    setOrigin({ ...(from.articleId ? { originArticleId: from.articleId } : {}), ...(query.trim() ? { originQuery: query.trim().slice(0, 200) } : {}) });
+    setRaising(true);
+  };
 
   if (live.state === 'no-access')
     return (
@@ -109,11 +119,12 @@ export function LiveHelpCentre({ live }: { live: LiveHelp }) {
 
   const search = <ArticleSearch home={kb.home} query={query} onQuery={setQuery} onSearch={kb.onSearch} onOpen={openArticle} hrefOf={live.articleHref} />;
   const candidate = live.state === 'ready' ? rateCandidate(live.tickets) : null;
-  const rating = candidate && <ResolvedCard key={candidate.id} ticket={candidate} onRate={(s) => live.onRate(candidate.id, s)} onReopen={() => live.onOpen(candidate.id)} />;
+  const rating = candidate && <ResolvedCard key={candidate.id} ticket={candidate} onRate={(s, r) => live.onRate(candidate.id, s, r)} onReopen={() => live.onOpen(candidate.id)} />;
   const tickets = <MyTickets live={live} />;
   const form = (
     <RaiseForm
       desks={live.desks}
+      onPickDevice={live.onPickDevice}
       onSuggest={kb.onSearch}
       onOpenArticle={(a) => openArticle(a.number)}
       onDeflected={(a) => {
@@ -122,7 +133,7 @@ export function LiveHelpCentre({ live }: { live: LiveHelp }) {
         setRaising(false);
       }}
       onRaise={async (input, files) => {
-        const r = await live.onRaise(input);
+        const r = await live.onRaise({ ...input, ...origin });
         const failed: string[] = [];
         for (const f of files) await live.onUpload(r.id, f).catch(() => failed.push(f.name));
         toast({ tone: 'success', title: 'Ticket raised', description: `Your ticket number is ${r.number}. The team will reply in My tickets.${failed.length ? ` ${failed.join(', ')} could not be added: open the ticket and add ${failed.length === 1 ? 'it' : 'them'} there.` : ''}` });
@@ -144,7 +155,8 @@ export function LiveHelpCentre({ live }: { live: LiveHelp }) {
       onSolved={() => kb.onSolved(article.id)}
       onStillNeedHelp={() => {
         setArticle(null);
-        raise();
+        if (raising) setOrigin((o) => ({ ...o, originArticleId: article.id }));
+        else raise({ articleId: article.id });
       }}
     />
   );
@@ -158,7 +170,7 @@ export function LiveHelpCentre({ live }: { live: LiveHelp }) {
           {offer}
           {issues}
           {search}
-          <Button variant="primary" icon={Plus} fullWidth onClick={raise}>
+          <Button variant="primary" icon={Plus} fullWidth onClick={() => raise()}>
             Raise a ticket
           </Button>
           {rating}
@@ -177,7 +189,7 @@ export function LiveHelpCentre({ live }: { live: LiveHelp }) {
           title="Help centre"
           description="Search answers, ask the assistant, or raise a ticket with the right team."
           actions={
-            <Button variant="primary" icon={Plus} onClick={raise}>
+            <Button variant="primary" icon={Plus} onClick={() => raise()}>
               Raise a ticket
             </Button>
           }
@@ -294,8 +306,10 @@ function MyTickets({ live }: { live: LiveHelp }) {
 }
 
 /** The design's resolved-ticket card: when it closes, until when a reply reopens it, and the 1–5 rating. */
-function ResolvedCard({ ticket: t, onRate, onReopen }: { ticket: MyTicketRow; onRate: (score: number) => Promise<unknown>; onReopen: () => void }) {
+function ResolvedCard({ ticket: t, onRate, onReopen }: { ticket: MyTicketRow; onRate: (score: number, reason?: string) => Promise<unknown>; onReopen: () => void }) {
   const [score, setScore] = useState('');
+  const [reason, setReason] = useState<string | null>(null);
+  const reasons = t.ratingReasons ?? [];
   const [sent, setSent] = useState<number | null>(t.rating ?? null);
   const { busy, error, run } = useRun();
   const { toast } = useSay();
@@ -328,6 +342,11 @@ function ResolvedCard({ ticket: t, onRate, onReopen }: { ticket: MyTicketRow; on
             />
           </FormField>
         ) : null}
+        {!sent && t.canRate && reasons.length > 0 && (
+          <FormField label="The main reason" optional>
+            <Select value={reason} onChange={setReason} clearable placeholder="Choose a reason" options={reasons.map((r) => ({ value: r, label: r }))} />
+          </FormField>
+        )}
         <Actions>
           {!sent && t.canRate && (
             <Button
@@ -335,7 +354,7 @@ function ResolvedCard({ ticket: t, onRate, onReopen }: { ticket: MyTicketRow; on
               onClick={() =>
                 !early.stop() &&
                 void run('rate', async () => {
-                  await onRate(Number(score));
+                  await onRate(Number(score), reason ?? undefined);
                   setSent(Number(score));
                   toast({ tone: 'success', title: 'Thanks. Your rating is saved.' });
                 })
@@ -353,6 +372,7 @@ function ResolvedCard({ ticket: t, onRate, onReopen }: { ticket: MyTicketRow; on
 
 interface RaiseFormProps {
   desks: RaiseDesk[];
+  onPickDevice?: (q: string) => Promise<PickOption[]>;
   onSuggest: (q: string) => Promise<KbSuggestion[]>;
   onOpenArticle: (a: KbSuggestion) => void;
   onDeflected: (a: KbSuggestion) => void;
@@ -371,6 +391,7 @@ function RaiseForm(p: RaiseFormProps) {
   const [subject, setSubject] = useState('');
   const [details, setDetails] = useState('');
   const [isPrivate, setPrivate] = useState(false);
+  const [assetId, setAssetId] = useState<string | null>(null);
   const [files, setFiles] = useState<UploadItem[]>([]);
   const [formKey, setFormKey] = useState(0);
   const { busy, error, run } = useRun();
@@ -395,7 +416,7 @@ function RaiseForm(p: RaiseFormProps) {
   const submit = () =>
     !early.stop() &&
     void run('raise', async () => {
-      await p.onRaise({ deskId, categoryId: categoryId || undefined, subject: subject.trim(), description: details.trim(), impact: 3, urgency: 3, private: (isPrivate && !category?.sensitive) || undefined }, files.map((f) => f.file));
+      await p.onRaise({ deskId, categoryId: categoryId || undefined, subject: subject.trim(), description: details.trim(), impact: 3, urgency: 3, private: (isPrivate && !category?.sensitive) || undefined, ...(assetId && desk?.askDevice ? { assetId } : {}) }, files.map((f) => f.file));
       clear();
     });
   const accept = desk?.attachmentTypes.length ? desk.attachmentTypes.map((x) => (x.startsWith('.') ? x : `.${x}`)) : ['.pdf', '.jpg', '.png'];
@@ -405,6 +426,7 @@ function RaiseForm(p: RaiseFormProps) {
       <FormField id={fid('topic')} label="What is it about?" required error={early.errorOf(fid('topic'))}>
         <Select value={topic} onChange={setTopic} options={options} placeholder="Choose a topic" />
       </FormField>
+      {desk?.closed && <DeskClosedNotice closed={desk.closed} />}
       <FormField id={fid('subject')} label="Subject" required helper="One line, e.g. “LOP on my September payslip”" error={early.errorOf(fid('subject'))}>
         <TextField value={subject} onChange={setSubject} maxLength={200} />
       </FormField>
@@ -427,6 +449,11 @@ function RaiseForm(p: RaiseFormProps) {
             ))}
           </ul>
         </section>
+      )}
+      {desk?.askDevice && p.onPickDevice && (
+        <FormField label="Which device?" optional helper="One of the devices assigned to you, if the problem is with it.">
+          <LivePicker kind="assets" label="Which device?" value={assetId} onChange={setAssetId} onPick={(_k, q) => p.onPickDevice!(q)} />
+        </FormField>
       )}
       <FormField id={fid('details')} label="Details" required helper="Add dates, amounts or screenshots so the team can help faster" error={early.errorOf(fid('details'))}>
         <TextArea value={details} onChange={setDetails} rows={4} maxLength={20000} />

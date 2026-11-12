@@ -158,6 +158,12 @@ describe('Service Desk 3b-2 batch 2', () => {
     ids.itB = (await api('adminB', 'post', '/desk/desks').send({ name: 'B IT', key: 'BIT', kind: 'it' }).expect(201)).body.id;
     for (const [who, desk, role] of [['agent', ids.it, 'agent'], ['lead', ids.it, 'lead'], ['hrAg', ids.hr, 'agent']] as const) await api('adminA', 'post', `/desk/desks/${desk}/members`).send({ userId: users[who], role }).expect(201);
     await api('adminB', 'post', `/desk/desks/${ids.itB}/members`).send({ userId: users.agentB, role: 'agent' }).expect(201);
+    // Since Helpdesk item 1 a new IT desk gets the IT starter items; this suite builds its own IT catalogue, so they are
+    // set aside (retired, renamed) first, as in service-desk-esm.
+    for (const [desk, o] of [[ids.it, org.A.id], [ids.itB, org.B.id]] as const)
+      await system(async (tx) => {
+        for (const i of await tx.sdCatalogItem.findMany({ where: { deskId: desk } })) await tx.sdCatalogItem.update({ where: { id: i.id }, data: { state: 'retired', name: `Starter ${i.name}` } });
+      }, o);
     await system(async (tx) => {
       ids.itTeam = (await tx.sdGroup.findFirstOrThrow({ where: { deskId: ids.it } })).id;
       ids.catLaptop = (await tx.sdCategory.findFirstOrThrow({ where: { deskId: ids.it, name: 'Laptop and devices' } })).id;

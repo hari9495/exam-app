@@ -69,6 +69,65 @@ describe('HLP-01 Help centre (live)', () => {
     expect((await screen.findAllByText(/Your ticket number is HR-1009/))[0]).toBeInTheDocument();
   });
 
+  it('1646: a closed team says so with its next opening in the raise form; an open team says nothing; raising still works', async () => {
+    const onRaise = vi.fn().mockResolvedValue({ id: 'n1', number: 'HR-1009' });
+    const closed = { message: 'Closed for the night. Back {opens}.', opensAt: '2026-10-13T03:30:00Z' };
+    render(<HelpCentreScreen live={liveHelp({ onRaise, desks: [{ ...RAISE_DESKS[1], closed }, RAISE_DESKS[0]] })} />);
+    await ue.click(screen.getByRole('button', { name: 'Raise a ticket' }));
+    await ue.click(await screen.findByRole('combobox', { name: /What is it about/ }));
+    await ue.click(await screen.findByRole('option', { name: /Something else for IT help desk/ }));
+    expect(screen.queryByText('Closed now')).toBeNull();
+    await ue.click(screen.getByRole('combobox', { name: /What is it about/ }));
+    await ue.click(await screen.findByRole('option', { name: /Payslip and pay/ }));
+    expect(screen.getByText('Closed now')).toBeInTheDocument();
+    expect(screen.getByText(/^Closed for the night\. Back 13 Oct 2026, /)).toBeInTheDocument();
+    await ue.type(screen.getByRole('textbox', { name: /Subject/ }), 'LOP in October');
+    await ue.type(screen.getByRole('textbox', { name: /Details/ }), 'Two days cut');
+    await ue.click(screen.getByRole('button', { name: 'Raise ticket' }));
+    await waitFor(() => expect(onRaise).toHaveBeenCalled());
+  });
+
+  it('1647: a ticket raised from an open article carries the article; one raised straight away carries nothing', async () => {
+    const onRaise = vi.fn().mockResolvedValue({ id: 'n1', number: 'HR-1009' });
+    const base = liveHelp();
+    const onArticle = vi.fn().mockResolvedValue(HELP_ARTICLE);
+    const fill = async () => {
+      await ue.click(await screen.findByRole('combobox', { name: /What is it about/ }));
+      await ue.click(await screen.findByRole('option', { name: /Payslip and pay/ }));
+      await ue.type(screen.getByRole('textbox', { name: /Subject/ }), 'LOP in October');
+      await ue.type(screen.getByRole('textbox', { name: /Details/ }), 'Two days cut');
+      await ue.click(screen.getByRole('button', { name: 'Raise ticket' }));
+    };
+    const { unmount } = render(<HelpCentreScreen live={liveHelp({ onRaise, kb: { ...base.kb, onArticle, openNumber: 12 } })} />);
+    await ue.click(await screen.findByRole('button', { name: /still need help/i }));
+    await fill();
+    await waitFor(() => expect(onRaise).toHaveBeenCalledWith(expect.objectContaining({ originArticleId: HELP_ARTICLE.id })));
+    unmount();
+    onRaise.mockClear();
+    render(<HelpCentreScreen live={liveHelp({ onRaise })} />);
+    await ue.click(screen.getByRole('button', { name: 'Raise a ticket' }));
+    await fill();
+    await waitFor(() => expect(onRaise).toHaveBeenCalled());
+    expect(onRaise.mock.calls[0][0]).not.toHaveProperty('originArticleId');
+    expect(onRaise.mock.calls[0][0]).not.toHaveProperty('originQuery');
+  });
+
+  it('1662: an IT desk asks which device (own devices only) and sends it; a desk that does not ask shows no picker', async () => {
+    const onRaise = vi.fn().mockResolvedValue({ id: 'n1', number: 'IT-1009' });
+    const onPickDevice = vi.fn().mockResolvedValue([{ id: 'as1', label: 'Dell Latitude 5440 (KF-LT-0142)', detail: 'Laptop' }, { id: 'as2', label: 'Logitech headset (KF-HS-0077)', detail: 'Accessory' }]);
+    const { unmount } = render(<HelpCentreScreen live={liveHelp({ onRaise, onPickDevice, startRaise: true, desks: [{ ...RAISE_DESKS[0], categories: [], askDevice: true }] })} />);
+    await ue.click(await screen.findByRole('combobox', { name: 'Which device?' }));
+    await ue.click(await screen.findByRole('option', { name: /KF-LT-0142/ }));
+    await ue.type(screen.getByRole('textbox', { name: /Subject/ }), 'Laptop will not charge');
+    await ue.type(screen.getByRole('textbox', { name: /Details/ }), 'Since Monday');
+    await ue.click(screen.getByRole('button', { name: 'Raise ticket' }));
+    await waitFor(() => expect(onRaise).toHaveBeenCalledWith(expect.objectContaining({ deskId: 'd-it', assetId: 'as1' })));
+    unmount();
+    render(<HelpCentreScreen live={liveHelp({ onPickDevice, startRaise: true, desks: [{ ...RAISE_DESKS[0], categories: [], askDevice: false }] })} />);
+    await screen.findByRole('textbox', { name: /Subject/ });
+    expect(screen.queryByRole('combobox', { name: 'Which device?' })).toBeNull();
+  });
+
   it('a refused raise stays in the drawer with the reason', async () => {
     const onRaise = vi.fn().mockRejectedValue(new Error('This desk is closed for new tickets.'));
     render(<HelpCentreScreen live={liveHelp({ onRaise, desks: [RAISE_DESKS[0]] })} />);
@@ -117,8 +176,18 @@ describe('HLP-01 Help centre (live)', () => {
     expect(await screen.findByText('Choose a rating from 1 to 5.')).toBeInTheDocument();
     await ue.click(screen.getByRole('radio', { name: '4' }));
     await ue.click(screen.getByRole('button', { name: 'Send rating' }));
-    await waitFor(() => expect(onRate).toHaveBeenCalledWith('t7', 4));
+    await waitFor(() => expect(onRate).toHaveBeenCalledWith('t7', 4, undefined));
     expect(await screen.findByText('You rated the help 4 of 5. Thank you.')).toBeInTheDocument();
+  });
+
+  it('rating (1643): the main reason is optional and goes with the stars', async () => {
+    const onRate = vi.fn().mockResolvedValue(undefined);
+    render(<HelpCentreScreen live={liveHelp({ onRate })} />);
+    await ue.click(screen.getByRole('radio', { name: '2' }));
+    await ue.click(screen.getByRole('combobox', { name: /The main reason/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Not solved' }));
+    await ue.click(screen.getByRole('button', { name: 'Send rating' }));
+    await waitFor(() => expect(onRate).toHaveBeenCalledWith('t7', 2, 'Not solved'));
   });
 
   it('Reopen ticket opens the ticket to reply', async () => {

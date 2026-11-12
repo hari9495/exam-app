@@ -284,6 +284,16 @@ export class PortalRaiseDto {
 
   @Text(1, 20000)
   description!: string;
+
+  /** Answer 1647: the help article the person was reading when they raised it. */
+  @IsOptional()
+  @IsUUID()
+  originArticleId?: string;
+
+  /** Answer 1647: the knowledge search they made before raising it. */
+  @IsOptional()
+  @Text(1, 200)
+  originQuery?: string;
 }
 
 export class OpenRequestDto extends PortalRaiseDto {

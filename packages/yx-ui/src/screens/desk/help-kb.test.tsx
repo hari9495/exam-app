@@ -42,8 +42,21 @@ describe('help articles for requesters', () => {
     render(<RateTicketCard rating={null} onRate={onRate} />);
     await ue.click(screen.getByRole('radio', { name: '2' }));
     await ue.click(screen.getByRole('button', { name: 'Send rating' }));
-    expect(onRate).toHaveBeenCalledWith(2, undefined);
+    expect(onRate).toHaveBeenCalledWith(2, undefined, undefined);
     expect(await screen.findByText(/You rated this ticket 2 of 5/)).toBeTruthy();
+  });
+
+  it('1643: a reason from the desk list may go with the stars; with no list no reason is asked', async () => {
+    const onRate = vi.fn().mockResolvedValue(undefined);
+    const { unmount } = render(<RateTicketCard rating={null} reasons={['Slow', 'Not solved']} onRate={onRate} />);
+    await ue.click(screen.getByRole('radio', { name: '2' }));
+    await ue.click(screen.getByRole('combobox', { name: /The main reason/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Slow' }));
+    await ue.click(screen.getByRole('button', { name: 'Send rating' }));
+    expect(onRate).toHaveBeenCalledWith(2, undefined, 'Slow');
+    unmount();
+    render(<RateTicketCard rating={null} reasons={[]} onRate={onRate} />);
+    expect(screen.queryByRole('combobox', { name: /The main reason/ })).toBeNull();
   });
 
   it('the requester\'s ticket shows the rating card only when it can be rated or was rated', () => {

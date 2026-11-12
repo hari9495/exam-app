@@ -235,6 +235,45 @@ describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
     expect((await screen.findAllByText('Help articles are now checked every 6 months.')).length).toBeGreaterThan(0);
   });
 
+  it('settings (1642): search words that mean the same; an empty list is stopped, the starter list fills it in and is saved', async () => {
+    const onSynonyms = ok();
+    render(<ToastProvider><DeskSetupScreen state="ready" initialTab="settings" synonyms={{ value: 'cl, casual leave', starter: 'pf, provident fund' }} onSynonyms={onSynonyms} desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, canSetUp: true }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={ok()} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} /></ToastProvider>);
+    const box = screen.getByLabelText('Words, one group a line');
+    expect(box).toHaveValue('cl, casual leave');
+    await ue.clear(box);
+    await ue.click(screen.getByRole('button', { name: 'Save search words' }));
+    expect((await screen.findAllByText('Write at least one line, or press Use the starter list.')).length).toBeGreaterThan(0);
+    expect(onSynonyms).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('button', { name: 'Use the starter list' }));
+    await ue.click(screen.getByRole('button', { name: 'Save search words' }));
+    await waitFor(() => expect(onSynonyms).toHaveBeenCalledWith('pf, provident fund'));
+    expect((await screen.findAllByText('Search words saved.')).length).toBeGreaterThan(0);
+  });
+
+  it('settings (1643): the reasons to pick after a rating, one a line, are saved with the desk settings (blank lines dropped)', async () => {
+    const onUpdateDesk = ok();
+    render(<ToastProvider><DeskSetupScreen state="ready" initialTab="settings" desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, canSetUp: true, desk: { ...DETAIL.desk, ratingReasons: ['Slow'] } }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={onUpdateDesk} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} /></ToastProvider>);
+    const box = screen.getByLabelText(/Reasons to pick after a rating/);
+    expect(box).toHaveValue('Slow');
+    await ue.type(box, '{Enter}{Enter}  Great help  ');
+    await ue.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(onUpdateDesk).toHaveBeenCalledWith(expect.objectContaining({ ratingReasons: ['Slow', 'Great help'] })));
+  });
+
+  it('settings (1646): the message while closed is saved only when changed; unchanged it is not sent', async () => {
+    const onUpdateDesk = ok();
+    render(<ToastProvider><DeskSetupScreen state="ready" initialTab="settings" desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, canSetUp: true, desk: { ...DETAIL.desk, closedMessage: 'Closed. Back {opens}.' } }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={onUpdateDesk} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} /></ToastProvider>);
+    const box = screen.getByRole('textbox', { name: /Message while closed/ });
+    expect(box).toHaveValue('Closed. Back {opens}.');
+    await ue.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(onUpdateDesk).toHaveBeenCalledTimes(1));
+    expect(onUpdateDesk.mock.calls[0][0]).not.toHaveProperty('closedMessage');
+    await ue.clear(box);
+    await ue.type(box, 'Shut till {{opens}');
+    await ue.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(onUpdateDesk).toHaveBeenLastCalledWith(expect.objectContaining({ closedMessage: 'Shut till {opens}' })));
+  });
+
   it('settings: the at-risk point of a desk is a Segment of 50 to 90 %, saved with the other settings and a toast', async () => {
     const onUpdateDesk = ok();
     render(<ToastProvider><DeskSetupScreen state="ready" initialTab="settings" desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, canSetUp: true }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={onUpdateDesk} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} /></ToastProvider>);

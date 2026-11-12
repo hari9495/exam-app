@@ -7,7 +7,7 @@ import { todayIst } from '../org-structure/org-validation';
 import { DeskActor, activeOn, audit, deskSystem, emit, has, isAgentOn, requireWork } from './desk-access';
 import { ArticleDto, ArticleMetaDto, BlockDto, CategoryDto, DraftDto, KbFeedbackDto, KbListQueryDto, KbSpaceDto, ReviewDto, TemplateDto } from './dto-kb';
 import { maskPii } from './pii';
-import { KbSource, countKb, forAcknowledgement, portalFor, prefixQuery, readerUrl, searchIn } from './kb-search';
+import { KbSource, STARTER_SYNONYMS, SYNONYMS_KEY, countKb, forAcknowledgement, parseSynonyms, portalFor, prefixQuery, readerUrl, searchIn, synonymsOf } from './kb-search';
 
 export { prefixQuery, type KbSource };
 import { PortalSession } from './portal.service';
@@ -545,11 +545,24 @@ export class KbService {
 
   /** HLP-04: the company's review interval. Anyone who reads knowledge may see it; desk.desk.create changes it. */
   async kbSettings(a: DeskActor) {
-    return this.tx(a, async (tx) => ({ reviewMonths: await this.reviewMonths(tx, a.ctx.organizationId), choices: REVIEW_CHOICES, defaultMonths: REVIEW_DEFAULT, pageHelp: await this.pageHelpOn(tx, a.ctx.organizationId) }));
+    return this.tx(a, async (tx) => this.settingsView(tx, a.ctx.organizationId));
   }
 
-  async setKbSettings(a: DeskActor, dto: { reviewMonths?: number; pageHelp?: boolean }) {
-    if (dto.reviewMonths === undefined && dto.pageHelp === undefined) throw new BadRequestException('Nothing to change.');
+  /** The KB settings as the Settings tab shows them; answer 1642: the search word list (the company's, or the starter list). */
+  private async settingsView(tx: Tx, org: string) {
+    return { reviewMonths: await this.reviewMonths(tx, org), choices: REVIEW_CHOICES, defaultMonths: REVIEW_DEFAULT, pageHelp: await this.pageHelpOn(tx, org), synonyms: (await synonymsOf(tx, org)).map((g) => g.join(', ')).join('\n'), synonymsDefault: STARTER_SYNONYMS };
+  }
+
+  async setKbSettings(a: DeskActor, dto: { reviewMonths?: number; pageHelp?: boolean; synonyms?: string }) {
+    if (dto.reviewMonths === undefined && dto.pageHelp === undefined && dto.synonyms === undefined) throw new BadRequestException('Nothing to change.');
+    let groups: string[][] | null = null;
+    if (dto.synonyms !== undefined) {
+      try {
+        groups = parseSynonyms(dto.synonyms);
+      } catch (e) {
+        throw new BadRequestException((e as Error).message);
+      }
+    }
     return this.tx(a, async (tx) => {
       const org = a.ctx.organizationId;
       // Stored as the registry stores it (text), so Settings › registry shows the same value.
@@ -569,7 +582,12 @@ export class KbService {
         await put(PAGE_HELP_KEY, dto.pageHelp ? 'on' : 'off');
         await audit(tx, a, 'desk.kb.settings_changed', 'setting', PAGE_HELP_KEY, { pageHelp: { from, to: dto.pageHelp } });
       }
-      return { reviewMonths: await this.reviewMonths(tx, org), choices: REVIEW_CHOICES, defaultMonths: REVIEW_DEFAULT, pageHelp: await this.pageHelpOn(tx, org) };
+      if (groups) {
+        const from = (await synonymsOf(tx, org)).length;
+        await put(SYNONYMS_KEY, groups.map((g) => g.join(', ')).join('\n'));
+        await audit(tx, a, 'desk.kb.settings_changed', 'setting', SYNONYMS_KEY, { synonymGroups: { from, to: groups.length } });
+      }
+      return this.settingsView(tx, org);
     });
   }
 
@@ -1108,7 +1126,7 @@ export class KbService {
 
   // ------------------------------------------------------------------------------------------ reports (US-G-024, US-G-223)
 
-  /** Searches with no result, searches nobody clicked, and solved tickets with no article, by topic. */
+  /** Searches with no result, searches nobody clicked, solved tickets with no article (by topic), and articles that led to tickets. */
   async contentGaps(a: DeskActor, from: string, to: string) {
     if (!has(a, 'desk.report.view') && !has(a, 'desk.kb.publish')) throw new ForbiddenException('You cannot see knowledge reports.');
     return this.tx(a, async (tx) => {
@@ -1133,7 +1151,13 @@ export class KbService {
           AND NOT t.sensitive AND NOT t.private
           AND NOT EXISTS (SELECT 1 FROM sd_kb_links l WHERE l.organization_id = t.organization_id AND l.ticket_id = t.id)
         GROUP BY d.name, c.name ORDER BY tickets DESC LIMIT 50`;
-      return { noResult, noClick, noArticle };
+      // Answer 1647: articles people were reading when they still raised a ticket (counts only, never the tickets).
+      const ledToTickets = await tx.$queryRaw<{ articleId: string; number: number; title: string; tickets: number }[]>`
+        SELECT a.id AS "articleId", a.number, a.title, count(*)::int AS tickets FROM sd_tickets t
+        JOIN sd_kb_articles a ON a.organization_id = t.organization_id AND a.id = t.origin_article_id
+        WHERE t.organization_id = ${org}::uuid AND t.created_at >= ${from}::date AND t.created_at < ${to}::date + 1 AND a.deleted_at IS NULL
+        GROUP BY a.id, a.number, a.title ORDER BY tickets DESC, a.number LIMIT 50`;
+      return { noResult, noClick, noArticle, ledToTickets };
     });
   }
 

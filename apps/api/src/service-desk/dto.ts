@@ -148,6 +148,21 @@ export class UpdateDeskDto {
   @ValidateIf((_, v) => v !== undefined) // null is refused, not skipped
   @IsIn(AT_RISK_CHOICES, { message: 'The at-risk point is 50, 60, 70, 80 or 90 %.' })
   atRiskPercent?: number;
+
+  /** Answer 1643: the preset reasons a requester may pick after the stars; empty asks for none. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(12, { message: 'Keep to 12 reasons.' })
+  @ArrayUnique((x: string) => x.trim().toLowerCase(), { message: 'Each reason only once.' })
+  @IsString({ each: true })
+  @MinLength(2, { each: true, message: 'A reason needs at least 2 letters.' })
+  @MaxLength(40, { each: true, message: 'Keep a reason to 40 letters.' })
+  ratingReasons?: string[];
+
+  /** Answer 1646: what the help centre and portal say while the desk is closed; {opens} becomes the next opening time. */
+  @IsOptional()
+  @Text(2, 300)
+  closedMessage?: string;
 }
 
 export class AddMemberDto {
@@ -597,6 +612,21 @@ export class RaiseTicketDto {
   @IsOptional()
   @Matches(/^[\w\-./ ]{1,100}$/, { message: 'Screen name is not valid' })
   screen?: string;
+
+  /** Answer 1647: the help article the person was reading when they raised it. */
+  @IsOptional()
+  @IsUUID()
+  originArticleId?: string;
+
+  /** Answer 1647: the knowledge search they made before raising it. */
+  @IsOptional()
+  @Text(1, 200)
+  originQuery?: string;
+
+  /** Answer 1662: "Which device?" on an IT desk: one of the devices assigned to the person (checked in the service). */
+  @IsOptional()
+  @IsUUID()
+  assetId?: string;
 
   /** SD-2.25: the language the person writes in (ISO 639, e.g. hi, ta); routing prefers agents who speak it. */
   @IsOptional()
@@ -1474,4 +1504,11 @@ export class ComplianceTargetsDto {
   @ValidateNested({ each: true })
   @Type(() => ComplianceTargetDto)
   targets!: ComplianceTargetDto[];
+}
+
+/** Answer 1661: the device an IT ticket is about; null clears it. */
+export class TicketDeviceDto {
+  @ValidateIf((_, v) => v !== null)
+  @IsUUID()
+  assetId!: string | null;
 }

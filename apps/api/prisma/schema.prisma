@@ -3771,6 +3771,10 @@ model SdDesk {
   atRiskPercent      Int      @default(80) @map("at_risk_percent") @db.SmallInt
   /// SD-2.10: desks this desk may move tickets to.
   forwardTo          String[] @default([]) @map("forward_to") @db.Uuid
+  /// Answer 1643: the preset reasons a requester may pick after the stars (at most 12).
+  ratingReasons      String[] @default(["Quick help", "Solved my problem", "Friendly and clear", "Slow", "Not solved", "Had to explain again"]) @map("rating_reasons") @db.VarChar(40)
+  /// Answer 1646: what the help centre and portal say while the desk's calendar is closed ({opens}: the next opening).
+  closedMessage      String   @default("We're closed now. We open again {opens}. You can still raise a ticket; we answer it when we open.") @map("closed_message") @db.VarChar(300)
   status             String   @default("active") @db.VarChar(10)
   version            Int      @default(1)
   createdBy          String?  @map("created_by") @db.Uuid
@@ -3975,6 +3979,13 @@ model SdTicket {
   planTier             String?                  @map("plan_tier") @db.VarChar(40)
   senderVerified       Boolean                  @default(true) @map("sender_verified")
   ratingAskedAt        DateTime?                @map("rating_asked_at") @db.Timestamptz(3)
+  /// Answer 1646: raised while the desk's calendar was closed.
+  raisedOutsideHours   Boolean                  @default(false) @map("raised_outside_hours")
+  /// Answer 1647: the help article the person was reading when they raised it, or the search they made.
+  originArticleId      String?                  @map("origin_article_id") @db.Uuid
+  originQuery          String?                  @map("origin_query") @db.VarChar(200)
+  /// Answers 1661, 1662: the device (People asset register) an IT desk ticket is about.
+  assetId              String?                  @map("asset_id") @db.Uuid
   contentRemovedAt     DateTime?                @map("content_removed_at") @db.Timestamptz(3)
   /// SD-2.10: the site set-up used (requester's location).
   branchId             String?                  @map("branch_id") @db.Uuid
@@ -4913,6 +4924,8 @@ model SdRating {
   groupId        String?  @map("group_id") @db.Uuid
   score          Int      @db.SmallInt
   comment        String?  @db.VarChar(1000)
+  /// Answer 1643: the preset reason picked after the stars (one of the desk's list at the time).
+  reason         String?  @db.VarChar(40)
   channel        String   @db.VarChar(6)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 

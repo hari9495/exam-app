@@ -190,7 +190,7 @@ portal designs also wait: `settings: MobileHelpTicketsScreen`, `MobilePolicyAckS
 
 ## 4. Design groups, story by story
 
-### A. Helpdesk HLP-01 … 19
+### A. Helpdesk HLP-01 … 20
 
 #### HLP-01 · Help centre
 
@@ -215,6 +215,9 @@ chat offer and WhatsApp / SMS help, no access).
 | KnownIssue · Known issue · Me too, reading aids and my data | live | new story: the desk's banners for the person (`GET desk/my/banners`) with "Me too" (`POST …/me-too`, once; pressed again says you are on it); rail: reading aids and "My data" (copy or erasure of my desk data) |
 | ArticleOpen · Article open · was it helpful, this solved it | live | new story: the article drawer (`GET desk/my/kb/articles/:n`, other languages, Yes / No once, "This solved it", "I still need help" opens the raise form) |
 | ChatAndPhone · Chat offer and help on WhatsApp or SMS | live | new story: the page's chat offer when an agent is online (`GET desk/my/chat/prompt`) and the WhatsApp / SMS card (`GET desk/my/messaging`, link my phone with a join code, unlink) |
+| RateWithReason · Resolved ticket · rate with a reason | live | Answer 1643: after the stars, an optional "The main reason" Select from the desk's own list (`ratingReasons` on the ticket row); `POST desk/my/tickets/:id/rating {score, reason}` (a reason not on the desk's list is refused); the same on the ticket page and the customer portal; the agent's ticket shows "rated 2 of 5 (Slow)" |
+| ClosedNow · Raise ticket · the team is closed now | live | Answer 1646: outside the desk's calendar `GET desk/my/desks` gives `closed {message, opensAt}`; the raise form shows the desk's message with {opens} as the next opening time (the next working start, skipping nights, weekends and holidays); the ticket can still be raised and is marked raised outside hours |
+| RaiseWhichDevice · Raise ticket · which device? (IT desk) | live | Answer 1662: `GET desk/my/desks` gives `askDevice` (an IT desk and the person holds a device); the optional "Which device?" uses the catalogue's device picker (`GET desk/my/pick/assets`: only their own devices); `POST desk/my/tickets {assetId}` refuses a device not assigned to the person it is for, and any device on a non-IT desk |
 | NoAccess · No access (acting for someone else) | live | the API refuses (403) anyone acting for someone else; the page shows the kit's no-access state |
 
 #### HLP-02 · Agent desk
@@ -274,6 +277,8 @@ follow-ups, articles, related tickets and the rest of the work rail) sit in the 
 | Escalate · Move to another support level | live | new story: the header menu's "Move to another support level" (L1 / L2 / L3, group, reason; pressed with no reason says so) |
 | ResolveWithCode · Resolve · code and note | live | new story: the resolve dialog |
 | ResolvedRated · Resolved · closes on, the rating | live | new story |
+| OutsideHours · Raised outside hours | live | Answer 1646: `sd_tickets.raised_outside_hours`, set when the ticket is made while the desk's calendar is closed (any channel); a neutral badge beside the flags |
+| Device · IT ticket · device set by an IT agent | live | Answer 1661: Details card, Device: an IT desk's agent searches any live company device (`GET desk/pick/assets`, tag, name or serial) and sets or clears it (`PUT desk/tickets/:id/device`, audited, a timeline event, toast); others see it read only; agents of other desks are refused (403) |
 | Collaborator · Collaborator · notes only | live | new story: no Reply tab, no work controls (the server refuses a collaborator's reply, e2e) |
 | ReadOnly · Desk admin · read only | live | new story: "Read-only: you set this desk up"; no Respond card (the server refuses their notes) |
 | SenderUnverified · Email from an unproven sender, customer | live | new story: the warning; customer, plan and product in the rail |
@@ -299,7 +304,7 @@ templates, content gaps, recycle bin, four-eyes review, compare, preview, detail
 | Categories · Categories of a space | live | new story: add, rename, move up / down, delete an empty one (`desk.kb.publish`, `desk.settings.manage` or `desk.desk.create`); three levels |
 | Blocks · Reusable blocks | live | new story: `GET/POST/PATCH desk/kb/blocks` (publishers change them) |
 | Templates · Article templates | live | new story: `GET/POST/PATCH desk/kb/templates` |
-| Gaps · Content gaps | live | new story: `GET desk/kb/gaps` (`desk.report.view` or `desk.kb.publish`); article-request task (`desk.task.work`), toast |
+| Gaps · Content gaps | live | new story: `GET desk/kb/gaps` (`desk.report.view` or `desk.kb.publish`); article-request task (`desk.task.work`), toast. Answer 1647: a fourth list, "Articles that led to tickets" (`ledToTickets`: tickets raised from the help centre or portal while reading that article, counts only), from `sd_tickets.origin_article_id`; the search words are kept too (`origin_query`) |
 | RecycleBin · Recycle bin | live | new story: `GET desk/recycle-bin`, Put back, toast |
 | WaitingReview · Publisher · a version waiting for your review | live | new story: banner "Version N by … is waiting for your review" with Compare and Send back |
 | PublishConfirm · Publisher · publish the reviewed version | live | new story: the design's publish dialog; `POST desk/kb/articles/:id/review` approve (`desk.kb.publish`, never one's own version), toast |
@@ -715,6 +720,17 @@ File: `packages/yx-ui/src/screens/ops/hlp-19.stories.tsx`. Drawn 12 Nov 2026 (th
 | DocumentsCodeFailed · The code could not be sent | live | same page |
 | DocumentsNone · No documents | live | same page |
 
+#### HLP-20 · Help article
+
+File: `packages/yx-ui/src/screens/ops/hlp-20.stories.tsx`. Drawn 12 Nov 2026 (answer 1603) in the HLP-04 article look: number and date first, the answer in a card, then the feedback; the help centre, the portal and the knowledge pages render this same `ArticleBody` (it left `liveCopies`; the "Live · Help article" pictures are gone).
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| ArticleRead · Was this helpful? | live | /yx/desk/help, the portal and /yx/desk/knowledge open `ArticleDrawer` (`GET desk/my/kb/articles/:id`, feedback `POST …/feedback`) |
+| ArticleVoteAgain · A second vote (toast) | live | one vote per article |
+| ArticleSolved · This solved it (toast) | live | `POST …/solved`, no ticket made |
+| ArticleFallback · Not in your language yet (shown in English) | live | the article in the company's default language when the person's is missing |
+
 ### B. Other Helpdesk designs (were "Service desk")
 
 #### Desk set-up
@@ -726,6 +742,9 @@ File: `packages/yx-ui/src/screens/desk/desk.stories.tsx` (from "Phase 3b-1 (wire
 | Setup · Desk set-up | live | /yx/desk/setup renders DeskSetupScreen |
 | SetupKbReview · Desk set-up · Settings · check help articles again every | live | HLP-04b (founder 3 Nov 2026): Settings tab, company's Service Desk owner (`desk.desk.create`): Segment 3, 6, 12 or 24 months; `GET/PUT desk/kb/settings` (registry `desk.kb.review_months`, default 12), toast |
 | SetupAtRisk · Desk set-up · Settings · at risk from (per desk) | live | HLP-05b (founder 3 Nov 2026): Settings tab, `desk.settings.manage` like the other desk settings: Segment 50 / 60 / 70 / 80 / 90 % (default 80), saved with Save settings (`PATCH desk/desks/:id`, version check, audited), toast |
+| SetupSynonyms · Desk set-up · Settings · search words that mean the same | live | Answer 1642: Settings tab, company's Service Desk owner (`desk.desk.create`): one group a line, commas between words; Use the starter list (Indian HR words: PF, UAN, ESI, CL, payslip, Form 16 …); `PUT desk/kb/settings {synonyms}` (registry `desk.kb.synonyms`), audited, toast; help search widens by the list |
+| SetupRatingReasons · Desk set-up · Settings · reasons to pick after a rating | live | Answer 1643: Settings tab, `desk.settings.manage`: one reason a line, up to 12 (starter: Quick help, Solved my problem, Friendly and clear, Slow, Not solved, Had to explain again; empty asks none); saved with Save settings (`PATCH desk/desks/:id {ratingReasons}`, version check, audited); reasons show in the Ratings report ("Reasons given") and as a custom-report column |
+| SetupClosedMessage · Desk set-up · Settings · message while closed | live | Answer 1646: Settings tab, `desk.settings.manage`: one line, 2 to 300 letters, {opens} becomes the next opening time (default: "We're closed now. We open again {opens}. …"); saved with Save settings (`PATCH desk/desks/:id {closedMessage}`, audited); needs a business-hours calendar (none: never closed) |
 | SlaSetupTab · SD-1.14 Response targets (desk set-up tab) | live | /yx/desk/setup, SLA tab (`desk.sla.manage`) |
 | EmailSetup · SD-1.18 Email (desk set-up tab) | live | /yx/desk/setup, Email tab (`desk.mailbox.manage`) |
 | PortalSetup · SD-1.21 Help pages (desk set-up tab) | live | /yx/desk/setup, Help pages tab (`desk.portal.manage`) |
@@ -748,6 +767,7 @@ File: `packages/yx-ui/src/screens/desk/desk-portal.stories.tsx` (from "Phase 3b-
 | PortalLogin · US-G-021 Outside portal · sign in | live | /yx/portal/[org]/[portal] renders PortalScreen |
 | PortalHomeStory · US-G-021 Outside portal · my tickets | live | the portal's own sign-in, then my tickets |
 | PortalTicketStory · US-G-021 Outside portal · one ticket | live | |
+| PortalRaiseClosed · US-G-021 Outside portal · raise while the team is closed | live | Answer 1646: the portal's `info` gives each team's `closed {message, opensAt}`; the raise form (and Ask without an account) shows it under the team |
 | CustomersPlanTooEarly · SD-1.22 Customers · Add plan pressed with nothing filled | live | |
 | CustomersPersonTooEarly · SD-1.22 Customers · Add person pressed with nothing filled | live | |
 | CustomersProductTooEarly · SD-1.22 Customers · Add product pressed with no name | live | |

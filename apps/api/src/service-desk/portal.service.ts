@@ -268,13 +268,15 @@ export class PortalService {
   async info(orgSlug: string, portalSlug: string) {
     const { org, portal, deskIds } = await this.portalOf(orgSlug, portalSlug);
     return this.tenantPrisma.forTenant({ organizationId: org.id, isSuperAdmin: false }, async (tx) => {
-      const desks = await tx.sdDesk.findMany({ where: { organizationId: org.id, id: { in: deskIds }, status: 'active' }, orderBy: { name: 'asc' }, select: { id: true, name: true } });
+      const desks = await tx.sdDesk.findMany({ where: { organizationId: org.id, id: { in: deskIds }, status: 'active' }, orderBy: { name: 'asc' }, select: { id: true, name: true, calendarId: true, closedMessage: true } });
+      const cache = new Map();
+      const closed = new Map(await Promise.all(desks.map(async (d) => [d.id, await this.tickets.sla.closedNow(tx, org.id, d, new Date(), cache)] as const)));
       const cats = await tx.sdCategory.findMany({ where: { organizationId: org.id, deskId: { in: deskIds }, active: true, sensitive: false }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }], select: { id: true, deskId: true, name: true, parentId: true } });
       const products = await tx.sdProduct.findMany({ where: { organizationId: org.id, active: true, OR: [{ deskId: null }, { deskId: { in: deskIds } }] }, orderBy: { name: 'asc' }, select: { id: true, name: true, deskId: true } });
       return {
         company: org.name,
         portal: { name: portal.name, accentColour: portal.accentColour, loginTitle: portal.loginTitle, loginText: portal.loginText, readingAids: portal.readingAids, openRequests: portal.openRequests, signUp: portal.signUp },
-        desks: desks.map((d) => ({ ...d, categories: cats.filter((c) => c.deskId === d.id).map(({ deskId: _d, ...c }) => c), products: products.filter((p) => !p.deskId || p.deskId === d.id).map((p) => ({ id: p.id, name: p.name })) })),
+        desks: desks.map(({ calendarId: _c, closedMessage: _m, ...d }) => ({ ...d, closed: closed.get(d.id) ?? null, categories: cats.filter((c) => c.deskId === d.id).map(({ deskId: _d, ...c }) => c), products: products.filter((p) => !p.deskId || p.deskId === d.id).map((p) => ({ id: p.id, name: p.name })) })),
         banners: await this.liveBanners(tx, org.id, deskIds, 'customers', null),
       };
     });
@@ -425,7 +427,7 @@ export class PortalService {
       const messages = await tx.sdTicketMessage.findMany({ where: { organizationId: org, ticketId: t.id, kind: { in: ['reply', 'system'] } }, orderBy: { createdAt: 'asc' } });
       const files = await tx.sdAttachment.findMany({ where: { organizationId: org, ticketId: t.id, OR: [{ side: 'requester' }, { messageId: { in: messages.filter((m) => m.kind === 'reply').map((m) => m.id) } }] }, orderBy: { createdAt: 'asc' } });
       const status = await tx.sdStatus.findFirst({ where: { organizationId: org, id: t.statusId }, select: { label: true } });
-      const desk = await tx.sdDesk.findFirstOrThrow({ where: { organizationId: org, id: t.deskId }, select: { name: true } });
+      const desk = await tx.sdDesk.findFirstOrThrow({ where: { organizationId: org, id: t.deskId }, select: { name: true, ratingReasons: true } });
       const people = await this.tickets.personNames(tx, org, [t.requesterPersonId, ...messages.map((m) => m.authorPersonId)]);
       const users = await this.tickets.userNames(tx, org, messages.map((m) => m.authorUserId));
       const due = await this.tickets.sla.requesterDue(tx, org, t.id);
@@ -443,6 +445,7 @@ export class PortalService {
         mine: t.requesterPersonId === s.personId,
         canReply: !t.mergedIntoId,
         rating: rated?.score ?? null,
+        ratingReasons: desk.ratingReasons,
         canRate: !rated && ['solved', 'closed'].includes(t.systemState) && t.requesterPersonId === s.personId,
         resolveBy: due?.resolveBy ?? null,
         messages: messages.map((m) => ({
@@ -479,7 +482,7 @@ export class PortalService {
     const usedUp = await this.usedUp(s.organizationId, dto.deskId, s.personId);
     const t = await this.asPortal(s, async (tx) => {
       await this.checkRaise(tx, s.organizationId, deskIds, dto);
-      return this.tickets.createIn(tx, { ctx: { organizationId: s.organizationId, isSuperAdmin: false }, userId: null }, { deskId: dto.deskId, categoryId: dto.categoryId, productId: dto.productId, subject: dto.subject, bodyHtml: textToHtml(dto.description), requesterPersonId: s.personId, openedByUserId: null, channel: 'portal', side: 'requester', authorPersonId: s.personId, usedUp });
+      return this.tickets.createIn(tx, { ctx: { organizationId: s.organizationId, isSuperAdmin: false }, userId: null }, { deskId: dto.deskId, categoryId: dto.categoryId, productId: dto.productId, subject: dto.subject, bodyHtml: textToHtml(dto.description), requesterPersonId: s.personId, openedByUserId: null, channel: 'portal', side: 'requester', authorPersonId: s.personId, usedUp, originArticleId: dto.originArticleId, originQuery: dto.originQuery });
     });
     return { id: t.id, number: t.number };
   }
@@ -512,7 +515,7 @@ export class PortalService {
       await this.checkRaise(tx, org.id, deskIds, dto);
       if (!(await this.eligible(tx, org.id, portal, dto.email)).ok) return false;
       await tx.sdPortalRequest.create({
-        data: { organizationId: org.id, portalId: portal.id, deskId: dto.deskId, email: dto.email, name: dto.name, payload: { subject: dto.subject, description: dto.description, categoryId: dto.categoryId ?? null, productId: dto.productId ?? null }, tokenHash: sha256(token), ip: ip?.slice(0, 45) ?? null, expiresAt: new Date(Date.now() + REQUEST_HOURS * 3_600_000) },
+        data: { organizationId: org.id, portalId: portal.id, deskId: dto.deskId, email: dto.email, name: dto.name, payload: { subject: dto.subject, description: dto.description, categoryId: dto.categoryId ?? null, productId: dto.productId ?? null, originArticleId: dto.originArticleId ?? null, originQuery: dto.originQuery ?? null }, tokenHash: sha256(token), ip: ip?.slice(0, 45) ?? null, expiresAt: new Date(Date.now() + REQUEST_HOURS * 3_600_000) },
       });
       return true;
     });
@@ -537,7 +540,7 @@ export class PortalService {
       if (!(await this.eligible(tx, org.id, portal, r.email)).ok || !deskIds.includes(r.deskId)) throw new NotFoundException('This link has expired. Send your request again.');
       return { ...r, personId: (await ensureContact(tx, org.id, r.email, r.name, null)).personId };
     });
-    const p = req.payload as { subject: string; description: string; categoryId: string | null; productId: string | null };
+    const p = req.payload as { subject: string; description: string; categoryId: string | null; productId: string | null; originArticleId?: string | null; originQuery?: string | null };
     const s: PortalSession = { organizationId: org.id, orgSlug: org.slug, portalId: portal.id, portalSlug: portal.slug, personId: req.personId, sessionId: '' };
     const usedUp = await this.usedUp(org.id, req.deskId, req.personId);
     // 2. One click makes one ticket, in one transaction with the link being used up: two clicks at once make one
@@ -545,7 +548,7 @@ export class PortalService {
     const t = await this.asPortal(s, async (tx) => {
       const won = await tx.sdPortalRequest.updateMany({ where: { id: req.id, confirmedAt: null }, data: { confirmedAt: new Date() } });
       if (!won.count) throw new ConflictException('This request was already confirmed. Sign in to follow it.');
-      const n = await this.tickets.createIn(tx, { ctx, userId: null }, { deskId: req.deskId, categoryId: p.categoryId ?? undefined, productId: p.productId, subject: p.subject, bodyHtml: textToHtml(p.description), requesterPersonId: req.personId, openedByUserId: null, channel: 'portal', side: 'requester', authorPersonId: req.personId, usedUp });
+      const n = await this.tickets.createIn(tx, { ctx, userId: null }, { deskId: req.deskId, categoryId: p.categoryId ?? undefined, productId: p.productId, subject: p.subject, bodyHtml: textToHtml(p.description), requesterPersonId: req.personId, openedByUserId: null, channel: 'portal', side: 'requester', authorPersonId: req.personId, usedUp, originArticleId: p.originArticleId ?? undefined, originQuery: p.originQuery ?? undefined });
       await tx.sdPortalRequest.update({ where: { id: req.id }, data: { ticketId: n.id } });
       return n;
     });

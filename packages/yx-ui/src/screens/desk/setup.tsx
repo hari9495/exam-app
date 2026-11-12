@@ -5,7 +5,7 @@ import { Badge } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert } from '../../components/feedback';
 import { FormField, useTooEarly } from '../../components/field';
-import { NumberField, TextField, TimeField } from '../../components/inputs';
+import { NumberField, TextArea, TextField, TimeField } from '../../components/inputs';
 import { Checkbox, Switch } from '../../components/choice';
 import { MultiSelect, Select } from '../../components/select';
 import { Segment } from '../../components/segment';
@@ -55,7 +55,7 @@ export interface DeskSetupScreenProps {
   calendars: Calendar[];
   canCalendars: boolean;
   onCreateDesk: (input: { name: string; key: string; kind: DeskKind }) => Promise<void>;
-  onUpdateDesk: (change: Partial<Pick<DeskSummary, 'name' | 'privacy' | 'numberPrefix' | 'numberSuffix' | 'attachmentTypes' | 'attachmentMaxMb' | 'vipRaisesPriority' | 'calendarId' | 'resolutionRequired' | 'reopenWindowDays' | 'requesterCanReopen' | 'autoCloseDays' | 'routingWaitMinutes' | 'atRiskPercent'>> & { nextNumber?: number }) => Promise<void>;
+  onUpdateDesk: (change: Partial<Pick<DeskSummary, 'name' | 'privacy' | 'numberPrefix' | 'numberSuffix' | 'attachmentTypes' | 'attachmentMaxMb' | 'vipRaisesPriority' | 'calendarId' | 'resolutionRequired' | 'reopenWindowDays' | 'requesterCanReopen' | 'autoCloseDays' | 'routingWaitMinutes' | 'atRiskPercent' | 'ratingReasons' | 'closedMessage'>> & { nextNumber?: number }) => Promise<void>;
   onSearchUsers: (q: string) => Promise<{ id: string; name: string | null; email: string }[]>;
   onSeatCost: (userId: string, role: DeskRole) => Promise<SeatCost>;
   onAddMember: (input: { userId: string; role: DeskRole; tier?: string }) => Promise<void>;
@@ -78,6 +78,9 @@ export interface DeskSetupScreenProps {
   /** Help H-1 (answer 942): "Show page help" in the Help drawer (company setting, on by default). */
   pageHelp?: boolean | null;
   onPageHelp?: (on: boolean) => Promise<unknown>;
+  /** Answer 1642: words that mean the same in a knowledge search (one group a line), and the starter list. */
+  synonyms?: { value: string; starter: string } | null;
+  onSynonyms?: (text: string) => Promise<unknown>;
   /** Batch 2 tabs: response targets, and resolution codes with templates. */
   sla?: Omit<SlaTabProps, 'detail' | 'calendars'>;
   workSetup?: Omit<WorkSetupProps, 'detail'>;
@@ -783,6 +786,8 @@ function SettingsTab(props: TabProps) {
   const [closeDays, setCloseDays] = useState<number | null>(x.autoCloseDays === undefined ? 3 : x.autoCloseDays);
   const [waitMinutes, setWaitMinutes] = useState<number | null>(x.routingWaitMinutes ?? 2);
   const [atRisk, setAtRisk] = useState(String(x.atRiskPercent ?? 80));
+  const [reasons, setReasons] = useState((x.ratingReasons ?? []).join('\n'));
+  const [closedMessage, setClosedMessage] = useState(x.closedMessage ?? '');
   const { busy, error, run } = useRun();
   const { toast } = useToast();
   const can = props.detail.canSetUp;
@@ -806,6 +811,9 @@ function SettingsTab(props: TabProps) {
       <FormField label="Business hours" helper="The calendar this desk’s response targets will use.">
         <Select value={calendarId} onChange={setCalendarId} clearable disabled={!can} options={props.calendars.map((c) => ({ value: c.id, label: `${c.name} · ${c.timeZone}` }))} />
       </FormField>
+      <FormField label="Message while closed" helper="The help centre and portal show it outside business hours. {opens} becomes the next opening time. Tickets raised then are marked “Raised outside hours”.">
+        <TextField value={closedMessage} onChange={setClosedMessage} maxLength={300} disabled={!can} />
+      </FormField>
       <FormField label="At risk from" helper="A ticket shows as at risk once this share of a response target is used, on the SLA dashboard and the agent desk. Missed stays at 100 %.">
         <Segment label="At risk from" options={AT_RISK_CHOICES.map((p) => ({ value: String(p), label: `${p} %` }))} value={atRisk} onChange={(v) => can && setAtRisk(v)} />
       </FormField>
@@ -826,6 +834,9 @@ function SettingsTab(props: TabProps) {
       </FormField>
       <FormField label="Wait for the best-matched agent (minutes)" helper="When nobody free has the skills and language a ticket needs, it waits this long before going to anyone free. 0: at once.">
         <NumberField value={waitMinutes} onChange={setWaitMinutes} min={0} max={60} disabled={!can} />
+      </FormField>
+      <FormField label="Reasons to pick after a rating" helper="One a line, up to 12. After the stars a requester may pick one; reports count them. Empty: no reasons asked." optional>
+        <TextArea value={reasons} onChange={setReasons} rows={4} disabled={!can} />
       </FormField>
       {can && (
         <div className="yx-ops-row">
@@ -849,6 +860,8 @@ function SettingsTab(props: TabProps) {
                   autoCloseDays: closeDays,
                   routingWaitMinutes: waitMinutes ?? 2,
                   atRiskPercent: Number(atRisk),
+                  ratingReasons: reasons.split('\n').map((r) => r.trim()).filter(Boolean),
+                  ...(closedMessage.trim() && closedMessage.trim() !== x.closedMessage ? { closedMessage: closedMessage.trim() } : {}),
                   ...(next ? { nextNumber: next } : {}),
                 });
                 toast({ tone: 'success', title: 'Desk settings saved.' });
@@ -861,6 +874,7 @@ function SettingsTab(props: TabProps) {
       )}
       {props.onKbReviewMonths && props.kbReviewMonths != null && <KbReviewRule key={props.kbReviewMonths} value={props.kbReviewMonths} onSave={props.onKbReviewMonths} />}
       {props.onPageHelp && props.pageHelp != null && <PageHelpRule value={props.pageHelp} onChange={props.onPageHelp} />}
+      {props.onSynonyms && props.synonyms && <SynonymsRule key={props.synonyms.value} value={props.synonyms.value} starter={props.synonyms.starter} onSave={props.onSynonyms} />}
     </div>
   );
 }
@@ -871,6 +885,40 @@ const AT_RISK_CHOICES = [50, 60, 70, 80, 90];
 
 /** Registry setting desk.kb.review_months: one value for the company, not per desk. */
 /** Help H-1 (answer 942): the Help drawer's "This page" tab, for the whole company. Takes effect at once (a switch). */
+/** Answer 1642: the company's search words that mean the same (PF and provident fund); the starter list until changed. */
+function SynonymsRule({ value, starter, onSave }: { value: string; starter: string; onSave: (text: string) => Promise<unknown> }) {
+  const [text, setText] = useState(value);
+  const { busy, error, run } = useRun();
+  const { toast } = useToast();
+  const early = useTooEarly(text.trim() ? [] : [{ fieldId: 'kb-synonyms', message: 'Write at least one line, or press Use the starter list.' }]);
+  return (
+    <Card title="Search words that mean the same">
+      <div className="yx-ops-stack">
+        {error && <InlineAlert tone="danger" title="It was not saved">{error}</InlineAlert>}
+        <FormField id="kb-synonyms" label="Words, one group a line" helper="Separate the words with commas, e.g. pf, provident fund. Help search finds an article by any word of its line. For the whole company." error={early.errorOf('kb-synonyms')}>
+          <TextArea value={text} onChange={setText} rows={8} />
+        </FormField>
+        <div className="yx-ops-row">
+          <Button onClick={() => setText(starter)}>Use the starter list</Button>
+          <Button
+            variant="primary"
+            loading={busy === 'synonyms'}
+            onClick={() => {
+              if (early.stop()) return;
+              void run('synonyms', async () => {
+                await onSave(text);
+                toast({ tone: 'success', title: 'Search words saved.' });
+              });
+            }}
+          >
+            Save search words
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function PageHelpRule({ value, onChange }: { value: boolean; onChange: (on: boolean) => Promise<unknown> }) {
   const [on, setOn] = useState(value);
   const { error, run } = useRun();

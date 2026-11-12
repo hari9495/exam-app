@@ -3,7 +3,7 @@
 import { Suspense, useState } from 'react';
 import { Spinner } from '@yukthix/ui';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { HelpCentreScreen, type DevOutboxItem, type MyChannels, type KbArticleView, type KbHome, type KbSuggestion, type MyTicketRow, type PublicBanner, type RaiseDesk } from '@yukthix/ui/desk';
+import { HelpCentreScreen, type DevOutboxItem, type MyChannels, type KbArticleView, type KbHome, type KbSuggestion, type MyTicketRow, type PickOption, type PublicBanner, type RaiseDesk } from '@yukthix/ui/desk';
 import { apiFetch } from '../../../../../lib/api-client';
 import { useAuth } from '../../../../../lib/auth-context';
 import { deskState, useDesk, useDeskUpload, useDeskWrite } from '../../../../../lib/yx-desk';
@@ -42,7 +42,8 @@ function YxDeskHelpPageInner() {
         onRaise: (input) => write<{ id: string; number: string }>('/my/tickets', 'POST', input),
         onUpload: (id, file) => upload(`/my/tickets/${encodeURIComponent(id)}/attachments`, file),
         onOpen: (id) => router.push(`/yx/desk/help/${encodeURIComponent(id)}`),
-        onRate: (id, score) => write(`/my/tickets/${encodeURIComponent(id)}/rating`, 'POST', { score }),
+        onPickDevice: (q) => apiFetch(`/desk/my/pick/assets?q=${encodeURIComponent(q)}`, {}, token) as Promise<PickOption[]>,
+        onRate: (id, score, reason) => write(`/my/tickets/${encodeURIComponent(id)}/rating`, 'POST', { score, ...(reason ? { reason } : {}) }),
         kb: {
           home: home.data ?? null,
           openNumber: Number(params?.get('article')) || null,
