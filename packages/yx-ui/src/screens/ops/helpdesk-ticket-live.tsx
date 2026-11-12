@@ -40,6 +40,8 @@ export interface LiveTicket {
   /** Response targets come from here (business time used of each target). */
   work: TicketWork | null;
   canned: CannedResponse[];
+  /** Answer 1649: a saved reply chosen in the command palette (Ctrl K), added to the reply being written. */
+  insertReply?: { key: number; cannedId: string } | null;
   timeline: TimelineEntry[];
   context: RequesterContext | null;
   others: Presence[];
@@ -99,6 +101,14 @@ export function LiveTicketWorkspace({ live }: { live: LiveTicket }) {
   const [after, setAfter] = useState<string | null>(null);
   const [priorityAsk, setPriorityAsk] = useState<number | null>(null);
   const [convertOpen, setConvertOpen] = useState(false);
+  // Answer 1649: the palette's "Insert saved reply" lands in the open reply, as the menu below does.
+  useEffect(() => {
+    const c = live.insertReply ? live.canned.find((x) => x.id === live.insertReply!.cannedId && x.active) : null;
+    if (!c || !t?.canWork) return;
+    setMode('reply');
+    setDraft((x) => `${x}${fillCanned(c.bodyHtml, { firstName: (t.requester?.name ?? '').split(' ')[0] || 'the requester', number: t.number, agent: live.meName })}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live.insertReply?.key]);
   useEffect(() => {
     if (t && !t.canWork) setMode('note');
   }, [t]);

@@ -9,6 +9,7 @@ import { Tx } from '../org-structure/org-structure.service';
 import { addDays, todayIst } from '../org-structure/org-validation';
 import { approvedLeaveOfUsers } from '../time/time-core';
 import { CalendarSpec, businessSecondsBetween, nextOpening } from './business-time';
+import { moveCount, onHoldSeconds, replyGaps } from './ticket-timing';
 import { DeskActor, activeOn, audit, deskSystem, emit, has, isLead, requireSetUp, requireWork } from './desk-access';
 import { ComplianceTargetsDto, SlaPolicyDto, SlaVersionDto, UpdateSlaPolicyDto } from './dto';
 import {
@@ -649,6 +650,41 @@ export class SlaService implements OnModuleInit, OnModuleDestroy {
       });
     }
     return out;
+  }
+
+  /**
+   * Answer 1648: fuller timing for one ticket (agents only): the average wait for an agent reply, time on hold, how many
+   * times it moved (queue or owner) and the agents involved. Business time on the calendar of the ticket's resolution
+   * target (the same clock as the SLA), else round the clock.
+   */
+  async ticketTiming(tx: Tx, a: DeskActor, t: TicketRow, now = new Date()) {
+    const org = a.ctx.organizationId;
+    const [timer, messages, events, statuses, time] = await Promise.all([
+      tx.sdSlaTimer.findFirst({ where: { organizationId: org, ticketId: t.id, metric: 'resolution' }, orderBy: { createdAt: 'desc' }, select: { calendarId: true } }),
+      tx.sdTicketMessage.findMany({ where: { organizationId: org, ticketId: t.id, kind: { in: ['reply', 'note'] }, sideConversationId: null }, select: { kind: true, side: true, authorUserId: true, createdAt: true } }),
+      tx.sdTicketEvent.findMany({ where: { organizationId: org, ticketId: t.id, kind: { in: ['assigned', 'group_changed', 'status_changed'] } }, orderBy: { at: 'asc' }, select: { kind: true, fromValue: true, toValue: true, at: true } }),
+      tx.sdStatus.findMany({ where: { organizationId: org, deskId: t.deskId }, select: { id: true, systemState: true } }),
+      tx.sdTimeEntry.findMany({ where: { organizationId: org, ticketId: t.id }, select: { userId: true } }),
+    ]);
+    const cal = await this.calendarSpec(tx, org, timer?.calendarId ?? null);
+    const state = new Map(statuses.map((x) => [x.id, x.systemState]));
+    const changes = events.filter((e) => e.kind === 'status_changed');
+    const first = changes[0]?.fromValue ?? t.statusId;
+    const spans = [{ at: t.createdAt, onHold: state.get(first) === 'on_hold' }, ...changes.map((e) => ({ at: e.at, onHold: state.get(e.toValue ?? '') === 'on_hold' }))];
+    const replies = replyGaps(cal, t.createdAt, messages.filter((m) => m.kind === 'reply').map((m) => ({ side: m.side, at: m.createdAt })));
+    const agentIds = [
+      ...messages.filter((m) => m.side === 'agent').map((m) => m.authorUserId),
+      ...events.filter((e) => e.kind === 'assigned').flatMap((e) => [e.fromValue, e.toValue]),
+      ...time.map((x) => x.userId),
+    ].filter((x): x is string => Boolean(x));
+    const names = new Map((await tx.user.findMany({ where: { organizationId: org, id: { in: [...new Set(agentIds)] } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name || u.email]));
+    return {
+      averageReplySeconds: replies.average,
+      agentReplies: replies.count,
+      onHoldSeconds: onHoldSeconds(cal, spans, now),
+      moves: moveCount(events),
+      agents: [...new Set(agentIds)].map((id) => names.get(id)).filter((x): x is string => Boolean(x)).sort((x, y) => x.localeCompare(y)),
+    };
   }
 
   /** US-G-015: the agent says why a target was missed. */

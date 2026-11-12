@@ -103,3 +103,30 @@ describe('bell', () => {
     expect(approvableTask(n(), undefined)).toBeNull();
   });
 });
+
+describe('buildPalette: desk actions (answer 1649)', () => {
+  const ticket = { number: 'IT-1038', canWork: true, canned: [{ id: 'c1', title: 'Password reset steps' }], scenarios: [{ id: 's1', name: 'Escalate to network team' }] };
+  const desk = (o: Partial<NonNullable<PaletteInput['desk']>> = {}) => ({ view: true, work: true, ticket, ...o });
+
+  it('an agent on a ticket: saved replies, scenarios and their own status; a typed number opens that ticket', () => {
+    const p = buildPalette(input({ desk: desk() }));
+    expect(labels(p, 'Desk')).toEqual(['Insert saved reply: Password reset steps', 'Run scenario: Escalate to network team', 'Set my status: Available', 'Set my status: Busy', 'Set my status: Away', 'Set my status: Offline']);
+    expect(p.targets.get('desk:reply:c1')).toEqual({ deskReply: 'c1' });
+    expect(p.targets.get('desk:scenario:s1')).toEqual({ deskScenario: 's1' });
+    expect(p.targets.get('desk:status:away')).toEqual({ deskStatus: 'away' });
+    const typed = buildPalette(input({ typed: 'it-1042', desk: desk({ ticket: null }) }));
+    expect(labels(typed, 'Desk')[0]).toBe('Open ticket IT-1042');
+    expect(typed.targets.get('desk:number:IT-1042')).toEqual({ deskNumber: 'IT-1042' });
+  });
+
+  it('hidden without the keys: no work key, no replies, scenarios or status; no view key, no ticket jump', () => {
+    const viewer = buildPalette(input({ typed: 'IT-1042', desk: desk({ work: false }) }));
+    expect(labels(viewer, 'Desk')).toEqual(['Open ticket IT-1042']);
+    expect(headings(buildPalette(input({ typed: 'IT-1042', desk: desk({ view: false, work: false }) })))).not.toContain('Desk');
+    expect(headings(buildPalette(input({ typed: 'IT-1042' })))).not.toContain('Desk');
+    // On a ticket the agent cannot work (a collaborator or observer): only their own status.
+    expect(labels(buildPalette(input({ desk: desk({ ticket: { ...ticket, canWork: false } }) })), 'Desk').every((l) => l.startsWith('Set my status'))).toBe(true);
+    // Words that are not a ticket number never offer a jump.
+    expect(labels(buildPalette(input({ typed: 'leave', desk: desk({ ticket: null, work: false }) })), 'Desk')).toEqual([]);
+  });
+});

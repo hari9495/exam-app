@@ -64,6 +64,8 @@ export class WorkService {
       const childTickets = new Map((await tx.sdTicket.findMany({ where: { organizationId: org, id: { in: threads.map((s) => s.childTicketId).filter((x): x is string => Boolean(x)) } }, select: brief })).map((x) => [x.id, x]));
       const users = await this.tickets.userNames(tx, org, [...threadMessages.map((m) => m.authorUserId), ...tasks.map((k) => k.assigneeUserId), ...threads.map((s) => s.createdBy)]);
       const sla = await this.tickets.sla.ticketView(tx, a, t);
+      // Answer 1648: fuller timing, for agents only (an observer or collaborator never gets it).
+      const timing = access === 'agent' ? await this.tickets.sla.ticketTiming(tx, a, t) : null;
       return {
         parent,
         children,
@@ -86,6 +88,7 @@ export class WorkService {
         })),
         tasks: tasks.map((k) => this.taskView(k, users)),
         sla,
+        timing,
         reminders: reminders.map((r) => ({ id: r.id, kind: r.kind, remindAt: r.remindAt, note: r.note })),
         maskedValues: masked,
         canUnmask: access === 'agent' && has(a, 'desk.pii.unmask'),

@@ -21424,5 +21424,41 @@
     "expected": "Step 2: one JSON file of the company's records, no passwords or keys. Step 3: the wrong name is refused at the field; the right one is sent; the company stays open. Step 4: refused: already asked. Step 5: withdrawn. Step 6: 'This export link has expired.'",
     "stories": [],
     "note": "Positive and negative. Closing itself is a console test (staff)."
+  },
+  {
+    "id": "MT-HD-1648",
+    "area": "Helpdesk 1648 and 1649 (13 Nov 2026)",
+    "screen": "Helpdesk › a ticket › Response targets",
+    "url": "http://localhost:3000/yx/desk",
+    "account": "An IT agent and a team lead on the desk; the employee who raised the ticket.",
+    "steps": [
+      "As the agent reply; as the employee answer; hand the ticket to another agent; put it on hold, then back.",
+      "Open the ticket's Response targets card.",
+      "As the employee open the ticket in the help centre."
+    ],
+    "expected": "Step 2: Timing shows the average wait for a reply, time on hold, 1 move and both agents. Step 3: no timing at all.",
+    "stories": [
+      "Screens/Helpdesk/HLP-03 · Ticket workspace · Related tickets, merge, tasks, side conversations, targets, reminders"
+    ],
+    "note": "Positive and negative. Answer 1648."
+  },
+  {
+    "id": "MT-HD-1649",
+    "area": "Helpdesk 1648 and 1649 (13 Nov 2026)",
+    "screen": "Ctrl K (command palette)",
+    "url": "http://localhost:3000/yx/desk",
+    "account": "An IT agent; an employee without desk keys.",
+    "steps": [
+      "As the agent press Ctrl K and type a ticket number.",
+      "Open a ticket; Ctrl K; choose \"Insert saved reply: …\".",
+      "Ctrl K; \"Run scenario: …\".",
+      "Ctrl K; \"Set my status: Busy\".",
+      "As the employee press Ctrl K and type a ticket number."
+    ],
+    "expected": "Step 1: the ticket opens (a number you may not open says so). Step 2: the reply is filled in. Step 3: the scenario runs (toast). Step 4: your status is Busy (toast). Step 5: no Desk actions.",
+    "stories": [
+      "Shell/App shell and navigation · Command palette · desk actions for an agent on a ticket"
+    ],
+    "note": "Positive and negative. Answer 1649."
   }
 ]
