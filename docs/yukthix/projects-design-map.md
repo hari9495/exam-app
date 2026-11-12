@@ -478,3 +478,5 @@ console.log('ok');
       (a small follow-up), or open the portal for Projects clients too.*
 1548. **Companies with Projects on** now decide every submitted week line by line on PRJ-02; weeks already waiting in the
       approvals inbox finish there as before. *Suggested: keep.*
+
+- 1541 to 1548 approved as suggested (12 Nov 2026, "ok for all"). To build: Timesheets tab and the timesheet-vs-attendance warning with P-4 (1541); show "the client approves the hours" only when the staffing desk is on (1547).

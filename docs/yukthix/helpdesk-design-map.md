@@ -1791,3 +1791,6 @@ Time set-up show "Mark the location as a registered factory to make it the one s
 "covered" value exists; HR ticks it, then the old value can be removed; (152) after go-live, stop offering company / entity
 / location scopes for attendance.factories_act once no company uses them (GO-LIVE-CHECKLIST); (153) keep: a department
 exclusion applies at every flagged site.
+
+## Founder decision (12 Nov 2026, "ok for all")
+Draw kit designs for the five live pages that still render stand-ins (service catalogue, live chat requester and agent, agent team and shifts, the set-up admin tabs, the request tracker and documents on a ticket), then make the drawn screens live. Also add rows for the 3 newer stories the count script flags (HLP-02 x2, Phase 3b-1 x1). Queued for the next free builder.
