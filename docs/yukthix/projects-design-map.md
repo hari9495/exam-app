@@ -600,3 +600,5 @@ console.log('ok');
   per-project setting "show notes to the client" is on (off by default).
 - 1735: rows pre-filled from work tools still need the person's own note; the pre-filled items are a starting point.
 - 1736: drawn in the timesheet design first, then made live.
+
+- 1771 to 1775 approved as suggested (13 Nov 2026, "Ok for all"); 1775: the note rule applies to every company, with or without Projects.
