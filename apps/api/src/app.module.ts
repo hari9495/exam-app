@@ -1,3 +1,4 @@
+import { AccountModule } from './account/account.module';
 import { recordRequestChannel } from '@exam-platform/shared';
 import { ServiceDeskModule } from './service-desk/service-desk.module';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
@@ -211,6 +212,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     TimeModule,
     PayrollModule,
     DocumentsModule,
+    AccountModule,
     LifecycleModule,
     ExpensesModule,
     PoliciesModule,
