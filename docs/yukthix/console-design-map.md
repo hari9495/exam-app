@@ -73,7 +73,7 @@ built** · **phone view, mobile app not built**.
 
 ## Counts (sub-pages = stories)
 
-After C-1 to C-5, C-8 parts 1 and 2 (with the payroll-day note), staff roles parts 1 and 2, 1165 and the console tidy-ups
+After C-1 to C-5, C-8 parts 1 to 3 (with the payroll-day note), staff roles parts 1 and 2, 1165 and the console tidy-ups
 1 and 2 (12 Nov 2026; tidy 2 adds the withdraw story; appendix script "ok").
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
@@ -83,8 +83,8 @@ After C-1 to C-5, C-8 parts 1 and 2 (with the payroll-day note), staff roles par
 | C. Customers and containment (YX-04, YX-18) | 2 | 26 | 2 | 0 | 0 | 0 | 28 |
 | D. Partners (YX-06 to YX-08) | 3 | 0 | 0 | 0 | 10 | 0 | 10 |
 | E. Money (YX-14 to YX-17) | 4 | 0 | 0 | 0 | 8 | 0 | 8 |
-| F. The rest (YX-05, YX-09 to YX-13) | 6 | 19 | 0 | 0 | 13 | 0 | 32 |
-| **All A-F** | **21** | **101** | **7** | **0** | **31** | **0** | **139** |
+| F. The rest (YX-05, YX-09 to YX-13) | 6 | 24 | 0 | 0 | 11 | 0 | 35 |
+| **All A-F** | **21** | **106** | **7** | **0** | **29** | **0** | **142** |
 
 Counted by script on 11 Nov 2026 on `docs/yukthix-console-map` (the script is in the appendix). There are 87 stories in
 20 files whose title starts `Screens/YukthiX console/`: `screens/console/console.stories.tsx` (14),
@@ -398,8 +398,11 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| YX12Nudges · Trial nudges | design only, feature not built | no trial nudges (the `Nudge` table is the manager's nudge to an employee) |
-| YX12SelfApprove · Switch-on copy · approver is author | design only, feature not built | as above |
+| YX12Nudges · Trial nudges | live | C-8: `/staff/nudges`, `NudgeEditorScreen live`: the copy per feature switch (C-4) in two tabs, Switch-on cards and Suggestions. The drawn trial-day nudges and the A/B switch are not built (questions 1208, 1209) |
+| YX12NudgesLive · Switch-on cards and suggestions (C-8) | live | `GET|POST platform/nudges`, `.../:id/review`, `.../:id/retire` (`platform.nudges.write`) |
+| YX12WriteLive · New switch-on card · preview (C-8) | live | same page, New copy with the preview |
+| YX12CardLive · What a company admin sees (C-8) | live | `GET /help/nudge`, `POST /help/nudge/:id/dismiss`; `NudgeCard` first on Home (`LiveHome.nudge`) |
+| YX12SelfApprove · Switch-on copy · approver is author | live | same page: the writer sees "Another staff member approves it" (service and database check) |
 
 #### YX-13 · Sales-assist queue
 
@@ -606,6 +609,52 @@ risky actions, and adds positive and negative tests and an e2e suite.
 1207. **Telling the breached company.** A breach incident is hidden from every company, including the contained one;
       its admins are told by the containment and directly. *Suggested: keep; a message to that company's admins goes
       through the C-2 admin messages.*
+
+## C-8 part 3 built: nudges and switch-on copy (YX-12; 13 Nov 2026, branch `feat/yukthix-console-c8`)
+
+- **What staff do:** Console › Catalogue › Nudges (`/staff/nudges`), the designed `NudgeEditorScreen` with `live`. Per
+  feature switch (C-4: first-run tours, What's new, access requests, write policies with AI) staff write a heading and
+  body: a **switch-on card** (YukthiX allows the feature, the company has it off: how to switch it on) or a
+  **suggestion** (the feature is on: try it), with the drawn preview. A second staff member approves it (never the
+  writer; service and database check) or sends it back with a note. One live per switch and kind; the new one replaces
+  the old. Any staff member with the key may take a live one down. All audited (`platform.nudge.*`).
+- **What a company person sees:** at most one nudge, first on Home (`GET /help/nudge`): the drawn card with heading,
+  body, **Switch on** (opens the company setting: Company rules or Access settings) for a switch-on card, and **Not now**.
+  - Respects the switches: never when YukthiX killed the feature or has it off for the company; a switch-on card only
+    while the company's own setting is off; a suggestion only while the feature is on (`featureState`, the one C-4
+    decision, now saying who has it off).
+  - Never to someone who cannot act: a switch-on card needs Company settings (`org.settings.manage`) company-wide and the
+    setting's guard key (access requests: `access.role.manage`); a suggestion needs the feature's use key (policies with
+    AI: `policy.manage`; the others: everyone).
+  - Weekly limit per person: `nudges.weekly_limit_per_person` (Platform settings, default 2, 0 to 7; 0 = none). A nudge
+    shown and not put away keeps showing that week without a new count. Not now hides it for
+    `nudges.dismiss_return_days` (default 14 as drawn, 0 to 90; 0 = never again). Staff acting inside a company never
+    get nudges.
+- **Data:** `feature_nudges` (staff-only RLS, never deleted) and `nudge_views` (per company, tenant RLS; who saw which and
+  when they put it away), migration `202617z0000151_console_nudges`.
+- **Key and role (1058):** `platform.nudges.write` (every console route; staff only, never assignable to a company
+  role). Role: **Customer success**.
+- **Tests:** API unit (guards, key on every route, not assignable, company route open to any signed-in person; the
+  weekly limit, a shown one kept without a count, 7-day window, limit 0, nothing eligible, Not now returning after the
+  days or never); kit (list with the limit, a killed switch marked not shown, new copy field errors, writer cannot
+  approve, send back needs a note, approve; the card's Switch on link and Not now, a suggestion without Switch on); web
+  (the page loads and takes one down, no-access state); e2e `console-nudges` (13: company admin, no sign-in, no security
+  key, no key refused; bad input; nothing until approved; the writer cannot approve; note needed; the admin of the
+  company with it off sees it with where to switch it on; a person without the settings keys and a company with it on
+  see nothing; hidden while killed, back after; RLS on views; Not now; the limit 1, 2 and 0; the setting listed;
+  audited).
+
+### Questions from C-8 part 3 (from 1208)
+
+1208. **Trial-day nudges.** The drawing also lists lifecycle nudges by trial day (Day 3, Day 7) with email channels.
+      Built as briefed: in-app copy per feature switch. *Suggested: trial-day emails come with the trial and billing
+      work (PLT-40 to 43), using the same approval.*
+1209. **A/B testing copy.** The drawn "A/B test this copy" switch (off by default) is not built. *Suggested: leave it out
+      until enough companies see a nudge to tell two versions apart.*
+1210. **Talk to us.** The drawn card has a third button, Talk to us. *Suggested: it comes with part 4 (YX-13 sales-assist
+      queue): the request lands in the staff queue.*
+1211. **Where the card shows.** Built on Home only, first on the page. *Suggested: keep Home only; a card on every page
+      is noise.*
 
 ## Appendix: the count script
 

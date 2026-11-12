@@ -15,11 +15,18 @@ export type Feature = (typeof FEATURES)[number];
  * (off stays off). The screens learn it from the API answers that use this.
  */
 export async function featureOn(tx: Tx, c: CompanyContext, key: Feature): Promise<boolean> {
+  return (await featureState(tx, c, key)) === 'on';
+}
+
+/**
+ * The same decision with who has it off (C-8, YX-12 nudges): `yukthix` (killed for everyone, or off for this company by
+ * YukthiX: the company cannot act), `company` (the company's own setting is off: it can switch it on), or `on`.
+ */
+export async function featureState(tx: Tx, c: CompanyContext, key: Feature): Promise<'yukthix' | 'company' | 'on'> {
   const flag = await tx.featureFlag.findUnique({ where: { key } });
-  if (!flag) return false;
-  if (flag.killedAt) return false;
+  if (!flag || flag.killedAt) return 'yukthix';
   const override = await tx.featureFlagOverride.findUnique({ where: { organizationId_flagKey: { organizationId: c.organizationId, flagKey: key } } });
-  if (!(override ? override.isOn : flag.defaultOn)) return false;
-  if (!flag.settingKey || !(flag.settingKey in SETTINGS)) return true;
-  return (await settingFor(tx, c, flag.settingKey as keyof typeof SETTINGS & string, { legalEntityId: '' })) === 'on';
+  if (!(override ? override.isOn : flag.defaultOn)) return 'yukthix';
+  if (!flag.settingKey || !(flag.settingKey in SETTINGS)) return 'on';
+  return (await settingFor(tx, c, flag.settingKey as keyof typeof SETTINGS & string, { legalEntityId: '' })) === 'on' ? 'on' : 'company';
 }
