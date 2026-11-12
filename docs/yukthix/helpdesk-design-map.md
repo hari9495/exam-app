@@ -1795,3 +1795,11 @@ exclusion applies at every flagged site.
 ## Founder decision (12 Nov 2026, "ok for all")
 Draw kit designs for the five live pages that still render stand-ins (service catalogue, live chat requester and agent, agent team and shifts, the set-up admin tabs, the request tracker and documents on a ticket), then make the drawn screens live. Also add rows for the 3 newer stories the count script flags (HLP-02 x2, Phase 3b-1 x1). Queued for the next free builder.
 - Founder (12 Nov 2026, "ok for all"): after drawing the five designs, move every remaining "Screens/Service desk/" story into "Screens/Helpdesk/" with plain names (Desk set-up, Customer portal, Approval links, Contact YukthiX; the Reports tabs under HLP-05), then remove the empty Service desk folder. Storybook titles only; no live behaviour changes. Queued with the five designs for the next free builder.
+- Founder (12 Nov 2026, "ok for all"): widen the desk for IT, facilities and business applications, smallest first:
+  1. IT starter catalogue (new laptop, software install, VPN access, password reset, new-joiner kit), like the other
+     desk kinds' starter packs (about 1 day).
+  2. Pick a device on a ticket from the People asset register (the `pick/assets` picker now returns nothing; about 2 days).
+  3. Business applications list (owner per app) and access requests routed to the app owner; design first (about 4 days).
+  4. Buildings and equipment for facilities work orders, with recurring maintenance on them; design first (about 4 days).
+  5. IT change requests and problem records (ITSM change and problem); design and founder questions first (larger).
+  Queued after the five stand-in designs and the one-folder move, for the next free builder.
