@@ -190,7 +190,7 @@ portal designs also wait: `settings: MobileHelpTicketsScreen`, `MobilePolicyAckS
 
 ## 4. Design groups, story by story
 
-### A. Helpdesk HLP-01 … 20
+### A. Helpdesk HLP-01 … 22
 
 #### HLP-01 · Help centre
 
@@ -736,6 +736,28 @@ File: `packages/yx-ui/src/screens/ops/hlp-20.stories.tsx`. Drawn 12 Nov 2026 (an
 | ArticleVoteAgain · A second vote (toast) | live | one vote per article |
 | ArticleSolved · This solved it (toast) | live | `POST …/solved`, no ticket made |
 | ArticleFallback · Not in your language yet (shown in English) | live | the article in the company's default language when the person's is missing |
+
+#### HLP-22 · Changes and problems
+
+File: `packages/yx-ui/src/screens/ops/hlp-22.stories.tsx` (screens in `hlp-22-itsm.tsx`). A DRAFT drawn 13 Nov 2026 for
+Helpdesk plan item 5 (IT change requests and problem records); the plan and questions 1931 to 1943 are in
+`docs/yukthix/helpdesk-itsm-plan.md`. Nothing is built until the founder answers.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Changes · Changes · list, clash and the change calendar | design only, feature not built | draft: the change list, a clash between two changes, freeze days in the calendar (1936) |
+| ChangesEmpty · Changes · none yet | design only, feature not built | draft |
+| NewChange · New change · kind, risk questions, window, way back | design only, feature not built | draft: kind as one choice, the five risk questions (1933), the approval route by risk (1934) |
+| NewChangeTooEarly · New change · sent with nothing filled | design only, feature not built | draft: what is missing, shown when pressed |
+| NewEmergency · New change · emergency, one approver now | design only, feature not built | draft (1934) |
+| WaitingForApproval · A change · waiting for the change board (high risk) | design only, feature not built | draft: the approvals engine's route |
+| ScheduledClash · A change · scheduled, clashes with another | design only, feature not built | draft: a standard change from a pre-approved template (1935) |
+| InProgress · A change · in progress, the checklist and the outcome | design only, feature not built | draft: done, done with problems, backed out |
+| Review · A change · review after it caused incidents | design only, feature not built | draft (1938) |
+| Problems · Problems · list, a repeat suggested | design only, feature not built | draft (1939) |
+| ProblemInvestigating · A problem · linked incidents, cause not found yet | design only, feature not built | draft |
+| KnownError · A problem · known error, workaround to the knowledge base, fix by change | design only, feature not built | draft (1940, 1941) |
+| NoAccess · No access (not on the IT desk) | design only, feature not built | draft |
 
 ### B. Other Helpdesk designs (were "Service desk")
 
