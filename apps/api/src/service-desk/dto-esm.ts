@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, ArrayUnique, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { ValidateIf, ArrayMaxSize, ArrayMinSize, ArrayUnique, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 
 // Service Desk 3b-2 batch 1 inputs (M14 §12.2: catalogue, order guides, question library, checkout, ad-hoc
 // approvals, rules). Forms, conditions, approval steps, fulfilment plans and rule parts are JSON checked by the
@@ -413,4 +413,26 @@ export class CostCentreOwnerDto {
   @IsOptional()
   @IsUUID()
   ownerUserId?: string | null;
+}
+
+/** Helpdesk plan item 3: one of the company's business applications and its owner. */
+export class BusinessAppDto {
+  @Text(2, 100)
+  name!: string;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @Text(0, 500)
+  description?: string | null;
+
+  @IsUUID()
+  ownerUserId!: string;
+
+  @IsOptional()
+  @IsIn(['active', 'retired'])
+  status?: 'active' | 'retired';
+
+  @IsOptional()
+  @IsInt()
+  version?: number;
 }

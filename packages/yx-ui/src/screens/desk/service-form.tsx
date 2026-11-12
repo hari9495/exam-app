@@ -12,7 +12,7 @@ import type { PickKind, PickOption } from './esm-types';
 // shown, hidden, required, locked or limited by form rules as the answers change, dependent pick-lists, live-data
 // pickers, read-only formula fields, coloured choices (always with their text) and labels in the reader's language.
 
-const PICK_OF: Record<string, PickKind> = { person: 'people', location: 'locations', cost_centre: 'cost-centres', asset: 'assets' };
+const PICK_OF: Record<string, PickKind> = { person: 'people', location: 'locations', cost_centre: 'cost-centres', asset: 'assets', app: 'apps' };
 const pad = (n: number) => String(n).padStart(2, '0');
 const toDay = (d: Date | null) => (d ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` : null);
 const fromDay = (s: AnswerValue) => (typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(`${s}T00:00:00`) : null);

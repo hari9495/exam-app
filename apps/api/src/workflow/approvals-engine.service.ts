@@ -21,7 +21,7 @@ import { ApprovalPolicies } from './approval-policies';
 //   - approvers see only the summary the module chose for them (never the record itself, never sensitive answers);
 //   - auto-approve / auto-reject after a timeout only for request types that allow it and are not high risk (P03 Q2).
 
-export type ApproverSpec = { kind: 'manager'; level?: number } | { kind: 'cost_centre_owner'; field: string } | { kind: 'users'; userIds: string[] } | { kind: 'user_group'; groupId: string } | { kind: 'hr' };
+export type ApproverSpec = { kind: 'manager'; level?: number } | { kind: 'cost_centre_owner'; field: string } | { kind: 'app_owner'; field: string } | { kind: 'users'; userIds: string[] } | { kind: 'user_group'; groupId: string } | { kind: 'hr' };
 export interface StepSpec {
   name: string;
   approvers: ApproverSpec[];
@@ -177,6 +177,11 @@ export function parseSteps(input: unknown, payloadFields: FieldDef[]): StepSpec[
       if (a.kind === 'cost_centre_owner') {
         if (typeof a.field !== 'string' || !payloadFields.some((f) => f.key === a.field)) throw new RuleError(`"${name}": choose the form field that holds the cost centre.`);
         return { kind: 'cost_centre_owner', field: a.field };
+      }
+      // Helpdesk plan item 3: the owner of the business application picked in the form.
+      if (a.kind === 'app_owner') {
+        if (typeof a.field !== 'string' || !payloadFields.some((f) => f.key === a.field)) throw new RuleError(`"${name}": choose the form field that holds the application.`);
+        return { kind: 'app_owner', field: a.field };
       }
       if (a.kind === 'users') {
         if (!Array.isArray(a.userIds) || !a.userIds.length || a.userIds.length > MAX.users || a.userIds.some((u) => typeof u !== 'string' || !UUID.test(u))) throw new RuleError(`"${name}": choose 1 to ${MAX.users} people.`);
@@ -340,6 +345,12 @@ export class ApprovalsEngine {
       if (typeof cc !== 'string' || !UUID.test(cc)) return [];
       const row = await tx.costCentre.findFirst({ where: { organizationId: org, id: cc, archivedAt: null }, select: { ownerUserId: true } });
       return row?.ownerUserId ? [row.ownerUserId] : [];
+    }
+    if (a.kind === 'app_owner') {
+      const app = input.payload[a.field];
+      if (typeof app !== 'string' || !UUID.test(app)) return [];
+      const row = await tx.sdBusinessApp.findFirst({ where: { organizationId: org, id: app, status: 'active' }, select: { ownerUserId: true } });
+      return row ? [row.ownerUserId] : [];
     }
     if (a.kind === 'users') return a.userIds;
     // S-6 (answer 1330): the company's HR Admins.
