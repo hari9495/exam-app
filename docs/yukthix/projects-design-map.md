@@ -377,3 +377,6 @@ console.table(counts);
 if (errs.length) { console.error(errs.join('\n')); process.exit(1); }
 console.log('ok');
 ```
+
+## Founder approved (12 Nov 2026, "ok for all, start both together")
+1401 to 1421 approved as suggested. Build P-1 first, then P-3, then P-2, P-4 and P-5 together, then P-6 (at most 3 builders, shared with Settings).
