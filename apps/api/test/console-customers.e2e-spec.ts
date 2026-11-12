@@ -91,7 +91,6 @@ describe('Console C-2: customer success', () => {
     try {
       await api('staff', 'get', '/platform/customers/health').expect(403);
       await api('staff', 'get', '/platform/customers/messages').expect(403);
-      await api('staff', 'put', '/platform/customers/settings').send({ values: { 'cs.alert.health_below': 60 } }).expect(403);
     } finally {
       await giveStaffRoles(users.staff!);
     }
@@ -116,16 +115,23 @@ describe('Console C-2: customer success', () => {
     const row = async (k: 'A' | 'C') => (await api('staff', 'get', '/platform/customers/health').expect(200)).body.rows.find((r: { id: string }) => r.id === org[k]);
     expect((await row('C')).alerts).toEqual(['No System Admin sign-in for 40 days']);
     expect((await row('A')).alerts).toEqual([]);
-    await api('staff', 'put', '/platform/customers/settings').send({ values: { 'cs.alert.health_below': 0 } }).expect(400);
-    await api('staff', 'put', '/platform/customers/settings').send({ values: { 'cs.alert.admin_idle_days': 6 } }).expect(400);
-    await api('staff', 'put', '/platform/customers/settings').send({ values: { 'cs.unknown': 5 } }).expect(400);
-    const saved = (await api('staff', 'put', '/platform/customers/settings').send({ values: { 'cs.alert.health_below': 81, 'cs.alert.admin_idle_days': 45 } }).expect(200)).body;
-    expect(saved.find((s: { key: string }) => s.key === 'cs.alert.health_below')).toMatchObject({ value: 81, default: 50 });
+    // Answer 1183: the direct save is gone; Console › Platform settings is the one place (security key and a reason).
+    await api('staff', 'put', '/platform/customers/settings').send({ values: { 'cs.alert.health_below': 81 } }).expect(404);
+    await markSteppedUp(tenantPrisma, token.staff!);
+    const set = (key: string, value: string) => api('staff', 'put', `/platform/settings/${key}`).send({ value, reason: 'Testing the alert rules' });
+    await set('cs.alert.health_below', '0').expect(400);
+    await set('cs.alert.admin_idle_days', '6').expect(400);
+    await set('cs.alert.health_below', '81').expect(200);
+    await set('cs.alert.admin_idle_days', '45').expect(200);
+    // Saved there, shown on the alert rules page and used by the alerts.
+    const shown = (await api('staff', 'get', '/platform/customers/settings').expect(200)).body as { key: string; value: number; default: number }[];
+    expect(shown.find((s) => s.key === 'cs.alert.health_below')).toMatchObject({ value: 81, default: 50 });
     expect((await row('A')).alerts).toEqual(['Health score below 81']);
     expect((await row('C')).alerts).toEqual(['Health score below 81']); // 40 days is now under 45
-    const audit = await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findFirst({ where: { actorUserId: users.staff, action: 'platform.cs.settings_changed' }, orderBy: { createdAt: 'desc' } }));
-    expect(JSON.parse(audit!.metadataJson!)).toMatchObject({ before: { 'cs.alert.health_below': 50 }, after: { 'cs.alert.health_below': 81, 'cs.alert.admin_idle_days': 45 } });
-    await api('staff', 'put', '/platform/customers/settings').send({ values: { 'cs.alert.health_below': 50, 'cs.alert.admin_idle_days': 30 } }).expect(200);
+    const audit = await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findFirst({ where: { actorUserId: users.staff, action: 'platform.setting.changed', entityId: 'cs.alert.health_below' }, orderBy: { createdAt: 'desc' } }));
+    expect(JSON.parse(audit!.metadataJson!)).toMatchObject({ before: '50', after: '81', reason: 'Testing the alert rules' });
+    await set('cs.alert.health_below', '50').expect(200);
+    await set('cs.alert.admin_idle_days', '30').expect(200);
   });
 
   it('bad messages are refused: no company, a closed or unknown company, a short or marked-up subject', async () => {

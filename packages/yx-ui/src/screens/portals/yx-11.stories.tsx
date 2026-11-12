@@ -44,4 +44,7 @@ const hc = (o: Partial<LiveHelpCentre> = {}) => (
 );
 export const YX11ListLive: S = { name: 'Help articles and no-result searches (C-8)', render: () => hc() };
 export const YX11ReviewLive: S = { name: 'Article · another staff member publishes it (C-8)', render: () => hc({ defaultOpen: HC_DETAIL }) };
+// Answer 1203: a published article another staff member asked to retire; you approve it.
+const HC_PUBLISHED: HelpDetail = { ...HC_DETAIL, id: 'h1', title: 'Approve and lock a payroll run', state: 'published', publicUrl: '/yx/help/yukthix/yukthix-help/approve-and-lock', versions: [{ ...HC_DETAIL.versions[0]!, title: 'Approve and lock a payroll run', state: 'published' }], retire: { requestedBy: 'Joseph Thomas', mine: false, reason: 'Replaced by the new payroll run guide', at: '2026-11-12T08:00:00Z' } };
+export const YX11RetireLive: S = { name: 'Article · retire waiting for you to approve (1203)', render: () => hc({ defaultOpen: HC_PUBLISHED, onRetire: hcWait, onApproveRetire: hcWait }) };
 export const YX11Edit: S = { name: 'Article editor', render: () => <HelpEditorScreen articles={D.HELP_ARTICLES_ADMIN} noResults={D.NO_RESULT_SEARCHES} today={TODAY} editing /> };

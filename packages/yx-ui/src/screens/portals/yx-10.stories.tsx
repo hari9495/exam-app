@@ -55,7 +55,7 @@ const MW_CURRENT = { phase: 'upcoming' as const, title: 'Search index rebuild', 
 const wait = () => new Promise<void>((r) => setTimeout(r, 400));
 const mw = (o: Partial<LiveMaintenance> = {}) => (
   <ConsoleShell active="maintenance" name="Anand Iyer" email="anand.iyer@yukthix.test" securityHref="#" onSignOut={() => {}} onNavigate={() => {}}>
-    <IncidentComposerScreen incidents={[]} me="Anand Iyer" now={MW_NOW} live={{ state: 'ready', onRetry: () => {}, now: MW_NOW, windows: MW_ROWS, settings: MW_SETTINGS, current: MW_CURRENT, onSchedule: wait, onApprove: wait, onCancel: wait, onSaveSettings: wait, ...o }} />
+    <IncidentComposerScreen incidents={[]} me="Anand Iyer" now={MW_NOW} live={{ state: 'ready', onRetry: () => {}, now: MW_NOW, windows: MW_ROWS, settings: MW_SETTINGS, current: MW_CURRENT, onSchedule: wait, onApprove: wait, onCancel: wait, ...o }} />
   </ConsoleShell>
 );
 export const YX10MaintenanceLive: S = { name: 'Planned maintenance · schedule and approve (C-5)', render: () => mw({ defaultStart: new Date(2026, 10, 18, 1, 0) }) };

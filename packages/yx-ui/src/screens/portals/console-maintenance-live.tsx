@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
-import { Card } from '../../components/shell';
+import { Card, DescriptionList } from '../../components/shell';
 import { EmptyState, InlineAlert } from '../../components/feedback';
 import { FieldRow, FormField, useTooEarly } from '../../components/field';
 import { NumberField, TextArea, TextField, TimeField } from '../../components/inputs';
@@ -55,7 +55,8 @@ export interface LiveMaintenance {
   onSchedule: (input: { title: string; startsAt: string; hours: number }) => Promise<unknown>;
   onApprove: (id: string, version: number) => Promise<unknown>;
   onCancel: (id: string, version: number, reason: string) => Promise<unknown>;
-  onSaveSettings: (input: { values: Record<string, number>; blockDates: number[] }) => Promise<unknown>;
+  /** Answer 1183: the rules change only on Console › Platform settings (security key and a reason). */
+  onOpenPlatformSettings?: () => void;
   /** Stories: the schedule form filled with this start. */
   defaultStart?: Date;
   /** Staff roles (answer 1058): false for someone who only sees the windows (Customer success); default true. */
@@ -278,53 +279,16 @@ function WindowList({ live }: { live: LiveMaintenance }) {
 
 /** Answer 948: the maintenance rules are platform settings with the drawn defaults. */
 function RulesCard({ live }: { live: LiveMaintenance }) {
-  const [draft, setDraft] = useState<Record<string, number | null>>(Object.fromEntries(live.settings.numbers.map((n) => [n.key, n.value])));
-  const [dates, setDates] = useState(live.settings.blockDates.join(', '));
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState<string | null>(null);
-  const { toast } = useToast();
-  const parsed = dates.split(',').map((x) => x.trim()).filter(Boolean).map(Number);
-  const early = useTooEarly([
-    ...live.settings.numbers.flatMap((n) => {
-      const v = draft[n.key];
-      return v === null || v === undefined || !Number.isInteger(v) || v < n.min || v > n.max ? [{ fieldId: `mr-${n.key}`, message: `Give a whole number from ${n.min} to ${n.max}.` }] : [];
-    }),
-    ...(parsed.length > 10 || parsed.some((d) => !Number.isInteger(d) || d < 1 || d > 28) ? [{ fieldId: 'mr-dates', message: 'Up to 10 days of the month, each from 1 to 28, separated by commas.' }] : []),
-  ]);
-  const save = async () => {
-    if (early.stop()) return;
-    setBusy(true);
-    setFailed(null);
-    try {
-      await live.onSaveSettings({ values: Object.fromEntries(live.settings.numbers.map((n) => [n.key, draft[n.key]!])), blockDates: parsed });
-      toast({ tone: 'success', title: 'Maintenance rules saved' });
-    } catch (e) {
-      setFailed(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  };
   return (
-    <Card title="Rules" actions={<Button size="sm" loading={busy} onClick={() => void save()}>Save rules</Button>}>
+    <Card title="Rules" actions={live.onOpenPlatformSettings ? <Button size="sm" onClick={live.onOpenPlatformSettings}>Change in Platform settings</Button> : undefined}>
       <div className="yx-ps-stack">
-        {failed && <InlineAlert tone="danger" title={failed} />}
-        <FieldRow>
-          {live.settings.numbers.slice(0, 3).map((n) => (
-            <FormField key={n.key} id={`mr-${n.key}`} label={n.label} helper={`Default ${n.default}.`} error={early.errorOf(`mr-${n.key}`)}>
-              <NumberField value={draft[n.key] ?? null} onChange={(v) => setDraft((d) => ({ ...d, [n.key]: v }))} min={n.min} max={n.max} />
-            </FormField>
-          ))}
-        </FieldRow>
-        <FieldRow>
-          {live.settings.numbers.slice(3).map((n) => (
-            <FormField key={n.key} id={`mr-${n.key}`} label={n.label} helper={`Default ${n.default}.`} error={early.errorOf(`mr-${n.key}`)}>
-              <NumberField value={draft[n.key] ?? null} onChange={(v) => setDraft((d) => ({ ...d, [n.key]: v }))} min={n.min} max={n.max} />
-            </FormField>
-          ))}
-          <FormField id="mr-dates" label="Statutory due dates (no windows)" helper="Days of the month, for example 7, 15, 20." error={early.errorOf('mr-dates')}>
-            <TextField value={dates} onChange={setDates} maxLength={40} />
-          </FormField>
-        </FieldRow>
+        <DescriptionList
+          items={[
+            ...live.settings.numbers.map((n) => ({ label: n.label, value: n.value === n.default ? `${n.value} (the default)` : `${n.value} (default ${n.default})` })),
+            { label: 'Statutory due dates (no windows)', value: live.settings.blockDates.join(', ') || 'None' },
+          ]}
+        />
+        <p className="yx-ps-muted">Changed in Console › Platform settings, with your security key and a reason.</p>
       </div>
     </Card>
   );

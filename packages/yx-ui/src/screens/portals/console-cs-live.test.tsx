@@ -23,7 +23,7 @@ const SETTINGS: CsSettingRow[] = [
   { key: 'cs.alert.health_below', label: 'Alert when the health score is below', value: 50, default: 50, min: 1, max: 99 },
   { key: 'cs.alert.admin_idle_days', label: 'Alert when no System Admin has signed in for (days)', value: 30, default: 30, min: 7, max: 365 },
 ];
-const live = (o: Partial<LiveCustomerSuccess> = {}): LiveCustomerSuccess => ({ state: 'ready', onRetry: vi.fn(), rows: ROWS, messages: MESSAGES, settings: SETTINGS, canManage: true, onWrite: ok(), onApprove: ok(), onReject: ok(), onSaveSettings: ok(), ...o });
+const live = (o: Partial<LiveCustomerSuccess> = {}): LiveCustomerSuccess => ({ state: 'ready', onRetry: vi.fn(), rows: ROWS, messages: MESSAGES, settings: SETTINGS, canManage: true, onWrite: ok(), onApprove: ok(), onReject: ok(), ...o });
 const wrap = (l: LiveCustomerSuccess) => render(<ToastProvider><CustomerSuccessScreen tenants={[]} alerts={[]} me="" live={l} /></ToastProvider>);
 
 describe('Customer success (live)', () => {
@@ -91,24 +91,16 @@ describe('Customer success (live)', () => {
     await waitFor(() => expect(l.onApprove).toHaveBeenCalledWith('m1', 3));
   });
 
-  it('alert rules: a value out of range is stopped; a good one is saved; without the key they are read-only', async () => {
-    const l = live({ tab: 'alerts' });
-    const r = wrap(l);
-    const field = screen.getByRole('textbox', { name: /health score is below/ });
-    await ue.clear(field);
-    await ue.type(field, '0');
-    await ue.click(screen.getByRole('button', { name: 'Save rules' }));
-    // The number field's own range message wins over the form's (FormField rule); either way it is invalid and nothing is saved.
-    await waitFor(() => expect(field).toHaveAttribute('aria-invalid', 'true'));
-    expect(l.onSaveSettings).not.toHaveBeenCalled();
-    await ue.clear(field);
-    await ue.type(field, '60');
-    await ue.click(screen.getByRole('button', { name: 'Save rules' }));
-    await waitFor(() => expect(l.onSaveSettings).toHaveBeenCalledWith({ 'cs.alert.health_below': 60, 'cs.alert.admin_idle_days': 30 }));
-    expect((await screen.findAllByText('Alert rules saved')).length).toBeGreaterThan(0);
-    r.unmount();
-    wrap(live({ tab: 'alerts', canManage: false }));
+  // Answer 1183: the rules show here and change only on Console › Platform settings.
+  it('alert rules are shown read-only, with the way to Platform settings', async () => {
+    const onOpenPlatformSettings = vi.fn();
+    wrap(live({ tab: 'alerts', settings: [{ ...SETTINGS[0]!, value: 81 }, SETTINGS[1]!], onOpenPlatformSettings }));
+    expect(screen.getByText('81 (default 50)')).toBeInTheDocument();
+    expect(screen.getByText('30 (the default)')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save rules' })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: /health score is below/ })).toBeNull();
+    await ue.click(screen.getByRole('button', { name: 'Change in Platform settings' }));
+    expect(onOpenPlatformSettings).toHaveBeenCalled();
   });
 
   it('a load failure offers Retry', async () => {
@@ -166,6 +158,23 @@ describe('health history and follow-up', () => {
     wrap(live({ tab: 'alerts', followups: [{ ...FOLLOW, status: 'resolved', resolvedAt: '2026-11-12T00:00:00Z', autoResolved: true }], owners: OWNERS, onOutreach: ok(), onUpdateAlert: ok() }));
     expect(screen.queryByRole('button', { name: 'Log outreach' })).toBeNull();
     expect(screen.getByText(/resolved by itself/)).toBeInTheDocument();
+  });
+});
+
+// Answer 1223: a deactivated owner shows as Owner left, with a list to reassign.
+describe('Owner left', () => {
+  it('the company shows Owner left and is listed for reassignment; Assign owner opens the owner picker for it', async () => {
+    const onSetOwner = vi.fn().mockResolvedValue(undefined);
+    wrap(live({ rows: [{ ...ROWS[0]!, owner: { id: 'u9', name: 'Ravi Menon', left: true } }, { ...ROWS[1]!, owner: { id: 'u1', name: 'Kavitha Rao', left: false } }], owners: [{ id: 'u1', name: 'Kavitha Rao' }], onSetOwner }));
+    expect(screen.getByText('Owner left · Ravi Menon')).toBeInTheDocument();
+    const card = screen.getByRole('list', { name: 'Companies whose owner left' });
+    expect(within(card).getAllByRole('listitem')).toHaveLength(1);
+    await ue.click(within(card).getByRole('button', { name: 'Assign owner' }));
+    const dialog = await screen.findByRole('dialog');
+    await ue.click(within(dialog).getByRole('combobox', { name: 'CS owner' }));
+    await ue.click(await screen.findByRole('option', { name: 'Kavitha Rao' }));
+    await ue.click(within(dialog).getByRole('button', { name: 'Assign' }));
+    await waitFor(() => expect(onSetOwner).toHaveBeenCalledWith(ROWS[0]!.id, 'u1'));
   });
 });
 

@@ -196,7 +196,9 @@ describe('Console staff roles (1058, 1086)', () => {
       for (const who of ['lead', 'cs'] as const) await api(who, 'get', '/platform/maintenance').expect(200);
       for (const who of ['rules', 'none'] as const) await api(who, 'get', '/platform/maintenance').expect(403);
       await api('cs', 'post', '/platform/maintenance').send({ title: 'Database upgrade', startsAt: new Date(Date.now() + 10 * 86_400_000).toISOString(), hours: 2 }).expect(403);
-      await api('cs', 'put', '/platform/maintenance/settings').send({ values: {}, blockDates: [] }).expect(403);
+      // Answer 1183: maintenance rules change only on Platform settings (Security lead).
+      await api('cs', 'put', '/platform/maintenance/settings').send({ values: {}, blockDates: [] }).expect(404);
+      await api('cs', 'put', '/platform/settings/maintenance.banner_hours').send({ value: '24', reason: 'Not mine to change' }).expect(403);
       // Platform settings: Security lead only. Help-centre writing: Support agent only (the key check comes first).
       await api('lead', 'get', '/platform/settings').expect(200);
       await api('lead', 'get', '/platform/incidents').expect(200);

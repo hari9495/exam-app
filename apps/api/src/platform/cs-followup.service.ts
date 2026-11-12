@@ -87,7 +87,9 @@ export class CsFollowupService {
       await this.assertOwner(tx, ownerUserId);
       const before = (await tx.csAccount.findUnique({ where: { organizationId } }))?.ownerUserId ?? null;
       await tx.csAccount.upsert({ where: { organizationId }, create: { organizationId, ownerUserId, setBy: actorUserId }, update: { ownerUserId, setBy: actorUserId, setAt: new Date() } });
-      await AuditService.recordIn(tx, PLATFORM, { actorUserId, action: 'platform.cs.owner_set', entityType: 'organization', entityId: organizationId, metadata: { before, after: ownerUserId } });
+      // Answer 1223: the company's live alerts the previous owner held move with it (so "Owner left" clears on both).
+      const { count: alertsMoved } = before && before !== ownerUserId ? await tx.csAlert.updateMany({ where: { organizationId, ownerUserId: before, status: { not: 'resolved' } }, data: { ownerUserId, version: { increment: 1 } } }) : { count: 0 };
+      await AuditService.recordIn(tx, PLATFORM, { actorUserId, action: 'platform.cs.owner_set', entityType: 'organization', entityId: organizationId, metadata: { before, after: ownerUserId, alertsMoved } });
     });
     return { organizationId, ownerUserId };
   }
@@ -100,7 +102,7 @@ export class CsFollowupService {
       const rows = await tx.csAlert.findMany({ orderBy: [{ status: 'asc' }, { openedAt: 'desc' }], take: 500 });
       const notes = await tx.csAlertNote.findMany({ where: { alertId: { in: rows.map((r) => r.id) } }, orderBy: { createdAt: 'desc' } });
       const orgs = await tx.organization.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.organizationId))] } }, select: { id: true, name: true } });
-      const people = await tx.user.findMany({ where: { id: { in: [...new Set([...rows.map((r) => r.ownerUserId), ...notes.map((n) => n.writtenBy)].filter((x): x is string => Boolean(x)))] } }, select: { id: true, name: true, email: true } });
+      const people = await tx.user.findMany({ where: { id: { in: [...new Set([...rows.map((r) => r.ownerUserId), ...notes.map((n) => n.writtenBy)].filter((x): x is string => Boolean(x)))] } }, select: { id: true, name: true, email: true, status: true } });
       const name = (id: string | null) => (id ? (people.find((p) => p.id === id)?.name?.trim() || people.find((p) => p.id === id)?.email || null) : null);
       return rows.map((r) => ({
         id: r.id,
@@ -109,7 +111,7 @@ export class CsFollowupService {
         rule: r.rule,
         text: r.text,
         status: r.status as AlertStatus,
-        owner: r.ownerUserId ? { id: r.ownerUserId, name: name(r.ownerUserId) } : null,
+        owner: r.ownerUserId ? { id: r.ownerUserId, name: name(r.ownerUserId), left: people.find((p) => p.id === r.ownerUserId)?.status !== 'active' } : null,
         openedAt: r.openedAt,
         resolvedAt: r.resolvedAt,
         autoResolved: r.autoResolved,

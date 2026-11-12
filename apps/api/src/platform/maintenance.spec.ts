@@ -25,7 +25,7 @@ describe('maintenance routes', () => {
   it('staff only, every route behind the maintenance key (never a company key)', () => {
     expect(Reflect.getMetadata(GUARDS_METADATA, MaintenanceController)).toEqual([JwtAuthGuard, PlatformStaffGuard, PermissionsGuard]);
     const list = handlers(MaintenanceController);
-    expect(list.map(([n]) => n).sort()).toEqual(['approve', 'cancel', 'overview', 'saveSettings', 'schedule']);
+    expect(list.map(([n]) => n).sort()).toEqual(['approve', 'cancel', 'overview', 'schedule']);
     // Staff roles (answer 1058): Customer success sees the windows (view key); every change needs the manage key.
     for (const [name, h] of list) expect({ name, keys: keysOf(h) }).toEqual({ name, keys: name === 'overview' ? ['platform.maintenance.view', 'platform.maintenance.manage'] : ['platform.maintenance.manage'] });
     expect(isAssignableKey('platform.maintenance.manage')).toBe(false);

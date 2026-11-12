@@ -1,12 +1,7 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Matches, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, MaxLength, Min, MinLength } from 'class-validator';
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
-
-/** Answer 1047: the churn alert thresholds (each checked against its range by the service). */
-export class CsSettingsDto {
-  @IsObject() values!: Record<string, number>;
-}
 
 /** Answer 1048: a message to the System Admins of one or more companies. Plain text only. */
 export class CsMessageDto {

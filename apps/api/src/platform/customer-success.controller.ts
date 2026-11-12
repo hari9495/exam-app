@@ -5,7 +5,7 @@ import { RequireStepUp } from '../auth/step-up.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { PlatformStaffGuard } from './platform-staff.guard';
-import { CsAlertDto, CsDecisionDto, CsMessageDto, CsNoticeDto, CsOutreachDto, CsOwnerDto, CsSettingsDto } from './customer-success.dto';
+import { CsAlertDto, CsDecisionDto, CsMessageDto, CsNoticeDto, CsOutreachDto, CsOwnerDto } from './customer-success.dto';
 import { CsFollowupService } from './cs-followup.service';
 import { CustomerSuccessService } from './customer-success.service';
 
@@ -61,12 +61,6 @@ export class CustomerSuccessController {
   @RequirePermissions('platform.customers.success')
   settings() {
     return this.cs.settings();
-  }
-
-  @Put('settings')
-  @RequirePermissions('platform.customers.success')
-  saveSettings(@CurrentUserId() actor: string, @Body() dto: CsSettingsDto) {
-    return this.cs.saveSettings(actor, dto);
   }
 
   @Get('messages')

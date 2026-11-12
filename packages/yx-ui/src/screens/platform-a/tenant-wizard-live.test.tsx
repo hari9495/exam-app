@@ -79,7 +79,7 @@ describe('YX-10 planned maintenance (live)', () => {
     { id: 'w1', title: 'Database upgrade', startsAt: new Date(2026, 10, 18, 1).toISOString(), endsAt: new Date(2026, 10, 18, 3).toISOString(), status: 'pending_approval', writtenBy: 'Joseph', mine: false, decidedBy: null, cancelledBy: null, cancelReason: null, version: 1 },
     { id: 'w2', title: 'My window', startsAt: new Date(2026, 10, 19, 1).toISOString(), endsAt: new Date(2026, 10, 19, 2).toISOString(), status: 'pending_approval', writtenBy: 'Anand', mine: true, decidedBy: null, cancelledBy: null, cancelReason: null, version: 1 },
   ];
-  const live = (o: Partial<LiveMaintenance> = {}): LiveMaintenance => ({ state: 'ready', onRetry: vi.fn(), now, windows: rows, settings, current: null, onSchedule: ok(), onApprove: ok(), onCancel: ok(), onSaveSettings: ok(), ...o });
+  const live = (o: Partial<LiveMaintenance> = {}): LiveMaintenance => ({ state: 'ready', onRetry: vi.fn(), now, windows: rows, settings, current: null, onSchedule: ok(), onApprove: ok(), onCancel: ok(), ...o });
   const screenOf = (l: LiveMaintenance) => wrap(<IncidentComposerScreen incidents={[]} me="" now={now} live={l} />);
 
   it('the drawn checks, from the settings', () => {
@@ -128,19 +128,14 @@ describe('YX-10 planned maintenance (live)', () => {
     await waitFor(() => expect(l.onCancel).toHaveBeenCalledWith('w1', 1, 'Moved'));
   });
 
-  it('rules: statutory dates out of range are stopped; good ones are saved', async () => {
-    const l = live();
-    screenOf(l);
-    const dates = screen.getByRole('textbox', { name: /Statutory due dates/ });
-    await ue.clear(dates);
-    await ue.type(dates, '7, 31');
-    await ue.click(screen.getByRole('button', { name: 'Save rules' }));
-    expect(screen.getByText(/Up to 10 days of the month, each from 1 to 28/)).toBeInTheDocument();
-    expect(l.onSaveSettings).not.toHaveBeenCalled();
-    await ue.clear(dates);
-    await ue.type(dates, '7, 15');
-    await ue.click(screen.getByRole('button', { name: 'Save rules' }));
-    await waitFor(() => expect(l.onSaveSettings).toHaveBeenCalledWith({ values: { 'maintenance.notice_hours': 72, 'maintenance.banner_hours': 24, 'maintenance.max_hours': 4, 'maintenance.block_first_days': 7, 'maintenance.block_last_days': 3 }, blockDates: [7, 15] }));
+  // Answer 1183: the rules show here and change only on Console › Platform settings.
+  it('rules are shown read-only, with the way to Platform settings', async () => {
+    const onOpenPlatformSettings = vi.fn();
+    screenOf(live({ onOpenPlatformSettings }));
+    expect(screen.queryByRole('button', { name: 'Save rules' })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: /Statutory due dates/ })).toBeNull();
+    await ue.click(screen.getByRole('button', { name: 'Change in Platform settings' }));
+    expect(onOpenPlatformSettings).toHaveBeenCalled();
   });
 });
 

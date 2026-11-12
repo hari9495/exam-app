@@ -36,6 +36,9 @@ export default function ConsoleHelpCentrePage() {
         onSubmit: (id, version) => write<HelpDetail>(`/help-centre/articles/${encodeURIComponent(id)}/submit`, 'POST', { version }),
         onReview: (id, version, approve, note) => write<HelpDetail>(`/help-centre/articles/${encodeURIComponent(id)}/review`, 'POST', { version, approve, ...(note ? { note } : {}) }),
         onSaveSettings: (values) => write('/help-centre/settings', 'PUT', { values }),
+        // Answer 1203: retire a published article; another staff member approves.
+        onRetire: (id, reason) => write<HelpDetail>(`/help-centre/articles/${encodeURIComponent(id)}/retire`, 'POST', { reason }),
+        onApproveRetire: (id) => write<HelpDetail>(`/help-centre/articles/${encodeURIComponent(id)}/retire/approve`, 'POST', {}),
       }}
     />
   );

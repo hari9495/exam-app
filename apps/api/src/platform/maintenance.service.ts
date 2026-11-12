@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Prisma } from '@prisma/client';
 import { AuditService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { PLATFORM } from './platform.service';
-import type { MaintenanceDecisionDto, MaintenanceSettingsDto, MaintenanceWindowDto } from './maintenance.dto';
+import type { MaintenanceDecisionDto, MaintenanceWindowDto } from './maintenance.dto';
 
 type Tx = Prisma.TransactionClient;
 
@@ -108,25 +108,6 @@ export class MaintenanceService {
     });
   }
 
-  async saveSettings(actorUserId: string, dto: MaintenanceSettingsDto) {
-    for (const [k, v] of Object.entries(dto.values ?? {})) {
-      const def = MAINTENANCE_SETTINGS[k as NumKey];
-      if (!def) throw new BadRequestException(`Unknown setting: ${k}.`);
-      if (!Number.isInteger(v) || v < def.min || v > def.max) throw new BadRequestException(`${def.label}: give a whole number from ${def.min} to ${def.max}.`);
-    }
-    if (dto.blockDates && (dto.blockDates.length > 10 || dto.blockDates.some((d) => !Number.isInteger(d) || d < 1 || d > 28))) throw new BadRequestException('Statutory dates: up to 10 days of the month, each from 1 to 28.');
-    await this.tenantPrisma.forTenant(PLATFORM, async (tx) => {
-      const before = await this.rules(tx);
-      for (const [key, v] of Object.entries(dto.values ?? {})) await tx.platformSetting.upsert({ where: { key }, create: { key, value: String(v), updatedBy: actorUserId }, update: { value: String(v), updatedBy: actorUserId } });
-      if (dto.blockDates) {
-        const value = [...new Set(dto.blockDates)].sort((a, b) => a - b).join(',');
-        await tx.platformSetting.upsert({ where: { key: BLOCK_DATES_KEY }, create: { key: BLOCK_DATES_KEY, value, updatedBy: actorUserId }, update: { value, updatedBy: actorUserId } });
-      }
-      const after = await this.rules(tx);
-      await AuditService.recordIn(tx, PLATFORM, { actorUserId, action: 'platform.maintenance.settings_changed', entityType: 'platform_setting', metadata: { before, after } });
-    });
-    return this.overview(actorUserId);
-  }
 
   /** Schedules a window, waiting for a second staff member. The rules are checked now and again on approval. */
   async schedule(actorUserId: string, dto: MaintenanceWindowDto, now = new Date()) {

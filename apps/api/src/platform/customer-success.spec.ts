@@ -24,7 +24,7 @@ describe('Customer success routes', () => {
 
   it('every route needs the Customer success key, and that key is never part of a company role', () => {
     const list = handlers(CustomerSuccessController);
-    expect(list.map(([n]) => n).sort()).toEqual(['alerts', 'approve', 'health', 'messages', 'outreach', 'owners', 'reject', 'ruleNotice', 'saveSettings', 'setOwner', 'settings', 'updateAlert', 'withdraw', 'write']);
+    expect(list.map(([n]) => n).sort()).toEqual(['alerts', 'approve', 'health', 'messages', 'outreach', 'owners', 'reject', 'ruleNotice', 'setOwner', 'settings', 'updateAlert', 'withdraw', 'write']);
     // Answer 1065: a rule notice also needs the Rules editor key.
     for (const [name, h] of list) expect({ name, keys: keysOf(h) }).toEqual({ name, keys: name === 'ruleNotice' ? ['platform.customers.success', 'platform.statutory.manage'] : ['platform.customers.success'] });
     expect(isAssignableKey('platform.customers.success')).toBe(false);

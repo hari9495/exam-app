@@ -94,3 +94,33 @@ describe('Help centre (live)', () => {
     await waitFor(() => expect(onSaveSettings).toHaveBeenCalledWith({ 'helpcentre.gaps_min_companies': 6 }));
   });
 });
+
+// Answer 1203: retiring a published article takes two staff members.
+describe('retiring an article', () => {
+  const published = (retire: HelpDetail['retire']): HelpDetail => ({ ...detail(false), id: 'h1', state: 'published', publicUrl: '/yx/help/x/y/z', versions: [{ ...detail(false).versions[0]!, state: 'published' }], retire });
+
+  it('Retire asks why (field error, focus), then sends the request', async () => {
+    const onRetire = vi.fn().mockResolvedValue(published({ requestedBy: 'You', mine: true, reason: 'Old', at: '2026-11-12T08:00:00Z' }));
+    show(live({ defaultOpen: published(null), onRetire, onApproveRetire: vi.fn() }));
+    await userEvent.click(screen.getByRole('button', { name: 'Retire' }));
+    const dialog = await screen.findByRole('dialog', { name: /Retire/ });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Ask to retire' }));
+    expect(within(dialog).getByText(/Say why it is retired/)).toBeInTheDocument();
+    expect(document.activeElement?.id).toBe('hc-retire');
+    expect(onRetire).not.toHaveBeenCalled();
+    await userEvent.type(within(dialog).getByRole('textbox', { name: /Why/ }), 'Replaced by a new guide');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Ask to retire' }));
+    await waitFor(() => expect(onRetire).toHaveBeenCalledWith('h1', 'Replaced by a new guide'));
+  });
+
+  it('the person who asked cannot approve; someone else can', async () => {
+    const onApproveRetire = vi.fn().mockResolvedValue(published(null));
+    const mine = show(live({ defaultOpen: published({ requestedBy: 'You', mine: true, reason: 'Old', at: '2026-11-12T08:00:00Z' }), onRetire: vi.fn(), onApproveRetire }));
+    expect(screen.queryByRole('button', { name: 'Approve retire' })).toBeNull();
+    expect(screen.getByText(/another staff member approves/)).toBeInTheDocument();
+    mine.unmount();
+    show(live({ defaultOpen: published({ requestedBy: 'Joseph Thomas', mine: false, reason: 'Old', at: '2026-11-12T08:00:00Z' }), onRetire: vi.fn(), onApproveRetire }));
+    await userEvent.click(screen.getByRole('button', { name: 'Approve retire' }));
+    await waitFor(() => expect(onApproveRetire).toHaveBeenCalledWith('h1'));
+  });
+});

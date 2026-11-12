@@ -5,7 +5,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { escapeHtml, buildNotificationEmailFooter } from '../notifications/notification-email-render';
 import { csatOf, npsOf, tenantHealth } from '../service-desk/tenant-health';
 import { PLATFORM, platformRead, staffActor } from './platform.service';
-import type { CsSettingsDto, CsMessageDto, CsDecisionDto } from './customer-success.dto';
+import type { CsMessageDto, CsDecisionDto } from './customer-success.dto';
 
 type Tx = Prisma.TransactionClient;
 
@@ -95,21 +95,6 @@ export class CustomerSuccessService {
     });
   }
 
-  async saveSettings(actorUserId: string, dto: CsSettingsDto) {
-    const changes = Object.entries(dto.values) as [string, number][];
-    for (const [k, v] of changes) {
-      const def = CS_SETTINGS[k as CsSettingKey];
-      if (!def) throw new BadRequestException(`Unknown setting: ${k}.`);
-      if (!Number.isInteger(v) || v < def.min || v > def.max) throw new BadRequestException(`${def.label}: give a whole number from ${def.min} to ${def.max}.`);
-    }
-    await this.tenantPrisma.forTenant(PLATFORM, async (tx) => {
-      const before = await this.readSettings(tx);
-      for (const [key, v] of changes) await tx.platformSetting.upsert({ where: { key }, create: { key, value: String(v), updatedBy: actorUserId }, update: { value: String(v), updatedBy: actorUserId } });
-      const after = await this.readSettings(tx);
-      await AuditService.recordIn(tx, PLATFORM, { actorUserId, action: 'platform.cs.settings_changed', entityType: 'platform_setting', metadata: { before, after } });
-    });
-    return this.settings();
-  }
 
   // ------------------------------------------------------------------------------------------ health and alerts
 
@@ -123,7 +108,7 @@ export class CustomerSuccessService {
         tx.csHealthSnapshot.findMany({ where: { organizationId: { in: ids }, day: { lte: new Date(`${dayPlus(today, -30)}T00:00:00Z`), gte: new Date(`${dayPlus(today, -60)}T00:00:00Z`) } }, select: { organizationId: true, day: true, score: true } }),
         tx.csAccount.findMany({ where: { organizationId: { in: ids } } }),
       ]);
-      const owners = await tx.user.findMany({ where: { id: { in: accounts.map((a) => a.ownerUserId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true, email: true } });
+      const owners = await tx.user.findMany({ where: { id: { in: accounts.map((a) => a.ownerUserId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true, email: true, status: true } });
       return {
         settings,
         rows: rows.map(({ alertRules: _rules, ...r }) => {
@@ -136,7 +121,8 @@ export class CustomerSuccessService {
             band,
             churn: CHURN_OF[band],
             trend: thirtyDayChange(today, r.health, snaps.filter((s) => s.organizationId === r.id).map((s) => ({ day: s.day.toISOString().slice(0, 10), score: s.score }))),
-            owner: owner ? { id: owner.id, name: owner.name?.trim() || owner.email } : null,
+            // Answer 1223: a deactivated owner shows as Owner left until someone reassigns the company.
+            owner: owner ? { id: owner.id, name: owner.name?.trim() || owner.email, left: owner.status !== 'active' } : null,
           };
         }),
       };
