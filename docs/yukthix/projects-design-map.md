@@ -541,3 +541,5 @@ console.log('ok');
 1626. **Cost burn alerts.** Cost (people and expenses, all months) against the cost budget at the same 80% and 100%
       levels as hours, to Projects finance, and to the project's manager only when the latest month has enough people.
       *Suggested: keep.*
+
+- 1621 to 1626 approved as suggested (12 Nov 2026, "ok for all"); 1621 and 1622 are built in P-6.

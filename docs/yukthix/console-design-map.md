@@ -1181,3 +1181,5 @@ C-6 to C-8.
       the latest invitation (resends restart it). *Suggested: keep the first date and add "last sent" only if leads ask.*
 1302. **Email choices for staff.** Staff cannot turn emails off; this list and the breach reminders always arrive.
       *Suggested: keep (both are security emails a Security lead should not miss).*
+
+- 1208 to 1211 (C-8 nudges) approved as suggested (12 Nov 2026, "ok for all"). To build: "Talk to us" on nudge cards, landing in the sales-assist queue, with part 4 (1210). Later: trial-day email nudges with trial and billing (1208); A/B copy when volume allows (1209).
