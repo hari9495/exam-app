@@ -10,6 +10,7 @@ import { YxNavContext } from '../../lib/yx-shell';
 import YxFinanceSettingsPage from './(app)/settings/finance/[page]/page';
 import YxTalentSettingsPage from './(app)/settings/talent/[page]/page';
 import YxDocumentsSettingsPage from './(app)/settings/documents/[page]/page';
+import YxDocumentTypesPage from './(app)/settings/documents/document-types/page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), apiFetchBlob: jest.fn() }));
@@ -28,10 +29,15 @@ const REGISTRY = {
   'payroll.settings.second_person': { label: 'Payroll setting changes need a second person', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
 };
 const calls: [string, unknown][] = [];
+const DOC_TYPES = [
+  { key: 'passport', name: 'Passport', sensitivity: 'confidential', requiresVerification: false, expiryTracked: true, reminderDays: [60, 30, 7], uploadBy: ['person', 'hr'], system: true },
+  { key: 'c_gate_pass', name: 'Gate pass', sensitivity: 'internal', requiresVerification: true, expiryTracked: false, reminderDays: [], uploadBy: ['hr'], system: false },
+];
 const routes = (perms: string[]) =>
   api.mockImplementation(async (path: string, init?: RequestInit) => {
     if (init?.method === 'PUT' || init?.method === 'POST') return (calls.push([`${init.method} ${path}`, JSON.parse(String(init.body))]), { pending: true });
     if (path.startsWith('/rbac/me/permissions')) return perms;
+    if (path === '/documents/types') return DOC_TYPES;
     if (path === '/org/settings') return { registry: REGISTRY, limits: {}, pending: [], overrides: [] };
     if (path === '/org/legal-entities') return [{ id: 'e1', name: 'Kaveri Foods Pvt Ltd' }];
     if (path === '/org/locations') return [{ id: 'l1', name: 'Hosur plant' }];
@@ -102,5 +108,36 @@ describe('Settings S-8: Expenses & travel (4.8) and Performance (6.3)', () => {
     show(YxDocumentsSettingsPage, 'notifications');
     expect(await screen.findByText(/also send them by email/)).toBeInTheDocument();
     expect(screen.getByText('View only')).toBeInTheDocument();
+  });
+
+  it('5.1: the starter and company types are listed; HR adds one (a missing name is refused first)', async () => {
+    routes(['org.settings.manage']);
+    show(YxDocumentTypesPage as never, 'document-types');
+    const table = await screen.findByRole('table', { name: 'Document types' });
+    expect(within(table).getByText('YukthiX starter')).toBeInTheDocument();
+    expect(within(table).getByText('Your company')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Add document type' }));
+    const drawer = await screen.findByRole('dialog');
+    await ue.click(within(drawer).getByRole('button', { name: 'Add document type' }));
+    expect(await within(drawer).findByText('Give the type a name of at least 2 characters.')).toBeInTheDocument();
+    expect(calls).toEqual([]);
+    await ue.type(within(drawer).getByRole('textbox', { name: /Name/ }), 'Driving licence');
+    await ue.click(within(drawer).getByRole('checkbox', { name: /It has an expiry date/ }));
+    await ue.click(within(drawer).getByRole('button', { name: 'Add document type' }));
+    await waitFor(() => expect(calls).toEqual([['POST /documents/types', { name: 'Driving licence', sensitivity: 'personal', requiresVerification: true, expiryTracked: true, reminderDays: [60, 30, 7], uploadBy: ['person', 'hr'] }]]));
+  });
+
+  it('negative (5.1): a starter type opens read-only; a reader gets no Add button', async () => {
+    routes(['org.settings.manage']);
+    const { unmount } = show(YxDocumentTypesPage as never, 'document-types');
+    await ue.click(await screen.findByRole('button', { name: 'Edit Passport' }));
+    const drawer = await screen.findByRole('dialog');
+    expect(within(drawer).getByText('A YukthiX starter type: it cannot be changed or removed.')).toBeInTheDocument();
+    expect(within(drawer).queryByRole('button', { name: /Save|Retire/ })).toBeNull();
+    unmount();
+    routes(['org.structure.view']);
+    show(YxDocumentTypesPage as never, 'document-types');
+    expect(await screen.findByRole('table', { name: 'Document types' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add document type' })).toBeNull();
   });
 });

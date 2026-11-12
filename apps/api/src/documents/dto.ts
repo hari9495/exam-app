@@ -108,3 +108,32 @@ export class DocumentShareDto {
   @IsIn([1, 7, 30])
   days!: 1 | 7 | 30;
 }
+
+/** Settings S-8, 5.1 (answer 1331): a company's own document type. */
+export class DocumentTypeDto {
+  @trim()
+  @IsString()
+  @Length(2, 60)
+  @Matches(/^[^<>]*$/, { message: 'Leave out < and >.' })
+  name!: string;
+
+  @IsIn(['internal', 'personal', 'confidential'])
+  sensitivity!: 'internal' | 'personal' | 'confidential';
+
+  @IsBoolean()
+  requiresVerification!: boolean;
+
+  @IsBoolean()
+  expiryTracked!: boolean;
+
+  @IsArray()
+  @ArrayMaxSize(3)
+  @IsInt({ each: true })
+  reminderDays!: number[];
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(2)
+  @IsIn(['person', 'hr'], { each: true })
+  uploadBy!: string[];
+}

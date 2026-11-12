@@ -2,6 +2,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { SettingsGroupScreen, SettingsPageScreen } from './settings-screens';
 import { SETTINGS_GROUPS } from './settings-groups';
+import { DocumentTypeDrawer, documentTypesPage, type DocTypeRow } from './document-types-live';
 import './settings.css';
 
 const meta: Meta = {
@@ -32,3 +33,16 @@ export const P5_8: S = { name: '5.8 Helpdesk', render: () => <SettingsPageScreen
 export const P5_8_ReadOnly: S = { name: '5.8 Helpdesk · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="5.8" readOnly /> };
 export const P5_9: S = { name: '5.9 Engage', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="5.9" /> };
 export const P5_9_ReadOnly: S = { name: '5.9 Engage · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="5.9" readOnly /> };
+
+// Settings S-8 (answer 1331): 5.1 live, the starter types and the company's own, and the type drawer.
+const DOC_TYPES: DocTypeRow[] = [
+  { key: 'pan_card', name: 'PAN card', sensitivity: 'confidential', requiresVerification: true, expiryTracked: false, reminderDays: [], uploadBy: ['person', 'hr'], system: true },
+  { key: 'passport', name: 'Passport', sensitivity: 'confidential', requiresVerification: false, expiryTracked: true, reminderDays: [60, 30, 7], uploadBy: ['person', 'hr'], system: true },
+  { key: 'c_fssai_food_handler', name: 'FSSAI food handler certificate', sensitivity: 'internal', requiresVerification: true, expiryTracked: true, reminderDays: [30], uploadBy: ['hr'], system: false },
+];
+const page51 = documentTypesPage(SETTINGS_GROUPS.flatMap((g) => g.pages).find((p) => p.id === '5.1')!, DOC_TYPES);
+const wait = () => new Promise((r) => setTimeout(r, 400));
+export const P5_1_Live: S = { name: '5.1 Document types · live', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="5.1" live={{ page: page51, canEdit: true, lastChange: null, onSave: async () => undefined, listEditors: { 'doc.types': () => {} } }} /> };
+export const DocumentTypeAdd: S = { name: '5.1 · Add document type', render: () => <DocumentTypeDrawer initial={null} onClose={() => {}} onSave={wait} /> };
+export const DocumentTypeOwn: S = { name: '5.1 · Change a company type', render: () => <DocumentTypeDrawer initial={DOC_TYPES[2]!} onClose={() => {}} onSave={wait} onRetire={wait} /> };
+export const DocumentTypeStarter: S = { name: '5.1 · A starter type (read-only)', render: () => <DocumentTypeDrawer initial={DOC_TYPES[1]!} onClose={() => {}} onSave={wait} /> };

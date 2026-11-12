@@ -116,6 +116,8 @@ export const MORE_SETTINGS_PAGES: [string, string, string, string][] = [
   ['1.1', 'Company & branding', 'org', 'company-and-branding'],
   ['1.5', 'Employee records', 'org', 'employee-records'],
   ['1.6', 'Set-up hub settings', 'org', 'set-up-hub'],
+  // S-8 (answer 1331): 5.1 has its own route (the type list and drawer), under the same folder.
+  ['5.1', 'Document types', 'documents', 'document-types'],
   ['5.4', 'Notifications', 'documents', 'notifications'],
   ['5.7', 'Policies', 'documents', 'policies'],
   ['8.6', 'Help and tips', 'account', 'analytics-status-and-tips'],
@@ -164,6 +166,7 @@ export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '4.8': ['/yx/settings/finance/expenses-and-travel', '/yx/settings/expenses'],
   '4.9': ['/yx/settings/contract-labour'],
   '4.10': ['/yx/payroll/ewa'],
+  '5.1': morePage('5.1'),
   '5.2': ['/yx/settings/letters'],
   '5.3': ['/yx/settings/letters'],
   '5.4': [...morePage('5.4'), '/yx/settings/emails'],

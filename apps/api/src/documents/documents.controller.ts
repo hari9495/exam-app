@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
@@ -10,7 +10,13 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE, PUBLIC_API_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import { DocumentDecisionDto, DocumentFileQueryDto, DocumentRequestDto, DocumentShareDto, DocumentUploadDto } from './dto';
+import { ownSession } from '../org-structure/org-structure.controller';
+
+const typeKeyOf = (key: string) => {
+  if (!/^[a-z][a-z0-9_]{1,39}$/.test(key)) throw new BadRequestException('No such document type.');
+  return key;
+};
+import { DocumentDecisionDto, DocumentFileQueryDto, DocumentRequestDto, DocumentShareDto, DocumentTypeDto, DocumentUploadDto } from './dto';
 import { DocumentsService } from './documents.service';
 import { DocumentSharesService } from './shares.service';
 
@@ -36,6 +42,29 @@ export class DocumentsController {
   @Get('types')
   types(@CurrentTenant() ctx: TenantContext) {
     return this.documents.typeList(ctx);
+  }
+
+  // Settings S-8, 5.1 Document types (answer 1331): HR's settings key adds and changes the company's own types.
+  @Post('types')
+  @RequirePermissions('org.settings.manage')
+  createType(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: DocumentTypeDto) {
+    ownSession(req);
+    return this.documents.createType(ctx, dto);
+  }
+
+  @Put('types/:key')
+  @RequirePermissions('org.settings.manage')
+  updateType(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('key') key: string, @Body() dto: DocumentTypeDto) {
+    ownSession(req);
+    return this.documents.updateType(ctx, typeKeyOf(key), dto);
+  }
+
+  @Post('types/:key/retire')
+  @HttpCode(204)
+  @RequirePermissions('org.settings.manage')
+  async retireType(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('key') key: string) {
+    ownSession(req);
+    await this.documents.retireType(ctx, typeKeyOf(key));
   }
 
   @Get('me')

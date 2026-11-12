@@ -274,3 +274,6 @@ button.yx-m-row:hover, a.yx-m-row:hover { background: var(--yx-color-bg-subtle);
 
 /* S-5 (1461): the live home's Recently changed, one line per change so the home keeps to one screen. */
 .yx-set-recent--live a { flex-direction: row; flex-wrap: wrap; column-gap: var(--yx-space-2); padding: var(--yx-space-1) 0; }
+
+/* S-8: a drawer's fields, stacked on the token gap. */
+.yx-set-stack { display: flex; flex-direction: column; gap: var(--yx-space-4); min-width: 0; }
