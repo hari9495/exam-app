@@ -2,6 +2,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { SettingsGroupScreen, SettingsPageScreen } from './settings-screens';
 import { SETTINGS_GROUPS } from './settings-groups';
+import { PEOPLE_SETTINGS, timeSettingsPage, type TimeSettingsData } from './time-settings-live';
+import { TIME_REGISTRY_SAMPLE } from './time-settings-sample';
 import './settings.css';
 
 const meta: Meta = {
@@ -36,3 +38,25 @@ export const P2_10: S = { name: '2.10 Audit & data retention', render: () => <Se
 export const P2_10_ReadOnly: S = { name: '2.10 Audit & data retention · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="2.10" readOnly /> };
 export const P2_11: S = { name: '2.11 Partners', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="2.11" /> };
 export const P2_11_ReadOnly: S = { name: '2.11 Partners · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="2.11" readOnly /> };
+
+// S-4 (answers 1323, 1324): 2.7 and 2.10 with the company's settings. `page` picks one (0 or 1).
+const PEOPLE_PAGES = Object.keys(PEOPLE_SETTINGS);
+const PEOPLE_DATA: TimeSettingsData = {
+  registry: TIME_REGISTRY_SAMPLE,
+  company: { 'retirement.age': '60', 'exit.notice.confirmed': '2m' },
+  elsewhere: { 'retirement.age': 1 },
+  limits: { 'audit.retention_years': { min: 8, act: 'Companies (Accounts) Rules, 2014 r.3(1) with the Companies Act, 2013 s.128(5)' } },
+  canEdit: true,
+  canGuard: true,
+  lastChange: null,
+};
+type PageArgs = StoryObj<{ page: number }>;
+export const PeopleLive: PageArgs = {
+  name: 'People page · live with the company settings (S-4)',
+  args: { page: 0 },
+  render: (args: { page: number }) => {
+    const id = PEOPLE_PAGES[Number(args.page)]!;
+    const page = timeSettingsPage(SETTINGS_GROUPS.flatMap((g) => g.pages).find((p) => p.id === id)!, PEOPLE_DATA, new Set());
+    return <SettingsPageScreen groups={SETTINGS_GROUPS} pageId={id} live={{ page, canEdit: true, lastChange: null, onSave: async () => {}, onOpenScreen: () => {} }} />;
+  },
+};

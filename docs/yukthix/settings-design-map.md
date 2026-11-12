@@ -55,21 +55,21 @@ means the live page passes no manage flag that I could see and I did not read th
 
 ## Counts (sub-pages = stories)
 
-After S-1 (Settings home, search and the eight group pages live; four live stories added) S-2 (the Time & Leave pages with their settings; one live story added) and S-3 (the Payroll pages, a second person for payroll changes; two live stories added; appendix script "ok").
+After S-1 (Settings home, search and the eight group pages live; four live stories added) S-2 (the Time & Leave pages with their settings; one live story added) S-3 (the Payroll pages, a second person for payroll changes; two live stories added) and S-4 (2.7 and 2.10 with their settings; one live story added; appendix script "ok").
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Settings home and page states | 1 | 17 | 3 | 4 | 0 | 0 | 24 |
 | B. Organisation and Global core | 2 | 25 | 0 | 0 | 0 | 0 | 25 |
-| C. Settings map, groups 1 to 8 | 8 | 33 | 91 | 16 | 32 | 0 | 172 |
-| **All A-C** | **11** | **75** | **94** | **20** | **32** | **0** | **221** |
+| C. Settings map, groups 1 to 8 | 8 | 34 | 93 | 14 | 32 | 0 | 173 |
+| **All A-C** | **11** | **76** | **96** | **18** | **32** | **0** | **222** |
 
 Per group (C):
 
 | group | live | live, gap | wire design | feature not built | stories |
 |---|---|---|---|---|---|
 | Group 1 · Organisation | 2 | 12 | 0 | 4 | 18 |
-| Group 2 · People & Access | 2 | 14 | 2 | 6 | 24 |
+| Group 2 · People & Access | 3 | 16 | 0 | 6 | 25 |
 | Group 3 · Time & Leave | 3 | 24 | 0 | 0 | 27 |
 | Group 4 · Payroll & Statutory | 5 | 20 | 0 | 2 | 27 |
 | Group 5 · Documents & Communication | 2 | 12 | 0 | 6 | 20 |
@@ -137,7 +137,7 @@ Cross-checked with the area maps: `hiring-design-map.md` (6.1, 6.2 and the group
 each) and the payroll second-approver page state.
 
 **Wire design** (50 rows): Settings home (8) and the search highlight, the 8 group pages (16), the legal-floor states
-(2), change history (1), and the pages whose settings are in the API with no screen: 2.7, 7.1, 7.5, 7.6,
+(2), change history (1), and the pages whose settings are in the API with no screen: 7.1, 7.5, 7.6,
 7.7, 8.1, 8.2, 8.3.
 
 **Registry keys with no screen** (105; exact-key search over `apps/web` and `packages/yx-ui/src`, with tests, stories,
@@ -147,9 +147,7 @@ e2e and the kit's settings-map sample data left out; `help.page_help` left out b
 - Safety and disputes (4): `accident.injury_types`, `accident.injury_leave_type`, `accident.contractor_reminder_days`,
   `dispute.lawyer_may_approve`.
 - Payroll and tax (16): on the Payroll & Statutory pages since S-3 (answer 1323, see "S-3 as built").
-- People lifecycle and audit (15): `exit.notice.probation`, `exit.notice.confirmed`, `rehire.pf`, `rehire.same_fy_tax`,
-  `rehire.service`, `rehire.gratuity`, `rehire.leave`, `rehire.probation`, `rehire.prior_records`, `absconding.days`,
-  `retirement.age`, `retirement.alert_months`, `vrs.benefit_days`, `alumni.access_years`, `audit.retention_years`.
+- People lifecycle and audit (15): on 2.7 and 2.10 since S-4 (answer 1323, see "S-4 as built").
 - Policies (1): `policy.ai_draft.discard_days`.
 - Expenses (14): `expense.finance_audit`, `expense.claim_window_days`, `expense.cc_owner_above`,
   `expense.route.default`, `expense.route.payout_above`, `expense.payroll_cutoff_day`,
@@ -309,16 +307,17 @@ File: `packages/yx-ui/src/screens/settings/settings-g2.stories.tsx`.
 | P2_5_ReadOnly · 2.5 Onboarding & probation · read-only | live (gap) | read-only: unsure (the page passes no manage flag) |
 | P2_6 · 2.6 Job changes & transfers | live (gap) | Job changes and Inter-entity transfer defaults on /yx/settings/company-rules (`employee_change.retro_limit`, `promotion.must_change`, `transfer.*`); change types and deputation: none found |
 | P2_6_ReadOnly · 2.6 Job changes & transfers · read-only | live (gap) | read-only: `canManage` = org.settings.manage |
-| P2_7 · 2.7 Exit & lifecycle policies | wire design | the registry holds `exit.notice.probation`, `exit.notice.confirmed`, `rehire.*` (7 of its 8 keys), `absconding.days`, `retirement.age`, `retirement.alert_months`, `vrs.benefit_days` and `alumni.access_years` with starter values, and none of them is on any screen (exact-key search over apps/web and yx-ui); only `contract.max_years` and `contract_end.action` are on Company rules. `PUT org/settings` already saves any of them |
-| P2_7_ReadOnly · 2.7 Exit & lifecycle policies · read-only | wire design | same |
+| P2_7 · 2.7 Exit & lifecycle policies | live (gap) | S-4: /yx/settings/people/exit-and-lifecycle-policies (`PEOPLE_SETTINGS`): the two notice periods (dated: a change applies from today), retirement age and alert, VRS days, the absconding timeline, alumni access and a Rehire section (7 settings), each Starter default until changed; Related: Company rules (fixed-term contracts). Gap: the drawn notice table, buy-out, offboarding templates, clearance departments, sabbatical and death support have no setting yet |
+| P2_7_ReadOnly · 2.7 Exit & lifecycle policies · read-only | live (gap) | read-only: without HR's settings key (org.settings.manage) the page is View only; the audit log length also needs the access key |
 | P2_8 · 2.8 Assets | design only, feature not built | the asset register is live (/yx/people/assets, `lifecycle/assets`), but `Asset.category` is free text and there are no issue or return rules; no API for the drawn categories or rules |
 | P2_8_ReadOnly · 2.8 Assets · read-only | design only, feature not built | as the page |
 | P2_9 · 2.9 Employee relations & cases | live (gap) | Speak-up on Company rules (`speakup.*`, `cases.reply_days`, `cases.disciplinary.reply_days`) and /yx/desk/speakup-setup (`SpeakUpSetupScreen`); the Internal Committee (POSH) and retention parts: unsure |
 | P2_9_ReadOnly · 2.9 Employee relations & cases · read-only | live (gap) | read-only: `canManage` on Company rules |
-| P2_10 · 2.10 Audit & data retention | live (gap) | retention on /yx/settings/access-settings (`privacy.retention.*`, erasure); `audit.retention_years` is in the registry with no screen; data-subject requests exist only for the service desk (/yx/desk/privacy, `desk/privacy/settings`) |
-| P2_10_ReadOnly · 2.10 Audit & data retention · read-only | live (gap) | read-only: `canManage` |
+| P2_10 · 2.10 Audit & data retention | live (gap) | S-4: /yx/settings/people/audit-and-data-retention: how long the audit log is kept (legal minimum 8 years, Companies (Accounts) Rules 2014 r.3(1); the access key too); Related: Access and privacy, where the personal-data retention and erasure still are. Gap: the retention schedule table, data-subject requests (only the service desk's) and the audit log link (no company audit log page in /yx yet) |
+| P2_10_ReadOnly · 2.10 Audit & data retention · read-only | live (gap) | read-only: without HR's settings key (org.settings.manage) the page is View only; the audit log length also needs the access key |
 | P2_11 · 2.11 Partners | design only, feature not built | the partner programme is not built (console map D, YX-06 to YX-08); searched `partner.?link|partner.?firm`: none |
 | P2_11_ReadOnly · 2.11 Partners · read-only | design only, feature not built | as the page |
+| PeopleLive · People page · live with the company settings (S-4) | live | 2.7 and 2.10 with sample company values (`page` 0 or 1): Starter default, the dated notice periods, the audit log's legal minimum, the Related link |
 
 #### Group 3 · Time & Leave
 
@@ -717,6 +716,41 @@ approver for payroll settings; approval policies per request type; and the not-b
       approve some and reject others); add "Approve all" if HR asks.*
 1525. **Who approves.** Today only HR's settings key. *Suggested: keep; payroll set-up reads but never approves policy
       (MT-PAY-B-07).*
+
+## S-4 as built (answers 1323, 1324; branch `feat/yukthix-settings-s4`)
+
+- **Your own database first:** examapp_pay had been rebuilt from the migrations without the seed, so the demo company,
+  its admins and the permission templates were missing (the 403s in time-open-standby and access-privacy). The seed
+  now runs there (`prisma db seed`, own database only); both suites pass (12/12, 42/42).
+- **The People pages with settings that had no screen, live:** /yx/settings/people/<page> renders the drawn
+  `SettingsPageScreen` for 2.7 Exit & lifecycle policies and 2.10 Audit & data retention (`PEOPLE_SETTINGS`, the same
+  builder and `RegistrySettingsPage` as S-2 and S-3). The 15 settings (notice periods, rehire, absconding, retirement,
+  VRS, alumni, audit log) each have a field marked Starter default. The notice periods are dated: a change applies
+  from today (`validFrom` today), earlier days keep their value, and the page shows the value in force today.
+- **2.5, 2.6 and 2.9 are not built here:** they hold no hidden setting; all their settings are on Company rules with
+  values per entity, employment type or grade (probation, job changes, transfers, speak-up). Moving them now would lose
+  "Different for" until S-7 (answer 1484), so their front doors stay Company rules, checklists and Speak-up set-up
+  (question 1561). 2.7 and 2.10 link to Company rules and Access and privacy (Related) for their other settings.
+- **1324:** `IN.SETTINGS.LIMITS` version 2026-v3 (migration `202617z0000141`) adds the audit log kept at least 8 years
+  (Companies (Accounts) Rules, 2014 r.3(1) with the Companies Act, 2013 s.128(5)); the limits read the latest version
+  published for the day. Retirement age, notice and VRS have no national floor or ceiling for private employers.
+- **Page scroll at 1278 x 635** (Storybook `PeopleLive`): 2.10 fits; 2.7 needs 1595 px (14 settings), one column as
+  approved (1481).
+- **Tests:** API e2e `settings-s4-people` (listed with starter values and the audit minimum; saves audited with before
+  and after; a dated notice period needs its start day; the audit log length needs the access key and never goes
+  under 8 years; someone without HR's settings key reads and changes nothing). Kit `people-settings-live.test`, web
+  `yx-settings-people.test` (the value in force today, today's start day sent, Related opens Company rules, view only).
+
+### Questions (from 1561)
+
+1561. **2.5, 2.6 and 2.9.** Their settings are all on Company rules, many per entity or grade. *Suggested: they move,
+      with "Different for", in S-7 when Company rules retires; until then their front doors stay where they are.*
+1562. **Notice period from a later day.** A change applies from today; Company rules can still set a later start day.
+      *Suggested: add "Applies from" on dated settings in S-7 with "Different for".*
+1563. **A company audit log page.** The drawn "Open audit log" has no company-wide page in /yx (only Payroll's).
+      *Suggested: build the company audit log with 1326 (change history), readable with audit.view.*
+1564. **Retirement age per grade.** Retirement age can differ per employment type and grade (set on Company rules
+      today). *Suggested: keep it there until S-7, as 1561.*
 
 ## 7. Build plan (slices, max 3 builders at once)
 

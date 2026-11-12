@@ -90,6 +90,12 @@ export const PAY_SETTINGS_PAGES: [string, string, string][] = [
   ['4.5', 'Tax', 'tax'],
 ];
 const payPage = (id: string) => PAY_SETTINGS_PAGES.filter((p) => p[0] === id).map((p) => `${SETTINGS_HOME}/payroll/${p[2]}`);
+/** S-4: the drawn People & Access pages that show the company's settings (address under /yx/settings/people). */
+export const PEOPLE_SETTINGS_PAGES: [string, string, string][] = [
+  ['2.7', 'Exit & lifecycle policies', 'exit-and-lifecycle-policies'],
+  ['2.10', 'Audit & data retention', 'audit-and-data-retention'],
+];
+const peoplePage = (id: string) => PEOPLE_SETTINGS_PAGES.filter((p) => p[0] === id).map((p) => `${SETTINGS_HOME}/people/${p[2]}`);
 const timePage = (id: string) => TIME_SETTINGS_PAGES.filter((p) => p[0] === id).map((p) => `${SETTINGS_HOME}/time/${p[2]}`);
 
 export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
@@ -104,8 +110,9 @@ export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '2.3': ['/yx/settings/security', '/yx/settings/identity-providers', '/yx/settings/support-access'],
   '2.5': ['/yx/settings/company-rules', '/yx/settings/checklists'],
   '2.6': ['/yx/settings/company-rules'],
+  '2.7': peoplePage('2.7'),
   '2.9': ['/yx/settings/company-rules', '/yx/desk/speakup-setup'],
-  '2.10': ['/yx/settings/access-settings'],
+  '2.10': [...peoplePage('2.10'), '/yx/settings/access-settings'],
   '3.1': ['/yx/settings/company-rules'],
   '3.2': [...timePage('3.2'), '/yx/time/setup/devices', '/yx/time/setup/locations'],
   '3.3': [...timePage('3.3'), '/yx/time/shifts-setup'],
@@ -495,6 +502,8 @@ export function buildNav(n: NavInput): NavArea[] {
       ...sec('People & Access', [
         ...when(has('access.role.manage'), L('access', 'Roles & access', '/yx/settings/access')),
         ...when(settingsAdmin, L('access-settings', 'Access and privacy', '/yx/settings/access-settings'), L('custom-fields', 'Custom fields', '/yx/settings/custom-fields')),
+        // S-4 (answer 1323): the People & Access settings pages; HR's settings key changes them.
+        ...when(settingsAdmin, ...PEOPLE_SETTINGS_PAGES.map(([id, label, slug]) => L(`people-settings-${id}`, label, `${SETTINGS_HOME}/people/${slug}`))),
         ...when(has('lifecycle.journey.template.manage'), L('checklists', 'Onboarding checklists', '/yx/settings/checklists')),
         ...when(adminRole, L('settings', 'Security settings', '/yx/settings/security'), L('identity-providers', 'Single sign-on providers', '/yx/settings/identity-providers')),
         ...when(adminRole || n.role === 'auditor', L('activity', 'Login activity', '/yx/admin/login-activity')),
