@@ -808,7 +808,7 @@ function SettingsTab(props: TabProps) {
       <FormField label="Business hours" helper="The calendar this desk’s response targets will use.">
         <Select value={calendarId} onChange={setCalendarId} clearable disabled={!can} options={props.calendars.map((c) => ({ value: c.id, label: `${c.name} · ${c.timeZone}` }))} />
       </FormField>
-      <FormField label="Message while closed" helper="The help centre and portal show it outside business hours. {opens} becomes the next opening time. Tickets raised then are marked “Raised outside hours”.">
+      <FormField label="Message while closed" helper="The help centre and portal show it outside business hours. {opens} becomes the next opening time. Tickets people raise themselves then are marked “Raised outside hours” (not ones agents log).">
         <TextField value={closedMessage} onChange={setClosedMessage} maxLength={300} disabled={!can} />
       </FormField>
       <FormField label="At risk from" helper="A ticket shows as at risk once this share of a response target is used, on the SLA dashboard and the agent desk. Missed stays at 100 %.">

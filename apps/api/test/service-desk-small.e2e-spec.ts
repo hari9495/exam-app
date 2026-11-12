@@ -398,4 +398,18 @@ describe('Helpdesk small items', () => {
       await api('divya', 'post', `/desk/my/chat/${chatId}/rate`).send({ score: 4 }).expect(409);
     });
   });
+  // ------------------------------------------------------------------------------------------ 1683 outside hours: requesters only
+  describe('1683: "Raised outside hours" only on tickets people raise themselves', () => {
+    afterAll(async () => {
+      await api('deskAdmin', 'patch', `/desk/desks/${ids.desk}`).send({ version: await deskVersion(), calendarId: null }).expect(200);
+    });
+
+    it('while closed: a ticket the person raises is flagged; one an agent logs for them is not', async () => {
+      await api('deskAdmin', 'patch', `/desk/desks/${ids.desk}`).send({ version: await deskVersion(), calendarId: ids.calLater }).expect(200);
+      const mine = (await api('divya', 'post', '/desk/my/tickets').send({ deskId: ids.desk, subject: `Night raise ${run}`, description: 'Help.' }).expect(201)).body.id;
+      const logged = (await api('agent', 'post', '/desk/tickets').send({ deskId: ids.desk, requesterPersonId: ids.divyaPerson, subject: `Phone call ${run}`, bodyHtml: '<p>She called.</p>' }).expect(201)).body.id;
+      expect((await api('agent', 'get', `/desk/tickets/${mine}`).expect(200)).body.raisedOutsideHours).toBe(true);
+      expect((await api('agent', 'get', `/desk/tickets/${logged}`).expect(200)).body.raisedOutsideHours).toBe(false);
+    });
+  });
 });

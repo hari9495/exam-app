@@ -212,7 +212,8 @@ export class TicketsService {
         assigneeUserId,
         groupId,
         channel: input.channel,
-        raisedOutsideHours: Boolean(await this.sla.closedNow(tx, org, desk)),
+        // Answer 1683: only tickets the person raised themselves (portal, email, chat, messaging), never ones an agent logs.
+        raisedOutsideHours: input.side === 'requester' && Boolean(await this.sla.closedNow(tx, org, desk)),
         originArticleId: input.originArticleId ?? null,
         assetId: input.assetId ?? null,
         originQuery: input.originQuery?.trim() || null,

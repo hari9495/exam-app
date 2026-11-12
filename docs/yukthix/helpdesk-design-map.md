@@ -277,7 +277,7 @@ follow-ups, articles, related tickets and the rest of the work rail) sit in the 
 | Escalate · Move to another support level | live | new story: the header menu's "Move to another support level" (L1 / L2 / L3, group, reason; pressed with no reason says so) |
 | ResolveWithCode · Resolve · code and note | live | new story: the resolve dialog |
 | ResolvedRated · Resolved · closes on, the rating | live | new story |
-| OutsideHours · Raised outside hours | live | Answer 1646: `sd_tickets.raised_outside_hours`, set when the ticket is made while the desk's calendar is closed (any channel); a neutral badge beside the flags |
+| OutsideHours · Raised outside hours | live | Answer 1646: `sd_tickets.raised_outside_hours`, set when the person raises it themselves while the desk's calendar is closed (portal, help centre, email, chat; answer 1683: never on tickets agents log); a neutral badge beside the flags |
 | Device · IT ticket · device set by an IT agent | live | Answer 1661: Details card, Device: an IT desk's agent searches any live company device (`GET desk/pick/assets`, tag, name or serial) and sets or clears it (`PUT desk/tickets/:id/device`, audited, a timeline event, toast); others see it read only; agents of other desks are refused (403) |
 | Collaborator · Collaborator · notes only | live | new story: no Reply tab, no work controls (the server refuses a collaborator's reply, e2e) |
 | ReadOnly · Desk admin · read only | live | new story: "Read-only: you set this desk up"; no Respond card (the server refuses their notes) |
