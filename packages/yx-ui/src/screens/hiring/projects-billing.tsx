@@ -4,7 +4,10 @@ import { useMemo, useState } from 'react';
 import { FlaskConical, Plus, Send, UserSearch } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge, PersonLabel } from '../../components/display';
-import { EmptyState, InlineAlert, Meter } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, Meter, Skeleton } from '../../components/feedback';
+import { ConfirmDialog } from '../../components/overlay';
+import { useToast } from '../../components/notify';
+import { MappingRuleDrawer, type LiveMappingRule, type MappingRuleInput, type MappingRulesData, type MappingTestResult } from './mapping-live';
 import { FieldRow, FormField } from '../../components/field';
 import { NumberField, TextArea, TextField } from '../../components/inputs';
 import { Select } from '../../components/select';
@@ -421,18 +424,40 @@ export function BenchRequestsScreen({ people, requests, today, persona, matchFor
 
 /* ================================================================== PRJ-08 · Timesheet mapping rules (Settings 3.11) */
 
+/** Projects P-3 (answers 1409, 1410): the company's mapping rules behind PRJ-08. */
+export interface LiveMappingRules {
+  state: 'ready' | 'loading' | 'error' | 'no-access';
+  onRetry?: () => void;
+  data: MappingRulesData | null;
+  onSwitchPrefill: (on: boolean) => Promise<void>;
+  onSave: (id: string | null, input: MappingRuleInput & { version?: number }) => Promise<void>;
+  onRemove: (rule: LiveMappingRule) => Promise<void>;
+  onTest: () => Promise<MappingTestResult>;
+  /** Stories: a drawer open, or a test result shown. */
+  defaultEdit?: 'new' | string;
+  defaultTest?: MappingTestResult;
+}
+
 export interface MappingRulesProps {
-  rules: MappingRule[];
-  items: SourceItem[];
+  rules?: MappingRule[];
+  items?: SourceItem[];
   prefillOn?: boolean;
   editOpen?: boolean;
   tested?: boolean;
+  live?: LiveMappingRules;
 }
 
 const SOURCE_LABEL: Record<MappingRule['source'], string> = { calendar: 'Calendar', jira: 'Jira', github: 'GitHub' };
 
+const MAPPING_DESCRIPTION = 'Settings › Time & Leave › 3.11 Projects & timesheets. Rules turn calendar events, issues and code activity into suggested timesheet rows. The employee always reviews and submits; raw activity is visible only to them.';
+
 // PRJ-08
-export function MappingRulesScreen({ rules: initial, items, prefillOn = true, editOpen = false, tested = false }: MappingRulesProps) {
+export function MappingRulesScreen({ rules: initial = [], items = [], prefillOn = true, editOpen = false, tested = false, live }: MappingRulesProps) {
+  if (live) return <LiveMappingRulesView live={live} />;
+  return <DrawnMappingRules rules={initial} items={items} prefillOn={prefillOn} editOpen={editOpen} tested={tested} />;
+}
+
+function DrawnMappingRules({ rules: initial, items, prefillOn, editOpen, tested }: Required<Omit<MappingRulesProps, 'live'>>) {
   const [rules, setRules] = useState(initial);
   const [on, setOn] = useState(prefillOn);
   const [edit, setEdit] = useState<MappingRule | null>(editOpen ? initial[0] : null);
@@ -451,7 +476,7 @@ export function MappingRulesScreen({ rules: initial, items, prefillOn = true, ed
     <SettingsTimeFrame>
       <PageHeader
         title="Timesheet mapping rules"
-        description="Settings › Time & Leave › 3.11 Projects & timesheets. Rules turn calendar events, Jira issues and GitHub activity into suggested timesheet rows. The employee always reviews and submits; raw activity is visible only to them."
+        description={MAPPING_DESCRIPTION}
         actions={
           <>
             <Button icon={FlaskConical} disabled={!on} onClick={() => setShowTest(true)}>
@@ -537,6 +562,153 @@ export function MappingRulesScreen({ rules: initial, items, prefillOn = true, ed
             </FormField>
           </div>
         </Drawer>
+      )}
+    </SettingsTimeFrame>
+  );
+}
+
+/** PRJ-08 live: the company's rules, the pre-fill switch (System Admin) and a test over the editor's own last week. */
+function LiveMappingRulesView({ live }: { live: LiveMappingRules }) {
+  const d = live.data;
+  const [edit, setEdit] = useState<'new' | string | null>(live.defaultEdit ?? null);
+  const [removing, setRemoving] = useState<LiveMappingRule | null>(null);
+  const [test, setTest] = useState<MappingTestResult | null>(live.defaultTest ?? null);
+  const [testing, setTesting] = useState(false);
+  const { toast } = useToast();
+  if (!d)
+    return (
+      <SettingsTimeFrame>
+        <PageHeader title="Timesheet mapping rules" description={MAPPING_DESCRIPTION} />
+        {live.state === 'error' ? (
+          <ErrorState title="We couldn't load the mapping rules." onRetry={live.onRetry} />
+        ) : live.state === 'no-access' ? (
+          <EmptyState title="You can't open the mapping rules." description="Projects managers and System Admins change them, once Projects is switched on in Settings › Projects & timesheets." />
+        ) : (
+          <Skeleton height={320} />
+        )}
+      </SettingsTimeFrame>
+    );
+  const label = (src: string) => d.sources.find((x) => x.value === src)?.label ?? src;
+  const nextPriority = Math.min(999, (d.rules.reduce((m, r) => Math.max(m, r.priority), 0) || 0) + 1);
+  const cols: TableColumn<LiveMappingRule>[] = [
+    { key: 'priority', header: 'Priority', type: 'number', value: (r) => r.priority, width: 90 },
+    { key: 'source', header: 'Source', value: (r) => label(r.source) },
+    { key: 'pattern', header: 'Pattern', type: 'id', value: (r) => r.pattern },
+    { key: 'project', header: 'Project', type: 'id', value: (r) => r.project },
+    { key: 'task', header: 'Task', value: (r) => r.task ?? 'Any task' },
+    { key: 'enabled', header: 'Status', type: 'status', value: (r) => (r.problem ? `Not applying: ${r.problem}` : r.enabled ? 'On' : 'Off'), statusTone: (v) => (v === 'On' ? 'success' : String(v).startsWith('Not') ? 'warning' : 'neutral') },
+  ];
+  const save = async (r: LiveMappingRule | null, input: MappingRuleInput) => {
+    await live.onSave(r?.id ?? null, r ? { ...input, version: r.version } : input);
+    toast({ tone: 'success', title: r ? 'Rule saved' : 'Rule added' });
+  };
+  const runTest = async () => {
+    setTesting(true);
+    try {
+      setTest(await live.onTest());
+    } finally {
+      setTesting(false);
+    }
+  };
+  const matched = test?.items.filter((i) => i.ruleId).length ?? 0;
+  const addButton = (
+    <Button variant="primary" icon={Plus} onClick={() => setEdit('new')}>
+      Add rule
+    </Button>
+  );
+  const editing = edit === 'new' ? null : (d.rules.find((r) => r.id === edit) ?? null);
+  return (
+    <SettingsTimeFrame>
+      <PageHeader
+        title="Timesheet mapping rules"
+        description={MAPPING_DESCRIPTION}
+        actions={
+          d.prefillOn ? (
+            <>
+              <Button icon={FlaskConical} loading={testing} onClick={() => void runTest()}>
+                Test against last week
+              </Button>
+              {addButton}
+            </>
+          ) : undefined
+        }
+      />
+      {d.canSwitchPrefill ? (
+        <Switch
+          className="yx-hire-switch"
+          label="Pre-fill timesheets from work tools"
+          description="Off by default: it reads people's own tools (read-only, metadata only). People connect their own tools and always review the suggestions."
+          checked={d.prefillOn}
+          onChange={(on) => void live.onSwitchPrefill(on).then(() => toast({ tone: 'success', title: on ? 'Pre-fill switched on' : 'Pre-fill switched off' }))}
+        />
+      ) : (
+        <Text size="sm" tone="secondary">
+          Pre-fill from work tools is {d.prefillOn ? 'on' : 'off'}. A System Admin switches it in Settings › Projects & timesheets.
+        </Text>
+      )}
+      {!d.prefillOn ? (
+        <EmptyState title="Timesheet pre-fill is off." description="Employees fill timesheets by hand and no rule is used. Switch pre-fill on to use mapping rules." />
+      ) : (
+        <>
+          <DataTable
+            label="Mapping rules"
+            columns={cols}
+            rows={d.rules}
+            getRowId={(r) => r.id}
+            onRowClick={(r) => setEdit(r.id)}
+            rowActions={(r) => (
+              <>
+                <MenuItem onSelect={() => setEdit(r.id)}>Change rule</MenuItem>
+                <MenuItem onSelect={() => void save(r, { source: r.source, pattern: r.pattern, projectId: r.projectId, taskId: r.taskId, priority: r.priority, enabled: !r.enabled })}>{r.enabled ? 'Switch off' : 'Switch on'}</MenuItem>
+                <MenuItem destructive onSelect={() => setRemoving(r)}>
+                  Delete rule
+                </MenuItem>
+              </>
+            )}
+            empty={<EmptyState title="No mapping rules yet." description="Without rules, a suggestion goes to a project only when its code or name is in the item; the rest wait for the person to choose a project." action={addButton} />}
+          />
+          {test && (
+            <Card title="Test against last week's items (your own tools)" actions={<Badge tone="info">{matched} of {test.items.length} matched</Badge>}>
+              {!test.connected ? (
+                <InlineAlert tone="info" title="No tools connected">
+                  The test uses only your own items. Connect your work tools on your timesheet (Fill from my tools), then test again.
+                </InlineAlert>
+              ) : (
+                <ul className="yx-hire-list">
+                  {test.items.map((it) => (
+                    <li key={it.id} className="yx-hire-list__item">
+                      <div className="yx-hire-list__main">
+                        <Text weight="medium">
+                          {label(it.source)} · {it.text}
+                        </Text>
+                        <Text size="sm" tone="secondary">
+                          {it.hours} h
+                        </Text>
+                      </div>
+                      {it.ruleId ? <Badge tone="success">→ {it.project}{it.task ? ` · ${it.task}` : ''} (rule {it.priority})</Badge> : <Badge>No rule: the person chooses a project</Badge>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+          )}
+        </>
+      )}
+      {edit && <MappingRuleDrawer rule={editing} data={d} nextPriority={nextPriority} onClose={() => setEdit(null)} onSave={(input) => save(editing, input)} />}
+      {removing && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setRemoving(null)}
+          title={`Delete rule ${removing.priority}?`}
+          consequence={`${label(removing.source)} items matching ${removing.pattern} are no longer suggested for ${removing.project}. Lines people already saved stay.`}
+          confirmLabel="Delete rule"
+          destructive
+          onConfirm={async () => {
+            await live.onRemove(removing);
+            setRemoving(null);
+            toast({ tone: 'success', title: 'Rule deleted' });
+          }}
+        />
       )}
     </SettingsTimeFrame>
   );

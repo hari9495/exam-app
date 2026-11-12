@@ -33,7 +33,7 @@ export default function YxProjectSettingsPage() {
           const changes = projectSettingsChanges(values);
           if (changes.length) await write('PUT', '/settings', { changes });
         },
-        onOpenScreen: (screenId) => (screenId === 'PRJ-01' ? router.push('/yx/projects') : undefined),
+        onOpenScreen: (screenId) => (screenId === 'PRJ-01' ? router.push('/yx/projects') : screenId === 'PRJ-08' ? router.push('/yx/settings/projects/mapping-rules') : undefined),
       }}
     />
   );

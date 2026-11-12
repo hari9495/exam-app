@@ -23,7 +23,7 @@ export function ProjectDrawer({ project, choices, finance, onClose, onSave }: { 
   const [v, setV] = useState<ProjectInput>(
     project
       ? { code: project.code, name: project.name, managerUserId: project.managerUserId, clientId: project.clientId, billingModel: project.billingModel, startOn: project.startOn, endOn: project.endOn, budgetHours: project.budgetHours, budgetCost: project.budgetCost ?? null, fee: project.fee ?? null, clientAcceptsMilestones: project.clientAcceptsMilestones }
-      : { code: '', name: '', managerUserId: null, clientId: null, billingModel: 'time_material', startOn: null, endOn: null, budgetHours: null, budgetCost: null, fee: null, clientAcceptsMilestones: false },
+      : { code: '', name: '', managerUserId: null, clientId: null, billingModel: choices.defaultBillingModel ?? 'time_material', startOn: null, endOn: null, budgetHours: null, budgetCost: null, fee: null, clientAcceptsMilestones: false },
   );
   const [dirty, setDirty] = useState(false);
   const { busy, error, run } = useRun();

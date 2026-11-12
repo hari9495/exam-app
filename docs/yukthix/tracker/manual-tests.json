@@ -20728,5 +20728,81 @@
       "Screens/Projects/PRJ-01 · Projects and project workspace · Live · closed project (read-only)"
     ],
     "note": "Positive and negative. Answers 1402, 1420."
+  },
+  {
+    "id": "MT-PRJ3-01",
+    "area": "Projects P-3, timesheet mapping rules (12 Nov 2026)",
+    "screen": "Settings › Timesheet mapping rules",
+    "url": "http://localhost:3000/yx/settings/projects/mapping-rules",
+    "account": "A Projects manager; the System Admin; an employee; Projects on, pre-fill off (default).",
+    "steps": [
+      "As the employee open the page.",
+      "As the Projects manager open it.",
+      "As the System Admin switch pre-fill on.",
+      "As the Projects manager press Add rule, then Save rule with nothing filled in.",
+      "Add Issue tracker, pattern FSSAI-*, a project, priority 1."
+    ],
+    "expected": "Step 1: you can't open the mapping rules. Step 2: 'Timesheet pre-fill is off.', no switch (a System Admin switches it). Step 3: toast 'Pre-fill switched on'; rules and Test appear. Step 4: what is missing is said; nothing saved. Step 5: toast 'Rule added'; the rule is in priority order.",
+    "stories": [
+      "Screens/Projects/PRJ-08 · Timesheet mapping rules · Live · pre-fill off (System Admin)",
+      "Screens/Projects/PRJ-08 · Timesheet mapping rules · Live · Projects manager (pre-fill read-only)",
+      "Screens/Projects/PRJ-08 · Timesheet mapping rules · Live · add rule drawer"
+    ],
+    "note": "Positive and negative. Answers 1409, 1410."
+  },
+  {
+    "id": "MT-PRJ3-02",
+    "area": "Projects P-3, timesheet mapping rules (12 Nov 2026)",
+    "screen": "My timesheet › Fill from my tools",
+    "url": "http://localhost:3000/yx/time/timesheet",
+    "account": "An employee allocated to projects AAA and BBB (not CCC), with the calendar connected; two rules matching the same event.",
+    "steps": [
+      "Rules: FSSAI-* → AAA priority 1, *line checks* → BBB priority 2. Fill from my tools.",
+      "Swap the priorities and fill again.",
+      "Add * → CCC priority 1 and fill again.",
+      "Close BBB and fill again.",
+      "Switch pre-fill off and try again."
+    ],
+    "expected": "Step 1: Monday's event on AAA. Step 2: on BBB with its task. Step 3: still BBB (not allocated to CCC). Step 4: on AAA; the BBB rule shows 'Not applying: BBB is not active'. Step 5: suggestions are not set up; nothing is mapped.",
+    "stories": [
+      "Screens/Projects/PRJ-08 · Timesheet mapping rules · Live · rules by priority (one not applying)"
+    ],
+    "note": "Positive and negative. Answer 1410."
+  },
+  {
+    "id": "MT-PRJ3-03",
+    "area": "Projects P-3, timesheet mapping rules (12 Nov 2026)",
+    "screen": "Settings › Timesheet mapping rules › Test against last week",
+    "url": "http://localhost:3000/yx/settings/projects/mapping-rules",
+    "account": "A Projects manager with and without their own tools connected.",
+    "steps": [
+      "Without tools connected press Test against last week.",
+      "Connect your calendar on your timesheet and test again.",
+      "Delete a rule (confirm) and test again."
+    ],
+    "expected": "Step 1: 'No tools connected'. Step 2: your own items only, 'n of m matched', each with its rule. Step 3: the item is left for the person.",
+    "stories": [
+      "Screens/Projects/PRJ-08 · Timesheet mapping rules · Live · tested against my last week",
+      "Screens/Projects/PRJ-08 · Timesheet mapping rules · Live · test with no tools connected"
+    ],
+    "note": "Positive and negative. Answer 1410, question 1502."
+  },
+  {
+    "id": "MT-PRJ3-04",
+    "area": "Projects P-3, timesheet mapping rules (12 Nov 2026)",
+    "screen": "Settings › Projects & timesheets; Projects › New project",
+    "url": "http://localhost:3000/yx/settings/projects",
+    "account": "The System Admin; a Projects manager.",
+    "steps": [
+      "Open 3.11: Billing model for new projects.",
+      "As the Projects manager press New project.",
+      "Create it without a client.",
+      "As the System Admin set Non-billable; create another without a client."
+    ],
+    "expected": "Step 1: Time & material (starter). Step 2: the form starts on Time & material. Step 3: 'A billable project needs a client.' Step 4: the form starts on Non-billable and the project is created.",
+    "stories": [
+      "Screens/Settings/Group 3 · Time & Leave · 3.11 Projects & timesheets"
+    ],
+    "note": "Positive and negative. Answer 1444."
   }
 ]

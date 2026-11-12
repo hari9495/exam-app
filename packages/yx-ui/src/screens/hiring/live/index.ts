@@ -87,3 +87,6 @@ export { projectSettingsChanges, projectSettingsPage, type ProjectSettingsData }
 // Settings S-2 (answers 1323, 1324): the Time & Leave pages with the company's settings.
 export { TIME_SETTINGS, timeSettingsChanges, timeSettingsPage, type RegistryDef, type TimeSettingsData } from '../../settings/time-settings-live';
 export { TIME_REGISTRY_SAMPLE } from '../../settings/time-settings-sample';
+// Projects P-3 (answers 1409, 1410): the designed PRJ-08 mapping rules, live with `live`.
+export { MappingRulesScreen, type LiveMappingRules } from '../projects-billing';
+export type { LiveMappingRule, MappingRuleInput, MappingRulesData, MappingTestResult } from '../mapping-live';

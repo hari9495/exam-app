@@ -89,12 +89,12 @@ named in the note) · **wire design** (the API exists and the screen is not wire
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Projects and timesheets (PRJ-01, PRJ-02, PRJ-08) | 3 | 25 | 8 | 0 | 8 | 1 | 42 |
+| A. Projects and timesheets (PRJ-01, PRJ-02, PRJ-08) | 3 | 40 | 7 | 0 | 4 | 1 | 52 |
 | B. Capacity and bench (PRJ-03, PRJ-07) | 2 | 0 | 1 | 0 | 9 | 0 | 10 |
 | C. Cost and billing (PRJ-04 to PRJ-06) | 3 | 0 | 5 | 0 | 11 | 0 | 16 |
-| **All A-C** | **8** | **25** | **14** | **0** | **28** | **1** | **68** |
+| **All A-C** | **8** | **40** | **13** | **0** | **24** | **1** | **78** |
 
-Counted by script on 12 Nov 2026 on `docs/yukthix-projects-map` (the script is in the appendix; it prints "ok"). Recounted on 12 Nov 2026 on `feat/yukthix-projects-p1` after P-1: PRJ-01 has 30 stories (16 live-state stories added), 68 in all. There
+Counted by script on 12 Nov 2026 on `docs/yukthix-projects-map` (the script is in the appendix; it prints "ok"). Recounted on 12 Nov 2026 on `feat/yukthix-projects-p1` after P-1: PRJ-01 has 30 stories (16 live-state stories added), 68 in all. Recounted after P-3 on `feat/yukthix-projects-p3`: PRJ-08 has 15 (10 live-state stories added), 78 in all. There
 are 52 stories in 8 files whose title starts `Screens/Projects/`: `packages/yx-ui/src/screens/hiring/prj-01-projects`
 (14), `prj-02-timesheet-approvals` (7), `prj-03-capacity` (4), `prj-04-costing` (5), `prj-05-billing-workbench` (6),
 `prj-06-timesheet-correction` (5), `prj-07-bench-requests` (6), `prj-08-mapping-rules` (5), all `.stories.tsx`. The
@@ -178,11 +178,21 @@ screens are in `screens/hiring/projects.tsx` and `projects-billing.tsx`. One sto
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Rules · HR · rules by priority | design only, feature not built | no rule table; TIM-43 matches only by project code or name (`matchProject`) |
-| Tested · Test against last week | design only, feature not built | no test run |
-| Edit · Edit rule | design only, feature not built | no rule API |
-| PrefillOff · Pre-fill switched off | live (gap) | the switch is the company setting `timesheet.tool_suggestions` (`settings-registry.ts` line 498; default off, the design says starter on: question 1409), set on the generic settings page, not on this designed page |
-| Empty · Empty · no rules | design only, feature not built | "suggestions only from the AI" is not built either (question 1410) |
+| Rules · HR · rules by priority | live | P-3: `/yx/settings/projects/mapping-rules` (`MappingRulesScreen` live): company rules by priority, applied before the code/name match in TIM-43 pre-fill; Projects managers and System Admins only |
+| Tested · Test against last week | live | P-3: the saved rules over the editor's own items from last week (raw activity stays the person's own; question 1502) |
+| Edit · Edit rule | live | P-3: `MappingRuleDrawer`; never a closed project; tools are the live ones (work calendar, issue tracker, code host; question 1501) |
+| PrefillOff · Pre-fill switched off | live | P-3: `timesheet.tool_suggestions` (off by default, 1409) on this page and on 3.11; only a System Admin switches it; off maps nothing |
+| Empty · Empty · no rules | live | P-3: without rules a suggestion goes to a project only when its code or name is in the item; the AI suggestion is later (1410) |
+| LiveRules · Live · rules by priority (one not applying) | live | P-3 live state |
+| LiveTested · Live · tested against my last week | live | P-3 live state |
+| LiveNotConnected · Live · test with no tools connected | live | P-3 live state |
+| LiveAdd · Live · add rule drawer | live | P-3 live state |
+| LiveEdit · Live · change rule drawer | live | P-3 live state |
+| LivePrefillOff · Live · pre-fill off (System Admin) | live | P-3 live state |
+| LiveManager · Live · Projects manager (pre-fill read-only) | live | P-3 live state |
+| LiveEmpty · Live · no rules yet | live | P-3 live state |
+| LiveNoAccess · Live · no access or Projects off | live | P-3 live state |
+| LiveError · Live · error | live | P-3 live state |
 
 ### B. Capacity and bench (PRJ-03, PRJ-07)
 
@@ -417,3 +427,21 @@ console.log('ok');
       found" for it, not "no access", so its name is never confirmed. *Suggested: keep.*
 
 - 1441 to 1446 approved as suggested (12 Nov 2026, "ok for all"). To build: manager approval of unallocated hours with P-2 (1442); the default billing model as a company setting in P-3 (1444); cost in burn alerts with P-4 (1445).
+1441 to 1446 approved as suggested (12 Nov 2026); 1444 is built in P-3 (the billing model for new projects is a company setting, default Time & material).
+
+## P-3 built (12 Nov 2026): questions for the founder
+
+1501. **Tool names.** The design names Jira, GitHub and the calendar; no work-tool provider is chosen yet, so the rules
+      say Work calendar, Issue tracker and Code host. *Suggested: keep the general names until a provider is chosen;
+      then show its name.*
+1502. **Test against last week.** The design tests on a sample employee's items, anonymised. P-3 tests on the editor's
+      own items only, so nobody sees another person's activity. *Suggested: keep; it needs the editor to connect their
+      own tools.*
+1503. **A rule's project the person is not allocated to.** P-3 skips that rule and tries the next one (then the code or
+      name match), so the person never gets a line they could not save. *Suggested: keep.*
+1504. **Two rules with the same priority.** The older rule wins. *Suggested: keep, and show the order on the page as it
+      is applied (it is).*
+1505. **Rules while Projects is off.** Rules are kept but not used, and the page says Projects is off. *Suggested: keep.*
+1506. **Billing model for new projects (1444).** Built in P-3 on Settings 3.11, default Time & material. An API call that
+      leaves the model out uses the company's choice for a new project and keeps the project's own on a change.
+      *Suggested: keep.*

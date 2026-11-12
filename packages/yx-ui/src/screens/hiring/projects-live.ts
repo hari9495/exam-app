@@ -70,6 +70,8 @@ export interface LiveProjectDetail {
 }
 
 export interface ProjectChoices {
+  /** Answer 1444: the company's billing model for new projects. */
+  defaultBillingModel?: BillingModel;
   clients: { id: string; name: string }[];
   managers: { id: string; name: string }[];
   people: { id: string; name: string }[];

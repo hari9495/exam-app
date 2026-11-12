@@ -394,3 +394,12 @@ describe('buildNav: Projects (P-1, answer 1401)', () => {
     expect(labels(nav(['projects.view']), 'settings')).not.toContain('Projects & timesheets');
   });
 });
+
+describe('buildNav: timesheet mapping rules (P-3, PRJ-08)', () => {
+  it('Projects managers and System Admins once Projects is on; never otherwise', () => {
+    expect(labels(nav(['projects.manage'], { projects: true }), 'settings')).toEqual(['All settings', 'Projects & timesheets', 'Timesheet mapping rules']);
+    expect(labels(nav(['projects.manage']), 'settings')).not.toContain('Timesheet mapping rules');
+    expect(labels(nav(['projects.view'], { projects: true }), 'settings')).not.toContain('Timesheet mapping rules');
+    expect(labels(nav(['projects.manage'], { projects: true, support: true }), 'settings')).not.toContain('Timesheet mapping rules');
+  });
+});

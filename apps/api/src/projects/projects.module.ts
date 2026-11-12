@@ -3,13 +3,17 @@ import { AuthModule } from '../auth/auth.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { OrgStructureModule } from '../org-structure/org-structure.module';
 import { ProjectsController } from './projects.controller';
+import { MappingRulesController } from './mapping-rules.controller';
+import { ProjectMappingService } from './project-mapping.service';
+import { WORK_TOOLS, workToolsFromEnv } from '../time/providers/work-tools';
 import { ProjectsService } from './projects.service';
 
 // Projects P-1 (answers 1401 to 1405, 1412, 1420): projects core.
 @Module({
   imports: [AuthModule, NotificationsModule, OrgStructureModule],
-  providers: [ProjectsService],
-  controllers: [ProjectsController],
+  // P-3: its own work-tools adapter (stateless) for "Test against last week".
+  providers: [ProjectsService, ProjectMappingService, { provide: WORK_TOOLS, useFactory: workToolsFromEnv }],
+  controllers: [MappingRulesController, ProjectsController],
   exports: [ProjectsService],
 })
 export class ProjectsModule {}

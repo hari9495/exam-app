@@ -495,6 +495,8 @@ export function buildNav(n: NavInput): NavArea[] {
         // S-2 (answer 1323): the Time & Leave settings pages; HR's settings key changes them. 3.11 is the Projects page.
         ...when(settingsAdmin, ...TIME_SETTINGS_PAGES.filter(([id]) => id !== '3.11').map(([id, label, slug]) => L(`time-settings-${id}`, label, `${SETTINGS_HOME}/time/${slug}`))),
         ...when(!support && any('org.settings.manage', 'projects.manage'), L('project-settings', 'Projects & timesheets', '/yx/settings/projects')),
+        // P-3 (PRJ-08): the mapping rules, once Projects is on for this person (also linked from 3.11).
+        ...when(!support && Boolean(n.projects) && any('org.settings.manage', 'projects.manage'), L('mapping-rules', 'Timesheet mapping rules', '/yx/settings/projects/mapping-rules')),
         ...when(!support && any('visitors.settings.manage', 'org.settings.manage', 'visitors.desk.manage'), L('visitor-settings', 'Visitors', '/yx/settings/visitors')),
       ]),
       ...sec('Payroll & Statutory', [
