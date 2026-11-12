@@ -5,7 +5,7 @@ import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { RequirePermissions } from '../rbac/permissions.decorator';
+import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { RequireStepUp } from '../auth/step-up.decorator';
 import { MODERATE_UPLOAD_THROTTLE, PUBLIC_API_THROTTLE } from '../rate-limit-tiers';
 import { CatalogService } from './catalog.service';
@@ -58,6 +58,7 @@ export class DeskCatalogController {
 
   /** Helpdesk plan item 3: the company's business applications and their owners. */
   @Get('apps')
+  @RequireAnyPermission('desk.desk.create', 'desk.ticket.view')
   async apps(@Req() req: Request, @CurrentTenant() t: TenantContext) {
     return this.catalog.apps(await this.access.actor(req, t));
   }
