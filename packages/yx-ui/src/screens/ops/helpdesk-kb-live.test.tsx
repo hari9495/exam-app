@@ -115,9 +115,14 @@ describe('HLP-04 Knowledge base editor (live)', () => {
     expect(within(list).getByText('KB-12 · Connect to the office VPN from home')).toBeInTheDocument();
     expect(within(list).getByText('4 tickets were raised while reading it')).toBeInTheDocument();
     expect(within(list).queryByRole('button')).toBeNull();
+    // 1684: searches that led to tickets, one ticket said in the singular; each may become an article-request task.
+    const searches = screen.getByRole('list', { name: 'Searches that led to tickets' });
+    expect(within(searches).getByText('3 tickets were raised after this search')).toBeInTheDocument();
+    expect(within(searches).getByText('1 ticket was raised after this search')).toBeInTheDocument();
+    expect(within(searches).getByRole('button', { name: 'Make an article-request task for gratuity' })).toBeInTheDocument();
     unmount();
     show(<KbEditorScreen live={liveKb({ start: { tab: 'gaps' }, onLoadGaps: async () => ({ noResult: [], noClick: [], noArticle: [] }) })} />);
-    await waitFor(() => expect(screen.getAllByText('Nothing in this period.')).toHaveLength(4));
+    await waitFor(() => expect(screen.getAllByText('Nothing in this period.')).toHaveLength(5));
   });
 
   it('1642, 1681: search words have their own tab; an empty list is stopped, the starter list fills it in and is saved', async () => {

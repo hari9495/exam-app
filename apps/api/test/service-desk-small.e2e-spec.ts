@@ -412,4 +412,21 @@ describe('Helpdesk small items', () => {
       expect((await api('agent', 'get', `/desk/tickets/${logged}`).expect(200)).body.raisedOutsideHours).toBe(false);
     });
   });
+  // ------------------------------------------------------------------------------------------ 1684 searches that led to tickets
+  describe('1684: searches that led to tickets, in content gaps', () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const gaps = (who: Who) => api(who, 'get', `/desk/kb/gaps?from=${today}&to=${today}`);
+    it('counts tickets per search (the same words counted together, without case), most first; another company sees none; the employee is refused', async () => {
+      const raise = (q: string) => api('divya', 'post', '/desk/my/tickets').send({ deskId: ids.desk, subject: `After search ${run}`, description: 'Still stuck.', originQuery: q }).expect(201);
+      await raise(`Leave encashment ${run}`);
+      await raise(`  leave ENCASHMENT ${run} `);
+      await raise(`Bonus date ${run}`);
+      const rows = (await gaps('lead').expect(200)).body.searchesToTickets as { query: string; tickets: number }[];
+      const mine = rows.filter((r) => r.query.endsWith(run));
+      expect(mine).toEqual([{ query: `leave encashment ${run}`, tickets: 2 }, { query: `bonus date ${run}`, tickets: 1 }]);
+      expect(Object.keys(rows[0]).sort()).toEqual(['query', 'tickets']);
+      expect((await gaps('adminB').expect(200)).body.searchesToTickets).toEqual([]);
+      await gaps('divya').expect(403);
+    });
+  });
 });

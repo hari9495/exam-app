@@ -1157,7 +1157,12 @@ export class KbService {
         JOIN sd_kb_articles a ON a.organization_id = t.organization_id AND a.id = t.origin_article_id
         WHERE t.organization_id = ${org}::uuid AND t.created_at >= ${from}::date AND t.created_at < ${to}::date + 1 AND a.deleted_at IS NULL
         GROUP BY a.id, a.number, a.title ORDER BY tickets DESC, a.number LIMIT 50`;
-      return { noResult, noClick, noArticle, ledToTickets };
+      // Answer 1684: the words people searched before they still raised a ticket (counts only, same words counted together).
+      const searchesToTickets = await tx.$queryRaw<{ query: string; tickets: number }[]>`
+        SELECT lower(btrim(t.origin_query)) AS query, count(*)::int AS tickets FROM sd_tickets t
+        WHERE t.organization_id = ${org}::uuid AND t.created_at >= ${from}::date AND t.created_at < ${to}::date + 1 AND t.origin_query IS NOT NULL
+        GROUP BY lower(btrim(t.origin_query)) ORDER BY tickets DESC, query LIMIT 50`;
+      return { noResult, noClick, noArticle, ledToTickets, searchesToTickets };
     });
   }
 

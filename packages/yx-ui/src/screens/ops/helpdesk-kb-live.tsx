@@ -1285,6 +1285,10 @@ function GapsCard({ live }: { live: LiveKb }) {
             (gaps.ledToTickets ?? []).map((r) => ({ key: r.articleId, title: `KB-${r.number} · ${r.title}`, sub: `${r.tickets} ${r.tickets === 1 ? 'ticket was' : 'tickets were'} raised while reading it` })),
             false,
           )}
+          {list(
+            'Searches that led to tickets',
+            (gaps.searchesToTickets ?? []).map((r) => ({ key: r.query, title: `“${r.query}”`, sub: `${r.tickets} ${r.tickets === 1 ? 'ticket was' : 'tickets were'} raised after this search` })),
+          )}
         </>
       )}
     </div>

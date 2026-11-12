@@ -170,6 +170,8 @@ export interface KbGaps {
   noArticle: { desk: string; category: string | null; tickets: number }[];
   /** Answer 1647: articles people were reading when they still raised a ticket. */
   ledToTickets?: { articleId: string; number: number; title: string; tickets: number }[];
+  /** Answer 1684: words people searched before they still raised a ticket. */
+  searchesToTickets?: { query: string; tickets: number }[];
 }
 
 export interface BinItem {
