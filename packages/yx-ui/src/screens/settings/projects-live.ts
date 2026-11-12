@@ -27,9 +27,24 @@ const LIVE = new Set<string>([...Object.keys(KEY), 'prj.projects', 'prj.mapping_
 /** The drawn radio's words for the stored on/off. */
 const BOOKING: Record<string, string> = { on: 'Block', off: 'Allow' };
 
+/**
+ * Settings S-2 follow-up (answers 1323, 1409): "Pre-fill from work tools" is the company setting timesheet.tool_suggestions
+ * (GET/PUT /org/settings, HR's settings key), off by default; shown when the viewer can read it.
+ */
+export interface PrefillSetting {
+  value: string;
+  default: string;
+  /** Viewer holds org.settings.manage. */
+  canEdit: boolean;
+}
+export const PREFILL_FIELD = 'prj.prefill_enabled';
+export const PREFILL_KEY = 'timesheet.tool_suggestions';
+
 /** The designed 3.11 page with the company's values, for SettingsPageScreen `live`. */
-export function projectSettingsPage(design: SettingsPageDef, data: ProjectSettingsData): SettingsPageDef {
+export function projectSettingsPage(design: SettingsPageDef, data: ProjectSettingsData, prefill?: PrefillSetting): SettingsPageDef {
   const fill = (d: SettingDef): SettingDef | null => {
+    if (d.key === PREFILL_FIELD)
+      return prefill ? { ...d, availability: undefined, contributedBy: undefined, overrides: undefined, dated: undefined, scope: 'Company', starter: prefill.value === prefill.default, value: prefill.value === 'on', ...(prefill.canEdit ? {} : { locked: "Changed with HR's company settings key." }) } : null;
     if (!LIVE.has(d.key)) return null;
     if (d.key === 'prj.projects') return data.values['projects.enabled'] === 'on' ? d : null;
     // P-3: the PRJ-08 rules, once Projects is on (they map to its projects).
@@ -64,4 +79,9 @@ export function projectSettingsChanges(values: Record<string, SettingValue>): { 
     else out.push({ key, value: String(value) });
   }
   return out;
+}
+
+/** The pre-fill switch's change, for PUT /org/settings (null when it did not change). */
+export function prefillChange(values: Record<string, SettingValue>): { key: string; value: string; scopeType: 'tenant' } | null {
+  return PREFILL_FIELD in values ? { key: PREFILL_KEY, value: values[PREFILL_FIELD] === true ? 'on' : 'off', scopeType: 'tenant' } : null;
 }

@@ -34,7 +34,33 @@ const HOURS = Array.from({ length: 38 }, (_, i) => `${String(5 + Math.floor(i / 
 // Answer 791: visitor hours over the whole day; "until" may be midnight (kept as 24:00, shown 00:00).
 const DAY_HOURS = Array.from({ length: 48 }, (_, i) => `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`);
 
+/**
+ * Answer 1485: the settings on the leave pages (Settings 3.6 Leave types, 3.8 Holiday calendars, 3.9 Leave year) may also
+ * be changed by HR's leave admins (leave.settings.manage); attendance and roster limits stay with org.settings.manage.
+ */
+export const LEAVE_PAGE_KEYS: ReadonlySet<string> = new Set([
+  'leave.notice_days.default', 'leave.on_behalf.approval', 'leave.send_back', 'leave.encashment.window', 'leave.year_end.encash_excess',
+  'leave.liability.divisor', 'leave.probation.leave', 'leave.comp_off.claim_within_days', 'leave.comp_off.expiry_days', 'leave.block_leave.days',
+  'leave.optional_holiday.prorate_on_move', 'leave.year_start_month', 'leave.block_dates.mode',
+]);
+
+/** Answer 1325: on (the default), a change to a payroll setting waits for a second person with HR's settings key. */
+export const SECOND_PERSON_KEY = 'payroll.settings.second_person';
+/**
+ * Answer 1325: the settings on the Payroll & Statutory pages built in Settings S-3 (4.3 Payroll policies, 4.4 Payslip
+ * layout, 4.5 Tax), whose changes wait for a second person while SECOND_PERSON_KEY is on. Payroll rules (Company rules
+ * registry page) joins when its settings move to 4.6 in S-7.
+ */
+export const PAYROLL_APPROVAL_KEYS: ReadonlySet<string> = new Set([
+  'payroll.variance_threshold_pct', 'payroll.protected_net_percent', 'payroll.net_rounding', 'payroll.leave_encashment_basis', 'payroll.notice_shortfall',
+  'payroll.standard_daily_hours', 'payroll.one_time_review_above', 'payroll.mid_period.join', 'payroll.mid_period.exit', 'payroll.mid_period.revision',
+  'payroll.mid_period.cutoff_day', 'payroll.payslip_email', 'payroll.document_retention_years', 'tax.regime_cutoff', 'tax.proof_window_opens',
+  'tax.proof_cutoff', SECOND_PERSON_KEY,
+]);
+
 export const SETTINGS: Readonly<Record<string, SettingDef>> = {
+  // Answer 1325: payroll setting changes wait for a second person (turning it off loosens a control: the access key too).
+  [SECOND_PERSON_KEY]: { label: 'Payroll setting changes need a second person', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', guard: 'access.role.manage' },
   // HLP-04 (founder 3 Nov 2026): how often a published help article is checked again (YX-GRO-07). Desk set-up › Settings.
   // Help H-1 (answer 942): the Help drawer's "This page" tab (help articles tagged with the page).
   'help.page_help': { label: 'Help: show page help in the Help drawer', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', labels: { on: 'Shown', off: 'Hidden' } },

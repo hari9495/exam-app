@@ -1,10 +1,11 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { assertDefaultRecruiter } from '../hiring/recruiter-key';
 import { ResolveSettingQueryDto, SettingDto } from './dto';
 import { asDate, isoDate, todayIst } from './org-validation';
 import { audit, CompanyContext, inCompany, Tx } from './org-structure.service';
-import { ScopeContext, ScopeType, SETTINGS, SettingDef, SettingRow, resolveSetting } from './settings-registry';
+import { PAYROLL_APPROVAL_KEYS, ScopeContext, ScopeType, SECOND_PERSON_KEY, SETTINGS, SettingDef, SettingRow, resolveSetting } from './settings-registry';
 
 // P01 §4.6 scoped settings (YX-ORG-12, YX-ORG-18): overrides per scope, resolved most-specific first, every
 // value shown with where it comes from.
@@ -96,6 +97,13 @@ export function pastLimit(label: string, value: string, limit: SettingLimit | un
   return null;
 }
 
+/** Answer 1325: whether a change to this setting waits for a second person (payroll settings, while the switch is on). */
+async function secondPersonNeeded(tx: Tx, org: string, key: string): Promise<boolean> {
+  if (!PAYROLL_APPROVAL_KEYS.has(key)) return false;
+  const row = await tx.setting.findFirst({ where: { organizationId: org, key: SECOND_PERSON_KEY, scopeType: 'tenant', validFrom: null } });
+  return String(row?.value ?? SETTINGS[SECOND_PERSON_KEY]!.default) === 'on';
+}
+
 /** The registry with the platform lists filled in (HLP-14: the industries a company may choose). */
 async function withLists(tx: Tx): Promise<Record<string, SettingDef>> {
   const industries = await tx.policyIndustry.findMany({ where: { active: true }, orderBy: [{ sort: 'asc' }, { label: 'asc' }] });
@@ -127,9 +135,13 @@ export class OrgSettingsService {
   list(ctx: TenantContext) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const rows = await tx.setting.findMany({ where: { organizationId: c.organizationId }, orderBy: [{ key: 'asc' }, { scopeType: 'asc' }, { validFrom: 'asc' }] });
+      // Answer 1325: payroll changes waiting for a second person, with who asked (mine: the viewer asked, so may only withdraw).
+      const waiting = await tx.settingChangeRequest.findMany({ where: { organizationId: c.organizationId, status: 'pending' }, orderBy: { requestedAt: 'asc' } });
+      const names = new Map((await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: waiting.map((w) => w.requestedBy) } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
+      const pending = waiting.map((w) => ({ id: w.id, key: w.key, scopeType: w.scopeType, scopeId: w.scopeId, from: w.previous, to: w.value, by: names.get(w.requestedBy) ?? 'Someone', at: w.requestedAt, mine: w.requestedBy === c.userId }));
       // Answer 151: a location's own Factories Act value is no longer needed once the location is a registered factory.
       const flagged = new Set((await tx.location.findMany({ where: { organizationId: c.organizationId, registeredFactory: true }, select: { id: true } })).map((l) => l.id));
-      return { registry: await withLists(tx), limits: await settingLimits(tx), overrides: rows.map((r) => ({ ...rowView(r), ...(r.key === 'attendance.factories_act' && r.scopeType === 'location' && flagged.has(r.scopeId) ? { noLongerNeeded: 'registered_factory' as const } : {}) })) };
+      return { registry: await withLists(tx), limits: await settingLimits(tx), pending, overrides: rows.map((r) => ({ ...rowView(r), ...(r.key === 'attendance.factories_act' && r.scopeType === 'location' && flagged.has(r.scopeId) ? { noLongerNeeded: 'registered_factory' as const } : {}) })) };
     });
   }
 
@@ -173,6 +185,14 @@ export class OrgSettingsService {
       if (existing && def.dated && dto.validFrom! <= todayIst()) {
         throw new ConflictException('That value is already in force. Add the new value from a later date instead (YX-HIS-07).');
       }
+      // Answer 1325: a payroll setting waits for a second person; nothing changes until they approve.
+      if (await secondPersonNeeded(tx, c.organizationId, dto.key)) {
+        if (await tx.settingChangeRequest.findFirst({ where: { organizationId: c.organizationId, key: dto.key, scopeType, scopeId, status: 'pending' } }))
+          throw new ConflictException(`A change to "${def.label}" is already waiting for a second person. Approve or reject it first.`);
+        const r = await tx.settingChangeRequest.create({ data: { organizationId: c.organizationId, key: dto.key, scopeType, scopeId, value: dto.value, ...(existing ? { previous: existing.value as Prisma.InputJsonValue } : {}), requestedBy: c.userId! } });
+        await audit(tx, c, 'org.setting.change_requested', 'setting_change_request', r.id, { key: dto.key, scopeType, scopeId, from: existing?.value ?? null, to: dto.value });
+        return { pending: true as const, id: r.id, key: dto.key };
+      }
       const row = existing
         ? await tx.setting.update({ where: { id: existing.id }, data: { value: dto.value, updatedBy: c.userId } })
         : await tx.setting.create({ data: { ...where, value: dto.value, updatedBy: c.userId } });
@@ -180,6 +200,47 @@ export class OrgSettingsService {
       // A guarded key loosens an approval, retro, access or fraud control: recorded as a control change (P08).
       await audit(tx, c, 'org.setting.changed', 'setting', row.id, { key: dto.key, scopeType, scopeId, validFrom: dto.validFrom ?? null, from: existing?.value ?? null, to: dto.value, control: Boolean(SETTINGS[dto.key]?.guard) });
       return rowView(row);
+    });
+  }
+
+  /** The setting and scope a waiting change is for (the controller checks the keys for it). */
+  request(ctx: TenantContext, id: string) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const r = await tx.settingChangeRequest.findFirst({ where: { id, organizationId: c.organizationId, status: 'pending' } });
+      if (!r) throw new NotFoundException('No change with this reference is waiting for approval.');
+      return { key: r.key, scopeType: r.scopeType, scopeId: r.scopeId };
+    });
+  }
+
+  /** Answer 1325: a second person approves; the value applies now, checked against the law again. Never the person who asked. */
+  approve(ctx: TenantContext, id: string) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const r = await tx.settingChangeRequest.findFirst({ where: { id, organizationId: c.organizationId } });
+      if (!r || r.status !== 'pending') throw new NotFoundException('No change with this reference is waiting for approval.');
+      if (r.requestedBy === c.userId) throw new ForbiddenException("You asked for this change: another person with HR's settings key approves it.");
+      const def = definition(r.key);
+      const value = String(r.value);
+      const tooFar = pastLimit(def.label, value, (await settingLimits(tx))[r.key]);
+      if (tooFar) throw new BadRequestException(tooFar);
+      const done = await tx.settingChangeRequest.updateMany({ where: { id, status: 'pending' }, data: { status: 'approved', decidedBy: c.userId, decidedAt: new Date() } });
+      if (!done.count) throw new ConflictException('This change was already decided.');
+      const where = { organizationId: c.organizationId, key: r.key, scopeType: r.scopeType, scopeId: r.scopeId, validFrom: null };
+      const existing = await tx.setting.findFirst({ where });
+      const row = existing ? await tx.setting.update({ where: { id: existing.id }, data: { value, updatedBy: c.userId } }) : await tx.setting.create({ data: { ...where, value, updatedBy: c.userId } });
+      await audit(tx, c, 'org.setting.change_approved', 'setting_change_request', id, { key: r.key, to: value, requestedBy: r.requestedBy });
+      await audit(tx, c, 'org.setting.changed', 'setting', row.id, { key: r.key, scopeType: r.scopeType, scopeId: r.scopeId, validFrom: null, from: existing?.value ?? null, to: value, control: Boolean(def.guard), requestedBy: r.requestedBy, approvedBy: c.userId, requestId: id });
+      return rowView(row);
+    });
+  }
+
+  /** Answer 1325: anyone with the key rejects a waiting change; the person who asked withdraws it the same way. */
+  reject(ctx: TenantContext, id: string, note?: string) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const r = await tx.settingChangeRequest.findFirst({ where: { id, organizationId: c.organizationId } });
+      if (!r || r.status !== 'pending') throw new NotFoundException('No change with this reference is waiting for approval.');
+      const done = await tx.settingChangeRequest.updateMany({ where: { id, status: 'pending' }, data: { status: 'rejected', decidedBy: c.userId, decidedAt: new Date(), note: note?.trim() || null } });
+      if (!done.count) throw new ConflictException('This change was already decided.');
+      await audit(tx, c, 'org.setting.change_rejected', 'setting_change_request', id, { key: r.key, to: r.value, requestedBy: r.requestedBy, withdrawn: r.requestedBy === c.userId, note: note?.trim() || null });
     });
   }
 

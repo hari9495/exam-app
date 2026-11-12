@@ -80,9 +80,22 @@ describe('Settings S-2: Time & Leave settings and legal limits (1323, 1324)', ()
     await put('hr', 'leave.comp_off.expiry_days', '90').expect(200);
     const audits = await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.auditLog.findMany({ where: { organizationId: orgId, action: 'org.setting.changed' }, orderBy: { createdAt: 'asc' } }));
     const meta = audits.map((a) => JSON.parse(a.metadataJson ?? '{}') as { key: string; from: unknown; to: string });
-    expect(meta.filter((m) => m.key === 'roster.max_weekly_hours').map((m) => [m.from, m.to])).toEqual([[null, '48'], ['48', '45']]);
+    // Two saves can share a timestamp, so the pair is checked as a set (the coordinator saw one flaky ordering).
+    const week = meta.filter((m) => m.key === 'roster.max_weekly_hours').map((m) => [m.from, m.to]);
+    expect(week).toHaveLength(2);
+    expect(week).toEqual(expect.arrayContaining([[null, '48'], ['48', '45']]));
     expect(audits.every((a) => a.actorUserId === users.hr)).toBe(true);
     expect(meta.find((m) => m.key === 'leave.comp_off.expiry_days')).toMatchObject({ to: '90' });
+  });
+
+  // Answer 1485: HR's leave admins change the leave pages' settings; attendance and roster limits stay with HR's settings key.
+  it('a leave admin saves Leave year (audited as them) but not Weekly offs', async () => {
+    await api('time', 'get', '/org/settings').expect(200);
+    await put('time', 'leave.year_start_month', '4').expect(200);
+    await put('time', 'leave.block_dates.mode', 'warn').expect(200);
+    expect((await put('time', 'roster.min_weekly_offs', '2').expect(403)).body.message).toMatch(/org\.settings\.manage/);
+    const mine = await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.auditLog.findMany({ where: { organizationId: orgId, action: 'org.setting.changed', actorUserId: users.time } }));
+    expect(mine.map((a) => JSON.parse(a.metadataJson ?? '{}') as { key: string; to: string })).toEqual(expect.arrayContaining([expect.objectContaining({ key: 'leave.year_start_month', to: '4' })]));
   });
 
   it('negative: a Time admin without the company settings key, or anyone else, is refused', async () => {

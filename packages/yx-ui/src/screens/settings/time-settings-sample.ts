@@ -1,4 +1,4 @@
-// Story and test sample: the Time & Leave entries of the API's settings registry
+// Story and test sample: the Time & Leave and Payroll entries of the API's settings registry
 // (apps/api/src/org-structure/settings-registry.ts), as GET /org/settings sends them.
 import type { RegistryDef } from './time-settings-live';
 
@@ -423,12 +423,167 @@ export const TIME_REGISTRY_SAMPLE: Record<string, RegistryDef> = {
     ],
     "default": "block"
   },
-  "timesheet.tool_suggestions": {
-    "label": "People may connect calendars and work tools for timesheet suggestions",
+  "payroll.variance_threshold_pct": {
+    "label": "Ask to confirm a net pay change above (%)",
+    "values": [
+      "5",
+      "10",
+      "15",
+      "20",
+      "25"
+    ],
+    "default": "10"
+  },
+  "payroll.net_rounding": {
+    "label": "Round net pay",
+    "values": [
+      "none",
+      "rupee"
+    ],
+    "default": "rupee"
+  },
+  "payroll.standard_daily_hours": {
+    "label": "Standard hours a day (for hourly rates and cost rates)",
+    "values": [
+      "8",
+      "8.5",
+      "9"
+    ],
+    "default": "8"
+  },
+  "payroll.leave_encashment_basis": {
+    "label": "Leave encashment is paid on",
+    "values": [
+      "basic_da",
+      "gross"
+    ],
+    "default": "basic_da"
+  },
+  "payroll.protected_net_percent": {
+    "label": "Recoveries leave at least this share of gross pay (%)",
+    "values": [
+      "0",
+      "10",
+      "20",
+      "25",
+      "30",
+      "40",
+      "50"
+    ],
+    "default": "0"
+  },
+  "payroll.notice_shortfall": {
+    "label": "An unserved notice period is",
+    "values": [
+      "recover",
+      "waive"
+    ],
+    "default": "recover"
+  },
+  "payroll.one_time_review_above": {
+    "label": "One-time pay above this amount needs approval",
+    "values": [
+      "none",
+      "10000",
+      "25000",
+      "50000",
+      "100000"
+    ],
+    "default": "50000"
+  },
+  "payroll.mid_period.join": {
+    "label": "Joining in the middle of a month is paid",
+    "values": [
+      "segments",
+      "cutoff",
+      "next_month_arrears"
+    ],
+    "default": "segments"
+  },
+  "payroll.mid_period.exit": {
+    "label": "Leaving in the middle of a month is paid",
+    "values": [
+      "segments",
+      "cutoff"
+    ],
+    "default": "segments"
+  },
+  "payroll.mid_period.revision": {
+    "label": "A pay change in the middle of a month is paid",
+    "values": [
+      "segments",
+      "cutoff",
+      "next_month_arrears"
+    ],
+    "default": "segments"
+  },
+  "payroll.mid_period.cutoff_day": {
+    "label": "Whole-month cut-off day (changes after it are paid next month)",
+    "values": [
+      "10",
+      "15",
+      "20",
+      "25"
+    ],
+    "default": "15"
+  },
+  "payroll.settings.second_person": {
+    "label": "Payroll setting changes need a second person",
+    "values": [
+      "on",
+      "off"
+    ],
+    "default": "on",
+    "guard": "access.role.manage"
+  },
+  "payroll.payslip_email": {
+    "label": "Email payslips as password-protected PDFs",
     "values": [
       "off",
       "on"
     ],
     "default": "off"
+  },
+  "payroll.document_retention_years": {
+    "label": "Keep issued pay documents for (years)",
+    "values": [
+      "8",
+      "10",
+      "12",
+      "15"
+    ],
+    "default": "8",
+    "guard": "access.role.manage"
+  },
+  "tax.regime_cutoff": {
+    "label": "Employees choose their tax regime until (day of the tax year)",
+    "values": [
+      "04-30",
+      "05-31",
+      "06-30",
+      "07-31"
+    ],
+    "default": "05-31"
+  },
+  "tax.proof_window_opens": {
+    "label": "Tax proof window opens",
+    "values": [
+      "10-01",
+      "11-01",
+      "12-01",
+      "01-01",
+      "01-15"
+    ],
+    "default": "01-01"
+  },
+  "tax.proof_cutoff": {
+    "label": "Tax proof cut-off",
+    "values": [
+      "01-31",
+      "02-15",
+      "02-28",
+      "03-15"
+    ],
+    "default": "02-28"
   }
 };

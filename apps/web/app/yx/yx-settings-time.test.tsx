@@ -86,6 +86,22 @@ describe('Settings S-2: Time & Leave pages', () => {
     expect(push).toHaveBeenCalledWith('/yx/time/shifts-setup');
   });
 
+  // Answer 1485: a leave admin changes Leave year but only reads Weekly offs, and the menu offers only the leave pages.
+  it('a leave admin saves Leave year; Weekly offs is view only and not in their menu', async () => {
+    routes(['leave.settings.manage']);
+    const LEAVE = buildNav({ ...base, has: (k) => k === 'leave.settings.manage' });
+    expect(LEAVE.find((a) => a.id === 'settings')?.sections.flatMap((s) => s.items.map((l) => l.label))).toEqual(expect.arrayContaining(['Leave types', 'Holiday calendars', 'Leave year']));
+    expect(LEAVE.flatMap((a) => a.sections.flatMap((s) => s.items.map((l) => l.label)))).not.toContain('Weekly offs');
+    const { unmount } = show('leave-year');
+    await ue.click(await screen.findByRole('combobox', { name: /Leave year starts in/ }));
+    await ue.click(screen.getByRole('option', { name: 'April' }));
+    await ue.click(screen.getAllByRole('button', { name: 'Save changes' })[0]!);
+    await waitFor(() => expect(calls).toEqual([['PUT /org/settings', { key: 'leave.year_start_month', value: '4', scopeType: 'tenant' }]]));
+    unmount();
+    show('weekly-offs');
+    expect(await screen.findByText('View only')).toBeInTheDocument();
+  });
+
   it('negative: without the settings key the page is view only; an unknown page says no access', async () => {
     routes(['org.structure.view']);
     const { unmount } = show('late-and-regularisation');
