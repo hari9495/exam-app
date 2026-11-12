@@ -7,9 +7,9 @@ import { SETTINGS_GROUPS } from './settings-groups';
 import { PAY_SETTINGS, PEOPLE_SETTINGS, TIME_SETTINGS, timeSettingsChanges, timeSettingsPage, type TimeSettingsData } from './time-settings-live';
 import { TIME_REGISTRY_SAMPLE } from './time-settings-sample';
 import { allSettings } from './settings-logic';
-import { SETTING_SECTIONS } from '../org/settings';
+import { RETIRED_PAGE_KEYS } from './retired-page-keys';
 // S-7 moved the old Company rules, Access and privacy and Payroll rules settings onto drawn pages; these counts are the ones that had no screen at all.
-const MOVED = new Set(Object.values(SETTING_SECTIONS).flat().flatMap((s) => s.keys));
+const MOVED = new Set(Object.values(RETIRED_PAGE_KEYS).flat());
 const unmoved = (keys: string[]) => keys.filter((k) => !MOVED.has(k));
 
 // Settings S-4 (answers 1323, 1324): 2.7 Exit & lifecycle policies and 2.10 Audit & data retention with the company's

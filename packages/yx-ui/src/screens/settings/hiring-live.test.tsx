@@ -5,7 +5,7 @@ import { ToastProvider } from '../../components/notify';
 import { SettingsPageScreen, type LiveSettingsPage } from './settings-screens';
 import { SETTINGS_GROUPS } from './settings-groups';
 import { hiringSettingsChanges, hiringSettingsPage, type HiringSettingsData } from './hiring-live';
-import { SETTING_SECTIONS } from '../org/settings';
+import { RETIRED_PAGE_KEYS } from './retired-page-keys';
 
 // Settings 6.1 Hiring, the designed page with `live` (founder answers 291, 302, 341, 345, 348): positive and negative.
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -247,7 +247,7 @@ describe('Settings 6.1 Hiring (live)', () => {
   });
 
   it('answer 384: the referral settings are on 6.1 only, never on Company rules', () => {
-    const elsewhere = Object.values(SETTING_SECTIONS).flat().flatMap((sec) => sec.keys);
+    const elsewhere = Object.values(RETIRED_PAGE_KEYS).flat();
     for (const k of ['ats.referral.bonus_inr', 'ats.referral.qualify_days', 'ats.referral.self_apply_days']) expect(elsewhere).not.toContain(k);
     show(live());
     expect(screen.getAllByText('Referral bonus rules').length).toBeGreaterThan(0);

@@ -7,7 +7,7 @@ import { SETTINGS_GROUPS } from './settings-groups';
 import { MORE_SETTINGS, PAY_SETTINGS, PEOPLE_SETTINGS, TIME_SETTINGS, timeSettingsOverrides, timeSettingsPage, type TimeSettingsData } from './time-settings-live';
 import { TIME_REGISTRY_SAMPLE } from './time-settings-sample';
 import { allSettings } from './settings-logic';
-import { SETTING_SECTIONS } from '../org/settings';
+import { RETIRED_PAGE_KEYS } from './retired-page-keys';
 
 // Settings S-7 (answers 1484, 1562): "Different for" on the registry pages, and "Applies from" for dated settings.
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -78,12 +78,12 @@ describe('the three retired pages (answer 1321)', () => {
     [TIME_SETTINGS, PAY_SETTINGS, PEOPLE_SETTINGS, MORE_SETTINGS].flatMap((g) => Object.entries(g).filter(([, p]) => p.settings.some((s) => s.key === key)).map(([id]) => id));
 
   it('every setting from Company rules, Access and privacy and Payroll rules has exactly one home on a drawn page', () => {
-    const keys = Object.values(SETTING_SECTIONS).flat().flatMap((s) => s.keys);
+    const keys = Object.values(RETIRED_PAGE_KEYS).flat();
     expect(keys.length).toBeGreaterThan(50);
     expect(keys.map((k) => [k, homes(k).length])).toEqual(keys.map((k) => [k, 1]));
   });
 
   it('payroll bonus and loan settings live on 4.6; negative: none of them is left on the time or people pages', () => {
-    for (const s of SETTING_SECTIONS.payroll.flatMap((x) => x.keys)) expect([s, homes(s)]).toEqual([s, ['4.6']]);
+    for (const s of RETIRED_PAGE_KEYS.payroll) expect([s, homes(s)]).toEqual([s, ['4.6']]);
   });
 });

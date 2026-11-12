@@ -5,9 +5,8 @@ import { LegalEntitiesScreen, entityInput, statutoryErrors, type LegalEntitiesSc
 import { LocationsScreen, locationInput, timeZoneOptions, type LocationsScreenProps } from './locations';
 import { StructureScreen, masterInput, payRangeErrors, subtree, type StructureScreenProps } from './structure';
 import { addressDraft, ownershipLabel } from './org-kit';
-import { CompanySettingsScreen, companyValue, settingInput, valueLabel, type CompanySettingsScreenProps } from './settings';
-import { ToastProvider } from '../../components/notify';
-import { ENTITIES, ERASURE_DRY_RUN, ERASURE_ON, ERASURE_ON_DUE, LOCATIONS, MASTERS, PAY_RANGES, RULES, SETTING_CHOICES, SETTING_OVERRIDES, SETTING_REGISTRY, STATES, TODAY_ISO } from './data';
+import { ENTITIES, ERASURE_DRY_RUN, ERASURE_ON_DUE, LOCATIONS, MASTERS, PAY_RANGES, RULES, STATES, TODAY_ISO } from './data';
+import { ErasureCard } from './erasure-card';
 
 const ok = () => vi.fn().mockResolvedValue(undefined);
 
@@ -319,280 +318,11 @@ describe('rules without a screen', () => {
   });
 });
 
-describe('Company rules and access settings (P01 §4.6; YX-ORG-12/18)', () => {
-  const base: CompanySettingsScreenProps = {
-    section: 'organisation',
-    state: 'ready',
-    registry: SETTING_REGISTRY,
-    overrides: SETTING_OVERRIDES,
-    choices: SETTING_CHOICES,
-    canManage: true,
-    heldGuards: ['access.role.manage'],
-    today: TODAY_ISO,
-    onSave: ok(),
-    onRemove: ok(),
-  };
-
-  it('YX-ORG-12/18: the company value says where it comes from; dated values resolve as of today', () => {
-    const def = SETTING_REGISTRY['attendance.mode'];
-    expect(companyValue(def, SETTING_OVERRIDES.filter((r) => r.key === 'attendance.mode'), TODAY_ISO).value).toBe('punch');
-    // A company value starting later is not in force yet.
-    expect(companyValue(def, [{ id: 'x', key: 'attendance.mode', scopeType: 'tenant', scopeId: 'o', value: 'timesheet', validFrom: '2026-12-01' }], TODAY_ISO)).toEqual({ value: 'punch', row: null });
-    render(<ToastProvider><CompanySettingsScreen {...base} /></ToastProvider>);
-    expect(screen.getAllByText('Starter value').length).toBeGreaterThan(0); // unchanged settings carry a quiet tag; the value itself is bold
-    expect(screen.getByText('Set for your company from 1 Apr 2026')).toBeInTheDocument();
-    expect(screen.getAllByText('Punch in and out').length).toBeGreaterThan(0);
-    expect(screen.getByText('Hosur plant')).toBeInTheDocument();
-    expect(screen.getByText('Scheduled')).toBeInTheDocument();
-  });
-
-  it('builds a scoped body; dated keys need a start date; the record is required; only registered values', () => {
-    const def = SETTING_REGISTRY['attendance.mode'];
-    expect(settingInput('attendance.mode', def, { scopeType: 'location', scopeId: null, value: 'punch', validFrom: null }).errors.map((e) => e.fieldId)).toEqual(['set-scope-id', 'set-from']);
-    expect(settingInput('attendance.mode', def, { scopeType: 'location', scopeId: 'loc-hsr', value: 'punch', validFrom: new Date(2026, 10, 1) }).input).toEqual({ key: 'attendance.mode', scopeType: 'location', scopeId: 'loc-hsr', value: 'punch', validFrom: '2026-11-01' });
-    const who = SETTING_REGISTRY['privacy.who_accessed'];
-    expect(settingInput('privacy.who_accessed', who, { scopeType: 'tenant', scopeId: null, value: 'nope', validFrom: null }).input).toBeNull();
-    expect(settingInput('privacy.who_accessed', who, { scopeType: 'tenant', scopeId: null, value: 'off', validFrom: null }).input).toEqual({ key: 'privacy.who_accessed', scopeType: 'tenant', value: 'off' });
-  });
-
-  it('a company-only setting: no repeated table, "Use starter value", no empty Applies to, and a toast on save', async () => {
-    const onSave = ok();
-    const onRemove = ok();
-    const overrides = [{ id: 's-risk', key: 'access.risk.confidential_threshold', scopeType: 'tenant' as const, scopeId: 'o', value: '5', validFrom: null }];
-    render(<ToastProvider><CompanySettingsScreen {...base} section="access" overrides={overrides} onSave={onSave} onRemove={onRemove} /></ToastProvider>);
-    const block = screen.getByText('Warn when a grant opens Confidential data of more than (people)').closest('.yx-org__rule') as HTMLElement;
-    expect(within(block).getByText('Set for your company')).toBeInTheDocument();
-    expect(within(block).queryByRole('table')).toBeNull(); // the line above already says "5 · Set for your company"
-    await userEvent.click(within(block).getByRole('button', { name: 'Use starter value' }));
-    await userEvent.click(await screen.findByRole('button', { name: 'Remove' }));
-    await waitFor(() => expect(onRemove).toHaveBeenCalledWith('s-risk'));
-    expect(await within(screen.getByRole('region', { name: 'Notifications' })).findByText('Back to the starter value.')).toBeInTheDocument();
-    await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
-    const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).queryByText('Applies to')).toBeNull();
-    await userEvent.click(within(dialog).getByRole('combobox', { name: 'Warn when a grant opens Confidential data of more than (people)' }));
-    await userEvent.click(await screen.findByRole('option', { name: '10' }));
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ key: 'access.risk.confidential_threshold', scopeType: 'tenant', value: '10' }));
-    expect(await within(screen.getByRole('region', { name: 'Notifications' })).findByText('Saved.')).toBeInTheDocument();
-  });
-
-  it('Employee records: the required personal details are a list HR ticks; only listed fields are taken', async () => {
-    const key = 'employee.personal.required';
-    const def = SETTING_REGISTRY[key];
-    expect(settingInput(key, def, { scopeType: 'tenant', scopeId: null, value: 'dateOfBirth,shoeSize', validFrom: null }).input).toBeNull();
-    expect(settingInput(key, def, { scopeType: 'tenant', scopeId: null, value: '', validFrom: null }).input).toEqual({ key, scopeType: 'tenant', value: '' });
-    const onSave = ok();
-    render(<ToastProvider><CompanySettingsScreen {...base} onSave={onSave} /></ToastProvider>);
-    const block = screen.getByText('Personal details everyone must have').closest('.yx-org__rule') as HTMLElement;
-    expect(within(block).getByText('Date of birth, Gender, Personal phone, Address, City, State')).toBeInTheDocument();
-    await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
-    const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByRole('checkbox', { name: 'Gender' })).toBeChecked();
-    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Gender' }));
-    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Marital status' }));
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ key, scopeType: 'tenant', value: 'dateOfBirth,maritalStatus,personalPhone,addressLine1,city,stateCode' }));
-  });
-
-  it('Joining day: what joiners bring is text HR writes; empty or too long is refused before sending; saved trimmed with a toast', async () => {
-    const key = 'joining.bring_on_day_one';
-    const def = SETTING_REGISTRY[key];
-    const draft = (value: string) => settingInput(key, def, { scopeType: 'tenant', scopeId: null, value, validFrom: null });
-    expect(draft('  \n ').errors[0]?.message).toBe('Write it, one thing a line');
-    expect(draft('x'.repeat(501)).errors[0]?.message).toBe('Keep it to 500 characters or fewer (now 501)');
-    expect(draft('x'.repeat(500)).input).toEqual({ key, scopeType: 'tenant', value: 'x'.repeat(500) });
-    expect(draft(' Two photos\r\nPAN card \n').input?.value).toBe('Two photos\nPAN card');
-    const onSave = ok();
-    render(<ToastProvider><CompanySettingsScreen {...base} onSave={onSave} /></ToastProvider>);
-    const block = screen.getByText('Joiners bring on their first day').closest('.yx-org__rule') as HTMLElement;
-    expect(within(block).getByText('Original PAN and Aadhaar (to be seen, not kept) · Two passport photos · Bank passbook or cancelled cheque')).toBeInTheDocument();
-    await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
-    const dialog = await screen.findByRole('dialog');
-    const box = within(dialog).getByRole('textbox', { name: 'Joiners bring on their first day' });
-    expect(box).toHaveValue(def.default);
-    await userEvent.clear(box);
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
-    expect((await within(dialog).findAllByText('Write it, one thing a line')).length).toBeGreaterThan(0);
-    expect(onSave).not.toHaveBeenCalled();
-    await userEvent.type(box, 'Two passport photos{enter}Safety shoes');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ key, scopeType: 'tenant', value: 'Two passport photos\nSafety shoes' }));
-    expect(await within(screen.getByRole('region', { name: 'Notifications' })).findByText('Saved.')).toBeInTheDocument();
-  });
-
-  it('Home page: net pay on the employee home is off to start; turning it on is a pick-one, saved for the company', async () => {
-    const onSave = ok();
-    render(<ToastProvider><CompanySettingsScreen {...base} section="access" heldGuards={[]} onSave={onSave} /></ToastProvider>);
-    const block = screen.getByText('Show net pay on the employee home').closest('.yx-org__rule') as HTMLElement;
-    expect(within(block).getByText('Not shown')).toBeInTheDocument();
-    expect(within(block).getByText('Starter value')).toBeInTheDocument();
-    await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
-    const dialog = await screen.findByRole('dialog');
-    await userEvent.click(within(dialog).getByRole('radio', { name: 'Shown, hidden until the employee asks' }));
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ key: 'home.pay_on_employee_home', scopeType: 'tenant', value: 'on' }));
-  });
-
-  it('YX-HIS-07: removes a scheduled value only after confirming; values in force have no Remove', async () => {
-    const onRemove = ok();
-    render(<ToastProvider><CompanySettingsScreen {...base} onRemove={onRemove} /></ToastProvider>);
-    const table = screen.getByRole('table', { name: /Attendance mode/ });
-    const rows = within(table).getAllByRole('row');
-    const blr = rows.find((r) => within(r).queryByText('Bengaluru head office'))!;
-    expect(within(blr).queryAllByRole('button')).toHaveLength(0);
-    const hosur = rows.find((r) => within(r).queryByText('Hosur plant'))!;
-    await userEvent.click(within(hosur).getByRole('button'));
-    await userEvent.click(await screen.findByRole('menuitem', { name: 'Remove' }));
-    await userEvent.click(await screen.findByRole('button', { name: 'Remove' }));
-    await waitFor(() => expect(onRemove).toHaveBeenCalledWith('s-5'));
-  });
-
-  it('YX-SEC-02: guarded settings are disabled with the reason without access management; view-only has no buttons', () => {
-    const { unmount } = render(<ToastProvider><CompanySettingsScreen {...base} section="access" heldGuards={[]} /></ToastProvider>);
-    // Net pay on the home and the erasure switch are HR's settings, not access guards.
-    const buttons = screen.getAllByRole('button', { name: 'Change' }).filter((b) => !/net pay|Delete Special data/.test(b.closest('.yx-org__rule')?.textContent ?? ''));
-    // 4 access guards + the 3 privacy retention periods (PPL-33) + the 2 access request settings (answer 946) + keeping Not found references (answer 974).
-    expect(buttons).toHaveLength(10);
-    buttons.forEach((b) => expect(b).toBeDisabled());
-    expect(screen.getAllByText(/Only an admin who manages roles and access changes this/)).toHaveLength(10);
-    unmount();
-    render(<ToastProvider><CompanySettingsScreen {...base} canManage={false} /></ToastProvider>);
-    expect(screen.queryByRole('button', { name: 'Change' })).toBeNull();
-  });
-
-  it('a single choice of 2-4 options is the Segment control; longer lists stay a dropdown', async () => {
-    const { unmount } = render(<ToastProvider><CompanySettingsScreen {...base} /></ToastProvider>);
-    const block = (label: string) => screen.getAllByText(label).map((el) => el.closest('.yx-org__rule')).find(Boolean) as HTMLElement;
-    const attendance = block('Attendance mode');
-    await userEvent.click(within(attendance).getByRole('button', { name: 'Change' }));
-    let dialog = await screen.findByRole('dialog');
-    // Three values: a joined pick-one. Five scopes: a dropdown.
-    expect(within(within(dialog).getByRole('radiogroup', { name: 'Attendance mode' })).getAllByRole('radio').map((r) => r.textContent)).toEqual(['Punch in and out', 'Present unless on leave', 'Timesheet']);
-    expect(within(dialog).getByRole('combobox', { name: 'Applies to' })).toBeInTheDocument();
-    await userEvent.click(within(dialog).getByRole('radio', { name: 'Timesheet' }));
-    expect(within(dialog).getByRole('radio', { name: 'Timesheet' })).toHaveAttribute('aria-checked', 'true');
-    unmount();
-    render(<ToastProvider><CompanySettingsScreen {...base} /></ToastProvider>);
-    const confirm = block('Confirm automatically after the end date');
-    await userEvent.click(within(confirm).getByRole('button', { name: 'Change' }));
-    dialog = await screen.findByRole('dialog');
-    expect(within(dialog).queryByRole('radiogroup', { name: 'Confirm automatically after the end date' })).toBeNull();
-    expect(within(dialog).getByRole('combobox', { name: 'Confirm automatically after the end date' })).toBeInTheDocument();
-    // Two scopes: a Segment.
-    expect(within(dialog).getByRole('radiogroup', { name: 'Applies to' })).toBeInTheDocument();
-  });
-
-  it('Fixed-term contracts: what happens when a contract ends sits next to the limit, a pick-one HR saves with a toast', async () => {
-    const onSave = ok();
-    render(<ToastProvider><CompanySettingsScreen {...base} onSave={onSave} /></ToastProvider>);
-    const block = screen.getByText('When a fixed-term contract ends').closest('.yx-org__rule') as HTMLElement;
-    const panel = block.parentElement as HTMLElement;
-    expect(within(panel).getByText('A fixed-term contract lasts at most (years from joining)')).toBeInTheDocument();
-    expect(within(block).getByText('Remind HR to extend, convert or exit')).toBeInTheDocument();
-    expect(within(block).getByText('Starter value')).toBeInTheDocument();
-    await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
-    const dialog = await screen.findByRole('dialog');
-    await userEvent.click(within(dialog).getByRole('radio', { name: 'Start the exit by itself a week before the end' }));
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ key: 'contract_end.action', scopeType: 'tenant', value: 'auto_exit' }));
-    expect(await within(screen.getByRole('region', { name: 'Notifications' })).findByText('Saved.')).toBeInTheDocument();
-  });
-
-  it('Fixed-term contracts: only listed values are taken for what happens at the end', () => {
-    const def = SETTING_REGISTRY['contract_end.action'];
-    expect(settingInput('contract_end.action', def, { scopeType: 'tenant', scopeId: null, value: 'convert', validFrom: null }).input).toBeNull();
-    expect(settingInput('contract_end.action', def, { scopeType: 'employment_type', scopeId: null, value: 'auto_exit', validFrom: null }).errors.map((e) => e.fieldId)).toEqual(['set-scope-id']);
-  });
-
-  it('Special data erasure (follow-up 12): off by default with the dry run counts; HR turns it on with a toast; never shown without the report', async () => {
-    const onSave = ok();
-    const { unmount } = render(<ToastProvider><CompanySettingsScreen {...base} section="access" heldGuards={[]} erasure={ERASURE_DRY_RUN} onSave={onSave} /></ToastProvider>);
-    const block = screen.getByText('Delete Special data when its period ends').closest('.yx-org__rule') as HTMLElement;
-    expect(within(block).getByText('Off: nothing is deleted')).toBeInTheDocument();
-    // Not an access guard: HR who manage settings change it.
-    expect(within(block).getByRole('button', { name: 'Change' })).toBeEnabled();
-    const dry = screen.getByRole('table', { name: 'If it ran today, it would delete' });
-    expect(within(dry).getAllByRole('row').slice(1).map((r) => r.textContent)).toEqual([
-      'People past the period (left, or never joined)4',
-      'Aadhaar numbers on their records and joining forms4',
-      'Aadhaar copies, background check reports and disability certificates7',
-      'Background check notes3',
-      'Disability details (the yes or no answer stays)1',
-    ]);
-    // Whose data: name, employee code (none for an offer that never joined), last day or the day the joining was cancelled.
-    const who = screen.getByRole('table', { name: 'Whose data' });
-    expect(within(who).getAllByRole('row').slice(1).map((r) => r.textContent)).toEqual([
-      'Ravi KumarYX-014231 Mar 2024',
-      'Meena IyerYX-020715 Aug 2024',
-      'Farhan AliNone (never joined)Joining cancelled 10 Jan 2025',
-      'Sunita RaoYX-031130 Jun 2025',
-    ]);
-    expect(screen.getByText('It has not run yet.')).toBeInTheDocument();
-    expect(screen.getByText(/^Kept: consent records, background check results \(clear or discrepancy\), and pay records and filings, Aadhaar included/)).toBeInTheDocument();
-    await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
-    const dialog = await screen.findByRole('dialog');
-    await userEvent.click(within(dialog).getByRole('radio', { name: 'On: deleted every night' }));
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ key: 'privacy.erasure.enabled', scopeType: 'tenant', value: 'on' }));
-    expect(await within(screen.getByRole('region', { name: 'Notifications' })).findByText('Saved.')).toBeInTheDocument();
-    unmount();
-    const again = render(<ToastProvider><CompanySettingsScreen {...base} section="access" erasure={ERASURE_ON} /></ToastProvider>);
-    expect(screen.getByText(/^Last run \d+ Oct 2026: 4 people, 4 Aadhaar numbers, 7 documents, 3 check notes, 1 disability declaration\.$/)).toBeInTheDocument();
-    expect(screen.getByText('1 person was not done')).toBeInTheDocument();
-    expect(screen.getByRole('table', { name: 'Due at the next run' })).toBeInTheDocument();
-    // On, no one due: an empty state, no list.
-    expect(screen.getByText("No one's data is due.")).toBeInTheDocument();
-    expect(screen.queryByRole('table', { name: 'Whose data' })).toBeNull();
-    again.unmount();
-    const due = render(<ToastProvider><CompanySettingsScreen {...base} section="access" erasure={ERASURE_ON_DUE} /></ToastProvider>);
-    expect(within(screen.getByRole('table', { name: 'Whose data' })).getAllByRole('row')).toHaveLength(3);
-    expect(screen.queryByText('1 person was not done')).toBeNull();
-    due.unmount();
-    render(<ToastProvider><CompanySettingsScreen {...base} section="access" /></ToastProvider>);
-    expect(screen.queryByText('Deleting Special data')).toBeNull();
-  });
-
-  it('the editor refuses to save without a value', async () => {
-    const onSave = ok();
-    render(<ToastProvider><CompanySettingsScreen {...base} onSave={onSave} /></ToastProvider>);
-    const block = screen.getByText('Probation review reminder (days before the end)').closest('.yx-auth__stack') as HTMLElement;
-    await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
-    const dialog = await screen.findByRole('dialog');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
-    expect(onSave).not.toHaveBeenCalled();
-    expect(within(dialog).getAllByText('Choose the value').length).toBeGreaterThan(0);
-  });
-
-  it('Payroll rules (founder last 10, items 1 and 5): bonus and loan panels, values in words, entity overrides; too early focuses the value', async () => {
-    render(<ToastProvider><CompanySettingsScreen {...base} section="payroll" /></ToastProvider>);
-    expect(screen.getByRole('heading', { name: 'Payroll rules' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Statutory bonus' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Loans and advances' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Payroll reports access' })).toBeInTheDocument();
-    expect(screen.getAllByText("Rate on the month's last day").length).toBeGreaterThan(0);
-    expect(screen.getByText('Highest rate in the month')).toBeInTheDocument(); // the Tamil Nadu override
-    expect(screen.getAllByText('7.5% a year').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('3 months').length).toBeGreaterThan(0);
-    expect(screen.queryByText('Probation lasts (months)')).toBeNull(); // only payroll keys here
-    // The story state: the loan interest editor pressed too early shows the error.
-    const { unmount } = render(<ToastProvider><CompanySettingsScreen {...base} section="payroll" story={{ editing: 'payroll.loan.interest_rate.loan', tooEarly: true }} /></ToastProvider>);
-    expect(within(await screen.findByRole('dialog')).getAllByText('Choose the value').length).toBeGreaterThan(0);
-    unmount();
-  });
-});
-
-// HLP-14 answer 132: the Registered factory flag travels with the location (off by default).
 describe('Locations: registered factory', () => {
   it('the input carries the flag; off unless ticked', () => {
     const base = { legalEntityId: 'le-tn', name: 'Plant 2', code: '', address: { lines: '1 Main Road', city: 'Hosur', state: 'IN-TN', postalCode: '635126' }, timezone: 'Asia/Kolkata', minWageZone: '', fence: false, lat: null, lng: null, radiusM: 200, ipRanges: '', factory: false };
     expect(locationInput(base).input).toMatchObject({ registeredFactory: false });
     expect(locationInput({ ...base, factory: true }).input).toMatchObject({ registeredFactory: true });
-  });
-  it('a platform list setting shows its own labels (the company industry)', () => {
-    expect(valueLabel('company.industry', 'fmcg', { none: 'Not chosen', fmcg: 'Food and consumer goods' })).toBe('Food and consumer goods');
-    expect(valueLabel('company.industry', 'none', { none: 'Not chosen' })).toBe('Not chosen');
-    expect(valueLabel('company.industry', 'retail')).toBe('retail');
   });
 });
 
@@ -617,9 +347,24 @@ describe('Locations: an old Factories Act value (answer 151)', () => {
     expect(screen.queryByText('Mark the location as a registered factory to make it the one source')).toBeNull();
     expect(screen.queryByText('The Factories Act setting for this location is no longer needed')).toBeNull();
   });
-  it('Settings › Attendance marks the location value as no longer needed', () => {
-    const base: CompanySettingsScreenProps = { section: 'organisation', state: 'ready', registry: SETTING_REGISTRY, overrides: [{ id: 'fa1', key: 'attendance.factories_act', scopeType: 'location', scopeId: 'loc-hsr', value: 'covered', validFrom: '2026-01-01', noLongerNeeded: 'registered_factory' }], choices: SETTING_CHOICES, canManage: true, heldGuards: [], today: TODAY_ISO, onSave: ok(), onRemove: ok() };
-    render(<ToastProvider><CompanySettingsScreen {...base} /></ToastProvider>);
-    expect(screen.getByText('No longer needed: the location is a registered factory')).toBeInTheDocument();
+});
+
+// Answer 1781: the erasure dry run, now its own card on Settings › 2.2 Directory & privacy.
+describe('ErasureCard', () => {
+  it('off: what would be deleted today, from whom, and that it has not run', () => {
+    render(<ErasureCard report={ERASURE_DRY_RUN} />);
+    expect(screen.getByText(/Off. Nothing is deleted/)).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: 'If it ran today, it would delete' })).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: 'Whose data' })).toBeInTheDocument();
+    expect(screen.getByText('It has not run yet.')).toBeInTheDocument();
+  });
+
+  it('negative: on with a failed person, the warning shows; nobody due shows the empty state', () => {
+    const { unmount } = render(<ErasureCard report={ERASURE_ON_DUE} />);
+    expect(screen.getByRole('table', { name: 'Due at the next run' })).toBeInTheDocument();
+    unmount();
+    render(<ErasureCard report={{ ...ERASURE_DRY_RUN, who: [], lastRun: { at: '2026-10-29T22:45:00Z', people: 1, aadhaar: 1, documents: 0, backgroundChecks: 0, disability: 0, failed: 1 } }} />);
+    expect(screen.getByText("No one's data is due.")).toBeInTheDocument();
+    expect(screen.getByText('1 person was not done')).toBeInTheDocument();
   });
 });
