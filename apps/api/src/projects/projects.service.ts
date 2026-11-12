@@ -28,7 +28,7 @@ const hoursOf = (minutes: number) => Math.round((minutes / 60) * 100) / 100;
 export const BURN_WARN = 'projects.burn.warn_pct';
 export const BURN_OVER = 'projects.burn.over_pct';
 /** Settings 3.11 Projects & timesheets: the company settings P-1 puts behind the designed page. */
-export const PROJECT_SETTING_KEYS = ['projects.enabled', 'projects.booking.allocated_only', BURN_WARN, BURN_OVER, 'timesheet.tool_suggestions', 'projects.default_billing_model'] as const;
+export const PROJECT_SETTING_KEYS = ['projects.enabled', 'projects.booking.allocated_only', BURN_WARN, BURN_OVER, 'timesheet.tool_suggestions', 'projects.default_billing_model', 'projects.bulk.within_allocation'] as const;
 
 /** Answer 1405: the burn level reached (0, the warning level or the over level) for hours used against the budget. */
 export function burnLevel(usedHours: number, budgetHours: number | null, warn: number, over: number): number {
@@ -73,7 +73,9 @@ export class ProjectsService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const enabled = await ProjectsService.on(tx, c);
       const canOpen = Boolean(enabled && w && (w.any || (await tx.timesheetProject.count({ where: { organizationId: c.organizationId, managerUserId: w.userId } }))));
-      return { enabled, canOpen };
+      // P-2 (1406): timesheet lines waiting for me (a reporting manager approves without any Projects key).
+      const lineApprovals = enabled && w ? await tx.timesheetLine.count({ where: { organizationId: c.organizationId, status: 'pending', approverUserIds: { has: w.userId } } }) : 0;
+      return { enabled, canOpen, lineApprovals };
     });
   }
 
@@ -145,6 +147,7 @@ export class ProjectsService {
       usedHours: extra.usedHours,
       people: extra.people,
       clientAcceptsMilestones: p.clientAcceptsMilestones,
+      clientApprovesHours: p.clientApprovesHours,
       // Answer 1412: fee and cost only for Projects finance.
       ...(w.finance ? { fee: num(p.fee), budgetCost: num(p.budgetCost) } : {}),
       version: p.version,
@@ -282,6 +285,7 @@ export class ProjectsService {
           budgetCost: dto.budgetCost ?? null,
           fee: dto.fee ?? null,
           clientAcceptsMilestones: dto.clientAcceptsMilestones ?? false,
+          clientApprovesHours: dto.clientApprovesHours ?? false,
           createdBy: c.userId ?? null,
         },
       });
@@ -314,6 +318,7 @@ export class ProjectsService {
         budgetHours: dto.budgetHours ?? null,
         ...(w.finance ? { budgetCost: dto.budgetCost ?? null, fee: dto.fee ?? null } : {}),
         clientAcceptsMilestones: dto.clientAcceptsMilestones ?? p.clientAcceptsMilestones,
+        clientApprovesHours: dto.clientApprovesHours ?? p.clientApprovesHours,
         version: { increment: 1 },
         updatedAt: new Date(),
       };

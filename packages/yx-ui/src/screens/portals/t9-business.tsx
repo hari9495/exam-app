@@ -1292,6 +1292,8 @@ export interface LiveClientPortal {
     jobs: { id: string; title: string; location: string; openings: number; submissions: number; interviews: number; status: 'Open' | 'On hold' | 'Filled' }[];
     submissions: { id: string; candidate: string; job: string; submittedOn: string; status: ClientSubmission['status']; feedback: string | null }[];
     timesheets: { id: string; worker: string; role: string; weekStart: string; hours: string; overtime: string; vendor: string | null; status: ClientTimesheet['status']; note: string | null }[];
+    /** Answer 1408 (914): hours on this client's own projects that ask the client to approve them, line by line. */
+    projectHours?: { id: string; worker: string; project: string; task: string | null; weekStart: string; hours: string; status: ClientTimesheet['status']; note: string | null }[];
     invoices: { id: string; no: string; period: string | null; kind: string; amount: string; gst: string; issuedOn: string; dueOn: string; status: 'Paid' | 'Due' | 'Overdue' | 'Credit' }[];
     /** Answer 491: HIR-06 interviews for this client's jobs, and who can be booked. */
     interviews?: { id: string; candidate: string; job: string; at: string | null; mode: string; panel: string | null; status: string }[];
@@ -1303,6 +1305,8 @@ export interface LiveClientPortal {
   onPdf?: (invoiceId: string) => void;
   onDecide: (id: string, decision: 'shortlist' | 'reject', feedback?: string) => Promise<unknown>;
   onTimesheet: (id: string, action: 'approve' | 'send_back') => Promise<unknown>;
+  /** Answer 1408: approve a project line, or send it back with a note the project manager sees. */
+  onProjectHours?: (id: string, action: 'approve' | 'send_back', note?: string) => Promise<unknown>;
   /** Answer 491: the client's Helpdesk tickets (none: the tab is not shown). */
   tickets?: ClientTicketParts & { rows: { id: string; number: string; subject: string; category: string; priority: string; raisedOn: string; resolveBy: string | null; paused: boolean; status: string }[] };
 }
@@ -1325,6 +1329,8 @@ function LiveClientPortalView({ live }: { live: LiveClientPortal }) {
   const [reason, setReason] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [tried, setTried] = useState(false);
+  const [sendingBack, setSendingBack] = useState<string | null>(null);
+  const [backNote, setBackNote] = useState('');
   const act = async (key: string, fn: () => Promise<unknown>) => {
     setBusy(key);
     setFailed(null);
@@ -1440,7 +1446,7 @@ function LiveClientPortalView({ live }: { live: LiveClientPortal }) {
     if (live.tab === 'interviews') return <ClientInterviews live={{ items: d.interviews ?? [], bookable: d.bookable ?? [], today: live.today, onBook: live.onBook }} />;
     if (live.tab === 'timesheets') {
       const waiting = d.timesheets.filter((r) => r.status === 'Waiting for you');
-      return (
+      const placementCard = (
         <Card
           title="Timesheets"
           actions={
@@ -1489,6 +1495,73 @@ function LiveClientPortalView({ live }: { live: LiveClientPortal }) {
             </ul>
           )}
         </Card>
+      );
+      const lines = d.projectHours ?? [];
+      const back = lines.find((x) => x.id === sendingBack);
+      return (
+        <>
+          {placementCard}
+          {lines.length > 0 && (
+            <Card title="Project hours">
+              <ul className="yx-ps-list" aria-live="polite" aria-label="Project hours">
+                {lines.map((t) => (
+                  <li key={t.id}>
+                    <div className="yx-ps-list__main">
+                      <span className="yx-ps-list__title">
+                        {t.worker} · {t.project}
+                        {t.task ? ` · ${t.task}` : ''}
+                      </span>
+                      <span className="yx-ps-list__meta">
+                        {weekLabel(t.weekStart)} · {t.hours} hours{t.note ? ` · your note: ${t.note}` : ''}
+                      </span>
+                    </div>
+                    <Badge tone={t.status === 'Approved' ? 'success' : t.status === 'Sent back' ? 'danger' : 'warning'}>{t.status}</Badge>
+                    {t.status === 'Waiting for you' && live.onProjectHours && (
+                      <>
+                        <Button variant="approve" size="sm" icon={Check} loading={busy === `pa${t.id}`} onClick={() => void act(`pa${t.id}`, () => live.onProjectHours!(t.id, 'approve'))}>
+                          Approve
+                        </Button>
+                        <Button size="sm" onClick={() => (setSendingBack(t.id), setBackNote(''), setTried(false))}>
+                          Send back
+                        </Button>
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <Dialog
+                open={sendingBack != null}
+                onOpenChange={(o) => !o && setSendingBack(null)}
+                title={`Send back ${back?.worker ?? ''}'s hours?`}
+                description="Your note goes to the project manager, who corrects the hours."
+                footer={
+                  <>
+                    <Button onClick={() => setSendingBack(null)}>Cancel</Button>
+                    <Button
+                      variant="primary"
+                      loading={busy === 'pback'}
+                      onClick={() => {
+                        setTried(true);
+                        if (backNote.trim().length < 3) return void document.getElementById('cp-back-note')?.focus();
+                        const id = sendingBack!;
+                        void act('pback', async () => {
+                          await live.onProjectHours!(id, 'send_back', backNote.trim());
+                          setSendingBack(null);
+                        });
+                      }}
+                    >
+                      Send back
+                    </Button>
+                  </>
+                }
+              >
+                <FormField id="cp-back-note" label="What is wrong with these hours?" required error={tried && backNote.trim().length < 3 ? 'Say what is wrong, in a few words.' : null}>
+                  <TextArea value={backNote} onChange={setBackNote} rows={3} maxLength={500} />
+                </FormField>
+              </Dialog>
+            </Card>
+          )}
+        </>
       );
     }
     if (live.tab === 'tickets' && live.tickets) {

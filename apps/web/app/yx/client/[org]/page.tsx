@@ -113,6 +113,11 @@ export default function YxClientPortalPage() {
             setTickets(await call<TicketRows>('/tickets', token));
           },
         },
+        // Answer 1408: this client's own project lines, approved or sent back with a note.
+        onProjectHours: async (id, action, note) => {
+          await call(`/project-hours/${encodeURIComponent(id)}/${action === 'approve' ? 'approve' : 'send-back'}`, token, { method: 'POST', body: JSON.stringify(action === 'approve' ? {} : { note }) });
+          await load(token);
+        },
         onTimesheet: async (id, action) => {
           await call(`/timesheets/${encodeURIComponent(id)}/${action === 'approve' ? 'approve' : 'send-back'}`, token, { method: 'POST', body: JSON.stringify({}) });
           await load(token);

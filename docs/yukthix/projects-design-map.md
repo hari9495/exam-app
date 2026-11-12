@@ -89,12 +89,12 @@ named in the note) · **wire design** (the API exists and the screen is not wire
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Projects and timesheets (PRJ-01, PRJ-02, PRJ-08) | 3 | 43 | 7 | 0 | 4 | 1 | 55 |
+| A. Projects and timesheets (PRJ-01, PRJ-02, PRJ-08) | 3 | 54 | 1 | 0 | 4 | 1 | 60 |
 | B. Capacity and bench (PRJ-03, PRJ-07) | 2 | 0 | 1 | 0 | 9 | 0 | 10 |
 | C. Cost and billing (PRJ-04 to PRJ-06) | 3 | 0 | 5 | 0 | 11 | 0 | 16 |
-| **All A-C** | **8** | **43** | **13** | **0** | **24** | **1** | **81** |
+| **All A-C** | **8** | **54** | **7** | **0** | **24** | **1** | **86** |
 
-Counted by script on 12 Nov 2026 on `docs/yukthix-projects-map` (the script is in the appendix; it prints "ok"). Recounted on 12 Nov 2026 on `feat/yukthix-projects-p1` after P-1: PRJ-01 has 30 stories (16 live-state stories added), 68 in all. Recounted after P-3 on `feat/yukthix-projects-p3`: PRJ-08 has 15 (10 live-state stories added), 78 in all. There
+Counted by script on 12 Nov 2026 on `docs/yukthix-projects-map` (the script is in the appendix; it prints "ok"). Recounted on 12 Nov 2026 on `feat/yukthix-projects-p1` after P-1: PRJ-01 has 30 stories (16 live-state stories added), 68 in all. Recounted after P-3 on `feat/yukthix-projects-p3`: PRJ-08 has 15 (10 live-state stories added), 78 in all. After the walk fixes and P-2 (`feat/yukthix-projects-p2`): PRJ-02 has 12 (5 live-state stories added), 86 in all. There
 are 52 stories in 8 files whose title starts `Screens/Projects/`: `packages/yx-ui/src/screens/hiring/prj-01-projects`
 (14), `prj-02-timesheet-approvals` (7), `prj-03-capacity` (4), `prj-04-costing` (5), `prj-05-billing-workbench` (6),
 `prj-06-timesheet-correction` (5), `prj-07-bench-requests` (6), `prj-08-mapping-rules` (5), all `.stories.tsx`. The
@@ -168,13 +168,18 @@ screens are in `screens/hiring/projects.tsx` and `projects-billing.tsx`. One sto
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| ByProjectWeek · PM · grouped by project and week | live (gap) | PMs approve timesheets in `/yx/approvals` (`ApprovalsInboxScreen`, engine key `time.timesheet`). Gaps: a whole week per task, not grouped by project and week; no reduce; a reject has no per-line reason; every PM of the week must approve the whole week (`mode: 'all'` in `timesheet.service.ts`) |
-| ClientApproval · Client approval after PM | live (gap) | only for staffing placements: an approved week flows to the placement's hours and the client approves it in the portal (`hours-from-time.ts`, `client-portal.service.ts`). Not for project clients; the whole week, not the client's project lines (914) |
-| BulkConfirm · Bulk approve within allocation | live (gap) | the inbox has bulk decide (PLT-04, `approvals-engine.service.ts` line 576). No "within allocation" check (no allocations) |
-| Empty · Empty · all caught up | live (gap) | the inbox's empty state |
-| Loading · Loading | live (gap) | the inbox's loading state |
-| Error · Error | live (gap) | the inbox's error state |
+| ByProjectWeek · PM · grouped by project and week | live | P-2: `/yx/projects/approvals` (`TimesheetApprovalsScreen` live, `GET /time/line-approvals`): each approver sees only their own lines (the project manager; else the person's manager; else HR) and approves, reduces or rejects each with a reason the person sees (1406). The attendance mismatch note is not built (question 1541) |
+| ClientApproval · Client approval after PM | live | P-2: a per-project "client approves the hours" (off by default); approved lines wait for the client in the client portal, line by line, only that client's own project lines (1408). A placed worker's week counts only that client's project lines (914, `hours-from-time.ts`) |
+| BulkConfirm · Bulk approve within allocation | live | P-2: only lines within the person's allocation share (a setting, on by default, 1407); hours outside an allocation (1442) never in bulk |
+| Empty · Empty · all caught up | live | P-2 live state |
+| Loading · Loading | live | P-2 live state |
+| Error · Error | live | P-2 live state |
 | Phone · phone | phone view, mobile app not built | `TimesheetApprovalsPhone` (also `settings: MobileTimesheetApprovalsScreen` on `notLive`) |
+| LiveByProject · Live · my lines by project and week | live | P-2 live state (a person over their allocation, one booked outside one) |
+| LiveBulk · Live · bulk approve within allocation | live | P-2 live state |
+| LiveEmpty · Live · all caught up | live | P-2 live state |
+| LiveLoading · Live · loading | live | P-2 live state |
+| LiveError · Live · error | live | P-2 live state |
 
 #### PRJ-08 · Timesheet mapping rules
 
@@ -448,3 +453,27 @@ console.log('ok');
 1506. **Billing model for new projects (1444).** Built in P-3 on Settings 3.11, default Time & material. An API call that
       leaves the model out uses the company's choice for a new project and keeps the project's own on a change.
       *Suggested: keep.*
+
+## P-2 built (12 Nov 2026): questions for the founder
+
+1541. **Attendance mismatch on PRJ-02.** The design flags "timesheet 42 h vs attendance 40 h worked" on a card. P-2 does not
+      compare them yet (nor the PRJ-01 Timesheets tab). *Suggested: add both in P-4 with the cost job, which reads the
+      same days.*
+1542. **A week with some lines rejected.** The week is approved when any hours are approved; rejected lines count as none
+      and the person sees why. To book those hours again they correct next week or ask the manager. *Suggested: keep;
+      an "adjustment line" for a closed week comes with P-6.*
+1543. **Who approves a line with no project manager.** The person's reporting manager, else HR (leave approvers).
+      *Suggested: keep.*
+1544. **Allocation share for bulk approval.** A share of a 40-hour week (as PRJ-01 shows), not the company's normal week
+      setting, which is per country pack. *Suggested: keep 40 hours until the normal week is a plain company number.*
+1545. **A placed worker on a project of the same client that asks the client to approve hours.** Those lines go once, as
+      the placement's week the client approves in Timesheets; they are not also listed under Project hours.
+      *Suggested: keep (never approved twice).*
+1546. **A week none of whose lines is on a client's project.** For a company that has not linked projects to clients yet,
+      a placed worker's week still counts whole, as before 914. *Suggested: keep for now; once every placement client
+      has projects, count only client lines.*
+1547. **The client portal needs the staffing desk on.** A company using Projects without the staffing desk has no client
+      portal, so "client approves the hours" does nothing there. *Suggested: show the switch only when the desk is on
+      (a small follow-up), or open the portal for Projects clients too.*
+1548. **Companies with Projects on** now decide every submitted week line by line on PRJ-02; weeks already waiting in the
+      approvals inbox finish there as before. *Suggested: keep.*

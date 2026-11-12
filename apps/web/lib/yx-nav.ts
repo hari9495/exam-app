@@ -53,6 +53,8 @@ export interface NavInput {
   staffing?: boolean;
   /** Projects P-1: Projects is on and this person holds a Projects key or manages a project (the server decides). */
   projects?: boolean;
+  /** P-2 (1406): timesheet lines waiting for this person's decision (the server decides). */
+  lineApprovals?: number;
 }
 
 /** Possible same person is in the menu when the server sends its count: company-wide HR while a pair waits or for 90 days after any merge, even at 0. */
@@ -468,7 +470,7 @@ export function buildNav(n: NavInput): NavArea[] {
   };
 
   // Projects P-1 (answer 1401): only once the company switched Projects on.
-  const projects: NavArea = { id: 'projects', title: 'Projects', sections: sec(undefined, when(!support && Boolean(n.projects), L('projects', 'Projects', '/yx/projects'))) };
+  const projects: NavArea = { id: 'projects', title: 'Projects', sections: sec(undefined, [...when(!support && Boolean(n.projects), L('projects', 'Projects', '/yx/projects')), ...when(!support && (Boolean(n.projects) || Boolean(n.lineApprovals)), L('timesheet-approvals', 'Timesheet approvals', '/yx/projects/approvals'))]) };
 
   // Settings, pinned at the bottom of the rail, in the designed settings groups.
   const settings: NavArea = {

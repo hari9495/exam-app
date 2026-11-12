@@ -21,11 +21,13 @@ const KEY = {
   'prj.prefill_enabled': 'timesheet.tool_suggestions',
   // Answer 1444: the billing model new projects start with.
   'prj.billable_default': 'projects.default_billing_model',
+  // P-2 (answer 1407): bulk approval within the allocation.
+  'prj.bulk_within_allocation': 'projects.bulk.within_allocation',
 } as const;
 type Field = keyof typeof KEY;
 const LIVE = new Set<string>([...Object.keys(KEY), 'prj.projects', 'prj.mapping_rules']);
 /** The drawn radio's words for the stored on/off. */
-const BOOKING: Record<string, string> = { on: 'Block', off: 'Allow' };
+const BOOKING: Record<string, string> = { on: 'Block', off: 'Allow', approval: 'Allow with project manager approval' };
 
 /** The designed 3.11 page with the company's values, for SettingsPageScreen `live`. */
 export function projectSettingsPage(design: SettingsPageDef, data: ProjectSettingsData): SettingsPageDef {
@@ -37,7 +39,7 @@ export function projectSettingsPage(design: SettingsPageDef, data: ProjectSettin
     const k = KEY[d.key as Field];
     if (!(k in data.values)) return null; // an older API without this setting: never shown with a sample value
     const base = { ...d, overrides: undefined, dated: undefined, scope: 'Company', starter: data.values[k] === data.defaults[k] };
-    if (d.key === 'prj.enabled' || d.key === 'prj.prefill_enabled') return { ...base, contributedBy: undefined, availability: undefined, value: data.values[k] === 'on' };
+    if (d.key === 'prj.enabled' || d.key === 'prj.prefill_enabled' || d.key === 'prj.bulk_within_allocation') return { ...base, contributedBy: undefined, availability: undefined, value: data.values[k] === 'on' };
     if (d.key === 'prj.booking_rule') return { ...base, value: BOOKING[data.values[k]!]! };
     if (d.key === 'prj.billable_default') return { ...base, value: data.values[k]! };
     const options = data.choices[k] ?? [];
@@ -59,8 +61,8 @@ export function projectSettingsChanges(values: Record<string, SettingValue>): { 
   for (const [field, value] of Object.entries(values)) {
     const key = KEY[field as Field];
     if (!key) continue;
-    if (field === 'prj.enabled' || field === 'prj.prefill_enabled') out.push({ key, value: value === true ? 'on' : 'off' });
-    else if (field === 'prj.booking_rule') out.push({ key, value: value === 'Allow' ? 'off' : 'on' });
+    if (field === 'prj.enabled' || field === 'prj.prefill_enabled' || field === 'prj.bulk_within_allocation') out.push({ key, value: value === true ? 'on' : 'off' });
+    else if (field === 'prj.booking_rule') out.push({ key, value: value === 'Allow' ? 'off' : value === 'Allow with project manager approval' ? 'approval' : 'on' });
     else out.push({ key, value: String(value) });
   }
   return out;

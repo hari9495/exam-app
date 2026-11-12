@@ -277,7 +277,10 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'staffing.desk.enabled': { label: 'Staffing desk: place people with client companies', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // Projects P-1 (answers 1401, 1404, 1405): the Projects menu, who may book time, and the burn alerts.
   'projects.enabled': { label: 'Projects: client and internal projects with budgets, team, tasks and milestones', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
-  'projects.booking.allocated_only': { label: 'Projects: only people allocated to a project book time to it', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+  // Answer 1442: 'approval' lets unallocated hours through, each line waiting for the project manager (never in bulk).
+  'projects.booking.allocated_only': { label: 'Projects: only people allocated to a project book time to it', scopes: ['tenant'], dated: false, values: ['on', 'off', 'approval'], default: 'on' },
+  // Answer 1407: bulk approve only weeks within the person's allocation.
+  'projects.bulk.within_allocation': { label: 'Projects: bulk approve only hours within the allocation', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'projects.burn.warn_pct': { label: 'Projects: first burn alert when a budget reaches (%)', scopes: ['tenant'], dated: false, values: ['50', '60', '70', '75', '80', '85', '90'], default: '80' },
   // Answer 1444: the billing model a new project starts with (a client is needed only for a billable model).
   'projects.default_billing_model': { label: 'Projects: billing model for new projects', scopes: ['tenant'], dated: false, values: ['time_material', 'fixed_fee', 'retainer', 'non_billable'], default: 'time_material' },

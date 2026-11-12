@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { lineApproved } from './line-rules';
 import { Prisma } from '@prisma/client';
 import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
@@ -449,7 +450,7 @@ export class PeriodsService {
         for (let k = 0; k < 7; k++) {
           const on = addDays(monday, k);
           if (on < from || on > to) continue;
-          tsMinutes += lines.filter((l) => l.timesheetId === s.id).reduce((sum, l) => sum + (l.minutes[k] ?? 0), 0);
+          tsMinutes += lines.filter((l) => l.timesheetId === s.id).reduce((sum, l) => sum + (lineApproved(l)[k] ?? 0), 0);
         }
       }
       out.push({

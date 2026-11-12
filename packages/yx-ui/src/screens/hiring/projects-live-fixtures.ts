@@ -41,3 +41,30 @@ export const LIVE_FIXED_FEE_DETAIL: LiveProjectDetail = {
     { id: 'm2', name: 'Go-live', pct: 50, dueOn: '2027-02-28', status: 'planned', version: 1 },
   ],
 };
+
+/** P-2: GET /time/line-approvals in the API's shape (one person over their allocation, one booked outside one). */
+export const LIVE_LINE_APPROVALS: import('./projects').LiveApprovalsData = {
+  withinAllocation: true,
+  groups: [
+    {
+      projectId: 'p1',
+      project: 'NRP-WEB',
+      projectName: 'Nilgiri Retail web rebuild',
+      week: '2026-11-02',
+      clientApproval: 'Nilgiri Retail',
+      items: [
+        { id: 's1:p1', timesheetId: 's1', employee: 'Priya Nair', allocationPercent: 100, allocatedHours: 40, unallocated: false, bulk: true, lines: [{ id: 'l1', task: 'Build', hours: 34, billable: true, note: null, version: 2 }, { id: 'l2', task: 'Testing', hours: 6, billable: true, note: null, version: 2 }] },
+        { id: 's2:p1', timesheetId: 's2', employee: 'Rohit Bhat', allocationPercent: 50, allocatedHours: 20, unallocated: false, bulk: false, lines: [{ id: 'l3', task: 'Build', hours: 26, billable: true, note: 'Release week', version: 2 }] },
+        { id: 's3:p1', timesheetId: 's3', employee: 'Meera Iyer', allocationPercent: null, allocatedHours: 0, unallocated: true, bulk: false, lines: [{ id: 'l4', task: 'Testing', hours: 8, billable: true, note: null, version: 2 }] },
+      ],
+    },
+    {
+      projectId: 'p3',
+      project: 'OLDAUDIT',
+      projectName: 'Audit readiness',
+      week: '2026-10-26',
+      clientApproval: null,
+      items: [{ id: 's4:p3', timesheetId: 's4', employee: 'Priya Nair', allocationPercent: 20, allocatedHours: 8, unallocated: false, bulk: true, lines: [{ id: 'l5', task: null, hours: 6, billable: false, note: null, version: 2 }] }],
+    },
+  ],
+};

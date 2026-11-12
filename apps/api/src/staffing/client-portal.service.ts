@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { lineApproved } from '../time/line-rules';
 import { createHash, randomBytes } from 'crypto';
 import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import type { ScopeUser } from '../access/scope';
@@ -153,6 +154,7 @@ export class ClientPortalService {
       const ivs = await tx.interview.findMany({ where: { organizationId: s.org, pipelineEntry: { job: { staffingClientId: s.clientId } } }, include: { slots: { orderBy: { startsAt: 'asc' } }, pipelineEntry: { select: { jobId: true, candidate: { select: { name: true, erasedAt: true } } } } }, orderBy: { createdAt: 'desc' }, take: 300 });
       const ivStatus: Record<string, string> = { proposed: 'Proposed', confirmed: 'Confirmed', completed: 'Done', cancelled: 'Cancelled' };
       const invoices = await tx.staffingInvoice.findMany({ where: { organizationId: s.org, clientId: s.clientId, status: 'issued' }, orderBy: { invoiceDate: 'desc' }, take: 200 });
+      const projectHours = await this.projectLines(tx, s);
       const alloc = await tx.staffingReceiptAllocation.groupBy({ by: ['invoiceId'], where: { invoiceId: { in: invoices.map((i) => i.id) } }, _sum: { amountPaise: true } });
       const terms = client.paymentTermsDays ?? Number(await settingFor(tx, { organizationId: s.org, isSuperAdmin: false } as CompanyContext, 'staffing.payment_terms_days', { legalEntityId: '' }));
       const today = todayIst();
@@ -167,6 +169,8 @@ export class ClientPortalService {
         }),
         bookable: subs.filter((x) => x.candidateId && x.stage !== 'rejected').map((x) => ({ value: x.id, label: `${person(x)} · ${jobs.find((j) => j.id === x.jobId)?.title ?? ''}` })),
         submissions: subs.map((x) => ({ id: x.id, candidate: person(x), jobId: x.jobId, job: jobs.find((j) => j.id === x.jobId)?.title ?? '', submittedOn: todayIst(x.createdAt), status: STAGE[x.stage] ?? x.stage, feedback: x.rejectedReason ?? x.feedback })),
+        // Answer 1408 (914): lines of this client's projects that ask the client to approve hours, and only those.
+        projectHours,
         timesheets: hours.map((h) => {
           const p = placements.find((x) => x.id === h.placementId)!;
           return { id: h.id, worker: p.workerName, role: rates.find((r) => r.lineId === p.lineId)?.role ?? '', weekStart: iso(h.weekStart), hours: hrs(h.hoursCenti), overtime: hrs(h.overtimeCenti), vendor: p.agencyId ? (agencies.find((a) => a.id === p.agencyId)?.name ?? null) : null, status: h.status === 'waiting' ? 'Waiting for you' : h.status === 'approved' ? 'Approved' : 'Sent back', note: h.note, version: h.version };
@@ -204,6 +208,39 @@ export class ClientPortalService {
       const { count } = await tx.staffingHours.updateMany({ where: { id, status: 'waiting' }, data: { status: action === 'approve' ? 'approved' : 'sent_back', note: action === 'send_back' ? dto?.note?.trim() || null : null, decidedByContactId: s.contactId, decidedAt: new Date(), version: { increment: 1 } } });
       if (!count) throw new ConflictException('This timesheet is not waiting for you.');
       await audit(tx, { organizationId: s.org, isSuperAdmin: false } as CompanyContext, action === 'approve' ? 'staffing.hours.approved' : 'staffing.hours.sent_back', 'staffing_hours', id, { by: 'client_contact', contactId: s.contactId });
+      return { id };
+    });
+  }
+
+  /** Answer 1408: the approved lines of this client's own projects that ask the client to approve hours. */
+  private async projectLines(tx: Tx, s: Session) {
+    const projects = await tx.timesheetProject.findMany({ where: { organizationId: s.org, clientId: s.clientId, clientApprovesHours: true }, select: { id: true, code: true, name: true } });
+    if (!projects.length) return [];
+    const lines = await tx.timesheetLine.findMany({ where: { organizationId: s.org, projectId: { in: projects.map((p) => p.id) }, clientStatus: { not: null } }, take: 500 });
+    const sheets = await tx.timesheet.findMany({ where: { organizationId: s.org, id: { in: [...new Set(lines.map((l) => l.timesheetId))] } }, select: { id: true, employeeId: true, weekStart: true } });
+    const people = await tx.employee.findMany({ where: { organizationId: s.org, id: { in: [...new Set(sheets.map((x) => x.employeeId))] } }, select: { id: true, givenName: true, familyName: true, preferredName: true } });
+    return lines
+      .map((l) => {
+        const sh = sheets.find((x) => x.id === l.timesheetId)!;
+        const p = projects.find((x) => x.id === l.projectId)!;
+        const minutes = lineApproved(l).reduce((a, b) => a + b, 0);
+        return { id: l.id, worker: displayName(people.find((e) => e.id === sh.employeeId) ?? { givenName: 'Employee', familyName: null, preferredName: null }), project: `${p.code} · ${p.name}`, task: l.activity, weekStart: iso(sh.weekStart), hours: hrs(Math.round((minutes * 100) / 60)), status: l.clientStatus === 'waiting' ? 'Waiting for you' : l.clientStatus === 'approved' ? 'Approved' : 'Sent back', note: l.clientNote, version: l.version };
+      })
+      .sort((a, b) => (b.weekStart ?? '').localeCompare(a.weekStart ?? ''));
+  }
+
+  /** Answer 1408: approve a project line's hours, or send them back with a note; only this client's own project lines. */
+  projectHours(slug: string, token: string | undefined, id: string, action: 'approve' | 'send_back', dto?: PortalSendBackDto) {
+    if (action === 'send_back' && !dto?.note?.trim()) throw new BadRequestException('Say what is wrong with these hours, so the project manager can fix them.');
+    return this.inPortal(slug, token, async (tx, s) => {
+      const l = await tx.timesheetLine.findFirst({ where: { id, organizationId: s.org } });
+      if (!l) throw new NotFoundException('These hours were not found.');
+      const p = await tx.timesheetProject.findFirst({ where: { id: l.projectId, organizationId: s.org }, select: { clientId: true, clientApprovesHours: true } });
+      // Another client's project, or a project that does not ask its client: never this contact's to decide.
+      if (!p || p.clientId !== s.clientId || !p.clientApprovesHours) throw new ForbiddenException('These are not your company’s project hours.');
+      const { count } = await tx.timesheetLine.updateMany({ where: { id, clientStatus: 'waiting' }, data: { clientStatus: action === 'approve' ? 'approved' : 'sent_back', clientNote: action === 'send_back' ? dto!.note!.trim().slice(0, 500) : null, clientContactId: s.contactId, clientDecidedAt: new Date(), version: { increment: 1 } } });
+      if (!count) throw new ConflictException('These hours are not waiting for you.');
+      await audit(tx, { organizationId: s.org, isSuperAdmin: false } as CompanyContext, action === 'approve' ? 'projects.hours.client_approved' : 'projects.hours.client_sent_back', 'timesheet_line', id, { by: 'client_contact', contactId: s.contactId, note: dto?.note ?? null });
       return { id };
     });
   }

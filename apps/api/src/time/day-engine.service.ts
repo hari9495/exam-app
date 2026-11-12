@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { lineApproved } from './line-rules';
 import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { ScheduleBook, lockedDates } from './schedule';
 import { asDate, factsOn, holidaysFor, leaveDays, settingOn, todayIn } from './time-core';
@@ -108,7 +109,8 @@ export class DayEngine {
       for (let k = 0; k < 7; k++) {
         const on = addDays(monday, k);
         if (daysBetween(from, on) < 0 || on > to) continue;
-        out.set(on, lines.filter((l) => l.timesheetId === s.id).reduce((sum, l) => sum + (l.minutes[k] ?? 0), 0));
+        // Projects P-2: the approved minutes (a reduced line counts as reduced, a rejected one as none).
+        out.set(on, lines.filter((l) => l.timesheetId === s.id).reduce((sum, l) => sum + (lineApproved(l)[k] ?? 0), 0));
       }
     }
     return out;

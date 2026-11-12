@@ -22,8 +22,8 @@ const MODELS: { value: BillingModel; label: string }[] = [
 export function ProjectDrawer({ project, choices, finance, onClose, onSave }: { project: LiveProjectRow | null; choices: ProjectChoices; finance: boolean; onClose: () => void; onSave: (input: ProjectInput) => Promise<void> }) {
   const [v, setV] = useState<ProjectInput>(
     project
-      ? { code: project.code, name: project.name, managerUserId: project.managerUserId, clientId: project.clientId, billingModel: project.billingModel, startOn: project.startOn, endOn: project.endOn, budgetHours: project.budgetHours, budgetCost: project.budgetCost ?? null, fee: project.fee ?? null, clientAcceptsMilestones: project.clientAcceptsMilestones }
-      : { code: '', name: '', managerUserId: null, clientId: null, billingModel: choices.defaultBillingModel ?? 'time_material', startOn: null, endOn: null, budgetHours: null, budgetCost: null, fee: null, clientAcceptsMilestones: false },
+      ? { code: project.code, name: project.name, managerUserId: project.managerUserId, clientId: project.clientId, billingModel: project.billingModel, startOn: project.startOn, endOn: project.endOn, budgetHours: project.budgetHours, budgetCost: project.budgetCost ?? null, fee: project.fee ?? null, clientAcceptsMilestones: project.clientAcceptsMilestones, clientApprovesHours: project.clientApprovesHours ?? false }
+      : { code: '', name: '', managerUserId: null, clientId: null, billingModel: choices.defaultBillingModel ?? 'time_material', startOn: null, endOn: null, budgetHours: null, budgetCost: null, fee: null, clientAcceptsMilestones: false, clientApprovesHours: false },
   );
   const [dirty, setDirty] = useState(false);
   const { busy, error, run } = useRun();
@@ -74,6 +74,9 @@ export function ProjectDrawer({ project, choices, finance, onClose, onSave }: { 
         </FormField>
         {v.billingModel === 'fixed_fee' && (
           <Switch checked={v.clientAcceptsMilestones} onChange={(clientAcceptsMilestones) => set({ clientAcceptsMilestones })} label="The client accepts each milestone" description="A completed milestone then waits for the client in the client portal before it is billed." />
+        )}
+        {v.clientId && (
+          <Switch checked={!!v.clientApprovesHours} onChange={(clientApprovesHours) => set({ clientApprovesHours })} label="The client approves the hours" description="After the project manager, each approved line waits for the client in the client portal. The client sees only this project's hours." />
         )}
       </FormSection>
       <FormSection title="Dates and budgets">
