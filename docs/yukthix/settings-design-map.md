@@ -877,3 +877,5 @@ console.log(missing.join(' '));
 - 1481 to 1485 approved as suggested (12 Nov 2026, "ok for all"). To build: the leave settings key may change the leave pages (Leave types, Holiday calendars, Leave year); attendance and roster limits stay with HR (1485). Later: state working-hour rule sets per location (1482, then 1483); "Different for" on these pages with S-7 (1484); tabs only if HR finds long pages hard (1481).
 
 - 1521 to 1525 approved as suggested (12 Nov 2026, "ok for all"). To build: bell and email to the other HR settings holders when a payroll setting change waits, and to the asker when decided (1522); waiting changes lapse after 14 days, a company setting, audited, asker told (1523). With S-7: Payroll rules bonus and loan settings move to 4.6 under the second person (1521).
+
+- 1561 to 1564 approved as suggested (12 Nov 2026, "ok for all"). With S-7: Onboarding & probation, Job changes and Employee relations move with "Different for" (1561); "Applies from" on dated settings (1562); retirement age per grade (1564). With 1326: a company-wide audit log page readable with audit.view (1563).
