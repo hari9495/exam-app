@@ -491,7 +491,8 @@ export function withApprovalPolicies(page: SettingsPageDef, data: { remindHours:
     rows: data.types.map((t) =>
       t.steps
         ? [t.label, t.approvers, t.steps.map((s) => (s.mode === 'all' ? 'All' : 'Any one')).join(' → '), `${data.escalateHours} hours a step`, `Reminder at ${data.remindHours} hours, then their manager too`]
-        : [t.label, t.approvers, 'Built in', 'Built in', 'Built in'],
+        : // Answers 1764, 1765: the module's own steps in words, on the company's hours.
+          [t.label, t.approvers, 'As built in', `${data.escalateHours} hours a manager's step`, `Reminder at ${data.remindHours} hours, then their manager too`],
     ),
   };
   const title = 'Policies per request type';

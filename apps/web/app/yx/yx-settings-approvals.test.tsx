@@ -23,7 +23,7 @@ const POLICIES = {
   escalateHours: 48,
   types: [
     { key: 'leave.request', label: 'Leave', steps: [{ name: 'Manager', approver: 'manager', mode: 'any' }], approvers: 'Manager', version: 1, updatedBy: 'Lakshmi', updatedAt: '2026-11-12T10:00:00Z' },
-    { key: 'expense.claim', label: 'Expense claim', steps: null, approvers: 'Built in (the module decides)', version: 0, updatedBy: null, updatedAt: null },
+    { key: 'expense.claim', label: 'Expense claim', steps: null, approvers: 'Manager; then the cost-centre owner above the set amount', version: 0, updatedBy: null, updatedAt: null },
   ],
 };
 const REGISTRY = {
@@ -66,7 +66,8 @@ describe('Settings › Approvals (2.4)', () => {
     wrap(<YxPeopleSettingsPage />);
     const table = await screen.findByRole('table');
     expect(within(table).getByText('Leave')).toBeInTheDocument();
-    expect(within(table).getAllByText('Built in').length).toBeGreaterThan(0);
+    expect(within(table).getAllByText('As built in').length).toBeGreaterThan(0);
+    expect(within(table).getByText(/cost-centre owner above/)).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: /remind the approver after/ })).toBeInTheDocument();
   });
 

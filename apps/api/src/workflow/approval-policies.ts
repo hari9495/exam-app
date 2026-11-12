@@ -62,6 +62,36 @@ export function toStepSpec(s: PolicyStep, remindHours: number, escalateHours: nu
 
 const APPROVER_WORDS: Record<PolicyApprover, string> = { manager: 'Manager', manager_2: "Manager's manager", hr: 'HR Admins' };
 
+/** Answer 1764: each module's built-in steps in plain words (kept in step with the module's own submit). */
+export const BUILT_IN_WORDS: Record<string, string> = {
+  'leave.request': 'Manager; HR too when the leave is longer than its leave type allows without HR',
+  'leave.cancel': 'Manager',
+  'leave.comp_off': 'Manager',
+  'attendance.regularise': "Manager; HR too once the month's fixes are used up",
+  'attendance.wfh': "Manager; HR too once the month's work-from-home days are used up",
+  'attendance.on_duty': 'Manager',
+  'time.overtime': 'Manager, when the overtime rule asks for approval',
+  'time.overtime_plan': 'Manager',
+  'time.shift_swap': 'The colleague agrees, then the manager',
+  'time.timesheet': "The project's managers (all of them), or the manager when it has none",
+  'expense.claim': "Manager; then the cost-centre owner above the company's amount, the manager's manager when a line is over its limit, and a finance check when the company asks for one",
+  'expense.trip': 'Manager; then the travel desk when a booking is needed',
+  'expense.advance': 'Manager, then Finance',
+};
+
+/**
+ * Answer 1765: the company's reminder and escalation hours on a people request's built-in steps too. Every step is
+ * reminded at the company's hours; a manager's step (or one the module already times out) escalates at the company's
+ * hours, to the approver's manager unless the module says otherwise. A step for named people only, such as a colleague
+ * agreeing to a swap, is not escalated past them.
+ */
+export function withCompanyHours(steps: StepSpec[], remindHours: number, escalateHours: number): StepSpec[] {
+  return steps.map((s) => {
+    const escalates = s.timeoutHours !== undefined || s.approvers.some((a) => a.kind === 'manager');
+    return { ...s, remindAfterHours: remindHours, ...(escalates ? { timeoutHours: escalateHours, onTimeout: s.onTimeout ?? 'escalate' } : {}) };
+  });
+}
+
 /**
  * The company's approval policies (answer 1330), on the shared approvals engine: for each listed request type, its own
  * steps, or the module's built-in ones. Changes apply to new requests only (a request keeps the route it was sent with).
@@ -73,6 +103,13 @@ export class ApprovalPolicies {
   private async hours(tx: Tx, c: CompanyContext) {
     const n = async (k: string) => Number(await settingFor(tx, c, k as keyof typeof SETTINGS & string, { legalEntityId: '' }));
     return { remind: await n(REMIND_KEY), escalate: await n(ESCALATE_KEY) };
+  }
+
+  /** A people request's built-in steps with the company's hours (answer 1765); any other request's steps unchanged. */
+  async builtIn(tx: Tx, c: CompanyContext, type: string, steps: StepSpec[]): Promise<StepSpec[]> {
+    if (!TYPE_KEYS.has(type) || !steps.length) return steps;
+    const h = await this.hours(tx, c);
+    return withCompanyHours(steps, h.remind, h.escalate);
   }
 
   /** The steps to use for this request type at this company, or null for the module's built-in steps. */
@@ -101,7 +138,7 @@ export class ApprovalPolicies {
             key: t.key,
             label: t.label,
             steps,
-            approvers: steps ? steps.map((s) => APPROVER_WORDS[s.approver]).join(' → ') : 'Built in (the module decides)',
+            approvers: steps ? steps.map((s) => APPROVER_WORDS[s.approver]).join(' → ') : BUILT_IN_WORDS[t.key]!,
             version: r?.version ?? 0,
             updatedBy: by ? by.name?.trim() || by.email : null,
             updatedAt: r?.updatedAt.toISOString() ?? null,

@@ -392,7 +392,9 @@ export class ApprovalsEngine {
     // Settings S-6 (answer 1330): the company's own steps for this request type, when it set them (a request the module
     // decides at once, with no steps, stays that way).
     const own = input.steps.length && this.policies ? await this.policies.stepsFor(tx, ctx, input.type) : null;
-    for (const s of own ?? input.steps) {
+    // Answer 1765: built-in steps of a people request take the company's reminder and escalation hours too.
+    const builtIn = own || !this.policies ? input.steps : await this.policies.builtIn(tx, ctx, input.type, input.steps);
+    for (const s of own ?? builtIn) {
       const skip = s.skipIf ? evaluate(s.skipIf, input.payload, input.payloadFields).pass : false;
       let ids = await this.active(tx, org, (await Promise.all(s.approvers.map((a) => this.resolve(tx, org, a, input)))).flat());
       const self = s.selfApproval === 'allowed';

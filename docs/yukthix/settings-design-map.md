@@ -96,9 +96,9 @@ Cross-checked with the area maps: `hiring-design-map.md` (6.1, 6.2 and the group
 | /yx/settings/staffing | `SettingsPageScreen` 6.2 (designed) | `GET/PUT staffing/settings`, invoice series | 6.2 |
 | /yx/settings/visitors | `SettingsPageScreen` 3.12 (designed) | `GET/PUT visitors/settings`, visitor types | 3.12 |
 | /yx/settings/contract-labour | `SettingsPageScreen` 4.9 (designed) | `GET/PUT contract-labour/settings`, registrations | 4.9 |
-| /yx/settings/company-rules | `CompanySettingsScreen` organisation | `GET/PUT/DELETE org/settings` | keys of 1.5, 2.5, 2.6, 2.9, 3.1, 3.3, 5.7, 8.6 |
-| /yx/settings/access-settings | `CompanySettingsScreen` access | same, plus `people/privacy-erasure` | keys of 2.1, 2.2, 2.10 |
-| /yx/settings/payroll-rules | `CompanySettingsScreen` payroll | same | keys of 4.6 (and statutory bonus) |
+| /yx/settings/company-rules | retired in S-7: redirects to /yx/settings | none | its settings are on 1.1, 1.5, 1.6, 2.5, 2.6, 2.7, 2.9, 3.1, 3.3, 5.7 and 8.6 |
+| /yx/settings/access-settings | retired in S-7: redirects to /yx/settings/people/directory-and-privacy | none | its settings are on 2.1, 2.2, 2.3 and 2.10; the erasure dry run is on 2.2 |
+| /yx/settings/payroll-rules | retired in S-7: redirects to /yx/settings/payroll/loans-and-advances | none | its settings are on 4.6 |
 | /yx/settings/legal-entities, /locations, /structure | `LegalEntitiesScreen`, `LocationsScreen`, `StructureScreen` | `org/legal-entities`, `org/locations`, `org/masters` | 1.2, 1.3, 1.4 |
 | /yx/settings/countries, /translations, /yx/me/language | `CountryGuideScreen`, `TranslationsScreen`, `MyLanguageScreen` | `global/…` | part of 1.1 |
 | /yx/settings/setup-hub | `SetupHubScreen` | `help/setup-hub` | 1.6 |
@@ -243,15 +243,15 @@ File: `packages/yx-ui/src/screens/org/org.stories.tsx`.
 | Structure · Structure | live | /yx/settings/structure, `StructureScreen`, `org/masters/:kind` |
 | StructureWithPay · Structure With Pay | live | same page with `pay` (changed with `pay.range.manage`), `org/grades/:id/pay-ranges` |
 | NoAccess · No Access | live | `loadState` turns a 403 into the no-access state (`apps/web/lib/yx-org`) |
-| CompanyRules · Company Rules | live | /yx/settings/company-rules, `CompanySettingsPage section="organisation"` (`apps/web/lib/yx-settings-page.tsx`), `GET/PUT/DELETE org/settings` |
+| CompanyRules · Company Rules | live | retired in S-7 (answer 1321): /yx/settings/company-rules redirects to /yx/settings; every setting has one home on a drawn page (question 1781) |
 | CompanyRulesBringOnDayOne · Company rules · joining day · what to bring (text) | live | same page, `joining.bring_on_day_one` (a text setting) |
-| AccessAndPrivacy · Access And Privacy | live | /yx/settings/access-settings, `CompanySettingsPage section="access"` |
+| AccessAndPrivacy · Access And Privacy | live | retired in S-7 (answer 1321): /yx/settings/access-settings redirects to 2.2 Directory & privacy (question 1781) |
 | AccessAndPrivacyErasureDryRun · Access and privacy · Special data erasure · dry run (off), whose data | live | same page; `GET people/privacy-erasure` for org.settings.manage |
 | AccessAndPrivacyErasureOn · Access and privacy · Special data erasure · on, no one due, last run | live | same |
 | AccessAndPrivacyErasureOnDue · Access and privacy · Special data erasure · on, people due at the next run | live | same |
 | AccessAndPrivacyErasureNoAccess · Access and privacy · Special data erasure · no company-wide settings rights (no card) | live | a 403 on the dry run hides the card |
 | AccessAndPrivacyGuarded · Access And Privacy Guarded | live | `heldGuards` from `access.role.manage`; the API checks the guard key as well |
-| PayrollRules · Payroll Rules | live | /yx/settings/payroll-rules, `CompanySettingsPage section="payroll"` |
+| PayrollRules · Payroll Rules | live | retired in S-7 (answer 1321): /yx/settings/payroll-rules redirects to 4.6 (question 1781) |
 | PayrollRulesLoanTooEarly · Payroll rules · loan interest · pressed too early | live | same page; the setting editor's save errors |
 | PayrollRulesBonusRule · Payroll rules · bonus eligibility rule editor | live | same page; `payroll.bonus.eligibility_rate_on` |
 | PayrollRulesReadOnly · Payroll rules · read only | live | payroll set-up without org.settings.manage only reads it |
@@ -270,17 +270,17 @@ File: `packages/yx-ui/src/screens/settings/settings-g1.stories.tsx`.
 |---|---|---|
 | Overview · Group 1 · Organisation | live | S-1: /yx/settings/<group> renders `SettingsGroupScreen` with `live`: the group's pages the viewer may open, each linking to its live editor; a group with none says no access |
 | OverviewLoading · Group 1 · loading | live | same, loading |
-| P1_1 · 1.1 Company & branding | live (gap) | parts live on other pages: language per entity on /yx/settings/countries (`PUT org/settings` `people.language`), company words on /yx/settings/translations, email logo and wording on /yx/settings/emails (`EmailBranding`); company name, logo and colour only on the older /v2 Branding page (`organizations/branding`); white-label is staff-only (`brand.white_label`, console); custom domain and data region not built (searched `custom.?domain|data.?region` in apps/api/src: none) |
-| P1_1_ReadOnly · 1.1 Company & branding · read-only | live (gap) | read-only: Countries and Translations take `canManage` (org.settings.manage) |
+| P1_1 · 1.1 Company & branding | live (gap) | S-7 (answer 1321): /yx/settings/org/company-and-branding: the normal working week (different for entity or location) and the people language; still elsewhere: language per entity on /yx/settings/countries, company words on /yx/settings/translations, email logo and wording on /yx/settings/emails. Gap: logo, colours and company profile fields are not on the page |
+| P1_1_ReadOnly · 1.1 Company & branding · read-only | live (gap) | View only without HR's settings key (org.settings.manage) |
 | P1_2 · 1.2 Legal entities | live (gap) | /yx/settings/legal-entities renders `LegalEntitiesScreen` (drawn under Settings/Organisation; `org/legal-entities…`, `…/statutory`); this settings-map version is not rendered: a second design of the same page |
 | P1_2_ReadOnly · 1.2 Legal entities · read-only | live (gap) | read-only: `canManage` = org.settings.manage |
 | P1_3 · 1.3 Locations | live (gap) | /yx/settings/locations renders `LocationsScreen` (`org/locations`); geofence and networks on /yx/time/setup/locations (`GeofenceEditorScreen`, `time/setup/locations/:id/points`, `…/networks`); this settings-map version is not rendered |
 | P1_3_ReadOnly · 1.3 Locations · read-only | live (gap) | read-only: `canManage` = org.settings.manage |
 | P1_4 · 1.4 Structure masters | live (gap) | /yx/settings/structure renders `StructureScreen` (`org/masters/:kind`, grade pay ranges); this settings-map version is not rendered |
 | P1_4_ReadOnly · 1.4 Structure masters · read-only | live (gap) | read-only: `canManage`; pay ranges by `pay.range.manage` |
-| P1_5 · 1.5 Employee records | live (gap) | custom fields on /yx/settings/custom-fields (`EmployeeFieldsScreen`); the employee-code rule (`employee_code.scope`) on Legal entities; required personal details on Company rules; the "Employments and bank accounts" section: unsure, no page found for it |
-| P1_5_ReadOnly · 1.5 Employee records · read-only | live (gap) | read-only: Custom fields takes `canManage` |
-| P1_6 · 1.6 Set-up hub | live (gap) | /yx/settings/setup-hub renders `SetupHubScreen` (`GET help/setup-hub`, Help H-6); the Go-live section is left out (help map question 1011) |
+| P1_5 · 1.5 Employee records | live (gap) | S-7 (answer 1321): /yx/settings/org/employee-records: required personal details and the work-permit reminder; custom fields stay on /yx/settings/custom-fields, the employee-code rule on Legal entities |
+| P1_5_ReadOnly · 1.5 Employee records · read-only | live (gap) | View only without HR's settings key |
+| P1_6 · 1.6 Set-up hub | live (gap) | /yx/settings/setup-hub renders `SetupHubScreen` (`GET help/setup-hub`, Help H-6; the Go-live section is left out, help map question 1011); S-7 (answer 1321): its two switches on /yx/settings/org/set-up-hub |
 | P1_6_ReadOnly · 1.6 Set-up hub · read-only | live (gap) | read-only: unsure (the page passes no manage flag; the menu shows it to settings admins only) |
 | P1_7 · 1.7 Customisation | design only, feature not built | builders (PLT-22 to PLT-25), promotion and starter library: searched `customis|form.?builder|field.?builder` in apps/api/src: none. Custom fields (1.5) is the only builder that is live |
 | P1_7_ReadOnly · 1.7 Customisation · read-only | design only, feature not built | as the page |
@@ -295,24 +295,24 @@ File: `packages/yx-ui/src/screens/settings/settings-g2.stories.tsx`.
 |---|---|---|
 | Overview · Group 2 · People & Access | live | S-1: /yx/settings/<group> renders `SettingsGroupScreen` with `live`: the group's pages the viewer may open, each linking to its live editor; a group with none says no access |
 | OverviewLoading · Group 2 · loading | live | same, loading |
-| P2_1 · 2.1 Roles & access | live (gap) | /yx/settings/access renders `RolesAccessScreen` (`access` API); Manager access and Special permissions are on /yx/settings/access-settings (`CompanySettingsScreen`, section access) |
+| P2_1 · 2.1 Roles & access | live (gap) | /yx/settings/access renders `RolesAccessScreen` (`access` API); S-7 (answer 1321): access requests and the special-permission confirmation on /yx/settings/people/roles-and-access |
 | P2_1_ReadOnly · 2.1 Roles & access · read-only | live (gap) | read-only: unsure; Roles & access is in the menu only for `access.role.manage` |
-| P2_2 · 2.2 Directory & privacy | live (gap) | privacy (who accessed my data, retention, erasure) and Home page (net pay) are on /yx/settings/access-settings; directory visibility, transparency, external logins and privacy notices: searched `directory.?privacy` in apps/api/src: none |
+| P2_2 · 2.2 Directory & privacy | live (gap) | S-7 (answer 1321): /yx/settings/people/directory-and-privacy: manager access, team pay access, who accessed my data, retention, special-data erasure (with the erasure dry run) and net pay on Home. Gap: directory visibility, transparency, external logins and privacy notices are not built |
 | P2_2_ReadOnly · 2.2 Directory & privacy · read-only | live (gap) | read-only: `canManage` = org.settings.manage |
-| P2_3 · 2.3 Security | live (gap) | /yx/settings/security renders `SecuritySettingsScreen` (`security/policy`), plus /yx/settings/identity-providers (`security/identity-providers`) and /yx/settings/support-access (`SupportAccessScreen`); this settings-map version is not rendered: a second design of the same page |
+| P2_3 · 2.3 Security | live (gap) | /yx/settings/security renders `SecuritySettingsScreen` (`security/policy`), plus /yx/settings/identity-providers and /yx/settings/support-access; S-7 (answer 1321): the bank-change cooling hours on /yx/settings/people/security |
 | P2_3_ReadOnly · 2.3 Security · read-only | live (gap) | read-only: unsure; Security is in the menu for admin roles only |
 | P2_4 · 2.4 Approvals | live (gap) | S-6 (answer 1330): /yx/settings/people/approvals: the drawn page with the policies per request type (read-only list from `GET workflow/policies`, the link to the policy editor) and the reminder and escalation hours (company settings, 24 and 48 by default). Gap: the drawn default mode, escalate-to, automatic decisions, out-of-app approval, risk levels, approve-with-changes, duplicate approver and leave delegation fields are not on the page (questions 1761 to 1764) |
 | P2_4_ReadOnly · 2.4 Approvals · read-only | live (gap) | same page read-only for those who read the company settings; the API refuses their changes |
-| P2_5 · 2.5 Onboarding & probation | live (gap) | journey templates on /yx/settings/checklists (`JourneyTemplatesScreen`, `lifecycle/journey-templates`); probation and joining day on Company rules; pre-boarding settings: none found |
-| P2_5_ReadOnly · 2.5 Onboarding & probation · read-only | live (gap) | read-only: unsure (the page passes no manage flag) |
-| P2_6 · 2.6 Job changes & transfers | live (gap) | Job changes and Inter-entity transfer defaults on /yx/settings/company-rules (`employee_change.retro_limit`, `promotion.must_change`, `transfer.*`); change types and deputation: none found |
+| P2_5 · 2.5 Onboarding & probation | live (gap) | S-7 (answer 1321) and 1561: /yx/settings/people/onboarding-and-probation: probation (length, most it may run, review lead days, automatic confirmation) and the joining day (reporting time, what to bring); journey templates stay on /yx/settings/checklists. Gap: pre-boarding settings: none found |
+| P2_5_ReadOnly · 2.5 Onboarding & probation · read-only | live (gap) | View only without HR's settings key |
+| P2_6 · 2.6 Job changes & transfers | live (gap) | S-7 (answer 1321) and 1561: /yx/settings/people/job-changes-and-transfers: back-dated changes, what a promotion must change, the inter-entity transfer defaults and pay ranges. Gap: change types and deputation: none found |
 | P2_6_ReadOnly · 2.6 Job changes & transfers · read-only | live (gap) | read-only: `canManage` = org.settings.manage |
 | P2_7 · 2.7 Exit & lifecycle policies | live (gap) | S-4: /yx/settings/people/exit-and-lifecycle-policies (`PEOPLE_SETTINGS`): the two notice periods (dated: a change applies from today), retirement age and alert, VRS days, the absconding timeline, alumni access and a Rehire section (7 settings), each Starter default until changed; Related: Company rules (fixed-term contracts). Gap: the drawn notice table, buy-out, offboarding templates, clearance departments, sabbatical and death support have no setting yet |
 | P2_7_ReadOnly · 2.7 Exit & lifecycle policies · read-only | live (gap) | read-only: without HR's settings key (org.settings.manage) the page is View only; the audit log length also needs the access key |
 | P2_8 · 2.8 Assets | design only, feature not built | the asset register is live (/yx/people/assets, `lifecycle/assets`), but `Asset.category` is free text and there are no issue or return rules; no API for the drawn categories or rules |
 | P2_8_ReadOnly · 2.8 Assets · read-only | design only, feature not built | as the page |
-| P2_9 · 2.9 Employee relations & cases | live (gap) | Speak-up on Company rules (`speakup.*`, `cases.reply_days`, `cases.disciplinary.reply_days`) and /yx/desk/speakup-setup (`SpeakUpSetupScreen`); the Internal Committee (POSH) and retention parts: unsure |
-| P2_9_ReadOnly · 2.9 Employee relations & cases · read-only | live (gap) | read-only: `canManage` on Company rules |
+| P2_9 · 2.9 Employee relations & cases | live (gap) | S-7 (answer 1321) and 1561: /yx/settings/people/employee-relations-and-cases: speak-up, case reply days and the regulated declarations; /yx/desk/speakup-setup links here. Gap: the Internal Committee (POSH) and retention parts: unsure |
+| P2_9_ReadOnly · 2.9 Employee relations & cases · read-only | live (gap) | View only without HR's settings key |
 | P2_10 · 2.10 Audit & data retention | live (gap) | S-4: /yx/settings/people/audit-and-data-retention: how long the audit log is kept (legal minimum 8 years, Companies (Accounts) Rules 2014 r.3(1); the access key too); Related: Access and privacy, where the personal-data retention and erasure still are. Gap: the retention schedule table, data-subject requests (only the service desk's) and the audit log link (no company audit log page in /yx yet) |
 | P2_10_ReadOnly · 2.10 Audit & data retention · read-only | live (gap) | read-only: without HR's settings key (org.settings.manage) the page is View only; the audit log length also needs the access key |
 | P2_11 · 2.11 Partners | design only, feature not built | the partner programme is not built (console map D, YX-06 to YX-08); searched `partner.?link|partner.?firm`: none |
@@ -327,8 +327,8 @@ File: `packages/yx-ui/src/screens/settings/settings-g3.stories.tsx`.
 |---|---|---|
 | Overview · Group 3 · Time & Leave | live | S-1: /yx/settings/<group> renders `SettingsGroupScreen` with `live`: the group's pages the viewer may open, each linking to its live editor; a group with none says no access |
 | OverviewLoading · Group 3 · loading | live | same, loading |
-| P3_1 · 3.1 Attendance modes | live (gap) | the Attendance section of /yx/settings/company-rules (`attendance.mode`, `attendance.missing_punch_effect`, `attendance.factories_act`, dated); this 3.1 page is not rendered |
-| P3_1_ReadOnly · 3.1 Attendance modes · read-only | live (gap) | read-only: `canManage` |
+| P3_1 · 3.1 Attendance modes | live (gap) | S-7 (answer 1321): /yx/settings/time/attendance-modes: the attendance mode, the missing-punch effect and the Factories Act switch (dated, with Applies from; different for location) |
+| P3_1_ReadOnly · 3.1 Attendance modes · read-only | live (gap) | View only without the time settings key |
 | P3_2 · 3.2 Check-in & devices | live (gap) | S-2: /yx/settings/time/check-in-and-devices renders this page (`SettingsPageScreen` with `live`, `timeSettingsPage`): check-in opening, phone binding, the kiosk sign-in ways, training check-in and PIN tries, and a Field staff tracking section (4 settings), each marked Starter default until changed; links to Locations & geofences and Devices. Gap: drawn methods, offline age, face check-in fields have no setting yet |
 | P3_2_ReadOnly · 3.2 Check-in & devices · read-only | live (gap) | read-only: without HR's settings key (org.settings.manage) the page is View only; a guarded setting (phone binding, kiosk PIN tries) also needs the access key |
 | P3_3 · 3.3 Shifts & patterns | live (gap) | S-2: /yx/settings/time/shifts-and-patterns: the working-hour limits (with the legal maximums from IN.SETTINGS.LIMITS: 9 h a day, 48 h a week, 10.5 h spread-over, Factories Act 1948), least rest, overtime pre-approval, call-out minimum, roster notice and open shifts; links to the shift editor and the roster. Gap: breaks, grace, OT rate and rounding fields stay on Shifts set-up |
@@ -371,8 +371,8 @@ File: `packages/yx-ui/src/screens/settings/settings-g4.stories.tsx`.
 | P4_4_ReadOnly · 4.4 Payslip layout · read-only | live (gap) | read-only: payroll set-up (payroll.setup.manage) reads it, View only (payroll never changes policy, MT-PAY-B-07); HR's settings key changes it, through a second person |
 | P4_5 · 4.5 Tax | live (gap) | S-3: /yx/settings/payroll/tax: the regime choice deadline and the proof window (dates read "31 May"). Gap: default regime, declaration window, joiner days, landlord PAN and reminders have no setting yet |
 | P4_5_ReadOnly · 4.5 Tax · read-only | live (gap) | read-only: payroll set-up (payroll.setup.manage) reads it, View only (payroll never changes policy, MT-PAY-B-07); HR's settings key changes it, through a second person |
-| P4_6 · 4.6 Loans & advances | live (gap) | the Loans section of /yx/settings/payroll-rules (`payroll.loan.*`) and /yx/payroll/loans (`LoansScreen`); pre-closure and pause rules: unsure |
-| P4_6_ReadOnly · 4.6 Loans & advances · read-only | live (gap) | read-only: Payroll rules is read-only for payroll set-up without org.settings.manage |
+| P4_6 · 4.6 Loans & advances | live (gap) | S-7 (answer 1321) and 1521: /yx/settings/payroll/loans-and-advances: statutory bonus (11), loans and advances (4) and payroll reports access; changes wait for a second person while the switch is on; loans themselves on /yx/payroll/loans. Gap: pre-closure and pause rules: unsure |
+| P4_6_ReadOnly · 4.6 Loans & advances · read-only | live (gap) | payroll set-up reads it (View only, no Approve) |
 | P4_7 · 4.7 Statutory set-up | live (gap) | /yx/payroll/statutory (`StatutoryHubScreen`), entity registrations on Legal entities (`PUT org/legal-entities/:id/statutory`), set-by-law values on /yx/payroll/statutory-rules (`RulesBrowserScreen`) |
 | P4_7_ReadOnly · 4.7 Statutory set-up · read-only | live (gap) | read-only: unsure |
 | P4_8 · 4.8 Expenses & travel | live (gap) | /yx/settings/expenses (`PolicyMatrixScreen`); 14 company choices (`expense.finance_audit`, `expense.route.*`, `expense.card.*`, `expense.advance.*`, `expense.gst.capture` and others) have no screen |
@@ -407,8 +407,8 @@ File: `packages/yx-ui/src/screens/settings/settings-g5.stories.tsx`.
 | P5_5_ReadOnly · 5.5 WhatsApp & SMS · read-only | live (gap) | read-only: unsure |
 | P5_6 · 5.6 Announcements | design only, feature not built | searched `announcement` in apps/api/src: none |
 | P5_6_ReadOnly · 5.6 Announcements · read-only | design only, feature not built | as the page |
-| P5_7 · 5.7 Policies | live (gap) | the Company policies section of /yx/settings/company-rules (`policy.*`, `company.industry`) and /yx/desk/policy-admin (`PolicyAdminScreen`) |
-| P5_7_ReadOnly · 5.7 Policies · read-only | live (gap) | read-only: `canManage` on Company rules |
+| P5_7 · 5.7 Policies | live (gap) | S-7 (answer 1321): /yx/settings/documents/policies: acknowledgement days, reminders, re-acknowledgement, typed name, second person to publish, the AI writer and the industry; policies themselves on /yx/desk/policy-admin |
+| P5_7_ReadOnly · 5.7 Policies · read-only | live (gap) | View only without HR's settings key |
 | P5_8 · 5.8 Helpdesk | live (gap) | /yx/desk/setup (`DeskSetupScreen`: queues, catalogue, response times, rules, mail, knowledge-base review) |
 | P5_8_ReadOnly · 5.8 Helpdesk · read-only | live (gap) | read-only: unsure |
 | P5_9 · 5.9 Engage | design only, feature not built | searched `kudos|recognition` in apps/api/src: none; the growth screens (feed, rewards, recognition) are on the not-live list |
@@ -488,8 +488,8 @@ File: `packages/yx-ui/src/screens/settings/settings-g8.stories.tsx`.
 | P8_4_ReadOnly · 8.4 Sandbox · read-only | design only, feature not built | as the page |
 | P8_5 · 8.5 Data export & closure | design only, feature not built | searched `close.?account|tenant.close|whole.?company export` in apps/api/src: none (closing a company is staff-only, in the console) |
 | P8_5_ReadOnly · 8.5 Data export & closure · read-only | design only, feature not built | as the page |
-| P8_6 · 8.6 Analytics, status & tips | live (gap) | the maintenance banner is live (`GET /availability`, console C-5); What's new and tours have company switches on Company rules (`help.whats_new.show`, `help.tours.show`); product analytics and a status page: none |
-| P8_6_ReadOnly · 8.6 Analytics, status & tips · read-only | live (gap) | read-only: `canManage` on Company rules |
+| P8_6 · 8.6 Analytics, status & tips | live (gap) | the maintenance banner is live (`GET /availability`); S-7 (answer 1321): What's new and tours switches on /yx/settings/account/analytics-status-and-tips. Gap: product analytics and status settings are not on the page |
+| P8_6_ReadOnly · 8.6 Analytics, status & tips · read-only | live (gap) | View only without HR's settings key |
 
 ## 5. What can be reused, and what is missing
 
@@ -870,6 +870,51 @@ approver for payroll settings; approval policies per request type; and the not-b
 1765. **Escalation for built-in steps.** The company's reminder and escalation hours apply to the company's own steps;
       built-in steps keep their module's timing (leave: reminder 24, escalation 72). *Suggested: apply the company hours
       to every people request type's built-in steps too.*
+
+## S-7 as built (answers 1321, 1484, 1521, 1561, 1562, 1564, 1764, 1765; branch `feat/yukthix-settings-s7`)
+
+- **The three old pages retired (1321):** Company rules, Access and privacy and Payroll rules are gone from the menu;
+  their addresses redirect (company-rules to Settings, access-settings to 2.2, payroll-rules to 4.6), so bookmarks
+  still work. Every one of their settings has exactly one home on a drawn page: 1.1 Company & branding, 1.5 Employee
+  records, 1.6 Set-up hub, 2.1, 2.2, 2.3, 2.5, 2.6, 2.7 (fixed-term contracts), 2.9, 2.10 (Not found references), 3.1
+  Attendance modes, 3.3 (flexi and split shifts), 4.6, 5.7 Policies and 8.6 Help and tips. New front doors:
+  /yx/settings/org/*, /yx/settings/documents/policies, /yx/settings/account/analytics-status-and-tips.
+- **Different for (1484):** on every registry page, "Apply changes to" lists the company and each entity, location,
+  department, employment type and grade the setting may differ by (from the registry's scopes); a value of its own can
+  be set for one place, saved as `PUT org/settings` with that scope. Storage is unchanged, so values set before the move
+  read the same after.
+- **Applies from (1562):** a changed dated setting shows an "Applies from" date (today by default, never earlier).
+- **People pages (1561, 1564):** 2.5 Onboarding & probation, 2.6 Job changes & transfers and 2.9 Employee relations &
+  cases are live; the retirement age may differ by grade or employment type (2.7), and the VRS estimate now reads it by
+  grade too, as the retirement sweep already did.
+- **Payroll rules on 4.6 (1521):** the 11 statutory bonus settings, the 4 loan settings and payroll reports access are
+  on 4.6 and wait for a second person while "Payroll setting changes need a second person" is on.
+- **Built-in steps in words (1764):** 2.4 and the policy editor describe each module's built-in steps (for example
+  "Manager; HR too when the leave is longer than its leave type allows without HR").
+- **Company hours on built-in steps (1765):** the 13 people requests on built-in steps are reminded at
+  `approval.remind_hours`; a manager's step (or one the module already times out) escalates at
+  `approval.escalate_hours`. A step for named people only (a colleague agreeing to a swap) is reminded, not escalated.
+  Payroll, pay, equity and hiring routes keep their module hours.
+- **Tests:** API e2e `settings-s7-moves` (6: a per-entity value reads the same before and after a company change; a
+  setting that may not differ by entity refused; retirement age per grade, the exit notice months refused per grade;
+  a loan limit waits, the requester cannot approve, another HR person does; a bonus setting waits, with the switch off
+  reports access saves at once) and `settings-s6-approvals` (+2: a leave request on built-in steps reminds at 4 hours
+  and escalates at 24, the company hours; a named-people step is not escalated; a type outside the 13 keeps 24 hours).
+  Kit: `settings-different-for.test` (one home per old setting, payroll keys only on 4.6, Different for, Applies from),
+  `policy-editor-live.test`. Web: `yx-settings-s7.test` (the new pages, View only, 4.6 Send for approval),
+  `yx-org-pages.test` (the three redirects), `yx-nav.test`, `yx-settings-home.test`, `yx-settings-people.test`.
+
+### Questions (from 1781)
+
+1781. **The three retired stories.** The CompanyRules, AccessAndPrivacy and PayrollRules stories and
+      `CompanySettingsScreen` are no longer used by any page. *Suggested: delete them in the next kit clean-up.*
+1782. **Escalating a step for named people.** A built-in step that names people (a colleague's consent, the travel
+      desk, finance) is reminded at the company hours but not escalated, since escalation would let someone else decide
+      for them. *Suggested: keep.*
+1783. **Applies from in the past.** Applies from cannot be earlier than today (a back-dated rule would change past
+      pay or leave). *Suggested: keep; a back-dated change stays a System Admin correction.*
+1784. **Different for by department.** Departments are offered only where the registry allows them (none of the moved
+      settings do). *Suggested: add department where a customer asks.*
 
 ## 7. Build plan (slices, max 3 builders at once)
 
