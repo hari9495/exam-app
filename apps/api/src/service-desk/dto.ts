@@ -623,6 +623,11 @@ export class RaiseTicketDto {
   @Text(1, 200)
   originQuery?: string;
 
+  /** Answer 1662: "Which device?" on an IT desk: one of the devices assigned to the person (checked in the service). */
+  @IsOptional()
+  @IsUUID()
+  assetId?: string;
+
   /** SD-2.25: the language the person writes in (ISO 639, e.g. hi, ta); routing prefers agents who speak it. */
   @IsOptional()
   @Matches(/^[a-z]{2,3}$/, { message: 'Use a language code such as en, hi or ta.' })
@@ -1499,4 +1504,11 @@ export class ComplianceTargetsDto {
   @ValidateNested({ each: true })
   @Type(() => ComplianceTargetDto)
   targets!: ComplianceTargetDto[];
+}
+
+/** Answer 1661: the device an IT ticket is about; null clears it. */
+export class TicketDeviceDto {
+  @ValidateIf((_, v) => v !== null)
+  @IsUUID()
+  assetId!: string | null;
 }

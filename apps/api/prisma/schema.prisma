@@ -3966,6 +3966,8 @@ model SdTicket {
   /// Answer 1647: the help article the person was reading when they raised it, or the search they made.
   originArticleId      String?                  @map("origin_article_id") @db.Uuid
   originQuery          String?                  @map("origin_query") @db.VarChar(200)
+  /// Answers 1661, 1662: the device (People asset register) an IT desk ticket is about.
+  assetId              String?                  @map("asset_id") @db.Uuid
   contentRemovedAt     DateTime?                @map("content_removed_at") @db.Timestamptz(3)
   /// SD-2.10: the site set-up used (requester's location).
   branchId             String?                  @map("branch_id") @db.Uuid

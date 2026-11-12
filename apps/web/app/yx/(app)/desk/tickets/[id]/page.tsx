@@ -152,6 +152,10 @@ export default function YxDeskTicketPage() {
         },
         onOpenTicket: open,
         onFindArticle: (q) => apiFetch(`/desk${path}/kb?q=${encodeURIComponent(q)}`, {}, token) as Promise<ArticleOption[]>,
+        onPickDevice: (q) => apiFetch(`/desk/pick/assets?deskId=${encodeURIComponent(deskId ?? '')}&q=${encodeURIComponent(q)}`, {}, token) as Promise<PickOption[]>,
+        onSetDevice: async (assetId) => {
+          await write(`${path}/device`, 'PUT', { assetId });
+        },
         onArticleInserted: (articleId) => void write(`${path}/kb-links`, 'POST', { articleId, kind: 'linked' }).catch(() => undefined),
         onResolveClick: () => setResolving(true),
         onEscalateClick: () => setEscalating(true),

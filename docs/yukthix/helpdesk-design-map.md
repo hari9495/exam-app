@@ -217,6 +217,7 @@ chat offer and WhatsApp / SMS help, no access).
 | ChatAndPhone · Chat offer and help on WhatsApp or SMS | live | new story: the page's chat offer when an agent is online (`GET desk/my/chat/prompt`) and the WhatsApp / SMS card (`GET desk/my/messaging`, link my phone with a join code, unlink) |
 | RateWithReason · Resolved ticket · rate with a reason | live | Answer 1643: after the stars, an optional "The main reason" Select from the desk's own list (`ratingReasons` on the ticket row); `POST desk/my/tickets/:id/rating {score, reason}` (a reason not on the desk's list is refused); the same on the ticket page and the customer portal; the agent's ticket shows "rated 2 of 5 (Slow)" |
 | ClosedNow · Raise ticket · the team is closed now | live | Answer 1646: outside the desk's calendar `GET desk/my/desks` gives `closed {message, opensAt}`; the raise form shows the desk's message with {opens} as the next opening time (the next working start, skipping nights, weekends and holidays); the ticket can still be raised and is marked raised outside hours |
+| RaiseWhichDevice · Raise ticket · which device? (IT desk) | live | Answer 1662: `GET desk/my/desks` gives `askDevice` (an IT desk and the person holds a device); the optional "Which device?" uses the catalogue's device picker (`GET desk/my/pick/assets`: only their own devices); `POST desk/my/tickets {assetId}` refuses a device not assigned to the person it is for, and any device on a non-IT desk |
 | NoAccess · No access (acting for someone else) | live | the API refuses (403) anyone acting for someone else; the page shows the kit's no-access state |
 
 #### HLP-02 · Agent desk
@@ -277,6 +278,7 @@ follow-ups, articles, related tickets and the rest of the work rail) sit in the 
 | ResolveWithCode · Resolve · code and note | live | new story: the resolve dialog |
 | ResolvedRated · Resolved · closes on, the rating | live | new story |
 | OutsideHours · Raised outside hours | live | Answer 1646: `sd_tickets.raised_outside_hours`, set when the ticket is made while the desk's calendar is closed (any channel); a neutral badge beside the flags |
+| Device · IT ticket · device set by an IT agent | live | Answer 1661: Details card, Device: an IT desk's agent searches any live company device (`GET desk/pick/assets`, tag, name or serial) and sets or clears it (`PUT desk/tickets/:id/device`, audited, a timeline event, toast); others see it read only; agents of other desks are refused (403) |
 | Collaborator · Collaborator · notes only | live | new story: no Reply tab, no work controls (the server refuses a collaborator's reply, e2e) |
 | ReadOnly · Desk admin · read only | live | new story: "Read-only: you set this desk up"; no Respond card (the server refuses their notes) |
 | SenderUnverified · Email from an unproven sender, customer | live | new story: the warning; customer, plan and product in the rail |

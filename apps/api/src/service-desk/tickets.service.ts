@@ -9,6 +9,7 @@ import { Route, isAvailable, needWords, onLeaveNow, routeAgent } from './assignm
 import { cleanHtml, htmlToText } from './rich-text';
 import { PiiFound, maskPii, maskPiiHtml, unmaskHealth } from './pii';
 import { SlaService } from './sla.service';
+import { assetOption, liveAsset } from './asset-pick';
 import { MailOutService } from './mail-out.service';
 import { contactAccount, planFor, planUsedUp } from './customers.service';
 import { Transition, checkMove } from './lifecycle';
@@ -100,6 +101,8 @@ export interface CreateInput {
   /** Answer 1647: raised from a help article (its id) or a knowledge search (the words). */
   originArticleId?: string;
   originQuery?: string;
+  /** Answer 1662: the device it is about (checked by the caller). */
+  assetId?: string;
 }
 
 interface Notice {
@@ -211,6 +214,7 @@ export class TicketsService {
         channel: input.channel,
         raisedOutsideHours: Boolean(await this.sla.closedNow(tx, org, desk)),
         originArticleId: input.originArticleId ?? null,
+        assetId: input.assetId ?? null,
         originQuery: input.originQuery?.trim() || null,
         sensitive: Boolean(cat?.sensitive),
         // SD-2.09 (M08): some categories make every ticket in them private.
@@ -530,7 +534,11 @@ export class TicketsService {
       ]);
       // HLP-03 resolved state: when a solved ticket closes by itself (the desk's setting) and the requester's rating.
       const rating = ['solved', 'closed'].includes(t.systemState) ? await tx.sdRating.findFirst({ where: { organizationId: org, ticketId: t.id }, select: { score: true, reason: true } }) : null;
+      // Answers 1661, 1662: the device it is about; only an IT desk's agents set or change it.
+      const device = t.assetId ? await tx.asset.findFirst({ where: { organizationId: org, id: t.assetId }, select: { id: true, name: true, tag: true, category: true } }) : null;
       return {
+        device: device ? assetOption(device) : null,
+        canSetDevice: desk.kind === 'it' && access === 'agent' && canWork(a, t.deskId),
         ...this.summary(t),
         closesOn: t.systemState === 'solved' && t.resolvedAt && desk.autoCloseDays ? new Date(t.resolvedAt.getTime() + desk.autoCloseDays * 86_400_000) : null,
         rating: rating?.score ?? null,
@@ -921,6 +929,25 @@ export class TicketsService {
     const last = await tx.sdTicketEvent.findFirst({ where: { organizationId: a.ctx.organizationId, ticketId: t.id, byUserId: { not: null } }, orderBy: { at: 'desc' }, select: { byUserId: true } });
     const by = last?.byUserId ? (await this.userNames(tx, a.ctx.organizationId, [last.byUserId])).get(last.byUserId) : null;
     throw new ConflictException({ statusCode: 409, code: 'TICKET_CHANGED', message: `${by ?? 'Someone'} changed this ticket. Reload to see the latest.` });
+  }
+
+  /** Answer 1661: an IT desk's agent sets or clears the device a ticket is about (any live company device). */
+  async setDevice(a: DeskActor, id: string, assetId: string | null) {
+    return this.tx(a, async (tx) => {
+      const org = a.ctx.organizationId;
+      const { t, access } = await this.load(tx, a, id);
+      if (access !== 'agent') throw new ForbiddenException(SEAT_REQUIRED);
+      requireWork(a, t.deskId);
+      const desk = await tx.sdDesk.findFirstOrThrow({ where: { organizationId: org, id: t.deskId }, select: { kind: true } });
+      if (desk.kind !== 'it') throw new ForbiddenException("Only the IT desk's agents set a ticket's device.");
+      const asset = assetId ? await liveAsset(tx, org, assetId) : null;
+      if (assetId && !asset) throw new BadRequestException('Choose a device from the list.');
+      if ((t.assetId ?? null) === (assetId ?? null)) return { device: asset ? assetOption(asset) : null };
+      await tx.sdTicket.update({ where: { id: t.id }, data: { assetId: assetId ?? null, version: { increment: 1 } } });
+      await tx.sdTicketEvent.create({ data: { organizationId: org, deskId: t.deskId, ticketId: t.id, kind: 'device_changed', fromValue: t.assetId, toValue: assetId ?? null, byUserId: a.userId } });
+      await audit(tx, a, 'desk.ticket.device_set', 'sd_ticket', t.id, { from: t.assetId, to: assetId ?? null });
+      return { device: asset ? assetOption(asset) : null };
+    });
   }
 
   async convert(a: DeskActor, id: string, dto: ConvertDto) {

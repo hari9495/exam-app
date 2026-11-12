@@ -9,6 +9,7 @@ import { cleanHtml, htmlToText, textToHtml } from './rich-text';
 import { DeskActor, audit, companyOf, emit } from './desk-access';
 import { RaiseTicketDto, RequesterReplyDto, WatcherDto } from './dto';
 import { Ticket, TicketsService } from './tickets.service';
+import { assetsOf } from './asset-pick';
 
 // The requester's side (M14 §6.1 implicit role, YX-SD-16): raise, follow, reply and add watchers. No permission key:
 // every route works only on the person's own records (requester, requested-for or watcher) and never returns internal
@@ -107,6 +108,8 @@ export class RequesterService {
       const cats = await tx.sdCategory.findMany({ where: { organizationId: org, deskId: { in: ids }, active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
       const cache = new Map();
       const closed = new Map(await Promise.all(desks.map(async (d) => [d.id, await this.tickets.sla.closedNow(tx, org, d, new Date(), cache)] as const)));
+      const me = desks.some((d) => d.kind === 'it') ? await this.personOf(tx, r, false) : null;
+      const hasDevice = Boolean(me && (await assetsOf(tx, org, me, '')).length);
       return desks.map((d) => ({
         id: d.id,
         name: d.name,
@@ -116,6 +119,8 @@ export class RequesterService {
         types: types.filter((t) => t.deskId === d.id).map((t) => ({ id: t.id, name: t.name })),
         categories: cats.filter((c) => c.deskId === d.id).map((c) => ({ id: c.id, name: c.name, parentId: c.parentId, sensitive: c.sensitive })),
         closed: closed.get(d.id) ?? null,
+        // Answer 1662: an IT desk asks "Which device?" when the person has one assigned.
+        askDevice: d.kind === 'it' && hasDevice,
       }));
     });
   }
@@ -127,6 +132,12 @@ export class RequesterService {
       if (!desk || desk.kind === 'customer_support') throw new NotFoundException('No such desk.');
       const personId = (await this.personOf(tx, r, true))!;
       if (dto.requestedForPersonId) await this.checkOnBehalf(tx, r, dto.requestedForPersonId, personId);
+      // Answer 1662: "Which device?" on an IT desk, one of the devices assigned now to the person it is for.
+      if (dto.assetId) {
+        if (desk.kind !== 'it') throw new BadRequestException('Only IT desk tickets name a device.');
+        const mine = await assetsOf(tx, r.ctx.organizationId, dto.requestedForPersonId ?? personId, '');
+        if (!mine.some((x) => x.id === dto.assetId)) throw new BadRequestException('Choose one of your own devices from the list.');
+      }
       return this.tickets.createIn(tx, r, {
         deskId: dto.deskId,
         typeId: dto.typeId,
@@ -147,6 +158,7 @@ export class RequesterService {
         custom: dto.screen ? { screen: dto.screen } : undefined,
         originArticleId: dto.originArticleId,
         originQuery: dto.originQuery,
+        assetId: dto.assetId,
       });
     });
     return { id: t.id, number: t.number };

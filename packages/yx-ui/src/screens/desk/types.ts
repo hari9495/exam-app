@@ -269,6 +269,9 @@ export interface TicketDetail {
   rating?: number | null;
   /** Answer 1643: the reason the requester picked with the rating. */
   ratingReason?: string | null;
+  /** Answers 1661, 1662: the device it is about, and whether this person may set it (an IT desk's agent). */
+  device?: { id: string; label: string; detail: string | null } | null;
+  canSetDevice?: boolean;
   desk: { id: string; key: string; name: string; audience: 'employee' | 'customer' };
   type: { id: string; name: string } | null;
   status: { id: string; label: string } | null;
@@ -347,6 +350,8 @@ export interface DeskClosed {
 export interface RaiseDesk {
   /** Answer 1646: set while the desk is closed. */
   closed?: DeskClosed | null;
+  /** Answer 1662: an IT desk asks "Which device?" when the person has one assigned. */
+  askDevice?: boolean;
   id: string;
   name: string;
   key: string;
@@ -424,6 +429,8 @@ export interface RaiseInput {
   /** Answer 1647: raised from this help article, or after this knowledge search. */
   originArticleId?: string;
   originQuery?: string;
+  /** Answer 1662: one of the person's own devices (IT desks). */
+  assetId?: string;
 }
 
 // ---- batch 2 (SD-1.09 to SD-1.17) ----

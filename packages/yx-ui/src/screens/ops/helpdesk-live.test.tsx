@@ -112,6 +112,22 @@ describe('HLP-01 Help centre (live)', () => {
     expect(onRaise.mock.calls[0][0]).not.toHaveProperty('originQuery');
   });
 
+  it('1662: an IT desk asks which device (own devices only) and sends it; a desk that does not ask shows no picker', async () => {
+    const onRaise = vi.fn().mockResolvedValue({ id: 'n1', number: 'IT-1009' });
+    const onPickDevice = vi.fn().mockResolvedValue([{ id: 'as1', label: 'Dell Latitude 5440 (KF-LT-0142)', detail: 'Laptop' }, { id: 'as2', label: 'Logitech headset (KF-HS-0077)', detail: 'Accessory' }]);
+    const { unmount } = render(<HelpCentreScreen live={liveHelp({ onRaise, onPickDevice, startRaise: true, desks: [{ ...RAISE_DESKS[0], categories: [], askDevice: true }] })} />);
+    await ue.click(await screen.findByRole('combobox', { name: 'Which device?' }));
+    await ue.click(await screen.findByRole('option', { name: /KF-LT-0142/ }));
+    await ue.type(screen.getByRole('textbox', { name: /Subject/ }), 'Laptop will not charge');
+    await ue.type(screen.getByRole('textbox', { name: /Details/ }), 'Since Monday');
+    await ue.click(screen.getByRole('button', { name: 'Raise ticket' }));
+    await waitFor(() => expect(onRaise).toHaveBeenCalledWith(expect.objectContaining({ deskId: 'd-it', assetId: 'as1' })));
+    unmount();
+    render(<HelpCentreScreen live={liveHelp({ onPickDevice, startRaise: true, desks: [{ ...RAISE_DESKS[0], categories: [], askDevice: false }] })} />);
+    await screen.findByRole('textbox', { name: /Subject/ });
+    expect(screen.queryByRole('combobox', { name: 'Which device?' })).toBeNull();
+  });
+
   it('a refused raise stays in the drawer with the reason', async () => {
     const onRaise = vi.fn().mockRejectedValue(new Error('This desk is closed for new tickets.'));
     render(<HelpCentreScreen live={liveHelp({ onRaise, desks: [RAISE_DESKS[0]] })} />);

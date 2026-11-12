@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Prisma } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { Tx } from '../org-structure/org-structure.service';
+import { assetOption, assetsOf } from './asset-pick';
 import { FieldDef, Group, RecordValues, RuleError, evaluate, parseGroup } from '../rules-engine/conditions';
 import { Answers, EMPTY_FORM, FormDef, FormField, FormRule, REQUESTER_FIELDS, checkAnswers, expandQuestionnaires, formSchema, parseForm, pickedIds, summarise } from '../rules-engine/forms';
 import { ApprovalsEngine, Notice, Outcome, StepSpec, parseSteps } from '../workflow/approvals-engine.service';
@@ -55,21 +56,6 @@ const HIGH_VALUE_DEFAULT = 50_000;
 const rupees = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const like = (q: string) => `%${q.replace(/[\\%_]/g, (c) => '\\' + c)}%`;
 
-/**
- * Helpdesk item 2: the devices assigned now to a person in the People asset register (handed over, not returned), with
- * an optional search by tag or name. RLS keeps it to the company; the person filter keeps it to their own.
- */
-export async function assetsOf(tx: Tx, org: string, personId: string, q: string) {
-  const term = q.trim();
-  const held = (await tx.assetAssignment.findMany({ where: { organizationId: org, personId, returnedOn: null }, select: { assetId: true } })).map((x) => x.assetId);
-  return tx.asset.findMany({
-    where: { organizationId: org, id: { in: held }, ...(term ? { OR: [{ tag: { contains: term, mode: 'insensitive' as const } }, { name: { contains: term, mode: 'insensitive' as const } }] } : {}) },
-    select: { id: true, name: true, tag: true, category: true },
-    orderBy: { name: 'asc' },
-    take: 20,
-  });
-}
-export const assetOption = (x: { id: string; name: string; tag: string; category: string }) => ({ id: x.id, label: `${x.name} (${x.tag})`, detail: x.category });
 
 /** A rule or form problem the admin must fix: 400 with the plain message (sync or async). */
 function plain<T>(fn: () => T): T {

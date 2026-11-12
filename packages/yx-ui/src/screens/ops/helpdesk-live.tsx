@@ -27,6 +27,8 @@ import { PrivacyRequestCard, type PortalScreenProps } from '../desk/portal';
 import { ChatPromptBanner } from '../desk/chat';
 import { MyChannelsCard, type MyChannelsCardProps } from '../desk/esm3';
 import { StatusBadge } from '../desk/desk-kit';
+import { LivePicker } from '../desk/service-form';
+import type { PickOption } from '../desk/esm-types';
 import type { LoadState, MyTicketRow, PublicBanner, RaiseDesk, RaiseInput } from '../desk/types';
 import { Actions, OpsDesk, SlaBadge, Workspace, useSay } from './ops-kit';
 
@@ -60,6 +62,8 @@ export interface LiveHelp {
   startRaise?: boolean;
   /** Phone: the back arrow goes to Me. */
   onBack?: () => void;
+  /** Answer 1662: the person's own devices, for "Which device?" on an IT desk. */
+  onPickDevice?: (q: string) => Promise<PickOption[]>;
 }
 
 const DONE = ['solved', 'closed'];
@@ -120,6 +124,7 @@ export function LiveHelpCentre({ live }: { live: LiveHelp }) {
   const form = (
     <RaiseForm
       desks={live.desks}
+      onPickDevice={live.onPickDevice}
       onSuggest={kb.onSearch}
       onOpenArticle={(a) => openArticle(a.number)}
       onDeflected={(a) => {
@@ -367,6 +372,7 @@ function ResolvedCard({ ticket: t, onRate, onReopen }: { ticket: MyTicketRow; on
 
 interface RaiseFormProps {
   desks: RaiseDesk[];
+  onPickDevice?: (q: string) => Promise<PickOption[]>;
   onSuggest: (q: string) => Promise<KbSuggestion[]>;
   onOpenArticle: (a: KbSuggestion) => void;
   onDeflected: (a: KbSuggestion) => void;
@@ -385,6 +391,7 @@ function RaiseForm(p: RaiseFormProps) {
   const [subject, setSubject] = useState('');
   const [details, setDetails] = useState('');
   const [isPrivate, setPrivate] = useState(false);
+  const [assetId, setAssetId] = useState<string | null>(null);
   const [files, setFiles] = useState<UploadItem[]>([]);
   const [formKey, setFormKey] = useState(0);
   const { busy, error, run } = useRun();
@@ -409,7 +416,7 @@ function RaiseForm(p: RaiseFormProps) {
   const submit = () =>
     !early.stop() &&
     void run('raise', async () => {
-      await p.onRaise({ deskId, categoryId: categoryId || undefined, subject: subject.trim(), description: details.trim(), impact: 3, urgency: 3, private: (isPrivate && !category?.sensitive) || undefined }, files.map((f) => f.file));
+      await p.onRaise({ deskId, categoryId: categoryId || undefined, subject: subject.trim(), description: details.trim(), impact: 3, urgency: 3, private: (isPrivate && !category?.sensitive) || undefined, ...(assetId && desk?.askDevice ? { assetId } : {}) }, files.map((f) => f.file));
       clear();
     });
   const accept = desk?.attachmentTypes.length ? desk.attachmentTypes.map((x) => (x.startsWith('.') ? x : `.${x}`)) : ['.pdf', '.jpg', '.png'];
@@ -442,6 +449,11 @@ function RaiseForm(p: RaiseFormProps) {
             ))}
           </ul>
         </section>
+      )}
+      {desk?.askDevice && p.onPickDevice && (
+        <FormField label="Which device?" optional helper="One of the devices assigned to you, if the problem is with it.">
+          <LivePicker kind="assets" label="Which device?" value={assetId} onChange={setAssetId} onPick={(_k, q) => p.onPickDevice!(q)} />
+        </FormField>
       )}
       <FormField id={fid('details')} label="Details" required helper="Add dates, amounts or screenshots so the team can help faster" error={early.errorOf(fid('details'))}>
         <TextArea value={details} onChange={setDetails} rows={4} maxLength={20000} />

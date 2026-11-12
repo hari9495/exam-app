@@ -26,6 +26,8 @@ import { DeskPage, MessageBody, PriorityBadge, STATE_LABEL, StatusBadge, TicketF
 import { FileList } from '../desk/help';
 import { InsertArticleButton, articleLinkHtml, type ArticleOption } from '../desk/ticket-kb';
 import { ConvertDialog, PeoplePanel, PriorityDialog, RequesterPanel, SourceCard, TagEditor, TimePanel, eventText } from '../desk/ticket';
+import { LivePicker } from '../desk/service-form';
+import type { PickOption } from '../desk/esm-types';
 import type { Attachment, CannedResponse, DeskDetail, LoadState, Person, Presence, RequesterContext, TicketChange, TicketDetail, TicketWork, TimelineEntry } from '../desk/types';
 import { OpsDesk, SlaBadge, Workspace, useSay } from './ops-kit';
 
@@ -64,6 +66,9 @@ export interface LiveTicket {
   onEscalateClick: () => void;
   onFindArticle?: (q: string) => Promise<ArticleOption[]>;
   onArticleInserted?: (articleId: string) => void;
+  /** Answer 1661: an IT agent finds a company device (tag, name or serial) and sets or clears it. */
+  onPickDevice?: (q: string) => Promise<PickOption[]>;
+  onSetDevice?: (assetId: string | null) => Promise<unknown>;
   /** The side cards under the design's rail: related articles, request and approvals, move and share, related tickets… */
   rail?: ReactNode;
   /** The desk's auto-close days, for the resolved note when the server sends no date. */
@@ -350,6 +355,25 @@ export function LiveTicketWorkspace({ live }: { live: LiveTicket }) {
                 <FormField label="Category">
                   {work ? <Select value={t.categoryId} onChange={(v) => update({ categoryId: v })} clearable options={d.categories.filter((c) => c.active).map((c) => ({ value: c.id, label: c.name, description: c.sensitive ? 'Sensitive: agents only' : undefined }))} placeholder="No category" /> : <span>{t.category?.name ?? 'No category'}</span>}
                 </FormField>
+                {(t.device || (t.canSetDevice && live.onSetDevice && live.onPickDevice)) && (
+                  <FormField label="Device" helper={t.canSetDevice ? 'The device this ticket is about, from the asset register.' : undefined}>
+                    {t.canSetDevice && live.onSetDevice && live.onPickDevice ? (
+                      <LivePicker
+                        kind="assets"
+                        label="Device"
+                        value={t.device?.id ?? null}
+                        names={t.device ? { [t.device.id]: t.device.label } : undefined}
+                        onPick={(_k, q) => live.onPickDevice!(q)}
+                        onChange={(v) => void run('device', async () => { await live.onSetDevice!(v); toast({ tone: 'success', title: v ? 'Device saved.' : 'Device cleared.' }); })}
+                      />
+                    ) : (
+                      <span>
+                        {t.device!.label}
+                        {t.device!.detail && <span className="yx-ops-muted"> · {t.device!.detail}</span>}
+                      </span>
+                    )}
+                  </FormField>
+                )}
                 <FormField label="First response">
                   {t.firstResponseAt ? <Badge tone="success">Met</Badge> : response ? <SlaBadge elapsedMin={minutes(response.usedSeconds)} targetMin={minutes(response.targetSeconds)} paused={response.state === 'paused'} atRiskPercent={response.atRiskPercent} /> : <span className="yx-ops-muted">No target</span>}
                 </FormField>

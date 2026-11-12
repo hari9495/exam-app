@@ -276,4 +276,71 @@ describe('Helpdesk small items', () => {
       await gaps('divya').expect(403);
     });
   });
+
+  // ------------------------------------------------------------------------------------------ 1661, 1662 the device
+  describe('1661 and 1662: the device an IT ticket is about', () => {
+    beforeAll(async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      await tenantPrisma.forTenant(asA(), async (tx) => {
+        ids.otherPerson = (await tx.person.create({ data: { organizationId: org.A.id, givenName: 'Other', primaryEmail: `other-${run}@small.test` } })).id;
+        const asset = async (name: string, tag: string, status: string, holder?: string) => {
+          const a = await tx.asset.create({ data: { organizationId: org.A.id, category: 'Laptop', name, tag, status } });
+          if (holder) await tx.assetAssignment.create({ data: { organizationId: org.A.id, assetId: a.id, personId: holder, issuedOn: new Date(`${today}T00:00:00Z`), issueCondition: 'Good' } });
+          return a.id;
+        };
+        ids.myLaptop = await asset('Dell Latitude 5440', `SM-LT-${run}-1`, 'assigned', ids.divyaPerson);
+        ids.otherLaptop = await asset('Lenovo ThinkPad E14', `SM-LT-${run}-2`, 'assigned', ids.otherPerson);
+        ids.retired = await asset('Old HP', `SM-LT-${run}-3`, 'retired');
+      });
+      ids.hr = (await api('adminA', 'post', '/desk/desks').send({ name: 'HR help', key: 'HR', kind: 'hr' }).expect(201)).body.id;
+      await api('adminA', 'post', `/desk/desks/${ids.hr}/members`).send({ userId: users.agent, role: 'agent' }).expect(201);
+      // Back to open hours so these tickets are ordinary ones.
+      await api('deskAdmin', 'patch', `/desk/desks/${ids.desk}`).send({ version: await deskVersion(), calendarId: null }).expect(200);
+    });
+    const raiseOn = (deskId: string, extra: Record<string, unknown> = {}) => api('divya', 'post', '/desk/my/tickets').send({ deskId, subject: `Device ${run}`, description: 'It will not start.', ...extra });
+
+    it('1662: the IT desk asks which device; the person sees and may pick only their own; the agent sees it on the ticket', async () => {
+      const desks = (await api('divya', 'get', '/desk/my/desks').expect(200)).body as { id: string; askDevice: boolean }[];
+      expect(desks.find((d) => d.id === ids.desk)!.askDevice).toBe(true);
+      expect(desks.find((d) => d.id === ids.hr)!.askDevice).toBe(false);
+      expect((await api('divya', 'get', '/desk/my/pick/assets?q=').expect(200)).body.map((x: { id: string }) => x.id)).toEqual([ids.myLaptop]);
+      const id = (await raiseOn(ids.desk, { assetId: ids.myLaptop }).expect(201)).body.id;
+      const view = (await api('agent', 'get', `/desk/tickets/${id}`).expect(200)).body;
+      expect(view).toMatchObject({ device: { id: ids.myLaptop, label: `Dell Latitude 5440 (SM-LT-${run}-1)`, detail: 'Laptop' }, canSetDevice: true });
+      ids.devTicket = id;
+    });
+
+    it('1662 negative: someone else\'s device or a device on a non-IT desk is refused, and nothing is raised', async () => {
+      const n = await tenantPrisma.forTenant(SUPER, (tx) => tx.sdTicket.count({ where: { organizationId: org.A.id } }));
+      expect((await raiseOn(ids.desk, { assetId: ids.otherLaptop }).expect(400)).body.message).toMatch(/your own devices/);
+      expect((await raiseOn(ids.desk, { assetId: randomUUID() }).expect(400)).body.message).toMatch(/your own devices/);
+      expect((await raiseOn(ids.hr, { assetId: ids.myLaptop }).expect(400)).body.message).toMatch(/Only IT desk/);
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.sdTicket.count({ where: { organizationId: org.A.id } }))).toBe(n);
+    });
+
+    it('1661: an IT agent searches any company device, changes and clears it (audited, on the timeline)', async () => {
+      const found = (await api('agent', 'get', `/desk/pick/assets?deskId=${ids.desk}&q=SM-LT-${run}`).expect(200)).body.map((x: { id: string }) => x.id);
+      expect(found.sort()).toEqual([ids.myLaptop, ids.otherLaptop].sort());
+      expect((await api('agent', 'put', `/desk/tickets/${ids.devTicket}/device`).send({ assetId: ids.otherLaptop }).expect(200)).body.device.id).toBe(ids.otherLaptop);
+      expect((await api('agent', 'get', `/desk/tickets/${ids.devTicket}`).expect(200)).body.device.id).toBe(ids.otherLaptop);
+      await api('agent', 'put', `/desk/tickets/${ids.devTicket}/device`).send({ assetId: null }).expect(200);
+      expect((await api('agent', 'get', `/desk/tickets/${ids.devTicket}`).expect(200)).body.device).toBeNull();
+      const audits = await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'desk.ticket.device_set', entityId: ids.devTicket } }));
+      expect(audits).toBe(2);
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.sdTicketEvent.count({ where: { ticketId: ids.devTicket, kind: 'device_changed' } }))).toBe(2);
+    });
+
+    it('1661 negative: a non-IT agent, a retired device, a desk admin without a seat, another company and the employee are all refused', async () => {
+      const hrTicket = (await raiseOn(ids.hr).expect(201)).body.id;
+      expect((await api('agent', 'get', `/desk/tickets/${hrTicket}`).expect(200)).body.canSetDevice).toBe(false);
+      expect((await api('agent', 'put', `/desk/tickets/${hrTicket}/device`).send({ assetId: ids.myLaptop }).expect(403)).body.message).toMatch(/IT desk/);
+      await api('agent', 'get', `/desk/pick/assets?deskId=${ids.hr}&q=`).expect(403);
+      expect((await api('agent', 'put', `/desk/tickets/${ids.devTicket}/device`).send({ assetId: ids.retired }).expect(400)).body.message).toMatch(/from the list/);
+      await api('agent', 'put', `/desk/tickets/${ids.devTicket}/device`).send({ assetId: 'nope' }).expect(400);
+      await api('deskAdmin', 'put', `/desk/tickets/${ids.devTicket}/device`).send({ assetId: ids.myLaptop }).expect(403);
+      expect([403, 404]).toContain((await api('agentB', 'put', `/desk/tickets/${ids.devTicket}/device`).send({ assetId: ids.myLaptop })).status);
+      await api('divya', 'put', `/desk/tickets/${ids.devTicket}/device`).send({ assetId: ids.myLaptop }).expect(403);
+      expect((await api('agent', 'get', `/desk/tickets/${ids.devTicket}`).expect(200)).body.device).toBeNull();
+    });
+  });
 });

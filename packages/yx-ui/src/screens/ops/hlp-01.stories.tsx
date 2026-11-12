@@ -29,4 +29,6 @@ export const ChatAndPhone: S = { name: 'Chat offer and help on WhatsApp or SMS',
 export const RateWithReason: S = { name: 'Resolved ticket · rate with a reason', render: () => <HelpCentreScreen live={liveHelp()} /> };
 // Answer 1646: outside the desk's calendar the raise form says so, with the next opening time (the desk's own words).
 export const ClosedNow: S = { name: 'Raise ticket · the team is closed now', render: () => <HelpCentreScreen live={liveHelp({ startRaise: true, desks: RAISE_DESKS.map((d) => ({ ...d, closed: { message: "We're closed now. We open again {opens}. You can still raise a ticket; we answer it when we open.", opensAt: '2026-10-13T03:30:00Z' } })) })} /> };
+// Answer 1662: a plain IT ticket asks "Which device?" when the person has devices assigned (the catalogue's picker).
+export const RaiseWhichDevice: S = { name: 'Raise ticket · which device? (IT desk)', render: () => <HelpCentreScreen live={liveHelp({ startRaise: true, desks: [{ ...RAISE_DESKS[0], categories: [], askDevice: true }], onPickDevice: async () => [{ id: 'as1', label: 'Dell Latitude 5440 (KF-LT-0142)', detail: 'Laptop' }, { id: 'as2', label: 'Logitech headset (KF-HS-0077)', detail: 'Accessory' }] })} /> };
 export const NoAccess: S = { name: 'No access (acting for someone else)', render: () => <HelpCentreScreen live={liveHelp({ state: 'no-access' })} /> };

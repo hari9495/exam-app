@@ -88,6 +88,22 @@ describe('HLP-03 Ticket workspace (live)', () => {
     expect(screen.queryByText('Raised outside hours')).toBeNull();
   });
 
+  it('1661: an IT agent picks the device and it is saved with a toast; without the right it is read only; no device and no right shows nothing', async () => {
+    const onSetDevice = vi.fn().mockResolvedValue(undefined);
+    const { unmount } = render(<TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, canSetDevice: true, device: null }, onPickDevice: async () => [{ id: 'as1', label: 'Dell Latitude 5440 (KF-LT-0142)', detail: 'Laptop' }, { id: 'as2', label: 'Logitech headset (KF-HS-0077)', detail: 'Accessory' }], onSetDevice })} />);
+    await ue.click(screen.getByRole('combobox', { name: 'Device' }));
+    await ue.click(await screen.findByRole('option', { name: /KF-HS-0077/ }));
+    await waitFor(() => expect(onSetDevice).toHaveBeenCalledWith('as2'));
+    expect((await screen.findAllByText('Device saved.')).length).toBeGreaterThan(0);
+    unmount();
+    const r2 = render(<TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, canSetDevice: false, device: { id: 'as1', label: 'Dell Latitude 5440 (KF-LT-0142)', detail: 'Laptop' } }, onSetDevice })} />);
+    expect(screen.getByText('Dell Latitude 5440 (KF-LT-0142)')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Device' })).toBeNull();
+    r2.unmount();
+    render(<TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, canSetDevice: false, device: null } })} />);
+    expect(screen.queryByText('Device')).toBeNull();
+  });
+
   it('an unproven email sender is warned about; customer and product show', () => {
     render(<TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, senderVerified: false, customer: { account: { id: 'ac1', name: 'Sunrise Retail' }, plan: 'gold' }, product: { id: 'pr1', name: 'Kaveri billing app' } } })} />);
     expect(screen.getByText('We could not prove who sent this email. Do not share private details until you are sure.')).toBeInTheDocument();
