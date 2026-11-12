@@ -2024,3 +2024,4 @@ Draw kit designs for the five live pages that still render stand-ins (service ca
   on the ticket when a reply bounces; customer admins inviting colleagues to the portal. (1644 dropped: desk automation
   rules already call webhooks with ids only.) Order after IT items 1-2: 1603, 1642, 1643, 1646, 1647, 1641, 1650,
   1648, 1649, then items 3-5 of the IT/facilities plan, then 1645.
+- Founder (12 Nov 2026, "ok for all"): 1661 to 1663 approved as suggested. To build: a "Device" field on IT desk tickets, set or changed by IT agents and shown in the ticket details, drawn first (1661); "Which device?" on plain IT tickets when the person has a device assigned (1662).
