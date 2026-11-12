@@ -485,7 +485,13 @@ describe('MFA, step-up and recovery (P12 YX-IAM-01/02/03/11)', () => {
       try {
         const s = await signIn(A().slug, PANEL);
         expect(s.body.mfa).toEqual({ required: true, enrolmentDueAt: expect.any(String) });
-        expect(codeOf(await call('get', '/users/teammates', s).expect(403))).toBe('MFA_REQUIRED');
+        // GET /users needs only org:view, a key the panel role holds (answer 511 took results:view away from it) and not
+        // a sensitive one: the refusal comes from the MFA floor, not a missing permission.
+        expect(codeOf(await call('get', '/users', s).expect(403))).toBe('MFA_REQUIRED');
+        // Control: the same call passes once the company is back to MFA for sensitive roles only.
+        await tenantPrisma.forTenant(SUPER, (tx) => tx.tenantSecurityPolicy.update({ where: { organizationId: A().id }, data: { mfaScope: 'sensitive_roles' } }));
+        invalidateTenantSecurityPolicy(A().id);
+        await call('get', '/users', s).expect(200);
       } finally {
         await tenantPrisma.forTenant(SUPER, (tx) => tx.tenantSecurityPolicy.update({ where: { organizationId: A().id }, data: { mfaScope: 'sensitive_roles' } }));
         invalidateTenantSecurityPolicy(A().id);
