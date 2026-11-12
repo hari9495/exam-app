@@ -191,15 +191,21 @@ describe('Console C-5: company wizard and planned maintenance', () => {
     expect((await schedule(firstOfNext).expect(400)).body.message).toMatch(/payroll-critical/);
     const fifteenth = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 15, 1) - 330 * 60_000);
     expect((await schedule(fifteenth).expect(400)).body.message).toMatch(/15th is a statutory due date/);
-    await api('staff', 'put', '/platform/maintenance/settings').send({ values: { 'maintenance.notice_hours': 10 } }).expect(400);
-    await api('staff', 'put', '/platform/maintenance/settings').send({ blockDates: [30] }).expect(400);
-    await api('staff', 'put', '/platform/maintenance/settings').send({ values: { 'maintenance.unknown': 5 } }).expect(400);
+    // Answer 1183: the rules change only on Console › Platform settings (security key and a reason), within their ranges.
+    await api('staff', 'put', '/platform/maintenance/settings').send({ values: { 'maintenance.banner_hours': 48 } }).expect(404);
+    await api('staff', 'put', '/platform/settings/maintenance.notice_hours').send({ value: '10', reason: 'Testing the rules' }).expect(400);
+    await api('staff', 'put', '/platform/settings/maintenance.block_dates').send({ value: '30', reason: 'Testing the rules' }).expect(400);
+    await api('staff', 'put', '/platform/settings/maintenance.unknown').send({ value: '5', reason: 'Testing the rules' }).expect(404);
   });
 
   let windowId = '';
   it('maintenance: waits for a second staff member (never the scheduler); companies see nothing until then', async () => {
     // A 168-hour banner, so the window below is already inside the banner time.
-    await api('staff', 'put', '/platform/maintenance/settings').send({ values: { 'maintenance.banner_hours': 168 } }).expect(200);
+    await up('staff');
+    await api('staff', 'put', '/platform/settings/maintenance.banner_hours').send({ value: '168', reason: 'A week of banner for the test' }).expect(200);
+    // Saved on Platform settings, shown on the maintenance page.
+    const rules = (await api('staff', 'get', '/platform/maintenance').expect(200)).body.settings.numbers as { key: string; value: number }[];
+    expect(rules.find((n) => n.key === 'maintenance.banner_hours')?.value).toBe(168);
     const start = goodStart();
     const body = (await api('staff', 'post', '/platform/maintenance').send({ title: `Database upgrade ${run}`, startsAt: start.toISOString(), hours: 2 }).expect(201)).body;
     const w = body.windows.find((x: { title: string }) => x.title === `Database upgrade ${run}`);
@@ -216,7 +222,7 @@ describe('Console C-5: company wizard and planned maintenance', () => {
     expect(a).toEqual(b);
     expect(a).toEqual({ maintenance: { phase: 'upcoming', title: `Database upgrade ${run}`, startsAt: start.toISOString(), endsAt: new Date(start.getTime() + 2 * 3_600_000).toISOString() }, incident: null });
     // Back to the 24-hour banner: the window is days away, so nothing shows yet.
-    await api('staff', 'put', '/platform/maintenance/settings').send({ values: { 'maintenance.banner_hours': 24 } }).expect(200);
+    await api('staff', 'put', '/platform/settings/maintenance.banner_hours').send({ value: '24', reason: 'Back to the default' }).expect(200);
     expect((await api('adminA', 'get', '/availability').expect(200)).body).toEqual({ maintenance: null, incident: null });
     const audit = await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findMany({ where: { entityId: windowId }, select: { action: true } }));
     expect(audit.map((x) => x.action).sort()).toEqual(['platform.maintenance.approved', 'platform.maintenance.scheduled']);

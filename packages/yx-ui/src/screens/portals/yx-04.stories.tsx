@@ -87,7 +87,7 @@ const CS_SETTINGS: CsSettingRow[] = [
 ];
 const cs = (o: Partial<LiveCustomerSuccess> = {}) => (
   <ConsoleShell active="customers" name="Kavitha Rao" email="kavitha.rao@yukthix.test" securityHref="#" onSignOut={() => {}} onNavigate={() => {}}>
-    <CustomerSuccessScreen tenants={[]} alerts={[]} me="Kavitha Rao" live={{ state: 'ready', onRetry: () => {}, rows: CS_ROWS, messages: CS_MESSAGES, settings: CS_SETTINGS, canManage: true, onWrite: wait, onApprove: wait, onReject: wait, onSaveSettings: wait, ...o }} />
+    <CustomerSuccessScreen tenants={[]} alerts={[]} me="Kavitha Rao" live={{ state: 'ready', onRetry: () => {}, rows: CS_ROWS, messages: CS_MESSAGES, settings: CS_SETTINGS, canManage: true, onWrite: wait, onApprove: wait, onReject: wait, ...o }} />
   </ConsoleShell>
 );
 export const YX04HealthLive: S = { name: 'Tenant health · from account signals (C-2)', render: () => cs() };
@@ -106,6 +106,8 @@ const CS_FOLLOWUPS: CsFollowup[] = [
 const followup = { owners: CS_OWNERS, onSetOwner: wait, onUpdateAlert: wait, onOutreach: wait };
 export const YX04HealthHistory: S = { name: 'Tenant health · 30-day change, churn risk and CS owner (1165)', render: () => cs({ rows: CS_HISTORY, ...followup, followups: CS_FOLLOWUPS }) };
 export const YX04AlertFollowUp: S = { name: 'Churn-risk alerts · owner, status and Log outreach (1165)', render: () => cs({ tab: 'alerts', rows: CS_HISTORY, ...followup, followups: CS_FOLLOWUPS }) };
+// Answer 1223: an owner who left, listed for reassignment.
+export const YX04OwnerLeft: S = { name: 'Tenant health · Owner left, listed for reassignment (1223)', render: () => cs({ rows: CS_HISTORY.map((r, i) => (i === 1 ? { ...r, owner: { id: 'u-ravi', name: 'Ravi Menon', left: true } } : r)), ...followup, followups: CS_FOLLOWUPS }) };
 export const YX04ComposerTwo: S = { name: 'Message composer · two companies need approval (C-2)', render: () => cs({ composerFor: ['c2', 'c3'] }) };
 export const YX04Flags: S = { name: 'Feature flags', render: () => <FeatureFlagsScreen flags={D.FLAGS} /> };
 export const YX04KillSwitch: S = { name: 'Feature flags · kill switch', render: () => <FeatureFlagsScreen flags={D.FLAGS} killOpen /> };

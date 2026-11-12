@@ -73,17 +73,18 @@ built** · **phone view, mobile app not built**.
 
 ## Counts (sub-pages = stories)
 
-After C-1 to C-5, the console follow-ups and C-8 parts 1 and 2 (12 Nov 2026, test/yukthix-main; appendix script "ok").
+After C-1 to C-5, C-8 parts 1 and 2 (with the payroll-day note), staff roles parts 1 and 2, 1165 and the console tidy-up
+(12 Nov 2026, test/yukthix-main; appendix script "ok").
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Live console | 3 | 30 | 0 | 0 | 0 | 0 | 30 |
 | B. Rules engine (YX-01 to YX-03) | 3 | 26 | 5 | 0 | 0 | 0 | 31 |
-| C. Customers and containment (YX-04, YX-18) | 2 | 25 | 2 | 0 | 0 | 0 | 27 |
+| C. Customers and containment (YX-04, YX-18) | 2 | 26 | 2 | 0 | 0 | 0 | 28 |
 | D. Partners (YX-06 to YX-08) | 3 | 0 | 0 | 0 | 10 | 0 | 10 |
 | E. Money (YX-14 to YX-17) | 4 | 0 | 0 | 0 | 8 | 0 | 8 |
-| F. The rest (YX-05, YX-09 to YX-13) | 6 | 17 | 0 | 0 | 13 | 0 | 30 |
-| **All A-F** | **21** | **98** | **7** | **0** | **31** | **0** | **136** |
+| F. The rest (YX-05, YX-09 to YX-13) | 6 | 18 | 0 | 0 | 13 | 0 | 31 |
+| **All A-F** | **21** | **100** | **7** | **0** | **31** | **0** | **138** |
 
 Counted by script on 11 Nov 2026 on `docs/yukthix-console-map` (the script is in the appendix). There are 87 stories in
 20 files whose title starts `Screens/YukthiX console/`: `screens/console/console.stories.tsx` (14),
@@ -268,6 +269,7 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 | YX04MessagesMine · Messages · my message waiting, Withdraw (1087) | live | `POST platform/customers/messages/:id/withdraw` (writer only; audited) |
 | YX04HealthHistory · Tenant health · 30-day change, churn risk and CS owner (1165) | live | 1165: nightly snapshot (`cs_health_snapshots`), owner (`cs_accounts`), Assign owner |
 | YX04AlertFollowUp · Churn-risk alerts · owner, status and Log outreach (1165) | live | 1165: `cs_alerts`, `cs_alert_notes`; resolved by itself when the alert clears |
+| YX04OwnerLeft · Tenant health · Owner left, listed for reassignment (1223) | live | 1223: a deactivated owner shows as Owner left on the company and its alerts; reassigning moves the open alerts |
 | YX04ComposerTwo · Message composer · two companies need approval (C-2) | live | `POST /platform/customers/messages` |
 | YX04Flags · Feature flags | live | C-4 (1049): `/staff/feature-flags`, the drawn `FeatureFlagsScreen` with `live`; four real switches over existing company settings |
 | YX04KillSwitch · Feature flags · kill switch | live | C-4: kill switch with a reason and the security key again; a second staff member turns it back on |
@@ -388,6 +390,7 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 | YX11List · Help articles and no-result searches | live | C-8: `/staff/help-centre`, `HelpEditorScreen live`: the platform company's "YukthiX help" articles, the pages each explains, and the searches with no result across companies (counts only, at least 5 companies) |
 | YX11ListLive · Help articles and no-result searches (C-8) | live | `GET platform/help-centre` (`platform.helpcentre.write`); the cross-company count is read through `platformRead` (purpose `helpcentre.no_result_searches`) |
 | YX11ReviewLive · Article · another staff member publishes it (C-8) | live | `POST platform/help-centre/articles/:id/review`: the knowledge base's four-eyes rule (never the writer) |
+| YX11RetireLive · Article · retire waiting for you to approve (1203) | live | 1203: `POST platform/help-centre/articles/:id/retire`, then `…/retire/approve` by another staff member (`help_article_retirements`) |
 | YX11Edit · Article editor | live | same page, the editor drawer: `POST|PATCH platform/help-centre/articles`, `.../submit`; the H-1 pages link |
 
 #### YX-12 · Nudge and switch-on copy editor
@@ -1040,3 +1043,33 @@ C-6 to C-8.
 1243. **Invited accounts that never come.** An invited account stays "Invited" until someone deactivates it.
       *Suggested: deactivate invited accounts automatically after 30 days without a sign-in (a platform setting).*
 
+## Console tidy as built (answers 1183, 1203, 1223; branch `feat/yukthix-console-tidy`)
+
+- **1183 one place for platform settings:** the direct saves are gone (`PUT platform/customers/settings` and
+  `PUT platform/maintenance/settings` now answer 404). Customer success › Alert rules and Planned maintenance › Rules show
+  the values (and the default) and a "Change in Platform settings" button for holders of the Platform settings key;
+  Console › Platform settings changes them with the security key and a reason, audited before and after.
+- **1203 retiring a YukthiX help article:** in the editor drawer, Retire (a reason) on a published article; another staff
+  member approves (`help_article_retirements`, four eyes in the service and the database); the article becomes
+  retired and leaves every company's Help drawer. Audited (`platform.helpcentre.retire_requested`, `…retired`, and the
+  knowledge base's own `desk.kb.article_retired`).
+- **1223 Owner left:** a deactivated Customer success owner shows as "Owner left" on the company and its alerts, and a list
+  on Customer success › Tenant health offers Assign owner. Reassigning the company moves its open alerts the old owner
+  held to the new one; both clear.
+- **Tests:** e2e: `console-customers` and `console-wizard-maintenance` (old routes 404; values saved on Platform settings
+  show on the alert rules and the maintenance page), `console-staff-roles`, `console-helpcentre` (retire: reason, the
+  asker cannot approve, approved retires, gone from both companies' drawers, only a published article; the suite now
+  makes the seed's staff account and demo company itself on a fresh database), `console-cs-followup` (Owner left after
+  deactivation, the departed owner cannot be chosen, reassigning clears it and moves the alert). Kit and web tests.
+
+### Questions (from 1261)
+
+1261. **Two more direct saves.** The help-centre editor's no-result search settings and the incident reminder lead time
+      (C-8) still save on their own pages. *Suggested: move them to Platform settings the same way.*
+1262. **Who changes these settings now.** Platform settings needs the Security lead key, so a Customer success member
+      can no longer change the alert rules alone. *Suggested: keep (a Security lead changes platform settings);
+      Customer success asks one.*
+1263. **Withdrawing a retire request.** The person who asked cannot take a retire request back; it waits until another
+      member of staff approves it. *Suggested: let the asker withdraw it, audited, as for messages (1087).*
+1264. **Putting a retired article back.** The knowledge base can republish a retired article; the console does not offer
+      it yet. *Suggested: "Put back" with the same two-person approval when someone needs it.*

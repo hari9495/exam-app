@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuditService, TenantPrismaService } from '@exam-platform/shared';
 import { platformRead, PLATFORM } from '../platform/platform.service';
@@ -86,7 +86,46 @@ export class HelpCentreService {
 
   async get(staffUserId: string, id: string) {
     const a = await this.actor(staffUserId);
-    return this.kb.get(a, id);
+    return this.withRetire(staffUserId, await this.kb.get(a, id));
+  }
+
+  /** Answer 1203: the article with its waiting retire request, if any (who asked, why, whether it was me). */
+  private async withRetire<T extends { id: string }>(staffUserId: string, detail: T) {
+    const r = await this.tenantPrisma.forTenant(PLATFORM, async (tx) => {
+      const row = await tx.helpArticleRetirement.findFirst({ where: { articleId: detail.id, status: 'pending' } });
+      if (!row) return null;
+      const by = await tx.user.findUnique({ where: { id: row.requestedBy }, select: { name: true, email: true } });
+      return { reason: row.reason, requestedBy: by?.name?.trim() || by?.email || '', mine: row.requestedBy === staffUserId, at: row.requestedAt };
+    });
+    return { ...detail, retire: r };
+  }
+
+  /** Answer 1203: one member of staff asks to retire a published article, with a reason; another approves it. */
+  async requestRetire(staffUserId: string, id: string, reason: string) {
+    const a = await this.actor(staffUserId);
+    const art = await this.kb.get(a, id);
+    if (art.state !== 'published') throw new ConflictException('Only a published article is retired.');
+    await this.tenantPrisma.forTenant(PLATFORM, async (tx) => {
+      if (await tx.helpArticleRetirement.findFirst({ where: { articleId: id, status: 'pending' }, select: { id: true } })) throw new ConflictException('A retire request for this article is already waiting.');
+      const row = await tx.helpArticleRetirement.create({ data: { articleId: id, reason: reason.trim(), requestedBy: staffUserId } });
+      await AuditService.recordIn(tx, PLATFORM, { actorUserId: staffUserId, action: 'platform.helpcentre.retire_requested', entityType: 'sd_kb_article', entityId: id, metadata: { requestId: row.id, reason: reason.trim() } });
+    });
+    return this.get(staffUserId, id);
+  }
+
+  /** The second staff member approves: the article is retired and leaves every company's Help drawer. Never the asker. */
+  async approveRetire(staffUserId: string, id: string) {
+    const a = await this.actor(staffUserId);
+    const req = await this.tenantPrisma.forTenant(PLATFORM, (tx) => tx.helpArticleRetirement.findFirst({ where: { articleId: id, status: 'pending' } }));
+    if (!req) throw new NotFoundException('No retire request is waiting for this article.');
+    if (req.requestedBy === staffUserId) throw new ForbiddenException('You asked to retire it, so another staff member approves.');
+    await this.kb.retire(a, id);
+    await this.tenantPrisma.forTenant(PLATFORM, async (tx) => {
+      const done = await tx.helpArticleRetirement.updateMany({ where: { id: req.id, status: 'pending' }, data: { status: 'approved', decidedBy: staffUserId, decidedAt: new Date() } });
+      if (!done.count) throw new ConflictException('This retire request was already decided.');
+      await AuditService.recordIn(tx, PLATFORM, { actorUserId: staffUserId, action: 'platform.helpcentre.retired', entityType: 'sd_kb_article', entityId: id, metadata: { requestId: req.id, requestedBy: req.requestedBy } });
+    });
+    return this.get(staffUserId, id);
   }
 
   /** A new article in the YukthiX help space, with the pages it explains. */

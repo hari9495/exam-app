@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsInt, IsISO8601, IsObject, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsInt, IsISO8601, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 
@@ -16,8 +16,3 @@ export class MaintenanceDecisionDto {
   @IsOptional() @trim() @IsString() @MaxLength(500) reason?: string;
 }
 
-/** Answer 948: the maintenance rules (each checked against its range by the service). */
-export class MaintenanceSettingsDto {
-  @IsOptional() @IsObject() values?: Record<string, number>;
-  @IsOptional() @IsArray() @ArrayMaxSize(10) @IsInt({ each: true }) blockDates?: number[];
-}

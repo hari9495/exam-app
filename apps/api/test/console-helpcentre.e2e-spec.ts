@@ -54,6 +54,10 @@ describe('Console C-8 YX-11: help-centre editor', () => {
     const passwordHash = await argon2.hash(PASSWORD);
     await tenantPrisma.forTenant(SUPER, async (tx) => {
       const trial = (await tx.plan.findFirst({ where: { name: 'trial' } })) ?? (await tx.plan.create({ data: { name: 'trial', candidateLimit: 1, aiCreditLimit: 1, proctoringMinutesLimit: 1 } }));
+      // The YukthiX company comes from the seed, which needs its staff account and the demo company (a fresh database
+      // has neither): made here as service-desk-batch4 does.
+      if (!(await tx.user.findFirst({ where: { email: 'super@platform.test', organizationId: null } }))) await tx.user.create({ data: { email: 'super@platform.test', passwordHash, role: 'super_admin', organizationId: null, name: 'Anand Iyer' } });
+      if (!(await tx.organization.findUnique({ where: { slug: 'demo-org' } }))) await tx.organization.create({ data: { name: 'Kaveri Foods', slug: 'demo-org', planId: trial.id } });
       await seedYukthixSupport(tx, trial.id);
     });
     platform = (await prisma.organization.findFirstOrThrow({ where: { isPlatform: true }, select: { id: true } })).id;
@@ -199,6 +203,32 @@ describe('Console C-8 YX-11: help-centre editor', () => {
       const seen = await tenantPrisma.forTenant({ organizationId: org.A, isSuperAdmin: false }, (tx) => tx.sdKbArticle.findMany({ where: { organizationId: platform } }));
       expect(seen).toEqual([]);
       await expect(tenantPrisma.forTenant({ organizationId: org.A, isSuperAdmin: false }, (tx) => tx.sdKbArticle.updateMany({ where: { id: articleId }, data: { title: 'Hacked' } }))).resolves.toEqual({ count: 0 });
+    });
+  });
+
+  // Answer 1203: retiring a published YukthiX article takes two staff members, as publishing does; it leaves every drawer.
+  describe('retiring an article', () => {
+    it('needs a reason; the writer of the request cannot approve it; another staff member retires it, audited', async () => {
+      await api('staffA', 'post', `/platform/help-centre/articles/${articleId}/retire`).send({ reason: 'x' }).expect(400);
+      const asked = (await api('staffA', 'post', `/platform/help-centre/articles/${articleId}/retire`).send({ reason: 'Replaced by the new leave guide' }).expect(200)).body;
+      expect(asked).toMatchObject({ state: 'published', retire: { mine: true, reason: 'Replaced by the new leave guide' } });
+      await api('staffA', 'post', `/platform/help-centre/articles/${articleId}/retire`).send({ reason: 'Asking a second time' }).expect(409);
+      // Still in the drawer until the second person approves.
+      expect((await api('adminB', 'get', `/desk/my/kb/page?route=${encodeURIComponent(PAGE)}`).expect(200)).body.articles.map((x: { id: string }) => x.id)).toContain(articleId);
+      expect((await api('staffA', 'post', `/platform/help-centre/articles/${articleId}/retire/approve`).send({}).expect(403)).body.message).toMatch(/another staff member/);
+      const done = (await api('staffB', 'post', `/platform/help-centre/articles/${articleId}/retire/approve`).send({}).expect(200)).body;
+      expect(done).toMatchObject({ state: 'retired', retire: null });
+      await api('staffB', 'post', `/platform/help-centre/articles/${articleId}/retire/approve`).send({}).expect(404);
+      const actions = (await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findMany({ where: { entityId: articleId, action: { startsWith: 'platform.helpcentre.retire' } }, select: { action: true } }))).map((x) => x.action).sort();
+      expect(actions).toEqual(['platform.helpcentre.retire_requested', 'platform.helpcentre.retired']);
+    });
+
+    it('a retired article is gone from every company’s Help drawer; only a published article can be retired', async () => {
+      for (const who of ['adminA', 'adminB']) {
+        const page = (await api(who, 'get', `/desk/my/kb/page?route=${encodeURIComponent(`${PAGE}/apply`)}`).expect(200)).body;
+        expect(page.articles.map((x: { id: string }) => x.id)).not.toContain(articleId);
+      }
+      await api('staffA', 'post', `/platform/help-centre/articles/${articleId}/retire`).send({ reason: 'Already retired' }).expect(409);
     });
   });
 

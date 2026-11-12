@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
@@ -6,7 +6,7 @@ import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { PlatformStaffGuard } from './platform-staff.guard';
-import { MaintenanceDecisionDto, MaintenanceSettingsDto, MaintenanceWindowDto } from './maintenance.dto';
+import { MaintenanceDecisionDto, MaintenanceWindowDto } from './maintenance.dto';
 import { MaintenanceService } from './maintenance.service';
 import { IncidentsService } from './incidents.service';
 
@@ -44,11 +44,6 @@ export class MaintenanceController {
     return this.maintenance.cancel(actor, id, dto);
   }
 
-  @Put('settings')
-  @RequirePermissions('platform.maintenance.manage')
-  saveSettings(@CurrentUserId() actor: string, @Body() dto: MaintenanceSettingsDto) {
-    return this.maintenance.saveSettings(actor, dto);
-  }
 }
 
 /**

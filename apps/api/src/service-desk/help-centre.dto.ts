@@ -32,3 +32,8 @@ export class HelpSubmitDto {
 export class HelpSettingsDto {
   @IsObject() values!: Record<string, number>;
 }
+
+/** Answer 1203: why the article is retired (kept in the audit log). */
+export class HelpRetireDto {
+  @IsString() @MinLength(5) @MaxLength(500) reason!: string;
+}

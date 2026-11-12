@@ -10,6 +10,7 @@ import { EmptyState, InlineAlert } from '../../components/feedback';
 import { FieldRow, FormField, useTooEarly } from '../../components/field';
 import { NumberField, TextArea, TextField } from '../../components/inputs';
 import { Drawer } from '../../components/drawer';
+import { Dialog } from '../../components/overlay';
 import { RichTextEditor } from '../../components/editor';
 import { useToast } from '../../components/notify';
 import { formatDate } from '../../lib/format';
@@ -44,6 +45,8 @@ export interface HelpDetail {
   state: HelpRow['state'];
   publicUrl: string | null;
   versions: HelpVersion[];
+  /** Answer 1203: a retire request waiting for a second staff member. */
+  retire?: { requestedBy: string; mine: boolean; reason: string; at: string } | null;
 }
 export interface HelpInput {
   title: string;
@@ -71,6 +74,9 @@ export interface LiveHelpCentre {
   onSave: (id: string, input: HelpInput & { draftVersion?: number }) => Promise<HelpDetail>;
   onSubmit: (id: string, version: number) => Promise<HelpDetail>;
   onReview: (id: string, version: number, approve: boolean, note?: string) => Promise<HelpDetail>;
+  /** Answer 1203: ask to retire a published article (a reason); another staff member approves it. */
+  onRetire?: (id: string, reason: string) => Promise<HelpDetail>;
+  onApproveRetire?: (id: string) => Promise<HelpDetail>;
   onSaveSettings: (values: Record<string, number>) => Promise<unknown>;
   /** Stories: open the editor on this article (or a new one). */
   defaultOpen?: HelpDetail | 'new';
@@ -176,6 +182,10 @@ function Editor({ live, detail, initialTitle, onClose, onChanged }: { live: Live
     ].filter(Boolean) as { fieldId: string; message: string }[],
   );
   const noteEarly = useTooEarly(note.trim() ? [] : [{ fieldId: 'hc-note', message: 'Say what to change before sending it back.' }]);
+  const [retiring, setRetiring] = useState(false);
+  const [retireReason, setRetireReason] = useState('');
+  const retireEarly = useTooEarly(retireReason.trim().length < 5 ? [{ fieldId: 'hc-retire', message: 'Say why it is retired (at least 5 characters).' }] : []);
+  const retire = detail?.retire ?? null;
   const act = async (key: string, fn: () => Promise<HelpDetail>, done: string) => {
     setBusy(key);
     setFailed(null);
@@ -217,6 +227,16 @@ function Editor({ live, detail, initialTitle, onClose, onChanged }: { live: Live
           Send for review
         </Button>
       )}
+      {detail?.state === 'published' && live.onRetire && !retire && (
+        <Button variant="danger" onClick={() => (setRetireReason(''), retireEarly.reset(), setRetiring(true))}>
+          Retire
+        </Button>
+      )}
+      {detail?.state === 'published' && retire && !retire.mine && live.onApproveRetire && (
+        <Button variant="danger" loading={busy === 'retire'} onClick={() => void act('retire', () => live.onApproveRetire!(detail.id), 'Retired for every company')}>
+          Approve retire
+        </Button>
+      )}
     </>
   );
   return (
@@ -229,6 +249,10 @@ function Editor({ live, detail, initialTitle, onClose, onChanged }: { live: Live
       notice={
         failed ? (
           <InlineAlert tone="danger" title={failed} />
+        ) : retire ? (
+          <InlineAlert tone="warning" title={retire.mine ? 'You asked to retire it: another staff member approves' : `${retire.requestedBy} asks to retire it`}>
+            {retire.reason}
+          </InlineAlert>
         ) : latest?.state === 'sent_back' && latest.reviewNote ? (
           <InlineAlert tone="warning" title="Sent back">
             {latest.reviewNote}
@@ -255,6 +279,34 @@ function Editor({ live, detail, initialTitle, onClose, onChanged }: { live: Live
         <FormField label="Article (English)">
           <RichTextEditor value={body} onChange={setBody} mergeFields={[]} readOnly={waiting} />
         </FormField>
+        {retiring && live.onRetire && detail && (
+          <Dialog
+            open
+            onOpenChange={(o) => !o && setRetiring(false)}
+            size="sm"
+            title={`Retire “${detail.title}”?`}
+            description="It leaves every company's Help drawer once another staff member approves."
+            footer={
+              <>
+                <Button onClick={() => setRetiring(false)}>Cancel</Button>
+                <Button
+                  variant="danger"
+                  loading={busy === 'ask'}
+                  onClick={() => {
+                    if (retireEarly.stop()) return;
+                    void act('ask', () => live.onRetire!(detail.id, retireReason.trim()), 'Retire requested: another staff member approves').then(() => setRetiring(false));
+                  }}
+                >
+                  Ask to retire
+                </Button>
+              </>
+            }
+          >
+            <FormField id="hc-retire" label="Why" required error={retireEarly.errorOf('hc-retire')} helper="Kept in the audit log.">
+              <TextArea rows={2} value={retireReason} onChange={setRetireReason} maxLength={500} />
+            </FormField>
+          </Dialog>
+        )}
         {waiting && !latest!.mine && (
           <FormField id="hc-note" label="Note for the writer" helper="Needed only to send it back." error={noteEarly.errorOf('hc-note')}>
             <TextArea rows={2} value={note} onChange={setNote} maxLength={300} />

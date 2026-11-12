@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
-import { Card, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { Card, DescriptionList, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { EmptyState, InlineAlert } from '../../components/feedback';
 import { FieldRow, FormField, useTooEarly } from '../../components/field';
 import { NumberField, TextArea, TextField } from '../../components/inputs';
@@ -35,7 +35,7 @@ export interface CsHealthRow {
   /** Answer 1082 (1165): the score less the snapshot of 30 days before (null without one), the churn risk, the owner. */
   trend?: number | null;
   churn?: 'low' | 'medium' | 'high';
-  owner?: { id: string; name: string } | null;
+  owner?: { id: string; name: string; left?: boolean } | null;
 }
 /** Answer 1083 (1165): an alert's follow-up. */
 export interface CsFollowup {
@@ -45,7 +45,7 @@ export interface CsFollowup {
   rule: string;
   text: string;
   status: 'open' | 'contacted' | 'resolved';
-  owner: { id: string; name: string | null } | null;
+  owner: { id: string; name: string | null; left?: boolean } | null;
   openedAt: string;
   resolvedAt: string | null;
   autoResolved: boolean;
@@ -88,7 +88,8 @@ export interface LiveCustomerSuccess {
   onReject: (id: string, version: number, note: string) => Promise<unknown>;
   /** Answer 1087: the writer takes back their own message while it waits. */
   onWithdraw?: (id: string, version: number) => Promise<unknown>;
-  onSaveSettings: (values: Record<string, number>) => Promise<unknown>;
+  /** Answer 1183: the rules change only on Console › Platform settings (security key and a reason). */
+  onOpenPlatformSettings?: () => void;
   /** Answers 1082, 1083 (1165): who may own (active staff with the Customer success role), the alert follow-ups. */
   owners?: { id: string; name: string }[];
   followups?: CsFollowup[];
@@ -141,6 +142,25 @@ export function LiveCustomerSuccessScreen({ live }: { live: LiveCustomerSuccess 
           </TabsTrigger>
         </TabsList>
         <TabsContent value="health">
+          {live.onSetOwner && live.rows.some((r) => r.owner?.left) && (
+            <Card title="Owner left" actions={<Button size="sm" onClick={() => setAssigning(live.rows.filter((r) => r.owner?.left).map((r) => r.id))}>Assign owner</Button>}>
+              <ul className="yx-ps-list" aria-label="Companies whose owner left">
+                {live.rows
+                  .filter((r) => r.owner?.left)
+                  .map((r) => (
+                    <li key={r.id}>
+                      <div className="yx-ps-list__main">
+                        <span className="yx-ps-list__title">{r.name}</span>
+                        <span className="yx-ps-list__meta">{r.owner!.name} is no longer active. Their open alerts move with the company to the new owner.</span>
+                      </div>
+                      <Button size="sm" onClick={() => setAssigning([r.id])}>
+                        Assign owner
+                      </Button>
+                    </li>
+                  ))}
+              </ul>
+            </Card>
+          )}
           <FilteredTable
             label="Tenant health"
             rows={live.rows}
@@ -162,7 +182,7 @@ export function LiveCustomerSuccessScreen({ live }: { live: LiveCustomerSuccess 
               { key: 'lifecycle', header: 'Lifecycle', type: 'status', value: (r) => LIFE[r.lifecycle] ?? r.lifecycle, statusTone: (v) => (v === 'Active' ? 'success' : v === 'Trial' ? 'info' : 'danger'), width: 110 },
               { key: 'signin', header: 'Last admin sign-in', value: (r) => r.adminLastSignIn ?? '', render: (r) => (r.adminLastSignIn ? formatDate(new Date(r.adminLastSignIn)) : 'Never'), width: 150 },
               { key: 'tickets', header: 'Open tickets', type: 'number', value: (r) => r.openTickets, width: 110 },
-              { key: 'owner', header: 'CS owner', value: (r) => r.owner?.name ?? 'Nobody yet', width: 150 },
+              { key: 'owner', header: 'CS owner', value: (r) => r.owner?.name ?? 'Nobody yet', render: (r) => (r.owner?.left ? <Badge tone="warning">{`Owner left · ${r.owner.name}`}</Badge> : (r.owner?.name ?? 'Nobody yet')), width: 170 },
             ]}
             empty={<EmptyState title="No customer companies yet." />}
             bulkActions={(ids) => (
@@ -206,7 +226,7 @@ export function LiveCustomerSuccessScreen({ live }: { live: LiveCustomerSuccess 
               )}
             </Card>
             )}
-            <AlertRules settings={live.settings} canManage={live.canManage} onSave={live.onSaveSettings} />
+            <AlertRules settings={live.settings} onOpenPlatformSettings={live.onOpenPlatformSettings} />
           </div>
         </TabsContent>
         <TabsContent value="messages">
@@ -306,7 +326,7 @@ function Followups({ items, owners, onUpdate, onOutreach }: { items: CsFollowup[
                 {a.company} · {a.text}
               </span>
               <span className="yx-ps-list__meta">
-                {a.owner?.name ? `Owner ${a.owner.name}` : 'No owner yet'} · opened {formatDate(new Date(a.openedAt))}
+                {a.owner?.left ? `Owner left (${a.owner.name})` : a.owner?.name ? `Owner ${a.owner.name}` : 'No owner yet'} · opened {formatDate(new Date(a.openedAt))}
                 {a.autoResolved ? ' · resolved by itself' : ''}
                 {a.notes[0] ? ` · last note: “${a.notes[0].note}”` : ''}
               </span>
@@ -376,40 +396,12 @@ function Followups({ items, owners, onUpdate, onOutreach }: { items: CsFollowup[
 }
 
 /** Answer 1047: the churn alert rules are platform settings with defaults. */
-function AlertRules({ settings, canManage, onSave }: { settings: CsSettingRow[]; canManage: boolean; onSave: LiveCustomerSuccess['onSaveSettings'] }) {
-  const [draft, setDraft] = useState<Record<string, number | null>>(Object.fromEntries(settings.map((s) => [s.key, s.value])));
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState<string | null>(null);
-  const { toast } = useToast();
-  const bad = settings.flatMap((s) => {
-    const v = draft[s.key];
-    return v === null || v === undefined || !Number.isInteger(v) || v < s.min || v > s.max ? [{ fieldId: `cs-${s.key}`, message: `Give a whole number from ${s.min} to ${s.max}.` }] : [];
-  });
-  const early = useTooEarly(bad);
-  const save = async () => {
-    if (early.stop()) return;
-    setBusy(true);
-    setFailed(null);
-    try {
-      await onSave(Object.fromEntries(settings.map((s) => [s.key, draft[s.key]!])));
-      toast({ tone: 'success', title: 'Alert rules saved' });
-    } catch (e) {
-      setFailed(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  };
+function AlertRules({ settings, onOpenPlatformSettings }: { settings: CsSettingRow[]; onOpenPlatformSettings?: () => void }) {
   return (
-    <Card title="Alert rules" actions={canManage ? <Button size="sm" loading={busy} onClick={() => void save()}>Save rules</Button> : undefined}>
+    <Card title="Alert rules" actions={onOpenPlatformSettings ? <Button size="sm" onClick={onOpenPlatformSettings}>Change in Platform settings</Button> : undefined}>
       <div className="yx-ps-stack">
-        {failed && <InlineAlert tone="danger" title={failed} />}
-        <FieldRow>
-          {settings.map((s) => (
-            <FormField key={s.key} id={`cs-${s.key}`} label={s.label} helper={`Default ${s.default}.`} error={early.errorOf(`cs-${s.key}`)}>
-              <NumberField value={draft[s.key] ?? null} onChange={(v) => setDraft((d) => ({ ...d, [s.key]: v }))} min={s.min} max={s.max} disabled={!canManage} />
-            </FormField>
-          ))}
-        </FieldRow>
+        <DescriptionList items={settings.map((s) => ({ label: s.label, value: s.value === s.default ? `${s.value} (the default)` : `${s.value} (default ${s.default})` }))} />
+        <p className="yx-ps-muted">Changed in Console › Platform settings, with your security key and a reason.</p>
       </div>
     </Card>
   );

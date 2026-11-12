@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { CustomerSuccessScreen, type CsFollowup, type CsHealthRow, type CsMessageRow, type CsSettingRow } from '@yukthix/ui/console';
 import { loadState, useConsole, useConsoleKeys, useConsoleWrite } from '../../../../lib/yx-console';
 
@@ -7,6 +8,7 @@ import { loadState, useConsole, useConsoleKeys, useConsoleWrite } from '../../..
 // platform settings, and messages to companies' System Admins. Approving a message to more than one company is a step-up
 // action: apiFetch asks the staff member for their security key, then resends.
 export default function ConsoleCustomersPage() {
+  const router = useRouter();
   const health = useConsole<{ rows: CsHealthRow[] }>('/customers/health');
   const messages = useConsole<CsMessageRow[]>('/customers/messages');
   const settings = useConsole<CsSettingRow[]>('/customers/settings');
@@ -33,7 +35,8 @@ export default function ConsoleCustomersPage() {
         onReject: (id, version, note) => write(`/customers/messages/${encodeURIComponent(id)}/reject`, 'POST', { version, note }),
         // Answer 1087: the writer withdraws their own message while it waits.
         onWithdraw: (id, version) => write(`/customers/messages/${encodeURIComponent(id)}/withdraw`, 'POST', { version }),
-        onSaveSettings: (values) => write('/customers/settings', 'PUT', { values }),
+        // Answer 1183: the alert rules change only on Console › Platform settings (security key and a reason).
+        onOpenPlatformSettings: can('platform.settings.manage') ? () => router.push('/staff/platform-settings') : undefined,
         owners: owners.data ?? [],
         followups: followups.data,
         onSetOwner: (companyId, ownerUserId) => write(`/customers/companies/${encodeURIComponent(companyId)}/owner`, 'PUT', { ownerUserId }),

@@ -30,7 +30,7 @@ describe('Console 1165: health history and account follow-up', () => {
   const api = (who: string, method: 'get' | 'post' | 'put', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who] ?? who}`);
   const at = (day: string) => new Date(`${day}T00:00:00Z`);
   const snaps = (organizationId: string) => tenantPrisma.forTenant(SUPER, (tx) => tx.csHealthSnapshot.findMany({ where: { organizationId }, orderBy: { day: 'asc' } }));
-  type Alert = { id: string; organizationId: string; rule: string; status: string; owner: { id: string } | null; autoResolved: boolean; version: number; notes: { note: string }[] };
+  type Alert = { id: string; organizationId: string; rule: string; status: string; owner: { id: string; left?: boolean } | null; autoResolved: boolean; version: number; notes: { note: string }[] };
   const alertsOf = async (k: string) => ((await api('cs', 'get', '/platform/customers/alerts').expect(200)).body as Alert[]).filter((a) => a.organizationId === org[k]);
 
   beforeAll(async () => {
@@ -144,6 +144,24 @@ describe('Console 1165: health history and account follow-up', () => {
     const idle = (await alertsOf('A')).filter((x) => x.rule === 'admin_idle');
     expect(idle.every((x) => x.status === 'resolved')).toBe(true);
     expect(idle.some((x) => x.autoResolved)).toBe(true);
+  });
+
+  // Answer 1223: a deactivated owner shows as Owner left on the company and its alerts; reassigning clears both.
+  it('"Owner left" after the owner is deactivated; reassigning the company clears it and moves its alerts', async () => {
+    await followup.nightly(new Date(), [org.B]);
+    await api('cs', 'put', `/platform/customers/companies/${org.B}/owner`).send({ ownerUserId: users.cs2 }).expect(200);
+    const [alert] = (await alertsOf('B')).filter((x) => x.status !== 'resolved');
+    await api('cs', 'put', `/platform/customers/alerts/${alert!.id}`).send({ version: alert!.version, ownerUserId: users.cs2 }).expect(200);
+    await tenantPrisma.forTenant(SUPER, (tx) => tx.user.update({ where: { id: users.cs2 }, data: { status: 'inactive' } }));
+    const company = async () => ((await api('cs', 'get', '/platform/customers/health').expect(200)).body.rows as { id: string; owner: { id: string; left: boolean } | null }[]).find((r) => r.id === org.B)!;
+    expect((await company()).owner).toMatchObject({ id: users.cs2, left: true });
+    expect((await alertsOf('B')).find((x) => x.id === alert!.id)).toMatchObject({ owner: { id: users.cs2, left: true } });
+    // The departed owner can no longer be chosen; reassigning to an active one clears it, and the alert moves too.
+    await api('cs', 'put', `/platform/customers/companies/${org.B}/owner`).send({ ownerUserId: users.cs2 }).expect(400);
+    await api('cs', 'put', `/platform/customers/companies/${org.B}/owner`).send({ ownerUserId: users.cs }).expect(200);
+    expect((await company()).owner).toMatchObject({ id: users.cs, left: false });
+    expect((await alertsOf('B')).find((x) => x.id === alert!.id)).toMatchObject({ owner: { id: users.cs, left: false } });
+    await tenantPrisma.forTenant(SUPER, (tx) => tx.user.update({ where: { id: users.cs2 }, data: { status: 'active' } }));
   });
 
   it('companies never read the snapshots, owners or alerts (RLS)', async () => {

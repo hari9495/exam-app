@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { IncidentComposerScreen, type CurrentMaintenance, type MaintenanceRow, type MaintenanceSettingRow } from '@yukthix/ui/console';
 import { loadState, useConsole, useConsoleKeys, useConsoleWrite } from '../../../../lib/yx-console';
 
@@ -14,6 +15,7 @@ interface Overview {
 // a window, another staff member approves it, and every company sees the banner before and during it (never a sign-in
 // block). The rules are platform settings with defaults.
 export default function ConsoleMaintenancePage() {
+  const router = useRouter();
   const data = useConsole<Overview>('/maintenance');
   const write = useConsoleWrite();
   const can = useConsoleKeys();
@@ -35,7 +37,8 @@ export default function ConsoleMaintenancePage() {
         onSchedule: (input) => write('/maintenance', 'POST', input),
         onApprove: (id, version) => write(`/maintenance/${encodeURIComponent(id)}/approve`, 'POST', { version }),
         onCancel: (id, version, reason) => write(`/maintenance/${encodeURIComponent(id)}/cancel`, 'POST', { version, reason }),
-        onSaveSettings: (input) => write('/maintenance/settings', 'PUT', input),
+        // Answer 1183: the rules change only on Console › Platform settings (security key and a reason).
+        onOpenPlatformSettings: can('platform.settings.manage') ? () => router.push('/staff/platform-settings') : undefined,
       }}
     />
   );
