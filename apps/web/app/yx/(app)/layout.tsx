@@ -73,7 +73,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   const staffingKeys = perms.has('ats.staffing.manage' as never) || perms.has('ats.staffing.view' as never);
   const staffingDesk = useQuery<{ enabled: boolean }>({ queryKey: ['staffing', '/desk'], queryFn: () => apiFetch('/staffing/desk', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && staffingKeys && !actingSuperAdmin, retry: false });
   // Projects P-1: the menu shows Projects once the company switched it on, to key holders and project managers.
-  const projectsOn = useQuery<{ enabled: boolean; canOpen: boolean }>({ queryKey: ['projects', '/status'], queryFn: () => apiFetch('/projects/status', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false });
+  const projectsOn = useQuery<{ enabled: boolean; canOpen: boolean; lineApprovals?: number }>({ queryKey: ['projects', '/status'], queryFn: () => apiFetch('/projects/status', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false });
   // Shares the cache with My security, so the banner clears as soon as a factor is added there.
   const mfa = useQuery<MfaStatus>({ queryKey: ['yx', 'mfa'], queryFn: () => apiFetch('/auth/mfa', {}, accessToken ?? undefined), enabled: Boolean(accessToken) });
   // Answer 948 (C-5): planned maintenance, the day before and during a window. Never blocks anything by itself.
@@ -126,6 +126,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         ethicsDesk: counts.data?.ethicsReports !== undefined,
         staffing: Boolean(staffingDesk.data?.enabled),
         projects: Boolean(projectsOn.data?.canOpen),
+        lineApprovals: projectsOn.data?.lineApprovals ?? 0,
         panellist: Boolean(myInterviews.data?.length),
       }),
     // perms.data drives perms.has

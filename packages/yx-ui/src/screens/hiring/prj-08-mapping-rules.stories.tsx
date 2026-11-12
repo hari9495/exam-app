@@ -24,5 +24,6 @@ export const LiveEdit: S = { name: 'Live · change rule drawer', render: () => <
 export const LivePrefillOff: S = { name: 'Live · pre-fill off (System Admin)', render: () => <MappingRulesScreen live={live({ data: { ...LIVE_MAPPING_DATA, prefillOn: false } })} /> };
 export const LiveManager: S = { name: 'Live · Projects manager (pre-fill read-only)', render: () => <MappingRulesScreen live={live({ data: { ...LIVE_MAPPING_DATA, canSwitchPrefill: false } })} /> };
 export const LiveEmpty: S = { name: 'Live · no rules yet', render: () => <MappingRulesScreen live={live({ data: { ...LIVE_MAPPING_DATA, rules: [] } })} /> };
-export const LiveNoAccess: S = { name: 'Live · no access or Projects off', render: () => <MappingRulesScreen live={live({ state: 'no-access', data: null })} /> };
+export const LiveNoAccess: S = { name: 'Live · no access (Request access)', render: () => <MappingRulesScreen live={live({ state: 'no-access', data: null })} /> };
+export const LiveOff: S = { name: 'Live · Projects switched off', render: () => <MappingRulesScreen live={live({ state: 'off', data: null })} /> };
 export const LiveError: S = { name: 'Live · error', render: () => <MappingRulesScreen live={live({ state: 'error', data: null })} /> };

@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
+import { AccessRequestContext } from '../../components/feedback';
 import { ProjectsListScreen, ProjectWorkspaceScreen, type LiveProjectWorkspace, type LiveProjectsList } from './projects';
 import { LIVE_FIXED_FEE_DETAIL, LIVE_PROJECT_CHOICES, LIVE_PROJECT_DETAIL, LIVE_PROJECT_ROWS, LIVE_PROJECT_ROWS_FINANCE } from './projects-live-fixtures';
 import { projectProblems } from './projects-live';
@@ -34,10 +35,41 @@ describe('PRJ-01 Projects list (live)', () => {
     expect(screen.queryByRole('button', { name: 'New project' })).toBeNull();
   });
 
-  it('no access (or Projects off) says why and shows no list', () => {
-    show(<ProjectsListScreen live={list({ state: 'no-access', rows: [] })} />);
-    expect(screen.getByText("You can't open Projects.")).toBeInTheDocument();
-    expect(screen.getByText(/Settings › Projects & timesheets/)).toBeInTheDocument();
+  it('no access: the kit no-access page, never naming a key; Projects off is its own plain state', () => {
+    const { unmount } = show(<ProjectsListScreen live={list({ state: 'no-access', rows: [] })} />);
+    expect(screen.getByText("You don't have access to Projects")).toBeInTheDocument();
+    expect(screen.getByText(/Ask your System Admin to give you access/)).toBeInTheDocument();
+    expect(screen.queryByText(/key/i)).toBeNull();
+    expect(screen.queryByRole('table')).toBeNull();
+    unmount();
+    show(<ProjectsListScreen live={list({ state: 'off', rows: [] })} />);
+    expect(screen.getByText('Projects is switched off')).toBeInTheDocument();
+    expect(screen.queryByText(/don't have access/)).toBeNull();
+  });
+
+  it('Request access from the Projects page (answer 946) names Projects', async () => {
+    const send = vi.fn().mockResolvedValue(undefined);
+    render(
+      <AccessRequestContext.Provider value={() => ({ maxDays: 30, sent: null, send })}>
+        <ToastProvider>
+          <ProjectsListScreen live={list({ state: 'no-access', rows: [] })} />
+        </ToastProvider>
+      </AccessRequestContext.Provider>,
+    );
+    await ue.click(screen.getByRole('button', { name: 'Request access' }));
+    await ue.click(screen.getByRole('button', { name: 'Send request' }));
+    expect(send).not.toHaveBeenCalled(); // a reason first
+    await ue.type(screen.getByRole('textbox', { name: /Why do you need access/ }), 'I run the Kaveri ERP project');
+    await ue.click(screen.getByRole('button', { name: 'Send request' }));
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ what: 'Projects', reason: 'I run the Kaveri ERP project' }));
+  });
+
+  it('a long code and project name end in an ellipsis with the full text as the tooltip', () => {
+    const long = { ...LIVE_PROJECT_ROWS[0]!, id: 'pl', code: 'FSSAI-AUDIT', name: 'FSSAI audit readiness for the Hosur and Kolar plants', client: 'Nilgiri Retail Private Limited' };
+    show(<ProjectsListScreen live={list({ rows: [long] })} />);
+    expect(screen.getByTitle('FSSAI-AUDIT')).toHaveClass('yx-hire-clip');
+    expect(screen.getByTitle('FSSAI audit readiness for the Hosur and Kolar plants')).toBeInTheDocument();
+    expect(screen.getByTitle('Nilgiri Retail Private Limited')).toBeInTheDocument();
   });
 
   it('Create project pressed empty says what is missing and sends nothing (never disabled)', async () => {
@@ -139,7 +171,7 @@ describe('PRJ-01 Project workspace (live)', () => {
     expect(screen.getByText("We couldn't load the project.")).toBeInTheDocument();
     unmount();
     show(<ProjectWorkspaceScreen live={ws({ state: 'no-access', detail: null })} />);
-    expect(screen.getByText("You can't open this project.")).toBeInTheDocument();
+    expect(screen.getByText("You don't have access to this project")).toBeInTheDocument();
   });
 });
 

@@ -1085,7 +1085,7 @@ const projects: SettingsPageDef = {
           synonyms: ['non-project time', 'bench'],
         },
         { key: 'prj.billable_default', label: 'Billing model for new projects', kind: 'select', value: 'time_material', options: ['time_material', 'fixed_fee', 'retainer', 'non_billable'], optionLabels: { time_material: 'Time & material', fixed_fee: 'Fixed fee', retainer: 'Retainer', non_billable: 'Non-billable' }, starter: true, helper: 'A client is needed only for a billable model. People can change it on each project.' },
-        { key: 'prj.booking_rule', label: 'Time on projects someone is not allocated to', kind: 'radio', value: 'Block', options: ['Block', 'Allow'], starter: true, helper: 'Block: people book time only to projects they are allocated to, on the days of their allocation.' },
+        { key: 'prj.booking_rule', label: 'Time on projects someone is not allocated to', kind: 'radio', value: 'Block', options: ['Block', 'Allow with project manager approval', 'Allow'], starter: true, helper: 'Block: people book time only to projects they are allocated to, on the days of their allocation. With approval: other hours wait for the project manager, line by line.' },
         { key: 'prj.daily_max', label: 'Refuse more hours in a day than', kind: 'number', value: 14, unit: 'hours', min: 8, max: 20, starter: true, helper: 'A warning already shows above the shift’s expected hours; this is the hard stop.' },
       ],
     },
@@ -1104,6 +1104,7 @@ const projects: SettingsPageDef = {
         },
         { key: 'prj.approval_sla', label: 'If not approved, the account manager steps in after', kind: 'number', value: 3, unit: 'working days', min: 1, max: 10, starter: true },
         { key: 'prj.client_approval', label: 'Client approval in the portal (after the project manager)', kind: 'toggle', value: false, starter: true },
+        { key: 'prj.bulk_within_allocation', label: 'Bulk approve only hours within the allocation', kind: 'toggle', value: true, starter: true, helper: 'Hours above a person’s allocation, or booked outside one, are approved one by one.' },
       ],
     },
     {

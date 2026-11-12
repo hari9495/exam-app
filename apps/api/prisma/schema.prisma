@@ -6167,6 +6167,8 @@ model TimesheetProject {
   budgetCost              Decimal?  @map("budget_cost") @db.Decimal(14, 2)
   fee                     Decimal?  @db.Decimal(14, 2)
   clientAcceptsMilestones Boolean   @default(false) @map("client_accepts_milestones")
+  /// Answer 1408: the client approves this project's hours in the client portal (off by default).
+  clientApprovesHours     Boolean   @default(false) @map("client_approves_hours")
   burnAlertedPct          Int       @default(0) @map("burn_alerted_pct") @db.SmallInt
   closedAt                DateTime? @map("closed_at") @db.Timestamptz(3)
   version                 Int       @default(1)
@@ -6269,6 +6271,21 @@ model TimesheetLine {
   billable       Boolean @default(false)
   minutes        Int[]   @db.SmallInt
   note           String? @db.VarChar(200)
+  /// Projects P-2 (1406): null in a draft or a week decided as a whole; else pending, approved, reduced or rejected.
+  status          String?   @db.VarChar(10)
+  approverUserIds String[]  @default([]) @map("approver_user_ids") @db.Uuid
+  approvedMinutes Int[]     @map("approved_minutes") @db.SmallInt
+  reason          String?   @db.VarChar(300)
+  decidedBy       String?   @map("decided_by") @db.Uuid
+  decidedAt       DateTime? @map("decided_at") @db.Timestamptz(3)
+  /// Answer 1442: booked outside the person's allocation (the PM decides it alone, never in bulk).
+  unallocated     Boolean   @default(false)
+  /// Answer 1408: the client's decision in the portal (waiting, approved, sent_back).
+  clientStatus    String?   @map("client_status") @db.VarChar(10)
+  clientNote      String?   @map("client_note") @db.VarChar(500)
+  clientContactId String?   @map("client_contact_id") @db.Uuid
+  clientDecidedAt DateTime? @map("client_decided_at") @db.Timestamptz(3)
+  version         Int       @default(1)
 
   @@map("timesheet_lines")
 }

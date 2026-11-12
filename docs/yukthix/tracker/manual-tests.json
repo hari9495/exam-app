@@ -20804,5 +20804,73 @@
       "Screens/Settings/Group 3 · Time & Leave · 3.11 Projects & timesheets"
     ],
     "note": "Positive and negative. Answer 1444."
+  },
+  {
+    "id": "MT-PRJ2-01",
+    "area": "Projects P-2, line-by-line timesheet approvals (12 Nov 2026)",
+    "screen": "Projects › Timesheet approvals",
+    "url": "http://localhost:3000/yx/projects/approvals",
+    "account": "An employee allocated to projects A (PM 1) and B (PM 2), with an internal project with no manager; PM 1; PM 2; the employee's manager.",
+    "steps": [
+      "The employee submits a week with lines on A, B and the internal project.",
+      "As PM 1 open Timesheet approvals.",
+      "As PM 1 reduce the A line without a reason, then with fewer hours and a reason; Approve all.",
+      "As the employee open My timesheet.",
+      "As PM 2 and the manager decide their lines."
+    ],
+    "expected": "Step 2: only project A's lines (no B, no internal). Step 3: without a reason it is refused; with one, the line is reduced. Step 4: 'Some hours were changed' with the reason; a notification with it; the week still waiting. Step 5: the week is approved once every line is decided.",
+    "stories": [
+      "Screens/Projects/PRJ-02 · Timesheet approvals · Live · my lines by project and week"
+    ],
+    "note": "Positive and negative. Answer 1406."
+  },
+  {
+    "id": "MT-PRJ2-02",
+    "area": "Projects P-2, line-by-line timesheet approvals (12 Nov 2026)",
+    "screen": "Projects › Timesheet approvals › bulk",
+    "url": "http://localhost:3000/yx/projects/approvals",
+    "account": "A PM with two people: one within their allocation, one over it; Settings › Projects & timesheets.",
+    "steps": [
+      "Press 'Approve n within allocation' and confirm.",
+      "Look at the person over their allocation.",
+      "As the System Admin switch 'Bulk approve only hours within the allocation' off; look again."
+    ],
+    "expected": "Step 1: only the person within the allocation is approved. Step 2: no bulk for them; decided one by one. Step 3: both can be approved in bulk (never hours booked outside an allocation).",
+    "stories": [
+      "Screens/Projects/PRJ-02 · Timesheet approvals · Live · bulk approve within allocation"
+    ],
+    "note": "Positive and negative. Answer 1407."
+  },
+  {
+    "id": "MT-PRJ2-03",
+    "area": "Projects P-2, line-by-line timesheet approvals (12 Nov 2026)",
+    "screen": "Settings › Projects & timesheets; My timesheet",
+    "url": "http://localhost:3000/yx/settings/projects",
+    "account": "The System Admin; an employee not allocated to project A; PM of A.",
+    "steps": [
+      "With 'Block', the employee books hours on A.",
+      "Set 'Allow with project manager approval'; book again and submit.",
+      "As the PM open Timesheet approvals."
+    ],
+    "expected": "Step 1: refused (not allocated). Step 2: saved and submitted. Step 3: the line says it was booked outside the allocation; no bulk; approve it on its own.",
+    "stories": [
+      "Screens/Settings/Group 3 · Time & Leave · 3.11 Projects & timesheets"
+    ],
+    "note": "Positive and negative. Answer 1442."
+  },
+  {
+    "id": "MT-PRJ2-04",
+    "area": "Projects P-2, line-by-line timesheet approvals (12 Nov 2026)",
+    "screen": "Client portal › Timesheets",
+    "url": "http://localhost:3000/yx/client/demo",
+    "account": "Two client contacts (clients X and Y, each with a project set to 'The client approves the hours'); an employee placed at X who also books to Y's project.",
+    "steps": [
+      "Approve the employee's week as the PMs.",
+      "Sign in to the portal as X's contact.",
+      "Sign in as Y's contact; approve the project line; send back another without a note, then with one."
+    ],
+    "expected": "Step 2: X sees the placement's week with only X's project hours; no Y lines. Step 3: Y sees only Y's project lines under Project hours; send back needs a note; the employee sees the note.",
+    "stories": [],
+    "note": "Positive and negative. Answer 1408, item 914."
   }
 ]

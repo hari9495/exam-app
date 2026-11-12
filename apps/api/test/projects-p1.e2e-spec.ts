@@ -125,8 +125,10 @@ describe('Projects P-1', () => {
   });
 
   it('Projects is off by default: its pages refuse and the menu hides it; only a System Admin switches it on (audited)', async () => {
-    expect((await api('boss', 'get', '/projects/status').expect(200)).body).toEqual({ enabled: false, canOpen: false });
+    expect((await api('boss', 'get', '/projects/status').expect(200)).body).toMatchObject({ enabled: false, canOpen: false });
     expect((await api('boss', 'get', '/projects').expect(403)).body.code).toBe('PROJECTS_OFF');
+    // Walk 12 Nov: someone with no Projects key is told they have no access, not that Projects is off.
+    expect((await api('emp', 'get', '/projects').expect(403)).body.code).toBeUndefined();
     await api('boss', 'post', '/projects').send(project()).expect(403);
     // Settings 3.11: Projects managers read it, nobody else; the defaults are the founder's (1401, 1404, 1405).
     expect((await api('boss', 'get', '/projects/settings').expect(want(200))).body).toMatchObject({ canEdit: false, values: { 'projects.enabled': 'off', 'projects.booking.allocated_only': 'on', 'projects.burn.warn_pct': '80', 'projects.burn.over_pct': '100' } });
@@ -137,8 +139,8 @@ describe('Projects P-1', () => {
       await settings('admin', bad).expect(400);
     expect((await settings('admin', [{ key: 'projects.enabled', value: 'on' }]).expect(want(200))).body.canEdit).toBe(true);
     expect(await inA((tx) => tx.auditLog.count({ where: { action: 'org.setting.changed', actorUserId: users.admin } }))).toBe(1);
-    expect((await api('boss', 'get', '/projects/status').expect(200)).body).toEqual({ enabled: true, canOpen: true });
-    expect((await api('emp', 'get', '/projects/status').expect(200)).body).toEqual({ enabled: true, canOpen: false });
+    expect((await api('boss', 'get', '/projects/status').expect(200)).body).toMatchObject({ enabled: true, canOpen: true });
+    expect((await api('emp', 'get', '/projects/status').expect(200)).body).toMatchObject({ enabled: true, canOpen: false });
     expect((await api('adminB', 'get', '/projects/status').expect(200)).body.enabled).toBe(false);
   });
 

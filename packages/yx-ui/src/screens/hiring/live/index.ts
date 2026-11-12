@@ -90,3 +90,5 @@ export { TIME_REGISTRY_SAMPLE } from '../../settings/time-settings-sample';
 // Projects P-3 (answers 1409, 1410): the designed PRJ-08 mapping rules, live with `live`.
 export { MappingRulesScreen, type LiveMappingRules } from '../projects-billing';
 export type { LiveMappingRule, MappingRuleInput, MappingRulesData, MappingTestResult } from '../mapping-live';
+// Projects P-2 (answers 1406 to 1408, 1442): the designed PRJ-02 timesheet approvals, live with `live`.
+export { TimesheetApprovalsScreen, type LiveApprovalsData, type LiveLineDecision, type LiveTimesheetApprovals } from '../projects';

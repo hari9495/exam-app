@@ -65,6 +65,11 @@ export class ProjectInputDto {
   @IsOptional()
   @IsBoolean()
   clientAcceptsMilestones?: boolean;
+
+  /** Answer 1408: the client approves this project's hours in the client portal, line by line (off by default). */
+  @IsOptional()
+  @IsBoolean()
+  clientApprovesHours?: boolean;
 }
 
 export class ProjectUpdateDto extends ProjectInputDto {

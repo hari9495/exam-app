@@ -622,6 +622,32 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
                 <Button size="sm" loading={busy === 'withdraw'} onClick={() => void run('withdraw', () => live.onWithdraw(d.sheet!.id))}>Recall to edit</Button>
               </div>
             )}
+            {/* Projects P-2 (1406, 1408): each reduced or rejected line with the reason, and anything the client sent back. */}
+            {(() => {
+              const code = (pid: string) => d.projects.find((x) => x.id === pid)?.code ?? 'Project';
+              const h = (ms: number[]) => Math.round((ms.reduce((a, b) => a + b, 0) / 60) * 100) / 100;
+              const changed = d.lines.filter((l) => l.decision === 'reduced' || l.decision === 'rejected' || l.clientStatus === 'sent_back');
+              const waiting = d.lines.filter((l) => l.decision === 'pending').length;
+              return (
+                <>
+                  {st === 'submitted' && waiting > 0 && waiting < d.lines.length && <p className="yx-tim-muted">{d.lines.length - waiting} of {d.lines.length} lines decided; the rest are waiting.</p>}
+                  {changed.length > 0 && (
+                    <InlineAlert tone="warning" title="Some hours were changed">
+                      <ul className="yx-tim-list" aria-label="Changed hours">
+                        {changed.map((l) => (
+                          <li key={l.id}>
+                            {code(l.projectId)}
+                            {l.activity ? ` · ${l.activity}` : ''}:{' '}
+                            {l.decision === 'rejected' ? `${h(l.minutes)} h rejected` : l.decision === 'reduced' ? `reduced from ${h(l.minutes)} h to ${h(l.approvedMinutes ?? [])} h` : 'sent back by the client'}
+                            {l.decision === 'reduced' || l.decision === 'rejected' ? `. Reason: ${l.reason ?? ''}` : l.clientNote ? `. Note: ${l.clientNote}` : ''}
+                          </li>
+                        ))}
+                      </ul>
+                    </InlineAlert>
+                  )}
+                </>
+              );
+            })()}
             {st === 'approved' && <p className="yx-tim-muted">Approved by the project manager.</p>}
             {editable && (
               <div className="yx-tim-stack">

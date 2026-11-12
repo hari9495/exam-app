@@ -4,7 +4,8 @@ import { useMemo, useState } from 'react';
 import { FlaskConical, Plus, Send, UserSearch } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge, PersonLabel } from '../../components/display';
-import { EmptyState, ErrorState, InlineAlert, Meter, Skeleton } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, Meter, NoAccessState, Skeleton } from '../../components/feedback';
+import { ProjectsOffState } from './projects';
 import { ConfirmDialog } from '../../components/overlay';
 import { useToast } from '../../components/notify';
 import { MappingRuleDrawer, type LiveMappingRule, type MappingRuleInput, type MappingRulesData, type MappingTestResult } from './mapping-live';
@@ -426,7 +427,7 @@ export function BenchRequestsScreen({ people, requests, today, persona, matchFor
 
 /** Projects P-3 (answers 1409, 1410): the company's mapping rules behind PRJ-08. */
 export interface LiveMappingRules {
-  state: 'ready' | 'loading' | 'error' | 'no-access';
+  state: 'ready' | 'loading' | 'error' | 'no-access' | 'off';
   onRetry?: () => void;
   data: MappingRulesData | null;
   onSwitchPrefill: (on: boolean) => Promise<void>;
@@ -581,8 +582,10 @@ function LiveMappingRulesView({ live }: { live: LiveMappingRules }) {
         <PageHeader title="Timesheet mapping rules" description={MAPPING_DESCRIPTION} />
         {live.state === 'error' ? (
           <ErrorState title="We couldn't load the mapping rules." onRetry={live.onRetry} />
+        ) : live.state === 'off' ? (
+          <ProjectsOffState />
         ) : live.state === 'no-access' ? (
-          <EmptyState title="You can't open the mapping rules." description="Projects managers and System Admins change them, once Projects is switched on in Settings › Projects & timesheets." />
+          <NoAccessState what="the timesheet mapping rules" grantedBy="your System Admin" />
         ) : (
           <Skeleton height={320} />
         )}

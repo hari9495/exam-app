@@ -10,10 +10,14 @@ import { DayEngine } from './day-engine.service';
 import { TimesheetLineDto } from './dto';
 import { lockedDates } from './schedule';
 import { TimeSetupService } from './setup.service';
+import { LineApprovalsService } from './line-approvals.service';
+import { lineApproved } from './line-rules';
 import { asDate, dateOf, factsOn, holidaysFor, hrApprovers, leaveDays, myEmployeeId, settingOn } from './time-core';
 import { addDays } from './time-maths';
 import { settingFor } from '../people/probation';
 import { mondayOf } from './time-rules';
+import { NotificationsService } from '../notifications/notifications.service';
+import { escapeHtml } from '../notifications/notification-email-render';
 
 // M02 §B7 basic timesheets: simple projects with activities (no M12 project accounting), a weekly grid per person,
 // submitted through P03 to the project managers (D4; else the person's manager). Approved hours set the day in the
@@ -30,6 +34,8 @@ export class TimesheetService implements OnModuleInit {
     private readonly engine: ApprovalsEngine,
     private readonly days: DayEngine,
     private readonly setup: TimeSetupService,
+    private readonly lineApprovals: LineApprovalsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   onModuleInit() {
@@ -60,7 +66,8 @@ export class TimesheetService implements OnModuleInit {
         week,
         mode: await settingOn(tx, c, 'attendance.mode', f, week),
         sheet: sheet ? { id: sheet.id, status: sheet.status, totalMinutes: sheet.totalMinutes, submittedAt: sheet.submittedAt, decidedAt: sheet.decidedAt } : null,
-        lines: lines.map((l) => ({ id: l.id, projectId: l.projectId, activity: l.activity, billable: l.billable, minutes: l.minutes, note: l.note })),
+        // Projects P-2 (1406): each line's decision with its reason, and the hours approved.
+        lines: lines.map((l) => ({ id: l.id, projectId: l.projectId, activity: l.activity, billable: l.billable, minutes: l.minutes, note: l.note, decision: l.status, reason: l.reason, approvedMinutes: l.status ? lineApproved(l) : null, unallocated: l.unallocated, clientStatus: l.clientStatus, clientNote: l.clientNote })),
         projects: projects.map((p) => ({ id: p.id, code: p.code, name: p.name, billable: p.billable, activities: p.activities, active: p.active })),
         days: Array.from({ length: 7 }, (_, k) => {
           const on = addDays(week, k);
@@ -141,6 +148,12 @@ export class TimesheetService implements OnModuleInit {
       const pms = [...new Set(projects.map((p) => p.managerUserId).filter((x): x is string => Boolean(x) && x !== c.userId))];
       const byProject = projects.map((p) => `${p.code}: ${hours(lines.filter((l) => l.projectId === p.id).reduce((s, l) => s + l.minutes.reduce((a, b) => a + b, 0), 0))}`).join(', ');
       await tx.timesheet.update({ where: { id: sheet.id }, data: { status: 'pending', submittedAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
+      // Projects P-2 (1406): with Projects on, each line goes to its own approver on PRJ-02, never the whole week.
+      if (await LineApprovalsService.on(tx, c)) {
+        const approvers = await this.lineApprovals.startLines(tx, c, sheet, f);
+        await audit(tx, c, 'time.timesheet.submitted', 'timesheet', sheet.id, { week, totalMinutes: sheet.totalMinutes, byLines: true });
+        return { id: sheet.id, status: 'pending', approvers, name: f.name };
+      }
       const sub = await this.engine.submit(tx, c, {
         type: TIMESHEET,
         subjectType: 'timesheet',
@@ -162,10 +175,14 @@ export class TimesheetService implements OnModuleInit {
       notices.push(...sub.notices);
       await tx.timesheet.update({ where: { id: sheet.id }, data: { wfRequestId: sub.id } });
       await audit(tx, c, 'time.timesheet.submitted', 'timesheet', sheet.id, { week, totalMinutes: sheet.totalMinutes });
-      return { id: sheet.id, status: (await tx.timesheet.findFirstOrThrow({ where: { id: sheet.id } })).status };
+      return { id: sheet.id, status: (await tx.timesheet.findFirstOrThrow({ where: { id: sheet.id } })).status, approvers: [] as string[], name: f.name };
     });
     await this.engine.send(ctx, notices);
-    return res;
+    if (res.approvers.length)
+      await this.notifications
+        .notifySystem(ctx, res.approvers, 'time.timesheet.lines', { entityType: 'timesheet', entityId: res.id, contextText: `${res.name}: timesheet for the week of ${fmt(week)} is waiting for you`, linkPath: '/yx/projects/approvals' }, { subject: `Timesheet to approve: ${res.name}, week of ${fmt(week)}`, html: `<p>${escapeHtml(res.name)} submitted the week of ${escapeHtml(fmt(week))}. Approve, reduce or reject your project's lines in Projects › Timesheet approvals.</p>` })
+        .catch(() => undefined);
+    return { id: res.id, status: res.status };
   }
 
   async withdraw(ctx: TenantContext, user: ScopeUser, id: string) {
@@ -176,6 +193,7 @@ export class TimesheetService implements OnModuleInit {
       if (!s) throw new NotFoundException('No such timesheet.');
       if (s.status !== 'pending') throw new ConflictException('Only a week still waiting can be withdrawn.');
       if (s.wfRequestId) await this.engine.withdraw(tx, c, s.wfRequestId, c.userId ?? null, 'Withdrawn by the employee');
+      else await this.lineApprovals.withdrawLines(tx, c.organizationId, s.id);
       await tx.timesheet.update({ where: { id }, data: { status: 'draft', submittedAt: null, version: { increment: 1 }, updatedAt: new Date() } });
       return { id, status: 'draft' };
     });

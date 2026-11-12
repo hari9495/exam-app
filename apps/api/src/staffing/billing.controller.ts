@@ -254,6 +254,20 @@ export class PublicClientPortalController {
     return this.portal.timesheet(org.slice(0, 100), token, id, 'approve');
   }
 
+  @Post(':org/project-hours/:id/approve')
+  @HttpCode(200)
+  @Throttle(PUBLIC_API_THROTTLE)
+  approveProjectHours(@Param('org') org: string, @Param('id', ParseUUIDPipe) id: string, @Headers('x-client-portal') token?: string) {
+    return this.portal.projectHours(org.slice(0, 100), token, id, 'approve');
+  }
+
+  @Post(':org/project-hours/:id/send-back')
+  @HttpCode(200)
+  @Throttle(PUBLIC_API_THROTTLE)
+  sendBackProjectHours(@Param('org') org: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PortalSendBackDto, @Headers('x-client-portal') token?: string) {
+    return this.portal.projectHours(org.slice(0, 100), token, id, 'send_back', dto);
+  }
+
   @Post(':org/timesheets/:id/send-back')
   @HttpCode(200)
   @Throttle(PUBLIC_API_THROTTLE)

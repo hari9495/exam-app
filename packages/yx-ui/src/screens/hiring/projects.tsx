@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { CheckCheck, FolderKanban, Plus } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
-import { EmptyState, ErrorState, InlineAlert, Meter, Skeleton } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, Meter, NoAccessState, Skeleton } from '../../components/feedback';
 import { Select } from '../../components/select';
 import { ConfirmDialog } from '../../components/overlay';
 import { DataTable, type TableColumn } from '../../components/table';
@@ -27,6 +27,11 @@ import './hiring.css';
 type ListState = 'ready' | 'loading' | 'error';
 export type PrjPersona = 'pm' | 'finance' | 'hr';
 const STATUS_TONE: Record<Project['status'], BadgeTone> = { Draft: 'neutral', Active: 'success', 'On hold': 'warning', Closed: 'neutral' };
+
+/** Projects switched off for the company, shown only to people who would otherwise open the page (answer 1401). */
+export function ProjectsOffState() {
+  return <EmptyState title="Projects is switched off" description="Your company has not switched Projects on yet. A System Admin switches it on in Settings › Projects & timesheets." />;
+}
 
 /* ================================================================== PRJ-01 · Projects list */
 
@@ -67,11 +72,29 @@ export function ProjectsListScreen({ rows: drawnRows = [], persona: drawnPersona
     searchPlaceholder: 'Search projects or clients',
   });
   const cols: TableColumn<Project>[] = [
-    { key: 'code', header: 'Code', type: 'id', value: (r) => r.code, width: 100 },
-    { key: 'name', header: 'Project', value: (r) => r.name, render: (r) => <PersonLabel name={r.name} secondary={r.client ?? 'Internal'} /> },
-    { key: 'model', header: 'Billing', value: (r) => r.model, groupable: true },
-    { key: 'pm', header: 'Project manager', type: 'person', value: (r) => r.pm, person: (r) => ({ name: r.pm }) },
-    { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => STATUS_TONE[v as Project['status']] },
+    { key: 'code', header: 'Code', type: 'id', value: (r) => r.code, width: 150, render: (r) => <span className="yx-hire-clip" title={r.code}>{r.code}</span> },
+    {
+      key: 'name',
+      header: 'Project',
+      value: (r) => r.name,
+      width: 340,
+      render: (r) =>
+        live ? (
+          <span className="yx-hire-clip2">
+            <span title={r.name}>{r.name}</span>
+            <span title={r.client ?? 'Internal'}>
+              <Text as="span" size="sm" tone="secondary">
+                {r.client ?? 'Internal'}
+              </Text>
+            </span>
+          </span>
+        ) : (
+          <PersonLabel name={r.name} secondary={r.client ?? 'Internal'} />
+        ),
+    },
+    { key: 'model', header: 'Billing', value: (r) => r.model, groupable: true, optional: Boolean(live) },
+    { key: 'pm', header: 'Project manager', type: 'person', value: (r) => r.pm, person: (r) => ({ name: r.pm }), optional: Boolean(live) },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => STATUS_TONE[v as Project['status']], width: live ? 120 : undefined },
     {
       key: 'burn',
       header: 'Hours burn',
@@ -91,17 +114,14 @@ export function ProjectsListScreen({ rows: drawnRows = [], persona: drawnPersona
         ]
       : []),
     ...(live && persona === 'finance' ? [{ key: 'feeLive', header: 'Fee', type: 'money', value: (r: Project) => r.fee } as TableColumn<Project>] : []),
-    ...(live ? [{ key: 'people', header: 'People', type: 'number', value: (r: Project) => r.people } as TableColumn<Project>] : [{ key: 'util', header: 'Utilisation', type: 'number', value: (r: Project) => r.utilisation, render: (r: Project) => (r.utilisation ? `${r.utilisation}%` : '—') } as TableColumn<Project>]),
+    ...(live ? [{ key: 'people', header: 'People', type: 'number', value: (r: Project) => r.people, width: 104 } as TableColumn<Project>] : [{ key: 'util', header: 'Utilisation', type: 'number', value: (r: Project) => r.utilisation, render: (r: Project) => (r.utilisation ? `${r.utilisation}%` : '—') } as TableColumn<Project>]),
     ...(persona === 'finance' && !live ? [{ key: 'margin', header: 'Margin', type: 'number', value: (r: Project) => marginPct(r.billed + r.wip, r.cost), render: (r: Project) => (r.fee ? `${marginPct(r.billed + r.wip, r.cost)}%` : '—') } as TableColumn<Project>] : []),
   ];
   const canCreate = live ? live.can.create : persona !== 'hr';
   const newButton = canCreate ? <Button variant="primary" icon={Plus} onClick={() => setCreating(true)}>New project</Button> : undefined;
-  if (live?.state === 'no-access')
-    return (
-      <ProjectsFrame active="Projects">
-        <EmptyState title="You can't open Projects." description="Projects needs a Projects key, or a project you manage. If Projects is switched off, a System Admin switches it on in Settings › Projects &amp; timesheets." />
-      </ProjectsFrame>
-    );
+  // Walk 12 Nov (answers 946, 972): the kit's no-access page (Request access), never naming a key.
+  if (live?.state === 'no-access' || live?.state === 'off')
+    return <ProjectsFrame active="Projects">{live.state === 'off' ? <ProjectsOffState /> : <NoAccessState what="Projects" grantedBy="your System Admin" />}</ProjectsFrame>;
   return (
     <ProjectsFrame active="Projects">
       <PageHeader title="Projects" description="Client and internal projects with budgets in hours, cost and fee. Burn alerts at 80% and 100%." actions={newButton} />
@@ -213,7 +233,7 @@ export function ProjectWorkspaceScreen({ project: drawnProject, persona: drawnPe
   if (live && !d)
     return (
       <ProjectsFrame active="Projects">
-        {live.state === 'error' ? <ErrorState title="We couldn't load the project." onRetry={live.onRetry} /> : live.state === 'no-access' ? <EmptyState title="You can't open this project." description="It needs a Projects key, or to be its manager." /> : <Skeleton height={320} />}
+        {live.state === 'error' ? <ErrorState title="We couldn't load the project." onRetry={live.onRetry} /> : live.state === 'off' ? <ProjectsOffState /> : live.state === 'no-access' ? <NoAccessState what="this project" grantedBy="your System Admin" /> : <Skeleton height={320} />}
       </ProjectsFrame>
     );
   const p = d ? toProject(d.project) : drawnProject!;
@@ -598,11 +618,36 @@ export function ProjectWorkspaceScreen({ project: drawnProject, persona: drawnPe
 
 /* ================================================================== PRJ-02 · Timesheet approvals */
 
+/** Projects P-2 (answers 1406, 1407, 1442): GET /time/line-approvals, the lines waiting for me. */
+export interface LiveApprovalsData {
+  withinAllocation: boolean;
+  groups: {
+    projectId: string;
+    project: string;
+    projectName: string;
+    week: string;
+    /** 1408: the client who approves this project's hours after the PM (null: none). */
+    clientApproval: string | null;
+    items: { id: string; timesheetId: string; employee: string; allocationPercent: number | null; allocatedHours: number; unallocated: boolean; bulk: boolean; lines: { id: string; task: string | null; hours: number; billable: boolean; note: string | null; version: number }[] }[];
+  }[];
+}
+export type LiveLineDecision = { lineId: string; status: 'approved' | 'reduced' | 'rejected'; hours?: number; reason?: string; version: number };
+export interface LiveTimesheetApprovals {
+  state: 'ready' | 'loading' | 'error' | 'no-access';
+  onRetry?: () => void;
+  data: LiveApprovalsData | null;
+  onDecide: (decisions: LiveLineDecision[]) => Promise<void>;
+  onBulk: (items: { lineId: string; version: number }[]) => Promise<void>;
+  /** Story: the bulk confirmation open for the first group. */
+  defaultBulk?: boolean;
+}
+
 export interface TimesheetApprovalsProps {
-  groups: ApprovalGroup[];
+  groups?: ApprovalGroup[];
   clientApproval?: boolean;
   state?: ListState;
   bulkConfirm?: boolean;
+  live?: LiveTimesheetApprovals;
 }
 
 function ApprovalGroups({ groups, onBulk, done }: { groups: ApprovalGroup[]; onBulk: (ids: string[]) => void; done: string[] }) {
@@ -647,8 +692,127 @@ function ApprovalGroups({ groups, onBulk, done }: { groups: ApprovalGroup[]; onB
   );
 }
 
+const weekOf = (iso: string) => `Week of ${formatDate(new Date(`${iso}T00:00:00`))}`;
+
+/** PRJ-02 live: my lines by project and week; each card decides one person's lines; bulk only within the allocation. */
+function LiveTimesheetApprovalsView({ live }: { live: LiveTimesheetApprovals }) {
+  const d = live.data;
+  const { toast } = useToast();
+  const [project, setProject] = useState<string>('all');
+  const [week, setWeek] = useState<string>('all');
+  const [bulk, setBulk] = useState<{ key: string; items: { lineId: string; version: number }[] } | null>(() => {
+    const g = live.defaultBulk ? d?.groups[0] : undefined;
+    return g ? { key: `${g.projectId}:${g.week}`, items: g.items.filter((i) => i.bulk).flatMap((i) => i.lines.map((l) => ({ lineId: l.id, version: l.version }))) } : null;
+  });
+  const [failed, setFailed] = useState<string | null>(null);
+  const act = async (fn: () => Promise<void>, done: string) => {
+    setFailed(null);
+    try {
+      await fn();
+      toast({ tone: 'success', title: done });
+    } catch (e) {
+      setFailed(e instanceof Error && e.message ? e.message : 'That did not save. Nothing was changed.');
+    }
+  };
+  const groups = (d?.groups ?? []).filter((g) => (project === 'all' || g.projectId === project) && (week === 'all' || g.week === week));
+  const projects = [...new Map((d?.groups ?? []).map((g) => [g.projectId, g.project])).entries()];
+  const weeks = [...new Set((d?.groups ?? []).map((g) => g.week))].sort().reverse();
+  const clients = [...new Set(groups.filter((g) => g.clientApproval).map((g) => `${g.project} (${g.clientApproval})`))];
+  return (
+    <ProjectsFrame active="Timesheet approvals">
+      <PageHeader
+        title="Timesheet approvals"
+        description="Grouped by project and week. Approve, reduce or reject lines with a reason the employee sees. Weeks within the allocation can be approved in bulk."
+        facts={
+          d && d.groups.length > 0 ? (
+            <div className="yx-hire-actions">
+              <Select aria-label="Project" value={project} onChange={(v) => setProject(v ?? 'all')} options={[{ value: 'all', label: 'All my projects' }, ...projects.map(([id, code]) => ({ value: id, label: code }))]} />
+              <Select aria-label="Week" value={week} onChange={(v) => setWeek(v ?? 'all')} options={[{ value: 'all', label: 'All weeks' }, ...weeks.map((w) => ({ value: w, label: weekOf(w) }))]} />
+            </div>
+          ) : undefined
+        }
+      />
+      {clients.length > 0 && <InlineAlert tone="info">{clients.join(', ')}: approved lines then go to the client in the client portal before they can be billed.</InlineAlert>}
+      {failed && <InlineAlert tone="danger" title="Not saved">{failed}</InlineAlert>}
+      {live.state === 'loading' || (!d && live.state === 'ready') ? (
+        <div className="yx-hire-approvals">
+          {[0, 1].map((i) => (
+            <Skeleton key={i} height={260} />
+          ))}
+        </div>
+      ) : live.state === 'error' ? (
+        <ErrorState title="Couldn't load timesheets" description="Check your connection and try again. Nothing was approved." onRetry={live.onRetry ?? (() => {})} />
+      ) : live.state === 'no-access' ? (
+        <NoAccessState what="timesheet approvals" grantedBy="your System Admin" />
+      ) : groups.length === 0 ? (
+        <EmptyState title="You're all caught up." description="No timesheet lines are waiting for your approval." />
+      ) : (
+        groups.map((g) => {
+          const eligible = g.items.filter((i) => i.bulk);
+          const key = `${g.projectId}:${g.week}`;
+          return (
+            <section key={key} className="yx-hire-stack" aria-label={`${g.project}, ${weekOf(g.week)}`}>
+              <div className="yx-hire-row">
+                <div>
+                  <Text weight="semibold">
+                    {g.project} · {g.projectName}
+                  </Text>
+                  <Text as="div" size="sm" tone="secondary">
+                    {weekOf(g.week)} · {g.items.length} waiting
+                  </Text>
+                </div>
+                {eligible.length > 0 && (
+                  <Button icon={CheckCheck} onClick={() => setBulk({ key, items: eligible.flatMap((i) => i.lines.map((l) => ({ lineId: l.id, version: l.version }))) })}>
+                    Approve {eligible.length} within allocation
+                  </Button>
+                )}
+              </div>
+              <div className="yx-hire-approvals">
+                {g.items.map((i) => (
+                  <div key={i.id} className="yx-hire-stack">
+                    {i.unallocated && <InlineAlert tone="warning">Booked outside {i.employee}'s allocation. Approve it on its own; it is never approved in bulk.</InlineAlert>}
+                    <TimesheetApprovalCard
+                      employee={{ name: i.employee, secondary: i.allocationPercent != null ? `allocated ${i.allocatedHours} h a week` : 'not allocated to this project' }}
+                      weekLabel={weekOf(g.week)}
+                      lines={i.lines.map((l) => ({ id: l.id, project: g.project, task: l.task ?? undefined, hours: l.hours, billable: l.billable }))}
+                      onApprove={(decisions) =>
+                        void act(
+                          () => live.onDecide(i.lines.map((l) => { const x = decisions[l.id]!; return { lineId: l.id, version: l.version, status: x.status, ...(x.status === 'reduced' ? { hours: x.hours, reason: x.reason } : x.status === 'rejected' ? { reason: x.reason } : {}) }; })),
+                          `${i.employee}: decided`,
+                        )
+                      }
+                      onSendBack={(reason) => void act(() => live.onDecide(i.lines.map((l) => ({ lineId: l.id, version: l.version, status: 'rejected', reason }))), `${i.employee}: sent back`)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </section>
+          );
+        })
+      )}
+      <ConfirmDialog
+        open={bulk != null}
+        onOpenChange={(o) => !o && setBulk(null)}
+        title={`Approve ${bulk?.items.length ?? 0} lines?`}
+        consequence={d?.withinAllocation === false ? 'Each line is approved as booked. Approved lines are locked; later fixes are adjustment lines.' : "Every line is within the person's allocation. Approved lines are locked; later fixes are adjustment lines."}
+        confirmLabel={`Approve ${bulk?.items.length ?? 0} lines`}
+        onConfirm={async () => {
+          const items = bulk!.items;
+          setBulk(null);
+          await act(() => live.onBulk(items), `${items.length} lines approved`);
+        }}
+      />
+    </ProjectsFrame>
+  );
+}
+
 // PRJ-02
-export function TimesheetApprovalsScreen({ groups, clientApproval = false, state = 'ready', bulkConfirm = false }: TimesheetApprovalsProps) {
+export function TimesheetApprovalsScreen({ groups = [], clientApproval = false, state = 'ready', bulkConfirm = false, live }: TimesheetApprovalsProps) {
+  if (live) return <LiveTimesheetApprovalsView live={live} />;
+  return <DrawnTimesheetApprovals groups={groups} clientApproval={clientApproval} state={state} bulkConfirm={bulkConfirm} />;
+}
+
+function DrawnTimesheetApprovals({ groups, clientApproval, state, bulkConfirm }: { groups: ApprovalGroup[]; clientApproval: boolean; state: ListState; bulkConfirm: boolean }) {
   const [done, setDone] = useState<string[]>([]);
   const [pending, setPending] = useState<string[] | null>(bulkConfirm ? groups[0].items.filter((i) => bulkEligible({ id: i.id, hours: i.lines.reduce((s, l) => s + l.hours, 0), allocatedHours: i.allocatedHours })).map((i) => i.id) : null);
   const total = groups.reduce((s, g) => s + g.items.length, 0) - done.length;
