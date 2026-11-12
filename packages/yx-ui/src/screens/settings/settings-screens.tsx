@@ -341,6 +341,8 @@ export interface LiveSettingsPage {
   lastChange: LastChange | null;
   /** Answer 1326: the page's earlier changes (the last 20 with lastChange), newest first. */
   history?: HistoryEntry[];
+  /** Answer 1724: "See all in the audit log" in the history drawer, for those who may read the audit log. */
+  auditHref?: string;
   state?: LoadState;
   onRetry?: () => void;
   /** The changed values (by setting key) and the edited lists (rows by key). Rejects with a plain message. */
@@ -418,7 +420,7 @@ export function SettingsPageScreen({
         title={page.title}
         description={page.summary}
         status={readOnly && state !== 'no-access' ? <Badge tone="neutral">View only</Badge> : undefined}
-        facts={lastChange ? <AuditLine compact change={lastChange} history={history} /> : undefined}
+        facts={lastChange ? <AuditLine compact change={lastChange} history={history} auditHref={live?.auditHref} /> : undefined}
       />
       {state === 'no-access' && <NoAccessState grantedBy="your System Admin" what={`${page.title} settings`} />}
       {state === 'mfa' && (

@@ -543,6 +543,8 @@ model AuditLog {
   actorName      String?       @map("actor_name") @db.VarChar(1000)
   actorRole      String?       @map("actor_role") @db.VarChar(1000)
   metadataJson   String?       @map("metadata_json") @db.Text
+  /// Answer 1723: where the request came from (web, phone, api); none for jobs and rows before it was recorded.
+  channel        String?       @default(dbgenerated("NULLIF(current_setting('app.channel'::text, true), ''::text)")) @db.VarChar(8)
   createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   // P08 YX-AUD-03 hash chain, set by the database on insert (audit_chain_link); never written by the app.
   chainKey       String?       @map("chain_key") @db.Uuid
@@ -1946,6 +1948,22 @@ model OfferCondition {
 
   @@index([organizationId, offerId], map: "offer_conditions_org_offer_idx")
   @@map("offer_conditions")
+}
+
+/// Settings S-6, 2.4 Approvals (answer 1330): a company's own approval steps for one request type (the shared engine).
+model ApprovalPolicy {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  requestType    String   @map("request_type") @db.VarChar(60)
+  /// [{ name, approver: manager | manager_2 | hr, mode: any | all }], 1 to 5 steps
+  steps          Json
+  version        Int      @default(1)
+  updatedBy      String?  @map("updated_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, requestType])
+  @@map("approval_policies")
 }
 
 model ApprovalChain {

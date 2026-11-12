@@ -6,7 +6,7 @@ import { SETTINGS_GROUPS, SettingsPageScreen, historyOnPage, pendingOnPage, time
 import { loadState, todayIst, useOrg, useOrgWrite, useYxPermissions } from './yx-org';
 import { useYxNav } from './yx-shell';
 import { groupSlug } from './yx-settings-home';
-import { ME_SECURITY } from './yx-nav';
+import { AUDIT_LOG, ME_SECURITY } from './yx-nav';
 import { PAGE_SETTING_KEYS, useSettingsHistory } from './yx-settings-history';
 
 // Settings S-2 and S-3 (answers 1323 to 1325): a drawn settings page with the company's settings from the registry
@@ -17,7 +17,7 @@ import { PAGE_SETTING_KEYS, useSettingsHistory } from './yx-settings-history';
 type Overview = { registry: Record<string, RegistryDef>; limits: TimeSettingsData['limits']; pending?: PendingSettingChange[]; overrides: { key: string; scopeType: string; validFrom: string | null; value: unknown }[] };
 type Page = SettingsGroupDef['pages'][number];
 
-export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, secondPerson }: {
+export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, secondPerson, decorate }: {
   slug: string;
   /** The drawn pages this route serves. */
   pageIds: readonly string[];
@@ -29,6 +29,8 @@ export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, s
   canEdit: (has: (key: string) => boolean, page: Page) => boolean;
   /** Answer 1325: the page's changes wait for a second person while the company switch is on. */
   secondPerson?: boolean;
+  /** S-6 (answer 1330): adds what the page shows beside its settings (2.4: the approval policies). */
+  decorate?: (page: Page) => Page;
 }) {
   const router = useRouter();
   const design = SETTINGS_GROUPS.flatMap((g) => g.pages).find((p) => pageIds.includes(p.id) && groupSlug(p.title) === slug);
@@ -57,7 +59,8 @@ export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, s
   const keys = useMemo(() => (design && settings.data ? (PAGE_SETTING_KEYS[design.id] ?? []).filter((k) => settings.data!.registry[k]) : []), [design, settings.data]);
   const history = useSettingsHistory(keys);
   if (!design) return <SettingsPageScreen groups={SETTINGS_GROUPS} pageId={pageIds[0]!} state="no-access" />;
-  const page = data ? timeSettingsPage(design, data, shown) : design;
+  const built = data ? timeSettingsPage(design, data, shown) : design;
+  const page = decorate && data ? decorate(built) : built;
   const linkOf = (screenId: string) => Object.entries(links).find(([k]) => design.sections.some((s) => s.settings.some((d) => d.key === k && d.linkScreenId === screenId)))?.[1];
   const waiting = secondPerson && settings.data ? pendingOnPage(page, settings.data.pending ?? []) : [];
   const past = history.data ? historyOnPage(page, history.data) : { lastChange: null, history: [] };
@@ -71,6 +74,7 @@ export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, s
         canEdit: Boolean(data?.canEdit),
         lastChange: past.lastChange,
         history: past.history,
+        auditHref: perms.has('audit.view') ? `${AUDIT_LOG}?area=settings` : undefined,
         // The MFA floor is its own state (add a second factor), never "couldn't load" (walk of S-3).
         state: settings.isError && (settings.error as { code?: string }).code === 'MFA_REQUIRED' ? 'mfa' : loadState(settings),
         onSetUpMfa: () => router.push(ME_SECURITY),

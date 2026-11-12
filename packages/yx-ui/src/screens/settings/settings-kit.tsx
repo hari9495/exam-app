@@ -547,7 +547,7 @@ export interface HistoryEntry extends LastChange {
 }
 
 /** compact: the "Last changed by" line under the page title, with its View history button (shown once per page). */
-export function AuditLine({ change, history = [], defaultHistoryOpen = false, compact }: { change: LastChange; history?: HistoryEntry[]; defaultHistoryOpen?: boolean; compact?: boolean }) {
+export function AuditLine({ change, history = [], defaultHistoryOpen = false, compact, auditHref }: { change: LastChange; history?: HistoryEntry[]; defaultHistoryOpen?: boolean; compact?: boolean; /** Answer 1724: the company audit log, for those who may read it. */ auditHref?: string }) {
   const [open, setOpen] = useState(defaultHistoryOpen);
   const all: HistoryEntry[] = [{ ...change, id: 'latest' }, ...history];
   const items: TimelineItem[] = all.map((h) => ({
@@ -559,6 +559,11 @@ export function AuditLine({ change, history = [], defaultHistoryOpen = false, co
   const drawer = (
     <Drawer open={open} onOpenChange={setOpen} title="Change history" subtitle="Every change is recorded with before and after values.">
       <Timeline items={items} today={TODAY} aria-label="Change history" />
+      {auditHref && (
+        <a className="yx-link" href={auditHref}>
+          See all in the audit log
+        </a>
+      )}
     </Drawer>
   );
   if (compact)

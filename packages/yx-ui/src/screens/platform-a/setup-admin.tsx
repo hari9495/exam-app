@@ -20,6 +20,7 @@ import { formatDate, formatINR } from '../../lib/format';
 import { DesktopFrame } from '../_kit/frames';
 import { ENTITIES, LOCATIONS, TODAY } from '../_kit/data';
 import { ListPage, Tile, Workspace, readiness, settingsPanel, simulatePolicy, sodConflicts, type PolicyDef, type ReadinessCheck } from './platform-kit';
+import { LivePolicyEditorScreen, type LivePolicyEditor } from './policy-editor-live';
 import { PEOPLE, at, d } from './platform-data';
 
 /* ================================================================ PLT-08 Set-up hub */
@@ -562,7 +563,8 @@ const POLICY_RULE: Rule = {
   actions: [],
 };
 
-export function PolicyEditorScreen({ simulated: simProp = false, saveTried = false }: { simulated?: boolean; saveTried?: boolean }) {
+export function PolicyEditorScreen({ simulated: simProp = false, saveTried = false, live }: { simulated?: boolean; saveTried?: boolean; /** Settings S-6 (answer 1330): the company's approval steps per request type. */ live?: LivePolicyEditor }) {
+  if (live) return <LivePolicyEditorScreen live={live} />;
   const [policies, setPolicies] = useState(EXPENSE_POLICIES);
   const [amount, setAmount] = useState<number | null>(12400);
   const [cat, setCat] = useState<string | null>('Travel');

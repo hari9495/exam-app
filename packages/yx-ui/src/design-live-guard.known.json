@@ -87,7 +87,6 @@
     "platform-a: PackagesScreen",
     "platform-a: PartnersScreen",
     "platform-a: PoliciesPageScreen",
-    "platform-a: PolicyEditorScreen",
     "platform-a: RequestSheetPhone",
     "platform-a: RequestSheetScreen",
     "platform-a: RequestTypeBuilderScreen",

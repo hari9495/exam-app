@@ -61,15 +61,15 @@ After S-1 (Settings home, search and the eight group pages live; four live stori
 |---|---|---|---|---|---|---|---|
 | A. Settings home and page states | 1 | 18 | 3 | 3 | 0 | 0 | 24 |
 | B. Organisation and Global core | 2 | 25 | 0 | 0 | 0 | 0 | 25 |
-| C. Settings map, groups 1 to 8 | 8 | 34 | 93 | 14 | 32 | 0 | 173 |
-| **All A-C** | **11** | **77** | **96** | **17** | **32** | **0** | **222** |
+| C. Settings map, groups 1 to 8 | 8 | 34 | 95 | 14 | 30 | 0 | 173 |
+| **All A-C** | **11** | **77** | **98** | **17** | **30** | **0** | **222** |
 
 Per group (C):
 
 | group | live | live, gap | wire design | feature not built | stories |
 |---|---|---|---|---|---|
 | Group 1 · Organisation | 2 | 12 | 0 | 4 | 18 |
-| Group 2 · People & Access | 3 | 16 | 0 | 6 | 25 |
+| Group 2 · People & Access | 3 | 18 | 0 | 4 | 25 |
 | Group 3 · Time & Leave | 3 | 24 | 0 | 0 | 27 |
 | Group 4 · Payroll & Statutory | 5 | 20 | 0 | 2 | 27 |
 | Group 5 · Documents & Communication | 2 | 12 | 0 | 6 | 20 |
@@ -301,8 +301,8 @@ File: `packages/yx-ui/src/screens/settings/settings-g2.stories.tsx`.
 | P2_2_ReadOnly · 2.2 Directory & privacy · read-only | live (gap) | read-only: `canManage` = org.settings.manage |
 | P2_3 · 2.3 Security | live (gap) | /yx/settings/security renders `SecuritySettingsScreen` (`security/policy`), plus /yx/settings/identity-providers (`security/identity-providers`) and /yx/settings/support-access (`SupportAccessScreen`); this settings-map version is not rendered: a second design of the same page |
 | P2_3_ReadOnly · 2.3 Security · read-only | live (gap) | read-only: unsure; Security is in the menu for admin roles only |
-| P2_4 · 2.4 Approvals | design only, feature not built | no approval policy per request type: the approvals engine (`workflow/approvals-engine.service.ts`) takes its chain, reminders and timeout from each caller in code; delegation is live (/yx/me/delegation). The older `organizations/approvals` chains (`ApprovalChain`) serve hiring only (/yx/hiring/approval-routes). Searched `workflow.?polic|request.?type.*polic`: none |
-| P2_4_ReadOnly · 2.4 Approvals · read-only | design only, feature not built | as the page |
+| P2_4 · 2.4 Approvals | live (gap) | S-6 (answer 1330): /yx/settings/people/approvals: the drawn page with the policies per request type (read-only list from `GET workflow/policies`, the link to the policy editor) and the reminder and escalation hours (company settings, 24 and 48 by default). Gap: the drawn default mode, escalate-to, automatic decisions, out-of-app approval, risk levels, approve-with-changes, duplicate approver and leave delegation fields are not on the page (questions 1761 to 1764) |
+| P2_4_ReadOnly · 2.4 Approvals · read-only | live (gap) | same page read-only for those who read the company settings; the API refuses their changes |
 | P2_5 · 2.5 Onboarding & probation | live (gap) | journey templates on /yx/settings/checklists (`JourneyTemplatesScreen`, `lifecycle/journey-templates`); probation and joining day on Company rules; pre-boarding settings: none found |
 | P2_5_ReadOnly · 2.5 Onboarding & probation · read-only | live (gap) | read-only: unsure (the page passes no manage flag) |
 | P2_6 · 2.6 Job changes & transfers | live (gap) | Job changes and Inter-entity transfer defaults on /yx/settings/company-rules (`employee_change.retro_limit`, `promotion.must_change`, `transfer.*`); change types and deputation: none found |
@@ -823,6 +823,54 @@ approver for payroll settings; approval policies per request type; and the not-b
 1724. **History older than the last 20.** Each page shows the last 20 changes; older ones are on the audit log page.
       *Suggested: keep, with a "See all in the audit log" link from the history drawer.*
 
+## S-6 as built (answer 1330; branch `feat/yukthix-settings-s6`)
+
+- **2.4 Approvals, live:** /yx/settings/people/approvals renders the drawn `SettingsPageScreen` (front door of 2.4):
+  "Policies per request type" lists each request type with its approvers, who must decide, the time to decide and what
+  happens if no one does (read-only, from `GET workflow/policies`), with the drawn link to the policy editor; "Reminders
+  and escalation" holds the two company settings `approval.remind_hours` (default 24) and `approval.escalate_hours`
+  (default 48), saved through `PUT org/settings` and shown in the page's history.
+- **The policy editor, live:** /yx/settings/approval-policies renders the drawn PLT-12 `PolicyEditorScreen` with `live`:
+  pick a request type; give it 1 to 5 steps, each with a name, who approves (the person's manager, their manager's
+  manager, or the HR Admins) and whether any one or all decide; save as a new version, or go back to the built-in steps.
+- **On the existing engine:** a company policy is stored per request type (`approval_policies`, tenant RLS, migration
+  `202617z0000172_approval_policies`) and the shared engine uses it when the request is sent
+  (`ApprovalsEngine.submit`), in place of the module's steps; each company step reminds after the company's hours and
+  escalates to the approver's manager after the escalation hours (the engine's existing reminder and escalation). The
+  route is copied into the request, so a change applies to new requests only. A request the module approves at once
+  (no steps) stays that way. The HR Admins are a new approver kind (`hr`, the people holding HR's settings key).
+- **Which request types:** the 13 people requests (leave, leave cancellation, comp-off, attendance fix, work from home,
+  on duty, overtime, overtime pre-approval, shift swap, timesheet, expense claim, trip, expense advance). Payroll, pay,
+  equity, offers and hiring routes keep their module approvers (hiring moves here later, as answered).
+- **Nobody approves their own request:** the engine already takes the requester and whoever raised it out of every
+  step; a company step with only them falls back as before.
+- **Who:** HR's settings key changes policies and hours; people who read the company settings see both read-only
+  (Approvals and Approval policies in the menu). Every change is audited: `workflow.policy.changed` (before and after,
+  version) and `workflow.policy.reset`; the hours as `org.setting.changed`.
+- **Tests:** API e2e `settings-s6-approvals` (7: the view key reads and cannot change, no key refused; empty steps, a
+  one-letter name, an unknown approver, a guarded type (payroll run) and a stale version refused; saved as version 1 and
+  audited with before and after; another company sees only built-in; a request follows the company steps, the requester
+  is in no step and cannot decide, step 1 any one, step 2 needs all, then approved; back to the built-in steps, audited;
+  the hours set to 4 and 24: no reminder at 3.5 hours, a reminder at 4, escalation at 24). Kit `policy-editor-live.test`
+  (6), web `yx-settings-approvals.test`, `yx-nav` (Approvals in the menu).
+
+### Questions (from 1761)
+
+1761. **The drawn page's other fields.** Default mode, escalate-to, automatic decisions after a timeout, approve from
+      email or WhatsApp, risk levels, approve-with-changes, duplicate approver and delegation on leave. Some exist in
+      the engine already (risk, automatic decisions only for low risk, delegation). *Suggested: add them one by one as
+      company settings when a customer asks; delegation on leave is already live on Delegation.*
+1762. **Conditions and Simulate.** The drawn editor has several policies per type with conditions (amount, category,
+      grade) and a Simulate run before saving. Built: one policy per type, no conditions. *Suggested: conditions with
+      expense claims first (amount and category), with Simulate, in a later slice.*
+1763. **Named people and groups as approvers.** The engine can route to named people and user groups. *Suggested: add
+      "Named people" with a people picker when a customer asks for a fixed approver (for example a plant head).*
+1764. **The built-in steps on the page.** A type without company steps shows "Built in", since each module builds its
+      steps when a request is sent. *Suggested: describe each module's built-in steps in words on the page.*
+1765. **Escalation for built-in steps.** The company's reminder and escalation hours apply to the company's own steps;
+      built-in steps keep their module's timing (leave: reminder 24, escalation 72). *Suggested: apply the company hours
+      to every people request type's built-in steps too.*
+
 ## 7. Build plan (slices, max 3 builders at once)
 
 Ordered by what every customer needs first: the way in (home), the everyday HR rules (time, leave, payroll, people),
@@ -929,3 +977,21 @@ console.log(missing.join(' '));
 - 1561 to 1564 approved as suggested (12 Nov 2026, "ok for all"). With S-7: Onboarding & probation, Job changes and Employee relations move with "Different for" (1561); "Applies from" on dated settings (1562); retirement age per grade (1564). With 1326: a company-wide audit log page readable with audit.view (1563).
 
 - 1721 to 1724 approved as suggested (12 Nov 2026, "ok for all"). To build: chain badge and Export (audit.export) on the company audit log (1722); record the channel (web, phone, API) with audit entries from now on and show it when present (1723); "See all in the audit log" from each history drawer (1724). 1721: readers per page as built; add one when a role asks.
+
+## 1722 to 1724 as built (branch `feat/yukthix-settings-s6`, first commit)
+
+- **1722:** the company audit log shows the latest daily integrity check ("Chain verified …", or "Chain check failed" with
+  what it found) and Export CSV for people with audit.export, both from the existing payroll audit endpoints
+  (`GET payroll/audit/chain`, `GET payroll/audit/export`, with the page's area, person and date filters).
+- **1723:** every audit row written for a request now records where it came from: `web`, `phone` (a phone browser or app,
+  by its user agent) or `api` (the public API). The app keeps the request's channel for the whole request
+  (`recordRequestChannel`, `@exam-platform/shared`) and sets `app.channel` with each tenant transaction; the new column
+  `audit_logs.channel` takes it by default (migration `202617z0000171_audit_channel`), so every writer records it
+  unchanged. Earlier rows and jobs have none. The column is outside the hash chain; the append-only trigger still refuses
+  any change. The audit log shows a "From" column once an entry has it, and the entry drawer says it.
+- **1724:** each page's history drawer ends with "See all in the audit log" (the company audit log with the Settings
+  area chosen), for people with audit.view.
+- **Tests:** API e2e `settings-s5-history` (11: plus a phone change records Phone and a desktop one Web, shown in the log;
+  the channel can never be changed; the check for audit.view; Export needs audit.export and holds only the company's
+  rows); kit `settings-history-live.test` (13: plus the badge and Export, a failed check, From only when present, See all
+  only for audit.view).

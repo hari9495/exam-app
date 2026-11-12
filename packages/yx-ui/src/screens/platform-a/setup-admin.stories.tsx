@@ -68,6 +68,14 @@ export const PLT11User: S = { name: 'PLT-11 · Roles & access · user access & e
 
 /* PLT-12 */
 export const PLT12Editor: S = { name: 'PLT-12 · Approval policy editor', render: () => <PolicyEditorScreen /> };
+// Settings S-6 (answer 1330): the company's approval steps per request type, live.
+const PE_TYPES = [
+  { key: 'leave.request', label: 'Leave', steps: [{ name: 'Manager', approver: 'manager' as const, mode: 'any' as const }, { name: 'HR', approver: 'hr' as const, mode: 'any' as const }], approvers: 'Manager → HR Admins', version: 2, updatedBy: 'Lakshmi Venkatesan', updatedAt: '2026-11-12T10:00:00Z' },
+  { key: 'expense.claim', label: 'Expense claim', steps: null, approvers: 'Built in (the module decides)', version: 0, updatedBy: null, updatedAt: null },
+];
+const peWait = () => new Promise<void>((r) => setTimeout(r, 400));
+export const PLT12Live: S = { name: 'PLT-12 · Approval policy editor · live, steps per request type (S-6)', render: () => <PolicyEditorScreen live={{ state: 'ready', onRetry: () => {}, types: PE_TYPES, remindHours: 24, escalateHours: 48, canEdit: true, onSave: peWait, onReset: peWait }} /> };
+export const PLT12LiveViewOnly: S = { name: 'PLT-12 · Approval policy editor · view only (S-6)', render: () => <PolicyEditorScreen live={{ state: 'ready', onRetry: () => {}, types: PE_TYPES, remindHours: 24, escalateHours: 48, canEdit: false, onSave: peWait, onReset: peWait }} /> };
 export const PLT12Simulated: S = { name: 'PLT-12 · Approval policy editor · simulate result', render: () => <PolicyEditorScreen simulated /> };
 export const PLT12SaveBlocked: S = { name: 'PLT-12 · Approval policy editor · save needs simulate', render: () => <PolicyEditorScreen saveTried /> };
 
