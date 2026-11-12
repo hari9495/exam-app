@@ -82,6 +82,14 @@ export const TIME_SETTINGS_PAGES: [string, string, string][] = [
 ];
 /** Answer 1485: HR's leave admins (leave.settings.manage) also open and change the leave pages; the rest stay with HR's settings key. */
 export const LEAVE_SETTINGS_PAGES: readonly string[] = ['3.6', '3.8', '3.9'];
+/** S-3: the drawn Payroll & Statutory pages that show the company's settings (address under /yx/settings/payroll). */
+export const PAY_SETTINGS_PAGES: [string, string, string][] = [
+  ['4.3', 'Payroll policies', 'payroll-policies'],
+  // Menu name differs from the drawn title so it is not mistaken for the layout editor (Payroll › Payslip layout).
+  ['4.4', 'Payslip settings', 'payslip-layout'],
+  ['4.5', 'Tax', 'tax'],
+];
+const payPage = (id: string) => PAY_SETTINGS_PAGES.filter((p) => p[0] === id).map((p) => `${SETTINGS_HOME}/payroll/${p[2]}`);
 const timePage = (id: string) => TIME_SETTINGS_PAGES.filter((p) => p[0] === id).map((p) => `${SETTINGS_HOME}/time/${p[2]}`);
 
 export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
@@ -112,7 +120,9 @@ export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '3.12': ['/yx/settings/visitors'],
   '4.1': ['/yx/payroll/pay-groups', '/yx/payroll/periods'],
   '4.2': ['/yx/payroll/components', '/yx/payroll/templates'],
-  '4.4': ['/yx/payroll/payslip-layout'],
+  '4.3': payPage('4.3'),
+  '4.4': [...payPage('4.4'), '/yx/payroll/payslip-layout'],
+  '4.5': payPage('4.5'),
   '4.6': ['/yx/settings/payroll-rules', '/yx/payroll/loans'],
   '4.7': ['/yx/payroll/statutory', '/yx/payroll/statutory-rules'],
   '4.8': ['/yx/settings/expenses'],
@@ -502,6 +512,8 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(pay, ...[
           ...when(any('payroll.setup.manage', 'payroll.statutory.setup'), L('pay-setup', 'Payroll set-up', '/yx/payroll/setup')),
           ...when(any('payroll.setup.manage', 'org.settings.manage'), L('payroll-rules', 'Payroll rules', '/yx/settings/payroll-rules')),
+          // S-3 (answers 1323 to 1325): HR changes them (a second person approves); payroll set-up reads them.
+          ...when(any('payroll.setup.manage', 'org.settings.manage'), ...PAY_SETTINGS_PAGES.map(([id, label, slug]) => L(`pay-settings-${id}`, label, `${SETTINGS_HOME}/payroll/${slug}`))),
           ...when(has('payroll.setup.manage'), L('pay-groups', 'Pay groups', '/yx/payroll/pay-groups'), L('pay-layout', 'Payslip layout', '/yx/payroll/payslip-layout'), L('pay-country-packs', 'Country packs', '/yx/payroll/country-packs')),
           ...when(has('payroll.component.manage'), L('pay-components', 'Component library', '/yx/payroll/components')),
           ...when(has('payroll.template.manage'), L('pay-templates', 'Salary templates', '/yx/payroll/templates')),

@@ -2808,6 +2808,27 @@ model Setting {
   @@map("settings")
 }
 
+/// Settings S-3 (answer 1325): a payroll setting change waiting for a second person (never the one who asked).
+model SettingChangeRequest {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  key            String    @db.VarChar(100)
+  scopeType      String    @map("scope_type") @db.VarChar(20)
+  scopeId        String    @map("scope_id") @db.Uuid
+  value          Json
+  previous       Json?
+  requestedBy    String    @map("requested_by") @db.Uuid
+  requestedAt    DateTime  @default(now()) @map("requested_at") @db.Timestamptz(3)
+  /// pending, approved, rejected
+  status         String    @default("pending") @db.VarChar(10)
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  note           String?   @db.VarChar(500)
+
+  @@index([organizationId, status])
+  @@map("setting_change_requests")
+}
+
 // ---- P01 §4.4 employee core + P06 effective-dated history (migration 20261008000000_employee_history) ----
 // Dated fact tables (assignments, status periods, compensations) are written only through approved
 // employee changes (YX-HIS-01) and never updated except to supersede a row (YX-HIS-07): the database

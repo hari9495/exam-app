@@ -55,14 +55,14 @@ means the live page passes no manage flag that I could see and I did not read th
 
 ## Counts (sub-pages = stories)
 
-After S-1 (Settings home, search and the eight group pages live; four live stories added) and S-2 (the Time & Leave pages with their settings; one live story added; appendix script "ok").
+After S-1 (Settings home, search and the eight group pages live; four live stories added) S-2 (the Time & Leave pages with their settings; one live story added) and S-3 (the Payroll pages, a second person for payroll changes; two live stories added; appendix script "ok").
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Settings home and page states | 1 | 17 | 2 | 4 | 1 | 0 | 24 |
+| A. Settings home and page states | 1 | 17 | 3 | 4 | 0 | 0 | 24 |
 | B. Organisation and Global core | 2 | 25 | 0 | 0 | 0 | 0 | 25 |
-| C. Settings map, groups 1 to 8 | 8 | 31 | 87 | 20 | 32 | 0 | 170 |
-| **All A-C** | **11** | **73** | **89** | **24** | **33** | **0** | **219** |
+| C. Settings map, groups 1 to 8 | 8 | 33 | 91 | 16 | 32 | 0 | 172 |
+| **All A-C** | **11** | **75** | **94** | **20** | **32** | **0** | **221** |
 
 Per group (C):
 
@@ -71,7 +71,7 @@ Per group (C):
 | Group 1 · Organisation | 2 | 12 | 0 | 4 | 18 |
 | Group 2 · People & Access | 2 | 14 | 2 | 6 | 24 |
 | Group 3 · Time & Leave | 3 | 24 | 0 | 0 | 27 |
-| Group 4 · Payroll & Statutory | 3 | 16 | 4 | 2 | 25 |
+| Group 4 · Payroll & Statutory | 5 | 20 | 0 | 2 | 27 |
 | Group 5 · Documents & Communication | 2 | 12 | 0 | 6 | 20 |
 | Group 6 · Hiring & Assessments | 15 | 3 | 0 | 4 | 22 |
 | Group 7 · Integrations & Developers | 2 | 4 | 8 | 6 | 20 |
@@ -137,7 +137,7 @@ Cross-checked with the area maps: `hiring-design-map.md` (6.1, 6.2 and the group
 each) and the payroll second-approver page state.
 
 **Wire design** (50 rows): Settings home (8) and the search highlight, the 8 group pages (16), the legal-floor states
-(2), change history (1), and the pages whose settings are in the API with no screen: 2.7, 4.3, 4.5, 7.1, 7.5, 7.6,
+(2), change history (1), and the pages whose settings are in the API with no screen: 2.7, 7.1, 7.5, 7.6,
 7.7, 8.1, 8.2, 8.3.
 
 **Registry keys with no screen** (105; exact-key search over `apps/web` and `packages/yx-ui/src`, with tests, stories,
@@ -146,11 +146,7 @@ e2e and the kit's settings-map sample data left out; `help.page_help` left out b
 - Leave (13) and attendance, roster, kiosk and field (27): on their Time & Leave pages since S-2 (answer 1323, see "S-2 as built").
 - Safety and disputes (4): `accident.injury_types`, `accident.injury_leave_type`, `accident.contractor_reminder_days`,
   `dispute.lawyer_may_approve`.
-- Payroll and tax (16): `payroll.variance_threshold_pct`, `payroll.protected_net_percent`, `payroll.net_rounding`,
-  `payroll.leave_encashment_basis`, `payroll.notice_shortfall`, `payroll.standard_daily_hours`,
-  `payroll.payslip_email`, `payroll.one_time_review_above`, `payroll.mid_period.join`, `payroll.mid_period.exit`,
-  `payroll.mid_period.revision`, `payroll.mid_period.cutoff_day`, `payroll.document_retention_years`,
-  `tax.regime_cutoff`, `tax.proof_window_opens`, `tax.proof_cutoff`.
+- Payroll and tax (16): on the Payroll & Statutory pages since S-3 (answer 1323, see "S-3 as built").
 - People lifecycle and audit (15): `exit.notice.probation`, `exit.notice.confirmed`, `rehire.pf`, `rehire.same_fy_tax`,
   `rehire.service`, `rehire.gratuity`, `rehire.leave`, `rehire.probation`, `rehire.prior_records`, `absconding.days`,
   `retirement.age`, `retirement.alert_months`, `vrs.benefit_days`, `alumni.access_years`, `audit.retention_years`.
@@ -216,7 +212,7 @@ File: `packages/yx-ui/src/screens/settings/settings-home.stories.tsx`.
 | PageDirty · Page · unsaved changes | live | `useUnsavedChangesGuard` in `SettingsPageScreen` runs on the live pages (6.1, 6.2, 3.12, 4.9) |
 | PageBelowLegalMinimum · Page · below the legal minimum (blocked) | wire design | `validateDraft` blocks it in the live component, but none of the four live pages has a field with a legal floor (checked their page data); the drawn example (3.6 maternity) is not wired; set-by-law values are in the statutory rule store |
 | PageAboveLegalMaximum · Page · above the legal maximum (blocked) | wire design | same (3.3 weekly hours; `roster.max_weekly_hours` is in the registry with no screen) |
-| PagePayrollApproval · Page · payroll change needs a second approver | design only, feature not built | `needsSecondApprover` (`settings-logic.ts` line 251) is used only on the demo save path; the live save skips it, and the API has no second approver for setting changes (`PUT org/settings` saves at once) |
+| PagePayrollApproval · Page · payroll change needs a second approver | live (gap) | S-3 (answer 1325): live on the payroll pages: "Send for approval" with the change summary, then "Waiting for a second person" with Approve and Reject (Withdraw for the person who asked); `setting_change_requests`, never the one who asked (service and a database check). Gap: the drawn example field (`pay.protected_net`) has no setting; the drawn employee count is not shown live |
 | PageSaveFailed · Page · save failed (edits kept) | live | the live save shows the refusal and keeps the edits (`settings-screens.tsx` around line 425) |
 | PageSecurity · Page · security change asks to confirm | live (gap) | the "confirm it's you" step works on live pages for `sensitive` fields (3.12 watch-list); the drawn example is 2.3 Security, whose live page is `SecuritySettingsScreen` instead |
 | PageScopeOverride · Page · editing overrides for a location | live (gap) | "Different for" values are live on 6.2 per legal entity (answer 495, `staffingEntityChanges`) and visitors shows own values per location; the drawn example (3.1 per location) is not wired |
@@ -370,12 +366,12 @@ File: `packages/yx-ui/src/screens/settings/settings-g4.stories.tsx`.
 | P4_1_ReadOnly · 4.1 Pay groups & calendars · read-only | live (gap) | read-only: unsure |
 | P4_2 · 4.2 Components & templates | live (gap) | /yx/payroll/components (`ComponentLibraryScreen`) and /yx/payroll/templates (`TemplateBuilderScreen`) |
 | P4_2_ReadOnly · 4.2 Components & templates · read-only | live (gap) | read-only: unsure |
-| P4_3 · 4.3 Payroll policies | wire design | `payroll.protected_net_percent`, `payroll.net_rounding`, `payroll.leave_encashment_basis`, `payroll.notice_shortfall`, `payroll.one_time_review_above`, `payroll.variance_threshold_pct`, `payroll.standard_daily_hours` and `payroll.mid_period.*` (4) are in the registry with starter values; no screen sets them (Payroll rules shows only bonus, loans and reports access) |
-| P4_3_ReadOnly · 4.3 Payroll policies · read-only | wire design | same |
-| P4_4 · 4.4 Payslip layout | live (gap) | /yx/payroll/payslip-layout (`PayslipLayoutScreen`); PDF protection (`payroll.payslip_email`) has no screen |
-| P4_4_ReadOnly · 4.4 Payslip layout · read-only | live (gap) | read-only: unsure |
-| P4_5 · 4.5 Tax | wire design | `tax.regime_cutoff`, `tax.proof_window_opens` and `tax.proof_cutoff` are in the registry with starter values; no screen sets them |
-| P4_5_ReadOnly · 4.5 Tax · read-only | wire design | same |
+| P4_3 · 4.3 Payroll policies | live (gap) | S-3: /yx/settings/payroll/payroll-policies renders this page (`SettingsPageScreen` with `live`, `PAY_SETTINGS`): net pay checks, rounding, standard hours (legal maximum 9, Factories Act s.54), encashment basis, the protected share, notice shortfall, one-time pay approval, a Mid-month changes section (4 settings) and "Payroll setting changes need a second person" (on by default, answer 1325). Gap: day basis, deduction cap, holds, payment, maternity and bonus fields have no setting yet |
+| P4_3_ReadOnly · 4.3 Payroll policies · read-only | live (gap) | read-only: payroll set-up (payroll.setup.manage) reads it, View only (payroll never changes policy, MT-PAY-B-07); HR's settings key changes it, through a second person |
+| P4_4 · 4.4 Payslip layout | live (gap) | S-3: /yx/settings/payroll/payslip-layout (menu: Payslip settings): emailing payslips as protected PDFs and a Keeping pay documents section (at least 8 years, Companies Act 2013 s.128(5)); the drawn link opens the layout editor (/yx/payroll/payslip-layout, `PayslipLayoutScreen`). Gap: the password format |
+| P4_4_ReadOnly · 4.4 Payslip layout · read-only | live (gap) | read-only: payroll set-up (payroll.setup.manage) reads it, View only (payroll never changes policy, MT-PAY-B-07); HR's settings key changes it, through a second person |
+| P4_5 · 4.5 Tax | live (gap) | S-3: /yx/settings/payroll/tax: the regime choice deadline and the proof window (dates read "31 May"). Gap: default regime, declaration window, joiner days, landlord PAN and reminders have no setting yet |
+| P4_5_ReadOnly · 4.5 Tax · read-only | live (gap) | read-only: payroll set-up (payroll.setup.manage) reads it, View only (payroll never changes policy, MT-PAY-B-07); HR's settings key changes it, through a second person |
 | P4_6 · 4.6 Loans & advances | live (gap) | the Loans section of /yx/settings/payroll-rules (`payroll.loan.*`) and /yx/payroll/loans (`LoansScreen`); pre-closure and pause rules: unsure |
 | P4_6_ReadOnly · 4.6 Loans & advances · read-only | live (gap) | read-only: Payroll rules is read-only for payroll set-up without org.settings.manage |
 | P4_7 · 4.7 Statutory set-up | live (gap) | /yx/payroll/statutory (`StatutoryHubScreen`), entity registrations on Legal entities (`PUT org/legal-entities/:id/statutory`), set-by-law values on /yx/payroll/statutory-rules (`RulesBrowserScreen`) |
@@ -389,6 +385,8 @@ File: `packages/yx-ui/src/screens/settings/settings-g4.stories.tsx`.
 | P4_10_ReadOnly · 4.10 Earned wage access · read-only | live (gap) | read-only: the page passes `canManage` |
 | P4_11 · 4.11 Benefits & FBP | design only, feature not built | searched `insurance|fbp|flexible benefit|employer nps` in apps/api/src: only accidents, letter fields and the country pack; no benefits tables |
 | P4_11_ReadOnly · 4.11 Benefits & FBP · read-only | design only, feature not built | as the page |
+| PayLive · Payroll page · live with the company settings (S-3) | live | the three S-3 pages with sample company values (`page` 0 to 2): Starter default chips, the legal limits naming the Act, Send for approval |
+| PayLiveWaiting · Payroll policies · live, a change waiting for a second person (1325) | live | two changes waiting: one from someone else (Approve, Reject), one of the viewer's own (Withdraw only) |
 
 #### Group 5 · Documents & Communication
 
@@ -672,6 +670,53 @@ approver for payroll settings; approval policies per request type; and the not-b
   accept it for those 13 settings (`LEAVE_PAGE_KEYS`, same legal-entity reach), `GET org/settings` lets them read.
   Attendance and roster limits (3.2 to 3.5) stay with HR's company settings key. Tested both ways: a leave admin saves
   Leave year (audited as them) and is refused Weekly offs (403); the menu offers them only the three leave pages.
+
+## S-3 as built (answers 1323 to 1325; branch `feat/yukthix-settings-s3`)
+
+- **The Payroll & Statutory pages, live:** /yx/settings/payroll/<page> renders the drawn `SettingsPageScreen` for 4.3
+  Payroll policies, 4.4 Payslip layout (menu: Payslip settings, beside the layout editor) and 4.5 Tax (`PAY_SETTINGS`,
+  the same builder as S-2; the route and the Time & Leave one share `RegistrySettingsPage`). Each is the front door of
+  its page. HR's settings key changes them; payroll set-up reads them (View only).
+- **1323:** the 16 payroll and tax settings that had no screen each sit on one drawn page, marked Starter default (a
+  Mid-month changes section on 4.3 and a Keeping pay documents section on 4.4 are added; dates read "31 May", amounts
+  "₹50,000").
+- **1324:** the rule set `IN.SETTINGS.LIMITS` gains version 2026-v2 (migration `202617z0000131`; the published v1 never
+  changes): standard hours a day at most 9 (Factories Act, 1948 s.54) and pay documents kept at least 8 years
+  (Companies Act, 2013 s.128(5)), with the S-2 limits carried over. Both are also the edges of their choice lists, so
+  today they show as the legal hint and are checked again when a change is approved.
+- **1325, a second person:** a new company setting "Payroll setting changes need a second person" (on by default;
+  turning it off needs the access key too and itself waits for a second person). While on, a change to a setting on
+  these pages is saved as a request (`setting_change_requests`, forced RLS, one waiting per setting and scope) and
+  nothing changes. The page says "Send for approval" and lists "Waiting for a second person": another person with HR's
+  settings key approves (the value applies, checked against the law again) or rejects; the person who asked may only
+  withdraw. Never the person who asked: the API refuses (403) and a database check (`setting_change_requests_four_eyes`)
+  refuses it too. Audited: `org.setting.change_requested`, `org.setting.change_approved` and `org.setting.changed` (with
+  who asked and who approved), `org.setting.change_rejected` (withdrawn or not, with the note). Other pages save at once;
+  the drawn "affects 248 employees" is no longer shown on live pages (it was sample data).
+- **S-2 follow-ups in this branch:** see "S-2 follow-ups" above (one 3.11, answer 1485). The S-2 e2e no longer depends on
+  the order of two audit rows written in the same millisecond (the one-off failure on test main).
+- **Page scroll at 1278 x 635** (Storybook `PayLive`, `PayLiveWaiting`): Tax fits; Payslip layout needs 669 px and
+  Payroll policies 1545 (12 settings), as in S-2 (question 1481, approved: keep one column).
+- **Tests:** API e2e `settings-s3-payroll` (listed with starter values and limits; payroll set-up and others refused; a
+  change waits, nothing applies, one at a time, audited; the asker and someone without the key cannot approve, another
+  HR person does, audited with both; rejected and withdrawn change nothing, audited; the database refuses a self
+  approval; other settings save at once; the switch needs the access key and a second person, then payroll changes save
+  at once; another company sees none). Kit `pay-settings-live.test` and web `yx-settings-payroll.test` (fields,
+  words, legal hint, Send for approval, Approve and Reject, Withdraw only for the asker, a refused approval stays on the
+  page, view only for payroll set-up, the layout editor link).
+
+### Questions (from 1521)
+
+1521. **Payroll rules saves at once.** The Payroll rules page (bonus, loans; the Company rules format) is not covered by
+      the second person yet. *Suggested: it is covered when its settings move to 4.6 in S-7 (answer 1321).*
+1522. **Telling the other person.** A waiting change shows only on the page. *Suggested: a bell notification and email
+      to the others with HR's settings key when a payroll change waits, and to the person who asked when it is decided.*
+1523. **Changes nobody decides.** *Suggested: a waiting change lapses after 14 days (a company setting, default 14),
+      audited, and the person who asked is told.*
+1524. **Several changes in one save.** Each setting waits and is decided on its own. *Suggested: keep (an approver may
+      approve some and reject others); add "Approve all" if HR asks.*
+1525. **Who approves.** Today only HR's settings key. *Suggested: keep; payroll set-up reads but never approves policy
+      (MT-PAY-B-07).*
 
 ## 7. Build plan (slices, max 3 builders at once)
 

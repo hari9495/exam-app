@@ -332,6 +332,12 @@ export interface LiveSettingsPage {
   onOpenScreen?: (screenId: string) => void;
   /** Title of the success toast. */
   savedTitle?: string;
+  /** Answer 1325: saving sends the changes to a second person instead; nothing changes until they approve. */
+  secondPerson?: boolean;
+  /** Answer 1325: changes waiting for a second person (mine: the viewer asked, so they may only withdraw it). */
+  pending?: { id: string; label: string; from: string; to: string; by: string; at: string; mine: boolean }[];
+  onApprove?: (id: string) => Promise<void>;
+  onReject?: (id: string) => Promise<void>;
 }
 
 export interface SettingsPageScreenProps {
@@ -411,6 +417,66 @@ export function SettingsPageScreen({
   );
 }
 
+/** Answer 1325: the changes waiting for a second person. The person who asked may only withdraw; anyone else approves or rejects. */
+function PendingChanges({ live }: { live: LiveSettingsPage }) {
+  const toaster = useToastIfAny();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const act = async (key: string, fn: () => Promise<void>, done: string) => {
+    setBusy(key);
+    setFailed(null);
+    try {
+      await fn();
+      toaster?.toast({ tone: 'success', title: done });
+    } catch (e) {
+      setFailed(e instanceof Error && e.message ? e.message : 'That did not go through. Try again.');
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <Card title="Waiting for a second person">
+      {failed && <InlineAlert tone="danger" title={failed} />}
+      <ul className="yx-set-pending">
+        {live.pending!.map((p) => (
+          <li key={p.id} className="yx-set-pending__row">
+            <span className="yx-set-pending__what">
+              <span>
+                <strong>{p.label}</strong>: {p.from} → {p.to}
+              </span>
+              <span className="yx-set-helper">
+                Asked by {p.mine ? 'you' : p.by} on {formatDate(parseIso(p.at.slice(0, 16)))}
+              </span>
+            </span>
+            <span className="yx-set-pending__actions">
+              {p.mine ? (
+                live.onReject && (
+                  <Button size="sm" loading={busy === `w${p.id}`} onClick={() => void act(`w${p.id}`, () => live.onReject!(p.id), 'Change withdrawn')}>
+                    Withdraw
+                  </Button>
+                )
+              ) : (
+                <>
+                  {live.onReject && (
+                    <Button size="sm" loading={busy === `r${p.id}`} onClick={() => void act(`r${p.id}`, () => live.onReject!(p.id), 'Change rejected')}>
+                      Reject
+                    </Button>
+                  )}
+                  {live.onApprove && (
+                    <Button size="sm" variant="primary" loading={busy === `a${p.id}`} onClick={() => void act(`a${p.id}`, () => live.onApprove!(p.id), 'Change approved and applied')}>
+                      Approve
+                    </Button>
+                  )}
+                </>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
 /** "Showing rules for: Earned leave ▾" above the sections that hold one leave type's rules. */
 function TypePicker({ tp, picked, onPick }: { tp: NonNullable<SettingsPageDef['typePicker']>; picked: string; onPick: (v: string) => void }) {
   return (
@@ -485,7 +551,8 @@ function SettingsForm({
   const saveErrors = useSaveErrors(errorList, defaultShowErrors);
   const defs = allSettings(page);
   const sensitiveChanged = defs.some((d) => d.sensitive && changed.includes(d.key));
-  const approval = needsSecondApprover(page);
+  // Live, the API decides (answer 1325); the drawing's rule (group 4) is for the stories.
+  const approval = live ? Boolean(live.secondPerson) : needsSecondApprover(page);
 
   const doSave = async () => {
     setStatus({ kind: 'saving' });
@@ -502,7 +569,11 @@ function SettingsForm({
         await live.onSave(Object.fromEntries(changed.map((k) => [k, draft[k] ?? null])), rows, overrides);
         setRows({});
         setStatus({ kind: 'idle' });
-        toaster?.toast({ tone: 'success', title: live.savedTitle ?? 'Settings saved', description: 'Recorded in the audit log with before and after values.' });
+        toaster?.toast(
+          approval
+            ? { tone: 'success', title: 'Sent for approval', description: "Nothing changes until another person with HR's settings key approves it." }
+            : { tone: 'success', title: live.savedTitle ?? 'Settings saved', description: 'Recorded in the audit log with before and after values.' },
+        );
       } catch (e) {
         setStatus({ kind: 'failed', message: e instanceof Error && e.message ? e.message : undefined });
       }
@@ -614,6 +685,7 @@ function SettingsForm({
           Values without an override show "Inherited from Kaveri Foods Pvt Ltd". Use Reset on a field to go back to the inherited value.
         </InlineAlert>
       )}
+      {live?.pending && live.pending.length > 0 && <PendingChanges live={live} />}
       <ErrorSummary errors={saveErrors.shownErrors} />
       {status.kind === 'saved' && (
         <InlineAlert tone="success" title={status.approval ? 'Changes sent for approval' : 'Changes saved'}>
@@ -740,7 +812,7 @@ function SettingsForm({
         open={confirmImpact}
         onOpenChange={setConfirmImpact}
         title={`Send ${impact.length + listChanged} change${impact.length + listChanged === 1 ? '' : 's'} for approval?`}
-        consequence={`Affects ${affected} employees. The approver sees the same summary.`}
+        consequence={live ? "Another person with HR's settings key approves them; they apply then. The approver sees the same summary." : `Affects ${affected} employees. The approver sees the same summary.`}
         confirmLabel="Send for approval"
         onConfirm={doSave}
       >

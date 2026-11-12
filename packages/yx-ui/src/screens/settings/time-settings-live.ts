@@ -99,10 +99,52 @@ export const TIME_SETTINGS: Record<string, { links: string[]; settings: Place[] 
   },
 };
 
+/**
+ * Settings S-3 (answers 1323 to 1325): the Payroll & Statutory pages built the same way. Their changes wait for a second
+ * person while "Payroll setting changes need a second person" is on (the API decides; the page says so).
+ */
+export const PAY_SETTINGS: Record<string, { links: string[]; settings: Place[] }> = {
+  '4.3': {
+    links: [],
+    settings: [
+      { section: 'Calculation', key: 'payroll.variance_threshold_pct', synonyms: ['variance', 'net pay change'] },
+      { section: 'Calculation', key: 'payroll.net_rounding', synonyms: ['rounding'] },
+      { section: 'Calculation', key: 'payroll.standard_daily_hours', synonyms: ['hourly rate'] },
+      { section: 'Calculation', key: 'payroll.leave_encashment_basis', synonyms: ['encashment'] },
+      { section: 'Recoveries and protected net', key: 'payroll.protected_net_percent', synonyms: ['recovery', 'deduction cap'] },
+      { section: 'Recoveries and protected net', key: 'payroll.notice_shortfall', synonyms: ['notice pay', 'notice recovery'] },
+      { section: 'One-time pay and holds', key: 'payroll.one_time_review_above', synonyms: ['bonus approval', 'one-time pay'] },
+      { section: 'Mid-month changes', key: 'payroll.mid_period.join', synonyms: ['joiner', 'proration'] },
+      { section: 'Mid-month changes', key: 'payroll.mid_period.exit', synonyms: ['leaver', 'proration'] },
+      { section: 'Mid-month changes', key: 'payroll.mid_period.revision', synonyms: ['increment', 'arrears'] },
+      { section: 'Mid-month changes', key: 'payroll.mid_period.cutoff_day', synonyms: ['cut-off'] },
+      { section: 'Changes to these settings', key: 'payroll.settings.second_person', synonyms: ['second approver', 'maker checker', 'four eyes'] },
+    ],
+  },
+  '4.4': {
+    links: ['payslip.editor'],
+    settings: [
+      { section: 'PDF protection', key: 'payroll.payslip_email', synonyms: ['payslip password'] },
+      { section: 'Keeping pay documents', key: 'payroll.document_retention_years', synonyms: ['retention', 'records'] },
+    ],
+  },
+  '4.5': {
+    links: [],
+    settings: [
+      { section: 'Regime', key: 'tax.regime_cutoff', synonyms: ['old regime', 'new regime'] },
+      { section: 'Declarations and proofs', key: 'tax.proof_window_opens', synonyms: ['investment proof'] },
+      { section: 'Declarations and proofs', key: 'tax.proof_cutoff', synonyms: ['investment proof'] },
+    ],
+  },
+};
+
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const WORDS: Record<string, string> = { on: 'On', off: 'Off', yes: 'Yes', no: 'No', any: 'Any time', never: 'Never', any_month: 'Any month', calendar: 'Days in the month' };
+const WORDS: Record<string, string> = { on: 'On', off: 'Off', yes: 'Yes', no: 'No', any: 'Any time', never: 'Never', any_month: 'Any month', calendar: 'Days in the month', none: 'None', basic_da: 'Basic and DA', next_month_arrears: 'As arrears next month' };
 const pretty = (key: string, o: string): string => {
   if ((key === 'leave.year_start_month' || key === 'leave.encashment.window') && /^\d+$/.test(o)) return MONTHS[Number(o) - 1]!;
+  // S-3: tax dates are month-day ('05-31' is 31 May); amounts in rupees.
+  if (/^\d{2}-\d{2}$/.test(o)) return `${Number(o.slice(3))} ${MONTHS[Number(o.slice(0, 2)) - 1]!.slice(0, 3)}`;
+  if (key === 'payroll.one_time_review_above') return o === 'none' ? 'Never' : `₹${Number(o).toLocaleString('en-IN')}`;
   if (WORDS[o]) return WORDS[o];
   if (/^[\d.]+$/.test(o)) return o;
   const w = o.replace(/_/g, ' ');
@@ -114,7 +156,7 @@ const falsy = (d: RegistryDef) => (d.values.includes('off') ? 'off' : 'no');
 
 /** The drawn Time & Leave page with the company's settings, for SettingsPageScreen `live`. `links`: drawn editor links the viewer may open. */
 export function timeSettingsPage(design: SettingsPageDef, data: TimeSettingsData, links: Set<string>): SettingsPageDef {
-  const spec = TIME_SETTINGS[design.id];
+  const spec = TIME_SETTINGS[design.id] ?? PAY_SETTINGS[design.id];
   if (!spec) return design;
   const field = (p: Place): SettingDef | null => {
     const d = data.registry[p.key];
@@ -147,7 +189,8 @@ export function timeSettingsPage(design: SettingsPageDef, data: TimeSettingsData
     ];
     return { title, description: drawn?.description, tone: drawn?.tone, settings };
   });
-  return { ...design, related: undefined, scopes: undefined, sections: sections.filter((s) => s.settings.length > 0) };
+  // The drawn note (e.g. "Changes need a second approver") describes sample data; live, the page's own state says it.
+  return { ...design, note: undefined, related: undefined, scopes: undefined, sections: sections.filter((s) => s.settings.length > 0) };
 }
 
 /** The page's changes as company-wide settings, for PUT /org/settings (one each). */
@@ -157,5 +200,30 @@ export function timeSettingsChanges(values: Record<string, SettingValue>, data: 
     if (!d) return [];
     const value = typeof v === 'boolean' ? (v ? truthy(d) : falsy(d)) : Array.isArray(v) ? v.join(',') : String(v ?? '');
     return [{ key, value }];
+  });
+}
+
+/** One change waiting for a second person, as GET /org/settings sends it (answer 1325). */
+export interface PendingSettingChange {
+  id: string;
+  key: string;
+  scopeType: string;
+  from: unknown;
+  to: unknown;
+  by: string;
+  at: string;
+  mine: boolean;
+}
+
+/** The company-wide changes waiting for a second person on this page, in the page's own words. */
+export function pendingOnPage(page: SettingsPageDef, pending: PendingSettingChange[]) {
+  const fields = page.sections.flatMap((s) => s.settings);
+  return pending.flatMap((p) => {
+    const d = fields.find((f) => f.key === p.key);
+    if (!d || p.scopeType !== 'tenant') return [];
+    const words = (v: unknown) => (d.kind === 'toggle' ? (v === 'on' || v === 'yes' ? 'On' : 'Off') : (d.optionLabels?.[String(v)] ?? String(v)));
+    // No company value yet: the change starts from the starter value the page shows.
+    const from = p.from ?? (typeof d.value === 'boolean' ? (d.value ? 'on' : 'off') : d.value);
+    return [{ id: p.id, label: d.label, from: words(from), to: words(p.to), by: p.by, at: p.at, mine: p.mine }];
   });
 }

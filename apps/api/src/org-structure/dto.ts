@@ -384,3 +384,11 @@ export class ResolveSettingQueryDto {
   /** Brings in the employee's assignment in force on asOf (today for plain keys), YX-ORG-18. */
   @IsOptional() @IsUUID() employeeId?: string;
 }
+
+/** Answer 1325: why a waiting payroll setting change is rejected (optional). */
+export class SettingRejectDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
+}

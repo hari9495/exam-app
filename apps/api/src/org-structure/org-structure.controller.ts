@@ -18,6 +18,7 @@ import {
   PayRangeQueryDto,
   ResolveSettingQueryDto,
   SettingDto,
+  SettingRejectDto,
   masterBody,
 } from './dto';
 import { IN_STATES, REGIONS } from './org-validation';
@@ -359,6 +360,28 @@ export class OrgStructureController {
     await this.manageSetting(req, dto.key, await this.scope.settingEntity(ctx, dto.scopeType, dto.scopeId));
     await this.settingGuard(req, dto.key);
     return this.settings.set(ctx, dto);
+  }
+
+  // Answer 1325: a payroll setting change waiting for a second person (never the one who asked; the API and the database check).
+  @Post('settings/requests/:id/approve')
+  @HttpCode(200)
+  @RequirePermissions('org.settings.manage')
+  async approveSetting(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    ownSession(req);
+    const r = await this.settings.request(ctx, id);
+    await this.manageSetting(req, r.key, await this.scope.settingEntity(ctx, r.scopeType, r.scopeType === 'tenant' ? undefined : r.scopeId));
+    await this.settingGuard(req, r.key);
+    return this.settings.approve(ctx, id);
+  }
+
+  @Post('settings/requests/:id/reject')
+  @HttpCode(204)
+  @RequirePermissions('org.settings.manage')
+  async rejectSetting(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SettingRejectDto) {
+    ownSession(req);
+    const r = await this.settings.request(ctx, id);
+    await this.manageSetting(req, r.key, await this.scope.settingEntity(ctx, r.scopeType, r.scopeType === 'tenant' ? undefined : r.scopeId));
+    await this.settings.reject(ctx, id, dto.note);
   }
 
   @Delete('settings/:id')

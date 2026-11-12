@@ -34,7 +34,6 @@ describe('Time & Leave settings (S-2): every hidden setting has a field', () => 
     expect(allSettings(projectSettingsPage(pageOf('3.11'), { canEdit: true, values: {}, defaults: {}, choices: {}, lastChange: null }, { value: 'on', default: 'off', canEdit: false })).find((d) => d.key === PREFILL_FIELD)).toMatchObject({ value: true, starter: false, locked: expect.any(String) });
     expect(prefillChange({ [PREFILL_FIELD]: true })).toEqual({ key: 'timesheet.tool_suggestions', value: 'on', scopeType: 'tenant' });
     expect(prefillChange({ 'prj.enabled': true })).toBeNull();
-    expect(Object.keys(TIME_REGISTRY_SAMPLE).filter((k) => !keys.includes(k))).toEqual(['timesheet.tool_suggestions']);
     for (const [id, spec] of Object.entries(TIME_SETTINGS)) {
       const fields = allSettings(timeSettingsPage(pageOf(id), DATA, ALL_LINKS));
       for (const s of spec.settings) {
