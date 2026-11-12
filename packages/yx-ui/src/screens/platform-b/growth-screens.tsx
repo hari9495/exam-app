@@ -9,7 +9,7 @@ import { Drawer } from '../../components/drawer';
 import { DataTable, type TableColumn } from '../../components/table';
 import { FilterBar, SavedViewMenu } from '../../components/filters';
 import { Card, DescriptionList, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { Checkbox, RadioGroup, Switch } from '../../components/choice';
 import { TextArea, TextField } from '../../components/inputs';
 import { BottomSheet, ConfirmDialog, Dialog, TypeToConfirmDialog } from '../../components/overlay';
@@ -325,6 +325,85 @@ export function TalkToUsDialog({ trigger, booked }: { trigger: string; booked?: 
     </SettingsFrame>
   );
 }
+
+export type TalkTopic = 'migration' | 'parallel_run' | 'entities' | 'pricing';
+const TALK_TOPICS: { value: TalkTopic; label: string }[] = [
+  { value: 'migration', label: 'Moving data from our current system' },
+  { value: 'parallel_run', label: 'Payroll parallel run' },
+  { value: 'entities', label: 'Several legal entities' },
+  { value: 'pricing', label: 'Pricing for our size' },
+];
+
+/**
+ * PLT-41 live (C-8, answer 1210): Talk to us from a nudge card. The request lands in the YukthiX sales-assist queue; the
+ * call back is within the reply time YukthiX sets. The self-serve path and the published price stay.
+ */
+export function TalkToUsLiveDialog({ about, onSend, onClose }: { about: string; onSend: (input: { phone: string; topics: TalkTopic[]; note?: string }) => Promise<{ dueAt: string }>; onClose: () => void }) {
+  const [phone, setPhone] = useState('');
+  const [topics, setTopics] = useState<TalkTopic[]>([]);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [due, setDue] = useState<string | null>(null);
+  const clean = phone.replace(/[\s-]/g, '').replace(/^(\+91|0)/, '');
+  const early = useTooEarly(/^[6-9][0-9]{9}$/.test(clean) ? [] : [{ fieldId: 'tt-phone', message: 'Give a 10-digit mobile number.' }]);
+  const send = async () => {
+    if (early.stop()) return;
+    setBusy(true);
+    setFailed(null);
+    try {
+      setDue((await onSend({ phone: clean, topics, ...(note.trim() ? { note: note.trim() } : {}) })).dueAt);
+    } catch (e) {
+      setFailed(e instanceof Error && e.message ? e.message : 'That did not go through. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      size="md"
+      title={due ? 'We will call you' : 'Talk to us'}
+      description={due ? undefined : `About ${about}. Our team can help with set-up, migration and a parallel run. The self-serve path stays open and the price stays the published price.`}
+      footer={
+        due ? (
+          <Button variant="primary" onClick={onClose}>
+            Done
+          </Button>
+        ) : (
+          <>
+            <Button onClick={onClose}>Not now</Button>
+            <Button variant="primary" loading={busy} onClick={() => void send()}>
+              Ask for a call
+            </Button>
+          </>
+        )
+      }
+    >
+      {due ? (
+        <p>YukthiX will call you by {formatDate(new Date(due))}, {timeOfDay(new Date(due))}.</p>
+      ) : (
+        <div className="yxp-stack">
+          {failed && <InlineAlert tone="danger" title={failed} />}
+          <FormField id="tt-phone" label="Phone" required error={early.errorOf('tt-phone')}>
+            <TextField value={phone} onChange={setPhone} prefix="+91" maxLength={15} />
+          </FormField>
+          <fieldset className="yxp-stack yxp-stack--tight yxp-fieldset">
+            <legend className="yxp-sub">What would you like to discuss?</legend>
+            {TALK_TOPICS.map((t) => (
+              <Checkbox key={t.value} label={t.label} checked={topics.includes(t.value)} onChange={(on) => setTopics((x) => (on ? [...x, t.value] : x.filter((y) => y !== t.value)))} />
+            ))}
+          </fieldset>
+          <FormField label="Anything else" optional>
+            <TextArea rows={2} value={note} onChange={setNote} maxLength={500} />
+          </FormField>
+        </div>
+      )}
+    </Dialog>
+  );
+}
+const timeOfDay = (d: Date) => d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
 
 /* ================================================================== PLT-42 Trial extension */
 

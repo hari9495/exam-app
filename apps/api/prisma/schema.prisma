@@ -13765,6 +13765,33 @@ model NudgeView {
   @@map("nudge_views")
 }
 
+/// Console C-8 (YX-13, answer 1210): a company asked YukthiX to talk (Talk to us on a nudge card). Staff-only data: it holds
+/// the person's name and phone for the call back.
+model SalesAssistRequest {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  number          Int       @unique @default(autoincrement())
+  organizationId  String    @map("organization_id") @db.Uuid
+  featureKey      String?   @map("feature_key") @db.VarChar(60)
+  nudgeId         String?   @map("nudge_id") @db.Uuid
+  topics          String[]  @default([])
+  phone           String    @db.VarChar(15)
+  note            String?   @db.VarChar(500)
+  requestedBy     String?   @map("requested_by") @db.Uuid
+  requestedByName String    @map("requested_by_name") @db.VarChar(200)
+  employees       Int       @default(0)
+  setupPct        Int?      @map("setup_pct") @db.SmallInt
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  dueAt           DateTime  @map("due_at") @db.Timestamptz(3)
+  ownerId         String?   @map("owner_id") @db.Uuid
+  /// open, demo_booked, converted, lost
+  status          String    @default("open") @db.VarChar(12)
+  outcomeNote     String?   @map("outcome_note") @db.VarChar(500)
+  decidedAt       DateTime? @map("decided_at") @db.Timestamptz(3)
+  version         Int       @default(1)
+
+  @@map("sales_assist_requests")
+}
+
 model FeatureFlagOverride {
   organizationId String   @map("organization_id") @db.Uuid
   flagKey        String   @map("flag_key") @db.VarChar(60)

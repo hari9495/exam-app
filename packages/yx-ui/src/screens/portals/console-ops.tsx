@@ -30,6 +30,7 @@ import { LiveMaintenanceScreen, type LiveMaintenance } from './console-maintenan
 import { LiveHelpCentreScreen, type LiveHelpCentre } from './console-helpcentre-live';
 import { LiveIncidentsScreen, type LiveIncidents } from './console-incidents-live';
 import { LiveNudgesScreen, type LiveNudges } from './console-nudges-live';
+import { LiveSalesScreen, type LiveSales } from './console-sales-live';
 
 const STATE_TONE: Record<TenantRow['state'], BadgeTone> = { trial: 'info', active: 'success', 'past due': 'warning', restricted: 'danger', suspended: 'danger', cancelled: 'neutral' };
 const CHURN_TONE = { low: 'success', medium: 'warning', high: 'danger' } as const;
@@ -776,7 +777,8 @@ type SalesRow = { id: string; tenant: string; band: string; trigger: string; set
 
 // YX-13
 /** "Talk to us" requests and size triggers; owner, 1-business-day SLA, outcome; no employee names, no private discounts. */
-export function SalesAssistScreen({ rows, now, state = 'ready' }: { rows: SalesRow[]; now: Date; state?: 'ready' | 'loading' | 'error' }) {
+export function SalesAssistScreen({ rows, now, state = 'ready', live }: { rows: SalesRow[]; now: Date; state?: 'ready' | 'loading' | 'error'; /** The live console (C-8, YX-13). */ live?: LiveSales }) {
+  if (live) return <LiveSalesScreen live={live} />;
   return (
     <Console page="Sales assist">
       <PageHeader title="Sales assist" description="Trials with 200+ employees, 3 entities, 10 recruiters or 2,000 test attempts, or asking for migration help. Reply within 1 business day. No private discounts." />

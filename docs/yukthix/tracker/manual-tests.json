@@ -21015,5 +21015,27 @@
       "Screens/Projects/PRJ-01 · Projects and project workspace · Live · finance overview with cost against budget"
     ],
     "note": "Positive and negative. Answers 1412, 1445."
+  },
+  {
+    "id": "MT-CON-YX13a",
+    "area": "Console C-8 (13 Nov 2026)",
+    "screen": "Talk to us on a nudge card and Console › Sales assist",
+    "url": "http://localhost:3000/yx/home",
+    "account": "A System Admin of a company that is shown a switch-on card (MT-CON-YX12a); two YukthiX staff accounts with the Customer success role and their security keys.",
+    "steps": [
+      "On Home press Talk to us on the card and Ask for a call with no phone.",
+      "Give a mobile number, tick Pricing for our size, Ask for a call.",
+      "Press Talk to us again and send.",
+      "In the console open Sales assist.",
+      "Take the request; as the other staff member press Take.",
+      "As the other staff member open it.",
+      "As the owner choose Lost and Save outcome without a note; then Demo booked and save."
+    ],
+    "expected": "Step 1: 'Give a 10-digit mobile number.' Step 2: 'YukthiX will call you by …'. Step 3: 'Your company already asked about this…'. Step 4: the company with its size band, why, set-up %, reply-by. Step 5: the second is told 'Someone else took this request.' Step 6: only the owner records the outcome. Step 7: 'Say why it was lost.', then toast 'Outcome saved'.",
+    "stories": [
+      "Screens/YukthiX console/YX-13 · Sales-assist queue · Sales-assist queue · Talk to us requests (C-8)",
+      "Screens/YukthiX console/YX-13 · Sales-assist queue · Talk to us from a nudge card (C-8)"
+    ],
+    "note": "Positive and negative."
   }
 ]

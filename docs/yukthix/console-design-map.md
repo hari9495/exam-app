@@ -73,7 +73,7 @@ built** · **phone view, mobile app not built**.
 
 ## Counts (sub-pages = stories)
 
-After C-1 to C-5, C-8 parts 1 to 3 (with the payroll-day note), staff roles parts 1 and 2, 1165 and the console tidy-ups
+After C-1 to C-5, C-8 parts 1 to 4 (with the payroll-day note), staff roles parts 1 and 2, 1165 and the console tidy-ups
 1 and 2 (12 Nov 2026; tidy 2 adds the withdraw story; appendix script "ok").
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
@@ -83,8 +83,8 @@ After C-1 to C-5, C-8 parts 1 to 3 (with the payroll-day note), staff roles part
 | C. Customers and containment (YX-04, YX-18) | 2 | 26 | 2 | 0 | 0 | 0 | 28 |
 | D. Partners (YX-06 to YX-08) | 3 | 0 | 0 | 0 | 10 | 0 | 10 |
 | E. Money (YX-14 to YX-17) | 4 | 0 | 0 | 0 | 8 | 0 | 8 |
-| F. The rest (YX-05, YX-09 to YX-13) | 6 | 24 | 0 | 0 | 11 | 0 | 35 |
-| **All A-F** | **21** | **106** | **7** | **0** | **29** | **0** | **142** |
+| F. The rest (YX-05, YX-09 to YX-13) | 6 | 29 | 0 | 0 | 9 | 0 | 38 |
+| **All A-F** | **21** | **111** | **7** | **0** | **27** | **0** | **145** |
 
 Counted by script on 11 Nov 2026 on `docs/yukthix-console-map` (the script is in the appendix). There are 87 stories in
 20 files whose title starts `Screens/YukthiX console/`: `screens/console/console.stories.tsx` (14),
@@ -408,8 +408,11 @@ YX-14 (4), YX-15 (1), YX-16 (2), YX-17 (1) and YX-18 (4).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| YX13 · Sales-assist queue | design only, feature not built | no queue. `Lead` stores landing-page sign-ups; staff cannot list them |
-| YX13Empty · Sales-assist queue · empty | design only, feature not built | as above |
+| YX13 · Sales-assist queue | live | C-8: `/staff/sales`, `SalesAssistScreen live`: company, size band, why, set-up %, owner, reply-by, outcome; Take |
+| YX13Live · Sales-assist queue · Talk to us requests (C-8) | live | `GET platform/sales`, `POST .../:id/take` (`platform.sales.work`); the read is audited (`sales.queue`) |
+| YX13OutcomeLive · Request · the owner records the outcome (C-8) | live | `POST platform/sales/:id/outcome` (owner only; Lost needs a reason) |
+| YX13TalkToUs · Talk to us from a nudge card (C-8) | live | answer 1210: `TalkToUsLiveDialog` (PLT-41) from the nudge card on Home, `POST /help/talk-to-us` |
+| YX13Empty · Sales-assist queue · empty | live | same page, no requests |
 
 ## 5. What can be reused, and what is missing
 
@@ -655,6 +658,42 @@ risky actions, and adds positive and negative tests and an e2e suite.
       queue): the request lands in the staff queue.*
 1211. **Where the card shows.** Built on Home only, first on the page. *Suggested: keep Home only; a card on every page
       is noise.*
+
+## C-8 part 4 built: the sales-assist queue (YX-13, answer 1210; 13 Nov 2026, branch `feat/yukthix-console-c8`)
+
+- **Where a company asks:** the app had no "ask about an upgrade" anywhere (searched: no upgrade or Talk to us path in
+  `apps/web`). Answer 1210: the nudge card (part 3) gets **Talk to us**, which opens the drawn PLT-41 dialog (live):
+  phone (10-digit mobile), what to discuss (the four drawn topics) and a note. Only for a nudge shown to that person (so
+  only people who can act on it); one open request per company and feature ("Your company already asked"). The answer
+  says when YukthiX will call. The company's own audit log records who asked and about what, never the phone.
+- **The staff queue:** Console › Customers › Sales assist (`/staff/sales`), the designed `SalesAssistScreen` with
+  `live`: company, size band (employee count at the time, counts only), why (the feature and topics), set-up % (the
+  set-up hub's checks done at the time), owner, reply-by and outcome. Take sets the owner (the first one wins; the second
+  is told). Only the owner records the outcome (Open, Demo booked, Converted, Lost; Lost needs a reason). Reading the
+  queue is an audited cross-company read (`sales.queue`); every step is audited (`platform.sales.*`).
+- **Policy as a platform setting:** reply within `sales.reply_hours` (default 24, 4 to 72; the drawn "1 business day").
+- **Data:** `sales_assist_requests` (migration `202617z0000161_console_sales_assist`): staff-only RLS (a person's name and
+  phone), never deleted (goes with its company).
+- **Key and role (1058):** `platform.sales.work` (every console route; staff only, never assignable). Role: **Customer
+  success**.
+- **Not built:** booking a call time (the drawn slots need a calendar; question 1212); the drawn automatic size
+  triggers (200+ employees, 3 entities, and so on; question 1213).
+- **Tests:** API unit (guards, key on every route, not assignable, Talk to us open to any signed-in person, size bands at
+  their edges); kit (queue with set-up and breached reply time, Take, someone else's request has no outcome, Lost needs
+  a reason, outcome saved; Talk to us phone check, sent, says when); web (queue loads and takes, no-access state); e2e
+  `console-sales` (7: a person not shown the nudge, another company, a bad phone, an unknown topic, no sign-in refused;
+  lands with band, why, set-up and reply time; once per company and feature; company log without the phone; RLS; company
+  admin, no sign-in, no security key, no key refused; one owner; only the owner records, Lost needs a reason, stale
+  version refused; asking again after it closes; audited, the read with its purpose).
+
+### Questions from C-8 part 4 (from 1212)
+
+1212. **Booking a call time.** The drawn Talk to us offers call times; there is no staff calendar, so the company gives a
+      phone and YukthiX calls back within the reply time. *Suggested: keep the call back; add times when staff calendars
+      are connected.*
+1213. **Automatic size triggers.** The drawing also queues trials with 200+ employees, 3 entities, 10 recruiters or 2,000
+      test attempts. *Suggested: add them as a nightly check with the thresholds as platform settings, after the trial
+      and billing work.*
 
 ## Appendix: the count script
 

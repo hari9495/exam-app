@@ -10,6 +10,9 @@ export { wizardInput, type LiveTenantWizard, type WizardInput, type WizardProduc
 export { IncidentComposerScreen, HelpEditorScreen, NudgeEditorScreen } from '../portals/console-ops';
 // C-8 (YX-12): nudges per feature switch, and the card a company person sees.
 export { NudgeCard } from '../portals/console-nudges-live';
+// C-8 (YX-13): the sales-assist queue.
+export { SalesAssistScreen } from '../portals/console-ops';
+export type { LiveSales, SalesLiveRow, SalesOutcome } from '../portals/console-sales-live';
 export type { LiveNudges, NudgeRow, NudgeKind } from '../portals/console-nudges-live';
 // C-8 (YX-11): the help-centre editor.
 export type { LiveHelpCentre, HelpRow, HelpDetail, HelpInput, HelpSettingRow } from '../portals/console-helpcentre-live';

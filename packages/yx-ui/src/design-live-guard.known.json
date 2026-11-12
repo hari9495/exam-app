@@ -173,7 +173,6 @@
     "portals: RefereeQuestionnaireScreen",
     "portals: RegionCatalogueScreen",
     "portals: RoadmapScreen",
-    "portals: SalesAssistScreen",
     "portals: StatusPageScreen",
     "portals: TrainerPortalScreen",
     "portals: VendorPortalScreen",
