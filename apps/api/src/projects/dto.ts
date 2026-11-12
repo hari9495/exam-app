@@ -77,6 +77,11 @@ export class ProjectInputDto {
   @IsOptional()
   @IsBoolean()
   clientApprovesHours?: boolean;
+
+  /** Answer 1734: the client sees this project's timesheet notes in the portal (off by default). */
+  @IsOptional()
+  @IsBoolean()
+  clientSeesNotes?: boolean;
 }
 
 export class ProjectUpdateDto extends ProjectInputDto {

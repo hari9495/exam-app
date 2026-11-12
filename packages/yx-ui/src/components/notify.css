@@ -209,6 +209,8 @@ a.yx-notif__text:focus-visible { outline: var(--yx-focus-width) solid var(--yx-c
 .yx-tsa__what { display: flex; flex-direction: column; min-width: 0; }
 .yx-tsa__project { font-weight: var(--yx-weight-medium); }
 .yx-tsa__task { font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); }
+/* Answer 1734: the person's note for the row. */
+.yx-tsa__note { font-size: var(--yx-text-sm); color: var(--yx-color-text); white-space: pre-wrap; margin-top: var(--yx-space-1); }
 .yx-tsa__hours { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 .yx-tsa__hours s { color: var(--yx-color-text-muted); }
 .yx-tsa__hours strong { font-weight: var(--yx-weight-semibold); }

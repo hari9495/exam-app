@@ -793,10 +793,11 @@ export class TimesheetLineDto {
   @Max(1440, { each: true })
   minutes!: number[];
 
+  /** Answers 1731 to 1733: the row's note; at least N words to submit when the company asks for it. */
   @IsOptional()
   @trim()
   @IsString()
-  @MaxLength(200)
+  @MaxLength(4000)
   note?: string | null;
 }
 

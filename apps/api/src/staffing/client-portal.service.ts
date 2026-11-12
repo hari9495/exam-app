@@ -214,7 +214,7 @@ export class ClientPortalService {
 
   /** Answer 1408: the approved lines of this client's own projects that ask the client to approve hours. */
   private async projectLines(tx: Tx, s: Session) {
-    const projects = await tx.timesheetProject.findMany({ where: { organizationId: s.org, clientId: s.clientId, clientApprovesHours: true }, select: { id: true, code: true, name: true } });
+    const projects = await tx.timesheetProject.findMany({ where: { organizationId: s.org, clientId: s.clientId, clientApprovesHours: true }, select: { id: true, code: true, name: true, clientSeesNotes: true } });
     if (!projects.length) return [];
     const lines = await tx.timesheetLine.findMany({ where: { organizationId: s.org, projectId: { in: projects.map((p) => p.id) }, clientStatus: { not: null } }, take: 500 });
     const sheets = await tx.timesheet.findMany({ where: { organizationId: s.org, id: { in: [...new Set(lines.map((l) => l.timesheetId))] } }, select: { id: true, employeeId: true, weekStart: true } });
@@ -224,7 +224,7 @@ export class ClientPortalService {
         const sh = sheets.find((x) => x.id === l.timesheetId)!;
         const p = projects.find((x) => x.id === l.projectId)!;
         const minutes = lineApproved(l).reduce((a, b) => a + b, 0);
-        return { id: l.id, worker: displayName(people.find((e) => e.id === sh.employeeId) ?? { givenName: 'Employee', familyName: null, preferredName: null }), project: `${p.code} · ${p.name}`, task: l.activity, weekStart: iso(sh.weekStart), hours: hrs(Math.round((minutes * 100) / 60)), status: l.clientStatus === 'waiting' ? 'Waiting for you' : l.clientStatus === 'approved' ? 'Approved' : 'Sent back', note: l.clientNote, version: l.version };
+        return { id: l.id, worker: displayName(people.find((e) => e.id === sh.employeeId) ?? { givenName: 'Employee', familyName: null, preferredName: null }), project: `${p.code} · ${p.name}`, task: l.activity, weekStart: iso(sh.weekStart), hours: hrs(Math.round((minutes * 100) / 60)), status: l.clientStatus === 'waiting' ? 'Waiting for you' : l.clientStatus === 'approved' ? 'Approved' : 'Sent back', note: l.clientNote, workNote: p.clientSeesNotes ? l.note : null, version: l.version };
       })
       .sort((a, b) => (b.weekStart ?? '').localeCompare(a.weekStart ?? ''));
   }

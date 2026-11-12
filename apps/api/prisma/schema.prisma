@@ -6200,6 +6200,8 @@ model TimesheetProject {
   clientAcceptsMilestones Boolean   @default(false) @map("client_accepts_milestones")
   /// Answer 1408: the client approves this project's hours in the client portal (off by default).
   clientApprovesHours     Boolean   @default(false) @map("client_approves_hours")
+  /// Answer 1734: the client sees this project's timesheet notes in the portal (off by default).
+  clientSeesNotes         Boolean   @default(false) @map("client_sees_notes")
   /// Answer 1445: the cost burn level already alerted (0, the warning level or the over level).
   costAlertedPct          Int       @default(0) @map("cost_alerted_pct") @db.SmallInt
   /// Projects P-6 (1621): the time-and-material bill rate per hour, in paise (Projects finance).
@@ -6388,7 +6390,8 @@ model TimesheetLine {
   activity       String? @db.VarChar(60)
   billable       Boolean @default(false)
   minutes        Int[]   @db.SmallInt
-  note           String? @db.VarChar(200)
+  /// Answers 1731 to 1736: the row's note (required, at least N words, when the company asks for it).
+  note           String? @db.VarChar(4000)
   /// Projects P-2 (1406): null in a draft or a week decided as a whole; else pending, approved, reduced or rejected.
   status          String?   @db.VarChar(10)
   approverUserIds String[]  @default([]) @map("approver_user_ids") @db.Uuid

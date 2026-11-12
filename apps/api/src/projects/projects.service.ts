@@ -33,7 +33,7 @@ const hoursOf = (minutes: number) => Math.round((minutes / 60) * 100) / 100;
 export const BURN_WARN = 'projects.burn.warn_pct';
 export const BURN_OVER = 'projects.burn.over_pct';
 /** Settings 3.11 Projects & timesheets: the company settings P-1 puts behind the designed page. */
-export const PROJECT_SETTING_KEYS = ['projects.enabled', 'projects.booking.allocated_only', BURN_WARN, BURN_OVER, 'timesheet.tool_suggestions', 'projects.default_billing_model', 'projects.bulk.within_allocation', 'projects.utilisation.target_pct', 'projects.small_team.limit', 'projects.cost.min_people', 'projects.expenses.enabled', 'projects.billing.am_approval', 'projects.correction.pay_recovery'] as const;
+export const PROJECT_SETTING_KEYS = ['projects.enabled', 'projects.booking.allocated_only', BURN_WARN, BURN_OVER, 'timesheet.tool_suggestions', 'projects.default_billing_model', 'projects.bulk.within_allocation', 'projects.utilisation.target_pct', 'projects.small_team.limit', 'projects.cost.min_people', 'projects.expenses.enabled', 'projects.billing.am_approval', 'projects.correction.pay_recovery', 'timesheet.note.required', 'timesheet.note.min_words'] as const;
 
 /** Answer 1405: the burn level reached (0, the warning level or the over level) for hours used against the budget. */
 export function burnLevel(usedHours: number, budgetHours: number | null, warn: number, over: number): number {
@@ -170,6 +170,7 @@ export class ProjectsService {
       people: extra.people,
       clientAcceptsMilestones: p.clientAcceptsMilestones,
       clientApprovesHours: p.clientApprovesHours,
+      clientSeesNotes: p.clientSeesNotes,
       // Answer 1412: fee and cost only for Projects finance.
       ...(w.finance ? { fee: num(p.fee), budgetCost: num(p.budgetCost), billRate: p.billRatePaise == null ? null : Number(p.billRatePaise) / 100 } : {}),
       // P-6: billed to date and margin on it (finance; null margin without billed revenue).
@@ -313,6 +314,7 @@ export class ProjectsService {
           billRatePaise: dto.billRate == null ? null : BigInt(Math.round(dto.billRate * 100)),
           clientAcceptsMilestones: dto.clientAcceptsMilestones ?? false,
           clientApprovesHours: dto.clientApprovesHours ?? false,
+          clientSeesNotes: dto.clientSeesNotes ?? false,
           createdBy: c.userId ?? null,
         },
       });
@@ -347,6 +349,7 @@ export class ProjectsService {
         ...(w.finance ? { budgetCost: dto.budgetCost ?? null, fee: dto.fee ?? null, ...(dto.billRate !== undefined ? { billRatePaise: dto.billRate == null ? null : BigInt(Math.round(dto.billRate * 100)) } : {}) } : {}),
         clientAcceptsMilestones: dto.clientAcceptsMilestones ?? p.clientAcceptsMilestones,
         clientApprovesHours: dto.clientApprovesHours ?? p.clientApprovesHours,
+        clientSeesNotes: dto.clientSeesNotes ?? p.clientSeesNotes,
         version: { increment: 1 },
         updatedAt: new Date(),
       };

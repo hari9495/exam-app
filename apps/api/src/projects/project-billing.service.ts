@@ -51,6 +51,8 @@ interface WipItem {
   amountPaise: bigint;
   held: string | null;
   parts: { sourceId: string; minutes: number | null; amountPaise: bigint }[];
+  /** Answer 1734: the timesheet notes of the hours (finance reads them before billing). */
+  notes?: string[];
 }
 
 @Injectable()
@@ -120,6 +122,7 @@ export class ProjectBillingService {
         g.minutes! += mins;
         g.amountPaise += amount;
         g.parts.push({ sourceId: l.id, minutes: mins, amountPaise: amount });
+        if (l.note?.trim()) (g.notes ??= []).push(l.note.trim());
         groups.set(key, g);
       }
       for (const g of groups.values()) items.push({ ...g, detail: `${g.detail}, ${hoursOf(g.minutes!)} h${g.ratePaise ? ` × ${rupee(g.ratePaise)}` : ''}` });
@@ -218,7 +221,7 @@ export class ProjectBillingService {
         approver: false,
         amApproval: (await settingFor(tx, c, 'projects.billing.am_approval', { legalEntityId: '' })) === 'on',
         series: series.map((s) => ({ id: s.id, label: `${s.prefix} · ${s.gstin} · ${s.financialYear}` })),
-        wip: (await this.wip(tx, org, month)).map((w) => ({ id: w.id, client: w.client, clientState: w.clientState, project: w.project, projectId: w.projectId, source: SOURCE[w.type], detail: w.detail, hours: w.minutes == null ? null : hoursOf(w.minutes), amount: toRupees(w.amountPaise), held: w.held })),
+        wip: (await this.wip(tx, org, month)).map((w) => ({ id: w.id, client: w.client, clientState: w.clientState, project: w.project, projectId: w.projectId, source: SOURCE[w.type], detail: w.detail, hours: w.minutes == null ? null : hoursOf(w.minutes), amount: toRupees(w.amountPaise), held: w.held, notes: w.notes ?? [] })),
         drafts: await this.drafts(tx, org),
       };
     });

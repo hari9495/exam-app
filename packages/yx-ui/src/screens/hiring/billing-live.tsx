@@ -39,6 +39,8 @@ export interface LiveWipRow {
   /** Rupees. */
   amount: string;
   held: string | null;
+  /** Answer 1734: the timesheet notes of the hours. */
+  notes?: string[];
 }
 
 export interface LiveBillingDraft {
@@ -220,7 +222,7 @@ export function LiveBillingView({ live }: { live: LiveBilling }) {
     { key: 'client', header: 'Client', value: (r) => r.client, groupable: true },
     { key: 'project', header: 'Project', type: 'id', value: (r) => r.project },
     { key: 'source', header: 'Source', value: (r) => r.source },
-    { key: 'detail', header: 'Detail', value: (r) => r.detail },
+    { key: 'detail', header: 'Detail', value: (r) => r.detail, render: (r) => (r.notes?.length ? <span className="yx-hire-clip2"><span>{r.detail}</span><Text as="span" size="sm" tone="secondary">{r.notes.join(' · ')}</Text></span> : r.detail) },
     { key: 'hours', header: 'Hours', type: 'number', value: (r) => r.hours, total: 'sum' },
     { key: 'amount', header: 'Amount', type: 'money', value: (r) => Number(r.amount), total: 'sum' },
     { key: 'held', header: 'Status', type: 'status', value: (r) => (r.held ? `Held: ${r.held}` : 'Ready'), statusTone: (v) => (v === 'Ready' ? 'success' : 'warning') },

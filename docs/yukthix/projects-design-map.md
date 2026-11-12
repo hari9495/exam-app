@@ -600,3 +600,21 @@ console.log('ok');
   per-project setting "show notes to the client" is on (off by default).
 - 1735: rows pre-filled from work tools still need the person's own note; the pre-filled items are a starting point.
 - 1736: drawn in the timesheet design first, then made live.
+
+## The required timesheet note built (13 Nov 2026, `feat/yukthix-timesheet-note`): questions for the founder
+
+Built as asked (1731 to 1736): one note per row; Settings › Projects & timesheets "Timesheet note: required on every row
+with hours" (on) and "at least" (200 words); Save draft never asks; Submit week is refused by the page and the API until
+every row with hours has enough words, with a live count; the note holds up to 4,000 characters (was 200); the row's
+approver, Projects finance (billing workbench) and the person see it; the client only when the project's "Show
+timesheet notes to the client" is on (off by default); pre-filled rows start with no note. Drawn first in TIM-15
+(`NoteRequired`, `NoteRefused`, `NoteOptional`, `PhoneNote`).
+
+1771. **Words.** A word is any run of letters or signs between spaces, so "Fixed bugs." is 2 words and a pasted list
+      of codes counts each code. *Suggested: keep.*
+1772. **The choices for N.** 10, 25, 50, 100, 150, 200, 250 or 300 words. *Suggested: keep; another number if you ask.*
+1773. **Rows without hours** need no note; a row with hours on any day needs one. *Suggested: keep.*
+1774. **Weeks already submitted** before the switch are not asked again; a week sent back must meet the rule when it is
+      resubmitted. *Suggested: keep.*
+1775. **Without Projects switched on** (basic timesheets) the same rule applies, because the setting is the company's.
+      *Suggested: keep; or ask notes only when Projects is on.*

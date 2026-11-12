@@ -21,7 +21,7 @@ import { DataTable, type TableColumn } from '../../components/table';
 import { FilterBar } from '../../components/filters';
 import { Select } from '../../components/select';
 import { BarChart, LineChart } from '../../components/charts';
-import { checkTimesheet, newTimesheetLine, TimesheetGrid, type TimesheetDay, type TimesheetLine, type TimesheetProject, type TimesheetStatus } from '../../components/timesheet';
+import { checkTimesheet, newTimesheetLine, TimesheetGrid, type TimesheetDay, type TimesheetLine, type TimesheetNoteRule, type TimesheetProject, type TimesheetStatus } from '../../components/timesheet';
 import { formatDate, formatINR } from '../../lib/format';
 import type { FilterValue } from '../../lib/table';
 import { DueBadge, Kpis, NoRecordState, TimePage } from './time-kit';
@@ -565,10 +565,12 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
   const [pf, setPf] = useState(false);
   const { busy, error, run } = useRun();
   useEffect(() => {
-    if (d) setLines(d.lines.map((l) => ({ id: l.id, projectId: l.projectId, taskId: l.activity, billable: l.billable, hours: l.minutes.map((m) => (m ? Math.round((m / 60) * 100) / 100 : null)) })));
+    if (d) setLines(d.lines.map((l) => ({ id: l.id, projectId: l.projectId, taskId: l.activity, billable: l.billable, hours: l.minutes.map((m) => (m ? Math.round((m / 60) * 100) / 100 : null)), note: l.note ?? '' })));
     setProblems([]);
   }, [d]);
-  const input = (): TimesheetLineInput[] => lines.filter((l) => l.projectId).map((l) => ({ projectId: l.projectId!, activity: l.taskId, billable: l.billable, minutes: l.hours.map((h) => Math.round((h ?? 0) * 60)) }));
+  const input = (): TimesheetLineInput[] => lines.filter((l) => l.projectId).map((l) => ({ projectId: l.projectId!, activity: l.taskId, billable: l.billable, minutes: l.hours.map((h) => Math.round((h ?? 0) * 60)), note: l.note?.trim() || null }));
+  // Answers 1731 to 1733: the company's note rule (the API checks it again on submit).
+  const noteRule = d?.noteRule;
   const days: TimesheetDay[] = (d?.days ?? []).map((x) => (x.holiday ? { expected: 0, kind: 'holiday', label: x.holiday } : x.leave === 'full' ? { expected: 0, kind: 'leave', label: 'On leave' } : { expected: 0, kind: 'workday' }));
   const locked = (d?.days ?? []).filter((x) => x.locked);
   const allLocked = !!d && locked.length === d.days.length;
@@ -580,7 +582,7 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
     live.onWeek(week);
   };
   const send = () => {
-    const p = checkTimesheet(lines).map((x) => x.message);
+    const p = checkTimesheet(lines, 24, noteRule).map((x) => x.message);
     setProblems(p);
     if (p.length || !d) return;
     void run('submit', async () => {
@@ -615,6 +617,7 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
               onSaveDraft={editable ? () => void run('save', async () => { await live.onSave(d.week, input()); toast({ tone: 'success', title: `Draft saved for ${weekRange(d.week)}.` }); }) : undefined}
               saving={busy === 'save'}
               today={localDay(live.today)}
+              noteRule={noteRule}
             />
             {st === 'submitted' && (
               <div className="yx-tim-row">
@@ -665,12 +668,12 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
   );
 }
 
-export function TimesheetScreen({ status = 'draft', layout = 'auto', prefillOpen = false, prefillView = 'suggestions', initialLines, live }: { status?: TimesheetStatus; layout?: 'auto' | 'days'; prefillOpen?: boolean; prefillView?: PrefillView; initialLines?: TimesheetLine[]; /** The live app's /time/timesheet. */ live?: LiveTimesheet }) {
+export function TimesheetScreen({ status = 'draft', layout = 'auto', prefillOpen = false, prefillView = 'suggestions', initialLines, noteRule, live }: { status?: TimesheetStatus; layout?: 'auto' | 'days'; prefillOpen?: boolean; prefillView?: PrefillView; initialLines?: TimesheetLine[]; /** Answers 1731 to 1736: a note per row with a live word count. */ noteRule?: TimesheetNoteRule; /** The live app's /time/timesheet. */ live?: LiveTimesheet }) {
   if (live) return <LiveTimesheetScreen live={live} />;
-  return <SampleTimesheet status={status} layout={layout} prefillOpen={prefillOpen} prefillView={prefillView} initialLines={initialLines} />;
+  return <SampleTimesheet status={status} layout={layout} prefillOpen={prefillOpen} prefillView={prefillView} initialLines={initialLines} noteRule={noteRule} />;
 }
 
-function SampleTimesheet({ status, layout, prefillOpen, prefillView, initialLines }: { status: TimesheetStatus; layout: 'auto' | 'days'; prefillOpen: boolean; prefillView: PrefillView; initialLines?: TimesheetLine[] }) {
+function SampleTimesheet({ status, layout, prefillOpen, prefillView, initialLines, noteRule }: { status: TimesheetStatus; layout: 'auto' | 'days'; prefillOpen: boolean; prefillView: PrefillView; initialLines?: TimesheetLine[]; noteRule?: TimesheetNoteRule }) {
   const { toast } = useToast();
   // `status` is for the week the story opens on: a draft is this week, locked is the August week, every other status is last week.
   const [offset, setOffset] = useState(status === 'draft' ? 0 : status === 'locked' ? -5 : -1);
@@ -693,7 +696,7 @@ function SampleTimesheet({ status, layout, prefillOpen, prefillView, initialLine
   const queriedUnchanged = st === 'sent_back' && lines.find((l) => l.id === QUERIED.lineId)?.hours[QUERIED.day] === QUERIED.hours;
   const go = (o: number) => { setOffset(o); setProblems([]); };
   const resubmit = () => {
-    const p = checkTimesheet(lines).map((x) => x.message);
+    const p = checkTimesheet(lines, 24, noteRule).map((x) => x.message);
     setProblems(p);
     if (!p.length) setStatusOver((s) => ({ ...s, [offset]: 'submitted' }));
   };
@@ -734,6 +737,7 @@ function SampleTimesheet({ status, layout, prefillOpen, prefillView, initialLine
       today={TODAY}
       onAddCorrection={st === 'locked' ? addCorrection : undefined}
       layout={layout}
+      noteRule={noteRule}
     />
   );
   const clientNote = lines.some((l) => l.projectId === 'pr2') && <p className="yx-tim-note">SRF-24 client hours are also checked by S. Balaji, Sundaram Retail Foods.</p>;

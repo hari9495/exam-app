@@ -29,6 +29,8 @@ export interface LiveProjectRow {
   clientAcceptsMilestones: boolean;
   /** Answer 1408: the client approves this project's hours in the portal (off by default). */
   clientApprovesHours?: boolean;
+  /** Answer 1734: the client sees this project's timesheet notes (off by default). */
+  clientSeesNotes?: boolean;
   /** Projects finance only (answer 1412). */
   fee?: number | null;
   budgetCost?: number | null;
@@ -102,6 +104,7 @@ export interface ProjectInput {
   billRate?: number | null;
   clientAcceptsMilestones: boolean;
   clientApprovesHours?: boolean;
+  clientSeesNotes?: boolean;
 }
 export interface AllocationInput {
   employeeId: string;

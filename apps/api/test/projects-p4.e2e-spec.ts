@@ -87,7 +87,8 @@ describe('Projects P-4 capacity, bench and requests', () => {
           .send({ legalEntityId: ids.entity, status: 'confirmed', reason: 'Joined', givenName: who, familyName: run, joinedOn: addDays(week, -90), userId: users[who], workEmail: `${who}@prj4-${run}.test`, assignment: { locationId: ids.loc, departmentId: ids.dept, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId: null } })
           .expect(want(201))
       ).body.id;
-    await api('admin', 'put', '/projects/settings').send({ changes: [{ key: 'projects.enabled', value: 'on' }] }).expect(want(200));
+    // The timesheet note (1731 to 1736) has its own suite (timesheet-note); these weeks go without notes.
+    await api('admin', 'put', '/projects/settings').send({ changes: [{ key: 'projects.enabled', value: 'on' }, { key: 'timesheet.note.required', value: 'off' }] }).expect(want(200));
     const project = async (code: string, managerUserId: string) => {
       const id = (await api('boss', 'post', '/projects').send({ code, name: `Project ${code}`, billingModel: 'non_billable', managerUserId }).expect(want(201))).body.id as string;
       await api('boss', 'post', `/projects/${id}/status`).send({ status: 'active', version: 1 }).expect(want(200));

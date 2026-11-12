@@ -942,7 +942,7 @@ function LiveTimesheetApprovalsView({ live }: { live: LiveTimesheetApprovals }) 
                     <TimesheetApprovalCard
                       employee={{ name: i.employee, secondary: i.allocationPercent != null ? `allocated ${i.allocatedHours} h a week` : 'not allocated to this project' }}
                       weekLabel={weekOf(g.week)}
-                      lines={i.lines.map((l) => ({ id: l.id, project: g.project, task: l.task ?? undefined, hours: l.hours, billable: l.billable }))}
+                      lines={i.lines.map((l) => ({ id: l.id, project: g.project, task: l.task ?? undefined, hours: l.hours, billable: l.billable, note: l.note }))}
                       onApprove={(decisions) =>
                         void act(
                           () => live.onDecide(i.lines.map((l) => { const x = decisions[l.id]!; return { lineId: l.id, version: l.version, status: x.status, ...(x.status === 'reduced' ? { hours: x.hours, reason: x.reason } : x.status === 'rejected' ? { reason: x.reason } : {}) }; })),

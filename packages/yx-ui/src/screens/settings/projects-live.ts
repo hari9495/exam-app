@@ -32,6 +32,9 @@ const KEY = {
   // P-6 (answers 1415, 1416): the account manager's approval and pay recovery on corrections.
   'prj.am_approval': 'projects.billing.am_approval',
   'prj.pay_recovery': 'projects.correction.pay_recovery',
+  // Answers 1732, 1733: the timesheet note rule.
+  'prj.note_required': 'timesheet.note.required',
+  'prj.note_min_words': 'timesheet.note.min_words',
 } as const;
 type Field = keyof typeof KEY;
 /** Settings S-5 (answers 1326, 1461): the company settings behind 3.11, for its change history. */
@@ -50,9 +53,9 @@ export function projectSettingsPage(design: SettingsPageDef, data: ProjectSettin
     const k = KEY[d.key as Field];
     if (!(k in data.values)) return null; // an older API without this setting: never shown with a sample value
     const base = { ...d, overrides: undefined, dated: undefined, scope: 'Company', starter: data.values[k] === data.defaults[k] };
-    if (d.key === 'prj.enabled' || d.key === 'prj.prefill_enabled' || d.key === 'prj.bulk_within_allocation' || d.key === 'prj.expenses_projects' || d.key === 'prj.am_approval') return { ...base, contributedBy: undefined, availability: undefined, value: data.values[k] === 'on' };
+    if (d.key === 'prj.enabled' || d.key === 'prj.prefill_enabled' || d.key === 'prj.bulk_within_allocation' || d.key === 'prj.expenses_projects' || d.key === 'prj.am_approval' || d.key === 'prj.note_required') return { ...base, contributedBy: undefined, availability: undefined, value: data.values[k] === 'on' };
     if (d.key === 'prj.booking_rule') return { ...base, value: BOOKING[data.values[k]!]! };
-    if (d.key === 'prj.billable_default' || d.key === 'prj.small_team' || d.key === 'prj.cost_min_people' || d.key === 'prj.pay_recovery') return { ...base, value: data.values[k]! };
+    if (d.key === 'prj.billable_default' || d.key === 'prj.small_team' || d.key === 'prj.cost_min_people' || d.key === 'prj.pay_recovery' || d.key === 'prj.note_min_words') return { ...base, value: data.values[k]! };
     if (d.key === 'prj.utilisation_target') return { ...base, kind: 'select', options: data.choices[k] ?? [], optionLabels: Object.fromEntries((data.choices[k] ?? []).map((o) => [o, `${o}%`])), value: data.values[k]! };
     const options = data.choices[k] ?? [];
     return { ...base, kind: 'select', options, optionLabels: Object.fromEntries(options.map((o) => [o, `${o}% of the hours budget`])), unit: undefined, min: undefined, max: undefined, value: data.values[k]! };
@@ -73,7 +76,7 @@ export function projectSettingsChanges(values: Record<string, SettingValue>): { 
   for (const [field, value] of Object.entries(values)) {
     const key = KEY[field as Field];
     if (!key) continue;
-    if (field === 'prj.enabled' || field === 'prj.prefill_enabled' || field === 'prj.bulk_within_allocation' || field === 'prj.expenses_projects' || field === 'prj.am_approval') out.push({ key, value: value === true ? 'on' : 'off' });
+    if (field === 'prj.enabled' || field === 'prj.prefill_enabled' || field === 'prj.bulk_within_allocation' || field === 'prj.expenses_projects' || field === 'prj.am_approval' || field === 'prj.note_required') out.push({ key, value: value === true ? 'on' : 'off' });
     else if (field === 'prj.booking_rule') out.push({ key, value: value === 'Allow' ? 'off' : value === 'Allow with project manager approval' ? 'approval' : 'on' });
     else out.push({ key, value: String(value) });
   }
