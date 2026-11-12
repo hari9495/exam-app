@@ -30,12 +30,16 @@ const routes = (perms: string[], refuse?: string) =>
       return {};
     }
     if (path.startsWith('/rbac/me/permissions')) return perms;
-    if (path === '/org/settings') return { registry: TIME_REGISTRY_SAMPLE, limits: LIMITS, overrides: [{ key: 'attendance.wfh_monthly_limit', scopeType: 'tenant', validFrom: null, value: '6' }] };
+    if (path === '/org/settings') return { registry: { ...TIME_REGISTRY_SAMPLE, 'leave.year_start_month': { ...TIME_REGISTRY_SAMPLE['leave.year_start_month'], scopes: ['tenant', 'legal_entity'] } }, limits: LIMITS, overrides: [{ key: 'attendance.wfh_monthly_limit', scopeType: 'tenant', validFrom: null, value: '6' }] };
     // Settings S-5 (1326): the page's own history.
     if (path.startsWith('/org/settings/history?keys=')) return HISTORY;
+    // Settings S-7 (1484): the places a value of its own can be set for.
+    if (path === '/org/legal-entities') return ENTITIES;
+    if (path === '/org/locations' || path.startsWith('/org/masters/')) return [];
     throw new Error(`unexpected ${path}`);
   });
 let HISTORY: unknown[] = [];
+let ENTITIES: { id: string; name: string }[] = [];
 const show = (slug: string) => {
   (useParams as jest.Mock).mockReturnValue({ page: slug });
   return render(
@@ -141,5 +145,25 @@ describe('Settings S-5: change history', () => {
     show('shifts-and-patterns');
     await screen.findAllByText('Starter default');
     expect(screen.queryByText(/Last changed by/)).toBeNull();
+  });
+});
+
+// Settings S-7 (answer 1484): "Different for" on the page, saved for that entity only.
+describe('Settings S-7: Different for', () => {
+  beforeEach(() => {
+    ENTITIES = [{ id: 'e1', name: 'Kaveri Foods Pvt Ltd' }];
+  });
+  afterEach(() => {
+    ENTITIES = [];
+  });
+  it('a value for one legal entity is saved with that entity, never as the company value', async () => {
+    routes(['org.settings.manage']);
+    show('leave-year');
+    await ue.click(await screen.findByRole('combobox', { name: /Apply changes to/ }));
+    await ue.click(screen.getByRole('option', { name: 'Kaveri Foods Pvt Ltd' }));
+    await ue.click(screen.getByRole('combobox', { name: /Leave year starts in/ }));
+    await ue.click(screen.getByRole('option', { name: 'April' }));
+    await ue.click(screen.getAllByRole('button', { name: 'Save changes' })[0]!);
+    await waitFor(() => expect(calls).toEqual([['PUT /org/settings', { key: 'leave.year_start_month', value: '4', scopeType: 'legal_entity', scopeId: 'e1' }]]));
   });
 });

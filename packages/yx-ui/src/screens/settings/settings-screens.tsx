@@ -11,6 +11,7 @@ import { Icon } from '../../components/foundations';
 import { ErrorSummary, FormField, StickySaveBar, useUnsavedChangesGuard, useSaveErrors } from '../../components/field';
 import { Breadcrumbs, Card, PageHeader } from '../../components/shell';
 import { Select } from '../../components/select';
+import { DatePicker } from '../../components/date';
 import { useToastIfAny } from '../../components/notify';
 import { formatDate } from '../../lib/format';
 import { DesktopFrame, type PanelSection } from '../_kit/frames';
@@ -31,6 +32,9 @@ import {
 } from './settings-logic';
 import type { LastChange, SettingDef, SettingValue, SettingsGroupDef, SettingsPageDef } from './settings-types';
 import './settings.css';
+
+/** A date as YYYY-MM-DD in local time (the day picked). */
+const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 /** no-access: the API refused this page (Hiring walk, answer 476): the page says so, never a load error. */
 /** mfa: the company asks for a second factor before admin pages open (the API's MFA_REQUIRED 403); not a load failure. */
@@ -347,7 +351,9 @@ export interface LiveSettingsPage {
   onRetry?: () => void;
   /** The changed values (by setting key) and the edited lists (rows by key). Rejects with a plain message. */
   /** `overrides`: values changed while a "Different for" scope was chosen (answer 495), as key, scope label and value. */
-  onSave: (values: Record<string, SettingValue>, rows: Record<string, string[][]>, overrides?: { key: string; scope: string; value: SettingValue }[]) => Promise<void>;
+  onSave: (values: Record<string, SettingValue>, rows: Record<string, string[][]>, overrides?: { key: string; scope: string; value: SettingValue }[], appliesFrom?: string) => Promise<void>;
+  /** Settings S-7 (answer 1562): the page has dated settings; their changes apply from this day (today by default). */
+  appliesFrom?: { today: string };
   /** list kind: a row's extra button (`rowAction`), e.g. Stage targets of a pipeline. */
   onRowAction?: (key: string, rowIndex: number) => void;
   /**
@@ -569,16 +575,21 @@ function SettingsForm({
   }, [status]);
   const [confirmSensitive, setConfirmSensitive] = useState(false);
   const [scope, setScope] = useState(defaultScope ?? page.scopes?.[0] ?? 'Company');
+  const [appliesFrom, setAppliesFrom] = useState(live?.appliesFrom?.today ?? '');
   const [requested, setRequested] = useState(false);
 
   const changed = changedKeys(page, draft);
+  const datedChanged = Boolean(live?.appliesFrom) && defsAll.some((d) => d.dated && (changed.includes(d.key) || Object.keys(draft).some((k) => k.startsWith(`${d.key}@`))));
   // Edits made while a "Different for" scope is chosen are kept as key@scope.
   const overrideOf = (d: SettingDef) => d.overrides?.find((o) => o.scope === scope);
   const overrideEdits = Object.keys(draft).filter((k) => {
     if (!k.includes('@')) return false;
     const [key, sc] = k.split('@');
-    const o = defsAll.find((d) => d.key === key)?.overrides?.find((x) => x.scope === sc);
-    return o != null && JSON.stringify(draft[k]) !== JSON.stringify(o.value);
+    const d = defsAll.find((x) => x.key === key);
+    const o = d?.overrides?.find((x) => x.scope === sc);
+    // S-7 (answer 1484): a first value of its own counts once it differs from the company value it started from.
+    if (o == null) return Boolean(d?.scopeable?.includes(sc!)) && JSON.stringify(draft[k]) !== JSON.stringify(d?.value ?? null);
+    return JSON.stringify(draft[k]) !== JSON.stringify(o.value);
   }).length;
   const listChanged = Object.keys(rows).length + overrideEdits;
   const dirty = changed.length + listChanged > 0;
@@ -603,7 +614,7 @@ function SettingsForm({
           })
           .filter((o) => JSON.stringify(o.value) !== JSON.stringify(o.was ?? null))
           .map(({ key, scope: sc, value }) => ({ key, scope: sc, value }));
-        await live.onSave(Object.fromEntries(changed.map((k) => [k, draft[k] ?? null])), rows, overrides);
+        await live.onSave(Object.fromEntries(changed.map((k) => [k, draft[k] ?? null])), rows, overrides, live.appliesFrom ? appliesFrom : undefined);
         setRows({});
         setStatus({ kind: 'idle' });
         toaster?.toast(
@@ -658,19 +669,21 @@ function SettingsForm({
   const field = (d: SettingDef) => {
     if (d.showWhen && (draft[d.showWhen.key] ?? null) !== d.showWhen.equals) return null;
     const ov = overrideOf(d);
-    const dk = ov ? `${d.key}@${scope}` : d.key;
+    const dk = ov || (live && d.scopeable?.includes(scope) && scope !== (page.scopes?.[0] ?? 'Company')) ? `${d.key}@${scope}` : d.key;
     const shown: SettingDef = ov
       ? { ...d, scope: `Overridden for ${scope}`, overrides: undefined, dated: ov.validFrom ? { validFrom: ov.validFrom } : d.dated, starter: false }
       : scope !== (page.scopes?.[0] ?? 'Company') && !d.scope
         ? { ...d, scope: 'Inherited from Kaveri Foods Pvt Ltd' }
         : d;
     // Answer 495 (live): with another scope chosen, a setting that is one value for the company is shown, not changed.
-    const companyOnly = Boolean(live) && !ov && scope !== (page.scopes?.[0] ?? 'Company');
+    const companyOnly = Boolean(live) && !ov && scope !== (page.scopes?.[0] ?? 'Company') && !d.scopeable?.includes(scope);
+    // S-7 (answer 1484): a first value of its own here starts from the company value.
+    const own = !ov && !companyOnly && scope !== (page.scopes?.[0] ?? 'Company');
     return (
     <SettingField
       key={d.key}
       def={shown}
-      value={ov ? (draft[dk] ?? ov.value) : (draft[d.key] ?? d.value ?? null)}
+      value={ov ? (draft[dk] ?? ov.value) : own ? (draft[dk] ?? draft[d.key] ?? d.value ?? null) : (draft[d.key] ?? d.value ?? null)}
       onPickOverride={(sc) => setScope(sc)}
       onChange={(v) => {
         setDraft((x) => ({ ...x, [dk]: v }));
@@ -714,6 +727,13 @@ function SettingsForm({
         <div className="yx-set-toolbar">
           <FormField label="Apply changes to" helper="Anything you don't change here keeps the value from the level above.">
             <Select value={scope} onChange={(v) => v && setScope(v)} options={[...new Set([...page.scopes, ...overrideScopes])].map((s) => ({ value: s, label: s }))} disabled={readOnly} />
+          </FormField>
+        </div>
+      )}
+      {datedChanged && !readOnly && (
+        <div className="yx-set-toolbar">
+          <FormField label="Applies from" helper="Dated settings change from this day; earlier days keep the value they had.">
+            <DatePicker value={appliesFrom ? parseIso(appliesFrom) : null} onChange={(d) => d && setAppliesFrom(isoOf(d))} />
           </FormField>
         </div>
       )}

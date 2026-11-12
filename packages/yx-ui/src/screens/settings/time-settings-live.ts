@@ -16,6 +16,8 @@ export interface RegistryDef {
   guard?: string;
   /** Dated (S-4): a change applies from today; earlier days keep the old value. */
   dated?: boolean;
+  /** Where it may have values of its own (registry scopes: tenant, legal_entity, location, employment_type, grade...). */
+  scopes?: readonly string[];
 }
 
 export interface TimeSettingsData {
@@ -30,6 +32,12 @@ export interface TimeSettingsData {
   /** Viewer also holds the access key a guarded setting needs (phone binding, kiosk PIN tries). */
   canGuard: boolean;
   lastChange: { by: string; at: string; what: string } | null;
+  /**
+   * Settings S-7 (answer 1484): "Different for" on the page. The places a value of its own may be set for (entities,
+   * locations, employment types, grades), and the values of their own already set, by key.
+   */
+  scopes?: { label: string; type: string; id: string }[];
+  byScope?: Record<string, { scope: string; value: string; validFrom: string | null }[]>;
 }
 
 type Place = { section: string; key: string; synonyms?: string[] };
@@ -224,9 +232,19 @@ export function timeSettingsPage(design: SettingsPageDef, data: TimeSettingsData
       ...(d.dated ? { helper: 'A change applies from today. Earlier days keep the value they had.' } : {}),
     };
     const labels = Object.fromEntries(d.values.map((o) => [o, d.labels?.[o] ?? pretty(p.key, o)]));
-    if (isToggle(d)) return { ...base, kind: 'toggle', value: value === truthy(d) };
-    if (d.multi) return { ...base, kind: 'multiselect', options: [...d.values], optionLabels: labels, value: value ? value.split(',') : [] };
-    return { ...base, options: [...d.values], optionLabels: labels, value };
+    // S-7 (answer 1484): the values of its own below the company, and where one may be set, on this page.
+    const conv = (v: string): SettingValue => (isToggle(d) ? v === truthy(d) : d.multi ? (v ? v.split(',') : []) : v);
+    const own = data.byScope?.[p.key];
+    const scoped = data.scopes
+      ? {
+          scope: 'Company',
+          overrides: own?.length ? own.map((o) => ({ scope: o.scope, value: conv(o.value), ...(o.validFrom ? { validFrom: o.validFrom } : {}) })) : undefined,
+          scopeable: data.scopes.filter((s) => d.scopes?.includes(s.type)).map((s) => s.label),
+        }
+      : {};
+    if (isToggle(d)) return { ...base, ...scoped, kind: 'toggle', value: value === truthy(d) };
+    if (d.multi) return { ...base, ...scoped, kind: 'multiselect', options: [...d.values], optionLabels: labels, value: value ? value.split(',') : [] };
+    return { ...base, ...scoped, options: [...d.values], optionLabels: labels, value };
   };
   const drawnLinks = new Map(design.sections.flatMap((s) => s.settings.filter((d) => spec.links.includes(d.key) && links.has(d.key)).map((d) => [d.key, s.title] as const)));
   const titles = [...design.sections.map((s) => s.title), ...spec.settings.map((p) => p.section).filter((t) => !design.sections.some((s) => s.title === t))];
@@ -238,8 +256,11 @@ export function timeSettingsPage(design: SettingsPageDef, data: TimeSettingsData
     ];
     return { title, description: drawn?.description, tone: drawn?.tone, settings };
   });
+  // S-7 (answer 1484): "Apply changes to" lists the company and every place a setting on this page may differ for.
+  const kept = sections.filter((s) => s.settings.length > 0);
+  const places = [...new Set(kept.flatMap((s) => s.settings.flatMap((d) => [...(d.scopeable ?? []), ...(d.overrides?.map((o) => o.scope) ?? [])])))];
   // The drawn note (e.g. "Changes need a second approver") describes sample data; live, the page's own state says it.
-  return { ...design, note: undefined, related: (spec as { related?: { label: string; screenId: string }[] }).related, scopes: undefined, sections: sections.filter((s) => s.settings.length > 0) };
+  return { ...design, note: undefined, related: (spec as { related?: { label: string; screenId: string }[] }).related, scopes: places.length ? ['Company', ...places] : undefined, sections: kept };
 }
 
 /** The page's changes as company-wide settings, for PUT /org/settings (one each). */
@@ -336,4 +357,16 @@ export function withApprovalPolicies(page: SettingsPageDef, data: { remindHours:
   const has = page.sections.some((s) => s.title === title);
   const sections = has ? page.sections.map((s) => (s.title === title ? { ...s, settings: [...s.settings, list] } : s)) : [{ title, settings: [list] }, ...page.sections];
   return { ...page, sections };
+}
+
+/** Settings S-7 (answer 1484): the page's values for one place (label) as PUT /org/settings rows for that place. */
+export function timeSettingsOverrides(overrides: { key: string; scope: string; value: SettingValue }[], data: TimeSettingsData): { key: string; value: string; scopeType: string; scopeId: string }[] {
+  return overrides.flatMap((o) => {
+    const d = data.registry[o.key];
+    const place = data.scopes?.find((s) => s.label === o.scope);
+    if (!d || !place) return [];
+    const v = o.value;
+    const value = typeof v === 'boolean' ? (v ? truthy(d) : falsy(d)) : Array.isArray(v) ? v.join(',') : String(v ?? '');
+    return [{ key: o.key, value, scopeType: place.type, scopeId: place.id }];
+  });
 }

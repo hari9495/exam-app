@@ -98,6 +98,8 @@ export interface SettingDef {
   lockedColumns?: string[];
   /** Values that differ for a location, department or type. Shown once, under the company value, as "Different for: …". */
   overrides?: { scope: string; value: SettingValue; validFrom?: string }[];
+  /** Settings S-7 (answer 1484, live): the scopes (labels) where this setting may take a value of its own. */
+  scopeable?: string[];
   /** A YukthiX product rule (not a law): read-only, labelled "Built-in rule". Set from "YukthiX rule: …" text. */
   builtIn?: boolean;
   /** text kind: a numbering pattern like KFL/{type}/{yyyy}/{seq:4}; shows the next number and needs {seq}. */
