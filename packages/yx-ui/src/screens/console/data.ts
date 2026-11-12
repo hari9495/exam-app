@@ -87,6 +87,8 @@ export const STAFF = [
   { id: 'st2', name: 'Kavitha Menon', email: 'kavitha.menon@yukthix.test', active: true, me: false, roles: ['security_lead' as const, 'rules_editor' as const], lastLead: false },
   { id: 'st3', name: 'Farah Siddiqui', email: 'farah.siddiqui@yukthix.test', active: true, me: false, roles: ['rules_editor' as const], lastLead: false },
   { id: 'st4', name: 'Rohit Bansal', email: 'rohit.bansal@yukthix.test', active: true, me: false, roles: ['customer_success' as const, 'finance' as const], lastLead: false },
-  { id: 'st5', name: 'Meera Pillai', email: 'meera.pillai@yukthix.test', active: false, me: false, roles: [], lastLead: false },
+  { id: 'st5', name: 'Meera Pillai', email: 'meera.pillai@yukthix.test', active: false, me: false, roles: ['support_agent' as const], lastLead: false },
+  // Answer 1173: invited, never signed in.
+  { id: 'st6', name: 'Priya Nair', email: 'priya.nair@yukthix.test', active: true, me: false, roles: [], lastLead: false, invited: true },
 ];
 

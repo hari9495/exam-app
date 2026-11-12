@@ -33,6 +33,8 @@ export interface StaffRow {
   roles: StaffRoleId[];
   /** The only active Security lead: keeps the role. */
   lastLead: boolean;
+  /** Answer 1173: never signed in, so the invitation can be sent again. */
+  invited?: boolean;
 }
 
 /** What each console key lets a member of staff do, in plain words. */
@@ -84,6 +86,10 @@ export interface StaffRolesScreenProps {
   onInvite?: (input: { email: string; name: string; reason: string }) => Promise<void>;
   /** Answer 1164: deactivate another member of staff (signed out everywhere). */
   onDeactivate?: (id: string, reason: string) => Promise<void>;
+  /** Answer 1171: reactivate a deactivated member of staff (with the roles they held; they sign in again). */
+  onReactivate?: (id: string, reason: string) => Promise<void>;
+  /** Answer 1173: send the invitation again to someone who never signed in (the old link stops working). */
+  onResend?: (id: string, reason: string) => Promise<void>;
   /** Story: the change drawer open for this member of staff. */
   defaultOpenId?: string;
   /** Story: the add-staff drawer open. */
@@ -223,7 +229,13 @@ export function StaffRolesScreen(props: StaffRolesScreenProps) {
         ),
       width: 320,
     },
-    { key: 'active', header: 'Account', value: (s) => (s.active ? 'Active' : 'Inactive'), render: (s) => <Badge tone={s.active ? 'success' : 'neutral'}>{s.active ? 'Active' : 'Inactive'}</Badge>, width: 110 },
+    {
+      key: 'active',
+      header: 'Account',
+      value: (s) => (!s.active ? 'Inactive' : s.invited ? 'Invited' : 'Active'),
+      render: (s) => <Badge tone={!s.active ? 'neutral' : s.invited ? 'info' : 'success'}>{!s.active ? 'Inactive' : s.invited ? 'Invited' : 'Active'}</Badge>,
+      width: 110,
+    },
   ];
   return (
     <ConsolePage
@@ -250,6 +262,42 @@ export function StaffRolesScreen(props: StaffRolesScreenProps) {
               s.me ? null : (
                 <>
                   <MenuItem onSelect={() => setOpen(s.id)}>Change roles</MenuItem>
+                  {props.onResend && s.active && s.invited && (
+                    <MenuItem
+                      onSelect={() =>
+                        askReason({
+                          title: `Send the invitation to ${s.name} again?`,
+                          consequence: 'They get a new link to set their password; the link sent before stops working.',
+                          confirmLabel: 'Send again',
+                          helper: 'Kept in the platform audit log.',
+                          action: async (reason) => {
+                            await props.onResend!(s.id, reason);
+                            toast({ tone: 'success', title: `Invitation sent again to ${s.email}` });
+                          },
+                        })
+                      }
+                    >
+                      Send the invitation again
+                    </MenuItem>
+                  )}
+                  {props.onReactivate && !s.active && (
+                    <MenuItem
+                      onSelect={() =>
+                        askReason({
+                          title: `Reactivate ${s.name}?`,
+                          consequence: `They come back with the roles they held${s.roles.length ? '' : ' (none)'} and sign in again with their security key. Check their roles first.`,
+                          confirmLabel: 'Reactivate',
+                          helper: 'Kept in the platform audit log.',
+                          action: async (reason) => {
+                            await props.onReactivate!(s.id, reason);
+                            toast({ tone: 'success', title: `${s.name} reactivated` });
+                          },
+                        })
+                      }
+                    >
+                      Reactivate
+                    </MenuItem>
+                  )}
                   {props.onDeactivate && s.active && !s.lastLead && (
                     <MenuItem
                       destructive

@@ -105,3 +105,50 @@ describe('Add staff and Deactivate (answer 1164)', () => {
     }
   });
 });
+
+describe('Reactivate and Send the invitation again (answers 1171, 1173)', () => {
+  const full = (over: Partial<Parameters<typeof StaffRolesScreen>[0]> = {}) =>
+    render(
+      <ToastProvider>
+        <StaffRolesScreen state="ready" roles={STAFF_ROLE_DEFS} staff={STAFF} onSave={vi.fn()} onReactivate={vi.fn().mockResolvedValue(undefined)} onResend={vi.fn().mockResolvedValue(undefined)} {...over} />
+      </ToastProvider>,
+    );
+  const menu = async (name: string) => {
+    await ue.click(screen.getByRole('button', { name: new RegExp(`More actions for ${name}`) }));
+    await screen.findByRole('menuitem', { name: 'Change roles' });
+  };
+
+  it('reactivates a deactivated member of staff with a reason, saying they keep their roles', async () => {
+    const onReactivate = vi.fn().mockResolvedValue(undefined);
+    full({ onReactivate });
+    await menu('Meera Pillai');
+    await ue.click(screen.getByRole('menuitem', { name: 'Reactivate' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/come back with the roles they held/)).toBeTruthy();
+    await ue.type(within(dialog).getByRole('textbox'), 'Back from leave');
+    await ue.click(within(dialog).getByRole('button', { name: 'Reactivate' }));
+    await waitFor(() => expect(onReactivate).toHaveBeenCalledWith('st5', 'Back from leave'));
+  });
+
+  it('sends the invitation again to someone who never signed in', async () => {
+    const onResend = vi.fn().mockResolvedValue(undefined);
+    full({ onResend });
+    expect(screen.getByText('Invited')).toBeTruthy();
+    await menu('Priya Nair');
+    await ue.click(screen.getByRole('menuitem', { name: 'Send the invitation again' }));
+    const dialog = await screen.findByRole('dialog');
+    await ue.type(within(dialog).getByRole('textbox'), 'Link expired');
+    await ue.click(within(dialog).getByRole('button', { name: 'Send again' }));
+    await waitFor(() => expect(onResend).toHaveBeenCalledWith('st6', 'Link expired'));
+  });
+
+  it('negative: no Reactivate for active people, no resend for people who signed in or are deactivated', async () => {
+    full();
+    await menu('Farah Siddiqui');
+    expect(screen.queryByRole('menuitem', { name: 'Reactivate' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Send the invitation again' })).toBeNull();
+    await ue.keyboard('{Escape}');
+    await menu('Meera Pillai');
+    expect(screen.queryByRole('menuitem', { name: 'Send the invitation again' })).toBeNull();
+  });
+});

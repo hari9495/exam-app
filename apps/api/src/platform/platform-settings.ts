@@ -54,6 +54,8 @@ export const PLATFORM_SETTING_DEFS: Record<string, Def> = {
   // C-4 (answer 1050): the breach clock. shortcut: ranges set by YukthiX (question 1182); verify with counsel.
   'breach.certin_hours': whole('CERT-In: report a cyber security incident within (hours)', 6, 1, 24),
   'breach.dpdp_board_report_hours': whole('DPDP Rules 2025: detailed report to the Data Protection Board within (hours)', 72, 1, 168),
+  // Answer 1173: "Send the invitation again" (Staff and roles), per person per India day.
+  'staff.invite.resends_per_day': whole('Staff invitations: times a day the invitation may be sent again to one person', 3, 1, 10),
 };
 
 export class PlatformSettingDto {

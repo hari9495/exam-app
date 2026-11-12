@@ -78,6 +78,22 @@ export class StaffRolesController {
     return this.staff.deactivate(actor, id, dto.reason);
   }
 
+  /** Answer 1171: reactivate a deactivated member of staff (they sign in again with their security key). */
+  @Post(':id/reactivate')
+  @HttpCode(200)
+  @RequireStepUp()
+  reactivate(@CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: StaffReasonDto) {
+    return this.staff.reactivate(actor, id, dto.reason);
+  }
+
+  /** Answer 1173: send the invitation again to someone who never signed in (the old link stops working). */
+  @Post(':id/resend-invitation')
+  @HttpCode(200)
+  @RequireStepUp()
+  resendInvite(@CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: StaffReasonDto) {
+    return this.staff.resendInvite(actor, id, dto.reason);
+  }
+
   @Put(':id/roles')
   @RequireStepUp()
   setRoles(@CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: StaffRolesDto) {
