@@ -1112,3 +1112,5 @@ C-6 to C-8.
       Reactivate (1171) and then Send the invitation again, both by a Security lead.*
 1284. **Seeing a withdrawn request later.** A withdrawn retire request shows only in the audit log, not on the article.
       *Suggested: keep (the audit log is enough).*
+
+- 1281 to 1284 approved as suggested (12 Nov 2026, "ok for all"). To build: a daily email to the Security leads listing invited staff the expiry job deactivated, only when there are some (1281).
