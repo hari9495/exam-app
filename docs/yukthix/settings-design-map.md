@@ -1086,3 +1086,5 @@ console.log(missing.join(' '));
 - 1761 to 1765 approved as suggested (12 Nov 2026, "Ok for all"). To build: describe each module's built-in steps in words on 2.4 (1764); apply the company reminder and escalation hours to built-in steps of people requests too (1765). Later slice: conditions plus Simulate, starting with expense claims (1762). When a customer asks: the other 2.4 fields (1761), named people and groups (1763).
 
 - 1781 to 1784 approved as suggested (13 Nov 2026, "Ok for all"). To do: delete the unused CompanyRules, AccessAndPrivacy and PayrollRules stories and screen in the next kit clean-up (1781).
+
+- 1821 to 1826 approved as suggested (13 Nov 2026, "ok for all"). To build: the "registered factory" hint beside a location value on 3.1 (1821); HR sets verification and reminders on starter document types for their company (1822); a company default for new people between per-notice email and the daily digest, each person can still change it (1826). With each channel: quiet hours, WhatsApp events, field staff (1824).
