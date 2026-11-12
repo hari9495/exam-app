@@ -536,6 +536,16 @@ export const TIME_REGISTRY_SAMPLE: Record<string, RegistryDef> = {
     "default": "on",
     "guard": "access.role.manage"
   },
+  "payroll.settings.lapse_days": {
+    "label": "A payroll setting change nobody decides lapses after (days)",
+    "values": [
+      "7",
+      "14",
+      "21",
+      "30"
+    ],
+    "default": "14"
+  },
   "payroll.payslip_email": {
     "label": "Email payslips as password-protected PDFs",
     "values": [

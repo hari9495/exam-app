@@ -130,6 +130,9 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   // CL-5 (answer 743): a new liability alert on Vendor compliance.
   { type: 'clra.alert.new', group: 'reminders', label: 'A new contract labour compliance alert (wage, challan or proofs)' },
   // Visitors slice 2 (answer 604): a walk-in asked for you; approve within the location's minutes.
+  // Settings (answers 1522, 1523): a payroll setting change waits for you; your change was decided or lapsed.
+  { type: 'settings.change.waiting', group: 'approvals', label: 'A payroll setting change waits for a second person' },
+  { type: 'settings.change.decided', group: 'approvals', label: 'Your payroll setting change was approved, rejected or lapsed' },
   { type: 'visitor.walkin.approval.host', group: 'approvals', label: 'A walk-in visitor is asking for you at reception' },
 ];
 

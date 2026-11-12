@@ -208,7 +208,7 @@ export class OrgSettingsService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const r = await tx.settingChangeRequest.findFirst({ where: { id, organizationId: c.organizationId, status: 'pending' } });
       if (!r) throw new NotFoundException('No change with this reference is waiting for approval.');
-      return { key: r.key, scopeType: r.scopeType, scopeId: r.scopeId };
+      return { key: r.key, scopeType: r.scopeType, scopeId: r.scopeId, value: String(r.value), requestedBy: r.requestedBy };
     });
   }
 
