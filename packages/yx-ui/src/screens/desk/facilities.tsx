@@ -111,7 +111,7 @@ export function FacilitiesScreen(p: FacilitiesProps) {
       onRetry={p.onRetry}
       what="the buildings and equipment register"
       title="Buildings and equipment"
-      description="Buildings and their floors or areas, and the equipment the facilities teams look after. Work orders name them; maintenance can run on a schedule."
+      description="Buildings (the company's locations) and their floors or areas, and the equipment the facilities teams look after. Work orders name them; maintenance runs on a schedule."
       actions={
         r?.canEdit && tab === 'equipment' ? (
           <Button variant="primary" icon={Plus} onClick={() => setEdit('new')}>
@@ -156,7 +156,6 @@ export function FacilitiesScreen(p: FacilitiesProps) {
           </TabsContent>
           <TabsContent value="buildings">
             <div className="yx-ops-stack">
-              <p className="yx-ops-muted">Buildings are the company's locations. Add their floors or areas here.</p>
               {r.buildings.map((b) => (
                 <Card
                   key={b.id}
