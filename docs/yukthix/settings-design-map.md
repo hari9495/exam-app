@@ -1003,6 +1003,35 @@ approver for payroll settings; approval policies per request type; and the not-b
       need 76 px more, partly because "Submit opens Thu 1 Oct ..." shows both in the box and under the grid.
       *Suggested: show it once.*
 
+## S-10 security check of the older integration routes (answer 1327; branch `feat/yukthix-settings-s10`)
+
+Checked 13 Nov 2026 in code and against the database (RLS read from `pg_class` and `pg_policy`), before any wiring.
+Key: the permission each route checks. "Older" = a /v2-era key, not a YukthiX `area.thing.action` key. Security key =
+the step-up check. Isolation = how another company is kept out. **Before → after** where this check changed it.
+
+| route | key | older or YukthiX | security key | isolation | secrets |
+|---|---|---|---|---|---|
+| GET organizations/integrations | `org:manage_settings` | older | no (read) | the caller's own company id (organizations has no RLS by design; one row per company) | no keys or passwords; **before: the webhook and HRIS URLs in full (they often hold a token) → after: masked** (`https://host/…1234`) |
+| GET organizations/api-usage | `org:manage_settings` | older | no (read) | `api_usage_daily` forced RLS | none |
+| PATCH integrations/smtp | `org:manage_settings` | older | **before: no → after: yes** | own company id | password encrypted, never returned; **before: any host, including internal ones (the connection test reported what it found) → after: the host must resolve to public addresses** |
+| PATCH integrations/ai-key | `org:manage_settings` | older | **before: no → after: yes** | own company id | key encrypted, never returned; **before: an OpenAI-compatible base URL could be any address (a request with company data to an internal host, e.g. 169.254.169.254) → after: public https only** |
+| PATCH integrations/embedding-config | `org:manage_settings` | older | **before: no → after: yes** | own company id | as the AI key: **base URL now public https only** |
+| POST integrations/api-key | `org:manage_settings` | older | yes (already) | own company id | shown once; stored as a SHA-256 hash |
+| DELETE integrations/api-key | `org:manage_settings` | older | **before: no → after: yes** | own company id | none |
+| PATCH integrations/webhook | `org:manage_settings` | older | **before: no → after: yes** | own company id | public https only (already); the response now masked |
+| POST integrations/webhook-secret | `org:manage_settings` | older | **before: no → after: yes** | own company id | shown once; stored encrypted |
+| PATCH integrations/hris-config | `org:manage_settings` | older | **before: no → after: yes** | own company id | auth header encrypted; target URL public https (already); masked when read |
+| GET integrations/webhook-deliveries | `org:manage_settings` | older | no (read) | `webhook_deliveries` forced RLS and the company id | none |
+| GET/POST/PATCH/DELETE integrations/connected-apps (+ test, deliveries) | `org:manage_settings` | older | **before: no → after: yes** for add, change and remove | `org_integrations`, `integration_deliveries` forced RLS; **before: another company's id gave a database error (500) → after: 404**; ids must be UUIDs | target URL encrypted and never returned |
+| GET calendar/connections, GET calendar/:provider/connect, DELETE calendar/:provider | signed in only | n/a (personal: one's own calendar) | no (personal) | `calendar_connections` forced RLS and the user's own id | tokens encrypted, never returned |
+| GET calendar/:provider/callback | none (the provider's redirect) | n/a | n/a | a hashed, single-use OAuth state that expires; the provider must match | none; errors say only "denied" or "failed" |
+| workflow/channel-links | signed in only | n/a (personal) | no | `channel_links` forced RLS, owner-only policy | none |
+
+Also: none of these changes could be made while acting for someone else before → now refused (`OwnSessionGuard`,
+the same rule as `ownSession` on the YukthiX routes). YukthiX support sessions were already read-only (the token
+layer). `org:manage_settings` is MFA-sensitive and inside the admin-network allow-list; only System Admins hold it.
+Tests: API e2e `settings-s10-security` (6), `webhook-delivery` (the admin confirms the security key first).
+
 ## 7. Build plan (slices, max 3 builders at once)
 
 Ordered by what every customer needs first: the way in (home), the everyday HR rules (time, leave, payroll, people),
