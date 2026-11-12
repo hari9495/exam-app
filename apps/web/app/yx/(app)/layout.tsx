@@ -26,7 +26,7 @@ import { hiddenToday, hideForToday, localStore } from '../../../lib/yx-notice';
 import { usePeople } from '../../../lib/yx-people';
 import { useLife } from '../../../lib/yx-lifecycle';
 import { ME_SECURITY, accountLinks, pageLink, buildNav, panelOf, samePersonInMenu, withAccount, type NavArea } from '../../../lib/yx-nav';
-import { ScopeProvider, recentMonths, useScope, useWorkspaceCounts } from '../../../lib/yx-shell';
+import { ScopeProvider, YxNavContext, recentMonths, useScope, useWorkspaceCounts } from '../../../lib/yx-shell';
 import { DeskHelp } from './desk-help';
 import { YxPageHelp } from '../../../lib/yx-access-requests';
 import { useWhatsNew } from '../../../lib/yx-whats-new';
@@ -324,7 +324,7 @@ function Frame({ children }: { children: React.ReactNode }) {
       {/* Answer 1050: while YukthiX has the company contained, every page says so. */}
       {contained.data?.contained && <ContainedBanner />}
       <YxPageHelp pathname={pathname} requests={!support && !impersonating}>
-        {children}
+        <YxNavContext.Provider value={{ nav, ready: perms.isSuccess }}>{children}</YxNavContext.Provider>
       </YxPageHelp>
     </DesktopFrame>
   );

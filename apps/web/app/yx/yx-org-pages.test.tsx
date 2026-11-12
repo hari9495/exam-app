@@ -305,7 +305,7 @@ describe('/yx layout: support access (P02 Q8, step 3)', () => {
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);
     expect(await screen.findByText(/Support session in Kaveri Foods until/)).toBeInTheDocument();
     const rail = await screen.findByRole('navigation', { name: 'Areas' });
-    expect(within(rail).getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/yx/settings/legal-entities');
+    expect(within(rail).getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/yx/settings'); // S-1: Settings opens the home
     // No pay, hiring or desk in a support session, and no Help (P02 Q8, D14).
     expect(within(rail).queryByRole('link', { name: 'Pay' })).toBeNull();
     expect(within(rail).queryByRole('link', { name: 'Helpdesk' })).toBeNull();

@@ -55,25 +55,27 @@ means the live page passes no manage flag that I could see and I did not read th
 
 ## Counts (sub-pages = stories)
 
+After S-1 (Settings home, search and the eight group pages live; four live stories added; appendix script "ok").
+
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Settings home and page states | 1 | 5 | 2 | 12 | 1 | 0 | 20 |
+| A. Settings home and page states | 1 | 17 | 2 | 4 | 1 | 0 | 24 |
 | B. Organisation and Global core | 2 | 25 | 0 | 0 | 0 | 0 | 25 |
-| C. Settings map, groups 1 to 8 | 8 | 14 | 85 | 38 | 32 | 0 | 169 |
-| **All A-C** | **11** | **44** | **87** | **50** | **33** | **0** | **214** |
+| C. Settings map, groups 1 to 8 | 8 | 30 | 85 | 22 | 32 | 0 | 169 |
+| **All A-C** | **11** | **72** | **87** | **26** | **33** | **0** | **218** |
 
 Per group (C):
 
 | group | live | live, gap | wire design | feature not built | stories |
 |---|---|---|---|---|---|
-| Group 1 · Organisation | 0 | 12 | 2 | 4 | 18 |
-| Group 2 · People & Access | 0 | 14 | 4 | 6 | 24 |
-| Group 3 · Time & Leave | 0 | 22 | 4 | 0 | 26 |
-| Group 4 · Payroll & Statutory | 1 | 16 | 6 | 2 | 25 |
-| Group 5 · Documents & Communication | 0 | 12 | 2 | 6 | 20 |
-| Group 6 · Hiring & Assessments | 13 | 3 | 2 | 4 | 22 |
-| Group 7 · Integrations & Developers | 0 | 4 | 10 | 6 | 20 |
-| Group 8 · Billing & Account | 0 | 2 | 8 | 4 | 14 |
+| Group 1 · Organisation | 2 | 12 | 0 | 4 | 18 |
+| Group 2 · People & Access | 2 | 14 | 2 | 6 | 24 |
+| Group 3 · Time & Leave | 2 | 22 | 2 | 0 | 26 |
+| Group 4 · Payroll & Statutory | 3 | 16 | 4 | 2 | 25 |
+| Group 5 · Documents & Communication | 2 | 12 | 0 | 6 | 20 |
+| Group 6 · Hiring & Assessments | 15 | 3 | 0 | 4 | 22 |
+| Group 7 · Integrations & Developers | 2 | 4 | 8 | 6 | 20 |
+| Group 8 · Billing & Account | 2 | 2 | 6 | 4 | 14 |
 
 Counted by script 12 Nov 2026 on `docs/yukthix-settings-map` (the script is in the appendix). There are 214 stories in
 11 files whose title starts `Screens/Settings/`, one file per title (checked: no title spans two files):
@@ -209,14 +211,18 @@ File: `packages/yx-ui/src/screens/settings/settings-home.stories.tsx`.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Home · Settings home | wire design | `SettingsHomeScreen` is on the not-live list and no apps/web page imports it; there is no page at /yx/settings itself. It needs only the kit's page list and the viewer's keys |
-| HomeSearch · Settings home · search "probation" | wire design | same; the search runs over the kit's page list and its synonyms; the app's Ctrl K search (/yx/search) does not list settings |
-| HomeSearchPf · Settings home · search "PF ceiling" | wire design | same |
-| HomeSearchLate · Settings home · search "late coming" | wire design | same |
-| HomeSearchEmpty · Settings home · no results | wire design | same |
-| HomeLimited · Settings home · HR admin (only manageable pages) | wire design | same; "only the pages you manage" comes from the viewer's keys |
-| HomeLoading · Settings home · loading | wire design | same |
-| HomeError · Settings home · error | wire design | same |
+| Home · Settings home | live | S-1: /yx/settings renders `SettingsHomeScreen` with `live`: only the pages the viewer may open (those whose live editor is in their menu, `SETTINGS_PAGE_EDITORS` in `apps/web/lib/yx-nav.ts`), each linking to its live editor; the drawn examples (recently changed, starter count, set-up alert) are left out in live (questions 1461, 1462) |
+| HomeSearch · Settings home · search "probation" | live | S-1: search over the page list and its words; each result opens its page's live editor; drawn example values are not shown in live (question 1463) |
+| HomeSearchPf · Settings home · search "PF ceiling" | live | same |
+| HomeSearchLate · Settings home · search "late coming" | live | same (finds pages with a live editor; 3.5 has none yet, S-2) |
+| HomeSearchEmpty · Settings home · no results | live | same, with Clear search |
+| HomeLimited · Settings home · HR admin (only manageable pages) | live | the viewer's menu decides: pages they may open, by the same keys as the menu (the API checks every call) |
+| HomeLoading · Settings home · loading | live | while the menu's keys load |
+| HomeError · Settings home · error | live | the error state with Retry |
+| HomeLive · Settings home · live, System Admin (S-1) | live | the live home as built: search in the header, each group's first four pages and "+N more" to the group page (fits 1278 x 635) |
+| HomeLiveSearch · Settings home · live, search "probation" (S-1) | live | results link to the live editor; no drawn values |
+| HomeLivePayroll · Settings home · live, payroll admin only (S-1) | live | only Payroll & Statutory and Integrations pages; no People & Access |
+| GroupLive · Group page · live, Time & Leave (S-1) | live | /yx/settings/time-and-leave: page tiles linking to the live editors |
 | PageFromSearch · Page · opened from search (field highlighted) | wire design | `highlightKey` exists in `SettingsPageScreen`, but no live page passes it (searched apps/web/app/yx/(app)/settings); it comes with the home search |
 | PageDirty · Page · unsaved changes | live | `useUnsavedChangesGuard` in `SettingsPageScreen` runs on the live pages (6.1, 6.2, 3.12, 4.9) |
 | PageBelowLegalMinimum · Page · below the legal minimum (blocked) | wire design | `validateDraft` blocks it in the live component, but none of the four live pages has a field with a legal floor (checked their page data); the drawn example (3.6 maternity) is not wired; set-by-law values are in the statutory rule store |
@@ -279,8 +285,8 @@ File: `packages/yx-ui/src/screens/settings/settings-g1.stories.tsx`.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Overview · Group 1 · Organisation | wire design | `SettingsGroupScreen` is on the not-live list (`design-live-guard.known.json`) and no file under apps/web imports it; the Settings rail (`apps/web/lib/yx-nav.ts`) lists the group's live pages instead. It needs only the kit's page list and the viewer's keys |
-| OverviewLoading · Group 1 · loading | wire design | same, loading |
+| Overview · Group 1 · Organisation | live | S-1: /yx/settings/<group> renders `SettingsGroupScreen` with `live`: the group's pages the viewer may open, each linking to its live editor; a group with none says no access |
+| OverviewLoading · Group 1 · loading | live | same, loading |
 | P1_1 · 1.1 Company & branding | live (gap) | parts live on other pages: language per entity on /yx/settings/countries (`PUT org/settings` `people.language`), company words on /yx/settings/translations, email logo and wording on /yx/settings/emails (`EmailBranding`); company name, logo and colour only on the older /v2 Branding page (`organizations/branding`); white-label is staff-only (`brand.white_label`, console); custom domain and data region not built (searched `custom.?domain|data.?region` in apps/api/src: none) |
 | P1_1_ReadOnly · 1.1 Company & branding · read-only | live (gap) | read-only: Countries and Translations take `canManage` (org.settings.manage) |
 | P1_2 · 1.2 Legal entities | live (gap) | /yx/settings/legal-entities renders `LegalEntitiesScreen` (drawn under Settings/Organisation; `org/legal-entities…`, `…/statutory`); this settings-map version is not rendered: a second design of the same page |
@@ -304,8 +310,8 @@ File: `packages/yx-ui/src/screens/settings/settings-g2.stories.tsx`.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Overview · Group 2 · People & Access | wire design | `SettingsGroupScreen` is on the not-live list (`design-live-guard.known.json`) and no file under apps/web imports it; the Settings rail (`apps/web/lib/yx-nav.ts`) lists the group's live pages instead. It needs only the kit's page list and the viewer's keys |
-| OverviewLoading · Group 2 · loading | wire design | same, loading |
+| Overview · Group 2 · People & Access | live | S-1: /yx/settings/<group> renders `SettingsGroupScreen` with `live`: the group's pages the viewer may open, each linking to its live editor; a group with none says no access |
+| OverviewLoading · Group 2 · loading | live | same, loading |
 | P2_1 · 2.1 Roles & access | live (gap) | /yx/settings/access renders `RolesAccessScreen` (`access` API); Manager access and Special permissions are on /yx/settings/access-settings (`CompanySettingsScreen`, section access) |
 | P2_1_ReadOnly · 2.1 Roles & access · read-only | live (gap) | read-only: unsure; Roles & access is in the menu only for `access.role.manage` |
 | P2_2 · 2.2 Directory & privacy | live (gap) | privacy (who accessed my data, retention, erasure) and Home page (net pay) are on /yx/settings/access-settings; directory visibility, transparency, external logins and privacy notices: searched `directory.?privacy` in apps/api/src: none |
@@ -335,8 +341,8 @@ File: `packages/yx-ui/src/screens/settings/settings-g3.stories.tsx`.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Overview · Group 3 · Time & Leave | wire design | `SettingsGroupScreen` is on the not-live list (`design-live-guard.known.json`) and no file under apps/web imports it; the Settings rail (`apps/web/lib/yx-nav.ts`) lists the group's live pages instead. It needs only the kit's page list and the viewer's keys |
-| OverviewLoading · Group 3 · loading | wire design | same, loading |
+| Overview · Group 3 · Time & Leave | live | S-1: /yx/settings/<group> renders `SettingsGroupScreen` with `live`: the group's pages the viewer may open, each linking to its live editor; a group with none says no access |
+| OverviewLoading · Group 3 · loading | live | same, loading |
 | P3_1 · 3.1 Attendance modes | live (gap) | the Attendance section of /yx/settings/company-rules (`attendance.mode`, `attendance.missing_punch_effect`, `attendance.factories_act`, dated); this 3.1 page is not rendered |
 | P3_1_ReadOnly · 3.1 Attendance modes · read-only | live (gap) | read-only: `canManage` |
 | P3_2 · 3.2 Check-in & devices | live (gap) | devices on /yx/time/setup/devices (`DevicesScreen`, `time/devices`), geofence and networks on /yx/time/setup/locations; `attendance.phone_binding`, `kiosk.methods`, `kiosk.pin_tries`, `kiosk.training_opens_minutes` and `field.*` (4 keys) are in the registry with no screen |
@@ -368,8 +374,8 @@ File: `packages/yx-ui/src/screens/settings/settings-g4.stories.tsx`.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Overview · Group 4 · Payroll & Statutory | wire design | `SettingsGroupScreen` is on the not-live list (`design-live-guard.known.json`) and no file under apps/web imports it; the Settings rail (`apps/web/lib/yx-nav.ts`) lists the group's live pages instead. It needs only the kit's page list and the viewer's keys |
-| OverviewLoading · Group 4 · loading | wire design | same, loading |
+| Overview · Group 4 · Payroll & Statutory | live | S-1: /yx/settings/<group> renders `SettingsGroupScreen` with `live`: the group's pages the viewer may open, each linking to its live editor; a group with none says no access |
+| OverviewLoading · Group 4 · loading | live | same, loading |
 | P4_1 · 4.1 Pay groups & calendars | live (gap) | /yx/payroll/pay-groups (`PayrollSetupScreen`) and /yx/payroll/periods (`PayPeriodsScreen`) |
 | P4_1_ReadOnly · 4.1 Pay groups & calendars · read-only | live (gap) | read-only: unsure |
 | P4_2 · 4.2 Components & templates | live (gap) | /yx/payroll/components (`ComponentLibraryScreen`) and /yx/payroll/templates (`TemplateBuilderScreen`) |
@@ -400,8 +406,8 @@ File: `packages/yx-ui/src/screens/settings/settings-g5.stories.tsx`.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Overview · Group 5 · Documents & Communication | wire design | `SettingsGroupScreen` is on the not-live list (`design-live-guard.known.json`) and no file under apps/web imports it; the Settings rail (`apps/web/lib/yx-nav.ts`) lists the group's live pages instead. It needs only the kit's page list and the viewer's keys |
-| OverviewLoading · Group 5 · loading | wire design | same, loading |
+| Overview · Group 5 · Documents & Communication | live | S-1: /yx/settings/<group> renders `SettingsGroupScreen` with `live`: the group's pages the viewer may open, each linking to its live editor; a group with none says no access |
+| OverviewLoading · Group 5 · loading | live | same, loading |
 | P5_1 · 5.1 Document types | design only, feature not built | `GET documents/types` lists a fixed starter list; no API adds or changes a type (searched `documentType.(create|update|upsert)`: none) |
 | P5_1_ReadOnly · 5.1 Document types · read-only | design only, feature not built | as the page |
 | P5_2 · 5.2 Letters | live (gap) | /yx/settings/letters (`LetterTemplatesList`: Word templates, paragraphs, preview; `letters` API); letter types and reference numbers: unsure |
@@ -427,8 +433,8 @@ File: `packages/yx-ui/src/screens/settings/settings-g6.stories.tsx`.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Overview · Group 6 · Hiring & Assessments | wire design | `SettingsGroupScreen` is on the not-live list (`design-live-guard.known.json`) and no file under apps/web imports it; the Settings rail (`apps/web/lib/yx-nav.ts`) lists the group's live pages instead. It needs only the kit's page list and the viewer's keys |
-| OverviewLoading · Group 6 · loading | wire design | same, loading |
+| Overview · Group 6 · Hiring & Assessments | live | S-1: /yx/settings/<group> renders `SettingsGroupScreen` with `live`: the group's pages the viewer may open, each linking to its live editor; a group with none says no access |
+| OverviewLoading · Group 6 · loading | live | same, loading |
 | P6_1 · 6.1 Hiring | live | hiring map: /yx/settings/hiring renders this designed page (`SettingsPageScreen` pageId 6.1 with `live`), `GET/PUT hiring/settings` |
 | P6_1_ReadOnly · 6.1 Hiring · read-only | live | hiring map: without the edit keys every value is plain text |
 | P6_1_NoAccess · 6.1 Hiring · no access | live | hiring map: the no-access state |
@@ -456,8 +462,8 @@ File: `packages/yx-ui/src/screens/settings/settings-g7.stories.tsx`.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Overview · Group 7 · Integrations & Developers | wire design | `SettingsGroupScreen` is on the not-live list (`design-live-guard.known.json`) and no file under apps/web imports it; the Settings rail (`apps/web/lib/yx-nav.ts`) lists the group's live pages instead. It needs only the kit's page list and the viewer's keys |
-| OverviewLoading · Group 7 · loading | wire design | same, loading |
+| Overview · Group 7 · Integrations & Developers | live | S-1: /yx/settings/<group> renders `SettingsGroupScreen` with `live`: the group's pages the viewer may open, each linking to its live editor; a group with none says no access |
+| OverviewLoading · Group 7 · loading | live | same, loading |
 | P7_1 · 7.1 Integrations | wire design | connected apps and webhooks exist in the older API (`organizations/integrations/connected-apps…`, `…/webhook`, `…/webhook-deliveries`, `…/hris-config`) and only the /v2 Integrations page uses them; unsure whether those routes check the YukthiX keys (they are older) |
 | P7_1_ReadOnly · 7.1 Integrations · read-only | wire design | same |
 | P7_2 · 7.2 Biometric devices | live (gap) | /yx/time/setup/devices (`DevicesScreen`, `time/devices`, device punches and backfills) |
@@ -483,8 +489,8 @@ File: `packages/yx-ui/src/screens/settings/settings-g8.stories.tsx`.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Overview · Group 8 · Billing & Account | wire design | `SettingsGroupScreen` is on the not-live list (`design-live-guard.known.json`) and no file under apps/web imports it; the Settings rail (`apps/web/lib/yx-nav.ts`) lists the group's live pages instead. It needs only the kit's page list and the viewer's keys |
-| OverviewLoading · Group 8 · loading | wire design | same, loading |
+| Overview · Group 8 · Billing & Account | live | S-1: /yx/settings/<group> renders `SettingsGroupScreen` with `live`: the group's pages the viewer may open, each linking to its live editor; a group with none says no access |
+| OverviewLoading · Group 8 · loading | live | same, loading |
 | P8_1 · 8.1 Plan & add-ons | wire design | `organizations/billing/plans`, `…/checkout`, `…/portal` (Stripe) are used only by /v2 Settings › Billing; each company's products are set by YukthiX staff in the console |
 | P8_1_ReadOnly · 8.1 Plan & add-ons · read-only | wire design | same |
 | P8_2 · 8.2 Usage & caps | wire design | `organizations/billing/usage`, `organizations/api-usage` and SMS deliveries (`notifications/sms/deliveries`, shown on /yx/settings/sms) exist; there is no usage page |
@@ -573,6 +579,45 @@ approver for payroll settings; approval policies per request type; and the not-b
 1335. **Assessments (6.5).** The older exam product's question bank, tests and proctoring APIs exist and serve the /v2
       pages. *Suggested: decide first whether assessments stay a YukthiX product; if yes, wire 6.5 to those APIs after
       the same security check as 1327; if not, leave it drawn only.*
+
+## S-1 as built (answers 1321, 1322; branch `feat/yukthix-settings-s1`)
+
+- **/yx/settings** renders the drawn `SettingsHomeScreen` with `live`, and **/yx/settings/<group>** (for example
+  `/yx/settings/time-and-leave`) the drawn `SettingsGroupScreen`. Both are off the design-live guard's not-live list.
+- **Settings in the menu opens the home:** the Settings area's first link is "All settings" (`/yx/settings`), for anyone
+  who may open at least one settings page; an employee with none has no Settings menu, and the home says no access.
+- **A person sees only the pages they may open:** each drawn page has its live editors in order
+  (`SETTINGS_PAGE_EDITORS`, `apps/web/lib/yx-nav.ts`, 44 of the 71 pages); a page shows when the viewer's own menu holds
+  one of them, and leads to the first. So the grants are the menu's (the API still checks every call). A payroll-only
+  admin sees Payroll & Statutory (and Payouts) only; an unknown group or one with nothing to open says no access.
+- **Front door, never a second copy:** every page row, card link and search result links to the live editor, which
+  stays as it is. Pages with no live editor yet (2.4, 2.7, 3.5, 4.3, 4.5, groups 7 and 8 mostly, the not-built
+  features) are not listed until their slice builds them.
+- **Fits 1278 x 635:** measured by script in Storybook (`HomeLive`, `HomeLiveSearch`, `HomeLivePayroll`, `GroupLive`,
+  msedge at 1278 x 635): no page or content scroll; the last card ends at 589 px of 635, the "probation" results at
+  604, the group page at 577. To fit, the live home puts the search box in the header and lists each group's first four
+  pages with "+N more" to the group page; the group page shows tiles in three columns, the summary at most two lines.
+- **Tests:** web `yx-settings-home.test.tsx` (every front door names a drawn page and a page of the full menu; an
+  employee sees nothing and no Settings menu; a payroll-only admin sees no People & Access page, search finds nothing
+  there and the group says no access; search finds "probation" and opens Company rules; each link opens the live
+  editor; the group page links; loading never flashes no access) and `yx-nav.test.ts` (All settings first). Kit suite
+  and the design-live guard.
+
+### Questions (from 1461)
+
+1461. **Recently changed on the home.** The drawing shows the last changes across settings; the live home leaves it out
+      (it would need the audit log for every page). *Suggested: add it with 1326 (each page's last 20 changes), from the
+      audit log, only for pages the viewer may open.*
+1462. **"Not reviewed yet" and the set-up alert.** Both are drawn on the home; the starter count needs the hidden settings
+      on screens first (1323) and the alert needs the set-up hub's count. *Suggested: add both once S-2 to S-7 show the
+      settings; until then they stay out rather than show made-up numbers.*
+1463. **Search opens the page, not the field.** A result opens the live editor at its top; the drawn "field highlighted"
+      (`PageFromSearch`) works only on the shared settings page. *Suggested: highlight the field on the four shared pages
+      now and on each page as S-2 to S-7 move settings there; the older editors open at the top.*
+1464. **More than one page of results.** A broad word (for example "leave") can return more results than fit on one
+      screen; that list scrolls. *Suggested: keep (it is content that needs the room), sorted best match first.*
+1465. **Home on a phone.** The home and group pages work at phone width but the phone app has no Settings tab.
+      *Suggested: keep settings a desktop task; the phone keeps Me › Language and notification choices.*
 
 ## 7. Build plan (slices, max 3 builders at once)
 

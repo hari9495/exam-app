@@ -72,6 +72,32 @@ function SettingsSkeleton() {
 
 /* ============================== Settings home (PLT-10 pattern) ============================== */
 
+/**
+ * Settings S-1 (answer 1322), live: `groups` holds only the pages the viewer may open, each the front door to its live
+ * editor (`pageHref`); the drawn examples (recent changes, starter counts, last changed) are left out.
+ */
+export interface LiveSettingsNav {
+  pageHref: (pageId: string) => string;
+  groupHref: (groupId: number) => string;
+  /** In-app navigation; a Ctrl or Cmd click keeps the browser's own new tab. */
+  onNavigate: (href: string) => void;
+  onRetry?: () => void;
+}
+
+/** Pages a live home card lists before "N more" (the rest are on the group page). */
+const LIVE_CARD_PAGES = 4;
+
+function liveLink(live: LiveSettingsNav, href: string) {
+  return {
+    href,
+    onClick: (e: React.MouseEvent) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+      e.preventDefault();
+      live.onNavigate(href);
+    },
+  };
+}
+
 export interface SettingsHomeScreenProps {
   groups: SettingsGroupDef[];
   defaultQuery?: string;
@@ -82,6 +108,7 @@ export interface SettingsHomeScreenProps {
   onOpen?: (pageId: string, key?: string) => void;
   /** Modules not ready for go-live (from the set-up hub). */
   setupNeeded?: boolean;
+  live?: LiveSettingsNav;
 }
 
 /** Last changes, newest first (from the audit log). */
@@ -93,7 +120,7 @@ const RECENT_CHANGES = [
   { what: 'PF wage ceiling', from: 'Actual basic', to: '₹15,000', who: 'Suresh Pillai', when: '1 Jul', pageId: '4.7' },
 ];
 
-export function SettingsHomeScreen({ groups, defaultQuery = '', manageable, state = 'ready', onOpen, setupNeeded }: SettingsHomeScreenProps) {
+export function SettingsHomeScreen({ groups, defaultQuery = '', manageable, state = 'ready', onOpen, setupNeeded, live }: SettingsHomeScreenProps) {
   const [query, setQuery] = useState(defaultQuery);
   const index = useMemo(() => buildIndex(groups), [groups]);
   const can = (id: string) => !manageable || manageable.includes(id);
@@ -104,20 +131,22 @@ export function SettingsHomeScreen({ groups, defaultQuery = '', manageable, stat
     <Frame groups={groups} home>
       <PageHeader
         title="Settings"
-        description="Every company policy has one place to change it. Values marked Starter default came from the YukthiX starter template and are yours to edit."
-        facts={`${groups.length} groups · ${total} pages · Kaveri Foods Pvt Ltd`}
+        description={live ? 'Every company policy has one place to change it. Search, or open a group.' : 'Every company policy has one place to change it. Values marked Starter default came from the YukthiX starter template and are yours to edit.'}
+        actions={live && state === 'ready' ? <SettingsSearchBox value={query} onChange={setQuery} /> : undefined}
+        facts={live ? `${groups.length} group${groups.length === 1 ? '' : 's'} · ${total} page${total === 1 ? '' : 's'} you can open` : `${groups.length} groups · ${total} pages · Kaveri Foods Pvt Ltd`}
       />
       {state === 'loading' && <SettingsSkeleton />}
-      {state === 'error' && <ErrorState title="We couldn't load settings." description="Check your connection and retry. Nothing you saved is lost." onRetry={() => {}} reference="SET-7F21C" />}
+      {state === 'error' && <ErrorState title="We couldn't load settings." description="Check your connection and retry. Nothing you saved is lost." onRetry={live?.onRetry ?? (() => {})} reference="SET-7F21C" />}
+      {state === 'no-access' && <NoAccessState grantedBy="your System Admin" what="any settings page" />}
       {state === 'ready' && (
         <>
-          <SettingsSearchBox value={query} onChange={setQuery} />
-          {!query.trim() && setupNeeded && (
+          {!live && <SettingsSearchBox value={query} onChange={setQuery} />}
+          {!query.trim() && setupNeeded && !live && (
             <InlineAlert tone="warning" title="Set-up needed: 3 modules are not ready for go-live" actions={<Button size="sm">Open set-up hub</Button>}>
               Payroll bank details, leave year and the holiday calendar for Hosur plant are incomplete.
             </InlineAlert>
           )}
-          {!query.trim() && (
+          {!query.trim() && !live && (
             <div className="yx-set-overview">
               <Card title="Recently changed" actions={<a className="yx-link" href="#settings/2.10">Audit log</a>}>
                 <ul className="yx-set-recent">
@@ -142,11 +171,43 @@ export function SettingsHomeScreen({ groups, defaultQuery = '', manageable, stat
               </Card>
             </div>
           )}
-          <SearchResults results={results} query={query} onClear={() => setQuery('')} onOpen={(r) => onOpen?.(r.pageId, r.isPage ? undefined : r.key)} />
+          <SearchResults
+            results={results}
+            query={query}
+            onClear={() => setQuery('')}
+            onOpen={(r) => (live ? live.onNavigate(live.pageHref(r.pageId)) : onOpen?.(r.pageId, r.isPage ? undefined : r.key))}
+            hrefOf={live ? (r) => live.pageHref(r.pageId) : undefined}
+          />
           {!query.trim() && (
-            <div className="yx-set-groups">
+            <div className={live ? 'yx-set-groups yx-set-groups--live' : 'yx-set-groups'}>
               {groups.map((g) => {
                 const pages = g.pages.filter((p) => can(p.id));
+                // Live: the group's first pages and the rest on its group page, so the home fits one screen.
+                if (live) {
+                  const more = g.pages.length - LIVE_CARD_PAGES;
+                  return (
+                    <Card
+                      key={g.id}
+                      title={<a {...liveLink(live, live.groupHref(g.id))}>{g.title}</a>}
+                      className="yx-set-group-card yx-set-group-card--live"
+                      actions={
+                        more > 0 ? (
+                          <a className="yx-set-group-card__more" aria-label={`All ${g.pages.length} pages in ${g.title}`} {...liveLink(live, live.groupHref(g.id))}>
+                            +{more} more
+                          </a>
+                        ) : undefined
+                      }
+                    >
+                      <ul>
+                        {g.pages.slice(0, LIVE_CARD_PAGES).map((p) => (
+                          <li key={p.id}>
+                            <a {...liveLink(live, live.pageHref(p.id))}>{p.title}</a>
+                          </li>
+                        ))}
+                      </ul>
+                    </Card>
+                  );
+                }
                 return (
                   <Card key={g.id} title={g.title} className="yx-set-group-card">
                     <p className="yx-set-helper">{g.summary}</p>
@@ -178,23 +239,43 @@ export function SettingsHomeScreen({ groups, defaultQuery = '', manageable, stat
 
 /* ============================== Group page ============================== */
 
-export function SettingsGroupScreen({ groups, groupId, state = 'ready', onOpen }: { groups: SettingsGroupDef[]; groupId: number; state?: LoadState; onOpen?: (pageId: string) => void }) {
-  const g = groups.find((x) => x.id === groupId)!;
+/** Live (S-1): `groups` holds only the pages the viewer may open; a group with none of them shows no access. */
+export function SettingsGroupScreen({ groups, groupId, state = 'ready', onOpen, live }: { groups: SettingsGroupDef[]; groupId: number; state?: LoadState; onOpen?: (pageId: string) => void; live?: LiveSettingsNav }) {
+  const g = groups.find((x) => x.id === groupId);
+  if (!g && state === 'loading')
+    return (
+      <Frame groups={groups}>
+        <SettingsSkeleton />
+      </Frame>
+    );
+  if (!g || state === 'no-access')
+    return (
+      <Frame groups={groups}>
+        <NoAccessState grantedBy="your System Admin" what="the pages of this settings group" />
+      </Frame>
+    );
   return (
     <Frame groups={groups}>
       <PageHeader
-        breadcrumbs={<Breadcrumbs items={[{ label: 'Settings', href: '#settings' }, { label: g.title }]} />}
+        breadcrumbs={live ? undefined : <Breadcrumbs items={[{ label: 'Settings', href: '#settings' }, { label: g.title }]} />}
         title={g.title}
         description={g.summary}
-        facts={`${g.pages.length} pages`}
+        facts={`${g.pages.length} page${g.pages.length === 1 ? '' : 's'}${live ? ' you can open' : ''}`}
       />
       {state === 'loading' && <SettingsSkeleton />}
-      {state === 'error' && <ErrorState title={`We couldn't load ${g.title}.`} description="Retry in a moment. Your saved settings are safe." onRetry={() => {}} reference="SET-G4A09" />}
+      {state === 'error' && <ErrorState title={`We couldn't load ${g.title}.`} description="Retry in a moment. Your saved settings are safe." onRetry={live?.onRetry ?? (() => {})} reference="SET-G4A09" />}
       {state === 'ready' && (
-        <ul className="yx-set-pages">
+        <ul className={live ? 'yx-set-pages yx-set-pages--live' : 'yx-set-pages'}>
           {g.pages.map((p) => {
             const starters = allSettings(p).filter((d) => d.starter).length;
-            return (
+            return live ? (
+              <li key={p.id} className="yx-set-page-row">
+                <a className="yx-set-page-row__title" {...liveLink(live, live.pageHref(p.id))}>
+                  {p.title}
+                </a>
+                <span className="yx-set-page-row__meta">{p.summary}</span>
+              </li>
+            ) : (
               <li key={p.id} className="yx-set-page-row">
                 <a className="yx-set-page-row__title" href={`#settings/${p.id}`} onClick={(e) => (e.preventDefault(), onOpen?.(p.id))}>
                   {p.title}

@@ -612,17 +612,18 @@ export function SettingsSearchBox({ value, onChange, autoFocus }: { value: strin
   );
 }
 
-export function SearchResults({ results, query, onOpen, onClear }: { results: SearchEntry[]; query: string; onOpen?: (e: SearchEntry) => void; onClear?: () => void }) {
+/** `hrefOf` (live, S-1): each result links to its page's live editor and shows no drawn example values. */
+export function SearchResults({ results, query, onOpen, onClear, hrefOf }: { results: SearchEntry[]; query: string; onOpen?: (e: SearchEntry) => void; onClear?: () => void; hrefOf?: (e: SearchEntry) => string }) {
   if (!query.trim()) return null;
   return (
-    <section className="yx-set-results" aria-label="Search results">
+    <section className={hrefOf ? 'yx-set-results yx-set-results--live' : 'yx-set-results'} aria-label="Search results">
       <p className="yx-set-results__count" aria-live="polite">
-        {results.length ? `${results.length} ${results.length === 1 ? 'result' : 'results'} for "${query}". Only settings you can manage are shown.` : ''}
+        {results.length ? `${results.length} ${results.length === 1 ? 'result' : 'results'} for "${query}". Only settings you can ${hrefOf ? 'open' : 'manage'} are shown.` : ''}
       </p>
       {results.length === 0 ? (
         <div className="yx-set-results__empty">
           <p className="yx-set-results__title">No settings match "{query}"</p>
-          <p className="yx-set-helper">Try a task word such as "probation" or "PF ceiling". Some settings may be on pages you can't manage.</p>
+          <p className="yx-set-helper">Try a task word such as "probation" or "PF ceiling". Some settings may be on pages you can't {hrefOf ? 'open' : 'manage'}.</p>
           {onClear && <Button onClick={onClear}>Clear search</Button>}
         </div>
       ) : (
@@ -630,9 +631,10 @@ export function SearchResults({ results, query, onOpen, onClear }: { results: Se
           {results.map((r) => (
             <li key={r.key}>
               <a
-                href={`#settings/${r.pageId}${r.isPage ? '' : `/${r.key}`}`}
+                href={hrefOf ? hrefOf(r) : `#settings/${r.pageId}${r.isPage ? '' : `/${r.key}`}`}
                 className="yx-set-result"
                 onClick={(e) => {
+                  if (hrefOf && (e.metaKey || e.ctrlKey || e.shiftKey)) return;
                   e.preventDefault();
                   onOpen?.(r);
                 }}
@@ -647,9 +649,7 @@ export function SearchResults({ results, query, onOpen, onClear }: { results: Se
                   {r.groupTitle} › {r.pageTitle}
                   {r.section && ` › ${r.section}`}
                 </span>
-                <span className="yx-set-result__value">
-                  {r.isPage ? r.valueText : `${r.valueText} · ${r.scope}`}
-                </span>
+                {(!hrefOf || r.isPage) && <span className="yx-set-result__value">{r.isPage ? r.valueText : `${r.valueText} · ${r.scope}`}</span>}
               </a>
             </li>
           ))}
