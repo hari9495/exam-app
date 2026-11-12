@@ -22,6 +22,8 @@ import ConsolePlatformSettingsPage from './(console)/platform-settings/page';
 import ConsoleCustomersPage from './(console)/customers/page';
 import ConsoleIncidentsPage from './(console)/incidents/page';
 import ConsoleNudgesPage from './(console)/nudges/page';
+import ConsoleSalesPage from './(console)/sales/page';
+import ConsoleAnalyticsPage from './(console)/analytics/page';
 import YxSupportAccessPage from '../yx/(app)/settings/support-access/page';
 import { ToastProvider } from '@yukthix/ui';
 
@@ -410,5 +412,38 @@ describe('/staff/nudges', () => {
     api.mockRejectedValue(Object.assign(new Error('Forbidden'), { status: 403 }));
     wrap(<ConsoleNudgesPage />);
     expect(await screen.findByText("You don't have access to the nudges")).toBeInTheDocument();
+  });
+});
+
+// C-8 (YX-13, answer 1210): the sales-assist queue.
+describe('/staff/sales', () => {
+  const ROW = { id: 'r1', ref: 'SA-012', company: 'Coromandel Logistics', band: '200–500', why: 'Talk to us: Access requests', setupPct: 40, owner: null, mine: false, dueAt: '2099-01-01T10:00:00Z', status: 'open', requestedBy: 'Meena Pillai', phone: '9845012345', note: null, outcomeNote: null, createdAt: '2026-11-12T10:00:00Z', version: 1 };
+  it('loads the queue from /platform/sales and takes a request', async () => {
+    route({ 'GET /platform/sales': { now: '2026-11-13T04:30:00Z', rows: [ROW] }, 'POST /platform/sales/r1/take': { now: '2026-11-13T04:30:00Z', rows: [{ ...ROW, owner: 'You', mine: true }] } });
+    wrap(<ConsoleSalesPage />);
+    expect(await screen.findByText('Coromandel Logistics')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Take' }));
+    await waitFor(() => expect(calls).toContain('POST /platform/sales/r1/take {}'));
+  });
+
+  it('negative: without the sales key the page says so', async () => {
+    api.mockRejectedValue(Object.assign(new Error('Forbidden'), { status: 403 }));
+    wrap(<ConsoleSalesPage />);
+    expect(await screen.findByText("You don't have access to the sales-assist queue")).toBeInTheDocument();
+  });
+});
+
+// C-8 (YX-09): product analytics, counts only.
+describe('/staff/analytics', () => {
+  it('loads from /platform/analytics; a small group says it is hidden', async () => {
+    route({ 'GET /platform/analytics': { windowDays: 30, minCompanies: 5, totalCompanies: 12, areas: [{ key: 'time', label: 'Time and leave' }], byFeature: [{ area: 'time', label: 'Time and leave', companies: null, actions: null }], bySize: { bands: [], adoption: [] }, byCompany: [] } });
+    wrap(<ConsoleAnalyticsPage />);
+    expect(await screen.findByText('Fewer than 5')).toBeInTheDocument();
+  });
+
+  it('negative: without the analytics key the page says so', async () => {
+    api.mockRejectedValue(Object.assign(new Error('Forbidden'), { status: 403 }));
+    wrap(<ConsoleAnalyticsPage />);
+    expect(await screen.findByText("You don't have access to product analytics")).toBeInTheDocument();
   });
 });

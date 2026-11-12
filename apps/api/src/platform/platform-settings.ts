@@ -14,6 +14,8 @@ import { BLOCK_DATES_DEFAULT, BLOCK_DATES_KEY, MAINTENANCE_SETTINGS } from './ma
 import { PLATFORM } from './platform.service';
 import { HELP_SETTINGS } from '../service-desk/help-centre.service';
 import { LEAD_DEFAULT, LEAD_KEY } from './incidents.service';
+import { SALES_REPLY_DEFAULT, SALES_REPLY_KEY } from './sales-assist.service';
+import { ANALYTICS_MIN_DEFAULT, ANALYTICS_MIN_KEY, ANALYTICS_WINDOW_DEFAULT, ANALYTICS_WINDOW_KEY } from './analytics.service';
 import { NUDGE_LIMIT_DEFAULT, NUDGE_LIMIT_KEY, NUDGE_RETURN_DEFAULT, NUDGE_RETURN_KEY } from './nudges.service';
 import { INVITE_EXPIRE_KEY } from './staff-roles.service';
 import { PlatformStaffGuard } from './platform-staff.guard';
@@ -67,6 +69,11 @@ export const PLATFORM_SETTING_DEFS: Record<string, Def> = {
   [LEAD_KEY]: whole('Breach reminders: hours before the CERT-In and DPDP due times', LEAD_DEFAULT, 0, 24),
   // C-8 (YX-12): how many nudges one person sees in 7 days at most (0 = none).
   [NUDGE_LIMIT_KEY]: whole('Nudges: the most one person sees in 7 days', NUDGE_LIMIT_DEFAULT, 0, 7),
+  // C-8 (YX-13): reply to a Talk to us request within (the drawn 1 business day as hours).
+  // C-8 (YX-09): product analytics, counts only; never a group under 5 companies.
+  [ANALYTICS_WINDOW_KEY]: whole('Product analytics: count use over the last (days)', ANALYTICS_WINDOW_DEFAULT, 7, 180),
+  [ANALYTICS_MIN_KEY]: whole('Product analytics: hide any group of fewer than this many companies', ANALYTICS_MIN_DEFAULT, 5, 50),
+  [SALES_REPLY_KEY]: whole('Sales assist: reply to a Talk to us request within (hours)', SALES_REPLY_DEFAULT, 4, 72),
   [NUDGE_RETURN_KEY]: whole('Nudges: days before a nudge put away with Not now may show again (0 = never)', NUDGE_RETURN_DEFAULT, 0, 90),
 };
 

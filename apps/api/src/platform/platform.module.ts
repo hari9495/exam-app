@@ -22,15 +22,19 @@ import { PlatformSettingsController, PlatformSettingsService } from './platform-
 import { IncidentsController } from './incidents.controller';
 import { MyNudgeController, NudgesController } from './nudges.controller';
 import { NudgesService } from './nudges.service';
+import { SalesAssistController } from './sales-assist.controller';
+import { SalesAssistService } from './sales-assist.service';
+import { AnalyticsController } from './analytics.controller';
+import { AnalyticsService } from './analytics.service';
 import { OrgScopeService } from '../access/org-scope.service';
 import { IncidentsService } from './incidents.service';
 
 // Step 3: the YukthiX platform console (P14) and support sessions (P02 Q8).
 @Module({
   imports: [AuditModule, EmailModule, AuthModule, OrganizationsModule, SmsChannelModule, NotificationsModule],
-  providers: [PlatformService, SupportSessionsService, PlatformStaffGuard, CustomerSuccessService, ConsoleOpsService, MaintenanceService, PlatformSettingsService, IncidentsService, StaffRolesService, CsFollowupService, NudgesService, OrgScopeService],
-  controllers: [PlatformController, SupportAccessController, CustomerSuccessController, ConsoleOpsController, MaintenanceController, AvailabilityController, PlatformSettingsController, IncidentsController, StaffRolesController, MyStaffRolesController, NudgesController, MyNudgeController],
+  providers: [PlatformService, SupportSessionsService, PlatformStaffGuard, CustomerSuccessService, ConsoleOpsService, MaintenanceService, PlatformSettingsService, IncidentsService, StaffRolesService, CsFollowupService, NudgesService, OrgScopeService, SalesAssistService, AnalyticsService],
+  controllers: [PlatformController, SupportAccessController, CustomerSuccessController, ConsoleOpsController, MaintenanceController, AvailabilityController, PlatformSettingsController, IncidentsController, StaffRolesController, MyStaffRolesController, NudgesController, MyNudgeController, SalesAssistController, AnalyticsController],
   // SD-1.31: "Request access" from a YukthiX Support ticket asks for a support session.
-  exports: [SupportSessionsService, PlatformStaffGuard, IncidentsService, CsFollowupService, StaffRolesService],
+  exports: [SupportSessionsService, PlatformStaffGuard, IncidentsService, CsFollowupService, StaffRolesService, SalesAssistService],
 })
 export class PlatformModule {}

@@ -162,7 +162,8 @@ export class NudgesService {
       if (pick.again) await tx.nudgeView.updateMany({ where: { organizationId: c.organizationId, userId: ctx.userId!, nudgeId: pick.nudge.id }, data: { shownAt: now, dismissedAt: null } });
       else if (pick.isNew) await tx.nudgeView.create({ data: { organizationId: c.organizationId, userId: ctx.userId!, nudgeId: pick.nudge.id, shownAt: now } });
       const n = pick.nudge;
-      return { id: n.id, featureKey: n.featureKey, kind: n.kind, heading: n.heading, body: n.body, switchHref: n.kind === 'switch_on' ? SWITCH_HREF[n.featureKey as Feature] : null };
+      const label = (await tx.featureFlag.findUnique({ where: { key: n.featureKey }, select: { label: true } }))?.label ?? n.featureKey;
+      return { id: n.id, featureKey: n.featureKey, featureLabel: label, kind: n.kind, heading: n.heading, body: n.body, switchHref: n.kind === 'switch_on' ? SWITCH_HREF[n.featureKey as Feature] : null };
     });
   }
 

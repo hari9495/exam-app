@@ -3,7 +3,7 @@
 export * from './types';
 export { MyTicketScreen, FileList, BannerList, HelpDrawer, PageHelp, type MyTicketScreenProps, type HelpDrawerProps, type HelpTab } from './help';
 // Help H-4 (answer 943): the What's new tab's content (PLT-50), for the one Help drawer.
-export { WhatsNewPanel, type LiveWhatsNew } from '../platform-b/growth-screens';
+export { WhatsNewPanel, type LiveWhatsNew, TalkToUsLiveDialog, type TalkTopic } from '../platform-b/growth-screens';
 // Help H-5 (answer 944): the Tours tab's content and the tour card the app floats on a tour's page.
 export { ToursPanel, TourCard, TOURS, type LiveTours, type TourDef } from '../settings/help';
 // C-5 (answer 948): the 6.5 availability banner for a planned maintenance window.

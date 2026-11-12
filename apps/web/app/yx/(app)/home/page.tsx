@@ -7,6 +7,8 @@ import type { ActionItem } from '@yukthix/ui';
 import type { ApprovalTask } from '@yukthix/ui/desk';
 import { RoleHomeScreen, type LiveHome, type RoleHomeScreenProps } from '@yukthix/ui/frame';
 import { NudgeCard } from '@yukthix/ui/console';
+import { TalkToUsLiveDialog } from '@yukthix/ui/desk';
+import { Button } from '@yukthix/ui';
 import { HomeClockCard, type MyAttendance, type MyLeave, type Muster, type PunchResult, type TeamCalendar, type TeamLeaveHome } from '@yukthix/ui/time';
 import type { TeamMember } from '@yukthix/ui/workforce';
 import { apiFetch } from '../../../../lib/api-client';
@@ -57,8 +59,10 @@ export default function YxHomePage() {
   const employee = Boolean(team.data?.managerId) && !actingSuperAdmin;
   const isManager = Boolean(team.data?.members.length) && !actingSuperAdmin;
   // C-8 (YX-12): the one nudge for this person, if any (the API applies the switches, who can act and the weekly limit).
-  const nudge = useQuery<{ nudge: { id: string; heading: string; body: string; switchHref: string | null } | null }>({ queryKey: ['yx', 'nudge'], queryFn: () => apiFetch('/help/nudge', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false, staleTime: Infinity });
+  const nudge = useQuery<{ nudge: { id: string; featureLabel: string; heading: string; body: string; switchHref: string | null } | null }>({ queryKey: ['yx', 'nudge'], queryFn: () => apiFetch('/help/nudge', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false, staleTime: Infinity });
   const n = nudge.data?.nudge;
+  // Answer 1210: Talk to us on the card asks YukthiX to call (the sales-assist queue).
+  const [talking, setTalking] = useState(false);
   const inbox = useQuery<ApprovalTask[]>({ queryKey: ['workflow', '/approvals/inbox'], queryFn: () => apiFetch('/workflow/approvals/inbox', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false });
   // The India date as state: at midnight the page re-renders and the attendance card moves to the new day (founder, 21 Oct).
   const [today, setToday] = useState(todayIndia);
@@ -145,6 +149,11 @@ export default function YxHomePage() {
         heading={n.heading}
         body={n.body}
         switchHref={n.switchHref}
+        extra={
+          <Button size="sm" onClick={() => setTalking(true)}>
+            Talk to us
+          </Button>
+        }
         onDismiss={() => {
           qc.setQueryData(['yx', 'nudge'], { nudge: null });
           void apiFetch(`/help/nudge/${encodeURIComponent(n.id)}/dismiss`, { method: 'POST' }, accessToken ?? undefined).catch(() => undefined);
@@ -192,5 +201,16 @@ export default function YxHomePage() {
         ]
       : [],
   };
-  return <RoleHomeScreen persona={persona} data={{ actions: actions.slice(0, 5), actionsTotal: actions.length }} loading={inbox.isLoading || widgets.isLoading} live={live} />;
+  return (
+    <>
+      <RoleHomeScreen persona={persona} data={{ actions: actions.slice(0, 5), actionsTotal: actions.length }} loading={inbox.isLoading || widgets.isLoading} live={live} />
+      {talking && n && (
+        <TalkToUsLiveDialog
+          about={n.featureLabel}
+          onClose={() => setTalking(false)}
+          onSend={(input) => apiFetch('/help/talk-to-us', { method: 'POST', body: JSON.stringify({ nudgeId: n.id, ...input }) }, accessToken ?? undefined) as Promise<{ dueAt: string }>}
+        />
+      )}
+    </>
+  );
 }

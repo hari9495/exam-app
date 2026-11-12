@@ -60,6 +60,8 @@ export const KEY_WORDS: Record<string, string> = {
   'platform.settings.manage': 'Change the platform settings',
   'platform.incidents.manage': 'Run incidents and the status page; breach reminders',
   'platform.nudges.write': 'Write and approve the in-app nudges for each feature switch',
+  'platform.sales.work': 'Work the sales-assist queue',
+  'platform.analytics.view': 'See product analytics (counts only)',
 };
 
 /** Answer 1173: how many times a day the invitation may be sent again to one person (platform setting). */
