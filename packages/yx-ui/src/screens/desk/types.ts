@@ -431,6 +431,8 @@ export interface RaiseInput {
   originQuery?: string;
   /** Answer 1662: one of the person's own devices (IT desks). */
   assetId?: string;
+  /** Answer 1801: raised for this colleague (the on-behalf right is checked by the server). */
+  requestedForPersonId?: string;
 }
 
 // ---- batch 2 (SD-1.09 to SD-1.17) ----

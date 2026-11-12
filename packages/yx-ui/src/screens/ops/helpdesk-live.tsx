@@ -14,6 +14,7 @@ import { FormField, useTooEarly } from '../../components/field';
 import { TextArea, TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup } from '../../components/choice';
 import { Select } from '../../components/select';
+import { Segment } from '../../components/segment';
 import { FileUpload, type UploadItem } from '../../components/upload';
 import { Card, PageHeader } from '../../components/shell';
 import { BottomSheet } from '../../components/overlay';
@@ -62,8 +63,13 @@ export interface LiveHelp {
   startRaise?: boolean;
   /** Phone: the back arrow goes to Me. */
   onBack?: () => void;
-  /** Answer 1662: the person's own devices, for "Which device?" on an IT desk. */
-  onPickDevice?: (q: string) => Promise<PickOption[]>;
+  /** Answers 1662, 1685: the devices of the person a ticket is for, for "Which device?" on an IT desk. */
+  onPickDevice?: (q: string, forPersonId?: string) => Promise<PickOption[]>;
+  /**
+   * Answer 1801: for people who may raise tickets for others (request.raise_on_behalf): find a colleague, and the
+   * desks as they apply to that colleague (whether "Which device?" is asked for them).
+   */
+  onBehalf?: { onPickPeople: (q: string) => Promise<PickOption[]>; onDesksFor: (personId: string) => Promise<RaiseDesk[]> } | null;
 }
 
 const DONE = ['solved', 'closed'];
@@ -125,6 +131,7 @@ export function LiveHelpCentre({ live }: { live: LiveHelp }) {
     <RaiseForm
       desks={live.desks}
       onPickDevice={live.onPickDevice}
+      onBehalf={live.onBehalf}
       onSuggest={kb.onSearch}
       onOpenArticle={(a) => openArticle(a.number)}
       onDeflected={(a) => {
@@ -372,7 +379,8 @@ function ResolvedCard({ ticket: t, onRate, onReopen }: { ticket: MyTicketRow; on
 
 interface RaiseFormProps {
   desks: RaiseDesk[];
-  onPickDevice?: (q: string) => Promise<PickOption[]>;
+  onPickDevice?: LiveHelp['onPickDevice'];
+  onBehalf?: LiveHelp['onBehalf'];
   onSuggest: (q: string) => Promise<KbSuggestion[]>;
   onOpenArticle: (a: KbSuggestion) => void;
   onDeflected: (a: KbSuggestion) => void;
@@ -392,6 +400,16 @@ function RaiseForm(p: RaiseFormProps) {
   const [details, setDetails] = useState('');
   const [isPrivate, setPrivate] = useState(false);
   const [assetId, setAssetId] = useState<string | null>(null);
+  // Answer 1801: raising for a colleague (the server checks the on-behalf right).
+  const [forOther, setForOther] = useState(false);
+  const [forPerson, setForPerson] = useState<string | null>(null);
+  const [desksFor, setDesksFor] = useState<RaiseDesk[] | null>(null);
+  useEffect(() => {
+    setAssetId(null);
+    setDesksFor(null);
+    if (forOther && forPerson && p.onBehalf) void p.onBehalf.onDesksFor(forPerson).then(setDesksFor, () => setDesksFor(null));
+  }, [forOther, forPerson]); // eslint-disable-line react-hooks/exhaustive-deps
+  const whom = forOther && forPerson ? forPerson : undefined;
   const [files, setFiles] = useState<UploadItem[]>([]);
   const [formKey, setFormKey] = useState(0);
   const { busy, error, run } = useRun();
@@ -399,9 +417,12 @@ function RaiseForm(p: RaiseFormProps) {
   const fid = (k: string) => `${uid}-${k}`;
   const [deskId, categoryId] = (topic ?? '|').split('|');
   const desk = p.desks.find((d) => d.id === deskId);
+  // "Which device?" follows the person the ticket is for (1685).
+  const askDevice = forOther ? Boolean(desksFor?.find((d) => d.id === deskId)?.askDevice) : Boolean(desk?.askDevice);
   const category = desk?.categories.find((c) => c.id === categoryId);
   const suggestions = useSuggestions(`${subject} ${details.slice(0, 200)}`, p.onSuggest);
   const early = useTooEarly([
+    ...(forOther && !forPerson ? [{ fieldId: fid('for'), message: 'Choose who it is for.' }] : []),
     ...(topic ? [] : [{ fieldId: fid('topic'), message: 'Choose what it is about.' }]),
     ...(subject.trim() ? [] : [{ fieldId: fid('subject'), message: 'Write a subject.' }]),
     ...(details.trim() ? [] : [{ fieldId: fid('details'), message: 'Add the details.' }]),
@@ -416,13 +437,21 @@ function RaiseForm(p: RaiseFormProps) {
   const submit = () =>
     !early.stop() &&
     void run('raise', async () => {
-      await p.onRaise({ deskId, categoryId: categoryId || undefined, subject: subject.trim(), description: details.trim(), impact: 3, urgency: 3, private: (isPrivate && !category?.sensitive) || undefined, ...(assetId && desk?.askDevice ? { assetId } : {}) }, files.map((f) => f.file));
+      await p.onRaise({ deskId, categoryId: categoryId || undefined, subject: subject.trim(), description: details.trim(), impact: 3, urgency: 3, private: (isPrivate && !category?.sensitive) || undefined, ...(assetId && askDevice ? { assetId } : {}), ...(whom ? { requestedForPersonId: whom } : {}) }, files.map((f) => f.file));
       clear();
     });
   const accept = desk?.attachmentTypes.length ? desk.attachmentTypes.map((x) => (x.startsWith('.') ? x : `.${x}`)) : ['.pdf', '.jpg', '.png'];
   const body: ReactNode = (
     <div className="yx-ops-stack">
       {error && <InlineAlert tone="danger" title="The ticket was not raised">{error}</InlineAlert>}
+      {p.onBehalf && (
+        <FormField id={fid('for')} label="Who is this for" error={early.errorOf(fid('for'))} helper={forOther ? 'You can raise tickets for the people in your team.' : undefined}>
+          <div className="yx-ops-stack" data-gap="sm">
+            <Segment label="Who is this for" options={[{ value: 'me', label: 'For me' }, { value: 'other', label: 'On behalf of someone' }]} value={forOther ? 'other' : 'me'} onChange={(v) => { setForOther(v === 'other'); if (v === 'me') setForPerson(null); }} />
+            {forOther && <LivePicker kind="people" label="Colleague" value={forPerson} onChange={setForPerson} onPick={(_k, q) => p.onBehalf!.onPickPeople(q)} />}
+          </div>
+        </FormField>
+      )}
       <FormField id={fid('topic')} label="What is it about?" required error={early.errorOf(fid('topic'))}>
         <Select value={topic} onChange={setTopic} options={options} placeholder="Choose a topic" />
       </FormField>
@@ -450,9 +479,9 @@ function RaiseForm(p: RaiseFormProps) {
           </ul>
         </section>
       )}
-      {desk?.askDevice && p.onPickDevice && (
+      {askDevice && p.onPickDevice && (
         <FormField label="Which device?" optional helper="One of the devices assigned to you, if the problem is with it.">
-          <LivePicker kind="assets" label="Which device?" value={assetId} onChange={setAssetId} onPick={(_k, q) => p.onPickDevice!(q)} />
+          <LivePicker key={whom ?? 'me'} kind="assets" label="Which device?" value={assetId} onChange={setAssetId} onPick={(_k, q) => p.onPickDevice!(q, whom)} />
         </FormField>
       )}
       <FormField id={fid('details')} label="Details" required helper="Add dates, amounts or screenshots so the team can help faster" error={early.errorOf(fid('details'))}>
