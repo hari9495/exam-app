@@ -6394,6 +6394,8 @@ model TimesheetLine {
   minutes        Int[]   @db.SmallInt
   /// Answers 1731 to 1736: the row's note (required, at least N words, when the company asks for it).
   note           String? @db.VarChar(4000)
+  /// Answer 1787: a comment per day, Monday to Sunday (seven entries; empty text for none), beside `minutes`.
+  dayComments    String[] @default([]) @map("day_comments")
   /// Projects P-2 (1406): null in a draft or a week decided as a whole; else pending, approved, reduced or rejected.
   status          String?   @db.VarChar(10)
   approverUserIds String[]  @default([]) @map("approver_user_ids") @db.Uuid

@@ -39,11 +39,14 @@ export interface TimesheetLine {
    */
   correctionFor?: string;
   correctionHours?: number | null;
-  /** Answers 1731 to 1736: what the person did on this row, in their own words (pre-filled rows start empty). */
-  note?: string;
+  /**
+   * Answer 1787: a comment per day, Monday to Sunday, in the person's own words (pre-filled rows start empty). Opened
+   * from the "Comment" link under a day's hours; a day with no hours has none.
+   */
+  comments?: string[];
 }
 
-/** The company's note rule (Settings › Projects & timesheets): required by default, at least 200 words. */
+/** The company's comment rule (Settings › Projects & timesheets): required by default, at least 20 words a day with hours. */
 export interface TimesheetNoteRule {
   required: boolean;
   minWords: number;
@@ -99,7 +102,7 @@ export interface TimesheetGridProps {
   onAddCorrection?: () => void;
   /** Days before this are past: a working day below its expected hours shows "N h short" in amber. */
   today?: Date;
-  /** Answers 1731 to 1736: a note under each row with a live word count; Submit checks it (Save draft never does). */
+  /** Answer 1787: a "Comment" link under each day with hours, with a live word count; Submit checks it (Save draft never does). */
   noteRule?: TimesheetNoteRule;
 }
 
@@ -135,15 +138,18 @@ interface Problem {
 /** Hours a line adds: its seven days, or its single correction field. */
 const lineHours = (l: TimesheetLine) => (l.correctionFor ? l.correctionHours ?? 0 : sum(l.hours));
 
-/** Words in a note (runs of non-space characters). */
+/** Words in a comment (runs of non-space characters). */
 export const wordCount = (note: string | null | undefined) => (note ?? '').trim().split(/\s+/).filter(Boolean).length;
 
 export function checkTimesheet(lines: TimesheetLine[], dailyMax = 24, noteRule?: TimesheetNoteRule): Problem[] {
   const out: Problem[] = [];
   lines.forEach((l, i) => {
     if (lineHours(l) > 0 && !l.projectId) out.push({ message: `Choose a project for row ${i + 1}`, lineId: l.id });
-    else if (noteRule?.required && lineHours(l) > 0 && wordCount(l.note) < noteRule.minWords)
-      out.push({ message: `Row ${i + 1}: write at least ${noteRule.minWords} words about the work (${wordCount(l.note)} so far)`, lineId: l.id });
+    else if (noteRule?.required && !l.correctionFor)
+      l.hours.forEach((h, d) => {
+        const n = wordCount(l.comments?.[d]);
+        if ((h ?? 0) > 0 && n < noteRule.minWords) out.push({ message: `Row ${i + 1}, ${DAY[d]}: write a comment of at least ${noteRule.minWords} words (${n} so far)`, lineId: l.id });
+      });
   });
   // Corrections belong to another week: they never count toward a day here.
   const dayLines = lines.filter((l) => !l.correctionFor);
@@ -316,19 +322,39 @@ export function TimesheetGrid(props: TimesheetGridProps) {
     if (!p.length) onSubmit?.();
   };
 
-  /** The row's note: a text box with a live word count while the week is open, the text once it is sent. */
-  const noteBox = (l: TimesheetLine, rowName: string) => {
-    if (!noteRule) return null;
-    const n = wordCount(l.note);
-    const short = noteRule.required && lineHours(l) > 0 && n < noteRule.minWords;
-    if (!editable) return l.note ? <p className="yx-ts__note-text">{l.note}</p> : <span className="yx-ts__muted">No note</span>;
+  /** Answer 1787: the day's comment, opened from the "Comment" link under its hours (one open at a time). */
+  const [openComment, setOpenComment] = useState<string | null>(null);
+  const setComment = (id: string, d: number, text: string) => {
+    const l = lines.find((x) => x.id === id)!;
+    const comments = Array.from({ length: 7 }, (_, k) => l.comments?.[k] ?? '');
+    comments[d] = text;
+    patch(id, { comments });
+  };
+  const dayComment = (l: TimesheetLine, d: number, rowName: string) => {
+    if (!noteRule || l.correctionFor || !((l.hours[d] ?? 0) > 0)) return null;
+    const text = l.comments?.[d] ?? '';
+    const n = wordCount(text);
+    const short = noteRule.required && n < noteRule.minWords;
+    const key = `${l.id}:${d}`;
+    const open = openComment === key;
+    if (!editable && !text) return null;
     return (
-      <div className="yx-ts__note">
-        <TextArea aria-label={`Note for ${rowName}`} rows={2} value={l.note ?? ''} placeholder="What did you do? In your own words." onChange={(note) => patch(l.id, { note })} />
-        <span className="yx-ts__note-count" aria-live="polite" data-tone={short ? 'short' : undefined}>
-          {noteRule.required ? `${n} of ${noteRule.minWords} words` : `${n} words · optional`}
-        </span>
-      </div>
+      <span className="yx-ts__comment">
+        <button type="button" className="yx-ts__comment-link" aria-expanded={open} data-tone={editable && short ? 'short' : undefined} onClick={() => setOpenComment(open ? null : key)}>
+          {text ? `Comment · ${n} ${n === 1 ? 'word' : 'words'}` : 'Comment'}
+        </button>
+        {open &&
+          (editable ? (
+            <span className="yx-ts__comment-box">
+              <TextArea aria-label={`Comment for ${rowName}, ${DAY[d]} ${longDate(dates[d])}`} rows={3} value={text} placeholder="What did you do? In your own words." onChange={(v) => setComment(l.id, d, v)} />
+              <span className="yx-ts__note-count" aria-live="polite" data-tone={short ? 'short' : undefined}>
+                {noteRule.required ? `${n} of ${noteRule.minWords} words` : `${n} words · optional`}
+              </span>
+            </span>
+          ) : (
+            <span className="yx-ts__comment-box yx-ts__note-text">{text}</span>
+          ))}
+      </span>
     );
   };
 
@@ -446,7 +472,6 @@ export function TimesheetGrid(props: TimesheetGridProps) {
                     disabled={!p}
                     clearable
                   />
-                  {noteBox(l, p ? p.name : `row ${r + 1}`)}
                   <div className="yx-ts__pick-foot">
                     {p?.billable ? <Checkbox label="Billable" checked={l.billable} onChange={(billable) => patch(l.id, { billable })} /> : p ? billText(l, p) : <span />}
                     <IconButton icon={Trash2} label={`Remove row ${r + 1}`} onClick={() => onLinesChange(lines.filter((x) => x.id !== l.id))} />
@@ -502,6 +527,7 @@ export function TimesheetGrid(props: TimesheetGridProps) {
                       label={`${p?.name ?? 'Row'} ${DAY[d]} hours`}
                       onCommit={(v) => setHour(l.id, d, v)}
                     />
+                    {dayComment(l, d, p?.name ?? `row ${r + 1}`)}
                   </div>
                 );
               })}
@@ -626,6 +652,7 @@ export function TimesheetGrid(props: TimesheetGridProps) {
                     l.hours.map((h, d) => (
                       <td key={d} className="yx-ts__col-day" data-kind={days[d].kind} data-queried={queried(l.id, d) ? true : undefined} title={queried(l.id, d)}>
                         <HourCell value={h} editable={editable && !dayLocked(d)} r={r} c={d} label={`${rowName} ${DAY[d]} ${longDate(dates[d])} hours`} onCommit={(v) => setHour(l.id, d, v)} />
+                        {dayComment(l, d, rowName)}
                       </td>
                     ))
                   )}
@@ -636,11 +663,6 @@ export function TimesheetGrid(props: TimesheetGridProps) {
                     </td>
                   )}
                 </tr>
-                {noteRule && (
-                  <tr className="yx-ts__note-row" data-invalid={badLines.has(l.id) || undefined}>
-                    <td colSpan={11 + (editable ? 1 : 0)}>{noteBox(l, rowName)}</td>
-                  </tr>
-                )}
                 </Fragment>
               );
             })}

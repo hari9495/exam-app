@@ -9,6 +9,7 @@ import { escapeHtml } from '../notifications/notification-email-render';
 import { hoursFromTimesheet } from '../staffing/hours-from-time';
 import { DayEngine } from './day-engine.service';
 import { bulkOk, lineApproved, reduceMinutes, weekOutcome } from './line-rules';
+import { sevenComments } from './line-rules';
 import { attendanceMismatch } from '../projects/capacity';
 import { asDate, dateOf, hrApprovers, type Facts } from './time-core';
 import { addDays } from './time-maths';
@@ -123,7 +124,7 @@ export class LineApprovalsService {
             unallocated: mine.some((l) => l.unallocated),
             mismatch: mismatchOf(s),
             bulk: mine.every((l) => bulkOk({ unallocated: l.unallocated, weekMinutesOnProject: total, allocationPercent: a?.percent ?? null, withinAllocation: within })),
-            lines: mine.map((l) => ({ id: l.id, task: l.activity, hours: hrs(sum(l.minutes)), billable: l.billable, note: l.note, version: l.version })),
+            lines: mine.map((l) => ({ id: l.id, task: l.activity, hours: hrs(sum(l.minutes)), billable: l.billable, comments: sevenComments(l.dayComments), version: l.version })),
           });
         }
       }

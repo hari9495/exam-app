@@ -7,7 +7,7 @@ import { buildViewer, has, type ScopeUser } from '../access/scope';
 import { settingFor } from '../people/probation';
 import { NotificationsService } from '../notifications/notifications.service';
 import { escapeHtml } from '../notifications/notification-email-render';
-import { lineApproved } from '../time/line-rules';
+import { commentsText, lineApproved } from '../time/line-rules';
 import { lockedDates } from '../time/schedule';
 import { ruleValues, StaffingBillingService } from '../staffing/billing.service';
 import { StaffingService } from '../staffing/staffing.service';
@@ -122,7 +122,8 @@ export class ProjectBillingService {
         g.minutes! += mins;
         g.amountPaise += amount;
         g.parts.push({ sourceId: l.id, minutes: mins, amountPaise: amount });
-        if (l.note?.trim()) (g.notes ??= []).push(l.note.trim());
+        const said = commentsText(l.dayComments);
+        if (said) (g.notes ??= []).push(said);
         groups.set(key, g);
       }
       for (const g of groups.values()) items.push({ ...g, detail: `${g.detail}, ${hoursOf(g.minutes!)} h${g.ratePaise ? ` × ${rupee(g.ratePaise)}` : ''}` });
