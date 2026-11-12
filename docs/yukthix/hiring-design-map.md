@@ -56,10 +56,10 @@ built**.
 | B. Candidates, pipeline and interviews | 8 | 64 | 0 | 0 | 8 | 1 | 73 |
 | C. Offers, BGV and joining | 4 | 28 | 4 | 0 | 1 | 0 | 33 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 30 | 0 | 0 | 0 | 4 | 34 |
-| E. Staffing agency | 8 | 58 | 12 | 0 | 0 | 0 | 70 |
+| E. Staffing agency | 8 | 59 | 12 | 0 | 0 | 0 | 71 |
 | F. Compliance and fairness | 5 | 21 | 4 | 0 | 6 | 0 | 31 |
 | G. Careers site, portals and settings | 4 | 67 | 5 | 2 | 9 | 0 | 83 |
-| **All Hiring design groups (A–G)** | **37** | **297** | **27** | **2** | **24** | **5** | **355** |
+| **All Hiring design groups (A–G)** | **37** | **298** | **27** | **2** | **24** | **5** | **356** |
 Recounted by script 11 Nov 2026 on `feat/yukthix-later-offers` after 377, 401, 405, 421, 422 (seven new drawn stories; HIR-27 Sent no longer a gap).
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 11 | 0 | 0 | 4 | 0 | 15 |
 Recounted by script 11 Nov 2026 on `feat/yukthix-later-staffing` (answer 497): HIR-17 HoursFromTime drawn and live: A–G 297 live, 27 gap, 2 wire, 24 not built, 5 phone, of 355.
@@ -760,6 +760,7 @@ keep hours and fees; recruiters see none of it.
 | HoursFromTime · Placement record · weekly hours from Time (497) | live | answer 497: an own-payroll worker's approved Time timesheet becomes the week (waiting for the client, "From the Time timesheet"), once per timesheet; a week already entered stays; the account manager may change it and the timesheet's hours stay shown |
 | FeeBeforeHire · Placement fee · before the hire | live | new story (drawn, answer 494): Client hired (date, first-year CTC, series) drafts the fee invoice |
 | FeeGuarantee · Placement fee · left inside the guarantee | live | new story (drawn, answer 494): the fee invoice and the guarantee outcome |
+| LiveBenchAllocated · Live · bench with project allocation (partly allocated) | live | new story (drawn, Projects P-4, answer 1417): the one bench shows each person's project allocation today and "Partly allocated" (1 to 99%); PRJ-07 links here |
 
 #### HIR-18 · Invoices
 

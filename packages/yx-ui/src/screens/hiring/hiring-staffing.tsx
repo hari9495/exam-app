@@ -1972,6 +1972,8 @@ export interface BenchRowView {
   overPolicy: boolean;
   lastClient: string | null;
   note: string | null;
+  /** Answer 1417: their project allocation today (0 on the bench; 1 to 99 partly allocated). */
+  allocatedPct?: number;
 }
 export interface LiveBench {
   state: DeskLoad;
@@ -2017,6 +2019,13 @@ function LiveBenchView({ live }: { live: LiveBench }) {
             <article key={b.id} className="yx-hire-board__card">
               <PersonLabel name={b.person} secondary={`Since ${formatDate(isoDate(b.sinceOn))}${b.lastClient ? ` · last at ${b.lastClient}` : ''}`} />
               <Meter value={Math.min(b.days, live.policy.maxDays)} max={live.policy.maxDays} label={`${b.person} bench days`} warnAt={75} valueText={`${b.days} of ${live.policy.maxDays} days`} />
+              {/* Answer 1417: the one bench shows project allocation too (kit first; PRJ-07 links here). */}
+              {b.allocatedPct != null && (
+                <div className="yx-hire-row">
+                  <Meter value={b.allocatedPct} max={100} label={`${b.person} allocated`} warnAt={101} dangerAt={200} valueText={`${b.allocatedPct}% allocated`} />
+                  {b.allocatedPct > 0 && <Badge tone={b.allocatedPct >= 100 ? 'success' : 'info'}>{b.allocatedPct >= 100 ? 'Fully allocated' : 'Partly allocated'}</Badge>}
+                </div>
+              )}
               {b.overPolicy ? <Badge tone="warning">{live.policy.after === 'unpaid' ? 'Over the limit: unpaid bench' : 'Redeploy or start an exit review'}</Badge> : <Text size="sm" tone="secondary">{b.left} days left under the policy</Text>}
               {b.note && <Text size="sm" tone="secondary">{b.note}</Text>}
               <div className="yx-hire-actions">

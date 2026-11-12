@@ -10,6 +10,7 @@ export const LIVE_PROJECT_ROWS: LiveProjectRow[] = [
 export const LIVE_PROJECT_ROWS_FINANCE: LiveProjectRow[] = LIVE_PROJECT_ROWS.map((r, i) => ({ ...r, fee: [3_600_000, 2_400_000, null][i] ?? null, budgetCost: [2_400_000, 1_500_000, null][i] ?? null }));
 
 export const LIVE_PROJECT_CHOICES: ProjectChoices = {
+  staffingDesk: true,
   clients: [{ id: 'c1', name: 'Nilgiri Retail' }, { id: 'c2', name: 'Kaveri Mills' }],
   managers: [{ id: 'u1', name: 'Karthik Subramanian' }, { id: 'u2', name: 'Anita Kurian' }],
   people: [{ id: 'e1', name: 'Priya Nair' }, { id: 'e2', name: 'Rohit Bhat' }, { id: 'e3', name: 'Meera Iyer' }],
@@ -66,5 +67,46 @@ export const LIVE_LINE_APPROVALS: import('./projects').LiveApprovalsData = {
       clientApproval: null,
       items: [{ id: 's4:p3', timesheetId: 's4', employee: 'Priya Nair', allocationPercent: 20, allocatedHours: 8, unallocated: false, bulk: true, lines: [{ id: 'l5', task: null, hours: 6, billable: false, note: null, version: 2 }] }],
     },
+  ],
+};
+
+/** P-4: GET /projects/capacity (HR's view) in the API's shape. */
+export const LIVE_CAPACITY: import('./projects').LiveCapacityData = {
+  from: '2026-11-09',
+  weeks: ['2026-11-09', '2026-11-16', '2026-11-23', '2026-11-30', '2026-12-07', '2026-12-14'],
+  target: 75,
+  limit: 5,
+  teamSize: 5,
+  privileged: true,
+  suppressed: false,
+  month: '2026-10',
+  people: [
+    { employeeId: 'e1', name: 'Priya Nair', weeks: [{ allocated: 40, available: 40 }, { allocated: 40, available: 32 }, { allocated: 40, available: 40 }, { allocated: 40, available: 40 }, { allocated: 40, available: 40 }, { allocated: 40, available: 32 }], billableHours: 150, availableHours: 176, utilisation: 85 },
+    { employeeId: 'e2', name: 'Rohit Bhat', weeks: [{ allocated: 20, available: 40 }, { allocated: 20, available: 40 }, { allocated: 20, available: 40 }, { allocated: 20, available: 40 }, { allocated: 0, available: 40 }, { allocated: 0, available: 40 }], billableHours: 96, availableHours: 176, utilisation: 55 },
+    { employeeId: 'e3', name: 'Sana Nizami', weeks: [{ allocated: 48, available: 40 }, { allocated: 40, available: 40 }, { allocated: 40, available: 40 }, { allocated: 40, available: 24 }, { allocated: 40, available: 40 }, { allocated: 40, available: 40 }], billableHours: 140, availableHours: 168, utilisation: 83 },
+    { employeeId: 'e4', name: 'Meera Iyer', weeks: [{ allocated: 10, available: 40 }, { allocated: 10, available: 40 }, { allocated: 10, available: 40 }, { allocated: 10, available: 40 }, { allocated: 10, available: 40 }, { allocated: 10, available: 40 }], billableHours: 30, availableHours: 176, utilisation: 17 },
+    { employeeId: 'e5', name: 'Arjun Das', weeks: [{ allocated: 0, available: 40 }, { allocated: 0, available: 40 }, { allocated: 40, available: 40 }, { allocated: 40, available: 40 }, { allocated: 40, available: 40 }, { allocated: 40, available: 40 }], billableHours: 0, availableHours: 176, utilisation: 0 },
+  ],
+  team: { billableHours: 416, availableHours: 872, utilisation: 48 },
+};
+
+/** P-4: GET /projects/requests and one request's matches. */
+export const LIVE_REQUESTS: import('./resourcing-live').ResourceRequestsData = {
+  can: { raise: true, fill: true },
+  projects: [
+    { id: 'p1', code: 'NRP-WEB', name: 'Nilgiri Retail web rebuild' },
+    { id: 'p2', code: 'KAV-ERP', name: 'Kaveri ERP roll-out' },
+  ],
+  rows: [
+    { id: 'q1', projectId: 'p1', project: 'NRP-WEB', role: 'SQL developer', percent: 100, fromOn: '2026-12-01', toOn: '2027-04-30', note: 'Reporting module', status: 'open', requestedBy: 'Karthik Subramanian', person: null, mine: true, version: 1 },
+    { id: 'q2', projectId: 'p2', project: 'KAV-ERP', role: 'Java developer', percent: 50, fromOn: '2026-11-16', toOn: '2026-12-31', note: null, status: 'filled', requestedBy: 'Anita Kurian', person: 'Rohit Bhat', mine: false, version: 2 },
+    { id: 'q3', projectId: 'p1', project: 'NRP-WEB', role: 'Tester', percent: 25, fromOn: '2026-11-16', toOn: '2026-11-30', note: null, status: 'withdrawn', requestedBy: 'Karthik Subramanian', person: null, mine: true, version: 2 },
+  ],
+};
+export const LIVE_MATCHES: import('./resourcing-live').RequestMatches = {
+  request: { id: 'q1', percent: 100, fromOn: '2026-12-01', toOn: '2027-04-30', role: 'SQL developer' },
+  matches: [
+    { employeeId: 'e5', name: 'Arjun Das', free: 100, onBench: true },
+    { employeeId: 'e6', name: 'Divya Raghunathan', free: 100, onBench: false },
   ],
 };

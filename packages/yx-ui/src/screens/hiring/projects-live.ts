@@ -75,6 +75,8 @@ export interface LiveProjectDetail {
 export interface ProjectChoices {
   /** Answer 1444: the company's billing model for new projects. */
   defaultBillingModel?: BillingModel;
+  /** Answer 1547: the staffing desk is on (the client portal, where clients approve hours). */
+  staffingDesk?: boolean;
   clients: { id: string; name: string }[];
   managers: { id: string; name: string }[];
   people: { id: string; name: string }[];

@@ -20872,5 +20872,72 @@
     "expected": "Step 2: X sees the placement's week with only X's project hours; no Y lines. Step 3: Y sees only Y's project lines under Project hours; send back needs a note; the employee sees the note.",
     "stories": [],
     "note": "Positive and negative. Answer 1408, item 914."
+  },
+  {
+    "id": "MT-PRJ4-01",
+    "area": "Projects P-4, capacity, bench and requests (12 Nov 2026)",
+    "screen": "Projects › Resource requests",
+    "url": "http://localhost:3000/yx/projects/requests",
+    "account": "A project manager without keys; a Projects resource person; three employees: one fully allocated, one half allocated, one on Staffing desk › Bench.",
+    "steps": [
+      "As the PM press Raise request and Send request with nothing filled in; then raise one for 100% and one for 50%.",
+      "As the PM look for Find people.",
+      "As Projects resource press Find people on the 100% request.",
+      "Press Allocate without choosing; choose the bench person; Allocate.",
+      "Open the project's Team tab and Staffing desk › Bench."
+    ],
+    "expected": "Step 1: what is missing is said; both requests are sent. Step 2: no Find people (the PM cannot fill). Step 3: only people with 100% free, bench first; not the half-allocated or fully allocated person. Step 4: 'Choose a person first'; then toast '<name> allocated' and the PM is notified. Step 5: the allocation is on the team; the bench shows '100% allocated'.",
+    "stories": [
+      "Screens/Projects/PRJ-07 · Bench board and resource requests · Live · people with free time, bench first"
+    ],
+    "note": "Positive and negative. Answers 1417, 1418."
+  },
+  {
+    "id": "MT-PRJ4-02",
+    "area": "Projects P-4, capacity, bench and requests (12 Nov 2026)",
+    "screen": "Projects › Capacity & utilisation",
+    "url": "http://localhost:3000/yx/projects/capacity",
+    "account": "A PM with 3 people on their projects; a Projects resource person; the System Admin.",
+    "steps": [
+      "As the PM open Capacity & utilisation.",
+      "As Projects resource open it.",
+      "As the System Admin set the small-team limit to 2 and the target to 80% in Settings › Projects & timesheets; open it as the PM."
+    ],
+    "expected": "Step 1: 'Hidden for small teams' with no names. Step 2: the heatmap, utilisation by person and the team gauge against 75%. Step 3: the PM sees their team; the target shows 80%.",
+    "stories": [
+      "Screens/Projects/PRJ-03 · Capacity and utilisation board · Live · HR view (Projects resource)"
+    ],
+    "note": "Positive and negative. Answer 1411."
+  },
+  {
+    "id": "MT-PRJ4-03",
+    "area": "Projects P-4, capacity, bench and requests (12 Nov 2026)",
+    "screen": "Project workspace › Timesheets; Timesheet approvals",
+    "url": "http://localhost:3000/yx/projects",
+    "account": "A PM; an employee who checks in (punch mode) and books 42 h in a week with 40 h worked.",
+    "steps": [
+      "The employee submits the week.",
+      "As the PM open the project's Timesheets tab; move a week back and forward.",
+      "Open Timesheet approvals."
+    ],
+    "expected": "Step 2: the person with booked, approved and allocated hours, status Waiting, and 'Timesheet 42 h vs attendance 40 h worked: flagged, not changed'. Step 3: the card shows the same warning; pay is unchanged.",
+    "stories": [
+      "Screens/Projects/PRJ-01 · Projects and project workspace · Live · timesheets this week, attendance check"
+    ],
+    "note": "Positive and negative. Answer 1541."
+  },
+  {
+    "id": "MT-PRJ4-04",
+    "area": "Projects P-4, capacity, bench and requests (12 Nov 2026)",
+    "screen": "Projects › project form",
+    "url": "http://localhost:3000/yx/projects",
+    "account": "A Projects manager; the staffing desk on, then off.",
+    "steps": [
+      "With the desk on, edit a project that has a client.",
+      "Switch the desk off in Settings › Staffing desk; edit the project again."
+    ],
+    "expected": "Step 1: 'The client approves the hours' is offered. Step 2: it is not shown.",
+    "stories": [],
+    "note": "Positive and negative. Answer 1547."
   }
 ]

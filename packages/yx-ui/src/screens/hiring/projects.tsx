@@ -1,6 +1,6 @@
 // Projects › Projects list + workspace, timesheet approvals, capacity & utilisation, costing & margin.
 // PRJ-01, PRJ-02, PRJ-03, PRJ-04 (M12 §7, YX-PRJ-01…14).
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { CheckCheck, FolderKanban, Plus } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
@@ -198,9 +198,26 @@ export interface LiveProjectWorkspace {
   onChangeTask: (id: string, input: TaskInput) => Promise<void>;
   onAddMilestone: (input: MilestoneInput) => Promise<void>;
   onCompleteMilestone: (id: string, version: number) => Promise<void>;
+  /** Answer 1541: the Timesheets tab, a week at a time (absent: no tab). */
+  timesheets?: { week: string; rows: LiveTimesheetRow[] } | null;
+  onTimesheetWeek?: (week: string) => void;
   /** Stories: a drawer open. */
   defaultDrawer?: 'edit' | 'allocate' | 'task' | 'milestone';
 }
+
+/** GET /projects/:id/timesheets row (answer 1541). */
+export interface LiveTimesheetRow {
+  employeeId: string;
+  person: string;
+  bookedHours: number;
+  approvedHours: number;
+  allocatedHours: number;
+  status: 'missing' | 'draft' | 'pending' | 'approved' | 'rejected' | 'reduced';
+  /** The person's whole week against attendance (an hour or more apart). */
+  mismatch: string | null;
+}
+const TS_STATUS: Record<LiveTimesheetRow['status'], string> = { missing: 'Not started', draft: 'Draft', pending: 'Waiting', approved: 'Approved', reduced: 'Reduced', rejected: 'Rejected' };
+const plusDays = (iso: string, n: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 
 export interface ProjectWorkspaceProps {
   project?: Project;
@@ -348,7 +365,7 @@ export function ProjectWorkspaceScreen({ project: drawnProject, persona: drawnPe
               Team & allocations
             </TabsTrigger>
             <TabsTrigger value="tasks">Tasks & milestones</TabsTrigger>
-            {!live && <TabsTrigger value="timesheets">Timesheets</TabsTrigger>}
+            {(!live || live.timesheets !== undefined) && <TabsTrigger value="timesheets">Timesheets</TabsTrigger>}
             {!live && persona !== 'hr' && <TabsTrigger value="billing">Billing</TabsTrigger>}
             {!live && (
               <TabsTrigger value="expenses" count={expenses.length}>
@@ -502,6 +519,39 @@ export function ProjectWorkspaceScreen({ project: drawnProject, persona: drawnPe
               )}
             </div>
           </TabsContent>
+          {live && live.timesheets !== undefined && (
+            <TabsContent value="timesheets">
+              <div className="yx-hire-stack">
+                <div className="yx-hire-row">
+                  <Text weight="semibold">Week of {live.timesheets ? formatDate(new Date(`${live.timesheets.week}T00:00:00`)) : ''}</Text>
+                  {live.timesheets && live.onTimesheetWeek && (
+                    <div className="yx-hire-actions">
+                      <Button size="sm" onClick={() => live.onTimesheetWeek!(plusDays(live.timesheets!.week, -7))}>Previous week</Button>
+                      <Button size="sm" onClick={() => live.onTimesheetWeek!(plusDays(live.timesheets!.week, 7))}>Next week</Button>
+                    </div>
+                  )}
+                </div>
+                {!live.timesheets ? (
+                  <Skeleton height={200} />
+                ) : (
+                  <DataTable
+                    label="Timesheets this week"
+                    rows={live.timesheets.rows}
+                    getRowId={(r) => r.employeeId}
+                    columns={[
+                      { key: 'person', header: 'Person', type: 'person', value: (r) => r.person, person: (r) => ({ name: r.person }) },
+                      { key: 'booked', header: 'Booked', type: 'number', value: (r) => r.bookedHours, total: 'sum' },
+                      { key: 'approved', header: 'Approved', type: 'number', value: (r) => r.approvedHours, total: 'sum' },
+                      { key: 'allocated', header: 'Allocated', type: 'number', value: (r) => r.allocatedHours, total: 'sum' },
+                      { key: 'status', header: 'Status', type: 'status', value: (r) => TS_STATUS[r.status], statusTone: (v) => (v === 'Approved' ? 'success' : v === 'Rejected' ? 'danger' : v === 'Not started' ? 'neutral' : 'warning') },
+                      { key: 'flag', header: 'Attendance check', value: (r) => r.mismatch ?? '—', render: (r) => (r.mismatch ? <Text size="sm">{r.mismatch}: flagged, not changed</Text> : '—') },
+                    ]}
+                    empty={<EmptyState compact title="No one is allocated this week." />}
+                  />
+                )}
+              </div>
+            </TabsContent>
+          )}
           {!live && (
             <TabsContent value="timesheets">
               <DataTable
@@ -628,7 +678,7 @@ export interface LiveApprovalsData {
     week: string;
     /** 1408: the client who approves this project's hours after the PM (null: none). */
     clientApproval: string | null;
-    items: { id: string; timesheetId: string; employee: string; allocationPercent: number | null; allocatedHours: number; unallocated: boolean; bulk: boolean; lines: { id: string; task: string | null; hours: number; billable: boolean; note: string | null; version: number }[] }[];
+    items: { id: string; timesheetId: string; employee: string; allocationPercent: number | null; allocatedHours: number; unallocated: boolean; bulk: boolean; /** 1541: the week against attendance. */ mismatch?: string | null; lines: { id: string; task: string | null; hours: number; billable: boolean; note: string | null; version: number }[] }[];
   }[];
 }
 export type LiveLineDecision = { lineId: string; status: 'approved' | 'reduced' | 'rejected'; hours?: number; reason?: string; version: number };
@@ -770,6 +820,7 @@ function LiveTimesheetApprovalsView({ live }: { live: LiveTimesheetApprovals }) 
               <div className="yx-hire-approvals">
                 {g.items.map((i) => (
                   <div key={i.id} className="yx-hire-stack">
+                    {i.mismatch && <InlineAlert tone="warning">{i.mismatch}. Pay is unchanged; check before approving.</InlineAlert>}
                     {i.unallocated && <InlineAlert tone="warning">Booked outside {i.employee}'s allocation. Approve it on its own; it is never approved in bulk.</InlineAlert>}
                     <TimesheetApprovalCard
                       employee={{ name: i.employee, secondary: i.allocationPercent != null ? `allocated ${i.allocatedHours} h a week` : 'not allocated to this project' }}
@@ -893,18 +944,96 @@ export function TimesheetApprovalsPhone({ groups }: { groups: ApprovalGroup[] })
 
 /* ================================================================== PRJ-03 · Capacity & utilisation */
 
-export interface CapacityProps {
+/** Projects P-4 (answer 1411): GET /projects/capacity. */
+export interface LiveCapacityData {
+  from: string;
   weeks: string[];
-  people: CapacityPerson[];
-  utilisationRows: { person: string; billable: number; available: number }[];
   target: number;
-  persona: 'pm' | 'hr';
+  limit: number;
+  teamSize: number;
+  /** Projects manage or resource (HR's view): per-person figures always shown. */
+  privileged: boolean;
+  suppressed: boolean;
+  month?: string;
+  people: { employeeId: string; name: string; weeks: { allocated: number; available: number }[]; billableHours: number; availableHours: number; utilisation: number }[];
+  team: { billableHours: number; availableHours: number; utilisation: number } | null;
+}
+export interface LiveCapacity {
+  state: 'ready' | 'loading' | 'error' | 'no-access' | 'off';
+  onRetry?: () => void;
+  data: LiveCapacityData | null;
+}
+
+export interface CapacityProps {
+  weeks?: string[];
+  people?: CapacityPerson[];
+  utilisationRows?: { person: string; billable: number; available: number }[];
+  target?: number;
+  persona?: 'pm' | 'hr';
   teamSize?: number;
   loading?: boolean;
+  live?: LiveCapacity;
+}
+
+const monthName = (ym: string) => new Date(`${ym}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+
+/** PRJ-03 live: allocated against available hours for six weeks, and last month's billable utilisation (1411). */
+function LiveCapacityView({ live }: { live: LiveCapacity }) {
+  const d = live.data;
+  const page = (body: ReactNode) => (
+    <ProjectsFrame active="Capacity & utilisation">
+      <PageHeader title="Capacity and utilisation" description="Allocated against available hours (weekdays less leave and holidays), and billable utilisation against the company's target." />
+      {body}
+    </ProjectsFrame>
+  );
+  if (!d)
+    return page(live.state === 'error' ? <ErrorState title="We couldn't load capacity." onRetry={live.onRetry ?? (() => {})} /> : live.state === 'off' ? <ProjectsOffState /> : live.state === 'no-access' ? <NoAccessState what="capacity" grantedBy="your System Admin" /> : <Skeleton height={320} />);
+  if (d.suppressed)
+    return page(
+      <InlineAlert tone="info" title="Hidden for small teams">
+        This team has {d.teamSize} {d.teamSize === 1 ? 'person' : 'people'}, fewer than {d.limit}, so per-person capacity and utilisation are hidden for your role. HR can see them.
+      </InlineAlert>,
+    );
+  if (!d.people.length) return page(<EmptyState title="No one is allocated in these weeks." description="Capacity shows people with a confirmed allocation." />);
+  const over = d.people.filter((p) => p.weeks.some((w) => w.allocated > w.available)).length;
+  const free = Math.round(d.people.reduce((s, p) => s + p.weeks.slice(0, 2).reduce((a, w) => a + Math.max(0, w.available - w.allocated), 0), 0));
+  const team = d.team!;
+  return page(
+    <>
+      <SummaryTiles
+        label="Next two weeks"
+        tiles={[
+          { label: 'Free hours, next 2 weeks', value: `${free} h` },
+          { label: 'Over-allocated people', value: over, tone: over ? 'warning' : 'default', sub: over ? 'shown in the warning colour below' : undefined },
+          { label: `Team utilisation (${d.month ? monthName(d.month) : 'last month'})`, value: `${team.utilisation}%`, sub: `target ${d.target}%`, tone: team.utilisation < d.target ? 'warning' : 'success' },
+        ]}
+      />
+      <CapacityHeatmap title="People × weeks" description="Allocated of available hours" weeks={d.weeks.map((w) => formatDate(new Date(`${w}T00:00:00`)).replace(/ \d{4}$/, ''))} people={d.people.map((p) => ({ name: p.name, weeks: p.weeks }))} xLabel="Person" />
+      <div className="yx-hire-cols">
+        <BarChart
+          title={`Utilisation by person, ${d.month ? monthName(d.month) : 'last month'}`}
+          description={`Approved billable ÷ available hours. Target ${d.target}%.`}
+          categories={d.people.map((p) => p.name)}
+          series={[{ name: 'Utilisation %', values: d.people.map((p) => p.utilisation) }]}
+          orientation="horizontal"
+          xLabel="Person"
+        />
+        <Card title="Team against target">
+          <Gauge label="Allocated people" value={team.utilisation} target={d.target} />
+          <DescriptionList items={[{ label: 'Billable hours', value: team.billableHours.toLocaleString('en-IN') }, { label: 'Available hours', value: team.availableHours.toLocaleString('en-IN') }]} />
+        </Card>
+      </div>
+    </>,
+  );
 }
 
 // PRJ-03
-export function CapacityBoardScreen({ weeks, people, utilisationRows, target, persona, teamSize = people.length, loading }: CapacityProps) {
+export function CapacityBoardScreen({ weeks = [], people = [], utilisationRows = [], target = 75, persona = 'hr', teamSize, loading, live }: CapacityProps) {
+  if (live) return <LiveCapacityView live={live} />;
+  return <DrawnCapacityBoard weeks={weeks} people={people} utilisationRows={utilisationRows} target={target} persona={persona} teamSize={teamSize ?? people.length} loading={loading} />;
+}
+
+function DrawnCapacityBoard({ weeks, people, utilisationRows, target, persona, teamSize, loading }: { weeks: string[]; people: CapacityPerson[]; utilisationRows: { person: string; billable: number; available: number }[]; target: number; persona: 'pm' | 'hr'; teamSize: number; loading?: boolean }) {
   const [skill, setSkill] = useState<string | null>(null);
   const suppressed = suppressGroup(teamSize, persona);
   const teamBillable = utilisationRows.reduce((s, r) => s + r.billable, 0);

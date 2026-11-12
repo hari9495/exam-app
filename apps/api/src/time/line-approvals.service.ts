@@ -9,6 +9,7 @@ import { escapeHtml } from '../notifications/notification-email-render';
 import { hoursFromTimesheet } from '../staffing/hours-from-time';
 import { DayEngine } from './day-engine.service';
 import { bulkOk, lineApproved, reduceMinutes, weekOutcome } from './line-rules';
+import { attendanceMismatch } from '../projects/capacity';
 import { asDate, dateOf, hrApprovers, type Facts } from './time-core';
 import { addDays } from './time-maths';
 
@@ -94,6 +95,13 @@ export class LineApprovalsService {
       const allocs = await tx.projectAllocation.findMany({ where: { organizationId: org, tentative: false, employeeId: { in: people.map((p) => p.id) }, projectId: { in: projects.map((p) => p.id) } } });
       const clients = await tx.staffingClient.findMany({ where: { organizationId: org, id: { in: projects.map((p) => p.clientId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } });
       const within = (await settingFor(tx, c, 'projects.bulk.within_allocation', { legalEntityId: '' })) === 'on';
+      // Answer 1541: each person's whole week against attendance (an hour or more apart is flagged; pay never changes).
+      const allLines = await tx.timesheetLine.findMany({ where: { organizationId: org, timesheetId: { in: sheets.map((s) => s.id) } }, select: { timesheetId: true, minutes: true } });
+      const worked = await tx.attendanceDay.findMany({ where: { organizationId: org, employeeId: { in: sheets.map((s) => s.employeeId) }, mode: { not: 'timesheet' }, workedMinutes: { not: null }, workOn: { gte: new Date(Math.min(...sheets.map((s) => s.weekStart.getTime()), Date.now())), lte: new Date(Math.max(...sheets.map((s) => s.weekStart.getTime() + 6 * 86_400_000), 0)) } }, select: { employeeId: true, workOn: true, workedMinutes: true } });
+      const mismatchOf = (s: (typeof sheets)[number]) => {
+        const days = worked.filter((d) => d.employeeId === s.employeeId && d.workOn >= s.weekStart && d.workOn.getTime() <= s.weekStart.getTime() + 6 * 86_400_000);
+        return days.length ? attendanceMismatch(sum(allLines.filter((l) => l.timesheetId === s.id).flatMap((l) => l.minutes)), sum(days.map((d) => d.workedMinutes!))) : null;
+      };
       const groups = new Map<string, { projectId: string; project: string; projectName: string; week: string; clientApproval: string | null; items: unknown[] }>();
       for (const s of sheets) {
         const week = dateOf(s.weekStart);
@@ -113,6 +121,7 @@ export class LineApprovalsService {
             allocationPercent: a?.percent ?? null,
             allocatedHours: a ? hrs(Math.round((a.percent / 100) * 40 * 60)) : 0,
             unallocated: mine.some((l) => l.unallocated),
+            mismatch: mismatchOf(s),
             bulk: mine.every((l) => bulkOk({ unallocated: l.unallocated, weekMinutesOnProject: total, allocationPercent: a?.percent ?? null, withinAllocation: within })),
             lines: mine.map((l) => ({ id: l.id, task: l.activity, hours: hrs(sum(l.minutes)), billable: l.billable, note: l.note, version: l.version })),
           });

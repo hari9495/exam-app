@@ -25,3 +25,6 @@ export const LiveBulk: S = { name: 'Live · bulk approve within allocation', ren
 export const LiveEmpty: S = { name: 'Live · all caught up', render: () => <TimesheetApprovalsScreen live={live({ data: { withinAllocation: true, groups: [] } })} /> };
 export const LiveLoading: S = { name: 'Live · loading', render: () => <TimesheetApprovalsScreen live={live({ state: 'loading', data: null })} /> };
 export const LiveError: S = { name: 'Live · error', render: () => <TimesheetApprovalsScreen live={live({ state: 'error', data: null })} /> };
+
+// Projects P-4 (answer 1541): the week against attendance on a card.
+export const LiveMismatch: S = { name: 'Live · timesheet against attendance', render: () => <TimesheetApprovalsScreen live={live({ data: { ...LIVE_LINE_APPROVALS, groups: [{ ...LIVE_LINE_APPROVALS.groups[0]!, items: [{ ...LIVE_LINE_APPROVALS.groups[0]!.items[1]!, mismatch: 'Timesheet 42 h vs attendance 40 h worked' }] }] } })} /> };

@@ -19,3 +19,9 @@ export function useProjectsWrite() {
     return result as T;
   };
 }
+
+/** One read under /projects, now (a request's matches). */
+export function useProjectsGet() {
+  const { accessToken } = useAuth();
+  return <T,>(path: string): Promise<T> => apiFetch(`/projects${path}`, {}, accessToken ?? undefined) as Promise<T>;
+}

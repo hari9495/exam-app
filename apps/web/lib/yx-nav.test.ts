@@ -382,7 +382,7 @@ describe('pageLink: Speak up and its set-up name themselves (HLP-06)', () => {
 describe('buildNav: Projects (P-1, answer 1401)', () => {
   it('Projects shows only when the server says it is on and this person may open it; never on a support session', () => {
     expect(areas(nav(['projects.manage']))).not.toContain('projects');
-    expect(labels(nav([], { projects: true }), 'projects')).toEqual(['Projects', 'Timesheet approvals']);
+    expect(labels(nav([], { projects: true }), 'projects')).toEqual(['Projects', 'Capacity & utilisation', 'Resource requests', 'Timesheet approvals']);
     expect(areas(nav([], { projects: true, support: true }))).not.toContain('projects');
     const n = nav(['pipeline:manage'], { projects: true });
     expect(areas(n).indexOf('projects')).toBe(areas(n).indexOf('hire') + 1);
@@ -406,7 +406,7 @@ describe('buildNav: timesheet mapping rules (P-3, PRJ-08)', () => {
 
 describe('buildNav: timesheet approvals (P-2, PRJ-02)', () => {
   it('for Projects people, and for anyone with lines waiting for them (a reporting manager needs no key)', () => {
-    expect(labels(nav([], { projects: true }), 'projects')).toEqual(['Projects', 'Timesheet approvals']);
+    expect(labels(nav([], { projects: true }), 'projects')).toEqual(['Projects', 'Capacity & utilisation', 'Resource requests', 'Timesheet approvals']);
     expect(labels(nav([], { lineApprovals: 2 }), 'projects')).toEqual(['Timesheet approvals']);
     expect(areas(nav([], { lineApprovals: 0 }))).not.toContain('projects');
     expect(areas(nav([], { lineApprovals: 2, support: true }))).not.toContain('projects');
