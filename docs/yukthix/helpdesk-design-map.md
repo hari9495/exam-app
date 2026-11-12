@@ -737,6 +737,7 @@ File: `packages/yx-ui/src/screens/desk/desk.stories.tsx` (from "Phase 3b-1 (wire
 | Setup · Desk set-up | live | /yx/desk/setup renders DeskSetupScreen |
 | SetupKbReview · Desk set-up · Settings · check help articles again every | live | HLP-04b (founder 3 Nov 2026): Settings tab, company's Service Desk owner (`desk.desk.create`): Segment 3, 6, 12 or 24 months; `GET/PUT desk/kb/settings` (registry `desk.kb.review_months`, default 12), toast |
 | SetupAtRisk · Desk set-up · Settings · at risk from (per desk) | live | HLP-05b (founder 3 Nov 2026): Settings tab, `desk.settings.manage` like the other desk settings: Segment 50 / 60 / 70 / 80 / 90 % (default 80), saved with Save settings (`PATCH desk/desks/:id`, version check, audited), toast |
+| SetupSynonyms · Desk set-up · Settings · search words that mean the same | live | Answer 1642: Settings tab, company's Service Desk owner (`desk.desk.create`): one group a line, commas between words; Use the starter list (Indian HR words: PF, UAN, ESI, CL, payslip, Form 16 …); `PUT desk/kb/settings {synonyms}` (registry `desk.kb.synonyms`), audited, toast; help search widens by the list |
 | SlaSetupTab · SD-1.14 Response targets (desk set-up tab) | live | /yx/desk/setup, SLA tab (`desk.sla.manage`) |
 | EmailSetup · SD-1.18 Email (desk set-up tab) | live | /yx/desk/setup, Email tab (`desk.mailbox.manage`) |
 | PortalSetup · SD-1.21 Help pages (desk set-up tab) | live | /yx/desk/setup, Help pages tab (`desk.portal.manage`) |

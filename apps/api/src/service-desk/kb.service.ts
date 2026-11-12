@@ -7,7 +7,7 @@ import { todayIst } from '../org-structure/org-validation';
 import { DeskActor, activeOn, audit, deskSystem, emit, has, isAgentOn, requireWork } from './desk-access';
 import { ArticleDto, ArticleMetaDto, BlockDto, CategoryDto, DraftDto, KbFeedbackDto, KbListQueryDto, KbSpaceDto, ReviewDto, TemplateDto } from './dto-kb';
 import { maskPii } from './pii';
-import { KbSource, countKb, forAcknowledgement, portalFor, prefixQuery, readerUrl, searchIn } from './kb-search';
+import { KbSource, STARTER_SYNONYMS, SYNONYMS_KEY, countKb, forAcknowledgement, parseSynonyms, portalFor, prefixQuery, readerUrl, searchIn, synonymsOf } from './kb-search';
 
 export { prefixQuery, type KbSource };
 import { PortalSession } from './portal.service';
@@ -545,11 +545,24 @@ export class KbService {
 
   /** HLP-04: the company's review interval. Anyone who reads knowledge may see it; desk.desk.create changes it. */
   async kbSettings(a: DeskActor) {
-    return this.tx(a, async (tx) => ({ reviewMonths: await this.reviewMonths(tx, a.ctx.organizationId), choices: REVIEW_CHOICES, defaultMonths: REVIEW_DEFAULT, pageHelp: await this.pageHelpOn(tx, a.ctx.organizationId) }));
+    return this.tx(a, async (tx) => this.settingsView(tx, a.ctx.organizationId));
   }
 
-  async setKbSettings(a: DeskActor, dto: { reviewMonths?: number; pageHelp?: boolean }) {
-    if (dto.reviewMonths === undefined && dto.pageHelp === undefined) throw new BadRequestException('Nothing to change.');
+  /** The KB settings as the Settings tab shows them; answer 1642: the search word list (the company's, or the starter list). */
+  private async settingsView(tx: Tx, org: string) {
+    return { reviewMonths: await this.reviewMonths(tx, org), choices: REVIEW_CHOICES, defaultMonths: REVIEW_DEFAULT, pageHelp: await this.pageHelpOn(tx, org), synonyms: (await synonymsOf(tx, org)).map((g) => g.join(', ')).join('\n'), synonymsDefault: STARTER_SYNONYMS };
+  }
+
+  async setKbSettings(a: DeskActor, dto: { reviewMonths?: number; pageHelp?: boolean; synonyms?: string }) {
+    if (dto.reviewMonths === undefined && dto.pageHelp === undefined && dto.synonyms === undefined) throw new BadRequestException('Nothing to change.');
+    let groups: string[][] | null = null;
+    if (dto.synonyms !== undefined) {
+      try {
+        groups = parseSynonyms(dto.synonyms);
+      } catch (e) {
+        throw new BadRequestException((e as Error).message);
+      }
+    }
     return this.tx(a, async (tx) => {
       const org = a.ctx.organizationId;
       // Stored as the registry stores it (text), so Settings › registry shows the same value.
@@ -569,7 +582,12 @@ export class KbService {
         await put(PAGE_HELP_KEY, dto.pageHelp ? 'on' : 'off');
         await audit(tx, a, 'desk.kb.settings_changed', 'setting', PAGE_HELP_KEY, { pageHelp: { from, to: dto.pageHelp } });
       }
-      return { reviewMonths: await this.reviewMonths(tx, org), choices: REVIEW_CHOICES, defaultMonths: REVIEW_DEFAULT, pageHelp: await this.pageHelpOn(tx, org) };
+      if (groups) {
+        const from = (await synonymsOf(tx, org)).length;
+        await put(SYNONYMS_KEY, groups.map((g) => g.join(', ')).join('\n'));
+        await audit(tx, a, 'desk.kb.settings_changed', 'setting', SYNONYMS_KEY, { synonymGroups: { from, to: groups.length } });
+      }
+      return this.settingsView(tx, org);
     });
   }
 

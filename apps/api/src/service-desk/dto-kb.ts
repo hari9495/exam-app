@@ -227,6 +227,12 @@ export class KbSettingsDto {
   @IsOptional()
   @IsBoolean()
   pageHelp?: boolean;
+
+  /** Answer 1642: words that mean the same in a search, one group a line (checked in the service). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  synonyms?: string;
 }
 
 /** Help H-1: the page the Help drawer was opened on. */
