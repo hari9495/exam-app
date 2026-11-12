@@ -67,14 +67,14 @@ const INC_ROWS: IncidentLiveRow[] = [
   {
     id: 'i1', ref: 'INC-044', title: 'Payslip PDFs slow to open', severity: 2, products: ['hrms'], status: 'open', stage: 'identified', openedAt: new Date(2026, 10, 12, 8, 51).toISOString(), openedBy: 'Anand Iyer', resolvedAt: null, securityBreach: false, breach: null,
     updates: [
-      { id: 'u2', stage: 'monitoring', impact: 'Payslip PDFs open normally again for most companies.', action: 'No action needed.', nextUpdateAt: new Date(2026, 10, 12, 11, 0).toISOString(), status: 'pending', writtenBy: 'Joseph Thomas', mine: false, reviewedBy: null, reviewNote: null, createdAt: new Date(2026, 10, 12, 10, 0).toISOString() },
-      { id: 'u1', stage: 'identified', impact: 'Payslip PDFs take up to 40 seconds to open. Figures in the app are correct.', action: 'No action needed. Publishing payslips still works.', nextUpdateAt: new Date(2026, 10, 12, 10, 30).toISOString(), status: 'posted', writtenBy: 'Anand Iyer', mine: true, reviewedBy: 'Farah Siddiqui', reviewNote: null, createdAt: new Date(2026, 10, 12, 9, 0).toISOString() },
+      { id: 'u2', stage: 'monitoring', impact: 'Payslip PDFs open normally again for most companies.', action: 'No action needed.', nextUpdateAt: new Date(2026, 10, 12, 11, 0).toISOString(), payrollNote: false, status: 'pending', writtenBy: 'Joseph Thomas', mine: false, reviewedBy: null, reviewNote: null, createdAt: new Date(2026, 10, 12, 10, 0).toISOString() },
+      { id: 'u1', stage: 'identified', impact: 'Payslip PDFs take up to 40 seconds to open. Figures in the app are correct.', action: 'No action needed. Publishing payslips still works.', nextUpdateAt: new Date(2026, 10, 12, 10, 30).toISOString(), payrollNote: true, status: 'posted', writtenBy: 'Anand Iyer', mine: true, reviewedBy: 'Farah Siddiqui', reviewNote: null, createdAt: new Date(2026, 10, 12, 9, 0).toISOString() },
     ],
   },
   {
     id: 'i2', ref: 'INC-043', title: 'Unusual sign-ins at one company', severity: 1, products: ['hrms'], status: 'open', stage: 'investigating', openedAt: new Date(2026, 10, 12, 6, 10).toISOString(), openedBy: 'Farah Siddiqui', resolvedAt: null, securityBreach: true,
     breach: { id: 'c1', company: 'Godavari Agro', containedAt: new Date(2026, 10, 12, 6, 0).toISOString(), certinDueAt: new Date(2026, 10, 12, 12, 0).toISOString(), dpdpDueAt: new Date(2026, 10, 15, 6, 0).toISOString(), open: true, certinRemindedAt: null, dpdpRemindedAt: null },
-    updates: [{ id: 'u3', stage: 'investigating', impact: 'One company was contained after sign-ins from three countries.', action: 'Their admins were told directly.', nextUpdateAt: null, status: 'posted', writtenBy: 'Farah Siddiqui', mine: false, reviewedBy: 'Anand Iyer', reviewNote: null, createdAt: new Date(2026, 10, 12, 6, 20).toISOString() }],
+    updates: [{ id: 'u3', stage: 'investigating', impact: 'One company was contained after sign-ins from three countries.', action: 'Their admins were told directly.', nextUpdateAt: null, payrollNote: false, status: 'posted', writtenBy: 'Farah Siddiqui', mine: false, reviewedBy: 'Anand Iyer', reviewNote: null, createdAt: new Date(2026, 10, 12, 6, 20).toISOString() }],
   },
 ];
 const inc = (o: Partial<LiveIncidents> = {}) => (

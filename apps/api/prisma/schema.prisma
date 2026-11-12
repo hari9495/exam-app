@@ -3518,6 +3518,8 @@ model PlatformIncidentUpdate {
   impact       String           @db.VarChar(500)
   action       String           @db.VarChar(300)
   nextUpdateAt DateTime?        @map("next_update_at") @db.Timestamptz(3)
+  /// Answer 1206: add the payroll-day note to the company banner.
+  payrollNote  Boolean          @default(false) @map("payroll_note")
   /// pending, posted, sent_back
   status       String           @default("pending") @db.VarChar(10)
   writtenBy    String           @map("written_by") @db.Uuid
