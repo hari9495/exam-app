@@ -75,6 +75,8 @@ export * from './esm-types';
 export { CatalogScreen, RequestTracker, LANGS, type CatalogScreenProps } from './catalog';
 export { ServiceForm, LivePicker, ChoiceLabel, type ServiceFormProps } from './service-form';
 export { CatalogAdmin, FormBuilder, type CatalogAdminProps } from './catalog-admin';
+// Helpdesk plan item 3: the company's business applications and their owners.
+export { BusinessAppsScreen, type BusinessApp, type BusinessAppInput, type BusinessAppsProps } from './business-apps';
 export { RulesAdmin, type RulesAdminProps } from './rules-admin';
 export { RequestPanel } from './request-panel';
 export { resolveForm, answersToSend, formProblems, toServerGroup, fromServerGroup, inLang, EMPTY_FORM, COLOUR_TONE, type FormDef, type FormFieldDef, type FormSectionDef, type FormLang, type Answers, type AnswerValue, type ServerGroup } from '../../lib/forms';

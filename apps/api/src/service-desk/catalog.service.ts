@@ -7,7 +7,7 @@ import { FieldDef, Group, RecordValues, RuleError, evaluate, parseGroup } from '
 import { Answers, EMPTY_FORM, FormDef, FormField, FormRule, REQUESTER_FIELDS, checkAnswers, expandQuestionnaires, formSchema, parseForm, pickedIds, summarise } from '../rules-engine/forms';
 import { ApprovalsEngine, Notice, Outcome, StepSpec, parseSteps } from '../workflow/approvals-engine.service';
 import { DESK_KEYS, DeskActor, audit, emit, has, requireDesk, requireSetUp, requireWork } from './desk-access';
-import { AdhocApprovalDto, CatalogItemDto, CatalogSettingsDto, CheckoutDto, ItemDraftDto, OrderGuideDto, QuestionnaireDto, UpdateCatalogItemDto } from './dto-esm';
+import { AdhocApprovalDto, BusinessAppDto, CatalogItemDto, CatalogSettingsDto, CheckoutDto, ItemDraftDto, OrderGuideDto, QuestionnaireDto, UpdateCatalogItemDto } from './dto-esm';
 import { Requester, RequesterService } from './requester.service';
 import { profileOf } from './people-facts';
 import { cleanHtml, htmlToText } from './rich-text';
@@ -180,6 +180,7 @@ export class CatalogService implements OnModuleInit {
     for (const s of steps) {
       for (const a of s.approvers) {
         if (a.kind === 'cost_centre_owner' && pickers.get(a.field) !== 'cost_centre') throw new RuleError(`"${s.name}": the cost-centre owner comes from a cost centre question on the form.`);
+        if (a.kind === 'app_owner' && pickers.get(a.field) !== 'app') throw new RuleError(`"${s.name}": the application owner comes from an application question on the form.`);
         if (a.kind === 'users' && (await tx.user.count({ where: { organizationId: org, id: { in: a.userIds }, status: 'active' } })) !== a.userIds.length) throw new RuleError(`"${s.name}": choose active colleagues.`);
         if (a.kind === 'user_group' && !(await tx.userGroup.findFirst({ where: { organizationId: org, id: a.groupId }, select: { id: true } }))) throw new RuleError(`"${s.name}": choose a group of this company.`);
       }
@@ -527,10 +528,15 @@ export class CatalogService implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ live-data pickers (SD-2.02)
 
-  async pick(r: Requester, kind: 'people' | 'locations' | 'cost-centres' | 'assets', q = '', forPersonId?: string) {
+  async pick(r: Requester, kind: 'people' | 'locations' | 'cost-centres' | 'assets' | 'apps', q = '', forPersonId?: string) {
     const org = r.ctx.organizationId;
     const l = like(q.trim());
     return this.tx(r, async (tx) => {
+      if (kind === 'apps') {
+        // Helpdesk plan item 3: the company's applications that can be asked for (never retired ones).
+        const rows = await tx.sdBusinessApp.findMany({ where: { organizationId: org, status: 'active', ...(q.trim() ? { name: { contains: q.trim(), mode: 'insensitive' as const } } : {}) }, select: { id: true, name: true, description: true }, orderBy: { name: 'asc' }, take: 20 });
+        return rows.map((x) => ({ id: x.id, label: x.name, detail: x.description }));
+      }
       if (kind === 'assets') {
         // Helpdesk item 2: only the devices assigned to the person now (People asset register), never anyone else's.
         // Answer 1685: or those of the person it is for, when this person may raise for them.
@@ -596,6 +602,10 @@ export class CatalogService implements OnModuleInit {
     const assets = ids.asset.length ? await tx.asset.findMany({ where: { organizationId: org, id: { in: ids.asset } }, select: { id: true, name: true, tag: true } }) : [];
     if (assets.length !== new Set(ids.asset).size) throw new BadRequestException('Choose a device from the list.');
     for (const x of assets) names.set(x.id, `${x.name} (${x.tag})`);
+    // Helpdesk plan item 3: a picked application must be one of this company's, and not retired.
+    const apps = ids.app.length ? await tx.sdBusinessApp.findMany({ where: { organizationId: org, id: { in: ids.app }, status: 'active' }, select: { id: true, name: true } }) : [];
+    if (apps.length !== new Set(ids.app).size) throw new BadRequestException('That application is retired or not on the list. Choose one from the list.');
+    for (const x of apps) names.set(x.id, x.name);
     return names;
   }
 
@@ -660,7 +670,9 @@ export class CatalogService implements OnModuleInit {
         });
         for (const l of group) {
           const ri = await tx.sdRequestItem.create({ data: { organizationId: org, deskId, ticketId: t.id, itemId: l.item.id, itemVersion: l.v.version, quantity: l.quantity, answers: l.values as unknown as Prisma.InputJsonValue, forPersonId: forPerson } });
-          const steps = l.v.approval as unknown as StepSpec[];
+          // Helpdesk plan item 3: an application owner's step may also be decided by the desk's admins.
+          const deskAdmins = (await tx.sdDeskMember.findMany({ where: { organizationId: org, deskId, role: 'admin', validTo: null }, select: { userId: true } })).map((m) => m.userId);
+          const steps = (l.v.approval as unknown as StepSpec[]).map((s) => (deskAdmins.length && s.approvers.some((x) => x.kind === 'app_owner') ? { ...s, approvers: [...s.approvers, { kind: 'users' as const, userIds: deskAdmins }] } : s));
           if (!steps.length) {
             await this.startFulfilment(tx, r, t, ri, l.v);
             continue;
@@ -927,6 +939,46 @@ export class CatalogService implements OnModuleInit {
     const last = await tx.wfAction.findFirst({ where: { organizationId: req.organizationId, requestId: req.id, action: { in: ['approved', 'rejected', 'self_approved'] } }, orderBy: { createdAt: 'desc' } });
     await this.tickets.event(tx, t, 'approval_decided', null, outcome === 'approved' ? 'Approved' : 'Not approved', { by: last?.actorUserId ?? null, reason: last?.reason ?? null });
   }
+  // ------------------------------------------------------------------------------------------ business applications (plan item 3)
+
+  /** The company's applications with their owners: for the desks' staff and the company's Service Desk owner. */
+  async apps(a: DeskActor) {
+    if (!has(a, 'desk.desk.create') && !a.roles.size) throw new ForbiddenException('Only the desks\' staff see the applications list.');
+    return this.tx(a, async (tx) => {
+      const org = a.ctx.organizationId;
+      const rows = await tx.sdBusinessApp.findMany({ where: { organizationId: org }, orderBy: [{ status: 'asc' }, { name: 'asc' }] });
+      const users = await this.tickets.userNames(tx, org, rows.map((r) => r.ownerUserId));
+      return rows.map((r) => ({ id: r.id, name: r.name, description: r.description, ownerUserId: r.ownerUserId, owner: users.get(r.ownerUserId) ?? 'Someone', status: r.status, version: r.version, canEdit: has(a, 'desk.desk.create') }));
+    });
+  }
+
+  /** The company's Service Desk owner adds or changes an application (its owner, or retires it). Audited. */
+  async saveApp(a: DeskActor, id: string | null, dto: BusinessAppDto) {
+    if (!has(a, 'desk.desk.create')) throw new ForbiddenException("Only the company's Service Desk owner changes the applications list.");
+    const org = a.ctx.organizationId;
+    try {
+      return await this.tx(a, async (tx) => {
+        if (!(await tx.user.findFirst({ where: { organizationId: org, id: dto.ownerUserId, status: 'active' }, select: { id: true } }))) throw new BadRequestException('Choose an active colleague as the owner.');
+        const data = { name: dto.name.trim(), description: dto.description?.trim() || null, ownerUserId: dto.ownerUserId, status: dto.status ?? 'active' };
+        let appId = id;
+        if (id) {
+          const cur = await tx.sdBusinessApp.findFirst({ where: { organizationId: org, id } });
+          if (!cur) throw new NotFoundException('No such application.');
+          if (dto.version !== undefined && dto.version !== cur.version) throw new ConflictException('Someone changed this application. Reload to see the latest.');
+          await tx.sdBusinessApp.update({ where: { id }, data: { ...data, version: { increment: 1 }, updatedAt: new Date() } });
+          await audit(tx, a, 'desk.app.updated', 'sd_business_app', id, { from: { name: cur.name, ownerUserId: cur.ownerUserId, status: cur.status }, to: data });
+        } else {
+          appId = (await tx.sdBusinessApp.create({ data: { organizationId: org, ...data, createdBy: a.userId } })).id;
+          await audit(tx, a, 'desk.app.created', 'sd_business_app', appId, data);
+        }
+        return { id: appId };
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('An application with that name is already on the list.');
+      throw e;
+    }
+  }
+
 }
 
 function escape(s: string) {
@@ -939,5 +991,6 @@ function list(rows: { label: string; value: string }[]) {
 /** Used by WorkService after a task changes: a delivered item may resolve its request (US-B-126). */
 export async function afterTaskChange(tx: Tx, catalog: CatalogService, a: { ctx: DeskActor['ctx'] }, requestItemId: string | null) {
   if (requestItemId) await catalog.itemSettled(tx, a, requestItemId);
+
 }
 

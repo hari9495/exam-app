@@ -35,10 +35,15 @@ describe('P03 steps are data, checked at save', () => {
     expect(s[1].skipIf?.items).toHaveLength(1);
   });
 
+  it('accepts the owner of the application picked in the form (Helpdesk plan item 3)', () => {
+    expect(parseSteps([{ name: 'App owner', approvers: [{ kind: 'app_owner', field: 'cc' }], mode: 'any' }], fields)[0].approvers).toEqual([{ kind: 'app_owner', field: 'cc' }]);
+  });
+
   it.each([
     ['no approvers', [{ name: 'X', approvers: [], mode: 'any' }]],
     ['a manager six levels up', [{ name: 'X', approvers: [{ kind: 'manager', level: 6 }], mode: 'any' }]],
     ['a cost centre from a missing field', [{ name: 'X', approvers: [{ kind: 'cost_centre_owner', field: 'nope' }], mode: 'any' }]],
+    ['an application owner from a missing field', [{ name: 'X', approvers: [{ kind: 'app_owner', field: 'nope' }], mode: 'any' }]],
     ['a timeout action without hours', [{ name: 'X', approvers: [{ kind: 'manager' }], mode: 'any', onTimeout: 'approve' }]],
     ['an unknown part', [{ name: 'X', approvers: [{ kind: 'manager' }], mode: 'any', run: 'code' }]],
     ['seven steps', Array.from({ length: 7 }, (_, i) => ({ name: `S${i}`, approvers: [{ kind: 'manager' }], mode: 'any' }))],

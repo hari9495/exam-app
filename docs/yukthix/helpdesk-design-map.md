@@ -190,7 +190,7 @@ portal designs also wait: `settings: MobileHelpTicketsScreen`, `MobilePolicyAckS
 
 ## 4. Design groups, story by story
 
-### A. Helpdesk HLP-01 … 20
+### A. Helpdesk HLP-01 … 21
 
 #### HLP-01 · Help centre
 
@@ -699,6 +699,7 @@ File: `packages/yx-ui/src/screens/ops/hlp-18.stories.tsx`. Drawn 12 Nov 2026 (th
 | CatalogSetupEdit · Catalogue item editor | live | same page |
 | CatalogSetupAddMissing · Add item pressed with no name | live | same page |
 | CatalogSetupLimitStep · Moving the first section up says it is already first | live | same page |
+| CatalogSetupAppOwner · Access request approved by the application owner | live | Helpdesk plan item 3: form question type "An application (live list)" (`GET desk/my/pick/apps`, active applications only) and approver "The owner of the application in the form" (`app_owner`); the desk's admins can decide too; the owner grants or refuses in their approvals (audited) |
 | CatalogSetupEmpty · No catalogue items yet | live | same page |
 | CatalogSetupSaveFailed · Saving an item refused | live | same page |
 | Rules · Rules | live | same page |
@@ -736,6 +737,22 @@ File: `packages/yx-ui/src/screens/ops/hlp-20.stories.tsx`. Drawn 12 Nov 2026 (an
 | ArticleVoteAgain · A second vote (toast) | live | one vote per article |
 | ArticleSolved · This solved it (toast) | live | `POST …/solved`, no ticket made |
 | ArticleFallback · Not in your language yet (shown in English) | live | the article in the company's default language when the person's is missing |
+
+#### HLP-21 · Business applications
+
+File: `packages/yx-ui/src/screens/ops/hlp-21.stories.tsx`. Drawn 13 Nov 2026 (Helpdesk plan item 3): the company's business applications and their owners, at /yx/desk/apps. Access is asked for through the service catalogue: an item whose form has an "application" question (type `app`, active applications only) and an approval step "the owner of the application in the form" (approver kind `app_owner` in the shared approvals engine); the desk's admins are added to that step. Nobody approves their own request (the engine's rule).
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Apps · Applications and their owners | live | `GET desk/apps` (the desks' staff and the company's Service Desk owner); RLS keeps it to the company |
+| AppNew · New application | live | `POST desk/apps` (`desk.desk.create`): name, what it is for, owner (an active colleague), audited, toast |
+| AppNewMissing · Save pressed with nothing filled | live | too-early: name, owner |
+| AppEdit · Change the owner, or retire it | live | `PATCH desk/apps/:id` (version check, audited); a retired application drops out of the catalogue picker and is refused at checkout |
+| AppSaveFailed · Saving refused (name already on the list) | live | 409, a name once per company |
+| AppsReadOnly · Desk staff: read only | live | no New or Edit without `desk.desk.create` |
+| AppsEmpty · No applications yet | live | |
+| AppsLoading · Loading | live | |
+| AppsError · Could not load | live | |
 
 ### B. Other Helpdesk designs (were "Service desk")
 

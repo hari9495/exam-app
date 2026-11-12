@@ -14017,3 +14017,21 @@ model SdTicketField {
   @@index([organizationId, deskId, sortOrder])
   @@map("sd_ticket_fields")
 }
+
+/// Helpdesk plan item 3: a company business application and its owner (who approves access to it).
+model SdBusinessApp {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @db.VarChar(100)
+  description    String?  @db.VarChar(500)
+  ownerUserId    String   @map("owner_user_id") @db.Uuid
+  /// active | retired (a retired application can no longer be asked for).
+  status         String   @default("active") @db.VarChar(10)
+  version        Int      @default(1)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@index([organizationId, ownerUserId])
+  @@map("sd_business_apps")
+}
