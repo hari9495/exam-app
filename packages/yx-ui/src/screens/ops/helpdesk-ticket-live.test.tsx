@@ -79,6 +79,15 @@ describe('HLP-03 Ticket workspace (live)', () => {
     expect(screen.getByText(/Closes on 11 Oct 2026 if Divya doesn't reply. Divya rated this ticket 4 of 5./)).toBeInTheDocument();
   });
 
+  it('1643 and 1646: the rating shows its reason; a ticket raised while closed carries the badge, others do not', () => {
+    const { unmount } = render(<TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, systemState: 'solved', resolvedAt: '2026-10-08T05:00:00Z', closesOn: '2026-10-11T05:00:00Z', rating: 2, ratingReason: 'Slow', raisedOutsideHours: true } })} />);
+    expect(screen.getByText(/Divya rated this ticket 2 of 5 \(Slow\)\./)).toBeInTheDocument();
+    expect(screen.getByText('Raised outside hours')).toBeInTheDocument();
+    unmount();
+    render(<TicketWorkspaceScreen live={liveTicket()} />);
+    expect(screen.queryByText('Raised outside hours')).toBeNull();
+  });
+
   it('an unproven email sender is warned about; customer and product show', () => {
     render(<TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, senderVerified: false, customer: { account: { id: 'ac1', name: 'Sunrise Retail' }, plan: 'gold' }, product: { id: 'pr1', name: 'Kaveri billing app' } } })} />);
     expect(screen.getByText('We could not prove who sent this email. Do not share private details until you are sure.')).toBeInTheDocument();

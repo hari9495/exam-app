@@ -260,6 +260,20 @@ describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
     await waitFor(() => expect(onUpdateDesk).toHaveBeenCalledWith(expect.objectContaining({ ratingReasons: ['Slow', 'Great help'] })));
   });
 
+  it('settings (1646): the message while closed is saved only when changed; unchanged it is not sent', async () => {
+    const onUpdateDesk = ok();
+    render(<ToastProvider><DeskSetupScreen state="ready" initialTab="settings" desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, canSetUp: true, desk: { ...DETAIL.desk, closedMessage: 'Closed. Back {opens}.' } }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={onUpdateDesk} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} /></ToastProvider>);
+    const box = screen.getByRole('textbox', { name: /Message while closed/ });
+    expect(box).toHaveValue('Closed. Back {opens}.');
+    await ue.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(onUpdateDesk).toHaveBeenCalledTimes(1));
+    expect(onUpdateDesk.mock.calls[0][0]).not.toHaveProperty('closedMessage');
+    await ue.clear(box);
+    await ue.type(box, 'Shut till {{opens}');
+    await ue.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(onUpdateDesk).toHaveBeenLastCalledWith(expect.objectContaining({ closedMessage: 'Shut till {opens}' })));
+  });
+
   it('settings: the at-risk point of a desk is a Segment of 50 to 90 %, saved with the other settings and a toast', async () => {
     const onUpdateDesk = ok();
     render(<ToastProvider><DeskSetupScreen state="ready" initialTab="settings" desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, canSetUp: true }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={onUpdateDesk} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} /></ToastProvider>);

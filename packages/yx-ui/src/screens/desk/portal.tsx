@@ -12,7 +12,7 @@ import { useRun } from '../org/org-kit';
 import { DeskPage, MessageBody, StatusBadge, browserTimeZone, when } from './desk-kit';
 import { BannerList } from './help';
 import { ReadingAidsCard, ReadingAidsFrame, useReadingAids } from './reading-aids';
-import { ArticleDrawer, RateTicketCard, SuggestList, useSuggestions, type KbArticleView, type KbSuggestion } from './help-kb';
+import { ArticleDrawer, DeskClosedNotice, RateTicketCard, SuggestList, useSuggestions, type KbArticleView, type KbSuggestion } from './help-kb';
 import type { LoadState, PortalHome, PortalMe, PortalRaiseInput, PortalTicket, PortalTicketRow } from './types';
 
 // The outside help page (§9.3, US-G-021): a company's customers sign in with a 6-digit email code (no password, no
@@ -170,6 +170,7 @@ function usePortalRaiseForm(desks: PortalHome['desks'], onSuggest: ((q: string) 
             />
           </FormField>
         )}
+        {desk?.closed && <DeskClosedNotice closed={desk.closed} />}
         {desk && desk.categories.length > 0 && (
           <FormField label="What is it about?" optional>
             <Select value={categoryId} onChange={setCategoryId} clearable options={desk.categories.map((c) => ({ value: c.id, label: c.parentId ? `· ${c.name}` : c.name }))} placeholder="Choose a topic" />

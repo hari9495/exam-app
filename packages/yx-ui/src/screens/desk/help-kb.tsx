@@ -11,6 +11,7 @@ import { Select } from '../../components/select';
 import { Card } from '../../components/shell';
 import { useRun } from '../org/org-kit';
 import { MessageBody, when } from './desk-kit';
+import type { DeskClosed } from './types';
 
 // The requester's side of the knowledge base (SD-1.24 / SD-1.25, US-B-105, YX-HD-04): articles suggested while they
 // type, the help articles of their company, "Was this helpful?", "This solved it" (counted as self-service, no ticket
@@ -237,6 +238,16 @@ export function KnowledgeCard({ home, onSearch, onOpen, defaultQuery = '' }: Kno
         )}
       </div>
     </Card>
+  );
+}
+
+/** Answer 1646: the desk is closed now; its own words, with {opens} as its next opening time. */
+export function DeskClosedNotice({ closed }: { closed: DeskClosed }) {
+  const opens = closed.opensAt ? when(closed.opensAt) : 'soon';
+  return (
+    <InlineAlert tone="info" title="Closed now">
+      {closed.message.includes('{opens}') ? closed.message.split('{opens}').join(opens) : `${closed.message} We open again ${opens}.`}
+    </InlineAlert>
   );
 }
 

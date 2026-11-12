@@ -3755,6 +3755,8 @@ model SdDesk {
   forwardTo          String[] @default([]) @map("forward_to") @db.Uuid
   /// Answer 1643: the preset reasons a requester may pick after the stars (at most 12).
   ratingReasons      String[] @default(["Quick help", "Solved my problem", "Friendly and clear", "Slow", "Not solved", "Had to explain again"]) @map("rating_reasons") @db.VarChar(40)
+  /// Answer 1646: what the help centre and portal say while the desk's calendar is closed ({opens}: the next opening).
+  closedMessage      String   @default("We're closed now. We open again {opens}. You can still raise a ticket; we answer it when we open.") @map("closed_message") @db.VarChar(300)
   status             String   @default("active") @db.VarChar(10)
   version            Int      @default(1)
   createdBy          String?  @map("created_by") @db.Uuid
@@ -3959,6 +3961,8 @@ model SdTicket {
   planTier             String?                  @map("plan_tier") @db.VarChar(40)
   senderVerified       Boolean                  @default(true) @map("sender_verified")
   ratingAskedAt        DateTime?                @map("rating_asked_at") @db.Timestamptz(3)
+  /// Answer 1646: raised while the desk's calendar was closed.
+  raisedOutsideHours   Boolean                  @default(false) @map("raised_outside_hours")
   contentRemovedAt     DateTime?                @map("content_removed_at") @db.Timestamptz(3)
   /// SD-2.10: the site set-up used (requester's location).
   branchId             String?                  @map("branch_id") @db.Uuid

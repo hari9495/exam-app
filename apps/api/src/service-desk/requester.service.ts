@@ -105,6 +105,8 @@ export class RequesterService {
       const ids = desks.map((d) => d.id);
       const types = await tx.sdTicketType.findMany({ where: { organizationId: org, deskId: { in: ids }, active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
       const cats = await tx.sdCategory.findMany({ where: { organizationId: org, deskId: { in: ids }, active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
+      const cache = new Map();
+      const closed = new Map(await Promise.all(desks.map(async (d) => [d.id, await this.tickets.sla.closedNow(tx, org, d, new Date(), cache)] as const)));
       return desks.map((d) => ({
         id: d.id,
         name: d.name,
@@ -113,6 +115,7 @@ export class RequesterService {
         attachmentMaxMb: d.attachmentMaxMb,
         types: types.filter((t) => t.deskId === d.id).map((t) => ({ id: t.id, name: t.name })),
         categories: cats.filter((c) => c.deskId === d.id).map((c) => ({ id: c.id, name: c.name, parentId: c.parentId, sensitive: c.sensitive })),
+        closed: closed.get(d.id) ?? null,
       }));
     });
   }

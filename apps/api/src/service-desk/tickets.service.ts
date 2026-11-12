@@ -205,6 +205,7 @@ export class TicketsService {
         assigneeUserId,
         groupId,
         channel: input.channel,
+        raisedOutsideHours: Boolean(await this.sla.closedNow(tx, org, desk)),
         sensitive: Boolean(cat?.sensitive),
         // SD-2.09 (M08): some categories make every ticket in them private.
         private: Boolean(input.private) || Boolean(cat?.privateByDefault),
@@ -610,6 +611,7 @@ export class TicketsService {
       urgency: t.urgency,
       assigneeUserId: t.assigneeUserId,
       channel: t.channel,
+      raisedOutsideHours: t.raisedOutsideHours,
       sensitive: t.sensitive,
       private: t.private,
       vip: t.vip,

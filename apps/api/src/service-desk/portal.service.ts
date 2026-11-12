@@ -268,13 +268,15 @@ export class PortalService {
   async info(orgSlug: string, portalSlug: string) {
     const { org, portal, deskIds } = await this.portalOf(orgSlug, portalSlug);
     return this.tenantPrisma.forTenant({ organizationId: org.id, isSuperAdmin: false }, async (tx) => {
-      const desks = await tx.sdDesk.findMany({ where: { organizationId: org.id, id: { in: deskIds }, status: 'active' }, orderBy: { name: 'asc' }, select: { id: true, name: true } });
+      const desks = await tx.sdDesk.findMany({ where: { organizationId: org.id, id: { in: deskIds }, status: 'active' }, orderBy: { name: 'asc' }, select: { id: true, name: true, calendarId: true, closedMessage: true } });
+      const cache = new Map();
+      const closed = new Map(await Promise.all(desks.map(async (d) => [d.id, await this.tickets.sla.closedNow(tx, org.id, d, new Date(), cache)] as const)));
       const cats = await tx.sdCategory.findMany({ where: { organizationId: org.id, deskId: { in: deskIds }, active: true, sensitive: false }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }], select: { id: true, deskId: true, name: true, parentId: true } });
       const products = await tx.sdProduct.findMany({ where: { organizationId: org.id, active: true, OR: [{ deskId: null }, { deskId: { in: deskIds } }] }, orderBy: { name: 'asc' }, select: { id: true, name: true, deskId: true } });
       return {
         company: org.name,
         portal: { name: portal.name, accentColour: portal.accentColour, loginTitle: portal.loginTitle, loginText: portal.loginText, readingAids: portal.readingAids, openRequests: portal.openRequests, signUp: portal.signUp },
-        desks: desks.map((d) => ({ ...d, categories: cats.filter((c) => c.deskId === d.id).map(({ deskId: _d, ...c }) => c), products: products.filter((p) => !p.deskId || p.deskId === d.id).map((p) => ({ id: p.id, name: p.name })) })),
+        desks: desks.map(({ calendarId: _c, closedMessage: _m, ...d }) => ({ ...d, closed: closed.get(d.id) ?? null, categories: cats.filter((c) => c.deskId === d.id).map(({ deskId: _d, ...c }) => c), products: products.filter((p) => !p.deskId || p.deskId === d.id).map((p) => ({ id: p.id, name: p.name })) })),
         banners: await this.liveBanners(tx, org.id, deskIds, 'customers', null),
       };
     });

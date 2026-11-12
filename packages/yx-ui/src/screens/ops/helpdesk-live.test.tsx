@@ -69,6 +69,24 @@ describe('HLP-01 Help centre (live)', () => {
     expect((await screen.findAllByText(/Your ticket number is HR-1009/))[0]).toBeInTheDocument();
   });
 
+  it('1646: a closed team says so with its next opening in the raise form; an open team says nothing; raising still works', async () => {
+    const onRaise = vi.fn().mockResolvedValue({ id: 'n1', number: 'HR-1009' });
+    const closed = { message: 'Closed for the night. Back {opens}.', opensAt: '2026-10-13T03:30:00Z' };
+    render(<HelpCentreScreen live={liveHelp({ onRaise, desks: [{ ...RAISE_DESKS[1], closed }, RAISE_DESKS[0]] })} />);
+    await ue.click(screen.getByRole('button', { name: 'Raise a ticket' }));
+    await ue.click(await screen.findByRole('combobox', { name: /What is it about/ }));
+    await ue.click(await screen.findByRole('option', { name: /Something else for IT help desk/ }));
+    expect(screen.queryByText('Closed now')).toBeNull();
+    await ue.click(screen.getByRole('combobox', { name: /What is it about/ }));
+    await ue.click(await screen.findByRole('option', { name: /Payslip and pay/ }));
+    expect(screen.getByText('Closed now')).toBeInTheDocument();
+    expect(screen.getByText(/^Closed for the night\. Back 13 Oct 2026, /)).toBeInTheDocument();
+    await ue.type(screen.getByRole('textbox', { name: /Subject/ }), 'LOP in October');
+    await ue.type(screen.getByRole('textbox', { name: /Details/ }), 'Two days cut');
+    await ue.click(screen.getByRole('button', { name: 'Raise ticket' }));
+    await waitFor(() => expect(onRaise).toHaveBeenCalled());
+  });
+
   it('a refused raise stays in the drawer with the reason', async () => {
     const onRaise = vi.fn().mockRejectedValue(new Error('This desk is closed for new tickets.'));
     render(<HelpCentreScreen live={liveHelp({ onRaise, desks: [RAISE_DESKS[0]] })} />);

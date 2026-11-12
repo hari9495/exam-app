@@ -161,7 +161,7 @@ export function LiveTicketWorkspace({ live }: { live: LiveTicket }) {
                 <Lock aria-hidden size={12} /> Sensitive: {t.desk.name} agents only
               </Badge>
             )}
-            <TicketFlags private={t.private} vip={t.vip} />
+            <TicketFlags private={t.private} vip={t.vip} outsideHours={t.raisedOutsideHours} />
             {!done && resolution && <SlaBadge label="Resolution" elapsedMin={minutes(resolution.usedSeconds)} targetMin={minutes(resolution.targetSeconds)} paused={resolution.state === 'paused'} atRiskPercent={resolution.atRiskPercent} />}
             {t.tier && <Badge tone="neutral">Level {t.tier}</Badge>}
             {t.tracker && <Badge tone="info">Tracker</Badge>}

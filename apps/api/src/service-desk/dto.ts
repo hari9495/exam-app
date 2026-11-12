@@ -158,6 +158,11 @@ export class UpdateDeskDto {
   @MinLength(2, { each: true, message: 'A reason needs at least 2 letters.' })
   @MaxLength(40, { each: true, message: 'Keep a reason to 40 letters.' })
   ratingReasons?: string[];
+
+  /** Answer 1646: what the help centre and portal say while the desk is closed; {opens} becomes the next opening time. */
+  @IsOptional()
+  @Text(2, 300)
+  closedMessage?: string;
 }
 
 export class AddMemberDto {

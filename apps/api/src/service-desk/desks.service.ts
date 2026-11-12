@@ -100,6 +100,7 @@ export class DesksService {
       routingWaitMinutes: d.routingWaitMinutes,
       atRiskPercent: d.atRiskPercent,
       ratingReasons: d.ratingReasons,
+      closedMessage: d.closedMessage,
       status: d.status,
       version: d.version,
     };

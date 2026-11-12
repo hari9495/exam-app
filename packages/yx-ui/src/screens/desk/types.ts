@@ -29,6 +29,8 @@ export interface DeskSummary {
   atRiskPercent?: number;
   /** Answer 1643: the preset reasons a requester may pick after the stars (empty: none asked). */
   ratingReasons?: string[];
+  /** Answer 1646: what the help centre and portal say while the desk is closed ({opens}: the next opening time). */
+  closedMessage?: string;
   status: 'active' | 'archived';
   version: number;
   myRole?: DeskRole | null;
@@ -241,6 +243,8 @@ export interface TicketDetail {
   urgency: number | null;
   assigneeUserId: string | null;
   channel: string;
+  /** Answer 1646: raised while the desk was closed. */
+  raisedOutsideHours?: boolean;
   sensitive: boolean;
   private: boolean;
   vip: boolean;
@@ -334,7 +338,15 @@ export interface TicketChange {
 
 // ---- the requester's side ----
 
+/** Answer 1646: the desk's calendar is closed now; it opens again at `opensAt`. */
+export interface DeskClosed {
+  message: string;
+  opensAt: string | null;
+}
+
 export interface RaiseDesk {
+  /** Answer 1646: set while the desk is closed. */
+  closed?: DeskClosed | null;
   id: string;
   name: string;
   key: string;
@@ -776,7 +788,7 @@ export interface Product {
 export interface PortalHome {
   company: string;
   portal: { name: string; accentColour: string | null; loginTitle: string | null; loginText: string | null; readingAids: boolean; openRequests: boolean; signUp: PortalSignUp };
-  desks: { id: string; name: string; categories: { id: string; name: string; parentId: string | null }[]; products: { id: string; name: string }[] }[];
+  desks: { id: string; name: string; closed?: DeskClosed | null; categories: { id: string; name: string; parentId: string | null }[]; products: { id: string; name: string }[] }[];
   banners: PublicBanner[];
 }
 

@@ -86,6 +86,22 @@ export function addBusinessSeconds(cal: CalendarSpec, start: Date, seconds: numb
   throw new RangeError('The calendar has no working time in the next ten years');
 }
 
+/**
+ * Answer 1646: when the calendar is closed at `now`, the instant it next opens; null while it is open (or when it has
+ * no working time in the next ten years).
+ */
+export function nextOpening(cal: CalendarSpec, now: Date): Date | null {
+  const t = now.getTime();
+  let day = startDay(cal, t);
+  for (let i = 0; i < MAX_DAYS; i++, day = day.plus({ days: 1 })) {
+    for (const [a, b] of workingIntervals(cal, day)) {
+      if (b <= t) continue;
+      return a <= t ? null : new Date(a);
+    }
+  }
+  return null;
+}
+
 /** Working seconds between two instants (0 when `to` is not after `from`). */
 export function businessSecondsBetween(cal: CalendarSpec, from: Date, to: Date): number {
   const a0 = from.getTime();

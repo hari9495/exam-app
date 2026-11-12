@@ -69,6 +69,8 @@ const SYNONYMS = ['pf, provident fund, epf', 'uan, universal account number', 'c
 export const SetupSynonyms: S = { name: 'Desk set-up · Settings · search words that mean the same', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="settings" synonyms={{ value: SYNONYMS, starter: SYNONYMS }} onSynonyms={noop} />) };
 // Answer 1643: the reasons a requester may pick after a rating, per desk (a starter list until changed).
 export const SetupRatingReasons: S = { name: 'Desk set-up · Settings · reasons to pick after a rating', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="settings" detail={{ ...setupProps.detail!, desk: { ...setupProps.detail!.desk, ratingReasons: ['Quick help', 'Solved my problem', 'Friendly and clear', 'Slow', 'Not solved', 'Had to explain again'] } }} />) };
+// Answer 1646: the message the help centre and portal show while the desk is closed.
+export const SetupClosedMessage: S = { name: 'Desk set-up · Settings · message while closed', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="settings" detail={{ ...setupProps.detail!, desk: { ...setupProps.detail!.desk, closedMessage: "We're closed now. We open again {opens}. You can still raise a ticket; we answer it when we open." } }} />) };
 export const SlaSetupTab: S = { name: 'SD-1.14 Response targets (desk set-up tab)', render: () => shell('desk-setup', <SlaTab detail={DETAIL} calendars={[]} setup={SLA_SETUP} compliance={COMPLIANCE} month="2026-10" onMonth={() => {}} onCreatePolicy={noop} onAddVersion={noop} onUpdatePolicy={noop} onSaveTargets={noop} />) };
 
 // ---- batch 3 (SD-1.18 to SD-1.23, SD-1.28) ----

@@ -55,7 +55,7 @@ export interface DeskSetupScreenProps {
   calendars: Calendar[];
   canCalendars: boolean;
   onCreateDesk: (input: { name: string; key: string; kind: DeskKind }) => Promise<void>;
-  onUpdateDesk: (change: Partial<Pick<DeskSummary, 'name' | 'privacy' | 'numberPrefix' | 'numberSuffix' | 'attachmentTypes' | 'attachmentMaxMb' | 'vipRaisesPriority' | 'calendarId' | 'resolutionRequired' | 'reopenWindowDays' | 'requesterCanReopen' | 'autoCloseDays' | 'routingWaitMinutes' | 'atRiskPercent' | 'ratingReasons'>> & { nextNumber?: number }) => Promise<void>;
+  onUpdateDesk: (change: Partial<Pick<DeskSummary, 'name' | 'privacy' | 'numberPrefix' | 'numberSuffix' | 'attachmentTypes' | 'attachmentMaxMb' | 'vipRaisesPriority' | 'calendarId' | 'resolutionRequired' | 'reopenWindowDays' | 'requesterCanReopen' | 'autoCloseDays' | 'routingWaitMinutes' | 'atRiskPercent' | 'ratingReasons' | 'closedMessage'>> & { nextNumber?: number }) => Promise<void>;
   onSearchUsers: (q: string) => Promise<{ id: string; name: string | null; email: string }[]>;
   onSeatCost: (userId: string, role: DeskRole) => Promise<SeatCost>;
   onAddMember: (input: { userId: string; role: DeskRole; tier?: string }) => Promise<void>;
@@ -787,6 +787,7 @@ function SettingsTab(props: TabProps) {
   const [waitMinutes, setWaitMinutes] = useState<number | null>(x.routingWaitMinutes ?? 2);
   const [atRisk, setAtRisk] = useState(String(x.atRiskPercent ?? 80));
   const [reasons, setReasons] = useState((x.ratingReasons ?? []).join('\n'));
+  const [closedMessage, setClosedMessage] = useState(x.closedMessage ?? '');
   const { busy, error, run } = useRun();
   const { toast } = useToast();
   const can = props.detail.canSetUp;
@@ -809,6 +810,9 @@ function SettingsTab(props: TabProps) {
       </FormField>
       <FormField label="Business hours" helper="The calendar this desk’s response targets will use.">
         <Select value={calendarId} onChange={setCalendarId} clearable disabled={!can} options={props.calendars.map((c) => ({ value: c.id, label: `${c.name} · ${c.timeZone}` }))} />
+      </FormField>
+      <FormField label="Message while closed" helper="The help centre and portal show it outside business hours. {opens} becomes the next opening time. Tickets raised then are marked “Raised outside hours”.">
+        <TextField value={closedMessage} onChange={setClosedMessage} maxLength={300} disabled={!can} />
       </FormField>
       <FormField label="At risk from" helper="A ticket shows as at risk once this share of a response target is used, on the SLA dashboard and the agent desk. Missed stays at 100 %.">
         <Segment label="At risk from" options={AT_RISK_CHOICES.map((p) => ({ value: String(p), label: `${p} %` }))} value={atRisk} onChange={(v) => can && setAtRisk(v)} />
@@ -857,6 +861,7 @@ function SettingsTab(props: TabProps) {
                   routingWaitMinutes: waitMinutes ?? 2,
                   atRiskPercent: Number(atRisk),
                   ratingReasons: reasons.split('\n').map((r) => r.trim()).filter(Boolean),
+                  ...(closedMessage.trim() && closedMessage.trim() !== x.closedMessage ? { closedMessage: closedMessage.trim() } : {}),
                   ...(next ? { nextNumber: next } : {}),
                 });
                 toast({ tone: 'success', title: 'Desk settings saved.' });

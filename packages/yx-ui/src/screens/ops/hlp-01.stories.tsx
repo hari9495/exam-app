@@ -3,6 +3,7 @@ import { HelpCentreScreen } from './helpdesk';
 import { ARTICLES, ASSISTANT_THREAD, MY_TICKETS } from './helpdesk-data';
 import { TODAY } from '../_kit/data';
 import { HELP_BANNERS, HELP_CHANNELS, HELP_CHAT, liveHelp } from './helpdesk-live-samples';
+import { RAISE_DESKS } from '../desk/data';
 
 const meta: Meta = { title: 'Screens/Helpdesk/HLP-01 · Help centre', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -26,4 +27,6 @@ export const ArticleOpen: S = { name: 'Article open · was it helpful, this solv
 export const ChatAndPhone: S = { name: 'Chat offer and help on WhatsApp or SMS', render: () => <HelpCentreScreen live={liveHelp({ chatPrompt: HELP_CHAT, channels: HELP_CHANNELS })} /> };
 // Answer 1643: after the stars, an optional reason from the desk's own list.
 export const RateWithReason: S = { name: 'Resolved ticket · rate with a reason', render: () => <HelpCentreScreen live={liveHelp()} /> };
+// Answer 1646: outside the desk's calendar the raise form says so, with the next opening time (the desk's own words).
+export const ClosedNow: S = { name: 'Raise ticket · the team is closed now', render: () => <HelpCentreScreen live={liveHelp({ startRaise: true, desks: RAISE_DESKS.map((d) => ({ ...d, closed: { message: "We're closed now. We open again {opens}. You can still raise a ticket; we answer it when we open.", opensAt: '2026-10-13T03:30:00Z' } })) })} /> };
 export const NoAccess: S = { name: 'No access (acting for someone else)', render: () => <HelpCentreScreen live={liveHelp({ state: 'no-access' })} /> };

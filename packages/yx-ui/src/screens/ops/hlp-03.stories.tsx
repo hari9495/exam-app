@@ -116,6 +116,8 @@ export const RelatedTickets: S = { name: 'Related tickets, merge, tasks, side co
 export const Escalate: S = { name: 'Move to another support level', render: () => <WithEscalate /> };
 export const ResolveWithCode: S = { name: 'Resolve · code and note', render: () => <WithResolve /> };
 export const ResolvedRated: S = { name: 'Resolved · closes on, the rating', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, systemState: 'solved', resolvedAt: '2026-10-08T05:00:00Z', closesOn: '2026-10-11T05:00:00Z', rating: 4 } })} /> };
+// Answer 1646: a ticket raised while the desk was closed carries a badge.
+export const OutsideHours: S = { name: 'Raised outside hours', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, raisedOutsideHours: true } })} /> };
 export const Collaborator: S = { name: 'Collaborator · notes only', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, access: 'collaborator', canWork: false }, rail: sampleRail({ canWork: false, only: 'kb' }) })} /> };
 export const ReadOnly: S = { name: 'Desk admin · read only', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, access: 'observer', canWork: false, canNote: false } })} /> };
 export const SenderUnverified: S = { name: 'Email from an unproven sender, customer', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, channel: 'email', senderVerified: false, customer: { account: { id: 'ac1', name: 'Sunrise Retail' }, plan: 'gold' }, product: { id: 'pr1', name: 'Kaveri billing app' } } })} /> };

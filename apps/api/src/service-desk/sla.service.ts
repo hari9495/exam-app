@@ -8,7 +8,7 @@ import { REDIS_CONNECTION, logBullErrors, bullOpts } from '../jobs/redis-connect
 import { Tx } from '../org-structure/org-structure.service';
 import { addDays, todayIst } from '../org-structure/org-validation';
 import { approvedLeaveOfUsers } from '../time/time-core';
-import { CalendarSpec, businessSecondsBetween } from './business-time';
+import { CalendarSpec, businessSecondsBetween, nextOpening } from './business-time';
 import { DeskActor, activeOn, audit, deskSystem, emit, has, isLead, requireSetUp, requireWork } from './desk-access';
 import { ComplianceTargetsDto, SlaPolicyDto, SlaVersionDto, UpdateSlaPolicyDto } from './dto';
 import {
@@ -99,6 +99,13 @@ export class SlaService implements OnModuleInit, OnModuleDestroy {
   }
 
   // ------------------------------------------------------------------------------------------ calendars
+
+  /** Answer 1646: while the desk's calendar is closed, its message and next opening; null while open (or no calendar). */
+  async closedNow(tx: Tx, org: string, desk: { calendarId: string | null; closedMessage: string }, now = new Date(), cache?: Map<string, CalendarSpec>) {
+    if (!desk.calendarId) return null;
+    const opens = nextOpening(await this.calendarSpec(tx, org, desk.calendarId, cache), now);
+    return opens ? { message: desk.closedMessage, opensAt: opens } : null;
+  }
 
   async calendarSpec(tx: Tx, org: string, calendarId: string | null, cache = new Map<string, CalendarSpec>()): Promise<CalendarSpec> {
     if (!calendarId) return H24;

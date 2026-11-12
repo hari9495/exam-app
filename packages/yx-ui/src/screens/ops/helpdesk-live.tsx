@@ -21,7 +21,7 @@ import { useNarrow } from '../../components/stepper';
 import { formatDate } from '../../lib/format';
 import { useRun } from '../org/org-kit';
 import { BannerList } from '../desk/help';
-import { ArticleDrawer, useSuggestions, type KbArticleView, type KbHome, type KbSuggestion } from '../desk/help-kb';
+import { ArticleDrawer, DeskClosedNotice, useSuggestions, type KbArticleView, type KbHome, type KbSuggestion } from '../desk/help-kb';
 import { ReadingAidsCard, ReadingAidsFrame, useReadingAids } from '../desk/reading-aids';
 import { PrivacyRequestCard, type PortalScreenProps } from '../desk/portal';
 import { ChatPromptBanner } from '../desk/chat';
@@ -412,6 +412,7 @@ function RaiseForm(p: RaiseFormProps) {
       <FormField id={fid('topic')} label="What is it about?" required error={early.errorOf(fid('topic'))}>
         <Select value={topic} onChange={setTopic} options={options} placeholder="Choose a topic" />
       </FormField>
+      {desk?.closed && <DeskClosedNotice closed={desk.closed} />}
       <FormField id={fid('subject')} label="Subject" required helper="One line, e.g. “LOP on my September payslip”" error={early.errorOf(fid('subject'))}>
         <TextField value={subject} onChange={setSubject} maxLength={200} />
       </FormField>

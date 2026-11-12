@@ -185,4 +185,63 @@ describe('Helpdesk small items', () => {
       expect((await api('deskAdmin', 'get', `/desk/desks/${ids.desk}`).expect(200)).body.desk.ratingReasons).toEqual(['Quick help', 'Slow']);
     });
   });
+
+  // ------------------------------------------------------------------------------------------ 1646 we're closed now
+  describe('1646: "We are closed now" with the next opening time', () => {
+    // Calendars that are open or closed whatever the time the suite runs: every day all day, and one whose hours only
+    // start on Tue 1 Jan 2030 (so it is closed now and opens then at 09:00 India time).
+    const calendar = (name: string, weekdays: number[], start: number, end: number, validFrom: string) =>
+      tenantPrisma.forTenant(asA(), async (tx) => {
+        const c = await tx.businessCalendar.create({ data: { organizationId: org.A.id, name: `${name} ${run}`, timeZone: 'Asia/Kolkata' } });
+        await tx.businessCalendarHours.createMany({ data: weekdays.map((weekday) => ({ organizationId: org.A.id, calendarId: c.id, weekday, startMinute: start, endMinute: end, validFrom: new Date(validFrom) })) });
+        return c.id;
+      });
+    const setDesk = (change: Record<string, unknown>, who: Who = 'deskAdmin') => deskVersion().then((version) => api(who, 'patch', `/desk/desks/${ids.desk}`).send({ version, ...change }));
+    const myDesk = async () => (await api('divya', 'get', '/desk/my/desks').expect(200)).body.find((d: { id: string }) => d.id === ids.desk);
+    const raise = async (subject: string) => (await api('divya', 'post', '/desk/my/tickets').send({ deskId: ids.desk, subject, description: 'Please help.' }).expect(201)).body.id as string;
+    const OPENS = '2030-01-01T03:30:00.000Z';
+
+    beforeAll(async () => {
+      ids.calOpen = await calendar('Always', [1, 2, 3, 4, 5, 6, 7], 0, 1440, '2020-01-01');
+      ids.calLater = await calendar('From 2030', [1, 2, 3, 4, 5, 6, 7], 540, 1080, '2030-01-01');
+      // The portal serves customer desks only: a customer care desk on the same closed calendar.
+      ids.care = (await api('adminA', 'post', '/desk/desks').send({ name: 'Customer care', key: 'CARE', kind: 'customer_support' }).expect(201)).body.id;
+      const care = (await api('adminA', 'get', `/desk/desks/${ids.care}`).expect(200)).body.desk;
+      await api('adminA', 'patch', `/desk/desks/${ids.care}`).send({ version: care.version, calendarId: ids.calLater }).expect(200);
+      await api('adminA', 'post', '/desk/portals').send({ slug: 'care', name: 'Care', deskIds: [ids.care], signUp: 'open', openRequests: false }).expect(201);
+    });
+
+    it('closed: the help centre and the portal show the desk message and the next opening; a ticket raised then is marked; the requester never sees the mark', async () => {
+      await setDesk({ calendarId: ids.calLater }).then((r) => expect(r.status).toBe(200));
+      const d = await myDesk();
+      expect(d.closed).toEqual({ message: expect.stringContaining('{opens}'), opensAt: OPENS });
+      const info = (await request(server()).get(`/api/v1/desk/portal/${org.A.slug}/care`).expect(200)).body;
+      expect(info.desks[0]).toMatchObject({ id: ids.care, closed: { message: d.closed.message, opensAt: OPENS } });
+      expect(info.desks[0]).not.toHaveProperty('calendarId');
+      const id = await raise(`Night ticket ${run}`);
+      expect((await api('agent', 'get', `/desk/tickets/${id}`).expect(200)).body.raisedOutsideHours).toBe(true);
+      expect((await api('divya', 'get', `/desk/my/tickets/${id}`).expect(200)).body).not.toHaveProperty('raisedOutsideHours');
+    });
+
+    it('the desk admin words the message (audited); open hours or no calendar: not closed and tickets are not marked', async () => {
+      expect((await setDesk({ closedMessage: 'IT is shut. Back {opens}.' })).status).toBe(200);
+      expect((await myDesk()).closed).toEqual({ message: 'IT is shut. Back {opens}.', opensAt: OPENS });
+      const logs = await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action: 'desk.desk.updated', entityId: ids.desk, metadataJson: { contains: 'closedMessage' } } }));
+      expect(logs).toHaveLength(1);
+      await setDesk({ calendarId: ids.calOpen }).then((r) => expect(r.status).toBe(200));
+      expect((await myDesk()).closed).toBeNull();
+      const id = await raise(`Day ticket ${run}`);
+      expect((await api('agent', 'get', `/desk/tickets/${id}`).expect(200)).body.raisedOutsideHours).toBe(false);
+      await setDesk({ calendarId: null }).then((r) => expect(r.status).toBe(200));
+      expect((await myDesk()).closed).toBeNull();
+    });
+
+    it('negative: an empty or too long message is refused; an agent or another company cannot change it', async () => {
+      expect((await setDesk({ closedMessage: ' ' })).status).toBe(400);
+      expect((await setDesk({ closedMessage: 'x'.repeat(301) })).status).toBe(400);
+      expect((await setDesk({ closedMessage: 'Gone' }, 'agent')).status).toBe(403);
+      expect((await setDesk({ closedMessage: 'Gone' }, 'adminB')).status).toBe(404);
+      expect((await api('deskAdmin', 'get', `/desk/desks/${ids.desk}`).expect(200)).body.desk.closedMessage).toBe('IT is shut. Back {opens}.');
+    });
+  });
 });
