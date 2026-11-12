@@ -1011,3 +1011,5 @@ C-6 to C-8.
       "Owner left" and list those companies for reassignment.*
 1224. **Alert notices.** New alerts reach their owner only in the console list. *Suggested: a daily email to each owner with
       their new alerts, later.*
+
+- 1171 to 1174, 1181 to 1183, 1201 to 1207 and 1221 to 1224 approved as suggested (12 Nov 2026, "ok for all"). To build now: Reactivate staff (1171); send a staff invitation again (1173); Platform settings as the one place to change settings, the alert and maintenance pages link to it (1183); Retire a YukthiX help article with second-staff approval (1203); "Owner left" with a reassignment list (1223). Later: Payroll Admins on pay-rule notices (1181); Hindi help articles (1202); probes after a monitoring tool is chosen (1204); regions (1205); daily owner email of new alerts (1224); churn drop rule after a few months of history (1221). Founder to give: the payroll-day banner sentence (1206); which two staff stay Security leads (1162).
