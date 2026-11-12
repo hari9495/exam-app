@@ -109,6 +109,17 @@ describe('HLP-04 Knowledge base editor (live)', () => {
     expect(within(dlg).getByText('Published now: version 1')).toBeInTheDocument();
   });
 
+  it('1647: content gaps list the articles that led to tickets, with no task button; an empty period says so', async () => {
+    const { unmount } = show(<KbEditorScreen live={liveKb({ start: { tab: 'gaps' } })} />);
+    const list = await screen.findByRole('list', { name: 'Articles that led to tickets' });
+    expect(within(list).getByText('KB-12 · Connect to the office VPN from home')).toBeInTheDocument();
+    expect(within(list).getByText('4 tickets were raised while reading it')).toBeInTheDocument();
+    expect(within(list).queryByRole('button')).toBeNull();
+    unmount();
+    show(<KbEditorScreen live={liveKb({ start: { tab: 'gaps' }, onLoadGaps: async () => ({ noResult: [], noClick: [], noArticle: [] }) })} />);
+    await waitFor(() => expect(screen.getAllByText('Nothing in this period.')).toHaveLength(4));
+  });
+
   it('no access (403) shows the kit no-access state', () => {
     show(<KbEditorScreen live={liveKb({ state: 'no-access' })} />);
     expect(screen.getByText(/You don't have access to the knowledge base/)).toBeInTheDocument();

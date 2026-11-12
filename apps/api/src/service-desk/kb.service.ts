@@ -1126,7 +1126,7 @@ export class KbService {
 
   // ------------------------------------------------------------------------------------------ reports (US-G-024, US-G-223)
 
-  /** Searches with no result, searches nobody clicked, and solved tickets with no article, by topic. */
+  /** Searches with no result, searches nobody clicked, solved tickets with no article (by topic), and articles that led to tickets. */
   async contentGaps(a: DeskActor, from: string, to: string) {
     if (!has(a, 'desk.report.view') && !has(a, 'desk.kb.publish')) throw new ForbiddenException('You cannot see knowledge reports.');
     return this.tx(a, async (tx) => {
@@ -1151,7 +1151,13 @@ export class KbService {
           AND NOT t.sensitive AND NOT t.private
           AND NOT EXISTS (SELECT 1 FROM sd_kb_links l WHERE l.organization_id = t.organization_id AND l.ticket_id = t.id)
         GROUP BY d.name, c.name ORDER BY tickets DESC LIMIT 50`;
-      return { noResult, noClick, noArticle };
+      // Answer 1647: articles people were reading when they still raised a ticket (counts only, never the tickets).
+      const ledToTickets = await tx.$queryRaw<{ articleId: string; number: number; title: string; tickets: number }[]>`
+        SELECT a.id AS "articleId", a.number, a.title, count(*)::int AS tickets FROM sd_tickets t
+        JOIN sd_kb_articles a ON a.organization_id = t.organization_id AND a.id = t.origin_article_id
+        WHERE t.organization_id = ${org}::uuid AND t.created_at >= ${from}::date AND t.created_at < ${to}::date + 1 AND a.deleted_at IS NULL
+        GROUP BY a.id, a.number, a.title ORDER BY tickets DESC, a.number LIMIT 50`;
+      return { noResult, noClick, noArticle, ledToTickets };
     });
   }
 

@@ -3963,6 +3963,9 @@ model SdTicket {
   ratingAskedAt        DateTime?                @map("rating_asked_at") @db.Timestamptz(3)
   /// Answer 1646: raised while the desk's calendar was closed.
   raisedOutsideHours   Boolean                  @default(false) @map("raised_outside_hours")
+  /// Answer 1647: the help article the person was reading when they raised it, or the search they made.
+  originArticleId      String?                  @map("origin_article_id") @db.Uuid
+  originQuery          String?                  @map("origin_query") @db.VarChar(200)
   contentRemovedAt     DateTime?                @map("content_removed_at") @db.Timestamptz(3)
   /// SD-2.10: the site set-up used (requester's location).
   branchId             String?                  @map("branch_id") @db.Uuid

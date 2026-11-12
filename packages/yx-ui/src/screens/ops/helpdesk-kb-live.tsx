@@ -1219,7 +1219,7 @@ function GapsCard({ live }: { live: LiveKb }) {
         Make an article-request task
       </Button>
     );
-  const list = (title: string, rows: { key: string; title: string; sub: string }[]) => (
+  const list = (title: string, rows: { key: string; title: string; sub: string }[], withTask = true) => (
     <Card title={title}>
       {rows.length === 0 ? (
         <EmptyState compact title="Nothing in this period." />
@@ -1231,7 +1231,7 @@ function GapsCard({ live }: { live: LiveKb }) {
                 <span className="yx-ops-list__title">{r.title}</span>
                 <span className="yx-ops-list__sub">{r.sub}</span>
               </span>
-              {task(r.key)}
+              {withTask && task(r.key)}
             </li>
           ))}
         </ul>
@@ -1268,6 +1268,11 @@ function GapsCard({ live }: { live: LiveKb }) {
               const q = r.category ? `${r.desk}: ${r.category}` : r.desk;
               return { key: q, title: q, sub: `${r.tickets} solved ${r.tickets === 1 ? 'ticket' : 'tickets'} with no article` };
             }),
+          )}
+          {list(
+            'Articles that led to tickets',
+            (gaps.ledToTickets ?? []).map((r) => ({ key: r.articleId, title: `KB-${r.number} · ${r.title}`, sub: `${r.tickets} ${r.tickets === 1 ? 'ticket was' : 'tickets were'} raised while reading it` })),
+            false,
           )}
         </>
       )}

@@ -97,7 +97,13 @@ export function LiveHelpCentre({ live }: { live: LiveHelp }) {
   useEffect(() => {
     if (live.startRaise) setRaising(true);
   }, [live.startRaise]);
-  const raise = () => (live.desks.length ? setRaising(true) : toast({ tone: 'default', title: 'No team takes tickets here yet. Ask your HR or IT admin.' }));
+  // Answer 1647: where the ticket came from: the article being read, else the words searched.
+  const [origin, setOrigin] = useState<Pick<RaiseInput, 'originArticleId' | 'originQuery'>>({});
+  const raise = (from: { articleId?: string } = {}) => {
+    if (!live.desks.length) return toast({ tone: 'default', title: 'No team takes tickets here yet. Ask your HR or IT admin.' });
+    setOrigin({ ...(from.articleId ? { originArticleId: from.articleId } : {}), ...(query.trim() ? { originQuery: query.trim().slice(0, 200) } : {}) });
+    setRaising(true);
+  };
 
   if (live.state === 'no-access')
     return (
@@ -122,7 +128,7 @@ export function LiveHelpCentre({ live }: { live: LiveHelp }) {
         setRaising(false);
       }}
       onRaise={async (input, files) => {
-        const r = await live.onRaise(input);
+        const r = await live.onRaise({ ...input, ...origin });
         const failed: string[] = [];
         for (const f of files) await live.onUpload(r.id, f).catch(() => failed.push(f.name));
         toast({ tone: 'success', title: 'Ticket raised', description: `Your ticket number is ${r.number}. The team will reply in My tickets.${failed.length ? ` ${failed.join(', ')} could not be added: open the ticket and add ${failed.length === 1 ? 'it' : 'them'} there.` : ''}` });
@@ -144,7 +150,8 @@ export function LiveHelpCentre({ live }: { live: LiveHelp }) {
       onSolved={() => kb.onSolved(article.id)}
       onStillNeedHelp={() => {
         setArticle(null);
-        raise();
+        if (raising) setOrigin((o) => ({ ...o, originArticleId: article.id }));
+        else raise({ articleId: article.id });
       }}
     />
   );
@@ -158,7 +165,7 @@ export function LiveHelpCentre({ live }: { live: LiveHelp }) {
           {offer}
           {issues}
           {search}
-          <Button variant="primary" icon={Plus} fullWidth onClick={raise}>
+          <Button variant="primary" icon={Plus} fullWidth onClick={() => raise()}>
             Raise a ticket
           </Button>
           {rating}
@@ -177,7 +184,7 @@ export function LiveHelpCentre({ live }: { live: LiveHelp }) {
           title="Help centre"
           description="Search answers, ask the assistant, or raise a ticket with the right team."
           actions={
-            <Button variant="primary" icon={Plus} onClick={raise}>
+            <Button variant="primary" icon={Plus} onClick={() => raise()}>
               Raise a ticket
             </Button>
           }

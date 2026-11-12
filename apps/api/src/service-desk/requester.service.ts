@@ -145,6 +145,8 @@ export class RequesterService {
         authorPersonId: personId,
         // US-B-100: the screen the in-app help drawer was opened on.
         custom: dto.screen ? { screen: dto.screen } : undefined,
+        originArticleId: dto.originArticleId,
+        originQuery: dto.originQuery,
       });
     });
     return { id: t.id, number: t.number };

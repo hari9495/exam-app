@@ -302,7 +302,7 @@ templates, content gaps, recycle bin, four-eyes review, compare, preview, detail
 | Categories · Categories of a space | live | new story: add, rename, move up / down, delete an empty one (`desk.kb.publish`, `desk.settings.manage` or `desk.desk.create`); three levels |
 | Blocks · Reusable blocks | live | new story: `GET/POST/PATCH desk/kb/blocks` (publishers change them) |
 | Templates · Article templates | live | new story: `GET/POST/PATCH desk/kb/templates` |
-| Gaps · Content gaps | live | new story: `GET desk/kb/gaps` (`desk.report.view` or `desk.kb.publish`); article-request task (`desk.task.work`), toast |
+| Gaps · Content gaps | live | new story: `GET desk/kb/gaps` (`desk.report.view` or `desk.kb.publish`); article-request task (`desk.task.work`), toast. Answer 1647: a fourth list, "Articles that led to tickets" (`ledToTickets`: tickets raised from the help centre or portal while reading that article, counts only), from `sd_tickets.origin_article_id`; the search words are kept too (`origin_query`) |
 | RecycleBin · Recycle bin | live | new story: `GET desk/recycle-bin`, Put back, toast |
 | WaitingReview · Publisher · a version waiting for your review | live | new story: banner "Version N by … is waiting for your review" with Compare and Send back |
 | PublishConfirm · Publisher · publish the reviewed version | live | new story: the design's publish dialog; `POST desk/kb/articles/:id/review` approve (`desk.kb.publish`, never one's own version), toast |

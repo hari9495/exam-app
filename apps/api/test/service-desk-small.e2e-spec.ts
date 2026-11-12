@@ -244,4 +244,36 @@ describe('Helpdesk small items', () => {
       expect((await api('deskAdmin', 'get', `/desk/desks/${ids.desk}`).expect(200)).body.desk.closedMessage).toBe('IT is shut. Back {opens}.');
     });
   });
+
+  // ------------------------------------------------------------------------------------------ 1647 where a ticket came from
+  describe('1647: where a ticket came from (article or search), and articles that led to tickets', () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const gaps = (who: Who) => api(who, 'get', `/desk/kb/gaps?from=${today}&to=${today}`);
+    const raise = (extra: Record<string, unknown>) => api('divya', 'post', '/desk/my/tickets').send({ deskId: ids.desk, subject: `From help ${run}`, description: 'The article did not answer it.', ...extra });
+
+    it('a ticket raised from an article keeps the article and the search; the gaps count it per article', async () => {
+      const before = ((await gaps('lead').expect(200)).body.ledToTickets as { articleId: string }[]).length;
+      expect(before).toBe(0);
+      const a = (await raise({ originArticleId: ids.art, originQuery: '  PF withdrawal ' }).expect(201)).body.id;
+      const b = (await raise({ originArticleId: ids.art }).expect(201)).body.id;
+      const c = (await raise({ originQuery: 'gratuity' }).expect(201)).body.id;
+      const rows = await tenantPrisma.forTenant(SUPER, (tx) => tx.sdTicket.findMany({ where: { id: { in: [a, b, c] } }, select: { id: true, originArticleId: true, originQuery: true } }));
+      expect(rows.find((r) => r.id === a)).toMatchObject({ originArticleId: ids.art, originQuery: 'PF withdrawal' });
+      expect(rows.find((r) => r.id === b)).toMatchObject({ originArticleId: ids.art, originQuery: null });
+      expect(rows.find((r) => r.id === c)).toMatchObject({ originArticleId: null, originQuery: 'gratuity' });
+      const led = (await gaps('lead').expect(200)).body.ledToTickets;
+      expect(led).toEqual([{ articleId: ids.art, number: expect.any(Number), title: `Withdraw your provident fund ${run}`, tickets: 2 }]);
+      // Another company sees none of it.
+      expect((await gaps('adminB').expect(200)).body.ledToTickets).toEqual([]);
+    });
+
+    it('negative: an unknown article is refused and nothing is raised; the employee cannot read the gaps', async () => {
+      const n = await tenantPrisma.forTenant(SUPER, (tx) => tx.sdTicket.count({ where: { organizationId: org.A.id } }));
+      expect((await raise({ originArticleId: randomUUID() }).expect(400)).body.message).toMatch(/No such help article/);
+      await raise({ originArticleId: 'not-a-uuid' }).expect(400);
+      await raise({ originQuery: 'x'.repeat(201) }).expect(400);
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.sdTicket.count({ where: { organizationId: org.A.id } }))).toBe(n);
+      await gaps('divya').expect(403);
+    });
+  });
 });

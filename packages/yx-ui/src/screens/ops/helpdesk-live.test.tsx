@@ -87,6 +87,31 @@ describe('HLP-01 Help centre (live)', () => {
     await waitFor(() => expect(onRaise).toHaveBeenCalled());
   });
 
+  it('1647: a ticket raised from an open article carries the article; one raised straight away carries nothing', async () => {
+    const onRaise = vi.fn().mockResolvedValue({ id: 'n1', number: 'HR-1009' });
+    const base = liveHelp();
+    const onArticle = vi.fn().mockResolvedValue(HELP_ARTICLE);
+    const fill = async () => {
+      await ue.click(await screen.findByRole('combobox', { name: /What is it about/ }));
+      await ue.click(await screen.findByRole('option', { name: /Payslip and pay/ }));
+      await ue.type(screen.getByRole('textbox', { name: /Subject/ }), 'LOP in October');
+      await ue.type(screen.getByRole('textbox', { name: /Details/ }), 'Two days cut');
+      await ue.click(screen.getByRole('button', { name: 'Raise ticket' }));
+    };
+    const { unmount } = render(<HelpCentreScreen live={liveHelp({ onRaise, kb: { ...base.kb, onArticle, openNumber: 12 } })} />);
+    await ue.click(await screen.findByRole('button', { name: /still need help/i }));
+    await fill();
+    await waitFor(() => expect(onRaise).toHaveBeenCalledWith(expect.objectContaining({ originArticleId: HELP_ARTICLE.id })));
+    unmount();
+    onRaise.mockClear();
+    render(<HelpCentreScreen live={liveHelp({ onRaise })} />);
+    await ue.click(screen.getByRole('button', { name: 'Raise a ticket' }));
+    await fill();
+    await waitFor(() => expect(onRaise).toHaveBeenCalled());
+    expect(onRaise.mock.calls[0][0]).not.toHaveProperty('originArticleId');
+    expect(onRaise.mock.calls[0][0]).not.toHaveProperty('originQuery');
+  });
+
   it('a refused raise stays in the drawer with the reason', async () => {
     const onRaise = vi.fn().mockRejectedValue(new Error('This desk is closed for new tickets.'));
     render(<HelpCentreScreen live={liveHelp({ onRaise, desks: [RAISE_DESKS[0]] })} />);

@@ -613,6 +613,16 @@ export class RaiseTicketDto {
   @Matches(/^[\w\-./ ]{1,100}$/, { message: 'Screen name is not valid' })
   screen?: string;
 
+  /** Answer 1647: the help article the person was reading when they raised it. */
+  @IsOptional()
+  @IsUUID()
+  originArticleId?: string;
+
+  /** Answer 1647: the knowledge search they made before raising it. */
+  @IsOptional()
+  @Text(1, 200)
+  originQuery?: string;
+
   /** SD-2.25: the language the person writes in (ISO 639, e.g. hi, ta); routing prefers agents who speak it. */
   @IsOptional()
   @Matches(/^[a-z]{2,3}$/, { message: 'Use a language code such as en, hi or ta.' })

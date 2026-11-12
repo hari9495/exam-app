@@ -421,6 +421,9 @@ export interface RaiseInput {
   impact?: number;
   urgency?: number;
   private?: boolean;
+  /** Answer 1647: raised from this help article, or after this knowledge search. */
+  originArticleId?: string;
+  originQuery?: string;
 }
 
 // ---- batch 2 (SD-1.09 to SD-1.17) ----
@@ -838,4 +841,7 @@ export interface PortalRaiseInput {
   productId?: string;
   subject: string;
   description: string;
+  /** Answer 1647: raised from this help article, or after this search. */
+  originArticleId?: string;
+  originQuery?: string;
 }

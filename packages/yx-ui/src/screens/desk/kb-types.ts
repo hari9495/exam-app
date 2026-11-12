@@ -168,6 +168,8 @@ export interface KbGaps {
   noResult: { query: string; times: number }[];
   noClick: { query: string; times: number }[];
   noArticle: { desk: string; category: string | null; tickets: number }[];
+  /** Answer 1647: articles people were reading when they still raised a ticket. */
+  ledToTickets?: { articleId: string; number: number; title: string; tickets: number }[];
 }
 
 export interface BinItem {

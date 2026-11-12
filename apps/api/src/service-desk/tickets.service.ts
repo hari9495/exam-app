@@ -97,6 +97,9 @@ export interface CreateInput {
   inboundEmailId?: string | null;
   /** The plan check, worked out beforehand by a caller that cannot count the account's tickets itself (the portal). */
   usedUp?: boolean;
+  /** Answer 1647: raised from a help article (its id) or a knowledge search (the words). */
+  originArticleId?: string;
+  originQuery?: string;
 }
 
 interface Notice {
@@ -147,6 +150,7 @@ export class TicketsService {
       : await tx.sdTicketType.findFirst({ where: { organizationId: org, deskId: desk.id, active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
     if (!type) throw new BadRequestException('Choose a ticket type of this desk.');
     const cat = input.categoryId ? await this.category(tx, org, desk.id, input.categoryId, true) : null;
+    if (input.originArticleId && !(await tx.sdKbArticle.findFirst({ where: { organizationId: org, id: input.originArticleId, deletedAt: null }, select: { id: true } }))) throw new BadRequestException('No such help article.');
     // SD-2.11: a type with a lifecycle starts in its start status and the ticket keeps that version.
     const pin = await lifecyclePin(tx, org, desk.id, type.id);
     const status = pin ? await tx.sdStatus.findFirstOrThrow({ where: { organizationId: org, id: pin.startStatusId } }) : await this.firstStatus(tx, org, desk.id, type.id, 'new');
@@ -206,6 +210,8 @@ export class TicketsService {
         groupId,
         channel: input.channel,
         raisedOutsideHours: Boolean(await this.sla.closedNow(tx, org, desk)),
+        originArticleId: input.originArticleId ?? null,
+        originQuery: input.originQuery?.trim() || null,
         sensitive: Boolean(cat?.sensitive),
         // SD-2.09 (M08): some categories make every ticket in them private.
         private: Boolean(input.private) || Boolean(cat?.privateByDefault),
