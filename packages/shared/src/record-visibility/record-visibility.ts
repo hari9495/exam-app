@@ -9,10 +9,10 @@ export function isRecordVisibilityGoverned(role: string | null | undefined): boo
   return role != null && (RECORD_VISIBILITY_GOVERNED_ROLES as readonly string[]).includes(role);
 }
 
-// ---- P02 ง4.3 record scopes for YukthiX people and organisation data -------------------------------
+// ---- P02 ยง4.3 record scopes for YukthiX people and organisation data -------------------------------
 
 /**
- * Who a role grant covers (P02 ง3). `tenant` is the whole company; the others narrow it to an entity, a
+ * Who a role grant covers (P02 ยง3). `tenant` is the whole company; the others narrow it to an entity, a
  * location, a department subtree, or the grantee's own reports (relative to their employee record), or one named report
  * ('one_report', from a manager's pay access request: that person only, while they report to the grantee).
  * The implicit grants (YX-SEC-04: self, manager, dotted line, department head) are computed, never stored.
@@ -29,7 +29,7 @@ export interface GrantScope {
 export const TENANT_SCOPE: GrantScope = Object.freeze({ type: 'tenant', id: null });
 
 /**
- * The scopes a key may be granted at (P02 ง4.3). People keys are checked per record, so they narrow to any
+ * The scopes a key may be granted at (P02 ยง4.3). People keys are checked per record, so they narrow to any
  * scope (as does reading the structure); changing organisation data and pay ranges narrows to a legal entity at most (P01 masters are per company or per
  * entity). Every other key works company-wide only: a narrower grant of it confers nothing (fail closed),
  * because the module behind it has no record scope.
@@ -46,7 +46,7 @@ export function grantScopesFor(key: string): readonly GrantScopeType[] {
   // Visitors slice 1 (answer 613): reception and the log work per location (or entity); visitor settings are company-wide.
   if (key === 'visitors.desk.manage' || key === 'visitors.log.view' || key === 'visitors.rollcall.view') return ['tenant', 'legal_entity', 'location'];
   if (key === 'visitors.settings.manage' || key === 'visitors.watchlist.manage') return ['tenant'];
-  // M10 AT1: hiring keys are company-wide until their endpoints become scope-aware (M10-BUILD-DESIGN ง17).
+  // M10 AT1: hiring keys are company-wide until their endpoints become scope-aware (M10-BUILD-DESIGN ยง17).
   if (key.startsWith('ats.')) return ['tenant'];
   // M02 leave and attendance of people: scoped like employee records. The leave set-up is company configuration: it
   // may be granted per legal entity like org.settings.manage, but changing it needs the company-wide grant.
