@@ -117,8 +117,8 @@ export class BillingCheckoutService {
       priceId: plan.stripePriceId,
       organizationId: orgId,
       planId: plan.id,
-      successUrl: `${base}/v2/settings/billing?checkout=success`,
-      cancelUrl: `${base}/v2/settings/billing?checkout=cancelled`,
+      successUrl: `${base}/yx/settings/account/plan-and-add-ons?checkout=success`,
+      cancelUrl: `${base}/yx/settings/account/plan-and-add-ons?checkout=cancelled`,
     });
     if (!session.url) throw new BadRequestException('Stripe did not return a checkout URL');
     await this.audit.record(context, { actorUserId, action: 'billing.checkout_started', entityType: 'organization', entityId: orgId, metadata: { planId: plan.id } });
@@ -133,7 +133,7 @@ export class BillingCheckoutService {
     if (!org?.stripeCustomerId) {
       throw new BadRequestException('No subscription yet — start one from a plan first');
     }
-    const session = await this.stripe.createBillingPortalSession({ customerId: org.stripeCustomerId, returnUrl: `${this.webBase()}/v2/settings/billing` });
+    const session = await this.stripe.createBillingPortalSession({ customerId: org.stripeCustomerId, returnUrl: `${this.webBase()}/yx/settings/account/plan-and-add-ons` });
     await this.audit.record(context, { actorUserId, action: 'billing.portal_opened', entityType: 'organization', entityId: orgId, metadata: {} });
     return { url: session.url };
   }
