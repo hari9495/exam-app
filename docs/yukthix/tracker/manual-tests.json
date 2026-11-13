@@ -21504,5 +21504,28 @@
       "CompanyDeletionToConfirm"
     ],
     "note": "Positive and negative. Deletion only on a throwaway company."
+  },
+  {
+    "id": "MT-SET-FU2",
+    "area": "Settings follow-ups, second part (13 Nov 2026)",
+    "screen": "Console › Company; Console › Contain company; Console › Incidents",
+    "url": "http://localhost:3000/staff/companies",
+    "account": "Two YukthiX staff with passkeys (one a Security lead); a throwaway company closed over 30 days ago.",
+    "steps": [
+      "Staff 1: Ask to delete the data of the throwaway company; staff 2: Confirm deletion.",
+      "Open the company again; Download certificate.",
+      "Try to sign in as that company's admin.",
+      "Negative: open a company closed 5 days ago; Ask to delete.",
+      "Contain another throwaway company; look at the Data Protection Board card.",
+      "Negative: Mark first notice sent with no note.",
+      "Mark first notice sent with the time and a note; confirm with the security key.",
+      "On Incidents, mark a breach for that containment and open it."
+    ],
+    "expected": "Step 1: done; a certificate downloads. Step 2: data deleted on a day; statutory records kept read-only until a day 8 years on; the certificate lists deleted and kept tables, why and until when; no Ask to delete. Step 3: refused. Step 4: refused: kept until a day. Step 5: two steps, Notify the Board now (not marked) and the 72-hour report, with Verify with counsel. Step 6: the note is asked for. Step 7: toast; the step shows when, who and the note. Step 8: the breach shows the same two steps, the first marked.",
+    "stories": [
+      "CompanyDeleted",
+      "YX18LiveBoardTold"
+    ],
+    "note": "Positive and negative. Deletion only on a throwaway company. The reminder emails are covered by the API tests."
   }
 ]

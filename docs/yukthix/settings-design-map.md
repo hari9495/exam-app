@@ -482,7 +482,7 @@ File: `packages/yx-ui/src/screens/settings/settings-g8.stories.tsx`.
 | P8_3_ReadOnly · 8.3 Invoices & payment · read-only | live (gap) | as the page |
 | P8_4 · 8.4 Sandbox | design only, feature not built | searched `sandbox` in apps/api/src: only Content-Security-Policy headers |
 | P8_4_ReadOnly · 8.4 Sandbox · read-only | design only, feature not built | as the page |
-| P8_5 · 8.5 Data export & closure | live (gap) | S-9 (answer 1332): /yx/settings/account/data-export-and-closure, System Admins: the whole-company export (security key; link works `account.export.link_hours`, 24) and asking YukthiX to close the account (staff close it; data kept `account.closure.keep_days`, 30). Gap: export formats, the per-employee document pack and legal holds are not built; after the kept days, staff delete the data (one asks, a second confirms, a deletion certificate is kept: answer 1882) |
+| P8_5 · 8.5 Data export & closure | live (gap) | S-9 (answer 1332): /yx/settings/account/data-export-and-closure, System Admins: the whole-company export (security key; link works `account.export.link_hours`, 24) and asking YukthiX to close the account (staff close it; data kept `account.closure.keep_days`, 30). Gap: export formats, the per-employee document pack and legal holds are not built; after the kept days, staff delete the data (one asks, a second confirms, a deletion certificate is kept: answer 1882); statutory records stay read-only for their legal period (1975) |
 | P8_5_ReadOnly · 8.5 Data export & closure · read-only | live (gap) | someone with the billing key who is not a System Admin sees the page; starting an export or asking to close says only a System Admin can |
 | P8_6 · 8.6 Analytics, status & tips | live (gap) | the maintenance banner is live (`GET /availability`); S-7 (answer 1321): What's new and tours switches on /yx/settings/account/analytics-status-and-tips. Gap: product analytics and status settings are not on the page |
 | P8_6_ReadOnly · 8.6 Analytics, status & tips · read-only | live (gap) | View only without HR's settings key |
@@ -1102,6 +1102,39 @@ Tests: API e2e `settings-s10-security` (6), `webhook-delivery` (the admin confir
       *Suggested: keep it so; add a download in the console for the customer when they ask.*
 1974. **Which jobs `integration.manage` comes with.** Only the new "Integrations admin" template has it.
       *Suggested: leave it out of other templates; a company gives it to its IT person by hand.*
+
+## Follow-ups, second part (answers 1971 to 1975, the 1882 hold, Rule 7; same branch)
+
+- **1882 defence in depth:** `purge_company` refuses on its own unless an open request has a second person
+  (approved_by set, not the asker), the kept days are over (read inside the function, 30, never fewer), and no legal
+  hold; it marks the request done with the certificate in the same transaction.
+- **1975, statutory records kept:** the audit log, payroll (runs, payslips, pay documents) and filings (statutory
+  filings and registers, TDS returns and challans, tax certificates, Form 16 links, CLRA returns, WPS files), and the
+  rows they need (company, people, employees, employments, legal entities, locations, pay groups, permission profiles),
+  stay in place, read-only, until at least 8 years (`account.closure.statutory_keep_years`, or the company's own longer
+  audit or pay retention). Everything else is deleted. Kept people cannot sign in; the company is suspended with its
+  secrets cleared. The certificate lists what was deleted, what was kept, why and until when.
+- **1972:** every stored-file column is listed and its files dropped (documents, exports, Help desk attachments, chat
+  files, raw mail, request documents, resumes, offers, consultant and actuarial files, visitor photos, avatars, logos,
+  exam certificates, question images, proctoring pictures); files kept with statutory records stay. A test fails on a
+  new file column that is not listed.
+- **1973:** the console company page shows the deletion and downloads the certificate (audited).
+- **1971:** the self-serve checkout, plan picker and billing portal routes are removed; the Stripe webhook stays.
+- **C-4 / C-8, DPDP Rule 7 (from 13 May 2027):** "Notify the Board now" before the 72-hour report: staff mark the first
+  notice sent (time and a note, security key, audited); Security leads are reminded every
+  `breach.dpdp_board_notice_nudge_minutes` (60) until it is marked. Both steps show "Verify with counsel".
+- **Also fixed:** the shared tenant context spec (app.channel, 6 failures also on test main) and the encoding of
+  `record-visibility.ts` after the 1884 edit.
+- **Tests:** e2e `company-deletion` (12) and `console-incidents` (17); kit console and board-notice tests.
+
+### Questions (from 1976)
+
+1976. **When the kept period ends.** Kept records are read-only until their day, then nothing removes them yet.
+      *Suggested: a nightly job deletes a company's kept records once its day has passed, with a second certificate.*
+1977. **Personal details in kept records.** People, employees and employments are kept whole because payslips need
+      them. *Suggested: keep them whole (names and pay identifiers are part of the wage record); clear nothing more.*
+1978. **Rule 7 reminders before 13 May 2027.** The Board reminders run now, before Rule 7 is in force.
+      *Suggested: keep them on now (telling the Board early does no harm); counsel confirms the wording.*
 
 ## 7. Build plan (slices, max 3 builders at once)
 
