@@ -64,6 +64,8 @@ export default function YxDeskReportsPage() {
   const library = useDesk<LibraryReport[]>(on('library', '/reports/library'));
   const funnel = useDesk<FunnelStep[]>(on('funnel', `/reports/funnel?${pq}`), { keepPrevious: true });
   const custom = useDesk<CustomReport[]>(on('mine', '/reports/custom'));
+  // Answer 1844: the desk fields a report may show (only those this person sees).
+  const fieldColumns = useDesk<{ value: string; label: string }[]>(on('mine', '/reports/custom/field-columns'));
   const walls = useDesk<Wallboard[]>(on('walls', '/reports/wallboards'));
   const accounts = useDesk<CustomerAccountRow[]>(on('customers', '/customers/accounts'));
   const surveys = useDesk<Survey[]>(on('surveys', '/surveys'));
@@ -121,6 +123,7 @@ export default function YxDeskReportsPage() {
         onDownloadReport: (key) => download(`/reports/library/${encodeURIComponent(key)}?${pq}&format=csv`, `${key}.csv`),
         funnel: funnel.data ?? [],
         customReports: custom.data ?? [],
+        fieldColumns: fieldColumns.data ?? [],
         onSaveCustom: async (r, input) => {
           await write(r ? `/reports/custom/${encodeURIComponent(r.id)}` : '/reports/custom', r ? 'PATCH' : 'POST', r ? { ...input, version: r.version } : input);
         },

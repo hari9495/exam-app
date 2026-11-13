@@ -73,6 +73,18 @@ export function shownFields(fields: FieldRow[], values: Prisma.JsonValue, who: V
 }
 
 /**
+ * Answer 1844: the field columns of a ticket export or report. `whoOn` says how the person sees each desk's fields (a
+ * team lead of that desk sees its team-lead-only fields; nobody else does). Labels by key in the order of the fields;
+ * per ticket, the shown value (a drop-down's label) by key.
+ */
+export function fieldTable(fields: FieldRow[], tickets: { deskId: string; fieldValues: Prisma.JsonValue }[], whoOn: (deskId: string) => Viewer) {
+  const labels = new Map<string, string>();
+  for (const f of fields) if (!labels.has(f.key) && sees(f, whoOn(f.deskId))) labels.set(f.key, f.label);
+  const cells = tickets.map((t) => new Map(shownFields(fields.filter((f) => f.deskId === t.deskId), t.fieldValues, whoOn(t.deskId)).map((f) => [f.key, f.display] as const)));
+  return { labels, cells };
+}
+
+/**
  * Applies a change to a ticket's field values: the keys must be fields this viewer may see; the result is checked by the
  * forms engine. A dependent value the change no longer allows (its parent changed) is cleared, unless it is part of the
  * change itself (then it is refused).

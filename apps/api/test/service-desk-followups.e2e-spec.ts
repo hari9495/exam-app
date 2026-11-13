@@ -187,4 +187,53 @@ describe('Helpdesk follow-ups', () => {
       await api('agent', 'post', `/desk/tickets/${id}/resolve`).send({ version: await version(id) }).expect(200);
     });
   });
+  // ------------------------------------------------------------------------------------------ 1844
+  describe('1844: field values in the CSV export and custom reports; team-lead-only fields only to leads', () => {
+    beforeAll(async () => {
+      const id = (await api('divya', 'post', '/desk/my/tickets').send({ deskId: ids.desk, subject: `Report fields ${run}`, description: 'Help.', fields: { office: 'blr', floor: 'b1' } }).expect(201)).body.id as string;
+      await api('agent', 'put', `/desk/tickets/${id}/fields`).send({ values: { vendor_ref: 'DELL-44' } }).expect(200);
+      await api('lead', 'put', `/desk/tickets/${id}/fields`).send({ values: { cost: 84500 } }).expect(200);
+      ids.reportTicket = id;
+    });
+    const rowOf = (csv: string) => {
+      const lines = csv.trim().split(/\r?\n/);
+      const header = lines[0].split(',');
+      const row = lines.find((l) => l.includes(`Report fields ${run}`))!.split(',');
+      return Object.fromEntries(header.map((h, i) => [h, row[i]]));
+    };
+
+    it('the CSV export has a column per field: a lead gets the team-lead-only one, an agent does not (header or value)', async () => {
+      const lead = rowOf((await api('lead', 'get', '/desk/tickets/export').expect(200)).text);
+      expect(lead).toMatchObject({ Office: 'Bengaluru', Floor: 'BLR 1', 'Vendor ref': 'DELL-44', Cost: '84500' });
+      const agentCsv = (await api('agent', 'get', '/desk/tickets/export').expect(200)).text;
+      expect(rowOf(agentCsv)).toMatchObject({ Office: 'Bengaluru', 'Vendor ref': 'DELL-44' });
+      expect(agentCsv).not.toMatch(/Cost|84500/);
+      // Another company's export has none of these columns.
+      expect((await api('agentB', 'get', '/desk/tickets/export').expect(200)).text).not.toMatch(/Office|Vendor ref/);
+    });
+
+    it('a custom report offers the fields this person sees, shows their values, and never a lead-only one to someone else', async () => {
+      const cols = async (who: Who) => ((await api(who, 'get', '/desk/reports/custom/field-columns').expect(200)).body as { value: string }[]).map((c) => c.value);
+      expect(await cols('lead')).toEqual(['field:office', 'field:floor', 'field:vendor_ref', 'field:cost']);
+      expect(await cols('deskAdmin')).toEqual(['field:office', 'field:floor', 'field:vendor_ref']);
+      const rep = (await api('lead', 'post', '/desk/reports/custom').send({ name: `Fields ${run}`, columns: ['number', 'field:office', 'field:cost'], filters: {}, shared: true }).expect(201)).body.id as string;
+      const mine = (await api('lead', 'get', `/desk/reports/custom/${rep}/run`).expect(200)).body as { columns: string[]; rows: unknown[][] };
+      expect(mine.columns).toEqual(['Number', 'Office', 'Cost']);
+      expect(mine.rows).toContainEqual([expect.any(String), 'Bengaluru', '84500']);
+      // The shared report run by a desk admin who is not a lead: the cost stays empty.
+      const theirs = (await api('deskAdmin', 'get', `/desk/reports/custom/${rep}/run`).expect(200)).body as { rows: unknown[][] };
+      expect(theirs.rows.some((r) => r[1] === 'Bengaluru')).toBe(true);
+      expect(JSON.stringify(theirs)).not.toContain('84500');
+      expect((await api('lead', 'get', `/desk/reports/custom/${rep}/run?format=csv`).expect(200)).text).toContain('84500');
+    });
+
+    it('negative: no one saves a field they cannot see or an unknown or odd column; agents and other companies cannot list field columns', async () => {
+      await api('lead', 'post', '/desk/reports/custom').send({ name: `Bad ${run}`, columns: ['field:nope'], filters: {} }).expect(400);
+      await api('lead', 'post', '/desk/reports/custom').send({ name: `Bad ${run}`, columns: ['field:Office!'], filters: {} }).expect(400);
+      await api('agent', 'get', '/desk/reports/custom/field-columns').expect(403);
+      expect((await api('agentB', 'get', '/desk/reports/custom/field-columns').expect(403)));
+      // A desk admin (report viewer, no build right) cannot save one at all.
+      await api('deskAdmin', 'post', '/desk/reports/custom').send({ name: `Bad ${run}`, columns: ['field:cost'], filters: {} }).expect(403);
+    });
+  });
 });

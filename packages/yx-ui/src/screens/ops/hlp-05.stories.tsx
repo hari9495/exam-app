@@ -30,6 +30,8 @@ export const Kpis: S = { name: 'KPIs with targets and forecast', render: () => <
 export const Library: S = { name: 'Report library', render: () => <Live open="library" /> };
 export const Funnel: S = { name: 'Self-service funnel', render: () => <Live open="funnel" /> };
 export const MyReports: S = { name: 'My reports and schedules', render: () => <Live open="mine" /> };
+// Answer 1844: a report may hold the desks' own fields (team-lead-only ones only for leads).
+export const MyReportsFields: S = { name: 'My reports · desk field columns', render: () => <Live open="mine" fieldColumns={[{ value: 'field:office', label: 'Office' }, { value: 'field:floor', label: 'Floor' }, { value: 'field:asset_cost', label: 'Asset cost (₹)' }]} customReports={[{ ...liveSla().customReports[0], columns: ['number', 'subject', 'field:office', 'field:asset_cost'] }, ...liveSla().customReports.slice(1)]} /> };
 export const Walls: S = { name: 'Wall screens', render: () => <Live open="walls" /> };
 export const Customers: S = { name: 'Customer reports', render: () => <Live open="customers" /> };
 export const Surveys: S = { name: 'NPS surveys', render: () => <Live open="surveys" /> };

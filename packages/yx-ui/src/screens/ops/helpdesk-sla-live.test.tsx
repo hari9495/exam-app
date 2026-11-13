@@ -155,6 +155,29 @@ describe('HLP-05 report tabs (were the desk reports page)', () => {
     await waitFor(() => expect(onSchedule).toHaveBeenCalledWith('r1', { frequency: 'monthly', recipients: ['u2'] }));
   });
 
+  it('1844: a report may hold the desk fields offered (named in the list) and saves them as field columns', async () => {
+    const onSaveCustom = vi.fn().mockResolvedValue(undefined);
+    const fieldColumns = [{ value: 'field:office', label: 'Office' }, { value: 'field:asset_cost', label: 'Asset cost (₹)' }];
+    const reports = [{ ...liveSla().customReports[0], columns: ['number', 'field:office'] }];
+    render(<SlaDashboardScreen live={liveSla({ tab: 'mine', onSaveCustom, fieldColumns, customReports: reports })} />);
+    expect(screen.getByText('Number, Office')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'New report' }));
+    await ue.type(await screen.findByRole('textbox', { name: /Report name/ }), 'Costs by office');
+    await ue.click(screen.getByRole('combobox', { name: /Columns/ }));
+    await ue.click(await screen.findByRole('option', { name: /Asset cost/ }));
+    await ue.keyboard('{Escape}');
+    await ue.click(screen.getByRole('button', { name: 'Save report' }));
+    await waitFor(() => expect(onSaveCustom).toHaveBeenCalledWith(null, expect.objectContaining({ columns: expect.arrayContaining(['number', 'field:asset_cost']) })));
+  });
+
+  it('1844 negative: without field columns (none the person may see) only the ticket details are offered', async () => {
+    render(<SlaDashboardScreen live={liveSla({ tab: 'mine', fieldColumns: [] })} />);
+    await ue.click(screen.getByRole('button', { name: 'New report' }));
+    await ue.click(await screen.findByRole('combobox', { name: /Columns/ }));
+    expect(await screen.findByRole('option', { name: 'Number' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Desk field/ })).toBeNull();
+  });
+
   it('customer report: Show report pressed with no company says so', async () => {
     const onCustomerReport = vi.fn();
     render(<SlaDashboardScreen live={liveSla({ tab: 'customers', onCustomerReport })} />);

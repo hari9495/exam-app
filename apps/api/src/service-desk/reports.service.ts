@@ -12,6 +12,11 @@ import { DeskAccessService, DeskActor, activeOn, audit, deskSystem, has, visible
 import { CustomReportDto, KpiTargetDto, ReportRunDto, ScheduleDto, WallboardDto } from './dto-ops';
 import { ClockView, SlaService, clockState } from './sla.service';
 import { OPEN_STATES } from './tickets.service';
+import { Viewer, fieldTable, sees } from './ticket-fields';
+
+/** Answer 1844: a report column of a desk field. */
+const FIELD_COLUMN = /^field:([a-z][a-z0-9_]{0,39})$/;
+const fieldViewerOn = (a: DeskActor) => (deskId: string): Viewer => (a.roles.get(deskId) === 'lead' ? 'lead' : 'agent');
 
 // SD-1.27 reports (US-B-098, US-B-110, US-B-111, US-G-026 … US-G-028, US-G-223). Dashboards, the KPI history, the
 // report library and the wallboard show counts only, so they count every ticket of the desks the person may report on
@@ -534,11 +539,31 @@ export class ReportsService {
     });
   }
 
+  /** Answer 1844: the desk fields a report may show (`field:<key>`): those this person sees on a desk they report on. */
+  async fieldColumns(a: DeskActor) {
+    if (!has(a, 'desk.report.view')) throw new ForbiddenException('You cannot see desk reports (desk.report.view).');
+    return this.tenantPrisma.forTenant(a.ctx, (tx) => this.fieldColumnsIn(tx, a));
+  }
+
+  private async fieldColumnsIn(tx: Tx, a: DeskActor) {
+    const defs = await tx.sdTicketField.findMany({ where: { organizationId: a.ctx.organizationId, deskId: { in: await this.deskScope(tx, a) }, active: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] });
+    const out = new Map<string, string>();
+    for (const f of defs) if (!out.has(f.key) && sees(f, fieldViewerOn(a)(f.deskId))) out.set(f.key, f.label);
+    return [...out].map(([key, label]) => ({ value: `field:${key}`, label }));
+  }
+
   async saveCustom(a: DeskActor, id: string | null, dto: CustomReportDto) {
     if (!has(a, 'desk.report.manage')) throw new ForbiddenException('You cannot build reports (desk.report.manage).');
-    const bad = dto.columns.filter((c) => !REPORT_COLUMNS[c]);
+    const bad = dto.columns.filter((c) => !REPORT_COLUMNS[c] && !FIELD_COLUMN.test(c));
     if (bad.length) throw new BadRequestException(`Unknown columns: ${bad.join(', ')}`);
     return this.tenantPrisma.forTenant(a.ctx, async (tx) => {
+      // Answer 1844: only fields this person sees (a team-lead-only field needs a lead seat on its desk).
+      const asked = dto.columns.filter((c) => FIELD_COLUMN.test(c));
+      if (asked.length) {
+        const ok = new Set((await this.fieldColumnsIn(tx, a)).map((c) => c.value));
+        const no = asked.filter((c) => !ok.has(c));
+        if (no.length) throw new BadRequestException(`You cannot report on these fields: ${no.map((c) => c.slice(6)).join(', ')}`);
+      }
       if (dto.filters.deskIds?.length) {
         const mine = await this.deskScope(tx, a);
         if (dto.filters.deskIds.some((d) => !mine.includes(d))) throw new BadRequestException('Choose desks you report on.');
@@ -623,10 +648,20 @@ export class ReportsService {
           default: return null;
         }
       };
+      // Answer 1844: desk field columns, each shown only where this person sees that field (leads-only to the desk's leads).
+      const wanted = r.columns.map((c) => FIELD_COLUMN.exec(c)?.[1]).filter((k): k is string => Boolean(k));
+      const defs = wanted.length && tickets.length ? await tx.sdTicketField.findMany({ where: { organizationId: org, deskId: { in: ids('deskId') }, key: { in: wanted }, active: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }) : [];
+      const fields = fieldTable(defs, tickets, fieldViewerOn(a));
+      const fieldCell = new Map(tickets.map((t, i) => [t.id, fields.cells[i]]));
+      const cellOf = (t: (typeof tickets)[number], c: string) => {
+        const k = FIELD_COLUMN.exec(c)?.[1];
+        return k ? (fieldCell.get(t.id)?.get(k) ?? null) : cell(t, c);
+      };
+      const title = (c: string) => REPORT_COLUMNS[c] ?? fields.labels.get(c.slice(6)) ?? c.slice(6);
       await audit(tx, a, 'desk.report.run', 'sd_report', r.id, { rows: tickets.length });
       // A report that lists tickets counts as reading them (US-G-030).
       if (tickets.length) await tx.sdTicketRead.createMany({ data: tickets.map((t) => ({ organizationId: org, deskId: t.deskId, ticketId: t.id, userId: a.userId, access: 'export' })) });
-      return { title: r.name, columns: r.columns.map((c) => REPORT_COLUMNS[c]), rows: tickets.map((t) => r.columns.map((c) => cell(t, c))) };
+      return { title: r.name, columns: r.columns.map(title), rows: tickets.map((t) => r.columns.map((c) => cellOf(t, c))) };
     });
   }
 

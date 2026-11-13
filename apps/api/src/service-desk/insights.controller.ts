@@ -357,6 +357,13 @@ export class DeskInsightsController {
     return this.reports.customReports(await this.actor(req, t));
   }
 
+  /** Answer 1844: the desk fields a report may show. */
+  @Get('reports/custom/field-columns')
+  @RequirePermissions('desk.report.view')
+  async fieldColumns(@Req() req: Request, @CurrentTenant() t: TenantContext) {
+    return this.reports.fieldColumns(await this.actor(req, t));
+  }
+
   @Post('reports/custom')
   @RequirePermissions('desk.report.manage')
   async addCustom(@Req() req: Request, @CurrentTenant() t: TenantContext, @Body() dto: CustomReportDto) {

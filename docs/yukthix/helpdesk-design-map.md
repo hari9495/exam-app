@@ -347,6 +347,7 @@ in /yx/desk/setup (SLA tab).
 | Library · Report library | live | new story: `GET desk/reports/library`, Run and Download CSV |
 | Funnel · Self-service funnel | live | new story: `GET desk/reports/funnel` |
 | MyReports · My reports and schedules | live | new story: custom reports and schedules (`desk.report.manage` to change; toasts) |
+| MyReportsFields · My reports · desk field columns | live | Answer 1844: the Columns pick-list adds the desks' own fields this person sees (`GET desk/reports/custom/field-columns`; team-lead-only ones only for a lead of that desk), saved as `field:<key>` (a field one may not see is refused, 400); a run or CSV shows each value only where the runner sees that field, so a shared report never shows a lead-only value to anyone else. The ticket list's CSV export also has a column per field, the same way |
 | Walls · Wall screens | live | new story: make (link shown once) and switch off the secret wall link |
 | Customers · Customer reports | live | new story: `GET desk/reports/customers/:accountId` |
 | Surveys · NPS surveys | live | new story: `GET/POST desk/surveys` (`desk.survey.manage`) |
