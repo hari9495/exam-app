@@ -680,7 +680,7 @@ File: `packages/yx-ui/src/screens/ops/hlp-18.stories.tsx`. Drawn 12 Nov 2026 (th
 | LifecycleEmpty · No lifecycle yet | live | same page |
 | LifecycleLoading · Lifecycle loading | live | same page |
 | Schedules · Recurring tickets and follow-ups | live | same page |
-| SchedulesEquipment · Recurring maintenance of a piece of equipment | live | Helpdesk plan item 4: an optional Equipment on a recurring record (active, of the desk's own register); each due date makes one ticket naming it, its building and area; retired equipment pauses the schedule |
+| SchedulesEquipment · Recurring maintenance of a piece of equipment | live | Helpdesk plan item 4: an optional Equipment on a recurring record (active, of the desk's own register); each due date makes one ticket naming it, its building and area; retired equipment pauses the schedule, and (answer 1913) the desk's admins are told once, in the app and by email (`helpdesk.recurring.paused`, audited), with a link to the schedules |
 | SchedulesEmpty · No schedules yet | live | same page |
 | SchedulesMissing · Recurring ticket Save pressed with nothing filled | live | same page |
 | SequenceMissing · Save sequence pressed with nothing filled | live | same page |

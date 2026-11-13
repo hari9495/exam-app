@@ -175,6 +175,20 @@ describe('Helpdesk: buildings, equipment and maintenance', () => {
     await app.get(RecurringService).tick(new Date(start.getTime() + 3_600_000));
     expect(await inA((tx) => tx.sdTicket.count({ where: { equipmentId: ids.gen } }))).toBe(0);
     expect((await inA((tx) => tx.sdRecurring.findFirstOrThrow({ where: { id: sched.id } }))).state).toBe('paused');
+    // Answer 1913: the facilities desk's admins are told, once; nobody else.
+    const told = await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.findMany({ where: { type: 'helpdesk.recurring.paused', entityId: sched.id }, select: { recipientUserId: true, contextText: true } }));
+    expect(told.map((x) => x.recipientUserId)).toEqual([users.facAdmin]);
+    expect(told[0].contextText).toBe(`DG service ${run} paused: Generator (DG-${run}) was retired`);
+    expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'desk.recurring.paused', entityId: sched.id } }))).toBe(1);
+    await app.get(RecurringService).tick(new Date(start.getTime() + 2 * 86_400_000));
+    expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.count({ where: { type: 'helpdesk.recurring.paused', entityId: sched.id } }))).toBe(1);
+  });
+
+  it('1913 negative: maintenance on equipment in use runs without a pause notice; another company hears nothing', async () => {
+    const lift = await inA((tx) => tx.sdRecurring.findFirstOrThrow({ where: { name: `Lift service ${run}` } }));
+    expect(lift.state).toBe('active');
+    expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.count({ where: { type: 'helpdesk.recurring.paused', entityId: lift.id } }))).toBe(0);
+    expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.count({ where: { organizationId: org.B.id, type: 'helpdesk.recurring.paused' } }))).toBe(0);
   });
   it('1911: a requester names the building and an area of it on a facilities ticket; the agent sees the place', async () => {
     const desks = (await api('divya', 'get', '/desk/my/desks').expect(200)).body as { id: string; askPlace: boolean }[];

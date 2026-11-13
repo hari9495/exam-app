@@ -3,7 +3,9 @@ import { Prisma } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { deskRobot } from './catalog.service';
-import { DeskActor, SEAT_REQUIRED, audit, deskSystem, emit, requireDesk, requireSetUp, requireWork } from './desk-access';
+import { DeskActor, SEAT_REQUIRED, activeOn, audit, deskSystem, emit, requireDesk, requireSetUp, requireWork } from './desk-access';
+import { NotificationsService } from '../notifications/notifications.service';
+import { todayIst } from '../org-structure/org-validation';
 import { ScheduleError, dueBetween, nextRun, preview } from './recurrence';
 import { RequesterService } from './requester.service';
 import { cleanHtml, htmlToText } from './rich-text';
@@ -52,6 +54,7 @@ export class RecurringService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly tickets: TicketsService,
     private readonly requesters: RequesterService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   private tx<T>(a: DeskActor, fn: (tx: Tx) => Promise<T>) {
@@ -149,17 +152,25 @@ export class RecurringService {
       tx.sdRecurring.findMany({ where: { state: 'active', nextRunAt: { lte: now } }, select: { id: true, organizationId: true }, take: 200 }),
     );
     let n = 0;
+    const paused: Paused[] = [];
     for (const d of due) {
       try {
-        n += await deskSystem(this.tenantPrisma, { organizationId: d.organizationId, isSuperAdmin: false }, (tx) => this.runOne(tx, { organizationId: d.organizationId, isSuperAdmin: false }, d.id, now), { timeout: 30_000 });
+        n += await deskSystem(this.tenantPrisma, { organizationId: d.organizationId, isSuperAdmin: false }, (tx) => this.runOne(tx, { organizationId: d.organizationId, isSuperAdmin: false }, d.id, now, paused), { timeout: 30_000 });
       } catch (e) {
         this.logger.warn(`recurring ${d.id}: ${(e as Error).message}`);
       }
     }
+    // Answer 1913: after the change is saved, the desk's admins hear that a schedule paused (once: it is no longer active).
+    for (const p of paused) {
+      if (!p.adminIds.length) continue;
+      await this.notifications
+        .notifySystem({ organizationId: p.organizationId, isSuperAdmin: false }, p.adminIds, 'helpdesk.recurring.paused', { entityType: 'sd_recurring', entityId: p.recurringId, contextText: `${p.name} paused: ${p.equipment} was retired`, linkPath: '/yx/desk/setup?tab=schedules' }, { subject: `Maintenance paused: ${p.name}`, html: `<p>The maintenance schedule ${esc(p.name)} paused because ${esc(p.equipment)} was retired. Point it at other equipment and resume it, or end it.</p>` })
+        .catch((e) => this.logger.warn(`Paused-schedule notice not sent: ${(e as Error).message}`));
+    }
     return n;
   }
 
-  private async runOne(tx: Tx, ctx: CompanyContext, id: string, now: Date): Promise<number> {
+  private async runOne(tx: Tx, ctx: CompanyContext, id: string, now: Date, paused: Paused[] = []): Promise<number> {
     const org = ctx.organizationId;
     const [locked] = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM sd_recurring WHERE organization_id = ${org}::uuid AND id = ${id}::uuid AND state = 'active' FOR UPDATE SKIP LOCKED`;
     if (!locked) return 0;
@@ -178,6 +189,10 @@ export class RecurringService {
       } catch {
         await tx.sdRecurring.update({ where: { id: r.id }, data: { state: 'paused', updatedAt: new Date() } });
         await emit(tx, org, 'helpdesk.recurring.paused', { recurringId: r.id, deskId: r.deskId, reason: 'equipment_retired' });
+        await audit(tx, { ctx, userId: null as unknown as string }, 'desk.recurring.paused', 'sd_recurring', r.id, { reason: 'equipment_retired', equipmentId: tpl.equipmentId });
+        const eq = await tx.sdEquipment.findFirst({ where: { organizationId: org, id: tpl.equipmentId }, select: { name: true, tag: true } });
+        const adminIds = (await tx.sdDeskMember.findMany({ where: { organizationId: org, deskId: r.deskId, role: 'admin', ...activeOn(todayIst()) }, select: { userId: true } })).map((m) => m.userId);
+        paused.push({ organizationId: org, recurringId: r.id, name: r.name, equipment: eq ? `${eq.name} (${eq.tag})` : 'its equipment', adminIds: [...new Set(adminIds)] });
         return 0;
       }
     }
@@ -353,3 +368,14 @@ export class RecurringService {
     return n;
   }
 }
+
+/** Answer 1913: a schedule paused in this tick, told to its desk's admins once the change is saved. */
+interface Paused {
+  organizationId: string;
+  recurringId: string;
+  name: string;
+  equipment: string;
+  adminIds: string[];
+}
+
+const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
