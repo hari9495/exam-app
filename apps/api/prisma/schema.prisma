@@ -640,6 +640,8 @@ model QuestionOption {
   imageUrl   String?  @map("image_url") @db.VarChar(1000)
   question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@index([questionId])
   @@map("question_options")
 }
@@ -790,6 +792,8 @@ model ExamSection {
   questions             ExamSectionQuestion[]
   poolTags              ExamSectionPoolTag[]
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@index([examId])
   @@map("exam_sections")
 }
@@ -801,6 +805,8 @@ model ExamSectionQuestion {
   section    ExamSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   question   Question    @relation(fields: [questionId], references: [id])
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@id([sectionId, questionId])
   @@map("exam_section_questions")
 }
@@ -811,6 +817,8 @@ model ExamSectionPoolTag {
   section   ExamSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   tag       Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@id([sectionId, tagId])
   @@map("exam_section_pool_tags")
 }
@@ -919,6 +927,8 @@ model Invitation {
   attempt                Attempt?
   candidateRefreshTokens CandidateRefreshToken[]
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@index([examId, status])
   @@map("invitations")
 }
@@ -1012,6 +1022,8 @@ model Attempt {
   integrityAnalysis             IntegrityAnalysis?
   faceEnrolment                 FaceEnrolment?
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@index([examId, status])
   @@map("attempts")
 }
@@ -1036,6 +1048,8 @@ model Answer {
   question              Question          @relation(fields: [questionId], references: [id])
   codeReview            CodeAnswerReview?
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@unique([attemptId, questionId])
   @@map("answers")
 }
@@ -1070,6 +1084,8 @@ model Result {
   certificatePath String?   @map("certificate_path") @db.VarChar(1000)
   attempt         Attempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@map("results")
 }
 
@@ -1096,6 +1112,8 @@ model ProctoringEvent {
   metadataJson String?  @map("metadata_json") @db.Text
   attempt      Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@index([attemptId, occurredAt])
   @@map("proctoring_events")
 }
@@ -1116,6 +1134,8 @@ model FaceEnrolment {
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   attempt            Attempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@map("face_enrolments")
 }
 
@@ -1128,6 +1148,8 @@ model CandidateMessage {
   readAt       DateTime? @map("read_at") @db.Timestamptz(3)
   attempt      Attempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@index([attemptId, sentAt])
   @@map("candidate_messages")
 }
@@ -1141,6 +1163,8 @@ model ProctoringAnalysis {
   analyzedAt DateTime @default(now()) @map("analyzed_at") @db.Timestamptz(3)
   attempt    Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@map("proctoring_analyses")
 }
 
@@ -1154,6 +1178,8 @@ model IntegrityAnalysis {
   analyzedAt DateTime @default(now()) @map("analyzed_at") @db.Timestamptz(3)
   attempt    Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@map("integrity_analyses")
 }
 
@@ -1182,6 +1208,8 @@ model AttemptInsight {
   generatedAt DateTime @default(now()) @map("generated_at") @db.Timestamptz(3)
   attempt     Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@map("attempt_insights")
 }
 

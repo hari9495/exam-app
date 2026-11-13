@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { PrismaService } from '@exam-platform/shared';
+import { TenantPrismaService } from '@exam-platform/shared';
 
 export interface CandidateJwtPayload {
   sub: string;
@@ -11,7 +11,7 @@ export interface CandidateJwtPayload {
 
 @Injectable()
 export class CandidateJwtStrategy extends PassportStrategy(Strategy, 'candidate-jwt') {
-  constructor(private readonly prisma: PrismaService) {
+  constructor(private readonly tenantPrisma: TenantPrismaService) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
@@ -23,10 +23,13 @@ export class CandidateJwtStrategy extends PassportStrategy(Strategy, 'candidate-
     if (payload.subjectType !== 'candidate') {
       throw new UnauthorizedException('Invalid token subject type');
     }
-    const invitation = await this.prisma.invitation.findUnique({
-      where: { id: payload.sub },
-      select: { activeSessionFamilyId: true },
-    });
+    // A signed token names the invitation; checked by a system read (AS-0: invitations are under forced RLS).
+    const invitation = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
+      tx.invitation.findUnique({
+        where: { id: payload.sub },
+        select: { activeSessionFamilyId: true },
+      }),
+    );
     if (!invitation || invitation.activeSessionFamilyId !== payload.familyId) {
       throw new UnauthorizedException('This session has been replaced by a newer login');
     }

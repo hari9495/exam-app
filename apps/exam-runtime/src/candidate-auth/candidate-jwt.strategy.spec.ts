@@ -1,7 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { UnauthorizedException } from '@nestjs/common';
 import { CandidateJwtStrategy } from './candidate-jwt.strategy';
-import { PrismaService } from '@exam-platform/shared';
+import { TenantPrismaService } from '@exam-platform/shared';
 
 describe('CandidateJwtStrategy', () => {
   let strategy: CandidateJwtStrategy;
@@ -12,7 +12,8 @@ describe('CandidateJwtStrategy', () => {
     process.env.CANDIDATE_JWT_ACCESS_SECRET = 'test-candidate-access-secret';
 
     const moduleRef = await Test.createTestingModule({
-      providers: [CandidateJwtStrategy, { provide: PrismaService, useValue: prisma }],
+      // AS-0: invitations are under forced RLS; the strategy reads them as system work.
+      providers: [CandidateJwtStrategy, { provide: TenantPrismaService, useValue: { forTenant: (_ctx: unknown, fn: (tx: unknown) => unknown) => fn(prisma) } }],
     }).compile();
     strategy = moduleRef.get(CandidateJwtStrategy);
   });

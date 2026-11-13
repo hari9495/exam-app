@@ -25,7 +25,8 @@ export class CandidateAuthService {
   ) {}
 
   async redeem(token: string, clientIp: string): Promise<CandidateTokenPair> {
-    const invitation = await this.prisma.invitation.findUnique({ where: { token } });
+    // The link's token is the only thing known before sign-in: a system lookup across companies (AS-0, forced RLS).
+    const invitation = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) => tx.invitation.findUnique({ where: { token } }));
     if (!invitation) {
       throw new NotFoundException('This invitation link is invalid');
     }
@@ -55,7 +56,8 @@ export class CandidateAuthService {
 
     const familyId = randomUUID();
 
-    return this.prisma.$transaction(async (tx) => {
+    // In the exam's company (AS-0: attempts, events and invitations are under forced RLS).
+    return this.tenantPrisma.forTenant({ organizationId: exam.organizationId, isSuperAdmin: false }, async (tx) => {
       if (invitation.activeSessionFamilyId) {
         await tx.candidateRefreshToken.updateMany({
           where: { invitationId: invitation.id, familyId: invitation.activeSessionFamilyId },
@@ -115,7 +117,7 @@ export class CandidateAuthService {
 
     await this.prisma.candidateRefreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
 
-    const invitation = await this.prisma.invitation.findUnique({ where: { id: payload.sub } });
+    const invitation = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) => tx.invitation.findUnique({ where: { id: payload.sub } }));
     if (!invitation || invitation.status === 'revoked') {
       await this.prisma.candidateRefreshToken.updateMany({
         where: { invitationId: payload.sub, familyId: payload.familyId },
