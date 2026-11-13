@@ -176,4 +176,30 @@ describe('Helpdesk: buildings, equipment and maintenance', () => {
     expect(await inA((tx) => tx.sdTicket.count({ where: { equipmentId: ids.gen } }))).toBe(0);
     expect((await inA((tx) => tx.sdRecurring.findFirstOrThrow({ where: { id: sched.id } }))).state).toBe('paused');
   });
+  it('1914: the equipment page lists 25 work orders and "show more" brings the older ones, newest first, without repeats', async () => {
+    // 26 more work orders for the lift (copies of its first, an hour apart and older): 30 in all.
+    await inA(async (tx) => {
+      const src = await tx.sdTicket.findFirstOrThrow({ where: { id: ids.liftTicket } });
+      const { id: _id, seq, number: _n, createdAt, ...rest } = src;
+      for (let i = 1; i <= 26; i++) await tx.sdTicket.create({ data: { ...rest, fieldValues: rest.fieldValues ?? {}, custom: rest.custom ?? undefined, seq: seq + BigInt(100 + i), number: `FAC-H${i}-${run}`, subject: `History ${i}`, createdAt: new Date(createdAt.getTime() - i * 3_600_000) } as never });
+    });
+    const page = (await api('facAgent', 'get', `/desk/facilities/equipment/${ids.lift}`).expect(200)).body as { workOrders: { id: string; createdAt: string }[]; moreWorkOrders: boolean };
+    expect(page.workOrders).toHaveLength(25);
+    expect(page.moreWorkOrders).toBe(true);
+    const next = (await api('facAgent', 'get', `/desk/facilities/equipment/${ids.lift}/work-orders?after=${page.workOrders[24].id}`).expect(200)).body as { items: { id: string; createdAt: string }[]; more: boolean };
+    expect(next.items).toHaveLength(5);
+    expect(next.more).toBe(false);
+    const all = [...page.workOrders, ...next.items];
+    expect(new Set(all.map((w) => w.id)).size).toBe(30);
+    expect(all.map((w) => w.createdAt)).toEqual([...all.map((w) => w.createdAt)].sort().reverse());
+  });
+
+  it('1914 negative: a cursor that is not one of its work orders, another company, and someone without a desk seat are refused', async () => {
+    await api('facAgent', 'get', `/desk/facilities/equipment/${ids.lift}/work-orders?after=${randomUUID()}`).expect(400);
+    const itTicket = (await api('divya', 'post', '/desk/my/tickets').send({ deskId: ids.it, subject: `Other ${run}`, description: 'x' }).expect(201)).body.id;
+    await api('facAgent', 'get', `/desk/facilities/equipment/${ids.lift}/work-orders?after=${itTicket}`).expect(400);
+    await api('facAgent', 'get', `/desk/facilities/equipment/${ids.lift}/work-orders?after=not-a-uuid`).expect(400);
+    await api('adminB', 'get', `/desk/facilities/equipment/${ids.lift}/work-orders?after=${ids.liftTicket}`).expect(404);
+    await api('divya', 'get', `/desk/facilities/equipment/${ids.lift}/work-orders?after=${ids.liftTicket}`).expect(403);
+  });
 });

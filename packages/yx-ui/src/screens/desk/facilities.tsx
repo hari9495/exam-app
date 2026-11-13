@@ -68,6 +68,15 @@ export interface EquipmentInput {
   status: FacilityStatus;
   version?: number;
 }
+export interface WorkOrder {
+  id: string;
+  number: string;
+  subject: string;
+  systemState: SystemState;
+  createdAt: string;
+  resolvedAt: string | null;
+  recurring: boolean;
+}
 export interface EquipmentPageView {
   id: string;
   name: string;
@@ -77,7 +86,9 @@ export interface EquipmentPageView {
   building: string;
   area: string | null;
   ownerTeam: string;
-  workOrders: { id: string; number: string; subject: string; systemState: SystemState; createdAt: string; resolvedAt: string | null; recurring: boolean }[];
+  workOrders: WorkOrder[];
+  /** Answer 1914: older work orders can be shown (25 at a time). */
+  moreWorkOrders?: boolean;
   maintenance: { id: string; name: string; rrule: string; nextRunAt: string | null; state: string }[];
 }
 export interface FacilitiesProps {
@@ -87,6 +98,8 @@ export interface FacilitiesProps {
   onSaveArea: (id: string | null, input: { locationId: string; name: string; status: FacilityStatus; version?: number }) => Promise<unknown>;
   onSaveEquipment: (id: string | null, input: EquipmentInput) => Promise<unknown>;
   onOpenEquipment: (id: string) => Promise<EquipmentPageView>;
+  /** Answer 1914: the next older work orders after the last one shown. */
+  onMoreWorkOrders?: (equipmentId: string, afterId: string) => Promise<{ items: WorkOrder[]; more: boolean }>;
   onOpenTicket: (id: string) => void;
   /** Stories and tests only: what is open on first render. */
   start?: { tab?: 'equipment' | 'buildings'; equipment?: string | 'new'; page?: EquipmentPageView; area?: { locationId: string } };
@@ -196,7 +209,19 @@ export function FacilitiesScreen(p: FacilitiesProps) {
       )}
       {edit && r && <EquipmentDialog row={edit === 'new' ? null : edit} register={r} onClose={() => setEdit(null)} onSave={(input) => p.onSaveEquipment(edit === 'new' ? null : edit.id, input)} />}
       {area && r && <AreaDialog locationId={area.locationId} area={area.area} building={r.buildings.find((b) => b.id === area.locationId)?.name ?? ''} onClose={() => setArea(null)} onSave={(input) => p.onSaveArea(area.area?.id ?? null, input)} />}
-      <EquipmentDrawer page={page} onClose={() => setPage(null)} onOpenTicket={p.onOpenTicket} />
+      <EquipmentDrawer
+        page={page}
+        onClose={() => setPage(null)}
+        onOpenTicket={p.onOpenTicket}
+        onMore={
+          p.onMoreWorkOrders && page?.moreWorkOrders && page.workOrders.length
+            ? async () => {
+                const next = await p.onMoreWorkOrders!(page.id, page.workOrders[page.workOrders.length - 1]!.id);
+                setPage((cur) => (cur && cur.id === page.id ? { ...cur, workOrders: [...cur.workOrders, ...next.items], moreWorkOrders: next.more } : cur));
+              }
+            : undefined
+        }
+      />
     </DeskPage>
   );
 }
@@ -319,7 +344,8 @@ function AreaDialog({ locationId, area, building, onClose, onSave }: { locationI
 }
 
 /** The equipment page: what and where it is, its work orders (newest first) and its maintenance schedules. */
-function EquipmentDrawer({ page, onClose, onOpenTicket }: { page: EquipmentPageView | null; onClose: () => void; onOpenTicket: (id: string) => void }) {
+function EquipmentDrawer({ page, onClose, onOpenTicket, onMore }: { page: EquipmentPageView | null; onClose: () => void; onOpenTicket: (id: string) => void; onMore?: () => Promise<void> }) {
+  const { busy, error, run } = useRun();
   return (
     <Drawer open={Boolean(page)} onOpenChange={(o) => !o && onClose()} title={page ? `${page.name} (${page.tag})` : ''} size="md">
       {page && (
@@ -372,6 +398,14 @@ function EquipmentDrawer({ page, onClose, onOpenTicket }: { page: EquipmentPageV
                   </li>
                 ))}
               </ul>
+            )}
+            {error && <InlineAlert tone="danger" title="Older work orders could not be shown">{error}</InlineAlert>}
+            {onMore && (
+              <div className="yx-ops-row">
+                <Button size="sm" loading={busy === 'more'} onClick={() => void run('more', onMore)}>
+                  Show more
+                </Button>
+              </div>
             )}
           </Card>
         </div>

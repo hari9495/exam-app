@@ -644,6 +644,12 @@ export class TicketPlaceDto {
   equipmentId?: string | null;
 }
 
+/** Answer 1914: the last work order shown; the next page is older. */
+export class WorkOrderPageDto {
+  @IsUUID()
+  after!: string;
+}
+
 export class PlacePickDto {
   @IsIn(['buildings', 'areas', 'equipment'])
   kind!: 'buildings' | 'areas' | 'equipment';

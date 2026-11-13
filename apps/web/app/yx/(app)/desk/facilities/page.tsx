@@ -23,6 +23,8 @@ export default function YxDeskFacilitiesPage() {
       onSaveArea={(id, input) => write(id ? `/facilities/areas/${encodeURIComponent(id)}` : '/facilities/areas', id ? 'PATCH' : 'POST', input)}
       onSaveEquipment={(id, input) => write(id ? `/facilities/equipment/${encodeURIComponent(id)}` : '/facilities/equipment', id ? 'PATCH' : 'POST', input)}
       onOpenEquipment={(id) => apiFetch(`/desk/facilities/equipment/${encodeURIComponent(id)}`, {}, token) as Promise<EquipmentPageView>}
+      // Answer 1914: older work orders, 25 at a time.
+      onMoreWorkOrders={(id, after) => apiFetch(`/desk/facilities/equipment/${encodeURIComponent(id)}/work-orders?after=${encodeURIComponent(after)}`, {}, token) as Promise<{ items: EquipmentPageView['workOrders']; more: boolean }>}
       onOpenTicket={(id) => router.push(`/yx/desk/tickets/${encodeURIComponent(id)}`)}
     />
   );

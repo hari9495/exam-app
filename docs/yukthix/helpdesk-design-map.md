@@ -789,7 +789,8 @@ File: `packages/yx-ui/src/screens/ops/hlp-23.stories.tsx`. Drawn 13 Nov 2026 (He
 | story (sub-page) | verdict | note |
 |---|---|---|
 | Equipment · Equipment | live | `GET desk/facilities` |
-| EquipmentPage · An equipment page: maintenance and work orders | live | `GET desk/facilities/equipment/:id`: its tickets (only those the person may see), newest first, and the recurring maintenance on it |
+| EquipmentPage · An equipment page: maintenance and work orders | live | `GET desk/facilities/equipment/:id`: its tickets (only those the person may see), newest first, 25 at a time (answer 1914), and the recurring maintenance on it |
+| EquipmentPageMore · An equipment page with older work orders (Show more) | live | Answer 1914: Show more (`GET desk/facilities/equipment/:id/work-orders?after=<last shown>`) adds the next 25 older ones below, newest first, without repeats, and goes away at the end; a cursor that is not one of its work orders is refused (400) and the list stays |
 | EquipmentNew · New equipment | live | `POST desk/facilities/equipment`: desk, owner team (a team of that desk), building, area of that building, tag once per company; audited, toast |
 | EquipmentNewMissing · Save pressed with nothing filled | live | too-early: name, tag, desk, team, building |
 | EquipmentEdit · Edit or retire equipment | live | `PATCH desk/facilities/equipment/:id` (version check); retired equipment drops out of every picker and pauses its maintenance |

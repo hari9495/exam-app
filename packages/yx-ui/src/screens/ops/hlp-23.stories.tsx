@@ -43,6 +43,8 @@ const screen = (over: Partial<FacilitiesProps> = {}) => <FacilitiesScreen state=
 
 export const Equipment: S = { name: 'Equipment', render: () => screen() };
 export const EquipmentPage: S = { name: 'An equipment page: maintenance and work orders', render: () => screen({ start: { page: LIFT_PAGE } }) };
+// Answer 1914: 25 work orders at a time; Show more brings the older ones.
+export const EquipmentPageMore: S = { name: 'An equipment page with older work orders (Show more)', render: () => screen({ start: { page: { ...LIFT_PAGE, moreWorkOrders: true } }, onMoreWorkOrders: async () => ({ items: [{ id: 't9', number: 'FAC-0988', subject: 'Lift door sensor', systemState: 'closed', createdAt: '2026-08-12T05:00:00Z', resolvedAt: '2026-08-12T08:15:00Z', recurring: false }], more: false }) }) };
 export const EquipmentNew: S = { name: 'New equipment', render: () => screen({ start: { equipment: 'new' } }) };
 export const EquipmentNewMissing: S = { name: 'Save pressed with nothing filled', render: () => screen({ start: { equipment: 'new' } }), play: play(press('Save equipment')) };
 export const EquipmentEdit: S = { name: 'Edit or retire equipment', render: () => screen({ start: { equipment: 'e1' } }) };

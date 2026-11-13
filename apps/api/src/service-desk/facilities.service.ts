@@ -143,7 +143,7 @@ export class FacilitiesService {
         tx.location.findFirst({ where: { organizationId: org, id: e.locationId }, select: { name: true } }),
         e.areaId ? tx.sdFacilityArea.findFirst({ where: { organizationId: org, id: e.areaId }, select: { name: true } }) : null,
         tx.sdGroup.findFirst({ where: { organizationId: org, id: e.ownerGroupId }, select: { name: true } }),
-        tx.sdTicket.findMany({ where: { AND: [await visibleTickets(tx, a), { equipmentId: e.id }] }, orderBy: { createdAt: 'desc' }, take: 100, select: { id: true, number: true, subject: true, systemState: true, createdAt: true, resolvedAt: true, tags: true } }),
+        tx.sdTicket.findMany({ where: { AND: [await visibleTickets(tx, a), { equipmentId: e.id }] }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: WORK_ORDER_PAGE + 1, select: WORK_ORDER_FIELDS }),
         tx.sdRecurring.findMany({ where: { organizationId: org, deskId: e.deskId, template: { path: ['equipmentId'], equals: e.id } }, select: { id: true, name: true, rrule: true, nextRunAt: true, state: true } }),
       ]);
       return {
@@ -155,9 +155,30 @@ export class FacilitiesService {
         building: location?.name ?? '',
         area: area?.name ?? null,
         ownerTeam: group?.name ?? '',
-        workOrders: tickets.map((t) => ({ id: t.id, number: t.number, subject: t.subject, systemState: t.systemState, createdAt: t.createdAt, resolvedAt: t.resolvedAt, recurring: t.tags.includes('recurring') })),
+        workOrders: tickets.slice(0, WORK_ORDER_PAGE).map(workOrder),
+        // Answer 1914: older work orders come 25 at a time (GET …/work-orders?after=).
+        moreWorkOrders: tickets.length > WORK_ORDER_PAGE,
         maintenance: schedules,
       };
+    });
+  }
+
+  /** Answer 1914: the next 25 work orders of the equipment raised before `after` (the last one shown), newest first. */
+  async workOrders(a: DeskActor, id: string, after: string) {
+    return this.tx(a, async (tx) => {
+      await this.requireView(tx, a);
+      const org = a.ctx.organizationId;
+      if (!(await tx.sdEquipment.findFirst({ where: { organizationId: org, id }, select: { id: true } }))) throw new NotFoundException('No such equipment.');
+      const seen = await visibleTickets(tx, a);
+      const last = await tx.sdTicket.findFirst({ where: { AND: [seen, { id: after, equipmentId: id }] }, select: { id: true, createdAt: true } });
+      if (!last) throw new BadRequestException('Reload the equipment page and try again.');
+      const rows = await tx.sdTicket.findMany({
+        where: { AND: [seen, { equipmentId: id }, { OR: [{ createdAt: { lt: last.createdAt } }, { createdAt: last.createdAt, id: { lt: last.id } }] }] },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: WORK_ORDER_PAGE + 1,
+        select: WORK_ORDER_FIELDS,
+      });
+      return { items: rows.slice(0, WORK_ORDER_PAGE).map(workOrder), more: rows.length > WORK_ORDER_PAGE };
     });
   }
 
@@ -180,6 +201,11 @@ export class FacilitiesService {
     });
   }
 }
+
+/** Answer 1914: work orders are listed 25 at a time. */
+const WORK_ORDER_PAGE = 25;
+const WORK_ORDER_FIELDS = { id: true, number: true, subject: true, systemState: true, createdAt: true, resolvedAt: true, tags: true } as const;
+const workOrder = (t: { id: string; number: string; subject: string; systemState: string; createdAt: Date; resolvedAt: Date | null; tags: string[] }) => ({ id: t.id, number: t.number, subject: t.subject, systemState: t.systemState, createdAt: t.createdAt, resolvedAt: t.resolvedAt, recurring: t.tags.includes('recurring') });
 
 /**
  * The building, area and equipment a facilities ticket names, checked: live and of this company; equipment brings its
