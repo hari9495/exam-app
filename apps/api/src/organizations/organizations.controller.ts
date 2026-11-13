@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { RequireStepUp } from '../auth/step-up.decorator';
+import { OwnSessionGuard } from '../auth/own-session.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
@@ -84,32 +85,43 @@ export class OrganizationsController {
 
   @Patch('integrations/smtp')
   @RequirePermissions('org:manage_settings')
+  @RequireStepUp()
+  @UseGuards(OwnSessionGuard)
   updateSmtpSettings(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateSmtpSettingsDto) {
     return this.organizationsService.updateSmtpSettings(tenant, userId, dto);
   }
 
   @Patch('integrations/ai-key')
   @RequirePermissions('org:manage_settings')
+  @RequireStepUp()
+  @UseGuards(OwnSessionGuard)
   updateAiKey(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateAiKeyDto) {
     return this.organizationsService.updateAiKey(tenant, userId, dto);
   }
 
   @Patch('integrations/embedding-config')
   @RequirePermissions('org:manage_settings')
+  @RequireStepUp()
+  @UseGuards(OwnSessionGuard)
   updateEmbeddingConfig(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateEmbeddingConfigDto) {
     return this.organizationsService.updateEmbeddingConfig(tenant, userId, dto);
   }
 
-  // Creating an API key and changing the identity provider are step-up actions (P12 §3).
+  // Creating an API key and changing the identity provider are step-up actions (P12 §3). S-10 security check (answer
+  // 1327): every integration change is too (an AI base URL, webhook or HRIS target receives company data), and none is
+  // made while acting for someone else.
   @Post('integrations/api-key')
   @RequirePermissions('org:manage_settings')
   @RequireStepUp()
+  @UseGuards(OwnSessionGuard)
   generateApiKey(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string) {
     return this.organizationsService.generateApiKey(tenant, userId);
   }
 
   @Delete('integrations/api-key')
   @RequirePermissions('org:manage_settings')
+  @RequireStepUp()
+  @UseGuards(OwnSessionGuard)
   revokeApiKey(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string) {
     return this.organizationsService.revokeApiKey(tenant, userId);
   }
@@ -122,6 +134,8 @@ export class OrganizationsController {
 
   @Put('sms-config')
   @RequirePermissions('org:manage_settings')
+  @RequireStepUp()
+  @UseGuards(OwnSessionGuard)
   putSmsConfig(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateSmsConfigDto) {
     return this.organizationsService.putSmsConfig(tenant, userId, dto);
   }
@@ -148,18 +162,24 @@ export class OrganizationsController {
 
   @Patch('integrations/webhook')
   @RequirePermissions('org:manage_settings')
+  @RequireStepUp()
+  @UseGuards(OwnSessionGuard)
   updateWebhookUrl(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateWebhookUrlDto) {
     return this.organizationsService.updateWebhookUrl(tenant, userId, dto);
   }
 
   @Post('integrations/webhook-secret')
   @RequirePermissions('org:manage_settings')
+  @RequireStepUp()
+  @UseGuards(OwnSessionGuard)
   generateWebhookSecret(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string) {
     return this.organizationsService.generateWebhookSecret(tenant, userId);
   }
 
   @Patch('integrations/hris-config')
   @RequirePermissions('org:manage_settings')
+  @RequireStepUp()
+  @UseGuards(OwnSessionGuard)
   updateHrisConfig(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateHrisConfigDto) {
     return this.organizationsService.updateHrisConfig(tenant, userId, dto);
   }
@@ -271,6 +291,8 @@ export class OrganizationsController {
 
   @Put('whatsapp-config')
   @RequirePermissions('org:manage_settings')
+  @RequireStepUp()
+  @UseGuards(OwnSessionGuard)
   updateWhatsappConfig(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateWhatsappConfigDto) {
     return this.organizationsService.putWhatsappConfig(tenant, userId, dto);
   }

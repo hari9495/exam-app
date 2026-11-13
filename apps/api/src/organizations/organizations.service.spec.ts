@@ -1,4 +1,6 @@
 const mockTransporterVerify = jest.fn();
+// S-10: the public-address check resolves DNS; the e2e covers it, here it passes.
+jest.mock('../common/ssrf', () => ({ ...jest.requireActual('../common/ssrf'), assertPublicHttpsHost: jest.fn(async () => undefined) }));
 jest.mock('nodemailer', () => ({
   createTransport: () => ({ verify: mockTransporterVerify }),
 }));
@@ -1136,7 +1138,7 @@ describe('OrganizationsService', () => {
         embeddingConfigured: false, embeddingBaseUrl: null, embeddingModel: null,
         smtpHost: 'smtp.customer.test', smtpPort: 465, emailFromAddress: 'no-reply@customer.test',
         apiKeyConfigured: true, apiKeyPrefix: 'pk_live_abcd', apiKeyCreatedAt,
-        webhookConfigured: true, webhookUrl: 'https://customer.test/webhook',
+        webhookConfigured: true, webhookUrl: 'https://customer.test/…hook',
         hrisExportConfigured: false, hrisExportEnabled: false, hrisProvider: 'generic', hrisTargetUrl: null,
       });
       expect(result).not.toHaveProperty('smtpPasswordEncrypted');
@@ -1652,7 +1654,7 @@ describe('OrganizationsService', () => {
         { url: 'https://example.com/hook' },
       );
 
-      expect(result).toEqual({ webhookUrl: 'https://example.com/hook' });
+      expect(result).toEqual({ webhookUrl: 'https://example.com/…hook' });
       expect(prisma.organization.update).toHaveBeenCalledWith({ where: { id: 'org-1' }, data: { webhookUrl: 'https://example.com/hook' } });
       expect(audit.record).toHaveBeenCalledWith(
         { organizationId: 'org-1', isSuperAdmin: false },

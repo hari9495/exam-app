@@ -88,6 +88,7 @@ export { PROJECT_SETTING_KEYS, projectSettingsChanges, projectSettingsPage, type
 export { MORE_SETTINGS, PAY_SETTINGS, PEOPLE_SETTINGS, TIME_SETTINGS, timeSettingsOverrides, changeWords, historyOnPage, withApprovalPolicies, type SettingChangeRow, pendingOnPage, timeSettingsChanges, timeSettingsPage, type PendingSettingChange, type RegistryDef, type TimeSettingsData } from '../../settings/time-settings-live';
 export { DocumentTypeDrawer, REMINDER_CHOICES, documentTypesPage, type DocTypeInput, type DocTypeRow } from '../../settings/document-types-live';
 export { type AccountData, type AccountBilling, ClosureRequestDrawer, dataPage, invoicesPage, planPage, usagePage } from '../../settings/account-live';
+export { ConnectionDrawer, ShownOnceDrawer, aiPage, calendarPage, developersPage, integrationsPage, type ApiUsage, type CalendarConnection, type ConnectedApp, type DeliveryRow, type DrawerField, type DrawerValues, type IntegrationsState, type ProviderSpec, type ProviderState } from '../../settings/integrations-live';
 export { TIME_REGISTRY_SAMPLE } from '../../settings/time-settings-sample';
 // Projects P-3 (answers 1409, 1410): the designed PRJ-08 mapping rules, live with `live`.
 export { MappingRulesScreen, type LiveMappingRules } from '../projects-billing';

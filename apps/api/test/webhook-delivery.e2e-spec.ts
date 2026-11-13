@@ -7,6 +7,7 @@ import * as http from 'http';
 import { AppModule } from '../src/app.module';
 import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
+import { markSteppedUp } from './fixtures/step-up';
 
 // The org webhook must be a public https endpoint (checked at save time), and the worker re-checks the
 // resolved address before every delivery (SSRF guard). The test receiver is a local http server, so:
@@ -115,6 +116,8 @@ describe('Webhook delivery HTTP flow', () => {
         .send({ organizationSlug: orgSlug, email: 'orgadmin@ci-webhook-delivery.test', password: 'OrgAdminPassw0rd!' })
         .expect(200)
     ).body.accessToken;
+    // S-10 security check: integration changes need the security key.
+    await markSteppedUp(tenantPrisma, orgAdminAccessToken);
 
     // Configure the webhook URL + secret via the same org-admin endpoints apps/web's
     // Integrations page uses, exactly like a real customer would. A plain-http / loopback target is

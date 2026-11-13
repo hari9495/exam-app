@@ -10,6 +10,7 @@ import { AuditService } from '@exam-platform/shared';
 import { OrgSecretsCryptoService } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
 import { AiProvider, AnthropicProvider, OpenAiCompatibleProvider, OpenAiCompatibleEmbeddingProvider } from '@exam-platform/shared';
+import { assertPublicHttpsHost } from '../common/ssrf';
 import { EmailService } from '../email/email.service';
 import { companyWelcomeEmail } from '../email/account-emails';
 import { ACCOUNT_SETUP_EXPIRY_HOURS, issuePasswordToken } from '../auth/password-tokens';
@@ -544,11 +545,12 @@ export class OrganizationsService {
       apiKeyPrefix: org?.apiKeyPrefix ?? null,
       apiKeyCreatedAt: org?.apiKeyCreatedAt ?? null,
       webhookConfigured: org?.webhookUrl !== null && org?.webhookUrl !== undefined,
-      webhookUrl: org?.webhookUrl ?? null,
+      // S-10: a webhook or HRIS URL often carries a token: only its host and last characters come back.
+      webhookUrl: maskUrl(org?.webhookUrl ?? null),
       hrisExportConfigured: Boolean(org?.hrisTargetUrl),
       hrisExportEnabled: org?.hrisExportEnabled ?? false,
       hrisProvider: org?.hrisProvider ?? 'generic',
-      hrisTargetUrl: org?.hrisTargetUrl ?? null,
+      hrisTargetUrl: maskUrl(org?.hrisTargetUrl ?? null),
     };
   }
 
@@ -595,6 +597,8 @@ export class OrganizationsService {
   async updateSmtpSettings(context: TenantContext, actorUserId: string, dto: UpdateSmtpSettingsDto): Promise<{ smtpConfigured: boolean }> {
     const organizationId = this.requireOrganizationId(context);
 
+    // S-10 security check: the SMTP host must resolve to public addresses (no probing of internal hosts).
+    await publicUrlOrBadRequest(`https://${dto.host}`, 'The SMTP host');
     const transporter = nodemailer.createTransport(
       buildSmtpTransportOptions({ host: dto.host, port: dto.port, user: dto.user, password: dto.password }),
     );
@@ -626,6 +630,8 @@ export class OrganizationsService {
   async updateAiKey(context: TenantContext, actorUserId: string, dto: UpdateAiKeyDto): Promise<{ aiKeyConfigured: boolean }> {
     const organizationId = this.requireOrganizationId(context);
 
+    // S-10 security check: a company-supplied base URL must be public https (it receives the company's data).
+    if (dto.provider === 'openai-compatible') await publicUrlOrBadRequest(dto.baseUrl as string, 'The AI base URL');
     const provider: AiProvider =
       dto.provider === 'openai-compatible'
         ? new OpenAiCompatibleProvider(dto.apiKey, dto.baseUrl as string, dto.modelFast as string, dto.modelStandard as string)
@@ -665,6 +671,7 @@ export class OrganizationsService {
 
     // Verify the config at save time (embeds a tiny string) so a bad endpoint/key/model surfaces here
     // rather than silently failing every future search.
+    await publicUrlOrBadRequest(dto.baseUrl, 'The embeddings base URL');
     const provider = new OpenAiCompatibleEmbeddingProvider(dto.apiKey, dto.baseUrl, dto.model);
     try {
       const [vector] = await provider.embed(['connection test']);
@@ -843,7 +850,7 @@ export class OrganizationsService {
     return this.getEasyApplyConfig(context);
   }
 
-  async updateWebhookUrl(context: TenantContext, actorUserId: string, dto: UpdateWebhookUrlDto): Promise<{ webhookUrl: string }> {
+  async updateWebhookUrl(context: TenantContext, actorUserId: string, dto: UpdateWebhookUrlDto): Promise<{ webhookUrl: string | null }> {
     const organizationId = this.requireOrganizationId(context);
     // Same save-time rule as every other org-supplied endpoint (integrations, HRIS): https only, and
     // no private/loopback IP literal. Signed event payloads carry candidate data, so plain http is
@@ -859,7 +866,7 @@ export class OrganizationsService {
       entityType: 'organization',
       entityId: organizationId,
     });
-    return { webhookUrl: dto.url };
+    return { webhookUrl: maskUrl(dto.url) };
   }
 
   async updateHrisConfig(
@@ -1273,5 +1280,31 @@ export class OrganizationsService {
       textColor: org.textColor,
       loginWatermarkEnabled: org.loginWatermarkEnabled,
     };
+  }
+}
+
+/** S-10: a URL shown back to the company: the origin and the last 4 characters of the rest. */
+export function maskUrl(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    const rest = `${u.pathname}${u.search}`;
+    return rest.length > 1 ? `${u.origin}/…${rest.slice(-4)}` : u.origin;
+  } catch {
+    return '…';
+  }
+}
+
+async function publicUrlOrBadRequest(raw: string, what: string): Promise<void> {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new BadRequestException(`${what} is not a valid address.`);
+  }
+  try {
+    await assertPublicHttpsHost(url);
+  } catch {
+    throw new BadRequestException(`${what} must be a public address (https for a web address).`);
   }
 }
