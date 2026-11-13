@@ -14,7 +14,7 @@ import { CatalogService, afterTaskChange } from './catalog.service';
 // SD-1.12 unmask and the read log (YX-SD-15, YX-SD-17). Every write: key + seat checked on the server, one transaction
 // with its timeline event, outbox event and audit row.
 
-const LINK_WORDS: Record<string, string> = { related: 'Related to', duplicate: 'Duplicate of', blocks: 'Blocks', caused_by: 'Caused by', tracked_by: 'Tracked by', follow_up: 'Follow-up of' };
+const LINK_WORDS: Record<string, string> = { related: 'Related to', duplicate: 'Duplicate of', blocks: 'Blocks', caused_by: 'Caused by', tracked_by: 'Tracked by', follow_up: 'Follow-up of', fixes: 'Fixes' };
 
 @Injectable()
 export class WorkService {
@@ -73,7 +73,7 @@ export class WorkService {
         mergedInto,
         links: [
           ...out.filter((l) => others.has(l.toTicketId)).map((l) => ({ id: l.id, kind: l.kind, words: LINK_WORDS[l.kind], ticket: others.get(l.toTicketId)!, direction: 'out' as const })),
-          ...inbound.filter((l) => others.has(l.fromTicketId)).map((l) => ({ id: l.id, kind: l.kind, words: l.kind === 'tracked_by' ? 'Tracks' : l.kind === 'follow_up' ? 'Followed up by' : l.kind === 'duplicate' ? 'Merged here' : LINK_WORDS[l.kind], ticket: others.get(l.fromTicketId)!, direction: 'in' as const })),
+          ...inbound.filter((l) => others.has(l.fromTicketId)).map((l) => ({ id: l.id, kind: l.kind, words: l.kind === 'tracked_by' ? 'Tracks' : l.kind === 'follow_up' ? 'Followed up by' : l.kind === 'duplicate' ? 'Merged here' : l.kind === 'fixes' ? 'Fixed by' : LINK_WORDS[l.kind], ticket: others.get(l.fromTicketId)!, direction: 'in' as const })),
         ],
         sideConversations: threads.map((s) => ({
           id: s.id,
@@ -115,6 +115,8 @@ export class WorkService {
         if (!other.tracker) throw new BadRequestException('Mark the other ticket as a tracker first.');
         if (other.deskId !== t.deskId) throw new BadRequestException('A tracker follows tickets of its own desk.');
       }
+      // ITSM-1: "fixes" is only a change fixing a problem.
+      if (dto.kind === 'fixes' && (t.kind !== 'change' || other.kind !== 'problem')) throw new BadRequestException('Only a change fixes a problem: link from the change to the problem.');
       try {
         const l = await tx.sdTicketLink.create({ data: { organizationId: a.ctx.organizationId, fromTicketId: t.id, toTicketId: other.id, kind: dto.kind, createdBy: a.userId } });
         await this.tickets.event(tx, t, 'linked', null, other.number, { by: a.userId, reason: LINK_WORDS[dto.kind] });
@@ -417,7 +419,7 @@ export class WorkService {
   async templates(a: DeskActor, deskId: string) {
     if (!a.roles.has(deskId) && !has(a, 'desk.desk.create')) throw new NotFoundException('No such desk.');
     return this.tx(a, async (tx) => ({
-      templates: (await tx.sdTemplate.findMany({ where: { organizationId: a.ctx.organizationId, deskId }, orderBy: { name: 'asc' } })).map((x) => ({ id: x.id, name: x.name, ticketTypeId: x.ticketTypeId, defaults: x.defaults, checklist: x.checklist, active: x.active })),
+      templates: (await tx.sdTemplate.findMany({ where: { organizationId: a.ctx.organizationId, deskId }, orderBy: { name: 'asc' } })).map((x) => ({ id: x.id, name: x.name, ticketTypeId: x.ticketTypeId, defaults: x.defaults, checklist: x.checklist, active: x.active, preApproved: x.preApproved })),
       resolutionCodes: (await tx.sdResolutionCode.findMany({ where: { organizationId: a.ctx.organizationId, deskId }, orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }] })).map((x) => ({ id: x.id, code: x.code, label: x.label, active: x.active })),
     }));
   }
@@ -428,17 +430,20 @@ export class WorkService {
     try {
       return await this.tx(a, async (tx) => {
         const d = dto.defaults;
-        if (dto.ticketTypeId && !(await tx.sdTicketType.findFirst({ where: { organizationId: org, deskId, id: dto.ticketTypeId }, select: { id: true } }))) throw new BadRequestException('Choose a ticket type of this desk.');
+        const type = dto.ticketTypeId ? await tx.sdTicketType.findFirst({ where: { organizationId: org, deskId, id: dto.ticketTypeId }, select: { kind: true } }) : null;
+        if (dto.ticketTypeId && !type) throw new BadRequestException('Choose a ticket type of this desk.');
+        // Answer 1935: only a change template is pre-approved (a standard change).
+        if (dto.preApproved && type?.kind !== 'change') throw new BadRequestException('Only a template of a change type can be pre-approved.');
         if (d.categoryId && !(await tx.sdCategory.findFirst({ where: { organizationId: org, deskId, id: d.categoryId }, select: { id: true } }))) throw new BadRequestException('Choose a category of this desk.');
         if (d.groupId && !(await tx.sdGroup.findFirst({ where: { organizationId: org, deskId, id: d.groupId }, select: { id: true } }))) throw new BadRequestException('Choose a group of this desk.');
-        const data = { name: dto.name, ticketTypeId: dto.ticketTypeId ?? null, defaults: d as unknown as Prisma.InputJsonValue, checklist: dto.checklist.map((x) => x.trim()).filter(Boolean), ...(dto.active !== undefined ? { active: dto.active } : {}) };
+        const data = { name: dto.name, ticketTypeId: dto.ticketTypeId ?? null, defaults: d as unknown as Prisma.InputJsonValue, checklist: dto.checklist.map((x) => x.trim()).filter(Boolean), ...(dto.active !== undefined ? { active: dto.active } : {}), ...(type?.kind !== 'change' ? { preApproved: false } : dto.preApproved !== undefined ? { preApproved: dto.preApproved } : {}) };
         const x = id
           ? (await tx.sdTemplate.updateMany({ where: { organizationId: org, deskId, id }, data })).count
             ? { id }
             : null
           : await tx.sdTemplate.create({ data: { organizationId: org, deskId, ...data, createdBy: a.userId } });
         if (!x) throw new NotFoundException('No such template.');
-        await audit(tx, a, id ? 'desk.template.updated' : 'desk.template.created', 'sd_template', x.id, { deskId, name: dto.name });
+        await audit(tx, a, id ? 'desk.template.updated' : 'desk.template.created', 'sd_template', x.id, { deskId, name: dto.name, ...(dto.preApproved !== undefined ? { preApproved: dto.preApproved } : {}) });
         return { id: x.id };
       });
     } catch (e) {

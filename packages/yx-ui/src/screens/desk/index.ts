@@ -98,3 +98,5 @@ export { ContractorPortalScreen } from '../portals/t9-business';
 export { type LiveContractorPortal, type LiveContractorTab, type ContractorPortalData, type ContractorPackData } from '../portals/contractor-portal-live';
 // HLP-15 to HLP-19 (12 Nov 2026): the drawn stories' Kaveri Foods data, for the web app's page tests.
 export * as deskSamples from './esm-data';
+export { ItsmSettingsPanel, type ItsmSettingsValue, type ItsmSettingsChange, type ItsmWindowChange } from '../ops/hlp-22-settings';
+export { ChangesScreen, ChangeRecordScreen, type ChangeRow, type ChangeInput, type LiveChanges, type LiveChangeRecord } from '../ops/hlp-22-itsm';

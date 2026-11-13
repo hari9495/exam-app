@@ -7,7 +7,7 @@ import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import { cleanHtml, htmlToText, textToHtml } from './rich-text';
 import { DeskActor, audit, companyOf, emit } from './desk-access';
-import { RaiseTicketDto, RequesterReplyDto, WatcherDto } from './dto';
+import { ITSM_KINDS, RaiseTicketDto, RequesterReplyDto, WatcherDto } from './dto';
 import { Ticket, TicketsService } from './tickets.service';
 import { assetsOf } from './asset-pick';
 import { fieldsFor, shownFields } from './ticket-fields';
@@ -95,7 +95,7 @@ export class RequesterService {
     const personId = await this.personOf(tx, r, false);
     const t = personId ? await tx.sdTicket.findFirst({ where: { id, organizationId: org } }) : null;
     const ids = personId ? await this.idsOf(tx, org, personId) : [];
-    if (!t || !personId || !(await this.follows(tx, org, ids, t))) throw new NotFoundException('No such ticket.');
+    if (!t || !personId || ITSM_KINDS.includes(t.kind) || !(await this.follows(tx, org, ids, t))) throw new NotFoundException('No such ticket.');
     return { t, personId, ids };
   }
 
@@ -105,7 +105,7 @@ export class RequesterService {
     return this.tx(r, async (tx) => {
       const desks = await tx.sdDesk.findMany({ where: { organizationId: org, status: 'active', kind: { not: 'customer_support' } }, orderBy: { name: 'asc' } });
       const ids = desks.map((d) => d.id);
-      const types = await tx.sdTicketType.findMany({ where: { organizationId: org, deskId: { in: ids }, active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
+      const types = await tx.sdTicketType.findMany({ where: { organizationId: org, deskId: { in: ids }, active: true, kind: { notIn: [...ITSM_KINDS] } }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
       const cats = await tx.sdCategory.findMany({ where: { organizationId: org, deskId: { in: ids }, active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
       const cache = new Map();
       const closed = new Map(await Promise.all(desks.map(async (d) => [d.id, await this.tickets.sla.closedNow(tx, org, d, new Date(), cache)] as const)));
@@ -187,7 +187,8 @@ export class RequesterService {
       if (!personId) return [];
       const ids = await this.idsOf(tx, org, personId);
       const watched = await this.visibleIds(tx, org, ids);
-      const rows = await tx.sdTicket.findMany({ where: { organizationId: org, OR: [...(this.mine(org, ids).OR ?? []), { id: { in: watched }, private: false, sensitive: false }] }, orderBy: { updatedAt: 'desc' }, take: 200 });
+      // ITSM: changes and problems are IT's own records, never in anyone's "My tickets" (answer 1931).
+      const rows = await tx.sdTicket.findMany({ where: { organizationId: org, kind: { notIn: [...ITSM_KINDS] }, OR: [...(this.mine(org, ids).OR ?? []), { id: { in: watched }, private: false, sensitive: false }] }, orderBy: { updatedAt: 'desc' }, take: 200 });
       const statuses = new Map((await tx.sdStatus.findMany({ where: { organizationId: org, id: { in: rows.map((t) => t.statusId) } }, select: { id: true, label: true } })).map((s) => [s.id, s.label]));
       const desks = new Map((await tx.sdDesk.findMany({ where: { organizationId: org, id: { in: rows.map((t) => t.deskId) } }, select: { id: true, name: true, reopenWindowDays: true, requesterCanReopen: true, autoCloseDays: true, ratingReasons: true } })).map((d) => [d.id, d]));
       // HLP-01: the resolution promise on open tickets, and on solved ones when it closes, until when a reply reopens

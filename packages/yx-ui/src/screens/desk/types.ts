@@ -44,7 +44,8 @@ export interface DeskSummary {
 
 export interface DeskType {
   id: string;
-  kind: 'incident' | 'request' | 'question';
+  /** Change and problem: IT desks only (ITSM answer 1931). */
+  kind: 'incident' | 'request' | 'question' | 'change' | 'problem';
   name: string;
   active: boolean;
   sortOrder: number;
@@ -533,7 +534,7 @@ export interface TicketWork {
 }
 
 export interface DeskTemplates {
-  templates: { id: string; name: string; ticketTypeId: string | null; defaults: { categoryId?: string; groupId?: string; priority?: number; tags?: string[] }; checklist: string[]; active: boolean }[];
+  templates: { id: string; name: string; ticketTypeId: string | null; defaults: { categoryId?: string; groupId?: string; priority?: number; tags?: string[] }; checklist: string[]; active: boolean; /** ITSM answer 1935: a standard change. */ preApproved?: boolean }[];
   resolutionCodes: { id: string; code: string; label: string; active: boolean }[];
 }
 

@@ -39,6 +39,7 @@ describe('notification catalog', () => {
       'workflow.approval.no_approver',
       'helpdesk.request.stage',
       'helpdesk.rule.notify',
+      'helpdesk.change.scheduled',
       'helpdesk.rule.failed',
       'helpdesk.msg.link_ended',
       'time.roster.published',

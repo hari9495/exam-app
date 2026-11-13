@@ -22,6 +22,7 @@ import {
   GroupDto,
   TicketFieldDto,
   HolidayDto,
+  ITSM_KINDS,
   MatrixDto,
   ScenarioDto,
   StatusDto,
@@ -241,8 +242,9 @@ export class DesksService {
 
   /** Staff people of the company who can be given a seat. */
   async users(a: DeskActor, search?: string) {
-    // Colleagues to give a seat to, or (batch 4) to send a scheduled report to: names and work emails only.
-    if (!has(a, 'desk.member.manage') && !has(a, 'desk.report.manage') && !has(a, 'desk.kb.publish')) throw new ForbiddenException('You cannot look up colleagues here.');
+    // Colleagues to give a seat to, or (batch 4) to send a scheduled report to, or (ITSM-1) to name on the change board:
+    // names and work emails only.
+    if (!has(a, 'desk.member.manage') && !has(a, 'desk.report.manage') && !has(a, 'desk.kb.publish') && !has(a, 'desk.settings.manage')) throw new ForbiddenException('You cannot look up colleagues here.');
     return this.tx(a, (tx) =>
       tx.user.findMany({
         where: { organizationId: a.ctx.organizationId, status: 'active', ...(search ? { OR: [{ name: { contains: search, mode: 'insensitive' } }, { email: { contains: search, mode: 'insensitive' } }] } : {}) },
@@ -442,7 +444,9 @@ export class DesksService {
     const org = a.ctx.organizationId;
     try {
       return await this.tx(a, async (tx) => {
-        await this.desk(tx, a, deskId);
+        const desk = await this.desk(tx, a, deskId);
+        // Answer 1931: change and problem types only on IT desks.
+        if ('kind' in dto && ITSM_KINDS.includes(dto.kind) && desk.kind !== 'it') throw new BadRequestException('Change and problem types are for IT desks only.');
         let id = typeId;
         if (id) {
           const res = await tx.sdTicketType.updateMany({ where: { organizationId: org, deskId, id }, data: dto });

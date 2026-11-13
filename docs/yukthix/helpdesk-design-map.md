@@ -191,6 +191,7 @@ portal designs also wait: `settings: MobileHelpTicketsScreen`, `MobilePolicyAckS
 ## 4. Design groups, story by story
 
 ### A. Helpdesk HLP-01 … 23
+### A. Helpdesk HLP-01 … 22
 
 #### HLP-01 · Help centre
 
@@ -759,23 +760,27 @@ File: `packages/yx-ui/src/screens/ops/hlp-21.stories.tsx`. Drawn 13 Nov 2026 (He
 
 File: `packages/yx-ui/src/screens/ops/hlp-22.stories.tsx` (screens in `hlp-22-itsm.tsx`). A DRAFT drawn 13 Nov 2026 for
 Helpdesk plan item 5 (IT change requests and problem records); the plan and questions 1931 to 1943 are in
-`docs/yukthix/helpdesk-itsm-plan.md`. Nothing is built until the founder answers.
+`docs/yukthix/helpdesk-itsm-plan.md`. Founder approved 1931 to 1943 as suggested ("all ok"); built on
+`feat/yukthix-itsm` in parts ITSM-1 to ITSM-4.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Changes · Changes · list, clash and the change calendar | design only, feature not built | draft: the change list, a clash between two changes, freeze days in the calendar (1936) |
-| ChangesEmpty · Changes · none yet | design only, feature not built | draft |
-| NewChange · New change · kind, risk questions, window, way back | design only, feature not built | draft: kind as one choice, the five risk questions (1933), the approval route by risk (1934) |
-| NewChangeTooEarly · New change · sent with nothing filled | design only, feature not built | draft: what is missing, shown when pressed |
-| NewEmergency · New change · emergency, one approver now | design only, feature not built | draft (1934) |
-| WaitingForApproval · A change · waiting for the change board (high risk) | design only, feature not built | draft: the approvals engine's route |
-| ScheduledClash · A change · scheduled, clashes with another | design only, feature not built | draft: a standard change from a pre-approved template (1935) |
-| InProgress · A change · in progress, the checklist and the outcome | design only, feature not built | draft: done, done with problems, backed out |
-| Review · A change · review after it caused incidents | design only, feature not built | draft (1938) |
+| Changes · Changes · list, clash and the change calendar | live | ITSM-2: /yx/desk/changes renders ChangesScreen (live prop): the desk's changes, clashes on one service, freeze days of the next two weeks |
+| ExportChanges · Changes · export for an audit (CSV or PDF, answer 1943) | live | ITSM-2: the Export dialog; GET /desk/changes/export (CSV or PDF), audited |
+| ChangesEmpty · Changes · none yet | live | ITSM-2: the same page before the first change |
+| NewChange · New change · kind, risk questions, window, way back | live | ITSM-2: NewChangeDrawer (live): the desk's questions (1933), the route by risk (1934), the window and freeze checks (1936) |
+| NewChangeTooEarly · New change · sent with nothing filled | live | ITSM-2: the same drawer's checks before sending |
+| NewEmergency · New change · emergency, one approver now | live | ITSM-2: an emergency goes to one IT lead; in a freeze it needs a reason (1936) |
+| WaitingForApproval · A change · waiting for the change board (high risk) | live | ITSM-2: /yx/desk/changes/[id] renders ChangeRecordScreen (live prop) with the approvals engine's route |
+| ScheduledClash · A change · scheduled, clashes with another | live | ITSM-2: a standard change from a pre-approved template (1935); the clash warning |
+| InProgress · A change · in progress, the checklist and the outcome | live | ITSM-2: start in the window, the checklist, done / done with problems / backed out |
+| Review · A change · review after it caused incidents | live | ITSM-2: the review after a high-risk, emergency or failed change, by a lead or the board (1938) |
 | Problems · Problems · list, a repeat suggested | design only, feature not built | draft (1939) |
 | ProblemInvestigating · A problem · linked incidents, cause not found yet | design only, feature not built | draft |
 | KnownError · A problem · known error, workaround to the knowledge base, fix by change | design only, feature not built | draft (1940, 1941) |
-| NoAccess · No access (not on the IT desk) | design only, feature not built | draft |
+| NoAccess · No access (not on the IT desk) | live | ITSM-2: anyone without an IT desk seat |
+| Settings · Settings · approval by risk, risk questions, banner and review, change window | live | ITSM-1: /yx/desk/setup › Changes (IT desks) renders ItsmSettingsPanel; desk settings with defaults (1933-1939), the company's window and freezes (1936) |
+| SettingsReadOnly · Settings · an agent sees them, cannot change them | live | ITSM-1: agents of the IT desk see the tab read-only; the API refuses their changes |
 
 #### HLP-23 · Buildings and equipment
 

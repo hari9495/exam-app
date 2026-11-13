@@ -501,6 +501,8 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(has('desk.directory.manage'), L('desk-people-list', 'People list', '/yx/desk/people-list')),
           // Helpdesk plan item 3: the company's business applications and their owners (desk staff read, the owner edits).
           ...when(any('desk.desk.create', 'desk.ticket.view'), L('desk-apps', 'Applications', '/yx/desk/apps')),
+          // Helpdesk ITSM-2: IT changes (the page shows them to the IT desks' agents, leads and admins only).
+          ...when(has('desk.ticket.view'), L('desk-changes', 'Changes', '/yx/desk/changes')),
           // Helpdesk plan item 4: buildings, areas and equipment (the facilities desks' staff; their admins edit).
           ...when(any('desk.desk.create', 'desk.ticket.view'), L('desk-facilities', 'Buildings and equipment', '/yx/desk/facilities')),
           ...when(has('desk.desk.create'), L('desk-privacy', 'Privacy requests', '/yx/desk/privacy')),
