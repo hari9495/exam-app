@@ -2145,3 +2145,21 @@ first: the command palette's "desk actions" story and timing on the HLP-03 work 
 
 - Founder (13 Nov 2026, "all ok"): 1841 to 1846, 1861 to 1865, 1891 to 1894, 1911 to 1914 and 1931 to 1943 approved as suggested. To build: article-review cards to KB settings (1841); requesters fill "everyone" fields (1842); "Required before solving" per field (1843); field values in CSV and custom reports, lead-only to leads (1844); on-behalf picker shows only people one may raise for (1846); an "Application access" item in the IT starter catalogue (1891); an access register per application, later (1892); warn the Service Desk owner when an app owner leaves (1894); requesters name the building or area (1911); tell facilities admins when a schedule pauses (1913); "show more" on equipment history (1914); ITSM-1 to ITSM-4 as planned (1931-1943).
 - Founder (13 Nov 2026): 1601, HLP-15 to HLP-23 designs reviewed in Storybook, "its good".
+- Founder (13 Nov 2026): 1951 to 1958 (ITSM changes) approved as suggested.
+
+## Founder request: "Ask YukthiX" assistant (13 Nov 2026, "yes and ok for all", 2101 to 2108)
+A help assistant that answers questions about YukthiX like a support agent, built on the drawn HLP-01 assistant slot,
+the knowledge base's "use in assistant answers" flag, Contact YukthiX tickets and the sales-assist queue.
+- 2101: inside the app first (Help drawer and Help centre); the public website version second.
+- 2102: Claude through YukthiX's own Anthropic account (YukthiX pays); the key lives only in server config, never in
+  chat or the repo. The AI sees only the question and approved help text, never company data.
+- 2103: answers only from approved YukthiX content (help articles, guides, plan facts, What's new, known issues), each
+  answer citing its article; when nothing covers it, it says so and offers a person. Never guesses.
+- 2104: hands over when unsure, when the issue needs someone to look at the account, after 2 unhelpful answers, or on
+  request: "Raise support ticket" creates a Contact YukthiX ticket with the chat attached.
+- 2105: "Send feature request" lands in a staff Feature requests list (duplicates grouped with a company count;
+  Planned, Not now, Done; the company is told when it ships). Buying or upgrade questions go to sales-assist.
+- 2106: English first, then Hindi, Tamil and Telugu.
+- 2107: everyone in a customer company; answers follow the person's role.
+- 2108: 50 questions per person per day, a platform setting.
+Staff view: unanswered questions, thumbs up or down, chats that became tickets. About 2 to 3 weeks; drawn first.
