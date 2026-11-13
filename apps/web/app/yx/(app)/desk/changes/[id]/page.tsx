@@ -27,7 +27,8 @@ type Detail = Omit<ChangeRow, 'from' | 'to'> & {
   review: { text: string; by: string; at: string } | null;
   causedIncidents: { id: string; number: string; subject: string }[];
   linked: { id: string; number: string; subject: string; kind: string }[];
-  can: { start: boolean; work: boolean; review: boolean };
+  can: { start: boolean; work: boolean; review: boolean; cancel: boolean };
+  cancelReason: string | null;
 };
 
 const STEP: Record<string, ApprovalStep['status']> = { approved: 'done', rejected: 'rejected', sent_back: 'rejected', skipped: 'skipped', open: 'current', waiting: 'pending' };
@@ -83,6 +84,8 @@ export default function YxDeskChangePage({ params }: { params: Promise<{ id: str
         onTasks: (done) => write(`${path}/tasks`, 'PATCH', { version: d.version, done }),
         onOutcome: (outcome, note) => write(`${path}/outcome`, 'POST', { version: d.version, outcome, ...(note ? { note } : {}) }),
         onReview: (review) => write(`${path}/review`, 'POST', { version: d.version, review }),
+        onCancel: (reason) => write(`${path}/cancel`, 'POST', { version: d.version, reason }),
+        cancelReason: d.cancelReason,
         onBack: () => router.push('/yx/desk/changes'),
       }}
     />

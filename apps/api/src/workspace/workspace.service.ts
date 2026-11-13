@@ -19,6 +19,7 @@ import { ExitsService } from '../lifecycle/exits.service';
 import { ExitExtrasService } from '../lifecycle/exit-extras.service';
 import { HiringHomeService, type HiringHome } from '../interviewing/hiring-home.service';
 import { CasesService } from '../cases/cases.service';
+import { ChangesService } from '../service-desk/changes.service';
 import { ApprovalsEngine } from '../workflow/approvals-engine.service';
 import { DeskAccessService, visibleTickets } from '../service-desk/desk-access';
 import { StatutoryFilingsService } from '../payroll/statutory-filings.service';
@@ -453,6 +454,12 @@ export class WorkspaceService {
         // Founder answer 73: managers' misconduct reports waiting for this HR person (in scope) count on Cases too.
         if (keys.has('case.disciplinary.raise')) out.casesOpen = (out.casesOpen ?? 0) + (await this.service(CasesService).reportsWaiting(tx, c, user));
         if (lists.has('ethics') || lists.has('escalation')) out.ethicsReports = await open('whistleblower');
+      }
+      // ITSM answer 1953: Changes shows to the change board, application owners and approvers of a change (the count is
+      // the changes still open that they are asked about; absent for everyone else). The page checks again.
+      if (!support) {
+        const asked = await this.service(ChangesService).askedIds(tx, org, me);
+        if (asked) out.changesAsked = await tx.sdChange.count({ where: { organizationId: org, id: { in: asked }, stage: { in: ['approval', 'scheduled', 'in_progress', 'review'] } } });
       }
       if (keys.has('document.manage')) out.documentsToVerify = await tx.document.count({ where: { organizationId: org, status: 'uploaded' } });
       // People menu (PPL designs): accepted offers not yet onboarded; probations whose review is due or overdue (a manager's

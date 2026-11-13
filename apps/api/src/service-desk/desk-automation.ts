@@ -44,6 +44,12 @@ export class DeskAutomation implements RecordTypeHandler, OnModuleInit {
     { key: 'assigned', label: 'A ticket is assigned' },
     { key: 'idle', label: 'An open ticket has no change for some hours', time: true },
     { key: 'open_for', label: 'A ticket is still open some hours after it was raised', time: true },
+    // Helpdesk ITSM-4: change and problem moments on IT desks (the record is the change or problem ticket).
+    { key: 'change_scheduled', label: 'An IT change is approved and scheduled' },
+    { key: 'change_finished', label: 'An IT change is done, backed out or cancelled' },
+    { key: 'change_overrun', label: 'An IT change runs past its window' },
+    { key: 'problem_linked', label: 'An incident is linked to a problem' },
+    { key: 'problem_known_error', label: 'A problem becomes a known error' },
   ];
   private readonly logger = new Logger(DeskAutomation.name);
 
@@ -98,6 +104,8 @@ export class DeskAutomation implements RecordTypeHandler, OnModuleInit {
     if (!id) return null;
     if (type === 'helpdesk.ticket.created') return { recordId: id, trigger: 'created' };
     if (type === 'helpdesk.ticket.assigned') return { recordId: id, trigger: 'assigned', changed: ['assigned'] };
+    const itsm: Record<string, string> = { 'helpdesk.change.scheduled': 'change_scheduled', 'helpdesk.change.finished': 'change_finished', 'helpdesk.change.overrun': 'change_overrun', 'helpdesk.problem.linked': 'problem_linked', 'helpdesk.problem.known_error': 'problem_known_error' };
+    if (itsm[type]) return { recordId: id, trigger: itsm[type] };
     if (type === 'helpdesk.ticket.updated') return { recordId: id, trigger: 'updated', changed: Array.isArray(p.fields) ? p.fields.filter((f): f is string => typeof f === 'string') : [] };
     return null;
   }

@@ -100,3 +100,24 @@ const settings = (v: ItsmSettingsValue) => (
 );
 export const Settings: S = { name: 'Settings · approval by risk, risk questions, banner and review, change window', render: () => settings(SETTINGS) };
 export const SettingsReadOnly: S = { name: 'Settings · an agent sees them, cannot change them', render: () => settings({ ...SETTINGS, canEdit: false, canEditWindow: false }) };
+
+// ITSM-3 and ITSM-4 (answers 1939, 1951, 1953): the report, the asked-about view and a new problem from a repeat.
+const REPORT = {
+  period: 'the last 90 days',
+  changes: {
+    total: 14,
+    byKind: [
+      { kind: 'standard' as const, done: 6, done_with_problems: 0, backed_out: 1, rejected: 0, cancelled: 0, open: 1 },
+      { kind: 'normal' as const, done: 3, done_with_problems: 1, backed_out: 0, rejected: 1, cancelled: 1, open: 0 },
+      { kind: 'emergency' as const, done: 1, done_with_problems: 0, backed_out: 0, rejected: 0, cancelled: 0, open: 0 },
+    ],
+    finished: 12,
+    failed: 2,
+    failedRate: 17,
+  },
+  problems: { open: 3, byAge: [{ label: 'Under 7 days', count: 1 }, { label: '7 to 30 days', count: 2 }, { label: '30 to 90 days', count: 0 }, { label: 'Over 90 days', count: 0 }], incidentsPerProblem: 4.5, top: [{ number: 'PRB-4', title: 'Attendance devices at Hosur stop syncing overnight', incidents: 6 }] },
+};
+export const ChangesReport: S = { name: 'Changes · report for the last 90 days (failed-change rate, problems by age)', render: () => <ChangesScreen rows={CHANGES} freezes={FREEZES} today={TODAY} report={REPORT} /> };
+export const ChangesAsked: S = { name: 'Changes · only those I am asked about (change board, application owner)', render: () => <ChangesScreen asked rows={CHANGES.slice(0, 2)} freezes={FREEZES} today={TODAY} onOpen={() => undefined} /> };
+export const NewProblem: S = { name: 'Problems · new problem', render: () => <ProblemsScreen rows={PROBLEMS} suggestions={[]} newOpen /> };
+

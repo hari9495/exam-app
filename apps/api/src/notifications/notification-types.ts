@@ -60,6 +60,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'helpdesk.rule.notify', group: 'assignments', label: 'A desk rule sent you a message' },
   // Helpdesk ITSM-2 (answer 1937): a planned change to an application you own.
   { type: 'helpdesk.change.scheduled', group: 'reminders', label: 'A change to an application you own is scheduled' },
+  // ITSM answer 1955: a change still in progress after its window ended (to the desk's leads).
+  { type: 'helpdesk.change.overrun', group: 'reminders', label: 'An IT change is running past its window' },
   { type: 'helpdesk.rule.failed', group: 'reminders', label: 'A desk rule failed or stopped at its limit' },
   // Service Desk 3b-2 batch 3 (founder decision 9 Oct 2026).
   { type: 'helpdesk.msg.link_ended', group: 'reminders', label: 'A phone linked to your desk was linked in another company' },

@@ -234,3 +234,106 @@ export class ChangeExportDto {
   @IsIn(['csv', 'pdf'])
   format!: 'csv' | 'pdf';
 }
+
+/** Answer 1951: cancel or withdraw a change before it starts, with a reason. */
+export class ChangeCancelDto extends ChangeVersionDto {
+  @IsString()
+  @MinLength(10)
+  @MaxLength(500)
+  reason!: string;
+}
+
+/** ITSM-3: a new problem, optionally with the incidents it explains (answer 1939's suggestion fills them in). */
+export class ProblemDto {
+  @IsUUID()
+  deskId!: string;
+
+  @IsString()
+  @MinLength(5)
+  @MaxLength(200)
+  title!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  description?: string;
+
+  @IsOptional()
+  @IsUUID()
+  categoryId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsUUID('all', { each: true })
+  incidentIds?: string[];
+}
+
+/** Link incidents in bulk, by their numbers ("IT-1031"). */
+export class ProblemLinkDto {
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  @MaxLength(40, { each: true })
+  numbers!: string[];
+}
+
+export class ProblemUpdateDto extends ChangeVersionDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  rootCause?: string;
+
+  @IsOptional()
+  @IsIn(['investigating'])
+  state?: 'investigating';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  closingReply?: string;
+}
+
+/** Answer 1940: a known error with its workaround, a draft article (agents' space by default) and a known-issue notice. */
+export class KnownErrorDto extends ChangeVersionDto {
+  @IsString()
+  @MinLength(10)
+  @MaxLength(4000)
+  workaround!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  article?: boolean;
+
+  @IsOptional()
+  @IsUUID()
+  spaceId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  banner?: boolean;
+}
+
+export class ProblemFixDto {
+  @IsUUID()
+  changeId!: string;
+}
+
+export class ProblemCloseDto extends ChangeVersionDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  reply?: string;
+}
+
+/** ITSM-4: the changes and problems report of a period (India dates). */
+export class ItsmReportDto {
+  @IsUUID()
+  deskId!: string;
+
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  from!: string;
+
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  to!: string;
+}

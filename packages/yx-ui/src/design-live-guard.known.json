@@ -51,8 +51,6 @@
     "ops: LoadingCase",
     "ops: PoshCaseScreen",
     "ops: PoshComplaintScreen",
-    "ops: ProblemRecordScreen",
-    "ops: ProblemsScreen",
     "ops: StatutorySetupScreen",
     "pay: FirstUse",
     "pay: GroupHealthScreen",
