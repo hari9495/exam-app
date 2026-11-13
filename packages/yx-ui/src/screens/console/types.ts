@@ -35,6 +35,8 @@ export interface CompanyDetail extends CompanyRow {
   closureRequest?: { status: 'requested' | 'closed'; reason: string; askedAt: string; keepUntil: string | null } | null;
   /** Answer 1882: an open request to delete the company's data; `mine` when the viewer asked (a second person confirms). */
   deletion?: { id: string; mine: boolean; askedAt: string; reason: string } | null;
+  /** Answers 1973, 1975: the data was deleted; the statutory records are kept read-only until a day; the certificate. */
+  deleted?: { at: string; recordsKeptUntil: string | null; certificateSha256: string | null } | null;
 }
 
 /** Careers answer 442: GET platform/companies/:id/settings (the settings only YukthiX changes, each allowed by the plan). */

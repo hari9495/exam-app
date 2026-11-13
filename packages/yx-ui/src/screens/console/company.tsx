@@ -104,6 +104,8 @@ export interface CompanyScreenProps {
   onAskDeletion?: (reason: string) => Promise<unknown>;
   onConfirmDeletion?: () => Promise<unknown>;
   onWithdrawDeletion?: () => Promise<unknown>;
+  /** Answer 1973: download the deletion certificate. */
+  onDownloadCertificate?: () => Promise<unknown>;
 }
 
 const MOVE: Record<LifecycleAction, { title: (n: string) => string; consequence: string; label: string; destructive?: boolean }> = {
@@ -204,13 +206,22 @@ export function CompanyScreen(props: CompanyScreenProps) {
             </InlineAlert>
           )}
 
-          {props.canManage && c.lifecycle === 'closed' && (
+          {c.deleted && (
+            <InlineAlert
+              tone="info"
+              title={`${c.name}'s data was deleted on ${day(c.deleted.at)}`}
+              actions={props.onDownloadCertificate && <Button onClick={() => void run('certificate', () => props.onDownloadCertificate!())}>Download certificate</Button>}
+            >
+              {c.deleted.recordsKeptUntil ? `Its statutory records (audit log, payroll, filings) are kept read-only until ${day(c.deleted.recordsKeptUntil)}.` : 'Its statutory records are kept read-only.'}
+            </InlineAlert>
+          )}
+          {props.canManage && c.lifecycle === 'closed' && !c.deleted && (
             <InlineAlert
               tone="danger"
               title={c.deletion ? (c.deletion.mine ? `You asked on ${day(c.deletion.askedAt)} to delete ${c.name}'s data` : `Deleting ${c.name}'s data was asked on ${day(c.deletion.askedAt)}`) : `Delete ${c.name}'s data`}
               actions={
                 !c.deletion ? (
-                  props.onAskDeletion && <Button variant="danger" onClick={() => askReason({ title: `Delete all of ${c.name}'s data?`, consequence: 'Only after the kept days. A second staff member confirms; nothing can bring it back. A deletion certificate is kept.', confirmLabel: 'Ask to delete', destructive: true, action: (reason) => props.onAskDeletion!(reason).then(() => undefined) })}>Ask to delete the data</Button>
+                  props.onAskDeletion && <Button variant="danger" onClick={() => askReason({ title: `Delete all of ${c.name}'s data?`, consequence: 'Only after the kept days. A second staff member confirms; nothing can bring it back. Statutory records (audit log, payroll, filings) stay read-only for their legal period. A deletion certificate is kept.', confirmLabel: 'Ask to delete', destructive: true, action: (reason) => props.onAskDeletion!(reason).then(() => undefined) })}>Ask to delete the data</Button>
                 ) : c.deletion.mine ? (
                   props.onWithdrawDeletion && <Button onClick={() => void run('withdraw', () => props.onWithdrawDeletion!())}>Withdraw</Button>
                 ) : (
@@ -226,7 +237,7 @@ export function CompanyScreen(props: CompanyScreenProps) {
               open
               onOpenChange={(o) => !o && setConfirmingDeletion(false)}
               title={`Delete all of ${c.name}'s data now?`}
-              consequence="Every record and stored file of this company is deleted for good. Nothing can bring it back. The deletion certificate is kept."
+              consequence="Every record and stored file of this company is deleted for good, except its statutory records (audit log, payroll, filings), kept read-only for their legal period. Nothing can bring it back. The deletion certificate is kept."
               confirmLabel="Delete all data"
               destructive
               onConfirm={async () => {

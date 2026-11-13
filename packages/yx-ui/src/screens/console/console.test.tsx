@@ -139,6 +139,15 @@ describe('One company', () => {
     expect(screen.getByRole('button', { name: 'Withdraw' })).toBeInTheDocument();
   });
 
+  it('1973/1975: a deleted company says until when its statutory records are kept and downloads the certificate; negative: no new deletion', async () => {
+    const download = vi.fn().mockResolvedValue(undefined);
+    render(<CompanyScreen {...({ state: 'ready', company: { ...COMPANY, lifecycle: 'closed', deleted: { at: '2026-12-20T10:00:00Z', recordsKeptUntil: '2034-12-20', certificateSha256: 'a'.repeat(64) } }, sessions: [], canManage: true, canSupport: false, now: NOW, onBack: vi.fn(), onLifecycle: ok(), onExtendTrial: ok(), onRequestSupport: ok(), onOpenSession: ok(), onEndSession: ok(), onWithdrawRequest: ok(), onAskDeletion: ok(), onDownloadCertificate: download } as CompanyScreenProps)} />);
+    expect(screen.getByText(/kept read-only until/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Ask to delete the data' })).toBeNull();
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Download certificate' }));
+    expect(download).toHaveBeenCalledTimes(1);
+  });
+
   it('1882 negative: an open company and a viewer see no deletion at all', () => {
     const { unmount } = render(<CompanyScreen {...({ state: 'ready', company: { ...COMPANY, lifecycle: 'active' }, sessions: [], canManage: true, canSupport: false, now: NOW, onBack: vi.fn(), onLifecycle: ok(), onExtendTrial: ok(), onRequestSupport: ok(), onOpenSession: ok(), onEndSession: ok(), onWithdrawRequest: ok(), onAskDeletion: ok() } as CompanyScreenProps)} />);
     expect(screen.queryByText(/data/i, { selector: '.yx-alert__title' })).toBeNull();
