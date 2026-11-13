@@ -21479,5 +21479,30 @@
     "expected": "Step 1: the key in a drawer, once. Step 2: only its first characters. Step 3: only the start and last 4 characters of the address. Step 4: refused before saving: a full https address. Step 5: the address is not shown; Leave it blank to keep it. Step 6: no access. Step 7: the new pages open.",
     "stories": [],
     "note": "Positive and negative. The security check itself is in the API tests."
+  },
+  {
+    "id": "MT-SET-FU1",
+    "area": "Settings follow-ups (13 Nov 2026)",
+    "screen": "Console › Company; Settings › AI; Settings › Plan & add-ons",
+    "url": "http://localhost:3000/yx/settings/integrations/ai",
+    "account": "Two YukthiX staff with passkeys (console); a company System Admin; an IT person given integration.manage; a finance person.",
+    "steps": [
+      "Console: open a company that asked to close.",
+      "Console: close it; open it again.",
+      "Console, staff 1: on a throwaway company closed over 30 days ago, Ask to delete the data with a reason.",
+      "Negative: staff 1 tries Confirm deletion.",
+      "Console, staff 2: Confirm deletion; confirm in the dialog.",
+      "Negative: Ask to delete on an open company, and on one closed 5 days ago.",
+      "As the IT person: open Settings › AI and Developers; set the webhook address.",
+      "As the System Admin with a company AI key: Stop using our key.",
+      "As the finance person: open Plan & add-ons; then /v2/settings/billing.",
+      "Timesheet with an error: look at the line beside Submit."
+    ],
+    "expected": "Step 1: the request (reason, date) with Close beside it. Step 2: closed, kept until a date. Step 3: asked; a second staff member confirms. Step 4: refused: a second staff member confirms. Step 5: done; the certificate downloads; the company is gone. Step 6: refused (open; kept until). Step 7: both open; asks for the security key; saved. Step 8: toast Back to YukthiX AI; 7.6 says YukthiX AI. Step 9: the plan, read-only; the old address opens Plan & add-ons. Step 10: the submit line shows once, not with the error box.",
+    "stories": [
+      "CompanyClosureAsked",
+      "CompanyDeletionToConfirm"
+    ],
+    "note": "Positive and negative. Deletion only on a throwaway company."
   }
 ]

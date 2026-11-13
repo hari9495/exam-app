@@ -442,7 +442,7 @@ File: `packages/yx-ui/src/screens/settings/settings-g7.stories.tsx`.
 | Overview · Group 7 · Integrations & Developers | live | S-1: /yx/settings/<group> renders `SettingsGroupScreen` with `live`: the group's pages the viewer may open, each linking to its live editor; a group with none says no access |
 | OverviewLoading · Group 7 · loading | live | same, loading |
 | P7_1 · 7.1 Integrations | live (gap) | S-10 (answer 1327): /yx/settings/integrations/integrations: connected apps (add, change, remove, test), the company mail server, candidate SMS and WhatsApp providers and the HR system export, on the checked routes. Gap: the catalogue, a connection owner, retries and the health card are not built |
-| P7_1_ReadOnly · 7.1 Integrations · read-only | live (gap) | System Admins only (org:manage_settings); others are refused by the API |
+| P7_1_ReadOnly · 7.1 Integrations · read-only | live (gap) | System Admins (org:manage_settings) or IT staff with `integration.manage` (answer 1901); others are refused by the API |
 | P7_2 · 7.2 Biometric devices | live (gap) | /yx/time/setup/devices (`DevicesScreen`, `time/devices`, device punches and backfills) |
 | P7_2_ReadOnly · 7.2 Biometric devices · read-only | live (gap) | read-only: unsure |
 | P7_3 · 7.3 Payouts, banks & accounting | live (gap) | bank files on /yx/payroll/payment-modes (`PaymentsScreen`); the expense journal and the staffing accounting export are live in their areas; payout partner: the penny-drop provider seam has none wired (`payroll/payout.service.ts` line 557) |
@@ -451,10 +451,10 @@ File: `packages/yx-ui/src/screens/settings/settings-g7.stories.tsx`.
 | P7_4_ReadOnly · 7.4 Verification · read-only | design only, feature not built | as the page |
 | P7_5 · 7.5 Calendar & chat | live (gap) | S-10 (answer 1327): /yx/settings/integrations/calendar-and-chat: each person's own work calendar (connect, disconnect) and a link to approving from chat. Gap: a company calendar, chat mirroring, mailbox sync and timesheet connectors are not built |
 | P7_5_ReadOnly · 7.5 Calendar & chat · read-only | live (gap) | personal: each person sees only their own connection |
-| P7_6 · 7.6 AI | live (gap) | S-10 (answer 1327): /yx/settings/integrations/ai: the company's own AI key (public https base address) and embeddings, never shown again. Gap: the AI feature switches, region and data-handling sections are not built here (the switches live in their areas) |
-| P7_6_ReadOnly · 7.6 AI · read-only | live (gap) | System Admins only |
+| P7_6 · 7.6 AI | live (gap) | S-10 (answer 1327): /yx/settings/integrations/ai: the company's own AI key (public https base address) and embeddings, never shown again; "Stop using our key" goes back to YukthiX AI (1903); company AI calls go through the pinned public-only lookup (1902). Gap: the AI feature switches, region and data-handling sections are not built here (the switches live in their areas) |
+| P7_6_ReadOnly · 7.6 AI · read-only | live (gap) | System Admins or `integration.manage` (1901) |
 | P7_7 · 7.7 Developers | live (gap) | S-10 (answer 1327): /yx/settings/integrations/developers: the API key (shown once), the webhook (masked; signing secret shown once), deliveries and API use. Gap: several keys with expiry and rotation overlap, OAuth apps and thin payloads are not built |
-| P7_7_ReadOnly · 7.7 Developers · read-only | live (gap) | System Admins only |
+| P7_7_ReadOnly · 7.7 Developers · read-only | live (gap) | System Admins or `integration.manage` (1901) |
 | P7_8 · 7.8 Analytics | design only, feature not built | searched `attrition` in apps/api/src: none |
 | P7_8_ReadOnly · 7.8 Analytics · read-only | design only, feature not built | as the page |
 | P7_9 · 7.9 Deepfake detection | design only, feature not built | searched `deepfake` in apps/api/src: none |
@@ -482,7 +482,7 @@ File: `packages/yx-ui/src/screens/settings/settings-g8.stories.tsx`.
 | P8_3_ReadOnly · 8.3 Invoices & payment · read-only | live (gap) | as the page |
 | P8_4 · 8.4 Sandbox | design only, feature not built | searched `sandbox` in apps/api/src: only Content-Security-Policy headers |
 | P8_4_ReadOnly · 8.4 Sandbox · read-only | design only, feature not built | as the page |
-| P8_5 · 8.5 Data export & closure | live (gap) | S-9 (answer 1332): /yx/settings/account/data-export-and-closure, System Admins: the whole-company export (security key; link works `account.export.link_hours`, 24) and asking YukthiX to close the account (staff close it; data kept `account.closure.keep_days`, 30). Gap: export formats, the per-employee document pack and legal holds are not built; deletion after the kept days is not automatic (questions 1881 to 1883) |
+| P8_5 · 8.5 Data export & closure | live (gap) | S-9 (answer 1332): /yx/settings/account/data-export-and-closure, System Admins: the whole-company export (security key; link works `account.export.link_hours`, 24) and asking YukthiX to close the account (staff close it; data kept `account.closure.keep_days`, 30). Gap: export formats, the per-employee document pack and legal holds are not built; after the kept days, staff delete the data (one asks, a second confirms, a deletion certificate is kept: answer 1882) |
 | P8_5_ReadOnly · 8.5 Data export & closure · read-only | live (gap) | someone with the billing key who is not a System Admin sees the page; starting an export or asking to close says only a System Admin can |
 | P8_6 · 8.6 Analytics, status & tips | live (gap) | the maintenance banner is live (`GET /availability`); S-7 (answer 1321): What's new and tours switches on /yx/settings/account/analytics-status-and-tips. Gap: product analytics and status settings are not on the page |
 | P8_6_ReadOnly · 8.6 Analytics, status & tips · read-only | live (gap) | View only without HR's settings key |
@@ -1067,6 +1067,41 @@ Tests: API e2e `settings-s10-security` (6), `webhook-delivery` (the admin confir
       *Suggested: retire each when its YukthiX page is live, with a redirect, as here.*
 1906. **A company calendar and chat mirroring.** 7.5 shows each person's own calendar; the drawn company calendar,
       chat mirroring and mailbox sync are not built. *Suggested: build them with the features that need them.*
+
+## Follow-ups as built (answers 1881, 1882, 1884 to 1886, 1901 to 1903; branch `feat/yukthix-settings-followups`)
+
+- **1886:** the timesheet "submit opens" line shows once (hidden while the error box is shown).
+- **1884:** a YukthiX key `billing.view` (finance and finance approver templates) reads 8.1 and 8.2; paying stays with
+  `org:manage_billing`.
+- **1885:** /v2/settings/billing redirects to 8.1; the old checkout and portal return addresses point there too.
+- **1881:** the console company page shows the company's closure request (reason, when asked) with Close beside it, and
+  "kept until" once closed.
+- **1882:** after a closed company's kept days (`account.closure.keep_days`, 30), one YukthiX staff member asks to
+  delete its data and a second confirms, both with the security key, never while acting. The database function
+  `purge_company` deletes that company's rows only (every statement `WHERE organization_id = ...`), refuses an open
+  company and a legal hold, and fails if a row is left; the stored files (documents, exports) are dropped after. The
+  certificate (tables, row counts, who asked and confirmed, sha256) stays in `company_deletions`, a YukthiX-only table;
+  every step is audited. Tested on throwaway companies only.
+- **1901:** a YukthiX key `integration.manage` (template "Integrations admin") runs 7.1, 7.6 and 7.7; the security key
+  and "not while acting" stay; the key is admin-grade (MFA and the admin network apply).
+- **1902:** the pinned public-only fetch moved to the shared package; the company's own AI and embeddings addresses are
+  called only through it. Found and fixed: an address written as an IP (https://127.0.0.1/...) skipped the lookup;
+  it is now refused before connecting (webhooks and OIDC too).
+- **1903:** 7.6 "Stop using our key" forgets the key and goes back to YukthiX AI (security key, audited).
+- **Tests:** API e2e `company-deletion` (7), `settings-s10-security` (12), `settings-s9-account` (8); shared
+  `public-fetch.spec`; kit console, timesheet and integrations tests; web `yx-settings-s9` and `yx-settings-s10`.
+
+### Questions (from 1971)
+
+1971. **The online checkout and billing portal routes.** With /v2 billing retired, nothing in YukthiX opens them, but
+      the API routes remain. *Suggested: remove them, since YukthiX sets the plan and no payment happens here.*
+1972. **Files outside the documents store at deletion.** Deletion drops the documents and export files; files kept by
+      other stores (for example Help desk attachments, if stored apart) are not listed yet.
+      *Suggested: list every store before the first real deletion and drop its files the same way.*
+1973. **Who can see the deletion certificates.** Today any YukthiX staff member who can view companies (`platform.companies.view`) sees the list.
+      *Suggested: keep it so; add a download in the console for the customer when they ask.*
+1974. **Which jobs `integration.manage` comes with.** Only the new "Integrations admin" template has it.
+      *Suggested: leave it out of other templates; a company gives it to its IT person by hand.*
 
 ## 7. Build plan (slices, max 3 builders at once)
 
