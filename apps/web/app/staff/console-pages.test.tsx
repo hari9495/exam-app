@@ -18,6 +18,7 @@ import ConsoleSupportDeskPage from './(console)/support-desk/page';
 import ConsoleContainPage from './(console)/companies/[id]/contain/page';
 import ConsoleFeatureFlagsPage from './(console)/feature-flags/page';
 import ConsoleHelpCentrePage from './(console)/help-centre/page';
+import ConsoleFeatureRequestsPage from './(console)/feature-requests/page';
 import ConsolePlatformSettingsPage from './(console)/platform-settings/page';
 import ConsoleCustomersPage from './(console)/customers/page';
 import ConsoleIncidentsPage from './(console)/incidents/page';
@@ -273,6 +274,27 @@ describe('Feature flags and Contain company', () => {
     await ue.type(within(await screen.findByRole('dialog')).getByRole('textbox'), 'CONTAIN GODAVARI AGRO');
     await ue.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Contain company' }));
     await waitFor(() => expect(calls).toContain('POST /platform/companies/c2/contain {"reason":"Admin signed in from three countries"}'));
+  });
+});
+
+// Ask YukthiX (answer 2105): the staff Feature requests list and the assistant review.
+describe('/staff/feature-requests', () => {
+  const ROWS = [{ id: 'fr1', number: 12, title: 'Half days for shift workers', details: '', status: 'new', company: 'Kaveri Foods', requestedBy: 'Divya', createdAt: '2026-11-10T09:00:00Z', companies: 2, duplicates: [], staffNote: null, version: 4 }];
+  const REVIEW = { days: 30, answers: 3, byOutcome: { answered: 2, not_covered: 1 }, thumbsUp: 1, thumbsDown: 0, unanswered: [], tickets: [] };
+  it('lists the requests from /platform/feature-requests and marks one Planned with its version', async () => {
+    route({ 'GET /platform/feature-requests': ROWS, 'GET /platform/assistant/review?days=30': REVIEW, 'PUT /platform/feature-requests/fr1': { status: 'planned', told: 0 } });
+    wrap(<ConsoleFeatureRequestsPage />);
+    expect(await screen.findByText('Half days for shift workers')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: /actions/i }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'Mark Planned' }));
+    await ue.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Mark Planned' }));
+    await waitFor(() => expect(calls).toContain('PUT /platform/feature-requests/fr1 {"status":"planned","version":4}'));
+  });
+
+  it('negative: without the key the page says so', async () => {
+    api.mockRejectedValue(Object.assign(new Error('Forbidden'), { status: 403 }));
+    wrap(<ConsoleFeatureRequestsPage />);
+    expect(await screen.findByText("You don't have access to feature requests")).toBeInTheDocument();
   });
 });
 

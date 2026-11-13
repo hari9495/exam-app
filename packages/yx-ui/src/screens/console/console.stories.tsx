@@ -5,6 +5,8 @@ import { CompanyScreen } from './company';
 import { CompanySettingsScreen } from './company-settings';
 import { PlansScreen } from './plans';
 import { WhatsNewConsoleScreen, type NewsEntryRow } from './whats-new';
+import { FeatureRequestsConsoleScreen } from './feature-requests';
+import { FEATURE_REQUESTS, ASSISTANT_REVIEW } from './data';
 import { SupportSessionsScreen } from './support';
 import { PlatformAuditScreen } from './audit';
 import { StaffRolesScreen } from './staff';
@@ -96,6 +98,11 @@ const NEWS_ROWS: NewsEntryRow[] = [
   { id: 'n3', title: 'Variance check explains each change', body: 'Payroll sees why a net pay moved more than the threshold.', products: ['hrms'], audiences: ['payroll'], publishOn: '2026-10-30', state: 'withdrawn', version: 3 },
 ];
 const news = (extra: Partial<Parameters<typeof WhatsNewConsoleScreen>[0]> = {}) => shell('whats-new', <WhatsNewConsoleScreen state="ready" entries={NEWS_ROWS} products={NEWS_PRODUCTS} today="2026-11-12" canManage onCreate={() => wait()} onUpdate={() => wait()} onWithdraw={() => wait()} {...extra} />);
+// Ask YukthiX (answer 2105): feature requests and how the assistant's answers are doing.
+const requests = (extra: Partial<Parameters<typeof FeatureRequestsConsoleScreen>[0]> = {}) => shell('feature-requests', <FeatureRequestsConsoleScreen state="ready" requests={FEATURE_REQUESTS} review={ASSISTANT_REVIEW} onDecide={() => wait()} {...extra} />);
+export const FeatureRequests: S = { name: 'Feature requests · grouped, with companies', render: () => requests() };
+export const FeatureRequestsReview: S = { name: 'Feature requests · Ask YukthiX review', render: () => requests({ defaultTab: 'review' }) };
+export const FeatureRequestsEmpty: S = { name: 'Feature requests · none yet', render: () => requests({ requests: [] }) };
 export const WhatsNew: S = { name: "What's new · entries", render: () => news() };
 export const WhatsNewAdd: S = { name: "What's new · new entry", render: () => news({ defaultNew: true }) };
 export const WhatsNewEmpty: S = { name: "What's new · none yet", render: () => news({ entries: [] }) };
