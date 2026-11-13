@@ -13,6 +13,8 @@ export const YX_KEYS = [
   'billing.view',
   // S-10: Integrations, AI and Developers (the older System Admin key, checked in the S-10 security check).
   'org:manage_settings',
+  // Answer 1901: IT staff run integrations without being System Admins.
+  'integration.manage',
   'org.structure.view',
   'org.settings.manage',
   'org.entity.statutory.manage',

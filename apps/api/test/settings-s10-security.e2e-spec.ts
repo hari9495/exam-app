@@ -35,15 +35,18 @@ describe('Settings S-10: the integration routes are safe', () => {
     planId = (await prisma.plan.create({ data: { name: `s10-plan-${run}`, candidateLimit: 1, aiCreditLimit: 1, proctoringMinutesLimit: 1 } })).id;
     const slugs: Record<'A' | 'B', string> = { A: `s10a-${run}`, B: `s10b-${run}` };
     for (const k of ['A', 'B'] as const) org[k] = (await prisma.organization.create({ data: { name: `S10 ${k} ${run}`, slug: slugs[k], planId } })).id;
-    const people: [string, 'A' | 'B', string, boolean][] = [
+    const people: [string, 'A' | 'B', string, boolean, string[]?][] = [
       ['admin', 'A', 'org_admin', true],
+      ['it', 'A', 'panel', true, ['integration.manage']],
+      ['itCold', 'A', 'panel', false, ['integration.manage']],
       ['fresh', 'A', 'org_admin', false],
       ['panel', 'A', 'panel', true],
       ['adminB', 'B', 'org_admin', true],
     ];
-    for (const [who, k, role, stepped] of people) {
+    for (const [who, k, role, stepped, keys] of people) {
       const email = `${who}-${run}@s10.test`;
-      users[who] = (await tenantPrisma.forTenant({ organizationId: org[k], isSuperAdmin: false }, (tx) => tx.user.create({ data: { organizationId: org[k], email, name: who, passwordHash, role } }))).id;
+      const permissionProfileId = keys ? (await tenantPrisma.forTenant({ organizationId: org[k], isSuperAdmin: false }, (tx) => tx.permissionProfile.create({ data: { organizationId: org[k], name: `${who}-${run}`, permissionsJson: JSON.stringify(keys) } }))).id : null;
+      users[who] = (await tenantPrisma.forTenant({ organizationId: org[k], isSuperAdmin: false }, (tx) => tx.user.create({ data: { organizationId: org[k], email, name: who, passwordHash, role, permissionProfileId } }))).id;
       token[who] = (await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: slugs[k], email, password: PASSWORD }).expect(200)).body.accessToken;
       if (stepped) await markSteppedUp(tenantPrisma, token[who]!);
     }
@@ -152,5 +155,22 @@ describe('Settings S-10: the integration routes are safe', () => {
     expect(JSON.stringify(mine)).not.toMatch(/accessToken|refreshToken/);
     expect((await api('panel', 'get', '/calendar/connections').expect(200)).body.find((c: { provider: string }) => c.provider === 'google')).toMatchObject({ connected: false });
     expect((await api('adminB', 'get', '/calendar/connections').expect(200)).body.find((c: { provider: string }) => c.provider === 'google')).toMatchObject({ connected: false });
+  });
+
+  // Answer 1901: IT staff run integrations with integration.manage, without being System Admins.
+  it('1901: integration.manage runs integrations and still needs the security key for each change', async () => {
+    await api('it', 'get', '/organizations/integrations').expect(200);
+    await api('it', 'get', '/organizations/integrations/connected-apps').expect(200);
+    await api('it', 'patch', '/organizations/integrations/webhook').send({ url: 'https://example.com/hooks/IT-1' }).expect(200);
+    const r = await api('itCold', 'patch', '/organizations/integrations/webhook').send({ url: 'https://example.com/hooks/IT-2' });
+    expect(r.status).toBe(403);
+    expect(['STEP_UP_REQUIRED', 'MFA_REQUIRED']).toContain(codeOf(r));
+  });
+
+  it('negative (1901): integration.manage opens nothing else of org:manage_settings, and nothing of another company', async () => {
+    await api('it', 'get', '/organizations/careers').expect(403);
+    await api('it', 'get', '/organizations/reminder-settings').expect(403);
+    await api('it', 'patch', '/organizations/branding').send({ primaryColor: '#000000' }).expect(403);
+    expect((await api('it', 'get', '/organizations/integrations/connected-apps').expect(200)).body.every((a: { id: string }) => typeof a.id === 'string')).toBe(true);
   });
 });

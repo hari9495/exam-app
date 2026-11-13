@@ -142,6 +142,14 @@ const TEMPLATES: readonly RoleTemplate[] = [
     permissions: ['expense.policy.manage'],
   },
   {
+    key: 'integrations_admin',
+    name: 'Integrations admin',
+    typicalScope: 'tenant',
+    summary: 'Connected apps, the company mail server, SMS and WhatsApp providers, the HR system export, the AI key, API keys and webhooks (Settings 7.1, 7.6, 7.7). Every change asks for the security key.',
+    cannot: 'See people, pay or settings outside integrations, or give anyone access.',
+    permissions: ['integration.manage'],
+  },
+  {
     key: 'travel_desk',
     name: 'Travel Desk',
     typicalScope: 'legal_entity',
