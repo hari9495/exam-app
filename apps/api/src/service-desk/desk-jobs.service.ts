@@ -13,6 +13,7 @@ import { WorkService } from './work.service';
 import { RecurringService } from './recurring.service';
 import { ChatService } from './chat.service';
 import { TicketsService } from './tickets.service';
+import { CatalogService } from './catalog.service';
 
 // The Service Desk's repeating jobs on BullMQ (M14 §8.5): auto-close every 15 minutes (YX-SD-10), reminders and snoozes
 // every minute (US-G-009) and the daily sd_agents meter at 00:30 India time (§6.3). Batch 4: article publish / expiry /
@@ -42,6 +43,7 @@ export class DeskJobsService implements OnModuleInit, OnModuleDestroy {
     private readonly recurring: RecurringService,
     private readonly chat: ChatService,
     private readonly tickets: TicketsService,
+    private readonly catalog: CatalogService,
   ) {
     this.queue = logBullErrors(new Queue(DESK_JOBS_QUEUE, bullOpts(connection)), DESK_JOBS_QUEUE);
   }
@@ -73,7 +75,8 @@ export class DeskJobsService implements OnModuleInit, OnModuleDestroy {
     meter: () => [this.me.meter()],
     five: () => [this.kb.schedule(), this.surveys.askRatings(), this.recurring.tick()],
     quarter: () => [this.reports.backlogAlerts()],
-    hourly: () => [this.surveys.runSurveys(), this.reports.sendScheduled(), this.directory.scheduledSyncs()],
+    // Answer 1894: application owners who left are reported to the Service Desk owners.
+    hourly: () => [this.surveys.runSurveys(), this.reports.sendScheduled(), this.directory.scheduledSyncs(), this.catalog.appOwnerSweep()],
     kpi: () => [this.reports.snapshot()],
     nightly: () => [this.privacy.retention(), this.privacy.purgeBin()],
     monthly: () => [this.reports.monthlyCustomerReports()],

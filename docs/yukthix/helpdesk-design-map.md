@@ -756,6 +756,7 @@ File: `packages/yx-ui/src/screens/ops/hlp-21.stories.tsx`. Drawn 13 Nov 2026 (He
 | AppEdit · Change the owner, or retire it | live | `PATCH desk/apps/:id` (version check, audited); a retired application drops out of the catalogue picker and is refused at checkout |
 | AppSaveFailed · Saving refused (name already on the list) | live | 409, a name once per company |
 | AppsReadOnly · Desk staff: read only | live | no New or Edit without `desk.desk.create` |
+| AppOwnerLeft · An owner has left | live | Answer 1894: an hourly check finds active applications whose owner can no longer sign in or whose exit date has passed; the company's Service Desk owners (`desk.desk.create` company-wide, and the company admins) get one notification and email per departure (`helpdesk.app.owner_left`, audited; a new owner who later leaves is told again); the list flags it, Owner has left, until a new owner is chosen (the IT desk admins decide requests meanwhile) |
 | AppsEmpty · No applications yet | live | |
 | AppsLoading · Loading | live | |
 | AppsError · Could not load | live | |

@@ -10,6 +10,7 @@ import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
+import { CatalogService } from '../src/service-desk/catalog.service';
 
 // Helpdesk follow-ups (founder 13 Nov 2026, "all ok"): 1842, 1843, 1844, 1846, 1891, 1894, 1911, 1913, 1914, end to end
 // against the real database (forced RLS, the app role). Positive and negative for each.
@@ -315,6 +316,63 @@ describe('Helpdesk follow-ups', () => {
       const hr = (await api('adminA', 'post', '/desk/desks').send({ name: 'Admin desk', key: 'ADM', kind: 'admin' }).expect(201)).body.id;
       expect(await itemOf(hr)).toHaveLength(0);
       expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.sdCatalogItem.count({ where: { organizationId: org.B.id, deskId: ids.deskB, name: 'Application access' } }))).toBe(1);
+    });
+  });
+  // ------------------------------------------------------------------------------------------ 1894
+  describe("1894: the Service Desk owner is told when an application's owner leaves or is deactivated", () => {
+    const told = (appId: string) => tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.findMany({ where: { type: 'helpdesk.app.owner_left', entityId: appId }, select: { recipientUserId: true, organizationId: true, contextText: true } }));
+    const sweep = () => app.get(CatalogService).appOwnerSweep();
+    const newUser = (name: string) => tenantPrisma.forTenant(asA(), (tx) => tx.user.create({ data: { organizationId: org.A.id, email: `${name}-${run}@fu.test`, name: `${name} ${run}`, passwordHash: 'x', role: 'panel' } })).then((u) => u.id);
+
+    it('a deactivated owner: the company admins (Service Desk owners) are told once; the list says so; a new owner who leaves is told again', async () => {
+      const owner = await newUser('appowner');
+      const appId = (await api('adminA', 'post', '/desk/apps').send({ name: `CRM ${run}`, ownerUserId: owner }).expect(201)).body.id as string;
+      await sweep();
+      expect(await told(appId)).toEqual([]);
+      await tenantPrisma.forTenant(asA(), (tx) => tx.user.update({ where: { id: owner }, data: { status: 'deactivated' } }));
+      expect(await sweep()).toBeGreaterThanOrEqual(1);
+      const first = await told(appId);
+      expect(first.map((x) => x.recipientUserId)).toEqual([users.adminA]);
+      expect(first[0].contextText).toMatch(new RegExp(`CRM ${run}: appowner ${run} has left`));
+      const list = (await api('agent', 'get', '/desk/apps').expect(200)).body as { id: string; ownerLeft: boolean }[];
+      expect(list.find((x) => x.id === appId)!.ownerLeft).toBe(true);
+      // Told once only.
+      await sweep();
+      expect(await told(appId)).toHaveLength(1);
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'desk.app.owner_left', entityId: appId } }))).toBe(1);
+      // A new owner: no longer flagged; when they leave too (exit date passed), told again.
+      const next = await newUser('nextowner');
+      const v = (list as unknown as { id: string; version: number }[]).find((x) => x.id === appId)!.version;
+      await api('adminA', 'patch', `/desk/apps/${appId}`).send({ name: `CRM ${run}`, ownerUserId: next, version: v }).expect(200);
+      expect(((await api('agent', 'get', '/desk/apps').expect(200)).body as { id: string; ownerLeft: boolean }[]).find((x) => x.id === appId)!.ownerLeft).toBe(false);
+      await tenantPrisma.forTenant(asA(), async (tx) => {
+        const entity = await tx.legalEntity.create({ data: { organizationId: org.A.id, name: 'Exit Ltd', shortName: `EX-${run}` } });
+        const person = await tx.person.create({ data: { organizationId: org.A.id, givenName: 'Next' } });
+        const e = await tx.employee.create({ data: { organizationId: org.A.id, personId: person.id, givenName: 'Next', userId: next } });
+        await tx.employment.create({ data: { organizationId: org.A.id, employeeId: e.id, legalEntityId: entity.id, employeeCode: 'EX1', codeScopeKey: entity.id, joinedOn: new Date('2026-01-01T00:00:00Z'), exitedOn: new Date('2026-11-01T00:00:00Z') } });
+      });
+      await sweep();
+      expect(await told(appId)).toHaveLength(2);
+    });
+
+    it('negative: an active owner, a retired application and another company are never told about; nobody hears of a colleague who has not left', async () => {
+      const owner = await newUser('stays');
+      const appId = (await api('adminA', 'post', '/desk/apps').send({ name: `HRMS ${run}`, ownerUserId: owner }).expect(201)).body.id as string;
+      const gone = await newUser('retiredowner');
+      const retired = (await api('adminA', 'post', '/desk/apps').send({ name: `Old ${run}`, ownerUserId: gone, status: 'retired' }).expect(201)).body.id as string;
+      await tenantPrisma.forTenant(asA(), (tx) => tx.user.update({ where: { id: gone }, data: { status: 'deactivated' } }));
+      // An exit date still ahead is not a departure yet.
+      await tenantPrisma.forTenant(asA(), async (tx) => {
+        const entity = await tx.legalEntity.create({ data: { organizationId: org.A.id, name: 'Later Ltd', shortName: `LT-${run}` } });
+        const person = await tx.person.create({ data: { organizationId: org.A.id, givenName: 'Stays' } });
+        const e = await tx.employee.create({ data: { organizationId: org.A.id, personId: person.id, givenName: 'Stays', userId: owner } });
+        await tx.employment.create({ data: { organizationId: org.A.id, employeeId: e.id, legalEntityId: entity.id, employeeCode: 'LT1', codeScopeKey: entity.id, joinedOn: new Date('2026-01-01T00:00:00Z'), exitedOn: new Date('2099-01-01T00:00:00Z') } });
+      });
+      await sweep();
+      expect(await told(appId)).toEqual([]);
+      expect(await told(retired)).toEqual([]);
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.count({ where: { organizationId: org.B.id, type: 'helpdesk.app.owner_left' } }))).toBe(0);
+      await api('divya', 'get', '/desk/apps').expect(403);
     });
   });
 });
