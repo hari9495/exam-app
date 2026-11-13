@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { CONTAIN_LIFT, CONTAIN_OPEN, CONTAIN_READY, liveContain, liveFlags } from './console-c4-data';
+import { CONTAIN_BOARD_TOLD, CONTAIN_LIFT, CONTAIN_OPEN, CONTAIN_READY, liveContain, liveFlags } from './console-c4-data';
 import { AiGovernanceScreen, GoldenCasesScreen, PublishSchedulerScreen, RuleSetEditorScreen } from './console-rules';
 import {
   ContainTenantScreen,
@@ -36,4 +36,6 @@ export const YX18Lift: S = { name: 'Lift (two people)', render: () => <ContainTe
 // Console C-4 (answer 1050): the live screen, before, during and with a lift waiting for a second person.
 export const YX18LiveReady: S = { name: 'Contain company · live, ready', render: () => <ContainTenantScreen stepUpAt={null} now={TODAY} live={liveContain(CONTAIN_READY)} /> };
 export const YX18LiveContained: S = { name: 'Contain company · live, contained', render: () => <ContainTenantScreen stepUpAt={null} now={TODAY} live={liveContain(CONTAIN_OPEN)} /> };
+// DPDP Rule 7 (founder, 13 Nov 2026): notify the Board now, then the 72-hour report; both verify with counsel.
+export const YX18LiveBoardTold: S = { name: 'Contain company · live, first notice to the Board marked', render: () => <ContainTenantScreen stepUpAt={null} now={TODAY} live={liveContain(CONTAIN_BOARD_TOLD)} /> };
 export const YX18LiveLift: S = { name: 'Contain company · live, lift waiting for you', render: () => <ContainTenantScreen stepUpAt={null} now={TODAY} live={liveContain(CONTAIN_LIFT)} /> };

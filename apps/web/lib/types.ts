@@ -1258,18 +1258,6 @@ export interface SurveySummary {
 }
 
 // Self-serve billing. Mirrors apps/api/src/billing/billing-checkout.service.ts.
-export interface PurchasablePlan {
-  id: string;
-  name: string;
-  priceLabel: string | null;
-  billingInterval: string;
-  seatLimit: number;
-  candidateLimit: number;
-  aiCreditLimit: number;
-  proctoringMinutesLimit: number;
-  current: boolean;
-}
-
 export interface BillingInvoice {
   id: string;
   number: string | null;

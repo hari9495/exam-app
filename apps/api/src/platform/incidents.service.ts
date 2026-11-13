@@ -8,6 +8,9 @@ import type { IncidentOpenDto, IncidentReviewDto, IncidentUpdateDto } from './in
 type Tx = Prisma.TransactionClient;
 export const LEAD_KEY = 'incident.breach_reminder_lead_hours';
 export const LEAD_DEFAULT = 1;
+/** DPDP Rule 7: how often the Security leads are reminded to tell the Board, until the first notice is marked. */
+export const BOARD_NUDGE_KEY = 'breach.dpdp_board_notice_nudge_minutes';
+export const BOARD_NUDGE_DEFAULT = 60;
 const HOUR = 3_600_000;
 export const incidentRef = (n: number) => `INC-${String(n).padStart(3, '0')}`;
 const istTime = (d: Date) => d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
@@ -58,7 +61,7 @@ export class IncidentsService {
       const orgs = new Map((await tx.organization.findMany({ where: { id: { in: containments.map((c) => c.organizationId) } }, select: { id: true, name: true } })).map((o) => [o.id, o.name]));
       const ids = [...new Set(rows.flatMap((r) => [r.openedBy, ...r.updates.flatMap((u) => [u.writtenBy, u.reviewedBy ?? ''])]).filter(Boolean))];
       const names = new Map((await tx.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name?.trim() || u.email]));
-      const cView = (c: (typeof containments)[number]) => ({ id: c.id, company: orgs.get(c.organizationId) ?? '', containedAt: c.containedAt.toISOString(), certinDueAt: c.certinDueAt.toISOString(), dpdpDueAt: c.dpdpDueAt.toISOString(), open: !c.liftedAt });
+      const cView = (c: (typeof containments)[number]) => ({ id: c.id, organizationId: c.organizationId, company: orgs.get(c.organizationId) ?? '', containedAt: c.containedAt.toISOString(), certinDueAt: c.certinDueAt.toISOString(), dpdpDueAt: c.dpdpDueAt.toISOString(), open: !c.liftedAt, boardNotifiedAt: c.boardNotifiedAt?.toISOString() ?? null, boardNoticeNote: c.boardNoticeNote });
       const byId = new Map(containments.map((c) => [c.id, c]));
       return {
         incidents: rows.map((r) => {
@@ -195,6 +198,46 @@ export class IncidentsService {
       }
     } catch (e) {
       this.logger.warn(`breach reminders failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    return sent + (await this.boardNoticeSweep(now));
+  }
+
+  /**
+   * DPDP Rule 7 (founder, 13 Nov 2026): until the first notice to the Data Protection Board is marked sent, the Security
+   * leads are reminded every breach.dpdp_board_notice_nudge_minutes, for a contained company (or a lifted one a breach
+   * incident is linked to). Each reminder is audited.
+   */
+  async boardNoticeSweep(now = new Date()) {
+    let sent = 0;
+    try {
+      const work = await this.tenantPrisma.forTenant(PLATFORM, async (tx) => {
+        const v = Number((await tx.platformSetting.findUnique({ where: { key: BOARD_NUDGE_KEY } }))?.value);
+        const minutes = Number.isInteger(v) && v > 0 ? v : BOARD_NUDGE_DEFAULT;
+        const breaches = (await tx.platformIncident.findMany({ where: { securityBreach: true, containmentId: { not: null } }, select: { containmentId: true } })).map((r) => r.containmentId!);
+        const rows = await tx.companyContainment.findMany({
+          where: { boardNotifiedAt: null, OR: [{ liftedAt: null }, { id: { in: breaches } }], AND: [{ OR: [{ boardNudgedAt: null }, { boardNudgedAt: { lte: new Date(now.getTime() - minutes * 60_000) } }] }] },
+        });
+        const out: { company: string; containedAt: Date; dpdpDueAt: Date }[] = [];
+        for (const c of rows) {
+          // Once per window even with two servers sweeping: only the one that moves the mark sends.
+          const done = await tx.companyContainment.updateMany({ where: { id: c.id, boardNotifiedAt: null, boardNudgedAt: c.boardNudgedAt }, data: { boardNudgedAt: now } });
+          if (!done.count) continue;
+          const company = (await tx.organization.findUnique({ where: { id: c.organizationId }, select: { name: true } }))?.name ?? '';
+          await AuditService.recordIn(tx, PLATFORM, { actorUserId: null, action: 'platform.containment.board_notice_reminder', entityType: 'company_containment', entityId: c.id, metadata: { organizationId: c.organizationId, containedAt: c.containedAt.toISOString() } });
+          out.push({ company, containedAt: c.containedAt, dpdpDueAt: c.dpdpDueAt });
+        }
+        return { out, to: out.length ? (await incidentHolders(tx)).map((u) => u.email) : [] };
+      });
+      for (const w of work.out) {
+        const subject = `Tell the Data Protection Board now: ${w.company}`;
+        const html = `<p>${esc(`${w.company} was contained ${istTime(w.containedAt)} IST for a suspected breach.`)}</p><p>${esc('DPDP Rules 2025, Rule 7: tell the Data Protection Board without delay (verify with counsel). Then mark the first notice as sent, with the time and a note, in Console › Contain company or the breach incident. The detailed report is due ' + istTime(w.dpdpDueAt) + ' IST.')}</p>`;
+        for (const to of work.to) {
+          await this.email.send({ to, subject, html }).catch((e: unknown) => this.logger.error(`board notice reminder failed: ${e instanceof Error ? e.message : String(e)}`));
+          sent++;
+        }
+      }
+    } catch (e) {
+      this.logger.warn(`board notice reminders failed: ${e instanceof Error ? e.message : String(e)}`);
     }
     return sent;
   }

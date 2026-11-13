@@ -19,6 +19,7 @@ import { ConsolePage } from '../console/console-kit';
 import type { LoadState } from '../console/types';
 import { AvailabilityBanner, type CurrentIncident } from '../settings/help';
 import { FilteredTable, opts } from './list-kit';
+import { BoardNoticeSteps } from './board-notice';
 
 export type IncidentStage = 'investigating' | 'identified' | 'monitoring' | 'resolved';
 export interface IncidentUpdateRow {
@@ -37,6 +38,7 @@ export interface IncidentUpdateRow {
 }
 export interface ContainmentChoice {
   id: string;
+  organizationId?: string;
   company: string;
   containedAt: string;
   certinDueAt: string;
@@ -55,7 +57,7 @@ export interface IncidentLiveRow {
   openedBy: string;
   resolvedAt: string | null;
   securityBreach: boolean;
-  breach: (ContainmentChoice & { certinRemindedAt: string | null; dpdpRemindedAt: string | null }) | null;
+  breach: (ContainmentChoice & { certinRemindedAt: string | null; dpdpRemindedAt: string | null; boardNotifiedAt?: string | null; boardNoticeNote?: string | null }) | null;
   updates: IncidentUpdateRow[];
 }
 export interface IncidentUpdateInput {
@@ -81,6 +83,8 @@ export interface LiveIncidents {
   onUpdate: (id: string, input: IncidentUpdateInput) => Promise<unknown>;
   onReview: (id: string, updateId: string, approve: boolean, note?: string) => Promise<unknown>;
   onMarkBreach: (id: string, containmentId: string) => Promise<unknown>;
+  /** DPDP Rule 7: mark the first notice to the Board as sent for the contained company (security key). */
+  onBoardNotice?: (organizationId: string, sentAt: string, note: string) => Promise<unknown>;
   /** Answer 1261: the lead time changes only in Console › Platform settings (absent without platform.settings.manage). */
   onOpenPlatformSettings?: () => void;
   /** Stories: open the drawer on this incident (or a new one). */
@@ -359,11 +363,18 @@ function BreachCard({ incident, live, containment, setContainment, errorOf, busy
   const b = incident.breach;
   if (b)
     return (
-      <InlineAlert tone="danger" title={`Security breach: ${b.company} (contained ${when(b.containedAt)})`}>
-        CERT-In report due {when(b.certinDueAt)}
-        {b.certinRemindedAt ? ` (reminded ${when(b.certinRemindedAt)})` : ''}. DPDP detailed report to the Data Protection Board due {when(b.dpdpDueAt)}
-        {b.dpdpRemindedAt ? ` (reminded ${when(b.dpdpRemindedAt)})` : ''}. Incident staff get an email {live.settings.leadHours} hours before each. Other companies never see this incident.
-      </InlineAlert>
+      <>
+        <InlineAlert tone="danger" title={`Security breach: ${b.company} (contained ${when(b.containedAt)})`}>
+          CERT-In report due {when(b.certinDueAt)}
+          {b.certinRemindedAt ? ` (reminded ${when(b.certinRemindedAt)})` : ''}. DPDP detailed report to the Data Protection Board due {when(b.dpdpDueAt)}
+          {b.dpdpRemindedAt ? ` (reminded ${when(b.dpdpRemindedAt)})` : ''}. Incident staff get an email {live.settings.leadHours} hours before each. Other companies never see this incident.
+        </InlineAlert>
+        <BoardNoticeSteps
+          notice={b.boardNotifiedAt ? { at: b.boardNotifiedAt, note: b.boardNoticeNote ?? null } : null}
+          dpdpDueAt={b.dpdpDueAt}
+          onMark={live.onBoardNotice && b.organizationId ? (sentAt, note) => live.onBoardNotice!(b.organizationId!, sentAt, note) : undefined}
+        />
+      </>
     );
   if (!live.containments.length) return null;
   return (

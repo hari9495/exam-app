@@ -113,6 +113,8 @@ model Organization {
   trialEndsAt                   DateTime?                 @map("trial_ends_at") @db.Timestamptz(3)
   trialExtendedAt               DateTime?                 @map("trial_extended_at") @db.Timestamptz(3)
   lifecycleChangedAt            DateTime                  @default(now()) @map("lifecycle_changed_at") @db.Timestamptz(3)
+  /// Answer 1975: after its data is deleted, the company's kept statutory records are read-only until this day.
+  recordsKeptUntil              DateTime?                 @map("records_kept_until") @db.Timestamptz(3)
   /// SD-1.31: YukthiX's own company (slug yukthix), home of the YukthiX Support desk.
   isPlatform                    Boolean                   @default(false) @map("is_platform")
   users                         User[]
@@ -13917,6 +13919,13 @@ model CompanyContainment {
   liftedBy            String?   @map("lifted_by") @db.Uuid
   liftedByName        String?   @map("lifted_by_name") @db.VarChar(200)
   liftedAt            DateTime? @map("lifted_at") @db.Timestamptz(3)
+  /// DPDP Rule 7 (founder, 13 Nov 2026): the first notice to the Data Protection Board, marked sent by staff.
+  boardNotifiedAt     DateTime? @map("board_notified_at") @db.Timestamptz(3)
+  boardNoticeNote     String?   @map("board_notice_note") @db.VarChar(500)
+  boardNotifiedBy     String?   @map("board_notified_by") @db.Uuid
+  boardNotifiedByName String?   @map("board_notified_by_name") @db.VarChar(200)
+  /// The last reminder to the Security leads while the first notice is not marked.
+  boardNudgedAt       DateTime? @map("board_nudged_at") @db.Timestamptz(3)
 
   @@map("company_containments")
 }
@@ -14183,4 +14192,23 @@ model SdChange {
   @@unique([organizationId, ticketId])
   @@index([organizationId, deskId, windowFrom])
   @@map("sd_changes")
+}
+
+/// Answer 1882: a closed company's data deleted after its kept days: asked by one staff member, confirmed by a second,
+/// with the deletion certificate. Outlives the company (no relation to organizations).
+model CompanyDeletion {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  companyName       String    @map("company_name") @db.VarChar(1000)
+  companySlug       String    @map("company_slug") @db.VarChar(1000)
+  status            String    @default("requested") @db.VarChar(12)
+  reason            String    @db.VarChar(500)
+  requestedBy       String    @map("requested_by") @db.Uuid
+  requestedAt       DateTime  @default(now()) @map("requested_at") @db.Timestamptz(3)
+  approvedBy        String?   @map("approved_by") @db.Uuid
+  deletedAt         DateTime? @map("deleted_at") @db.Timestamptz(3)
+  certificate       String?
+  certificateSha256 String?   @map("certificate_sha256") @db.Char(64)
+
+  @@map("company_deletions")
 }

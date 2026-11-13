@@ -17,6 +17,7 @@
     "@nestjs/common": "^11.1.28",
     "@prisma/client": "^5.10.0",
     "@sentry/node": "^10.70.0",
+    "ipaddr.js": "1.9.1",
     "openai": "^6.48.0"
   },
   "devDependencies": {

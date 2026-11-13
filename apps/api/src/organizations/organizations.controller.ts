@@ -3,7 +3,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { RequirePermissions } from '../rbac/permissions.decorator';
+import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { RequireStepUp } from '../auth/step-up.decorator';
 import { OwnSessionGuard } from '../auth/own-session.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
@@ -72,19 +72,19 @@ export class OrganizationsController {
   }
 
   @Get('integrations')
-  @RequirePermissions('org:manage_settings')
+  @RequireAnyPermission('org:manage_settings', 'integration.manage')
   getIntegrations(@CurrentTenant() tenant: TenantContext) {
     return this.organizationsService.getIntegrations(tenant);
   }
 
   @Get('api-usage')
-  @RequirePermissions('org:manage_settings')
+  @RequireAnyPermission('org:manage_settings', 'integration.manage')
   getApiUsage(@CurrentTenant() tenant: TenantContext, @Query() query: ApiUsageQueryDto) {
     return this.apiUsage.report(tenant, query.window ?? 30);
   }
 
   @Patch('integrations/smtp')
-  @RequirePermissions('org:manage_settings')
+  @RequireAnyPermission('org:manage_settings', 'integration.manage')
   @RequireStepUp()
   @UseGuards(OwnSessionGuard)
   updateSmtpSettings(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateSmtpSettingsDto) {
@@ -92,26 +92,37 @@ export class OrganizationsController {
   }
 
   @Patch('integrations/ai-key')
-  @RequirePermissions('org:manage_settings')
+  @RequireAnyPermission('org:manage_settings', 'integration.manage')
   @RequireStepUp()
   @UseGuards(OwnSessionGuard)
   updateAiKey(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateAiKeyDto) {
     return this.organizationsService.updateAiKey(tenant, userId, dto);
   }
 
+  // Answer 1903: "Stop using our key", back to YukthiX AI. Same people and the same security key as setting it.
+  @Delete('integrations/ai-key')
+  @RequireAnyPermission('org:manage_settings', 'integration.manage')
+  @RequireStepUp()
+  @UseGuards(OwnSessionGuard)
+  clearAiKey(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string) {
+    return this.organizationsService.clearAiKey(tenant, userId);
+  }
+
   @Patch('integrations/embedding-config')
-  @RequirePermissions('org:manage_settings')
+  @RequireAnyPermission('org:manage_settings', 'integration.manage')
   @RequireStepUp()
   @UseGuards(OwnSessionGuard)
   updateEmbeddingConfig(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateEmbeddingConfigDto) {
     return this.organizationsService.updateEmbeddingConfig(tenant, userId, dto);
   }
 
+  // Answer 1901: IT staff run integrations with integration.manage (System Admins keep org:manage_settings); the
+  // security key stays on every change.
   // Creating an API key and changing the identity provider are step-up actions (P12 §3). S-10 security check (answer
   // 1327): every integration change is too (an AI base URL, webhook or HRIS target receives company data), and none is
   // made while acting for someone else.
   @Post('integrations/api-key')
-  @RequirePermissions('org:manage_settings')
+  @RequireAnyPermission('org:manage_settings', 'integration.manage')
   @RequireStepUp()
   @UseGuards(OwnSessionGuard)
   generateApiKey(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string) {
@@ -119,7 +130,7 @@ export class OrganizationsController {
   }
 
   @Delete('integrations/api-key')
-  @RequirePermissions('org:manage_settings')
+  @RequireAnyPermission('org:manage_settings', 'integration.manage')
   @RequireStepUp()
   @UseGuards(OwnSessionGuard)
   revokeApiKey(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string) {
@@ -127,13 +138,13 @@ export class OrganizationsController {
   }
 
   @Get('sms-config')
-  @RequirePermissions('org:manage_settings')
+  @RequireAnyPermission('org:manage_settings', 'integration.manage')
   getSmsConfig(@CurrentTenant() tenant: TenantContext) {
     return this.organizationsService.getSmsConfig(tenant);
   }
 
   @Put('sms-config')
-  @RequirePermissions('org:manage_settings')
+  @RequireAnyPermission('org:manage_settings', 'integration.manage')
   @RequireStepUp()
   @UseGuards(OwnSessionGuard)
   putSmsConfig(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateSmsConfigDto) {
@@ -143,7 +154,7 @@ export class OrganizationsController {
   // Provider catalog for the config UI: metadata only (id/label/configFields), no
   // secrets -- lets the web render the right fields per provider.
   @Get('sms-providers')
-  @RequirePermissions('org:manage_settings')
+  @RequireAnyPermission('org:manage_settings', 'integration.manage')
   getSmsProviders() {
     return listSmsProviders().map(({ id, label, configFields }) => ({ id, label, configFields }));
   }
@@ -161,7 +172,7 @@ export class OrganizationsController {
   }
 
   @Patch('integrations/webhook')
-  @RequirePermissions('org:manage_settings')
+  @RequireAnyPermission('org:manage_settings', 'integration.manage')
   @RequireStepUp()
   @UseGuards(OwnSessionGuard)
   updateWebhookUrl(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateWebhookUrlDto) {
@@ -169,7 +180,7 @@ export class OrganizationsController {
   }
 
   @Post('integrations/webhook-secret')
-  @RequirePermissions('org:manage_settings')
+  @RequireAnyPermission('org:manage_settings', 'integration.manage')
   @RequireStepUp()
   @UseGuards(OwnSessionGuard)
   generateWebhookSecret(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string) {
@@ -177,7 +188,7 @@ export class OrganizationsController {
   }
 
   @Patch('integrations/hris-config')
-  @RequirePermissions('org:manage_settings')
+  @RequireAnyPermission('org:manage_settings', 'integration.manage')
   @RequireStepUp()
   @UseGuards(OwnSessionGuard)
   updateHrisConfig(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateHrisConfigDto) {
@@ -185,7 +196,7 @@ export class OrganizationsController {
   }
 
   @Get('integrations/webhook-deliveries')
-  @RequirePermissions('org:manage_settings')
+  @RequireAnyPermission('org:manage_settings', 'integration.manage')
   listWebhookDeliveries(@CurrentTenant() tenant: TenantContext) {
     return this.organizationsService.listWebhookDeliveries(tenant);
   }
@@ -284,13 +295,13 @@ export class OrganizationsController {
   // GET never returns a secret field (see OrganizationsService.getWhatsappConfig) --
   // gated anyway, same as every other integrations/config route in this controller.
   @Get('whatsapp-config')
-  @RequirePermissions('org:manage_settings')
+  @RequireAnyPermission('org:manage_settings', 'integration.manage')
   getWhatsappConfig(@CurrentTenant() tenant: TenantContext) {
     return this.organizationsService.getWhatsappConfig(tenant);
   }
 
   @Put('whatsapp-config')
-  @RequirePermissions('org:manage_settings')
+  @RequireAnyPermission('org:manage_settings', 'integration.manage')
   @RequireStepUp()
   @UseGuards(OwnSessionGuard)
   updateWhatsappConfig(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateWhatsappConfigDto) {
@@ -300,7 +311,7 @@ export class OrganizationsController {
   // Metadata only (id/label/configFields) -- never carries a secret value, but still
   // gated org:manage_settings since it's part of the same admin-only config surface.
   @Get('whatsapp-providers')
-  @RequirePermissions('org:manage_settings')
+  @RequireAnyPermission('org:manage_settings', 'integration.manage')
   getWhatsappProviders() {
     return this.organizationsService.getWhatsappProviderCatalog();
   }

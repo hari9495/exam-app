@@ -30,6 +30,8 @@ export default function ConsoleIncidentsPage() {
         onUpdate: (id, input) => write(`/incidents/${encodeURIComponent(id)}/updates`, 'POST', input),
         onReview: (id, updateId, approve, note) => write(`/incidents/${encodeURIComponent(id)}/updates/${encodeURIComponent(updateId)}/review`, 'POST', { approve, ...(note ? { note } : {}) }),
         onMarkBreach: (id, containmentId) => write(`/incidents/${encodeURIComponent(id)}/breach`, 'POST', { containmentId }),
+        // DPDP Rule 7: the first notice to the Data Protection Board, marked sent.
+        onBoardNotice: (organizationId, sentAt, note) => write(`/companies/${encodeURIComponent(organizationId)}/containment/board-notice`, 'POST', { sentAt, note }),
         // Answer 1261: the lead time changes only in Console › Platform settings.
         onOpenPlatformSettings: can('platform.settings.manage') ? () => router.push('/staff/platform-settings') : undefined,
       }}

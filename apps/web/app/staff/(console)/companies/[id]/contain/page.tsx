@@ -22,6 +22,8 @@ export default function ConsoleContainPage() {
         onContain: async (reason) => void (await write(`/companies/${encodeURIComponent(id)}/contain`, 'POST', { reason })),
         onRequestLift: async (reason) => void (await write(`${path}/request-lift`, 'POST', { reason })),
         onLift: async () => void (await write(`${path}/lift`, 'POST', {})),
+        // DPDP Rule 7: the first notice to the Data Protection Board, marked sent.
+        onBoardNotice: (sentAt, note) => write(`${path}/board-notice`, 'POST', { sentAt, note }),
       }}
     />
   );

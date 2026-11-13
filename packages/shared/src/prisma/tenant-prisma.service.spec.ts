@@ -2,6 +2,7 @@ import { HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { TenantPrismaService, POOL_EXHAUSTED_RESPONSE } from './tenant-prisma.service';
 import { PrismaService } from './prisma.service';
+import { requestChannel } from '../audit/request-channel';
 
 describe('TenantPrismaService', () => {
   const context = { organizationId: 'org-1', isSuperAdmin: false };
@@ -29,16 +30,17 @@ describe('TenantPrismaService', () => {
     return { sql: (strings as string[]).join('?'), values };
   }
 
-  function expectTransactionLocalContext(executeRaw: jest.Mock, values: unknown[]) {
+  // The last value is app.channel (answer 1723): where the request came from, '' for a job.
+  function expectTransactionLocalContext(executeRaw: jest.Mock, values: unknown[], channel = '') {
     // One round trip, nothing else: there is no reset step any more -- set_config(..., true) is
     // discarded by Postgres at COMMIT/ROLLBACK, so a pooled connection never keeps a tenant.
     expect(executeRaw).toHaveBeenCalledTimes(1);
     const call = contextCall(executeRaw);
-    for (const key of ['app.current_org', 'app.is_super_admin', 'app.current_user_id', 'app.record_visibility_governed', 'app.support_session']) {
+    for (const key of ['app.current_org', 'app.is_super_admin', 'app.current_user_id', 'app.record_visibility_governed', 'app.support_session', 'app.channel']) {
       expect(call.sql).toContain(`set_config('${key}', ?, true)`);
     }
     expect(call.sql).not.toMatch(/false|SET\s+app|sp_set_session_context/i);
-    expect(call.values).toEqual(values);
+    expect(call.values).toEqual([...values, channel]);
   }
 
   it('sets the tenant context transaction-locally in one parameterised call and returns the result', async () => {
@@ -54,6 +56,13 @@ describe('TenantPrismaService', () => {
     // the raw one -- that's the whole point of the recycle-bin fix.
     expect(filteredTransaction).toHaveBeenCalledTimes(1);
     expect(rawTransaction).not.toHaveBeenCalled();
+  });
+
+  it('sets app.channel from the request it runs in (answer 1723)', async () => {
+    const executeRaw = jest.fn().mockResolvedValue(1);
+    const { service } = makeService((cb) => cb({ $executeRaw: executeRaw }));
+    await requestChannel.run('api', () => service.forTenant(context, async () => 'ok'));
+    expectTransactionLocalContext(executeRaw, ['org-1', 'off', '', 'off', ''], 'api');
   });
 
   it('sets the context before the callback runs', async () => {

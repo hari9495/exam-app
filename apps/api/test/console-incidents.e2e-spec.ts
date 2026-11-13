@@ -230,5 +230,47 @@ describe('Console C-8 YX-10: incidents and breach reminders', () => {
       const audits = await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findMany({ where: { entityId: id, action: { in: ['platform.incident.marked_breach', 'platform.incident.breach_reminder'] } }, select: { action: true } }));
       expect(audits.map((a) => a.action).sort()).toEqual(['platform.incident.breach_reminder', 'platform.incident.breach_reminder', 'platform.incident.marked_breach']);
     });
+
+    // DPDP Rule 7 (founder, 13 Nov 2026): the Board is told without delay; Security leads are nudged until it is marked.
+    it('Rule 7: the Security leads are reminded to tell the Board, again after the nudge minutes, until it is marked', async () => {
+      const incidents = app.get(IncidentsService);
+      const nudges = () => sent.filter((m) => m.subject === `Tell the Data Protection Board now: C8I A ${run}`);
+      await tenantPrisma.forTenant(SUPER, (tx) => tx.companyContainment.update({ where: { id: containmentId }, data: { boardNudgedAt: null } }));
+      const reminders = () => tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.count({ where: { entityId: containmentId, action: 'platform.containment.board_notice_reminder' } }));
+      const before = await reminders();
+      const t0 = contained + 72 * 3_600_000;
+      sent.length = 0;
+      await incidents.boardNoticeSweep(new Date(t0));
+      expect(nudges().map((m) => m.to)).toEqual(expect.arrayContaining([`staff-${run}@platform.test`, `staff2-${run}@platform.test`]));
+      expect(nudges().some((m) => m.to === `staffnokey-${run}@platform.test` || m.to.endsWith('@c8i.test'))).toBe(false);
+      sent.length = 0;
+      await incidents.boardNoticeSweep(new Date(t0 + 30 * 60_000));
+      expect(nudges()).toEqual([]);
+      await incidents.boardNoticeSweep(new Date(t0 + 61 * 60_000));
+      expect(nudges().length).toBeGreaterThan(0);
+      expect((await reminders()) - before).toBe(2);
+    });
+
+    it('Rule 7: marking the first notice needs the incidents or contain key and the security key; audited; then the reminders stop', async () => {
+      const path = `/platform/companies/${org.A}/containment/board-notice`;
+      const body = { sentAt: new Date(contained + 60_000).toISOString(), note: 'Emailed the Board; reference DPB-1' };
+      await api('adminA', 'post', path).send(body).expect(403);
+      await api('staffNoKey', 'post', path).send(body).expect(403);
+      const cold = (await request(server()).post('/api/v1/auth/platform/login').send({ email: `staff2-${run}@platform.test`, password: PASSWORD }).expect(200)).body.accessToken as string;
+      const r = await api(cold, 'post', path).send(body);
+      expect(r.status).toBe(403);
+      expect(['STEP_UP_REQUIRED', 'MFA_REQUIRED']).toContain((r.body as { code?: string }).code);
+      await api('staff', 'post', path).send({ ...body, note: 'ok' }).expect(400);
+      await api('staff', 'post', path).send({ ...body, sentAt: new Date(contained - 60_000).toISOString() }).expect(400);
+      const done = (await api('staff', 'post', path).send(body).expect(201)).body;
+      expect(done.containment.boardNotice).toMatchObject({ note: body.note, at: body.sentAt });
+      await api('staff', 'post', path).send(body).expect(409);
+      expect(find((await api('staff', 'get', '/platform/incidents').expect(200)).body, title).breach).toMatchObject({ boardNotifiedAt: body.sentAt, boardNoticeNote: body.note });
+      const audit = await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findFirst({ where: { action: 'platform.containment.board_notified', entityId: containmentId } }));
+      expect(audit).toMatchObject({ actorUserId: users.staff });
+      sent.length = 0;
+      await app.get(IncidentsService).boardNoticeSweep(new Date(contained + 80 * 3_600_000));
+      expect(sent.filter((m) => m.subject === `Tell the Data Protection Board now: C8I A ${run}`)).toEqual([]);
+    });
   });
 });

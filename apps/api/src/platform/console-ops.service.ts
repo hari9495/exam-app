@@ -148,6 +148,7 @@ export class ConsoleOpsService {
         appsRevoked: row.appsRevoked,
         liftRequest: row.liftRequestedAt ? { by: row.liftRequestedByName, byMe: row.liftRequestedBy === actorUserId, at: row.liftRequestedAt.toISOString(), reason: row.liftReason } : null,
         lifted: row.liftedAt ? { by: row.liftedByName, at: row.liftedAt.toISOString() } : null,
+        boardNotice: row.boardNotifiedAt ? { at: row.boardNotifiedAt.toISOString(), by: row.boardNotifiedByName, note: row.boardNoticeNote } : null,
       };
       return { company: { id: org.id, name: org.name }, users, apps, containment: view, breach: { certinHours: await this.hours(tx, 'breach.certin_hours', 6), dpdpHours: await this.hours(tx, 'breach.dpdp_board_report_hours', 72) } };
     });
@@ -203,6 +204,24 @@ export class ConsoleOpsService {
       const entry = { action: 'platform.company.contained', entityType: 'organization', entityId: organizationId, metadata: { containmentId: row.id, reason, signedOut, appsRevoked, certinDueAt: row.certinDueAt.toISOString(), dpdpDueAt: row.dpdpDueAt.toISOString() } };
       await audit(null, entry);
       await audit(organizationId, entry);
+    });
+    return this.containment(actorUserId, organizationId);
+  }
+
+  /**
+   * DPDP Rule 7 (founder, 13 Nov 2026): the first notice to the Data Protection Board, sent "without delay", is marked
+   * with when it was sent and a note (security key, audited). The 72-hour detailed report stays as built.
+   */
+  async boardNotice(actorUserId: string, organizationId: string, sentAt: string, note: string) {
+    await this.write(actorUserId, async (tx, audit) => {
+      const row = await tx.companyContainment.findFirst({ where: { organizationId }, orderBy: { containedAt: 'desc' } });
+      if (!row) throw new NotFoundException('This company has not been contained.');
+      if (row.boardNotifiedAt) throw new ConflictException('The first notice to the Board is already marked as sent.');
+      const at = new Date(sentAt);
+      if (Number.isNaN(at.getTime()) || at < row.containedAt || at.getTime() > Date.now() + 5 * 60_000) throw new BadRequestException('The time sent must be after the company was contained, and not in the future.');
+      const actor = await staffActor(this.tenantPrisma, actorUserId);
+      await tx.companyContainment.update({ where: { id: row.id }, data: { boardNotifiedAt: at, boardNoticeNote: note, boardNotifiedBy: actorUserId, boardNotifiedByName: actor.label.slice(0, 200) } });
+      await audit(null, { action: 'platform.containment.board_notified', entityType: 'company_containment', entityId: row.id, metadata: { organizationId, sentAt: at.toISOString(), note } });
     });
     return this.containment(actorUserId, organizationId);
   }

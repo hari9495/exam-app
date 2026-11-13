@@ -555,10 +555,10 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(settingsView || has('expense.policy.manage') || has('expense.policy.view'), L('expense-settings', 'Expense settings', `${SETTINGS_HOME}/finance/expenses-and-travel`)),
         ...when(settingsView || has('perf.setup.manage'), L('performance-settings', 'Performance settings', `${SETTINGS_HOME}/talent/performance`)),
         // S-10 (answer 1327): Integrations, AI and Developers for System Admins; everyone's own calendar.
-        ...when(has('org:manage_settings') && !support, L('integrations', 'Integrations', `${SETTINGS_HOME}/integrations/integrations`), L('ai-settings', 'AI', `${SETTINGS_HOME}/integrations/ai`), L('developers', 'Developers', `${SETTINGS_HOME}/integrations/developers`)),
-        ...when(!support && (has('org:manage_settings') || Boolean(n.panellist) || any('interview:view_assigned', 'pipeline:manage')), L('calendar-and-chat', 'Calendar & chat', `${SETTINGS_HOME}/integrations/calendar-and-chat`)),
+        ...when((has('org:manage_settings') || has('integration.manage')) && !support, L('integrations', 'Integrations', `${SETTINGS_HOME}/integrations/integrations`), L('ai-settings', 'AI', `${SETTINGS_HOME}/integrations/ai`), L('developers', 'Developers', `${SETTINGS_HOME}/integrations/developers`)),
+        ...when(!support && (has('org:manage_settings') || has('integration.manage') || Boolean(n.panellist) || any('interview:view_assigned', 'pipeline:manage')), L('calendar-and-chat', 'Calendar & chat', `${SETTINGS_HOME}/integrations/calendar-and-chat`)),
         // S-9 (answers 1328, 1332): the plan, usage and invoices (read-only) and, for System Admins, export and closure.
-        ...when(has('org:manage_billing'), L('plan', 'Plan & add-ons', `${SETTINGS_HOME}/account/plan-and-add-ons`), L('usage', 'Usage & caps', `${SETTINGS_HOME}/account/usage-and-caps`), L('invoices', 'Invoices', `${SETTINGS_HOME}/account/invoices-and-payment`)),
+        ...when(has('org:manage_billing') || has('billing.view'), L('plan', 'Plan & add-ons', `${SETTINGS_HOME}/account/plan-and-add-ons`), L('usage', 'Usage & caps', `${SETTINGS_HOME}/account/usage-and-caps`), L('invoices', 'Invoices', `${SETTINGS_HOME}/account/invoices-and-payment`)),
         ...when(has('org:manage_billing') && n.role === 'org_admin' && !support, L('data-export', 'Data export & closure', `${SETTINGS_HOME}/account/data-export-and-closure`)),
       ]),
       ...sec('People & Access', [

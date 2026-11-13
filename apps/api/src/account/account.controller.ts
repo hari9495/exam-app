@@ -6,7 +6,7 @@ import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { RequirePermissions } from '../rbac/permissions.decorator';
+import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { RequireStepUp } from '../auth/step-up.decorator';
 import { ownSession } from '../org-structure/org-structure.controller';
 import { AccountService, type AccountUser } from './account.service';
@@ -39,8 +39,9 @@ export class AccountController {
     return req.user as AccountUser;
   }
 
+  // Answer 1884: finance people read it with billing.view; export and closure stay with the System Admin's billing key.
   @Get('billing')
-  @RequirePermissions('org:manage_billing')
+  @RequireAnyPermission('org:manage_billing', 'billing.view')
   billing(@CurrentTenant() ctx: TenantContext) {
     return this.account.billing(ctx);
   }

@@ -40,6 +40,9 @@ export function grantScopesFor(key: string): readonly GrantScopeType[] {
   // HIR-11/12 (founder answers 202, 204): the HR Admin template (typically per legal entity) carries these two; costs and
   // referrals are company-wide, so a grant for one legal entity passes the route but confers nothing (fail closed).
   if (key === 'ats.costs.manage' || key === 'ats.referral.manage') return ['tenant', 'legal_entity'];
+  // Answer 1884: billing.view sits on the Finance templates (typically per legal entity); the plan and invoices are the
+  // company's own, read-only, so a legal-entity grant reads the same company-wide plan.
+  if (key === 'billing.view') return ['tenant', 'legal_entity'];
   // Visitors slice 1 (answer 613): reception and the log work per location (or entity); visitor settings are company-wide.
   if (key === 'visitors.desk.manage' || key === 'visitors.log.view' || key === 'visitors.rollcall.view') return ['tenant', 'legal_entity', 'location'];
   if (key === 'visitors.settings.manage' || key === 'visitors.watchlist.manage') return ['tenant'];

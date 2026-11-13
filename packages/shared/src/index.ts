@@ -18,6 +18,7 @@ export * from './network/auth-cookie';
 export * from './ai/ai-provider';
 export * from './ai/anthropic-provider';
 export * from './ai/openai-compatible-provider';
+export * from './net/public-fetch';
 export * from './ai/embedding-provider';
 // cosineSimilarity is intentionally NOT re-exported here (face/ already exports that name); the app
 // only needs topKSimilar, and the internal cosine is covered by vector-math's own spec.

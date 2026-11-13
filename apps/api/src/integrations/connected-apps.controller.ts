@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, UseGu
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { RequirePermissions } from '../rbac/permissions.decorator';
+import { RequireAnyPermission } from '../rbac/permissions.decorator';
 import { RequireStepUp } from '../auth/step-up.decorator';
 import { OwnSessionGuard } from '../auth/own-session.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
@@ -17,13 +17,13 @@ export class ConnectedAppsController {
   constructor(private readonly service: ConnectedAppsService) {}
 
   @Get('connected-apps')
-  @RequirePermissions('org:manage_settings')
+  @RequireAnyPermission('org:manage_settings', 'integration.manage')
   list(@CurrentTenant() tenant: TenantContext) {
     return this.service.list(tenant);
   }
 
   @Post('connected-apps')
-  @RequirePermissions('org:manage_settings')
+  @RequireAnyPermission('org:manage_settings', 'integration.manage')
   @RequireStepUp()
   @UseGuards(OwnSessionGuard)
   create(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: CreateConnectedAppDto) {
@@ -31,7 +31,7 @@ export class ConnectedAppsController {
   }
 
   @Patch('connected-apps/:id')
-  @RequirePermissions('org:manage_settings')
+  @RequireAnyPermission('org:manage_settings', 'integration.manage')
   @RequireStepUp()
   @UseGuards(OwnSessionGuard)
   update(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateConnectedAppDto) {
@@ -39,7 +39,7 @@ export class ConnectedAppsController {
   }
 
   @Delete('connected-apps/:id')
-  @RequirePermissions('org:manage_settings')
+  @RequireAnyPermission('org:manage_settings', 'integration.manage')
   @RequireStepUp()
   @UseGuards(OwnSessionGuard)
   remove(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
@@ -47,13 +47,13 @@ export class ConnectedAppsController {
   }
 
   @Post('connected-apps/:id/test')
-  @RequirePermissions('org:manage_settings')
+  @RequireAnyPermission('org:manage_settings', 'integration.manage')
   test(@CurrentTenant() tenant: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.test(tenant, id);
   }
 
   @Get('connected-apps/:id/deliveries')
-  @RequirePermissions('org:manage_settings')
+  @RequireAnyPermission('org:manage_settings', 'integration.manage')
   deliveries(@CurrentTenant() tenant: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.deliveries(tenant, id);
   }
