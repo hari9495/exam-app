@@ -21740,5 +21740,69 @@
       "Screens/Helpdesk/HLP-22 · Changes and problems · Changes · report for the last 90 days (failed-change rate, problems by age)"
     ],
     "note": "Positive and negative. Answers 1953, 1955; ITSM-4."
+  },
+  {
+    "id": "MT-AS0a",
+    "area": "Assessments AS-0 (13 Nov 2026)",
+    "screen": "Hire › Jobs & requisitions › a job board; Hire › Test results (older screens)",
+    "url": "http://localhost:3000/yx/hiring/jobs",
+    "account": "The Interview coordinator; a Hiring manager who owns one job; a recruiter.",
+    "steps": [
+      "As the recruiter open a job whose candidates took a test: the board shows their test results.",
+      "As the Hiring manager open their own job, then a job they do not own.",
+      "As the Interview coordinator open Jobs & requisitions and a job board.",
+      "As the Interview coordinator open /v2/panel/reports (Test results)."
+    ],
+    "expected": "Step 1: results on every card. Step 2: results on their own job; none on the other job (unless the candidate also applied to their job). Step 3: the jobs and boards open, with no test result on any card. Step 4: refused (no access).",
+    "stories": [],
+    "note": "Positive and negative. Answer 2004."
+  },
+  {
+    "id": "MT-AS0b",
+    "area": "Assessments AS-0 (13 Nov 2026)",
+    "screen": "Test results (older screens): results, report, export",
+    "url": "http://localhost:3000/v2/panel/reports",
+    "account": "A Hiring manager who owns one job; a recruiter.",
+    "steps": [
+      "As the recruiter open a test's results and export them.",
+      "As the Hiring manager open the same test's results and export them.",
+      "As the Hiring manager open the report of a candidate who applied only to another job (change the candidate in the address).",
+      "As the Hiring manager open the dashboard."
+    ],
+    "expected": "Step 1: every candidate. Step 2: only candidates of their own jobs, in the list, the summary and the file. Step 3: not found. Step 4: refused with \"Company-wide test numbers are for recruiters and the people who write tests\".",
+    "stories": [],
+    "note": "Positive and negative. Answer 2004."
+  },
+  {
+    "id": "MT-AS0c",
+    "area": "Assessments AS-0 (13 Nov 2026)",
+    "screen": "Live monitoring: end an attempt, unblock; marking: finish; results: release",
+    "url": "http://localhost:3000/v2/panel/exams",
+    "account": "A recruiter with a passkey or authenticator; the System Admin.",
+    "steps": [
+      "As the recruiter end a candidate's attempt without confirming the second factor recently.",
+      "Confirm the second factor, then end it without a reason, then with a reason.",
+      "Open the candidate's report timeline.",
+      "Unblock a blocked attempt, finish a marking and release results.",
+      "As the System Admin act as the recruiter (impersonate) and try to change a test, end an attempt or release results; then open a test."
+    ],
+    "expected": "Step 1: asked for the second factor. Step 2: refused without a reason; ended with one. Step 3: the end and its reason show. Step 4: each asks for the second factor first. Step 5: every change is refused (Not available while acting for someone else); reading works.",
+    "stories": [],
+    "note": "Positive and negative. Answer 2006."
+  },
+  {
+    "id": "MT-AS0d",
+    "area": "Assessments AS-0 (13 Nov 2026)",
+    "screen": "Settings › Roles: the assessment keys",
+    "url": "http://localhost:3000/yx/settings/roles",
+    "account": "The System Admin; two companies.",
+    "steps": [
+      "Make a role with only \"asmt.test.manage\" and \"asmt.bank.manage\"; sign in as someone holding it and build a test.",
+      "Make a role with only \"asmt.proctor\"; try to build a test.",
+      "As the other company's System Admin open a test or a candidate report of this company (by address)."
+    ],
+    "expected": "Step 1: the test and its questions are built; the answer key shows. Step 2: refused. Step 3: not found.",
+    "stories": [],
+    "note": "Positive and negative. Answers 2003, 2005."
   }
 ]

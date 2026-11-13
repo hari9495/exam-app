@@ -701,6 +701,57 @@ rescheduling, the capacity planner, adaptive tests, admit cards and the invigila
 about **90 to 120 builder-days**, plus outside vendors (ID checks, payments) and the mobile apps, started only with a
 real certification customer.
 
+### AS-0 as built (13 Nov 2026, branch feat/yukthix-assessments-as0)
+
+No new screens: AS-0 is the security slice under the existing routes and the /v2 pages. What changed:
+
+- **Company isolation (2005).** Fourteen tables get `organization_id`, filled from the parent and kept filled by a
+  BEFORE INSERT trigger, made required, indexed and put under the forced `tenant_isolation` policy
+  (`202617z0000301_assessments_company_rls`; the super-admin context is set before any data is written). The eleven
+  tables listed above plus `results`, `integrity_analyses` and `candidate_messages` (they hold scores and messages). The
+  candidate runtime's three reads without a company context (link sign-in, the session check, last-seen) now run in one.
+- **YukthiX keys (2003).** `asmt.bank.manage`, `asmt.test.manage`, `asmt.proctor`, `asmt.evaluate`,
+  `asmt.results.view`, `assessments.settings.manage`. The older keys keep working: `exam:manage` ← `asmt.test.manage`,
+  `question_bank:manage` and `question_bank:view` ← `asmt.bank.manage`, `results:view` ← `asmt.results.view` (plus
+  `ats.assessment.view`, `ats.candidate.manage`; never `ats.candidate.view`). Proctor routes (events, messages, unblock,
+  end, excuse, re-analyse) take `exam:manage` or `asmt.proctor`; marking routes (grade, finish marking, code review,
+  pending marking, release and hold results, AI insight again) take `exam:manage` or `asmt.evaluate`; the certificate
+  template takes `exam:manage` or `assessments.settings.manage`. Templates: Recruiter + bank, test, proctor, evaluate,
+  results; Hiring manager + results; Hiring admin + assessment settings.
+- **Who sees results (2004).** Answer keys only for writers (the hotfix). Results: test writers, recruiters
+  (`pipeline:manage`), hiring admins (`ats.headcount.manage`) and auditors read every candidate; anyone else who reads
+  results (the Hiring manager) reads only candidates who applied to one of their own jobs (hiring manager of the job, or
+  its creator) in the results list, summary, accuracy, report, compare, export, drive roster and AI insight (another
+  job's candidate is 404); the company-wide /v2 dashboard is refused to them (403, question 2061). The Interview
+  coordinator keeps "Jobs & requisitions", the jobs, the job board, candidate profile and résumé, feedback, fit and the
+  pickers (candidate view is enough on those reads) but sees no test result anywhere (the board's results are empty;
+  every test and results route is 403).
+- **Acting, step-up, reasons (2006).** Every assessments change is refused while acting for someone else (reads stay
+  open). The second factor again to end an attempt, overturn a proctoring verdict (unblock, excuse from proctoring),
+  release results and finish marking. Ending an attempt needs a reason; it is kept on the candidate's timeline
+  (`ended_by_staff` event) and in the audit log.
+
+Tests: `test/assessments-as0.e2e-spec.ts` (cross-company reads and writes, each key, own-job results, the coordinator,
+acting, step-up and reasons), `src/rbac/results-scope.spec.ts`; the suites that end attempts, unblock or finish marking
+now prove the second factor first.
+
+### Questions (from 2061)
+
+2061. **The company-wide test dashboard for a Hiring manager.** It is refused to them now (it counts every candidate).
+      *Suggested: AS-2's score report gets an own-jobs view for Hiring managers.*
+2062. **Two more tables without a company column.** `candidate_refresh_tokens` and `notifications` (invitation email
+      delivery) hold no answers or scores and are read by token at sign-in. *Suggested: add the column and RLS in AS-3,
+      with invitations and delivery.*
+2063. **Pausing an attempt.** Staff cannot pause today (the system blocks; staff unblock or end), so the reason rule
+      covers ending. *Suggested: AS-5's live console adds pause, with a reason, as drawn.*
+2064. **No step-up to undo an excuse or to hold results.** Both return to the stricter state. *Suggested: keep as is.*
+2065. **Proctor- or marker-only people.** With only `asmt.proctor` or `asmt.evaluate` they can act on an attempt but
+      cannot open the test page (it needs a test or results key). *Suggested: AS-5 and AS-6 open their own pages to
+      them.*
+2066. **"Own jobs" for a Hiring manager.** A candidate is theirs when the candidate applied to a job they are the hiring
+      manager of, or opened; then all that candidate's test results show. *Suggested: keep; a per-job restriction comes
+      with AS-3's job tests.*
+
 ## Appendix: the count script
 
 Run from the repo root (`node check.js` after saving the block). It recounts section 3 and fails unless every story of
