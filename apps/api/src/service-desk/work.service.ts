@@ -419,7 +419,7 @@ export class WorkService {
   async templates(a: DeskActor, deskId: string) {
     if (!a.roles.has(deskId) && !has(a, 'desk.desk.create')) throw new NotFoundException('No such desk.');
     return this.tx(a, async (tx) => ({
-      templates: (await tx.sdTemplate.findMany({ where: { organizationId: a.ctx.organizationId, deskId }, orderBy: { name: 'asc' } })).map((x) => ({ id: x.id, name: x.name, ticketTypeId: x.ticketTypeId, defaults: x.defaults, checklist: x.checklist, active: x.active })),
+      templates: (await tx.sdTemplate.findMany({ where: { organizationId: a.ctx.organizationId, deskId }, orderBy: { name: 'asc' } })).map((x) => ({ id: x.id, name: x.name, ticketTypeId: x.ticketTypeId, defaults: x.defaults, checklist: x.checklist, active: x.active, preApproved: x.preApproved })),
       resolutionCodes: (await tx.sdResolutionCode.findMany({ where: { organizationId: a.ctx.organizationId, deskId }, orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }] })).map((x) => ({ id: x.id, code: x.code, label: x.label, active: x.active })),
     }));
   }
@@ -430,17 +430,20 @@ export class WorkService {
     try {
       return await this.tx(a, async (tx) => {
         const d = dto.defaults;
-        if (dto.ticketTypeId && !(await tx.sdTicketType.findFirst({ where: { organizationId: org, deskId, id: dto.ticketTypeId }, select: { id: true } }))) throw new BadRequestException('Choose a ticket type of this desk.');
+        const type = dto.ticketTypeId ? await tx.sdTicketType.findFirst({ where: { organizationId: org, deskId, id: dto.ticketTypeId }, select: { kind: true } }) : null;
+        if (dto.ticketTypeId && !type) throw new BadRequestException('Choose a ticket type of this desk.');
+        // Answer 1935: only a change template is pre-approved (a standard change).
+        if (dto.preApproved && type?.kind !== 'change') throw new BadRequestException('Only a template of a change type can be pre-approved.');
         if (d.categoryId && !(await tx.sdCategory.findFirst({ where: { organizationId: org, deskId, id: d.categoryId }, select: { id: true } }))) throw new BadRequestException('Choose a category of this desk.');
         if (d.groupId && !(await tx.sdGroup.findFirst({ where: { organizationId: org, deskId, id: d.groupId }, select: { id: true } }))) throw new BadRequestException('Choose a group of this desk.');
-        const data = { name: dto.name, ticketTypeId: dto.ticketTypeId ?? null, defaults: d as unknown as Prisma.InputJsonValue, checklist: dto.checklist.map((x) => x.trim()).filter(Boolean), ...(dto.active !== undefined ? { active: dto.active } : {}) };
+        const data = { name: dto.name, ticketTypeId: dto.ticketTypeId ?? null, defaults: d as unknown as Prisma.InputJsonValue, checklist: dto.checklist.map((x) => x.trim()).filter(Boolean), ...(dto.active !== undefined ? { active: dto.active } : {}), ...(type?.kind !== 'change' ? { preApproved: false } : dto.preApproved !== undefined ? { preApproved: dto.preApproved } : {}) };
         const x = id
           ? (await tx.sdTemplate.updateMany({ where: { organizationId: org, deskId, id }, data })).count
             ? { id }
             : null
           : await tx.sdTemplate.create({ data: { organizationId: org, deskId, ...data, createdBy: a.userId } });
         if (!x) throw new NotFoundException('No such template.');
-        await audit(tx, a, id ? 'desk.template.updated' : 'desk.template.created', 'sd_template', x.id, { deskId, name: dto.name });
+        await audit(tx, a, id ? 'desk.template.updated' : 'desk.template.created', 'sd_template', x.id, { deskId, name: dto.name, ...(dto.preApproved !== undefined ? { preApproved: dto.preApproved } : {}) });
         return { id: x.id };
       });
     } catch (e) {

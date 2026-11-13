@@ -530,7 +530,7 @@ export interface TicketWork {
 }
 
 export interface DeskTemplates {
-  templates: { id: string; name: string; ticketTypeId: string | null; defaults: { categoryId?: string; groupId?: string; priority?: number; tags?: string[] }; checklist: string[]; active: boolean }[];
+  templates: { id: string; name: string; ticketTypeId: string | null; defaults: { categoryId?: string; groupId?: string; priority?: number; tags?: string[] }; checklist: string[]; active: boolean; /** ITSM answer 1935: a standard change. */ preApproved?: boolean }[];
   resolutionCodes: { id: string; code: string; label: string; active: boolean }[];
 }
 

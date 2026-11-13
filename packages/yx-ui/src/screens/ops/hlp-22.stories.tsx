@@ -42,6 +42,7 @@ const ACCESS_LINKS = [
 ];
 
 export const Changes: S = { name: 'Changes · list, clash and the change calendar', render: () => <ChangesScreen rows={CHANGES} freezes={FREEZES} today={TODAY} /> };
+export const ExportChanges: S = { name: 'Changes · export for an audit (CSV or PDF, answer 1943)', render: () => <ChangesScreen rows={CHANGES} freezes={FREEZES} today={TODAY} exportOpen /> };
 export const ChangesEmpty: S = { name: 'Changes · none yet', render: () => <ChangesScreen rows={[]} freezes={[]} today={TODAY} /> };
 export const NewChange: S = { name: 'New change · kind, risk questions, window, way back', render: () => <ChangesScreen rows={CHANGES} freezes={FREEZES} today={TODAY} newOpen /> };
 export const NewChangeTooEarly: S = { name: 'New change · sent with nothing filled', render: () => <ChangesScreen rows={CHANGES} freezes={FREEZES} today={TODAY} newOpen />, play: play(press('Send for approval')) };
@@ -94,7 +95,7 @@ const SETTINGS: ItsmSettingsValue = {
 };
 const settings = (v: ItsmSettingsValue) => (
   <OpsDesk area="helpdesk" active="Desk set-up">
-    <ItsmSettingsPanel value={v} onSearchPeople={async () => [{ id: 'u4', name: 'Farah Khan' }]} onSave={async () => undefined} onSaveWindow={async () => undefined} />
+    <ItsmSettingsPanel value={v} onSearchPeople={async () => [{ id: 'u4', name: 'Farah Khan' }]} onSave={async () => undefined} onSaveWindow={async () => undefined} standard={{ templates: [{ id: 't1', name: 'Monthly laptop patching', checklist: ['Save the images', 'Patch', 'Check a sign-in'], preApproved: true }, { id: 't2', name: 'Add a printer to the print server', checklist: [], preApproved: false }], onSave: async () => undefined }} />
   </OpsDesk>
 );
 export const Settings: S = { name: 'Settings · approval by risk, risk questions, banner and review, change window', render: () => settings(SETTINGS) };

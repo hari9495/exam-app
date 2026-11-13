@@ -1,3 +1,6 @@
+import { DateTime } from 'luxon';
+import { CalendarSpec, workingIntervals } from './business-time';
+
 // Helpdesk ITSM (docs/yukthix/helpdesk-itsm-plan.md; answers 1933, 1936): the risk questions and the change window and
 // freeze rules, as pure functions. Days and times are India days and times (IST), as for the maintenance rules.
 
@@ -120,3 +123,18 @@ export function outsideWindow(from: Date, to: Date, w: CompanyWindow): string | 
   }
   return null;
 }
+
+/** The end of the n-th working day after `from` on a desk calendar (answer 1938: a review due within n working days). */
+export function afterWorkingDays(cal: CalendarSpec, from: Date, n: number): Date {
+  let day = DateTime.fromJSDate(from, { zone: cal.zone }).startOf('day');
+  // shortcut: a calendar with no working day for a year gives the plain calendar day, never an endless walk.
+  for (let left = n, i = 0; left > 0 && i < 366; i++) {
+    day = day.plus({ days: 1 });
+    if (workingIntervals(cal, day).length) left--;
+    if (i === 365) day = DateTime.fromJSDate(from, { zone: cal.zone }).plus({ days: n }).startOf('day');
+  }
+  return day.endOf('day').toJSDate();
+}
+
+/** Two windows overlap (a clash when they touch the same service). */
+export const overlaps = (a: { from: Date; to: Date }, b: { from: Date; to: Date }) => a.from < b.to && b.from < a.to;

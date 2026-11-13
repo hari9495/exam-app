@@ -86,6 +86,7 @@ function YxDeskSetupPageInner() {
   const widgets = useDesk<WidgetView[]>(canChat && canPortal ? '/widgets' : null);
   // Helpdesk ITSM-1 (answers 1933-1939): an IT desk's change settings and the company's change window.
   const isIt = detail.data?.desk.kind === 'it';
+  const changeType = detail.data?.types.find((t) => t.kind === 'change' && t.active)?.id;
   const itsm = useDesk<ItsmSettingsValue>(selected && isIt && (perms.has('desk.settings.manage') || perms.has('desk.ticket.work')) ? `/desks/${selected}/itsm-settings` : null);
   const groups = (detail.data?.groups ?? []).map((g) => ({ id: g.id, name: g.name }));
   const zone = me.data?.timeZone || 'Asia/Kolkata';
@@ -274,6 +275,14 @@ function YxDeskSetupPageInner() {
                           onSearchPeople={async (q) => ((await apiFetch(`/desk/users?search=${encodeURIComponent(q)}`, {}, token)) as { id: string; name: string | null; email: string }[]).map((u) => ({ id: u.id, name: u.name ?? u.email }))}
                           onSave={(change) => write(`${base}/itsm-settings`, 'PUT', change)}
                           onSaveWindow={(change) => write('/itsm/window', 'PUT', change)}
+                          standard={
+                            changeType
+                              ? {
+                                  templates: (templates.data?.templates ?? []).filter((x) => x.ticketTypeId === changeType).map((x) => ({ id: x.id, name: x.name, checklist: x.checklist, preApproved: Boolean(x.preApproved) })),
+                                  onSave: (id, input) => write(id ? `${base}/templates/${id}` : `${base}/templates`, id ? 'PATCH' : 'POST', { ...input, ticketTypeId: changeType, defaults: {} }),
+                                }
+                              : undefined
+                          }
                         />
                       ),
                     },

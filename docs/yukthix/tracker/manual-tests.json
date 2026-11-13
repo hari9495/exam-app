@@ -21460,5 +21460,114 @@
       "Shell/App shell and navigation · Command palette · desk actions for an agent on a ticket"
     ],
     "note": "Positive and negative. Answer 1649."
+  },
+  {
+    "id": "MT-HD-ITSM1a",
+    "area": "Helpdesk ITSM-1 and ITSM-2 (13 Nov 2026)",
+    "screen": "Helpdesk › Desk set-up › Changes (IT desk)",
+    "url": "http://localhost:3000/yx/desk/setup?tab=changes",
+    "account": "The IT desk admin; an IT agent; the company Service Desk owner (org admin).",
+    "steps": [
+      "As the desk admin open the IT desk, tab Changes. Set High risk to Change board with no board members and Save.",
+      "Add two people to the change board and Save; change a risk question label and Save questions; press Use the starter questions.",
+      "As the agent open the same tab.",
+      "As the org admin change the weekday window to 21:00 and the freeze dates to 7, 40; then to 7, 15 and Save."
+    ],
+    "expected": "Step 1: refused, \"Name the change board first\". Step 2: saved with a toast; the starter questions come back. Step 3: read-only with the note. Step 4: 40 refused; 7, 15 saved; the desk admin sees the window read-only.",
+    "stories": [
+      "Screens/Helpdesk/HLP-22 · Changes and problems · Settings · approval by risk, risk questions, banner and review, change window",
+      "Screens/Helpdesk/HLP-22 · Changes and problems · Settings · an agent sees them, cannot change them"
+    ],
+    "note": "Positive and negative. Answers 1933-1936."
+  },
+  {
+    "id": "MT-HD-ITSM1b",
+    "area": "Helpdesk ITSM-1 and ITSM-2 (13 Nov 2026)",
+    "screen": "Help centre › raise a ticket; a ticket › Change type",
+    "url": "http://localhost:3000/yx/desk/help?new=1",
+    "account": "An employee; an IT agent.",
+    "steps": [
+      "As the employee raise a ticket on the IT desk and open the type list.",
+      "As the agent open an incident and press Change type."
+    ],
+    "expected": "Neither list offers Change or Problem. A change is raised only from Helpdesk › Changes.",
+    "stories": [],
+    "note": "Negative. Answer 1931."
+  },
+  {
+    "id": "MT-HD-ITSM2a",
+    "area": "Helpdesk ITSM-1 and ITSM-2 (13 Nov 2026)",
+    "screen": "Helpdesk › Changes › New change",
+    "url": "http://localhost:3000/yx/desk/changes",
+    "account": "An IT agent; the two IT leads; the change board; the owner of the application (Applications).",
+    "steps": [
+      "As the agent press New change: Normal, an application, all answers lowest, a Saturday 10:00 to 12:00, a way back. Send.",
+      "As an IT lead approve it in Approvals.",
+      "Raise a medium-risk change (some answers in the middle); the lead approves, then the application owner.",
+      "Raise a high-risk change; two of the three board members approve.",
+      "As an IT lead raise a change yourself and look in your own Approvals."
+    ],
+    "expected": "Step 1: sent for approval. Step 2: Scheduled; a known-issue notice from 24 hours before; the owner gets a notice. Step 3: the owner is asked only after the lead. Step 4: scheduled after the second approval. Step 5: you are never asked about your own change; the other lead is.",
+    "stories": [
+      "Screens/Helpdesk/HLP-22 · Changes and problems · New change · kind, risk questions, window, way back",
+      "Screens/Helpdesk/HLP-22 · Changes and problems · A change · waiting for the change board (high risk)"
+    ],
+    "note": "Positive and negative. Answers 1932-1934, 1937."
+  },
+  {
+    "id": "MT-HD-ITSM2b",
+    "area": "Helpdesk ITSM-1 and ITSM-2 (13 Nov 2026)",
+    "screen": "Helpdesk › Changes › New change (freeze and window)",
+    "url": "http://localhost:3000/yx/desk/changes",
+    "account": "An IT agent.",
+    "steps": [
+      "New change, Normal, on the 15th of the month at 22:00.",
+      "The same as Emergency without a reason; then with \"Active attack, cannot wait\" in Why it cannot wait.",
+      "A Normal change on a weekday at 14:00.",
+      "Answers that give High risk, then choose Low risk without a reason."
+    ],
+    "expected": "Step 1: refused, it falls in a freeze. Step 2: refused without the reason, sent with it (one IT lead approves). Step 3: refused, outside the change window. Step 4: asks why the risk is lower.",
+    "stories": [
+      "Screens/Helpdesk/HLP-22 · Changes and problems · New change · emergency, one approver now",
+      "Screens/Helpdesk/HLP-22 · Changes and problems · New change · sent with nothing filled"
+    ],
+    "note": "Negative and positive. Answers 1933, 1936."
+  },
+  {
+    "id": "MT-HD-ITSM2c",
+    "area": "Helpdesk ITSM-1 and ITSM-2 (13 Nov 2026)",
+    "screen": "Helpdesk › Changes › a change (standard, outcome, review)",
+    "url": "http://localhost:3000/yx/desk/changes",
+    "account": "The IT desk admin; an IT agent; an IT lead.",
+    "steps": [
+      "As the desk admin add a standard change in Desk set-up › Changes with three steps.",
+      "As the agent raise a Standard change from it; when its window starts press Start the change, tick two steps, then Backed out with a note.",
+      "Try another Standard change from the same template.",
+      "As the agent try to save the review; as the lead save it."
+    ],
+    "expected": "Step 2: scheduled at once (no approval); after Backed out it waits for a review due within 5 working days and the notice ends. Step 3: refused (the template lost its pre-approval). Step 4: the agent cannot; the lead closes it as Backed out.",
+    "stories": [
+      "Screens/Helpdesk/HLP-22 · Changes and problems · A change · in progress, the checklist and the outcome",
+      "Screens/Helpdesk/HLP-22 · Changes and problems · A change · review after it caused incidents"
+    ],
+    "note": "Positive and negative. Answers 1935, 1938."
+  },
+  {
+    "id": "MT-HD-ITSM2d",
+    "area": "Helpdesk ITSM-1 and ITSM-2 (13 Nov 2026)",
+    "screen": "Helpdesk › Changes › Export",
+    "url": "http://localhost:3000/yx/desk/changes",
+    "account": "An IT agent; an employee; an agent of another company.",
+    "steps": [
+      "As the agent press Export, this year, CSV; then PDF.",
+      "As the employee open /yx/desk/changes and a change link.",
+      "As the other company open a change link of this company."
+    ],
+    "expected": "Step 1: both files list every change with who approved and when, the outcome and the review. Steps 2 and 3: no access / not found.",
+    "stories": [
+      "Screens/Helpdesk/HLP-22 · Changes and problems · Changes · export for an audit (CSV or PDF, answer 1943)",
+      "Screens/Helpdesk/HLP-22 · Changes and problems · No access (not on the IT desk)"
+    ],
+    "note": "Positive and negative. Answer 1943."
   }
 ]

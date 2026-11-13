@@ -14099,3 +14099,48 @@ model SdItsmSettings {
   @@unique([organizationId, deskId])
   @@map("sd_itsm_settings")
 }
+
+/// Helpdesk ITSM-2 (answers 1932-1938): the change record of a change ticket.
+model SdChange {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  deskId            String    @map("desk_id") @db.Uuid
+  ticketId          String    @map("ticket_id") @db.Uuid
+  /// standard | normal | emergency
+  changeKind        String    @map("change_kind") @db.VarChar(10)
+  risk              String    @db.VarChar(6)
+  riskFromAnswers   String?   @map("risk_from_answers") @db.VarChar(6)
+  riskAnswers       Json      @default("{}") @map("risk_answers")
+  riskReason        String?   @map("risk_reason") @db.VarChar(500)
+  appId             String?   @map("app_id") @db.Uuid
+  service           String    @db.VarChar(100)
+  windowFrom        DateTime  @map("window_from") @db.Timestamptz(3)
+  windowTo          DateTime  @map("window_to") @db.Timestamptz(3)
+  freezeReason      String?   @map("freeze_reason") @db.VarChar(500)
+  plan              String?   @db.VarChar(4000)
+  backout           String    @db.VarChar(2000)
+  banner            Boolean   @default(true)
+  bannerId          String?   @map("banner_id") @db.Uuid
+  templateId        String?   @map("template_id") @db.Uuid
+  /// [{ title, done }]
+  tasks             Json      @default("[]")
+  /// approval | scheduled | in_progress | review | closed | backed_out | rejected
+  stage             String    @db.VarChar(12)
+  approvalRequestId String?   @map("approval_request_id") @db.Uuid
+  outcome           String?   @db.VarChar(20)
+  outcomeNote       String?   @map("outcome_note") @db.VarChar(2000)
+  outcomeBy         String?   @map("outcome_by") @db.Uuid
+  outcomeAt         DateTime? @map("outcome_at") @db.Timestamptz(3)
+  reviewDue         DateTime? @map("review_due") @db.Timestamptz(3)
+  review            String?   @db.VarChar(4000)
+  reviewedBy        String?   @map("reviewed_by") @db.Uuid
+  reviewedAt        DateTime? @map("reviewed_at") @db.Timestamptz(3)
+  version           Int       @default(1)
+  createdBy         String    @map("created_by") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, ticketId])
+  @@index([organizationId, deskId, windowFrom])
+  @@map("sd_changes")
+}

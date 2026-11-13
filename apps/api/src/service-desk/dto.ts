@@ -1259,6 +1259,11 @@ export class TemplateDto {
   @MaxLength(200, { each: true })
   checklist!: string[];
 
+  /** Answer 1935: a standard change from this template skips approval (its type must be a change type). */
+  @IsOptional()
+  @IsBoolean()
+  preApproved?: boolean;
+
   @IsOptional()
   @IsBoolean()
   active?: boolean;

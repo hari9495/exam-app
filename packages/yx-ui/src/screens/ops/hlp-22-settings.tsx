@@ -5,8 +5,9 @@ import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { Button } from '../../components/button';
 import { InlineAlert } from '../../components/feedback';
-import { FieldRow, FormField } from '../../components/field';
-import { NumberField, TextField } from '../../components/inputs';
+import { FieldRow, FormField, useTooEarly } from '../../components/field';
+import { NumberField, TextArea, TextField } from '../../components/inputs';
+import { Text } from '../../components/foundations';
 import { Switch } from '../../components/choice';
 import { MultiSelect, Select } from '../../components/select';
 import { Segment } from '../../components/segment';
@@ -78,6 +79,14 @@ export interface ItsmSettingsPanelProps {
   onSearchPeople: (q: string) => Promise<{ id: string; name: string }[]>;
   onSave: (change: ItsmSettingsChange) => Promise<unknown>;
   onSaveWindow: (change: ItsmWindowChange) => Promise<unknown>;
+  /** Answer 1935: the desk's standard changes (pre-approved change templates). */
+  standard?: { templates: StandardTemplate[]; onSave: (id: string | null, input: { name: string; checklist: string[]; preApproved: boolean }) => Promise<unknown> };
+}
+export interface StandardTemplate {
+  id: string;
+  name: string;
+  checklist: string[];
+  preApproved: boolean;
 }
 
 const ROUTES: { value: ItsmRoute; label: string }[] = [
@@ -89,10 +98,11 @@ const HALF_HOURS = Array.from({ length: 48 }, (_, i) => `${String(Math.floor(i /
 const POINTS = [{ value: '0', label: '0' }, { value: '1', label: '1' }, { value: '2', label: '2' }];
 const RO = 'You can see these settings. Only this desk’s admins change them.';
 
-export function ItsmSettingsPanel({ value, onSearchPeople, onSave, onSaveWindow }: ItsmSettingsPanelProps) {
+export function ItsmSettingsPanel({ value, onSearchPeople, onSave, onSaveWindow, standard }: ItsmSettingsPanelProps) {
   return (
     <div className="yx-ops-stack">
       <ApprovalCard key={`a${value.version}`} value={value} onSearchPeople={onSearchPeople} onSave={onSave} />
+      {standard && <StandardCard can={value.canEdit} {...standard} />}
       <QuestionsCard key={`q${value.version}`} value={value} onSave={onSave} />
       <AfterCard key={`r${value.version}`} value={value} onSave={onSave} />
       <WindowCard key={JSON.stringify(value.window)} value={value} onSaveWindow={onSaveWindow} />
@@ -312,6 +322,60 @@ function WindowCard({ value, onSaveWindow }: Pick<ItsmSettingsPanelProps, 'value
             })
           }
         />
+      </div>
+    </Card>
+  );
+}
+
+/** Answer 1935: standard changes skip approval; one that fails loses its pre-approval until the desk admin gives it back. */
+function StandardCard({ can, templates, onSave }: { can: boolean } & NonNullable<ItsmSettingsPanelProps['standard']>) {
+  const [name, setName] = useState('');
+  const [lines, setLines] = useState('');
+  const { busy, error, run } = useRun();
+  const { toast } = useToast();
+  const early = useTooEarly(name.trim().length < 2 ? [{ fieldId: 'std-name', message: 'Name the standard change.' }] : []);
+  return (
+    <Card title="Standard changes (pre-approved)">
+      <div className="yx-ops-stack">
+        <InlineAlert tone="info">A standard change from one of these templates is scheduled without approval. If one fails, its template stops being pre-approved until you turn it on again.</InlineAlert>
+        {error && <InlineAlert tone="danger" title="It was not saved">{error}</InlineAlert>}
+        {templates.length === 0 && <Text tone="secondary">No standard changes yet.</Text>}
+        {templates.map((t) => (
+          <Switch
+            key={t.id}
+            label={t.name}
+            description={t.checklist.length ? `Steps: ${t.checklist.join(' · ')}` : 'No steps'}
+            checked={t.preApproved}
+            disabled={!can}
+            onChange={(on) => void run(t.id, async () => (await onSave(t.id, { name: t.name, checklist: t.checklist, preApproved: on }), toast({ tone: 'success', title: on ? `${t.name} is pre-approved.` : `${t.name} now needs approval.` })))}
+          />
+        ))}
+        {can && (
+          <>
+            <FormField id="std-name" label="New standard change" required error={early.errorOf('std-name')}>
+              <TextField value={name} onChange={setName} maxLength={100} placeholder="Monthly laptop patching" />
+            </FormField>
+            <FormField label="Steps" optional helper="One step per line (up to 30). They become the change's checklist.">
+              <TextArea value={lines} onChange={setLines} rows={3} />
+            </FormField>
+            <div className="yx-ops-row">
+              <Button
+                loading={busy === 'add'}
+                onClick={() =>
+                  !early.stop() &&
+                  void run('add', async () => {
+                        await onSave(null, { name: name.trim(), checklist: lines.split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 30), preApproved: true });
+                        setName('');
+                        setLines('');
+                        toast({ tone: 'success', title: 'Standard change added.' });
+                      })
+                }
+              >
+                Add standard change
+              </Button>
+            </div>
+          </>
+        )}
       </div>
     </Card>
   );
