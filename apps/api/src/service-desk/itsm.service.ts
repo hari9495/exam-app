@@ -85,7 +85,7 @@ export class ItsmService {
   }
 
   /** The IT desk (404 for another company's or an unknown desk; 400 for a desk that is not IT). */
-  async itDesk(tx: Tx, a: DeskActor, deskId: string) {
+  async itDesk(tx: Tx, a: { ctx: DeskActor['ctx'] }, deskId: string) {
     const desk = await tx.sdDesk.findFirst({ where: { organizationId: a.ctx.organizationId, id: deskId, status: 'active' }, select: { id: true, kind: true, name: true, calendarId: true } });
     if (!desk) throw new NotFoundException('No such desk.');
     if (desk.kind !== 'it') throw new BadRequestException('Changes and problems are for IT desks only.');

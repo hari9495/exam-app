@@ -125,6 +125,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         designated: counts.data?.declarationsDue !== undefined,
         caseTeam: counts.data?.casesOpen !== undefined,
         ethicsDesk: counts.data?.ethicsReports !== undefined,
+        changesAsked: counts.data?.changesAsked !== undefined,
         staffing: Boolean(staffingDesk.data?.enabled),
         projects: Boolean(projectsOn.data?.canOpen),
         lineApprovals: projectsOn.data?.lineApprovals ?? 0,

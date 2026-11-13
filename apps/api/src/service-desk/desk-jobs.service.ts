@@ -1,3 +1,4 @@
+import { ChangesService } from './changes.service';
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Job, Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
@@ -42,6 +43,7 @@ export class DeskJobsService implements OnModuleInit, OnModuleDestroy {
     private readonly recurring: RecurringService,
     private readonly chat: ChatService,
     private readonly tickets: TicketsService,
+    private readonly changes: ChangesService,
   ) {
     this.queue = logBullErrors(new Queue(DESK_JOBS_QUEUE, bullOpts(connection)), DESK_JOBS_QUEUE);
   }
@@ -71,7 +73,7 @@ export class DeskJobsService implements OnModuleInit, OnModuleDestroy {
     // best-matched agent (founder decision 9 Oct 2026).
     reminders: () => [this.me.fireReminders(), this.chat.expire(), this.recurring.sequenceTick(), this.tickets.routingSweep()],
     meter: () => [this.me.meter()],
-    five: () => [this.kb.schedule(), this.surveys.askRatings(), this.recurring.tick()],
+    five: () => [this.kb.schedule(), this.surveys.askRatings(), this.recurring.tick(), this.changes.overrunTick()],
     quarter: () => [this.reports.backlogAlerts()],
     hourly: () => [this.surveys.runSurveys(), this.reports.sendScheduled(), this.directory.scheduledSyncs()],
     kpi: () => [this.reports.snapshot()],

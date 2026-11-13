@@ -14173,7 +14173,7 @@ model SdChange {
   templateId        String?   @map("template_id") @db.Uuid
   /// [{ title, done }]
   tasks             Json      @default("[]")
-  /// approval | scheduled | in_progress | review | closed | backed_out | rejected
+  /// approval | scheduled | in_progress | review | closed | backed_out | rejected | cancelled
   stage             String    @db.VarChar(12)
   approvalRequestId String?   @map("approval_request_id") @db.Uuid
   outcome           String?   @db.VarChar(20)
@@ -14184,6 +14184,11 @@ model SdChange {
   review            String?   @db.VarChar(4000)
   reviewedBy        String?   @map("reviewed_by") @db.Uuid
   reviewedAt        DateTime? @map("reviewed_at") @db.Timestamptz(3)
+  /// Answer 1951: cancelled or withdrawn before it started.
+  cancelReason      String?   @map("cancel_reason") @db.VarChar(500)
+  cancelledBy       String?   @map("cancelled_by") @db.Uuid
+  /// Answer 1955: when the leads were told it runs past its window.
+  overrunWarnedAt   DateTime? @map("overrun_warned_at") @db.Timestamptz(3)
   version           Int       @default(1)
   createdBy         String    @map("created_by") @db.Uuid
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -14211,4 +14216,29 @@ model CompanyDeletion {
   certificateSha256 String?   @map("certificate_sha256") @db.Char(64)
 
   @@map("company_deletions")
+}
+
+/// Helpdesk ITSM-3 (answers 1939-1941): the problem record of a problem ticket (a tracker of its incidents).
+model SdProblem {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  deskId         String    @map("desk_id") @db.Uuid
+  ticketId       String    @map("ticket_id") @db.Uuid
+  /// open | investigating | known_error | fixed | closed
+  state          String    @default("open") @db.VarChar(12)
+  categoryId     String?   @map("category_id") @db.Uuid
+  rootCause      String?   @map("root_cause") @db.VarChar(4000)
+  workaround     String?   @db.VarChar(4000)
+  kbArticleId    String?   @map("kb_article_id") @db.Uuid
+  bannerId       String?   @map("banner_id") @db.Uuid
+  closingReply   String?   @map("closing_reply") @db.VarChar(2000)
+  closedAt       DateTime? @map("closed_at") @db.Timestamptz(3)
+  version        Int       @default(1)
+  createdBy      String    @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, ticketId])
+  @@index([organizationId, deskId, state])
+  @@map("sd_problems")
 }

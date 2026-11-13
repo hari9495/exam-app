@@ -31,7 +31,7 @@ import { OpsDesk } from './ops-kit';
 
 export type ChangeKind = 'standard' | 'normal' | 'emergency';
 export type Risk = 'low' | 'medium' | 'high';
-export type ChangeState = 'draft' | 'approval' | 'scheduled' | 'in_progress' | 'review' | 'closed' | 'backed_out' | 'rejected';
+export type ChangeState = 'draft' | 'approval' | 'scheduled' | 'in_progress' | 'review' | 'closed' | 'backed_out' | 'rejected' | 'cancelled';
 export interface ChangeRow {
   id: string;
   number: string;
@@ -50,7 +50,7 @@ export interface ProblemRow {
   id: string;
   number: string;
   title: string;
-  state: 'open' | 'investigating' | 'known_error' | 'fixed';
+  state: 'open' | 'investigating' | 'known_error' | 'fixed' | 'closed';
   incidents: number;
   owner: string;
   openedOn: Date;
@@ -72,8 +72,9 @@ const STATE: Record<ChangeState, { label: string; tone: BadgeTone }> = {
   closed: { label: 'Closed', tone: 'success' },
   backed_out: { label: 'Backed out', tone: 'danger' },
   rejected: { label: 'Not approved', tone: 'danger' },
+  cancelled: { label: 'Cancelled', tone: 'neutral' },
 };
-const PROBLEM_STATE: Record<ProblemRow['state'], { label: string; tone: BadgeTone }> = { open: { label: 'Open', tone: 'neutral' }, investigating: { label: 'Investigating', tone: 'info' }, known_error: { label: 'Known error', tone: 'warning' }, fixed: { label: 'Fixed', tone: 'success' } };
+const PROBLEM_STATE: Record<ProblemRow['state'], { label: string; tone: BadgeTone }> = { open: { label: 'Open', tone: 'neutral' }, investigating: { label: 'Investigating', tone: 'info' }, known_error: { label: 'Known error', tone: 'warning' }, fixed: { label: 'Fixed', tone: 'success' }, closed: { label: 'Closed', tone: 'neutral' } };
 const time = (d: Date) => d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
 const windowText = (r: { from: Date; to: Date }) => `${formatDate(r.from)}, ${time(r.from)} to ${time(r.to)}`;
 
@@ -151,11 +152,58 @@ export interface ChangesProps {
   exportOpen?: boolean;
   access?: boolean;
   live?: LiveChanges;
+  /** Answer 1953: someone on the change board, an application owner or an approver: only the changes they are asked about. */
+  asked?: boolean;
+  onOpen?: (id: string) => void;
+  /** ITSM-4: the desk's report for the last 90 days. */
+  report?: ItsmReportView;
+}
+
+/** ITSM-4: changes by kind and how they ended, the failed-change rate, open problems by age, incidents per problem. */
+export interface ItsmReportView {
+  period: string;
+  changes: { total: number; byKind: ({ kind: ChangeKind } & Record<'done' | 'done_with_problems' | 'backed_out' | 'rejected' | 'cancelled' | 'open', number>)[]; finished: number; failed: number; failedRate: number | null };
+  problems: { open: number; byAge: { label: string; count: number }[]; incidentsPerProblem: number | null; top: { number: string; title: string; incidents: number }[] };
+}
+
+export function ItsmReportCard({ report }: { report: ItsmReportView }) {
+  const r = report;
+  return (
+    <Card title={`Report · ${r.period}`}>
+      <div className="yx-ops-stack">
+        <DescriptionList
+          items={[
+            { label: 'Changes raised', value: String(r.changes.total) },
+            { label: 'Failed changes', value: r.changes.failedRate === null ? 'None finished yet' : `${r.changes.failedRate} % (${r.changes.failed} of ${r.changes.finished} finished: done with problems or backed out)` },
+            { label: 'Open problems', value: `${r.problems.open}${r.problems.open ? ` · ${r.problems.byAge.filter((b) => b.count).map((b) => `${b.label.toLowerCase()}: ${b.count}`).join(', ')}` : ''}` },
+            { label: 'Incidents per problem', value: r.problems.incidentsPerProblem === null ? 'No problems yet' : String(r.problems.incidentsPerProblem) },
+          ]}
+        />
+        <DataTable
+          label="Changes by kind"
+          rows={r.changes.byKind}
+          getRowId={(x) => x.kind}
+          columns={[
+            { key: 'kind', header: 'Kind', value: (x) => KIND_LABEL[x.kind] },
+            { key: 'done', header: 'Done', type: 'number', value: (x) => x.done },
+            { key: 'dwp', header: 'Done with problems', type: 'number', value: (x) => x.done_with_problems },
+            { key: 'back', header: 'Backed out', type: 'number', value: (x) => x.backed_out },
+            { key: 'rej', header: 'Not approved', type: 'number', value: (x) => x.rejected },
+            { key: 'can', header: 'Cancelled', type: 'number', value: (x) => x.cancelled },
+            { key: 'open', header: 'Not finished', type: 'number', value: (x) => x.open },
+          ]}
+        />
+        {r.problems.top.length > 0 && (
+          <DescriptionList items={r.problems.top.map((t) => ({ label: t.number, value: `${t.title} · ${t.incidents} incident${t.incidents === 1 ? '' : 's'}` }))} />
+        )}
+      </div>
+    </Card>
+  );
 }
 
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-export function ChangesScreen({ rows, freezes, today, newOpen = false, exportOpen = false, access = true, live }: ChangesProps) {
+export function ChangesScreen({ rows, freezes, today, newOpen = false, exportOpen = false, access = true, live, asked = false, onOpen, report }: ChangesProps) {
   const [creating, setCreating] = useState(newOpen);
   const [exporting, setExporting] = useState(exportOpen);
   if (!access)
@@ -178,10 +226,10 @@ export function ChangesScreen({ rows, freezes, today, newOpen = false, exportOpe
   return (
     <OpsDesk area="helpdesk" active="Changes">
       <PageHeader
-        title="Changes"
-        description="Changes to IT systems and services: the risk, who approved it, when it happens and how it went. Requesters never see this list."
+        title={asked ? 'Changes you are asked about' : 'Changes'}
+        description={asked ? 'IT changes you approve, review as the change board, or that touch an application you own.' : 'Changes to IT systems and services: the risk, who approved it, when it happens and how it went. Requesters never see this list.'}
         actions={
-          <>
+          asked ? undefined : <>
             {live && live.desks.length > 1 && <Select aria-label="IT desk" value={live.deskId} onChange={(v) => v && live.onDesk(v)} options={live.desks.map((d) => ({ value: d.id, label: d.name }))} />}
             <Button icon={Download} onClick={() => setExporting(true)}>
               Export
@@ -204,7 +252,7 @@ export function ChangesScreen({ rows, freezes, today, newOpen = false, exportOpe
         columns={cols}
         rows={rows}
         getRowId={(r) => r.id}
-        onRowClick={live ? (r) => live.onOpen(r.id) : undefined}
+        onRowClick={live ? (r) => live.onOpen(r.id) : onOpen ? (r) => onOpen(r.id) : undefined}
         empty={<EmptyState title="No changes yet." description="Raise a change before you touch a system people use: what changes, the risk, the plan and the way back." />}
       />
       <Card title="Change calendar · the next two weeks">
@@ -219,6 +267,7 @@ export function ChangesScreen({ rows, freezes, today, newOpen = false, exportOpe
           />
         )}
       </Card>
+      {report && <ItsmReportCard report={report} />}
       {creating && <NewChangeDrawer onClose={() => setCreating(false)} live={live} />}
       {exporting && <ExportDialog today={today} onClose={() => setExporting(false)} onExport={live?.onExport} />}
     </OpsDesk>
@@ -456,7 +505,10 @@ export interface LiveChangeRecord {
   outcome: { text: string; by: string; at: Date } | null;
   review: { text: string; by: string; at: Date } | null;
   reviewDue: Date | null;
-  can: { start: boolean; work: boolean; review: boolean };
+  can: { start: boolean; work: boolean; review: boolean; cancel?: boolean };
+  /** Answer 1951: cancel or withdraw before it starts, with a reason. */
+  onCancel?: (reason: string) => Promise<unknown>;
+  cancelReason?: string | null;
   onStart: () => Promise<unknown>;
   onTasks: (done: boolean[]) => Promise<unknown>;
   onOutcome: (outcome: 'done' | 'done_with_problems' | 'backed_out', note: string) => Promise<unknown>;
@@ -482,6 +534,9 @@ export function ChangeRecordScreen({ change, stage, approvals, tasks, causedInci
   const [checked, setChecked] = useState(tasks.filter((t) => t.done).map((t) => t.id));
   const [review, setReview] = useState('');
   const [note, setNote] = useState('');
+  const [cancelling, setCancelling] = useState(false);
+  const [why, setWhy] = useState('');
+  const whyEarly = useTooEarly(why.trim().length < 10 ? [{ fieldId: 'chg-cancel', message: 'Say why it is cancelled (at least 10 characters).' }] : []);
   const { busy, error, run } = useRun();
   const reviewEarly = useTooEarly(review.trim().length < 10 ? [{ fieldId: 'chg-review', message: 'Say what happened and what to do differently (at least a sentence).' }] : []);
   const noteEarly = useTooEarly(note.trim().length < 10 ? [{ fieldId: 'chg-note', message: 'Say what went wrong (at least 10 characters).' }] : []);
@@ -503,7 +558,14 @@ export function ChangeRecordScreen({ change, stage, approvals, tasks, causedInci
         title={`${change.number} · ${change.title}`}
         status={<Badge tone={STATE[change.state].tone}>{STATE[change.state].label}</Badge>}
         description={`${KIND_LABEL[change.kind]} change · ${RISK[change.risk].label} · ${change.service} · raised by ${change.owner}`}
-        actions={live ? <Button onClick={live.onBack}>All changes</Button> : undefined}
+        actions={
+          live ? (
+            <>
+              {live.can.cancel && live.onCancel && <Button onClick={() => setCancelling(true)}>Cancel the change</Button>}
+              <Button onClick={live.onBack}>All changes</Button>
+            </>
+          ) : undefined
+        }
       />
       {change.clash && (
         <InlineAlert tone="warning" title="Another change at the same time">
@@ -511,6 +573,27 @@ export function ChangeRecordScreen({ change, stage, approvals, tasks, causedInci
         </InlineAlert>
       )}
       {error && <InlineAlert tone="danger" title="It was not saved">{error}</InlineAlert>}
+      {live?.cancelReason && <InlineAlert tone="info" title="Cancelled">{live.cancelReason}</InlineAlert>}
+      {cancelling && live?.onCancel && (
+        <Dialog
+          open
+          onOpenChange={(o) => !o && setCancelling(false)}
+          title="Cancel this change?"
+          description="Its approval request is withdrawn and any known-issue notice ends. It cannot be started again; raise a new change instead."
+          footer={
+            <>
+              <Button onClick={() => setCancelling(false)}>Keep it</Button>
+              <Button variant="danger" loading={busy === 'cancel'} onClick={() => !whyEarly.stop() && void run('cancel', async () => (await live.onCancel!(why.trim()), setCancelling(false), toast({ tone: 'success', title: `${change.number} cancelled` })))}>
+                Cancel the change
+              </Button>
+            </>
+          }
+        >
+          <FormField id="chg-cancel" label="Why" required error={whyEarly.errorOf('chg-cancel')}>
+            <TextArea value={why} onChange={setWhy} rows={2} maxLength={500} />
+          </FormField>
+        </Dialog>
+      )}
       <div className="yx-ops-stack">
         <Card title="Approval">
           {approvals.length ? <ApprovalTimeline steps={approvals} now={now} /> : <Text tone="secondary">Pre-approved template: no approval needed.</Text>}
@@ -607,13 +690,33 @@ export function ChangeRecordScreen({ change, stage, approvals, tasks, causedInci
 
 /* ------------------------------------------------------------------ Problems */
 
-export function ProblemsScreen({ rows, access = true }: { rows: ProblemRow[]; access?: boolean }) {
+/** Answer 1939: a category with the desk's repeat count of incidents in its days (a suggestion to the IT lead). */
+export interface ProblemSuggestion {
+  categoryId: string;
+  category: string;
+  count: number;
+  days: number;
+  incidentIds: string[];
+}
+/** ITSM-3 live: the problems page of /yx/desk/problems. */
+export interface LiveProblems {
+  desks: { id: string; name: string }[];
+  deskId: string;
+  onDesk: (id: string) => void;
+  canRaise: boolean;
+  onOpen: (id: string) => void;
+  onCreate: (input: { title: string; description?: string; categoryId?: string; incidentIds?: string[] }) => Promise<{ id: string; number: string }>;
+}
+
+export function ProblemsScreen({ rows, access = true, suggestions, newOpen = false, live }: { rows: ProblemRow[]; access?: boolean; suggestions?: ProblemSuggestion[]; newOpen?: boolean; live?: LiveProblems }) {
+  const [creating, setCreating] = useState<ProblemSuggestion | 'blank' | null>(newOpen ? 'blank' : null);
   if (!access)
     return (
-      <OpsDesk area="helpdesk" active="Tickets">
+      <OpsDesk area="helpdesk" active="Problems">
         <NoAccessState what="IT problems" grantedBy="your IT desk lead" />
       </OpsDesk>
     );
+  const shown = suggestions ?? [{ categoryId: 'c1', category: 'Wi-Fi', count: 3, days: 7, incidentIds: [] }];
   const cols: TableColumn<ProblemRow>[] = [
     { key: 'number', header: 'Problem', type: 'id', value: (r) => r.number, width: 110 },
     { key: 'title', header: 'What keeps happening', value: (r) => r.title },
@@ -623,14 +726,98 @@ export function ProblemsScreen({ rows, access = true }: { rows: ProblemRow[]; ac
     { key: 'opened', header: 'Open since', value: (r) => r.openedOn.getTime(), render: (r) => formatDate(r.openedOn) },
   ];
   return (
-    <OpsDesk area="helpdesk" active="Tickets">
-      <PageHeader title="Problems" description="The cause behind incidents that keep coming back: linked incidents, the root cause, a workaround for now and the change that fixes it." actions={<Button variant="primary" icon={Plus}>New problem</Button>} />
-      <InlineAlert tone="info" title="Suggested: Wi-Fi drops at Hosur">
-        3 incidents in the Wi-Fi category in 7 days. Open a problem to find the cause.
-      </InlineAlert>
-      <DataTable label="Problems" columns={cols} rows={rows} getRowId={(r) => r.id} empty={<EmptyState title="No problems open." description="Link incidents that share a cause to a problem, from the ticket or from the ticket list." />} />
+    <OpsDesk area="helpdesk" active="Problems">
+      <PageHeader
+        title="Problems"
+        description="The cause behind incidents that keep coming back: linked incidents, the root cause, a workaround for now and the change that fixes it."
+        actions={
+          <>
+            {live && live.desks.length > 1 && <Select aria-label="IT desk" value={live.deskId} onChange={(v) => v && live.onDesk(v)} options={live.desks.map((d) => ({ value: d.id, label: d.name }))} />}
+            {(!live || live.canRaise) && (
+              <Button variant="primary" icon={Plus} onClick={() => setCreating('blank')}>
+                New problem
+              </Button>
+            )}
+          </>
+        }
+      />
+      {shown.map((x) => (
+        <InlineAlert
+          key={x.categoryId}
+          tone="info"
+          title={`Suggested: ${x.category}`}
+          actions={(!live || live.canRaise) && <Button size="sm" onClick={() => setCreating(x)}>Open a problem</Button>}
+        >
+          {`${x.count} incidents in the ${x.category} category in ${x.days} days. Open a problem to find the cause.`}
+        </InlineAlert>
+      ))}
+      <DataTable label="Problems" columns={cols} rows={rows} getRowId={(r) => r.id} onRowClick={live ? (r) => live.onOpen(r.id) : undefined} empty={<EmptyState title="No problems open." description="Link incidents that share a cause to a problem, from the ticket or from the ticket list." />} />
+      {creating && <NewProblemDrawer from={creating === 'blank' ? null : creating} onClose={() => setCreating(null)} onCreate={live?.onCreate} onOpen={live?.onOpen} />}
     </OpsDesk>
   );
+}
+
+function NewProblemDrawer({ from, onClose, onCreate, onOpen }: { from: ProblemSuggestion | null; onClose: () => void; onCreate?: LiveProblems['onCreate']; onOpen?: (id: string) => void }) {
+  const { toast } = useToast();
+  const [title, setTitle] = useState(from ? `Repeated ${from.category} incidents` : '');
+  const [description, setDescription] = useState('');
+  const { busy, error, run } = useRun();
+  const early = useTooEarly(title.trim().length < 5 ? [{ fieldId: 'prb-title', message: 'Say what keeps happening (at least 5 characters).' }] : []);
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title="New problem"
+      subtitle={from ? `${from.count} incidents in ${from.category} are linked to it` : undefined}
+      dirty={Boolean(title || description)}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            loading={busy === 'save'}
+            onClick={() =>
+              !early.stop() &&
+              void run('save', async () => {
+                const res = await onCreate?.({ title: title.trim(), ...(description.trim() ? { description: description.trim() } : {}), ...(from ? { categoryId: from.categoryId, incidentIds: from.incidentIds } : {}) });
+                toast({ tone: 'success', title: res ? `${res.number} opened` : 'Problem opened' });
+                onClose();
+                if (res) onOpen?.(res.id);
+              })
+            }
+          >
+            Open the problem
+          </Button>
+        </>
+      }
+    >
+      {error && <InlineAlert tone="danger" title="It was not saved">{error}</InlineAlert>}
+      <FormField id="prb-title" label="What keeps happening" required error={early.errorOf('prb-title')}>
+        <TextField value={title} onChange={setTitle} maxLength={200} placeholder="Attendance devices at Hosur stop syncing overnight" />
+      </FormField>
+      <FormField id="prb-desc" label="What is known so far" optional>
+        <TextArea value={description} onChange={setDescription} rows={4} />
+      </FormField>
+    </Drawer>
+  );
+}
+
+/** ITSM-3 live: one problem as /yx/desk/problems/[id] shows it, with what this person may do. */
+export interface LiveProblemRecord {
+  version: number;
+  closingReply: string;
+  article: { number: number; state: string } | null;
+  banner: boolean;
+  spaces: { id: string; name: string; audience: string }[];
+  changes: { id: string; number: string; title: string }[];
+  can: { work: boolean; close: boolean; publicArticle: boolean };
+  onLink: (numbers: string[]) => Promise<unknown>;
+  onSave: (input: { rootCause?: string; closingReply?: string; state?: 'investigating' }) => Promise<unknown>;
+  onKnownError: (input: { workaround: string; article: boolean; spaceId?: string; banner: boolean }) => Promise<unknown>;
+  onFix: (changeId: string) => Promise<unknown>;
+  onRaiseChange: () => void;
+  onClose: (reply: string) => Promise<unknown>;
+  onBack: () => void;
 }
 
 export interface ProblemRecordProps {
@@ -639,21 +826,42 @@ export interface ProblemRecordProps {
   workaround: string;
   knownError?: boolean;
   fixChange?: { number: string; title: string; state: ChangeState } | null;
+  live?: LiveProblemRecord;
 }
 
-export function ProblemRecordScreen({ problem, incidents, workaround: initial, knownError = false, fixChange = null }: ProblemRecordProps) {
+export function ProblemRecordScreen({ problem, incidents, workaround: initial, knownError = false, fixChange = null, live }: ProblemRecordProps) {
   const { toast } = useToast();
   const [cause, setCause] = useState(problem.cause ?? '');
   const [workaround, setWorkaround] = useState(initial);
+  const [linking, setLinking] = useState(false);
+  const [numbers, setNumbers] = useState('');
+  const [article, setArticle] = useState(true);
+  const agentSpace = live?.spaces.find((s) => s.audience === 'agents')?.id ?? null;
+  const [spaceId, setSpaceId] = useState<string | null>(agentSpace);
+  const [banner, setBanner] = useState(false);
+  const [changeId, setChangeId] = useState<string | null>(null);
+  const [reply, setReply] = useState(live?.closingReply ?? '');
+  const { busy, error, run } = useRun();
+  const can = live ? live.can.work : true;
+  const done = (title: string) => () => toast({ tone: 'success', title });
+  const linkEarly = useTooEarly(numbers.split(/[\s,]+/).filter(Boolean).length ? [] : [{ fieldId: 'prb-numbers', message: 'Give at least one incident number.' }]);
+  const workEarly = useTooEarly(workaround.trim().length < 10 ? [{ fieldId: 'prb-workaround', message: 'Say what people can do until it is fixed (at least 10 characters).' }] : []);
   return (
-    <OpsDesk area="helpdesk" active="Tickets">
-      <PageHeader title={`${problem.number} · ${problem.title}`} status={<Badge tone={PROBLEM_STATE[problem.state].tone}>{PROBLEM_STATE[problem.state].label}</Badge>} description={`Owner ${problem.owner} · open since ${formatDate(problem.openedOn)} · ${incidents.length} linked incidents`} />
+    <OpsDesk area="helpdesk" active="Problems">
+      <PageHeader
+        title={`${problem.number} · ${problem.title}`}
+        status={<Badge tone={PROBLEM_STATE[problem.state].tone}>{PROBLEM_STATE[problem.state].label}</Badge>}
+        description={`Owner ${problem.owner} · open since ${formatDate(problem.openedOn)} · ${incidents.length} linked incidents`}
+        actions={live ? <Button onClick={live.onBack}>All problems</Button> : undefined}
+      />
+      {error && <InlineAlert tone="danger" title="It was not saved">{error}</InlineAlert>}
       <div className="yx-ops-stack">
-        <Card title="Linked incidents" actions={<Button size="sm" icon={Link2}>Link incidents</Button>}>
+        <Card title="Linked incidents" actions={can ? <Button size="sm" icon={Link2} onClick={() => setLinking(true)}>Link incidents</Button> : undefined}>
           <DataTable
             label="Linked incidents"
             rows={incidents}
             getRowId={(r) => r.number}
+            empty={<EmptyState compact title="No incidents linked yet." />}
             columns={[
               { key: 'number', header: 'Ticket', type: 'id', value: (r) => r.number, width: 110 },
               { key: 'subject', header: 'Subject', value: (r) => r.subject },
@@ -661,38 +869,114 @@ export function ProblemRecordScreen({ problem, incidents, workaround: initial, k
               { key: 'state', header: 'Status', value: (r) => r.state },
             ]}
           />
+          {linking && (
+            <div className="yx-ops-stack">
+              <FormField id="prb-numbers" label="Incident numbers" helper="Separated by commas or spaces, for example IT-1031, IT-1040." error={linkEarly.errorOf('prb-numbers')}>
+                <TextField value={numbers} onChange={setNumbers} maxLength={1000} />
+              </FormField>
+              <div className="yx-ops-row">
+                <Button onClick={() => setLinking(false)}>Cancel</Button>
+                <Button variant="primary" loading={busy === 'link'} onClick={() => !linkEarly.stop() && (live ? void run('link', async () => (await live.onLink(numbers.split(/[\s,]+/).filter(Boolean)), setNumbers(''), setLinking(false), toast({ tone: 'success', title: 'Incidents linked' }))) : done('Incidents linked')())}>
+                  Link
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
         <Card title="Root cause">
-          <FormField id="prb-cause" label="What causes it" helper="Found by the investigation; the cause category helps the reports.">
-            <TextArea value={cause} onChange={setCause} rows={3} placeholder="Not found yet." />
+          <FormField id="prb-cause" label="What causes it" helper="Found by the investigation.">
+            <TextArea value={cause} onChange={setCause} rows={3} placeholder="Not found yet." disabled={!can} />
           </FormField>
-        </Card>
-        <Card title={knownError ? 'Known error · workaround' : 'Workaround'} actions={knownError ? <Badge tone="warning"><AlertTriangle aria-hidden size={14} /> Known error</Badge> : undefined}>
-          <FormField id="prb-workaround" label="What people can do until it is fixed">
-            <TextArea value={workaround} onChange={setWorkaround} rows={3} />
-          </FormField>
-          <div className="yx-ops-row">
-            {!knownError && <Button onClick={() => toast({ tone: 'success', title: `${problem.number} is now a known error` })}>Mark as known error</Button>}
-            <Button icon={BookOpen} onClick={() => toast({ tone: 'success', title: 'Draft article made for agents' })}>
-              Draft a knowledge-base article
-            </Button>
-            <Button icon={Megaphone} onClick={() => toast({ tone: 'success', title: 'Known-issue banner shown, with Me too' })}>
-              Show a known-issue banner
-            </Button>
-          </div>
-        </Card>
-        <Card title="Permanent fix">
-          {fixChange ? (
-            <DescriptionList items={[{ label: fixChange.number, value: `${fixChange.title} · ${STATE[fixChange.state].label}. When it is done and reviewed, this problem closes and its open incidents are told.` }]} />
-          ) : (
+          {can && (
             <div className="yx-ops-row">
-              <Text tone="secondary">No change raised yet.</Text>
-              <Button variant="primary" icon={Plus}>
-                Raise a change to fix it
+              <Button loading={busy === 'cause'} onClick={() => (live ? void run('cause', async () => (await live.onSave({ rootCause: cause, ...(problem.state === 'open' ? { state: 'investigating' } : {}) }), toast({ tone: 'success', title: 'Root cause saved' }))) : done('Root cause saved')())}>
+                Save the cause
               </Button>
             </div>
           )}
         </Card>
+        <Card title={knownError ? 'Known error · workaround' : 'Workaround'} actions={knownError ? <Badge tone="warning"><AlertTriangle aria-hidden size={14} /> Known error</Badge> : undefined}>
+          <FormField id="prb-workaround" label="What people can do until it is fixed" error={workEarly.errorOf('prb-workaround')}>
+            <TextArea value={workaround} onChange={setWorkaround} rows={3} disabled={!can} />
+          </FormField>
+          {live ? (
+            can && (
+              <div className="yx-ops-stack">
+                {!live.article && <Checkbox label="Draft a knowledge-base article from it" checked={article} onChange={setArticle} />}
+                {!live.article && article && (
+                  <FormField label="Space" helper={live.can.publicArticle ? 'Agents only by default. As an IT lead you may choose a space employees read.' : 'Agents only. An IT lead may put it where employees read it.'}>
+                    <Select value={spaceId} onChange={setSpaceId} options={live.spaces.filter((s) => live.can.publicArticle || s.audience === 'agents').map((s) => ({ value: s.id, label: `${s.name} (${s.audience === 'agents' ? 'agents' : s.audience === 'requesters' ? 'employees' : 'public'})` }))} />
+                  </FormField>
+                )}
+                {!live.banner && <Checkbox label="Show a known-issue notice to employees until the problem closes" checked={banner} onChange={setBanner} />}
+                {live.article && <Text size="sm" tone="secondary">{`Article KB-${live.article.number} (${live.article.state}).`}</Text>}
+                <div className="yx-ops-row">
+                  <Button
+                    variant="primary"
+                    icon={BookOpen}
+                    loading={busy === 'known'}
+                    onClick={() => !workEarly.stop() && void run('known', async () => (await live.onKnownError({ workaround: workaround.trim(), article: !live.article && article, ...(spaceId && article ? { spaceId } : {}), banner: !live.banner && banner }), toast({ tone: 'success', title: `${problem.number} is a known error` })))}
+                  >
+                    {knownError ? 'Save the workaround' : 'Mark as known error'}
+                  </Button>
+                </div>
+              </div>
+            )
+          ) : (
+            <div className="yx-ops-row">
+              {!knownError && <Button onClick={done(`${problem.number} is now a known error`)}>Mark as known error</Button>}
+              <Button icon={BookOpen} onClick={done('Draft article made for agents')}>
+                Draft a knowledge-base article
+              </Button>
+              <Button icon={Megaphone} onClick={done('Known-issue notice shown')}>
+                Show a known-issue banner
+              </Button>
+            </div>
+          )}
+        </Card>
+        <Card title="Permanent fix">
+          {fixChange ? (
+            <DescriptionList items={[{ label: fixChange.number, value: `${fixChange.title} · ${STATE[fixChange.state].label}. When it is done (and reviewed if it needs it), this problem closes and its open incidents are told.` }]} />
+          ) : (
+            <div className="yx-ops-stack">
+              <Text tone="secondary">No change fixes it yet.</Text>
+              {can && live && live.changes.length > 0 && (
+                <div className="yx-ops-row">
+                  <Select aria-label="Change that fixes it" value={changeId} onChange={setChangeId} placeholder="Choose a change" options={live.changes.map((c) => ({ value: c.id, label: `${c.number} · ${c.title}` }))} />
+                  <Button loading={busy === 'fix'} onClick={() => (changeId ? void run('fix', async () => (await live.onFix(changeId), toast({ tone: 'success', title: 'The change fixes this problem' }))) : toast({ tone: 'warning', title: 'Choose the change first.' }))}>
+                    It fixes this problem
+                  </Button>
+                </div>
+              )}
+              {can && (
+                <div className="yx-ops-row">
+                  <Button variant="primary" icon={Plus} onClick={live ? live.onRaiseChange : done('New change')}>
+                    Raise a change to fix it
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+        </Card>
+        {live && (live.can.close || can) && (
+          <Card title="Closing">
+            <FormField id="prb-reply" label="The reply every open linked incident gets" helper="Sent once, when the problem closes (by its fixing change, or by an IT lead here).">
+              <TextArea value={reply} onChange={setReply} rows={2} maxLength={2000} disabled={!can} />
+            </FormField>
+            <div className="yx-ops-row">
+              {can && (
+                <Button loading={busy === 'reply'} onClick={() => void run('reply', async () => (await live.onSave({ closingReply: reply }), toast({ tone: 'success', title: 'Reply saved' })))}>
+                  Save the reply
+                </Button>
+              )}
+              {live.can.close && (
+                <Button variant="danger" loading={busy === 'close'} onClick={() => void run('close', async () => (await live.onClose(reply), toast({ tone: 'success', title: `${problem.number} closed; its incidents were told` })))}>
+                  Close without a change
+                </Button>
+              )}
+            </div>
+          </Card>
+        )}
       </div>
     </OpsDesk>
   );
