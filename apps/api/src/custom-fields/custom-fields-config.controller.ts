@@ -49,7 +49,7 @@ export class CustomFieldsConfigController {
    * stays with settings (org:manage_settings) below.
    */
   @Get('in-use')
-  @RequireAnyPermission('results:view', 'pipeline:manage')
+  @RequireAnyPermission('results:view', 'pipeline:manage', 'candidate:view')
   async inUse(@CurrentTenant() tenant: TenantContext, @Query('entityType') entityType: string) {
     if (!CF_ENTITY_TYPES.includes(entityType as any)) throw new BadRequestException('entityType must be candidate or job');
     return (await this.service.list(tenant, entityType as 'candidate' | 'job', false)).map(toResponse);

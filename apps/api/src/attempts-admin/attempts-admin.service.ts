@@ -3,6 +3,7 @@ import { AttemptInsight, CandidateMessage, CodeAnswerReview, ProctoringAnalysis,
 import { TenantPrismaService, TenantContext, AuditService, BlobStorageService } from '@exam-platform/shared';
 import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
 import { signProctoringEvidence } from '../common/sign-proctoring-evidence';
+import { ResultsScope, invitationsInScope } from '../rbac/results-scope';
 
 @Injectable()
 export class AttemptsAdminService {
@@ -42,16 +43,21 @@ export class AttemptsAdminService {
     );
   }
 
-  async forceSubmit(context: TenantContext, attemptId: string, actorUserId: string): Promise<{ status: string }> {
+  async forceSubmit(context: TenantContext, attemptId: string, actorUserId: string, reason: string): Promise<{ status: string }> {
     await this.requireOwnedAttempt(context, attemptId);
 
     const result = await this.examRuntime.forceSubmit(attemptId);
 
+    // AS-0 (answer 2006): the reason stays on the candidate's record (its timeline) and in the audit log.
+    await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.proctoringEvent.create({ data: { attemptId, eventType: 'ended_by_staff', severity: 'info', metadataJson: JSON.stringify({ reason, byUserId: actorUserId }) } }),
+    );
     await this.audit.record(context, {
       actorUserId,
       action: 'attempt.force_submit',
       entityType: 'attempt',
       entityId: attemptId,
+      metadata: { reason },
     });
 
     return result;
@@ -205,8 +211,11 @@ export class AttemptsAdminService {
     return this.tenantPrisma.forTenant(context, (tx) => tx.proctoringAnalysis.findUniqueOrThrow({ where: { attemptId } }));
   }
 
-  async getInsight(context: TenantContext, attemptId: string): Promise<AttemptInsight> {
+  async getInsight(context: TenantContext, attemptId: string, scope?: ResultsScope): Promise<AttemptInsight> {
     await this.requireOwnedAttempt(context, attemptId);
+    // Answer 2004: a Hiring manager reads it only for a candidate of their own jobs (404, as for another company's).
+    if (scope && scope.mode !== 'all' && !(await this.tenantPrisma.forTenant(context, (tx) => tx.attempt.findFirst({ where: { id: attemptId, invitation: invitationsInScope(scope) }, select: { id: true } }))))
+      throw new NotFoundException(`Attempt ${attemptId} not found`);
 
     const insight = await this.tenantPrisma.forTenant(context, (tx) => tx.attemptInsight.findFirst({ where: { attemptId } }));
     if (!insight) {

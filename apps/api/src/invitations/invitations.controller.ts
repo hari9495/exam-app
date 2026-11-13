@@ -4,6 +4,7 @@ import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
+import { OwnSessionChangesGuard } from '../auth/own-session.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
@@ -16,7 +17,8 @@ import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import { generateBulkInviteTemplate } from '../candidates/bulk-invite-template';
 
 @Controller()
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+// AS-0 (answer 2006): no assessments change while acting for someone else.
+@UseGuards(JwtAuthGuard, OwnSessionChangesGuard, PermissionsGuard)
 export class InvitationsController {
   constructor(private readonly invitationsService: InvitationsService) {}
 

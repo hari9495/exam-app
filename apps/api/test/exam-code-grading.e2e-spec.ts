@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 import { bootAdminApp, bootRuntimeApp } from './dual-app';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
+import { markSteppedUp } from './fixtures/step-up';
 import { EmailService } from '../src/email/email.service';
 import { PistonClient } from '../../exam-runtime/src/code-execution/piston-client';
 
@@ -171,6 +172,7 @@ describe('Exam code-grading HTTP flow', () => {
       .send({ marksAwarded: 8, feedback: 'Good approach' })
       .expect(201);
 
+    await markSteppedUp(tenantPrisma, recruiterAccessToken); // AS-0 (2006): the second factor again
     const finalizeResponse = await request(adminHttp)
       .post(`/api/v1/attempts/${attemptId}/finalize-manual-grade`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
@@ -221,6 +223,7 @@ describe('Exam code-grading HTTP flow', () => {
     expect(pendingResponse.body.find((r: any) => r.attemptId === attemptId)).toBeUndefined();
 
     // Nothing is pending, so a manual finalize is rejected.
+    await markSteppedUp(tenantPrisma, recruiterAccessToken); // AS-0 (2006): the second factor again
     await request(adminHttp)
       .post(`/api/v1/attempts/${attemptId}/finalize-manual-grade`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)

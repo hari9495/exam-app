@@ -3,6 +3,7 @@ import { TenantPrismaService, TenantContext, BlobStorageService, selectCountedAn
 import { ExamsService, ExamResultRow, SETTLED_ATTEMPT_STATUSES, MANUALLY_GRADED_QUESTION_TYPES, parseStoredAnswerFiles } from '../exams/exams.service';
 import { signProctoringEvidence } from '../common/sign-proctoring-evidence';
 import { computeTabActivity, TAB_ACTIVITY_EVENT_TYPES, TabActivityEvent, TabActivityEventTypeSummary, QuestionTabActivityEntry } from './tab-activity';
+import { ResultsScope } from '../rbac/results-scope';
 
 const SCORE_DISTRIBUTION_BUCKETS = [
   { rangeLabel: '0-20', min: 0, max: 20 },
@@ -184,8 +185,8 @@ export class ReportsService {
     private readonly blobStorage: BlobStorageService,
   ) {}
 
-  async getSummary(context: TenantContext, examId: string): Promise<ExamResultsSummary> {
-    const rows = await this.examsService.getResults(context, examId);
+  async getSummary(context: TenantContext, examId: string, scope?: ResultsScope): Promise<ExamResultsSummary> {
+    const rows = await this.examsService.getResults(context, examId, scope);
 
     const settledRows = rows.filter((row) => SETTLED_ATTEMPT_STATUSES.includes(row.status));
     const inProgressRows = rows.filter((row) => row.status === 'in_progress');
@@ -261,8 +262,8 @@ export class ReportsService {
     return new Map(attempts.map((attempt) => [attempt.id, attempt.startedAt]));
   }
 
-  async getQuestionAccuracy(context: TenantContext, examId: string): Promise<QuestionAccuracyRow[]> {
-    const rows = await this.examsService.getResults(context, examId);
+  async getQuestionAccuracy(context: TenantContext, examId: string, scope?: ResultsScope): Promise<QuestionAccuracyRow[]> {
+    const rows = await this.examsService.getResults(context, examId, scope);
     const settledAttemptIds = rows
       .filter((row) => row.attemptId !== null && SETTLED_ATTEMPT_STATUSES.includes(row.status))
       .map((row) => row.attemptId as string);
@@ -325,8 +326,8 @@ export class ReportsService {
     });
   }
 
-  async getExportRows(context: TenantContext, examId: string, invitationIds?: string[]): Promise<ExportResultRow[]> {
-    const allRows = await this.examsService.getResults(context, examId);
+  async getExportRows(context: TenantContext, examId: string, invitationIds?: string[], scope?: ResultsScope): Promise<ExportResultRow[]> {
+    const allRows = await this.examsService.getResults(context, examId, scope);
     // Scoped export (a recruiter selected specific rows before exporting): an empty
     // or omitted list means "export everything", matching every other list/filter
     // in the product where no selection defaults to the full set, not an empty file.
@@ -352,8 +353,9 @@ export class ReportsService {
     examId: string,
     candidateId: string,
     attemptId?: string,
+    scope?: ResultsScope,
   ): Promise<CandidateDetail> {
-    const rows = await this.examsService.getResults(context, examId);
+    const rows = await this.examsService.getResults(context, examId, scope);
     // getResults returns one row per invitation, so a candidate re-invited to the same
     // exam has several. Without attemptId this falls back to whichever invitation
     // getResults ordered first (most recently invited) -- fine for a candidate with
@@ -598,13 +600,13 @@ export class ReportsService {
     });
   }
 
-  async compareCandidates(context: TenantContext, examId: string, invitationIdsParam: string): Promise<CandidateComparisonRow[]> {
+  async compareCandidates(context: TenantContext, examId: string, invitationIdsParam: string, scope?: ResultsScope): Promise<CandidateComparisonRow[]> {
     const invitationIds = invitationIdsParam.split(',').map((id) => id.trim()).filter((id) => id.length > 0);
     if (invitationIds.length < 2) {
       throw new BadRequestException('At least 2 invitationIds are required to compare');
     }
 
-    const rows = await this.examsService.getResults(context, examId);
+    const rows = await this.examsService.getResults(context, examId, scope);
     // Keyed by invitationId, not candidateId -- a re-invited candidate has multiple rows
     // sharing one candidateId, and a candidateId-keyed Map would silently drop to whichever
     // of those rows getResults returned last, comparing the wrong attempt's data.

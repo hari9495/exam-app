@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { DriveSession } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService } from '@exam-platform/shared';
 import { deriveDriveState, DriveState } from './derive-drive-state';
+import { ResultsScope, invitationsInScope } from '../rbac/results-scope';
 
 export type DriveSessionStatus = 'scheduled' | 'live' | 'ended';
 
@@ -158,14 +159,14 @@ export class DrivesService {
     return { success: true };
   }
 
-  async liveRoster(context: TenantContext, driveId: string): Promise<DriveRoster> {
+  async liveRoster(context: TenantContext, driveId: string, scope?: ResultsScope): Promise<DriveRoster> {
     const invitations = await this.tenantPrisma.forTenant(context, async (tx) => {
       const drive = await tx.driveSession.findFirst({ where: { id: driveId, organizationId: context.organizationId as string } });
       if (!drive) {
         throw new NotFoundException(`Drive ${driveId} not found`);
       }
       return tx.invitation.findMany({
-        where: { driveSessionId: driveId },
+        where: { driveSessionId: driveId, ...invitationsInScope(scope) },
         include: { candidate: true, attempt: { include: { result: true } }, exam: { select: { title: true } } },
       }) as unknown as InvitationForRoster[];
     });
@@ -174,7 +175,7 @@ export class DrivesService {
 
   // Same roster as liveRoster -- the "registered" -> "did not attempt" relabel for an ended
   // drive is a presentation concern for the frontend, not something this service decides.
-  async results(context: TenantContext, driveId: string): Promise<DriveRoster> {
-    return this.liveRoster(context, driveId);
+  async results(context: TenantContext, driveId: string, scope?: ResultsScope): Promise<DriveRoster> {
+    return this.liveRoster(context, driveId, scope);
   }
 }

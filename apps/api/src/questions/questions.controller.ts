@@ -4,6 +4,7 @@ import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
+import { OwnSessionChangesGuard } from '../auth/own-session.guard';
 import { RequirePermissions, RequireAnyPermission } from '../rbac/permissions.decorator';
 import { SeesAnswerKeys, ShowsAnswerKeys, withoutAnswerKey } from '../rbac/answer-keys';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
@@ -17,7 +18,8 @@ import { STRICT_AI_GENERATE_THROTTLE, MODERATE_UPLOAD_THROTTLE } from '../rate-l
 import { generateBulkUploadTemplate } from './bulk-upload-template';
 
 @Controller('questions')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+// AS-0 (answer 2006): no assessments change while acting for someone else.
+@UseGuards(JwtAuthGuard, OwnSessionChangesGuard, PermissionsGuard)
 export class QuestionsController {
   constructor(private readonly questionsService: QuestionsService) {}
 

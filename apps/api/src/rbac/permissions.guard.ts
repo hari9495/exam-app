@@ -18,6 +18,7 @@ import {
 import { PERMISSIONS_KEY, PERMISSIONS_ANY_KEY } from './permissions.decorator';
 import { SENSITIVE_ROLE_ACTION, STEP_UP_REQUIRED } from '../auth/step-up.decorator';
 import { ANSWER_KEY_WRITERS, SHOWS_ANSWER_KEYS } from './answer-keys';
+import { RESULTS_ALL_KEYS, RESULTS_KEY, SCOPES_RESULTS, scopeFrom } from './results-scope';
 
 // Endpoints gated by these permissions are the "admin console" for the company's admin IP
 // allow-list (YX-IAM-09): every sensitive-role permission (users, settings / security, billing,
@@ -101,10 +102,15 @@ export class PermissionsGuard implements CanActivate {
     if (allKeys.length > 0 && !user.actingSuperAdmin) {
       usedKeys = await this.checkPermissions(user, request.ip, requiredAll, requiredAny, allKeys);
     }
+    const showsKeys = this.reflector.get<boolean>(SHOWS_ANSWER_KEYS, handler) === true;
+    const scopesResults = (this.reflector.get<boolean>(SCOPES_RESULTS, handler) ?? this.reflector.get<boolean>(SCOPES_RESULTS, cls)) === true;
     const granted =
-      this.reflector.get<boolean>(SHOWS_ANSWER_KEYS, handler) === true && !user.actingSuperAdmin
-        ? await resolvePermissionGrants(this.prisma, this.tenantPrisma, { role: user.role, organizationId: user.organizationId ?? null, permissionProfileId: user.permissionProfileId, userId: user.userId ?? null }, [...ANSWER_KEY_WRITERS])
+      (showsKeys || scopesResults) && !user.actingSuperAdmin
+        ? await resolvePermissionGrants(this.prisma, this.tenantPrisma, { role: user.role, organizationId: user.organizationId ?? null, permissionProfileId: user.permissionProfileId, userId: user.userId ?? null }, [...ANSWER_KEY_WRITERS, ...RESULTS_ALL_KEYS, RESULTS_KEY])
         : new Set<string>();
+    // AS-0 (answer 2004): whose test results this person reads on this route (YukthiX staff acting in a company read
+    // like a recruiter; they change nothing, OwnSessionChangesGuard).
+    if (scopesResults) request.resultsScope = user.actingSuperAdmin ? { mode: 'all' } : scopeFrom(granted, user.userId);
     await this.checkMfa(user, usedKeys, sensitiveAction);
     // Security fix (answer keys): a route that returns questions learns whether this person writes tests or questions.
     // Never while acting for someone else (YukthiX staff or impersonation read without the keys).

@@ -2,7 +2,9 @@ import { Body, Controller, Param, Post, UseGuards } from '@nestjs/common';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { RequirePermissions } from '../rbac/permissions.decorator';
+import { OwnSessionChangesGuard } from '../auth/own-session.guard';
+import { RequireAnyPermission } from '../rbac/permissions.decorator';
+import { RequireStepUp } from '../auth/step-up.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { ResultReleaseService } from './result-release.service';
@@ -10,12 +12,15 @@ import { ReleaseResultsDto } from './dto/release-results.dto';
 
 // Recruiter result-release actions, gated on exam:manage (same key attempts-admin mutations use).
 @Controller()
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+// AS-0 (answer 2006): no assessments change while acting for someone else.
+@UseGuards(JwtAuthGuard, OwnSessionChangesGuard, PermissionsGuard)
 export class ResultReleaseController {
   constructor(private readonly service: ResultReleaseService) {}
 
+  // AS-0 (answer 2006): releasing results asks for the second factor again.
   @Post('exams/:examId/results/release')
-  @RequirePermissions('exam:manage')
+  @RequireAnyPermission('exam:manage', 'asmt.evaluate')
+  @RequireStepUp()
   releaseExam(
     @CurrentTenant() tenant: TenantContext,
     @CurrentUserId() userId: string,
@@ -26,7 +31,8 @@ export class ResultReleaseController {
   }
 
   @Post('attempts/:attemptId/results/release')
-  @RequirePermissions('exam:manage')
+  @RequireAnyPermission('exam:manage', 'asmt.evaluate')
+  @RequireStepUp()
   releaseAttempt(
     @CurrentTenant() tenant: TenantContext,
     @CurrentUserId() userId: string,
@@ -37,7 +43,7 @@ export class ResultReleaseController {
   }
 
   @Post('attempts/:attemptId/results/hold')
-  @RequirePermissions('exam:manage')
+  @RequireAnyPermission('exam:manage', 'asmt.evaluate')
   holdAttempt(
     @CurrentTenant() tenant: TenantContext,
     @CurrentUserId() userId: string,

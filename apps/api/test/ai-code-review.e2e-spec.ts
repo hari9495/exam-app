@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 import { bootAdminApp, bootRuntimeApp } from './dual-app';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
+import { markSteppedUp } from './fixtures/step-up';
 import { EmailService } from '../src/email/email.service';
 import { PistonClient } from '../../exam-runtime/src/code-execution/piston-client';
 import { CodeReviewClient } from '../../exam-runtime/src/code-review/code-review.client';
@@ -208,6 +209,7 @@ describe('AI Code Review flow', () => {
       .send({ marksAwarded: 6, feedback: 'Does not reverse the string' })
       .expect(201);
 
+    await markSteppedUp(tenantPrisma, recruiterAccessToken); // AS-0 (2006): the second factor again
     const finalizeResponse = await request(adminHttp)
       .post(`/api/v1/attempts/${attemptId}/finalize-manual-grade`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
