@@ -294,6 +294,11 @@ export class PortalRaiseDto {
   @IsOptional()
   @Text(1, 200)
   originQuery?: string;
+
+  /** Answer 1842: the desk's fields everyone sees, by key (checked by the forms engine). */
+  @IsOptional()
+  @IsObject()
+  fields?: Record<string, unknown>;
 }
 
 export class OpenRequestDto extends PortalRaiseDto {

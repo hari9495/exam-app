@@ -43,6 +43,15 @@ export function fieldsFor(tx: Tx, org: string, deskId: string, typeId: string | 
 
 const stored = (v: Prisma.JsonValue): Record<string, FieldValue> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, FieldValue>) : {});
 
+/**
+ * Answer 1842: the fields a requester fills on the raise form, per desk: active, shown to everyone, for every type or
+ * the desk's first type (the one a raise without a type gets). `firstType` maps a desk to that type.
+ */
+export async function raiseFieldsOf(tx: Tx, org: string, firstType: Map<string, string | undefined>) {
+  const rows = await tx.sdTicketField.findMany({ where: { organizationId: org, deskId: { in: [...firstType.keys()] }, active: true, visibility: 'all' }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] });
+  return (deskId: string) => shownFields(rows.filter((f) => f.deskId === deskId && (!f.ticketTypeId || f.ticketTypeId === firstType.get(deskId))), {}, 'requester');
+}
+
 /** What a viewer sees of a ticket's fields: only the fields they may see, with the value and (drop-downs) its label. */
 export function shownFields(fields: FieldRow[], values: Prisma.JsonValue, who: Viewer, onlyFilled = false) {
   const v = stored(values);

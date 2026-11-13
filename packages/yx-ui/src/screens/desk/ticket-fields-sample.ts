@@ -27,3 +27,5 @@ export const REQUESTER_TICKET_FIELDS = [
   { label: 'Office', value: 'Bengaluru' },
   { label: 'Floor', value: 'Bengaluru · 2nd floor' },
 ];
+/** Answer 1842: what the raise form asks (the fields everyone sees, empty). */
+export const RAISE_FIELDS: TicketFieldView[] = SAMPLE_FIELDS.filter((f) => f.active && f.visibility === 'all').map((f) => view(f, null, null));

@@ -5,6 +5,7 @@ import { HelpCentreScreen } from './helpdesk';
 import { rateCandidate, topicOptions } from './helpdesk-live';
 import { HELP_ARTICLE, HELP_BANNERS, HELP_TICKETS, liveHelp } from './helpdesk-live-samples';
 import { RAISE_DESKS } from '../desk/data';
+import { RAISE_FIELDS } from '../desk/ticket-fields-sample';
 
 // HLP-01 Help centre, live: the designed screen with real records (Helpdesk design wiring, round 1).
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -149,6 +150,42 @@ describe('HLP-01 Help centre (live)', () => {
     expect(onPickDevice).toHaveBeenCalledWith(expect.any(String), 'p-ravi');
     await ue.click(screen.getByRole('button', { name: 'Raise ticket' }));
     await waitFor(() => expect(onRaise).toHaveBeenCalledWith(expect.objectContaining({ requestedForPersonId: 'p-ravi', assetId: 'as9' })));
+  });
+
+  it('1842: the desk fields everyone sees are on the raise form; the floor follows the office; only filled ones are sent', async () => {
+    const onRaise = vi.fn().mockResolvedValue({ id: 'n1', number: 'IT-1010' });
+    render(<HelpCentreScreen live={liveHelp({ onRaise, startRaise: true, desks: [{ ...RAISE_DESKS[0], categories: [], fields: RAISE_FIELDS }] })} />);
+    await ue.click(await screen.findByRole('combobox', { name: /Office/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Chennai' }));
+    await ue.click(screen.getByRole('combobox', { name: /Floor/ }));
+    expect(await screen.findByRole('option', { name: 'Chennai · ground floor' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Bengaluru · 1st floor' })).toBeNull();
+    await ue.click(screen.getByRole('option', { name: 'Chennai · ground floor' }));
+    await ue.type(screen.getByRole('textbox', { name: /Subject/ }), 'Projector broken');
+    await ue.type(screen.getByRole('textbox', { name: /Details/ }), 'Room 2');
+    await ue.click(screen.getByRole('button', { name: 'Raise ticket' }));
+    await waitFor(() => expect(onRaise).toHaveBeenCalledWith(expect.objectContaining({ fields: { office: 'che', floor: 'che_g' } })));
+  });
+
+  it('1842 negative: a refused field shows its message by the field and the form stays; no fields, none sent', async () => {
+    const onRaise = vi.fn().mockRejectedValueOnce(Object.assign(new Error('Check the fields.'), { body: { errors: { office: 'Choose one of the options offered.' } } })).mockResolvedValue({ id: 'n2', number: 'IT-1011' });
+    const { unmount } = render(<HelpCentreScreen live={liveHelp({ onRaise, startRaise: true, desks: [{ ...RAISE_DESKS[0], categories: [], fields: RAISE_FIELDS }] })} />);
+    await ue.click(await screen.findByRole('combobox', { name: /Office/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Bengaluru' }));
+    await ue.type(screen.getByRole('textbox', { name: /Subject/ }), 'Projector broken');
+    await ue.type(screen.getByRole('textbox', { name: /Details/ }), 'Room 2');
+    await ue.click(screen.getByRole('button', { name: 'Raise ticket' }));
+    expect((await screen.findAllByText('Choose one of the options offered.')).length).toBeGreaterThan(0);
+    expect(screen.getByRole('textbox', { name: /Subject/ })).toHaveValue('Projector broken');
+    unmount();
+    onRaise.mockClear();
+    render(<HelpCentreScreen live={liveHelp({ onRaise, startRaise: true, desks: [{ ...RAISE_DESKS[0], categories: [] }] })} />);
+    await ue.type(await screen.findByRole('textbox', { name: /Subject/ }), 'Mouse');
+    await ue.type(screen.getByRole('textbox', { name: /Details/ }), 'Broken');
+    expect(screen.queryByRole('combobox', { name: /Office/ })).toBeNull();
+    await ue.click(screen.getByRole('button', { name: 'Raise ticket' }));
+    await waitFor(() => expect(onRaise).toHaveBeenCalled());
+    expect(onRaise.mock.calls[0][0]).not.toHaveProperty('fields');
   });
 
   it('1801: without the right there is no "Who is this for"', async () => {

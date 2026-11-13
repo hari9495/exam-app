@@ -280,6 +280,25 @@ export function TicketFieldsPanel({ fields, canSet, onSave }: { fields: TicketFi
   );
 }
 
+/** Answer 1842: a field the raise form asks (the desk's fields everyone sees); value and display are empty. */
+export type RaiseField = TicketFieldView;
+type FieldAnswer = string | number;
+
+/** The field values a raise sends: only the ones filled in. */
+export const raiseFieldValues = (fields: RaiseField[] | undefined, values: Answers): Record<string, FieldAnswer> | undefined => {
+  const out = Object.fromEntries((fields ?? []).filter((f) => values[f.key] !== undefined && values[f.key] !== null && values[f.key] !== '').map((f) => [f.key, values[f.key] as FieldAnswer]));
+  return Object.keys(out).length ? out : undefined;
+};
+
+/** The server's per-field messages (400 FIELD_ERRORS) from a refused raise or save. */
+export const fieldErrorsOf = (e: unknown): Record<string, string> | null => (e as { body?: { errors?: Record<string, string> } }).body?.errors ?? (e as { errors?: Record<string, string> }).errors ?? null;
+
+/** Answer 1842: the desk's own fields on a raise form (dependent drop-downs as on the agent's ticket). */
+export function RaiseFields({ fields, values, onChange, errors }: { fields?: RaiseField[]; values: Answers; onChange: (v: Answers) => void; errors: Record<string, string> }) {
+  if (!fields?.length) return null;
+  return <ServiceForm form={fieldsForm(fields)} values={values} onChange={onChange} errors={errors} onPick={async () => []} />;
+}
+
 /** Answers 1641, 1650: the filled fields a requester may see, on their own ticket (help centre and portal). */
 export function RequesterFields({ fields }: { fields?: { label: string; value: string | null }[] }) {
   if (!fields?.length) return null;

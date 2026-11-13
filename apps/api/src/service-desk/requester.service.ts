@@ -10,7 +10,7 @@ import { DeskActor, audit, companyOf, emit } from './desk-access';
 import { RaiseTicketDto, RequesterReplyDto, WatcherDto } from './dto';
 import { Ticket, TicketsService } from './tickets.service';
 import { assetsOf } from './asset-pick';
-import { fieldsFor, shownFields } from './ticket-fields';
+import { fieldsFor, raiseFieldsOf, shownFields } from './ticket-fields';
 
 // The requester's side (M14 §6.1 implicit role, YX-SD-16): raise, follow, reply and add watchers. No permission key:
 // every route works only on the person's own records (requester, requested-for or watcher) and never returns internal
@@ -116,6 +116,7 @@ export class RequesterService {
         whose = forPersonId;
       }
       const hasDevice = Boolean(whose && (await assetsOf(tx, org, whose, '')).length);
+      const fieldsOf = await raiseFieldsOf(tx, org, new Map(desks.map((d) => [d.id, types.find((t) => t.deskId === d.id)?.id])));
       return desks.map((d) => ({
         id: d.id,
         name: d.name,
@@ -127,6 +128,8 @@ export class RequesterService {
         closed: closed.get(d.id) ?? null,
         // Answer 1662: an IT desk asks "Which device?" when the person has one assigned.
         askDevice: d.kind === 'it' && hasDevice,
+        // Answer 1842: the desk's fields everyone sees, filled on the raise form.
+        fields: fieldsOf(d.id),
       }));
     });
   }
@@ -165,6 +168,7 @@ export class RequesterService {
         originArticleId: dto.originArticleId,
         originQuery: dto.originQuery,
         assetId: dto.assetId,
+        fields: dto.fields,
       });
     });
     return { id: t.id, number: t.number };

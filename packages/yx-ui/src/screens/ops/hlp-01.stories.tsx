@@ -4,6 +4,7 @@ import { ARTICLES, ASSISTANT_THREAD, MY_TICKETS } from './helpdesk-data';
 import { TODAY } from '../_kit/data';
 import { HELP_BANNERS, HELP_CHANNELS, HELP_CHAT, liveHelp } from './helpdesk-live-samples';
 import { RAISE_DESKS } from '../desk/data';
+import { RAISE_FIELDS } from '../desk/ticket-fields-sample';
 
 const meta: Meta = { title: 'Screens/Helpdesk/HLP-01 · Help centre', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -33,4 +34,6 @@ export const ClosedNow: S = { name: 'Raise ticket · the team is closed now', re
 export const RaiseWhichDevice: S = { name: 'Raise ticket · which device? (IT desk)', render: () => <HelpCentreScreen live={liveHelp({ startRaise: true, desks: [{ ...RAISE_DESKS[0], categories: [], askDevice: true }], onPickDevice: async () => [{ id: 'as1', label: 'Dell Latitude 5440 (KF-LT-0142)', detail: 'Laptop' }, { id: 'as2', label: 'Logitech headset (KF-HS-0077)', detail: 'Accessory' }] })} /> };
 // Answer 1801: people who may raise for others pick a colleague; "Which device?" follows that colleague.
 export const RaiseOnBehalf: S = { name: 'Raise ticket · on behalf of a colleague', render: () => <HelpCentreScreen live={liveHelp({ startRaise: true, desks: [{ ...RAISE_DESKS[0], categories: [] }], onPickDevice: async () => [{ id: 'as9', label: 'HP EliteBook (KF-LT-0009)', detail: 'Laptop' }], onBehalf: { onPickPeople: async () => [{ id: 'p-ravi', label: 'Ravi Kumar', detail: 'Sales' }], onDesksFor: async () => [{ ...RAISE_DESKS[0], categories: [], askDevice: true }] } })} /> };
+// Answer 1842: the desk's own fields everyone sees (Office narrows Floor), filled when raising.
+export const RaiseDeskFields: S = { name: 'Raise ticket · the desk fields everyone fills', render: () => <HelpCentreScreen live={liveHelp({ startRaise: true, desks: [{ ...RAISE_DESKS[0], categories: [], fields: RAISE_FIELDS }] })} /> };
 export const NoAccess: S = { name: 'No access (acting for someone else)', render: () => <HelpCentreScreen live={liveHelp({ state: 'no-access' })} /> };

@@ -13,7 +13,8 @@ import { DeskPage, MessageBody, StatusBadge, browserTimeZone, when } from './des
 import { BannerList } from './help';
 import { ReadingAidsCard, ReadingAidsFrame, useReadingAids } from './reading-aids';
 import { ArticleDrawer, DeskClosedNotice, RateTicketCard, SuggestList, useSuggestions, type KbArticleView, type KbSuggestion } from './help-kb';
-import { RequesterFields } from './ticket-fields';
+import { RaiseFields, RequesterFields, fieldErrorsOf, raiseFieldValues } from './ticket-fields';
+import type { Answers } from '../../lib/forms';
 import type { LoadState, PortalHome, PortalMe, PortalRaiseInput, PortalTicket, PortalTicketRow } from './types';
 
 // The outside help page (§9.3, US-G-021): a company's customers sign in with a 6-digit email code (no password, no
@@ -146,6 +147,9 @@ function usePortalRaiseForm(desks: PortalHome['desks'], onSuggest: ((q: string) 
   const [productId, setProductId] = useState<string | null>(null);
   const [subject, setSubject] = useState('');
   const [details, setDetails] = useState('');
+  // Answer 1842: the team's fields everyone sees.
+  const [fieldValues, setFieldValues] = useState<Answers>({});
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const desk = desks.find((d) => d.id === deskId);
   const origin = useContext(OriginCtx);
   const suggestions = useSuggestions(`${subject} ${details.slice(0, 200)}`, onSuggest);
@@ -159,10 +163,17 @@ function usePortalRaiseForm(desks: PortalHome['desks'], onSuggest: ((q: string) 
     /** True when something is missing (now shown, focus on the first); the caller stops there. */
     stop: early.stop,
     errorOf: early.errorOf,
-    input: (): PortalRaiseInput => ({ deskId: deskId!, ...(categoryId ? { categoryId } : {}), ...(productId ? { productId } : {}), subject: subject.trim(), description: details.trim(), ...origin }),
+    input: (): PortalRaiseInput => {
+      const fields = raiseFieldValues(desk?.fields, fieldValues);
+      return { deskId: deskId!, ...(categoryId ? { categoryId } : {}), ...(productId ? { productId } : {}), subject: subject.trim(), description: details.trim(), ...origin, ...(fields ? { fields } : {}) };
+    },
+    /** Shows the server's per-field messages of a refused raise (400 FIELD_ERRORS). */
+    refused: (e: unknown) => setFieldErrors(fieldErrorsOf(e) ?? {}),
     clear: () => {
       setSubject('');
       setDetails('');
+      setFieldValues({});
+      setFieldErrors({});
       early.reset();
     },
     fields: (
@@ -175,6 +186,8 @@ function usePortalRaiseForm(desks: PortalHome['desks'], onSuggest: ((q: string) 
                 setDeskId(v);
                 setCategoryId(null);
                 setProductId(null);
+                setFieldValues({});
+                setFieldErrors({});
               }}
               options={desks.map((d) => ({ value: d.id, label: d.name }))}
               placeholder="Choose a team"
@@ -196,6 +209,7 @@ function usePortalRaiseForm(desks: PortalHome['desks'], onSuggest: ((q: string) 
           <TextField value={subject} onChange={setSubject} maxLength={200} />
         </FormField>
         <SuggestList items={suggestions} />
+        <RaiseFields key={deskId ?? ''} fields={desk?.fields} values={fieldValues} onChange={setFieldValues} errors={fieldErrors} />
         <FormField id={`${idp}-details`} label="Details" required error={early.errorOf(`${idp}-details`)} helper="Dates, error messages and steps help us answer faster.">
           <TextArea value={details} onChange={setDetails} rows={5} maxLength={20000} />
         </FormField>
@@ -286,7 +300,10 @@ export function PortalSignIn(props: PortalScreenProps & { home: PortalHome }) {
                   onClick={() =>
                     !form.stop() &&
                     void run('ask', async () => {
-                      await props.onAsk({ ...form.input(), name: askName.trim(), email: askEmail.trim().toLowerCase() });
+                      await props.onAsk({ ...form.input(), name: askName.trim(), email: askEmail.trim().toLowerCase() }).catch((e: unknown) => {
+                        form.refused(e);
+                        throw e;
+                      });
                       setAsked(true);
                     })
                   }
@@ -361,7 +378,10 @@ export function PortalHomeView(props: PortalScreenProps & { home: PortalHome; me
                 onClick={() =>
                   !form.stop() &&
                   void run('raise', async () => {
-                    const r = await props.onRaise(form.input());
+                    const r = await props.onRaise(form.input()).catch((e: unknown) => {
+                      form.refused(e);
+                      throw e;
+                    });
                     toast({ tone: 'success', title: `Ticket ${r.number} is open`, description: 'The team will reply here.' });
                     form.clear();
                     setRaising(false);

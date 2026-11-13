@@ -12,7 +12,7 @@ import { BannerDto, OpenRequestDto, PortalDto, PortalEmailDto, PortalRaiseDto, P
 import { Requester, RequesterService } from './requester.service';
 import { textToHtml } from './rich-text';
 import { TicketsService } from './tickets.service';
-import { fieldsFor, shownFields } from './ticket-fields';
+import { fieldsFor, raiseFieldsOf, shownFields } from './ticket-fields';
 
 // SD-1.21 portals, SD-1.22 the open portal and external requesters, SD-1.23 banners (US-B-099, US-B-103, US-G-020 …
 // US-G-022; §9.3, §14.4). An outside customer is a P02 external login (YX-SEC-21): a one-time code to their email (P12
@@ -274,10 +274,13 @@ export class PortalService {
       const closed = new Map(await Promise.all(desks.map(async (d) => [d.id, await this.tickets.sla.closedNow(tx, org.id, d, new Date(), cache)] as const)));
       const cats = await tx.sdCategory.findMany({ where: { organizationId: org.id, deskId: { in: deskIds }, active: true, sensitive: false }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }], select: { id: true, deskId: true, name: true, parentId: true } });
       const products = await tx.sdProduct.findMany({ where: { organizationId: org.id, active: true, OR: [{ deskId: null }, { deskId: { in: deskIds } }] }, orderBy: { name: 'asc' }, select: { id: true, name: true, deskId: true } });
+      // Answer 1842: the fields everyone sees, for the desk's first type (a portal raise has no type).
+      const types = await tx.sdTicketType.findMany({ where: { organizationId: org.id, deskId: { in: deskIds }, active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }], select: { id: true, deskId: true } });
+      const fieldsOf = await raiseFieldsOf(tx, org.id, new Map(desks.map((d) => [d.id, types.find((t) => t.deskId === d.id)?.id])));
       return {
         company: org.name,
         portal: { name: portal.name, accentColour: portal.accentColour, loginTitle: portal.loginTitle, loginText: portal.loginText, readingAids: portal.readingAids, openRequests: portal.openRequests, signUp: portal.signUp },
-        desks: desks.map(({ calendarId: _c, closedMessage: _m, ...d }) => ({ ...d, closed: closed.get(d.id) ?? null, categories: cats.filter((c) => c.deskId === d.id).map(({ deskId: _d, ...c }) => c), products: products.filter((p) => !p.deskId || p.deskId === d.id).map((p) => ({ id: p.id, name: p.name })) })),
+        desks: desks.map(({ calendarId: _c, closedMessage: _m, ...d }) => ({ ...d, closed: closed.get(d.id) ?? null, categories: cats.filter((c) => c.deskId === d.id).map(({ deskId: _d, ...c }) => c), products: products.filter((p) => !p.deskId || p.deskId === d.id).map((p) => ({ id: p.id, name: p.name })), fields: fieldsOf(d.id) })),
         banners: await this.liveBanners(tx, org.id, deskIds, 'customers', null),
       };
     });
@@ -485,7 +488,7 @@ export class PortalService {
     const usedUp = await this.usedUp(s.organizationId, dto.deskId, s.personId);
     const t = await this.asPortal(s, async (tx) => {
       await this.checkRaise(tx, s.organizationId, deskIds, dto);
-      return this.tickets.createIn(tx, { ctx: { organizationId: s.organizationId, isSuperAdmin: false }, userId: null }, { deskId: dto.deskId, categoryId: dto.categoryId, productId: dto.productId, subject: dto.subject, bodyHtml: textToHtml(dto.description), requesterPersonId: s.personId, openedByUserId: null, channel: 'portal', side: 'requester', authorPersonId: s.personId, usedUp, originArticleId: dto.originArticleId, originQuery: dto.originQuery });
+      return this.tickets.createIn(tx, { ctx: { organizationId: s.organizationId, isSuperAdmin: false }, userId: null }, { deskId: dto.deskId, categoryId: dto.categoryId, productId: dto.productId, subject: dto.subject, bodyHtml: textToHtml(dto.description), requesterPersonId: s.personId, openedByUserId: null, channel: 'portal', side: 'requester', authorPersonId: s.personId, usedUp, originArticleId: dto.originArticleId, originQuery: dto.originQuery, fields: dto.fields });
     });
     return { id: t.id, number: t.number };
   }
@@ -516,9 +519,10 @@ export class PortalService {
     const token = randomBytes(32).toString('base64url');
     const send = await this.tenantPrisma.forTenant({ organizationId: org.id, isSuperAdmin: false }, async (tx) => {
       await this.checkRaise(tx, org.id, deskIds, dto);
+      if (dto.fields && Object.keys(dto.fields).length) await this.tickets.checkRaiseFields(tx, org.id, dto.deskId, dto.fields);
       if (!(await this.eligible(tx, org.id, portal, dto.email)).ok) return false;
       await tx.sdPortalRequest.create({
-        data: { organizationId: org.id, portalId: portal.id, deskId: dto.deskId, email: dto.email, name: dto.name, payload: { subject: dto.subject, description: dto.description, categoryId: dto.categoryId ?? null, productId: dto.productId ?? null, originArticleId: dto.originArticleId ?? null, originQuery: dto.originQuery ?? null }, tokenHash: sha256(token), ip: ip?.slice(0, 45) ?? null, expiresAt: new Date(Date.now() + REQUEST_HOURS * 3_600_000) },
+        data: { organizationId: org.id, portalId: portal.id, deskId: dto.deskId, email: dto.email, name: dto.name, payload: { subject: dto.subject, description: dto.description, ...(dto.fields ? { fields: dto.fields as Prisma.InputJsonValue } : {}), categoryId: dto.categoryId ?? null, productId: dto.productId ?? null, originArticleId: dto.originArticleId ?? null, originQuery: dto.originQuery ?? null }, tokenHash: sha256(token), ip: ip?.slice(0, 45) ?? null, expiresAt: new Date(Date.now() + REQUEST_HOURS * 3_600_000) },
       });
       return true;
     });
@@ -543,7 +547,7 @@ export class PortalService {
       if (!(await this.eligible(tx, org.id, portal, r.email)).ok || !deskIds.includes(r.deskId)) throw new NotFoundException('This link has expired. Send your request again.');
       return { ...r, personId: (await ensureContact(tx, org.id, r.email, r.name, null)).personId };
     });
-    const p = req.payload as { subject: string; description: string; categoryId: string | null; productId: string | null; originArticleId?: string | null; originQuery?: string | null };
+    const p = req.payload as { subject: string; description: string; categoryId: string | null; productId: string | null; originArticleId?: string | null; originQuery?: string | null; fields?: Record<string, unknown> };
     const s: PortalSession = { organizationId: org.id, orgSlug: org.slug, portalId: portal.id, portalSlug: portal.slug, personId: req.personId, sessionId: '' };
     const usedUp = await this.usedUp(org.id, req.deskId, req.personId);
     // 2. One click makes one ticket, in one transaction with the link being used up: two clicks at once make one
@@ -551,7 +555,7 @@ export class PortalService {
     const t = await this.asPortal(s, async (tx) => {
       const won = await tx.sdPortalRequest.updateMany({ where: { id: req.id, confirmedAt: null }, data: { confirmedAt: new Date() } });
       if (!won.count) throw new ConflictException('This request was already confirmed. Sign in to follow it.');
-      const n = await this.tickets.createIn(tx, { ctx, userId: null }, { deskId: req.deskId, categoryId: p.categoryId ?? undefined, productId: p.productId, subject: p.subject, bodyHtml: textToHtml(p.description), requesterPersonId: req.personId, openedByUserId: null, channel: 'portal', side: 'requester', authorPersonId: req.personId, usedUp, originArticleId: p.originArticleId ?? undefined, originQuery: p.originQuery ?? undefined });
+      const n = await this.tickets.createIn(tx, { ctx, userId: null }, { deskId: req.deskId, categoryId: p.categoryId ?? undefined, productId: p.productId, subject: p.subject, bodyHtml: textToHtml(p.description), requesterPersonId: req.personId, openedByUserId: null, channel: 'portal', side: 'requester', authorPersonId: req.personId, usedUp, originArticleId: p.originArticleId ?? undefined, originQuery: p.originQuery ?? undefined, fields: p.fields });
       await tx.sdPortalRequest.update({ where: { id: req.id }, data: { ticketId: n.id } });
       return n;
     });

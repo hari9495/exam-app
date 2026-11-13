@@ -633,6 +633,11 @@ export class RaiseTicketDto {
   @IsOptional()
   @Matches(/^[a-z]{2,3}$/, { message: 'Use a language code such as en, hi or ta.' })
   language?: string;
+
+  /** Answer 1842: the desk's fields everyone sees, by key (checked by the forms engine). */
+  @IsOptional()
+  @IsObject()
+  fields?: Record<string, unknown>;
 }
 
 export class AgentCreateTicketDto {

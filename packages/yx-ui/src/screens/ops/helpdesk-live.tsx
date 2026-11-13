@@ -29,6 +29,8 @@ import { ChatPromptBanner } from '../desk/chat';
 import { MyChannelsCard, type MyChannelsCardProps } from '../desk/esm3';
 import { StatusBadge } from '../desk/desk-kit';
 import { LivePicker } from '../desk/service-form';
+import { RaiseFields, fieldErrorsOf, raiseFieldValues } from '../desk/ticket-fields';
+import type { Answers } from '../../lib/forms';
 import type { PickOption } from '../desk/esm-types';
 import type { LoadState, MyTicketRow, PublicBanner, RaiseDesk, RaiseInput } from '../desk/types';
 import { Actions, OpsDesk, SlaBadge, Workspace, useSay } from './ops-kit';
@@ -412,11 +414,15 @@ function RaiseForm(p: RaiseFormProps) {
   const whom = forOther && forPerson ? forPerson : undefined;
   const [files, setFiles] = useState<UploadItem[]>([]);
   const [formKey, setFormKey] = useState(0);
+  // Answer 1842: the desk's fields everyone sees (cleared when the topic changes desk).
+  const [fieldValues, setFieldValues] = useState<Answers>({});
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const { busy, error, run } = useRun();
   const uid = useId();
   const fid = (k: string) => `${uid}-${k}`;
   const [deskId, categoryId] = (topic ?? '|').split('|');
   const desk = p.desks.find((d) => d.id === deskId);
+  const deskFields = desk?.fields ?? [];
   // "Which device?" follows the person the ticket is for (1685).
   const askDevice = forOther ? Boolean(desksFor?.find((d) => d.id === deskId)?.askDevice) : Boolean(desk?.askDevice);
   const category = desk?.categories.find((c) => c.id === categoryId);
@@ -432,12 +438,20 @@ function RaiseForm(p: RaiseFormProps) {
     setDetails('');
     setPrivate(false);
     setFiles([]);
+    setFieldValues({});
+    setFieldErrors({});
     setFormKey((k) => k + 1);
   };
   const submit = () =>
     !early.stop() &&
     void run('raise', async () => {
-      await p.onRaise({ deskId, categoryId: categoryId || undefined, subject: subject.trim(), description: details.trim(), impact: 3, urgency: 3, private: (isPrivate && !category?.sensitive) || undefined, ...(assetId && askDevice ? { assetId } : {}), ...(whom ? { requestedForPersonId: whom } : {}) }, files.map((f) => f.file));
+      const fields = raiseFieldValues(deskFields, fieldValues);
+      try {
+        await p.onRaise({ deskId, categoryId: categoryId || undefined, subject: subject.trim(), description: details.trim(), impact: 3, urgency: 3, private: (isPrivate && !category?.sensitive) || undefined, ...(assetId && askDevice ? { assetId } : {}), ...(whom ? { requestedForPersonId: whom } : {}), ...(fields ? { fields } : {}) }, files.map((f) => f.file));
+      } catch (e) {
+        setFieldErrors(fieldErrorsOf(e) ?? {});
+        throw e;
+      }
       clear();
     });
   const accept = desk?.attachmentTypes.length ? desk.attachmentTypes.map((x) => (x.startsWith('.') ? x : `.${x}`)) : ['.pdf', '.jpg', '.png'];
@@ -453,7 +467,7 @@ function RaiseForm(p: RaiseFormProps) {
         </FormField>
       )}
       <FormField id={fid('topic')} label="What is it about?" required error={early.errorOf(fid('topic'))}>
-        <Select value={topic} onChange={setTopic} options={options} placeholder="Choose a topic" />
+        <Select value={topic} onChange={(v) => { if ((v ?? '|').split('|')[0] !== deskId) { setFieldValues({}); setFieldErrors({}); } setTopic(v); }} options={options} placeholder="Choose a topic" />
       </FormField>
       {desk?.closed && <DeskClosedNotice closed={desk.closed} />}
       <FormField id={fid('subject')} label="Subject" required helper="One line, e.g. “LOP on my September payslip”" error={early.errorOf(fid('subject'))}>
@@ -484,6 +498,7 @@ function RaiseForm(p: RaiseFormProps) {
           <LivePicker key={whom ?? 'me'} kind="assets" label="Which device?" value={assetId} onChange={setAssetId} onPick={(_k, q) => p.onPickDevice!(q, whom)} />
         </FormField>
       )}
+      <RaiseFields key={deskId} fields={deskFields} values={fieldValues} onChange={setFieldValues} errors={fieldErrors} />
       <FormField id={fid('details')} label="Details" required helper="Add dates, amounts or screenshots so the team can help faster" error={early.errorOf(fid('details'))}>
         <TextArea value={details} onChange={setDetails} rows={4} maxLength={20000} />
       </FormField>

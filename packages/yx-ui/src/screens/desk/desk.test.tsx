@@ -13,6 +13,7 @@ import { DeskSetupScreen } from './setup';
 import { BannersTab, EmailTab, PortalTab, type EmailSetupProps } from './setup-channels';
 import { CustomersScreen } from './customers';
 import { PortalScreen, type PortalScreenProps } from './portal';
+import { RAISE_FIELDS } from './ticket-fields-sample';
 import { ACCOUNT, ACCOUNT_ROWS, BANNERS, BOUNCES, CS_DESK, INBOUND, MAILBOXES, MY_BANNERS, PORTALS, PORTAL_HOME, PORTAL_ROWS, PORTAL_TICKET, PRODUCTS, SENDING_DOMAINS } from './data';
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -331,6 +332,36 @@ describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
     await ue.click(screen.getByRole('button', { name: 'Raise ticket' }));
     await waitFor(() => expect(onRaise).toHaveBeenCalledWith(expect.objectContaining({ deskId: 'd-it', subject: 'Payslip page is blank' })));
     expect((await screen.findAllByText(/Your ticket number is IT-1010/))[0]).toBeInTheDocument();
+  });
+
+  it('1842: help drawer: the desk fields everyone sees are asked and sent; another kind of ticket hides them', async () => {
+    const onRaise = vi.fn().mockResolvedValue({ id: 'n', number: 'IT-1011' });
+    const desk = { ...RAISE_DESKS[0], fields: RAISE_FIELDS, types: [{ id: 'ty1', name: 'Incident' }, { id: 'ty2', name: 'Request' }] };
+    render(<HelpDrawer open onOpenChange={() => {}} desks={[desk]} tickets={MY_ROWS} banners={[]} onMeToo={ok()} onRaise={onRaise} ticketHref={(id) => `/yx/desk/help/${id}`} />);
+    await ue.click(screen.getByRole('combobox', { name: /Office/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Bengaluru' }));
+    await ue.type(screen.getByRole('textbox', { name: /Subject/ }), 'Printer jam');
+    await ue.type(screen.getByRole('textbox', { name: /Details/ }), 'Floor 2');
+    await ue.click(screen.getByRole('button', { name: 'Raise ticket' }));
+    await waitFor(() => expect(onRaise).toHaveBeenCalledWith(expect.objectContaining({ fields: { office: 'blr' } })));
+    await ue.click(screen.getByRole('combobox', { name: /Kind of ticket/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Request' }));
+    expect(screen.queryByRole('combobox', { name: /Office/ })).toBeNull();
+  });
+
+  it('1842: portal: the team fields are asked on the signed-in raise form; a refused field shows by the field', async () => {
+    const onRaise = vi.fn().mockRejectedValueOnce(Object.assign(new Error('Check the fields.'), { errors: { office: 'Choose one of the options offered.' } })).mockResolvedValue({ id: 'pt9', number: 'CS-1009' });
+    const home = { ...PORTAL_HOME, desks: [{ ...PORTAL_HOME.desks[0], fields: RAISE_FIELDS }] };
+    render(<PortalScreen {...portal({ home, me: { name: 'Kiran Shetty', email: 'kiran@sunrise.example', account: null, seesAccountTickets: false }, onRaise })} />);
+    await ue.click(screen.getByRole('button', { name: 'Raise a ticket' }));
+    await ue.click(await screen.findByRole('combobox', { name: /Office/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Chennai' }));
+    await ue.type(screen.getByRole('textbox', { name: /Subject/ }), 'Late order');
+    await ue.type(screen.getByRole('textbox', { name: /Details/ }), 'Order 88');
+    await ue.click(screen.getByRole('button', { name: 'Send' }));
+    expect((await screen.findAllByText('Choose one of the options offered.')).length).toBeGreaterThan(0);
+    await ue.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(onRaise).toHaveBeenLastCalledWith(expect.objectContaining({ deskId: 'd-cs', fields: { office: 'che' } })));
   });
 
   it('customers: people, plans and the company’s ticket sharing', async () => {
