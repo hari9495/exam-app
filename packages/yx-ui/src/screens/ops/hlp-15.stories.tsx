@@ -26,6 +26,9 @@ export const CatalogForOtherMissing: S = { name: 'Send request for someone else 
 // Answer 1802: an item that asks for a device asks who it is for first (the device list is then theirs).
 const DEVICE_PAGE = { ...LAPTOP_PAGE, name: 'Laptop repair', form: { sections: [{ id: 's', columns: 1 as const, fields: [{ key: 'device', type: 'asset' as const, label: 'Which device?' }, { key: 'what', type: 'textarea' as const, label: 'What is wrong?' }] }], rules: [] } };
 export const CatalogDeviceForWhom: S = { name: 'An item with a device field asks who it is for first', render: () => catalog({ onOpenItem: async () => DEVICE_PAGE }), play: play(press('Open New laptop'), choose('For someone else')) };
+// Answer 1891: the IT starter catalogue's Application access item (which application, why; its owner approves, then IT gives access).
+const ACCESS_PAGE = { ...LAPTOP_PAGE, id: 'i9', name: 'Application access', shortText: 'Access to a company application. Its owner approves, then IT gives you access.', cost: null, deliveryDays: 2, bodyHtml: '', approvals: ['The owner of the application'], form: { sections: [{ id: 'access', columns: 1 as const, fields: [{ key: 'app', type: 'app' as const, label: 'Which application?', required: true }, { key: 'why', type: 'textarea' as const, label: 'Why do you need it?', required: true, help: 'What you will do with it. The owner reads this.' }] }], rules: [] } };
+export const CatalogAppAccess: S = { name: 'Application access (IT starter item)', render: () => catalog({ onOpenItem: async () => ACCESS_PAGE }), play: play(press('Open New laptop')) };
 export const CatalogEmpty: S = { name: 'Nothing to order', render: () => catalog({ catalogue: { items: [], guides: [] } }) };
 export const CatalogLoading: S = { name: 'Loading', render: () => catalog({ state: 'loading' }) };
 export const CatalogError: S = { name: 'Could not load', render: () => catalog({ state: 'error', onRetry: () => undefined }) };

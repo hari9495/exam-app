@@ -150,7 +150,7 @@ describe('Helpdesk: IT starter catalogue and devices on a ticket', () => {
 
   it('a new IT desk gets the IT starter items with their tasks, the manager approving laptop, software and VPN, and its targets', async () => {
     const items = await inOrg(org.A.id, (tx) => tx.sdCatalogItem.findMany({ where: { deskId: ids.it }, select: { id: true, name: true, journeyOnly: true, deliveryDays: true } }));
-    expect(items.map((i) => i.name).sort()).toEqual(['New laptop', 'New-joiner IT kit', 'Password reset', 'Software install', 'VPN access']);
+    expect(items.map((i) => i.name).sort()).toEqual(['Application access', 'New laptop', 'New-joiner IT kit', 'Password reset', 'Software install', 'VPN access']);
     expect(items.find((i) => i.name === 'New-joiner IT kit')!.journeyOnly).toBe(true);
     const versions = await inOrg(org.A.id, (tx) => tx.sdCatalogItemVersion.findMany({ where: { itemId: { in: items.map((i) => i.id) } }, select: { itemId: true, approval: true, fulfilment: true } }));
     const of = (name: string) => versions.find((v) => v.itemId === items.find((i) => i.name === name)!.id)!;

@@ -284,4 +284,37 @@ describe('Helpdesk follow-ups', () => {
       await api('divya', 'get', '/desk/my/pick/everyone?q=x').expect(400);
     });
   });
+  // ------------------------------------------------------------------------------------------ 1891
+  describe('1891: "Application access" in the IT starter catalogue', () => {
+    const itemOf = (deskId: string) => tenantPrisma.forTenant(SUPER, (tx) => tx.sdCatalogItem.findMany({ where: { organizationId: org.A.id, deskId, name: 'Application access' } }));
+    const order = (appId: string) => api('divya', 'post', '/desk/my/catalog/checkout').send({ items: [{ itemId: ids.accessItem, quantity: 1, answers: { app: appId, why: 'Month-end close.' } }] });
+
+    it('a new IT desk has it (which application, why, the owner approves, then Give access); the owner approves and IT gets the task', async () => {
+      const [item] = await itemOf(ids.desk);
+      expect(item).toMatchObject({ state: 'published', journeyOnly: false });
+      ids.accessItem = item.id;
+      const v = await tenantPrisma.forTenant(SUPER, (tx) => tx.sdCatalogItemVersion.findFirstOrThrow({ where: { itemId: item.id, version: 1 } }));
+      expect((v.form as { sections: { fields: { key: string; type: string; required?: boolean }[] }[] }).sections[0].fields.map((f) => [f.key, f.type, f.required])).toEqual([['app', 'app', true], ['why', 'textarea', true]]);
+      expect(v.approval).toEqual([{ name: 'Application owner', approvers: [{ kind: 'app_owner', field: 'app' }], mode: 'any' }]);
+      expect((v.fulfilment as { title: string }[]).map((f) => f.title)).toEqual(['Give access']);
+      ids.payroll = (await api('adminA', 'post', '/desk/apps').send({ name: `Payroll app ${run}`, ownerUserId: users.lead }).expect(201)).body.id;
+      const t = (await order(ids.payroll).expect(201)).body.requests[0].ticketId as string;
+      const req = await tenantPrisma.forTenant(SUPER, (tx) => tx.sdRequestItem.findFirstOrThrow({ where: { ticketId: t }, select: { stage: true, approvalRequestId: true } }));
+      expect(req.stage).toBe('approval');
+      const task = ((await api('lead', 'get', '/workflow/approvals/inbox').expect(200)).body as { taskId: string; requestId: string }[]).find((x) => x.requestId === req.approvalRequestId)!;
+      await api('lead', 'post', `/workflow/approvals/tasks/${task.taskId}/decide`).send({ decision: 'approve' }).expect(200);
+      expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.sdRequestItem.findFirstOrThrow({ where: { ticketId: t } }))).stage).toBe('fulfilment');
+      expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.sdTask.findMany({ where: { ticketId: t } }))).map((x) => x.title)).toContain('Give access');
+    });
+
+    it('negative: no application or no reason is refused; installing the pack again adds no second item; other kinds of desk do not get it', async () => {
+      await api('divya', 'post', '/desk/my/catalog/checkout').send({ items: [{ itemId: ids.accessItem, quantity: 1, answers: { why: 'x' } }] }).expect(400);
+      await api('divya', 'post', '/desk/my/catalog/checkout').send({ items: [{ itemId: ids.accessItem, quantity: 1, answers: { app: ids.payroll } }] }).expect(400);
+      await api('adminA', 'post', `/desk/desks/${ids.desk}/starter-pack`).send({}).expect(200);
+      expect(await itemOf(ids.desk)).toHaveLength(1);
+      const hr = (await api('adminA', 'post', '/desk/desks').send({ name: 'Admin desk', key: 'ADM', kind: 'admin' }).expect(201)).body.id;
+      expect(await itemOf(hr)).toHaveLength(0);
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.sdCatalogItem.count({ where: { organizationId: org.B.id, deskId: ids.deskB, name: 'Application access' } }))).toBe(1);
+    });
+  });
 });

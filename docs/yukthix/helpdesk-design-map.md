@@ -616,6 +616,7 @@ File: `packages/yx-ui/src/screens/ops/hlp-15.stories.tsx`. Drawn 12 Nov 2026 (th
 | CatalogSent · Request sent (toast with Follow) | live | same page |
 | CatalogForOtherMissing · Send request for someone else with nobody chosen | live | same page |
 | CatalogDeviceForWhom · An item with a device field asks who it is for first | live | Answer 1802: an item whose form has a device field shows "Who is this for" above the form; for someone else, the device picker lists that person's devices (`GET desk/my/pick/assets?for=`, the on-behalf right checked) and a device picked earlier is cleared; the cart's "Who is this for" is the same choice. Answer 1846: the person picker (here and the cart's "For someone else") lists only the people one may raise for (`GET desk/my/pick/on-behalf`) |
+| CatalogAppAccess · Application access (IT starter item) | live | Answer 1891: a new IT desk's starter catalogue (and the starter pack installed again) has Application access: Which application? (the company's active applications, HLP-21) and Why do you need it?, both required; the owner of that application approves (a desk admin when there is none, never one's own request), then the desk's team gets the task Give access; other kinds of desk do not get it, and installing again adds no second one |
 | CatalogEmpty · Nothing to order | live | same page |
 | CatalogLoading · Loading | live | same page |
 | CatalogError · Could not load | live | same page |

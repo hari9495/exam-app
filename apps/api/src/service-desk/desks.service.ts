@@ -766,11 +766,12 @@ export async function installPack(tx: Tx, a: { ctx: DeskActor['ctx']; userId: st
     if (!team || (await tx.sdCatalogItem.findFirst({ where: { ...d, name: it.name }, select: { id: true } }))) continue;
     let cat = await tx.sdCategory.findFirst({ where: { ...d, name: it.category }, select: { id: true } });
     cat ??= await tx.sdCategory.create({ data: { ...d, name: it.category, defaultGroupId: team.id, sortOrder: 50 }, select: { id: true } });
-    const approval = it.managerApproves ? [{ name: 'Manager', approvers: [{ kind: 'manager', level: 1 }], mode: 'any' }] : [];
+    const approval = it.approval ?? (it.managerApproves ? [{ name: 'Manager', approvers: [{ kind: 'manager', level: 1 }], mode: 'any' }] : []);
     const fulfilment = it.tasks.map((t) => ({ title: t.title, groupId: team.id, olaHours: t.olaHours }));
-    const draft = { bodyHtml: '', media: [], form: EMPTY_FORM, approval, fulfilment };
+    const form = it.form ?? EMPTY_FORM;
+    const draft = { bodyHtml: '', media: [], form, approval, fulfilment };
     const row = await tx.sdCatalogItem.create({ data: { ...d, categoryId: cat.id, name: it.name, shortText: it.shortText, state: 'published', currentVersion: 1, deliveryDays: it.deliveryDays, journeyOnly: Boolean(it.journeyOnly), sortOrder: 100 + i, draft: draft as unknown as Prisma.InputJsonValue, createdBy: a.userId } });
-    await tx.sdCatalogItemVersion.create({ data: { ...d, itemId: row.id, version: 1, form: EMPTY_FORM as unknown as Prisma.InputJsonValue, approval: approval as unknown as Prisma.InputJsonValue, fulfilment: fulfilment as unknown as Prisma.InputJsonValue, publishedBy: a.userId } });
+    await tx.sdCatalogItemVersion.create({ data: { ...d, itemId: row.id, version: 1, form: form as unknown as Prisma.InputJsonValue, approval: approval as unknown as Prisma.InputJsonValue, fulfilment: fulfilment as unknown as Prisma.InputJsonValue, publishedBy: a.userId } });
     items++;
   }
   let sla = false;
