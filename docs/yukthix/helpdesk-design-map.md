@@ -190,7 +190,6 @@ portal designs also wait: `settings: MobileHelpTicketsScreen`, `MobilePolicyAckS
 
 ## 4. Design groups, story by story
 
-### A. Helpdesk HLP-01 … 21
 ### A. Helpdesk HLP-01 … 22
 
 #### HLP-01 · Help centre
@@ -758,7 +757,8 @@ File: `packages/yx-ui/src/screens/ops/hlp-21.stories.tsx`. Drawn 13 Nov 2026 (He
 
 File: `packages/yx-ui/src/screens/ops/hlp-22.stories.tsx` (screens in `hlp-22-itsm.tsx`). A DRAFT drawn 13 Nov 2026 for
 Helpdesk plan item 5 (IT change requests and problem records); the plan and questions 1931 to 1943 are in
-`docs/yukthix/helpdesk-itsm-plan.md`. Nothing is built until the founder answers.
+`docs/yukthix/helpdesk-itsm-plan.md`. Founder approved 1931 to 1943 as suggested ("all ok"); built on
+`feat/yukthix-itsm` in parts ITSM-1 to ITSM-4.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
@@ -775,6 +775,8 @@ Helpdesk plan item 5 (IT change requests and problem records); the plan and ques
 | ProblemInvestigating · A problem · linked incidents, cause not found yet | design only, feature not built | draft |
 | KnownError · A problem · known error, workaround to the knowledge base, fix by change | design only, feature not built | draft (1940, 1941) |
 | NoAccess · No access (not on the IT desk) | design only, feature not built | draft |
+| Settings · Settings · approval by risk, risk questions, banner and review, change window | live | ITSM-1: /yx/desk/setup › Changes (IT desks) renders ItsmSettingsPanel; desk settings with defaults (1933-1939), the company's window and freezes (1936) |
+| SettingsReadOnly · Settings · an agent sees them, cannot change them | live | ITSM-1: agents of the IT desk see the tab read-only; the API refuses their changes |
 
 ### B. Other Helpdesk designs (were "Service desk")
 

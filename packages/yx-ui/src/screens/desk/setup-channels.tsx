@@ -403,7 +403,7 @@ function MailboxDrawer({ mailbox, detail, domains, onClose, onSave }: { mailbox:
           <Select value={categoryId} onChange={setCategoryId} clearable options={detail.categories.filter((c) => c.active).map((c) => ({ value: c.id, label: c.name }))} placeholder="No category" />
         </FormField>
         <FormField label="Type for new tickets" optional>
-          <Select value={typeId} onChange={setTypeId} clearable options={detail.types.filter((t) => t.active).map((t) => ({ value: t.id, label: t.name }))} placeholder="The desk’s first type" />
+          <Select value={typeId} onChange={setTypeId} clearable options={detail.types.filter((t) => t.active && t.kind !== 'change' && t.kind !== 'problem').map((t) => ({ value: t.id, label: t.name }))} placeholder="The desk’s first type" />
         </FormField>
         <FormField label="Send replies from" helper="Your own domain once all its checks pass; until then YukthiX’s address with your desk name.">
           <Select value={domainId} onChange={setDomainId} clearable options={domains.map((d) => ({ value: d.id, label: d.domain, description: d.status === 'verified' ? 'All checks pass' : 'Checks not passed yet' }))} placeholder="YukthiX’s address" />

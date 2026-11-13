@@ -14,7 +14,7 @@ import { CatalogService, afterTaskChange } from './catalog.service';
 // SD-1.12 unmask and the read log (YX-SD-15, YX-SD-17). Every write: key + seat checked on the server, one transaction
 // with its timeline event, outbox event and audit row.
 
-const LINK_WORDS: Record<string, string> = { related: 'Related to', duplicate: 'Duplicate of', blocks: 'Blocks', caused_by: 'Caused by', tracked_by: 'Tracked by', follow_up: 'Follow-up of' };
+const LINK_WORDS: Record<string, string> = { related: 'Related to', duplicate: 'Duplicate of', blocks: 'Blocks', caused_by: 'Caused by', tracked_by: 'Tracked by', follow_up: 'Follow-up of', fixes: 'Fixes' };
 
 @Injectable()
 export class WorkService {
@@ -73,7 +73,7 @@ export class WorkService {
         mergedInto,
         links: [
           ...out.filter((l) => others.has(l.toTicketId)).map((l) => ({ id: l.id, kind: l.kind, words: LINK_WORDS[l.kind], ticket: others.get(l.toTicketId)!, direction: 'out' as const })),
-          ...inbound.filter((l) => others.has(l.fromTicketId)).map((l) => ({ id: l.id, kind: l.kind, words: l.kind === 'tracked_by' ? 'Tracks' : l.kind === 'follow_up' ? 'Followed up by' : l.kind === 'duplicate' ? 'Merged here' : LINK_WORDS[l.kind], ticket: others.get(l.fromTicketId)!, direction: 'in' as const })),
+          ...inbound.filter((l) => others.has(l.fromTicketId)).map((l) => ({ id: l.id, kind: l.kind, words: l.kind === 'tracked_by' ? 'Tracks' : l.kind === 'follow_up' ? 'Followed up by' : l.kind === 'duplicate' ? 'Merged here' : l.kind === 'fixes' ? 'Fixed by' : LINK_WORDS[l.kind], ticket: others.get(l.fromTicketId)!, direction: 'in' as const })),
         ],
         sideConversations: threads.map((s) => ({
           id: s.id,
@@ -115,6 +115,8 @@ export class WorkService {
         if (!other.tracker) throw new BadRequestException('Mark the other ticket as a tracker first.');
         if (other.deskId !== t.deskId) throw new BadRequestException('A tracker follows tickets of its own desk.');
       }
+      // ITSM-1: "fixes" is only a change fixing a problem.
+      if (dto.kind === 'fixes' && (t.kind !== 'change' || other.kind !== 'problem')) throw new BadRequestException('Only a change fixes a problem: link from the change to the problem.');
       try {
         const l = await tx.sdTicketLink.create({ data: { organizationId: a.ctx.organizationId, fromTicketId: t.id, toTicketId: other.id, kind: dto.kind, createdBy: a.userId } });
         await this.tickets.event(tx, t, 'linked', null, other.number, { by: a.userId, reason: LINK_WORDS[dto.kind] });

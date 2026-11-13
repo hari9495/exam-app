@@ -3,6 +3,7 @@ import { play, press } from '../_kit/story-play';
 import { TODAY } from '../_kit/data';
 import { ChangeRecordScreen, ChangesScreen, NewChangeDrawer, ProblemRecordScreen, ProblemsScreen, type ChangeRow, type ProblemRow } from './hlp-22-itsm';
 import { OpsDesk } from './ops-kit';
+import { ItsmSettingsPanel, type ItsmSettingsValue } from './hlp-22-settings';
 
 // Helpdesk HLP-22 · Changes and problems: a DRAFT for the founder's questions 1931 to 1943 (helpdesk plan item 5, ITSM
 // change and problem management; docs/yukthix/helpdesk-itsm-plan.md). Not live yet.
@@ -66,3 +67,35 @@ export const KnownError: S = {
   render: () => <ProblemRecordScreen problem={PROBLEMS[0]!} knownError incidents={[{ number: 'IT-1009', subject: 'Gate 1 punches missing', state: 'Solved', raisedOn: new Date(2026, 8, 3) }, { number: 'IT-1031', subject: 'Gate 2 device did not sync punches', state: 'Open', raisedOn: new Date(2026, 8, 21) }]} workaround="Restart the device from its menu (Settings › Network › Reconnect) after midnight; the punches sync within 5 minutes." fixChange={{ number: 'CHG-14', title: 'Upgrade the Hosur attendance devices to firmware 4.2', state: 'approval' }} />,
 };
 export const NoAccess: S = { name: 'No access (not on the IT desk)', render: () => <ChangesScreen rows={[]} freezes={[]} today={TODAY} access={false} /> };
+
+// ITSM-1 (answers 1933-1939): the IT desk's change settings, each with its default, and the company's change window.
+const SETTINGS: ItsmSettingsValue = {
+  version: 1,
+  routeLow: 'lead',
+  routeMedium: 'lead_owner',
+  routeHigh: 'board',
+  board: [{ id: 'u1', name: 'Arjun Kulkarni' }, { id: 'u2', name: 'Divya Menon' }, { id: 'u3', name: 'Meena Iyer' }],
+  boardRule: 'majority',
+  emergencyReviewDays: 2,
+  bannerOn: true,
+  bannerHours: 24,
+  reviewDays: 5,
+  repeatCount: 3,
+  repeatDays: 7,
+  riskQuestions: [
+    { id: 'people', label: 'How many people does it affect?', options: [{ value: '0', label: 'Fewer than 10' }, { value: '1', label: '10 to 100' }, { value: '2', label: 'More than 100, or a whole location' }] },
+    { id: 'undo', label: 'Can it be undone?', options: [{ value: '0', label: 'Yes, in minutes' }, { value: '1', label: 'Yes, in hours' }, { value: '2', label: 'No, or not fully' }] },
+    { id: 'money', label: 'Does it touch payroll, attendance or payments?', options: [{ value: '0', label: 'No' }, { value: '2', label: 'Yes' }] },
+  ],
+  riskQuestionsAreDefault: false,
+  window: { weekdayFrom: '20:00', weekdayTo: '06:00', weekends: true, freezeFirstDays: 7, freezeLastDays: 3, freezeDates: [7, 15, 20] },
+  canEdit: true,
+  canEditWindow: true,
+};
+const settings = (v: ItsmSettingsValue) => (
+  <OpsDesk area="helpdesk" active="Desk set-up">
+    <ItsmSettingsPanel value={v} onSearchPeople={async () => [{ id: 'u4', name: 'Farah Khan' }]} onSave={async () => undefined} onSaveWindow={async () => undefined} />
+  </OpsDesk>
+);
+export const Settings: S = { name: 'Settings · approval by risk, risk questions, banner and review, change window', render: () => settings(SETTINGS) };
+export const SettingsReadOnly: S = { name: 'Settings · an agent sees them, cannot change them', render: () => settings({ ...SETTINGS, canEdit: false, canEditWindow: false }) };

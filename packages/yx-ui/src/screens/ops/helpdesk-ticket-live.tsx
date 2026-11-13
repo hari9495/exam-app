@@ -422,7 +422,7 @@ export function LiveTicketWorkspace({ live }: { live: LiveTicket }) {
         }
       />
       <PriorityDialog value={priorityAsk} onClose={() => setPriorityAsk(null)} onSave={(p, reason) => update({ priority: p, priorityReason: reason }, `Priority changed to P${p}.`)} />
-      <ConvertDialog open={convertOpen} onOpenChange={setConvertOpen} types={d.types.filter((x) => x.active && x.id !== t.typeId)} onConvert={(typeId, reason) => void run('convert', async () => (await live.onConvert(typeId, reason), toast({ tone: 'success', title: 'Ticket type changed.' })))} />
+      <ConvertDialog open={convertOpen} onOpenChange={setConvertOpen} types={d.types.filter((x) => x.active && x.id !== t.typeId && x.kind !== 'change' && x.kind !== 'problem')} onConvert={(typeId, reason) => void run('convert', async () => (await live.onConvert(typeId, reason), toast({ tone: 'success', title: 'Ticket type changed.' })))} />
     </OpsDesk>
   );
 }

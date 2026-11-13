@@ -4234,6 +4234,8 @@ model SdTemplate {
   defaults       Json     @default("{}")
   checklist      String[] @default([])
   active         Boolean  @default(true)
+  /// Answer 1935: a standard-change template that skips approval (cleared when a change from it fails).
+  preApproved    Boolean  @default(false) @map("pre_approved")
   createdBy      String?  @map("created_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -14068,4 +14070,32 @@ model SdBusinessApp {
 
   @@index([organizationId, ownerUserId])
   @@map("sd_business_apps")
+}
+
+/// Helpdesk ITSM-1 (answers 1933-1939): an IT desk's change and problem settings; no row means the defaults.
+model SdItsmSettings {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId      String   @map("organization_id") @db.Uuid
+  deskId              String   @map("desk_id") @db.Uuid
+  riskQuestions       Json?    @map("risk_questions")
+  /// lead | lead_owner | board
+  routeLow            String   @default("lead") @map("route_low") @db.VarChar(12)
+  routeMedium         String   @default("lead_owner") @map("route_medium") @db.VarChar(12)
+  routeHigh           String   @default("board") @map("route_high") @db.VarChar(12)
+  boardUserIds        String[] @default([]) @map("board_user_ids") @db.Uuid
+  /// majority | all
+  boardRule           String   @default("majority") @map("board_rule") @db.VarChar(10)
+  emergencyReviewDays Int      @default(2) @map("emergency_review_days")
+  bannerOn            Boolean  @default(true) @map("banner_on")
+  bannerHours         Int      @default(24) @map("banner_hours")
+  reviewDays          Int      @default(5) @map("review_days")
+  repeatCount         Int      @default(3) @map("repeat_count")
+  repeatDays          Int      @default(7) @map("repeat_days")
+  version             Int      @default(1)
+  updatedBy           String?  @map("updated_by") @db.Uuid
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, deskId])
+  @@map("sd_itsm_settings")
 }

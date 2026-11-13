@@ -81,6 +81,14 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // HLP-04 (founder 3 Nov 2026): how often a published help article is checked again (YX-GRO-07). Desk set-up › Settings.
   // Help H-1 (answer 942): the Help drawer's "This page" tab (help articles tagged with the page).
   'help.page_help': { label: 'Help: show page help in the Help drawer', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', labels: { on: 'Shown', off: 'Hidden' } },
+  // Helpdesk ITSM-1, answer 1936: when IT changes may run (weekdays from-to overnight, and weekends) and the freeze days
+  // (the first and last days of the month and these dates). An emergency change may go into a freeze only with a reason.
+  'itsm.window.weekday_from': { label: 'IT changes: weekday window starts at', scopes: ['tenant'], dated: false, values: DAY_HOURS, default: '20:00' },
+  'itsm.window.weekday_to': { label: 'IT changes: weekday window ends at (next morning)', scopes: ['tenant'], dated: false, values: DAY_HOURS, default: '06:00' },
+  'itsm.window.weekends': { label: 'IT changes: allowed all weekend', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+  'itsm.freeze.first_days': { label: 'IT changes: freeze in the first days of the month', scopes: ['tenant'], dated: false, values: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10'], default: '7' },
+  'itsm.freeze.last_days': { label: 'IT changes: freeze in the last days of the month', scopes: ['tenant'], dated: false, values: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10'], default: '3' },
+  'itsm.freeze.dates': { label: 'IT changes: also freeze on these dates of the month (comma list)', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 60 }, default: '7,15,20' },
   'desk.kb.review_months': { label: 'Check help articles again every (months)', scopes: ['tenant'], dated: false, values: ['3', '6', '12', '24'], default: '12' },
   // HLP-10 / HLP-11 company policies (docs/yukthix/helpdesk-design-map.md 4d): when acknowledgements fall due, reminders,
   // re-acknowledging a new version, typing one's name, and the second person who publishes (loosening that is access).

@@ -7,7 +7,7 @@ import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import { cleanHtml, htmlToText, textToHtml } from './rich-text';
 import { DeskActor, audit, companyOf, emit } from './desk-access';
-import { RaiseTicketDto, RequesterReplyDto, WatcherDto } from './dto';
+import { ITSM_KINDS, RaiseTicketDto, RequesterReplyDto, WatcherDto } from './dto';
 import { Ticket, TicketsService } from './tickets.service';
 import { assetsOf } from './asset-pick';
 import { fieldsFor, shownFields } from './ticket-fields';
@@ -105,7 +105,7 @@ export class RequesterService {
     return this.tx(r, async (tx) => {
       const desks = await tx.sdDesk.findMany({ where: { organizationId: org, status: 'active', kind: { not: 'customer_support' } }, orderBy: { name: 'asc' } });
       const ids = desks.map((d) => d.id);
-      const types = await tx.sdTicketType.findMany({ where: { organizationId: org, deskId: { in: ids }, active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
+      const types = await tx.sdTicketType.findMany({ where: { organizationId: org, deskId: { in: ids }, active: true, kind: { notIn: [...ITSM_KINDS] } }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
       const cats = await tx.sdCategory.findMany({ where: { organizationId: org, deskId: { in: ids }, active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
       const cache = new Map();
       const closed = new Map(await Promise.all(desks.map(async (d) => [d.id, await this.tickets.sla.closedNow(tx, org, d, new Date(), cache)] as const)));

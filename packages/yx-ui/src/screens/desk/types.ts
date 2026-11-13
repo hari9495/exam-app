@@ -43,7 +43,8 @@ export interface DeskSummary {
 
 export interface DeskType {
   id: string;
-  kind: 'incident' | 'request' | 'question';
+  /** Change and problem: IT desks only (ITSM answer 1931). */
+  kind: 'incident' | 'request' | 'question' | 'change' | 'problem';
   name: string;
   active: boolean;
   sortOrder: number;
