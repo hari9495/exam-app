@@ -47,6 +47,7 @@ import { DeskChatController, DeskOrgController, MyChatController } from './esm2.
 import { JourneysService } from './journeys.service';
 import { LifecyclesService } from './lifecycles.service';
 import { RecurringService } from './recurring.service';
+import { FacilitiesService } from './facilities.service';
 import { DeskEsm3Controller, InboundMsgController, MyMessagingController, ReplyLinkController, WidgetPublicController } from './esm3.controller';
 import { MailboxSyncService } from './mailbox-sync.service';
 import { MessagingService } from './messaging.service';
@@ -131,6 +132,7 @@ import { WidgetService } from './widget.service';
     DocumentsService,
     JourneysService,
     RecurringService,
+    FacilitiesService,
     ChatService,
     ChatGateway,
     MessagingService,

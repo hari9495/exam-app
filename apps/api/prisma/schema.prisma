@@ -3986,6 +3986,10 @@ model SdTicket {
   originQuery          String?                  @map("origin_query") @db.VarChar(200)
   /// Answers 1661, 1662: the device (People asset register) an IT desk ticket is about.
   assetId              String?                  @map("asset_id") @db.Uuid
+  /// Helpdesk plan item 4: the building (a company location), area and equipment a facilities ticket is about.
+  locationId           String?                  @map("location_id") @db.Uuid
+  areaId               String?                  @map("area_id") @db.Uuid
+  equipmentId          String?                  @map("equipment_id") @db.Uuid
   /// Answers 1641, 1650: the desk's own field values, keyed by the field's key (the API strips what a viewer may not see).
   fieldValues          Json                     @default("{}") @map("field_values")
   contentRemovedAt     DateTime?                @map("content_removed_at") @db.Timestamptz(3)
@@ -14050,6 +14054,42 @@ model AccountClosureRequest {
   keepUntil      DateTime? @map("keep_until") @db.Date
 
   @@map("account_closure_requests")
+}
+
+/// Helpdesk plan item 4: a floor or area of a building (a company location).
+model SdFacilityArea {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  locationId     String   @map("location_id") @db.Uuid
+  name           String   @db.VarChar(100)
+  status         String   @default("active") @db.VarChar(10)
+  version        Int      @default(1)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@map("sd_facility_areas")
+}
+
+/// Helpdesk plan item 4: a piece of equipment in a building (or one of its areas), owned by a team of a facilities desk.
+model SdEquipment {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  deskId         String   @map("desk_id") @db.Uuid
+  ownerGroupId   String   @map("owner_group_id") @db.Uuid
+  locationId     String   @map("location_id") @db.Uuid
+  areaId         String?  @map("area_id") @db.Uuid
+  name           String   @db.VarChar(100)
+  tag            String   @db.VarChar(40)
+  category       String?  @db.VarChar(60)
+  status         String   @default("active") @db.VarChar(10)
+  version        Int      @default(1)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@index([organizationId, locationId, areaId])
+  @@map("sd_equipment")
 }
 
 /// Helpdesk plan item 3: a company business application and its owner (who approves access to it).

@@ -8,6 +8,7 @@ import { ScheduleError, dueBetween, nextRun, preview } from './recurrence';
 import { RequesterService } from './requester.service';
 import { cleanHtml, htmlToText } from './rich-text';
 import { OPEN_STATES, TicketsService } from './tickets.service';
+import { checkPlace } from './facilities.service';
 
 // SD-2.13 (US-G-052, US-G-053). Recurring records: a template and an RFC 5545 rule; the job makes each due ticket once
 // (a run row per due time), marks one made after an outage as "late" and an earlier one still open when the next comes
@@ -26,6 +27,8 @@ interface Template {
   assigneeUserId?: string | null;
   priority?: number | null;
   requesterPersonId: string;
+  /** Helpdesk plan item 4: maintenance of one piece of equipment of this desk. */
+  equipmentId?: string | null;
 }
 interface Step {
   afterHours: number;
@@ -68,7 +71,8 @@ export class RecurringService {
     if (x.groupId && !(await tx.sdGroup.findFirst({ where: { organizationId: org, deskId, id: x.groupId, active: true }, select: { id: true } }))) throw new BadRequestException('Choose a team of this desk.');
     if (x.assigneeUserId && !(await this.tickets.seatHeld(tx, org, deskId, x.assigneeUserId))) throw new BadRequestException('Choose an agent of this desk.');
     if (x.priority !== undefined && x.priority !== null && (!Number.isInteger(x.priority) || x.priority < 1 || x.priority > 4)) throw new BadRequestException('Priority is 1 to 4.');
-    return { subject, bodyHtml, typeId: x.typeId ?? null, categoryId: x.categoryId ?? null, groupId: x.groupId ?? null, assigneeUserId: x.assigneeUserId ?? null, priority: x.priority ?? null, requesterPersonId };
+    if (x.equipmentId && !(await tx.sdEquipment.findFirst({ where: { organizationId: org, deskId, id: x.equipmentId, status: 'active' }, select: { id: true } }))) throw new BadRequestException("Choose active equipment of this desk's register.");
+    return { equipmentId: x.equipmentId ?? null, subject, bodyHtml, typeId: x.typeId ?? null, categoryId: x.categoryId ?? null, groupId: x.groupId ?? null, assigneeUserId: x.assigneeUserId ?? null, priority: x.priority ?? null, requesterPersonId };
   }
 
   async list(a: DeskActor, deskId: string) {
@@ -166,6 +170,17 @@ export class RecurringService {
     const times = dueBetween(s, new Date((r.lastRunAt ?? new Date(r.startsAt.getTime() - 1)).getTime()), now, MAX_CATCH_UP);
     if (!times.length) times.push(r.nextRunAt);
     const tpl = r.template as unknown as Template;
+    // Helpdesk plan item 4: maintenance of equipment that was retired stops (paused) instead of making tickets.
+    let place: { locationId: string | null; areaId: string | null; equipmentId: string | null } | null = null;
+    if (tpl.equipmentId) {
+      try {
+        place = await checkPlace(tx, org, { equipmentId: tpl.equipmentId });
+      } catch {
+        await tx.sdRecurring.update({ where: { id: r.id }, data: { state: 'paused', updatedAt: new Date() } });
+        await emit(tx, org, 'helpdesk.recurring.paused', { recurringId: r.id, deskId: r.deskId, reason: 'equipment_retired' });
+        return 0;
+      }
+    }
     let made = 0;
     for (const at of times) {
       const run = await tx.sdRecurringRun.createMany({ data: [{ organizationId: org, deskId: r.deskId, recurringId: r.id, dueAt: at, late: now.getTime() - at.getTime() > LATE_MS }], skipDuplicates: true });
@@ -188,6 +203,7 @@ export class RecurringService {
         side: 'requester',
         authorPersonId: tpl.requesterPersonId,
         tags: ['recurring'],
+        ...(place ?? {}),
       });
       if (tpl.groupId || tpl.assigneeUserId) {
         const owner = tpl.assigneeUserId && (await this.tickets.seatHeld(tx, org, r.deskId, tpl.assigneeUserId)) ? tpl.assigneeUserId : null;

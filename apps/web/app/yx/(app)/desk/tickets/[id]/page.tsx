@@ -176,6 +176,10 @@ export default function YxDeskTicketPage() {
         },
         onOpenTicket: open,
         onFindArticle: (q) => apiFetch(`/desk${path}/kb?q=${encodeURIComponent(q)}`, {}, token) as Promise<ArticleOption[]>,
+        onPickPlace: (kind, q, locationId) => apiFetch(`/desk/facilities/pick?kind=${kind}&q=${encodeURIComponent(q)}${locationId ? `&locationId=${encodeURIComponent(locationId)}` : ''}`, {}, token) as Promise<PickOption[]>,
+        onSetPlace: async (p) => {
+          await write(`${path}/place`, 'PUT', p);
+        },
         onPickDevice: (q) => apiFetch(`/desk/pick/assets?deskId=${encodeURIComponent(deskId ?? '')}&q=${encodeURIComponent(q)}`, {}, token) as Promise<PickOption[]>,
         onSetDevice: async (assetId) => {
           await write(`${path}/device`, 'PUT', { assetId });

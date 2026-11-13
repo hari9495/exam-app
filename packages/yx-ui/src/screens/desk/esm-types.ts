@@ -61,8 +61,8 @@ export interface PickOption {
   detail: string | null;
 }
 /** 'assets': the requester's own devices (People asset register); an IT agent searches all (Helpdesk item 2). */
-/** 'apps': the company's business applications that can be asked for (plan item 3). */
-export type PickKind = 'people' | 'locations' | 'cost-centres' | 'assets' | 'apps';
+/** 'apps': the company's business applications that can be asked for (plan item 3); 'buildings' | 'areas' | 'equipment': the facilities register (plan item 4). */
+export type PickKind = 'people' | 'locations' | 'cost-centres' | 'assets' | 'apps' | 'buildings' | 'areas' | 'equipment';
 
 export type ItemStage = 'submitted' | 'approval' | 'fulfilment' | 'delivered' | 'cancelled' | 'rejected';
 export interface ApprovalRoute {

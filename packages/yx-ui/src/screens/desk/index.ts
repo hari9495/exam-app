@@ -77,6 +77,8 @@ export { ServiceForm, LivePicker, ChoiceLabel, type ServiceFormProps } from './s
 export { CatalogAdmin, FormBuilder, type CatalogAdminProps } from './catalog-admin';
 // Helpdesk plan item 3: the company's business applications and their owners.
 export { BusinessAppsScreen, type BusinessApp, type BusinessAppInput, type BusinessAppsProps } from './business-apps';
+// Helpdesk plan item 4: buildings, areas and equipment, and the place a facilities ticket names.
+export { FacilitiesScreen, TicketPlaceCard, type FacilitiesProps, type FacilitiesRegister, type EquipmentPageView, type EquipmentInput, type TicketPlace } from './facilities';
 export { RulesAdmin, type RulesAdminProps } from './rules-admin';
 export { RequestPanel } from './request-panel';
 export { resolveForm, answersToSend, formProblems, toServerGroup, fromServerGroup, inLang, EMPTY_FORM, COLOUR_TONE, type FormDef, type FormFieldDef, type FormSectionDef, type FormLang, type Answers, type AnswerValue, type ServerGroup } from '../../lib/forms';
