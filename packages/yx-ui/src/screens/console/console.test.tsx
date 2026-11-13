@@ -88,6 +88,32 @@ describe('One company', () => {
     return props;
   }
 
+  // Answer 1881: the company's own request to close its account, beside Close.
+  it("1881: the company's closure request shows with its reason; Close beside it asks for a reason and closes", async () => {
+    const p = company({ company: { ...COMPANY, lifecycle: 'active', closureRequest: { status: 'requested', reason: 'Moving to another tool', askedAt: '2026-11-13T10:00:00Z', keepUntil: null } } });
+    expect(screen.getByText(/asked to close its account on 13 Nov 2026/)).toBeInTheDocument();
+    expect(screen.getByText(/Reason: Moving to another tool/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Close company' }));
+    const dialog = await screen.findByRole('dialog');
+    await ue.type(within(dialog).getByRole('textbox'), 'The company asked in writing');
+    await ue.click(within(dialog).getByRole('button', { name: 'Close company' }));
+    await waitFor(() => expect(p.onLifecycle).toHaveBeenCalledWith('close', 'The company asked in writing'));
+  });
+
+  it('1881 negative: a company that did not ask shows no request', () => {
+    company();
+    expect(screen.queryByText(/asked to close its account/)).toBeNull();
+  });
+
+  it('1881 negative: a viewer sees the request without Close; once closed, the kept-until day', () => {
+    const { unmount } = render(<CompanyScreen {...({ state: 'ready', company: { ...COMPANY, lifecycle: 'active', closureRequest: { status: 'requested', reason: 'Moving', askedAt: '2026-11-13T10:00:00Z', keepUntil: null } }, sessions: [], canManage: false, canSupport: false, now: NOW, onBack: vi.fn(), onLifecycle: ok(), onExtendTrial: ok(), onRequestSupport: ok(), onOpenSession: ok(), onEndSession: ok(), onWithdrawRequest: ok() } as CompanyScreenProps)} />);
+    expect(screen.getByText(/asked to close its account/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Close company' })).toBeNull();
+    unmount();
+    company({ company: { ...COMPANY, lifecycle: 'closed', closureRequest: { status: 'closed', reason: 'Moving', askedAt: '2026-11-13T10:00:00Z', keepUntil: '2026-12-13' } } });
+    expect(screen.getByText(/Data is kept until 13 Dec 2026/)).toBeInTheDocument();
+  });
+
   it('every lifecycle move asks for a written reason (YX-CONSOLE-02)', async () => {
     const p = company();
     await ue.click(screen.getByRole('button', { name: 'Switch on' }));

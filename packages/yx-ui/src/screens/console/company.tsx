@@ -183,6 +183,21 @@ export function CompanyScreen(props: CompanyScreenProps) {
             }
           />
 
+          {c.closureRequest?.status === 'requested' && (
+            <InlineAlert
+              tone="warning"
+              title={`${c.name} asked to close its account on ${day(c.closureRequest.askedAt)}`}
+              actions={props.canManage && c.lifecycle !== 'closed' ? <Button variant="danger" onClick={move('close')}>Close company</Button> : undefined}
+            >
+              Reason: {c.closureRequest.reason}. Talk to them first; after closing, nobody can sign in and the data is kept until it is deleted.
+            </InlineAlert>
+          )}
+          {c.closureRequest?.status === 'closed' && c.closureRequest.keepUntil && (
+            <InlineAlert tone="info" title={`Closed at the company's request. Data is kept until ${day(c.closureRequest.keepUntil)}.`}>
+              Reason: {c.closureRequest.reason}.
+            </InlineAlert>
+          )}
+
           {open && (
             <InlineAlert
               tone="success"
