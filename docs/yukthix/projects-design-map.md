@@ -646,3 +646,5 @@ with the project's switch. Pre-filled days start with no comment. Drawn first in
 1883. **Approved and locked weeks** show each day's comment under a "Comment · N words" link, read-only.
       *Suggested: keep.*
 1884. **One box open at a time** in the grid, so the grid stays readable. *Suggested: keep.*
+
+- 1887 to 1890 (timesheet per-day comments) approved as suggested (13 Nov 2026, "all ok").
