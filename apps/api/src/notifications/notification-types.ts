@@ -58,6 +58,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'workflow.approval.no_approver', group: 'approvals', label: 'No approver was found for a request step, so someone else got it (HR, or the desk leads for desk requests)' },
   { type: 'helpdesk.request.stage', group: 'reminders', label: 'Something you ordered moved to its next stage' },
   { type: 'helpdesk.rule.notify', group: 'assignments', label: 'A desk rule sent you a message' },
+  // Ask YukthiX (answer 2105): a feature request you sent is done.
+  { type: 'help.feature_request.done', group: 'assignments', label: 'A feature request you sent is done' },
   // Helpdesk ITSM-2 (answer 1937): a planned change to an application you own.
   { type: 'helpdesk.change.scheduled', group: 'reminders', label: 'A change to an application you own is scheduled' },
   { type: 'helpdesk.rule.failed', group: 'reminders', label: 'A desk rule failed or stopped at its limit' },

@@ -149,6 +149,6 @@ import { WidgetService } from './widget.service';
   ],
   // Lifecycle 6a: HR checklist tasks raise their desk requests through the journeys service (founder D1).
   // Answer 491: the staffing client portal raises and follows tickets through the Helpdesk's own create and reply paths.
-  exports: [JourneysService, DeskAccessService, WorkService, TicketsService, RequesterService],
+  exports: [JourneysService, DeskAccessService, WorkService, TicketsService, RequesterService, KbService, SupportBridgeService],
 })
 export class ServiceDeskModule {}

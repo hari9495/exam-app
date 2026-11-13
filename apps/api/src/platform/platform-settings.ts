@@ -19,6 +19,7 @@ import { ANALYTICS_MIN_DEFAULT, ANALYTICS_MIN_KEY, ANALYTICS_WINDOW_DEFAULT, ANA
 import { NUDGE_LIMIT_DEFAULT, NUDGE_LIMIT_KEY, NUDGE_RETURN_DEFAULT, NUDGE_RETURN_KEY } from './nudges.service';
 import { INVITE_EXPIRE_KEY } from './staff-roles.service';
 import { PlatformStaffGuard } from './platform-staff.guard';
+import { ASK_MODEL_DEFAULT, ASK_MODEL_KEY, ASK_MODEL_PATTERN, ASK_SETTINGS } from '../help/assistant/assistant-settings';
 
 // Answer 1125: Console › Platform settings. Every YukthiX-wide value in one list: the customer-success alerts (C-2), the
 // breach reminders (C-4) and the maintenance rules (C-5). Each is checked against its own allowed range; a change needs
@@ -46,6 +47,17 @@ const whole = (label: string, def: number, min: number, max: number): Def => ({
 export const PLATFORM_SETTING_DEFS: Record<string, Def> = {
   ...Object.fromEntries(Object.entries(CS_SETTINGS).map(([k, d]) => [k, whole(d.label, d.default, d.min, d.max)])),
   ...Object.fromEntries(Object.entries(MAINTENANCE_SETTINGS).map(([k, d]) => [k, whole(d.label, d.default, d.min, d.max)])),
+  // Ask YukthiX (answers 2102, 2104, 2108): the Claude model, the daily limit, the hand-over count, how long chats stay.
+  ...Object.fromEntries(Object.entries(ASK_SETTINGS).map(([k, d]) => [k, whole(d.label, d.default, d.min, d.max)])),
+  [ASK_MODEL_KEY]: {
+    label: 'Ask YukthiX: Claude model',
+    default: ASK_MODEL_DEFAULT,
+    allowed: 'a Claude model ID, such as claude-opus-5-5',
+    check: (raw) => {
+      const v = raw.trim().toLowerCase();
+      return ASK_MODEL_PATTERN.test(v) && v.length <= 60 ? { value: v } : { error: 'Ask YukthiX model: give a Claude model ID, such as claude-opus-5-5.' };
+    },
+  },
   [BLOCK_DATES_KEY]: {
     label: 'No windows on these statutory dates (days of the month)',
     default: BLOCK_DATES_DEFAULT,

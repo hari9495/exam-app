@@ -996,6 +996,27 @@ export class KbService {
     });
   }
 
+  /**
+   * Ask YukthiX (answer 2103): the approved YukthiX help articles for a question, with their text: published, in the
+   * platform company's public "YukthiX help" space, marked "Use in assistant answers". Read in the platform company's
+   * own public-reader context, never the asker's. Each links to the public help centre.
+   */
+  async assistantSources(q: string, take = 6): Promise<{ id: string; number: number; title: string; href: string; text: string }[]> {
+    const org = await this.platformOrg();
+    if (!org || !q.trim()) return [];
+    return this.asReader(org, 'public', async (tx) => {
+      const space = await tx.sdKbSpace.findFirst({ where: { organizationId: org, slug: PLATFORM_HELP_SPACE, audience: 'public', status: 'active' } });
+      const o = await tx.organization.findUnique({ where: { id: org }, select: { slug: true } });
+      if (!space || !o) return [];
+      const found = await searchIn(tx, org, [space.id], q, take);
+      if (!found.length) return [];
+      const rows = await tx.sdKbArticle.findMany({ where: { organizationId: org, id: { in: found.map((f) => f.id) }, state: 'published', deletedAt: null, assistantUse: true }, select: { id: true, number: true, slug: true, title: true, summary: true, bodyText: true } });
+      const order = new Map(found.map((f, i) => [f.id, i]));
+      rows.sort((a, b) => order.get(a.id)! - order.get(b.id)!);
+      return rows.map((r) => ({ id: r.id, number: r.number, title: r.title, href: `/yx/help/${o.slug}/${space.slug}/${r.slug}`, text: [r.summary, r.bodyText].filter(Boolean).join('\n\n').slice(0, 8000) }));
+    });
+  }
+
   async employeeHome(r: Requester) {
     return this.asReader(r.ctx.organizationId, 'requester', async (tx) => {
       const org = r.ctx.organizationId;

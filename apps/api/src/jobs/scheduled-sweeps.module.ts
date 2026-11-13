@@ -22,6 +22,7 @@ import { HiringModule } from '../hiring/hiring.module';
 import { VisitorsModule } from '../visitors/visitors.module';
 import { AccessModule } from '../access/access.module';
 import { HelpModule } from '../help/help.module';
+import { AssistantModule } from '../help/assistant/assistant.module';
 import { PlatformModule } from '../platform/platform.module';
 
 // Runs every recurring housekeeping sweep as a cron-driven BullMQ job scheduler (one dispatcher
@@ -52,6 +53,7 @@ import { ProjectsModule } from '../projects/projects.module';
     VisitorsModule,
     AccessModule,
     HelpModule,
+    AssistantModule,
     PlatformModule,
     OrgStructureModule,
   ],
