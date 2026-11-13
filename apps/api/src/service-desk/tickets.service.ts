@@ -895,6 +895,10 @@ export class TicketsService {
     const note = c.resolutionNote !== undefined ? c.resolutionNote : t.resolutionNote;
     if (code && !(await tx.sdResolutionCode.findFirst({ where: { organizationId: org, deskId: t.deskId, code, active: true }, select: { id: true } }))) throw new BadRequestException('Choose a resolution code of this desk.');
     if (desk.resolutionRequired && (!code || !note?.trim())) throw new BadRequestException({ statusCode: 400, code: 'RESOLUTION_REQUIRED', message: 'This desk needs a resolution code and a note to resolve a ticket.' });
+    // Answer 1843: the desk's fields required before solving must have a value.
+    const values = (t.fieldValues && typeof t.fieldValues === 'object' && !Array.isArray(t.fieldValues) ? t.fieldValues : {}) as Record<string, unknown>;
+    const missing = (await fieldsFor(tx, org, t.deskId, t.typeId)).filter((f) => f.requiredToSolve && (values[f.key] === undefined || values[f.key] === null || values[f.key] === ''));
+    if (missing.length) throw new BadRequestException({ statusCode: 400, code: 'FIELDS_REQUIRED', message: `Fill ${missing.map((f) => f.label).join(', ')} before solving.`, fields: missing.map((f) => f.key) });
   }
 
   /**

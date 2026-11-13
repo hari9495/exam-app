@@ -14012,6 +14012,8 @@ model SdTicketField {
   optionsBy      Json?    @map("options_by")
   /// all: everyone on the ticket; agents: the desk's staff (hidden from the requester); leads: team leads only.
   visibility     String   @default("all") @db.VarChar(10)
+  /// Answer 1843: the ticket cannot be solved until this field has a value (never for a team-lead-only field).
+  requiredToSolve Boolean @default(false) @map("required_to_solve")
   sortOrder      Int      @default(0) @map("sort_order") @db.SmallInt
   active         Boolean  @default(true)
   version        Int      @default(1)

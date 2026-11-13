@@ -1570,6 +1570,11 @@ export class TicketFieldDto {
   @IsIn(['all', 'agents', 'leads'], { message: 'A field shows to everyone, to the desk staff only, or to team leads only.' })
   visibility?: 'all' | 'agents' | 'leads';
 
+  /** Answer 1843: the ticket cannot be solved until this field has a value. */
+  @IsOptional()
+  @IsBoolean()
+  requiredToSolve?: boolean;
+
   @IsOptional()
   @IsInt()
   @Min(0)

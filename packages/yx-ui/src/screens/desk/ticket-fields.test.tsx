@@ -22,6 +22,31 @@ describe('desk fields (answers 1641, 1650)', () => {
     expect(screen.queryByRole('button', { name: 'Edit Office' })).toBeNull();
   });
 
+  it('1843: Required before solving is saved with the field and shown in the list and on the ticket', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const fields = SAMPLE_FIELDS.map((f) => (f.key === 'vendor_ticket' ? { ...f, requiredToSolve: true } : f));
+    const { unmount } = show(<FieldsTab fields={fields} types={TYPES} canSetUp onSave={onSave} />);
+    expect(within(screen.getByRole('list', { name: 'Ticket fields' })).getByText(/Desk staff only · required before solving/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Edit Office' }));
+    const dialog = await screen.findByRole('dialog');
+    await ue.click(within(dialog).getByRole('checkbox', { name: /Required before solving/ }));
+    await ue.click(within(dialog).getByRole('button', { name: 'Save field' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith('f1', expect.objectContaining({ requiredToSolve: true })));
+    unmount();
+    show(<TicketFieldsPanel fields={AGENT_TICKET_FIELDS.map((f) => (f.key === 'vendor_ticket' ? { ...f, requiredToSolve: true } : f))} canSet onSave={vi.fn()} />);
+    expect(screen.getByText(/Not shown to the requester · Required before solving/)).toBeInTheDocument();
+  });
+
+  it('1843 negative: a team-lead-only field offers no Required before solving and never sends it on', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    show(<FieldsTab fields={SAMPLE_FIELDS.map((f) => (f.key === 'asset_cost' ? { ...f, requiredToSolve: true } : f))} types={TYPES} canSetUp onSave={onSave} />);
+    await ue.click(screen.getByRole('button', { name: 'Edit Asset cost (₹)' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByRole('checkbox', { name: /Required before solving/ })).toBeNull();
+    await ue.click(within(dialog).getByRole('button', { name: 'Save field' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith('f4', expect.objectContaining({ requiredToSolve: false })));
+  });
+
   it('a new drop-down: nothing filled is stopped; then saved with choice values from labels, narrowed by Office', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     show(<FieldsTab fields={SAMPLE_FIELDS} types={TYPES} canSetUp onSave={onSave} />);

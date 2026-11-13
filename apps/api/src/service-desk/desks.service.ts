@@ -198,7 +198,7 @@ export class DesksService {
         // Answers 1641, 1650: the desk's own fields. Set-up sees them all; a seat sees those its role may see.
         fields: fields
           .filter((f) => canSetUp(a, id, 'desk.settings.manage') || (f.active && sees(f, a.roles.get(id) === 'lead' ? 'lead' : 'agent')))
-          .map((f) => ({ id: f.id, key: f.key, label: f.label, fieldType: f.fieldType, ticketTypeId: f.ticketTypeId, options: f.options, dependsOn: f.dependsOn, optionsBy: f.optionsBy, visibility: f.visibility, sortOrder: f.sortOrder, active: f.active, version: f.version })),
+          .map((f) => ({ id: f.id, key: f.key, label: f.label, fieldType: f.fieldType, ticketTypeId: f.ticketTypeId, options: f.options, dependsOn: f.dependsOn, optionsBy: f.optionsBy, visibility: f.visibility, requiredToSolve: f.requiredToSolve, sortOrder: f.sortOrder, active: f.active, version: f.version })),
         myRole: a.roles.get(id) ?? null,
         canSetUp: canSetUp(a, id, 'desk.settings.manage'),
         canManageMembers: canSetUp(a, id, 'desk.member.manage'),
@@ -351,10 +351,13 @@ export class DesksService {
           dependsOn: dto.fieldType === 'choice' ? (dto.dependsOn === undefined ? (cur?.dependsOn ?? null) : dto.dependsOn) : null,
           optionsBy: dto.fieldType === 'choice' ? (dto.optionsBy === undefined ? ((cur?.optionsBy as Record<string, string[]>) ?? null) : dto.optionsBy) : null,
           visibility: dto.visibility ?? cur?.visibility ?? 'all',
+          requiredToSolve: dto.requiredToSolve ?? cur?.requiredToSolve ?? false,
           sortOrder: dto.sortOrder ?? cur?.sortOrder ?? all.length,
           active: dto.active ?? cur?.active ?? true,
         };
         if (next.fieldType === 'choice' && !next.options.length) throw new BadRequestException('A drop-down needs at least one choice.');
+        // Answer 1843: agents could never solve if they had to fill a field only team leads see.
+        if (next.requiredToSolve && next.visibility === 'leads') throw new BadRequestException('A field only team leads see cannot be required before solving. Show it to the desk staff, or make it optional.');
         const row = { ...(cur ?? { id: 'new', organizationId: org, deskId, version: 0, createdBy: a.userId, createdAt: new Date(), updatedAt: new Date() }), ...next } as FieldRow;
         const set = [...all.filter((f) => f.id !== cur?.id), row].filter((f) => f.active);
         // A dependent drop-down and its parent apply to the same tickets: the parent is for every type, or for the child's own.
@@ -374,7 +377,7 @@ export class DesksService {
         const data = { ...next, options: next.options as Prisma.InputJsonValue, optionsBy: (next.optionsBy ?? Prisma.DbNull) as Prisma.InputJsonValue };
         const id = cur ? cur.id : (await tx.sdTicketField.create({ data: { organizationId: org, deskId, ...data, createdBy: a.userId } })).id;
         if (cur) await tx.sdTicketField.update({ where: { id: cur.id }, data: { ...data, version: { increment: 1 }, updatedAt: new Date() } });
-        await audit(tx, a, cur ? 'desk.field.updated' : 'desk.field.created', 'sd_ticket_field', id, { deskId, key: next.key, label: next.label, fieldType: next.fieldType, visibility: next.visibility, active: next.active });
+        await audit(tx, a, cur ? 'desk.field.updated' : 'desk.field.created', 'sd_ticket_field', id, { deskId, key: next.key, label: next.label, fieldType: next.fieldType, visibility: next.visibility, requiredToSolve: next.requiredToSolve, active: next.active });
         return { id };
       });
     } catch (e) {

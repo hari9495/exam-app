@@ -151,4 +151,40 @@ describe('Helpdesk follow-ups', () => {
       expect(await ticketsOf(`Portal refused ${run}`)).toBe(0);
     });
   });
+  // ------------------------------------------------------------------------------------------ 1843
+  describe('1843: "Required before solving" per field', () => {
+    const fieldOf = async (key: string) => ((await api('deskAdmin', 'get', `/desk/desks/${ids.desk}`).expect(200)).body.fields as { id: string; key: string; version: number }[]).find((f) => f.key === key)!;
+    const require_ = async (key: string, def: object, on: boolean, status: number, who: Who = 'deskAdmin') => {
+      const f = await fieldOf(key);
+      return api(who, 'patch', `/desk/desks/${ids.desk}/fields/${f.id}`).send({ ...def, requiredToSolve: on, version: f.version }).expect(status);
+    };
+    const version = async (id: string) => (await api('agent', 'get', `/desk/tickets/${id}`).expect(200)).body.version as number;
+
+    it('a required field stops solving until it has a value; then the ticket solves; the agent sees which fields are required', async () => {
+      await require_('vendor_ref', VENDOR, true, 200);
+      expect((await fieldOf('vendor_ref')) as unknown).toMatchObject({ requiredToSolve: true });
+      const id = (await api('divya', 'post', '/desk/my/tickets').send({ deskId: ids.desk, subject: `Required ${run}`, description: 'Help.' }).expect(201)).body.id as string;
+      const view = (await api('agent', 'get', `/desk/tickets/${id}`).expect(200)).body;
+      expect(view.deskFields.find((f: { key: string }) => f.key === 'vendor_ref')).toMatchObject({ requiredToSolve: true, value: null });
+      const refused = (await api('agent', 'post', `/desk/tickets/${id}/resolve`).send({ version: view.version }).expect(400)).body;
+      expect(refused).toMatchObject({ code: 'FIELDS_REQUIRED', message: 'Fill Vendor ref before solving.', fields: ['vendor_ref'] });
+      expect((await api('agent', 'get', `/desk/tickets/${id}`).expect(200)).body.systemState).not.toBe('solved');
+      await api('agent', 'put', `/desk/tickets/${id}/fields`).send({ values: { vendor_ref: 'DELL-9' } }).expect(200);
+      await api('agent', 'post', `/desk/tickets/${id}/resolve`).send({ version: await version(id) }).expect(200);
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'desk.field.updated', metadataJson: { contains: '"requiredToSolve":true' } } }))).toBe(1);
+    });
+
+    it('negative: a team-lead-only field cannot be required; an agent or another company cannot change it; a cleared value stops solving again', async () => {
+      expect((await require_('cost', COST, true, 400)).body.message).toMatch(/only team leads see cannot be required/);
+      await require_('vendor_ref', VENDOR, false, 403, 'agent');
+      await require_('vendor_ref', VENDOR, false, 404, 'adminB');
+      const id = (await api('divya', 'post', '/desk/my/tickets').send({ deskId: ids.desk, subject: `Cleared ${run}`, description: 'Help.' }).expect(201)).body.id as string;
+      await api('agent', 'put', `/desk/tickets/${id}/fields`).send({ values: { vendor_ref: 'X-1' } }).expect(200);
+      await api('agent', 'put', `/desk/tickets/${id}/fields`).send({ values: { vendor_ref: null } }).expect(200);
+      expect((await api('agent', 'post', `/desk/tickets/${id}/resolve`).send({ version: await version(id) }).expect(400)).body.code).toBe('FIELDS_REQUIRED');
+      // Switched back to optional: it solves.
+      await require_('vendor_ref', VENDOR, false, 200);
+      await api('agent', 'post', `/desk/tickets/${id}/resolve`).send({ version: await version(id) }).expect(200);
+    });
+  });
 });

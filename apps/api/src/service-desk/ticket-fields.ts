@@ -63,6 +63,7 @@ export function shownFields(fields: FieldRow[], values: Prisma.JsonValue, who: V
       label: f.label,
       type: f.fieldType,
       visibility: f.visibility,
+      requiredToSolve: f.requiredToSolve,
       options: options(f),
       dependsOn: f.dependsOn,
       optionsBy: (f.optionsBy ?? null) as Record<string, string[]> | null,
