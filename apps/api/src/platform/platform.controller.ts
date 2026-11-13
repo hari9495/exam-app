@@ -101,6 +101,13 @@ export class PlatformController {
     return this.deletions.confirm(actor, id);
   }
 
+  // Answer 1973: the deletion certificate, downloaded from the console (audited).
+  @Get('companies/:id/deletion/certificate')
+  @RequirePermissions('platform.companies.view')
+  deletionCertificate(@CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.deletions.certificate(actor, id);
+  }
+
   @Get('deletions')
   @RequirePermissions('platform.companies.view')
   deletionsList(@CurrentUserId() actor: string) {

@@ -104,11 +104,13 @@ export class PlatformService {
     return platformRead(this.tenantPrisma, actorUserId, 'companies.detail', async (tx) => {
       const o = await tx.organization.findUnique({
         where: { id },
-        select: { id: true, name: true, slug: true, lifecycle: true, status: true, trialEndsAt: true, trialExtendedAt: true, lifecycleChangedAt: true, createdAt: true },
+        select: { id: true, name: true, slug: true, lifecycle: true, status: true, trialEndsAt: true, trialExtendedAt: true, lifecycleChangedAt: true, recordsKeptUntil: true, createdAt: true },
       });
       if (!o) throw new NotFoundException('Company not found');
       // Answer 1882: an open request to delete the company's data (a second staff member confirms it).
       const deletion = await tx.companyDeletion.findFirst({ where: { organizationId: id, status: 'requested' }, select: { id: true, requestedBy: true, requestedAt: true, reason: true } });
+      // Answers 1973, 1975: once deleted, when, until when the statutory records are kept, and the certificate's SHA-256.
+      const deleted = await tx.companyDeletion.findFirst({ where: { organizationId: id, status: 'done' }, orderBy: { deletedAt: 'desc' }, select: { deletedAt: true, certificateSha256: true } });
       // S-9 (answer 1332): the company's own request to close its account, for the staff who close it.
       const closure = await tx.accountClosureRequest.findFirst({ where: { organizationId: id, status: { in: ['requested', 'closed'] } }, orderBy: { createdAt: 'desc' }, select: { status: true, reason: true, createdAt: true, keepUntil: true } });
       const [products, employees, admins, history] = await Promise.all([
@@ -134,6 +136,7 @@ export class PlatformService {
         createdAt: o.createdAt,
         products: products.map((p) => p.productCode),
         deletion: deletion ? { id: deletion.id, mine: deletion.requestedBy === actorUserId, askedAt: deletion.requestedAt, reason: deletion.reason } : null,
+        deleted: deleted?.deletedAt ? { at: deleted.deletedAt, recordsKeptUntil: o.recordsKeptUntil?.toISOString().slice(0, 10) ?? null, certificateSha256: deleted.certificateSha256 } : null,
         closureRequest: closure ? { status: closure.status, reason: closure.reason, askedAt: closure.createdAt, keepUntil: closure.keepUntil?.toISOString().slice(0, 10) ?? null } : null,
         employees,
         admins,

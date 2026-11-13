@@ -76,6 +76,8 @@ export const PLATFORM_SETTING_DEFS: Record<string, Def> = {
   'account.closure.keep_days': whole('Closed company: data is kept for (days) before deletion', 30, 30, 365),
   [ANALYTICS_WINDOW_KEY]: whole('Product analytics: count use over the last (days)', ANALYTICS_WINDOW_DEFAULT, 7, 180),
   [ANALYTICS_MIN_KEY]: whole('Product analytics: hide any group of fewer than this many companies', ANALYTICS_MIN_DEFAULT, 5, 50),
+  // Answer 1975: a deleted company's statutory records (audit log, payroll, filings) stay read-only at least this long.
+  'account.closure.statutory_keep_years': whole('Deleted company: statutory records are kept for (years, at least 8)', 8, 8, 20),
   [SALES_REPLY_KEY]: whole('Sales assist: reply to a Talk to us request within (hours)', SALES_REPLY_DEFAULT, 4, 72),
   [NUDGE_RETURN_KEY]: whole('Nudges: days before a nudge put away with Not now may show again (0 = never)', NUDGE_RETURN_DEFAULT, 0, 90),
 };

@@ -113,6 +113,8 @@ model Organization {
   trialEndsAt                   DateTime?                 @map("trial_ends_at") @db.Timestamptz(3)
   trialExtendedAt               DateTime?                 @map("trial_extended_at") @db.Timestamptz(3)
   lifecycleChangedAt            DateTime                  @default(now()) @map("lifecycle_changed_at") @db.Timestamptz(3)
+  /// Answer 1975: after its data is deleted, the company's kept statutory records are read-only until this day.
+  recordsKeptUntil              DateTime?                 @map("records_kept_until") @db.Timestamptz(3)
   /// SD-1.31: YukthiX's own company (slug yukthix), home of the YukthiX Support desk.
   isPlatform                    Boolean                   @default(false) @map("is_platform")
   users                         User[]

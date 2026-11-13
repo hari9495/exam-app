@@ -1,17 +1,29 @@
 import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { createHash } from 'crypto';
 import { AuditService, TenantPrismaService } from '@exam-platform/shared';
 import { FileStore } from '../documents/file-store';
+import { companyStoredFiles } from './stored-files';
 import { addDays, todayIst } from '../org-structure/org-validation';
 import { PLATFORM, staffActor } from './platform.service';
 
 const KEEP_KEY = 'account.closure.keep_days';
 
+/** The database's own refusals (P0001) are a conflict, in its words; anything else stays an error. */
+function refused(e: unknown): never {
+  // Prisma words it as: Raw query failed. Code: `P0001`. Message: `ERROR: <the database's message>`
+  const m = e instanceof Error ? /Message: `(?:ERROR: )?([^`]+)`/.exec(e.message) : null;
+  if (m && e instanceof Error && /P0001/.test(e.message)) throw new ConflictException(m[1]);
+  throw e;
+}
+
+/** What purge_company returns: the certificate as stored, and its SHA-256. */
+type Purged = { id: string; certificate: Record<string, unknown> & { rows: number; recordsKeptUntil: string }; sha256: string };
+
 /**
  * Answer 1882: deleting a closed company's data after its kept days (account.closure.keep_days, 30). One YukthiX staff
  * member asks, a second confirms (both with the security key, at the controller); the database deletes the company's
- * rows only (purge_company) and refuses an open company or one under a legal hold; the stored files are dropped after;
- * a deletion certificate is kept with a SHA-256 of its text. Every step is audited outside the company (it is gone).
+ * rows only (purge_company), keeping its statutory records read-only for their legal period (answer 1975), and refuses
+ * an open company or one under a legal hold; the stored files are dropped after; a deletion certificate is kept with a
+ * SHA-256 of its text. Every step is audited outside the company (it is gone).
  */
 @Injectable()
 export class CompanyDeletionService {
@@ -23,11 +35,12 @@ export class CompanyDeletionService {
   ) {}
 
   /** The day the company's data may be deleted from: its closure request's kept-until day, else the close day + kept days. */
-  private async keptUntil(organizationId: string): Promise<{ org: { name: string; slug: string; lifecycle: string; lifecycleChangedAt: Date }; keepUntil: string }> {
+  private async keptUntil(organizationId: string): Promise<{ org: { name: string; slug: string; lifecycle: string; lifecycleChangedAt: Date; recordsKeptUntil: Date | null }; keepUntil: string }> {
     return this.tenantPrisma.forTenant(PLATFORM, async (tx) => {
-      const org = await tx.organization.findUnique({ where: { id: organizationId }, select: { name: true, slug: true, lifecycle: true, lifecycleChangedAt: true } });
+      const org = await tx.organization.findUnique({ where: { id: organizationId }, select: { name: true, slug: true, lifecycle: true, lifecycleChangedAt: true, recordsKeptUntil: true } });
       if (!org) throw new NotFoundException('Company not found');
       if (org.lifecycle !== 'closed') throw new ConflictException('Only a closed company’s data can be deleted.');
+      if (org.recordsKeptUntil) throw new ConflictException('This company’s data was already deleted; its statutory records are kept.');
       if (await tx.auditLegalHold.findFirst({ where: { organizationId, releasedAt: null, toAt: { gt: new Date() } }, select: { id: true } })) throw new ConflictException('A legal hold is in place for this company: its data stays.');
       const asked = await tx.accountClosureRequest.findFirst({ where: { organizationId, status: 'closed' }, orderBy: { decidedAt: 'desc' }, select: { keepUntil: true } });
       const v = Number((await tx.platformSetting.findUnique({ where: { key: KEEP_KEY } }))?.value);
@@ -64,47 +77,33 @@ export class CompanyDeletionService {
     });
   }
 
-  /** The second staff member confirms: the company's rows are deleted in one transaction, then its stored files. */
+  /**
+   * The second staff member confirms. In one transaction: the request records the second person, the stored files are
+   * listed, and purge_company deletes everything but the statutory records (answer 1975), checking the request, the
+   * second person and the kept days itself, and marks the request done with the certificate. The files follow.
+   */
   async confirm(actorUserId: string, organizationId: string) {
     const actor = await staffActor(this.tenantPrisma, actorUserId);
-    const { org, keepUntil } = await this.ready(organizationId);
+    await this.ready(organizationId);
     const asked = await this.tenantPrisma.forTenant(PLATFORM, (tx) => tx.companyDeletion.findFirst({ where: { organizationId, status: 'requested' } }));
     if (!asked) throw new NotFoundException('Nobody has asked to delete this company’s data yet.');
     if (asked.requestedBy === actorUserId) throw new ForbiddenException('You asked for this deletion: a second staff member confirms it.');
-    const refs = await this.tenantPrisma.forTenant(PLATFORM, async (tx) => [
-      ...(await tx.file.findMany({ where: { organizationId }, select: { storageRef: true } })).map((f) => f.storageRef),
-      ...(await tx.companyExport.findMany({ where: { organizationId }, select: { fileRef: true } })).map((f) => f.fileRef),
-    ]);
-    const deletedAt = new Date();
-    const { certificate, sha } = await this.tenantPrisma.forTenant(
+    const { out, files } = await this.tenantPrisma.forTenant(
       PLATFORM,
       async (tx) => {
-        const r = await tx.$queryRaw<{ counts: Record<string, number> }[]>`SELECT purge_company(${organizationId}::uuid) AS counts`;
-        const tables = Object.fromEntries(Object.entries(r[0]!.counts).sort(([a], [b]) => a.localeCompare(b)));
-        const cert = {
-          title: 'YukthiX deletion certificate',
-          company: { id: organizationId, name: org.name, code: org.slug },
-          closedOn: org.lifecycleChangedAt.toISOString().slice(0, 10),
-          keptUntil: keepUntil,
-          deletedAt: deletedAt.toISOString(),
-          askedBy: asked.requestedBy,
-          confirmedBy: actorUserId,
-          reason: asked.reason,
-          rows: Object.values(tables).reduce((a, b) => a + Number(b), 0),
-          tables,
-          storedFiles: refs.length,
-        };
-        const text = JSON.stringify(cert);
-        const hash = createHash('sha256').update(text).digest('hex');
-        await tx.companyDeletion.update({ where: { id: asked.id }, data: { status: 'done', approvedBy: actorUserId, deletedAt, certificate: text, certificateSha256: hash } });
-        await AuditService.recordIn(tx, PLATFORM, { actorUserId, actor, action: 'platform.company.deleted', entityType: 'company_deletion', entityId: asked.id, metadata: { organizationId, company: org.name, rows: cert.rows, storedFiles: refs.length, certificateSha256: hash, askedBy: asked.requestedBy } });
-        return { certificate: cert, sha: hash };
+        await tx.companyDeletion.update({ where: { id: asked.id }, data: { approvedBy: actorUserId } });
+        const files = await companyStoredFiles(tx, organizationId);
+        const extra = { storedFiles: { dropped: files.drop.length, keptWithRecords: files.kept.length } };
+        const [r] = await tx.$queryRaw<{ out: Purged }[]>`SELECT purge_company(${organizationId}::uuid, ${JSON.stringify(extra)}::jsonb) AS out`.catch(refused);
+        const out = r!.out;
+        await AuditService.recordIn(tx, PLATFORM, { actorUserId, actor, action: 'platform.company.deleted', entityType: 'company_deletion', entityId: asked.id, metadata: { organizationId, company: asked.companyName, rows: out.certificate.rows, recordsKeptUntil: out.certificate.recordsKeptUntil, storedFiles: extra.storedFiles, certificateSha256: out.sha256, askedBy: asked.requestedBy } });
+        return { out, files };
       },
       { timeout: 300_000 },
     );
-    // The rows are gone; the stored files follow (a file that cannot be dropped is logged, never brought back).
+    // The rows are gone; their stored files follow (a file that cannot be dropped is logged, never brought back).
     let dropped = 0;
-    for (const ref of refs) {
+    for (const ref of files.drop) {
       try {
         await this.files.drop(ref);
         dropped++;
@@ -112,7 +111,18 @@ export class CompanyDeletionService {
         this.logger.warn(`Stored file not dropped after deleting ${organizationId}: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
-    return { id: asked.id, certificate, certificateSha256: sha, storedFilesDropped: dropped };
+    return { id: out.id, certificate: out.certificate, certificateSha256: out.sha256, storedFilesDropped: dropped };
+  }
+
+  /** Answer 1973: the deletion certificate exactly as stored (its text and SHA-256), for the console to download. */
+  async certificate(actorUserId: string, organizationId: string) {
+    const actor = await staffActor(this.tenantPrisma, actorUserId);
+    return this.tenantPrisma.forTenant(PLATFORM, async (tx) => {
+      const row = await tx.companyDeletion.findFirst({ where: { organizationId, status: 'done' }, orderBy: { deletedAt: 'desc' }, select: { id: true, companySlug: true, certificate: true, certificateSha256: true } });
+      if (!row?.certificate) throw new NotFoundException('This company’s data has not been deleted: there is no certificate.');
+      await AuditService.recordIn(tx, PLATFORM, { actorUserId, actor, action: 'platform.company.deletion_certificate_downloaded', entityType: 'company_deletion', entityId: row.id, metadata: { organizationId } });
+      return { fileName: `yukthix-deletion-certificate-${row.companySlug}.json`, certificate: row.certificate, certificateSha256: row.certificateSha256 };
+    });
   }
 
   async list(actorUserId: string) {
