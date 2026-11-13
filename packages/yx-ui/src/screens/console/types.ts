@@ -33,6 +33,8 @@ export interface CompanyDetail extends CompanyRow {
   history: CompanyHistoryEntry[];
   /** Answer 1881: the company's own request to close its account (Settings 8.5), for the staff who close it. */
   closureRequest?: { status: 'requested' | 'closed'; reason: string; askedAt: string; keepUntil: string | null } | null;
+  /** Answer 1882: an open request to delete the company's data; `mine` when the viewer asked (a second person confirms). */
+  deletion?: { id: string; mine: boolean; askedAt: string; reason: string } | null;
 }
 
 /** Careers answer 442: GET platform/companies/:id/settings (the settings only YukthiX changes, each allowed by the plan). */

@@ -1,4 +1,7 @@
 import { Module } from '@nestjs/common';
+import { CryptoModule, StorageModule } from '@exam-platform/shared';
+import { CompanyDeletionService } from './company-deletion.service';
+import { FileStore } from '../documents/file-store';
 import { ConsoleOpsController } from './console-ops.controller';
 import { ConsoleOpsService } from './console-ops.service';
 import { AuditModule } from '@exam-platform/shared';
@@ -31,8 +34,8 @@ import { IncidentsService } from './incidents.service';
 
 // Step 3: the YukthiX platform console (P14) and support sessions (P02 Q8).
 @Module({
-  imports: [AuditModule, EmailModule, AuthModule, OrganizationsModule, SmsChannelModule, NotificationsModule],
-  providers: [PlatformService, SupportSessionsService, PlatformStaffGuard, CustomerSuccessService, ConsoleOpsService, MaintenanceService, PlatformSettingsService, IncidentsService, StaffRolesService, CsFollowupService, NudgesService, OrgScopeService, SalesAssistService, AnalyticsService],
+  imports: [StorageModule, CryptoModule, AuditModule, EmailModule, AuthModule, OrganizationsModule, SmsChannelModule, NotificationsModule],
+  providers: [CompanyDeletionService, FileStore, PlatformService, SupportSessionsService, PlatformStaffGuard, CustomerSuccessService, ConsoleOpsService, MaintenanceService, PlatformSettingsService, IncidentsService, StaffRolesService, CsFollowupService, NudgesService, OrgScopeService, SalesAssistService, AnalyticsService],
   controllers: [PlatformController, SupportAccessController, CustomerSuccessController, ConsoleOpsController, MaintenanceController, AvailabilityController, PlatformSettingsController, IncidentsController, StaffRolesController, MyStaffRolesController, NudgesController, MyNudgeController, SalesAssistController, AnalyticsController],
   // SD-1.31: "Request access" from a YukthiX Support ticket asks for a support session.
   exports: [SupportSessionsService, PlatformStaffGuard, IncidentsService, CsFollowupService, StaffRolesService, SalesAssistService, AnalyticsService],

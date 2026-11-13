@@ -71,6 +71,9 @@ export const PLATFORM_SETTING_DEFS: Record<string, Def> = {
   [NUDGE_LIMIT_KEY]: whole('Nudges: the most one person sees in 7 days', NUDGE_LIMIT_DEFAULT, 0, 7),
   // C-8 (YX-13): reply to a Talk to us request within (the drawn 1 business day as hours).
   // C-8 (YX-09): product analytics, counts only; never a group under 5 companies.
+  // S-9 (answer 1332) and answer 1882: the export link time and how long a closed company's data is kept.
+  'account.export.link_hours': whole('Whole-company export: the download link works for (hours)', 24, 1, 168),
+  'account.closure.keep_days': whole('Closed company: data is kept for (days) before deletion', 30, 30, 365),
   [ANALYTICS_WINDOW_KEY]: whole('Product analytics: count use over the last (days)', ANALYTICS_WINDOW_DEFAULT, 7, 180),
   [ANALYTICS_MIN_KEY]: whole('Product analytics: hide any group of fewer than this many companies', ANALYTICS_MIN_DEFAULT, 5, 50),
   [SALES_REPLY_KEY]: whole('Sales assist: reply to a Talk to us request within (hours)', SALES_REPLY_DEFAULT, 4, 72),

@@ -114,6 +114,40 @@ describe('One company', () => {
     expect(screen.getByText(/Data is kept until 13 Dec 2026/)).toBeInTheDocument();
   });
 
+  // Answer 1882: deleting a closed company's data, asked by one staff member and confirmed by a second.
+  it('1882: a closed company offers Ask to delete (a reason first); a second staff member confirms; the asker can withdraw', async () => {
+    const closed = { ...COMPANY, lifecycle: 'closed' as const };
+    const ask = vi.fn().mockResolvedValue(undefined);
+    const { unmount } = render(<CompanyScreen {...({ state: 'ready', company: { ...closed, deletion: null }, sessions: [], canManage: true, canSupport: false, now: NOW, onBack: vi.fn(), onLifecycle: ok(), onExtendTrial: ok(), onRequestSupport: ok(), onOpenSession: ok(), onEndSession: ok(), onWithdrawRequest: ok(), onAskDeletion: ask } as CompanyScreenProps)} />);
+    await ue.click(screen.getByRole('button', { name: 'Ask to delete the data' }));
+    const dialog = await screen.findByRole('dialog');
+    await ue.click(within(dialog).getByRole('button', { name: 'Ask to delete' }));
+    expect(ask).not.toHaveBeenCalled();
+    await ue.type(within(dialog).getByRole('textbox'), 'Closed and kept days over');
+    await ue.click(within(dialog).getByRole('button', { name: 'Ask to delete' }));
+    await waitFor(() => expect(ask).toHaveBeenCalledWith('Closed and kept days over'));
+    unmount();
+    const confirm = vi.fn().mockResolvedValue(undefined);
+    const second = render(<CompanyScreen {...({ state: 'ready', company: { ...closed, deletion: { id: 'd1', mine: false, askedAt: '2026-11-13T10:00:00Z', reason: 'Kept days over' } }, sessions: [], canManage: true, canSupport: false, now: NOW, onBack: vi.fn(), onLifecycle: ok(), onExtendTrial: ok(), onRequestSupport: ok(), onOpenSession: ok(), onEndSession: ok(), onWithdrawRequest: ok(), onConfirmDeletion: confirm } as CompanyScreenProps)} />);
+    await ue.click(screen.getByRole('button', { name: 'Confirm deletion' }));
+    await ue.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete all data' }));
+    await waitFor(() => expect(confirm).toHaveBeenCalled());
+    second.unmount();
+    render(<CompanyScreen {...({ state: 'ready', company: { ...closed, deletion: { id: 'd1', mine: true, askedAt: '2026-11-13T10:00:00Z', reason: 'Kept days over' } }, sessions: [], canManage: true, canSupport: false, now: NOW, onBack: vi.fn(), onLifecycle: ok(), onExtendTrial: ok(), onRequestSupport: ok(), onOpenSession: ok(), onEndSession: ok(), onWithdrawRequest: ok(), onConfirmDeletion: confirm, onWithdrawDeletion: ok() } as CompanyScreenProps)} />);
+    expect(screen.getByText(/A second staff member confirms it/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Confirm deletion' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Withdraw' })).toBeInTheDocument();
+  });
+
+  it('1882 negative: an open company and a viewer see no deletion at all', () => {
+    const { unmount } = render(<CompanyScreen {...({ state: 'ready', company: { ...COMPANY, lifecycle: 'active' }, sessions: [], canManage: true, canSupport: false, now: NOW, onBack: vi.fn(), onLifecycle: ok(), onExtendTrial: ok(), onRequestSupport: ok(), onOpenSession: ok(), onEndSession: ok(), onWithdrawRequest: ok(), onAskDeletion: ok() } as CompanyScreenProps)} />);
+    expect(screen.queryByText(/data/i, { selector: '.yx-alert__title' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Ask to delete the data' })).toBeNull();
+    unmount();
+    render(<CompanyScreen {...({ state: 'ready', company: { ...COMPANY, lifecycle: 'closed' }, sessions: [], canManage: false, canSupport: false, now: NOW, onBack: vi.fn(), onLifecycle: ok(), onExtendTrial: ok(), onRequestSupport: ok(), onOpenSession: ok(), onEndSession: ok(), onWithdrawRequest: ok(), onAskDeletion: ok() } as CompanyScreenProps)} />);
+    expect(screen.queryByRole('button', { name: 'Ask to delete the data' })).toBeNull();
+  });
+
   it('every lifecycle move asks for a written reason (YX-CONSOLE-02)', async () => {
     const p = company();
     await ue.click(screen.getByRole('button', { name: 'Switch on' }));

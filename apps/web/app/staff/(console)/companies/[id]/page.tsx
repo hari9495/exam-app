@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { CompanyScreen, type CompanyDetail, type CompanyFeature, type CompanySettingsView, type Product, type SupportSession } from '@yukthix/ui/console';
 import { useAuth } from '../../../../../lib/auth-context';
 import { loadState, useConsole, useConsoleKeys, useConsoleWrite } from '../../../../../lib/yx-console';
+import { saveBlob } from '../../../../../lib/yx-pay';
 
 // Console › Companies › one company: lifecycle, support access (P02 Q8), admins and history. Suspending or closing
 // is a step-up action: apiFetch asks for the security key, then resends.
@@ -41,6 +42,19 @@ export default function ConsoleCompanyPage() {
       onBack={() => router.push('/staff/companies')}
       onLifecycle={(action, reason) => write(`${path}/lifecycle`, 'POST', { action, reason }).then(() => undefined)}
       onExtendTrial={(days, reason) => write(`${path}/extend-trial`, 'POST', { days, reason }).then(() => undefined)}
+      // Answer 1882: a second staff member confirms; the certificate is saved and the (now deleted) company left.
+      onAskDeletion={can('platform.companies.manage') ? (reason) => write(`${path}/deletion`, 'POST', { reason }) : undefined}
+      onWithdrawDeletion={can('platform.companies.manage') ? () => write(`${path}/deletion/withdraw`, 'POST') : undefined}
+      onConfirmDeletion={
+        can('platform.companies.manage')
+          ? () =>
+              write(`${path}/deletion/confirm`, 'POST').then((r) => {
+                const out = r as { certificate: unknown; certificateSha256: string };
+                saveBlob(new Blob([JSON.stringify({ ...(out.certificate as object), certificateSha256: out.certificateSha256 }, null, 2)], { type: 'application/json' }), `deletion-certificate-${id}.json`);
+                router.push('/staff/companies');
+              })
+          : undefined
+      }
       onRequestSupport={(input) => write(`${path}/support-sessions`, 'POST', input).then(() => undefined)}
       onOpenSession={async () => {
         await switchIntoOrg(id);

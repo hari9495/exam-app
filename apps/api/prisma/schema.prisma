@@ -14069,3 +14069,22 @@ model SdBusinessApp {
   @@index([organizationId, ownerUserId])
   @@map("sd_business_apps")
 }
+
+/// Answer 1882: a closed company's data deleted after its kept days: asked by one staff member, confirmed by a second,
+/// with the deletion certificate. Outlives the company (no relation to organizations).
+model CompanyDeletion {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  companyName       String    @map("company_name") @db.VarChar(1000)
+  companySlug       String    @map("company_slug") @db.VarChar(1000)
+  status            String    @default("requested") @db.VarChar(12)
+  reason            String    @db.VarChar(500)
+  requestedBy       String    @map("requested_by") @db.Uuid
+  requestedAt       DateTime  @default(now()) @map("requested_at") @db.Timestamptz(3)
+  approvedBy        String?   @map("approved_by") @db.Uuid
+  deletedAt         DateTime? @map("deleted_at") @db.Timestamptz(3)
+  certificate       String?
+  certificateSha256 String?   @map("certificate_sha256") @db.Char(64)
+
+  @@map("company_deletions")
+}

@@ -46,6 +46,8 @@ const company = (sessions = SESSIONS.filter((s) => s.organizationId === 'c2'), d
   );
 export const Company: S = { name: 'Company · trial with an open support session', render: () => company() };
 // Answer 1881: the company asked to close its account (Settings 8.5); Close sits beside the request.
+// Answer 1882: a closed company's data, asked to be deleted by another staff member (confirm here).
+export const CompanyDeletionToConfirm: S = { name: 'Company · closed, deletion to confirm', render: () => company([], { ...COMPANY, lifecycle: 'closed', deletion: { id: 'd1', mine: false, askedAt: '2026-11-13T10:00:00Z', reason: 'Kept days over; asked by the company' } }) };
 export const CompanyClosureAsked: S = { name: 'Company · asked to close its account', render: () => company([], { ...COMPANY, lifecycle: 'active', closureRequest: { status: 'requested', reason: 'Moving to another tool', askedAt: '2026-11-13T10:00:00Z', keepUntil: null } }) };
 // C-5 (answer 1053): what is switched on for the company (plan products, plan features; C-4 switches join later).
 export const CompanyFeatures: S = {

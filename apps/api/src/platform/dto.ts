@@ -105,6 +105,12 @@ export class LifecycleDto {
   reason!: string;
 }
 
+/** Answer 1882: why a closed company's data is deleted now. */
+export class DeletionDto {
+  @Reason(5)
+  reason!: string;
+}
+
 export class ExtendTrialDto {
   @IsInt()
   @Min(1)

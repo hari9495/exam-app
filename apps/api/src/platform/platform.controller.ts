@@ -23,9 +23,9 @@ import {
   SupportApproveDto,
   SupportListQueryDto,
   SupportNoteDto,
-  SupportRequestDto,
-} from './dto';
+  SupportRequestDto, DeletionDto } from './dto';
 import { PLATFORM, PlatformService } from './platform.service';
+import { CompanyDeletionService } from './company-deletion.service';
 import { PlatformStaffGuard } from './platform-staff.guard';
 import { SupportSessionsService } from './support-sessions.service';
 import { CustomerSuccessService } from './customer-success.service';
@@ -40,6 +40,7 @@ export class PlatformController {
     private readonly platform: PlatformService,
     private readonly support: SupportSessionsService,
     private readonly sms: SmsAccountsService,
+    private readonly deletions: CompanyDeletionService,
   ) {}
 
   // ---- companies ----
@@ -71,6 +72,39 @@ export class PlatformController {
   @RequireStepUp()
   lifecycle(@CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: LifecycleDto) {
     return this.platform.changeLifecycle(actor, id, dto);
+  }
+
+  // Answer 1882: deleting a closed company's data after its kept days. One staff member asks, a second confirms; both
+  // with the security key, never while acting for someone else.
+  @Post('companies/:id/deletion')
+  @RequirePermissions('platform.companies.manage')
+  @RequireStepUp()
+  requestDeletion(@Req() req: Request, @CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DeletionDto) {
+    ownSession(req);
+    return this.deletions.request(actor, id, dto.reason);
+  }
+
+  @Post('companies/:id/deletion/withdraw')
+  @HttpCode(204)
+  @RequirePermissions('platform.companies.manage')
+  async withdrawDeletion(@Req() req: Request, @CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string) {
+    ownSession(req);
+    await this.deletions.withdraw(actor, id);
+  }
+
+  @Post('companies/:id/deletion/confirm')
+  @HttpCode(200)
+  @RequirePermissions('platform.companies.manage')
+  @RequireStepUp()
+  confirmDeletion(@Req() req: Request, @CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string) {
+    ownSession(req);
+    return this.deletions.confirm(actor, id);
+  }
+
+  @Get('deletions')
+  @RequirePermissions('platform.companies.view')
+  deletionsList(@CurrentUserId() actor: string) {
+    return this.deletions.list(actor);
   }
 
   @Post('companies/:id/extend-trial')
