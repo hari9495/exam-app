@@ -72,4 +72,28 @@ describe('Helpdesk › Help centre (HLP-01 live)', () => {
     wrap(<YxDeskHelpPage />);
     expect(await screen.findByText(/You don't have access to the Help centre/)).toBeInTheDocument();
   });
+  it('1846: "On behalf of someone" searches only the people one may raise for', async () => {
+    const asked: string[] = [];
+    route({
+      ...BASE,
+      'GET /rbac/me/permissions': ['request.raise_on_behalf'],
+      'GET /desk/my/pick/on-behalf': (p: string) => (asked.push(p), [{ id: 'p-ravi', label: 'Ravi Kumar', detail: 'Ops' }]),
+    });
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('new=1'));
+    wrap(<YxDeskHelpPage />);
+    await userEvent.click(await screen.findByRole('radio', { name: 'On behalf of someone' }));
+    await userEvent.click(screen.getByRole('combobox', { name: 'Colleague' }));
+    expect(await screen.findByRole('option', { name: /Ravi Kumar/ })).toBeInTheDocument();
+    expect(asked[0]).toMatch(/^\/desk\/my\/pick\/on-behalf\?q=/);
+    expect(api.mock.calls.some(([p]) => String(p).startsWith('/desk/my/pick/people'))).toBe(false);
+  });
+
+  it('1846 negative: without the right there is no "On behalf of someone" and nothing is searched', async () => {
+    route({ ...BASE, 'GET /rbac/me/permissions': [] });
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('new=1'));
+    wrap(<YxDeskHelpPage />);
+    expect(await screen.findByRole('textbox', { name: /Subject/ })).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: 'On behalf of someone' })).toBeNull();
+    expect(api.mock.calls.some(([p]) => String(p).includes('/desk/my/pick/'))).toBe(false);
+  });
 });

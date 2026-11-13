@@ -76,15 +76,19 @@ describe('service catalogue (SD-2.03, SD-2.04)', () => {
     expect(await screen.findByRole('button', { name: 'Follow IT-1020' })).toBeInTheDocument();
   });
 
-  it('1802: an item with a device field asks who it is for first; the device list is then that person list', async () => {
+  it('1802, 1846: an item with a device field asks who it is for first (only people one may raise for); the device list is then that person list', async () => {
     const DEVICE_PAGE: CatalogItemPage = { ...PAGE, id: 'i2', name: 'Laptop repair', form: { sections: [{ id: 's', columns: 1, fields: [{ key: 'device', type: 'asset', label: 'Which device?' }] }], rules: [] } };
-    const p = { ...props(), onOpenItem: vi.fn(async () => DEVICE_PAGE), onPick: vi.fn(async (kind: string) => (kind === 'people' ? [{ id: 'p-ravi', label: 'Ravi Kumar', detail: null }] : [{ id: 'as9', label: 'HP EliteBook (KF-LT-0009)', detail: null }])) };
+    const p = { ...props(), onOpenItem: vi.fn(async () => DEVICE_PAGE), onPick: vi.fn(async (kind: string) => (kind === 'on-behalf' ? [{ id: 'p-ravi', label: 'Ravi Kumar', detail: null }] : kind === 'people' ? [{ id: 'p-all', label: 'Anyone at all', detail: null }] : [{ id: 'as9', label: 'HP EliteBook (KF-LT-0009)', detail: null }])) };
     render(<CatalogScreen {...p} />);
     await ue.click(screen.getByRole('button', { name: 'Open New laptop' }));
     const dialog = await screen.findByRole('dialog');
     await ue.click(within(dialog).getByRole('radio', { name: 'For someone else' }));
     await ue.click(within(dialog).getByRole('combobox', { name: 'Person it is for' }));
-    await ue.click(await screen.findByRole('option', { name: /Ravi Kumar/ }));
+    expect(await screen.findByRole('option', { name: /Ravi Kumar/ })).toBeInTheDocument();
+    // 1846: never the whole company list.
+    expect(screen.queryByRole('option', { name: /Anyone at all/ })).toBeNull();
+    expect(p.onPick).not.toHaveBeenCalledWith('people', expect.anything());
+    await ue.click(screen.getByRole('option', { name: /Ravi Kumar/ }));
     await waitFor(() => expect(p.onPick).toHaveBeenCalledWith('assets', '', 'p-ravi'));
   });
 

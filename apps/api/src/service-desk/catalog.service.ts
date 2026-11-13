@@ -528,10 +528,12 @@ export class CatalogService implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ live-data pickers (SD-2.02)
 
-  async pick(r: Requester, kind: 'people' | 'locations' | 'cost-centres' | 'assets' | 'apps', q = '', forPersonId?: string) {
+  async pick(r: Requester, kind: 'people' | 'on-behalf' | 'locations' | 'cost-centres' | 'assets' | 'apps', q = '', forPersonId?: string) {
     const org = r.ctx.organizationId;
     const l = like(q.trim());
     return this.tx(r, async (tx) => {
+      // Answer 1846: "for someone else" lists only the people this person may raise for.
+      if (kind === 'on-behalf') return this.requesters.onBehalfPeople(tx, r, l);
       if (kind === 'apps') {
         // Helpdesk plan item 3: the company's applications that can be asked for (never retired ones).
         const rows = await tx.sdBusinessApp.findMany({ where: { organizationId: org, status: 'active', ...(q.trim() ? { name: { contains: q.trim(), mode: 'insensitive' as const } } : {}) }, select: { id: true, name: true, description: true }, orderBy: { name: 'asc' }, take: 20 });

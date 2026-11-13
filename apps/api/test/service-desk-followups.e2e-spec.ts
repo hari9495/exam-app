@@ -236,4 +236,52 @@ describe('Helpdesk follow-ups', () => {
       await api('deskAdmin', 'post', '/desk/reports/custom').send({ name: `Bad ${run}`, columns: ['field:cost'], filters: {} }).expect(403);
     });
   });
+  // ------------------------------------------------------------------------------------------ 1846
+  describe('1846: the on-behalf picker lists only the people one may raise for', () => {
+    const day = (d: string) => new Date(`${d}T00:00:00Z`);
+    beforeAll(async () => {
+      // Two departments: Ravi and Meera in Ops, Arjun in Sales. Divya may raise for Ops only (a department grant).
+      await tenantPrisma.forTenant(asA(), async (tx) => {
+        const entity = await tx.legalEntity.create({ data: { organizationId: org.A.id, name: 'FU Ltd', shortName: `FU-${run}` } });
+        const location = await tx.location.create({ data: { organizationId: org.A.id, legalEntityId: entity.id, name: 'Bengaluru', code: 'BLR', address: {}, country: 'IN', state: 'IN-KA', timezone: 'Asia/Kolkata' } });
+        const dept = async (name: string, code: string) => {
+          const id = randomUUID();
+          return tx.department.create({ data: { id, organizationId: org.A.id, name, code, path: `/${id}/` } });
+        };
+        const ops = await dept('Ops', 'OPS');
+        const sales = await dept('Sales', 'SAL');
+        ids.ops = ops.id;
+        const designation = await tx.designation.create({ data: { organizationId: org.A.id, name: 'Operator', code: 'OP' } });
+        const type = await tx.employmentType.create({ data: { organizationId: org.A.id, name: 'Permanent', code: 'PERM', category: 'permanent' } });
+        for (const [i, [given, d]] of ([['Ravi', ops], ['Meera', ops], ['Arjun', sales]] as const).entries()) {
+          const person = await tx.person.create({ data: { organizationId: org.A.id, givenName: `${given}${run}` } });
+          ids[`${given}Person`] = person.id;
+          const employee = await tx.employee.create({ data: { organizationId: org.A.id, personId: person.id, givenName: given } });
+          await tx.personRole.create({ data: { organizationId: org.A.id, personId: person.id, roleType: 'employee', sourceTable: 'employees', sourceId: employee.id, startOn: day('2026-04-01') } });
+          const employment = await tx.employment.create({ data: { organizationId: org.A.id, employeeId: employee.id, legalEntityId: entity.id, employeeCode: `FU${i}`, codeScopeKey: entity.id, joinedOn: day('2026-04-01') } });
+          const join = await tx.employeeChange.create({ data: { organizationId: org.A.id, employeeId: employee.id, employmentId: employment.id, changeType: 'join', effectiveDate: day('2026-04-01'), status: 'effective', appliedAt: new Date(), payload: {}, reason: 'join' } });
+          await tx.employeeAssignment.create({ data: { organizationId: org.A.id, legalEntityId: entity.id, employeeId: employee.id, employmentId: employment.id, validFrom: day('2026-04-01'), locationId: location.id, departmentId: d.id, designationId: designation.id, employmentTypeId: type.id, changeId: join.id } });
+        }
+        const p = await tx.permissionProfile.create({ data: { organizationId: org.A.id, name: `on-behalf-${run}`, permissionsJson: JSON.stringify(['request.raise_on_behalf']) } });
+        await tx.roleGrant.create({ data: { organizationId: org.A.id, userId: users.divya, permissionProfileId: p.id, scopeType: 'department_subtree', departmentId: ops.id, validFrom: day('2026-01-01'), status: 'active', reason: 'Ops coordinator', grantedBy: users.adminA } });
+      });
+    });
+    const pick = (who: Who, q: string) => api(who, 'get', `/desk/my/pick/on-behalf?q=${encodeURIComponent(q)}`).expect(200).then((r) => (r.body as { id: string; label: string; detail: string | null }[]).map((x) => x.id));
+
+    it('lists only the people in the granted department (with their department), and raising for one of them works', async () => {
+      const found = await pick('divya', run);
+      expect(found.sort()).toEqual([ids.RaviPerson, ids.MeeraPerson].sort());
+      expect((await api('divya', 'get', `/desk/my/pick/on-behalf?q=Ravi${run}`).expect(200)).body).toEqual([{ id: ids.RaviPerson, label: `Ravi${run}`, detail: 'Ops' }]);
+      await api('divya', 'post', '/desk/my/tickets').send({ deskId: ids.desk, subject: `For Ravi ${run}`, description: 'Help.', requestedForPersonId: ids.RaviPerson }).expect(201);
+    });
+
+    it('negative: someone outside the grant is neither listed nor raised for; without the right nobody is listed; the plain people picker still lists everyone; another company sees none', async () => {
+      expect(await pick('divya', `Arjun${run}`)).toEqual([]);
+      await api('divya', 'post', '/desk/my/tickets').send({ deskId: ids.desk, subject: `For Arjun ${run}`, description: 'Help.', requestedForPersonId: ids.ArjunPerson }).expect(403);
+      expect(await pick('agent', run)).toEqual([]);
+      expect((await api('agent', 'get', `/desk/my/pick/people?q=${run}`).expect(200)).body.length).toBeGreaterThanOrEqual(3);
+      expect(await pick('agentB', run)).toEqual([]);
+      await api('divya', 'get', '/desk/my/pick/everyone?q=x').expect(400);
+    });
+  });
 });

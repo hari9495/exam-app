@@ -150,7 +150,7 @@ export function CatalogScreen(props: CatalogScreenProps) {
               <Segment label="Who is this for" options={[{ value: 'me', label: 'For me' }, { value: 'other', label: 'For someone else' }]} value={forOther ? 'other' : 'me'} onChange={(v) => setForOther(v === 'other')} />
               {forOther && (
                 <FormField id="cat-for" error={forEarly.errorOf('cat-for')} label="Who it is for" helper="You can order for the people in your team. Their manager approves.">
-                  <LivePicker kind="people" value={forPerson} onChange={setForPerson} label="Person" onPick={props.onPick} />
+                  <LivePicker kind="on-behalf" value={forPerson} onChange={setForPerson} label="Person" onPick={props.onPick} />
                 </FormField>
               )}
               <div className="yx-ops-row">
@@ -244,7 +244,7 @@ export function CatalogScreen(props: CatalogScreenProps) {
                 <Segment label="Who is this for" options={[{ value: 'me', label: 'For me' }, { value: 'other', label: 'For someone else' }]} value={forOther ? 'other' : 'me'} onChange={(v) => setForOther(v === 'other')} />
                 {forOther && (
                   <FormField label="Who it is for" helper="Choose them first: the device list below is theirs.">
-                    <LivePicker kind="people" value={forPerson} onChange={setForPerson} label="Person it is for" onPick={props.onPick} />
+                    <LivePicker kind="on-behalf" value={forPerson} onChange={setForPerson} label="Person it is for" onPick={props.onPick} />
                   </FormField>
                 )}
               </div>
