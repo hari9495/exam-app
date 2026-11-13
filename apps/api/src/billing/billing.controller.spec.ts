@@ -10,21 +10,11 @@ describe('BillingController', () => {
     expect(usage.getUsage).toHaveBeenCalledWith(tenant);
   });
 
-  it('checkout / portal / plans / invoices delegate to BillingCheckoutService', async () => {
-    const checkout = {
-      listPurchasablePlans: jest.fn().mockResolvedValue([]),
-      createCheckout: jest.fn().mockResolvedValue({ url: 'https://stripe/checkout' }),
-      createPortal: jest.fn().mockResolvedValue({ url: 'https://stripe/portal' }),
-      listInvoices: jest.fn().mockResolvedValue([]),
-    };
+  it('invoices delegate to BillingCheckoutService; negative (1971): no checkout, plan picker or portal route', async () => {
+    const checkout = { listInvoices: jest.fn().mockResolvedValue([]) };
     const controller = new BillingController({} as any, checkout as any);
-    await controller.plans(tenant as any);
-    await controller.createCheckout(tenant as any, 'user-1', { planId: 'plan-1' } as any);
-    await controller.createPortal(tenant as any, 'user-1');
     await controller.invoices(tenant as any);
-    expect(checkout.listPurchasablePlans).toHaveBeenCalledWith(tenant);
-    expect(checkout.createCheckout).toHaveBeenCalledWith(tenant, 'user-1', 'plan-1');
-    expect(checkout.createPortal).toHaveBeenCalledWith(tenant, 'user-1');
     expect(checkout.listInvoices).toHaveBeenCalledWith(tenant);
+    for (const gone of ['createCheckout', 'createPortal', 'plans']) expect((controller as any)[gone]).toBeUndefined();
   });
 });
