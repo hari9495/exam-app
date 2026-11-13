@@ -1272,3 +1272,7 @@ console.log(missing.join(' '));
 - 1971 to 1975 approved as suggested (13 Nov 2026, "ok for all"). 1975: on company deletion, keep statutory records (audit log, payroll runs, payslips and pay documents, statutory filings) read-only for their legal period, delete everything else; the certificate lists what was kept, why and until when. Also: remove the unused checkout and billing-portal routes (1971); list every file store before the first real deletion (1972); a certificate download in the console (1973).
 
 - 1335 decided (13 Nov 2026): assessments stay. Hiring assessments inside Hire first; the exam engine is kept and built so it can later serve certification exams (Pearson VUE style, an "exam owner" mode). Certification itself starts only with a real customer or partner. Next: audit the existing exam and Proctoring code and designs.
+
+**Founder answers (13 Nov 2026):** 1976, 1977 and 1978 accepted as suggested ("ok for all"): a nightly job deletes kept
+statutory records after their date and issues a second certificate (queued); people records stay whole; the Board
+reminders stay on, wording to be checked by counsel.
