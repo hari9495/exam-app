@@ -49,20 +49,20 @@ describe('CalendarSyncController', () => {
     const res = { redirect: jest.fn() } as any;
     await controller.callback('google', 'code', 'state', undefined, {} as any, res);
     expect(service.handleCallback).toHaveBeenCalledWith('google', 'code', 'state');
-    expect(res.redirect).toHaveBeenCalledWith('https://app.test/v2/calendar?calendarConnected=google');
+    expect(res.redirect).toHaveBeenCalledWith('https://app.test/yx/settings/integrations/calendar-and-chat?calendarConnected=google');
   });
 
   it('callback redirects with a generic error when the provider denied consent', async () => {
     const res = { redirect: jest.fn() } as any;
     await controller.callback('google', undefined, undefined, 'access_denied', {} as any, res);
     expect(service.handleCallback).not.toHaveBeenCalled();
-    expect(res.redirect).toHaveBeenCalledWith('https://app.test/v2/calendar?calendarError=denied');
+    expect(res.redirect).toHaveBeenCalledWith('https://app.test/yx/settings/integrations/calendar-and-chat?calendarError=denied');
   });
 
   it('callback redirects with a generic error when the exchange fails (never leaks the step)', async () => {
     service.handleCallback.mockRejectedValue(new Error('exchange failed at token endpoint'));
     const res = { redirect: jest.fn() } as any;
     await controller.callback('google', 'code', 'state', undefined, {} as any, res);
-    expect(res.redirect).toHaveBeenCalledWith('https://app.test/v2/calendar?calendarError=failed');
+    expect(res.redirect).toHaveBeenCalledWith('https://app.test/yx/settings/integrations/calendar-and-chat?calendarError=failed');
   });
 });

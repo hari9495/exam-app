@@ -11,6 +11,8 @@ export const YX_KEYS = [
   'org:manage_billing',
   // Answer 1884: finance people read the plan, usage and invoices.
   'billing.view',
+  // S-10: Integrations, AI and Developers (the older System Admin key, checked in the S-10 security check).
+  'org:manage_settings',
   'org.structure.view',
   'org.settings.manage',
   'org.entity.statutory.manage',
