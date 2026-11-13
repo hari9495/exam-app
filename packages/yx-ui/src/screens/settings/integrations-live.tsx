@@ -120,6 +120,8 @@ export function aiPage(design: SettingsPageDef, s: IntegrationsState): SettingsP
       settings: [
         info('ai.current', 'AI used for your company', own, 'Your key is stored encrypted and never shown again; use with it counts against your own AI account.'),
         link('ai.set_key', 'Your own AI key', s.aiKeyConfigured ? 'Replace AI key' : 'Use your own AI key', 'The address must be a public https one; the key is checked before it is saved.'),
+        // Answer 1903: back to YukthiX AI.
+        ...(s.aiKeyConfigured ? [link('ai.stop', 'Back to YukthiX AI', 'Stop using our key', 'Your key is forgotten at once; AI use counts against your YukthiX AI credits again.')] : []),
         info('ai.embeddings.state', 'Search embeddings', s.embeddingConfigured ? `${s.embeddingBaseUrl ?? '—'} · ${s.embeddingModel ?? '—'}` : 'Not set up'),
         link('ai.embeddings', 'Embeddings provider', s.embeddingConfigured ? 'Replace embeddings provider' : 'Set up embeddings'),
       ],

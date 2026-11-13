@@ -99,6 +99,15 @@ export class OrganizationsController {
     return this.organizationsService.updateAiKey(tenant, userId, dto);
   }
 
+  // Answer 1903: "Stop using our key", back to YukthiX AI. Same people and the same security key as setting it.
+  @Delete('integrations/ai-key')
+  @RequireAnyPermission('org:manage_settings', 'integration.manage')
+  @RequireStepUp()
+  @UseGuards(OwnSessionGuard)
+  clearAiKey(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string) {
+    return this.organizationsService.clearAiKey(tenant, userId);
+  }
+
   @Patch('integrations/embedding-config')
   @RequireAnyPermission('org:manage_settings', 'integration.manage')
   @RequireStepUp()

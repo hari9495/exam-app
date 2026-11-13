@@ -167,6 +167,31 @@ describe('Settings S-10: the integration routes are safe', () => {
     expect(['STEP_UP_REQUIRED', 'MFA_REQUIRED']).toContain(codeOf(r));
   });
 
+  // Answer 1903: "Stop using our key", back to YukthiX AI.
+  it('1903: stopping the company AI key forgets it and goes back to YukthiX AI (audited)', async () => {
+    const own = { aiProvider: 'openai-compatible', aiApiKeyEncrypted: 'enc-placeholder', aiBaseUrl: 'https://ai.example.com/v1', aiModelFast: 'f', aiModelStandard: 's' };
+    await tenantPrisma.forTenant({ organizationId: org.A, isSuperAdmin: false }, (tx) => tx.organization.update({ where: { id: org.A }, data: own }));
+    expect((await api('it', 'get', '/organizations/integrations').expect(200)).body).toMatchObject({ aiKeyConfigured: true });
+    expect((await api('it', 'delete', '/organizations/integrations/ai-key').expect(200)).body).toEqual({ aiKeyConfigured: false });
+    const after = await tenantPrisma.forTenant({ organizationId: org.A, isSuperAdmin: false }, (tx) => tx.organization.findUniqueOrThrow({ where: { id: org.A }, select: { aiProvider: true, aiApiKeyEncrypted: true, aiBaseUrl: true, aiModelFast: true, aiModelStandard: true } }));
+    expect(after).toEqual({ aiProvider: 'anthropic', aiApiKeyEncrypted: null, aiBaseUrl: null, aiModelFast: null, aiModelStandard: null });
+    expect((await api('admin', 'get', '/organizations/integrations').expect(200)).body).toMatchObject({ aiKeyConfigured: false, aiProvider: 'anthropic' });
+    const audit = await tenantPrisma.forTenant({ organizationId: org.A, isSuperAdmin: false }, (tx) => tx.auditLog.findFirst({ where: { action: 'organization.ai_key_removed', organizationId: org.A } }));
+    expect(audit).toMatchObject({ actorUserId: users.it });
+  });
+
+  it('negative (1903): without the security key, without the key, or for another company, nothing is cleared', async () => {
+    const own = { aiProvider: 'anthropic', aiApiKeyEncrypted: 'enc-placeholder' };
+    for (const k of ['A', 'B'] as const) await tenantPrisma.forTenant({ organizationId: org[k], isSuperAdmin: false }, (tx) => tx.organization.update({ where: { id: org[k] }, data: own }));
+    const cold = await api('itCold', 'delete', '/organizations/integrations/ai-key');
+    expect(cold.status).toBe(403);
+    expect(['STEP_UP_REQUIRED', 'MFA_REQUIRED']).toContain(codeOf(cold));
+    await api('panel', 'delete', '/organizations/integrations/ai-key').expect(403);
+    expect((await api('admin', 'get', '/organizations/integrations').expect(200)).body).toMatchObject({ aiKeyConfigured: true });
+    await api('admin', 'delete', '/organizations/integrations/ai-key').expect(200);
+    expect((await api('adminB', 'get', '/organizations/integrations').expect(200)).body).toMatchObject({ aiKeyConfigured: true });
+  });
+
   it('negative (1901): integration.manage opens nothing else of org:manage_settings, and nothing of another company', async () => {
     await api('it', 'get', '/organizations/careers').expect(403);
     await api('it', 'get', '/organizations/reminder-settings').expect(403);

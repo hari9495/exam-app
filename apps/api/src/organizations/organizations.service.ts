@@ -662,6 +662,17 @@ export class OrganizationsService {
     return { aiKeyConfigured: true };
   }
 
+  /** Answer 1903: forget the company's own AI key; YukthiX AI (the default provider) is used again. */
+  async clearAiKey(context: TenantContext, actorUserId: string): Promise<{ aiKeyConfigured: boolean }> {
+    const organizationId = this.requireOrganizationId(context);
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { aiProvider: 'anthropic', aiApiKeyEncrypted: null, aiBaseUrl: null, aiModelFast: null, aiModelStandard: null },
+    });
+    await this.audit.record(context, { actorUserId, action: 'organization.ai_key_removed', entityType: 'organization', entityId: organizationId });
+    return { aiKeyConfigured: false };
+  }
+
   async updateEmbeddingConfig(
     context: TenantContext,
     actorUserId: string,
