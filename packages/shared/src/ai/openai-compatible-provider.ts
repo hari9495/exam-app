@@ -1,3 +1,4 @@
+import type { OrgAiFetch } from '../net/public-fetch';
 import OpenAI from 'openai';
 import { AiProvider, StructuredCompletionRequest } from './ai-provider';
 
@@ -36,10 +37,16 @@ export class OpenAiCompatibleProvider implements AiProvider {
     private readonly baseUrl: string,
     private readonly modelFast: string,
     private readonly modelStandard: string,
+    /** Answer 1902: the pinned public-only fetch for a company-supplied address. */
+    private readonly fetchImpl?: OrgAiFetch,
   ) {}
 
+  private client() {
+    return new OpenAI({ apiKey: this.apiKey, baseURL: this.baseUrl, ...(this.fetchImpl ? { fetch: this.fetchImpl } : {}) });
+  }
+
   async generateStructured(request: StructuredCompletionRequest): Promise<Record<string, unknown>> {
-    const client = new OpenAI({ apiKey: this.apiKey, baseURL: this.baseUrl });
+    const client = this.client();
     const model = request.modelTier === 'fast' ? this.modelFast : this.modelStandard;
     const response = await client.chat.completions.create({
       model,
@@ -74,7 +81,7 @@ export class OpenAiCompatibleProvider implements AiProvider {
   }
 
   async ping(): Promise<void> {
-    const client = new OpenAI({ apiKey: this.apiKey, baseURL: this.baseUrl });
+    const client = this.client();
     // A reasoning model given a 1-token budget spends it all on reasoning and can 400 on truncation,
     // so ping needs the same reasoning-aware params -- it only checks auth/connectivity, not output.
     await client.chat.completions.create({ model: this.modelFast, ...tokenParams(this.modelFast, 1), messages: [{ role: 'user', content: 'Hi' }] });

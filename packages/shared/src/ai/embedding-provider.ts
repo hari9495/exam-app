@@ -1,3 +1,4 @@
+import type { OrgAiFetch } from '../net/public-fetch';
 import OpenAI from 'openai';
 
 /**
@@ -15,11 +16,13 @@ export class OpenAiCompatibleEmbeddingProvider implements EmbeddingProvider {
     private readonly apiKey: string,
     private readonly baseUrl: string,
     public readonly model: string,
+    /** Answer 1902: the pinned public-only fetch for a company-supplied address. */
+    private readonly fetchImpl?: OrgAiFetch,
   ) {}
 
   async embed(texts: string[]): Promise<number[][]> {
     if (texts.length === 0) return [];
-    const client = new OpenAI({ apiKey: this.apiKey, baseURL: this.baseUrl });
+    const client = new OpenAI({ apiKey: this.apiKey, baseURL: this.baseUrl, ...(this.fetchImpl ? { fetch: this.fetchImpl } : {}) });
     const res = await client.embeddings.create({ model: this.model, input: texts });
     // Preserve request order (the API returns an `index` per item; sort defensively).
     return [...res.data].sort((a, b) => a.index - b.index).map((d) => d.embedding as number[]);

@@ -4,7 +4,7 @@ import { OrganizationsController } from './organizations.controller';
 import { OrganizationsService } from './organizations.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { PERMISSIONS_KEY } from '../rbac/permissions.decorator';
+import { PERMISSIONS_ANY_KEY, PERMISSIONS_KEY } from '../rbac/permissions.decorator';
 import { ApiUsageService } from '../api-usage/api-usage.service';
 
 class MockGuard implements CanActivate {
@@ -131,8 +131,9 @@ describe('OrganizationsController api-usage', () => {
   });
 
   it('gates the api-usage getter behind org:manage_settings', () => {
-    const permissions = Reflect.getMetadata(PERMISSIONS_KEY, OrganizationsController.prototype.getApiUsage);
-    expect(permissions).toEqual(['org:manage_settings']);
+    const permissions = Reflect.getMetadata(PERMISSIONS_ANY_KEY, OrganizationsController.prototype.getApiUsage);
+    // Answer 1901: System Admins, or IT staff with integration.manage.
+    expect(permissions).toEqual(['org:manage_settings', 'integration.manage']);
   });
 });
 
@@ -249,13 +250,15 @@ describe('OrganizationsController sms-config', () => {
   });
 
   it('gates the getter behind org:manage_settings', () => {
-    const permissions = Reflect.getMetadata(PERMISSIONS_KEY, OrganizationsController.prototype.getSmsConfig);
-    expect(permissions).toEqual(['org:manage_settings']);
+    const permissions = Reflect.getMetadata(PERMISSIONS_ANY_KEY, OrganizationsController.prototype.getSmsConfig);
+    // Answer 1901: System Admins, or IT staff with integration.manage.
+    expect(permissions).toEqual(['org:manage_settings', 'integration.manage']);
   });
 
   it('gates the setter behind org:manage_settings', () => {
-    const permissions = Reflect.getMetadata(PERMISSIONS_KEY, OrganizationsController.prototype.putSmsConfig);
-    expect(permissions).toEqual(['org:manage_settings']);
+    const permissions = Reflect.getMetadata(PERMISSIONS_ANY_KEY, OrganizationsController.prototype.putSmsConfig);
+    // Answer 1901: System Admins, or IT staff with integration.manage.
+    expect(permissions).toEqual(['org:manage_settings', 'integration.manage']);
   });
 });
 
@@ -294,8 +297,9 @@ describe('OrganizationsController sms-providers catalog', () => {
   });
 
   it('gates sms-providers behind org:manage_settings', () => {
-    const permissions = Reflect.getMetadata(PERMISSIONS_KEY, OrganizationsController.prototype.getSmsProviders);
-    expect(permissions).toEqual(['org:manage_settings']);
+    const permissions = Reflect.getMetadata(PERMISSIONS_ANY_KEY, OrganizationsController.prototype.getSmsProviders);
+    // Answer 1901: System Admins, or IT staff with integration.manage.
+    expect(permissions).toEqual(['org:manage_settings', 'integration.manage']);
   });
 });
 
@@ -361,17 +365,20 @@ describe('OrganizationsController whatsapp-config', () => {
   });
 
   it('gates the config getter behind org:manage_settings', () => {
-    const permissions = Reflect.getMetadata(PERMISSIONS_KEY, OrganizationsController.prototype.getWhatsappConfig);
-    expect(permissions).toEqual(['org:manage_settings']);
+    const permissions = Reflect.getMetadata(PERMISSIONS_ANY_KEY, OrganizationsController.prototype.getWhatsappConfig);
+    // Answer 1901: System Admins, or IT staff with integration.manage.
+    expect(permissions).toEqual(['org:manage_settings', 'integration.manage']);
   });
 
   it('gates the config setter behind org:manage_settings', () => {
-    const permissions = Reflect.getMetadata(PERMISSIONS_KEY, OrganizationsController.prototype.updateWhatsappConfig);
-    expect(permissions).toEqual(['org:manage_settings']);
+    const permissions = Reflect.getMetadata(PERMISSIONS_ANY_KEY, OrganizationsController.prototype.updateWhatsappConfig);
+    // Answer 1901: System Admins, or IT staff with integration.manage.
+    expect(permissions).toEqual(['org:manage_settings', 'integration.manage']);
   });
 
   it('gates the provider catalog behind org:manage_settings', () => {
-    const permissions = Reflect.getMetadata(PERMISSIONS_KEY, OrganizationsController.prototype.getWhatsappProviders);
-    expect(permissions).toEqual(['org:manage_settings']);
+    const permissions = Reflect.getMetadata(PERMISSIONS_ANY_KEY, OrganizationsController.prototype.getWhatsappProviders);
+    // Answer 1901: System Admins, or IT staff with integration.manage.
+    expect(permissions).toEqual(['org:manage_settings', 'integration.manage']);
   });
 });
