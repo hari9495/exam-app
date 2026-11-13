@@ -153,6 +153,8 @@ route checks; "older" = a /v2-era key, not a YukthiX `area.thing.action` key.
 | exam-runtime `/attempt/*`, `/candidate-auth/*` | candidate token from the invitation | n/a | n/a | n/a | the attempt of the token's invitation | not re-checked in depth here |
 | nightly retention sweeps | system | n/a | n/a | n/a | run as super-admin because `proctoring_events` has no company column | fixed 90 days, not a company setting |
 
+**Fixed 13 Nov 2026 (security hotfix, branch fix/exam-answer-key-exposure).** (1) Answer keys (correct options, model answers, code test cases) go only to people who write tests or questions (`exam:manage` or `question_bank:manage`, never while acting): `GET /exams/:id`, `GET /questions` and `/questions/:id`, and the candidate report (`correctOptionIds` empty) strip them for everyone else; the candidate's own right or wrong stays. (2) `results:view` no longer stands in for `ats.candidate.view`: an Interview coordinator reads no tests or results; that also closes the older routes on that key (the /hiring job board, pipeline, candidate profile, feedback, teammates and user groups), which carry test results. Hiring managers keep company-wide results through `ats.assessment.view` (own-job scoping is still open, 2004). (3) `POST /attempts/:id/ai-insight/regenerate` needs `exam:manage`. Tests: `test/exam-answer-keys.e2e-spec.ts`.
+
 **Database isolation (RLS).** `20261005000001_tenant_rls/migration.sql` forces RLS with the company policy on every
 table that has `organization_id`: `questions`, `tags`, `exams`, `walk_in_groups`, `drive_sessions`,
 `certificate_templates`, `job_exams`. These have **no** `organization_id` and so **no RLS** (checked per model in

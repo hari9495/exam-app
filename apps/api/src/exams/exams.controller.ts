@@ -6,6 +6,7 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
 import { ExamsService } from './exams.service';
+import { SeesAnswerKeys, ShowsAnswerKeys, examWithoutAnswerKeys } from '../rbac/answer-keys';
 import { CreateExamDto } from './dto/create-exam.dto';
 import { UpdateExamDto } from './dto/update-exam.dto';
 import { CreateExamSectionDto } from './dto/create-exam-section.dto';
@@ -47,8 +48,11 @@ export class ExamsController {
 
   @Get(':id')
   @RequireAnyPermission('exam:manage', 'results:view')
-  findOne(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
-    return this.examsService.findOne(tenant, id);
+  @ShowsAnswerKeys()
+  async findOne(@CurrentTenant() tenant: TenantContext, @Param('id') id: string, @SeesAnswerKeys() keys: boolean) {
+    const exam = await this.examsService.findOne(tenant, id);
+    // Readers of results see the test without its answer key (security fix).
+    return keys ? exam : examWithoutAnswerKeys(exam);
   }
 
   @Patch(':id')
