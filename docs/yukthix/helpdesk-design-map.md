@@ -2167,3 +2167,46 @@ the knowledge base's "use in assistant answers" flag, Contact YukthiX tickets an
 - 2107: everyone in a customer company; answers follow the person's role.
 - 2108: 50 questions per person per day, a platform setting.
 Staff view: unanswered questions, thumbs up or down, chats that became tickets. About 2 to 3 weeks; drawn first.
+
+### Ask YukthiX as built (branch `feat/yukthix-ask-assistant`)
+- **Where:** the Help drawer's "Ask YukthiX" tab (every page; 2101). Staff: Console › Feature requests (requests and the
+  Ask YukthiX review).
+- **Claude (2102):** the official SDK (`@anthropic-ai/sdk` 1.3.0, API version 2026-10-21), YukthiX's own key in server
+  config only: `ASK_YUKTHIX_ANTHROPIC_API_KEY` (unset: "not switched on yet" with Contact YukthiX). Model: platform
+  setting `help.assistant.model`, default `claude-opus-5-5`; low effort; structured output; the server-side refusal
+  fallback on models that take it. No tools: the model cannot act.
+- **Content (2103):** only YukthiX help articles marked "Use in assistant answers" (the platform company's public space),
+  What's new for the person and the current known issue; the person's role and the areas they can open (2107); never
+  company records. Every answer cites its article or says it is not covered; refusals and broken replies are never shown.
+  The question and the articles are data: the system prompt says so, and they never enter it.
+- **Hand-over (2104, 2105):** "Raise support ticket" (the Contact YukthiX ticket with the chat, through its own service;
+  only with its key, `org.yukthix_support.raise`); "Send feature request" for everyone; each once per chat, audited. A
+  person is offered after `help.assistant.unhelpful_handover` (2) unhelpful answers or thumbs down. Buying questions get a
+  note pointing to sales.
+- **Limits and data (2108):** `help.assistant.daily_questions` (50) per person per India day, counted atomically in the
+  database (a failed answer gives the question back). Chats in RLS-forced tables, the person's own (staff read them for the
+  review); deleted after `help.assistant.keep_days` (90). Refused while acting as the person.
+- **Staff:** the review (answers by outcome, thumbs, questions help did not answer with personal data, phones and emails
+  hidden, chats that became tickets) and Feature requests (duplicates grouped with a company count; Planned, Not now, Done;
+  Done tells everyone who asked, once; audited), with the help centre writers' key.
+- **Tests:** API unit (prompt, reply checks, key, masking), e2e `ask-yukthix` (11), kit `ask-yukthix` (6) and
+  `feature-requests` (3), web console page (2). Stories: seven Help drawer · Ask YukthiX, three Feature requests.
+
+### Questions (from 2111)
+
+2111. **Tickets from people without the Contact YukthiX key.** Only System Admins (the key) raise a ticket from a chat;
+      others are told their System Admin can. *Suggested: keep; their feature requests and thumbs still reach YukthiX.*
+2112. **Buying questions.** The assistant says YukthiX sales can help and points to Plan & add-ons; the sales-assist
+      request there needs a nudge and a phone number. *Suggested: a sales request straight from the chat, asking for the
+      phone there, with the chat attached.*
+2113. **Who decides feature requests.** The help centre writers' key (`platform.helpcentre.write`).
+      *Suggested: a key of its own, `platform.feature_requests.manage`, for product staff.*
+2114. **The Service Desk Help centre (HLP-01) assistant card.** It is the company's own policies assistant and still says
+      it is not switched on. *Suggested: leave it; Ask YukthiX lives in the Help drawer on every page, the Help centre
+      included.*
+2115. **Languages (2106).** English only for now. *Suggested: answer in Hindi, Tamil or Telugu once those help articles
+      are translated.*
+2116. **"Use in assistant answers" for YukthiX articles.** The switch is on by default and only the company KB editor
+      shows it; the console help centre editor does not. *Suggested: add the switch to the console editor.*
+2117. **The public website version (2101, second).** Not built. *Suggested: after the in-app one has a month of the
+      review.*

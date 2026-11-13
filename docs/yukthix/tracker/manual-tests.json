@@ -21740,5 +21740,33 @@
       "Screens/Helpdesk/HLP-22 · Changes and problems · Changes · report for the last 90 days (failed-change rate, problems by age)"
     ],
     "note": "Positive and negative. Answers 1953, 1955; ITSM-4."
+  },
+  {
+    "id": "MT-HLP-ASK1",
+    "area": "Ask YukthiX (13 Nov 2026)",
+    "screen": "Help drawer › Ask YukthiX; Console › Feature requests",
+    "url": "http://localhost:3000/yx/home",
+    "account": "The System Admin of a company; an employee of the same company; a YukthiX staff member with the help centre key. The server has ASK_YUKTHIX_ANTHROPIC_API_KEY set (and once without it).",
+    "steps": [
+      "Without the key on the server: open Help, Ask YukthiX.",
+      "With the key: ask how to apply for leave.",
+      "Press the article link under the answer.",
+      "Ask why your own leave balance changed.",
+      "Thumbs down twice in the chat.",
+      "As the System Admin: Raise support ticket.",
+      "As the employee: look for Raise support ticket; Send feature request with an empty title, then with one.",
+      "Negative: as the System Admin, act as the employee and open Help, Ask YukthiX.",
+      "As staff: Console › Feature requests; mark the request Done; open Ask YukthiX review."
+    ],
+    "expected": "Step 1: Not switched on yet, with Raise a ticket. Step 2: steps from the help article, the article linked, questions left today goes down by one. Step 3: the help article opens. Step 4: it says someone needs to look at your account. Step 5: Not getting anywhere? A person is offered. Step 6: toast with the ticket number; Contact YukthiX shows it with the chat. Step 7: no ticket button, the System Admin note; the empty title says why; then sent. Step 8: no Ask YukthiX tab. Step 9: the request with its company count; Done tells the employee (bell); the review shows the questions without phone numbers.",
+    "stories": [
+      "HelpDrawerAsk",
+      "HelpDrawerAskUnsure",
+      "HelpDrawerAskNoKey",
+      "HelpDrawerAskOff",
+      "FeatureRequests",
+      "FeatureRequestsReview"
+    ],
+    "note": "Positive and negative. Real Claude answers need the key; the tests use a stand-in."
   }
 ]
