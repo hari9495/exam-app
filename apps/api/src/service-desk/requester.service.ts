@@ -11,6 +11,7 @@ import { RaiseTicketDto, RequesterReplyDto, WatcherDto } from './dto';
 import { Ticket, TicketsService } from './tickets.service';
 import { assetsOf } from './asset-pick';
 import { fieldsFor, raiseFieldsOf, shownFields } from './ticket-fields';
+import { checkPlace } from './facilities.service';
 
 // The requester's side (M14 §6.1 implicit role, YX-SD-16): raise, follow, reply and add watchers. No permission key:
 // every route works only on the person's own records (requester, requested-for or watcher) and never returns internal
@@ -128,6 +129,8 @@ export class RequesterService {
         closed: closed.get(d.id) ?? null,
         // Answer 1662: an IT desk asks "Which device?" when the person has one assigned.
         askDevice: d.kind === 'it' && hasDevice,
+        // Answer 1911: a facilities desk asks which building and area.
+        askPlace: d.kind === 'facilities',
         // Answer 1842: the desk's fields everyone sees, filled on the raise form.
         fields: fieldsOf(d.id),
       }));
@@ -146,6 +149,12 @@ export class RequesterService {
         if (desk.kind !== 'it') throw new BadRequestException('Only IT desk tickets name a device.');
         const mine = await assetsOf(tx, r.ctx.organizationId, dto.requestedForPersonId ?? personId, '');
         if (!mine.some((x) => x.id === dto.assetId)) throw new BadRequestException('Choose one of your own devices from the list.');
+      }
+      // Answer 1911: a facilities ticket may name its building and an area of it (checked: live, of this company, the area of that building).
+      let place: { locationId: string | null; areaId: string | null } = { locationId: null, areaId: null };
+      if (dto.locationId || dto.areaId) {
+        if (desk.kind !== 'facilities') throw new BadRequestException('Only facilities tickets name a building or area.');
+        place = await checkPlace(tx, r.ctx.organizationId, { locationId: dto.locationId ?? null, areaId: dto.areaId ?? null });
       }
       return this.tickets.createIn(tx, r, {
         deskId: dto.deskId,
@@ -169,6 +178,8 @@ export class RequesterService {
         originQuery: dto.originQuery,
         assetId: dto.assetId,
         fields: dto.fields,
+        locationId: place.locationId,
+        areaId: place.areaId,
       });
     });
     return { id: t.id, number: t.number };

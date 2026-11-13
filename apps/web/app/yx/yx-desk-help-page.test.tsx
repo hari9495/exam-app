@@ -96,4 +96,22 @@ describe('Helpdesk › Help centre (HLP-01 live)', () => {
     expect(screen.queryByRole('radio', { name: 'On behalf of someone' })).toBeNull();
     expect(api.mock.calls.some(([p]) => String(p).includes('/desk/my/pick/'))).toBe(false);
   });
+  it('1911: a facilities desk asks where it is; the areas asked for are those of the chosen building', async () => {
+    const asked: string[] = [];
+    route({
+      ...BASE,
+      'GET /desk/my/desks': [{ ...DESK, id: 'd-fac', name: 'Facilities', categories: [], askPlace: true }],
+      'GET /desk/my/pick/locations': (p: string) => (asked.push(p), [{ id: 'l-blr', label: 'Bengaluru office', detail: 'BLR' }]),
+      'GET /desk/my/pick/areas': (p: string) => (asked.push(p), [{ id: 'a-2', label: '2nd floor', detail: null }]),
+    });
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('new=1'));
+    wrap(<YxDeskHelpPage />);
+    await userEvent.click(await screen.findByRole('combobox', { name: /What is it about/ }));
+    await userEvent.click(await screen.findByRole('option', { name: /Facilities/ }));
+    await userEvent.click(await screen.findByRole('combobox', { name: 'Building' }));
+    await userEvent.click(await screen.findByRole('option', { name: /Bengaluru office/ }));
+    await userEvent.click(await screen.findByRole('combobox', { name: 'Floor or area' }));
+    expect(await screen.findByRole('option', { name: /2nd floor/ })).toBeInTheDocument();
+    expect(asked.find((p) => p.startsWith('/desk/my/pick/areas'))).toMatch(/locationId=l-blr/);
+  });
 });

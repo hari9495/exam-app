@@ -367,6 +367,8 @@ export interface RaiseDesk {
   askDevice?: boolean;
   /** Answer 1842: the desk's fields everyone sees, filled on the raise form. */
   fields?: TicketFieldView[];
+  /** Answer 1911: a facilities desk asks which building and area. */
+  askPlace?: boolean;
   id: string;
   name: string;
   key: string;
@@ -452,6 +454,9 @@ export interface RaiseInput {
   requestedForPersonId?: string;
   /** Answer 1842: the desk's fields everyone sees, by key (only the filled ones). */
   fields?: Record<string, string | number>;
+  /** Answer 1911: the building and an area of it (facilities desks). */
+  locationId?: string;
+  areaId?: string;
 }
 
 // ---- batch 2 (SD-1.09 to SD-1.17) ----

@@ -638,6 +638,15 @@ export class RaiseTicketDto {
   @IsOptional()
   @IsObject()
   fields?: Record<string, unknown>;
+
+  /** Answer 1911: the building (a company location) and an area of it, on a facilities ticket. */
+  @IsOptional()
+  @IsUUID()
+  locationId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  areaId?: string;
 }
 
 export class AgentCreateTicketDto {

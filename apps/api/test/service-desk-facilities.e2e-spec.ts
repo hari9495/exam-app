@@ -176,6 +176,31 @@ describe('Helpdesk: buildings, equipment and maintenance', () => {
     expect(await inA((tx) => tx.sdTicket.count({ where: { equipmentId: ids.gen } }))).toBe(0);
     expect((await inA((tx) => tx.sdRecurring.findFirstOrThrow({ where: { id: sched.id } }))).state).toBe('paused');
   });
+  it('1911: a requester names the building and an area of it on a facilities ticket; the agent sees the place', async () => {
+    const desks = (await api('divya', 'get', '/desk/my/desks').expect(200)).body as { id: string; askPlace: boolean }[];
+    expect(desks.find((d) => d.id === ids.fac)!.askPlace).toBe(true);
+    expect(desks.find((d) => d.id === ids.it)!.askPlace).toBe(false);
+    expect((await api('divya', 'get', '/desk/my/pick/locations?q=Bengaluru').expect(200)).body.map((x: { id: string }) => x.id)).toEqual([ids.blr]);
+    ids.oldFloor = (await api('facAdmin', 'post', '/desk/facilities/areas').send({ locationId: ids.blr, name: 'Old basement' }).expect(201)).body.id;
+    await api('facAdmin', 'patch', `/desk/facilities/areas/${ids.oldFloor}`).send({ locationId: ids.blr, name: 'Old basement', status: 'retired', version: 1 }).expect(200);
+    expect((await api('divya', 'get', `/desk/my/pick/areas?q=&locationId=${ids.blr}`).expect(200)).body.map((x: { id: string }) => x.id)).toEqual([ids.floor2]);
+    expect((await api('divya', 'get', '/desk/my/pick/areas?q=').expect(200)).body).toEqual([]);
+    const t = (await api('divya', 'post', '/desk/my/tickets').send({ deskId: ids.fac, subject: `Leak ${run}`, description: 'Water near the pantry.', locationId: ids.blr, areaId: ids.floor2 }).expect(201)).body;
+    expect((await api('facAgent', 'get', `/desk/tickets/${t.id}`).expect(200)).body.place).toMatchObject({ building: { id: ids.blr }, area: { id: ids.floor2 }, equipment: null });
+    // A building alone is fine.
+    await api('divya', 'post', '/desk/my/tickets').send({ deskId: ids.fac, subject: `Lights ${run}`, description: 'Lobby lights off.', locationId: ids.che }).expect(201);
+  });
+
+  it('1911 negative: an area of another building, a retired area, another company\'s building and a place on a non-facilities ticket are refused; nothing is raised', async () => {
+    const subject = `Refused place ${run}`;
+    const raise = (body: object) => api('divya', 'post', '/desk/my/tickets').send({ deskId: ids.fac, subject, description: 'x', ...body });
+    expect((await raise({ locationId: ids.che, areaId: ids.floor2 }).expect(400)).body.message).toMatch(/area of that building/);
+    await raise({ locationId: ids.blr, areaId: ids.oldFloor }).expect(400);
+    await raise({ locationId: randomUUID() }).expect(400);
+    await api('divya', 'post', '/desk/my/tickets').send({ deskId: ids.it, subject, description: 'x', locationId: ids.blr }).expect(400);
+    expect(await inA((tx) => tx.sdTicket.count({ where: { subject } }))).toBe(0);
+  });
+
   it('1914: the equipment page lists 25 work orders and "show more" brings the older ones, newest first, without repeats', async () => {
     // 26 more work orders for the lift (copies of its first, an hour apart and older): 30 in all.
     await inA(async (tx) => {

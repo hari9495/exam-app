@@ -531,7 +531,7 @@ export class CatalogService implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ live-data pickers (SD-2.02)
 
-  async pick(r: Requester, kind: 'people' | 'on-behalf' | 'locations' | 'cost-centres' | 'assets' | 'apps', q = '', forPersonId?: string) {
+  async pick(r: Requester, kind: 'people' | 'on-behalf' | 'locations' | 'areas' | 'cost-centres' | 'assets' | 'apps', q = '', forPersonId?: string, locationId?: string) {
     const org = r.ctx.organizationId;
     const l = like(q.trim());
     return this.tx(r, async (tx) => {
@@ -562,6 +562,12 @@ export class CatalogService implements OnModuleInit {
             AND (p.given_name ILIKE ${l} OR p.family_name ILIKE ${l} OR p.preferred_name ILIKE ${l})
           ORDER BY p.given_name, p.family_name LIMIT 20`;
         return rows.map((x) => ({ id: x.id, label: x.name, detail: x.department }));
+      }
+      // Answer 1911: the areas of one building (in use only), for a facilities ticket; no building, no areas.
+      if (kind === 'areas') {
+        if (!locationId) return [];
+        const rows = await tx.sdFacilityArea.findMany({ where: { organizationId: org, locationId, status: 'active', ...(q.trim() ? { name: { contains: q.trim(), mode: 'insensitive' as const } } : {}) }, select: { id: true, name: true }, orderBy: { name: 'asc' }, take: 20 });
+        return rows.map((x) => ({ id: x.id, label: x.name, detail: null }));
       }
       if (kind === 'locations') {
         const rows = await tx.location.findMany({ where: { organizationId: org, archivedAt: null, OR: [{ name: { contains: q, mode: 'insensitive' } }, { code: { contains: q, mode: 'insensitive' } }] }, select: { id: true, name: true, code: true }, orderBy: { name: 'asc' }, take: 20 });
