@@ -103,6 +103,10 @@ describe('Settings S-9: Billing & Account', () => {
     expect(items('panel')).toEqual(expect.arrayContaining(['Plan & add-ons', 'Usage & caps', 'Invoices']));
     expect(items('panel')).not.toContain('Data export & closure');
     expect(items('org_admin')).toContain('Data export & closure');
+    // Answer 1884: billing.view shows the three billing pages, never the data page.
+    const finance = buildNav({ ...base, has: (k) => k === 'billing.view', role: 'panel' }).flatMap((a) => a.sections.flatMap((s) => s.items.map((l) => l.label)));
+    expect(finance).toEqual(expect.arrayContaining(['Plan & add-ons', 'Usage & caps', 'Invoices']));
+    expect(finance).not.toContain('Data export & closure');
   });
 
   // Answer 1821: the registered-factory hint on 3.1, from the API's flag on a location's own value.

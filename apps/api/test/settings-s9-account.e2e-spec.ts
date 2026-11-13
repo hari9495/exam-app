@@ -53,6 +53,7 @@ describe('Settings S-9: billing read-only, data export and closing the account',
       ['admin2', 'A', 'org_admin', null],
       ['billing', 'A', 'panel', ['org:manage_billing']],
       ['hr', 'A', 'panel', ['org.settings.manage', 'org.structure.view']],
+      ['finance', 'A', 'panel', ['billing.view']],
       ['adminB', 'B', 'org_admin', null],
     ];
     for (const [who, k, role, keys] of people) {
@@ -85,6 +86,14 @@ describe('Settings S-9: billing read-only, data export and closing the account',
     expect(b.products).toEqual([expect.objectContaining({ code: 'hrms', name: 'YukthiX HR' })]);
     expect(b.usage.seats).toMatchObject({ limit: 25 });
     expect(Array.isArray(b.invoices) || b.invoices === null).toBe(true);
+  });
+
+  // Answer 1884: billing.view reads the plan, usage and invoices, and nothing else of group 8.
+  it('1884: a finance person with billing.view reads the plan; negative: not the data page, an export or closing', async () => {
+    expect((await api('finance', 'get', '/account/billing').expect(200)).body.plan).toMatchObject({ name: `s9-plan-${run}` });
+    await api('finance', 'get', '/account/data').expect(403);
+    await api('finance', 'post', '/account/exports').expect(403);
+    await api('finance', 'post', '/account/closure').send({ companyName: org.A.name, reason: 'Not mine to close' }).expect(403);
   });
 
   it('negative: without the billing key the plan, usage and the data page are refused', async () => {
