@@ -120,6 +120,7 @@ export const ResolvedRated: S = { name: 'Resolved · closes on, the rating', ren
 // Answer 1646: a ticket raised while the desk was closed carries a badge.
 export const OutsideHours: S = { name: 'Raised outside hours', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, raisedOutsideHours: true } })} /> };
 // Answer 1661: an IT desk's agent sets or changes the device a ticket is about (any company device, by tag or name).
+export const Application: S = { name: 'IT ticket · application set by an IT agent (answer 2057)', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, app: { id: 'a1', name: 'Tally Prime' }, appOptions: [{ id: 'a1', name: 'Tally Prime' }, { id: 'a2', name: 'Attendance devices' }] }, onSetApp: async () => undefined })} /> };
 export const Device: S = { name: 'IT ticket · device set by an IT agent', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, device: { id: 'as1', label: 'Dell Latitude 5440 (KF-LT-0142)', detail: 'Laptop' }, canSetDevice: true }, onPickDevice: async () => [{ id: 'as1', label: 'Dell Latitude 5440 (KF-LT-0142)', detail: 'Laptop' }, { id: 'as2', label: 'Logitech headset (KF-HS-0077)', detail: 'Accessory' }], onSetDevice: async () => undefined })} /> };
 // Answers 1641, 1650: the desk's own fields on the ticket: a team lead sees and sets every field, a first-line agent
 // not the team-lead-only one; someone who only reads sees the values.

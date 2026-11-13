@@ -121,3 +121,21 @@ export const ChangesReport: S = { name: 'Changes · report for the last 90 days 
 export const ChangesAsked: S = { name: 'Changes · only those I am asked about (change board, application owner)', render: () => <ChangesScreen asked rows={CHANGES.slice(0, 2)} freezes={FREEZES} today={TODAY} onOpen={() => undefined} /> };
 export const NewProblem: S = { name: 'Problems · new problem', render: () => <ProblemsScreen rows={PROBLEMS} suggestions={[]} newOpen /> };
 
+// Follow-ups 2051-2058: a change raised from a problem (2058), a notice for one location (2056), repeats on one
+// application (2057).
+const FROM_PROBLEM = {
+  deskName: 'IT help desk',
+  questions: [{ id: 'people', label: 'How many people does it affect?', options: [{ value: '0', label: 'Fewer than 10' }, { value: '1', label: '10 to 100' }, { value: '2', label: 'More than 100' }] }],
+  templates: [],
+  apps: [{ id: 'a1', name: 'Attendance devices' }, { id: 'a2', name: 'Tally Prime' }],
+  routes: { low: 'An IT lead approves.', medium: 'An IT lead, then the service owner, approve.', high: 'The change board approves.', emergency: 'An IT lead approves now.' },
+  bannerHours: 24,
+  windowText: 'weekdays 21:00 to 06:00, and weekends',
+  noticeScope: 'location' as const,
+  locations: [{ id: 'l1', name: 'Hosur plant' }, { id: 'l2', name: 'Bengaluru head office' }],
+  problem: { id: 'p1', number: 'PRB-4', title: 'Attendance devices at Hosur stop syncing overnight' },
+  onSubmit: async () => ({ id: 'c9', number: 'CHG-20', stage: 'approval' }),
+};
+export const NewChangeFromProblem: S = { name: 'New change · raised from a problem, notice for one location (2056, 2058)', render: () => <OpsDesk area="helpdesk" active="Changes"><NewChangeDrawer onClose={() => undefined} live={FROM_PROBLEM} /></OpsDesk> };
+export const ProblemsAppRepeat: S = { name: 'Problems · repeats on one application suggested (2057)', render: () => <ProblemsScreen rows={PROBLEMS} suggestions={[{ kind: 'application', appId: 'a2', categoryId: null, category: 'Tally Prime', count: 4, days: 7, incidentIds: [] }]} /> };
+

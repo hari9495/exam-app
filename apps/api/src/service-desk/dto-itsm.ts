@@ -70,6 +70,11 @@ export class ItsmSettingsDto {
   @Min(1)
   @Max(30)
   repeatDays?: number;
+
+  /** Answer 2056: whom notices reach: all employees, one location, or the application's users. */
+  @IsOptional()
+  @IsIn(['all', 'location', 'application'])
+  noticeScope?: 'all' | 'location' | 'application';
 }
 
 /** ITSM-1, answer 1936: the company's change window and freeze days (company settings itsm.*). */
@@ -175,6 +180,16 @@ export class ChangeDto {
   @IsBoolean()
   banner?: boolean;
 
+  /** Answer 2056: the location the notice is limited to (desks that limit notices by location). */
+  @IsOptional()
+  @IsUUID()
+  noticeLocationId?: string;
+
+  /** Answer 2058: the problem this change fixes (linked "fixes" when it is raised). */
+  @IsOptional()
+  @IsUUID()
+  problemId?: string;
+
   /** Implementation steps (a standard change takes its template's checklist). */
   @IsOptional()
   @IsArray()
@@ -262,6 +277,11 @@ export class ProblemDto {
   @IsUUID()
   categoryId?: string;
 
+  /** Answer 2057: the application the repeat suggestion came from. */
+  @IsOptional()
+  @IsUUID()
+  appId?: string;
+
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(100)
@@ -312,6 +332,15 @@ export class KnownErrorDto extends ChangeVersionDto {
   @IsOptional()
   @IsBoolean()
   banner?: boolean;
+
+  /** Answer 2056: the location or application the notice is limited to, as the desk's setting asks. */
+  @IsOptional()
+  @IsUUID()
+  noticeLocationId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  noticeAppId?: string;
 }
 
 export class ProblemFixDto {
