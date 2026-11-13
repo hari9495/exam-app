@@ -751,3 +751,6 @@ console.table(counts);
 if (errs.length) { console.error(errs.join('\n')); process.exit(1); }
 console.log('ok');
 ```
+
+**Founder answers (13 Nov 2026):** 2001 to 2021 all accepted as suggested ("ok for all"). Build starts with wave 1
+(AS-0 first: security), after the answer-key hotfix (`fix/exam-answer-key-exposure`) merges.
