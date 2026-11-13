@@ -795,7 +795,7 @@ export interface LiveApprovalsData {
     week: string;
     /** 1408: the client who approves this project's hours after the PM (null: none). */
     clientApproval: string | null;
-    items: { id: string; timesheetId: string; employee: string; allocationPercent: number | null; allocatedHours: number; unallocated: boolean; bulk: boolean; /** 1541: the week against attendance. */ mismatch?: string | null; lines: { id: string; task: string | null; hours: number; billable: boolean; note: string | null; version: number }[] }[];
+    items: { id: string; timesheetId: string; employee: string; allocationPercent: number | null; allocatedHours: number; unallocated: boolean; bulk: boolean; /** 1541: the week against attendance. */ mismatch?: string | null; lines: { id: string; task: string | null; hours: number; billable: boolean; /** Answer 1787: a comment per day. */ comments?: string[]; version: number }[] }[];
   }[];
 }
 export type LiveLineDecision = { lineId: string; status: 'approved' | 'reduced' | 'rejected'; hours?: number; reason?: string; version: number };
@@ -942,7 +942,7 @@ function LiveTimesheetApprovalsView({ live }: { live: LiveTimesheetApprovals }) 
                     <TimesheetApprovalCard
                       employee={{ name: i.employee, secondary: i.allocationPercent != null ? `allocated ${i.allocatedHours} h a week` : 'not allocated to this project' }}
                       weekLabel={weekOf(g.week)}
-                      lines={i.lines.map((l) => ({ id: l.id, project: g.project, task: l.task ?? undefined, hours: l.hours, billable: l.billable, note: l.note }))}
+                      lines={i.lines.map((l) => ({ id: l.id, project: g.project, task: l.task ?? undefined, hours: l.hours, billable: l.billable, comments: l.comments }))}
                       onApprove={(decisions) =>
                         void act(
                           () => live.onDecide(i.lines.map((l) => { const x = decisions[l.id]!; return { lineId: l.id, version: l.version, status: x.status, ...(x.status === 'reduced' ? { hours: x.hours, reason: x.reason } : x.status === 'rejected' ? { reason: x.reason } : {}) }; })),

@@ -190,7 +190,7 @@ portal designs also wait: `settings: MobileHelpTicketsScreen`, `MobilePolicyAckS
 
 ## 4. Design groups, story by story
 
-### A. Helpdesk HLP-01 … 22
+### A. Helpdesk HLP-01 … 23
 
 #### HLP-01 · Help centre
 
@@ -274,7 +274,7 @@ follow-ups, articles, related tickets and the rest of the work rail) sit in the 
 | RequestApprovals · Request and approvals · ask a colleague to approve | live | new story: the ordered items with their approval route and tasks; "Ask for approval" (any or all, the question; pressed too early says so) |
 | MoveShareDocs · Move, share, documents and follow-ups | live | new story: the HR summary, move to another desk (reason), share with another desk, documents to sign, follow-up sequences |
 | Articles · Articles used · solved by, out of date, make one | live | new story: articles used on the ticket, "Solved by this", "Out of date" with a reason, make a draft article |
-| RelatedTickets · Related tickets, merge, tasks, side conversations, targets, reminders | live | new story: link, merge (the design's "Merge into another ticket"), split, parent, tracker; tasks; side conversations; Response targets with breach reasons; reminders and snooze; hidden personal data |
+| RelatedTickets · Related tickets, merge, tasks, side conversations, targets, reminders | live | new story: link, merge (the design's "Merge into another ticket"), split, parent, tracker; tasks; side conversations; Response targets with breach reasons; reminders and snooze; hidden personal data; answer 1648 (13 Nov 2026): the response targets card ends with "Timing" for agents: the average wait for a reply, time on hold, moves (queue or owner) and the agents involved, in the SLA engine's business time |
 | Escalate · Move to another support level | live | new story: the header menu's "Move to another support level" (L1 / L2 / L3, group, reason; pressed with no reason says so) |
 | ResolveWithCode · Resolve · code and note | live | new story: the resolve dialog |
 | ResolvedRated · Resolved · closes on, the rating | live | new story |
@@ -701,6 +701,7 @@ File: `packages/yx-ui/src/screens/ops/hlp-18.stories.tsx`. Drawn 12 Nov 2026 (th
 | CatalogSetupEdit · Catalogue item editor | live | same page |
 | CatalogSetupAddMissing · Add item pressed with no name | live | same page |
 | CatalogSetupLimitStep · Moving the first section up says it is already first | live | same page |
+| CatalogSetupAppOwner · Access request approved by the application owner | live | Helpdesk plan item 3: form question type "An application (live list)" (`GET desk/my/pick/apps`, active applications only) and approver "The owner of the application in the form" (`app_owner`); the desk's admins can decide too; the owner grants or refuses in their approvals (audited) |
 | CatalogSetupEmpty · No catalogue items yet | live | same page |
 | CatalogSetupSaveFailed · Saving an item refused | live | same page |
 | Rules · Rules | live | same page |
@@ -739,9 +740,46 @@ File: `packages/yx-ui/src/screens/ops/hlp-20.stories.tsx`. Drawn 12 Nov 2026 (an
 | ArticleSolved · This solved it (toast) | live | `POST …/solved`, no ticket made |
 | ArticleFallback · Not in your language yet (shown in English) | live | the article in the company's default language when the person's is missing |
 
-#### HLP-22 · Buildings and equipment
+#### HLP-21 · Business applications
 
-File: `packages/yx-ui/src/screens/ops/hlp-22.stories.tsx`. Drawn 13 Nov 2026 (Helpdesk plan item 4) at /yx/desk/facilities: buildings are the company's locations; their floors or areas and the equipment (owned by a team of a facilities desk) are kept here. Read by the facilities desks' staff and the company's Service Desk owner; changed only by a facilities desk's admins (equipment: the admins of its own desk). RLS keeps it to the company.
+File: `packages/yx-ui/src/screens/ops/hlp-21.stories.tsx`. Drawn 13 Nov 2026 (Helpdesk plan item 3): the company's business applications and their owners, at /yx/desk/apps. Access is asked for through the service catalogue: an item whose form has an "application" question (type `app`, active applications only) and an approval step "the owner of the application in the form" (approver kind `app_owner` in the shared approvals engine); the desk's admins are added to that step. Nobody approves their own request (the engine's rule).
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Apps · Applications and their owners | live | `GET desk/apps` (the desks' staff and the company's Service Desk owner); RLS keeps it to the company |
+| AppNew · New application | live | `POST desk/apps` (`desk.desk.create`): name, what it is for, owner (an active colleague), audited, toast |
+| AppNewMissing · Save pressed with nothing filled | live | too-early: name, owner |
+| AppEdit · Change the owner, or retire it | live | `PATCH desk/apps/:id` (version check, audited); a retired application drops out of the catalogue picker and is refused at checkout |
+| AppSaveFailed · Saving refused (name already on the list) | live | 409, a name once per company |
+| AppsReadOnly · Desk staff: read only | live | no New or Edit without `desk.desk.create` |
+| AppsEmpty · No applications yet | live | |
+| AppsLoading · Loading | live | |
+| AppsError · Could not load | live | |
+#### HLP-22 · Changes and problems
+
+File: `packages/yx-ui/src/screens/ops/hlp-22.stories.tsx` (screens in `hlp-22-itsm.tsx`). A DRAFT drawn 13 Nov 2026 for
+Helpdesk plan item 5 (IT change requests and problem records); the plan and questions 1931 to 1943 are in
+`docs/yukthix/helpdesk-itsm-plan.md`. Nothing is built until the founder answers.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Changes · Changes · list, clash and the change calendar | design only, feature not built | draft: the change list, a clash between two changes, freeze days in the calendar (1936) |
+| ChangesEmpty · Changes · none yet | design only, feature not built | draft |
+| NewChange · New change · kind, risk questions, window, way back | design only, feature not built | draft: kind as one choice, the five risk questions (1933), the approval route by risk (1934) |
+| NewChangeTooEarly · New change · sent with nothing filled | design only, feature not built | draft: what is missing, shown when pressed |
+| NewEmergency · New change · emergency, one approver now | design only, feature not built | draft (1934) |
+| WaitingForApproval · A change · waiting for the change board (high risk) | design only, feature not built | draft: the approvals engine's route |
+| ScheduledClash · A change · scheduled, clashes with another | design only, feature not built | draft: a standard change from a pre-approved template (1935) |
+| InProgress · A change · in progress, the checklist and the outcome | design only, feature not built | draft: done, done with problems, backed out |
+| Review · A change · review after it caused incidents | design only, feature not built | draft (1938) |
+| Problems · Problems · list, a repeat suggested | design only, feature not built | draft (1939) |
+| ProblemInvestigating · A problem · linked incidents, cause not found yet | design only, feature not built | draft |
+| KnownError · A problem · known error, workaround to the knowledge base, fix by change | design only, feature not built | draft (1940, 1941) |
+| NoAccess · No access (not on the IT desk) | design only, feature not built | draft |
+
+#### HLP-23 · Buildings and equipment
+
+File: `packages/yx-ui/src/screens/ops/hlp-23.stories.tsx`. Drawn 13 Nov 2026 (Helpdesk plan item 4) at /yx/desk/facilities: buildings are the company's locations; their floors or areas and the equipment (owned by a team of a facilities desk) are kept here. Read by the facilities desks' staff and the company's Service Desk owner; changed only by a facilities desk's admins (equipment: the admins of its own desk). RLS keeps it to the company.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
@@ -2078,3 +2116,25 @@ Draw kit designs for the five live pages that still render stand-ins (service ca
 - Founder (12 Nov 2026, "ok for all"): 1661 to 1663 approved as suggested. To build: a "Device" field on IT desk tickets, set or changed by IT agents and shown in the ticket details, drawn first (1661); "Which device?" on plain IT tickets when the person has a device assigned (1662).
 - Founder (12 Nov 2026, "Ok for all"): 1681 to 1685 approved as suggested. To build: "Search words" moves to its own knowledge-base settings page (1681); rating reason in the one-click email rating and the chat rating (1682); "outside hours" flag only on tickets the person raised themselves, not agent-logged ones (1683); a "Searches that led to tickets" list, counts only (1684); "Which device?" shows when the person the ticket is for has a device (1685).
 - Founder (13 Nov 2026, "Ok for all"): 1801 to 1804 approved as suggested. To build: "On behalf of" on the help-centre raise form for people allowed to raise for others (1801); ask "Who is this for?" before the item form when an item has a device field (1802); a search shows in "Searches that led to tickets" only once at least 2 different people used it (1803); split desk Settings into "Tickets" and "Requesters" tabs (1804).
+
+## 1648 and 1649 built (13 Nov 2026, `feat/yukthix-helpdesk-timing-palette`): questions for the founder
+
+1648: on a ticket's response targets card, agents see "Timing": the average wait for a reply, time on hold, how many
+times it moved (queue or owner) and the agents involved, in business time on the calendar of the ticket's resolution
+target (the SLA engine's clock), from the work panel (`GET /desk/tickets/:id/work`, agents only; observers,
+collaborators and requesters never get it). 1649: in Ctrl K, an agent types a ticket number to open it (only a ticket
+they may open, `GET /desk/tickets/by-number/:number`); on an open ticket, "Insert saved reply: …" and "Run scenario: …";
+and "Set my status: …". Each shows only with its key (viewing or working tickets), and the API checks it again. Drawn
+first: the command palette's "desk actions" story and timing on the HLP-03 work panel story.
+
+1861. **The average wait.** From the ticket opening, or a requester's message, to the next public agent reply (notes
+      and side conversations do not count); several requester messages in a row count from the first. *Suggested: keep.*
+1862. **Time on hold** counts only the "On hold" status (not "Waiting on the requester"), in business time.
+      *Suggested: keep; add the waiting time as its own line if you want it.*
+1863. **Moves.** Each change of group, and each change of owner after the first (the first assignment is not a move;
+      taking the owner away is). *Suggested: keep.*
+1864. **Agents involved.** Everyone who replied or wrote a note, was the owner, or logged time on the ticket.
+      *Suggested: keep.*
+1865. **Palette saved replies** list the desk's and the agent's own active saved replies, all of them; Ctrl K's search
+      narrows them as the agent types. *Suggested: keep.*
+

@@ -14,12 +14,14 @@ export const Locked: S = { name: 'Locked · August week', args: { status: 'locke
 export const PhoneSentBack: S = { name: 'Phone · sent back, resubmit', args: { layout: 'days', status: 'sent_back' }, ...phone };
 export const Phone: S = { name: 'Phone · day list, submit week', args: { layout: 'days' }, ...phone };
 
-// Answers 1731 to 1736 (founder, 12 Nov 2026): a note per row, in the person's own words, with a live word count. The
-// company's rule (Settings › Projects & timesheets) is required, at least 200 words, by default; Save draft never asks.
-const SENTENCE = 'Built and tested the order history page for the store, fixed two layout bugs on small phones, and walked the client through the new filters on our weekly call. ';
-const words = (n: number) => SENTENCE.repeat(Math.ceil(n / 30)).split(' ').filter(Boolean).slice(0, n).join(' ');
-const NOTED = TS_LINES.map((l, i) => ({ ...l, note: [words(212), words(142), ''][i % 3] }));
-export const NoteRequired: S = { name: 'Notes · required, 200 words, live count', args: { noteRule: { required: true, minWords: 200 }, initialLines: NOTED } };
-export const NoteRefused: S = { name: 'Notes · resubmit refused until each row has 200 words', args: { status: 'sent_back', noteRule: { required: true, minWords: 200 } } };
-export const NoteOptional: S = { name: 'Notes · optional (company setting off)', args: { noteRule: { required: false, minWords: 200 }, initialLines: NOTED } };
-export const PhoneNote: S = { name: 'Phone · notes under each project', args: { layout: 'days', noteRule: { required: true, minWords: 200 }, initialLines: NOTED }, ...phone };
+// Answer 1787 (founder change, 13 Nov 2026, from a reference picture): a comment per day. Under each day with hours a
+// "Comment" link opens a small box below the cell, with a live word count; a day with no hours has none. The company's
+// rule (Settings › Projects & timesheets) is required, at least 20 words a day with hours, by default; Save draft never asks.
+const SENTENCE = 'Built and tested the order history page for the store, fixed two layout bugs on small phones, and walked the client through the new filters. ';
+const words = (n: number) => SENTENCE.repeat(Math.ceil(n / 25)).split(' ').filter(Boolean).slice(0, n).join(' ');
+const COMMENTED = TS_LINES.map((l, i) => ({ ...l, comments: l.hours.map((h, d) => (h ? [words(24), words(12), ''][(i + d) % 3]! : '')) }));
+const RULE = { required: true, minWords: 20 };
+export const CommentDays: S = { name: 'Comments · a link under each day with hours, live count', args: { noteRule: RULE, initialLines: COMMENTED } };
+export const CommentRefused: S = { name: 'Comments · resubmit refused until each day has 20 words', args: { status: 'sent_back', noteRule: RULE } };
+export const CommentOptional: S = { name: 'Comments · optional (company setting off)', args: { noteRule: { required: false, minWords: 20 }, initialLines: COMMENTED } };
+export const PhoneComments: S = { name: 'Phone · a comment under each day', args: { layout: 'days', noteRule: RULE, initialLines: COMMENTED }, ...phone };

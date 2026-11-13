@@ -75,6 +75,8 @@ export * from './esm-types';
 export { CatalogScreen, RequestTracker, LANGS, type CatalogScreenProps } from './catalog';
 export { ServiceForm, LivePicker, ChoiceLabel, type ServiceFormProps } from './service-form';
 export { CatalogAdmin, FormBuilder, type CatalogAdminProps } from './catalog-admin';
+// Helpdesk plan item 3: the company's business applications and their owners.
+export { BusinessAppsScreen, type BusinessApp, type BusinessAppInput, type BusinessAppsProps } from './business-apps';
 // Helpdesk plan item 4: buildings, areas and equipment, and the place a facilities ticket names.
 export { FacilitiesScreen, TicketPlaceCard, type FacilitiesProps, type FacilitiesRegister, type EquipmentPageView, type EquipmentInput, type TicketPlace } from './facilities';
 export { RulesAdmin, type RulesAdminProps } from './rules-admin';

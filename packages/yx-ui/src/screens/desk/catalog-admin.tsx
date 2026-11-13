@@ -59,6 +59,7 @@ const TYPE_OPTIONS: { value: FormFieldType; label: string }[] = [
   { value: 'cost_centre', label: 'A cost centre (live list)' },
   // Helpdesk item 2: the requester's own devices from the People asset register.
   { value: 'asset', label: 'One of their devices (live list)' },
+  { value: 'app', label: 'An application (live list)' },
   { value: 'formula', label: 'Worked out (formula)' },
   { value: 'separator', label: 'Heading between fields' },
 ];
@@ -88,7 +89,7 @@ function formRuleFields(form: FormDef, extra: RuleField[] = []): RuleField[] {
     else if (f.type === 'date') out.push({ key: f.key, label: f.label, type: 'date' });
     else if (f.type === 'checkbox') out.push({ key: f.key, label: f.label, type: 'choice', options: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }] });
     else if (f.type === 'choice' || f.type === 'multi_choice') out.push({ key: f.key, label: f.label, type: 'choice', options: f.options?.map((o) => ({ value: o.value, label: o.label })) ?? [] });
-    else if (f.type !== 'person' && f.type !== 'location' && f.type !== 'cost_centre' && f.type !== 'asset') out.push({ key: f.key, label: f.label, type: 'text' });
+    else if (f.type !== 'person' && f.type !== 'location' && f.type !== 'cost_centre' && f.type !== 'asset' && f.type !== 'app') out.push({ key: f.key, label: f.label, type: 'text' });
   }
   return [...out, ...extra];
 }
@@ -549,6 +550,7 @@ function FormRulesEditor({ form, onChange }: { form: FormDef; onChange: (f: Form
 
 function StepsEditor({ steps, onChange, form, schema, onFindPeople }: { steps: ApprovalStepDef[]; onChange: (s: ApprovalStepDef[]) => void; form: FormDef; schema: CatalogSchema | null; onFindPeople: CatalogAdminProps['onFindPeople'] }) {
   const ccFields = form.sections.flatMap((s) => s.fields).filter((f) => f.type === 'cost_centre');
+  const appFields = form.sections.flatMap((s) => s.fields).filter((f) => f.type === 'app');
   const setAt = (i: number, patch: Partial<ApprovalStepDef>) => onChange(steps.map((s, j) => (j === i ? { ...s, ...patch } : s)));
   const pick = (_k: PickKind, q: string) => onFindPeople(q);
   const { toast } = useToast();
@@ -568,13 +570,14 @@ function StepsEditor({ steps, onChange, form, schema, onFindPeople }: { steps: A
                   options={[
                     { value: 'manager', label: "The requester's manager" },
                     { value: 'cost_centre_owner', label: 'The owner of the cost centre in the form' },
+                    { value: 'app_owner', label: 'The owner of the application in the form' },
                     { value: 'users', label: 'Named people' },
                     { value: 'user_group', label: 'A group' },
                   ]}
                   value={a?.kind ?? null}
                   onChange={(kind) =>
                     setAt(i, {
-                      approvers: [kind === 'manager' ? { kind: 'manager', level: 1 } : kind === 'cost_centre_owner' ? { kind: 'cost_centre_owner', field: ccFields[0]?.key ?? '' } : kind === 'users' ? { kind: 'users', userIds: [] } : { kind: 'user_group', groupId: schema?.userGroups[0]?.id ?? '' }],
+                      approvers: [kind === 'manager' ? { kind: 'manager', level: 1 } : kind === 'cost_centre_owner' ? { kind: 'cost_centre_owner', field: ccFields[0]?.key ?? '' } : kind === 'app_owner' ? { kind: 'app_owner', field: appFields[0]?.key ?? '' } : kind === 'users' ? { kind: 'users', userIds: [] } : { kind: 'user_group', groupId: schema?.userGroups[0]?.id ?? '' }],
                     })
                   }
                 />
@@ -587,6 +590,14 @@ function StepsEditor({ steps, onChange, form, schema, onFindPeople }: { steps: A
                   </FormField>
                 ) : (
                   <InlineAlert tone="warning" title="Add a cost centre question to the form first" />
+                ))}
+              {a?.kind === 'app_owner' &&
+                (appFields.length ? (
+                  <FormField label="Application question" helper="The desk's admins can say yes or no too.">
+                    <Select options={appFields.map((f) => ({ value: f.key, label: f.label }))} value={a.field} onChange={(field) => field && setAt(i, { approvers: [{ kind: 'app_owner', field }] })} />
+                  </FormField>
+                ) : (
+                  <InlineAlert tone="warning" title="Add an application question to the form first" />
                 ))}
               {a?.kind === 'users' && <NamedPeople ids={a.userIds} onChange={(userIds) => setAt(i, { approvers: [{ kind: 'users', userIds }] })} onPick={pick} />}
               {a?.kind === 'user_group' && (

@@ -509,6 +509,18 @@ export class TicketsService {
    * YX-SD-17 / US-G-030 read log: who opened which ticket, when and from where, one row per viewer and ticket per 30
    * minutes. Opening a sensitive or private ticket also writes its audit row (batch 1), now on the same 30-minute rule.
    */
+  /** Answer 1649: the palette's "go to ticket": a ticket number the agent may open (any other answer is "no such ticket"). */
+  async byNumber(a: DeskActor, number: string) {
+    return this.tx(a, async (tx) => {
+      const hits = await tx.sdTicket.findMany({ where: { organizationId: a.ctx.organizationId, number: { equals: number.trim(), mode: 'insensitive' } }, select: { id: true }, take: 5 });
+      for (const h of hits) {
+        const t = await tx.sdTicket.findFirst({ where: { id: h.id } });
+        if (t && (await ticketAccess(tx, a, t))) return { id: t.id, number: t.number };
+      }
+      throw new NotFoundException('No such ticket.');
+    });
+  }
+
   async logRead(tx: Tx, a: DeskActor, t: Ticket, access: TicketAccess | 'export', ip?: string | null) {
     const recent = await tx.sdTicketRead.findFirst({ where: { organizationId: a.ctx.organizationId, ticketId: t.id, userId: a.userId, readAt: { gt: new Date(Date.now() - 30 * 60_000) } }, select: { id: true } });
     if (recent) return;

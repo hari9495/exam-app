@@ -64,6 +64,8 @@ const HIRING_SUPPORT_EXCLUDED = ['offers', 'pipeline_feedback', 'referrals', 're
 // Later features that also carry the RESTRICTIVE support_session_excluded policy (added 9 Nov 2026 from the catalogue,
 // pg_policy, when this list had fallen behind): helpdesk cases, BFSI and pay extras, expenses cards, performance disputes.
 const LATER_SUPPORT_EXCLUDED = [
+  // Settings S-9 (answer 1332): a whole-company export never runs inside a support session.
+  'company_exports',
   // HLP-12 accidents, HLP-13 collective disputes, speak-up cases.
   'accident_cases', 'accident_medical_records', 'accident_steps', 'ir_disputes', 'ir_dispute_steps',
   'speakup_cases', 'speakup_case_members', 'speakup_case_steps', 'speakup_messages', 'speakup_team_members',

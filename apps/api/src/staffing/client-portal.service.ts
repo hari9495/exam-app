@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
-import { lineApproved } from '../time/line-rules';
+import { commentsText, lineApproved } from '../time/line-rules';
 import { createHash, randomBytes } from 'crypto';
 import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import type { ScopeUser } from '../access/scope';
@@ -224,7 +224,7 @@ export class ClientPortalService {
         const sh = sheets.find((x) => x.id === l.timesheetId)!;
         const p = projects.find((x) => x.id === l.projectId)!;
         const minutes = lineApproved(l).reduce((a, b) => a + b, 0);
-        return { id: l.id, worker: displayName(people.find((e) => e.id === sh.employeeId) ?? { givenName: 'Employee', familyName: null, preferredName: null }), project: `${p.code} · ${p.name}`, task: l.activity, weekStart: iso(sh.weekStart), hours: hrs(Math.round((minutes * 100) / 60)), status: l.clientStatus === 'waiting' ? 'Waiting for you' : l.clientStatus === 'approved' ? 'Approved' : 'Sent back', note: l.clientNote, workNote: p.clientSeesNotes ? l.note : null, version: l.version };
+        return { id: l.id, worker: displayName(people.find((e) => e.id === sh.employeeId) ?? { givenName: 'Employee', familyName: null, preferredName: null }), project: `${p.code} · ${p.name}`, task: l.activity, weekStart: iso(sh.weekStart), hours: hrs(Math.round((minutes * 100) / 60)), status: l.clientStatus === 'waiting' ? 'Waiting for you' : l.clientStatus === 'approved' ? 'Approved' : 'Sent back', note: l.clientNote, workNote: p.clientSeesNotes ? commentsText(l.dayComments) || null : null, version: l.version };
       })
       .sort((a, b) => (b.weekStart ?? '').localeCompare(a.weekStart ?? ''));
   }

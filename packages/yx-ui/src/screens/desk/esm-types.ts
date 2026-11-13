@@ -61,7 +61,8 @@ export interface PickOption {
   detail: string | null;
 }
 /** 'assets': the requester's own devices (People asset register); an IT agent searches all (Helpdesk item 2). */
-export type PickKind = 'people' | 'locations' | 'cost-centres' | 'assets' | 'buildings' | 'areas' | 'equipment';
+/** 'apps': the company's business applications that can be asked for (plan item 3); 'buildings' | 'areas' | 'equipment': the facilities register (plan item 4). */
+export type PickKind = 'people' | 'locations' | 'cost-centres' | 'assets' | 'apps' | 'buildings' | 'areas' | 'equipment';
 
 export type ItemStage = 'submitted' | 'approval' | 'fulfilment' | 'delivered' | 'cancelled' | 'rejected';
 export interface ApprovalRoute {
@@ -144,7 +145,7 @@ export interface FulfilmentTaskDef {
   olaHours?: number;
   note?: string;
 }
-export type ApproverDef = { kind: 'manager'; level?: number } | { kind: 'cost_centre_owner'; field: string } | { kind: 'users'; userIds: string[] } | { kind: 'user_group'; groupId: string };
+export type ApproverDef = { kind: 'manager'; level?: number } | { kind: 'cost_centre_owner'; field: string } | { kind: 'app_owner'; field: string } | { kind: 'users'; userIds: string[] } | { kind: 'user_group'; groupId: string };
 export interface ApprovalStepDef {
   name: string;
   approvers: ApproverDef[];

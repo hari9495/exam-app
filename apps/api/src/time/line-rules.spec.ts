@@ -1,4 +1,4 @@
-import { allocationMinutes, bulkOk, lineApproved, noteProblem, reduceMinutes, weekOutcome, wordCount } from './line-rules';
+import { allocationMinutes, bulkOk, commentsText, dayCommentProblems, lineApproved, reduceMinutes, sevenComments, weekOutcome, wordCount } from './line-rules';
 
 describe('line-by-line approval rules (PRJ-02, answers 1406, 1407, 1442)', () => {
   it('approved minutes follow the decision', () => {
@@ -36,18 +36,25 @@ describe('line-by-line approval rules (PRJ-02, answers 1406, 1407, 1442)', () =>
   });
 });
 
-describe('the timesheet note (answers 1731 to 1733)', () => {
+describe('the timesheet comment per day (answer 1787)', () => {
   const words = (n: number) => Array.from({ length: n }, (_, i) => `w${i}`).join(' ');
   it('counts words, not characters or spaces', () => {
     expect(wordCount('  Built the  checkout\npage. ')).toBe(4);
     expect(wordCount('')).toBe(0);
     expect(wordCount(null)).toBe(0);
   });
-  it('a row with hours needs at least N words when required; 199 is refused, 200 accepted', () => {
-    const rule = { required: true, minWords: 200 };
-    expect(noteProblem(rule, [480, 0, 0, 0, 0, 0, 0], words(199))).toBe('write at least 200 words about the work (199 so far)');
-    expect(noteProblem(rule, [480, 0, 0, 0, 0, 0, 0], words(200))).toBeNull();
-    expect(noteProblem(rule, [0, 0, 0, 0, 0, 0, 0], '')).toBeNull(); // no hours, no note needed
-    expect(noteProblem({ required: false, minWords: 200 }, [480, 0, 0, 0, 0, 0, 0], '')).toBeNull();
+  it('each day with hours needs N words; 19 is refused, 20 accepted; days with no hours need none', () => {
+    const rule = { required: true, minWords: 20 };
+    const mins = [480, 240, 0, 0, 0, 0, 0];
+    expect(dayCommentProblems(rule, mins, [words(20), words(19)])).toEqual([{ day: 1, words: 19 }]);
+    expect(dayCommentProblems(rule, mins, [words(20), ''])).toEqual([{ day: 1, words: 0 }]);
+    expect(dayCommentProblems(rule, mins, [words(20), words(20)])).toEqual([]);
+    expect(dayCommentProblems(rule, [0, 0, 0, 0, 0, 0, 0], [])).toEqual([]);
+    expect(dayCommentProblems({ required: false, minWords: 20 }, mins, [])).toEqual([]);
+  });
+  it('seven comments, trimmed; one text for readers outside the timesheet', () => {
+    expect(sevenComments([' a ', null])).toEqual(['a', '', '', '', '', '', '']);
+    expect(commentsText(['Fixed the build', '', 'Client call'])).toBe('Mon: Fixed the build\nWed: Client call');
+    expect(commentsText([])).toBe('');
   });
 });

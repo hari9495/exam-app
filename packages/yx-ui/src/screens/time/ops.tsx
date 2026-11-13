@@ -565,11 +565,11 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
   const [pf, setPf] = useState(false);
   const { busy, error, run } = useRun();
   useEffect(() => {
-    if (d) setLines(d.lines.map((l) => ({ id: l.id, projectId: l.projectId, taskId: l.activity, billable: l.billable, hours: l.minutes.map((m) => (m ? Math.round((m / 60) * 100) / 100 : null)), note: l.note ?? '' })));
+    if (d) setLines(d.lines.map((l) => ({ id: l.id, projectId: l.projectId, taskId: l.activity, billable: l.billable, hours: l.minutes.map((m) => (m ? Math.round((m / 60) * 100) / 100 : null)), comments: Array.from({ length: 7 }, (_, k) => l.comments?.[k] ?? '') })));
     setProblems([]);
   }, [d]);
-  const input = (): TimesheetLineInput[] => lines.filter((l) => l.projectId).map((l) => ({ projectId: l.projectId!, activity: l.taskId, billable: l.billable, minutes: l.hours.map((h) => Math.round((h ?? 0) * 60)), note: l.note?.trim() || null }));
-  // Answers 1731 to 1733: the company's note rule (the API checks it again on submit).
+  const input = (): TimesheetLineInput[] => lines.filter((l) => l.projectId).map((l) => ({ projectId: l.projectId!, activity: l.taskId, billable: l.billable, minutes: l.hours.map((h) => Math.round((h ?? 0) * 60)), comments: Array.from({ length: 7 }, (_, k) => (l.comments?.[k] ?? '').trim()) }));
+  // Answer 1787: the company's comment rule, per day with hours (the API checks it again on submit).
   const noteRule = d?.noteRule;
   const days: TimesheetDay[] = (d?.days ?? []).map((x) => (x.holiday ? { expected: 0, kind: 'holiday', label: x.holiday } : x.leave === 'full' ? { expected: 0, kind: 'leave', label: 'On leave' } : { expected: 0, kind: 'workday' }));
   const locked = (d?.days ?? []).filter((x) => x.locked);
@@ -668,7 +668,7 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
   );
 }
 
-export function TimesheetScreen({ status = 'draft', layout = 'auto', prefillOpen = false, prefillView = 'suggestions', initialLines, noteRule, live }: { status?: TimesheetStatus; layout?: 'auto' | 'days'; prefillOpen?: boolean; prefillView?: PrefillView; initialLines?: TimesheetLine[]; /** Answers 1731 to 1736: a note per row with a live word count. */ noteRule?: TimesheetNoteRule; /** The live app's /time/timesheet. */ live?: LiveTimesheet }) {
+export function TimesheetScreen({ status = 'draft', layout = 'auto', prefillOpen = false, prefillView = 'suggestions', initialLines, noteRule, live }: { status?: TimesheetStatus; layout?: 'auto' | 'days'; prefillOpen?: boolean; prefillView?: PrefillView; initialLines?: TimesheetLine[]; /** Answer 1787: a comment per day with hours, with a live word count. */ noteRule?: TimesheetNoteRule; /** The live app's /time/timesheet. */ live?: LiveTimesheet }) {
   if (live) return <LiveTimesheetScreen live={live} />;
   return <SampleTimesheet status={status} layout={layout} prefillOpen={prefillOpen} prefillView={prefillView} initialLines={initialLines} noteRule={noteRule} />;
 }

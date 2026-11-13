@@ -695,6 +695,14 @@ export class DeskWorkController {
     return this.work.overview(await this.actor(req, t), id);
   }
 
+  /** Answer 1649: the command palette's "go to ticket <number>" (only tickets this agent may open). */
+  @Get('tickets/by-number/:number')
+  @RequirePermissions(VIEW)
+  async byNumber(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('number') number: string) {
+    if (!/^[A-Za-z0-9-]{1,40}$/.test(number)) throw new NotFoundException('No such ticket.');
+    return this.tickets.byNumber(await this.actor(req, t), number);
+  }
+
   @Get('tickets/:id/sla')
   @RequirePermissions(VIEW)
   async slaTimeline(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string) {

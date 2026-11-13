@@ -5,7 +5,7 @@ import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { RequirePermissions } from '../rbac/permissions.decorator';
+import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { RequireStepUp } from '../auth/step-up.decorator';
 import { MODERATE_UPLOAD_THROTTLE, PUBLIC_API_THROTTLE } from '../rate-limit-tiers';
 import { CatalogService } from './catalog.service';
@@ -31,6 +31,7 @@ import {
   WebhookActiveDto,
   WebhookDto,
   AssetPickQueryDto,
+  BusinessAppDto,
 } from './dto-esm';
 import { RequesterService } from './requester.service';
 
@@ -53,6 +54,25 @@ export class DeskCatalogController {
   @RequirePermissions('desk.ticket.work')
   async pickAssets(@Req() req: Request, @CurrentTenant() t: TenantContext, @Query() q: AssetPickQueryDto) {
     return this.catalog.searchAssets(await this.access.actor(req, t), q.deskId, q.q ?? '');
+  }
+
+  /** Helpdesk plan item 3: the company's business applications and their owners. */
+  @Get('apps')
+  @RequireAnyPermission('desk.desk.create', 'desk.ticket.view')
+  async apps(@Req() req: Request, @CurrentTenant() t: TenantContext) {
+    return this.catalog.apps(await this.access.actor(req, t));
+  }
+
+  @Post('apps')
+  @RequirePermissions('desk.desk.create')
+  async addApp(@Req() req: Request, @CurrentTenant() t: TenantContext, @Body() dto: BusinessAppDto) {
+    return this.catalog.saveApp(await this.access.actor(req, t), null, dto);
+  }
+
+  @Patch('apps/:id')
+  @RequirePermissions('desk.desk.create')
+  async editApp(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: BusinessAppDto) {
+    return this.catalog.saveApp(await this.access.actor(req, t), id, dto);
   }
 
   @Get('catalog/admin/items')
@@ -318,7 +338,7 @@ export class MyCatalogController {
   @Get('pick/:kind')
   @Throttle(PUBLIC_API_THROTTLE)
   pick(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('kind') kind: string, @Query() q: PickQueryDto) {
-    if (kind !== 'people' && kind !== 'locations' && kind !== 'cost-centres' && kind !== 'assets') throw new BadRequestException('Pick people, locations, cost centres or your devices.');
+    if (kind !== 'people' && kind !== 'locations' && kind !== 'cost-centres' && kind !== 'assets' && kind !== 'apps') throw new BadRequestException('Pick people, locations, cost centres, your devices or applications.');
     return this.catalog.pick(this.requesters.who(req, t), kind, q.q ?? '', q.for);
   }
 }

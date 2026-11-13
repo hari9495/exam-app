@@ -52,7 +52,7 @@ function panelFor(area: OpsArea, active: string, member: boolean, counts: Record
     case 'helpdesk':
       // Cases visible to case members only (YX-CASE-02).
       // HLP-15 to HLP-19 (12 Nov 2026): the catalogue, chat, team and set-up pages join the panel as the live menu has them.
-      return [{ items: mk(['Help centre', 'Service catalogue', 'Chat', 'Tickets', 'Live chat', 'Knowledge base', ...(member ? ['Cases'] : []), 'Speak-up', 'Policies', 'SLAs', 'Desk team', 'Buildings and equipment', 'Desk set-up']) }];
+      return [{ items: mk(['Help centre', 'Service catalogue', 'Chat', 'Tickets', 'Live chat', 'Knowledge base', ...(member ? ['Cases'] : []), 'Speak-up', 'Policies', 'SLAs', 'Desk team', 'Applications', 'Buildings and equipment', 'Desk set-up']) }];
     case 'compliance':
       // POSH only for IC members (YX-POSH-05).
       return [{ items: mk(['Statutory hub', 'Statutory set-up', 'Registers', 'TDS & Form 16', 'Missing IDs', 'Rules & updates', ...(member ? ['POSH'] : [])]) }];

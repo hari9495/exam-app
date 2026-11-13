@@ -3,6 +3,10 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState, type ReactNode } from 'react';
 import {
   Bell,
+  CircleDot,
+  MessageSquare,
+  Ticket,
+  Wand2,
   CalendarDays,
   ClipboardList,
   Download,
@@ -388,6 +392,29 @@ export const PaletteSearching: S = {
 export const PaletteNoResults: S = {
   name: 'Command palette · no results',
   render: () => <CommandPalette groups={PALETTE} onSelect={() => {}} defaultOpen defaultSearch="gratuity nomination" />,
+};
+
+// Answer 1649: an agent's desk actions in Ctrl K, each shown only with its key (the API checks it again): go to a
+// ticket by its number, and on an open ticket insert a saved reply or run a scenario; set my own status.
+const DESK_PALETTE: PaletteGroup[] = [
+  {
+    heading: 'Desk',
+    prefix: '>',
+    items: [
+      { id: 'desk:number', label: 'Open ticket IT-1042', secondary: 'Go to the ticket', icon: Ticket },
+      { id: 'desk:reply:1', label: 'Insert saved reply: Password reset steps', secondary: 'Into the reply on IT-1038', icon: MessageSquare },
+      { id: 'desk:scenario:1', label: 'Run scenario: Escalate to network team', secondary: 'On IT-1038', icon: Wand2 },
+      { id: 'desk:status:available', label: 'Set my status: Available', secondary: 'Now: Away', icon: CircleDot },
+      { id: 'desk:status:busy', label: 'Set my status: Busy', icon: CircleDot },
+      { id: 'desk:status:away', label: 'Set my status: Away', icon: CircleDot },
+      { id: 'desk:status:offline', label: 'Set my status: Offline', icon: CircleDot },
+    ],
+  },
+];
+
+export const PaletteDeskActions: S = {
+  name: 'Command palette · desk actions for an agent on a ticket',
+  render: () => <CommandPalette groups={[...DESK_PALETTE, ...PALETTE.filter((g) => g.heading !== 'Recent')]} onSelect={() => {}} defaultOpen />,
 };
 
 export const PaletteMobile: S = {
