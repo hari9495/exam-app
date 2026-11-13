@@ -75,7 +75,7 @@ export function articleStatus(a: Pick<KbArticle, 'state' | 'reviewOverdue'>): { 
   return { label: ARTICLE_STATE_LABEL[a.state], tone: ARTICLE_TONE[a.state] };
 }
 
-export type KbTab = 'articles' | 'categories' | 'blocks' | 'templates' | 'gaps' | 'search-words' | 'bin';
+export type KbTab = 'articles' | 'categories' | 'blocks' | 'templates' | 'gaps' | 'settings' | 'bin';
 export type KbDialog = 'new-article' | 'new-space' | 'edit-space' | 'preview' | 'compare' | 'details' | 'publish' | 'send-back' | 'flag' | 'delete';
 
 export interface LiveKb {
@@ -109,6 +109,10 @@ export interface LiveKb {
    * owner, desk.desk.create); null or absent: not shown.
    */
   searchWords?: { value: string; starter: string; onSave: (text: string) => Promise<unknown> } | null;
+  /** Answer 1841: the company's check-again interval for help articles (moved here from desk Settings); null: not shown. */
+  reviewMonths?: { value: number; onSave: (months: number) => Promise<unknown> } | null;
+  /** Answer 1841: "Show page help" in the Help drawer (moved here from desk Settings); null: not shown. */
+  pageHelp?: { value: boolean; onChange: (on: boolean) => Promise<unknown> } | null;
   /** null: no recycle bin for this person. */
   bin: BinItem[] | null;
   onRestore: (id: string) => Promise<void>;
@@ -164,6 +168,7 @@ export function LiveKbEditor({ live }: { live: LiveKb }) {
 // ---------------------------------------------------------------- the knowledge base: articles and set-up
 
 function KbHome({ live }: { live: LiveKb }) {
+  const hasSettings = !!(live.searchWords || live.reviewMonths || live.pageHelp);
   const [tab, setTab] = useState<KbTab>(live.start?.tab ?? 'articles');
   const [dialog, setDialog] = useState<KbDialog | null>(live.start?.dialog ?? null);
   const space = live.spaces.find((s) => s.id === live.spaceId) ?? null;
@@ -197,7 +202,7 @@ function KbHome({ live }: { live: LiveKb }) {
           {writer && <TabsTrigger value="blocks">Blocks</TabsTrigger>}
           {writer && <TabsTrigger value="templates">Templates</TabsTrigger>}
           {live.canSeeGaps && <TabsTrigger value="gaps">Content gaps</TabsTrigger>}
-          {live.searchWords && <TabsTrigger value="search-words">Search words</TabsTrigger>}
+          {hasSettings && <TabsTrigger value="settings">Settings</TabsTrigger>}
           {live.bin && <TabsTrigger value="bin">Recycle bin</TabsTrigger>}
         </TabsList>
         <TabsContent value="articles">
@@ -227,9 +232,17 @@ function KbHome({ live }: { live: LiveKb }) {
             <GapsCard live={live} />
           </TabsContent>
         )}
-        {live.searchWords && (
-          <TabsContent value="search-words">
-            <SearchWordsCard key={live.searchWords.value} {...live.searchWords} />
+        {hasSettings && (
+          <TabsContent value="settings">
+            <div className="yx-ops-split">
+              {live.searchWords && <SearchWordsCard key={live.searchWords.value} {...live.searchWords} />}
+              {(live.reviewMonths || live.pageHelp) && (
+                <div className="yx-ops-stack">
+                  {live.reviewMonths && <KbReviewRule key={live.reviewMonths.value} value={live.reviewMonths.value} onSave={live.reviewMonths.onSave} />}
+                  {live.pageHelp && <PageHelpRule value={live.pageHelp.value} onChange={live.pageHelp.onChange} />}
+                </div>
+              )}
+            </div>
           </TabsContent>
         )}
         {live.bin && (
@@ -1322,6 +1335,56 @@ function SearchWordsCard({ value, starter, onSave }: { value: string; starter: s
             }}
           >
             Save search words
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+const REVIEW_CHOICES = [3, 6, 12, 24];
+
+/** Registry setting desk.kb.review_months: one value for the company, not per desk. */
+/** Help H-1 (answer 942): the Help drawer's "This page" tab, for the whole company. Takes effect at once (a switch). */
+function PageHelpRule({ value, onChange }: { value: boolean; onChange: (on: boolean) => Promise<unknown> }) {
+  const [on, setOn] = useState(value);
+  const { error, run } = useRun();
+  const { toast } = useToast();
+  return (
+    <Card title="Page help in the Help drawer">
+      <div className="yx-ops-stack">
+        {error && <InlineAlert tone="danger" title="It was not saved">{error}</InlineAlert>}
+        <Switch
+          checked={on}
+          onChange={(next) =>
+            void run('page-help', async () => {
+              await onChange(next);
+              setOn(next);
+              toast({ tone: 'success', title: next ? 'Page help is shown in the Help drawer.' : 'Page help is hidden from the Help drawer.' });
+            })
+          }
+          label="Show page help"
+          description="For the whole company. The Help drawer's This page tab lists the help articles tagged with the page someone is on (Show in Help on these pages, on each article)."
+        />
+      </div>
+    </Card>
+  );
+}
+
+function KbReviewRule({ value, onSave }: { value: number; onSave: (months: number) => Promise<unknown> }) {
+  const [months, setMonths] = useState(String(value));
+  const { busy, error, run } = useRun();
+  const { toast } = useToast();
+  return (
+    <Card title="Check help articles again every">
+      <div className="yx-ops-stack">
+        {error && <InlineAlert tone="danger" title="It was not saved">{error}</InlineAlert>}
+        <FormField label="Check help articles again every" hideLabel helper="For the whole company, not only this desk. A new article, and one marked reviewed, is due for its next check after this long. Dates already set stay as they are.">
+          <Segment label="Check help articles again every" options={REVIEW_CHOICES.map((m) => ({ value: String(m), label: `${m} months` }))} value={months} onChange={setMonths} />
+        </FormField>
+        <div className="yx-ops-row">
+          <Button loading={busy === 'save'} onClick={() => (Number(months) === value ? toast({ title: 'Nothing has changed yet.' }) : void run('save', async () => { await onSave(Number(months)); toast({ tone: 'success', title: `Help articles are now checked every ${months} months.` }); }))}>
+            Save
           </Button>
         </div>
       </div>

@@ -3,9 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { HelpDrawer, type HelpDrawerProps } from './help';
-import { DeskSetupScreen } from './setup';
-import { DESK, DETAIL, MY_ROWS, RAISE_DESKS } from './data';
-const ok = () => vi.fn().mockResolvedValue(undefined);
+import { MY_ROWS, RAISE_DESKS } from './data';
 import { pagesOf, pagesProblem } from '../ops/helpdesk-kb-live';
 
 // Help and onboarding H-1 (answers 941, 942): one Help drawer with This page, Ask, What's new and Tours. Positive and negative.
@@ -64,59 +62,4 @@ describe('H-1: one Help drawer', () => {
     expect(screen.getByText('Help for this page could not be loaded.')).toBeInTheDocument();
   });
 });
-
-describe('H-1: Show page help (Desk set-up)', () => {
-  it('the switch saves at once', async () => {
-    const onPageHelp = vi.fn().mockResolvedValue(undefined);
-    render(
-      <ToastProvider>
-        <DeskSetupScreen state="ready" initialTab="requesters" kbReviewMonths={12} onKbReviewMonths={ok()} pageHelp onPageHelp={onPageHelp} desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, canSetUp: true }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={ok()} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} />
-      </ToastProvider>,
-    );
-    await ue.click(await screen.findByRole('switch', { name: /Show page help/ }));
-    await waitFor(() => expect(onPageHelp).toHaveBeenCalledWith(false));
-  });
-});
-
-describe('H-1: the pages an article explains', () => {
-  it('app addresses, separated with commas; repeats and trailing slashes dropped', () => {
-    expect(pagesOf('/yx/time/leave, /yx/me/pay/ ,/yx/time/leave')).toEqual(['/yx/time/leave', '/yx/me/pay']);
-    expect(pagesProblem('/yx/time/leave, /yx/me/pay')).toBeNull();
-    expect(pagesProblem('')).toBeNull();
-  });
-  it('negative: not an app address, or more than 20', () => {
-    expect(pagesProblem('https://example.com/leave')).toMatch(/not an app address/);
-    expect(pagesProblem('/yx/Time')).toMatch(/not an app address/);
-    expect(pagesProblem(Array.from({ length: 21 }, (_, i) => `/yx/p${i}`).join(','))).toBe('At most 20 pages.');
-  });
-});
-
-describe('Help button unread dot (answer 992)', () => {
-  it('shows a dot and says so while What\'s new has something unread', async () => {
-    const { TopBar } = await import('../../components/shell');
-    const onHelp = vi.fn();
-    const { container } = render(<TopBar onHelp={onHelp} helpUnread />);
-    await ue.click(screen.getByRole('button', { name: "Help, new in What's new" }));
-    expect(onHelp).toHaveBeenCalled();
-    expect(container.querySelector('.yx-topbar__help-dot')).not.toBeNull();
-  });
-  it('negative: no dot and the plain name when nothing is unread', async () => {
-    const { TopBar } = await import('../../components/shell');
-    const { container } = render(<TopBar onHelp={() => {}} />);
-    expect(screen.getByRole('button', { name: 'Help' })).toBeTruthy();
-    expect(container.querySelector('.yx-topbar__help-dot')).toBeNull();
-  });
-});
-
-describe('IrreversibleSheet in the shared kit (answer 962)', () => {
-  it('is exported from the kit root and still asks for the typed phrase', async () => {
-    const { IrreversibleSheet } = await import('../../index');
-    const onConfirm = vi.fn();
-    render(<IrreversibleSheet open onOpenChange={() => {}} title="Approve and lock September 2026" impact={[{ label: 'People', value: 42 }]} cannotUndo="Locked." correction="Use a correction run." phrase="KF SEP 2026" maker="Asha" checker="Ravi" confirmLabel="Approve and lock" onConfirm={onConfirm} />);
-    await ue.click(screen.getByRole('button', { name: 'Approve and lock' }));
-    expect(onConfirm).not.toHaveBeenCalled();
-    await ue.type(screen.getByRole('textbox', { name: /Type KF SEP 2026/ }), 'KF SEP 2026');
-    await ue.click(screen.getByRole('button', { name: 'Approve and lock' }));
-    expect(onConfirm).toHaveBeenCalledWith('');
-  });
-});
+// The Show page help switch moved to the knowledge base Settings tab (answer 1841): helpdesk-kb-live.test.tsx.

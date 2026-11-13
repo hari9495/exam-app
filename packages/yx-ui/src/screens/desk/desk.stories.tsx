@@ -62,7 +62,6 @@ const setupProps: React.ComponentProps<typeof DeskSetupScreen> = {
 export const Setup: S = { name: 'Desk set-up', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} />) };
 // HLP-04 (founder 3 Nov 2026): the article review interval is a company setting, on the Settings tab for the company's
 // Service Desk owner (desk.desk.create).
-export const SetupKbReview: S = { name: 'Desk set-up · Requesters · check help articles again every', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="requesters" kbReviewMonths={12} onKbReviewMonths={noop} pageHelp onPageHelp={noop} />) };
 // HLP-05b (founder 3 Nov 2026): each desk chooses its at-risk point (default 80 %), on the same Settings tab.
 export const SetupAtRisk: S = { name: 'Desk set-up · Tickets · at risk from (per desk)', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="settings" detail={{ ...setupProps.detail!, desk: { ...setupProps.detail!.desk, atRiskPercent: 60 } }} />) };
 // Answer 1643: the reasons a requester may pick after a rating, per desk (a starter list until changed).

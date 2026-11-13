@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ToastProvider } from '@yukthix/ui';
@@ -97,5 +97,33 @@ describe('Helpdesk › Knowledge base (HLP-04 live)', () => {
     route({ 'GET /desk/kb/spaces': () => Promise.reject(Object.assign(new Error('No access.'), { status: 403 })) });
     wrap();
     expect(await screen.findByText(/You don't have access to the knowledge base/)).toBeInTheDocument();
+  });
+  // Answer 1841: the check-again interval and page help live on the knowledge base's own Settings tab.
+  it('1841: the Service Desk owner changes the check-again interval and page help on the knowledge base Settings tab', async () => {
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams(''));
+    route({
+      'GET /rbac/me/permissions': () => ['desk.kb.author', 'desk.kb.view_internal', 'desk.desk.create'],
+      'GET /desk/recycle-bin': () => [],
+      'GET /desk/kb/settings': () => ({ synonyms: 'pf, provident fund', synonymsDefault: 'pf, provident fund', reviewMonths: 12, pageHelp: true }),
+      'PUT /desk/kb/settings': () => ({ reviewMonths: 6, pageHelp: false }),
+    });
+    wrap();
+    await userEvent.click(await screen.findByRole('tab', { name: 'Settings' }));
+    const g = await screen.findByRole('radiogroup', { name: 'Check help articles again every' });
+    await userEvent.click(within(g).getByRole('radio', { name: '6 months' }));
+    await userEvent.click(within(g.closest('.yx-card') as HTMLElement).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(calls).toContain('PUT /desk/kb/settings {"reviewMonths":6}'));
+    await userEvent.click(screen.getByRole('switch', { name: /Show page help/ }));
+    await waitFor(() => expect(calls).toContain('PUT /desk/kb/settings {"pageHelp":false}'));
+    expect(screen.getByText('Search words that mean the same')).toBeInTheDocument();
+  });
+
+  it('1841: an author without desk.desk.create has no Settings tab and does not load the settings', async () => {
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams(''));
+    route();
+    wrap();
+    expect(await screen.findByText('VPN setup')).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Settings' })).toBeNull();
+    expect(calls.some((c) => c.includes('/desk/kb/settings'))).toBe(false);
   });
 });

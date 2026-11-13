@@ -62,8 +62,6 @@ function YxDeskSetupPageInner() {
   const canHooks = perms.has('desk.integration.manage');
   const items = useDesk<CatalogItemAdmin[]>(selected && canCatalog ? `/catalog/admin/items?deskId=${selected}` : null);
   const catalogRules = useDesk<{ highValueAbove: number }>(selected && canCatalog ? '/catalog/admin/settings' : null);
-  // HLP-04 (founder 3 Nov 2026): the company's help-article review interval (registry desk.kb.review_months).
-  const kbSettings = useDesk<{ reviewMonths: number; pageHelp?: boolean }>(perms.has('desk.desk.create') ? '/kb/settings' : null);
   const catalogSchema = useDesk<CatalogSchema>(selected && canCatalog ? `/catalog/admin/schema?deskId=${selected}` : null);
   const rules = useDesk<DeskRule[]>(selected && canRules ? `/rules?deskId=${selected}` : null);
   const ruleSchema = useDesk<DeskRuleSchema>(selected && canRules ? `/rules/schema?deskId=${selected}` : null);
@@ -91,12 +89,6 @@ function YxDeskSetupPageInner() {
   return (
     <DeskSetupScreen
       initialTab={initialTab}
-      kbReviewMonths={kbSettings.data?.reviewMonths ?? null}
-      onKbReviewMonths={perms.has('desk.desk.create') ? (reviewMonths) => write('/kb/settings', 'PUT', { reviewMonths }) : undefined}
-      // Help H-1 (answer 942): "Show page help" in the Help drawer.
-      pageHelp={kbSettings.data?.pageHelp ?? null}
-      onPageHelp={perms.has('desk.desk.create') ? (pageHelp) => write('/kb/settings', 'PUT', { pageHelp }) : undefined}
-      // Answer 1642: the company's search words that mean the same.
       state={deskState(desks)}
       onRetry={() => void desks.refetch()}
       desks={desks.data ?? []}

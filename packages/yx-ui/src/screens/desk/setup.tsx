@@ -901,8 +901,6 @@ function SettingsTab(props: TabProps & { part: 'tickets' | 'requesters' }) {
           </Button>
         </div>
       )}
-      {!tickets && props.onKbReviewMonths && props.kbReviewMonths != null && <KbReviewRule key={props.kbReviewMonths} value={props.kbReviewMonths} onSave={props.onKbReviewMonths} />}
-      {!tickets && props.onPageHelp && props.pageHelp != null && <PageHelpRule value={props.pageHelp} onChange={props.onPageHelp} />}
     </div>
   );
 }
@@ -910,54 +908,6 @@ function SettingsTab(props: TabProps & { part: 'tickets' | 'requesters' }) {
 const REVIEW_CHOICES = [3, 6, 12, 24];
 /** HLP-05b: the at-risk points a desk may choose (the server allows the same five). */
 const AT_RISK_CHOICES = [50, 60, 70, 80, 90];
-
-/** Registry setting desk.kb.review_months: one value for the company, not per desk. */
-/** Help H-1 (answer 942): the Help drawer's "This page" tab, for the whole company. Takes effect at once (a switch). */
-function PageHelpRule({ value, onChange }: { value: boolean; onChange: (on: boolean) => Promise<unknown> }) {
-  const [on, setOn] = useState(value);
-  const { error, run } = useRun();
-  const { toast } = useToast();
-  return (
-    <Card title="Page help in the Help drawer">
-      <div className="yx-ops-stack">
-        {error && <InlineAlert tone="danger" title="It was not saved">{error}</InlineAlert>}
-        <Switch
-          checked={on}
-          onChange={(next) =>
-            void run('page-help', async () => {
-              await onChange(next);
-              setOn(next);
-              toast({ tone: 'success', title: next ? 'Page help is shown in the Help drawer.' : 'Page help is hidden from the Help drawer.' });
-            })
-          }
-          label="Show page help"
-          description="For the whole company. The Help drawer's This page tab lists the help articles tagged with the page someone is on (Show in Help on these pages, on each article)."
-        />
-      </div>
-    </Card>
-  );
-}
-
-function KbReviewRule({ value, onSave }: { value: number; onSave: (months: number) => Promise<unknown> }) {
-  const [months, setMonths] = useState(String(value));
-  const { busy, error, run } = useRun();
-  const { toast } = useToast();
-  return (
-    <Card title="Check help articles again every">
-      <div className="yx-ops-stack">
-        {error && <InlineAlert tone="danger" title="It was not saved">{error}</InlineAlert>}
-        <FormField label="Check help articles again every" hideLabel helper="For the whole company, not only this desk. A new article, and one marked reviewed, is due for its next check after this long. Dates already set stay as they are.">
-          <Segment label="Check help articles again every" options={REVIEW_CHOICES.map((m) => ({ value: String(m), label: `${m} months` }))} value={months} onChange={setMonths} />
-        </FormField>
-        <div className="yx-ops-row">
-          <Button loading={busy === 'save'} onClick={() => (Number(months) === value ? toast({ title: 'Nothing has changed yet.' }) : void run('save', async () => { await onSave(Number(months)); toast({ tone: 'success', title: `Help articles are now checked every ${months} months.` }); }))}>
-            Save
-          </Button>
-        </div>
-      </div>
-    </Card>
-  );
-}
 
 function CalendarsTab(props: TabProps) {
   const { busy, error, run } = useRun();

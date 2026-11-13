@@ -220,21 +220,6 @@ describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
     expect(within(g).getByRole('radio', { name: 'People from these email domains' })).toBeChecked();
   });
 
-  it('settings: the company review interval for help articles is a Segment; unchanged says so, a change is saved', async () => {
-    const onKbReviewMonths = ok();
-    render(<ToastProvider><DeskSetupScreen state="ready" initialTab="requesters" kbReviewMonths={12} onKbReviewMonths={onKbReviewMonths} desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, canSetUp: true }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={ok()} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} /></ToastProvider>);
-    const card = screen.getByText('Check help articles again every', { selector: '.yx-card__title, h2, h3' }).closest('section, .yx-card') as HTMLElement;
-    const g = within(card).getByRole('radiogroup', { name: 'Check help articles again every' });
-    expect(within(g).getByRole('radio', { name: '12 months' })).toBeChecked();
-    await ue.click(within(card).getByRole('button', { name: 'Save' }));
-    expect((await screen.findAllByText('Nothing has changed yet.')).length).toBeGreaterThan(0);
-    expect(onKbReviewMonths).not.toHaveBeenCalled();
-    await ue.click(within(g).getByRole('radio', { name: '6 months' }));
-    await ue.click(within(card).getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(onKbReviewMonths).toHaveBeenCalledWith(6));
-    expect((await screen.findAllByText('Help articles are now checked every 6 months.')).length).toBeGreaterThan(0);
-  });
-
   it('settings (1643): the reasons to pick after a rating, one a line, are saved with the desk settings (blank lines dropped)', async () => {
     const onUpdateDesk = ok();
     render(<ToastProvider><DeskSetupScreen state="ready" initialTab="requesters" desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, canSetUp: true, desk: { ...DETAIL.desk, ratingReasons: ['Slow'] } }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={onUpdateDesk} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} /></ToastProvider>);

@@ -43,7 +43,7 @@ function Knowledge() {
   const desks = useDesk<DeskSummary[]>('/desks');
   const write = useDeskWrite();
   // Answers 1642, 1681: the company's search words, for its Service Desk owner.
-  const words = useDesk<{ synonyms: string; synonymsDefault: string }>(perms.has('desk.desk.create') ? '/kb/settings' : null);
+  const words = useDesk<{ synonyms: string; synonymsDefault: string; reviewMonths: number; pageHelp?: boolean }>(perms.has('desk.desk.create') ? '/kb/settings' : null);
   const open = (a: string | null) => router.replace(a ? `/yx/desk/knowledge?article=${id(a)}` : '/yx/desk/knowledge');
   // A search answers from every state, so the state and out-of-date filters are applied here too.
   const rows = (articles.data ?? []).filter((r) => (filters.state === 'all' || r.state === filters.state) && (!filters.outdated || r.outdated));
@@ -72,6 +72,9 @@ function Knowledge() {
         templates: writer ? (templates.data ?? []) : null,
         canSeeGaps: perms.has('desk.report.view') || perms.has('desk.kb.publish'),
         searchWords: words.data ? { value: words.data.synonyms, starter: words.data.synonymsDefault, onSave: (synonyms) => write('/kb/settings', 'PUT', { synonyms }) } : null,
+        // Answer 1841: the check-again interval and page help moved here from desk Settings.
+        reviewMonths: words.data ? { value: words.data.reviewMonths, onSave: (reviewMonths) => write('/kb/settings', 'PUT', { reviewMonths }) } : null,
+        pageHelp: words.data && words.data.pageHelp != null ? { value: words.data.pageHelp, onChange: (pageHelp) => write('/kb/settings', 'PUT', { pageHelp }) } : null,
         canMakeTask: perms.has('desk.task.work'),
         onLoadGaps: (from, to) => apiFetch(`/desk/kb/gaps?from=${id(from)}&to=${id(to)}`, {}, token) as Promise<KbGaps>,
         onGapTask: async (deskId, text) => {
