@@ -105,8 +105,9 @@ export class AttemptsAdminController {
     return this.attemptsAdminService.getInsight(tenant, id);
   }
 
+  // A paid AI call: a writer's key, not a reader's (security fix).
   @Post(':id/ai-insight/regenerate')
-  @RequirePermissions('results:view')
+  @RequirePermissions('exam:manage')
   regenerateInsight(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
     return this.attemptsAdminService.regenerateInsight(tenant, userId, id);
   }

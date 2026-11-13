@@ -11,6 +11,9 @@ import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
+import { ApprovalsEngine } from '../src/workflow/approvals-engine.service';
+import { ChangesService } from '../src/service-desk/changes.service';
+import { RecurringService } from '../src/service-desk/recurring.service';
 
 // Helpdesk ITSM (docs/yukthix/helpdesk-itsm-plan.md; answers 1931-1943). ITSM-1: change and problem are ticket kinds on
 // IT desks only, never raised as tickets or by requesters; the desk's change settings and the company's change window,
@@ -19,6 +22,7 @@ describe('Helpdesk ITSM: changes and problems', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let tenantPrisma: TenantPrismaService;
+  let engine: ApprovalsEngine;
   const PASSWORD = 'Corr3ct-Horse-Battery';
   const run = randomUUID().slice(0, 8);
   const SUPER: TenantContext = { organizationId: null, isSuperAdmin: true };
@@ -69,6 +73,7 @@ describe('Helpdesk ITSM: changes and problems', () => {
     await app.init();
     prisma = moduleRef.get(PrismaService);
     tenantPrisma = moduleRef.get(TenantPrismaService);
+    engine = moduleRef.get(ApprovalsEngine);
 
     planId = (await prisma.plan.create({ data: { name: `itsm-plan-${run}`, candidateLimit: 1, aiCreditLimit: 1, proctoringMinutesLimit: 1 } })).id;
     for (const k of ['A', 'B'] as const) {
@@ -306,7 +311,8 @@ describe('Helpdesk ITSM: changes and problems', () => {
     expect(list.rows.length).toBeGreaterThanOrEqual(8);
     expect([list.canRaise, list.questions.length]).toEqual([true, 5]);
     const one = list.rows.find((r: { title: string }) => r.title === 'Patch the Tally server');
-    await api('divya', 'get', '/desk/changes').expect(403);
+    // Answer 1953: the list has no key of its own; a requester who is asked about nothing gets no access.
+    expect((await api('divya', 'get', '/desk/changes').expect(200)).body.access).toBe(false);
     await api('divya', 'get', `/desk/changes/${one.id}`).expect(404);
     expect(((await api('divya', 'get', '/desk/my/tickets').expect(200)).body as { number: string }[]).map((x) => x.number)).not.toContain(one.number);
     // Company B's IT agent sees only company B's changes.
@@ -315,7 +321,7 @@ describe('Helpdesk ITSM: changes and problems', () => {
     const bList = (await api('agentB', 'get', '/desk/changes').expect(200)).body;
     expect([bList.desk.id, bList.rows.length]).toEqual([ids.itB, 0]);
     // The service owner opens a change to their application; they cannot act on it.
-    expect((await api('owner', 'get', `/desk/changes/${one.id}`).expect(200)).body.can).toEqual({ start: false, work: false, review: false, export: false });
+    expect((await api('owner', 'get', `/desk/changes/${one.id}`).expect(200)).body.can).toEqual({ start: false, work: false, review: false, cancel: false, export: false });
     const csv = await api('agent', 'get', `/desk/changes/export?deskId=${ids.it}&from=2026-01-01&to=2026-12-31&format=csv`).expect(200);
     expect(csv.headers['content-type']).toMatch(/text\/csv/);
     expect(csv.text).toMatch(/^Change,What changes,Kind,Risk/);
@@ -335,5 +341,197 @@ describe('Helpdesk ITSM: changes and problems', () => {
     await api('agentB', 'get', `/desk/changes/export?deskId=${ids.it}&from=2026-01-01&to=2026-12-31&format=csv`).expect(404);
     await api('agent', 'get', `/desk/changes/export?deskId=${ids.it}&from=2026-12-31&to=2026-01-01&format=csv`).expect(400);
     expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'desk.change.exported' } }))).toBe(2);
+  });
+
+  // The founder's coordinator, 13 Nov 2026: an email about a decision leaves only once the decision is saved.
+  it('work after a decision (the owner email) runs only after the decision commits; a failed save sends nothing', async () => {
+    const ran: string[] = [];
+    let fail = true;
+    engine.register({
+      key: 'test.after_commit',
+      label: 'After-commit test',
+      risk: 'high',
+      autoActions: false,
+      onDecided: async (_tx, req, _outcome, afterCommit) => {
+        afterCommit?.(async () => void ran.push(req.id));
+        if (fail) throw new Error('the save failed');
+      },
+      requesterLink: () => '/yx/approvals',
+    });
+    const ask = () =>
+      tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, (tx) =>
+        engine.submit(tx, { organizationId: org.A.id, isSuperAdmin: false }, { type: 'test.after_commit', subjectType: 'test', subjectId: randomUUID(), title: `After commit ${randomUUID().slice(0, 6)}`, summary: [], subjectPersonId: null, requesterUserId: users.agent, raisedByUserId: null, steps: [{ name: 'Lead', approvers: [{ kind: 'users', userIds: [users.lead2] }], mode: 'any' }], payload: {}, payloadFields: [], fallbackUserIds: [] }),
+      );
+    const first = await ask();
+    const task1 = (await inbox('lead2')).find((x) => x.requestId === first.id)!;
+    expect((await decide('lead2', task1.taskId, 'approve')).status).toBeGreaterThanOrEqual(500);
+    expect(ran).toEqual([]);
+    expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.wfRequest.findFirstOrThrow({ where: { id: first.id } }))).status).toBe('pending');
+    fail = false;
+    await decide('lead2', task1.taskId, 'approve').expect(200);
+    expect(ran).toEqual([first.id]);
+  });
+
+  // ------------------------------------------------------------------------------------------------ ITSM-3 and ITSM-4
+
+  const raiseIncident = async (subject: string, categoryId: string) => (await api('divya', 'post', '/desk/my/tickets').send({ deskId: ids.it, categoryId, subject, description: 'It keeps happening.' }).expect(201)).body as { id: string; number: string };
+  const sat = () => nextDay((p) => p.dow === 6 && !frozen(p));
+  /** A low-risk change the other lead approves, scheduled. */
+  const scheduledChange = async (title: string, who: Who = 'agent') => {
+    const day = sat();
+    const c = (await api(who, 'post', '/desk/changes').send({ deskId: ids.it, kind: 'normal', appId: ids.tally, title, answers: LOW, from: at(day, '10:00'), to: at(day, '12:00'), backout: 'Restore the backup.' }).expect(201)).body;
+    await decide('lead2', (await taskFor('lead2', c.number))!.taskId, 'approve').expect(200);
+    return c as { id: string; number: string };
+  };
+  const startNow = async (id: string, who: Who = 'agent') => {
+    await tenantPrisma.forTenant(SUPER, (tx) => tx.sdChange.update({ where: { id }, data: { windowFrom: new Date(Date.now() - 60_000) } }));
+    const v = (await api(who, 'get', `/desk/changes/${id}`).expect(200)).body.version;
+    return (await api(who, 'post', `/desk/changes/${id}/start`).send({ version: v }).expect(200)).body.version as number;
+  };
+
+  it('problems: raised by IT agents (by hand or from a repeat the lead is shown), incidents linked in bulk, a known error drafts an article for agents', async () => {
+    const cats = (await api('adminA', 'get', `/desk/desks/${ids.it}`).expect(200)).body.categories as { id: string; name: string }[];
+    ids.wifi = cats[0]!.id;
+    const inc = [await raiseIncident('Wi-Fi drops on floor 2', ids.wifi), await raiseIncident('No Wi-Fi in the meeting room', ids.wifi), await raiseIncident('Wi-Fi slow again', ids.wifi)];
+    ids.inc0 = inc[0]!.id;
+    // Answer 1939: the lead sees the suggestion; an agent does not; it is never raised by itself.
+    const leadList = (await api('lead', 'get', `/desk/problems?deskId=${ids.it}`).expect(200)).body;
+    expect(leadList.suggestions.find((x: { categoryId: string }) => x.categoryId === ids.wifi)).toMatchObject({ count: 3, days: 7 });
+    expect((await api('agent', 'get', `/desk/problems?deskId=${ids.it}`).expect(200)).body.suggestions).toEqual([]);
+    expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.sdProblem.count({ where: { organizationId: org.A.id } }))).toBe(0);
+    await api('divya', 'post', '/desk/problems').send({ deskId: ids.it, title: 'Wi-Fi drops' }).expect(403);
+    await api('deskAdmin', 'post', '/desk/problems').send({ deskId: ids.it, title: 'Wi-Fi drops' }).expect(403);
+    const p = (await api('agent', 'post', '/desk/problems').send({ deskId: ids.it, title: 'Wi-Fi drops on floor 2', categoryId: ids.wifi, incidentIds: inc.slice(0, 2).map((i) => i.id) }).expect(201)).body;
+    ids.problem = p.id;
+    expect(p.linked).toBe(2);
+    expect((await api('lead', 'get', `/desk/problems?deskId=${ids.it}`).expect(200)).body.suggestions.find((x: { categoryId: string }) => x.categoryId === ids.wifi)).toBeUndefined();
+    // Bulk link by number: unknown and non-incident numbers are refused; the same incident links once.
+    expect((await api('agent', 'post', `/desk/problems/${p.id}/incidents`).send({ numbers: ['IT-99999'] }).expect(400)).body.message).toMatch(/Not found/);
+    const aChange = (await api('agent', 'get', `/desk/changes?deskId=${ids.it}`).expect(200)).body.rows[0];
+    expect((await api('agent', 'post', `/desk/problems/${p.id}/incidents`).send({ numbers: [aChange.number] }).expect(400)).body.message).toMatch(/not an incident/);
+    expect((await api('agent', 'post', `/desk/problems/${p.id}/incidents`).send({ numbers: [inc[2]!.number, inc[0]!.number] }).expect(200)).body.linked).toBe(1);
+    // Never seen by requesters or other companies.
+    await api('divya', 'get', `/desk/problems/${p.id}`).expect(403);
+    await api('agentB', 'get', `/desk/problems/${p.id}`).expect(404);
+    await api('agentB', 'post', `/desk/problems/${p.id}/incidents`).send({ numbers: [inc[0]!.number] }).expect(404);
+    expect(((await api('divya', 'get', '/desk/my/tickets').expect(200)).body as { number: string }[]).map((x) => x.number)).not.toContain(p.number);
+
+    // Answer 1940: the workaround drafts an article in the agents' space; only a lead may choose a space employees read.
+    let d = (await api('agent', 'get', `/desk/problems/${p.id}`).expect(200)).body;
+    expect(d.incidents).toHaveLength(3);
+    expect((await api('agent', 'post', `/desk/problems/${p.id}/known-error`).send({ version: d.version, workaround: 'Use the wired port at each desk until the fix.', article: true }).expect(400)).body.message).toMatch(/no space for agents/);
+    await api('adminA', 'post', '/desk/kb/spaces').send({ name: 'IT agents', slug: `it-agents-${run}`, audience: 'agents', deskId: ids.it }).expect(201);
+    const help = (await api('adminA', 'post', '/desk/kb/spaces').send({ name: 'IT help', slug: `it-help-${run}`, audience: 'requesters', deskId: ids.it }).expect(201)).body.id;
+    await api('agent', 'post', `/desk/problems/${p.id}/known-error`).send({ version: d.version, workaround: 'Use the wired port at each desk until the fix.', article: true, spaceId: help }).expect(403);
+    const ke = (await api('agent', 'post', `/desk/problems/${p.id}/known-error`).send({ version: d.version, workaround: 'Use the wired port at each desk until the fix.', article: true, banner: true }).expect(200)).body;
+    expect(ke.state).toBe('known_error');
+    const article = await tenantPrisma.forTenant(SUPER, (tx) => tx.sdKbArticle.findFirstOrThrow({ where: { id: ke.articleId } }));
+    expect([article.audience, article.state]).toEqual(['agents', 'draft']);
+    expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.sdBanner.findFirstOrThrow({ where: { id: ke.bannerId } }))).ticketId).toBeNull();
+    await api('agent', 'post', `/desk/problems/${p.id}/known-error`).send({ version: d.version, workaround: 'Old version of the page.' }).expect(409);
+    d = (await api('agent', 'get', `/desk/problems/${p.id}`).expect(200)).body;
+    await api('agent', 'patch', `/desk/problems/${p.id}`).send({ version: d.version, rootCause: 'The access point firmware drops clients after 6 hours.', closingReply: 'Fixed: the access point firmware was updated. Reply if Wi-Fi still drops.' }).expect(200);
+  });
+
+  it('a problem closes through its fixing change and every open incident gets the reply and is solved; a lead may close one without a change', async () => {
+    const c = await scheduledChange('Update the floor 2 access points');
+    await api('agent', 'post', `/desk/problems/${ids.problem}/fix`).send({ changeId: c.id }).expect(200);
+    await api('agent', 'post', `/desk/problems/${ids.problem}/fix`).send({ changeId: c.id }).expect(409);
+    const v = await startNow(c.id);
+    expect((await api('agent', 'post', `/desk/changes/${c.id}/outcome`).send({ version: v, outcome: 'done' }).expect(200)).body.stage).toBe('closed');
+    const p = await tenantPrisma.forTenant(SUPER, (tx) => tx.sdProblem.findFirstOrThrow({ where: { id: ids.problem } }));
+    expect(p.state).toBe('closed');
+    expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.sdBanner.findFirstOrThrow({ where: { id: p.bannerId! } }))).endedAt).toBeTruthy();
+    const incident = await tenantPrisma.forTenant(SUPER, (tx) => tx.sdTicket.findFirstOrThrow({ where: { id: ids.inc0 } }));
+    expect(incident.systemState).toBe('solved');
+    const last = await tenantPrisma.forTenant(SUPER, (tx) => tx.sdTicketMessage.findFirstOrThrow({ where: { ticketId: ids.inc0, kind: 'reply', side: 'agent' }, orderBy: { createdAt: 'desc' } }));
+    expect(last.bodyText).toMatch(/access point firmware was updated/);
+    // By hand: only a lead.
+    const other = (await api('agent', 'post', '/desk/problems').send({ deskId: ids.it, title: 'Printer queue stuck on Mondays' }).expect(201)).body;
+    const od = (await api('agent', 'get', `/desk/problems/${other.id}`).expect(200)).body;
+    expect(od.can.close).toBe(false);
+    await api('agent', 'post', `/desk/problems/${other.id}/close`).send({ version: od.version }).expect(403);
+    expect((await api('lead', 'post', `/desk/problems/${other.id}/close`).send({ version: od.version, reply: 'It was a duplicate.' }).expect(200)).body.state).toBe('closed');
+  });
+
+  it('a change is cancelled before it starts by the raiser or a lead, with a reason; never once it started (answer 1951)', async () => {
+    const c = await scheduledChange('Move the print server');
+    let d = (await api('agent', 'get', `/desk/changes/${c.id}`).expect(200)).body;
+    expect(d.can.cancel).toBe(true);
+    await api('agent', 'post', `/desk/changes/${c.id}/cancel`).send({ version: d.version, reason: 'short' }).expect(400);
+    await api('owner', 'post', `/desk/changes/${c.id}/cancel`).send({ version: d.version, reason: 'Not needed any more, the server stays.' }).expect(403);
+    const res = (await api('agent', 'post', `/desk/changes/${c.id}/cancel`).send({ version: d.version, reason: 'Not needed any more, the server stays.' }).expect(200)).body;
+    expect(res.stage).toBe('cancelled');
+    const row = await change(c.id);
+    expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.sdBanner.findFirstOrThrow({ where: { id: row.bannerId! } }))).endedAt).toBeTruthy();
+    expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.sdTicket.findFirstOrThrow({ where: { id: row.ticketId } }))).systemState).toBe('closed');
+    // Waiting for approval: a lead withdraws it, and the approver's task goes away.
+    const day = sat();
+    const waiting = (await api('agent', 'post', '/desk/changes').send({ deskId: ids.it, kind: 'normal', appId: ids.tally, title: 'Rename the file share', answers: LOW, from: at(day, '13:00'), to: at(day, '14:00'), backout: 'Rename it back.' }).expect(201)).body;
+    expect(await taskFor('lead2', waiting.number)).toBeTruthy();
+    d = (await api('lead', 'get', `/desk/changes/${waiting.id}`).expect(200)).body;
+    await api('lead', 'post', `/desk/changes/${waiting.id}/cancel`).send({ version: d.version, reason: 'Merged into the bigger file share change.' }).expect(200);
+    expect(await taskFor('lead2', waiting.number)).toBeUndefined();
+    // Once started it cannot be cancelled.
+    const started = await scheduledChange('Swap the core switch fan');
+    const v = await startNow(started.id);
+    await api('agent', 'post', `/desk/changes/${started.id}/cancel`).send({ version: v, reason: 'Changed my mind about it.' }).expect(400);
+    ids.started = started.id;
+  });
+
+  it('a lead is told once when a change runs past its window (answer 1955)', async () => {
+    await tenantPrisma.forTenant(SUPER, (tx) => tx.sdChange.update({ where: { id: ids.started }, data: { windowTo: new Date(Date.now() - 60_000) } }));
+    const changes = app.get(ChangesService);
+    expect(await changes.overrunTick()).toBeGreaterThanOrEqual(1);
+    const told = () => tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.count({ where: { organizationId: org.A.id, type: 'helpdesk.change.overrun' } }));
+    expect(await told()).toBe(2); // both leads
+    await changes.overrunTick();
+    expect(await told()).toBe(2);
+    expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.count({ where: { recipientUserId: users.agent, type: 'helpdesk.change.overrun' } }))).toBe(0);
+  });
+
+  it('the change board and application owners see only the changes they are asked about (answer 1953)', async () => {
+    const mine = (await api('board1', 'get', '/desk/changes').expect(200)).body;
+    expect(mine.asked).toBe(true);
+    expect(mine.rows.length).toBeGreaterThan(0);
+    const counts = (await api('board1', 'get', '/workspace/counts').expect(200)).body;
+    expect(counts.changesAsked).toBeGreaterThanOrEqual(0);
+    const owner = (await api('owner', 'get', '/desk/changes').expect(200)).body;
+    expect(owner.rows.every((r: { service: string }) => r.service === 'Tally Prime')).toBe(true);
+    expect((await api('divya', 'get', '/workspace/counts').expect(200)).body.changesAsked).toBeUndefined();
+    expect((await api('agentB', 'get', '/desk/changes').expect(200)).body.rows).toEqual([]);
+  });
+
+  it('a pre-approved standard change repeats on one schedule and is raised on time; a window in a freeze is skipped (answer 1952)', async () => {
+    const tpl = (await api('deskAdmin', 'post', `/desk/desks/${ids.it}/templates`).send({ name: 'Weekly backup check', ticketTypeId: ids.changeType, defaults: {}, checklist: ['Check the last backup', 'Restore one file'], preApproved: true }).expect(201)).body.id;
+    const day = sat();
+    const startsAt = at(day, '10:00');
+    const body = { deskId: ids.it, name: 'Weekly backup check', rrule: 'FREQ=WEEKLY;BYDAY=SA', timeZone: 'Asia/Kolkata', startsAt, template: { subject: 'Weekly backup check', bodyHtml: '', standard: { templateId: tpl, startAfterHours: 0, minutes: 60 } } };
+    await api('deskAdmin', 'post', '/desk/recurring').send({ ...body, template: { ...body.template, standard: { templateId: ids.tpl, startAfterHours: 0, minutes: 60 } } }).expect(400);
+    const r = (await api('deskAdmin', 'post', '/desk/recurring').send(body).expect(201)).body;
+    expect((await api('deskAdmin', 'post', '/desk/recurring').send({ ...body, name: 'Again' }).expect(409)).body.message).toMatch(/already repeats/);
+    const recurring = app.get(RecurringService);
+    expect(await recurring.tick(new Date(new Date(startsAt).getTime() + 60_000))).toBe(1);
+    const run = await tenantPrisma.forTenant(SUPER, (tx) => tx.sdRecurringRun.findFirstOrThrow({ where: { recurringId: r.id } }));
+    const made = await tenantPrisma.forTenant(SUPER, (tx) => tx.sdChange.findFirstOrThrow({ where: { ticketId: run.ticketId! } }));
+    expect([made.changeKind, made.stage, made.windowFrom.toISOString(), (made.tasks as unknown[]).length]).toEqual(['standard', 'scheduled', new Date(startsAt).toISOString(), 2]);
+    // A schedule whose window falls in a freeze makes nothing that day (and says why).
+    await api('deskAdmin', 'patch', `/desk/recurring/${r.id}`).send({ version: r.version, state: 'paused' }).expect(200);
+    const frozenDay = nextDay((p) => frozen(p) && p.dow === 6);
+    const r2 = (await api('deskAdmin', 'post', '/desk/recurring').send({ ...body, name: 'Frozen check', startsAt: at(frozenDay, '10:00'), template: { ...body.template, standard: { templateId: (await api('deskAdmin', 'post', `/desk/desks/${ids.it}/templates`).send({ name: 'Monthly antivirus update', ticketTypeId: ids.changeType, defaults: {}, checklist: [], preApproved: true }).expect(201)).body.id, startAfterHours: 0, minutes: 60 } } }).expect(201)).body;
+    expect(await recurring.tick(new Date(new Date(at(frozenDay, '10:00')).getTime() + 60_000))).toBe(0);
+    expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.sdRecurringRun.findFirstOrThrow({ where: { recurringId: r2.id } }))).ticketId).toBeNull();
+    expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'desk.recurring.skipped', entityId: r2.id } }))).toBe(1);
+  });
+
+  it('the report counts changes by kind and outcome, the failed-change rate and problems; only the desk sees it', async () => {
+    const rep = (await api('lead', 'get', `/desk/itsm/report?deskId=${ids.it}&from=2026-01-01&to=2027-12-31`).expect(200)).body;
+    const standard = rep.changes.byKind.find((k: { kind: string }) => k.kind === 'standard');
+    expect(standard.backed_out).toBeGreaterThanOrEqual(1);
+    expect(rep.changes.failedRate).toBeGreaterThan(0);
+    expect(rep.changes.byKind.find((k: { kind: string }) => k.kind === 'normal').cancelled).toBe(2);
+    expect(rep.problems.top[0].incidents).toBe(3);
+    await api('divya', 'get', `/desk/itsm/report?deskId=${ids.it}&from=2026-01-01&to=2027-12-31`).expect(403);
+    await api('agentB', 'get', `/desk/itsm/report?deskId=${ids.it}&from=2026-01-01&to=2027-12-31`).expect(404);
   });
 });

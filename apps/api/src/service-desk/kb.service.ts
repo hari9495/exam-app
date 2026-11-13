@@ -421,6 +421,11 @@ export class KbService {
     return this.tx(a, (tx) => this.createIn(tx, a, dto, null));
   }
 
+  /** ITSM-3 (answer 1940): a known error's workaround as a draft article, in the caller's transaction. */
+  draftIn(tx: Tx, a: DeskActor, dto: ArticleDto, sourceTicketId: string) {
+    return this.createIn(tx, a, dto, sourceTicketId);
+  }
+
   private async createIn(tx: Tx, a: DeskActor, dto: ArticleDto, sourceTicketId: string | null) {
     const org = a.ctx.organizationId;
     const space = await this.space(tx, org, dto.spaceId);

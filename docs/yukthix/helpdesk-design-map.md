@@ -677,6 +677,7 @@ File: `packages/yx-ui/src/screens/ops/hlp-18.stories.tsx`. Drawn 12 Nov 2026 (th
 | LifecycleLoading · Lifecycle loading | live | same page |
 | Schedules · Recurring tickets and follow-ups | live | same page |
 | SchedulesEquipment · Recurring maintenance of a piece of equipment | live | Helpdesk plan item 4: an optional Equipment on a recurring record (active, of the desk's own register); each due date makes one ticket naming it, its building and area; retired equipment pauses the schedule |
+| SchedulesStandardChange · Recurring standard change (an IT desk, answer 1952) | live | answer 1952: a schedule raises a pre-approved standard change, one schedule per template; a window the change rules refuse is skipped and audited |
 | SchedulesEmpty · No schedules yet | live | same page |
 | SchedulesMissing · Recurring ticket Save pressed with nothing filled | live | same page |
 | SequenceMissing · Save sequence pressed with nothing filled | live | same page |
@@ -761,7 +762,7 @@ File: `packages/yx-ui/src/screens/ops/hlp-21.stories.tsx`. Drawn 13 Nov 2026 (He
 File: `packages/yx-ui/src/screens/ops/hlp-22.stories.tsx` (screens in `hlp-22-itsm.tsx`). A DRAFT drawn 13 Nov 2026 for
 Helpdesk plan item 5 (IT change requests and problem records); the plan and questions 1931 to 1943 are in
 `docs/yukthix/helpdesk-itsm-plan.md`. Founder approved 1931 to 1943 as suggested ("all ok"); built on
-`feat/yukthix-itsm` in parts ITSM-1 to ITSM-4.
+`feat/yukthix-itsm` (ITSM-1, ITSM-2) and `feat/yukthix-itsm-2` (ITSM-3, ITSM-4, answers 1951-1955).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
@@ -775,12 +776,15 @@ Helpdesk plan item 5 (IT change requests and problem records); the plan and ques
 | ScheduledClash · A change · scheduled, clashes with another | live | ITSM-2: a standard change from a pre-approved template (1935); the clash warning |
 | InProgress · A change · in progress, the checklist and the outcome | live | ITSM-2: start in the window, the checklist, done / done with problems / backed out |
 | Review · A change · review after it caused incidents | live | ITSM-2: the review after a high-risk, emergency or failed change, by a lead or the board (1938) |
-| Problems · Problems · list, a repeat suggested | design only, feature not built | draft (1939) |
-| ProblemInvestigating · A problem · linked incidents, cause not found yet | design only, feature not built | draft |
-| KnownError · A problem · known error, workaround to the knowledge base, fix by change | design only, feature not built | draft (1940, 1941) |
+| Problems · Problems · list, a repeat suggested | live | ITSM-3: /yx/desk/problems renders ProblemsScreen (live prop); the lead sees the repeat suggestion (1939) and opens a problem from it |
+| ProblemInvestigating · A problem · linked incidents, cause not found yet | live | ITSM-3: /yx/desk/problems/[id] renders ProblemRecordScreen (live prop): incidents linked in bulk by number, the root cause |
+| KnownError · A problem · known error, workaround to the knowledge base, fix by change | live | ITSM-3: known error with a draft article in the agents' space (1940) and a notice; the fixing change closes it and tells the incidents (1941) |
 | NoAccess · No access (not on the IT desk) | live | ITSM-2: anyone without an IT desk seat |
 | Settings · Settings · approval by risk, risk questions, banner and review, change window | live | ITSM-1: /yx/desk/setup › Changes (IT desks) renders ItsmSettingsPanel; desk settings with defaults (1933-1939), the company's window and freezes (1936) |
 | SettingsReadOnly · Settings · an agent sees them, cannot change them | live | ITSM-1: agents of the IT desk see the tab read-only; the API refuses their changes |
+| ChangesReport · Changes · report for the last 90 days (failed-change rate, problems by age) | live | ITSM-4: GET /desk/itsm/report on the Changes page |
+| ChangesAsked · Changes · only those I am asked about (change board, application owner) | live | answer 1953: /yx/desk/changes for someone without an IT desk seat; Changes in the menu from the counts |
+| NewProblem · Problems · new problem | live | ITSM-3: the New problem drawer |
 
 #### HLP-23 · Buildings and equipment
 

@@ -5,7 +5,7 @@ import type { AreaId } from '@yukthix/ui/frame';
 // hidden; a link shows only to someone who may open it (the API still checks every call). Pure, so it is unit-tested.
 
 /** Side-menu counts from GET /workspace/counts. */
-export type CountKey = 'approvals' | 'notifications' | 'documentsToVerify' | 'exitCases' | 'payslipQueries' | 'myTickets' | 'scorecardsToDo' | 'readyToOnboard' | 'probationsDue' | 'clearanceToDo' | 'possibleSamePerson' | 'declarationsDue' | 'casesOpen' | 'ethicsReports';
+export type CountKey = 'approvals' | 'notifications' | 'documentsToVerify' | 'exitCases' | 'payslipQueries' | 'myTickets' | 'scorecardsToDo' | 'readyToOnboard' | 'probationsDue' | 'clearanceToDo' | 'possibleSamePerson' | 'declarationsDue' | 'casesOpen' | 'ethicsReports' | 'changesAsked';
 
 export interface NavLink {
   id: string;
@@ -45,6 +45,8 @@ export interface NavInput {
   designated?: boolean;
   /** HLP-08 (founder answer 36): on a speak-up list or a member of any case (the server decides, via the counts). */
   caseTeam?: boolean;
+  /** ITSM answer 1953: on a change board, owns an application or approves a change (the server decides, via the counts). */
+  changesAsked?: boolean;
   /** HLP-09: on the ethics or escalation list. */
   ethicsDesk?: boolean;
   /** Founder answer 511: on an interview panel (the server decides): Interviews shows without any hiring key. */
@@ -502,7 +504,9 @@ export function buildNav(n: NavInput): NavArea[] {
           // Helpdesk plan item 3: the company's business applications and their owners (desk staff read, the owner edits).
           ...when(any('desk.desk.create', 'desk.ticket.view'), L('desk-apps', 'Applications', '/yx/desk/apps')),
           // Helpdesk ITSM-2: IT changes (the page shows them to the IT desks' agents, leads and admins only).
-          ...when(has('desk.ticket.view'), L('desk-changes', 'Changes', '/yx/desk/changes')),
+          ...when(has('desk.ticket.view') || Boolean(n.changesAsked), L('desk-changes', 'Changes', '/yx/desk/changes', n.changesAsked ? 'changesAsked' : undefined)),
+          // ITSM-3: IT problems (the page shows them to the IT desks' agents, leads and admins only).
+          ...when(has('desk.ticket.view'), L('desk-problems', 'Problems', '/yx/desk/problems')),
           // Helpdesk plan item 4: buildings, areas and equipment (the facilities desks' staff; their admins edit).
           ...when(any('desk.desk.create', 'desk.ticket.view'), L('desk-facilities', 'Buildings and equipment', '/yx/desk/facilities')),
           ...when(has('desk.desk.create'), L('desk-privacy', 'Privacy requests', '/yx/desk/privacy')),

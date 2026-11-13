@@ -54,7 +54,8 @@ describe('Exam Reporting HTTP flow', () => {
       Promise.all([
         tx.user.create({ data: { organizationId: orgId, email: 'recruiter@ci-reporting.test', passwordHash: recruiterHash, role: 'recruiter' } }),
         tx.user.create({ data: { organizationId: orgId, email: 'viewonly@ci-reporting.test', passwordHash: viewOnlyHash, role: 'recruiter', permissionProfileId: viewOnlyProfile.id } }),
-        tx.user.create({ data: { organizationId: orgId, email: 'panel@ci-reporting.test', passwordHash: panelHash, role: 'panel' } }),
+        // Answer 511 took results:view from the panel role; the older hiring_manager role still reads results (and writes no tests).
+        tx.user.create({ data: { organizationId: orgId, email: 'panel@ci-reporting.test', passwordHash: panelHash, role: 'hiring_manager' } }),
       ]),
     );
 
@@ -341,7 +342,10 @@ describe('Exam Reporting HTTP flow', () => {
     expect(detailResponse.body.sections[0].questions[0]).toMatchObject({
       questionId, questionText: 'What is 2+2?', isCorrect: true, marksAwarded: 10,
     });
-    expect(detailResponse.body.sections[0].questions[0].correctOptionIds).toEqual([correctOptionId]);
+    // Security fix: a reader of results gets no answer key; a test writer (the recruiter) still does.
+    expect(detailResponse.body.sections[0].questions[0].correctOptionIds).toEqual([]);
+    const writerView = await request(adminHttp).get(`/api/v1/exams/${examId}/candidates/${aliceCandidateId}/report`).set('Authorization', `Bearer ${recruiterAccessToken}`).expect(200);
+    expect(writerView.body.sections[0].questions[0].correctOptionIds).toEqual([correctOptionId]);
   });
 
   it('returns 404 for a candidate not invited to the exam', async () => {

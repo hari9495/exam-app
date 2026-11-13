@@ -6,8 +6,9 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { DeskAccessService, assertOwnSession } from './desk-access';
-import { ChangeDto, ChangeExportDto, ChangeOutcomeDto, ChangeReviewDto, ChangeTasksDto, ChangeVersionDto, ChangesQueryDto, ItsmSettingsDto, ItsmWindowDto } from './dto-itsm';
+import { ChangeCancelDto, ChangeDto, ChangeExportDto, ItsmReportDto, KnownErrorDto, ProblemCloseDto, ProblemDto, ProblemFixDto, ProblemLinkDto, ProblemUpdateDto, ChangeOutcomeDto, ChangeReviewDto, ChangeTasksDto, ChangeVersionDto, ChangesQueryDto, ItsmSettingsDto, ItsmWindowDto } from './dto-itsm';
 import { ChangesService } from './changes.service';
+import { ProblemsService } from './problems.service';
 import { ItsmService } from './itsm.service';
 
 // Helpdesk ITSM (docs/yukthix/helpdesk-itsm-plan.md; answers 1931-1943): changes and problems on IT desks. Routes
@@ -19,6 +20,7 @@ export class DeskItsmController {
     private readonly access: DeskAccessService,
     private readonly itsm: ItsmService,
     private readonly changes: ChangesService,
+    private readonly problems: ProblemsService,
   ) {}
 
   // ---------------------------------------------------------------- ITSM-1 settings
@@ -46,9 +48,9 @@ export class DeskItsmController {
 
   // ---------------------------------------------------------------- ITSM-2 changes (answers 1932-1938, 1943)
 
-  // Board members and service owners open a change they are asked about without a desk seat (the service checks).
+  // Answer 1953: board members, application owners and approvers see the changes they are asked about without a desk
+  // key or seat; the service decides what each person sees (nothing for anyone else).
   @Get('changes')
-  @RequirePermissions('desk.ticket.view')
   async list(@Req() req: Request, @CurrentTenant() t: TenantContext, @Query() q: ChangesQueryDto) {
     return this.changes.list(await this.access.actor(req, t), q.deskId);
   }
@@ -105,5 +107,81 @@ export class DeskItsmController {
   async review(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ChangeReviewDto) {
     assertOwnSession(req);
     return this.changes.saveReview(await this.access.actor(req, t), id, dto);
+  }
+
+  /** Answer 1951: cancel or withdraw before it starts (the person who raised it, or an IT lead). */
+  @Post('changes/:id/cancel')
+  @HttpCode(200)
+  @RequirePermissions('desk.ticket.work')
+  async cancel(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ChangeCancelDto) {
+    assertOwnSession(req);
+    return this.changes.cancel(await this.access.actor(req, t), id, dto);
+  }
+
+  /** ITSM-4: changes by kind and outcome, the failed-change rate, open problems by age, incidents per problem. */
+  @Get('itsm/report')
+  @RequirePermissions('desk.ticket.view')
+  async report(@Req() req: Request, @CurrentTenant() t: TenantContext, @Query() q: ItsmReportDto) {
+    return this.changes.report(await this.access.actor(req, t), q);
+  }
+
+  // ---------------------------------------------------------------- ITSM-3 problems (answers 1939-1941)
+
+  @Get('problems')
+  @RequirePermissions('desk.ticket.view')
+  async problemList(@Req() req: Request, @CurrentTenant() t: TenantContext, @Query() q: ChangesQueryDto) {
+    return this.problems.list(await this.access.actor(req, t), q.deskId);
+  }
+
+  @Post('problems')
+  @RequirePermissions('desk.ticket.work')
+  async problemCreate(@Req() req: Request, @CurrentTenant() t: TenantContext, @Body() dto: ProblemDto) {
+    assertOwnSession(req);
+    return this.problems.create(await this.access.actor(req, t), dto);
+  }
+
+  @Get('problems/:id')
+  @RequirePermissions('desk.ticket.view')
+  async problemDetail(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.problems.detail(await this.access.actor(req, t), id);
+  }
+
+  @Patch('problems/:id')
+  @RequirePermissions('desk.ticket.work')
+  async problemUpdate(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ProblemUpdateDto) {
+    assertOwnSession(req);
+    return this.problems.update(await this.access.actor(req, t), id, dto);
+  }
+
+  @Post('problems/:id/incidents')
+  @HttpCode(200)
+  @RequirePermissions('desk.ticket.work')
+  async problemLink(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ProblemLinkDto) {
+    assertOwnSession(req);
+    return this.problems.link(await this.access.actor(req, t), id, dto);
+  }
+
+  @Post('problems/:id/known-error')
+  @HttpCode(200)
+  @RequirePermissions('desk.ticket.work')
+  async problemKnownError(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: KnownErrorDto) {
+    assertOwnSession(req);
+    return this.problems.knownError(await this.access.actor(req, t), id, dto);
+  }
+
+  @Post('problems/:id/fix')
+  @HttpCode(200)
+  @RequirePermissions('desk.ticket.work')
+  async problemFix(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ProblemFixDto) {
+    assertOwnSession(req);
+    return this.problems.fix(await this.access.actor(req, t), id, dto);
+  }
+
+  @Post('problems/:id/close')
+  @HttpCode(200)
+  @RequirePermissions('desk.ticket.work')
+  async problemClose(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ProblemCloseDto) {
+    assertOwnSession(req);
+    return this.problems.close(await this.access.actor(req, t), id, dto);
   }
 }

@@ -54,6 +54,7 @@ import { MessagingService } from './messaging.service';
 import { DeskItsmController } from './itsm.controller';
 import { ItsmService } from './itsm.service';
 import { ChangesService } from './changes.service';
+import { ProblemsService } from './problems.service';
 import { MobileService } from './mobile.service';
 import { TeamService } from './team.service';
 import { WidgetService } from './widget.service';
@@ -146,6 +147,7 @@ import { WidgetService } from './widget.service';
     MobileService,
     ItsmService,
     ChangesService,
+    ProblemsService,
   ],
   // Lifecycle 6a: HR checklist tasks raise their desk requests through the journeys service (founder D1).
   // Answer 491: the staffing client portal raises and follows tickets through the Helpdesk's own create and reply paths.

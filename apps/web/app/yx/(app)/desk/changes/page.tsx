@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ErrorState, Spinner } from '@yukthix/ui';
-import { ChangesScreen, type ChangeInput, type ChangeRow } from '@yukthix/ui/desk';
+import { ChangesScreen, type ChangeInput, type ChangeRow, type ItsmReportView } from '@yukthix/ui/desk';
 import { apiFetchBlob } from '../../../../../lib/api-client';
 import { useAuth } from '../../../../../lib/auth-context';
 import { saveBlob } from '../../../../../lib/yx-pay';
@@ -15,8 +15,10 @@ import { useDesk, useDeskWrite } from '../../../../../lib/yx-desk';
 type Row = Omit<ChangeRow, 'from' | 'to'> & { from: string; to: string };
 type ChangeList =
   | { access: false }
+  | { access: true; asked: true; rows: Row[]; freezes: { date: string; why: string }[] }
   | {
       access: true;
+      asked?: undefined;
       desk: { id: string; name: string };
       desks: { id: string; name: string }[];
       rows: Row[];
@@ -37,12 +39,20 @@ export default function YxDeskChangesPage() {
   const list = useDesk<ChangeList>(deskId ? `/changes?deskId=${encodeURIComponent(deskId)}` : '/changes');
   const write = useDeskWrite();
   const today = new Date();
+  // ITSM-4: the desk's report for the last 90 days (India dates).
+  const day = (d: Date) => new Date(d.getTime() + 330 * 60_000).toISOString().slice(0, 10);
+  const reportDesk = list.data?.access && !list.data.asked ? list.data.desk.id : null;
+  const report = useDesk<Omit<ItsmReportView, 'period'>>(reportDesk ? `/itsm/report?deskId=${encodeURIComponent(reportDesk)}&from=${day(new Date(Date.now() - 89 * 86_400_000))}&to=${day(new Date())}` : null);
   if (list.isError) return <ErrorState title="The changes did not load." description="Try again in a moment." onRetry={() => void list.refetch()} />;
   if (!list.data) return <Spinner label="Loading" size="md" />;
   const d = list.data;
   if (!d.access) return <ChangesScreen rows={[]} freezes={[]} today={today} access={false} />;
+  const open = (id: string) => router.push(`/yx/desk/changes/${encodeURIComponent(id)}`);
+  // Answer 1953: the change board, application owners and approvers see only the changes they are asked about.
+  if (d.asked) return <ChangesScreen asked rows={d.rows.map((r) => ({ ...r, from: new Date(r.from), to: new Date(r.to) }))} freezes={d.freezes.map((f) => ({ on: new Date(`${f.date}T00:00:00`), why: f.why }))} today={today} onOpen={open} />;
   return (
     <ChangesScreen
+      report={report.data ? { ...report.data, period: 'the last 90 days' } : undefined}
       rows={d.rows.map((r) => ({ ...r, from: new Date(r.from), to: new Date(r.to) }))}
       freezes={d.freezes.map((f) => ({ on: new Date(`${f.date}T00:00:00`), why: f.why }))}
       today={today}
@@ -51,7 +61,7 @@ export default function YxDeskChangesPage() {
         deskId: d.desk.id,
         onDesk: setDeskId,
         canRaise: d.canRaise,
-        onOpen: (id) => router.push(`/yx/desk/changes/${encodeURIComponent(id)}`),
+        onOpen: open,
         onExport: async (format, from, to) => {
           const { blob, filename } = await apiFetchBlob(`/desk/changes/export?deskId=${encodeURIComponent(d.desk.id)}&from=${from}&to=${to}&format=${format}`, {}, accessToken ?? undefined);
           saveBlob(blob, filename ?? `changes-${from}-to-${to}.${format}`);

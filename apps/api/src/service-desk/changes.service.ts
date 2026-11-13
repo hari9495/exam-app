@@ -9,10 +9,11 @@ import { toCsv } from '../performance/calibration-rules';
 import { writeText } from '../documents/pdf-text';
 import { ApprovalsEngine, Notice, Outcome, StepSpec } from '../workflow/approvals-engine.service';
 import { deskRobot } from './catalog.service';
-import { DeskActor, activeOn, audit, canSetUp, canWork, emit, isAgentOn } from './desk-access';
-import { ChangeDto, ChangeExportDto, ChangeOutcomeDto, ChangeReviewDto, ChangeTasksDto } from './dto-itsm';
+import { DeskActor, activeOn, audit, canSetUp, canWork, deskSystem, emit, isAgentOn, isLead } from './desk-access';
+import { ChangeCancelDto, ChangeDto, ChangeExportDto, ItsmReportDto, ChangeOutcomeDto, ChangeReviewDto, ChangeTasksDto } from './dto-itsm';
 import { RISK_ORDER, Risk, afterWorkingDays, freezeCalendar, frozenDaysIn, outsideWindow, overlaps, riskOf } from './itsm-rules';
 import { ItsmService, ItsmSettings, companyWindow, itsmSettingsOf } from './itsm.service';
+import { ProblemsService } from './problems.service';
 import { RequesterService } from './requester.service';
 import { textToHtml } from './rich-text';
 import { escapeHtml } from '../notifications/notification-email-render';
@@ -23,6 +24,7 @@ export const CHANGE_APPROVAL = 'desk.itsm_change';
 const ACTIVE_STAGES = ['approval', 'scheduled', 'in_progress'];
 type Change = Prisma.SdChangeGetPayload<object>;
 type Task = { title: string; done: boolean };
+export type Owner = { to: string[]; change?: Change; number?: string };
 const RISK_WORD: Record<Risk, string> = { low: 'Low', medium: 'Medium', high: 'High' };
 const ROUTE_WORDS: Record<string, string> = { lead: 'An IT lead approves.', lead_owner: 'An IT lead, then the service owner, approve.', board: 'The change board approves.' };
 const ist = (d: Date) => new Date(d.getTime() + 330 * 60_000).toISOString().slice(0, 16).replace('T', ' ');
@@ -48,6 +50,7 @@ export class ChangesService implements OnModuleInit {
     private readonly approvals: ApprovalsEngine,
     private readonly itsm: ItsmService,
     private readonly notifications: NotificationsService,
+    private readonly problems: ProblemsService,
   ) {}
 
   onModuleInit() {
@@ -59,7 +62,7 @@ export class ChangesService implements OnModuleInit {
       autoActions: false,
       // Maker and checker across steps: the lead who approved never approves again as the service owner.
       distinctSteps: true,
-      onDecided: (tx, req, outcome) => this.decided(tx, req, outcome),
+      onDecided: (tx, req, outcome, afterCommit) => this.decided(tx, req, outcome, afterCommit),
       requesterLink: (req) => `/yx/desk/changes/${req.subjectId}`,
       cardPreview: async () => 'full',
     });
@@ -75,99 +78,109 @@ export class ChangesService implements OnModuleInit {
     // Answer 1932: only the IT desk's agents and leads raise changes (never requesters).
     if (!canWork(a, dto.deskId)) throw new ForbiddenException('Only an agent or lead of this IT desk raises a change.');
     const notices: Notice[] = [];
-    const owner: { to: string[]; change?: Change; number?: string } = { to: [] };
-    const res = await this.tx(a, async (tx) => {
-      const org = a.ctx.organizationId;
-      const desk = await this.itsm.itDesk(tx, a, dto.deskId);
-      const s = await itsmSettingsOf(tx, org, desk.id);
-      const w = await companyWindow(tx, org);
-      const standard = dto.kind === 'standard';
-      // Answer 1935: a standard change comes from a pre-approved template of this desk.
-      const tpl = standard ? (dto.templateId ? await tx.sdTemplate.findFirst({ where: { organizationId: org, deskId: desk.id, id: dto.templateId, active: true } }) : null) : null;
-      if (standard && !tpl?.preApproved) throw new BadRequestException('A standard change comes from a pre-approved template of this desk. Choose one, or raise a normal change.');
-      // Answer 1933: the risk from the answers; a lower one needs a reason.
-      let risk: Risk = 'low';
-      let fromAnswers: Risk | null = null;
-      if (!standard) {
-        const answers = Object.fromEntries(Object.entries(dto.answers ?? {}).map(([k, v]) => [k, String(v)]));
-        fromAnswers = riskOf(s.riskQuestions, answers);
-        if (!fromAnswers) throw new BadRequestException('Answer every risk question.');
-        risk = dto.risk ?? fromAnswers;
-        if (RISK_ORDER.indexOf(risk) < RISK_ORDER.indexOf(fromAnswers) && (dto.riskReason?.trim().length ?? 0) < 10) throw new BadRequestException(`The answers give ${fromAnswers} risk. Say why it is lower (at least 10 characters).`);
-      }
-      const app = dto.appId ? await tx.sdBusinessApp.findFirst({ where: { organizationId: org, id: dto.appId, status: 'active' } }) : null;
-      if (dto.appId && !app) throw new BadRequestException('Choose an application of this company that is in use.');
-      const service = app?.name ?? dto.service?.trim();
-      if (!service) throw new BadRequestException('Choose the service it touches.');
-      const [from, to] = [new Date(dto.from), new Date(dto.to)];
-      const problem = this.windowProblem(from, to, w, dto.kind, dto.freezeReason);
-      if (problem) throw new BadRequestException(problem);
-      const route = dto.kind === 'emergency' ? 'lead' : risk === 'low' ? s.routeLow : risk === 'medium' ? s.routeMedium : s.routeHigh;
-      if (!standard && route === 'lead_owner' && !app) throw new BadRequestException('Choose the application it touches: its owner approves after the IT lead.');
-      const type = await tx.sdTicketType.findFirst({ where: { organizationId: org, deskId: desk.id, kind: 'change', active: true }, orderBy: { sortOrder: 'asc' } });
-      if (!type) throw new BadRequestException('This desk has no change type in use. Ask the desk admin to turn it on.');
-      const personId = (await this.requesters.personOf(tx, { ctx: a.ctx, userId: a.userId, acting: false, user: { role: '' } }, true))!;
-      const body = [`Service: ${service}`, `Window: ${ist(from)} to ${ist(to)} (India time)`, dto.plan?.trim() ? `Plan: ${dto.plan.trim()}` : '', `Way back: ${dto.backout.trim()}`].filter(Boolean).join('\n\n');
-      const t = await this.tickets.createIn(tx, a, { deskId: desk.id, typeId: type.id, itsm: true, subject: dto.title.trim(), bodyHtml: textToHtml(body), requesterPersonId: personId, openedByUserId: a.userId, channel: 'agent', side: 'agent' });
-      const tasks: Task[] = (tpl?.checklist ?? dto.tasks ?? []).map((x) => x.trim()).filter(Boolean).slice(0, 30).map((title) => ({ title, done: false }));
-      let c = await tx.sdChange.create({
-        data: {
-          organizationId: org,
-          deskId: desk.id,
-          ticketId: t.id,
-          changeKind: dto.kind,
-          risk,
-          riskFromAnswers: fromAnswers,
-          riskAnswers: (standard ? {} : dto.answers ?? {}) as Prisma.InputJsonValue,
-          riskReason: dto.riskReason?.trim() || null,
-          appId: app?.id ?? null,
-          service,
-          windowFrom: from,
-          windowTo: to,
-          freezeReason: dto.freezeReason?.trim() || null,
-          plan: dto.plan?.trim() || null,
-          backout: dto.backout.trim(),
-          banner: dto.banner ?? true,
-          templateId: tpl?.id ?? null,
-          tasks: tasks as unknown as Prisma.InputJsonValue,
-          stage: standard ? 'scheduled' : 'approval',
-          createdBy: a.userId,
-        },
-      });
-      if (standard) {
-        await this.tickets.event(tx, t, 'change_scheduled', null, 'Scheduled', { by: a.userId, reason: `Pre-approved template: ${tpl!.name}` });
-        c = await this.scheduled(tx, org, c, s, t, owner);
-      } else {
-        const sub = await this.approvals.submit(tx, a.ctx, {
-          type: CHANGE_APPROVAL,
-          subjectType: 'sd_change',
-          subjectId: c.id,
-          title: `${t.number}: ${dto.title.trim()}`.slice(0, 200),
-          summary: [
-            { label: 'Change', value: `${t.number} · ${dto.title.trim()}` },
-            { label: 'Kind and risk', value: `${dto.kind === 'emergency' ? 'Emergency' : 'Normal'} · ${RISK_WORD[risk]} risk${fromAnswers !== risk ? ` (answers give ${fromAnswers}: ${dto.riskReason?.trim() ?? ''})` : ''}` },
-            { label: 'Service', value: service },
-            { label: 'Window', value: `${ist(from)} to ${ist(to)} (India time)${c.freezeReason ? ` · in a freeze: ${c.freezeReason}` : ''}` },
-            { label: 'Way back', value: dto.backout.trim().slice(0, 500) },
-          ],
-          subjectPersonId: null,
-          requesterUserId: a.userId,
-          raisedByUserId: null,
-          steps: await this.steps(tx, org, desk.id, s, dto.kind, route),
-          payload: { appId: app?.id ?? null },
-          payloadFields: [],
-          fallbackUserIds: [],
-        });
-        notices.push(...sub.notices);
-        c = await tx.sdChange.update({ where: { id: c.id }, data: { approvalRequestId: sub.id } });
-        await this.tickets.event(tx, t, 'approval_asked', null, ROUTE_WORDS[route], { by: a.userId, reason: `${RISK_WORD[risk]} risk ${dto.kind === 'emergency' ? 'emergency ' : ''}change` });
-      }
-      await audit(tx, a, 'desk.change.raised', 'sd_change', c.id, { ticketId: t.id, number: t.number, kind: dto.kind, risk, riskFromAnswers: fromAnswers, riskReason: c.riskReason, route: standard ? 'pre_approved' : route, service, from, to, freezeReason: c.freezeReason });
-      return { id: c.id, number: t.number, stage: (await tx.sdChange.findUniqueOrThrow({ where: { id: c.id } })).stage };
-    });
-    await this.approvals.send(a.ctx, notices);
-    await this.tellOwner(a.ctx.organizationId, owner);
+    const owner: Owner = { to: [] };
+    const res = await this.tx(a, (tx) => this.createIn(tx, a, dto, notices, owner));
+    await this.afterRaise(a.ctx, notices, owner);
     return res;
+  }
+
+  /** After a raise committed: the approvers' notices and the owner's notice. */
+  async afterRaise(ctx: DeskActor['ctx'], notices: Notice[], owner: Owner) {
+    await this.approvals.send(ctx, notices);
+    await this.tellOwner(ctx.organizationId, owner);
+  }
+
+  /** The raise in the caller's transaction (a recurring standard change, answer 1952, raises it from the job). Send the
+   *  notices and tell the owner after it commits. */
+  async createIn(tx: Tx, a: { ctx: DeskActor['ctx']; userId: string }, dto: ChangeDto, notices: Notice[], owner: Owner, scheduled = false) {
+    const org = a.ctx.organizationId;
+    const desk = await this.itsm.itDesk(tx, a, dto.deskId);
+    const s = await itsmSettingsOf(tx, org, desk.id);
+    const w = await companyWindow(tx, org);
+    const standard = dto.kind === 'standard';
+    // Answer 1935: a standard change comes from a pre-approved template of this desk.
+    const tpl = standard ? (dto.templateId ? await tx.sdTemplate.findFirst({ where: { organizationId: org, deskId: desk.id, id: dto.templateId, active: true } }) : null) : null;
+    if (standard && !tpl?.preApproved) throw new BadRequestException('A standard change comes from a pre-approved template of this desk. Choose one, or raise a normal change.');
+    // Answer 1933: the risk from the answers; a lower one needs a reason.
+    let risk: Risk = 'low';
+    let fromAnswers: Risk | null = null;
+    if (!standard) {
+      const answers = Object.fromEntries(Object.entries(dto.answers ?? {}).map(([k, v]) => [k, String(v)]));
+      fromAnswers = riskOf(s.riskQuestions, answers);
+      if (!fromAnswers) throw new BadRequestException('Answer every risk question.');
+      risk = dto.risk ?? fromAnswers;
+      if (RISK_ORDER.indexOf(risk) < RISK_ORDER.indexOf(fromAnswers) && (dto.riskReason?.trim().length ?? 0) < 10) throw new BadRequestException(`The answers give ${fromAnswers} risk. Say why it is lower (at least 10 characters).`);
+    }
+    const app = dto.appId ? await tx.sdBusinessApp.findFirst({ where: { organizationId: org, id: dto.appId, status: 'active' } }) : null;
+    if (dto.appId && !app) throw new BadRequestException('Choose an application of this company that is in use.');
+    const service = app?.name ?? dto.service?.trim();
+    if (!service) throw new BadRequestException('Choose the service it touches.');
+    const [from, to] = [new Date(dto.from), new Date(dto.to)];
+    const problem = this.windowProblem(from, to, w, dto.kind, dto.freezeReason);
+    if (problem) throw new BadRequestException(problem);
+    const route = dto.kind === 'emergency' ? 'lead' : risk === 'low' ? s.routeLow : risk === 'medium' ? s.routeMedium : s.routeHigh;
+    if (!standard && route === 'lead_owner' && !app) throw new BadRequestException('Choose the application it touches: its owner approves after the IT lead.');
+    const type = await tx.sdTicketType.findFirst({ where: { organizationId: org, deskId: desk.id, kind: 'change', active: true }, orderBy: { sortOrder: 'asc' } });
+    if (!type) throw new BadRequestException('This desk has no change type in use. Ask the desk admin to turn it on.');
+    const personId = (await this.requesters.personOf(tx, { ctx: a.ctx, userId: a.userId, acting: false, user: { role: '' } }, true))!;
+    const body = [`Service: ${service}`, `Window: ${ist(from)} to ${ist(to)} (India time)`, dto.plan?.trim() ? `Plan: ${dto.plan.trim()}` : '', `Way back: ${dto.backout.trim()}`].filter(Boolean).join('\n\n');
+    // A schedule raises it for the person who set the schedule up (who may hold no agent seat): written as theirs, by the API.
+    const t = await this.tickets.createIn(tx, a, { deskId: desk.id, typeId: type.id, itsm: true, subject: dto.title.trim(), bodyHtml: textToHtml(body), requesterPersonId: personId, ...(scheduled ? { openedByUserId: null, channel: 'api' as const, side: 'requester' as const, authorPersonId: personId, tags: ['recurring'] } : { openedByUserId: a.userId, channel: 'agent' as const, side: 'agent' as const }) });
+    const tasks: Task[] = (tpl?.checklist ?? dto.tasks ?? []).map((x) => x.trim()).filter(Boolean).slice(0, 30).map((title) => ({ title, done: false }));
+    let c = await tx.sdChange.create({
+      data: {
+        organizationId: org,
+        deskId: desk.id,
+        ticketId: t.id,
+        changeKind: dto.kind,
+        risk,
+        riskFromAnswers: fromAnswers,
+        riskAnswers: (standard ? {} : dto.answers ?? {}) as Prisma.InputJsonValue,
+        riskReason: dto.riskReason?.trim() || null,
+        appId: app?.id ?? null,
+        service,
+        windowFrom: from,
+        windowTo: to,
+        freezeReason: dto.freezeReason?.trim() || null,
+        plan: dto.plan?.trim() || null,
+        backout: dto.backout.trim(),
+        banner: dto.banner ?? true,
+        templateId: tpl?.id ?? null,
+        tasks: tasks as unknown as Prisma.InputJsonValue,
+        stage: standard ? 'scheduled' : 'approval',
+        createdBy: a.userId,
+      },
+    });
+    if (standard) {
+      await this.tickets.event(tx, t, 'change_scheduled', null, 'Scheduled', { by: a.userId, reason: `Pre-approved template: ${tpl!.name}` });
+      c = await this.scheduled(tx, org, c, s, t, owner);
+    } else {
+      const sub = await this.approvals.submit(tx, a.ctx, {
+        type: CHANGE_APPROVAL,
+        subjectType: 'sd_change',
+        subjectId: c.id,
+        title: `${t.number}: ${dto.title.trim()}`.slice(0, 200),
+        summary: [
+          { label: 'Change', value: `${t.number} · ${dto.title.trim()}` },
+          { label: 'Kind and risk', value: `${dto.kind === 'emergency' ? 'Emergency' : 'Normal'} · ${RISK_WORD[risk]} risk${fromAnswers !== risk ? ` (answers give ${fromAnswers}: ${dto.riskReason?.trim() ?? ''})` : ''}` },
+          { label: 'Service', value: service },
+          { label: 'Window', value: `${ist(from)} to ${ist(to)} (India time)${c.freezeReason ? ` · in a freeze: ${c.freezeReason}` : ''}` },
+          { label: 'Way back', value: dto.backout.trim().slice(0, 500) },
+        ],
+        subjectPersonId: null,
+        requesterUserId: a.userId,
+        raisedByUserId: null,
+        steps: await this.steps(tx, org, desk.id, s, dto.kind, route),
+        payload: { appId: app?.id ?? null },
+        payloadFields: [],
+        fallbackUserIds: [],
+      });
+      notices.push(...sub.notices);
+      c = await tx.sdChange.update({ where: { id: c.id }, data: { approvalRequestId: sub.id } });
+      await this.tickets.event(tx, t, 'approval_asked', null, ROUTE_WORDS[route], { by: a.userId, reason: `${RISK_WORD[risk]} risk ${dto.kind === 'emergency' ? 'emergency ' : ''}change` });
+    }
+    await audit(tx, a, 'desk.change.raised', 'sd_change', c.id, { ticketId: t.id, number: t.number, kind: dto.kind, risk, riskFromAnswers: fromAnswers, riskReason: c.riskReason, route: standard ? 'pre_approved' : route, service, from, to, freezeReason: c.freezeReason });
+    return { id: c.id, number: t.number, stage: (await tx.sdChange.findUniqueOrThrow({ where: { id: c.id } })).stage };
   }
 
   /** Why a window cannot be used (null: it can). Answer 1936: an emergency may run outside the window, and in a freeze with a reason. */
@@ -200,7 +213,7 @@ export class ChangesService implements OnModuleInit {
   }
 
   /** The approvals engine decided (its own transaction, exactly once). */
-  private async decided(tx: Tx, req: Prisma.WfRequestGetPayload<object>, outcome: Outcome) {
+  private async decided(tx: Tx, req: Prisma.WfRequestGetPayload<object>, outcome: Outcome, afterCommit?: (fn: () => Promise<void>) => void) {
     await tx.$executeRaw`SELECT set_config('app.sd_system', 'on', true)`;
     const org = req.organizationId;
     const c = await tx.sdChange.findFirst({ where: { organizationId: org, id: req.subjectId } });
@@ -213,15 +226,14 @@ export class ChangesService implements OnModuleInit {
       await this.settle(tx, org, t, 'closed', `Not approved${last?.reason ? `: ${last.reason}` : ''}`);
       return;
     }
-    const owner: { to: string[]; change?: Change; number?: string } = { to: [] };
+    const owner: Owner = { to: [] };
     await this.scheduled(tx, org, c, await itsmSettingsOf(tx, org, c.deskId), t, owner);
-    // shortcut: the email leaves while the decision's transaction is still open (the engine owns it); a rollback after
-    // this point would leave an email about a change that was not scheduled. Upgrade to an outbox consumer if it matters.
-    setImmediate(() => void this.tellOwner(org, owner));
+    // Answer 1937: the owner hears of it only once the decision is saved (never from a transaction that fails).
+    afterCommit?.(() => this.tellOwner(org, owner));
   }
 
   /** Scheduled: the known-issue banner from the desk's hours before until the window ends (answer 1937). */
-  private async scheduled(tx: Tx, org: string, c: Change, s: ItsmSettings, t: Ticket, owner: { to: string[]; change?: Change; number?: string }) {
+  private async scheduled(tx: Tx, org: string, c: Change, s: ItsmSettings, t: Ticket, owner: Owner) {
     let bannerId: string | null = null;
     if (c.banner && s.bannerOn) {
       const text = `Planned IT change: ${t.subject} (${c.service}), ${ist(c.windowFrom)} to ${ist(c.windowTo)} India time. It may not work during this time.`.slice(0, 300);
@@ -262,6 +274,81 @@ export class ChangesService implements OnModuleInit {
     }
   }
 
+  /** A change that was made: its ticket resolves and the problems it fixes close (answer 1941). */
+  private async finished(tx: Tx, a: DeskActor, t: Ticket, outcome: string, note = 'The change was made.') {
+    await this.settle(tx, a.ctx.organizationId, t, 'solved', note);
+    if (outcome !== 'backed_out') await this.problems.closeByChange(tx, a, t.id);
+  }
+
+  /** Answer 1951: the person who raised it, or a lead of the desk, cancels it before it starts, with a reason. */
+  async cancel(a: DeskActor, id: string, dto: ChangeCancelDto) {
+    return this.tx(a, async (tx) => {
+      const org = a.ctx.organizationId;
+      const { c } = await this.load(tx, a, id);
+      if (c.createdBy !== a.userId && !isLead(a, c.deskId)) throw new ForbiddenException('The person who raised it, or an IT lead, cancels a change.');
+      if (c.version !== dto.version) throw new ConflictException('Someone changed this change. Reload and try again.');
+      if (!['approval', 'scheduled'].includes(c.stage)) throw new BadRequestException('Only a change that has not started can be cancelled. Record how it went instead.');
+      const reason = dto.reason.trim();
+      if (c.approvalRequestId) await this.approvals.withdraw(tx, a.ctx, c.approvalRequestId, a.userId, reason);
+      if (c.bannerId) await tx.sdBanner.updateMany({ where: { organizationId: org, id: c.bannerId, endedAt: null }, data: { endedAt: new Date() } });
+      const after = await tx.sdChange.update({ where: { id: c.id }, data: { stage: 'cancelled', cancelReason: reason, cancelledBy: a.userId, version: { increment: 1 }, updatedAt: new Date() } });
+      const t = await tx.sdTicket.findFirstOrThrow({ where: { organizationId: org, id: c.ticketId } });
+      await this.tickets.event(tx, t, 'change_cancelled', c.stage, 'cancelled', { by: a.userId, reason });
+      await audit(tx, a, 'desk.change.cancelled', 'sd_change', c.id, { number: t.number, from: c.stage, reason });
+      await emit(tx, org, 'helpdesk.change.finished', { ticketId: t.id, deskId: c.deskId, changeId: c.id, outcome: 'cancelled', review: false });
+      await this.settle(tx, org, t, 'closed', `Cancelled: ${reason}`);
+      return { version: after.version, stage: after.stage };
+    });
+  }
+
+  /**
+   * Answer 1955: a change still in progress after its window ends: the desk's leads are told once (job every 5 minutes;
+   * the notice leaves after the claim commits).
+   */
+  async overrunTick(now = new Date()): Promise<number> {
+    const due = await deskSystem(this.tenantPrisma, { organizationId: null, isSuperAdmin: true }, (tx) =>
+      tx.sdChange.findMany({ where: { stage: 'in_progress', windowTo: { lt: now }, overrunWarnedAt: null }, select: { id: true, organizationId: true }, take: 200 }),
+    );
+    let n = 0;
+    for (const d of due) {
+      const ctx = { organizationId: d.organizationId, isSuperAdmin: false };
+      try {
+        const out = await deskSystem(this.tenantPrisma, ctx, async (tx) => {
+          const claimed = await tx.sdChange.updateMany({ where: { id: d.id, stage: 'in_progress', overrunWarnedAt: null }, data: { overrunWarnedAt: now } });
+          if (!claimed.count) return null;
+          const c = await tx.sdChange.findUniqueOrThrow({ where: { id: d.id } });
+          const t = await tx.sdTicket.findFirstOrThrow({ where: { organizationId: d.organizationId, id: c.ticketId }, select: { number: true, subject: true } });
+          const leads = (await tx.sdDeskMember.findMany({ where: { organizationId: d.organizationId, deskId: c.deskId, role: 'lead', ...activeOn(todayIst()) }, select: { userId: true } })).map((m) => m.userId);
+          await emit(tx, d.organizationId, 'helpdesk.change.overrun', { ticketId: c.ticketId, deskId: c.deskId, changeId: c.id });
+          return { c, t, leads };
+        });
+        if (!out?.leads.length) continue;
+        const text = `${out.t.number} · ${out.t.subject} is still in progress; its window ended ${ist(out.c.windowTo)} India time`;
+        await this.notifications
+          .notifySystem(ctx, out.leads, 'helpdesk.change.overrun', { entityType: 'sd_change', entityId: out.c.id, contextText: text.slice(0, 300), linkPath: `/yx/desk/changes/${out.c.id}` }, { subject: `Change running past its window: ${out.t.number}`.slice(0, 150), html: `<p>${escapeHtml(text)}.</p><p>Open it to record how it went, or to back it out.</p>` })
+          .catch((e) => this.logger.warn(`overrun notice: ${(e as Error).message}`));
+        n++;
+      } catch (e) {
+        this.logger.warn(`change overrun ${d.id}: ${(e as Error).message}`);
+      }
+    }
+    return n;
+  }
+
+  /** Answer 1953: the changes someone without an IT desk seat is asked about (change board, application owner, approver). */
+  async askedIds(tx: Tx, org: string, userId: string): Promise<string[] | null> {
+    const boards = await tx.sdItsmSettings.findMany({ where: { organizationId: org, boardUserIds: { has: userId } }, select: { deskId: true } });
+    const apps = await tx.sdBusinessApp.findMany({ where: { organizationId: org, ownerUserId: userId }, select: { id: true } });
+    const asked = await tx.wfTask.findMany({ where: { organizationId: org, OR: [{ assigneeUserId: userId }, { onBehalfOfUserId: userId }] }, select: { requestId: true }, take: 2000 });
+    const rows = await tx.sdChange.findMany({
+      where: { organizationId: org, OR: [{ deskId: { in: boards.map((b) => b.deskId) } }, { appId: { in: apps.map((x) => x.id) } }, { approvalRequestId: { in: asked.map((x) => x.requestId) } }] },
+      select: { id: true },
+      orderBy: { windowFrom: 'desc' },
+      take: 300,
+    });
+    return boards.length || rows.length ? rows.map((r) => r.id) : null;
+  }
+
   // ------------------------------------------------------------------------------------------ reading
 
   /** Who may open a change: the desk's agents and leads, its admins, the people asked to approve it, and the service owner. */
@@ -274,7 +361,7 @@ export class ChangesService implements OnModuleInit {
       const asked = c.approvalRequestId ? await tx.wfTask.findFirst({ where: { organizationId: org, requestId: c.approvalRequestId, OR: [{ assigneeUserId: a.userId }, { onBehalfOfUserId: a.userId }] }, select: { id: true } }) : null;
       const owner = c.appId ? await tx.sdBusinessApp.findFirst({ where: { organizationId: org, id: c.appId, ownerUserId: a.userId }, select: { id: true } }) : null;
       const board = (await itsmSettingsOf(tx, org, c.deskId)).boardUserIds.includes(a.userId);
-      if (!asked && !owner && !board) throw new NotFoundException('No such change.');
+      if (!asked && !owner && !board && c.createdBy !== a.userId) throw new NotFoundException('No such change.');
     }
     return { c, onDesk: desk };
   }
@@ -288,7 +375,11 @@ export class ChangesService implements OnModuleInit {
       const desk = mine.find((d) => d.id === deskId) ?? (deskId ? null : mine[0]);
       if (!desk) {
         if (deskId) throw new NotFoundException('No such desk.');
-        return { access: false as const };
+        // Answer 1953: the change board, application owners and approvers see only the changes they are asked about.
+        const ids = await this.askedIds(tx, org, a.userId);
+        if (!ids) return { access: false as const };
+        const rows = await tx.sdChange.findMany({ where: { organizationId: org, id: { in: ids } }, orderBy: { windowFrom: 'desc' } });
+        return { access: true as const, asked: true as const, rows: await this.rows(tx, org, rows), freezes: freezeCalendar(todayIst(), 14, await companyWindow(tx, org)) };
       }
       const s = await itsmSettingsOf(tx, org, desk.id);
       const w = await companyWindow(tx, org);
@@ -312,6 +403,7 @@ export class ChangesService implements OnModuleInit {
   }
 
   private async rows(tx: Tx, org: string, rows: Change[]) {
+    if (!rows.length) return [];
     const tickets = new Map((await tx.sdTicket.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.ticketId) } }, select: { id: true, number: true, subject: true } })).map((t) => [t.id, t]));
     const users = await this.tickets.userNames(tx, org, rows.map((r) => r.createdBy));
     const caused = await tx.sdTicketLink.groupBy({ by: ['toTicketId'], where: { organizationId: org, kind: 'caused_by', toTicketId: { in: rows.map((r) => r.ticketId) } }, _count: { _all: true } });
@@ -353,6 +445,7 @@ export class ChangesService implements OnModuleInit {
         version: c.version,
         riskFromAnswers: c.riskFromAnswers,
         riskReason: c.riskReason,
+        cancelReason: c.cancelReason,
         riskAnswers: c.riskAnswers,
         questions: s.riskQuestions,
         freezeReason: c.freezeReason,
@@ -370,6 +463,7 @@ export class ChangesService implements OnModuleInit {
           start: onDesk && canWork(a, c.deskId) && c.stage === 'scheduled',
           work: onDesk && canWork(a, c.deskId) && c.stage === 'in_progress',
           review: reviewer && c.stage === 'review',
+          cancel: ['approval', 'scheduled'].includes(c.stage) && (c.createdBy === a.userId || isLead(a, c.deskId)),
           export: onDesk,
         },
       };
@@ -429,7 +523,8 @@ export class ChangesService implements OnModuleInit {
       if (c.bannerId) await tx.sdBanner.updateMany({ where: { organizationId: org, id: c.bannerId, endedAt: null }, data: { endedAt: new Date() } });
       await this.tickets.event(tx, t, 'change_outcome', 'in_progress', stage, { by: a.userId, reason: `${dto.outcome.replace(/_/g, ' ')}${dto.note?.trim() ? `: ${dto.note.trim()}` : ''}`.slice(0, 1000) });
       await audit(tx, a, 'desk.change.outcome', 'sd_change', c.id, { number: t.number, outcome: dto.outcome, review, reviewDue });
-      if (!review) await this.settle(tx, org, t, 'solved', 'The change was made.');
+      if (!review) await this.finished(tx, a, t, dto.outcome);
+      await emit(tx, org, 'helpdesk.change.finished', { ticketId: t.id, deskId: c.deskId, changeId: c.id, outcome: dto.outcome, review });
       return { version: after.version, stage, reviewDue };
     });
   }
@@ -454,8 +549,37 @@ export class ChangesService implements OnModuleInit {
       const after = await tx.sdChange.update({ where: { id: c.id }, data: { stage, review: dto.review.trim(), reviewedBy: a.userId, reviewedAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
       await this.tickets.event(tx, t, 'change_reviewed', 'review', stage, { by: a.userId, reason: dto.review.trim().slice(0, 1000) });
       await audit(tx, a, 'desk.change.reviewed', 'sd_change', c.id, { number: t.number, late: Boolean(c.reviewDue && c.reviewDue < new Date()) });
-      await this.settle(tx, org, t, 'solved', `Reviewed: ${dto.review.trim()}`);
+      if (stage === 'closed') await this.finished(tx, a, t, c.outcome ?? 'done', `Reviewed: ${dto.review.trim()}`);
+      else await this.settle(tx, org, t, 'solved', `Reviewed: ${dto.review.trim()}`);
       return { version: after.version, stage };
+    });
+  }
+
+  // ------------------------------------------------------------------------------------------ the report (ITSM-4)
+
+  /** Changes by kind and how they ended, the failed-change rate, open problems by age and incidents per problem. */
+  async report(a: DeskActor, dto: ItsmReportDto) {
+    if (!isAgentOn(a, dto.deskId) && !canSetUp(a, dto.deskId, 'desk.settings.manage')) throw new NotFoundException('No such desk.');
+    if (dto.to < dto.from) throw new BadRequestException('The period ends before it starts.');
+    return this.tx(a, async (tx) => {
+      const org = a.ctx.organizationId;
+      await this.itsm.itDesk(tx, a, dto.deskId);
+      const changes = await tx.sdChange.findMany({ where: { organizationId: org, deskId: dto.deskId, createdAt: { gte: IST_DAY(dto.from), lt: new Date(IST_DAY(dto.to).getTime() + 86_400_000) } }, select: { changeKind: true, stage: true, outcome: true } });
+      const ending = (c: (typeof changes)[number]) => (['rejected', 'cancelled'].includes(c.stage) ? c.stage : (c.outcome ?? 'open'));
+      const ENDINGS = ['done', 'done_with_problems', 'backed_out', 'rejected', 'cancelled', 'open'];
+      const byKind = (['standard', 'normal', 'emergency'] as const).map((kind) => ({ kind, ...Object.fromEntries(ENDINGS.map((e) => [e, changes.filter((c) => c.changeKind === kind && ending(c) === e).length])) }));
+      const finished = changes.filter((c) => c.outcome).length;
+      const failed = changes.filter((c) => c.outcome && c.outcome !== 'done').length;
+      const problems = await tx.sdProblem.findMany({ where: { organizationId: org, deskId: dto.deskId, state: { not: 'closed' } }, select: { ticketId: true, createdAt: true } });
+      const age = (p: { createdAt: Date }) => (Date.now() - p.createdAt.getTime()) / 86_400_000;
+      const all = await tx.sdProblem.findMany({ where: { organizationId: org, deskId: dto.deskId }, select: { ticketId: true } });
+      const counts = all.length ? await tx.sdTicketLink.groupBy({ by: ['toTicketId'], where: { organizationId: org, kind: 'tracked_by', toTicketId: { in: all.map((p) => p.ticketId) } }, _count: { _all: true } }) : [];
+      const tickets = new Map((await tx.sdTicket.findMany({ where: { organizationId: org, id: { in: counts.map((c) => c.toTicketId) } }, select: { id: true, number: true, subject: true } })).map((t) => [t.id, t]));
+      const top = counts.map((c) => ({ number: tickets.get(c.toTicketId)?.number ?? '', title: tickets.get(c.toTicketId)?.subject ?? '', incidents: c._count._all })).sort((x, y) => y.incidents - x.incidents).slice(0, 10);
+      return {
+        changes: { total: changes.length, byKind, finished, failed, failedRate: finished ? Math.round((failed / finished) * 100) : null },
+        problems: { open: problems.length, byAge: [{ label: 'Under 7 days', count: problems.filter((p) => age(p) < 7).length }, { label: '7 to 30 days', count: problems.filter((p) => age(p) >= 7 && age(p) < 30).length }, { label: '30 to 90 days', count: problems.filter((p) => age(p) >= 30 && age(p) < 90).length }, { label: 'Over 90 days', count: problems.filter((p) => age(p) >= 90).length }], incidentsPerProblem: all.length ? Math.round((counts.reduce((t, c) => t + c._count._all, 0) / all.length) * 10) / 10 : null, top },
+      };
     });
   }
 
@@ -480,7 +604,7 @@ export class ChangesService implements OnModuleInit {
         return [
           t.number, t.subject, c.changeKind, c.risk, c.riskFromAnswers ?? '', c.riskReason ?? '', c.service,
           names.get(c.createdBy) ?? '', ist(c.createdAt), ist(c.windowFrom), ist(c.windowTo), c.freezeReason ?? '',
-          c.changeKind === 'standard' ? 'pre-approved template' : decisions.join('; '), c.stage, c.outcome ?? '', c.outcomeNote ?? '',
+          c.changeKind === 'standard' ? 'pre-approved template' : decisions.join('; '), c.stage, c.outcome ?? '', c.outcomeNote ?? c.cancelReason ?? '',
           c.reviewDue ? ist(c.reviewDue) : '', c.review ?? '', c.reviewedBy ? (names.get(c.reviewedBy) ?? '') : '', c.reviewedAt ? ist(c.reviewedAt) : '',
         ];
       });
