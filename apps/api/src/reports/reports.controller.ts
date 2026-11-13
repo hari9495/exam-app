@@ -3,6 +3,7 @@ import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
+import { SeesAnswerKeys, ShowsAnswerKeys, withoutCorrectOptions } from '../rbac/answer-keys';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { TenantContext } from '@exam-platform/shared';
 import { ReportsService, ExportResultRow, CandidateDetail, CandidateComparisonRow } from './reports.service';
@@ -36,13 +37,17 @@ export class ReportsController {
 
   @Get(':id/candidates/:candidateId/report')
   @RequirePermissions('results:view')
-  getCandidateDetail(
+  @ShowsAnswerKeys()
+  async getCandidateDetail(
     @CurrentTenant() tenant: TenantContext,
     @Param('id') id: string,
     @Param('candidateId') candidateId: string,
+    @SeesAnswerKeys() keys: boolean,
     @Query('attemptId') attemptId?: string,
   ): Promise<CandidateDetail> {
-    return this.reportsService.getCandidateDetail(tenant, id, candidateId, attemptId);
+    const detail = await this.reportsService.getCandidateDetail(tenant, id, candidateId, attemptId);
+    // Readers of results see what the candidate chose and whether it was right, not the answer key (security fix).
+    return keys ? detail : withoutCorrectOptions(detail);
   }
 
   @Get(':id/candidates/compare')
