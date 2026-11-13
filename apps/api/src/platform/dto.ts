@@ -224,6 +224,16 @@ export class FlagReasonDto {
   reason!: string;
 }
 
+/** DPDP Rule 7: when the first notice to the Data Protection Board was sent, and a note (how, reference). */
+export class BoardNoticeDto {
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/, { message: 'Give the date and time the notice was sent.' })
+  sentAt!: string;
+
+  @Reason(5)
+  note!: string;
+}
+
 export class ContainDto {
   @Reason(10)
   reason!: string;

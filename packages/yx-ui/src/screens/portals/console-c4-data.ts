@@ -32,4 +32,7 @@ export const CONTAIN_READY: ContainView = BASE;
 export const CONTAIN_OPEN: ContainView = { ...BASE, containment: OPEN };
 export const CONTAIN_LIFT: ContainView = { ...BASE, containment: { ...OPEN, liftRequest: { by: 'Anand Iyer', byMe: false, at: '2026-11-12T08:40:00.000Z', reason: 'Passwords reset, the export reviewed with the company' } } };
 
-export const liveContain = (view: ContainView, over: Partial<LiveContain> = {}): LiveContain => ({ state: 'ready', onRetry: () => {}, view, onContain: ok, onRequestLift: ok, onLift: ok, ...over });
+// DPDP Rule 7: the first notice to the Board marked sent.
+export const CONTAIN_BOARD_TOLD: ContainView = { ...BASE, containment: { ...OPEN, boardNotice: { at: '2026-11-12T07:10:00.000Z', by: 'Farah Khan', note: 'Emailed the Data Protection Board; reference DPB-2026-114' } } };
+
+export const liveContain = (view: ContainView, over: Partial<LiveContain> = {}): LiveContain => ({ state: 'ready', onRetry: () => {}, view, onContain: ok, onRequestLift: ok, onLift: ok, onBoardNotice: ok, ...over });

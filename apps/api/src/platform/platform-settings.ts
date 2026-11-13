@@ -13,7 +13,7 @@ import { CS_SETTINGS } from './customer-success.service';
 import { BLOCK_DATES_DEFAULT, BLOCK_DATES_KEY, MAINTENANCE_SETTINGS } from './maintenance.service';
 import { PLATFORM } from './platform.service';
 import { HELP_SETTINGS } from '../service-desk/help-centre.service';
-import { LEAD_DEFAULT, LEAD_KEY } from './incidents.service';
+import { BOARD_NUDGE_DEFAULT, BOARD_NUDGE_KEY, LEAD_DEFAULT, LEAD_KEY } from './incidents.service';
 import { SALES_REPLY_DEFAULT, SALES_REPLY_KEY } from './sales-assist.service';
 import { ANALYTICS_MIN_DEFAULT, ANALYTICS_MIN_KEY, ANALYTICS_WINDOW_DEFAULT, ANALYTICS_WINDOW_KEY } from './analytics.service';
 import { NUDGE_LIMIT_DEFAULT, NUDGE_LIMIT_KEY, NUDGE_RETURN_DEFAULT, NUDGE_RETURN_KEY } from './nudges.service';
@@ -60,6 +60,8 @@ export const PLATFORM_SETTING_DEFS: Record<string, Def> = {
   // C-4 (answer 1050): the breach clock. shortcut: ranges set by YukthiX (question 1182); verify with counsel.
   'breach.certin_hours': whole('CERT-In: report a cyber security incident within (hours)', 6, 1, 24),
   'breach.dpdp_board_report_hours': whole('DPDP Rules 2025: detailed report to the Data Protection Board within (hours)', 72, 1, 168),
+  // DPDP Rule 7 (founder, 13 Nov 2026): the Board is told without delay; Security leads are reminded until it is marked.
+  [BOARD_NUDGE_KEY]: whole('DPDP Rule 7: remind Security leads to tell the Data Protection Board every (minutes) until marked', BOARD_NUDGE_DEFAULT, 15, 1440),
   // Answer 1173: "Send the invitation again" (Staff and roles), per person per India day.
   'staff.invite.resends_per_day': whole('Staff invitations: times a day the invitation may be sent again to one person', 3, 1, 10),
   // Answer 1243: invited staff who never sign in are deactivated by the nightly job after this many days.
@@ -74,10 +76,10 @@ export const PLATFORM_SETTING_DEFS: Record<string, Def> = {
   // S-9 (answer 1332) and answer 1882: the export link time and how long a closed company's data is kept.
   'account.export.link_hours': whole('Whole-company export: the download link works for (hours)', 24, 1, 168),
   'account.closure.keep_days': whole('Closed company: data is kept for (days) before deletion', 30, 30, 365),
-  [ANALYTICS_WINDOW_KEY]: whole('Product analytics: count use over the last (days)', ANALYTICS_WINDOW_DEFAULT, 7, 180),
-  [ANALYTICS_MIN_KEY]: whole('Product analytics: hide any group of fewer than this many companies', ANALYTICS_MIN_DEFAULT, 5, 50),
   // Answer 1975: a deleted company's statutory records (audit log, payroll, filings) stay read-only at least this long.
   'account.closure.statutory_keep_years': whole('Deleted company: statutory records are kept for (years, at least 8)', 8, 8, 20),
+  [ANALYTICS_WINDOW_KEY]: whole('Product analytics: count use over the last (days)', ANALYTICS_WINDOW_DEFAULT, 7, 180),
+  [ANALYTICS_MIN_KEY]: whole('Product analytics: hide any group of fewer than this many companies', ANALYTICS_MIN_DEFAULT, 5, 50),
   [SALES_REPLY_KEY]: whole('Sales assist: reply to a Talk to us request within (hours)', SALES_REPLY_DEFAULT, 4, 72),
   [NUDGE_RETURN_KEY]: whole('Nudges: days before a nudge put away with Not now may show again (0 = never)', NUDGE_RETURN_DEFAULT, 0, 90),
 };

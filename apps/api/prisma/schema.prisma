@@ -13913,6 +13913,13 @@ model CompanyContainment {
   liftedBy            String?   @map("lifted_by") @db.Uuid
   liftedByName        String?   @map("lifted_by_name") @db.VarChar(200)
   liftedAt            DateTime? @map("lifted_at") @db.Timestamptz(3)
+  /// DPDP Rule 7 (founder, 13 Nov 2026): the first notice to the Data Protection Board, marked sent by staff.
+  boardNotifiedAt     DateTime? @map("board_notified_at") @db.Timestamptz(3)
+  boardNoticeNote     String?   @map("board_notice_note") @db.VarChar(500)
+  boardNotifiedBy     String?   @map("board_notified_by") @db.Uuid
+  boardNotifiedByName String?   @map("board_notified_by_name") @db.VarChar(200)
+  /// The last reminder to the Security leads while the first notice is not marked.
+  boardNudgedAt       DateTime? @map("board_nudged_at") @db.Timestamptz(3)
 
   @@map("company_containments")
 }
