@@ -14285,6 +14285,7 @@ model FeatureRequest {
 
   @@index([status, createdAt(sort: Desc)], map: "feature_requests_status_idx")
   @@map("feature_requests")
+}
 
 /// Helpdesk ITSM-3 (answers 1939-1941): the problem record of a problem ticket (a tracker of its incidents).
 model SdProblem {
