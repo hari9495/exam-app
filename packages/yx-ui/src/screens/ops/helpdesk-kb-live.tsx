@@ -1383,7 +1383,7 @@ function KbReviewRule({ value, onSave }: { value: number; onSave: (months: numbe
           <Segment label="Check help articles again every" options={REVIEW_CHOICES.map((m) => ({ value: String(m), label: `${m} months` }))} value={months} onChange={setMonths} />
         </FormField>
         <div className="yx-ops-row">
-          <Button loading={busy === 'save'} onClick={() => (Number(months) === value ? toast({ title: 'Nothing has changed yet.' }) : void run('save', async () => { await onSave(Number(months)); toast({ tone: 'success', title: `Help articles are now checked every ${months} months.` }); }))}>
+          <Button loading={busy === 'save'} onClick={() => (Number(months) === value ? toast({ tone: 'default', title: 'Nothing has changed yet.' }) : void run('save', async () => { await onSave(Number(months)); toast({ tone: 'success', title: `Help articles are now checked every ${months} months.` }); }))}>
             Save
           </Button>
         </div>
