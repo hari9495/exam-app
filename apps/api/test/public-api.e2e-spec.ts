@@ -8,6 +8,7 @@ import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
 import { markSteppedUp } from './fixtures/step-up';
+import { asApproved } from './fixtures/approved-question';
 
 describe('Public API + Webhooks HTTP flow', () => {
   let app: INestApplication;
@@ -94,7 +95,7 @@ describe('Public API + Webhooks HTTP flow', () => {
       .expect(201);
     const sectionId = sectionResponse.body.id;
 
-    const questionResponse = await request(app.getHttpServer())
+    const questionResponse = await asApproved(await request(app.getHttpServer())
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
@@ -107,7 +108,7 @@ describe('Public API + Webhooks HTTP flow', () => {
           { text: 'False', isCorrect: false },
         ],
       })
-      .expect(201);
+      .expect(201));
     const questionId = questionResponse.body.id;
 
     await request(app.getHttpServer())

@@ -8,6 +8,7 @@ import { PrismaModule } from '@exam-platform/shared';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
+import { asApproved } from './fixtures/approved-question';
 
 describe('Candidates Row-Level Security', () => {
   let prisma: PrismaService;
@@ -204,7 +205,7 @@ describe('Candidates & Invitations HTTP flow', () => {
       .expect(201);
     const sectionId = sectionResponse.body.id;
 
-    const questionResponse = await request(app.getHttpServer())
+    const questionResponse = await asApproved(await request(app.getHttpServer())
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
@@ -217,7 +218,7 @@ describe('Candidates & Invitations HTTP flow', () => {
           { text: 'False', isCorrect: false },
         ],
       })
-      .expect(201);
+      .expect(201));
     const questionId = questionResponse.body.id;
 
     await request(app.getHttpServer())

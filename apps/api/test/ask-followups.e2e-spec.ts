@@ -97,7 +97,14 @@ describe('Ask YukthiX follow-ups (2112, 2113)', () => {
       const out = (await api('adminA', 'post', `/help/assistant/conversations/${conv}/sales-request`).send(sale).expect(201)).body;
       expect(out).toEqual({ number: expect.any(Number), dueAt: expect.any(String) });
       await api('adminA', 'post', `/help/assistant/conversations/${conv}/sales-request`).send(sale).expect(409);
-      expect((await api('adminA', 'get', '/help/assistant').expect(200)).body.conversation).toMatchObject({ id: conv, salesRequestSent: true });
+      const state = (await api('adminA', 'get', '/help/assistant').expect(200)).body;
+      expect(state.conversation).toMatchObject({ id: conv, salesRequestSent: true });
+      // Answer 2146: while it is open, the company sees when sales call, and a second chat cannot send another.
+      expect(state.salesOpen).toEqual({ dueAt: out.dueAt });
+      const second = await ask('adminA', 'And what about the Enterprise plan?', 'buying');
+      expect((await api('adminA', 'post', `/help/assistant/conversations/${second}/sales-request`).send(sale).expect(409)).body.message).toMatch(/already asked YukthiX sales/);
+      // Another company is not affected.
+      expect((await api('adminB', 'get', '/help/assistant').expect(200)).body.salesOpen).toBeNull();
       const row = await sup((tx) => tx.salesAssistRequest.findFirstOrThrow({ where: { conversationId: conv } }));
       expect(row).toMatchObject({ organizationId: org.A, source: 'assistant', phone: '9845012345', topics: ['pricing'], requestedBy: users.adminA, featureKey: null, status: 'open' });
       expect(row.chat).toContain('How much is the Pro plan');

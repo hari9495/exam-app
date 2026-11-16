@@ -97,6 +97,12 @@ describe('AskYukthix', () => {
     expect(screen.getByText(/A sales request went from this chat/)).toBeTruthy();
   });
 
+  it('answer 2146: while the company has an open sales request, no new one is offered and the chat says when sales call', () => {
+    show(props({ state: { ...ASK_STATE, canAskSales: true, salesOpen: { dueAt: '2026-11-17T10:30:00Z' }, conversation: ASK_BUYING }, onSalesRequest: vi.fn() }));
+    expect(screen.queryByRole('button', { name: 'Send a sales request' })).toBeNull();
+    expect(screen.getByText(/Your company already asked YukthiX sales\. They call you by 17 Nov 2026/)).toBeTruthy();
+  });
+
   it('negative: a chat that is not about buying shows no sales offer', () => {
     show(props({ state: { ...ASK_STATE, canAskSales: true }, onSalesRequest: vi.fn() }));
     expect(screen.queryByText('Buying or upgrading')).toBeNull();

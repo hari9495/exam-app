@@ -21956,6 +21956,26 @@
     "note": "Positive and negative. Answer 1992 (as 1913 for maintenance)."
   },
   {
+    "id": "MT-ASMT-BANK2",
+    "area": "Question bank round 2: answers 2141-2143, 2146 (16 Nov 2026)",
+    "screen": "Hire › Question bank; the older Questions page; Tests; Help › Ask YukthiX",
+    "url": "http://localhost:3000/yx/hiring/assessments/questions",
+    "account": "Two bank writers (a writer and a reviewer); a System Admin with Plan & add-ons for step 6.",
+    "steps": [
+      "On the older Questions page, add a question; open the question bank.",
+      "Negative: on the older page press Publish on that new question.",
+      "Negative: add that question to a test section.",
+      "Submit it in the bank; the second person approves it; add it to the section and publish the test.",
+      "Open a question with an image in the bank editor; look at Candidate preview.",
+      "In Ask YukthiX ask about buying the Pro plan; Send a sales request; then in a new chat ask about buying again."
+    ],
+    "expected": "Step 1: it shows as a draft in the bank. Step 2: refused: another person approves it in the question bank. Step 3: refused: not approved. Step 4: the test publishes. Step 5: the image shows with its alt text. Step 6: the second chat has no Send a sales request and says when sales call.",
+    "stories": [
+      "PreviewWithImage"
+    ],
+    "note": "Positive and negative."
+  },
+  {
     "id": "MT-HLP-RULE-LOCK",
     "area": "Desk automation: rule lock (16 Nov 2026)",
     "screen": "Desk set-up › Automation (rules)",

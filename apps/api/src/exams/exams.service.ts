@@ -689,7 +689,7 @@ export class ExamsService {
     const org = context.organizationId as string;
     const exam = await tx.exam.findFirst({
       where: { id, organizationId: org },
-      include: { sections: { orderBy: { orderIndex: 'asc' }, include: { questions: { include: { question: { select: { marks: true } } } }, poolTags: true } } },
+      include: { sections: { orderBy: { orderIndex: 'asc' }, include: { questions: { include: { question: { select: { marks: true, status: true } } } }, poolTags: true } } },
     });
     if (!exam) throw new NotFoundException(`Exam ${id} not found`);
     const checks: PublishCheck[] = [];
@@ -736,6 +736,12 @@ export class ExamsService {
         );
       } else {
         check(`questions:${section.id}`, `${section.title}: questions attached`, section.questions.length === 0 ? `Section "${section.title}" has no questions attached` : null);
+        // Answer 2142: a fixed section holds only approved questions; a draft (never approved) stops the test going out.
+        check(
+          `approved:${section.id}`,
+          `${section.title}: every question approved`,
+          section.questions.some((link) => link.question?.status === 'draft') ? `Section "${section.title}" has a question that is not approved yet. Approve it in the question bank, or take it out.` : null,
+        );
       }
     }
     // AS-2 (asmt.high_stakes): a test for more candidates than the company's number needs a second person's approval of

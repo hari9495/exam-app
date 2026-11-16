@@ -7,6 +7,7 @@ import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { markSteppedUp } from './fixtures/step-up';
 import { EmailService } from '../src/email/email.service';
+import { asApproved } from './fixtures/approved-question';
 
 describe('Session Enforcement & Anti-Cheat HTTP flow', () => {
   let adminApp: INestApplication;
@@ -76,14 +77,14 @@ describe('Session Enforcement & Anti-Cheat HTTP flow', () => {
       .expect(201);
     const sectionId = sectionResponse.body.id;
 
-    const questionResponse = await request(adminHttp)
+    const questionResponse = await asApproved(await request(adminHttp)
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
         type: 'true_false', text: 'Is this a test question?', difficulty: 'easy', marks: 5,
         options: [{ text: 'True', isCorrect: true }, { text: 'False', isCorrect: false }],
       })
-      .expect(201);
+      .expect(201));
 
     await request(adminHttp)
       .put(`/api/v1/exams/${examId}/sections/${sectionId}/questions`)

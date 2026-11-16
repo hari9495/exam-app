@@ -8,6 +8,7 @@ import { EmailService } from '../../api/src/email/email.service';
 import { IntegrityNarrativeClient } from '../src/integrity/integrity-narrative.client';
 import { ProctoringRiskClient } from '../src/proctoring-analysis/proctoring-risk.client';
 import { PistonClient } from '../src/code-execution/piston-client';
+import { asApproved } from '../../api/test/fixtures/approved-question';
 
 // Settlement (grading) and the integrity/proctoring analyses it kicks off are fire-and-forget
 // (see attempt-settlement.service.ts), so assertions on integrity_analyses must poll rather than
@@ -105,7 +106,7 @@ describe('Integrity analysis e2e', () => {
       .send({ title: 'Section One' })
       .expect(201);
 
-    const questionResponse = await request(adminHttp)
+    const questionResponse = await asApproved(await request(adminHttp)
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
@@ -118,7 +119,7 @@ describe('Integrity analysis e2e', () => {
         starterCode: 'function computeInvoiceTotal(items) {\n  \n}',
         options: [],
       })
-      .expect(201);
+      .expect(201));
     codeQuestionId = questionResponse.body.id;
 
     await request(adminHttp)

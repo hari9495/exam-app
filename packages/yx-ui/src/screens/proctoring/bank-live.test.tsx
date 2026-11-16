@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { ItemAnalysisScreen, QuestionBankScreen, QuestionEditorScreen, QuestionReviewQueueScreen } from './bank-tests';
 import { codeProblems, missingAlt } from './bank-live';
-import { BANK_QUESTION, BANK_QUESTION_MAJOR, CODE_QUESTION, REVIEW_CHANGES, REVIEW_TRANSLATIONS, liveBank, liveEditor, liveItems, liveReviews } from './bank-live-samples';
+import { BANK_QUESTION, BANK_QUESTION_IMAGE, BANK_QUESTION_MAJOR, CODE_QUESTION, PREVIEW_IMAGE, REVIEW_CHANGES, REVIEW_TRANSLATIONS, liveBank, liveEditor, liveItems, liveReviews } from './bank-live-samples';
 
 // AS-1: the designed question bank screens with live data (answers 2009, 2010, 2017).
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -48,6 +48,18 @@ describe('PRC-01 question bank (live)', () => {
 });
 
 describe('PRC-02 question editor (live)', () => {
+  it('answer 2143: the candidate preview shows the image through its signed link, with its alt text; one not saved yet says so', () => {
+    const { unmount } = wrap(<QuestionEditorScreen live={liveEditor({ question: BANK_QUESTION_IMAGE })} />);
+    const preview = screen.getByRole('complementary', { name: 'Candidate preview' });
+    expect(within(preview).getByRole('img', { name: 'Line chart of monthly sales, rising from March' })).toHaveAttribute('src', PREVIEW_IMAGE);
+    unmount();
+    wrap(<QuestionEditorScreen live={liveEditor({ question: { ...BANK_QUESTION_IMAGE, images: {} } })} />);
+    const p2 = screen.getByRole('complementary', { name: 'Candidate preview' });
+    expect(within(p2).queryByRole('img')).not.toBeInTheDocument();
+    expect(within(p2).getByText(/shows here once the question is saved/)).toBeInTheDocument();
+  });
+
+
   it('shows the versions, the approved Hindi translation in the preview, and saves a change with a toast', async () => {
     const onSave = vi.fn().mockResolvedValue({ saved: 'major', version: 3 });
     wrap(<QuestionEditorScreen live={liveEditor({ onSave })} />);

@@ -10,6 +10,7 @@ import { SETTINGS } from '../../api/src/org-structure/settings-registry';
 import { RUNNER_SETTINGS } from '../src/attempts/runner-settings';
 import { IntegrityNarrativeClient } from '../src/integrity/integrity-narrative.client';
 import { ProctoringRiskClient } from '../src/proctoring-analysis/proctoring-risk.client';
+import { asApproved } from '../../api/test/fixtures/approved-question';
 
 // Assessments AS-4a (PRC-26, PRC-27), against the real database on a throwaway company: the version each answer saw
 // (answer 2122), answers kept on the device (an older copy never wins), time given back for a lost connection (capped by
@@ -51,7 +52,7 @@ describe('Designed runner (AS-4a)', () => {
     const auth = (r: request.Test) => r.set('Authorization', `Bearer ${recruiter}`);
     examId = (await auth(request(adminHttp).post('/api/v1/exams')).send({ title: 'Runner test', durationMinutes: 60 }).expect(201)).body.id;
     const section = (await auth(request(adminHttp).post(`/api/v1/exams/${examId}/sections`)).send({ title: 'One' }).expect(201)).body.id;
-    const q = (await auth(request(adminHttp).post('/api/v1/questions')).send({ type: 'single_mcq', text: 'Two plus two?', difficulty: 'easy', marks: 1, options: [{ text: '4', isCorrect: true }, { text: '5', isCorrect: false }] }).expect(201)).body;
+    const q = (await asApproved(await auth(request(adminHttp).post('/api/v1/questions')).send({ type: 'single_mcq', text: 'Two plus two?', difficulty: 'easy', marks: 1, options: [{ text: '4', isCorrect: true }, { text: '5', isCorrect: false }] }).expect(201))).body;
     questionId = q.id;
     options.push(...(q.options as { id: string }[]).map((x) => x.id));
     await auth(request(adminHttp).put(`/api/v1/exams/${examId}/sections/${section}/questions`)).send({ questionIds: [questionId] }).expect(200);

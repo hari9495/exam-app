@@ -24,7 +24,8 @@ export function validateSectionQuestionsReplace(
   for (const id of newQuestionIds) {
     const isNewlyAdded = !currentlyLinkedSet.has(id);
     if (isNewlyAdded && statusById.get(id) !== 'active') {
-      throw new BadRequestException(`Question ${id} is not active and cannot be added to a section for the first time`);
+      // Answer 2142: only an approved question (status active) goes into a fixed section.
+      throw new BadRequestException(`Question ${id} is not approved and cannot be added to a section. Approve it in the question bank first.`);
     }
   }
 }

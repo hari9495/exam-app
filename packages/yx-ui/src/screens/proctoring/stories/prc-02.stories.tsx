@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { BANK_QUESTION, BANK_QUESTION_MAJOR, CODE_QUESTION, liveEditor } from '../bank-live-samples';
+import { BANK_QUESTION, BANK_QUESTION_IMAGE, BANK_QUESTION_MAJOR, CODE_QUESTION, liveEditor } from '../bank-live-samples';
 import { QuestionEditorScreen } from '../bank-tests';
 import { QUESTIONS } from '../proctoring-data';
 
@@ -28,3 +28,5 @@ export const NewQuestion: S = { name: 'New question', render: () => <QuestionEdi
 // Bank follow-ups: code tests (2125) and images with alt text (2126).
 export const CodeQuestion: S = { name: 'Code question with test cases', render: () => <QuestionEditorScreen live={liveEditor({ question: CODE_QUESTION, stats: null })} /> };
 export const ImageAdded: S = { name: 'Question image added, alt text written', render: () => <QuestionEditorScreen live={liveEditor({ question: { ...BANK_QUESTION, status: 'draft', approvedBy: null, approvedAt: null, content: { ...BANK_QUESTION.content, imageUrl: 'question-images/packing-line.png', imageAlt: 'A packing line with four stations' } } })} /> };
+// Answer 2143: the candidate preview shows the question's image through a short-lived signed link.
+export const PreviewWithImage: S = { name: 'Candidate preview with an image', render: () => <QuestionEditorScreen live={liveEditor({ question: BANK_QUESTION_IMAGE })} /> };

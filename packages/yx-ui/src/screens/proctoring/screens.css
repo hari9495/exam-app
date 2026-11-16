@@ -105,6 +105,7 @@
 .yx-prc-block__body { flex: 1; min-width: 0; }
 .yx-prc-preview { border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); padding: var(--yx-space-4); background: var(--yx-color-bg-page); }
 .yx-prc-preview[data-device="mobile"] { max-width: calc(var(--yx-space-16) * 5.5); margin: 0 auto; }
+.yx-prc-preview__img { display: block; max-width: 100%; max-height: calc(var(--yx-space-16) * 4); margin-block: var(--yx-space-2); border-radius: var(--yx-radius-card); }
 
 /* Analytics */
 .yx-anl-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(var(--yx-space-16) * 4)), 1fr)); gap: var(--yx-space-3); }

@@ -1132,3 +1132,36 @@ Tests and settings: answers 2007, 2008, 2123, PRC-04, PRC-06 and Settings 6.5. N
 - 2201 /welcome switches to the designed consent and selfie with AS-4a part 2; 2202 per-invitation breaks and a "no gaze flags" profile next, separate session with slot booking; 2203 the decision message covers "more information" for now; 2204 an email on each decision; 2205 face re-check with AS-5; 2206 keep test writers deciding; 2207 delete evidence after the company's retention once decided.
 
 **Founder answers (16 Nov 2026, "ok for all"), 2211 to 2215:** all as suggested. 2211 a bulk route in AS-3 part 2; 2212 keep, only the same test is reused; 2213 a reused result moves the application on the board like a submitted one (next); 2214 "New drive" on the live page in part 2; 2215 paging past 500 when a company needs it.
+
+## Question bank round 2 as built (answers 2141 to 2143; branch `feat/yukthix-bank-fu2`)
+
+- **2141:** the older `POST /questions` (the `/v2/questions` page and anything else on that route) makes a draft, as
+  the bank's New question does; nobody can use it until another person approves it in the bank. The older Publish
+  refuses every time (answer 2121, merged from test main: 409, audited), so it neither approves a draft nor restores a
+  retired question. Questions in
+  use before the review flow count as approved (migration `202617z0000312_question_legacy_approved` stamps them; AI
+  drafts that were discarded stay unapproved). The e2e suites that build tests from questions now approve the draft they
+  create, as a reviewer would (`test/fixtures/approved-question.ts`); the review itself stays covered by
+  `question-bank-review`.
+- **2142:** a fixed section takes only approved questions ("not approved … Approve it in the question bank first"),
+  and publishing a test refuses one whose fixed section holds a draft. Pool sections already draw only approved ones.
+  After the merge with AS-2 this is one more line in the test builder's publish checks ("<section>: every question
+  approved").
+- **2143:** the editor's candidate preview shows the question and option images through short-lived signed links
+  (`images` on the bank's question view, keyed by the stored value, so saving never writes a link back), with their alt
+  text; an image not saved yet says so. Story PRC-02 "Candidate preview with an image".
+- **Tests:** API unit (section and test rules); e2e `question-bank` (draft, refused publish, no restore, the 2142
+  rules); kit `bank-live` (2143).
+
+### Questions (from 2191)
+
+2191. **Bulk upload still makes usable questions.** The spreadsheet upload creates questions in use at once.
+      *Suggested: make them drafts in the review queue too, like 2141.*
+2192. **Changing an approved question on the older route.** `PATCH /questions/:id` still changes an approved question
+      in place, without review. *Suggested: send it through a revision, as the bank editor does, when `/v2/questions`
+      is retired.*
+2193. **AI drafts restored from Archived.** A discarded AI draft can no longer be restored straight into use; it goes
+      through review. *Suggested: keep.*
+2224. **Bringing back a retired question.** With 2121 the older Publish no longer restores one, and the bank has no
+      Restore. *Suggested: add "Restore" in the bank for a question that was approved before; it comes back approved,
+      audited.*
