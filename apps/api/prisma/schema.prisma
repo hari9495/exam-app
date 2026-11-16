@@ -768,6 +768,14 @@ model Exam {
   // brief. warn/pause/block enforcement is deferred to stage 3 pending threshold calibration
   // and a fairness check.
   faceMismatchAction            String        @default("flag") @map("face_mismatch_action") @db.VarChar(1000)
+  /// Assessments AS-2 (asmt.high_stakes): how many candidates the test is for; above the company number it needs an approver.
+  expectedCandidates            Int?          @map("expected_candidates")
+  approvalRequestedBy           String?       @map("approval_requested_by") @db.Uuid
+  approvalRequestedAt           DateTime?     @map("approval_requested_at") @db.Timestamptz(3)
+  /// Never the person who asked nor the author (a database check). Holds only while approvedFingerprint matches the test.
+  approvedBy                    String?       @map("approved_by") @db.Uuid
+  approvedAt                    DateTime?     @map("approved_at") @db.Timestamptz(3)
+  approvedFingerprint           String?       @map("approved_fingerprint") @db.VarChar(64)
   createdBy                     String        @map("created_by") @db.Uuid
   createdAt                     DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   sections                      ExamSection[]

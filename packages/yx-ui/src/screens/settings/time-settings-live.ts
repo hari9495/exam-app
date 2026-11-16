@@ -42,7 +42,11 @@ export interface TimeSettingsData {
   byScope?: Record<string, { scope: string; value: string; validFrom: string | null; note?: string }[]>;
 }
 
-type Place = { section: string; key: string; synonyms?: string[] };
+/**
+ * `list` (answer 2123): a comma-list setting shown as a table, one row a value (the first column), with the drawn column
+ * names; the page saves the rows back as the comma list (timeSettingsListChanges).
+ */
+type Place = { section: string; key: string; synonyms?: string[]; list?: { columns: string[]; addLabel: string; helper?: string } };
 /** Drawn page → the settings on it, in the drawn section they belong to (a section not drawn is added after). */
 export const TIME_SETTINGS: Record<string, { links: string[]; settings: Place[] }> = {
   '3.2': {
@@ -275,6 +279,21 @@ export const MORE_SETTINGS: Record<string, { links: string[]; settings: Place[];
       { section: 'Manager assistants', key: 'perf.ai.review_assistant', synonyms: ['help me draft'] },
     ],
   },
+  // AS-2 (answers 2007, 2008, 2123; Settings 6.5): the company's assessment defaults the engine uses today. Test owners
+  // with the assessments settings key change them too. The rest of the drawn page waits for the features behind it.
+  '6.5': {
+    links: [],
+    settings: [
+      { section: 'Question bank', key: 'asmt.languages', synonyms: ['translations', 'question languages'] },
+      { section: 'Question bank', key: 'asmt.bank.second_approver_collections', synonyms: ['question review', 'second approver'], list: { columns: ['Collection'], addLabel: 'Add collection', helper: 'Questions in these collections need a second approver after the first review.' } },
+      { section: 'Question bank', key: 'asmt.bank.duplicate_percent', synonyms: ['duplicate questions'] },
+      { section: 'Question bank', key: 'asmt.packs', synonyms: ['question library', 'starter packs'] },
+      { section: 'Question bank', key: 'asmt.item_stats.provisional_answers', synonyms: ['item analysis'] },
+      { section: 'Test defaults', key: 'asmt.high_stakes', synonyms: ['approver', 'big test'] },
+      { section: 'Proctoring', key: 'asmt.proctor_mode', synonyms: ['proctoring', 'invigilation'] },
+      { section: 'Results & retention', key: 'asmt.retention', synonyms: ['recording retention', 'delete recordings', 'dpdp'] },
+    ],
+  },
 };
 
 /**
@@ -437,6 +456,11 @@ export function timeSettingsPage(design: SettingsPageDef, data: TimeSettingsData
           scopeable: data.scopes.filter((s) => d.scopes?.includes(s.type)).map((s) => s.label),
         }
       : {};
+    // Answer 2123: a comma list shown as a table (one row a value); saved back by timeSettingsListChanges.
+    if (d.text && p.list) {
+      const rows = value ? value.split(',').map((v) => v.trim()).filter(Boolean).map((v) => [v]) : [];
+      return { ...base, ...(p.list.helper ? { helper: p.list.helper } : {}), kind: 'list', columns: p.list.columns, rows, addLabel: p.list.addLabel };
+    }
     // S-7: text HR writes (topics one a line, what joiners bring).
     if (d.text) return { ...base, ...scoped, kind: d.text.maxLength > 100 ? 'textarea' : 'text', value };
     if (isToggle(d)) return { ...base, ...scoped, kind: 'toggle', value: value === truthy(d) };
@@ -467,6 +491,18 @@ export function timeSettingsChanges(values: Record<string, SettingValue>, data: 
     if (!d) return [];
     const value = typeof v === 'boolean' ? (v ? truthy(d) : falsy(d)) : Array.isArray(v) ? v.join(',') : String(v ?? '');
     return [{ key, value }];
+  });
+}
+
+/**
+ * Answer 2123: the edited tables of comma-list settings as their company values (the first column of each row; a comma in
+ * a name would split it, so it becomes a space; blanks and repeats are dropped).
+ */
+export function timeSettingsListChanges(rows: Record<string, string[][]>, data: TimeSettingsData): { key: string; value: string }[] {
+  return Object.entries(rows).flatMap(([key, list]) => {
+    if (!data.registry[key]?.text) return [];
+    const names = [...new Set(list.map((r) => (r[0] ?? '').replace(/,/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean))];
+    return [{ key, value: names.join(',') }];
   });
 }
 

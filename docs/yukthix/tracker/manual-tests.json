@@ -22034,5 +22034,48 @@
       "AssistantReviewNoAccess"
     ],
     "note": "Positive and negative. Answers 2132, 2135."
+  },
+  {
+    "id": "MT-ASMT-TESTS1",
+    "area": "Assessments AS-2 (16 Nov 2026)",
+    "screen": "Hire › Assessments › Tests; a test's builder; a candidate's score report",
+    "url": "http://localhost:3000/yx/hiring/assessments/tests",
+    "account": "Two test writers of the demo company (asmt.test.manage), a recruiter, and the System Admin of another company.",
+    "steps": [
+      "As the first writer: Create test with an empty name, then with a name.",
+      "Open Proctoring: pick Open, then AI-only.",
+      "Open Scoring: set Candidates expected above the company's approver number (Settings 6.5) and Save.",
+      "Open the checklist (Publish): press Publish.",
+      "Press Ask for approval; then try Approve as the same writer (the button is absent; call the route if you can).",
+      "As the second writer: open the test and Approve. Change the pass mark, Save, and look at the checklist.",
+      "Ask again; the second writer approves; publish.",
+      "Copy and edit the published test; open a candidate's score report as the writer and as the recruiter.",
+      "As the other company's admin: open the test's address."
+    ],
+    "expected": "Step 1: the name is asked for; then the test opens, proctored in the company's default mode. Step 2: toasts; the test's switches follow. Step 3: the checklist gains the approval line. Step 4: refused with the first blocking reason; nothing published. Step 5: waiting for approval; the writer cannot approve their own test. Step 6: approved; after the change the approval no longer holds and publishing is refused again. Step 7: published (toast). Step 8: a draft copy opens; raw marks for the writer only. Step 9: not found.",
+    "stories": [
+      "Screens/Proctoring/PRC-04 · Test builder",
+      "Screens/Proctoring/PRC-06 · Candidate score report"
+    ],
+    "note": "Positive and negative. Answers 2007; asmt.high_stakes."
+  },
+  {
+    "id": "MT-ASMT-SET65",
+    "area": "Assessments AS-2 (16 Nov 2026)",
+    "screen": "Settings › Assessment settings (6.5)",
+    "url": "http://localhost:3000/yx/settings/talent/assessments",
+    "account": "A test owner with the assessments settings key only; an HR person without it; a test whose result is held and one released, both with camera stills older than 30 days.",
+    "steps": [
+      "As the test owner: set the default proctoring mode to Record & review, retention to 180 days, the approver number to 200; add the collection Food safety to the second-approver table; Save.",
+      "Create a new test (Tests).",
+      "Set retention back to 30 days and wait for the nightly sweep.",
+      "As the HR person without the key: open the page.",
+      "Open a candidate's welcome page for a test with a face photo check."
+    ],
+    "expected": "Step 1: a toast; the values and the table stay after a reload; the change history names who changed what. Step 2: the new test is Record & review. Step 3: the released result's old stills are gone; the held result's stay. Step 4: read-only (or not in the menu). Step 5: the photo consent says the company's days.",
+    "stories": [
+      "Screens/Settings/G6/P6_5"
+    ],
+    "note": "Positive and negative. Answers 2007, 2008, 2123."
   }
 ]
