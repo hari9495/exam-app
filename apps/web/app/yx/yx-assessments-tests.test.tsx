@@ -59,6 +59,12 @@ const wrap = (ui: React.ReactElement) =>
     </QueryClientProvider>,
   );
 
+/** The checklist and the approver are on the builder's review step (as drawn). */
+const toReview = async () => {
+  await screen.findByRole('button', { name: /^Continue/ });
+  for (let i = 0; i < 8 && !screen.queryByRole('list', { name: 'Publish checks' }); i++) await userEvent.click(screen.getByRole('button', { name: /^(Continue|Review)/ }));
+};
+
 beforeEach(() => {
   api.mockReset();
   calls.length = 0;
@@ -89,7 +95,8 @@ it('Copy and edit duplicates a test and opens the copy', async () => {
 
 it('the builder shows the checklist and approves for the second person', async () => {
   wrap(<YxTestBuilderPage />);
-  const checks = await screen.findByRole('list', { name: 'Publish checks' });
+  await toReview();
+  const checks = screen.getByRole('list', { name: 'Publish checks' });
   expect(within(checks).getByText('This test is for more than 500 candidates: another person must approve it before it is published')).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Approve' }));
   expect(calls).toContain('POST /asmt/tests/e1/approval/approve');
@@ -103,7 +110,8 @@ it('negative: a refused approval shows the reason and nothing else is sent', asy
     return { data: [] };
   });
   wrap(<YxTestBuilderPage />);
-  await userEvent.click(await screen.findByRole('button', { name: 'Approve' }));
+  await toReview();
+  await userEvent.click(screen.getByRole('button', { name: 'Approve' }));
   expect(await screen.findByText('Another person approves this test: not the one who asked, and not its author.')).toBeInTheDocument();
   expect(calls.filter((c) => c.startsWith('POST'))).toEqual(['POST /asmt/tests/e1/approval/approve']);
 });

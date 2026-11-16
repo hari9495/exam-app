@@ -9,6 +9,10 @@ import { timeSettingsListChanges, type TimeSettingsData } from '../settings/time
 // AS-2 (answers 2007, 2008, 2123): the designed test builder and score report with live data.
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const wrap = (ui: React.ReactElement) => render(<ToastProvider>{ui}</ToastProvider>);
+/** Continue through the builder to the review step (the checklist and the approver). */
+const toReview = async () => {
+  for (let i = 0; i < 8 && !screen.queryByRole('list', { name: 'Publish checks' }); i++) await ue.click(screen.getByRole('button', { name: /^(Continue|Review)/ }));
+};
 /** Continue through the builder until a radio named like `name` shows (the proctoring step). */
 const toRadio = async (name: RegExp) => {
   for (let i = 0; i < 6 && !screen.queryByRole('radio', { name }); i++) await ue.click(screen.getByRole('button', { name: /^Continue/ }));
@@ -16,8 +20,10 @@ const toRadio = async (name: RegExp) => {
 };
 
 describe('PRC-04 test builder (live)', () => {
-  it('lists every pre-publish check, the pool below depth and the approver the test needs', () => {
+  it('lists every pre-publish check on the review step, the pool below depth and the approver the test needs', async () => {
     wrap(<TestBuilderScreen live={liveBuilder()} />);
+    expect(screen.queryByRole('list', { name: 'Publish checks' })).toBeNull();
+    await toReview();
     const checks = screen.getByRole('list', { name: 'Publish checks' });
     expect(within(checks).getByText('Section "SQL" pool requires 8 matching questions, only 5 available')).toBeInTheDocument();
     expect(within(checks).getAllByText('Blocks publishing')).toHaveLength(2);
@@ -38,6 +44,7 @@ describe('PRC-04 test builder (live)', () => {
   it('the second person approves a test waiting for them, with a toast', async () => {
     const onApprove = vi.fn().mockResolvedValue(undefined);
     wrap(<TestBuilderScreen live={liveBuilder({ test: BUILDER_WAITING, onApprove })} />);
+    await toReview();
     expect(screen.getByText('Waiting for approval (asked by Meera Iyer)')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Approve' }));
     expect(onApprove).toHaveBeenCalled();
@@ -47,6 +54,7 @@ describe('PRC-04 test builder (live)', () => {
   it('negative: a refused approval shows the server\'s reason on the page', async () => {
     const onApprove = vi.fn().mockRejectedValue(new Error('Another person approves this test: not the one who asked, and not its author.'));
     wrap(<TestBuilderScreen live={liveBuilder({ test: BUILDER_WAITING, onApprove })} />);
+    await toReview();
     await ue.click(screen.getByRole('button', { name: 'Approve' }));
     expect(await screen.findByText('Another person approves this test: not the one who asked, and not its author.')).toBeInTheDocument();
   });

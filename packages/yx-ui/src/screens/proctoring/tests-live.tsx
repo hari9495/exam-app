@@ -8,7 +8,7 @@ import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
 import { DataTable } from '../../components/table';
 import { EmptyState, ErrorState, InlineAlert, Meter } from '../../components/feedback';
-import { Card, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { FormField } from '../../components/field';
 import { NumberField, TextField } from '../../components/inputs';
 import { RadioGroup } from '../../components/choice';
@@ -125,6 +125,7 @@ export function LiveTestBuilderScreen({ live }: { live: LiveTestBuilder }) {
   const [loadedFor, setLoadedFor] = useState<string | null>(key);
   const [title, setTitle] = useState('');
   const [tried, setTried] = useState(false);
+  const [step, setStep] = useState('sections');
   const { busy, run, error, clearError } = useRun();
   const { done, say } = useSay();
   if (key !== loadedFor) {
@@ -369,24 +370,9 @@ export function LiveTestBuilderScreen({ live }: { live: LiveTestBuilder }) {
   ];
 
   const approval = t.approval;
-  return (
-    <PrcFrame page="Tests">
-      <PageHeader title={t.title} description={`${statusOf(t.status).label} · ${t.sections.length} ${t.sections.length === 1 ? 'section' : 'sections'}`} status={<Badge tone={statusOf(t.status).tone}>{statusOf(t.status).label}</Badge>} />
-      {error && <InlineAlert tone="danger" title={error} actions={<Button size="sm" onClick={clearError}>Dismiss</Button>} />}
-      <Stepper
-        title="Build test"
-        steps={steps}
-        defaultCurrent="sections"
-        review={{ title: 'Pre-publish checklist', description: 'Publishing locks the test. Copy it to make a new version.' }}
-        finishLabel="Publish"
-        finishing={busy === 'publish'}
-        onFinish={() => {
-          if (t.status !== 'draft') return say('This test is already published.');
-          if (blocked.length) return say(blocked[0]!.problem ?? 'Fix the checklist first.');
-          void act('publish', live.onPublish, 'Test published');
-        }}
-      />
-      <Card title="Pre-publish checklist">
+  // As drawn: the checklist (and the approver) inside the review step, so every step fits the screen.
+  const checklist = (
+    <div className="yx-prc-stack">
         <ul className="yx-prc-plain" aria-label="Publish checks">
           {t.checks.map((c) => (
             <li key={c.id}>
@@ -424,7 +410,26 @@ export function LiveTestBuilderScreen({ live }: { live: LiveTestBuilder }) {
             </div>
           </div>
         )}
-      </Card>
+    </div>
+  );
+  return (
+    <PrcFrame page="Tests">
+      <PageHeader title={t.title} description={`${statusOf(t.status).label} · ${t.sections.length} ${t.sections.length === 1 ? 'section' : 'sections'}`} status={<Badge tone={statusOf(t.status).tone}>{statusOf(t.status).label}</Badge>} />
+      {error && <InlineAlert tone="danger" title={error} actions={<Button size="sm" onClick={clearError}>Dismiss</Button>} />}
+      <Stepper
+        title="Build test"
+        steps={steps}
+        current={step}
+        onCurrentChange={setStep}
+        review={{ title: 'Pre-publish checklist', description: 'Publishing locks the test. Copy it to make a new version.', note: checklist }}
+        finishLabel="Publish"
+        finishing={busy === 'publish'}
+        onFinish={() => {
+          if (t.status !== 'draft') return say('This test is already published.');
+          if (blocked.length) return say(blocked[0]!.problem ?? 'Fix the checklist first.');
+          void act('publish', live.onPublish, 'Test published');
+        }}
+      />
     </PrcFrame>
   );
 }
