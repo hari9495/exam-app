@@ -29,4 +29,14 @@ export const ASK_UNSURE: AskConversationView = {
   ],
 };
 
+/** Answer 2112: a question about buying (the assistant's outcome "buying"). */
+export const ASK_BUYING: AskConversationView = {
+  ...ASK_CHAT,
+  id: 'c2',
+  messages: [
+    { id: 'u3', role: 'user', text: 'How much does the Pro plan cost for 300 people?', sources: [], outcome: null, feedback: null },
+    { id: 'a3', role: 'assistant', text: 'YukthiX sales can help with plans and prices for your size.', sources: [], outcome: 'buying', feedback: null },
+  ],
+};
+
 export const ASK_STATE: AskState = { on: true, limit: 50, remaining: 47, canRaiseTicket: true, conversation: ASK_CHAT };

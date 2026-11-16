@@ -6,6 +6,7 @@ import { SupportBridgeService } from '../../service-desk/support-bridge.service'
 import { maskPii } from '../../service-desk/pii';
 import { IncidentsService } from '../../platform/incidents.service';
 import { PLATFORM } from '../../platform/platform.service';
+import { SalesAssistService } from '../../platform/sales-assist.service';
 import { todayIst } from '../../org-structure/org-validation';
 import { WhatsNewService } from '../whats-new.service';
 import { ASK_CLIENT, type AskClient } from './assistant-client';
@@ -38,6 +39,8 @@ const AREA_KEYS: Record<string, string> = {
   'org.yukthix_support.raise': 'Contacting YukthiX support',
 };
 const RAISE_KEY = 'org.yukthix_support.raise';
+/** Answer 2112: who may ask YukthiX sales from a chat: whoever changes the company's plan (Plan & add-ons). */
+export const SALES_KEY = 'org:manage_billing';
 /** Outcomes that count as unhelpful toward offering a person (answer 2104). */
 const UNHELPFUL: Outcome[] = ['not_covered', 'needs_person', 'refused', 'error'];
 const HISTORY_TURNS = 6;
@@ -72,6 +75,7 @@ export class AssistantService {
     private readonly news: WhatsNewService,
     private readonly incidents: IncidentsService,
     private readonly support: SupportBridgeService,
+    private readonly sales: SalesAssistService,
     @Optional() @Inject(ASK_CLIENT) private readonly client: AskClient | null,
   ) {}
 
@@ -92,11 +96,11 @@ export class AssistantService {
 
   /** Switched on or not, today's questions left, whether the person may raise a YukthiX ticket, and the latest chat. */
   async state(me: Me) {
-    const [limit, granted] = await Promise.all([this.setting('help.assistant.daily_questions'), this.keys(me, [RAISE_KEY])]);
+    const [limit, granted] = await Promise.all([this.setting('help.assistant.daily_questions'), this.keys(me, [RAISE_KEY, SALES_KEY])]);
     return this.tenantPrisma.forTenant(ctxOf(me), async (tx) => {
       const used = (await tx.assistantDailyCount.findUnique({ where: { userId_day: { userId: me.userId, day: new Date(`${todayIst()}T00:00:00Z`) } } }))?.questions ?? 0;
       const last = await tx.assistantConversation.findFirst({ where: { organizationId: me.organizationId, userId: me.userId }, orderBy: { lastAt: 'desc' }, include: { messages: { orderBy: { createdAt: 'asc' } } } });
-      return { on: Boolean(this.client), limit, remaining: Math.max(0, limit - used), canRaiseTicket: granted.has(RAISE_KEY), conversation: last ? await this.view(last) : null };
+      return { on: Boolean(this.client), limit, remaining: Math.max(0, limit - used), canRaiseTicket: granted.has(RAISE_KEY), canAskSales: granted.has(SALES_KEY), conversation: last ? await this.view(last) : null };
     });
   }
 
@@ -106,6 +110,7 @@ export class AssistantService {
       id: c.id,
       ticketRef: c.ticketRef,
       featureRequestSent: Boolean(c.featureRequestId),
+      salesRequestSent: Boolean(c.salesRequestId),
       offerPerson: c.unhelpful >= handover,
       messages: c.messages.map((m) => ({ id: m.id, role: m.role as 'user' | 'assistant', text: m.text, sources: m.sources as unknown as { title: string; href: string | null }[], outcome: m.outcome, feedback: m.feedback })),
     };
@@ -235,6 +240,24 @@ export class AssistantService {
       await AuditService.recordIn(tx, ctxOf(me), { actorUserId: me.userId, action: 'help.assistant.feature_requested', entityType: 'feature_request', entityId: fr.id, metadata: { number: fr.number, conversationId: c.id } });
       return { number: fr.number };
     });
+  }
+
+  /**
+   * Answer 2112: "Send a sales request" from a chat about buying: into the YukthiX sales-assist queue (as Talk to us),
+   * with the phone the person gives and the chat (masked). Only for whoever changes the plan (Plan & add-ons' key), only
+   * when an answer in this chat was about buying, once per chat; audited on the company's log and the platform's.
+   */
+  async sendSalesRequest(me: Me, conversationId: string, dto: { phone: string; topics: string[]; note?: string }) {
+    if (!(await this.keys(me, [SALES_KEY])).has(SALES_KEY)) throw new ForbiddenException('Whoever manages your plan (Plan & add-ons) asks YukthiX sales. Ask your System Admin.');
+    const c = await this.tenantPrisma.forTenant(ctxOf(me), (tx) => this.mine(tx, me, conversationId));
+    if (c.salesRequestId) throw new ConflictException('A sales request was already sent from this chat.');
+    if (!c.messages.some((m) => m.role === 'assistant' && m.outcome === 'buying')) throw new ConflictException('A sales request goes from a chat about buying or upgrading.');
+    const out = await this.sales.requestFromChat({ organizationId: me.organizationId, userId: me.userId }, dto, { conversationId: c.id, text: reviewMask(this.transcript(c.messages)) });
+    await this.tenantPrisma.forTenant(ctxOf(me), async (tx) => {
+      await tx.assistantConversation.update({ where: { id: c.id }, data: { salesRequestId: out.id, handedOverAt: c.handedOverAt ?? new Date() } });
+      await AuditService.recordIn(tx, ctxOf(me), { actorUserId: me.userId, action: 'help.assistant.sales_requested', entityType: 'sales_assist_request', entityId: out.id, metadata: { conversationId: c.id, topics: dto.topics } });
+    });
+    return { number: out.number, dueAt: out.dueAt };
   }
 
   // ------------------------------------------------------------------------------------------------ YukthiX staff

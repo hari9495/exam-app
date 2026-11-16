@@ -137,4 +137,23 @@ describe('retiring an article', () => {
     expect((await screen.findAllByText('Retire request withdrawn')).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Retire' })).toBeInTheDocument();
   });
+
+  // Answer 2116: "Use in assistant answers" in the console editor, on by default, saved with the draft.
+  it('Use in assistant answers is on by default and is saved with the draft when switched off', async () => {
+    const d: HelpDetail = { ...detail(true), state: 'draft', versions: [{ ...detail(true).versions[0]!, state: 'draft' }] };
+    const onSave = vi.fn().mockResolvedValue({ ...d, assistantUse: false });
+    show(live({ defaultOpen: d, onSave }));
+    const sw = screen.getByRole('switch', { name: /Use in assistant answers/ });
+    expect(sw).toBeChecked();
+    await userEvent.click(sw);
+    await userEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith('h2', expect.objectContaining({ assistantUse: false })));
+  });
+
+  it('negative: an article switched off shows it off; while in review it cannot be switched', async () => {
+    show(live({ defaultOpen: { ...detail(false), assistantUse: false } }));
+    const sw = screen.getByRole('switch', { name: /Use in assistant answers/ });
+    expect(sw).not.toBeChecked();
+    expect(sw).toBeDisabled();
+  });
 });

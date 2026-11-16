@@ -24,6 +24,8 @@ export function useAskYukthix(open: boolean) {
       onFeedback={(id, value) => call(`/answers/${encodeURIComponent(id)}/feedback`, 'PUT', { value })}
       onRaiseTicket={(id) => call(`/conversations/${encodeURIComponent(id)}/ticket`, 'POST')}
       onFeatureRequest={(id, title, details) => call(`/conversations/${encodeURIComponent(id)}/feature-request`, 'POST', { title, ...(details ? { details } : {}) })}
+      // Answer 2112: a buying question goes to YukthiX sales (Plan & add-ons' key, checked again on the server).
+      onSalesRequest={(id, input) => call(`/conversations/${encodeURIComponent(id)}/sales-request`, 'POST', input)}
     />
   );
 }

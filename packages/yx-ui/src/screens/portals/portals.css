@@ -141,6 +141,9 @@
 .yx-ps-days > legend { font-weight: 600; margin-bottom: var(--yx-space-2); }
 .yx-ps-muted { color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); margin: 0; }
 .yx-ps-p { margin: 0; }
+/* Answer 2112: the Ask YukthiX chat on a sales-assist request, as it was written. */
+.yx-ps-sub { margin: 0; font-size: var(--yx-text-sm); font-weight: var(--yx-weight-semibold); }
+.yx-ps-pre { white-space: pre-wrap; }
 .yx-ps-h { margin: 0; font-size: var(--yx-text-lg); font-weight: var(--yx-weight-semibold); }
 .yx-ps-mono { font-family: var(--yx-font-mono); }
 .yx-ps-num { font-variant-numeric: tabular-nums; }
