@@ -1,6 +1,8 @@
 import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AuditService, TenantPrismaService } from '@exam-platform/shared';
 import { FileStore } from '../documents/file-store';
+import { EmailService } from '../email/email.service';
+import { escapeHtml } from '../notifications/notification-email-render';
 import { companyStoredFiles } from './stored-files';
 import { addDays, todayIst } from '../org-structure/org-validation';
 import { PLATFORM, staffActor } from './platform.service';
@@ -35,6 +37,7 @@ export class CompanyDeletionService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly files: FileStore,
+    private readonly email: EmailService,
   ) {}
 
   /** The day the company's data may be deleted from: its closure request's kept-until day, else the close day + kept days. */
@@ -151,7 +154,59 @@ export class CompanyDeletionService {
       throw e;
     }
     for (const ref of res.drop) await this.files.drop(ref).catch((e: unknown) => this.logger.warn(`Stored file not dropped after removing kept records of ${organizationId}: ${e instanceof Error ? e.message : String(e)}`));
+    if (res.out.released.length) await this.tellDeleters(organizationId, res.out);
     return res.out;
+  }
+
+  /**
+   * Answer 2084: the two staff members who asked for and confirmed the deletion hear of each removal (the company's
+   * own people are gone). A notice that cannot be sent is logged; the removal stands.
+   */
+  private async tellDeleters(organizationId: string, out: Released) {
+    try {
+      const { d, to } = await this.tenantPrisma.forTenant(PLATFORM, async (tx) => {
+        const d = await tx.companyDeletion.findFirst({ where: { organizationId, status: 'done' }, orderBy: { deletedAt: 'asc' }, select: { companyName: true, requestedBy: true, approvedBy: true } });
+        const ids = [d?.requestedBy, d?.approvedBy].filter((x): x is string => Boolean(x));
+        const to = (await tx.user.findMany({ where: { id: { in: ids }, organizationId: null, status: 'active' }, select: { email: true } })).map((u) => u.email);
+        return { d, to };
+      });
+      if (!d || !to.length) return;
+      const words: Record<string, string> = { audit: 'the audit log', pay: 'the payroll records', filings: 'the statutory filings', company: 'the company and its people' };
+      const lines = out.released.map((r) => `<li>${escapeHtml(words[r.group] ?? r.group)}: ${r.rows} rows, certificate SHA-256 ${r.sha256}</li>`).join('');
+      const subject = `Kept records removed: ${d.companyName}`.slice(0, 150);
+      const html = `<p>The kept statutory records of ${escapeHtml(d.companyName)} reached their day and were removed:</p><ul>${lines}</ul><p>${out.companyRemoved ? 'Nothing of the company is left; the certificates stay in the console list of deletions.' : 'Open the company in the console to see each removal and its certificate.'}</p>`;
+      for (const email of to) await this.email.send({ to: email, subject, html }).catch((e: unknown) => this.logger.warn(`Removal notice to staff failed: ${e instanceof Error ? e.message : String(e)}`));
+    } catch (e) {
+      this.logger.warn(`Removal notice for ${organizationId} not sent: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  /** Answer 2083: a legal hold staff set on a deleted company; until it ends, the nightly removal leaves its kept records. */
+  async setHold(actorUserId: string, organizationId: string, input: { caseRef: string; reason: string; until: string }) {
+    const actor = await staffActor(this.tenantPrisma, actorUserId);
+    if (input.until <= todayIst()) throw new ConflictException('Choose a last day after today.');
+    return this.tenantPrisma.forTenant(PLATFORM, async (tx) => {
+      const org = await tx.organization.findUnique({ where: { id: organizationId }, select: { name: true, recordsKeptUntil: true } });
+      if (!org) throw new NotFoundException('Company not found');
+      if (!org.recordsKeptUntil) throw new ConflictException('Only a deleted company’s kept records take a hold here; a company in use sets its own legal holds.');
+      const hold = await tx.auditLegalHold.create({ data: { organizationId, caseRef: input.caseRef, reason: input.reason, fromAt: new Date(), toAt: new Date(`${input.until}T23:59:59.999+05:30`), setBy: actorUserId } });
+      await AuditService.recordIn(tx, PLATFORM, { actorUserId, actor, action: 'platform.company.legal_hold_set', entityType: 'company', entityId: organizationId, metadata: { organizationId, company: org.name, holdId: hold.id, caseRef: input.caseRef, until: input.until, reason: input.reason } });
+      return { id: hold.id };
+    });
+  }
+
+  /** Answer 2083: ending a hold on a deleted company, with a reason (audited). */
+  async endHold(actorUserId: string, organizationId: string, holdId: string, reason: string) {
+    const actor = await staffActor(this.tenantPrisma, actorUserId);
+    return this.tenantPrisma.forTenant(PLATFORM, async (tx) => {
+      const hold = await tx.auditLegalHold.findFirst({ where: { id: holdId, organizationId, releasedAt: null } });
+      if (!hold) throw new NotFoundException('There is no such hold in force.');
+      const org = await tx.organization.findUnique({ where: { id: organizationId }, select: { recordsKeptUntil: true } });
+      if (!org?.recordsKeptUntil) throw new ConflictException('Only a deleted company’s holds are ended here.');
+      await tx.auditLegalHold.update({ where: { id: hold.id }, data: { releasedAt: new Date(), releasedBy: actorUserId } });
+      await AuditService.recordIn(tx, PLATFORM, { actorUserId, actor, action: 'platform.company.legal_hold_ended', entityType: 'company', entityId: organizationId, metadata: { organizationId, holdId, caseRef: hold.caseRef, reason } });
+      return { ended: true };
+    });
   }
 
   /** Answer 1976, the nightly sweep: every purged company (its kept records are only ever removed here). */

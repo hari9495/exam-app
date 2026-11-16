@@ -111,6 +111,8 @@ export class PlatformService {
       const deletion = await tx.companyDeletion.findFirst({ where: { organizationId: id, status: 'requested' }, select: { id: true, requestedBy: true, requestedAt: true, reason: true } });
       // Answers 1973, 1975: once deleted, when, until when the statutory records are kept, and the certificate's SHA-256.
       const deleted = await tx.companyDeletion.findFirst({ where: { organizationId: id, status: 'done' }, orderBy: { deletedAt: 'desc' }, select: { deletedAt: true, certificateSha256: true } });
+      const removals = deleted ? await tx.companyRecordGroup.findMany({ where: { organizationId: id, releasedAt: { not: null } }, orderBy: { releasedAt: 'asc' }, select: { recordGroup: true, releasedAt: true, certificateSha256: true } }) : [];
+      const holds = deleted ? await tx.auditLegalHold.findMany({ where: { organizationId: id, releasedAt: null, toAt: { gt: new Date() } }, orderBy: { toAt: 'asc' }, select: { id: true, caseRef: true, reason: true, toAt: true } }) : [];
       // S-9 (answer 1332): the company's own request to close its account, for the staff who close it.
       const closure = await tx.accountClosureRequest.findFirst({ where: { organizationId: id, status: { in: ['requested', 'closed'] } }, orderBy: { createdAt: 'desc' }, select: { status: true, reason: true, createdAt: true, keepUntil: true } });
       const [products, employees, admins, history] = await Promise.all([
@@ -136,7 +138,16 @@ export class PlatformService {
         createdAt: o.createdAt,
         products: products.map((p) => p.productCode),
         deletion: deletion ? { id: deletion.id, mine: deletion.requestedBy === actorUserId, askedAt: deletion.requestedAt, reason: deletion.reason } : null,
-        deleted: deleted?.deletedAt ? { at: deleted.deletedAt, recordsKeptUntil: o.recordsKeptUntil?.toISOString().slice(0, 10) ?? null, certificateSha256: deleted.certificateSha256 } : null,
+        deleted: deleted?.deletedAt
+          ? {
+              at: deleted.deletedAt,
+              recordsKeptUntil: o.recordsKeptUntil?.toISOString().slice(0, 10) ?? null,
+              certificateSha256: deleted.certificateSha256,
+              // Answer 2081: each kept group removed after its day; answer 2083: the holds in force.
+              removals: removals.map((r) => ({ group: r.recordGroup, removedAt: r.releasedAt!, sha256: r.certificateSha256! })),
+              holds: holds.map((h) => ({ id: h.id, caseRef: h.caseRef, reason: h.reason, until: new Date(h.toAt.getTime() + 330 * 60_000).toISOString().slice(0, 10) })),
+            }
+          : null,
         closureRequest: closure ? { status: closure.status, reason: closure.reason, askedAt: closure.createdAt, keepUntil: closure.keepUntil?.toISOString().slice(0, 10) ?? null } : null,
         employees,
         admins,

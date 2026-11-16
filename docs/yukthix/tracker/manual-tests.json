@@ -21915,5 +21915,23 @@
       "CompanyDeleted"
     ],
     "note": "Positive and negative. Only on a throwaway company. Nothing to click for the removal: it runs nightly."
+  },
+  {
+    "id": "MT-SET-2081",
+    "area": "Settings 2081, 2083: kept records and legal holds on a deleted company (16 Nov 2026)",
+    "screen": "Console › Company (a deleted throwaway company)",
+    "url": "http://localhost:3000/staff/companies",
+    "account": "A YukthiX staff member with a passkey and the companies manage key; a throwaway company already deleted (MT-SET-FU2).",
+    "steps": [
+      "Open the deleted throwaway company; look at the Kept records card.",
+      "Negative: Set a legal hold; press Set the hold with nothing filled in.",
+      "Fill in the case reference, why (at least 10 characters) and a last day after today; Set the hold; confirm with the security key.",
+      "End the hold with a reason."
+    ],
+    "expected": "Step 1: 'Nothing removed yet' (the days are years away); after a removal each group shows its day and SHA-256. Step 2: each missing field is named; nothing is sent. Step 3: the hold shows with its case and last day. Step 4: the hold is gone; both steps are in the company's history.",
+    "stories": [
+      "CompanyKeptRecordsRemoved"
+    ],
+    "note": "Positive and negative. Only on a throwaway company. The removal itself and the staff email (2084) are covered by the API tests."
   }
 ]
