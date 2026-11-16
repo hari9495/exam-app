@@ -92,6 +92,10 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // questions wait for their review, on by default.
   'assessments.enabled': { label: 'Assessments in Hire', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', labels: { on: 'Shown', off: 'Hidden' } },
   'asmt.bank.review_reminders': { label: 'Questions: tell bank writers once a day when questions wait for review', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+  // Assessments AS-4a (PRC-26, Settings 6.5 defaults): how long a candidate keeps answering offline (answers kept on the
+  // device), and the most time given back automatically for a lost connection in one attempt.
+  'asmt.offline_minutes': { label: 'Tests: keep answering offline for up to (minutes)', scopes: ['tenant'], dated: false, values: ['0', '2', '5', '10', '15', '20', '30'], default: '5' },
+  'asmt.time_credit_cap': { label: 'Tests: automatic time credit cap (minutes per attempt)', scopes: ['tenant'], dated: false, values: ['0', '5', '10', '15', '20', '30'], default: '10' },
   'asmt.item_stats.provisional_answers': { label: 'Item statistics are provisional under this many answers', scopes: ['tenant'], dated: false, values: ['50', '100', '200', '500'], default: '200' },
   // Assessments AS-2 (answers 2007, 2008; Settings 6.5): a new test's proctoring mode (Open, AI-only or Record & review
   // over the test's switches; live proctoring waits for certification), how long recordings, clips and face data are kept

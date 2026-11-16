@@ -22077,5 +22077,26 @@
       "Screens/Settings/G6/P6_5"
     ],
     "note": "Positive and negative. Answers 2007, 2008, 2123."
+  },
+  {
+    "id": "MT-ASMT-RUN1",
+    "area": "Assessments AS-4a part 1: answers kept on the device, survey, result (16 Nov 2026)",
+    "screen": "Candidate test: the question page, Test submitted, Your result",
+    "url": "http://localhost:3000/start",
+    "account": "A candidate invitation to a short throwaway test (one or two single-choice questions).",
+    "steps": [
+      "Start the test; answer a question.",
+      "Turn the computer's Wi-Fi off; answer the next question; reload the page; turn Wi-Fi on again.",
+      "Submit the test.",
+      "Negative: on Test submitted, press Start survey, then Send without a rating.",
+      "Choose a rating and Send.",
+      "Press See your result (when the test shows results at once)."
+    ],
+    "expected": "Step 2: after Wi-Fi returns the answer given offline is saved (it shows answered); no error message. Step 4: 'Choose a rating'; nothing sent. Step 5: thank-you line; the survey is not offered again. Step 6: Your result shows only what the test shows (pass or fail, score).",
+    "stories": [
+      "LiveSubmittedSurvey",
+      "LiveReleased"
+    ],
+    "note": "Positive and negative. Breaks, the calculator and display settings show only after /exam moves to the designed runner (question 2161)."
   }
 ]

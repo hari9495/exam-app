@@ -773,6 +773,58 @@ now prove the second factor first.
       manager of, or opened; then all that candidate's test results show. *Suggested: keep; a per-job restriction comes
       with AS-3's job tests.*
 
+## AS-4a as built, part 1 (branch `feat/yukthix-assessments-as4a`, 16 Nov 2026)
+
+The designed runner's rules on exam-runtime, the designed submitted and result steps live, and the designed runner
+ready with `live`. The in-test page `/exam` is not switched to the designed runner yet (see 2161).
+
+- **Data:** migration `202617z0000311_asmt_runner`. `answers.question_version` (answer 2122: the version each answer saw)
+  and `answers.client_saved_at`; per test `exams.calculator` (none, basic, scientific; default none), `breaks_allowed`
+  (0 to 5, default 0) and `break_minutes` (1 to 30, default 5); per attempt `breaks_used` and `offline_credit_ms`; new
+  table `attempt_surveys` (one per attempt, forced RLS, company filled from the attempt, the app may not change or delete
+  a row).
+- **Settings (registry, Settings 6.5 defaults):** `asmt.offline_minutes` (5) and `asmt.time_credit_cap` (10), added here
+  because AS-2 had not yet. The runtime reads them through its own copy of the keys; the runtime e2e checks they match.
+- **Answers kept on the device:** every save carries the device time and is kept in the browser until the server has it
+  (it survives a reload while offline, and is sent when the connection returns, oldest first). The server never lets an
+  older copy overwrite a newer one, and counts a device time in the future as now. A refusal from the server is not
+  retried; a lost connection shows no error toast.
+- **Time given back for a lost connection:** measured by the server before any request is handled (the gap since the
+  attempt was last seen, beyond the 30-second check-in and a 45-second grace), up to `asmt.time_credit_cap` per attempt,
+  kept on the attempt for reviewers. `POST /attempt/reconnected` reports it.
+- **Breaks:** `POST /attempt/break/start|end`. The timer stops for at most the test's break length; a break left longer
+  ends on its own (also in the settlement); answering is refused during a break; two presses start one break.
+- **Survey:** `POST /attempt/survey` (rating 1 to 5, instructions clear, a comment), only after the test, once.
+- **Held result (PRC-27):** a result held for review shows as `held` with no score; manual release still shows as
+  waiting.
+- **Screens:** `TestRunnerScreen` with `live` (sections, connection and device copies, calculator, display settings,
+  breaks, paused, finish, submitted with the survey) and `ResultAppealScreen` with `live` (released, held, not ready);
+  stories PRC-26 (3) and PRC-27 (2). `/submitted` and the new `/result` render them; the design-live guard now scans the
+  candidate pages and both left its "not live" list.
+- **Also fixed:** the exam-runtime e2e config could not load the API since `file-type` arrived; it now has the API's
+  transform list.
+- **Tests:** runtime unit (interceptor 4, answer 1, existing specs updated); runtime e2e `runner` (5); kit
+  `runner-live` (6); web `answer-queue` (3), `useAttempt` (2 new), submitted and result pages (4).
+
+### Questions (from 2161)
+
+2161. **Switching `/exam` to the designed runner.** The rules and the designed runner are built; the in-test page is
+      still the older one, so breaks, the calculator, display settings and the connection banner are not shown yet
+      (answers are already kept on the device). The older page has things the design does not draw yet: the review
+      mode for marked or unanswered questions, "answer any 3 of 5" section chips, the phone question list, option
+      pictures and code snippets. *Suggested: next slice, AS-4a part 2: draw those four in PRC-26 first, then switch the
+      page (about 4 days, including its 60 page tests).*
+2162. **Scientific calculator.** The kit draws a basic calculator; a test set to scientific shows the basic one.
+      *Suggested: add the scientific keys to the kit calculator in part 2.*
+2163. **Who sets breaks and the calculator.** They are per test, with defaults (no breaks, no calculator), but no
+      screen sets them yet. *Suggested: AS-2's test builder adds them to the test settings.*
+2164. **Screen-reader mode "approved for you".** The design shows it as an approved accommodation; accommodations come
+      with AS-4b. *Suggested: show it from AS-4b's approved help.*
+2165. **Reporting the survey.** Answers are stored; nobody can see them yet. *Suggested: a per-test summary in AS-6's
+      fairness reports, only for groups of 5 or more.*
+2166. **The grace before time is given back.** 45 seconds beyond the 30-second check-in; a browser that slows a hidden
+      tab can look offline. *Suggested: keep; reviewers see the credit on the attempt.*
+
 ## Appendix: the count script
 
 Run from the repo root (`node check.js` after saving the block). It recounts section 3 and fails unless every story of

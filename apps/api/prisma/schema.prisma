@@ -722,6 +722,10 @@ model Exam {
   // 'immediate' (default, behavior-preserving): a settled result is shown to the candidate at once.
   // 'manual': the result is withheld until a recruiter releases it (per-attempt override on Result).
   resultsReleaseMode            String        @default("immediate") @map("results_release_mode") @db.VarChar(1000)
+  /// AS-4a (PRC-26): the calculator offered (none | basic | scientific) and the breaks a candidate may take.
+  calculator                    String        @default("none") @db.VarChar(12)
+  breaksAllowed                 Int           @default(0) @map("breaks_allowed")
+  breakMinutes                  Int           @default(5) @map("break_minutes")
   // Issue a downloadable certificate to candidates who pass this exam (inert until enabled).
   certificatesEnabled           Boolean       @default(false) @map("certificates_enabled")
   schedulingEnabled             Boolean       @default(false) @map("scheduling_enabled")
@@ -1029,6 +1033,9 @@ model Attempt {
   // dismissible notice (timer keeps running) and clears it via /attempt/face-warning-ack. pause
   // and block reuse status/pausedReason instead; only warn needs its own field.
   faceWarningAt                 DateTime?           @map("face_warning_at") @db.Timestamptz(3)
+  /// AS-4a: breaks taken (exams.breaks_allowed) and time given back for a lost connection (asmt.time_credit_cap).
+  breaksUsed                    Int                 @default(0) @map("breaks_used")
+  offlineCreditMs               Int                 @default(0) @map("offline_credit_ms")
   invitation                    Invitation          @relation(fields: [invitationId], references: [id], onDelete: Cascade)
   answers                       Answer[]
   result                        Result?
@@ -1038,11 +1045,27 @@ model Attempt {
   insight                       AttemptInsight?
   integrityAnalysis             IntegrityAnalysis?
   faceEnrolment                 FaceEnrolment?
+  survey                        AttemptSurvey?
 
   /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
   organizationId String? @map("organization_id") @db.Uuid
   @@index([examId, status])
   @@map("attempts")
+}
+
+/// AS-4a: the optional after-test survey, one per attempt. Never affects the score; reported in groups of 5 or more.
+model AttemptSurvey {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String?  @map("organization_id") @db.Uuid
+  attemptId         String   @unique(map: "attempt_surveys_attempt_key") @map("attempt_id") @db.Uuid
+  rating            Int      @db.SmallInt
+  clearInstructions Boolean? @map("clear_instructions")
+  comment           String?  @db.VarChar(1000)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  attempt           Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade, map: "attempt_surveys_attempt_fkey")
+
+  @@index([organizationId])
+  @@map("attempt_surveys")
 }
 
 model Answer {
@@ -1061,6 +1084,10 @@ model Answer {
   gradingFeedback       String?           @map("grading_feedback") @db.Text
   codeLanguage          String?           @map("code_language") @db.VarChar(1000)
   telemetryJson         String?           @map("telemetry_json") @db.Text
+  /// Answer 2122: the question version this answer saw (questions.version); null for answers before AS-4a.
+  questionVersion       Int?              @map("question_version")
+  /// AS-4a: when the candidate's device saved it (answers kept on the device while offline are sent later).
+  clientSavedAt         DateTime?         @map("client_saved_at") @db.Timestamptz(3)
   attempt               Attempt           @relation(fields: [attemptId], references: [id], onDelete: Cascade)
   question              Question          @relation(fields: [questionId], references: [id])
   codeReview            CodeAnswerReview?

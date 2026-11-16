@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { LIVE_RUNNER } from '../runner-live-samples';
 import { TestRunnerScreen } from '../candidate';
 
 const meta: Meta<typeof TestRunnerScreen> = { title: 'Screens/Proctoring/PRC-26 · Test runner', component: TestRunnerScreen, parameters: { layout: 'fullscreen' } };
@@ -17,3 +18,8 @@ export const PausedByProctor: S = { name: 'Paused by proctor', args: { view: 'pa
 export const AiAllowed: S = { name: 'AI-allowed test: logged assistant', args: { view: 'ai-allowed' } };
 export const Finish: S = { name: 'Finish confirmation', args: { view: 'finish' } };
 export const Submitted: S = { name: 'Submitted and optional survey', args: { view: 'submitted' } };
+
+// AS-4a: the runner with a real attempt (live): offline past the company's limit, and submitted with the survey.
+export const LiveOfflineStopped: S = { name: 'Live · offline past the limit (answers kept on device)', args: { live: { ...LIVE_RUNNER, connection: 'offline', offlineSeconds: 360, queued: 2, saveStatus: 'offline' } } };
+export const LiveSubmittedSurvey: S = { name: 'Live · submitted, survey', args: { live: { ...LIVE_RUNNER, status: 'submitted', submittedAt: '11:52 am' } } };
+export const LiveBreak: S = { name: 'Live · on a break', args: { live: { ...LIVE_RUNNER, status: 'break', breakSecondsLeft: 236, breaksLeft: 0 } } };
