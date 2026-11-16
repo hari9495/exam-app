@@ -187,14 +187,17 @@ describe('Assessments AS-0: company isolation, keys, own-job results, acting and
     });
 
     it('the job board: the Hiring manager sees results on their own job; the coordinator sees the jobs and boards without any result', async () => {
-      const board = async (who: Who, job: string) => {
-        const b = (await api(who, 'get', `/hiring/jobs/${job}/board`).expect(200)).body as { columns: Record<string, { candidateId: string; examResults: unknown[] }[]> };
+      const board = async (who: Who, job: string, path = `/hiring/jobs/${job}/board`) => {
+        const b = (await api(who, 'get', path).expect(200)).body as { columns: Record<string, { candidateId: string; examResults: unknown[] }[]> };
         return new Map(Object.values(b.columns).flat().map((r) => [r.candidateId, r.examResults.length]));
       };
       expect((await board('manager', ids.J1)).get(ids.C1)).toBe(1);
       expect([...(await board('manager', ids.J2)).values()]).toEqual([0, 0]);
       expect((await board('recruiter', ids.J2)).get(ids.C2)).toBe(1);
       expect([...(await board('coordinator', ids.J1)).values()]).toEqual([0]);
+      // The older job pipeline route (the job page) strips results the same way.
+      expect([...(await board('coordinator', ids.J1, `/jobs/${ids.J1}/pipeline`)).values()]).toEqual([0]);
+      expect((await board('manager', ids.J1, `/jobs/${ids.J1}/pipeline`)).get(ids.C1)).toBe(1);
       expect(((await api('coordinator', 'get', '/jobs').expect(200)).body as { id: string }[]).map((j) => j.id)).toEqual(expect.arrayContaining([ids.J1, ids.J2]));
       await api('coordinator', 'get', `/jobs/${ids.J1}`).expect(200);
     });
