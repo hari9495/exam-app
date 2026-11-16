@@ -391,6 +391,17 @@ export function useWebcamResume() {
   });
 }
 
+/** Answer 2205: the face check after approved extra time; resumes the test when it matches. */
+export function useFaceRecheck() {
+  const { accessToken } = useCandidateAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (snapshot: string): Promise<{ status: string; matched: boolean | null }> =>
+      candidateApiFetch('/attempt/face-recheck', { method: 'POST', body: JSON.stringify({ snapshot }) }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attempt', 'current'] }),
+  });
+}
+
 // Stage-3 face enforcement 'warn': candidate acknowledges the non-freezing heads-up, clearing
 // faceWarningAt server-side so it stops surfacing on /current.
 export function useAckFaceWarning() {

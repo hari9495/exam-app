@@ -725,6 +725,18 @@ export interface LiveRunnerQuestion {
   markedForReview: boolean;
 }
 
+export interface LiveRunnerPause {
+  title: string;
+  message: string;
+  /** e.g. "Warning 1/3". */
+  strike?: string | null;
+  /** A quieter line under the message, e.g. that no time is lost. */
+  note?: string | null;
+  action?: { label: string; busyLabel?: string; onClick: () => void; busy?: boolean } | null;
+  /** Why the last try did not work. */
+  error?: string | null;
+}
+
 export interface LiveRunner {
   testName: string;
   candidateName: string;
@@ -736,6 +748,13 @@ export interface LiveRunner {
   /** running; on the candidate's break; paused by the proctor or a check; submitted. */
   status: 'running' | 'break' | 'paused' | 'submitted';
   pausedMessage?: string;
+  /**
+   * Answer 2231: why the test is paused and what the candidate can do (a rule broken, a check, the proctor, screen sharing,
+   * a block). Shown in the designed paused view; without it the plain "paused" text shows.
+   */
+  pause?: LiveRunnerPause | null;
+  /** A heads-up that does not stop the test (e.g. the face did not clearly match); dismissed by the candidate. */
+  notice?: { title: string; message: string; actionLabel: string; onAction: () => void; busy?: boolean } | null;
   /** While on a break: seconds until it ends on its own. */
   breakSecondsLeft?: number;
   breaksLeft: number;
@@ -938,6 +957,23 @@ function LiveTestRunnerScreen({ live }: { live: LiveRunner }) {
               End break and continue
             </Button>
           </>
+        ) : live.pause ? (
+          <section className="yx-prc-stack" aria-label={live.pause.title}>
+            <Heading level={2}>{live.pause.title}</Heading>
+            <p className="yx-prc-p">{live.pause.message}</p>
+            {live.pause.strike && <p className="yx-prc-muted yx-prc-small">{live.pause.strike}</p>}
+            {live.pause.action && (
+              <Button variant="primary" loading={live.pause.action.busy} onClick={live.pause.action.onClick}>
+                {live.pause.action.busy && live.pause.action.busyLabel ? live.pause.action.busyLabel : live.pause.action.label}
+              </Button>
+            )}
+            {live.pause.error && (
+              <InlineAlert tone="warning" title="That did not work">
+                {live.pause.error}
+              </InlineAlert>
+            )}
+            <p className="yx-prc-muted yx-prc-small">{live.pause.note ?? 'The timer is stopped. It starts again when the test is resumed.'}</p>
+          </section>
         ) : (
           <>
             {live.pausedMessage && <p className="yx-prc-p">{live.pausedMessage}</p>}
@@ -1074,6 +1110,11 @@ function LiveTestRunnerScreen({ live }: { live: LiveRunner }) {
           </div>
           {live.proctoringNote && <p className="yx-prc-row yx-prc-small yx-prc-muted">{live.proctoringNote}</p>}
           {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+          {live.notice && (
+            <InlineAlert tone="warning" title={live.notice.title} actions={<Button size="sm" loading={live.notice.busy} onClick={live.notice.onAction}>{live.notice.actionLabel}</Button>}>
+              {live.notice.message}
+            </InlineAlert>
+          )}
           {live.finishError && (
             <InlineAlert tone="danger" title="Your test was not submitted">
               <p>{live.finishError} Your answers are saved.</p>

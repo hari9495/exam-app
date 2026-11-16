@@ -197,6 +197,11 @@ export class BeforeTestService {
       if (approve) {
         const t = await tx.attempt.updateMany({ where: { id: c.attempt.id, status: { in: RUNNING }, pausedDurationMs: c.attempt.pausedDurationMs }, data: { pausedDurationMs: c.attempt.pausedDurationMs + c.lostMs } });
         if (!t.count) throw new ConflictException('The test changed while you decided. Reload and decide again.');
+        // Answer 2205: when the test checks faces and the candidate has an enrolment photo, a running test pauses for a
+        // face check before it carries on (the candidate checks from the runner; a proctor may also resume it).
+        const a = await tx.attempt.findUniqueOrThrow({ where: { id: c.attempt.id }, select: { status: true, invitation: { select: { exam: { select: { faceVerificationEnabled: true } } } }, faceEnrolment: { select: { embedding: true } } } });
+        if (a.status === 'in_progress' && a.invitation.exam.faceVerificationEnabled && a.faceEnrolment?.embedding)
+          await tx.attempt.updateMany({ where: { id: c.attempt.id, status: 'in_progress' }, data: { status: 'paused', pausedAt: new Date(), pausedReason: 'face_recheck' } });
       }
       return { lostMs: c.lostMs, attemptId: c.attempt.id };
     });

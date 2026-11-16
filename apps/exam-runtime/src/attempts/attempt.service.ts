@@ -176,6 +176,8 @@ interface AttemptStateResponse {
   // attempt was already paused before this column shipped (no backfill; see resumeFromPause).
   // The client uses this instead of guessing from the violation counters.
   pausedReason: PauseReason | null;
+  /** AS-5: what the proctor told the candidate when pausing (pausedReason 'proctor'). */
+  pauseMessage?: string | null;
   // Stage-3 face enforcement 'warn': an unacknowledged non-freezing heads-up (ISO timestamp), or
   // null. Distinct from pausedReason -- warn never pauses, so it can't ride the pause channel.
   faceWarningAt: string | null;
@@ -464,6 +466,7 @@ export class AttemptService {
         webcamViolationCount: settled.webcamViolationCount,
         browserActivityViolationCount: settled.browserActivityViolationCount,
         pausedReason: settled.pausedReason as PauseReason | null,
+        pauseMessage: settled.status === 'paused' && settled.pausedReason === 'proctor' ? await proctorPauseMessage(tx, settled.id) : null,
         faceWarningAt: settled.faceWarningAt ? settled.faceWarningAt.toISOString() : null,
         exam: { title: exam.title, proctoring: resolveProctoringConfig(exam, settled) },
         screenShareRequired: exam.enableAntiCheating && exam.screenCaptureEnabled && !isProctoringBypassActive(settled),
@@ -1830,8 +1833,39 @@ export class AttemptService {
       if (attempt.pausedReason === 'screen_share') {
         throw new BadRequestException('Cannot resume — this attempt is paused pending screen sharing, not a strike');
       }
+      // AS-5: a proctor's pause is lifted by the proctor; a break ends on its own route; a face re-check by checking.
+      if (attempt.pausedReason === 'proctor' || attempt.pausedReason === 'break' || attempt.pausedReason === 'face_recheck') {
+        throw new BadRequestException('This pause is not cleared from here.');
+      }
       const updated = await this.attemptSettlement.resumeFromPause(tx, attempt);
       return { status: updated.status };
+    });
+  }
+
+  /**
+   * Answer 2205: after time above the cap was approved, the candidate's face is checked once against the enrolment photo
+   * before the test resumes. A match resumes; a clear mismatch stays paused (recorded) so they can try again or a proctor
+   * decides; when the check cannot run (no model, no enrolment) it resumes, as every other face check degrades.
+   */
+  async faceRecheck(session: CandidateSession, snapshot: string): Promise<{ status: string; matched: boolean | null }> {
+    const { organizationId, invitation } = await this.resolveContext(session.invitationId);
+    const ctx = { organizationId, isSuperAdmin: false };
+    const attempt = await this.tenantPrisma.forTenant(ctx, (tx) => tx.attempt.findUnique({ where: { invitationId: invitation.id } }));
+    if (!attempt) throw new NotFoundException('No attempt has been started');
+    if (attempt.status !== 'paused' || attempt.pausedReason !== 'face_recheck') throw new BadRequestException('No face check is waiting.');
+    const parsed = extractBase64FromDataUri(snapshot);
+    const image = parsed ? Buffer.from(parsed.base64, 'base64') : null;
+    if (!image?.length) throw new BadRequestException('The photo was empty. Try again.');
+    const outcome = await this.faceVerification.checkOnce(attempt.id, organizationId, image);
+    return this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const current = await tx.attempt.findUniqueOrThrow({ where: { id: attempt.id } });
+      if (current.status !== 'paused' || current.pausedReason !== 'face_recheck') return { status: current.status, matched: null };
+      if (outcome === 'mismatch') {
+        await tx.proctoringEvent.create({ data: { attemptId: attempt.id, eventType: 'face_recheck_failed', severity: getProctoringEventSeverity('face_mismatch'), metadataJson: '{}' } });
+        return { status: 'paused', matched: false };
+      }
+      const updated = await this.attemptSettlement.resumeFromPause(tx, current);
+      return { status: updated.status, matched: outcome === 'match' ? true : null };
     });
   }
 
@@ -2294,5 +2328,16 @@ export class AttemptService {
   private async broadcastLeaderboard(organizationId: string, examId: string): Promise<void> {
     const rows = await this.leaderboardService.computeRecruiterView({ organizationId, isSuperAdmin: false }, examId);
     this.monitoringGateway.emitLeaderboardUpdate(examId, rows);
+  }
+}
+
+/** AS-5: the message of the proctor's latest pause (kept on the attempt's record as a proctoring event). */
+async function proctorPauseMessage(tx: Prisma.TransactionClient, attemptId: string): Promise<string | null> {
+  const e = await tx.proctoringEvent.findFirst({ where: { attemptId, eventType: 'proctor_paused' }, orderBy: { occurredAt: 'desc' }, select: { metadataJson: true } });
+  try {
+    const m = JSON.parse(e?.metadataJson ?? '{}') as { message?: unknown };
+    return typeof m.message === 'string' && m.message.trim() ? m.message : null;
+  } catch {
+    return null;
   }
 }

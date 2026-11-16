@@ -66,7 +66,9 @@ function isAttemptedManual(type: string, answer: { answerText: string | null; an
 // cleared by screenShareState's active:true path. face_mismatch is set by stage-3 face
 // enforcement (attempt.service.ts#applyFaceMismatchEnforcement) when faceMismatchAction is 'pause'
 // or 'block' -- direct action, not strike-based, so it has no strikeLimit escalation of its own.
-export type PauseReason = 'webcam' | 'browser_activity' | 'screen_share' | 'face_mismatch' | 'break';
+// AS-5 part 2: 'proctor' (paused from the live console, with a reason; only a proctor resumes it) and 'face_recheck'
+// (answer 2205: after time above the cap is approved, the candidate's face is checked again before resuming).
+export type PauseReason = 'webcam' | 'browser_activity' | 'screen_share' | 'face_mismatch' | 'break' | 'proctor' | 'face_recheck';
 
 // Mirrors what AttemptService stamps into Attempt.sectionSnapshotJson at attempt-start. Read
 // (rather than re-queried from ExamSection) deliberately: the snapshot is the frozen, per-attempt
