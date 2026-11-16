@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 import { bootAdminApp, bootRuntimeApp } from './dual-app';
 import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
+import { asApproved } from './fixtures/approved-question';
 
 // Assessments AS-4b (answer 2011), end to end against the real database (forced RLS, the app role):
 //   PRC-23 a candidate asks for help before the test, with evidence checked by its first bytes; one open request;
@@ -74,7 +75,7 @@ describe('Assessments AS-4b: accommodations and connectivity credit', () => {
       token[who] = (await request(http).post('/api/v1/auth/staff/login').send({ organizationSlug: o.slug, email: `${who}-${run}@as4b.test`, password: PASSWORD }).expect(200)).body.accessToken;
     }
     for (const [k, who] of [['A', 'adminA'], ['B', 'adminB']] as const)
-      ids[`q${k}`] = (await api(who, 'post', '/questions').send({ type: 'single_mcq', text: `Capital ${k} ${run}?`, difficulty: 'easy', marks: 10, options: [{ text: 'Yes', isCorrect: true }, { text: 'No', isCorrect: false }] }).expect(201)).body.id;
+      ids[`q${k}`] = (await asApproved(await api(who, 'post', '/questions').send({ type: 'single_mcq', text: `Capital ${k} ${run}?`, difficulty: 'easy', marks: 10, options: [{ text: 'Yes', isCorrect: true }, { text: 'No', isCorrect: false }] }).expect(201))).body.id;
   }, 300_000);
 
   afterAll(async () => {
