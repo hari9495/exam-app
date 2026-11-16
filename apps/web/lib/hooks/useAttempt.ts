@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { candidateApiFetch } from '../candidate-api-client';
 import { useCandidateAuth } from '../candidate-auth-context';
 import { useToast } from '../../components/ui';
 import { isRetryableError, withRetry } from '../retry';
 import { reportClientError } from '../client-error-reporter';
+import { enqueue, loadQueue, saveQueue, settle, type AnswerQueue } from '../answer-queue';
 import { AttemptCurrent, ProctoringEventType, CandidateLeaderboardResponse, AnswerTelemetry, AnswerFile } from '../types';
 
 const ANSWER_DEBOUNCE_MS = 800;
@@ -48,33 +49,63 @@ interface PendingAnswer {
   codeLanguage?: string;
   markedForReview?: boolean;
   telemetry?: AnswerTelemetry;
+  /** AS-4a: when this device saved it (ISO). */
+  clientSavedAt: string;
 }
 
+/** AS-4a (PRC-26): the connection as the runner shows it. */
+export type AnswerConnection = 'online' | 'reconnecting' | 'offline';
+const RESEND_EVERY_MS = 15_000;
+
+/**
+ * Answer autosave. AS-4a: every answer is also kept on this device (lib/answer-queue) with the time it was saved, until
+ * the server has it: a lost connection keeps the answers here (through a reload) and sends them when it returns; the
+ * server never lets an older copy win. A refusal from the server (the test ended, a bad answer) is not retried.
+ */
 export function useAnswerMutation() {
   const { accessToken } = useCandidateAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const pending = useRef<Record<string, PendingAnswer>>({});
+  const queue = useRef<AnswerQueue>(loadQueue());
+  const [queued, setQueued] = useState(() => Object.keys(queue.current).length);
+  const [connection, setConnection] = useState<AnswerConnection>('online');
+  const [offlineSince, setOfflineSince] = useState<number | null>(null);
+  const sending = useRef(false);
 
-  function fire(questionId: string): Promise<void> {
-    const payload = pending.current[questionId];
-    if (!payload) return Promise.resolve();
-    delete pending.current[questionId];
-    delete timers.current[questionId];
+  const store = (next: AnswerQueue) => {
+    queue.current = next;
+    saveQueue(next);
+    setQueued(Object.keys(next).length);
+  };
+  const lost = () => {
+    setConnection(typeof navigator !== 'undefined' && navigator.onLine === false ? 'offline' : 'reconnecting');
+    setOfflineSince((t) => t ?? Date.now());
+  };
+  const back = () => {
+    setConnection('online');
+    setOfflineSince(null);
+  };
+
+  function send(questionId: string, payload: Omit<PendingAnswer, 'telemetry'> & { telemetry?: AnswerTelemetry }): Promise<void> {
     return withRetry(() =>
-      candidateApiFetch(
-        '/attempt/answer',
-        { method: 'POST', body: JSON.stringify({ questionId, ...payload }) },
-        accessToken ?? undefined,
-      ),
+      candidateApiFetch('/attempt/answer', { method: 'POST', body: JSON.stringify({ questionId, ...payload }) }, accessToken ?? undefined),
     )
       .then(() => {
+        store(settle(queue.current, questionId, payload.clientSavedAt));
+        back();
         // ponytail: re-sync from the server so the "marked for review" / answered
         // state updates promptly instead of waiting on the 30s poll interval.
         queryClient.invalidateQueries({ queryKey: ['attempt', 'current'] });
       })
       .catch((error) => {
+        if (isRetryableError(error)) {
+          // Kept on this device; sent when the connection returns.
+          lost();
+          return;
+        }
+        store(settle(queue.current, questionId, payload.clientSavedAt));
         toast("Couldn't save your last answer — please check your connection.", 'error');
         // A failed save is the single most important exam-day failure to have on record
         // when a candidate later disputes lost answers.
@@ -87,6 +118,48 @@ export function useAnswerMutation() {
       });
   }
 
+  function fire(questionId: string): Promise<void> {
+    const payload = pending.current[questionId];
+    if (!payload) return Promise.resolve();
+    delete pending.current[questionId];
+    delete timers.current[questionId];
+    return send(questionId, payload);
+  }
+
+  /** Sends what this device still holds, oldest first, one at a time. */
+  async function resendQueued(): Promise<void> {
+    if (sending.current) return;
+    sending.current = true;
+    try {
+      const waiting = Object.entries(queue.current).sort(([, x], [, y]) => (x.clientSavedAt < y.clientSavedAt ? -1 : 1));
+      for (const [questionId, answer] of waiting) {
+        if (pending.current[questionId]) continue; // a newer edit is about to go
+        await send(questionId, answer);
+        if (Object.prototype.hasOwnProperty.call(queue.current, questionId) && queue.current[questionId]!.clientSavedAt === answer.clientSavedAt) break; // still down
+      }
+    } finally {
+      sending.current = false;
+    }
+  }
+
+  useEffect(() => {
+    const online = () => void resendQueued();
+    const offline = () => lost();
+    window.addEventListener('online', online);
+    window.addEventListener('offline', offline);
+    const every = setInterval(() => {
+      if (Object.keys(queue.current).length) void resendQueued();
+    }, RESEND_EVERY_MS);
+    // Answers this device kept from before a reload.
+    if (Object.keys(queue.current).length) void resendQueued();
+    return () => {
+      window.removeEventListener('online', online);
+      window.removeEventListener('offline', offline);
+      clearInterval(every);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken]);
+
   function saveAnswer(
     questionId: string,
     selectedOptionIds: string[],
@@ -95,7 +168,10 @@ export function useAnswerMutation() {
     telemetry?: AnswerTelemetry,
     codeLanguage?: string,
   ) {
-    pending.current[questionId] = { selectedOptionIds, markedForReview, answerText, telemetry, codeLanguage };
+    const clientSavedAt = new Date().toISOString();
+    pending.current[questionId] = { selectedOptionIds, markedForReview, answerText, telemetry, codeLanguage, clientSavedAt };
+    // On the device at once, so a lost connection or a reload never loses it.
+    store(enqueue(queue.current, questionId, { selectedOptionIds, markedForReview, answerText, codeLanguage, clientSavedAt }));
     if (timers.current[questionId]) {
       clearTimeout(timers.current[questionId]);
     }
@@ -110,9 +186,10 @@ export function useAnswerMutation() {
       }
     });
     await Promise.all(questionIds.map((questionId) => fire(questionId)));
+    await resendQueued();
   }
 
-  return { saveAnswer, flush };
+  return { saveAnswer, flush, queued, connection, offlineSince };
 }
 
 // file_upload answers: the files go through their own endpoint (uploads must run outside the
@@ -139,8 +216,28 @@ export function useSubmitAttempt() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => candidateApiFetch('/attempt/submit', { method: 'POST', body: JSON.stringify({}) }, accessToken ?? undefined),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attempt', 'current'] }),
+    onSuccess: () => {
+      // AS-4a: the test is in; nothing of it stays on this device.
+      saveQueue({});
+      return queryClient.invalidateQueries({ queryKey: ['attempt', 'current'] });
+    },
   });
+}
+
+/** AS-4a (PRC-26): start or end a break; the optional after-test survey. */
+export function useRunnerActions() {
+  const { accessToken } = useCandidateAuth();
+  const queryClient = useQueryClient();
+  const post = (path: string, body: unknown = {}) =>
+    candidateApiFetch(path, { method: 'POST', body: JSON.stringify(body) }, accessToken ?? undefined).then((r: unknown) => {
+      void queryClient.invalidateQueries({ queryKey: ['attempt', 'current'] });
+      return r;
+    });
+  return {
+    startBreak: () => post('/attempt/break/start'),
+    endBreak: () => post('/attempt/break/end'),
+    sendSurvey: (input: { rating: number; clearInstructions?: boolean; comment?: string }) => post('/attempt/survey', input),
+  };
 }
 
 export interface RunCodeResult {

@@ -1,6 +1,10 @@
 // Assessments AS-1 (answers 2009, 2010, 2017): the designed question bank screens, live with their `live` prop.
 // Import the stylesheet once: '@yukthix/ui/styles.css'.
-export { ItemAnalysisScreen, QuestionBankScreen, QuestionEditorScreen, QuestionReviewQueueScreen } from './bank-tests';
+export { ItemAnalysisScreen, QuestionBankScreen, QuestionEditorScreen, QuestionReviewQueueScreen, ScoreReportScreen, TestBuilderScreen } from './bank-tests';
+
+// AS-2 (answers 2007, 2008): the test builder and the score report.
+
+export { MODE_WORDS, poolShort, type BuilderTestView, type LiveScoreReport, type LiveTestBuilder, type ProctorMode, type TestCheck, type TestDetails, type TestListRow, type TestSection } from './tests-live';
 export {
   LANGUAGE_NAME,
   STATUS_LABEL,
@@ -23,3 +27,6 @@ export {
   type ReviewChange,
   type ReviewTranslation,
 } from './bank-live';
+
+// Assessments AS-4a (PRC-26, PRC-27): the designed test runner and result page, live with their `live` prop.
+export { ResultAppealScreen, TestRunnerScreen, type LiveResult, type LiveRunner, type LiveRunnerQuestion } from './candidate';

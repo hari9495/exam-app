@@ -2281,9 +2281,26 @@ Queued: 2112, 2113, 2116 (small follow-up slice).
 **Founder answers (16 Nov 2026, "ok for all"), 2146 and 2147:**
 - 2146: hide "Send a sales request" while the company has one open, and say when sales will call.
 - 2147: keep both, the tab for deciders and the page for writers.
+### Ask YukthiX follow-ups, round 2, as built (branch `feat/yukthix-ask-fu2`, 16 Nov 2026; answers 2132, 2135)
+- **2132:** Console › Ask YukthiX review (`/staff/assistant-review`, Catalogue group) shows the assistant review on its
+  own page, so the help centre writers (`platform.helpcentre.write`) reach it without the feature-requests key. The API
+  route already takes either key. Kit: `AssistantReviewConsoleScreen` (the review panel shared with the Feature requests
+  page's second tab); stories "Ask YukthiX review · its own page" and "· no access".
+- **2135:** one open chat sales request per company at a time: a second chat about buying is refused (409, "Your company
+  already asked YukthiX sales from a chat. They reply by …") until sales records an outcome; a transaction lock keeps two
+  chats from both passing. Talk to us requests (per feature) are not affected. No migration.
+- **Tests:** kit `feature-requests` (+2); web console pages (+2); e2e `ask-followups` (+1). Manual test MT-HLP-ASK3.
+
+### Questions (from 2146)
+
+2146. **Telling the person before they type.** The chat offers "Send a sales request" even while the company has one
+      open; pressing it says when sales replies. *Suggested: hide the offer and say "YukthiX sales will call by …" when
+      one is open.*
+2147. **Two console links to one review.** Feature-request deciders see the review on both pages. *Suggested: keep the
+      tab for them; the link is for writers.*
 
 **2146 as built (branch `feat/yukthix-bank-fu2`):** while the company has an open sales request (from any chat or Talk to
 us), Ask YukthiX offers no "Send a sales request" on a buying question and says when sales call ("They call you by …");
-the API also refuses a second request from another chat while one is open. Tests: kit `ask-yukthix` (1 new), e2e
+the API also refuses a second request from another chat while one is open. Merged with 2135: one transaction lock and one
+check covering any source ("… asked YukthiX sales from a chat. They reply by …" when the open one came from a chat). Tests: kit `ask-yukthix` (1 new), e2e
 `ask-followups` (the open request shown, a second chat refused, another company unaffected).
-

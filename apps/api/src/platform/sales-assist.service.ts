@@ -9,6 +9,8 @@ export const SALES_REPLY_KEY = 'sales.reply_hours';
 export const SALES_REPLY_DEFAULT = 24;
 export const TOPICS = ['migration', 'parallel_run', 'entities', 'pricing'] as const;
 export const OUTCOMES = ['open', 'demo_booked', 'converted', 'lost'] as const;
+/** "17 Nov 2026, 10:30 am" in India time, for a refusal that says when YukthiX replies. */
+const formatIst = (d: Date) => new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }).format(d);
 const TOPIC_WORDS: Record<string, string> = { migration: 'moving data', parallel_run: 'payroll parallel run', entities: 'several legal entities', pricing: 'pricing for their size' };
 
 /** The drawn size bands (counts only, never names). */
@@ -75,7 +77,7 @@ export class SalesAssistService {
   /**
    * Answer 2112: a sales request straight from an Ask YukthiX chat about buying (the assistant checks the person may
    * change the plan, the chat is theirs and about buying). Same queue, reply time and audit as Talk to us; the chat goes
-   * with it, masked. Once per chat (also the database's unique index).
+   * with it, masked. Once per chat (also the database's unique index), and one open chat request per company (2135).
    */
   /** Answer 2146: the company's open sales request (any source), with when YukthiX sales reply; null when none. */
   async openFor(organizationId: string): Promise<{ dueAt: string } | null> {
@@ -98,9 +100,11 @@ export class SalesAssistService {
     const topics = [...new Set(dto.topics)];
     const made = await this.tenantPrisma.forTenant(PLATFORM, async (tx) => {
       if (await tx.salesAssistRequest.findFirst({ where: { conversationId: chat.conversationId }, select: { id: true } })) throw new ConflictException('A sales request was already sent from this chat.');
-      // Answer 2146: one open request per company at a time; sales already call about the open one.
-      const open = await tx.salesAssistRequest.findFirst({ where: { organizationId: c.organizationId, status: 'open' }, orderBy: { dueAt: 'asc' }, select: { dueAt: true } });
-      if (open) throw new ConflictException(`Your company already asked YukthiX sales. They call you by ${open.dueAt.toISOString()}.`);
+      // Answers 2135 and 2146: one open sales request per company at a time, from any source (the lock keeps two chats
+      // from both passing); sales already reply about the open one.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`sales-chat:${c.organizationId}`}))`;
+      const open = await tx.salesAssistRequest.findFirst({ where: { organizationId: c.organizationId, status: 'open' }, orderBy: { dueAt: 'asc' }, select: { dueAt: true, source: true } });
+      if (open) throw new ConflictException(`Your company already asked YukthiX sales${open.source === 'assistant' ? ' from a chat' : ''}. They reply by ${formatIst(open.dueAt)}.`);
       const r = await tx.salesAssistRequest.create({
         data: { organizationId: c.organizationId, source: 'assistant', conversationId: chat.conversationId, chat: chat.text.slice(0, 10_000), topics, phone: dto.phone, note: dto.note?.trim() || null, requestedBy: c.userId, requestedByName: known.name.slice(0, 200), employees: known.employees, dueAt: new Date(Date.now() + (await this.replyHours(tx)) * 3_600_000) },
       });

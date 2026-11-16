@@ -53,6 +53,8 @@ export interface NavInput {
   panellist?: boolean;
   /** The company turned the staffing desk on (Settings › Staffing desk; the server decides). */
   staffing?: boolean;
+  /** Answer 2001: the company has assessments on (assessments.enabled, on by default; the server decides). */
+  assessments?: boolean;
   /** Projects P-1: Projects is on and this person holds a Projects key or manages a project (the server decides). */
   projects?: boolean;
   /** P-2 (1406): timesheet lines waiting for this person's decision (the server decides). */
@@ -178,6 +180,8 @@ export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '6.1': ['/yx/settings/hiring'],
   '6.2': ['/yx/settings/staffing'],
   '6.3': ['/yx/settings/talent/performance', '/yx/settings/performance'],
+  // AS-2: the company's assessment defaults (Settings 6.5).
+  '6.5': ['/yx/settings/talent/assessments'],
   // S-10 (answer 1327): group 7 on the checked older routes (System Admins; 7.5 is each person's own calendar).
   '7.1': [`${SETTINGS_HOME}/integrations/integrations`],
   '7.2': ['/yx/time/setup/devices'],
@@ -432,6 +436,11 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(any('exam:manage', 'question_bank:manage'), L('hiring-older', 'Assessments & more (older screens)', '/v2/today')),
           ...when(has('results:view') && !any('exam:manage', 'question_bank:manage'), L('hiring-results', 'Test results (older screens)', '/v2/panel/reports')),
           ]),
+          // Answer 2001 (AS-1 follow-ups): Hire › Assessments, for bank writers (the YukthiX key or its older alias), only when
+          // the company has assessments on. Tests, delivery and results join as their designed screens go live.
+          ...sec('Assessments', [
+            ...when(Boolean(n.assessments) && any('asmt.bank.manage', 'question_bank:manage'), L('asmt-bank', 'Question bank', '/yx/hiring/assessments/questions'), L('asmt-reviews', 'Question review', '/yx/hiring/assessments/reviews'), L('asmt-items', 'Item analysis', '/yx/hiring/assessments/item-analysis')),
+          ]),
           // Staffing desk slice 1 (HIR-14, HIR-15): its own group, only for a company that turned the desk on.
           // Slice 2 (HIR-16, HIR-17): submissions, placements and the bench.
           ...sec('Staffing desk', [...when(Boolean(n.staffing) && any('ats.staffing.manage', 'ats.staffing.view'), L('staffing-clients', 'Clients', '/yx/staffing/clients'), L('staffing-rates', 'Rate cards', '/yx/staffing/rate-cards'), L('staffing-submissions', 'Submissions', '/yx/staffing/submissions'), L('staffing-placements', 'Placements & bench', '/yx/staffing/placements')), ...when(Boolean(n.staffing) && any('ats.staffing.manage', 'ats.staffing.billing'), L('staffing-invoices', 'Invoices', '/yx/staffing/invoices')), ...when(Boolean(n.staffing) && has('ats.staffing.billing'), L('staffing-collections', 'Collections', '/yx/staffing/collections'))]),
@@ -559,6 +568,8 @@ export function buildNav(n: NavInput): NavArea[] {
         // S-8 (answer 1323): the company's expense and performance choices (4.8, 6.3); their set-up keys change them too.
         ...when(settingsView || has('expense.policy.manage') || has('expense.policy.view'), L('expense-settings', 'Expense settings', `${SETTINGS_HOME}/finance/expenses-and-travel`)),
         ...when(settingsView || has('perf.setup.manage'), L('performance-settings', 'Performance settings', `${SETTINGS_HOME}/talent/performance`)),
+        // AS-2 (Settings 6.5): the company's assessment defaults; test owners with the assessments settings key too.
+        ...when(settingsView || has('assessments.settings.manage'), L('assessment-settings', 'Assessment settings', `${SETTINGS_HOME}/talent/assessments`)),
         // S-10 (answer 1327): Integrations, AI and Developers for System Admins; everyone's own calendar.
         ...when((has('org:manage_settings') || has('integration.manage')) && !support, L('integrations', 'Integrations', `${SETTINGS_HOME}/integrations/integrations`), L('ai-settings', 'AI', `${SETTINGS_HOME}/integrations/ai`), L('developers', 'Developers', `${SETTINGS_HOME}/integrations/developers`)),
         ...when(!support && (has('org:manage_settings') || has('integration.manage') || Boolean(n.panellist) || any('interview:view_assigned', 'pipeline:manage')), L('calendar-and-chat', 'Calendar & chat', `${SETTINGS_HOME}/integrations/calendar-and-chat`)),

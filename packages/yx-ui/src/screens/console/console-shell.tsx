@@ -4,7 +4,7 @@ import { Logo, Monogram } from '../../components/brand';
 import type { IconComponent } from '../../components/foundations';
 import { AppShell, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, TopBar, type DensityChoice, type RailItem, type ThemeChoice } from '../../components/shell';
 
-export type ConsolePageId = 'companies' | 'customers' | 'help-centre' | 'nudges' | 'sales' | 'analytics' | 'incidents' | 'maintenance' | 'support-desk' | 'support' | 'plans' | 'whats-new' | 'feature-requests' | 'rules' | 'channels' | 'feature-flags' | 'platform-settings' | 'audit' | 'staff';
+export type ConsolePageId = 'companies' | 'customers' | 'help-centre' | 'nudges' | 'sales' | 'analytics' | 'incidents' | 'maintenance' | 'support-desk' | 'support' | 'plans' | 'whats-new' | 'feature-requests' | 'assistant-review' | 'rules' | 'channels' | 'feature-flags' | 'platform-settings' | 'audit' | 'staff';
 type ConsoleGroup = 'Customers' | 'Catalogue' | 'Rules' | 'Operations' | 'Channels' | 'Security';
 
 interface ConsoleLink {
@@ -35,6 +35,8 @@ export const CONSOLE_LINKS: ConsoleLink[] = [
   // Ask YukthiX (answers 2105, 2113): feature requests from the assistant (their own key, platform.feature_requests.manage),
   // and how its answers are doing.
   { id: 'feature-requests', label: 'Feature requests', href: '/staff/feature-requests', group: 'Catalogue', icon: Inbox },
+  // Answer 2132: the Ask YukthiX review on its own page, opened by the help centre writers' key too.
+  { id: 'assistant-review', label: 'Ask YukthiX review', href: '/staff/assistant-review', group: 'Catalogue', icon: MessageSquare },
   // C-8 (YX-12): nudges and switch-on copy per feature switch.
   { id: 'nudges', label: 'Nudges', href: '/staff/nudges', group: 'Catalogue', icon: BellRing },
   // Console C-1 (answers 1041 to 1044): statutory rule sets, golden cases and review, publishing (YX-01 to YX-03).

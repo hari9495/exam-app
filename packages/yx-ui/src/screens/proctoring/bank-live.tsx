@@ -16,6 +16,8 @@ import { NumberField, TextArea, TextField } from '../../components/inputs';
 import { Select } from '../../components/select';
 import { Checkbox } from '../../components/choice';
 import { Dialog } from '../../components/overlay';
+import { FileUpload } from '../../components/upload';
+import { Segment } from '../../components/segment';
 import { Timeline } from '../../components/timeline';
 import { BarChart, StatCard } from '../../components/charts';
 import { ButtonGroup } from '../../components/button';
@@ -188,8 +190,31 @@ const PACK_LABEL: Record<string, { name: string; desc: string }> = {
   core_it: { name: 'Core IT skills', desc: 'Java, Python, SQL and web basics.' },
 };
 const FIELD_LABEL: Record<string, string> = { type: 'Type', text: 'Question', options: 'Options and answer key', modelAnswer: 'Model answer', codeTests: 'Code tests', marks: 'Marks', negativeMarks: 'Negative marks', difficulty: 'Difficulty', topic: 'Skill', category: 'Collection', imageUrl: 'Image', imageAlt: 'Image alt text', tags: 'Tags', optionAlts: 'Option alt text' };
-/** The types the editor writes; the others (code, file upload, spoken) keep their test cases and settings as they are. */
-const EDITABLE_TYPES = ['single_mcq', 'multi_mcq', 'true_false', 'essay'];
+/** The types the editor writes (answer 2125 adds code); file upload and spoken keep their settings as they are. */
+const EDITABLE_TYPES = ['single_mcq', 'multi_mcq', 'true_false', 'essay', 'code'];
+/** Answer 2126: images the question route takes (PNG, JPEG or SVG, up to 2 MB). */
+export const IMAGE_ACCEPT = ['.png', '.jpg', '.jpeg', '.svg'];
+export const IMAGE_MAX_BYTES = 2 * 1024 * 1024;
+/** One auto-graded test case of a code question (answer 2125). */
+export interface CodeTest {
+  stdin?: string;
+  expectedStdout: string;
+  weight?: number;
+  hidden?: boolean;
+}
+/** What still stops saving a code question: at least one language when fixed, at least one test with an expected output. */
+export function codeProblems(c: BankContent): string[] {
+  if (c.type !== 'code') return [];
+  const out: string[] = [];
+  if ((c.languageMode ?? 'fixed') === 'fixed' && !(c.allowedLanguages ?? []).length) out.push('Choose the language candidates write in.');
+  const tests = (c.codeTests ?? []) as CodeTest[];
+  if (!tests.length) out.push('Add at least one test case.');
+  if (tests.some((t) => !(t.expectedStdout ?? '').length)) out.push('Every test case needs its expected output.');
+  if (tests.length && tests.every((t) => t.hidden)) out.push('Keep at least one test case visible, so candidates see an example.');
+  return out;
+}
+/** The file name of a stored image address, for the editor and the preview. */
+export const imageName = (url: string) => decodeURIComponent(url.split('?')[0]!.split('/').pop() ?? url);
 const CHOICE_TYPES = ['single_mcq', 'multi_mcq', 'true_false'];
 const letter = (i: number) => String.fromCharCode(65 + i);
 const opt = (xs: string[]) => xs.map((x) => ({ value: x, label: x }));
@@ -225,6 +250,16 @@ function translationOptions(v: unknown): string[] {
 /* PRC-01 · Question bank                                              */
 /* ================================================================== */
 
+export interface AiDraftInput {
+  topic: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  questionTypes: ('single_mcq' | 'multi_mcq' | 'true_false')[];
+  count: number;
+  marks: number;
+  negativeMarks: number;
+  tagIds: string[];
+}
+
 export interface LiveBank {
   state: BankLoad;
   onRetry: () => void;
@@ -233,9 +268,13 @@ export interface LiveBank {
   stats: Record<string, { responses: number; percentCorrect: number }>;
   settings: BankSettings | null;
   onOpen: (id: string | 'new') => void;
-  /** The older pages for importing a file and drafting with AI (they land as drafts here, reviewed like any other). */
-  onImport?: () => void;
-  onDraftWithAi?: () => void;
+  /** Answer 2121: a CSV or Excel file; every row lands as a draft in the review queue. */
+  onImport?: (file: File) => Promise<{ created: number; errors: { row: number; message: string }[] }>;
+  onDownloadTemplate?: () => Promise<unknown>;
+  /** Answer 2121: AI drafts land in the review queue; the person who asked is their author. */
+  onDraftWithAi?: (input: AiDraftInput) => Promise<unknown>;
+  /** Stories: open the import or AI dialog. */
+  defaultDialog?: 'import' | 'ai';
   onSubmit: (id: string) => Promise<unknown>;
   onRetire: (id: string) => Promise<unknown>;
   onLoadStats: (id: string) => Promise<ItemStats>;
@@ -248,6 +287,7 @@ export function LiveQuestionBank({ live }: { live: LiveBank }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [stats, setStats] = useState<ItemStats | 'loading' | 'error' | null>(null);
+  const [dialog, setDialog] = useState<'import' | 'ai' | null>(live.defaultDialog ?? null);
   const { busy, run } = useRun();
   const { done, fail } = useSay();
   const rows = live.rows.map((r) => ({ ...r, statusLabel: STATUS_LABEL[r.status], typeLabel: TYPE_LABEL[r.type] ?? r.type, source: r.aiDrafted ? 'AI-drafted' : 'Our team', served: live.stats[r.id]?.responses ?? 0 }));
@@ -317,11 +357,11 @@ export function LiveQuestionBank({ live }: { live: LiveBank }) {
         actions={
           <>
             {live.onImport && (
-              <Button icon={FileUp} onClick={live.onImport}>
+              <Button icon={FileUp} onClick={() => setDialog('import')}>
                 Import
               </Button>
             )}
-            {live.onDraftWithAi && <Button onClick={live.onDraftWithAi}>Draft with AI</Button>}
+            {live.onDraftWithAi && <Button onClick={() => setDialog('ai')}>Draft with AI</Button>}
             <Button variant="primary" icon={Plus} onClick={() => live.onOpen('new')}>
               Add question
             </Button>
@@ -442,6 +482,8 @@ export function LiveQuestionBank({ live }: { live: LiveBank }) {
           </TabsContent>
         </Tabs>
       )}
+      {dialog === 'import' && live.onImport && <ImportDialog onImport={live.onImport} onTemplate={live.onDownloadTemplate} onClose={() => setDialog(null)} />}
+      {dialog === 'ai' && live.onDraftWithAi && <AiDraftDialog onDraft={live.onDraftWithAi} onClose={() => setDialog(null)} />}
       {open && (
         <Drawer
           open
@@ -505,6 +547,215 @@ function ItemStatsBlock({ stats, provisional }: { stats: ItemStats | 'loading' |
   );
 }
 
+/** Answer 2121: import a CSV or Excel file; every row lands as a draft in the review queue (the file's errors listed). */
+function ImportDialog({ onImport, onTemplate, onClose }: { onImport: NonNullable<LiveBank['onImport']>; onTemplate?: LiveBank['onDownloadTemplate']; onClose: () => void }) {
+  const [result, setResult] = useState<{ created: number; errors: { row: number; message: string }[] } | null>(null);
+  const { done } = useSay();
+  return (
+    <Dialog
+      open
+      size="md"
+      onOpenChange={(o) => !o && onClose()}
+      title="Import questions"
+      description="A CSV or Excel file in the template's columns. Every question lands as a draft in the review queue; another person approves it before a test can use it."
+      footer={<Button onClick={onClose}>{result ? 'Done' : 'Cancel'}</Button>}
+    >
+      <div className="yx-prc-stack">
+        {onTemplate && (
+          <span className="yx-prc-row">
+            <Button size="sm" onClick={() => void onTemplate()}>
+              Download the template
+            </Button>
+          </span>
+        )}
+        <FileUpload
+          accept={['.csv', '.xlsx']}
+          maxSize={5 * 1024 * 1024}
+          multiple={false}
+          upload={async (file) => {
+            const r = await onImport(file);
+            setResult(r);
+            if (r.created) done(`${r.created} question${r.created === 1 ? '' : 's'} sent for review`);
+          }}
+        />
+        {result && result.errors.length > 0 && (
+          <InlineAlert tone="warning" title={`${result.errors.length} row${result.errors.length === 1 ? ' was' : 's were'} not imported`}>
+            <ul className="yx-prc-list">
+              {result.errors.slice(0, 20).map((e) => (
+                <li key={`${e.row}-${e.message}`}>
+                  Row {e.row}: {e.message}
+                </li>
+              ))}
+            </ul>
+          </InlineAlert>
+        )}
+      </div>
+    </Dialog>
+  );
+}
+
+const AI_TYPES: { value: AiDraftInput['questionTypes'][number]; label: string }[] = [
+  { value: 'single_mcq', label: 'Single choice' },
+  { value: 'multi_mcq', label: 'Multiple choice' },
+  { value: 'true_false', label: 'True or false' },
+];
+
+/** Answer 2121: AI drafts land in the review queue, labelled, with the person who asked as their author. */
+function AiDraftDialog({ onDraft, onClose }: { onDraft: NonNullable<LiveBank['onDraftWithAi']>; onClose: () => void }) {
+  const [topic, setTopic] = useState('');
+  const [difficulty, setDifficulty] = useState<AiDraftInput['difficulty']>('medium');
+  const [types, setTypes] = useState<AiDraftInput['questionTypes']>(['single_mcq']);
+  const [count, setCount] = useState<number | null>(5);
+  const [marks, setMarks] = useState<number | null>(1);
+  const [negative, setNegative] = useState<number | null>(0);
+  const [tried, setTried] = useState(false);
+  const { busy, run, error } = useRun();
+  const { done } = useSay();
+  const errors = {
+    topic: topic.trim().length < 3 ? 'Say what the questions are about (at least 3 characters).' : null,
+    types: types.length ? null : 'Choose at least one kind of question.',
+    count: count && count >= 1 && count <= 20 ? null : 'Ask for 1 to 20 questions.',
+    marks: marks && marks >= 1 && marks <= 100 ? null : 'Marks are 1 to 100.',
+    negative: negative != null && negative >= 0 && negative <= (marks ?? 0) ? null : 'Negative marks are 0 up to the marks.',
+  };
+  const send = async () => {
+    setTried(true);
+    if (Object.values(errors).some(Boolean)) return;
+    if (await run('ai', () => onDraft({ topic: topic.trim(), difficulty, questionTypes: types, count: count!, marks: marks!, negativeMarks: negative!, tagIds: [] }))) {
+      done(`Drafting ${count} question${count === 1 ? '' : 's'}. They land in the review queue in a minute or two.`);
+      onClose();
+    }
+  };
+  return (
+    <Dialog
+      open
+      size="md"
+      onOpenChange={(o) => !o && onClose()}
+      title="Draft questions with AI"
+      description="AI drafts are labelled and land in the review queue. Check every fact and the answer key: another person approves each one before a test can use it."
+      preventClose={busy === 'ai'}
+      notice={error ? <InlineAlert tone="danger">{error}</InlineAlert> : undefined}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" loading={busy === 'ai'} onClick={() => void send()}>
+            Draft questions
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-prc-stack">
+        <FormField label="About" required error={tried ? errors.topic : null}>
+          <TextField value={topic} onChange={setTopic} maxLength={200} placeholder="Java streams, food safety, percentages…" />
+        </FormField>
+        <FormField label="Difficulty" required>
+          <Segment label="Difficulty" options={Object.entries(DIFFICULTY).map(([value, label]) => ({ value: value as AiDraftInput['difficulty'], label }))} value={difficulty} onChange={setDifficulty} />
+        </FormField>
+        <FormField label="Kinds of question" required error={tried ? errors.types : null}>
+          <span className="yx-prc-row">
+            {AI_TYPES.map((t) => (
+              <Checkbox key={t.value} label={t.label} checked={types.includes(t.value)} onChange={(on) => setTypes((x) => (on ? [...x, t.value] : x.filter((y) => y !== t.value)))} />
+            ))}
+          </span>
+        </FormField>
+        <div className="yx-prc-grid3">
+          <FormField label="How many" required error={tried ? errors.count : null}>
+            <NumberField value={count} onChange={setCount} min={1} max={20} />
+          </FormField>
+          <FormField label="Marks each" required error={tried ? errors.marks : null}>
+            <NumberField value={marks} onChange={setMarks} min={1} max={100} />
+          </FormField>
+          <FormField label="Negative marks" required error={tried ? errors.negative : null}>
+            <NumberField value={negative} onChange={setNegative} min={0} max={100} />
+          </FormField>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+/** Answer 2126: add or replace an image (the question's or an option's); alt text is then required. */
+function ImageField({ label, url, onUpload, onChange, readOnly }: { label: string; url: string | null | undefined; onUpload?: LiveEditor['onUploadImage']; onChange: (url: string | null) => void; readOnly: boolean }) {
+  if (readOnly || !onUpload) return url ? <p className="yx-prc-small yx-prc-muted">{label}: {imageName(url)}</p> : null;
+  return (
+    <div className="yx-prc-stack" data-gap="sm">
+      {url ? (
+        <span className="yx-prc-row">
+          <span className="yx-prc-small">
+            {label}: {imageName(url)}
+          </span>
+          <Button size="sm" onClick={() => onChange(null)}>
+            Remove image
+          </Button>
+        </span>
+      ) : (
+        <FormField label={label} optional helper="PNG, JPEG or SVG, up to 2 MB. Alt text is asked for once it is added.">
+          <FileUpload accept={IMAGE_ACCEPT} maxSize={IMAGE_MAX_BYTES} multiple={false} upload={async (file) => onChange((await onUpload(file)).imageUrl)} />
+        </FormField>
+      )}
+    </div>
+  );
+}
+
+/** Answer 2125: the code question's language, starter code and auto-graded test cases. */
+function CodeTestsEditor({ c, set, languages, readOnly, problems }: { c: BankContent; set: (patch: Partial<BankContent>) => void; languages: { language: string; version: string }[]; readOnly: boolean; problems: string[] }) {
+  const tests = (c.codeTests ?? []) as CodeTest[];
+  const setTest = (i: number, patch: Partial<CodeTest>) => set({ codeTests: tests.map((t, j) => (j === i ? { ...t, ...patch } : t)) });
+  const mode = (c.languageMode ?? 'fixed') as 'fixed' | 'any';
+  return (
+    <div className="yx-prc-stack" role="group" aria-label="Code tests">
+      {problems.length > 0 && <InlineAlert tone="danger">{problems.join(' ')}</InlineAlert>}
+      <FormField label="Languages" required>
+        <Segment label="Languages" options={[{ value: 'fixed', label: 'One language' }, { value: 'any', label: 'Any language' }]} value={mode} onChange={(v) => set({ languageMode: v, allowedLanguages: v === 'any' ? undefined : c.allowedLanguages ?? [] })} />
+      </FormField>
+      {mode === 'fixed' && (
+        <FormField label="Language" required>
+          <Select value={c.allowedLanguages?.[0] ?? null} onChange={(v) => set({ allowedLanguages: v ? [v] : [] })} options={languages.map((l) => ({ value: l.language, label: `${l.language} ${l.version}` }))} placeholder="Choose a language" />
+        </FormField>
+      )}
+      {mode === 'fixed' && (
+        <FormField label="Starter code" optional helper="What candidates see in the editor when they start.">
+          <TextArea value={c.starterCode ?? ''} onChange={(v) => set({ starterCode: v || null })} rows={4} readOnly={readOnly} />
+        </FormField>
+      )}
+      <Checkbox label="Candidates may type their own input while they test" checked={Boolean(c.allowStdin)} onChange={(v) => set({ allowStdin: v })} disabled={readOnly} />
+      {tests.map((t, i) => (
+        <div key={i} className="yx-prc-box" role="group" aria-label={`Test case ${i + 1}`}>
+          <div className="yx-prc-row" data-between>
+            <strong>Test case {i + 1}</strong>
+            {!readOnly && (
+              <Button size="sm" onClick={() => set({ codeTests: tests.filter((_, j) => j !== i) })}>
+                Remove
+              </Button>
+            )}
+          </div>
+          <div className="yx-prc-grid2">
+            <FormField label="Input" optional>
+              <TextArea value={t.stdin ?? ''} onChange={(v) => setTest(i, { stdin: v })} rows={3} readOnly={readOnly} />
+            </FormField>
+            <FormField label="Expected output" required>
+              <TextArea value={t.expectedStdout} onChange={(v) => setTest(i, { expectedStdout: v })} rows={3} readOnly={readOnly} />
+            </FormField>
+          </div>
+          <div className="yx-prc-row">
+            <FormField label="Weight" helper="Share of the marks this test carries">
+              <NumberField value={t.weight ?? 1} onChange={(v) => setTest(i, { weight: v ?? 1 })} min={1} max={100} />
+            </FormField>
+            <Checkbox label="Hidden from candidates" checked={Boolean(t.hidden)} onChange={(v) => setTest(i, { hidden: v })} disabled={readOnly} />
+          </div>
+        </div>
+      ))}
+      {!readOnly && (
+        <span className="yx-prc-row">
+          <Button size="sm" icon={Plus} onClick={() => set({ codeTests: [...tests, { stdin: '', expectedStdout: '', weight: 1, hidden: tests.length > 0 }] })}>
+            Add test case
+          </Button>
+        </span>
+      )}
+    </div>
+  );
+}
+
 /* ================================================================== */
 /* PRC-02 · Question editor                                            */
 /* ================================================================== */
@@ -520,6 +771,10 @@ export interface LiveEditor {
   /** New: creates the draft (returns its id). Existing: saves the draft, or the change of an approved question. */
   onSave: (c: BankContent) => Promise<{ id?: string; saved?: 'draft' | 'major' | 'minor'; version?: number }>;
   onSubmit: () => Promise<{ duplicate: { id: string; percent: number } | null; needsSecond: boolean }>;
+  /** Answer 2126: the question image route (PNG, JPEG or SVG, 2 MB); returns the stored address. */
+  onUploadImage?: (file: File) => Promise<{ imageUrl: string }>;
+  /** Answer 2125: the languages the code runner has. */
+  codeLanguages?: { language: string; version: string }[];
   onWithdraw: () => Promise<unknown>;
   onSaveTranslation: (lang: string, t: { text: string; options: string[]; aiAssisted: boolean }) => Promise<unknown>;
   onSubmitTranslation: (lang: string) => Promise<unknown>;
@@ -566,11 +821,13 @@ export function LiveQuestionEditor({ live }: { live: LiveEditor }) {
   const textError = tried && !c.text.trim() ? 'Write the question.' : null;
   const optionsError = tried && CHOICE_TYPES.includes(c.type) && (c.options.length < 2 || c.options.some((o) => !o.text.trim()) || !c.options.some((o) => o.isCorrect)) ? 'Write every option and mark the correct one.' : null;
   const alt = missingAlt(c);
+  const code = codeProblems(c);
   const approvedTranslations = (qn?.translations ?? []).filter((t) => t.state === 'approved' && t.version === qn?.version);
   const previewT = approvedTranslations.find((t) => t.language === lang);
   const save = async () => {
     setTried(true);
     if (!c.text.trim() || (CHOICE_TYPES.includes(c.type) && (c.options.length < 2 || c.options.some((o) => !o.text.trim()) || !c.options.some((o) => o.isCorrect)))) return say('Fill in what is marked, then save.');
+    if (code.length) return say(code[0]!);
     let out: Awaited<ReturnType<LiveEditor['onSave']>> = {};
     if (await run('save', async () => void (out = await live.onSave(c)))) {
       done(out.saved === 'major' ? `Saved as version ${out.version}. Submit it for review.` : out.saved === 'minor' ? 'Change saved. Submit it for review.' : 'Draft saved');
@@ -682,7 +939,7 @@ export function LiveQuestionEditor({ live }: { live: LiveEditor }) {
             <div className="yx-prc-stack">
               <FormField label="Type" required>
                 {editableType || !qn ? (
-                  <Select value={c.type} onChange={(v) => set({ type: v ?? 'single_mcq', ...(v === 'true_false' ? { options: [{ text: 'True', isCorrect: true }, { text: 'False', isCorrect: false }] } : v === 'essay' ? { options: [] } : c.options.length ? {} : { options: BLANK.options }) })} options={EDITABLE_TYPES.map((t) => ({ value: t, label: TYPE_LABEL[t]! }))} />
+                  <Select value={c.type} onChange={(v) => set({ type: v ?? 'single_mcq', ...(v === 'true_false' ? { options: [{ text: 'True', isCorrect: true }, { text: 'False', isCorrect: false }] } : v === 'essay' ? { options: [] } : v === 'code' ? { options: [], imageUrl: null, imageAlt: null, languageMode: c.languageMode ?? 'fixed', codeTests: c.codeTests?.length ? c.codeTests : [{ stdin: '', expectedStdout: '', weight: 1, hidden: false }] } : c.options.length ? {} : { options: BLANK.options }) })} options={EDITABLE_TYPES.map((t) => ({ value: t, label: TYPE_LABEL[t]! }))} />
                 ) : (
                   <TextField value={TYPE_LABEL[c.type] ?? c.type} readOnly />
                 )}
@@ -690,6 +947,7 @@ export function LiveQuestionEditor({ live }: { live: LiveEditor }) {
               <FormField label="Question" required error={textError}>
                 <TextArea value={c.text} onChange={(v) => set({ text: v })} rows={4} readOnly={inReview} />
               </FormField>
+              {c.type !== 'code' && <ImageField label="Question image" url={c.imageUrl} onUpload={live.onUploadImage} onChange={(url) => set({ imageUrl: url, ...(url ? {} : { imageAlt: null }) })} readOnly={inReview} />}
               {c.imageUrl && (
                 <FormField label="Image alt text" required helper="Says what the image shows, for candidates who use a screen reader." error={alt.includes('the question image') ? 'Add alt text to the image.' : null}>
                   <TextField value={c.imageAlt ?? ''} onChange={(v) => set({ imageAlt: v })} maxLength={500} readOnly={inReview} />
@@ -737,6 +995,7 @@ export function LiveQuestionEditor({ live }: { live: LiveEditor }) {
                           </Button>
                         )}
                       </div>
+                      {c.type !== 'true_false' && <ImageField label={`Option ${letter(i)} image`} url={o.imageUrl} onUpload={live.onUploadImage} onChange={(url) => set({ options: c.options.map((x, j) => (j === i ? { ...x, imageUrl: url } : x)), optionAlts: c.options.map((_, j) => (j === i && !url ? '' : c.optionAlts?.[j] ?? '')) })} readOnly={inReview} />}
                       {o.imageUrl && (
                         <FormField label={`Option ${letter(i)} image alt text`} required error={alt.includes(`option ${letter(i)}'s image`) ? 'Add alt text to this image.' : null}>
                           <TextField value={c.optionAlts?.[i] ?? ''} onChange={(v) => set({ optionAlts: c.options.map((_, j) => (j === i ? v : c.optionAlts?.[j] ?? '')) })} maxLength={500} />
@@ -758,6 +1017,7 @@ export function LiveQuestionEditor({ live }: { live: LiveEditor }) {
                   <TextArea value={c.modelAnswer ?? ''} onChange={(v) => set({ modelAnswer: v || null })} rows={4} readOnly={inReview} />
                 </FormField>
               )}
+              {c.type === 'code' && <CodeTestsEditor c={c} set={set} languages={live.codeLanguages ?? []} readOnly={inReview || keysHidden} problems={tried ? code : []} />}
               {!editableType && <InlineAlert tone="info">{TYPE_LABEL[c.type] ?? c.type} questions keep their test cases and settings as they are; this editor changes the question, marks, difficulty, skill and collection.</InlineAlert>}
             </div>
           </TabsContent>

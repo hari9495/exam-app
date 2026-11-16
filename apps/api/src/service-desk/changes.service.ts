@@ -176,7 +176,7 @@ export class ChangesService implements OnModuleInit {
         subjectPersonId: null,
         requesterUserId: a.userId,
         raisedByUserId: null,
-        steps: await this.steps(tx, org, desk.id, s, dto.kind, route),
+        steps: await this.steps(tx, org, desk.id, s, dto.kind, route, a.userId),
         payload: { appId: app?.id ?? null },
         payloadFields: [],
         fallbackUserIds: [],
@@ -212,10 +212,18 @@ export class ChangesService implements OnModuleInit {
     return (freezeReason?.trim().length ?? 0) < 10 ? `It falls in a freeze on ${first.date} (${first.why}). Say why this emergency cannot wait (at least 10 characters).` : null;
   }
 
-  /** Answer 1934: who approves, by the desk's route for the risk. Emergency: one IT lead now; the board reviews it after. */
-  private async steps(tx: Tx, org: string, deskId: string, s: ItsmSettings, kind: string, route: string): Promise<StepSpec[]> {
-    const leads = (await tx.sdDeskMember.findMany({ where: { organizationId: org, deskId, role: 'lead', ...activeOn(todayIst()) }, select: { userId: true } })).map((m) => m.userId);
-    const lead: StepSpec = { name: 'IT lead', approvers: [{ kind: 'users', userIds: leads }], mode: 'any', rejectOn: 'one', selfApproval: 'never' };
+  /**
+   * Answer 1934: who approves, by the desk's route for the risk. Emergency: one IT lead now; the board reviews it after.
+   * Answer 2071: when no other IT lead can approve (the desk's only lead raised it), the desk admins approve that step
+   * if the desk allows it (on by default); never the person who raised it.
+   */
+  private async steps(tx: Tx, org: string, deskId: string, s: ItsmSettings, kind: string, route: string, raisedBy: string): Promise<StepSpec[]> {
+    const members = async (role: string) => (await tx.sdDeskMember.findMany({ where: { organizationId: org, deskId, role, ...activeOn(todayIst()) }, select: { userId: true } })).map((m) => m.userId).filter((id) => id !== raisedBy);
+    const leads = await members('lead');
+    const admins = !leads.length && s.leadFallbackAdmin ? await members('admin') : [];
+    const lead: StepSpec = admins.length
+      ? { name: 'IT lead (desk admin: no other lead)', approvers: [{ kind: 'users', userIds: admins }], mode: 'any', rejectOn: 'one', selfApproval: 'never' }
+      : { name: 'IT lead', approvers: [{ kind: 'users', userIds: leads }], mode: 'any', rejectOn: 'one', selfApproval: 'never' };
     if (kind === 'emergency' || route === 'lead') return [lead];
     if (route === 'lead_owner') return [lead, { name: 'Service owner', approvers: [{ kind: 'app_owner', field: 'appId' }], mode: 'any', rejectOn: 'one', selfApproval: 'never' }];
     if (!s.boardUserIds.length) throw new BadRequestException('This risk goes to the change board, and the desk has none yet. Ask the desk admin to name it (Desk set-up › Changes).');

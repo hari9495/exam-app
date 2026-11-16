@@ -28,7 +28,7 @@ const toScreen = (c: Competency & { usedIn?: string[] }): FrameworkCompetency =>
   skillsTest: c.skillsTest?.name,
   skillsTestTagId: c.skillsTest?.tagId ?? null,
   skillsTestQuestions: c.skillsTest?.questions,
-  skillsTestHref: c.skillsTest ? '/v2/questions' : undefined,
+  skillsTestHref: c.skillsTest ? '/yx/hiring/assessments/questions' : undefined,
   version: c.version,
 });
 

@@ -164,3 +164,43 @@ Queued: 2071, 2072, 2075.
 - 2093: a small notice list in the console header later, starting with kept-record removals and breach reminders (queued).
 
 **Founder answers (16 Nov 2026, "ok for all"), 2171 and 2172:** keep both. The company-wide 300-a-minute storm cap stays unlocked; a rule on another record waits for the short run.
+### Rule lock as built (branch `feat/yukthix-rule-lock`, 16 Nov 2026; answer 2092)
+- **What:** with more than one API server, two rule runners could pass a rule's hourly-limit check at the same moment
+  and both run. A rule's run now takes a per-rule Postgres advisory lock (`pg_advisory_xact_lock` on the rule id) for the
+  run's transaction, counts the rule's matched runs in the last hour again under the lock, and only then runs the
+  actions. A runner that finds the limit reached under the lock keeps nothing of its run, records `limit_stopped` and
+  pauses the rule; only the runner that actually paused it tells the admins and writes `rule.paused_at_limit`, once.
+  The quick unlocked check before stays (no lock needed when the rule is clearly at its limit). Other rules never wait
+  on this rule's lock. No migration.
+- **Proof:** e2e `rule-lock` fires runners in parallel through the real engine and database with an action that takes
+  400 ms: limit 1 with two runners gives one run and one stop; limit 3 with six gives exactly three; under the limit
+  nobody is stopped; two rules do not hold each other. With the lock taken out the first test fails (2 runs on a limit of 1).
+
+### Questions (from 2171)
+
+2171. **The per-minute company limit.** The company's 300 rule runs a minute is still checked without a lock, so many
+      servers at once can pass it by a few runs. *Suggested: keep; it is a guard against storms, not a promise to the
+      company, and the per-rule limit now holds exactly.*
+2172. **Long actions hold the rule.** While one record's actions run, the same rule on another record waits (up to the
+      run's length). *Suggested: keep; rule actions are short database changes (webhooks go to a queue).*
+## 2071, 2072 and 2075 as built (branch `feat/yukthix-itsm-fu2`)
+
+- **2071, one-lead fallback:** when no other IT lead can approve (the desk's only lead raised the change), the IT lead
+  step goes to the desk's admins, never the person who raised it. A desk setting (`lead_fallback_admin`, Desk set-up ›
+  Changes › Who approves a change), on by default; switched off, such a change is refused with "No one can approve".
+- **2072, "Open it":** the "Me too" toast on a known problem has an "Open it" action. It opens the ticket "Me too" just
+  raised (the Help centre ticket page): My cases lists Speak up and accident cases, not tickets. Toasts now take one
+  action (`action: { label, onClick }`) in the kit.
+- **2075, the hourly-limit test:** the app's own rule dispatcher (every 5 seconds) runs beside the test's; two tickets
+  raised together could be handled at the same moment and both pass the hourly count. The test now waits for the
+  first ticket's run before raising the second.
+- **Tests:** e2e `service-desk-itsm` (21, the 2071 case with positive and negatives), `service-desk-esm` (26);
+  kit tests for the setting and the toast action.
+
+### Questions (from 2091)
+
+2091. **"Open it" goes to the ticket, not My cases.** My cases holds Speak up and accident cases; the raised incident
+      lives in the Help centre. *Suggested: keep it opening the ticket.*
+2092. **Two dispatchers at once.** With more than one API server, two rule dispatchers can handle a rule's events at the
+      same moment, so a rule's hourly limit can be passed by one or two runs in a burst. *Suggested: take a per-rule
+      lock around the limit check and the run (a small change in the rules engine).*

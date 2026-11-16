@@ -44,6 +44,8 @@ export interface ItsmSettingsValue {
   repeatDays: number;
   /** Answer 2056: whom notices reach. */
   noticeScope?: 'all' | 'location' | 'application';
+  /** Answer 2071: with no other IT lead, the desk admins approve the IT lead step (default on). */
+  leadFallbackAdmin?: boolean;
   riskQuestions: ItsmQuestion[];
   riskQuestionsAreDefault: boolean;
   window: ItsmWindow;
@@ -64,6 +66,7 @@ export interface ItsmSettingsChange {
   repeatCount?: number;
   repeatDays?: number;
   noticeScope?: 'all' | 'location' | 'application';
+  leadFallbackAdmin?: boolean;
   /** null: back to the five starter questions. */
   riskQuestions?: ItsmQuestion[] | null;
 }
@@ -132,6 +135,7 @@ function ApprovalCard({ value, onSearchPeople, onSave }: Pick<ItsmSettingsPanelP
   const [known, setKnown] = useState(value.board);
   const [rule, setRule] = useState(value.boardRule);
   const [emergencyDays, setEmergencyDays] = useState<number | null>(value.emergencyReviewDays);
+  const [fallback, setFallback] = useState(value.leadFallbackAdmin ?? true);
   const { busy, error, run } = useRun();
   const { toast } = useToast();
   const can = value.canEdit;
@@ -161,12 +165,13 @@ function ApprovalCard({ value, onSearchPeople, onSave }: Pick<ItsmSettingsPanelP
             <NumberField value={emergencyDays} onChange={setEmergencyDays} min={1} max={10} disabled={!can} />
           </FormField>
         </FieldRow>
+        <Switch label="When the desk's only IT lead raises a change, the desk admins approve it instead" checked={fallback} onChange={setFallback} disabled={!can} />
         <SaveRow
           can={can}
           busy={busy === 'save'}
           onSave={() =>
             void run('save', async () => {
-              await onSave({ version: value.version, routeLow: low, routeMedium: medium, routeHigh: high, boardUserIds: board, boardRule: rule, emergencyReviewDays: emergencyDays ?? 2 });
+              await onSave({ version: value.version, routeLow: low, routeMedium: medium, routeHigh: high, boardUserIds: board, boardRule: rule, emergencyReviewDays: emergencyDays ?? 2, leadFallbackAdmin: fallback });
               toast({ tone: 'success', title: 'Approval settings saved.' });
             })
           }

@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { BadRequestException, ForbiddenException, HttpException, HttpStatus, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, HttpStatus, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Attempt, Prisma } from '@prisma/client';
 import {
   TenantPrismaService,
@@ -26,7 +26,8 @@ import { AttemptSettlementService, PauseReason, SettlementExam } from '../gradin
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 import { LeaderboardService, AUTO_GRADABLE_QUESTION_TYPES, CandidateLeaderboardResponse } from '../leaderboard/leaderboard.service';
 import { CandidateSession } from '../candidate-auth/current-candidate.decorator';
-import { AnswerDto } from './dto/answer.dto';
+import { AnswerDto, SurveyDto } from './dto/answer.dto';
+import { runnerSetting } from './runner-settings';
 import { StartAttemptDto } from './dto/start-attempt.dto';
 import { getProctoringEventSeverity, isStrikeWorthy } from './proctoring-severity';
 import { resolveProctoringConfig, isSignalEnabled, isProctoringBypassActive, ExamProctoringConfig } from './proctoring-config';
@@ -126,6 +127,8 @@ interface AttemptPreviewResponse {
     availabilityWindowStart: Date | null;
     availabilityWindowEnd: Date | null;
     proctoring: ExamProctoringConfig;
+    /** AS-2 (answer 2008): how long the company keeps recordings, clips and face data, told before consent. */
+    evidenceRetentionDays: number;
   };
   schedulingWindowState: 'not_open' | 'open' | 'closed' | null;
   sections: AttemptSectionSummary[];
@@ -143,7 +146,9 @@ interface AttemptSectionFeedback {
 interface AttemptFeedback {
   // 'awaiting_release': settled, but the exam is in manual-release mode and this attempt hasn't been
   // released yet -- the candidate sees "results not yet released", no score/passFail.
-  status: 'pending_review' | 'awaiting_release' | 'settled';
+  // 'held' (AS-4a, PRC-27): the result is held for review (Result.releaseOverride 'held'); the candidate sees that it is
+  // under review, never why or the score.
+  status: 'pending_review' | 'awaiting_release' | 'held' | 'settled';
   visibility: string;
   passFail: 'pass' | 'fail' | null;
   percentage: number | null;
@@ -179,12 +184,40 @@ interface AttemptStateResponse {
   answers: AttemptAnswerSummary[];
   messages: AttemptMessageSummary[];
   feedback: AttemptFeedback | null;
+  /** AS-4a (PRC-26): what the designed runner offers this attempt. */
+  runner: RunnerInfo;
   organizationName: string | null;
   organizationLogoUrl: string | null;
   organizationPrimaryColor: string | null;
 }
 
+/** AS-4a (PRC-26): the calculator, breaks, offline answering and time credit for one attempt. */
+export interface RunnerInfo {
+  calculator: 'none' | 'basic' | 'scientific';
+  breaksAllowed: number;
+  breaksUsed: number;
+  breakMinutes: number;
+  /** While on a break: when it ends on its own (ISO). */
+  breakEndsAt: string | null;
+  /** asmt.offline_minutes: how long answers are kept on the device without a connection. */
+  offlineMinutes: number;
+  /** asmt.time_credit_cap and what was already given back. */
+  timeCreditCapMinutes: number;
+  offlineCreditSeconds: number;
+  surveyDone: boolean;
+}
+
 export type AttemptCurrentResponse = AttemptPreviewResponse | AttemptStateResponse;
+
+/**
+ * AS-2 (answer 2008): the company's Settings 6.5 retention (asmt.retention), 30 to 365 days, 30 when not set. The API's
+ * sweeps use the same bounds (apps/api/src/assessments/asmt-rules.ts retentionDays).
+ */
+async function evidenceRetentionDays(tx: Prisma.TransactionClient, organizationId: string): Promise<number> {
+  const row = await tx.setting.findFirst({ where: { organizationId, key: 'asmt.retention', scopeType: 'tenant' }, select: { value: true } });
+  const n = Number(row?.value);
+  return Number.isInteger(n) ? Math.min(365, Math.max(30, n)) : 30;
+}
 
 // What the controller extracts from the incoming request for SEB verification: the ConfigKey
 // hash header SEB attaches, and the absolute URL of this request exactly as the client
@@ -393,6 +426,7 @@ export class AttemptService {
             availabilityWindowStart: exam.availabilityWindowStart,
             availabilityWindowEnd: exam.availabilityWindowEnd,
             proctoring: resolveProctoringConfig(exam),
+            evidenceRetentionDays: await evidenceRetentionDays(tx, organizationId),
           },
           schedulingWindowState: this.getSchedulingWindowState(exam),
           sections: sections.map((section) => ({
@@ -414,6 +448,7 @@ export class AttemptService {
         await tx.candidateMessage.updateMany({ where: { attemptId: settled.id, readAt: null }, data: { readAt: new Date() } });
       }
       const feedback = await this.buildFeedback(tx, exam, settled);
+      const runner = await this.runnerInfo(tx, organizationId, exam, settled);
 
       return {
         candidateName: invitation.candidate.name,
@@ -448,10 +483,94 @@ export class AttemptService {
         ),
         messages: unreadMessages.map((message) => ({ id: message.id, body: message.body, sentAt: message.sentAt })),
         feedback,
+        runner,
         organizationName,
         organizationLogoUrl,
         organizationPrimaryColor,
       };
+    });
+  }
+
+  private async runnerInfo(tx: Prisma.TransactionClient, organizationId: string, exam: { calculator: string; breaksAllowed: number; breakMinutes: number }, attempt: Attempt): Promise<RunnerInfo> {
+    const onBreak = attempt.status === 'paused' && attempt.pausedReason === 'break' && attempt.pausedAt;
+    return {
+      calculator: (['basic', 'scientific'].includes(exam.calculator) ? exam.calculator : 'none') as RunnerInfo['calculator'],
+      breaksAllowed: exam.breaksAllowed,
+      breaksUsed: attempt.breaksUsed,
+      breakMinutes: exam.breakMinutes,
+      breakEndsAt: onBreak ? new Date(attempt.pausedAt!.getTime() + exam.breakMinutes * 60_000).toISOString() : null,
+      offlineMinutes: await runnerSetting(tx, organizationId, 'asmt.offline_minutes'),
+      timeCreditCapMinutes: await runnerSetting(tx, organizationId, 'asmt.time_credit_cap'),
+      offlineCreditSeconds: Math.round(attempt.offlineCreditMs / 1000),
+      surveyDone: Boolean(await tx.attemptSurvey.findUnique({ where: { attemptId: attempt.id }, select: { id: true } })),
+    };
+  }
+
+  /**
+   * AS-4a (PRC-26): a break. The timer stops for at most the test's break length (exams.break_minutes), as many times as
+   * the test allows (exams.breaks_allowed); proctoring pauses with it. Only from a running attempt.
+   */
+  async startBreak(session: CandidateSession): Promise<{ status: string; breakEndsAt: string; breaksLeft: number }> {
+    const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
+    return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
+      if (!attempt) throw new NotFoundException('No attempt has been started');
+      const settled = await this.attemptSettlement.settleIfExpired(tx, exam, attempt);
+      if (settled.status !== 'in_progress') throw new BadRequestException(`A break can start only while the test is running (it is "${settled.status}").`);
+      if (settled.breaksUsed >= exam.breaksAllowed) throw new BadRequestException(exam.breaksAllowed ? 'You have taken all the breaks this test allows.' : 'This test has no breaks.');
+      const now = new Date();
+      // Guarded on the attempt still running with the same break count: two presses at once start one break.
+      const res = await tx.attempt.updateMany({
+        where: { id: settled.id, status: 'in_progress', breaksUsed: settled.breaksUsed },
+        data: { status: 'paused', pausedAt: now, pausedReason: 'break', breaksUsed: settled.breaksUsed + 1 },
+      });
+      if (!res.count) throw new ConflictException('The test changed just now. Try again.');
+      return { status: 'paused', breakEndsAt: new Date(now.getTime() + exam.breakMinutes * 60_000).toISOString(), breaksLeft: exam.breaksAllowed - settled.breaksUsed - 1 };
+    });
+  }
+
+  /** AS-4a: the candidate ends their break; the time given back is at most the break's length. */
+  async endBreak(session: CandidateSession): Promise<{ status: string; remainingSeconds: number }> {
+    const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
+    return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
+      if (!attempt) throw new NotFoundException('No attempt has been started');
+      if (attempt.status !== 'paused' || attempt.pausedReason !== 'break') throw new BadRequestException('You are not on a break.');
+      const resumed = await this.attemptSettlement.settleIfExpired(tx, exam, await this.attemptSettlement.endBreak(tx, exam, attempt));
+      return { status: resumed.status, remainingSeconds: this.attemptSettlement.remainingSeconds(exam, resumed) };
+    });
+  }
+
+  /**
+   * AS-4a: back after a lost connection. The time lost is given back by the server before any request is handled
+   * (LastSeenInterceptor), measured from when the attempt was last seen; this reports it, with the time left, so the
+   * runner can say so. Answers the device kept follow through POST /attempt/answer with their device time.
+   */
+  async reconnected(session: CandidateSession): Promise<{ offlineCreditSeconds: number; timeCreditCapMinutes: number; remainingSeconds: number; status: string }> {
+    const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
+    return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
+      if (!attempt) throw new NotFoundException('No attempt has been started');
+      const settled = await this.attemptSettlement.settleIfExpired(tx, exam, attempt);
+      return {
+        offlineCreditSeconds: Math.round(settled.offlineCreditMs / 1000),
+        timeCreditCapMinutes: await runnerSetting(tx, organizationId, 'asmt.time_credit_cap'),
+        remainingSeconds: this.attemptSettlement.remainingSeconds(exam, settled),
+        status: settled.status,
+      };
+    });
+  }
+
+  /** AS-4a: the optional after-test survey, once per attempt, only after it ended. Never affects the score. */
+  async submitSurvey(session: CandidateSession, dto: SurveyDto): Promise<{ ok: true }> {
+    const { organizationId, invitation } = await this.resolveContext(session.invitationId);
+    return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id }, select: { id: true, status: true } });
+      if (!attempt) throw new NotFoundException('No attempt has been started');
+      if (['in_progress', 'paused', 'blocked'].includes(attempt.status)) throw new BadRequestException('The survey opens after you finish the test.');
+      if (await tx.attemptSurvey.findUnique({ where: { attemptId: attempt.id }, select: { id: true } })) throw new ConflictException('You have already answered the survey. Thank you.');
+      await tx.attemptSurvey.create({ data: { attemptId: attempt.id, rating: dto.rating, clearInstructions: dto.clearInstructions ?? null, comment: dto.comment?.trim() || null } });
+      return { ok: true as const };
     });
   }
 
@@ -581,7 +700,7 @@ export class AttemptService {
   async answer(
     session: CandidateSession,
     dto: AnswerDto,
-  ): Promise<{ questionId: string; selectedOptionIds: string[]; answerText: string | null; isMarkedForReview: boolean }> {
+  ): Promise<{ questionId: string; selectedOptionIds: string[]; answerText: string | null; isMarkedForReview: boolean; stale?: boolean }> {
     const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
 
     const { response, isAutoGradable } = await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
@@ -600,6 +719,17 @@ export class AttemptService {
       }
       const question = await tx.question.findFirstOrThrow({ where: { id: dto.questionId }, include: { options: true } });
       const isMarkedForReview = dto.markedForReview ?? false;
+      // AS-4a: answers kept on the device while offline arrive later with the time the device saved them; an older copy
+      // never overwrites a newer one. A device time in the future counts as now. Answer 2122: the version answered.
+      const savedAt = dto.clientSavedAt ? new Date(Math.min(new Date(dto.clientSavedAt).getTime(), Date.now())) : new Date();
+      const existing = await tx.answer.findUnique({ where: { attemptId_questionId: { attemptId: settled.id, questionId: dto.questionId } } });
+      if (dto.clientSavedAt && existing?.clientSavedAt && existing.clientSavedAt > savedAt) {
+        return {
+          response: { questionId: dto.questionId, selectedOptionIds: JSON.parse(existing.selectedOptionIdsJson) as string[], answerText: existing.answerText, isMarkedForReview: existing.isMarkedForReview, stale: true },
+          isAutoGradable: false,
+        };
+      }
+      const stamp = { questionVersion: question.version, clientSavedAt: savedAt };
 
       if (question.type === 'code') {
         if (dto.codeLanguage) {
@@ -611,6 +741,7 @@ export class AttemptService {
           create: {
             attemptId: settled.id,
             questionId: dto.questionId,
+            ...stamp,
             selectedOptionIdsJson: JSON.stringify([]),
             answerText: dto.answerText ?? null,
             codeLanguage: dto.codeLanguage ?? null,
@@ -622,6 +753,7 @@ export class AttemptService {
             codeLanguage: dto.codeLanguage ?? null,
             isMarkedForReview,
             answeredAt: new Date(),
+            ...stamp,
             ...telemetryPatch,
           },
         });
@@ -639,6 +771,7 @@ export class AttemptService {
           create: {
             attemptId: settled.id,
             questionId: dto.questionId,
+            ...stamp,
             selectedOptionIdsJson: JSON.stringify([]),
             answerText: dto.answerText ?? null,
             isMarkedForReview,
@@ -647,6 +780,7 @@ export class AttemptService {
             answerText: dto.answerText ?? null,
             isMarkedForReview,
             answeredAt: new Date(),
+            ...stamp,
           },
         });
         return {
@@ -661,8 +795,8 @@ export class AttemptService {
         // markedForReview toggle, never touching answerFilesJson. Manually graded; never auto-gradable.
         await tx.answer.upsert({
           where: { attemptId_questionId: { attemptId: settled.id, questionId: dto.questionId } },
-          create: { attemptId: settled.id, questionId: dto.questionId, selectedOptionIdsJson: JSON.stringify([]), isMarkedForReview },
-          update: { isMarkedForReview, answeredAt: new Date() },
+          create: { attemptId: settled.id, questionId: dto.questionId, selectedOptionIdsJson: JSON.stringify([]), isMarkedForReview, ...stamp },
+          update: { isMarkedForReview, answeredAt: new Date(), ...stamp },
         });
         return {
           response: { questionId: dto.questionId, selectedOptionIds: [], answerText: null, isMarkedForReview },
@@ -682,11 +816,13 @@ export class AttemptService {
           questionId: dto.questionId,
           selectedOptionIdsJson: JSON.stringify(dto.selectedOptionIds),
           isMarkedForReview,
+          ...stamp,
         },
         update: {
           selectedOptionIdsJson: JSON.stringify(dto.selectedOptionIds),
           isMarkedForReview,
           answeredAt: new Date(),
+          ...stamp,
         },
       });
 
@@ -2047,6 +2183,9 @@ export class AttemptService {
         : result?.releaseOverride === 'held'
           ? false
           : exam.resultsReleaseMode !== 'manual';
+    if (!released && result?.releaseOverride === 'held') {
+      return { status: 'held', visibility: exam.feedbackVisibility, passFail: null, percentage: null, sections: null, certificateAvailable: false };
+    }
     if (!released) {
       return { status: 'awaiting_release', visibility: exam.feedbackVisibility, passFail: null, percentage: null, sections: null, certificateAvailable: false };
     }

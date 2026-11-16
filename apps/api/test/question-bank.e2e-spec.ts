@@ -191,10 +191,10 @@ describe('Question Bank HTTP flow', () => {
       .expect(201);
     questionId = createResponse.body.id;
     expect(createResponse.body.options).toHaveLength(2);
-    // Answer 2141: the older route makes a draft too; nobody can use it until another person approves it, and this
-    // route's Publish never approves it.
+    // Answers 2141, 2121: the older route makes a draft too; nobody can use it until another person approves it, and this
+    // route's Publish never approves it (409).
     expect(createResponse.body.status).toBe('draft');
-    expect((await request(app.getHttpServer()).post(`/api/v1/questions/${questionId}/publish`).set('Authorization', `Bearer ${recruiterAccessToken}`).expect(400)).body.message).toMatch(/not been approved/);
+    expect((await request(app.getHttpServer()).post(`/api/v1/questions/${questionId}/publish`).set('Authorization', `Bearer ${recruiterAccessToken}`).expect(409)).body.message).toMatch(/another person approves it/);
     await approveQuestion(questionId);
 
     const taggedCreateResponse = await request(app.getHttpServer())
@@ -237,6 +237,7 @@ describe('Question Bank HTTP flow', () => {
       .expect(200);
     expect(getResponse.body.text).toBe('What is the capital of France?');
 
+    // Answer 2121: an approved (active) question changes only through the question bank's review.
     const updateResponse = await request(app.getHttpServer())
       .patch(`/api/v1/questions/${questionId}`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
@@ -251,9 +252,8 @@ describe('Question Bank HTTP flow', () => {
           { text: 'Berlin', isCorrect: false },
         ],
       })
-      .expect(200);
-    expect(updateResponse.body.marks).toBe(10);
-    expect(updateResponse.body.tags.map((t: { name: string }) => t.name).sort()).toEqual(['capitals', 'geography']);
+      .expect(409);
+    expect(updateResponse.body.message).toMatch(/Change it in the question bank/);
 
     await request(app.getHttpServer())
       .post(`/api/v1/questions/${questionId}/archive`)
@@ -271,8 +271,8 @@ describe('Question Bank HTTP flow', () => {
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
     expect(archivedListResponse.body.data.map((q: { id: string }) => q.id)).toContain(questionId);
-    // A retired question that was approved before comes back with Publish (restore).
-    await request(app.getHttpServer()).post(`/api/v1/questions/${questionId}/publish`).set('Authorization', `Bearer ${recruiterAccessToken}`).expect(201);
+    // Answer 2121: the older Publish does not bring a retired question back either.
+    await request(app.getHttpServer()).post(`/api/v1/questions/${questionId}/publish`).set('Authorization', `Bearer ${recruiterAccessToken}`).expect(409);
   });
 
   it('answer 2142: a fixed section takes only approved questions, and a test with a draft in one is not published', async () => {
@@ -342,7 +342,9 @@ describe('Question Bank HTTP flow', () => {
       .get('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
-    expect(listResponse.body.data.some((q: { text: string }) => q.text === 'Bulk row one')).toBe(true);
+    // Answer 2121: an uploaded question is a draft in the review queue, not in the active list.
+    expect(response.body.created[0].status).toBe('draft');
+    expect(listResponse.body.data.some((q: { text: string }) => q.text === 'Bulk row one')).toBe(false);
   });
 
   it('rejects a bulk upload file with an unsupported extension', async () => {

@@ -49,6 +49,8 @@ export function moduleSettingKey(key: string): string | null {
   if (LEAVE_PAGE_KEYS.has(key)) return 'leave.settings.manage';
   if (key.startsWith('expense.')) return 'expense.policy.manage';
   if (key.startsWith('perf.')) return 'perf.setup.manage';
+  // Assessments AS-2 (Settings 6.5): test owners and System admins with the assessments settings key.
+  if (key.startsWith('asmt.')) return 'assessments.settings.manage';
   return null;
 }
 
@@ -86,7 +88,22 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'asmt.bank.duplicate_percent': { label: 'Questions: flag a possible duplicate at this similarity (%)', scopes: ['tenant'], dated: false, values: ['80', '85', '90', '95'], default: '90' },
   // Answer 2017: which YukthiX starter packs the company uses (the packs themselves are content YukthiX writes).
   'asmt.packs': { label: 'Questions: YukthiX starter packs', scopes: ['tenant'], dated: false, values: ['aptitude', 'english', 'core_it'], default: 'aptitude,english,core_it', multi: true, labels: { aptitude: 'Aptitude', english: 'English', core_it: 'Core IT skills' } },
+  // Answer 2001: assessments in Hire (the menu group), on by default; answer 2129: the daily note to bank writers when
+  // questions wait for their review, on by default.
+  'assessments.enabled': { label: 'Assessments in Hire', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', labels: { on: 'Shown', off: 'Hidden' } },
+  'asmt.bank.review_reminders': { label: 'Questions: tell bank writers once a day when questions wait for review', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+  // Assessments AS-4a (PRC-26, Settings 6.5 defaults): how long a candidate keeps answering offline (answers kept on the
+  // device), and the most time given back automatically for a lost connection in one attempt.
+  'asmt.offline_minutes': { label: 'Tests: keep answering offline for up to (minutes)', scopes: ['tenant'], dated: false, values: ['0', '2', '5', '10', '15', '20', '30'], default: '5' },
+  'asmt.time_credit_cap': { label: 'Tests: automatic time credit cap (minutes per attempt)', scopes: ['tenant'], dated: false, values: ['0', '5', '10', '15', '20', '30'], default: '10' },
   'asmt.item_stats.provisional_answers': { label: 'Item statistics are provisional under this many answers', scopes: ['tenant'], dated: false, values: ['50', '100', '200', '500'], default: '200' },
+  // Assessments AS-2 (answers 2007, 2008; Settings 6.5): a new test's proctoring mode (Open, AI-only or Record & review
+  // over the test's switches; live proctoring waits for certification), how long recordings, clips and face data are kept
+  // (30 to 365 days; evidence of a held result is kept until it is released), and above how many expected candidates a
+  // test needs a second person to approve it before publishing.
+  'asmt.proctor_mode': { label: 'Tests: default proctoring mode', scopes: ['tenant'], dated: false, values: ['open', 'ai', 'record'], default: 'ai', labels: { open: 'Open', ai: 'AI-only', record: 'Record & review' } },
+  'asmt.retention': { label: 'Keep recordings, clips and face data for (days)', scopes: ['tenant'], dated: false, values: ['30', '60', '90', '180', '365'], default: '30' },
+  'asmt.high_stakes': { label: 'A test for more people than this needs an approver (expected candidates)', scopes: ['tenant'], dated: false, values: ['50', '100', '200', '500', '1000', '2000'], default: '500' },
   // HLP-04 (founder 3 Nov 2026): how often a published help article is checked again (YX-GRO-07). Desk set-up › Settings.
   // Help H-1 (answer 942): the Help drawer's "This page" tab (help articles tagged with the page).
   'help.page_help': { label: 'Help: show page help in the Help drawer', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', labels: { on: 'Shown', off: 'Hidden' } },

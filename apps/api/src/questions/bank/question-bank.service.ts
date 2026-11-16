@@ -1,10 +1,11 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuditService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
-import { SETTINGS, resolveSetting } from '../../org-structure/settings-registry';
+import { SETTINGS } from '../../org-structure/settings-registry';
 import { QuestionsService } from '../questions.service';
 import type { CreateQuestionDto } from '../dto/create-question.dto';
-import { changedFields, closestDuplicate, isMajorChange, missingAltText, normalized, type QuestionContent } from './bank-rules';
+import { changedFields, isMajorChange, missingAltText, normalized, type QuestionContent } from './bank-rules';
+import { commaList, companySetting, contentOf, sendForReview } from './queue';
 
 type Tx = Prisma.TransactionClient;
 type Row = Prisma.QuestionGetPayload<{ include: { options: true; tags: { include: { tag: true } } } }>;
@@ -45,24 +46,20 @@ export class QuestionBankService {
     return this.tenantPrisma.forTenant(w.ctx, (tx) => fn(tx, w.ctx.organizationId as string));
   }
 
-  /** A company setting's value (company scope; its default when not set). */
-  private async setting(tx: Tx, org: string, key: keyof typeof SETTINGS & string): Promise<string> {
-    const rows = await tx.setting.findMany({ where: { organizationId: org, key } });
-    return String(resolveSetting(SETTINGS[key], rows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: r.validFrom ? r.validFrom.toISOString().slice(0, 10) : null })), { tenant: org }, null).value);
+  private setting(tx: Tx, org: string, key: keyof typeof SETTINGS & string) {
+    return companySetting(tx, org, key);
   }
 
   async settings(w: Who) {
     return this.tx(w, async (tx, org) => ({
       languages: (await this.setting(tx, org, 'asmt.languages')).split(',').filter((l): l is BankLanguage => (BANK_LANGUAGES as readonly string[]).includes(l)),
-      secondApproverCollections: this.commaList(await this.setting(tx, org, 'asmt.bank.second_approver_collections')),
+      secondApproverCollections: commaList(await this.setting(tx, org, 'asmt.bank.second_approver_collections')),
       duplicatePercent: Number(await this.setting(tx, org, 'asmt.bank.duplicate_percent')),
       provisionalAnswers: Number(await this.setting(tx, org, 'asmt.item_stats.provisional_answers')),
-      packs: this.commaList(await this.setting(tx, org, 'asmt.packs')),
+      packs: commaList(await this.setting(tx, org, 'asmt.packs')),
+      // Answer 2001: the Hire › Assessments menu group shows only when the company has it on.
+      enabled: (await this.setting(tx, org, 'assessments.enabled')) === 'on',
     }));
-  }
-
-  private commaList(v: string) {
-    return v.split(',').map((x) => x.trim()).filter(Boolean);
   }
 
   private async row(tx: Tx, org: string, id: string): Promise<Row> {
@@ -71,37 +68,8 @@ export class QuestionBankService {
     return r;
   }
 
-  /** The question as it stands (stored image addresses, never signed ones). */
   private contentOf(r: Row): QuestionContent {
-    let allowed: string[] | undefined;
-    try {
-      allowed = r.allowedLanguages ? (JSON.parse(r.allowedLanguages) as string[]) : undefined;
-    } catch {
-      allowed = undefined;
-    }
-    return {
-      type: r.type,
-      text: r.text,
-      topic: r.topic,
-      category: r.category,
-      difficulty: r.difficulty,
-      marks: r.marks,
-      negativeMarks: r.negativeMarks,
-      partialCredit: r.partialCredit,
-      tags: r.tags.map((t) => t.tag.name).sort(),
-      languageMode: r.languageMode,
-      allowedLanguages: allowed,
-      starterCode: r.starterCode,
-      allowStdin: r.allowStdin,
-      modelAnswer: r.modelAnswer,
-      snippetCode: r.snippetCode,
-      snippetLanguage: r.snippetLanguage,
-      imageUrl: r.imageUrl,
-      imageAlt: r.imageAlt,
-      options: r.options.map((o) => ({ text: o.text, isCorrect: o.isCorrect, imageUrl: o.imageUrl })),
-      optionAlts: Array.isArray(r.optionAlts) ? (r.optionAlts as (string | null)[]) : [],
-      codeTests: r.codeTestsJson ? (JSON.parse(r.codeTestsJson) as QuestionContent['codeTests']) : undefined,
-    };
+    return contentOf(r);
   }
 
   /** The existing question payload for QuestionsService, from proposed content. */
@@ -276,16 +244,8 @@ export class QuestionBankService {
         if (r.createdBy !== w.userId) throw new ForbiddenException('Only the question’s author submits it.');
         open = await tx.questionRevision.create({ data: { organizationId: org, questionId: id, authorId: w.userId, kind: 'new', version: 1, content: this.contentOf(r) as unknown as Prisma.InputJsonValue } });
       }
-      const content = open.content as unknown as QuestionContent;
-      const missing = missingAltText(content);
-      if (missing.length) throw new BadRequestException(`Add alt text to ${missing.join(' and ')} before you submit.`);
-      const threshold = Number(await this.setting(tx, org, 'asmt.bank.duplicate_percent'));
-      const others = await tx.question.findMany({ where: { organizationId: org, id: { not: id }, status: { in: ['draft', 'active'] } }, select: { id: true, text: true }, take: 20_000 });
-      const dup = closestDuplicate(content.text, others, threshold);
-      const needsSecond = content.category ? this.commaList(await this.setting(tx, org, 'asmt.bank.second_approver_collections')).map((x) => x.toLowerCase()).includes(content.category.toLowerCase()) : false;
-      await tx.questionRevision.update({ where: { id: open.id }, data: { state: 'in_review', submittedAt: new Date(), needsSecond, duplicateOf: dup?.id ?? null, duplicatePercent: dup?.percent ?? null, duplicateClearedBy: null, reviewerId: null, reviewedAt: null, rowVersion: { increment: 1 } } });
-      await AuditService.recordIn(tx, w.ctx, { actorUserId: w.userId, action: 'question.submitted', entityType: 'question', entityId: id, metadata: { revision: open.id, kind: open.kind, version: open.version, duplicatePercent: dup?.percent ?? null, needsSecond } });
-      return { state: 'in_review' as const, duplicate: dup, needsSecond };
+      const { duplicate, needsSecond } = await sendForReview(tx, w.ctx, org, id, open, w.userId);
+      return { state: 'in_review' as const, duplicate, needsSecond };
     });
   }
 
@@ -383,7 +343,7 @@ export class QuestionBankService {
     const r = step.r;
     const content = r.content as unknown as QuestionContent;
     // The question in use changes only now, through the existing engine (its checks, the answer-key stamp).
-    await this.questions.update(w.ctx, w.userId, r.questionId, this.dtoOf(content));
+    await this.questions.update(w.ctx, w.userId, r.questionId, this.dtoOf(content), { approved: true });
     return this.tx(w, async (tx) => {
       const now = new Date();
       await tx.question.update({

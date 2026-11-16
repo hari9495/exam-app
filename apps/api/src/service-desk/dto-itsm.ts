@@ -75,6 +75,11 @@ export class ItsmSettingsDto {
   @IsOptional()
   @IsIn(['all', 'location', 'application'])
   noticeScope?: 'all' | 'location' | 'application';
+
+  /** Answer 2071: with no other IT lead, the desk admins approve the IT lead step. */
+  @IsOptional()
+  @IsBoolean()
+  leadFallbackAdmin?: boolean;
 }
 
 /** ITSM-1, answer 1936: the company's change window and freeze days (company settings itsm.*). */

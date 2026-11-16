@@ -111,6 +111,22 @@ export class DeletionDto {
   reason!: string;
 }
 
+/** Answer 2083: a legal hold YukthiX staff set on a deleted company. */
+export class LegalHoldDto {
+  @trim()
+  @IsString()
+  @MinLength(1, { message: 'Give the case or matter reference' })
+  @MaxLength(100)
+  caseRef!: string;
+
+  @Reason(10)
+  reason!: string;
+
+  /** The last day of the hold (India date). */
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'Give the last day as YYYY-MM-DD' })
+  until!: string;
+}
+
 export class ExtendTrialDto {
   @IsInt()
   @Min(1)

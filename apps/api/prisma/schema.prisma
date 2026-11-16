@@ -722,6 +722,10 @@ model Exam {
   // 'immediate' (default, behavior-preserving): a settled result is shown to the candidate at once.
   // 'manual': the result is withheld until a recruiter releases it (per-attempt override on Result).
   resultsReleaseMode            String        @default("immediate") @map("results_release_mode") @db.VarChar(1000)
+  /// AS-4a (PRC-26): the calculator offered (none | basic | scientific) and the breaks a candidate may take.
+  calculator                    String        @default("none") @db.VarChar(12)
+  breaksAllowed                 Int           @default(0) @map("breaks_allowed")
+  breakMinutes                  Int           @default(5) @map("break_minutes")
   // Issue a downloadable certificate to candidates who pass this exam (inert until enabled).
   certificatesEnabled           Boolean       @default(false) @map("certificates_enabled")
   schedulingEnabled             Boolean       @default(false) @map("scheduling_enabled")
@@ -768,6 +772,14 @@ model Exam {
   // brief. warn/pause/block enforcement is deferred to stage 3 pending threshold calibration
   // and a fairness check.
   faceMismatchAction            String        @default("flag") @map("face_mismatch_action") @db.VarChar(1000)
+  /// Assessments AS-2 (asmt.high_stakes): how many candidates the test is for; above the company number it needs an approver.
+  expectedCandidates            Int?          @map("expected_candidates")
+  approvalRequestedBy           String?       @map("approval_requested_by") @db.Uuid
+  approvalRequestedAt           DateTime?     @map("approval_requested_at") @db.Timestamptz(3)
+  /// Never the person who asked nor the author (a database check). Holds only while approvedFingerprint matches the test.
+  approvedBy                    String?       @map("approved_by") @db.Uuid
+  approvedAt                    DateTime?     @map("approved_at") @db.Timestamptz(3)
+  approvedFingerprint           String?       @map("approved_fingerprint") @db.VarChar(64)
   createdBy                     String        @map("created_by") @db.Uuid
   createdAt                     DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   sections                      ExamSection[]
@@ -1021,6 +1033,9 @@ model Attempt {
   // dismissible notice (timer keeps running) and clears it via /attempt/face-warning-ack. pause
   // and block reuse status/pausedReason instead; only warn needs its own field.
   faceWarningAt                 DateTime?           @map("face_warning_at") @db.Timestamptz(3)
+  /// AS-4a: breaks taken (exams.breaks_allowed) and time given back for a lost connection (asmt.time_credit_cap).
+  breaksUsed                    Int                 @default(0) @map("breaks_used")
+  offlineCreditMs               Int                 @default(0) @map("offline_credit_ms")
   invitation                    Invitation          @relation(fields: [invitationId], references: [id], onDelete: Cascade)
   answers                       Answer[]
   result                        Result?
@@ -1030,11 +1045,27 @@ model Attempt {
   insight                       AttemptInsight?
   integrityAnalysis             IntegrityAnalysis?
   faceEnrolment                 FaceEnrolment?
+  survey                        AttemptSurvey?
 
   /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
   organizationId String? @map("organization_id") @db.Uuid
   @@index([examId, status])
   @@map("attempts")
+}
+
+/// AS-4a: the optional after-test survey, one per attempt. Never affects the score; reported in groups of 5 or more.
+model AttemptSurvey {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String?  @map("organization_id") @db.Uuid
+  attemptId         String   @unique(map: "attempt_surveys_attempt_key") @map("attempt_id") @db.Uuid
+  rating            Int      @db.SmallInt
+  clearInstructions Boolean? @map("clear_instructions")
+  comment           String?  @db.VarChar(1000)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  attempt           Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade, map: "attempt_surveys_attempt_fkey")
+
+  @@index([organizationId])
+  @@map("attempt_surveys")
 }
 
 model Answer {
@@ -1053,6 +1084,10 @@ model Answer {
   gradingFeedback       String?           @map("grading_feedback") @db.Text
   codeLanguage          String?           @map("code_language") @db.VarChar(1000)
   telemetryJson         String?           @map("telemetry_json") @db.Text
+  /// Answer 2122: the question version this answer saw (questions.version); null for answers before AS-4a.
+  questionVersion       Int?              @map("question_version")
+  /// AS-4a: when the candidate's device saved it (answers kept on the device while offline are sent later).
+  clientSavedAt         DateTime?         @map("client_saved_at") @db.Timestamptz(3)
   attempt               Attempt           @relation(fields: [attemptId], references: [id], onDelete: Cascade)
   question              Question          @relation(fields: [questionId], references: [id])
   codeReview            CodeAnswerReview?
@@ -14191,6 +14226,8 @@ model SdItsmSettings {
   repeatDays          Int      @default(7) @map("repeat_days")
   /// Answer 2056: whom a change or known-error notice reaches: all | location | application.
   noticeScope         String   @default("all") @map("notice_scope") @db.VarChar(12)
+  /// Answer 2071: with no other IT lead, the desk admins approve the IT lead step.
+  leadFallbackAdmin   Boolean  @default(true) @map("lead_fallback_admin")
   version             Int      @default(1)
   updatedBy           String?  @map("updated_by") @db.Uuid
   createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -14448,4 +14485,16 @@ model QuestionTranslation {
   @@unique([questionId, version, language], map: "question_translations_one")
   @@index([organizationId, state], map: "question_translations_queue_idx")
   @@map("question_translations")
+}
+
+/// Answer 2129: a bank writer was told today that questions wait for their review (one note per person per India day).
+model QuestionReviewNudge {
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  day            DateTime @db.Date
+  waiting        Int
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([organizationId, userId, day])
+  @@map("question_review_nudges")
 }

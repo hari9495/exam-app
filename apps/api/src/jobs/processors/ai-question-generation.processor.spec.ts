@@ -1,5 +1,7 @@
 import { AiQuestionGenerationProcessor } from './ai-question-generation.processor';
 import { QuotaExceededException } from '../../billing/quota-exceeded.exception';
+// Answer 2121: new drafts go into the review queue (its rules are tested in question-bank-followups.e2e-spec.ts).
+jest.mock('../../questions/bank/queue', () => ({ queueNewQuestion: jest.fn().mockResolvedValue({ duplicate: null, needsSecond: false }) }));
 
 describe('AiQuestionGenerationProcessor', () => {
   let processor: AiQuestionGenerationProcessor;
