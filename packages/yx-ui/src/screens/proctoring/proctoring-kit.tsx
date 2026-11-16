@@ -342,7 +342,7 @@ export function FlagTimeline({ duration, events, current, onSeek, label = 'Sessi
 /* ---------- Connection status (runner) ---------- */
 
 export type ConnState = 'online' | 'weak' | 'reconnecting' | 'offline';
-export function ConnectionStatus({ state, queued = 0, offlineSeconds = 0 }: { state: ConnState; queued?: number; offlineSeconds?: number }) {
+export function ConnectionStatus({ state, queued = 0, offlineSeconds = 0, offlineMinutes = 5 }: { state: ConnState; queued?: number; offlineSeconds?: number; offlineMinutes?: number }) {
   const text =
     state === 'online'
       ? 'Connected'
@@ -350,7 +350,9 @@ export function ConnectionStatus({ state, queued = 0, offlineSeconds = 0 }: { st
         ? 'Weak connection, answers still saving'
         : state === 'reconnecting'
           ? `Reconnecting… ${queued} ${queued === 1 ? 'answer' : 'answers'} kept on this device`
-          : `Offline for ${formatClock(offlineSeconds)}. You can keep answering for up to 5 minutes.`;
+          : offlineSeconds >= offlineMinutes * 60
+            ? `Offline for ${formatClock(offlineSeconds)}. Answering stops until the connection is back; your saved answers are kept.`
+            : `Offline for ${formatClock(offlineSeconds)}. You can keep answering for up to ${offlineMinutes} ${offlineMinutes === 1 ? 'minute' : 'minutes'}.`;
   return (
     <p className="yx-conn" data-state={state} role="status" aria-live="polite">
       <Icon icon={state === 'online' || state === 'weak' ? Wifi : WifiOff} />

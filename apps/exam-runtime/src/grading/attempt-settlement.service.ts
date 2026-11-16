@@ -66,7 +66,7 @@ function isAttemptedManual(type: string, answer: { answerText: string | null; an
 // cleared by screenShareState's active:true path. face_mismatch is set by stage-3 face
 // enforcement (attempt.service.ts#applyFaceMismatchEnforcement) when faceMismatchAction is 'pause'
 // or 'block' -- direct action, not strike-based, so it has no strikeLimit escalation of its own.
-export type PauseReason = 'webcam' | 'browser_activity' | 'screen_share' | 'face_mismatch';
+export type PauseReason = 'webcam' | 'browser_activity' | 'screen_share' | 'face_mismatch' | 'break';
 
 // Mirrors what AttemptService stamps into Attempt.sectionSnapshotJson at attempt-start. Read
 // (rather than re-queried from ExamSection) deliberately: the snapshot is the frozen, per-attempt
@@ -122,6 +122,8 @@ export interface SettlementExam {
   id: string;
   organizationId: string;
   durationMinutes: number;
+  /** AS-4a: the length of one break (exams.break_minutes); the timer stops for at most this long per break. */
+  breakMinutes?: number;
   passCriteriaPercent: number;
   enableAntiCheating: boolean;
   webcamProctoringEnabled: boolean;
@@ -152,21 +154,52 @@ export class AttemptSettlementService {
   ) {}
 
   remainingSeconds(
-    exam: Pick<SettlementExam, 'durationMinutes'>,
-    attempt: { startedAt: Date; pausedDurationMs: number; pausedAt: Date | null; status: string },
+    exam: Pick<SettlementExam, 'durationMinutes' | 'breakMinutes'>,
+    attempt: { startedAt: Date; pausedDurationMs: number; pausedAt: Date | null; status: string; pausedReason?: string | null },
   ): number {
+    // AS-4a: a candidate's break stops the timer for at most the break's length; past it, the time runs again.
+    if (attempt.status === 'paused' && attempt.pausedReason === 'break' && attempt.pausedAt) {
+      return computeRemainingSeconds(exam.durationMinutes, attempt.startedAt, attempt.pausedDurationMs + this.breakCreditMs(exam, attempt.pausedAt), null);
+    }
     const frozenAt = attempt.status === 'paused' || attempt.status === 'blocked' ? attempt.pausedAt : null;
     return computeRemainingSeconds(exam.durationMinutes, attempt.startedAt, attempt.pausedDurationMs, frozenAt);
   }
 
+  /** AS-4a: the break time given back so far: the time since the break started, at most the break's length. */
+  breakCreditMs(exam: Pick<SettlementExam, 'breakMinutes'>, pausedAt: Date, now = Date.now()): number {
+    return Math.max(0, Math.min(now - pausedAt.getTime(), (exam.breakMinutes ?? 5) * 60_000));
+  }
+
+  /** AS-4a: ends a candidate's break, giving back at most its length. Only a break; a proctor's pause stays. */
+  async endBreak(tx: Prisma.TransactionClient, exam: Pick<SettlementExam, 'breakMinutes'>, attempt: Attempt): Promise<Attempt> {
+    if (attempt.status !== 'paused' || attempt.pausedReason !== 'break' || !attempt.pausedAt) return attempt;
+    const credit = this.breakCreditMs(exam, attempt.pausedAt);
+    // Guarded on the row still being on this break: two requests ending it at once credit it once.
+    const res = await tx.attempt.updateMany({
+      where: { id: attempt.id, status: 'paused', pausedReason: 'break', pausedAt: attempt.pausedAt },
+      data: { status: 'in_progress', pausedAt: null, pausedReason: null, pausedDurationMs: attempt.pausedDurationMs + credit },
+    });
+    const updated = await tx.attempt.findUniqueOrThrow({ where: { id: attempt.id } });
+    if (res.count) {
+      void this.broadcaster
+        .emitAttemptStatus(attempt.examId, { attemptId: updated.id, candidateId: attempt.candidateId, status: updated.status })
+        .catch((error) => this.logger.error('Failed to broadcast attempt status', error as Error));
+    }
+    return updated;
+  }
+
   private isExpired(
-    exam: Pick<SettlementExam, 'durationMinutes'>,
-    attempt: { startedAt: Date; pausedDurationMs: number; pausedAt: Date | null; status: string },
+    exam: Pick<SettlementExam, 'durationMinutes' | 'breakMinutes'>,
+    attempt: { startedAt: Date; pausedDurationMs: number; pausedAt: Date | null; status: string; pausedReason?: string | null },
   ): boolean {
     return this.remainingSeconds(exam, attempt) <= 0;
   }
 
   async settleIfExpired(tx: Prisma.TransactionClient, exam: SettlementExam, attempt: Attempt): Promise<Attempt> {
+    // AS-4a: a break past its length ends on its own (the candidate left, or never pressed "End break").
+    if (attempt.status === 'paused' && attempt.pausedReason === 'break' && attempt.pausedAt && Date.now() - attempt.pausedAt.getTime() >= (exam.breakMinutes ?? 5) * 60_000) {
+      attempt = await this.endBreak(tx, exam, attempt);
+    }
     if (attempt.status !== 'in_progress' || !this.isExpired(exam, attempt)) {
       return attempt;
     }

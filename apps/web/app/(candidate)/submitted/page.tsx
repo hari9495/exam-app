@@ -1,60 +1,36 @@
 'use client';
 
-import { useState } from 'react';
-import { TerminalCard } from '../components/TerminalCard';
-import { ResultSummary } from '../components/ResultSummary';
-import { useAttemptQuery, useCandidateCertificate } from '../../../lib/hooks/useAttempt';
+import Link from 'next/link';
+import { TestRunnerScreen, type LiveRunner } from '@yukthix/ui/assessments';
+import { useAttemptQuery, useRunnerActions } from '../../../lib/hooks/useAttempt';
 import { isAttemptStarted } from '../../../lib/types';
+
+// AS-4a (PRC-26): the designed "Test submitted" step, live: what happens next, a link to the result when there is one
+// to see (PRC-27, /result), and the optional after-test survey (never affects the score).
+const IDLE = { status: 'submitted' as const, seconds: 0, breaksLeft: 0, breakMinutes: 0, connection: 'online' as const, queued: 0, offlineSeconds: 0, offlineMinutes: 0, creditSeconds: 0, creditCapMinutes: 0, saveStatus: 'saved' as const, sections: [], questions: [], current: 0, calculator: 'none' as const, onNavigate: () => undefined, onAnswer: () => undefined, onAnswerText: () => undefined, onMark: () => undefined, onFinish: () => undefined };
 
 export default function CandidateSubmittedPage() {
   const { data: current } = useAttemptQuery();
-  const certificate = useCandidateCertificate();
-  const [certError, setCertError] = useState<string | null>(null);
-  const feedback = current && isAttemptStarted(current) ? current.feedback : null;
-
-  const isPending = feedback?.status === 'pending_review';
-  const isAwaitingRelease = feedback?.status === 'awaiting_release';
-  // A result is shown only when the exam's feedback setting isn't "none" and there's something to show.
-  const hasResult =
-    !!feedback &&
-    feedback.status === 'settled' &&
-    feedback.visibility !== 'none' &&
-    (feedback.passFail !== null || feedback.percentage !== null || feedback.sections !== null);
-
-  // Body copy tracks what the candidate is actually shown, so a card that reveals a Pass/Fail/score
-  // no longer also claims the result is coming later from the recruiter.
-  const body = isPending
-    ? 'Your exam has been submitted. Some answers need manual review — your result will follow.'
-    : isAwaitingRelease
-      ? "Your exam has been submitted. Your results haven't been released yet — you'll be able to see them once the recruiter releases them."
-      : hasResult
-        ? 'Your exam has been submitted. Here is your result:'
-        : 'Your exam has been submitted. Results will be reviewed by the recruiter.';
-
-  return (
-    <TerminalCard tone="success" title="Exam submitted" body={body}>
-      {hasResult && feedback ? <ResultSummary feedback={feedback} /> : null}
-      {feedback?.certificateAvailable ? (
-        <div className="mt-4 flex flex-col items-center gap-2">
-          <button
-            type="button"
-            disabled={certificate.isPending}
-            onClick={async () => {
-              setCertError(null);
-              try {
-                const { url } = await certificate.mutateAsync();
-                window.open(url, '_blank', 'noopener');
-              } catch (e) {
-                setCertError(e instanceof Error ? e.message : 'Could not download your certificate.');
-              }
-            }}
-            className="inline-flex items-center rounded-sm bg-candidate-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-          >
-            {certificate.isPending ? 'Preparing…' : 'Download certificate'}
-          </button>
-          {certError ? <p className="text-xs text-candidate-danger">{certError}</p> : null}
-        </div>
-      ) : null}
-    </TerminalCard>
-  );
+  const actions = useRunnerActions();
+  const state = current && isAttemptStarted(current) ? current : null;
+  const feedback = state?.feedback ?? null;
+  const resultNote =
+    feedback?.status === 'held' ? (
+      <p>Your result is under review. You will hear from us by email.</p>
+    ) : feedback?.status === 'settled' ? (
+      <p>
+        <Link href="/result">See your result</Link>
+      </p>
+    ) : (
+      <p>Results: the hiring team will tell you by email.</p>
+    );
+  const live: LiveRunner = {
+    ...IDLE,
+    testName: state?.exam.title ?? 'Test',
+    candidateName: state?.candidateName ?? '',
+    proctored: Boolean(state?.exam.proctoring.enableAntiCheating),
+    resultNote,
+    survey: state ? { done: Boolean(state.runner?.surveyDone), onSend: actions.sendSurvey } : null,
+  };
+  return <TestRunnerScreen live={live} />;
 }

@@ -86,6 +86,10 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'asmt.bank.duplicate_percent': { label: 'Questions: flag a possible duplicate at this similarity (%)', scopes: ['tenant'], dated: false, values: ['80', '85', '90', '95'], default: '90' },
   // Answer 2017: which YukthiX starter packs the company uses (the packs themselves are content YukthiX writes).
   'asmt.packs': { label: 'Questions: YukthiX starter packs', scopes: ['tenant'], dated: false, values: ['aptitude', 'english', 'core_it'], default: 'aptitude,english,core_it', multi: true, labels: { aptitude: 'Aptitude', english: 'English', core_it: 'Core IT skills' } },
+  // Assessments AS-4a (PRC-26, Settings 6.5 defaults): how long a candidate keeps answering offline (answers kept on the
+  // device), and the most time given back automatically for a lost connection in one attempt.
+  'asmt.offline_minutes': { label: 'Tests: keep answering offline for up to (minutes)', scopes: ['tenant'], dated: false, values: ['0', '2', '5', '10', '15', '20', '30'], default: '5' },
+  'asmt.time_credit_cap': { label: 'Tests: automatic time credit cap (minutes per attempt)', scopes: ['tenant'], dated: false, values: ['0', '5', '10', '15', '20', '30'], default: '10' },
   'asmt.item_stats.provisional_answers': { label: 'Item statistics are provisional under this many answers', scopes: ['tenant'], dated: false, values: ['50', '100', '200', '500'], default: '200' },
   // HLP-04 (founder 3 Nov 2026): how often a published help article is checked again (YX-GRO-07). Desk set-up › Settings.
   // Help H-1 (answer 942): the Help drawer's "This page" tab (help articles tagged with the page).

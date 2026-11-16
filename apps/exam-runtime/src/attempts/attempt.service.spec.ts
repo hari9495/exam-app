@@ -158,7 +158,18 @@ describe('AttemptService', () => {
     service = moduleRef.get(AttemptService);
   });
 
+  // AS-4a: the runner reads the company's runner settings, whether the survey was answered, and the stored answer (an
+  // older copy kept on the device never wins). A test that does not care about them gets "nothing there".
+  function withRunnerDefaults(scopedTx: unknown) {
+    const tx = scopedTx as Record<string, Record<string, unknown> | undefined>;
+    if (!tx || typeof tx !== 'object') return;
+    tx.setting = { findFirst: jest.fn().mockResolvedValue(null), ...(tx.setting ?? {}) };
+    tx.attemptSurvey = { findUnique: jest.fn().mockResolvedValue(null), ...(tx.attemptSurvey ?? {}) };
+    tx.answer = { findUnique: jest.fn().mockResolvedValue(null), ...(tx.answer ?? {}) };
+  }
+
   function mockBootstrapThenScoped(scopedTx: unknown) {
+    withRunnerDefaults(scopedTx);
     tenantPrisma.forTenant
       .mockImplementationOnce(() => Promise.resolve(invitationRecord))
       .mockImplementationOnce((_ctx, fn) => fn(scopedTx));
@@ -170,6 +181,7 @@ describe('AttemptService', () => {
   // underlying tx mock, exactly as two separate interactive transactions against the same
   // tenant would.
   function mockBootstrapThenTwoScopedCalls(scopedTx: unknown, invitation: unknown = invitationRecord) {
+    withRunnerDefaults(scopedTx);
     tenantPrisma.forTenant
       .mockImplementationOnce(() => Promise.resolve(invitation))
       .mockImplementationOnce((_ctx, fn) => fn(scopedTx))
@@ -188,6 +200,7 @@ describe('AttemptService', () => {
   // third bootstrap-scoped forTenant call, sandwiched between the invitation lookup and the
   // scoped attempt-data call that the other methods' mockBootstrapThenScoped doesn't need.
   function mockBootstrapWithLogoThenScoped(scopedTx: unknown, logoPath: string | null = null) {
+    withRunnerDefaults(scopedTx);
     tenantPrisma.forTenant
       .mockImplementationOnce(() => Promise.resolve(invitationRecord))
       .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath }))
@@ -262,6 +275,10 @@ describe('AttemptService', () => {
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q', type: 'single_mcq', marks: 5, languageMode: 'fixed', allowedLanguages: null, starterCode: null, allowStdin: false, snippetCode: null, snippetLanguage: null, imageUrl: null, options: [] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(1000);
@@ -288,6 +305,10 @@ describe('AttemptService', () => {
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q', type: 'single_mcq', marks: 5, languageMode: 'fixed', allowedLanguages: null, starterCode: null, allowStdin: false, snippetCode: null, snippetLanguage: null, imageUrl: null, options: [] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(1000);
@@ -311,6 +332,10 @@ describe('AttemptService', () => {
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q', type: 'single_mcq', marks: 5, languageMode: 'fixed', allowedLanguages: null, starterCode: null, allowStdin: false, snippetCode: null, snippetLanguage: null, imageUrl: null, options: [] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(1000);
@@ -333,6 +358,10 @@ describe('AttemptService', () => {
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q', type: 'single_mcq', marks: 5, languageMode: 'fixed', allowedLanguages: null, starterCode: null, allowStdin: false, snippetCode: null, snippetLanguage: null, imageUrl: null, options: [] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
       });
 
       it('is true when the exam has screenCaptureEnabled and there is no bypass', async () => {
@@ -444,6 +473,10 @@ describe('AttemptService', () => {
         },
         answer: { findMany: jest.fn().mockResolvedValue([{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isMarkedForReview: false }]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(3300);
@@ -470,6 +503,7 @@ describe('AttemptService', () => {
         answers: [{ questionId: 'q1', selectedOptionIds: ['opt-a'], isMarkedForReview: false, answerFiles: [] }],
         messages: [],
         feedback: null,
+        runner: { calculator: 'none', breaksAllowed: undefined, breaksUsed: undefined, breakMinutes: undefined, breakEndsAt: null, offlineMinutes: 5, timeCreditCapMinutes: 10, offlineCreditSeconds: NaN, surveyDone: false },
         faceWarningAt: null,
         organizationName: 'Acme Corp',
         organizationLogoUrl: null,
@@ -500,6 +534,10 @@ describe('AttemptService', () => {
         },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(3300);
@@ -538,6 +576,10 @@ describe('AttemptService', () => {
         },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(3300);
@@ -573,6 +615,10 @@ describe('AttemptService', () => {
         },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(3300);
@@ -607,6 +653,10 @@ describe('AttemptService', () => {
         },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(3300);
@@ -678,6 +728,10 @@ describe('AttemptService', () => {
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q', type: 'single_mcq', marks: 5, options: [] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(100);
@@ -700,6 +754,10 @@ describe('AttemptService', () => {
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q', type: 'code', marks: 10, options: [] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
         result: { findUnique: jest.fn().mockResolvedValue({ score: 0, maxScore: 10, percentage: 0, passFail: null }) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
@@ -723,6 +781,10 @@ describe('AttemptService', () => {
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q', type: 'single_mcq', marks: 5, options: [] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
         result: { findUnique: jest.fn().mockResolvedValue({ score: 5, maxScore: 5, percentage: 100, passFail: 'pass' }) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
@@ -752,6 +814,10 @@ describe('AttemptService', () => {
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q', type: 'single_mcq', marks: 5, options: [] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
         result: { findUnique: jest.fn().mockResolvedValue({ score: 5, maxScore: 5, percentage: 100, passFail: 'pass' }) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
@@ -779,6 +845,10 @@ describe('AttemptService', () => {
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q', type: 'single_mcq', marks: 5, options: [] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
         result: { findUnique: jest.fn().mockResolvedValue({ score: 3, maxScore: 5, percentage: 60, passFail: 'fail' }) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
@@ -820,6 +890,10 @@ describe('AttemptService', () => {
             ]),
         },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
         result: { findUnique: jest.fn().mockResolvedValue({ score: 5, maxScore: 10, percentage: 50, passFail: 'fail' }) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
@@ -878,6 +952,10 @@ describe('AttemptService', () => {
             ]),
         },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
         result: { findUnique: jest.fn().mockResolvedValue({ score: 30, maxScore: 30, percentage: 100, passFail: 'pass' }) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
@@ -925,6 +1003,10 @@ describe('AttemptService', () => {
             ]),
         },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
         result: { findUnique: jest.fn().mockResolvedValue({ score: 5, maxScore: 10, percentage: 50, passFail: 'fail' }) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
@@ -970,6 +1052,10 @@ describe('AttemptService', () => {
         question: { findMany: jest.fn().mockResolvedValue([]) },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(3300);
@@ -1621,8 +1707,8 @@ describe('AttemptService', () => {
       expect(result).toEqual({ questionId: 'q1', selectedOptionIds: ['opt-a'], answerText: null, isMarkedForReview: false });
       expect(tx.answer.upsert).toHaveBeenCalledWith({
         where: { attemptId_questionId: { attemptId: 'attempt-1', questionId: 'q1' } },
-        create: { attemptId: 'attempt-1', questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isMarkedForReview: false },
-        update: { selectedOptionIdsJson: JSON.stringify(['opt-a']), isMarkedForReview: false, answeredAt: expect.any(Date) },
+        create: { attemptId: 'attempt-1', questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isMarkedForReview: false, clientSavedAt: expect.any(Date) },
+        update: { selectedOptionIdsJson: JSON.stringify(['opt-a']), isMarkedForReview: false, answeredAt: expect.any(Date), clientSavedAt: expect.any(Date) },
       });
     });
 
@@ -1640,8 +1726,8 @@ describe('AttemptService', () => {
       expect(result).toEqual({ questionId: 'q1', selectedOptionIds: [], answerText: null, isMarkedForReview: true });
       expect(tx.answer.upsert).toHaveBeenCalledWith({
         where: { attemptId_questionId: { attemptId: 'attempt-1', questionId: 'q1' } },
-        create: { attemptId: 'attempt-1', questionId: 'q1', selectedOptionIdsJson: JSON.stringify([]), isMarkedForReview: true },
-        update: { selectedOptionIdsJson: JSON.stringify([]), isMarkedForReview: true, answeredAt: expect.any(Date) },
+        create: { attemptId: 'attempt-1', questionId: 'q1', selectedOptionIdsJson: JSON.stringify([]), isMarkedForReview: true, clientSavedAt: expect.any(Date) },
+        update: { selectedOptionIdsJson: JSON.stringify([]), isMarkedForReview: true, answeredAt: expect.any(Date), clientSavedAt: expect.any(Date) },
       });
     });
 
@@ -1733,6 +1819,7 @@ describe('AttemptService', () => {
         create: {
           attemptId: 'attempt-1',
           questionId: 'code-question-1',
+          clientSavedAt: expect.any(Date),
           selectedOptionIdsJson: JSON.stringify([]),
           answerText: 'function reverse(s) { return s; }',
           codeLanguage: null,
@@ -1743,6 +1830,7 @@ describe('AttemptService', () => {
           codeLanguage: null,
           isMarkedForReview: false,
           answeredAt: expect.any(Date),
+          clientSavedAt: expect.any(Date),
         },
       });
     });
@@ -1766,6 +1854,7 @@ describe('AttemptService', () => {
         create: {
           attemptId: 'attempt-1',
           questionId: 'essay-question-1',
+          clientSavedAt: expect.any(Date),
           selectedOptionIdsJson: JSON.stringify([]),
           answerText: 'My considered response.',
           isMarkedForReview: false,
@@ -1774,8 +1863,29 @@ describe('AttemptService', () => {
           answerText: 'My considered response.',
           isMarkedForReview: false,
           answeredAt: expect.any(Date),
+          clientSavedAt: expect.any(Date),
         },
       });
+    });
+
+    it('AS-4a, answer 2122: stores the question version answered and the device time; an older device copy never overwrites a newer one', async () => {
+      const versioned = { ...question, version: 3 };
+      const newer = { selectedOptionIdsJson: JSON.stringify(['opt-b']), answerText: null, isMarkedForReview: false, clientSavedAt: new Date('2026-11-16T10:05:00Z') };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
+        question: { findFirstOrThrow: jest.fn().mockResolvedValue(versioned) },
+        answer: { upsert: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue(newer) },
+      };
+      settlement.settleIfExpired.mockResolvedValue(attempt);
+      mockBootstrapThenScoped(tx);
+      const stale = await service.answer(session, { questionId: 'q1', selectedOptionIds: ['opt-a'], clientSavedAt: '2026-11-16T10:00:00.000Z' });
+      expect(stale).toEqual({ questionId: 'q1', selectedOptionIds: ['opt-b'], answerText: null, isMarkedForReview: false, stale: true });
+      expect(tx.answer.upsert).not.toHaveBeenCalled();
+
+      tx.answer.findUnique.mockResolvedValue({ ...newer, clientSavedAt: new Date('2026-11-16T09:00:00Z') });
+      mockBootstrapThenScoped(tx);
+      await service.answer(session, { questionId: 'q1', selectedOptionIds: ['opt-a'], clientSavedAt: '2026-11-16T10:00:00.000Z' });
+      expect(tx.answer.upsert).toHaveBeenCalledWith(expect.objectContaining({ create: expect.objectContaining({ questionVersion: 3, clientSavedAt: new Date('2026-11-16T10:00:00.000Z') }) }));
     });
 
     it('persists telemetryJson on the code-question upsert when telemetry is provided', async () => {
@@ -1797,6 +1907,7 @@ describe('AttemptService', () => {
         create: {
           attemptId: 'attempt-1',
           questionId: 'code-question-1',
+          clientSavedAt: expect.any(Date),
           selectedOptionIdsJson: JSON.stringify([]),
           answerText: 'print(1)',
           codeLanguage: null,
@@ -1808,6 +1919,7 @@ describe('AttemptService', () => {
           codeLanguage: null,
           isMarkedForReview: false,
           answeredAt: expect.any(Date),
+          clientSavedAt: expect.any(Date),
           telemetryJson: JSON.stringify(telemetry),
         },
       });

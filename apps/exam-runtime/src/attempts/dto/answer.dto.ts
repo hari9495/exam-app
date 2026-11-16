@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsInt, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsISO8601, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class AnswerTelemetryDto {
@@ -56,4 +56,26 @@ export class AnswerDto {
   @ValidateNested()
   @Type(() => AnswerTelemetryDto)
   telemetry?: AnswerTelemetryDto;
+
+  /** AS-4a: when the candidate's device saved this answer (sent later when it was offline); an older copy never wins. */
+  @IsOptional()
+  @IsISO8601({ strict: true })
+  clientSavedAt?: string;
+}
+
+/** AS-4a: the optional after-test survey (never affects the score). */
+export class SurveyDto {
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  rating!: number;
+
+  @IsOptional()
+  @IsBoolean()
+  clearInstructions?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  comment?: string;
 }

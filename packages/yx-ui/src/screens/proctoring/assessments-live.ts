@@ -23,3 +23,6 @@ export {
   type ReviewChange,
   type ReviewTranslation,
 } from './bank-live';
+
+// Assessments AS-4a (PRC-26, PRC-27): the designed test runner and result page, live with their `live` prop.
+export { ResultAppealScreen, TestRunnerScreen, type LiveResult, type LiveRunner, type LiveRunnerQuestion } from './candidate';
