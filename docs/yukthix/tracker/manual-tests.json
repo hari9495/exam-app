@@ -21954,5 +21954,20 @@
       "Screens/Helpdesk/Desk set-up"
     ],
     "note": "Positive and negative. Answer 1992 (as 1913 for maintenance)."
+  },
+  {
+    "id": "MT-HLP-RULE-LOCK",
+    "area": "Desk automation: rule lock (16 Nov 2026)",
+    "screen": "Desk set-up › Automation (rules)",
+    "url": "http://localhost:3000/yx/desk/setup",
+    "account": "A desk admin of the IT help desk; an employee who raises tickets. Two API servers running (or the e2e rule-lock).",
+    "steps": [
+      "As the desk admin: add a rule \"Created, subject contains limit-me, add tag limited\" with a limit of 1 run an hour; switch it on.",
+      "As the employee: raise two tickets with \"limit-me\" in the subject within a second of each other (two browser tabs).",
+      "As the desk admin: open the rule's runs and the bell."
+    ],
+    "expected": "Step 3: one run Matched, one Stopped at the limit; the rule is Paused with \"it ran 1 times in an hour\"; one bell note to the admins, not two; only one ticket has the tag.",
+    "stories": [],
+    "note": "Positive and negative. Answer 2092. The e2e rule-lock proves it with runners in parallel."
   }
 ]
