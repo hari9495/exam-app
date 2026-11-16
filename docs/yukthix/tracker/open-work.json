@@ -110,5 +110,12 @@
   "item": "Sign-in without the company shown (email-first): a locked account answers 'Wrong email or password' even with the right password, while the company-scoped page answers 'Too many tries'. Decide how to tell a locked person without revealing which emails have accounts (e.g. lock the email identifier on the same threshold, then show the lock for both).",
   "status": "Open",
   "next": "Design + fix after Area 2 testing"
+ },
+ {
+  "id": "W-017",
+  "area": "Assessments AS-1",
+  "item": "Question bank pages are live but not in the menu; the older /questions routes still publish without review (question 2121) and attempts do not record the question version (2122).",
+  "status": "Open",
+  "next": "Lead: menu and /v2/questions redirect after AS-0 merges"
  }
 ]

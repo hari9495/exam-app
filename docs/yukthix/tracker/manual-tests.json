@@ -21768,5 +21768,44 @@
       "FeatureRequestsReview"
     ],
     "note": "Positive and negative. Real Claude answers need the key; the tests use a stand-in."
+  },
+  {
+    "id": "MT-ASMT-BANK1",
+    "area": "Assessments AS-1 question bank (16 Nov 2026)",
+    "screen": "Hire › Assessments: Question bank, Question editor, Question review, Item analysis (not in the menu yet)",
+    "url": "http://localhost:3000/yx/hiring/assessments/questions",
+    "account": "Three people of one company who write questions (question_bank:manage, e.g. the older recruiter role): author, reviewer, third person; a System Admin; an auditor.",
+    "steps": [
+      "As the author: Add question, save it empty, then as a single-choice question with two options; Submit for review.",
+      "As the author: open Question review.",
+      "As the reviewer: Question review, open it, Request changes with no note, then with a note.",
+      "As the author: read the bell; change the question; submit again.",
+      "As the reviewer: Approve.",
+      "As the author: change the correct option of the approved question; save; submit.",
+      "As the reviewer: Approve v2. Open the question's Versions tab.",
+      "As the author: add a question with the same text; submit. As the reviewer: Approve, then Mark not a duplicate, then Approve.",
+      "Set asmt.bank.second_approver_collections to Food safety; the author submits a Food safety question; the reviewer approves; the third person approves.",
+      "Set asmt.languages to hi; the reviewer drafts a Hindi translation of an approved question and submits it; the reviewer tries to approve it; the author approves it.",
+      "Open Item analysis.",
+      "Negative: as the auditor open the bank; as the System Admin act as the author and save a question."
+    ],
+    "expected": "Step 1: Write the question shown; then saved (toast), then sent for review (toast). Step 2: the author's own question is not listed. Step 3: the note is asked for; then the author is told (toast). Step 4: the bell names the note; the editor says changes were asked for. Step 5: approved toast; Approved v1. Step 6: Saved as version 2; the bank still shows v1 in use. Step 7: v2 approved; Versions lists v2 and v1. Step 8: Confirm not a duplicate first; then approved. Step 9: the first approval waits for a second; the third person's approval makes it usable. Step 10: the writer cannot approve their own translation; the author can; the bank shows English, Hindi. Step 11: items with 20 or more answers; under 200 marked Provisional. Step 12: no access; acting: refused, and answer keys hidden.",
+    "stories": [
+      "CompanyQuestions",
+      "PacksSwitch",
+      "NoQuestions",
+      "ApprovedQuestion",
+      "MajorChangeInReview",
+      "ChangesAskedFor",
+      "AltTextMissing",
+      "EnglishOnly",
+      "NewQuestion",
+      "WaitingForMe",
+      "TranslationOnly",
+      "NothingWaiting",
+      "CompanyItems",
+      "NoStatistics"
+    ],
+    "note": "Positive and negative. Answers 2009, 2010, 2017. Pages are not in the menu until AS-0 merges; open them by address."
   }
 ]
