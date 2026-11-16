@@ -2210,3 +2210,13 @@ Staff view: unanswered questions, thumbs up or down, chats that became tickets. 
       shows it; the console help centre editor does not. *Suggested: add the switch to the console editor.*
 2117. **The public website version (2101, second).** Not built. *Suggested: after the in-app one has a month of the
       review.*
+
+**Founder answers (16 Nov 2026, "ok for all"), 2111 to 2117:**
+- 2111: keep, only System Admins raise a ticket from a chat; others are told to ask them.
+- 2112: yes, a sales request straight from the chat for buying questions.
+- 2113: yes, feature requests get a permission of their own.
+- 2114: leave the HLP-01 company-policies assistant card as it is.
+- 2115: Hindi, Tamil and Telugu once those articles are translated.
+- 2116: yes, add the "Use in assistant answers" switch to the console help-centre editor.
+- 2117: the public website version after a month of the review.
+Queued: 2112, 2113, 2116 (small follow-up slice).
