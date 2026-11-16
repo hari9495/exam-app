@@ -162,3 +162,5 @@ Queued: 2071, 2072, 2075.
 - 2091: keep, "Open it" opens the raised ticket.
 - 2092: lock per rule around the hourly-limit check and the run (queued).
 - 2093: a small notice list in the console header later, starting with kept-record removals and breach reminders (queued).
+
+**Founder answers (16 Nov 2026, "ok for all"), 2171 and 2172:** keep both. The company-wide 300-a-minute storm cap stays unlocked; a rule on another record waits for the short run.
