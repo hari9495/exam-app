@@ -79,7 +79,7 @@ Every pick is built in our own design, kit first.
 | # | Feature | Keka | Zoho | YukthiX today | Pick |
 |---|---|---|---|---|---|
 | E1 | Team today | On leave, not in, on time, late, WFH, remote | — | Being built (Keka ideas) | Being built |
-| E2 | Leave approval clash check | "No teammates on leave on this day" | — | Apply drawer shows who else is off; approver side unknown | **Take K** on the approval screen |
+| E2 | Leave approval clash check | "No teammates on leave on this day" | — | Already live: TIM-19 manager view shows who else is off (gap audit) | **Keep ours** |
 | E3 | Leaderboards and negligence | Top 5 on time, hours, overtime; late, least hours, breaks | — | Weekly stat cards | **Take K**, later (sensitive: show to managers only) |
 
 ## Suggested order to build
