@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight, Copy, MessageSquareText, Plus, Trash2 } from 'lucide-react';
 import { cx } from '../lib/cx';
 import { formatDate } from '../lib/format';
@@ -6,9 +6,10 @@ import { formatHours, parseHours } from '../lib/table';
 import { Button, IconButton } from './button';
 import { Checkbox } from './choice';
 import { Badge, DayDate, type BadgeTone } from './display';
-import { InlineAlert } from './feedback';
+import { InlineAlert, Meter } from './feedback';
 import { Select } from './select';
 import { TextArea } from './inputs';
+import { Popover, PopoverContent, PopoverTrigger } from './popover';
 
 export interface TimesheetTask {
   id: string;
@@ -104,6 +105,9 @@ export interface TimesheetGridProps {
   today?: Date;
   /** Answer 1787: a "Comment" link under each day with hours, with a live word count; Submit checks it (Save draft never does). */
   noteRule?: TimesheetNoteRule;
+  /** Grid footer: the screen's own submit button (placed after Save draft), and a short line on the left (who it goes to). */
+  submitAction?: ReactNode;
+  footNote?: ReactNode;
 }
 
 const DAY = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -257,6 +261,8 @@ export function TimesheetGrid(props: TimesheetGridProps) {
     onAddCorrection,
     today,
     noteRule,
+    submitAction,
+    footNote,
   } = props;
   const narrow = useNarrow();
   const asDays = layout === 'days' || (layout === 'auto' && narrow);
@@ -324,8 +330,6 @@ export function TimesheetGrid(props: TimesheetGridProps) {
 
   /** Answer 1787: the day's comment, opened from the "Comment" link under its hours (one open at a time). */
   const [openComment, setOpenComment] = useState<string | null>(null);
-  const [openLine, openDayText] = openComment ? openComment.split(':') : [null, null];
-  const openDay = openDayText === null ? null : Number(openDayText);
   const setComment = (id: string, d: number, text: string) => {
     const l = lines.find((x) => x.id === id)!;
     const comments = Array.from({ length: 7 }, (_, k) => l.comments?.[k] ?? '');
@@ -415,12 +419,12 @@ export function TimesheetGrid(props: TimesheetGridProps) {
               Copy last week
             </Button>
           )}
-          {onSaveDraft && (
+          {asDays && onSaveDraft && (
             <Button size="sm" onClick={onSaveDraft} loading={saving}>
               Save draft
             </Button>
           )}
-          {onSubmit && (
+          {asDays && onSubmit && (
             <Button size="sm" variant="primary" onClick={submit} loading={submitting}>
               Submit week
             </Button>
@@ -575,145 +579,226 @@ export function TimesheetGrid(props: TimesheetGridProps) {
     );
   }
 
+  /** The day's comment as a small box right under its hours (reference pattern): one open at a time. */
+  const cellComment = (l: TimesheetLine, d: number, rowName: string) => {
+    if (!noteRule || !((l.hours[d] ?? 0) > 0)) return null;
+    const text = l.comments?.[d] ?? '';
+    const n = wordCount(text);
+    const short = noteRule.required && n < noteRule.minWords;
+    if (!editable && !text) return null;
+    const key = `${l.id}:${d}`;
+    const open = openComment === key;
+    const name = text ? `Comment · ${n} ${n === 1 ? 'word' : 'words'}` : 'Comment';
+    return (
+      <Popover open={open} onOpenChange={(o) => setOpenComment(o ? key : null)}>
+        <PopoverTrigger asChild>
+          <button type="button" className="yx-ts__comment-chip" aria-label={name} data-tone={editable && short ? 'short' : text ? 'done' : undefined}>
+            <MessageSquareText size={12} aria-hidden />
+            {text ? n : editable ? 'Add' : ''}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent className="yx-ts__comment-pop" align="center" sideOffset={4}>
+          <span className="yx-ts__comment-head">
+            {DAY[d]} {longDate(dates[d])} · {rowName}
+          </span>
+          {commentBox(l, d, rowName)}
+        </PopoverContent>
+      </Popover>
+    );
+  };
+  const comments = dayLines
+    .flatMap((l) => l.hours.map((h, d) => ({ l, d, h, text: (l.comments?.[d] ?? '').trim() })).filter((x) => x.text))
+    .sort((a, b) => a.d - b.d);
+  const cols = editable ? 10 : 9;
+
   return (
     <div className="yx-ts" data-layout="grid">
-      {header}
-      {alerts}
-      <div className="yx-ts__scroll" tabIndex={0} role="region" aria-label="Timesheet grid">
-        <table className="yx-ts__table" aria-label={`Timesheet ${range}`}>
-          <thead>
-            <tr>
-              <th scope="col" className="yx-ts__col-proj">
-                Project
-              </th>
-              <th scope="col" className="yx-ts__col-task">
-                Task
-              </th>
-              <th scope="col" className="yx-ts__col-bill">
-                Billable
-              </th>
-              {dates.map((date, d) => (
-                <th key={d} scope="col" className="yx-ts__col-day" data-kind={days[d].kind} data-invalid={badDays.has(d) || undefined}>
-                  {/* The weekday as a small label above the date ("Wed" / "30 Sep 2026"), then one hint line. */}
-                  {/* The year is in the week's range above: without it a day column fits the hours box (1278 px wide, founder walk). */}
-                  <span className="yx-ts__dayname"><DayDate date={date} stacked year={false} /></span>
-                  <span className="yx-ts__dayexp" title={dayExp(d)}>{dayExp(d)}</span>
+      <div className="yx-ts__card">
+        {header}
+        <div className="yx-ts__summary">
+          <span className="yx-ts__summary-item">
+            <span className="yx-ts__summary-label">Total this week</span>
+            <span className="yx-ts__summary-value">
+              <strong>{formatHours(weekTotal) || '0'}</strong> / {formatHours(expectedTotal)} h
+            </span>
+            <Meter value={weekTotal} max={expectedTotal || 1} label="Hours this week" warnAt={1000} dangerAt={1000} valueText={expectedTotal ? `${Math.round((weekTotal / expectedTotal) * 100)}%` : ''} />
+          </span>
+          {correctionTotal > 0 && (
+            <span className="yx-ts__summary-item">
+              <span className="yx-ts__summary-label">Corrections</span>
+              <span className="yx-ts__summary-value">{formatHours(correctionTotal)} h</span>
+            </span>
+          )}
+        </div>
+        {alerts}
+        <div className="yx-ts__scroll" tabIndex={0} role="region" aria-label="Timesheet grid">
+          <table className="yx-ts__table" aria-label={`Timesheet ${range}`}>
+            <thead>
+              <tr>
+                <th scope="col" className="yx-ts__col-proj">
+                  Project and task
                 </th>
-              ))}
-              <th scope="col" className="yx-ts__col-total">
-                Total
-              </th>
-              {editable && (
-                <th scope="col" className="yx-ts__col-remove">
-                  <span className="yx-visually-hidden">Remove</span>
+                {dates.map((date, d) => (
+                  <th key={d} scope="col" className="yx-ts__col-day" data-kind={days[d].kind} data-invalid={badDays.has(d) || undefined}>
+                    <span className="yx-ts__dayname">
+                      <DayDate date={date} stacked year={false} />
+                    </span>
+                    <span className="yx-ts__dayexp" title={dayExp(d)}>
+                      {dayExp(d)}
+                    </span>
+                  </th>
+                ))}
+                <th scope="col" className="yx-ts__col-total">
+                  Total
                 </th>
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map((l, r) => {
-              const p = l.projectId ? byId.get(l.projectId) : undefined;
-              const rowName = p ? p.name : `Row ${r + 1}`;
-              return (
-                <Fragment key={l.id}>
-                <tr data-invalid={badLines.has(l.id) || undefined}>
-                  <td>
-                    {editable ? (
-                      <Select
-                        size="sm"
-                        aria-label={`Project for row ${r + 1}`}
-                        options={projectOptions}
-                        value={l.projectId}
-                        onChange={(v) => pickProject(l, v)}
-                        placeholder="Choose project"
-                        searchable={projects.length > 7}
-                      />
-                    ) : (
-                      <span className="yx-ts__cell-text">{p ? `${p.code} · ${p.name}` : '—'}</span>
-                    )}
-                  </td>
-                  <td>
-                    {editable ? (
-                      <Select
-                        size="sm"
-                        aria-label={`Task for row ${r + 1}`}
-                        options={(p?.tasks ?? []).map((t) => ({ value: t.id, label: t.name }))}
-                        value={l.taskId}
-                        onChange={(v) => pickTask(l, v)}
-                        placeholder={p ? 'Choose task' : 'Project first'}
-                        disabled={!p}
-                        clearable
-                      />
-                    ) : (
-                      <span className="yx-ts__cell-text">{p?.tasks.find((t) => t.id === l.taskId)?.name ?? '—'}</span>
-                    )}
-                  </td>
-                  <td className="yx-ts__col-bill">
-                    {editable && p?.billable ? (
-                      <Checkbox aria-label={`${rowName} billable`} checked={l.billable} onChange={(billable) => patch(l.id, { billable })} />
-                    ) : p ? (
-                      billText(l, p, true)
-                    ) : null}
-                  </td>
-                  {l.correctionFor ? (
-                    <td colSpan={7}>
-                      <span className="yx-ts__correction">
-                        <span>Correction for {l.correctionFor} · not counted in this week's days</span>
-                        <HourCell value={l.correctionHours ?? null} editable={editable} r={r} c={0} label={`${rowName} correction hours for ${l.correctionFor}`} onCommit={(v) => patch(l.id, { correctionHours: v })} />
-                      </span>
-                    </td>
-                  ) : (
-                    l.hours.map((h, d) => (
-                      <td key={d} className="yx-ts__col-day" data-kind={days[d].kind} data-queried={queried(l.id, d) ? true : undefined} title={queried(l.id, d)}>
-                        <HourCell value={h} editable={editable && !dayLocked(d)} r={r} c={d} label={`${rowName} ${DAY[d]} ${longDate(dates[d])} hours`} onCommit={(v) => setHour(l.id, d, v)} />
-                        {dayComment(l, d, rowName, false)}
-                      </td>
-                    ))
-                  )}
-                  <td className="yx-ts__col-total">{formatHours(lineHours(l)) || '–'}</td>
-                  {editable && (
-                    <td className="yx-ts__col-remove">
-                      <IconButton icon={Trash2} label={`Remove ${rowName}`} size="sm" onClick={() => onLinesChange(lines.filter((x) => x.id !== l.id))} />
-                    </td>
-                  )}
-                </tr>
-                {openDay !== null && openLine === l.id && (
-                  <tr className="yx-ts__comment-row">
-                    <td colSpan={editable ? 12 : 11}>
-                      <span className="yx-ts__comment-head">
-                        {DAY[openDay]} {longDate(dates[openDay])} · {rowName}
-                      </span>
-                      {commentBox(l, openDay, rowName)}
-                    </td>
-                  </tr>
+                {editable && (
+                  <th scope="col" className="yx-ts__col-remove">
+                    <span className="yx-visually-hidden">Remove</span>
+                  </th>
                 )}
-                </Fragment>
-              );
-            })}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colSpan={3}>{addRow}</td>
-              {dayTotals.map((t, d) => (
-                <td key={d} className="yx-ts__col-day" data-kind={days[d].kind}>
-                  {/* One empty marker everywhere: "–" when a day has no hours, as in the cells. */}
-                  <span className={cx('yx-ts__daytotal')} data-tone={dayTone(d) ?? (shortBy(d) > 0 ? 'short' : undefined)} title={dayHint(d)}>
-                    {t > 0 ? formatHours(t) : '–'}
-                  </span>
-                  {offDay(d) && t > 0 && <span className="yx-ts__dayhint">{days[d].kind === 'holiday' ? 'Holiday rate' : 'On leave'}</span>}
-                  {shortBy(d) > 0 && <span className="yx-ts__dayhint" data-tone="short">{formatHours(shortBy(d))} h short</span>}
+              </tr>
+            </thead>
+            <tbody>
+              {lines.map((l, r) => {
+                const p = l.projectId ? byId.get(l.projectId) : undefined;
+                const rowName = p ? p.name : `Row ${r + 1}`;
+                const taskName = p?.tasks.find((t) => t.id === l.taskId)?.name;
+                return (
+                  <tr key={l.id} data-invalid={badLines.has(l.id) || undefined}>
+                    <td className="yx-ts__col-proj">
+                      {editable ? (
+                        <span className="yx-ts__pickrow">
+                          <Select size="sm" aria-label={`Project for row ${r + 1}`} options={projectOptions} value={l.projectId} onChange={(v) => pickProject(l, v)} placeholder="Choose project" searchable={projects.length > 7} />
+                          <Select
+                            size="sm"
+                            aria-label={`Task for row ${r + 1}`}
+                            options={(p?.tasks ?? []).map((t) => ({ value: t.id, label: t.name }))}
+                            value={l.taskId}
+                            onChange={(v) => pickTask(l, v)}
+                            placeholder={p ? 'Choose task' : 'Project first'}
+                            disabled={!p}
+                            clearable
+                          />
+                          {p?.billable ? (
+                            <Checkbox aria-label={`${rowName} billable`} label="Billable" checked={l.billable} onChange={(billable) => patch(l.id, { billable })} />
+                          ) : p ? (
+                            <span className="yx-ts__billtext">{billText(l, p)}</span>
+                          ) : null}
+                        </span>
+                      ) : (
+                        <span className="yx-ts__projtext">
+                          <span className="yx-ts__cell-text">{p ? `${p.code} · ${p.name}` : '—'}</span>
+                          <span className="yx-ts__cell-text yx-ts__muted">
+                            {taskName ?? 'No task'}
+                            {p ? ' · ' : ''}
+                            {p ? billText(l, p) : null}
+                          </span>
+                        </span>
+                      )}
+                    </td>
+                    {l.correctionFor ? (
+                      <td colSpan={7}>
+                        <span className="yx-ts__correction">
+                          <span>Correction for {l.correctionFor} · not counted in this week's days</span>
+                          <HourCell value={l.correctionHours ?? null} editable={editable} r={r} c={0} label={`${rowName} correction hours for ${l.correctionFor}`} onCommit={(v) => patch(l.id, { correctionHours: v })} />
+                        </span>
+                      </td>
+                    ) : (
+                      l.hours.map((h, d) => (
+                        <td key={d} className="yx-ts__col-day" data-kind={days[d].kind} data-queried={queried(l.id, d) ? true : undefined} title={queried(l.id, d)}>
+                          <span className="yx-ts__cell">
+                            <HourCell value={h} editable={editable && !dayLocked(d)} r={r} c={d} label={`${rowName} ${DAY[d]} ${longDate(dates[d])} hours`} onCommit={(v) => setHour(l.id, d, v)} />
+                            {cellComment(l, d, rowName)}
+                          </span>
+                        </td>
+                      ))
+                    )}
+                    <td className="yx-ts__col-total">{formatHours(lineHours(l)) || '–'}</td>
+                    {editable && (
+                      <td className="yx-ts__col-remove">
+                        <IconButton icon={Trash2} label={`Remove ${rowName}`} size="sm" onClick={() => onLinesChange(lines.filter((x) => x.id !== l.id))} />
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+              {editable && (
+                <tr className="yx-ts__addrow">
+                  <td colSpan={cols}>{addRow}</td>
+                </tr>
+              )}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td className="yx-ts__foot-label">Total hours per day</td>
+                {dayTotals.map((t, d) => (
+                  <td key={d} className="yx-ts__col-day" data-kind={days[d].kind}>
+                    <span className={cx('yx-ts__daytotal')} data-tone={dayTone(d) ?? (shortBy(d) > 0 ? 'short' : undefined)} title={dayHint(d)}>
+                      {t > 0 ? formatHours(t) : '–'}
+                    </span>
+                    {offDay(d) && t > 0 && <span className="yx-ts__dayhint">{days[d].kind === 'holiday' ? 'Holiday rate' : 'On leave'}</span>}
+                    {shortBy(d) > 0 && (
+                      <span className="yx-ts__dayhint" data-tone="short">
+                        {formatHours(shortBy(d))} h short
+                      </span>
+                    )}
+                  </td>
+                ))}
+                <td className="yx-ts__col-total">
+                  <strong>{weekTotal > 0 ? formatHours(weekTotal) : '–'}</strong>
+                  <span className="yx-ts__muted"> / {formatHours(expectedTotal)} h</span>
+                  {correctionTotal > 0 && (
+                    <span className="yx-ts__muted" style={{ display: 'block' }}>
+                      + {formatHours(correctionTotal)} h correction
+                    </span>
+                  )}
                 </td>
-              ))}
-              <td className="yx-ts__col-total">
-                <strong>{weekTotal > 0 ? formatHours(weekTotal) : '–'}</strong>
-                <span className="yx-ts__muted"> / {formatHours(expectedTotal)} h</span>
-                {correctionTotal > 0 && <span className="yx-ts__muted" style={{ display: 'block' }}>+ {formatHours(correctionTotal)} h correction</span>}
-              </td>
-              {editable && <td />}
-            </tr>
-          </tfoot>
-        </table>
+                {editable && <td />}
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        {editable && (onSaveDraft || onSubmit || submitAction) && (
+          <div className="yx-ts__footbar">
+            <span className="yx-ts__muted">{footNote}</span>
+            <span className="yx-ts__footbar-actions">
+              {onSaveDraft && (
+                <Button onClick={onSaveDraft} loading={saving}>
+                  Save draft
+                </Button>
+              )}
+              {onSubmit && (
+                <Button variant="primary" onClick={submit} loading={submitting}>
+                  Submit week
+                </Button>
+              )}
+              {submitAction}
+            </span>
+          </div>
+        )}
       </div>
+      {noteRule && (
+        <section className="yx-ts__card yx-ts__notes" aria-label="Comments this week">
+          <h3 className="yx-ts__notes-title">Comments this week</h3>
+          {comments.length === 0 ? (
+            <p className="yx-ts__muted">No comments yet. A comment you add under a day's hours shows here.</p>
+          ) : (
+            <ul className="yx-ts__notes-list">
+              {comments.map(({ l, d, h, text }) => {
+                const p = l.projectId ? byId.get(l.projectId) : undefined;
+                return (
+                  <li key={`${l.id}:${d}`}>
+                    <span className="yx-ts__notes-meta">
+                      {DAY[d]} {longDate(dates[d])} · {p ? `${p.code} · ${p.name}` : 'No project'} · {formatHours(h)} h
+                    </span>
+                    <span className="yx-ts__note-text">{text}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      )}
     </div>
   );
 }

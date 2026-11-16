@@ -32,19 +32,30 @@ describe('a comment per day (1787)', () => {
     expect(screen.getByText('3 of 20 words')).toBeInTheDocument();
   });
 
-  it('the week grid opens the comment in its own full-width row under the line, never inside the narrow day cell', async () => {
+  it('the week grid opens the comment in a small box under that day, headed with the day and project, never inside the table', async () => {
     show(sheet({ ...MY_TIMESHEET, noteRule: RULE }));
     await ue.click(links()[0]!);
     const box = screen.getByRole('textbox', { name: /^Comment for .*, Mon / });
-    const row = box.closest('tr')!;
-    expect(row).toHaveClass('yx-ts__comment-row');
-    expect(row.querySelector('td')!.getAttribute('colspan')).toMatch(/^1[12]$/);
-    expect(box.closest('td.yx-ts__col-day')).toBeNull();
-    // Negative: closing it removes the row; only one day is open at a time.
+    const pop = box.closest('.yx-ts__comment-pop')!;
+    expect(pop).not.toBeNull();
+    expect(box.closest('table')).toBeNull();
+    expect(within(pop as HTMLElement).getByText(/^Mon .* · /)).toBeInTheDocument();
+    // Negative: Escape closes it; opening another day shows only that day's box.
+    await ue.keyboard('{Escape}');
+    expect(screen.queryByRole('textbox', { name: /^Comment for / })).toBeNull();
     await ue.click(links()[1]!);
     expect(screen.getAllByRole('textbox', { name: /^Comment for / })).toHaveLength(1);
-    await ue.click(links()[1]!);
-    expect(document.querySelector('.yx-ts__comment-row')).toBeNull();
+    expect(screen.getByRole('textbox', { name: /^Comment for .*, Tue / })).toBeInTheDocument();
+  });
+
+  it('saved comments are listed under the grid; with none it says so', async () => {
+    show(sheet({ ...MY_TIMESHEET, noteRule: RULE }));
+    const card = screen.getByRole('region', { name: 'Comments this week' });
+    expect(within(card).getByText(/No comments yet/)).toBeInTheDocument();
+    await ue.click(links()[0]!);
+    await ue.type(screen.getByRole('textbox', { name: /^Comment for .*, Mon / }), 'Fixed the build');
+    expect(within(card).getByText('Fixed the build')).toBeInTheDocument();
+    expect(within(card).queryByText(/No comments yet/)).toBeNull();
   });
 
   it('Submit is refused when one day with hours has no comment, or is 1 word short; nothing is saved or sent', async () => {

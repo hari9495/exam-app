@@ -618,7 +618,10 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
               saving={busy === 'save'}
               today={localDay(live.today)}
               noteRule={noteRule}
+              footNote={editable ? `Goes ${st === 'sent_back' ? 'back ' : ''}to the project manager.` : undefined}
+              submitAction={editable ? <Button variant="primary" loading={busy === 'submit'} onClick={send}>{st === 'sent_back' ? 'Resubmit week' : 'Submit week'}</Button> : undefined}
             />
+            {editable && problems.length > 0 && <InlineAlert tone="danger" title="Fix these before sending">{problems.join('. ')}.</InlineAlert>}
             {st === 'submitted' && (
               <div className="yx-tim-row">
                 <span className="yx-tim-muted">Waiting for the project manager.</span>
@@ -652,15 +655,6 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
               );
             })()}
             {st === 'approved' && <p className="yx-tim-muted">Approved by the project manager.</p>}
-            {editable && (
-              <div className="yx-tim-stack">
-                {problems.length > 0 && <InlineAlert tone="danger" title="Fix these before sending">{problems.join('. ')}.</InlineAlert>}
-                <div className="yx-tim-row">
-                  <Button variant="primary" loading={busy === 'submit'} onClick={send}>{st === 'sent_back' ? 'Resubmit week' : 'Submit week'}</Button>
-                  <span className="yx-tim-muted">Goes {st === 'sent_back' ? 'back ' : ''}to the project manager.</span>
-                </div>
-              </div>
-            )}
           </div>
         )}
       </LiveGate>
