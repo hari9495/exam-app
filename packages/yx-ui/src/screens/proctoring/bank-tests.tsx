@@ -21,7 +21,8 @@ import { matchesFilter, type FilterValue } from '../../lib/table';
 import { PrcFrame, type ViewState } from './proctoring-shared';
 import { blueprintCell, overallOutcome, publishChecks } from './proctoring-logic';
 import { BLUEPRINT, DIFFICULTY_LABEL, PEOPLE, SKILL_TREE, d, type QuestionRow } from './proctoring-data';
-import { LiveItemAnalysisScreen, LiveQuestionBank, LiveQuestionEditor, LiveReviewQueue, type LiveBank, type LiveEditor, type LiveItemAnalysis, type LiveReviews } from './bank-live';
+import { LiveItemAnalysisScreen, LiveQuestionBank, LiveQuestionEditor, LiveReviewQueue, type LiveBank, type LiveEditor, type LiveItemAnalysis, type LiveReviews } from './bank-live';
+import { LiveScoreReportScreen, LiveTestBuilderScreen, type LiveScoreReport, type LiveTestBuilder } from './tests-live';
 
 const opt = (xs: string[]) => xs.map((x) => ({ value: x, label: x }));
 const STATUS_TONE: Record<string, 'success' | 'warning' | 'neutral' | 'info'> = { Approved: 'success', 'In review': 'warning', Draft: 'neutral', Retired: 'neutral' };
@@ -718,7 +719,12 @@ export interface TestBuilderProps {
   simulated?: boolean;
 }
 
-export function TestBuilderScreen({ step = 'blueprint', mode = 'Randomised', shortCells = false, jd = false, simulated }: TestBuilderProps) {
+/** PRC-04; with `live` (AS-2) the company's test with its checklist, proctoring mode and approver. */
+export function TestBuilderScreen(props: TestBuilderProps | { live: LiveTestBuilder }) {
+  return 'live' in props ? <LiveTestBuilderScreen live={props.live} /> : <SampleTestBuilder {...props} />;
+}
+
+function SampleTestBuilder({ step = 'blueprint', mode = 'Randomised', shortCells = false, jd = false, simulated }: TestBuilderProps) {
   // PRC-04
   const [cells, setCells] = useState(() => (shortCells ? BLUEPRINT.map((r, i) => (i === 0 ? { ...r, counts: r.counts.map(([n, a], j) => (j === 3 ? [5, a] : [n, a])) as [number, number][] } : r)) : BLUEPRINT));
   const short = cells.reduce((n, r) => n + r.counts.filter(([need, av]) => !blueprintCell(need, av).ok).length, 0);
@@ -973,7 +979,12 @@ function SampleItemAnalysis({ questions, state = 'ready' }: { questions: Questio
 /* PRC-06 · Candidate score report                                     */
 /* ================================================================== */
 
-export function ScoreReportScreen({ held = false, viewer = 'owner', adaptive = false }: { held?: boolean; viewer?: 'owner' | 'recruiter'; adaptive?: boolean }) {
+/** PRC-06; with `live` (AS-2) one candidate's result from the older report, raw marks for test writers only. */
+export function ScoreReportScreen(props: { held?: boolean; viewer?: 'owner' | 'recruiter'; adaptive?: boolean } | { live: LiveScoreReport }) {
+  return 'live' in props ? <LiveScoreReportScreen live={props.live} /> : <SampleScoreReport {...props} />;
+}
+
+function SampleScoreReport({ held = false, viewer = 'owner', adaptive = false }: { held?: boolean; viewer?: 'owner' | 'recruiter'; adaptive?: boolean }) {
   // PRC-06
   const sections = [
     { name: 'Aptitude', score: 45, cutoff: 50 },

@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { SETTINGS_GROUPS, SettingsPageScreen, historyOnPage, pendingOnPage, timeSettingsChanges, timeSettingsOverrides, timeSettingsPage, type PendingSettingChange, type RegistryDef, type SettingsGroupDef, type TimeSettingsData } from '@yukthix/ui/hiring';
+import { SETTINGS_GROUPS, SettingsPageScreen, historyOnPage, pendingOnPage, timeSettingsChanges, timeSettingsListChanges, timeSettingsOverrides, timeSettingsPage, type PendingSettingChange, type RegistryDef, type SettingsGroupDef, type TimeSettingsData } from '@yukthix/ui/hiring';
 import { loadState, todayIst, useOrg, useOrgWrite, useYxPermissions } from './yx-org';
 import { useYxNav } from './yx-shell';
 import { groupSlug } from './yx-settings-home';
@@ -114,9 +114,11 @@ export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, s
         onReject: data?.canEdit ? async (id) => void (await write('POST', `/settings/requests/${encodeURIComponent(id)}/reject`, {})) : undefined,
         // S-7 (answer 1562): dated settings change from the day chosen (today by default).
         appliesFrom: design.sections.length && Object.values(data?.registry ?? {}).some((r) => r.dated) ? { today: todayIst() } : undefined,
-        onSave: async (values, _rows, overrides, appliesFrom) => {
+        onSave: async (values, rows, overrides, appliesFrom) => {
           const from = appliesFrom && appliesFrom >= todayIst() ? appliesFrom : todayIst();
           for (const c of timeSettingsChanges(values, data!)) await write('PUT', '/settings', { key: c.key, value: c.value, scopeType: 'tenant', ...(data!.registry[c.key]?.dated ? { validFrom: from } : {}) });
+          // Answer 2123: a comma-list setting edited as a table (e.g. 6.5's collections that need a second approver).
+          for (const c of timeSettingsListChanges(rows, data!)) await write('PUT', '/settings', { key: c.key, value: c.value, scopeType: 'tenant' });
           // S-7 (answer 1484): values of their own for one place ("Different for").
           for (const o of timeSettingsOverrides(overrides ?? [], data!)) await write('PUT', '/settings', { key: o.key, value: o.value, scopeType: o.scopeType, scopeId: o.scopeId, ...(data!.registry[o.key]?.dated ? { validFrom: from } : {}) });
         },

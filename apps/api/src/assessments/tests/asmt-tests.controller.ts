@@ -22,6 +22,13 @@ export class ProctoringModeDto {
 export class AsmtTestsController {
   constructor(private readonly tests: AsmtTestsService) {}
 
+  /** The company's test defaults the builder names (Settings 6.5): the proctoring mode and the approver threshold. */
+  @Get('defaults')
+  @RequirePermissions('exam:manage')
+  defaults(@CurrentTenant() ctx: TenantContext) {
+    return this.tests.defaults(ctx);
+  }
+
   @Get(':id')
   @RequirePermissions('exam:manage')
   get(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {

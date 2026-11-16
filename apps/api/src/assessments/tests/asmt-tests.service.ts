@@ -125,6 +125,13 @@ export class AsmtTestsService {
     });
   }
 
+  async defaults(ctx: TenantContext): Promise<{ proctorMode: ProctorMode; highStakes: number }> {
+    return this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const org = ctx.organizationId as string;
+      return { proctorMode: (await companySetting(tx, org, 'asmt.proctor_mode')) as ProctorMode, highStakes: Number(await companySetting(tx, org, HIGH_STAKES_KEY)) };
+    });
+  }
+
   private async names(tx: Tx, org: string, ids: (string | null)[]) {
     const want = ids.filter((x): x is string => !!x);
     if (!want.length) return new Map<string, string>();

@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { TestBuilderScreen } from '../bank-tests';
+import { BUILDER_WAITING, liveBuilder } from '../tests-live-samples';
 
 const meta: Meta<typeof TestBuilderScreen> = { title: 'Screens/Proctoring/PRC-04 · Test builder', component: TestBuilderScreen, parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -15,3 +16,9 @@ export const Timing: S = { name: 'Timing and navigation', args: { step: 'timing'
 export const Proctoring: S = { name: 'Proctoring mode', args: { step: 'proctoring' } };
 export const ReviewBlocked: S = { name: 'Pre-publish checklist, blocked', args: { step: 'review', shortCells: true } };
 export const ReviewReady: S = { name: 'Pre-publish checklist, ready', args: { step: 'review' } };
+
+// AS-2: the states the real test builder has (answers 2007, 2008; asmt.high_stakes).
+export const LiveChecklistBlocked: S = { name: 'Company test: checklist blocked, approver needed', render: () => <TestBuilderScreen live={liveBuilder()} /> };
+export const LiveApprovalWaiting: S = { name: 'Company test: approval asked, waiting for you', render: () => <TestBuilderScreen live={liveBuilder({ test: BUILDER_WAITING })} /> };
+export const LiveCustomProctoring: S = { name: 'Company test: proctoring set switch by switch', render: () => <TestBuilderScreen live={liveBuilder({ test: { ...BUILDER_WAITING, proctoringMode: 'custom' } })} /> };
+export const LiveStart: S = { name: 'Start from one of our tests', render: () => <TestBuilderScreen live={liveBuilder({ test: null })} /> };
