@@ -886,3 +886,10 @@ Not in the menu: the lead adds it after AS-0 merges. Pages: `/yx/hiring/assessme
       when changes wait for them.*
 2130. **Duplicate check scope.** Text only, within the company, drafts and approved questions. *Suggested: keep; add
       options to the comparison if reviewers see misses.*
+
+**Founder answers (16 Nov 2026, "ok for all"), 2141 to 2145:** all as suggested.
+- 2141: the older POST /questions creates a draft in the review queue too; move the suites over in one change.
+- 2142: fixed sections take only approved questions; publishing a test refuses a draft.
+- 2143: show question images in the candidate preview through a short-lived signed link.
+- 2144: keep, the keys decide bank access when assessments.enabled is off.
+- 2145: keep, the daily note follows the person's notification settings.
