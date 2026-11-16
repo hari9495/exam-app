@@ -756,3 +756,15 @@ console.log('ok');
 
 **Founder answers (13 Nov 2026):** 2001 to 2021 all accepted as suggested ("ok for all"). Build starts with wave 1
 (AS-0 first: security), after the answer-key hotfix (`fix/exam-answer-key-exposure`) merges.
+
+**Founder answers (16 Nov 2026, "ok for all"), 2121 to 2130:** all accepted as suggested.
+- 2121: when the bank goes in the menu, the older publish route refuses, changes to approved questions go through review, /v2/questions redirects.
+- 2122: store the question version on each answer (AS-0 or AS-4a).
+- 2123: AS-2's 6.5 page writes the second-approver setting as the per-collection table.
+- 2124: keep all three packs on by default; the tab says they are being written.
+- 2125: code-test editing next in the designed editor.
+- 2126: image upload next (existing image route); other media later.
+- 2127: per-test charts with AS-2's test builder.
+- 2128: keep bulk Retire without review.
+- 2129: a daily bell note to bank writers when items wait for review.
+- 2130: keep text-only duplicate check at 90 %.
