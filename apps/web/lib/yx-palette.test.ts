@@ -15,7 +15,7 @@ describe('buildPalette', () => {
   it('opened empty: Recent and Actions only, never a list of every menu page', () => {
     const p = buildPalette(input({ recent: [{ label: 'My leave', type: 'page', href: '/yx/time/leave' }, { label: 'Arjun Mehta', type: 'person', href: '/yx/people/directory?q=Arjun' }], waiting: 2 }));
     expect(headings(p)).toEqual(['Recent', 'Actions']);
-    expect(labels(p, 'Actions')).toEqual(['Apply leave', 'Approve requests', 'New expense claim']);
+    expect(labels(p, 'Actions')).toEqual(['Apply leave', 'Regularise a day', 'Request work from home', 'Approve requests', 'New expense claim', 'Raise a ticket']);
     const recent = p.groups[0].items;
     expect(recent.map((i) => [i.label, i.secondary])).toEqual([['My leave', 'Time › My time'], ['Arjun Mehta', 'Person']]);
     expect(recent.every((i) => i.icon)).toBe(true);
@@ -24,11 +24,15 @@ describe('buildPalette', () => {
 
   it('actions follow what the person may do; shortcuts only for the actions they have', () => {
     const noRecord = buildPalette(input({ nav: buildNav(base), self: false }));
-    expect(labels(noRecord, 'Actions')).toEqual(['Approve requests']);
+    expect(labels(noRecord, 'Actions')).toEqual(['Approve requests', 'Raise a ticket']);
+    // Keka ideas: no own record, no leave, attendance or expense actions; no help desk (support session), no ticket.
+    expect(labels(buildPalette(input({ nav: buildNav(base), self: false, help: false })), 'Actions')).toEqual(['Approve requests']);
     expect(noRecord.shortcuts).toEqual({});
     const emp = buildPalette(input());
     expect(emp.shortcuts).toEqual({ 'N L': '/yx/time/leave?apply=1', 'N E': '/yx/expenses?new=1' });
     expect(emp.targets.get('act:leave')?.href).toBe('/yx/time/leave?apply=1');
+    expect(emp.targets.get('act:regularise')?.href).toBe('/yx/time/attendance?request=regularise');
+    expect(emp.targets.get('act:ticket')?.href).toBe('/yx/desk/help?new=1');
   });
 
   it('pages appear only when typed, with the right area; settings under ? help and settings', () => {

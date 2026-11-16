@@ -8,7 +8,10 @@ import { ChannelLinksCard, type ApprovalHistory, type ApprovalTask, type Channel
 import { ApprovalsInboxScreen } from '@yukthix/ui/frame';
 import { apiFetch } from '../../../../lib/api-client';
 import { useAuth } from '../../../../lib/auth-context';
-import { sentRow, teamRow, waitingRow, type TeamDecision } from '../../../../lib/yx-approvals';
+import { profileRows, sentRow, teamRow, waitingRow, type TeamDecision } from '../../../../lib/yx-approvals';
+import { useYxPermissions } from '../../../../lib/yx-org';
+import { usePeople } from '../../../../lib/yx-people';
+import type { ProfileRequest } from '@yukthix/ui/access';
 import { useLiveDelegation } from '../../../../lib/yx-delegation';
 
 // Approvals (PLT-04, the designed inbox; P03 shared screen, M14 SD-2.05): what waits for me and what was delegated to
@@ -34,7 +37,10 @@ function Approvals() {
     void qc.invalidateQueries({ queryKey: ['yx', 'workspace', 'counts'] }); // the side-menu Approvals count follows at once
   };
   const post = (path: string, body: unknown) => apiFetch(`/workflow${path}`, { method: 'POST', body: JSON.stringify(body) }, token);
-  const waiting = (tasks.data ?? []).map(waitingRow);
+  // Keka ideas: identity and bank changes waiting for HR (their own kind in the list; decided on their own page).
+  const perms = useYxPermissions();
+  const profile = usePeople<{ rows: ProfileRequest[] }>(perms.has('employee.identity.approve') ? '/profile-requests?status=pending' : null);
+  const waiting = [...(tasks.data ?? []).map(waitingRow), ...profileRows(profile.data?.rows ?? [])];
   const openId = focus ? waiting.find((r) => tasks.data?.find((t) => t.taskId === r.id)?.requestId === focus)?.id : undefined;
   return (
     <ApprovalsInboxScreen

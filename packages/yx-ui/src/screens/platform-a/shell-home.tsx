@@ -1,7 +1,7 @@
 // Shell, homes, settings home, access states and search (PLT-01, 02, 10, 18, 20, 21; APX-D §1.1 Home).
 import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import {
-  ArrowLeft, Bell, Bookmark, CalendarPlus, Megaphone, MessageCircleQuestionMark, Clock, CheckSquare, Download, Eye, EyeOff, FileText, House, FolderSearch, HelpCircle, IndianRupee, Lock, Receipt, Search, Settings as SettingsIcon, Ticket, UserRound, Users,
+  ArrowLeft, Bell, Bookmark, CalendarCheck, CalendarPlus, Megaphone, MessageCircleQuestionMark, Clock, CheckSquare, Download, Eye, EyeOff, FileText, House, FolderSearch, HelpCircle, IndianRupee, Lock, Receipt, Search, Settings as SettingsIcon, Ticket, UserRound, Users,
 } from 'lucide-react';
 import {
   AppShell, CommandPalette, ScopePicker, type ScopePeriod, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, TopBar, PageHeader, Card, type PaletteGroup, type RailItem,
@@ -1309,6 +1309,8 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
       { id: 'ac1', label: 'Apply leave', secondary: 'Opens the request sheet', icon: CalendarPlus, shortcut: 'N L', keywords: ['leave', ...pfx('>', ['apply leave'])] },
       { id: 'ac2', label: 'Approve leave', secondary: 'Approvals › Leave · 2 waiting', icon: CheckSquare, keywords: pfx('>', ['approve leave']) },
       { id: 'ac3', label: 'New expense claim', secondary: 'Opens the request sheet', icon: Receipt, shortcut: 'N E', keywords: pfx('>', ['new expense claim']) },
+      { id: 'ac4', label: 'Regularise a day', secondary: 'Fix a missed or wrong punch', icon: CalendarCheck, keywords: pfx('>', ['regularise a day', 'missed punch']) },
+      { id: 'ac5', label: 'Raise a ticket', secondary: 'Ask HR, IT or finance', icon: Ticket, keywords: pfx('>', ['raise a ticket', 'helpdesk']) },
     ],
   },
   {
