@@ -60,6 +60,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'helpdesk.rule.notify', group: 'assignments', label: 'A desk rule sent you a message' },
   // Assessments AS-1 (answer 2009): a reviewer asked for changes to your question.
   { type: 'asmt.question.changes_requested', group: 'assignments', label: 'A reviewer asked for changes to your question' },
+  // Answer 2129: once a day, questions wait for your review in the question bank.
+  { type: 'asmt.question.review_waiting', group: 'reminders', label: 'Questions wait for your review' },
   // Ask YukthiX (answer 2105): a feature request you sent is done.
   { type: 'help.feature_request.done', group: 'assignments', label: 'A feature request you sent is done' },
   // Helpdesk ITSM-2 (answer 1937): a planned change to an application you own.

@@ -7,7 +7,7 @@ import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { OwnSessionGuard } from '../../auth/own-session.guard';
 import { CurrentTenant } from '../../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../../rbac/permissions.guard';
-import { RequirePermissions } from '../../rbac/permissions.decorator';
+import { RequireAnyPermission } from '../../rbac/permissions.decorator';
 import { SeesAnswerKeys, ShowsAnswerKeys, withoutAnswerKey } from '../../rbac/answer-keys';
 import { CreateQuestionDto } from '../dto/create-question.dto';
 import { QuestionBankService, type Who } from './question-bank.service';
@@ -111,11 +111,11 @@ const who = (req: Request, ctx: TenantContext): Who => ({ ctx, userId: (req.user
 /**
  * Assessments AS-1 (answers 2009, 2010): the designed question bank (PRC-01, PRC-02, PRC-03). The bank shows answer
  * keys, so every route needs the writers' key; changes are never made while acting for someone else.
- * TODO(AS-0): replace question_bank:manage with asmt.bank.manage (the older key stays as its alias).
+ * AS-0 (answer 2003): the YukthiX key asmt.bank.manage; the older question_bank:manage keeps working.
  */
 @Controller('question-bank')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
-@RequirePermissions('question_bank:manage')
+@RequireAnyPermission('asmt.bank.manage', 'question_bank:manage')
 export class QuestionBankController {
   constructor(private readonly bank: QuestionBankService) {}
 

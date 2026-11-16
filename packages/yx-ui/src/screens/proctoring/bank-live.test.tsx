@@ -3,8 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { ItemAnalysisScreen, QuestionBankScreen, QuestionEditorScreen, QuestionReviewQueueScreen } from './bank-tests';
-import { missingAlt } from './bank-live';
-import { BANK_QUESTION, BANK_QUESTION_MAJOR, REVIEW_CHANGES, REVIEW_TRANSLATIONS, liveBank, liveEditor, liveItems, liveReviews } from './bank-live-samples';
+import { codeProblems, missingAlt } from './bank-live';
+import { BANK_QUESTION, BANK_QUESTION_MAJOR, CODE_QUESTION, REVIEW_CHANGES, REVIEW_TRANSLATIONS, liveBank, liveEditor, liveItems, liveReviews } from './bank-live-samples';
 
 // AS-1: the designed question bank screens with live data (answers 2009, 2010, 2017).
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -179,3 +179,77 @@ describe('PRC-05 item analysis (live)', () => {
   });
 });
 
+// Bank follow-ups (answers 2121, 2125, 2126).
+describe('bank follow-ups (live)', () => {
+  it('2121: import sends the file; the rows it refused are listed; done is a toast', async () => {
+    const onImport = vi.fn().mockResolvedValue({ created: 2, errors: [{ row: 4, message: 'Mark one option correct.' }] });
+    wrap(<QuestionBankScreen live={liveBank({ onImport })} />);
+    await ue.click(screen.getByRole('button', { name: 'Import' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Import questions' });
+    const file = new File(['type,text'], 'questions.csv', { type: 'text/csv' });
+    await ue.upload(dialog.querySelector('input[type="file"]') as HTMLInputElement, file);
+    await waitFor(() => expect(onImport).toHaveBeenCalledWith(file));
+    expect(await within(dialog).findByText('Row 4: Mark one option correct.')).toBeInTheDocument();
+    expect((await screen.findAllByText('2 questions sent for review')).length).toBeGreaterThan(0);
+  });
+
+  it('2121 negative: Draft with AI pressed with nothing filled says what is missing and sends nothing; then it sends', async () => {
+    const onDraftWithAi = vi.fn().mockResolvedValue({ aiJobId: 'j1' });
+    wrap(<QuestionBankScreen live={liveBank({ onDraftWithAi })} />);
+    await ue.click(screen.getByRole('button', { name: 'Draft with AI' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Draft questions with AI' });
+    await ue.click(within(dialog).getByRole('button', { name: 'Draft questions' }));
+    expect(await within(dialog).findByText(/Say what the questions are about/)).toBeInTheDocument();
+    expect(onDraftWithAi).not.toHaveBeenCalled();
+    await ue.type(within(dialog).getByRole('textbox', { name: /About/ }), 'Java streams');
+    await ue.click(within(dialog).getByRole('button', { name: 'Draft questions' }));
+    await waitFor(() => expect(onDraftWithAi).toHaveBeenCalledWith({ topic: 'Java streams', difficulty: 'medium', questionTypes: ['single_mcq'], count: 5, marks: 1, negativeMarks: 0, tagIds: [] }));
+  });
+
+  it('2125: a code question shows its language, starter code and tests; a new test is added and saved with the question', async () => {
+    const onSave = vi.fn().mockResolvedValue({ saved: 'draft' });
+    wrap(<QuestionEditorScreen live={liveEditor({ question: CODE_QUESTION, stats: null, onSave })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Answer key' }));
+    expect(screen.getByRole('group', { name: 'Test case 2' })).toBeInTheDocument();
+    expect(within(screen.getByRole('group', { name: 'Test case 2' })).getByRole('checkbox', { name: 'Hidden from candidates' })).toBeChecked();
+    await ue.click(screen.getByRole('button', { name: 'Add test case' }));
+    const third = screen.getByRole('group', { name: 'Test case 3' });
+    await ue.type(within(third).getByRole('textbox', { name: /Expected output/ }), '42');
+    await ue.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]![0].codeTests).toHaveLength(3);
+    expect(onSave.mock.calls[0]![0].codeTests[2]).toMatchObject({ expectedStdout: '42', hidden: true });
+  });
+
+  it('2125 negative: no test, no expected output, no language or every test hidden is not saved', async () => {
+    const base = CODE_QUESTION.content;
+    expect(codeProblems(base)).toEqual([]);
+    expect(codeProblems({ ...base, codeTests: [] })).toEqual(['Add at least one test case.']);
+    expect(codeProblems({ ...base, allowedLanguages: [] })).toEqual(['Choose the language candidates write in.']);
+    expect(codeProblems({ ...base, codeTests: [{ expectedStdout: '' }] })).toEqual(['Every test case needs its expected output.']);
+    expect(codeProblems({ ...base, codeTests: [{ expectedStdout: '1', hidden: true }] })).toEqual(['Keep at least one test case visible, so candidates see an example.']);
+    expect(codeProblems({ ...base, languageMode: 'any', allowedLanguages: undefined })).toEqual([]);
+    const onSave = vi.fn();
+    wrap(<QuestionEditorScreen live={liveEditor({ question: { ...CODE_QUESTION, content: { ...base, codeTests: [] } }, stats: null, onSave })} />);
+    await ue.click(screen.getByRole('button', { name: 'Save draft' }));
+    expect((await screen.findAllByText('Add at least one test case.')).length).toBeGreaterThan(0);
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('2126: an uploaded question image asks for alt text; submit is refused until it has some', async () => {
+    const onUploadImage = vi.fn().mockResolvedValue({ imageUrl: 'question-images/line.png' });
+    const onSubmit = vi.fn();
+    const draft = { ...BANK_QUESTION, status: 'draft' as const, approvedBy: null, approvedAt: null };
+    wrap(<QuestionEditorScreen live={liveEditor({ question: draft, onUploadImage, onSubmit })} />);
+    const file = new File(['png'], 'line.png', { type: 'image/png' });
+    const field = screen.getByText('Question image').closest('.yx-field') as HTMLElement;
+    await ue.upload(field.querySelector('input[type="file"]') as HTMLInputElement, file);
+    await waitFor(() => expect(onUploadImage).toHaveBeenCalledWith(file));
+    expect(await screen.findByText(/Question image: line.png/)).toBeInTheDocument();
+    expect(screen.getByText('1 image needs accessibility text')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Submit for review' }));
+    expect(onSubmit).not.toHaveBeenCalled();
+    await ue.type(screen.getByRole('textbox', { name: /Image alt text/ }), 'A packing line');
+    expect(screen.queryByText('1 image needs accessibility text')).toBeNull();
+  });
+});

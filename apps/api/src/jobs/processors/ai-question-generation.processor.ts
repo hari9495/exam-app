@@ -4,6 +4,7 @@ import { JobProcessor } from './job-processor.interface';
 import { QuestionGenerationClient, GeneratedQuestion } from './question-generation.client';
 import { validateQuestionPayload } from '../../questions/question-validation';
 import { QuotaService } from '../../billing/quota.service';
+import { queueNewQuestion } from '../../questions/bank/queue';
 
 interface AiQuestionGenerationInput {
   topic: string;
@@ -127,6 +128,8 @@ export class AiQuestionGenerationProcessor implements JobProcessor {
               ...(resolvedTagIds.length > 0 ? { tags: { create: resolvedTagIds.map((tagId) => ({ tagId })) } } : {}),
             },
           });
+          // Answer 2121: an AI draft goes straight into the review queue; its author is the person who asked for it.
+          await queueNewQuestion(tx, context, context.organizationId as string, created.id, requestedBy, 'ai_draft');
           ids.push(created.id);
         }
         if (ids.length > 0) {

@@ -55,6 +55,14 @@ describe('hiring pages moved to YukthiX', () => {
     ['/settings/agencies', '/yx/hiring/vendors'],
     ['/v2/agency-submissions', '/yx/hiring/vendors?tab=submissions'],
     ['/agency-submissions', '/yx/hiring/vendors?tab=submissions'],
+    // Answer 2121: the older question pages go to the designed question bank.
+    ['/v2/questions', '/yx/hiring/assessments/questions'],
+    ['/questions', '/yx/hiring/assessments/questions'],
+    ['/v2/questions/new', '/yx/hiring/assessments/questions/new'],
+    ['/questions/new', '/yx/hiring/assessments/questions/new'],
+    ['/v2/questions/:id/edit', '/yx/hiring/assessments/questions/:id'],
+    ['/questions/:id/edit', '/yx/hiring/assessments/questions/:id'],
+    ['/questions/bulk-upload', '/yx/hiring/assessments/questions'],
   ])('%s goes to %s', (source, destination) => {
     expect(redirects).toContainEqual({ source, destination, permanent: false });
   });
@@ -62,6 +70,7 @@ describe('hiring pages moved to YukthiX', () => {
   it('nothing still sends anyone to the old job pages', () => {
     expect(redirects.some((r) => r.destination.startsWith('/v2/jobs'))).toBe(false);
     expect(redirects.some((r) => r.destination === '/v2/panel/interviews')).toBe(false);
+    expect(redirects.some((r) => r.destination.startsWith('/v2/questions'))).toBe(false);
   });
 });
 

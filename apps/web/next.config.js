@@ -28,7 +28,7 @@ const nextConfig = {
     return ['/sso/callback', '/yx/sign-in/callback'].map((source) => ({ source, headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }] }));
   },
   async redirects() {
-    const routes = ['/dashboard', '/exams', '/questions', '/walk-in-groups', '/analytics/hiring', '/message-templates', '/offer-template'];
+    const routes = ['/dashboard', '/exams', '/walk-in-groups', '/analytics/hiring', '/message-templates', '/offer-template'];
     return [
       // PPL-30 (founder 26 Oct 2026): My letters is part of Me › Documents and letters.
       { source: '/yx/me/letters', destination: '/yx/me/documents', permanent: false },
@@ -76,8 +76,13 @@ const nextConfig = {
       { source: '/forgot-password', destination: '/yx/forgot-password', permanent: true },
       { source: '/reset-password/:token', destination: '/yx/reset-password/:token', permanent: true },
       // Question editor is rebuilt in v2; redirect the old editor routes too.
-      { source: '/questions/new', destination: '/v2/questions/new', permanent: false },
-      { source: '/questions/:id/edit', destination: '/v2/questions/:id/edit', permanent: false },
+      // Answer 2121: the older question pages are retired; the designed question bank (Hire › Assessments) replaces them.
+      { source: '/questions/new', destination: '/yx/hiring/assessments/questions/new', permanent: false },
+      { source: '/questions/:id/edit', destination: '/yx/hiring/assessments/questions/:id', permanent: false },
+      { source: '/questions', destination: '/yx/hiring/assessments/questions', permanent: false },
+      { source: '/v2/questions', destination: '/yx/hiring/assessments/questions', permanent: false },
+      { source: '/v2/questions/new', destination: '/yx/hiring/assessments/questions/new', permanent: false },
+      { source: '/v2/questions/:id/edit', destination: '/yx/hiring/assessments/questions/:id', permanent: false },
       // Exam builder is rebuilt in v2. /exams/:id/preview is NOT rebuilt yet, so it stays put
       // (the v2 edit page links to the old preview route).
       { source: '/exams/new', destination: '/v2/exams/new', permanent: false },
@@ -91,7 +96,7 @@ const nextConfig = {
       { source: '/walk-in-groups/:groupId/drives', destination: '/v2/walk-in-groups/:groupId/drives', permanent: false },
       // Bulk upload became a modal on the v2 candidates/questions lists (no standalone route);
       // funnel the old standalone pages to those lists so no old recruiter UI stays reachable.
-      { source: '/questions/bulk-upload', destination: '/v2/questions', permanent: false },
+      { source: '/questions/bulk-upload', destination: '/yx/hiring/assessments/questions', permanent: false },
       // v2 cutover — org-admin console (settings + admin surfaces).
       { source: '/settings/billing', destination: '/v2/settings/billing', permanent: false },
       { source: '/settings/integrations', destination: '/v2/settings/integrations', permanent: false },

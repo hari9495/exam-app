@@ -86,6 +86,10 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'asmt.bank.duplicate_percent': { label: 'Questions: flag a possible duplicate at this similarity (%)', scopes: ['tenant'], dated: false, values: ['80', '85', '90', '95'], default: '90' },
   // Answer 2017: which YukthiX starter packs the company uses (the packs themselves are content YukthiX writes).
   'asmt.packs': { label: 'Questions: YukthiX starter packs', scopes: ['tenant'], dated: false, values: ['aptitude', 'english', 'core_it'], default: 'aptitude,english,core_it', multi: true, labels: { aptitude: 'Aptitude', english: 'English', core_it: 'Core IT skills' } },
+  // Answer 2001: assessments in Hire (the menu group), on by default; answer 2129: the daily note to bank writers when
+  // questions wait for their review, on by default.
+  'assessments.enabled': { label: 'Assessments in Hire', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', labels: { on: 'Shown', off: 'Hidden' } },
+  'asmt.bank.review_reminders': { label: 'Questions: tell bank writers once a day when questions wait for review', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'asmt.item_stats.provisional_answers': { label: 'Item statistics are provisional under this many answers', scopes: ['tenant'], dated: false, values: ['50', '100', '200', '500'], default: '200' },
   // HLP-04 (founder 3 Nov 2026): how often a published help article is checked again (YX-GRO-07). Desk set-up › Settings.
   // Help H-1 (answer 942): the Help drawer's "This page" tab (help articles tagged with the page).

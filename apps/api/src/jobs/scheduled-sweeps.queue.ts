@@ -85,4 +85,6 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'project-cost', cron: '20 2 * * *' },
   // Console 1216: the product-analytics summary per company, feature family and India day (00:40 IST).
   { id: 'analytics-summary', cron: '10 19 * * *' },
+  // Assessments answer 2129: one note a day to bank writers with questions waiting for their review (09:30 IST).
+  { id: 'question-review-nudges', cron: '0 4 * * *' },
 ];

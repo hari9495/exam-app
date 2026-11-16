@@ -29,6 +29,10 @@ function route() {
     calls.push(`${init?.method ?? 'GET'} ${path}${init?.body ? ` ${String(init.body)}` : ''}`);
     if (path === '/question-bank/questions' && !init?.method) return [ROW];
     if (path === '/question-bank/questions' && init?.method === 'POST') return { id: 'q9' };
+    if (path === '/questions/bulk-upload') return { created: [{ id: 'b1' }, { id: 'b2' }], errors: [{ row: 3, message: 'Mark one option correct.' }] };
+    if (path === '/questions/ai-generate') return { aiJobId: 'j1' };
+    if (path === '/questions/images') return { imageUrl: 'question-images/line.png' };
+    if (path === '/questions/code-languages') return [{ language: 'java', version: '17' }];
     if (path === '/question-bank/settings') return SETTINGS;
     if (path === '/question-bank/reviews') return { changes: [CHANGE], translations: [] };
     if (path === '/question-bank/reviews/r1/approve') return { state: 'approved', version: 1 };
@@ -85,4 +89,32 @@ it('item analysis merges the calibration with the flags, in plain words', async 
   wrap(<YxItemAnalysisPage />);
   expect(await screen.findByText('Weak discrimination')).toBeInTheDocument();
   expect(screen.getByText(/1 of 1 questions have fewer than 200 answers/)).toBeInTheDocument();
+});
+
+// Bank follow-ups (answers 2121, 2126): import and AI drafts from the designed bank; images through the question route.
+it('Import sends the file to the bulk upload (rows land in review) and lists the refused rows', async () => {
+  wrap(<YxQuestionBankPage />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Import' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Import questions' });
+  await userEvent.upload(dialog.querySelector('input[type="file"]') as HTMLInputElement, new File(['x'], 'q.csv', { type: 'text/csv' }));
+  await waitFor(() => expect(calls.some((c) => c.startsWith('POST /questions/bulk-upload'))).toBe(true));
+  expect(await screen.findByText('Row 3: Mark one option correct.')).toBeInTheDocument();
+});
+
+it('Draft with AI posts to the AI route', async () => {
+  wrap(<YxQuestionBankPage />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Draft with AI' }));
+  await screen.findByRole('dialog', { name: 'Draft questions with AI' });
+  await userEvent.type(screen.getByRole('textbox', { name: /About/ }), 'Percentages');
+  await userEvent.click(screen.getByRole('button', { name: 'Draft questions' }));
+  await waitFor(() => expect(calls).toContain('POST /questions/ai-generate {"topic":"Percentages","difficulty":"medium","questionTypes":["single_mcq"],"count":5,"marks":1,"negativeMarks":0,"tagIds":[]}'));
+});
+
+it('a question image is uploaded through the question image route', async () => {
+  (useParams as jest.Mock).mockReturnValue({ id: 'new' });
+  wrap(<YxQuestionEditorPage />);
+  const field = (await screen.findByText('Question image')).closest('.yx-field') as HTMLElement;
+  await userEvent.upload(field.querySelector('input[type="file"]') as HTMLInputElement, new File(['png'], 'line.png', { type: 'image/png' }));
+  await waitFor(() => expect(calls.some((c) => c.startsWith('POST /questions/images'))).toBe(true));
+  expect(await screen.findByText(/Question image: line.png/)).toBeInTheDocument();
 });
