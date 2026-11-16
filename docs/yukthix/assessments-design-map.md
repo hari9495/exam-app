@@ -289,20 +289,25 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 
 | story (sub-page) | verdict | bucket | note |
 |---|---|---|---|
-| OverCap · Over the 10-minute cap: approve extra | design only, feature not built | B | no credit cap and no approval |
+| OverCap · Over the 10-minute cap: approve extra | live (gap) | B | AS-4b: `/yx/hiring/assessments/connectivity`; time above `asmt.time_credit_cap` waits (`connectivity_credits`), approved with a reason. Gap: the face re-check before resuming |
 | WithinCap · Within cap: credited automatically | live (gap) | B | paused time is credited (`Attempt.pausedDurationMs`, `monitoring.service.ts` line 91). Gap: a plain drop without a pause is not credited; no cap (`asmt.time_credit_cap`) |
-| Confirm · Approve extra time confirmation | design only, feature not built | B | as OverCap |
-| Approved · Approved | design only, feature not built | B | as OverCap |
+| Confirm · Approve extra time confirmation | live | B | AS-4b: the confirmation; a reason of 10+ characters first (also a database check) |
+| Approved · Approved | live | B | AS-4b: approved time goes to a running test only; audited |
+| LiveOverCap · Company: over the cap, test running | live | B | AS-4b: the waiting gaps and the decision for the selected one |
+| LiveEnded · Company: test ended, decline only | live | B | AS-4b: an ended test cannot get time back (409) |
+| LiveNothing · Company: nothing waiting | live | B | AS-4b: empty |
 
 #### PRC-11 · Accommodation review queue
 
 | story (sub-page) | verdict | bucket | note |
 |---|---|---|---|
-| Review · Review a request | live (gap) | B | staff set extra time per invitation (`POST /invitations/:id/accommodation`, `extraTimePercent`). Gap: no request from the candidate, evidence or decision record |
-| Queue · Queue | design only, feature not built | B | no requests |
+| Review · Review a request | live | B | AS-4b: `/yx/hiring/assessments/accommodations`, decided item by item; approved extra time becomes the invitation's; the evidence opens through an audited link. "Ask for more information" is not built (2203) |
+| Queue · Queue | live | B | AS-4b: waiting and decided tabs (`GET /asmt/accommodations`) |
 | HrLd · HR / L&D (employee test-takers) | design only, feature not built | B | no employee test-takers |
 | Empty · Empty | design only, feature not built | B | as Queue |
 | Loading · Loading | design only, feature not built | B | as Queue |
+| LiveWaiting · Company: requests waiting | live | B | AS-4b |
+| LiveDecided · Company: decided | live | B | AS-4b |
 
 #### PRC-29 · Campus drive kit
 
@@ -442,19 +447,24 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 
 | story (sub-page) | verdict | bucket | note |
 |---|---|---|---|
-| Issues · System check: fails with fix steps | live (gap) | B | `/welcome` checks camera (`CameraPreview`), screen share and Safe Exam Browser. Gap: no check rows with fix steps; browser, network and microphone not checked |
-| Running · System check running | live (gap) | B | as above |
+| Issues · System check: fails with fix steps | live (gap) | B | AS-4b: `/readiness` checks camera, displays, screen sharing, Safe Exam Browser, network delay and the device in the browser, with fix steps. Gap: microphone, bandwidth and blocked apps (a browser cannot see them) |
+| Running · System check running | live | B | AS-4b: the rows show while the checks run |
 | Passed · All passed: practice test | live (gap) | B | `PracticeStep` (an ungraded practice question before consent). Gap: not a full practice test |
 | SecureClient · Secure Client install and self-test | live (gap) | B | `Exam.lockdownRequired`, `GET /attempt/seb-config` (Safe Exam Browser). Gap: the self-test |
 | Phone · System check · phone | phone view, mobile app not built | B | |
+| LiveChecks · Your computer: one problem blocks the start | live | B | AS-4b: `/readiness` |
+| LiveRunning · Your computer: checking | live | B | AS-4b |
 
 #### PRC-23 · Accommodation request
 
 | story (sub-page) | verdict | bucket | note |
 |---|---|---|---|
-| Form · Request with evidence upload | design only, feature not built | B | candidates cannot ask; staff set extra time |
-| Submitted · Submitted | design only, feature not built | B | as above |
+| Form · Request with evidence upload | live | B | AS-4b: `/accommodation` (`POST /attempt/accommodation`), evidence PDF, JPG or PNG up to 10 MB checked by its first bytes |
+| Submitted · Submitted | live | B | AS-4b: one open request; the decision and message show on the same page |
 | Employee · Employee: HR / L&D decides | design only, feature not built | B | no employee test-takers |
+| LiveAsk · Candidate: ask with evidence | live | B | AS-4b |
+| LiveWaiting · Candidate: request waiting | live | B | AS-4b |
+| LiveApproved · Candidate: approved for you | live | B | AS-4b (answer 2164) |
 
 #### PRC-24 · Consent and what we record
 
@@ -463,7 +473,7 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 | Default · Default | live (gap) | B | the consent step on `/welcome` (`Attempt.consentAt`). Gap: "what we record" by mode and the retention days |
 | Minor · Under 18: guardian consent | design only, feature not built | B | no guardian consent |
 | NoFaceDetection · No face detection | live (gap) | B | with face checks off the step skips enrolment |
-| Declined · Declined: manual path offered | live (gap) | B | `FaceEnrolmentStep` decline per `faceEnrolmentPolicy`; a declined consent clears the image (`face-retention.service.ts`). Gap: no manual path offered |
+| Declined · Declined: manual path offered | live (gap) | B | AS-4b: on `/welcome`, a candidate who says no (or whose photo fails) under a required photo asks for a manual identity check; once approved they start without the photo. Gap: no video call; the designed consent screen is not on `/welcome` yet (2201) |
 | Phone · Consent · phone | phone view, mobile app not built | B | |
 
 #### PRC-25 · ID check, room scan, phone pairing
@@ -495,6 +505,10 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 | AiAllowed · AI-allowed test: logged assistant | design only, feature not built | B | no AI-allowed tests |
 | Finish · Finish confirmation | wire design | B | `POST /attempt/submit` |
 | Submitted · Submitted and optional survey | live (gap) | B | `/submitted` (`ResultSummary`). Gap: no after-test survey (`survey` on that page: none) |
+| LiveOfflineStopped · Live · offline past the limit (answers kept on device) | live | B | AS-4a: `asmt.offline_minutes`; answers kept on the device until the server has them |
+| LiveSubmittedSurvey · Live · submitted, survey | live | B | AS-4a: `/submitted` with the optional survey |
+| LiveBreak · Live · on a break | live | B | AS-4a: `POST /attempt/break/start|end`; the timer stops for at most the break's length |
+| LiveReaderApproved · Live · screen-reader mode approved for you | live | B | AS-4b (answer 2164): shown only when approved; `/exam` still uses the older runner (2161) |
 
 #### PRC-27 · Result and appeal
 
@@ -507,6 +521,8 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 | AppealSent · Appeal sent | design only, feature not built | B | as above |
 | WindowClosed · Appeal window closed | design only, feature not built | B | as above |
 | Phone · Result · phone | phone view, mobile app not built | B | |
+| LiveReleased · Live · released | live | B | AS-4a: `/result`, only what the test shows |
+| LiveHeld · Live · held for review | live | B | AS-4a: a held result shows no score |
 
 #### PRC-28 · Privacy centre
 
@@ -945,3 +961,54 @@ Not in the menu: the lead adds it after AS-0 merges. Pages: `/yx/hiring/assessme
 - 2143: show question images in the candidate preview through a short-lived signed link.
 - 2144: keep, the keys decide bank access when assessments.enabled is off.
 - 2145: keep, the daily note follows the person's notification settings.
+
+## AS-4b as built (branch `feat/yukthix-assessments-as4b`, 16 Nov 2026)
+
+Before the test: answers 2011 and 2164. Built on AS-4a (its branch is merged into this one: the runner settings, the
+offline credit and `asmt.time_credit_cap`). Staff pages not in the menu yet (as AS-1): `/yx/hiring/assessments/accommodations`
+and `/connectivity`. Candidate pages `/accommodation` and `/readiness`, linked from `/welcome`.
+
+- **Data:** migration `202617z0000321_asmt_before_test`. `accommodation_requests` (kinds, extra time, the candidate's
+  words, the evidence file, the item-by-item decision and message; one open request per invitation; a decision always
+  says who and when) and `connectivity_credits` (time lost above the cap, one open row per attempt; a decision needs a
+  reason of 10+ characters). Both forced RLS, the company filled from the invitation or attempt by trigger, the app may
+  not delete from them.
+- **PRC-23 / PRC-11 (2011):** the candidate asks before the test (time 25, 50 or 100 %, breaks, screen-reader mode, font or
+  contrast, a separate session, proctoring changes), with an optional PDF, JPG or PNG up to 10 MB checked by its first
+  bytes (that one route takes a larger body). Test writers decide item by item; approved extra time becomes the
+  invitation's (refused once the test has started); two people at once, the second is told. Extra time, screen-reader
+  mode, larger font and the manual identity check apply automatically; breaks, a separate session and proctoring
+  changes are noted for the test owner to arrange (2202). Evaluators and proctors never see the request or evidence.
+- **PRC-24 manual path:** a candidate whose photo is required, who says no or whose photo fails, may ask for a manual
+  identity check; once approved, `/welcome` lets them start without the photo.
+- **PRC-10 (2011):** the AS-4a interceptor now counts a gap once (also guarded on when the attempt was last seen) and
+  records time beyond the cap; a test writer or proctor approves it for a running test (the timer gives it back) or
+  declines it, with a reason. An ended test cannot get time back.
+- **PRC-22:** the candidate's computer checked in the browser for what the test needs (camera, displays, screen sharing,
+  Safe Exam Browser, network delay, device), with fix steps; nothing saved.
+- **2164:** "Approved for you" on `/welcome` and the request page; the designed runner shows "Screen-reader mode, approved
+  for you" only when approved.
+- **Screens:** the designed `AccommodationQueueScreen`, `ConnectivityPanelScreen`, `AccommodationRequestScreen` and
+  `ReadinessCheckScreen` with `live`; stories PRC-10 (3), PRC-11 (2), PRC-22 (2), PRC-23 (3), PRC-26 (1). All four left
+  the design-live guard's list. Measured at 1278 x 635: no blocks touch; every live screen scrolls less than its design.
+- **Tests:** shared accommodation rules (5); runtime interceptor (6); kit `before-test-live` (11); web `readiness` (5),
+  the two staff pages (2), the request page (2), `/welcome` (2 new); e2e `assessments-as4b` (13).
+
+### Questions (from 2201)
+
+2201. **The designed consent and selfie on `/welcome`.** The manual path is on the older welcome page; the designed
+      consent ("what we record", with the company's retention from AS-2) and selfie steps are not switched in yet.
+      *Suggested: switch `/welcome` to the designed steps with AS-4a part 2 (2161), the same way.*
+2202. **Help that is noted, not applied.** Extra or longer breaks, a separate session and proctoring changes are recorded
+      for the test owner but change nothing by themselves. *Suggested: per-invitation breaks and a "no gaze flags"
+      profile next; a separate session waits for slot booking (AS-3).*
+2203. **"Ask for more information".** The design has it; not built (the candidate would need to answer). *Suggested:
+      the decision message covers it for now; add it with candidate notifications.*
+2204. **Telling the candidate.** A decision is shown on the request page and `/welcome`, but no email is sent.
+      *Suggested: an email on each decision, with what was approved.*
+2205. **Face re-check before resuming.** The design asks for one after time above the cap is approved. *Suggested: with
+      the live console (AS-5), which can pause.*
+2206. **Who decides accommodations.** Test writers today (the test owner, answer 2011). *Suggested: keep; an HR / L&D
+      reviewer comes with employee test-takers (2016).*
+2207. **Evidence retention.** Evidence is kept with the invitation. *Suggested: delete it with the recordings, after the
+      company's retention once the request is decided (AS-2's setting).*

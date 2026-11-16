@@ -38,9 +38,14 @@ function attemptBudget(policy: EnrolmentPolicy): number {
 interface Props {
   policy: EnrolmentPolicy;
   onSettled: (payload: FaceEnrolmentPayload) => void;
+  /**
+   * AS-4b (answer 2011, PRC-24): the manual path when the photo is required and the candidate says no or it fails:
+   * ask for a manual identity check instead ('asked' while it is being decided).
+   */
+  manualCheck?: { state: 'none' | 'asked'; onAsk: () => Promise<void> };
 }
 
-export function FaceEnrolmentStep({ policy, onSettled }: Props) {
+export function FaceEnrolmentStep({ policy, onSettled, manualCheck }: Props) {
   const [phase, setPhase] = useState<Phase>('consent');
   const [attempts, setAttempts] = useState(0);
   const [hint, setHint] = useState('Look at the camera and blink.');
@@ -101,9 +106,21 @@ export function FaceEnrolmentStep({ policy, onSettled }: Props) {
     return (
       <div className="rounded-lg border border-candidate-danger-border bg-candidate-danger-bg p-4 text-sm">
         <p className="font-medium text-candidate-danger">We couldn&apos;t take your photo.</p>
-        <p className="mt-1">
-          This exam requires a photo before you can start. Please contact your recruiter.
-        </p>
+        {manualCheck?.state === 'asked' ? (
+          <p className="mt-1">You asked for a manual identity check. You will hear back before your test; your invitation is not used up.</p>
+        ) : manualCheck ? (
+          <>
+            <p className="mt-1">
+              This exam needs a photo check. Instead, you can ask for a manual identity check: a person checks your identity
+              before you start. Your invitation is not used up.
+            </p>
+            <button type="button" className="mt-2 rounded-sm border border-candidate-border bg-white px-3 py-1.5 font-medium" onClick={() => void manualCheck.onAsk()}>
+              Ask for a manual check
+            </button>
+          </>
+        ) : (
+          <p className="mt-1">This exam requires a photo before you can start. Please contact your recruiter.</p>
+        )}
       </div>
     );
   }

@@ -95,7 +95,54 @@ export function CandidatePortalHomeScreen({ state = 'tests', rescheduleCount = 0
 
 export type ReadinessState = 'running' | 'issues' | 'passed' | 'client';
 
-export function ReadinessCheckScreen({ state = 'issues' }: { state?: ReadinessState }) {
+/** AS-4b (PRC-22): the candidate's own computer, checked in the browser before the test (and again at the start). */
+export interface LiveReadiness {
+  testTitle: string;
+  checks: SystemCheck[];
+  running: boolean;
+  onRunAgain: () => void;
+  onBack: () => void;
+}
+
+/** PRC-22; with `live` (AS-4b) the checks run on the candidate's own computer. */
+export function ReadinessCheckScreen(props: { state?: ReadinessState } | { live: LiveReadiness }) {
+  return 'live' in props ? <LiveReadinessScreen live={props.live} /> : <SampleReadiness {...props} />;
+}
+
+function LiveReadinessScreen({ live }: { live: LiveReadiness }) {
+  const blocking = live.checks.filter((c) => c.blocking && c.status === 'fail').length;
+  const passed = live.checks.filter((c) => c.status === 'pass').length;
+  return (
+    <CandidateFrame page="My tests">
+      <Title>Check your computer</Title>
+      <p className="yx-prc-muted">{live.testTitle}. Run this any time before your test; we check again at the start.</p>
+      <div className="yx-prc-split">
+        <SystemCheckList checks={live.checks} onRetry={live.running ? undefined : () => live.onRunAgain()} />
+        <aside className="yx-prc-stack">
+          <Meter value={passed} max={live.checks.length} label="Checks passed" />
+          <div className="yx-prc-row">
+            <Button onClick={live.onBack}>Back to my test</Button>
+            <Button variant="primary" loading={live.running} onClick={live.onRunAgain}>
+              Run the check again
+            </Button>
+          </div>
+        </aside>
+      </div>
+      {!live.running && blocking > 0 && (
+        <InlineAlert tone="danger" title={`${blocking} ${blocking === 1 ? 'problem blocks' : 'problems block'} the start`}>
+          Fix the items marked "Blocks the start". Warnings will not stop you, but the reviewer will see them.
+        </InlineAlert>
+      )}
+      {!live.running && blocking === 0 && (
+        <InlineAlert tone="success" title="Your computer is ready">
+          Nothing here is saved or sent; we check again when you start.
+        </InlineAlert>
+      )}
+    </CandidateFrame>
+  );
+}
+
+function SampleReadiness({ state = 'issues' }: { state?: ReadinessState }) {
   // PRC-22
   const checks: SystemCheck[] =
     state === 'running'

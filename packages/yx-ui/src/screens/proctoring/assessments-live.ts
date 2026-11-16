@@ -26,3 +26,10 @@ export {
 
 // Assessments AS-4a (PRC-26, PRC-27): the designed test runner and result page, live with their `live` prop.
 export { ResultAppealScreen, TestRunnerScreen, type LiveResult, type LiveRunner, type LiveRunnerQuestion } from './candidate';
+
+// Assessments AS-4b (answers 2011, 2164): help before the test, the accommodation queue and connectivity above the cap.
+export { AccommodationQueueScreen, ConnectivityPanelScreen } from './delivery';
+export { AccommodationRequestScreen } from './candidate';
+export { HELP_LABEL, approvedForYou, type AccommodationView, type CandidateHelpView, type ConnectivityView, type HelpKind, type LiveAccommodationQueue, type LiveAccommodationRequest, type LiveConnectivity } from './before-test-live';
+export { ReadinessCheckScreen, type LiveReadiness } from './candidate';
+export type { SystemCheck } from './proctoring-kit';

@@ -7,7 +7,8 @@ import { CandidateButton } from '../components/CandidateButton';
 import { CameraPreview } from '../components/CameraPreview';
 import { PracticeStep } from '../components/PracticeStep';
 import { FaceEnrolmentStep, EnrolmentPolicy, FaceEnrolmentPayload } from '../components/FaceEnrolmentStep';
-import { useAttemptQuery, useFaceEnrolment, useStartAttempt } from '../../../lib/hooks/useAttempt';
+import { useAskForHelp, useAttemptQuery, useCandidateHelp, useFaceEnrolment, useStartAttempt } from '../../../lib/hooks/useAttempt';
+import { approvedForYou } from '@yukthix/ui/assessments';
 import { isAttemptStarted } from '../../../lib/types';
 import { useToast } from '../../../components/ui';
 import { useCandidateAuth } from '../../../lib/candidate-auth-context';
@@ -19,6 +20,9 @@ export default function CandidateWelcomePage() {
   const { data: current, isLoading, isError } = useAttemptQuery();
   const startAttempt = useStartAttempt();
   const faceEnrolment = useFaceEnrolment();
+  // AS-4b (answers 2011, 2164): help asked for before the test, and what was approved.
+  const help = useCandidateHelp();
+  const askForHelp = useAskForHelp();
   const { toast } = useToast();
   const [cameraStatus, setCameraStatus] = useState<'idle' | 'checking' | 'granted' | 'denied'>('idle');
   const [consentChecked, setConsentChecked] = useState(false);
@@ -57,7 +61,12 @@ export default function CandidateWelcomePage() {
   const inSeb = typeof navigator !== 'undefined' && navigator.userAgent.includes('SEB');
   const sebGateActive = proctoring?.lockdownRequired === true && !inSeb;
   const faceVerificationRequired = proctoring?.faceVerificationEnabled === true;
-  const faceGateActive = faceVerificationRequired && faceStatus === 'pending';
+  // AS-4b (PRC-24): an approved manual identity check lets the candidate start without the photo.
+  const approvedHelp = help.data?.approved ?? [];
+  const manualCheckApproved = approvedHelp.includes('identity');
+  const manualCheckAsked = help.data?.request?.status === 'pending' && help.data.request.kinds.includes('identity');
+  const faceGateActive = faceVerificationRequired && faceStatus === 'pending' && !manualCheckApproved;
+  const approvedLine = approvedForYou(approvedHelp, help.data?.extraTimePercent ?? 0);
 
   if (step === 'practice') {
     return (
@@ -152,6 +161,10 @@ export default function CandidateWelcomePage() {
         </p>
         <h1 className="mb-3 font-display text-xl font-bold text-candidate-text">{current.exam.title}</h1>
         <p className="mb-4 text-sm text-candidate-text-secondary">Duration: {current.exam.durationMinutes} minutes</p>
+        {approvedLine ? <p className="mb-4 rounded-md border border-candidate-border p-3 text-sm text-candidate-text-secondary">{approvedLine}.</p> : null}
+        {manualCheckApproved && faceVerificationRequired ? (
+          <p className="mb-4 rounded-md border border-candidate-border p-3 text-sm text-candidate-text-secondary">A manual identity check was approved for you: no photo is needed to start.</p>
+        ) : null}
         {current.sections.length > 0 ? (
           <div className="mb-4 rounded-md border border-candidate-border p-3">
             <h2 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-candidate-text-secondary">What&apos;s In This Exam</h2>
@@ -192,6 +205,20 @@ export default function CandidateWelcomePage() {
               </div>
             ) : null}
 
+            {/* AS-4b (answer 2011, PRC-23): help is asked for before the test; approved changes apply on the day. */}
+            <div className="mb-3 flex items-center justify-between gap-3 rounded-md border border-candidate-border p-3 text-sm text-candidate-text-secondary">
+              <span>Need extra time, screen-reader mode or other help to take this test?</span>
+              <button type="button" className="shrink-0 rounded-sm border border-candidate-border bg-white px-3 py-1.5 font-medium text-candidate-text" onClick={() => router.push('/accommodation')}>
+                Ask for an accommodation
+              </button>
+            </div>
+            {/* AS-4b (PRC-22): check the computer before the test. */}
+            <div className="mb-3 flex items-center justify-between gap-3 rounded-md border border-candidate-border p-3 text-sm text-candidate-text-secondary">
+              <span>Check your camera, displays and connection before you start.</span>
+              <button type="button" className="shrink-0 rounded-sm border border-candidate-border bg-white px-3 py-1.5 font-medium text-candidate-text" onClick={() => router.push('/readiness')}>
+                Check your computer
+              </button>
+            </div>
             <div className="mb-4 rounded-md border border-candidate-border p-3">
               <h2 className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-candidate-text-secondary">
                 <ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -270,6 +297,16 @@ export default function CandidateWelcomePage() {
             ) : faceGateActive ? (
               <FaceEnrolmentStep
                 policy={(proctoring?.faceEnrolmentPolicy as EnrolmentPolicy | undefined) ?? 'retry_then_allow'}
+                manualCheck={{
+                  state: manualCheckAsked ? 'asked' : 'none',
+                  onAsk: async () => {
+                    try {
+                      await askForHelp.mutateAsync({ kinds: ['identity'], extraTimePercent: null, note: null, evidence: null });
+                    } catch (error) {
+                      toast(error instanceof Error ? error.message : "Couldn't send your request. Try again.", 'error');
+                    }
+                  },
+                }}
                 onSettled={(payload) => {
                   setFacePayload(payload);
                   setFaceStatus(payload.status);

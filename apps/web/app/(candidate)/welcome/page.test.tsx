@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useRouter } from 'next/navigation';
-import { useAttemptQuery, useFaceEnrolment, useStartAttempt } from '../../../lib/hooks/useAttempt';
+import { useAskForHelp, useAttemptQuery, useCandidateHelp, useFaceEnrolment, useStartAttempt } from '../../../lib/hooks/useAttempt';
 import { useCandidateAuth } from '../../../lib/candidate-auth-context';
 import CandidateWelcomePage from './page';
 
@@ -10,6 +10,9 @@ jest.mock('../../../lib/hooks/useAttempt', () => ({
   useAttemptQuery: jest.fn(),
   useStartAttempt: jest.fn(),
   useFaceEnrolment: jest.fn(),
+  // AS-4b: help before the test (none asked by default).
+  useCandidateHelp: jest.fn(() => ({ data: { request: null, approved: [], extraTimePercent: 0 } })),
+  useAskForHelp: jest.fn(() => ({ mutateAsync: jest.fn() })),
 }));
 jest.mock('../../../lib/candidate-auth-context', () => ({ useCandidateAuth: jest.fn() }));
 
@@ -48,6 +51,8 @@ describe('CandidateWelcomePage', () => {
     (useRouter as jest.Mock).mockReturnValue({ push });
     (useCandidateAuth as jest.Mock).mockReturnValue({ accessToken: 'token-1', isLoading: false });
     (useFaceEnrolment as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+    (useCandidateHelp as jest.Mock).mockReturnValue({ data: { request: null, approved: [], extraTimePercent: 0 } });
+    (useAskForHelp as jest.Mock).mockReturnValue({ mutateAsync: jest.fn() });
   });
 
   it('shows exam title, duration, instructions, and a monitoring disclosure before start', async () => {
@@ -747,8 +752,40 @@ describe('CandidateWelcomePage', () => {
 
       await userEvent.click(screen.getByRole('button', { name: /don’t agree/i }));
 
-      expect(screen.getByText(/requires a photo before you can start/i)).toBeInTheDocument();
+      // AS-4b (PRC-24): the manual path is offered instead of a dead end; the Start button stays hidden.
+      expect(screen.getByText(/ask for a manual identity check/i)).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Start exam' })).not.toBeInTheDocument();
+    });
+
+    it('AS-4b: asking for a manual check sends it; once asked it says so', async () => {
+      mockFaceExam('require_enrolment');
+      const ask = jest.fn().mockResolvedValue({});
+      (useAskForHelp as jest.Mock).mockReturnValue({ mutateAsync: ask });
+      const { unmount } = render(<CandidateWelcomePage />);
+      await skipPractice();
+      await checkConsent();
+      await userEvent.click(screen.getByRole('button', { name: /don’t agree/i }));
+      await userEvent.click(screen.getByRole('button', { name: 'Ask for a manual check' }));
+      expect(ask).toHaveBeenCalledWith({ kinds: ['identity'], extraTimePercent: null, note: null, evidence: null });
+      unmount();
+      (useCandidateHelp as jest.Mock).mockReturnValue({ data: { request: { kinds: ['identity'], status: 'pending', approvedKinds: [] }, approved: [], extraTimePercent: 0 } });
+      render(<CandidateWelcomePage />);
+      await skipPractice();
+      await checkConsent();
+      await userEvent.click(screen.getByRole('button', { name: /don’t agree/i }));
+      expect(screen.getByText(/You asked for a manual identity check/)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Ask for a manual check' })).not.toBeInTheDocument();
+    });
+
+    it('AS-4b (answer 2164): an approved manual check skips the photo; approved help is shown', async () => {
+      mockFaceExam('require_enrolment');
+      (useCandidateHelp as jest.Mock).mockReturnValue({ data: { request: null, approved: ['identity', 'reader'], extraTimePercent: 0 } });
+      render(<CandidateWelcomePage />);
+      await skipPractice();
+      expect(screen.getByText('Approved for you: Screen-reader mode.')).toBeInTheDocument();
+      await checkConsent();
+      expect(screen.getByText(/A manual identity check was approved for you/)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /don’t agree/i })).not.toBeInTheDocument();
     });
 
     // The enrolment POST runs after start resolves, so startAttempt.isPending is already false
