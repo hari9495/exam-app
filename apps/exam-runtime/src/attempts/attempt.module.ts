@@ -10,6 +10,7 @@ import { ApiInternalClientModule } from '../api-internal-client/api-internal-cli
 import { AttemptController } from './attempt.controller';
 import { AttemptService } from './attempt.service';
 import { DeliveryService } from './delivery.service';
+import { AccommodationService } from './accommodation.service';
 
 @Module({
   imports: [
@@ -25,6 +26,6 @@ import { DeliveryService } from './delivery.service';
     ApiInternalClientModule,
   ],
   controllers: [AttemptController],
-  providers: [AttemptService, DeliveryService],
+  providers: [AttemptService, DeliveryService, AccommodationService],
 })
 export class AttemptModule {}

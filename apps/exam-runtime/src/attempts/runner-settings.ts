@@ -26,3 +26,18 @@ export const HEARTBEAT_GRACE_MS = 45_000;
 export function offlineCreditMs(gapMs: number, capMinutes: number, usedMs: number): number {
   return Math.max(0, Math.min(gapMs - HEARTBEAT_GRACE_MS, capMinutes * 60_000 - usedMs));
 }
+
+/** AS-4b (answer 2011): the part of a gap the cap did not cover (after the grace), which a person may approve. */
+export function overCapMs(gapMs: number, creditedMs: number): number {
+  return Math.max(0, gapMs - HEARTBEAT_GRACE_MS - creditedMs);
+}
+
+/**
+ * AS-4b (PRC-10): adds lost time above the cap to the attempt's open request (one per attempt), or opens one, in one
+ * statement on the open-row index, so two writers at once add both (the company is filled by the database).
+ */
+export async function recordOverCap(tx: Prisma.TransactionClient, attemptId: string, ms: number, now: Date): Promise<void> {
+  await tx.$executeRaw`INSERT INTO "connectivity_credits" ("attempt_id", "lost_ms", "updated_at") VALUES (${attemptId}::uuid, ${ms}, ${now})
+    ON CONFLICT ("attempt_id") WHERE "status" = 'pending'
+    DO UPDATE SET "lost_ms" = "connectivity_credits"."lost_ms" + EXCLUDED."lost_ms", "updated_at" = EXCLUDED."updated_at"`;
+}

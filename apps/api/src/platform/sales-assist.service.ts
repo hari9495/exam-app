@@ -79,6 +79,14 @@ export class SalesAssistService {
    * change the plan, the chat is theirs and about buying). Same queue, reply time and audit as Talk to us; the chat goes
    * with it, masked. Once per chat (also the database's unique index), and one open chat request per company (2135).
    */
+  /** Answer 2146: the company's open sales request (any source), with when YukthiX sales reply; null when none. */
+  async openFor(organizationId: string): Promise<{ dueAt: string } | null> {
+    const open = await this.tenantPrisma.forTenant(PLATFORM, (tx) =>
+      tx.salesAssistRequest.findFirst({ where: { organizationId, status: 'open' }, orderBy: { dueAt: 'asc' }, select: { dueAt: true } }),
+    );
+    return open ? { dueAt: open.dueAt.toISOString() } : null;
+  }
+
   async requestFromChat(
     c: { organizationId: string; userId: string },
     dto: { phone: string; topics: string[]; note?: string },
@@ -92,10 +100,11 @@ export class SalesAssistService {
     const topics = [...new Set(dto.topics)];
     const made = await this.tenantPrisma.forTenant(PLATFORM, async (tx) => {
       if (await tx.salesAssistRequest.findFirst({ where: { conversationId: chat.conversationId }, select: { id: true } })) throw new ConflictException('A sales request was already sent from this chat.');
-      // Answer 2135: one open chat request per company at a time (the lock keeps two chats from both passing).
+      // Answers 2135 and 2146: one open sales request per company at a time, from any source (the lock keeps two chats
+      // from both passing); sales already reply about the open one.
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`sales-chat:${c.organizationId}`}))`;
-      const open = await tx.salesAssistRequest.findFirst({ where: { organizationId: c.organizationId, source: 'assistant', status: 'open' }, select: { dueAt: true } });
-      if (open) throw new ConflictException(`Your company already asked YukthiX sales from a chat. They reply by ${formatIst(open.dueAt)}.`);
+      const open = await tx.salesAssistRequest.findFirst({ where: { organizationId: c.organizationId, status: 'open' }, orderBy: { dueAt: 'asc' }, select: { dueAt: true, source: true } });
+      if (open) throw new ConflictException(`Your company already asked YukthiX sales${open.source === 'assistant' ? ' from a chat' : ''}. They reply by ${formatIst(open.dueAt)}.`);
       const r = await tx.salesAssistRequest.create({
         data: { organizationId: c.organizationId, source: 'assistant', conversationId: chat.conversationId, chat: chat.text.slice(0, 10_000), topics, phone: dto.phone, note: dto.note?.trim() || null, requestedBy: c.userId, requestedByName: known.name.slice(0, 200), employees: known.employees, dueAt: new Date(Date.now() + (await this.replyHours(tx)) * 3_600_000) },
       });

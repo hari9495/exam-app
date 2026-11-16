@@ -325,7 +325,10 @@ export interface NotificationCentreProps {
   onMarkAllRead: () => void;
   /** Called when an item is opened. */
   onOpenItem?: (item: NotificationItem) => void;
-  settingsHref: string;
+  /** Notification settings; omitted where there are none (the YukthiX console, answer 2093). */
+  settingsHref?: string;
+  /** The server's unread count, when the list shows only the latest notices (answer 2093). */
+  unreadCount?: number;
   /** The full inbox (PLT-03), when the app has one. */
   allHref?: string;
   open?: boolean;
@@ -355,9 +358,9 @@ function groupByDay<T extends { at: Date }>(items: T[], now: Date) {
   return groups;
 }
 
-export function NotificationCentre({ items, onMarkAllRead, onOpenItem, settingsHref, allHref, open, defaultOpen = false, onOpenChange, now, loading }: NotificationCentreProps) {
+export function NotificationCentre({ items, onMarkAllRead, onOpenItem, settingsHref, unreadCount, allHref, open, defaultOpen = false, onOpenChange, now, loading }: NotificationCentreProps) {
   const [isOpen, setOpen] = useControllable(open, defaultOpen, onOpenChange);
-  const unread = items.filter((i) => !i.read).length;
+  const unread = unreadCount ?? items.filter((i) => !i.read).length;
   const ref = now ?? new Date();
   const label = unread ? `Notifications, ${unread} unread` : 'Notifications';
 
@@ -444,9 +447,11 @@ export function NotificationCentre({ items, onMarkAllRead, onOpenItem, settingsH
               See all notifications
             </Link>
           )}
-          <Link href={settingsHref} onClick={() => setOpen(false)}>
-            Notification settings
-          </Link>
+          {settingsHref && (
+            <Link href={settingsHref} onClick={() => setOpen(false)}>
+              Notification settings
+            </Link>
+          )}
         </footer>
       </PopoverContent>
     </Popover>

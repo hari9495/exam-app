@@ -7,6 +7,7 @@ import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
 import { ProctoringRetentionService } from '../src/proctoring-retention/proctoring-retention.service';
 import { FaceRetentionService } from '../src/face-enrolment/face-retention.service';
+import { asApproved } from './fixtures/approved-question';
 
 // Assessments AS-2 (founder answers 2007, 2008; Settings 6.5; PRC-04), end to end against the real database:
 //   6.5    the assessments settings key changes the company's test defaults (and nothing else); bad values are refused;
@@ -65,8 +66,8 @@ describe('Assessments AS-2: settings 6.5, proctoring modes, checklist, approval 
       token[who] = (await request(http).post('/api/v1/auth/staff/login').send({ organizationSlug: o.slug, email: `${who}-${run}@as2.test`, password: PASSWORD }).expect(200)).body.accessToken;
     }
     // One approved question per company to put in tests.
-    ids.questionB = (await api('adminB', 'post', '/questions').send({ type: 'single_mcq', text: `Capital of Japan ${run}?`, difficulty: 'easy', marks: 10, options: [{ text: 'Tokyo', isCorrect: true }, { text: 'Osaka', isCorrect: false }] }).expect(201)).body.id;
-    const q = (await api('author', 'post', '/questions').send({ type: 'single_mcq', text: `Capital of India ${run}?`, difficulty: 'easy', marks: 10, options: [{ text: 'New Delhi', isCorrect: true }, { text: 'Mumbai', isCorrect: false }] }).expect(201)).body;
+    ids.questionB = (await asApproved(await api('adminB', 'post', '/questions').send({ type: 'single_mcq', text: `Capital of Japan ${run}?`, difficulty: 'easy', marks: 10, options: [{ text: 'Tokyo', isCorrect: true }, { text: 'Osaka', isCorrect: false }] }).expect(201))).body.id;
+    const q = (await asApproved(await api('author', 'post', '/questions').send({ type: 'single_mcq', text: `Capital of India ${run}?`, difficulty: 'easy', marks: 10, options: [{ text: 'New Delhi', isCorrect: true }, { text: 'Mumbai', isCorrect: false }] }).expect(201))).body;
     ids.question = q.id;
     ids.right = q.options.find((o: { text: string }) => o.text === 'New Delhi').id;
   }, 300_000);

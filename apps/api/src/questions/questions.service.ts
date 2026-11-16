@@ -101,6 +101,11 @@ export class QuestionsService {
     return languages.map((entry) => entry.language);
   }
 
+  /** Answer 2143: a short-lived signed link to a stored question image (the stored value never carries one). */
+  async signedImage(url: string | null | undefined): Promise<string | null> {
+    return url ? ((await this.blobStorage.signIfOurs(url)) as string | null) : null;
+  }
+
   /** `draft`: the question bank's review flow (AS-1) creates it unusable until another person approves it. */
   async create(context: TenantContext, userId: string, dto: CreateQuestionDto, opts: { status?: 'draft' } = {}): Promise<QuestionResponse> {
     const availableLanguages = await this.fetchAvailableLanguagesIfNeeded(dto.type, dto.languageMode);

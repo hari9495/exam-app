@@ -96,11 +96,12 @@ export class AssistantService {
 
   /** Switched on or not, today's questions left, whether the person may raise a YukthiX ticket, and the latest chat. */
   async state(me: Me) {
-    const [limit, granted] = await Promise.all([this.setting('help.assistant.daily_questions'), this.keys(me, [RAISE_KEY, SALES_KEY])]);
+    // Answer 2146: while the company has an open sales request, no new one is offered; the chat says when sales call.
+    const [limit, granted, salesOpen] = await Promise.all([this.setting('help.assistant.daily_questions'), this.keys(me, [RAISE_KEY, SALES_KEY]), this.sales.openFor(me.organizationId)]);
     return this.tenantPrisma.forTenant(ctxOf(me), async (tx) => {
       const used = (await tx.assistantDailyCount.findUnique({ where: { userId_day: { userId: me.userId, day: new Date(`${todayIst()}T00:00:00Z`) } } }))?.questions ?? 0;
       const last = await tx.assistantConversation.findFirst({ where: { organizationId: me.organizationId, userId: me.userId }, orderBy: { lastAt: 'desc' }, include: { messages: { orderBy: { createdAt: 'asc' } } } });
-      return { on: Boolean(this.client), limit, remaining: Math.max(0, limit - used), canRaiseTicket: granted.has(RAISE_KEY), canAskSales: granted.has(SALES_KEY), conversation: last ? await this.view(last) : null };
+      return { on: Boolean(this.client), limit, remaining: Math.max(0, limit - used), canRaiseTicket: granted.has(RAISE_KEY), canAskSales: granted.has(SALES_KEY), salesOpen, conversation: last ? await this.view(last) : null };
     });
   }
 

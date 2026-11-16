@@ -7,6 +7,7 @@ import { AppModule } from '../src/app.module';
 import { PrismaModule } from '@exam-platform/shared';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
+import { asApproved } from './fixtures/approved-question';
 
 describe('Exam Builder Row-Level Security', () => {
   let prisma: PrismaService;
@@ -256,14 +257,14 @@ describe('Exam Builder HTTP flow', () => {
       .expect(201);
     const poolSectionId = poolSectionResponse.body.id;
 
-    const sqlQuestionOne = await request(app.getHttpServer())
+    const sqlQuestionOne = await asApproved(await request(app.getHttpServer())
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
         type: 'true_false', text: 'SQL question one', difficulty: 'medium', marks: 1, tags: ['sql'],
         options: [{ text: 'True', isCorrect: true }, { text: 'False', isCorrect: false }],
       })
-      .expect(201);
+      .expect(201));
     const sqlTagId = sqlQuestionOne.body.tags[0].id;
 
     await request(app.getHttpServer())
@@ -277,14 +278,14 @@ describe('Exam Builder HTTP flow', () => {
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(400);
 
-    await request(app.getHttpServer())
+    await asApproved(await request(app.getHttpServer())
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
         type: 'true_false', text: 'SQL question two', difficulty: 'medium', marks: 1, tags: ['sql'],
         options: [{ text: 'True', isCorrect: true }, { text: 'False', isCorrect: false }],
       })
-      .expect(201);
+      .expect(201));
 
     await request(app.getHttpServer())
       .post(`/api/v1/exams/${poolExamId}/publish`)
@@ -337,24 +338,24 @@ describe('Exam Builder HTTP flow', () => {
       .expect(201);
     const sourceExamId = sourceExamResponse.body.id;
 
-    const dupQuestionCResponse = await request(app.getHttpServer())
+    const dupQuestionCResponse = await asApproved(await request(app.getHttpServer())
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
         type: 'true_false', text: 'Duplicate-flow question C', difficulty: 'easy', marks: 1,
         options: [{ text: 'True', isCorrect: true }, { text: 'False', isCorrect: false }],
       })
-      .expect(201);
+      .expect(201));
     const dupQuestionCId = dupQuestionCResponse.body.id;
 
-    const dupQuestionDResponse = await request(app.getHttpServer())
+    const dupQuestionDResponse = await asApproved(await request(app.getHttpServer())
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
         type: 'true_false', text: 'Duplicate-flow question D', difficulty: 'easy', marks: 1,
         options: [{ text: 'True', isCorrect: true }, { text: 'False', isCorrect: false }],
       })
-      .expect(201);
+      .expect(201));
     const dupQuestionDId = dupQuestionDResponse.body.id;
 
     const fixedSectionResponse = await request(app.getHttpServer())
@@ -370,14 +371,14 @@ describe('Exam Builder HTTP flow', () => {
       .send({ questionIds: [dupQuestionCId, dupQuestionDId] })
       .expect(200);
 
-    const tagQuestionResponse = await request(app.getHttpServer())
+    const tagQuestionResponse = await asApproved(await request(app.getHttpServer())
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
         type: 'true_false', text: 'Duplicate-flow tag question', difficulty: 'medium', marks: 1, tags: ['clone-tag'],
         options: [{ text: 'True', isCorrect: true }, { text: 'False', isCorrect: false }],
       })
-      .expect(201);
+      .expect(201));
     const cloneTagId = tagQuestionResponse.body.tags[0].id;
 
     const poolSectionResponse = await request(app.getHttpServer())

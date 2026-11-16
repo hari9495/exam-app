@@ -10,6 +10,7 @@ import { SETTINGS } from '../../api/src/org-structure/settings-registry';
 import { RUNNER_SETTINGS } from '../src/attempts/runner-settings';
 import { IntegrityNarrativeClient } from '../src/integrity/integrity-narrative.client';
 import { ProctoringRiskClient } from '../src/proctoring-analysis/proctoring-risk.client';
+import { asApproved } from '../../api/test/fixtures/approved-question';
 
 // Assessments AS-4a (PRC-26, PRC-27), against the real database on a throwaway company: the version each answer saw
 // (answer 2122), answers kept on the device (an older copy never wins), time given back for a lost connection (capped by
@@ -51,7 +52,7 @@ describe('Designed runner (AS-4a)', () => {
     const auth = (r: request.Test) => r.set('Authorization', `Bearer ${recruiter}`);
     examId = (await auth(request(adminHttp).post('/api/v1/exams')).send({ title: 'Runner test', durationMinutes: 60 }).expect(201)).body.id;
     const section = (await auth(request(adminHttp).post(`/api/v1/exams/${examId}/sections`)).send({ title: 'One' }).expect(201)).body.id;
-    const q = (await auth(request(adminHttp).post('/api/v1/questions')).send({ type: 'single_mcq', text: 'Two plus two?', difficulty: 'easy', marks: 1, options: [{ text: '4', isCorrect: true }, { text: '5', isCorrect: false }] }).expect(201)).body;
+    const q = (await asApproved(await auth(request(adminHttp).post('/api/v1/questions')).send({ type: 'single_mcq', text: 'Two plus two?', difficulty: 'easy', marks: 1, options: [{ text: '4', isCorrect: true }, { text: '5', isCorrect: false }] }).expect(201))).body;
     questionId = q.id;
     options.push(...(q.options as { id: string }[]).map((x) => x.id));
     await auth(request(adminHttp).put(`/api/v1/exams/${examId}/sections/${section}/questions`)).send({ questionIds: [questionId] }).expect(200);
@@ -104,6 +105,16 @@ describe('Designed runner (AS-4a)', () => {
     expect(b.clientSavedAt!.getTime()).toBeLessThanOrEqual(Date.now());
     // Negative: a device time that is not a date is refused.
     await as(token, 'post', '/attempt/answer').send({ questionId, selectedOptionIds: [options[0]], clientSavedAt: 'yesterday' }).expect(400);
+  });
+
+  // AS-4a part 2 (answer 2161): the writer's alt text (2126) reaches the runner, matched to options by their written order
+  // even though the options are shown shuffled; a blank alt is sent as none.
+  it('sends the question and option alt text the writer gave', async () => {
+    await org((tx) => tx.question.update({ where: { id: questionId }, data: { imageAlt: 'A sum written on a board', optionAlts: ['The number four', '  '] } }));
+    const { token } = await startCandidate('alt');
+    const q = (await as(token, 'get', '/attempt/current').expect(200)).body.sections[0].questions[0] as { imageAlt: string | null; options: { id: string; imageAlt: string | null }[] };
+    expect(q.imageAlt).toBe('A sum written on a board');
+    expect(Object.fromEntries(q.options.map((o) => [o.id, o.imageAlt]))).toEqual({ [options[0]!]: 'The number four', [options[1]!]: null });
   });
 
   it('a lost connection: the time is given back before the request is handled, up to the company cap', async () => {

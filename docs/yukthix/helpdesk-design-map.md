@@ -2298,3 +2298,9 @@ Queued: 2112, 2113, 2116 (small follow-up slice).
       one is open.*
 2147. **Two console links to one review.** Feature-request deciders see the review on both pages. *Suggested: keep the
       tab for them; the link is for writers.*
+
+**2146 as built (branch `feat/yukthix-bank-fu2`):** while the company has an open sales request (from any chat or Talk to
+us), Ask YukthiX offers no "Send a sales request" on a buying question and says when sales call ("They call you by …");
+the API also refuses a second request from another chat while one is open. Merged with 2135: one transaction lock and one
+check covering any source ("… asked YukthiX sales from a chat. They reply by …" when the open one came from a chat). Tests: kit `ask-yukthix` (1 new), e2e
+`ask-followups` (the open request shown, a second chat refused, another company unaffected).

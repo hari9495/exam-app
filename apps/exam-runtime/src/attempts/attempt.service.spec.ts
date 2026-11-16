@@ -509,8 +509,8 @@ describe('AttemptService', () => {
             questions: [{
               id: 'q1', text: 'What is 2+2?', type: 'single_mcq', marks: 5,
               languageMode: 'fixed', allowedLanguages: [],
-              starterCode: null, allowStdin: false, snippetCode: null, snippetLanguage: null, imageUrl: null,
-              options: [{ id: 'opt-a', text: '4', imageUrl: null }, { id: 'opt-b', text: '5', imageUrl: null }],
+              starterCode: null, allowStdin: false, snippetCode: null, snippetLanguage: null, imageUrl: null, imageAlt: null,
+              options: [{ id: 'opt-a', text: '4', imageUrl: null, imageAlt: null }, { id: 'opt-b', text: '5', imageUrl: null, imageAlt: null }],
             }],
           },
         ],
@@ -563,7 +563,7 @@ describe('AttemptService', () => {
         id: 'code-q1', text: 'Reverse a string', type: 'code', marks: 10,
         languageMode: 'fixed', allowedLanguages: ['python', 'java'],
         starterCode: 'def reverse(s):\n    pass', allowStdin: true,
-        snippetCode: null, snippetLanguage: null, imageUrl: null,
+        snippetCode: null, snippetLanguage: null, imageUrl: null, imageAlt: null,
         options: [],
       });
     });
@@ -643,10 +643,10 @@ describe('AttemptService', () => {
       expect((result as any).sections[0].questions[0]).toEqual({
         id: 'mcq-q1', text: 'What does this code print?', type: 'single_mcq', marks: 5,
         languageMode: 'fixed', allowedLanguages: [], starterCode: null, allowStdin: false,
-        snippetCode: 'x = [1, 2, 3]\nprint(x[::-1])', snippetLanguage: 'python', imageUrl: 'http://localhost:3001/uploads/question-images/stem.png',
+        snippetCode: 'x = [1, 2, 3]\nprint(x[::-1])', snippetLanguage: 'python', imageUrl: 'http://localhost:3001/uploads/question-images/stem.png', imageAlt: null,
         options: [
-          { id: 'opt-a', text: '[3, 2, 1]', imageUrl: 'http://localhost:3001/uploads/question-images/opt-a.png' },
-          { id: 'opt-b', text: '[1, 2, 3]', imageUrl: null },
+          { id: 'opt-a', text: '[3, 2, 1]', imageUrl: 'http://localhost:3001/uploads/question-images/opt-a.png', imageAlt: null },
+          { id: 'opt-b', text: '[1, 2, 3]', imageUrl: null, imageAlt: null },
         ],
       });
     });
@@ -678,7 +678,7 @@ describe('AttemptService', () => {
 
       const result = await service.getCurrent(session);
 
-      expect((result as any).sections[0].questions[0].options).toEqual([{ id: 'opt-b', text: '5' }, { id: 'opt-a', text: '4' }]);
+      expect((result as any).sections[0].questions[0].options).toEqual([{ id: 'opt-b', text: '5', imageAlt: null }, { id: 'opt-a', text: '4', imageAlt: null }]);
     });
 
     it('returns unread messages and marks them read', async () => {

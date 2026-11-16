@@ -7,6 +7,7 @@ import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
 import { PistonClient } from '../../exam-runtime/src/code-execution/piston-client';
+import { asApproved } from './fixtures/approved-question';
 
 describe('Code Run Execution HTTP flow', () => {
   let adminApp: INestApplication;
@@ -75,7 +76,7 @@ describe('Code Run Execution HTTP flow', () => {
       .send({ title: 'Section One' })
       .expect(201);
 
-    const codeQuestionResponse = await request(adminHttp)
+    const codeQuestionResponse = await asApproved(await request(adminHttp)
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
@@ -88,10 +89,10 @@ describe('Code Run Execution HTTP flow', () => {
         starterCode: 'print("hi")',
         options: [],
       })
-      .expect(201);
+      .expect(201));
     codeQuestionId = codeQuestionResponse.body.id;
 
-    const multiLangCodeQuestionResponse = await request(adminHttp)
+    const multiLangCodeQuestionResponse = await asApproved(await request(adminHttp)
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
@@ -103,10 +104,10 @@ describe('Code Run Execution HTTP flow', () => {
         allowedLanguages: ['python', 'javascript'],
         options: [],
       })
-      .expect(201);
+      .expect(201));
     multiLangCodeQuestionId = multiLangCodeQuestionResponse.body.id;
 
-    const anyModeCodeQuestionResponse = await request(adminHttp)
+    const anyModeCodeQuestionResponse = await asApproved(await request(adminHttp)
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
@@ -117,17 +118,17 @@ describe('Code Run Execution HTTP flow', () => {
         languageMode: 'any',
         options: [],
       })
-      .expect(201);
+      .expect(201));
     anyModeCodeQuestionId = anyModeCodeQuestionResponse.body.id;
 
-    const singleMcqResponse = await request(adminHttp)
+    const singleMcqResponse = await asApproved(await request(adminHttp)
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
         type: 'single_mcq', text: 'What is 2+2?', difficulty: 'easy', marks: 5,
         options: [{ text: '4', isCorrect: true }, { text: '5', isCorrect: false }],
       })
-      .expect(201);
+      .expect(201));
     singleMcqId = singleMcqResponse.body.id;
 
     await request(adminHttp)

@@ -26,6 +26,7 @@ import { CameraFrame, IdCapture, QrPlaceholder } from './proctoring-kit';
 import { planWaves, slotState, timeCredit } from './proctoring-logic';
 import { LiveCampusKitScreen, LiveCoordinatorPortalScreen, LiveInvitationsScreen, type LiveCampusKit, type LiveCoordinator, type LiveInvitations } from './delivery-live';
 import { DRIVES, NAMES, WEEK_DAYS, d, type AccommodationRow, type DriveRow, type InvitationRow, type SlotData } from './proctoring-data';
+import { LiveAccommodationQueueScreen, LiveConnectivityPanelScreen, type LiveAccommodationQueue, type LiveConnectivity } from './before-test-live';
 
 const opt = (xs: string[]) => xs.map((x) => ({ value: x, label: x }));
 const fmtSlot = (x: Date | null) => (x ? `${formatDate(x)}, ${x.getHours() > 12 ? x.getHours() - 12 : x.getHours()}:00 ${x.getHours() >= 12 ? 'pm' : 'am'} IST` : 'Not booked');
@@ -368,7 +369,12 @@ export function CapacityPlannerScreen({ expected = 3600, perWave = 1200, approve
 /* PRC-10 · Connectivity panel per attempt                             */
 /* ================================================================== */
 
-export function ConnectivityPanelScreen({ lostSeconds = 820, approved = false, confirmOpen = false }: { lostSeconds?: number; approved?: boolean; confirmOpen?: boolean }) {
+/** PRC-10; with `live` (AS-4b, answer 2011) the company's time lost above the cap, waiting for a person. */
+export function ConnectivityPanelScreen(props: { lostSeconds?: number; approved?: boolean; confirmOpen?: boolean } | { live: LiveConnectivity }) {
+  return 'live' in props ? <LiveConnectivityPanelScreen live={props.live} /> : <SampleConnectivityPanel {...props} />;
+}
+
+function SampleConnectivityPanel({ lostSeconds = 820, approved = false, confirmOpen = false }: { lostSeconds?: number; approved?: boolean; confirmOpen?: boolean }) {
   // PRC-10
   const c = timeCredit(lostSeconds);
   const [reason, setReason] = useState('');
@@ -431,7 +437,12 @@ export function ConnectivityPanelScreen({ lostSeconds = 820, approved = false, c
 /* PRC-11 · Accommodation review queue                                 */
 /* ================================================================== */
 
-export function AccommodationQueueScreen({ rows, state = 'ready', defaultOpenId = 'ACC-202', persona = 'Reviewer' }: { rows: AccommodationRow[]; state?: ViewState; defaultOpenId?: string | null; persona?: 'Reviewer' | 'HR / L&D' }) {
+/** PRC-11; with `live` (AS-4b, answer 2011) the company's requests, decided item by item. */
+export function AccommodationQueueScreen(props: { rows: AccommodationRow[]; state?: ViewState; defaultOpenId?: string | null; persona?: 'Reviewer' | 'HR / L&D' } | { live: LiveAccommodationQueue }) {
+  return 'live' in props ? <LiveAccommodationQueueScreen live={props.live} /> : <SampleAccommodationQueue {...props} />;
+}
+
+function SampleAccommodationQueue({ rows, state = 'ready', defaultOpenId = 'ACC-202', persona = 'Reviewer' }: { rows: AccommodationRow[]; state?: ViewState; defaultOpenId?: string | null; persona?: 'Reviewer' | 'HR / L&D' }) {
   // PRC-11
   const [openId, setOpenId] = useState(defaultOpenId);
   const open = rows.find((r) => r.id === openId);

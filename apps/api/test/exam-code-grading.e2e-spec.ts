@@ -8,6 +8,7 @@ import { TenantPrismaService } from '@exam-platform/shared';
 import { markSteppedUp } from './fixtures/step-up';
 import { EmailService } from '../src/email/email.service';
 import { PistonClient } from '../../exam-runtime/src/code-execution/piston-client';
+import { asApproved } from './fixtures/approved-question';
 
 describe('Exam code-grading HTTP flow', () => {
   let adminApp: INestApplication;
@@ -71,7 +72,7 @@ describe('Exam code-grading HTTP flow', () => {
       .send({ title: 'Section One' })
       .expect(201);
 
-    const questionResponse = await request(adminHttp)
+    const questionResponse = await asApproved(await request(adminHttp)
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
@@ -84,7 +85,7 @@ describe('Exam code-grading HTTP flow', () => {
         starterCode: 'function reverse(str) {\n  \n}',
         options: [],
       })
-      .expect(201);
+      .expect(201));
     codeQuestionId = questionResponse.body.id;
 
     await request(adminHttp)

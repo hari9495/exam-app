@@ -21956,6 +21956,26 @@
     "note": "Positive and negative. Answer 1992 (as 1913 for maintenance)."
   },
   {
+    "id": "MT-ASMT-BANK2",
+    "area": "Question bank round 2: answers 2141-2143, 2146 (16 Nov 2026)",
+    "screen": "Hire › Question bank; the older Questions page; Tests; Help › Ask YukthiX",
+    "url": "http://localhost:3000/yx/hiring/assessments/questions",
+    "account": "Two bank writers (a writer and a reviewer); a System Admin with Plan & add-ons for step 6.",
+    "steps": [
+      "On the older Questions page, add a question; open the question bank.",
+      "Negative: on the older page press Publish on that new question.",
+      "Negative: add that question to a test section.",
+      "Submit it in the bank; the second person approves it; add it to the section and publish the test.",
+      "Open a question with an image in the bank editor; look at Candidate preview.",
+      "In Ask YukthiX ask about buying the Pro plan; Send a sales request; then in a new chat ask about buying again."
+    ],
+    "expected": "Step 1: it shows as a draft in the bank. Step 2: refused: another person approves it in the question bank. Step 3: refused: not approved. Step 4: the test publishes. Step 5: the image shows with its alt text. Step 6: the second chat has no Send a sales request and says when sales call.",
+    "stories": [
+      "PreviewWithImage"
+    ],
+    "note": "Positive and negative."
+  },
+  {
     "id": "MT-HLP-RULE-LOCK",
     "area": "Desk automation: rule lock (16 Nov 2026)",
     "screen": "Desk set-up › Automation (rules)",
@@ -22184,5 +22204,101 @@
       "Screens/Proctoring/PRC-29 · Campus drive kit"
     ],
     "note": "Positive and negative. Answer 2014."
+  },
+  {
+    "id": "MT-ASMT-RUN2",
+    "area": "Designed test runner and welcome steps: answers 2161, 2162, 2201 (16 Nov 2026)",
+    "screen": "Candidate › Welcome (consent, selfie, start) and the test",
+    "url": "http://localhost:3000/start",
+    "account": "Candidate invitations to a throwaway test with two sections (the second asks for any 2 of 3), one question with a picture and a code snippet, a calculator set to scientific and one break; one invitation with the photo required, one with it optional.",
+    "steps": [
+      "Open the invitation (photo optional); skip practice; read What we record and why.",
+      "Negative: tick only the apps-closed statement; try Agree and continue.",
+      "Tick the recording consent and the statement but not face checks; Agree and continue; Enable camera; Start exam.",
+      "Answer the first question; mark the second for review; open the second section; read the line above the question.",
+      "Open the question with a picture and code snippet; open Calculator; work out 2 xʸ 10 and sin 30.",
+      "Press Finish test; read the section note; press Go through the unanswered questions; use Next unanswered and Show all questions.",
+      "Make the window narrow (phone width); press the Question n of m button; choose another question.",
+      "Take a break; wait; End break and continue.",
+      "Negative: turn off Wi-Fi; answer a question; turn it back on.",
+      "Finish test and confirm.",
+      "Negative: open the photo-required invitation; Say no and see my options; Ask for a manual identity check.",
+      "Open it again with consent to face checks; follow the selfie step."
+    ],
+    "expected": "Step 1: camera, screen, browser and code-editor activity and the photo check with On/Off, and the company's days of keeping. Step 2: Agree and continue stays off. Step 3: no selfie step; the start card; the test opens in the designed runner. Step 4: section chips (one says any 2 of 3); 'Section 2 of 2: … · answer any 2 of 3'. Step 5: the picture with its alt text, the snippet in a code box; the Scientific calculator shows 1024 and 0.5. Step 6: Finish lists the section against 2; the banner steps through only unanswered ones. Step 7: the question list opens and closes on a choice. Step 8: the break screen counts down; the timer does not run. Step 9: the banner says the answers are kept on this device; they are sent when back. Step 10: Test submitted with the survey. Step 11: the manual check is offered, then 'You asked for a manual identity check'. Step 12: the camera with 'Look at the camera and blink' and Try 1 of 3.",
+    "stories": [
+      "ReviewUnanswered",
+      "AnswerAnyN",
+      "AnswerAnyNFinish",
+      "PhoneQuestionList",
+      "PicturesAndCode",
+      "ScientificCalculator",
+      "LivePhotoOptional",
+      "LiveRequiredDeclined",
+      "LiveSelfieTryFailed"
+    ],
+    "note": "Positive and negative. Proctoring pauses and the start card are still the older design (questions 2231, 2232)."
+  },
+  {
+    "id": "MT-ASMT-HELP1",
+    "area": "Assessments AS-4b (16 Nov 2026)",
+    "screen": "Candidate › Ask for an accommodation; Hire › Assessments › Accommodation requests",
+    "url": "http://localhost:3000/accommodation",
+    "account": "A candidate with an invitation (not started); a test writer (asmt.test.manage); an evaluator (asmt.evaluate); another company's admin.",
+    "steps": [
+      "As the candidate: open the test link, then Ask for an accommodation. Press Send request with nothing chosen.",
+      "Choose Extra time (25 %) and Screen-reader mode, attach a PDF, send.",
+      "Try to send another request.",
+      "As the writer: open /yx/hiring/assessments/accommodations, open the request, View the document.",
+      "Change the extra time to 50 % and Approve all.",
+      "As the candidate: reload the welcome page and the request page.",
+      "Rename a text file to .pdf and send it as evidence on another invitation.",
+      "As the evaluator and as the other company's admin: open the accommodations page."
+    ],
+    "expected": "Step 1: 'Choose what you need.'; nothing sent. Step 2: 'Request sent' toast; the page says it is waiting. Step 3: refused, earlier request still being decided. Step 4: the document opens; the audit log has accommodation.evidence_viewed. Step 5: toast; the invitation's extra time is 50 %. Step 6: 'Approved for you: 50 % extra time, Screen-reader mode'. Step 7: refused, send a PDF, JPG or PNG. Step 8: refused (evaluator) or nothing listed (other company).",
+    "stories": [
+      "Screens/Proctoring/PRC-23 · Accommodation request",
+      "Screens/Proctoring/PRC-11 · Accommodation review queue"
+    ],
+    "note": "Positive and negative. Answers 2011, 2164."
+  },
+  {
+    "id": "MT-ASMT-HELP2",
+    "area": "Assessments AS-4b (16 Nov 2026)",
+    "screen": "Hire › Assessments › Connectivity; Candidate › welcome (manual check), Check your computer",
+    "url": "http://localhost:3000/yx/hiring/assessments/connectivity",
+    "account": "A candidate on a test with face checks required; a proctor (asmt.proctor); a test writer.",
+    "steps": [
+      "Start a test as the candidate, switch the Wi-Fi off for 15 minutes, switch it back on.",
+      "As the proctor: open Connectivity; press Approve extra time with an empty reason, then with a reason of 10+ characters and confirm.",
+      "Lose the connection again for 13 minutes, submit the test, and as the writer try to approve the new gap; then decline it with a reason.",
+      "On another invitation with a required photo: say no to the photo, then Ask for a manual check.",
+      "As the writer approve the manual identity check; the candidate reloads the welcome page.",
+      "As the candidate: Check your computer, with a second display plugged in, then unplugged."
+    ],
+    "expected": "Step 1: about 10 minutes are given back automatically; the rest waits. Step 2: the reason is asked for; then toast, the timer gains the time; audited. Step 3: approving is refused (the test has ended); declining works. Step 4: 'You asked for a manual identity check'. Step 5: 'no photo is needed to start'; Start shows without the photo step. Step 6: Displays blocks the start with fix steps; then passes.",
+    "stories": [
+      "Screens/Proctoring/PRC-10 · Connectivity panel",
+      "Screens/Proctoring/PRC-22 · Readiness check and practice"
+    ],
+    "note": "Positive and negative. Answer 2011."
+  },
+  {
+    "id": "MT-SET-2093",
+    "area": "Settings 2093: staff notices in the console (16 Nov 2026)",
+    "screen": "Console header bell",
+    "url": "http://localhost:3000/staff/companies",
+    "account": "Two YukthiX staff with security keys, both holding the incidents key; a throwaway company contained for a suspected breach (MT-SET-FU2).",
+    "steps": [
+      "As staff 1, wait for the Board reminder (or ask the lead to run the sweep); open the bell.",
+      "Open the notice.",
+      "As staff 2, open the bell.",
+      "Negative: as a company admin, open /staff/companies."
+    ],
+    "expected": "Step 1: the bell shows the unread count and 'Tell the Data Protection Board now: <company>'. Step 2: it opens Incidents and the count drops by one. Step 3: staff 2 has their own copy, still unread. Step 4: refused (YukthiX staff only).",
+    "stories": [
+      "ConsoleNotices"
+    ],
+    "note": "Positive and negative. The removal notice needs a kept group past its day: covered by the API tests."
   }
 ]

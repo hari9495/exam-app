@@ -1,19 +1,19 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { IdentityCheckScreen, type ManualIdentityCheck } from '@yukthix/ui/assessments';
 import { assessFaceQuality } from '../../../lib/face-quality';
 import { createBlinkChallenge } from '../../../lib/face-liveness';
 import { MEDIAPIPE_WASM_URL, FACE_LANDMARKER_MODEL_URL } from '../../../lib/hooks/useWebcamMonitor';
 
 export type EnrolmentPolicy = 'allow_unenrolled' | 'retry_then_allow' | 'require_enrolment';
-type Phase = 'consent' | 'capture' | 'blocked';
+type Phase = 'capture' | 'blocked';
 
 // What the exam-runtime's POST /attempt/face-enrolment body looks like. This step BUILDS it and
 // hands it up; it deliberately does not send it. The row is keyed on the attempt, and this step
-// renders on the welcome page IN PLACE OF the Start button -- so at this moment there is no
-// attempt to key it to and the POST could only ever 400. The welcome page holds the payload and
-// sends it the instant /attempt/start returns. Consent is still given before anything is
-// captured; only the moment of recording moves, by a few seconds.
+// renders on the welcome page before the Start button -- so at this moment there is no attempt
+// to key it to and the POST could only ever 400. The welcome page holds the payload and sends it
+// the instant /attempt/start returns.
 export interface FaceEnrolmentPayload {
   status: 'enrolled' | 'not_verified';
   snapshot?: string;
@@ -27,10 +27,9 @@ const MAX_ATTEMPTS = 3;
 // resolve in about a minute. Exported so the test asserts against the same budget.
 export const ATTEMPT_TIMEOUT_MS = 20_000;
 
-// allow_unenrolled and retry_then_allow are separate dropdown options and must not behave
-// identically: "allow unenrolled" means don't labour the point -- the first failure settles.
-// retry_then_allow spends all three attempts before giving up. require_enrolment retries too,
-// and blocks instead of settling.
+// allow_unenrolled and retry_then_allow are separate options and must not behave identically:
+// "allow unenrolled" means don't labour the point -- the first failure settles. retry_then_allow
+// spends all three attempts before giving up. require_enrolment retries too, and blocks instead.
 function attemptBudget(policy: EnrolmentPolicy): number {
   return policy === 'allow_unenrolled' ? 1 : MAX_ATTEMPTS;
 }
@@ -38,37 +37,27 @@ function attemptBudget(policy: EnrolmentPolicy): number {
 interface Props {
   policy: EnrolmentPolicy;
   onSettled: (payload: FaceEnrolmentPayload) => void;
-  /** AS-2 (answer 2008): the company's retention, shown before consent. */
-  retentionDays?: number;
+  candidateName: string;
+  companyName: string;
+  /** AS-4b (PRC-24): when the photo is required and cannot be taken, ask for a manual identity check instead. */
+  manualCheck?: ManualIdentityCheck;
 }
 
-export function FaceEnrolmentStep({ policy, onSettled, retentionDays = 30 }: Props) {
-  const [phase, setPhase] = useState<Phase>('consent');
+/**
+ * AS-4a part 2 (answer 2201): the designed selfie step (PRC-25) on the candidate's own camera. Consent was given on the
+ * designed consent step (PRC-24) before this mounts, so nothing is captured without it.
+ */
+export function FaceEnrolmentStep({ policy, onSettled, candidateName, companyName, manualCheck }: Props) {
+  const [phase, setPhase] = useState<Phase>('capture');
   const [attempts, setAttempts] = useState(0);
   const [hint, setHint] = useState('Look at the camera and blink.');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const maxAttempts = attemptBudget(policy);
 
-  function handleDecline() {
-    if (policy === 'require_enrolment') {
-      setPhase('blocked');
-      return;
-    }
-    // A refusal is still a fact about this candidate. The server records it as not_verified with
-    // no image and no consent moment, so a decline never reads as an exam that simply had the
-    // feature switched off.
-    onSettled({ status: 'not_verified', consentGiven: false });
-  }
-
   // Called once the blink challenge is satisfied AND the quality gate passes.
   const handleCaptured = useCallback(
     (snapshot: string, metrics: unknown) => {
-      onSettled({
-        status: 'enrolled',
-        snapshot,
-        qualityJson: JSON.stringify(metrics),
-        consentGiven: true,
-      });
+      onSettled({ status: 'enrolled', snapshot, qualityJson: JSON.stringify(metrics), consentGiven: true });
     },
     [onSettled],
   );
@@ -99,59 +88,20 @@ export function FaceEnrolmentStep({ policy, onSettled, retentionDays = 30 }: Pro
     onFailed: handleAttemptFailed,
   });
 
-  if (phase === 'blocked') {
-    return (
-      <div className="rounded-lg border border-candidate-danger-border bg-candidate-danger-bg p-4 text-sm">
-        <p className="font-medium text-candidate-danger">We couldn&apos;t take your photo.</p>
-        <p className="mt-1">
-          This exam requires a photo before you can start. Please contact your recruiter.
-        </p>
-      </div>
-    );
-  }
-
-  if (phase === 'consent') {
-    return (
-      <div className="rounded-lg border border-candidate-border p-4 text-sm">
-        <h3 className="mb-2 font-display font-medium">Photo check before you start</h3>
-        <p>
-          We&apos;ll take a photo of your face and use it only to check that it&apos;s still you
-          during this exam. It&apos;s kept for {retentionDays} days (longer only while a review of your
-          result is open) and deleted when your data is deleted.
-        </p>
-        {policy === 'require_enrolment' ? (
-          <p className="mt-2 text-candidate-text-faint">
-            This exam requires the photo &mdash; if you don’t agree, you won’t be able to start.
-          </p>
-        ) : null}
-        <div className="mt-3 flex gap-2">
-          <button
-            type="button"
-            className="rounded-sm bg-candidate-primary px-3 py-1.5 text-white"
-            onClick={() => setPhase('capture')}
-          >
-            I agree
-          </button>
-          <button
-            type="button"
-            className="rounded-sm border border-candidate-border px-3 py-1.5"
-            onClick={handleDecline}
-          >
-            I don’t agree
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="rounded-lg border border-candidate-border p-4 text-sm">
-      <video ref={videoRef} autoPlay playsInline muted className="w-full max-w-sm rounded-sm" />
-      <p className="mt-2">{hint}</p>
-      <p className="mt-1 text-xs text-candidate-text-faint">
-        Attempt {Math.min(attempts + 1, maxAttempts)} of {maxAttempts}
-      </p>
-    </div>
+    <IdentityCheckScreen
+      live={{
+        candidateName,
+        companyName,
+        camera: <video ref={videoRef} autoPlay playsInline muted aria-label="Your camera" />,
+        hint,
+        tries: attempts,
+        maxTries: maxAttempts,
+        failed: attempts > 0,
+        blocked: phase === 'blocked',
+        manual: manualCheck ?? null,
+      }}
+    />
   );
 }
 

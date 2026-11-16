@@ -166,3 +166,11 @@ export const ITEM_ROWS: ItemRow[] = [
 export function liveItems(over: Partial<LiveItemAnalysis> = {}): LiveItemAnalysis {
   return { state: 'ready', onRetry: () => undefined, rows: ITEM_ROWS, provisionalAnswers: 200, onLoadItem: () => Promise.resolve(ITEM_STATS), onOpenQuestion: () => undefined, ...over };
 }
+
+/** Answer 2143: a question with an image, its preview link signed (a tiny inline picture stands in for the signed link). */
+export const PREVIEW_IMAGE = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="240" height="80"><rect width="240" height="80" fill="#e8eefc"/><text x="12" y="46" font-size="16">Line chart: sales by month</text></svg>');
+export const BANK_QUESTION_IMAGE: BankQuestion = {
+  ...BANK_QUESTION,
+  content: { ...BANK_QUESTION.content, imageUrl: 'questions/sales-chart.png', imageAlt: 'Line chart of monthly sales, rising from March' },
+  images: { 'questions/sales-chart.png': PREVIEW_IMAGE },
+};

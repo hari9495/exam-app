@@ -14,6 +14,11 @@ import { withNextHere } from '../../../lib/safe-next';
 
 const SECURITY = '/staff/security';
 
+interface StaffNotices {
+  unread: number;
+  items: { id: string; kind: string; title: string; body: string; linkPath: string | null; at: string; read: boolean }[];
+}
+
 // The YukthiX platform console (P14 §7): YukthiX staff only, on their own platform session (never from inside a
 // company), with a security key (P12 Q7). The API checks all of this on every call; this only routes and explains.
 export default function ConsoleLayout({ children }: { children: React.ReactNode }) {
@@ -23,6 +28,14 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
   const me = useCurrentUser();
   const staff = role === 'super_admin' && !actingSuperAdmin;
   const mfa = useQuery<MfaStatus>({ queryKey: ['yx', 'mfa'], queryFn: () => apiFetch('/auth/mfa', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && staff });
+  // Answer 2093: the staff member's own notices (the bell), checked every minute once the security key is there.
+  const notices = useQuery<StaffNotices>({
+    queryKey: ['platform', 'notices'],
+    queryFn: () => apiFetch('/platform/notices', {}, accessToken ?? undefined) as Promise<StaffNotices>,
+    enabled: Boolean(accessToken) && staff && Boolean(mfa.data && mfa.data.factors.length > 0),
+    refetchInterval: 60_000,
+  });
+  const post = (path: string) => apiFetch(path, { method: 'POST' }, accessToken ?? undefined).then(() => notices.refetch());
 
   useEffect(() => {
     if (isLoading) return;
@@ -50,6 +63,19 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
         securityHref={SECURITY}
         onNavigate={(href) => router.push(href)}
         onSignOut={() => void logout().then((to) => router.push(to))}
+        notices={
+          notices.data
+            ? {
+                items: notices.data.items.map((n) => ({ id: n.id, system: true, actor: { name: 'YukthiX' }, text: `${n.title}. ${n.body}`, at: new Date(n.at), read: n.read, href: n.linkPath ?? undefined })),
+                unread: notices.data.unread,
+                onMarkAllRead: () => void post('/platform/notices/read-all'),
+                // The notice's own link opens its page; opening it marks it read.
+                onOpenItem: (it) => {
+                  if (!it.read) void post(`/platform/notices/${encodeURIComponent(it.id)}/read`);
+                },
+              }
+            : undefined
+        }
       >
         <div className="yx-auth__page">
           {actingSuperAdmin ? (

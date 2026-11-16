@@ -119,6 +119,8 @@ export interface BankQuestion {
   } | null;
   history: { id: string; kind: string; state: string; version: number; author: string; reviewer: string | null; secondReviewer: string | null; at: string; note: string | null }[];
   translations: BankTranslation[];
+  /** Answer 2143: short-lived signed links to the stored images, keyed by the stored value (for the candidate preview). */
+  images?: Record<string, string>;
 }
 
 /** /analytics/questions/:id (the older item statistics). */
@@ -1099,11 +1101,24 @@ export function LiveQuestionEditor({ live }: { live: LiveEditor }) {
           <div className="yx-prc-preview" data-device={device}>
             <p className="yx-prc-muted yx-prc-small">Question 1 of 1 · {c.marks} marks</p>
             <p className="yx-prc-p">{previewT ? previewT.text : c.text || 'Your question appears here.'}</p>
+            {/* Answer 2143: the images as candidates see them, through short-lived signed links; one not saved yet says so. */}
+            {c.imageUrl &&
+              (qn?.images?.[c.imageUrl] ? (
+                <img className="yx-prc-preview__img" src={qn.images[c.imageUrl]} alt={c.imageAlt ?? ''} />
+              ) : (
+                <p className="yx-prc-muted yx-prc-small">The image shows here once the question is saved.</p>
+              ))}
             {c.options.length > 0 && (
               <ul className="yx-prc-list">
-                {(previewT ? translationOptions(previewT.options) : c.options.map((o) => o.text)).map((t, i) => (
-                  <li key={i}>{t}</li>
-                ))}
+                {(previewT ? translationOptions(previewT.options) : c.options.map((o) => o.text)).map((t, i) => {
+                  const img = c.options[i]?.imageUrl;
+                  return (
+                    <li key={i}>
+                      {t}
+                      {img && qn?.images?.[img] && <img className="yx-prc-preview__img" src={qn.images[img]} alt={c.optionAlts?.[i] ?? ''} />}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>

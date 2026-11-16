@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
-import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, act, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useRouter } from 'next/navigation';
 import * as useAttemptModule from '../../../lib/hooks/useAttempt';
-import { useAttemptQuery, useAnswerMutation, useSubmitAttempt, useRunCode, useWebcamResume, useAckFaceWarning, useCodeLanguages, useScreenShareState } from '../../../lib/hooks/useAttempt';
+import { useAttemptQuery, useAnswerMutation, useSubmitAttempt, useRunCode, useWebcamResume, useAckFaceWarning, useCodeLanguages, useScreenShareState, useRunnerActions, useCandidateHelp } from '../../../lib/hooks/useAttempt';
 import { useCountdown } from '../../../lib/hooks/useCountdown';
 import { useProctoringMonitor } from '../../../lib/hooks/useProctoringMonitor';
 import { useWebcamMonitor } from '../../../lib/hooks/useWebcamMonitor';
@@ -29,6 +29,8 @@ jest.mock('../../../lib/hooks/useAttempt', () => ({
   useReportProctoringEvent: jest.fn(() => jest.fn()),
   useScreenShareState: jest.fn(),
   useScreenAnalysis: jest.fn(() => ({ mutate: jest.fn() })),
+  useRunnerActions: jest.fn(),
+  useCandidateHelp: jest.fn(),
 }));
 jest.mock('../../../lib/hooks/useScreenCapture', () => ({ useScreenCapture: jest.fn() }));
 jest.mock('../../../lib/client-error-reporter', () => ({ reportClientError: jest.fn() }));
@@ -186,6 +188,12 @@ const twoCodeQuestionsAttemptState = {
   messages: [],
 };
 
+// AS-4a part 2 (answer 2161): /exam renders the designed runner. The Finish confirmation opens from the header.
+async function openFinish() {
+  await userEvent.click(screen.getByRole('button', { name: 'Finish test' }));
+  return screen.getByRole('dialog', { name: 'Finish the test?' });
+}
+
 describe('CandidateExamPage', () => {
   const push = jest.fn();
   const saveAnswer = jest.fn();
@@ -201,7 +209,9 @@ describe('CandidateExamPage', () => {
     runCodeMutate.mockClear();
     (useRouter as jest.Mock).mockReturnValue({ push });
     (useAttemptQuery as jest.Mock).mockReturnValue({ data: attemptState, isError: false });
-    (useAnswerMutation as jest.Mock).mockReturnValue({ saveAnswer, flush });
+    (useAnswerMutation as jest.Mock).mockReturnValue({ saveAnswer, flush, queued: 0, connection: 'online', offlineSince: null });
+    (useRunnerActions as jest.Mock).mockReturnValue({ startBreak: jest.fn().mockResolvedValue({}), endBreak: jest.fn().mockResolvedValue({}), sendSurvey: jest.fn() });
+    (useCandidateHelp as jest.Mock).mockReturnValue({ data: { approved: [] } });
     (useSubmitAttempt as jest.Mock).mockReturnValue({ mutateAsync, isPending: false, isError: false, mutate: jest.fn() });
     (useCountdown as jest.Mock).mockReturnValue(590);
     (useProctoringMonitor as jest.Mock).mockReturnValue(undefined);
@@ -218,26 +228,22 @@ describe('CandidateExamPage', () => {
 
   afterEach(() => jest.useRealTimers());
 
-  it('gives an unselected option hover feedback classes, unlike the selected one', () => {
-    // Default fixture has no answer yet, so select one first via the mocked server state --
-    // both options render unselected otherwise, which would not exercise the distinction.
+  it('shows the saved choice as chosen, and the other option as not', () => {
     (useAttemptQuery as jest.Mock).mockReturnValue({
       data: { ...attemptState, answers: [{ questionId: 'q1', selectedOptionIds: ['o1'], isMarkedForReview: false, answerText: null, codeLanguage: null }] },
       isError: false,
     });
     render(<CandidateExamPage />);
 
-    const selected = screen.getByRole('button', { name: /4/ });
-    const unselected = screen.getByRole('button', { name: /5/ });
-    expect(unselected).toHaveClass('hover:border-candidate-primary/40');
-    expect(selected).not.toHaveClass('hover:border-candidate-primary/40');
+    expect(screen.getByRole('radio', { name: '4' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: '5' })).not.toBeChecked();
   });
 
   it('renders the current question and saves an answer on selection', async () => {
     render(<CandidateExamPage />);
 
     expect(screen.getByText('What is 2 + 2?')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: /4/ }));
+    await userEvent.click(screen.getByRole('radio', { name: '4' }));
 
     // markedForReview resolves to the current (false) review state, not undefined -- the
     // answer DTO expects a boolean, and preserving it is what stops answering from clearing
@@ -251,20 +257,22 @@ describe('CandidateExamPage', () => {
     expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
   });
 
-  it('shows an answered-count progress chip beside the timer', () => {
+  // The designed runner counts answers in the question list beside the question (and in Finish).
+  const answeredCount = () => screen.getByRole('list', { name: 'Summary' }).querySelector('li')!.textContent;
+  it('shows how many questions are answered in the question list', () => {
     render(<CandidateExamPage />);
 
-    expect(screen.getByText('0/1 answered')).toBeInTheDocument();
+    expect(answeredCount()).toBe('Answered 0');
   });
 
-  it('updates the progress chip once a question has an answer', () => {
+  it('counts a question as answered once it has an answer', () => {
     (useAttemptQuery as jest.Mock).mockReturnValue({
       data: { ...attemptState, answers: [{ questionId: 'q1', selectedOptionIds: ['o1'], isMarkedForReview: false, answerText: null, codeLanguage: null }] },
       isError: false,
     });
     render(<CandidateExamPage />);
 
-    expect(screen.getByText('1/1 answered')).toBeInTheDocument();
+    expect(answeredCount()).toBe('Answered 1');
   });
 
   it("tells the candidate how many of the section's questions they must answer", async () => {
@@ -277,7 +285,7 @@ describe('CandidateExamPage', () => {
     expect(await screen.findByText(/answer any 3 of 5/i)).toBeInTheDocument();
   });
 
-  it('counts progress against what is required, not the total question count', async () => {
+  it('counts a section against what it asks for in Finish, not its question count', async () => {
     renderExam({
       sections: [
         { title: 'Coding', targetDurationMinutes: null, requiredCount: 3, questions: [q('q1'), q('q2'), q('q3'), q('q4'), q('q5')] },
@@ -285,12 +293,13 @@ describe('CandidateExamPage', () => {
       answers: [{ questionId: 'q1', selectedOptionIds: ['opt-a'], answerText: null }],
     });
 
-    expect(await screen.findByText('1/3 answered')).toBeInTheDocument();
+    const finish = await openFinish();
+    expect(within(finish).getByText('Some sections need more answers')).toBeInTheDocument();
+    expect(within(finish).getByText('Coding: 1 of 3 answered')).toBeInTheDocument();
   });
 
-  it('caps the progress chip at the requirement even when the candidate answers more than required', async () => {
-    // Best-N means extra answers are allowed, but the chip must never read "4/3" -- that reads
-    // as over 100% done and contradicts the "answer any 3 of 5" banner right above it.
+  it('caps a section at what it asks for in Finish even when more are answered', async () => {
+    // Best-N means extra answers are allowed, but Finish must never read "4 of 3".
     renderExam({
       sections: [
         { title: 'Coding', targetDurationMinutes: null, requiredCount: 3, questions: [q('q1'), q('q2'), q('q3'), q('q4'), q('q5')] },
@@ -303,21 +312,24 @@ describe('CandidateExamPage', () => {
       ],
     });
 
-    expect(await screen.findByText('3/3 answered')).toBeInTheDocument();
-    expect(screen.queryByText('4/3 answered')).not.toBeInTheDocument();
+    const finish = await openFinish();
+    expect(within(finish).getByText('Coding: 3 of 3 answered (your best 3 count)')).toBeInTheDocument();
+    expect(within(finish).queryByText(/4 of 3/)).not.toBeInTheDocument();
   });
 
-  it('leaves progress on the total question count when no section has a requirement', async () => {
+  it('negative: no section note in Finish when no section asks for some of its questions', async () => {
     renderExam({
       sections: [{ title: 'Coding', targetDurationMinutes: null, requiredCount: null, questions: [q('q1'), q('q2')] }],
     });
 
-    expect(await screen.findByText('0/2 answered')).toBeInTheDocument();
+    const finish = await openFinish();
+    expect(within(finish).queryByText(/sections? (need|has)/)).not.toBeInTheDocument();
+    expect(within(finish).getByText('2 unanswered questions')).toBeInTheDocument();
   });
 
   it('toggles mark-for-review', async () => {
     render(<CandidateExamPage />);
-    await userEvent.click(screen.getByRole('button', { name: /Mark for review/ }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Mark for review' }));
     expect(saveAnswer).toHaveBeenCalledWith('q1', [], true);
   });
 
@@ -327,23 +339,21 @@ describe('CandidateExamPage', () => {
   it('flips the mark-for-review label immediately on click, before the server responds', async () => {
     render(<CandidateExamPage />);
 
-    const button = screen.getByRole('button', { name: 'Mark for review' });
-    expect(button).toHaveAttribute('aria-pressed', 'false');
+    const box = screen.getByRole('checkbox', { name: 'Mark for review' });
+    expect(box).not.toBeChecked();
 
-    await userEvent.click(button);
+    await userEvent.click(box);
 
     // useAttemptQuery is a static mock here -- it never returns the marked answer -- so the
-    // only way this reads "Marked for review" is the optimistic local state.
-    expect(screen.getByRole('button', { name: 'Marked for review' })).toHaveAttribute('aria-pressed', 'true');
+    // only way this is checked is the optimistic local state.
+    expect(screen.getByRole('checkbox', { name: 'Mark for review' })).toBeChecked();
   });
 
   it('flushes pending answers and submits on confirm', async () => {
     render(<CandidateExamPage />);
 
-    // With only one question, both the question-card's "Review & Submit" (shown on the
-    // last question) and the sidebar's standalone one render at once — either works.
-    await userEvent.click(screen.getAllByRole('button', { name: 'Review & Submit' })[0]);
-    await userEvent.click(screen.getByRole('button', { name: 'Submit' }));
+    const finish = await openFinish();
+    await userEvent.click(within(finish).getByRole('button', { name: 'Finish test' }));
 
     await waitFor(() => expect(flush).toHaveBeenCalled());
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
@@ -377,22 +387,23 @@ describe('CandidateExamPage', () => {
     });
     render(<CandidateExamPage />);
 
-    await userEvent.click(screen.getAllByRole('button', { name: 'Review & Submit' })[0]);
-    await userEvent.click(screen.getByRole('button', { name: /Review the 2 unanswered questions/ }));
+    const finish = await openFinish();
+    await userEvent.click(within(finish).getByRole('button', { name: 'Go through the 2 unanswered questions' }));
 
-    // Dialog closes; the first unanswered question (q2) is shown, with a filter banner.
-    expect(screen.queryByRole('button', { name: 'Submit' })).not.toBeInTheDocument();
+    // Dialog closes; the first unanswered question (q2) is shown, with the review banner.
+    expect(screen.queryByRole('dialog', { name: 'Finish the test?' })).not.toBeInTheDocument();
     expect(screen.getByText('Blank two')).toBeInTheDocument();
-    expect(screen.getByText(/Reviewing unanswered — 1 of 2/)).toBeInTheDocument();
+    const banner = screen.getByRole('region', { name: 'Going through questions' });
+    expect(within(banner).getByText('Unanswered: 1 of 2')).toBeInTheDocument();
 
     // "Next" within the banner skips the answered q3 and lands on the next unanswered (q4).
-    await userEvent.click(screen.getByRole('button', { name: 'Next unanswered question' }));
+    await userEvent.click(within(banner).getByRole('button', { name: 'Next unanswered' }));
     expect(screen.getByText('Blank four')).toBeInTheDocument();
-    expect(screen.getByText(/Reviewing unanswered — 2 of 2/)).toBeInTheDocument();
+    expect(within(banner).getByText('Unanswered: 2 of 2')).toBeInTheDocument();
 
     // Leaving review mode hides the banner.
-    await userEvent.click(screen.getByRole('button', { name: 'Show all questions' }));
-    expect(screen.queryByText(/Reviewing unanswered/)).not.toBeInTheDocument();
+    await userEvent.click(within(banner).getByRole('button', { name: 'Show all questions' }));
+    expect(screen.queryByRole('region', { name: 'Going through questions' })).not.toBeInTheDocument();
   });
 
   it('does not offer a dead control when nothing is unanswered or marked', async () => {
@@ -405,9 +416,9 @@ describe('CandidateExamPage', () => {
     });
     render(<CandidateExamPage />);
 
-    await userEvent.click(screen.getAllByRole('button', { name: 'Review & Submit' })[0]);
+    const finish = await openFinish();
 
-    expect(screen.queryByRole('button', { name: /Review the .* questions/ })).not.toBeInTheDocument();
+    expect(within(finish).queryByRole('button', { name: /Go through the/ })).not.toBeInTheDocument();
   });
 
   it('redirects to /session-ended when the attempt query errors (dead session)', () => {
@@ -427,14 +438,19 @@ describe('CandidateExamPage', () => {
     expect(screen.queryByText('What is 2 + 2?')).not.toBeInTheDocument();
   });
 
-  it('retrying a failed submission navigates to /submitted on success', async () => {
-    (useSubmitAttempt as jest.Mock).mockReturnValue({ mutateAsync, isPending: false, isError: true, mutate: jest.fn() });
+  it('negative: a failed submission says so, keeps the test open, and Try again goes through', async () => {
+    mutateAsync.mockRejectedValueOnce(new Error('The connection dropped.'));
 
     render(<CandidateExamPage />);
-    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    const finish = await openFinish();
+    await userEvent.click(within(finish).getByRole('button', { name: 'Finish test' }));
 
-    await waitFor(() => expect(flush).toHaveBeenCalled());
-    await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
+    expect(await screen.findByText('Your test was not submitted')).toBeInTheDocument();
+    expect(screen.getByText('The connection dropped. Your answers are saved.')).toBeInTheDocument();
+    expect(push).not.toHaveBeenCalledWith('/submitted');
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(push).toHaveBeenCalledWith('/submitted'));
   });
 
@@ -452,7 +468,7 @@ describe('CandidateExamPage', () => {
 
     render(<CandidateExamPage />);
 
-    expect(screen.getByText('Question 1 of 1 · Code · 5 marks')).toBeInTheDocument();
+    expect(screen.getByText('Question 1 of 1 · 5 marks')).toBeInTheDocument();
     expect(screen.getByLabelText('code-editor')).toHaveValue('function add(a, b) {}');
   });
 
@@ -487,7 +503,7 @@ describe('CandidateExamPage', () => {
 
       render(<CandidateExamPage />);
 
-      expect(screen.getByText('Question 1 of 1 · Essay · 8 marks')).toBeInTheDocument();
+      expect(screen.getByText('Question 1 of 1 · Descriptive · 8 marks')).toBeInTheDocument();
       expect(screen.getByLabelText('Your answer')).toBeInTheDocument();
       expect(screen.queryByLabelText('code-editor')).not.toBeInTheDocument();
     });
@@ -521,7 +537,7 @@ describe('CandidateExamPage', () => {
     });
 
     render(<CandidateExamPage />);
-    await userEvent.click(screen.getByRole('button', { name: /Mark for review/ }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Mark for review' }));
 
     expect(saveAnswer).toHaveBeenCalledWith('q1', [], true, 'function add(a, b) { return a + b; }', expect.any(Object), 'javascript');
   });
@@ -542,7 +558,7 @@ describe('CandidateExamPage', () => {
     await userEvent.type(editor, 'function add(a, b) {{ return a + b; }');
 
     // Immediately toggle mark-for-review, racing ahead of the debounced autosave.
-    await userEvent.click(screen.getByRole('button', { name: /Mark for review/ }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Mark for review' }));
 
     const lastCall = saveAnswer.mock.calls[saveAnswer.mock.calls.length - 1];
     expect(lastCall).toEqual(['q1', [], true, 'function add(a, b) { return a + b; }', expect.any(Object), 'javascript']);
@@ -552,10 +568,9 @@ describe('CandidateExamPage', () => {
     (useAttemptQuery as jest.Mock).mockReturnValue({ data: codeAttemptState, isError: false });
 
     render(<CandidateExamPage />);
-    await userEvent.click(screen.getAllByRole('button', { name: 'Review & Submit' })[0]);
+    const finish = await openFinish();
 
-    const unansweredStat = screen.getAllByText('1').find((el) => el.className.includes('text-lg'));
-    expect(unansweredStat).toBeInTheDocument();
+    expect(within(finish).getByText('Not answered').closest('li')).toHaveTextContent('Not answered 1');
   });
 
   it('runs code and displays the output panel', async () => {
@@ -624,13 +639,13 @@ describe('CandidateExamPage', () => {
   it('shows the stdin box only when the question allows it', () => {
     (useAttemptQuery as jest.Mock).mockReturnValue({ data: codeAttemptState, isError: false });
     render(<CandidateExamPage />);
-    expect(screen.queryByLabelText('Standard Input (Optional)')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Standard input (optional)')).not.toBeInTheDocument();
   });
 
   it('shows the stdin box when the question allows it', () => {
     (useAttemptQuery as jest.Mock).mockReturnValue({ data: codeAttemptStateWithStdin, isError: false });
     render(<CandidateExamPage />);
-    expect(screen.getByLabelText('Standard Input (Optional)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Standard input (optional)')).toBeInTheDocument();
   });
 
   it('shows the server-provided message when the sandbox is unavailable', async () => {
@@ -921,12 +936,12 @@ describe('CandidateExamPage', () => {
     expect(screen.getByTestId('dimmable-content')).not.toHaveAttribute('inert');
   });
 
-  // A bare section title ("test", "S1") tells a first-time candidate nothing, so the label
-  // itself has to carry the meaning.
-  it('labels the current section so a first-time candidate understands it', () => {
+  // A bare section title ("test", "S1") tells a first-time candidate nothing, so the label carries the position. A
+  // test with one section and no choice needs no label at all (nothing to move between).
+  it('negative: a test with one section and no choice shows no section line', () => {
     render(<CandidateExamPage />);
 
-    expect(screen.getByText(/^Section: Section One$/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Section /)).not.toBeInTheDocument();
   });
 
   it('adds the section position only when there is more than one section to move between', () => {
@@ -1001,8 +1016,24 @@ describe('CandidateExamPage', () => {
     // match against just the first line would never match the node's full normalized text.
     expect(screen.getByText('x = [1, 2, 3]', { exact: false })).toBeInTheDocument();
     expect(screen.getByText('python')).toBeInTheDocument();
-    expect(screen.getByAltText('Question illustration')).toHaveAttribute('src', 'http://localhost:3001/uploads/question-images/stem.png');
-    expect(screen.getByAltText('Option illustration')).toHaveAttribute('src', 'http://localhost:3001/uploads/question-images/opt-a.png');
+    expect(screen.getByLabelText('Code, python')).toBeInTheDocument();
+    // No alt text from the writer: a plain description stands in.
+    expect(screen.getByAltText('Picture for this question')).toHaveAttribute('src', 'http://localhost:3001/uploads/question-images/stem.png');
+    expect(screen.getByAltText('Picture: [3, 2, 1]')).toHaveAttribute('src', 'http://localhost:3001/uploads/question-images/opt-a.png');
+  });
+
+  it("uses the writer's alt text for the question and option pictures (answer 2126)", () => {
+    mockUseAttemptQuery.mockReturnValue({
+      data: attemptStateWithQuestion({
+        id: 'q1', type: 'single_mcq', text: 'Which month sold most?', marks: 1, imageUrl: 'q.png', imageAlt: 'Monthly sales, rising from March',
+        options: [{ id: 'o1', text: 'August', imageUrl: 'a.png', imageAlt: 'Bar chart, August highest' }],
+      }),
+      isError: false,
+    });
+    renderExamPage();
+
+    expect(screen.getByRole('img', { name: 'Monthly sales, rising from March' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Bar chart, August highest' })).toBeInTheDocument();
   });
 
   // Was 'stops leaderboard polling while paused' -- obsolete now that the candidate-facing
@@ -1028,10 +1059,10 @@ describe('CandidateExamPage', () => {
     renderExamPage();
 
     expect(screen.getByText('python')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Choose A Language Before You Start')).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Choose a language before you start' })).not.toBeInTheDocument();
   });
 
-  it('requires a language pick before showing the editor for a fixed multi-language question', () => {
+  it('requires a language pick before showing the editor for a fixed multi-language question', async () => {
     mockUseAttemptQuery.mockReturnValue({
       data: attemptStateWithQuestion({
         id: 'q1', type: 'code', text: 'Reverse a string', marks: 10,
@@ -1044,9 +1075,96 @@ describe('CandidateExamPage', () => {
 
     renderExamPage();
 
-    expect(screen.getByLabelText('Choose A Language Before You Start')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Choose A Language Before You Start'), { target: { value: 'java' } });
+    expect(screen.queryByLabelText('code-editor')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('combobox', { name: 'Choose a language before you start' }));
+    await userEvent.click(await screen.findByRole('option', { name: 'java' }));
     expect(screen.getByText('java')).toBeInTheDocument();
+    expect(screen.getByLabelText('code-editor')).toBeInTheDocument();
+  });
+
+  describe('designed runner: breaks, connection, calculator, approved help, files (AS-4a part 2)', () => {
+    const runnerInfo = { calculator: 'scientific', breaksAllowed: 2, breaksUsed: 1, breakMinutes: 5, breakEndsAt: null, offlineMinutes: 5, timeCreditCapMinutes: 10, offlineCreditSeconds: 0, surveyDone: false };
+
+    it('offers the breaks left and starts one after saving what is pending', async () => {
+      const startBreak = jest.fn().mockResolvedValue({});
+      (useRunnerActions as jest.Mock).mockReturnValue({ startBreak, endBreak: jest.fn(), sendSurvey: jest.fn() });
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: { ...attemptState, runner: runnerInfo }, isError: false });
+      render(<CandidateExamPage />);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Take a break (1 left)' }));
+      await waitFor(() => expect(startBreak).toHaveBeenCalled());
+      expect(flush).toHaveBeenCalled();
+    });
+
+    it('on a break: shows the break, not the proctoring pause, and the timer does not run', async () => {
+      const endBreak = jest.fn().mockResolvedValue({});
+      (useRunnerActions as jest.Mock).mockReturnValue({ startBreak: jest.fn(), endBreak, sendSurvey: jest.fn() });
+      const endsAt = new Date(Date.now() + 4 * 60_000).toISOString();
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: { ...attemptState, status: 'paused', pausedReason: 'break', runner: { ...runnerInfo, breakEndsAt: endsAt } }, isError: false });
+      render(<CandidateExamPage />);
+
+      expect(screen.getByRole('heading', { name: 'Break' })).toBeInTheDocument();
+      expect(screen.queryByText(/warning \d+\/\d+/i)).not.toBeInTheDocument();
+      expect(screen.getByTestId('dimmable-content')).not.toHaveAttribute('inert');
+      expect(useCountdown).toHaveBeenLastCalledWith(590, expect.any(Function), false);
+      await userEvent.click(screen.getByRole('button', { name: 'End break and continue' }));
+      expect(endBreak).toHaveBeenCalled();
+    });
+
+    it('negative: no break button when the test allows none or they are used up', () => {
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: { ...attemptState, runner: { ...runnerInfo, breaksUsed: 2 } }, isError: false });
+      render(<CandidateExamPage />);
+      expect(screen.queryByRole('button', { name: /Take a break/ })).not.toBeInTheDocument();
+    });
+
+    it('offline: says the answers are kept on this device', () => {
+      (useAnswerMutation as jest.Mock).mockReturnValue({ saveAnswer, flush, queued: 2, connection: 'reconnecting', offlineSince: Date.now() - 30_000 });
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: { ...attemptState, runner: runnerInfo }, isError: false });
+      render(<CandidateExamPage />);
+      expect(screen.getByText(/2 answers are kept on this device/)).toBeInTheDocument();
+    });
+
+    it('a test set to scientific opens the scientific calculator; a test with none shows no calculator', async () => {
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: { ...attemptState, runner: runnerInfo }, isError: false });
+      const { unmount } = render(<CandidateExamPage />);
+      await userEvent.click(screen.getByRole('button', { name: 'Calculator' }));
+      expect(screen.getByRole('region', { name: 'Scientific calculator' })).toBeInTheDocument();
+      unmount();
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: { ...attemptState, runner: { ...runnerInfo, calculator: 'none' } }, isError: false });
+      render(<CandidateExamPage />);
+      expect(screen.queryByRole('button', { name: 'Calculator' })).not.toBeInTheDocument();
+    });
+
+    it('screen-reader mode shows in Display only when it was approved for the candidate (answer 2164)', async () => {
+      (useCandidateHelp as jest.Mock).mockReturnValue({ data: { approved: ['reader'] } });
+      const { unmount } = render(<CandidateExamPage />);
+      await userEvent.click(screen.getByRole('button', { name: 'Display' }));
+      expect(screen.getByRole('switch', { name: /Screen-reader mode/ })).toBeInTheDocument();
+      unmount();
+      (useCandidateHelp as jest.Mock).mockReturnValue({ data: { approved: [] } });
+      render(<CandidateExamPage />);
+      await userEvent.click(screen.getByRole('button', { name: 'Display' }));
+      expect(screen.queryByRole('switch', { name: /Screen-reader mode/ })).not.toBeInTheDocument();
+    });
+
+    it('a file question lists the saved files with Remove, and takes new ones through the kit upload', async () => {
+      const remove = jest.fn().mockResolvedValue({ files: [] });
+      (useAttemptModule.useAnswerFileMutation as jest.Mock).mockReturnValue({ upload: { mutateAsync: jest.fn(), isPending: false }, remove: { mutateAsync: remove, isPending: false } });
+      mockUseAttemptQuery.mockReturnValue({
+        data: {
+          ...attemptStateWithQuestion({ id: 'q1', type: 'file_upload', text: 'Upload your plan', marks: 5, options: [] }),
+          answers: [{ questionId: 'q1', selectedOptionIds: [], answerText: null, codeLanguage: null, isMarkedForReview: false, answerFiles: [{ id: 'f1', fileName: 'plan.pdf', size: 2048 }] }],
+        },
+        isError: false,
+      });
+      renderExamPage();
+
+      expect(screen.getByText('plan.pdf')).toBeInTheDocument();
+      expect(screen.getByText('2 KB')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Remove plan.pdf' }));
+      expect(remove).toHaveBeenCalledWith({ questionId: 'q1', fileId: 'f1' });
+      expect(screen.getByText('Upload files (up to 10, 10 MB each)')).toBeInTheDocument();
+    });
   });
 
   describe('per-exam proctoring config', () => {

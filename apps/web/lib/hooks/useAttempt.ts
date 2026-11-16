@@ -488,3 +488,47 @@ export function useCandidateBrand(): CandidateBrand {
   const { data } = useAttemptQuery();
   return { company: data?.organizationName ?? '', candidate: data?.candidateName ?? '', logoUrl: data?.organizationLogoUrl ?? null, myTestsHref: '/my-tests' };
 }
+
+/* ------------------------------------------------------------------ AS-4b (answer 2011): help before the test */
+
+export interface CandidateHelp {
+  request: { kinds: string[]; extraTimePercent: number | null; status: string; approvedKinds: string[]; grantedExtraTimePercent: number | null; message: string | null; createdAt: string; decidedAt: string | null } | null;
+  approved: string[];
+  extraTimePercent: number;
+}
+
+/** The candidate's requests for help and what was approved for them (answer 2164: "approved for you"). */
+export function useCandidateHelp(enabled = true) {
+  const { accessToken } = useCandidateAuth();
+  return useQuery<CandidateHelp>({
+    queryKey: ['attempt', 'accommodation'],
+    queryFn: () => candidateApiFetch('/attempt/accommodation', {}, accessToken ?? undefined) as Promise<CandidateHelp>,
+    enabled: Boolean(accessToken) && enabled,
+    retry: false,
+  });
+}
+
+/** A file as a base64 data URI (the runtime checks the real type and size again). */
+export function fileAsDataUri(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(new Error('The file could not be read. Try again.'));
+    r.readAsDataURL(file);
+  });
+}
+
+/** Asks for help before the test (one open request at a time); the evidence is optional. */
+export function useAskForHelp() {
+  const { accessToken } = useCandidateAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (a: { kinds: string[]; extraTimePercent: number | null; note: string | null; evidence: File | null }) =>
+      candidateApiFetch(
+        '/attempt/accommodation',
+        { method: 'POST', body: JSON.stringify({ kinds: a.kinds, extraTimePercent: a.extraTimePercent, note: a.note, evidence: a.evidence ? { fileName: a.evidence.name, dataUri: await fileAsDataUri(a.evidence) } : null }) },
+        accessToken ?? undefined,
+      ) as Promise<CandidateHelp>,
+    onSuccess: (help) => queryClient.setQueryData(['attempt', 'accommodation'], help),
+  });
+}

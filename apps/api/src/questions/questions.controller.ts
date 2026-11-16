@@ -23,10 +23,12 @@ import { generateBulkUploadTemplate } from './bulk-upload-template';
 export class QuestionsController {
   constructor(private readonly questionsService: QuestionsService) {}
 
+  // Answer 2141: a new question is a draft nobody can use until another person approves it in the question bank, as the
+  // bank's own New question does (answer 2009).
   @Post()
   @RequirePermissions('question_bank:manage')
   create(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: CreateQuestionDto) {
-    return this.questionsService.create(tenant, userId, dto);
+    return this.questionsService.create(tenant, userId, dto, { status: 'draft' });
   }
 
   @Post('ai-generate')

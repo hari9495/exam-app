@@ -6,6 +6,7 @@ import { bootAdminApp, bootRuntimeApp } from './dual-app';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
+import { asApproved } from './fixtures/approved-question';
 
 describe('Exam scheduling HTTP flow', () => {
   let adminApp: INestApplication;
@@ -69,7 +70,7 @@ describe('Exam scheduling HTTP flow', () => {
 
   it('gates start() by the scheduling window, leaves an in-progress attempt unaffected once closed, and re-syncs invitation expiry', async () => {
     // Step 1: recruiter creates a plain single_mcq question, then a scheduled exam not open for another hour.
-    const questionResponse = await request(adminHttp)
+    const questionResponse = await asApproved(await request(adminHttp)
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
@@ -82,7 +83,7 @@ describe('Exam scheduling HTTP flow', () => {
           { text: '4', isCorrect: true },
         ],
       })
-      .expect(201);
+      .expect(201));
     const questionId = questionResponse.body.id;
     const correctOptionId = questionResponse.body.options.find((option: { isCorrect: boolean }) => option.isCorrect).id;
 

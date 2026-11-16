@@ -36,3 +36,11 @@ export { CampusKitScreen, CoordinatorPortalScreen, InvitationsScreen } from './d
 export { CandidatePortalHomeScreen, ResultReuseScreen } from './candidate';
 export { DEFAULT_CAMPUS_SETTINGS, INVITATION_TONE, MY_TEST_BADGE, bulkWords, campusProblem, canRemind, canRevoke, type BulkOutcome, type CampusFieldMode, type CampusResultsVisibility, type LiveCampusKit, type LiveCampusSettings, type LiveCollegeRow, type LiveCoordinator, type LiveCoordinatorView, type LiveInstitution, type LiveInstitutionInput, type LiveRegistrant, type LiveCandidateTestStatus, type LiveDriveRow, type LiveInvitationRow, type LiveInvitationStatus, type LiveInvitations, type LiveMyTest, type LivePortal, type LiveReuse, type LiveReuseOffer } from './delivery-live';
 export type { CandidateBrand } from './proctoring-shared';
+// Assessments AS-4b (answers 2011, 2164): help before the test, the accommodation queue and connectivity above the cap.
+export { AccommodationQueueScreen, ConnectivityPanelScreen } from './delivery';
+export { AccommodationRequestScreen } from './candidate';
+export { HELP_LABEL, approvedForYou, type AccommodationView, type CandidateHelpView, type ConnectivityView, type HelpKind, type LiveAccommodationQueue, type LiveAccommodationRequest, type LiveConnectivity } from './before-test-live';
+export { ReadinessCheckScreen, type LiveReadiness } from './candidate';
+// AS-4a part 2 (answer 2201): the designed consent (PRC-24) and selfie (PRC-25) on /welcome.
+export { ConsentScreen, IdentityCheckScreen, type LiveConsent, type LiveSelfie, type ManualIdentityCheck } from './candidate';
+export type { SystemCheck } from './proctoring-kit';

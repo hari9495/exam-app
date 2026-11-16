@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { StaffNoticesService } from './staff-notices.service';
 import { AuditService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 import { PLATFORM, platformRead } from './platform.service';
@@ -35,7 +36,7 @@ export function dueReminders(i: { certinRemindedAt: Date | null; dpdpRemindedAt:
 async function incidentHolders(tx: Prisma.TransactionClient) {
   const roles = (await tx.platformRoleKey.findMany({ where: { key: 'platform.incidents.manage' }, select: { role: true } })).map((r) => r.role);
   const ids = [...new Set((await tx.platformStaffRole.findMany({ where: { role: { in: roles } }, select: { userId: true } })).map((r) => r.userId))];
-  return tx.user.findMany({ where: { id: { in: ids }, organizationId: null, role: 'super_admin', status: 'active' }, select: { email: true } });
+  return tx.user.findMany({ where: { id: { in: ids }, organizationId: null, role: 'super_admin', status: 'active' }, select: { id: true, email: true } });
 }
 
 @Injectable()
@@ -217,16 +218,27 @@ export class IncidentsService {
         const rows = await tx.companyContainment.findMany({
           where: { boardNotifiedAt: null, OR: [{ liftedAt: null }, { id: { in: breaches } }], AND: [{ OR: [{ boardNudgedAt: null }, { boardNudgedAt: { lte: new Date(now.getTime() - minutes * 60_000) } }] }] },
         });
-        const out: { company: string; containedAt: Date; dpdpDueAt: Date }[] = [];
+        const out: { company: string; containedAt: Date; dpdpDueAt: Date; id: string }[] = [];
         for (const c of rows) {
           // Once per window even with two servers sweeping: only the one that moves the mark sends.
           const done = await tx.companyContainment.updateMany({ where: { id: c.id, boardNotifiedAt: null, boardNudgedAt: c.boardNudgedAt }, data: { boardNudgedAt: now } });
           if (!done.count) continue;
           const company = (await tx.organization.findUnique({ where: { id: c.organizationId }, select: { name: true } }))?.name ?? '';
           await AuditService.recordIn(tx, PLATFORM, { actorUserId: null, action: 'platform.containment.board_notice_reminder', entityType: 'company_containment', entityId: c.id, metadata: { organizationId: c.organizationId, containedAt: c.containedAt.toISOString() } });
-          out.push({ company, containedAt: c.containedAt, dpdpDueAt: c.dpdpDueAt });
+          out.push({ company, containedAt: c.containedAt, dpdpDueAt: c.dpdpDueAt, id: c.id });
         }
-        return { out, to: out.length ? (await incidentHolders(tx)).map((u) => u.email) : [] };
+        const holders = out.length ? await incidentHolders(tx) : [];
+        // Answer 2093: each reminder is also a console notice for the same staff (the email stays).
+        for (const w of out)
+          await StaffNoticesService.notify(tx, holders.map((u) => u.id), {
+            kind: 'board_notice_due',
+            title: `Tell the Data Protection Board now: ${w.company}`,
+            body: `Contained ${istTime(w.containedAt)} IST for a suspected breach. Tell the Board without delay (DPDP Rules 2025, Rule 7; verify with counsel), then mark the first notice sent. The detailed report is due ${istTime(w.dpdpDueAt)} IST.`,
+            linkPath: '/staff/incidents',
+            entityType: 'company_containment',
+            entityId: w.id,
+          });
+        return { out, to: holders.map((u) => u.email) };
       });
       for (const w of work.out) {
         const subject = `Tell the Data Protection Board now: ${w.company}`;

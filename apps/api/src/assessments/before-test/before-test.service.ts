@@ -1,0 +1,206 @@
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ACCOMMODATION_LABEL, AuditService, BlobStorageService, EXTRA_TIME_PERCENTS, TenantContext, TenantPrismaService, type AccommodationKind } from '@exam-platform/shared';
+import { Prisma } from '@prisma/client';
+import { SETTINGS, resolveSetting } from '../../org-structure/settings-registry';
+
+/** A company setting's value (company scope; the product default when not set). */
+async function companySetting(tx: Prisma.TransactionClient, org: string, key: string): Promise<string> {
+  const rows = await tx.setting.findMany({ where: { organizationId: org, key } });
+  return String(resolveSetting(SETTINGS[key]!, rows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: r.validFrom ? r.validFrom.toISOString().slice(0, 10) : null })), { tenant: org }, null).value);
+}
+
+// Assessments AS-4b (answer 2011): before the test, the staff side.
+//   PRC-11 the test owner decides each item a candidate asked for; approved extra time becomes the invitation's extra
+//          time (as the older accommodation route), only before the test starts. The evidence is special data: opened
+//          one at a time through a short-lived link, and every opening is audited.
+//   PRC-10 time lost to the connection above asmt.time_credit_cap waits for a person; approving gives it back to a test
+//          still running (a reason of at least 10 characters, audited); declining keeps the reason too.
+
+export interface AccommodationRowView {
+  id: string;
+  candidateName: string;
+  test: string;
+  kinds: string[];
+  extraTimePercent: number | null;
+  note: string | null;
+  evidenceName: string | null;
+  status: string;
+  approvedKinds: string[];
+  grantedExtraTimePercent: number | null;
+  message: string | null;
+  createdAt: string;
+  decidedAt: string | null;
+  decidedBy: string | null;
+  /** The test has started: extra time can no longer change. */
+  started: boolean;
+}
+
+export interface ConnectivityRowView {
+  id: string;
+  attemptId: string;
+  candidateName: string;
+  test: string;
+  lostMs: number;
+  /** Given back automatically within the cap. */
+  creditedMs: number;
+  capMinutes: number;
+  status: string;
+  attemptStatus: string;
+  startedAt: string;
+  reason: string | null;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  updatedAt: string;
+}
+
+export interface DecideAccommodation {
+  approvedKinds: string[];
+  extraTimePercent?: number | null;
+  message?: string | null;
+}
+
+const RUNNING = ['in_progress', 'paused'];
+
+@Injectable()
+export class BeforeTestService {
+  constructor(
+    private readonly tenantPrisma: TenantPrismaService,
+    private readonly blobStorage: BlobStorageService,
+    private readonly audit: AuditService,
+  ) {}
+
+  private names(org: string, ids: (string | null)[]) {
+    const want = [...new Set(ids.filter((x): x is string => !!x))];
+    return this.tenantPrisma.forTenant({ organizationId: org, isSuperAdmin: false }, async (tx) =>
+      new Map((await tx.user.findMany({ where: { organizationId: org, id: { in: want } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name || u.email])),
+    );
+  }
+
+  /* ------------------------------------------------------------------ PRC-11 accommodations */
+
+  async accommodations(ctx: TenantContext, status: 'pending' | 'decided'): Promise<AccommodationRowView[]> {
+    const org = ctx.organizationId as string;
+    const rows = await this.tenantPrisma.forTenant(ctx, (tx) =>
+      tx.accommodationRequest.findMany({
+        where: { organizationId: org, ...(status === 'pending' ? { status: 'pending' } : { status: { not: 'pending' } }) },
+        orderBy: { createdAt: status === 'pending' ? 'asc' : 'desc' },
+        take: 200,
+        include: { invitation: { select: { candidate: { select: { name: true, email: true } }, exam: { select: { title: true } }, attempt: { select: { id: true } } } } },
+      }),
+    );
+    const who = await this.names(org, rows.map((r) => r.decidedBy));
+    return rows.map((r) => ({
+      id: r.id,
+      candidateName: r.invitation.candidate.name || r.invitation.candidate.email,
+      test: r.invitation.exam.title,
+      kinds: r.kinds,
+      extraTimePercent: r.extraTimePercent,
+      note: r.note,
+      evidenceName: r.evidenceName,
+      status: r.status,
+      approvedKinds: r.approvedKinds,
+      grantedExtraTimePercent: r.grantedExtraTimePercent,
+      message: r.message,
+      createdAt: r.createdAt.toISOString(),
+      decidedAt: r.decidedAt?.toISOString() ?? null,
+      decidedBy: r.decidedBy ? (who.get(r.decidedBy) ?? 'Someone') : null,
+      started: Boolean(r.invitation.attempt),
+    }));
+  }
+
+  /** A short-lived link to the evidence; each opening is audited (special data). */
+  async evidence(ctx: TenantContext, userId: string, id: string): Promise<{ url: string; name: string }> {
+    const row = await this.tenantPrisma.forTenant(ctx, (tx) => tx.accommodationRequest.findFirst({ where: { id, organizationId: ctx.organizationId as string }, select: { evidencePath: true, evidenceName: true, invitationId: true } }));
+    if (!row) throw new NotFoundException('Request not found');
+    if (!row.evidencePath) throw new NotFoundException('No document was sent with this request.');
+    const url = (await this.blobStorage.signIfOurs(row.evidencePath)) as string;
+    await this.audit.record(ctx, { actorUserId: userId, action: 'accommodation.evidence_viewed', entityType: 'accommodation_request', entityId: id, metadata: { invitationId: row.invitationId } });
+    return { url, name: row.evidenceName ?? 'evidence' };
+  }
+
+  async decide(ctx: TenantContext, userId: string, id: string, dto: DecideAccommodation) {
+    const org = ctx.organizationId as string;
+    const out = await this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const r = await tx.accommodationRequest.findFirst({ where: { id, organizationId: org }, include: { invitation: { select: { id: true, attempt: { select: { id: true } } } } } });
+      if (!r) throw new NotFoundException('Request not found');
+      if (r.status !== 'pending') throw new ConflictException('This request was already decided. Reload to see the decision.');
+      const approved = [...new Set(dto.approvedKinds)];
+      if (approved.some((k) => !r.kinds.includes(k))) throw new BadRequestException('Approve only what the candidate asked for.');
+      const time = approved.includes('time');
+      if (time && !(EXTRA_TIME_PERCENTS as readonly number[]).includes(dto.extraTimePercent ?? -1)) throw new BadRequestException('Choose 25 %, 50 % or 100 % extra time to approve.');
+      if (time && r.invitation.attempt) throw new ConflictException('The test has started, so extra time can no longer change.');
+      const status = approved.length === 0 ? 'declined' : approved.length === r.kinds.length ? 'approved' : 'partly';
+      // Guarded on still pending: two people deciding at once, the second is told.
+      const res = await tx.accommodationRequest.updateMany({
+        where: { id, status: 'pending' },
+        data: { status, approvedKinds: approved, grantedExtraTimePercent: time ? dto.extraTimePercent! : null, message: dto.message?.trim() || null, decidedBy: userId, decidedAt: new Date() },
+      });
+      if (!res.count) throw new ConflictException('This request was already decided. Reload to see the decision.');
+      // Approved extra time becomes the invitation's extra time (as the older accommodation route did).
+      if (time) await tx.invitation.update({ where: { id: r.invitation.id }, data: { extraTimePercent: dto.extraTimePercent! } });
+      return { status, approved, invitationId: r.invitation.id };
+    });
+    await this.audit.record(ctx, {
+      actorUserId: userId,
+      action: 'accommodation.decided',
+      entityType: 'accommodation_request',
+      entityId: id,
+      metadata: { status: out.status, approved: out.approved.map((k) => ACCOMMODATION_LABEL[k as AccommodationKind] ?? k), extraTimePercent: out.approved.includes('time') ? dto.extraTimePercent : null, invitationId: out.invitationId },
+    });
+    return { status: out.status };
+  }
+
+  /* ------------------------------------------------------------------ PRC-10 connectivity above the cap */
+
+  async connectivity(ctx: TenantContext, status: 'pending' | 'decided'): Promise<ConnectivityRowView[]> {
+    const org = ctx.organizationId as string;
+    const [rows, cap] = await this.tenantPrisma.forTenant(ctx, async (tx) => [
+      await tx.connectivityCredit.findMany({
+        where: { organizationId: org, ...(status === 'pending' ? { status: 'pending' } : { status: { not: 'pending' } }) },
+        orderBy: { updatedAt: 'desc' },
+        take: 200,
+        include: { attempt: { select: { status: true, startedAt: true, offlineCreditMs: true, invitation: { select: { candidate: { select: { name: true, email: true } }, exam: { select: { title: true } } } } } } },
+      }),
+      Number(await companySetting(tx, org, 'asmt.time_credit_cap')),
+    ] as const);
+    const who = await this.names(org, rows.map((r) => r.decidedBy));
+    return rows.map((r) => ({
+      id: r.id,
+      attemptId: r.attemptId,
+      candidateName: r.attempt.invitation.candidate.name || r.attempt.invitation.candidate.email,
+      test: r.attempt.invitation.exam.title,
+      lostMs: r.lostMs,
+      creditedMs: r.attempt.offlineCreditMs,
+      capMinutes: cap,
+      status: r.status,
+      attemptStatus: r.attempt.status,
+      startedAt: r.attempt.startedAt.toISOString(),
+      reason: r.reason,
+      decidedBy: r.decidedBy ? (who.get(r.decidedBy) ?? 'Someone') : null,
+      decidedAt: r.decidedAt?.toISOString() ?? null,
+      updatedAt: r.updatedAt.toISOString(),
+    }));
+  }
+
+  async decideConnectivity(ctx: TenantContext, userId: string, id: string, approve: boolean, reason: string) {
+    const org = ctx.organizationId as string;
+    const why = reason.trim();
+    if (why.length < 10) throw new BadRequestException('Give a reason of at least 10 characters (it is kept in the audit log).');
+    const out = await this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const c = await tx.connectivityCredit.findFirst({ where: { id, organizationId: org }, include: { attempt: { select: { id: true, status: true, pausedDurationMs: true } } } });
+      if (!c) throw new NotFoundException('Request not found');
+      if (c.status !== 'pending') throw new ConflictException('This was already decided. Reload to see the decision.');
+      if (approve && !RUNNING.includes(c.attempt.status)) throw new ConflictException('The test has ended, so extra time no longer helps. Decline it with a reason.');
+      // Guarded on still pending and the lost time seen: more lost time arriving meanwhile asks for a fresh look.
+      const res = await tx.connectivityCredit.updateMany({ where: { id, status: 'pending', lostMs: c.lostMs }, data: { status: approve ? 'approved' : 'declined', reason: why, decidedBy: userId, decidedAt: new Date() } });
+      if (!res.count) throw new ConflictException('More time was lost since you opened this. Reload and decide again.');
+      if (approve) {
+        const t = await tx.attempt.updateMany({ where: { id: c.attempt.id, status: { in: RUNNING }, pausedDurationMs: c.attempt.pausedDurationMs }, data: { pausedDurationMs: c.attempt.pausedDurationMs + c.lostMs } });
+        if (!t.count) throw new ConflictException('The test changed while you decided. Reload and decide again.');
+      }
+      return { lostMs: c.lostMs, attemptId: c.attempt.id };
+    });
+    await this.audit.record(ctx, { actorUserId: userId, action: approve ? 'attempt.connectivity_credit_approved' : 'attempt.connectivity_credit_declined', entityType: 'attempt', entityId: out.attemptId, metadata: { lostMs: out.lostMs, reason: why } });
+    return { status: approve ? 'approved' : 'declined' };
+  }
+}

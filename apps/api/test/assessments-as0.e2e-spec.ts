@@ -7,6 +7,7 @@ import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { markSteppedUp } from './fixtures/step-up';
+import { asApproved } from './fixtures/approved-question';
 
 // Assessments AS-0 (founder answers 2003 to 2006), end to end against the real database (forced RLS, the app role):
 //   2005  every exam table is company data under forced RLS: another company reads and writes nothing of it;
@@ -66,7 +67,7 @@ describe('Assessments AS-0: company isolation, keys, own-job results, acting and
     // The test is written with the YukthiX keys only (2003): exam:manage and question_bank:manage through their aliases.
     ids.exam = (await api('tester', 'post', '/exams').send({ title: `Capitals ${run}` }).expect(201)).body.id;
     const section = (await api('tester', 'post', `/exams/${ids.exam}/sections`).send({ title: 'One' }).expect(201)).body.id;
-    const q = (await api('tester', 'post', '/questions').send({ type: 'single_mcq', text: 'Capital of France?', difficulty: 'easy', marks: 10, options: [{ text: 'Paris', isCorrect: true }, { text: 'Lyon', isCorrect: false }] }).expect(201)).body;
+    const q = (await asApproved(await api('tester', 'post', '/questions').send({ type: 'single_mcq', text: 'Capital of France?', difficulty: 'easy', marks: 10, options: [{ text: 'Paris', isCorrect: true }, { text: 'Lyon', isCorrect: false }] }).expect(201))).body;
     ids.question = q.id;
     ids.right = q.options.find((o: { text: string }) => o.text === 'Paris').id;
     await api('tester', 'put', `/exams/${ids.exam}/sections/${section}/questions`).send({ questionIds: [ids.question] }).expect(200);

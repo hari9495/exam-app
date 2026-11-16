@@ -110,6 +110,7 @@
 /* Calculator */
 .yx-calc { display: flex; flex-direction: column; gap: var(--yx-space-2); padding: var(--yx-space-3); background: var(--yx-color-bg-surface); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); width: calc(var(--yx-space-16) * 4); box-shadow: var(--yx-shadow-popover); }
 .yx-calc__head { display: flex; align-items: center; justify-content: space-between; }
+.yx-calc__tools { display: flex; align-items: center; gap: var(--yx-space-1); }
 .yx-calc__display { display: block; text-align: right; font-family: var(--yx-font-mono); font-size: var(--yx-text-xl); padding: var(--yx-space-2) var(--yx-space-3); background: var(--yx-color-bg-subtle); border-radius: var(--yx-radius-control); overflow: hidden; text-overflow: ellipsis; }
 .yx-calc__keys { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--yx-space-1); }
 .yx-calc__key { min-height: var(--yx-target-min); border: var(--yx-border-width) solid var(--yx-button-secondary-border); background: var(--yx-button-secondary-bg); color: var(--yx-color-text); border-radius: var(--yx-radius-control); font: inherit; font-size: var(--yx-text-md); cursor: pointer; }
@@ -144,3 +145,12 @@
 .yx-idcap[data-state="blurry"] .yx-idcap__meta { color: var(--yx-color-warning-text); }
 
 .yx-ftl__item:hover { background: var(--yx-color-bg-subtle); }
+
+/* Question media (answer 2161): the question's picture, its code snippet, option pictures. */
+.yx-prc-qimg { display: block; max-width: 100%; max-height: calc(var(--yx-space-16) * 5); border-radius: var(--yx-radius-card); border: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-prc-snippet { align-self: stretch; margin: 0; border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-subtle); overflow: hidden; }
+.yx-prc-snippet figcaption { padding: var(--yx-space-1) var(--yx-space-3); font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); border-bottom: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-prc-snippet pre { margin: 0; padding: var(--yx-space-3); overflow-x: auto; font-family: var(--yx-font-mono); font-size: var(--yx-text-md); line-height: var(--yx-leading-md); }
+.yx-prc-snippet pre:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: calc(var(--yx-focus-width) * -1); }
+.yx-prc-option { display: inline-flex; align-items: center; gap: var(--yx-space-3); }
+.yx-prc-optimg { width: calc(var(--yx-space-16) * 1.5); height: calc(var(--yx-space-16) * 1.5); object-fit: contain; border-radius: var(--yx-radius-control); border: var(--yx-border-width) solid var(--yx-color-border); background: var(--yx-color-bg-surface); }
