@@ -227,6 +227,8 @@ export const YX_KEYS = [
   'employee.pay_access.approve',
   'exam:manage',
   'question_bank:manage',
+  // Bank follow-ups (answer 2001): Hire › Assessments for holders of the YukthiX bank key (or its older alias).
+  'asmt.bank.manage',
   'approvals:configure',
   // AT3: the careers site, consent notices and job boards (company settings).
   'org:manage_settings',
