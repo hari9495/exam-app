@@ -202,13 +202,13 @@ export function PayslipMonths({ years, year, onYear, months, selectedId, onSelec
       <ul>
         {months.map((m) => (
           <li key={m.id}>
-            <button type="button" aria-current={m.id === selectedId ? 'true' : undefined} onClick={() => onSelect(m.id)}>
+            <Button fullWidth className="yx-pay-months__item" aria-current={m.id === selectedId ? 'true' : undefined} onClick={() => onSelect(m.id)}>
               <span>
                 {m.label}
                 {m.note ? <span className="yx-pay-muted"> · {m.note}</span> : null}
               </span>
               <Amount value={m.net} />
-            </button>
+            </Button>
           </li>
         ))}
       </ul>

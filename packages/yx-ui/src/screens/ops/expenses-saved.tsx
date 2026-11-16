@@ -96,7 +96,7 @@ export function SavedExpensesCard({ live }: { live: LiveSavedExpenses }) {
             ))}
           </ul>
           <div className="yx-ops-row">
-            <Button variant="primary" icon={Receipt} onClick={() => (chosen.length ? setClaiming(true) : toast({ title: 'Tick the expenses to claim first.' }))}>
+            <Button variant="primary" icon={Receipt} onClick={() => (chosen.length ? setClaiming(true) : toast({ tone: 'default', title: 'Tick the expenses to claim first.' }))}>
               {chosen.length ? `Claim ${chosen.length} selected` : 'Claim selected'}
             </Button>
           </div>

@@ -2,7 +2,7 @@ import { PROFILE_CHANGE, profileRows } from './yx-approvals';
 
 // Keka ideas (2026-11): identity and bank changes in the approvals inbox, under their own kind.
 describe('profileRows', () => {
-  const base = { employeeId: 'e1', employeeName: 'Anita Desai', kind: 'bank', label: 'Bank account', proposed: {}, current: null, reason: 'New salary account', requestedBy: 'Anita Desai', requestedAt: '2026-11-15T09:00:00.000Z', decidedBy: null, decidedAt: null, decisionNote: null, overrideReason: null, proofDocumentId: null, effectiveOn: null, usableFrom: null } as const;
+  const base = { employeeId: 'e1', employeeName: 'Anita Desai', kind: 'bank_salary', label: 'Bank account', proposed: {}, current: null, reason: 'New salary account', requestedBy: 'Anita Desai', requestedAt: '2026-11-15T09:00:00.000Z', decidedBy: null, decidedAt: null, decisionNote: null, overrideReason: null, proofDocumentId: null, effectiveOn: null, usableFrom: null } as const;
 
   it('a pending change someone else raised waits under "Profile change" and opens its own page to decide', () => {
     const [row] = profileRows([{ ...base, id: 'p1', status: 'pending', mine: false }]);
