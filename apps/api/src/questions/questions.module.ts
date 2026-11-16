@@ -4,13 +4,15 @@ import { QuestionsController } from './questions.controller';
 import { QuestionsService } from './questions.service';
 import { TagsController } from './tags.controller';
 import { TagsService } from './tags.service';
+import { QuestionBankController } from './bank/question-bank.controller';
+import { QuestionBankService } from './bank/question-bank.service';
 import { JobsModule } from '../jobs/jobs.module';
 import { ExamRuntimeClientModule } from '../exam-runtime-client/exam-runtime-client.module';
 
 @Module({
   imports: [JobsModule, ExamRuntimeClientModule, StorageModule, CryptoModule],
-  controllers: [QuestionsController, TagsController],
-  providers: [QuestionsService, TagsService],
+  controllers: [QuestionsController, TagsController, QuestionBankController],
+  providers: [QuestionsService, TagsService, QuestionBankService],
   exports: [QuestionsService],
 })
 export class QuestionsModule {}

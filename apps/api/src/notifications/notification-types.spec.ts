@@ -40,6 +40,7 @@ describe('notification catalog', () => {
       'helpdesk.request.stage',
       'helpdesk.rule.notify',
       'help.feature_request.done',
+      'asmt.question.changes_requested',
       'helpdesk.change.scheduled',
       'helpdesk.change.overrun',
       'helpdesk.recurring.skipped',

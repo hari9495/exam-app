@@ -819,3 +819,70 @@ console.log('ok');
 - 2128: keep bulk Retire without review.
 - 2129: a daily bell note to bank writers when items wait for review.
 - 2130: keep text-only duplicate check at 90 %.
+## AS-1 as built (branch `feat/yukthix-assessments-as1`, 16 Nov 2026)
+
+Question bank: review, versions, duplicate check, alt text, translations and item analysis (answers 2009, 2010, 2017).
+Not in the menu: the lead adds it after AS-0 merges. Pages: `/yx/hiring/assessments/questions`, `…/questions/[id]`
+(`new` for a new one), `…/reviews`, `…/item-analysis`. Keys for now: `question_bank:manage` on every route
+(TODO(AS-0): `asmt.bank.manage`).
+
+- **Data:** migration `202617z0000231_question_bank_review`. `questions` gains `version`, `image_alt`, `option_alts`,
+  `last_approved_by`, `last_approved_at`. New tables `question_revisions` (a proposed new question or change, its review,
+  duplicate finding and field comments) and `question_translations` (per question, version and language), both with
+  forced RLS and `tenant_isolation`; the app may not delete from them. The database also refuses a reviewer who is the
+  author, a second approver who is the author or first reviewer, and an approval without its reviewers.
+- **Review (2009):** a new question is a draft nobody can use; only its author changes and submits it. Another person
+  approves or asks for changes (a note, comments per field; the author gets a bell note `asmt.question.changes_requested`).
+  A collection listed in `asmt.bank.second_approver_collections` (none by default) needs a third person. AI drafts are
+  reviewed like any other. Approving carries a row version: when two reviewers press at once, the second gets "reload it".
+- **Versions (2010):** a change to an approved question waits as a revision; the question in use stays until approval.
+  Text, type, options, the answer key, model answer or code tests make the next version (and restart item statistics);
+  anything else is a minor change that keeps the number. Every approved revision stays as that version's record.
+- **Duplicates and alt text:** submitting compares the text with every draft and approved question (letter trigrams;
+  `asmt.bank.duplicate_percent`, default 90); a reviewer must mark "not a duplicate" before approving. Every image (question
+  and options) needs alt text before submit and approval.
+- **Translations (2010):** `asmt.languages` (Hindi, Tamil, Telugu; none by default, so English only). A translation is of
+  the current version, all options in order, optionally marked AI-assisted, and approved by someone other than its writer.
+- **Packs (2017):** only the switch, `asmt.packs` (Aptitude, English, Core IT; all on by default). The Library packs tab
+  shows which are on and that YukthiX is writing them. No pack content.
+- **Item analysis (PRC-05):** the older engine's statistics (from 20 answers) across tests, with the provisional band
+  `asmt.item_stats.provisional_answers` (default 200) and each item's distractors.
+- **Screens:** the designed `QuestionBankScreen`, `QuestionEditorScreen`, `QuestionReviewQueueScreen` and
+  `ItemAnalysisScreen` with `live` (`bank-live.tsx`, export `@yukthix/ui/assessments`); new states drawn as stories in
+  PRC-01 (3), PRC-02 (6), PRC-03 (3) and PRC-05 (2). The four left the design-live guard's "not live" list.
+- **Security:** answer keys only for writers in their own session (`withoutAnswerKey` on the question and queue routes);
+  every write refused while acting for someone else; every write audited (`question.created`, `change_drafted`,
+  `submitted`, `change_withdrawn`, `duplicate_cleared`, `first_approval`, `approved`, `changes_requested`,
+  `translation_drafted`, `translation_submitted`, `translation_approved`, `translation_changes_requested`).
+- **Not built here:** see questions 2121 to 2130 (the older routes still publish without review, attempts do not record
+  their version, image upload and media blocks, code-test editing, per-test reliability charts).
+- **Tests:** API unit `bank-rules` (6); e2e `question-bank-review` (12); kit `bank-live` (14); web
+  `yx-assessments-bank` (4). Manual test MT-ASMT-BANK1.
+
+### Questions (from 2121)
+
+2121. **The older question routes skip review.** `/questions` create, change and publish (the `/v2/questions` page, bulk
+      upload and AI drafts) still make a question usable without another person. *Suggested: when the bank goes in the
+      menu, the older publish refuses and changes to an approved question go through review; `/v2/questions` redirects.*
+2122. **Which version an attempt saw.** Attempts and answers do not record the question version, and the engine changes
+      the question row in place on approval. *Suggested: AS-0 or AS-4a stores the version on each answer (AS-0 already
+      touches the answers table); reports read that version's record from the review history.*
+2123. **The second-approver setting's shape.** Built as a comma list `asmt.bank.second_approver_collections`; the 6.5
+      design draws "Review workflow per collection" (`asmt.review_workflow`). *Suggested: AS-2's 6.5 page writes this key
+      as that list.*
+2124. **Starter packs on by default.** `asmt.packs` has all three on though no pack content exists yet. *Suggested: keep;
+      the tab says they are being written.*
+2125. **Code, file and spoken questions in the editor.** It writes single choice, multiple choice, true or false and
+      descriptive; the others keep their tests and settings. *Suggested: add code-test editing to the designed editor
+      next.*
+2126. **Media blocks.** The design draws LaTeX, code, audio, video and attachment blocks and an expected time; the engine
+      holds one image per question and option (alt text built). *Suggested: image upload in the editor next, using the
+      existing image route; the other blocks later.*
+2127. **Per-test item analysis.** The design's reliability, score distribution, section correlation and item curves are
+      per test; the engine computes per question across tests. *Suggested: with AS-2's test builder.*
+2128. **Retiring questions.** Bulk Retire uses the older archive route with no review. *Suggested: keep; retiring only
+      stops new tests using it.*
+2129. **Telling reviewers.** Only the author is told (changes asked for). *Suggested: a daily bell note to bank writers
+      when changes wait for them.*
+2130. **Duplicate check scope.** Text only, within the company, drafts and approved questions. *Suggested: keep; add
+      options to the comparison if reviewers see misses.*

@@ -26,6 +26,7 @@
     "./performance": "./src/screens/performance/live/index.ts",
     "./hiring": "./src/screens/hiring/live/index.ts",
     "./visitors": "./src/screens/ops/visitors-live.ts",
+    "./assessments": "./src/screens/proctoring/assessments-live.ts",
     "./frame": "./src/screens/_kit/live.ts",
     "./screens/*": "./src/screens/*.tsx",
     "./styles.css": "./src/styles/index.css"
