@@ -96,7 +96,8 @@ export class QuestionsService {
     return languages.map((entry) => entry.language);
   }
 
-  async create(context: TenantContext, userId: string, dto: CreateQuestionDto): Promise<QuestionResponse> {
+  /** `draft`: the question bank's review flow (AS-1) creates it unusable until another person approves it. */
+  async create(context: TenantContext, userId: string, dto: CreateQuestionDto, opts: { status?: 'draft' } = {}): Promise<QuestionResponse> {
     const availableLanguages = await this.fetchAvailableLanguagesIfNeeded(dto.type, dto.languageMode);
     validateQuestionPayload(
       {
@@ -135,6 +136,7 @@ export class QuestionsService {
           snippetCode: dto.type === 'code' ? null : dto.snippetCode ?? null,
           snippetLanguage: dto.type === 'code' ? null : dto.snippetLanguage ?? null,
           imageUrl: dto.type === 'code' ? null : toStoredImageUrl(dto.imageUrl),
+          ...(opts.status ? { status: opts.status } : {}),
           createdBy: userId,
           options: {
             create: dto.options.map((o, index) => ({ text: o.text, isCorrect: o.isCorrect, orderIndex: index, imageUrl: toStoredImageUrl(o.imageUrl) })),

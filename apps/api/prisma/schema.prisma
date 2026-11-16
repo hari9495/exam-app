@@ -621,6 +621,15 @@ model Question {
   // is why a miskeyed question stayed flagged even after a recruiter fixed it.
   // Null means the key has never changed, so every response counts.
   answerKeyChangedAt DateTime?             @map("answer_key_changed_at") @db.Timestamptz(3)
+  /// Assessments AS-1 (answer 2010): the approved version in use; a big change makes the next one.
+  version            Int                   @default(1)
+  /// Alt text for the question's image and, by option order, each option's image (approval needs them).
+  imageAlt           String?               @map("image_alt") @db.VarChar(500)
+  optionAlts         Json                  @default("[]") @map("option_alts")
+  lastApprovedBy     String?               @map("last_approved_by") @db.Uuid
+  lastApprovedAt     DateTime?             @map("last_approved_at") @db.Timestamptz(3)
+  revisions          QuestionRevision[]
+  translations       QuestionTranslation[]
   options            QuestionOption[]
   examLinks          ExamSectionQuestion[]
   answers            Answer[]
@@ -14310,4 +14319,61 @@ model SdProblem {
   @@unique([organizationId, ticketId])
   @@index([organizationId, deskId, state])
   @@map("sd_problems")
+}
+
+/// Assessments AS-1 (answers 2009, 2010): a proposed new or changed question, reviewed by another person (and a
+/// second approver for some collections) before it is used. `content` is the question as proposed.
+model QuestionRevision {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  questionId         String    @map("question_id") @db.Uuid
+  version            Int
+  kind               String    @db.VarChar(10)
+  state              String    @default("draft") @db.VarChar(20)
+  content            Json
+  authorId           String    @map("author_id") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  submittedAt        DateTime? @map("submitted_at") @db.Timestamptz(3)
+  needsSecond        Boolean   @default(false) @map("needs_second")
+  reviewerId         String?   @map("reviewer_id") @db.Uuid
+  reviewedAt         DateTime? @map("reviewed_at") @db.Timestamptz(3)
+  secondReviewerId   String?   @map("second_reviewer_id") @db.Uuid
+  secondReviewedAt   DateTime? @map("second_reviewed_at") @db.Timestamptz(3)
+  note               String?   @db.VarChar(1000)
+  fieldComments      Json      @default("{}") @map("field_comments")
+  duplicateOf        String?   @map("duplicate_of") @db.Uuid
+  duplicatePercent   Int?      @map("duplicate_percent") @db.SmallInt
+  duplicateClearedBy String?   @map("duplicate_cleared_by") @db.Uuid
+  rowVersion         Int       @default(1) @map("row_version")
+  question           Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, state, submittedAt], map: "question_revisions_queue_idx")
+  @@index([questionId, createdAt], map: "question_revisions_question_idx")
+  @@map("question_revisions")
+}
+
+/// A question's translation for one version and language (answer 2010), reviewed by a person other than its writer.
+model QuestionTranslation {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  questionId     String    @map("question_id") @db.Uuid
+  version        Int
+  language       String    @db.VarChar(5)
+  text           String    @db.Text
+  options        Json      @default("[]")
+  state          String    @default("draft") @db.VarChar(20)
+  aiAssisted     Boolean   @default(false) @map("ai_assisted")
+  authorId       String    @map("author_id") @db.Uuid
+  reviewerId     String?   @map("reviewer_id") @db.Uuid
+  reviewedAt     DateTime? @map("reviewed_at") @db.Timestamptz(3)
+  note           String?   @db.VarChar(1000)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  rowVersion     Int       @default(1) @map("row_version")
+  question       Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, version, language], map: "question_translations_one")
+  @@index([organizationId, state], map: "question_translations_queue_idx")
+  @@map("question_translations")
 }
