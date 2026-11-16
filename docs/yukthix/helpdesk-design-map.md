@@ -2277,3 +2277,7 @@ Queued: 2112, 2113, 2116 (small follow-up slice).
       staff review does; the phone the person types in the dialog is kept. *Suggested: keep.*
 2135. **More than one open request from one company.** Talk to us allows one open request per company and feature; chat
       requests are limited to one per chat only. *Suggested: also one open chat request per company at a time.*
+
+**Founder answers (16 Nov 2026, "ok for all"), 2146 and 2147:**
+- 2146: hide "Send a sales request" while the company has one open, and say when sales will call.
+- 2147: keep both, the tab for deciders and the page for writers.
