@@ -114,6 +114,10 @@ export interface ChangeInput {
   backout: string;
   banner: boolean;
   tasks?: string[];
+  /** Answer 2056: the location its notice is limited to. */
+  noticeLocationId?: string;
+  /** Answer 2058: the problem it fixes. */
+  problemId?: string;
 }
 export interface ChangeQuestion {
   id: string;
@@ -131,6 +135,11 @@ export interface LiveChangeSetup {
   bannerHours: number | null;
   /** "weekdays 21:00 to 06:00, and weekends". */
   windowText: string;
+  /** Answer 2056: whom notices reach on this desk, and the locations to choose from. */
+  noticeScope?: 'all' | 'location' | 'application';
+  locations?: { id: string; name: string }[];
+  /** Answer 2058: raised from a problem, to fix it. */
+  problem?: { id: string; number: string; title: string } | null;
   onSubmit: (input: ChangeInput) => Promise<{ id: string; number: string; stage: string }>;
 }
 /** ITSM-2 live: the changes page of /yx/desk/changes. */
@@ -166,6 +175,8 @@ export interface ItsmReportView {
   problems: { open: number; byAge: { label: string; count: number }[]; incidentsPerProblem: number | null; top: { number: string; title: string; incidents: number }[] };
 }
 
+const ENDINGS = [['done', 'done'], ['done_with_problems', 'with problems'], ['backed_out', 'backed out'], ['rejected', 'not approved'], ['cancelled', 'cancelled'], ['open', 'not finished']] as const;
+
 export function ItsmReportCard({ report }: { report: ItsmReportView }) {
   const r = report;
   return (
@@ -179,19 +190,12 @@ export function ItsmReportCard({ report }: { report: ItsmReportView }) {
             { label: 'Incidents per problem', value: r.problems.incidentsPerProblem === null ? 'No problems yet' : String(r.problems.incidentsPerProblem) },
           ]}
         />
-        <DataTable
-          label="Changes by kind"
-          rows={r.changes.byKind}
-          getRowId={(x) => x.kind}
-          columns={[
-            { key: 'kind', header: 'Kind', value: (x) => KIND_LABEL[x.kind] },
-            { key: 'done', header: 'Done', type: 'number', value: (x) => x.done },
-            { key: 'dwp', header: 'Done with problems', type: 'number', value: (x) => x.done_with_problems },
-            { key: 'back', header: 'Backed out', type: 'number', value: (x) => x.backed_out },
-            { key: 'rej', header: 'Not approved', type: 'number', value: (x) => x.rejected },
-            { key: 'can', header: 'Cancelled', type: 'number', value: (x) => x.cancelled },
-            { key: 'open', header: 'Not finished', type: 'number', value: (x) => x.open },
-          ]}
+        {/* One line per kind, only the endings that happened (compact, so the page fits a laptop screen). */}
+        <DescriptionList
+          items={r.changes.byKind.map((x) => ({
+            label: `${KIND_LABEL[x.kind]} changes`,
+            value: ENDINGS.filter(([k]) => x[k]).map(([k, word]) => `${x[k]} ${word}`).join(' · ') || 'None',
+          }))}
         />
         {r.problems.top.length > 0 && (
           <DescriptionList items={r.problems.top.map((t) => ({ label: t.number, value: `${t.title} · ${t.incidents} incident${t.incidents === 1 ? '' : 's'}` }))} />
@@ -255,19 +259,22 @@ export function ChangesScreen({ rows, freezes, today, newOpen = false, exportOpe
         onRowClick={live ? (r) => live.onOpen(r.id) : onOpen ? (r) => onOpen(r.id) : undefined}
         empty={<EmptyState title="No changes yet." description="Raise a change before you touch a system people use: what changes, the risk, the plan and the way back." />}
       />
-      <Card title="Change calendar · the next two weeks">
-        {fortnight.length === 0 && freezes.length === 0 ? (
-          <Text tone="secondary">Nothing scheduled.</Text>
-        ) : (
-          <DescriptionList
-            items={[
-              ...freezes.map((f) => ({ label: formatDate(f.on), value: `Freeze: ${f.why}. Changes wait, except an emergency with a reason.` })),
-              ...fortnight.map((r) => ({ label: `${formatDate(r.from)}, ${time(r.from)}`, value: `${r.number} · ${r.title} (${KIND_LABEL[r.kind]}, ${RISK[r.risk].label.toLowerCase()}) · ${r.service}` })),
-            ]}
-          />
-        )}
-      </Card>
-      {report && <ItsmReportCard report={report} />}
+      {/* The calendar and the report side by side, so the page fits a laptop screen. */}
+      <div className={report ? 'yx-ops-split' : undefined}>
+        <Card title="Change calendar · the next two weeks">
+          {fortnight.length === 0 && freezes.length === 0 ? (
+            <Text tone="secondary">Nothing scheduled.</Text>
+          ) : (
+            <DescriptionList
+              items={[
+                ...freezes.map((f) => ({ label: formatDate(f.on), value: `Freeze: ${f.why}. Changes wait, except an emergency with a reason.` })),
+                ...fortnight.map((r) => ({ label: `${formatDate(r.from)}, ${time(r.from)}`, value: `${r.number} · ${r.title} (${KIND_LABEL[r.kind]}, ${RISK[r.risk].label.toLowerCase()}) · ${r.service}` })),
+              ]}
+            />
+          )}
+        </Card>
+        {report && <ItsmReportCard report={report} />}
+      </div>
       {creating && <NewChangeDrawer onClose={() => setCreating(false)} live={live} />}
       {exporting && <ExportDialog today={today} onClose={() => setExporting(false)} onExport={live?.onExport} />}
     </OpsDesk>
@@ -345,7 +352,8 @@ export function NewChangeDrawer({ onClose, defaultKind = 'normal', live }: { onC
   const { toast } = useToast();
   const setup = live ?? DRAWN_SETUP;
   const [kind, setKind] = useState<ChangeKind>(defaultKind);
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState(live?.problem ? `Fix: ${live.problem.title}`.slice(0, 200) : '');
+  const [noticeLocation, setNoticeLocation] = useState<string | null>(null);
   const [service, setService] = useState<string | null>(null);
   const [serviceText, setServiceText] = useState('');
   const [templateId, setTemplateId] = useState<string | null>(null);
@@ -372,6 +380,8 @@ export function NewChangeDrawer({ onClose, defaultKind = 'normal', live }: { onC
     ...(kind !== 'standard' && lowered && riskReason.trim().length < 10 ? [{ fieldId: 'chg-risk-why', message: 'Say why the risk is lower than the answers give.' }] : []),
     ...(!on ? [{ fieldId: 'chg-on', message: 'Choose the day.' }] : []),
     ...(!backout.trim() ? [{ fieldId: 'chg-backout', message: 'Say how to undo it if it goes wrong.' }] : []),
+    ...(banner && setup.bannerHours != null && setup.noticeScope === 'location' && !noticeLocation ? [{ fieldId: 'chg-notice-loc', message: 'Choose the location the notice is for.' }] : []),
+    ...(banner && setup.bannerHours != null && setup.noticeScope === 'application' && noApps ? [{ fieldId: 'chg-service', message: 'Notices here reach an application\'s users: choose the application.' }] : []),
   ]);
   const route = kind === 'standard' ? 'Pre-approved template: no approval, logged and scheduled.' : kind === 'emergency' ? setup.routes.emergency : risk ? setup.routes[risk] : 'Answer the risk questions to see who approves.';
   const send = () => {
@@ -392,6 +402,8 @@ export function NewChangeDrawer({ onClose, defaultKind = 'normal', live }: { onC
       ...(plan.trim() ? { plan: plan.trim() } : {}),
       backout: backout.trim(),
       banner,
+      ...(banner && setup.noticeScope === 'location' && noticeLocation ? { noticeLocationId: noticeLocation } : {}),
+      ...(live?.problem ? { problemId: live.problem.id } : {}),
     };
     if (!live) {
       toast({ tone: 'success', title: kind === 'standard' ? 'Change scheduled' : 'Change sent for approval' });
@@ -422,6 +434,7 @@ export function NewChangeDrawer({ onClose, defaultKind = 'normal', live }: { onC
       }
     >
       {error && <InlineAlert tone="danger" title="It was not sent">{error}</InlineAlert>}
+      {live?.problem && <InlineAlert tone="info" title={`Fixes ${live.problem.number}`}>{`${live.problem.title}. When this change is done, the problem closes and its incidents are told.`}</InlineAlert>}
       <FormField id="chg-kind" label="Kind" required helper={kind === 'standard' ? 'From a pre-approved template.' : kind === 'emergency' ? 'Only to stop or prevent an outage now.' : 'Assessed and approved before it is scheduled.'}>
         <Segment label="Kind" value={kind} onChange={setKind} options={(['standard', 'normal', 'emergency'] as const).map((k) => ({ value: k, label: KIND_LABEL[k] }))} />
       </FormField>
@@ -466,10 +479,11 @@ export function NewChangeDrawer({ onClose, defaultKind = 'normal', live }: { onC
           </div>
         </FormField>
       )}
+      {/* A field row holds two fields: the day on its own, then From and To (three wrapped To onto a line by itself). */}
+      <FormField id="chg-on" label="Day" required error={early.errorOf('chg-on')} helper={`Inside the change window (${setup.windowText}); never in a freeze.`}>
+        <DatePicker value={on} onChange={setOn} />
+      </FormField>
       <FieldRow>
-        <FormField id="chg-on" label="Day" required error={early.errorOf('chg-on')} helper={`Inside the change window (${setup.windowText}); never in a freeze.`}>
-          <DatePicker value={on} onChange={setOn} />
-        </FormField>
         <FormField id="chg-from" label="From">
           <Select value={from} onChange={setFrom} options={HOURS.map((h) => ({ value: h, label: h }))} />
         </FormField>
@@ -489,6 +503,12 @@ export function NewChangeDrawer({ onClose, defaultKind = 'normal', live }: { onC
         <TextArea value={backout} onChange={setBackout} rows={2} placeholder="How to undo it if it goes wrong, and how long that takes." />
       </FormField>
       {setup.bannerHours != null && <Checkbox label={`Show a known-issue notice to the people affected, from ${setup.bannerHours} hours before until it ends`} checked={banner} onChange={setBanner} />}
+      {setup.bannerHours != null && banner && setup.noticeScope === 'location' && (
+        <FormField id="chg-notice-loc" label="Notice for the people at" required error={early.errorOf('chg-notice-loc')}>
+          <Select value={noticeLocation} onChange={setNoticeLocation} placeholder="Choose a location" options={(setup.locations ?? []).map((l) => ({ value: l.id, label: l.name }))} />
+        </FormField>
+      )}
+      {setup.bannerHours != null && banner && setup.noticeScope === 'application' && <Text size="sm" tone="secondary">The notice reaches the people who were given access to the application it touches.</Text>}
     </Drawer>
   );
 }
@@ -692,7 +712,10 @@ export function ChangeRecordScreen({ change, stage, approvals, tasks, causedInci
 
 /** Answer 1939: a category with the desk's repeat count of incidents in its days (a suggestion to the IT lead). */
 export interface ProblemSuggestion {
-  categoryId: string;
+  /** Answer 2057: repeats in one category, or on one application. */
+  kind?: 'category' | 'application';
+  appId?: string | null;
+  categoryId: string | null;
   category: string;
   count: number;
   days: number;
@@ -705,7 +728,7 @@ export interface LiveProblems {
   onDesk: (id: string) => void;
   canRaise: boolean;
   onOpen: (id: string) => void;
-  onCreate: (input: { title: string; description?: string; categoryId?: string; incidentIds?: string[] }) => Promise<{ id: string; number: string }>;
+  onCreate: (input: { title: string; description?: string; categoryId?: string; appId?: string; incidentIds?: string[] }) => Promise<{ id: string; number: string }>;
 }
 
 export function ProblemsScreen({ rows, access = true, suggestions, newOpen = false, live }: { rows: ProblemRow[]; access?: boolean; suggestions?: ProblemSuggestion[]; newOpen?: boolean; live?: LiveProblems }) {
@@ -743,12 +766,12 @@ export function ProblemsScreen({ rows, access = true, suggestions, newOpen = fal
       />
       {shown.map((x) => (
         <InlineAlert
-          key={x.categoryId}
+          key={x.categoryId ?? x.appId ?? x.category}
           tone="info"
           title={`Suggested: ${x.category}`}
           actions={(!live || live.canRaise) && <Button size="sm" onClick={() => setCreating(x)}>Open a problem</Button>}
         >
-          {`${x.count} incidents in the ${x.category} category in ${x.days} days. Open a problem to find the cause.`}
+          {`${x.count} incidents ${x.kind === 'application' ? `about the ${x.category} application` : `in the ${x.category} category`} in ${x.days} days. Open a problem to find the cause.`}
         </InlineAlert>
       ))}
       <DataTable label="Problems" columns={cols} rows={rows} getRowId={(r) => r.id} onRowClick={live ? (r) => live.onOpen(r.id) : undefined} empty={<EmptyState title="No problems open." description="Link incidents that share a cause to a problem, from the ticket or from the ticket list." />} />
@@ -779,7 +802,7 @@ function NewProblemDrawer({ from, onClose, onCreate, onOpen }: { from: ProblemSu
             onClick={() =>
               !early.stop() &&
               void run('save', async () => {
-                const res = await onCreate?.({ title: title.trim(), ...(description.trim() ? { description: description.trim() } : {}), ...(from ? { categoryId: from.categoryId, incidentIds: from.incidentIds } : {}) });
+                const res = await onCreate?.({ title: title.trim(), ...(description.trim() ? { description: description.trim() } : {}), ...(from ? { ...(from.categoryId ? { categoryId: from.categoryId } : {}), ...(from.appId ? { appId: from.appId } : {}), incidentIds: from.incidentIds } : {}) });
                 toast({ tone: 'success', title: res ? `${res.number} opened` : 'Problem opened' });
                 onClose();
                 if (res) onOpen?.(res.id);
@@ -811,9 +834,14 @@ export interface LiveProblemRecord {
   spaces: { id: string; name: string; audience: string }[];
   changes: { id: string; number: string; title: string }[];
   can: { work: boolean; close: boolean; publicArticle: boolean };
+  /** Answer 2056: whom the notice reaches on this desk; the choices; the problem's own application. */
+  noticeScope?: 'all' | 'location' | 'application';
+  locations?: { id: string; name: string }[];
+  apps?: { id: string; name: string }[];
+  appId?: string | null;
   onLink: (numbers: string[]) => Promise<unknown>;
   onSave: (input: { rootCause?: string; closingReply?: string; state?: 'investigating' }) => Promise<unknown>;
-  onKnownError: (input: { workaround: string; article: boolean; spaceId?: string; banner: boolean }) => Promise<unknown>;
+  onKnownError: (input: { workaround: string; article: boolean; spaceId?: string; banner: boolean; noticeLocationId?: string; noticeAppId?: string }) => Promise<unknown>;
   onFix: (changeId: string) => Promise<unknown>;
   onRaiseChange: () => void;
   onClose: (reply: string) => Promise<unknown>;
@@ -840,6 +868,8 @@ export function ProblemRecordScreen({ problem, incidents, workaround: initial, k
   const [spaceId, setSpaceId] = useState<string | null>(agentSpace);
   const [banner, setBanner] = useState(false);
   const [changeId, setChangeId] = useState<string | null>(null);
+  const [noticeLoc, setNoticeLoc] = useState<string | null>(null);
+  const [noticeApp, setNoticeApp] = useState<string | null>(live?.appId ?? null);
   const [reply, setReply] = useState(live?.closingReply ?? '');
   const { busy, error, run } = useRun();
   const can = live ? live.can.work : true;
@@ -883,6 +913,8 @@ export function ProblemRecordScreen({ problem, incidents, workaround: initial, k
             </div>
           )}
         </Card>
+        <div className="yx-ops-split">
+          <div className="yx-ops-stack">
         <Card title="Root cause">
           <FormField id="prb-cause" label="What causes it" helper="Found by the investigation.">
             <TextArea value={cause} onChange={setCause} rows={3} placeholder="Not found yet." disabled={!can} />
@@ -895,6 +927,27 @@ export function ProblemRecordScreen({ problem, incidents, workaround: initial, k
             </div>
           )}
         </Card>
+        {live && (live.can.close || can) && (
+          <Card title="Closing">
+            <FormField id="prb-reply" label="The reply every open linked incident gets" helper="Sent once, when the problem closes (by its fixing change, or by an IT lead here).">
+              <TextArea value={reply} onChange={setReply} rows={2} maxLength={2000} disabled={!can} />
+            </FormField>
+            <div className="yx-ops-row">
+              {can && (
+                <Button loading={busy === 'reply'} onClick={() => void run('reply', async () => (await live.onSave({ closingReply: reply }), toast({ tone: 'success', title: 'Reply saved' })))}>
+                  Save the reply
+                </Button>
+              )}
+              {live.can.close && (
+                <Button variant="danger" loading={busy === 'close'} onClick={() => void run('close', async () => (await live.onClose(reply), toast({ tone: 'success', title: `${problem.number} closed; its incidents were told` })))}>
+                  Close without a change
+                </Button>
+              )}
+            </div>
+          </Card>
+        )}
+          </div>
+          <div className="yx-ops-stack">
         <Card title={knownError ? 'Known error · workaround' : 'Workaround'} actions={knownError ? <Badge tone="warning"><AlertTriangle aria-hidden size={14} /> Known error</Badge> : undefined}>
           <FormField id="prb-workaround" label="What people can do until it is fixed" error={workEarly.errorOf('prb-workaround')}>
             <TextArea value={workaround} onChange={setWorkaround} rows={3} disabled={!can} />
@@ -908,14 +961,24 @@ export function ProblemRecordScreen({ problem, incidents, workaround: initial, k
                     <Select value={spaceId} onChange={setSpaceId} options={live.spaces.filter((s) => live.can.publicArticle || s.audience === 'agents').map((s) => ({ value: s.id, label: `${s.name} (${s.audience === 'agents' ? 'agents' : s.audience === 'requesters' ? 'employees' : 'public'})` }))} />
                   </FormField>
                 )}
-                {!live.banner && <Checkbox label="Show a known-issue notice to employees until the problem closes" checked={banner} onChange={setBanner} />}
+                {!live.banner && <Checkbox label="Show a known-issue notice until the problem closes; people may press Me too to raise their own linked ticket" checked={banner} onChange={setBanner} />}
+                {!live.banner && banner && live.noticeScope === 'location' && (
+                  <FormField label="Notice for the people at" required>
+                    <Select value={noticeLoc} onChange={setNoticeLoc} placeholder="Choose a location" options={(live.locations ?? []).map((l) => ({ value: l.id, label: l.name }))} />
+                  </FormField>
+                )}
+                {!live.banner && banner && live.noticeScope === 'application' && (
+                  <FormField label="Notice for the users of" required>
+                    <Select value={noticeApp} onChange={setNoticeApp} placeholder="Choose an application" options={(live.apps ?? []).map((x) => ({ value: x.id, label: x.name }))} />
+                  </FormField>
+                )}
                 {live.article && <Text size="sm" tone="secondary">{`Article KB-${live.article.number} (${live.article.state}).`}</Text>}
                 <div className="yx-ops-row">
                   <Button
                     variant="primary"
                     icon={BookOpen}
                     loading={busy === 'known'}
-                    onClick={() => !workEarly.stop() && void run('known', async () => (await live.onKnownError({ workaround: workaround.trim(), article: !live.article && article, ...(spaceId && article ? { spaceId } : {}), banner: !live.banner && banner }), toast({ tone: 'success', title: `${problem.number} is a known error` })))}
+                    onClick={() => !workEarly.stop() && void run('known', async () => (await live.onKnownError({ workaround: workaround.trim(), article: !live.article && article, ...(spaceId && article ? { spaceId } : {}), banner: !live.banner && banner, ...(noticeLoc && live.noticeScope === 'location' ? { noticeLocationId: noticeLoc } : {}), ...(noticeApp && live.noticeScope === 'application' ? { noticeAppId: noticeApp } : {}) }), toast({ tone: 'success', title: `${problem.number} is a known error` })))}
                   >
                     {knownError ? 'Save the workaround' : 'Mark as known error'}
                   </Button>
@@ -958,25 +1021,8 @@ export function ProblemRecordScreen({ problem, incidents, workaround: initial, k
             </div>
           )}
         </Card>
-        {live && (live.can.close || can) && (
-          <Card title="Closing">
-            <FormField id="prb-reply" label="The reply every open linked incident gets" helper="Sent once, when the problem closes (by its fixing change, or by an IT lead here).">
-              <TextArea value={reply} onChange={setReply} rows={2} maxLength={2000} disabled={!can} />
-            </FormField>
-            <div className="yx-ops-row">
-              {can && (
-                <Button loading={busy === 'reply'} onClick={() => void run('reply', async () => (await live.onSave({ closingReply: reply }), toast({ tone: 'success', title: 'Reply saved' })))}>
-                  Save the reply
-                </Button>
-              )}
-              {live.can.close && (
-                <Button variant="danger" loading={busy === 'close'} onClick={() => void run('close', async () => (await live.onClose(reply), toast({ tone: 'success', title: `${problem.number} closed; its incidents were told` })))}>
-                  Close without a change
-                </Button>
-              )}
-            </div>
-          </Card>
-        )}
+          </div>
+        </div>
       </div>
     </OpsDesk>
   );

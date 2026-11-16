@@ -20,6 +20,10 @@ type Detail = Omit<ProblemRow, 'openedOn'> & {
   banner: boolean;
   spaces: { id: string; name: string; audience: string }[];
   can: { work: boolean; close: boolean; publicArticle: boolean };
+  appId: string | null;
+  noticeScope: 'all' | 'location' | 'application';
+  locations: { id: string; name: string }[];
+  apps: { id: string; name: string }[];
 };
 const STATE: Record<string, string> = { new: 'New', open: 'In progress', pending: 'Waiting', on_hold: 'On hold', solved: 'Resolved', closed: 'Closed' };
 
@@ -49,11 +53,16 @@ export default function YxDeskProblemPage({ params }: { params: Promise<{ id: st
         spaces: d.spaces,
         changes: d.changes,
         can: d.can,
+        noticeScope: d.noticeScope,
+        locations: d.locations,
+        apps: d.apps,
+        appId: d.appId,
         onLink: (numbers) => write(`${path}/incidents`, 'POST', { numbers }),
         onSave: (input) => write(path, 'PATCH', { version: d.version, ...input }),
         onKnownError: (input) => write(`${path}/known-error`, 'POST', { version: d.version, ...input }),
         onFix: (changeId) => write(`${path}/fix`, 'POST', { changeId }),
-        onRaiseChange: () => router.push('/yx/desk/changes'),
+        // Answer 2058: the New change drawer opens with this problem linked.
+        onRaiseChange: () => router.push(`/yx/desk/changes?problem=${encodeURIComponent(id)}`),
         onClose: (reply) => write(`${path}/close`, 'POST', { version: d.version, ...(reply.trim() ? { reply: reply.trim() } : {}) }),
         onBack: () => router.push('/yx/desk/problems'),
       }}

@@ -116,6 +116,8 @@ export class RequesterService {
         whose = forPersonId;
       }
       const hasDevice = Boolean(whose && (await assetsOf(tx, org, whose, '')).length);
+      // ITSM answer 2057: an IT desk asks "Which application?" (optional) from the company's list.
+      const apps = desks.some((d) => d.kind === 'it') ? await tx.sdBusinessApp.findMany({ where: { organizationId: org, status: 'active' }, select: { id: true, name: true }, orderBy: { name: 'asc' } }) : [];
       return desks.map((d) => ({
         id: d.id,
         name: d.name,
@@ -127,6 +129,7 @@ export class RequesterService {
         closed: closed.get(d.id) ?? null,
         // Answer 1662: an IT desk asks "Which device?" when the person has one assigned.
         askDevice: d.kind === 'it' && hasDevice,
+        apps: d.kind === 'it' ? apps : [],
       }));
     });
   }
@@ -144,6 +147,7 @@ export class RequesterService {
         const mine = await assetsOf(tx, r.ctx.organizationId, dto.requestedForPersonId ?? personId, '');
         if (!mine.some((x) => x.id === dto.assetId)) throw new BadRequestException('Choose one of your own devices from the list.');
       }
+      if (dto.appId && desk.kind !== 'it') throw new BadRequestException('Only IT desk tickets name an application.');
       return this.tickets.createIn(tx, r, {
         deskId: dto.deskId,
         typeId: dto.typeId,
@@ -165,6 +169,7 @@ export class RequesterService {
         originArticleId: dto.originArticleId,
         originQuery: dto.originQuery,
         assetId: dto.assetId,
+        appId: dto.appId,
       });
     });
     return { id: t.id, number: t.number };

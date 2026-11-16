@@ -4,7 +4,7 @@ import { TenantPrismaService } from '@exam-platform/shared';
 import { Tx } from '../org-structure/org-structure.service';
 import { DeskActor, audit, canSetUp, canWork, emit, isAgentOn, isLead } from './desk-access';
 import { KnownErrorDto, ProblemCloseDto, ProblemDto, ProblemFixDto, ProblemLinkDto, ProblemUpdateDto } from './dto-itsm';
-import { ItsmService, itsmSettingsOf } from './itsm.service';
+import { ItsmService, itsmSettingsOf, noticeTarget } from './itsm.service';
 import { KbService } from './kb.service';
 import { RequesterService } from './requester.service';
 import { textToHtml } from './rich-text';
@@ -62,13 +62,14 @@ export class ProblemsService {
       const org = a.ctx.organizationId;
       const desk = await this.itsm.itDesk(tx, a, dto.deskId);
       if (dto.categoryId && !(await tx.sdCategory.findFirst({ where: { organizationId: org, deskId: desk.id, id: dto.categoryId }, select: { id: true } }))) throw new BadRequestException('Choose a category of this desk.');
+      if (dto.appId && !(await tx.sdBusinessApp.findFirst({ where: { organizationId: org, id: dto.appId }, select: { id: true } }))) throw new BadRequestException('Choose an application of this company.');
       const type = await tx.sdTicketType.findFirst({ where: { organizationId: org, deskId: desk.id, kind: 'problem', active: true }, orderBy: { sortOrder: 'asc' } });
       if (!type) throw new BadRequestException('This desk has no problem type in use. Ask the desk admin to turn it on.');
       const personId = (await this.requesters.personOf(tx, { ctx: a.ctx, userId: a.userId, acting: false, user: { role: '' } }, true))!;
       let t = await this.tickets.createIn(tx, a, { deskId: desk.id, typeId: type.id, itsm: true, ...(dto.categoryId ? { categoryId: dto.categoryId } : {}), subject: dto.title.trim(), bodyHtml: textToHtml(dto.description?.trim() || dto.title.trim()), requesterPersonId: personId, openedByUserId: a.userId, channel: 'agent', side: 'agent' });
       // A problem tracks its incidents (US-G-220): solving it answers and solves them.
       t = await tx.sdTicket.update({ where: { id: t.id }, data: { tracker: true } });
-      const p = await tx.sdProblem.create({ data: { organizationId: org, deskId: desk.id, ticketId: t.id, categoryId: dto.categoryId ?? null, createdBy: a.userId } });
+      const p = await tx.sdProblem.create({ data: { organizationId: org, deskId: desk.id, ticketId: t.id, categoryId: dto.categoryId ?? null, appId: dto.appId ?? null, createdBy: a.userId } });
       const linked = dto.incidentIds?.length ? await this.linkIn(tx, a, p, t, dto.incidentIds) : 0;
       await audit(tx, a, 'desk.problem.raised', 'sd_problem', p.id, { ticketId: t.id, number: t.number, incidents: linked, categoryId: dto.categoryId ?? null });
       return { id: p.id, number: t.number, linked };
@@ -146,8 +147,11 @@ export class ProblemsService {
       }
       let bannerId = p.bannerId;
       if (dto.banner && !bannerId) {
-        // No "Me too": a problem ticket is IT's own record (requesters never follow it).
-        bannerId = (await tx.sdBanner.create({ data: { organizationId: org, deskId: p.deskId, audience: 'employees', text: `Known issue: ${t.subject}. Until it is fixed: ${workaround}`.slice(0, 300), severity: 'warning', ticketId: null, createdBy: a.userId } })).id;
+        // Answer 2051: "Me too" raises the person's own incident, already linked to the problem (they never follow the
+        // problem itself). Answer 2056: limited to a location or an application's users as the desk asks.
+        const target = await noticeTarget(tx, org, await itsmSettingsOf(tx, org, p.deskId), { locationId: dto.noticeLocationId ?? null, appId: dto.noticeAppId ?? p.appId });
+        // No "Known issue:" prefix: the notice card already carries that title.
+        bannerId = (await tx.sdBanner.create({ data: { organizationId: org, deskId: p.deskId, audience: 'employees', text: `${t.subject}. Until it is fixed: ${workaround}`.slice(0, 300), severity: 'warning', ticketId: t.id, locationId: target.locationId, appId: target.appId, createdBy: a.userId } })).id;
         await emit(tx, org, 'helpdesk.banner.published', { bannerId, deskId: p.deskId });
       }
       const after = await this.bump(tx, p, { state: p.state === 'fixed' ? 'fixed' : 'known_error', workaround, kbArticleId: articleId, bannerId });
@@ -259,18 +263,34 @@ export class ProblemsService {
     }));
   }
 
-  /** Answer 1939: a category with the desk's repeat count of incidents in its days, none of them on a problem yet. */
+  /**
+   * Answers 1939 and 2057: a category, or an application, with the desk's repeat count of incidents in its days, none of
+   * them on a problem yet and no open problem about it already.
+   */
   async suggestions(tx: Tx, org: string, deskId: string) {
     const s = await itsmSettingsOf(tx, org, deskId);
     const since = new Date(Date.now() - s.repeatDays * 86_400_000);
-    const recent = await tx.sdTicket.findMany({ where: { organizationId: org, deskId, kind: 'incident', mergedIntoId: null, categoryId: { not: null }, createdAt: { gte: since } }, select: { id: true, categoryId: true } });
+    const recent = await tx.sdTicket.findMany({ where: { organizationId: org, deskId, kind: 'incident', mergedIntoId: null, OR: [{ categoryId: { not: null } }, { appId: { not: null } }], createdAt: { gte: since } }, select: { id: true, categoryId: true, appId: true } });
     const tracked = new Set((await tx.sdTicketLink.findMany({ where: { organizationId: org, kind: 'tracked_by', fromTicketId: { in: recent.map((r) => r.id) } }, select: { fromTicketId: true } })).map((l) => l.fromTicketId));
-    const covered = new Set((await tx.sdProblem.findMany({ where: { organizationId: org, deskId, state: { in: OPEN_PROBLEM }, categoryId: { not: null } }, select: { categoryId: true } })).map((p) => p.categoryId));
-    const by = new Map<string, string[]>();
-    for (const r of recent) if (!tracked.has(r.id) && !covered.has(r.categoryId)) by.set(r.categoryId!, [...(by.get(r.categoryId!) ?? []), r.id]);
-    const hits = [...by].filter(([, ids]) => ids.length >= s.repeatCount);
-    const names = new Map((await tx.sdCategory.findMany({ where: { organizationId: org, id: { in: hits.map(([c]) => c) } }, select: { id: true, name: true } })).map((c) => [c.id, c.name]));
-    return hits.map(([categoryId, ids]) => ({ categoryId, category: names.get(categoryId) ?? 'A category', count: ids.length, days: s.repeatDays, incidentIds: ids }));
+    const open = await tx.sdProblem.findMany({ where: { organizationId: org, deskId, state: { in: OPEN_PROBLEM } }, select: { categoryId: true, appId: true } });
+    const out: { kind: 'category' | 'application'; categoryId: string | null; appId: string | null; category: string; count: number; days: number; incidentIds: string[] }[] = [];
+    for (const kind of ['category', 'application'] as const) {
+      const key = (r: { categoryId: string | null; appId: string | null }) => (kind === 'category' ? r.categoryId : r.appId);
+      const covered = new Set(open.map(key).filter(Boolean));
+      const by = new Map<string, string[]>();
+      for (const r of recent) {
+        const k = key(r);
+        if (k && !tracked.has(r.id) && !covered.has(k)) by.set(k, [...(by.get(k) ?? []), r.id]);
+      }
+      const hits = [...by].filter(([, ids]) => ids.length >= s.repeatCount);
+      const names = new Map(
+        kind === 'category'
+          ? (await tx.sdCategory.findMany({ where: { organizationId: org, id: { in: hits.map(([c]) => c) } }, select: { id: true, name: true } })).map((c) => [c.id, c.name])
+          : (await tx.sdBusinessApp.findMany({ where: { organizationId: org, id: { in: hits.map(([c]) => c) } }, select: { id: true, name: true } })).map((c) => [c.id, c.name]),
+      );
+      for (const [id, ids] of hits) out.push({ kind, categoryId: kind === 'category' ? id : null, appId: kind === 'application' ? id : null, category: names.get(id) ?? (kind === 'category' ? 'A category' : 'An application'), count: ids.length, days: s.repeatDays, incidentIds: ids });
+    }
+    return out;
   }
 
   async detail(a: DeskActor, id: string) {
@@ -298,6 +318,11 @@ export class ProblemsService {
         banner: Boolean(p.bannerId),
         spaces: spaces.map((s) => ({ id: s.id, name: s.name, audience: s.audience })),
         can: { work: canWork(a, p.deskId) && p.state !== 'closed', close: isLead(a, p.deskId) && p.state !== 'closed', publicArticle: isLead(a, p.deskId) },
+        appId: p.appId,
+        // Answer 2056: what the known-error notice asks for on this desk.
+        noticeScope: (await itsmSettingsOf(tx, org, p.deskId)).noticeScope,
+        locations: (await itsmSettingsOf(tx, org, p.deskId)).noticeScope === 'location' ? await tx.location.findMany({ where: { organizationId: org, archivedAt: null }, select: { id: true, name: true }, orderBy: { name: 'asc' } }) : [],
+        apps: await tx.sdBusinessApp.findMany({ where: { organizationId: org, status: 'active' }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
       };
     });
   }

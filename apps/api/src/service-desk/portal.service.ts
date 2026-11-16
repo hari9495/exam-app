@@ -191,10 +191,13 @@ export class PortalService {
       ? new Map((await deskSystem(this.tenantPrisma, { organizationId: org, isSuperAdmin: false }, (sys) => sys.sdTicket.findMany({ where: { organizationId: org, id: { in: linked } }, select: { id: true, systemState: true } }))).map((t) => [t.id, t.systemState]))
       : new Map<string, string>();
     const location = audience === 'employees' && personId ? await this.locationOf(tx, org, personId) : null;
+    // ITSM answer 2056: a notice limited to an application reaches the people who were given access to it.
+    const apps = rows.some((r) => r.appId) && personId ? await this.appsOf(tx, org, personId) : new Set<string>();
     const voted = personId ? new Set((await tx.sdBannerVote.findMany({ where: { organizationId: org, personId, bannerId: { in: rows.map((r) => r.id) } }, select: { bannerId: true } })).map((v) => v.bannerId)) : new Set<string>();
     return rows
       .filter((b) => !b.ticketId || !['solved', 'closed'].includes(states.get(b.ticketId) ?? 'open'))
       .filter((b) => !b.locationId || b.locationId === location)
+      .filter((b) => !b.appId || apps.has(b.appId))
       .map((b) => ({ id: b.id, text: b.text, severity: b.severity, canMeToo: Boolean(b.ticketId), meToo: voted.has(b.id) }));
   }
 
@@ -207,6 +210,14 @@ export class PortalService {
     return row?.location_id ?? null;
   }
 
+  /** The applications a person was given access to: their delivered catalogue requests that named one (plan item 3). */
+  private async appsOf(tx: Tx, org: string, personId: string): Promise<Set<string>> {
+    const rows = await deskSystem(this.tenantPrisma, { organizationId: org, isSuperAdmin: false }, (sys) => sys.sdRequestItem.findMany({ where: { organizationId: org, forPersonId: personId, stage: 'delivered' }, select: { answers: true }, take: 2000 }));
+    const ids = new Set(rows.flatMap((r) => Object.values((r.answers ?? {}) as Record<string, unknown>).filter((v): v is string => typeof v === 'string')));
+    if (!ids.size) return new Set();
+    return new Set((await tx.sdBusinessApp.findMany({ where: { organizationId: org, id: { in: [...ids].filter((v) => /^[0-9a-f-]{36}$/i.test(v)) } }, select: { id: true } })).map((a) => a.id));
+  }
+
   /** "Me too": one vote per person, and the person follows the linked incident instead of raising a new ticket. */
   private async meTooIn(tx: Tx, org: string, bannerId: string, personId: string, audience: 'employees' | 'customers', deskIds: string[] | null, by: { ctx: DeskActor['ctx']; userId: string | null }) {
     const live = await this.liveBanners(tx, org, deskIds, audience, personId);
@@ -214,16 +225,28 @@ export class PortalService {
     const b = await tx.sdBanner.findFirstOrThrow({ where: { organizationId: org, id: bannerId } });
     const vote = await tx.sdBannerVote.createMany({ data: [{ organizationId: org, bannerId, personId }], skipDuplicates: true });
     if (!vote.count) return { linked: true, already: true };
+    let created: { id: string; number: string } | null = null;
     // Followed as the desk: the person cannot read the incident before they follow it (and only a standard one is linked).
     await deskSystem(this.tenantPrisma, by.ctx, async (sys) => {
       const t = await sys.sdTicket.findFirstOrThrow({ where: { organizationId: org, id: b.ticketId! } });
       // The incident turned private or sensitive after the banner went up: nobody is added to it (review fix).
       if (t.private || t.sensitive) throw new NotFoundException('No such banner.');
+      // ITSM answer 2051: a problem's notice raises the person's own incident, already linked to the problem (people
+      // never follow a problem ticket itself).
+      if (t.kind === 'problem') {
+        const type = await sys.sdTicketType.findFirst({ where: { organizationId: org, deskId: t.deskId, kind: 'incident', active: true }, orderBy: { sortOrder: 'asc' } });
+        const mine = await this.tickets.createIn(sys, by, { deskId: t.deskId, ...(type ? { typeId: type.id } : {}), subject: `Me too: ${t.subject}`.slice(0, 200), bodyHtml: `<p>${b.text.replace(/[<>&]/g, '')}</p>`, requesterPersonId: personId, openedByUserId: by.userId, channel: 'portal', side: 'requester', authorPersonId: personId, tags: ['me-too'] });
+        await sys.sdTicketLink.create({ data: { organizationId: org, fromTicketId: mine.id, toTicketId: t.id, kind: 'tracked_by', createdBy: by.userId } });
+        await this.tickets.event(sys, mine, 'linked', null, t.number, { by: null, byPerson: personId, reason: 'Tracked by' });
+        await emit(sys, org, 'helpdesk.problem.linked', { ticketId: t.id, deskId: t.deskId, incidentId: mine.id });
+        created = { id: mine.id, number: mine.number };
+        return;
+      }
       await this.tickets.addWatcherIn(sys, by, t, personId, true, personId);
       await this.tickets.event(sys, t, 'me_too', null, null, { by: null, byPerson: personId, reason: 'Someone has the same problem (banner)' });
     });
-    await audit(tx, { ctx: by.ctx, userId: by.userId as string }, 'desk.banner.me_too', 'sd_banner', bannerId, { personId, ticketId: b.ticketId });
-    return { linked: true, already: false };
+    await audit(tx, { ctx: by.ctx, userId: by.userId as string }, 'desk.banner.me_too', 'sd_banner', bannerId, { personId, ticketId: b.ticketId, raised: (created as { id: string } | null)?.id ?? null });
+    return { linked: true, already: false, ...(created ? { ticket: created } : {}) };
   }
 
   // ------------------------------------------------------------------------------------------ employees (in-app)

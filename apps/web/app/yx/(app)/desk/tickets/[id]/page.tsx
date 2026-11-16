@@ -184,6 +184,9 @@ export default function YxDeskTicketPage() {
         onSetDevice: async (assetId) => {
           await write(`${path}/device`, 'PUT', { assetId });
         },
+        onSetApp: async (appId) => {
+          await write(`${path}/app`, 'PUT', { appId });
+        },
         onArticleInserted: (articleId) => void write(`${path}/kb-links`, 'POST', { articleId, kind: 'linked' }).catch(() => undefined),
         onResolveClick: () => setResolving(true),
         onEscalateClick: () => setEscalating(true),

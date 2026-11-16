@@ -27,6 +27,7 @@ import {
   ConvertDto,
   TicketFieldDto,
   TicketFieldValuesDto,
+  TicketAppDto,
   TicketDeviceDto,
   CreateDeskDto,
   EditNoteDto,
@@ -422,6 +423,14 @@ export class DeskTicketsController {
   async assign(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AssignDto) {
     assertOwnSession(req);
     return this.tickets.assign(await this.access.actor(req, t), id, dto);
+  }
+
+  /** ITSM answer 2057: an IT desk's agent sets or clears the application a ticket is about. */
+  @Put('tickets/:id/app')
+  @RequirePermissions('desk.ticket.work')
+  async setApp(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: TicketAppDto) {
+    assertOwnSession(req);
+    return this.tickets.setApp(await this.access.actor(req, t), id, dto.appId);
   }
 
   /** Answer 1661: an IT desk's agent sets or clears the device a ticket is about. */

@@ -42,6 +42,8 @@ export interface ItsmSettingsValue {
   reviewDays: number;
   repeatCount: number;
   repeatDays: number;
+  /** Answer 2056: whom notices reach. */
+  noticeScope?: 'all' | 'location' | 'application';
   riskQuestions: ItsmQuestion[];
   riskQuestionsAreDefault: boolean;
   window: ItsmWindow;
@@ -61,6 +63,7 @@ export interface ItsmSettingsChange {
   reviewDays?: number;
   repeatCount?: number;
   repeatDays?: number;
+  noticeScope?: 'all' | 'location' | 'application';
   /** null: back to the five starter questions. */
   riskQuestions?: ItsmQuestion[] | null;
 }
@@ -236,6 +239,7 @@ function AfterCard({ value, onSave }: Pick<ItsmSettingsPanelProps, 'value' | 'on
   const [reviewDays, setReviewDays] = useState<number | null>(value.reviewDays);
   const [repeatCount, setRepeatCount] = useState<number | null>(value.repeatCount);
   const [repeatDays, setRepeatDays] = useState<number | null>(value.repeatDays);
+  const [scope, setScope] = useState(value.noticeScope ?? 'all');
   const { busy, error, run } = useRun();
   const { toast } = useToast();
   const can = value.canEdit;
@@ -244,6 +248,9 @@ function AfterCard({ value, onSave }: Pick<ItsmSettingsPanelProps, 'value' | 'on
       <div className="yx-ops-stack">
         {error && <InlineAlert tone="danger" title="It was not saved">{error}</InlineAlert>}
         <Switch label="Show a known-issue banner on the portal for a scheduled change, and email the service owner" checked={bannerOn} onChange={setBannerOn} disabled={!can} />
+        <FormField label="Who sees the notices" helper="All employees, or only the people at one location (chosen on each change and known error), or only the users of the application.">
+          <Segment label="Who sees the notices" options={[{ value: 'all', label: 'All employees' }, { value: 'location', label: 'One location' }, { value: 'application', label: "The application's users" }]} value={scope} onChange={(v) => can && setScope(v)} />
+        </FormField>
         <FieldRow>
           <FormField label="Show the banner from (hours before)" helper="Until the change window ends.">
             <NumberField value={bannerHours} onChange={setBannerHours} min={1} max={168} disabled={!can || !bannerOn} />
@@ -265,7 +272,7 @@ function AfterCard({ value, onSave }: Pick<ItsmSettingsPanelProps, 'value' | 'on
           busy={busy === 'save'}
           onSave={() =>
             void run('save', async () => {
-              await onSave({ version: value.version, bannerOn, bannerHours: bannerHours ?? 24, reviewDays: reviewDays ?? 5, repeatCount: repeatCount ?? 3, repeatDays: repeatDays ?? 7 });
+              await onSave({ version: value.version, bannerOn, noticeScope: scope, bannerHours: bannerHours ?? 24, reviewDays: reviewDays ?? 5, repeatCount: repeatCount ?? 3, repeatDays: repeatDays ?? 7 });
               toast({ tone: 'success', title: 'Settings saved.' });
             })
           }
