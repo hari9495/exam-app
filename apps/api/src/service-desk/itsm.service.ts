@@ -7,7 +7,7 @@ import { ItsmSettingsDto, ItsmWindowDto } from './dto-itsm';
 import { CompanyWindow, DEFAULT_RISK_QUESTIONS, DEFAULT_WINDOW, RiskQuestion, parseFreezeDates, questionsProblem } from './itsm-rules';
 
 /** Answers 1934-1939: the desk defaults while an IT desk has no settings row. */
-export const ITSM_DEFAULTS = { routeLow: 'lead', routeMedium: 'lead_owner', routeHigh: 'board', boardRule: 'majority', emergencyReviewDays: 2, bannerOn: true, bannerHours: 24, reviewDays: 5, repeatCount: 3, repeatDays: 7, noticeScope: 'all' } as const;
+export const ITSM_DEFAULTS = { routeLow: 'lead', routeMedium: 'lead_owner', routeHigh: 'board', boardRule: 'majority', emergencyReviewDays: 2, bannerOn: true, bannerHours: 24, reviewDays: 5, repeatCount: 3, repeatDays: 7, noticeScope: 'all', leadFallbackAdmin: true } as const;
 export interface ItsmSettings {
   routeLow: string;
   routeMedium: string;
@@ -22,6 +22,8 @@ export interface ItsmSettings {
   repeatDays: number;
   /** Answer 2056: all | location | application. */
   noticeScope: string;
+  /** Answer 2071: with no other IT lead, the desk admins approve the IT lead step. */
+  leadFallbackAdmin: boolean;
   riskQuestions: RiskQuestion[];
   version: number;
 }
@@ -69,6 +71,7 @@ export async function itsmSettingsOf(tx: Tx, org: string, deskId: string): Promi
     repeatCount: row.repeatCount,
     repeatDays: row.repeatDays,
     noticeScope: row.noticeScope,
+    leadFallbackAdmin: row.leadFallbackAdmin,
     riskQuestions: (row.riskQuestions as unknown as RiskQuestion[] | null) ?? DEFAULT_RISK_QUESTIONS,
     version: row.version,
   };

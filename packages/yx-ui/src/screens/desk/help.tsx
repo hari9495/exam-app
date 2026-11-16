@@ -35,7 +35,8 @@ const SEVERITY: Record<BannerSeverity, { tone: 'info' | 'warning' | 'danger'; ti
 };
 
 /** Known issues at the top of a help page (US-G-020). "Me too" follows the team's incident instead of a new ticket. */
-export function BannerList({ banners, onMeToo }: { banners: PublicBanner[]; onMeToo: (id: string) => Promise<unknown> }) {
+/** onOpenTicket: ITSM answer 2072, the toast's "Open it" opens the ticket Me too raised. */
+export function BannerList({ banners, onMeToo, onOpenTicket }: { banners: PublicBanner[]; onMeToo: (id: string) => Promise<unknown>; onOpenTicket?: (ticketId: string) => void }) {
   const [joined, setJoined] = useState<string[]>([]);
   const { busy, error, run } = useRun();
   const { toast } = useToast();
@@ -53,7 +54,7 @@ export function BannerList({ banners, onMeToo }: { banners: PublicBanner[]; onMe
             title={SEVERITY[b.severity].title}
             actions={
               b.canMeToo ? (
-                <Button size="sm" loading={busy === b.id} onClick={() => (on ? toast({ title: 'You are already on this issue. You will hear when it is fixed.' }) : void run(b.id, async () => { const res = (await onMeToo(b.id)) as { ticket?: { number: string } } | undefined; setJoined((j) => [...j, b.id]); toast({ tone: 'success', title: res?.ticket ? `We raised ${res.ticket.number} for you` : 'You are on this issue', description: res?.ticket ? 'It is linked to this issue. You will hear when it is fixed.' : 'You will hear when it is fixed.' }); }))}>
+                <Button size="sm" loading={busy === b.id} onClick={() => (on ? toast({ title: 'You are already on this issue. You will hear when it is fixed.' }) : void run(b.id, async () => { const res = (await onMeToo(b.id)) as { ticket?: { id: string; number: string } } | undefined; const t = res?.ticket; setJoined((j) => [...j, b.id]); toast({ tone: 'success', title: t ? `We raised ${t.number} for you` : 'You are on this issue', description: t ? 'It is linked to this issue. You will hear when it is fixed.' : 'You will hear when it is fixed.', ...(t && onOpenTicket ? { action: { label: 'Open it', onClick: () => onOpenTicket(t.id) } } : {}) }); }))}>
                   {on ? 'You are on it' : 'Me too'}
                 </Button>
               ) : undefined

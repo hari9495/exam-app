@@ -43,6 +43,8 @@ export interface ToastOptions {
   tone?: ToastTone;
   /** Shows "Undo" wherever the action can be reversed (§25). */
   onUndo?: () => void;
+  /** One next step, such as "Open it" (closes the toast). */
+  action?: { label: string; onClick: () => void };
 }
 
 interface ToastItem extends ToastOptions {
@@ -183,6 +185,17 @@ function Toast({ item, paused, onDismiss }: { item: ToastItem; paused: boolean; 
           }}
         >
           Undo
+        </Button>
+      )}
+      {item.action && (
+        <Button
+          size="sm"
+          onClick={() => {
+            item.action?.onClick();
+            onDismiss();
+          }}
+        >
+          {item.action.label}
         </Button>
       )}
       <IconButton icon={X} label="Close" size="sm" noTooltip onClick={onDismiss} />
