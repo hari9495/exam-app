@@ -37,8 +37,6 @@ const SEVERITY: Record<BannerSeverity, { tone: 'info' | 'warning' | 'danger'; ti
 /** Known issues at the top of a help page (US-G-020). "Me too" follows the team's incident instead of a new ticket. */
 export function BannerList({ banners, onMeToo }: { banners: PublicBanner[]; onMeToo: (id: string) => Promise<unknown> }) {
   const [joined, setJoined] = useState<string[]>([]);
-  // ITSM answer 2051: on a known problem, "Me too" raises the person's own ticket, already linked to it.
-  const [raised, setRaised] = useState<Record<string, string>>({});
   const { busy, error, run } = useRun();
   const { toast } = useToast();
   if (!banners.length) return null;
@@ -47,6 +45,7 @@ export function BannerList({ banners, onMeToo }: { banners: PublicBanner[]; onMe
       {error && <InlineAlert tone="danger" title="That didn't work">{error}</InlineAlert>}
       {banners.map((b) => {
         const on = b.meToo || joined.includes(b.id);
+        // ITSM answer 2051: on a known problem, "Me too" raises the person's own ticket, already linked to it; the toast says which.
         return (
           <InlineAlert
             key={b.id}
@@ -54,14 +53,13 @@ export function BannerList({ banners, onMeToo }: { banners: PublicBanner[]; onMe
             title={SEVERITY[b.severity].title}
             actions={
               b.canMeToo ? (
-                <Button size="sm" loading={busy === b.id} onClick={() => (on ? toast({ title: 'You are already on this issue. You will hear when it is fixed.' }) : void run(b.id, async () => { const res = (await onMeToo(b.id)) as { ticket?: { number: string } } | undefined; if (res?.ticket) setRaised((r) => ({ ...r, [b.id]: res.ticket!.number })); setJoined((j) => [...j, b.id]); }))}>
+                <Button size="sm" loading={busy === b.id} onClick={() => (on ? toast({ title: 'You are already on this issue. You will hear when it is fixed.' }) : void run(b.id, async () => { const res = (await onMeToo(b.id)) as { ticket?: { number: string } } | undefined; setJoined((j) => [...j, b.id]); toast({ tone: 'success', title: res?.ticket ? `We raised ${res.ticket.number} for you` : 'You are on this issue', description: res?.ticket ? 'It is linked to this issue. You will hear when it is fixed.' : 'You will hear when it is fixed.' }); }))}>
                   {on ? 'You are on it' : 'Me too'}
                 </Button>
               ) : undefined
             }
           >
             {b.text}
-            {joined.includes(b.id) && (raised[b.id] ? <> We raised {raised[b.id]} for you, linked to this issue. You will hear when it is fixed.</> : <> We added you to this issue. You will hear when it is fixed.</>)}
           </InlineAlert>
         );
       })}

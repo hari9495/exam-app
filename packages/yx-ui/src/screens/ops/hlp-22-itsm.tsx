@@ -479,10 +479,11 @@ export function NewChangeDrawer({ onClose, defaultKind = 'normal', live }: { onC
           </div>
         </FormField>
       )}
+      {/* A field row holds two fields: the day on its own, then From and To (three wrapped To onto a line by itself). */}
+      <FormField id="chg-on" label="Day" required error={early.errorOf('chg-on')} helper={`Inside the change window (${setup.windowText}); never in a freeze.`}>
+        <DatePicker value={on} onChange={setOn} />
+      </FormField>
       <FieldRow>
-        <FormField id="chg-on" label="Day" required error={early.errorOf('chg-on')} helper={`Inside the change window (${setup.windowText}); never in a freeze.`}>
-          <DatePicker value={on} onChange={setOn} />
-        </FormField>
         <FormField id="chg-from" label="From">
           <Select value={from} onChange={setFrom} options={HOURS.map((h) => ({ value: h, label: h }))} />
         </FormField>

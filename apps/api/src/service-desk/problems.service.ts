@@ -150,7 +150,8 @@ export class ProblemsService {
         // Answer 2051: "Me too" raises the person's own incident, already linked to the problem (they never follow the
         // problem itself). Answer 2056: limited to a location or an application's users as the desk asks.
         const target = await noticeTarget(tx, org, await itsmSettingsOf(tx, org, p.deskId), { locationId: dto.noticeLocationId ?? null, appId: dto.noticeAppId ?? p.appId });
-        bannerId = (await tx.sdBanner.create({ data: { organizationId: org, deskId: p.deskId, audience: 'employees', text: `Known issue: ${t.subject}. Until it is fixed: ${workaround}`.slice(0, 300), severity: 'warning', ticketId: t.id, locationId: target.locationId, appId: target.appId, createdBy: a.userId } })).id;
+        // No "Known issue:" prefix: the notice card already carries that title.
+        bannerId = (await tx.sdBanner.create({ data: { organizationId: org, deskId: p.deskId, audience: 'employees', text: `${t.subject}. Until it is fixed: ${workaround}`.slice(0, 300), severity: 'warning', ticketId: t.id, locationId: target.locationId, appId: target.appId, createdBy: a.userId } })).id;
         await emit(tx, org, 'helpdesk.banner.published', { bannerId, deskId: p.deskId });
       }
       const after = await this.bump(tx, p, { state: p.state === 'fixed' ? 'fixed' : 'known_error', workaround, kbArticleId: articleId, bannerId });
