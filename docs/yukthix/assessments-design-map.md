@@ -886,3 +886,44 @@ Not in the menu: the lead adds it after AS-0 merges. Pages: `/yx/hiring/assessme
       when changes wait for them.*
 2130. **Duplicate check scope.** Text only, within the company, drafts and approved questions. *Suggested: keep; add
       options to the comparison if reviewers see misses.*
+
+## Question bank follow-ups as built (branch `feat/yukthix-bank-followups`, 16 Nov 2026; answers 2121, 2125, 2126, 2129, 2001)
+
+- **2121, no way round review:** `POST /questions/:id/publish` refuses (409, "another person approves it in the question
+  bank"), audited `question.publish_refused`. `PATCH /questions/:id` refuses an approved question and one in review; only
+  the bank's approval changes an approved question. Bulk upload and AI drafts land as drafts in the review queue (shared
+  `bank/queue.ts`: alt text, duplicate check, second approver; audited `question.submitted` with the source), the person
+  who uploaded or asked is the author. `/v2/questions`, `/questions`, their new and edit pages and the bulk-upload page
+  redirect to the designed bank, which now has Import (CSV or Excel, the refused rows listed) and Draft with AI.
+- **2125, code tests:** the designed editor writes code questions: one language or any, starter code, typing own input,
+  and test cases (input, expected output, weight, hidden). At least one test, every test with its output, one visible,
+  and a language when fixed. A changed test after approval is a big change (a new version).
+- **2126, images:** the question and each option take an image through the existing image route (PNG, JPEG or SVG, 2 MB);
+  alt text is then required before submit and approval (as built in AS-1).
+- **2129, the daily note:** sweep `question-review-nudges` (09:30 IST) tells each bank writer once a day how many
+  questions and translations wait for them (never their own; not a change they gave the first approval to). Table
+  `question_review_nudges` (forced RLS) marks who was told on which India day before the note goes, so re-runs and two
+  servers send nothing more; rows kept 30 days. Company setting `asmt.bank.review_reminders` (on by default).
+- **2001, the menu:** Hire › Assessments (Question bank, Question review, Item analysis) for holders of
+  `asmt.bank.manage` or its older alias, when the company setting `assessments.enabled` is on (new, on by default).
+- **Keys:** the bank routes take `asmt.bank.manage` or `question_bank:manage` (the alias); the TODO is gone.
+- **Migration:** `202617z0000251_bank_followups`.
+- **Kit first:** PRC-01 Import a file, Draft with AI; PRC-02 Code question with test cases, Question image added.
+- **Tests:** API unit (publish and update refusals, note words); e2e `question-bank-followups` (new) and the changed
+  `question-bank`, `ai-question-generation`; kit `bank-live` (+5); web `yx-assessments-bank` (+3), nav (+1), redirects
+  (+7). Manual test MT-ASMT-BANK2.
+
+### Questions (from 2141)
+
+2141. **`POST /questions` still makes an approved question.** The older create route (used by integrations and about 20
+      test suites) still saves a question as active. *Suggested: make it a draft in the review queue too, with the test
+      suites moved to the bank's review in one change.*
+2142. **A draft in a fixed test section.** A fixed section takes any question of the company, a draft included; pools
+      take only approved ones. *Suggested: a fixed section takes only approved questions; publishing a test refuses a
+      draft in it.*
+2143. **Images in the preview.** The editor names the image file; the candidate preview does not draw it yet (stored
+      addresses need a signed link). *Suggested: show it through a short-lived signed link, as candidates get it.*
+2144. **Assessments switched off.** `assessments.enabled` off hides the menu and the daily note; the bank's API still
+      answers its writers. *Suggested: keep; the setting is about the menu, and the keys decide access.*
+2145. **The daily note by email.** It goes as a bell note and follows each person's notification choices for email.
+      *Suggested: keep.*
