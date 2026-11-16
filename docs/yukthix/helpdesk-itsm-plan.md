@@ -149,3 +149,11 @@ slice: drawn first in HLP-22, positive and negative tests, forced RLS on new tab
 - 2056: yes, later: the notice can be limited by location or application (setting, default all employees).
 - 2057: yes, repeats count by category or by the same application.
 - 2058: yes, "Raise a change to fix it" opens the New change drawer with the problem linked.
+
+**Founder answers (16 Nov 2026, "ok for all"), 2071 to 2075:** all as suggested.
+- 2071: a one-lead desk falls back to the desk admin for approval; desk setting, on by default.
+- 2072: the "Me too" toast gets an "Open it" action to My cases.
+- 2073: leave old notices; only new notices drop the prefix.
+- 2074: accept three fields on one line everywhere; the lead checks the 9 affected screens.
+- 2075: make the hourly-limit automation e2e wait for the rule's run instead of timing.
+Queued: 2071, 2072, 2075.
