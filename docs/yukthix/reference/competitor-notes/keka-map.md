@@ -139,3 +139,49 @@ Detailed attendance and leave rows: `attendance-and-leave.md` (A1–A14, L1–L9
   - the time summary chart per week;
   - the payslip month list beside the payslip.
 - **YukthiX already has much of this in its own shape:** the Home today card, approvals, the people directory, payslips, tax declaration, Helpdesk, Engage, performance and projects. The compare step is row by row once Zoho is noted.
+
+## Team and directory pages (screenshots with the founder's approval, 16 Nov 2026; layout only, no names)
+
+- **My Team › Summary:**
+  - Direct reports / Peers switch.
+  - Two wide cards: "Who is on leave today", "Not in yet today".
+  - Four count cards, each with a coloured left edge: on time today, late arrivals today, work from home / on duty today, remote clock-ins today.
+  - Then a **team calendar**:
+    - one row per person (photo, name), one column per day of the month;
+    - each day is a coloured dot: work from home, on duty, paid leave, unpaid leave, leave for no attendance, weekly off, holiday;
+    - a legend below, and markers on the day headers when someone is on leave or WFH;
+    - month arrows.
+  - Then the direct reports list.
+- **My Team › Attendance › Approvals:**
+  - Sub-tabs: approvals, OT requests, regularise & cancel penalties, shift & weekly off, efforts / punctuality, negligence, employee assignments, reports.
+  - The approvals page stacks three sections: pending regularisation, pending work from home / on duty, pending remote clock-in. Each has an empty state ("Hooray, no pending …").
+  - The regularisation table:
+    - filters: business unit, department, location, legal entity, request type, request status, requested on, search;
+    - Approve / Reject for many at once;
+    - columns: employee number, department, location, business unit, legal entity, attendance date (with an icon), request type, requested on / by;
+    - row actions: approve (tick), reject (cross), comment;
+    - total count and pages.
+- **My Team › Leave › Overview:**
+  - Sub-tabs: overview, approvals, penalised leave, past requests, encashment, reports.
+  - A leave consumption trend: totals per leave type across the top, then a line chart per type over the chosen week, and a date range.
+  - Three cards: unplanned leave (who, instances), no leave taken, most leave taken.
+- **My Team › Timesheet › Approvals:**
+  - Employee view / Project view.
+  - Left: a list of people with how many weeks are waiting and how long ago (searchable).
+  - Right: the chosen person's weeks:
+    - columns: dates, submitted on, number of tasks, status, billable, non-billable, total hours;
+    - By date / By task toggle;
+    - Approve / Reject for selected weeks;
+    - each week can be opened.
+- **Org › Employee directory:**
+  - Filters: business unit, department, location, cost centre, legal entity, search; "Showing N of N".
+  - Cards in three columns: photo or initials, name, job title, department, location, email, phone.
+- **Org › Organisation tree:**
+  - A chart of boxes (photo, name, title, department) with a count badge to expand reports.
+  - Search, "Go to: My department / Top of the org / Me", "Group by department", zoom.
+
+**Ideas from these for the compare step:**
+- The team calendar with coloured day dots and a legend.
+- Stacked approval sections with friendly empty states.
+- Timesheet approvals as people on the left and their weeks on the right.
+- The org tree's "Go to me / top / my department".
