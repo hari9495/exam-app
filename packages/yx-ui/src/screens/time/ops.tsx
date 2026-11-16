@@ -33,6 +33,7 @@ import { useRun } from '../org/org-kit';
 import { LiveDevicesScreen, RevokeKioskDialog, RevokedKiosksTable, ShowRevoked, type RevokedKiosk, WebApprovalDialog, computerWords, type LiveDevices, type WebApproval } from './devices-live';
 import { TrainingTab, type TrainingRow, type TrainingTabProps } from './training-tab';
 import { LivePrefillDrawer, type LivePrefill, type PrefillProject } from './prefill-live';
+import { TimeSummary, type TimeSummaryWeek } from './time-summary';
 import './time.css';
 
 /** End of the open period (September freezes after 30 Sep). */
@@ -551,6 +552,8 @@ export interface LiveTimesheet {
   onWithdraw: (id: string) => Promise<unknown>;
   /** TIM-43 "Pre-fill from my tools" (the person's own tools and the week's suggestions). */
   prefill?: LivePrefill;
+  /** Keka ideas (2026-11): the Time summary view (GET /time/me/timesheet/summary). */
+  summary?: { state: LoadState; data: { year: number; years: number[]; weeks: TimeSummaryWeek[] } | null; onYear: (year: number) => void };
 }
 const LIVE_STATUS: Record<NonNullable<MyTimesheet['sheet']>['status'], TimesheetStatus> = { draft: 'draft', pending: 'submitted', approved: 'approved', rejected: 'sent_back' };
 const localDay = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
@@ -563,6 +566,7 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
   const [lines, setLines] = useState<TimesheetLine[]>([]);
   const [problems, setProblems] = useState<string[]>([]);
   const [pf, setPf] = useState(false);
+  const [view, setView] = useState('week');
   const { busy, error, run } = useRun();
   useEffect(() => {
     if (d) setLines(d.lines.map((l) => ({ id: l.id, projectId: l.projectId, taskId: l.activity, billable: l.billable, hours: l.minutes.map((m) => (m ? Math.round((m / 60) * 100) / 100 : null)), comments: Array.from({ length: 7 }, (_, k) => l.comments?.[k] ?? '') })));
@@ -590,85 +594,122 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
       await live.onSubmit(d.week);
     });
   };
+  const gate = (
+    <LiveGate state={live.state} onRetry={live.onRetry} what="your timesheet">
+      {d && (
+        <div className="yx-tim-stack">
+          {locked.length > 0 && !allLocked && (
+            <InlineAlert tone="warning" title="Part of this week is locked">
+              {locked.map((x) => isoDate(x.on)).join(', ')}: the month is closed, so those hours can't change.
+            </InlineAlert>
+          )}
+          {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+          <TimesheetGrid
+            weekStart={localDay(d.week)}
+            days={days}
+            status={st}
+            lines={lines}
+            onLinesChange={setLines}
+            projects={d.projects.map((x) => ({ id: x.id, code: x.code, name: x.name, billable: x.billable, tasks: x.activities.map((a) => ({ id: a, name: a })) }))}
+            onPrevWeek={() => go(isoPlus(d.week, -7))}
+            // At this week the arrow stays and says why.
+            onNextWeek={() => (d.week >= thisWeek ? toast({ title: 'Next week opens on Monday.' }) : go(isoPlus(d.week, 7)))}
+            onThisWeek={d.week < isoPlus(thisWeek, -7) ? () => go(thisWeek) : undefined}
+            onSaveDraft={editable ? () => void run('save', async () => { await live.onSave(d.week, input()); toast({ tone: 'success', title: `Draft saved for ${weekRange(d.week)}.` }); }) : undefined}
+            saving={busy === 'save'}
+            today={localDay(live.today)}
+            noteRule={noteRule}
+            footNote={editable ? `Goes ${st === 'sent_back' ? 'back ' : ''}to the project manager.` : undefined}
+            submitAction={editable ? <Button variant="primary" loading={busy === 'submit'} onClick={send}>{st === 'sent_back' ? 'Resubmit week' : 'Submit week'}</Button> : undefined}
+          />
+          {editable && problems.length > 0 && <InlineAlert tone="danger" title="Fix these before sending">{problems.join('. ')}.</InlineAlert>}
+          {st === 'submitted' && (
+            <div className="yx-tim-row">
+              <span className="yx-tim-muted">Waiting for the project manager.</span>
+              <Button size="sm" loading={busy === 'withdraw'} onClick={() => void run('withdraw', () => live.onWithdraw(d.sheet!.id))}>Recall to edit</Button>
+            </div>
+          )}
+          {/* Projects P-2 (1406, 1408): each reduced or rejected line with the reason, and anything the client sent back. */}
+          {(() => {
+            const code = (pid: string) => d.projects.find((x) => x.id === pid)?.code ?? 'Project';
+            const h = (ms: number[]) => Math.round((ms.reduce((a, b) => a + b, 0) / 60) * 100) / 100;
+            const changed = d.lines.filter((l) => l.decision === 'reduced' || l.decision === 'rejected' || l.clientStatus === 'sent_back');
+            const waiting = d.lines.filter((l) => l.decision === 'pending').length;
+            return (
+              <>
+                {st === 'submitted' && waiting > 0 && waiting < d.lines.length && <p className="yx-tim-muted">{d.lines.length - waiting} of {d.lines.length} lines decided; the rest are waiting.</p>}
+                {changed.length > 0 && (
+                  <InlineAlert tone="warning" title="Some hours were changed">
+                    <ul className="yx-tim-list" aria-label="Changed hours">
+                      {changed.map((l) => (
+                        <li key={l.id}>
+                          {code(l.projectId)}
+                          {l.activity ? ` · ${l.activity}` : ''}:{' '}
+                          {l.decision === 'rejected' ? `${h(l.minutes)} h rejected` : l.decision === 'reduced' ? `reduced from ${h(l.minutes)} h to ${h(l.approvedMinutes ?? [])} h` : 'sent back by the client'}
+                          {l.decision === 'reduced' || l.decision === 'rejected' ? `. Reason: ${l.reason ?? ''}` : l.clientNote ? `. Note: ${l.clientNote}` : ''}
+                        </li>
+                      ))}
+                    </ul>
+                  </InlineAlert>
+                )}
+              </>
+            );
+          })()}
+          {st === 'approved' && <p className="yx-tim-muted">Approved by the project manager.</p>}
+        </div>
+      )}
+    </LiveGate>
+  );
   return (
     <TimePage active="My timesheet">
       <PageHeader title="My timesheet" description={d ? `Approver: the project manager · ${d.mode === 'timesheet' ? 'your days come from this timesheet' : 'your days come from your check-ins; hours here don’t change your attendance'}` : 'Approver: the project manager'} actions={live.prefill && d && editable && d.week <= thisWeek ? <Button icon={Link2} onClick={() => setPf(true)}>Pre-fill from my tools</Button> : undefined} />
       {live.prefill && d && <PrefillDrawer open={pf} onOpenChange={setPf} lines={lines} onLinesChange={setLines} live={{ prefill: live.prefill, week: d.week, projects: d.projects.filter((x) => x.active) }} />}
-      <LiveGate state={live.state} onRetry={live.onRetry} what="your timesheet">
-        {d && (
-          <div className="yx-tim-stack">
-            {locked.length > 0 && !allLocked && (
-              <InlineAlert tone="warning" title="Part of this week is locked">
-                {locked.map((x) => isoDate(x.on)).join(', ')}: the month is closed, so those hours can't change.
-              </InlineAlert>
-            )}
-            {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
-            <TimesheetGrid
-              weekStart={localDay(d.week)}
-              days={days}
-              status={st}
-              lines={lines}
-              onLinesChange={setLines}
-              projects={d.projects.map((x) => ({ id: x.id, code: x.code, name: x.name, billable: x.billable, tasks: x.activities.map((a) => ({ id: a, name: a })) }))}
-              onPrevWeek={() => go(isoPlus(d.week, -7))}
-              // At this week the arrow stays and says why.
-              onNextWeek={() => (d.week >= thisWeek ? toast({ title: 'Next week opens on Monday.' }) : go(isoPlus(d.week, 7)))}
-              onThisWeek={d.week < isoPlus(thisWeek, -7) ? () => go(thisWeek) : undefined}
-              onSaveDraft={editable ? () => void run('save', async () => { await live.onSave(d.week, input()); toast({ tone: 'success', title: `Draft saved for ${weekRange(d.week)}.` }); }) : undefined}
-              saving={busy === 'save'}
-              today={localDay(live.today)}
-              noteRule={noteRule}
-              footNote={editable ? `Goes ${st === 'sent_back' ? 'back ' : ''}to the project manager.` : undefined}
-              submitAction={editable ? <Button variant="primary" loading={busy === 'submit'} onClick={send}>{st === 'sent_back' ? 'Resubmit week' : 'Submit week'}</Button> : undefined}
-            />
-            {editable && problems.length > 0 && <InlineAlert tone="danger" title="Fix these before sending">{problems.join('. ')}.</InlineAlert>}
-            {st === 'submitted' && (
-              <div className="yx-tim-row">
-                <span className="yx-tim-muted">Waiting for the project manager.</span>
-                <Button size="sm" loading={busy === 'withdraw'} onClick={() => void run('withdraw', () => live.onWithdraw(d.sheet!.id))}>Recall to edit</Button>
-              </div>
-            )}
-            {/* Projects P-2 (1406, 1408): each reduced or rejected line with the reason, and anything the client sent back. */}
-            {(() => {
-              const code = (pid: string) => d.projects.find((x) => x.id === pid)?.code ?? 'Project';
-              const h = (ms: number[]) => Math.round((ms.reduce((a, b) => a + b, 0) / 60) * 100) / 100;
-              const changed = d.lines.filter((l) => l.decision === 'reduced' || l.decision === 'rejected' || l.clientStatus === 'sent_back');
-              const waiting = d.lines.filter((l) => l.decision === 'pending').length;
-              return (
-                <>
-                  {st === 'submitted' && waiting > 0 && waiting < d.lines.length && <p className="yx-tim-muted">{d.lines.length - waiting} of {d.lines.length} lines decided; the rest are waiting.</p>}
-                  {changed.length > 0 && (
-                    <InlineAlert tone="warning" title="Some hours were changed">
-                      <ul className="yx-tim-list" aria-label="Changed hours">
-                        {changed.map((l) => (
-                          <li key={l.id}>
-                            {code(l.projectId)}
-                            {l.activity ? ` · ${l.activity}` : ''}:{' '}
-                            {l.decision === 'rejected' ? `${h(l.minutes)} h rejected` : l.decision === 'reduced' ? `reduced from ${h(l.minutes)} h to ${h(l.approvedMinutes ?? [])} h` : 'sent back by the client'}
-                            {l.decision === 'reduced' || l.decision === 'rejected' ? `. Reason: ${l.reason ?? ''}` : l.clientNote ? `. Note: ${l.clientNote}` : ''}
-                          </li>
-                        ))}
-                      </ul>
-                    </InlineAlert>
-                  )}
-                </>
-              );
-            })()}
-            {st === 'approved' && <p className="yx-tim-muted">Approved by the project manager.</p>}
-          </div>
-        )}
-      </LiveGate>
+      {live.summary ? (
+        <Tabs value={view} onValueChange={setView}>
+          <TabsList aria-label="My timesheet views">
+            <TabsTrigger value="week">Week</TabsTrigger>
+            <TabsTrigger value="summary">Time summary</TabsTrigger>
+          </TabsList>
+          <TabsContent value="week">{gate}</TabsContent>
+          <TabsContent value="summary">
+            <LiveGate state={live.summary.state} what="your time summary">
+              {live.summary.data && (
+                <TimeSummary
+                  year={live.summary.data.year}
+                  years={live.summary.data.years}
+                  onYear={live.summary.onYear}
+                  weeks={live.summary.data.weeks}
+                  onOpenWeek={(w) => {
+                    setView('week');
+                    go(w);
+                  }}
+                />
+              )}
+            </LiveGate>
+          </TabsContent>
+        </Tabs>
+      ) : (
+        gate
+      )}
     </TimePage>
   );
 }
 
-export function TimesheetScreen({ status = 'draft', layout = 'auto', prefillOpen = false, prefillView = 'suggestions', initialLines, noteRule, live }: { status?: TimesheetStatus; layout?: 'auto' | 'days'; prefillOpen?: boolean; prefillView?: PrefillView; initialLines?: TimesheetLine[]; /** Answer 1787: a comment per day with hours, with a live word count. */ noteRule?: TimesheetNoteRule; /** The live app's /time/timesheet. */ live?: LiveTimesheet }) {
+export function TimesheetScreen({ status = 'draft', layout = 'auto', prefillOpen = false, prefillView = 'suggestions', initialLines, noteRule, view, live }: { status?: TimesheetStatus; layout?: 'auto' | 'days'; prefillOpen?: boolean; prefillView?: PrefillView; initialLines?: TimesheetLine[]; /** Answer 1787: a comment per day with hours, with a live word count. */ noteRule?: TimesheetNoteRule; /** Keka ideas: open on the Time summary. */ view?: 'week' | 'summary'; /** The live app's /time/timesheet. */ live?: LiveTimesheet }) {
   if (live) return <LiveTimesheetScreen live={live} />;
-  return <SampleTimesheet status={status} layout={layout} prefillOpen={prefillOpen} prefillView={prefillView} initialLines={initialLines} noteRule={noteRule} />;
+  return <SampleTimesheet status={status} layout={layout} prefillOpen={prefillOpen} prefillView={prefillView} initialLines={initialLines} noteRule={noteRule} view={view} />;
 }
 
-function SampleTimesheet({ status, layout, prefillOpen, prefillView, initialLines, noteRule }: { status: TimesheetStatus; layout: 'auto' | 'days'; prefillOpen: boolean; prefillView: PrefillView; initialLines?: TimesheetLine[]; noteRule?: TimesheetNoteRule }) {
+/** Keka ideas: the sample year for the Time summary, Monday 5 Jan to the week before this one (sample hours). */
+const SAMPLE_WEEKS: TimeSummaryWeek[] = Array.from({ length: 38 }, (_, i) => {
+  const d = new Date(2026, 0, 5 + i * 7);
+  const week = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return { week, totalMinutes: [2400, 2280, 2520, 2400, 1920, 2400, 2700][i % 7]!, status: i === 37 ? 'pending' : i === 30 ? 'rejected' : 'approved' };
+});
+
+function SampleTimesheet({ status, layout, prefillOpen, prefillView, initialLines, noteRule, view = 'week' }: { status: TimesheetStatus; layout: 'auto' | 'days'; prefillOpen: boolean; prefillView: PrefillView; initialLines?: TimesheetLine[]; noteRule?: TimesheetNoteRule; view?: 'week' | 'summary' }) {
   const { toast } = useToast();
+  const [tab, setTab] = useState<string>(view);
   // `status` is for the week the story opens on: a draft is this week, locked is the August week, every other status is last week.
   const [offset, setOffset] = useState(status === 'draft' ? 0 : status === 'locked' ? -5 : -1);
   const [edits, setEdits] = useState<Record<number, TimesheetLine[]>>(initialLines ? { 0: initialLines } : {});
@@ -792,11 +833,33 @@ function SampleTimesheet({ status, layout, prefillOpen, prefillView, initialLine
   return (
     <TimePage active="My timesheet">
       <PageHeader title="My timesheet" description={`Approver: ${ME.manager}`} actions={prefillBtn || undefined} />
-      {correctionAlert}
-      {grid}
-      {problemsAlert}
-      {weekFacts}
-      {clientNote}
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList aria-label="My timesheet views">
+          <TabsTrigger value="week">Week</TabsTrigger>
+          <TabsTrigger value="summary">Time summary</TabsTrigger>
+        </TabsList>
+        <TabsContent value="week">
+          <div className="yx-tim-stack">
+            {correctionAlert}
+            {grid}
+            {problemsAlert}
+            {weekFacts}
+            {clientNote}
+          </div>
+        </TabsContent>
+        <TabsContent value="summary">
+          <TimeSummary
+            year={2026}
+            years={[2026, 2025]}
+            onYear={() => {}}
+            weeks={SAMPLE_WEEKS}
+            onOpenWeek={(w) => {
+              setTab('week');
+              go(Math.round((new Date(`${w}T00:00:00`).getTime() - THIS_MONDAY.getTime()) / (7 * 864e5)));
+            }}
+          />
+        </TabsContent>
+      </Tabs>
       {drawer}
     </TimePage>
   );

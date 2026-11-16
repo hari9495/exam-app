@@ -25,3 +25,6 @@ export const CommentDays: S = { name: 'Comments · a link under each day with ho
 export const CommentRefused: S = { name: 'Comments · resubmit refused until each day has 20 words', args: { status: 'sent_back', noteRule: RULE } };
 export const CommentOptional: S = { name: 'Comments · optional (company setting off)', args: { noteRule: { required: false, minWords: 20 }, initialLines: COMMENTED } };
 export const PhoneComments: S = { name: 'Phone · a comment under each day', args: { layout: 'days', noteRule: RULE, initialLines: COMMENTED }, ...phone };
+
+// Keka ideas (2026-11): Time summary, a bar per week across the year, then each week with its hours and status.
+export const TimeSummary: S = { name: 'Time summary · hours per week this year', args: { view: 'summary' } };
