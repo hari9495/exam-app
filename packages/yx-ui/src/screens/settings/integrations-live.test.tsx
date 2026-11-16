@@ -30,6 +30,11 @@ describe('group 7 live (S-10)', () => {
     expect(keys(aiPage(pageOf('7.6'), S)).some((k) => k.startsWith('ai.feature'))).toBe(false);
   });
 
+  it('1903: with its own AI key, the company can stop using it; negative: with none there is nothing to stop', () => {
+    expect(field(aiPage(pageOf('7.6'), { ...S, aiKeyConfigured: true }), 'ai.stop')).toMatchObject({ linkLabel: 'Stop using our key' });
+    expect(keys(aiPage(pageOf('7.6'), S))).not.toContain('ai.stop');
+  });
+
   it('negative: with no API key there is nothing to revoke; 7.1 lists apps without their address; 7.5 is the viewer\'s own', () => {
     expect(keys(developersPage(pageOf('7.7'), { ...S, apiKeyConfigured: false }, [], null))).not.toContain('dev.key.revoke');
     const p = integrationsPage(pageOf('7.1'), { apps: [{ id: 'a', type: 'webhook', label: 'Ops', events: ['candidate.hired'], status: 'active', lastDeliveryAt: null, lastError: null }], state: S, sms: null, smsProviders: [], whatsapp: null, whatsappProviders: [] });

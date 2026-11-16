@@ -1272,3 +1272,5 @@ C-6 to C-8.
       metadata or a person. *Suggested: keep.*
 
 - 1741 to 1743 approved as suggested (13 Nov 2026, "Ok for all").
+
+- Founder (13 Nov 2026): add a "Notify the Board now" first step to the breach clock for DPDP Rule 7's "without delay" first intimation, before the 72-hour detailed report (Rule 7 in force from 13 May 2027). Both steps stay marked "verify with counsel" until a lawyer confirms.

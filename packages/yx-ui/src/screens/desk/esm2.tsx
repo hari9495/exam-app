@@ -644,7 +644,9 @@ export interface SchedulesAdminProps {
   groups: { id: string; name: string }[];
   recurring: RecurringView[];
   sequences: SequenceDef[];
-  onCreate: (input: { name: string; rrule: string; timeZone: string; startsAt: string; template: { subject: string; bodyHtml: string; groupId?: string; equipmentId?: string } }) => Promise<unknown>;
+  onCreate: (input: { name: string; rrule: string; timeZone: string; startsAt: string; template: { subject: string; bodyHtml: string; groupId?: string; equipmentId?: string; standard?: { templateId: string; startAfterHours: number; minutes: number } } }) => Promise<unknown>;
+  /** ITSM answer 1952 (IT desks): pre-approved standard changes that may repeat, one schedule each. */
+  standardChanges?: { id: string; name: string }[];
   /** Helpdesk plan item 4: maintenance of one piece of equipment (a facilities desk's own register). */
   onPickEquipment?: (q: string) => Promise<PickOption[]>;
   onState: (r: RecurringView, state: RecurringView['state']) => Promise<unknown>;
@@ -663,13 +665,17 @@ export function SchedulesAdmin(p: SchedulesAdminProps) {
   const [body, setBody] = useState('');
   const [groupId, setGroupId] = useState<string | null>(null);
   const [equipmentId, setEquipmentId] = useState<string | null>(null);
+  const [makes, setMakes] = useState<'ticket' | 'change'>('ticket');
+  const [stdId, setStdId] = useState<string | null>(null);
+  const [startAfter, setStartAfter] = useState<number | null>(24);
+  const [minutes, setMinutes] = useState<number | null>(120);
   const [seqName, setSeqName] = useState('');
   const [steps, setSteps] = useState<{ afterHours: number | null; text: string }[]>([{ afterHours: 24, text: '' }]);
   const { busy, error, run } = useRun();
   const schedEarly = useTooEarly([
     ...(name.trim() ? [] : [{ fieldId: 'sch-name', message: 'Name the schedule.' }]),
     ...(subject.trim() ? [] : [{ fieldId: 'sch-subject', message: 'Write the ticket subject.' }]),
-    ...(body.trim() ? [] : [{ fieldId: 'sch-body', message: 'Say what to do.' }]),
+    ...(makes === 'change' ? (stdId ? [] : [{ fieldId: 'sch-std', message: 'Choose the standard change.' }]) : body.trim() ? [] : [{ fieldId: 'sch-body', message: 'Say what to do.' }]),
   ]);
   const seqEarly = useTooEarly([
     ...(seqName.trim() ? [] : [{ fieldId: 'seq-name', message: 'Name the sequence.' }]),
@@ -723,6 +729,35 @@ export function SchedulesAdmin(p: SchedulesAdminProps) {
             </ul>
           )}
           <strong>New repeating ticket</strong>
+          {p.standardChanges && p.standardChanges.length > 0 && (
+            <FormField label="Each time it makes" helper="A standard change is scheduled without approval, its window starting the hours below after the schedule time.">
+              <Segment label="Each time it makes" value={makes} onChange={setMakes} options={[{ value: 'ticket', label: 'A ticket' }, { value: 'change', label: 'A standard change' }]} />
+            </FormField>
+          )}
+          {makes === 'change' && p.standardChanges && (
+            <>
+              <FormField id="sch-std" label="Standard change" required error={schedEarly.errorOf('sch-std')} helper="Each standard change repeats on one schedule at most.">
+                <Select
+                  value={stdId}
+                  onChange={(v) => {
+                    setStdId(v);
+                    const t = p.standardChanges!.find((x) => x.id === v);
+                    if (t && !subject.trim()) setSubject(t.name);
+                    if (t && !name.trim()) setName(t.name);
+                  }}
+                  options={p.standardChanges.map((x) => ({ value: x.id, label: x.name }))}
+                />
+              </FormField>
+              <div className="yx-ops-row">
+                <FormField label="Window starts after (hours)">
+                  <NumberField value={startAfter} onChange={setStartAfter} min={0} max={168} />
+                </FormField>
+                <FormField label="Window lasts (minutes)">
+                  <NumberField value={minutes} onChange={setMinutes} min={15} max={720} />
+                </FormField>
+              </div>
+            </>
+          )}
           <FormField id="sch-name" label="Name" required error={schedEarly.errorOf('sch-name')}>
             <TextField value={name} onChange={setName} maxLength={100} />
           </FormField>
@@ -749,7 +784,7 @@ export function SchedulesAdmin(p: SchedulesAdminProps) {
           <FormField id="sch-subject" label="Ticket subject" required error={schedEarly.errorOf('sch-subject')}>
             <TextField value={subject} onChange={setSubject} maxLength={200} />
           </FormField>
-          <FormField id="sch-body" label="What to do" required error={schedEarly.errorOf('sch-body')}>
+          <FormField id="sch-body" label="What to do" required={makes === 'ticket'} optional={makes === 'change'} error={schedEarly.errorOf('sch-body')}>
             <TextArea rows={3} value={body} onChange={setBody} />
           </FormField>
           <FormField label="Team" optional>
@@ -768,7 +803,7 @@ export function SchedulesAdmin(p: SchedulesAdminProps) {
                 !schedEarly.stop() &&
                 void run('create', async () => {
                   const offset = zoneOffset(p.timeZone, `${start}T${time}:00`);
-                  await p.onCreate({ name: name.trim(), rrule: rule, timeZone: p.timeZone, startsAt: new Date(Date.parse(`${start}T${time}:00Z`) - offset).toISOString(), template: { subject: subject.trim(), bodyHtml: `<p>${esc(body.trim())}</p>`, ...(groupId ? { groupId } : {}), ...(equipmentId ? { equipmentId } : {}) } });
+                  await p.onCreate({ name: name.trim(), rrule: rule, timeZone: p.timeZone, startsAt: new Date(Date.parse(`${start}T${time}:00Z`) - offset).toISOString(), template: { subject: subject.trim(), bodyHtml: body.trim() ? `<p>${esc(body.trim())}</p>` : '', ...(groupId ? { groupId } : {}), ...(equipmentId ? { equipmentId } : {}), ...(makes === 'change' && stdId ? { standard: { templateId: stdId, startAfterHours: startAfter ?? 24, minutes: minutes ?? 120 } } : {}) } });
                   setName('');
                   setSubject('');
                   setBody('');

@@ -134,7 +134,7 @@ export class DeskSetupController {
   }
 
   @Get('users')
-  @RequireAnyPermission('desk.member.manage', 'desk.report.manage', 'desk.kb.publish')
+  @RequireAnyPermission('desk.member.manage', 'desk.report.manage', 'desk.kb.publish', 'desk.settings.manage')
   async users(@Req() req: Request, @CurrentTenant() t: TenantContext, @Query() q: SearchQueryDto) {
     return this.desks.users(await this.access.actor(req, t), q.search);
   }

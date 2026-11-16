@@ -32,7 +32,8 @@ export const LEGACY_ALIASES: Readonly<Record<string, readonly string[]>> = {
   'pipelines:configure': ['ats.job.manage'],
   'candidate:manage': ['ats.candidate.manage'],
   'candidate:view': ['ats.candidate.view', 'ats.candidate.manage'],
-  'results:view': ['ats.candidate.view', 'ats.candidate.manage', 'ats.assessment.view'],
+  // Security fix (assessments audit, 13 Nov 2026): candidate view alone (the Interview coordinator) never reads test results.
+  'results:view': ['ats.candidate.manage', 'ats.assessment.view'],
   'interview:view_assigned': ['ats.interview.schedule'],
   'candidate:data_rights': ['ats.candidate.data_rights'],
 };

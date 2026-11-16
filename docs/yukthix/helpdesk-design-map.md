@@ -191,6 +191,7 @@ portal designs also wait: `settings: MobileHelpTicketsScreen`, `MobilePolicyAckS
 ## 4. Design groups, story by story
 
 ### A. Helpdesk HLP-01 … 23
+### A. Helpdesk HLP-01 … 22
 
 #### HLP-01 · Help centre
 
@@ -681,6 +682,7 @@ File: `packages/yx-ui/src/screens/ops/hlp-18.stories.tsx`. Drawn 12 Nov 2026 (th
 | LifecycleLoading · Lifecycle loading | live | same page |
 | Schedules · Recurring tickets and follow-ups | live | same page |
 | SchedulesEquipment · Recurring maintenance of a piece of equipment | live | Helpdesk plan item 4: an optional Equipment on a recurring record (active, of the desk's own register); each due date makes one ticket naming it, its building and area; retired equipment pauses the schedule, and (answer 1913) the desk's admins are told once, in the app and by email (`helpdesk.recurring.paused`, audited), with a link to the schedules |
+| SchedulesStandardChange · Recurring standard change (an IT desk, answer 1952) | live | answer 1952: a schedule raises a pre-approved standard change, one schedule per template; a window the change rules refuse is skipped and audited |
 | SchedulesEmpty · No schedules yet | live | same page |
 | SchedulesMissing · Recurring ticket Save pressed with nothing filled | live | same page |
 | SequenceMissing · Save sequence pressed with nothing filled | live | same page |
@@ -765,23 +767,30 @@ File: `packages/yx-ui/src/screens/ops/hlp-21.stories.tsx`. Drawn 13 Nov 2026 (He
 
 File: `packages/yx-ui/src/screens/ops/hlp-22.stories.tsx` (screens in `hlp-22-itsm.tsx`). A DRAFT drawn 13 Nov 2026 for
 Helpdesk plan item 5 (IT change requests and problem records); the plan and questions 1931 to 1943 are in
-`docs/yukthix/helpdesk-itsm-plan.md`. Nothing is built until the founder answers.
+`docs/yukthix/helpdesk-itsm-plan.md`. Founder approved 1931 to 1943 as suggested ("all ok"); built on
+`feat/yukthix-itsm` (ITSM-1, ITSM-2) and `feat/yukthix-itsm-2` (ITSM-3, ITSM-4, answers 1951-1955).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Changes · Changes · list, clash and the change calendar | design only, feature not built | draft: the change list, a clash between two changes, freeze days in the calendar (1936) |
-| ChangesEmpty · Changes · none yet | design only, feature not built | draft |
-| NewChange · New change · kind, risk questions, window, way back | design only, feature not built | draft: kind as one choice, the five risk questions (1933), the approval route by risk (1934) |
-| NewChangeTooEarly · New change · sent with nothing filled | design only, feature not built | draft: what is missing, shown when pressed |
-| NewEmergency · New change · emergency, one approver now | design only, feature not built | draft (1934) |
-| WaitingForApproval · A change · waiting for the change board (high risk) | design only, feature not built | draft: the approvals engine's route |
-| ScheduledClash · A change · scheduled, clashes with another | design only, feature not built | draft: a standard change from a pre-approved template (1935) |
-| InProgress · A change · in progress, the checklist and the outcome | design only, feature not built | draft: done, done with problems, backed out |
-| Review · A change · review after it caused incidents | design only, feature not built | draft (1938) |
-| Problems · Problems · list, a repeat suggested | design only, feature not built | draft (1939) |
-| ProblemInvestigating · A problem · linked incidents, cause not found yet | design only, feature not built | draft |
-| KnownError · A problem · known error, workaround to the knowledge base, fix by change | design only, feature not built | draft (1940, 1941) |
-| NoAccess · No access (not on the IT desk) | design only, feature not built | draft |
+| Changes · Changes · list, clash and the change calendar | live | ITSM-2: /yx/desk/changes renders ChangesScreen (live prop): the desk's changes, clashes on one service, freeze days of the next two weeks |
+| ExportChanges · Changes · export for an audit (CSV or PDF, answer 1943) | live | ITSM-2: the Export dialog; GET /desk/changes/export (CSV or PDF), audited |
+| ChangesEmpty · Changes · none yet | live | ITSM-2: the same page before the first change |
+| NewChange · New change · kind, risk questions, window, way back | live | ITSM-2: NewChangeDrawer (live): the desk's questions (1933), the route by risk (1934), the window and freeze checks (1936) |
+| NewChangeTooEarly · New change · sent with nothing filled | live | ITSM-2: the same drawer's checks before sending |
+| NewEmergency · New change · emergency, one approver now | live | ITSM-2: an emergency goes to one IT lead; in a freeze it needs a reason (1936) |
+| WaitingForApproval · A change · waiting for the change board (high risk) | live | ITSM-2: /yx/desk/changes/[id] renders ChangeRecordScreen (live prop) with the approvals engine's route |
+| ScheduledClash · A change · scheduled, clashes with another | live | ITSM-2: a standard change from a pre-approved template (1935); the clash warning |
+| InProgress · A change · in progress, the checklist and the outcome | live | ITSM-2: start in the window, the checklist, done / done with problems / backed out |
+| Review · A change · review after it caused incidents | live | ITSM-2: the review after a high-risk, emergency or failed change, by a lead or the board (1938) |
+| Problems · Problems · list, a repeat suggested | live | ITSM-3: /yx/desk/problems renders ProblemsScreen (live prop); the lead sees the repeat suggestion (1939) and opens a problem from it |
+| ProblemInvestigating · A problem · linked incidents, cause not found yet | live | ITSM-3: /yx/desk/problems/[id] renders ProblemRecordScreen (live prop): incidents linked in bulk by number, the root cause |
+| KnownError · A problem · known error, workaround to the knowledge base, fix by change | live | ITSM-3: known error with a draft article in the agents' space (1940) and a notice; the fixing change closes it and tells the incidents (1941) |
+| NoAccess · No access (not on the IT desk) | live | ITSM-2: anyone without an IT desk seat |
+| Settings · Settings · approval by risk, risk questions, banner and review, change window | live | ITSM-1: /yx/desk/setup › Changes (IT desks) renders ItsmSettingsPanel; desk settings with defaults (1933-1939), the company's window and freezes (1936) |
+| SettingsReadOnly · Settings · an agent sees them, cannot change them | live | ITSM-1: agents of the IT desk see the tab read-only; the API refuses their changes |
+| ChangesReport · Changes · report for the last 90 days (failed-change rate, problems by age) | live | ITSM-4: GET /desk/itsm/report on the Changes page |
+| ChangesAsked · Changes · only those I am asked about (change board, application owner) | live | answer 1953: /yx/desk/changes for someone without an IT desk seat; Changes in the menu from the counts |
+| NewProblem · Problems · new problem | live | ITSM-3: the New problem drawer |
 
 #### HLP-23 · Buildings and equipment
 
@@ -2145,3 +2154,75 @@ first: the command palette's "desk actions" story and timing on the HLP-03 work 
       narrows them as the agent types. *Suggested: keep.*
 
 - Founder (13 Nov 2026, "all ok"): 1841 to 1846, 1861 to 1865, 1891 to 1894, 1911 to 1914 and 1931 to 1943 approved as suggested. To build: article-review cards to KB settings (1841); requesters fill "everyone" fields (1842); "Required before solving" per field (1843); field values in CSV and custom reports, lead-only to leads (1844); on-behalf picker shows only people one may raise for (1846); an "Application access" item in the IT starter catalogue (1891); an access register per application, later (1892); warn the Service Desk owner when an app owner leaves (1894); requesters name the building or area (1911); tell facilities admins when a schedule pauses (1913); "show more" on equipment history (1914); ITSM-1 to ITSM-4 as planned (1931-1943).
+- Founder (13 Nov 2026): 1601, HLP-15 to HLP-23 designs reviewed in Storybook, "its good".
+- Founder (13 Nov 2026): 1951 to 1958 (ITSM changes) approved as suggested.
+
+## Founder request: "Ask YukthiX" assistant (13 Nov 2026, "yes and ok for all", 2101 to 2108)
+A help assistant that answers questions about YukthiX like a support agent, built on the drawn HLP-01 assistant slot,
+the knowledge base's "use in assistant answers" flag, Contact YukthiX tickets and the sales-assist queue.
+- 2101: inside the app first (Help drawer and Help centre); the public website version second.
+- 2102: Claude through YukthiX's own Anthropic account (YukthiX pays); the key lives only in server config, never in
+  chat or the repo. The AI sees only the question and approved help text, never company data.
+- 2103: answers only from approved YukthiX content (help articles, guides, plan facts, What's new, known issues), each
+  answer citing its article; when nothing covers it, it says so and offers a person. Never guesses.
+- 2104: hands over when unsure, when the issue needs someone to look at the account, after 2 unhelpful answers, or on
+  request: "Raise support ticket" creates a Contact YukthiX ticket with the chat attached.
+- 2105: "Send feature request" lands in a staff Feature requests list (duplicates grouped with a company count;
+  Planned, Not now, Done; the company is told when it ships). Buying or upgrade questions go to sales-assist.
+- 2106: English first, then Hindi, Tamil and Telugu.
+- 2107: everyone in a customer company; answers follow the person's role.
+- 2108: 50 questions per person per day, a platform setting.
+Staff view: unanswered questions, thumbs up or down, chats that became tickets. About 2 to 3 weeks; drawn first.
+
+### Ask YukthiX as built (branch `feat/yukthix-ask-assistant`)
+- **Where:** the Help drawer's "Ask YukthiX" tab (every page; 2101). Staff: Console › Feature requests (requests and the
+  Ask YukthiX review).
+- **Claude (2102):** the official SDK (`@anthropic-ai/sdk` 1.3.0, API version 2026-10-21), YukthiX's own key in server
+  config only: `ASK_YUKTHIX_ANTHROPIC_API_KEY` (unset: "not switched on yet" with Contact YukthiX). Model: platform
+  setting `help.assistant.model`, default `claude-opus-5-5`; low effort; structured output; the server-side refusal
+  fallback on models that take it. No tools: the model cannot act.
+- **Content (2103):** only YukthiX help articles marked "Use in assistant answers" (the platform company's public space),
+  What's new for the person and the current known issue; the person's role and the areas they can open (2107); never
+  company records. Every answer cites its article or says it is not covered; refusals and broken replies are never shown.
+  The question and the articles are data: the system prompt says so, and they never enter it.
+- **Hand-over (2104, 2105):** "Raise support ticket" (the Contact YukthiX ticket with the chat, through its own service;
+  only with its key, `org.yukthix_support.raise`); "Send feature request" for everyone; each once per chat, audited. A
+  person is offered after `help.assistant.unhelpful_handover` (2) unhelpful answers or thumbs down. Buying questions get a
+  note pointing to sales.
+- **Limits and data (2108):** `help.assistant.daily_questions` (50) per person per India day, counted atomically in the
+  database (a failed answer gives the question back). Chats in RLS-forced tables, the person's own (staff read them for the
+  review); deleted after `help.assistant.keep_days` (90). Refused while acting as the person.
+- **Staff:** the review (answers by outcome, thumbs, questions help did not answer with personal data, phones and emails
+  hidden, chats that became tickets) and Feature requests (duplicates grouped with a company count; Planned, Not now, Done;
+  Done tells everyone who asked, once; audited), with the help centre writers' key.
+- **Tests:** API unit (prompt, reply checks, key, masking), e2e `ask-yukthix` (11), kit `ask-yukthix` (6) and
+  `feature-requests` (3), web console page (2). Stories: seven Help drawer · Ask YukthiX, three Feature requests.
+
+### Questions (from 2111)
+
+2111. **Tickets from people without the Contact YukthiX key.** Only System Admins (the key) raise a ticket from a chat;
+      others are told their System Admin can. *Suggested: keep; their feature requests and thumbs still reach YukthiX.*
+2112. **Buying questions.** The assistant says YukthiX sales can help and points to Plan & add-ons; the sales-assist
+      request there needs a nudge and a phone number. *Suggested: a sales request straight from the chat, asking for the
+      phone there, with the chat attached.*
+2113. **Who decides feature requests.** The help centre writers' key (`platform.helpcentre.write`).
+      *Suggested: a key of its own, `platform.feature_requests.manage`, for product staff.*
+2114. **The Service Desk Help centre (HLP-01) assistant card.** It is the company's own policies assistant and still says
+      it is not switched on. *Suggested: leave it; Ask YukthiX lives in the Help drawer on every page, the Help centre
+      included.*
+2115. **Languages (2106).** English only for now. *Suggested: answer in Hindi, Tamil or Telugu once those help articles
+      are translated.*
+2116. **"Use in assistant answers" for YukthiX articles.** The switch is on by default and only the company KB editor
+      shows it; the console help centre editor does not. *Suggested: add the switch to the console editor.*
+2117. **The public website version (2101, second).** Not built. *Suggested: after the in-app one has a month of the
+      review.*
+
+**Founder answers (16 Nov 2026, "ok for all"), 2111 to 2117:**
+- 2111: keep, only System Admins raise a ticket from a chat; others are told to ask them.
+- 2112: yes, a sales request straight from the chat for buying questions.
+- 2113: yes, feature requests get a permission of their own.
+- 2114: leave the HLP-01 company-policies assistant card as it is.
+- 2115: Hindi, Tamil and Telugu once those articles are translated.
+- 2116: yes, add the "Use in assistant answers" switch to the console help-centre editor.
+- 2117: the public website version after a month of the review.
+Queued: 2112, 2113, 2116 (small follow-up slice).

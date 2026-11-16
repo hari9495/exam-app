@@ -442,7 +442,7 @@ File: `packages/yx-ui/src/screens/settings/settings-g7.stories.tsx`.
 | Overview · Group 7 · Integrations & Developers | live | S-1: /yx/settings/<group> renders `SettingsGroupScreen` with `live`: the group's pages the viewer may open, each linking to its live editor; a group with none says no access |
 | OverviewLoading · Group 7 · loading | live | same, loading |
 | P7_1 · 7.1 Integrations | live (gap) | S-10 (answer 1327): /yx/settings/integrations/integrations: connected apps (add, change, remove, test), the company mail server, candidate SMS and WhatsApp providers and the HR system export, on the checked routes. Gap: the catalogue, a connection owner, retries and the health card are not built |
-| P7_1_ReadOnly · 7.1 Integrations · read-only | live (gap) | System Admins only (org:manage_settings); others are refused by the API |
+| P7_1_ReadOnly · 7.1 Integrations · read-only | live (gap) | System Admins (org:manage_settings) or IT staff with `integration.manage` (answer 1901); others are refused by the API |
 | P7_2 · 7.2 Biometric devices | live (gap) | /yx/time/setup/devices (`DevicesScreen`, `time/devices`, device punches and backfills) |
 | P7_2_ReadOnly · 7.2 Biometric devices · read-only | live (gap) | read-only: unsure |
 | P7_3 · 7.3 Payouts, banks & accounting | live (gap) | bank files on /yx/payroll/payment-modes (`PaymentsScreen`); the expense journal and the staffing accounting export are live in their areas; payout partner: the penny-drop provider seam has none wired (`payroll/payout.service.ts` line 557) |
@@ -451,10 +451,10 @@ File: `packages/yx-ui/src/screens/settings/settings-g7.stories.tsx`.
 | P7_4_ReadOnly · 7.4 Verification · read-only | design only, feature not built | as the page |
 | P7_5 · 7.5 Calendar & chat | live (gap) | S-10 (answer 1327): /yx/settings/integrations/calendar-and-chat: each person's own work calendar (connect, disconnect) and a link to approving from chat. Gap: a company calendar, chat mirroring, mailbox sync and timesheet connectors are not built |
 | P7_5_ReadOnly · 7.5 Calendar & chat · read-only | live (gap) | personal: each person sees only their own connection |
-| P7_6 · 7.6 AI | live (gap) | S-10 (answer 1327): /yx/settings/integrations/ai: the company's own AI key (public https base address) and embeddings, never shown again. Gap: the AI feature switches, region and data-handling sections are not built here (the switches live in their areas) |
-| P7_6_ReadOnly · 7.6 AI · read-only | live (gap) | System Admins only |
+| P7_6 · 7.6 AI | live (gap) | S-10 (answer 1327): /yx/settings/integrations/ai: the company's own AI key (public https base address) and embeddings, never shown again; "Stop using our key" goes back to YukthiX AI (1903); company AI calls go through the pinned public-only lookup (1902). Gap: the AI feature switches, region and data-handling sections are not built here (the switches live in their areas) |
+| P7_6_ReadOnly · 7.6 AI · read-only | live (gap) | System Admins or `integration.manage` (1901) |
 | P7_7 · 7.7 Developers | live (gap) | S-10 (answer 1327): /yx/settings/integrations/developers: the API key (shown once), the webhook (masked; signing secret shown once), deliveries and API use. Gap: several keys with expiry and rotation overlap, OAuth apps and thin payloads are not built |
-| P7_7_ReadOnly · 7.7 Developers · read-only | live (gap) | System Admins only |
+| P7_7_ReadOnly · 7.7 Developers · read-only | live (gap) | System Admins or `integration.manage` (1901) |
 | P7_8 · 7.8 Analytics | design only, feature not built | searched `attrition` in apps/api/src: none |
 | P7_8_ReadOnly · 7.8 Analytics · read-only | design only, feature not built | as the page |
 | P7_9 · 7.9 Deepfake detection | design only, feature not built | searched `deepfake` in apps/api/src: none |
@@ -482,7 +482,7 @@ File: `packages/yx-ui/src/screens/settings/settings-g8.stories.tsx`.
 | P8_3_ReadOnly · 8.3 Invoices & payment · read-only | live (gap) | as the page |
 | P8_4 · 8.4 Sandbox | design only, feature not built | searched `sandbox` in apps/api/src: only Content-Security-Policy headers |
 | P8_4_ReadOnly · 8.4 Sandbox · read-only | design only, feature not built | as the page |
-| P8_5 · 8.5 Data export & closure | live (gap) | S-9 (answer 1332): /yx/settings/account/data-export-and-closure, System Admins: the whole-company export (security key; link works `account.export.link_hours`, 24) and asking YukthiX to close the account (staff close it; data kept `account.closure.keep_days`, 30). Gap: export formats, the per-employee document pack and legal holds are not built; deletion after the kept days is not automatic (questions 1881 to 1883) |
+| P8_5 · 8.5 Data export & closure | live (gap) | S-9 (answer 1332): /yx/settings/account/data-export-and-closure, System Admins: the whole-company export (security key; link works `account.export.link_hours`, 24) and asking YukthiX to close the account (staff close it; data kept `account.closure.keep_days`, 30). Gap: export formats, the per-employee document pack and legal holds are not built; after the kept days, staff delete the data (one asks, a second confirms, a deletion certificate is kept: answer 1882); statutory records stay read-only for their legal period (1975) |
 | P8_5_ReadOnly · 8.5 Data export & closure · read-only | live (gap) | someone with the billing key who is not a System Admin sees the page; starting an export or asking to close says only a System Admin can |
 | P8_6 · 8.6 Analytics, status & tips | live (gap) | the maintenance banner is live (`GET /availability`); S-7 (answer 1321): What's new and tours switches on /yx/settings/account/analytics-status-and-tips. Gap: product analytics and status settings are not on the page |
 | P8_6_ReadOnly · 8.6 Analytics, status & tips · read-only | live (gap) | View only without HR's settings key |
@@ -1068,6 +1068,74 @@ Tests: API e2e `settings-s10-security` (6), `webhook-delivery` (the admin confir
 1906. **A company calendar and chat mirroring.** 7.5 shows each person's own calendar; the drawn company calendar,
       chat mirroring and mailbox sync are not built. *Suggested: build them with the features that need them.*
 
+## Follow-ups as built (answers 1881, 1882, 1884 to 1886, 1901 to 1903; branch `feat/yukthix-settings-followups`)
+
+- **1886:** the timesheet "submit opens" line shows once (hidden while the error box is shown).
+- **1884:** a YukthiX key `billing.view` (finance and finance approver templates) reads 8.1 and 8.2; paying stays with
+  `org:manage_billing`.
+- **1885:** /v2/settings/billing redirects to 8.1; the old checkout and portal return addresses point there too.
+- **1881:** the console company page shows the company's closure request (reason, when asked) with Close beside it, and
+  "kept until" once closed.
+- **1882:** after a closed company's kept days (`account.closure.keep_days`, 30), one YukthiX staff member asks to
+  delete its data and a second confirms, both with the security key, never while acting. The database function
+  `purge_company` deletes that company's rows only (every statement `WHERE organization_id = ...`), refuses an open
+  company and a legal hold, and fails if a row is left; the stored files (documents, exports) are dropped after. The
+  certificate (tables, row counts, who asked and confirmed, sha256) stays in `company_deletions`, a YukthiX-only table;
+  every step is audited. Tested on throwaway companies only.
+- **1901:** a YukthiX key `integration.manage` (template "Integrations admin") runs 7.1, 7.6 and 7.7; the security key
+  and "not while acting" stay; the key is admin-grade (MFA and the admin network apply).
+- **1902:** the pinned public-only fetch moved to the shared package; the company's own AI and embeddings addresses are
+  called only through it. Found and fixed: an address written as an IP (https://127.0.0.1/...) skipped the lookup;
+  it is now refused before connecting (webhooks and OIDC too).
+- **1903:** 7.6 "Stop using our key" forgets the key and goes back to YukthiX AI (security key, audited).
+- **Tests:** API e2e `company-deletion` (7), `settings-s10-security` (12), `settings-s9-account` (8); shared
+  `public-fetch.spec`; kit console, timesheet and integrations tests; web `yx-settings-s9` and `yx-settings-s10`.
+
+### Questions (from 1971)
+
+1971. **The online checkout and billing portal routes.** With /v2 billing retired, nothing in YukthiX opens them, but
+      the API routes remain. *Suggested: remove them, since YukthiX sets the plan and no payment happens here.*
+1972. **Files outside the documents store at deletion.** Deletion drops the documents and export files; files kept by
+      other stores (for example Help desk attachments, if stored apart) are not listed yet.
+      *Suggested: list every store before the first real deletion and drop its files the same way.*
+1973. **Who can see the deletion certificates.** Today any YukthiX staff member who can view companies (`platform.companies.view`) sees the list.
+      *Suggested: keep it so; add a download in the console for the customer when they ask.*
+1974. **Which jobs `integration.manage` comes with.** Only the new "Integrations admin" template has it.
+      *Suggested: leave it out of other templates; a company gives it to its IT person by hand.*
+
+## Follow-ups, second part (answers 1971 to 1975, the 1882 hold, Rule 7; same branch)
+
+- **1882 defence in depth:** `purge_company` refuses on its own unless an open request has a second person
+  (approved_by set, not the asker), the kept days are over (read inside the function, 30, never fewer), and no legal
+  hold; it marks the request done with the certificate in the same transaction.
+- **1975, statutory records kept:** the audit log, payroll (runs, payslips, pay documents) and filings (statutory
+  filings and registers, TDS returns and challans, tax certificates, Form 16 links, CLRA returns, WPS files), and the
+  rows they need (company, people, employees, employments, legal entities, locations, pay groups, permission profiles),
+  stay in place, read-only, until at least 8 years (`account.closure.statutory_keep_years`, or the company's own longer
+  audit or pay retention). Everything else is deleted. Kept people cannot sign in; the company is suspended with its
+  secrets cleared. The certificate lists what was deleted, what was kept, why and until when.
+- **1972:** every stored-file column is listed and its files dropped (documents, exports, Help desk attachments, chat
+  files, raw mail, request documents, resumes, offers, consultant and actuarial files, visitor photos, avatars, logos,
+  exam certificates, question images, proctoring pictures); files kept with statutory records stay. A test fails on a
+  new file column that is not listed.
+- **1973:** the console company page shows the deletion and downloads the certificate (audited).
+- **1971:** the self-serve checkout, plan picker and billing portal routes are removed; the Stripe webhook stays.
+- **C-4 / C-8, DPDP Rule 7 (from 13 May 2027):** "Notify the Board now" before the 72-hour report: staff mark the first
+  notice sent (time and a note, security key, audited); Security leads are reminded every
+  `breach.dpdp_board_notice_nudge_minutes` (60) until it is marked. Both steps show "Verify with counsel".
+- **Also fixed:** the shared tenant context spec (app.channel, 6 failures also on test main) and the encoding of
+  `record-visibility.ts` after the 1884 edit.
+- **Tests:** e2e `company-deletion` (12) and `console-incidents` (17); kit console and board-notice tests.
+
+### Questions (from 1976)
+
+1976. **When the kept period ends.** Kept records are read-only until their day, then nothing removes them yet.
+      *Suggested: a nightly job deletes a company's kept records once its day has passed, with a second certificate.*
+1977. **Personal details in kept records.** People, employees and employments are kept whole because payslips need
+      them. *Suggested: keep them whole (names and pay identifiers are part of the wage record); clear nothing more.*
+1978. **Rule 7 reminders before 13 May 2027.** The Board reminders run now, before Rule 7 is in force.
+      *Suggested: keep them on now (telling the Board early does no harm); counsel confirms the wording.*
+
 ## 7. Build plan (slices, max 3 builders at once)
 
 Ordered by what every customer needs first: the way in (home), the everyday HR rules (time, leave, payroll, people),
@@ -1200,3 +1268,11 @@ console.log(missing.join(' '));
 - 1821 to 1826 approved as suggested (13 Nov 2026, "ok for all"). To build: the "registered factory" hint beside a location value on 3.1 (1821); HR sets verification and reminders on starter document types for their company (1822); a company default for new people between per-notice email and the daily digest, each person can still change it (1826). With each channel: quiet hours, WhatsApp events, field staff (1824).
 
 - 1881 to 1886 and 1901 to 1906 approved as suggested (13 Nov 2026, "all ok"). To build: closure request on the console company page (1881); staff-confirmed deletion with a certificate after 30 days (1882); billing.view key (1884); retire /v2 billing (1885); show the submit-opens line once (1886); integration.manage key (1901); AI calls through the pinned public-only lookup (1902); "Stop using our key" (1903). Later: document archive in the export (1883); several API keys (1904); retire each /v2 page as its new page goes live (1905); company calendar and mailbox sync with their features (1906).
+
+- 1971 to 1975 approved as suggested (13 Nov 2026, "ok for all"). 1975: on company deletion, keep statutory records (audit log, payroll runs, payslips and pay documents, statutory filings) read-only for their legal period, delete everything else; the certificate lists what was kept, why and until when. Also: remove the unused checkout and billing-portal routes (1971); list every file store before the first real deletion (1972); a certificate download in the console (1973).
+
+- 1335 decided (13 Nov 2026): assessments stay. Hiring assessments inside Hire first; the exam engine is kept and built so it can later serve certification exams (Pearson VUE style, an "exam owner" mode). Certification itself starts only with a real customer or partner. Next: audit the existing exam and Proctoring code and designs.
+
+**Founder answers (13 Nov 2026):** 1976, 1977 and 1978 accepted as suggested ("ok for all"): a nightly job deletes kept
+statutory records after their date and issues a second certificate (queued); people records stay whole; the Board
+reminders stay on, wording to be checked by counsel.

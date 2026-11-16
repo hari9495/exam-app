@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService, TenantContext, TenantPrismaService, AuditService } from '@exam-platform/shared';
 import { StripeClient, StripeEvent, StripeInvoice } from './stripe.client';
 
@@ -22,18 +22,6 @@ function mapBillingStatus(stripeStatus: string): string | null {
   }
 }
 
-export interface PurchasablePlan {
-  id: string;
-  name: string;
-  priceLabel: string | null;
-  billingInterval: string;
-  seatLimit: number;
-  candidateLimit: number;
-  aiCreditLimit: number;
-  proctoringMinutesLimit: number;
-  current: boolean;
-}
-
 export interface InvoiceView {
   id: string;
   number: string | null;
@@ -55,88 +43,6 @@ export class BillingCheckoutService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
   ) {}
-
-  private webBase(): string {
-    const base = process.env.WEB_ORIGIN;
-    if (!base) throw new BadRequestException('WEB_ORIGIN is not configured; cannot build return URLs');
-    return base.replace(/\/$/, '');
-  }
-
-  // Plans an org can actually buy: public + wired to a Stripe price. Flags the org's current plan.
-  async listPurchasablePlans(context: TenantContext): Promise<PurchasablePlan[]> {
-    const orgId = context.organizationId as string;
-    return this.tenantPrisma.forTenant(context, async (tx) => {
-      const org = await tx.organization.findFirst({ where: { id: orgId }, select: { planId: true } });
-      const plans = await tx.plan.findMany({
-        where: { isPublic: true, stripePriceId: { not: null } },
-        orderBy: { name: 'asc' },
-      });
-      return plans.map((p) => ({
-        id: p.id,
-        name: p.name,
-        priceLabel: p.priceLabel,
-        billingInterval: p.billingInterval,
-        seatLimit: p.seatLimit,
-        candidateLimit: p.candidateLimit,
-        aiCreditLimit: p.aiCreditLimit,
-        proctoringMinutesLimit: p.proctoringMinutesLimit,
-        current: p.id === org?.planId,
-      }));
-    });
-  }
-
-  // Ensure the org has a Stripe customer, creating one (persisted) on first use. Runs in the tenant
-  // context so it can read the org + the acting user's email under RLS.
-  private async ensureCustomerId(context: TenantContext, actorUserId: string): Promise<string> {
-    const orgId = context.organizationId as string;
-    const { existing, orgName, email } = await this.tenantPrisma.forTenant(context, async (tx) => {
-      const org = await tx.organization.findFirst({ where: { id: orgId }, select: { name: true, stripeCustomerId: true } });
-      if (!org) throw new NotFoundException('Organization not found');
-      const user = await tx.user.findFirst({ where: { id: actorUserId }, select: { email: true } });
-      return { existing: org.stripeCustomerId, orgName: org.name, email: user?.email };
-    });
-    if (existing) return existing;
-
-    const customer = await this.stripe.createCustomer({ name: orgName, email: email ?? undefined, organizationId: orgId });
-    // Persist via the base client (a single-org update keyed by id; no cross-tenant exposure).
-    await this.prisma.organization.update({ where: { id: orgId }, data: { stripeCustomerId: customer.id } });
-    return customer.id;
-  }
-
-  async createCheckout(context: TenantContext, actorUserId: string, planId: string): Promise<{ url: string }> {
-    const orgId = context.organizationId as string;
-    const plan = await this.tenantPrisma.forTenant(context, (tx) => tx.plan.findFirst({ where: { id: planId } }));
-    if (!plan) throw new NotFoundException('Plan not found');
-    if (!plan.isPublic || !plan.stripePriceId) {
-      throw new BadRequestException('That plan is not available for self-serve checkout');
-    }
-    const customerId = await this.ensureCustomerId(context, actorUserId);
-    const base = this.webBase();
-    const session = await this.stripe.createCheckoutSession({
-      customerId,
-      priceId: plan.stripePriceId,
-      organizationId: orgId,
-      planId: plan.id,
-      successUrl: `${base}/v2/settings/billing?checkout=success`,
-      cancelUrl: `${base}/v2/settings/billing?checkout=cancelled`,
-    });
-    if (!session.url) throw new BadRequestException('Stripe did not return a checkout URL');
-    await this.audit.record(context, { actorUserId, action: 'billing.checkout_started', entityType: 'organization', entityId: orgId, metadata: { planId: plan.id } });
-    return { url: session.url };
-  }
-
-  async createPortal(context: TenantContext, actorUserId: string): Promise<{ url: string }> {
-    const orgId = context.organizationId as string;
-    const org = await this.tenantPrisma.forTenant(context, (tx) =>
-      tx.organization.findFirst({ where: { id: orgId }, select: { stripeCustomerId: true } }),
-    );
-    if (!org?.stripeCustomerId) {
-      throw new BadRequestException('No subscription yet — start one from a plan first');
-    }
-    const session = await this.stripe.createBillingPortalSession({ customerId: org.stripeCustomerId, returnUrl: `${this.webBase()}/v2/settings/billing` });
-    await this.audit.record(context, { actorUserId, action: 'billing.portal_opened', entityType: 'organization', entityId: orgId, metadata: {} });
-    return { url: session.url };
-  }
 
   async listInvoices(context: TenantContext): Promise<InvoiceView[]> {
     const orgId = context.organizationId as string;

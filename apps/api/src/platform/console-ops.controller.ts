@@ -4,10 +4,10 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { RequireStepUp } from '../auth/step-up.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { RequirePermissions } from '../rbac/permissions.decorator';
+import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { ownSession } from '../org-structure/org-structure.controller';
 import { ConsoleOpsService } from './console-ops.service';
-import { ContainDto, FlagDefaultDto, FlagOverrideDto, FlagReasonDto } from './dto';
+import { BoardNoticeDto, ContainDto, FlagDefaultDto, FlagOverrideDto, FlagReasonDto } from './dto';
 import { PlatformStaffGuard } from './platform-staff.guard';
 
 // Console C-4: feature switches (answer 1049) and Contain a company (answer 1050). YukthiX staff on their own security-key
@@ -82,6 +82,15 @@ export class ConsoleOpsController {
   requestLift(@Req() req: Request, @CurrentUserId() staff: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ContainDto) {
     ownSession(req);
     return this.ops.requestLift(staff, id, dto.reason);
+  }
+
+  // DPDP Rule 7: the first notice to the Data Protection Board, marked sent (from C-4 or the breach incident, C-8).
+  @Post('companies/:id/containment/board-notice')
+  @RequireAnyPermission('platform.company.contain', 'platform.incidents.manage')
+  @RequireStepUp()
+  boardNotice(@Req() req: Request, @CurrentUserId() staff: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: BoardNoticeDto) {
+    ownSession(req);
+    return this.ops.boardNotice(staff, id, dto.sentAt, dto.note);
   }
 
   @Post('companies/:id/containment/lift')

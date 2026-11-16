@@ -3,6 +3,7 @@ import { play, press } from '../_kit/story-play';
 import { TODAY } from '../_kit/data';
 import { ChangeRecordScreen, ChangesScreen, NewChangeDrawer, ProblemRecordScreen, ProblemsScreen, type ChangeRow, type ProblemRow } from './hlp-22-itsm';
 import { OpsDesk } from './ops-kit';
+import { ItsmSettingsPanel, type ItsmSettingsValue } from './hlp-22-settings';
 
 // Helpdesk HLP-22 · Changes and problems: a DRAFT for the founder's questions 1931 to 1943 (helpdesk plan item 5, ITSM
 // change and problem management; docs/yukthix/helpdesk-itsm-plan.md). Not live yet.
@@ -41,6 +42,7 @@ const ACCESS_LINKS = [
 ];
 
 export const Changes: S = { name: 'Changes · list, clash and the change calendar', render: () => <ChangesScreen rows={CHANGES} freezes={FREEZES} today={TODAY} /> };
+export const ExportChanges: S = { name: 'Changes · export for an audit (CSV or PDF, answer 1943)', render: () => <ChangesScreen rows={CHANGES} freezes={FREEZES} today={TODAY} exportOpen /> };
 export const ChangesEmpty: S = { name: 'Changes · none yet', render: () => <ChangesScreen rows={[]} freezes={[]} today={TODAY} /> };
 export const NewChange: S = { name: 'New change · kind, risk questions, window, way back', render: () => <ChangesScreen rows={CHANGES} freezes={FREEZES} today={TODAY} newOpen /> };
 export const NewChangeTooEarly: S = { name: 'New change · sent with nothing filled', render: () => <ChangesScreen rows={CHANGES} freezes={FREEZES} today={TODAY} newOpen />, play: play(press('Send for approval')) };
@@ -66,3 +68,56 @@ export const KnownError: S = {
   render: () => <ProblemRecordScreen problem={PROBLEMS[0]!} knownError incidents={[{ number: 'IT-1009', subject: 'Gate 1 punches missing', state: 'Solved', raisedOn: new Date(2026, 8, 3) }, { number: 'IT-1031', subject: 'Gate 2 device did not sync punches', state: 'Open', raisedOn: new Date(2026, 8, 21) }]} workaround="Restart the device from its menu (Settings › Network › Reconnect) after midnight; the punches sync within 5 minutes." fixChange={{ number: 'CHG-14', title: 'Upgrade the Hosur attendance devices to firmware 4.2', state: 'approval' }} />,
 };
 export const NoAccess: S = { name: 'No access (not on the IT desk)', render: () => <ChangesScreen rows={[]} freezes={[]} today={TODAY} access={false} /> };
+
+// ITSM-1 (answers 1933-1939): the IT desk's change settings, each with its default, and the company's change window.
+const SETTINGS: ItsmSettingsValue = {
+  version: 1,
+  routeLow: 'lead',
+  routeMedium: 'lead_owner',
+  routeHigh: 'board',
+  board: [{ id: 'u1', name: 'Arjun Kulkarni' }, { id: 'u2', name: 'Divya Menon' }, { id: 'u3', name: 'Meena Iyer' }],
+  boardRule: 'majority',
+  emergencyReviewDays: 2,
+  bannerOn: true,
+  bannerHours: 24,
+  reviewDays: 5,
+  repeatCount: 3,
+  repeatDays: 7,
+  riskQuestions: [
+    { id: 'people', label: 'How many people does it affect?', options: [{ value: '0', label: 'Fewer than 10' }, { value: '1', label: '10 to 100' }, { value: '2', label: 'More than 100, or a whole location' }] },
+    { id: 'undo', label: 'Can it be undone?', options: [{ value: '0', label: 'Yes, in minutes' }, { value: '1', label: 'Yes, in hours' }, { value: '2', label: 'No, or not fully' }] },
+    { id: 'money', label: 'Does it touch payroll, attendance or payments?', options: [{ value: '0', label: 'No' }, { value: '2', label: 'Yes' }] },
+  ],
+  riskQuestionsAreDefault: false,
+  window: { weekdayFrom: '20:00', weekdayTo: '06:00', weekends: true, freezeFirstDays: 7, freezeLastDays: 3, freezeDates: [7, 15, 20] },
+  canEdit: true,
+  canEditWindow: true,
+};
+const settings = (v: ItsmSettingsValue) => (
+  <OpsDesk area="helpdesk" active="Desk set-up">
+    <ItsmSettingsPanel value={v} onSearchPeople={async () => [{ id: 'u4', name: 'Farah Khan' }]} onSave={async () => undefined} onSaveWindow={async () => undefined} standard={{ templates: [{ id: 't1', name: 'Monthly laptop patching', checklist: ['Save the images', 'Patch', 'Check a sign-in'], preApproved: true }, { id: 't2', name: 'Add a printer to the print server', checklist: [], preApproved: false }], onSave: async () => undefined }} />
+  </OpsDesk>
+);
+export const Settings: S = { name: 'Settings · approval by risk, risk questions, banner and review, change window', render: () => settings(SETTINGS) };
+export const SettingsReadOnly: S = { name: 'Settings · an agent sees them, cannot change them', render: () => settings({ ...SETTINGS, canEdit: false, canEditWindow: false }) };
+
+// ITSM-3 and ITSM-4 (answers 1939, 1951, 1953): the report, the asked-about view and a new problem from a repeat.
+const REPORT = {
+  period: 'the last 90 days',
+  changes: {
+    total: 14,
+    byKind: [
+      { kind: 'standard' as const, done: 6, done_with_problems: 0, backed_out: 1, rejected: 0, cancelled: 0, open: 1 },
+      { kind: 'normal' as const, done: 3, done_with_problems: 1, backed_out: 0, rejected: 1, cancelled: 1, open: 0 },
+      { kind: 'emergency' as const, done: 1, done_with_problems: 0, backed_out: 0, rejected: 0, cancelled: 0, open: 0 },
+    ],
+    finished: 12,
+    failed: 2,
+    failedRate: 17,
+  },
+  problems: { open: 3, byAge: [{ label: 'Under 7 days', count: 1 }, { label: '7 to 30 days', count: 2 }, { label: '30 to 90 days', count: 0 }, { label: 'Over 90 days', count: 0 }], incidentsPerProblem: 4.5, top: [{ number: 'PRB-4', title: 'Attendance devices at Hosur stop syncing overnight', incidents: 6 }] },
+};
+export const ChangesReport: S = { name: 'Changes · report for the last 90 days (failed-change rate, problems by age)', render: () => <ChangesScreen rows={CHANGES} freezes={FREEZES} today={TODAY} report={REPORT} /> };
+export const ChangesAsked: S = { name: 'Changes · only those I am asked about (change board, application owner)', render: () => <ChangesScreen asked rows={CHANGES.slice(0, 2)} freezes={FREEZES} today={TODAY} onOpen={() => undefined} /> };
+export const NewProblem: S = { name: 'Problems · new problem', render: () => <ProblemsScreen rows={PROBLEMS} suggestions={[]} newOpen /> };
+

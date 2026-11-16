@@ -111,6 +111,8 @@ describe('Settings S-10: Integrations & Developers', () => {
     const items = (keys: string[]) => buildNav({ ...base, has: (k) => keys.includes(k) }).flatMap((a) => a.sections.flatMap((s) => s.items.map((l) => l.label)));
     expect(items(['org:manage_settings'])).toEqual(expect.arrayContaining(['Integrations', 'AI', 'Developers', 'Calendar & chat']));
     expect(items([])).not.toContain('Developers');
+    // Answer 1901: IT staff with integration.manage see Integrations, AI and Developers.
+    expect(items(['integration.manage'])).toEqual(expect.arrayContaining(['Integrations', 'AI', 'Developers']));
     expect(items([])).not.toContain('Calendar & chat');
     expect(items(['pipeline:manage'])).toContain('Calendar & chat');
   });

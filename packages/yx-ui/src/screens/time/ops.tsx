@@ -757,16 +757,17 @@ function SampleTimesheet({ status, layout, prefillOpen, prefillView, initialLine
     ) : st === 'approved' ? (
       <p className="yx-tim-muted">Approved by {ME.manager} on {sentOn}.</p>
     ) : null;
-  // Submit sits after the hours (phone and desk), and is blocked until the last workday of the week.
+  // Submit sits after the hours (phone and desk), and is blocked until the last workday of the week. Answer 1886: the
+  // hint beside it says why once; pressed too early, the error box says it and the hint steps aside.
   const submitRow = editable && (
     <div className="yx-tim-stack">
       {problems.length > 0 && <InlineAlert tone="danger" title="Fix these before sending">{problems.join('. ')}.</InlineAlert>}
       <div className="yx-tim-row">
         {onThis ? (
           // Never disabled: pressed too early, it says why.
-          <><Button variant="primary" onClick={() => setProblems(['Submit opens Thu 1 Oct, your last workday this week (Fri 2 Oct is Gandhi Jayanti)'])}>Submit week</Button><span className="yx-tim-muted">Opens Thu 1 Oct, your last workday this week (Fri 2 Oct is Gandhi Jayanti).</span></>
+          <><Button variant="primary" onClick={() => setProblems(['Submit opens Thu 1 Oct, your last workday this week (Fri 2 Oct is Gandhi Jayanti)'])}>Submit week</Button>{problems.length === 0 && <span className="yx-tim-muted">Opens Thu 1 Oct, your last workday this week (Fri 2 Oct is Gandhi Jayanti).</span>}</>
         ) : queriedUnchanged ? (
-          <><Button variant="primary" onClick={() => setProblems(['Change the SRF-24 hours on Tue 22 Sep first: your manager queried them'])}>Resubmit week</Button><span className="yx-tim-muted">Change the SRF-24 hours on Tue 22 Sep first.</span></>
+          <><Button variant="primary" onClick={() => setProblems(['Change the SRF-24 hours on Tue 22 Sep first: your manager queried them'])}>Resubmit week</Button>{problems.length === 0 && <span className="yx-tim-muted">Change the SRF-24 hours on Tue 22 Sep first.</span>}</>
         ) : (
           <><Button variant="primary" onClick={resubmit}>{st === 'sent_back' ? 'Resubmit week' : 'Submit week'}</Button><span className="yx-tim-muted">Goes {st === 'sent_back' ? 'back ' : ''}to {ME.manager}.</span></>
         )}

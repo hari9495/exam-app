@@ -37,7 +37,9 @@ const Text = (min: number, max: number) => (target: object, key: string) => {
 export const DESK_KINDS = ['hr', 'it', 'admin', 'facilities', 'finance', 'legal', 'security', 'customer_support', 'custom'] as const;
 export const DESK_ROLES = ['agent', 'lead', 'admin', 'collaborator'] as const;
 export const SYSTEM_STATES = ['new', 'open', 'pending', 'on_hold', 'solved', 'closed'] as const;
-export const TYPE_KINDS = ['incident', 'request', 'question'] as const;
+export const TYPE_KINDS = ['incident', 'request', 'question', 'change', 'problem'] as const;
+/** Answer 1931: change and problem tickets live on IT desks only and are raised through Changes and Problems, never the portal. */
+export const ITSM_KINDS: readonly string[] = ['change', 'problem'];
 export const METHODS = ['manual', 'round_robin', 'load'] as const;
 export const TIERS = ['L1', 'L2', 'L3'] as const;
 const TAG = /^[\p{L}\p{N}][\p{L}\p{N} _-]{0,39}$/u;
@@ -1097,7 +1099,7 @@ export class BulkDto {
 
 // ------------------------------------------------------------------------------------------ batch 2 (SD-1.09 to SD-1.17)
 
-export const LINK_KINDS = ['related', 'blocks', 'caused_by', 'tracked_by'] as const;
+export const LINK_KINDS = ['related', 'blocks', 'caused_by', 'tracked_by', 'fixes'] as const;
 export const TASK_STATES = ['open', 'in_progress', 'done', 'cancelled'] as const;
 
 export class LinkDto {
@@ -1270,6 +1272,11 @@ export class TemplateDto {
   @MinLength(1, { each: true })
   @MaxLength(200, { each: true })
   checklist!: string[];
+
+  /** Answer 1935: a standard change from this template skips approval (its type must be a change type). */
+  @IsOptional()
+  @IsBoolean()
+  preApproved?: boolean;
 
   @IsOptional()
   @IsBoolean()

@@ -590,7 +590,7 @@ function TypesTab(props: TabProps) {
             <span className="yx-ops-list__main">
               <span className="yx-ops-list__title">{t.name}</span>
               <span className="yx-ops-list__sub">
-                {t.kind === 'incident' ? 'Something is broken' : t.kind === 'request' ? 'A request' : 'A question'}
+                {({ incident: 'Something is broken', request: 'A request', question: 'A question', change: 'An IT change (raised from Changes)', problem: 'An IT problem (raised from Problems)' } as const)[t.kind]}
                 {t.active ? '' : ' · off'}
               </span>
             </span>

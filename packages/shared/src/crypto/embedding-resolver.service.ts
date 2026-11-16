@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { orgAiFetch } from '../net/public-fetch';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrgSecretsCryptoService } from './org-secrets-crypto.service';
 import { EmbeddingProvider, OpenAiCompatibleEmbeddingProvider } from '../ai/embedding-provider';
@@ -34,10 +35,7 @@ export class EmbeddingResolverService {
         'No embeddings provider is configured for this organization. Add an embeddings endpoint, model and API key in Settings → Integrations.',
       );
     }
-    return new OpenAiCompatibleEmbeddingProvider(
-      this.cryptoService.decrypt(org.embeddingApiKeyEncrypted),
-      org.embeddingBaseUrl,
-      org.embeddingModel,
-    );
+    // Answer 1902: a company-supplied address only through the pinned public-only fetch (as the webhooks).
+    return new OpenAiCompatibleEmbeddingProvider(this.cryptoService.decrypt(org.embeddingApiKeyEncrypted), org.embeddingBaseUrl, org.embeddingModel, orgAiFetch);
   }
 }

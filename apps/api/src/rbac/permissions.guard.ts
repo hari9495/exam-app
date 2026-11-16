@@ -17,6 +17,7 @@ import {
 } from '@exam-platform/shared';
 import { PERMISSIONS_KEY, PERMISSIONS_ANY_KEY } from './permissions.decorator';
 import { SENSITIVE_ROLE_ACTION, STEP_UP_REQUIRED } from '../auth/step-up.decorator';
+import { ANSWER_KEY_WRITERS, SHOWS_ANSWER_KEYS } from './answer-keys';
 
 // Endpoints gated by these permissions are the "admin console" for the company's admin IP
 // allow-list (YX-IAM-09): every sensitive-role permission (users, settings / security, billing,
@@ -100,7 +101,19 @@ export class PermissionsGuard implements CanActivate {
     if (allKeys.length > 0 && !user.actingSuperAdmin) {
       usedKeys = await this.checkPermissions(user, request.ip, requiredAll, requiredAny, allKeys);
     }
+    const granted =
+      this.reflector.get<boolean>(SHOWS_ANSWER_KEYS, handler) === true && !user.actingSuperAdmin
+        ? await resolvePermissionGrants(this.prisma, this.tenantPrisma, { role: user.role, organizationId: user.organizationId ?? null, permissionProfileId: user.permissionProfileId, userId: user.userId ?? null }, [...ANSWER_KEY_WRITERS])
+        : new Set<string>();
     await this.checkMfa(user, usedKeys, sensitiveAction);
+    // Security fix (answer keys): a route that returns questions learns whether this person writes tests or questions.
+    // Never while acting for someone else (YukthiX staff or impersonation read without the keys).
+    if (this.reflector.get<boolean>(SHOWS_ANSWER_KEYS, handler) === true) {
+      request.seesAnswerKeys =
+        !user.actingSuperAdmin &&
+        !user.impersonatorUserId &&
+        ANSWER_KEY_WRITERS.some((k) => granted.has(k));
+    }
     if (stepUp) {
       assertStepUp(user);
       await this.audit.record(

@@ -21479,5 +21479,294 @@
     "expected": "Step 1: the key in a drawer, once. Step 2: only its first characters. Step 3: only the start and last 4 characters of the address. Step 4: refused before saving: a full https address. Step 5: the address is not shown; Leave it blank to keep it. Step 6: no access. Step 7: the new pages open.",
     "stories": [],
     "note": "Positive and negative. The security check itself is in the API tests."
+  },
+  {
+    "id": "MT-HD-ITSM1a",
+    "area": "Helpdesk ITSM-1 and ITSM-2 (13 Nov 2026)",
+    "screen": "Helpdesk › Desk set-up › Changes (IT desk)",
+    "url": "http://localhost:3000/yx/desk/setup?tab=changes",
+    "account": "The IT desk admin; an IT agent; the company Service Desk owner (org admin).",
+    "steps": [
+      "As the desk admin open the IT desk, tab Changes. Set High risk to Change board with no board members and Save.",
+      "Add two people to the change board and Save; change a risk question label and Save questions; press Use the starter questions.",
+      "As the agent open the same tab.",
+      "As the org admin change the weekday window to 21:00 and the freeze dates to 7, 40; then to 7, 15 and Save."
+    ],
+    "expected": "Step 1: refused, \"Name the change board first\". Step 2: saved with a toast; the starter questions come back. Step 3: read-only with the note. Step 4: 40 refused; 7, 15 saved; the desk admin sees the window read-only.",
+    "stories": [
+      "Screens/Helpdesk/HLP-22 · Changes and problems · Settings · approval by risk, risk questions, banner and review, change window",
+      "Screens/Helpdesk/HLP-22 · Changes and problems · Settings · an agent sees them, cannot change them"
+    ],
+    "note": "Positive and negative. Answers 1933-1936."
+  },
+  {
+    "id": "MT-HD-ITSM1b",
+    "area": "Helpdesk ITSM-1 and ITSM-2 (13 Nov 2026)",
+    "screen": "Help centre › raise a ticket; a ticket › Change type",
+    "url": "http://localhost:3000/yx/desk/help?new=1",
+    "account": "An employee; an IT agent.",
+    "steps": [
+      "As the employee raise a ticket on the IT desk and open the type list.",
+      "As the agent open an incident and press Change type."
+    ],
+    "expected": "Neither list offers Change or Problem. A change is raised only from Helpdesk › Changes.",
+    "stories": [],
+    "note": "Negative. Answer 1931."
+  },
+  {
+    "id": "MT-HD-ITSM2a",
+    "area": "Helpdesk ITSM-1 and ITSM-2 (13 Nov 2026)",
+    "screen": "Helpdesk › Changes › New change",
+    "url": "http://localhost:3000/yx/desk/changes",
+    "account": "An IT agent; the two IT leads; the change board; the owner of the application (Applications).",
+    "steps": [
+      "As the agent press New change: Normal, an application, all answers lowest, a Saturday 10:00 to 12:00, a way back. Send.",
+      "As an IT lead approve it in Approvals.",
+      "Raise a medium-risk change (some answers in the middle); the lead approves, then the application owner.",
+      "Raise a high-risk change; two of the three board members approve.",
+      "As an IT lead raise a change yourself and look in your own Approvals."
+    ],
+    "expected": "Step 1: sent for approval. Step 2: Scheduled; a known-issue notice from 24 hours before; the owner gets a notice. Step 3: the owner is asked only after the lead. Step 4: scheduled after the second approval. Step 5: you are never asked about your own change; the other lead is.",
+    "stories": [
+      "Screens/Helpdesk/HLP-22 · Changes and problems · New change · kind, risk questions, window, way back",
+      "Screens/Helpdesk/HLP-22 · Changes and problems · A change · waiting for the change board (high risk)"
+    ],
+    "note": "Positive and negative. Answers 1932-1934, 1937."
+  },
+  {
+    "id": "MT-HD-ITSM2b",
+    "area": "Helpdesk ITSM-1 and ITSM-2 (13 Nov 2026)",
+    "screen": "Helpdesk › Changes › New change (freeze and window)",
+    "url": "http://localhost:3000/yx/desk/changes",
+    "account": "An IT agent.",
+    "steps": [
+      "New change, Normal, on the 15th of the month at 22:00.",
+      "The same as Emergency without a reason; then with \"Active attack, cannot wait\" in Why it cannot wait.",
+      "A Normal change on a weekday at 14:00.",
+      "Answers that give High risk, then choose Low risk without a reason."
+    ],
+    "expected": "Step 1: refused, it falls in a freeze. Step 2: refused without the reason, sent with it (one IT lead approves). Step 3: refused, outside the change window. Step 4: asks why the risk is lower.",
+    "stories": [
+      "Screens/Helpdesk/HLP-22 · Changes and problems · New change · emergency, one approver now",
+      "Screens/Helpdesk/HLP-22 · Changes and problems · New change · sent with nothing filled"
+    ],
+    "note": "Negative and positive. Answers 1933, 1936."
+  },
+  {
+    "id": "MT-HD-ITSM2c",
+    "area": "Helpdesk ITSM-1 and ITSM-2 (13 Nov 2026)",
+    "screen": "Helpdesk › Changes › a change (standard, outcome, review)",
+    "url": "http://localhost:3000/yx/desk/changes",
+    "account": "The IT desk admin; an IT agent; an IT lead.",
+    "steps": [
+      "As the desk admin add a standard change in Desk set-up › Changes with three steps.",
+      "As the agent raise a Standard change from it; when its window starts press Start the change, tick two steps, then Backed out with a note.",
+      "Try another Standard change from the same template.",
+      "As the agent try to save the review; as the lead save it."
+    ],
+    "expected": "Step 2: scheduled at once (no approval); after Backed out it waits for a review due within 5 working days and the notice ends. Step 3: refused (the template lost its pre-approval). Step 4: the agent cannot; the lead closes it as Backed out.",
+    "stories": [
+      "Screens/Helpdesk/HLP-22 · Changes and problems · A change · in progress, the checklist and the outcome",
+      "Screens/Helpdesk/HLP-22 · Changes and problems · A change · review after it caused incidents"
+    ],
+    "note": "Positive and negative. Answers 1935, 1938."
+  },
+  {
+    "id": "MT-HD-ITSM2d",
+    "area": "Helpdesk ITSM-1 and ITSM-2 (13 Nov 2026)",
+    "screen": "Helpdesk › Changes › Export",
+    "url": "http://localhost:3000/yx/desk/changes",
+    "account": "An IT agent; an employee; an agent of another company.",
+    "steps": [
+      "As the agent press Export, this year, CSV; then PDF.",
+      "As the employee open /yx/desk/changes and a change link.",
+      "As the other company open a change link of this company."
+    ],
+    "expected": "Step 1: both files list every change with who approved and when, the outcome and the review. Steps 2 and 3: no access / not found.",
+    "stories": [
+      "Screens/Helpdesk/HLP-22 · Changes and problems · Changes · export for an audit (CSV or PDF, answer 1943)",
+      "Screens/Helpdesk/HLP-22 · Changes and problems · No access (not on the IT desk)"
+    ],
+    "note": "Positive and negative. Answer 1943."
+  },
+  {
+    "id": "MT-SET-FU1",
+    "area": "Settings follow-ups (13 Nov 2026)",
+    "screen": "Console › Company; Settings › AI; Settings › Plan & add-ons",
+    "url": "http://localhost:3000/yx/settings/integrations/ai",
+    "account": "Two YukthiX staff with passkeys (console); a company System Admin; an IT person given integration.manage; a finance person.",
+    "steps": [
+      "Console: open a company that asked to close.",
+      "Console: close it; open it again.",
+      "Console, staff 1: on a throwaway company closed over 30 days ago, Ask to delete the data with a reason.",
+      "Negative: staff 1 tries Confirm deletion.",
+      "Console, staff 2: Confirm deletion; confirm in the dialog.",
+      "Negative: Ask to delete on an open company, and on one closed 5 days ago.",
+      "As the IT person: open Settings › AI and Developers; set the webhook address.",
+      "As the System Admin with a company AI key: Stop using our key.",
+      "As the finance person: open Plan & add-ons; then /v2/settings/billing.",
+      "Timesheet with an error: look at the line beside Submit."
+    ],
+    "expected": "Step 1: the request (reason, date) with Close beside it. Step 2: closed, kept until a date. Step 3: asked; a second staff member confirms. Step 4: refused: a second staff member confirms. Step 5: done; the certificate downloads; the company is gone. Step 6: refused (open; kept until). Step 7: both open; asks for the security key; saved. Step 8: toast Back to YukthiX AI; 7.6 says YukthiX AI. Step 9: the plan, read-only; the old address opens Plan & add-ons. Step 10: the submit line shows once, not with the error box.",
+    "stories": [
+      "CompanyClosureAsked",
+      "CompanyDeletionToConfirm"
+    ],
+    "note": "Positive and negative. Deletion only on a throwaway company."
+  },
+  {
+    "id": "MT-SET-FU2",
+    "area": "Settings follow-ups, second part (13 Nov 2026)",
+    "screen": "Console › Company; Console › Contain company; Console › Incidents",
+    "url": "http://localhost:3000/staff/companies",
+    "account": "Two YukthiX staff with passkeys (one a Security lead); a throwaway company closed over 30 days ago.",
+    "steps": [
+      "Staff 1: Ask to delete the data of the throwaway company; staff 2: Confirm deletion.",
+      "Open the company again; Download certificate.",
+      "Try to sign in as that company's admin.",
+      "Negative: open a company closed 5 days ago; Ask to delete.",
+      "Contain another throwaway company; look at the Data Protection Board card.",
+      "Negative: Mark first notice sent with no note.",
+      "Mark first notice sent with the time and a note; confirm with the security key.",
+      "On Incidents, mark a breach for that containment and open it."
+    ],
+    "expected": "Step 1: done; a certificate downloads. Step 2: data deleted on a day; statutory records kept read-only until a day 8 years on; the certificate lists deleted and kept tables, why and until when; no Ask to delete. Step 3: refused. Step 4: refused: kept until a day. Step 5: two steps, Notify the Board now (not marked) and the 72-hour report, with Verify with counsel. Step 6: the note is asked for. Step 7: toast; the step shows when, who and the note. Step 8: the breach shows the same two steps, the first marked.",
+    "stories": [
+      "CompanyDeleted",
+      "YX18LiveBoardTold"
+    ],
+    "note": "Positive and negative. Deletion only on a throwaway company. The reminder emails are covered by the API tests."
+  },
+  {
+    "id": "MT-HD-ITSM3a",
+    "area": "Helpdesk ITSM-3 and ITSM-4 (13 Nov 2026)",
+    "screen": "Helpdesk › Problems",
+    "url": "http://localhost:3000/yx/desk/problems",
+    "account": "An employee; an IT agent; an IT lead.",
+    "steps": [
+      "As the employee raise three IT incidents in the same category.",
+      "As the lead open Problems; as the agent open Problems.",
+      "As the lead press Open a problem on the suggestion, then Open the problem.",
+      "Link incidents: type a number that does not exist; then a change number; then a real incident number."
+    ],
+    "expected": "Step 2: the lead sees \"Suggested: <category>, 3 incidents in 7 days\"; the agent does not. Step 3: the problem opens with the three incidents. Step 4: not found; not an incident; linked.",
+    "stories": [
+      "Screens/Helpdesk/HLP-22 · Changes and problems · Problems · list, a repeat suggested",
+      "Screens/Helpdesk/HLP-22 · Changes and problems · Problems · new problem"
+    ],
+    "note": "Positive and negative. Answer 1939."
+  },
+  {
+    "id": "MT-HD-ITSM3b",
+    "area": "Helpdesk ITSM-3 and ITSM-4 (13 Nov 2026)",
+    "screen": "Helpdesk › Problems › a problem (known error)",
+    "url": "http://localhost:3000/yx/desk/problems",
+    "account": "An IT agent; an IT lead; the desk admin (knowledge spaces).",
+    "steps": [
+      "Write a workaround, tick Draft a knowledge-base article and the notice, press Mark as known error.",
+      "As the agent choose a space employees read.",
+      "Write the root cause and the closing reply and save."
+    ],
+    "expected": "Step 1: a draft article in the agents' space, a notice to employees (no Me too). Step 2: refused, only a lead. Step 3: saved.",
+    "stories": [
+      "Screens/Helpdesk/HLP-22 · Changes and problems · A problem · known error, workaround to the knowledge base, fix by change"
+    ],
+    "note": "Positive and negative. Answer 1940."
+  },
+  {
+    "id": "MT-HD-ITSM3c",
+    "area": "Helpdesk ITSM-3 and ITSM-4 (13 Nov 2026)",
+    "screen": "Helpdesk › Problems › a problem (fix and close)",
+    "url": "http://localhost:3000/yx/desk/problems",
+    "account": "An IT agent; the IT leads; the employee who raised the incidents.",
+    "steps": [
+      "Choose a scheduled change under Permanent fix and press It fixes this problem.",
+      "Start that change in its window and press Done.",
+      "As the employee open one of the incidents.",
+      "On another problem, as the agent look for Close without a change; as the lead close it."
+    ],
+    "expected": "Step 2: the problem closes and its notice ends. Step 3: the incident is resolved with the closing reply. Step 4: only the lead may close it.",
+    "stories": [
+      "Screens/Helpdesk/HLP-22 · Changes and problems · A problem · linked incidents, cause not found yet"
+    ],
+    "note": "Positive and negative. Answer 1941."
+  },
+  {
+    "id": "MT-HD-ITSM4a",
+    "area": "Helpdesk ITSM-3 and ITSM-4 (13 Nov 2026)",
+    "screen": "Helpdesk › Changes › a change (cancel)",
+    "url": "http://localhost:3000/yx/desk/changes",
+    "account": "The agent who raised it; another agent; an IT lead.",
+    "steps": [
+      "As another agent open the change: look for Cancel the change.",
+      "As the agent who raised it press Cancel the change with a short reason, then a proper one.",
+      "Start another change and look for Cancel."
+    ],
+    "expected": "Step 1: not offered. Step 2: a short reason is refused; then Cancelled, its approval task gone and its notice ended. Step 3: not offered once started.",
+    "stories": [],
+    "note": "Positive and negative. Answer 1951."
+  },
+  {
+    "id": "MT-HD-ITSM4b",
+    "area": "Helpdesk ITSM-3 and ITSM-4 (13 Nov 2026)",
+    "screen": "Helpdesk › Desk set-up › Schedules (IT desk)",
+    "url": "http://localhost:3000/yx/desk/setup?tab=schedules",
+    "account": "The IT desk admin.",
+    "steps": [
+      "New repeating ticket: Each time it makes A standard change, choose one, weekly on Saturday 10:00, window after 0 hours for 60 minutes. Save.",
+      "Make a second schedule for the same standard change."
+    ],
+    "expected": "Step 1: saved; on Saturday the change is raised and scheduled (no approval). Step 2: refused, it already repeats. A Saturday in a freeze makes nothing and is audited.",
+    "stories": [
+      "Screens/Helpdesk/HLP-18 · Desk set-up tabs · Recurring standard change (an IT desk, answer 1952)"
+    ],
+    "note": "Positive and negative. Answer 1952."
+  },
+  {
+    "id": "MT-HD-ITSM4c",
+    "area": "Helpdesk ITSM-3 and ITSM-4 (13 Nov 2026)",
+    "screen": "Helpdesk › Changes (change board, owner; overrun; report)",
+    "url": "http://localhost:3000/yx/desk/changes",
+    "account": "A change board member without a desk seat; an application owner; an employee; the IT leads.",
+    "steps": [
+      "As the board member and as the owner look at the Helpdesk menu and open Changes.",
+      "As the employee look at the menu.",
+      "Leave a change in progress past its window end (wait 5 minutes).",
+      "As an IT agent read the Report card on Changes."
+    ],
+    "expected": "Step 1: Changes shows only the changes they are asked about. Step 2: no Changes. Step 3: each lead gets one notice. Step 4: changes by kind and how they ended, the failed-change rate, open problems by age.",
+    "stories": [
+      "Screens/Helpdesk/HLP-22 · Changes and problems · Changes · only those I am asked about (change board, application owner)",
+      "Screens/Helpdesk/HLP-22 · Changes and problems · Changes · report for the last 90 days (failed-change rate, problems by age)"
+    ],
+    "note": "Positive and negative. Answers 1953, 1955; ITSM-4."
+  },
+  {
+    "id": "MT-HLP-ASK1",
+    "area": "Ask YukthiX (13 Nov 2026)",
+    "screen": "Help drawer › Ask YukthiX; Console › Feature requests",
+    "url": "http://localhost:3000/yx/home",
+    "account": "The System Admin of a company; an employee of the same company; a YukthiX staff member with the help centre key. The server has ASK_YUKTHIX_ANTHROPIC_API_KEY set (and once without it).",
+    "steps": [
+      "Without the key on the server: open Help, Ask YukthiX.",
+      "With the key: ask how to apply for leave.",
+      "Press the article link under the answer.",
+      "Ask why your own leave balance changed.",
+      "Thumbs down twice in the chat.",
+      "As the System Admin: Raise support ticket.",
+      "As the employee: look for Raise support ticket; Send feature request with an empty title, then with one.",
+      "Negative: as the System Admin, act as the employee and open Help, Ask YukthiX.",
+      "As staff: Console › Feature requests; mark the request Done; open Ask YukthiX review."
+    ],
+    "expected": "Step 1: Not switched on yet, with Raise a ticket. Step 2: steps from the help article, the article linked, questions left today goes down by one. Step 3: the help article opens. Step 4: it says someone needs to look at your account. Step 5: Not getting anywhere? A person is offered. Step 6: toast with the ticket number; Contact YukthiX shows it with the chat. Step 7: no ticket button, the System Admin note; the empty title says why; then sent. Step 8: no Ask YukthiX tab. Step 9: the request with its company count; Done tells the employee (bell); the review shows the questions without phone numbers.",
+    "stories": [
+      "HelpDrawerAsk",
+      "HelpDrawerAskUnsure",
+      "HelpDrawerAskNoKey",
+      "HelpDrawerAskOff",
+      "FeatureRequests",
+      "FeatureRequestsReview"
+    ],
+    "note": "Positive and negative. Real Claude answers need the key; the tests use a stand-in."
   }
 ]

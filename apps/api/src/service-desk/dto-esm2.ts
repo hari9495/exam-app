@@ -292,6 +292,27 @@ export class RecurringTemplateDto {
   @Min(1)
   @Max(4)
   priority?: number | null;
+
+  /** ITSM answer 1952: raise this pre-approved standard change each time (checked in the service). */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RecurringStandardDto)
+  standard?: RecurringStandardDto | null;
+}
+
+export class RecurringStandardDto {
+  @IsUUID()
+  templateId!: string;
+
+  @IsInt()
+  @Min(0)
+  @Max(168)
+  startAfterHours!: number;
+
+  @IsInt()
+  @Min(15)
+  @Max(720)
+  minutes!: number;
 }
 
 export class RecurringDto {

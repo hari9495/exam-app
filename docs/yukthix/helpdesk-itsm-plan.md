@@ -139,3 +139,13 @@ affected" we need.
 
 About 19 working days for one builder, or about 2 weeks for two (ITSM-2 and ITSM-3 in parallel after ITSM-1). Every
 slice: drawn first in HLP-22, positive and negative tests, forced RLS on new tables, policy as settings with defaults.
+
+**Founder answers (14 Nov 2026, "ok for all"), 2051 to 2058:**
+- 2051: yes, "Me too" on the known-error notice raises an incident already linked to the problem.
+- 2052: yes, "done with problems" closes the problem; a backed-out change does not.
+- 2053: as built, raised in the name of the person who set up the schedule.
+- 2054: yes, the desk's IT leads also get a notice when a scheduled run is skipped.
+- 2055: keep it, no export on the asked-about Changes view.
+- 2056: yes, later: the notice can be limited by location or application (setting, default all employees).
+- 2057: yes, repeats count by category or by the same application.
+- 2058: yes, "Raise a change to fix it" opens the New change drawer with the problem linked.

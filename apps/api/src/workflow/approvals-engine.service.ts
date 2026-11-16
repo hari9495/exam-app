@@ -51,8 +51,9 @@ export interface RequestType {
   risk: 'low' | 'normal' | 'high';
   /** The company may turn on auto-approve / auto-reject after a timeout (never for high risk). */
   autoActions: boolean;
-  /** Effects, run in the decision's own transaction (exactly once). */
-  onDecided(tx: Tx, req: Prisma.WfRequestGetPayload<object>, outcome: Outcome): Promise<void>;
+  /** Effects, run in the decision's own transaction (exactly once). Work outside the database (an email) goes to
+   *  afterCommit: it runs only once the decision is saved, never when the transaction fails. */
+  onDecided(tx: Tx, req: Prisma.WfRequestGetPayload<object>, outcome: Outcome, afterCommit?: (fn: () => Promise<void>) => void): Promise<void>;
   /** Where the requester follows the request. */
   requesterLink(req: Prisma.WfRequestGetPayload<object>): string;
   /**
@@ -146,6 +147,8 @@ export interface Notice {
   toRequester?: string;
   /** Why it was not approved (the approver's reason, or the timeout), told to the person who asked. */
   reason?: string | null;
+  /** Not a message: the request type's own after-commit work (RequestType.onDecided's afterCommit). */
+  run?: () => Promise<void>;
 }
 
 const MAX = { steps: 6, approvers: 5, users: 25 };
@@ -490,7 +493,7 @@ export class ApprovalsEngine {
     if (!done.count) throw new ConflictException('This request was already decided.');
     const after = await tx.wfRequest.findFirstOrThrow({ where: { id: req.id } });
     await AuditService.recordIn(tx, ctx, { actorUserId: null, action: `workflow.request.${outcome}`, entityType: 'wf_request', entityId: req.id, metadata: { type: req.requestType, subjectId: req.subjectId } });
-    await this.type(req.requestType).onDecided(tx, after, outcome);
+    await this.type(req.requestType).onDecided(tx, after, outcome, (run) => notices.push({ to: [], requestId: req.id, type: 'workflow.approval.decided', title: req.title, link: '', text: '', run }));
     const why = outcome === 'rejected' ? await tx.wfAction.findFirst({ where: { organizationId: req.organizationId, requestId: req.id, action: { in: ['rejected', 'auto_rejected'] } }, orderBy: { createdAt: 'desc' }, select: { reason: true } }) : null;
     if (req.requesterUserId) notices.push({ to: [req.requesterUserId], requestId: req.id, type: 'workflow.approval.decided', title: req.title, link: this.type(req.requestType).requesterLink(after), text: outcome === 'approved' ? 'Approved' : 'Not approved', toRequester: req.requesterUserId, reason: why?.reason ?? null });
     return after;
@@ -940,6 +943,10 @@ export class ApprovalsEngine {
   /** Bell notices and email, after the transaction committed (never inside it). */
   async send(ctx: TenantContext, notices: Notice[]) {
     for (const n of notices) {
+      if (n.run) {
+        await n.run().catch((e) => this.logger.warn(`after-commit work failed: ${(e as Error).message}`));
+        continue;
+      }
       const to = [...new Set(n.to)];
       if (!to.length) continue;
       try {

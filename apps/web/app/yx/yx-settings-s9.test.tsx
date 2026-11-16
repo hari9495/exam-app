@@ -9,8 +9,9 @@ import { buildNav, type NavInput } from '../../lib/yx-nav';
 import { YxNavContext } from '../../lib/yx-shell';
 import YxAccountSettingsPage from './(app)/settings/account/[page]/page';
 import YxTimeSettingsPage from './(app)/settings/time/[page]/page';
+import V2BillingPage from '../v2/(org-admin)/settings/billing/page';
 
-jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn() }));
+jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn(), redirect: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), apiFetchBlob: jest.fn() }));
 jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
 
@@ -103,6 +104,10 @@ describe('Settings S-9: Billing & Account', () => {
     expect(items('panel')).toEqual(expect.arrayContaining(['Plan & add-ons', 'Usage & caps', 'Invoices']));
     expect(items('panel')).not.toContain('Data export & closure');
     expect(items('org_admin')).toContain('Data export & closure');
+    // Answer 1884: billing.view shows the three billing pages, never the data page.
+    const finance = buildNav({ ...base, has: (k) => k === 'billing.view', role: 'panel' }).flatMap((a) => a.sections.flatMap((s) => s.items.map((l) => l.label)));
+    expect(finance).toEqual(expect.arrayContaining(['Plan & add-ons', 'Usage & caps', 'Invoices']));
+    expect(finance).not.toContain('Data export & closure');
   });
 
   // Answer 1821: the registered-factory hint on 3.1, from the API's flag on a location's own value.
@@ -142,5 +147,13 @@ describe('Settings S-9: Billing & Account', () => {
     );
     expect(await screen.findByText(/Hosur plant \(location\)/)).toBeInTheDocument();
     expect(screen.queryByText(/No longer needed/)).toBeNull();
+  });
+
+  // Answer 1885: the /v2 billing page is retired; bookmarks and payment return links land on Plan & add-ons.
+  it('1885: /v2/settings/billing redirects to Plan & add-ons, and nowhere else', () => {
+    const go = jest.requireMock('next/navigation').redirect as jest.Mock;
+    go.mockClear();
+    V2BillingPage();
+    expect(go.mock.calls).toEqual([['/yx/settings/account/plan-and-add-ons']]);
   });
 });

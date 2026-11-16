@@ -10,7 +10,7 @@ import { AuditService } from '@exam-platform/shared';
 import { OrgSecretsCryptoService } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
 import { AiProvider, AnthropicProvider, OpenAiCompatibleProvider, OpenAiCompatibleEmbeddingProvider } from '@exam-platform/shared';
-import { assertPublicHttpsHost } from '../common/ssrf';
+import { assertPublicHttpsHost, orgAiFetch } from '../common/ssrf';
 import { EmailService } from '../email/email.service';
 import { companyWelcomeEmail } from '../email/account-emails';
 import { ACCOUNT_SETUP_EXPIRY_HOURS, issuePasswordToken } from '../auth/password-tokens';
@@ -634,7 +634,7 @@ export class OrganizationsService {
     if (dto.provider === 'openai-compatible') await publicUrlOrBadRequest(dto.baseUrl as string, 'The AI base URL');
     const provider: AiProvider =
       dto.provider === 'openai-compatible'
-        ? new OpenAiCompatibleProvider(dto.apiKey, dto.baseUrl as string, dto.modelFast as string, dto.modelStandard as string)
+        ? new OpenAiCompatibleProvider(dto.apiKey, dto.baseUrl as string, dto.modelFast as string, dto.modelStandard as string, orgAiFetch)
         : new AnthropicProvider(dto.apiKey);
 
     try {
@@ -662,6 +662,17 @@ export class OrganizationsService {
     return { aiKeyConfigured: true };
   }
 
+  /** Answer 1903: forget the company's own AI key; YukthiX AI (the default provider) is used again. */
+  async clearAiKey(context: TenantContext, actorUserId: string): Promise<{ aiKeyConfigured: boolean }> {
+    const organizationId = this.requireOrganizationId(context);
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { aiProvider: 'anthropic', aiApiKeyEncrypted: null, aiBaseUrl: null, aiModelFast: null, aiModelStandard: null },
+    });
+    await this.audit.record(context, { actorUserId, action: 'organization.ai_key_removed', entityType: 'organization', entityId: organizationId });
+    return { aiKeyConfigured: false };
+  }
+
   async updateEmbeddingConfig(
     context: TenantContext,
     actorUserId: string,
@@ -672,7 +683,7 @@ export class OrganizationsService {
     // Verify the config at save time (embeds a tiny string) so a bad endpoint/key/model surfaces here
     // rather than silently failing every future search.
     await publicUrlOrBadRequest(dto.baseUrl, 'The embeddings base URL');
-    const provider = new OpenAiCompatibleEmbeddingProvider(dto.apiKey, dto.baseUrl, dto.model);
+    const provider = new OpenAiCompatibleEmbeddingProvider(dto.apiKey, dto.baseUrl, dto.model, orgAiFetch);
     try {
       const [vector] = await provider.embed(['connection test']);
       if (!vector?.length) throw new Error('the endpoint returned no vector');

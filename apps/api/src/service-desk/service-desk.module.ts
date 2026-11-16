@@ -51,6 +51,10 @@ import { FacilitiesService } from './facilities.service';
 import { DeskEsm3Controller, InboundMsgController, MyMessagingController, ReplyLinkController, WidgetPublicController } from './esm3.controller';
 import { MailboxSyncService } from './mailbox-sync.service';
 import { MessagingService } from './messaging.service';
+import { DeskItsmController } from './itsm.controller';
+import { ItsmService } from './itsm.service';
+import { ChangesService } from './changes.service';
+import { ProblemsService } from './problems.service';
 import { MobileService } from './mobile.service';
 import { TeamService } from './team.service';
 import { WidgetService } from './widget.service';
@@ -99,6 +103,7 @@ import { WidgetService } from './widget.service';
     InboundMsgController,
     WidgetPublicController,
     ReplyLinkController,
+    DeskItsmController,
   ],
   providers: [
     HelpCentreService,
@@ -140,9 +145,12 @@ import { WidgetService } from './widget.service';
     TeamService,
     MailboxSyncService,
     MobileService,
+    ItsmService,
+    ChangesService,
+    ProblemsService,
   ],
   // Lifecycle 6a: HR checklist tasks raise their desk requests through the journeys service (founder D1).
   // Answer 491: the staffing client portal raises and follows tickets through the Helpdesk's own create and reply paths.
-  exports: [JourneysService, DeskAccessService, WorkService, TicketsService, RequesterService],
+  exports: [JourneysService, DeskAccessService, WorkService, TicketsService, RequesterService, KbService, SupportBridgeService],
 })
 export class ServiceDeskModule {}

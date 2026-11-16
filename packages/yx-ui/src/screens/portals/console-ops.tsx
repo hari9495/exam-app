@@ -28,6 +28,7 @@ import type { TenantRow } from './console-data';
 import { LiveCustomerSuccessScreen, type LiveCustomerSuccess } from './console-cs-live';
 import { LiveMaintenanceScreen, type LiveMaintenance } from './console-maintenance-live';
 import { LiveHelpCentreScreen, type LiveHelpCentre } from './console-helpcentre-live';
+import { BoardNoticeSteps, type BoardNotice } from './board-notice';
 import { LiveIncidentsScreen, type LiveIncidents } from './console-incidents-live';
 import { LiveNudgesScreen, type LiveNudges } from './console-nudges-live';
 import { LiveSalesScreen, type LiveSales } from './console-sales-live';
@@ -887,6 +888,8 @@ export interface ContainView {
     appsRevoked: number;
     liftRequest: { by: string | null; byMe: boolean; at: string; reason: string | null } | null;
     lifted: { by: string | null; at: string } | null;
+    /** DPDP Rule 7: the first notice to the Data Protection Board, once marked sent. */
+    boardNotice?: BoardNotice | null;
   } | null;
 }
 
@@ -897,6 +900,8 @@ export interface LiveContain {
   onContain: (reason: string) => Promise<void>;
   onRequestLift: (reason: string) => Promise<void>;
   onLift: () => Promise<void>;
+  /** DPDP Rule 7: mark the first notice to the Board as sent (security key). */
+  onBoardNotice?: (sentAt: string, note: string) => Promise<unknown>;
 }
 
 const BANNER = "We've paused some actions to protect your company's data. Sign in again. Bank-detail changes, exports and payouts are on hold; your admin has details.";
@@ -959,6 +964,7 @@ function LiveContainScreen({ live }: { live: LiveContain }) {
           <InlineAlert tone="danger" title={`${name} is contained since ${at(c.containedAt)}`} actions={!c.liftRequest ? <Button size="sm" onClick={() => setLifting(true)}>Request lift</Button> : undefined}>
             Breach clock: CERT-In report due by {at(c.certinDueAt)}; DPDP Board report due by {at(c.dpdpDueAt)}. Contained by {c.containedBy}: {c.reason}. {c.signedOut} sessions ended, {c.appsRevoked} connected apps revoked. Frozen items resume only after a two-person lift.
           </InlineAlert>
+          <BoardNoticeSteps notice={c.boardNotice ?? null} dpdpDueAt={c.dpdpDueAt} dpdpHours={v.breach.dpdpHours} onMark={live.onBoardNotice} />
           <Card title="What the company's people see">
             <ContainedBanner />
           </Card>

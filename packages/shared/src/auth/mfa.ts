@@ -10,6 +10,8 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'platform:manage_organizations',
   'org:manage_users',
   'org:manage_settings',
+  // Answer 1901: integrations (API keys, webhooks, the AI key) are admin-grade.
+  'integration.manage',
   'org:manage_billing',
   'approvals:configure',
   'candidate:data_rights',
@@ -145,6 +147,8 @@ export const OTP_FALLBACK_BARRED_PERMISSIONS: readonly string[] = [
   'platform:manage_organizations',
   'org:manage_users',
   'org:manage_settings',
+  // Answer 1901: integrations (API keys, webhooks, the AI key) are admin-grade.
+  'integration.manage',
   'org:manage_billing',
   // Payroll Admin.
   'org.entity.statutory.manage',

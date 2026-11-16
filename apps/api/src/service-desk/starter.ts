@@ -2,7 +2,7 @@
 // editable afterwards and runs on the same tables. Plain simple English, our own words.
 
 export interface Starter {
-  types: { kind: 'incident' | 'request' | 'question'; name: string }[];
+  types: { kind: 'incident' | 'request' | 'question' | 'change' | 'problem'; name: string }[];
   statuses: { label: string; systemState: string }[];
   categories: { name: string; sensitive?: boolean }[];
 }
@@ -54,7 +54,9 @@ export function starterFor(kind: string): Starter {
       categories: CATEGORIES.customer_support,
     };
   }
-  return { types: EMPLOYEE_TYPES, statuses: EMPLOYEE_STATUSES, categories: CATEGORIES[kind] ?? CATEGORIES.custom };
+  // Answer 1931: an IT desk also has changes and problems (raised from IT › Changes and Problems, never the portal).
+  const types: Starter['types'] = kind === 'it' ? [...EMPLOYEE_TYPES, { kind: 'change', name: 'Change' }, { kind: 'problem', name: 'Problem' }] : EMPLOYEE_TYPES;
+  return { types, statuses: EMPLOYEE_STATUSES, categories: CATEGORIES[kind] ?? CATEGORIES.custom };
 }
 
 /** YX-SD-03 starter matrix: 1 is the highest; impact and urgency 1 (high) to 4 (low). */

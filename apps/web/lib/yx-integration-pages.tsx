@@ -112,6 +112,7 @@ export function IntegrationSettingsPage({ id }: { id: string }) {
       if (key === 'conn.hris') return setOpen({ kind: 'hris' });
       if (key === 'ai.set_key') return setOpen({ kind: 'ai' });
       if (key === 'ai.embeddings') return setOpen({ kind: 'embeddings' });
+      if (key === 'ai.stop') return void call('DELETE', '/organizations/integrations/ai-key').then(() => toast({ tone: 'success', title: 'Back to YukthiX AI' }), fail);
       if (key === 'dev.webhook') return setOpen({ kind: 'webhook' });
       if (key === 'dev.key.create') return void call('POST', '/organizations/integrations/api-key').then((r) => setOpen({ kind: 'once', title: 'Your API key', value: (r as { apiKey: string }).apiKey }), fail);
       if (key === 'dev.key.revoke') return void call('DELETE', '/organizations/integrations/api-key').then(() => toast({ tone: 'success', title: 'API key revoked' }), fail);

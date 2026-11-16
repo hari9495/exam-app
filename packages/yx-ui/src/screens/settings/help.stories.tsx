@@ -12,6 +12,8 @@ import { WhatsNewPanel, type LiveWhatsNew } from '../platform-b/growth-screens';
 // Answers 941 and 945: the one Help drawer is the live desk drawer; irreversible actions are the kit's
 // IrreversibleSheet; bulk approve is the Approvals inbox; empty states are the kit's EmptyState.
 import { HelpDrawer, PageHelp } from '../desk/help';
+import { AskYukthix, type AskState } from '../desk/ask-yukthix';
+import { ASK_CHAT, ASK_STATE, ASK_UNSURE } from '../desk/ask-yukthix-data';
 import { MY_BANNERS, MY_ROWS, RAISE_DESKS } from '../desk/data';
 import { IrreversibleSheet } from '../../components/irreversible';
 import { ApprovalsInboxScreen } from '../platform-a/inbox';
@@ -173,6 +175,25 @@ export const HelpDrawerNewsEmpty: S = {
   name: "6.2 Help drawer · what's new, nothing yet (the tab is hidden)",
   render: () => <Desk title="Home">{drawer({ whatsNew: undefined })}</Desk>,
 };
+// Ask YukthiX (answers 2101 to 2108): the help assistant in the Help drawer.
+const ask = (state: AskState | null) => (
+  <AskYukthix
+    state={state}
+    contactHref="#contact-yukthix"
+    onAsk={async () => ({ on: true, remaining: 46, conversation: ASK_CHAT })}
+    onFeedback={async () => undefined}
+    onRaiseTicket={async () => ({ ticket: 'YXS-118' })}
+    onFeatureRequest={async () => ({ number: 42 })}
+  />
+);
+export const HelpDrawerAsk: S = { name: '6.2 Help drawer · Ask YukthiX · an answer with its article', render: () => <Desk title="Leave">{drawer({ defaultTab: 'assistant', assistant: ask(ASK_STATE) })}</Desk> };
+export const HelpDrawerAskEmpty: S = { name: '6.2 Help drawer · Ask YukthiX · a new chat', render: () => <Desk title="Home">{drawer({ defaultTab: 'assistant', assistant: ask({ ...ASK_STATE, remaining: 50, conversation: null }) })}</Desk> };
+export const HelpDrawerAskUnsure: S = { name: '6.2 Help drawer · Ask YukthiX · unsure twice: a person is offered', render: () => <Desk title="Leave">{drawer({ defaultTab: 'assistant', assistant: ask({ ...ASK_STATE, conversation: ASK_UNSURE }) })}</Desk> };
+export const HelpDrawerAskNoKey: S = { name: '6.2 Help drawer · Ask YukthiX · an employee (no Contact YukthiX key)', render: () => <Desk title="Leave">{drawer({ defaultTab: 'assistant', assistant: ask({ ...ASK_STATE, canRaiseTicket: false, conversation: ASK_UNSURE }) })}</Desk> };
+export const HelpDrawerAskHandedOver: S = { name: '6.2 Help drawer · Ask YukthiX · ticket raised, feature request sent', render: () => <Desk title="Leave">{drawer({ defaultTab: 'assistant', assistant: ask({ ...ASK_STATE, conversation: { ...ASK_UNSURE, ticketRef: 'YXS-118', featureRequestSent: true } }) })}</Desk> };
+export const HelpDrawerAskOff: S = { name: '6.2 Help drawer · Ask YukthiX · not switched on yet', render: () => <Desk title="Home">{drawer({ defaultTab: 'assistant', assistant: ask({ ...ASK_STATE, on: false, conversation: null }) })}</Desk> };
+export const HelpDrawerAskLoading: S = { name: '6.2 Help drawer · Ask YukthiX · loading', render: () => <Desk title="Home">{drawer({ defaultTab: 'assistant', assistant: ask(null) })}</Desk> };
+
 export const HelpDrawerTours: S = {
   name: '6.2 Help drawer · tours (resume, replay)',
   render: () => (

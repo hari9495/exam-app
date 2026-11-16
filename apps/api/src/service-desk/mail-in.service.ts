@@ -14,6 +14,7 @@ import { AttachmentsService } from './attachments.service';
 import { ensureContact, isInternal } from './customers.service';
 import { DeskAccessService, DeskActor, activeOn, audit, canWork, deskSystem, emit, requireSetUp } from './desk-access';
 import { EmailRuleDto, MailboxDto, UpdateMailboxDto } from './dto-channels';
+import { ITSM_KINDS } from './dto';
 import { MailboxPoller, WebhookEnvelope, pollerFor, verifyWebhook } from './mail-adapters';
 import { AuthFacts, DnsResolver, autoReplyReason, checkSender, readReplyToken, senderVerdict } from './mail-auth';
 import { MailOutService, SD_DNS_RESOLVER } from './mail-out.service';
@@ -654,6 +655,7 @@ export class MailInService implements OnModuleInit, OnModuleDestroy {
         const org = a.ctx.organizationId;
         if (!(await tx.sdDesk.findFirst({ where: { organizationId: org, id: deskId }, select: { id: true } }))) throw new NotFoundException('No such desk.');
         await this.out.checkDomainOf(tx, org, dto.address, dto.sendingDomainId);
+        if (dto.defaultTypeId) await this.checkDefaultType(tx, org, deskId, dto.defaultTypeId);
         const b = await tx.sdMailbox.create({
           data: {
             organizationId: org,
@@ -683,6 +685,12 @@ export class MailInService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** A mailbox's ticket type is one of its desk's, never a change or problem (ITSM answer 1931). */
+  private async checkDefaultType(tx: Prisma.TransactionClient, org: string, deskId: string, typeId: string) {
+    const type = await tx.sdTicketType.findFirst({ where: { organizationId: org, deskId, id: typeId }, select: { kind: true } });
+    if (!type || ITSM_KINDS.includes(type.kind)) throw new BadRequestException('Choose one of this desk’s ticket types (not a change or problem).');
+  }
+
   async updateMailbox(a: DeskActor, deskId: string, id: string, dto: UpdateMailboxDto) {
     requireSetUp(a, deskId, 'desk.mailbox.manage');
     return this.tenantPrisma.forTenant(a.ctx, async (tx) => {
@@ -692,6 +700,7 @@ export class MailInService implements OnModuleInit, OnModuleDestroy {
       if (b.version !== dto.version) throw new ConflictException({ statusCode: 409, code: 'MAILBOX_CHANGED', message: 'Someone changed this mailbox. Reload to see the latest.' });
       if (dto.config) this.checkConfig(b.kind, dto.config);
       if (dto.sendingDomainId !== undefined) await this.out.checkDomainOf(tx, org, b.address, dto.sendingDomainId);
+      if (dto.defaultTypeId) await this.checkDefaultType(tx, org, deskId, dto.defaultTypeId);
       const { version: _v, config, ...rest } = dto;
       const after = await tx.sdMailbox.update({
         where: { id: b.id },

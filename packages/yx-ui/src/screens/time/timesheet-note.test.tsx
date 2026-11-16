@@ -102,3 +102,20 @@ describe('the timesheet grid fits a laptop screen', () => {
     for (const el of document.querySelectorAll('.yx-ts__dayexp')) expect(el.getAttribute('title')).toBe(el.textContent);
   });
 });
+
+// Answer 1886: "Submit opens …" is shown once: beside Submit until pressed, then only in the error box.
+describe('the submit-opens line is shown once', () => {
+  it('beside Submit before pressing; only in the error box after', async () => {
+    render(<ToastProvider><TimesheetScreen /></ToastProvider>);
+    expect(screen.getAllByText(/Opens Thu 1 Oct, your last workday/)).toHaveLength(1);
+    await ue.click(screen.getByRole('button', { name: 'Submit week' }));
+    expect(screen.getByText(/Submit opens Thu 1 Oct/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Opens Thu 1 Oct/)).toBeNull();
+  });
+
+  it('negative: the hint never disappears before Submit is pressed', () => {
+    render(<ToastProvider><TimesheetScreen /></ToastProvider>);
+    expect(screen.queryByText(/Fix these before sending/)).toBeNull();
+    expect(screen.getByText(/^Opens Thu 1 Oct/)).toBeInTheDocument();
+  });
+});

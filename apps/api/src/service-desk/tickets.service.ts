@@ -30,7 +30,7 @@ import {
   requireWork,
   ticketAccess,
 } from './desk-access';
-import { AgentCreateTicketDto, AssignDto, BulkActionDto, CollaboratorDto, ConvertDto, EditNoteDto, MessageDto, TimeEntryDto, UpdateTicketDto, WatcherDto } from './dto';
+import { AgentCreateTicketDto, AssignDto, ITSM_KINDS, BulkActionDto, CollaboratorDto, ConvertDto, EditNoteDto, MessageDto, TimeEntryDto, UpdateTicketDto, WatcherDto } from './dto';
 
 // SD-1.03 ticket core, SD-1.04 requesters, SD-1.06 assignment and SD-1.08 the ticket workspace (M14 §7, §12.1).
 // Every write: server-side key + seat check, one transaction with its timeline event, outbox event and audit row.
@@ -65,6 +65,8 @@ export interface Changes {
 export interface CreateInput {
   deskId: string;
   typeId?: string;
+  /** ITSM-1: only the change and problem screens create tickets of those kinds (answer 1931). */
+  itsm?: boolean;
   categoryId?: string;
   subject: string;
   bodyHtml: string;
@@ -158,8 +160,9 @@ export class TicketsService {
     if (!desk) throw new NotFoundException('No such desk.');
     const type = input.typeId
       ? await tx.sdTicketType.findFirst({ where: { organizationId: org, deskId: desk.id, id: input.typeId, active: true } })
-      : await tx.sdTicketType.findFirst({ where: { organizationId: org, deskId: desk.id, active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
+      : await tx.sdTicketType.findFirst({ where: { organizationId: org, deskId: desk.id, active: true, kind: { notIn: [...ITSM_KINDS] } }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
     if (!type) throw new BadRequestException('Choose a ticket type of this desk.');
+    if (ITSM_KINDS.includes(type.kind) !== Boolean(input.itsm)) throw new BadRequestException(input.itsm ? 'Choose a change or problem type.' : 'Changes and problems are raised from IT › Changes and Problems, not as tickets.');
     const cat = input.categoryId ? await this.category(tx, org, desk.id, input.categoryId, true) : null;
     const fieldValues = input.fields && Object.keys(input.fields).length ? await this.raisedFields(tx, org, desk.id, type.id, input.fields, input.side === 'requester' ? 'requester' : 'agent') : null;
     if (input.originArticleId && !(await tx.sdKbArticle.findFirst({ where: { organizationId: org, id: input.originArticleId, deletedAt: null }, select: { id: true } }))) throw new BadRequestException('No such help article.');
@@ -772,6 +775,8 @@ export class TicketsService {
     if (c.typeId && c.typeId !== t.typeId) {
       const type = await tx.sdTicketType.findFirst({ where: { organizationId: org, deskId: t.deskId, id: c.typeId, active: true } });
       if (!type) throw new BadRequestException('Choose a ticket type of this desk.');
+      // ITSM-1: a ticket never becomes, or stops being, a change or a problem by changing its type.
+      if (ITSM_KINDS.includes(type.kind) || ITSM_KINDS.includes(t.kind)) throw new BadRequestException('A change or problem keeps its type. Raise a new change or problem and link it instead.');
       data.typeId = type.id;
       log.push(['type_changed', t.typeId, type.id, false]);
       // SD-2.11: the new type's lifecycle (if any) applies from now; the ticket moves to its start when its status is

@@ -12,6 +12,7 @@ import { useCurrentUser } from '../../../../../lib/hooks/useCurrentUser';
 import { deskState, useDesk, useDeskWrite } from '../../../../../lib/yx-desk';
 import { ChatQueuesAdmin, DeskOrgAdmin, LifecycleAdmin, SchedulesAdmin, type BranchView, type ChatQueue, type DocTemplate, type JourneySetup, type LifecycleSetup, type RecurringView, type SequenceDef } from '@yukthix/ui/desk';
 import { MessagingAdmin, type LineSecret, type MsgLine, type MsgSetup, type WidgetView } from '@yukthix/ui/desk';
+import { ItsmSettingsPanel, type ItsmSettingsValue } from '@yukthix/ui/desk';
 import { CatalogAdmin, RulesAdmin, type CatalogItemAdmin, type CatalogSchema, type DeskRule, type DeskRuleSchema, type DryRunResult, type PickOption, type RuleRun, type RuleWebhook, type SetupChecklist } from '@yukthix/ui/desk';
 
 // Service desk › Desk set-up (APX-D §5.8, M14 SD-1.01/1.02): desks, seats (cost shown first), groups, categories, types,
@@ -81,6 +82,10 @@ function YxDeskSetupPageInner() {
   // 3b-2 batch 3: messaging lines (WhatsApp, SMS, Teams, Slack) and help widgets.
   const msgLines = useDesk<MsgSetup>(selected && canChat ? `/desks/${selected}/msg-channels` : null);
   const widgets = useDesk<WidgetView[]>(canChat && canPortal ? '/widgets' : null);
+  // Helpdesk ITSM-1 (answers 1933-1939): an IT desk's change settings and the company's change window.
+  const isIt = detail.data?.desk.kind === 'it';
+  const changeType = detail.data?.types.find((t) => t.kind === 'change' && t.active)?.id;
+  const itsm = useDesk<ItsmSettingsValue>(selected && isIt && (perms.has('desk.settings.manage') || perms.has('desk.ticket.work')) ? `/desks/${selected}/itsm-settings` : null);
   const groups = (detail.data?.groups ?? []).map((g) => ({ id: g.id, name: g.name }));
   const zone = me.data?.timeZone || 'Asia/Kolkata';
   const findPeople = (q: string) => apiFetch(`/workflow/people?q=${encodeURIComponent(q)}`, {}, token) as Promise<PickOption[]>;
@@ -251,6 +256,30 @@ function YxDeskSetupPageInner() {
       more={
         selected
           ? [
+              ...(itsm.data
+                ? [
+                    {
+                      value: 'changes',
+                      label: 'Changes',
+                      node: (
+                        <ItsmSettingsPanel
+                          value={itsm.data}
+                          onSearchPeople={async (q) => ((await apiFetch(`/desk/users?search=${encodeURIComponent(q)}`, {}, token)) as { id: string; name: string | null; email: string }[]).map((u) => ({ id: u.id, name: u.name ?? u.email }))}
+                          onSave={(change) => write(`${base}/itsm-settings`, 'PUT', change)}
+                          onSaveWindow={(change) => write('/itsm/window', 'PUT', change)}
+                          standard={
+                            changeType
+                              ? {
+                                  templates: (templates.data?.templates ?? []).filter((x) => x.ticketTypeId === changeType).map((x) => ({ id: x.id, name: x.name, checklist: x.checklist, preApproved: Boolean(x.preApproved) })),
+                                  onSave: (id, input) => write(id ? `${base}/templates/${id}` : `${base}/templates`, id ? 'PATCH' : 'POST', { ...input, ticketTypeId: changeType, defaults: {} }),
+                                }
+                              : undefined
+                          }
+                        />
+                      ),
+                    },
+                  ]
+                : []),
               ...(canLifecycle
                 ? [
                     {
@@ -281,6 +310,7 @@ function YxDeskSetupPageInner() {
                           recurring={recurring.data ?? []}
                           sequences={sequences.data ?? []}
                           onCreate={(input) => write('/recurring', 'POST', { deskId: selected, ...input })}
+                          standardChanges={changeType ? (templates.data?.templates ?? []).filter((x) => x.ticketTypeId === changeType && x.preApproved && x.active).map((x) => ({ id: x.id, name: x.name })) : undefined}
                           onPickEquipment={detail.data?.desk.kind === 'facilities' ? (q) => apiFetch(`/desk/facilities/pick?kind=equipment&deskId=${encodeURIComponent(selected ?? '')}&q=${encodeURIComponent(q)}`, {}, token) as Promise<PickOption[]> : undefined}
                           onState={(r, state) => write(`/recurring/${encodeURIComponent(r.id)}`, 'PATCH', { version: r.version, state })}
                           onSaveSequence={(seq, input) => (seq ? write(`/sequences/${encodeURIComponent(seq.id)}`, 'PATCH', { version: seq.version, ...input }) : write('/sequences', 'POST', { deskId: selected, ...input }))}
