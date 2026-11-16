@@ -19,7 +19,7 @@ import { useYxPermissions } from '../../../../lib/yx-org';
 import { usePeople } from '../../../../lib/yx-people';
 import { usePerf } from '../../../../lib/yx-performance';
 import { useScope } from '../../../../lib/yx-shell';
-import { comingUp, employeeStats, financeHome, hiringHome, homePay, homeWidgets, inboxActions, managerHome, myTasks, weekOf, type HomePayResponse, type HomeWidgets } from '../../../../lib/yx-home';
+import { comingUp, employeeStats, financeHome, hiringHome, homePay, homeWidgets, inboxActions, managerHome, myTasks, weekOf, type HomePayResponse, type HomeWidgets, type TeamTodayResponse } from '../../../../lib/yx-home';
 import { usePay } from '../../../../lib/yx-pay';
 import { useLife } from '../../../../lib/yx-lifecycle';
 import { browserLocation, todayIndia, useTime, useTimeWrite } from '../../../../lib/yx-time';
@@ -111,13 +111,14 @@ export default function YxHomePage() {
   const asManager = persona === 'manager';
   const week = weekOf(today);
   const muster = useTime<Muster>(asManager ? `/muster?month=${month}` : null);
+  const teamToday = useTime<TeamTodayResponse>(asManager ? '/team-today' : null);
   const lastWeekStart = new Date(new Date(`${week[0]}T00:00:00Z`).getTime() - 7 * 86_400_000).toISOString().slice(0, 7);
   const musterBefore = useTime<Muster>(asManager && lastWeekStart < month ? `/muster?month=${lastWeekStart}` : null);
   const calendar = useTime<TeamCalendar>(asManager ? `/team/calendar?from=${week[0]}&to=${week[6]}` : null);
   const reviews = usePerf<Reviews>('/reviews?view=team', asManager);
   const meetings = usePerf<Meetings>('/one-on-ones', asManager);
   const probations = usePeople<Probations>(asManager ? '/probations' : null);
-  const manager = asManager ? managerHome({ today, muster: muster.data, musterBefore: musterBefore.data, calendar: calendar.data, reviews: reviews.data, probations: probations.data?.rows, meetings: meetings.data?.meetings }) : {};
+  const manager = asManager ? managerHome({ today, teamToday: teamToday.data, muster: muster.data, musterBefore: musterBefore.data, calendar: calendar.data, reviews: reviews.data, probations: probations.data?.rows, meetings: meetings.data?.meetings }) : {};
 
   // Finance: the money cards, money going out and the payroll and payout rows, each from the page that owns it.
   const fin = persona === 'finance' ? financeHome(widgets.data?.finance, scope.period ?? month, today) : null;

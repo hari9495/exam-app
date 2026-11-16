@@ -175,6 +175,12 @@ export class TimeController {
     return this.attendance.nudge(ctx, this.user(req), employeeId);
   }
 
+  // Keka ideas (2026-11): my direct reports today (Home's "My team today").
+  @Get('team-today')
+  teamToday(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.attendance.teamToday(ctx, this.user(req));
+  }
+
   @Get('muster')
   muster(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: MonthEntityQueryDto) {
     return this.attendance.muster(ctx, this.user(req), q.month, q.legalEntityId);

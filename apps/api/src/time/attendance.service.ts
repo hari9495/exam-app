@@ -9,7 +9,8 @@ import { escapeHtml } from '../notifications/notification-email-render';
 import { DayEngine } from './day-engine.service';
 import { OnDutyDto, PunchDto, RegulariseDto, WfhDto } from './dto';
 import { clockText, onDutyProblem, overlaps } from './on-duty-rules';
-import { TIME_KEYS, asDate, dateOf, factsOn, holdersOf, holidaysFor, hrApprovers, monthRange, mustSee, myEmployeeId, rulesFor, settingOn, todayIn, visibleSql, type Facts } from './time-core';
+import { TIME_KEYS, asDate, dateOf, factsOn, holdersOf, holidaysFor, hrApprovers, leaveDays, monthRange, mustSee, myEmployeeId, rulesFor, settingOn, todayIn, visibleSql, type Facts } from './time-core';
+import { teamTodayState } from './team-today';
 import { addDays, checkInVerdict, fencesOf, ipInRanges, minutesInto, type Fence } from './time-maths';
 import { ScheduleBook, assertOpen, lockedDates } from './schedule';
 import { OvertimeService } from './overtime.service';
@@ -601,6 +602,40 @@ export class AttendanceService implements OnModuleInit {
   exceptionTotal(tx: Tx, c: CompanyContext, month: string, entityId: string | null): Promise<number> {
     const { from, to } = monthRange(month);
     return countExceptions(tx, c, from, to, entityId, Prisma.sql`TRUE`);
+  }
+
+  /**
+   * Keka ideas (2026-11), "My team today": my direct reports today (my own record as their manager on today's job, never
+   * the wider reporting line or an HR grant), each with one state: on leave, off, on duty, working from home, late, in,
+   * or not in yet. Only people I may see today (visibleSql); nothing while acting for someone else.
+   */
+  async teamToday(ctx: TenantContext, user: ScopeUser) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const today = todayIst();
+      const own = v.userId && !v.actingForOther ? ((await tx.employee.findFirst({ where: { organizationId: c.organizationId, userId: v.userId }, select: { id: true } }))?.id ?? null) : null;
+      if (!own) return { date: today, people: [] };
+      const people = await tx.$queryRaw<{ id: string; name: string }[]>`
+        SELECT DISTINCT e.id::text, concat_ws(' ', coalesce(e.preferred_name, e.given_name), e.family_name) AS name
+        FROM employee_assignments a JOIN employees e ON e.organization_id = a.organization_id AND e.id = a.employee_id
+        WHERE a.organization_id = ${c.organizationId}::uuid AND a.manager_employee_id = ${own}::uuid AND a.superseded_at IS NULL
+          AND a.employee_id <> ${own}::uuid AND ${today}::date <@ daterange(a.valid_from, a.valid_to, '[]')
+          AND ${await visibleSql(tx, c, v, own, 'attendance.view', Prisma.sql`e.id`, today)}
+        ORDER BY 2 LIMIT 200`;
+      const ids = people.map((p) => p.id);
+      const days = ids.length ? await tx.attendanceDay.findMany({ where: { organizationId: c.organizationId, employeeId: { in: ids }, workOn: asDate(today) }, select: { employeeId: true, status: true, firstIn: true, lateMinutes: true } }) : [];
+      const requests = ids.length ? await tx.attendanceRequest.findMany({ where: { organizationId: c.organizationId, employeeId: { in: ids }, status: 'approved', kind: { in: ['wfh', 'on_duty'] }, workOn: asDate(today) }, select: { employeeId: true, kind: true } }) : [];
+      // Nudge (PLT-02): already reminded to check in today.
+      const nudged = ids.length ? await tx.nudge.findMany({ where: { organizationId: c.organizationId, employeeId: { in: ids }, item: 'check_in', onDay: asDate(today) }, select: { employeeId: true } }) : [];
+      const out = [];
+      for (const p of people) {
+        const d = days.find((x) => x.employeeId === p.id);
+        const leave = (await leaveDays(tx, c.organizationId, p.id, today, today)).get(today) ?? null;
+        const state = teamTodayState({ status: d?.status, leave, firstIn: d?.firstIn, lateMinutes: d?.lateMinutes, wfh: requests.some((r) => r.employeeId === p.id && r.kind === 'wfh'), onDuty: requests.some((r) => r.employeeId === p.id && r.kind === 'on_duty') });
+        out.push({ id: p.id, name: p.name, state, lateMinutes: state === 'late' ? (d?.lateMinutes ?? 0) : null, reminded: nudged.some((n) => n.employeeId === p.id) });
+      }
+      return { date: today, people: out };
+    });
   }
 
   async muster(ctx: TenantContext, user: ScopeUser, month: string, entityId?: string | null) {

@@ -97,13 +97,15 @@ describe('Manager home (parity with PLT-02 manager)', () => {
       muster: { month: '2026-10', from: '2026-10-01', to: '2026-10-31', scope: 'team', people: [person('Sanjay', [{ on: '2026-10-21', status: 'missing_in' }]), person('Meera', [{ on: '2026-10-21', status: 'leave' }]), person('Kavya', [{ on: '2026-10-20', status: 'present', lateMinutes: 15 }, { on: '2026-10-13', status: 'present', lateMinutes: 5 }, { on: '2026-10-14', status: 'present', lateMinutes: 5 }, { on: '2026-10-21', status: 'present' }])] } as never,
       calendar: { from: '2026-10-19', to: '2026-10-25', scope: 'team', people: [{ id: 'm', name: 'Meera', code: null, me: false, holidays: [], days: [{ on: '2026-10-21', part: 'full', status: 'approved', code: 'CL', colour: 'green', name: 'Casual leave' }] }] } as never,
     });
-    expect(m.team?.summary).toBe('1 in · 1 on leave · 1 not checked in · 0 late');
-    // During the day: the first punch says who is in; someone with none yet is not checked in (and can be nudged).
-    const during = managerHome({ today: '2026-10-21', muster: { month: '2026-10', from: '2026-10-01', to: '2026-10-31', scope: 'team', people: [person('Ravi', [{ on: '2026-10-21', status: 'not_started', firstIn: '2026-10-21T04:00:00Z' }]), { ...person('Anu', [{ on: '2026-10-21', status: 'not_started', firstIn: null }]), remindedOn: ['2026-10-21'] }] } as never });
-    expect(during.team?.summary).toBe('1 in · 0 on leave · 1 not checked in · 0 late');
-    expect(during.team?.rows).toEqual([expect.objectContaining({ name: 'Anu', nudge: true, reminded: true })]);
-    // Only someone not checked in can be nudged.
-    expect(m.team?.rows.map((r) => [r.name, Boolean(r.nudge)])).toEqual([['Sanjay', true], ['Meera', false]]);
+    // Keka ideas: the team card comes from /time/team-today (direct reports only), not from the muster.
+    expect(m.team).toBeUndefined();
+    const withToday = managerHome({ today: '2026-10-21', teamToday: { date: '2026-10-21', people: [{ id: 'a', name: 'Anu', state: 'not_in', lateMinutes: null, reminded: true }, { id: 'b', name: 'Meera', state: 'leave', lateMinutes: null, reminded: false }, { id: 'c', name: 'Kavya', state: 'late', lateMinutes: 22, reminded: false }, { id: 'd', name: 'Vikram', state: 'on_duty', lateMinutes: null, reminded: false }, { id: 'e', name: 'Ravi', state: 'in', lateMinutes: null, reminded: false }] } });
+    expect(withToday.team?.total).toBe(5);
+    expect(withToday.team?.groups.map((g) => [g.key, g.people.map((p) => p.name)])).toEqual([['leave', ['Meera']], ['not_in', ['Anu']], ['late', ['Kavya']], ['away', ['Vikram']]]);
+    expect(withToday.team?.groups[1]!.people[0]).toMatchObject({ nudge: true, reminded: true });
+    expect(withToday.team?.groups[2]!.people[0]!.secondary).toBe('22 minutes late');
+    // Negative: nobody reporting to me today, no card.
+    expect(managerHome({ today: '2026-10-21', teamToday: { date: '2026-10-21', people: [] } }).team).toBeUndefined();
     expect(m.off).toEqual([{ day: 'Wed 21 · today', who: 'Meera' }]);
     expect(m.stats?.[0]).toMatchObject({ label: 'Late check-ins this week', value: 1, previous: 2, previousLabel: 'last week' });
   });
