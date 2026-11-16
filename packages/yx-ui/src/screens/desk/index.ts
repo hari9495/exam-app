@@ -100,4 +100,5 @@ export { type LiveContractorPortal, type LiveContractorTab, type ContractorPorta
 export * as deskSamples from './esm-data';
 export { ItsmSettingsPanel, type ItsmSettingsValue, type ItsmSettingsChange, type ItsmWindowChange } from '../ops/hlp-22-settings';
 export { ChangesScreen, ChangeRecordScreen, type ChangeRow, type ChangeInput, type LiveChanges, type LiveChangeRecord } from '../ops/hlp-22-itsm';
+export { AskYukthix, type AskYukthixProps, type AskState, type AskConversationView, type AskMessageView } from './ask-yukthix';
 export { ProblemsScreen, ProblemRecordScreen, ItsmReportCard, type ProblemRow, type ProblemSuggestion, type LiveProblems, type LiveProblemRecord, type ItsmReportView } from '../ops/hlp-22-itsm';

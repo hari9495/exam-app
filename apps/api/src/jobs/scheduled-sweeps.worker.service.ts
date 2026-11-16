@@ -27,6 +27,7 @@ import { VisitorsService } from '../visitors/visitors.service';
 import { WalkInsService } from '../visitors/walkins.service';
 import { AccessRequestsService } from '../access/access-requests.service';
 import { NotFoundRetentionService } from '../help/not-found-retention.service';
+import { AssistantService } from '../help/assistant/assistant.service';
 import { IncidentsService } from '../platform/incidents.service';
 import { CsFollowupService } from '../platform/cs-followup.service';
 import { StaffRolesService } from '../platform/staff-roles.service';
@@ -76,6 +77,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     walkIns: WalkInsService,
     accessRequests: AccessRequestsService,
     notFoundRetention: NotFoundRetentionService,
+    assistant: AssistantService,
     incidents: IncidentsService,
     csFollowup: CsFollowupService,
     staffRoles: StaffRolesService,
@@ -122,6 +124,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       // Help answers 973 and 974.
       'access-request-reminders': () => accessRequests.remindSweep(),
       'not-found-retention': () => notFoundRetention.prune(),
+      'assistant-retention': () => assistant.sweep(),
       // Console C-8 (answer 1124).
       'incident-breach-reminders': () => incidents.remindSweep(),
       'cs-health-snapshot': () => csFollowup.nightly(),
