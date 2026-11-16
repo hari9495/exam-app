@@ -431,6 +431,101 @@ export class ExpenseClaimsService implements OnModuleInit {
     return rows.find((r) => live.some((x) => x.id === r.claimId)) ?? null;
   }
 
+  // ------------------------------------------------------------------------------------------ saved expenses
+
+  /**
+   * Keka ideas (2026-11): expenses saved first, claimed later. My own saved spends not yet in a claim, newest first.
+   */
+  async myItems(ctx: TenantContext, user: ScopeUser) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const me = await this.myEmployee(tx, c.organizationId, v);
+      if (!me) return { items: [] };
+      const rows = await tx.expenseItem.findMany({ where: { organizationId: c.organizationId, employeeId: me.id, claimedAt: null, removedAt: null }, orderBy: [{ spentOn: 'desc' }, { createdAt: 'desc' }], take: 200 });
+      return { items: rows.map((r) => ({ id: r.id, spentOn: iso(r.spentOn), amount: r.amount.toFixed(2), categoryCode: r.categoryCode, merchant: r.merchant, description: r.description, receipt: Boolean(r.receiptFileId), createdAt: r.createdAt.toISOString() })) };
+    });
+  }
+
+  /** Saves one spend for later (a receipt is optional; the same receipt is never saved or claimed twice). */
+  async addItem(ctx: TenantContext, user: ScopeUser, dto: { spentOn: string; amount: string; categoryCode?: string | null; merchant?: string | null; description?: string | null }, file?: { originalname: string; buffer: Buffer }) {
+    if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
+    if (dto.spentOn > todayIst()) throw new BadRequestException('A bill cannot be dated in the future.');
+    const v = await this.viewer(user);
+    const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const me = await this.myEmployee(tx, org, v);
+      if (!me) throw new ForbiddenException('Only employees can claim expenses.');
+      if (dto.categoryCode && !(await tx.expenseCategory.findFirst({ where: { organizationId: org, code: dto.categoryCode, active: true } }))) throw new BadRequestException('Choose an expense category in use.');
+      let stored: { id: string; sha256: string } | null = null;
+      if (file?.buffer?.length) {
+        stored = await this.files.storeIn(tx, c, { area: 'expense', name: file.originalname, data: file.buffer, allowedMime: RECEIPT_MIME, maxMb: 10, via: 'self' });
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${org}:receipt:${stored.sha256}`}))`;
+        const onClaim = await this.liveLineWith(tx, org, { receiptSha256: stored.sha256 }, null);
+        const saved = await tx.expenseItem.findFirst({ where: { organizationId: org, receiptSha256: stored.sha256, claimedAt: null, removedAt: null }, select: { id: true } });
+        if (onClaim || saved) throw new ConflictException({ statusCode: 409, code: 'SAME_RECEIPT', message: onClaim ? 'This receipt is already on a claim. A receipt can be claimed once.' : 'This receipt is already in your saved expenses.' });
+      }
+      const item = await tx.expenseItem.create({ data: { organizationId: org, employeeId: me.id, spentOn: asDate(dto.spentOn), amount: dto.amount, categoryCode: dto.categoryCode || null, merchant: dto.merchant?.trim() || null, description: dto.description?.trim() || null, receiptFileId: stored?.id ?? null, receiptSha256: stored?.sha256 ?? null } });
+      await audit(tx, c, 'expense.item.saved', 'expense_item', item.id, { receipt: Boolean(stored) });
+      return { id: item.id, fileId: stored?.id ?? null };
+    });
+    // The virus check runs after the commit, as for a claim's receipt.
+    if (res.fileId) void this.files.scan(ctx.organizationId!, res.fileId).catch(() => undefined);
+    return { id: res.id };
+  }
+
+  /** Removes a saved spend I have not claimed yet (kept, marked removed). */
+  async removeItem(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const me = await this.myEmployee(tx, c.organizationId, v);
+      const n = me ? await tx.expenseItem.updateMany({ where: { organizationId: c.organizationId, id, employeeId: me.id, claimedAt: null, removedAt: null }, data: { removedAt: new Date() } }) : { count: 0 };
+      if (!n.count) throw new NotFoundException('No such saved expense.');
+      await audit(tx, c, 'expense.item.removed', 'expense_item', id, {});
+      return { removed: true };
+    });
+  }
+
+  /** Picks saved spends into my draft claim: each becomes a line (its receipt moves with it) and leaves the saved list. */
+  async claimItems(ctx: TenantContext, user: ScopeUser, claimId: string, itemIds: string[]) {
+    const v = await this.viewer(user);
+    await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const { claim, a } = await this.claimOr404(tx, c, v, claimId);
+      this.editable(claim, a);
+      if (!a.own) throw new ForbiddenException('Only the person claiming adds their saved expenses.');
+      const items = await tx.expenseItem.findMany({ where: { organizationId: org, id: { in: itemIds }, employeeId: claim.employeeId, claimedAt: null, removedAt: null }, orderBy: { spentOn: 'asc' } });
+      if (items.length !== new Set(itemIds).size) throw new NotFoundException('Some of these saved expenses are not yours or were already claimed.');
+      const fallback = await this.defaultCategory(tx, org);
+      for (const it of items) {
+        const spentOn = iso(it.spentOn);
+        const amount = it.amount.toFixed(2);
+        const line = await tx.expenseLine.create({
+          data: {
+            organizationId: org,
+            claimId,
+            lineNo: await this.nextLineNo(tx, org, claimId),
+            categoryCode: it.categoryCode ?? fallback,
+            spentOn: it.spentOn,
+            merchant: it.merchant,
+            description: it.description,
+            claimed: amount,
+            receiptFileId: it.receiptFileId,
+            receiptSha256: it.receiptSha256,
+            // No receipt: a declared bill, as "A bill without a receipt" (the policy check asks for one when needed).
+            selfDeclared: !it.receiptFileId,
+            dupKey: dupKey(claim.employeeId, spentOn, amount),
+          },
+        });
+        // Guarded on not yet claimed: two presses at once claim it once.
+        const n = await tx.expenseItem.updateMany({ where: { id: it.id, claimedAt: null }, data: { claimedLineId: line.id, claimedAt: new Date() } });
+        if (!n.count) throw new ConflictException('A saved expense was just claimed. Reload the page.');
+      }
+      await this.retotal(tx, org, claimId);
+      await audit(tx, c, 'expense.items.claimed', 'expense_claim', claimId, { items: items.length });
+    });
+    return this.get(ctx, user, claimId);
+  }
+
   // ------------------------------------------------------------------------------------------ lines
 
   async addLine(ctx: TenantContext, user: ScopeUser, id: string, dto: LineDto) {
