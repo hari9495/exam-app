@@ -91,6 +91,22 @@ export interface RuleInput {
 
 type Run = { outcome: string; trace: TraceRow[]; actions: { type: string; result: string }[]; error?: string };
 
+/** Answer 2092: thrown inside a rule's run when, under its lock, the rule turns out to be at its hourly limit. */
+class AtHourlyLimit extends Error {}
+
+/**
+ * Answer 2092: one rule runs one record at a time across every API server. The lock is held for the run's transaction,
+ * so the hourly count it checks includes every run committed before it, and no second runner passes the same count.
+ */
+export async function lockRule(tx: Tx, ruleId: string): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`rule-run:${ruleId}`}))`;
+}
+
+/** The rule's matched runs in the last hour (its hourly limit counts these). */
+export function runsLastHour(tx: Tx, org: string, ruleId: string): Promise<number> {
+  return tx.automationRun.count({ where: { organizationId: org, ruleId, outcome: 'matched', at: { gte: new Date(Date.now() - 3_600_000) } } });
+}
+
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
 const WEBHOOK_QUEUE = 'rule-webhooks';
 const JOBS_QUEUE = 'rule-jobs';
@@ -333,15 +349,20 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
         await record('limit_stopped', { error: `Skipped: the company ran ${COMPANY_RUNS_PER_MINUTE} rules in the last minute` });
         continue;
       }
-      const hourly = await sys((tx) => tx.automationRun.count({ where: { organizationId: org, ruleId: rule.id, outcome: 'matched', at: { gte: new Date(Date.now() - 3_600_000) } } }));
-      if (hourly >= rule.maxRunsPerHour) {
+      const pauseAtLimit = async () => {
         const why = `Paused: it ran ${rule.maxRunsPerHour} times in an hour, its limit`;
-        await sys(async (tx) => {
-          await tx.rule.updateMany({ where: { id: rule.id, status: 'active' }, data: { status: 'paused', pausedReason: why, version: { increment: 1 }, updatedAt: new Date() } });
-          await AuditService.recordIn(tx, ctx, { actorUserId: null, action: 'rule.paused_at_limit', entityType: 'rule', entityId: rule.id, metadata: { limit: rule.maxRunsPerHour } });
+        const paused = await sys(async (tx) => {
+          const { count } = await tx.rule.updateMany({ where: { id: rule.id, status: 'active' }, data: { status: 'paused', pausedReason: why, version: { increment: 1 }, updatedAt: new Date() } });
+          if (count) await AuditService.recordIn(tx, ctx, { actorUserId: null, action: 'rule.paused_at_limit', entityType: 'rule', entityId: rule.id, metadata: { limit: rule.maxRunsPerHour } });
+          return count > 0;
         });
         await record('limit_stopped', { error: why });
-        await h.tellAdmins(org, rule.scopeId, rule.id, rule.name, why);
+        // Two runners can both stop at the limit; only the one that paused the rule tells the admins.
+        if (paused) await h.tellAdmins(org, rule.scopeId, rule.id, rule.name, why);
+      };
+      // A quick look first (no lock); the count that decides is taken again under the rule's lock, below.
+      if ((await sys((tx) => runsLastHour(tx, org, rule.id))) >= rule.maxRunsPerHour) {
+        await pauseAtLimit();
         continue;
       }
       const fields = await sys((tx) => h.fields(tx, org, rule.scopeId));
@@ -357,6 +378,9 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
       const hooks: { webhookId: string; index: number }[] = [];
       try {
         const runId = await sys(async (tx) => {
+          // Answer 2092: the limit check and the run hold the rule's lock together (more than one API server).
+          await lockRule(tx, rule.id);
+          if ((await runsLastHour(tx, org, rule.id)) >= rule.maxRunsPerHour) throw new AtHourlyLimit();
           CHAINS.set(tx, next);
           for (const a of v.actions as unknown as Action[]) {
             if (a.type === 'webhook') {
@@ -372,6 +396,11 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
           await this.hooks.add('deliver', { org, runId, webhookId: hk.webhookId, index: hk.index, body: { event: `${h.key}.${trigger}`, rule: { id: rule.id, name: rule.name }, ...h.webhookBody(current, recordId) } }, { attempts: 3, backoff: { type: 'exponential', delay: 30_000 }, removeOnComplete: true, removeOnFail: 100 });
         }
       } catch (err) {
+        if (err instanceof AtHourlyLimit) {
+          // Another runner took the last run of the hour first; nothing of this run was kept.
+          await pauseAtLimit();
+          continue;
+        }
         // The actions rolled back together; the failure is the run's trace (US-B-131).
         const msg = err instanceof Error ? err.message : String(err);
         await record('failed', { trace: e.trace, actions: done, error: msg });
