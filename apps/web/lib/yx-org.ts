@@ -173,6 +173,8 @@ export const YX_KEYS = [
   'statutory.filing.download',
   'statutory.register.sign',
   'statutory.advisory.review',
+  // Assessments AS-2: Settings 6.5 (the company's assessment defaults).
+  'assessments.settings.manage',
   // M06 performance PM1.
   'perf.setup.manage',
   'perf.goal.view',

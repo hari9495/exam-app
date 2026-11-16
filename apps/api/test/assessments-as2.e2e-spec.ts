@@ -141,6 +141,12 @@ describe('Assessments AS-2: settings 6.5, proctoring modes, checklist, approval 
       expect(await inOrg(org.A.id, (tx) => tx.auditLog.count({ where: { action: 'exam.proctoring_mode_set', entityId: ids.modeTest } }))).toBe(2);
     });
 
+    it('the builder reads the company defaults it names (mode, approver number); a results reader may not', async () => {
+      expect((await api('author', 'get', '/asmt/tests/defaults').expect(200)).body).toEqual({ proctorMode: 'record', highStakes: 500 });
+      await api('reader', 'get', '/asmt/tests/defaults').expect(403);
+      expect((await api('adminB', 'get', '/asmt/tests/defaults').expect(200)).body).toEqual({ proctorMode: 'ai', highStakes: 500 });
+    });
+
     it('negative: a mode not offered (live) is 400, a results reader 403, another company 404', async () => {
       await api('author', 'put', `/asmt/tests/${ids.modeTest}/proctoring-mode`).send({ mode: 'live' }).expect(400);
       await api('reader', 'put', `/asmt/tests/${ids.modeTest}/proctoring-mode`).send({ mode: 'open' }).expect(403);
