@@ -8,6 +8,8 @@ interface CandidateAuthContextValue {
   accessToken: string | null;
   isLoading: boolean;
   redeem: (token: string) => Promise<void>;
+  /** AS-3 (PRC-21): open another of this candidate's tests at the same company (the server checks it is theirs). */
+  switchTo: (invitationId: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -60,13 +62,18 @@ export function CandidateAuthProvider({ children }: { children: ReactNode }) {
     setAccessToken(result.accessToken);
   }
 
+  async function switchTo(invitationId: string) {
+    const result = await candidateApiFetch('/candidate-auth/switch', { method: 'POST', body: JSON.stringify({ invitationId }) }, accessToken ?? undefined);
+    setAccessToken(result.accessToken);
+  }
+
   async function logout() {
     await candidateApiFetch('/candidate-auth/logout', { method: 'POST', body: JSON.stringify({}) }).catch(() => undefined);
     setAccessToken(null);
   }
 
   return (
-    <CandidateAuthContext.Provider value={{ accessToken, isLoading, redeem, logout }}>{children}</CandidateAuthContext.Provider>
+    <CandidateAuthContext.Provider value={{ accessToken, isLoading, redeem, switchTo, logout }}>{children}</CandidateAuthContext.Provider>
   );
 }
 

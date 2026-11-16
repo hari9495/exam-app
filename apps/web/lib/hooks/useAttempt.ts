@@ -6,6 +6,7 @@ import { useToast } from '../../components/ui';
 import { isRetryableError, withRetry } from '../retry';
 import { reportClientError } from '../client-error-reporter';
 import { enqueue, loadQueue, saveQueue, settle, type AnswerQueue } from '../answer-queue';
+import type { CandidateBrand, LiveMyTest, LiveReuseOffer } from '@yukthix/ui/assessments';
 import { AttemptCurrent, ProctoringEventType, CandidateLeaderboardResponse, AnswerTelemetry, AnswerFile } from '../types';
 
 const ANSWER_DEBOUNCE_MS = 800;
@@ -445,4 +446,45 @@ export function useCodeLanguages(enabled: boolean) {
     enabled: Boolean(accessToken) && enabled,
     staleTime: 60 * 60 * 1000,
   });
+}
+
+// AS-3 (PRC-21): every test of this candidate at this company.
+export function useMyTests() {
+  const { accessToken } = useCandidateAuth();
+  return useQuery<LiveMyTest[]>({
+    queryKey: ['attempt', 'my-tests', accessToken],
+    queryFn: () => candidateApiFetch('/attempt/my-tests', {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken),
+  });
+}
+
+// AS-3 (PRC-32): an earlier result on the same test this invitation may use, or the one it already uses.
+export function useReuseOffer() {
+  const { accessToken } = useCandidateAuth();
+  return useQuery<LiveReuseOffer>({
+    queryKey: ['attempt', 'reuse', accessToken],
+    queryFn: () => candidateApiFetch('/attempt/reuse', {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken),
+  });
+}
+
+export function useReuseActions() {
+  const { accessToken } = useCandidateAuth();
+  const queryClient = useQueryClient();
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['attempt'] });
+  const use = useMutation({
+    mutationFn: (attemptId: string) => candidateApiFetch('/attempt/reuse', { method: 'POST', body: JSON.stringify({ attemptId, agree: true }) }, accessToken ?? undefined),
+    onSuccess: refresh,
+  });
+  const withdraw = useMutation({
+    mutationFn: () => candidateApiFetch('/attempt/reuse/withdraw', { method: 'POST', body: JSON.stringify({}) }, accessToken ?? undefined),
+    onSuccess: refresh,
+  });
+  return { use, withdraw };
+}
+
+/** AS-3: the company and candidate a live candidate page names in its header (from /attempt/current). */
+export function useCandidateBrand(): CandidateBrand {
+  const { data } = useAttemptQuery();
+  return { company: data?.organizationName ?? '', candidate: data?.candidateName ?? '', logoUrl: data?.organizationLogoUrl ?? null, myTestsHref: '/my-tests' };
 }

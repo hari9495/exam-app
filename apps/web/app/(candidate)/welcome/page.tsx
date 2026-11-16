@@ -7,7 +7,7 @@ import { CandidateButton } from '../components/CandidateButton';
 import { CameraPreview } from '../components/CameraPreview';
 import { PracticeStep } from '../components/PracticeStep';
 import { FaceEnrolmentStep, EnrolmentPolicy, FaceEnrolmentPayload } from '../components/FaceEnrolmentStep';
-import { useAttemptQuery, useFaceEnrolment, useStartAttempt } from '../../../lib/hooks/useAttempt';
+import { useAttemptQuery, useFaceEnrolment, useReuseOffer, useStartAttempt } from '../../../lib/hooks/useAttempt';
 import { isAttemptStarted } from '../../../lib/types';
 import { useToast } from '../../../components/ui';
 import { useCandidateAuth } from '../../../lib/candidate-auth-context';
@@ -18,6 +18,8 @@ export default function CandidateWelcomePage() {
   const { accessToken, isLoading: authLoading } = useCandidateAuth();
   const { data: current, isLoading, isError } = useAttemptQuery();
   const startAttempt = useStartAttempt();
+  // AS-3 (PRC-32): an earlier result this invitation may use (or already uses) is offered first; "retake" skips it.
+  const { data: reuse } = useReuseOffer();
   const faceEnrolment = useFaceEnrolment();
   const { toast } = useToast();
   const [cameraStatus, setCameraStatus] = useState<'idle' | 'checking' | 'granted' | 'denied'>('idle');
@@ -43,8 +45,10 @@ export default function CandidateWelcomePage() {
       router.push('/submitted');
     } else if (current && isAttemptStarted(current)) {
       router.push('/exam');
+    } else if (reuse?.reused || (reuse?.offer && !new URLSearchParams(window.location.search).has('retake'))) {
+      router.push('/reuse');
     }
-  }, [current, isError, router, accessToken, authLoading]);
+  }, [current, isError, router, accessToken, authLoading, reuse]);
 
   if (isLoading || isError || !current || isAttemptStarted(current)) {
     return <p className="p-8 text-sm text-candidate-text-tertiary">Loading…</p>;
@@ -151,6 +155,11 @@ export default function CandidateWelcomePage() {
           Hi, {current.candidateName} — you&apos;re invited to
         </p>
         <h1 className="mb-3 font-display text-xl font-bold text-candidate-text">{current.exam.title}</h1>
+        <p className="mb-3 text-sm">
+          <a href="/my-tests" className="text-candidate-primary underline">
+            See all my tests
+          </a>
+        </p>
         <p className="mb-4 text-sm text-candidate-text-secondary">Duration: {current.exam.durationMinutes} minutes</p>
         {current.sections.length > 0 ? (
           <div className="mb-4 rounded-md border border-candidate-border p-3">

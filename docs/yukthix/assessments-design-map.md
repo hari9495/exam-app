@@ -286,6 +286,10 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 | Empty · Empty | wire design | A | as Invitations |
 | Loading · Loading | wire design | A | as Invitations |
 | Error · Error | wire design | A | as Invitations |
+| LiveInvitations · Live · invitations | live | A | AS-3: `/yx/hiring/assessments/invitations` (`GET /asmt/invitations`): every invitation with its state (Invited, Started, Completed, Under review, Missed, Revoked, Reused), the jobs using the test, filters, reminders, revoke, invite to a published test |
+| LiveEmpty · Live · no one invited yet | live | A | as above |
+| LiveError · Live · could not load | live | A | as above |
+| LiveReinvited · Live · missed, already re-invited | live | A | AS-3: `POST /asmt/invitations/:id/reinvite`: a missed test once, with a reason of 10+ characters (also a database check) |
 
 #### PRC-08 · Slot calendar
 
@@ -458,6 +462,11 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 | RescheduleBlocked · Change slot blocked (2 used) | design only, feature not built | C | as above |
 | Empty · Empty | design only, feature not built | A | no list |
 | Phone · My tests · phone | phone view, mobile app not built | A | |
+| LiveMyTests · Live · my tests | live | A | AS-3: `/my-tests` (`GET /attempt/my-tests`): this candidate's tests at this company; another opens in place (`POST /candidate-auth/switch`, same candidate and company only) |
+| LiveReuseOffered · Live · earlier result can be used | live | A | AS-3: the open test offers the earlier result when `GET /attempt/reuse` has one |
+| LiveSubmitted · Live · submitted | live | A | links to the result page |
+| LiveEmpty · Live · no tests | live | A | |
+| LiveError · Live · could not load | live | A | |
 
 #### PRC-22 · Readiness check and practice
 
@@ -556,6 +565,9 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 | Reuse · Reuse with consent | design only, feature not built | A | an invitation is per test and candidate; nothing offers an earlier result (question 2013) |
 | Retake · Choose to retake | design only, feature not built | A | as above |
 | Expired · Outside validity window | design only, feature not built | A | as above |
+| LiveOffer · Live · earlier result offered | live | A | AS-3 (answer 2013): `/reuse`: a submitted, released (not held) result on the same test within `asmt.result_reuse_months` (default 6); used only after the candidate agrees (`POST /attempt/reuse`) |
+| LiveUsed · Live · earlier result in use | live | A | the invitation is `reused` (linked, not copied); the test cannot start until the candidate withdraws (`POST /attempt/reuse/withdraw`) |
+| LiveNone · Live · nothing to reuse | live | A | |
 
 ### 6. Extras and kit
 
@@ -1056,3 +1068,43 @@ Tests and settings: answers 2007, 2008, 2123, PRC-04, PRC-06 and Settings 6.5. N
 2158. **Telling the approver.** Asking for approval does not notify anyone yet. *Suggested: a bell note to the people
       with the tests key, like the review queue (2129).*
 2159. **The Tests pages in the menu.** *Suggested: the lead adds Tests next to Question bank when the bank goes in.*
+
+## AS-3 as built, part 1 (branch `feat/yukthix-assessments-as3`, 16 Nov 2026)
+
+Hiring delivery: answers 2001, 2013, 2159; PRC-07, PRC-21, PRC-32. PRC-29 (the campus kit) is part 2.
+
+- **2159 menu:** Hire › Assessments now has Tests (test writers: `asmt.test.manage` or `exam:manage`) next to Question
+  bank, and Invitations & drives (inviters: `ats.candidate.manage` or `candidate:manage`), when assessments are on.
+- **PRC-07 invitations and drives:** `GET /asmt/invitations` (the company's newest 500, filter by test, name or state),
+  `GET /asmt/drives` (walk-in drives with tests, sessions, invited and attempted), `POST /asmt/invitations/:id/reinvite`
+  (a missed test only, once, a reason of 10+ characters; a new link and window by the existing resend; audited
+  `invitation.reinvited`). Sending, reminders and revoking use the existing invitation routes.
+- **PRC-32 result reuse (2013):** company setting `asmt.result_reuse_months` (0, 3, 6, 12; default 6; 0 = off). An open
+  invitation is offered the candidate's latest submitted result on the same test within the months, with a result that
+  is not held. The candidate must agree; the invitation then becomes `reused` and points at the earlier attempt
+  (linked, not copied; audited `invitation.result_reused`); a reused invitation cannot start until the candidate
+  withdraws. The welcome page sends the candidate to the choice first ("Take the test again" skips it).
+- **Invite rule change:** inviting skipped anyone with an open invitation to the same test, even one already taken. Now
+  only an open invitation not yet taken skips, so a second job using the same test can invite again (and offer reuse).
+- **PRC-21 my tests:** `GET /attempt/my-tests` lists this candidate's invitations at this company; `POST
+  /candidate-auth/switch` opens another one (same candidate and company only, else 404; a closed one is refused).
+- **Candidate header:** the live candidate pages (my tests, reuse, result) now name the real company and candidate. The
+  AS-4a result page showed the sample company and name; fixed here.
+- **Migration** `202617z0000331_asmt_hiring_delivery`: invitations gain reused attempt, reused at, re-invited at and the
+  reason, with checks (no data written).
+- **Screens:** the designed `InvitationsScreen`, `CandidatePortalHomeScreen` and `ResultReuseScreen` with `live`
+  (`delivery-live.tsx`); new states drawn as stories in PRC-07 (4), PRC-21 (5) and PRC-32 (3). All three left the
+  design-live guard's "not live" list.
+
+### Questions (from 2211)
+
+2211. **Bulk reminders and revokes go one by one.** The page calls the existing per-invitation routes in turn. *Suggested:
+      fine up to a few hundred; a bulk route with the drives work in part 2.*
+2212. **Reuse across tests.** Only the same test is reused (2013 says "same test"). A copy of a test is a different test.
+      *Suggested: keep; a company that wants reuse keeps one test per role.*
+2213. **Hiring stage after reuse.** A reused invitation shows "Reused" to recruiters, but the job's board does not move the
+      application on its own. *Suggested: treat a reused result like a submitted one on the board, next.*
+2214. **New drive button.** The drawn "New drive" is left off the live page; drives are still created on the older
+      walk-in screens. *Suggested: part 2 (campus kit) adds it.*
+2215. **The invitations list stops at 500.** *Suggested: add paging when a company passes it.*
+

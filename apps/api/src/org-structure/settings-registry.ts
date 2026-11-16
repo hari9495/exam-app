@@ -96,6 +96,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // device), and the most time given back automatically for a lost connection in one attempt.
   'asmt.offline_minutes': { label: 'Tests: keep answering offline for up to (minutes)', scopes: ['tenant'], dated: false, values: ['0', '2', '5', '10', '15', '20', '30'], default: '5' },
   'asmt.time_credit_cap': { label: 'Tests: automatic time credit cap (minutes per attempt)', scopes: ['tenant'], dated: false, values: ['0', '5', '10', '15', '20', '30'], default: '10' },
+  // AS-3 (answer 2013, PRC-32): a candidate may use an earlier result on the same test within this many months (0: never).
+  'asmt.result_reuse_months': { label: 'Tests: an earlier result may be used again for (months; 0 = never)', scopes: ['tenant'], dated: false, values: ['0', '3', '6', '12'], default: '6', labels: { '0': 'Never', '3': '3 months', '6': '6 months', '12': '12 months' } },
   'asmt.item_stats.provisional_answers': { label: 'Item statistics are provisional under this many answers', scopes: ['tenant'], dated: false, values: ['50', '100', '200', '500'], default: '200' },
   // Assessments AS-2 (answers 2007, 2008; Settings 6.5): a new test's proctoring mode (Open, AI-only or Record & review
   // over the test's switches; live proctoring waits for certification), how long recordings, clips and face data are kept

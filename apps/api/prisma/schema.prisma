@@ -941,6 +941,12 @@ model Invitation {
   revokedAt              DateTime?               @map("revoked_at") @db.Timestamptz(3)
   activeSessionFamilyId  String?                 @map("active_session_family_id") @db.VarChar(1000)
   driveSessionId         String?                 @map("drive_session_id") @db.Uuid
+  /// AS-3 (answer 2013, PRC-32): the earlier attempt whose result this invitation uses instead of a new test (status 'reused').
+  reusedAttemptId        String?                 @map("reused_attempt_id") @db.Uuid
+  reusedAt               DateTime?               @map("reused_at") @db.Timestamptz(3)
+  /// AS-3 (PRC-07): a missed invitation is re-invited once, with a reason (10+ characters, a database check).
+  reinvitedAt            DateTime?               @map("reinvited_at") @db.Timestamptz(3)
+  reinviteReason         String?                 @map("reinvite_reason") @db.VarChar(500)
   exam                   Exam                    @relation(fields: [examId], references: [id], onDelete: Cascade)
   candidate              Candidate               @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   driveSession           DriveSession?           @relation(fields: [driveSessionId], references: [id], onDelete: SetNull)

@@ -618,6 +618,10 @@ export class AttemptService {
       if (dto.consent !== true) {
         throw new BadRequestException('You must consent to exam monitoring before starting.');
       }
+      // AS-3 (answer 2013): this invitation uses an earlier result; taking the test again means withdrawing that first.
+      if (invitation.status === 'reused') {
+        throw new BadRequestException('You chose to use your earlier result. To take the test again, withdraw that choice first.');
+      }
 
       const windowState = this.getSchedulingWindowState(exam);
       if (windowState === 'not_open') {

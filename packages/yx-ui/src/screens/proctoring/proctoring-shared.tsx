@@ -46,8 +46,23 @@ export function AnlFrame({ page, children }: { page: AnlPage; children: ReactNod
 }
 
 export type CandPage = 'My tests' | 'Practice' | 'Privacy centre';
+/** A live candidate page's own company and person (AS-3): never the sample company or name. */
+export interface CandidateBrand {
+  company: string;
+  candidate: string;
+  logoUrl?: string | null;
+  /** Where "My tests" goes; only the tabs that are live are shown. */
+  myTestsHref?: string;
+}
+
 /** T9 candidate test portal: tenant brand, one short tab row, access-expiry banner. */
-export function CandidateFrame({ page, children, user = 'Arjun Nair' }: { page?: CandPage; children: ReactNode; user?: string }) {
+export function CandidateFrame({ page, children, user = 'Arjun Nair', brand }: { page?: CandPage; children: ReactNode; user?: string; brand?: CandidateBrand }) {
+  if (brand)
+    return (
+      <PortalFrame tenant={brand.company} tenantLogoUrl={brand.logoUrl} portal="Candidate test portal" user={brand.candidate} nav={brand.myTestsHref ? [{ label: 'My tests', href: brand.myTestsHref, active: page === 'My tests' }] : []}>
+        {children}
+      </PortalFrame>
+    );
   return (
     <PortalFrame tenant={COMPANY.name} portal="Candidate test portal" user={user} nav={(['My tests', 'Practice', 'Privacy centre'] as CandPage[]).map((l) => ({ label: l, active: l === page }))}>
       {children}

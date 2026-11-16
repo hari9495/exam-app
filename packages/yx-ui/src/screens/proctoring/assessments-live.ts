@@ -30,3 +30,9 @@ export {
 
 // Assessments AS-4a (PRC-26, PRC-27): the designed test runner and result page, live with their `live` prop.
 export { ResultAppealScreen, TestRunnerScreen, type LiveResult, type LiveRunner, type LiveRunnerQuestion } from './candidate';
+
+// Assessments AS-3 (PRC-07, PRC-21, PRC-32): invitations and drives, the candidate's tests, using an earlier result.
+export { InvitationsScreen } from './delivery';
+export { CandidatePortalHomeScreen, ResultReuseScreen } from './candidate';
+export { INVITATION_TONE, MY_TEST_BADGE, canRemind, canRevoke, type LiveCandidateTestStatus, type LiveDriveRow, type LiveInvitationRow, type LiveInvitationStatus, type LiveInvitations, type LiveMyTest, type LivePortal, type LiveReuse, type LiveReuseOffer } from './delivery-live';
+export type { CandidateBrand } from './proctoring-shared';

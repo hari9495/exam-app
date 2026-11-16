@@ -18,7 +18,8 @@ import { ExamShell, QuestionCard, formatClock, type AutosaveStatus, type ExamQue
 import { PageBanner } from '../../components/notify';
 import { PhoneFrame } from '../_kit/frames';
 import { COMPANY } from '../_kit/data';
-import { CandidateFrame } from './proctoring-shared';
+import { CandidateFrame, type CandidateBrand } from './proctoring-shared';
+import { LivePortalHomeScreen, LiveResultReuseScreen, type LivePortal, type LiveReuse } from './delivery-live';
 import { Calculator, CameraFrame, CodeAnswer, ConnectionStatus, EvidenceFrame, IdCapture, QrPlaceholder, SystemCheckList, type ConnState, type SystemCheck } from './proctoring-kit';
 import { canReschedule, withExtraTime } from './proctoring-logic';
 import { READINESS_CHECKS } from './proctoring-data';
@@ -29,7 +30,14 @@ const Title = ({ children }: { children: string }) => <Heading level={1}>{childr
 /* PRC-21 · Candidate portal home                                      */
 /* ================================================================== */
 
-export function CandidatePortalHomeScreen({ state = 'tests', rescheduleCount = 0, reschedule = false }: { state?: 'tests' | 'empty' | 'booking'; rescheduleCount?: number; reschedule?: boolean }) {
+type PortalHomeProps = { state?: 'tests' | 'empty' | 'booking'; rescheduleCount?: number; reschedule?: boolean };
+
+/** PRC-21; with `live` (AS-3) the candidate's own tests at this company. */
+export function CandidatePortalHomeScreen(props: PortalHomeProps | { live: LivePortal }) {
+  return 'live' in props ? <LivePortalHomeScreen live={props.live} /> : <SamplePortalHome {...props} />;
+}
+
+function SamplePortalHome({ state = 'tests', rescheduleCount = 0, reschedule = false }: PortalHomeProps) {
   // PRC-21
   const [open, setOpen] = useState(reschedule);
   const [slot, setSlot] = useState<string | undefined>('fri-10');
@@ -927,6 +935,8 @@ export function TestRunnerScreen({ view = 'mcq', conn = 'online', live }: { view
 
 /** PRC-27 with a real attempt (AS-4a): released (what the test lets the candidate see) or held for review. */
 export interface LiveResult {
+  /** AS-3: the company and candidate in the header (not the sample ones). */
+  brand?: CandidateBrand;
   testName: string;
   takenOn?: string;
   state: 'released' | 'held' | 'pending';
@@ -941,7 +951,7 @@ function LiveResultAppealScreen({ live }: { live: LiveResult }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return (
-    <CandidateFrame page="My tests">
+    <CandidateFrame page="My tests" brand={live.brand}>
       <Title>Your result</Title>
       <p className="yx-prc-muted">
         {live.testName}
@@ -1183,7 +1193,14 @@ export function CandidateAppScreen({ view = 'tests' }: { view?: AppView }) {
 /* PRC-32 · Result-reuse consent                                       */
 /* ================================================================== */
 
-export function ResultReuseScreen({ expired = false, choice = 'reuse' }: { expired?: boolean; choice?: 'reuse' | 'retake' }) {
+type ResultReuseProps = { expired?: boolean; choice?: 'reuse' | 'retake' };
+
+/** PRC-32; with `live` (AS-3) the candidate's real earlier result and choice. */
+export function ResultReuseScreen(props: ResultReuseProps | { live: LiveReuse }) {
+  return 'live' in props ? <LiveResultReuseScreen live={props.live} /> : <SampleResultReuse {...props} />;
+}
+
+function SampleResultReuse({ expired = false, choice = 'reuse' }: ResultReuseProps) {
   // PRC-32
   const [c, setC] = useState<string | undefined>(expired ? 'retake' : choice);
   const [agree, setAgree] = useState(false);

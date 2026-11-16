@@ -24,6 +24,7 @@ import { PhoneFrame } from '../_kit/frames';
 import { CandidateFrame, PrcFrame, type ViewState } from './proctoring-shared';
 import { CameraFrame, IdCapture, QrPlaceholder } from './proctoring-kit';
 import { planWaves, slotState, timeCredit } from './proctoring-logic';
+import { LiveInvitationsScreen, type LiveInvitations } from './delivery-live';
 import { DRIVES, NAMES, WEEK_DAYS, d, type AccommodationRow, type DriveRow, type InvitationRow, type SlotData } from './proctoring-data';
 
 const opt = (xs: string[]) => xs.map((x) => ({ value: x, label: x }));
@@ -69,7 +70,14 @@ const DRIVE_COLS: TableColumn<DriveRow>[] = [
   { key: 'plan', header: 'Capacity plan', value: (r) => (r.expected > 1000 ? 'Needed' : 'Not needed'), render: (r) => (r.expected > 1000 ? <Badge tone="warning">Needed, draft</Badge> : <Badge>Not needed</Badge>), width: 140 },
 ];
 
-export function InvitationsScreen({ invitations, drives, state = 'ready', tab = 'invitations', inviteOpen = false, defaultOpenId = null }: { invitations: InvitationRow[]; drives: DriveRow[]; state?: ViewState; tab?: 'drives' | 'invitations'; inviteOpen?: boolean; defaultOpenId?: string | null }) {
+type InvitationsProps = { invitations: InvitationRow[]; drives: DriveRow[]; state?: ViewState; tab?: 'drives' | 'invitations'; inviteOpen?: boolean; defaultOpenId?: string | null };
+
+/** PRC-07; with `live` (AS-3) the company's invitations and walk-in drives. */
+export function InvitationsScreen(props: InvitationsProps | { live: LiveInvitations }) {
+  return 'live' in props ? <LiveInvitationsScreen live={props.live} /> : <SampleInvitations {...props} />;
+}
+
+function SampleInvitations({ invitations, drives, state = 'ready', tab = 'invitations', inviteOpen = false, defaultOpenId = null }: InvitationsProps) {
   // PRC-07
   const [filters, setFilters] = useState<FilterValue[]>([]);
   const [q, setQ] = useState('');

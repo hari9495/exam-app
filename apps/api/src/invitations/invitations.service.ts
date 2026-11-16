@@ -170,7 +170,8 @@ export class InvitationsService {
       }
 
       const liveInvitations = await tx.invitation.findMany({
-        where: { examId, candidateId: { in: uniqueCandidateIds }, status: 'invited', expiresAt: { gt: new Date() } },
+        // AS-3 (PRC-32): a live invitation already taken does not block a new one (another job, the earlier result reused).
+        where: { examId, candidateId: { in: uniqueCandidateIds }, status: 'invited', expiresAt: { gt: new Date() }, attempt: { is: null } },
         select: { candidateId: true },
       });
       const alreadyInvitedIds = new Set(liveInvitations.map((i) => i.candidateId));
@@ -344,6 +345,11 @@ export class InvitationsService {
           revokedAt: true,
           activeSessionFamilyId: true,
           driveSessionId: true,
+          // AS-3: an earlier result used instead (PRC-32), and a missed invitation re-invited once (PRC-07).
+          reusedAttemptId: true,
+          reusedAt: true,
+          reinvitedAt: true,
+          reinviteReason: true,
           candidate: true,
           attempt: { select: { id: true, status: true } },
         },

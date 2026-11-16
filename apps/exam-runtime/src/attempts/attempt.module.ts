@@ -9,6 +9,7 @@ import { BillingModule } from '../billing/billing.module';
 import { ApiInternalClientModule } from '../api-internal-client/api-internal-client.module';
 import { AttemptController } from './attempt.controller';
 import { AttemptService } from './attempt.service';
+import { DeliveryService } from './delivery.service';
 
 @Module({
   imports: [
@@ -24,6 +25,6 @@ import { AttemptService } from './attempt.service';
     ApiInternalClientModule,
   ],
   controllers: [AttemptController],
-  providers: [AttemptService],
+  providers: [AttemptService, DeliveryService],
 })
 export class AttemptModule {}

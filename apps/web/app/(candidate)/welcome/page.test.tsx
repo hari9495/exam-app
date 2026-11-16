@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useRouter } from 'next/navigation';
-import { useAttemptQuery, useFaceEnrolment, useStartAttempt } from '../../../lib/hooks/useAttempt';
+import { useAttemptQuery, useFaceEnrolment, useReuseOffer, useStartAttempt } from '../../../lib/hooks/useAttempt';
 import { useCandidateAuth } from '../../../lib/candidate-auth-context';
 import CandidateWelcomePage from './page';
 
@@ -10,6 +10,7 @@ jest.mock('../../../lib/hooks/useAttempt', () => ({
   useAttemptQuery: jest.fn(),
   useStartAttempt: jest.fn(),
   useFaceEnrolment: jest.fn(),
+  useReuseOffer: jest.fn(),
 }));
 jest.mock('../../../lib/candidate-auth-context', () => ({ useCandidateAuth: jest.fn() }));
 
@@ -48,6 +49,29 @@ describe('CandidateWelcomePage', () => {
     (useRouter as jest.Mock).mockReturnValue({ push });
     (useCandidateAuth as jest.Mock).mockReturnValue({ accessToken: 'token-1', isLoading: false });
     (useFaceEnrolment as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+    (useReuseOffer as jest.Mock).mockReturnValue({ data: { offer: null, reused: null } });
+    window.history.replaceState(null, '', '/welcome');
+  });
+
+  // AS-3 (PRC-32): an earlier result on the same test is offered first; the candidate may choose to retake instead.
+  it('sends a candidate with an earlier result to the choice, or one already using it; negative: not after choosing to retake, not without one', async () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({ data: { candidateName: 'Ada', exam: { title: 'Java', instructions: null, durationMinutes: 45, proctoring: { webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] } }, sections: [] }, isLoading: false });
+    (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+    const offer = { attemptId: 'a1', testTitle: 'Java', takenAt: '2026-06-12T00:00:00Z', passed: true, validUntil: '2026-12-12T00:00:00Z', months: 6 };
+    (useReuseOffer as jest.Mock).mockReturnValue({ data: { offer, reused: null } });
+    const { unmount } = render(<CandidateWelcomePage />);
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/reuse'));
+    unmount();
+    push.mockClear();
+    window.history.replaceState(null, '', '/welcome?retake=1');
+    const r2 = render(<CandidateWelcomePage />);
+    await skipPractice();
+    expect(push).not.toHaveBeenCalledWith('/reuse');
+    expect(screen.getByRole('link', { name: 'See all my tests' })).toHaveAttribute('href', '/my-tests');
+    r2.unmount();
+    (useReuseOffer as jest.Mock).mockReturnValue({ data: { offer: null, reused: { takenAt: '2026-06-12T00:00:00Z' } } });
+    render(<CandidateWelcomePage />);
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/reuse'));
   });
 
   it('shows exam title, duration, instructions, and a monitoring disclosure before start', async () => {

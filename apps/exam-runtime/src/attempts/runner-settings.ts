@@ -6,6 +6,8 @@ import { Prisma } from '@prisma/client';
 export const RUNNER_SETTINGS = {
   'asmt.offline_minutes': { values: ['0', '2', '5', '10', '15', '20', '30'], default: '5' },
   'asmt.time_credit_cap': { values: ['0', '5', '10', '15', '20', '30'], default: '10' },
+  // AS-3 (answer 2013): months an earlier result may be used again (0: never).
+  'asmt.result_reuse_months': { values: ['0', '3', '6', '12'], default: '6' },
 } as const;
 export type RunnerSettingKey = keyof typeof RUNNER_SETTINGS;
 

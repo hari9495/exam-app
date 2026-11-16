@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { LIVE_INVITATIONS, liveInvitations } from '../delivery-live-samples';
 import { InvitationsScreen } from '../delivery';
 import { DRIVES, INVITATIONS } from '../proctoring-data';
 
@@ -14,3 +15,9 @@ export const EmployeeTestTaker: S = { name: 'Employee test-taker', args: { defau
 export const Empty: S = { args: { state: 'empty' } };
 export const Loading: S = { args: { state: 'loading' } };
 export const Error: S = { args: { state: 'error' } };
+
+// AS-3: the company's real invitations and drives (live).
+export const LiveInvitations: S = { name: 'Live · invitations', render: () => <InvitationsScreen live={liveInvitations()} /> };
+export const LiveEmpty: S = { name: 'Live · no one invited yet', render: () => <InvitationsScreen live={liveInvitations({ invitations: [], drives: [] })} /> };
+export const LiveError: S = { name: 'Live · could not load', render: () => <InvitationsScreen live={liveInvitations({ state: 'error' })} /> };
+export const LiveReinvited: S = { name: 'Live · missed, already re-invited', render: () => <InvitationsScreen live={liveInvitations({ invitations: LIVE_INVITATIONS.filter((r) => r.id === 'i6') })} /> };
