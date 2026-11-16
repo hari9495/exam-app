@@ -197,7 +197,8 @@ describe('Deleting a closed company (1882, 1972, 1973, 1975)', () => {
     const person = await sup((tx) => tx.user.findUniqueOrThrow({ where: { id: users.adminT! }, select: { passwordHash: true, status: true } }));
     expect(person).toEqual({ passwordHash: '!', status: 'deactivated' });
     const left = await footprint(org.T);
-    expect(Object.keys(left).sort()).toEqual(['audit_logs', 'company_deletions', 'legal_entities', 'users']);
+    // company_record_groups: the kept groups and their days (answer 1976), written as the deletion is done.
+    expect(Object.keys(left).sort()).toEqual(['audit_logs', 'company_deletions', 'company_record_groups', 'legal_entities', 'users']);
     // (A refused sign-in writes its own login event, after the deletion.)
     await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: `del-t-${run}`, email: `admin-t-${run}@deletion.test`, password: PASSWORD }).expect((r) => expect(r.status).toBeGreaterThanOrEqual(400));
 

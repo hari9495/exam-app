@@ -72,6 +72,33 @@ export class SalesAssistService {
     return { dueAt: made.dueAt.toISOString() };
   }
 
+  /**
+   * Answer 2112: a sales request straight from an Ask YukthiX chat about buying (the assistant checks the person may
+   * change the plan, the chat is theirs and about buying). Same queue, reply time and audit as Talk to us; the chat goes
+   * with it, masked. Once per chat (also the database's unique index).
+   */
+  async requestFromChat(
+    c: { organizationId: string; userId: string },
+    dto: { phone: string; topics: string[]; note?: string },
+    chat: { conversationId: string; text: string },
+  ) {
+    const ctx = companyContext({ organizationId: c.organizationId, isSuperAdmin: false, userId: c.userId });
+    const known = await this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const me = await tx.user.findFirst({ where: { id: c.userId, organizationId: c.organizationId }, select: { name: true, email: true } });
+      return { name: me?.name?.trim() || me?.email || '', employees: await tx.employee.count({ where: { organizationId: c.organizationId } }) };
+    });
+    const topics = [...new Set(dto.topics)];
+    const made = await this.tenantPrisma.forTenant(PLATFORM, async (tx) => {
+      if (await tx.salesAssistRequest.findFirst({ where: { conversationId: chat.conversationId }, select: { id: true } })) throw new ConflictException('A sales request was already sent from this chat.');
+      const r = await tx.salesAssistRequest.create({
+        data: { organizationId: c.organizationId, source: 'assistant', conversationId: chat.conversationId, chat: chat.text.slice(0, 10_000), topics, phone: dto.phone, note: dto.note?.trim() || null, requestedBy: c.userId, requestedByName: known.name.slice(0, 200), employees: known.employees, dueAt: new Date(Date.now() + (await this.replyHours(tx)) * 3_600_000) },
+      });
+      await AuditService.recordIn(tx, PLATFORM, { actorUserId: null, action: 'platform.sales.requested', entityType: 'sales_assist_request', entityId: r.id, metadata: { organizationId: c.organizationId, source: 'assistant', topics } });
+      return r;
+    });
+    return { id: made.id, number: made.number, dueAt: made.dueAt.toISOString() };
+  }
+
   // ------------------------------------------------------------------------------------------------ console (staff)
 
   /** The queue: every request with its company (an audited cross-company read). */
@@ -88,7 +115,8 @@ export class SalesAssistService {
           ref: `SA-${String(r.number).padStart(3, '0')}`,
           company: orgs.get(r.organizationId) ?? '',
           band: sizeBand(r.employees),
-          why: [`Talk to us: ${r.featureKey ? (flags.get(r.featureKey) ?? r.featureKey) : 'upgrade'}`, ...r.topics.map((t) => TOPIC_WORDS[t] ?? t)].join(' · '),
+          why: [r.source === 'assistant' ? 'Ask YukthiX: a buying question' : `Talk to us: ${r.featureKey ? (flags.get(r.featureKey) ?? r.featureKey) : 'upgrade'}`, ...r.topics.map((t) => TOPIC_WORDS[t] ?? t)].join(' · '),
+          chat: r.chat,
           setupPct: r.setupPct,
           owner: r.ownerId ? (owners.get(r.ownerId) ?? '') : null,
           mine: r.ownerId === actorUserId,

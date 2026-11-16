@@ -5,6 +5,7 @@ import { FormField, useTooEarly } from '../../components/field';
 import { AssistantPanel, useToast, type AssistantMessage } from '../../components/notify';
 import { TextArea, TextField } from '../../components/inputs';
 import { useRun } from '../org/org-kit';
+import { TalkToUsLiveDialog, type TalkTopic } from '../platform-b/growth-screens';
 
 /** One message of an Ask YukthiX chat, as the API gives it. */
 export interface AskMessageView {
@@ -20,6 +21,8 @@ export interface AskConversationView {
   id: string;
   ticketRef: string | null;
   featureRequestSent: boolean;
+  /** Answer 2112: a sales request was sent from this chat (once per chat). */
+  salesRequestSent?: boolean;
   /** After help.assistant.unhelpful_handover unhelpful answers (answer 2104). */
   offerPerson: boolean;
   messages: AskMessageView[];
@@ -32,6 +35,8 @@ export interface AskState {
   remaining: number;
   /** The Contact YukthiX key (org.yukthix_support.raise): only then "Raise support ticket". */
   canRaiseTicket: boolean;
+  /** Answer 2112: Plan & add-ons' key (org:manage_billing): only then "Send a sales request" on a buying question. */
+  canAskSales?: boolean;
   conversation: AskConversationView | null;
 }
 
@@ -43,6 +48,8 @@ export interface AskYukthixProps {
   onFeedback: (answerId: string, value: 'up' | 'down') => Promise<unknown>;
   onRaiseTicket: (conversationId: string) => Promise<{ ticket: string | number | null }>;
   onFeatureRequest: (conversationId: string, title: string, details: string) => Promise<{ number: number }>;
+  /** Answer 2112: into the YukthiX sales-assist queue, with this chat. */
+  onSalesRequest?: (conversationId: string, input: { phone: string; topics: TalkTopic[]; note?: string }) => Promise<{ dueAt: string }>;
   /** Where Contact YukthiX lives, for "Raise a ticket" while the assistant is not switched on. */
   contactHref: string;
 }
@@ -80,6 +87,7 @@ export function AskYukthix(props: AskYukthixProps) {
   const [asking, setAsking] = useState(false);
   const [title, setTitle] = useState('');
   const [details, setDetails] = useState('');
+  const [selling, setSelling] = useState(false);
   useEffect(() => {
     setConversation(props.state?.conversation ?? null);
     setRemaining(props.state?.remaining ?? 0);
@@ -141,7 +149,27 @@ export function AskYukthix(props: AskYukthixProps) {
         Answers come from YukthiX help, never from your company's records. {remaining} of {s.limit} questions left today.
       </p>
       {conversation?.offerPerson && !conversation.ticketRef && <InlineAlert tone="warning" title="Not getting anywhere?">A person can help. Raise a support ticket and this chat goes with it.</InlineAlert>}
-      {buying && <InlineAlert tone="info" title="Buying or upgrading">YukthiX sales can help: your System Admin can talk to them from Plan & add-ons.</InlineAlert>}
+      {buying &&
+        (conversation?.salesRequestSent ? (
+          <InlineAlert tone="info" title="Buying or upgrading">A sales request went from this chat. YukthiX sales will call you.</InlineAlert>
+        ) : s.canAskSales && props.onSalesRequest ? (
+          <InlineAlert tone="info" title="Buying or upgrading" actions={<Button onClick={() => setSelling(true)}>Send a sales request</Button>}>
+            YukthiX sales can help. They call you back, and this chat goes with the request.
+          </InlineAlert>
+        ) : (
+          <InlineAlert tone="info" title="Buying or upgrading">YukthiX sales can help: whoever manages your plan can ask them from here or from Plan & add-ons.</InlineAlert>
+        ))}
+      {selling && conversation && props.onSalesRequest && (
+        <TalkToUsLiveDialog
+          about="buying or upgrading YukthiX"
+          onSend={async (input) => {
+            const r = await props.onSalesRequest!(conversation.id, input);
+            setConversation((c) => (c ? { ...c, salesRequestSent: true } : c));
+            return r;
+          }}
+          onClose={() => setSelling(false)}
+        />
+      )}
       {conversation && (
         <div className="yx-ops-row">
           {conversation.ticketRef ? (

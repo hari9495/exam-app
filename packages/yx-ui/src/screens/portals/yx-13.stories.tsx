@@ -46,5 +46,8 @@ const sa = (o: Partial<LiveSales> = {}) => (
 );
 export const YX13Live: S = { name: 'Sales-assist queue · Talk to us requests (C-8)', render: () => sa() };
 export const YX13OutcomeLive: S = { name: 'Request · the owner records the outcome (C-8)', render: () => sa({ defaultOpen: 'r2' }) };
+// Answer 2112: a request sent from an Ask YukthiX chat about buying, with the chat (phones and emails hidden).
+const SA_CHAT: SalesLiveRow = { id: 'r4', ref: 'SA-013', company: 'Kaveri Foods', band: '200–500', why: 'Ask YukthiX: a buying question · pricing for their size', setupPct: null, owner: 'Anand Iyer', mine: true, dueAt: new Date(2026, 10, 14, 10, 0).toISOString(), status: 'open', requestedBy: 'Lakshmi Rao', phone: '9845012345', note: 'About 300 people from April.', chat: 'From Ask YukthiX (the in-app help assistant):\n\nAsked: How much is the Pro plan for 300 people? Call me on [phone hidden].\n\nAsk YukthiX: YukthiX sales can help with plans and prices for your size.', outcomeNote: null, createdAt: new Date(2026, 10, 13, 9, 0).toISOString(), version: 1 };
+export const YX13FromChatLive: S = { name: 'Request · sent from an Ask YukthiX chat (2112)', render: () => sa({ rows: [SA_CHAT, ...SA_ROWS], defaultOpen: 'r4' }) };
 export const YX13TalkToUs: S = { name: 'Talk to us from a nudge card (C-8)', render: () => <TalkToUsLiveDialog about="Access requests" onSend={async () => ({ dueAt: new Date(2026, 10, 14, 10, 0).toISOString() })} onClose={() => {}} /> };
 export const YX13Empty: S = { name: 'Sales-assist queue · empty', render: () => <SalesAssistScreen rows={[]} now={TODAY} /> };

@@ -51,6 +51,7 @@ describe('ScheduledSweepsWorkerService', () => {
       settingNotices: { lapseSweep: jest.fn().mockResolvedValue(0) },
       projectCost: { costSweep: jest.fn().mockResolvedValue({ companies: 0, restated: 0, alerts: 0 }) },
       analytics: { summariseNightly: jest.fn().mockResolvedValue({ rows: 0 }) },
+      deletions: { releaseSweep: jest.fn().mockResolvedValue({ companies: 0, released: 0 }) },
     };
     const service = new ScheduledSweepsWorkerService(
       connection as never,
@@ -87,6 +88,7 @@ describe('ScheduledSweepsWorkerService', () => {
       services.settingNotices as never,
       services.projectCost as never,
       services.analytics as never,
+      services.deletions as never,
     );
     return { service, queue, connection, services };
   };
@@ -142,6 +144,7 @@ describe('ScheduledSweepsWorkerService', () => {
       'settings-change-lapse': services.settingNotices.lapseSweep,
       'project-cost': services.projectCost.costSweep,
       'analytics-summary': services.analytics.summariseNightly,
+      'retention-expiry': services.deletions.releaseSweep,
     };
     for (const { id } of SWEEP_SCHEDULE) {
       await mockWorker.processor!({ name: id });

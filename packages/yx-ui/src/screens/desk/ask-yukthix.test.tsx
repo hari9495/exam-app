@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { AskYukthix, type AskYukthixProps } from './ask-yukthix';
-import { ASK_CHAT, ASK_STATE, ASK_UNSURE } from './ask-yukthix-data';
+import { ASK_BUYING, ASK_CHAT, ASK_STATE, ASK_UNSURE } from './ask-yukthix-data';
 
 const props = (over: Partial<AskYukthixProps> = {}): AskYukthixProps => ({
   state: ASK_STATE,
@@ -70,5 +70,35 @@ describe('AskYukthix', () => {
     unmount();
     show(props({ state: { ...ASK_STATE, on: false, canRaiseTicket: false, conversation: null } }));
     expect(screen.queryByRole('link', { name: 'Raise a ticket' })).toBeNull();
+  });
+
+  // Answer 2112: a buying question offers a sales request to whoever manages the plan.
+  it('buying: "Send a sales request" asks for a mobile number, then sends it with this chat', async () => {
+    const onSalesRequest = vi.fn().mockResolvedValue({ dueAt: '2026-11-17T10:30:00Z' });
+    show(props({ state: { ...ASK_STATE, canAskSales: true, conversation: ASK_BUYING }, onSalesRequest }));
+    await userEvent.click(screen.getByRole('button', { name: 'Send a sales request' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Ask for a call' }));
+    expect(await screen.findByText('Give a 10-digit mobile number.')).toBeTruthy();
+    expect(onSalesRequest).not.toHaveBeenCalled();
+    await userEvent.type(screen.getByRole('textbox', { name: /Phone/ }), '98450 12345');
+    await userEvent.click(screen.getByRole('checkbox', { name: /pricing/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Ask for a call' }));
+    expect(onSalesRequest).toHaveBeenCalledWith('c2', { phone: '9845012345', topics: ['pricing'] });
+    expect(await screen.findByText(/YukthiX will call you by/)).toBeTruthy();
+  });
+
+  it('negative: buying without the plan key only says who can ask; a sent request is not offered again', () => {
+    const { unmount } = show(props({ state: { ...ASK_STATE, canAskSales: false, conversation: ASK_BUYING }, onSalesRequest: vi.fn() }));
+    expect(screen.queryByRole('button', { name: 'Send a sales request' })).toBeNull();
+    expect(screen.getByText(/whoever manages your plan can ask them/)).toBeTruthy();
+    unmount();
+    show(props({ state: { ...ASK_STATE, canAskSales: true, conversation: { ...ASK_BUYING, salesRequestSent: true } }, onSalesRequest: vi.fn() }));
+    expect(screen.queryByRole('button', { name: 'Send a sales request' })).toBeNull();
+    expect(screen.getByText(/A sales request went from this chat/)).toBeTruthy();
+  });
+
+  it('negative: a chat that is not about buying shows no sales offer', () => {
+    show(props({ state: { ...ASK_STATE, canAskSales: true }, onSalesRequest: vi.fn() }));
+    expect(screen.queryByText('Buying or upgrading')).toBeNull();
   });
 });
