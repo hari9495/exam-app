@@ -5,7 +5,7 @@ import { CompanyScreen } from './company';
 import { CompanySettingsScreen } from './company-settings';
 import { PlansScreen } from './plans';
 import { WhatsNewConsoleScreen, type NewsEntryRow } from './whats-new';
-import { FeatureRequestsConsoleScreen } from './feature-requests';
+import { AssistantReviewConsoleScreen, FeatureRequestsConsoleScreen } from './feature-requests';
 import { FEATURE_REQUESTS, ASSISTANT_REVIEW } from './data';
 import { SupportSessionsScreen } from './support';
 import { PlatformAuditScreen } from './audit';
@@ -120,6 +120,9 @@ const news = (extra: Partial<Parameters<typeof WhatsNewConsoleScreen>[0]> = {}) 
 const requests = (extra: Partial<Parameters<typeof FeatureRequestsConsoleScreen>[0]> = {}) => shell('feature-requests', <FeatureRequestsConsoleScreen state="ready" requests={FEATURE_REQUESTS} review={ASSISTANT_REVIEW} onDecide={() => wait()} {...extra} />);
 export const FeatureRequests: S = { name: 'Feature requests · grouped, with companies', render: () => requests() };
 export const FeatureRequestsReview: S = { name: 'Feature requests · Ask YukthiX review', render: () => requests({ defaultTab: 'review' }) };
+// Answer 2132: the review on its own page (help centre writers).
+export const AssistantReview: S = { name: 'Ask YukthiX review · its own page (2132)', render: () => shell('assistant-review', <AssistantReviewConsoleScreen state="ready" review={ASSISTANT_REVIEW} />) };
+export const AssistantReviewNoAccess: S = { name: 'Ask YukthiX review · no access', render: () => shell('assistant-review', <AssistantReviewConsoleScreen state="no-access" review={null} />) };
 export const FeatureRequestsEmpty: S = { name: 'Feature requests · none yet', render: () => requests({ requests: [] }) };
 export const WhatsNew: S = { name: "What's new · entries", render: () => news() };
 export const WhatsNewAdd: S = { name: "What's new · new entry", render: () => news({ defaultNew: true }) };

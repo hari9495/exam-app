@@ -2,7 +2,8 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
-import { FeatureRequestsConsoleScreen } from './feature-requests';
+import { AssistantReviewConsoleScreen, FeatureRequestsConsoleScreen } from './feature-requests';
+import { CONSOLE_LINKS } from './console-shell';
 import { ASSISTANT_REVIEW, FEATURE_REQUESTS } from './data';
 
 // Ask YukthiX (answer 2105): the staff list and the assistant review.
@@ -34,5 +35,23 @@ describe('FeatureRequestsConsoleScreen', () => {
     expect(screen.getByText('Answered from help')).toBeTruthy();
     expect(screen.getByText(/Call me on \[phone\]/)).toBeTruthy();
     expect(screen.getByText('YXS-118')).toBeTruthy();
+  });
+});
+
+// Answer 2132: the review on its own console page, for the help centre writers.
+describe('AssistantReviewConsoleScreen', () => {
+  it('shows the same review on its own page, with its own console link', () => {
+    render(<ToastProvider><AssistantReviewConsoleScreen state="ready" review={ASSISTANT_REVIEW} /></ToastProvider>);
+    expect(screen.getByRole('heading', { name: 'Ask YukthiX review' })).toBeTruthy();
+    expect(screen.getByText('Answered from help')).toBeTruthy();
+    expect(screen.getByText(/Call me on \[phone\]/)).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: /Feature requests/ })).toBeNull();
+    expect(CONSOLE_LINKS.find((l) => l.id === 'assistant-review')).toMatchObject({ href: '/staff/assistant-review', group: 'Catalogue' });
+  });
+
+  it('negative: without a key the page says so and shows no review', () => {
+    render(<ToastProvider><AssistantReviewConsoleScreen state="no-access" review={null} /></ToastProvider>);
+    expect(screen.queryByText('Answered from help')).toBeNull();
+    expect(screen.getByText(/the Ask YukthiX review/)).toBeTruthy();
   });
 });

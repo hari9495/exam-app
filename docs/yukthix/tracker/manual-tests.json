@@ -22014,5 +22014,25 @@
       "ImageAdded"
     ],
     "note": "Positive and negative. Answers 2121, 2125, 2126, 2129, 2001."
+  },
+  {
+    "id": "MT-HLP-ASK3",
+    "area": "Ask YukthiX follow-ups, round 2 (16 Nov 2026)",
+    "screen": "Console › Ask YukthiX review; Help drawer › Ask YukthiX",
+    "url": "http://localhost:3000/staff/assistant-review",
+    "account": "A YukthiX Support agent; a Rules editor; the System Admin of a company. The server has ASK_YUKTHIX_ANTHROPIC_API_KEY set.",
+    "steps": [
+      "As the Support agent: Console › Ask YukthiX review.",
+      "As the Rules editor: Console › Ask YukthiX review.",
+      "As the System Admin: ask Ask YukthiX what the Pro plan costs; Send a sales request with a mobile number.",
+      "In a new chat, ask about the Enterprise plan price; Send a sales request.",
+      "As a Customer success member: record an outcome on the first request; then as the System Admin send the second again."
+    ],
+    "expected": "Step 1: the review (answers by outcome, questions help did not answer, chats that became tickets). Step 2: no access. Step 3: We will call you by (the reply time). Step 4: the dialog says the company already asked YukthiX sales from a chat and when they reply; nothing is sent. Step 5: sent.",
+    "stories": [
+      "AssistantReview",
+      "AssistantReviewNoAccess"
+    ],
+    "note": "Positive and negative. Answers 2132, 2135."
   }
 ]
