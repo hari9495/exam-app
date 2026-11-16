@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
-import { ChevronLeft, ChevronRight, Copy, Plus, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Copy, MessageSquareText, Plus, Trash2 } from 'lucide-react';
 import { cx } from '../lib/cx';
 import { formatDate } from '../lib/format';
 import { formatHours, parseHours } from '../lib/table';
@@ -324,13 +324,31 @@ export function TimesheetGrid(props: TimesheetGridProps) {
 
   /** Answer 1787: the day's comment, opened from the "Comment" link under its hours (one open at a time). */
   const [openComment, setOpenComment] = useState<string | null>(null);
+  const [openLine, openDayText] = openComment ? openComment.split(':') : [null, null];
+  const openDay = openDayText === null ? null : Number(openDayText);
   const setComment = (id: string, d: number, text: string) => {
     const l = lines.find((x) => x.id === id)!;
     const comments = Array.from({ length: 7 }, (_, k) => l.comments?.[k] ?? '');
     comments[d] = text;
     patch(id, { comments });
   };
-  const dayComment = (l: TimesheetLine, d: number, rowName: string) => {
+  const commentBox = (l: TimesheetLine, d: number, rowName: string) => {
+    const text = l.comments?.[d] ?? '';
+    const n = wordCount(text);
+    const short = !!noteRule?.required && n < (noteRule?.minWords ?? 0);
+    return editable ? (
+      <span className="yx-ts__comment-box">
+        <TextArea aria-label={`Comment for ${rowName}, ${DAY[d]} ${longDate(dates[d])}`} rows={3} value={text} placeholder="What did you do? In your own words." onChange={(v) => setComment(l.id, d, v)} />
+        <span className="yx-ts__note-count" aria-live="polite" data-tone={short ? 'short' : undefined}>
+          {noteRule?.required ? `${n} of ${noteRule.minWords} words` : `${n} words · optional`}
+        </span>
+      </span>
+    ) : (
+      <span className="yx-ts__comment-box yx-ts__note-text">{text}</span>
+    );
+  };
+  /** The link under a day's hours; `inline` opens the box right there (day list), otherwise the grid opens it in a full-width row under the line. */
+  const dayComment = (l: TimesheetLine, d: number, rowName: string, inline = true) => {
     if (!noteRule || l.correctionFor || !((l.hours[d] ?? 0) > 0)) return null;
     const text = l.comments?.[d] ?? '';
     const n = wordCount(text);
@@ -340,20 +358,16 @@ export function TimesheetGrid(props: TimesheetGridProps) {
     if (!editable && !text) return null;
     return (
       <span className="yx-ts__comment">
-        <button type="button" className="yx-ts__comment-link" aria-expanded={open} data-tone={editable && short ? 'short' : undefined} onClick={() => setOpenComment(open ? null : key)}>
-          {text ? `Comment · ${n} ${n === 1 ? 'word' : 'words'}` : 'Comment'}
-        </button>
-        {open &&
-          (editable ? (
-            <span className="yx-ts__comment-box">
-              <TextArea aria-label={`Comment for ${rowName}, ${DAY[d]} ${longDate(dates[d])}`} rows={3} value={text} placeholder="What did you do? In your own words." onChange={(v) => setComment(l.id, d, v)} />
-              <span className="yx-ts__note-count" aria-live="polite" data-tone={short ? 'short' : undefined}>
-                {noteRule.required ? `${n} of ${noteRule.minWords} words` : `${n} words · optional`}
-              </span>
-            </span>
+        <button type="button" className="yx-ts__comment-link" aria-expanded={open} aria-label={text ? `Comment · ${n} ${n === 1 ? 'word' : 'words'}` : 'Comment'} data-tone={editable && short ? 'short' : undefined} onClick={() => setOpenComment(open ? null : key)}>
+          {text ? (
+            <>
+              <MessageSquareText size={12} aria-hidden /> {n}
+            </>
           ) : (
-            <span className="yx-ts__comment-box yx-ts__note-text">{text}</span>
-          ))}
+            'Comment'
+          )}
+        </button>
+        {open && inline && commentBox(l, d, rowName)}
       </span>
     );
   };
@@ -652,7 +666,7 @@ export function TimesheetGrid(props: TimesheetGridProps) {
                     l.hours.map((h, d) => (
                       <td key={d} className="yx-ts__col-day" data-kind={days[d].kind} data-queried={queried(l.id, d) ? true : undefined} title={queried(l.id, d)}>
                         <HourCell value={h} editable={editable && !dayLocked(d)} r={r} c={d} label={`${rowName} ${DAY[d]} ${longDate(dates[d])} hours`} onCommit={(v) => setHour(l.id, d, v)} />
-                        {dayComment(l, d, rowName)}
+                        {dayComment(l, d, rowName, false)}
                       </td>
                     ))
                   )}
@@ -663,6 +677,16 @@ export function TimesheetGrid(props: TimesheetGridProps) {
                     </td>
                   )}
                 </tr>
+                {openDay !== null && openLine === l.id && (
+                  <tr className="yx-ts__comment-row">
+                    <td colSpan={editable ? 12 : 11}>
+                      <span className="yx-ts__comment-head">
+                        {DAY[openDay]} {longDate(dates[openDay])} · {rowName}
+                      </span>
+                      {commentBox(l, openDay, rowName)}
+                    </td>
+                  </tr>
+                )}
                 </Fragment>
               );
             })}

@@ -523,10 +523,14 @@ td .yx-badge, .yx-table td[data-type="date"] { white-space: nowrap; }
 .yx-plain-table__caption { caption-side: top; text-align: start; padding-bottom: var(--yx-space-2); color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); }
 /* Answer 1787: a comment per day: a "Comment" link under the day's hours opens a small box below the cell. */
 .yx-ts__comment { display: grid; gap: var(--yx-space-1); justify-items: center; margin-top: var(--yx-space-1); }
-.yx-ts__comment-link { border: 0; background: none; padding: 0; font: inherit; font-size: var(--yx-text-sm); color: var(--yx-color-link); text-decoration: underline; cursor: pointer; }
+.yx-ts__comment-link { border: 0; background: none; padding: 0; font: inherit; font-size: var(--yx-text-xs); white-space: nowrap; display: inline-flex; align-items: center; gap: var(--yx-space-1); color: var(--yx-color-link); text-decoration: underline; cursor: pointer; }
 .yx-ts__comment-link:hover { text-decoration-thickness: 2px; }
 .yx-ts__comment-link[data-tone='short'] { color: var(--yx-color-warning-text); }
 .yx-ts__comment-box { display: grid; gap: var(--yx-space-1); width: 14rem; text-align: left; }
 .yx-ts__note-count { color: var(--yx-color-text-muted); font-size: var(--yx-text-sm); }
 .yx-ts__note-count[data-tone='short'] { color: var(--yx-color-warning-text); }
 .yx-ts__note-text { margin: 0; white-space: pre-wrap; }
+/* Grid: an open day comment gets its own full-width row under the line, never spilling over the other days. */
+.yx-ts__table .yx-ts__comment-row > td { background: var(--yx-color-bg-subtle); padding: var(--yx-space-3); }
+.yx-ts__comment-head { display: block; margin-bottom: var(--yx-space-2); font-size: var(--yx-text-sm); font-weight: var(--yx-weight-medium); color: var(--yx-color-text-secondary); }
+.yx-ts__comment-row .yx-ts__comment-box { width: min(40rem, 100%); }

@@ -32,6 +32,21 @@ describe('a comment per day (1787)', () => {
     expect(screen.getByText('3 of 20 words')).toBeInTheDocument();
   });
 
+  it('the week grid opens the comment in its own full-width row under the line, never inside the narrow day cell', async () => {
+    show(sheet({ ...MY_TIMESHEET, noteRule: RULE }));
+    await ue.click(links()[0]!);
+    const box = screen.getByRole('textbox', { name: /^Comment for .*, Mon / });
+    const row = box.closest('tr')!;
+    expect(row).toHaveClass('yx-ts__comment-row');
+    expect(row.querySelector('td')!.getAttribute('colspan')).toMatch(/^1[12]$/);
+    expect(box.closest('td.yx-ts__col-day')).toBeNull();
+    // Negative: closing it removes the row; only one day is open at a time.
+    await ue.click(links()[1]!);
+    expect(screen.getAllByRole('textbox', { name: /^Comment for / })).toHaveLength(1);
+    await ue.click(links()[1]!);
+    expect(document.querySelector('.yx-ts__comment-row')).toBeNull();
+  });
+
   it('Submit is refused when one day with hours has no comment, or is 1 word short; nothing is saved or sent', async () => {
     const missing = sheet({ ...MY_TIMESHEET, noteRule: RULE, lines: MY_TIMESHEET.lines.map((l, i) => ({ ...l, comments: i ? [words(20), words(20), '', '', '', '', ''] : all(20) })) });
     const a = show(missing);
