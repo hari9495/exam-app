@@ -48,6 +48,20 @@ describe('a comment per day (1787)', () => {
     expect(screen.getByRole('textbox', { name: /^Comment for .*, Tue / })).toBeInTheDocument();
   });
 
+  it('clicking into a day box with hours opens its comment under it; the box itself never moves', async () => {
+    show(sheet({ ...MY_TIMESHEET, noteRule: RULE }));
+    const hours = screen.getAllByRole('textbox', { name: /Tue .* hours$/ })[0]!;
+    const before = hours.closest('td')!.querySelector('.yx-ts__cell')!.children.length;
+    await ue.click(hours);
+    expect(screen.getByRole('textbox', { name: /^Comment for .*, Tue / })).toBeInTheDocument();
+    expect(hours).toHaveFocus();
+    // The comment's state is a corner dot, positioned over the box: the cell gains no rows.
+    expect(hours.closest('td')!.querySelector('.yx-ts__cell')!.children.length).toBe(before);
+    // Negative: a day with no hours opens nothing.
+    await ue.click(screen.getAllByRole('textbox', { name: /Thu .* hours$/ })[0]!);
+    expect(screen.queryByRole('textbox', { name: /^Comment for .*, Thu / })).toBeNull();
+  });
+
   it('saved comments are listed under the grid; with none it says so', async () => {
     show(sheet({ ...MY_TIMESHEET, noteRule: RULE }));
     const card = screen.getByRole('region', { name: 'Comments this week' });

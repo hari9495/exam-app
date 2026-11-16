@@ -9,7 +9,7 @@ import { Badge, DayDate, type BadgeTone } from './display';
 import { InlineAlert, Meter } from './feedback';
 import { Select } from './select';
 import { TextArea } from './inputs';
-import { Popover, PopoverContent, PopoverTrigger } from './popover';
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from './popover';
 
 export interface TimesheetTask {
   id: string;
@@ -173,6 +173,7 @@ function HourCell({
   c,
   label,
   onCommit,
+  onActive,
 }: {
   value: number | null;
   editable: boolean;
@@ -181,6 +182,8 @@ function HourCell({
   c: number;
   label: string;
   onCommit: (v: number | null) => void;
+  /** Founder reference: the day's comment opens under the box while the person is in a box with hours. */
+  onActive?: (hasHours: boolean) => void;
 }) {
   const [text, setText] = useState(formatHours(value));
   const [bad, setBad] = useState(false);
@@ -225,10 +228,17 @@ function HourCell({
       title={bad ? 'Enter hours like 7.5, 7:30 or 45m' : undefined}
       value={text}
       placeholder="–"
-      onChange={(e) => setText(e.target.value)}
+      onChange={(e) => {
+        setText(e.target.value);
+        const h = parseHours(e.target.value);
+        onActive?.(h !== null && !Number.isNaN(h) && h > 0);
+      }}
       onBlur={commit}
       onKeyDown={move}
-      onFocus={(e) => e.currentTarget.select()}
+      onFocus={(e) => {
+        e.currentTarget.select();
+        onActive?.((value ?? 0) > 0);
+      }}
     />
   );
 }
@@ -580,24 +590,51 @@ export function TimesheetGrid(props: TimesheetGridProps) {
   }
 
   /** The day's comment as a small box right under its hours (reference pattern): one open at a time. */
-  const cellComment = (l: TimesheetLine, d: number, rowName: string) => {
-    if (!noteRule || !((l.hours[d] ?? 0) > 0)) return null;
+  const dayCell = (l: TimesheetLine, d: number, rowName: string, r: number) => {
+    const key = `${l.id}:${d}`;
+    const hasHours = (l.hours[d] ?? 0) > 0;
     const text = l.comments?.[d] ?? '';
     const n = wordCount(text);
-    const short = noteRule.required && n < noteRule.minWords;
-    if (!editable && !text) return null;
-    const key = `${l.id}:${d}`;
-    const open = openComment === key;
+    const asks = !!noteRule && hasHours && (editable || !!text);
+    const short = !!noteRule?.required && n < (noteRule?.minWords ?? 0);
+    const open = asks && openComment === key;
     const name = text ? `Comment · ${n} ${n === 1 ? 'word' : 'words'}` : 'Comment';
+    const box = (
+      <HourCell
+        value={l.hours[d]}
+        editable={editable && !dayLocked(d)}
+        r={r}
+        c={d}
+        label={`${rowName} ${DAY[d]} ${longDate(dates[d])} hours`}
+        onCommit={(v) => setHour(l.id, d, v)}
+        onActive={noteRule && editable ? (yes) => yes && setOpenComment(key) : undefined}
+      />
+    );
+    if (!noteRule) return <span className="yx-ts__cell">{box}</span>;
     return (
       <Popover open={open} onOpenChange={(o) => setOpenComment(o ? key : null)}>
-        <PopoverTrigger asChild>
-          <button type="button" className="yx-ts__comment-chip" aria-label={name} data-tone={editable && short ? 'short' : text ? 'done' : undefined}>
-            <MessageSquareText size={12} aria-hidden />
-            {text ? n : editable ? 'Add' : ''}
-          </button>
-        </PopoverTrigger>
-        <PopoverContent className="yx-ts__comment-pop" align="center" sideOffset={4}>
+        <PopoverAnchor asChild>
+          <span className="yx-ts__cell">
+            {box}
+            {asks && (
+              <PopoverTrigger asChild>
+                <button type="button" className="yx-ts__comment-dot" aria-label={name} data-tone={editable && short ? 'short' : text ? 'done' : undefined}>
+                  <MessageSquareText size={10} aria-hidden />
+                </button>
+              </PopoverTrigger>
+            )}
+          </span>
+        </PopoverAnchor>
+        <PopoverContent
+          className="yx-ts__comment-pop"
+          align="start"
+          sideOffset={4}
+          // Stay in the hours box; the comment is one click away under it.
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          onInteractOutside={(e) => {
+            if ((e.target as HTMLElement | null)?.closest?.(`[data-cell="${key}"]`)) e.preventDefault();
+          }}
+        >
           <span className="yx-ts__comment-head">
             {DAY[d]} {longDate(dates[d])} · {rowName}
           </span>
@@ -621,7 +658,11 @@ export function TimesheetGrid(props: TimesheetGridProps) {
             <span className="yx-ts__summary-value">
               <strong>{formatHours(weekTotal) || '0'}</strong> / {formatHours(expectedTotal)} h
             </span>
-            <Meter value={weekTotal} max={expectedTotal || 1} label="Hours this week" warnAt={1000} dangerAt={1000} valueText={expectedTotal ? `${Math.round((weekTotal / expectedTotal) * 100)}%` : ''} />
+            {expectedTotal > 0 ? (
+              <Meter value={weekTotal} max={expectedTotal} label="Hours this week" warnAt={1000} dangerAt={1000} valueText={`${Math.round((weekTotal / expectedTotal) * 100)}%`} />
+            ) : (
+              <span className="yx-ts__muted">No expected hours this week</span>
+            )}
           </span>
           {correctionTotal > 0 && (
             <span className="yx-ts__summary-item">
@@ -704,12 +745,9 @@ export function TimesheetGrid(props: TimesheetGridProps) {
                         </span>
                       </td>
                     ) : (
-                      l.hours.map((h, d) => (
-                        <td key={d} className="yx-ts__col-day" data-kind={days[d].kind} data-queried={queried(l.id, d) ? true : undefined} title={queried(l.id, d)}>
-                          <span className="yx-ts__cell">
-                            <HourCell value={h} editable={editable && !dayLocked(d)} r={r} c={d} label={`${rowName} ${DAY[d]} ${longDate(dates[d])} hours`} onCommit={(v) => setHour(l.id, d, v)} />
-                            {cellComment(l, d, rowName)}
-                          </span>
+                      l.hours.map((_h, d) => (
+                        <td key={d} className="yx-ts__col-day" data-cell={`${l.id}:${d}`} data-kind={days[d].kind} data-queried={queried(l.id, d) ? true : undefined} title={queried(l.id, d)}>
+                          {dayCell(l, d, rowName, r)}
                         </td>
                       ))
                     )}

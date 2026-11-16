@@ -555,13 +555,8 @@ td .yx-badge, .yx-table td[data-type="date"] { white-space: nowrap; }
 .yx-ts__pickrow > :last-child:not(.yx-select) { flex: none; white-space: nowrap; }
 .yx-ts__billtext { color: var(--yx-color-text-muted); font-size: var(--yx-text-sm); }
 .yx-ts__projtext { display: grid; gap: var(--yx-space-half); min-width: 0; }
-.yx-ts__cell { display: flex; flex-direction: column; align-items: center; gap: var(--yx-space-1); }
+.yx-ts__cell { position: relative; display: block; }
 .yx-ts__table .yx-ts__col-day .yx-ts__hours { width: 100%; text-align: center; }
-.yx-ts__comment-chip { display: inline-flex; align-items: center; gap: var(--yx-space-1); min-height: var(--yx-space-5); padding: 0 var(--yx-space-2); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-control); background: var(--yx-color-bg-surface); color: var(--yx-color-text-secondary); text-decoration: none; font-size: var(--yx-text-xs); }
-.yx-ts__comment-chip:hover { background: var(--yx-color-bg-subtle); color: var(--yx-color-link); }
-.yx-ts__comment-chip:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); }
-.yx-ts__comment-chip[data-tone='short'] { color: var(--yx-color-warning-text); border-color: var(--yx-color-warning-border); }
-.yx-ts__comment-chip[data-tone='done'] { color: var(--yx-color-link); }
 .yx-ts__comment-pop { display: grid; gap: var(--yx-space-2); width: calc(var(--yx-space-16) * 5); padding: var(--yx-space-3); }
 .yx-ts__comment-pop .yx-ts__comment-box { width: 100%; }
 .yx-ts__comment-head { display: block; font-size: var(--yx-text-sm); font-weight: var(--yx-weight-medium); color: var(--yx-color-text-secondary); }
@@ -575,3 +570,9 @@ td .yx-badge, .yx-table td[data-type="date"] { white-space: nowrap; }
 .yx-ts__notes-list > li { display: grid; gap: var(--yx-space-1); padding-bottom: var(--yx-space-3); border-bottom: var(--yx-border-width) solid var(--yx-color-border); }
 .yx-ts__notes-list > li:last-child { padding-bottom: 0; border-bottom: 0; }
 .yx-ts__notes-meta { font-size: var(--yx-text-sm); color: var(--yx-color-text-muted); }
+/* The comment's state is a dot on the box's corner: it never takes room, so every day box lines up. */
+.yx-ts__comment-dot { position: absolute; top: calc(var(--yx-space-1) * -1); right: calc(var(--yx-space-1) * -1); display: inline-flex; align-items: center; justify-content: center; width: var(--yx-space-4); height: var(--yx-space-4); padding: 0; border: var(--yx-border-width) solid var(--yx-color-border); border-radius: 999px; background: var(--yx-color-bg-surface); color: var(--yx-color-text-muted); cursor: pointer; }
+.yx-ts__comment-dot:hover { color: var(--yx-color-link); border-color: var(--yx-color-link); }
+.yx-ts__comment-dot:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); }
+.yx-ts__comment-dot[data-tone='short'] { color: var(--yx-color-warning-text); border-color: var(--yx-color-warning-border); background: var(--yx-color-warning-bg); }
+.yx-ts__comment-dot[data-tone='done'] { color: var(--yx-color-link); border-color: var(--yx-color-link); }
