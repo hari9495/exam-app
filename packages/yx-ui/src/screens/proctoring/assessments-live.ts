@@ -31,6 +31,11 @@ export {
 // Assessments AS-4a (PRC-26, PRC-27): the designed test runner and result page, live with their `live` prop.
 export { ResultAppealScreen, TestRunnerScreen, type LiveIntegrityDecision, type LiveResult, type LiveRunner, type LiveRunnerQuestion } from './candidate';
 
+// Assessments AS-3 (PRC-07, PRC-21, PRC-32): invitations and drives, the candidate's tests, using an earlier result.
+export { CampusKitScreen, CoordinatorPortalScreen, InvitationsScreen } from './delivery';
+export { CandidatePortalHomeScreen, ResultReuseScreen } from './candidate';
+export { DEFAULT_CAMPUS_SETTINGS, INVITATION_TONE, MY_TEST_BADGE, bulkWords, campusProblem, canRemind, canRevoke, type BulkOutcome, type CampusFieldMode, type CampusResultsVisibility, type LiveCampusKit, type LiveCampusSettings, type LiveCollegeRow, type LiveCoordinator, type LiveCoordinatorView, type LiveInstitution, type LiveInstitutionInput, type LiveRegistrant, type LiveCandidateTestStatus, type LiveDriveRow, type LiveInvitationRow, type LiveInvitationStatus, type LiveInvitations, type LiveMyTest, type LivePortal, type LiveReuse, type LiveReuseOffer } from './delivery-live';
+export type { CandidateBrand } from './proctoring-shared';
 // Assessments AS-4b (answers 2011, 2164): help before the test, the accommodation queue and connectivity above the cap.
 export { AccommodationQueueScreen, ConnectivityPanelScreen } from './delivery';
 export { AccommodationRequestScreen } from './candidate';

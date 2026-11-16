@@ -46,12 +46,27 @@ export function AnlFrame({ page, children }: { page: AnlPage; children: ReactNod
 }
 
 export type CandPage = 'My tests' | 'Practice' | 'Privacy centre';
+/** A live candidate page's own company and person (AS-3): never the sample company or name. */
+export interface CandidateBrand {
+  company: string;
+  candidate: string;
+  logoUrl?: string | null;
+  /** Where "My tests" goes; only the tabs that are live are shown. */
+  myTestsHref?: string;
+}
+
 /** T9 candidate test portal: tenant brand, one short tab row, access-expiry banner. */
 /**
- * With `company` (a live page), the frame shows that company and no portal tabs or legal links: the candidate's test
- * pages have no portal yet, and a sample name or a link that goes nowhere must never reach a real candidate.
+ * Live pages name the real company: `brand` (AS-3: company, candidate and the My tests tab) or `company` (AS-4a: the
+ * company only, no portal tabs or legal links). A sample name or a link that goes nowhere never reaches a real candidate.
  */
-export function CandidateFrame({ page, children, user = 'Arjun Nair', company }: { page?: CandPage; children: ReactNode; user?: string; company?: string }) {
+export function CandidateFrame({ page, children, user = 'Arjun Nair', brand, company }: { page?: CandPage; children: ReactNode; user?: string; brand?: CandidateBrand; company?: string }) {
+  if (brand)
+    return (
+      <PortalFrame tenant={brand.company} tenantLogoUrl={brand.logoUrl} portal="Candidate test portal" user={brand.candidate} nav={brand.myTestsHref ? [{ label: 'My tests', href: brand.myTestsHref, active: page === 'My tests' }] : []}>
+        {children}
+      </PortalFrame>
+    );
   if (company !== undefined)
     return (
       <PortalFrame tenant={company} portal="Candidate test portal" user={user}>

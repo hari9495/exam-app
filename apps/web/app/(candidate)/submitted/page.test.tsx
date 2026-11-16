@@ -8,6 +8,7 @@ jest.mock('../../../lib/hooks/useAttempt', () => ({
   useAttemptQuery: jest.fn(),
   useRunnerActions: jest.fn(() => ({ sendSurvey: jest.fn(), sendAppeal: jest.fn() })),
   useCandidateCertificate: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
+  useCandidateBrand: jest.fn(() => ({ company: 'Acme Labs', candidate: 'Ada Lovelace', logoUrl: null, myTestsHref: '/my-tests' })),
 }));
 
 // AS-4a: the designed submitted step (PRC-26) with the survey, and the result page (PRC-27).
@@ -53,6 +54,9 @@ describe('CandidateResultPage', () => {
   it('shows pass or fail only as the test allows; held shows no score', () => {
     (useAttemptQuery as jest.Mock).mockReturnValue(state({ status: 'settled', visibility: 'score', passFail: 'fail', percentage: 41, sections: null }));
     const { unmount } = render(<CandidateResultPage />);
+    // AS-3: the header names the real company and candidate, never the sample ones.
+    expect(screen.getByText('Acme Labs')).toBeInTheDocument();
+    expect(screen.queryByText('Kaveri Foods')).toBeNull();
     expect(screen.getByText('Result: not passed')).toBeInTheDocument();
     expect(screen.getByText('41 %')).toBeInTheDocument();
     unmount();

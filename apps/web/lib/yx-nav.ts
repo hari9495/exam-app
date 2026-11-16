@@ -439,7 +439,12 @@ export function buildNav(n: NavInput): NavArea[] {
           // Answer 2001 (AS-1 follow-ups): Hire › Assessments, for bank writers (the YukthiX key or its older alias), only when
           // the company has assessments on. Tests, delivery and results join as their designed screens go live.
           ...sec('Assessments', [
-            ...when(Boolean(n.assessments) && any('asmt.bank.manage', 'question_bank:manage'), L('asmt-bank', 'Question bank', '/yx/hiring/assessments/questions'), L('asmt-reviews', 'Question review', '/yx/hiring/assessments/reviews'), L('asmt-items', 'Item analysis', '/yx/hiring/assessments/item-analysis')),
+            ...when(Boolean(n.assessments) && any('asmt.bank.manage', 'question_bank:manage'), L('asmt-bank', 'Question bank', '/yx/hiring/assessments/questions')),
+            // Answer 2159 (AS-3): Tests next to the Question bank, for test writers (the YukthiX key or its older alias).
+            ...when(Boolean(n.assessments) && any('asmt.test.manage', 'exam:manage'), L('asmt-tests', 'Tests', '/yx/hiring/assessments/tests')),
+            ...when(Boolean(n.assessments) && any('asmt.bank.manage', 'question_bank:manage'), L('asmt-reviews', 'Question review', '/yx/hiring/assessments/reviews'), L('asmt-items', 'Item analysis', '/yx/hiring/assessments/item-analysis')),
+            // AS-3 (PRC-07): invitations and drives for the people who invite candidates.
+            ...when(Boolean(n.assessments) && any('ats.candidate.manage', 'candidate:manage'), L('asmt-invitations', 'Invitations & drives', '/yx/hiring/assessments/invitations')),
             // AS-5 (answers 2006, 2012): integrity review and appeals, for the people who proctor, evaluate or own tests.
             ...when(Boolean(n.assessments) && any('asmt.proctor', 'asmt.evaluate', 'exam:manage'), L('asmt-integrity', 'Integrity review', '/yx/hiring/assessments/integrity'), L('asmt-appeals', 'Appeals', '/yx/hiring/assessments/appeals')),
           ]),

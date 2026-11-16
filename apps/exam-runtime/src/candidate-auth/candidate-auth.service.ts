@@ -30,6 +30,25 @@ export class CandidateAuthService {
     if (!invitation) {
       throw new NotFoundException('This invitation link is invalid');
     }
+    return this.openSession(invitation, clientIp);
+  }
+
+  /**
+   * AS-3 (PRC-21): from one of their tests, a signed-in candidate opens another of their own tests at the same company
+   * (same candidate record). The same checks as the link apply; the other test's earlier session ends, as with the link.
+   */
+  async switchTo(currentInvitationId: string, targetInvitationId: string, clientIp: string): Promise<CandidateTokenPair> {
+    const [current, target] = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
+      Promise.all([tx.invitation.findUnique({ where: { id: currentInvitationId } }), tx.invitation.findUnique({ where: { id: targetInvitationId } })]),
+    );
+    // Another person's test, or another company's, looks the same as one that does not exist.
+    if (!current || !target || target.candidateId !== current.candidateId || target.organizationId !== current.organizationId) {
+      throw new NotFoundException('Test not found');
+    }
+    return this.openSession(target, clientIp);
+  }
+
+  private async openSession(invitation: { id: string; examId: string; candidateId: string; status: string; expiresAt: Date; activeSessionFamilyId: string | null }, clientIp: string): Promise<CandidateTokenPair> {
     if (invitation.status === 'revoked') {
       throw new BadRequestException('This invitation was revoked');
     }

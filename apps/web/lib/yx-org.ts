@@ -231,6 +231,9 @@ export const YX_KEYS = [
   'question_bank:manage',
   // Bank follow-ups (answer 2001): Hire › Assessments for holders of the YukthiX bank key (or its older alias).
   'asmt.bank.manage',
+  // AS-3 (answer 2159): Tests for test writers; Invitations & drives for inviters (the YukthiX keys; older aliases above).
+  'asmt.test.manage',
+  'ats.candidate.manage',
   // AS-5: Integrity review and Appeals.
   'asmt.proctor',
   'asmt.evaluate',

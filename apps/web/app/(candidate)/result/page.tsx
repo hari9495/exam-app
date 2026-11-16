@@ -1,7 +1,8 @@
 'use client';
 
+import { ToastProvider } from '@yukthix/ui';
 import { ResultAppealScreen, type LiveResult } from '@yukthix/ui/assessments';
-import { useAttemptQuery, useCandidateCertificate, useRunnerActions } from '../../../lib/hooks/useAttempt';
+import { useAttemptQuery, useCandidateBrand, useCandidateCertificate, useRunnerActions } from '../../../lib/hooks/useAttempt';
 import { isAttemptStarted } from '../../../lib/types';
 
 // AS-4a (PRC-27): the designed result page, live: released (only what the test shows) or held for review. AS-5 (answer
@@ -10,10 +11,12 @@ const day = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDat
 export default function CandidateResultPage() {
   const { data: current } = useAttemptQuery();
   const certificate = useCandidateCertificate();
+  const brand = useCandidateBrand();
   const actions = useRunnerActions();
   const state = current && isAttemptStarted(current) ? current : null;
   const f = state?.feedback ?? null;
   const live: LiveResult = {
+    brand,
     testName: state?.exam.title ?? 'Test',
     companyName: state?.organizationName ?? '',
     state: f?.status === 'held' ? 'held' : f?.status === 'invalidated' ? 'invalidated' : f?.status === 'settled' ? 'released' : 'pending',
@@ -39,5 +42,10 @@ export default function CandidateResultPage() {
         }
       : undefined,
   };
-  return <ResultAppealScreen live={live} />;
+  // The kit's toasts need their provider; the candidate layout has only the older one.
+  return (
+    <ToastProvider>
+      <ResultAppealScreen live={live} />
+    </ToastProvider>
+  );
 }

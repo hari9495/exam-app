@@ -32,6 +32,8 @@ import { UsersModule } from './users/users.module';
 import { UserGroupsModule } from './user-groups/user-groups.module';
 import { QuestionsModule } from './questions/questions.module';
 import { ExamsModule } from './exams/exams.module';
+import { AsmtDeliveryModule } from './assessments/delivery/delivery.module';
+import { AsmtCampusModule } from './assessments/campus/campus.module';
 import { BeforeTestModule } from './assessments/before-test/before-test.module';
 import { AssessmentsModule } from './assessments/assessments.module';
 import { CandidatesModule } from './candidates/candidates.module';
@@ -149,6 +151,8 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     UserGroupsModule,
     QuestionsModule,
     ExamsModule,
+    AsmtDeliveryModule,
+    AsmtCampusModule,
     BeforeTestModule,
     AssessmentsModule,
     CandidatesModule,
