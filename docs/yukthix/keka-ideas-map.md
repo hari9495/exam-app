@@ -112,3 +112,5 @@ Manual tests: MT-KEKA-1 to MT-KEKA-3.
 2254. **Profile changes decided in the inbox.** They open their own page (second factor, proof, cooling period).
       *Suggested: keep.*
 2255. **Time summary download.** Keka offers a download of the weeks. *Suggested: a CSV of the weeks next, if asked.*
+
+**Founder answers (17 Nov 2026, "ok for all"), 2251 to 2255, and the gap order:** 2251 yes, "Add saved expenses" on the claim page; 2252 yes, read a receipt when it is saved; 2253 keep direct reports only; 2254 keep, profile changes open their own page; 2255 a CSV only if asked. Gap order after assessments: leave partial cancel / extend and calendar sync, editable balance grid, late / least-hours / breaks view, office or remote per punch; then the approvals desk, recycle bin and backups, re-sign-in before salary pages, bulk shift changes, timesheet drill-down; then the reports library and Engage.
