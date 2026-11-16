@@ -110,5 +110,12 @@
   "item": "Sign-in without the company shown (email-first): a locked account answers 'Wrong email or password' even with the right password, while the company-scoped page answers 'Too many tries'. Decide how to tell a locked person without revealing which emails have accounts (e.g. lock the email identifier on the same threshold, then show the lock for both).",
   "status": "Open",
   "next": "Design + fix after Area 2 testing"
+ },
+ {
+  "id": "W-018",
+  "area": "Ask YukthiX follow-ups",
+  "item": "Help centre writers without the new feature-requests key cannot reach the Ask YukthiX review tab (question 2132).",
+  "status": "Open",
+  "next": "Founder answer 2132, then a small console change"
  }
 ]
