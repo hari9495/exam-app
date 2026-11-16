@@ -42,6 +42,7 @@ describe('notification catalog', () => {
       'help.feature_request.done',
       'helpdesk.change.scheduled',
       'helpdesk.change.overrun',
+      'helpdesk.recurring.skipped',
       'helpdesk.rule.failed',
       'helpdesk.msg.link_ended',
       'time.roster.published',

@@ -3988,6 +3988,8 @@ model SdTicket {
   originQuery          String?                  @map("origin_query") @db.VarChar(200)
   /// Answers 1661, 1662: the device (People asset register) an IT desk ticket is about.
   assetId              String?                  @map("asset_id") @db.Uuid
+  /// ITSM answer 2057: the business application an IT ticket is about.
+  appId                String?                  @map("app_id") @db.Uuid
   /// Helpdesk plan item 4: the building (a company location), area and equipment a facilities ticket is about.
   locationId           String?                  @map("location_id") @db.Uuid
   areaId               String?                  @map("area_id") @db.Uuid
@@ -4712,6 +4714,8 @@ model SdBanner {
   deskId         String    @map("desk_id") @db.Uuid
   audience       String    @default("everyone") @db.VarChar(10)
   locationId     String?   @map("location_id") @db.Uuid
+  /// ITSM answer 2056: only the users of this business application see it.
+  appId          String?   @map("app_id") @db.Uuid
   text           String    @db.VarChar(300)
   severity       String    @default("warning") @db.VarChar(8)
   ticketId       String?   @map("ticket_id") @db.Uuid
@@ -14144,6 +14148,8 @@ model SdItsmSettings {
   reviewDays          Int      @default(5) @map("review_days")
   repeatCount         Int      @default(3) @map("repeat_count")
   repeatDays          Int      @default(7) @map("repeat_days")
+  /// Answer 2056: whom a change or known-error notice reaches: all | location | application.
+  noticeScope         String   @default("all") @map("notice_scope") @db.VarChar(12)
   version             Int      @default(1)
   updatedBy           String?  @map("updated_by") @db.Uuid
   createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -14173,6 +14179,8 @@ model SdChange {
   plan              String?   @db.VarChar(4000)
   backout           String    @db.VarChar(2000)
   banner            Boolean   @default(true)
+  /// Answer 2056: the location its notice is limited to (desks that limit notices by location).
+  noticeLocationId  String?   @map("notice_location_id") @db.Uuid
   bannerId          String?   @map("banner_id") @db.Uuid
   templateId        String?   @map("template_id") @db.Uuid
   /// [{ title, done }]
@@ -14302,6 +14310,8 @@ model SdProblem {
   /// open | investigating | known_error | fixed | closed
   state          String    @default("open") @db.VarChar(12)
   categoryId     String?   @map("category_id") @db.Uuid
+  /// Answer 2057: the application the repeat suggestion came from.
+  appId          String?   @map("app_id") @db.Uuid
   rootCause      String?   @map("root_cause") @db.VarChar(4000)
   workaround     String?   @db.VarChar(4000)
   kbArticleId    String?   @map("kb_article_id") @db.Uuid

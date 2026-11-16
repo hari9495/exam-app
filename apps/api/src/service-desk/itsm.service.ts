@@ -7,7 +7,7 @@ import { ItsmSettingsDto, ItsmWindowDto } from './dto-itsm';
 import { CompanyWindow, DEFAULT_RISK_QUESTIONS, DEFAULT_WINDOW, RiskQuestion, parseFreezeDates, questionsProblem } from './itsm-rules';
 
 /** Answers 1934-1939: the desk defaults while an IT desk has no settings row. */
-export const ITSM_DEFAULTS = { routeLow: 'lead', routeMedium: 'lead_owner', routeHigh: 'board', boardRule: 'majority', emergencyReviewDays: 2, bannerOn: true, bannerHours: 24, reviewDays: 5, repeatCount: 3, repeatDays: 7 } as const;
+export const ITSM_DEFAULTS = { routeLow: 'lead', routeMedium: 'lead_owner', routeHigh: 'board', boardRule: 'majority', emergencyReviewDays: 2, bannerOn: true, bannerHours: 24, reviewDays: 5, repeatCount: 3, repeatDays: 7, noticeScope: 'all' } as const;
 export interface ItsmSettings {
   routeLow: string;
   routeMedium: string;
@@ -20,6 +20,8 @@ export interface ItsmSettings {
   reviewDays: number;
   repeatCount: number;
   repeatDays: number;
+  /** Answer 2056: all | location | application. */
+  noticeScope: string;
   riskQuestions: RiskQuestion[];
   version: number;
 }
@@ -66,9 +68,28 @@ export async function itsmSettingsOf(tx: Tx, org: string, deskId: string): Promi
     reviewDays: row.reviewDays,
     repeatCount: row.repeatCount,
     repeatDays: row.repeatDays,
+    noticeScope: row.noticeScope,
     riskQuestions: (row.riskQuestions as unknown as RiskQuestion[] | null) ?? DEFAULT_RISK_QUESTIONS,
     version: row.version,
   };
+}
+
+/**
+ * Answer 2056: whom a change or known-error notice reaches, as the desk's setting asks: everyone (no limit), one
+ * location (it must be given), or the users of an application (it must be known). Checked when the notice is asked for.
+ */
+export async function noticeTarget(tx: Tx, org: string, s: ItsmSettings, x: { locationId?: string | null; appId?: string | null }): Promise<{ locationId: string | null; appId: string | null }> {
+  if (s.noticeScope === 'location') {
+    if (!x.locationId) throw new BadRequestException('This desk limits notices to one location. Choose the location.');
+    if (!(await tx.location.findFirst({ where: { organizationId: org, id: x.locationId, archivedAt: null }, select: { id: true } }))) throw new BadRequestException('Choose a location of this company.');
+    return { locationId: x.locationId, appId: null };
+  }
+  if (s.noticeScope === 'application') {
+    if (!x.appId) throw new BadRequestException("This desk limits notices to an application's users. Choose the application.");
+    if (!(await tx.sdBusinessApp.findFirst({ where: { organizationId: org, id: x.appId, status: 'active' }, select: { id: true } }))) throw new BadRequestException('Choose an application of this company that is in use.');
+    return { locationId: null, appId: x.appId };
+  }
+  return { locationId: null, appId: null };
 }
 
 /**

@@ -73,6 +73,8 @@ export interface LiveTicket {
   /** Answer 1661: an IT agent finds a company device (tag, name or serial) and sets or clears it. */
   onPickDevice?: (q: string) => Promise<PickOption[]>;
   onSetDevice?: (assetId: string | null) => Promise<unknown>;
+  /** ITSM answer 2057: an IT desk's agent sets or clears the application a ticket is about. */
+  onSetApp?: (appId: string | null) => Promise<unknown>;
   /** Helpdesk plan item 4: find buildings, areas and equipment; set the ticket's place. */
   onPickPlace?: (kind: 'buildings' | 'areas' | 'equipment', q: string, locationId?: string) => Promise<PickOption[]>;
   onSetPlace?: (p: { locationId: string | null; areaId: string | null; equipmentId: string | null }) => Promise<unknown>;
@@ -388,6 +390,15 @@ export function LiveTicketWorkspace({ live }: { live: LiveTicket }) {
                         {t.device!.label}
                         {t.device!.detail && <span className="yx-ops-muted"> · {t.device!.detail}</span>}
                       </span>
+                    )}
+                  </FormField>
+                )}
+                {(t.app || (t.appOptions && live.onSetApp)) && (
+                  <FormField label="Application" helper={t.appOptions ? 'The business application this ticket is about. Repeats on one application suggest a problem.' : undefined}>
+                    {t.appOptions && live.onSetApp ? (
+                      <Select value={t.app?.id ?? null} onChange={(v) => void run('app', async () => { await live.onSetApp!(v); toast({ tone: 'success', title: v ? 'Application saved.' : 'Application cleared.' }); })} clearable placeholder="None" options={t.appOptions.map((x) => ({ value: x.id, label: x.name }))} />
+                    ) : (
+                      <span>{t.app!.name}</span>
                     )}
                   </FormField>
                 )}

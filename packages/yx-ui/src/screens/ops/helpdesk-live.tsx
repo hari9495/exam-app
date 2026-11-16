@@ -400,6 +400,7 @@ function RaiseForm(p: RaiseFormProps) {
   const [details, setDetails] = useState('');
   const [isPrivate, setPrivate] = useState(false);
   const [assetId, setAssetId] = useState<string | null>(null);
+  const [appId, setAppId] = useState<string | null>(null);
   // Answer 1801: raising for a colleague (the server checks the on-behalf right).
   const [forOther, setForOther] = useState(false);
   const [forPerson, setForPerson] = useState<string | null>(null);
@@ -419,6 +420,7 @@ function RaiseForm(p: RaiseFormProps) {
   const desk = p.desks.find((d) => d.id === deskId);
   // "Which device?" follows the person the ticket is for (1685).
   const askDevice = forOther ? Boolean(desksFor?.find((d) => d.id === deskId)?.askDevice) : Boolean(desk?.askDevice);
+  const appChoices = desk?.apps ?? [];
   const category = desk?.categories.find((c) => c.id === categoryId);
   const suggestions = useSuggestions(`${subject} ${details.slice(0, 200)}`, p.onSuggest);
   const early = useTooEarly([
@@ -437,7 +439,7 @@ function RaiseForm(p: RaiseFormProps) {
   const submit = () =>
     !early.stop() &&
     void run('raise', async () => {
-      await p.onRaise({ deskId, categoryId: categoryId || undefined, subject: subject.trim(), description: details.trim(), impact: 3, urgency: 3, private: (isPrivate && !category?.sensitive) || undefined, ...(assetId && askDevice ? { assetId } : {}), ...(whom ? { requestedForPersonId: whom } : {}) }, files.map((f) => f.file));
+      await p.onRaise({ deskId, categoryId: categoryId || undefined, subject: subject.trim(), description: details.trim(), impact: 3, urgency: 3, private: (isPrivate && !category?.sensitive) || undefined, ...(assetId && askDevice ? { assetId } : {}), ...(appId && appChoices.some((x) => x.id === appId) ? { appId } : {}), ...(whom ? { requestedForPersonId: whom } : {}) }, files.map((f) => f.file));
       clear();
     });
   const accept = desk?.attachmentTypes.length ? desk.attachmentTypes.map((x) => (x.startsWith('.') ? x : `.${x}`)) : ['.pdf', '.jpg', '.png'];
@@ -478,6 +480,11 @@ function RaiseForm(p: RaiseFormProps) {
             ))}
           </ul>
         </section>
+      )}
+      {appChoices.length > 0 && (
+        <FormField label="Which application?" optional helper="If the problem is with one of the company's applications.">
+          <Select value={appId} onChange={setAppId} clearable placeholder="Choose" options={appChoices.map((x) => ({ value: x.id, label: x.name }))} />
+        </FormField>
       )}
       {askDevice && p.onPickDevice && (
         <FormField label="Which device?" optional helper="One of the devices assigned to you, if the problem is with it.">

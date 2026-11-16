@@ -12,7 +12,7 @@ import { deskRobot } from './catalog.service';
 import { DeskActor, activeOn, audit, canSetUp, canWork, deskSystem, emit, isAgentOn, isLead } from './desk-access';
 import { ChangeCancelDto, ChangeDto, ChangeExportDto, ItsmReportDto, ChangeOutcomeDto, ChangeReviewDto, ChangeTasksDto } from './dto-itsm';
 import { RISK_ORDER, Risk, afterWorkingDays, freezeCalendar, frozenDaysIn, outsideWindow, overlaps, riskOf } from './itsm-rules';
-import { ItsmService, ItsmSettings, companyWindow, itsmSettingsOf } from './itsm.service';
+import { ItsmService, ItsmSettings, companyWindow, itsmSettingsOf, noticeTarget } from './itsm.service';
 import { ProblemsService } from './problems.service';
 import { RequesterService } from './requester.service';
 import { textToHtml } from './rich-text';
@@ -116,12 +116,17 @@ export class ChangesService implements OnModuleInit {
     const service = app?.name ?? dto.service?.trim();
     if (!service) throw new BadRequestException('Choose the service it touches.');
     const [from, to] = [new Date(dto.from), new Date(dto.to)];
-    const problem = this.windowProblem(from, to, w, dto.kind, dto.freezeReason);
-    if (problem) throw new BadRequestException(problem);
+    const refused = this.windowProblem(from, to, w, dto.kind, dto.freezeReason);
+    if (refused) throw new BadRequestException(refused);
     const route = dto.kind === 'emergency' ? 'lead' : risk === 'low' ? s.routeLow : risk === 'medium' ? s.routeMedium : s.routeHigh;
     if (!standard && route === 'lead_owner' && !app) throw new BadRequestException('Choose the application it touches: its owner approves after the IT lead.');
     const type = await tx.sdTicketType.findFirst({ where: { organizationId: org, deskId: desk.id, kind: 'change', active: true }, orderBy: { sortOrder: 'asc' } });
     if (!type) throw new BadRequestException('This desk has no change type in use. Ask the desk admin to turn it on.');
+    // Answer 2056: a notice limited as the desk asks (checked now, shown once it is scheduled).
+    const notice = (dto.banner ?? true) && s.bannerOn ? await noticeTarget(tx, org, s, { locationId: dto.noticeLocationId ?? null, appId: app?.id ?? null }) : { locationId: null, appId: null };
+    // Answer 2058: the problem it fixes (an open problem of this desk).
+    const problem = dto.problemId ? await tx.sdProblem.findFirst({ where: { organizationId: org, deskId: desk.id, id: dto.problemId, state: { not: 'closed' } } }) : null;
+    if (dto.problemId && !problem) throw new BadRequestException('Choose an open problem of this desk.');
     const personId = (await this.requesters.personOf(tx, { ctx: a.ctx, userId: a.userId, acting: false, user: { role: '' } }, true))!;
     const body = [`Service: ${service}`, `Window: ${ist(from)} to ${ist(to)} (India time)`, dto.plan?.trim() ? `Plan: ${dto.plan.trim()}` : '', `Way back: ${dto.backout.trim()}`].filter(Boolean).join('\n\n');
     // A schedule raises it for the person who set the schedule up (who may hold no agent seat): written as theirs, by the API.
@@ -145,6 +150,7 @@ export class ChangesService implements OnModuleInit {
         plan: dto.plan?.trim() || null,
         backout: dto.backout.trim(),
         banner: dto.banner ?? true,
+        noticeLocationId: notice.locationId,
         templateId: tpl?.id ?? null,
         tasks: tasks as unknown as Prisma.InputJsonValue,
         stage: standard ? 'scheduled' : 'approval',
@@ -178,6 +184,12 @@ export class ChangesService implements OnModuleInit {
       notices.push(...sub.notices);
       c = await tx.sdChange.update({ where: { id: c.id }, data: { approvalRequestId: sub.id } });
       await this.tickets.event(tx, t, 'approval_asked', null, ROUTE_WORDS[route], { by: a.userId, reason: `${RISK_WORD[risk]} risk ${dto.kind === 'emergency' ? 'emergency ' : ''}change` });
+    }
+    if (problem) {
+      const pt = await tx.sdTicket.findFirstOrThrow({ where: { organizationId: org, id: problem.ticketId } });
+      await tx.sdTicketLink.createMany({ data: [{ organizationId: org, fromTicketId: t.id, toTicketId: pt.id, kind: 'fixes', createdBy: a.userId }], skipDuplicates: true });
+      await this.tickets.event(tx, t, 'linked', null, pt.number, { by: a.userId, reason: 'Fixes' });
+      await this.tickets.event(tx, pt, 'linked', null, t.number, { by: a.userId, reason: 'Fixed by' });
     }
     await audit(tx, a, 'desk.change.raised', 'sd_change', c.id, { ticketId: t.id, number: t.number, kind: dto.kind, risk, riskFromAnswers: fromAnswers, riskReason: c.riskReason, route: standard ? 'pre_approved' : route, service, from, to, freezeReason: c.freezeReason });
     return { id: c.id, number: t.number, stage: (await tx.sdChange.findUniqueOrThrow({ where: { id: c.id } })).stage };
@@ -238,7 +250,7 @@ export class ChangesService implements OnModuleInit {
     if (c.banner && s.bannerOn) {
       const text = `Planned IT change: ${t.subject} (${c.service}), ${ist(c.windowFrom)} to ${ist(c.windowTo)} India time. It may not work during this time.`.slice(0, 300);
       // No "me too" link: a change ticket is IT's own record, never followed by requesters.
-      bannerId = (await tx.sdBanner.create({ data: { organizationId: org, deskId: c.deskId, audience: 'employees', text, severity: 'info', ticketId: null, startsAt: new Date(c.windowFrom.getTime() - s.bannerHours * 3_600_000), endsAt: c.windowTo, createdBy: c.createdBy } })).id;
+      bannerId = (await tx.sdBanner.create({ data: { organizationId: org, deskId: c.deskId, audience: 'employees', text, severity: 'info', ticketId: null, locationId: c.noticeLocationId, appId: s.noticeScope === 'application' ? c.appId : null, startsAt: new Date(c.windowFrom.getTime() - s.bannerHours * 3_600_000), endsAt: c.windowTo, createdBy: c.createdBy } })).id;
       await emit(tx, org, 'helpdesk.banner.published', { bannerId, deskId: c.deskId });
     }
     const after = await tx.sdChange.update({ where: { id: c.id }, data: { stage: 'scheduled', bannerId, version: { increment: 1 }, updatedAt: new Date() } });
@@ -396,6 +408,9 @@ export class ChangesService implements OnModuleInit {
         questions: s.riskQuestions,
         routes: { low: ROUTE_WORDS[s.routeLow], medium: ROUTE_WORDS[s.routeMedium], high: ROUTE_WORDS[s.routeHigh], emergency: `An IT lead approves now; the change board reviews it within ${s.emergencyReviewDays} working days.` },
         bannerHours: s.bannerOn ? s.bannerHours : null,
+        // Answer 2056: whom notices reach on this desk, and the locations to choose from.
+        noticeScope: s.noticeScope,
+        locations: s.noticeScope === 'location' ? await tx.location.findMany({ where: { organizationId: org, archivedAt: null }, select: { id: true, name: true }, orderBy: { name: 'asc' } }) : [],
         templates: (await tx.sdTemplate.findMany({ where: { organizationId: org, deskId: desk.id, active: true, preApproved: true }, orderBy: { name: 'asc' } })).map((x) => ({ id: x.id, name: x.name, checklist: x.checklist })),
         apps: (await tx.sdBusinessApp.findMany({ where: { organizationId: org, status: 'active' }, orderBy: { name: 'asc' }, select: { id: true, name: true } })),
       };

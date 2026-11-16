@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ErrorState, Spinner } from '@yukthix/ui';
 import { ProblemsScreen, type ProblemRow, type ProblemSuggestion } from '@yukthix/ui/desk';
-import { useDesk, useDeskWrite } from '../../../../../lib/yx-desk';
+import { deskState, useDesk, useDeskWrite } from '../../../../../lib/yx-desk';
 
 // Helpdesk ITSM-3 (docs/yukthix/helpdesk-itsm-plan.md; answers 1939-1941): an IT desk's problems and, for its leads, the
 // repeat suggestions. Only the desk's agents, leads and admins see it (the API answers 404 or no access).
@@ -18,6 +18,8 @@ export default function YxDeskProblemsPage() {
   const [deskId, setDeskId] = useState<string | null>(null);
   const list = useDesk<ProblemList>(deskId ? `/problems?deskId=${encodeURIComponent(deskId)}` : '/problems');
   const write = useDeskWrite();
+  // Someone without the IT desk (no desk.ticket.view: the API answers 403) sees the no-access state, not "did not load".
+  if (deskState(list) === 'no-access') return <ProblemsScreen rows={[]} access={false} />;
   if (list.isError) return <ErrorState title="The problems did not load." description="Try again in a moment." onRetry={() => void list.refetch()} />;
   if (!list.data) return <Spinner label="Loading" size="md" />;
   const d = list.data;

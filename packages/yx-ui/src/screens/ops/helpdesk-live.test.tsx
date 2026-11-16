@@ -231,6 +231,8 @@ describe('HLP-01 Help centre (live)', () => {
     render(<HelpCentreScreen live={liveHelp({ banners: HELP_BANNERS, onMeToo })} />);
     await ue.click(screen.getByRole('button', { name: 'Me too' }));
     expect(onMeToo).toHaveBeenCalledWith('bn1');
+    // Done is a toast, not text added to the notice.
+    expect(await screen.findByText('You are on this issue')).toBeInTheDocument();
     await ue.click(await screen.findByRole('button', { name: 'You are on it' }));
     expect(onMeToo).toHaveBeenCalledTimes(1);
   });
