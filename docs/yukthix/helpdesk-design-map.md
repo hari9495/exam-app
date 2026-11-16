@@ -2224,3 +2224,50 @@ Staff view: unanswered questions, thumbs up or down, chats that became tickets. 
 - 2116: yes, add the "Use in assistant answers" switch to the console help-centre editor.
 - 2117: the public website version after a month of the review.
 Queued: 2112, 2113, 2116 (small follow-up slice).
+
+**Founder answers (16 Nov 2026, "ok for all"), 1991 to 1994 and 2131 to 2135:** all as suggested.
+- 1991: Knowledge base Settings cards side by side so the page fits 1278x635.
+- 1992: standard-change schedule pauses notify the desk admins too (as 1913).
+- 1993: leave the coordinator's empty "My jobs".
+- 1994: the left menu link style is the accepted pattern; a named exception in the clickable guard.
+- 2131: keep, only plan managers send a sales request from the chat.
+- 2132: the Ask YukthiX review gets its own console link.
+- 2133: add a Product role later and move feature requests to it.
+- 2134: keep the typed phone number.
+- 2135: one open chat sales request per company at a time.
+### Ask YukthiX follow-ups as built (branch `feat/yukthix-ask-followups`, 16 Nov 2026; answers 2112, 2113, 2116)
+- **2112, sales request from the chat:** when an answer in the chat is about buying, whoever manages the plan (Plan &
+  add-ons' key, `org:manage_billing`) sees "Send a sales request". It opens the existing Talk to us dialog (mobile number,
+  what to discuss, a note) and sends the request into the existing sales-assist queue (same reply time,
+  `sales.reply_hours`), with the chat attached, phones and emails hidden. Others see who can ask. The server refuses a
+  chat that is not about buying, someone else's chat, a second request from the same chat (also a unique index), no plan
+  key, and acting for someone else. Audited on the company's log (`help.assistant.sales_requested`) and the platform's
+  (`platform.sales.requested`, source assistant). Console › Sales assist shows "Ask YukthiX: a buying question" and the
+  chat. Migration `202617z0000241_ask_followups` adds `source`, `conversation_id` and `chat` to
+  `sales_assist_requests` and `sales_request_id` to `assistant_conversations`.
+- **2113, a key of its own:** `platform.feature_requests.manage` ("Decide the feature requests sent from Ask YukthiX"),
+  held by the Support agent and Customer success roles. Feature requests (list and decisions) need it; the Ask YukthiX
+  review opens with it or with the help centre writers' key (`platform.helpcentre.write`), who fix the gaps it shows.
+  The help centre writers' key alone no longer decides requests. Console keys list and nav comments updated.
+- **2116, the console switch:** Console › Help centre's editor has "Use in assistant answers" (on by default for YukthiX
+  articles; read-only while in review), saved with Save draft. A change is audited on the platform log
+  (`platform.helpcentre.assistant_use_changed`, with the member of staff) and on the article's own log; saving the same
+  value writes nothing.
+- **Kit first:** stories Help drawer · Ask YukthiX · buying (three: send, no plan key, sent), YX-11 · not used in assistant
+  answers, YX-13 · request sent from an Ask YukthiX chat.
+- **Tests:** API unit `assistant-keys` (2); e2e `ask-followups` (new) and `console-helpcentre` (one test added); kit
+  `ask-yukthix` (+3), `console-helpcentre-live` (+2), `console-sales-live` (+1). Manual test MT-HLP-ASK2.
+
+### Questions (from 2131)
+
+2131. **Who sends a sales request from the chat.** Built for Plan & add-ons' changing key (`org:manage_billing`, the
+      System Admin). People with the read-only `billing.view` key are told who can ask. *Suggested: keep.*
+2132. **The review for help centre writers.** The Feature requests page opens on the list, which now needs the new key,
+      so a writer without it sees "no access" and never reaches the Ask YukthiX review tab. *Suggested: give the review
+      its own console link for writers, or show the page with only the review tab when the list is refused.*
+2133. **Which staff roles hold the new key.** Support agent and Customer success, so nobody who worked the list lost it.
+      *Suggested: add a Product role later when YukthiX has product staff; then take it from Support agent.*
+2134. **Phone numbers in the chat sent to sales.** The chat attached to a sales request hides phones and emails, as the
+      staff review does; the phone the person types in the dialog is kept. *Suggested: keep.*
+2135. **More than one open request from one company.** Talk to us allows one open request per company and feature; chat
+      requests are limited to one per chat only. *Suggested: also one open chat request per company at a time.*

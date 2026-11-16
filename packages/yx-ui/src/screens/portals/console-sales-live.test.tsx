@@ -24,6 +24,17 @@ describe('Sales assist (live)', () => {
     await waitFor(() => expect(onTake).toHaveBeenCalledWith('r1'));
   });
 
+  // Answer 2112: a request from an Ask YukthiX chat shows the chat; a Talk to us request has none.
+  it('a request from an Ask YukthiX chat shows the chat; a Talk to us request does not', async () => {
+    const chat = 'Asked: How much is the Pro plan? Call me on [phone hidden].';
+    const { unmount } = show(live({ rows: [row({ owner: 'Anand Iyer', mine: true, why: 'Ask YukthiX: a buying question', chat })], defaultOpen: 'r1' }));
+    const drawer = await screen.findByRole('dialog');
+    expect(within(drawer).getByRole('region', { name: 'The Ask YukthiX chat' })).toHaveTextContent('[phone hidden]');
+    unmount();
+    show(live({ rows: [row({ owner: 'Anand Iyer', mine: true })], defaultOpen: 'r1' }));
+    expect(within(await screen.findByRole('dialog')).queryByRole('region', { name: 'The Ask YukthiX chat' })).toBeNull();
+  });
+
   it('someone else owns it: no outcome to record', async () => {
     show(live({ rows: [row({ owner: 'Kavitha Rao' })], defaultOpen: 'r1' }));
     const drawer = await screen.findByRole('dialog');

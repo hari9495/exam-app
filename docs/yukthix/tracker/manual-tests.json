@@ -21873,6 +21873,50 @@
     "note": "Positive and negative. Answers 2009, 2010, 2017. Pages are not in the menu until AS-0 merges; open them by address."
   },
   {
+    "id": "MT-HLP-ASK2",
+    "area": "Ask YukthiX follow-ups (16 Nov 2026)",
+    "screen": "Help drawer › Ask YukthiX; Console › Sales assist, Feature requests, Help centre",
+    "url": "http://localhost:3000/yx/home",
+    "account": "A System Admin and an employee of one company; YukthiX staff: a Support agent, a Customer success member and a Rules editor. The server has ASK_YUKTHIX_ANTHROPIC_API_KEY set.",
+    "steps": [
+      "As the System Admin: open Help, Ask YukthiX, ask what the Pro plan costs for 300 people.",
+      "Press Send a sales request; press Ask for a call with no number; then give a mobile number, tick Pricing for our size, send.",
+      "Ask how to apply for leave in a new chat.",
+      "As the employee: ask what the Pro plan costs.",
+      "As the System Admin: act as the employee and open Help.",
+      "As the Customer success member: Console › Sales assist; take and open the new request.",
+      "As the Customer success member and the Support agent: Console › Feature requests; mark one Planned.",
+      "As the Rules editor: Console › Feature requests.",
+      "As the Support agent: Console › Help centre, open a draft article, switch off Use in assistant answers, Save draft; open a published one in review.",
+      "As the System Admin: ask a question that article answers."
+    ],
+    "expected": "Step 1: the answer says sales can help; Buying or upgrading with Send a sales request. Step 2: the number is asked for; then We will call you by (the reply time), and the offer now says a request went. Step 3: no sales offer. Step 4: no button, only that whoever manages the plan can ask. Step 5: no Ask YukthiX tab. Step 6: Ask YukthiX: a buying question, the phone, the note and the chat with phones hidden. Step 7: the list opens for both; Planned is saved (toast). Step 8: no access. Step 9: saved (toast); the switch is off on reopening; in review it cannot be changed. Step 10: the assistant does not quote the switched-off article.",
+    "stories": [
+      "HelpDrawerAskBuying",
+      "HelpDrawerAskBuyingNoKey",
+      "HelpDrawerAskBuyingSent",
+      "YX11AssistantOffLive",
+      "YX13FromChatLive"
+    ],
+    "note": "Positive and negative. Answers 2112, 2113, 2116."
+  },
+  {
+    "id": "MT-SET-1976",
+    "area": "Settings 1976: kept records removed after their day (16 Nov 2026)",
+    "screen": "Console › Company (a deleted throwaway company)",
+    "url": "http://localhost:3000/staff/companies",
+    "account": "A YukthiX staff member with a passkey; a throwaway company already deleted (MT-SET-FU2).",
+    "steps": [
+      "Open the deleted throwaway company; Download certificate.",
+      "Negative: check that the company's kept records are still there (its statutory records are kept until a day 8 years on)."
+    ],
+    "expected": "Step 1: the first certificate downloads; it has no removals yet (the kept days are 8 years away). Step 2: nothing was removed early. The nightly removal itself (after the day, per group, the company last, with a certificate each) is covered by the API tests (company-retention-expiry), since its days are years away.",
+    "stories": [
+      "CompanyDeleted"
+    ],
+    "note": "Positive and negative. Only on a throwaway company. Nothing to click for the removal: it runs nightly."
+  },
+  {
     "id": "MT-ASMT-BANK2",
     "area": "Assessments: question bank follow-ups (16 Nov 2026)",
     "screen": "Hire › Assessments: Question bank, Question editor, Question review",

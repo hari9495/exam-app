@@ -32,7 +32,8 @@ export const CONSOLE_LINKS: ConsoleLink[] = [
   { id: 'whats-new', label: "What's new", href: '/staff/whats-new', group: 'Catalogue', icon: Megaphone },
   // C-8 (YX-11, answer 1057): the help articles every company sees.
   { id: 'help-centre', label: 'Help centre', href: '/staff/help-centre', group: 'Catalogue', icon: BookOpen },
-  // Ask YukthiX (answers 2105): feature requests from the assistant, and how its answers are doing.
+  // Ask YukthiX (answers 2105, 2113): feature requests from the assistant (their own key, platform.feature_requests.manage),
+  // and how its answers are doing.
   { id: 'feature-requests', label: 'Feature requests', href: '/staff/feature-requests', group: 'Catalogue', icon: Inbox },
   // C-8 (YX-12): nudges and switch-on copy per feature switch.
   { id: 'nudges', label: 'Nudges', href: '/staff/nudges', group: 'Catalogue', icon: BellRing },

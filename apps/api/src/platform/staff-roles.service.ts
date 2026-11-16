@@ -57,6 +57,7 @@ export const KEY_WORDS: Record<string, string> = {
   'platform.maintenance.manage': 'Schedule planned maintenance',
   'platform.maintenance.view': 'See planned maintenance',
   'platform.helpcentre.write': 'Write and publish the help-centre articles',
+  'platform.feature_requests.manage': 'Decide the feature requests sent from Ask YukthiX',
   'platform.settings.manage': 'Change the platform settings',
   'platform.incidents.manage': 'Run incidents and the status page; breach reminders',
   'platform.nudges.write': 'Write and approve the in-app nudges for each feature switch',

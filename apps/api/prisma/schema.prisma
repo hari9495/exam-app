@@ -13925,6 +13925,10 @@ model SalesAssistRequest {
   outcomeNote     String?   @map("outcome_note") @db.VarChar(500)
   decidedAt       DateTime? @map("decided_at") @db.Timestamptz(3)
   version         Int       @default(1)
+  /// Answer 2112: nudge (Talk to us on a card) or assistant (a buying question in Ask YukthiX, with its chat).
+  source          String    @default("nudge") @db.VarChar(12)
+  conversationId  String?   @map("conversation_id") @db.Uuid
+  chat            String?   @db.VarChar(10000)
 
   @@map("sales_assist_requests")
 }
@@ -14263,6 +14267,30 @@ model CompanyDeletion {
   @@map("company_deletions")
 }
 
+/// Answer 1976: a purged company's kept groups (audit, pay, filings, company), each with its own day, and the second
+/// certificate once release_company_records removed it. Written only by that function (the table owner).
+model CompanyRecordGroup {
+  organizationId    String    @map("organization_id") @db.Uuid
+  recordGroup       String    @map("record_group") @db.VarChar(12)
+  keptUntil         DateTime  @map("kept_until") @db.Date
+  releasedAt        DateTime? @map("released_at") @db.Timestamptz(3)
+  rows              BigInt?
+  certificate       String?
+  certificateSha256 String?   @map("certificate_sha256") @db.Char(64)
+
+  @@id([organizationId, recordGroup])
+  @@map("company_record_groups")
+}
+
+/// Answer 1976: the removal permit release_company_records writes for its own transaction; owner only (no app grant).
+model RetentionReleaseGrant {
+  txid           BigInt
+  organizationId String @map("organization_id") @db.Uuid
+
+  @@id([txid, organizationId])
+  @@map("retention_release_grants")
+}
+
 /// Ask YukthiX (answers 2101 to 2108): one person's chat with the help assistant. RLS: the company, then the person.
 model AssistantConversation {
   id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -14273,6 +14301,8 @@ model AssistantConversation {
   unhelpful        Int       @default(0) @db.SmallInt
   ticketRef        String?   @map("ticket_ref") @db.VarChar(40)
   featureRequestId String?   @map("feature_request_id") @db.Uuid
+  /// Answer 2112: the sales request sent from this chat (once per chat).
+  salesRequestId   String?   @map("sales_request_id") @db.Uuid
   handedOverAt     DateTime? @map("handed_over_at") @db.Timestamptz(3)
   messages         AssistantMessage[]
 

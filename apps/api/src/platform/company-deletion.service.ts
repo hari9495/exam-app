@@ -18,6 +18,9 @@ function refused(e: unknown): never {
 /** What purge_company returns: the certificate as stored, and its SHA-256. */
 type Purged = { id: string; certificate: Record<string, unknown> & { rows: number; recordsKeptUntil: string }; sha256: string };
 
+/** What release_company_records returns (answer 1976). */
+export type Released = { released: { group: string; rows: number; sha256: string }[]; waiting: string[]; companyRemoved: boolean };
+
 /**
  * Answer 1882: deleting a closed company's data after its kept days (account.closure.keep_days, 30). One YukthiX staff
  * member asks, a second confirms (both with the security key, at the controller); the database deletes the company's
@@ -114,6 +117,57 @@ export class CompanyDeletionService {
     return { id: out.id, certificate: out.certificate, certificateSha256: out.sha256, storedFilesDropped: dropped };
   }
 
+  /**
+   * Answer 1976: one purged company's kept records whose day has passed are removed (release_company_records decides
+   * and refuses on its own: day not passed, a legal hold, an open or never-purged company), with a certificate per
+   * group, audited in the same transaction. Two workers at once: an advisory lock per company, and the function locks
+   * the company row; a removed group stays removed. The stored files the removed records held are dropped after.
+   * Returns null when nothing was due (the database's refusal, in its words, is logged at debug level).
+   */
+  async releaseExpired(organizationId: string): Promise<Released | null> {
+    let res: { out: Released; drop: string[] };
+    try {
+      res = await this.tenantPrisma.forTenant(
+        PLATFORM,
+        async (tx) => {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`retention-release:${organizationId}`}))`;
+          const before = await companyStoredFiles(tx, organizationId);
+          const [r] = await tx.$queryRaw<{ out: Released }[]>`SELECT release_company_records(${organizationId}::uuid) AS out`;
+          const out = r!.out;
+          if (!out.released.length) return { out, drop: [] };
+          const after = await companyStoredFiles(tx, organizationId);
+          const still = new Set([...after.kept, ...after.drop]);
+          await AuditService.recordIn(tx, PLATFORM, { actorUserId: null, action: 'platform.company.kept_records_removed', entityType: 'company', entityId: organizationId, metadata: { organizationId, released: out.released, waiting: out.waiting, companyRemoved: out.companyRemoved } });
+          return { out, drop: before.kept.filter((f) => !still.has(f)) };
+        },
+        { timeout: 300_000 },
+      );
+    } catch (e) {
+      const m = e instanceof Error ? /Message: `(?:ERROR: )?([^`]+)`/.exec(e.message) : null;
+      if (m && e instanceof Error && /P0001/.test(e.message)) {
+        this.logger.debug(`Kept records of ${organizationId} not removed: ${m[1]}`);
+        return null;
+      }
+      throw e;
+    }
+    for (const ref of res.drop) await this.files.drop(ref).catch((e: unknown) => this.logger.warn(`Stored file not dropped after removing kept records of ${organizationId}: ${e instanceof Error ? e.message : String(e)}`));
+    return res.out;
+  }
+
+  /** Answer 1976, the nightly sweep: every purged company (its kept records are only ever removed here). */
+  async releaseSweep(): Promise<{ companies: number; released: number }> {
+    const orgs = await this.tenantPrisma.forTenant(PLATFORM, (tx) => tx.organization.findMany({ where: { lifecycle: 'closed', recordsKeptUntil: { not: null } }, select: { id: true } }));
+    let released = 0;
+    for (const { id } of orgs) {
+      try {
+        released += (await this.releaseExpired(id))?.released.length ?? 0;
+      } catch (e) {
+        this.logger.error(`Removing the kept records of ${id} failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    return { companies: orgs.length, released };
+  }
+
   /** Answer 1973: the deletion certificate exactly as stored (its text and SHA-256), for the console to download. */
   async certificate(actorUserId: string, organizationId: string) {
     const actor = await staffActor(this.tenantPrisma, actorUserId);
@@ -121,7 +175,9 @@ export class CompanyDeletionService {
       const row = await tx.companyDeletion.findFirst({ where: { organizationId, status: 'done' }, orderBy: { deletedAt: 'desc' }, select: { id: true, companySlug: true, certificate: true, certificateSha256: true } });
       if (!row?.certificate) throw new NotFoundException('This company’s data has not been deleted: there is no certificate.');
       await AuditService.recordIn(tx, PLATFORM, { actorUserId, actor, action: 'platform.company.deletion_certificate_downloaded', entityType: 'company_deletion', entityId: row.id, metadata: { organizationId } });
-      return { fileName: `yukthix-deletion-certificate-${row.companySlug}.json`, certificate: row.certificate, certificateSha256: row.certificateSha256 };
+      // Answer 1976: the second certificates, one per kept group removed after its day.
+      const removals = await tx.companyRecordGroup.findMany({ where: { organizationId, releasedAt: { not: null } }, orderBy: { releasedAt: 'asc' }, select: { recordGroup: true, releasedAt: true, certificate: true, certificateSha256: true } });
+      return { fileName: `yukthix-deletion-certificate-${row.companySlug}.json`, certificate: row.certificate, certificateSha256: row.certificateSha256, removals };
     });
   }
 

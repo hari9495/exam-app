@@ -178,6 +178,21 @@ describe('Console C-8 YX-11: help-centre editor', () => {
       const actions = (await asPlatform((tx) => tx.auditLog.findMany({ where: { entityId: articleId }, select: { action: true } }))).map((r) => r.action);
       expect(actions).toEqual(expect.arrayContaining(['desk.kb.article_submitted', 'desk.kb.article_approved', 'desk.kb.article_published']));
     });
+
+    // Answer 2116: "Use in assistant answers" in the console editor, on by default for YukthiX articles, audited.
+    it('Use in assistant answers: on by default; a writer switches it off (audited once); bad values are refused', async () => {
+      expect((await api('staffA', 'get', `/platform/help-centre/articles/${articleId}`).expect(200)).body.assistantUse).toBe(true);
+      await api('staffA', 'patch', `/platform/help-centre/articles/${articleId}`).send({ ...article, assistantUse: 'no' }).expect(400);
+      expect((await api('staffA', 'patch', `/platform/help-centre/articles/${articleId}`).send({ ...article, assistantUse: false }).expect(200)).body.assistantUse).toBe(false);
+      // Saving again with the same value writes no second audit line; leaving it out keeps it as it is.
+      await api('staffA', 'patch', `/platform/help-centre/articles/${articleId}`).send({ ...article, assistantUse: false }).expect(200);
+      expect((await api('staffA', 'patch', `/platform/help-centre/articles/${articleId}`).send(article).expect(200)).body.assistantUse).toBe(false);
+      const logs = await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findMany({ where: { entityId: articleId, action: 'platform.helpcentre.assistant_use_changed' }, select: { actorUserId: true, metadataJson: true } }));
+      expect(logs.map((l) => ({ actor: l.actorUserId, meta: JSON.parse(l.metadataJson ?? '{}') }))).toEqual([{ actor: users.staffA, meta: { assistantUse: false } }]);
+      expect((await api('staffB', 'patch', `/platform/help-centre/articles/${articleId}`).send({ ...article, assistantUse: true }).expect(200)).body.assistantUse).toBe(true);
+      // negative: a company person cannot switch it.
+      await api('adminA', 'patch', `/platform/help-centre/articles/${articleId}`).send({ ...article, assistantUse: false }).expect(403);
+    });
   });
 
   describe('what companies see', () => {

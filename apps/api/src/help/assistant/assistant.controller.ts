@@ -2,12 +2,13 @@ import { Body, Controller, ForbiddenException, Get, HttpCode, Param, ParseUUIDPi
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { Transform, Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { TOPICS } from '../../platform/sales-assist.service';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { OwnSessionGuard } from '../../auth/own-session.guard';
 import { CurrentUserId } from '../../auth/current-user-id.decorator';
 import { PermissionsGuard } from '../../rbac/permissions.guard';
-import { RequirePermissions } from '../../rbac/permissions.decorator';
+import { RequireAnyPermission, RequirePermissions } from '../../rbac/permissions.decorator';
 import { PlatformStaffGuard } from '../../platform/platform-staff.guard';
 import { STRICT_AI_GENERATE_THROTTLE } from '../../rate-limit-tiers';
 import { AssistantService, type Me } from './assistant.service';
@@ -44,6 +45,26 @@ export class FeatureRequestDto {
   @IsString()
   @MaxLength(2000)
   details?: string;
+}
+
+/** Answer 2112: a sales request from a chat about buying (the Talk to us fields, without a nudge). */
+export class ChatSalesDto {
+  @Transform(({ value }) => (typeof value === 'string' ? value.replace(/[\s-]/g, '').replace(/^(\+91|0)/, '') : value))
+  @IsString()
+  @Matches(/^[6-9][0-9]{9}$/, { message: 'Give a 10-digit Indian mobile number.' })
+  phone!: string;
+
+  @IsArray()
+  @ArrayMaxSize(4)
+  @IsIn(TOPICS, { each: true })
+  topics!: string[];
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(500)
+  @Matches(/^[^<>]*$/, { message: 'Write it without < or >.' })
+  note?: string;
 }
 
 export class FeatureDecisionDto {
@@ -116,13 +137,26 @@ export class AssistantController {
     return this.assistant.raiseTicket(me(req), id);
   }
 
+  /** Answer 2112: Plan & add-ons' key (the service checks it again, with a plain-words refusal). */
+  @Post('conversations/:id/sales-request')
+  @RequirePermissions('org:manage_billing')
+  salesRequest(@Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ChatSalesDto) {
+    return this.assistant.sendSalesRequest(me(req), id, dto);
+  }
+
   @Post('conversations/:id/feature-request')
   featureRequest(@Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Body() dto: FeatureRequestDto) {
     return this.assistant.sendFeatureRequest(me(req), id, dto.title, dto.details ?? '');
   }
 }
 
-/** YukthiX staff: the assistant review and the Feature requests list (the help centre writers' key). */
+/** Answer 2113: feature requests have a key of their own (Support agent and Customer success hold it). */
+export const FEATURE_REQUESTS_KEY = 'platform.feature_requests.manage';
+
+/**
+ * YukthiX staff: the Feature requests list (its own key, answer 2113) and the assistant review, which the help centre
+ * writers keep reading too (they fix the articles it shows are missing).
+ */
 @Controller('platform')
 @UseGuards(JwtAuthGuard, PlatformStaffGuard, PermissionsGuard)
 export class AssistantStaffController {
@@ -132,19 +166,19 @@ export class AssistantStaffController {
   ) {}
 
   @Get('assistant/review')
-  @RequirePermissions('platform.helpcentre.write')
+  @RequireAnyPermission(FEATURE_REQUESTS_KEY, 'platform.helpcentre.write')
   review(@CurrentUserId() _staff: string, @Query() q: ReviewQueryDto) {
     return this.assistant.review(q.days ?? 30);
   }
 
   @Get('feature-requests')
-  @RequirePermissions('platform.helpcentre.write')
+  @RequirePermissions(FEATURE_REQUESTS_KEY)
   list(@CurrentUserId() staff: string) {
     return this.requests.list(staff);
   }
 
   @Put('feature-requests/:id')
-  @RequirePermissions('platform.helpcentre.write')
+  @RequirePermissions(FEATURE_REQUESTS_KEY)
   decide(@CurrentUserId() staff: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: FeatureDecisionDto) {
     return this.requests.decide(staff, id, dto);
   }

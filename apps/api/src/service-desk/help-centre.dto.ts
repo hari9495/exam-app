@@ -11,6 +11,8 @@ export class HelpArticleDto {
   @IsOptional() @trim() @IsString() @MaxLength(300) summary?: string;
   @IsString() @MaxLength(200_000) bodyHtml!: string;
   @IsArray() @ArrayMinSize(1, { message: 'Name at least one page it explains.' }) @ArrayMaxSize(20) @Matches(PAGE, { each: true, message: 'Pages are app addresses such as /yx/time/leave.' }) pages!: string[];
+  /** Answer 2116: Ask YukthiX may answer from this article (on unless a writer switches it off). */
+  @IsOptional() @IsBoolean() assistantUse?: boolean;
 }
 
 /** Save the working draft (the version saved last, to catch a newer save) and its pages. */

@@ -117,5 +117,12 @@
   "item": "Question bank pages are live but not in the menu; the older /questions routes still publish without review (question 2121) and attempts do not record the question version (2122).",
   "status": "Open",
   "next": "Lead: menu and /v2/questions redirect after AS-0 merges"
+ },
+ {
+  "id": "W-018",
+  "area": "Ask YukthiX follow-ups",
+  "item": "Help centre writers without the new feature-requests key cannot reach the Ask YukthiX review tab (question 2132).",
+  "status": "Open",
+  "next": "Founder answer 2132, then a small console change"
  }
 ]

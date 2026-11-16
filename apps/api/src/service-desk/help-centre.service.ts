@@ -148,6 +148,7 @@ export class HelpCentreService {
     const made = await this.kb.create(a, { spaceId: a.spaceId, title: dto.title, summary: dto.summary, bodyHtml: dto.bodyHtml });
     const art = await this.kb.get(a, made.id);
     await this.kb.updateMeta(a, made.id, { version: art.version, pages: dto.pages });
+    await this.assistantUse(staffUserId, a, made.id, dto.assistantUse);
     return this.kb.get(a, made.id);
   }
 
@@ -157,7 +158,20 @@ export class HelpCentreService {
     await this.kb.saveDraft(a, id, { title: dto.title, summary: dto.summary, bodyHtml: dto.bodyHtml, version: dto.draftVersion });
     const art = await this.kb.get(a, id);
     await this.kb.updateMeta(a, id, { version: art.version, pages: dto.pages });
+    await this.assistantUse(staffUserId, a, id, dto.assistantUse);
     return this.kb.get(a, id);
+  }
+
+  /**
+   * Answer 2116: "Use in assistant answers" (on by default). Changed only when it differs; the platform audit log names
+   * the member of staff (the article's own log names their linked YukthiX-company user).
+   */
+  private async assistantUse(staffUserId: string, a: DeskActor, id: string, on: boolean | undefined) {
+    if (on === undefined) return;
+    const art = await this.kb.get(a, id);
+    if (art.assistantUse === on) return;
+    await this.kb.updateMeta(a, id, { version: art.version, assistantUse: on });
+    await this.tenantPrisma.forTenant(PLATFORM, (tx) => AuditService.recordIn(tx, PLATFORM, { actorUserId: staffUserId, action: 'platform.helpcentre.assistant_use_changed', entityType: 'sd_kb_article', entityId: id, metadata: { assistantUse: on } }));
   }
 
   async submit(staffUserId: string, id: string, version: number) {

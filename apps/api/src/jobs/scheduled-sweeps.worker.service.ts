@@ -32,6 +32,7 @@ import { IncidentsService } from '../platform/incidents.service';
 import { CsFollowupService } from '../platform/cs-followup.service';
 import { StaffRolesService } from '../platform/staff-roles.service';
 import { AnalyticsService } from '../platform/analytics.service';
+import { CompanyDeletionService } from '../platform/company-deletion.service';
 import { QuestionReviewNudgesService } from '../questions/bank/review-nudges.service';
 import { SettingChangeNoticesService } from '../org-structure/setting-change-notices.service';
 
@@ -86,6 +87,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     settingNotices: SettingChangeNoticesService,
     projectCost: ProjectCostService,
     analytics: AnalyticsService,
+    deletions: CompanyDeletionService,
     questionReviews: QuestionReviewNudgesService,
   ) {
     // Keys MUST match SWEEP_SCHEDULE ids.
@@ -134,6 +136,8 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       'settings-change-lapse': () => settingNotices.lapseSweep(),
       // Console 1216.
       'analytics-summary': () => analytics.summariseNightly(),
+      // Settings 1976: kept statutory records past their day.
+      'retention-expiry': () => deletions.releaseSweep(),
       // Assessments answer 2129.
       'question-review-nudges': () => questionReviews.sweep(),
     };
