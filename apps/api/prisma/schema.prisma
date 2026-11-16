@@ -1051,6 +1051,8 @@ model Attempt {
   survey                        AttemptSurvey?
   /// AS-4b (PRC-10): time lost above asmt.time_credit_cap, waiting for a person.
   connectivityCredits           ConnectivityCredit[]
+  integrityIncident             IntegrityIncident?
+  integrityAppeals              IntegrityAppeal[]
 
   /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
   organizationId String? @map("organization_id") @db.Uuid
@@ -14539,6 +14541,57 @@ model ConnectivityCredit {
 
   @@index([organizationId, status], map: "connectivity_credits_organization_id_status_idx")
   @@map("connectivity_credits")
+}
+
+/// AS-5 (answers 2006, 2008, 2012): an attempt the integrity analysis flagged, and its verdict. Forced RLS.
+model IntegrityIncident {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Filled by the database from the attempt (asmt_org_from_attempt).
+  organizationId String?          @map("organization_id") @db.Uuid
+  attemptId      String           @unique(map: "integrity_incidents_attempt_id_key") @map("attempt_id") @db.Uuid
+  /// open | second_review | decided
+  status         String           @default("open") @db.VarChar(14)
+  /// review | high_concern | manual
+  level          String           @db.VarChar(14)
+  reviewerId     String?          @map("reviewer_id") @db.Uuid
+  /// cleared | warning | section | attempt
+  verdict        String?          @db.VarChar(10)
+  sectionTitle   String?          @map("section_title") @db.VarChar(200)
+  reason         String?          @db.VarChar(2000)
+  decidedBy      String?          @map("decided_by") @db.Uuid
+  decidedAt      DateTime?        @map("decided_at") @db.Timestamptz(3)
+  /// The person the first reviewer chose to confirm an attempt invalidation (PRC-17).
+  secondReviewerId String?        @map("second_reviewer_id") @db.Uuid
+  confirmedBy    String?          @map("confirmed_by") @db.Uuid
+  confirmedAt    DateTime?        @map("confirmed_at") @db.Timestamptz(3)
+  appealClosesAt DateTime?        @map("appeal_closes_at") @db.Timestamptz(3)
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime         @default(now()) @map("updated_at") @db.Timestamptz(3)
+  attempt        Attempt          @relation(fields: [attemptId], references: [id], onDelete: Cascade, map: "integrity_incidents_attempt_fkey")
+  appeal         IntegrityAppeal?
+
+  @@index([organizationId, status], map: "integrity_incidents_organization_id_status_idx")
+  @@map("integrity_incidents")
+}
+
+/// AS-5 (answer 2012): the candidate's appeal of a verdict, decided by someone who did not give it. Forced RLS.
+model IntegrityAppeal {
+  id             String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String?           @map("organization_id") @db.Uuid
+  incidentId     String            @unique(map: "integrity_appeals_incident_id_key") @map("incident_id") @db.Uuid
+  attemptId      String            @map("attempt_id") @db.Uuid
+  text           String            @db.VarChar(2000)
+  /// open | upheld | overturned
+  status         String            @default("open") @db.VarChar(10)
+  reason         String?           @db.VarChar(2000)
+  decidedBy      String?           @map("decided_by") @db.Uuid
+  decidedAt      DateTime?         @map("decided_at") @db.Timestamptz(3)
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  incident       IntegrityIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade, map: "integrity_appeals_incident_fkey")
+  attempt        Attempt           @relation(fields: [attemptId], references: [id], onDelete: Cascade, map: "integrity_appeals_attempt_fkey")
+
+  @@index([organizationId, status], map: "integrity_appeals_organization_id_status_idx")
+  @@map("integrity_appeals")
 }
 
 /// Answer 2129: a bank writer was told today that questions wait for their review (one note per person per India day).

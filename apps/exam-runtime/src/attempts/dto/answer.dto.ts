@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsISO8601, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsISO8601, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested, MinLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class AnswerTelemetryDto {
@@ -61,6 +61,14 @@ export class AnswerDto {
   @IsOptional()
   @IsISO8601({ strict: true })
   clientSavedAt?: string;
+}
+
+/** AS-5 (answer 2012): the candidate's appeal of an integrity decision, in their own words. */
+export class AppealDto {
+  @IsString()
+  @MinLength(10)
+  @MaxLength(2000)
+  text!: string;
 }
 
 /** AS-4a: the optional after-test survey (never affects the score). */

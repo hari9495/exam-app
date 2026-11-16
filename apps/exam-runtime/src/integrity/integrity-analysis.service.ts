@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { TenantPrismaService, AiApiKeyResolverService } from '@exam-platform/shared';
 import { QuotaService } from '../billing/quota.service';
 import { IntegrityNarrativeClient } from './integrity-narrative.client';
@@ -177,6 +178,8 @@ export class IntegrityAnalysisService {
             ? { ...core, analyzedAt: new Date() }
             : { ...core, narrative, analyzedAt: new Date() },
         });
+        // AS-5: a flagged attempt gets an integrity incident (kept on legal hold until decided), in the same transaction.
+        await openIncidentIfFlagged(tx, attemptId, level);
         if (narrativeSucceeded) {
           await tx.aiCreditUsage.create({
             data: { organizationId, source: 'integrity_narrative', credits: 1, sourceId: attemptId },
@@ -261,10 +264,22 @@ export class IntegrityAnalysisService {
             // integrity concerns detected") contradicting the just-updated level.
             data: { flagsJson: JSON.stringify(updatedFlags), level: deriveLevel(updatedFlags), narrative: null },
           });
+          await openIncidentIfFlagged(tx, counterpartAttemptId, deriveLevel(updatedFlags));
         });
       }
     } catch (error) {
       this.logger.error(`Counterpart integrity update failed for attempt ${attemptId}`, error as Error);
     }
   }
+}
+
+/**
+ * AS-5 (answer 2008): an attempt flagged for review or high concern gets one integrity incident; an open one follows
+ * the latest level. A decided incident is never reopened by a later analysis.
+ */
+export async function openIncidentIfFlagged(tx: Prisma.TransactionClient, attemptId: string, level: string): Promise<void> {
+  if (level !== 'review' && level !== 'high_concern') return;
+  const existing = await tx.integrityIncident.findUnique({ where: { attemptId }, select: { status: true, level: true } });
+  if (!existing) await tx.integrityIncident.create({ data: { attemptId, level } });
+  else if (existing.status === 'open' && existing.level !== level && existing.level !== 'manual') await tx.integrityIncident.update({ where: { attemptId }, data: { level, updatedAt: new Date() } });
 }

@@ -17,7 +17,7 @@ export default function CandidateSubmittedPage() {
   const resultNote =
     feedback?.status === 'held' ? (
       <p>Your result is under review. You will hear from us by email.</p>
-    ) : feedback?.status === 'settled' ? (
+    ) : feedback?.status === 'settled' || feedback?.status === 'invalidated' ? (
       <p>
         <Link href="/result">See your result</Link>
       </p>

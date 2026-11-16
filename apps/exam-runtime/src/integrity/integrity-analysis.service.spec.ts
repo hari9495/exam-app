@@ -68,7 +68,7 @@ describe('IntegrityAnalysisService', () => {
   }
 
   function persistTx() {
-    return { integrityAnalysis: { upsert: jest.fn() }, aiCreditUsage: { create: jest.fn() } };
+    return { integrityAnalysis: { upsert: jest.fn() }, aiCreditUsage: { create: jest.fn() }, integrityIncident: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn(), update: jest.fn() } };
   }
 
   // Shared scaffolding for tests that only vary the attempt's bypass fields, webcam
@@ -405,6 +405,7 @@ describe('IntegrityAnalysisService', () => {
     };
     const write = persistTx();
     const counterpartTx = {
+      integrityIncident: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn(), update: jest.fn() },
       integrityAnalysis: {
         findUnique: jest.fn().mockResolvedValue({ flagsJson: '[]' }),
         update: jest.fn(),
@@ -474,6 +475,7 @@ describe('IntegrityAnalysisService', () => {
     };
     const write = persistTx();
     const counterpartTx = {
+      integrityIncident: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn(), update: jest.fn() },
       integrityAnalysis: {
         findUnique: jest.fn().mockResolvedValue({
           flagsJson: '[]',
@@ -511,7 +513,7 @@ describe('IntegrityAnalysisService', () => {
       proctoringEvent: { findMany: jest.fn().mockResolvedValue([]) },
     };
     const write = persistTx();
-    const counterpartTx = { integrityAnalysis: { findUnique: jest.fn().mockResolvedValue(null), update: jest.fn() } };
+    const counterpartTx = { integrityAnalysis: { findUnique: jest.fn().mockResolvedValue(null), update: jest.fn() }, integrityIncident: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn(), update: jest.fn() } };
     tenantPrisma.forTenant
       .mockResolvedValueOnce(attemptWithExam)
       .mockImplementationOnce((_ctx, fn) => fn(readTx))

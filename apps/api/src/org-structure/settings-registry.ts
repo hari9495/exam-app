@@ -104,6 +104,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'asmt.proctor_mode': { label: 'Tests: default proctoring mode', scopes: ['tenant'], dated: false, values: ['open', 'ai', 'record'], default: 'ai', labels: { open: 'Open', ai: 'AI-only', record: 'Record & review' } },
   'asmt.retention': { label: 'Keep recordings, clips and face data for (days)', scopes: ['tenant'], dated: false, values: ['30', '60', '90', '180', '365'], default: '30' },
   'asmt.high_stakes': { label: 'A test for more people than this needs an approver (expected candidates)', scopes: ['tenant'], dated: false, values: ['50', '100', '200', '500', '1000', '2000'], default: '500' },
+  // AS-5 (answer 2012): a candidate may appeal an integrity verdict for this many days after it is given.
+  'asmt.appeal_days': { label: 'Candidates may appeal an integrity decision for (days)', scopes: ['tenant'], dated: false, values: Array.from({ length: 30 }, (_, i) => String(i + 1)), default: '7' },
   // HLP-04 (founder 3 Nov 2026): how often a published help article is checked again (YX-GRO-07). Desk set-up › Settings.
   // Help H-1 (answer 942): the Help drawer's "This page" tab (help articles tagged with the page).
   'help.page_help': { label: 'Help: show page help in the Help drawer', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', labels: { on: 'Shown', off: 'Hidden' } },

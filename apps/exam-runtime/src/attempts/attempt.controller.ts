@@ -8,7 +8,7 @@ import { AttemptService } from './attempt.service';
 import { AccommodationService } from './accommodation.service';
 import { AccommodationDto } from './dto/accommodation.dto';
 import { resolveClientIp } from '../network/resolve-client-ip';
-import { AnswerDto, SurveyDto } from './dto/answer.dto';
+import { AnswerDto, AppealDto, SurveyDto } from './dto/answer.dto';
 import { StartAttemptDto } from './dto/start-attempt.dto';
 import { ReportProctoringEventDto } from './dto/report-proctoring-event.dto';
 import { ClientErrorDto } from './dto/client-error.dto';
@@ -123,6 +123,13 @@ export class AttemptController {
   @Throttle(MODERATE_ATTEMPT_THROTTLE)
   survey(@CurrentCandidate() candidate: CandidateSession, @Body() dto: SurveyDto) {
     return this.attemptService.submitSurvey(candidate, dto);
+  }
+
+  // AS-5 (answer 2012): appeal an integrity decision within the company's window.
+  @Post('appeal')
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  appeal(@CurrentCandidate() candidate: CandidateSession, @Body() dto: AppealDto) {
+    return this.attemptService.appeal(candidate, dto.text);
   }
 
   @Post('client-error')

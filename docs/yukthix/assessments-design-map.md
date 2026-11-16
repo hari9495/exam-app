@@ -400,34 +400,41 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 
 | story (sub-page) | verdict | bucket | note |
 |---|---|---|---|
-| Queue · Queue ordered by score | live (gap) | B | each attempt has an integrity level and reasons (`proctoring_analyses`, `integrity/integrity-analysis.service.ts`), shown per test and per candidate on /v2. Gap: no queue, owner or status |
+| Queue · Queue ordered by score | live (gap) | B | AS-5 part 1: `/yx/hiring/assessments/integrity`, incidents the analysis opened (or a reviewer), high concern first; take, verdict. Gap: no score, SLA or bulk reassign |
 | ConflictOfInterest · Reassign blocked: conflict of interest | design only, feature not built | B | no reviewer assignment |
 | Capacity · Reviewer capacity and SLA | design only, feature not built | C | reviewer pools and SLA at scale |
-| Empty · Empty | live (gap) | B | as Queue |
-| Loading · Loading | live (gap) | B | as Queue |
-| Error · Error | live (gap) | B | as Queue |
+| Empty · Empty | live | B | AS-5 part 1 |
+| Loading · Loading | live | B | AS-5 part 1 |
+| Error · Error | live | B | AS-5 part 1 |
+| LiveQueue · Live · queue | live | B | AS-5 part 1 |
+| LiveEmpty · Live · nothing to review | live | B | AS-5 part 1 |
 
 #### PRC-17 · Incident workspace
 
 | story (sub-page) | verdict | bucket | note |
 |---|---|---|---|
-| Review · Flag review: playback, timeline, evidence | live (gap) | B | the /v2 candidate report: events timeline, snapshots, AI narrative, re-analyse (`POST /attempts/:id/reanalyze`). Gap: no incident record; no video playback (snapshots only) |
-| DisqualifyNeedsSecond · Disqualify: second reviewer required | design only, feature not built | B | `disqualif|verdict` hits are face-voter internals, not decisions |
-| Accept · Accept (cleared) with reason | design only, feature not built | B | no decision record (proctoring bypass with a reason is a different action) |
-| SecondReview · Second reviewer | design only, feature not built | B | as above |
+| Review · Flag review: playback, timeline, evidence | live (gap) | B | AS-5 part 1: `/yx/hiring/assessments/integrity/[id]`, the analysis flags and narrative, the session events, the verdict with a reason. Gap: no video playback or evidence frames (2262) |
+| DisqualifyNeedsSecond · Disqualify: second reviewer required | live | B | AS-5 part 1: the first reviewer names the second; second factor (2006); database check |
+| Accept · Accept (cleared) with reason | live | B | AS-5 part 1: a reason of 10+ characters, audited |
+| SecondReview · Second reviewer | live | B | AS-5 part 1: only the named second reviewer confirms or sends it back, with a reason |
 | IdentityMismatch · Identity mismatch | live (gap) | B | face mismatch events and `faceMismatchAction`. Gap: no ID decision |
-| Decided · Verdict given | design only, feature not built | B | no verdicts |
-| Escalated · Escalated: legal hold and evidence export | design only, feature not built | B | `legal.?hold`: none; retention deletes after 90 days regardless |
+| Decided · Verdict given | live | B | AS-5 part 1: the verdict, who and when, the appeal window (`asmt.appeal_days`) |
+| Escalated · Escalated: legal hold and evidence export | live (gap) | B | AS-5 part 1: the legal hold (open incident, open appeal, or a verdict still open to appeal) keeps evidence from the retention sweeps. Gap: court escalation and the sealed export (2263) |
+| LiveReview · Live · waiting for a verdict | live | B | AS-5 part 1 |
+| LiveSecondReview · Live · you are the second reviewer | live | B | AS-5 part 1 |
+| LiveDecided · Live · verdict given, appeal open | live | B | AS-5 part 1 |
 
 #### PRC-18 · Appeals queue
 
 | story (sub-page) | verdict | bucket | note |
 |---|---|---|---|
-| Default · Decide an appeal | design only, feature not built | B | `appeal` in exam code: none (question 2012) |
-| Overturned · Overturned | design only, feature not built | B | as above |
-| Upheld · Upheld | design only, feature not built | B | as above |
-| Empty · Empty | design only, feature not built | B | as above |
-| Loading · Loading | design only, feature not built | B | as above |
+| Default · Decide an appeal | live | B | AS-5 part 1: `/yx/hiring/assessments/appeals`; decided with a reason by someone who did not give the verdict; overturning asks for the second factor (2006) |
+| Overturned · Overturned | live | B | AS-5 part 1: `/yx/hiring/assessments/appeals`; decided with a reason by someone who did not give the verdict; overturning asks for the second factor (2006) |
+| Upheld · Upheld | live | B | AS-5 part 1: `/yx/hiring/assessments/appeals`; decided with a reason by someone who did not give the verdict; overturning asks for the second factor (2006) |
+| Empty · Empty | live | B | AS-5 part 1: `/yx/hiring/assessments/appeals`; decided with a reason by someone who did not give the verdict; overturning asks for the second factor (2006) |
+| Loading · Loading | live | B | AS-5 part 1: `/yx/hiring/assessments/appeals`; decided with a reason by someone who did not give the verdict; overturning asks for the second factor (2006) |
+| LiveDecide · Live · decide an appeal | live | B | AS-5 part 1 |
+| LiveExcluded · Live · you gave the verdict | live | B | AS-5 part 1 |
 
 #### PRC-19 · Evaluator console
 
@@ -546,14 +553,17 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 | story (sub-page) | verdict | bucket | note |
 |---|---|---|---|
 | Released · Released | live (gap) | B | `Exam.resultsReleaseMode`, `feedbackVisibility`, per-attempt release, certificate (`GET /attempt/certificate`). Gap: the 8 release elements of 6.5 |
-| Held · Under review (held) | live (gap) | B | `POST /attempts/:id/results/hold`. Gap: no reason shown to the candidate |
-| Verdict · Verdict with appeal window | design only, feature not built | B | no verdicts |
-| AppealForm · Appeal form | design only, feature not built | B | no appeals |
-| AppealSent · Appeal sent | design only, feature not built | B | as above |
-| WindowClosed · Appeal window closed | design only, feature not built | B | as above |
+| Held · Under review (held) | live | B | AS-5 part 1: held while the integrity incident is undecided or an appeal is open |
+| Verdict · Verdict with appeal window | live (gap) | B | AS-5 part 1: `/result` shows the decision, "Why" and the window. Gap: no evidence frames for the candidate (2262) |
+| AppealForm · Appeal form | live (gap) | B | AS-5 part 1: `POST /attempt/appeal`, once, in the window. Gap: no supporting files (2264) |
+| AppealSent · Appeal sent | live | B | AS-5 part 1: the result is held while it is open (2012) |
+| WindowClosed · Appeal window closed | live | B | AS-5 part 1 |
 | Phone · Result · phone | phone view, mobile app not built | B | |
 | LiveReleased · Live · released | live | B | AS-4a: `/result`, only what the test shows |
 | LiveHeld · Live · held for review | live | B | AS-4a: a held result shows no score |
+| LiveVerdict · Live · decision with appeal window | live | B | AS-5 part 1 |
+| LiveAppealSent · Live · appeal sent, result held | live | B | AS-5 part 1 |
+| LiveInvalidated · Live · test not counted | live | B | AS-5 part 1 |
 
 #### PRC-28 · Privacy centre
 
@@ -1231,3 +1241,51 @@ Tests and settings: answers 2007, 2008, 2123, PRC-04, PRC-06 and Settings 6.5. N
 2237. **Privacy and legal links for candidates.** The candidate pages have no privacy notice, terms or grievance links
       (the design's footer links were placeholders, now hidden on live pages). *Suggested: link the company's privacy
       notice and YukthiX's terms from the candidate frame with AS-6.*
+
+## AS-5 as built, part 1 (branch `feat/yukthix-assessments-as5`, 16 Nov 2026; answers 2006, 2008, 2012)
+
+Integrity review, appeals and the legal hold. Part 2 is the live console (PRC-13: pause and end with reasons), the
+proctoring pauses inside the designed runner (2231) and the face re-check after approved time (2205); part 3 the
+integrity reports (PRC-20) and the privacy centre (PRC-28).
+
+- **Data:** migrations `202617z0000331_asmt_integrity_review` and `202617z0000332_asmt_second_reviewer`.
+  `integrity_incidents` (one per attempt: level, reviewer, verdict cleared / warning / section / attempt with a reason
+  of 10+ characters, who and when, the named second reviewer and the confirmation, the appeal window) and
+  `integrity_appeals` (one per incident, in the candidate's words, decided with a reason). Forced RLS, the company
+  filled from the attempt, the app may not delete them. Database checks: a verdict has a reason and a person;
+  invalidating an attempt is confirmed by the named second reviewer, never the first; an appeal is decided by
+  someone who did not give the verdict (trigger).
+- **Opening:** the integrity analysis opens an incident in the same transaction when an attempt is flagged for review
+  or high concern (also when a later similarity match lifts a counterpart); an open one follows the latest level; a
+  decided one is never reopened. A reviewer may also open one on any attempt (`POST /asmt/integrity/attempts/:id/open`).
+- **PRC-16 / PRC-17:** `/yx/hiring/assessments/integrity` and `/integrity/[id]`: high concern first; take a review;
+  cleared, warning or a section (of that attempt) is final at once; "attempt invalidated" asks for the second factor
+  and names a second reviewer, who alone confirms (second factor) or sends it back, with a reason. Any verdict but
+  cleared opens the appeal window, `asmt.appeal_days` (1 to 30, default 7, Settings › Results & retention).
+- **PRC-27 / PRC-18:** the candidate's `/result` shows the decision, the reason and the window; an invalidated test
+  shows no score and no certificate. One appeal in the window (`POST /attempt/appeal`); the result is held while it
+  is open (2012). `/yx/hiring/assessments/appeals`: someone who did not give the verdict upholds or overturns with a
+  reason; overturning asks for the second factor (2006); the candidate sees the outcome and the reason.
+- **Legal hold (2008):** evidence is kept while the incident is undecided, while a verdict may still be appealed, and
+  while an appeal is open. AS-2's stand-in (a result held by hand) is no longer a legal hold: a bulk release lifted it.
+- **Who:** the people who proctor, evaluate or own tests (`asmt.proctor`, `asmt.evaluate`, `exam:manage`) and System
+  Admins; Hire › Assessments shows Integrity review and Appeals to them. No change while acting for someone else.
+- **Tests:** e2e `assessments-as5` (10), `assessments-as2` (retention now follows the legal hold); runtime unit
+  (mocks); kit `integrity-live` (10); web integrity pages (5), result page (+2), nav.
+
+### Questions (from 2261)
+
+2261. **Who reviews integrity.** Today anyone who proctors, evaluates or owns tests, and System Admins. *Suggested:
+      keep; add a separate "integrity reviewer" key if a company wants it narrower.*
+2262. **Evidence in the review.** The incident shows the flags, the AI note and the event times; snapshots and screen
+      captures are on the candidate report, and there is no video. *Suggested: show the snapshots and captures on the
+      incident (and a summary of times and key frames to the candidate), with views audited, in part 3.*
+2263. **Escalation to legal.** The design has a court escalation with a sealed evidence export. *Suggested: later,
+      with the evidence export; the legal hold already keeps everything an open matter needs.*
+2264. **Files with an appeal.** The design lets a candidate attach files. *Suggested: one PDF or image up to 10 MB,
+      checked like the accommodation evidence, in part 2.*
+2265. **What a section verdict does to the score.** "Section invalidated" is recorded and shown, but the score is not
+      recomputed without that section. *Suggested: recompute the result without the section on a final verdict, and
+      restore it if the appeal overturns it.*
+2266. **Telling the candidate.** The decision and the appeal outcome show on `/result`; no email is sent.
+      *Suggested: an email on a verdict other than cleared and on the appeal decision.*

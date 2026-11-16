@@ -291,6 +291,8 @@ export const MORE_SETTINGS: Record<string, { links: string[]; settings: Place[];
       { section: 'Question bank', key: 'asmt.item_stats.provisional_answers', synonyms: ['item analysis'] },
       { section: 'Test defaults', key: 'asmt.high_stakes', synonyms: ['approver', 'big test'] },
       { section: 'Proctoring', key: 'asmt.proctor_mode', synonyms: ['proctoring', 'invigilation'] },
+      // AS-5 (answer 2012): how long a candidate may appeal an integrity decision.
+      { section: 'Results & retention', key: 'asmt.appeal_days', synonyms: ['appeal', 'integrity appeal'] },
       { section: 'Results & retention', key: 'asmt.retention', synonyms: ['recording retention', 'delete recordings', 'dpdp'] },
     ],
   },

@@ -22,6 +22,7 @@ import { PrcFrame, type ViewState } from './proctoring-shared';
 import { CameraFrame, EvidenceFrame, FlagTimeline, IntegrityScoreCard, ScreenThumb, CodeAnswer } from './proctoring-kit';
 import { impactRatios, needsModeration, verdictError, VERDICT_LABEL, type Verdict } from './proctoring-logic';
 import { EVENTS_SNEHA, INCIDENTS, PEOPLE, REVIEWERS, SIGNALS_SNEHA, d, type IncidentRow } from './proctoring-data';
+import { LiveAppealsScreen, LiveIncidentWorkspaceScreen, LiveIntegrityQueueScreen, type LiveAppeals, type LiveIncidentWorkspace, type LiveIntegrityQueue } from './integrity-live';
 
 const opt = (xs: string[]) => xs.map((x) => ({ value: x, label: x }));
 const SEV_TONE = { High: 'danger', Medium: 'warning', Low: 'neutral' } as const;
@@ -60,8 +61,9 @@ const INC_COLS: TableColumn<IncidentRow>[] = [
   { key: 'due', header: 'SLA due', type: 'date', value: (r) => r.due, width: 110 },
 ];
 
-export function IntegrityQueueScreen({ incidents, state = 'ready', tab = 'queue', reassign = false }: { incidents: IncidentRow[]; state?: ViewState; tab?: 'queue' | 'capacity'; reassign?: boolean }) {
-  // PRC-16
+export function IntegrityQueueScreen({ incidents = [], state = 'ready', tab = 'queue', reassign = false, live }: { incidents?: IncidentRow[]; state?: ViewState; tab?: 'queue' | 'capacity'; reassign?: boolean; live?: LiveIntegrityQueue }) {
+  // PRC-16; with `live`, the company's real incidents (AS-5).
+  if (live) return <LiveIntegrityQueueScreen live={live} />;
   const [filters, setFilters] = useState<FilterValue[]>([]);
   const [q, setQ] = useState('');
   const [sel, setSel] = useState<string[]>(reassign ? ['INC-5510'] : []);
@@ -149,10 +151,13 @@ export interface IncidentWorkspaceProps {
   defaultVerdict?: Verdict | null;
   defaultReason?: string;
   variant?: 'review' | 'second-review' | 'identity' | 'escalated' | 'decided';
+  /** AS-5: a real incident. */
+  live?: LiveIncidentWorkspace;
 }
 
-export function IncidentWorkspaceScreen({ incident = INCIDENTS[0], defaultVerdict = null, defaultReason = '', variant = 'review' }: IncidentWorkspaceProps) {
-  // PRC-17
+export function IncidentWorkspaceScreen({ incident = INCIDENTS[0], defaultVerdict = null, defaultReason = '', variant = 'review', live }: IncidentWorkspaceProps) {
+  // PRC-17; with `live`, a real incident (AS-5).
+  if (live) return <LiveIncidentWorkspaceScreen live={live} />;
   const [at, setAt] = useState(1395);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState('1');
@@ -300,8 +305,9 @@ export const APPEALS: AppealRow[] = [
   { id: 'APL-110', candidate: 'Sanjay Chatterjee', about: 'INC-5470 · identity mismatch', original: 'Attempt invalidated', firstReviewer: 'Farah Siddiqui', assigned: 'Arvind Swamy', received: d(4), due: d(18), status: 'Upheld' },
 ];
 
-export function AppealsScreen({ appeals, state = 'ready', decided }: { appeals: AppealRow[]; state?: ViewState; decided?: 'upheld' | 'overturned' }) {
-  // PRC-18
+export function AppealsScreen({ appeals = [], state = 'ready', decided, live }: { appeals?: AppealRow[]; state?: ViewState; decided?: 'upheld' | 'overturned'; live?: LiveAppeals }) {
+  // PRC-18; with `live`, the company's real appeals (AS-5).
+  if (live) return <LiveAppealsScreen live={live} />;
   const [sel, setSel] = useState('APL-118');
   const [dec, setDec] = useState<string | undefined>(decided === 'overturned' ? 'overturn' : decided === 'upheld' ? 'uphold' : undefined);
   const a = appeals.find((x) => x.id === sel);

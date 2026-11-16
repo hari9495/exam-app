@@ -1331,10 +1331,26 @@ export function TestRunnerScreen({ view = 'mcq', conn = 'online', live }: { view
 /* ================================================================== */
 
 /** PRC-27 with a real attempt (AS-4a): released (what the test lets the candidate see) or held for review. */
+/** AS-5 (answer 2012): an integrity decision on the attempt, with its appeal window and the appeal. */
+export interface LiveIntegrityDecision {
+  verdict: 'warning' | 'section' | 'attempt';
+  sectionTitle: string | null;
+  reason: string | null;
+  decidedOn: string;
+  appealUntil: string | null;
+  canAppeal: boolean;
+  appeal: { status: 'open' | 'upheld' | 'overturned'; sentOn: string; decidedOn: string | null; reason: string | null } | null;
+}
+
 export interface LiveResult {
   testName: string;
   takenOn?: string;
-  state: 'released' | 'held' | 'pending';
+  /** invalidated (AS-5): an integrity decision invalidated the attempt; the decision shows instead of a score. */
+  state: 'released' | 'held' | 'pending' | 'invalidated';
+  integrity?: LiveIntegrityDecision | null;
+  onAppeal?: (text: string) => Promise<unknown>;
+  /** The inviting company, shown in the frame (never the sample name). */
+  companyName?: string;
   /** Released: only what the test shows (pass or fail, score, sections); null when it shows nothing of it. */
   passed?: boolean | null;
   percentage?: number | null;
@@ -1342,17 +1358,76 @@ export interface LiveResult {
   onCertificate?: () => Promise<unknown>;
 }
 
+const DECISION_TITLE = { warning: 'A warning was noted on your test', section: 'Part of your test was not counted', attempt: 'Your test was not counted' } as const;
+
+/** PRC-27's verdict, appeal form, appeal sent and window closed, with a real decision (AS-5). */
+function IntegrityDecisionPart({ d, onAppeal }: { d: LiveIntegrityDecision; onAppeal?: (text: string) => Promise<unknown> }) {
+  const [writing, setWriting] = useState(false);
+  const [text, setText] = useState('');
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const overturned = d.appeal?.status === 'overturned';
+  return (
+    <>
+      <Card title={overturned ? 'Decision overturned on appeal' : `${DECISION_TITLE[d.verdict]}${d.verdict === 'section' && d.sectionTitle ? `: ${d.sectionTitle}` : ''}`}>
+        <DescriptionList
+          items={[
+            { label: 'Why', value: d.reason ?? '—' },
+            { label: 'Decided on', value: d.decidedOn },
+            ...(d.appeal?.reason ? [{ label: d.appeal.status === 'overturned' ? 'Why it was overturned' : 'Appeal decision', value: d.appeal.reason }] : []),
+          ]}
+        />
+      </Card>
+      {d.canAppeal && !writing && (
+        <InlineAlert tone="info" title={`You can appeal until ${d.appealUntil ?? ''}`} actions={<Button variant="primary" onClick={() => setWriting(true)}>Appeal this decision</Button>}>
+          A different reviewer will look at your appeal. Your recordings are kept until it is decided.
+        </InlineAlert>
+      )}
+      {d.canAppeal && writing && onAppeal && (
+        <div className="yx-prc-center">
+          {error && <InlineAlert tone="danger" title="Your appeal was not sent">{error}</InlineAlert>}
+          <FormField label="Why should we look again?" required helper="Explain what happened in your own words" error={tried && text.trim().length < 10 ? 'Write at least 10 characters.' : undefined}>
+            <TextArea rows={5} value={text} onChange={setText} maxLength={2000} />
+          </FormField>
+          <div className="yx-prc-row">
+            <Button onClick={() => setWriting(false)}>Cancel</Button>
+            <Button
+              variant="primary"
+              loading={busy}
+              onClick={() => {
+                setTried(true);
+                if (text.trim().length < 10) return;
+                setBusy(true);
+                setError(null);
+                onAppeal(text.trim())
+                  .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Try again in a moment.'))
+                  .finally(() => setBusy(false));
+              }}
+            >
+              Send appeal
+            </Button>
+          </div>
+        </div>
+      )}
+      {d.appeal?.status === 'open' && <InlineAlert tone="success" title={`Appeal received on ${d.appeal.sentOn}`}>A reviewer who was not part of the first decision will reply. Your result and recordings are kept until then.</InlineAlert>}
+      {d.appeal?.status === 'upheld' && <InlineAlert tone="info" title="Your appeal was decided">The decision stands. This is final.</InlineAlert>}
+      {!d.canAppeal && !d.appeal && d.appealUntil && <p className="yx-prc-muted yx-prc-small">{`The appeal window for this decision closed on ${d.appealUntil}.`}</p>}
+    </>
+  );
+}
+
 function LiveResultAppealScreen({ live }: { live: LiveResult }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return (
-    <CandidateFrame page="My tests">
+    <CandidateFrame page="My tests" company={live.companyName}>
       <Title>Your result</Title>
       <p className="yx-prc-muted">
         {live.testName}
         {live.takenOn ? ` · taken on ${live.takenOn}` : ''}
       </p>
-      {live.state === 'held' ? (
+      {live.state === 'invalidated' ? null : live.state === 'held' ? (
         <Card title="Result under review">
           <p className="yx-prc-p">We are checking a few moments from your session. This is routine and does not mean you did anything wrong. You will hear from us by email.</p>
         </Card>
@@ -1375,6 +1450,7 @@ function LiveResultAppealScreen({ live }: { live: LiveResult }) {
           )}
         </Card>
       )}
+      {live.integrity && <IntegrityDecisionPart d={live.integrity} onAppeal={live.onAppeal} />}
       {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
       {live.state === 'released' && live.onCertificate && (
         <div className="yx-prc-row">

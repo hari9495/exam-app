@@ -1,3 +1,4 @@
+import { notOnHold } from '../assessments/asmt-rules';
 import { FaceRetentionService } from './face-retention.service';
 
 describe('FaceRetentionService', () => {
@@ -53,11 +54,11 @@ describe('FaceRetentionService', () => {
     expect(await service.prune(NOW)).toBe(1);
   });
 
-  it('negative: the face data of a held result is never selected (legal hold until it is released)', async () => {
+  it('negative: the face data of a held result is never selected (legal hold: an open integrity incident or appeal, or a verdict still open to appeal)', async () => {
     await service.prune(NOW);
 
-    // Only attempts with no result yet or a result not held (NULL-safe: a NOT over the column would match nothing).
-    expect(findMany.mock.calls[0][0].where.AND).toEqual([{ attempt: { OR: [{ result: { is: null } }, { result: { is: { OR: [{ releaseOverride: null }, { releaseOverride: { not: 'held' } }] } } }] } }]);
+    // AS-5: the shared legal-hold filter (its shape is tested in the as5 and as2 e2e suites against the database).
+    expect(findMany.mock.calls[0][0].where.AND).toEqual([notOnHold(NOW)]);
   });
 
   it('clears the stored path and embedding, so no dangling reference survives', async () => {
