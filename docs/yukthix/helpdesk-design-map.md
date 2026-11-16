@@ -2281,3 +2281,9 @@ Queued: 2112, 2113, 2116 (small follow-up slice).
 **Founder answers (16 Nov 2026, "ok for all"), 2146 and 2147:**
 - 2146: hide "Send a sales request" while the company has one open, and say when sales will call.
 - 2147: keep both, the tab for deciders and the page for writers.
+
+**2146 as built (branch `feat/yukthix-bank-fu2`):** while the company has an open sales request (from any chat or Talk to
+us), Ask YukthiX offers no "Send a sales request" on a buying question and says when sales call ("They call you by …");
+the API also refuses a second request from another chat while one is open. Tests: kit `ask-yukthix` (1 new), e2e
+`ask-followups` (the open request shown, a second chat refused, another company unaffected).
+

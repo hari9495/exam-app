@@ -5,6 +5,7 @@ import { FormField, useTooEarly } from '../../components/field';
 import { AssistantPanel, useToast, type AssistantMessage } from '../../components/notify';
 import { TextArea, TextField } from '../../components/inputs';
 import { useRun } from '../org/org-kit';
+import { formatDate } from '../../lib/format';
 import { TalkToUsLiveDialog, type TalkTopic } from '../platform-b/growth-screens';
 
 /** One message of an Ask YukthiX chat, as the API gives it. */
@@ -37,8 +38,15 @@ export interface AskState {
   canRaiseTicket: boolean;
   /** Answer 2112: Plan & add-ons' key (org:manage_billing): only then "Send a sales request" on a buying question. */
   canAskSales?: boolean;
+  /** Answer 2146: the company's open sales request (from any chat or Talk to us), with when sales call; null when none. */
+  salesOpen?: { dueAt: string } | null;
   conversation: AskConversationView | null;
 }
+
+const callBy = (dueAt: string) => {
+  const d = new Date(dueAt);
+  return `${formatDate(d)}, ${d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}`;
+};
 
 export interface AskYukthixProps {
   /** Null while loading. */
@@ -88,9 +96,11 @@ export function AskYukthix(props: AskYukthixProps) {
   const [title, setTitle] = useState('');
   const [details, setDetails] = useState('');
   const [selling, setSelling] = useState(false);
+  const [salesOpen, setSalesOpen] = useState<{ dueAt: string } | null>(props.state?.salesOpen ?? null);
   useEffect(() => {
     setConversation(props.state?.conversation ?? null);
     setRemaining(props.state?.remaining ?? 0);
+    setSalesOpen(props.state?.salesOpen ?? null);
   }, [props.state]);
   const early = useTooEarly(title.trim().length < 5 ? [{ fieldId: 'ask-fr-title', message: 'Say what you would like YukthiX to do (at least 5 characters).' }] : []);
 
@@ -150,7 +160,12 @@ export function AskYukthix(props: AskYukthixProps) {
       </p>
       {conversation?.offerPerson && !conversation.ticketRef && <InlineAlert tone="warning" title="Not getting anywhere?">A person can help. Raise a support ticket and this chat goes with it.</InlineAlert>}
       {buying &&
-        (conversation?.salesRequestSent ? (
+        (salesOpen ? (
+          // Answer 2146: one open request per company; no second one, and when sales call.
+          <InlineAlert tone="info" title="Buying or upgrading">
+            {conversation?.salesRequestSent ? 'A sales request went from this chat.' : 'Your company already asked YukthiX sales.'} They call you by {callBy(salesOpen.dueAt)}.
+          </InlineAlert>
+        ) : conversation?.salesRequestSent ? (
           <InlineAlert tone="info" title="Buying or upgrading">A sales request went from this chat. YukthiX sales will call you.</InlineAlert>
         ) : s.canAskSales && props.onSalesRequest ? (
           <InlineAlert tone="info" title="Buying or upgrading" actions={<Button onClick={() => setSelling(true)}>Send a sales request</Button>}>
@@ -165,6 +180,7 @@ export function AskYukthix(props: AskYukthixProps) {
           onSend={async (input) => {
             const r = await props.onSalesRequest!(conversation.id, input);
             setConversation((c) => (c ? { ...c, salesRequestSent: true } : c));
+            setSalesOpen({ dueAt: r.dueAt });
             return r;
           }}
           onClose={() => setSelling(false)}

@@ -8,6 +8,7 @@ import { AppModule } from '../src/app.module';
 import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
 import { markSteppedUp } from './fixtures/step-up';
+import { asApproved } from './fixtures/approved-question';
 
 // The org webhook must be a public https endpoint (checked at save time), and the worker re-checks the
 // resolved address before every delivery (SSRF guard). The test receiver is a local http server, so:
@@ -163,7 +164,7 @@ describe('Webhook delivery HTTP flow', () => {
       .expect(201);
     const sectionId = sectionResponse.body.id;
 
-    const questionResponse = await request(app.getHttpServer())
+    const questionResponse = await asApproved(await request(app.getHttpServer())
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
@@ -176,7 +177,7 @@ describe('Webhook delivery HTTP flow', () => {
           { text: 'False', isCorrect: false },
         ],
       })
-      .expect(201);
+      .expect(201));
     const questionId = questionResponse.body.id;
 
     await request(app.getHttpServer())

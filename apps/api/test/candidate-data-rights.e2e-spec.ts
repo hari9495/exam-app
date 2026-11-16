@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 import { bootAdminApp, bootRuntimeApp } from './dual-app';
 import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
+import { asApproved } from './fixtures/approved-question';
 
 describe('Candidate data subject rights (GDPR export + erasure)', () => {
   let adminApp: INestApplication;
@@ -81,14 +82,14 @@ describe('Candidate data subject rights (GDPR export + erasure)', () => {
       .send({ title: 'Section One' })
       .expect(201);
 
-    const question = await request(adminHttp)
+    const question = await asApproved(await request(adminHttp)
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
         type: 'single_mcq', text: 'What is 2+2?', difficulty: 'easy', marks: 5,
         options: [{ text: '4', isCorrect: true }, { text: '5', isCorrect: false }],
       })
-      .expect(201);
+      .expect(201));
     questionId = question.body.id;
     questionOptions = question.body.options;
 

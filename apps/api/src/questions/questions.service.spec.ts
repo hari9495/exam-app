@@ -770,10 +770,19 @@ describe('QuestionsService', () => {
   });
 
   describe('publish', () => {
-    it('publishes a draft question by setting status to active', async () => {
+    it('answers 2009, 2141: never approves a draft; another person approves it in the question bank', async () => {
+      const tx = { question: { findFirst: jest.fn().mockResolvedValue({ id: 'q-1', status: 'draft', lastApprovedAt: null }), update: jest.fn() } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      await expect(service.publish(context, 'user-1', 'q-1')).rejects.toThrow(/not been approved/);
+      tx.question.findFirst.mockResolvedValue({ id: 'q-1', status: 'archived', lastApprovedAt: null });
+      await expect(service.publish(context, 'user-1', 'q-1')).rejects.toThrow(/not been approved/);
+      expect(tx.question.update).not.toHaveBeenCalled();
+    });
+
+    it('restores a retired question that was approved before by setting status to active', async () => {
       const tx = {
         question: {
-          findFirst: jest.fn().mockResolvedValue({ id: 'q-1' }),
+          findFirst: jest.fn().mockResolvedValue({ id: 'q-1', status: 'archived', lastApprovedAt: new Date() }),
           update: jest.fn().mockResolvedValue({ id: 'q-1', status: 'active', tags: [] }),
         },
       };

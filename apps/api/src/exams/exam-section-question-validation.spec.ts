@@ -69,6 +69,6 @@ describe('validateSectionQuestionsReplace', () => {
   it('refuses to add a draft question to a section', () => {
     expect(() =>
       validateSectionQuestionsReplace(['q1'], [], [{ id: 'q1', status: 'draft' }]),
-    ).toThrow('is not active and cannot be added to a section for the first time');
+    ).toThrow('is not approved and cannot be added to a section');
   });
 });

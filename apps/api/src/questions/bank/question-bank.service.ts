@@ -186,6 +186,19 @@ export class QuestionBankService {
 
   /** One question for its writer: content (with the answer key), the open change, versions, translations. */
   async get(w: Who, id: string) {
+    const out = await this.read(w, id);
+    // Answer 2143: the candidate preview shows the images through short-lived signed links, keyed by the stored value
+    // (the content keeps the stored value, so saving never writes a link back).
+    const stored = [out.content, out.openChange?.content].flatMap((c) => (c ? [c.imageUrl, ...c.options.map((o) => o.imageUrl)] : [])).filter((u): u is string => Boolean(u));
+    const images: Record<string, string> = {};
+    for (const u of new Set(stored)) {
+      const signed = await this.questions.signedImage(u);
+      if (signed) images[u] = signed;
+    }
+    return { ...out, images };
+  }
+
+  private async read(w: Who, id: string) {
     return this.tx(w, async (tx, org) => {
       const r = await this.row(tx, org, id);
       const revisions = await tx.questionRevision.findMany({ where: { questionId: id, organizationId: org }, orderBy: { createdAt: 'desc' } });

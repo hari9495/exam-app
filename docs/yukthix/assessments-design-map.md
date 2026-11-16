@@ -893,3 +893,31 @@ Not in the menu: the lead adds it after AS-0 merges. Pages: `/yx/hiring/assessme
 - 2143: show question images in the candidate preview through a short-lived signed link.
 - 2144: keep, the keys decide bank access when assessments.enabled is off.
 - 2145: keep, the daily note follows the person's notification settings.
+
+## Question bank round 2 as built (answers 2141 to 2143; branch `feat/yukthix-bank-fu2`)
+
+- **2141:** the older `POST /questions` (the `/v2/questions` page and anything else on that route) makes a draft, as
+  the bank's New question does; nobody can use it until another person approves it in the bank. The older Publish only
+  restores a retired question that was approved before; it never approves a draft (written or AI-drafted). Questions in
+  use before the review flow count as approved (migration `202617z0000312_question_legacy_approved` stamps them; AI
+  drafts that were discarded stay unapproved). The e2e suites that build tests from questions now approve the draft they
+  create, as a reviewer would (`test/fixtures/approved-question.ts`); the review itself stays covered by
+  `question-bank-review`.
+- **2142:** a fixed section takes only approved questions ("not approved … Approve it in the question bank first"),
+  and publishing a test refuses one whose fixed section holds a draft. Pool sections already draw only approved ones.
+- **2143:** the editor's candidate preview shows the question and option images through short-lived signed links
+  (`images` on the bank's question view, keyed by the stored value, so saving never writes a link back), with their alt
+  text; an image not saved yet says so. Story PRC-02 "Candidate preview with an image".
+- **Tests:** API unit (publish refusal and restore; section and test rules); e2e `question-bank` (draft, refused publish,
+  restore, the 2142 rules); kit `bank-live` (2143).
+
+### Questions (from 2191)
+
+2191. **Bulk upload still makes usable questions.** The spreadsheet upload creates questions in use at once.
+      *Suggested: make them drafts in the review queue too, like 2141.*
+2192. **Changing an approved question on the older route.** `PATCH /questions/:id` still changes an approved question
+      in place, without review. *Suggested: send it through a revision, as the bank editor does, when `/v2/questions`
+      is retired.*
+2193. **AI drafts restored from Archived.** A discarded AI draft can no longer be restored straight into use; it goes
+      through review. *Suggested: keep.*
+

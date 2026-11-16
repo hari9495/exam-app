@@ -629,13 +629,18 @@ export class ExamsService {
     const published = await this.tenantPrisma.forTenant(context, async (tx) => {
       const exam = await tx.exam.findFirst({
         where: { id, organizationId: context.organizationId as string },
-        include: { sections: { include: { questions: { include: { question: { select: { marks: true } } } }, poolTags: true } } },
+        include: { sections: { include: { questions: { include: { question: { select: { marks: true, status: true } } } }, poolTags: true } } },
       });
       if (!exam) {
         throw new NotFoundException(`Exam ${id} not found`);
       }
       if (exam.status !== 'draft') {
         throw new BadRequestException(`Exam ${id} cannot be published from status "${exam.status}"`);
+      }
+      // Answer 2142: a fixed section holds only approved questions; a draft (never approved) stops the test going out.
+      const drafts = exam.sections.filter((s) => s.selectionMode !== 'pool' && s.questions.some((link) => link.question?.status === 'draft'));
+      if (drafts.length) {
+        throw new BadRequestException(`Section "${drafts[0]!.title}" has a question that is not approved yet. Approve it in the question bank, or take it out.`);
       }
       if (exam.sections.length === 0) {
         throw new BadRequestException('Exam must have at least one section before it can be published');

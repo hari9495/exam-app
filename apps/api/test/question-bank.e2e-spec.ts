@@ -7,6 +7,7 @@ import { AppModule } from '../src/app.module';
 import { PrismaModule } from '@exam-platform/shared';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
+import { approveQuestion, makeDraft } from './fixtures/approved-question';
 
 describe('Question Bank Row-Level Security', () => {
   let prisma: PrismaService;
@@ -130,6 +131,8 @@ describe('Question Bank HTTP flow', () => {
   });
 
   afterAll(async () => {
+    // The 2142 test's exam holds a question: the exam goes first.
+    await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.exam.deleteMany({ where: { organizationId: orgId } }));
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) =>
       tx.question.deleteMany({ where: { organizationId: orgId } }),
     );
@@ -188,6 +191,11 @@ describe('Question Bank HTTP flow', () => {
       .expect(201);
     questionId = createResponse.body.id;
     expect(createResponse.body.options).toHaveLength(2);
+    // Answer 2141: the older route makes a draft too; nobody can use it until another person approves it, and this
+    // route's Publish never approves it.
+    expect(createResponse.body.status).toBe('draft');
+    expect((await request(app.getHttpServer()).post(`/api/v1/questions/${questionId}/publish`).set('Authorization', `Bearer ${recruiterAccessToken}`).expect(400)).body.message).toMatch(/not been approved/);
+    await approveQuestion(questionId);
 
     const taggedCreateResponse = await request(app.getHttpServer())
       .post('/api/v1/questions')
@@ -203,6 +211,7 @@ describe('Question Bank HTTP flow', () => {
       .expect(201);
     expect(taggedCreateResponse.body.tags).toEqual([{ id: expect.any(String), name: 'geography' }]);
     const geographyTagId = taggedCreateResponse.body.tags[0].id;
+    await approveQuestion(taggedCreateResponse.body.id);
 
     const tagFilteredListResponse = await request(app.getHttpServer())
       .get(`/api/v1/questions?tagId=${geographyTagId}`)
@@ -262,6 +271,23 @@ describe('Question Bank HTTP flow', () => {
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
     expect(archivedListResponse.body.data.map((q: { id: string }) => q.id)).toContain(questionId);
+    // A retired question that was approved before comes back with Publish (restore).
+    await request(app.getHttpServer()).post(`/api/v1/questions/${questionId}/publish`).set('Authorization', `Bearer ${recruiterAccessToken}`).expect(201);
+  });
+
+  it('answer 2142: a fixed section takes only approved questions, and a test with a draft in one is not published', async () => {
+    const auth = { Authorization: `Bearer ${recruiterAccessToken}` };
+    const exam = (await request(app.getHttpServer()).post('/api/v1/exams').set(auth).send({ title: 'Draft rule', durationMinutes: 10 }).expect(201)).body.id as string;
+    const section = (await request(app.getHttpServer()).post(`/api/v1/exams/${exam}/sections`).set(auth).send({ title: 'One' }).expect(201)).body.id as string;
+    const q = (await request(app.getHttpServer()).post('/api/v1/questions').set(auth).send({ type: 'true_false', text: 'Drafts wait for review?', difficulty: 'easy', marks: 1, options: [{ text: 'True', isCorrect: true }, { text: 'False', isCorrect: false }] }).expect(201)).body.id as string;
+    expect((await request(app.getHttpServer()).put(`/api/v1/exams/${exam}/sections/${section}/questions`).set(auth).send({ questionIds: [q] }).expect(400)).body.message).toMatch(/not approved/);
+    await approveQuestion(q);
+    await request(app.getHttpServer()).put(`/api/v1/exams/${exam}/sections/${section}/questions`).set(auth).send({ questionIds: [q] }).expect(200);
+    // A question in the section that is a draft (never approved) stops the test going out.
+    await makeDraft(q);
+    expect((await request(app.getHttpServer()).post(`/api/v1/exams/${exam}/publish`).set(auth).expect(400)).body.message).toMatch(/not approved yet/);
+    await approveQuestion(q);
+    await request(app.getHttpServer()).post(`/api/v1/exams/${exam}/publish`).set(auth).expect(201);
   });
 
   it('rejects an invalid question payload with 400', async () => {

@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 import { bootAdminApp, bootRuntimeApp } from './dual-app';
 import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
+import { asApproved } from './fixtures/approved-question';
 
 // Security fix (assessments audit, 13 Nov 2026): answer keys (correct options, model answers, code test cases) go only
 // to people who write tests or questions; an Interview coordinator (candidate view only) reads no test results; the
@@ -60,10 +61,10 @@ describe('Answer keys and test results (security fix)', () => {
     }
     ids.exam = (await api('writer', 'post', '/exams').send({ title: 'Capitals' }).expect(201)).body.id;
     const section = (await api('writer', 'post', `/exams/${ids.exam}/sections`).send({ title: 'One' }).expect(201)).body.id;
-    const q = (await api('writer', 'post', '/questions').send({ type: 'single_mcq', text: 'Capital of France?', difficulty: 'easy', marks: 10, options: [{ text: 'Paris', isCorrect: true }, { text: 'Lyon', isCorrect: false }] }).expect(201)).body;
+    const q = (await asApproved(await api('writer', 'post', '/questions').send({ type: 'single_mcq', text: 'Capital of France?', difficulty: 'easy', marks: 10, options: [{ text: 'Paris', isCorrect: true }, { text: 'Lyon', isCorrect: false }] }).expect(201))).body;
     ids.question = q.id;
     ids.right = q.options.find((o: { text: string }) => o.text === 'Paris').id;
-    ids.essay = (await api('writer', 'post', '/questions').send({ type: 'essay', text: 'Why Paris?', difficulty: 'easy', marks: 5, options: [], modelAnswer: 'Reference: Paris is the seat of government.' }).expect(201)).body.id;
+    ids.essay = (await asApproved(await api('writer', 'post', '/questions').send({ type: 'essay', text: 'Why Paris?', difficulty: 'easy', marks: 5, options: [], modelAnswer: 'Reference: Paris is the seat of government.' }).expect(201))).body.id;
     await request(http).put(`/api/v1/exams/${ids.exam}/sections/${section}/questions`).set('Authorization', `Bearer ${token.writer}`).send({ questionIds: [ids.question] }).expect(200);
     await api('writer', 'post', `/exams/${ids.exam}/publish`).expect(201);
     const cand = (await api('writer', 'post', '/candidates').send({ email: `asha-${run}@keys.test`, name: 'Asha' }).expect(201)).body.id;

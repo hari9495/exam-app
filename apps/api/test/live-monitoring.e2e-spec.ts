@@ -9,6 +9,7 @@ import { TenantPrismaService } from '@exam-platform/shared';
 import { markSteppedUp } from './fixtures/step-up';
 import { EmailService } from '../src/email/email.service';
 import { LEADERBOARD_CACHE_TTL_MS } from '../../exam-runtime/src/leaderboard/leaderboard.service';
+import { asApproved } from './fixtures/approved-question';
 
 // The leaderboard is computed at most once per LEADERBOARD_CACHE_TTL_MS per exam and shared by every
 // viewer (ADO #6828), and earlier tests here already warmed that cache. Fake ONLY Date (all real timers,
@@ -78,14 +79,14 @@ describe('Live Monitoring WebSocket flow', () => {
       .send({ title: 'Section One' })
       .expect(201);
 
-    const questionResponse = await request(adminHttp)
+    const questionResponse = await asApproved(await request(adminHttp)
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
         type: 'true_false', text: 'Is this a live monitoring test?', difficulty: 'easy', marks: 5,
         options: [{ text: 'True', isCorrect: true }, { text: 'False', isCorrect: false }],
       })
-      .expect(201);
+      .expect(201));
 
     await request(adminHttp)
       .put(`/api/v1/exams/${examId}/sections/${sectionResponse.body.id}/questions`)

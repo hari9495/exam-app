@@ -6,6 +6,7 @@ import { bootAdminApp, bootRuntimeApp } from './dual-app';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
+import { asApproved } from './fixtures/approved-question';
 
 describe('Exam-Taking Runtime HTTP flow', () => {
   let adminApp: INestApplication;
@@ -95,18 +96,18 @@ describe('Exam-Taking Runtime HTTP flow', () => {
       .expect(201);
     const sectionId = sectionResponse.body.id;
 
-    const singleMcq = await request(adminHttp)
+    const singleMcq = await asApproved(await request(adminHttp)
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
         type: 'single_mcq', text: 'What is 2+2?', difficulty: 'easy', marks: 5,
         options: [{ text: '4', isCorrect: true }, { text: '5', isCorrect: false }],
       })
-      .expect(201);
+      .expect(201));
     singleMcqId = singleMcq.body.id;
     singleMcqOptions = singleMcq.body.options;
 
-    const multiMcq = await request(adminHttp)
+    const multiMcq = await asApproved(await request(adminHttp)
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
@@ -116,18 +117,18 @@ describe('Exam-Taking Runtime HTTP flow', () => {
           { text: '4', isCorrect: false }, { text: '9', isCorrect: false },
         ],
       })
-      .expect(201);
+      .expect(201));
     multiMcqId = multiMcq.body.id;
     multiMcqOptions = multiMcq.body.options;
 
-    const trueFalse = await request(adminHttp)
+    const trueFalse = await asApproved(await request(adminHttp)
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
         type: 'true_false', text: 'TypeScript is a superset of JavaScript.', difficulty: 'easy', marks: 1,
         options: [{ text: 'True', isCorrect: true }, { text: 'False', isCorrect: false }],
       })
-      .expect(201);
+      .expect(201));
     trueFalseId = trueFalse.body.id;
     trueFalseOptions = trueFalse.body.options;
 
@@ -379,22 +380,22 @@ describe('Exam-Taking Runtime HTTP flow', () => {
     // hard question's deduction is capped at its own marks value (3) rather than the larger figure a
     // uniform-marks design might suggest. +2 (correct easy) - 3 (wrong hard) still nets negative, which is
     // all that's needed to prove both the deduction and the zero-floor in one flow.
-    const easyQuestion = await request(adminHttp)
+    const easyQuestion = await asApproved(await request(adminHttp)
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
         type: 'single_mcq', text: 'Capital of Japan?', difficulty: 'easy', marks: 2, negativeMarks: 1,
         options: [{ text: 'Tokyo', isCorrect: true }, { text: 'Osaka', isCorrect: false }],
       })
-      .expect(201);
-    const hardQuestion = await request(adminHttp)
+      .expect(201));
+    const hardQuestion = await asApproved(await request(adminHttp)
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
         type: 'single_mcq', text: 'What is the time complexity of binary search?', difficulty: 'hard', marks: 3, negativeMarks: 3,
         options: [{ text: 'O(log n)', isCorrect: true }, { text: 'O(n)', isCorrect: false }],
       })
-      .expect(201);
+      .expect(201));
 
     await request(adminHttp)
       .put(`/api/v1/exams/${negMarksExamId}/sections/${negMarksSectionId}/questions`)
@@ -473,14 +474,14 @@ describe('Exam-Taking Runtime HTTP flow', () => {
     const tagName = `pool-tag-${randomUUID()}`;
     const poolQuestionIds: string[] = [];
     for (let i = 0; i < 3; i++) {
-      const createdQuestion = await request(adminHttp)
+      const createdQuestion = await asApproved(await request(adminHttp)
         .post('/api/v1/questions')
         .set('Authorization', `Bearer ${recruiterAccessToken}`)
         .send({
           type: 'true_false', text: `Pool question ${i}`, difficulty: 'medium', marks: 1, tags: [tagName],
           options: [{ text: 'True', isCorrect: true }, { text: 'False', isCorrect: false }],
         })
-        .expect(201);
+        .expect(201));
       poolQuestionIds.push(createdQuestion.body.id);
     }
     const poolTagId = poolQuestionIds.length > 0
@@ -539,7 +540,7 @@ describe('Exam-Taking Runtime HTTP flow', () => {
       .expect(201);
     const randSectionId = randSectionResponse.body.id;
 
-    const manyOptionsQuestion = await request(adminHttp)
+    const manyOptionsQuestion = await asApproved(await request(adminHttp)
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
@@ -549,7 +550,7 @@ describe('Exam-Taking Runtime HTTP flow', () => {
           { text: 'D', isCorrect: false }, { text: 'E', isCorrect: false },
         ],
       })
-      .expect(201);
+      .expect(201));
 
     await request(adminHttp)
       .put(`/api/v1/exams/${randExamId}/sections/${randSectionId}/questions`)
@@ -601,14 +602,14 @@ describe('Exam-Taking Runtime HTTP flow', () => {
       .expect(201);
     const timedSectionId = timedSectionResponse.body.id;
 
-    const timedQuestion = await request(adminHttp)
+    const timedQuestion = await asApproved(await request(adminHttp)
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
         type: 'true_false', text: 'Timed section question', difficulty: 'easy', marks: 1,
         options: [{ text: 'True', isCorrect: true }, { text: 'False', isCorrect: false }],
       })
-      .expect(201);
+      .expect(201));
 
     await request(adminHttp)
       .put(`/api/v1/exams/${timedExamId}/sections/${timedSectionId}/questions`)

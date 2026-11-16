@@ -6,6 +6,7 @@ import { bootAdminApp, bootRuntimeApp } from './dual-app';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
+import { asApproved } from './fixtures/approved-question';
 
 describe('Exam Reporting HTTP flow', () => {
   let adminApp: INestApplication;
@@ -94,14 +95,14 @@ describe('Exam Reporting HTTP flow', () => {
       .expect(201);
     const sectionId = sectionResponse.body.id;
 
-    const question = await request(adminHttp)
+    const question = await asApproved(await request(adminHttp)
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
         type: 'single_mcq', text: 'What is 2+2?', difficulty: 'easy', marks: 10,
         options: [{ text: '4', isCorrect: true }, { text: '5', isCorrect: false }],
       })
-      .expect(201);
+      .expect(201));
     questionId = question.body.id;
     correctOptionId = question.body.options.find((o: { text: string }) => o.text === '4').id;
     wrongOptionId = question.body.options.find((o: { text: string }) => o.text === '5').id;
