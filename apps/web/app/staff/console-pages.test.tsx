@@ -18,6 +18,7 @@ import ConsoleSupportDeskPage from './(console)/support-desk/page';
 import ConsoleContainPage from './(console)/companies/[id]/contain/page';
 import ConsoleFeatureFlagsPage from './(console)/feature-flags/page';
 import ConsoleHelpCentrePage from './(console)/help-centre/page';
+import ConsoleAssistantReviewPage from './(console)/assistant-review/page';
 import ConsoleFeatureRequestsPage from './(console)/feature-requests/page';
 import ConsolePlatformSettingsPage from './(console)/platform-settings/page';
 import ConsoleCustomersPage from './(console)/customers/page';
@@ -295,6 +296,23 @@ describe('/staff/feature-requests', () => {
     api.mockRejectedValue(Object.assign(new Error('Forbidden'), { status: 403 }));
     wrap(<ConsoleFeatureRequestsPage />);
     expect(await screen.findByText("You don't have access to feature requests")).toBeInTheDocument();
+  });
+});
+
+// Answer 2132: the Ask YukthiX review on its own page (the help centre writers' key opens it).
+describe('/staff/assistant-review', () => {
+  const REVIEW = { days: 30, answers: 3, byOutcome: { answered: 2, not_covered: 1 }, thumbsUp: 1, thumbsDown: 0, unanswered: [{ question: 'How do I close [phone]?', outcome: 'not_covered', feedback: null, at: '2026-11-10T09:00:00Z' }], tickets: [] };
+  it('loads only the review (not the feature-request list)', async () => {
+    route({ 'GET /platform/assistant/review': REVIEW });
+    wrap(<ConsoleAssistantReviewPage />);
+    expect(await screen.findByText('How do I close [phone]?')).toBeInTheDocument();
+    expect(calls.some((c) => c.includes('/platform/feature-requests'))).toBe(false);
+  });
+
+  it('negative: without either key the page says so', async () => {
+    api.mockRejectedValue(Object.assign(new Error('Forbidden'), { status: 403 }));
+    wrap(<ConsoleAssistantReviewPage />);
+    expect(await screen.findByText("You don't have access to the Ask YukthiX review")).toBeInTheDocument();
   });
 });
 

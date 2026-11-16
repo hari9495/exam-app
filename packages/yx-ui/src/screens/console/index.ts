@@ -41,4 +41,4 @@ export { ContainTenantScreen, ContainedBanner, FeatureFlagsScreen, type ContainV
 export { PlatformSettingsScreen, type PlatformSettingRow, type PlatformSettingsScreenProps } from './platform-settings';
 // Staff roles (answers 1058, 1086).
 export { StaffRolesScreen, KEY_WORDS, rolesInput, type StaffRolesScreenProps, type StaffRoleDef, type StaffRoleId, type StaffRow } from './staff';
-export { FeatureRequestsConsoleScreen, FEATURE_STATUS_LABEL, type FeatureRequestsScreenProps, type FeatureRequestRow, type FeatureStatus, type AssistantReview } from './feature-requests';
+export { AssistantReviewConsoleScreen, type AssistantReviewScreenProps, FeatureRequestsConsoleScreen, FEATURE_STATUS_LABEL, type FeatureRequestsScreenProps, type FeatureRequestRow, type FeatureStatus, type AssistantReview } from './feature-requests';
