@@ -175,6 +175,8 @@ export interface ItsmReportView {
   problems: { open: number; byAge: { label: string; count: number }[]; incidentsPerProblem: number | null; top: { number: string; title: string; incidents: number }[] };
 }
 
+const ENDINGS = [['done', 'done'], ['done_with_problems', 'with problems'], ['backed_out', 'backed out'], ['rejected', 'not approved'], ['cancelled', 'cancelled'], ['open', 'not finished']] as const;
+
 export function ItsmReportCard({ report }: { report: ItsmReportView }) {
   const r = report;
   return (
@@ -188,19 +190,12 @@ export function ItsmReportCard({ report }: { report: ItsmReportView }) {
             { label: 'Incidents per problem', value: r.problems.incidentsPerProblem === null ? 'No problems yet' : String(r.problems.incidentsPerProblem) },
           ]}
         />
-        <DataTable
-          label="Changes by kind"
-          rows={r.changes.byKind}
-          getRowId={(x) => x.kind}
-          columns={[
-            { key: 'kind', header: 'Kind', value: (x) => KIND_LABEL[x.kind] },
-            { key: 'done', header: 'Done', type: 'number', value: (x) => x.done },
-            { key: 'dwp', header: 'Done with problems', type: 'number', value: (x) => x.done_with_problems },
-            { key: 'back', header: 'Backed out', type: 'number', value: (x) => x.backed_out },
-            { key: 'rej', header: 'Not approved', type: 'number', value: (x) => x.rejected },
-            { key: 'can', header: 'Cancelled', type: 'number', value: (x) => x.cancelled },
-            { key: 'open', header: 'Not finished', type: 'number', value: (x) => x.open },
-          ]}
+        {/* One line per kind, only the endings that happened (compact, so the page fits a laptop screen). */}
+        <DescriptionList
+          items={r.changes.byKind.map((x) => ({
+            label: `${KIND_LABEL[x.kind]} changes`,
+            value: ENDINGS.filter(([k]) => x[k]).map(([k, word]) => `${x[k]} ${word}`).join(' · ') || 'None',
+          }))}
         />
         {r.problems.top.length > 0 && (
           <DescriptionList items={r.problems.top.map((t) => ({ label: t.number, value: `${t.title} · ${t.incidents} incident${t.incidents === 1 ? '' : 's'}` }))} />
@@ -264,19 +259,22 @@ export function ChangesScreen({ rows, freezes, today, newOpen = false, exportOpe
         onRowClick={live ? (r) => live.onOpen(r.id) : onOpen ? (r) => onOpen(r.id) : undefined}
         empty={<EmptyState title="No changes yet." description="Raise a change before you touch a system people use: what changes, the risk, the plan and the way back." />}
       />
-      <Card title="Change calendar · the next two weeks">
-        {fortnight.length === 0 && freezes.length === 0 ? (
-          <Text tone="secondary">Nothing scheduled.</Text>
-        ) : (
-          <DescriptionList
-            items={[
-              ...freezes.map((f) => ({ label: formatDate(f.on), value: `Freeze: ${f.why}. Changes wait, except an emergency with a reason.` })),
-              ...fortnight.map((r) => ({ label: `${formatDate(r.from)}, ${time(r.from)}`, value: `${r.number} · ${r.title} (${KIND_LABEL[r.kind]}, ${RISK[r.risk].label.toLowerCase()}) · ${r.service}` })),
-            ]}
-          />
-        )}
-      </Card>
-      {report && <ItsmReportCard report={report} />}
+      {/* The calendar and the report side by side, so the page fits a laptop screen. */}
+      <div className={report ? 'yx-ops-split' : undefined}>
+        <Card title="Change calendar · the next two weeks">
+          {fortnight.length === 0 && freezes.length === 0 ? (
+            <Text tone="secondary">Nothing scheduled.</Text>
+          ) : (
+            <DescriptionList
+              items={[
+                ...freezes.map((f) => ({ label: formatDate(f.on), value: `Freeze: ${f.why}. Changes wait, except an emergency with a reason.` })),
+                ...fortnight.map((r) => ({ label: `${formatDate(r.from)}, ${time(r.from)}`, value: `${r.number} · ${r.title} (${KIND_LABEL[r.kind]}, ${RISK[r.risk].label.toLowerCase()}) · ${r.service}` })),
+              ]}
+            />
+          )}
+        </Card>
+        {report && <ItsmReportCard report={report} />}
+      </div>
       {creating && <NewChangeDrawer onClose={() => setCreating(false)} live={live} />}
       {exporting && <ExportDialog today={today} onClose={() => setExporting(false)} onExport={live?.onExport} />}
     </OpsDesk>
@@ -914,6 +912,8 @@ export function ProblemRecordScreen({ problem, incidents, workaround: initial, k
             </div>
           )}
         </Card>
+        <div className="yx-ops-split">
+          <div className="yx-ops-stack">
         <Card title="Root cause">
           <FormField id="prb-cause" label="What causes it" helper="Found by the investigation.">
             <TextArea value={cause} onChange={setCause} rows={3} placeholder="Not found yet." disabled={!can} />
@@ -926,6 +926,27 @@ export function ProblemRecordScreen({ problem, incidents, workaround: initial, k
             </div>
           )}
         </Card>
+        {live && (live.can.close || can) && (
+          <Card title="Closing">
+            <FormField id="prb-reply" label="The reply every open linked incident gets" helper="Sent once, when the problem closes (by its fixing change, or by an IT lead here).">
+              <TextArea value={reply} onChange={setReply} rows={2} maxLength={2000} disabled={!can} />
+            </FormField>
+            <div className="yx-ops-row">
+              {can && (
+                <Button loading={busy === 'reply'} onClick={() => void run('reply', async () => (await live.onSave({ closingReply: reply }), toast({ tone: 'success', title: 'Reply saved' })))}>
+                  Save the reply
+                </Button>
+              )}
+              {live.can.close && (
+                <Button variant="danger" loading={busy === 'close'} onClick={() => void run('close', async () => (await live.onClose(reply), toast({ tone: 'success', title: `${problem.number} closed; its incidents were told` })))}>
+                  Close without a change
+                </Button>
+              )}
+            </div>
+          </Card>
+        )}
+          </div>
+          <div className="yx-ops-stack">
         <Card title={knownError ? 'Known error · workaround' : 'Workaround'} actions={knownError ? <Badge tone="warning"><AlertTriangle aria-hidden size={14} /> Known error</Badge> : undefined}>
           <FormField id="prb-workaround" label="What people can do until it is fixed" error={workEarly.errorOf('prb-workaround')}>
             <TextArea value={workaround} onChange={setWorkaround} rows={3} disabled={!can} />
@@ -999,25 +1020,8 @@ export function ProblemRecordScreen({ problem, incidents, workaround: initial, k
             </div>
           )}
         </Card>
-        {live && (live.can.close || can) && (
-          <Card title="Closing">
-            <FormField id="prb-reply" label="The reply every open linked incident gets" helper="Sent once, when the problem closes (by its fixing change, or by an IT lead here).">
-              <TextArea value={reply} onChange={setReply} rows={2} maxLength={2000} disabled={!can} />
-            </FormField>
-            <div className="yx-ops-row">
-              {can && (
-                <Button loading={busy === 'reply'} onClick={() => void run('reply', async () => (await live.onSave({ closingReply: reply }), toast({ tone: 'success', title: 'Reply saved' })))}>
-                  Save the reply
-                </Button>
-              )}
-              {live.can.close && (
-                <Button variant="danger" loading={busy === 'close'} onClick={() => void run('close', async () => (await live.onClose(reply), toast({ tone: 'success', title: `${problem.number} closed; its incidents were told` })))}>
-                  Close without a change
-                </Button>
-              )}
-            </div>
-          </Card>
-        )}
+          </div>
+        </div>
       </div>
     </OpsDesk>
   );
