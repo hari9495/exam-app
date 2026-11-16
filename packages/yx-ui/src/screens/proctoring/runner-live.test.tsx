@@ -1,7 +1,8 @@
-import { render, screen } from '@testing-library/react';
+import { useState } from 'react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { ResultAppealScreen, TestRunnerScreen } from './candidate';
+import { ResultAppealScreen, TestRunnerScreen, type LiveRunner } from './candidate';
 import { LIVE_RESULT, LIVE_RUNNER } from './runner-live-samples';
 
 // AS-4a (PRC-26, PRC-27): the designed runner and result page with a real attempt.
@@ -83,5 +84,87 @@ describe('PRC-27 live result', () => {
     rerender(<ResultAppealScreen live={{ ...LIVE_RESULT, state: 'held' }} />);
     expect(screen.getByText('Result under review')).toBeInTheDocument();
     expect(screen.queryByText('72 %')).not.toBeInTheDocument();
+  });
+});
+
+// Answer 2161: review mode, "answer any N" sections, the phone question list, pictures and code. Answer 2162.
+function Runner(props: Partial<LiveRunner>) {
+  const [current, setCurrent] = useState(props.current ?? 0);
+  return <TestRunnerScreen live={{ ...LIVE_RUNNER, ...props, current, onNavigate: setCurrent }} />;
+}
+const meta = () => screen.getByRole('button', { name: /^Question \d+ of \d+$/ }).textContent;
+
+describe('PRC-26 live runner: answer 2161 and 2162', () => {
+  it('from Finish, goes through only the unanswered questions, then shows all again', async () => {
+    render(<Runner />);
+    await ue.click(screen.getAllByRole('button', { name: 'Finish test' })[0]!);
+    await ue.click(screen.getByRole('button', { name: 'Go through the 2 unanswered questions' }));
+    const banner = screen.getByRole('region', { name: 'Going through questions' });
+    expect(within(banner).getByText('Unanswered: 1 of 2')).toBeInTheDocument();
+    expect(meta()).toMatch(/^Question 2 of 4/);
+    await ue.click(within(banner).getByRole('button', { name: 'Next unanswered' }));
+    expect(meta()).toMatch(/^Question 4 of 4/);
+    expect(within(banner).getByRole('button', { name: 'Next unanswered' })).toBeDisabled();
+    await ue.click(within(banner).getByRole('button', { name: 'Show all questions' }));
+    expect(screen.queryByRole('region', { name: 'Going through questions' })).not.toBeInTheDocument();
+  });
+
+  it('negative: nothing to go through when every question is answered and none is marked', async () => {
+    render(<Runner questions={LIVE_RUNNER.questions.map((q) => ({ ...q, answered: true, markedForReview: false }))} />);
+    await ue.click(screen.getAllByRole('button', { name: 'Finish test' })[0]!);
+    expect(screen.queryByRole('button', { name: /Go through the/ })).not.toBeInTheDocument();
+  });
+
+  it('a section that asks for any N of its questions says so, and Finish counts it against N', async () => {
+    const sections = [{ name: 'Aptitude', count: 2 }, { name: 'Java', count: 2, required: 1 }];
+    render(<Runner sections={sections} current={2} />);
+    expect(screen.getByRole('button', { name: 'Java · any 1 of 2' })).toHaveAttribute('aria-current', 'step');
+    expect(screen.getByText('Section 2 of 2: Java · answer any 1 of 2')).toBeInTheDocument();
+    await ue.click(screen.getAllByRole('button', { name: 'Finish test' })[0]!);
+    expect(screen.getByText('Every section has enough answers')).toBeInTheDocument();
+    expect(screen.getByText('Java: 1 of 1 answered')).toBeInTheDocument();
+  });
+
+  it('negative: a section short of its answers is called out in Finish', async () => {
+    const questions = LIVE_RUNNER.questions.map((q) => ({ ...q, answered: false }));
+    render(<Runner sections={[{ name: 'Aptitude', count: 2 }, { name: 'Java', count: 2, required: 2 }]} questions={questions} />);
+    await ue.click(screen.getAllByRole('button', { name: 'Finish test' })[0]!);
+    expect(screen.getByText('Some sections need more answers')).toBeInTheDocument();
+    expect(screen.getByText('Java: 0 of 2 answered')).toBeInTheDocument();
+  });
+
+  it('shows the question picture with its alt text, the code snippet and option pictures', () => {
+    const q = { ...LIVE_RUNNER.questions[0]!, image: { src: 'q.png', alt: 'Monthly sales chart' }, snippet: { language: 'Java', code: 'int x = 1;' }, options: [{ id: 'a', label: 'August', image: { src: 'a.png', alt: null } }, { id: 'b', label: 'March' }] };
+    render(<Runner questions={[q]} sections={[{ name: 'All', count: 1 }]} />);
+    expect(screen.getByRole('img', { name: 'Monthly sales chart' })).toHaveAttribute('src', 'q.png');
+    expect(screen.getByText('int x = 1;')).toBeInTheDocument();
+    expect(screen.getByLabelText('Code, Java')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Picture: August' })).toBeInTheDocument();
+  });
+
+  it('negative: a question picture without alt text still has a name; no snippet box when there is none', () => {
+    const q = { ...LIVE_RUNNER.questions[0]!, image: { src: 'q.png' } };
+    render(<Runner questions={[q]} sections={[{ name: 'All', count: 1 }]} />);
+    expect(screen.getByRole('img', { name: 'Picture for this question' })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Code,/)).not.toBeInTheDocument();
+  });
+
+  it('on a phone, the question list opens from the header and closes on a choice', async () => {
+    render(<Runner />);
+    await ue.click(screen.getByRole('button', { name: 'Question 1 of 4' }));
+    const list = screen.getByRole('dialog', { name: 'Questions' });
+    await ue.click(within(list).getByRole('button', { name: /^Question 3,/ }));
+    expect(screen.queryByRole('dialog', { name: 'Questions' })).not.toBeInTheDocument();
+    expect(meta()).toMatch(/^Question 3 of 4/);
+  });
+
+  it('a test set to scientific opens the scientific calculator; basic stays basic', async () => {
+    const { unmount } = render(<Runner calculator="scientific" />);
+    await ue.click(screen.getByRole('button', { name: 'Calculator' }));
+    expect(screen.getByRole('region', { name: 'Scientific calculator' })).toBeInTheDocument();
+    unmount();
+    render(<Runner calculator="basic" />);
+    await ue.click(screen.getByRole('button', { name: 'Calculator' }));
+    expect(screen.queryByRole('button', { name: 'sine' })).not.toBeInTheDocument();
   });
 });

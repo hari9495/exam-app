@@ -1428,6 +1428,8 @@ export interface AttemptQuestionOption {
   id: string;
   text: string;
   imageUrl: string | null;
+  /** The writer's alt text for the picture (answer 2126); older runtimes leave it out. */
+  imageAlt?: string | null;
 }
 
 export interface AttemptQuestion {
@@ -1442,6 +1444,7 @@ export interface AttemptQuestion {
   snippetCode: string | null;
   snippetLanguage: CodeLanguage | null;
   imageUrl: string | null;
+  imageAlt?: string | null;
   options: AttemptQuestionOption[];
 }
 

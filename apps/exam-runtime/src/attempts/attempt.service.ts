@@ -50,6 +50,8 @@ interface AttemptQuestionOption {
   id: string;
   text: string;
   imageUrl: string | null;
+  /** Answer 2161: the writer's alt text for the option's picture (2126). */
+  imageAlt: string | null;
 }
 
 interface AttemptQuestion {
@@ -64,6 +66,7 @@ interface AttemptQuestion {
   snippetCode: string | null;
   snippetLanguage: string | null;
   imageUrl: string | null;
+  imageAlt: string | null;
   options: AttemptQuestionOption[];
 }
 
@@ -2131,6 +2134,11 @@ export class AttemptService {
             .filter((question): question is NonNullable<typeof question> => question !== undefined)
             .map(async (question) => {
               const order = optionOrder?.[question.id];
+              // Alt texts are stored in the options' written order (order_index), not the shuffled order shown.
+              const alts = Array.isArray(question.optionAlts) ? (question.optionAlts as unknown[]) : [];
+              const altOf = new Map(
+                [...question.options].sort((a, b) => a.orderIndex - b.orderIndex).map((option, i) => [option.id, typeof alts[i] === 'string' && (alts[i] as string).trim() ? (alts[i] as string) : null]),
+              );
               const orderedOptions = order
                 ? order
                     .map((optionId) => question.options.find((option) => option.id === optionId))
@@ -2148,11 +2156,13 @@ export class AttemptService {
                 snippetCode: question.snippetCode,
                 snippetLanguage: question.snippetLanguage,
                 imageUrl: (await this.blobStorage.signIfOurs(question.imageUrl)) as string | null,
+                imageAlt: question.imageAlt ?? null,
                 options: await Promise.all(
                   orderedOptions.map(async (option) => ({
                     id: option.id,
                     text: option.text,
                     imageUrl: (await this.blobStorage.signIfOurs(option.imageUrl)) as string | null,
+                    imageAlt: altOf.get(option.id) ?? null,
                   })),
                 ),
               };

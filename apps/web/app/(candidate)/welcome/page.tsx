@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Info, ShieldCheck } from 'lucide-react';
+import { Info } from 'lucide-react';
 import { CandidateButton } from '../components/CandidateButton';
 import { CameraPreview } from '../components/CameraPreview';
 import { PracticeStep } from '../components/PracticeStep';
 import { FaceEnrolmentStep, EnrolmentPolicy, FaceEnrolmentPayload } from '../components/FaceEnrolmentStep';
 import { useAskForHelp, useAttemptQuery, useCandidateHelp, useFaceEnrolment, useStartAttempt } from '../../../lib/hooks/useAttempt';
-import { approvedForYou } from '@yukthix/ui/assessments';
+import { ConsentScreen, approvedForYou, type LiveConsent, type ManualIdentityCheck } from '@yukthix/ui/assessments';
 import { isAttemptStarted } from '../../../lib/types';
 import { useToast } from '../../../components/ui';
 import { useCandidateAuth } from '../../../lib/candidate-auth-context';
@@ -25,11 +25,10 @@ export default function CandidateWelcomePage() {
   const askForHelp = useAskForHelp();
   const { toast } = useToast();
   const [cameraStatus, setCameraStatus] = useState<'idle' | 'checking' | 'granted' | 'denied'>('idle');
-  const [consentChecked, setConsentChecked] = useState(false);
-  // Honor-system attestation -- a browser cannot see or close other apps, so this sets the
-  // expectation up front; the periodic AI screen analysis is what actually verifies it.
-  const [appsClosedChecked, setAppsClosedChecked] = useState(false);
-  const [step, setStep] = useState<'practice' | 'consent'>('practice');
+  // AS-4a part 2 (answer 2201): practice, then the designed consent (PRC-24), then the designed selfie (PRC-25) when a
+  // photo check applies, then the start card.
+  const [step, setStep] = useState<'practice' | 'consent' | 'identity' | 'start'>('practice');
+  const [declined, setDeclined] = useState(false);
   const [multiMonitorBlocked, setMultiMonitorBlocked] = useState(false);
   const [screenShareUnsupported, setScreenShareUnsupported] = useState(false);
   const [faceStatus, setFaceStatus] = useState<'pending' | 'enrolled' | 'not_verified'>('pending');
@@ -65,14 +64,70 @@ export default function CandidateWelcomePage() {
   const approvedHelp = help.data?.approved ?? [];
   const manualCheckApproved = approvedHelp.includes('identity');
   const manualCheckAsked = help.data?.request?.status === 'pending' && help.data.request.kinds.includes('identity');
-  const faceGateActive = faceVerificationRequired && faceStatus === 'pending' && !manualCheckApproved;
   const approvedLine = approvedForYou(approvedHelp, help.data?.extraTimePercent ?? 0);
+  const policy = (proctoring?.faceEnrolmentPolicy as EnrolmentPolicy | undefined) ?? 'retry_then_allow';
+  const manualCheck: ManualIdentityCheck = {
+    state: manualCheckApproved ? 'approved' : manualCheckAsked ? 'asked' : 'none',
+    onAsk: () => askForHelp.mutateAsync({ kinds: ['identity'], extraTimePercent: null, note: null, evidence: null }),
+  };
 
   if (step === 'practice') {
     return (
       <div className="mx-auto flex flex-1 max-w-xl flex-col justify-center gap-6 p-8">
         <PracticeStep onDone={() => setStep('consent')} />
       </div>
+    );
+  }
+
+  if (step === 'consent') {
+    const camera = proctoring?.webcamEnabled !== false;
+    const consent: LiveConsent = {
+      candidateName: current.candidateName,
+      companyName: current.organizationName ?? '',
+      testName: current.exam.title,
+      rows: [
+        { what: 'Camera', how: camera ? 'Snapshots and checks that your face is in view' : 'Not used for this test', on: camera },
+        { what: 'Screen', how: proctoring?.screenCaptureEnabled ? 'Screenshots of your whole screen when a rule is broken' : 'Not recorded', on: Boolean(proctoring?.screenCaptureEnabled) },
+        { what: 'Browser activity', how: 'Tab switches, leaving full screen, copy and paste, right-click, developer tools', on: true },
+        { what: 'Code editor activity', how: 'Paste sizes and typing amounts in code answers', on: true },
+        { what: 'Photo check', how: faceVerificationRequired ? 'A photo at the start, to check it is still you during the test' : 'Not used for this test', on: faceVerificationRequired },
+      ],
+      retentionDays: current.exam.evidenceRetentionDays ?? 30,
+      faceChecks: faceVerificationRequired,
+      faceRequired: policy === 'require_enrolment',
+      // Honor-system attestation -- a browser cannot see or close other apps, so this sets the
+      // expectation up front; the periodic AI screen analysis is what actually verifies it.
+      attestation: 'I have closed all other applications, browser windows and tabs, including messaging apps and any screen-sharing or remote-access tools',
+      declined,
+      manual: faceVerificationRequired && policy === 'require_enrolment' ? manualCheck : null,
+      onDecline: () => setDeclined(true),
+      onAgree: ({ faceChecks }) => {
+        setDeclined(false);
+        if (!faceVerificationRequired || manualCheckApproved) return setStep('start');
+        if (faceChecks) return setStep('identity');
+        // A refusal is still a fact about this candidate: recorded as not_verified with no image and no consent,
+        // so it never reads as a test that simply had the check switched off.
+        setFacePayload({ status: 'not_verified', consentGiven: false });
+        setFaceStatus('not_verified');
+        setStep('start');
+      },
+    };
+    return <ConsentScreen live={consent} />;
+  }
+
+  if (step === 'identity') {
+    return (
+      <FaceEnrolmentStep
+        policy={policy}
+        candidateName={current.candidateName}
+        companyName={current.organizationName ?? ''}
+        manualCheck={manualCheck}
+        onSettled={(payload) => {
+          setFacePayload(payload);
+          setFaceStatus(payload.status);
+          setStep('start');
+        }}
+      />
     );
   }
 
@@ -219,45 +274,12 @@ export default function CandidateWelcomePage() {
                 Check your computer
               </button>
             </div>
-            <div className="mb-4 rounded-md border border-candidate-border p-3">
-              <h2 className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-candidate-text-secondary">
-                <ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                Monitoring &amp; Consent
-              </h2>
-              <p className="mb-2 text-xs text-candidate-text-secondary">This exam is monitored. While you take it, we collect:</p>
-              <ul className="mb-2 list-disc pl-4 text-xs text-candidate-text-secondary">
-                {proctoring?.webcamEnabled !== false ? <li>Webcam snapshots and face-presence checks</li> : null}
-                {proctoring?.screenCaptureEnabled ? <li>Screenshots of your entire screen when a rule is broken</li> : null}
-                <li>Browser activity (tab switches, fullscreen exits, copy/paste, right-click, developer tools)</li>
-                <li>Code-editor activity (paste sizes, typing-volume aggregates)</li>
-              </ul>
-              <p className="mb-3 text-xs text-candidate-text-secondary">
-                Seen by the hiring organization&apos;s staff and stored with your attempt.
-              </p>
-              {proctoring?.webcamEnabled !== false ? <CameraPreview status={cameraStatus} onEnable={handleEnableCamera} /> : null}
-              <label className="mt-3 flex items-start gap-2 text-xs text-candidate-text-secondary">
-                <input
-                  type="checkbox"
-                  checked={consentChecked}
-                  onChange={(event) => setConsentChecked(event.target.checked)}
-                  className="mt-0.5"
-                />
-                I understand and consent to monitoring during this exam
-              </label>
-              <label className="mt-2 flex items-start gap-2 text-xs text-candidate-text-secondary">
-                <input
-                  type="checkbox"
-                  checked={appsClosedChecked}
-                  onChange={(event) => setAppsClosedChecked(event.target.checked)}
-                  className="mt-0.5"
-                />
-                I have closed all other applications, browser windows and tabs — including messaging
-                apps and any screen-sharing or remote-access tools
-              </label>
-              <p className="mt-1 text-xs text-candidate-text-tertiary">
-                If you do not consent, close this page and contact your recruiter.
-              </p>
-            </div>
+            {/* Consent was given on the designed step (PRC-24); the camera is turned on here, just before the start. */}
+            {proctoring?.webcamEnabled !== false ? (
+              <div className="mb-4 rounded-md border border-candidate-border p-3">
+                <CameraPreview status={cameraStatus} onEnable={handleEnableCamera} />
+              </div>
+            ) : null}
 
             {multiMonitorBlocked ? (
               <div className="mb-3 rounded-md border border-candidate-danger-border bg-candidate-danger-bg p-3 text-sm text-candidate-danger">
@@ -294,32 +316,18 @@ export default function CandidateWelcomePage() {
                   Download exam configuration (.seb)
                 </CandidateButton>
               </div>
-            ) : faceGateActive ? (
-              <FaceEnrolmentStep
-                policy={(proctoring?.faceEnrolmentPolicy as EnrolmentPolicy | undefined) ?? 'retry_then_allow'}
-                manualCheck={{
-                  state: manualCheckAsked ? 'asked' : 'none',
-                  onAsk: async () => {
-                    try {
-                      await askForHelp.mutateAsync({ kinds: ['identity'], extraTimePercent: null, note: null, evidence: null });
-                    } catch (error) {
-                      toast(error instanceof Error ? error.message : "Couldn't send your request. Try again.", 'error');
-                    }
-                  },
-                }}
-                retentionDays={current.exam.evidenceRetentionDays}
-                onSettled={(payload) => {
-                  setFacePayload(payload);
-                  setFaceStatus(payload.status);
-                }}
-              />
+            ) : faceVerificationRequired && faceStatus === 'pending' && !manualCheckApproved ? (
+              // The photo step was not finished (e.g. the page came back to here): go back through it.
+              <CandidateButton onClick={() => setStep('consent')} className="w-full">
+                Continue to the photo check
+              </CandidateButton>
             ) : proctoring?.webcamEnabled === false || cameraStatus === 'granted' ? (
               <CandidateButton
                 onClick={handleStart}
                 // faceEnrolment.isPending matters because the enrolment POST now runs AFTER
                 // start resolves: without it the button re-enables mid-flight and a second
                 // click would try to start the attempt all over again.
-                disabled={startAttempt.isPending || faceEnrolment.isPending || !consentChecked || !appsClosedChecked}
+                disabled={startAttempt.isPending || faceEnrolment.isPending}
                 className="w-full"
               >
                 {startAttempt.isPending || faceEnrolment.isPending ? 'Starting…' : 'Start exam'}

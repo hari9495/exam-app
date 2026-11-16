@@ -205,8 +205,20 @@ export function deliveryMode(sensitivity: Sensitivity, channel: 'email' | 'whats
 /* ---------- Calculator (runner tool) ---------- */
 
 /** Basic four-function calculator step. Returns the new display. */
-export function calcApply(a: number, op: '+' | '-' | '×' | '÷', b: number): number | 'Error' {
+export type CalcOp = '+' | '-' | '×' | '÷' | '^';
+/** A result the display can show: rounded to 8 places; not a number, or too large to be exact, is an error. */
+const calcResult = (r: number): number | 'Error' => (Number.isFinite(r) && Math.abs(r) < 1e15 ? Math.round(r * 1e8) / 1e8 : 'Error');
+export function calcApply(a: number, op: CalcOp, b: number): number | 'Error' {
   if (op === '÷' && b === 0) return 'Error';
-  const r = op === '+' ? a + b : op === '-' ? a - b : op === '×' ? a * b : a / b;
-  return Math.round(r * 1e8) / 1e8;
+  return calcResult(op === '+' ? a + b : op === '-' ? a - b : op === '×' ? a * b : op === '÷' ? a / b : a ** b);
+}
+
+/** Answer 2162: the scientific keys, applied to the number on the display. Angles in degrees unless `radians`. */
+export type CalcFn = 'sin' | 'cos' | 'tan' | 'sqrt' | 'square' | 'ln' | 'log' | 'inverse' | 'negate';
+export function calcUnary(fn: CalcFn, x: number, radians = false): number | 'Error' {
+  const a = radians ? x : (x * Math.PI) / 180;
+  if (fn === 'tan' && !radians && Math.abs(x % 180) === 90) return 'Error';
+  if ((fn === 'sqrt' && x < 0) || ((fn === 'ln' || fn === 'log') && x <= 0) || (fn === 'inverse' && x === 0)) return 'Error';
+  const r = { sin: Math.sin(a), cos: Math.cos(a), tan: Math.tan(a), sqrt: Math.sqrt(x), square: x * x, ln: Math.log(x), log: Math.log10(x), inverse: 1 / x, negate: -x }[fn];
+  return calcResult(r);
 }

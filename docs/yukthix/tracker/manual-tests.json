@@ -22120,6 +22120,40 @@
     "note": "Positive and negative. Breaks, the calculator and display settings show only after /exam moves to the designed runner (question 2161)."
   },
   {
+    "id": "MT-ASMT-RUN2",
+    "area": "Designed test runner and welcome steps: answers 2161, 2162, 2201 (16 Nov 2026)",
+    "screen": "Candidate › Welcome (consent, selfie, start) and the test",
+    "url": "http://localhost:3000/start",
+    "account": "Candidate invitations to a throwaway test with two sections (the second asks for any 2 of 3), one question with a picture and a code snippet, a calculator set to scientific and one break; one invitation with the photo required, one with it optional.",
+    "steps": [
+      "Open the invitation (photo optional); skip practice; read What we record and why.",
+      "Negative: tick only the apps-closed statement; try Agree and continue.",
+      "Tick the recording consent and the statement but not face checks; Agree and continue; Enable camera; Start exam.",
+      "Answer the first question; mark the second for review; open the second section; read the line above the question.",
+      "Open the question with a picture and code snippet; open Calculator; work out 2 xʸ 10 and sin 30.",
+      "Press Finish test; read the section note; press Go through the unanswered questions; use Next unanswered and Show all questions.",
+      "Make the window narrow (phone width); press the Question n of m button; choose another question.",
+      "Take a break; wait; End break and continue.",
+      "Negative: turn off Wi-Fi; answer a question; turn it back on.",
+      "Finish test and confirm.",
+      "Negative: open the photo-required invitation; Say no and see my options; Ask for a manual identity check.",
+      "Open it again with consent to face checks; follow the selfie step."
+    ],
+    "expected": "Step 1: camera, screen, browser and code-editor activity and the photo check with On/Off, and the company's days of keeping. Step 2: Agree and continue stays off. Step 3: no selfie step; the start card; the test opens in the designed runner. Step 4: section chips (one says any 2 of 3); 'Section 2 of 2: … · answer any 2 of 3'. Step 5: the picture with its alt text, the snippet in a code box; the Scientific calculator shows 1024 and 0.5. Step 6: Finish lists the section against 2; the banner steps through only unanswered ones. Step 7: the question list opens and closes on a choice. Step 8: the break screen counts down; the timer does not run. Step 9: the banner says the answers are kept on this device; they are sent when back. Step 10: Test submitted with the survey. Step 11: the manual check is offered, then 'You asked for a manual identity check'. Step 12: the camera with 'Look at the camera and blink' and Try 1 of 3.",
+    "stories": [
+      "ReviewUnanswered",
+      "AnswerAnyN",
+      "AnswerAnyNFinish",
+      "PhoneQuestionList",
+      "PicturesAndCode",
+      "ScientificCalculator",
+      "LivePhotoOptional",
+      "LiveRequiredDeclined",
+      "LiveSelfieTryFailed"
+    ],
+    "note": "Positive and negative. Proctoring pauses and the start card are still the older design (questions 2231, 2232)."
+  },
+  {
     "id": "MT-ASMT-HELP1",
     "area": "Assessments AS-4b (16 Nov 2026)",
     "screen": "Candidate › Ask for an accommodation; Hire › Assessments › Accommodation requests",

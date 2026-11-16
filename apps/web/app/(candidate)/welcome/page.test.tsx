@@ -33,13 +33,22 @@ function mockCameraGranted() {
   Object.defineProperty(global.navigator, 'mediaDevices', { value: { getUserMedia }, configurable: true });
 }
 
-async function checkConsent() {
-  await userEvent.click(screen.getByRole('checkbox', { name: /i understand and consent to monitoring/i }));
-  await userEvent.click(screen.getByRole('checkbox', { name: /i have closed all other applications/i }));
+async function skipPracticeOnly() {
+  await userEvent.click(screen.getByRole('button', { name: /skip practice/i }));
 }
 
+// Answer 2201: consent is the designed step (PRC-24) after practice. Ticks what it asks for and agrees.
+async function agreeConsent({ face = false }: { face?: boolean } = {}) {
+  await userEvent.click(screen.getByRole('checkbox', { name: /camera, screen and activity recording/i }));
+  if (face) await userEvent.click(screen.getByRole('checkbox', { name: /face checks/i }));
+  await userEvent.click(screen.getByRole('checkbox', { name: /i have closed all other applications/i }));
+  await userEvent.click(screen.getByRole('button', { name: 'Agree and continue' }));
+}
+
+/** Practice skipped and consent given: the start card. */
 async function skipPractice() {
-  await userEvent.click(screen.getByRole('button', { name: /skip practice/i }));
+  await skipPracticeOnly();
+  await agreeConsent();
 }
 
 describe('CandidateWelcomePage', () => {
@@ -55,7 +64,7 @@ describe('CandidateWelcomePage', () => {
     (useAskForHelp as jest.Mock).mockReturnValue({ mutateAsync: jest.fn() });
   });
 
-  it('shows exam title, duration, instructions, and a monitoring disclosure before start', async () => {
+  it('shows what is recorded before start (designed consent), then the title, duration and instructions', async () => {
     (useAttemptQuery as jest.Mock).mockReturnValue({
       data: { exam: { title: 'Backend Screening', instructions: 'Answer all questions.', durationMinutes: 45, proctoring: { webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] } }, sections: [] },
       isLoading: false,
@@ -63,12 +72,16 @@ describe('CandidateWelcomePage', () => {
     (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
 
     render(<CandidateWelcomePage />);
-    await skipPractice();
+    await skipPracticeOnly();
+
+    expect(screen.getByRole('heading', { name: 'What we record and why' })).toBeInTheDocument();
+    expect(screen.getByText('Tab switches, leaving full screen, copy and paste, right-click, developer tools')).toBeInTheDocument();
+    expect(screen.getByText('Deleted 30 days after your result, unless you ask for a review')).toBeInTheDocument();
+    await agreeConsent();
 
     expect(screen.getByText('Backend Screening')).toBeInTheDocument();
     expect(screen.getByText(/45 minutes/)).toBeInTheDocument();
     expect(screen.getByText('Answer all questions.')).toBeInTheDocument();
-    expect(screen.getByText(/monitored/)).toBeInTheDocument();
   });
 
   it('greets the candidate by name so shared devices are not confusing', async () => {
@@ -96,7 +109,6 @@ describe('CandidateWelcomePage', () => {
     render(<CandidateWelcomePage />);
     await skipPractice();
     await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
-    await checkConsent();
     await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
@@ -118,7 +130,6 @@ describe('CandidateWelcomePage', () => {
     render(<CandidateWelcomePage />);
     await skipPractice();
     await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
-    await checkConsent();
     await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
@@ -310,8 +321,7 @@ describe('CandidateWelcomePage', () => {
     expect(screen.getByRole('button', { name: 'Start exam' })).toBeInTheDocument();
   });
 
-  it('keeps Start exam disabled when camera is granted but consent is unchecked', async () => {
-    mockCameraGranted();
+  it('negative: consent cannot be given without agreeing to the recording', async () => {
     (useAttemptQuery as jest.Mock).mockReturnValue({
       data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45, proctoring: { webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] } }, sections: [] },
       isLoading: false,
@@ -319,10 +329,25 @@ describe('CandidateWelcomePage', () => {
     (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
 
     render(<CandidateWelcomePage />);
-    await skipPractice();
-    await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
+    await skipPracticeOnly();
+    await userEvent.click(screen.getByRole('checkbox', { name: /i have closed all other applications/i }));
 
-    expect(await screen.findByRole('button', { name: 'Start exam' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Agree and continue' })).toBeDisabled();
+  });
+
+  it('negative: saying no to the recording explains the test cannot be taken without it', async () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45, proctoring: { webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] } }, sections: [] },
+      isLoading: false,
+    });
+    (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+
+    render(<CandidateWelcomePage />);
+    await skipPracticeOnly();
+    await userEvent.click(screen.getByRole('button', { name: 'Say no and see my options' }));
+
+    expect(screen.getByText(/cannot be taken without the recording/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start exam' })).not.toBeInTheDocument();
   });
 
   it('blocks starting outside Safe Exam Browser when the exam requires lockdown', async () => {
@@ -347,7 +372,7 @@ describe('CandidateWelcomePage', () => {
     expect(screen.queryByRole('button', { name: 'Start exam' })).not.toBeInTheDocument();
   });
 
-  it('keeps Start exam disabled until the close-all-apps attestation is also checked', async () => {
+  it('negative: consent waits for the close-all-apps attestation too', async () => {
     mockCameraGranted();
     (useAttemptQuery as jest.Mock).mockReturnValue({
       data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45, proctoring: { webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] } }, sections: [] },
@@ -356,12 +381,11 @@ describe('CandidateWelcomePage', () => {
     (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
 
     render(<CandidateWelcomePage />);
-    await skipPractice();
-    await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
-    // Only the monitoring consent -- not the apps-closed attestation.
-    await userEvent.click(screen.getByRole('checkbox', { name: /i understand and consent to monitoring/i }));
+    await skipPracticeOnly();
+    // Only the recording consent -- not the apps-closed attestation.
+    await userEvent.click(screen.getByRole('checkbox', { name: /camera, screen and activity recording/i }));
 
-    expect(await screen.findByRole('button', { name: 'Start exam' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Agree and continue' })).toBeDisabled();
   });
 
   it('enables Start exam once both camera is granted and consent is checked', async () => {
@@ -375,7 +399,6 @@ describe('CandidateWelcomePage', () => {
     render(<CandidateWelcomePage />);
     await skipPractice();
     await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
-    await checkConsent();
 
     expect(await screen.findByRole('button', { name: 'Start exam' })).toBeEnabled();
   });
@@ -433,7 +456,6 @@ describe('CandidateWelcomePage', () => {
     render(<CandidateWelcomePage />);
     await skipPractice();
     await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
-    await checkConsent();
     await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
 
     expect(screen.getByText('Please disconnect additional displays before starting the exam.')).toBeInTheDocument();
@@ -453,7 +475,6 @@ describe('CandidateWelcomePage', () => {
     render(<CandidateWelcomePage />);
     await skipPractice();
     await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
-    await checkConsent();
     await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
     expect(mutateAsync).not.toHaveBeenCalled();
 
@@ -475,7 +496,6 @@ describe('CandidateWelcomePage', () => {
     render(<CandidateWelcomePage />);
     await skipPractice();
     await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
-    await checkConsent();
     await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
@@ -500,7 +520,6 @@ describe('CandidateWelcomePage', () => {
     render(<CandidateWelcomePage />);
     await skipPractice();
     await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
-    await checkConsent();
     await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
 
     expect(screen.queryByText('Please disconnect additional displays before starting the exam.')).not.toBeInTheDocument();
@@ -527,7 +546,6 @@ describe('CandidateWelcomePage', () => {
     render(<CandidateWelcomePage />);
     await skipPractice();
     await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
-    await checkConsent();
     await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
 
     expect(
@@ -559,7 +577,6 @@ describe('CandidateWelcomePage', () => {
     render(<CandidateWelcomePage />);
     await skipPractice();
     await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
-    await checkConsent();
     await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
@@ -584,7 +601,6 @@ describe('CandidateWelcomePage', () => {
 
     render(<CandidateWelcomePage />);
     await skipPractice();
-    await checkConsent();
     await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
@@ -605,9 +621,9 @@ describe('CandidateWelcomePage', () => {
     (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
 
     const { rerender } = render(<CandidateWelcomePage />);
-    await skipPractice();
+    await skipPracticeOnly();
 
-    expect(screen.getByText('Screenshots of your entire screen when a rule is broken')).toBeInTheDocument();
+    expect(screen.getByText('Screenshots of your whole screen when a rule is broken')).toBeInTheDocument();
 
     (useAttemptQuery as jest.Mock).mockReturnValue({
       data: {
@@ -621,7 +637,8 @@ describe('CandidateWelcomePage', () => {
     });
     rerender(<CandidateWelcomePage />);
 
-    expect(screen.queryByText('Screenshots of your entire screen when a rule is broken')).not.toBeInTheDocument();
+    expect(screen.queryByText('Screenshots of your whole screen when a rule is broken')).not.toBeInTheDocument();
+    expect(screen.getByText('Not recorded')).toBeInTheDocument();
   });
 
   it('does not request camera permission or show the camera step when webcam proctoring is off for this exam', async () => {
@@ -643,7 +660,6 @@ describe('CandidateWelcomePage', () => {
     await skipPractice();
 
     expect(screen.queryByRole('button', { name: /enable camera/i })).not.toBeInTheDocument();
-    await checkConsent();
     await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
@@ -673,11 +689,11 @@ describe('CandidateWelcomePage', () => {
       });
     }
 
+    // The photo is optional under this policy: consent to the recording, but not to face checks.
     async function declineThePhoto() {
       render(<CandidateWelcomePage />);
-      await skipPractice();
-      await checkConsent();
-      await userEvent.click(screen.getByRole('button', { name: /don’t agree/i }));
+      await skipPracticeOnly();
+      await agreeConsent({ face: false });
     }
 
     it('records the enrolment only after /attempt/start has created the attempt to key it to', async () => {
@@ -746,14 +762,16 @@ describe('CandidateWelcomePage', () => {
       (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
 
       render(<CandidateWelcomePage />);
-      await skipPractice();
-      await checkConsent();
-      expect(screen.queryByRole('button', { name: 'Start exam' })).not.toBeInTheDocument();
+      await skipPracticeOnly();
+      // Without the face checks the test cannot start: Agree waits for them.
+      await userEvent.click(screen.getByRole('checkbox', { name: /camera, screen and activity recording/i }));
+      await userEvent.click(screen.getByRole('checkbox', { name: /i have closed all other applications/i }));
+      expect(screen.getByRole('button', { name: 'Agree and continue' })).toBeDisabled();
 
-      await userEvent.click(screen.getByRole('button', { name: /don’t agree/i }));
+      await userEvent.click(screen.getByRole('button', { name: 'Say no and see my options' }));
 
       // AS-4b (PRC-24): the manual path is offered instead of a dead end; the Start button stays hidden.
-      expect(screen.getByText(/ask for a manual identity check/i)).toBeInTheDocument();
+      expect(screen.getByText('This test needs a photo check')).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Start exam' })).not.toBeInTheDocument();
     });
 
@@ -762,30 +780,44 @@ describe('CandidateWelcomePage', () => {
       const ask = jest.fn().mockResolvedValue({});
       (useAskForHelp as jest.Mock).mockReturnValue({ mutateAsync: ask });
       const { unmount } = render(<CandidateWelcomePage />);
-      await skipPractice();
-      await checkConsent();
-      await userEvent.click(screen.getByRole('button', { name: /don’t agree/i }));
-      await userEvent.click(screen.getByRole('button', { name: 'Ask for a manual check' }));
+      await skipPracticeOnly();
+      await userEvent.click(screen.getByRole('button', { name: 'Say no and see my options' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Ask for a manual identity check' }));
       expect(ask).toHaveBeenCalledWith({ kinds: ['identity'], extraTimePercent: null, note: null, evidence: null });
       unmount();
       (useCandidateHelp as jest.Mock).mockReturnValue({ data: { request: { kinds: ['identity'], status: 'pending', approvedKinds: [] }, approved: [], extraTimePercent: 0 } });
       render(<CandidateWelcomePage />);
-      await skipPractice();
-      await checkConsent();
-      await userEvent.click(screen.getByRole('button', { name: /don’t agree/i }));
-      expect(screen.getByText(/You asked for a manual identity check/)).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'Ask for a manual check' })).not.toBeInTheDocument();
+      await skipPracticeOnly();
+      await userEvent.click(screen.getByRole('button', { name: 'Say no and see my options' }));
+      expect(screen.getByText('You asked for a manual identity check')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Ask for a manual identity check' })).not.toBeInTheDocument();
     });
 
     it('AS-4b (answer 2164): an approved manual check skips the photo; approved help is shown', async () => {
       mockFaceExam('require_enrolment');
       (useCandidateHelp as jest.Mock).mockReturnValue({ data: { request: null, approved: ['identity', 'reader'], extraTimePercent: 0 } });
       render(<CandidateWelcomePage />);
-      await skipPractice();
+      await skipPracticeOnly();
+      // No face checks to agree to: the approved manual check replaces the photo.
+      expect(screen.getByText('A manual identity check was approved for you')).toBeInTheDocument();
+      expect(screen.queryByRole('checkbox', { name: /face checks/i })).not.toBeInTheDocument();
+      await agreeConsent();
+      expect(screen.queryByRole('heading', { name: 'Check your identity' })).not.toBeInTheDocument();
       expect(screen.getByText('Approved for you: Screen-reader mode.')).toBeInTheDocument();
-      await checkConsent();
-      expect(screen.getByText(/A manual identity check was approved for you/)).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /don’t agree/i })).not.toBeInTheDocument();
+      expect(screen.getByText(/A manual identity check was approved for you: no photo/)).toBeInTheDocument();
+    });
+
+    it('answer 2201: agreeing to face checks opens the designed selfie step', async () => {
+      mockFaceExam('retry_then_allow');
+      (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+      Object.defineProperty(global.navigator, 'mediaDevices', { value: { getUserMedia: jest.fn(() => new Promise(() => undefined)) }, configurable: true });
+      render(<CandidateWelcomePage />);
+      await skipPracticeOnly();
+      await agreeConsent({ face: true });
+
+      expect(screen.getByRole('heading', { name: 'Check your identity' })).toBeInTheDocument();
+      expect(screen.getByLabelText('Your camera')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Start exam' })).not.toBeInTheDocument();
     });
 
     // The enrolment POST runs after start resolves, so startAttempt.isPending is already false
@@ -821,9 +853,10 @@ describe('CandidateWelcomePage', () => {
       (useFaceEnrolment as jest.Mock).mockReturnValue({ mutateAsync: enrol, isPending: false });
 
       render(<CandidateWelcomePage />);
-      await skipPractice();
-      await checkConsent();
-      expect(screen.queryByText(/photo of your face/i)).not.toBeInTheDocument();
+      await skipPracticeOnly();
+      expect(screen.queryByRole('checkbox', { name: /face checks/i })).not.toBeInTheDocument();
+      await agreeConsent();
+      expect(screen.queryByRole('heading', { name: 'Check your identity' })).not.toBeInTheDocument();
       await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
 
       await waitFor(() => expect(push).toHaveBeenCalledWith('/exam'));

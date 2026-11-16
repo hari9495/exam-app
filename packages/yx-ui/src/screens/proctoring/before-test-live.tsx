@@ -343,6 +343,8 @@ export interface CandidateHelpView {
 
 export interface LiveAccommodationRequest {
   state: Load;
+  /** The inviting company, shown in the frame (never the sample name). */
+  companyName: string;
   onRetry: () => void;
   testTitle: string;
   durationMinutes: number;
@@ -363,7 +365,7 @@ export function LiveAccommodationRequestScreen({ live }: { live: LiveAccommodati
   const { done } = useSay();
   if (live.state === 'error')
     return (
-      <CandidateFrame page="My tests">
+      <CandidateFrame page="My tests" company={live.companyName}>
         <ErrorState title="We couldn't load your request." onRetry={live.onRetry} />
       </CandidateFrame>
     );
@@ -371,7 +373,7 @@ export function LiveAccommodationRequestScreen({ live }: { live: LiveAccommodati
   const pending = req?.status === 'pending';
   const typesError = tried && types.length === 0 ? 'Choose what you need.' : undefined;
   return (
-    <CandidateFrame page="My tests">
+    <CandidateFrame page="My tests" company={live.companyName}>
       <Heading level={1}>Ask for an accommodation</Heading>
       <p className="yx-prc-muted">{live.testTitle}. Ask before your test; approved changes apply by themselves on the day.</p>
       {live.state === 'loading' ? null : pending ? (

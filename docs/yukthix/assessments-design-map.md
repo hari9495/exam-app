@@ -491,11 +491,13 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 
 | story (sub-page) | verdict | bucket | note |
 |---|---|---|---|
-| Default · Default | live (gap) | B | the consent step on `/welcome` (`Attempt.consentAt`). Gap: "what we record" by mode and the retention days |
+| Default · Default | live | B | AS-4a part 2 (2201): `/welcome` renders the designed step with what this test records (by its proctoring settings), the company retention (AS-2) and the choices |
 | Minor · Under 18: guardian consent | design only, feature not built | B | no guardian consent |
-| NoFaceDetection · No face detection | live (gap) | B | with face checks off the step skips enrolment |
-| Declined · Declined: manual path offered | live (gap) | B | AS-4b: on `/welcome`, a candidate who says no (or whose photo fails) under a required photo asks for a manual identity check; once approved they start without the photo. Gap: no video call; the designed consent screen is not on `/welcome` yet (2201) |
+| NoFaceDetection · No face detection | live | B | with face checks off there is no face-check choice and no selfie step |
+| Declined · Declined: manual path offered | live | B | AS-4b path, now on the designed step (2201): a required photo declined offers "Ask for a manual identity check"; once approved the photo is skipped |
 | Phone · Consent · phone | phone view, mobile app not built | B | |
+| LivePhotoOptional · Live · photo check optional | live | B | 2201 |
+| LiveRequiredDeclined · Live · photo required, said no: manual check offered | live | B | 2201 with AS-4b's manual path |
 
 #### PRC-25 · ID check, room scan, phone pairing
 
@@ -503,33 +505,41 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 |---|---|---|---|
 | IdCard · ID card capture | design only, feature not built | C | `id.?card|government.?id`: none |
 | IdBlurry · ID photo blurry | design only, feature not built | C | as above |
-| Selfie · Selfie and liveness | live (gap) | B | face enrolment (reference selfie) and in-test face match (`exam-runtime/src/face`). Gap: no liveness |
+| Selfie · Selfie and liveness | live (gap) | B | AS-4a part 2 (2201): `/welcome` renders the designed selfie step on the real camera (blink check, 1 or 3 tries by policy). Gap: no head-turn liveness prompts |
 | LivenessFailed · Liveness failed: retry | design only, feature not built | C | `liveness`: none |
 | ManualReview · Manual review by proctor | design only, feature not built | C | no ID review |
 | RoomScan · Room scan | design only, feature not built | C | `room.?scan`: none |
 | PhonePairing · Companion phone pairing | design only, feature not built | C | `pairing|companion`: none |
 | WaitingRoom · Live waiting room (10-minute fall-back) | design only, feature not built | C | no live proctoring |
+| LiveSelfieTryFailed · Live · selfie, a try failed | live | B | 2201 |
+| LiveSelfieBlocked · Live · photo required and not taken: manual check asked | live | B | 2201 with AS-4b's manual path |
 
 #### PRC-26 · Test runner
 
 | story (sub-page) | verdict | bucket | note |
 |---|---|---|---|
-| Mcq · Multiple choice with sections | wire design | B | exam-runtime `/attempt/start|answer`, sections, navigator, mark for review; today `(candidate)/exam` |
-| Coding · Coding question | wire design | B | `POST /attempt/run-code` (Piston), starter code, tests |
-| Descriptive · Descriptive answer | wire design | B | `essay` type, `POST /attempt/answer` |
-| CalculatorOpen · Calculator | design only, feature not built | B | `calculator`: none |
-| Accessibility · Accessibility settings: large text, high contrast | design only, feature not built | B | no runner text size or contrast settings |
-| Reconnecting · Reconnecting: answers kept on device | design only, feature not built | B | no local copy of answers (`localStorage|offline|reconnect` in the runner: none; `asmt.offline_minutes`) |
-| WeakConnection · Weak connection | design only, feature not built | B | as above |
-| Break · Break between sections | design only, feature not built | B | no section breaks |
+| Mcq · Multiple choice with sections | live | B | AS-4a part 2 (2161): `/exam` renders the designed runner |
+| Coding · Coding question | live (gap) | B | `/exam`: the Monaco editor, language choice, input and Run inside the designed runner. Gap: run output is the older panel (2234) |
+| Descriptive · Descriptive answer | live | B | `/exam`, `essay` |
+| CalculatorOpen · Calculator | live | B | per test (`exams.calculator`) |
+| Accessibility · Accessibility settings: large text, high contrast | live | B | Display settings in `/exam` |
+| Reconnecting · Reconnecting: answers kept on device | live | B | `/exam` (AS-4a answer queue) |
+| WeakConnection · Weak connection | live (gap) | B | the runner shows the states; the page reports online, reconnecting and offline only |
+| Break · Break between sections | live (gap) | B | breaks per test (`exams.breaks_allowed`), any time. Gap: not tied to section ends |
 | PausedByProctor · Paused by proctor | live (gap) | B | the runner shows paused states (`status: 'paused'`, `pausedReason`). Gap: a proctor cannot pause |
 | AiAllowed · AI-allowed test: logged assistant | design only, feature not built | B | no AI-allowed tests |
-| Finish · Finish confirmation | wire design | B | `POST /attempt/submit` |
+| Finish · Finish confirmation | live | B | `/exam`; a failed submit says so and offers Try again |
 | Submitted · Submitted and optional survey | live (gap) | B | `/submitted` (`ResultSummary`). Gap: no after-test survey (`survey` on that page: none) |
 | LiveOfflineStopped · Live · offline past the limit (answers kept on device) | live | B | AS-4a: `asmt.offline_minutes`; answers kept on the device until the server has them |
 | LiveSubmittedSurvey · Live · submitted, survey | live | B | AS-4a: `/submitted` with the optional survey |
 | LiveBreak · Live · on a break | live | B | AS-4a: `POST /attempt/break/start|end`; the timer stops for at most the break's length |
-| LiveReaderApproved · Live · screen-reader mode approved for you | live | B | AS-4b (answer 2164): shown only when approved; `/exam` still uses the older runner (2161) |
+| LiveReaderApproved · Live · screen-reader mode approved for you | live | B | AS-4b (answer 2164): shown only when approved, now on `/exam` too |
+| ReviewUnanswered · Going through unanswered questions (from Finish) | live | B | AS-4a part 2 (2161): from Finish, step through only unanswered or marked questions |
+| AnswerAnyN · Section: answer any 3 of 5 | live | B | 2161: the section chip and the line above the question |
+| AnswerAnyNFinish · Finish: a section needs more answers | live | B | 2161: Finish counts each such section against N (best N count) |
+| PhoneQuestionList · Phone: question list | live | B | 2161: under 768 px the numbers open from the header |
+| PicturesAndCode · Question picture, code snippet and option pictures | live | B | 2161: with the writer's alt text (2126) from the runtime |
+| ScientificCalculator · Scientific calculator | live | B | 2162: a test set to scientific; degrees or radians |
 
 #### PRC-27 · Result and appeal
 
@@ -1165,3 +1175,59 @@ Tests and settings: answers 2007, 2008, 2123, PRC-04, PRC-06 and Settings 6.5. N
 2224. **Bringing back a retired question.** With 2121 the older Publish no longer restores one, and the bank has no
       Restore. *Suggested: add "Restore" in the bank for a question that was approved before; it comes back approved,
       audited.*
+
+## AS-4a as built, part 2 (branch `feat/yukthix-assessments-as4a2`, 16 Nov 2026; answers 2161, 2162, 2201)
+
+- **2161, drawn first in PRC-26:** going through only the unanswered or the marked questions (from Finish, with a
+  banner to step through them and "Show all questions"); a section that asks for any N of its questions (its chip, the
+  line above each question, and Finish counting it against N, best N count); the phone question list (under 768 px
+  the numbers open from the header); the question picture, a read-only code snippet and option pictures. Stories
+  PRC-26 (6 new). The kit parts are shared: `ExamShell` (review from Finish, a note in Finish, the phone list),
+  `QuestionCard` (picture and snippet, a line above), `QuestionMedia` and `OptionLabel`.
+- **2161, `/exam` switched:** the in-test page renders the designed runner (`TestRunnerScreen` with `live`): sections,
+  review, answer-any-N, phone list, pictures and snippets, calculator, display settings (screen-reader mode only when
+  approved, 2164), breaks (a break shows the break, not a proctoring pause; it ends on its own when its time is up), the
+  connection banner with answers kept on the device, Finish, and a failed submit that says so with Try again. The page
+  keeps what only it can do: proctoring and screen sharing (their older overlays, 2231), the Monaco code editor,
+  language choice, input and Run, file answers (now through the kit upload) and spoken answers. The older
+  `QuestionNavigator` and `TimerBar` are gone.
+- **Alt text:** the runtime now sends the writer's alt text (2126) for the question picture and each option picture,
+  matched by the options' written order although they are shown shuffled; none falls back to a plain description.
+- **2162:** the kit calculator has scientific keys (sin, cos, tan, π, √, x², xʸ, ±, ln, log, 1/x, e) with a
+  degrees / radians switch; a test set to scientific gets them. Results round to 8 places; what has no answer
+  (√ of a negative, log of 0, tan 90°, 1/0, too large) shows Error.
+- **2201, `/welcome`:** practice, then the designed consent (PRC-24, `ConsentScreen` with `live`): what this test
+  records by its proctoring settings, the company retention, recording consent, face checks (required only when the
+  photo is required and no manual check was approved) and the "other apps closed" statement; saying no explains the
+  options, and under a required photo offers AS-4b's manual identity check. Then the designed selfie (PRC-25,
+  `IdentityCheckScreen` with `live`) on the real camera with the same blink check and tries; a required photo that
+  cannot be taken offers the manual check. Then the start card (camera, Safe Exam Browser, displays, Start).
+- **Found and fixed:** the live candidate pages showed the sample company name ("Kaveri Foods Pvt Ltd") with sample
+  portal tabs and placeholder legal links, also on AS-4b's `/readiness` and `/accommodation`. With a real invitation
+  the frame now shows the inviting company and no tabs or links that go nowhere.
+- **Seen at 1278 x 635 (Storybook, the same kit screens):** no blocks touch; the live consent (835 px) and selfie
+  (fits) scroll less than their designs; the runner scrolls as its design does (a question needs the height).
+- **Tests:** kit `runner-live` (+8), `proctoring` (+2, the calculator), `welcome-live` (9); runtime unit (attempt
+  service shapes); runtime e2e `runner` (+1, alt text); web `/exam` (70 moved, 12 new: 82), `/welcome` (40),
+  FaceEnrolmentStep (9). Guards: design-live (ConsentScreen and IdentityCheckScreen left the list), kit, clickable,
+  design, ui-rules.
+
+### Questions (from 2231)
+
+2231. **Proctoring pauses on `/exam`.** A pause or block for a broken rule, the face-check warning and "share your
+      screen" still use the older overlays (with the strike count and Continue). *Suggested: move them into the
+      designed runner's paused view with AS-5's live console.*
+2232. **The start card on `/welcome`.** After consent and the selfie, the card with the test details, instructions,
+      help links, camera, Safe Exam Browser and Start is still the older design. *Suggested: draw a "Ready to start"
+      step in PRC-22 and switch it next.*
+2233. **Sections in the question list.** The older list grouped numbers under section headings with per-section
+      counts; the kit list is one grid, with sections as chips above the question. *Suggested: keep; add section
+      headings to the kit list if candidates ask.*
+2234. **Code answers.** The designed runner keeps the Monaco editor (syntax colours, self-hosted) and the older run
+      output panel. *Suggested: keep Monaco; draw the run output in the kit (the coding story's test results) next.*
+2235. **Calculator angles.** Degrees by default, with a Deg / Rad switch. *Suggested: keep.*
+2236. **Saying no to face checks when the photo is optional.** The candidate can still take the test; it is recorded
+      as not checked, with no consent (as before). *Suggested: keep.*
+2237. **Privacy and legal links for candidates.** The candidate pages have no privacy notice, terms or grievance links
+      (the design's footer links were placeholders, now hidden on live pages). *Suggested: link the company's privacy
+      notice and YukthiX's terms from the candidate frame with AS-6.*

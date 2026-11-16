@@ -43,6 +43,7 @@ export default function CandidateReadinessPage() {
   return (
     <ReadinessCheckScreen
       live={{
+        companyName: current.data?.organizationName ?? '',
         testTitle: preview?.exam.title ?? 'Your test',
         checks: checks ?? [],
         running: running || !checks,

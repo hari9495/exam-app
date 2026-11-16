@@ -44,7 +44,9 @@
   padding: var(--yx-space-6);
   box-sizing: border-box;
 }
-.yx-exam__main { min-width: 0; }
+.yx-exam__main { min-width: 0; display: flex; flex-direction: column; gap: var(--yx-space-4); }
+/* Answer 2161: the phone question list button shows only in the phone layout. */
+.yx-exam__qlist { display: none; }
 .yx-exam__aside { position: sticky; top: calc(var(--yx-space-16) + var(--yx-space-8)); align-self: start; }
 .yx-exam__footer { display: flex; justify-content: center; padding: var(--yx-space-4); }
 
@@ -53,8 +55,16 @@
   .yx-exam__status { width: 100%; justify-content: space-between; gap: var(--yx-space-2) var(--yx-space-3); }
   .yx-exam__status .yx-autosave { width: 100%; order: 3; }
   .yx-exam__body { grid-template-columns: 1fr; padding: var(--yx-space-4); }
-  .yx-exam__aside { position: static; }
+  .yx-exam__aside { display: none; }
+  .yx-exam__qlist { display: inline-flex; }
 }
+/* The same phone layout inside a phone frame (stories), where the window itself is wide. */
+.yx-exam[data-compact] .yx-exam__header { padding: var(--yx-space-3) var(--yx-space-4); }
+.yx-exam[data-compact] .yx-exam__status { width: 100%; justify-content: space-between; gap: var(--yx-space-2) var(--yx-space-3); }
+.yx-exam[data-compact] .yx-exam__status .yx-autosave { width: 100%; order: 3; }
+.yx-exam[data-compact] .yx-exam__body { grid-template-columns: 1fr; padding: var(--yx-space-4); }
+.yx-exam[data-compact] .yx-exam__aside { display: none; }
+.yx-exam[data-compact] .yx-exam__qlist { display: inline-flex; }
 
 /* Timer */
 .yx-exam-timer {
@@ -185,6 +195,8 @@
 .yx-question__set { margin: 0; padding: 0; border: 0; min-width: 0; }
 .yx-question__legend { display: flex; flex-direction: column; gap: var(--yx-space-2); padding: 0; margin-bottom: var(--yx-space-5); }
 .yx-question__meta { font-size: var(--yx-text-md); line-height: var(--yx-leading-md); color: var(--yx-color-text-secondary); }
+.yx-question__context { margin: 0 0 var(--yx-space-3); font-size: var(--yx-text-md); line-height: var(--yx-leading-md); font-weight: var(--yx-weight-semibold); color: var(--yx-color-text-secondary); }
+.yx-question__media { display: flex; flex-direction: column; align-items: flex-start; gap: var(--yx-space-3); margin-bottom: var(--yx-space-5); }
 .yx-question__text { font-size: var(--yx-text-lg); line-height: var(--yx-leading-lg); font-weight: var(--yx-weight-medium); }
 .yx-question__options { display: flex; flex-direction: column; gap: var(--yx-space-3); }
 .yx-question__option {
@@ -239,6 +251,7 @@
 .yx-exam-confirm__body strong { color: var(--yx-color-text); font-weight: var(--yx-weight-semibold); }
 .yx-exam-confirm__counts { display: grid; gap: var(--yx-space-1); margin: 0; padding: var(--yx-space-3) var(--yx-space-4); list-style: none; border-radius: var(--yx-radius-card); background: var(--yx-color-bg-subtle); }
 .yx-exam-confirm__counts li { display: flex; justify-content: space-between; }
+.yx-exam-confirm__review { display: flex; flex-wrap: wrap; gap: var(--yx-space-2); }
 .yx-exam-confirm__actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--yx-space-3); }
 @keyframes yx-exam-fade { from { opacity: 0; } }
 /* Answered (filled) and flagged buttons tint too, so every number answers the pointer (7 Oct 2026). */

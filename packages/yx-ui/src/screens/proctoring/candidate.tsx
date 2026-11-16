@@ -19,7 +19,7 @@ import { PageBanner } from '../../components/notify';
 import { PhoneFrame } from '../_kit/frames';
 import { COMPANY } from '../_kit/data';
 import { CandidateFrame } from './proctoring-shared';
-import { Calculator, CameraFrame, CodeAnswer, ConnectionStatus, EvidenceFrame, IdCapture, QrPlaceholder, SystemCheckList, type ConnState, type SystemCheck } from './proctoring-kit';
+import { Calculator, CameraFrame, CodeAnswer, ConnectionStatus, EvidenceFrame, IdCapture, OptionLabel, QrPlaceholder, QuestionMedia, SystemCheckList, type ConnState, type QuestionImage, type SystemCheck } from './proctoring-kit';
 import { canReschedule, withExtraTime } from './proctoring-logic';
 import { READINESS_CHECKS } from './proctoring-data';
 import { LiveAccommodationRequestScreen, type LiveAccommodationRequest } from './before-test-live';
@@ -98,6 +98,8 @@ export type ReadinessState = 'running' | 'issues' | 'passed' | 'client';
 /** AS-4b (PRC-22): the candidate's own computer, checked in the browser before the test (and again at the start). */
 export interface LiveReadiness {
   testTitle: string;
+  /** The inviting company, shown in the frame (never the sample name). */
+  companyName: string;
   checks: SystemCheck[];
   running: boolean;
   onRunAgain: () => void;
@@ -113,7 +115,7 @@ function LiveReadinessScreen({ live }: { live: LiveReadiness }) {
   const blocking = live.checks.filter((c) => c.blocking && c.status === 'fail').length;
   const passed = live.checks.filter((c) => c.status === 'pass').length;
   return (
-    <CandidateFrame page="My tests">
+    <CandidateFrame page="My tests" company={live.companyName}>
       <Title>Check your computer</Title>
       <p className="yx-prc-muted">{live.testTitle}. Run this any time before your test; we check again at the start.</p>
       <div className="yx-prc-split">
@@ -277,7 +279,148 @@ function SampleAccommodationRequest({ submitted = false, employee = false }: { s
 /* PRC-24 · Consent and "what we record"                               */
 /* ================================================================== */
 
-export function ConsentScreen({ minor = false, noFace = false, keystroke = true, declined = false }: { minor?: boolean; noFace?: boolean; keystroke?: boolean; declined?: boolean }) {
+/** AS-4a part 2 (answer 2201): the manual identity check a candidate may ask for instead of the photo (AS-4b). */
+export interface ManualIdentityCheck {
+  state: 'none' | 'asked' | 'approved';
+  onAsk: () => Promise<unknown>;
+}
+
+/** PRC-24 with a real invitation: what this test records, how long it is kept, and the candidate's choices. */
+export interface LiveConsent {
+  candidateName: string;
+  /** The inviting company, shown in the frame. */
+  companyName: string;
+  testName: string;
+  /** What runs during this test, from its proctoring settings. */
+  rows: { what: string; how: string; on: boolean }[];
+  /** The company's retention for recordings and face data (AS-2, answer 2008). */
+  retentionDays: number;
+  /** Face checks run; `faceRequired`: the test cannot start without the photo (or an approved manual check). */
+  faceChecks: boolean;
+  faceRequired: boolean;
+  /** A statement the candidate confirms before starting, e.g. that other apps are closed. */
+  attestation?: string;
+  /** The candidate said no: show their options. */
+  declined: boolean;
+  /** Offered when the photo is required: ask for a manual identity check instead. */
+  manual?: ManualIdentityCheck | null;
+  onAgree: (choices: { faceChecks: boolean }) => void;
+  onDecline: () => void;
+}
+
+export function ConsentScreen(props: { minor?: boolean; noFace?: boolean; keystroke?: boolean; declined?: boolean; live?: LiveConsent }) {
+  if (props.live) return <LiveConsentScreen live={props.live} />;
+  return <SampleConsent {...props} />;
+}
+
+function ManualCheckOffer({ manual }: { manual: ManualIdentityCheck }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (manual.state === 'approved')
+    return (
+      <InlineAlert tone="success" title="A manual identity check was approved for you">
+        No photo is needed to start.
+      </InlineAlert>
+    );
+  if (manual.state === 'asked')
+    return (
+      <InlineAlert tone="info" title="You asked for a manual identity check">
+        You will hear back before your test. Your invitation is not used up.
+      </InlineAlert>
+    );
+  return (
+    <InlineAlert tone="info" title="This test needs a photo check">
+      <p>Instead, you can ask for a manual identity check: a person checks your identity before you start. Your invitation is not used up.</p>
+      {error && <p>{error}</p>}
+      <Button
+        loading={busy}
+        onClick={() => {
+          setBusy(true);
+          setError(null);
+          manual
+            .onAsk()
+            .catch((e: unknown) => setError(e instanceof Error ? e.message : 'It was not sent. Try again.'))
+            .finally(() => setBusy(false));
+        }}
+      >
+        Ask for a manual identity check
+      </Button>
+    </InlineAlert>
+  );
+}
+
+function LiveConsentScreen({ live }: { live: LiveConsent }) {
+  const [rec, setRec] = useState(false);
+  const [bio, setBio] = useState(false);
+  const [attest, setAttest] = useState(false);
+  const manualApproved = live.manual?.state === 'approved';
+  // The photo is required unless a manual check was approved; otherwise saying no to face checks is allowed.
+  const bioRequired = live.faceChecks && live.faceRequired && !manualApproved;
+  const ok = rec && (!bioRequired || bio) && (!live.attestation || attest);
+  return (
+    <CandidateFrame page="My tests" user={live.candidateName} company={live.companyName}>
+      <Title>What we record and why</Title>
+      <p className="yx-prc-muted">{`${live.testName}. Nothing here fails you automatically: a person reviews every flag.`}</p>
+      <div className="yx-prc-split">
+        <Card title="During this test">
+          <ul className="yx-prc-plain">
+            {live.rows.map((r) => (
+              <li key={r.what}>
+                <span className="yx-prc-stack" data-gap="sm">
+                  <strong>{r.what}</strong>
+                  <span className="yx-prc-small">{r.how}</span>
+                </span>
+                <Badge tone={r.on ? 'info' : 'neutral'}>{r.on ? 'On' : 'Off'}</Badge>
+              </li>
+            ))}
+          </ul>
+        </Card>
+        <aside className="yx-prc-stack">
+          <Card title="How long we keep it">
+            <DescriptionList
+              items={[
+                { label: live.faceChecks ? 'Recordings and face data' : 'Recordings', value: `Deleted ${live.retentionDays} days after your result, unless you ask for a review` },
+                { label: 'Answers and score', value: 'Kept with your application' },
+              ]}
+            />
+          </Card>
+          <Card title="Your choices">
+            <div className="yx-prc-stack">
+              <Checkbox label="I agree to camera, screen and activity recording for this test" checked={rec} onChange={setRec} required />
+              {live.faceChecks && !manualApproved && (
+                <Checkbox
+                  label="I agree to face checks (biometric data) under India's DPDP Act"
+                  description={bioRequired ? undefined : 'Saying no is fine: you can still take the test'}
+                  checked={bio}
+                  onChange={setBio}
+                  required={bioRequired}
+                />
+              )}
+              {live.attestation && <Checkbox label={live.attestation} checked={attest} onChange={setAttest} required />}
+            </div>
+          </Card>
+        </aside>
+      </div>
+      {live.declined &&
+        (live.faceChecks && live.faceRequired && live.manual ? (
+          <ManualCheckOffer manual={live.manual} />
+        ) : (
+          <InlineAlert tone="info" title="You said no">
+            This test cannot be taken without the recording. Close this page and contact the person who invited you; your invitation is not used up.
+          </InlineAlert>
+        ))}
+      {!live.declined && manualApproved && <ManualCheckOffer manual={live.manual!} />}
+      <div className="yx-prc-row">
+        <Button onClick={live.onDecline}>Say no and see my options</Button>
+        <Button variant="primary" disabled={!ok} onClick={() => live.onAgree({ faceChecks: live.faceChecks && !manualApproved && bio })}>
+          Agree and continue
+        </Button>
+      </div>
+    </CandidateFrame>
+  );
+}
+
+function SampleConsent({ minor = false, noFace = false, keystroke = true, declined = false }: { minor?: boolean; noFace?: boolean; keystroke?: boolean; declined?: boolean }) {
   // PRC-24
   const [bio, setBio] = useState(false);
   const [rec, setRec] = useState(false);
@@ -352,8 +495,62 @@ const ID_STEPS: { id: string; label: string }[] = [
   { id: 'waiting', label: 'Start' },
 ];
 
-export function IdentityCheckScreen({ step = 'id' }: { step?: IdStep }) {
-  // PRC-25
+/** PRC-25's selfie step with a real camera (answer 2201): the page owns the camera and the face check. */
+export interface LiveSelfie {
+  candidateName: string;
+  /** The inviting company, shown in the frame. */
+  companyName: string;
+  /** The page's live camera (a <video>). */
+  camera: ReactNode;
+  /** What to do now, or why the last try failed. */
+  hint: string;
+  /** Tries used so far, out of `maxTries`. */
+  tries: number;
+  maxTries: number;
+  failed: boolean;
+  /** The photo could not be taken and the test needs it: the manual path, or contact the recruiter. */
+  blocked: boolean;
+  manual?: ManualIdentityCheck | null;
+}
+
+function LiveSelfieScreen({ live }: { live: LiveSelfie }) {
+  return (
+    <CandidateFrame page="My tests" user={live.candidateName} company={live.companyName}>
+      <Title>Check your identity</Title>
+      {live.blocked ? (
+        live.manual ? (
+          <ManualCheckOffer manual={live.manual} />
+        ) : (
+          <InlineAlert tone="danger" title="We couldn't take your photo">
+            This test needs a photo before you can start. Contact the person who invited you.
+          </InlineAlert>
+        )
+      ) : (
+        <div className="yx-prc-split">
+          <figure className="yx-prc-selfie">{live.camera}</figure>
+          <Card title="Selfie and liveness">
+            <div className="yx-prc-stack">
+              {live.failed ? (
+                <InlineAlert tone="warning" title="That try did not work">
+                  {live.hint}
+                </InlineAlert>
+              ) : (
+                <p className="yx-prc-p" aria-live="polite">
+                  {live.hint}
+                </p>
+              )}
+              <Meter value={Math.min(live.tries, live.maxTries)} max={live.maxTries} label="Photo tries used" valueText={`Try ${Math.min(live.tries + 1, live.maxTries)} of ${live.maxTries}`} />
+            </div>
+          </Card>
+        </div>
+      )}
+    </CandidateFrame>
+  );
+}
+
+export function IdentityCheckScreen({ step = 'id', live }: { step?: IdStep; live?: LiveSelfie }) {
+  // PRC-25; with `live`, the selfie step on the candidate's own camera (answer 2201).
+  if (live) return <LiveSelfieScreen live={live} />;
   const base = step === 'id-blurry' ? 'id' : step === 'liveness-fail' || step === 'manual' ? 'selfie' : step;
   const idx = ID_STEPS.findIndex((s) => s.id === base);
   return (
@@ -457,13 +654,42 @@ export function IdentityCheckScreen({ step = 'id' }: { step?: IdStep }) {
 /* PRC-26 · Test runner                                                */
 /* ================================================================== */
 
-export type RunnerView = 'mcq' | 'coding' | 'descriptive' | 'reconnecting' | 'break' | 'paused' | 'accessibility' | 'calculator' | 'finish' | 'submitted' | 'ai-allowed';
+export type RunnerView =
+  | 'mcq'
+  | 'coding'
+  | 'descriptive'
+  | 'reconnecting'
+  | 'break'
+  | 'paused'
+  | 'accessibility'
+  | 'calculator'
+  | 'finish'
+  | 'submitted'
+  | 'ai-allowed'
+  // Answer 2161: going through unanswered questions, "answer any N of M" sections (and their finish note), the phone
+  // question list, a question with a picture, a code snippet and option pictures. Answer 2162: the scientific calculator.
+  | 'review'
+  | 'choice'
+  | 'choice-finish'
+  | 'phone'
+  | 'media'
+  | 'scientific';
 
 const SECTIONS = [
   { name: 'Aptitude', count: 10, state: 'done' as const, note: 'Submitted · forward only' },
   { name: 'Java', count: 20, state: 'current' as const, note: '32:10 left in section' },
   { name: 'SQL', count: 10, state: 'next' as const, note: 'Opens after Java' },
 ];
+
+/** Answer 2161: a test whose Java section asks for any 3 of its 5 questions. */
+const CHOICE_SECTIONS = [
+  { name: 'Aptitude', count: 10 },
+  { name: 'Java', count: 5, required: 3 },
+  { name: 'SQL', count: 5 },
+];
+const SAMPLE_PICTURE = (label: string, w = 320, h = 120) =>
+  'data:image/svg+xml;utf8,' +
+  encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="#e8eefc"/><text x="12" y="${h / 2 + 6}" font-size="16" fill="#1f2a44">${label}</text></svg>`);
 
 function makeQuestions(n: number, answered: number): ExamQuestionState[] {
   return Array.from({ length: n }, (_, i) => ({ answered: i < answered && i !== 4, markedForReview: i === 6 || i === 11 }));
@@ -478,7 +704,11 @@ export interface LiveRunnerQuestion {
   type: 'single' | 'multiple' | 'essay' | 'other';
   text: string;
   marks: number;
-  options: { id: string; label: string }[];
+  /** Answer 2161: an option may carry a picture. */
+  options: { id: string; label: string; image?: QuestionImage | null }[];
+  /** Answer 2161: the question's picture and read-only code snippet. */
+  image?: QuestionImage | null;
+  snippet?: { language?: string | null; code: string } | null;
   /** Chosen option ids (single and multiple). */
   value: string[];
   /** The written answer (essay). */
@@ -517,7 +747,8 @@ export interface LiveRunner {
   approvedHelp?: string[];
   saveStatus: AutosaveStatus;
   savedAt?: string;
-  sections: { name: string; count: number }[];
+  /** In order; `required`: the section asks for any N of its questions (answer 2161). */
+  sections: { name: string; count: number; required?: number | null }[];
   questions: LiveRunnerQuestion[];
   current: number;
   onNavigate: (index: number) => void;
@@ -528,6 +759,9 @@ export interface LiveRunner {
   renderQuestion?: (q: LiveRunnerQuestion) => ReactNode;
   calculator: 'none' | 'basic' | 'scientific';
   onFinish: () => void;
+  /** Submitting now; and why the last try did not go through (answers stay saved; Try again calls onFinish). */
+  finishing?: boolean;
+  finishError?: string | null;
   /** After submit: when, how many answered, the result line, and the optional survey. */
   submittedAt?: string;
   resultNote?: ReactNode;
@@ -594,8 +828,64 @@ function SurveyCard({ survey }: { survey: NonNullable<LiveRunner['survey']> }) {
   );
 }
 
+type RunnerSection = { name: string; count: number; required?: number | null; first: number; answered: number };
+/** Sections with where each starts and how many of its questions are answered. */
+function placeSections(sections: LiveRunner['sections'], answered: boolean[]): RunnerSection[] {
+  let at = 0;
+  return sections.map((s) => {
+    const first = at;
+    at += s.count;
+    return { ...s, first, answered: answered.slice(first, at).filter(Boolean).length };
+  });
+}
+const sectionOf = (sections: RunnerSection[], i: number) => sections.findIndex((s) => i >= s.first && i < s.first + s.count);
+/** Answer 2161: "Java · 20", or "Java · any 3 of 5" when the section asks for some of its questions. */
+const sectionChip = (s: { name: string; count: number; required?: number | null }) => (s.required != null ? `${s.name} · any ${s.required} of ${s.count}` : `${s.name} · ${s.count}`);
+/** The line above a question: which section, and what it asks for. */
+function sectionContext(sections: RunnerSection[], i: number): string | undefined {
+  const k = sectionOf(sections, i);
+  const s = sections[k];
+  if (!s || (sections.length < 2 && s.required == null)) return undefined;
+  return `Section ${k + 1} of ${sections.length}: ${s.name}${s.required != null ? ` · answer any ${s.required} of ${s.count}` : ''}`;
+}
+/** In the Finish confirmation: each "answer any N" section, and whether it has enough answers yet. */
+function choiceNote(sections: RunnerSection[]): ReactNode {
+  const choice = sections.filter((s) => s.required != null);
+  if (!choice.length) return null;
+  const short = choice.filter((s) => s.answered < s.required!);
+  return (
+    <InlineAlert tone={short.length ? 'warning' : 'info'} title={short.length ? 'Some sections need more answers' : 'Every section has enough answers'}>
+      <ul className="yx-prc-list">
+        {choice.map((s) => (
+          <li key={s.name}>{`${s.name}: ${Math.min(s.answered, s.required!)} of ${s.required} answered${s.answered > s.required! ? ` (your best ${s.required} count)` : ''}`}</li>
+        ))}
+      </ul>
+    </InlineAlert>
+  );
+}
+/** Answer 2161: going through only the unanswered or the marked questions, from the Finish confirmation. */
+function ReviewBanner({ which, at, of, onPrevious, onNext, onStop }: { which: 'unanswered' | 'review'; at: number; of: number; onPrevious?: () => void; onNext?: () => void; onStop: () => void }) {
+  return (
+    <div className="yx-prc-review" role="region" aria-label="Going through questions">
+      <p className="yx-prc-review__title">{`${which === 'review' ? 'Marked for review' : 'Unanswered'}: ${at} of ${of}`}</p>
+      <div className="yx-prc-row">
+        <Button size="sm" onClick={onPrevious} disabled={!onPrevious}>
+          {which === 'review' ? 'Previous marked' : 'Previous unanswered'}
+        </Button>
+        <Button size="sm" onClick={onNext} disabled={!onNext}>
+          {which === 'review' ? 'Next marked' : 'Next unanswered'}
+        </Button>
+        <Button size="sm" onClick={onStop}>
+          Show all questions
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /** PRC-26 with a real attempt (exam-runtime): the designed runner, its sections, connection, calculator, display, breaks and finish. */
 function LiveTestRunnerScreen({ live }: { live: LiveRunner }) {
+  const [reviewing, setReviewing] = useState<'unanswered' | 'review' | null>(null);
   const [calc, setCalc] = useState(false);
   const [a11y, setA11y] = useState(false);
   const [font, setFont] = useState<'normal' | 'large'>('normal');
@@ -650,8 +940,20 @@ function LiveTestRunnerScreen({ live }: { live: LiveRunner }) {
     );
 
   const q = live.questions[live.current];
-  const prev = live.current > 0 ? () => live.onNavigate(live.current - 1) : undefined;
-  const next = live.current < live.questions.length - 1 ? () => live.onNavigate(live.current + 1) : undefined;
+  const sections = placeSections(live.sections, live.questions.map((x) => x.answered));
+  const context = sectionContext(sections, live.current);
+  // Review mode steps through only the matching questions; it ends when none are left.
+  const matching = reviewing ? live.questions.flatMap((x, i) => ((reviewing === 'review' ? x.markedForReview : !x.answered) ? [i] : [])) : [];
+  const inReview = reviewing !== null && matching.length > 0;
+  const before = matching.filter((i) => i < live.current);
+  const after = matching.filter((i) => i > live.current);
+  const prev = inReview ? (before.length ? () => live.onNavigate(before[before.length - 1]!) : undefined) : live.current > 0 ? () => live.onNavigate(live.current - 1) : undefined;
+  const next = inReview ? (after.length ? () => live.onNavigate(after[0]!) : undefined) : live.current < live.questions.length - 1 ? () => live.onNavigate(live.current + 1) : undefined;
+  const banner = inReview ? (
+    <ReviewBanner which={reviewing!} at={matching.includes(live.current) ? matching.indexOf(live.current) + 1 : before.length} of={matching.length} onPrevious={prev} onNext={next} onStop={() => setReviewing(null)} />
+  ) : null;
+  const media = q ? <QuestionMedia image={q.image} snippet={q.snippet} /> : null;
+  const metaLine = (kind: string) => `Question ${live.current + 1} of ${live.questions.length}${kind} · ${q!.marks} ${q!.marks === 1 ? 'mark' : 'marks'}`;
   const nav = (
     <div className="yx-prc-row" data-between>
       <Checkbox label="Mark for review" checked={q?.markedForReview ?? false} onChange={(m) => q && live.onMark(q, m)} />
@@ -673,8 +975,10 @@ function LiveTestRunnerScreen({ live }: { live: LiveRunner }) {
       total={live.questions.length}
       marks={`${q.marks} ${q.marks === 1 ? 'mark' : 'marks'}`}
       question={q.text}
+      context={context}
+      media={q.image || q.snippet ? media : undefined}
       kind={q.type}
-      options={q.options}
+      options={q.options.map((o) => ({ id: o.id, label: <OptionLabel text={o.label} image={o.image} /> }))}
       value={q.value}
       onChange={(v) => !stopped && live.onAnswer(q, v)}
       markedForReview={q.markedForReview}
@@ -684,10 +988,10 @@ function LiveTestRunnerScreen({ live }: { live: LiveRunner }) {
     />
   ) : q.type === 'essay' ? (
     <article className="yx-prc-stack" aria-label={`Question ${live.current + 1}`}>
-      <p className="yx-prc-muted yx-prc-small">
-        Question {live.current + 1} of {live.questions.length} · Descriptive · {q.marks} {q.marks === 1 ? 'mark' : 'marks'}
-      </p>
+      {context && <p className="yx-question__context">{context}</p>}
+      <p className="yx-prc-muted yx-prc-small">{metaLine(' · Descriptive')}</p>
       <p className="yx-prc-p">{q.text}</p>
+      {media}
       <TextArea className="yx-prc-answer" rows={12} value={q.answerText} readOnly={stopped} onChange={(v) => live.onAnswerText(q, v)} aria-label="Your answer" spellCheck />
       <p className="yx-prc-muted yx-prc-small" aria-live="polite">
         {q.answerText.trim() ? q.answerText.trim().split(/\s+/).length : 0} words
@@ -696,20 +1000,16 @@ function LiveTestRunnerScreen({ live }: { live: LiveRunner }) {
     </article>
   ) : (
     <article className="yx-prc-stack" aria-label={`Question ${live.current + 1}`}>
-      <p className="yx-prc-muted yx-prc-small">
-        Question {live.current + 1} of {live.questions.length} · {q.marks} {q.marks === 1 ? 'mark' : 'marks'}
-      </p>
+      {context && <p className="yx-question__context">{context}</p>}
+      <p className="yx-prc-muted yx-prc-small">{metaLine('')}</p>
+      <p className="yx-prc-p">{q.text}</p>
+      {media}
       {live.renderQuestion?.(q)}
       {nav}
     </article>
   );
 
-  let at = 0;
-  const sections = live.sections.map((s) => {
-    const first = at;
-    at += s.count;
-    return { ...s, first, current: live.current >= first && live.current < at };
-  });
+  const currentSection = sectionOf(sections, live.current);
 
   return (
     <div className="yx-prc-a11y" data-font={font} data-contrast={contrast ? 'high' : undefined}>
@@ -725,14 +1025,22 @@ function LiveTestRunnerScreen({ live }: { live: LiveRunner }) {
         onFinish={live.onFinish}
         logo={live.logo}
         proctored={live.proctored}
+        onReview={(which) => {
+          const first = live.questions.findIndex((x) => (which === 'review' ? x.markedForReview : !x.answered));
+          if (first < 0) return;
+          setReviewing(which);
+          live.onNavigate(first);
+        }}
+        finishNote={choiceNote(sections)}
+        banner={banner}
       >
         <div className="yx-prc-stack">
           <div className="yx-prc-runner-bar">
             {sections.length > 1 ? (
               <nav className="yx-prc-sections" aria-label="Sections">
-                {sections.map((s) => (
-                  <Button key={s.name} size="sm" variant={s.current ? 'primary' : undefined} aria-current={s.current ? 'step' : undefined} onClick={() => live.onNavigate(s.first)}>
-                    {`${s.name} · ${s.count}`}
+                {sections.map((s, k) => (
+                  <Button key={s.name} size="sm" variant={k === currentSection ? 'primary' : undefined} aria-current={k === currentSection ? 'step' : undefined} onClick={() => live.onNavigate(s.first)}>
+                    {sectionChip(s)}
                   </Button>
                 ))}
               </nav>
@@ -758,6 +1066,14 @@ function LiveTestRunnerScreen({ live }: { live: LiveRunner }) {
           </div>
           {live.proctoringNote && <p className="yx-prc-row yx-prc-small yx-prc-muted">{live.proctoringNote}</p>}
           {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+          {live.finishError && (
+            <InlineAlert tone="danger" title="Your test was not submitted">
+              <p>{live.finishError} Your answers are saved.</p>
+              <Button variant="primary" loading={live.finishing} onClick={live.onFinish}>
+                Try again
+              </Button>
+            </InlineAlert>
+          )}
           {(live.connection === 'reconnecting' || live.connection === 'offline') && (
             <InlineAlert tone="warning" title={stopped ? 'Answering is paused until you are back online' : 'Reconnecting'}>
               {stopped
@@ -785,7 +1101,7 @@ function LiveTestRunnerScreen({ live }: { live: LiveRunner }) {
           {body}
           {calc && (
             <div className="yx-prc-floating">
-              <Calculator onClose={() => setCalc(false)} />
+              <Calculator scientific={live.calculator === 'scientific'} onClose={() => setCalc(false)} />
             </div>
           )}
         </div>
@@ -799,14 +1115,18 @@ export function TestRunnerScreen({ view = 'mcq', conn = 'online', live }: { view
   if (live) return <LiveTestRunnerScreen live={live} />;
   const [answer, setAnswer] = useState<string[]>(['b']);
   const [marked, setMarked] = useState(false);
-  const [calc, setCalc] = useState(view === 'calculator');
+  const [calc, setCalc] = useState(view === 'calculator' || view === 'scientific');
   const [a11y, setA11y] = useState(view === 'accessibility');
   const [font, setFont] = useState<'normal' | 'large'>(view === 'accessibility' ? 'large' : 'normal');
   const [contrast, setContrast] = useState(view === 'accessibility');
   const [text, setText] = useState('I would start by grouping the deviation log by station and shift. The seal temperature drops after the 2 pm changeover suggest the heater warm-up is skipped…');
   const [code, setCode] = useState('public List<String> topK(List<String> words, int k) {\n  // your code\n}');
-  const [current, setCurrent] = useState(view === 'coding' ? 13 : view === 'descriptive' ? 18 : 13);
+  const [current, setCurrent] = useState(view === 'coding' ? 13 : view === 'descriptive' ? 18 : view === 'review' ? 4 : view === 'choice' || view === 'choice-finish' ? 11 : 13);
   const connection: ConnState = view === 'reconnecting' ? 'reconnecting' : conn;
+  const choice = view === 'choice' || view === 'choice-finish';
+  const sampleQuestions = choice
+    ? makeQuestions(20, 0).map((x, i) => ({ ...x, answered: i < 10 || i === 10 || i === 12 || i === 15, markedForReview: false }))
+    : makeQuestions(20, 16);
 
   if (view === 'submitted')
     return (
@@ -891,14 +1211,31 @@ export function TestRunnerScreen({ view = 'mcq', conn = 'online', live }: { view
         number={current + 1}
         total={20}
         marks="2 marks"
-        question="A Stream pipeline runs only when a terminal operation is called. Which operation is lazy and returns a new stream?"
+        context={choice ? 'Section 2 of 3: Java · answer any 3 of 5' : undefined}
+        question={view === 'media' ? 'What does this method print for the sales shown in the chart? Choose the matching chart.' : 'A Stream pipeline runs only when a terminal operation is called. Which operation is lazy and returns a new stream?'}
+        media={
+          view === 'media' ? (
+            <QuestionMedia
+              image={{ src: SAMPLE_PICTURE('Line chart: sales by month, March to August'), alt: 'Line chart of monthly sales, rising from March to August' }}
+              snippet={{ language: 'Java', code: 'int best = sales.stream()\n    .mapToInt(Integer::intValue)\n    .max()\n    .orElse(0);\nSystem.out.println(best);' }}
+            />
+          ) : undefined
+        }
         kind="single"
-        options={[
-          { id: 'a', label: 'filter() is terminal' },
-          { id: 'b', label: 'map() is lazy and returns a new stream' },
-          { id: 'c', label: 'collect() is lazy' },
-          { id: 'd', label: 'forEach() returns a stream' },
-        ]}
+        options={
+          view === 'media'
+            ? [
+                { id: 'a', label: <OptionLabel text="Highest in August" image={{ src: SAMPLE_PICTURE('Aug', 96, 96), alt: 'Bar chart, August highest' }} /> },
+                { id: 'b', label: <OptionLabel text="Highest in March" image={{ src: SAMPLE_PICTURE('Mar', 96, 96), alt: 'Bar chart, March highest' }} /> },
+                { id: 'c', label: <OptionLabel text="All months the same" image={{ src: SAMPLE_PICTURE('Flat', 96, 96), alt: 'Bar chart, every month the same' }} /> },
+              ]
+            : [
+                { id: 'a', label: 'filter() is terminal' },
+                { id: 'b', label: 'map() is lazy and returns a new stream' },
+                { id: 'c', label: 'collect() is lazy' },
+                { id: 'd', label: 'forEach() returns a stream' },
+              ]
+        }
         value={answer}
         onChange={setAnswer}
         markedForReview={marked}
@@ -913,26 +1250,37 @@ export function TestRunnerScreen({ view = 'mcq', conn = 'online', live }: { view
       <ExamShell
         testName="Java Backend Developer · L2"
         candidateName="Arjun Nair"
-        seconds={view === 'finish' ? 245 : 1930}
+        seconds={view === 'finish' || view === 'choice-finish' ? 245 : 1930}
         saveStatus={connection === 'reconnecting' ? 'offline' : 'saved'}
         savedAt="10:41"
-        questions={makeQuestions(20, 16)}
+        questions={sampleQuestions}
         current={current}
         onNavigate={setCurrent}
         onFinish={() => {}}
         logo={<strong>{COMPANY.shortName}</strong>}
         proctored
-        defaultFinishOpen={view === 'finish'}
+        defaultFinishOpen={view === 'finish' || view === 'choice-finish'}
+        onReview={() => {}}
+        finishNote={choice ? choiceNote(placeSections(CHOICE_SECTIONS, sampleQuestions.map((x) => x.answered))) : undefined}
+        compact={view === 'phone'}
+        defaultListOpen={view === 'phone'}
+        banner={view === 'review' ? <ReviewBanner which="unanswered" at={1} of={5} onNext={() => {}} onStop={() => {}} /> : undefined}
       >
         <div className="yx-prc-stack">
           <div className="yx-prc-runner-bar">
             <nav className="yx-prc-sections" aria-label="Sections">
-              {SECTIONS.map((s) => (
-                <button key={s.name} type="button" className="yx-prc-section-tab" aria-current={s.state === 'current' ? 'step' : undefined} aria-disabled={s.state !== 'current'} title={s.note}>
-                  {s.name} · {s.count}
-                  <span className="yx-prc-small yx-prc-muted">{s.state === 'done' ? 'done' : s.state === 'next' ? 'locked' : ''}</span>
-                </button>
-              ))}
+              {choice
+                ? CHOICE_SECTIONS.map((s) => (
+                    <Button key={s.name} size="sm" variant={s.name === 'Java' ? 'primary' : undefined} aria-current={s.name === 'Java' ? 'step' : undefined}>
+                      {sectionChip(s)}
+                    </Button>
+                  ))
+                : SECTIONS.map((s) => (
+                    <button key={s.name} type="button" className="yx-prc-section-tab" aria-current={s.state === 'current' ? 'step' : undefined} aria-disabled={s.state !== 'current'} title={s.note}>
+                      {s.name} · {s.count}
+                      <span className="yx-prc-small yx-prc-muted">{s.state === 'done' ? 'done' : s.state === 'next' ? 'locked' : ''}</span>
+                    </button>
+                  ))}
             </nav>
             <div className="yx-prc-row">
               <ConnectionStatus state={connection} queued={3} offlineSeconds={48} />
@@ -969,7 +1317,7 @@ export function TestRunnerScreen({ view = 'mcq', conn = 'online', live }: { view
           {q}
           {calc && (
             <div className="yx-prc-floating">
-              <Calculator onClose={() => setCalc(false)} />
+              <Calculator scientific={view === 'scientific'} onClose={() => setCalc(false)} />
             </div>
           )}
         </div>
