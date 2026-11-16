@@ -621,6 +621,15 @@ model Question {
   // is why a miskeyed question stayed flagged even after a recruiter fixed it.
   // Null means the key has never changed, so every response counts.
   answerKeyChangedAt DateTime?             @map("answer_key_changed_at") @db.Timestamptz(3)
+  /// Assessments AS-1 (answer 2010): the approved version in use; a big change makes the next one.
+  version            Int                   @default(1)
+  /// Alt text for the question's image and, by option order, each option's image (approval needs them).
+  imageAlt           String?               @map("image_alt") @db.VarChar(500)
+  optionAlts         Json                  @default("[]") @map("option_alts")
+  lastApprovedBy     String?               @map("last_approved_by") @db.Uuid
+  lastApprovedAt     DateTime?             @map("last_approved_at") @db.Timestamptz(3)
+  revisions          QuestionRevision[]
+  translations       QuestionTranslation[]
   options            QuestionOption[]
   examLinks          ExamSectionQuestion[]
   answers            Answer[]
@@ -640,6 +649,8 @@ model QuestionOption {
   imageUrl   String?  @map("image_url") @db.VarChar(1000)
   question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@index([questionId])
   @@map("question_options")
 }
@@ -790,6 +801,8 @@ model ExamSection {
   questions             ExamSectionQuestion[]
   poolTags              ExamSectionPoolTag[]
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@index([examId])
   @@map("exam_sections")
 }
@@ -801,6 +814,8 @@ model ExamSectionQuestion {
   section    ExamSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   question   Question    @relation(fields: [questionId], references: [id])
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@id([sectionId, questionId])
   @@map("exam_section_questions")
 }
@@ -811,6 +826,8 @@ model ExamSectionPoolTag {
   section   ExamSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   tag       Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@id([sectionId, tagId])
   @@map("exam_section_pool_tags")
 }
@@ -919,6 +936,8 @@ model Invitation {
   attempt                Attempt?
   candidateRefreshTokens CandidateRefreshToken[]
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@index([examId, status])
   @@map("invitations")
 }
@@ -1012,6 +1031,8 @@ model Attempt {
   integrityAnalysis             IntegrityAnalysis?
   faceEnrolment                 FaceEnrolment?
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@index([examId, status])
   @@map("attempts")
 }
@@ -1036,6 +1057,8 @@ model Answer {
   question              Question          @relation(fields: [questionId], references: [id])
   codeReview            CodeAnswerReview?
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@unique([attemptId, questionId])
   @@map("answers")
 }
@@ -1070,6 +1093,8 @@ model Result {
   certificatePath String?   @map("certificate_path") @db.VarChar(1000)
   attempt         Attempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@map("results")
 }
 
@@ -1096,6 +1121,8 @@ model ProctoringEvent {
   metadataJson String?  @map("metadata_json") @db.Text
   attempt      Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@index([attemptId, occurredAt])
   @@map("proctoring_events")
 }
@@ -1116,6 +1143,8 @@ model FaceEnrolment {
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   attempt            Attempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@map("face_enrolments")
 }
 
@@ -1128,6 +1157,8 @@ model CandidateMessage {
   readAt       DateTime? @map("read_at") @db.Timestamptz(3)
   attempt      Attempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@index([attemptId, sentAt])
   @@map("candidate_messages")
 }
@@ -1141,6 +1172,8 @@ model ProctoringAnalysis {
   analyzedAt DateTime @default(now()) @map("analyzed_at") @db.Timestamptz(3)
   attempt    Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@map("proctoring_analyses")
 }
 
@@ -1154,6 +1187,8 @@ model IntegrityAnalysis {
   analyzedAt DateTime @default(now()) @map("analyzed_at") @db.Timestamptz(3)
   attempt    Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@map("integrity_analyses")
 }
 
@@ -1182,6 +1217,8 @@ model AttemptInsight {
   generatedAt DateTime @default(now()) @map("generated_at") @db.Timestamptz(3)
   attempt     Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
+  /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
+  organizationId String? @map("organization_id") @db.Uuid
   @@map("attempt_insights")
 }
 
@@ -3988,6 +4025,8 @@ model SdTicket {
   originQuery          String?                  @map("origin_query") @db.VarChar(200)
   /// Answers 1661, 1662: the device (People asset register) an IT desk ticket is about.
   assetId              String?                  @map("asset_id") @db.Uuid
+  /// ITSM answer 2057: the business application an IT ticket is about.
+  appId                String?                  @map("app_id") @db.Uuid
   /// Helpdesk plan item 4: the building (a company location), area and equipment a facilities ticket is about.
   locationId           String?                  @map("location_id") @db.Uuid
   areaId               String?                  @map("area_id") @db.Uuid
@@ -4712,6 +4751,8 @@ model SdBanner {
   deskId         String    @map("desk_id") @db.Uuid
   audience       String    @default("everyone") @db.VarChar(10)
   locationId     String?   @map("location_id") @db.Uuid
+  /// ITSM answer 2056: only the users of this business application see it.
+  appId          String?   @map("app_id") @db.Uuid
   text           String    @db.VarChar(300)
   severity       String    @default("warning") @db.VarChar(8)
   ticketId       String?   @map("ticket_id") @db.Uuid
@@ -14144,6 +14185,8 @@ model SdItsmSettings {
   reviewDays          Int      @default(5) @map("review_days")
   repeatCount         Int      @default(3) @map("repeat_count")
   repeatDays          Int      @default(7) @map("repeat_days")
+  /// Answer 2056: whom a change or known-error notice reaches: all | location | application.
+  noticeScope         String   @default("all") @map("notice_scope") @db.VarChar(12)
   version             Int      @default(1)
   updatedBy           String?  @map("updated_by") @db.Uuid
   createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -14173,6 +14216,8 @@ model SdChange {
   plan              String?   @db.VarChar(4000)
   backout           String    @db.VarChar(2000)
   banner            Boolean   @default(true)
+  /// Answer 2056: the location its notice is limited to (desks that limit notices by location).
+  noticeLocationId  String?   @map("notice_location_id") @db.Uuid
   bannerId          String?   @map("banner_id") @db.Uuid
   templateId        String?   @map("template_id") @db.Uuid
   /// [{ title, done }]
@@ -14300,6 +14345,8 @@ model SdProblem {
   /// open | investigating | known_error | fixed | closed
   state          String    @default("open") @db.VarChar(12)
   categoryId     String?   @map("category_id") @db.Uuid
+  /// Answer 2057: the application the repeat suggestion came from.
+  appId          String?   @map("app_id") @db.Uuid
   rootCause      String?   @map("root_cause") @db.VarChar(4000)
   workaround     String?   @db.VarChar(4000)
   kbArticleId    String?   @map("kb_article_id") @db.Uuid
@@ -14314,4 +14361,61 @@ model SdProblem {
   @@unique([organizationId, ticketId])
   @@index([organizationId, deskId, state])
   @@map("sd_problems")
+}
+
+/// Assessments AS-1 (answers 2009, 2010): a proposed new or changed question, reviewed by another person (and a
+/// second approver for some collections) before it is used. `content` is the question as proposed.
+model QuestionRevision {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  questionId         String    @map("question_id") @db.Uuid
+  version            Int
+  kind               String    @db.VarChar(10)
+  state              String    @default("draft") @db.VarChar(20)
+  content            Json
+  authorId           String    @map("author_id") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  submittedAt        DateTime? @map("submitted_at") @db.Timestamptz(3)
+  needsSecond        Boolean   @default(false) @map("needs_second")
+  reviewerId         String?   @map("reviewer_id") @db.Uuid
+  reviewedAt         DateTime? @map("reviewed_at") @db.Timestamptz(3)
+  secondReviewerId   String?   @map("second_reviewer_id") @db.Uuid
+  secondReviewedAt   DateTime? @map("second_reviewed_at") @db.Timestamptz(3)
+  note               String?   @db.VarChar(1000)
+  fieldComments      Json      @default("{}") @map("field_comments")
+  duplicateOf        String?   @map("duplicate_of") @db.Uuid
+  duplicatePercent   Int?      @map("duplicate_percent") @db.SmallInt
+  duplicateClearedBy String?   @map("duplicate_cleared_by") @db.Uuid
+  rowVersion         Int       @default(1) @map("row_version")
+  question           Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, state, submittedAt], map: "question_revisions_queue_idx")
+  @@index([questionId, createdAt], map: "question_revisions_question_idx")
+  @@map("question_revisions")
+}
+
+/// A question's translation for one version and language (answer 2010), reviewed by a person other than its writer.
+model QuestionTranslation {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  questionId     String    @map("question_id") @db.Uuid
+  version        Int
+  language       String    @db.VarChar(5)
+  text           String    @db.Text
+  options        Json      @default("[]")
+  state          String    @default("draft") @db.VarChar(20)
+  aiAssisted     Boolean   @default(false) @map("ai_assisted")
+  authorId       String    @map("author_id") @db.Uuid
+  reviewerId     String?   @map("reviewer_id") @db.Uuid
+  reviewedAt     DateTime? @map("reviewed_at") @db.Timestamptz(3)
+  note           String?   @db.VarChar(1000)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  rowVersion     Int       @default(1) @map("row_version")
+  question       Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, version, language], map: "question_translations_one")
+  @@index([organizationId, state], map: "question_translations_queue_idx")
+  @@map("question_translations")
 }

@@ -78,6 +78,15 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // Answer 1523: days a waiting payroll setting change may wait before it lapses.
   [LAPSE_DAYS_KEY]: { label: 'A payroll setting change nobody decides lapses after (days)', scopes: ['tenant'], dated: false, values: ['7', '14', '21', '30'], default: '14' },
   [SECOND_PERSON_KEY]: { label: 'Payroll setting changes need a second person', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', guard: 'access.role.manage' },
+  // Assessments AS-1 (answers 2009, 2010): question languages besides English (each translation reviewed by a person),
+  // collections whose questions need a second approver, how similar a question must be to count as a possible duplicate,
+  // and how many answers item statistics need before they stop being provisional. The Settings 6.5 page comes with AS-2.
+  'asmt.languages': { label: 'Questions: languages besides English', scopes: ['tenant'], dated: false, values: ['hi', 'ta', 'te'], default: '', multi: true, labels: { hi: 'Hindi', ta: 'Tamil', te: 'Telugu' } },
+  'asmt.bank.second_approver_collections': { label: 'Questions: collections that need a second approver (comma list)', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 500 }, default: '' },
+  'asmt.bank.duplicate_percent': { label: 'Questions: flag a possible duplicate at this similarity (%)', scopes: ['tenant'], dated: false, values: ['80', '85', '90', '95'], default: '90' },
+  // Answer 2017: which YukthiX starter packs the company uses (the packs themselves are content YukthiX writes).
+  'asmt.packs': { label: 'Questions: YukthiX starter packs', scopes: ['tenant'], dated: false, values: ['aptitude', 'english', 'core_it'], default: 'aptitude,english,core_it', multi: true, labels: { aptitude: 'Aptitude', english: 'English', core_it: 'Core IT skills' } },
+  'asmt.item_stats.provisional_answers': { label: 'Item statistics are provisional under this many answers', scopes: ['tenant'], dated: false, values: ['50', '100', '200', '500'], default: '200' },
   // HLP-04 (founder 3 Nov 2026): how often a published help article is checked again (YX-GRO-07). Desk set-up › Settings.
   // Help H-1 (answer 942): the Help drawer's "This page" tab (help articles tagged with the page).
   'help.page_help': { label: 'Help: show page help in the Help drawer', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', labels: { on: 'Shown', off: 'Hidden' } },

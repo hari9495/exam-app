@@ -280,6 +280,9 @@ export interface TicketDetail {
   /** Answers 1661, 1662: the device it is about, and whether this person may set it (an IT desk's agent). */
   device?: { id: string; label: string; detail: string | null } | null;
   canSetDevice?: boolean;
+  /** ITSM answer 2057: the business application an IT ticket is about; the choices when this person may set it. */
+  app?: { id: string; name: string } | null;
+  appOptions?: { id: string; name: string }[] | null;
   /** Helpdesk plan item 4: the building, area and equipment a facilities ticket names, and whether this person sets them. */
   place?: TicketPlace;
   canSetPlace?: boolean;
@@ -370,6 +373,8 @@ export interface RaiseDesk {
   fields?: TicketFieldView[];
   /** Answer 1911: a facilities desk asks which building and area. */
   askPlace?: boolean;
+  /** ITSM answer 2057: an IT desk offers "Which application?" from the company's list. */
+  apps?: { id: string; name: string }[];
   id: string;
   name: string;
   key: string;
@@ -451,6 +456,8 @@ export interface RaiseInput {
   originQuery?: string;
   /** Answer 1662: one of the person's own devices (IT desks). */
   assetId?: string;
+  /** ITSM answer 2057: the application it is about (IT desks). */
+  appId?: string;
   /** Answer 1801: raised for this colleague (the on-behalf right is checked by the server). */
   requestedForPersonId?: string;
   /** Answer 1842: the desk's fields everyone sees, by key (only the filled ones). */

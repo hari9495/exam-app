@@ -107,6 +107,8 @@ export interface CreateInput {
   originQuery?: string;
   /** Answer 1662: the device it is about (checked by the caller). */
   assetId?: string;
+  /** ITSM answer 2057: the business application an IT ticket is about (an IT desk only). */
+  appId?: string;
   /** Helpdesk plan item 4: the building, area and equipment it is about (checked by the caller). */
   locationId?: string | null;
   areaId?: string | null;
@@ -164,6 +166,8 @@ export class TicketsService {
     if (!type) throw new BadRequestException('Choose a ticket type of this desk.');
     if (ITSM_KINDS.includes(type.kind) !== Boolean(input.itsm)) throw new BadRequestException(input.itsm ? 'Choose a change or problem type.' : 'Changes and problems are raised from IT › Changes and Problems, not as tickets.');
     const cat = input.categoryId ? await this.category(tx, org, desk.id, input.categoryId, true) : null;
+    // ITSM answer 2057: only an IT ticket names an application, and one in use.
+    if (input.appId && (desk.kind !== 'it' || !(await tx.sdBusinessApp.findFirst({ where: { organizationId: org, id: input.appId, status: 'active' }, select: { id: true } })))) throw new BadRequestException('Choose an application of this company that is in use (IT tickets only).');
     const fieldValues = input.fields && Object.keys(input.fields).length ? await this.raisedFields(tx, org, desk.id, type.id, input.fields, input.side === 'requester' ? 'requester' : 'agent') : null;
     if (input.originArticleId && !(await tx.sdKbArticle.findFirst({ where: { organizationId: org, id: input.originArticleId, deletedAt: null }, select: { id: true } }))) throw new BadRequestException('No such help article.');
     // SD-2.11: a type with a lifecycle starts in its start status and the ticket keeps that version.
@@ -228,6 +232,7 @@ export class TicketsService {
         raisedOutsideHours: input.side === 'requester' && Boolean(await this.sla.closedNow(tx, org, desk)),
         originArticleId: input.originArticleId ?? null,
         assetId: input.assetId ?? null,
+        appId: input.appId ?? null,
         locationId: input.locationId ?? null,
         areaId: input.areaId ?? null,
         equipmentId: input.equipmentId ?? null,
@@ -564,6 +569,7 @@ export class TicketsService {
       // HLP-03 resolved state: when a solved ticket closes by itself (the desk's setting) and the requester's rating.
       const rating = ['solved', 'closed'].includes(t.systemState) ? await tx.sdRating.findFirst({ where: { organizationId: org, ticketId: t.id }, select: { score: true, reason: true } }) : null;
       // Answers 1661, 1662: the device it is about; only an IT desk's agents set or change it.
+      const app = t.appId ? await tx.sdBusinessApp.findFirst({ where: { organizationId: org, id: t.appId }, select: { id: true, name: true } }) : null;
       const device = t.assetId ? await tx.asset.findFirst({ where: { organizationId: org, id: t.assetId }, select: { id: true, name: true, tag: true, category: true } }) : null;
       // Answers 1641, 1650: the desk's own fields this person may see (team-lead-only ones to the desk's leads only).
       const fieldViewer = this.fieldViewer(a, t.deskId, access);
@@ -580,6 +586,9 @@ export class TicketsService {
         canSetFields: access === 'agent' && canWork(a, t.deskId),
         device: device ? assetOption(device) : null,
         canSetDevice: desk.kind === 'it' && access === 'agent' && canWork(a, t.deskId),
+        // ITSM answer 2057: the application an IT ticket is about (the agents choose from the company's list).
+        app: app ? { id: app.id, name: app.name } : null,
+        appOptions: desk.kind === 'it' && access === 'agent' && canWork(a, t.deskId) ? await tx.sdBusinessApp.findMany({ where: { organizationId: org, status: 'active' }, select: { id: true, name: true }, orderBy: { name: 'asc' } }) : null,
         ...this.summary(t),
         closesOn: t.systemState === 'solved' && t.resolvedAt && desk.autoCloseDays ? new Date(t.resolvedAt.getTime() + desk.autoCloseDays * 86_400_000) : null,
         rating: rating?.score ?? null,
@@ -1068,6 +1077,25 @@ export class TicketsService {
       await tx.sdTicketEvent.create({ data: { organizationId: org, deskId: t.deskId, ticketId: t.id, kind: 'device_changed', fromValue: t.assetId, toValue: assetId ?? null, byUserId: a.userId } });
       await audit(tx, a, 'desk.ticket.device_set', 'sd_ticket', t.id, { from: t.assetId, to: assetId ?? null });
       return { device: asset ? assetOption(asset) : null };
+    });
+  }
+
+  /** ITSM answer 2057: an IT desk's agent sets or clears the application a ticket is about. */
+  async setApp(a: DeskActor, id: string, appId: string | null) {
+    return this.tx(a, async (tx) => {
+      const org = a.ctx.organizationId;
+      const { t, access } = await this.load(tx, a, id);
+      if (access !== 'agent') throw new ForbiddenException(SEAT_REQUIRED);
+      requireWork(a, t.deskId);
+      const desk = await tx.sdDesk.findFirstOrThrow({ where: { organizationId: org, id: t.deskId }, select: { kind: true } });
+      if (desk.kind !== 'it') throw new ForbiddenException("Only the IT desk's agents set a ticket's application.");
+      const app = appId ? await tx.sdBusinessApp.findFirst({ where: { organizationId: org, id: appId, status: 'active' }, select: { id: true, name: true } }) : null;
+      if (appId && !app) throw new BadRequestException('Choose an application of this company that is in use.');
+      if ((t.appId ?? null) === (appId ?? null)) return { app };
+      await tx.sdTicket.update({ where: { id: t.id }, data: { appId: appId ?? null, version: { increment: 1 } } });
+      await tx.sdTicketEvent.create({ data: { organizationId: org, deskId: t.deskId, ticketId: t.id, kind: 'app_changed', fromValue: t.appId, toValue: appId ?? null, byUserId: a.userId } });
+      await audit(tx, a, 'desk.ticket.app_set', 'sd_ticket', t.id, { from: t.appId, to: appId ?? null });
+      return { app };
     });
   }
 

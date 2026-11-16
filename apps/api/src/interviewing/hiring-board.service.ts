@@ -11,6 +11,7 @@ import { DEFAULT_TEMPLATES } from '../candidate-emails/default-templates';
 import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
 import { ScorecardsService } from './scorecards.service';
 import type { RejectDto } from './interviewing-dto';
+import { ResultsScope } from '../rbac/results-scope';
 
 export const REJECT_DELAY_HOURS = [0, 24] as const;
 
@@ -31,8 +32,8 @@ export class HiringBoardService {
     private readonly scorecards: ScorecardsService,
   ) {}
 
-  async board(ctx: TenantContext, jobId: string, role: string, userId: string) {
-    const b = await this.pipeline.getBoard(ctx, jobId, role, userId);
+  async board(ctx: TenantContext, jobId: string, role: string, userId: string, results?: ResultsScope) {
+    const b = await this.pipeline.getBoard(ctx, jobId, role, userId, results);
     const entryIds = Object.values(b.columns).flat().map((r) => r.entryId);
     const extra = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const results = await this.scorecards.entryResults(tx, c.organizationId, entryIds);

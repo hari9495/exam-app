@@ -45,7 +45,8 @@ export default function YxHiringJobPage() {
   const teammates = useTeammates();
   const settings = useHiring<{ scorecardTemplateId: string | null; exams: { examId: string; title: string; sendOnStageId: string | null }[] }>(`/jobs/${enc(id)}/interview-settings`);
   const board = useHiring<Board>(`/jobs/${enc(id)}/board`);
-  const exams = useExams(undefined, { pageSize: 100 });
+  // AS-0: the tests list only for people who may read tests (the Interview coordinator sees the job without them).
+  const exams = useExams(undefined, { pageSize: 100 }, perms.has('exam:manage') || perms.has('results:view'));
   // Founder answer 515: recruiting picks boards from their names (GET organizations/job-boards/names: id, name, kind only).
   const jobBoards = useApi<{ id: string; name: string }[]>(canManage || perms.has('org:manage_settings') ? '/organizations/job-boards/names' : null);
   const canConfigure = perms.has('pipelines:configure');

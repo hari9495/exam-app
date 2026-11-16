@@ -21,7 +21,7 @@ import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard, assertStepUp } from '../rbac/permissions.guard';
 import { RequireStepUp } from '../auth/step-up.decorator';
-import { RequirePermissions } from '../rbac/permissions.decorator';
+import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
@@ -70,8 +70,9 @@ export class UsersController {
 
   // Org-scoped teammates for the pipeline assign/@mention pickers (results:view, not the
   // super-admin platform directory). Returns only the caller's own org's active staff.
+  // AS-0: candidate view is enough (the Interview coordinator reads jobs and candidates, never test results).
   @Get('teammates')
-  @RequirePermissions('results:view')
+  @RequireAnyPermission('results:view', 'candidate:view')
   listTeammates(@CurrentTenant() tenant: TenantContext, @Query('search') search?: string) {
     return this.usersService.listTeammates(tenant, { search });
   }

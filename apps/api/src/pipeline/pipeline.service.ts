@@ -10,6 +10,7 @@ import { Job, PipelineEntry, PipelineFeedback, Prisma } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService, StageCategory, STAGE_CATEGORIES, lockedFieldEdits } from '@exam-platform/shared';
 import { noticeEmail, nycNotice } from '../hiring/bias-audit';
 import { EntryExamResult, deriveEntryExamResults, averageRating } from './derive-entry-exam-results';
+import { ResultsScope, candidatesInScope } from '../rbac/results-scope';
 import {
   upsertCustomFieldValues,
   serializeCustomFieldValues,
@@ -964,7 +965,8 @@ export class PipelineService {
   }
 
   /** viewerUserId (M10 AT5, rule J13): an internal applicant's current manager does not see the application before the offer stage, nor ever its test results. */
-  async getBoard(context: TenantContext, jobId: string, role: string, viewerUserId?: string): Promise<Board> {
+  /** `results` (answer 2004): whose test results the caller reads; none given = every candidate (internal use). */
+  async getBoard(context: TenantContext, jobId: string, role: string, viewerUserId?: string, results?: ResultsScope): Promise<Board> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const job = await tx.job.findFirst({
         where: { id: jobId, organizationId: context.organizationId as string },
@@ -1026,6 +1028,8 @@ export class PipelineService {
       const managed = viewerUserId && internalIds.length
         ? new Set((await tx.user.findMany({ where: { id: { in: internalIds }, managerId: viewerUserId }, select: { id: true } })).map((u) => u.id))
         : new Set<string>();
+      // Answer 2004: an Interview coordinator sees no test results; a Hiring manager only those of their own jobs' candidates.
+      const readable = !results || results.mode === 'all' ? null : new Set((await tx.candidate.findMany({ where: { id: { in: [...new Set(entries.map((x) => x.candidateId))] }, ...candidatesInScope(results) }, select: { id: true } })).map((c) => c.id));
       for (const e of entries) {
         if (!e.status) continue; // no status resolved yet (pre-migration edge case) -- can't place on a dynamic column
         const managersOwn = e.enteredVia === 'internal' && e.referrerUserId ? managed.has(e.referrerUserId) : false;
@@ -1040,7 +1044,7 @@ export class PipelineService {
           category: e.status.stage.category as StageCategory,
           enteredVia: e.enteredVia,
           rejectedReason: e.rejectedReason,
-          examResults: managersOwn ? [] : deriveEntryExamResults(e.candidate.invitations as any, linkedExamIds),
+          examResults: managersOwn || (readable && !readable.has(e.candidateId)) ? [] : deriveEntryExamResults(e.candidate.invitations as any, linkedExamIds),
           stageEnteredAt: e.stageEnteredAt,
           avgRating: averageRating(e.feedback.map((f: { rating: number | null }) => f.rating)),
           feedbackCount: e.feedback.length,

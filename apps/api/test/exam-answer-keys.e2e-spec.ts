@@ -68,6 +68,11 @@ describe('Answer keys and test results (security fix)', () => {
     await api('writer', 'post', `/exams/${ids.exam}/publish`).expect(201);
     const cand = (await api('writer', 'post', '/candidates').send({ email: `asha-${run}@keys.test`, name: 'Asha' }).expect(201)).body.id;
     ids.candidate = cand;
+    // AS-0 (answer 2004): a Hiring manager reads results only for candidates of their own jobs, so Asha applied to theirs.
+    const job = (await api('writer', 'post', '/jobs').send({ title: `Analyst ${run}` }).expect(201)).body.id as string;
+    const managerId = (await inOrg((tx) => tx.user.findFirstOrThrow({ where: { email: `manager-${run}@keys.test` }, select: { id: true } }))).id;
+    await inOrg((tx) => tx.job.update({ where: { id: job }, data: { hiringManagerId: managerId } }));
+    await api('writer', 'post', `/jobs/${job}/entries`).send({ candidateId: cand }).expect(201);
     const inv = (await api('writer', 'post', `/exams/${ids.exam}/invitations`).send({ candidateIds: [cand] }).expect(201)).body.created[0].token;
     const ct = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token: inv }).expect(200)).body.accessToken;
     await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${ct}`).send({ consent: true }).expect(201);
@@ -79,6 +84,7 @@ describe('Answer keys and test results (security fix)', () => {
   afterAll(async () => {
     await inOrg((tx) => tx.exam.deleteMany({ where: { organizationId: orgId } })).catch(() => undefined);
     await inOrg((tx) => tx.question.deleteMany({ where: { organizationId: orgId } })).catch(() => undefined);
+    await inOrg((tx) => tx.job.deleteMany({ where: { organizationId: orgId } })).catch(() => undefined);
     await inOrg((tx) => tx.candidate.deleteMany({ where: { organizationId: orgId } })).catch(() => undefined);
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: true }, (tx) => tx.refreshToken.deleteMany({ where: { user: { organizationId: orgId } } })).catch(() => undefined);
     await inOrg((tx) => tx.user.deleteMany({ where: { organizationId: orgId } })).catch(() => undefined);

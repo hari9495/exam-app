@@ -631,6 +631,11 @@ export class RaiseTicketDto {
   @IsUUID()
   assetId?: string;
 
+  /** ITSM answer 2057: on an IT desk, the application it is about (optional). */
+  @IsOptional()
+  @IsUUID()
+  appId?: string;
+
   /** SD-2.25: the language the person writes in (ISO 639, e.g. hi, ta); routing prefers agents who speak it. */
   @IsOptional()
   @Matches(/^[a-z]{2,3}$/, { message: 'Use a language code such as en, hi or ta.' })
@@ -1539,6 +1544,13 @@ export class ComplianceTargetsDto {
   @ValidateNested({ each: true })
   @Type(() => ComplianceTargetDto)
   targets!: ComplianceTargetDto[];
+}
+
+/** ITSM answer 2057: the business application an IT ticket is about; null clears it. */
+export class TicketAppDto {
+  @ValidateIf((_, v) => v !== null)
+  @IsUUID()
+  appId!: string | null;
 }
 
 /** Answer 1661: the device an IT ticket is about; null clears it. */

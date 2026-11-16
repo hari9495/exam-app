@@ -70,6 +70,20 @@ describe('UI rules guard (Time, Helpdesk, Pay, People, Ops)', () => {
     expect(tagsWith(['Button', 'IconButton'], 'disabled', () => true)).toEqual([]);
   });
 
+  it('(c) a FieldRow holds two, three or four fields (two columns, three on one line, or two by two; a fifth wraps alone)', () => {
+    const out: string[] = [];
+    for (const f of SOURCES) {
+      const src = ts.createSourceFile(f, readFileSync(f, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+      const visit = (n: ts.Node) => {
+        if (ts.isJsxElement(n) && n.openingElement.tagName.getText(src) === 'FieldRow' && n.children.filter((c) => ts.isJsxElement(c) || ts.isJsxSelfClosingElement(c)).length > 4)
+          out.push(`${rel(f)}: line ${src.getLineAndCharacterOfPosition(n.getStart(src)).line + 1}`);
+        n.forEachChild(visit);
+      };
+      visit(src);
+    }
+    expect(out).toEqual([]);
+  });
+
   it('the allow lists are not stale', () => {
     const all = SOURCES.map(rel);
     for (const o of OTHER_BUILDER) expect(all, o).toContain(o);

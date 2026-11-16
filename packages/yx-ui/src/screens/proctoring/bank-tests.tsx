@@ -21,6 +21,7 @@ import { matchesFilter, type FilterValue } from '../../lib/table';
 import { PrcFrame, type ViewState } from './proctoring-shared';
 import { blueprintCell, overallOutcome, publishChecks } from './proctoring-logic';
 import { BLUEPRINT, DIFFICULTY_LABEL, PEOPLE, SKILL_TREE, d, type QuestionRow } from './proctoring-data';
+import { LiveItemAnalysisScreen, LiveQuestionBank, LiveQuestionEditor, LiveReviewQueue, type LiveBank, type LiveEditor, type LiveItemAnalysis, type LiveReviews } from './bank-live';
 
 const opt = (xs: string[]) => xs.map((x) => ({ value: x, label: x }));
 const STATUS_TONE: Record<string, 'success' | 'warning' | 'neutral' | 'info'> = { Approved: 'success', 'In review': 'warning', Draft: 'neutral', Retired: 'neutral' };
@@ -93,7 +94,20 @@ const LIBRARY_PACKS = [
   { name: 'Food safety certification pack', desc: 'Partner pack from Sahyadri Assessment Labs. Charged per use.', langs: 'English, Hindi', included: false },
 ];
 
-export function QuestionBankScreen({ questions, state = 'ready', tab = 'bank', defaultSelected = [], defaultOpenId = null }: { questions: QuestionRow[]; state?: ViewState; tab?: 'bank' | 'library'; defaultSelected?: string[]; defaultOpenId?: string | null }) {
+interface QuestionBankProps {
+  questions: QuestionRow[];
+  state?: ViewState;
+  tab?: 'bank' | 'library';
+  defaultSelected?: string[];
+  defaultOpenId?: string | null;
+}
+
+/** PRC-01; with `live` (AS-1) the same screen with the company's questions. */
+export function QuestionBankScreen(props: QuestionBankProps | { live: LiveBank }) {
+  return 'live' in props ? <LiveQuestionBank live={props.live} /> : <SampleQuestionBank {...props} />;
+}
+
+function SampleQuestionBank({ questions, state = 'ready', tab = 'bank', defaultSelected = [], defaultOpenId = null }: QuestionBankProps) {
   // PRC-01
   const [filters, setFilters] = useState<FilterValue[]>([]);
   const [q, setQ] = useState('');
@@ -303,7 +317,12 @@ export interface QuestionEditorProps {
   defaultLanguage?: string;
 }
 
-export function QuestionEditorScreen({ question, issue = 'none', defaultTab = 'content', defaultDevice = 'desktop', defaultLanguage = 'English' }: QuestionEditorProps) {
+/** PRC-02; with `live` (AS-1) the same editor on a real question, its review, versions and translations. */
+export function QuestionEditorScreen(props: QuestionEditorProps | { live: LiveEditor }) {
+  return 'live' in props ? <LiveQuestionEditor live={props.live} /> : <SampleQuestionEditor {...props} />;
+}
+
+function SampleQuestionEditor({ question, issue = 'none', defaultTab = 'content', defaultDevice = 'desktop', defaultLanguage = 'English' }: QuestionEditorProps) {
   // PRC-02
   const [device, setDevice] = useState(defaultDevice);
   const [lang, setLang] = useState(defaultLanguage);
@@ -509,7 +528,19 @@ const DIFF_FIELDS = [
   { field: 'Skill', before: 'Quality › Food safety', after: 'Quality › Food safety', changed: false },
 ];
 
-export function QuestionReviewQueueScreen({ items, state = 'ready', defaultOpenId = 'Q-1060', decided }: { items: ReviewItem[]; state?: ViewState; defaultOpenId?: string | null; decided?: 'approved' | 'changes' }) {
+interface ReviewQueueProps {
+  items: ReviewItem[];
+  state?: ViewState;
+  defaultOpenId?: string | null;
+  decided?: 'approved' | 'changes';
+}
+
+/** PRC-03; with `live` (AS-1) the changes and translations waiting for this person. */
+export function QuestionReviewQueueScreen(props: ReviewQueueProps | { live: LiveReviews }) {
+  return 'live' in props ? <LiveReviewQueue live={props.live} /> : <SampleReviewQueue {...props} />;
+}
+
+function SampleReviewQueue({ items, state = 'ready', defaultOpenId = 'Q-1060', decided }: ReviewQueueProps) {
   // PRC-03
   const [openId, setOpenId] = useState(defaultOpenId);
   const [comments, setComments] = useState<Record<string, string>>({ 'Rubric: criterion 2': 'Good. Add one example answer at level 3.' });
@@ -877,7 +908,12 @@ export function TestBuilderScreen({ step = 'blueprint', mode = 'Randomised', sho
 /* PRC-05 · Item analysis dashboard                                    */
 /* ================================================================== */
 
-export function ItemAnalysisScreen({ questions, state = 'ready' }: { questions: QuestionRow[]; state?: 'ready' | 'loading' | 'provisional' }) {
+/** PRC-05; with `live` (AS-1) the item statistics the older engine already computes, with the provisional band. */
+export function ItemAnalysisScreen(props: { questions: QuestionRow[]; state?: 'ready' | 'loading' | 'provisional' } | { live: LiveItemAnalysis }) {
+  return 'live' in props ? <LiveItemAnalysisScreen live={props.live} /> : <SampleItemAnalysis {...props} />;
+}
+
+function SampleItemAnalysis({ questions, state = 'ready' }: { questions: QuestionRow[]; state?: 'ready' | 'loading' | 'provisional' }) {
   // PRC-05
   const scored = questions.filter((q) => q.pCorrect != null);
   const [sel, setSel] = useState(scored[0]?.id ?? '');

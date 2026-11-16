@@ -852,12 +852,13 @@ export function DataTable<R>(props: DataTableProps<R>) {
   const actionsCapped = !!(actionsW && actionsCap && actionsW > actionsCap);
   const actW = actionsCapped ? actionsCap : actionsW;
   const fixedW = (selectable ? SELECT_W : 0) + (hasActions ? (rowButtons ? actW ?? 0 : ACTIONS_W) : 0);
-  // Amounts are never cut off: a money or totalled column is at least as wide as its widest figure (the footer total
-  // included) and its header (Pay review, Oct 2026). ponytail: estimated from character count, measure if fonts change.
+  // Amounts and counts are never cut off: a money, number or totalled column is at least as wide as its widest figure
+  // (the footer total included) and its header (Pay review, Oct 2026; a count's header was clipped to "Incide…" on
+  // Changes, Nov 2026). ponytail: estimated from character count, measure if fonts change.
   const figureW = useMemo(() => {
     const out: Record<string, number> = {};
     for (const c of columns) {
-      if (c.type !== 'money' && !c.total) continue;
+      if (c.type !== 'money' && c.type !== 'number' && !c.total) continue;
       let chars = c.total ? formatTotal(c.total, c.type, computeTotal(rows, c.value, c.total)).length : 0;
       for (const r of rows) chars = Math.max(chars, cellText(c, r).length);
       out[c.key] = Math.max(chars * 9 + 32, c.header.length * 8 + 56);

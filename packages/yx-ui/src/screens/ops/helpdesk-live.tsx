@@ -409,6 +409,7 @@ function RaiseForm(p: RaiseFormProps) {
   // Answer 1911: the building and area of a facilities ticket.
   const [building, setBuilding] = useState<string | null>(null);
   const [area, setArea] = useState<string | null>(null);
+  const [appId, setAppId] = useState<string | null>(null);
   // Answer 1801: raising for a colleague (the server checks the on-behalf right).
   const [forOther, setForOther] = useState(false);
   const [forPerson, setForPerson] = useState<string | null>(null);
@@ -433,6 +434,7 @@ function RaiseForm(p: RaiseFormProps) {
   const askPlace = Boolean(desk?.askPlace && p.onPickPlace);
   // "Which device?" follows the person the ticket is for (1685).
   const askDevice = forOther ? Boolean(desksFor?.find((d) => d.id === deskId)?.askDevice) : Boolean(desk?.askDevice);
+  const appChoices = desk?.apps ?? [];
   const category = desk?.categories.find((c) => c.id === categoryId);
   const suggestions = useSuggestions(`${subject} ${details.slice(0, 200)}`, p.onSuggest);
   const early = useTooEarly([
@@ -457,7 +459,7 @@ function RaiseForm(p: RaiseFormProps) {
     void run('raise', async () => {
       const fields = raiseFieldValues(deskFields, fieldValues);
       try {
-        await p.onRaise({ deskId, categoryId: categoryId || undefined, subject: subject.trim(), description: details.trim(), impact: 3, urgency: 3, private: (isPrivate && !category?.sensitive) || undefined, ...(assetId && askDevice ? { assetId } : {}), ...(whom ? { requestedForPersonId: whom } : {}), ...(fields ? { fields } : {}), ...(askPlace && building ? { locationId: building, ...(area ? { areaId: area } : {}) } : {}) }, files.map((f) => f.file));
+        await p.onRaise({ deskId, categoryId: categoryId || undefined, subject: subject.trim(), description: details.trim(), impact: 3, urgency: 3, private: (isPrivate && !category?.sensitive) || undefined, ...(assetId && askDevice ? { assetId } : {}), ...(appId && appChoices.some((x) => x.id === appId) ? { appId } : {}), ...(whom ? { requestedForPersonId: whom } : {}), ...(fields ? { fields } : {}), ...(askPlace && building ? { locationId: building, ...(area ? { areaId: area } : {}) } : {}) }, files.map((f) => f.file));
       } catch (e) {
         setFieldErrors(fieldErrorsOf(e) ?? {});
         throw e;
@@ -509,6 +511,11 @@ function RaiseForm(p: RaiseFormProps) {
             <LivePicker kind="locations" label="Building" value={building} onChange={(v) => { setBuilding(v); setArea(null); }} onPick={(_k, q) => p.onPickPlace!('locations', q)} />
             {building && <LivePicker key={building} kind="areas" label="Floor or area" value={area} onChange={setArea} onPick={(_k, q) => p.onPickPlace!('areas', q, building)} />}
           </div>
+        </FormField>
+      )}
+      {appChoices.length > 0 && (
+        <FormField label="Which application?" optional helper="If the problem is with one of the company's applications.">
+          <Select value={appId} onChange={setAppId} clearable placeholder="Choose" options={appChoices.map((x) => ({ value: x.id, label: x.name }))} />
         </FormField>
       )}
       {askDevice && p.onPickDevice && (

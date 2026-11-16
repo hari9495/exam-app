@@ -427,7 +427,7 @@ describe('Helpdesk ITSM: changes and problems', () => {
     expect(ke.state).toBe('known_error');
     const article = await tenantPrisma.forTenant(SUPER, (tx) => tx.sdKbArticle.findFirstOrThrow({ where: { id: ke.articleId } }));
     expect([article.audience, article.state]).toEqual(['agents', 'draft']);
-    expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.sdBanner.findFirstOrThrow({ where: { id: ke.bannerId } }))).ticketId).toBeNull();
+    expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.sdBanner.findFirstOrThrow({ where: { id: ke.bannerId } }))).ticketId).toBe((await tenantPrisma.forTenant(SUPER, (tx) => tx.sdProblem.findFirstOrThrow({ where: { id: p.id } }))).ticketId); // answer 2051: Me too raises a linked incident
     await api('agent', 'post', `/desk/problems/${p.id}/known-error`).send({ version: d.version, workaround: 'Old version of the page.' }).expect(409);
     d = (await api('agent', 'get', `/desk/problems/${p.id}`).expect(200)).body;
     await api('agent', 'patch', `/desk/problems/${p.id}`).send({ version: d.version, rootCause: 'The access point firmware drops clients after 6 hours.', closingReply: 'Fixed: the access point firmware was updated. Reply if Wi-Fi still drops.' }).expect(200);
@@ -533,5 +533,94 @@ describe('Helpdesk ITSM: changes and problems', () => {
     expect(rep.problems.top[0].incidents).toBe(3);
     await api('divya', 'get', `/desk/itsm/report?deskId=${ids.it}&from=2026-01-01&to=2027-12-31`).expect(403);
     await api('agentB', 'get', `/desk/itsm/report?deskId=${ids.it}&from=2026-01-01&to=2027-12-31`).expect(404);
+  });
+
+  // ------------------------------------------------------------------------------------------------ follow-ups 2051-2058
+
+  it('an IT ticket names its application, and repeats on one application suggest a problem (answer 2057)', async () => {
+    const hrCat = ((await api('adminA', 'get', `/desk/desks/${ids.hr}`).expect(200)).body.categories as { id: string }[])[0]!.id;
+    expect((await api('divya', 'get', '/desk/my/desks').expect(200)).body.find((d: { id: string }) => d.id === ids.it).apps.map((x: { id: string }) => x.id)).toContain(ids.tally);
+    await api('divya', 'post', '/desk/my/tickets').send({ deskId: ids.hr, categoryId: hrCat, appId: ids.tally, subject: 'Tally payslip', description: 'x' }).expect(400);
+    const raised: { id: string; number: string }[] = [];
+    for (const s of ['Tally will not open', 'Tally freezes on save', 'Tally login fails']) raised.push((await api('divya', 'post', '/desk/my/tickets').send({ deskId: ids.it, appId: ids.tally, subject: s, description: 'Since this morning.' }).expect(201)).body);
+    expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.sdTicket.findFirstOrThrow({ where: { id: raised[0]!.id } }))).appId).toBe(ids.tally);
+    const app = (s: { kind?: string; appId?: string | null }) => s.kind === 'application' && s.appId === ids.tally;
+    expect((await api('lead', 'get', `/desk/problems?deskId=${ids.it}`).expect(200)).body.suggestions.find(app)).toMatchObject({ count: 3, category: 'Tally Prime' });
+    // The agent clears it on one ticket: below the count, no suggestion. Others may not.
+    await api('divya', 'put', `/desk/tickets/${raised[2]!.id}/app`).send({ appId: null }).expect(403);
+    await api('agentB', 'put', `/desk/tickets/${raised[2]!.id}/app`).send({ appId: null }).expect(404);
+    await api('agent', 'put', `/desk/tickets/${raised[2]!.id}/app`).send({ appId: randomUUID() }).expect(400);
+    await api('agent', 'put', `/desk/tickets/${raised[2]!.id}/app`).send({ appId: null }).expect(200);
+    expect((await api('lead', 'get', `/desk/problems?deskId=${ids.it}`).expect(200)).body.suggestions.find(app)).toBeUndefined();
+    expect((await api('agent', 'put', `/desk/tickets/${raised[2]!.id}/app`).send({ appId: ids.tally }).expect(200)).body.app.name).toBe('Tally Prime');
+    const s = (await api('lead', 'get', `/desk/problems?deskId=${ids.it}`).expect(200)).body.suggestions.find(app);
+    const p = (await api('lead', 'post', '/desk/problems').send({ deskId: ids.it, title: 'Tally keeps failing', appId: ids.tally, incidentIds: s.incidentIds }).expect(201)).body;
+    ids.tallyProblem = p.id;
+    expect(p.linked).toBe(3);
+    expect((await api('lead', 'get', `/desk/problems?deskId=${ids.it}`).expect(200)).body.suggestions.find(app)).toBeUndefined();
+  });
+
+  it('"Me too" on a known problem raises the person\'s own incident, linked to the problem (answer 2051)', async () => {
+    const d = (await api('agent', 'get', `/desk/problems/${ids.tallyProblem}`).expect(200)).body;
+    const ke = (await api('agent', 'post', `/desk/problems/${ids.tallyProblem}/known-error`).send({ version: d.version, workaround: 'Open Tally from the second shortcut on the desktop.', banner: true }).expect(200)).body;
+    const banners = (await api('divya', 'get', '/desk/my/banners').expect(200)).body as { id: string; canMeToo: boolean }[];
+    const b = banners.find((x) => x.id === ke.bannerId)!;
+    expect(b.canMeToo).toBe(true);
+    const res = (await api('divya', 'post', `/desk/my/banners/${b.id}/me-too`).expect(200)).body;
+    expect(res.ticket.number).toMatch(/^IT-/);
+    const mine = await tenantPrisma.forTenant(SUPER, (tx) => tx.sdTicket.findFirstOrThrow({ where: { id: res.ticket.id } }));
+    expect([mine.kind, mine.requesterPersonId]).toEqual(['incident', people.divya]);
+    const problemTicket = (await tenantPrisma.forTenant(SUPER, (tx) => tx.sdProblem.findFirstOrThrow({ where: { id: ids.tallyProblem } }))).ticketId;
+    expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.sdTicketLink.count({ where: { fromTicketId: mine.id, toTicketId: problemTicket, kind: 'tracked_by' } }))).toBe(1);
+    expect((await api('divya', 'post', `/desk/my/banners/${b.id}/me-too`).expect(200)).body.already).toBe(true);
+    // The employee follows their own ticket, never the problem.
+    expect(((await api('divya', 'get', '/desk/my/tickets').expect(200)).body as { id: string }[]).map((x) => x.id)).toContain(mine.id);
+    expect(((await api('divya', 'get', '/desk/my/tickets').expect(200)).body as { id: string }[]).map((x) => x.id)).not.toContain(problemTicket);
+  });
+
+  it('a change raised from a problem is linked to fix it (answer 2058)', async () => {
+    const day = sat();
+    const base = { deskId: ids.it, kind: 'normal', appId: ids.tally, title: 'Patch Tally to 6.1', answers: LOW, from: at(day, '10:00'), to: at(day, '11:00'), backout: 'Reinstall 6.0.' };
+    await api('agent', 'post', '/desk/changes').send({ ...base, problemId: ids.problem }).expect(400); // that problem is closed
+    await api('agent', 'post', '/desk/changes').send({ ...base, problemId: randomUUID() }).expect(400);
+    const c = (await api('agent', 'post', '/desk/changes').send({ ...base, problemId: ids.tallyProblem }).expect(201)).body;
+    const d = (await api('agent', 'get', `/desk/problems/${ids.tallyProblem}`).expect(200)).body;
+    expect(d.fixes.map((f: { number: string }) => f.number)).toEqual([c.number]);
+  });
+
+  it('notices reach one location or the application\'s users when the desk says so (answer 2056)', async () => {
+    let s = (await api('deskAdmin', 'get', `/desk/desks/${ids.it}/itsm-settings`).expect(200)).body;
+    expect(s.noticeScope).toBe('all');
+    await api('deskAdmin', 'put', `/desk/desks/${ids.it}/itsm-settings`).send({ version: s.version, noticeScope: 'nowhere' }).expect(400);
+    s = (await api('deskAdmin', 'put', `/desk/desks/${ids.it}/itsm-settings`).send({ version: s.version, noticeScope: 'location' }).expect(200)).body;
+    const day = sat();
+    const base = { deskId: ids.it, kind: 'normal', appId: ids.tally, title: 'Move the Tally database', answers: LOW, from: at(day, '15:00'), to: at(day, '16:00'), backout: 'Move it back.' };
+    expect((await api('agent', 'post', '/desk/changes').send(base).expect(400)).body.message).toMatch(/Choose the location/);
+    await api('agent', 'post', '/desk/changes').send({ ...base, noticeLocationId: randomUUID() }).expect(400);
+    await api('agent', 'post', '/desk/changes').send({ ...base, banner: false }).expect(201);
+    s = (await api('deskAdmin', 'put', `/desk/desks/${ids.it}/itsm-settings`).send({ version: s.version, noticeScope: 'application' }).expect(200)).body;
+    expect((await api('agent', 'post', '/desk/changes').send({ ...base, appId: undefined, service: 'Tally' }).expect(400)).body.message).toMatch(/application's users/);
+    // A known error limited to Tally's users: only people given access to Tally see it.
+    const other = (await api('agent', 'post', '/desk/problems').send({ deskId: ids.it, title: 'Tally reports print blank', appId: ids.tally }).expect(201)).body;
+    const od = (await api('agent', 'get', `/desk/problems/${other.id}`).expect(200)).body;
+    const ke = (await api('agent', 'post', `/desk/problems/${other.id}/known-error`).send({ version: od.version, workaround: 'Export to PDF and print the PDF instead.', banner: true }).expect(200)).body;
+    expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.sdBanner.findFirstOrThrow({ where: { id: ke.bannerId } }))).appId).toBe(ids.tally);
+    expect(((await api('divya', 'get', '/desk/my/banners').expect(200)).body as { id: string }[]).map((x) => x.id)).not.toContain(ke.bannerId);
+    const form = { sections: [{ id: 's', columns: 1, fields: [{ key: 'app', type: 'app', label: 'Which application?', required: true }] }], rules: [] };
+    const team = ((await api('adminA', 'get', `/desk/desks/${ids.it}`).expect(200)).body.groups as { id: string }[])[0]!.id;
+    const cat = ((await api('adminA', 'get', `/desk/desks/${ids.it}`).expect(200)).body.categories as { id: string }[])[0]!.id;
+    const item = (await api('adminA', 'post', '/desk/catalog/admin/items').send({ deskId: ids.it, name: `Tally access ${run}`, categoryId: cat, draft: { form, approval: [], fulfilment: [{ title: 'Give access', groupId: team }] } }).expect(201)).body;
+    await api('adminA', 'post', `/desk/catalog/admin/items/${item.id}/publish`).send({ version: item.version }).expect(200);
+    await api('divya', 'post', '/desk/my/catalog/checkout').send({ items: [{ itemId: item.id, quantity: 1, answers: { app: ids.tally } }] }).expect(201);
+    await tenantPrisma.forTenant(SUPER, (tx) => tx.sdRequestItem.updateMany({ where: { organizationId: org.A.id, itemId: item.id }, data: { stage: 'delivered' } }));
+    expect(((await api('divya', 'get', '/desk/my/banners').expect(200)).body as { id: string }[]).map((x) => x.id)).toContain(ke.bannerId);
+    await api('deskAdmin', 'put', `/desk/desks/${ids.it}/itsm-settings`).send({ version: s.version, noticeScope: 'all' }).expect(200);
+  });
+
+  it('the IT leads are told when a scheduled standard change is skipped (answer 2054)', async () => {
+    for (let i = 0; i < 30 && !(await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.count({ where: { recipientUserId: users.lead, type: 'helpdesk.recurring.skipped' } }))); i++) await new Promise((r) => setTimeout(r, 100));
+    expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.count({ where: { recipientUserId: users.lead, type: 'helpdesk.recurring.skipped' } }))).toBe(1);
+    expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.count({ where: { recipientUserId: users.lead2, type: 'helpdesk.recurring.skipped' } }))).toBe(1);
+    expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.count({ where: { recipientUserId: users.agent, type: 'helpdesk.recurring.skipped' } }))).toBe(0);
   });
 });

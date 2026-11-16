@@ -112,7 +112,7 @@ export class TalentController {
 
   // HIR-20 Talent CRM: job-board postings of the company's jobs (read with the job-board view; changes go through the job).
   @Get('postings')
-  @RequireAnyPermission('pipeline:manage', 'results:view')
+  @RequireAnyPermission('pipeline:manage', 'results:view', 'candidate:view')
   postings(@CurrentTenant() ctx: TenantContext) {
     return this.pools.postings(ctx);
   }

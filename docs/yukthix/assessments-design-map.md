@@ -701,6 +701,57 @@ rescheduling, the capacity planner, adaptive tests, admit cards and the invigila
 about **90 to 120 builder-days**, plus outside vendors (ID checks, payments) and the mobile apps, started only with a
 real certification customer.
 
+### AS-0 as built (13 Nov 2026, branch feat/yukthix-assessments-as0)
+
+No new screens: AS-0 is the security slice under the existing routes and the /v2 pages. What changed:
+
+- **Company isolation (2005).** Fourteen tables get `organization_id`, filled from the parent and kept filled by a
+  BEFORE INSERT trigger, made required, indexed and put under the forced `tenant_isolation` policy
+  (`202617z0000301_assessments_company_rls`; the super-admin context is set before any data is written). The eleven
+  tables listed above plus `results`, `integrity_analyses` and `candidate_messages` (they hold scores and messages). The
+  candidate runtime's three reads without a company context (link sign-in, the session check, last-seen) now run in one.
+- **YukthiX keys (2003).** `asmt.bank.manage`, `asmt.test.manage`, `asmt.proctor`, `asmt.evaluate`,
+  `asmt.results.view`, `assessments.settings.manage`. The older keys keep working: `exam:manage` ← `asmt.test.manage`,
+  `question_bank:manage` and `question_bank:view` ← `asmt.bank.manage`, `results:view` ← `asmt.results.view` (plus
+  `ats.assessment.view`, `ats.candidate.manage`; never `ats.candidate.view`). Proctor routes (events, messages, unblock,
+  end, excuse, re-analyse) take `exam:manage` or `asmt.proctor`; marking routes (grade, finish marking, code review,
+  pending marking, release and hold results, AI insight again) take `exam:manage` or `asmt.evaluate`; the certificate
+  template takes `exam:manage` or `assessments.settings.manage`. Templates: Recruiter + bank, test, proctor, evaluate,
+  results; Hiring manager + results; Hiring admin + assessment settings.
+- **Who sees results (2004).** Answer keys only for writers (the hotfix). Results: test writers, recruiters
+  (`pipeline:manage`), hiring admins (`ats.headcount.manage`) and auditors read every candidate; anyone else who reads
+  results (the Hiring manager) reads only candidates who applied to one of their own jobs (hiring manager of the job, or
+  its creator) in the results list, summary, accuracy, report, compare, export, drive roster and AI insight (another
+  job's candidate is 404); the company-wide /v2 dashboard is refused to them (403, question 2061). The Interview
+  coordinator keeps "Jobs & requisitions", the jobs, the job board, candidate profile and résumé, feedback, fit and the
+  pickers (candidate view is enough on those reads) but sees no test result anywhere (the board's results are empty;
+  every test and results route is 403).
+- **Acting, step-up, reasons (2006).** Every assessments change is refused while acting for someone else (reads stay
+  open). The second factor again to end an attempt, overturn a proctoring verdict (unblock, excuse from proctoring),
+  release results and finish marking. Ending an attempt needs a reason; it is kept on the candidate's timeline
+  (`ended_by_staff` event) and in the audit log.
+
+Tests: `test/assessments-as0.e2e-spec.ts` (cross-company reads and writes, each key, own-job results, the coordinator,
+acting, step-up and reasons), `src/rbac/results-scope.spec.ts`; the suites that end attempts, unblock or finish marking
+now prove the second factor first.
+
+### Questions (from 2061)
+
+2061. **The company-wide test dashboard for a Hiring manager.** It is refused to them now (it counts every candidate).
+      *Suggested: AS-2's score report gets an own-jobs view for Hiring managers.*
+2062. **Two more tables without a company column.** `candidate_refresh_tokens` and `notifications` (invitation email
+      delivery) hold no answers or scores and are read by token at sign-in. *Suggested: add the column and RLS in AS-3,
+      with invitations and delivery.*
+2063. **Pausing an attempt.** Staff cannot pause today (the system blocks; staff unblock or end), so the reason rule
+      covers ending. *Suggested: AS-5's live console adds pause, with a reason, as drawn.*
+2064. **No step-up to undo an excuse or to hold results.** Both return to the stricter state. *Suggested: keep as is.*
+2065. **Proctor- or marker-only people.** With only `asmt.proctor` or `asmt.evaluate` they can act on an attempt but
+      cannot open the test page (it needs a test or results key). *Suggested: AS-5 and AS-6 open their own pages to
+      them.*
+2066. **"Own jobs" for a Hiring manager.** A candidate is theirs when the candidate applied to a job they are the hiring
+      manager of, or opened; then all that candidate's test results show. *Suggested: keep; a per-job restriction comes
+      with AS-3's job tests.*
+
 ## Appendix: the count script
 
 Run from the repo root (`node check.js` after saving the block). It recounts section 3 and fails unless every story of
@@ -756,3 +807,82 @@ console.log('ok');
 
 **Founder answers (13 Nov 2026):** 2001 to 2021 all accepted as suggested ("ok for all"). Build starts with wave 1
 (AS-0 first: security), after the answer-key hotfix (`fix/exam-answer-key-exposure`) merges.
+
+**Founder answers (16 Nov 2026, "ok for all"), 2121 to 2130:** all accepted as suggested.
+- 2121: when the bank goes in the menu, the older publish route refuses, changes to approved questions go through review, /v2/questions redirects.
+- 2122: store the question version on each answer (AS-0 or AS-4a).
+- 2123: AS-2's 6.5 page writes the second-approver setting as the per-collection table.
+- 2124: keep all three packs on by default; the tab says they are being written.
+- 2125: code-test editing next in the designed editor.
+- 2126: image upload next (existing image route); other media later.
+- 2127: per-test charts with AS-2's test builder.
+- 2128: keep bulk Retire without review.
+- 2129: a daily bell note to bank writers when items wait for review.
+- 2130: keep text-only duplicate check at 90 %.
+## AS-1 as built (branch `feat/yukthix-assessments-as1`, 16 Nov 2026)
+
+Question bank: review, versions, duplicate check, alt text, translations and item analysis (answers 2009, 2010, 2017).
+Not in the menu: the lead adds it after AS-0 merges. Pages: `/yx/hiring/assessments/questions`, `…/questions/[id]`
+(`new` for a new one), `…/reviews`, `…/item-analysis`. Keys for now: `question_bank:manage` on every route
+(TODO(AS-0): `asmt.bank.manage`).
+
+- **Data:** migration `202617z0000231_question_bank_review`. `questions` gains `version`, `image_alt`, `option_alts`,
+  `last_approved_by`, `last_approved_at`. New tables `question_revisions` (a proposed new question or change, its review,
+  duplicate finding and field comments) and `question_translations` (per question, version and language), both with
+  forced RLS and `tenant_isolation`; the app may not delete from them. The database also refuses a reviewer who is the
+  author, a second approver who is the author or first reviewer, and an approval without its reviewers.
+- **Review (2009):** a new question is a draft nobody can use; only its author changes and submits it. Another person
+  approves or asks for changes (a note, comments per field; the author gets a bell note `asmt.question.changes_requested`).
+  A collection listed in `asmt.bank.second_approver_collections` (none by default) needs a third person. AI drafts are
+  reviewed like any other. Approving carries a row version: when two reviewers press at once, the second gets "reload it".
+- **Versions (2010):** a change to an approved question waits as a revision; the question in use stays until approval.
+  Text, type, options, the answer key, model answer or code tests make the next version (and restart item statistics);
+  anything else is a minor change that keeps the number. Every approved revision stays as that version's record.
+- **Duplicates and alt text:** submitting compares the text with every draft and approved question (letter trigrams;
+  `asmt.bank.duplicate_percent`, default 90); a reviewer must mark "not a duplicate" before approving. Every image (question
+  and options) needs alt text before submit and approval.
+- **Translations (2010):** `asmt.languages` (Hindi, Tamil, Telugu; none by default, so English only). A translation is of
+  the current version, all options in order, optionally marked AI-assisted, and approved by someone other than its writer.
+- **Packs (2017):** only the switch, `asmt.packs` (Aptitude, English, Core IT; all on by default). The Library packs tab
+  shows which are on and that YukthiX is writing them. No pack content.
+- **Item analysis (PRC-05):** the older engine's statistics (from 20 answers) across tests, with the provisional band
+  `asmt.item_stats.provisional_answers` (default 200) and each item's distractors.
+- **Screens:** the designed `QuestionBankScreen`, `QuestionEditorScreen`, `QuestionReviewQueueScreen` and
+  `ItemAnalysisScreen` with `live` (`bank-live.tsx`, export `@yukthix/ui/assessments`); new states drawn as stories in
+  PRC-01 (3), PRC-02 (6), PRC-03 (3) and PRC-05 (2). The four left the design-live guard's "not live" list.
+- **Security:** answer keys only for writers in their own session (`withoutAnswerKey` on the question and queue routes);
+  every write refused while acting for someone else; every write audited (`question.created`, `change_drafted`,
+  `submitted`, `change_withdrawn`, `duplicate_cleared`, `first_approval`, `approved`, `changes_requested`,
+  `translation_drafted`, `translation_submitted`, `translation_approved`, `translation_changes_requested`).
+- **Not built here:** see questions 2121 to 2130 (the older routes still publish without review, attempts do not record
+  their version, image upload and media blocks, code-test editing, per-test reliability charts).
+- **Tests:** API unit `bank-rules` (6); e2e `question-bank-review` (12); kit `bank-live` (14); web
+  `yx-assessments-bank` (4). Manual test MT-ASMT-BANK1.
+
+### Questions (from 2121)
+
+2121. **The older question routes skip review.** `/questions` create, change and publish (the `/v2/questions` page, bulk
+      upload and AI drafts) still make a question usable without another person. *Suggested: when the bank goes in the
+      menu, the older publish refuses and changes to an approved question go through review; `/v2/questions` redirects.*
+2122. **Which version an attempt saw.** Attempts and answers do not record the question version, and the engine changes
+      the question row in place on approval. *Suggested: AS-0 or AS-4a stores the version on each answer (AS-0 already
+      touches the answers table); reports read that version's record from the review history.*
+2123. **The second-approver setting's shape.** Built as a comma list `asmt.bank.second_approver_collections`; the 6.5
+      design draws "Review workflow per collection" (`asmt.review_workflow`). *Suggested: AS-2's 6.5 page writes this key
+      as that list.*
+2124. **Starter packs on by default.** `asmt.packs` has all three on though no pack content exists yet. *Suggested: keep;
+      the tab says they are being written.*
+2125. **Code, file and spoken questions in the editor.** It writes single choice, multiple choice, true or false and
+      descriptive; the others keep their tests and settings. *Suggested: add code-test editing to the designed editor
+      next.*
+2126. **Media blocks.** The design draws LaTeX, code, audio, video and attachment blocks and an expected time; the engine
+      holds one image per question and option (alt text built). *Suggested: image upload in the editor next, using the
+      existing image route; the other blocks later.*
+2127. **Per-test item analysis.** The design's reliability, score distribution, section correlation and item curves are
+      per test; the engine computes per question across tests. *Suggested: with AS-2's test builder.*
+2128. **Retiring questions.** Bulk Retire uses the older archive route with no review. *Suggested: keep; retiring only
+      stops new tests using it.*
+2129. **Telling reviewers.** Only the author is told (changes asked for). *Suggested: a daily bell note to bank writers
+      when changes wait for them.*
+2130. **Duplicate check scope.** Text only, within the company, drafts and approved questions. *Suggested: keep; add
+      options to the comparison if reviewers see misses.*

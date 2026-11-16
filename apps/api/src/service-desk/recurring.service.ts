@@ -4,13 +4,13 @@ import { AuditService, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { deskRobot } from './catalog.service';
 import { DeskActor, SEAT_REQUIRED, activeOn, audit, deskSystem, emit, requireDesk, requireSetUp, requireWork } from './desk-access';
-import { NotificationsService } from '../notifications/notifications.service';
-import { todayIst } from '../org-structure/org-validation';
 import { ScheduleError, dueBetween, nextRun, preview } from './recurrence';
 import { RequesterService } from './requester.service';
 import { cleanHtml, htmlToText } from './rich-text';
 import { OPEN_STATES, TicketsService } from './tickets.service';
 import { ChangesService, Owner } from './changes.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { todayIst } from '../org-structure/org-validation';
 import { Notice } from '../workflow/approvals-engine.service';
 import { checkPlace } from './facilities.service';
 
@@ -299,6 +299,13 @@ export class RecurringService {
       if (!(e instanceof HttpException)) this.logger.warn(`recurring standard change ${r.id}: ${(e as Error).message}`);
       await emit(tx, org, 'helpdesk.recurring.skipped', { recurringId: r.id, deskId: r.deskId, dueAt: at.toISOString(), reason });
       await AuditService.recordIn(tx, ctx, { actorUserId: null, action: 'desk.recurring.skipped', entityType: 'sd_recurring', entityId: r.id, metadata: { dueAt: at.toISOString(), reason } });
+      // Answer 2054: the desk's IT leads are told (once the skip is saved).
+      const leads = (await tx.sdDeskMember.findMany({ where: { organizationId: org, deskId: r.deskId, role: 'lead', ...activeOn(todayIst()) }, select: { userId: true } })).map((m) => m.userId);
+      const text = `${r.name}: the standard change due ${at.toISOString().slice(0, 10)} was not raised. ${reason}`.slice(0, 300);
+      if (leads.length)
+        after.push(() =>
+          this.notifications.notifySystem(ctx, leads, 'helpdesk.recurring.skipped', { entityType: 'sd_recurring', entityId: r.id, contextText: text, linkPath: `/yx/desk/setup?tab=schedules` }, { subject: `A scheduled standard change was not raised: ${r.name}`.slice(0, 150), html: `<p>${text.replace(/[<>&]/g, '')}</p><p>Raise it by hand if it is still needed, or change the schedule.</p>` }),
+        );
       this.logger.log(`recurring standard change ${r.id} skipped: ${reason}`);
       return 0;
     }

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ErrorState, Spinner } from '@yukthix/ui';
 import { ChangesScreen, type ChangeInput, type ChangeRow, type ItsmReportView } from '@yukthix/ui/desk';
 import { apiFetchBlob } from '../../../../../lib/api-client';
@@ -28,12 +28,17 @@ type ChangeList =
       questions: { id: string; label: string; options: { value: string; label: string }[] }[];
       routes: { low: string; medium: string; high: string; emergency: string };
       bannerHours: number | null;
+      noticeScope: 'all' | 'location' | 'application';
+      locations: { id: string; name: string }[];
       templates: { id: string; name: string; checklist: string[] }[];
       apps: { id: string; name: string }[];
     };
 
-export default function YxDeskChangesPage() {
+function YxDeskChangesPageInner() {
   const router = useRouter();
+  // Answer 2058: from a problem, the New change drawer opens with the problem linked.
+  const problemId = useSearchParams()?.get('problem') ?? null;
+  const problem = useDesk<{ id: string; number: string; title: string; state: string }>(problemId ? `/problems/${encodeURIComponent(problemId)}` : null);
   const { accessToken } = useAuth();
   const [deskId, setDeskId] = useState<string | null>(null);
   const list = useDesk<ChangeList>(deskId ? `/changes?deskId=${encodeURIComponent(deskId)}` : '/changes');
@@ -44,7 +49,7 @@ export default function YxDeskChangesPage() {
   const reportDesk = list.data?.access && !list.data.asked ? list.data.desk.id : null;
   const report = useDesk<Omit<ItsmReportView, 'period'>>(reportDesk ? `/itsm/report?deskId=${encodeURIComponent(reportDesk)}&from=${day(new Date(Date.now() - 89 * 86_400_000))}&to=${day(new Date())}` : null);
   if (list.isError) return <ErrorState title="The changes did not load." description="Try again in a moment." onRetry={() => void list.refetch()} />;
-  if (!list.data) return <Spinner label="Loading" size="md" />;
+  if (!list.data || (problemId && !problem.data && !problem.isError)) return <Spinner label="Loading" size="md" />;
   const d = list.data;
   if (!d.access) return <ChangesScreen rows={[]} freezes={[]} today={today} access={false} />;
   const open = (id: string) => router.push(`/yx/desk/changes/${encodeURIComponent(id)}`);
@@ -56,6 +61,7 @@ export default function YxDeskChangesPage() {
       rows={d.rows.map((r) => ({ ...r, from: new Date(r.from), to: new Date(r.to) }))}
       freezes={d.freezes.map((f) => ({ on: new Date(`${f.date}T00:00:00`), why: f.why }))}
       today={today}
+      newOpen={Boolean(problem.data && problem.data.state !== 'closed')}
       live={{
         desks: d.desks,
         deskId: d.desk.id,
@@ -72,9 +78,20 @@ export default function YxDeskChangesPage() {
         apps: d.apps,
         routes: d.routes,
         bannerHours: d.bannerHours,
+        noticeScope: d.noticeScope,
+        locations: d.locations,
+        problem: problem.data && problem.data.state !== 'closed' ? { id: problem.data.id, number: problem.data.number, title: problem.data.title } : null,
         windowText: `weekdays ${d.window.weekdayFrom} to ${d.window.weekdayTo}${d.window.weekends ? ', and weekends' : ''}`,
         onSubmit: (input: ChangeInput) => write<{ id: string; number: string; stage: string }>('/changes', 'POST', { deskId: d.desk.id, ...input }),
       }}
     />
+  );
+}
+
+export default function YxDeskChangesPage() {
+  return (
+    <Suspense fallback={<Spinner label="Loading" size="md" />}>
+      <YxDeskChangesPageInner />
+    </Suspense>
   );
 }
