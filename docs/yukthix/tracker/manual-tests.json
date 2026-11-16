@@ -21768,5 +21768,21 @@
       "FeatureRequestsReview"
     ],
     "note": "Positive and negative. Real Claude answers need the key; the tests use a stand-in."
+  },
+  {
+    "id": "MT-SET-1976",
+    "area": "Settings 1976: kept records removed after their day (16 Nov 2026)",
+    "screen": "Console › Company (a deleted throwaway company)",
+    "url": "http://localhost:3000/staff/companies",
+    "account": "A YukthiX staff member with a passkey; a throwaway company already deleted (MT-SET-FU2).",
+    "steps": [
+      "Open the deleted throwaway company; Download certificate.",
+      "Negative: check that the company's kept records are still there (its statutory records are kept until a day 8 years on)."
+    ],
+    "expected": "Step 1: the first certificate downloads; it has no removals yet (the kept days are 8 years away). Step 2: nothing was removed early. The nightly removal itself (after the day, per group, the company last, with a certificate each) is covered by the API tests (company-retention-expiry), since its days are years away.",
+    "stories": [
+      "CompanyDeleted"
+    ],
+    "note": "Positive and negative. Only on a throwaway company. Nothing to click for the removal: it runs nightly."
   }
 ]

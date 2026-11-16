@@ -1136,6 +1136,42 @@ Tests: API e2e `settings-s10-security` (6), `webhook-delivery` (the admin confir
 1978. **Rule 7 reminders before 13 May 2027.** The Board reminders run now, before Rule 7 is in force.
       *Suggested: keep them on now (telling the Board early does no harm); counsel confirms the wording.*
 
+## 1976 as built: kept records removed after their day (branch `feat/yukthix-retention-expiry`)
+
+- **Groups and days:** when `purge_company` marks a deletion done, a trigger writes the company's kept groups to
+  `company_record_groups` from the certificate it has just written: audit, pay and filings, each with its own day, and
+  company (the company row, its people and the rows the kept records refer to) with `records_kept_until`. The app can
+  read the groups but never write them; marking a deletion done by hand is refused for the same reason.
+- **Removal:** `release_company_records(company)` (SECURITY DEFINER, owned by the table owner) refuses unless the
+  company is closed and was purged, no legal hold is active, and at least one group's day has passed. It removes each
+  due group whole or not at all (rows another kept group still needs make it wait for a later night), then the
+  company group last, once `records_kept_until` has passed and every other group is gone. Each removal gets a
+  certificate (what was removed, table by table, when, the first certificate's SHA-256) with its own SHA-256, kept on
+  the group's row.
+- **The app role gains nothing:** the read-only rule now also lets a removal through when code runs as the table owner
+  with a permit for its own transaction and company (`retention_release_grants`, owner only); setting
+  `app.retention_release` from the app is not enough, and the app cannot write the permits.
+- **Nightly:** the `retention-expiry` sweep (03:05 IST) tries every purged company; a per-company advisory lock and
+  the company row lock make two workers safe, and a removed group stays removed. Each removal is audited outside the
+  company (`platform.company.kept_records_removed`); the files the removed records held are dropped after.
+- **Console:** the certificate download also returns the removal certificates (`removals`).
+- **Tests:** e2e `company-retention-expiry` (8): refused before the day, under a legal hold, for an open or never-purged
+  company; only the due group removed; the certificate and its SHA-256; two workers at once; the company removed last;
+  the app role cannot remove kept rows, write the groups or the permits, or forge a done deletion.
+
+### Questions (from 2081)
+
+2081. **Showing the removal certificates in the console.** The download returns them; the company page shows only
+      the first certificate. *Suggested: list each removal (group, day, SHA-256) under the deletion on the company page.*
+2082. **When the company itself goes.** Once every group is removed the company row, its people and its legal
+      entities go, and the console no longer finds the company; the deletion and removal certificates stay.
+      *Suggested: keep it so; the certificates are the lasting record.*
+2083. **A legal hold placed after deletion.** A hold set on a deleted company stops the removal on the nights it is
+      active. Today only the company's own Security leads set holds, and a deleted company has none.
+      *Suggested: let YukthiX staff set a hold on a deleted company from the console (security key, audited).*
+2084. **Telling anyone.** The nightly removal is audited but nobody is told (the company's own people are gone).
+      *Suggested: a console notice to the two staff members who asked for and confirmed the deletion.*
+
 ## 7. Build plan (slices, max 3 builders at once)
 
 Ordered by what every customer needs first: the way in (home), the everyday HR rules (time, leave, payroll, people),
