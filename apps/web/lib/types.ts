@@ -1513,7 +1513,8 @@ export interface AttemptSectionFeedback {
 }
 
 export interface AttemptFeedback {
-  status: 'pending_review' | 'awaiting_release' | 'settled';
+  // 'held' (AS-4a, PRC-27): held for review; the candidate sees that it is under review, never why or the score.
+  status: 'pending_review' | 'awaiting_release' | 'held' | 'settled';
   visibility: 'none' | 'pass_fail' | 'score' | 'breakdown';
   passFail: 'pass' | 'fail' | null;
   percentage: number | null;
@@ -1531,7 +1532,7 @@ export interface AttemptState {
   browserActivityViolationCount: number;
   // Server-authoritative owner of the current pause -- use this instead of guessing from the
   // violation counters. Null if not paused/blocked, or for a pause predating this field.
-  pausedReason: 'webcam' | 'browser_activity' | 'screen_share' | 'face_mismatch' | null;
+  pausedReason: 'webcam' | 'browser_activity' | 'screen_share' | 'face_mismatch' | 'break' | null;
   // Stage-3 face enforcement 'warn': ISO timestamp of an unacknowledged non-freezing heads-up, or
   // null. Distinct from pausedReason -- warn never pauses, so the candidate keeps working while it
   // shows and clears it via /attempt/face-warning-ack.
@@ -1546,9 +1547,23 @@ export interface AttemptState {
   answers: AttemptAnswerSummary[];
   messages: AttemptMessageSummary[];
   feedback: AttemptFeedback | null;
+  /** AS-4a (PRC-26): calculator, breaks, offline answering and time credit. Optional for older fixtures. */
+  runner?: AttemptRunnerInfo;
   organizationName: string | null;
   organizationLogoUrl: string | null;
   organizationPrimaryColor: string | null;
+}
+
+export interface AttemptRunnerInfo {
+  calculator: 'none' | 'basic' | 'scientific';
+  breaksAllowed: number;
+  breaksUsed: number;
+  breakMinutes: number;
+  breakEndsAt: string | null;
+  offlineMinutes: number;
+  timeCreditCapMinutes: number;
+  offlineCreditSeconds: number;
+  surveyDone: boolean;
 }
 
 export type AttemptCurrent = AttemptPreview | AttemptState;

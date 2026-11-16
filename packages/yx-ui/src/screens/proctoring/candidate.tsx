@@ -1,7 +1,7 @@
 // Candidate-facing proctoring screens (T9 portal and full-screen runner): portal home, readiness / system check,
 // accommodation request, consent, identity verification, test runner, result + appeal, privacy centre, candidate app,
 // result reuse (T03–T05, T08). PRC-21 … PRC-28, PRC-31, PRC-32.
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { CalendarClock, Calculator as CalcIcon, Coffee, Download, Eye, Monitor, RotateCcw, Smartphone, Type } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge, AiBadge } from '../../components/display';
@@ -14,7 +14,7 @@ import { Checkbox, RadioGroup, Switch } from '../../components/choice';
 import { FileUpload } from '../../components/upload';
 import { ConfirmDialog } from '../../components/overlay';
 import { Heading, Icon } from '../../components/foundations';
-import { ExamShell, QuestionCard, formatClock, type ExamQuestionState } from '../../components/exam';
+import { ExamShell, QuestionCard, formatClock, type AutosaveStatus, type ExamQuestionState } from '../../components/exam';
 import { PageBanner } from '../../components/notify';
 import { PhoneFrame } from '../_kit/frames';
 import { COMPANY } from '../_kit/data';
@@ -416,8 +416,330 @@ function makeQuestions(n: number, answered: number): ExamQuestionState[] {
   return Array.from({ length: n }, (_, i) => ({ answered: i < answered && i !== 4, markedForReview: i === 6 || i === 11 }));
 }
 
-export function TestRunnerScreen({ view = 'mcq', conn = 'online' }: { view?: RunnerView; conn?: ConnState }) {
-  // PRC-26
+
+/* ---------------- PRC-26 live (AS-4a) ---------------- */
+
+/** One question as the live runner shows it. Code, file and spoken answers come from the page (`renderQuestion`). */
+export interface LiveRunnerQuestion {
+  id: string;
+  type: 'single' | 'multiple' | 'essay' | 'other';
+  text: string;
+  marks: number;
+  options: { id: string; label: string }[];
+  /** Chosen option ids (single and multiple). */
+  value: string[];
+  /** The written answer (essay). */
+  answerText: string;
+  answered: boolean;
+  markedForReview: boolean;
+}
+
+export interface LiveRunner {
+  testName: string;
+  candidateName: string;
+  logo?: ReactNode;
+  proctored: boolean;
+  /** What is watched, shown under the bar ("Camera on · Screen shared"). */
+  proctoringNote?: string;
+  seconds: number;
+  /** running; on the candidate's break; paused by the proctor or a check; submitted. */
+  status: 'running' | 'break' | 'paused' | 'submitted';
+  pausedMessage?: string;
+  /** While on a break: seconds until it ends on its own. */
+  breakSecondsLeft?: number;
+  breaksLeft: number;
+  breakMinutes: number;
+  onStartBreak?: () => Promise<unknown>;
+  onEndBreak?: () => Promise<unknown>;
+  connection: ConnState;
+  /** Answers kept on this device, not yet sent. */
+  queued: number;
+  offlineSeconds: number;
+  /** asmt.offline_minutes: answering stops past this offline. */
+  offlineMinutes: number;
+  /** Time given back for a lost connection so far (seconds) and the cap (minutes). */
+  creditSeconds: number;
+  creditCapMinutes: number;
+  saveStatus: AutosaveStatus;
+  savedAt?: string;
+  sections: { name: string; count: number }[];
+  questions: LiveRunnerQuestion[];
+  current: number;
+  onNavigate: (index: number) => void;
+  onAnswer: (q: LiveRunnerQuestion, value: string[]) => void;
+  onAnswerText: (q: LiveRunnerQuestion, text: string) => void;
+  onMark: (q: LiveRunnerQuestion, marked: boolean) => void;
+  /** Code, file and spoken questions (the page keeps its editors and recorders). */
+  renderQuestion?: (q: LiveRunnerQuestion) => ReactNode;
+  calculator: 'none' | 'basic' | 'scientific';
+  onFinish: () => void;
+  /** After submit: when, how many answered, the result line, and the optional survey. */
+  submittedAt?: string;
+  resultNote?: ReactNode;
+  survey?: { done: boolean; onSend: (input: { rating: number; clearInstructions?: boolean; comment?: string }) => Promise<unknown> } | null;
+}
+
+function SurveyCard({ survey }: { survey: NonNullable<LiveRunner['survey']> }) {
+  const [open, setOpen] = useState(false);
+  const [skipped, setSkipped] = useState(false);
+  const [rating, setRating] = useState<string | null>(null);
+  const [clear, setClear] = useState<string | null>(null);
+  const [comment, setComment] = useState('');
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState(survey.done);
+  if (sent) return <p className="yx-prc-muted">Thank you for answering the survey.</p>;
+  if (skipped) return null;
+  return (
+    <Card title="Two minutes: how was the test? (optional)">
+      <p className="yx-prc-small">Your answers never affect your score and are only reported in groups of 5 or more.</p>
+      {!open ? (
+        <div className="yx-prc-row">
+          <Button onClick={() => setSkipped(true)}>Skip</Button>
+          <Button variant="primary" onClick={() => setOpen(true)}>
+            Start survey
+          </Button>
+        </div>
+      ) : (
+        <div className="yx-prc-stack">
+          {error && <InlineAlert tone="danger" title="It was not sent">{error}</InlineAlert>}
+          <FormField label="How was the test overall?" required error={tried && !rating ? 'Choose a rating' : undefined}>
+            <RadioGroup aria-label="How was the test overall?" orientation="horizontal" value={rating ?? undefined} onChange={setRating} options={['1', '2', '3', '4', '5'].map((v) => ({ value: v, label: v === '1' ? '1 · Poor' : v === '5' ? '5 · Very good' : v }))} />
+          </FormField>
+          <FormField label="Were the instructions clear?" optional>
+            <RadioGroup aria-label="Were the instructions clear?" orientation="horizontal" value={clear ?? undefined} onChange={setClear} options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} />
+          </FormField>
+          <FormField label="Anything else?" optional>
+            <TextArea rows={3} maxLength={1000} value={comment} onChange={setComment} />
+          </FormField>
+          <div className="yx-prc-row">
+            <Button onClick={() => setSkipped(true)}>Skip</Button>
+            <Button
+              variant="primary"
+              loading={busy}
+              onClick={() => {
+                setTried(true);
+                if (!rating) return;
+                setBusy(true);
+                setError(null);
+                survey
+                  .onSend({ rating: Number(rating), ...(clear ? { clearInstructions: clear === 'yes' } : {}), ...(comment.trim() ? { comment: comment.trim() } : {}) })
+                  .then(() => setSent(true))
+                  .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Try again in a moment.'))
+                  .finally(() => setBusy(false));
+              }}
+            >
+              Send
+            </Button>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/** PRC-26 with a real attempt (exam-runtime): the designed runner, its sections, connection, calculator, display, breaks and finish. */
+function LiveTestRunnerScreen({ live }: { live: LiveRunner }) {
+  const [calc, setCalc] = useState(false);
+  const [a11y, setA11y] = useState(false);
+  const [font, setFont] = useState<'normal' | 'large'>('normal');
+  const [contrast, setContrast] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const act = (key: string, fn?: () => Promise<unknown>) => {
+    if (!fn) return;
+    setBusy(key);
+    setError(null);
+    fn()
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Try again in a moment.'))
+      .finally(() => setBusy(null));
+  };
+  const stopped = live.connection === 'offline' && live.offlineSeconds >= live.offlineMinutes * 60;
+
+  if (live.status === 'submitted')
+    return (
+      <div className="yx-prc-fullscreen">
+        <Heading level={1}>Test submitted</Heading>
+        <p className="yx-prc-p">
+          We received your answers{live.submittedAt ? ` at ${live.submittedAt}` : ''}. {live.proctored ? 'Your camera and screen recording have stopped. ' : ''}You can close this window.
+        </p>
+        {live.resultNote && <div className="yx-prc-muted">{live.resultNote}</div>}
+        {live.survey && <SurveyCard survey={live.survey} />}
+      </div>
+    );
+
+  if (live.status === 'break' || live.status === 'paused')
+    return (
+      <div className="yx-prc-fullscreen">
+        <Icon icon={Coffee} size="md" />
+        <Heading level={1}>{live.status === 'break' ? 'Break' : 'Your test is paused'}</Heading>
+        {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+        {live.status === 'break' ? (
+          <>
+            <p className="yx-prc-mono yx-prc-big" aria-live="polite">
+              {formatClock(live.breakSecondsLeft ?? 0)}
+            </p>
+            <p className="yx-prc-p">The test timer is stopped. When the break ends, on its own or when you continue, the timer starts again.</p>
+            <Button variant="primary" loading={busy === 'end'} onClick={() => act('end', live.onEndBreak)}>
+              End break and continue
+            </Button>
+          </>
+        ) : (
+          <>
+            {live.pausedMessage && <p className="yx-prc-p">{live.pausedMessage}</p>}
+            <p className="yx-prc-muted">The timer is stopped. It starts again when the test is resumed.</p>
+          </>
+        )}
+      </div>
+    );
+
+  const q = live.questions[live.current];
+  const prev = live.current > 0 ? () => live.onNavigate(live.current - 1) : undefined;
+  const next = live.current < live.questions.length - 1 ? () => live.onNavigate(live.current + 1) : undefined;
+  const nav = (
+    <div className="yx-prc-row" data-between>
+      <Checkbox label="Mark for review" checked={q?.markedForReview ?? false} onChange={(m) => q && live.onMark(q, m)} />
+      <div className="yx-prc-row">
+        <Button onClick={prev} disabled={!prev}>
+          Previous
+        </Button>
+        <Button variant="primary" onClick={next} disabled={!next}>
+          Next
+        </Button>
+      </div>
+    </div>
+  );
+  const body = !q ? (
+    <EmptyState title="This test has no questions." />
+  ) : q.type === 'single' || q.type === 'multiple' ? (
+    <QuestionCard
+      number={live.current + 1}
+      total={live.questions.length}
+      marks={`${q.marks} ${q.marks === 1 ? 'mark' : 'marks'}`}
+      question={q.text}
+      kind={q.type}
+      options={q.options}
+      value={q.value}
+      onChange={(v) => !stopped && live.onAnswer(q, v)}
+      markedForReview={q.markedForReview}
+      onMarkedForReviewChange={(m) => live.onMark(q, m)}
+      onPrevious={prev}
+      onNext={next}
+    />
+  ) : q.type === 'essay' ? (
+    <article className="yx-prc-stack" aria-label={`Question ${live.current + 1}`}>
+      <p className="yx-prc-muted yx-prc-small">
+        Question {live.current + 1} of {live.questions.length} · Descriptive · {q.marks} {q.marks === 1 ? 'mark' : 'marks'}
+      </p>
+      <p className="yx-prc-p">{q.text}</p>
+      <TextArea className="yx-prc-answer" rows={12} value={q.answerText} readOnly={stopped} onChange={(v) => live.onAnswerText(q, v)} aria-label="Your answer" spellCheck />
+      <p className="yx-prc-muted yx-prc-small" aria-live="polite">
+        {q.answerText.trim() ? q.answerText.trim().split(/\s+/).length : 0} words
+      </p>
+      {nav}
+    </article>
+  ) : (
+    <article className="yx-prc-stack" aria-label={`Question ${live.current + 1}`}>
+      <p className="yx-prc-muted yx-prc-small">
+        Question {live.current + 1} of {live.questions.length} · {q.marks} {q.marks === 1 ? 'mark' : 'marks'}
+      </p>
+      {live.renderQuestion?.(q)}
+      {nav}
+    </article>
+  );
+
+  let at = 0;
+  const sections = live.sections.map((s) => {
+    const first = at;
+    at += s.count;
+    return { ...s, first, current: live.current >= first && live.current < at };
+  });
+
+  return (
+    <div className="yx-prc-a11y" data-font={font} data-contrast={contrast ? 'high' : undefined}>
+      <ExamShell
+        testName={live.testName}
+        candidateName={live.candidateName}
+        seconds={live.seconds}
+        saveStatus={live.saveStatus}
+        savedAt={live.savedAt}
+        questions={live.questions.map((x) => ({ answered: x.answered, markedForReview: x.markedForReview }))}
+        current={live.current}
+        onNavigate={live.onNavigate}
+        onFinish={live.onFinish}
+        logo={live.logo}
+        proctored={live.proctored}
+      >
+        <div className="yx-prc-stack">
+          <div className="yx-prc-runner-bar">
+            {sections.length > 1 ? (
+              <nav className="yx-prc-sections" aria-label="Sections">
+                {sections.map((s) => (
+                  <Button key={s.name} size="sm" variant={s.current ? 'primary' : undefined} aria-current={s.current ? 'step' : undefined} onClick={() => live.onNavigate(s.first)}>
+                    {`${s.name} · ${s.count}`}
+                  </Button>
+                ))}
+              </nav>
+            ) : (
+              <span />
+            )}
+            <div className="yx-prc-row">
+              <ConnectionStatus state={live.connection} queued={live.queued} offlineSeconds={live.offlineSeconds} offlineMinutes={live.offlineMinutes} />
+              {live.calculator !== 'none' && (
+                <Button size="sm" icon={CalcIcon} onClick={() => setCalc(!calc)} aria-pressed={calc}>
+                  Calculator
+                </Button>
+              )}
+              <Button size="sm" icon={Type} onClick={() => setA11y(!a11y)} aria-pressed={a11y}>
+                Display
+              </Button>
+              {live.breaksLeft > 0 && live.onStartBreak && (
+                <Button size="sm" icon={Coffee} loading={busy === 'break'} onClick={() => act('break', live.onStartBreak)}>
+                  Take a break ({live.breaksLeft} left)
+                </Button>
+              )}
+            </div>
+          </div>
+          {live.proctoringNote && <p className="yx-prc-row yx-prc-small yx-prc-muted">{live.proctoringNote}</p>}
+          {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+          {(live.connection === 'reconnecting' || live.connection === 'offline') && (
+            <InlineAlert tone="warning" title={stopped ? 'Answering is paused until you are back online' : 'Reconnecting'}>
+              {stopped
+                ? `You were offline for more than ${live.offlineMinutes} minutes. Your answers are kept on this device and sent when the connection returns.`
+                : `Keep answering. ${live.queued} ${live.queued === 1 ? 'answer is' : 'answers are'} kept on this device and will be sent. Lost time is added back automatically, up to ${live.creditCapMinutes} minutes.`}
+            </InlineAlert>
+          )}
+          {live.creditSeconds > 0 && live.connection === 'online' && (
+            <p className="yx-prc-small yx-prc-muted" aria-live="polite">
+              {formatClock(live.creditSeconds)} added back for a lost connection.
+            </p>
+          )}
+          {a11y && (
+            <Card title="Display settings">
+              <div className="yx-prc-grid3">
+                <FormField label="Text size">
+                  <Select value={font} onChange={(v) => setFont((v as 'normal' | 'large') ?? 'normal')} options={[{ value: 'normal', label: 'Standard' }, { value: 'large', label: 'Large' }]} size="sm" />
+                </FormField>
+                <Switch label="High contrast" checked={contrast} onChange={setContrast} />
+              </div>
+            </Card>
+          )}
+          {body}
+          {calc && (
+            <div className="yx-prc-floating">
+              <Calculator onClose={() => setCalc(false)} />
+            </div>
+          )}
+        </div>
+      </ExamShell>
+    </div>
+  );
+}
+
+export function TestRunnerScreen({ view = 'mcq', conn = 'online', live }: { view?: RunnerView; conn?: ConnState; live?: LiveRunner }) {
+  // PRC-26; with `live`, a real attempt (AS-4a).
+  if (live) return <LiveTestRunnerScreen live={live} />;
   const [answer, setAnswer] = useState<string[]>(['b']);
   const [marked, setMarked] = useState(false);
   const [calc, setCalc] = useState(view === 'calculator');
@@ -603,8 +925,76 @@ export function TestRunnerScreen({ view = 'mcq', conn = 'online' }: { view?: Run
 /* PRC-27 · Result page + appeal                                       */
 /* ================================================================== */
 
-export function ResultAppealScreen({ state = 'released' }: { state?: 'released' | 'held' | 'verdict' | 'appeal-form' | 'appeal-sent' | 'window-closed' }) {
-  // PRC-27
+/** PRC-27 with a real attempt (AS-4a): released (what the test lets the candidate see) or held for review. */
+export interface LiveResult {
+  testName: string;
+  takenOn?: string;
+  state: 'released' | 'held' | 'pending';
+  /** Released: only what the test shows (pass or fail, score, sections); null when it shows nothing of it. */
+  passed?: boolean | null;
+  percentage?: number | null;
+  sections?: { title: string; score: number; maxScore: number }[] | null;
+  onCertificate?: () => Promise<unknown>;
+}
+
+function LiveResultAppealScreen({ live }: { live: LiveResult }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <CandidateFrame page="My tests">
+      <Title>Your result</Title>
+      <p className="yx-prc-muted">
+        {live.testName}
+        {live.takenOn ? ` · taken on ${live.takenOn}` : ''}
+      </p>
+      {live.state === 'held' ? (
+        <Card title="Result under review">
+          <p className="yx-prc-p">We are checking a few moments from your session. This is routine and does not mean you did anything wrong. You will hear from us by email.</p>
+        </Card>
+      ) : live.state === 'pending' ? (
+        <Card title="Result not ready yet">
+          <p className="yx-prc-p">Some answers are marked by a person, or the hiring team releases results later. You will hear from us by email.</p>
+        </Card>
+      ) : (
+        <Card title={live.passed == null ? 'Result' : live.passed ? 'Result: passed' : 'Result: not passed'}>
+          {live.passed == null && live.percentage == null && !live.sections?.length ? (
+            <p className="yx-prc-p">The hiring team will contact you about the next step.</p>
+          ) : (
+            <DescriptionList
+              items={[
+                ...(live.passed != null ? [{ label: 'Status', value: live.passed ? 'Passed' : 'Not passed' }] : []),
+                ...(live.percentage != null ? [{ label: 'Score', value: `${Math.round(live.percentage)} %` }] : []),
+                ...(live.sections ?? []).map((sec) => ({ label: sec.title, value: `${sec.score} of ${sec.maxScore}` })),
+              ]}
+            />
+          )}
+        </Card>
+      )}
+      {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+      {live.state === 'released' && live.onCertificate && (
+        <div className="yx-prc-row">
+          <Button
+            icon={Download}
+            loading={busy}
+            onClick={() => {
+              setBusy(true);
+              setError(null);
+              live.onCertificate!()
+                .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Try again in a moment.'))
+                .finally(() => setBusy(false));
+            }}
+          >
+            Download certificate
+          </Button>
+        </div>
+      )}
+    </CandidateFrame>
+  );
+}
+
+export function ResultAppealScreen({ state = 'released', live }: { state?: 'released' | 'held' | 'verdict' | 'appeal-form' | 'appeal-sent' | 'window-closed'; live?: LiveResult }) {
+  // PRC-27; with `live`, a real result (AS-4a).
+  if (live) return <LiveResultAppealScreen live={live} />;
   return (
     <CandidateFrame page="My tests">
       <Title>Your result</Title>

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, Post, Req, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Header, HttpCode, Post, Req, UseGuards, UseInterceptors } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { CandidateJwtAuthGuard } from '../candidate-auth/candidate-jwt-auth.guard';
@@ -6,7 +6,7 @@ import { CurrentCandidate, CandidateSession } from '../candidate-auth/current-ca
 import { LastSeenInterceptor } from './last-seen.interceptor';
 import { AttemptService } from './attempt.service';
 import { resolveClientIp } from '../network/resolve-client-ip';
-import { AnswerDto } from './dto/answer.dto';
+import { AnswerDto, SurveyDto } from './dto/answer.dto';
 import { StartAttemptDto } from './dto/start-attempt.dto';
 import { ReportProctoringEventDto } from './dto/report-proctoring-event.dto';
 import { ClientErrorDto } from './dto/client-error.dto';
@@ -77,6 +77,34 @@ export class AttemptController {
   @Throttle(MODERATE_ATTEMPT_THROTTLE)
   submit(@CurrentCandidate() candidate: CandidateSession) {
     return this.attemptService.submit(candidate);
+  }
+
+  // AS-4a (PRC-26): breaks, back after a lost connection, and the optional after-test survey.
+  @Post('break/start')
+  @HttpCode(200)
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  startBreak(@CurrentCandidate() candidate: CandidateSession) {
+    return this.attemptService.startBreak(candidate);
+  }
+
+  @Post('break/end')
+  @HttpCode(200)
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  endBreak(@CurrentCandidate() candidate: CandidateSession) {
+    return this.attemptService.endBreak(candidate);
+  }
+
+  @Post('reconnected')
+  @HttpCode(200)
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  reconnected(@CurrentCandidate() candidate: CandidateSession) {
+    return this.attemptService.reconnected(candidate);
+  }
+
+  @Post('survey')
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  survey(@CurrentCandidate() candidate: CandidateSession, @Body() dto: SurveyDto) {
+    return this.attemptService.submitSurvey(candidate, dto);
   }
 
   @Post('client-error')

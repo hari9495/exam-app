@@ -182,7 +182,7 @@ describe('useAnswerMutation', () => {
     expect(calls).toHaveLength(1);
   });
 
-  it('shows a non-blocking error toast after 3 failed retries and does not throw', async () => {
+  it('AS-4a: after 3 failed retries the answer stays on the device (no toast), marked as waiting, and does not throw', async () => {
     jest.useFakeTimers();
     let answerAttempts = 0;
     global.fetch = jest.fn(async (url) => {
@@ -213,8 +213,36 @@ describe('useAnswerMutation', () => {
     });
 
     expect(answerAttempts).toBe(3);
-    expect(mockToast).toHaveBeenCalledTimes(1);
+    expect(mockToast).not.toHaveBeenCalled();
+    expect(hook!.queued).toBe(1);
+    expect(hook!.connection).not.toBe('online');
+    expect(JSON.parse(localStorage.getItem('yx-exam-answers') ?? '{}')).toHaveProperty('q1');
+    jest.useRealTimers();
+    localStorage.clear();
+  });
+
+  it('negative: a refusal from the server (not a lost connection) is dropped from the device and shown as a toast', async () => {
+    jest.useFakeTimers();
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/candidate-auth/refresh')) return new Response(JSON.stringify({ message: 'none' }), { status: 401 });
+      return new Response(JSON.stringify({ message: 'Cannot answer' }), { status: 400 });
+    }) as unknown as typeof fetch;
+    let hook: ReturnType<typeof useAnswerMutation> | undefined;
+    function Probe() {
+      hook = useAnswerMutation();
+      return null;
+    }
+    render(<Probe />, { wrapper });
+    act(() => {
+      hook!.saveAnswer('q1', ['a']);
+    });
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(900);
+    });
     expect(mockToast).toHaveBeenCalledWith(expect.any(String), 'error');
+    expect(hook!.queued).toBe(0);
+    expect(localStorage.getItem('yx-exam-answers')).toBeNull();
+    jest.useRealTimers();
   });
 });
 
