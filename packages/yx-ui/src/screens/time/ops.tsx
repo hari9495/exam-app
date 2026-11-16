@@ -710,6 +710,44 @@ function SampleTimesheet({ status, layout, prefillOpen, prefillView, initialLine
     setThisLines([...thisLines, { ...newTimesheetLine(), correctionFor: range(weekStart) }]);
     go(0);
   };
+  const clientNote = lines.some((l) => l.projectId === 'pr2') && <p className="yx-tim-note">SRF-24 client hours are also checked by S. Balaji, Sundaram Retail Foods.</p>;
+  const correctionAlert = onThis && (
+    <>
+      {correctionFor && <InlineAlert tone="info" title={`Correction for ${correctionFor}`}>Pick the project and task in the new row at the end, and enter the hours you missed. Your manager sees it with this week.</InlineAlert>}
+    </>
+  );
+  // Weeks are sent on the Monday after they end; the approver acts the same day.
+  const sentOn = dayMonth(addWeeks(weekStart, 1));
+  const weekFacts =
+    st === 'submitted' ? (
+      <div className="yx-tim-row">
+        <span className="yx-tim-muted">Waiting for {ME.manager} since {sentOn}.</span>
+        <Button size="sm" onClick={() => setStatusOver((s) => ({ ...s, [offset]: 'draft' }))}>Recall to edit</Button>
+      </div>
+    ) : st === 'approved' ? (
+      <p className="yx-tim-muted">Approved by {ME.manager} on {sentOn}.</p>
+    ) : null;
+  // Submit sits after the hours (phone and desk), and is blocked until the last workday of the week. Answer 1886: the
+  // hint beside it says why once; pressed too early, the error box says it and the hint steps aside.
+  const [submitBtn, submitHint] = !editable
+    ? [null, null]
+    : onThis
+      ? // Never disabled: pressed too early, it says why.
+        [<Button key="s" variant="primary" onClick={() => setProblems(['Submit opens Thu 1 Oct, your last workday this week (Fri 2 Oct is Gandhi Jayanti)'])}>Submit week</Button>, problems.length === 0 ? 'Opens Thu 1 Oct, your last workday this week (Fri 2 Oct is Gandhi Jayanti).' : null]
+      : queriedUnchanged
+        ? [<Button key="s" variant="primary" onClick={() => setProblems(['Change the SRF-24 hours on Tue 22 Sep first: your manager queried them'])}>Resubmit week</Button>, problems.length === 0 ? 'Change the SRF-24 hours on Tue 22 Sep first.' : null]
+        : [<Button key="s" variant="primary" onClick={resubmit}>{st === 'sent_back' ? 'Resubmit week' : 'Submit week'}</Button>, `Goes ${st === 'sent_back' ? 'back ' : ''}to ${ME.manager}.`];
+  const problemsAlert = editable && problems.length > 0 && <InlineAlert tone="danger" title="Fix these before sending">{problems.join('. ')}.</InlineAlert>;
+  // Phone: Submit sits after the hours; desk: in the grid's footer bar beside Save draft (founder reference, 16 Nov 2026).
+  const submitRow = editable && (
+    <div className="yx-tim-stack">
+      {problemsAlert}
+      <div className="yx-tim-row">
+        {submitBtn}
+        {submitHint && <span className="yx-tim-muted">{submitHint}</span>}
+      </div>
+    </div>
+  );
   const grid = (
     <TimesheetGrid
       weekStart={weekStart}
@@ -732,41 +770,9 @@ function SampleTimesheet({ status, layout, prefillOpen, prefillView, initialLine
       onAddCorrection={st === 'locked' ? addCorrection : undefined}
       layout={layout}
       noteRule={noteRule}
+      submitAction={layout === 'days' ? undefined : submitBtn}
+      footNote={layout === 'days' ? undefined : submitHint}
     />
-  );
-  const clientNote = lines.some((l) => l.projectId === 'pr2') && <p className="yx-tim-note">SRF-24 client hours are also checked by S. Balaji, Sundaram Retail Foods.</p>;
-  const correctionAlert = onThis && (
-    <>
-      {correctionFor && <InlineAlert tone="info" title={`Correction for ${correctionFor}`}>Pick the project and task in the new row at the end, and enter the hours you missed. Your manager sees it with this week.</InlineAlert>}
-    </>
-  );
-  // Weeks are sent on the Monday after they end; the approver acts the same day.
-  const sentOn = dayMonth(addWeeks(weekStart, 1));
-  const weekFacts =
-    st === 'submitted' ? (
-      <div className="yx-tim-row">
-        <span className="yx-tim-muted">Waiting for {ME.manager} since {sentOn}.</span>
-        <Button size="sm" onClick={() => setStatusOver((s) => ({ ...s, [offset]: 'draft' }))}>Recall to edit</Button>
-      </div>
-    ) : st === 'approved' ? (
-      <p className="yx-tim-muted">Approved by {ME.manager} on {sentOn}.</p>
-    ) : null;
-  // Submit sits after the hours (phone and desk), and is blocked until the last workday of the week. Answer 1886: the
-  // hint beside it says why once; pressed too early, the error box says it and the hint steps aside.
-  const submitRow = editable && (
-    <div className="yx-tim-stack">
-      {problems.length > 0 && <InlineAlert tone="danger" title="Fix these before sending">{problems.join('. ')}.</InlineAlert>}
-      <div className="yx-tim-row">
-        {onThis ? (
-          // Never disabled: pressed too early, it says why.
-          <><Button variant="primary" onClick={() => setProblems(['Submit opens Thu 1 Oct, your last workday this week (Fri 2 Oct is Gandhi Jayanti)'])}>Submit week</Button>{problems.length === 0 && <span className="yx-tim-muted">Opens Thu 1 Oct, your last workday this week (Fri 2 Oct is Gandhi Jayanti).</span>}</>
-        ) : queriedUnchanged ? (
-          <><Button variant="primary" onClick={() => setProblems(['Change the SRF-24 hours on Tue 22 Sep first: your manager queried them'])}>Resubmit week</Button>{problems.length === 0 && <span className="yx-tim-muted">Change the SRF-24 hours on Tue 22 Sep first.</span>}</>
-        ) : (
-          <><Button variant="primary" onClick={resubmit}>{st === 'sent_back' ? 'Resubmit week' : 'Submit week'}</Button><span className="yx-tim-muted">Goes {st === 'sent_back' ? 'back ' : ''}to {ME.manager}.</span></>
-        )}
-      </div>
-    </div>
   );
   const prefillBtn = onThis && editable && <Button icon={Link2} onClick={() => setPf(true)}>Pre-fill from my tools</Button>;
   const drawer = onThis && <PrefillDrawer open={pf} onOpenChange={setPf} view={prefillView} lines={thisLines} onLinesChange={setThisLines} />;
@@ -788,9 +794,9 @@ function SampleTimesheet({ status, layout, prefillOpen, prefillView, initialLine
       <PageHeader title="My timesheet" description={`Approver: ${ME.manager}`} actions={prefillBtn || undefined} />
       {correctionAlert}
       {grid}
+      {problemsAlert}
       {weekFacts}
       {clientNote}
-      {submitRow}
       {drawer}
     </TimePage>
   );
