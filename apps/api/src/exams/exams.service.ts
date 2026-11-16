@@ -6,6 +6,15 @@ import { AuditService } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
 import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
 import { CreateExamDto, TOGGLEABLE_PROCTORING_SIGNALS, FACE_ENROLMENT_POLICY_VALUES, FACE_MISMATCH_ACTION_VALUES } from './dto/create-exam.dto';
+import { HIGH_STAKES_KEY, companySetting, namesNoSwitch, needsApproval, presetOf, testFingerprint, type ProctorMode } from '../assessments/asmt-rules';
+
+/** AS-2: one pre-publish check; `problem` is what blocks publishing (null when it passes). */
+export interface PublishCheck {
+  id: string;
+  label: string;
+  ok: boolean;
+  problem: string | null;
+}
 import { UpdateExamDto } from './dto/update-exam.dto';
 import { CreateExamSectionDto } from './dto/create-exam-section.dto';
 import { UpdateExamSectionDto } from './dto/update-exam-section.dto';
@@ -292,10 +301,13 @@ export class ExamsService {
 
   async create(context: TenantContext, userId: string, dto: CreateExamDto): Promise<Exam> {
     const scheduling = this.resolveSchedulingFields(dto.schedulingEnabled, dto.availabilityWindowStart, dto.availabilityWindowEnd);
-    const proctoring = this.resolveProctoringFields(dto);
     const faceId = this.resolveFaceIdFields(dto);
-    const exam = await this.tenantPrisma.forTenant(context, (tx) =>
-      tx.exam.create({
+    const exam = await this.tenantPrisma.forTenant(context, async (tx) => {
+      // AS-2 (answer 2007): a test that names no proctoring switch starts in the company's default mode (6.5).
+      const proctoring = this.resolveProctoringFields(
+        namesNoSwitch(dto) ? presetOf(((await companySetting(tx, context.organizationId as string, 'asmt.proctor_mode')) as ProctorMode) || 'ai') : dto,
+      );
+      return tx.exam.create({
         data: {
           organizationId: context.organizationId as string,
           title: dto.title,
@@ -314,8 +326,8 @@ export class ExamsService {
           ...faceId,
           createdBy: userId,
         },
-      }),
-    );
+      });
+    });
     await this.audit.record(context, {
       actorUserId: userId,
       action: 'exam.created',
@@ -529,6 +541,7 @@ export class ExamsService {
           instructions: dto.instructions,
           ...(dto.durationMinutes !== undefined ? { durationMinutes: dto.durationMinutes } : {}),
           ...(dto.passCriteriaPercent !== undefined ? { passCriteriaPercent: dto.passCriteriaPercent } : {}),
+          ...(dto.expectedCandidates !== undefined ? { expectedCandidates: dto.expectedCandidates } : {}),
           ...(dto.randomizeOrder !== undefined ? { randomizeOrder: dto.randomizeOrder } : {}),
           ...(dto.feedbackVisibility !== undefined ? { feedbackVisibility: dto.feedbackVisibility } : {}),
           ...(dto.resultsReleaseMode !== undefined ? { resultsReleaseMode: dto.resultsReleaseMode } : {}),
@@ -627,83 +640,116 @@ export class ExamsService {
 
   async publish(context: TenantContext, actorUserId: string, id: string): Promise<Exam> {
     const published = await this.tenantPrisma.forTenant(context, async (tx) => {
-      const exam = await tx.exam.findFirst({
-        where: { id, organizationId: context.organizationId as string },
-        include: { sections: { include: { questions: { include: { question: { select: { marks: true } } } }, poolTags: true } } },
-      });
+      const exam = await tx.exam.findFirst({ where: { id, organizationId: context.organizationId as string } });
       if (!exam) {
         throw new NotFoundException(`Exam ${id} not found`);
       }
       if (exam.status !== 'draft') {
         throw new BadRequestException(`Exam ${id} cannot be published from status "${exam.status}"`);
       }
-      if (exam.sections.length === 0) {
-        throw new BadRequestException('Exam must have at least one section before it can be published');
-      }
-      // Weights drive the real scoring formula (see grading.ts's computeResult), so anything
-      // other than exactly 100 would silently under- or over-award the whole exam.
-      const weightSum = exam.sections.reduce((sum, section) => sum + section.weightPercent, 0);
-      if (weightSum !== 100) {
-        throw new BadRequestException(`Section weights must sum to 100% before publishing (currently ${weightSum}%)`);
-      }
-      for (const section of exam.sections) {
-        if (section.requiredCount != null) {
-          const total = section.selectionMode === 'pool' ? (section.poolSize ?? 0) : section.questions.length;
-          if (section.requiredCount > total) {
-            throw new BadRequestException(
-              `Section "${section.title}" asks for ${section.requiredCount} answers but only has ${total} questions`,
-            );
-          }
-          // Candidates choose which questions to answer, so unequal marks would make two
-          // candidates' percentages incomparable -- one could pick the cheap questions and be
-          // capped below 100% through no fault of their own. Only applies when requiredCount is
-          // an actual choice (< total): at requiredCount === total there's nothing to choose, so
-          // e.g. deleting a question down to N === M must not suddenly block publish.
-          if (section.requiredCount < total) {
-            const marks = section.selectionMode === 'pool'
-              ? (
-                  await tx.question.findMany({
-                    where: {
-                      organizationId: context.organizationId as string,
-                      status: 'active',
-                      ...(section.poolDifficulty ? { difficulty: section.poolDifficulty } : {}),
-                      AND: section.poolTags.map((poolTag) => ({ tags: { some: { tagId: poolTag.tagId } } })),
-                    },
-                    select: { marks: true },
-                    distinct: ['marks'],
-                  })
-                ).map((question) => question.marks)
-              : [...new Set(section.questions.map((link) => link.question.marks))];
-            if (marks.length > 1) {
-              throw new BadRequestException(
-                `Section "${section.title}" lets candidates choose which questions to answer, so all its questions must carry the same marks`,
-              );
-            }
-          }
-        }
-        if (section.selectionMode === 'pool') {
-          const tagIds = section.poolTags.map((poolTag) => poolTag.tagId);
-          const matchingCount = await tx.question.count({
-            where: {
-              organizationId: context.organizationId as string,
-              status: 'active',
-              ...(section.poolDifficulty ? { difficulty: section.poolDifficulty } : {}),
-              AND: tagIds.map((tagId) => ({ tags: { some: { tagId } } })),
-            },
-          });
-          if (matchingCount < (section.poolSize ?? 0)) {
-            throw new BadRequestException(
-              `Section "${section.title}" pool requires ${section.poolSize} matching questions, only ${matchingCount} available`,
-            );
-          }
-        } else if (section.questions.length === 0) {
-          throw new BadRequestException(`Section "${section.title}" has no questions attached`);
-        }
+      // AS-2: every check runs (the test builder lists them all); publishing is refused on the first that fails.
+      const blocked = (await this.publishProblems(tx, context, id)).find((c) => !c.ok);
+      if (blocked) {
+        throw new BadRequestException(blocked.problem);
       }
       return tx.exam.update({ where: { id }, data: { status: 'published' } });
     });
     await this.audit.record(context, { actorUserId, action: 'exam.published', entityType: 'exam', entityId: id });
     return published;
+  }
+
+  /** AS-2 (PRC-04 pre-publish checklist): each check with what blocks publishing, in the order publish applies them. */
+  async publishChecks(context: TenantContext, id: string): Promise<PublishCheck[]> {
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      if (!(await tx.exam.findFirst({ where: { id, organizationId: context.organizationId as string }, select: { id: true } }))) {
+        throw new NotFoundException(`Exam ${id} not found`);
+      }
+      return this.publishProblems(tx, context, id);
+    });
+  }
+
+  /** What candidates would get, as the approval fingerprint (asmt.high_stakes). */
+  async fingerprintOf(tx: Prisma.TransactionClient, context: TenantContext, id: string): Promise<string> {
+    const exam = await tx.exam.findFirst({
+      where: { id, organizationId: context.organizationId as string },
+      include: { sections: { orderBy: { orderIndex: 'asc' }, include: { questions: { select: { questionId: true } }, poolTags: { select: { tagId: true } } } } },
+    });
+    if (!exam) throw new NotFoundException(`Exam ${id} not found`);
+    return testFingerprint({
+      title: exam.title,
+      durationMinutes: exam.durationMinutes,
+      passCriteriaPercent: exam.passCriteriaPercent,
+      expectedCandidates: exam.expectedCandidates,
+      switches: { enableAntiCheating: exam.enableAntiCheating, webcamProctoringEnabled: exam.webcamProctoringEnabled, webcamAiAnalysisEnabled: exam.webcamAiAnalysisEnabled, screenCaptureEnabled: exam.screenCaptureEnabled },
+      sections: exam.sections.map((x) => ({ title: x.title, weightPercent: x.weightPercent, selectionMode: x.selectionMode, poolSize: x.poolSize, poolDifficulty: x.poolDifficulty, requiredCount: x.requiredCount, questionIds: x.questions.map((q) => q.questionId), tagIds: x.poolTags.map((t) => t.tagId) })),
+    });
+  }
+
+  private async publishProblems(tx: Prisma.TransactionClient, context: TenantContext, id: string): Promise<PublishCheck[]> {
+    const org = context.organizationId as string;
+    const exam = await tx.exam.findFirst({
+      where: { id, organizationId: org },
+      include: { sections: { orderBy: { orderIndex: 'asc' }, include: { questions: { include: { question: { select: { marks: true } } } }, poolTags: true } } },
+    });
+    if (!exam) throw new NotFoundException(`Exam ${id} not found`);
+    const checks: PublishCheck[] = [];
+    const check = (checkId: string, label: string, problem: string | null) => checks.push({ id: checkId, label, ok: problem === null, problem });
+    check('sections', 'At least one section', exam.sections.length === 0 ? 'Exam must have at least one section before it can be published' : null);
+    // Weights drive the real scoring formula (see grading.ts's computeResult), so anything
+    // other than exactly 100 would silently under- or over-award the whole exam.
+    const weightSum = exam.sections.reduce((sum, section) => sum + section.weightPercent, 0);
+    check('weights', 'Section weights add up to 100 %', exam.sections.length && weightSum !== 100 ? `Section weights must sum to 100% before publishing (currently ${weightSum}%)` : null);
+    for (const section of exam.sections) {
+      // Only pool sections read the bank (a fixed section's questions are attached).
+      const where = () => ({
+        organizationId: org,
+        status: 'active',
+        ...(section.poolDifficulty ? { difficulty: section.poolDifficulty } : {}),
+        AND: section.poolTags.map((poolTag) => ({ tags: { some: { tagId: poolTag.tagId } } })),
+      });
+      if (section.requiredCount != null) {
+        const total = section.selectionMode === 'pool' ? (section.poolSize ?? 0) : section.questions.length;
+        let problem: string | null = null;
+        if (section.requiredCount > total) {
+          problem = `Section "${section.title}" asks for ${section.requiredCount} answers but only has ${total} questions`;
+        } else if (section.requiredCount < total) {
+          // Candidates choose which questions to answer, so unequal marks would make two
+          // candidates' percentages incomparable -- one could pick the cheap questions and be
+          // capped below 100% through no fault of their own. Only applies when requiredCount is
+          // an actual choice (< total): at requiredCount === total there's nothing to choose, so
+          // e.g. deleting a question down to N === M must not suddenly block publish.
+          const marks = section.selectionMode === 'pool'
+            ? (await tx.question.findMany({ where: where(), select: { marks: true }, distinct: ['marks'] })).map((question) => question.marks)
+            : [...new Set(section.questions.map((link) => link.question.marks))];
+          if (marks.length > 1) {
+            problem = `Section "${section.title}" lets candidates choose which questions to answer, so all its questions must carry the same marks`;
+          }
+        }
+        check(`answers:${section.id}`, `${section.title}: answers asked for`, problem);
+      }
+      if (section.selectionMode === 'pool') {
+        const matchingCount = await tx.question.count({ where: where() });
+        check(
+          `pool:${section.id}`,
+          `${section.title}: enough approved questions in the pool`,
+          matchingCount < (section.poolSize ?? 0) ? `Section "${section.title}" pool requires ${section.poolSize} matching questions, only ${matchingCount} available` : null,
+        );
+      } else {
+        check(`questions:${section.id}`, `${section.title}: questions attached`, section.questions.length === 0 ? `Section "${section.title}" has no questions attached` : null);
+      }
+    }
+    // AS-2 (asmt.high_stakes): a test for more candidates than the company's number needs a second person's approval of
+    // this very test (a later change asks again).
+    const threshold = Number(await companySetting(tx, org, HIGH_STAKES_KEY));
+    if (needsApproval(exam.expectedCandidates, threshold)) {
+      const holds = exam.approvedBy !== null && exam.approvedFingerprint === (await this.fingerprintOf(tx, context, id));
+      check(
+        'approval',
+        `Approved by a second person (for more than ${threshold} candidates)`,
+        holds ? null : exam.approvedBy ? 'The test changed after it was approved: ask for approval again before publishing' : `This test is for more than ${threshold} candidates: another person must approve it before it is published`,
+      );
+    }
+    return checks;
   }
 
   async unpublish(context: TenantContext, actorUserId: string, id: string): Promise<Exam> {

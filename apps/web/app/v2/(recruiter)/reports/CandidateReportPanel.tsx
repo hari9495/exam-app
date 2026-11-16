@@ -229,10 +229,10 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
                 </div>
               </div>
             ) : faceMismatches.length > 0 ? (
-              // FaceRetentionService nulls referenceImagePath 90 days after the attempt finalises but
+              // FaceRetentionService nulls referenceImagePath once the company retention (asmt.retention) passes but
               // leaves the face_mismatch events alone -- this is the only surface those snapshots are
               // ever visible on, so it must keep showing them even once the reference photo is gone.
-              <p style={{ fontSize: 14, color: 'var(--muted)', margin: 0 }}>Reference photo no longer retained (90-day retention period elapsed) — flagged snapshots below remain available.</p>
+              <p style={{ fontSize: 14, color: 'var(--muted)', margin: 0 }}>Reference photo no longer retained (the company retention period elapsed) — flagged snapshots below remain available.</p>
             ) : (
               <p style={{ fontSize: 14, color: 'var(--muted)', margin: 0 }}>Not verified — no reference photo was captured</p>
             )}

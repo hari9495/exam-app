@@ -270,6 +270,7 @@ export default function CandidateWelcomePage() {
             ) : faceGateActive ? (
               <FaceEnrolmentStep
                 policy={(proctoring?.faceEnrolmentPolicy as EnrolmentPolicy | undefined) ?? 'retry_then_allow'}
+                retentionDays={current.exam.evidenceRetentionDays}
                 onSettled={(payload) => {
                   setFacePayload(payload);
                   setFaceStatus(payload.status);
