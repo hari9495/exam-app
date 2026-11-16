@@ -1367,3 +1367,5 @@ reminders stay on, wording to be checked by counsel.
 - 2082: keep, the company leaves the console after its last group; certificates stay.
 - 2083: YukthiX staff may set a legal hold on a deleted company from the console, security key, audited.
 - 2084: a console notice to the two staff who asked for and confirmed the deletion when a group is removed.
+
+**Founder answers (16 Nov 2026, "ok for all"), 2221 to 2224:** 2221 yes, CERT-In and DPDP report reminders are staff notices too; 2222 yes, read notices deleted after 90 days (platform setting); 2223 keep the 1-minute check; 2224 yes, "Restore" in the question bank for a question approved before (comes back approved, audited).
