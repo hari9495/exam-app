@@ -1031,7 +1031,8 @@ model Invitation {
   candidate              Candidate               @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   driveSession           DriveSession?           @relation(fields: [driveSessionId], references: [id], onDelete: SetNull)
   notifications          Notification[]
-  attempt                Attempt?
+  attempt                Attempt? @relation("InvitationAttempt")
+  reusedAttempt          Attempt?                @relation("InvitationReusedAttempt", fields: [reusedAttemptId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "invitations_reused_attempt_fkey")
   candidateRefreshTokens CandidateRefreshToken[]
 
   /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
@@ -1123,7 +1124,9 @@ model Attempt {
   /// AS-4a: breaks taken (exams.breaks_allowed) and time given back for a lost connection (asmt.time_credit_cap).
   breaksUsed                    Int                 @default(0) @map("breaks_used")
   offlineCreditMs               Int                 @default(0) @map("offline_credit_ms")
-  invitation                    Invitation          @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  invitation                    Invitation          @relation("InvitationAttempt", fields: [invitationId], references: [id], onDelete: Cascade)
+  /// AS-3 (answer 2213): invitations that use this attempt's result instead of a new test.
+  reusedBy                      Invitation[]        @relation("InvitationReusedAttempt")
   answers                       Answer[]
   result                        Result?
   proctoringEvents              ProctoringEvent[]

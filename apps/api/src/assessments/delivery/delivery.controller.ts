@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { Transform } from 'class-transformer';
-import { IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { OwnSessionChangesGuard } from '../../auth/own-session.guard';
@@ -36,6 +36,17 @@ export class ReinviteDto {
   reason!: string;
 }
 
+export class BulkInvitationsDto {
+  @IsIn(['remind', 'revoke'])
+  action!: 'remind' | 'revoke';
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(500)
+  @IsUUID('all', { each: true })
+  ids!: string[];
+}
+
 // Assessments AS-3 (PRC-07): the people who invite candidates (candidate:manage, as the existing invitation routes; the
 // YukthiX ats.candidate.manage answers for it). No change while acting for someone else (AS-0, answer 2006).
 @Controller('asmt')
@@ -53,6 +64,13 @@ export class DeliveryController {
   @RequirePermissions('candidate:manage')
   drives(@CurrentTenant() ctx: TenantContext) {
     return this.delivery.drives(ctx);
+  }
+
+  @Post('invitations/bulk')
+  @HttpCode(200)
+  @RequirePermissions('candidate:manage')
+  bulk(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Body() dto: BulkInvitationsDto) {
+    return this.delivery.bulk(ctx, userId, dto.action, dto.ids);
   }
 
   @Post('invitations/:id/reinvite')

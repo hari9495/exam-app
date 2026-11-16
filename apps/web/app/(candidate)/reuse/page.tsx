@@ -1,5 +1,6 @@
 'use client';
 
+import { ToastProvider } from '@yukthix/ui';
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ResultReuseScreen, type LiveReuse } from '@yukthix/ui/assessments';
@@ -36,5 +37,10 @@ export default function ResultReusePage() {
     onTakeTest: () => router.push('/welcome?retake=1'),
     onLater: () => router.push('/my-tests'),
   };
-  return <ResultReuseScreen live={live} />;
+  // The kit's toasts need their provider; the candidate layout has only the older one.
+  return (
+    <ToastProvider>
+      <ResultReuseScreen live={live} />
+    </ToastProvider>
+  );
 }

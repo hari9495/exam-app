@@ -30,4 +30,12 @@ describe('averageRating', () => {
     expect(averageRating([null, null])).toBeNull();
     expect(averageRating([])).toBeNull();
   });
+
+  // AS-3 (answer 2213): a reused invitation shows the earlier result, like a submitted test; untaken stays empty.
+  it('a reused invitation counts the earlier attempt result', () => {
+    const reused = { examId: 'e1', exam: { title: 'Java' }, attempt: null, reusedAttempt: { result: { passFail: 'pass', percentage: 81 } } };
+    const untaken = { examId: 'e1', exam: { title: 'Java' }, attempt: null, reusedAttempt: null };
+    expect(deriveEntryExamResults([reused], ['e1'])).toEqual([{ examId: 'e1', examTitle: 'Java', passFail: 'pass', score: 81 }]);
+    expect(deriveEntryExamResults([untaken], ['e1'])[0]!.passFail).toBeNull();
+  });
 });

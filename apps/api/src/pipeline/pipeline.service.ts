@@ -979,7 +979,7 @@ export class PipelineService {
       const entries = await tx.pipelineEntry.findMany({
         where: { jobId, archivedAt: null },
         include: {
-          candidate: { include: { invitations: { include: { exam: { select: { title: true } }, attempt: { include: { result: true } } } } } },
+          candidate: { include: { invitations: { include: { exam: { select: { title: true } }, attempt: { include: { result: true } }, reusedAttempt: { include: { result: true } } } } } },
           feedback: { select: { rating: true } },
           fitAssessment: true,
           status: { include: { stage: true } },

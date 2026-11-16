@@ -2,9 +2,9 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
-import { InvitationsScreen } from './delivery';
+import { CampusKitScreen, CoordinatorPortalScreen, InvitationsScreen } from './delivery';
 import { CandidatePortalHomeScreen, ResultReuseScreen } from './candidate';
-import { LIVE_INVITATIONS, MY_TESTS, liveInvitations, livePortal, liveReuse } from './delivery-live-samples';
+import { LIVE_INVITATIONS, MY_TESTS, liveCampus, liveCoordinator, liveInvitations, livePortal, liveReuse } from './delivery-live-samples';
 
 // AS-3 (answers 2001, 2013): the designed invitations page, the candidate's tests and the result-reuse choice, live.
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -37,7 +37,7 @@ describe('PRC-07 invitations and drives (live)', () => {
   });
 
   it('negative: a missed candidate already re-invited cannot be re-invited again; a server refusal is shown', async () => {
-    const onResend = vi.fn().mockRejectedValue(new Error('This invitation was revoked'));
+    const onResend = vi.fn().mockResolvedValue({ done: 0, failed: [{ id: 'i1', reason: 'This invitation was revoked' }] });
     const { unmount } = wrap(<InvitationsScreen live={liveInvitations({ onResend })} />);
     await ue.click(screen.getByText('Priya Sharma'));
     expect(screen.queryByRole('button', { name: 'Re-invite once, with reason' })).toBeNull();
@@ -68,8 +68,8 @@ describe('PRC-07 invitations and drives (live)', () => {
   });
 
   it('bulk: reminders only to those not started; revoke asks first', async () => {
-    const onResend = vi.fn().mockResolvedValue(undefined);
-    const onRevoke = vi.fn().mockResolvedValue(undefined);
+    const onResend = vi.fn().mockResolvedValue({ done: 1, failed: [] });
+    const onRevoke = vi.fn().mockResolvedValue({ done: 1, failed: [] });
     wrap(<InvitationsScreen live={liveInvitations({ invitations: LIVE_INVITATIONS.slice(0, 3), onResend, onRevoke })} />);
     await ue.click(screen.getByRole('checkbox', { name: /Select all/i }));
     await ue.click(screen.getByRole('button', { name: 'Send reminder to 1' }));
@@ -158,5 +158,114 @@ describe('PRC-32 using an earlier result (live)', () => {
     await ue.click(screen.getByRole('button', { name: 'Take the test instead' }));
     expect(onWithdraw).toHaveBeenCalled();
     expect(await screen.findByText('You have started this test')).toBeInTheDocument();
+  });
+});
+
+describe('PRC-07 bulk and new drive (live, answers 2211, 2214)', () => {
+  it('a bulk reminder names how many were refused and why', async () => {
+    const onResend = vi.fn().mockResolvedValue({ done: 1, failed: [{ id: 'i8', reason: 'This invitation was revoked' }] });
+    wrap(<InvitationsScreen live={liveInvitations({ invitations: [LIVE_INVITATIONS[0]!, LIVE_INVITATIONS[7]!], onResend })} />);
+    await ue.click(screen.getByRole('checkbox', { name: /Select all/i }));
+    await ue.click(screen.getByRole('button', { name: 'Send reminder to 2' }));
+    expect(onResend).toHaveBeenCalledWith(['i1', 'i8']);
+    expect((await screen.findAllByText('Reminder sent to 1; 1 refused (This invitation was revoked)')).length).toBeGreaterThan(0);
+  });
+
+  it('creates a drive and opens it; negative: a drive needs a name, and the button is absent without the right', async () => {
+    const onNewDrive = vi.fn().mockResolvedValue('d9');
+    const onOpenDrive = vi.fn();
+    const { unmount } = wrap(<InvitationsScreen live={liveInvitations({ onNewDrive, onOpenDrive })} />);
+    await ue.click(screen.getByRole('button', { name: 'New drive' }));
+    await ue.click(screen.getByRole('button', { name: 'Create drive' }));
+    expect(screen.getByText('Name the drive.')).toBeInTheDocument();
+    expect(onNewDrive).not.toHaveBeenCalled();
+    await ue.type(screen.getByRole('textbox', { name: /Drive name/ }), 'Campus TN 2026');
+    await ue.click(screen.getByRole('button', { name: 'Create drive' }));
+    expect(onNewDrive).toHaveBeenCalledWith('Campus TN 2026');
+    expect(onOpenDrive).toHaveBeenCalledWith('d9');
+    unmount();
+    wrap(<InvitationsScreen live={liveInvitations({ onNewDrive: undefined })} />);
+    expect(screen.queryByRole('button', { name: 'New drive' })).toBeNull();
+  });
+});
+
+describe('PRC-29 campus kit (live)', () => {
+  it('shows registrants with their eligibility and duplicates, and merges a duplicate after asking', async () => {
+    const onMerge = vi.fn().mockResolvedValue(undefined);
+    wrap(<CampusKitScreen live={liveCampus({ onMerge })} />);
+    expect(screen.getByText(/1 possible duplicate/)).toBeInTheDocument();
+    expect(screen.getByText('Not eligible: CGPA below 6.5')).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Admit cards/ })).toBeNull();
+    await ue.click(screen.getByText('Lakshmi I'));
+    await ue.click(screen.getByRole('button', { name: 'Merge into Lakshmi Iyer' }));
+    expect(onMerge).not.toHaveBeenCalled();
+    await ue.click(within(screen.getByRole('dialog', { name: /Merge into/ })).getByRole('button', { name: 'Merge' }));
+    expect(onMerge).toHaveBeenCalledWith('r144', 'r143');
+  });
+
+  it('negative: a refused merge is shown; "Not a duplicate" clears the flag', async () => {
+    const onNotDuplicate = vi.fn().mockRejectedValue(new Error('No possible duplicate to clear'));
+    wrap(<CampusKitScreen live={liveCampus({ onNotDuplicate })} />);
+    await ue.click(screen.getByText('Lakshmi I'));
+    await ue.click(screen.getByRole('button', { name: 'Not a duplicate' }));
+    expect(onNotDuplicate).toHaveBeenCalledWith('r144');
+    expect(await screen.findByText('No possible duplicate to clear')).toBeInTheDocument();
+  });
+
+  it('saves the form; negative: a rule on a field that is not required cannot be saved', async () => {
+    const onSaveSettings = vi.fn().mockResolvedValue(undefined);
+    wrap(<CampusKitScreen live={liveCampus({ onSaveSettings })} tab="form" />);
+    await ue.click(within(screen.getByRole('radiogroup', { name: 'CGPA / %' })).getByRole('radio', { name: 'Optional' }));
+    expect(screen.getByText('Minimum CGPA is a rule, so CGPA must be required.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save the form' })).toBeDisabled();
+    await ue.click(within(screen.getByRole('radiogroup', { name: 'CGPA / %' })).getByRole('radio', { name: 'Required' }));
+    await ue.click(screen.getByRole('button', { name: 'Save the form' }));
+    expect(onSaveSettings).toHaveBeenCalledWith(expect.objectContaining({ minCgpa: 6.5, branches: ['CSE', 'IT', 'ECE'] }));
+  });
+
+  it('a drive that is not a campus drive offers to turn the form on', async () => {
+    const onSaveSettings = vi.fn().mockResolvedValue(undefined);
+    wrap(<CampusKitScreen live={liveCampus({ settings: null, onSaveSettings })} tab="form" />);
+    await ue.click(screen.getByRole('button', { name: 'Use the campus form' }));
+    await ue.click(screen.getByRole('button', { name: 'Save the form' }));
+    expect(onSaveSettings).toHaveBeenCalledWith(expect.objectContaining({ branches: [], minCgpa: null }));
+  });
+
+  it('adds an institution; negative: name and code are asked for; a coordinator link goes only where there is an email', async () => {
+    const onSaveInstitution = vi.fn().mockResolvedValue(undefined);
+    const onSendCoordinatorLink = vi.fn().mockResolvedValue('latha@cit.example.in');
+    wrap(<CampusKitScreen live={liveCampus({ onSaveInstitution, onSendCoordinatorLink })} tab="institutions" />);
+    await ue.click(screen.getByRole('button', { name: 'Add institution' }));
+    await ue.click(screen.getByRole('button', { name: 'Add' }));
+    expect(screen.getByText('Name the institution.')).toBeInTheDocument();
+    expect(onSaveInstitution).not.toHaveBeenCalled();
+    await ue.type(screen.getByRole('textbox', { name: /Institution name/ }), 'Vaigai College');
+    await ue.type(screen.getByRole('textbox', { name: /^Code/ }), 'VCE-31');
+    await ue.click(screen.getByRole('button', { name: 'Add' }));
+    expect(onSaveInstitution).toHaveBeenCalledWith(null, expect.objectContaining({ name: 'Vaigai College', code: 'VCE-31', resultsVisibility: 'aggregate' }));
+    await ue.click(screen.getByText('Kongu Valley Engineering College'));
+    expect(screen.queryByRole('button', { name: 'Send coordinator link' })).toBeNull();
+    await ue.keyboard('{Escape}');
+    await ue.click(screen.getByText('Coromandel Institute of Technology'));
+    await ue.click(screen.getByRole('button', { name: 'Send coordinator link' }));
+    expect(onSendCoordinatorLink).toHaveBeenCalledWith('n1');
+  });
+});
+
+describe('PRC-29 college coordinator (live)', () => {
+  it('shows their college only, with counts, and no results before the drive closes', () => {
+    wrap(<CoordinatorPortalScreen live={liveCoordinator()} />);
+    expect(screen.getByRole('heading', { name: /Coromandel Institute of Technology/ })).toBeInTheDocument();
+    expect(screen.getByText(/after the drive closes/)).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: /^Result/ })).toBeNull();
+  });
+
+  it('each student’s result only when the company shares it and the drive closed; negative: an expired link says so', () => {
+    const { unmount } = wrap(<CoordinatorPortalScreen live={liveCoordinator({}, { visibility: 'per_candidate', resultsShown: true, counts: { registered: 2, eligible: 1, invited: 1, attended: 1, passed: 1 }, registrants: [{ name: 'Arjun Nair', rollNumber: '21CS140', registration: 'Eligible', test: 'Attended', result: 'Passed' }] })} />);
+    expect(screen.getByRole('columnheader', { name: /^Result/ })).toBeInTheDocument();
+    expect(screen.getByText('Passed')).toBeInTheDocument();
+    unmount();
+    wrap(<CoordinatorPortalScreen live={{ state: 'expired', view: null, onCopyLink: () => Promise.resolve() }} />);
+    expect(screen.getByText('This link has expired or was replaced.')).toBeInTheDocument();
   });
 });

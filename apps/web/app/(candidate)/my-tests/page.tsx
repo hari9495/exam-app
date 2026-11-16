@@ -1,5 +1,6 @@
 'use client';
 
+import { ToastProvider } from '@yukthix/ui';
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
@@ -36,5 +37,10 @@ export default function MyTestsPage() {
       router.push('/welcome');
     },
   };
-  return <CandidatePortalHomeScreen live={live} />;
+  // The kit's toasts need their provider; the candidate layout has only the older one.
+  return (
+    <ToastProvider>
+      <CandidatePortalHomeScreen live={live} />
+    </ToastProvider>
+  );
 }

@@ -3,7 +3,7 @@
 // and ResultReuseScreen (candidate.tsx) render these when the page passes `live`. Same layout, kit parts and words as the
 // designs; only what the server holds is shown, and the server checks every action again.
 import { useMemo, useRef, useState } from 'react';
-import { RefreshCw, Send } from 'lucide-react';
+import { Plus, RefreshCw, Send } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
 import { DataTable, type TableColumn } from '../../components/table';
@@ -11,10 +11,12 @@ import { FilterBar, type FilterFieldDef } from '../../components/filters';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, ErrorState, InlineAlert } from '../../components/feedback';
 import { Card, DescriptionList, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { Segment } from '../../components/segment';
+import { BarChart } from '../../components/charts';
 import { FormField } from '../../components/field';
-import { TextArea } from '../../components/inputs';
+import { NumberField, TextArea, TextField } from '../../components/inputs';
 import { MultiSelect, Select } from '../../components/select';
-import { Checkbox, RadioGroup } from '../../components/choice';
+import { Checkbox, RadioGroup, Switch } from '../../components/choice';
 import { ConfirmDialog } from '../../components/overlay';
 import { Heading } from '../../components/foundations';
 import { formatDate } from '../../lib/format';
@@ -77,9 +79,26 @@ export interface LiveInvitations {
   candidates: { id: string; name: string; email: string }[];
   onCandidateSearch: (q: string) => void;
   onInvite: (examId: string, candidateIds: string[]) => Promise<{ created: number; skipped: number }>;
-  onResend: (ids: string[]) => Promise<void>;
-  onRevoke: (ids: string[]) => Promise<void>;
+  /** Answer 2211: one call for many; each refusal is named and the rest go ahead. */
+  onResend: (ids: string[]) => Promise<BulkOutcome>;
+  onRevoke: (ids: string[]) => Promise<BulkOutcome>;
   onReinvite: (id: string, reason: string) => Promise<void>;
+  /** 2214: a new walk-in drive (only for those who may make one); resolves to its id. */
+  onNewDrive?: (name: string) => Promise<string>;
+  /** Open a drive's campus kit (PRC-29). */
+  onOpenDrive?: (id: string) => void;
+}
+
+/** POST /asmt/invitations/bulk. */
+export interface BulkOutcome {
+  done: number;
+  failed: { id: string; reason: string }[];
+}
+
+/** The bulk outcome as a done message, or throws the first refusal when nothing went through. */
+export function bulkWords(o: BulkOutcome, verb: string): string {
+  if (!o.done && o.failed.length) throw new Error(o.failed[0]!.reason);
+  return o.failed.length ? `${verb} ${o.done}; ${o.failed.length} refused (${o.failed[0]!.reason})` : `${verb} ${o.done}`;
 }
 
 export const INVITATION_TONE: Record<LiveInvitationStatus, 'success' | 'warning' | 'danger' | 'neutral' | 'info'> = {
@@ -108,6 +127,7 @@ export function LiveInvitationsScreen({ live }: { live: LiveInvitations }) {
   const [reinvite, setReinvite] = useState(false);
   const [reason, setReason] = useState('');
   const [revokeIds, setRevokeIds] = useState<string[] | null>(null);
+  const [newDrive, setNewDrive] = useState<string | null>(null);
   const { busy, run, error, clearError } = useRun();
   const { done, say } = useSay();
   const fields: FilterFieldDef[] = useMemo(
@@ -177,19 +197,26 @@ export function LiveInvitationsScreen({ live }: { live: LiveInvitations }) {
         title="Invitations and drives"
         description="Every invitation of the company and its state. The window closes at the end of the day shown."
         actions={
-          <Button
-            variant="primary"
-            icon={Send}
-            onClick={() => {
-              clearError();
-              setInvite(true);
-            }}
-          >
-            Invite candidates
-          </Button>
+          <>
+            {live.onNewDrive && (
+              <Button icon={Plus} onClick={() => setNewDrive('')}>
+                New drive
+              </Button>
+            )}
+            <Button
+              variant="primary"
+              icon={Send}
+              onClick={() => {
+                clearError();
+                setInvite(true);
+              }}
+            >
+              Invite candidates
+            </Button>
+          </>
         }
       />
-      {error && !invite && !open && (
+      {error && !invite && !open && newDrive === null && (
         <InlineAlert tone="danger" title="That did not work">
           {error}
         </InlineAlert>
@@ -231,12 +258,7 @@ export function LiveInvitationsScreen({ live }: { live: LiveInvitations }) {
                       loading={busy === 'remind'}
                       onClick={() =>
                         say(!remind.length && 'Reminders go only to people who have not started.', () =>
-                          void run('remind', () => live.onResend(remind)).then((ok) => {
-                            if (ok) {
-                              done(`Reminder sent to ${remind.length}`);
-                              setSel([]);
-                            }
-                          }),
+                          void run('remind', async () => done(bulkWords(await live.onResend(remind), 'Reminder sent to'))).then((ok) => ok && setSel([])),
                         )
                       }
                     >
@@ -260,7 +282,15 @@ export function LiveInvitationsScreen({ live }: { live: LiveInvitations }) {
           </div>
         </TabsContent>
         <TabsContent value="drives">
-          <DataTable label="Drives" columns={driveCols} rows={live.drives} getRowId={(r) => r.id} state={tableState} empty={<EmptyState title="No drives yet." description="A drive groups many sessions, across centres if needed. Walk-in drives you set up appear here." />} />
+          <DataTable
+            label="Drives"
+            columns={driveCols}
+            rows={live.drives}
+            getRowId={(r) => r.id}
+            state={tableState}
+            onRowClick={live.onOpenDrive ? (r) => live.onOpenDrive!(r.id) : undefined}
+            empty={<EmptyState title="No drives yet." description="A drive groups many sessions, across centres if needed." action={live.onNewDrive ? <Button onClick={() => setNewDrive('')}>New drive</Button> : undefined} />}
+          />
         </TabsContent>
       </Tabs>
       <Drawer
@@ -327,7 +357,7 @@ export function LiveInvitationsScreen({ live }: { live: LiveInvitations }) {
                 </Button>
               )
             ) : canRemind(open) ? (
-              <Button loading={busy === 'remind1'} onClick={() => void run('remind1', () => live.onResend([open.id])).then((ok) => ok && done('Reminder sent'))}>
+              <Button loading={busy === 'remind1'} onClick={() => void run('remind1', async () => bulkWords(await live.onResend([open.id]), 'Reminder sent to')).then((ok) => ok && done('Reminder sent'))}>
                 Send reminder
               </Button>
             ) : undefined
@@ -369,11 +399,49 @@ export function LiveInvitationsScreen({ live }: { live: LiveInvitations }) {
         confirmLabel="Revoke"
         destructive
         onConfirm={async () => {
-          await live.onRevoke(revokeIds ?? []);
-          done(`Revoked ${revokeIds?.length ?? 0}`);
+          done(bulkWords(await live.onRevoke(revokeIds ?? []), 'Revoked'));
           setSel([]);
         }}
       />
+      <Drawer
+        open={newDrive !== null}
+        onOpenChange={(o) => !o && setNewDrive(null)}
+        title="New drive"
+        subtitle="A walk-in or campus drive. Add its sessions and tests on the drive."
+        footer={
+          <>
+            <Button onClick={() => setNewDrive(null)}>Cancel</Button>
+            <Button
+              variant="primary"
+              loading={busy === 'drive'}
+              onClick={() => {
+                setTried(true);
+                if (!newDrive?.trim()) return;
+                void run('drive', async () => {
+                  const id = await live.onNewDrive!(newDrive.trim());
+                  done('Drive created');
+                  setNewDrive(null);
+                  setTried(false);
+                  live.onOpenDrive?.(id);
+                });
+              }}
+            >
+              Create drive
+            </Button>
+          </>
+        }
+      >
+        <div className="yx-prc-stack">
+          {error && newDrive !== null && (
+            <InlineAlert tone="danger" title="That did not work">
+              {error}
+            </InlineAlert>
+          )}
+          <FormField label="Drive name" required error={tried && !newDrive?.trim() ? 'Name the drive.' : undefined}>
+            <TextField value={newDrive ?? ''} onChange={setNewDrive} placeholder="e.g. Campus drive · Tamil Nadu 2026" maxLength={200} />
+          </FormField>
+        </div>
+      </Drawer>
     </PrcFrame>
   );
 }
@@ -603,6 +671,522 @@ export function LiveResultReuseScreen({ live }: { live: LiveReuse }) {
           </div>
         </>
       )}
+    </CandidateFrame>
+  );
+}
+
+/* ------------------------------------------------------------------ PRC-29 · Campus drive kit (no admit cards, 2014) */
+
+export type CampusFieldMode = 'off' | 'optional' | 'required';
+export type CampusResultsVisibility = 'none' | 'aggregate' | 'per_candidate';
+
+/** A drive's campus form and eligibility (GET/PUT /asmt/drives/:id/campus). */
+export interface LiveCampusSettings {
+  fields: { phone: CampusFieldMode; branch: CampusFieldMode; graduationYear: CampusFieldMode; cgpa: CampusFieldMode };
+  branches: string[];
+  graduationYear: number | null;
+  minCgpa: number | null;
+  cap: number | null;
+  tellIneligible: boolean;
+}
+
+export const DEFAULT_CAMPUS_SETTINGS: LiveCampusSettings = { fields: { phone: 'required', branch: 'required', graduationYear: 'required', cgpa: 'required' }, branches: [], graduationYear: null, minCgpa: null, cap: null, tellIneligible: true };
+
+export interface LiveInstitution {
+  id: string;
+  name: string;
+  code: string;
+  city: string | null;
+  coordinatorName: string | null;
+  coordinatorEmail: string | null;
+  resultsVisibility: CampusResultsVisibility;
+  archived: boolean;
+}
+
+export type LiveInstitutionInput = Omit<LiveInstitution, 'id'>;
+
+export interface LiveRegistrant {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  institutionId: string;
+  college: string;
+  rollNumber: string;
+  branch: string | null;
+  graduationYear: number | null;
+  cgpa: number | null;
+  eligible: boolean;
+  ineligibleReason: string | null;
+  match: 'New' | 'Existing candidate' | 'Possible duplicate' | 'Merged';
+  duplicateOf: { id: string; name: string; email: string } | null;
+  mergedInto: { id: string; name: string } | null;
+  test: LiveInvitationStatus | null;
+  registeredAt: string;
+}
+
+export interface LiveCollegeRow {
+  institutionId: string;
+  college: string;
+  registered: number;
+  eligible: number;
+  invited: number;
+  attended: number;
+  passed: number;
+}
+
+export interface LiveCampusKit {
+  state: BankLoad;
+  onRetry: () => void;
+  drive: { id: string; name: string; status: LiveDriveRow['status']; tests: string[] };
+  /** The public registration link of this drive (the walk-in page with the drive's group). */
+  registrationUrl: string;
+  /** null: not a campus drive yet (the form tab offers to turn it on). */
+  settings: LiveCampusSettings | null;
+  registrants: LiveRegistrant[];
+  report: LiveCollegeRow[];
+  institutions: LiveInstitution[];
+  onSaveSettings: (s: LiveCampusSettings | null) => Promise<void>;
+  onSaveInstitution: (id: string | null, d: LiveInstitutionInput) => Promise<void>;
+  /** Resolves to the email the link went to. */
+  onSendCoordinatorLink: (institutionId: string) => Promise<string>;
+  onMerge: (id: string, intoId: string) => Promise<void>;
+  onNotDuplicate: (id: string) => Promise<void>;
+  onCopyLink: (url: string) => Promise<void>;
+}
+
+const VISIBILITY_WORDS: Record<CampusResultsVisibility, string> = { none: 'None', aggregate: 'Counts and pass rate', per_candidate: 'Each student’s result' };
+const MODE_OPTIONS = [
+  { value: 'off' as const, label: 'Not asked' },
+  { value: 'optional' as const, label: 'Optional' },
+  { value: 'required' as const, label: 'Required' },
+];
+const FIELD_WORDS: Record<keyof LiveCampusSettings['fields'], string> = { phone: 'Mobile', branch: 'Degree and branch', graduationYear: 'Graduation year', cgpa: 'CGPA / %' };
+const MATCH_TONE: Record<LiveRegistrant['match'], 'neutral' | 'info' | 'warning'> = { New: 'neutral', 'Existing candidate': 'info', 'Possible duplicate': 'warning', Merged: 'neutral' };
+const EMPTY_INSTITUTION: LiveInstitutionInput = { name: '', code: '', city: null, coordinatorName: null, coordinatorEmail: null, resultsVisibility: 'aggregate', archived: false };
+
+/** Why the campus settings cannot be saved, or null (the API checks the same). */
+export function campusProblem(s: LiveCampusSettings): string | null {
+  if (s.branches.length && s.fields.branch !== 'required') return 'Branches are a rule, so the branch must be required.';
+  if (s.graduationYear != null && s.fields.graduationYear !== 'required') return 'Graduation year is a rule, so it must be required.';
+  if (s.minCgpa != null && s.fields.cgpa !== 'required') return 'Minimum CGPA is a rule, so CGPA must be required.';
+  return null;
+}
+
+type RegistrantTab = 'form' | 'registrants' | 'institutions' | 'report';
+
+export function LiveCampusKitScreen({ live, tab = 'registrants' }: { live: LiveCampusKit; tab?: RegistrantTab }) {
+  const [form, setForm] = useState<LiveCampusSettings | null>(live.settings);
+  const [formFor, setFormFor] = useState(live.settings);
+  const [branchText, setBranchText] = useState((live.settings?.branches ?? []).join(', '));
+  const [openReg, setOpenReg] = useState<string | null>(null);
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const [inst, setInst] = useState<{ id: string | null; d: LiveInstitutionInput } | null>(null);
+  const [tried, setTried] = useState(false);
+  const { busy, run, error, clearError } = useRun();
+  const { done } = useSay();
+  if (live.settings !== formFor) {
+    // The server's copy changed (saved or reloaded): show it.
+    setFormFor(live.settings);
+    setForm(live.settings);
+    setBranchText((live.settings?.branches ?? []).join(', '));
+  }
+  if (live.state === 'error')
+    return (
+      <PrcFrame page="Campus kit & institutions">
+        <ErrorState title="We couldn't load this drive." onRetry={live.onRetry} />
+      </PrcFrame>
+    );
+  const loading = live.state === 'loading';
+  const reg = live.registrants.find((r) => r.id === openReg);
+  const counted = live.registrants.filter((r) => r.match !== 'Merged');
+  const duplicates = counted.filter((r) => r.match === 'Possible duplicate').length;
+  const problem = form ? campusProblem(form) : null;
+  const instProblem = inst && (!inst.d.name.trim() ? 'Name the institution.' : !inst.d.code.trim() ? 'Give its code.' : null);
+  const setField = (k: keyof LiveCampusSettings['fields'], v: CampusFieldMode) => form && setForm({ ...form, fields: { ...form.fields, [k]: v } });
+  const setInstField = (patch: Partial<LiveInstitutionInput>) => inst && setInst({ ...inst, d: { ...inst.d, ...patch } });
+
+  const regCols: TableColumn<LiveRegistrant>[] = [
+    { key: 'name', header: 'Student', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: r.email }), width: 220 },
+    { key: 'college', header: 'College', value: (r) => r.college, groupable: true, width: 240 },
+    { key: 'rollNumber', header: 'Roll number', type: 'id', value: (r) => r.rollNumber, width: 120 },
+    { key: 'cgpa', header: 'CGPA', type: 'number', value: (r) => r.cgpa ?? '', width: 80 },
+    { key: 'eligibility', header: 'Eligibility', type: 'status', value: (r) => (r.eligible ? 'Eligible' : `Not eligible: ${r.ineligibleReason ?? ''}`), statusTone: (v) => (String(v).startsWith('Eligible') ? 'success' : 'danger'), width: 230 },
+    { key: 'match', header: 'Match with candidates', type: 'status', value: (r) => r.match, statusTone: (v) => MATCH_TONE[v as LiveRegistrant['match']], groupable: true, width: 190 },
+    { key: 'test', header: 'Test', type: 'status', value: (r) => r.test ?? 'Not invited', statusTone: (v) => (v === 'Not invited' ? 'neutral' : INVITATION_TONE[v as LiveInvitationStatus]), width: 130 },
+  ];
+  const instCols: TableColumn<LiveInstitution>[] = [
+    { key: 'name', header: 'Institution', value: (r) => r.name, width: 280 },
+    { key: 'code', header: 'Code', type: 'id', value: (r) => r.code, width: 120 },
+    { key: 'city', header: 'City', value: (r) => r.city ?? '', width: 110 },
+    { key: 'coordinator', header: 'Coordinator', value: (r) => r.coordinatorName ?? 'None yet', width: 190 },
+    { key: 'visibility', header: 'Results the coordinator sees', value: (r) => VISIBILITY_WORDS[r.resultsVisibility], width: 200 },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => (r.archived ? 'Archived' : 'In use'), statusTone: (v) => (v === 'Archived' ? 'neutral' : 'success'), width: 110 },
+  ];
+  const reportCols: TableColumn<LiveCollegeRow>[] = [
+    { key: 'college', header: 'College', value: (r) => r.college, width: 280 },
+    { key: 'registered', header: 'Registered', type: 'number', value: (r) => r.registered, width: 110 },
+    { key: 'eligible', header: 'Eligible', type: 'number', value: (r) => r.eligible, width: 100 },
+    { key: 'invited', header: 'Invited', type: 'number', value: (r) => r.invited, width: 100 },
+    { key: 'attended', header: 'Attended', type: 'number', value: (r) => r.attended, width: 100 },
+    { key: 'passed', header: 'Passed', type: 'number', value: (r) => r.passed, width: 100 },
+  ];
+
+  return (
+    <PrcFrame page="Campus kit & institutions">
+      <PageHeader
+        title={live.drive.name}
+        description={`${live.drive.tests.length ? `Test: ${live.drive.tests.join(', ')}` : 'No test in this drive yet'} · public page ${live.registrationUrl}`}
+        status={<Badge tone={live.drive.status === 'Live' ? 'success' : live.drive.status === 'Closed' ? 'neutral' : 'info'}>{live.drive.status}</Badge>}
+        actions={
+          <Button loading={busy === 'copy'} onClick={() => void run('copy', () => live.onCopyLink(live.registrationUrl)).then((ok) => ok && done('Registration link copied'))}>
+            Copy registration link
+          </Button>
+        }
+      />
+      {error && !inst && !reg && (
+        <InlineAlert tone="danger" title="That did not work">
+          {error}
+        </InlineAlert>
+      )}
+      <Tabs defaultValue={tab}>
+        <TabsList aria-label="Campus kit">
+          <TabsTrigger value="form">Registration form</TabsTrigger>
+          <TabsTrigger value="registrants" count={counted.length}>
+            Registrants
+          </TabsTrigger>
+          <TabsTrigger value="institutions" count={live.institutions.filter((i) => !i.archived).length}>
+            Institutions
+          </TabsTrigger>
+          <TabsTrigger value="report">College-wise report</TabsTrigger>
+        </TabsList>
+        <TabsContent value="form">
+          {!form ? (
+            <EmptyState
+              title="Not a campus drive yet."
+              description="Turn on the campus form to ask each student's college, roll number and marks, check eligibility and give colleges their own view."
+              action={
+                <Button variant="primary" onClick={() => setForm(DEFAULT_CAMPUS_SETTINGS)}>
+                  Use the campus form
+                </Button>
+              }
+            />
+          ) : (
+            <div className="yx-prc-stack">
+              <div className="yx-prc-split">
+                <Card title="Fields">
+                  <ul className="yx-prc-plain">
+                    {['Full name · required', 'Email · required', 'College · from the institution list', 'Roll number · required'].map((f) => (
+                      <li key={f}>
+                        <span>{f}</span>
+                      </li>
+                    ))}
+                    {(Object.keys(FIELD_WORDS) as (keyof LiveCampusSettings['fields'])[]).map((k) => (
+                      <li key={k}>
+                        <span>{FIELD_WORDS[k]}</span>
+                        <Segment label={FIELD_WORDS[k]} options={MODE_OPTIONS} value={form.fields[k]} onChange={(v) => setField(k, v)} />
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+                <section className="yx-prc-box" aria-label="Eligibility and limits">
+                  <h2 className="yx-prc-h">Eligibility and limits</h2>
+                  <FormField label="Branches" helper="Comma separated. Empty: any branch.">
+                    <TextField
+                      value={branchText}
+                      onChange={(v) => {
+                        setBranchText(v);
+                        setForm({ ...form, branches: v.split(',').map((b) => b.trim()).filter(Boolean) });
+                      }}
+                      placeholder="CSE, IT, ECE"
+                    />
+                  </FormField>
+                  <FormField label="Graduation year" helper="Empty: any year.">
+                    <NumberField value={form.graduationYear} onChange={(v) => setForm({ ...form, graduationYear: v })} min={2000} max={2100} />
+                  </FormField>
+                  <FormField label="Minimum CGPA" helper="Empty: no minimum.">
+                    <NumberField value={form.minCgpa} decimals onChange={(v) => setForm({ ...form, minCgpa: v })} min={0} max={100} />
+                  </FormField>
+                  <FormField label="Registration cap" helper="Empty: no cap. Merged duplicates do not count.">
+                    <NumberField value={form.cap} onChange={(v) => setForm({ ...form, cap: v })} min={1} />
+                  </FormField>
+                  <Switch label="Tell ineligible students why" checked={form.tellIneligible} onChange={(v) => setForm({ ...form, tellIneligible: v })} />
+                </section>
+              </div>
+              {problem && <InlineAlert tone="warning">{problem}</InlineAlert>}
+              <div className="yx-prc-row">
+                {live.settings && (
+                  <Button loading={busy === 'off'} onClick={() => void run('off', () => live.onSaveSettings(null)).then((ok) => ok && done('Campus form turned off'))}>
+                    Turn off the campus form
+                  </Button>
+                )}
+                <Button variant="primary" disabled={Boolean(problem)} loading={busy === 'save'} onClick={() => void run('save', () => live.onSaveSettings(form)).then((ok) => ok && done('Registration form saved'))}>
+                  Save the form
+                </Button>
+              </div>
+            </div>
+          )}
+        </TabsContent>
+        <TabsContent value="registrants">
+          <div className="yx-prc-stack">
+            {duplicates > 0 && <InlineAlert tone="warning">{`${duplicates} possible duplicate${duplicates === 1 ? '' : 's'}: the same roll number at the same college with another email. Open one to merge it or clear the flag.`}</InlineAlert>}
+            <DataTable
+              label="Registrants"
+              columns={regCols}
+              rows={live.registrants}
+              getRowId={(r) => r.id}
+              state={loading ? 'loading' : 'ready'}
+              onRowClick={(r) => {
+                clearError();
+                setOpenReg(r.id);
+              }}
+              activeRowId={openReg}
+              pageSize={10}
+              empty={<EmptyState title="No one has registered yet." description={live.settings ? 'Share the registration link with the colleges.' : 'Turn on the campus form first, then share the registration link.'} />}
+            />
+          </div>
+        </TabsContent>
+        <TabsContent value="institutions">
+          <DataTable
+            label="Institutions"
+            columns={instCols}
+            rows={live.institutions}
+            getRowId={(r) => r.id}
+            state={loading ? 'loading' : 'ready'}
+            onRowClick={(r) => {
+              clearError();
+              setTried(false);
+              setInst({ id: r.id, d: { name: r.name, code: r.code, city: r.city, coordinatorName: r.coordinatorName, coordinatorEmail: r.coordinatorEmail, resultsVisibility: r.resultsVisibility, archived: r.archived } });
+            }}
+            toolbar={
+              <Button
+                size="sm"
+                icon={Plus}
+                onClick={() => {
+                  clearError();
+                  setTried(false);
+                  setInst({ id: null, d: EMPTY_INSTITUTION });
+                }}
+              >
+                Add institution
+              </Button>
+            }
+            empty={<EmptyState title="No institutions yet." description="Add the colleges you hire from. Students pick their college from this list." />}
+          />
+        </TabsContent>
+        <TabsContent value="report">
+          <div className="yx-prc-stack">
+            <BarChart
+              title="Registered, eligible and attended by college"
+              categories={live.report.map((c) => c.college)}
+              series={[
+                { name: 'Registered', values: live.report.map((c) => c.registered) },
+                { name: 'Eligible', values: live.report.map((c) => c.eligible) },
+                { name: 'Attended', values: live.report.map((c) => c.attended) },
+              ]}
+              groupSizes={live.report.map((c) => c.registered)}
+              minGroupSize={5}
+              horizontalBelow={640}
+              footnote="Colleges with fewer than 5 registrants are left out of the chart; the table shows them."
+            />
+            <DataTable label="College-wise report" columns={reportCols} rows={live.report} getRowId={(r) => r.institutionId} empty={<EmptyState title="Nothing to report yet." description="Counts appear as students register." />} />
+          </div>
+        </TabsContent>
+      </Tabs>
+      {reg && (
+        <Drawer
+          open
+          onOpenChange={(o) => !o && setOpenReg(null)}
+          title={reg.name}
+          subtitle={`${reg.college} · ${reg.rollNumber}`}
+          meta={<Badge tone={MATCH_TONE[reg.match]}>{reg.match}</Badge>}
+          footer={
+            reg.match === 'Possible duplicate' && reg.duplicateOf ? (
+              <>
+                <Button loading={busy === 'clear'} onClick={() => void run('clear', () => live.onNotDuplicate(reg.id)).then((ok) => ok && done('Marked as a different student'))}>
+                  Not a duplicate
+                </Button>
+                <Button variant="primary" onClick={() => setMergeOpen(true)}>
+                  Merge into {reg.duplicateOf.name}
+                </Button>
+              </>
+            ) : undefined
+          }
+        >
+          <div className="yx-prc-stack">
+            {error && (
+              <InlineAlert tone="danger" title="That did not work">
+                {error}
+              </InlineAlert>
+            )}
+            {reg.duplicateOf && <InlineAlert tone="warning">{`Same roll number at the same college as ${reg.duplicateOf.name} (${reg.duplicateOf.email}). Merging keeps ${reg.duplicateOf.name}'s registration; this one stops counting and its untaken invitation is withdrawn.`}</InlineAlert>}
+            {reg.mergedInto && <InlineAlert tone="info">{`Merged into ${reg.mergedInto.name}'s registration.`}</InlineAlert>}
+            <DescriptionList
+              items={[
+                { label: 'Email', value: reg.email },
+                { label: 'Mobile', value: reg.phone ?? 'Not given' },
+                { label: 'Branch', value: reg.branch ?? 'Not given' },
+                { label: 'Graduation year', value: reg.graduationYear == null ? 'Not given' : String(reg.graduationYear) },
+                { label: 'CGPA / %', value: reg.cgpa == null ? 'Not given' : String(reg.cgpa) },
+                { label: 'Eligibility', value: reg.eligible ? 'Eligible' : `Not eligible: ${reg.ineligibleReason ?? ''}` },
+                { label: 'Test', value: reg.test ?? 'Not invited' },
+                { label: 'Registered on', value: day(reg.registeredAt) },
+              ]}
+            />
+          </div>
+        </Drawer>
+      )}
+      <ConfirmDialog
+        open={mergeOpen}
+        onOpenChange={setMergeOpen}
+        title={`Merge into ${reg?.duplicateOf?.name ?? ''}?`}
+        consequence="This registration stops counting and its invitation, if not yet taken, is withdrawn. The candidate records stay as they are."
+        confirmLabel="Merge"
+        onConfirm={async () => {
+          await live.onMerge(reg!.id, reg!.duplicateOf!.id);
+          done('Registrations merged');
+          setOpenReg(null);
+        }}
+      />
+      {inst && (
+        <Drawer
+          open
+          onOpenChange={(o) => !o && setInst(null)}
+          title={inst.id ? inst.d.name || 'Institution' : 'Add institution'}
+          footer={
+            <>
+              {inst.id && live.settings && inst.d.coordinatorEmail && !inst.d.archived && (
+                <Button loading={busy === 'link'} onClick={() => void run('link', async () => done(`Link sent to ${await live.onSendCoordinatorLink(inst.id!)}`))}>
+                  Send coordinator link
+                </Button>
+              )}
+              <Button onClick={() => setInst(null)}>Cancel</Button>
+              <Button
+                variant="primary"
+                loading={busy === 'inst'}
+                onClick={() => {
+                  setTried(true);
+                  if (instProblem) return;
+                  void run('inst', () => live.onSaveInstitution(inst.id, inst.d)).then((ok) => {
+                    if (ok) {
+                      done(inst.id ? 'Institution saved' : 'Institution added');
+                      setInst(null);
+                    }
+                  });
+                }}
+              >
+                {inst.id ? 'Save' : 'Add'}
+              </Button>
+            </>
+          }
+        >
+          <div className="yx-prc-stack">
+            {error && (
+              <InlineAlert tone="danger" title="That did not work">
+                {error}
+              </InlineAlert>
+            )}
+            <FormField label="Institution name" required error={tried && !inst.d.name.trim() ? 'Name the institution.' : undefined}>
+              <TextField value={inst.d.name} onChange={(v) => setInstField({ name: v })} maxLength={300} />
+            </FormField>
+            <div className="yx-prc-grid2">
+              <FormField label="Code" required error={tried && !inst.d.code.trim() ? 'Give its code.' : undefined} helper="Unique in the company, e.g. the university code.">
+                <TextField value={inst.d.code} onChange={(v) => setInstField({ code: v })} maxLength={40} />
+              </FormField>
+              <FormField label="City">
+                <TextField value={inst.d.city ?? ''} onChange={(v) => setInstField({ city: v || null })} maxLength={120} />
+              </FormField>
+            </div>
+            <div className="yx-prc-grid2">
+              <FormField label="Coordinator">
+                <TextField value={inst.d.coordinatorName ?? ''} onChange={(v) => setInstField({ coordinatorName: v || null })} maxLength={200} />
+              </FormField>
+              <FormField label="Coordinator's email" helper="Their read-only link to a drive goes here.">
+                <TextField type="email" value={inst.d.coordinatorEmail ?? ''} onChange={(v) => setInstField({ coordinatorEmail: v || null })} maxLength={320} />
+              </FormField>
+            </div>
+            <FormField label="Results the coordinator sees" helper="Shown only after the drive closes. Registration and attendance are always shown.">
+              <Segment label="Results the coordinator sees" options={(Object.keys(VISIBILITY_WORDS) as CampusResultsVisibility[]).map((v) => ({ value: v, label: VISIBILITY_WORDS[v] }))} value={inst.d.resultsVisibility} onChange={(v) => setInstField({ resultsVisibility: v })} />
+            </FormField>
+            {inst.id && <Switch label="Archived" description="Archived colleges are left out of the registration form; past registrations keep them." checked={inst.d.archived} onChange={(v) => setInstField({ archived: v })} />}
+          </div>
+        </Drawer>
+      )}
+    </PrcFrame>
+  );
+}
+
+/* ------------------------------------------------------------------ PRC-29 · The college coordinator's view */
+
+/** GET /public/campus/coordinator/:token. */
+export interface LiveCoordinatorView {
+  company: string;
+  drive: string;
+  college: string;
+  coordinator: string | null;
+  visibility: CampusResultsVisibility;
+  resultsShown: boolean;
+  /** The registration link with this college chosen. */
+  registrationUrl: string;
+  counts: { registered: number; eligible: number; invited: number; attended: number; passed: number | null };
+  registrants: { name: string; rollNumber: string; registration: string; test: string; result: string | null }[];
+}
+
+export interface LiveCoordinator {
+  state: BankLoad | 'expired';
+  view: LiveCoordinatorView | null;
+  onCopyLink: (url: string) => Promise<void>;
+}
+
+type CoordinatorRow = LiveCoordinatorView['registrants'][number];
+
+export function LiveCoordinatorPortalScreen({ live }: { live: LiveCoordinator }) {
+  const { done, fail } = useSay();
+  const v = live.view;
+  if (!v || live.state !== 'ready')
+    return (
+      <CandidateFrame brand={{ company: v?.company ?? '', candidate: '' }}>
+        {live.state === 'loading' ? <p className="yx-prc-muted">Loading…</p> : <EmptyState title="This link has expired or was replaced." description="Ask the company that runs the drive for a new link." />}
+      </CandidateFrame>
+    );
+  const n = (x: number) => x.toLocaleString('en-IN');
+  const cols: TableColumn<CoordinatorRow>[] = [
+    { key: 'name', header: 'Student', value: (r) => r.name, width: 200 },
+    { key: 'roll', header: 'Roll number', type: 'id', value: (r) => r.rollNumber, width: 130 },
+    { key: 'registration', header: 'Registration', type: 'status', value: (r) => r.registration, statusTone: (x) => (x === 'Eligible' ? 'success' : 'danger'), width: 160 },
+    { key: 'test', header: 'Test', value: (r) => r.test, width: 150 },
+    ...(v.resultsShown && v.visibility === 'per_candidate' ? [{ key: 'result', header: 'Result', value: (r: CoordinatorRow) => r.result ?? '', width: 130 }] : []),
+  ];
+  return (
+    <CandidateFrame brand={{ company: v.company, candidate: v.coordinator ? `${v.coordinator} · coordinator` : 'Coordinator' }}>
+      <Heading level={1}>{`${v.college} · ${v.drive}`}</Heading>
+      <div className="yx-prc-grid3">
+        <div className="yx-prc-box">
+          <span className="yx-prc-muted">Registered</span>
+          <strong>{n(v.counts.registered)}</strong>
+        </div>
+        <div className="yx-prc-box">
+          <span className="yx-prc-muted">Eligible</span>
+          <strong>{n(v.counts.eligible)}</strong>
+        </div>
+        <div className="yx-prc-box">
+          <span className="yx-prc-muted">{v.counts.passed != null ? 'Attended · passed' : 'Attended'}</span>
+          <strong>{v.counts.passed != null ? `${n(v.counts.attended)} · ${n(v.counts.passed)}` : n(v.counts.attended)}</strong>
+        </div>
+      </div>
+      {v.visibility === 'none' && <InlineAlert tone="info">{`${v.company} shares registration and attendance only. Results are not shared with coordinators for this drive.`}</InlineAlert>}
+      {v.visibility !== 'none' && !v.resultsShown && <InlineAlert tone="info">{v.visibility === 'aggregate' ? 'Results will show as counts and pass rates for your college after the drive closes. Individual scores are not shared.' : 'Each student’s result will show here after the drive closes. Scores are not shared.'}</InlineAlert>}
+      <Card
+        title="Share the registration link"
+        actions={
+          <Button size="sm" onClick={() => void live.onCopyLink(v.registrationUrl).then(() => done('Link copied'), () => fail('Copy did not work; select the link instead.'))}>
+            Copy link
+          </Button>
+        }
+      >
+        <p className="yx-prc-p yx-prc-mono">{v.registrationUrl}</p>
+      </Card>
+      <DataTable label="Your college's registrants" columns={cols} rows={v.registrants} getRowId={(r) => `${r.rollNumber}:${r.name}`} pageSize={10} empty={<EmptyState title="No students from your college have registered yet." description="Share the registration link with them." />} />
     </CandidateFrame>
   );
 }

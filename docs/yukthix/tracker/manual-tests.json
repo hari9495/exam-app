@@ -22141,5 +22141,48 @@
       "Screens/Proctoring/PRC-32 · Result-reuse consent"
     ],
     "note": "Positive and negative. Answer 2013; asmt.result_reuse_months."
+  },
+  {
+    "id": "MT-ASMT-CAMPUS1",
+    "area": "Assessments AS-3 part 2 (16 Nov 2026)",
+    "screen": "Hire › Assessments › Invitations & drives › a drive's campus kit",
+    "url": "http://localhost:3000/yx/hiring/assessments/invitations",
+    "account": "An inviter who also writes tests (ats.candidate.manage and asmt.test.manage), an inviter only, and the admin of another company.",
+    "steps": [
+      "New drive with an empty name, then with a name.",
+      "Registration form: set CGPA to Optional with a minimum CGPA; then Required, branches CSE, IT, minimum 6.5, cap 3; Save.",
+      "Institutions: Add one with no code; then two colleges (one with a coordinator email); try a code already used.",
+      "Open the public registration link with &college=<code>; register an eligible student, an ineligible one (CGPA 5.9), and the same roll number with another email.",
+      "Registrants: open the possible duplicate; Merge (Cancel first, then confirm).",
+      "Register one more student up to the cap, then one more.",
+      "College-wise report.",
+      "As the inviter only: open Invitations & drives.",
+      "As the other company's admin: open the drive's address."
+    ],
+    "expected": "Step 1: the name is asked; then the drive opens. Step 2: save is blocked with the reason; then saved (toast). Step 3: code asked; then added; the used code is refused. Step 4: a link by email; 'not eligible: CGPA below 6.5' with no link; the third is flagged. Step 5: merged (toast); the count drops. Step 6: the last one is refused 'full'. Step 7: counts per college. Step 8: no New drive button. Step 9: not found.",
+    "stories": [
+      "Screens/Proctoring/PRC-29 · Campus drive kit",
+      "Screens/Proctoring/PRC-07 · Invitations and drives"
+    ],
+    "note": "Positive and negative. Answers 2014, 2214."
+  },
+  {
+    "id": "MT-ASMT-CAMPUS2",
+    "area": "Assessments AS-3 part 2 (16 Nov 2026)",
+    "screen": "College coordinator's view (emailed link)",
+    "url": "http://localhost:3000/campus/<token from the email>",
+    "account": "A drive with registrants from two colleges; one college shares each student's result, the other none.",
+    "steps": [
+      "Send the coordinator link from the college's drawer; open it from the email.",
+      "Look for the other college's students.",
+      "End the drive's last session (or wait); open the link again.",
+      "Send the link again; open the first email's link.",
+      "Open the second college's link after the drive closed."
+    ],
+    "expected": "Step 1: the college, counts and its students; results 'after the drive closes'. Step 2: none shown. Step 3: each student's pass or not. Step 4: 'This link has expired or was replaced'. Step 5: registration and attendance only.",
+    "stories": [
+      "Screens/Proctoring/PRC-29 · Campus drive kit"
+    ],
+    "note": "Positive and negative. Answer 2014."
   }
 ]

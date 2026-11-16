@@ -154,6 +154,25 @@ export class DeliveryService {
     });
   }
 
+  /**
+   * Answer 2211: reminders or revokes for many invitations in one call. Each goes through the existing route's checks;
+   * one refused does not stop the rest, and each refusal is named.
+   */
+  async bulk(ctx: TenantContext, userId: string, action: 'remind' | 'revoke', ids: string[]) {
+    const failed: { id: string; reason: string }[] = [];
+    let done = 0;
+    for (const id of [...new Set(ids)]) {
+      try {
+        if (action === 'remind') await this.invitations.resend(ctx, userId, id);
+        else await this.invitations.revoke(ctx, userId, id);
+        done++;
+      } catch (e) {
+        failed.push({ id, reason: e instanceof Error ? e.message : 'Refused' });
+      }
+    }
+    return { done, failed };
+  }
+
   /** PRC-07: a candidate who missed the test is invited again once, with a reason (a new link and window). */
   async reinvite(ctx: TenantContext, userId: string, id: string, reason: string) {
     const why = reason.trim();

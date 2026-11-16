@@ -24,7 +24,7 @@ import { PhoneFrame } from '../_kit/frames';
 import { CandidateFrame, PrcFrame, type ViewState } from './proctoring-shared';
 import { CameraFrame, IdCapture, QrPlaceholder } from './proctoring-kit';
 import { planWaves, slotState, timeCredit } from './proctoring-logic';
-import { LiveInvitationsScreen, type LiveInvitations } from './delivery-live';
+import { LiveCampusKitScreen, LiveCoordinatorPortalScreen, LiveInvitationsScreen, type LiveCampusKit, type LiveCoordinator, type LiveInvitations } from './delivery-live';
 import { DRIVES, NAMES, WEEK_DAYS, d, type AccommodationRow, type DriveRow, type InvitationRow, type SlotData } from './proctoring-data';
 
 const opt = (xs: string[]) => xs.map((x) => ({ value: x, label: x }));
@@ -518,7 +518,14 @@ const REGISTRANTS = NAMES.slice(0, 10).map((n, i) => ({
 }));
 type Registrant = (typeof REGISTRANTS)[number];
 
-export function CampusKitScreen({ tab = 'registrants' }: { tab?: 'form' | 'registrants' | 'institutions' | 'admit' | 'report' }) {
+type CampusKitProps = { tab?: 'form' | 'registrants' | 'institutions' | 'admit' | 'report' };
+
+/** PRC-29; with `live` (AS-3 part 2) a real drive's form, registrants, colleges and report (no admit cards, answer 2014). */
+export function CampusKitScreen(props: CampusKitProps | { live: LiveCampusKit; tab?: 'form' | 'registrants' | 'institutions' | 'report' }) {
+  return 'live' in props ? <LiveCampusKitScreen live={props.live} tab={props.tab} /> : <SampleCampusKit {...props} />;
+}
+
+function SampleCampusKit({ tab = 'registrants' }: CampusKitProps) {
   // PRC-29
   return (
     <PrcFrame page="Campus kit & institutions">
@@ -649,7 +656,11 @@ export function CampusKitScreen({ tab = 'registrants' }: { tab?: 'form' | 'regis
 }
 
 /** College coordinator's limited portal (B7, YX-DLV-15): own college only, results at the level the company set. */
-export function CoordinatorPortalScreen({ visibility = 'Aggregate' }: { visibility?: 'None' | 'Aggregate' | 'Per candidate' }) {
+export function CoordinatorPortalScreen(props: { visibility?: 'None' | 'Aggregate' | 'Per candidate' } | { live: LiveCoordinator }) {
+  return 'live' in props ? <LiveCoordinatorPortalScreen live={props.live} /> : <SampleCoordinatorPortal {...props} />;
+}
+
+function SampleCoordinatorPortal({ visibility = 'Aggregate' }: { visibility?: 'None' | 'Aggregate' | 'Per candidate' }) {
   return (
     <CandidateFrame user="Dr. Latha Ramesh · coordinator">
       <Heading level={1}>

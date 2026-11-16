@@ -1,5 +1,6 @@
 'use client';
 
+import { ToastProvider } from '@yukthix/ui';
 import { ResultAppealScreen, type LiveResult } from '@yukthix/ui/assessments';
 import { useAttemptQuery, useCandidateBrand, useCandidateCertificate } from '../../../lib/hooks/useAttempt';
 import { isAttemptStarted } from '../../../lib/types';
@@ -25,5 +26,10 @@ export default function CandidateResultPage() {
         }
       : undefined,
   };
-  return <ResultAppealScreen live={live} />;
+  // The kit's toasts need their provider; the candidate layout has only the older one.
+  return (
+    <ToastProvider>
+      <ResultAppealScreen live={live} />
+    </ToastProvider>
+  );
 }

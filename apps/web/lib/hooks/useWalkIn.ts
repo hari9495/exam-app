@@ -17,11 +17,14 @@ interface WalkInRegisterInput {
   email: string;
   phone?: string;
   consentAccepted?: boolean;
+  /** AS-3 (PRC-29): a campus drive's fields. */
+  campus?: { institutionId: string; rollNumber: string; branch?: string; graduationYear?: number; cgpa?: number };
 }
 
 export function useWalkInRegister(orgSlug: string) {
   return useMutation({
-    mutationFn: (input: WalkInRegisterInput): Promise<{ token: string }> =>
+    // A campus drive registers an ineligible student without a link (token null; the reason when the drive tells it).
+    mutationFn: (input: WalkInRegisterInput): Promise<{ token: string | null; eligible?: boolean; reason?: string | null }> =>
       apiFetch(`/public/walk-in/${orgSlug}/register`, { method: 'POST', body: JSON.stringify(input) }),
   });
 }

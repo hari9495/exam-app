@@ -32,7 +32,7 @@ export {
 export { ResultAppealScreen, TestRunnerScreen, type LiveResult, type LiveRunner, type LiveRunnerQuestion } from './candidate';
 
 // Assessments AS-3 (PRC-07, PRC-21, PRC-32): invitations and drives, the candidate's tests, using an earlier result.
-export { InvitationsScreen } from './delivery';
+export { CampusKitScreen, CoordinatorPortalScreen, InvitationsScreen } from './delivery';
 export { CandidatePortalHomeScreen, ResultReuseScreen } from './candidate';
-export { INVITATION_TONE, MY_TEST_BADGE, canRemind, canRevoke, type LiveCandidateTestStatus, type LiveDriveRow, type LiveInvitationRow, type LiveInvitationStatus, type LiveInvitations, type LiveMyTest, type LivePortal, type LiveReuse, type LiveReuseOffer } from './delivery-live';
+export { DEFAULT_CAMPUS_SETTINGS, INVITATION_TONE, MY_TEST_BADGE, bulkWords, campusProblem, canRemind, canRevoke, type BulkOutcome, type CampusFieldMode, type CampusResultsVisibility, type LiveCampusKit, type LiveCampusSettings, type LiveCollegeRow, type LiveCoordinator, type LiveCoordinatorView, type LiveInstitution, type LiveInstitutionInput, type LiveRegistrant, type LiveCandidateTestStatus, type LiveDriveRow, type LiveInvitationRow, type LiveInvitationStatus, type LiveInvitations, type LiveMyTest, type LivePortal, type LiveReuse, type LiveReuseOffer } from './delivery-live';
 export type { CandidateBrand } from './proctoring-shared';
