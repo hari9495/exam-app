@@ -16,7 +16,7 @@ import { asApproved } from './fixtures/approved-question';
 //   PRC-04 the pre-publish checklist lists every check, and publishing refuses on the first that fails;
 //          a test for more candidates than the company's number needs another person's approval, of the test as it is;
 //   2008   recordings, clips and face data go after the company's retention (30 by default), never while the result is
-//          held, and never early for a company that chose longer.
+//          on legal hold (an open integrity incident or appeal, AS-5), and never early for a company that chose longer.
 describe('Assessments AS-2: settings 6.5, proctoring modes, checklist, approval and retention', () => {
   let adminApp: INestApplication;
   let runtimeApp: INestApplication;
@@ -209,8 +209,9 @@ describe('Assessments AS-2: settings 6.5, proctoring modes, checklist, approval 
 
   describe('2008: retention from the company setting, with legal hold', () => {
     const DAY = 24 * 60 * 60 * 1000;
-    it('purges past the company days, keeps a held result\'s evidence, and keeps a longer-retention company\'s', async () => {
-      // A: 180 days (set above). B: the default, 30. Three attempts with old snapshots: B 40 days, A 40 days, B held.
+    it('purges past the company days, keeps evidence on legal hold, and keeps a longer-retention company\'s', async () => {
+      // A: 180 days (set above). B: the default, 30. Old snapshots: B 40 days, A 40 days, B with an open integrity incident
+      // (AS-5: the legal hold), and B with a result held by hand (no longer a legal hold since AS-5).
       const attemptIn = async (o: 'A' | 'B', who: Who) => {
         const exam = await readyTest(`Retention ${o}`, who, o === 'B' ? ids.questionB : ids.question);
         await api(who, 'post', `/exams/${exam}/publish`).expect(201);
@@ -226,7 +227,9 @@ describe('Assessments AS-2: settings 6.5, proctoring modes, checklist, approval 
       const b = await attemptIn('B', 'adminB');
       const a = await attemptIn('A', 'adminA');
       const held = await attemptIn('B', 'adminB');
-      await tenantPrisma.forTenant(SUPER, (tx) => tx.result.update({ where: { attemptId: held.attempt }, data: { releaseOverride: 'held' } }));
+      await tenantPrisma.forTenant(SUPER, (tx) => tx.integrityIncident.create({ data: { attemptId: held.attempt, level: 'review' } }));
+      const byHand = await attemptIn('B', 'adminB');
+      await tenantPrisma.forTenant(SUPER, (tx) => tx.result.update({ where: { attemptId: byHand.attempt }, data: { releaseOverride: 'held' } }));
 
       const warn = jest.spyOn(Logger.prototype, 'warn');
       const purged = await adminApp.get(ProctoringRetentionService).prune();
@@ -236,6 +239,7 @@ describe('Assessments AS-2: settings 6.5, proctoring modes, checklist, approval 
       expect(JSON.parse((await meta(b.event))!)).toEqual({ reason: 'no_face' });
       expect(JSON.parse((await meta(a.event))!).snapshot).toBeDefined();
       expect(JSON.parse((await meta(held.event))!).snapshot).toBeDefined();
+      expect(JSON.parse((await meta(byHand.event))!)).toEqual({ reason: 'no_face' });
     });
 
     it('face data follows the same rule (the sweep runs without touching inside-retention rows)', async () => {

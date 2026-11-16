@@ -1527,7 +1527,8 @@ export interface AttemptSectionFeedback {
 
 export interface AttemptFeedback {
   // 'held' (AS-4a, PRC-27): held for review; the candidate sees that it is under review, never why or the score.
-  status: 'pending_review' | 'awaiting_release' | 'held' | 'settled';
+  // 'invalidated' (AS-5): an integrity decision invalidated the attempt; the decision shows instead of a score.
+  status: 'pending_review' | 'awaiting_release' | 'held' | 'invalidated' | 'settled';
   visibility: 'none' | 'pass_fail' | 'score' | 'breakdown';
   passFail: 'pass' | 'fail' | null;
   percentage: number | null;
@@ -1535,6 +1536,18 @@ export interface AttemptFeedback {
   // Optional web-side so partial test fixtures need not set it; the API always sends it. Read
   // defensively (feedback?.certificateAvailable).
   certificateAvailable?: boolean;
+  /** AS-5 (answer 2012): an integrity decision other than "cleared", its appeal window and the appeal. */
+  integrity?: CandidateIntegrity | null;
+}
+
+export interface CandidateIntegrity {
+  verdict: 'warning' | 'section' | 'attempt';
+  sectionTitle: string | null;
+  reason: string | null;
+  decidedAt: string;
+  appealUntil: string | null;
+  canAppeal: boolean;
+  appeal: { status: 'open' | 'upheld' | 'overturned'; sentAt: string; decidedAt: string | null; reason: string | null } | null;
 }
 
 export interface AttemptState {

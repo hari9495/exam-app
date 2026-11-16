@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { BlobStorageService, TenantPrismaService } from '@exam-platform/shared';
-import { NOT_ON_HOLD, RETENTION_MIN_DAYS, pastRetention, retentionByCompany, retentionCutoff } from '../assessments/asmt-rules';
+import { notOnHold, RETENTION_MIN_DAYS, pastRetention, retentionByCompany, retentionCutoff } from '../assessments/asmt-rules';
 
 // Webcam snapshots + screen captures are proctoring evidence; once the review window has passed they
 // are candidate imagery with no remaining purpose. AS-2 (answer 2008): the window is each company's
@@ -33,7 +33,7 @@ export class ProctoringRetentionService {
           where: {
             occurredAt: { lt: retentionCutoff(now, RETENTION_MIN_DAYS) },
             OR: [{ metadataJson: { contains: '"snapshot"' } }, { metadataJson: { contains: '"screenshot"' } }],
-            AND: [NOT_ON_HOLD],
+            AND: [notOnHold(now)],
           },
           select: { id: true, metadataJson: true, occurredAt: true, organizationId: true },
         }),

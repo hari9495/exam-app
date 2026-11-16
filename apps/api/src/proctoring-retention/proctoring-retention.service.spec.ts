@@ -1,3 +1,4 @@
+import { notOnHold } from '../assessments/asmt-rules';
 import { ProctoringRetentionService } from './proctoring-retention.service';
 
 describe('ProctoringRetentionService', () => {
@@ -30,9 +31,9 @@ describe('ProctoringRetentionService', () => {
     const where = findMany.mock.calls[0][0].where;
     // The shortest retention (30 days); each row is then checked against its company's own days.
     expect(where.occurredAt.lt).toEqual(new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000));
-    // Legal hold: never an attempt whose result is held (an open incident or appeal).
-    // Only attempts with no result yet or a result not held (NULL-safe: a NOT over the column would match nothing).
-    expect(where.AND).toEqual([{ attempt: { OR: [{ result: { is: null } }, { result: { is: { OR: [{ releaseOverride: null }, { releaseOverride: { not: 'held' } }] } } }] } }]);
+    // Legal hold (answer 2008).
+    // AS-5: the shared legal-hold filter (its shape is tested in the as5 and as2 e2e suites against the database).
+    expect(where.AND).toEqual([notOnHold(now)]);
     expect(where.OR).toEqual([{ metadataJson: { contains: '"snapshot"' } }, { metadataJson: { contains: '"screenshot"' } }]);
     expect(blobStorage.deleteByUrl).not.toHaveBeenCalled();
   });

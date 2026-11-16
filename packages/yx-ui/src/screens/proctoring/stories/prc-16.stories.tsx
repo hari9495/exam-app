@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { IntegrityQueueScreen } from '../integrity';
 import { INCIDENTS } from '../proctoring-data';
+import { LIVE_INCIDENT_ROWS } from '../integrity-live-samples';
 
 const meta: Meta<typeof IntegrityQueueScreen> = { title: 'Screens/Proctoring/PRC-16 · Integrity review queue', component: IntegrityQueueScreen, parameters: { layout: 'fullscreen' }, args: { incidents: INCIDENTS } };
 export default meta;
@@ -12,3 +13,7 @@ export const Capacity: S = { name: 'Reviewer capacity and SLA', args: { tab: 'ca
 export const Empty: S = { args: { state: 'empty' } };
 export const Loading: S = { args: { state: 'loading' } };
 export const Error: S = { args: { state: 'error' } };
+
+// AS-5 part 1: the company's real incidents.
+export const LiveQueue: S = { name: 'Live · queue', args: { live: { state: 'ready', onRetry: () => {}, rows: LIVE_INCIDENT_ROWS, onOpen: () => {} } } };
+export const LiveEmpty: S = { name: 'Live · nothing to review', args: { live: { state: 'ready', onRetry: () => {}, rows: [], onOpen: () => {} } } };

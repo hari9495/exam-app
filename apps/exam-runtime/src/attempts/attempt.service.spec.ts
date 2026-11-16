@@ -772,6 +772,7 @@ describe('AttemptService', () => {
         setting: { findFirst: jest.fn().mockResolvedValue(null) },
 
         attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn(), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue({ score: 0, maxScore: 10, percentage: 0, passFail: null }) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
@@ -799,6 +800,7 @@ describe('AttemptService', () => {
         setting: { findFirst: jest.fn().mockResolvedValue(null) },
 
         attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn(), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue({ score: 5, maxScore: 5, percentage: 100, passFail: 'pass' }) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
@@ -832,6 +834,7 @@ describe('AttemptService', () => {
         setting: { findFirst: jest.fn().mockResolvedValue(null) },
 
         attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn(), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue({ score: 5, maxScore: 5, percentage: 100, passFail: 'pass' }) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
@@ -863,6 +866,7 @@ describe('AttemptService', () => {
         setting: { findFirst: jest.fn().mockResolvedValue(null) },
 
         attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn(), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue({ score: 3, maxScore: 5, percentage: 60, passFail: 'fail' }) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
@@ -908,6 +912,7 @@ describe('AttemptService', () => {
         setting: { findFirst: jest.fn().mockResolvedValue(null) },
 
         attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn(), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue({ score: 5, maxScore: 10, percentage: 50, passFail: 'fail' }) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
@@ -970,6 +975,7 @@ describe('AttemptService', () => {
         setting: { findFirst: jest.fn().mockResolvedValue(null) },
 
         attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn(), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue({ score: 30, maxScore: 30, percentage: 100, passFail: 'pass' }) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
@@ -1021,6 +1027,7 @@ describe('AttemptService', () => {
         setting: { findFirst: jest.fn().mockResolvedValue(null) },
 
         attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn(), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue({ score: 5, maxScore: 10, percentage: 50, passFail: 'fail' }) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);

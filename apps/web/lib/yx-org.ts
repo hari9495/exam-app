@@ -234,6 +234,9 @@ export const YX_KEYS = [
   // AS-3 (answer 2159): Tests for test writers; Invitations & drives for inviters (the YukthiX keys; older aliases above).
   'asmt.test.manage',
   'ats.candidate.manage',
+  // AS-5: Integrity review and Appeals.
+  'asmt.proctor',
+  'asmt.evaluate',
   'approvals:configure',
   // AT3: the careers site, consent notices and job boards (company settings).
   'org:manage_settings',

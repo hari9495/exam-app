@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { BlobStorageService, TenantPrismaService } from '@exam-platform/shared';
-import { NOT_ON_HOLD, RETENTION_MIN_DAYS, pastRetention, retentionByCompany, retentionCutoff } from '../assessments/asmt-rules';
+import { notOnHold, RETENTION_MIN_DAYS, pastRetention, retentionByCompany, retentionCutoff } from '../assessments/asmt-rules';
 
 // Biometric data must not outlive its purpose, and the review window is the purpose -- see
 // docs/superpowers/specs/2026-08-10-face-identification-design.md. AS-2 (answer 2008): the window is each
@@ -42,7 +42,7 @@ export class FaceRetentionService {
                 { submittedAt: null, startedAt: { lt: cutoff } },
               ],
             },
-            AND: [NOT_ON_HOLD],
+            AND: [notOnHold(now)],
           },
           select: { id: true, referenceImagePath: true, organizationId: true, attempt: { select: { submittedAt: true, startedAt: true } } },
         }),

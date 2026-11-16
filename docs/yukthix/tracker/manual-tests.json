@@ -22240,6 +22240,38 @@
     "note": "Positive and negative. Proctoring pauses and the start card are still the older design (questions 2231, 2232)."
   },
   {
+    "id": "MT-ASMT-INT1",
+    "area": "Integrity review, appeals and legal hold: answers 2006, 2008, 2012 (16 Nov 2026)",
+    "screen": "Hire › Assessments › Integrity review and Appeals; Candidate › Your result",
+    "url": "http://localhost:3000/yx/hiring/assessments/integrity",
+    "account": "Three people who review (two proctors and an evaluator) with security keys; a candidate whose finished test was flagged (or open an incident from the candidate report).",
+    "steps": [
+      "Open Integrity review; open the flagged incident; Take this review.",
+      "Negative: choose Warning noted with a 5-character reason; Save verdict.",
+      "Choose Attempt invalidated; choose the second proctor; give a reason; Send for second review (confirm the security key).",
+      "As the first proctor, open it again.",
+      "As the second proctor, open it; Confirm invalidation with a reason (security key).",
+      "As the candidate, open Your result; Appeal this decision; send it in your own words.",
+      "Negative: as the candidate, try to appeal again.",
+      "As the first proctor, open Appeals.",
+      "As the evaluator, open Appeals; Overturn it with a reason (security key).",
+      "As the candidate, open Your result again."
+    ],
+    "expected": "Step 1: the flags and events show; you are the reviewer. Step 2: 'Enter a reason of at least 10 characters'; nothing saved. Step 3: waiting for the second reviewer; the candidate's result is under review. Step 4: no confirm buttons; it says the second proctor confirms. Step 5: Verdict given with the appeal window (7 days). Step 6: 'Your test was not counted', Why, then 'Appeal received'; the result is held. Step 7: no appeal button. Step 8: 'You gave this verdict, so someone else decides the appeal'. Step 9: Overturned. Step 10: the result shows again with 'Decision overturned on appeal' and the reason.",
+    "stories": [
+      "LiveQueue",
+      "LiveReview",
+      "LiveSecondReview",
+      "LiveDecided",
+      "LiveDecide",
+      "LiveExcluded",
+      "LiveVerdict",
+      "LiveAppealSent",
+      "LiveInvalidated"
+    ],
+    "note": "Positive and negative. No video or evidence frames on the incident yet (question 2262)."
+  },
+  {
     "id": "MT-ASMT-HELP1",
     "area": "Assessments AS-4b (16 Nov 2026)",
     "screen": "Candidate › Ask for an accommodation; Hire › Assessments › Accommodation requests",

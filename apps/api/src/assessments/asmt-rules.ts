@@ -89,12 +89,32 @@ export function testFingerprint(exam: {
 }
 
 /**
- * Answer 2008 (legal hold): evidence of an attempt whose result is held (an open incident or appeal) is kept until the
- * result is released. A Prisma filter on rows that belong to an attempt, used inside AND. Written as what may go (no
- * result yet, or a result not held): a NOT over the column would drop every row whose release_override is NULL (SQL's
- * NULL <> 'held' is not true), so nothing would ever be purged.
+ * Answer 2008 (legal hold), AS-5: evidence of an attempt is kept while its integrity incident is open, while a verdict
+ * other than "cleared" may still be appealed, and while an appeal is open. A Prisma filter on rows that belong to an
+ * attempt, used inside AND, written as what may go: no incident, or one decided whose appeal is decided or whose window
+ * has closed. (AS-2's stand-in, a result held by hand, is not a legal hold: a bulk release lifted it.)
  */
-export const NOT_ON_HOLD = { attempt: { OR: [{ result: { is: null } }, { result: { is: { OR: [{ releaseOverride: null }, { releaseOverride: { not: 'held' } }] } } }] } };
+export function notOnHold(now: Date) {
+  return {
+    attempt: {
+      OR: [
+        { integrityIncident: { is: null } },
+        {
+          integrityIncident: {
+            is: {
+              status: 'decided',
+              OR: [
+                // The appeal is decided; or there is none and the window has closed (or there never was one).
+                { appeal: { is: { status: { not: 'open' } } } },
+                { appeal: { is: null }, OR: [{ appealClosesAt: null }, { appealClosesAt: { lte: now } }] },
+              ],
+            },
+          },
+        },
+      ],
+    },
+  };
+}
 
 /** Each company's retention in days (companies that never set it keep the default, 30). */
 export async function retentionByCompany(tx: Tx): Promise<Map<string, number>> {

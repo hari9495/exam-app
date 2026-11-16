@@ -29,7 +29,7 @@ export {
 } from './bank-live';
 
 // Assessments AS-4a (PRC-26, PRC-27): the designed test runner and result page, live with their `live` prop.
-export { ResultAppealScreen, TestRunnerScreen, type LiveResult, type LiveRunner, type LiveRunnerQuestion } from './candidate';
+export { ResultAppealScreen, TestRunnerScreen, type LiveIntegrityDecision, type LiveResult, type LiveRunner, type LiveRunnerQuestion } from './candidate';
 
 // Assessments AS-3 (PRC-07, PRC-21, PRC-32): invitations and drives, the candidate's tests, using an earlier result.
 export { CampusKitScreen, CoordinatorPortalScreen, InvitationsScreen } from './delivery';
@@ -43,4 +43,7 @@ export { HELP_LABEL, approvedForYou, type AccommodationView, type CandidateHelpV
 export { ReadinessCheckScreen, type LiveReadiness } from './candidate';
 // AS-4a part 2 (answer 2201): the designed consent (PRC-24) and selfie (PRC-25) on /welcome.
 export { ConsentScreen, IdentityCheckScreen, type LiveConsent, type LiveSelfie, type ManualIdentityCheck } from './candidate';
+// AS-5 part 1 (answers 2006, 2008, 2012): integrity review and appeals.
+export { AppealsScreen, IncidentWorkspaceScreen, IntegrityQueueScreen } from './integrity';
+export type { LiveAppealRow, LiveAppeals, LiveIncident, LiveIncidentRow, LiveIncidentWorkspace, LiveIntegrityQueue } from './integrity-live';
 export type { SystemCheck } from './proctoring-kit';

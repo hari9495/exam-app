@@ -1,3 +1,4 @@
+import { integrityState, type CandidateIntegrity } from './integrity-hold';
 import { randomUUID } from 'crypto';
 import { BadRequestException, ConflictException, ForbiddenException, HttpException, HttpStatus, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Attempt, Prisma } from '@prisma/client';
@@ -151,7 +152,8 @@ interface AttemptFeedback {
   // released yet -- the candidate sees "results not yet released", no score/passFail.
   // 'held' (AS-4a, PRC-27): the result is held for review (Result.releaseOverride 'held'); the candidate sees that it is
   // under review, never why or the score.
-  status: 'pending_review' | 'awaiting_release' | 'held' | 'settled';
+  // 'invalidated' (AS-5): an integrity verdict invalidated the attempt (not overturned on appeal): no score shown.
+  status: 'pending_review' | 'awaiting_release' | 'held' | 'invalidated' | 'settled';
   visibility: string;
   passFail: 'pass' | 'fail' | null;
   percentage: number | null;
@@ -160,6 +162,8 @@ interface AttemptFeedback {
   // downloadable via GET /attempt/certificate. Independent of feedbackVisibility (a certificate is an
   // explicit opt-in reward for passing).
   certificateAvailable: boolean;
+  /** AS-5 (answer 2012): an integrity verdict other than "cleared", with its appeal window and the appeal. */
+  integrity?: CandidateIntegrity | null;
 }
 
 interface AttemptStateResponse {
@@ -573,6 +577,26 @@ export class AttemptService {
       if (['in_progress', 'paused', 'blocked'].includes(attempt.status)) throw new BadRequestException('The survey opens after you finish the test.');
       if (await tx.attemptSurvey.findUnique({ where: { attemptId: attempt.id }, select: { id: true } })) throw new ConflictException('You have already answered the survey. Thank you.');
       await tx.attemptSurvey.create({ data: { attemptId: attempt.id, rating: dto.rating, clearInstructions: dto.clearInstructions ?? null, comment: dto.comment?.trim() || null } });
+      return { ok: true as const };
+    });
+  }
+
+  /**
+   * AS-5 (answer 2012): the candidate appeals an integrity verdict other than "cleared", once, before the company's
+   * window closes. The result is held while it is open (integrityState); someone who did not give the verdict decides.
+   */
+  async appeal(session: CandidateSession, text: string): Promise<{ ok: true }> {
+    const { organizationId, invitation } = await this.resolveContext(session.invitationId);
+    return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id }, select: { id: true } });
+      if (!attempt) throw new NotFoundException('No attempt has been started');
+      const state = await integrityState(tx, attempt.id);
+      if (text.trim().length < 10) throw new BadRequestException('Tell us in at least 10 characters why we should look again.');
+      if (!state.integrity) throw new BadRequestException('There is no decision on your test to appeal.');
+      if (state.integrity.appeal) throw new ConflictException('You have already appealed this decision.');
+      if (!state.integrity.canAppeal) throw new BadRequestException('The time to appeal this decision has ended.');
+      const incident = await tx.integrityIncident.findUniqueOrThrow({ where: { attemptId: attempt.id }, select: { id: true } });
+      await tx.integrityAppeal.create({ data: { incidentId: incident.id, attemptId: attempt.id, text: text.trim() } });
       return { ok: true as const };
     });
   }
@@ -1781,6 +1805,10 @@ export class AttemptService {
     if (!isLive && (!canSeeOwnScore || !released)) {
       return { you: null, top: [] };
     }
+    if (!isLive && attempt) {
+      const integrity = await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) => integrityState(tx, attempt.id));
+      if (integrity.held || integrity.invalidated) return { you: null, top: [] };
+    }
     return this.leaderboardService.computeCandidateView({ organizationId, isSuperAdmin: false }, exam.id, invitation.id);
   }
 
@@ -1995,6 +2023,9 @@ export class AttemptService {
     const released =
       result.releaseOverride === 'released' ? true : result.releaseOverride === 'held' ? false : exam.resultsReleaseMode !== 'manual';
     if (!released) throw new ForbiddenException('Results have not been released yet');
+    // AS-5: no certificate while the result is held for an integrity review or appeal, or for an invalidated attempt.
+    const integrity = await this.tenantPrisma.forTenant(context, (tx) => integrityState(tx, loaded.attempt!.id));
+    if (integrity.held || integrity.invalidated) throw new ForbiddenException('Your result is under review');
 
     const CERT_SIGN_TTL_MS = 60 * 60 * 1000;
     if (result.certificatePath) {
@@ -2176,7 +2207,24 @@ export class AttemptService {
     );
   }
 
+  /**
+   * AS-5 (answers 2008, 2012): the release gate below, then the integrity decision on top: held while the incident is
+   * undecided or an appeal is open, the decision instead of a score when the attempt is invalidated.
+   */
   private async buildFeedback(
+    tx: Prisma.TransactionClient,
+    exam: { feedbackVisibility: string; resultsReleaseMode: string; certificatesEnabled: boolean },
+    attempt: { id: string; status: string; sectionSnapshotJson: string },
+  ): Promise<AttemptFeedback | null> {
+    const feedback = await this.releaseFeedback(tx, exam, attempt);
+    if (!feedback || feedback.status === 'pending_review') return feedback;
+    const s = await integrityState(tx, attempt.id);
+    if (s.held || s.invalidated)
+      return { status: s.held ? 'held' : 'invalidated', visibility: feedback.visibility, passFail: null, percentage: null, sections: null, certificateAvailable: false, integrity: s.integrity };
+    return s.integrity ? { ...feedback, integrity: s.integrity } : feedback;
+  }
+
+  private async releaseFeedback(
     tx: Prisma.TransactionClient,
     exam: { feedbackVisibility: string; resultsReleaseMode: string; certificatesEnabled: boolean },
     attempt: { id: string; status: string; sectionSnapshotJson: string },

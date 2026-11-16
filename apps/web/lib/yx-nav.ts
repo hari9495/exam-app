@@ -445,6 +445,8 @@ export function buildNav(n: NavInput): NavArea[] {
             ...when(Boolean(n.assessments) && any('asmt.bank.manage', 'question_bank:manage'), L('asmt-reviews', 'Question review', '/yx/hiring/assessments/reviews'), L('asmt-items', 'Item analysis', '/yx/hiring/assessments/item-analysis')),
             // AS-3 (PRC-07): invitations and drives for the people who invite candidates.
             ...when(Boolean(n.assessments) && any('ats.candidate.manage', 'candidate:manage'), L('asmt-invitations', 'Invitations & drives', '/yx/hiring/assessments/invitations')),
+            // AS-5 (answers 2006, 2012): integrity review and appeals, for the people who proctor, evaluate or own tests.
+            ...when(Boolean(n.assessments) && any('asmt.proctor', 'asmt.evaluate', 'exam:manage'), L('asmt-integrity', 'Integrity review', '/yx/hiring/assessments/integrity'), L('asmt-appeals', 'Appeals', '/yx/hiring/assessments/appeals')),
           ]),
           // Staffing desk slice 1 (HIR-14, HIR-15): its own group, only for a company that turned the desk on.
           // Slice 2 (HIR-16, HIR-17): submissions, placements and the bench.
