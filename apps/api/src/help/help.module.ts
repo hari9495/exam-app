@@ -14,7 +14,7 @@ import { TalkToUsController } from './talk-to-us.controller';
 @Module({
   imports: [AuthModule, PlatformModule],
   providers: [WhatsNewService, ToursService, SetupHubService, NotFoundRetentionService],
-  exports: [NotFoundRetentionService],
+  exports: [NotFoundRetentionService, WhatsNewService],
   controllers: [WhatsNewController, WhatsNewStaffController, HelpController, ToursController, SetupHubController, ContainmentBannerController, TalkToUsController],
 })
 export class HelpModule {}

@@ -151,7 +151,7 @@ function useRaiseForm(desks: RaiseDesk[], suggest?: { onSuggest?: (q: string) =>
   };
 }
 
-export type HelpTab = 'page' | 'ask' | 'new' | 'tours';
+export type HelpTab = 'page' | 'assistant' | 'ask' | 'new' | 'tours';
 
 export interface HelpDrawerProps {
   open: boolean;
@@ -174,13 +174,16 @@ export interface HelpDrawerProps {
   /** Answers 943 and 944: the What's new and Tours tabs, shown only when their content is given (H-4, H-5). */
   whatsNew?: ReactNode;
   tours?: ReactNode;
+  /** Ask YukthiX (answers 2101 to 2108): the help assistant's tab, shown when given. */
+  assistant?: ReactNode;
   /** The tab it opens on: This page when it has articles, else Ask. */
   defaultTab?: HelpTab;
 }
 
 /**
  * The one Help drawer (US-B-100, Help and onboarding 941), open from every page: known issues on top, then the tabs This
- * page (help articles for the page), Ask (raise a ticket, my open tickets), What's new and Tours.
+ * page (help articles for the page), Ask YukthiX (the help assistant), Ask (raise a ticket, my open tickets), What's new
+ * and Tours.
  */
 export function HelpDrawer(props: HelpDrawerProps) {
   const form = useRaiseForm(props.desks, { onSuggest: props.onSuggest, hrefOf: props.articleHref });
@@ -219,6 +222,7 @@ export function HelpDrawer(props: HelpDrawerProps) {
         <Tabs value={tab} onValueChange={(v) => setTab(v as HelpTab)}>
           <TabsList aria-label="Help sections">
             {page && <TabsTrigger value="page">This page</TabsTrigger>}
+            {props.assistant !== undefined && <TabsTrigger value="assistant">Ask YukthiX</TabsTrigger>}
             <TabsTrigger value="ask">Ask</TabsTrigger>
             {props.whatsNew !== undefined && <TabsTrigger value="new">What's new</TabsTrigger>}
             {props.tours !== undefined && <TabsTrigger value="tours">Tours</TabsTrigger>}
@@ -254,6 +258,7 @@ export function HelpDrawer(props: HelpDrawerProps) {
               )}
             </div>
           </TabsContent>
+          {props.assistant !== undefined && <TabsContent value="assistant">{props.assistant}</TabsContent>}
           {props.whatsNew !== undefined && <TabsContent value="new">{props.whatsNew}</TabsContent>}
           {props.tours !== undefined && <TabsContent value="tours">{props.tours}</TabsContent>}
         </Tabs>

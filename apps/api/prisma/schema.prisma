@@ -14226,6 +14226,75 @@ model CompanyDeletion {
   @@map("company_deletions")
 }
 
+/// Ask YukthiX (answers 2101 to 2108): one person's chat with the help assistant. RLS: the company, then the person.
+model AssistantConversation {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  startedAt        DateTime  @default(now()) @map("started_at") @db.Timestamptz(3)
+  lastAt           DateTime  @default(now()) @map("last_at") @db.Timestamptz(3)
+  unhelpful        Int       @default(0) @db.SmallInt
+  ticketRef        String?   @map("ticket_ref") @db.VarChar(40)
+  featureRequestId String?   @map("feature_request_id") @db.Uuid
+  handedOverAt     DateTime? @map("handed_over_at") @db.Timestamptz(3)
+  messages         AssistantMessage[]
+
+  @@index([organizationId, userId, lastAt(sort: Desc)], map: "assistant_conversations_user_idx")
+  @@index([lastAt], map: "assistant_conversations_last_idx")
+  @@map("assistant_conversations")
+}
+
+model AssistantMessage {
+  id             String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String                @map("organization_id") @db.Uuid
+  userId         String                @map("user_id") @db.Uuid
+  conversationId String                @map("conversation_id") @db.Uuid
+  role           String                @db.VarChar(10)
+  text           String                @db.VarChar(4000)
+  sources        Json                  @default("[]")
+  outcome        String?               @db.VarChar(20)
+  feedback       String?               @db.VarChar(4)
+  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  conversation   AssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt], map: "assistant_messages_conversation_idx")
+  @@map("assistant_messages")
+}
+
+/// Questions asked per person per India day (help.assistant.daily_questions).
+model AssistantDailyCount {
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  day            DateTime @db.Date
+  questions      Int      @default(0)
+
+  @@id([userId, day])
+  @@map("assistant_daily_counts")
+}
+
+/// Answer 2105: a feature request sent from Ask YukthiX, for the staff Feature requests list.
+model FeatureRequest {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  number          Int       @default(autoincrement())
+  organizationId  String    @map("organization_id") @db.Uuid
+  requestedBy     String?   @map("requested_by") @db.Uuid
+  requestedByName String    @map("requested_by_name") @db.VarChar(200)
+  title           String    @db.VarChar(200)
+  details         String    @default("") @db.VarChar(2000)
+  conversationId  String?   @map("conversation_id") @db.Uuid
+  status          String    @default("new") @db.VarChar(10)
+  duplicateOf     String?   @map("duplicate_of") @db.Uuid
+  decidedBy       String?   @map("decided_by") @db.Uuid
+  decidedAt       DateTime? @map("decided_at") @db.Timestamptz(3)
+  staffNote       String?   @map("staff_note") @db.VarChar(500)
+  notifiedAt      DateTime? @map("notified_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  version         Int       @default(1)
+
+  @@index([status, createdAt(sort: Desc)], map: "feature_requests_status_idx")
+  @@map("feature_requests")
+}
+
 /// Helpdesk ITSM-3 (answers 1939-1941): the problem record of a problem ticket (a tracker of its incidents).
 model SdProblem {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

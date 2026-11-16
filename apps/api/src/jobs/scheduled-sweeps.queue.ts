@@ -69,6 +69,8 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'access-request-reminders', cron: '25 * * * *' },
   // Help answer 974: Not found references past the company's period are deleted (04:35 IST).
   { id: 'not-found-retention', cron: '5 23 * * *' },
+  // Ask YukthiX: chats past help.assistant.keep_days.
+  { id: 'assistant-retention', cron: '15 23 * * *' },
   // Console C-8 (answer 1124): breach reminders before the CERT-In and DPDP due times, every 5 minutes.
   { id: 'incident-breach-reminders', cron: '*/5 * * * *' },
   // Console 1165: each company's health snapshot for the India day, alert follow-up sync and the snapshot purge (01:30 IST).

@@ -1,5 +1,6 @@
 // Sample data for the console stories and tests. Fictional companies and people only.
 import type { CompanyDetail, CompanyRow, PlatformAuditEntry, Product, SupportActivity, SupportSession, CompanySettingsView } from './types';
+import type { AssistantReview, FeatureRequestRow } from './feature-requests';
 
 export const NOW = new Date('2026-10-08T10:00:00+05:30');
 export const TODAY = '2026-10-08';
@@ -92,3 +93,21 @@ export const STAFF = [
   { id: 'st6', name: 'Priya Nair', email: 'priya.nair@yukthix.test', active: true, me: false, roles: [], lastLead: false, invited: true },
 ];
 
+// Ask YukthiX (answer 2105): the staff Feature requests list and the assistant review.
+export const FEATURE_REQUESTS: FeatureRequestRow[] = [
+  { id: 'fr1', number: 12, title: 'Half days for shift workers', details: 'Our night shift needs half days that cross midnight.', status: 'planned', company: 'Kaveri Foods', requestedBy: 'Divya Raghunathan', createdAt: '2026-11-10T09:00:00Z', companies: 3, duplicates: [{ id: 'fr4', number: 15, title: 'Half day on night shifts', company: 'Meridian Tech' }], staffNote: 'In the December release', version: 3 },
+  { id: 'fr2', number: 13, title: 'Payslips on WhatsApp', details: '', status: 'new', company: 'Sahyadri Logistics', requestedBy: 'Arjun Mehta', createdAt: '2026-11-11T11:30:00Z', companies: 1, duplicates: [], staffNote: null, version: 1 },
+  { id: 'fr3', number: 14, title: 'Export the org chart as PDF', details: 'For the board pack.', status: 'done', company: 'Kaveri Foods', requestedBy: 'Lakshmi Nair', createdAt: '2026-11-02T08:15:00Z', companies: 1, duplicates: [], staffNote: null, version: 2 },
+];
+export const ASSISTANT_REVIEW: AssistantReview = {
+  days: 30,
+  answers: 412,
+  byOutcome: { answered: 351, not_covered: 38, needs_person: 14, feature_request: 6, buying: 3, refused: 0, error: 0 },
+  thumbsUp: 140,
+  thumbsDown: 21,
+  unanswered: [
+    { question: 'Can I set leave rules per shift pattern?', outcome: 'not_covered', feedback: null, at: '2026-11-12T10:00:00Z' },
+    { question: 'Why did my PF go up this month? Call me on [phone]', outcome: 'needs_person', feedback: null, at: '2026-11-11T15:20:00Z' },
+  ],
+  tickets: [{ ticket: 'YXS-118', company: 'Kaveri Foods', at: '2026-11-12T10:05:00Z' }],
+};

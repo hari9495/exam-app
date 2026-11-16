@@ -7,6 +7,7 @@ import { useAuth } from '../../../lib/auth-context';
 import { useDesk, useDeskWrite } from '../../../lib/yx-desk';
 import { useWhatsNew } from '../../../lib/yx-whats-new';
 import { useToursPanel } from '../../../lib/yx-tours';
+import { useAskYukthix } from '../../../lib/yx-ask-yukthix';
 
 // In-app Help (US-B-100, Help and onboarding H-1), opened from Help in the top bar on every page: known issues, This page
 // (help articles tagged with the page), Ask (raise a ticket that remembers the page) and my open tickets. Loads only when
@@ -24,6 +25,7 @@ export function DeskHelp({ open, onOpenChange }: { open: boolean; onOpenChange: 
   const pageHelp = page.isError ? { state: 'error' as const, articles: [] } : !page.data ? (page.isLoading ? { state: 'loading' as const, articles: [] } : null) : page.data.on ? { state: 'ready' as const, articles: page.data.articles } : null;
   const tours = useToursPanel(); // Help H-5 (answer 944): the Tours tab (none while the company has tours off)
   const news = useWhatsNew(open); // Help H-4 (answer 943): the What's new tab shows only when there are entries
+  const assistant = useAskYukthix(open); // Ask YukthiX (answers 2101 to 2108); left out for staff and while acting
   const write = useDeskWrite();
   const { accessToken } = useAuth();
   // The API takes letters, digits, - . / _ and spaces, up to 100.
@@ -44,6 +46,7 @@ export function DeskHelp({ open, onOpenChange }: { open: boolean; onOpenChange: 
           onSuggest={(q) => apiFetch(`/desk/my/kb/suggest?q=${encodeURIComponent(q)}&from=drawer`, {}, accessToken ?? undefined) as Promise<KbSuggestion[]>}
           articleHref={(a) => a.href ?? `/yx/desk/help?article=${a.number}`}
           pageHelp={pageHelp}
+          assistant={assistant ?? undefined}
           whatsNew={news?.entries.length ? <WhatsNewPanel live={news} /> : undefined}
           tours={tours ? <ToursPanel live={{ ...tours, onStart: (id, step) => (onOpenChange(false), tours.onStart(id, step)) }} /> : undefined}
         />

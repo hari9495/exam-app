@@ -4,7 +4,7 @@ import { Logo, Monogram } from '../../components/brand';
 import type { IconComponent } from '../../components/foundations';
 import { AppShell, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, TopBar, type DensityChoice, type RailItem, type ThemeChoice } from '../../components/shell';
 
-export type ConsolePageId = 'companies' | 'customers' | 'help-centre' | 'nudges' | 'sales' | 'analytics' | 'incidents' | 'maintenance' | 'support-desk' | 'support' | 'plans' | 'whats-new' | 'rules' | 'channels' | 'feature-flags' | 'platform-settings' | 'audit' | 'staff';
+export type ConsolePageId = 'companies' | 'customers' | 'help-centre' | 'nudges' | 'sales' | 'analytics' | 'incidents' | 'maintenance' | 'support-desk' | 'support' | 'plans' | 'whats-new' | 'feature-requests' | 'rules' | 'channels' | 'feature-flags' | 'platform-settings' | 'audit' | 'staff';
 type ConsoleGroup = 'Customers' | 'Catalogue' | 'Rules' | 'Operations' | 'Channels' | 'Security';
 
 interface ConsoleLink {
@@ -32,6 +32,8 @@ export const CONSOLE_LINKS: ConsoleLink[] = [
   { id: 'whats-new', label: "What's new", href: '/staff/whats-new', group: 'Catalogue', icon: Megaphone },
   // C-8 (YX-11, answer 1057): the help articles every company sees.
   { id: 'help-centre', label: 'Help centre', href: '/staff/help-centre', group: 'Catalogue', icon: BookOpen },
+  // Ask YukthiX (answers 2105): feature requests from the assistant, and how its answers are doing.
+  { id: 'feature-requests', label: 'Feature requests', href: '/staff/feature-requests', group: 'Catalogue', icon: Inbox },
   // C-8 (YX-12): nudges and switch-on copy per feature switch.
   { id: 'nudges', label: 'Nudges', href: '/staff/nudges', group: 'Catalogue', icon: BellRing },
   // Console C-1 (answers 1041 to 1044): statutory rule sets, golden cases and review, publishing (YX-01 to YX-03).
