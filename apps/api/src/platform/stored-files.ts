@@ -88,6 +88,7 @@ export const NOT_STORED_FILES: Readonly<Record<string, string>> = {
   'pay_documents.signature': 'signature text',
   'payslip_lines.source_ref': 'record id',
   'payslips.snapshot_hash': 'checksum',
+  'questions.image_alt': 'picture description',
   'recruiting_costs.source_ref': 'record id',
   'sd_agent_drafts.client_ref': 'device id',
   'sd_desks.attachment_max_mb': 'size limit',
