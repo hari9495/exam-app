@@ -157,3 +157,8 @@ slice: drawn first in HLP-22, positive and negative tests, forced RLS on new tab
 - 2074: accept three fields on one line everywhere; the lead checks the 9 affected screens.
 - 2075: make the hourly-limit automation e2e wait for the rule's run instead of timing.
 Queued: 2071, 2072, 2075.
+
+**Founder answers (16 Nov 2026, "ok for all"), 2091 to 2093:** all as suggested.
+- 2091: keep, "Open it" opens the raised ticket.
+- 2092: lock per rule around the hourly-limit check and the run (queued).
+- 2093: a small notice list in the console header later, starting with kept-record removals and breach reminders (queued).
