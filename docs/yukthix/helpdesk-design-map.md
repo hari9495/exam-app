@@ -2224,3 +2224,14 @@ Staff view: unanswered questions, thumbs up or down, chats that became tickets. 
 - 2116: yes, add the "Use in assistant answers" switch to the console help-centre editor.
 - 2117: the public website version after a month of the review.
 Queued: 2112, 2113, 2116 (small follow-up slice).
+
+**Founder answers (16 Nov 2026, "ok for all"), 1991 to 1994 and 2131 to 2135:** all as suggested.
+- 1991: Knowledge base Settings cards side by side so the page fits 1278x635.
+- 1992: standard-change schedule pauses notify the desk admins too (as 1913).
+- 1993: leave the coordinator's empty "My jobs".
+- 1994: the left menu link style is the accepted pattern; a named exception in the clickable guard.
+- 2131: keep, only plan managers send a sales request from the chat.
+- 2132: the Ask YukthiX review gets its own console link.
+- 2133: add a Product role later and move feature requests to it.
+- 2134: keep the typed phone number.
+- 2135: one open chat sales request per company at a time.

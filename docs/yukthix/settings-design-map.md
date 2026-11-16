@@ -1276,3 +1276,9 @@ console.log(missing.join(' '));
 **Founder answers (13 Nov 2026):** 1976, 1977 and 1978 accepted as suggested ("ok for all"): a nightly job deletes kept
 statutory records after their date and issues a second certificate (queued); people records stay whole; the Board
 reminders stay on, wording to be checked by counsel.
+
+**Founder answers (16 Nov 2026, "ok for all"), 2081 to 2084:** all as suggested.
+- 2081: list each removal (group, day, SHA-256) under the deletion on the console company page.
+- 2082: keep, the company leaves the console after its last group; certificates stay.
+- 2083: YukthiX staff may set a legal hold on a deleted company from the console, security key, audited.
+- 2084: a console notice to the two staff who asked for and confirmed the deletion when a group is removed.
