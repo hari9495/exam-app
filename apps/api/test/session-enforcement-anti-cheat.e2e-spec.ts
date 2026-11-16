@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 import { bootAdminApp, bootRuntimeApp } from './dual-app';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
+import { markSteppedUp } from './fixtures/step-up';
 import { EmailService } from '../src/email/email.service';
 
 describe('Session Enforcement & Anti-Cheat HTTP flow', () => {
@@ -194,15 +195,19 @@ describe('Session Enforcement & Anti-Cheat HTTP flow', () => {
     const accessToken = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
     const attemptId = (await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({ consent: true }).expect(201)).body.id;
 
+    await markSteppedUp(tenantPrisma, recruiterAccessToken); // AS-0 (2006): the second factor again
     const forceSubmitResponse = await request(adminHttp)
       .post(`/api/v1/attempts/${attemptId}/force-submit`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ reason: 'Ended by the recruiter in the e2e' })
       .expect(201);
     expect(forceSubmitResponse.body).toEqual({ status: 'force_submitted' });
 
+    await markSteppedUp(tenantPrisma, recruiterAccessToken); // AS-0 (2006): the second factor again
     await request(adminHttp)
       .post(`/api/v1/attempts/${attemptId}/force-submit`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ reason: 'Ended by the recruiter in the e2e' })
       .expect(400);
 
     const auditRows = await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) =>

@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, ForbiddenException, Get, Header, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { RequirePermissions } from '../rbac/permissions.decorator';
+import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { CurrentUserRole } from '../auth/current-user-role.decorator';
@@ -16,6 +16,7 @@ import { AddFeedbackDto } from './dto/add-feedback.dto';
 import { AssignEntryDto } from './dto/assign-entry.dto';
 import { BulkPatchEntriesDto } from './dto/bulk-patch-entries.dto';
 import { SetChecklistItemDto } from './dto/set-checklist-item.dto';
+import { ResultsScope, ResultsScopeOf, ScopesResults } from '../rbac/results-scope';
 
 /** HIR-03: a job is created or changed only by the person themselves, never while acting for someone else. */
 function notActing(req: { user?: { impersonatorUserId?: string; actingSuperAdmin?: boolean } }) {
@@ -50,8 +51,9 @@ export class PipelineController {
     return this.pipelineService.resendRequisition(tenant, userId, id, dto);
   }
 
+  // AS-0: candidate view is enough (the Interview coordinator reads jobs and candidates, never test results).
   @Get('jobs')
-  @RequirePermissions('results:view')
+  @RequireAnyPermission('results:view', 'candidate:view')
   listJobs(
     @CurrentTenant() tenant: TenantContext,
     @CurrentUserRole() role: string,
@@ -63,13 +65,13 @@ export class PipelineController {
 
   /** HIR-24: the company's pay choices for new jobs (company level; a location's own setting and law apply on save). */
   @Get('jobs/pay-settings')
-  @RequirePermissions('results:view')
+  @RequireAnyPermission('results:view', 'candidate:view')
   paySettings(@CurrentTenant() tenant: TenantContext) {
     return this.pipelineService.paySettings(tenant);
   }
 
   @Get('jobs/:id')
-  @RequirePermissions('results:view')
+  @RequireAnyPermission('results:view', 'candidate:view')
   getJob(@CurrentTenant() tenant: TenantContext, @CurrentUserRole() role: string, @Param('id') id: string) {
     return this.pipelineService.getJob(tenant, id, role);
   }
@@ -110,13 +112,14 @@ export class PipelineController {
   }
 
   @Get('jobs/:id/pipeline')
-  @RequirePermissions('results:view')
-  getPipeline(@CurrentTenant() tenant: TenantContext, @CurrentUserRole() role: string, @CurrentUserId() userId: string, @Param('id') id: string) {
-    return this.pipelineService.getBoard(tenant, id, role, userId);
+  @RequireAnyPermission('results:view', 'candidate:view')
+  @ScopesResults()
+  getPipeline(@CurrentTenant() tenant: TenantContext, @CurrentUserRole() role: string, @CurrentUserId() userId: string, @Param('id') id: string, @ResultsScopeOf() results: ResultsScope) {
+    return this.pipelineService.getBoard(tenant, id, role, userId, results);
   }
 
   @Get('jobs/:id/candidates.csv')
-  @RequirePermissions('results:view')
+  @RequireAnyPermission('results:view', 'candidate:view')
   @Header('Content-Type', 'text/csv; charset=utf-8')
   @Header('Content-Disposition', 'attachment; filename="candidates.csv"')
   exportCandidatesCsv(@CurrentTenant() tenant: TenantContext, @CurrentUserRole() role: string, @Param('id') id: string) {
@@ -191,7 +194,7 @@ export class PipelineController {
   }
 
   @Get('entries/:id/feedback')
-  @RequirePermissions('results:view')
+  @RequireAnyPermission('results:view', 'candidate:view')
   listFeedback(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
     return this.pipelineService.listFeedback(tenant, id, userId);
   }

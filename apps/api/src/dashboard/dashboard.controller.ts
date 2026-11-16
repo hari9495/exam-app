@@ -1,6 +1,7 @@
 import { BadRequestException, Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
+import { CompanyWideResultsGuard, ScopesResults } from '../rbac/results-scope';
 import { RequireAnyPermission } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
@@ -19,7 +20,9 @@ type PerformanceLimit = 5 | 10 | 'all';
 type Window = (typeof WINDOWS)[number];
 
 @Controller('dashboard')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+// AS-0 (answer 2004): company-wide test numbers; a Hiring manager reads the results of their own jobs' candidates instead.
+@ScopesResults()
+@UseGuards(JwtAuthGuard, PermissionsGuard, CompanyWideResultsGuard)
 export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
 

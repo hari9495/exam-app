@@ -14,6 +14,7 @@ import { ScorecardsService, type Viewer } from './scorecards.service';
 import { BoardRejectDto, BulkBoardDto, InterviewDayDto, InterviewRangeDto, JobScorecardDto, MoveDto, NotetakerConsentDto, NotetakerTranscriptDto, ScorecardCommentDto, ScorecardDto, ScorecardTemplateDto, SendOnStageDto, DayRemindersDto, DaySwapDto } from './interviewing-dto';
 import { InterviewDaysService } from './interview-days.service';
 import { NotetakerService } from './notetaker.service';
+import { ResultsScope, ResultsScopeOf, ScopesResults } from '../rbac/results-scope';
 
 const viewer = (req: Request): Viewer => {
   const u = req.user as { userId: string; role: string; organizationId?: string | null; permissionProfileId?: string | null };
@@ -112,14 +113,16 @@ export class InterviewingController {
     return this.days.send(ctx, userId, id);
   }
 
+  // AS-0: candidate view is enough (the Interview coordinator reads jobs and candidates, never test results).
   @Get('jobs/:id/board')
-  @RequirePermissions('results:view')
-  getBoard(@CurrentTenant() ctx: TenantContext, @CurrentUserRole() role: string, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.board.board(ctx, id, role, userId);
+  @RequireAnyPermission('results:view', 'candidate:view')
+  @ScopesResults()
+  getBoard(@CurrentTenant() ctx: TenantContext, @CurrentUserRole() role: string, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @ResultsScopeOf() results: ResultsScope) {
+    return this.board.board(ctx, id, role, userId, results);
   }
 
   @Get('jobs/:id/interview-settings')
-  @RequirePermissions('results:view')
+  @RequireAnyPermission('results:view', 'candidate:view')
   jobSettings(@CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.board.jobSettings(ctx, id);
   }

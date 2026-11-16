@@ -410,7 +410,8 @@ export function buildNav(n: NavInput): NavArea[] {
           ...sec(undefined, [
           // HIR-01 (founder decision 11): a hiring manager reads their own department's plan.
           ...when(any('ats.headcount.manage', 'ats.requisition.raise'), L('hiring-plans', 'Headcount plan', '/yx/hiring/plans')),
-          ...when(any('pipeline:manage', 'results:view'), L('hiring-jobs', 'Jobs & requisitions', '/yx/hiring/jobs')),
+          // AS-0: candidate view is enough (the Interview coordinator reads jobs and candidates, without test results).
+          ...when(any('pipeline:manage', 'results:view', 'candidate:view'), L('hiring-jobs', 'Jobs & requisitions', '/yx/hiring/jobs')),
           // HIR-02: recruiting and HR see every requisition; a hiring manager their own, read-only (decision 11).
           ...when(any('pipeline:manage', 'ats.headcount.manage', 'ats.requisition.raise'), L('hiring-requisitions', 'Requisitions', '/yx/hiring/requisitions')),
           // Founder answer 511: interviews are for people on a panel (or with the keys), never every employee.

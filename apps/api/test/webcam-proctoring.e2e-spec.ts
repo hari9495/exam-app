@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 import { bootAdminApp, bootRuntimeApp } from './dual-app';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
+import { markSteppedUp } from './fixtures/step-up';
 import { EmailService } from '../src/email/email.service';
 
 describe('Webcam proctoring pause/block/unblock flow', () => {
@@ -144,6 +145,7 @@ describe('Webcam proctoring pause/block/unblock flow', () => {
     await request(runtimeHttp).post('/api/v1/attempt/webcam-resume').set('Authorization', `Bearer ${accessToken}`).send({}).expect(400);
 
     // Recruiter unblocks.
+    await markSteppedUp(tenantPrisma, recruiterAccessToken); // AS-0 (2006): the second factor again
     const unblockResponse = await request(adminHttp)
       .post(`/api/v1/attempts/${attemptId}/unblock`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)

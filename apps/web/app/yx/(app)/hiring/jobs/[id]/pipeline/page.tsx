@@ -40,7 +40,8 @@ export default function YxHiringPipelinePage() {
   const job = useJob(id);
   const jobs = useJobs();
   const board = useHiring<Board>(`/jobs/${id}/board`);
-  const exams = useExams(undefined, { pageSize: 100 });
+  // AS-0: the tests list only for people who may read tests (the Interview coordinator sees the job without them).
+  const exams = useExams(undefined, { pageSize: 100 }, perms.has('exam:manage') || perms.has('results:view'));
   const [q, setQ] = useState('');
   const candidates = useCandidates({ search: q.trim() || undefined, pageSize: 20 });
   const templates = useMessageTemplates(perms.has('pipeline:manage'));

@@ -61,6 +61,14 @@ export const TEMPLATE_HISTORY: Record<string, string[][]> = {
       "payroll.period.view"
     ]
   ],
+  "contract_labour_owner": [
+    [
+      "clra.contractor.manage",
+      "clra.contractor.view",
+      "clra.settings.manage",
+      "payroll.equity.own"
+    ]
+  ],
   "desk_admin": [
     [
       "desk.catalog.manage",
@@ -301,7 +309,36 @@ export const TEMPLATE_HISTORY: Record<string, string[][]> = {
       "expense.policy.manage"
     ]
   ],
+  "facility_admin": [
+    [
+      "payroll.equity.own",
+      "visitors.desk.manage",
+      "visitors.log.view",
+      "visitors.rollcall.view",
+      "visitors.settings.manage",
+      "visitors.watchlist.manage"
+    ],
+    [
+      "payroll.equity.own",
+      "visitors.desk.manage",
+      "visitors.log.view",
+      "visitors.settings.manage",
+      "visitors.watchlist.manage"
+    ],
+    [
+      "payroll.equity.own",
+      "visitors.desk.manage",
+      "visitors.log.view",
+      "visitors.settings.manage"
+    ]
+  ],
   "finance": [
+    [
+      "billing.view",
+      "org.structure.view",
+      "pay.range.view",
+      "payroll.equity.own"
+    ],
     [
       "org.structure.view",
       "pay.range.view",
@@ -313,6 +350,25 @@ export const TEMPLATE_HISTORY: Record<string, string[][]> = {
     ]
   ],
   "finance_approver": [
+    [
+      "billing.view",
+      "consultant.invoice.approve",
+      "expense.finance.review",
+      "expense.payout.manage",
+      "expense.report.view",
+      "org.structure.view",
+      "payroll.bankfile.release",
+      "payroll.cost_rate.view",
+      "payroll.equity.own",
+      "payroll.file.release",
+      "payroll.file.view",
+      "payroll.journal.export",
+      "payroll.period.reopen.approve",
+      "payroll.period.view",
+      "payroll.reports.view",
+      "payroll.run.approve",
+      "payroll.run.view"
+    ],
     [
       "consultant.invoice.approve",
       "expense.finance.review",
@@ -480,6 +536,58 @@ export const TEMPLATE_HISTORY: Record<string, string[][]> = {
     ]
   ],
   "hr_admin": [
+    [
+      "asset.view",
+      "ats.costs.manage",
+      "ats.referral.manage",
+      "attendance.lock",
+      "attendance.view",
+      "case.disciplinary.raise",
+      "document.manage",
+      "document.view",
+      "employee.aadhaar.view",
+      "employee.change.approve",
+      "employee.change.manage",
+      "employee.change.retro",
+      "employee.identity.approve",
+      "employee.identity.manage",
+      "employee.identity.view",
+      "employee.pay_access.approve",
+      "employee.personal.view",
+      "employee.profile.edit",
+      "employee.profile.view",
+      "expense.claim.view",
+      "expense.policy.view",
+      "leave.approve",
+      "leave.balance.adjust",
+      "leave.eligibility.override",
+      "leave.medical.view",
+      "leave.settings.manage",
+      "leave.view",
+      "letter.issue",
+      "letter.signatory.manage",
+      "letter.template.manage",
+      "lifecycle.bgv.manage",
+      "lifecycle.exit.confidential.view",
+      "lifecycle.exit.manage",
+      "lifecycle.exit.view",
+      "lifecycle.journey.template.manage",
+      "lifecycle.onboarding.manage",
+      "lifecycle.onboarding.view",
+      "org.settings.manage",
+      "org.structure.view",
+      "payroll.equity.own",
+      "payroll.notice.waive",
+      "perf.goal.view",
+      "perf.pip.manage",
+      "perf.report.view",
+      "perf.review.view",
+      "policy.manage",
+      "policy.publish",
+      "request.raise_on_behalf",
+      "roster.manage",
+      "visitors.rollcall.view"
+    ],
     [
       "asset.view",
       "ats.costs.manage",
@@ -1398,6 +1506,12 @@ export const TEMPLATE_HISTORY: Record<string, string[][]> = {
       "employee.profile.view",
       "employee.salary.view",
       "org.structure.view"
+    ]
+  ],
+  "integrations_admin": [
+    [
+      "integration.manage",
+      "payroll.equity.own"
     ]
   ],
   "interview_coordinator": [
@@ -2568,7 +2682,31 @@ export const TEMPLATE_HISTORY: Record<string, string[][]> = {
       "perf.setup.manage"
     ]
   ],
+  "reception": [
+    [
+      "payroll.equity.own",
+      "visitors.desk.manage",
+      "visitors.log.view",
+      "visitors.rollcall.view"
+    ],
+    [
+      "payroll.equity.own",
+      "visitors.desk.manage",
+      "visitors.log.view"
+    ]
+  ],
   "recruiter": [
+    [
+      "ats.assessment.view",
+      "ats.candidate.manage",
+      "ats.costs.manage",
+      "ats.interview.schedule",
+      "ats.job.manage",
+      "ats.offer.manage",
+      "ats.report.view",
+      "ats.staffing.view",
+      "payroll.equity.own"
+    ],
     [
       "ats.assessment.view",
       "ats.candidate.manage",
@@ -2595,6 +2733,12 @@ export const TEMPLATE_HISTORY: Record<string, string[][]> = {
       "ats.job.manage",
       "ats.offer.manage",
       "ats.report.view"
+    ]
+  ],
+  "security": [
+    [
+      "payroll.equity.own",
+      "visitors.rollcall.view"
     ]
   ],
   "service_desk_admin": [
@@ -2698,7 +2842,8 @@ export const TEMPLATE_HISTORY: Record<string, string[][]> = {
   "staffing_finance": [
     [
       "ats.staffing.billing",
-      "ats.staffing.view"
+      "ats.staffing.view",
+      "payroll.equity.own"
     ]
   ],
   "team_salary": [

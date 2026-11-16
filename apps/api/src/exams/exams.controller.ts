@@ -1,11 +1,13 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
+import { OwnSessionChangesGuard } from '../auth/own-session.guard';
 import { RequirePermissions, RequireAnyPermission } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
 import { ExamsService } from './exams.service';
+import { ResultsScope, ResultsScopeOf, ScopesResults } from '../rbac/results-scope';
 import { SeesAnswerKeys, ShowsAnswerKeys, examWithoutAnswerKeys } from '../rbac/answer-keys';
 import { CreateExamDto } from './dto/create-exam.dto';
 import { UpdateExamDto } from './dto/update-exam.dto';
@@ -16,7 +18,8 @@ import { SetWalkInEnabledDto } from './dto/set-walk-in-enabled.dto';
 import { SetWalkInListedDto } from './dto/set-walk-in-listed.dto';
 
 @Controller('exams')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+// AS-0 (answer 2006): no assessments change while acting for someone else.
+@UseGuards(JwtAuthGuard, OwnSessionChangesGuard, PermissionsGuard)
 export class ExamsController {
   constructor(private readonly examsService: ExamsService) {}
 
@@ -165,12 +168,13 @@ export class ExamsController {
 
   @Get(':id/results')
   @RequirePermissions('results:view')
-  getResults(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
-    return this.examsService.getResults(tenant, id);
+  @ScopesResults()
+  getResults(@CurrentTenant() tenant: TenantContext, @Param('id') id: string, @ResultsScopeOf() scope: ResultsScope) {
+    return this.examsService.getResults(tenant, id, scope);
   }
 
   @Get(':id/pending-grading')
-  @RequirePermissions('exam:manage')
+  @RequireAnyPermission('exam:manage', 'asmt.evaluate')
   getPendingGrading(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.examsService.getPendingGrading(tenant, id);
   }

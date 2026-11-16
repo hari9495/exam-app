@@ -12,3 +12,17 @@ export class OwnSessionGuard implements CanActivate {
     return true;
   }
 }
+
+/**
+ * Assessments AS-0 (answer 2006): on a controller, every change (anything but a read) is refused while acting for someone
+ * else (impersonating, or YukthiX staff acting in a company); reads stay open.
+ */
+@Injectable()
+export class OwnSessionChangesGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const req = context.switchToHttp().getRequest() as { method?: string; user?: { impersonatorUserId?: string; actingSuperAdmin?: boolean } };
+    const reading = req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS';
+    if (!reading && (req.user?.impersonatorUserId || req.user?.actingSuperAdmin)) throw new ForbiddenException('Not available while acting for someone else');
+    return true;
+  }
+}

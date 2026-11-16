@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto';
 import { bootAdminApp, bootRuntimeApp } from './dual-app';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
+import { markSteppedUp } from './fixtures/step-up';
 import { EmailService } from '../src/email/email.service';
 import { LEADERBOARD_CACHE_TTL_MS } from '../../exam-runtime/src/leaderboard/leaderboard.service';
 
@@ -215,9 +216,11 @@ describe('Live Monitoring WebSocket flow', () => {
     const attemptStatusEvents: any[] = [];
     socket.on('attempt:status', (payload) => attemptStatusEvents.push(payload));
 
+    await markSteppedUp(tenantPrisma, recruiterAccessToken); // AS-0 (2006): the second factor again
     await request(adminHttp)
       .post(`/api/v1/attempts/${attemptId}/force-submit`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ reason: 'Ended by the recruiter in the e2e' })
       .expect(201);
 
     // Round-trip another HTTP call through the same server/socket stack so any second,

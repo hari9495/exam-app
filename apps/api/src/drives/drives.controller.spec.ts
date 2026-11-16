@@ -55,14 +55,14 @@ describe('DrivesController', () => {
     expect(service.listForGroup).toHaveBeenCalledWith(tenant, 'group-1');
   });
 
-  it('liveRoster delegates to the service with the drive id', async () => {
-    await controller.liveRoster(tenant, 'drive-1');
-    expect(service.liveRoster).toHaveBeenCalledWith(tenant, 'drive-1');
+  it('liveRoster delegates to the service with the drive id and the results scope of the caller (AS-0)', async () => {
+    await controller.liveRoster(tenant, 'drive-1', { mode: 'own', userId: 'u-1' });
+    expect(service.liveRoster).toHaveBeenCalledWith(tenant, 'drive-1', { mode: 'own', userId: 'u-1' });
   });
 
-  it('results delegates to the service with the drive id', async () => {
-    await controller.results(tenant, 'drive-1');
-    expect(service.results).toHaveBeenCalledWith(tenant, 'drive-1');
+  it('results delegates to the service with the drive id and the results scope of the caller (AS-0)', async () => {
+    await controller.results(tenant, 'drive-1', { mode: 'all' });
+    expect(service.results).toHaveBeenCalledWith(tenant, 'drive-1', { mode: 'all' });
   });
 
   it('remove delegates to the service with the actor and drive id', async () => {

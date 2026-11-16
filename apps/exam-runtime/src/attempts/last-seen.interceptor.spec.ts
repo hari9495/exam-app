@@ -1,15 +1,18 @@
 import { CallHandler, ExecutionContext } from '@nestjs/common';
 import { of } from 'rxjs';
 import { LastSeenInterceptor } from './last-seen.interceptor';
-import { PrismaService } from '@exam-platform/shared';
+import { TenantPrismaService } from '@exam-platform/shared';
 
 describe('LastSeenInterceptor', () => {
   let interceptor: LastSeenInterceptor;
   let prisma: { attempt: { updateMany: jest.Mock } };
+  let forTenant: jest.Mock;
 
   beforeEach(() => {
     prisma = { attempt: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) } };
-    interceptor = new LastSeenInterceptor(prisma as unknown as PrismaService);
+    // AS-0: attempts are under forced RLS; the write runs as system work keyed by the candidate's own invitation.
+    forTenant = jest.fn((_ctx: unknown, fn: (tx: unknown) => unknown) => Promise.resolve(fn(prisma)));
+    interceptor = new LastSeenInterceptor({ forTenant } as unknown as TenantPrismaService);
   });
 
   function makeContext(user: { invitationId: string } | undefined): ExecutionContext {
@@ -26,6 +29,7 @@ describe('LastSeenInterceptor', () => {
     const context = makeContext({ invitationId: 'inv-1' });
 
     interceptor.intercept(context, makeHandler()).subscribe(() => {
+      expect(forTenant).toHaveBeenCalledWith({ organizationId: null, isSuperAdmin: true }, expect.any(Function));
       expect(prisma.attempt.updateMany).toHaveBeenCalledWith({
         where: { invitationId: 'inv-1' },
         data: { lastSeenAt: expect.any(Date) },

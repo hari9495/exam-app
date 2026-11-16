@@ -112,14 +112,15 @@ export class CandidatesController {
     return this.candidatesService.exportData(tenant, userId, id, role);
   }
 
+  // AS-0: candidate view is enough (the Interview coordinator reads jobs and candidates, never test results).
   @Get(':id/profile')
-  @RequirePermissions('results:view')
+  @RequireAnyPermission('results:view', 'candidate:view')
   getProfile(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.candidatesService.getProfile(tenant, id);
   }
 
   @Get(':id/resume')
-  @RequirePermissions('results:view')
+  @RequireAnyPermission('results:view', 'candidate:view')
   getResumeUrl(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.candidatesService.getResumeUrl(tenant, id);
   }

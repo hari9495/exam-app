@@ -13,6 +13,7 @@ import { validateSectionQuestionsReplace } from './exam-section-question-validat
 import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } from '../common/paginated-response';
 import { signProctoringEvidence } from '../common/sign-proctoring-evidence';
 import { computeTabActivity, TAB_ACTIVITY_EVENT_TYPES, TabActivityEvent, TabActivityEventTypeSummary, QuestionTabActivityEntry } from '../reports/tab-activity';
+import { ResultsScope, invitationsInScope } from '../rbac/results-scope';
 
 type ExamSectionWithQuestions = ExamSection & {
   questions: (ExamSectionQuestion & { question: Question & { options: QuestionOption[] } })[];
@@ -1164,7 +1165,8 @@ export class ExamsService {
     return signed;
   }
 
-  async getResults(context: TenantContext, examId: string): Promise<ExamResultRow[]> {
+  /** `scope` (answer 2004): the candidates whose results the caller reads; none given = every candidate (internal use). */
+  async getResults(context: TenantContext, examId: string, scope?: ResultsScope): Promise<ExamResultRow[]> {
     const { invitations, advancedInvitations, resultsReleaseMode } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const exam = await tx.exam.findFirst({ where: { id: examId, organizationId: context.organizationId as string } });
       if (!exam) {
@@ -1172,7 +1174,7 @@ export class ExamsService {
       }
 
       const invitations = await tx.invitation.findMany({
-        where: { examId },
+        where: { examId, ...invitationsInScope(scope) },
         include: { candidate: true, attempt: { include: { result: true, proctoringAnalysis: true, integrityAnalysis: true, faceEnrolment: true } } },
         orderBy: [{ invitedAt: 'desc' }, { id: 'desc' }],
       });

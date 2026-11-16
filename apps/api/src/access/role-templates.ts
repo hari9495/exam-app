@@ -184,7 +184,8 @@ const TEMPLATES: readonly RoleTemplate[] = [
     cannot: 'See offer pay, erase candidate data, or set headcount budgets.',
     // Answer 452: clients and bill rates on the staffing desk; in effect only while the company's desk is on (the staffing
     // routes refuse otherwise).
-    permissions: ['ats.job.manage', 'ats.candidate.manage', 'ats.interview.schedule', 'ats.assessment.view', 'ats.offer.manage', 'ats.report.view', 'ats.costs.manage', 'ats.staffing.view'],
+    // AS-0 (answer 2003): the question bank, tests, proctoring, marking and results.
+    permissions: ['ats.job.manage', 'ats.candidate.manage', 'ats.interview.schedule', 'ats.assessment.view', 'ats.offer.manage', 'ats.report.view', 'ats.costs.manage', 'ats.staffing.view', 'asmt.bank.manage', 'asmt.test.manage', 'asmt.proctor', 'asmt.evaluate', 'asmt.results.view'],
   },
   {
     key: 'hiring_manager',
@@ -192,7 +193,8 @@ const TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'tenant',
     summary: 'Raises requisitions and follows the candidates and assessment results of the hiring (M10).',
     cannot: 'Change jobs or pipelines, or see offer pay.',
-    permissions: ['ats.requisition.raise', 'ats.candidate.view', 'ats.assessment.view'],
+    // AS-0 (answers 2003, 2004): results only, and only for candidates of their own jobs.
+    permissions: ['ats.requisition.raise', 'ats.candidate.view', 'ats.assessment.view', 'asmt.results.view'],
   },
   {
     key: 'interview_coordinator',
@@ -209,7 +211,8 @@ const TEMPLATES: readonly RoleTemplate[] = [
     summary: 'Headcount plans and budgets, offer pay, referral rewards, agencies, hiring reports, candidate data rights and the hiring settings (M10).',
     cannot: 'Change payroll or employee records.',
     // Settings 6.1 Hiring: the company's hiring settings (ats.settings.manage).
-    permissions: ['ats.headcount.manage', 'ats.offer.compensation.view', 'ats.referral.manage', 'ats.agency.manage', 'ats.report.view', 'ats.candidate.data_rights', 'ats.settings.manage'],
+    // AS-0: the company's assessment settings sit with the hiring settings.
+    permissions: ['ats.headcount.manage', 'ats.offer.compensation.view', 'ats.referral.manage', 'ats.agency.manage', 'ats.report.view', 'ats.candidate.data_rights', 'ats.settings.manage', 'assessments.settings.manage'],
   },
   // Staffing desk slice 1 (HIR-14, HIR-15): a staffing company's account managers (clients, contacts, rate cards with pay
   // rates and margins, invoice series). Only useful once the company turns the staffing desk on (Settings › Staffing desk).
