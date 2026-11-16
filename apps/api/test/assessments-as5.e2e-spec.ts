@@ -38,6 +38,19 @@ describe('Assessments AS-5: integrity review and appeals', () => {
   const SUPER = { organizationId: null, isSuperAdmin: true };
   const REASON = 'Frames at 23:15 and 33:30 show a second person reading the screen.';
 
+  /** A started attempt by a new candidate in company A (still running), and the candidate's token. */
+  const running = async (face = false) => {
+    const exam = (await api('adminA', 'post', '/exams').send({ title: `AS5 run ${run} ${randomUUID().slice(0, 4)}`, faceVerificationEnabled: face }).expect(201)).body.id;
+    const section = (await api('adminA', 'post', `/exams/${exam}/sections`).send({ title: 'Java' }).expect(201)).body.id;
+    await request(http).put(`/api/v1/exams/${exam}/sections/${section}/questions`).set('Authorization', `Bearer ${token.adminA}`).send({ questionIds: [ids.q] }).expect(200);
+    await api('adminA', 'post', `/exams/${exam}/publish`).expect(201);
+    const c = (await api('adminA', 'post', '/candidates').send({ email: `r-${randomUUID().slice(0, 8)}@as5.test`, name: 'Ravi' }).expect(201)).body.id;
+    const inv = (await api('adminA', 'post', `/exams/${exam}/invitations`).send({ candidateIds: [c] }).expect(201)).body.created[0];
+    const ct = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token: inv.token }).expect(200)).body.accessToken as string;
+    const attemptId = (await cand(ct, 'post', '/attempt/start').send({ consent: true }).expect(201)).body.id as string;
+    return { attemptId, ct };
+  };
+
   /** A submitted attempt by a new candidate in company A, and the candidate's token. */
   const submitted = async () => {
     const exam = (await api('adminA', 'post', '/exams').send({ title: `AS5 ${run} ${randomUUID().slice(0, 4)}` }).expect(201)).body.id;
@@ -236,5 +249,62 @@ describe('Assessments AS-5: integrity review and appeals', () => {
     await api('proctor', 'post', `/asmt/integrity/${ids.manual}/invalidate`).send({ reason: REASON, secondReviewerId: users.proctor2 }).expect(200);
     await api('proctor2', 'post', `/asmt/integrity/${ids.manual}/second-review`).send({ confirm: false, reason: 'The frames do not show anyone else.' }).expect(200);
     expect((await api('proctor', 'get', `/asmt/integrity/${ids.manual}`).expect(200)).body).toMatchObject({ status: 'open', verdict: null, level: 'manual', secondReviewer: null });
+  });
+
+  // AS-5 part 2 (answers 2006, 2231): a proctor pauses and resumes from the live console, each with a reason the record
+  // keeps; ending works on a paused attempt; the candidate cannot lift a proctor's pause.
+  it('PRC-13: a proctor pauses with a reason and a message; the candidate sees the message and cannot resume it', async () => {
+    const r = await running();
+    await api('proctor', 'post', `/attempts/${r.attemptId}/pause`).send({ reason: 'short' }).expect(400);
+    await api('reader', 'post', `/attempts/${r.attemptId}/pause`).send({ reason: REASON }).expect(403);
+    await api('adminB', 'post', `/attempts/${r.attemptId}/pause`).send({ reason: REASON }).expect(404);
+    expect((await api('proctor', 'post', `/attempts/${r.attemptId}/pause`).send({ reason: 'A second person came into the room.', message: 'Please ask the person behind you to leave.' }).expect(200)).body.status).toBe('paused');
+    const cur = (await cand(r.ct, 'get', '/attempt/current').expect(200)).body;
+    expect(cur).toMatchObject({ status: 'paused', pausedReason: 'proctor', pauseMessage: 'Please ask the person behind you to leave.' });
+    await cand(r.ct, 'post', '/attempt/webcam-resume').send({}).expect(400);
+    await api('proctor', 'post', `/attempts/${r.attemptId}/pause`).send({ reason: REASON }).expect(400);
+    const ev = await inOrg(org.A.id, (tx) => tx.proctoringEvent.findFirstOrThrow({ where: { attemptId: r.attemptId, eventType: 'proctor_paused' } }));
+    expect(JSON.parse(ev.metadataJson!)).toMatchObject({ reason: 'A second person came into the room.', by: users.proctor });
+    expect(await inOrg(org.A.id, (tx) => tx.auditLog.count({ where: { entityId: r.attemptId, action: 'attempt.paused' } }))).toBe(1);
+    await api('proctor', 'post', `/attempts/${r.attemptId}/resume`).send({ reason: 'no' }).expect(400);
+    expect((await api('proctor', 'post', `/attempts/${r.attemptId}/resume`).send({ reason: 'The person left; the room is clear.' }).expect(200)).body.status).toBe('in_progress');
+    expect((await cand(r.ct, 'get', '/attempt/current').expect(200)).body).toMatchObject({ status: 'in_progress', pausedReason: null });
+    // Ending a paused attempt: the second factor and a reason.
+    await api('proctor', 'post', `/attempts/${r.attemptId}/pause`).send({ reason: REASON }).expect(200);
+    const cold = await request(http).post('/api/v1/auth/staff/login').send({ organizationSlug: org.A.slug, email: `proctor-${run}@as5.test`, password: PASSWORD }).expect(200);
+    await request(http).post(`/api/v1/attempts/${r.attemptId}/force-submit`).set('Authorization', `Bearer ${cold.body.accessToken}`).send({ reason: REASON }).expect(403);
+    await markSteppedUp(tenantPrisma, token.proctor);
+    expect((await api('proctor', 'post', `/attempts/${r.attemptId}/force-submit`).send({ reason: REASON }).expect(201)).body.status).toBeDefined();
+    expect((await cand(r.ct, 'get', '/attempt/current').expect(200)).body.status).not.toBe('paused');
+  });
+
+  // Answer 2205: approving time above the cap on a face-checked test pauses it for a face check before it carries on.
+  it('a face re-check pause: the candidate cannot wave it away; the check resumes it (or a proctor does)', async () => {
+    const r = await running(true);
+    await tenantPrisma.forTenant(SUPER, (tx) => tx.attempt.update({ where: { id: r.attemptId }, data: { status: 'paused', pausedAt: new Date(), pausedReason: 'face_recheck' } }));
+    await cand(r.ct, 'post', '/attempt/webcam-resume').send({}).expect(400);
+    await cand(r.ct, 'post', '/attempt/face-recheck').send({ snapshot: 'data:image/jpeg;base64,' }).expect(400);
+    // No enrolment photo (or no model): the check cannot run, so the candidate is never stuck: it resumes.
+    const out = (await cand(r.ct, 'post', '/attempt/face-recheck').send({ snapshot: `data:image/jpeg;base64,${Buffer.from('not a real photo').toString('base64')}` }).expect(201)).body;
+    expect(out).toMatchObject({ status: 'in_progress', matched: null });
+    await cand(r.ct, 'post', '/attempt/face-recheck').send({ snapshot: `data:image/jpeg;base64,${Buffer.from('x').toString('base64')}` }).expect(400);
+    // A proctor may lift a face re-check too.
+    await tenantPrisma.forTenant(SUPER, (tx) => tx.attempt.update({ where: { id: r.attemptId }, data: { status: 'paused', pausedAt: new Date(), pausedReason: 'face_recheck' } }));
+    expect((await api('proctor', 'post', `/attempts/${r.attemptId}/resume`).send({ reason: 'Checked the candidate on camera myself.' }).expect(200)).body.status).toBe('in_progress');
+  });
+
+  it('negative: approving time above the cap does not pause a test without face checks', async () => {
+    const r = await running(false);
+    const credit = await inOrg(org.A.id, (tx) => tx.connectivityCredit.create({ data: { attemptId: r.attemptId, lostMs: 120_000 } }));
+    await api('adminA', 'post', `/asmt/connectivity/${credit.id}/approve`).send({ reason: 'Area-wide outage confirmed.' }).expect(200);
+    expect((await cand(r.ct, 'get', '/attempt/current').expect(200)).body.status).toBe('in_progress');
+  });
+
+  it('approving time above the cap on a face-checked test with an enrolment photo pauses it for the face check', async () => {
+    const r = await running(true);
+    await tenantPrisma.forTenant(SUPER, (tx) => tx.faceEnrolment.create({ data: { attemptId: r.attemptId, status: 'enrolled', embedding: 'sealed' } }));
+    const credit = await inOrg(org.A.id, (tx) => tx.connectivityCredit.create({ data: { attemptId: r.attemptId, lostMs: 120_000 } }));
+    await api('adminA', 'post', `/asmt/connectivity/${credit.id}/approve`).send({ reason: 'Area-wide outage confirmed.' }).expect(200);
+    expect((await cand(r.ct, 'get', '/attempt/current').expect(200)).body).toMatchObject({ status: 'paused', pausedReason: 'face_recheck' });
   });
 });
