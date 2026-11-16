@@ -547,15 +547,90 @@ Shots: `project-analytics-reports-01.jpg`
 - The shared reports library: categories (clients & project, work hours, status, scheduled), favourites, recently
   used cards.
 
+## Forms (second round, founder approved)
+
+Each form was opened with one click, screenshotted, and closed with Cancel, X or Escape. Nothing was typed or
+selected. After each close, the page was checked: no record was created.
+
+### Regularize — drawer from the Me › Attendance calendar day panel
+Shots: `me-attendance-05-regularize-drawer.jpg`
+- Right drawer "Request Attendance Regularization".
+- Top strip (read-only): selected date on the left, shift timings on the right.
+- A pre-chosen radio option: raise a request to exempt this day from the penalisation policy.
+- Note (multi-line text box).
+- Footer: Cancel, Request (primary).
+
+### Schedule 1:1 meeting — Me › Performance › 1:1 meetings
+Shots: `me-performance-oneonones-03-schedule-form-top.jpg`, `me-performance-oneonones-04-schedule-form-bottom.jpg`
+- A wide two-pane form "Schedule Meeting". Left "Meeting Details", each row with a small icon in the gutter:
+  1. Add participants (people search), then a "+ Optional Participants" link.
+  2. Meeting title.
+  3. Location as radio cards: In Person, or a video-call app (with an external-link icon).
+  4. Date (defaults to today).
+  5. Start time and end time dropdowns, time zone, "Duration: 1 hr", and a "Check available timeslots" link.
+  6. Calendar sync card: "Sync date & time to your calendar" with a "Connect to sync" link.
+  7. Repeat dropdown ("Does not repeat").
+- Right "Meeting Agenda": illustration, "+ Create New Agenda", "or browse from templates" with two ready-made
+  template cards, and "Browse All Templates".
+- Footer: Cancel, Schedule Meeting (primary).
+
+### Create agenda template — Me › Performance › 1:1 meetings › Agenda Templates
+Shots: `me-performance-oneonones-05-create-template-drawer.jpg`
+- Right drawer "Agenda Template".
+- Template Name (single line).
+- Agenda: a rich-text box (paragraph style, bold, italic, underline, numbered and bulleted lists, alignment) with
+  the placeholder "Start adding agenda".
+- Footer: Cancel, Create Template (primary; disabled until filled).
+
+### Add KRA — My Team › Performance › Team KRAs, "+ Add KRAs" on a person row
+Shots: `myteam-performance-kras-02-add-kra-drawer.jpg`
+- Wide right drawer "Add KRA", a three-step wizard with a numbered left rail: 1 KRA details, 2 Success measurement,
+  3 Alignment. Only step 1 was viewed.
+- Step 1 fields in order: "What do you want to achieve?" (title), "+ Add description (Optional)" link; Type
+  (Individual) and Owner (prefilled with the person) side by side; Timeframe (half-year) and Start and end date
+  side by side; "Show tags" expander; a ticked checkbox "Include this kra in performance reviews".
+- "Choose from templates" link at the top right of the form.
+- Footer: Save as draft (left); Next and Add (right, Add disabled on step 1).
+
+### New survey — Engage › Surveys
+Shots: `engage-surveys-02-new-survey-menu.jpg`
+- The button opens a small menu, not a form: "Create from scratch" and "Choose from templates".
+- Not taken further: choosing an option was outside the "select nothing" rule, and it may start a draft.
+  Closed by leaving the page; Drafts stayed at 0.
+
+### Add resource — Project page › Team
+Shots: `project-detail-08-add-resource-drawer.jpg`
+- Wide right drawer "Add resource" with an editable table: resource name (employee search), allocation
+  ("Set allocation" link), billing role (dropdown), actions (delete row).
+- "+Add resource" adds another row, so several people can be added at once.
+- Footer: Cancel, Add (primary).
+
+### Create task — Project page › Tasks, "+Add task"
+Shots: `project-detail-09-create-task-drawer.jpg`
+- Right drawer "Create Task". Fields in order:
+  1. Task Name, with Stage beside it (dropdown, defaults to Not Started).
+  2. Phase (optional), Estimated hours, Billability (dropdown, defaults to Non Billable) in one row.
+  3. "+ Description (Optional)" link.
+  4. Duration (date range, start defaults to today, open end), with an "Assign Employee" link beside it.
+  5. Custom fields set by the company, in two columns (here: three number fields and one text field, all
+     optional).
+- Footer: Cancel, Create (primary).
+
+### Least Hours Worked, full view — My Team › Attendance › Negligence
+Shots: `myteam-attendance-negligence-03-least-hours-top.jpg`, `myteam-attendance-negligence-04-least-hours-pie-legend.jpg`
+- Card header with a week range and a menu; left a list of the people with the lowest average hours per day
+  (avg per day and hours worked of the expected total).
+- Right "Work hours chart": a pie by hour band with labels and percentages on leader lines, and a legend below
+  (under 4, 4–5, 5–6, 6–7, 7–8, 8 and more hours). A small menu icon sits on the chart.
+
 ## Pages not opened or partly covered
 
-- Me › Attendance "Regularize" form: not reopened this round (earlier shots cover the day panel).
 - Me › Helpdesk tab: it is the same Helpdesk area, covered under Helpdesk.
 - Direct routes `#/me/performance/reviews/reviewsgiven` and `#/myteam/summary/peers` do not exist; the real pages
   were reached through on-page tabs (`/reviews-to-others`, `/peer`).
-- Buttons that create or change things were not clicked: Schedule 1:1, Create Template, Add KRAs, Add an employee
-  to PIP, New survey, Add Resource, Add task, Import, Remind, Request a call, Invest / File now (external links).
-- Shot of the Least Hours Worked pie is partial (top cut) in `myteam-attendance-negligence-02-hours-pie-breaks.jpg`.
+- Not clicked on purpose: Add an employee to PIP (founder said skip), Import, Remind, Request a call,
+  Invest / File now (external links), and every Save, Submit, Send, Publish or Approve button.
+- New survey: only its menu was seen (see Forms).
 
 ## Ideas YukthiX may be missing
 
