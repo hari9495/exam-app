@@ -9,6 +9,7 @@ import { Card, DescriptionList } from '../../components/shell';
 import { EmptyState, InlineAlert } from '../../components/feedback';
 import { FieldRow, FormField, useTooEarly } from '../../components/field';
 import { TextArea, TextField } from '../../components/inputs';
+import { Switch } from '../../components/choice';
 import { Drawer } from '../../components/drawer';
 import { Dialog } from '../../components/overlay';
 import { RichTextEditor } from '../../components/editor';
@@ -45,6 +46,8 @@ export interface HelpDetail {
   state: HelpRow['state'];
   publicUrl: string | null;
   versions: HelpVersion[];
+  /** Answer 2116: Ask YukthiX may answer from this article (on by default). */
+  assistantUse?: boolean;
   /** Answer 1203: a retire request waiting for a second staff member. */
   retire?: { requestedBy: string; mine: boolean; reason: string; at: string } | null;
 }
@@ -53,6 +56,8 @@ export interface HelpInput {
   summary?: string;
   bodyHtml: string;
   pages: string[];
+  /** Answer 2116. */
+  assistantUse?: boolean;
 }
 export interface HelpSettingRow {
   key: string;
@@ -172,6 +177,7 @@ function Editor({ live, detail, initialTitle, onClose, onChanged }: { live: Live
   const [summary, setSummary] = useState(latest?.summary ?? '');
   const [pages, setPages] = useState((detail?.pages ?? []).join(', '));
   const [body, setBody] = useState(latest?.bodyHtml ?? '');
+  const [assistantUse, setAssistantUse] = useState(detail?.assistantUse ?? true);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
@@ -201,7 +207,7 @@ function Editor({ live, detail, initialTitle, onClose, onChanged }: { live: Live
       setBusy(null);
     }
   };
-  const input = (): HelpInput => ({ title: title.trim(), ...(summary.trim() ? { summary: summary.trim() } : {}), bodyHtml: body, pages: pageList });
+  const input = (): HelpInput => ({ title: title.trim(), ...(summary.trim() ? { summary: summary.trim() } : {}), bodyHtml: body, pages: pageList, assistantUse });
   const save = () => {
     if (early.stop()) return;
     void act('save', () => (detail ? live.onSave(detail.id, { ...input(), draftVersion: latest?.version }) : live.onCreate(input())), 'Draft saved');
@@ -287,6 +293,13 @@ function Editor({ live, detail, initialTitle, onClose, onChanged }: { live: Live
         <FormField label="Article (English)">
           <RichTextEditor value={body} onChange={setBody} mergeFields={[]} readOnly={waiting} />
         </FormField>
+        <Switch
+          checked={assistantUse}
+          onChange={setAssistantUse}
+          disabled={waiting}
+          label="Use in assistant answers"
+          description="Ask YukthiX answers from this article when it is published. Switch it off for an article the assistant should not quote. Saved with Save draft."
+        />
         {retiring && live.onRetire && detail && (
           <Dialog
             open

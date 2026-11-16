@@ -32,6 +32,8 @@ export interface SalesLiveRow {
   phone: string;
   note: string | null;
   outcomeNote: string | null;
+  /** Answer 2112: an Ask YukthiX request carries its chat (phones and emails hidden). */
+  chat?: string | null;
   createdAt: string;
   version: number;
 }
@@ -162,6 +164,12 @@ function RequestDrawer({ live, row, onClose }: { live: LiveSales; row: SalesLive
             { label: 'Set-up', value: row.setupPct === null ? '—' : `${row.setupPct}% of the set-up hub's checks done` },
           ]}
         />
+        {row.chat && (
+          <section className="yx-ps-stack" aria-label="The Ask YukthiX chat">
+            <h3 className="yx-ps-sub">The Ask YukthiX chat</h3>
+            <p className="yx-ps-muted yx-ps-pre">{row.chat}</p>
+          </section>
+        )}
         {row.mine && (
           <>
             <FormField label="Outcome">

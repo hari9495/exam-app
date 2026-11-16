@@ -5,7 +5,8 @@ import { loadState, useConsole, useConsoleWrite } from '../../../../lib/yx-conso
 
 // Console › Feature requests (Ask YukthiX, answer 2105): requests sent from the assistant, grouped with how many
 // companies asked; Planned, Not now, Done (Done tells everyone who asked). The Ask YukthiX review on the second tab.
-// The help centre writers' key (platform.helpcentre.write); every decision is in the platform audit log.
+// Answer 2113: its own key (platform.feature_requests.manage: Support agent, Customer success); the review also opens
+// with the help centre writers' key. Every decision is in the platform audit log.
 export default function ConsoleFeatureRequestsPage() {
   const requests = useConsole<FeatureRequestRow[]>('/feature-requests');
   const review = useConsole<AssistantReview>('/assistant/review?days=30');

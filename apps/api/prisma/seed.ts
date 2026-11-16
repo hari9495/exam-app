@@ -89,6 +89,8 @@ export const PERMISSIONS = [
   { key: 'platform.nudges.write', description: 'Write and approve the in-app nudges for each feature switch (YukthiX staff)' },
   { key: 'platform.incidents.manage', description: 'Open incidents, post and approve status updates, and link a security breach to a containment (YukthiX staff)' },
   { key: 'platform.helpcentre.write', description: 'Write and publish the help articles every company sees in Help (YukthiX staff)' },
+  // Answer 2113: feature requests from Ask YukthiX have a key of their own (Support agent and Customer success).
+  { key: 'platform.feature_requests.manage', description: 'Decide the feature requests sent from Ask YukthiX and read its review (YukthiX staff)' },
   { key: 'platform.maintenance.manage', description: 'Schedule, approve and cancel planned maintenance windows (YukthiX staff)' },
   // Staff roles: Customer success sees the windows.
   // Projects P-1 (answer 1412): also in the projects_p1 migration.
