@@ -73,6 +73,9 @@ function Frame({ children }: { children: React.ReactNode }) {
   // Staffing desk: its menu group only once the company turned the desk on (asked only by staffing key holders).
   const staffingKeys = perms.has('ats.staffing.manage' as never) || perms.has('ats.staffing.view' as never);
   const staffingDesk = useQuery<{ enabled: boolean }>({ queryKey: ['staffing', '/desk'], queryFn: () => apiFetch('/staffing/desk', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && staffingKeys && !actingSuperAdmin, retry: false });
+  // Answer 2001: Hire › Assessments shows once the company has assessments on (asked only by bank writers).
+  const bankKeys = perms.has('asmt.bank.manage' as never) || perms.has('question_bank:manage' as never);
+  const assessmentsOn = useQuery<{ enabled: boolean }>({ queryKey: ['api', '/question-bank/settings'], queryFn: () => apiFetch('/question-bank/settings', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && bankKeys && !actingSuperAdmin, retry: false });
   // Projects P-1: the menu shows Projects once the company switched it on, to key holders and project managers.
   const projectsOn = useQuery<{ enabled: boolean; canOpen: boolean; lineApprovals?: number }>({ queryKey: ['projects', '/status'], queryFn: () => apiFetch('/projects/status', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false });
   // Shares the cache with My security, so the banner clears as soon as a factor is added there.
@@ -127,13 +130,14 @@ function Frame({ children }: { children: React.ReactNode }) {
         ethicsDesk: counts.data?.ethicsReports !== undefined,
         changesAsked: counts.data?.changesAsked !== undefined,
         staffing: Boolean(staffingDesk.data?.enabled),
+        assessments: Boolean(assessmentsOn.data?.enabled),
         projects: Boolean(projectsOn.data?.canOpen),
         lineApprovals: projectsOn.data?.lineApprovals ?? 0,
         panellist: Boolean(myInterviews.data?.length),
       }),
     // perms.data drives perms.has
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [perms.data, role, support, employee, team.data, people.data, myClearance.data, myTasks.data, firstDays.data, counts.data, staffingDesk.data, projectsOn.data, myInterviews.data],
+    [perms.data, role, support, employee, team.data, people.data, myClearance.data, myTasks.data, firstDays.data, counts.data, staffingDesk.data, assessmentsOn.data, projectsOn.data, myInterviews.data],
   );
   // Ctrl K as designed (PLT-20): Recent, Actions, people, requests and tickets, pages when typed.
   const palette = useYxPalette({ nav: withAccount(nav, { support, employee }), pathname, open: paletteOpen, userId: me.data?.id, orgId: me.data?.organizationId, waiting: counts.data?.approvals, self: employee && !support, help: !support,

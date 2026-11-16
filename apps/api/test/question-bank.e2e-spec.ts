@@ -228,6 +228,7 @@ describe('Question Bank HTTP flow', () => {
       .expect(200);
     expect(getResponse.body.text).toBe('What is the capital of France?');
 
+    // Answer 2121: an approved (active) question changes only through the question bank's review.
     const updateResponse = await request(app.getHttpServer())
       .patch(`/api/v1/questions/${questionId}`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
@@ -242,9 +243,8 @@ describe('Question Bank HTTP flow', () => {
           { text: 'Berlin', isCorrect: false },
         ],
       })
-      .expect(200);
-    expect(updateResponse.body.marks).toBe(10);
-    expect(updateResponse.body.tags.map((t: { name: string }) => t.name).sort()).toEqual(['capitals', 'geography']);
+      .expect(409);
+    expect(updateResponse.body.message).toMatch(/Change it in the question bank/);
 
     await request(app.getHttpServer())
       .post(`/api/v1/questions/${questionId}/archive`)
@@ -316,7 +316,9 @@ describe('Question Bank HTTP flow', () => {
       .get('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
-    expect(listResponse.body.data.some((q: { text: string }) => q.text === 'Bulk row one')).toBe(true);
+    // Answer 2121: an uploaded question is a draft in the review queue, not in the active list.
+    expect(response.body.created[0].status).toBe('draft');
+    expect(listResponse.body.data.some((q: { text: string }) => q.text === 'Bulk row one')).toBe(false);
   });
 
   it('rejects a bulk upload file with an unsupported extension', async () => {

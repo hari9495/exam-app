@@ -127,6 +127,8 @@ interface AttemptPreviewResponse {
     availabilityWindowStart: Date | null;
     availabilityWindowEnd: Date | null;
     proctoring: ExamProctoringConfig;
+    /** AS-2 (answer 2008): how long the company keeps recordings, clips and face data, told before consent. */
+    evidenceRetentionDays: number;
   };
   schedulingWindowState: 'not_open' | 'open' | 'closed' | null;
   sections: AttemptSectionSummary[];
@@ -206,6 +208,16 @@ export interface RunnerInfo {
 }
 
 export type AttemptCurrentResponse = AttemptPreviewResponse | AttemptStateResponse;
+
+/**
+ * AS-2 (answer 2008): the company's Settings 6.5 retention (asmt.retention), 30 to 365 days, 30 when not set. The API's
+ * sweeps use the same bounds (apps/api/src/assessments/asmt-rules.ts retentionDays).
+ */
+async function evidenceRetentionDays(tx: Prisma.TransactionClient, organizationId: string): Promise<number> {
+  const row = await tx.setting.findFirst({ where: { organizationId, key: 'asmt.retention', scopeType: 'tenant' }, select: { value: true } });
+  const n = Number(row?.value);
+  return Number.isInteger(n) ? Math.min(365, Math.max(30, n)) : 30;
+}
 
 // What the controller extracts from the incoming request for SEB verification: the ConfigKey
 // hash header SEB attaches, and the absolute URL of this request exactly as the client
@@ -414,6 +426,7 @@ export class AttemptService {
             availabilityWindowStart: exam.availabilityWindowStart,
             availabilityWindowEnd: exam.availabilityWindowEnd,
             proctoring: resolveProctoringConfig(exam),
+            evidenceRetentionDays: await evidenceRetentionDays(tx, organizationId),
           },
           schedulingWindowState: this.getSchedulingWindowState(exam),
           sections: sections.map((section) => ({

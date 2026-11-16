@@ -307,6 +307,7 @@ export default function CandidateWelcomePage() {
                     }
                   },
                 }}
+                retentionDays={current.exam.evidenceRetentionDays}
                 onSettled={(payload) => {
                   setFacePayload(payload);
                   setFaceStatus(payload.status);

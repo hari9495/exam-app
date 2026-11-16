@@ -46,6 +46,13 @@ export class CreateExamDto {
   @Max(100)
   passCriteriaPercent?: number;
 
+  /** AS-2 (asmt.high_stakes): how many candidates the test is for; null clears it. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(1_000_000)
+  expectedCandidates?: number | null;
+
   @IsOptional()
   @IsBoolean()
   randomizeOrder?: boolean;

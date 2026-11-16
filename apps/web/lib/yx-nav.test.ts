@@ -33,6 +33,17 @@ describe('buildNav: areas', () => {
     expect(labels(nav(['pipeline:manage', 'candidate:view']), 'hire')).toEqual(['Jobs & requisitions', 'Requisitions', 'Interviews', 'Candidates & talent CRM', 'Talent CRM', 'Referrals', 'Vendors', 'All referrals', 'Bias audits']);
   });
 
+  // Answer 2001 (bank follow-ups): Hire › Assessments for bank writers, only when the company has assessments on.
+  it('Hire › Assessments: the question bank for bank writers (YukthiX key or its older alias) when assessments are on', () => {
+    const assess = (n: ReturnType<typeof buildNav>) => n.find((a) => a.id === 'hire')?.sections.find((s) => s.label === 'Assessments')?.items.map((l) => [l.label, l.href]) ?? [];
+    const want = [['Question bank', '/yx/hiring/assessments/questions'], ['Question review', '/yx/hiring/assessments/reviews'], ['Item analysis', '/yx/hiring/assessments/item-analysis']];
+    expect(assess(nav(['asmt.bank.manage'], { assessments: true }))).toEqual(want);
+    expect(assess(nav(['question_bank:manage'], { assessments: true }))).toEqual(want);
+    // negative: switched off for the company, or no bank key.
+    expect(assess(nav(['asmt.bank.manage'], { assessments: false }))).toEqual([]);
+    expect(assess(nav(['pipeline:manage', 'results:view'], { assessments: true }))).toEqual([]);
+  });
+
   it('HIR-10: Background checks only for HR with the background-check key', () => {
     expect(labels(nav(['pipeline:manage', 'candidate:manage']), 'hire')).not.toContain('Background checks');
     expect(labels(nav(['pipeline:manage', 'lifecycle.bgv.manage']), 'hire')).toContain('Background checks');
@@ -199,9 +210,11 @@ describe('buildNav: Settings', () => {
   });
 
   it('the settings admin gets the S-7 pages (no retired Company rules), Countries and Translations; set-up pages follow their keys', () => {
-    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['All settings', 'Set-up hub', 'Legal entities', 'Locations', 'Structure', 'Countries', 'Translations', 'Company & branding', 'Employee records', 'Set-up hub settings', 'Document types', 'Notifications', 'Policies', 'Help and tips', 'Expense settings', 'Performance settings', 'Custom fields', 'Approvals', 'Access requests', 'Directory & privacy', 'Security rules', 'Onboarding & probation', 'Job changes & transfers', 'Exit & lifecycle policies', 'Employee relations & cases', 'Audit & data retention', 'Approval policies', 'Attendance modes', 'Check-in & devices', 'Shifts & patterns', 'Weekly offs', 'Late & regularisation', 'Leave types', 'Holiday calendars', 'Leave year', 'Projects & timesheets', 'Visitors', 'Payroll policies', 'Payslip settings', 'Tax', 'Bonus & loan rules', 'Contract labour', 'Hiring', 'Staffing desk']);
+    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['All settings', 'Set-up hub', 'Legal entities', 'Locations', 'Structure', 'Countries', 'Translations', 'Company & branding', 'Employee records', 'Set-up hub settings', 'Document types', 'Notifications', 'Policies', 'Help and tips', 'Expense settings', 'Performance settings', 'Assessment settings', 'Custom fields', 'Approvals', 'Access requests', 'Directory & privacy', 'Security rules', 'Onboarding & probation', 'Job changes & transfers', 'Exit & lifecycle policies', 'Employee relations & cases', 'Audit & data retention', 'Approval policies', 'Attendance modes', 'Check-in & devices', 'Shifts & patterns', 'Weekly offs', 'Late & regularisation', 'Leave types', 'Holiday calendars', 'Leave year', 'Projects & timesheets', 'Visitors', 'Payroll policies', 'Payslip settings', 'Tax', 'Bonus & loan rules', 'Contract labour', 'Hiring', 'Staffing desk']);
     // Settings 6.1 Hiring: recruiting, hiring admins and HR read it (the API decides who changes it).
     expect(labels(nav(['ats.settings.manage']), 'settings')).toEqual(['All settings', 'Hiring']);
+    // AS-2 (Settings 6.5): a test owner with only the assessments settings key gets that page and nothing else.
+    expect(labels(nav(['assessments.settings.manage']), 'settings')).toEqual(['All settings', 'Assessment settings']);
     expect(labels(nav(['pipeline:manage']), 'settings')).toEqual(['All settings', 'Calendar & chat', 'Hiring']); // S-10: a recruiter's own calendar
     expect(labels(nav(['ats.requisition.raise']), 'settings')).not.toContain('Hiring');
     // Visitors slice 1: an employee invites their visitors; reception gets the desk and log; Settings 3.12 for its holders.

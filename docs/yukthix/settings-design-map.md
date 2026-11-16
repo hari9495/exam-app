@@ -1172,6 +1172,28 @@ Tests: API e2e `settings-s10-security` (6), `webhook-delivery` (the admin confir
 2084. **Telling anyone.** The nightly removal is audited but nobody is told (the company's own people are gone).
       *Suggested: a console notice to the two staff members who asked for and confirmed the deletion.*
 
+## 2081, 2083, 2084 as built (branch `feat/yukthix-itsm-fu2`)
+
+- **2081:** the console company page of a deleted company has a "Kept records" card: each group removed after its day
+  (audit log, payroll records, statutory filings, the company and its people), the day, and its certificate's SHA-256
+  (copyable). Before any removal it says each group goes the night after its day.
+- **2083:** YukthiX staff with `platform.companies.manage` set a legal hold on a deleted company from that card (case
+  reference, why, last day; security key; audited `platform.company.legal_hold_set`) and end it with a reason (audited
+  `platform.company.legal_hold_ended`). While a hold is in force the nightly removal leaves the kept records alone.
+  Only a deleted company takes a hold here; a company in use sets its own.
+- **2084:** after each removal, the two staff who asked for and confirmed the deletion get an email naming each group,
+  its rows and its certificate's SHA-256. The console has no notice inbox for staff yet, so the notice is an email.
+- **2082:** no change.
+- **Tests:** e2e `company-retention-expiry` (the removal listed on the company page; the notice to both staff; a hold
+  set and ended with the key, stopping the removal; negatives: no key, an open company, a past day, a short reason, an
+  unknown hold); kit `kept-records` (4); web console page (2).
+
+### Questions (from 2093)
+
+2093. **A console notice inbox for staff.** 2084 is sent by email because the console has no notice list for staff.
+      *Suggested: add a small notice list to the console header later, starting with these removals and the breach
+      reminders.*
+
 ## 7. Build plan (slices, max 3 builders at once)
 
 Ordered by what every customer needs first: the way in (home), the everyday HR rules (time, leave, payroll, people),

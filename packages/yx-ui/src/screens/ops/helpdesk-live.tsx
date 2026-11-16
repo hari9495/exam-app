@@ -173,7 +173,7 @@ export function LiveHelpCentre({ live }: { live: LiveHelp }) {
     />
   );
   const offer = live.chatPrompt ? <ChatPromptBanner {...live.chatPrompt} /> : null;
-  const issues = live.banners.length ? <BannerList banners={live.banners} onMeToo={live.onMeToo} /> : null;
+  const issues = live.banners.length ? <BannerList banners={live.banners} onMeToo={live.onMeToo} onOpenTicket={live.onOpen} /> : null;
 
   if (phone)
     return (

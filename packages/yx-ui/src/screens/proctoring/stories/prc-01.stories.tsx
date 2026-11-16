@@ -19,3 +19,6 @@ export const Error: S = { args: { state: 'error' } };
 export const CompanyQuestions: S = { name: 'Company questions with review states', render: () => <QuestionBankScreen live={liveBank()} /> };
 export const PacksSwitch: S = { name: 'Starter packs switched on or off', render: () => <QuestionBankScreen live={liveBank({ settings: { languages: [], secondApproverCollections: [], duplicatePercent: 90, provisionalAnswers: 200, packs: ['english'] } })} /> };
 export const NoQuestions: S = { name: 'No questions yet', render: () => <QuestionBankScreen live={liveBank({ rows: [], stats: {} })} /> };
+// Bank follow-ups (answer 2121): import and AI drafts land in the review queue.
+export const ImportQuestions: S = { name: 'Import a file (rows land in review)', render: () => <QuestionBankScreen live={liveBank({ defaultDialog: 'import' })} /> };
+export const DraftWithAi: S = { name: 'Draft with AI (drafts land in review)', render: () => <QuestionBankScreen live={liveBank({ defaultDialog: 'ai' })} /> };

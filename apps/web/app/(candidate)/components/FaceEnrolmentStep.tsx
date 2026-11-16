@@ -43,9 +43,11 @@ interface Props {
    * ask for a manual identity check instead ('asked' while it is being decided).
    */
   manualCheck?: { state: 'none' | 'asked'; onAsk: () => Promise<void> };
+  /** AS-2 (answer 2008): the company's retention, shown before consent. */
+  retentionDays?: number;
 }
 
-export function FaceEnrolmentStep({ policy, onSettled, manualCheck }: Props) {
+export function FaceEnrolmentStep({ policy, onSettled, manualCheck, retentionDays = 30 }: Props) {
   const [phase, setPhase] = useState<Phase>('consent');
   const [attempts, setAttempts] = useState(0);
   const [hint, setHint] = useState('Look at the camera and blink.');
@@ -131,7 +133,8 @@ export function FaceEnrolmentStep({ policy, onSettled, manualCheck }: Props) {
         <h3 className="mb-2 font-display font-medium">Photo check before you start</h3>
         <p>
           We&apos;ll take a photo of your face and use it only to check that it&apos;s still you
-          during this exam. It&apos;s kept for 90 days and deleted when your data is deleted.
+          during this exam. It&apos;s kept for {retentionDays} days (longer only while a review of your
+          result is open) and deleted when your data is deleted.
         </p>
         {policy === 'require_enrolment' ? (
           <p className="mt-2 text-candidate-text-faint">

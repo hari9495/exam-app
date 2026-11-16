@@ -76,17 +76,18 @@ Buckets: **A** hiring assessments inside Hire, needed now · **B** engine pieces
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories | A | B | C |
 |---|---|---|---|---|---|---|---|---|---|---|
-| 1. Bank and tests (PRC-01 to PRC-06) | 6 | 0 | 10 | 12 | 18 | 0 | 40 | 5 | 32 | 3 |
+| 1. Bank and tests (PRC-01 to PRC-06) | 6 | 20 | 10 | 12 | 18 | 0 | 60 | 5 | 52 | 3 |
 | 2. Delivery and drives (PRC-07 to PRC-11, PRC-29, PRC-30) | 7 | 0 | 6 | 5 | 22 | 5 | 38 | 13 | 10 | 15 |
 | 3. Proctoring and live (PRC-12 to PRC-15) | 4 | 0 | 10 | 0 | 10 | 0 | 20 | 0 | 12 | 8 |
 | 4. Integrity and marking (PRC-16 to PRC-20) | 5 | 0 | 11 | 0 | 19 | 0 | 30 | 0 | 29 | 1 |
 | 5. Candidate (PRC-21 to PRC-28, PRC-31, PRC-32) | 10 | 0 | 13 | 4 | 32 | 10 | 59 | 7 | 42 | 10 |
 | 6. Extras and kit | 4 | 0 | 0 | 0 | 21 | 0 | 21 | 0 | 13 | 8 |
-| 7. Settings 6.5 | 1 | 0 | 0 | 0 | 2 | 0 | 2 | 0 | 2 | 0 |
-| **All 1-7** | **37** | **0** | **50** | **21** | **124** | **15** | **210** | **25** | **140** | **45** |
+| 7. Settings 6.5 | 1 | 0 | 2 | 0 | 0 | 0 | 2 | 0 | 2 | 0 |
+| **All 1-7** | **37** | **20** | **52** | **21** | **122** | **15** | **230** | **25** | **160** | **45** |
 
-Counted by script on 13 Nov 2026 on `docs/yukthix-assessments-map` (the script is in the appendix; it prints "ok").
-There are 208 stories in 36 files whose title starts `Screens/Proctoring/`, all in
+Counted by script on 13 Nov 2026 on `docs/yukthix-assessments-map`, recounted 16 Nov 2026 after AS-1 and AS-2 drew their live
+states (the script is in the appendix; it prints "ok").
+There are 228 stories in 36 files whose title starts `Screens/Proctoring/`, all in
 `packages/yx-ui/src/screens/proctoring/stories/` (`prc-01` to `prc-32`, `kit`, `extra-fairness`, `extra-id-review`,
 `extra-test-centres`); the same folder also holds the Analytics stories (`Screens/Analytics/…`), which belong to the
 Analytics map. The screens are in `bank-tests.tsx`, `delivery.tsx`, `live.tsx`, `integrity.tsx`, `candidate.tsx` and
@@ -192,6 +193,9 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 | Empty · Empty | wire design | B | as Default |
 | Loading · Loading | wire design | B | as Default |
 | Error · Error | wire design | B | as Default |
+| CompanyQuestions · Company questions with review states | live | B | AS-1: `/yx/hiring/assessments/questions` (`GET /question-bank/questions`) |
+| PacksSwitch · Starter packs switched on or off | live | B | AS-1 (answer 2017): `asmt.packs`; the tab says YukthiX is writing them |
+| NoQuestions · No questions yet | live | B | AS-1: the empty bank |
 
 #### PRC-02 · Question editor
 
@@ -207,6 +211,12 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 | Versions · Versions | design only, feature not built | B | no versions |
 | ItemStats · Item stats | wire design | B | `GET /analytics/questions/:id` |
 | Translations · Translations | design only, feature not built | B | no translations |
+| ApprovedQuestion · Approved question with versions and a Hindi translation | live | B | AS-1 (2010): versions and approved translations |
+| MajorChangeInReview · Major change in review, possible duplicate | live | B | AS-1 (2009, 2010): a major change waits as a revision; duplicate check |
+| ChangesAskedFor · Reviewer asked for changes | live | B | AS-1 (2009): the reviewer's note and field comments |
+| AltTextMissing · Image without alt text | live | B | AS-1: alt text before submit |
+| EnglishOnly · English only (no other language switched on) | live | B | AS-1 (2010): `asmt.languages` empty |
+| NewQuestion · New question | live | B | AS-1: `…/questions/new` |
 
 #### PRC-03 · Question review queue
 
@@ -218,6 +228,9 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 | ChangesRequested · Changes requested | design only, feature not built | B | no review |
 | Empty · Empty | design only, feature not built | B | as Default |
 | Loading · Loading | design only, feature not built | B | as Default |
+| WaitingForMe · Changes and translations waiting for me | live | B | AS-1: `/yx/hiring/assessments/reviews` (`GET /question-bank/reviews`) |
+| TranslationOnly · Translation review | live | B | AS-1 (2010): every translation reviewed by a person |
+| NothingWaiting · Nothing waiting | live | B | AS-1: the empty queue |
 
 #### PRC-04 · Test builder
 
@@ -225,14 +238,18 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 |---|---|---|---|
 | Blueprint · Blueprint grid | live (gap) | B | `/v2/exams/[id]/edit` sections tab (`ExamSectionsPanel`): fixed or pool sections by tags and difficulty, weights, required count. Gap: the skill-by-difficulty grid |
 | BelowPoolDepth · Blueprint below pool depth | wire design | B | publish refuses a pool with fewer matching questions (`exams.service.ts` lines 683 to 696); `GET …/pool-preview` |
-| Template · Template library | live (gap) | A | `POST /exams/:id/duplicate` copies a test. Gap: no template library |
+| Template · Template library | live (gap) | A | AS-2: "Our tests" with Copy and edit (`POST /exams/:id/duplicate`). Gap: YukthiX starter tests (content, with the packs) |
 | BuildFromJd · Build from job description | design only, feature not built | A | `POST ai/job-description` drafts the job description itself (`ai-drafting.controller.ts` line 20), not a test |
 | Adaptive · Adaptive config | design only, feature not built | C | no adaptive or IRT (question 2015) |
 | AdaptiveSimulated · Adaptive simulation results | design only, feature not built | C | as above |
 | Timing · Timing and navigation | live (gap) | B | `Exam.durationMinutes`, `ExamSection.targetDurationMinutes`, shuffle, window; extra time per invitation. Gap: no forward-only navigation (`forward.?only` in exam code: none) |
-| Proctoring · Proctoring mode | live (gap) | B | the per-test switches on `Exam` (webcam, AI analysis, record only, screen capture, lockdown, face check, enforcement, strike limit). Gap: the four named modes |
+| Proctoring · Proctoring mode | live (gap) | B | AS-2 (answer 2007): Open, AI-only and Record & review over the per-test switches; a new test starts in `asmt.proctor_mode`. Gap: Live (a person watching) waits for certification |
 | ReviewBlocked · Pre-publish checklist, blocked | live (gap) | B | publish refuses one problem at a time (lines 637 to 700). Gap: the checklist and the approver for big tests (`asmt.high_stakes`) |
-| ReviewReady · Pre-publish checklist, ready | live (gap) | B | as above |
+| ReviewReady · Pre-publish checklist, ready | live (gap) | B | AS-2: `/yx/hiring/assessments/tests/[id]` lists every check (`GET /asmt/tests/:id`); publish refuses on the first. Gap: cut-score approval and certification checks (no certification) |
+| LiveChecklistBlocked · Company test: checklist blocked, approver needed | live | B | AS-2: the checklist with a pool below depth and the approver a test for more than `asmt.high_stakes` candidates needs |
+| LiveApprovalWaiting · Company test: approval asked, waiting for you | live | B | AS-2: Ask for approval / Approve (`POST /asmt/tests/:id/approval/request`, `/approve`); never the asker or the author (also a database check); a later change asks again |
+| LiveCustomProctoring · Company test: proctoring set switch by switch | live | B | AS-2 (answer 2007): a test whose switches match no mode says so until a mode is picked (`PUT /asmt/tests/:id/proctoring-mode`) |
+| LiveStart · Start from one of our tests | live | B | AS-2: `/yx/hiring/assessments/tests`: the company's tests (open, Copy and edit = `POST /exams/:id/duplicate`) and a new test in the company's default mode |
 
 #### PRC-05 · Item analysis
 
@@ -241,6 +258,8 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 | Default · Default | wire design | B | `GET /analytics/questions/flagged` and `/difficulty-calibration`; flags shown on `/v2/questions` |
 | Provisional · Provisional (under 200 attempts) | live (gap) | B | the API hides a question under 20 answers (`MIN_RESPONSES`). Gap: no "provisional" band under 200 |
 | Loading · Loading | wire design | B | as Default |
+| CompanyItems · Company items with provisional band | live | B | AS-1: `/yx/hiring/assessments/item-analysis` with `asmt.item_stats.provisional_answers` |
+| NoStatistics · No statistics yet | live | B | AS-1: fewer than 20 answers everywhere |
 
 #### PRC-06 · Candidate score report
 
@@ -250,6 +269,8 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 | Recruiter · Recruiter view | live (gap) | A | the same page. Gap: no narrower recruiter view; answer keys and full detail go to every reader |
 | Held · Held: incident open | live (gap) | B | `POST /attempts/:id/results/hold`. Gap: no incident record behind a hold |
 | Adaptive · Adaptive test (θ ± SE) | design only, feature not built | C | no adaptive |
+| LiveRecruiter · Company result: recruiter view | live | B | AS-2: `/yx/hiring/assessments/reports/[examId]/[candidateId]` on `GET /reports/:id/candidates/:cid/report` (own-job scope from AS-0); raw marks only for test writers |
+| LiveHeld · Company result: held (evidence kept) | live | B | AS-2 (answer 2008): a held result says so; its recordings, clips and face data are kept until it is released |
 
 ### 2. Delivery and drives (PRC-07 to PRC-11, PRC-29, PRC-30)
 
@@ -603,8 +624,8 @@ Shared parts, not pages. None is used by a live page; the older pages have their
 
 | story (sub-page) | verdict | bucket | note |
 |---|---|---|---|
-| P6_5 · 6.5 Assessments | design only, feature not built | B | registry page `6.5` (`registry-g5-g6.ts` line 1229): 30 company defaults in Question bank, Test defaults, Delivery defaults, Proctoring, Results & retention. No API holds any of them; the older product keeps choices per test on `exams`, and retention is fixed at 90 days in code. Parts that are C (live ratio, YukthiX proctors, ID check, room scan, slot booking) are shown only when those features exist |
-| P6_5_ReadOnly · 6.5 Assessments · read-only | design only, feature not built | B | as the page |
+| P6_5 · 6.5 Assessments | live (gap) | B | AS-2: `/yx/settings/talent/assessments` with the 8 defaults the engine uses (languages, collections that need a second approver as a table (2123), duplicate %, packs, provisional answers, approver threshold, proctoring mode, retention 30 to 365). Before AS-2: | registry page `6.5` (`registry-g5-g6.ts` line 1229): 30 company defaults in Question bank, Test defaults, Delivery defaults, Proctoring, Results & retention. No API holds any of them; the older product keeps choices per test on `exams`, and retention is fixed at 90 days in code. Parts that are C (live ratio, YukthiX proctors, ID check, room scan, slot booking) are shown only when those features exist |
+| P6_5_ReadOnly · 6.5 Assessments · read-only | live (gap) | B | as the page: read-only without HR's or the assessments settings key |
 
 ## 4. What can be reused, and what is missing
 
@@ -1012,3 +1033,102 @@ and `/connectivity`. Candidate pages `/accommodation` and `/readiness`, linked f
       reviewer comes with employee test-takers (2016).*
 2207. **Evidence retention.** Evidence is kept with the invitation. *Suggested: delete it with the recordings, after the
       company's retention once the request is decided (AS-2's setting).*
+
+## Question bank follow-ups as built (branch `feat/yukthix-bank-followups`, 16 Nov 2026; answers 2121, 2125, 2126, 2129, 2001)
+
+- **2121, no way round review:** `POST /questions/:id/publish` refuses (409, "another person approves it in the question
+  bank"), audited `question.publish_refused`. `PATCH /questions/:id` refuses an approved question and one in review; only
+  the bank's approval changes an approved question. Bulk upload and AI drafts land as drafts in the review queue (shared
+  `bank/queue.ts`: alt text, duplicate check, second approver; audited `question.submitted` with the source), the person
+  who uploaded or asked is the author. `/v2/questions`, `/questions`, their new and edit pages and the bulk-upload page
+  redirect to the designed bank, which now has Import (CSV or Excel, the refused rows listed) and Draft with AI.
+- **2125, code tests:** the designed editor writes code questions: one language or any, starter code, typing own input,
+  and test cases (input, expected output, weight, hidden). At least one test, every test with its output, one visible,
+  and a language when fixed. A changed test after approval is a big change (a new version).
+- **2126, images:** the question and each option take an image through the existing image route (PNG, JPEG or SVG, 2 MB);
+  alt text is then required before submit and approval (as built in AS-1).
+- **2129, the daily note:** sweep `question-review-nudges` (09:30 IST) tells each bank writer once a day how many
+  questions and translations wait for them (never their own; not a change they gave the first approval to). Table
+  `question_review_nudges` (forced RLS) marks who was told on which India day before the note goes, so re-runs and two
+  servers send nothing more; rows kept 30 days. Company setting `asmt.bank.review_reminders` (on by default).
+- **2001, the menu:** Hire › Assessments (Question bank, Question review, Item analysis) for holders of
+  `asmt.bank.manage` or its older alias, when the company setting `assessments.enabled` is on (new, on by default).
+- **Keys:** the bank routes take `asmt.bank.manage` or `question_bank:manage` (the alias); the TODO is gone.
+- **Migration:** `202617z0000251_bank_followups`.
+- **Kit first:** PRC-01 Import a file, Draft with AI; PRC-02 Code question with test cases, Question image added.
+- **Tests:** API unit (publish and update refusals, note words); e2e `question-bank-followups` (new) and the changed
+  `question-bank`, `ai-question-generation`; kit `bank-live` (+5); web `yx-assessments-bank` (+3), nav (+1), redirects
+  (+7). Manual test MT-ASMT-BANK2.
+
+### Questions (from 2141)
+
+2141. **`POST /questions` still makes an approved question.** The older create route (used by integrations and about 20
+      test suites) still saves a question as active. *Suggested: make it a draft in the review queue too, with the test
+      suites moved to the bank's review in one change.*
+2142. **A draft in a fixed test section.** A fixed section takes any question of the company, a draft included; pools
+      take only approved ones. *Suggested: a fixed section takes only approved questions; publishing a test refuses a
+      draft in it.*
+2143. **Images in the preview.** The editor names the image file; the candidate preview does not draw it yet (stored
+      addresses need a signed link). *Suggested: show it through a short-lived signed link, as candidates get it.*
+2144. **Assessments switched off.** `assessments.enabled` off hides the menu and the daily note; the bank's API still
+      answers its writers. *Suggested: keep; the setting is about the menu, and the keys decide access.*
+2145. **The daily note by email.** It goes as a bell note and follows each person's notification choices for email.
+      *Suggested: keep.*
+## AS-2 as built (branch `feat/yukthix-assessments-as2`, 16 Nov 2026)
+
+Tests and settings: answers 2007, 2008, 2123, PRC-04, PRC-06 and Settings 6.5. Not in the menu (as AS-1): pages
+`/yx/hiring/assessments/tests`, `…/tests/[id]`, `…/reports/[examId]/[candidateId]`; the settings page
+`/yx/settings/talent/assessments` is in Settings › Organisation for HR's settings key and the assessments settings key.
+
+- **Settings 6.5 (company defaults):** new keys `asmt.proctor_mode` (Open, AI-only, Record & review; default AI-only),
+  `asmt.retention` (30, 60, 90, 180, 365 days; default 30), `asmt.high_stakes` (50 to 2000 expected candidates; default
+  500), shown with AS-1's five question-bank keys. 2123: the collections that need a second approver are edited as a
+  table and saved as the comma list. `assessments.settings.manage` reads the company settings and changes `asmt.*` only.
+- **2007 proctoring modes:** a test's mode is read from its switches (`custom` when set switch by switch on the older
+  screen); `PUT /asmt/tests/:id/proctoring-mode` sets them (locked tests refused, audited `exam.proctoring_mode_set`).
+  A new test that names no switch starts in the company mode. Live proctoring waits for certification.
+- **2008 retention and legal hold:** both evidence sweeps (proctoring images, face data) use each company's days (it was
+  a fixed 90) and skip any attempt whose result is held (the hold is the legal hold until AS-5's incidents and appeals).
+  The candidate's photo consent states the company's days.
+- **PRC-04 checklist and approver:** publish runs every check and refuses on the first (same messages as before);
+  `GET /asmt/tests/:id` lists them all. A test for more than `asmt.high_stakes` expected candidates needs another
+  person's approval (`…/approval/request`, `…/approval/approve`): never the asker nor the author (also a database
+  check), and only of the test as it is (a fingerprint of what candidates would get; any change asks again). Migration
+  `202617z0000311_assessments_test_approval` (exams: expected candidates and the approval; no data written).
+- **Screens:** the designed `TestBuilderScreen` and `ScoreReportScreen` with `live` (`tests-live.tsx`, export
+  `@yukthix/ui/assessments`); new states drawn as stories in PRC-04 (4) and PRC-06 (2). Both left the design-live
+  guard's "not live" list. The builder's Sections step opens the older section editor for questions and pools.
+- **Tests:** API unit `asmt-rules` (10), retention specs (per company and the hold), exams and runtime specs; e2e
+  `assessments-as2` (13); kit `tests-live` (10); web `yx-assessments-tests` (6). Manual tests MT-ASMT-TESTS1 and
+  MT-ASMT-SET65.
+
+### Questions (from 2151)
+
+2151. **Build from a job description.** Not built: it needs an AI step that maps a job description to the company's
+      skills and proposes pool sections. *Suggested: next, behind the AI-drafted questions setting, the test always a
+      draft.*
+2152. **Per-test charts (2127).** Reliability, score distribution and section correlation per test are not built yet.
+      *Suggested: an item-analysis tab on the test builder next, computed nightly per test.*
+2153. **Sections in the builder.** Sections, questions and pools are still edited on the older `/v2/exams/:id/edit`.
+      *Suggested: the designed Sections and Blueprint steps edit them next (the API exists).*
+2154. **Section cut-offs (PRC-06 "cut-off not met").** No cut-off per section in the engine. *Suggested: add one with
+      scoring in AS-6 (it changes pass and fail).*
+2155. **The other 6.5 defaults.** 22 drawn defaults (timer, navigation, attempts, exposure cap, delivery, reminders,
+      release elements, appeal window, incident time and more) have no engine behind them yet. *Suggested: each comes with
+      the slice that builds it (AS-3, AS-4, AS-5).*
+2156. **Retention change on deploy.** The default drops from 90 to 30 days, so evidence 30 to 90 days old is deleted on the
+      first nightly run after deploy (unless held). *Suggested: tell customers before deploy; a company that wants 90
+      sets it first.*
+2157. **AI-only sends camera stills to the AI.** The company default (AI-only) turns on AI review of camera stills for
+      every new test (before, each test opted in). *Suggested: keep, as 2007 says; the consent text already names it.*
+2158. **Telling the approver.** Asking for approval does not notify anyone yet. *Suggested: a bell note to the people
+      with the tests key, like the review queue (2129).*
+2159. **The Tests pages in the menu.** *Suggested: the lead adds Tests next to Question bank when the bank goes in.*
+
+**Founder answers (16 Nov 2026, "ok for all"), 2151-2159, 2161-2166, 2191-2193, 2201-2207:** all as suggested.
+- 2151 build a test from a job description next (behind the AI-drafts setting, always a draft); 2152 per-test charts as an analysis tab, nightly; 2153 the designed Sections/Blueprint steps edit sections; 2154 section cut-offs with AS-6; 2155 the other 6.5 defaults come with their features; 2156 tell customers before the 90 to 30 day retention change goes live; 2157 keep AI-only default; 2158 a bell note to test managers when approval is asked; 2159 Tests in the menu next to Question bank.
+- 2161 AS-4a part 2: draw review mode, section chips, phone question list, option pictures and snippets in PRC-26, then switch /exam; 2162 scientific calculator keys in part 2; 2163 AS-2's builder sets breaks and calculator; 2164 approved screen-reader mode from AS-4b; 2165 survey summary in AS-6 reports, groups of 5+; 2166 keep the 75 s grace.
+- 2191 bulk upload makes drafts for review; 2192 the older PATCH goes through a revision when /v2/questions is retired; 2193 keep, a restored AI draft goes through review.
+- 2201 /welcome switches to the designed consent and selfie with AS-4a part 2; 2202 per-invitation breaks and a "no gaze flags" profile next, separate session with slot booking; 2203 the decision message covers "more information" for now; 2204 an email on each decision; 2205 face re-check with AS-5; 2206 keep test writers deciding; 2207 delete evidence after the company's retention once decided.
+
+**Founder answers (16 Nov 2026, "ok for all"), 2211 to 2215:** all as suggested. 2211 a bulk route in AS-3 part 2; 2212 keep, only the same test is reused; 2213 a reused result moves the application on the board like a submitted one (next); 2214 "New drive" on the live page in part 2; 2215 paging past 500 when a company needs it.

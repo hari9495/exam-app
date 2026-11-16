@@ -1498,6 +1498,8 @@ export interface AttemptPreview {
     availabilityWindowStart: string | null;
     availabilityWindowEnd: string | null;
     proctoring: ExamProctoringConfig;
+    /** AS-2 (answer 2008): how long the company keeps recordings, clips and face data (30 to 365 days). */
+    evidenceRetentionDays?: number;
   };
   schedulingWindowState: 'not_open' | 'open' | 'closed' | null;
   sections: AttemptSectionSummary[];

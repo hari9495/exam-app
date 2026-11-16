@@ -42,7 +42,7 @@ import { SettingChangeNoticesService } from './setting-change-notices.service';
 // reads are checked against the record's entity here (OrgScopeService) before the service runs.
 const VIEW = ['org.structure.view', 'org.settings.manage'] as const;
 // S-8 (answer 1323): the expenses and performance set-up keys read the company settings (their pages 4.8 and 6.3).
-const MODULE_READ = ['expense.policy.view', 'expense.policy.manage', 'perf.setup.manage'] as const;
+const MODULE_READ = ['expense.policy.view', 'expense.policy.manage', 'perf.setup.manage', 'assessments.settings.manage'] as const;
 const KIND = new ParseEnumPipe(Object.fromEntries(MASTER_KINDS.map((k) => [k, k])));
 
 interface RequestUser {
@@ -75,7 +75,7 @@ export class OrgStructureController {
 
   /**
    * Answer 1485: a leave-page setting may be changed with leave.settings.manage instead (same entity reach); S-8 (answer
-   * 1323): an expenses setting with expense.policy.manage, a performance setting with perf.setup.manage. Others need
+   * 1323): an expenses setting with expense.policy.manage, a performance setting with perf.setup.manage; AS-2: an assessments setting with assessments.settings.manage. Others need
    * org.settings.manage.
    */
   private async manageSetting(req: Request, key: string, entityId: string | null) {
@@ -391,7 +391,7 @@ export class OrgStructureController {
   }
 
   @Put('settings')
-  @RequireAnyPermission('org.settings.manage', 'leave.settings.manage', 'expense.policy.manage', 'perf.setup.manage')
+  @RequireAnyPermission('org.settings.manage', 'leave.settings.manage', 'expense.policy.manage', 'perf.setup.manage', 'assessments.settings.manage')
   async setSetting(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: SettingDto) {
     ownSession(req);
     await this.manageSetting(req, dto.key, await this.scope.settingEntity(ctx, dto.scopeType, dto.scopeId));

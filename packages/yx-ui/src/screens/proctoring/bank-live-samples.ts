@@ -29,7 +29,7 @@ export const ITEM_STATS: ItemStats = {
 };
 
 export function liveBank(over: Partial<LiveBank> = {}): LiveBank {
-  return { state: 'ready', onRetry: () => undefined, rows: BANK_ROWS, stats: { q1: { responses: 142, percentCorrect: 62 } }, settings: BANK_SETTINGS, onOpen: () => undefined, onImport: () => undefined, onDraftWithAi: () => undefined, onSubmit: ok, onRetire: ok, onLoadStats: () => Promise.resolve(ITEM_STATS), ...over };
+  return { state: 'ready', onRetry: () => undefined, rows: BANK_ROWS, stats: { q1: { responses: 142, percentCorrect: 62 } }, settings: BANK_SETTINGS, onOpen: () => undefined, onImport: () => Promise.resolve({ created: 3, errors: [{ row: 5, message: 'Mark one option correct.' }] }), onDownloadTemplate: ok, onDraftWithAi: ok, onSubmit: ok, onRetire: ok, onLoadStats: () => Promise.resolve(ITEM_STATS), ...over };
 }
 
 const MCQ: BankContent = {
@@ -47,6 +47,43 @@ const MCQ: BankContent = {
     { text: 'collect() is lazy', isCorrect: false },
   ],
   optionAlts: [],
+};
+
+export const CODE_LANGUAGES = [
+  { language: 'java', version: '17' },
+  { language: 'python', version: '3.12' },
+];
+
+/** Answer 2125: a code question with its tests (one shown to candidates, one hidden). */
+export const CODE_QUESTION: BankQuestion = {
+  id: 'q8',
+  status: 'draft',
+  version: 1,
+  aiDrafted: false,
+  author: 'Ramesh Iyer',
+  approvedBy: null,
+  approvedAt: null,
+  content: {
+    type: 'code',
+    text: 'Write a function that returns the k most frequent words in a list.',
+    topic: 'Java collections',
+    category: 'Backend L2',
+    difficulty: 'hard',
+    marks: 10,
+    negativeMarks: 0,
+    tags: [],
+    languageMode: 'fixed',
+    allowedLanguages: ['java'],
+    starterCode: 'class Solution {\n  List<String> top(List<String> words, int k) {\n  }\n}',
+    options: [],
+    codeTests: [
+      { stdin: 'a b a c a b\n2', expectedStdout: 'a b', weight: 1, hidden: false },
+      { stdin: 'x\n1', expectedStdout: 'x', weight: 2, hidden: true },
+    ],
+  },
+  openChange: null,
+  history: [],
+  translations: [],
 };
 
 export const BANK_QUESTION: BankQuestion = {
@@ -74,7 +111,7 @@ export const BANK_QUESTION_MAJOR: BankQuestion = {
 };
 
 export function liveEditor(over: Partial<LiveEditor> = {}): LiveEditor {
-  return { state: 'ready', onRetry: () => undefined, question: BANK_QUESTION, settings: BANK_SETTINGS, stats: ITEM_STATS, onBack: () => undefined, onSave: () => Promise.resolve({ saved: 'minor' as const, version: 2 }), onSubmit: () => Promise.resolve({ duplicate: null, needsSecond: false }), onWithdraw: ok, onSaveTranslation: ok, onSubmitTranslation: ok, onOpenQuestion: () => undefined, ...over };
+  return { state: 'ready', onRetry: () => undefined, question: BANK_QUESTION, settings: BANK_SETTINGS, stats: ITEM_STATS, onBack: () => undefined, onSave: () => Promise.resolve({ saved: 'minor' as const, version: 2 }), onSubmit: () => Promise.resolve({ duplicate: null, needsSecond: false }), onUploadImage: () => Promise.resolve({ imageUrl: 'question-images/packing-line.png' }), codeLanguages: CODE_LANGUAGES, onWithdraw: ok, onSaveTranslation: ok, onSubmitTranslation: ok, onOpenQuestion: () => undefined, ...over };
 }
 
 export const REVIEW_CHANGES: ReviewChange[] = [

@@ -127,6 +127,18 @@ describe('Ask YukthiX follow-ups (2112, 2113)', () => {
       await api(acting, 'post', `/help/assistant/conversations/${emp}/sales-request`).send(sale).expect(403);
       expect(await sup((tx) => tx.salesAssistRequest.count({ where: { organizationId: { in: [org.A, org.B] } } }))).toBe(1);
     });
+
+    // Answer 2135: one open chat sales request per company at a time.
+    it('a second chat about buying waits while the company has one open; once it is decided, a new one goes', async () => {
+      const second = await ask('adminA', 'And the price of the Enterprise plan?', 'buying');
+      expect((await api('adminA', 'post', `/help/assistant/conversations/${second}/sales-request`).send(sale).expect(409)).body.message).toMatch(/already asked YukthiX sales from a chat\. They reply by/);
+      expect((await api('adminA', 'get', '/help/assistant').expect(200)).body.conversation).toMatchObject({ id: second, salesRequestSent: false });
+      await sup((tx) => tx.salesAssistRequest.updateMany({ where: { organizationId: org.A, source: 'assistant' }, data: { status: 'demo_booked', ownerId: users.success, decidedAt: new Date() } }));
+      await api('adminA', 'post', `/help/assistant/conversations/${second}/sales-request`).send(sale).expect(201);
+      // Another company is never held back by this one.
+      const b = await ask('adminB', 'What does the Pro plan cost?', 'buying');
+      await api('adminB', 'post', `/help/assistant/conversations/${b}/sales-request`).send(sale).expect(201);
+    });
   });
 
   describe('2113: feature requests have a console key of their own', () => {

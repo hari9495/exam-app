@@ -223,6 +223,7 @@ describe('AttemptService', () => {
             { id: 'section-2', title: 'Section Two', selectionMode: 'pool', poolSize: 5, questions: [] },
           ]),
         },
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
       };
       mockBootstrapWithLogoThenScoped(tx);
 
@@ -234,6 +235,8 @@ describe('AttemptService', () => {
           title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60,
           schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null,
           proctoring: { enableAntiCheating: true, webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] },
+          // AS-2 (answer 2008): no company value, so the default retention.
+          evidenceRetentionDays: 30,
         },
         schedulingWindowState: null,
         sections: [
@@ -249,7 +252,7 @@ describe('AttemptService', () => {
     it('returns the organization primaryColor alongside the logo when the org has one set', async () => {
       const tx = {
         attempt: { findUnique: jest.fn().mockResolvedValue(null) },
-        examSection: { findMany: jest.fn().mockResolvedValue([]) },
+        examSection: { findMany: jest.fn().mockResolvedValue([]) }, setting: { findFirst: jest.fn().mockResolvedValue(null) },
       };
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve(invitationRecord))
@@ -416,6 +419,16 @@ describe('AttemptService', () => {
       });
     });
 
+    it('AS-2 (answer 2008): tells the candidate the company retention before consent, kept inside 30 to 365 days', async () => {
+      for (const [stored, shown] of [['180', 180], ['7', 30], ['1000', 365], ['x', 30]] as const) {
+        const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) }, setting: { findFirst: jest.fn().mockResolvedValue({ value: stored }) } };
+        mockBootstrapWithLogoThenScoped(tx);
+        const result = (await service.getCurrent(session)) as { exam: { evidenceRetentionDays: number } };
+        expect([stored, result.exam.evidenceRetentionDays]).toEqual([stored, shown]);
+        expect(tx.setting.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ key: 'asmt.retention', scopeType: 'tenant' }) }));
+      }
+    });
+
     it('falls back to 0 questions for a pool section with poolSize unset', async () => {
       const tx = {
         attempt: { findUnique: jest.fn().mockResolvedValue(null) },
@@ -424,6 +437,7 @@ describe('AttemptService', () => {
             { id: 'section-1', title: 'Section One', selectionMode: 'pool', poolSize: null, questions: [] },
           ]),
         },
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
       };
       mockBootstrapWithLogoThenScoped(tx);
 
@@ -433,7 +447,7 @@ describe('AttemptService', () => {
     });
 
     it('returns the effective duration (exam duration + extraTimePercent) when the invitation has an accommodation', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) }, setting: { findFirst: jest.fn().mockResolvedValue(null) } };
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, extraTimePercent: 50 }))
         .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath: null }))
@@ -694,7 +708,7 @@ describe('AttemptService', () => {
     });
 
     it('resolves tenant context via an unscoped bootstrap lookup, an unscoped logo lookup, then a properly scoped call', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) }, setting: { findFirst: jest.fn().mockResolvedValue(null) } };
       mockBootstrapWithLogoThenScoped(tx);
 
       await service.getCurrent(session);
@@ -1027,7 +1041,7 @@ describe('AttemptService', () => {
     });
 
     it('includes the resolved proctoring config in the pre-start preview, because the welcome screen gates the camera prompt on it', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) }, setting: { findFirst: jest.fn().mockResolvedValue(null) } };
       mockBootstrapWithLogoThenScoped(tx);
 
       const result = await service.getCurrent(session);
@@ -1508,7 +1522,7 @@ describe('AttemptService', () => {
     it('allows start from an IP inside the range', async () => {
       const tx = {
         attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
-        examSection: { findMany: jest.fn().mockResolvedValue([]) },
+        examSection: { findMany: jest.fn().mockResolvedValue([]) }, setting: { findFirst: jest.fn().mockResolvedValue(null) },
       };
       mockRestrictedInvitation(tx, '203.0.113.0/24');
 
@@ -1521,7 +1535,7 @@ describe('AttemptService', () => {
     it('skips the check entirely when allowedIpRange is null', async () => {
       const tx = {
         attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
-        examSection: { findMany: jest.fn().mockResolvedValue([]) },
+        examSection: { findMany: jest.fn().mockResolvedValue([]) }, setting: { findFirst: jest.fn().mockResolvedValue(null) },
       };
       mockRestrictedInvitation(tx, null);
 
@@ -1592,7 +1606,7 @@ describe('AttemptService', () => {
     }
 
     it('getCurrent() returns schedulingWindowState "not_open" before the window opens, with no attempt created', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() }, examSection: { findMany: jest.fn().mockResolvedValue([]) }, setting: { findFirst: jest.fn().mockResolvedValue(null) } };
       mockInvitationWithExamAndLogo(tx, notYetOpenExam);
 
       const result = await service.getCurrent(session);
@@ -1605,6 +1619,7 @@ describe('AttemptService', () => {
           availabilityWindowStart: notYetOpenExam.availabilityWindowStart,
           availabilityWindowEnd: notYetOpenExam.availabilityWindowEnd,
           proctoring: { enableAntiCheating: true, webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] },
+          evidenceRetentionDays: 30,
         },
         schedulingWindowState: 'not_open',
         sections: [],
@@ -1616,7 +1631,7 @@ describe('AttemptService', () => {
     });
 
     it('getCurrent() returns schedulingWindowState "closed" after the window has passed, with no attempt created', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() }, examSection: { findMany: jest.fn().mockResolvedValue([]) }, setting: { findFirst: jest.fn().mockResolvedValue(null) } };
       mockInvitationWithExamAndLogo(tx, closedExam);
 
       const result = await service.getCurrent(session);
@@ -1626,7 +1641,7 @@ describe('AttemptService', () => {
     });
 
     it('getCurrent() returns schedulingWindowState "open" within the window', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) }, setting: { findFirst: jest.fn().mockResolvedValue(null) } };
       mockInvitationWithExamAndLogo(tx, openExam);
 
       const result = await service.getCurrent(session);
@@ -1635,7 +1650,7 @@ describe('AttemptService', () => {
     });
 
     it('getCurrent() returns schedulingWindowState null for a non-scheduled exam', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) }, setting: { findFirst: jest.fn().mockResolvedValue(null) } };
       mockBootstrapWithLogoThenScoped(tx);
 
       const result = await service.getCurrent(session);

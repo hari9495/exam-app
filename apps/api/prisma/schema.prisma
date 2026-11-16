@@ -772,6 +772,14 @@ model Exam {
   // brief. warn/pause/block enforcement is deferred to stage 3 pending threshold calibration
   // and a fairness check.
   faceMismatchAction            String        @default("flag") @map("face_mismatch_action") @db.VarChar(1000)
+  /// Assessments AS-2 (asmt.high_stakes): how many candidates the test is for; above the company number it needs an approver.
+  expectedCandidates            Int?          @map("expected_candidates")
+  approvalRequestedBy           String?       @map("approval_requested_by") @db.Uuid
+  approvalRequestedAt           DateTime?     @map("approval_requested_at") @db.Timestamptz(3)
+  /// Never the person who asked nor the author (a database check). Holds only while approvedFingerprint matches the test.
+  approvedBy                    String?       @map("approved_by") @db.Uuid
+  approvedAt                    DateTime?     @map("approved_at") @db.Timestamptz(3)
+  approvedFingerprint           String?       @map("approved_fingerprint") @db.VarChar(64)
   createdBy                     String        @map("created_by") @db.Uuid
   createdAt                     DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   sections                      ExamSection[]
@@ -14222,6 +14230,8 @@ model SdItsmSettings {
   repeatDays          Int      @default(7) @map("repeat_days")
   /// Answer 2056: whom a change or known-error notice reaches: all | location | application.
   noticeScope         String   @default("all") @map("notice_scope") @db.VarChar(12)
+  /// Answer 2071: with no other IT lead, the desk admins approve the IT lead step.
+  leadFallbackAdmin   Boolean  @default(true) @map("lead_fallback_admin")
   version             Int      @default(1)
   updatedBy           String?  @map("updated_by") @db.Uuid
   createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -14528,4 +14538,16 @@ model ConnectivityCredit {
 
   @@index([organizationId, status], map: "connectivity_credits_organization_id_status_idx")
   @@map("connectivity_credits")
+}
+
+/// Answer 2129: a bank writer was told today that questions wait for their review (one note per person per India day).
+model QuestionReviewNudge {
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  day            DateTime @db.Date
+  waiting        Int
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([organizationId, userId, day])
+  @@map("question_review_nudges")
 }

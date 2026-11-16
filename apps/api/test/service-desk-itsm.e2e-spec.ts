@@ -643,4 +643,30 @@ describe('Helpdesk ITSM: changes and problems', () => {
     expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.count({ where: { recipientUserId: users.lead2, type: 'helpdesk.recurring.skipped' } }))).toBe(1);
     expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.count({ where: { recipientUserId: users.agent, type: 'helpdesk.recurring.skipped' } }))).toBe(0);
   });
+  it('a desk whose only IT lead raised a change falls back to the desk admins; a setting, on by default; nobody approves their own change (answer 2071)', async () => {
+    // A second IT desk with one lead (lead) and one admin (deskAdmin). On the first desk, lead2 approves lead's changes.
+    const it2 = (await api('adminA', 'post', '/desk/desks').send({ name: 'Plant IT desk', key: 'PIT', kind: 'it' }).expect(201)).body.id as string;
+    await api('adminA', 'post', `/desk/desks/${it2}/members`).send({ userId: users.lead, role: 'lead' }).expect(201);
+    await api('adminA', 'post', `/desk/desks/${it2}/members`).send({ userId: users.deskAdmin, role: 'admin' }).expect(201);
+    let s = (await api('deskAdmin', 'get', `/desk/desks/${it2}/itsm-settings`).expect(200)).body;
+    expect([s.leadFallbackAdmin, s.defaults.leadFallbackAdmin]).toEqual([true, true]);
+    const day = sat();
+    const base = { kind: 'normal', appId: ids.tally, answers: LOW, from: at(day, '13:00'), to: at(day, '14:00'), backout: 'Undo the patch.' };
+    // Two leads: the other lead approves; the desk admin is not asked.
+    const two = (await api('lead', 'post', '/desk/changes').send({ ...base, deskId: ids.it, title: 'Two leads patch' }).expect(201)).body;
+    expect([Boolean(await taskFor('lead2', two.number)), await taskFor('deskAdmin', two.number), await taskFor('lead', two.number)]).toEqual([true, undefined, undefined]);
+    // One lead, and it raised the change: the desk admin approves; never the lead itself.
+    const one = (await api('lead', 'post', '/desk/changes').send({ ...base, deskId: it2, title: 'One lead patch' }).expect(201)).body;
+    expect(await taskFor('lead', one.number)).toBeUndefined();
+    await decide('deskAdmin', (await taskFor('deskAdmin', one.number))!.taskId, 'approve').expect(200);
+    expect((await change(one.id)).stage).toBe('scheduled');
+    // Negative: only the desk admin changes the setting.
+    await api('agent', 'put', `/desk/desks/${it2}/itsm-settings`).send({ version: s.version, leadFallbackAdmin: false }).expect(403);
+    // Negative: switched off, nobody is left to approve and the change is refused, nothing raised.
+    // (A desk's first save needs a change board while high risk goes to the board: this desk sends it to the lead and owner.)
+    s = (await api('deskAdmin', 'put', `/desk/desks/${it2}/itsm-settings`).send({ version: s.version, leadFallbackAdmin: false, routeHigh: 'lead_owner' }).expect(200)).body;
+    expect(s.leadFallbackAdmin).toBe(false);
+    expect((await api('lead', 'post', '/desk/changes').send({ ...base, deskId: it2, title: 'No approver patch' }).expect(400)).body.message).toMatch(/No one can approve/);
+    expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.sdTicket.count({ where: { organizationId: org.A.id, subject: 'No approver patch' } }))).toBe(0);
+  });
 });

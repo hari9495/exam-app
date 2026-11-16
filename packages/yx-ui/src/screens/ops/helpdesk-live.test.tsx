@@ -305,6 +305,23 @@ describe('HLP-01 Help centre (live)', () => {
     expect(onMeToo).toHaveBeenCalledTimes(1);
   });
 
+  it('ITSM 2072: Me too on a known problem raises a ticket; the toast\'s "Open it" opens it', async () => {
+    const onMeToo = vi.fn().mockResolvedValue({ linked: true, ticket: { id: 't9', number: 'IT-1020' } });
+    const onOpen = vi.fn();
+    render(<HelpCentreScreen live={liveHelp({ banners: HELP_BANNERS, onMeToo, onOpen })} />);
+    await ue.click(screen.getByRole('button', { name: 'Me too' }));
+    expect(await screen.findByText('We raised IT-1020 for you')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Open it' }));
+    expect(onOpen).toHaveBeenCalledWith('t9');
+  });
+
+  it('ITSM 2072, negative: following an outage (no ticket raised) has nothing to open', async () => {
+    render(<HelpCentreScreen live={liveHelp({ banners: HELP_BANNERS, onMeToo: vi.fn().mockResolvedValue({ linked: true }) })} />);
+    await ue.click(screen.getByRole('button', { name: 'Me too' }));
+    expect(await screen.findByText('You are on this issue')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open it' })).not.toBeInTheDocument();
+  });
+
   it('loading, error with retry, empty and no access', async () => {
     const onRetry = vi.fn();
     const { rerender } = render(<HelpCentreScreen live={liveHelp({ state: 'loading' })} />);

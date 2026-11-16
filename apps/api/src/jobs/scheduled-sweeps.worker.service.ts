@@ -33,6 +33,7 @@ import { CsFollowupService } from '../platform/cs-followup.service';
 import { StaffRolesService } from '../platform/staff-roles.service';
 import { AnalyticsService } from '../platform/analytics.service';
 import { CompanyDeletionService } from '../platform/company-deletion.service';
+import { QuestionReviewNudgesService } from '../questions/bank/review-nudges.service';
 import { SettingChangeNoticesService } from '../org-structure/setting-change-notices.service';
 
 import { ProjectsService } from '../projects/projects.service';
@@ -87,6 +88,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     projectCost: ProjectCostService,
     analytics: AnalyticsService,
     deletions: CompanyDeletionService,
+    questionReviews: QuestionReviewNudgesService,
   ) {
     // Keys MUST match SWEEP_SCHEDULE ids.
     this.handlers = {
@@ -136,6 +138,8 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       'analytics-summary': () => analytics.summariseNightly(),
       // Settings 1976: kept statutory records past their day.
       'retention-expiry': () => deletions.releaseSweep(),
+      // Assessments answer 2129.
+      'question-review-nudges': () => questionReviews.sweep(),
     };
     this.worker = logBullErrors(new Worker(SCHEDULED_SWEEPS_QUEUE_NAME, (job) => this.dispatch(job), bullOpts(this.connection)), SCHEDULED_SWEEPS_QUEUE_NAME);
     this.worker.on('failed', (job, err) => this.logger.error(`Sweep "${job?.name}" failed: ${msg(err)}`));

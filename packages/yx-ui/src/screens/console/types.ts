@@ -36,7 +36,15 @@ export interface CompanyDetail extends CompanyRow {
   /** Answer 1882: an open request to delete the company's data; `mine` when the viewer asked (a second person confirms). */
   deletion?: { id: string; mine: boolean; askedAt: string; reason: string } | null;
   /** Answers 1973, 1975: the data was deleted; the statutory records are kept read-only until a day; the certificate. */
-  deleted?: { at: string; recordsKeptUntil: string | null; certificateSha256: string | null } | null;
+  deleted?: {
+    at: string;
+    recordsKeptUntil: string | null;
+    certificateSha256: string | null;
+    /** Answer 2081: each kept group removed after its day, with its certificate's SHA-256. */
+    removals?: { group: 'audit' | 'pay' | 'filings' | 'company'; removedAt: string; sha256: string }[];
+    /** Answer 2083: legal holds in force on the deleted company (staff set them from the console). */
+    holds?: { id: string; caseRef: string; reason: string; until: string }[];
+  } | null;
 }
 
 /** Careers answer 442: GET platform/companies/:id/settings (the settings only YukthiX changes, each allowed by the plan). */
@@ -148,4 +156,12 @@ export interface CompanyFeature {
   source: 'product' | 'setting' | 'switch';
   /** Why it is off, e.g. "Not in the plan". */
   note?: string;
+}
+
+/** Answer 2083: a legal hold staff set on a deleted company (case, why, until which day). */
+export interface LegalHoldInput {
+  caseRef: string;
+  reason: string;
+  /** YYYY-MM-DD. */
+  until: string;
 }

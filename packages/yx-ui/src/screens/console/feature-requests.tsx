@@ -124,53 +124,76 @@ export function FeatureRequestsConsoleScreen(props: FeatureRequestsScreenProps) 
           </Card>
         </TabsContent>
         <TabsContent value="review">
-          {r ? (
-            <div className="yx-auth__stack">
-              <Card title={`Answers, last ${r.days} days`}>
-                <DescriptionList
-                  items={[
-                    { label: 'Answers', value: String(r.answers) },
-                    { label: 'Answered from help', value: String(r.byOutcome.answered ?? 0) },
-                    { label: 'Not in help', value: String(r.byOutcome.not_covered ?? 0) },
-                    { label: 'Needs a person', value: String(r.byOutcome.needs_person ?? 0) },
-                    { label: 'Feature requests or buying', value: String((r.byOutcome.feature_request ?? 0) + (r.byOutcome.buying ?? 0)) },
-                    { label: 'Marked helpful / not helpful', value: `${r.thumbsUp} / ${r.thumbsDown}` },
-                  ]}
-                />
-              </Card>
-              <Card title="Questions help did not answer">
-                <DataTable
-                  label="Questions help did not answer"
-                  columns={[
-                    { key: 'q', header: 'Question (personal data hidden)', value: (x) => x.question },
-                    { key: 'o', header: 'Why', value: (x) => (x.feedback === 'down' ? 'Marked not helpful' : OUTCOME_LABEL[x.outcome ?? ''] ?? '') },
-                    { key: 'at', header: 'When', value: (x) => day(x.at) },
-                  ]}
-                  rows={r.unanswered}
-                  getRowId={(x) => `${x.at}-${x.question.slice(0, 20)}`}
-                  rowNoun={['question', 'questions']}
-                />
-              </Card>
-              <Card title="Chats that became tickets">
-                <DataTable
-                  label="Chats that became tickets"
-                  columns={[
-                    { key: 't', header: 'Ticket', value: (x) => x.ticket ?? 'Sending' },
-                    { key: 'c', header: 'Company', value: (x) => x.company },
-                    { key: 'at', header: 'When', value: (x) => day(x.at) },
-                  ]}
-                  rows={r.tickets}
-                  getRowId={(x) => `${x.ticket}-${x.at}`}
-                  rowNoun={['ticket', 'tickets']}
-                />
-              </Card>
-            </div>
-          ) : (
-            <Text tone="secondary">The review did not load.</Text>
-          )}
+          <AssistantReviewPanel review={r} />
         </TabsContent>
       </Tabs>
       {dialog}
+    </ConsolePage>
+  );
+}
+
+/** The Ask YukthiX review (answers by outcome, thumbs, questions help did not answer, chats that became tickets). */
+function AssistantReviewPanel({ review: r }: { review: AssistantReview | null }) {
+  return r ? (
+        <div className="yx-auth__stack">
+          <Card title={`Answers, last ${r.days} days`}>
+            <DescriptionList
+              items={[
+                { label: 'Answers', value: String(r.answers) },
+                { label: 'Answered from help', value: String(r.byOutcome.answered ?? 0) },
+                { label: 'Not in help', value: String(r.byOutcome.not_covered ?? 0) },
+                { label: 'Needs a person', value: String(r.byOutcome.needs_person ?? 0) },
+                { label: 'Feature requests or buying', value: String((r.byOutcome.feature_request ?? 0) + (r.byOutcome.buying ?? 0)) },
+                { label: 'Marked helpful / not helpful', value: `${r.thumbsUp} / ${r.thumbsDown}` },
+              ]}
+            />
+          </Card>
+          <Card title="Questions help did not answer">
+            <DataTable
+              label="Questions help did not answer"
+              columns={[
+                { key: 'q', header: 'Question (personal data hidden)', value: (x) => x.question },
+                { key: 'o', header: 'Why', value: (x) => (x.feedback === 'down' ? 'Marked not helpful' : OUTCOME_LABEL[x.outcome ?? ''] ?? '') },
+                { key: 'at', header: 'When', value: (x) => day(x.at) },
+              ]}
+              rows={r.unanswered}
+              getRowId={(x) => `${x.at}-${x.question.slice(0, 20)}`}
+              rowNoun={['question', 'questions']}
+            />
+          </Card>
+          <Card title="Chats that became tickets">
+            <DataTable
+              label="Chats that became tickets"
+              columns={[
+                { key: 't', header: 'Ticket', value: (x) => x.ticket ?? 'Sending' },
+                { key: 'c', header: 'Company', value: (x) => x.company },
+                { key: 'at', header: 'When', value: (x) => day(x.at) },
+              ]}
+              rows={r.tickets}
+              getRowId={(x) => `${x.ticket}-${x.at}`}
+              rowNoun={['ticket', 'tickets']}
+            />
+          </Card>
+        </div>
+      ) : (
+        <Text tone="secondary">The review did not load.</Text>
+      );
+}
+
+export interface AssistantReviewScreenProps {
+  state: LoadState;
+  onRetry?: () => void;
+  review: AssistantReview | null;
+}
+
+/**
+ * Answer 2132: the Ask YukthiX review on its own console page, for the help centre writers (they fix the gaps it shows)
+ * and the feature-request deciders. The same review as the Feature requests page's second tab.
+ */
+export function AssistantReviewConsoleScreen(props: AssistantReviewScreenProps) {
+  return (
+    <ConsolePage crumb="Ask YukthiX review" title="Ask YukthiX review" description="How the help assistant's answers are doing, and the questions help did not answer: write or fix those articles in Help centre." state={props.state} onRetry={props.onRetry} what="the Ask YukthiX review">
+      <AssistantReviewPanel review={props.review} />
     </ConsolePage>
   );
 }

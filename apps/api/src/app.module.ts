@@ -33,6 +33,7 @@ import { UserGroupsModule } from './user-groups/user-groups.module';
 import { QuestionsModule } from './questions/questions.module';
 import { ExamsModule } from './exams/exams.module';
 import { BeforeTestModule } from './assessments/before-test/before-test.module';
+import { AssessmentsModule } from './assessments/assessments.module';
 import { CandidatesModule } from './candidates/candidates.module';
 import { InvitationsModule } from './invitations/invitations.module';
 import { WalkInModule } from './walk-in/walk-in.module';
@@ -149,6 +150,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     QuestionsModule,
     ExamsModule,
     BeforeTestModule,
+    AssessmentsModule,
     CandidatesModule,
     InvitationsModule,
     WalkInModule,
