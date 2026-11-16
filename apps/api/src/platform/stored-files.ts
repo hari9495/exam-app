@@ -49,6 +49,7 @@ export const NOT_STORED_FILES: Readonly<Record<string, string>> = {
   'approval_requests.chain_snapshot_json': 'approval chain copy',
   'arrears_worksheets.source_ref': 'record id',
   'asset_assignments.ack_evidence': 'click evidence (time, IP)',
+  'assistant_conversations.ticket_ref': 'ticket number',
   'attempts.section_snapshot_json': 'exam sections copy',
   'audit_legal_holds.case_ref': 'case number',
   'automation_webhooks.url': 'web address',

@@ -14267,6 +14267,30 @@ model CompanyDeletion {
   @@map("company_deletions")
 }
 
+/// Answer 1976: a purged company's kept groups (audit, pay, filings, company), each with its own day, and the second
+/// certificate once release_company_records removed it. Written only by that function (the table owner).
+model CompanyRecordGroup {
+  organizationId    String    @map("organization_id") @db.Uuid
+  recordGroup       String    @map("record_group") @db.VarChar(12)
+  keptUntil         DateTime  @map("kept_until") @db.Date
+  releasedAt        DateTime? @map("released_at") @db.Timestamptz(3)
+  rows              BigInt?
+  certificate       String?
+  certificateSha256 String?   @map("certificate_sha256") @db.Char(64)
+
+  @@id([organizationId, recordGroup])
+  @@map("company_record_groups")
+}
+
+/// Answer 1976: the removal permit release_company_records writes for its own transaction; owner only (no app grant).
+model RetentionReleaseGrant {
+  txid           BigInt
+  organizationId String @map("organization_id") @db.Uuid
+
+  @@id([txid, organizationId])
+  @@map("retention_release_grants")
+}
+
 /// Ask YukthiX (answers 2101 to 2108): one person's chat with the help assistant. RLS: the company, then the person.
 model AssistantConversation {
   id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
