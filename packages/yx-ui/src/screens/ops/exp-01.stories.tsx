@@ -10,6 +10,8 @@ const PHONE = { viewport: { value: 'mobile2', isRotated: false } };
 const base = { claims: MY_CLAIMS, toPay: TO_PAY, today: TODAY };
 
 export const Employee: S = { name: 'Employee (my claims)', render: () => <ExpensesHomeScreen {...base} /> };
+// Keka ideas (2026-11): expenses saved first, claimed later.
+export const EmployeeSaved: S = { name: 'Employee · expenses to be claimed', render: () => <ExpensesHomeScreen {...base} saved /> };
 export const Manager: S = { name: 'Manager (waiting for me)', render: () => <ExpensesHomeScreen {...base} persona="mgr" /> };
 export const Finance: S = { name: 'Finance (to pay)', render: () => <ExpensesHomeScreen {...base} persona="fin" /> };
 export const Empty: S = { name: 'Empty (first use)', render: () => <ExpensesHomeScreen {...base} claims={[]} state="empty" /> };

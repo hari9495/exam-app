@@ -28,6 +28,7 @@ import { dayKey } from '../../lib/dates';
 import { errorText } from '../org/org-kit';
 import { useAct } from '../growth/perf-live';
 import { Actions, CardGrid, Facts, MoneyLead, OpsDesk, ReceiptImage, Workspace } from './ops-kit';
+import { SavedExpensesCard, type LiveSavedExpenses } from './expenses-saved';
 import { FLAG_TEXT, PAYMENT, PAY_MODE, STATUS, amount, approvalSteps, cutText, day, lineChecks, money, moneyInput, monthName, paise, paymentText, prevMonthOf, sumMoney, toLineInput, type LoadState } from './expenses-live-data';
 import type { AdvanceSummary, ClaimDetail, ClaimLine, ClaimSummary, ExpenseCategory, ExpenseHome, LineInput, ToPayData, TripSummary } from '../expenses/live/types';
 
@@ -85,6 +86,8 @@ export interface LiveHome {
   cardLines?: number | null;
   /** Opens the new-claim dialog at once (the "New expense claim" action, Ctrl K, N E). */
   startNew?: boolean;
+  /** Keka ideas (2026-11): expenses saved first, claimed later (absent on an older API: the card is hidden). */
+  saved?: LiveSavedExpenses;
 }
 
 type View = 'emp' | 'mgr' | 'fin';
@@ -195,6 +198,7 @@ export function LiveExpensesHome({ live }: { live: LiveHome }) {
           <Button icon={Plane} onClick={live.onRequestTrip}>Request a trip</Button>
           <Button icon={Car} onClick={() => setNaming({ then: 'mileage' })}>Add mileage</Button>
         </Actions>
+        {live.saved && <SavedExpensesCard live={live.saved} />}
         <h2 className="yx-ops-card__title">My claims</h2>
         {claimList}
         {dialog}
@@ -295,7 +299,16 @@ export function LiveExpensesHome({ live }: { live: LiveHome }) {
       />
       {switcher}
       <Workspace
-        main={<Card title="My claims">{claimList}</Card>}
+        main={
+          live.saved ? (
+            <div className="yx-ops-stack">
+              <SavedExpensesCard live={live.saved} />
+              <Card title="My claims">{claimList}</Card>
+            </div>
+          ) : (
+            <Card title="My claims">{claimList}</Card>
+          )
+        }
         rail={
           <>
             <MoneyLead label="You will receive" amount={toReceive} sub={payroll} />

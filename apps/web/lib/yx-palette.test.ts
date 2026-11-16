@@ -15,7 +15,7 @@ describe('buildPalette', () => {
   it('opened empty: Recent and Actions only, never a list of every menu page', () => {
     const p = buildPalette(input({ recent: [{ label: 'My leave', type: 'page', href: '/yx/time/leave' }, { label: 'Arjun Mehta', type: 'person', href: '/yx/people/directory?q=Arjun' }], waiting: 2 }));
     expect(headings(p)).toEqual(['Recent', 'Actions']);
-    expect(labels(p, 'Actions')).toEqual(['Apply leave', 'Regularise a day', 'Request work from home', 'Approve requests', 'New expense claim', 'Raise a ticket']);
+    expect(labels(p, 'Actions')).toEqual(['Apply leave', 'Regularise a day', 'Request work from home', 'Approve requests', 'New expense claim', 'Add an expense', 'Raise a ticket']);
     const recent = p.groups[0].items;
     expect(recent.map((i) => [i.label, i.secondary])).toEqual([['My leave', 'Time › My time'], ['Arjun Mehta', 'Person']]);
     expect(recent.every((i) => i.icon)).toBe(true);

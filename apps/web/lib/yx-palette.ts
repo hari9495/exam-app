@@ -80,6 +80,7 @@ export function buildPalette(p: PaletteInput): { groups: PaletteGroup[]; targets
     ...(attendance ? [item({ id: 'act:wfh', label: 'Request work from home', secondary: 'Opens the request sheet', icon: House, keywords: ['wfh', 'work from home', 'remote'] }, { href: `${attendance.href}?request=wfh` })] : []),
     ...(approvals ? [item({ id: 'act:approve', label: 'Approve requests', secondary: p.waiting ? `Approvals · ${p.waiting} waiting` : 'Approvals · nothing waiting', icon: CheckSquare, keywords: ['approve', 'approvals', 'leave', 'expense'] }, { href: approvals.href })] : []),
     ...(expenses ? [item({ id: 'act:expense', label: 'New expense claim', secondary: 'Opens the request sheet', icon: Receipt, shortcut: 'N E', keywords: ['expense', 'claim', 'receipt', 'bill'] }, { href: `${expenses.href}?new=1` })] : []),
+    ...(expenses ? [item({ id: 'act:save-expense', label: 'Add an expense', secondary: 'Save it now, claim it later', icon: Receipt, keywords: ['expense', 'receipt', 'save', 'bill', 'spend'] }, { href: `${expenses.href}?save=1` })] : []),
     ...(desk ? [item({ id: 'act:ticket', label: 'Raise a ticket', secondary: 'Ask HR, IT or finance', icon: Ticket, keywords: ['ticket', 'helpdesk', 'help desk', 'issue', 'query'] }, { href: `${desk.href}?new=1` })] : []),
   ];
   if (leave) shortcuts['N L'] = `${leave.href}?apply=1`;

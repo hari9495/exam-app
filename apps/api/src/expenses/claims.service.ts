@@ -450,6 +450,7 @@ export class ExpenseClaimsService implements OnModuleInit {
   async addItem(ctx: TenantContext, user: ScopeUser, dto: { spentOn: string; amount: string; categoryCode?: string | null; merchant?: string | null; description?: string | null }, file?: { originalname: string; buffer: Buffer }) {
     if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
     if (dto.spentOn > todayIst()) throw new BadRequestException('A bill cannot be dated in the future.');
+    if (!(Number(dto.amount) > 0)) throw new BadRequestException('Enter an amount above zero.');
     const v = await this.viewer(user);
     const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
