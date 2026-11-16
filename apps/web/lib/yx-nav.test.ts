@@ -48,7 +48,10 @@ describe('buildNav: areas', () => {
   it('Hire › Assessments: Tests for test writers, Invitations & drives for inviters', () => {
     const assess = (n: ReturnType<typeof buildNav>) => n.find((a) => a.id === 'hire')?.sections.find((s) => s.label === 'Assessments')?.items.map((l) => l.label) ?? [];
     expect(assess(nav(['asmt.bank.manage', 'asmt.test.manage'], { assessments: true }))).toEqual(['Question bank', 'Tests', 'Question review', 'Item analysis']);
-    expect(assess(nav(['exam:manage'], { assessments: true }))).toEqual(['Tests']);
+    // AS-5: test owners also review integrity and appeals; a proctor or evaluator sees only those.
+    expect(assess(nav(['exam:manage'], { assessments: true }))).toEqual(['Tests', 'Integrity review', 'Appeals']);
+    expect(assess(nav(['asmt.proctor'], { assessments: true }))).toEqual(['Integrity review', 'Appeals']);
+    expect(assess(nav(['asmt.evaluate'], { assessments: false }))).toEqual([]);
     expect(assess(nav(['ats.candidate.manage'], { assessments: true }))).toEqual(['Invitations & drives']);
     expect(assess(nav(['candidate:manage'], { assessments: true }))).toEqual(['Invitations & drives']);
     // negative: assessments off, or a results reader only.
