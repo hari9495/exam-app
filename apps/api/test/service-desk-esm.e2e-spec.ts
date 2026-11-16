@@ -531,8 +531,12 @@ describe('Service Desk 3b-2 batch 1: catalogue, approvals, automation', () => {
     it('a rule over its hourly limit pauses itself', async () => {
       const rule = (await api('deskAdmin', 'post', '/desk/rules').send({ deskId: ids.it, name: 'Limited', maxRunsPerHour: 1, trigger: { type: 'created' }, condition: { id: 'g', join: 'and', items: [{ id: 'c1', field: 'subject', operator: 'contains', value: 'limit-me' }] }, actions: [{ type: 'add_tag', tag: 'limited' }] }).expect(201)).body;
       await api('deskAdmin', 'post', `/desk/rules/${rule.id}/status`).send({ version: rule.version, status: 'active' }).expect(200);
-      for (const n of [1, 2]) await api('emp', 'post', '/desk/my/tickets').send({ deskId: ids.it, subject: `limit-me ${n} ${run}`, description: 'x' }).expect(201);
-      const runs = await runsOf(rule.id, (r) => r.some((x) => x.outcome === 'limit_stopped'));
+      // ITSM answer 2075: the app's own dispatcher (every 5 s) runs beside this test's dispatch(); two tickets raised
+      // together could be handled at the same moment. So wait for the first ticket's run before raising the second.
+      const first = (await api('emp', 'post', '/desk/my/tickets').send({ deskId: ids.it, subject: `limit-me 1 ${run}`, description: 'x' }).expect(201)).body;
+      expect((await runsOf(rule.id, (r) => r.some((x) => x.outcome === 'matched' && x.recordId === first.id))).find((x) => x.outcome === 'matched')).toMatchObject({ recordId: first.id });
+      const second = (await api('emp', 'post', '/desk/my/tickets').send({ deskId: ids.it, subject: `limit-me 2 ${run}`, description: 'x' }).expect(201)).body;
+      const runs = await runsOf(rule.id, (r) => r.some((x) => x.outcome === 'limit_stopped' && x.recordId === second.id));
       expect(runs.map((x) => x.outcome).filter((o) => o !== 'not_matched')).toEqual(['matched', 'limit_stopped']);
       expect((await system((tx) => tx.rule.findFirstOrThrow({ where: { id: rule.id } }))).status).toBe('paused');
     });

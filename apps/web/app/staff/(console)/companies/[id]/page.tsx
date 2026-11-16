@@ -59,6 +59,9 @@ export default function ConsoleCompanyPage() {
           : undefined
       }
       onDownloadCertificate={can('platform.companies.view') ? downloadCertificate : undefined}
+      // Answer 2083: a legal hold on a deleted company (security key, asked for by apiFetch; audited).
+      onSetHold={can('platform.companies.manage') ? (input) => write(`${path}/legal-holds`, 'POST', input) : undefined}
+      onEndHold={can('platform.companies.manage') ? (holdId, reason) => write(`${path}/legal-holds/${encodeURIComponent(holdId)}/end`, 'POST', { reason }) : undefined}
       onRequestSupport={(input) => write(`${path}/support-sessions`, 'POST', input).then(() => undefined)}
       onOpenSession={async () => {
         await switchIntoOrg(id);

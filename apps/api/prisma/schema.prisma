@@ -14191,6 +14191,8 @@ model SdItsmSettings {
   repeatDays          Int      @default(7) @map("repeat_days")
   /// Answer 2056: whom a change or known-error notice reaches: all | location | application.
   noticeScope         String   @default("all") @map("notice_scope") @db.VarChar(12)
+  /// Answer 2071: with no other IT lead, the desk admins approve the IT lead step.
+  leadFallbackAdmin   Boolean  @default(true) @map("lead_fallback_admin")
   version             Int      @default(1)
   updatedBy           String?  @map("updated_by") @db.Uuid
   createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)

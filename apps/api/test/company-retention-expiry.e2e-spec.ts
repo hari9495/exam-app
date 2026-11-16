@@ -1,4 +1,5 @@
 import { INestApplication } from '@nestjs/common';
+import request from 'supertest';
 import * as argon2 from 'argon2';
 import { createHash, randomUUID } from 'crypto';
 import { Prisma, PrismaClient } from '@prisma/client';
@@ -6,12 +7,16 @@ import { AuditService, PrismaService, TenantPrismaService } from '@exam-platform
 import { bootAdminApp } from './dual-app';
 import { EmailService } from '../src/email/email.service';
 import { CompanyDeletionService } from '../src/platform/company-deletion.service';
+import { markSteppedUp } from './fixtures/step-up';
+import { giveStaffRoles } from './fixtures/staff-roles';
 
 // Answer 1976, against the real database, on throwaway companies only: a purged company's kept statutory records are
 // removed group by group once each group's day has passed (the audit years may be longer than pay or filings), then
 // the company and its people once nothing else is left, each with a second certificate. release_company_records
 // refuses before the day, under a legal hold, and for an open or never-purged company; the app role still cannot
-// remove kept rows itself, nor forge the groups or the permit.
+// remove kept rows itself, nor forge the groups or the permit. Answers 2081, 2083, 2084: the console lists each removal,
+// staff set and end a legal hold on a deleted company (security key, audited), and the two staff who asked for and
+// confirmed the deletion are told of each removal.
 describe('Removing kept records after their day (1976)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
@@ -23,6 +28,10 @@ describe('Removing kept records after their day (1976)', () => {
   const org: Record<'A' | 'H' | 'O' | 'N', string> = { A: '', H: '', O: '', N: '' };
   const users: string[] = [];
   let planId = '';
+  const PASSWORD = 'Corr3ct-Horse-Battery';
+  const staff: Record<'s1' | 's2' | 'cold', { id: string; email: string; token: string }> = {} as never;
+  const sent = jest.fn(async (_m: { to: string; subject: string; html: string }) => ({ success: true }));
+  const api = (who: keyof typeof staff, method: 'get' | 'post', path: string) => request(app.getHttpServer())[method](`/api/v1${path}`).set('Authorization', `Bearer ${staff[who].token}`);
   // Purging and removing walk every company table: a long transaction, as in the service.
   const sup = <T>(fn: (tx: Prisma.TransactionClient) => Promise<T>) => tenantPrisma.forTenant(SUPER, fn, { timeout: 300_000 });
   const releaseDirect = (id: string) => sup((tx) => tx.$queryRaw<{ out: unknown }[]>`SELECT release_company_records(${id}::uuid) AS out`);
@@ -64,16 +73,26 @@ describe('Removing kept records after their day (1976)', () => {
   async function purge(id: string) {
     await sup((tx) => tx.organization.update({ where: { id }, data: { lifecycle: 'closed' } }));
     await sup((tx) => tx.organization.update({ where: { id }, data: { lifecycleChangedAt: dayAgo(60) } }));
-    await sup((tx) => tx.companyDeletion.create({ data: { organizationId: id, companyName: id, companySlug: id, reason: 'Kept-records test', requestedBy: randomUUID(), approvedBy: randomUUID() } }));
+    await sup((tx) => tx.companyDeletion.create({ data: { organizationId: id, companyName: id, companySlug: id, reason: 'Kept-records test', requestedBy: staff.s1.id, approvedBy: staff.s2.id } }));
     await sup((tx) => tx.$queryRaw`SELECT purge_company(${id}::uuid)`);
   }
 
   beforeAll(async () => {
-    app = await bootAdminApp((b) => b.overrideProvider(EmailService).useValue({ send: jest.fn(async () => ({ success: true })) }));
+    app = await bootAdminApp((b) => b.overrideProvider(EmailService).useValue({ send: sent }));
     prisma = app.get(PrismaService);
     tenantPrisma = app.get(TenantPrismaService);
     deletions = app.get(CompanyDeletionService);
     owner = new PrismaClient({ datasources: { db: { url: process.env.MIGRATION_DATABASE_URL } } });
+    const hash = await argon2.hash(PASSWORD);
+    for (const who of ['s1', 's2', 'cold'] as const) {
+      const email = `${who}-${run}@kept-staff.test`;
+      const id = (await sup((tx) => tx.user.create({ data: { email, name: `Staff ${who}`, passwordHash: hash, role: 'super_admin', organizationId: null } }))).id;
+      users.push(id);
+      await giveStaffRoles(id);
+      const token = (await request(app.getHttpServer()).post('/api/v1/auth/platform/login').send({ email, password: PASSWORD }).expect(200)).body.accessToken as string;
+      if (who !== 'cold') await markSteppedUp(tenantPrisma, token);
+      staff[who] = { id, email, token };
+    }
     planId = (await prisma.plan.create({ data: { name: `kept-plan-${run}`, candidateLimit: 1, aiCreditLimit: 1, proctoringMinutesLimit: 1 } })).id;
     for (const k of ['A', 'H', 'O', 'N'] as const) org[k] = await company(k);
     await purge(org.A);
@@ -90,6 +109,8 @@ describe('Removing kept records after their day (1976)', () => {
         await tx.companyRecordGroup.deleteMany({ where: { organizationId: { in: ids } } });
         await tx.companyDeletion.deleteMany({ where: { organizationId: { in: ids } } });
         await tx.organization.deleteMany({ where: { id: { in: ids } } });
+        await tx.refreshToken.deleteMany({ where: { userId: { in: users } } });
+        await tx.session.deleteMany({ where: { userId: { in: users } } });
         await tx.user.deleteMany({ where: { id: { in: users } } });
       }, { timeout: 120_000 })
       .catch((e: Error) => console.warn(`cleanup: ${e.message}`));
@@ -161,6 +182,38 @@ describe('Removing kept records after their day (1976)', () => {
     const logged = await sup((tx) => tx.auditLog.findFirst({ where: { action: 'platform.company.kept_records_removed', entityId: org.A }, orderBy: { createdAt: 'desc' } }));
     expect(logged).toMatchObject({ organizationId: null, actorUserId: null });
     await expect(releaseDirect(org.A)).rejects.toThrow(/Nothing is due/);
+    // 2084: the two staff who asked for and confirmed the deletion are told, with the SHA-256.
+    const told = sent.mock.calls.map(([m]) => m).filter((m) => /Kept records removed/.test(m.subject));
+    expect(told.map((m) => m.to).sort()).toEqual([staff.s1.email, staff.s2.email].sort());
+    expect(told[0]!.html).toContain(audit.certificateSha256!);
+    // 2081: the console company page lists the removal: group, day, SHA-256.
+    const detail = (await api('s1', 'get', `/platform/companies/${org.A}`).expect(200)).body as { deleted: { removals: { group: string; removedAt: string; sha256: string }[]; holds: unknown[] } };
+    expect(detail.deleted.removals).toEqual([{ group: 'audit', removedAt: expect.any(String), sha256: audit.certificateSha256 }]);
+    expect(detail.deleted.holds).toEqual([]);
+  });
+
+  it('2083: staff set a legal hold on a deleted company (security key, audited); it stops the removal until ended; negatives', async () => {
+    const until = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
+    const body = { caseRef: 'WP-118', reason: 'Wage claim before the labour court', until };
+    // Negatives: no security key; an open company; a day already gone; a short reason.
+    const cold = await api('cold', 'post', `/platform/companies/${org.A}/legal-holds`).send(body);
+    expect([cold.status, ['STEP_UP_REQUIRED', 'MFA_REQUIRED'].includes((cold.body as { code?: string }).code ?? '')]).toEqual([403, true]);
+    expect((await api('s1', 'post', `/platform/companies/${org.O}/legal-holds`).send(body).expect(409)).body.message).toMatch(/Only a deleted company/);
+    await api('s1', 'post', `/platform/companies/${org.A}/legal-holds`).send({ ...body, until: new Date().toISOString().slice(0, 10) }).expect(409);
+    await api('s1', 'post', `/platform/companies/${org.A}/legal-holds`).send({ ...body, reason: 'short' }).expect(400);
+    const hold = (await api('s1', 'post', `/platform/companies/${org.A}/legal-holds`).send(body).expect(201)).body as { id: string };
+    expect(await sup((tx) => tx.auditLog.count({ where: { action: 'platform.company.legal_hold_set', entityId: org.A, actorUserId: staff.s1.id } }))).toBe(1);
+    const detail = (await api('s1', 'get', `/platform/companies/${org.A}`).expect(200)).body as { deleted: { holds: { id: string; caseRef: string; until: string }[] } };
+    expect(detail.deleted.holds).toEqual([{ id: hold.id, caseRef: 'WP-118', reason: body.reason, until }]);
+    // The hold stops the removal, even past the day.
+    await setGroupDay(org.A, 'filings', dayAgo(1));
+    expect(await deletions.releaseExpired(org.A)).toBeNull();
+    expect(await count('tds_challans', org.A)).toBe(1);
+    // Ending it: a reason, the key, audited; an unknown hold is 404.
+    await api('s2', 'post', `/platform/companies/${org.A}/legal-holds/${randomUUID()}/end`).send({ reason: 'Case settled' }).expect(404);
+    await api('s2', 'post', `/platform/companies/${org.A}/legal-holds/${hold.id}/end`).send({ reason: 'Case settled' }).expect(200);
+    expect(await sup((tx) => tx.auditLog.count({ where: { action: 'platform.company.legal_hold_ended', entityId: org.A, actorUserId: staff.s2.id } }))).toBe(1);
+    await api('s2', 'post', `/platform/companies/${org.A}/legal-holds/${hold.id}/end`).send({ reason: 'Case settled' }).expect(404);
   });
 
   it('two workers at once: the filings group is removed once', async () => {

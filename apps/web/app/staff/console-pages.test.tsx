@@ -159,6 +159,31 @@ describe('/staff/companies/[id]', () => {
   });
 });
 
+describe('/staff/companies/[id], a deleted company (2081, 2083)', () => {
+  const DELETED = { ...COMPANY, lifecycle: 'closed', trialExtended: false, lifecycleChangedAt: '2026-10-08T09:00:00Z', admins: [], history: [], deleted: { at: '2026-11-10T09:00:00Z', recordsKeptUntil: '2034-11-10', certificateSha256: 'a'.repeat(64), removals: [{ group: 'audit', removedAt: '2034-11-11T21:35:00Z', sha256: 'd'.repeat(64) }], holds: [{ id: 'h1', caseRef: 'WP-118', reason: 'Wage claim before the labour court', until: '2035-06-30' }] } };
+  it('lists each removal and ends a hold with a reason through /legal-holds/<id>/end', async () => {
+    (useParams as jest.Mock).mockReturnValue({ id: 'c2' });
+    route({ 'GET /platform/companies/c2': DELETED, 'GET /platform/support-sessions': [], 'GET /rbac/me/permissions': STAFF_KEYS, 'POST /platform/companies/c2/legal-holds/h1/end': { ended: true } });
+    wrap(<ConsoleCompanyPage />);
+    expect(await screen.findByText(/Audit log removed/)).toBeInTheDocument();
+    expect(screen.getByText('d'.repeat(64))).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'End the hold' }));
+    const dialog = await screen.findByRole('dialog');
+    await ue.type(within(dialog).getByRole('textbox'), 'Case settled');
+    await ue.click(within(dialog).getByRole('button', { name: 'End the hold' }));
+    await waitFor(() => expect(calls).toContain(`POST /platform/companies/c2/legal-holds/h1/end ${JSON.stringify({ reason: 'Case settled' })}`));
+  });
+
+  it('negative: without the manage key there is no Set a legal hold or End the hold', async () => {
+    (useParams as jest.Mock).mockReturnValue({ id: 'c2' });
+    route({ 'GET /platform/companies/c2': DELETED, 'GET /platform/support-sessions': [], 'GET /rbac/me/permissions': ['platform.companies.view'] });
+    wrap(<ConsoleCompanyPage />);
+    expect(await screen.findByText(/Audit log removed/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Set a legal hold' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'End the hold' })).not.toBeInTheDocument();
+  });
+});
+
 describe('other console pages', () => {
   it('plans, support sessions, the audit log and the shared SMS account load from the console API', async () => {
     route({

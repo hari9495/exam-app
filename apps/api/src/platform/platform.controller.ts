@@ -23,7 +23,7 @@ import {
   SupportApproveDto,
   SupportListQueryDto,
   SupportNoteDto,
-  SupportRequestDto, DeletionDto } from './dto';
+  SupportRequestDto, DeletionDto, LegalHoldDto } from './dto';
 import { PLATFORM, PlatformService } from './platform.service';
 import { CompanyDeletionService } from './company-deletion.service';
 import { PlatformStaffGuard } from './platform-staff.guard';
@@ -99,6 +99,25 @@ export class PlatformController {
   confirmDeletion(@Req() req: Request, @CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string) {
     ownSession(req);
     return this.deletions.confirm(actor, id);
+  }
+
+  // Answer 2083: a legal hold on a deleted company keeps its kept records past their day; set and ended by staff with
+  // the security key, never while acting for someone else (audited).
+  @Post('companies/:id/legal-holds')
+  @RequirePermissions('platform.companies.manage')
+  @RequireStepUp()
+  setLegalHold(@Req() req: Request, @CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: LegalHoldDto) {
+    ownSession(req);
+    return this.deletions.setHold(actor, id, dto);
+  }
+
+  @Post('companies/:id/legal-holds/:holdId/end')
+  @HttpCode(200)
+  @RequirePermissions('platform.companies.manage')
+  @RequireStepUp()
+  endLegalHold(@Req() req: Request, @CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string, @Param('holdId', ParseUUIDPipe) holdId: string, @Body() dto: DeletionDto) {
+    ownSession(req);
+    return this.deletions.endHold(actor, id, holdId, dto.reason);
   }
 
   // Answer 1973: the deletion certificate, downloaded from the console (audited).

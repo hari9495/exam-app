@@ -44,6 +44,8 @@ const company = (sessions = SESSIONS.filter((s) => s.organizationId === 'c2'), d
       onOpenSession={() => wait()}
       onEndSession={() => wait()}
       onWithdrawRequest={() => wait()}
+      onSetHold={() => wait()}
+      onEndHold={() => wait()}
     />,
   );
 export const Company: S = { name: 'Company · trial with an open support session', render: () => company() };
@@ -52,6 +54,22 @@ export const Company: S = { name: 'Company · trial with an open support session
 export const CompanyDeletionToConfirm: S = { name: 'Company · closed, deletion to confirm', render: () => company([], { ...COMPANY, lifecycle: 'closed', deletion: { id: 'd1', mine: false, askedAt: '2026-11-13T10:00:00Z', reason: 'Kept days over; asked by the company' } }) };
 // Answers 1973, 1975: the data deleted, the statutory records kept, the certificate to download.
 export const CompanyDeleted: S = { name: 'Company · data deleted, records kept', render: () => company([], { ...COMPANY, lifecycle: 'closed', deleted: { at: '2026-12-20T10:00:00Z', recordsKeptUntil: '2034-12-20', certificateSha256: 'a'.repeat(64) } }) };
+// Answers 2081, 2083: kept groups removed after their day (each with its certificate's SHA-256), and a legal hold.
+export const CompanyKeptRecordsRemoved: S = {
+  name: 'Company · kept records removed, a legal hold',
+  render: () =>
+    company([], {
+      ...COMPANY,
+      lifecycle: 'closed',
+      deleted: {
+        at: '2026-12-20T10:00:00Z',
+        recordsKeptUntil: '2036-12-20',
+        certificateSha256: 'a'.repeat(64),
+        removals: [{ group: 'filings', removedAt: '2034-12-21T21:35:00Z', sha256: 'b'.repeat(64) }, { group: 'pay', removedAt: '2034-12-21T21:35:00Z', sha256: 'c'.repeat(64) }],
+        holds: [{ id: 'h1', caseRef: 'WP-2034-118', reason: 'A wage claim by a former employee before the labour court', until: '2035-06-30' }],
+      },
+    }),
+};
 export const CompanyClosureAsked: S = { name: 'Company · asked to close its account', render: () => company([], { ...COMPANY, lifecycle: 'active', closureRequest: { status: 'requested', reason: 'Moving to another tool', askedAt: '2026-11-13T10:00:00Z', keepUntil: null } }) };
 // C-5 (answer 1053): what is switched on for the company (plan products, plan features; C-4 switches join later).
 export const CompanyFeatures: S = {
