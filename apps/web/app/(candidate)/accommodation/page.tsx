@@ -18,6 +18,7 @@ export default function CandidateAccommodationPage() {
       live={{
         state: current.isError || help.isError ? 'error' : current.isLoading || help.isLoading ? 'loading' : 'ready',
         onRetry: () => void Promise.all([current.refetch(), help.refetch()]),
+        companyName: current.data?.organizationName ?? '',
         testTitle: current.data?.exam.title ?? 'Your test',
         durationMinutes: current.data && !isAttemptStarted(current.data) ? current.data.exam.durationMinutes : 0,
         started,

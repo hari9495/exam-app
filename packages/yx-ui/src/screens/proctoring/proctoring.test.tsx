@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import {
   blueprintCell,
   calcApply,
+  calcUnary,
   canReschedule,
   deliveryMode,
   filterByRisk,
@@ -151,6 +152,41 @@ describe('components', () => {
     await user.click(screen.getByRole('button', { name: 'equals' }));
     expect(document.querySelector('output')?.textContent).toBe('Error');
     expect(calcApply(1, '÷', 3)).toBeCloseTo(0.33333333);
+  });
+
+  // Answer 2162: the scientific keys.
+  it('scientific calculator: powers, roots and angles in degrees or radians', async () => {
+    const user = userEvent.setup();
+    render(<Calculator scientific />);
+    const out = () => document.querySelector('output')?.textContent;
+    const press = async (...names: string[]) => {
+      for (const n of names) await user.click(screen.getByRole('button', { name: n }));
+    };
+    expect(screen.getByRole('region', { name: 'Scientific calculator' })).toBeInTheDocument();
+    await press('9', 'squared');
+    expect(out()).toBe('81');
+    await press('square root');
+    expect(out()).toBe('9');
+    await press('Clear', '2', 'to the power of', '1', '0', 'equals');
+    expect(out()).toBe('1024');
+    await press('Clear', '3', '0', 'sine');
+    expect(out()).toBe('0.5');
+    await press('Clear', '2', 'times', 'pi', 'equals');
+    expect(out()).toBe('6.2831853');
+    await press('Angles in degrees: switch to radians', 'Clear', 'pi', 'cosine');
+    expect(out()).toBe('-1');
+  });
+
+  it('negative: scientific keys refuse what has no answer', () => {
+    expect(calcUnary('sqrt', -4)).toBe('Error');
+    expect(calcUnary('log', 0)).toBe('Error');
+    expect(calcUnary('ln', -1)).toBe('Error');
+    expect(calcUnary('inverse', 0)).toBe('Error');
+    expect(calcUnary('tan', 90)).toBe('Error');
+    expect(calcUnary('tan', 45)).toBe(1);
+    expect(calcUnary('sin', 180)).toBe(0);
+    expect(calcApply(10, '^', 400)).toBe('Error');
+    expect(calcApply(2, '^', -1)).toBe(0.5);
   });
 
   it('system check shows fix steps only for failed or warning checks', () => {

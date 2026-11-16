@@ -19,5 +19,5 @@ const LIVE_CHECKS = [
   { id: 'network', label: 'Network', status: 'warn' as const, detail: 'Delay 820 ms. The test works, but slowly.', fix: ['Move closer to your Wi-Fi router or use a cable.', 'Pause downloads and video calls.'] },
   { id: 'device', label: 'Device', status: 'pass' as const, detail: '8 processor cores.' },
 ];
-export const LiveChecks: S = { name: 'Your computer: one problem blocks the start', render: () => <ReadinessCheckScreen live={{ testTitle: 'Java Backend Developer · L2', checks: LIVE_CHECKS, running: false, onRunAgain: () => {}, onBack: () => {} }} /> };
-export const LiveRunning: S = { name: 'Your computer: checking', render: () => <ReadinessCheckScreen live={{ testTitle: 'Java Backend Developer · L2', checks: LIVE_CHECKS.map((c, i) => ({ ...c, status: i < 2 ? c.status : ('running' as const), fix: undefined })), running: true, onRunAgain: () => {}, onBack: () => {} }} /> };
+export const LiveChecks: S = { name: 'Your computer: one problem blocks the start', render: () => <ReadinessCheckScreen live={{ companyName: 'Kaveri Foods', testTitle: 'Java Backend Developer · L2', checks: LIVE_CHECKS, running: false, onRunAgain: () => {}, onBack: () => {} }} /> };
+export const LiveRunning: S = { name: 'Your computer: checking', render: () => <ReadinessCheckScreen live={{ companyName: 'Kaveri Foods', testTitle: 'Java Backend Developer · L2', checks: LIVE_CHECKS.map((c, i) => ({ ...c, status: i < 2 ? c.status : ('running' as const), fix: undefined })), running: true, onRunAgain: () => {}, onBack: () => {} }} /> };

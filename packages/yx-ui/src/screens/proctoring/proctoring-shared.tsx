@@ -47,7 +47,17 @@ export function AnlFrame({ page, children }: { page: AnlPage; children: ReactNod
 
 export type CandPage = 'My tests' | 'Practice' | 'Privacy centre';
 /** T9 candidate test portal: tenant brand, one short tab row, access-expiry banner. */
-export function CandidateFrame({ page, children, user = 'Arjun Nair' }: { page?: CandPage; children: ReactNode; user?: string }) {
+/**
+ * With `company` (a live page), the frame shows that company and no portal tabs or legal links: the candidate's test
+ * pages have no portal yet, and a sample name or a link that goes nowhere must never reach a real candidate.
+ */
+export function CandidateFrame({ page, children, user = 'Arjun Nair', company }: { page?: CandPage; children: ReactNode; user?: string; company?: string }) {
+  if (company !== undefined)
+    return (
+      <PortalFrame tenant={company} portal="Candidate test portal" user={user}>
+        {children}
+      </PortalFrame>
+    );
   return (
     <PortalFrame tenant={COMPANY.name} portal="Candidate test portal" user={user} nav={(['My tests', 'Practice', 'Privacy centre'] as CandPage[]).map((l) => ({ label: l, active: l === page }))}>
       {children}

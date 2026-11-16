@@ -19,6 +19,14 @@ export const AiAllowed: S = { name: 'AI-allowed test: logged assistant', args: {
 export const Finish: S = { name: 'Finish confirmation', args: { view: 'finish' } };
 export const Submitted: S = { name: 'Submitted and optional survey', args: { view: 'submitted' } };
 
+// Answer 2161: drawn before /exam moved to the designed runner. Answer 2162: the scientific calculator.
+export const ReviewUnanswered: S = { name: 'Going through unanswered questions (from Finish)', args: { view: 'review' } };
+export const AnswerAnyN: S = { name: 'Section: answer any 3 of 5', args: { view: 'choice' } };
+export const AnswerAnyNFinish: S = { name: 'Finish: a section needs more answers', args: { view: 'choice-finish' } };
+export const PhoneQuestionList: S = { name: 'Phone: question list', args: { view: 'phone' }, globals: { viewport: { value: 'mobile2', isRotated: false } } };
+export const PicturesAndCode: S = { name: 'Question picture, code snippet and option pictures', args: { view: 'media' } };
+export const ScientificCalculator: S = { name: 'Scientific calculator', args: { view: 'scientific' } };
+
 // AS-4a: the runner with a real attempt (live): offline past the company's limit, and submitted with the survey.
 export const LiveOfflineStopped: S = { name: 'Live · offline past the limit (answers kept on device)', args: { live: { ...LIVE_RUNNER, connection: 'offline', offlineSeconds: 360, queued: 2, saveStatus: 'offline' } } };
 export const LiveSubmittedSurvey: S = { name: 'Live · submitted, survey', args: { live: { ...LIVE_RUNNER, status: 'submitted', submittedAt: '11:52 am' } } };

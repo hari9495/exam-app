@@ -1,9 +1,8 @@
-import { act, render, screen, fireEvent } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { FaceEnrolmentStep, ATTEMPT_TIMEOUT_MS } from './FaceEnrolmentStep';
 
-// Separate file from FaceEnrolmentStep.test.tsx on purpose: those specs render only the consent and
-// blocked phases and must keep working with no camera and no MediaPipe. Only the capture phase --
-// exercised here -- needs either.
+// The capture phase needs a camera and MediaPipe, both mocked here. Consent is given on the designed consent step
+// (PRC-24) before this step mounts (answer 2201), so capture starts at once.
 
 // A camera and a model that both work perfectly, and a candidate the challenge never sees blink:
 // detectForVideo reports no face, which createBlinkChallenge deliberately holds its state on. This
@@ -42,8 +41,7 @@ async function flush() {
 }
 
 async function agree(policy: 'allow_unenrolled' | 'retry_then_allow' | 'require_enrolment', onSettled = jest.fn()) {
-  render(<FaceEnrolmentStep policy={policy} onSettled={onSettled} />);
-  fireEvent.click(screen.getByRole('button', { name: /I agree/i }));
+  render(<FaceEnrolmentStep policy={policy} candidateName="Ada" companyName="Acme" onSettled={onSettled} />);
   await flush();
   return onSettled;
 }
@@ -58,12 +56,12 @@ async function waitOutTheDeadline() {
 describe('FaceEnrolmentStep capture timeout', () => {
   it('fails the attempt instead of stalling forever when no blink is ever detected', async () => {
     await agree('retry_then_allow');
-    expect(screen.getByText(/Attempt 1 of 3/)).toBeInTheDocument();
+    expect(screen.getByText(/Try 1 of 3/)).toBeInTheDocument();
 
     await waitOutTheDeadline();
 
     expect(screen.getByText(/could not get a clear photo in time/i)).toBeInTheDocument();
-    expect(screen.getByText(/Attempt 2 of 3/)).toBeInTheDocument();
+    expect(screen.getByText(/Try 2 of 3/)).toBeInTheDocument();
   });
 
   it('still retries and settles after three timed-out attempts', async () => {
@@ -81,7 +79,7 @@ describe('FaceEnrolmentStep capture timeout', () => {
   // the same thing -- three attempts, then settle -- which made one of them a lie.
   it('settles on the FIRST failure under allow_unenrolled instead of labouring three attempts', async () => {
     const onSettled = await agree('allow_unenrolled');
-    expect(screen.getByText(/Attempt 1 of 1/)).toBeInTheDocument();
+    expect(screen.getByText(/Try 1 of 1/)).toBeInTheDocument();
 
     await waitOutTheDeadline();
 
@@ -109,12 +107,11 @@ describe('FaceEnrolmentStep capture timeout', () => {
     await waitOutTheDeadline();
 
     expect(onSettled).not.toHaveBeenCalled();
-    expect(screen.getByText(/contact your recruiter/i)).toBeInTheDocument();
+    expect(screen.getByText(/contact the person who invited you/i)).toBeInTheDocument();
   });
 
   it('stops the camera tracks when the step unmounts', async () => {
-    const { unmount } = render(<FaceEnrolmentStep policy="retry_then_allow" onSettled={jest.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: /I agree/i }));
+    const { unmount } = render(<FaceEnrolmentStep policy="retry_then_allow" candidateName="Ada" companyName="Acme" onSettled={jest.fn()} />);
     await flush();
 
     unmount();

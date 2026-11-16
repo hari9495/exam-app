@@ -36,4 +36,6 @@ export { AccommodationQueueScreen, ConnectivityPanelScreen } from './delivery';
 export { AccommodationRequestScreen } from './candidate';
 export { HELP_LABEL, approvedForYou, type AccommodationView, type CandidateHelpView, type ConnectivityView, type HelpKind, type LiveAccommodationQueue, type LiveAccommodationRequest, type LiveConnectivity } from './before-test-live';
 export { ReadinessCheckScreen, type LiveReadiness } from './candidate';
+// AS-4a part 2 (answer 2201): the designed consent (PRC-24) and selfie (PRC-25) on /welcome.
+export { ConsentScreen, IdentityCheckScreen, type LiveConsent, type LiveSelfie, type ManualIdentityCheck } from './candidate';
 export type { SystemCheck } from './proctoring-kit';

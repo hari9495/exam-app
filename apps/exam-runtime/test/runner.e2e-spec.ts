@@ -107,6 +107,16 @@ describe('Designed runner (AS-4a)', () => {
     await as(token, 'post', '/attempt/answer').send({ questionId, selectedOptionIds: [options[0]], clientSavedAt: 'yesterday' }).expect(400);
   });
 
+  // AS-4a part 2 (answer 2161): the writer's alt text (2126) reaches the runner, matched to options by their written order
+  // even though the options are shown shuffled; a blank alt is sent as none.
+  it('sends the question and option alt text the writer gave', async () => {
+    await org((tx) => tx.question.update({ where: { id: questionId }, data: { imageAlt: 'A sum written on a board', optionAlts: ['The number four', '  '] } }));
+    const { token } = await startCandidate('alt');
+    const q = (await as(token, 'get', '/attempt/current').expect(200)).body.sections[0].questions[0] as { imageAlt: string | null; options: { id: string; imageAlt: string | null }[] };
+    expect(q.imageAlt).toBe('A sum written on a board');
+    expect(Object.fromEntries(q.options.map((o) => [o.id, o.imageAlt]))).toEqual({ [options[0]!]: 'The number four', [options[1]!]: null });
+  });
+
   it('a lost connection: the time is given back before the request is handled, up to the company cap', async () => {
     const { token, attemptId } = await startCandidate('net');
     await org((tx) => tx.attempt.update({ where: { id: attemptId }, data: { lastSeenAt: new Date(Date.now() - 180_000) } }));

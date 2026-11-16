@@ -38,5 +38,5 @@ export const HELP_APPROVED: CandidateHelpView = {
 };
 
 export function liveRequest(over: Partial<LiveAccommodationRequest> = {}): LiveAccommodationRequest {
-  return { state: 'ready', onRetry: () => {}, testTitle: 'Java Backend Developer · L2', durationMinutes: 75, started: false, help: { request: null, approved: [], extraTimePercent: 0 }, onSend: ok, onBack: () => {}, ...over };
+  return { state: 'ready', onRetry: () => {}, companyName: 'Kaveri Foods', testTitle: 'Java Backend Developer · L2', durationMinutes: 75, started: false, help: { request: null, approved: [], extraTimePercent: 0 }, onSend: ok, onBack: () => {}, ...over };
 }
