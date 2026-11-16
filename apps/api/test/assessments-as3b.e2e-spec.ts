@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 import { bootAdminApp, bootRuntimeApp } from './dual-app';
 import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
+import { asApproved } from './fixtures/approved-question';
 
 // Assessments AS-3 part 2 (answers 2014, 2211; PRC-29, PRC-07), end to end against the real database (forced RLS, the
 // app role): institutions, a drive's campus form and eligibility, public registration with duplicates and the cap,
@@ -66,7 +67,7 @@ describe('Assessments AS-3 part 2: campus kit', () => {
       users[who] = (await inOrg(o.id, (tx) => tx.user.create({ data: { organizationId: o.id, email: `${who}-${run}@as3b.test`, name: `${who} ${run}`, passwordHash: hash, role, permissionProfileId } }))).id;
       token[who] = (await request(http).post('/api/v1/auth/staff/login').send({ organizationSlug: o.slug, email: `${who}-${run}@as3b.test`, password: PASSWORD }).expect(200)).body.accessToken;
     }
-    const q = (await api('adminA', 'post', '/questions').send({ type: 'single_mcq', text: `Campus ${run}?`, difficulty: 'easy', marks: 10, options: [{ text: 'Yes', isCorrect: true }, { text: 'No', isCorrect: false }] }).expect(201)).body.id;
+    const q = (await asApproved(await api('adminA', 'post', '/questions').send({ type: 'single_mcq', text: `Campus ${run}?`, difficulty: 'easy', marks: 10, options: [{ text: 'Yes', isCorrect: true }, { text: 'No', isCorrect: false }] }).expect(201))).body.id;
     ids.exam = (await api('adminA', 'post', '/exams').send({ title: `Campus aptitude ${run}` }).expect(201)).body.id;
     const section = (await api('adminA', 'post', `/exams/${ids.exam}/sections`).send({ title: 'One' }).expect(201)).body.id;
     await api('adminA', 'put', `/exams/${ids.exam}/sections/${section}/questions`).send({ questionIds: [q] }).expect(200);

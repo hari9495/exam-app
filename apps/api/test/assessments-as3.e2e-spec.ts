@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 import { bootAdminApp, bootRuntimeApp } from './dual-app';
 import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
+import { asApproved } from './fixtures/approved-question';
 
 // Assessments AS-3 (answers 2001, 2013), end to end against the real database (forced RLS, the app role):
 //   PRC-32 an earlier result on the same test may be used instead of a new one, within the company's months; the
@@ -68,7 +69,7 @@ describe('Assessments AS-3: hiring delivery', () => {
       token[who] = (await request(http).post('/api/v1/auth/staff/login').send({ organizationSlug: o.slug, email: `${who}-${run}@as3.test`, password: PASSWORD }).expect(200)).body.accessToken;
     }
     for (const [k, who] of [['A', 'adminA'], ['B', 'adminB']] as const) {
-      ids[`q${k}`] = (await api(who, 'post', '/questions').send({ type: 'single_mcq', text: `Capital ${k} ${run}?`, difficulty: 'easy', marks: 10, options: [{ text: 'Yes', isCorrect: true }, { text: 'No', isCorrect: false }] }).expect(201)).body.id;
+      ids[`q${k}`] = (await asApproved(await api(who, 'post', '/questions').send({ type: 'single_mcq', text: `Capital ${k} ${run}?`, difficulty: 'easy', marks: 10, options: [{ text: 'Yes', isCorrect: true }, { text: 'No', isCorrect: false }] }).expect(201))).body.id;
     }
     ids.examA = await test('adminA', ids.qA!, 'Java L2');
     ids.examA2 = await test('adminA', ids.qA!, 'SQL basics');
