@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ExpensesHomeScreen, EXP_LINKS, type AdvanceSummary, type ClaimSummary, type ExpenseHome, type MyCardLines, type ToPayData, type TripSummary } from '@yukthix/ui/expenses';
+import { ExpensesHomeScreen, EXP_LINKS, type AdvanceSummary, type ClaimSummary, type ExpenseHome, type MyCardLines, type SavedExpense, type ToPayData, type TripSummary } from '@yukthix/ui/expenses';
 import { loadState, todayIst, useYxPermissions } from '../../../../lib/yx-org';
 import { useExp, useExpWrite } from '../../../../lib/yx-expenses';
 import { useScopeParams, withParams } from '../../../../lib/yx-shell';
@@ -15,6 +15,8 @@ function ExpensesHome() {
   const perms = useYxPermissions();
   // ?new=1: the "New expense claim" action (Ctrl K, N E) opens the new-claim dialog at once.
   const startNew = useSearchParams()?.get('new') === '1';
+  // ?save=1: the "Add an expense" action (Ctrl K) opens the saved-expense drawer.
+  const startAdd = useSearchParams()?.get('save') === '1';
   // Drop ?new=1 once read, so asking again (N E) changes the address and opens the dialog again.
   useEffect(() => {
     if (startNew) router.replace(EXP_LINKS.home, { scroll: false });
@@ -34,6 +36,8 @@ function ExpensesHome() {
   const review = useExp<{ claims: ClaimSummary[] }>(withParams('/claims?view=review', sp.entity), h?.toReview !== null && h?.toReview !== undefined);
   const finance = pays || (h?.toReview !== null && h?.toReview !== undefined);
   const write = useExpWrite();
+  // Keka ideas (2026-11): expenses saved first, claimed later (my own only).
+  const saved = useExp<{ items: SavedExpense[] }>('/me/items', Boolean(h));
   const someApprovals = (trips.data?.trips.length ?? 0) + (advances.data?.advances.length ?? 0) > 0;
   return (
     <ExpensesHomeScreen
@@ -56,6 +60,32 @@ function ExpensesHome() {
         onGo: (href) => router.push(href),
         cardLines: cardLines.data?.lines.length ?? null,
         startNew,
+        saved: saved.data
+          ? {
+              items: saved.data.items,
+              currency: h?.claims[0]?.currency ?? 'INR',
+              today: todayIst(),
+              startAdd,
+              drafts: (h?.claims ?? []).filter((c) => c.status === 'draft').map((c) => ({ id: c.id, title: c.title })),
+              onAdd: async (x) => {
+                const body = new FormData();
+                body.append('spentOn', x.spentOn);
+                body.append('amount', x.amount);
+                if (x.merchant) body.append('merchant', x.merchant);
+                if (x.description) body.append('description', x.description);
+                if (x.receipt) body.append('file', x.receipt);
+                await write('POST', '/me/items', body);
+              },
+              onRemove: async (id) => {
+                await write('POST', `/me/items/${encodeURIComponent(id)}/remove`);
+              },
+              onClaim: async (ids, into) => {
+                const claimId = 'claimId' in into ? into.claimId : (await write<{ id: string }>('POST', '/claims', { title: into.title })).id;
+                await write('POST', `/claims/${encodeURIComponent(claimId)}/items`, { itemIds: ids });
+                router.push(EXP_LINKS.claim(claimId));
+              },
+            }
+          : undefined,
       }}
     />
   );

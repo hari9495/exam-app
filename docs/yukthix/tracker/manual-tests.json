@@ -22332,5 +22332,62 @@
       "ConsoleNotices"
     ],
     "note": "Positive and negative. The removal notice needs a kept group past its day: covered by the API tests."
+  },
+  {
+    "id": "MT-KEKA-1",
+    "area": "Keka ideas (17 Nov 2026)",
+    "screen": "Ctrl K actions; Approvals kinds; manager Home › My team today",
+    "url": "http://localhost:3000/yx/home",
+    "account": "An employee with a manager role (panel@ in the demo org), and an employee with no reports.",
+    "steps": [
+      "Press Ctrl K: look at Actions; pick Regularise a day, then Raise a ticket, then Add an expense.",
+      "Open Approvals: pick each kind in the row above the list, then All.",
+      "As the manager: Home › My team today: pick each group; nudge someone not in yet.",
+      "As the employee with no reports: Home."
+    ],
+    "expected": "Step 1: each opens its sheet; only actions the person may do are listed. Step 2: the list shows only that kind; the counts match. Step 3: each group lists its people; a nudge says it was sent and stays done. Step 4: no My team today card.",
+    "stories": [
+      "Screens/Platform/PLT-20 · Command palette",
+      "Screens/Platform/PLT-04 · Approvals inbox",
+      "Screens/Platform/PLT-02 · Role homes"
+    ],
+    "note": "Positive and negative. Keka ideas 1, 2, 3."
+  },
+  {
+    "id": "MT-KEKA-2",
+    "area": "Keka ideas (17 Nov 2026)",
+    "screen": "Expenses home › Expenses to be claimed",
+    "url": "http://localhost:3000/yx/expenses",
+    "account": "An employee of the demo org with expenses set up.",
+    "steps": [
+      "Add an expense with no amount, then with an amount and a receipt.",
+      "Add the same receipt again.",
+      "Tick two saved expenses; Claim selected into a new claim with no name, then named.",
+      "Save another and put it into a draft claim; remove one with Cancel first, then confirm."
+    ],
+    "expected": "Step 1: the amount is asked; then saved (toast). Step 2: refused, already saved. Step 3: the name is asked; then the claim opens with two lines, the receipt on its line; the saved list is empty. Step 4: added to the draft; removed after confirming.",
+    "stories": [
+      "Screens/Expenses/EXP-01 · Expenses home"
+    ],
+    "note": "Positive and negative. Keka idea 4."
+  },
+  {
+    "id": "MT-KEKA-3",
+    "area": "Keka ideas (17 Nov 2026)",
+    "screen": "My timesheet › Time summary; Payslips; Approvals › Profile change",
+    "url": "http://localhost:3000/yx/time/timesheet",
+    "account": "An employee with timesheets and payslips in two tax years; an HR approver of identity and bank changes.",
+    "steps": [
+      "My timesheet › Time summary: change the year; open a week.",
+      "Payslips: pick a month on the left; change the tax year.",
+      "As an employee: send a bank change. As HR: open Approvals, pick Profile change, open it.",
+      "As the employee who sent it: open Approvals."
+    ],
+    "expected": "Step 1: a bar per week and the weeks with status; the week opens in the grid. Step 2: that payslip on the right; the other year's months. Step 3: it is listed under Profile change and opens the change page to decide. Step 4: not in their own inbox.",
+    "stories": [
+      "Screens/Time/TIM-15 · Timesheets",
+      "Screens/Pay/PAY-21 · Payslip viewer"
+    ],
+    "note": "Positive and negative. Keka ideas 5, 6, 7."
   }
 ]

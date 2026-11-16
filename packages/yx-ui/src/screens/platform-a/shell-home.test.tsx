@@ -10,7 +10,7 @@ describe('Role home loading (founder review 30 Sep 2026)', () => {
     const home = screen.getByRole('region', { name: 'Your home' });
     expect(home).toHaveAttribute('aria-busy', 'true');
     expect(within(home).getAllByRole('status').filter((s) => s.textContent === 'Loading your home')).toHaveLength(1);
-    expect(screen.getByRole('region', { name: 'Team today' })).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByRole('region', { name: 'My team today' })).toHaveAttribute('aria-busy', 'true');
   });
 
   it('shows slow and failed widgets with Retry while the rest of the page works', () => {
@@ -125,7 +125,7 @@ describe('Live home parity (19 Oct 2026)', () => {
 
   it('Nudge on Team today: only for someone not checked in; sends once, says so in a toast; a refusal says why', async () => {
     const onNudge = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(Object.assign(new Error('Kavya Reddy was already reminded today. You can remind them again tomorrow.'), { status: 409 }));
-    const team = { summary: '11 in · 1 on leave · 2 not checked in · 0 late', total: 14, href: '/yx/time/muster', rows: [{ id: 't1', name: 'Sanjay Gupta', secondary: 'Not checked in', nudge: true }, { id: 't2', name: 'Kavya Reddy', secondary: 'Not checked in', nudge: true }, { id: 't3', name: 'Meera Krishnan', secondary: 'On leave today' }, { id: 't4', name: 'Ravi Kumar', secondary: 'Not checked in', nudge: true, reminded: true }] };
+    const team = { total: 14, href: '/yx/time/team', groups: [{ key: 'not_in' as const, label: 'Not in yet', people: [{ id: 't1', name: 'Sanjay Gupta', secondary: 'Not checked in', nudge: true }, { id: 't2', name: 'Kavya Reddy', secondary: 'Not checked in', nudge: true }, { id: 't4', name: 'Ravi Kumar', secondary: 'Not checked in', nudge: true, reminded: true }] }, { key: 'leave' as const, label: 'On leave', people: [{ id: 't3', name: 'Meera Krishnan', secondary: 'On leave today' }] }] };
     render(
       <ToastProvider>
         <RoleHomeScreen persona="manager" data={{ actions: [] }} live={{ ...base, team, onNudge }} />
@@ -145,10 +145,21 @@ describe('Live home parity (19 Oct 2026)', () => {
   });
 
   it("gives the manager team today and who's off this week", () => {
-    render(<RoleHomeScreen persona="manager" data={{ actions: [] }} live={{ ...base, team: { summary: '11 in · 2 on leave · 1 not checked in · 0 late', total: 14, href: '/yx/time/muster', rows: [{ id: 't', name: 'Sanjay Gupta', secondary: 'Not checked in' }] }, off: [], offHref: '/yx/time/team' }} />);
-    expect(screen.getByText('11 in · 2 on leave · 1 not checked in · 0 late')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'View all 14' })).toHaveAttribute('href', '/yx/time/muster');
+    render(<RoleHomeScreen persona="manager" data={{ actions: [] }} live={{ ...base, team: { total: 14, href: '/yx/time/team', groups: [{ key: 'leave', label: 'On leave', people: [] }, { key: 'not_in', label: 'Not in yet', people: [{ id: 't', name: 'Sanjay Gupta', secondary: 'Not checked in' }] }] }, off: [], offHref: '/yx/time/team' }} />);
+    expect(screen.getByRole('link', { name: 'View all 14' })).toHaveAttribute('href', '/yx/time/team');
     expect(screen.getByText('No one in your team is off this week.')).toBeInTheDocument();
+  });
+
+  // Keka ideas (2026-11): "My team today", a count per group and who is in it.
+  it('My team today: each group with its count; picking one shows who; an empty group says so', () => {
+    render(<RoleHomeScreen persona="manager" data={{ actions: [] }} live={{ ...base, team: { total: 3, href: '/yx/time/team', groups: [{ key: 'leave', label: 'On leave', people: [{ id: 'a', name: 'Meera Krishnan', secondary: 'Sick leave today' }] }, { key: 'not_in', label: 'Not in yet', people: [] }, { key: 'late', label: 'Late', people: [{ id: 'b', name: 'Kavya Reddy', secondary: '22 minutes late' }] }, { key: 'away', label: 'Working from home or on duty', people: [] }] } }} />);
+    const who = screen.getByRole('radiogroup', { name: 'Who' });
+    expect(within(who).getByRole('radio', { name: 'On leave · 1' })).toBeChecked();
+    expect(screen.getByText('Meera Krishnan')).toBeInTheDocument();
+    fireEvent.click(within(who).getByRole('radio', { name: 'Late · 1' }));
+    expect(screen.getByText('Kavya Reddy')).toBeInTheDocument();
+    fireEvent.click(within(who).getByRole('radio', { name: 'Not in yet · 0' }));
+    expect(screen.getByText('Everyone is in.')).toBeInTheDocument();
   });
 });
 

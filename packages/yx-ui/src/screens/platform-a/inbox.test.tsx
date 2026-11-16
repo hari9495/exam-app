@@ -53,6 +53,25 @@ describe('Approvals inbox (founder review 30 Sep 2026)', () => {
     expect(screen.getByRole('dialog')).toHaveTextContent(/of 6/);
   });
 
+  // Keka ideas (2026-11): one pick-one control of kinds with counts filters the list.
+  it('kinds with counts filter the list; All shows everything again', async () => {
+    const u = userEvent.setup();
+    screenWith();
+    const kinds = screen.getByRole('radiogroup', { name: 'Kind of request' });
+    expect(within(kinds).getByRole('radio', { name: 'All · 7' })).toBeChecked();
+    expect(within(kinds).getByRole('radio', { name: 'Leave · 2' })).toBeInTheDocument();
+    await u.click(within(kinds).getByRole('radio', { name: 'Expense · 2' }));
+    expect(screen.getByText('Hotel stay · Hosur')).toBeInTheDocument();
+    expect(screen.queryByText('Casual leave · 2 days')).toBeNull();
+    await u.click(within(kinds).getByRole('radio', { name: 'All · 7' }));
+    expect(screen.getByText('Casual leave · 2 days')).toBeInTheDocument();
+  });
+
+  it('negative: one kind only shows no picker', () => {
+    render(<ApprovalsInboxScreen waiting={APPROVALS.filter((a) => a.type === 'Leave')} sent={[]} history={[]} />);
+    expect(screen.queryByRole('radiogroup', { name: 'Kind of request' })).toBeNull();
+  });
+
   it('shows who else is off for a leave request', () => {
     screenWith('a1');
     expect(screen.getByText('Team on these days')).toBeInTheDocument();

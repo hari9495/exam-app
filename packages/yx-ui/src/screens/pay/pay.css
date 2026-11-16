@@ -281,3 +281,12 @@
 .yx-pay-grouprows__stage { font-size: var(--yx-text-sm); }
 .yx-pay-grouprows__act { justify-self: end; }
 @media (max-width: 720px) { .yx-pay-grouprows > li { grid-template-columns: 1fr auto; } .yx-pay-grouprows__bar { grid-column: 1 / -1; } }
+
+/* Keka ideas (2026-11): the payslips of a tax year as a month list beside the payslip (PAY-21). */
+.yx-pay-months { display: grid; grid-template-columns: calc(var(--yx-space-16) * 3.5) minmax(0, 1fr); gap: var(--yx-space-6); align-items: start; }
+.yx-pay-months__list { display: flex; flex-direction: column; gap: var(--yx-space-3); }
+.yx-pay-months__list ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--yx-space-1); }
+/* A month: the kit's button, label left and net pay right; the open payslip's month is marked as current. */
+.yx-pay-months__item { justify-content: space-between; }
+.yx-pay-months__item[aria-current='true'] { background: var(--yx-color-bg-selected); border-color: var(--yx-color-action-primary); color: var(--yx-color-action-primary); font-weight: var(--yx-weight-medium); }
+@media (max-width: 1023px) { .yx-pay-months { grid-template-columns: minmax(0, 1fr); } }

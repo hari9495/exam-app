@@ -9673,6 +9673,26 @@ model ExpenseLine {
   @@map("expense_lines")
 }
 
+/// Keka ideas (2026-11): a spend saved first and claimed later (picked into a claim, it becomes that claim's line).
+model ExpenseItem {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  spentOn        DateTime  @map("spent_on") @db.Date
+  amount         Decimal   @db.Decimal(14, 2)
+  categoryCode   String?   @map("category_code") @db.VarChar(30)
+  merchant       String?   @db.VarChar(120)
+  description    String?   @db.VarChar(500)
+  receiptFileId  String?   @map("receipt_file_id") @db.Uuid
+  receiptSha256  String?   @map("receipt_sha256") @db.Char(64)
+  claimedLineId  String?   @map("claimed_line_id") @db.Uuid
+  claimedAt      DateTime? @map("claimed_at") @db.Timestamptz(3)
+  removedAt      DateTime? @map("removed_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("expense_items")
+}
+
 model ExpenseLineChange {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid

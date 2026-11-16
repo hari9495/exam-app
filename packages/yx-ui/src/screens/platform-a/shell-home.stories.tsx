@@ -198,13 +198,13 @@ export const PLT02EmployeeLivePayNone: S = {
 const LIVE_MGR = {
   ...LIVE_EMP,
   team: {
-    summary: '11 in · 2 on leave · 1 not checked in · 0 late',
     total: 14,
     href: '#today',
-    rows: [
-      { id: 't1', name: 'Sanjay Gupta', secondary: 'Not checked in · General shift started 9:30 am', nudge: true },
-      { id: 't2', name: 'Meera Krishnan', secondary: 'Sick leave today' },
-      { id: 't3', name: 'Rahul Nair', secondary: 'Casual leave today' },
+    groups: [
+      { key: 'leave' as const, label: 'On leave', people: [{ id: 't2', name: 'Meera Krishnan', secondary: 'Sick leave today' }, { id: 't3', name: 'Rahul Nair', secondary: 'Casual leave today' }] },
+      { key: 'not_in' as const, label: 'Not in yet', people: [{ id: 't1', name: 'Sanjay Gupta', secondary: 'General shift started 9:30 am', nudge: true }] },
+      { key: 'late' as const, label: 'Late', people: [] },
+      { key: 'away' as const, label: 'Working from home or on duty', people: [{ id: 't4', name: 'Vikram Rao', secondary: 'Working from home' }] },
     ],
   },
   off: [
@@ -238,7 +238,7 @@ export const PLT02ManagerLiveNudged: S = {
 };
 export const PLT02ManagerLiveQuiet: S = {
   name: 'PLT-02 · Role home · manager, live, quiet week',
-  render: () => <RoleHomeScreen persona="manager" data={{ actions: [] }} live={{ ...LIVE_MGR, team: { ...LIVE_MGR.team, summary: '14 in · 0 on leave · 0 not checked in · 0 late', rows: [] }, off: [], goals: [] }} />,
+  render: () => <RoleHomeScreen persona="manager" data={{ actions: [] }} live={{ ...LIVE_MGR, team: { ...LIVE_MGR.team, groups: LIVE_MGR.team.groups.map((g) => ({ ...g, people: [] })) }, off: [], goals: [] }} />,
 };
 export const PLT02FinanceHidden: S = {
   name: 'PLT-02 · Role home · finance, amounts hidden',

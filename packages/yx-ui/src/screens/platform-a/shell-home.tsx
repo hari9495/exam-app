@@ -1,8 +1,9 @@
 // Shell, homes, settings home, access states and search (PLT-01, 02, 10, 18, 20, 21; APX-D §1.1 Home).
 import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import {
-  ArrowLeft, Bell, Bookmark, CalendarPlus, Megaphone, MessageCircleQuestionMark, Clock, CheckSquare, Download, Eye, EyeOff, FileText, House, FolderSearch, HelpCircle, IndianRupee, Lock, Receipt, Search, Settings as SettingsIcon, Ticket, UserRound, Users,
+  ArrowLeft, Bell, Bookmark, CalendarCheck, CalendarPlus, Megaphone, MessageCircleQuestionMark, Clock, CheckSquare, Download, Eye, EyeOff, FileText, House, FolderSearch, HelpCircle, IndianRupee, Lock, Receipt, Search, Settings as SettingsIcon, Ticket, UserRound, Users,
 } from 'lucide-react';
+import { Segment } from '../../components/segment';
 import {
   AppShell, CommandPalette, ScopePicker, type ScopePeriod, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, TopBar, PageHeader, Card, type PaletteGroup, type RailItem,
 } from '../../components/shell';
@@ -475,25 +476,10 @@ function homeWidgets(persona: Exclude<Persona, 'admin'>, data: HomeData, loading
       clock,
       {
         id: 'today',
-        title: 'Team today',
+        title: 'My team today',
         size: 8,
         actions: <Link href="#today">View all 14</Link>,
-        content: (
-          <div className="yx-plt-stack">
-            <p className="yx-plt-muted">11 in · 2 on leave · 1 not checked in · 0 late</p>
-            <ul className="yx-plt-list">
-              <li>
-                <span className="yx-plt-list__main"><PersonLabel name="Sanjay Gupta" secondary="Not checked in · General shift started 9:30 am" /></span>
-                <span className="yx-plt-row">
-                  <Button size="sm" icon={Bell}>Nudge</Button>
-                  <Button size="sm">Mark on duty</Button>
-                </span>
-              </li>
-              <li><PersonLabel name="Meera Krishnan" secondary="Sick leave today" /></li>
-              <li><PersonLabel name="Rahul Nair" secondary="Casual leave today and tomorrow" /></li>
-            </ul>
-          </div>
-        ),
+        content: <TeamTodayCard team={SAMPLE_TEAM_TODAY} onNudge={() => Promise.resolve()} />,
       },
       {
         id: 'off',
@@ -720,8 +706,11 @@ export interface LiveHome {
   moneyOut?: { id: string; date: string; what: string; amount: number | null; status: string; tone: BadgeTone; action: string; href: string }[];
   /** Finance: "Payroll approval", the run waiting for this person. changePct: net against last month, when on record. */
   approval?: { month: string; preparedBy: string; role?: string; on?: string; previousMonth?: string; changePct?: number; flagged: number; threshold: string; href: string };
-  /** Manager: "Team today" (who is in, on leave, not checked in), with the people to look at. nudge: not checked in yet. */
-  team?: { summary: string; total: number; href: string; rows: { id: string; name: string; secondary: string; nudge?: boolean; reminded?: boolean }[] };
+  /**
+   * Manager: "My team today" (Keka ideas, 2026-11): direct reports only, a count per group (on leave, not in yet, late,
+   * working from home or on duty) and who is in it. nudge: not in yet, can be reminded.
+   */
+  team?: TeamToday;
   /** Nudge (Team today): reminds the person to check in. Rejects with a plain reason (already reminded today). */
   onNudge?: (row: { id: string; name: string }) => Promise<void>;
   /** Manager: "Who's off this week", day by day. */
@@ -744,6 +733,66 @@ export interface LiveHome {
   /** People with a hiring key: today's interviews, this week and their open jobs. */
   hiring?: HiringHomeView;
 }
+
+export type TeamTodayKey = 'leave' | 'not_in' | 'late' | 'away';
+export interface TeamTodayPerson {
+  id: string;
+  name: string;
+  secondary?: string;
+  nudge?: boolean;
+  reminded?: boolean;
+}
+export interface TeamToday {
+  /** Direct reports counted today. */
+  total: number;
+  href: string;
+  groups: { key: TeamTodayKey; label: string; people: TeamTodayPerson[] }[];
+}
+
+const NOBODY: Record<TeamTodayKey, string> = { leave: 'No one is on leave today.', not_in: 'Everyone is in.', late: 'No late check-ins today.', away: 'No one is working from home or on duty today.' };
+
+/** "My team today": one pick-one control of groups with counts, then who is in the chosen group. */
+export function TeamTodayCard({ team, onNudge }: { team: TeamToday; onNudge?: (row: { id: string; name: string }) => Promise<void> }) {
+  const first = team.groups.find((g) => g.people.length)?.key ?? team.groups[0]?.key ?? 'leave';
+  const [key, setKey] = useState<TeamTodayKey>(first);
+  const group = team.groups.find((g) => g.key === key) ?? team.groups[0];
+  if (!group) return null;
+  return (
+    <div className="yx-plt-stack">
+      <Segment label="Who" value={group.key} onChange={setKey} options={team.groups.map((g) => ({ value: g.key, label: `${g.label} · ${g.people.length}` }))} />
+      {group.people.length === 0 ? (
+        <p className="yx-plt-muted">{NOBODY[group.key]}</p>
+      ) : (
+        <ul className="yx-plt-list" aria-label={group.label}>
+          {group.people.map((r) => (
+            <li key={r.id}>
+              {r.nudge && onNudge ? (
+                <>
+                  <span className="yx-plt-list__main"><PersonLabel name={r.name} secondary={r.secondary} /></span>
+                  <NudgeButton name={r.name} reminded={r.reminded} onNudge={() => onNudge(r)} />
+                </>
+              ) : (
+                <PersonLabel name={r.name} secondary={r.secondary} />
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** The manager sample: 14 direct reports today. */
+const SAMPLE_TEAM_TODAY: TeamToday = {
+  total: 14,
+  href: '#today',
+  groups: [
+    { key: 'leave', label: 'On leave', people: [{ id: 'm1', name: 'Meera Krishnan', secondary: 'Sick leave today' }, { id: 'm2', name: 'Rahul Nair', secondary: 'Casual leave today and tomorrow' }] },
+    { key: 'not_in', label: 'Not in yet', people: [{ id: 'm3', name: 'Sanjay Gupta', secondary: 'General shift started 9:30 am', nudge: true }] },
+    { key: 'late', label: 'Late', people: [{ id: 'm4', name: 'Kavya Reddy', secondary: 'In at 9:52 am, 22 minutes late' }] },
+    { key: 'away', label: 'Working from home or on duty', people: [{ id: 'm5', name: 'Vikram Rao', secondary: 'On duty: client visit, Hosur' }, { id: 'm6', name: 'Anjali Iyer', secondary: 'Working from home' }] },
+  ],
+};
 
 /** Nudge on Team today (PLT-02): once sent it says so and stays done; a refusal says why in a toast. */
 function NudgeButton({ name, reminded, onNudge }: { name: string; reminded?: boolean; onNudge: () => Promise<void> }) {
@@ -806,30 +855,10 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
     ...(live.team
       ? [{
           id: 'today',
-          title: 'Team today',
+          title: 'My team today',
           size: 8 as const,
           actions: <Link href={live.team.href}>{`View all ${live.team.total}`}</Link>,
-          content: (
-            <div className="yx-plt-stack">
-              <p className="yx-plt-muted">{live.team.summary}</p>
-              {live.team.rows.length > 0 && (
-                <ul className="yx-plt-list">
-                  {live.team.rows.map((r) => (
-                    <li key={r.id}>
-                      {r.nudge && live.onNudge ? (
-                        <>
-                          <span className="yx-plt-list__main"><PersonLabel name={r.name} secondary={r.secondary} /></span>
-                          <NudgeButton name={r.name} reminded={r.reminded} onNudge={() => live.onNudge!(r)} />
-                        </>
-                      ) : (
-                        <PersonLabel name={r.name} secondary={r.secondary} />
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          ),
+          content: <TeamTodayCard team={live.team} onNudge={live.onNudge} />,
         }]
       : []),
     ...(live.off
@@ -1309,6 +1338,8 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
       { id: 'ac1', label: 'Apply leave', secondary: 'Opens the request sheet', icon: CalendarPlus, shortcut: 'N L', keywords: ['leave', ...pfx('>', ['apply leave'])] },
       { id: 'ac2', label: 'Approve leave', secondary: 'Approvals › Leave · 2 waiting', icon: CheckSquare, keywords: pfx('>', ['approve leave']) },
       { id: 'ac3', label: 'New expense claim', secondary: 'Opens the request sheet', icon: Receipt, shortcut: 'N E', keywords: pfx('>', ['new expense claim']) },
+      { id: 'ac4', label: 'Regularise a day', secondary: 'Fix a missed or wrong punch', icon: CalendarCheck, keywords: pfx('>', ['regularise a day', 'missed punch']) },
+      { id: 'ac5', label: 'Raise a ticket', secondary: 'Ask HR, IT or finance', icon: Ticket, keywords: pfx('>', ['raise a ticket', 'helpdesk']) },
     ],
   },
   {

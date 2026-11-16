@@ -255,6 +255,12 @@ export class TimeOpsController {
     return this.timesheets.week(ctx, q.week);
   }
 
+  // Keka ideas (2026-11): my weeks of a year (hours and status), for the Time summary.
+  @Get('me/timesheet/summary')
+  myYear(@CurrentTenant() ctx: TenantContext, @Query() q: YearQueryDto) {
+    return this.timesheets.summary(ctx, Number(q.year));
+  }
+
   @Put('me/timesheet')
   @Throttle(MODERATE_UPLOAD_THROTTLE)
   saveWeek(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: TimesheetDto) {

@@ -10,7 +10,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import { ApproveAmountDto, ClaimDto, DecideDto, FlagDto, LineDto, ListQueryDto, ReceiptQueryDto, SubmitDto } from './claims-dto';
+import { ApproveAmountDto, ClaimDto, ClaimItemsDto, DecideDto, ExpenseItemDto, FlagDto, LineDto, ListQueryDto, ReceiptQueryDto, SubmitDto } from './claims-dto';
 import { ExpenseClaimsService } from './claims.service';
 
 // Expenses batch E2 (M05-BUILD-DESIGN §18 "Claims"). Every route is open to the implicit grants: the service decides
@@ -59,6 +59,31 @@ export class ExpenseClaimsController {
   @UseInterceptors(RECEIPT)
   receipt(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: ReceiptQueryDto, @UploadedFile() file?: Express.Multer.File) {
     return this.claims.addReceipt(ctx, this.user(req), id, file, q.lineId);
+  }
+
+  // Keka ideas (2026-11): expenses saved first, claimed later (my own only).
+  @Get('me/items')
+  myItems(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.claims.myItems(ctx, this.user(req));
+  }
+
+  @Post('me/items')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  @UseInterceptors(RECEIPT)
+  addItem(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: ExpenseItemDto, @UploadedFile() file?: Express.Multer.File) {
+    return this.claims.addItem(ctx, this.user(req), dto, file);
+  }
+
+  @Post('me/items/:itemId/remove')
+  @HttpCode(200)
+  removeItem(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('itemId', ParseUUIDPipe) itemId: string) {
+    return this.claims.removeItem(ctx, this.user(req), itemId);
+  }
+
+  @Post('claims/:id/items')
+  @HttpCode(200)
+  claimItems(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ClaimItemsDto) {
+    return this.claims.claimItems(ctx, this.user(req), id, dto.itemIds);
   }
 
   @Post('claims/:id/lines')

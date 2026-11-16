@@ -128,6 +128,8 @@ export interface ListPageProps<R> {
   actions?: ReactNode;
   /** Banners, stat cards, anything above the table. */
   above?: ReactNode;
+  /** Right above the table, inside the current tab (a quick filter such as the approvals' kind picker). */
+  beforeTable?: ReactNode;
   tabs?: ListTab[];
   tab?: string;
   onTabChange?: (id: string) => void;
@@ -233,10 +235,15 @@ export function ListPage<R>(p: ListPageProps<R>) {
           </TabsList>
           {p.tabs.map((t) => (
             <TabsContent key={t.id} value={t.id} forceMount hidden={t.id !== p.tab}>
-              {t.id === p.tab && table}
+              {t.id === p.tab && (p.beforeTable ? <div className="yx-plt-stack">{p.beforeTable}{table}</div> : table)}
             </TabsContent>
           ))}
         </Tabs>
+      ) : p.beforeTable ? (
+        <div className="yx-plt-stack">
+          {p.beforeTable}
+          {table}
+        </div>
       ) : (
         table
       )}
