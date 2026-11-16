@@ -2271,3 +2271,21 @@ Queued: 2112, 2113, 2116 (small follow-up slice).
       staff review does; the phone the person types in the dialog is kept. *Suggested: keep.*
 2135. **More than one open request from one company.** Talk to us allows one open request per company and feature; chat
       requests are limited to one per chat only. *Suggested: also one open chat request per company at a time.*
+
+### Ask YukthiX follow-ups, round 2, as built (branch `feat/yukthix-ask-fu2`, 16 Nov 2026; answers 2132, 2135)
+- **2132:** Console › Ask YukthiX review (`/staff/assistant-review`, Catalogue group) shows the assistant review on its
+  own page, so the help centre writers (`platform.helpcentre.write`) reach it without the feature-requests key. The API
+  route already takes either key. Kit: `AssistantReviewConsoleScreen` (the review panel shared with the Feature requests
+  page's second tab); stories "Ask YukthiX review · its own page" and "· no access".
+- **2135:** one open chat sales request per company at a time: a second chat about buying is refused (409, "Your company
+  already asked YukthiX sales from a chat. They reply by …") until sales records an outcome; a transaction lock keeps two
+  chats from both passing. Talk to us requests (per feature) are not affected. No migration.
+- **Tests:** kit `feature-requests` (+2); web console pages (+2); e2e `ask-followups` (+1). Manual test MT-HLP-ASK3.
+
+### Questions (from 2146)
+
+2146. **Telling the person before they type.** The chat offers "Send a sales request" even while the company has one
+      open; pressing it says when sales replies. *Suggested: hide the offer and say "YukthiX sales will call by …" when
+      one is open.*
+2147. **Two console links to one review.** Feature-request deciders see the review on both pages. *Suggested: keep the
+      tab for them; the link is for writers.*
