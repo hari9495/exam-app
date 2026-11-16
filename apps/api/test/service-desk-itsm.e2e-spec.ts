@@ -524,6 +524,26 @@ describe('Helpdesk ITSM: changes and problems', () => {
     expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'desk.recurring.skipped', entityId: r2.id } }))).toBe(1);
   });
 
+  it('a standard-change schedule whose template lost its pre-approval pauses, stays paused, and its desk admins are told once (answer 1992)', async () => {
+    const tpl = (await api('deskAdmin', 'post', `/desk/desks/${ids.it}/templates`).send({ name: 'Nightly log rotation', ticketTypeId: ids.changeType, defaults: {}, checklist: [], preApproved: true }).expect(201)).body.id as string;
+    const startsAt = at(sat(), '11:00');
+    const r = (await api('deskAdmin', 'post', '/desk/recurring').send({ deskId: ids.it, name: 'Log rotation', rrule: 'FREQ=WEEKLY;BYDAY=SA', timeZone: 'Asia/Kolkata', startsAt, template: { subject: 'Log rotation', bodyHtml: '', standard: { templateId: tpl, startAfterHours: 0, minutes: 30 } } }).expect(201)).body;
+    await tenantPrisma.forTenant(SUPER, (tx) => tx.sdTemplate.update({ where: { id: tpl }, data: { preApproved: false } }));
+    const recurring = app.get(RecurringService);
+    await recurring.tick(new Date(new Date(startsAt).getTime() + 60_000));
+    expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.sdRecurring.findFirstOrThrow({ where: { id: r.id } }))).state).toBe('paused');
+    expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.sdRecurringRun.count({ where: { recurringId: r.id, ticketId: { not: null } } }))).toBe(0);
+    const told = await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.findMany({ where: { type: 'helpdesk.recurring.paused', entityId: r.id }, select: { recipientUserId: true, contextText: true } }));
+    // The desk's admins only (not its leads or agents, nor anyone of another company).
+    expect(told.map((x) => x.recipientUserId)).toEqual([users.deskAdmin]);
+    expect(told[0].contextText).toBe('Log rotation paused: its standard change template is no longer active and pre-approved');
+    expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'desk.recurring.paused', entityId: r.id } }))).toBe(1);
+    // Negative: a later tick neither raises it nor tells anyone again.
+    await recurring.tick(new Date(new Date(startsAt).getTime() + 8 * 86_400_000));
+    expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.count({ where: { type: 'helpdesk.recurring.paused', entityId: r.id } }))).toBe(1);
+    expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.count({ where: { organizationId: org.B.id, type: 'helpdesk.recurring.paused' } }))).toBe(0);
+  });
+
   it('the report counts changes by kind and outcome, the failed-change rate and problems; only the desk sees it', async () => {
     const rep = (await api('lead', 'get', `/desk/itsm/report?deskId=${ids.it}&from=2026-01-01&to=2027-12-31`).expect(200)).body;
     const standard = rep.changes.byKind.find((k: { kind: string }) => k.kind === 'standard');

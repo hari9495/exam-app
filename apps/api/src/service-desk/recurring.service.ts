@@ -189,11 +189,11 @@ export class RecurringService {
         this.logger.warn(`recurring ${d.id}: ${(e as Error).message}`);
       }
     }
-    // Answer 1913: after the change is saved, the desk's admins hear that a schedule paused (once: it is no longer active).
+    // Answers 1913, 1992: after the change is saved, the desk's admins hear that a schedule paused (once: it is no longer active).
     for (const p of paused) {
       if (!p.adminIds.length) continue;
       await this.notifications
-        .notifySystem({ organizationId: p.organizationId, isSuperAdmin: false }, p.adminIds, 'helpdesk.recurring.paused', { entityType: 'sd_recurring', entityId: p.recurringId, contextText: `${p.name} paused: ${p.equipment} was retired`, linkPath: '/yx/desk/setup?tab=schedules' }, { subject: `Maintenance paused: ${p.name}`, html: `<p>The maintenance schedule ${esc(p.name)} paused because ${esc(p.equipment)} was retired. Point it at other equipment and resume it, or end it.</p>` })
+        .notifySystem({ organizationId: p.organizationId, isSuperAdmin: false }, p.adminIds, 'helpdesk.recurring.paused', { entityType: 'sd_recurring', entityId: p.recurringId, contextText: `${p.name} paused: ${p.why}`.slice(0, 300), linkPath: '/yx/desk/setup?tab=schedules' }, { subject: `${p.subject}: ${p.name}`.slice(0, 150), html: `<p>The schedule ${esc(p.name)} paused because ${esc(p.why)}. ${esc(p.advice)}</p>` })
         .catch((e) => this.logger.warn(`Paused-schedule notice not sent: ${(e as Error).message}`));
     }
     return n;
@@ -220,8 +220,7 @@ export class RecurringService {
         await emit(tx, org, 'helpdesk.recurring.paused', { recurringId: r.id, deskId: r.deskId, reason: 'equipment_retired' });
         await audit(tx, { ctx, userId: null as unknown as string }, 'desk.recurring.paused', 'sd_recurring', r.id, { reason: 'equipment_retired', equipmentId: tpl.equipmentId });
         const eq = await tx.sdEquipment.findFirst({ where: { organizationId: org, id: tpl.equipmentId }, select: { name: true, tag: true } });
-        const adminIds = (await tx.sdDeskMember.findMany({ where: { organizationId: org, deskId: r.deskId, role: 'admin', ...activeOn(todayIst()) }, select: { userId: true } })).map((m) => m.userId);
-        paused.push({ organizationId: org, recurringId: r.id, name: r.name, equipment: eq ? `${eq.name} (${eq.tag})` : 'its equipment', adminIds: [...new Set(adminIds)] });
+        paused.push({ organizationId: org, recurringId: r.id, name: r.name, subject: 'Maintenance paused', why: `${eq ? `${eq.name} (${eq.tag})` : 'its equipment'} was retired`, advice: 'Point it at other equipment and resume it, or end it.', adminIds: await deskAdmins(tx, org, r.deskId) });
         return 0;
       }
     }
@@ -234,7 +233,10 @@ export class RecurringService {
       const prevTicket = prev?.ticketId ? await tx.sdTicket.findFirst({ where: { organizationId: org, id: prev.ticketId }, select: { systemState: true } }) : null;
       if (prev && prevTicket && OPEN_STATES.includes(prevTicket.systemState)) await tx.sdRecurringRun.update({ where: { id: prev.id }, data: { missed: true } });
       if (tpl.standard) {
-        made += await this.standardRun(tx, ctx, r, tpl, at, after);
+        const got = await this.standardRun(tx, ctx, r, tpl, at, after, paused);
+        // A paused schedule stays paused (the state written below would make it active again).
+        if (got === 'paused') return made;
+        made += got;
         continue;
       }
       const robot = deskRobot({ ctx }, r.deskId);
@@ -271,14 +273,17 @@ export class RecurringService {
    * rules refuse (a freeze, outside the change window) skips that run and says why; a template that lost its
    * pre-approval pauses the schedule.
    */
-  private async standardRun(tx: Tx, ctx: CompanyContext, r: Prisma.SdRecurringGetPayload<object>, tpl: Template, at: Date, after: (() => Promise<void>)[]) {
+  private async standardRun(tx: Tx, ctx: CompanyContext, r: Prisma.SdRecurringGetPayload<object>, tpl: Template, at: Date, after: (() => Promise<void>)[], paused: Paused[] = []): Promise<number | 'paused'> {
     const org = ctx.organizationId;
     const st = tpl.standard!;
     const template = await tx.sdTemplate.findFirst({ where: { organizationId: org, id: st.templateId, active: true, preApproved: true }, select: { name: true } });
     if (!template || !r.createdBy) {
       await tx.sdRecurring.update({ where: { id: r.id }, data: { state: 'paused', updatedAt: new Date() } });
       await emit(tx, org, 'helpdesk.recurring.paused', { recurringId: r.id, deskId: r.deskId, reason: 'not_pre_approved' });
-      return 0;
+      await audit(tx, { ctx, userId: null as unknown as string }, 'desk.recurring.paused', 'sd_recurring', r.id, { reason: 'not_pre_approved', templateId: st.templateId });
+      // Answer 1992: the desk's admins are told, as for paused maintenance (1913).
+      paused.push({ organizationId: org, recurringId: r.id, name: r.name, subject: 'Standard change schedule paused', why: template ? 'nobody who set it up is left to raise its changes' : 'its standard change template is no longer active and pre-approved', advice: 'Choose a pre-approved template (or set it up again) and resume it, or end it.', adminIds: await deskAdmins(tx, org, r.deskId) });
+      return 'paused';
     }
     const from = new Date(at.getTime() + st.startAfterHours * 3_600_000);
     const notices: Notice[] = [];
@@ -452,8 +457,16 @@ interface Paused {
   organizationId: string;
   recurringId: string;
   name: string;
-  equipment: string;
+  /** The notice's subject start, e.g. "Maintenance paused". */
+  subject: string;
+  /** Why it paused, plain words after "because". */
+  why: string;
+  /** What an admin can do now. */
+  advice: string;
   adminIds: string[];
 }
+
+/** The desk's admins today (each once). */
+const deskAdmins = async (tx: Tx, org: string, deskId: string) => [...new Set((await tx.sdDeskMember.findMany({ where: { organizationId: org, deskId, role: 'admin', ...activeOn(todayIst()) }, select: { userId: true } })).map((m) => m.userId))];
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
