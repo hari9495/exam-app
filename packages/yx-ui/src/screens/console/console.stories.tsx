@@ -154,3 +154,18 @@ export const StaffRolesNoKey: S = { name: 'Staff and roles · not a Security lea
 export const StaffAdd: S = { name: 'Staff and roles · add staff', render: () => shell('staff', <StaffRolesScreen state="ready" roles={STAFF_ROLE_DEFS} staff={STAFF} onSave={() => wait()} onInvite={() => wait()} onDeactivate={() => wait()} defaultInvite />) };
 // Answers 1171 and 1173: an invited account (Send the invitation again) and a deactivated one (Reactivate), in the row menus.
 export const StaffInvitedAndInactive: S = { name: 'Staff and roles · invited and deactivated (send again, reactivate)', render: () => shell('staff', <StaffRolesScreen state="ready" roles={STAFF_ROLE_DEFS} staff={STAFF} onSave={() => wait()} onInvite={() => wait()} onDeactivate={() => wait()} onReactivate={() => wait()} onResend={() => wait()} />) };
+
+// Answer 2093: the staff member's own notices in the console header (kept-record removals, Data Protection Board).
+export const STAFF_NOTICES = [
+  { id: 'n1', system: true, actor: { name: 'YukthiX' }, text: 'Tell the Data Protection Board now: Godavari Agro. Contained 16 Nov 2026, 10:05 am IST for a suspected breach.', at: new Date('2026-11-16T05:10:00Z'), read: false, href: '/staff/incidents' },
+  { id: 'n2', system: true, actor: { name: 'YukthiX' }, text: 'Kept records removed: Kaveri Foods. The audit log reached its day and was removed, with its certificate.', at: new Date('2026-11-15T21:40:00Z'), read: true, href: '/staff/companies/c1' },
+];
+export const ConsoleNotices: S = {
+  name: 'Console · notices in the header',
+  render: () => (
+    <ConsoleShell active="companies" name="Anand Iyer" email="anand.iyer@yukthix.test" securityHref="#" onSignOut={() => {}} onNavigate={() => {}} notices={{ items: STAFF_NOTICES, unread: 1, onMarkAllRead: () => {}, onOpenItem: () => {} }}>
+      <CompaniesScreen state="ready" companies={COMPANIES} products={PRODUCTS} canManage onOpen={() => {}} onNew={() => {}} />
+    </ConsoleShell>
+  ),
+};
+

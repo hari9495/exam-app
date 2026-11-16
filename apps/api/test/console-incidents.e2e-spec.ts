@@ -243,11 +243,34 @@ describe('Console C-8 YX-10: incidents and breach reminders', () => {
       await incidents.boardNoticeSweep(new Date(t0));
       expect(nudges().map((m) => m.to)).toEqual(expect.arrayContaining([`staff-${run}@platform.test`, `staff2-${run}@platform.test`]));
       expect(nudges().some((m) => m.to === `staffnokey-${run}@platform.test` || m.to.endsWith('@c8i.test'))).toBe(false);
+      // Answer 2093: the same reminder is a console notice for the same staff; each sees only their own, marks it read,
+      // and nobody reads or marks another's; staff without the key get none.
+      type Notices = { unread: number; items: { id: string; kind: string; title: string; read: boolean }[] };
+      const board = (b: Notices) => b.items.filter((n) => n.kind === 'board_notice_due' && n.title === `Tell the Data Protection Board now: C8I A ${run}`);
+      const mine = (await api('staff', 'get', '/platform/notices').expect(200)).body as Notices;
+      const theirs = (await api('staff2', 'get', '/platform/notices').expect(200)).body as Notices;
+      expect([board(mine).length, board(theirs).length]).toEqual([1, 1]);
+      expect(board(mine)[0]!.id).not.toBe(board(theirs)[0]!.id);
+      await api('staff', 'post', `/platform/notices/${board(theirs)[0]!.id}/read`).expect(404);
+      const after = (await api('staff', 'post', `/platform/notices/${board(mine)[0]!.id}/read`).expect(200)).body as { unread: number };
+      expect(after.unread).toBe(mine.unread - 1);
+      expect(board((await api('staff2', 'get', '/platform/notices').expect(200)).body as Notices)[0]!.read).toBe(false);
+      const noKey = await api('staffNoKey', 'get', '/platform/notices');
+      expect(noKey.status === 200 ? board(noKey.body as Notices) : []).toEqual([]);
+      // Not for a company account; and the database lets nobody read across, even with platform access.
+      await api('adminA', 'get', '/platform/notices').expect(403);
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.staffNotice.count({ where: { title: `Tell the Data Protection Board now: C8I A ${run}` } }))).toBe(0);
+      await expect(tenantPrisma.forTenant(SUPER, (tx) => tx.staffNotice.deleteMany({ where: { recipientUserId: users.staff } }))).rejects.toThrow(/permission denied/);
+      await expect(tenantPrisma.forTenant(SUPER, (tx) => tx.staffNotice.createMany({ data: [{ recipientUserId: users.adminA!, kind: 'board_notice_due', title: 'x', body: 'x' }] }))).rejects.toThrow(/row-level security/);
       sent.length = 0;
       await incidents.boardNoticeSweep(new Date(t0 + 30 * 60_000));
       expect(nudges()).toEqual([]);
       await incidents.boardNoticeSweep(new Date(t0 + 61 * 60_000));
       expect(nudges().length).toBeGreaterThan(0);
+      // The repeat nudge adds no second open notice for staff2 (still unread); staff, who read theirs, gets a fresh one.
+      const again = (who: string) => api(who, 'get', '/platform/notices').expect(200).then((r) => board(r.body as Notices));
+      expect((await again('staff2')).filter((n) => !n.read).length).toBe(1);
+      expect((await again('staff')).map((n) => n.read).sort()).toEqual([false, true]);
       expect((await reminders()) - before).toBe(2);
     });
 

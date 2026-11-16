@@ -3,6 +3,7 @@ import { AuditService, TenantPrismaService } from '@exam-platform/shared';
 import { FileStore } from '../documents/file-store';
 import { EmailService } from '../email/email.service';
 import { escapeHtml } from '../notifications/notification-email-render';
+import { StaffNoticesService } from './staff-notices.service';
 import { companyStoredFiles } from './stored-files';
 import { addDays, todayIst } from '../org-structure/org-validation';
 import { PLATFORM, staffActor } from './platform.service';
@@ -164,14 +165,24 @@ export class CompanyDeletionService {
    */
   private async tellDeleters(organizationId: string, out: Released) {
     try {
+      const words: Record<string, string> = { audit: 'the audit log', pay: 'the payroll records', filings: 'the statutory filings', company: 'the company and its people' };
       const { d, to } = await this.tenantPrisma.forTenant(PLATFORM, async (tx) => {
         const d = await tx.companyDeletion.findFirst({ where: { organizationId, status: 'done' }, orderBy: { deletedAt: 'asc' }, select: { companyName: true, requestedBy: true, approvedBy: true } });
         const ids = [d?.requestedBy, d?.approvedBy].filter((x): x is string => Boolean(x));
-        const to = (await tx.user.findMany({ where: { id: { in: ids }, organizationId: null, status: 'active' }, select: { email: true } })).map((u) => u.email);
-        return { d, to };
+        const staff = await tx.user.findMany({ where: { id: { in: ids }, organizationId: null, role: 'super_admin', status: 'active' }, select: { id: true, email: true } });
+        // Answer 2093: the same news in their console notices (the email stays).
+        if (d)
+          await StaffNoticesService.notify(tx, staff.map((u) => u.id), {
+            kind: 'kept_records_removed',
+            title: `Kept records removed: ${d.companyName}`,
+            body: `${out.released.map((r) => words[r.group] ?? r.group).join(', ')} reached their day and ${out.released.length === 1 ? 'was' : 'were'} removed, each with its certificate.${out.companyRemoved ? ' Nothing of the company is left.' : ''}`,
+            linkPath: out.companyRemoved ? '/staff/companies' : `/staff/companies/${organizationId}`,
+            entityType: 'company',
+            entityId: organizationId,
+          });
+        return { d, to: staff.map((u) => u.email) };
       });
       if (!d || !to.length) return;
-      const words: Record<string, string> = { audit: 'the audit log', pay: 'the payroll records', filings: 'the statutory filings', company: 'the company and its people' };
       const lines = out.released.map((r) => `<li>${escapeHtml(words[r.group] ?? r.group)}: ${r.rows} rows, certificate SHA-256 ${r.sha256}</li>`).join('');
       const subject = `Kept records removed: ${d.companyName}`.slice(0, 150);
       const html = `<p>The kept statutory records of ${escapeHtml(d.companyName)} reached their day and were removed:</p><ul>${lines}</ul><p>${out.companyRemoved ? 'Nothing of the company is left; the certificates stay in the console list of deletions.' : 'Open the company in the console to see each removal and its certificate.'}</p>`;

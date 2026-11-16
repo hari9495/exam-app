@@ -3,6 +3,7 @@ import { BarChart3, BellRing, BookOpen, Handshake, Building2, FileClock, HeartPu
 import { Logo, Monogram } from '../../components/brand';
 import type { IconComponent } from '../../components/foundations';
 import { AppShell, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, TopBar, type DensityChoice, type RailItem, type ThemeChoice } from '../../components/shell';
+import { NotificationCentre, type NotificationItem } from '../../components/notify';
 
 export type ConsolePageId = 'companies' | 'customers' | 'help-centre' | 'nudges' | 'sales' | 'analytics' | 'incidents' | 'maintenance' | 'support-desk' | 'support' | 'plans' | 'whats-new' | 'feature-requests' | 'assistant-review' | 'rules' | 'channels' | 'feature-flags' | 'platform-settings' | 'audit' | 'staff';
 type ConsoleGroup = 'Customers' | 'Catalogue' | 'Rules' | 'Operations' | 'Channels' | 'Security';
@@ -66,11 +67,13 @@ export interface ConsoleShellProps {
   onSignOut: () => void;
   /** Client-side navigation; plain links when omitted. */
   onNavigate?: (href: string) => void;
+  /** Answer 2093: the staff member's own notices (the bell); the unread count is the server's. */
+  notices?: { items: NotificationItem[]; unread: number; loading?: boolean; onMarkAllRead: () => void; onOpenItem: (item: NotificationItem) => void };
   children: ReactNode;
 }
 
 /** Frame for the YukthiX platform console: YukthiX staff only, never a company's name or branding. */
-export function ConsoleShell({ active, name, email, securityHref, onSignOut, onNavigate, children }: ConsoleShellProps) {
+export function ConsoleShell({ active, name, email, securityHref, onSignOut, onNavigate, notices, children }: ConsoleShellProps) {
   const activeGroup = CONSOLE_LINKS.find((l) => l.id === active)?.group;
   const [theme, setTheme] = useState<ThemeChoice>('light');
   const [density, setDensity] = useState<DensityChoice>('comfortable');
@@ -119,6 +122,7 @@ export function ConsoleShell({ active, name, email, securityHref, onSignOut, onN
               <span className="yx-workspace__company">Console</span>
             </a>
           }
+          notifications={notices && <NotificationCentre items={notices.items} unreadCount={notices.unread} loading={notices.loading} onMarkAllRead={notices.onMarkAllRead} onOpenItem={notices.onOpenItem} />}
           profile={
             <ProfileMenu
               name={name}
