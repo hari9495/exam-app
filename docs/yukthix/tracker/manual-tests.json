@@ -22120,6 +22120,92 @@
     "note": "Positive and negative. Breaks, the calculator and display settings show only after /exam moves to the designed runner (question 2161)."
   },
   {
+    "id": "MT-ASMT-DELIVER1",
+    "area": "Assessments AS-3 (16 Nov 2026)",
+    "screen": "Hire › Assessments › Invitations & drives",
+    "url": "http://localhost:3000/yx/hiring/assessments/invitations",
+    "account": "An inviter of the demo company (ats.candidate.manage), a results reader only, and the admin of another company.",
+    "steps": [
+      "Open Hire › Assessments in the menu as the inviter.",
+      "Invite candidates: press Send with nothing chosen; then choose a published test and a candidate and send.",
+      "Invite the same candidate to the same test again before they take it.",
+      "Filter by Missed; open a missed candidate; Re-invite with a 5-character reason, then with a real reason.",
+      "Expire that invitation again (or wait) and try Re-invite once more.",
+      "Select several rows: Send reminder, then Revoke (Cancel first, then confirm).",
+      "Open the Drives tab.",
+      "As the results reader and as the other company's admin: open the page address."
+    ],
+    "expected": "Step 1: Tests and Invitations & drives next to Question bank. Step 2: both fields asked for; then a toast and the row as Invited. Step 3: skipped (already has an open invitation). Step 4: the reason is asked for; then a toast, a new window, the reason in the drawer. Step 5: no Re-invite button ('Already re-invited once'). Step 6: reminders only to those not started; revoke asks first. Step 7: walk-in drives with sessions and counts. Step 8: refused / nothing of the demo company.",
+    "stories": [
+      "Screens/Proctoring/PRC-07 · Invitations and drives"
+    ],
+    "note": "Positive and negative. Answers 2001, 2159."
+  },
+  {
+    "id": "MT-ASMT-REUSE1",
+    "area": "Assessments AS-3 (16 Nov 2026)",
+    "screen": "Candidate › My tests; Use your earlier result",
+    "url": "http://localhost:3000/my-tests",
+    "account": "A candidate of the demo company who submitted a test (result released), invited again to the same test for a second job; Settings 6.5 'earlier result may be used again' at 6 months.",
+    "steps": [
+      "Open the second invitation's link.",
+      "On the choice: press Use my result without ticking the agreement; then tick and use it.",
+      "Go to My tests; open the other test listed.",
+      "Back on the first invitation: Take the test instead.",
+      "HR sets the reuse months to 0 (never); open the invitation link again.",
+      "HR holds the earlier result; months back to 6; open the link again."
+    ],
+    "expected": "Step 1: the reuse choice with the earlier date and 'can be used until'. Step 2: the button stays disabled; then a toast, 'You are using your earlier result', and recruiters see Reused. Step 3: the list names the real company and candidate; the other test opens on its welcome page. Step 4: the test can start. Step 5: no offer; the welcome page as usual. Step 6: no offer.",
+    "stories": [
+      "Screens/Proctoring/PRC-21 · Candidate portal home",
+      "Screens/Proctoring/PRC-32 · Result-reuse consent"
+    ],
+    "note": "Positive and negative. Answer 2013; asmt.result_reuse_months."
+  },
+  {
+    "id": "MT-ASMT-CAMPUS1",
+    "area": "Assessments AS-3 part 2 (16 Nov 2026)",
+    "screen": "Hire › Assessments › Invitations & drives › a drive's campus kit",
+    "url": "http://localhost:3000/yx/hiring/assessments/invitations",
+    "account": "An inviter who also writes tests (ats.candidate.manage and asmt.test.manage), an inviter only, and the admin of another company.",
+    "steps": [
+      "New drive with an empty name, then with a name.",
+      "Registration form: set CGPA to Optional with a minimum CGPA; then Required, branches CSE, IT, minimum 6.5, cap 3; Save.",
+      "Institutions: Add one with no code; then two colleges (one with a coordinator email); try a code already used.",
+      "Open the public registration link with &college=<code>; register an eligible student, an ineligible one (CGPA 5.9), and the same roll number with another email.",
+      "Registrants: open the possible duplicate; Merge (Cancel first, then confirm).",
+      "Register one more student up to the cap, then one more.",
+      "College-wise report.",
+      "As the inviter only: open Invitations & drives.",
+      "As the other company's admin: open the drive's address."
+    ],
+    "expected": "Step 1: the name is asked; then the drive opens. Step 2: save is blocked with the reason; then saved (toast). Step 3: code asked; then added; the used code is refused. Step 4: a link by email; 'not eligible: CGPA below 6.5' with no link; the third is flagged. Step 5: merged (toast); the count drops. Step 6: the last one is refused 'full'. Step 7: counts per college. Step 8: no New drive button. Step 9: not found.",
+    "stories": [
+      "Screens/Proctoring/PRC-29 · Campus drive kit",
+      "Screens/Proctoring/PRC-07 · Invitations and drives"
+    ],
+    "note": "Positive and negative. Answers 2014, 2214."
+  },
+  {
+    "id": "MT-ASMT-CAMPUS2",
+    "area": "Assessments AS-3 part 2 (16 Nov 2026)",
+    "screen": "College coordinator's view (emailed link)",
+    "url": "http://localhost:3000/campus/<token from the email>",
+    "account": "A drive with registrants from two colleges; one college shares each student's result, the other none.",
+    "steps": [
+      "Send the coordinator link from the college's drawer; open it from the email.",
+      "Look for the other college's students.",
+      "End the drive's last session (or wait); open the link again.",
+      "Send the link again; open the first email's link.",
+      "Open the second college's link after the drive closed."
+    ],
+    "expected": "Step 1: the college, counts and its students; results 'after the drive closes'. Step 2: none shown. Step 3: each student's pass or not. Step 4: 'This link has expired or was replaced'. Step 5: registration and attendance only.",
+    "stories": [
+      "Screens/Proctoring/PRC-29 · Campus drive kit"
+    ],
+    "note": "Positive and negative. Answer 2014."
+  },
+  {
     "id": "MT-ASMT-RUN2",
     "area": "Designed test runner and welcome steps: answers 2161, 2162, 2201 (16 Nov 2026)",
     "screen": "Candidate › Welcome (consent, selfie, start) and the test",

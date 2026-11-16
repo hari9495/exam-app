@@ -286,6 +286,10 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 | Empty · Empty | wire design | A | as Invitations |
 | Loading · Loading | wire design | A | as Invitations |
 | Error · Error | wire design | A | as Invitations |
+| LiveInvitations · Live · invitations | live | A | AS-3: `/yx/hiring/assessments/invitations` (`GET /asmt/invitations`): every invitation with its state (Invited, Started, Completed, Under review, Missed, Revoked, Reused), the jobs using the test, filters, reminders, revoke, invite to a published test |
+| LiveEmpty · Live · no one invited yet | live | A | as above |
+| LiveError · Live · could not load | live | A | as above |
+| LiveReinvited · Live · missed, already re-invited | live | A | AS-3: `POST /asmt/invitations/:id/reinvite`: a missed test once, with a reason of 10+ characters (also a database check) |
 
 #### PRC-08 · Slot calendar
 
@@ -341,6 +345,15 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 | CollegeReport · College-wise report | design only, feature not built | A | no institutions |
 | Coordinator · College coordinator portal | design only, feature not built | A | no coordinator sign-in |
 | CoordinatorNoResults · College coordinator, results not shared | design only, feature not built | A | as above |
+| LiveRegistrants · Live · registrants with a possible duplicate | live | A | AS-3 part 2: `/yx/hiring/assessments/drives/[id]` (`GET /asmt/drives/:id/campus`): registrants with eligibility, "Existing candidate" (same email), "Possible duplicate" (same roll number and college, another email); Merge (`POST /asmt/registrants/:id/merge`) or Not a duplicate |
+| LiveForm · Live · registration form | live | A | `PUT /asmt/drives/:id/campus`: mobile, branch, year and CGPA each not asked, optional or required; branches, year, minimum CGPA, cap, tell why; a rule needs its field required (also the API) |
+| LiveNotCampus · Live · not a campus drive yet | live | A | a walk-in drive becomes a campus drive when the form is saved |
+| LiveInstitutions · Live · institutions | live | A | `GET/POST/PUT /asmt/institutions`: code unique per company, coordinator, results shared (none, counts, each student's), archive. Import waits (question 2241) |
+| LiveReport · Live · college-wise report | live | A | registered, eligible, invited, attended, passed per college; the chart leaves out colleges under 5 |
+| LiveError · Live · could not load | live | A | |
+| LiveCoordinator · Live · coordinator, before results | live | A | `/campus/[token]` (`GET /public/campus/coordinator/:token`): the emailed link (kept as a hash, 60 days, a new one replaces it); own college only |
+| LiveCoordinatorResults · Live · coordinator, each result shared | live | A | results only after the drive closes, at the college's level |
+| LiveCoordinatorExpired · Live · coordinator link expired | live | A | |
 
 #### PRC-30 · Invigilator app
 
@@ -463,6 +476,11 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 | RescheduleBlocked · Change slot blocked (2 used) | design only, feature not built | C | as above |
 | Empty · Empty | design only, feature not built | A | no list |
 | Phone · My tests · phone | phone view, mobile app not built | A | |
+| LiveMyTests · Live · my tests | live | A | AS-3: `/my-tests` (`GET /attempt/my-tests`): this candidate's tests at this company; another opens in place (`POST /candidate-auth/switch`, same candidate and company only) |
+| LiveReuseOffered · Live · earlier result can be used | live | A | AS-3: the open test offers the earlier result when `GET /attempt/reuse` has one |
+| LiveSubmitted · Live · submitted | live | A | links to the result page |
+| LiveEmpty · Live · no tests | live | A | |
+| LiveError · Live · could not load | live | A | |
 
 #### PRC-22 · Readiness check and practice
 
@@ -582,6 +600,9 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 | Reuse · Reuse with consent | design only, feature not built | A | an invitation is per test and candidate; nothing offers an earlier result (question 2013) |
 | Retake · Choose to retake | design only, feature not built | A | as above |
 | Expired · Outside validity window | design only, feature not built | A | as above |
+| LiveOffer · Live · earlier result offered | live | A | AS-3 (answer 2013): `/reuse`: a submitted, released (not held) result on the same test within `asmt.result_reuse_months` (default 6); used only after the candidate agrees (`POST /attempt/reuse`) |
+| LiveUsed · Live · earlier result in use | live | A | the invitation is `reused` (linked, not copied); the test cannot start until the candidate withdraws (`POST /attempt/reuse/withdraw`) |
+| LiveNone · Live · nothing to reuse | live | A | |
 
 ### 6. Extras and kit
 
@@ -1135,6 +1156,45 @@ Tests and settings: answers 2007, 2008, 2123, PRC-04, PRC-06 and Settings 6.5. N
       with the tests key, like the review queue (2129).*
 2159. **The Tests pages in the menu.** *Suggested: the lead adds Tests next to Question bank when the bank goes in.*
 
+## AS-3 as built, part 1 (branch `feat/yukthix-assessments-as3`, 16 Nov 2026)
+
+Hiring delivery: answers 2001, 2013, 2159; PRC-07, PRC-21, PRC-32. PRC-29 (the campus kit) is part 2.
+
+- **2159 menu:** Hire › Assessments now has Tests (test writers: `asmt.test.manage` or `exam:manage`) next to Question
+  bank, and Invitations & drives (inviters: `ats.candidate.manage` or `candidate:manage`), when assessments are on.
+- **PRC-07 invitations and drives:** `GET /asmt/invitations` (the company's newest 500, filter by test, name or state),
+  `GET /asmt/drives` (walk-in drives with tests, sessions, invited and attempted), `POST /asmt/invitations/:id/reinvite`
+  (a missed test only, once, a reason of 10+ characters; a new link and window by the existing resend; audited
+  `invitation.reinvited`). Sending, reminders and revoking use the existing invitation routes.
+- **PRC-32 result reuse (2013):** company setting `asmt.result_reuse_months` (0, 3, 6, 12; default 6; 0 = off). An open
+  invitation is offered the candidate's latest submitted result on the same test within the months, with a result that
+  is not held. The candidate must agree; the invitation then becomes `reused` and points at the earlier attempt
+  (linked, not copied; audited `invitation.result_reused`); a reused invitation cannot start until the candidate
+  withdraws. The welcome page sends the candidate to the choice first ("Take the test again" skips it).
+- **Invite rule change:** inviting skipped anyone with an open invitation to the same test, even one already taken. Now
+  only an open invitation not yet taken skips, so a second job using the same test can invite again (and offer reuse).
+- **PRC-21 my tests:** `GET /attempt/my-tests` lists this candidate's invitations at this company; `POST
+  /candidate-auth/switch` opens another one (same candidate and company only, else 404; a closed one is refused).
+- **Candidate header:** the live candidate pages (my tests, reuse, result) now name the real company and candidate. The
+  AS-4a result page showed the sample company and name; fixed here.
+- **Migration** `202617z0000331_asmt_hiring_delivery`: invitations gain reused attempt, reused at, re-invited at and the
+  reason, with checks (no data written).
+- **Screens:** the designed `InvitationsScreen`, `CandidatePortalHomeScreen` and `ResultReuseScreen` with `live`
+  (`delivery-live.tsx`); new states drawn as stories in PRC-07 (4), PRC-21 (5) and PRC-32 (3). All three left the
+  design-live guard's "not live" list.
+
+### Questions (from 2211)
+
+2211. **Bulk reminders and revokes go one by one.** The page calls the existing per-invitation routes in turn. *Suggested:
+      fine up to a few hundred; a bulk route with the drives work in part 2.*
+2212. **Reuse across tests.** Only the same test is reused (2013 says "same test"). A copy of a test is a different test.
+      *Suggested: keep; a company that wants reuse keeps one test per role.*
+2213. **Hiring stage after reuse.** A reused invitation shows "Reused" to recruiters, but the job's board does not move the
+      application on its own. *Suggested: treat a reused result like a submitted one on the board, next.*
+2214. **New drive button.** The drawn "New drive" is left off the live page; drives are still created on the older
+      walk-in screens. *Suggested: part 2 (campus kit) adds it.*
+2215. **The invitations list stops at 500.** *Suggested: add paging when a company passes it.*
+
 **Founder answers (16 Nov 2026, "ok for all"), 2151-2159, 2161-2166, 2191-2193, 2201-2207:** all as suggested.
 - 2151 build a test from a job description next (behind the AI-drafts setting, always a draft); 2152 per-test charts as an analysis tab, nightly; 2153 the designed Sections/Blueprint steps edit sections; 2154 section cut-offs with AS-6; 2155 the other 6.5 defaults come with their features; 2156 tell customers before the 90 to 30 day retention change goes live; 2157 keep AI-only default; 2158 a bell note to test managers when approval is asked; 2159 Tests in the menu next to Question bank.
 - 2161 AS-4a part 2: draw review mode, section chips, phone question list, option pictures and snippets in PRC-26, then switch /exam; 2162 scientific calculator keys in part 2; 2163 AS-2's builder sets breaks and calculator; 2164 approved screen-reader mode from AS-4b; 2165 survey summary in AS-6 reports, groups of 5+; 2166 keep the 75 s grace.
@@ -1142,6 +1202,48 @@ Tests and settings: answers 2007, 2008, 2123, PRC-04, PRC-06 and Settings 6.5. N
 - 2201 /welcome switches to the designed consent and selfie with AS-4a part 2; 2202 per-invitation breaks and a "no gaze flags" profile next, separate session with slot booking; 2203 the decision message covers "more information" for now; 2204 an email on each decision; 2205 face re-check with AS-5; 2206 keep test writers deciding; 2207 delete evidence after the company's retention once decided.
 
 **Founder answers (16 Nov 2026, "ok for all"), 2211 to 2215:** all as suggested. 2211 a bulk route in AS-3 part 2; 2212 keep, only the same test is reused; 2213 a reused result moves the application on the board like a submitted one (next); 2214 "New drive" on the live page in part 2; 2215 paging past 500 when a company needs it.
+
+## AS-3 as built, part 2 (branch `feat/yukthix-assessments-as3b`, 16 Nov 2026)
+
+The campus kit (answer 2014; PRC-29) on the existing walk-in drives, plus 2211, 2213 and 2214. No admit cards.
+
+- **Drives and the campus form:** Invitations & drives has "New drive" (a walk-in group; test writers only) and opens a
+  drive's campus kit at `/yx/hiring/assessments/drives/[id]`. Saving the registration form makes the drive a campus drive
+  (`walk_in_groups.campus_settings`): mobile, branch, graduation year and CGPA are each not asked, optional or required;
+  eligibility by branches, year and minimum CGPA; a registration cap; whether ineligible students are told why.
+- **Registration:** the public walk-in page of a campus drive (`/walk-in/:org?group=:drive`, `&college=CODE` picks the
+  college) asks those fields and the college from the company's list. An eligible student gets the test link as before;
+  an ineligible one is registered without a link and told why (if the drive says so). The cap counts registrations that
+  are not merged. A second registration with the same email keeps the first unchanged. The same roll number at the same
+  college with another email is flagged as a possible duplicate.
+- **Merge:** the recruiter merges a duplicate into the one kept (the duplicate stops counting, its untaken invitation is
+  revoked, audited `registrant.merged`) or clears the flag. A registration that took the test cannot be merged away.
+  Candidate records are not merged here (question 2242).
+- **Institutions, report, coordinator:** company-wide colleges (`asmt_institutions`); the college-wise report; "Send
+  coordinator link" emails a read-only link for one drive (only its hash is kept; 60 days; a new one replaces the old).
+  The coordinator sees registration and attendance for their own college, and results (counts, or each student's pass or
+  not) only after the drive closes, at the level set on the college.
+- **2211:** `POST /asmt/invitations/bulk` (remind or revoke, up to 500); each goes through the existing checks and each
+  refusal is named. **2213:** the hiring board shows a reused invitation's earlier result like a submitted one.
+- **Also fixed:** the designed candidate pages (my tests, reuse, result) now have the kit's toast provider (the candidate
+  layout had only the older one, so a done message would have failed).
+- **Migration** `202617z0000341_asmt_campus_kit`: three tables with forced RLS and `tenant_isolation`, and the drive's
+  campus settings column (no data written). The design-live guard now also reads `apps/web/app/campus`.
+
+### Questions (from 2241)
+
+2241. **Importing institutions.** The drawn "Import institutions" is not built; colleges are added one by one.
+      *Suggested: a CSV import (name, code, city, coordinator) next.*
+2242. **Merging candidate records.** Merging two registrations does not merge the two candidate records (different
+      emails). *Suggested: link to Hire's candidate merge from the drawer, next.*
+2243. **Coordinator sign-in.** Coordinators use an emailed link (60 days), not an account. *Suggested: keep; an account
+      only if colleges ask for it.*
+2244. **OTP on email and mobile.** The drawn form verifies email and mobile by OTP; the walk-in page does not. *Suggested:
+      add it with the candidate portal's OTP when it is built.*
+2245. **Eligibility after a change.** Changing the rules does not re-check students who already registered. *Suggested:
+      keep; a "re-check everyone" button if drives need it.*
+2246. **Large drives.** The kit shows the newest 2000 registrants. *Suggested: paging when a drive passes it.*
+
 
 ## Question bank round 2 as built (answers 2141 to 2143; branch `feat/yukthix-bank-fu2`)
 

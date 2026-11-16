@@ -7,6 +7,13 @@ import { PipelineService } from '../pipeline/pipeline.service';
 import { buildAssessmentEmailHtml, generateToken, resolveInvitationExpiry, EMAIL_LOGO_SAS_TTL_MS } from '../invitations/invitations.service';
 import { RegisterWalkInDto } from './dto/register-walk-in.dto';
 import { resolveConsentStamp } from '../common/consent-check';
+import { ineligibleReason, missingFields, readCampus, type CampusSettings } from '../assessments/campus/campus-rules';
+
+/** AS-3 (PRC-29): a campus drive's form for the public page: which fields to ask and the colleges to pick from. */
+export interface WalkInCampusForm {
+  fields: CampusSettings['fields'];
+  institutions: { id: string; name: string; code: string }[];
+}
 
 /**
  * Decides whether a walk-in registration may replace a stored candidate name, returning the new
@@ -80,9 +87,20 @@ export class WalkInService {
   async listExams(
     orgSlug: string,
     groupId?: string,
-  ): Promise<{ exams: WalkInExamOption[]; applyConsentText: string | null; applyConsentVersion: number }> {
+  ): Promise<{ exams: WalkInExamOption[]; applyConsentText: string | null; applyConsentVersion: number; campus: WalkInCampusForm | null }> {
     const org = await this.resolveOrg(orgSlug);
     const context = { organizationId: org.id, isSuperAdmin: true };
+    // AS-3 (PRC-29): a group link of a campus drive asks the drive's fields and the company's colleges.
+    const campus =
+      groupId && /^[0-9a-f-]{36}$/i.test(groupId)
+        ? await this.tenantPrisma.forTenant(context, async (tx) => {
+            const group = await tx.walkInGroup.findFirst({ where: { id: groupId, organizationId: org.id, deletedAt: null }, select: { campusSettings: true } });
+            const settings = readCampus(group?.campusSettings);
+            if (!settings) return null;
+            const institutions = await tx.asmtInstitution.findMany({ where: { organizationId: org.id, archivedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true, code: true } });
+            return { fields: settings.fields, institutions };
+          })
+        : null;
     const exams = await this.tenantPrisma.forTenant(context, (tx) =>
       tx.exam.findMany({
         where: {
@@ -95,20 +113,43 @@ export class WalkInService {
         orderBy: { title: 'asc' },
       }),
     );
-    return { exams, applyConsentText: org.applyConsentText ?? null, applyConsentVersion: org.applyConsentVersion ?? 1 };
+    return { exams, applyConsentText: org.applyConsentText ?? null, applyConsentVersion: org.applyConsentVersion ?? 1, campus };
   }
 
-  async register(orgSlug: string, dto: RegisterWalkInDto): Promise<{ token: string }> {
+  async register(orgSlug: string, dto: RegisterWalkInDto): Promise<{ token: string | null; eligible?: boolean; reason?: string | null }> {
     const org = await this.resolveOrg(orgSlug);
     // Thrown before the tenant tx opens (and thus before any candidate write) when this org
     // requires consent and the registrant didn't accept it.
     const consentStamp = resolveConsentStamp(org.applyConsentText, org.applyConsentVersion, dto.consentAccepted);
     const context = { organizationId: org.id, isSuperAdmin: true };
 
-    const { invitation, exam, candidate, isNewCandidate } = await this.tenantPrisma.forTenant(context, async (tx) => {
+    const outcome = await this.tenantPrisma.forTenant(context, async (tx) => {
       const exam = await tx.exam.findFirst({ where: { id: dto.examId, organizationId: org.id } });
       if (!exam || exam.status !== 'published' || !exam.walkInEnabled) {
         throw new BadRequestException('This exam is not currently open for walk-in registration');
+      }
+
+      // AS-3 (PRC-29): a campus drive asks its own fields, a college from the list, takes registrations up to its cap and
+      // invites only eligible students. Checked before any candidate write.
+      const groupRow = exam.walkInGroupId ? await tx.walkInGroup.findUnique({ where: { id: exam.walkInGroupId }, select: { jobId: true, campusSettings: true } }) : null;
+      const campus = readCampus(groupRow?.campusSettings);
+      const priorRegistration = campus ? await tx.asmtRegistrant.findUnique({ where: { walkInGroupId_email: { walkInGroupId: exam.walkInGroupId!, email: dto.email } } }) : null;
+      let reason: string | null = null;
+      if (campus && !priorRegistration) {
+        const c = dto.campus;
+        if (!c) throw new BadRequestException('Fill in your college details.');
+        const missing = missingFields(campus, { phone: dto.phone, branch: c.branch, graduationYear: c.graduationYear, cgpa: c.cgpa });
+        const words = { phone: 'mobile', branch: 'branch', graduationYear: 'graduation year', cgpa: 'CGPA' } as const;
+        if (missing.length) throw new BadRequestException(`Fill in: ${missing.map((f) => words[f]).join(', ')}.`);
+        const institution = await tx.asmtInstitution.findFirst({ where: { id: c.institutionId, organizationId: org.id, archivedAt: null }, select: { id: true } });
+        if (!institution) throw new BadRequestException('Choose your college from the list.');
+        if (campus.cap != null && (await tx.asmtRegistrant.count({ where: { walkInGroupId: exam.walkInGroupId!, mergedIntoId: null } })) >= campus.cap) {
+          throw new BadRequestException('Registration for this drive is full.');
+        }
+        reason = ineligibleReason(campus, c);
+      } else if (priorRegistration) {
+        // A second registration with the same email keeps the first as it was (a public form never rewrites it).
+        reason = priorRegistration.eligible ? null : priorRegistration.ineligibleReason;
       }
 
       // Public, unauthenticated endpoint: unlike bulkUploadAndInvite (recruiter-authenticated),
@@ -145,12 +186,44 @@ export class WalkInService {
       // enters that job's pipeline. Any registration to a linked group counts (not gated on a live
       // drive). Stamp-if-absent via PipelineService. Placed once, ahead of the live/create
       // invitation branching below, so both return branches include it.
-      if (exam.walkInGroupId) {
-        const group = await tx.walkInGroup.findUnique({ where: { id: exam.walkInGroupId }, select: { jobId: true } });
-        if (group?.jobId) {
-          await this.pipeline.upsertDriveEntry(tx, context, group.jobId, candidate.id);
-        }
+      if (exam.walkInGroupId && !reason && groupRow?.jobId) {
+        await this.pipeline.upsertDriveEntry(tx, context, groupRow.jobId, candidate.id);
       }
+
+      // AS-3 (PRC-29): the campus registration, flagged when another email already registered the same roll number at the
+      // same college (a possible duplicate the recruiter merges or clears).
+      let registrantId: string | null = priorRegistration?.id ?? null;
+      if (campus && !priorRegistration) {
+        const c = dto.campus!;
+        const twin = await tx.asmtRegistrant.findFirst({
+          where: { walkInGroupId: exam.walkInGroupId!, institutionId: c.institutionId, rollNumber: { equals: c.rollNumber.trim(), mode: 'insensitive' }, mergedIntoId: null },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true },
+        });
+        const reg = await tx.asmtRegistrant.upsert({
+          where: { walkInGroupId_email: { walkInGroupId: exam.walkInGroupId!, email: dto.email } },
+          create: {
+            organizationId: org.id,
+            walkInGroupId: exam.walkInGroupId!,
+            institutionId: c.institutionId,
+            candidateId: candidate.id,
+            name: dto.name.trim().replace(/\s+/g, ' '),
+            email: dto.email,
+            phone: campus.fields.phone === 'off' ? null : (dto.phone ?? null),
+            rollNumber: c.rollNumber.trim(),
+            branch: campus.fields.branch === 'off' ? null : c.branch?.trim() || null,
+            graduationYear: campus.fields.graduationYear === 'off' ? null : (c.graduationYear ?? null),
+            cgpa: campus.fields.cgpa === 'off' ? null : (c.cgpa ?? null),
+            eligible: !reason,
+            ineligibleReason: reason,
+            matchedExisting: !isNewCandidate,
+            duplicateOfId: twin?.id ?? null,
+          },
+          update: {},
+        });
+        registrantId = reg.id;
+      }
+      if (reason) return { ineligible: { reason, tell: campus!.tellIneligible } };
 
       // A live drive session for this exam's walk-in group, if any -- decided once, up front,
       // so both branches below (reuse an existing invitation or create a new one) stamp
@@ -175,8 +248,10 @@ export class WalkInService {
             where: { id: liveInvitation.id },
             data: { driveSessionId: liveSession.id },
           });
+          await this.linkRegistrant(tx, registrantId, updated.id);
           return { invitation: updated, exam, candidate, isNewCandidate };
         }
+        await this.linkRegistrant(tx, registrantId, liveInvitation.id);
         return { invitation: liveInvitation, exam, candidate, isNewCandidate };
       }
       const created = await tx.invitation.create({
@@ -194,8 +269,14 @@ export class WalkInService {
           driveSessionId: liveSession?.id ?? null,
         },
       });
+      await this.linkRegistrant(tx, registrantId, created.id);
       return { invitation: created, exam, candidate, isNewCandidate };
     });
+    if ('ineligible' in outcome && outcome.ineligible) {
+      // Registered, not invited: the student hears why only when the drive says so.
+      return { token: null, eligible: false, reason: outcome.ineligible.tell ? outcome.ineligible.reason : null };
+    }
+    const { invitation, exam, candidate, isNewCandidate } = outcome;
 
     await this.audit.record(context, {
       actorUserId: null,
@@ -231,6 +312,10 @@ export class WalkInService {
     );
 
     return { token: invitation.token };
+  }
+
+  private async linkRegistrant(tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0], registrantId: string | null, invitationId: string) {
+    if (registrantId) await tx.asmtRegistrant.updateMany({ where: { id: registrantId, invitationId: null }, data: { invitationId } });
   }
 
   private async dispatchWalkInEmail(

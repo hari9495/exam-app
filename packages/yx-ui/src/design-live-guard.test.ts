@@ -12,7 +12,8 @@ import KNOWN from './design-live-guard.known.json';
 const UI = join(__dirname, '..');
 // app/staff: the YukthiX staff console (console C-1 makes YX-01 to YX-03 live there; founder answer 1059).
 // app/(candidate): the candidate's test pages (AS-4a makes PRC-26 and PRC-27 live there).
-const WEB = [join(UI, '../../apps/web/app/yx'), join(UI, '../../apps/web/app/staff'), join(UI, '../../apps/web/app/(candidate)'), join(UI, '../../apps/web/lib'), join(UI, '../../apps/web/components/auth')]; // components/auth: the step-up dialog is mounted once in the root layout
+// app/campus: the college coordinator's read-only view by emailed link (AS-3 part 2 makes PRC-29's coordinator live).
+const WEB = [join(UI, '../../apps/web/app/yx'), join(UI, '../../apps/web/app/staff'), join(UI, '../../apps/web/app/(candidate)'), join(UI, '../../apps/web/app/campus'), join(UI, '../../apps/web/lib'), join(UI, '../../apps/web/components/auth')]; // components/auth: the step-up dialog is mounted once in the root layout
 const SCREENS = join(UI, 'src/screens');
 
 const files = (dir: string, ok: (f: string) => boolean): string[] =>

@@ -5,6 +5,8 @@ import { CandidateJwtAuthGuard } from '../candidate-auth/candidate-jwt-auth.guar
 import { CurrentCandidate, CandidateSession } from '../candidate-auth/current-candidate.decorator';
 import { LastSeenInterceptor } from './last-seen.interceptor';
 import { AttemptService } from './attempt.service';
+import { DeliveryService } from './delivery.service';
+import { ReuseDto } from './dto/reuse.dto';
 import { AccommodationService } from './accommodation.service';
 import { AccommodationDto } from './dto/accommodation.dto';
 import { resolveClientIp } from '../network/resolve-client-ip';
@@ -27,8 +29,33 @@ import { MODERATE_ATTEMPT_THROTTLE, STRICT_CODE_RUN_THROTTLE } from '../rate-lim
 export class AttemptController {
   constructor(
     private readonly attemptService: AttemptService,
+    private readonly delivery: DeliveryService,
     private readonly accommodations: AccommodationService,
   ) {}
+
+  /** AS-3 (PRC-21): this candidate's tests at this company. */
+  @Get('my-tests')
+  myTests(@CurrentCandidate() candidate: CandidateSession) {
+    return this.delivery.myTests(candidate);
+  }
+
+  /** AS-3 (answer 2013, PRC-32): an earlier result on the same test this invitation may use. */
+  @Get('reuse')
+  reuseOffer(@CurrentCandidate() candidate: CandidateSession) {
+    return this.delivery.reuseOffer(candidate);
+  }
+
+  @Post('reuse')
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  useResult(@CurrentCandidate() candidate: CandidateSession, @Body() dto: ReuseDto) {
+    return this.delivery.useResult(candidate, dto.attemptId);
+  }
+
+  @Post('reuse/withdraw')
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  withdrawReuse(@CurrentCandidate() candidate: CandidateSession) {
+    return this.delivery.withdrawReuse(candidate);
+  }
 
   /** AS-4b (answer 2011, PRC-23): the candidate's requests for help and what was approved for them. */
   @Get('accommodation')

@@ -392,3 +392,53 @@ describe('WalkInPage', () => {
     expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ consentAccepted: true }), expect.anything());
   });
 });
+
+// AS-3 part 2 (PRC-29): a campus drive asks its own fields and a college from the company's list.
+describe('WalkInPage campus drive', () => {
+  const campus = {
+    fields: { phone: 'optional', branch: 'required', graduationYear: 'required', cgpa: 'required' },
+    institutions: [
+      { id: 'n1', name: 'Coromandel Institute', code: 'CIT-14' },
+      { id: 'n2', name: 'Kongu Valley College', code: 'KVEC-22' },
+    ],
+  };
+  const fill = async () => {
+    await userEvent.type(screen.getByLabelText('First Name'), 'Priya');
+    await userEvent.type(screen.getByLabelText('Last Name'), 'Sharma');
+    await userEvent.type(screen.getByLabelText('Email'), 'priya@example.com');
+  };
+
+  beforeEach(() => {
+    mockSearchParams = new URLSearchParams('group=g1&college=cit-14');
+    (useWalkInExams as jest.Mock).mockReturnValue({ data: { ...examsData([{ id: 'exam-1', title: 'Campus aptitude', durationMinutes: 60, walkInListed: false }]), campus }, isLoading: false, isError: false });
+  });
+
+  it('sends the college chosen by the link, the roll number, branch, year and CGPA', async () => {
+    const mutate = jest.fn();
+    (useWalkInRegister as jest.Mock).mockReturnValue({ mutate, isPending: false });
+    render(<WalkInPage />);
+    await fill();
+    await userEvent.type(screen.getByLabelText('Roll Number'), '21CS140');
+    await userEvent.type(screen.getByLabelText('Degree And Branch'), 'CSE');
+    await userEvent.type(screen.getByLabelText('Graduation Year'), '2027');
+    await userEvent.type(screen.getByLabelText('CGPA / %'), '8.1');
+    await userEvent.click(screen.getByRole('button', { name: 'Email me my exam link' }));
+    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ campus: { institutionId: 'n1', rollNumber: '21CS140', branch: 'CSE', graduationYear: 2027, cgpa: 8.1 } }), expect.anything());
+  });
+
+  it('negative: required campus fields are asked for; an ineligible student is told why, with no link', async () => {
+    const mutate = jest.fn((_input, opts: { onSuccess: (r: unknown) => void }) => opts.onSuccess({ token: null, eligible: false, reason: 'CGPA below 6.5' }));
+    (useWalkInRegister as jest.Mock).mockReturnValue({ mutate, isPending: false });
+    render(<WalkInPage />);
+    await fill();
+    await userEvent.click(screen.getByRole('button', { name: 'Email me my exam link' }));
+    expect(mutate).not.toHaveBeenCalled();
+    expect(screen.getAllByText('Complete this field.').length).toBeGreaterThanOrEqual(4);
+    await userEvent.type(screen.getByLabelText('Roll Number'), '21CS141');
+    await userEvent.type(screen.getByLabelText('Degree And Branch'), 'CSE');
+    await userEvent.type(screen.getByLabelText('Graduation Year'), '2027');
+    await userEvent.type(screen.getByLabelText('CGPA / %'), '5.9');
+    await userEvent.click(screen.getByRole('button', { name: 'Email me my exam link' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('You are not eligible for this drive: CGPA below 6.5.');
+  });
+});

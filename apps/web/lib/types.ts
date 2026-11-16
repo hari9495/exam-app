@@ -415,6 +415,14 @@ export interface WalkInExamsResponse {
   exams: WalkInExamOption[];
   applyConsentText: string | null;
   applyConsentVersion: number;
+  /** AS-3 (PRC-29): a campus drive's own fields and the colleges to pick from; null for a plain walk-in. */
+  campus?: WalkInCampusForm | null;
+}
+
+export type WalkInFieldMode = 'off' | 'optional' | 'required';
+export interface WalkInCampusForm {
+  fields: { phone: WalkInFieldMode; branch: WalkInFieldMode; graduationYear: WalkInFieldMode; cgpa: WalkInFieldMode };
+  institutions: { id: string; name: string; code: string }[];
 }
 
 export interface WalkInGroupExamSummary {

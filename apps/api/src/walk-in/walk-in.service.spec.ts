@@ -68,6 +68,7 @@ describe('WalkInService', () => {
         exams: [{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }],
         applyConsentText: null,
         applyConsentVersion: 1,
+        campus: null,
       });
     });
 
@@ -685,7 +686,8 @@ describe('WalkInService', () => {
 
         await service.register('demo-org', dto);
 
-        expect(tx.walkInGroup.findUnique).toHaveBeenCalledWith({ where: { id: 'group-1' }, select: { jobId: true } });
+        // AS-3 part 2: the same read also brings the campus settings (none here, so a plain walk-in).
+        expect(tx.walkInGroup.findUnique).toHaveBeenCalledWith({ where: { id: 'group-1' }, select: { jobId: true, campusSettings: true } });
         expect(pipelineService.upsertDriveEntry).toHaveBeenCalledWith(tx, expect.objectContaining({ organizationId: 'org-1' }), 'job-1', 'cand-1');
       });
 
