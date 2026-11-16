@@ -23,3 +23,5 @@ export const Submitted: S = { name: 'Submitted and optional survey', args: { vie
 export const LiveOfflineStopped: S = { name: 'Live · offline past the limit (answers kept on device)', args: { live: { ...LIVE_RUNNER, connection: 'offline', offlineSeconds: 360, queued: 2, saveStatus: 'offline' } } };
 export const LiveSubmittedSurvey: S = { name: 'Live · submitted, survey', args: { live: { ...LIVE_RUNNER, status: 'submitted', submittedAt: '11:52 am' } } };
 export const LiveBreak: S = { name: 'Live · on a break', args: { live: { ...LIVE_RUNNER, status: 'break', breakSecondsLeft: 236, breaksLeft: 0 } } };
+// AS-4b (answer 2164): screen-reader mode approved for this candidate shows in Display settings.
+export const LiveReaderApproved: S = { name: 'Live · screen-reader mode approved for you', args: { live: { ...LIVE_RUNNER, approvedHelp: ['reader', 'time'] } } };

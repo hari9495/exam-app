@@ -7,7 +7,7 @@ import { HEARTBEAT_GRACE_MS, offlineCreditMs } from './runner-settings';
 describe('LastSeenInterceptor', () => {
   let interceptor: LastSeenInterceptor;
   let attempt: Record<string, unknown> | null;
-  let prisma: { attempt: { findFirst: jest.Mock; updateMany: jest.Mock }; setting: { findFirst: jest.Mock } };
+  let prisma: { attempt: { findFirst: jest.Mock; updateMany: jest.Mock }; setting: { findFirst: jest.Mock }; $executeRaw: jest.Mock };
   let forTenant: jest.Mock;
   const order: string[] = [];
 
@@ -17,6 +17,7 @@ describe('LastSeenInterceptor', () => {
     prisma = {
       attempt: { findFirst: jest.fn(async () => attempt), updateMany: jest.fn(async () => (order.push('seen'), { count: 1 })) },
       setting: { findFirst: jest.fn(async () => null) },
+      $executeRaw: jest.fn(async () => 1),
     };
     forTenant = jest.fn((_ctx: unknown, fn: (tx: unknown) => unknown) => Promise.resolve(fn(prisma)));
     interceptor = new LastSeenInterceptor({ forTenant } as unknown as TenantPrismaService);
@@ -38,12 +39,16 @@ describe('LastSeenInterceptor', () => {
   });
 
   it('AS-4a: a running attempt not seen for 3 minutes gets the lost time back (minus the check-in grace)', (done) => {
-    attempt = { ...attempt, lastSeenAt: new Date(Date.now() - 180_000), pausedDurationMs: 1000 };
+    const seen = new Date(Date.now() - 180_000);
+    attempt = { ...attempt, lastSeenAt: seen, pausedDurationMs: 1000 };
     interceptor.intercept(context({ invitationId: 'inv-1' }), handler()).subscribe(() => {
       const data = prisma.attempt.updateMany.mock.calls[0][0].data;
       expect(data.offlineCreditMs).toBeGreaterThanOrEqual(180_000 - HEARTBEAT_GRACE_MS - 50);
       expect(data.pausedDurationMs).toBe(1000 + data.offlineCreditMs);
-      expect(prisma.attempt.updateMany.mock.calls[0][0].where).toEqual({ id: 'a1', status: 'in_progress', offlineCreditMs: 0 });
+      // AS-4b: guarded on when it was last seen too, so two requests at once count the gap once.
+      expect(prisma.attempt.updateMany.mock.calls[0][0].where).toEqual({ id: 'a1', status: 'in_progress', lastSeenAt: seen, offlineCreditMs: 0 });
+      // Within the cap: nothing waits for a person.
+      expect(prisma.$executeRaw).not.toHaveBeenCalled();
       done();
     });
   });
@@ -55,6 +60,27 @@ describe('LastSeenInterceptor', () => {
       expect(offlineCreditMs(3_600_000, 10, 0)).toBe(600_000);
       expect(offlineCreditMs(3_600_000, 10, 600_000)).toBe(0);
       expect(offlineCreditMs(HEARTBEAT_GRACE_MS - 1, 10, 0)).toBe(0);
+      done();
+    });
+  });
+
+  it('AS-4b (answer 2011): time lost above the company cap waits for a person (PRC-10)', (done) => {
+    // 20 minutes offline with the default cap of 10 minutes: 10 credited, the rest (minus the grace) waits.
+    attempt = { ...attempt, lastSeenAt: new Date(Date.now() - 1_200_000) };
+    interceptor.intercept(context({ invitationId: 'inv-1' }), handler()).subscribe(() => {
+      expect(prisma.attempt.updateMany.mock.calls[0][0].data.offlineCreditMs).toBe(600_000);
+      const [, , ms] = prisma.$executeRaw.mock.calls[0] as [unknown, string, number];
+      expect(ms).toBeGreaterThanOrEqual(1_200_000 - HEARTBEAT_GRACE_MS - 600_000 - 50);
+      expect(ms).toBeLessThanOrEqual(1_200_000 - HEARTBEAT_GRACE_MS - 600_000 + 50);
+      done();
+    });
+  });
+
+  it('negative: when another request already counted the gap, this one records nothing', (done) => {
+    attempt = { ...attempt, lastSeenAt: new Date(Date.now() - 1_200_000) };
+    prisma.attempt.updateMany.mockResolvedValueOnce({ count: 0 });
+    interceptor.intercept(context({ invitationId: 'inv-1' }), handler()).subscribe(() => {
+      expect(prisma.$executeRaw).not.toHaveBeenCalled();
       done();
     });
   });

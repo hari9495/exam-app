@@ -22098,5 +22098,49 @@
       "LiveReleased"
     ],
     "note": "Positive and negative. Breaks, the calculator and display settings show only after /exam moves to the designed runner (question 2161)."
+  },
+  {
+    "id": "MT-ASMT-HELP1",
+    "area": "Assessments AS-4b (16 Nov 2026)",
+    "screen": "Candidate › Ask for an accommodation; Hire › Assessments › Accommodation requests",
+    "url": "http://localhost:3000/accommodation",
+    "account": "A candidate with an invitation (not started); a test writer (asmt.test.manage); an evaluator (asmt.evaluate); another company's admin.",
+    "steps": [
+      "As the candidate: open the test link, then Ask for an accommodation. Press Send request with nothing chosen.",
+      "Choose Extra time (25 %) and Screen-reader mode, attach a PDF, send.",
+      "Try to send another request.",
+      "As the writer: open /yx/hiring/assessments/accommodations, open the request, View the document.",
+      "Change the extra time to 50 % and Approve all.",
+      "As the candidate: reload the welcome page and the request page.",
+      "Rename a text file to .pdf and send it as evidence on another invitation.",
+      "As the evaluator and as the other company's admin: open the accommodations page."
+    ],
+    "expected": "Step 1: 'Choose what you need.'; nothing sent. Step 2: 'Request sent' toast; the page says it is waiting. Step 3: refused, earlier request still being decided. Step 4: the document opens; the audit log has accommodation.evidence_viewed. Step 5: toast; the invitation's extra time is 50 %. Step 6: 'Approved for you: 50 % extra time, Screen-reader mode'. Step 7: refused, send a PDF, JPG or PNG. Step 8: refused (evaluator) or nothing listed (other company).",
+    "stories": [
+      "Screens/Proctoring/PRC-23 · Accommodation request",
+      "Screens/Proctoring/PRC-11 · Accommodation review queue"
+    ],
+    "note": "Positive and negative. Answers 2011, 2164."
+  },
+  {
+    "id": "MT-ASMT-HELP2",
+    "area": "Assessments AS-4b (16 Nov 2026)",
+    "screen": "Hire › Assessments › Connectivity; Candidate › welcome (manual check), Check your computer",
+    "url": "http://localhost:3000/yx/hiring/assessments/connectivity",
+    "account": "A candidate on a test with face checks required; a proctor (asmt.proctor); a test writer.",
+    "steps": [
+      "Start a test as the candidate, switch the Wi-Fi off for 15 minutes, switch it back on.",
+      "As the proctor: open Connectivity; press Approve extra time with an empty reason, then with a reason of 10+ characters and confirm.",
+      "Lose the connection again for 13 minutes, submit the test, and as the writer try to approve the new gap; then decline it with a reason.",
+      "On another invitation with a required photo: say no to the photo, then Ask for a manual check.",
+      "As the writer approve the manual identity check; the candidate reloads the welcome page.",
+      "As the candidate: Check your computer, with a second display plugged in, then unplugged."
+    ],
+    "expected": "Step 1: about 10 minutes are given back automatically; the rest waits. Step 2: the reason is asked for; then toast, the timer gains the time; audited. Step 3: approving is refused (the test has ended); declining works. Step 4: 'You asked for a manual identity check'. Step 5: 'no photo is needed to start'; Start shows without the photo step. Step 6: Displays blocks the start with fix steps; then passes.",
+    "stories": [
+      "Screens/Proctoring/PRC-10 · Connectivity panel",
+      "Screens/Proctoring/PRC-22 · Readiness check and practice"
+    ],
+    "note": "Positive and negative. Answer 2011."
   }
 ]

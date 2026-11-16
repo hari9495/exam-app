@@ -952,6 +952,8 @@ model Invitation {
   organizationId String? @map("organization_id") @db.Uuid
   @@index([examId, status])
   @@map("invitations")
+  /// AS-4b (PRC-23, PRC-11): the candidate's requests for help, decided by the test owner.
+  accommodationRequests  AccommodationRequest[]
 }
 
 model Notification {
@@ -1046,6 +1048,8 @@ model Attempt {
   integrityAnalysis             IntegrityAnalysis?
   faceEnrolment                 FaceEnrolment?
   survey                        AttemptSurvey?
+  /// AS-4b (PRC-10): time lost above asmt.time_credit_cap, waiting for a person.
+  connectivityCredits           ConnectivityCredit[]
 
   /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
   organizationId String? @map("organization_id") @db.Uuid
@@ -14485,6 +14489,55 @@ model QuestionTranslation {
   @@unique([questionId, version, language], map: "question_translations_one")
   @@index([organizationId, state], map: "question_translations_queue_idx")
   @@map("question_translations")
+}
+
+/// Assessments AS-4b (answer 2011; PRC-23, PRC-11): a candidate asks for help with evidence (special data); the test
+/// owner decides each item. Approved extra time becomes the invitation's extra time. Forced RLS; the app never deletes.
+model AccommodationRequest {
+  id                      String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Filled by the database from the invitation (asmt_org_from_invitation).
+  organizationId          String?    @map("organization_id") @db.Uuid
+  invitationId            String     @map("invitation_id") @db.Uuid
+  /// time | breaks | reader | font | separate | profile | identity (a manual identity check, PRC-24)
+  kinds                   String[]   @db.VarChar(20)
+  extraTimePercent        Int?       @map("extra_time_percent")
+  note                    String?    @db.VarChar(2000)
+  evidencePath            String?    @map("evidence_path")
+  evidenceName            String?    @map("evidence_name") @db.VarChar(255)
+  evidenceType            String?    @map("evidence_type") @db.VarChar(40)
+  /// pending | approved | partly | declined
+  status                  String     @default("pending") @db.VarChar(12)
+  approvedKinds           String[]   @default([]) @map("approved_kinds") @db.VarChar(20)
+  grantedExtraTimePercent Int?       @map("granted_extra_time_percent")
+  message                 String?    @db.VarChar(2000)
+  decidedBy               String?    @map("decided_by") @db.Uuid
+  decidedAt               DateTime?  @map("decided_at") @db.Timestamptz(3)
+  createdAt               DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  invitation              Invitation @relation(fields: [invitationId], references: [id], onDelete: Cascade, map: "accommodation_requests_invitation_fkey")
+
+  @@index([organizationId, status], map: "accommodation_requests_organization_id_status_idx")
+  @@map("accommodation_requests")
+}
+
+/// Assessments AS-4b (answer 2011; PRC-10): time lost to the connection above asmt.time_credit_cap, waiting for a person.
+/// One open row per attempt (later gaps add to it). Forced RLS; the app never deletes.
+model ConnectivityCredit {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Filled by the database from the attempt (asmt_org_from_attempt).
+  organizationId String?   @map("organization_id") @db.Uuid
+  attemptId      String    @map("attempt_id") @db.Uuid
+  lostMs         Int       @map("lost_ms")
+  /// pending | approved | declined
+  status         String    @default("pending") @db.VarChar(10)
+  reason         String?   @db.VarChar(1000)
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+  attempt        Attempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade, map: "connectivity_credits_attempt_fkey")
+
+  @@index([organizationId, status], map: "connectivity_credits_organization_id_status_idx")
+  @@map("connectivity_credits")
 }
 
 /// Answer 2129: a bank writer was told today that questions wait for their review (one note per person per India day).
