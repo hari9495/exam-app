@@ -21871,5 +21871,44 @@
       "NoStatistics"
     ],
     "note": "Positive and negative. Answers 2009, 2010, 2017. Pages are not in the menu until AS-0 merges; open them by address."
+  },
+  {
+    "id": "MT-HD-FU1991",
+    "area": "Helpdesk follow-ups (16 Nov 2026)",
+    "screen": "Helpdesk › Knowledge base › Settings",
+    "url": "http://localhost:3000/yx/desk/knowledge",
+    "account": "A Service Desk owner (desk.settings.manage) on a laptop at 150 % (1278 x 635); an agent of the same desk.",
+    "steps": [
+      "As the owner open Knowledge base › Settings.",
+      "Change Check help articles again every to 6 months and Save.",
+      "Clear Search words and press Save search words.",
+      "Narrow the window below 1100 px.",
+      "As the agent open Knowledge base."
+    ],
+    "expected": "Step 1: Search words, Check help articles again every and Page help sit side by side, no page scroll bar. Step 2: a toast; the choice stays after a reload. Step 3: refused with the reason under the box (or the starter list offered); nothing saved. Step 4: the three cards stack one under another. Step 5: no Settings tab.",
+    "stories": [
+      "Screens/Helpdesk/HLP-04 · Knowledge base editor · Knowledge base settings"
+    ],
+    "note": "Positive and negative. Answer 1991."
+  },
+  {
+    "id": "MT-HD-FU1992",
+    "area": "Helpdesk follow-ups (16 Nov 2026)",
+    "screen": "Helpdesk › Desk set-up › Schedules (a recurring standard change)",
+    "url": "http://localhost:3000/yx/desk/setup?tab=schedules",
+    "account": "The IT desk's admin; an IT lead and an agent of the same desk; the System Admin of another company.",
+    "steps": [
+      "As the desk admin make a pre-approved standard change template and a weekly schedule that raises it.",
+      "Take the template's pre-approval away (or deactivate it).",
+      "Wait for the schedule's next due time (or have the job run).",
+      "Open Desk set-up › Schedules, then the bell.",
+      "As the IT lead and the agent open the bell; as the other company's admin open the bell.",
+      "Wait for one more due time."
+    ],
+    "expected": "Step 3: no change is raised. Step 4: the schedule shows Paused; one notice says it paused because its template is no longer active and pre-approved, with a link to the schedules; the audit log has desk.recurring.paused. Step 5: no notice for them. Step 6: still paused, no second notice.",
+    "stories": [
+      "Screens/Helpdesk/Desk set-up"
+    ],
+    "note": "Positive and negative. Answer 1992 (as 1913 for maintenance)."
   }
 ]

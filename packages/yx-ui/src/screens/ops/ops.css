@@ -190,7 +190,9 @@
 
 /* Editor side-by-side */
 .yx-ops-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--yx-space-6); align-items: start; }
-@media (max-width: 1100px) { .yx-ops-split { grid-template-columns: minmax(0, 1fr); } }
+/* Three settings cards side by side, the first (a text box) wider (the knowledge base Settings tab fits 1278 x 635 without a page scroll, answer 1991). */
+.yx-ops-split[data-cols="3"] { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr) minmax(0, 2fr); }
+@media (max-width: 1100px) { .yx-ops-split, .yx-ops-split[data-cols="3"] { grid-template-columns: minmax(0, 1fr); } }
 /* CL-5 gate pass card (answer 735) and the one-time kiosk PIN (answer 625). */
 .yx-ops-gatepass { display: flex; flex-wrap: wrap; gap: var(--yx-space-4); align-items: flex-start; padding: var(--yx-space-4); border: 1px solid var(--yx-color-border); border-radius: var(--yx-radius-card); }
 .yx-ops-gatepass__photo { width: 96px; height: 120px; object-fit: cover; border-radius: var(--yx-radius-control); border: 1px solid var(--yx-color-border); }

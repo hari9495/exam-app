@@ -234,14 +234,11 @@ function KbHome({ live }: { live: LiveKb }) {
         )}
         {hasSettings && (
           <TabsContent value="settings">
-            <div className="yx-ops-split">
+            {/* Answer 1991: the three settings side by side, so the tab fits a laptop screen without a page scroll. */}
+            <div className="yx-ops-split" data-cols="3">
               {live.searchWords && <SearchWordsCard key={live.searchWords.value} {...live.searchWords} />}
-              {(live.reviewMonths || live.pageHelp) && (
-                <div className="yx-ops-stack">
-                  {live.reviewMonths && <KbReviewRule key={live.reviewMonths.value} value={live.reviewMonths.value} onSave={live.reviewMonths.onSave} />}
-                  {live.pageHelp && <PageHelpRule value={live.pageHelp.value} onChange={live.pageHelp.onChange} />}
-                </div>
-              )}
+              {live.reviewMonths && <KbReviewRule key={live.reviewMonths.value} value={live.reviewMonths.value} onSave={live.reviewMonths.onSave} />}
+              {live.pageHelp && <PageHelpRule value={live.pageHelp.value} onChange={live.pageHelp.onChange} />}
             </div>
           </TabsContent>
         )}
@@ -1319,7 +1316,7 @@ function SearchWordsCard({ value, starter, onSave }: { value: string; starter: s
       <div className="yx-ops-stack">
         {error && <InlineAlert tone="danger" title="It was not saved">{error}</InlineAlert>}
         <FormField id="kb-synonyms" label="Words, one group a line" helper="Separate the words with commas, e.g. pf, provident fund. Help search finds an article by any word of its line. For the whole company." error={early.errorOf('kb-synonyms')}>
-          <TextArea value={text} onChange={setText} rows={7} />
+          <TextArea value={text} onChange={setText} rows={5} />
         </FormField>
         <div className="yx-ops-row">
           <Button onClick={() => setText(starter)}>Use the starter list</Button>
