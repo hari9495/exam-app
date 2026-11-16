@@ -33,6 +33,7 @@ import { UserGroupsModule } from './user-groups/user-groups.module';
 import { QuestionsModule } from './questions/questions.module';
 import { ExamsModule } from './exams/exams.module';
 import { AsmtDeliveryModule } from './assessments/delivery/delivery.module';
+import { AsmtCampusModule } from './assessments/campus/campus.module';
 import { AssessmentsModule } from './assessments/assessments.module';
 import { CandidatesModule } from './candidates/candidates.module';
 import { InvitationsModule } from './invitations/invitations.module';
@@ -150,6 +151,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     QuestionsModule,
     ExamsModule,
     AsmtDeliveryModule,
+    AsmtCampusModule,
     AssessmentsModule,
     CandidatesModule,
     InvitationsModule,
