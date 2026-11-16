@@ -5,6 +5,8 @@ import { CandidateJwtAuthGuard } from '../candidate-auth/candidate-jwt-auth.guar
 import { CurrentCandidate, CandidateSession } from '../candidate-auth/current-candidate.decorator';
 import { LastSeenInterceptor } from './last-seen.interceptor';
 import { AttemptService } from './attempt.service';
+import { AccommodationService } from './accommodation.service';
+import { AccommodationDto } from './dto/accommodation.dto';
 import { resolveClientIp } from '../network/resolve-client-ip';
 import { AnswerDto, SurveyDto } from './dto/answer.dto';
 import { StartAttemptDto } from './dto/start-attempt.dto';
@@ -23,7 +25,23 @@ import { MODERATE_ATTEMPT_THROTTLE, STRICT_CODE_RUN_THROTTLE } from '../rate-lim
 @UseGuards(CandidateJwtAuthGuard)
 @UseInterceptors(LastSeenInterceptor)
 export class AttemptController {
-  constructor(private readonly attemptService: AttemptService) {}
+  constructor(
+    private readonly attemptService: AttemptService,
+    private readonly accommodations: AccommodationService,
+  ) {}
+
+  /** AS-4b (answer 2011, PRC-23): the candidate's requests for help and what was approved for them. */
+  @Get('accommodation')
+  accommodation(@CurrentCandidate() candidate: CandidateSession) {
+    return this.accommodations.help(candidate);
+  }
+
+  /** AS-4b: ask for help before the test (one open request at a time; evidence optional). */
+  @Post('accommodation')
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  askAccommodation(@CurrentCandidate() candidate: CandidateSession, @Body() dto: AccommodationDto) {
+    return this.accommodations.ask(candidate, dto);
+  }
 
   @Get('current')
   getCurrent(@CurrentCandidate() candidate: CandidateSession) {

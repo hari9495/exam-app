@@ -17,10 +17,14 @@ import { resolveInternalBindHost } from './bootstrap-config';
 // ~510KB, so 1mb leaves roughly 2.5x headroom over in-contract captures while staying a
 // deliberately bounded number for a candidate-facing, only-lightly-authenticated endpoint.
 const JSON_BODY_LIMIT = '1mb';
+const EVIDENCE_BODY_LIMIT = '15mb';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
   configureTrustProxy(app);
+  // AS-4b (answer 2011): only an accommodation request may carry one evidence file (10 MB, base64 about 13.4 MB). It is
+  // signed in, throttled and one open request at a time; every other route keeps the 1 MB bound. Must run first.
+  app.use('/api/v1/attempt/accommodation', json({ limit: EVIDENCE_BODY_LIMIT }));
   app.use(json({ limit: JSON_BODY_LIMIT }));
   app.use(urlencoded({ extended: true, limit: JSON_BODY_LIMIT }));
   app.use(cookieParser());

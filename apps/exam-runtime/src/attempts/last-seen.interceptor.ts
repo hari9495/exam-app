@@ -2,7 +2,7 @@ import { CallHandler, ExecutionContext, Injectable, Logger, NestInterceptor } fr
 import { Observable, from, switchMap } from 'rxjs';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { CandidateSession } from '../candidate-auth/current-candidate.decorator';
-import { HEARTBEAT_GRACE_MS, offlineCreditMs, runnerSetting } from './runner-settings';
+import { HEARTBEAT_GRACE_MS, offlineCreditMs, overCapMs, recordOverCap, runnerSetting } from './runner-settings';
 
 /**
  * Marks the candidate's attempt as seen now, before the request is handled. AS-4a (PRC-26): when the attempt was
@@ -34,13 +34,16 @@ export class LastSeenInterceptor implements NestInterceptor {
         const gap = a.lastSeenAt ? now.getTime() - a.lastSeenAt.getTime() : 0;
         if (a.status === 'in_progress' && gap > HEARTBEAT_GRACE_MS) {
           const credit = offlineCreditMs(gap, await runnerSetting(tx, a.organizationId!, 'asmt.time_credit_cap'), a.offlineCreditMs);
-          if (credit > 0) {
-            // Guarded on the credit so far: two requests at once give the time back once.
-            const res = await tx.attempt.updateMany({
-              where: { id: a.id, status: 'in_progress', offlineCreditMs: a.offlineCreditMs },
-              data: { lastSeenAt: now, offlineCreditMs: a.offlineCreditMs + credit, pausedDurationMs: a.pausedDurationMs + credit },
-            });
-            if (res.count) return;
+          // Guarded on when it was last seen and the credit so far: two requests at once count the gap once.
+          const res = await tx.attempt.updateMany({
+            where: { id: a.id, status: 'in_progress', lastSeenAt: a.lastSeenAt, offlineCreditMs: a.offlineCreditMs },
+            data: { lastSeenAt: now, offlineCreditMs: a.offlineCreditMs + credit, pausedDurationMs: a.pausedDurationMs + credit },
+          });
+          if (res.count) {
+            // AS-4b (answer 2011, PRC-10): the time lost above the cap waits for a person to approve it.
+            const over = overCapMs(gap, credit);
+            if (over > 0) await recordOverCap(tx, a.id, over, now);
+            return;
           }
         }
         await tx.attempt.updateMany({ where: { id: a.id }, data: { lastSeenAt: now } });

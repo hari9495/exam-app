@@ -22,6 +22,7 @@ import { CandidateFrame } from './proctoring-shared';
 import { Calculator, CameraFrame, CodeAnswer, ConnectionStatus, EvidenceFrame, IdCapture, QrPlaceholder, SystemCheckList, type ConnState, type SystemCheck } from './proctoring-kit';
 import { canReschedule, withExtraTime } from './proctoring-logic';
 import { READINESS_CHECKS } from './proctoring-data';
+import { LiveAccommodationRequestScreen, type LiveAccommodationRequest } from './before-test-live';
 
 const Title = ({ children }: { children: string }) => <Heading level={1}>{children}</Heading>;
 
@@ -169,7 +170,12 @@ export function ReadinessCheckScreen({ state = 'issues' }: { state?: ReadinessSt
 /* PRC-23 · Accommodation request                                      */
 /* ================================================================== */
 
-export function AccommodationRequestScreen({ submitted = false, employee = false }: { submitted?: boolean; employee?: boolean }) {
+/** PRC-23; with `live` (AS-4b, answer 2011) the candidate's own request and what was approved. */
+export function AccommodationRequestScreen(props: { submitted?: boolean; employee?: boolean } | { live: LiveAccommodationRequest }) {
+  return 'live' in props ? <LiveAccommodationRequestScreen live={props.live} /> : <SampleAccommodationRequest {...props} />;
+}
+
+function SampleAccommodationRequest({ submitted = false, employee = false }: { submitted?: boolean; employee?: boolean }) {
   // PRC-23
   const [types, setTypes] = useState<string[]>(['time']);
   const [pct, setPct] = useState<string | null>('25');
@@ -460,6 +466,8 @@ export interface LiveRunner {
   /** Time given back for a lost connection so far (seconds) and the cap (minutes). */
   creditSeconds: number;
   creditCapMinutes: number;
+  /** AS-4b (answers 2011, 2164): the help approved for this candidate (e.g. 'reader': screen-reader mode). */
+  approvedHelp?: string[];
   saveStatus: AutosaveStatus;
   savedAt?: string;
   sections: { name: string; count: number }[];
@@ -722,6 +730,8 @@ function LiveTestRunnerScreen({ live }: { live: LiveRunner }) {
                   <Select value={font} onChange={(v) => setFont((v as 'normal' | 'large') ?? 'normal')} options={[{ value: 'normal', label: 'Standard' }, { value: 'large', label: 'Large' }]} size="sm" />
                 </FormField>
                 <Switch label="High contrast" checked={contrast} onChange={setContrast} />
+                {/* Answer 2164: shown only when it was approved for this candidate (AS-4b). */}
+                {live.approvedHelp?.includes('reader') && <Switch label="Screen-reader mode" description="Approved for you" defaultChecked />}
               </div>
             </Card>
           )}
