@@ -81,6 +81,34 @@ describe('console layout', () => {
     expect(screen.getByRole('link', { name: 'Add a security key' })).toHaveAttribute('href', '/staff/security');
   });
 
+  it('answer 2093: with the security key the bell shows the staff member’s unread notices; opening one marks it read', async () => {
+    route({
+      'GET /users/me': { email: 'anand@yukthix.test', name: 'Anand Iyer' },
+      'GET /auth/mfa': { required: true, factors: [{ id: 'k1', type: 'passkey' }] },
+      'GET /platform/notices': { unread: 2, items: [{ id: 'n1', kind: 'board_notice_due', title: 'Tell the Data Protection Board now: Godavari Agro', body: 'Contained 10:05 am IST.', linkPath: '/staff/incidents', at: '2026-11-16T05:10:00Z', read: false }] },
+      'POST /platform/notices/n1/read': { unread: 1 },
+    });
+    wrap(
+      <ConsoleLayout>
+        <p>companies</p>
+      </ConsoleLayout>,
+    );
+    await ue.click(await screen.findByRole('button', { name: 'Notifications, 2 unread' }));
+    await ue.click(await screen.findByText(/Tell the Data Protection Board now: Godavari Agro/));
+    await waitFor(() => expect(calls).toContain('POST /platform/notices/n1/read'));
+  });
+
+  it('negative: without a security key no notices are asked for', async () => {
+    route({ 'GET /users/me': { email: 'anand@yukthix.test', name: 'Anand Iyer' }, 'GET /auth/mfa': { required: true, factors: [], enrolmentDueAt: '2026-10-20T00:00:00Z' } });
+    wrap(
+      <ConsoleLayout>
+        <p>companies</p>
+      </ConsoleLayout>,
+    );
+    expect(await screen.findByText('Add your security key first')).toBeInTheDocument();
+    expect(calls.some((c) => c.includes('/platform/notices'))).toBe(false);
+  });
+
   it('a company account is sent away; a signed-out tab goes to the staff sign-in', async () => {
     route({ 'GET /users/me': {}, 'GET /auth/mfa': { required: false, factors: [] } });
     (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'org_admin', actingSuperAdmin: false, isLoading: false });

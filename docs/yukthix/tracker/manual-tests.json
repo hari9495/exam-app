@@ -22098,5 +22098,23 @@
       "LiveReleased"
     ],
     "note": "Positive and negative. Breaks, the calculator and display settings show only after /exam moves to the designed runner (question 2161)."
+  },
+  {
+    "id": "MT-SET-2093",
+    "area": "Settings 2093: staff notices in the console (16 Nov 2026)",
+    "screen": "Console header bell",
+    "url": "http://localhost:3000/staff/companies",
+    "account": "Two YukthiX staff with security keys, both holding the incidents key; a throwaway company contained for a suspected breach (MT-SET-FU2).",
+    "steps": [
+      "As staff 1, wait for the Board reminder (or ask the lead to run the sweep); open the bell.",
+      "Open the notice.",
+      "As staff 2, open the bell.",
+      "Negative: as a company admin, open /staff/companies."
+    ],
+    "expected": "Step 1: the bell shows the unread count and 'Tell the Data Protection Board now: <company>'. Step 2: it opens Incidents and the count drops by one. Step 3: staff 2 has their own copy, still unread. Step 4: refused (YukthiX staff only).",
+    "stories": [
+      "ConsoleNotices"
+    ],
+    "note": "Positive and negative. The removal notice needs a kept group past its day: covered by the API tests."
   }
 ]

@@ -186,6 +186,12 @@ describe('Removing kept records after their day (1976)', () => {
     const told = sent.mock.calls.map(([m]) => m).filter((m) => /Kept records removed/.test(m.subject));
     expect(told.map((m) => m.to).sort()).toEqual([staff.s1.email, staff.s2.email].sort());
     expect(told[0]!.html).toContain(audit.certificateSha256!);
+    // 2093: the same news in each one's console notices (unread), never in someone else's.
+    for (const who of ['s1', 's2'] as const) {
+      const mine = (await api(who, 'get', '/platform/notices').expect(200)).body as { unread: number; items: { kind: string; title: string; read: boolean }[] };
+      expect(mine.unread).toBeGreaterThanOrEqual(1);
+      expect(mine.items.find((n) => n.kind === 'kept_records_removed')).toMatchObject({ title: expect.stringMatching(/^Kept records removed/), read: false });
+    }
     // 2081: the console company page lists the removal: group, day, SHA-256.
     const detail = (await api('s1', 'get', `/platform/companies/${org.A}`).expect(200)).body as { deleted: { removals: { group: string; removedAt: string; sha256: string }[]; holds: unknown[] } };
     expect(detail.deleted.removals).toEqual([{ group: 'audit', removedAt: expect.any(String), sha256: audit.certificateSha256 }]);

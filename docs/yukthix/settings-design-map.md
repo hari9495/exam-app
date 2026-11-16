@@ -1194,6 +1194,33 @@ Tests: API e2e `settings-s10-security` (6), `webhook-delivery` (the admin confir
       *Suggested: add a small notice list to the console header later, starting with these removals and the breach
       reminders.*
 
+## 2093 as built: staff notices in the console header (branch `feat/yukthix-console-notices`)
+
+- **Data:** migration `202617z0000321_staff_notices`, table `staff_notices` under forced RLS: only the staff member a
+  notice is for reads it or marks it read (`app.current_user_id`); platform access does not widen this. Only the
+  console's system work writes them, and only for a YukthiX staff account; the app may change nothing but the read time
+  and deletes none.
+- **Sources:** kept-record removals (2084: the two staff who asked for and confirmed the deletion; the email stays) and
+  the DPDP "tell the Data Protection Board now" reminders (Rule 7: the staff holding the incidents key; the email
+  stays). Each is written in the same transaction as the sweep that sends the email. The hourly Board nudge keeps one
+  open notice per staff member per containment (migration `202617z0000322`, partial unique index); a fresh one comes
+  only after the last was read, so the bell does not climb every hour.
+- **Console:** a bell in the header (the kit's notification centre, now with the server's unread count and no settings
+  link) lists the person's latest 50 notices, checked every minute; opening one marks it read and goes to its page;
+  Mark all read. `GET /platform/notices`, `POST /platform/notices/:id/read`, `POST /platform/notices/read-all`, staff
+  only, on their platform session.
+- **Tests:** e2e `console-incidents` (each staff member sees only their own, marks it read; nobody else's, not even with
+  platform access; a company account is refused; the app cannot delete or write one for a company user; a repeat
+  nudge adds no second open notice),
+  `company-retention-expiry` (the removal notice); kit `console-notices` (2); web console layout (2).
+
+### Questions (from 2221)
+
+2221. **The CERT-In and DPDP report reminders.** They still go by email only. *Suggested: add them as notices too.*
+2222. **Keeping notices.** Nothing removes old notices. *Suggested: delete read notices after 90 days, as a platform
+      setting.*
+2223. **Live updates.** The bell checks every minute. *Suggested: keep; push later if staff ask.*
+
 ## 7. Build plan (slices, max 3 builders at once)
 
 Ordered by what every customer needs first: the way in (home), the everyday HR rules (time, leave, payroll, people),

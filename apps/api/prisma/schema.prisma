@@ -277,6 +277,7 @@ model User {
 
   @@unique([organizationId, email])
   @@map("users")
+  staffNotices                   StaffNotice[]                @relation("StaffNoticeRecipient")
 }
 
 model Permission {
@@ -14498,3 +14499,23 @@ model QuestionReviewNudge {
   @@id([organizationId, userId, day])
   @@map("question_review_nudges")
 }
+
+/// Answer 2093: a notice for one YukthiX staff member (console header bell). RLS: only that person reads or marks it.
+model StaffNotice {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recipientUserId String    @map("recipient_user_id") @db.Uuid
+  /// kept_records_removed | board_notice_due
+  kind            String    @db.VarChar(40)
+  title           String    @db.VarChar(200)
+  body            String    @db.VarChar(1000)
+  linkPath        String?   @map("link_path") @db.VarChar(500)
+  entityType      String?   @map("entity_type") @db.VarChar(40)
+  entityId        String?   @map("entity_id") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  readAt          DateTime? @map("read_at") @db.Timestamptz(3)
+  recipient       User      @relation("StaffNoticeRecipient", fields: [recipientUserId], references: [id], onDelete: Cascade, map: "staff_notices_recipient_fkey")
+
+  @@index([recipientUserId, readAt, createdAt(sort: Desc)], map: "staff_notices_recipient_idx")
+  @@map("staff_notices")
+}
+
