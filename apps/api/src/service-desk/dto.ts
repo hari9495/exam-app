@@ -640,6 +640,20 @@ export class RaiseTicketDto {
   @IsOptional()
   @Matches(/^[a-z]{2,3}$/, { message: 'Use a language code such as en, hi or ta.' })
   language?: string;
+
+  /** Answer 1842: the desk's fields everyone sees, by key (checked by the forms engine). */
+  @IsOptional()
+  @IsObject()
+  fields?: Record<string, unknown>;
+
+  /** Answer 1911: the building (a company location) and an area of it, on a facilities ticket. */
+  @IsOptional()
+  @IsUUID()
+  locationId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  areaId?: string;
 }
 
 export class AgentCreateTicketDto {
@@ -1583,6 +1597,11 @@ export class TicketFieldDto {
   @IsOptional()
   @IsIn(['all', 'agents', 'leads'], { message: 'A field shows to everyone, to the desk staff only, or to team leads only.' })
   visibility?: 'all' | 'agents' | 'leads';
+
+  /** Answer 1843: the ticket cannot be solved until this field has a value. */
+  @IsOptional()
+  @IsBoolean()
+  requiredToSolve?: boolean;
 
   @IsOptional()
   @IsInt()

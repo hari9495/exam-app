@@ -24,6 +24,8 @@ export interface BusinessApp {
   description: string | null;
   ownerUserId: string;
   owner: string;
+  /** Answer 1894: the owner has left or was deactivated (a new one is needed; the desk admins decide meanwhile). */
+  ownerLeft?: boolean;
   status: 'active' | 'retired';
   version: number;
   canEdit: boolean;
@@ -59,9 +61,11 @@ export function BusinessAppsScreen(props: BusinessAppsProps) {
           <span className="yx-ops-list__main">
             <span className="yx-ops-list__title">
               {a.name} {a.status === 'retired' && <Badge tone="neutral">Retired</Badge>}
+              {a.status === 'active' && a.ownerLeft && <Badge tone="warning">Owner has left</Badge>}
             </span>
             <span className="yx-ops-list__sub">
               Owner: {a.owner}
+              {a.status === 'active' && a.ownerLeft ? ' · choose a new owner; the IT desk admins decide requests until then' : ''}
               {a.description ? ` · ${a.description}` : ''}
             </span>
           </span>

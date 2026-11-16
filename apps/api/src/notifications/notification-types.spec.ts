@@ -106,6 +106,9 @@ describe('notification catalog', () => {
       'helpdesk.accident.update',
       'helpdesk.accident.contractor_late',
       'helpdesk.dispute.settlement',
+      // Helpdesk follow-ups: a paused maintenance schedule (1913), an application owner who left (1894).
+      'helpdesk.recurring.paused',
+      'helpdesk.app.owner_left',
       // HIR-13: the manager is told about an internal application.
       'hiring.internal.applied',
       'clra.licence.expiring',

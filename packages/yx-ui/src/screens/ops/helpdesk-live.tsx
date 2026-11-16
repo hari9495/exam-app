@@ -29,6 +29,8 @@ import { ChatPromptBanner } from '../desk/chat';
 import { MyChannelsCard, type MyChannelsCardProps } from '../desk/esm3';
 import { StatusBadge } from '../desk/desk-kit';
 import { LivePicker } from '../desk/service-form';
+import { RaiseFields, fieldErrorsOf, raiseFieldValues } from '../desk/ticket-fields';
+import type { Answers } from '../../lib/forms';
 import type { PickOption } from '../desk/esm-types';
 import type { LoadState, MyTicketRow, PublicBanner, RaiseDesk, RaiseInput } from '../desk/types';
 import { Actions, OpsDesk, SlaBadge, Workspace, useSay } from './ops-kit';
@@ -65,6 +67,8 @@ export interface LiveHelp {
   onBack?: () => void;
   /** Answers 1662, 1685: the devices of the person a ticket is for, for "Which device?" on an IT desk. */
   onPickDevice?: (q: string, forPersonId?: string) => Promise<PickOption[]>;
+  /** Answer 1911: buildings, and the areas of one, for a facilities ticket. */
+  onPickPlace?: (kind: 'locations' | 'areas', q: string, locationId?: string) => Promise<PickOption[]>;
   /**
    * Answer 1801: for people who may raise tickets for others (request.raise_on_behalf): find a colleague, and the
    * desks as they apply to that colleague (whether "Which device?" is asked for them).
@@ -131,6 +135,7 @@ export function LiveHelpCentre({ live }: { live: LiveHelp }) {
     <RaiseForm
       desks={live.desks}
       onPickDevice={live.onPickDevice}
+      onPickPlace={live.onPickPlace}
       onBehalf={live.onBehalf}
       onSuggest={kb.onSearch}
       onOpenArticle={(a) => openArticle(a.number)}
@@ -380,6 +385,7 @@ function ResolvedCard({ ticket: t, onRate, onReopen }: { ticket: MyTicketRow; on
 interface RaiseFormProps {
   desks: RaiseDesk[];
   onPickDevice?: LiveHelp['onPickDevice'];
+  onPickPlace?: LiveHelp['onPickPlace'];
   onBehalf?: LiveHelp['onBehalf'];
   onSuggest: (q: string) => Promise<KbSuggestion[]>;
   onOpenArticle: (a: KbSuggestion) => void;
@@ -400,6 +406,9 @@ function RaiseForm(p: RaiseFormProps) {
   const [details, setDetails] = useState('');
   const [isPrivate, setPrivate] = useState(false);
   const [assetId, setAssetId] = useState<string | null>(null);
+  // Answer 1911: the building and area of a facilities ticket.
+  const [building, setBuilding] = useState<string | null>(null);
+  const [area, setArea] = useState<string | null>(null);
   const [appId, setAppId] = useState<string | null>(null);
   // Answer 1801: raising for a colleague (the server checks the on-behalf right).
   const [forOther, setForOther] = useState(false);
@@ -413,11 +422,16 @@ function RaiseForm(p: RaiseFormProps) {
   const whom = forOther && forPerson ? forPerson : undefined;
   const [files, setFiles] = useState<UploadItem[]>([]);
   const [formKey, setFormKey] = useState(0);
+  // Answer 1842: the desk's fields everyone sees (cleared when the topic changes desk).
+  const [fieldValues, setFieldValues] = useState<Answers>({});
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const { busy, error, run } = useRun();
   const uid = useId();
   const fid = (k: string) => `${uid}-${k}`;
   const [deskId, categoryId] = (topic ?? '|').split('|');
   const desk = p.desks.find((d) => d.id === deskId);
+  const deskFields = desk?.fields ?? [];
+  const askPlace = Boolean(desk?.askPlace && p.onPickPlace);
   // "Which device?" follows the person the ticket is for (1685).
   const askDevice = forOther ? Boolean(desksFor?.find((d) => d.id === deskId)?.askDevice) : Boolean(desk?.askDevice);
   const appChoices = desk?.apps ?? [];
@@ -434,12 +448,22 @@ function RaiseForm(p: RaiseFormProps) {
     setDetails('');
     setPrivate(false);
     setFiles([]);
+    setFieldValues({});
+    setFieldErrors({});
+    setBuilding(null);
+    setArea(null);
     setFormKey((k) => k + 1);
   };
   const submit = () =>
     !early.stop() &&
     void run('raise', async () => {
-      await p.onRaise({ deskId, categoryId: categoryId || undefined, subject: subject.trim(), description: details.trim(), impact: 3, urgency: 3, private: (isPrivate && !category?.sensitive) || undefined, ...(assetId && askDevice ? { assetId } : {}), ...(appId && appChoices.some((x) => x.id === appId) ? { appId } : {}), ...(whom ? { requestedForPersonId: whom } : {}) }, files.map((f) => f.file));
+      const fields = raiseFieldValues(deskFields, fieldValues);
+      try {
+        await p.onRaise({ deskId, categoryId: categoryId || undefined, subject: subject.trim(), description: details.trim(), impact: 3, urgency: 3, private: (isPrivate && !category?.sensitive) || undefined, ...(assetId && askDevice ? { assetId } : {}), ...(appId && appChoices.some((x) => x.id === appId) ? { appId } : {}), ...(whom ? { requestedForPersonId: whom } : {}), ...(fields ? { fields } : {}), ...(askPlace && building ? { locationId: building, ...(area ? { areaId: area } : {}) } : {}) }, files.map((f) => f.file));
+      } catch (e) {
+        setFieldErrors(fieldErrorsOf(e) ?? {});
+        throw e;
+      }
       clear();
     });
   const accept = desk?.attachmentTypes.length ? desk.attachmentTypes.map((x) => (x.startsWith('.') ? x : `.${x}`)) : ['.pdf', '.jpg', '.png'];
@@ -455,7 +479,7 @@ function RaiseForm(p: RaiseFormProps) {
         </FormField>
       )}
       <FormField id={fid('topic')} label="What is it about?" required error={early.errorOf(fid('topic'))}>
-        <Select value={topic} onChange={setTopic} options={options} placeholder="Choose a topic" />
+        <Select value={topic} onChange={(v) => { if ((v ?? '|').split('|')[0] !== deskId) { setFieldValues({}); setFieldErrors({}); setBuilding(null); setArea(null); } setTopic(v); }} options={options} placeholder="Choose a topic" />
       </FormField>
       {desk?.closed && <DeskClosedNotice closed={desk.closed} />}
       <FormField id={fid('subject')} label="Subject" required helper="One line, e.g. “LOP on my September payslip”" error={early.errorOf(fid('subject'))}>
@@ -481,6 +505,14 @@ function RaiseForm(p: RaiseFormProps) {
           </ul>
         </section>
       )}
+      {askPlace && (
+        <FormField label="Where is it?" optional helper="The building, and the floor or area if you know it.">
+          <div className="yx-ops-stack" data-gap="sm">
+            <LivePicker kind="locations" label="Building" value={building} onChange={(v) => { setBuilding(v); setArea(null); }} onPick={(_k, q) => p.onPickPlace!('locations', q)} />
+            {building && <LivePicker key={building} kind="areas" label="Floor or area" value={area} onChange={setArea} onPick={(_k, q) => p.onPickPlace!('areas', q, building)} />}
+          </div>
+        </FormField>
+      )}
       {appChoices.length > 0 && (
         <FormField label="Which application?" optional helper="If the problem is with one of the company's applications.">
           <Select value={appId} onChange={setAppId} clearable placeholder="Choose" options={appChoices.map((x) => ({ value: x.id, label: x.name }))} />
@@ -491,6 +523,7 @@ function RaiseForm(p: RaiseFormProps) {
           <LivePicker key={whom ?? 'me'} kind="assets" label="Which device?" value={assetId} onChange={setAssetId} onPick={(_k, q) => p.onPickDevice!(q, whom)} />
         </FormField>
       )}
+      <RaiseFields key={deskId} fields={deskFields} values={fieldValues} onChange={setFieldValues} errors={fieldErrors} />
       <FormField id={fid('details')} label="Details" required helper="Add dates, amounts or screenshots so the team can help faster" error={early.errorOf(fid('details'))}>
         <TextArea value={details} onChange={setDetails} rows={4} maxLength={20000} />
       </FormField>

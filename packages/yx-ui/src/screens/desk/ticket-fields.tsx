@@ -38,6 +38,8 @@ export interface DeskField {
   dependsOn: string | null;
   optionsBy: Record<string, string[]> | null;
   visibility: DeskFieldVisibility;
+  /** Answer 1843: the ticket cannot be solved until this field has a value. */
+  requiredToSolve?: boolean;
   sortOrder: number;
   active: boolean;
   version: number;
@@ -51,6 +53,7 @@ export interface DeskFieldInput {
   dependsOn?: string | null;
   optionsBy?: Record<string, string[]> | null;
   visibility: DeskFieldVisibility;
+  requiredToSolve?: boolean;
   active: boolean;
   version?: number;
 }
@@ -61,6 +64,7 @@ export interface TicketFieldView {
   label: string;
   type: DeskFieldKind;
   visibility: DeskFieldVisibility;
+  requiredToSolve?: boolean;
   options: DeskFieldOption[];
   dependsOn: string | null;
   optionsBy: Record<string, string[]> | null;
@@ -94,6 +98,7 @@ export function FieldsTab({ fields, types, canSetUp, onSave }: { fields: DeskFie
                 <span className="yx-ops-list__sub">
                   {KIND_LABEL[f.fieldType]}
                   {f.dependsOn ? ` · narrowed by ${fields.find((x) => x.key === f.dependsOn)?.label ?? f.dependsOn}` : ''} · for {typeName(f.ticketTypeId)} · {VISIBILITY_LABEL[f.visibility]}
+                  {f.requiredToSolve ? ' · required before solving' : ''}
                   {f.active ? '' : ' · off'}
                 </span>
               </span>
@@ -128,6 +133,7 @@ function FieldDialog({ field, fields, types, onClose, onSave }: { field: DeskFie
   const [dependsOn, setDependsOn] = useState<string | null>(field?.dependsOn ?? null);
   const [by, setBy] = useState<Record<string, string[]>>(field?.optionsBy ?? {});
   const [active, setActive] = useState(field?.active ?? true);
+  const [required, setRequired] = useState(field?.requiredToSolve ?? false);
   const { busy, error, run } = useRun();
   const { toast } = useToast();
   // A choice keeps its stored value when only its label changes.
@@ -152,6 +158,8 @@ function FieldDialog({ field, fields, types, onClose, onSave }: { field: DeskFie
         fieldType: kind,
         ticketTypeId: typeId,
         visibility,
+        // Answer 1843: never for a field only team leads see (agents could not solve).
+        requiredToSolve: required && visibility !== 'leads',
         active,
         ...(kind === 'choice' ? { options, dependsOn: parent ? parent.key : null, optionsBy: parent ? Object.fromEntries(parent.options.map((p) => [p.value, (by[p.value] ?? []).filter((v) => options.some((o) => o.value === v))])) : null } : {}),
       });
@@ -219,6 +227,7 @@ function FieldDialog({ field, fields, types, onClose, onSave }: { field: DeskFie
               ))}
           </>
         )}
+        {visibility !== 'leads' && <Checkbox checked={required} onChange={setRequired} label="Required before solving" description="Agents fill it in before the ticket can be solved." />}
         <Checkbox checked={active} onChange={setActive} label="Field is on" />
       </div>
     </Dialog>
@@ -227,10 +236,13 @@ function FieldDialog({ field, fields, types, onClose, onSave }: { field: DeskFie
 
 // ------------------------------------------------------------------------------------------ the ticket
 
+/** A field's note on the ticket: who may see it and (1843) whether it is needed before solving. */
+const helpOf = (f: TicketFieldView) => [VISIBILITY_NOTE[f.visibility], f.requiredToSolve ? 'Required before solving' : null].filter(Boolean).join(' · ') || null;
+
 /** The ticket's fields as one form of the forms engine (the same dependent lists as the server). */
 export function fieldsForm(fields: TicketFieldView[]): FormDef {
   return {
-    sections: [{ id: 'fields', columns: 1, fields: fields.map((f) => ({ key: f.key, type: f.type, label: f.label, ...(VISIBILITY_NOTE[f.visibility] ? { help: VISIBILITY_NOTE[f.visibility]! } : {}), ...(f.type === 'choice' ? { options: f.options } : {}), ...(f.dependsOn ? { dependsOn: f.dependsOn, optionsBy: f.optionsBy ?? {} } : {}) })) }],
+    sections: [{ id: 'fields', columns: 1, fields: fields.map((f) => ({ key: f.key, type: f.type, label: f.label, ...(helpOf(f) ? { help: helpOf(f)! } : {}), ...(f.type === 'choice' ? { options: f.options } : {}), ...(f.dependsOn ? { dependsOn: f.dependsOn, optionsBy: f.optionsBy ?? {} } : {}) })) }],
     rules: [],
   };
 }
@@ -246,7 +258,7 @@ export function TicketFieldsPanel({ fields, canSet, onSave }: { fields: TicketFi
   if (!canSet || !onSave)
     return (
       <DescriptionList
-        items={fields.map((f) => ({ label: f.label, value: f.display ?? '—', ...(VISIBILITY_NOTE[f.visibility] ? { hint: VISIBILITY_NOTE[f.visibility] } : {}) }))}
+        items={fields.map((f) => ({ label: f.label, value: f.display ?? '—', ...(helpOf(f) ? { hint: helpOf(f)! } : {}) }))}
       />
     );
   const changed = Object.fromEntries(fields.filter((f) => (values[f.key] ?? null) !== (f.value ?? null)).map((f) => [f.key, (values[f.key] ?? null) as string | number | null]));
@@ -278,6 +290,26 @@ export function TicketFieldsPanel({ fields, canSet, onSave }: { fields: TicketFi
       </div>
     </div>
   );
+}
+
+/** Answer 1842: a field the raise form asks (the desk's fields everyone sees); value and display are empty. */
+export type RaiseField = TicketFieldView;
+type FieldAnswer = string | number;
+
+/** The field values a raise sends: only the ones filled in. */
+export const raiseFieldValues = (fields: RaiseField[] | undefined, values: Answers): Record<string, FieldAnswer> | undefined => {
+  const out = Object.fromEntries((fields ?? []).filter((f) => values[f.key] !== undefined && values[f.key] !== null && values[f.key] !== '').map((f) => [f.key, values[f.key] as FieldAnswer]));
+  return Object.keys(out).length ? out : undefined;
+};
+
+/** The server's per-field messages (400 FIELD_ERRORS) from a refused raise or save. */
+export const fieldErrorsOf = (e: unknown): Record<string, string> | null => (e as { body?: { errors?: Record<string, string> } }).body?.errors ?? (e as { errors?: Record<string, string> }).errors ?? null;
+
+/** Answer 1842: the desk's own fields on a raise form (dependent drop-downs as on the agent's ticket). */
+export function RaiseFields({ fields, values, onChange, errors }: { fields?: RaiseField[]; values: Answers; onChange: (v: Answers) => void; errors: Record<string, string> }) {
+  if (!fields?.length) return null;
+  // The desk's "required before solving" is for its agents, not a note for the requester.
+  return <ServiceForm form={fieldsForm(fields.map((f) => ({ ...f, requiredToSolve: false })))} values={values} onChange={onChange} errors={errors} onPick={async () => []} />;
 }
 
 /** Answers 1641, 1650: the filled fields a requester may see, on their own ticket (help centre and portal). */

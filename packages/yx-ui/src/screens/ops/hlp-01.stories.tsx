@@ -4,6 +4,7 @@ import { ARTICLES, ASSISTANT_THREAD, MY_TICKETS } from './helpdesk-data';
 import { TODAY } from '../_kit/data';
 import { HELP_BANNERS, HELP_CHANNELS, HELP_CHAT, liveHelp } from './helpdesk-live-samples';
 import { RAISE_DESKS } from '../desk/data';
+import { RAISE_FIELDS } from '../desk/ticket-fields-sample';
 
 const meta: Meta = { title: 'Screens/Helpdesk/HLP-01 · Help centre', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -34,4 +35,8 @@ export const RaiseWhichDevice: S = { name: 'Raise ticket · which device? (IT de
 // Answer 1801: people who may raise for others pick a colleague; "Which device?" follows that colleague.
 export const RaiseWhichApplication: S = { name: 'Raise ticket · which application? (IT desk, answer 2057)', render: () => <HelpCentreScreen live={liveHelp({ startRaise: true, desks: [{ ...RAISE_DESKS[0], categories: [], apps: [{ id: 'a1', name: 'Tally Prime' }, { id: 'a2', name: 'Attendance devices' }] }] })} /> };
 export const RaiseOnBehalf: S = { name: 'Raise ticket · on behalf of a colleague', render: () => <HelpCentreScreen live={liveHelp({ startRaise: true, desks: [{ ...RAISE_DESKS[0], categories: [] }], onPickDevice: async () => [{ id: 'as9', label: 'HP EliteBook (KF-LT-0009)', detail: 'Laptop' }], onBehalf: { onPickPeople: async () => [{ id: 'p-ravi', label: 'Ravi Kumar', detail: 'Sales' }], onDesksFor: async () => [{ ...RAISE_DESKS[0], categories: [], askDevice: true }] } })} /> };
+// Answer 1842: the desk's own fields everyone sees (Office narrows Floor), filled when raising.
+export const RaiseDeskFields: S = { name: 'Raise ticket · the desk fields everyone fills', render: () => <HelpCentreScreen live={liveHelp({ startRaise: true, desks: [{ ...RAISE_DESKS[0], categories: [], fields: RAISE_FIELDS }] })} /> };
+// Answer 1911: a facilities desk asks where it is (the building, then a floor or area of it).
+export const RaiseWhereIsIt: S = { name: 'Raise ticket · where is it? (facilities desk)', render: () => <HelpCentreScreen live={liveHelp({ startRaise: true, desks: [{ ...RAISE_DESKS[0], id: 'd-fac', name: 'Facilities', categories: [], askPlace: true }], onPickPlace: async (kind) => (kind === 'locations' ? [{ id: 'l-blr', label: 'Bengaluru office', detail: 'BLR' }, { id: 'l-che', label: 'Chennai plant', detail: 'CHE' }] : [{ id: 'a-g', label: 'Ground floor', detail: null }, { id: 'a-2', label: '2nd floor', detail: null }]) })} /> };
 export const NoAccess: S = { name: 'No access (acting for someone else)', render: () => <HelpCentreScreen live={liveHelp({ state: 'no-access' })} /> };

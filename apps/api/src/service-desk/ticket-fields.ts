@@ -43,6 +43,15 @@ export function fieldsFor(tx: Tx, org: string, deskId: string, typeId: string | 
 
 const stored = (v: Prisma.JsonValue): Record<string, FieldValue> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, FieldValue>) : {});
 
+/**
+ * Answer 1842: the fields a requester fills on the raise form, per desk: active, shown to everyone, for every type or
+ * the desk's first type (the one a raise without a type gets). `firstType` maps a desk to that type.
+ */
+export async function raiseFieldsOf(tx: Tx, org: string, firstType: Map<string, string | undefined>) {
+  const rows = await tx.sdTicketField.findMany({ where: { organizationId: org, deskId: { in: [...firstType.keys()] }, active: true, visibility: 'all' }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] });
+  return (deskId: string) => shownFields(rows.filter((f) => f.deskId === deskId && (!f.ticketTypeId || f.ticketTypeId === firstType.get(deskId))), {}, 'requester');
+}
+
 /** What a viewer sees of a ticket's fields: only the fields they may see, with the value and (drop-downs) its label. */
 export function shownFields(fields: FieldRow[], values: Prisma.JsonValue, who: Viewer, onlyFilled = false) {
   const v = stored(values);
@@ -54,12 +63,25 @@ export function shownFields(fields: FieldRow[], values: Prisma.JsonValue, who: V
       label: f.label,
       type: f.fieldType,
       visibility: f.visibility,
+      requiredToSolve: f.requiredToSolve,
       options: options(f),
       dependsOn: f.dependsOn,
       optionsBy: (f.optionsBy ?? null) as Record<string, string[]> | null,
       value: v[f.key] ?? null,
       display: v[f.key] === undefined ? null : f.fieldType === 'choice' ? (options(f).find((o) => o.value === v[f.key])?.label ?? String(v[f.key])) : String(v[f.key]),
     }));
+}
+
+/**
+ * Answer 1844: the field columns of a ticket export or report. `whoOn` says how the person sees each desk's fields (a
+ * team lead of that desk sees its team-lead-only fields; nobody else does). Labels by key in the order of the fields;
+ * per ticket, the shown value (a drop-down's label) by key.
+ */
+export function fieldTable(fields: FieldRow[], tickets: { deskId: string; fieldValues: Prisma.JsonValue }[], whoOn: (deskId: string) => Viewer) {
+  const labels = new Map<string, string>();
+  for (const f of fields) if (!labels.has(f.key) && sees(f, whoOn(f.deskId))) labels.set(f.key, f.label);
+  const cells = tickets.map((t) => new Map(shownFields(fields.filter((f) => f.deskId === t.deskId), t.fieldValues, whoOn(t.deskId)).map((f) => [f.key, f.display] as const)));
+  return { labels, cells };
 }
 
 /**

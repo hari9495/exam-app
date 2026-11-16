@@ -7,7 +7,7 @@ import { Tx } from '../org-structure/org-structure.service';
 import { DeskActor, audit, canLead, has, visibleTickets } from './desk-access';
 import { TicketFiltersDto, TicketListQueryDto, ViewDto } from './dto';
 import { MeService } from './me.service';
-import { sees } from './ticket-fields';
+import { fieldTable, sees } from './ticket-fields';
 import { SlaService, clockState } from './sla.service';
 
 // SD-1.07 agent desk lists (US-B-089, US-G-002, US-G-010): filters, saved views, the board, CSV export. Every list
@@ -193,8 +193,13 @@ export class TicketListsService {
       await audit(tx, a, 'desk.ticket.exported', 'sd_ticket', a.userId, { rows: items.length, filters: { ...(view?.filters ?? {}), ...rest } });
       // US-G-030: an export counts as reading every ticket in it.
       if (rows.length) await tx.sdTicketRead.createMany({ data: rows.map((t) => ({ organizationId: t.organizationId, deskId: t.deskId, ticketId: t.id, userId: a.userId, access: 'export' })) });
-      const header = ['Number', 'Subject', 'Desk', 'Type', 'Status', 'Priority', 'Category', 'Group', 'Requester', 'Requested for', 'Assignee', 'Tags', 'VIP', 'Raised', 'Updated'];
-      const body = items.map((t) => [t.number, t.subject, t.desk, t.type, t.status, `P${t.priority}`, t.category, t.group, t.requester, t.requestedFor, t.assignee, t.tags.join(' '), t.vip ? 'Yes' : 'No', t.createdAt.toISOString(), t.updatedAt.toISOString()].map(safeCell));
+      // Answer 1844: the desks' own fields, one column each; a team-lead-only field only for that desk's leads.
+      const defs = rows.length ? await tx.sdTicketField.findMany({ where: { organizationId: a.ctx.organizationId, deskId: { in: [...new Set(rows.map((t) => t.deskId))] }, active: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }) : [];
+      const fields = fieldTable(defs, rows, (deskId) => (a.roles.get(deskId) === 'lead' ? 'lead' : 'agent'));
+      const keys = [...fields.labels.keys()];
+      const cellsOf = new Map(rows.map((t, i) => [t.id, fields.cells[i]]));
+      const header = ['Number', 'Subject', 'Desk', 'Type', 'Status', 'Priority', 'Category', 'Group', 'Requester', 'Requested for', 'Assignee', 'Tags', 'VIP', 'Raised', 'Updated', ...keys.map((k) => fields.labels.get(k)!)];
+      const body = items.map((t) => [t.number, t.subject, t.desk, t.type, t.status, `P${t.priority}`, t.category, t.group, t.requester, t.requestedFor, t.assignee, t.tags.join(' '), t.vip ? 'Yes' : 'No', t.createdAt.toISOString(), t.updatedAt.toISOString(), ...keys.map((k) => cellsOf.get(t.id)?.get(k) ?? '')].map(safeCell));
       return stringify([header, ...body]);
     });
   }

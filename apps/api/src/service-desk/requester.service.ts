@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Prisma } from '@prisma/client';
 import { Request } from 'express';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
-import { buildViewer, covers, grantPeriods } from '../access/scope';
+import { buildViewer, covers, grantPeriods, inScopeSql } from '../access/scope';
 import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import { cleanHtml, htmlToText, textToHtml } from './rich-text';
@@ -10,7 +10,8 @@ import { DeskActor, audit, companyOf, emit } from './desk-access';
 import { ITSM_KINDS, RaiseTicketDto, RequesterReplyDto, WatcherDto } from './dto';
 import { Ticket, TicketsService } from './tickets.service';
 import { assetsOf } from './asset-pick';
-import { fieldsFor, shownFields } from './ticket-fields';
+import { fieldsFor, raiseFieldsOf, shownFields } from './ticket-fields';
+import { checkPlace } from './facilities.service';
 
 // The requester's side (M14 §6.1 implicit role, YX-SD-16): raise, follow, reply and add watchers. No permission key:
 // every route works only on the person's own records (requester, requested-for or watcher) and never returns internal
@@ -116,6 +117,7 @@ export class RequesterService {
         whose = forPersonId;
       }
       const hasDevice = Boolean(whose && (await assetsOf(tx, org, whose, '')).length);
+      const fieldsOf = await raiseFieldsOf(tx, org, new Map(desks.map((d) => [d.id, types.find((t) => t.deskId === d.id)?.id])));
       // ITSM answer 2057: an IT desk asks "Which application?" (optional) from the company's list.
       const apps = desks.some((d) => d.kind === 'it') ? await tx.sdBusinessApp.findMany({ where: { organizationId: org, status: 'active' }, select: { id: true, name: true }, orderBy: { name: 'asc' } }) : [];
       return desks.map((d) => ({
@@ -129,6 +131,10 @@ export class RequesterService {
         closed: closed.get(d.id) ?? null,
         // Answer 1662: an IT desk asks "Which device?" when the person has one assigned.
         askDevice: d.kind === 'it' && hasDevice,
+        // Answer 1911: a facilities desk asks which building and area.
+        askPlace: d.kind === 'facilities',
+        // Answer 1842: the desk's fields everyone sees, filled on the raise form.
+        fields: fieldsOf(d.id),
         apps: d.kind === 'it' ? apps : [],
       }));
     });
@@ -146,6 +152,12 @@ export class RequesterService {
         if (desk.kind !== 'it') throw new BadRequestException('Only IT desk tickets name a device.');
         const mine = await assetsOf(tx, r.ctx.organizationId, dto.requestedForPersonId ?? personId, '');
         if (!mine.some((x) => x.id === dto.assetId)) throw new BadRequestException('Choose one of your own devices from the list.');
+      }
+      // Answer 1911: a facilities ticket may name its building and an area of it (checked: live, of this company, the area of that building).
+      let place: { locationId: string | null; areaId: string | null } = { locationId: null, areaId: null };
+      if (dto.locationId || dto.areaId) {
+        if (desk.kind !== 'facilities') throw new BadRequestException('Only facilities tickets name a building or area.');
+        place = await checkPlace(tx, r.ctx.organizationId, { locationId: dto.locationId ?? null, areaId: dto.areaId ?? null });
       }
       if (dto.appId && desk.kind !== 'it') throw new BadRequestException('Only IT desk tickets name an application.');
       return this.tickets.createIn(tx, r, {
@@ -169,10 +181,34 @@ export class RequesterService {
         originArticleId: dto.originArticleId,
         originQuery: dto.originQuery,
         assetId: dto.assetId,
+        fields: dto.fields,
+        locationId: place.locationId,
+        areaId: place.areaId,
         appId: dto.appId,
       });
     });
     return { id: t.id, number: t.number };
+  }
+
+  /**
+   * Answer 1846: the colleagues this person may raise for (request.raise_on_behalf over them today, the same check as
+   * checkOnBehalf), never themselves; names and department only. `l` is the escaped ILIKE pattern.
+   */
+  async onBehalfPeople(tx: Tx, r: Requester, l: string) {
+    const org = r.ctx.organizationId;
+    const viewer = await buildViewer(this.prisma, this.tenantPrisma, { ...r.user, userId: r.userId, organizationId: org }, ['request.raise_on_behalf']);
+    const own = (await tx.employee.findFirst({ where: { organizationId: org, userId: r.userId }, select: { id: true } }))?.id ?? null;
+    const me = await this.personOf(tx, r, false);
+    const rows = await tx.$queryRaw<{ id: string; name: string; department: string | null }[]>`
+      SELECT p.id, concat_ws(' ', coalesce(nullif(p.preferred_name, ''), p.given_name), p.family_name) AS name,
+             (SELECT d.name::text FROM employee_assignments a JOIN departments d ON d.organization_id = a.organization_id AND d.id = a.department_id
+              WHERE a.organization_id = e.organization_id AND a.employee_id = e.id AND a.superseded_at IS NULL AND a.valid_to IS NULL LIMIT 1) AS department
+      FROM employees e JOIN persons p ON p.organization_id = e.organization_id AND p.id = e.person_id
+      WHERE e.organization_id = ${org}::uuid AND p.status = 'active' AND p.id IS DISTINCT FROM ${me}::uuid
+        AND (p.given_name ILIKE ${l} OR p.family_name ILIKE ${l} OR p.preferred_name ILIKE ${l})
+        AND ${inScopeSql(r.ctx, viewer, 'request.raise_on_behalf', Prisma.sql`e.id`, Prisma.sql`${todayIst()}::date`, own)}
+      ORDER BY p.given_name, p.family_name LIMIT 20`;
+    return rows.map((x) => ({ id: x.id, label: x.name, detail: x.department }));
   }
 
   /** US-G-004 / P02: raising for someone else needs request.raise_on_behalf over that employee today. */

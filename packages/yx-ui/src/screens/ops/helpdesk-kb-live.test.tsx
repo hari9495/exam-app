@@ -125,10 +125,10 @@ describe('HLP-04 Knowledge base editor (live)', () => {
     await waitFor(() => expect(screen.getAllByText('Nothing in this period.')).toHaveLength(5));
   });
 
-  it('1642, 1681: search words have their own tab; an empty list is stopped, the starter list fills it in and is saved', async () => {
+  it('1642, 1681, 1841: search words are on the Settings tab; an empty list is stopped, the starter list fills it in and is saved', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     show(<KbEditorScreen live={liveKb({ searchWords: { value: 'cl, casual leave', starter: 'pf, provident fund', onSave } })} />);
-    await ue.click(screen.getByRole('tab', { name: 'Search words' }));
+    await ue.click(screen.getByRole('tab', { name: 'Settings' }));
     const box = await screen.findByLabelText('Words, one group a line');
     expect(box).toHaveValue('cl, casual leave');
     await ue.clear(box);

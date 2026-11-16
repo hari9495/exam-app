@@ -254,6 +254,11 @@ export class PickQueryDto {
   @IsOptional()
   @IsUUID()
   for?: string;
+
+  /** Answer 1911: the building whose areas are listed ('areas'). */
+  @IsOptional()
+  @IsUUID()
+  locationId?: string;
 }
 
 /** Answer 1685: "Which device?" is asked for the person the ticket is for. */

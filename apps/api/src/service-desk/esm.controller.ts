@@ -338,7 +338,7 @@ export class MyCatalogController {
   @Get('pick/:kind')
   @Throttle(PUBLIC_API_THROTTLE)
   pick(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('kind') kind: string, @Query() q: PickQueryDto) {
-    if (kind !== 'people' && kind !== 'locations' && kind !== 'cost-centres' && kind !== 'assets' && kind !== 'apps') throw new BadRequestException('Pick people, locations, cost centres, your devices or applications.');
-    return this.catalog.pick(this.requesters.who(req, t), kind, q.q ?? '', q.for);
+    if (kind !== 'people' && kind !== 'on-behalf' && kind !== 'locations' && kind !== 'areas' && kind !== 'cost-centres' && kind !== 'assets' && kind !== 'apps') throw new BadRequestException('Pick people, locations, areas, cost centres, your devices or applications.');
+    return this.catalog.pick(this.requesters.who(req, t), kind, q.q ?? '', q.for, q.locationId);
   }
 }

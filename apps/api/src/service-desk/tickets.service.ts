@@ -113,6 +113,8 @@ export interface CreateInput {
   locationId?: string | null;
   areaId?: string | null;
   equipmentId?: string | null;
+  /** Answer 1842: the desk's own field values given when it is raised; a requester may fill only the fields everyone sees. */
+  fields?: Record<string, unknown>;
 }
 
 interface Notice {
@@ -166,6 +168,7 @@ export class TicketsService {
     const cat = input.categoryId ? await this.category(tx, org, desk.id, input.categoryId, true) : null;
     // ITSM answer 2057: only an IT ticket names an application, and one in use.
     if (input.appId && (desk.kind !== 'it' || !(await tx.sdBusinessApp.findFirst({ where: { organizationId: org, id: input.appId, status: 'active' }, select: { id: true } })))) throw new BadRequestException('Choose an application of this company that is in use (IT tickets only).');
+    const fieldValues = input.fields && Object.keys(input.fields).length ? await this.raisedFields(tx, org, desk.id, type.id, input.fields, input.side === 'requester' ? 'requester' : 'agent') : null;
     if (input.originArticleId && !(await tx.sdKbArticle.findFirst({ where: { organizationId: org, id: input.originArticleId, deletedAt: null }, select: { id: true } }))) throw new BadRequestException('No such help article.');
     // SD-2.11: a type with a lifecycle starts in its start status and the ticket keeps that version.
     const pin = await lifecyclePin(tx, org, desk.id, type.id);
@@ -233,6 +236,7 @@ export class TicketsService {
         locationId: input.locationId ?? null,
         areaId: input.areaId ?? null,
         equipmentId: input.equipmentId ?? null,
+        ...(fieldValues ? { fieldValues: fieldValues as Prisma.InputJsonValue } : {}),
         originQuery: input.originQuery?.trim() || null,
         sensitive: Boolean(cat?.sensitive),
         // SD-2.09 (M08): some categories make every ticket in them private.
@@ -905,6 +909,10 @@ export class TicketsService {
     const note = c.resolutionNote !== undefined ? c.resolutionNote : t.resolutionNote;
     if (code && !(await tx.sdResolutionCode.findFirst({ where: { organizationId: org, deskId: t.deskId, code, active: true }, select: { id: true } }))) throw new BadRequestException('Choose a resolution code of this desk.');
     if (desk.resolutionRequired && (!code || !note?.trim())) throw new BadRequestException({ statusCode: 400, code: 'RESOLUTION_REQUIRED', message: 'This desk needs a resolution code and a note to resolve a ticket.' });
+    // Answer 1843: the desk's fields required before solving must have a value.
+    const values = (t.fieldValues && typeof t.fieldValues === 'object' && !Array.isArray(t.fieldValues) ? t.fieldValues : {}) as Record<string, unknown>;
+    const missing = (await fieldsFor(tx, org, t.deskId, t.typeId)).filter((f) => f.requiredToSolve && (values[f.key] === undefined || values[f.key] === null || values[f.key] === ''));
+    if (missing.length) throw new BadRequestException({ statusCode: 400, code: 'FIELDS_REQUIRED', message: `Fill ${missing.map((f) => f.label).join(', ')} before solving.`, fields: missing.map((f) => f.key) });
   }
 
   /**
@@ -977,6 +985,22 @@ export class TicketsService {
     const last = await tx.sdTicketEvent.findFirst({ where: { organizationId: a.ctx.organizationId, ticketId: t.id, byUserId: { not: null } }, orderBy: { at: 'desc' }, select: { byUserId: true } });
     const by = last?.byUserId ? (await this.userNames(tx, a.ctx.organizationId, [last.byUserId])).get(last.byUserId) : null;
     throw new ConflictException({ statusCode: 409, code: 'TICKET_CHANGED', message: `${by ?? 'Someone'} changed this ticket. Reload to see the latest.` });
+  }
+
+  /** Answer 1842: field values given at raise time, checked by the forms engine; a requester may fill only the fields everyone sees. */
+  async raisedFields(tx: Tx, org: string, deskId: string, typeId: string, given: Record<string, unknown>, who: Viewer) {
+    if (Object.keys(given).length > 60) throw new BadRequestException('Fill 60 fields at most.');
+    const fields = await fieldsFor(tx, org, deskId, typeId);
+    const res = applyFieldChange(fields, {}, given, who);
+    if (res.unknown.length || res.forbidden.length) throw new BadRequestException('That field is not on tickets like this one.');
+    if (Object.keys(res.errors).length) throw new BadRequestException({ statusCode: 400, code: 'FIELD_ERRORS', message: 'Check the fields.', errors: res.errors });
+    return Object.keys(res.values).length ? res.values : null;
+  }
+
+  /** Answer 1842: checks a requester's field values before a raise is stored for later (the open portal's emailed link). */
+  async checkRaiseFields(tx: Tx, org: string, deskId: string, given: Record<string, unknown>) {
+    const type = await tx.sdTicketType.findFirst({ where: { organizationId: org, deskId, active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }], select: { id: true } });
+    if (type) await this.raisedFields(tx, org, deskId, type.id, given, 'requester');
   }
 
   /** Answers 1641, 1650: a lead on the desk sees team-lead-only fields; anyone else working it sees the staff fields. */

@@ -1,5 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ToastProvider } from '@yukthix/ui';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -11,8 +10,7 @@ jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), apiFetchBlob: jest.fn(), API_BASE: '' }));
 jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
 
-// Desk set-up › Requesters (answer 1804): the company's help-article review interval (HLP-04, founder 3 Nov 2026; registry
-// desk.kb.review_months), for the company's Service Desk owner (desk.desk.create).
+// Desk set-up › Requesters (answer 1804); the help-article cards moved out in answer 1841.
 const DESK = { id: 'd1', key: 'IT', name: 'IT help desk', kind: 'it', privacy: 'standard', numberPrefix: 'IT-', numberSuffix: '', attachmentTypes: ['pdf'], attachmentMaxMb: 10, vipRaisesPriority: false, calendarId: null, version: 1, myRole: 'admin', canWork: false };
 const DETAIL = { desk: DESK, types: [], statuses: [], categories: [], groups: [], matrix: [], members: [], scenarios: [], myRole: 'admin', canSetUp: true, canManageMembers: false };
 const api = apiFetch as jest.Mock;
@@ -50,21 +48,12 @@ beforeEach(() => {
   (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok' });
 });
 
-it('the Service Desk owner changes the review interval to 6 months (PUT desk/kb/settings)', async () => {
+// Answer 1841: the cards moved to the knowledge base's Settings tab (yx-knowledge-page.test.tsx); desk set-up no longer shows or loads them.
+it('1841: the Service Desk owner no longer sees the article cards on desk set-up, and it does not load them', async () => {
   route(['desk.desk.create', 'desk.settings.manage']);
-  wrap();
-  const g = await screen.findByRole('radiogroup', { name: 'Check help articles again every' });
-  expect(within(g).getByRole('radio', { name: '12 months' })).toBeChecked();
-  await userEvent.click(within(g).getByRole('radio', { name: '6 months' }));
-  const card = g.closest('.yx-card') as HTMLElement;
-  await userEvent.click(within(card).getByRole('button', { name: 'Save' }));
-  await waitFor(() => expect(calls).toContain('PUT /desk/kb/settings {"reviewMonths":6}'));
-});
-
-it('a desk admin without desk.desk.create does not see or load it', async () => {
-  route(['desk.settings.manage']);
   wrap();
   expect(await screen.findByRole('button', { name: 'Save settings' })).toBeInTheDocument();
   expect(screen.queryByRole('radiogroup', { name: 'Check help articles again every' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('switch', { name: /Show page help/ })).not.toBeInTheDocument();
   expect(calls.some((c) => c.includes('/desk/kb/settings'))).toBe(false);
 });

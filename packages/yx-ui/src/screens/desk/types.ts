@@ -369,6 +369,10 @@ export interface RaiseDesk {
   closed?: DeskClosed | null;
   /** Answer 1662: an IT desk asks "Which device?" when the person has one assigned. */
   askDevice?: boolean;
+  /** Answer 1842: the desk's fields everyone sees, filled on the raise form. */
+  fields?: TicketFieldView[];
+  /** Answer 1911: a facilities desk asks which building and area. */
+  askPlace?: boolean;
   /** ITSM answer 2057: an IT desk offers "Which application?" from the company's list. */
   apps?: { id: string; name: string }[];
   id: string;
@@ -456,6 +460,11 @@ export interface RaiseInput {
   appId?: string;
   /** Answer 1801: raised for this colleague (the on-behalf right is checked by the server). */
   requestedForPersonId?: string;
+  /** Answer 1842: the desk's fields everyone sees, by key (only the filled ones). */
+  fields?: Record<string, string | number>;
+  /** Answer 1911: the building and an area of it (facilities desks). */
+  locationId?: string;
+  areaId?: string;
 }
 
 // ---- batch 2 (SD-1.09 to SD-1.17) ----
@@ -836,7 +845,7 @@ export interface Product {
 export interface PortalHome {
   company: string;
   portal: { name: string; accentColour: string | null; loginTitle: string | null; loginText: string | null; readingAids: boolean; openRequests: boolean; signUp: PortalSignUp };
-  desks: { id: string; name: string; closed?: DeskClosed | null; categories: { id: string; name: string; parentId: string | null }[]; products: { id: string; name: string }[] }[];
+  desks: { id: string; name: string; closed?: DeskClosed | null; categories: { id: string; name: string; parentId: string | null }[]; products: { id: string; name: string }[]; fields?: TicketFieldView[] }[];
   banners: PublicBanner[];
 }
 
@@ -883,6 +892,8 @@ export interface PortalTicket {
 }
 
 export interface PortalRaiseInput {
+  /** Answer 1842: the desk's fields everyone sees, by key (only the filled ones). */
+  fields?: Record<string, string | number>;
   deskId: string;
   categoryId?: string;
   productId?: string;

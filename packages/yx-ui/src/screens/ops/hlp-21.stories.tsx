@@ -28,6 +28,8 @@ export const AppNewMissing: S = { name: 'Save pressed with nothing filled', rend
 export const AppEdit: S = { name: 'Change the owner, or retire it', render: () => screen({ start: { edit: 'a1' } }) };
 export const AppSaveFailed: S = { name: 'Saving refused (name already on the list)', render: () => screen({ start: { edit: 'new' }, onSave: fails('An application with that name is already on the list.') }) };
 export const AppsReadOnly: S = { name: 'Desk staff: read only', render: () => screen({ canEdit: false, apps: APPS.map((a) => ({ ...a, canEdit: false })) }) };
+// Answer 1894: an owner who left or was deactivated is flagged (the Service Desk owner is told once).
+export const AppOwnerLeft: S = { name: 'An owner has left', render: () => screen({ apps: APPS.map((a) => (a.id === 'a2' ? { ...a, ownerLeft: true } : a)) }) };
 export const AppsEmpty: S = { name: 'No applications yet', render: () => screen({ apps: [] }) };
 export const AppsLoading: S = { name: 'Loading', render: () => screen({ state: 'loading' }) };
 export const AppsError: S = { name: 'Could not load', render: () => screen({ state: 'error', onRetry: () => undefined }) };

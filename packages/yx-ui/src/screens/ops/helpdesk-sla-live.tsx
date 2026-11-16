@@ -106,6 +106,8 @@ export interface LiveSla {
   onDownloadReport: (key: string) => Promise<void>;
   funnel: FunnelStep[];
   customReports: CustomReport[];
+  /** Answer 1844: desk fields a report may show (`field:<key>`), only those this person sees (team-lead-only to leads). */
+  fieldColumns?: { value: string; label: string }[];
   onSaveCustom: (report: CustomReport | null, input: CustomReportInput) => Promise<void>;
   onDeleteCustom: (id: string) => Promise<void>;
   onRunCustom: (id: string) => Promise<ReportTable>;
@@ -693,7 +695,7 @@ function MyReportsView({ live }: { live: LiveSla }) {
                       {r.shared && <Badge tone="info">Shared</Badge>}
                       {!r.mine && <Badge tone="neutral">Shared with you</Badge>}
                     </span>
-                    <span className="yx-ops-list__sub">{r.columns.map((c) => REPORT_COLUMNS[c] ?? c).join(', ')}</span>
+                    <span className="yx-ops-list__sub">{r.columns.map((c) => REPORT_COLUMNS[c] ?? live.fieldColumns?.find((x) => x.value === c)?.label ?? c.replace(/^field:/, '')).join(', ')}</span>
                     {on.map((s) => (
                       <span key={s.id} className="yx-ops-row">
                         <span className="yx-ops-muted">
@@ -752,6 +754,7 @@ function MyReportsView({ live }: { live: LiveSla }) {
         <CustomReportDrawer
           report={edit === 'new' ? null : edit}
           desks={live.desks}
+          fieldColumns={live.fieldColumns ?? []}
           onClose={() => setEdit(null)}
           onSave={async (input) => {
             await live.onSaveCustom(edit === 'new' ? null : edit, input);
@@ -776,7 +779,7 @@ function MyReportsView({ live }: { live: LiveSla }) {
   );
 }
 
-function CustomReportDrawer({ report, desks, onClose, onSave }: { report: CustomReport | null; desks: DeskSummary[]; onClose: () => void; onSave: (input: CustomReportInput) => Promise<void> }) {
+function CustomReportDrawer({ report, desks, fieldColumns, onClose, onSave }: { report: CustomReport | null; desks: DeskSummary[]; fieldColumns: { value: string; label: string }[]; onClose: () => void; onSave: (input: CustomReportInput) => Promise<void> }) {
   const f = report?.filters ?? {};
   const [name, setName] = useState(report?.name ?? '');
   const [columns, setColumns] = useState<string[]>(report?.columns ?? ['number', 'subject', 'status', 'priority', 'assignee', 'created']);
@@ -832,8 +835,8 @@ function CustomReportDrawer({ report, desks, onClose, onSave }: { report: Custom
         <FormField id="rc-name" label="Report name" required error={early.errorOf('rc-name')}>
           <TextField value={name} onChange={setName} maxLength={100} />
         </FormField>
-        <FormField id="rc-cols" error={early.errorOf('rc-cols')} label="Columns" required helper="Never message text: only these ticket details.">
-          <MultiSelect value={columns} onChange={setColumns} options={Object.entries(REPORT_COLUMNS).map(([value, label]) => ({ value, label }))} placeholder="Choose columns" />
+        <FormField id="rc-cols" error={early.errorOf('rc-cols')} label="Columns" required helper="Never message text: only these ticket details and the desks' own fields you may see.">
+          <MultiSelect value={columns} onChange={setColumns} options={[...Object.entries(REPORT_COLUMNS).map(([value, label]) => ({ value, label })), ...fieldColumns.map((c) => ({ value: c.value, label: c.label, description: 'Desk field' }))]} placeholder="Choose columns" />
         </FormField>
         <FormField label="Desks" helper="Empty: every desk you report on.">
           <MultiSelect value={deskIds} onChange={setDeskIds} options={desks.map((d) => ({ value: d.id, label: d.name }))} placeholder="Every desk" />

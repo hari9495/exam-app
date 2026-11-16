@@ -53,6 +53,7 @@ import {
   EquipmentDto,
   FacilityAreaDto,
   PlacePickDto,
+  WorkOrderPageDto,
   TicketPlaceDto,
 } from './dto-esm2';
 import { JourneysService } from './journeys.service';
@@ -101,6 +102,13 @@ export class DeskOrgController {
   @RequireAnyPermission('desk.desk.create', 'desk.ticket.view')
   async equipmentPage(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.facilities.equipmentPage(await this.access.actor(req, t), id);
+  }
+
+  /** Answer 1914: older work orders of the equipment, 25 at a time. */
+  @Get('facilities/equipment/:id/work-orders')
+  @RequireAnyPermission('desk.desk.create', 'desk.ticket.view')
+  async workOrders(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: WorkOrderPageDto) {
+    return this.facilities.workOrders(await this.access.actor(req, t), id, q.after);
   }
 
   @Post('facilities/areas')

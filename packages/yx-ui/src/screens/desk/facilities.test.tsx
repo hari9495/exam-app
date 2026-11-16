@@ -92,4 +92,26 @@ describe('buildings and equipment (Helpdesk plan item 4)', () => {
     expect(screen.getByText('Bengaluru office')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save place' })).toBeNull();
   });
+  it('1914: Show more brings the older work orders below, and goes away when there are no more', async () => {
+    const older = { id: 't0', number: 'FAC-1001', subject: 'Lift stuck', systemState: 'closed' as const, createdAt: '2026-01-05T04:30:00Z', resolvedAt: '2026-01-05T06:30:00Z', recurring: false };
+    const onMoreWorkOrders = vi.fn().mockResolvedValue({ items: [older], more: false });
+    show({ onMoreWorkOrders, start: { page: { ...PAGE, moreWorkOrders: true } } });
+    const list = await screen.findByRole('list', { name: 'Work orders' });
+    await ue.click(screen.getByRole('button', { name: 'Show more' }));
+    await waitFor(() => expect(onMoreWorkOrders).toHaveBeenCalledWith('e1', 't1'));
+    expect(await within(list).findByText('FAC-1001 · Lift stuck')).toBeInTheDocument();
+    expect(within(list).getAllByRole('listitem').map((li) => li.textContent)[0]).toMatch(/FAC-1042/);
+    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+  });
+
+  it('1914 negative: no Show more when nothing older; a failed load says so and keeps the list', async () => {
+    const { unmount } = show({ onMoreWorkOrders: vi.fn(), start: { page: PAGE } });
+    await screen.findByRole('list', { name: 'Work orders' });
+    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+    unmount();
+    show({ onMoreWorkOrders: vi.fn().mockRejectedValue(new Error('Reload the equipment page and try again.')), start: { page: { ...PAGE, moreWorkOrders: true } } });
+    await ue.click(await screen.findByRole('button', { name: 'Show more' }));
+    expect((await screen.findAllByText('Reload the equipment page and try again.')).length).toBeGreaterThan(0);
+    expect(screen.getByText('FAC-1042 · Lift monthly service')).toBeInTheDocument();
+  });
 });

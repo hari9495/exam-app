@@ -44,11 +44,14 @@ function YxDeskHelpPageInner() {
         onRaise: (input) => write<{ id: string; number: string }>('/my/tickets', 'POST', input),
         onUpload: (id, file) => upload(`/my/tickets/${encodeURIComponent(id)}/attachments`, file),
         onOpen: (id) => router.push(`/yx/desk/help/${encodeURIComponent(id)}`),
+        // Answer 1911: buildings and the areas of one, for a facilities ticket.
+        onPickPlace: (kind, q, locationId) => apiFetch(`/desk/my/pick/${kind}?q=${encodeURIComponent(q)}${locationId ? `&locationId=${encodeURIComponent(locationId)}` : ''}`, {}, token) as Promise<PickOption[]>,
         onPickDevice: (q, forPersonId) => apiFetch(`/desk/my/pick/assets?q=${encodeURIComponent(q)}${forPersonId ? `&for=${encodeURIComponent(forPersonId)}` : ''}`, {}, token) as Promise<PickOption[]>,
         // Answer 1801: raising on behalf of a colleague, for people holding request.raise_on_behalf.
         onBehalf: perms.has('request.raise_on_behalf')
           ? {
-              onPickPeople: (q) => apiFetch(`/desk/my/pick/people?q=${encodeURIComponent(q)}`, {}, token) as Promise<PickOption[]>,
+              // Answer 1846: only the people this person may raise for.
+              onPickPeople: (q) => apiFetch(`/desk/my/pick/on-behalf?q=${encodeURIComponent(q)}`, {}, token) as Promise<PickOption[]>,
               onDesksFor: (personId) => apiFetch(`/desk/my/desks?for=${encodeURIComponent(personId)}`, {}, token) as Promise<RaiseDesk[]>,
             }
           : null,

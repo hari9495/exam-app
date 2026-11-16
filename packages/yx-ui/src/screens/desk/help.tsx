@@ -15,7 +15,8 @@ import { Card, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components
 import { useRun } from '../org/org-kit';
 import { DeskPage, MessageBody, StatusBadge, sizeText, when } from './desk-kit';
 import { RateTicketCard, SuggestList, useSuggestions, type KbSuggestion } from './help-kb';
-import { RequesterFields } from './ticket-fields';
+import { RaiseFields, RequesterFields, fieldErrorsOf, raiseFieldValues } from './ticket-fields';
+import type { Answers } from '../../lib/forms';
 import type { Attachment, BannerSeverity, LoadState, MyTicket, MyTicketRow, PublicBanner, RaiseDesk, RaiseInput } from './types';
 
 // The requester's side of the desk: known-issue banners with "Me too" (US-G-020), the in-app Help drawer (US-B-100) and
@@ -76,7 +77,11 @@ function useRaiseForm(desks: RaiseDesk[], suggest?: { onSuggest?: (q: string) =>
   const [details, setDetails] = useState('');
   const [urgency, setUrgency] = useState<string>('3');
   const [isPrivate, setPrivate] = useState(false);
+  // Answer 1842: the desk's fields everyone sees (for the desk's first kind of ticket, the one the server lists them for).
+  const [fieldValues, setFieldValues] = useState<Answers>({});
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const desk = desks.find((d) => d.id === deskId);
+  const deskFields = desk && (!typeId || typeId === desk.types[0]?.id) ? (desk.fields ?? []) : [];
   const category = desk?.categories.find((c) => c.id === categoryId);
   const suggestions = useSuggestions(`${subject} ${details.slice(0, 200)}`, suggest?.onSuggest);
   const uid = useId();
@@ -95,6 +100,8 @@ function useRaiseForm(desks: RaiseDesk[], suggest?: { onSuggest?: (q: string) =>
             setDeskId(v);
             setCategoryId(null);
             setTypeId(null);
+            setFieldValues({});
+            setFieldErrors({});
           }}
           options={desks.map((d) => ({ value: d.id, label: d.name }))}
           placeholder="Choose a team"
@@ -122,6 +129,7 @@ function useRaiseForm(desks: RaiseDesk[], suggest?: { onSuggest?: (q: string) =>
         <TextField value={subject} onChange={setSubject} maxLength={200} />
       </FormField>
       <SuggestList items={suggestions} onOpen={suggest?.onOpen} hrefOf={suggest?.hrefOf} />
+      <RaiseFields key={deskId ?? ''} fields={deskFields} values={fieldValues} onChange={setFieldValues} errors={fieldErrors} />
       <FormField id={id('details')} error={early.errorOf(id('details'))} label="Details" required helper="Add dates, error messages or steps so the team can help faster. You can add files after raising it.">
         <TextArea value={details} onChange={setDetails} rows={5} maxLength={20000} />
       </FormField>
@@ -142,11 +150,18 @@ function useRaiseForm(desks: RaiseDesk[], suggest?: { onSuggest?: (q: string) =>
     /** Pressed too early: the missing fields say so and the first takes focus. */
     stop: early.stop,
     dirty: Boolean(subject || details),
-    input: (): RaiseInput => ({ deskId: deskId!, categoryId: categoryId ?? undefined, typeId: typeId ?? undefined, subject: subject.trim(), description: details.trim(), impact: 3, urgency: Number(urgency), private: isPrivate || undefined }),
+    input: (): RaiseInput => {
+      const f = raiseFieldValues(deskFields, fieldValues);
+      return { deskId: deskId!, categoryId: categoryId ?? undefined, typeId: typeId ?? undefined, subject: subject.trim(), description: details.trim(), impact: 3, urgency: Number(urgency), private: isPrivate || undefined, ...(f ? { fields: f } : {}) };
+    },
+    /** Shows the server's per-field messages of a refused raise (400 FIELD_ERRORS). */
+    refused: (e: unknown) => setFieldErrors(fieldErrorsOf(e) ?? {}),
     clear: () => {
       setSubject('');
       setDetails('');
       setPrivate(false);
+      setFieldValues({});
+      setFieldErrors({});
     },
   };
 }
@@ -195,7 +210,10 @@ export function HelpDrawer(props: HelpDrawerProps) {
   const raise = () =>
     !form.stop() &&
     void run('raise', async () => {
-      const r = await props.onRaise(form.input());
+      const r = await props.onRaise(form.input()).catch((e: unknown) => {
+        form.refused(e);
+        throw e;
+      });
       toast({ tone: 'success', title: 'Ticket raised', description: `Your ticket number is ${r.number}. The team will reply in the Help centre.` });
       form.clear();
     });

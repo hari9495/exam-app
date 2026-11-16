@@ -32,6 +32,10 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'helpdesk.rating.low', group: 'reminders', label: 'A requester gave a low rating' },
   { type: 'helpdesk.nps.detractor', group: 'reminders', label: 'A customer gave a low NPS score' },
   { type: 'helpdesk.backlog.alert', group: 'reminders', label: 'A desk queue is above its alert line' },
+  // Answer 1913.
+  { type: 'helpdesk.recurring.paused', group: 'reminders', label: 'A recurring schedule of your desk paused (retired equipment, or a standard change no longer pre-approved)' },
+  // Answer 1894.
+  { type: 'helpdesk.app.owner_left', group: 'reminders', label: "An application's owner has left or was deactivated" },
   { type: 'helpdesk.privacy.request', group: 'approvals', label: 'A privacy request about desk data is waiting' },
   // HLP-10 / HLP-11 company policies.
   { type: 'helpdesk.policy.to_acknowledge', group: 'reminders', label: 'A company policy is waiting for you to acknowledge it' },

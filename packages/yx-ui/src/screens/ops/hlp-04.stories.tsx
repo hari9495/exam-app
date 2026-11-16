@@ -25,7 +25,7 @@ export const Templates: S = { name: 'Article templates', render: () => <KbEditor
 export const Gaps: S = { name: 'Content gaps', render: () => <KbEditorScreen live={liveKb({ start: { tab: 'gaps' } })} /> };
 // Answers 1642, 1681: the company's search words on their own knowledge-base tab (moved out of Desk set-up › Settings).
 const WORDS = ['pf, provident fund, epf', 'uan, universal account number', 'cl, casual leave', 'payslip, salary slip, pay slip', 'form 16, form16'].join('\n');
-export const SearchWords: S = { name: 'Search words that mean the same', render: () => <KbEditorScreen live={liveKb({ start: { tab: 'search-words' }, searchWords: { value: WORDS, starter: WORDS, onSave: async () => undefined } })} /> };
+export const SearchWords: S = { name: 'Knowledge base settings', render: () => <KbEditorScreen live={liveKb({ start: { tab: 'settings' }, searchWords: { value: WORDS, starter: WORDS, onSave: async () => undefined }, reviewMonths: { value: 12, onSave: async () => undefined }, pageHelp: { value: true, onChange: async () => undefined } })} /> };
 export const RecycleBin: S = { name: 'Recycle bin', render: () => <KbEditorScreen live={liveKb({ start: { tab: 'bin' } })} /> };
 export const WaitingReview: S = { name: 'Publisher · a version waiting for your review', render: () => <KbEditorScreen live={openKb(KB_ARTICLE)} /> };
 export const PublishConfirm: S = { name: 'Publisher · publish the reviewed version', render: () => <KbEditorScreen live={openKb(KB_ARTICLE, { start: { dialog: 'publish' } })} /> };

@@ -41,13 +41,14 @@ export async function portalFetch<T>(org: string, portal: string, path: string, 
     throw Object.assign(new Error('We could not reach the help page. Check your connection and try again.'), { status: 0 });
   }
   if (res.ok) return (res.status === 204 ? null : await res.json()) as T;
-  const body = (await res.json().catch(() => ({}))) as { message?: string | string[]; retryAfterSeconds?: number };
+  const body = (await res.json().catch(() => ({}))) as { message?: string | string[]; retryAfterSeconds?: number; errors?: Record<string, string> };
   const wait = body.retryAfterSeconds ?? Number(res.headers.get('Retry-After') ?? 0);
   const message =
     res.status === 429
       ? `Too many tries. Wait ${wait > 0 ? `${wait} seconds` : 'a minute'} and try again.`
       : (Array.isArray(body.message) ? body.message[0] : body.message) || (res.status >= 500 ? 'Something went wrong on our side. Try again in a moment.' : 'That did not work. Try again.');
-  throw Object.assign(new Error(message), { status: res.status, retryAfterSeconds: wait || undefined }) as PortalError;
+  // Answer 1842: per-field messages of a refused raise (400 FIELD_ERRORS) reach the form.
+  throw Object.assign(new Error(message), { status: res.status, retryAfterSeconds: wait || undefined, ...(body.errors ? { errors: body.errors } : {}) }) as PortalError;
 }
 
 /**
