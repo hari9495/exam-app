@@ -1056,3 +1056,9 @@ Tests and settings: answers 2007, 2008, 2123, PRC-04, PRC-06 and Settings 6.5. N
 2158. **Telling the approver.** Asking for approval does not notify anyone yet. *Suggested: a bell note to the people
       with the tests key, like the review queue (2129).*
 2159. **The Tests pages in the menu.** *Suggested: the lead adds Tests next to Question bank when the bank goes in.*
+
+**Founder answers (16 Nov 2026, "ok for all"), 2151-2159, 2161-2166, 2191-2193, 2201-2207:** all as suggested.
+- 2151 build a test from a job description next (behind the AI-drafts setting, always a draft); 2152 per-test charts as an analysis tab, nightly; 2153 the designed Sections/Blueprint steps edit sections; 2154 section cut-offs with AS-6; 2155 the other 6.5 defaults come with their features; 2156 tell customers before the 90 to 30 day retention change goes live; 2157 keep AI-only default; 2158 a bell note to test managers when approval is asked; 2159 Tests in the menu next to Question bank.
+- 2161 AS-4a part 2: draw review mode, section chips, phone question list, option pictures and snippets in PRC-26, then switch /exam; 2162 scientific calculator keys in part 2; 2163 AS-2's builder sets breaks and calculator; 2164 approved screen-reader mode from AS-4b; 2165 survey summary in AS-6 reports, groups of 5+; 2166 keep the 75 s grace.
+- 2191 bulk upload makes drafts for review; 2192 the older PATCH goes through a revision when /v2/questions is retired; 2193 keep, a restored AI draft goes through review.
+- 2201 /welcome switches to the designed consent and selfie with AS-4a part 2; 2202 per-invitation breaks and a "no gaze flags" profile next, separate session with slot booking; 2203 the decision message covers "more information" for now; 2204 an email on each decision; 2205 face re-check with AS-5; 2206 keep test writers deciding; 2207 delete evidence after the company's retention once decided.
