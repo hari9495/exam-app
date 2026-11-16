@@ -30,10 +30,12 @@ import { PlatformModule } from '../platform/platform.module';
 // sweep/prune service; owns its own queue + worker reusing the shared Redis-connection factory
 // (mirrors HrisModule / BulkCandidateEmailModule).
 import { ProjectsModule } from '../projects/projects.module';
+import { QuestionsModule } from '../questions/questions.module';
 
 @Module({
   imports: [
     ProjectsModule,
+    QuestionsModule,
     RemindersModule,
     ScheduledReportsModule,
     NotificationsModule,

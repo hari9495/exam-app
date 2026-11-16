@@ -33,6 +33,17 @@ describe('buildNav: areas', () => {
     expect(labels(nav(['pipeline:manage', 'candidate:view']), 'hire')).toEqual(['Jobs & requisitions', 'Requisitions', 'Interviews', 'Candidates & talent CRM', 'Talent CRM', 'Referrals', 'Vendors', 'All referrals', 'Bias audits']);
   });
 
+  // Answer 2001 (bank follow-ups): Hire › Assessments for bank writers, only when the company has assessments on.
+  it('Hire › Assessments: the question bank for bank writers (YukthiX key or its older alias) when assessments are on', () => {
+    const assess = (n: ReturnType<typeof buildNav>) => n.find((a) => a.id === 'hire')?.sections.find((s) => s.label === 'Assessments')?.items.map((l) => [l.label, l.href]) ?? [];
+    const want = [['Question bank', '/yx/hiring/assessments/questions'], ['Question review', '/yx/hiring/assessments/reviews'], ['Item analysis', '/yx/hiring/assessments/item-analysis']];
+    expect(assess(nav(['asmt.bank.manage'], { assessments: true }))).toEqual(want);
+    expect(assess(nav(['question_bank:manage'], { assessments: true }))).toEqual(want);
+    // negative: switched off for the company, or no bank key.
+    expect(assess(nav(['asmt.bank.manage'], { assessments: false }))).toEqual([]);
+    expect(assess(nav(['pipeline:manage', 'results:view'], { assessments: true }))).toEqual([]);
+  });
+
   it('HIR-10: Background checks only for HR with the background-check key', () => {
     expect(labels(nav(['pipeline:manage', 'candidate:manage']), 'hire')).not.toContain('Background checks');
     expect(labels(nav(['pipeline:manage', 'lifecycle.bgv.manage']), 'hire')).toContain('Background checks');

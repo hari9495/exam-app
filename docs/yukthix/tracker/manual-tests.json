@@ -21987,5 +21987,32 @@
       "CompanyKeptRecordsRemoved"
     ],
     "note": "Positive and negative. Only on a throwaway company. The removal itself and the staff email (2084) are covered by the API tests."
+  },
+  {
+    "id": "MT-ASMT-BANK2",
+    "area": "Assessments: question bank follow-ups (16 Nov 2026)",
+    "screen": "Hire › Assessments: Question bank, Question editor, Question review",
+    "url": "http://localhost:3000/yx/hiring/assessments/questions",
+    "account": "Two people of one company who write questions (the Recruiter template, asmt.bank.manage); a person without it; a System Admin.",
+    "steps": [
+      "As the first writer: open the menu Hire.",
+      "Open /v2/questions in the address bar.",
+      "Question bank › Import: download the template; import a file with one good row and one row with no correct option.",
+      "Draft with AI: press Draft questions with nothing filled; then fill About and send.",
+      "Add question: choose Code, save with no test case; add a test case with its expected output, choose a language, save, submit.",
+      "Add question: add a question image, submit without alt text; write the alt text, submit.",
+      "As the second writer: open Question review the next morning (after 09:30) and the bell.",
+      "Approve the code question; as the first writer change a test case and save.",
+      "As the System Admin: switch Assessments in Hire off (Settings › company settings) and open Hire.",
+      "Negative: as the person without the bank key, open Hire and /yx/hiring/assessments/questions."
+    ],
+    "expected": "Step 1: Assessments with Question bank, Question review, Item analysis. Step 2: the designed bank opens. Step 3: the template downloads; one question sent for review (toast), row 3 listed as not imported. Step 4: the missing fields are named; then a toast that the drafts land in review. Step 5: Add at least one test case; then saved and sent for review. Step 6: the alt text is asked for; then sent. Step 7: the queue lists the first writer's questions and translations; one bell note says how many wait. Step 8: Saved as version 2. Step 9: no Assessments group. Step 10: no Assessments group; the page says no access.",
+    "stories": [
+      "ImportQuestions",
+      "DraftWithAi",
+      "CodeQuestion",
+      "ImageAdded"
+    ],
+    "note": "Positive and negative. Answers 2121, 2125, 2126, 2129, 2001."
   }
 ]

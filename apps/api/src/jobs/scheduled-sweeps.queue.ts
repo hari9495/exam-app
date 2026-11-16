@@ -87,4 +87,6 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'analytics-summary', cron: '10 19 * * *' },
   // Settings 1976: a purged company's kept statutory records are removed once their day has passed (03:05 IST).
   { id: 'retention-expiry', cron: '35 21 * * *' },
+  // Assessments answer 2129: one note a day to bank writers with questions waiting for their review (09:30 IST).
+  { id: 'question-review-nudges', cron: '0 4 * * *' },
 ];

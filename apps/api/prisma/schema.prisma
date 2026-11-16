@@ -14451,3 +14451,15 @@ model QuestionTranslation {
   @@index([organizationId, state], map: "question_translations_queue_idx")
   @@map("question_translations")
 }
+
+/// Answer 2129: a bank writer was told today that questions wait for their review (one note per person per India day).
+model QuestionReviewNudge {
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  day            DateTime @db.Date
+  waiting        Int
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([organizationId, userId, day])
+  @@map("question_review_nudges")
+}
