@@ -1231,3 +1231,6 @@ Tests and settings: answers 2007, 2008, 2123, PRC-04, PRC-06 and Settings 6.5. N
 2237. **Privacy and legal links for candidates.** The candidate pages have no privacy notice, terms or grievance links
       (the design's footer links were placeholders, now hidden on live pages). *Suggested: link the company's privacy
       notice and YukthiX's terms from the candidate frame with AS-6.*
+**Founder answers (16 Nov 2026, "ok for all"), 2231-2237 and 2241-2246:** all as suggested.
+- 2231 proctoring pauses, blocks and face warnings move into the designed runner with AS-5; 2232 draw a "Ready to start" step in PRC-22 and switch it next; 2233 keep the single grid with section chips; 2234 keep Monaco, draw the run output in the kit; 2235 keep degrees by default; 2236 keep, optional photo can be declined; 2237 the company's privacy notice and YukthiX terms on candidate pages with AS-6.
+- 2241 CSV import of institutions next; 2242 link to Hire's candidate merge from the registration drawer; 2243 keep the coordinator link; 2244 OTP with the candidate portal's OTP; 2245 keep, a re-check button if drives need it; 2246 paging past 2000 registrants when needed.
