@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import fc from 'fast-check';
 import { Prisma } from '@prisma/client';
-import { checkShape, due, esi, inForce, minWage, minWageTableFor, noPt, pf, pt, runGolden, tds, type GoldenCase, type RuleSet } from './evaluator';
+import { checkShape, due, esi, inForce, lwf, minWage, minWageTableFor, noPt, pf, pt, runGolden, tds, type GoldenCase, type RuleSet } from './evaluator';
 
 // PAY-2.02 / 2.03: every golden case of the India pack passes; the migration that loads the pack carries every rule set
 // of the JSON (no drift); shape checks; property tests over the statutory maths (§16.3).
@@ -63,6 +63,28 @@ describe('batch H: state PT rule data', () => {
     const code = inForce(sets, 'IN.BONUS', ['IN'], '2025-11-21')! as RuleSet & { lawVersion: string; source: string };
     expect([code.version, code.lawVersion, code.verify]).toEqual(['2025-v2', 'CODE', true]);
     expect(code.source).toMatch(/S\.O\. 4710\(E\).*CA checklist items 42-44/);
+  });
+
+  it('H6: Madhya Pradesh is a yearly amount on the year (wage x 12): a twelfth in whole rupees, the rest in March; a year is exactly the band', () => {
+    const mp = one('IN.PT', 'IN-MP');
+    const year = (annual: string) => Array.from({ length: 12 }, (_, i) => pt(mp, { ptWage: annual, month: i + 1 }).amount).reduce((t, x) => t.add(x), new Prisma.Decimal(0)).toFixed(0);
+    expect([year('225000'), year('225000.01'), year('350000'), year('900000')]).toEqual(['0', '1500', '2000', '2500']);
+    expect(checkShape({ ...mp, values: { ...mp.values, lastMonth: 13 } })).toEqual(['A yearly PT names the month that takes the rest (lastMonth)']);
+    for (const j of ['IN-AS', 'IN-MZ', 'IN-SK', 'IN-MP']) expect(one('IN.PT', j).verify).toBe(true);
+  });
+
+  it('H10 evaluator: a rate-based LWF is the rate of the wage rounded to the rupee, up to the cap, employer a multiple; only in its months', () => {
+    const hr: RuleSet = { statute: 'IN.LWF', jurisdiction: 'IN-HR', version: 'test', validFrom: '2026-01-01', verify: true, values: { kind: 'lwf', months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], rate: '0.002', cap: '35', employerMultiple: '2' } };
+    const at = (wage: string, month = 5) => { const r = lwf(hr, { month, wage }); return [r.employee.toFixed(0), r.employer.toFixed(0)]; };
+    expect(at('10000')).toEqual(['20', '40']);
+    expect(at('10250')).toEqual(['21', '42']); // 20.50 rounds half up
+    expect(at('17500')).toEqual(['35', '70']); // exactly the cap
+    expect(at('17750')).toEqual(['35', '70']); // above it
+    expect(at('0')).toEqual(['0', '0']);
+    expect(checkShape(hr)).toEqual([]);
+    expect(checkShape({ ...hr, values: { ...hr.values, rate: '2', cap: 'x' } })).toEqual(['rate must be a rate between 0 and 1', 'A rate-based LWF has a cap in rupees']);
+    // Fixed-amount sets are unchanged.
+    expect(lwf(one('IN.LWF', 'IN-MH'), { month: 6 }).employee.toFixed(0)).toBe('25');
   });
 
   it('H4: Odisha charges no PT from 1 Apr 2026; before that there is no rule loaded (question 2381)', () => {
@@ -183,7 +205,9 @@ describe('state due dates for PT and LWF (founder item 12, packs/in-dues.json)',
       expect([rs.statute, rs.verify]).toEqual(['IN.CALENDAR', true]);
     }
     const covered = (key: string) => new Set(dues.filter((rs) => (rs.values.items as { key: string }[]).some((x) => x.key === key)).map((rs) => rs.jurisdiction));
-    for (const s of sets.filter((x) => x.statute === 'IN.PT' && x.values.kind === 'pt' && (x.values.slabs as unknown[]).length)) expect({ pt: s.jurisdiction, dated: covered('pt').has(s.jurisdiction) }).toEqual({ pt: s.jurisdiction, dated: true });
+    // Batch H: no due date was found for these states (research §1.1); the filings card shows none and asks to verify.
+    const noDueFound = new Set(['IN-AS', 'IN-MZ', 'IN-SK']);
+    for (const s of sets.filter((x) => x.statute === 'IN.PT' && x.values.kind === 'pt' && (x.values.slabs as unknown[]).length && !noDueFound.has(x.jurisdiction))) expect({ pt: s.jurisdiction, dated: covered('pt').has(s.jurisdiction) }).toEqual({ pt: s.jurisdiction, dated: true });
     for (const s of sets.filter((x) => x.statute === 'IN.LWF')) expect({ lwf: s.jurisdiction, dated: covered('lwf').has(s.jurisdiction) }).toEqual({ lwf: s.jurisdiction, dated: true });
   });
   it('a state calendar is found by the state, never as the national one', () => {

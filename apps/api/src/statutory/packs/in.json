@@ -1344,6 +1344,426 @@
       ]
     },
     {
+      "statute": "IN.PT",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "jurisdiction": "IN-MP",
+      "source": "Madhya Pradesh professional tax, a yearly amount on the year's salary, deducted monthly (2,500 = 208 x 11 + 212; 2,000 = 166 x 11 + 174). Nil band to 2,25,000 official (MPCTD rates checklist, https://mptax.mp.gov.in/mpvatweb/download/home/MPCTD_Registration_Checklist&_Rates.pdf); upper bands secondary only (https://hrms.verdeshell.com/guides/professional-tax-slabs-by-state). TODO: CA checklist item 8.",
+      "values": {
+        "kind": "pt",
+        "basis": "annual",
+        "lastMonth": 3,
+        "annualCap": "2500",
+        "slabs": [
+          {
+            "from": "0",
+            "to": "225000",
+            "amount": "0"
+          },
+          {
+            "from": "225000.01",
+            "to": "300000",
+            "amount": "1500"
+          },
+          {
+            "from": "300000.01",
+            "to": "400000",
+            "amount": "2000"
+          },
+          {
+            "from": "400000.01",
+            "to": null,
+            "amount": "2500"
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "Year 2,25,000: nil",
+          "fn": "pt",
+          "input": {
+            "ptWage": "225000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "0"
+          }
+        },
+        {
+          "name": "Year 2,25,000.01: 1,500 a year, 125 a month",
+          "fn": "pt",
+          "input": {
+            "ptWage": "225000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "125"
+          }
+        },
+        {
+          "name": "1,500 a year: March is 125 too",
+          "fn": "pt",
+          "input": {
+            "ptWage": "300000",
+            "month": 3
+          },
+          "expected": {
+            "amount": "125"
+          }
+        },
+        {
+          "name": "Year 3,00,000.01: 2,000 a year, 166 a month",
+          "fn": "pt",
+          "input": {
+            "ptWage": "300000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "166"
+          }
+        },
+        {
+          "name": "2,000 a year: March takes the rest, 174",
+          "fn": "pt",
+          "input": {
+            "ptWage": "400000",
+            "month": 3
+          },
+          "expected": {
+            "amount": "174"
+          }
+        },
+        {
+          "name": "Year 4,00,000.01: 2,500 a year, 208 a month",
+          "fn": "pt",
+          "input": {
+            "ptWage": "400000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "208"
+          }
+        },
+        {
+          "name": "2,500 a year: March takes the rest, 212",
+          "fn": "pt",
+          "input": {
+            "ptWage": "600000",
+            "month": 3
+          },
+          "expected": {
+            "amount": "212"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "jurisdiction": "IN-AS",
+      "source": "Assam professional tax from 1 Apr 2025 (eCF No. 169350/124): up to 15,000 nil; 15,001-24,999 = 180; 25,000 and above = 208 (exactly 25,000 = 208, founder answer 2383). Secondary only: https://ascent-hr.com/notification/revised-professional-tax-slabs-for-the-salaried-class/ . Due date not found. TODO: CA checklist item 9.",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "2500",
+        "slabs": [
+          {
+            "from": "0",
+            "to": "15000",
+            "amount": "0"
+          },
+          {
+            "from": "15000.01",
+            "to": "24999.99",
+            "amount": "180"
+          },
+          {
+            "from": "25000",
+            "to": null,
+            "amount": "208"
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "15,000: nil",
+          "fn": "pt",
+          "input": {
+            "ptWage": "15000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "0"
+          }
+        },
+        {
+          "name": "15,000.01: 180",
+          "fn": "pt",
+          "input": {
+            "ptWage": "15000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "180"
+          }
+        },
+        {
+          "name": "24,999.99: 180",
+          "fn": "pt",
+          "input": {
+            "ptWage": "24999.99",
+            "month": 4
+          },
+          "expected": {
+            "amount": "180"
+          }
+        },
+        {
+          "name": "Exactly 25,000: 208 (answer 2383)",
+          "fn": "pt",
+          "input": {
+            "ptWage": "25000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "208"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "version": "2025-v1",
+      "validFrom": "2024-07-11",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "jurisdiction": "IN-MZ",
+      "source": "Mizoram professional tax, schedule of 11 Jul 2024: up to 5,000 nil; to 8,000 = 75; to 10,000 = 120; to 12,000 = 150; to 15,000 = 180; to 20,000 = 195; above = 208. Secondary only, two sources agree (https://hrms.verdeshell.com/guides/professional-tax-slabs-by-state). Due date not found. TODO: CA checklist item 13.",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "2500",
+        "slabs": [
+          {
+            "from": "0",
+            "to": "5000",
+            "amount": "0"
+          },
+          {
+            "from": "5000.01",
+            "to": "8000",
+            "amount": "75"
+          },
+          {
+            "from": "8000.01",
+            "to": "10000",
+            "amount": "120"
+          },
+          {
+            "from": "10000.01",
+            "to": "12000",
+            "amount": "150"
+          },
+          {
+            "from": "12000.01",
+            "to": "15000",
+            "amount": "180"
+          },
+          {
+            "from": "15000.01",
+            "to": "20000",
+            "amount": "195"
+          },
+          {
+            "from": "20000.01",
+            "to": null,
+            "amount": "208"
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "5,000: nil",
+          "fn": "pt",
+          "input": {
+            "ptWage": "5000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "0"
+          }
+        },
+        {
+          "name": "5,000.01: 75",
+          "fn": "pt",
+          "input": {
+            "ptWage": "5000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "75"
+          }
+        },
+        {
+          "name": "8,000.01: 120",
+          "fn": "pt",
+          "input": {
+            "ptWage": "8000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "120"
+          }
+        },
+        {
+          "name": "12,000: 150",
+          "fn": "pt",
+          "input": {
+            "ptWage": "12000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "150"
+          }
+        },
+        {
+          "name": "15,000.01: 195",
+          "fn": "pt",
+          "input": {
+            "ptWage": "15000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "195"
+          }
+        },
+        {
+          "name": "20,000: 195",
+          "fn": "pt",
+          "input": {
+            "ptWage": "20000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "195"
+          }
+        },
+        {
+          "name": "20,000.01: 208",
+          "fn": "pt",
+          "input": {
+            "ptWage": "20000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "208"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "jurisdiction": "IN-SK",
+      "source": "Sikkim professional tax: up to 20,000 nil; 20,001-30,000 = 125; 30,001-40,000 = 150; above 40,000 = 200 a month. Secondary only (https://hrms.verdeshell.com/guides/professional-tax-slabs-by-state); a second source could not confirm. Due date not found. TODO: CA checklist item 16.",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "2500",
+        "slabs": [
+          {
+            "from": "0",
+            "to": "20000",
+            "amount": "0"
+          },
+          {
+            "from": "20000.01",
+            "to": "30000",
+            "amount": "125"
+          },
+          {
+            "from": "30000.01",
+            "to": "40000",
+            "amount": "150"
+          },
+          {
+            "from": "40000.01",
+            "to": null,
+            "amount": "200"
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "20,000: nil",
+          "fn": "pt",
+          "input": {
+            "ptWage": "20000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "0"
+          }
+        },
+        {
+          "name": "20,000.01: 125",
+          "fn": "pt",
+          "input": {
+            "ptWage": "20000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "125"
+          }
+        },
+        {
+          "name": "30,000.01: 150",
+          "fn": "pt",
+          "input": {
+            "ptWage": "30000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "150"
+          }
+        },
+        {
+          "name": "40,000: 150",
+          "fn": "pt",
+          "input": {
+            "ptWage": "40000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "150"
+          }
+        },
+        {
+          "name": "40,000.01: 200",
+          "fn": "pt",
+          "input": {
+            "ptWage": "40000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "200"
+          }
+        }
+      ]
+    },
+    {
       "statute": "IN.LWF",
       "jurisdiction": "IN-KA",
       "version": "2024-v1",

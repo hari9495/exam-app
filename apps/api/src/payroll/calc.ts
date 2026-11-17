@@ -270,9 +270,10 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
   const mtd = s.sub?.mtd;
   const ptRs = itemsOnly || partial ? null : rule('IN.PT', [s.profile.ptState]);
   if (ptRs) {
-    const halfYear = (ptRs.values as { basis?: string }).basis === 'half_yearly';
+    const basis = (ptRs.values as { basis?: string }).basis;
     const ptWage = earned('ptWage').add(mtd?.ptWage ?? 0);
-    const r = pt(ptRs, { ptWage: halfYear ? ptWage.mul(6) : ptWage, month, gender: s.profile.gender });
+    // Half-yearly slabs are on the half-year's income, yearly ones (2385) on this month's PT wage x 12.
+    const r = pt(ptRs, { ptWage: basis === 'half_yearly' ? ptWage.mul(6) : basis === 'annual' ? ptWage.mul(12) : ptWage, month, gender: s.profile.gender });
     const capRs = rule('IN.PT');
     const room = capRs && capRs.values.kind === 'pt_limit' ? Prisma.Decimal.max(ZERO, D(String(capRs.values.annualMax)).sub(s.ytd.pt)) : r.amount;
     const amount = Prisma.Decimal.min(r.amount, room);
@@ -280,7 +281,8 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
   }
   const lwfRs = !itemsOnly && !partial && s.profile.lwfState ? rule('IN.LWF', [s.profile.lwfState]) : null;
   if (lwfRs) {
-    const r = lwf(lwfRs, { month });
+    // 2384: a rate-based LWF (Haryana) is on the month's gross earnings.
+    const r = lwf(lwfRs, { month, wage: lines.filter((l) => l.kind === 'earning').reduce((t, l) => t.add(l.amount), ZERO) });
     add({ code: statCode('lwf_employee'), name: nameOf(statCode('lwf_employee'), 'Labour welfare fund'), kind: 'deduction', segmentNo: 0, amount: r.employee, explanation: `${s.profile.lwfState} labour welfare fund for this month.`, rule: r.citation });
     add({ code: statCode('lwf_employer'), name: nameOf(statCode('lwf_employer'), 'Labour welfare fund (employer)'), kind: 'employer', segmentNo: 0, amount: r.employer, explanation: 'Employer labour welfare fund for this month.', rule: r.citation });
   }

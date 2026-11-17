@@ -94,7 +94,11 @@ interface Slab {
   gender?: string;
   months?: Record<string, string>;
 }
-/** PT for a month (monthly basis) or a deduction month of a half-year (half-yearly basis), by state slabs. */
+/**
+ * PT for a month (monthly basis), a deduction month of a half-year (half-yearly basis, on the half-year's income), or a
+ * month's instalment of a yearly amount (annual basis, on the year's salary): the whole rupees of a twelfth each month and
+ * the rest in the rule's last month (Madhya Pradesh: 2,500 = 208 x 11 + 212 in March).
+ */
 export function pt(rs: RuleSet, i: { ptWage: Prisma.Decimal.Value; month: number; gender?: string | null }) {
   const v = need(rs, 'pt');
   const months = v.deductMonths as number[] | undefined;
@@ -103,14 +107,24 @@ export function pt(rs: RuleSet, i: { ptWage: Prisma.Decimal.Value; month: number
   const slabs = (v.slabs as Slab[]).filter((s) => !s.gender || !i.gender || s.gender === i.gender).filter((s) => !s.gender || i.gender || s.gender === 'male');
   const s = slabs.find((x) => wage.gte(D(x.from)) && (x.to === null || wage.lte(D(x.to))));
   const amount = s ? D(s.months?.[String(i.month)] ?? s.amount) : ZERO;
+  if (v.basis === 'annual') {
+    const part = amount.div(12).floor();
+    return { amount: i.month === Number(v.lastMonth) ? amount.sub(part.mul(11)) : part, citation: cite(rs) };
+  }
   return { amount, citation: cite(rs) };
 }
 
-/** LWF in its deduction months. */
-export function lwf(rs: RuleSet, i: { month: number }) {
+/**
+ * LWF in its deduction months: fixed amounts, or (H10, Haryana) a rate of the month's wage up to a cap, rounded as the
+ * rule says (to the rupee by default), with the employer paying a multiple of the employee share.
+ */
+export function lwf(rs: RuleSet, i: { month: number; wage?: Prisma.Decimal.Value }) {
   const v = need(rs, 'lwf');
   const due = (v.months as number[]).includes(i.month);
-  return { employee: due ? D(v.employee as string) : ZERO, employer: due ? D(v.employer as string) : ZERO, citation: cite(rs) };
+  if (!due) return { employee: ZERO, employer: ZERO, citation: cite(rs) };
+  if (v.rate === undefined) return { employee: D(v.employee as string), employer: D(v.employer as string), citation: cite(rs) };
+  const employee = Prisma.Decimal.min(round(D(i.wage ?? 0).mul(D(v.rate as string)), String(v.rounding ?? 'nearest')), D(v.cap as string));
+  return { employee, employer: employee.mul(D(v.employerMultiple as string)), citation: cite(rs) };
 }
 
 /** One row of a state minimum-wage table (amounts per month, as the notification prints them). */
@@ -462,6 +476,12 @@ export function checkShape(rs: RuleSet, limits: { ptAnnualMax?: string } = {}): 
       if (list.length && list[list.length - 1].to !== null) problems.push('The last slab must be open-ended');
     }
     if (limits.ptAnnualMax && D(v.annualCap as string).gt(D(limits.ptAnnualMax))) problems.push(`Professional tax can never be more than ₹${limits.ptAnnualMax} a year`);
+  }
+  if (rs.values.kind === 'pt' && v.basis === 'annual' && !(Number(v.lastMonth) >= 1 && Number(v.lastMonth) <= 12)) problems.push('A yearly PT names the month that takes the rest (lastMonth)');
+  if (rs.values.kind === 'lwf' && v.rate !== undefined) {
+    rate(v.rate, 'rate');
+    if (typeof v.cap !== 'string' || !/^\d+(\.\d{1,2})?$/.test(v.cap)) problems.push('A rate-based LWF has a cap in rupees');
+    if (typeof v.employerMultiple !== 'string' || !/^\d+(\.\d+)?$/.test(v.employerMultiple)) problems.push('A rate-based LWF says the employer multiple');
   }
   if (rs.values.kind === 'pf') ['employeeRate', 'employerRate', 'epsRate', 'edliRate', 'adminRate'].forEach((k) => rate(v[k], k));
   if (rs.values.kind === 'esi') ['employeeRate', 'employerRate'].forEach((k) => rate(v[k], k));

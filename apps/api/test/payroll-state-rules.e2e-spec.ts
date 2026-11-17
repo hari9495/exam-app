@@ -32,7 +32,7 @@ describe('Payroll: state statutory rules (batch H)', () => {
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
   // The states a person is paid in (one each); every batch H item reads the same two runs (September and October 2026).
-  const STATES = ['IN-HR', 'IN-AP', 'IN-GJ', 'IN-WB', 'IN-OD'];
+  const STATES = ['IN-HR', 'IN-AP', 'IN-GJ', 'IN-WB', 'IN-OD', 'IN-MP', 'IN-MZ', 'IN-SK'];
   const emp: Record<string, string> = {};
   const api = (who: Who, method: 'get' | 'post' | 'put' | 'patch', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const inA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, fn);
@@ -300,6 +300,21 @@ describe('Payroll: state statutory rules (batch H)', () => {
       const d = (await api('emp1', 'get', '/tax/me/declarations').expect(200)).body as { lines: { subjectKey: string; landlordRelationship: string | null; landlordPan: string }[] };
       expect(d.lines.find((l) => l.subjectKey === 'hra')).toMatchObject({ landlordRelationship: 'parent', landlordPan: '••••••234F' });
       expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.taxDeclarationLine.count({ where: { employeeId: ids.emp1 } }))).toBe(0);
+    });
+  });
+
+  describe('H6: Madhya Pradesh (a yearly amount), Mizoram and Sikkim', () => {
+    it('October: MP on 25,000 a month (3,00,000 a year) is 1,500 a year, 125 a month; Mizoram 208; Sikkim 125; each version recorded', async () => {
+      const oct = await calcMonth('2026-10');
+      expect(oct[emp['IN-MP']]).toMatchObject({ pt: '125.00', version: 'IN-MP 2025-v1' });
+      expect(oct[emp['IN-MZ']]).toMatchObject({ pt: '208.00', version: 'IN-MZ 2025-v1' });
+      expect(oct[emp['IN-SK']]).toMatchObject({ pt: '125.00', version: 'IN-SK 2025-v1' });
+    });
+    it('Assam, Mizoram and Sikkim have no due date loaded (not found): their rules are verify and say so', async () => {
+      for (const j of ['IN-MZ', 'IN-SK']) {
+        expect((await rulesOf('IN.PT', j))[0]).toMatchObject({ verify: true, source: expect.stringMatching(/Due date not found/) });
+        expect(await rulesOf('IN.CALENDAR', j)).toEqual([]);
+      }
     });
   });
 });

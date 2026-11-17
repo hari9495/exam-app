@@ -262,6 +262,40 @@
           }
         }
       ]
+    },
+    {
+      "statute": "IN.CALENDAR",
+      "jurisdiction": "IN-MP",
+      "version": "MP-2025-v1",
+      "validFrom": "2025-04-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Madhya Pradesh professional tax: monthly return, within 10 days of the month end. Secondary only (https://www.tankhapay.com/blog/state-wise-professional-tax-slabs/); TODO: CA checklist item 8.",
+      "values": {
+        "kind": "calendar",
+        "items": [
+          {
+            "key": "pt",
+            "label": "Professional tax (Madhya Pradesh)",
+            "dueDay": 10,
+            "monthOffset": 1
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "March PT is due 10 April",
+          "fn": "calendar",
+          "input": {
+            "key": "pt",
+            "month": "2027-03"
+          },
+          "expected": {
+            "due": "2027-04-10"
+          }
+        }
+      ]
     }
   ]
 }
