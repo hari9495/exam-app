@@ -11,7 +11,7 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
 import { AttendanceService } from './attendance.service';
-import { AdjustDto, ApplyLeaveDto, LeaveHistoryQueryDto, WorkingDayDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, CalendarTemplateDto, EntityFilterDto, GeoPointsDto, HolidayDateDto, HolidayDto, LeavePlanDto, LeaveTypeDto, MonthEntityQueryDto, MonthQueryDto, NetworksDto, OnDutyDto, PolicyDto, PolicyOrderDto, PolicyVersionDto, PublishDraftDto, PunchDto, RangeEntityQueryDto, RangeQueryDto, ReasonDto, RegulariseDto, WfhDto, YearChangeDto, YearEndDto, YearEndRunDto } from './dto';
+import { AdjustDto, ApplyLeaveDto, LeaveHistoryQueryDto, WorkingDayDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, CalendarTemplateDto, EntityFilterDto, GeoPointsDto, HolidayDateDto, HolidayDto, LeavePlanDto, LeaveTypeDto, MonthEntityQueryDto, MonthQueryDto, NetworksDto, OnDutyDto, PermissionDto, PolicyDto, PolicyOrderDto, PolicyVersionDto, PublishDraftDto, PunchDto, RangeEntityQueryDto, RangeQueryDto, ReasonDto, RegulariseDto, WfhDto, YearChangeDto, YearEndDto, YearEndRunDto } from './dto';
 import { LeaveService } from './leave.service';
 import { LeaveV2Service } from './leave-v2.service';
 import { TimeSetupService } from './setup.service';
@@ -139,6 +139,13 @@ export class TimeController {
   @Throttle(MODERATE_UPLOAD_THROTTLE)
   onDuty(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: OnDutyDto) {
     return this.attendance.requestOnDuty(ctx, this.user(req), dto);
+  }
+
+  /** Hourly permission (batch A item 7, B4): a from and to time on a working day, to the manager; never uses leave. */
+  @Post('me/permission')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  permission(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: PermissionDto) {
+    return this.attendance.requestPermission(ctx, this.user(req), dto);
   }
 
   /** Withdraws the person's own fix or work-from-home request while it waits for approval. */

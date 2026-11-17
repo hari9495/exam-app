@@ -248,4 +248,79 @@ describe('Time batch A', () => {
       expect(await inA((tx) => tx.auditLog.count({ where: { entityId: cal, action: 'holiday.working_day_removed' } }))).toBe(1);
     });
   });
+
+  // ------------------------------------------------------------------ item 7 (B4): hourly permission
+  describe('B4 hourly permission', () => {
+    const decide = (who: Who, taskId: string, decision: 'approve' | 'reject', reason?: string) => api(who, 'post', `/workflow/approvals/tasks/${taskId}/decide`).send({ decision, ...(reason ? { reason } : {}) });
+    const taskOf = async (requestId: string) => {
+      const r = await inA((tx) => tx.attendanceRequest.findFirstOrThrow({ where: { id: requestId } }));
+      return (await inA((tx) => tx.wfTask.findFirstOrThrow({ where: { requestId: r.wfRequestId!, status: 'open' } }))).id;
+    };
+    const sun = (on: string) => new Date(`${on}T00:00:00Z`).getUTCDay() === 0;
+    // The default shift is 9:30 am to 6:30 pm with Sunday off; the people joined three days ago.
+    const past = [d(-1), d(-2)].find((x) => !sun(x))!;
+    const body = (over: Record<string, unknown> = {}) => ({ on: past, inMinute: 990, outMinute: 1110, reason: 'Bank visit', ...over });
+    const count = () => inA((tx) => tx.attendanceRequest.count({ where: { employeeId: ids.empEmp, kind: 'permission' } }));
+
+    it('negative: bad input, too long, a weekly off and acting outside the rules are refused with nothing saved', async () => {
+      const before = await count();
+      expect((await api('emp', 'post', '/time/me/permission').send(body({ outMinute: 990 })).expect(400)).body.message).toBe('Enter a To time after From.');
+      expect((await api('emp', 'post', '/time/me/permission').send(body({ inMinute: 960 })).expect(400)).body.message).toBe('A permission can be at most 2 hours. Apply for leave for a longer time.');
+      await api('emp', 'post', '/time/me/permission').send(body({ inMinute: 1500 })).expect(400);
+      await api('emp', 'post', '/time/me/permission').send(body({ reason: '' })).expect(400);
+      await api('emp', 'post', '/time/me/permission').send(body({ extra: 1 })).expect(400);
+      await api('emp', 'post', '/time/me/permission').send(body({ on: 'yesterday' })).expect(400);
+      // Two weeks out: the D11 tests above use the Sunday of the coming week.
+      const sunday = [15, 16, 17, 18, 19, 20, 21].map((n) => d(n)).find(sun)!;
+      expect((await api('emp', 'post', '/time/me/permission').send(body({ on: sunday })).expect(400)).body.message).toMatch(/weekly off/);
+      expect(await count()).toBe(before);
+    });
+
+    it('goes to the manager; approved, the short day stays present and no leave is used', async () => {
+      // In 9:30 am, out 4:30 pm: 6.5 hours worked, a half day on its own.
+      await inA((tx) => tx.punch.createMany({ data: [
+        { organizationId: org.A.id, employeeId: ids.empEmp, punchedAt: new Date(`${past}T04:00:00Z`), workOn: new Date(`${past}T00:00:00Z`), kind: 'in', accepted: true, verdict: 'no_fence' },
+        { organizationId: org.A.id, employeeId: ids.empEmp, punchedAt: new Date(`${past}T11:00:00Z`), workOn: new Date(`${past}T00:00:00Z`), kind: 'out', accepted: true, verdict: 'no_fence' },
+      ] }));
+      const leaveBefore = await inA((tx) => tx.leaveRequest.count({ where: { employeeId: ids.empEmp } }));
+      const r = (await api('emp', 'post', '/time/me/permission').send(body()).expect(201)).body;
+      expect(r).toMatchObject({ status: 'pending', used: 1, limit: 2 });
+      // The same time again overlaps.
+      expect((await api('emp', 'post', '/time/me/permission').send(body({ inMinute: 1020, outMinute: 1080 })).expect(409)).body.message).toMatch(/already asked for permission .* from 4:30 pm to 6:30 pm/);
+      const task = await taskOf(r.id);
+      // Not the manager, or another company: never sees the task.
+      await decide('peer', task, 'approve').expect(404);
+      await decide('emp', task, 'approve').expect(404);
+      await decide('empB', task, 'approve').expect(404);
+      await decide('mgr', task, 'approve').expect(200);
+      const day = await inA((tx) => tx.attendanceDay.findFirstOrThrow({ where: { employeeId: ids.empEmp, workOn: new Date(`${past}T00:00:00Z`) } }));
+      expect(day.status).toBe('present');
+      expect(await inA((tx) => tx.leaveRequest.count({ where: { employeeId: ids.empEmp } }))).toBe(leaveBefore);
+      expect(await inA((tx) => tx.auditLog.count({ where: { action: 'attendance.permission.submitted', entityId: r.id } }))).toBe(1);
+      const me = (await api('emp', 'get', `/time/me/attendance?month=${past.slice(0, 7)}`).expect(200)).body;
+      expect(me.requests.find((x: { id: string }) => x.id === r.id)).toMatchObject({ kind: 'permission', status: 'approved', inMinute: 990, outMinute: 1110 });
+      expect(me.permission).toMatchObject({ limit: 2, maxMinutes: 120 });
+      // Another company and a colleague see none of it.
+      expect((await api('empB', 'get', `/time/me/attendance?month=${past.slice(0, 7)}`).expect(200)).body.requests).toEqual([]);
+      expect((await api('peer', 'get', `/time/me/attendance?month=${past.slice(0, 7)}`).expect(200)).body.requests.map((x: { id: string }) => x.id)).not.toContain(r.id);
+    });
+
+    it('past the monthly limit it is refused with the reason; the company can change the limit', async () => {
+      // A month with at least three working days in the next 30.
+      const ahead = Array.from({ length: 30 }, (_, i) => d(i + 1)).filter((x) => !sun(x));
+      const month = [...new Set(ahead.map((x) => x.slice(0, 7)))].find((m) => ahead.filter((x) => x.startsWith(m)).length >= 4)!;
+      const days = ahead.filter((x) => x.startsWith(month));
+      let used = month === past.slice(0, 7) ? 1 : 0;
+      let k = 0;
+      while (used < 2) { await api('emp', 'post', '/time/me/permission').send(body({ on: days[k++] })).expect(201); used++; }
+      const name = new Date(`${month}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' });
+      const before = await count();
+      expect((await api('emp', 'post', '/time/me/permission').send(body({ on: days[k] })).expect(409)).body.message).toBe(`You have used all 2 permissions for ${name}. Apply for leave instead.`);
+      expect(await count()).toBe(before);
+      await api('emp', 'put', '/org/settings').send({ key: 'attendance.permission.monthly_limit', value: '3', scopeType: 'tenant' }).expect(403);
+      await api('adminA', 'put', '/org/settings').send({ key: 'attendance.permission.monthly_limit', value: '3', scopeType: 'tenant' }).expect(200);
+      await api('emp', 'post', '/time/me/permission').send(body({ on: days[k] })).expect(201);
+      await api('adminA', 'put', '/org/settings').send({ key: 'attendance.permission.monthly_limit', value: '2', scopeType: 'tenant' }).expect(200);
+    });
+  });
 });

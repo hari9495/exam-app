@@ -205,6 +205,28 @@ export class WfhDto {
   reason!: string;
 }
 
+/** Batch A item 7 (B4): hourly permission, a from and to time on one working day with a reason (never uses leave). */
+export class PermissionDto {
+  @IsDateString(DATE)
+  on!: string;
+
+  @IsInt()
+  @Min(0)
+  @Max(1439)
+  inMinute!: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(1439)
+  outMinute!: number;
+
+  @trim()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  reason!: string;
+}
+
 /** TIM-07 OnDuty: a day, or part of it, on duty away from the office (a place, from and to, a reason). */
 export class OnDutyDto {
   @IsDateString(DATE)

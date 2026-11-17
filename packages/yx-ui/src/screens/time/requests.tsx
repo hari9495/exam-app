@@ -22,7 +22,7 @@ import { MenuItem } from '../../components/menu';
 import { useToast } from '../../components/notify';
 import { useTooEarly } from '../../components/field';
 import { useRun } from '../org/org-kit';
-import type { DayRow, FixInput, FixKind as LiveFixKind, FixRow, LateCorrectionInput, MyAttendance, OnDutyInput, OtPlanInput, WfhInput } from './live/types';
+import type { DayRow, FixInput, FixKind as LiveFixKind, FixRow, LateCorrectionInput, MyAttendance, OnDutyInput, OtPlanInput, PermissionInput, WfhInput } from './live/types';
 import { Segment } from '../people/people-kit';
 import { EXCEPTIONS, HOLIDAYS, HR_ADMIN, LATE_PAYROLL, LEAVE_REQUESTS, ME, OT_ROWS, PAYROLL_ADMIN, SEPTEMBER, TEAM, TODAY, isMyReport, timeCounts, type OtRow, type TimeUser } from './time-data';
 import { DueBadge, Kpis, TimePage } from './time-kit';
@@ -55,10 +55,10 @@ const storyHref = (id: string, args?: string) => `/?path=/story/${id}${args ? `&
 const FootReason = ({ children }: { children: ReactNode }) => <span className="yx-tim-muted" style={{ width: '100%', minWidth: 0 }}>{children}</span>;
 
 /* =====================================================================
-   TIM-07 · Attendance request sheet (regularise / WFH / on-duty / OT pre-approval)
+   TIM-07 · Attendance request sheet (regularise / WFH / on-duty / OT pre-approval / hourly permission)
    ===================================================================== */
 
-export type AttReqType = 'regularise' | 'wfh' | 'on_duty' | 'ot';
+export type AttReqType = 'regularise' | 'wfh' | 'on_duty' | 'ot' | 'permission';
 
 export interface AttendanceRequestProps {
   type?: AttReqType;
@@ -68,6 +68,8 @@ export interface AttendanceRequestProps {
   wfhUsed?: number;
   /** Start on a day in a locked month, so it goes as a late request (P08 Q4). */
   locked?: boolean;
+  /** Batch A item 7 (B4): hourly permissions already asked for this month (company limit 2 of up to 2 hours each). */
+  permissionUsed?: number;
   submitted?: boolean;
   surface?: 'desk' | 'phone';
   error?: boolean;
@@ -78,6 +80,7 @@ const TYPE_OPTIONS: { value: AttReqType; label: string }[] = [
   { value: 'wfh', label: 'Work from home' },
   { value: 'on_duty', label: 'On duty' },
   { value: 'ot', label: 'OT pre-approval' },
+  { value: 'permission', label: 'Hourly permission' },
 ];
 /** Short labels keep the joined Segment on one line in a narrow drawer. */
 const TYPE_SHORT: { value: AttReqType; label: string }[] = [
@@ -85,6 +88,7 @@ const TYPE_SHORT: { value: AttReqType; label: string }[] = [
   { value: 'wfh', label: 'WFH' },
   { value: 'on_duty', label: 'On duty' },
   { value: 'ot', label: 'OT' },
+  { value: 'permission', label: 'Permission' },
 ];
 /** 10 Sep is Divya's open missed check-out (SEPTEMBER 'MP', EXCEPTIONS x2): kiosk check-in 9:31 am, no check-out. */
 const RECORDED_IN = '09:31';
@@ -127,6 +131,11 @@ const WFH_LIMIT = 4;
 const LATE_DAYS = 60;
 /** On duty can be asked up to this many days ahead. */
 const OD_AHEAD = 30;
+/** Batch A item 7 (B4): the company default, 2 permissions a month of up to 2 hours each; they never use leave. */
+const PM_LIMIT = 2;
+const PM_MAX = 120;
+/** "2 hours" / "90 minutes". */
+const minutesText = (m: number) => (m % 60 ? `${m} minutes` : `${m / 60} hour${m === 60 ? '' : 's'}`);
 const SEP_WFH = SEPTEMBER.filter((d) => d.code === 'WFH').length;
 const MONTH_START = new Date(TODAY.getFullYear(), TODAY.getMonth(), 1);
 /** The open month's payroll closes on its last day (30 Sep), as My attendance says. */
@@ -144,6 +153,7 @@ function defaultReason(type: AttReqType, locked: boolean) {
   if (type === 'regularise') return locked ? 'Visited Hosur plant all day; the kiosk there was offline.' : 'Phone died at 2 pm; left office at 6:40 pm. Security register can confirm.';
   if (type === 'wfh') return 'Plumber visit at home in the morning';
   if (type === 'on_duty') return 'Supplier quality audit with the Hosur plant team';
+  if (type === 'permission') return 'Bank visit to sign the home-loan papers';
   return 'Batch release testing for the October launch';
 }
 
@@ -154,7 +164,7 @@ function dayType(d: Date) {
   return wd === 0 || (wd === 6 && [2, 4].includes(Math.ceil(d.getDate() / 7))) ? 'weekly off' : 'normal day';
 }
 
-function useAttendanceRequest({ type: t0 = 'regularise', used = 1, wfhUsed = SEP_WFH, locked: lockedStart = false, error = false }: AttendanceRequestProps) {
+function useAttendanceRequest({ type: t0 = 'regularise', used = 1, wfhUsed = SEP_WFH, locked: lockedStart = false, error = false, permissionUsed = 0 }: AttendanceRequestProps) {
   const [type, setTypeRaw] = useState<AttReqType>(t0);
   const [date, setDate] = useState<Date | null>(defaultDate(t0, lockedStart));
   const [fix, setFix] = useState(lockedStart ? 'full' : 'out');
@@ -164,6 +174,8 @@ function useAttendanceRequest({ type: t0 = 'regularise', used = 1, wfhUsed = SEP
   const [odFrom, setOdFrom] = useState<string | null>('08:30');
   const [odTo, setOdTo] = useState<string | null>('18:00');
   const [otHours, setOtHours] = useState<number | null>(2);
+  const [pmFrom, setPmFrom] = useState<string | null>('16:30');
+  const [pmTo, setPmTo] = useState<string | null>('18:30');
   const [takeAs, setTakeAs] = useState<'pay' | 'comp'>('pay');
   const [reason, setReason] = useState(defaultReason(t0, lockedStart));
   // Send pressed too early: the missing field says so (never a disabled Send).
@@ -196,9 +208,9 @@ function useAttendanceRequest({ type: t0 = 'regularise', used = 1, wfhUsed = SEP
     ? null
     : type === 'regularise' && future
       ? 'Pick today or an earlier date'
-      : (type === 'regularise' || type === 'on_duty') && ago > LATE_DAYS
+      : (type === 'regularise' || type === 'on_duty' || type === 'permission') && ago > LATE_DAYS
         ? `Pick a date in the last ${LATE_DAYS} days`
-        : type === 'on_duty' && -ago > OD_AHEAD
+        : (type === 'on_duty' || type === 'permission') && -ago > OD_AHEAD
           ? `Pick a date in the next ${OD_AHEAD} days`
           : (type === 'ot' || type === 'wfh') && past
             ? 'Pick today or a later date'
@@ -207,10 +219,16 @@ function useAttendanceRequest({ type: t0 = 'regularise', used = 1, wfhUsed = SEP
   const otErr = type !== 'ot' ? null : !otHours ? 'Enter the planned hours' : otMin < 30 ? 'Enter at least 0.5 h' : otMin % 15 ? 'Use quarter hours (e.g. 1.25 or 1.5)' : null;
   const outErr = type !== 'regularise' || nothing ? null : !outT ? 'Enter the check-out time' : !inT || outT <= inT ? 'Enter a check-out time after check-in' : null;
   const odErr = type !== 'on_duty' ? null : !where.trim() ? 'Enter where you will be' : !odFrom || !odTo ? 'Enter the From and To times' : odTo <= odFrom ? 'Enter a To time after From' : null;
+  // Hourly permission: within the company's length; past the monthly count it is refused (answer 2310).
+  const pmMin = pmFrom && pmTo ? Number(pmTo.slice(0, 2)) * 60 + Number(pmTo.slice(3)) - Number(pmFrom.slice(0, 2)) * 60 - Number(pmFrom.slice(3)) : 0;
+  const pmErr = type !== 'permission' ? null : !pmFrom || !pmTo ? 'Enter the From and To times' : pmMin <= 0 ? 'Enter a To time after From' : pmMin > PM_MAX ? `A permission can be at most ${minutesText(PM_MAX)}. Apply for leave for a longer time.` : null;
+  const pmThisMonth = date && date.getMonth() === TODAY.getMonth() ? permissionUsed : 0;
+  const pmOver = type === 'permission' && pmThisMonth >= PM_LIMIT;
+  const pmDayErr = type !== 'permission' || !date ? null : pmOver ? `You have used all ${PM_LIMIT} permissions for ${MONTH[date.getMonth()]}. Apply for leave instead.` : off !== 'normal day' ? `${dm(date)} is ${off === 'holiday' ? `a holiday (${holidayName})` : 'your weekly off'}: no permission needed` : null;
   const blocked = !date
     ? 'Pick a date'
-    : dateErr ?? outErr ?? odErr ?? otErr ?? (!reason.trim() ? 'Enter a reason' : null);
-  return { tried, setTried, type, setType, date, setDate: pickDate, day, recIn, nothing, off, fix: fixNow, setFix, fixOptions, punched, inT, setIn, outT, setOut, where, setWhere, odFrom, setOdFrom, odTo, setOdTo, otHours, setOtHours, otMin, otErr, takeAs, setTakeAs, reason, setReason, route, steps, hr, locked, used, wfhUsed, wfhThisMonth, wfhOver, dateErr, outErr, odErr, blocked };
+    : dateErr ?? pmDayErr ?? outErr ?? odErr ?? pmErr ?? otErr ?? (!reason.trim() ? 'Enter a reason' : null);
+  return { tried, setTried, type, setType, date, setDate: pickDate, day, recIn, nothing, off, fix: fixNow, setFix, fixOptions, punched, inT, setIn, outT, setOut, where, setWhere, odFrom, setOdFrom, odTo, setOdTo, otHours, setOtHours, otMin, otErr, pmFrom, setPmFrom, pmTo, setPmTo, pmMin, pmErr, pmDayErr, pmThisMonth, pmOver, takeAs, setTakeAs, reason, setReason, route, steps, hr, locked, used, wfhUsed, wfhThisMonth, wfhOver, dateErr, outErr, odErr, blocked };
 }
 type ReqState = ReturnType<typeof useAttendanceRequest>;
 
@@ -222,7 +240,7 @@ const beforeText = (s: ReqState) =>
 function AttendanceRequestForm({ s, surface }: { s: ReqState; surface?: 'desk' | 'phone' }) {
   const { type, date, fix, locked, otMin } = s;
   // While the times are incomplete, say what is missing instead of a half-filled result.
-  const afterMissing = s.nothing ? 'Pick a day that needs fixing' : s.outErr ? 'Add the check-out time to see the result' : s.odErr ? 'Add the place and times to see the result' : s.otErr ? 'Add the planned hours to see the result' : null;
+  const afterMissing = s.nothing ? 'Pick a day that needs fixing' : s.outErr ? 'Add the check-out time to see the result' : s.odErr ? 'Add the place and times to see the result' : s.pmErr ? 'Add the times to see the result' : s.otErr ? 'Add the planned hours to see the result' : null;
   const after =
     type === 'regularise'
       ? `Present ${s.inT ? fmt12(s.inT) : '…'} – ${s.outT ? fmt12(s.outT) : '…'}`
@@ -230,7 +248,9 @@ function AttendanceRequestForm({ s, surface }: { s: ReqState; surface?: 'desk' |
         ? 'Work from home · counts as present'
         : type === 'on_duty'
           ? `On duty at ${s.where.trim() || '…'}, ${s.odFrom ? fmt12(s.odFrom) : '…'} – ${s.odTo ? fmt12(s.odTo) : '…'}`
-          : s.takeAs === 'pay'
+          : type === 'permission'
+            ? `Permission ${s.pmFrom ? fmt12(s.pmFrom) : '…'} – ${s.pmTo ? fmt12(s.pmTo) : '…'} · the day stays present`
+            : s.takeAs === 'pay'
             ? `Up to ${dur(otMin)} OT · paid at 2× (${date ? dayType(date) : 'normal day'})`
             : `Up to ${dur(otMin)} OT · ${otMin >= 240 ? '1 day' : '0.5 day'} comp-off credit`;
   const approvers = s.steps.map((x) => (x === 'Manager' ? ME.manager : x)).join(' → ');
@@ -247,9 +267,11 @@ function AttendanceRequestForm({ s, surface }: { s: ReqState; surface?: 'desk' |
           ? 'Pick the day you will work from home.'
           : type === 'on_duty'
             ? `Up to ${OD_AHEAD} days ahead. ${lateRule}`
-            : 'Pick today or a later date.';
-  const min = type === 'regularise' || type === 'on_duty' ? addDays(TODAY, -LATE_DAYS) : dayStart(TODAY);
-  const max = type === 'regularise' ? dayStart(TODAY) : type === 'on_duty' ? addDays(TODAY, OD_AHEAD) : undefined;
+            : type === 'permission'
+              ? `Up to ${OD_AHEAD} days ahead or ${LATE_DAYS} days back.`
+              : 'Pick today or a later date.';
+  const min = type === 'regularise' || type === 'on_duty' || type === 'permission' ? addDays(TODAY, -LATE_DAYS) : dayStart(TODAY);
+  const max = type === 'regularise' ? dayStart(TODAY) : type === 'on_duty' || type === 'permission' ? addDays(TODAY, OD_AHEAD) : undefined;
   return (
     <div className="yx-tim-form">
       <FormField label="Request type" required>
@@ -259,7 +281,7 @@ function AttendanceRequestForm({ s, surface }: { s: ReqState; surface?: 'desk' |
           <Segment label="Request type" value={type} onChange={s.setType} options={TYPE_SHORT} />
         )}
       </FormField>
-      <FormField id="ar-date" label="Date" required error={s.dateErr ?? (s.tried && !date ? 'Pick a date' : null)} helper={helper}>
+      <FormField id="ar-date" label="Date" required error={s.dateErr ?? s.pmDayErr ?? (s.tried && !date ? 'Pick a date' : null)} helper={helper}>
         <DatePicker value={date} onChange={s.setDate} min={min} max={max} />
       </FormField>
       {type === 'regularise' && !s.nothing && (
@@ -292,6 +314,12 @@ function AttendanceRequestForm({ s, surface }: { s: ReqState; surface?: 'desk' |
           </FieldRow>
         </>
       )}
+      {type === 'permission' && (
+        <FieldRow>
+          <FormField id="ar-from" label="From" required><TimeField value={s.pmFrom} onChange={s.setPmFrom} placeholder="--:--" /></FormField>
+          <FormField id="ar-to" label="To" required error={s.pmFrom && s.pmTo ? s.pmErr : s.tried ? s.pmErr : null} helper={`Up to ${minutesText(PM_MAX)}`}><TimeField value={s.pmTo} onChange={s.setPmTo} placeholder="--:--" /></FormField>
+        </FieldRow>
+      )}
       {type === 'ot' && (
         <FieldRow>
           <FormField id="ar-ot" label="Planned OT (hours)" required error={s.otHours || s.tried ? s.otErr : null} helper="Min 0.5 h, in quarter hours"><NumberField decimals value={s.otHours} onChange={s.setOtHours} placeholder="e.g. 1.25" /></FormField>
@@ -313,6 +341,9 @@ function AttendanceRequestForm({ s, surface }: { s: ReqState; surface?: 'desk' |
               ? `This would be WFH day ${s.wfhThisMonth + 1} of ${WFH_LIMIT} in ${MONTH[date.getMonth()]}, so HR approves too.`
               : `This will be WFH day ${s.wfhThisMonth + 1} of ${WFH_LIMIT} in ${MONTH[date.getMonth()]}.`}
           </p>
+        )}
+        {type === 'permission' && date && !s.pmOver && (
+          <p className="yx-tim-muted">This will be permission {s.pmThisMonth + 1} of {PM_LIMIT} in {MONTH[date.getMonth()]}. It does not use leave.</p>
         )}
         {type === 'on_duty' && date && s.off !== 'normal day' && (
           <p className="yx-tim-muted">{dm(date)} is {s.off === 'holiday' ? 'a holiday' : 'your weekly off'}: you can claim the day as comp-off after it is approved.</p>
@@ -347,7 +378,7 @@ function SampleAttendanceRequestSheet(p: AttendanceRequestProps) {
   const s = useAttendanceRequest(p);
   const close = () => setOpen(false);
   // Pressed too early: the field that is missing shows its error and takes focus.
-  const firstField = !s.date || s.dateErr ? 'ar-date' : s.outErr ? 'ar-out' : s.odErr ? 'ar-where' : s.otErr ? 'ar-ot' : 'ar-reason';
+  const firstField = !s.date || s.dateErr || s.pmDayErr ? 'ar-date' : s.outErr ? 'ar-out' : s.odErr ? 'ar-where' : s.pmErr ? 'ar-to' : s.otErr ? 'ar-ot' : 'ar-reason';
   const send = <Button variant="primary" onClick={() => { if (!s.blocked) return setSent(true); s.setTried(true); document.getElementById(firstField)?.focus(); }}>Send request</Button>;
   const typeLabel = TYPE_OPTIONS.find((o) => o.value === s.type)?.label ?? '';
   const summary = `${typeLabel} · ${s.date ? dm(s.date) : ''}`;
@@ -647,7 +678,7 @@ export function OtPreApproveSheet({ live, sample = 'default' }: { live?: OtPreAp
 /** What the live sheet needs: my month from the server, and the two requests it can send. */
 export interface LiveAttendanceRequest {
   data: MyAttendance;
-  type: 'regularise' | 'wfh' | 'on_duty' | 'ot';
+  type: 'regularise' | 'wfh' | 'on_duty' | 'ot' | 'permission';
   /** Regularising is offered (punch mode, or a late correction); default yes. */
   canRegularise?: boolean;
   /** TIM-07 Ot: overtime asked for ahead; without it the sheet has no OT choice. */
@@ -656,6 +687,8 @@ export interface LiveAttendanceRequest {
   resend?: FixRow;
   /** TIM-07 OnDuty; without it the sheet has no On duty choice. */
   onOnDuty?: (input: OnDutyInput) => Promise<unknown>;
+  /** Batch A item 7 (B4): hourly permission; without it the sheet has no Permission choice. */
+  onPermission?: (input: PermissionInput) => Promise<unknown>;
   /** The day to start on (a day picked on the calendar), else today. */
   on?: string | null;
   onFix: (input: FixInput) => Promise<unknown>;
@@ -679,9 +712,9 @@ const zoneHm = (iso: string | null | undefined, zone: string) => (iso ? new Date
 function LiveAttendanceRequestDrawer({ live }: { live: LiveAttendanceRequest }) {
   const d = live.data;
   const today = isoDay(d.today);
-  type T = 'regularise' | 'wfh' | 'on_duty' | 'ot';
-  const offered = (t: T) => (t === 'regularise' && live.canRegularise !== false) || (t === 'wfh' && !!live.onWfh) || (t === 'on_duty' && !!live.onOnDuty) || (t === 'ot' && !!live.onOtPlan);
-  const choices = (['regularise', 'wfh', 'on_duty', 'ot'] as const).filter(offered);
+  type T = 'regularise' | 'wfh' | 'on_duty' | 'ot' | 'permission';
+  const offered = (t: T) => (t === 'regularise' && live.canRegularise !== false) || (t === 'wfh' && !!live.onWfh) || (t === 'on_duty' && !!live.onOnDuty) || (t === 'ot' && !!live.onOtPlan) || (t === 'permission' && !!live.onPermission);
+  const choices = (['regularise', 'wfh', 'on_duty', 'ot', 'permission'] as const).filter(offered);
   const [type, setTypeRaw] = useState<T>(offered(live.type) ? live.type : choices[0] ?? 'regularise');
   // TIM-07 Ot: planned hours and how the overtime is taken.
   const [otHours, setOtHours] = useState<number | null>(null);
@@ -691,6 +724,9 @@ function LiveAttendanceRequestDrawer({ live }: { live: LiveAttendanceRequest }) 
   const [where, setWhere] = useState(live.resend?.place ?? '');
   const [odFrom, setOdFrom] = useState<string | null>(live.resend?.inMinute != null ? hhmmOf(live.resend.inMinute) : null);
   const [odTo, setOdTo] = useState<string | null>(live.resend?.outMinute != null ? hhmmOf(live.resend.outMinute) : null);
+  // Hourly permission: from and to.
+  const [pmFrom, setPmFrom] = useState<string | null>(null);
+  const [pmTo, setPmTo] = useState<string | null>(null);
   const on = date ? isoOf(date) : null;
   const day = on ? d.days.find((x) => x.on === on) : undefined;
   const recIn = zoneHm(day?.firstIn, d.zone);
@@ -708,7 +744,9 @@ function LiveAttendanceRequestDrawer({ live }: { live: LiveAttendanceRequest }) 
   const needIn = type === 'regularise' && (fix === 'in' || fix === 'wrong');
   const needOut = type === 'regularise' && (fix === 'out' || fix === 'wrong');
   const when = date ? dm(date) : '';
-  const pending = on && type !== 'on_duty' ? d.requests.some((r) => r.on === on && r.status === 'pending' && (type === 'wfh') === (r.kind === 'wfh') && r.kind !== 'on_duty') : false;
+  const pending = on && type !== 'on_duty' && type !== 'permission' ? d.requests.some((r) => r.on === on && r.status === 'pending' && (type === 'wfh') === (r.kind === 'wfh') && r.kind !== 'on_duty' && r.kind !== 'permission') : false;
+  const pmRules = d.permission ?? { limit: 2, maxMinutes: 120, used: 0 };
+  const pmUsed = on && on.slice(0, 7) === d.today.slice(0, 7) ? pmRules.used : 0;
   const odWindow = d.onDuty ?? { aheadDays: 30, backDays: 60 };
   const ago = on ? Math.round((isoDay(d.today).getTime() - isoDay(on).getTime()) / 86_400_000) : 0;
   const nothing = type !== 'regularise' || !day ? null : pending ? `${when} already has a request waiting` : ['weekly_off', 'holiday', 'leave'].includes(day.status) ? `${when} is ${day.status === 'leave' ? 'on approved leave' : day.status === 'holiday' ? 'a holiday' : 'a weekly off'}: nothing to fix` : null;
@@ -724,10 +762,14 @@ function LiveAttendanceRequestDrawer({ live }: { live: LiveAttendanceRequest }) 
     ? null
     : type === 'ot'
       ? on < d.today ? 'Pick today or a later date' : -ago > otAhead ? `Pick a date in the next ${otAhead} days` : (d.otPlans ?? []).some((p) => p.on === on && (p.status === 'pending' || p.status === 'approved')) ? `${when} already has overtime asked for` : null
+    : type === 'permission'
+      ? -ago > odWindow.aheadDays ? `Pick a date in the next ${odWindow.aheadDays} days` : ago > odWindow.backDays ? `Pick a date in the last ${odWindow.backDays} days` : (d.locked ?? []).includes(on) ? `${when} is in a locked month. Ask HR to record a correction.` : pmUsed >= pmRules.limit ? (pmRules.limit === 0 ? 'Your company does not allow hourly permission. Apply for leave instead.' : `You have used all ${pmRules.limit} permissions for ${MONTH[date!.getMonth()]}. Apply for leave instead.`) : day && ['weekly_off', 'holiday', 'leave'].includes(day.status) ? `${when} is ${day.status === 'leave' ? 'on leave' : day.status === 'holiday' ? 'a holiday' : 'your weekly off'}: no permission needed` : null
     : type === 'on_duty'
       ? -ago > odWindow.aheadDays ? `Pick a date in the next ${odWindow.aheadDays} days` : ago > odWindow.backDays ? `Pick a date in the last ${odWindow.backDays} days` : (d.locked ?? []).includes(on) ? `${when} is in a locked month. Ask HR to record a correction.` : null
       : type === 'regularise' ? (on > d.today ? 'Pick today or an earlier date' : tooLate ? `${when} is more than ${d.lateRequestMaxDays} days ago, so only HR can correct it now. Ask HR.` : nothing) : on < d.today ? 'Pick today or a later date' : pending ? `${when} already has a request waiting` : null;
   const od = type === 'on_duty';
+  const pm = type === 'permission';
+  const pmMin = minuteOf(pmTo) !== null && minuteOf(pmFrom) !== null ? minuteOf(pmTo)! - minuteOf(pmFrom)! : 0;
   const errors = [
     ...(!on ? [{ fieldId: 'ar-date', message: 'Pick a date' }] : dateErr ? [{ fieldId: 'ar-date', message: dateErr }] : []),
     ...(!nothing && needIn && !inT ? [{ fieldId: 'ar-in', message: 'Enter the check-in time' }] : []),
@@ -738,33 +780,35 @@ function LiveAttendanceRequestDrawer({ live }: { live: LiveAttendanceRequest }) 
     ...(od && (!odFrom || !odTo) ? [{ fieldId: !odFrom ? 'ar-from' : 'ar-to', message: 'Enter the From and To times' }] : []),
     ...(od && odFrom && odTo && odTo <= odFrom ? [{ fieldId: 'ar-to', message: 'Enter a To time after From' }] : []),
     ...(od && odFrom && odTo && odTo > odFrom && minuteOf(odTo)! - minuteOf(odFrom)! < 30 ? [{ fieldId: 'ar-to', message: 'On duty is at least 30 minutes' }] : []),
+    ...(pm && (!pmFrom || !pmTo) ? [{ fieldId: !pmFrom ? 'ar-from' : 'ar-to', message: 'Enter the From and To times' }] : pm && pmMin <= 0 ? [{ fieldId: 'ar-to', message: 'Enter a To time after From' }] : pm && pmMin > pmRules.maxMinutes ? [{ fieldId: 'ar-to', message: `A permission can be at most ${minutesText(pmRules.maxMinutes)}. Apply for leave for a longer time.` }] : []),
     ...(late && shouldBe === 'leave' && !lateLeave ? [{ fieldId: 'ar-leave', message: 'Choose the leave type' }] : []),
     ...(!reason.trim() ? [{ fieldId: 'ar-reason', message: 'Enter a reason' }] : late && reason.trim().length < 10 ? [{ fieldId: 'ar-reason', message: 'Give the reason in a sentence (at least 10 letters).' }] : []),
   ];
   const early = useTooEarly(errors);
   const regLeft = Math.max(0, d.regularise.limit - d.regularise.used);
   const wfhThen = on && on.slice(0, 7) === d.today.slice(0, 7) ? d.wfh.used : 0;
-  const hr = !od && type !== 'ot' && (late || (type === 'regularise' ? regLeft === 0 : wfhThen >= d.wfh.limit));
+  const hr = !od && !pm && type !== 'ot' && (late || (type === 'regularise' ? regLeft === 0 : wfhThen >= d.wfh.limit));
   const send = () => {
     if (early.stop() || !on) return;
     void run('send', async () => {
       if (type === 'ot') await live.onOtPlan!({ on, minutes: otMin, takeAs, reason: reason.trim() });
+      else if (pm) await live.onPermission!({ on, inMinute: minuteOf(pmFrom)!, outMinute: minuteOf(pmTo)!, reason: reason.trim() });
       else if (od) await live.onOnDuty!({ on, inMinute: minuteOf(odFrom)!, outMinute: minuteOf(odTo)!, place: where.trim(), reason: reason.trim(), ...(live.resend ? { resendOf: live.resend.id } : {}) });
       else if (type === 'wfh') await live.onWfh!({ on, reason: reason.trim() });
       else if (late) await live.onLateCorrection!({ on, kind: 'attendance', shouldBe: shouldBe === 'leave' ? `leave:${lateLeave}` : shouldBe, reason: reason.trim() });
       else await live.onFix({ on, kind: LIVE_FIX[fix], ...(needIn ? { inMinute: minuteOf(inT)! } : {}), ...(needOut ? { outMinute: minuteOf(outT)! } : {}), reason: reason.trim() });
-      toast({ tone: 'success', title: late ? 'Sent to your manager, then HR and payroll' : hr ? 'Sent to your manager, then HR' : 'Sent to your manager', description: `${type === 'ot' ? 'Overtime pre-approval' : od ? 'On duty' : type === 'wfh' ? 'Work from home' : late ? 'Late request' : 'Regularisation'} for ${when}. You will get a notification when it is decided.` });
+      toast({ tone: 'success', title: late ? 'Sent to your manager, then HR and payroll' : hr ? 'Sent to your manager, then HR' : 'Sent to your manager', description: `${type === 'ot' ? 'Overtime pre-approval' : pm ? 'Hourly permission' : od ? 'On duty' : type === 'wfh' ? 'Work from home' : late ? 'Late request' : 'Regularisation'} for ${when}. You will get a notification when it is decided.` });
       live.onClose();
     });
   };
   const timeText = (t: string | null) => (t ? fmt12(t) : '…');
-  const after = type === 'ot' ? (takeAs === 'pay' ? `Up to ${dur(otMin)} OT · paid at the overtime rate` : `Up to ${dur(otMin)} OT · comp-off credit`) : od ? `On duty at ${where.trim() || '…'}, ${timeText(odFrom)} – ${timeText(odTo)}` : type === 'wfh' ? 'Work from home · counts as present' : fix === 'full' ? 'Present all day' : `Present ${timeText(needIn ? inT : recIn)} – ${timeText(needOut ? outT : recOut)}`;
+  const after = type === 'ot' ? (takeAs === 'pay' ? `Up to ${dur(otMin)} OT · paid at the overtime rate` : `Up to ${dur(otMin)} OT · comp-off credit`) : od ? `On duty at ${where.trim() || '…'}, ${timeText(odFrom)} – ${timeText(odTo)}` : pm ? `Permission ${timeText(pmFrom)} – ${timeText(pmTo)} · the day stays present` : type === 'wfh' ? 'Work from home · counts as present' : fix === 'full' ? 'Present all day' : `Present ${timeText(needIn ? inT : recIn)} – ${timeText(needOut ? outT : recOut)}`;
   const monthName = date ? MONTH[date.getMonth()] : '';
   return (
     <Drawer
       open
       onOpenChange={(o) => !o && live.onClose()}
-      title={live.resend ? 'Change and send again' : type === 'wfh' ? 'Request work from home' : type === 'ot' ? 'Overtime pre-approval' : od ? 'On duty request' : 'New attendance request'}
+      title={live.resend ? 'Change and send again' : type === 'wfh' ? 'Request work from home' : type === 'ot' ? 'Overtime pre-approval' : od ? 'On duty request' : pm ? 'Hourly permission' : 'New attendance request'}
       subtitle={late ? 'Goes to your manager, HR and payroll' : hr ? 'Goes to your manager, then HR' : 'Goes to your manager'}
       dirty={Boolean(reason)}
       footer={
@@ -784,7 +828,7 @@ function LiveAttendanceRequestDrawer({ live }: { live: LiveAttendanceRequest }) 
             <Segment label="Request type" value={type} onChange={setType} options={TYPE_SHORT.filter((o) => offered(o.value))} />
           </FormField>
         )}
-        <FormField id="ar-date" label="Date" required error={early.errorOf('ar-date')} helper={type === 'ot' ? `Today or up to ${otAhead} days ahead. Overtime already worked is claimed on My overtime.` : od ? `Up to ${odWindow.aheadDays} days ahead or ${odWindow.backDays} days back.` : type === 'wfh' ? 'Pick the day you will work from home.' : late ? `${monthName} is locked, so this goes as a late request.` : 'Pick the day to fix.'}>
+        <FormField id="ar-date" label="Date" required error={early.errorOf('ar-date')} helper={type === 'ot' ? `Today or up to ${otAhead} days ahead. Overtime already worked is claimed on My overtime.` : od || pm ? `Up to ${odWindow.aheadDays} days ahead or ${odWindow.backDays} days back.` : type === 'wfh' ? 'Pick the day you will work from home.' : late ? `${monthName} is locked, so this goes as a late request.` : 'Pick the day to fix.'}>
           <DatePicker value={date} onChange={setDate} min={type === 'wfh' || type === 'ot' ? today : undefined} max={type === 'regularise' ? today : undefined} aria-label="Date" />
         </FormField>
         {late && (
@@ -814,6 +858,12 @@ function LiveAttendanceRequestDrawer({ live }: { live: LiveAttendanceRequest }) 
             </FieldRow>
           </>
         )}
+        {pm && (
+          <FieldRow>
+            <FormField id="ar-from" label="From" required error={early.errorOf('ar-from')}><TimeField value={pmFrom} onChange={setPmFrom} placeholder="--:--" /></FormField>
+            <FormField id="ar-to" label="To" required error={early.errorOf('ar-to')} helper={`Up to ${minutesText(pmRules.maxMinutes)}`}><TimeField value={pmTo} onChange={setPmTo} placeholder="--:--" /></FormField>
+          </FieldRow>
+        )}
         {type === 'regularise' && !nothing && (
           <>
             <FormField label="What needs fixing" required helper={recIn ? `Recorded check-in on this day: ${fmt12(recIn)}.` : undefined}>
@@ -840,8 +890,9 @@ function LiveAttendanceRequestDrawer({ live }: { live: LiveAttendanceRequest }) 
         </FormField>
         <section className="yx-tim-effect" aria-live="polite" aria-label="Effect before you send">
           <strong>Effect on {date ? dm(date) : 'the day'}</strong>
-          <div className="yx-tim-effect__line"><span className="yx-tim-muted">Now</span><Badge tone={late ? 'danger' : 'neutral'}>{type === 'ot' ? 'No OT approved' : type === 'wfh' || od ? 'Expected in office' : day ? STATUS_NOW[day.status] : 'Nothing recorded'}</Badge></div>
-          <div className="yx-tim-effect__line"><span className="yx-tim-muted">After</span>{nothing ? <Badge tone="neutral">Pick a day that needs fixing</Badge> : od && (!where.trim() || !odFrom || !odTo) ? <Badge tone="neutral">Add the place and times to see the result</Badge> : type === 'ot' && !otHours ? <Badge tone="neutral">Add the planned hours to see the result</Badge> : <Badge tone="success">{after}</Badge>}</div>
+          <div className="yx-tim-effect__line"><span className="yx-tim-muted">Now</span><Badge tone={late ? 'danger' : 'neutral'}>{type === 'ot' ? 'No OT approved' : type === 'wfh' || od || pm ? 'Expected in office' : day ? STATUS_NOW[day.status] : 'Nothing recorded'}</Badge></div>
+          <div className="yx-tim-effect__line"><span className="yx-tim-muted">After</span>{nothing ? <Badge tone="neutral">Pick a day that needs fixing</Badge> : od && (!where.trim() || !odFrom || !odTo) ? <Badge tone="neutral">Add the place and times to see the result</Badge> : pm && (!pmFrom || !pmTo) ? <Badge tone="neutral">Add the times to see the result</Badge> : type === 'ot' && !otHours ? <Badge tone="neutral">Add the planned hours to see the result</Badge> : <Badge tone="success">{after}</Badge>}</div>
+          {pm && on && pmUsed < pmRules.limit && <p className="yx-tim-muted">This will be permission {pmUsed + 1} of {pmRules.limit} in {monthName}. It does not use leave.</p>}
           {od && <p className="yx-tim-muted">Once approved, the time counts as worked: a full day is present, part of one adds to your office hours.</p>}
           {type === 'ot' && <p className="yx-tim-muted">After the work, claim it on My overtime; the claim shows it was pre-approved. Factory overtime is always paid.</p>}
           {type === 'wfh' && on && (
