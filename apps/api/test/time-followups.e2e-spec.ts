@@ -356,20 +356,24 @@ describe('Time follow-ups', () => {
     });
 
     it('moving a holiday: leave on the new date goes back, leave on the old date counts again (pending: no ledger entry)', async () => {
-      const h = (await api('hr', 'post', `/time/setup/calendars/${ids.cal}/holidays`).send({ on: d(50), name: 'Harvest day', kind: 'state' }).expect(201)).body.id;
-      const req = (await api('emp', 'post', '/time/me/leave').send({ leaveTypeId: ids.CL, from: d(49), to: d(50) }).expect(201)).body;
+      // A holiday moves only within its own year: when 31 December falls between d(49) and d(53), every date moves 6 days
+      // later (d(55) to d(59), all in the new year and used by no other test), whatever today is.
+      const k = d(49).slice(0, 4) === d(53).slice(0, 4) ? 0 : 6;
+      const e = (n: number) => d(n + k);
+      const h = (await api('hr', 'post', `/time/setup/calendars/${ids.cal}/holidays`).send({ on: e(50), name: 'Harvest day', kind: 'state' }).expect(201)).body.id;
+      const req = (await api('emp', 'post', '/time/me/leave').send({ leaveTypeId: ids.CL, from: e(49), to: e(50) }).expect(201)).body;
       expect(req.days).toBe(1);
       const ledgerBefore = await inA((tx) => tx.leaveLedgerEntry.count({ where: { requestId: req.id } }));
-      const out = (await api('hr', 'post', `/time/setup/holidays/${h}/date`).send({ on: d(52) }).expect(200)).body;
-      expect(out).toMatchObject({ on: d(52), leaveRecounted: 1 });
+      const out = (await api('hr', 'post', `/time/setup/holidays/${h}/date`).send({ on: e(52) }).expect(200)).body;
+      expect(out).toMatchObject({ on: e(52), leaveRecounted: 1 });
       expect(Number((await inA((tx) => tx.leaveRequest.findFirstOrThrow({ where: { id: req.id } }))).days)).toBe(2);
       // Still waiting: the balance's pending count carries it, so no ledger entry.
       expect(await inA((tx) => tx.leaveLedgerEntry.count({ where: { requestId: req.id } }))).toBe(ledgerBefore);
       const moved = await inA((tx) => tx.auditLog.findFirstOrThrow({ where: { action: 'holiday.date_changed', entityId: h } }));
-      expect(JSON.parse(moved.metadataJson ?? '{}')).toEqual(expect.objectContaining({ from: d(50), to: d(52), leaveRecounted: 1 }));
+      expect(JSON.parse(moved.metadataJson ?? '{}')).toEqual(expect.objectContaining({ from: e(50), to: e(52), leaveRecounted: 1 }));
       // Wrong role and another company.
-      await api('emp', 'post', `/time/setup/holidays/${h}/date`).send({ on: d(53) }).expect(403);
-      await api('adminB', 'post', `/time/setup/holidays/${h}/date`).send({ on: d(53) }).expect(404);
+      await api('emp', 'post', `/time/setup/holidays/${h}/date`).send({ on: e(53) }).expect(403);
+      await api('adminB', 'post', `/time/setup/holidays/${h}/date`).send({ on: e(53) }).expect(404);
     });
 
     it('a holiday moved onto the date, removed, and moved onto it again: credited each time it lands (never blocked by the first)', async () => {
@@ -381,11 +385,14 @@ describe('Time follow-ups', () => {
         expect((await api('hr', 'post', `/time/setup/holidays/${x.id}/date`).send({ on: d(40) }).expect(200)).body.leaveReturned).toBe(1);
         return x.id;
       };
-      const first = await land(d(43));
+      // A holiday moves only within its own year, so both starting dates are in d(40)'s year: 3 and 4 days after it, or,
+      // when that crosses 31 December, 7 and 8 days before it (clear of the leave on d(39) to d(41)).
+      const away = (n: number) => (d(44).slice(0, 4) === d(40).slice(0, 4) ? d(40 + n) : d(40 - n - 4));
+      const first = await land(away(3));
       expect(await days()).toBe(before - 1);
       expect((await api('hr', 'post', `/time/setup/holidays/${first}/remove`).expect(200)).body.leaveRecounted).toBe(1);
       expect(await days()).toBe(before);
-      await land(d(44));
+      await land(away(4));
       expect(await days()).toBe(before - 1);
       const credits = await inA((tx) => tx.leaveLedgerEntry.findMany({ where: { requestId: id, entryOn: asDate(d(40)), kind: 'cancelled' } }));
       expect(credits).toHaveLength(2);
