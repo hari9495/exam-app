@@ -64,6 +64,8 @@ export interface StaffUser {
   // emailSignature, unlike timeZone, really is /users/me-exclusive -- see SafeUser's comment
   // in apps/api/src/users/users.service.ts.
   emailSignature?: string | null;
+  // The Accessibility menu's saved choices (answers 2330 to 2334); /users/me only. null = never saved.
+  accessibility?: unknown;
   // null/omitted = the user's role default permission set; a profile id overrides it. Set via
   // PATCH /users/:id; takes effect on the user's next login/token refresh (JWT-embedded).
   permissionProfileId?: string | null;

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, Languages, Laptop, ShieldCheck, UserCheck } from 'lucide-react';
-import { Button, CommandPalette, InlineAlert, NoticeBar, NotificationCentre, ProfileMenu, ScopePicker, ShortcutHelp, shortcutGroups, Spinner, ToastProvider, useCommandPaletteShortcut, useShortcutHelp, useToast } from '@yukthix/ui';
+import { AccessibilityMenu, Button, CommandPalette, InlineAlert, NoticeBar, NotificationCentre, ProfileMenu, ScopePicker, ShortcutHelp, shortcutGroups, Spinner, ToastProvider, useAccessibility, useCommandPaletteShortcut, useShortcutHelp, useToast } from '@yukthix/ui';
 import { useAppearance, type MfaStatus } from '@yukthix/ui/auth';
 import { DesktopFrame, PALETTE_PLACEHOLDER, SCREEN_RAIL, type AreaId } from '@yukthix/ui/frame';
 import { ContainedBanner } from '@yukthix/ui/console';
@@ -58,6 +58,16 @@ function Frame({ children }: { children: React.ReactNode }) {
   const perms = useYxPermissions();
   const { toast } = useToast();
   const appearance = useAppearance();
+  // Answers 2330 to 2334: the Accessibility menu's choices are saved on the person's own account, so they follow them
+  // to every device. A support or impersonation session keeps them in this browser only: never on someone else's account.
+  const ownAccount = !actingSuperAdmin && !impersonating;
+  const a11y = useAccessibility({ onSave: ownAccount ? (p) => apiFetch('/users/me', { method: 'PATCH', body: JSON.stringify({ accessibility: p }) }, accessToken ?? undefined) : undefined });
+  const savedA11y = ownAccount ? me.data?.accessibility : undefined;
+  useEffect(() => {
+    a11y.adopt(savedA11y);
+    // adopt only when the account's saved choices arrive or change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(savedA11y ?? null)]);
   const { scope, setScope } = useScope();
   // Job history is for HR, and for anyone with an employee record (themselves and their team, P02 §4.3).
   const people = usePeople<unknown[]>('/employees');
@@ -279,6 +289,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         onHelp: support ? undefined : () => setHelpOpen(true),
         helpUnread: !support && (news?.unread ?? 0) > 0,
         scope: scopePicker,
+        accessibility: <AccessibilityMenu value={a11y.prefs} onChange={a11y.setPrefs} />,
         notifications: (
           <NotificationCentre
             items={bell.items}

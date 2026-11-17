@@ -91,7 +91,8 @@ describe('SignInScreen (work email first, no company code)', () => {
     unmount();
     render(<SignIn options={{ google: false, microsoft: false, sms: false, whatsapp: false, emailCode: true }} onMobile={vi.fn()} onSocial={vi.fn()} />);
     expect(screen.queryByRole('separator')).toBeNull();
-    expect(screen.getAllByRole('button')).toHaveLength(1);
+    // The frame's Accessibility button (answer 2331) is not a way to sign in.
+    expect(screen.getAllByRole('button').filter((b) => b.getAttribute('aria-label') !== 'Accessibility')).toHaveLength(1);
   });
 
   it("a company's own Google provider replaces YukthiX's Google button", async () => {

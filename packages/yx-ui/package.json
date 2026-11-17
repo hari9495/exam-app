@@ -28,6 +28,7 @@
     "./visitors": "./src/screens/ops/visitors-live.ts",
     "./assessments": "./src/screens/proctoring/assessments-live.ts",
     "./frame": "./src/screens/_kit/live.ts",
+    "./a11y": "./src/lib/accessibility-prefs.ts",
     "./screens/*": "./src/screens/*.tsx",
     "./styles.css": "./src/styles/index.css"
   },
