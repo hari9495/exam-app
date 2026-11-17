@@ -22783,5 +22783,43 @@
       "Recycle bin · keep days read-only / empty / loading / could not load / no access / phone"
     ],
     "note": "First wave (answer 2367, narrowed): designations, departments, grades, employment types, cost centres, locations, and candidate email / SMS / WhatsApp templates, plus hiring's existing soft-deleted candidates, jobs, pipelines and walk-in groups. Other areas join by adding a kind and one toBin() call. Hiring keeps its own 30 days."
+  },
+  {
+    "id": "MT-BATB-2356",
+    "area": "Accessibility: the page behind an open dialog is inert (answer 2356, gap G-1, 17 Nov 2026)",
+    "screen": "Any dialog, drawer or sheet (for example Home › Ctrl K, People › a person › Edit, a ConfirmDialog)",
+    "url": "http://localhost:3000/yx/home",
+    "account": "Employee arjun@demo-org.test; HR hr-tester@demo-org.test. Use the keyboard and, if you can, NVDA.",
+    "steps": [
+      "Press Ctrl K (the search palette). Press Tab and Shift+Tab many times.",
+      "With NVDA on, press Insert+F7 (elements list) while the palette is open.",
+      "Close it with Escape; press Tab.",
+      "As hr-tester: open a person and a drawer (for example Edit). Inside it open a date picker or a select.",
+      "Open a delete button's confirm dialog over the drawer; Cancel; close the drawer."
+    ],
+    "expected": "Step 1: focus stays inside the palette; nothing behind it is reached. Step 2: only the palette's own controls are listed. Step 3: the page works again and focus returns where it was. Step 4: the picker and select open and work (they are not made inert). Step 5: the drawer is usable again after Cancel; after closing it the page is fully usable. Automated: the axe kit guard has no aria-hidden-focus entries left (a11y-guard.known.json is empty).",
+    "stories": [
+      "Screens/Platform/Shell and home › PLT-01 / PLT-18 / PLT-20 states with a dialog open",
+      "Screens/Proctoring › PRC-21 Reschedule, PRC-26 Finish",
+      "Exam › Finish confirmation"
+    ],
+    "note": "Kit: useInertBehind (lib/inert.ts, aria-hidden's inertOthers) in Dialog, Drawer, BottomSheet, the app shell's phone menu, the command palette and the exam Finish dialog."
+  },
+  {
+    "id": "MT-BATB-2352",
+    "area": "Accessibility statement published (answer 2352, 17 Nov 2026)",
+    "screen": "Legal › Accessibility statement",
+    "url": "http://localhost:3000/yx/legal/accessibility",
+    "account": "Not signed in.",
+    "steps": [
+      "Open the page from the sign-in footer link 'Accessibility'.",
+      "Read the Known gaps table and the Feedback and contact section.",
+      "On a host where NEXT_PUBLIC_YX_PRIVACY_EMAIL is not set, open the page again."
+    ],
+    "expected": "Step 1: the approved statement: Our target (WCAG 2.1 AA, partly conforms), What you can change yourself (the Accessibility menu), How we check, Known gaps, Feedback and contact, Preparation (17 Nov 2026); no 'Being finalised' note. Step 2: gaps G-2 to G-9 (no G-1); the contact is accessibility@ the same domain as the privacy contact and opens an email. Step 3: the page says the address is published before go-live instead of an address.",
+    "stories": [
+      "Screens/Security/SEC-02 · Legal notices › Accessibility statement"
+    ],
+    "note": "Text from docs/yukthix/accessibility-statement.md (now marked published)."
   }
 ]
