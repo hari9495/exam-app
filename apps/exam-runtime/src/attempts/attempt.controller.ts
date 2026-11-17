@@ -156,7 +156,7 @@ export class AttemptController {
   @Post('appeal')
   @Throttle(MODERATE_ATTEMPT_THROTTLE)
   appeal(@CurrentCandidate() candidate: CandidateSession, @Body() dto: AppealDto) {
-    return this.attemptService.appeal(candidate, dto.text);
+    return this.attemptService.appeal(candidate, dto.text, dto.file ?? null);
   }
 
   @Post('client-error')

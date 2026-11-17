@@ -1399,7 +1399,8 @@ export interface LiveResult {
   /** invalidated (AS-5): an integrity decision invalidated the attempt; the decision shows instead of a score. */
   state: 'released' | 'held' | 'pending' | 'invalidated';
   integrity?: LiveIntegrityDecision | null;
-  onAppeal?: (text: string) => Promise<unknown>;
+  /** Answer 2264: the candidate's words and one optional file (PDF, JPG or PNG up to 10 MB). */
+  onAppeal?: (text: string, file?: File | null) => Promise<unknown>;
   /** The inviting company, shown in the frame (never the sample name). */
   companyName?: string;
   /** Released: only what the test shows (pass or fail, score, sections); null when it shows nothing of it. */
@@ -1412,9 +1413,10 @@ export interface LiveResult {
 const DECISION_TITLE = { warning: 'A warning was noted on your test', section: 'Part of your test was not counted', attempt: 'Your test was not counted' } as const;
 
 /** PRC-27's verdict, appeal form, appeal sent and window closed, with a real decision (AS-5). */
-function IntegrityDecisionPart({ d, onAppeal }: { d: LiveIntegrityDecision; onAppeal?: (text: string) => Promise<unknown> }) {
+function IntegrityDecisionPart({ d, onAppeal }: { d: LiveIntegrityDecision; onAppeal?: (text: string, file?: File | null) => Promise<unknown> }) {
   const [writing, setWriting] = useState(false);
   const [text, setText] = useState('');
+  const [file, setFile] = useState<File | null>(null);
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1441,6 +1443,15 @@ function IntegrityDecisionPart({ d, onAppeal }: { d: LiveIntegrityDecision; onAp
           <FormField label="Why should we look again?" required helper="Explain what happened in your own words" error={tried && text.trim().length < 10 ? 'Write at least 10 characters.' : undefined}>
             <TextArea rows={5} value={text} onChange={setText} maxLength={2000} />
           </FormField>
+          <FormField label="Supporting file" optional helper="One PDF, JPG or PNG, up to 10 MB">
+            <FileUpload
+              accept={['.pdf', '.jpg', '.jpeg', '.png']}
+              maxSize={10 * 1024 * 1024}
+              multiple={false}
+              upload={async (f) => setFile(f)}
+              onItemsChange={(items) => items.length === 0 && setFile(null)}
+            />
+          </FormField>
           <div className="yx-prc-row">
             <Button onClick={() => setWriting(false)}>Cancel</Button>
             <Button
@@ -1451,7 +1462,7 @@ function IntegrityDecisionPart({ d, onAppeal }: { d: LiveIntegrityDecision; onAp
                 if (text.trim().length < 10) return;
                 setBusy(true);
                 setError(null);
-                onAppeal(text.trim())
+                onAppeal(text.trim(), file)
                   .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Try again in a moment.'))
                   .finally(() => setBusy(false));
               }}

@@ -360,4 +360,23 @@ describe('Assessments AS-5: integrity review and appeals', () => {
     await api('proctor', 'post', `/asmt/integrity/${oi}/verdict`).send({ verdict: 'warning', reason: 'A second voice was heard twice.' }).expect(200);
     expect(sent).toEqual([]);
   });
+
+  // Answer 2264: one file with an appeal, checked by its first bytes; reviewers open it through an audited link.
+  it('an appeal may carry one PDF or image; a file that is not one is refused; opening it is audited', async () => {
+    const r = await submitted();
+    await flag(r.attemptId, 'review');
+    const inc = (await inOrg(org.A.id, (tx) => tx.integrityIncident.findUniqueOrThrow({ where: { attemptId: r.attemptId } }))).id;
+    await api('proctor', 'post', `/asmt/integrity/${inc}/verdict`).send({ verdict: 'warning', reason: 'A second voice was heard twice.' }).expect(200);
+    const fake = `data:application/pdf;base64,${Buffer.from('<html><script>alert(1)</script>').toString('base64')}`;
+    await cand(r.ct, 'post', '/attempt/appeal').send({ text: 'It was the television next door.', file: { fileName: 'letter.pdf', dataUri: fake } }).expect(400);
+    expect(await inOrg(org.A.id, (tx) => tx.integrityAppeal.count({ where: { attemptId: r.attemptId } }))).toBe(0);
+    const pdf = `data:application/pdf;base64,${Buffer.from('%PDF-1.4 noise complaint').toString('base64')}`;
+    await cand(r.ct, 'post', '/attempt/appeal').send({ text: 'It was the television next door.', file: { fileName: '../../Noise letter.pdf', dataUri: pdf } }).expect(201);
+    const row = ((await api('evaluator', 'get', '/asmt/appeals').expect(200)).body as { id: string; incidentId: string; evidenceName: string | null }[]).find((a) => a.incidentId === inc)!;
+    expect(row.evidenceName).toBe('Noise letter.pdf');
+    expect((await api('evaluator', 'get', `/asmt/appeals/${row.id}/evidence`).expect(200)).body.url).toBeTruthy();
+    expect(await inOrg(org.A.id, (tx) => tx.auditLog.count({ where: { entityId: row.id, action: 'asmt.appeal.evidence_viewed' } }))).toBe(1);
+    await api('reader', 'get', `/asmt/appeals/${row.id}/evidence`).expect(403);
+    await api('adminB', 'get', `/asmt/appeals/${row.id}/evidence`).expect(404);
+  });
 });

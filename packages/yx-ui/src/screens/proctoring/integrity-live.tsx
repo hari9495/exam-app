@@ -347,6 +347,8 @@ export interface LiveAppealRow {
   /** The people who gave the verdict: they may not decide the appeal. */
   excluded: string[];
   text: string;
+  /** Answer 2264: the name of the file sent with the appeal, if any. */
+  evidenceName?: string | null;
   status: 'open' | 'upheld' | 'overturned';
   reason: string | null;
   decidedBy: string | null;
@@ -361,6 +363,8 @@ export interface LiveAppeals {
   onUphold: (id: string, reason: string) => Promise<unknown>;
   /** Asks for the second factor first (the page). */
   onOverturn: (id: string, reason: string) => Promise<unknown>;
+  /** Opens the appeal's file (an audited short-lived link). */
+  onEvidence?: (id: string) => Promise<unknown>;
 }
 
 const APPEAL_COLS: TableColumn<LiveAppealRow>[] = [
@@ -435,6 +439,16 @@ export function LiveAppealsScreen({ live }: { live: LiveAppeals }) {
               />
               <Card title="Candidate's statement">
                 <p className="yx-prc-p">{a.text}</p>
+                {a.evidenceName && (
+                  <div className="yx-prc-row">
+                    <span className="yx-prc-muted yx-prc-small">{`1 file: ${a.evidenceName}`}</span>
+                    {live.onEvidence && (
+                      <Button size="sm" onClick={() => void live.onEvidence!(a.id)}>
+                        View
+                      </Button>
+                    )}
+                  </div>
+                )}
               </Card>
               {a.status === 'open' ? (
                 <AppealDecision key={a.id} live={live} a={a} />

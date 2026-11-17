@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { AuditService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { AuditService, BlobStorageService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { companySetting } from '../asmt-rules';
 import { EmailService } from '../../email/email.service';
 import { buildCandidateEmailHtml } from '../../candidate-emails/candidate-email-render';
@@ -31,6 +31,7 @@ export class IntegrityReviewService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly email: EmailService,
     private readonly runtime: ExamRuntimeInternalClient,
+    private readonly blobStorage: BlobStorageService,
   ) {}
 
   /**
@@ -280,6 +281,7 @@ export class IntegrityReviewService {
           // The people who may not decide it (they gave the verdict).
           excluded: [a.incident.decidedBy, a.incident.confirmedBy].filter((x): x is string => Boolean(x)),
           text: a.text,
+          evidenceName: a.evidenceName,
           status: a.status,
           reason: a.reason,
           decidedBy: a.decidedBy ? who.get(a.decidedBy) ?? null : null,
@@ -287,6 +289,16 @@ export class IntegrityReviewService {
           createdAt: a.createdAt.toISOString(),
         }));
     });
+  }
+
+  /** Answer 2264: a short-lived link to the appeal's file; each opening is audited. */
+  async appealEvidence(ctx: TenantContext, userId: string, id: string): Promise<{ url: string; name: string }> {
+    const a = await this.in(ctx, (tx) => tx.integrityAppeal.findUnique({ where: { id }, select: { evidencePath: true, evidenceName: true, attemptId: true } }));
+    if (!a) throw new NotFoundException('Appeal not found');
+    if (!a.evidencePath) throw new NotFoundException('No file was sent with this appeal.');
+    const url = (await this.blobStorage.signIfOurs(a.evidencePath)) as string;
+    await this.in(ctx, (tx) => AuditService.recordIn(tx, ctx, { actorUserId: userId, action: 'asmt.appeal.evidence_viewed', entityType: 'integrity_appeal', entityId: id, metadata: { attemptId: a.attemptId } }));
+    return { url, name: a.evidenceName ?? 'file' };
   }
 
   /**

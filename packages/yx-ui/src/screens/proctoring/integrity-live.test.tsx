@@ -128,6 +128,22 @@ describe('PRC-18 live appeals', () => {
   });
 });
 
+describe('PRC-18 live appeal file (answer 2264)', () => {
+  it('shows the file sent with the appeal and opens it', async () => {
+    const onEvidence = vi.fn().mockResolvedValue(undefined);
+    const rows = [{ ...LIVE_APPEAL_ROWS[0]!, evidenceName: 'git-log-march.pdf' }];
+    render(<AppealsScreen live={{ state: 'ready', onRetry: vi.fn(), rows, me: 'u-lakshmi', onUphold: vi.fn(), onOverturn: vi.fn(), onEvidence }} />);
+    expect(screen.getByText('1 file: git-log-march.pdf')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'View' }));
+    expect(onEvidence).toHaveBeenCalledWith('a-1');
+  });
+
+  it('negative: no file, no file line', () => {
+    render(<AppealsScreen live={{ state: 'ready', onRetry: vi.fn(), rows: LIVE_APPEAL_ROWS, me: 'u-lakshmi', onUphold: vi.fn(), onOverturn: vi.fn(), onEvidence: vi.fn() }} />);
+    expect(screen.queryByText(/^1 file:/)).not.toBeInTheDocument();
+  });
+});
+
 describe('PRC-27 live decision and appeal', () => {
   it('shows why and the window; the candidate appeals in their own words', async () => {
     const onAppeal = vi.fn().mockResolvedValue(undefined);
@@ -140,7 +156,7 @@ describe('PRC-27 live decision and appeal', () => {
     expect(onAppeal).not.toHaveBeenCalled();
     await ue.type(screen.getByLabelText(/Why should we look again/), 'I wrote this in my college project last year.');
     await ue.click(screen.getByRole('button', { name: 'Send appeal' }));
-    expect(onAppeal).toHaveBeenCalledWith('I wrote this in my college project last year.');
+    expect(onAppeal).toHaveBeenCalledWith('I wrote this in my college project last year.', null);
   });
 
   it('negative: after the window, or once appealed, there is no appeal button; an invalidated test shows no score', () => {

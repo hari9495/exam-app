@@ -1,3 +1,4 @@
+import { EvidenceDto } from './accommodation.dto';
 import { IsArray, IsBoolean, IsISO8601, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested, MinLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -69,6 +70,12 @@ export class AppealDto {
   @MinLength(10)
   @MaxLength(2000)
   text!: string;
+
+  /** Answer 2264: one supporting file (PDF, JPG or PNG up to 10 MB). */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => EvidenceDto)
+  file?: EvidenceDto | null;
 }
 
 /** AS-4a: the optional after-test survey (never affects the score). */

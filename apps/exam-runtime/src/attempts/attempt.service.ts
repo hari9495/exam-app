@@ -1,3 +1,4 @@
+import { readEvidence } from './accommodation.service';
 import { integrityState, type CandidateIntegrity } from './integrity-hold';
 import { randomUUID } from 'crypto';
 import { BadRequestException, ConflictException, ForbiddenException, HttpException, HttpStatus, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
@@ -588,8 +589,21 @@ export class AttemptService {
    * AS-5 (answer 2012): the candidate appeals an integrity verdict other than "cleared", once, before the company's
    * window closes. The result is held while it is open (integrityState); someone who did not give the verdict decides.
    */
-  async appeal(session: CandidateSession, text: string): Promise<{ ok: true }> {
+  async appeal(session: CandidateSession, text: string, file: { fileName: string; dataUri: string } | null = null): Promise<{ ok: true }> {
     const { organizationId, invitation } = await this.resolveContext(session.invitationId);
+    // Answer 2264: the file is checked before anything is stored, and uploaded outside the transaction.
+    const evidence = readEvidence(file);
+    const path = evidence ? await this.blobStorage.upload(`appeal-evidence/${organizationId}/${invitation.id}/${randomUUID()}-${evidence.name}`, evidence.buf, evidence.type) : null;
+    try {
+      return await this.appealIn(organizationId, invitation.id, text, path ? { path, name: evidence!.name, type: evidence!.type } : null);
+    } catch (error) {
+      if (path) await this.blobStorage.deleteByUrl(path).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private async appealIn(organizationId: string, invitationId: string, text: string, file: { path: string; name: string; type: string } | null): Promise<{ ok: true }> {
+    const invitation = { id: invitationId };
     return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
       const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id }, select: { id: true } });
       if (!attempt) throw new NotFoundException('No attempt has been started');
@@ -599,7 +613,7 @@ export class AttemptService {
       if (state.integrity.appeal) throw new ConflictException('You have already appealed this decision.');
       if (!state.integrity.canAppeal) throw new BadRequestException('The time to appeal this decision has ended.');
       const incident = await tx.integrityIncident.findUniqueOrThrow({ where: { attemptId: attempt.id }, select: { id: true } });
-      await tx.integrityAppeal.create({ data: { incidentId: incident.id, attemptId: attempt.id, text: text.trim() } });
+      await tx.integrityAppeal.create({ data: { incidentId: incident.id, attemptId: attempt.id, text: text.trim(), evidencePath: file?.path ?? null, evidenceName: file?.name ?? null, evidenceType: file?.type ?? null } });
       return { ok: true as const };
     });
   }

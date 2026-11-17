@@ -78,7 +78,7 @@ describe('CandidateResultPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Appeal this decision' }));
     await userEvent.type(screen.getByLabelText(/Why should we look again/), 'It was the TV in the next room.');
     await userEvent.click(screen.getByRole('button', { name: 'Send appeal' }));
-    expect(sendAppeal).toHaveBeenCalledWith('It was the TV in the next room.');
+    expect(sendAppeal).toHaveBeenCalledWith('It was the TV in the next room.', null);
   });
 
   it('negative: an invalidated test shows the decision and no score; a sent appeal cannot be sent again', () => {
