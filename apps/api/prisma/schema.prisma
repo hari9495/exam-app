@@ -1234,6 +1234,8 @@ model AnswerAiSuggestion {
   marks          Int
   reason         String?  @db.VarChar(2000)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// Answer 2286: with a rubric, the suggestion per criterion ({ marks, reason } in the rubric's order).
+  criteria       Json?
 
   @@unique([attemptId, questionId], map: "answer_ai_suggestions_answer_key")
   @@map("answer_ai_suggestions")

@@ -122,3 +122,24 @@ describe('PRC-19 AI-allowed test: assistant log (answer 2272)', () => {
     expect(screen.queryByText(/Assistant log/)).toBeNull();
   });
 });
+
+// Answer 2286: with a rubric the AI suggestion is shown per criterion, still only after my own mark.
+describe('PRC-19 AI suggestion per criterion', () => {
+  const rubric = { text: 'Why?', type: 'essay', marks: 9, rubric: [{ criterion: 'Finds the cause', marks: 4 }, { criterion: 'Names the owner', marks: 5 }] };
+  it('shows each criterion with its suggested marks and reason', () => {
+    wrap(<EvaluatorConsoleScreen live={liveEvaluator({}, { question: rubric, mine: { marks: 6, feedback: null, round: 1, criteria: [3, 3] }, state: 'final', suggestion: { marks: 7, reason: 'Clear.', criteria: [{ marks: 3, reason: 'Finds the station.' }, { marks: 4, reason: 'Names the lead.' }] } })} />);
+    const list = screen.getByRole('list', { name: 'AI suggestion per criterion' });
+    expect(within(list).getByText('Finds the cause: 3 / 4')).toBeInTheDocument();
+    expect(within(list).getByText('Names the owner: 4 / 5')).toBeInTheDocument();
+    expect(within(list).getByText('Names the lead.')).toBeInTheDocument();
+  });
+  it('negative: before my own mark nothing is shown, even with a rubric; without criteria it stays one mark', () => {
+    const { unmount } = wrap(<EvaluatorConsoleScreen live={liveEvaluator({}, { question: rubric, mine: null, suggestion: null })} />);
+    expect(screen.queryByRole('list', { name: 'AI suggestion per criterion' })).toBeNull();
+    expect(screen.getByText('The AI suggestion shows after you enter your own mark.')).toBeInTheDocument();
+    unmount();
+    wrap(<EvaluatorConsoleScreen live={liveEvaluator({}, { mine: { marks: 6, feedback: null, round: 1 }, state: 'final', suggestion: { marks: 6, reason: 'Fine.' } })} />);
+    expect(screen.queryByRole('list', { name: 'AI suggestion per criterion' })).toBeNull();
+    expect(screen.getByText(/Suggested 6/)).toBeInTheDocument();
+  });
+});

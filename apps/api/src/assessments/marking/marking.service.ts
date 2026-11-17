@@ -43,7 +43,8 @@ export interface MarkingView {
   toModerate: { a: number; b: number } | null;
   minor: boolean;
   /** Only after I have marked, and never for an under-18. */
-  suggestion: { marks: number; reason: string | null } | null;
+  /** Answer 2286: with a rubric, `criteria` holds the suggestion per criterion (rubric order). */
+  suggestion: { marks: number; reason: string | null; criteria: { marks: number; reason: string }[] | null } | null;
   /** Every human-marked answer of this attempt has its final mark: the marking can be finished. */
   attemptReady: boolean;
   /** AS-6 part 2 (answer 2272): an AI-allowed test's assistant log for this question, and the turns on other questions. */
@@ -138,7 +139,7 @@ export class MarkingService {
         mine: mine ? { marks: mine.marks, feedback: mine.feedback, round: mine.round, criteria: Array.isArray(mine.criteria) ? (mine.criteria as number[]) : null } : null,
         toModerate: state.status === 'needs_moderation' && !mine ? { a: state.a, b: state.b } : null,
         minor,
-        suggestion: s ? { marks: s.marks, reason: s.reason } : null,
+        suggestion: s ? { marks: s.marks, reason: s.reason, criteria: (s.criteria as { marks: number; reason: string }[] | null) ?? null } : null,
         attemptReady: a.status === 'pending_manual_grade' && manual.every((x) => x.marksAwarded !== null),
         assistant: log ? { turns: here.map((m) => ({ role: m.role as 'candidate' | 'assistant', body: m.body, at: m.createdAt.toISOString() })), otherTurns: log.filter((m) => m.role === 'candidate' && m.questionId !== questionId).length } : null,
       };
@@ -186,9 +187,11 @@ export class MarkingService {
       const kept = await tx.answerAiSuggestion.findUnique({ where: { attemptId_questionId: { attemptId, questionId } } });
       return { kept, ans };
     });
-    if (ready.kept) return { marks: ready.kept.marks, reason: ready.kept.reason };
-    const s = await this.ai.run(ctx, { source: 'asmt.mark_suggestion', sourceId: attemptId }, (p) => this.suggester.suggest({ question: ready.ans.question.text, max: ready.ans.question.marks, answer: ready.ans.answerText ?? '', language: ready.ans.question.type === 'code' ? ready.ans.codeLanguage : null }, p));
-    await this.tenantPrisma.forTenant(ctx, (tx) => tx.answerAiSuggestion.upsert({ where: { attemptId_questionId: { attemptId, questionId } }, create: { attemptId, questionId, marks: s.marks, reason: s.reason }, update: {} }));
+    if (ready.kept) return { marks: ready.kept.marks, reason: ready.kept.reason, criteria: (ready.kept.criteria as { marks: number; reason: string }[] | null) ?? null };
+    // Answer 2286: with a rubric, a suggestion per criterion.
+    const rubric = rubricOf(ready.ans.question.rubric);
+    const s = await this.ai.run(ctx, { source: 'asmt.mark_suggestion', sourceId: attemptId }, (p) => this.suggester.suggest({ question: ready.ans.question.text, max: ready.ans.question.marks, answer: ready.ans.answerText ?? '', language: ready.ans.question.type === 'code' ? ready.ans.codeLanguage : null, rubric }, p));
+    await this.tenantPrisma.forTenant(ctx, (tx) => tx.answerAiSuggestion.upsert({ where: { attemptId_questionId: { attemptId, questionId } }, create: { attemptId, questionId, marks: s.marks, reason: s.reason, ...(s.criteria ? { criteria: s.criteria as unknown as Prisma.InputJsonValue } : {}) }, update: {} }));
     return s;
   }
 }

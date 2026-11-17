@@ -35,7 +35,8 @@ describe('Assessments follow-ups', () => {
   /** 2204: the decision emails to one address (the invitation email goes there too). */
   const decisions = (to: string) => sent.filter((m) => m.to === to && /your request for help/.test(m.subject));
   const aiSkills: { name: string; weight: number }[] = [];
-  const fakeAi = { run: async (_c: unknown, _o: unknown, fn: (p: unknown) => Promise<unknown>) => fn({ generateStructured: async () => ({ level: 'hard', skills: aiSkills }) }) };
+  // Answer 2286: the rubric suggestion asks for one entry per criterion (the second one over its maximum on purpose).
+  const fakeAi = { run: async (_c: unknown, _o: unknown, fn: (p: unknown) => Promise<unknown>) => fn({ generateStructured: async (r: { tool: { name: string } }) => (r.tool.name === 'suggest_marks_by_criterion' ? { criteria: [{ marks: 3, reason: 'Finds the station.' }, { marks: 9, reason: 'Names the line lead.' }], reason: 'Clear and short.' } : { level: 'hard', skills: aiSkills }) }) };
   const api = (who: Who, method: 'get' | 'post' | 'put' | 'patch', path: string) => request(http)[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const cand = (ct: string, method: 'get' | 'post', path: string) => request(runtimeHttp)[method](`/api/v1${path}`).set('Authorization', `Bearer ${ct}`);
   const inOrg = <T>(o: string, fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: o, isSuperAdmin: false }, fn);
@@ -261,6 +262,14 @@ describe('Assessments follow-ups', () => {
       const mark = await inOrg(org.A.id, (tx) => tx.answerMark.findFirstOrThrow({ where: { attemptId, questionId: ids.essay } }));
       expect(mark.criteria).toEqual([3, 4]);
       expect((await api('adminA', 'get', at).expect(200)).body.mine).toMatchObject({ marks: 7, criteria: [3, 4] });
+      // Answer 2286: after the marker's own mark, the AI suggests per criterion, each within its own maximum.
+      const s = (await api('adminA', 'post', `${at}/suggestion`).expect(200)).body;
+      expect(s).toEqual({ marks: 9, reason: 'Clear and short.', criteria: [{ marks: 3, reason: 'Finds the station.' }, { marks: 6, reason: 'Names the line lead.' }] });
+      expect((await api('adminA', 'get', at).expect(200)).body.suggestion).toEqual(s);
+      // Negative: someone who has not marked gets none; another company gets nothing; the wrong role is refused.
+      await api('writer', 'post', `${at}/suggestion`).expect(400);
+      await api('reader', 'post', `${at}/suggestion`).expect(403);
+      await api('adminB', 'post', `${at}/suggestion`).expect(404);
     });
   });
 
