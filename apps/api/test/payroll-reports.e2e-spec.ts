@@ -11,6 +11,7 @@ import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
+import { payrollSettingsApplyAtOnce } from './fixtures/payroll-second-person';
 
 // PAY-25 payroll reports end to end against the real database. Known payslips, loans, holds and arrears in two legal
 // entities of one company (and a second company), then every report: exact totals, the filters, paging, CSV export
@@ -168,6 +169,8 @@ describe('Payroll reports (PAY-25)', () => {
       // Chitra's July arrears, paid in August.
       await tx.arrearsWorksheet.create({ data: { ...o, legalEntityId: ids.ka, employeeId: ids.chitra, employmentId: ids.em_chitra, source: 'manual', fromMonth: new Date(`${P}-01T00:00:00Z`), toMonth: new Date(`${P}-01T00:00:00Z`), status: 'approved', total: D('3500'), employerCost: D('420'), payMonth: new Date(`${M}-01T00:00:00Z`), reason: 'Revision from July approved late', createdBy: users.payAdmin, approvedBy: users.finance, approvedAt: new Date() } });
     });
+    // Answers 1325 / 1521: this suite's payroll settings apply at once (the second-person control is tested elsewhere).
+    await payrollSettingsApplyAtOnce(server(), tenantPrisma, org.A, token.adminA);
   }, 300_000);
 
   afterAll(async () => {

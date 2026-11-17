@@ -12,6 +12,7 @@ import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { markSteppedUp } from './fixtures/step-up';
 import { pdfText } from './fixtures/pdf-text';
+import { payrollSettingsApplyAtOnce } from './fixtures/payroll-second-person';
 
 // PAY-24 statutory bonus end to end against the real database: every route, positive and negative, with the boundaries
 // (exactly the eligibility limit and ₹0.01 above it, 29 and 30 working days), the company settings, maker ≠ checker,
@@ -176,6 +177,8 @@ describe('Payroll statutory bonus (PAY-24)', () => {
       const slip = await tx.payslip.create({ data: { ...o, employmentId: ids.em_Asha, employeeId: ids.asha, periodStart: new Date(`${months[0]}-01T00:00:00Z`), calcVersion: 1, status: 'approved', gross: D('6000'), deductions: D('0'), net: D('6000'), employerCost: D('6000'), ruleVersions: {}, snapshotHash: 'b'.repeat(64), resultHash: 'c'.repeat(64) } });
       await tx.payslipLine.create({ data: { ...o, employeeId: ids.asha, payslipId: slip.id, position: 1, componentCode: 'basic', name: 'Basic', kind: 'earning', amount: D('6000'), explanation: 'Basic' } });
     });
+    // Answers 1325 / 1521: this suite's payroll settings apply at once (the second-person control is tested elsewhere).
+    await payrollSettingsApplyAtOnce(server(), tenantPrisma, org.A, token.adminA);
   }, 300_000);
 
   afterAll(async () => {
