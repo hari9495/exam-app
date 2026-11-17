@@ -7,6 +7,7 @@ const ok = () => Promise.resolve();
 export const ACC_ROWS: AccommodationView[] = [
   { id: 'r1', candidateName: 'Deepa Pillai', test: 'Java Backend Developer · L2', kinds: ['time', 'reader'], extraTimePercent: 25, note: 'Low vision; I use NVDA.', evidenceName: 'Doctor letter.pdf', status: 'pending', approvedKinds: [], grantedExtraTimePercent: null, message: null, createdAt: '2026-11-14T06:30:00.000Z', decidedAt: null, decidedBy: null, started: false },
   { id: 'r2', candidateName: 'Karthik Krishnan', test: 'Campus aptitude 2026', kinds: ['time', 'separate'], extraTimePercent: 50, note: null, evidenceName: null, status: 'pending', approvedKinds: [], grantedExtraTimePercent: null, message: null, createdAt: '2026-11-15T06:30:00.000Z', decidedAt: null, decidedBy: null, started: true },
+  { id: 'r3', candidateName: 'Meera Joseph', test: 'Campus aptitude 2026', kinds: ['breaks', 'profile'], extraTimePercent: null, note: 'Nystagmus: my eyes move on their own.', evidenceName: null, status: 'pending', approvedKinds: [], grantedExtraTimePercent: null, message: null, createdAt: '2026-11-16T06:30:00.000Z', decidedAt: null, decidedBy: null, started: false },
 ];
 
 export const ACC_DECIDED: AccommodationView[] = [

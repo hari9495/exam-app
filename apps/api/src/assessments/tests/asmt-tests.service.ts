@@ -1,6 +1,12 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { AuditService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { AuditService, PrismaService, TenantContext, TenantPrismaService, resolvePermissionGrants } from '@exam-platform/shared';
+import { NotificationsService } from '../../notifications/notifications.service';
+import { escapeHtml } from '../../notifications/notification-email-render';
+import { todayIst } from '../../org-structure/org-validation';
+import { mayHoldKeys } from '../../questions/bank/review-nudges.service';
+import { AiInvocationService } from '../../ai/ai-invocation.service';
+import { JdSkillsClient, matchSkills, planSections, type Level, type ProposedSkill } from './jd-test';
 import { ExamsService, type PublishCheck } from '../../exams/exams.service';
 import type { UpdateExamDto } from '../../exams/dto/update-exam.dto';
 import { HIGH_STAKES_KEY, companySetting, modeOf, needsApproval, presetOf, type ProctorMode } from '../asmt-rules';
@@ -11,6 +17,8 @@ import { HIGH_STAKES_KEY, companySetting, modeOf, needsApproval, presetOf, type 
 // own checks (a test is locked once published or started).
 
 type Tx = Prisma.TransactionClient;
+/** Who writes and approves tests (the YukthiX key and its older alias). */
+const TEST_KEYS = ['asmt.test.manage', 'exam:manage'];
 
 export interface BuilderSection {
   id: string;
@@ -60,11 +68,49 @@ export interface BuilderTest {
 
 @Injectable()
 export class AsmtTestsService {
+  private readonly logger = new Logger(AsmtTestsService.name);
+
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly exams: ExamsService,
     private readonly audit: AuditService,
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+    private readonly ai: AiInvocationService,
+    private readonly jd: JdSkillsClient,
   ) {}
+
+  private async aiOn(ctx: TenantContext) {
+    const on = await this.tenantPrisma.forTenant(ctx, async (tx) => (await companySetting(tx, ctx.organizationId as string, 'asmt.ai_generation')) === 'on');
+    if (!on) throw new ForbiddenException('AI drafts are switched off for your company (Settings › Assessments).');
+  }
+
+  /** Answer 2151: the skills and level a job description asks for, matched to the company's skills. Nothing is saved. */
+  async proposeFromJd(ctx: TenantContext, userId: string, jobDescription: string): Promise<{ level: Level; skills: ProposedSkill[] }> {
+    await this.aiOn(ctx);
+    const tags = await this.tenantPrisma.forTenant(ctx, (tx) => tx.tag.findMany({ where: { organizationId: ctx.organizationId as string }, select: { id: true, name: true }, orderBy: { name: 'asc' }, take: 300 }));
+    const r = await this.ai.run(ctx, { source: 'asmt.test_from_jd', sourceId: userId }, (p) => this.jd.read(jobDescription, tags.map((t) => t.name), p));
+    return { level: r.level, skills: matchSkills(r.skills, tags) };
+  }
+
+  /** Answer 2151: the confirmed skills become a draft test, one pool section per skill. Every skill must be the company's. */
+  async createFromJd(ctx: TenantContext, userId: string, d: { title: string; level: Level; total: number; skills: { tagId: string; percent: number }[] }) {
+    await this.aiOn(ctx);
+    const org = ctx.organizationId as string;
+    const ids = [...new Set(d.skills.map((s) => s.tagId))];
+    if (ids.length !== d.skills.length) throw new BadRequestException('Each skill can be in the test once.');
+    const tags = await this.tenantPrisma.forTenant(ctx, (tx) => tx.tag.findMany({ where: { organizationId: org, id: { in: ids } }, select: { id: true, name: true } }));
+    if (tags.length !== ids.length) throw new BadRequestException('Map every skill to one of your skills first.');
+    const name = new Map(tags.map((t) => [t.id, t.name]));
+    const plan = planSections(d.skills.map((s) => ({ tagId: s.tagId, name: name.get(s.tagId)!, percent: s.percent })), d.total);
+    const exam = await this.exams.create(ctx, userId, { title: d.title });
+    for (const s of plan) {
+      const sec = await this.exams.createSection(ctx, exam.id, { title: s.title });
+      await this.exams.updateSection(ctx, userId, exam.id, sec.id, { selectionMode: 'pool', poolSize: s.poolSize, poolDifficulty: d.level, poolTagIds: [s.tagId], weightPercent: s.weightPercent, title: s.title });
+    }
+    await this.audit.record(ctx, { actorUserId: userId, action: 'exam.created_from_job_description', entityType: 'exam', entityId: exam.id, metadata: { sections: plan.length, level: d.level } });
+    return { id: exam.id };
+  }
 
   private async find(tx: Tx, org: string, id: string) {
     const exam = await tx.exam.findFirst({
@@ -131,10 +177,10 @@ export class AsmtTestsService {
     });
   }
 
-  async defaults(ctx: TenantContext): Promise<{ proctorMode: ProctorMode; highStakes: number }> {
+  async defaults(ctx: TenantContext): Promise<{ proctorMode: ProctorMode; highStakes: number; aiDrafts: boolean }> {
     return this.tenantPrisma.forTenant(ctx, async (tx) => {
       const org = ctx.organizationId as string;
-      return { proctorMode: (await companySetting(tx, org, 'asmt.proctor_mode')) as ProctorMode, highStakes: Number(await companySetting(tx, org, HIGH_STAKES_KEY)) };
+      return { proctorMode: (await companySetting(tx, org, 'asmt.proctor_mode')) as ProctorMode, highStakes: Number(await companySetting(tx, org, HIGH_STAKES_KEY)), aiDrafts: (await companySetting(tx, org, 'asmt.ai_generation')) === 'on' };
     });
   }
 
@@ -162,7 +208,8 @@ export class AsmtTestsService {
 
   /** asmt.high_stakes: ask another person to approve this test as it is now. */
   async requestApproval(ctx: TenantContext, userId: string, id: string) {
-    await this.tenantPrisma.forTenant(ctx, async (tx) => {
+    const org = ctx.organizationId as string;
+    const asked = await this.tenantPrisma.forTenant(ctx, async (tx) => {
       const org = ctx.organizationId as string;
       const exam = await this.find(tx, org, id);
       if (exam.status !== 'draft') throw new BadRequestException('Only a draft test is approved before publishing.');
@@ -170,9 +217,25 @@ export class AsmtTestsService {
       if (!needsApproval(exam.expectedCandidates, threshold)) throw new BadRequestException(`Only a test for more than ${threshold} candidates needs an approver. Publish it when the checklist is ready.`);
       // A new request replaces an earlier approval (the test may have changed since).
       await tx.exam.update({ where: { id }, data: { approvalRequestedBy: userId, approvalRequestedAt: new Date(), approvedBy: null, approvedAt: null, approvedFingerprint: null } });
+      return { title: exam.title, author: exam.createdBy, people: await mayHoldKeys(tx, org, TEST_KEYS, todayIst()) };
     });
     await this.audit.record(ctx, { actorUserId: userId, action: 'exam.approval_requested', entityType: 'exam', entityId: id });
+    await this.tellApprovers(ctx, id, userId, asked).catch((e: unknown) => this.logger.error(e));
     return { requested: true };
+  }
+
+  /** Answer 2158: a bell note to everyone who may approve the test (the tests key), never the asker or the author. */
+  private async tellApprovers(ctx: TenantContext, id: string, asker: string, a: { title: string; author: string | null; people: { id: string; role: string; permission_profile_id: string | null }[] }) {
+    const org = ctx.organizationId as string;
+    const to: string[] = [];
+    for (const p of a.people) {
+      if (p.id === asker || p.id === a.author) continue;
+      const keys = await resolvePermissionGrants(this.prisma, this.tenantPrisma, { role: p.role, organizationId: org, permissionProfileId: p.permission_profile_id, userId: p.id }, TEST_KEYS);
+      if (TEST_KEYS.some((k) => keys.has(k))) to.push(p.id);
+    }
+    if (!to.length) return;
+    const text = `"${a.title}" waits for your approval before it is published. Open it in Hire › Assessments › Tests.`;
+    await this.notifications.notifySystem(ctx, to, 'asmt.test.approval_requested', { entityType: 'exam', entityId: id, contextText: text, linkPath: `/yx/hiring/assessments/tests/${id}` }, { subject: 'A test waits for your approval', html: `<p>${escapeHtml(text)}</p>` });
   }
 
   /** asmt.high_stakes: a second person (neither the asker nor the author) approves the test as it is now. */

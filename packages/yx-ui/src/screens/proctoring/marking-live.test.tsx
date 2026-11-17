@@ -54,6 +54,28 @@ describe('PRC-19 evaluator console (live)', () => {
   });
 });
 
+describe('PRC-19 rubric marking (answer 2271)', () => {
+  it('marks each criterion; the total is their sum; negative: a missing or too-high criterion sends nothing', async () => {
+    const onMark = vi.fn().mockResolvedValue(undefined);
+    wrap(<EvaluatorConsoleScreen live={liveEvaluator({ onMark }, { question: { text: 'Why?', type: 'essay', marks: 9, rubric: [{ criterion: 'Finds the cause', marks: 4 }, { criterion: 'Names the owner', marks: 5 }] } })} />);
+    expect(screen.queryByRole('textbox', { name: /Your marks/ })).toBeNull();
+    await ue.type(screen.getByRole('textbox', { name: /Finds the cause/ }), '6');
+    await ue.click(screen.getByRole('button', { name: 'Save mark' }));
+    expect(onMark).not.toHaveBeenCalled();
+    expect((await screen.findAllByText('Mark "Names the owner".')).length).toBeGreaterThan(0);
+    await ue.type(screen.getByRole('textbox', { name: /Names the owner/ }), '3');
+    await ue.click(screen.getByRole('button', { name: 'Save mark' }));
+    expect(onMark).not.toHaveBeenCalled();
+    expect((await screen.findAllByText('"Finds the cause" is out of 4 marks.')).length).toBeGreaterThan(0);
+    const first = screen.getByRole('textbox', { name: /Finds the cause/ });
+    await ue.clear(first);
+    await ue.type(first, '4');
+    expect(screen.getByText('Total: 7 / 9')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Save mark' }));
+    expect(onMark).toHaveBeenCalledWith(7, null, [4, 3]);
+  });
+});
+
 describe('Fairness (live, answers 2019, 2165)', () => {
   it('shows each group with its pass rate; a hidden group says so; a finding opens a review', async () => {
     const onOpenReview = vi.fn().mockResolvedValue(undefined);
@@ -73,6 +95,9 @@ describe('Fairness (live, answers 2019, 2165)', () => {
     const dialog = screen.getByRole('dialog');
     await ue.click(within(dialog).getByRole('button', { name: 'Save decision' }));
     expect(onDecide).not.toHaveBeenCalled();
+    // Answer 2273: retiring says it archives the test before it is saved.
+    await ue.click(within(dialog).getByRole('radio', { name: 'Retire the test' }));
+    expect(within(dialog).getByText(/Retiring archives the test/)).toBeInTheDocument();
     await ue.click(within(dialog).getByRole('radio', { name: 'Revise the test' }));
     await ue.type(within(dialog).getByRole('textbox', { name: /Reason/ }), 'Two items favour one group');
     await ue.click(within(dialog).getByRole('button', { name: 'Save decision' }));

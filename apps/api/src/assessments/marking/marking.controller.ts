@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { Transform } from 'class-transformer';
-import { IsInt, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsInt, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { OwnSessionChangesGuard } from '../../auth/own-session.guard';
@@ -26,6 +26,14 @@ export class MarkDto {
   @IsString()
   @MaxLength(2000)
   feedback?: string | null;
+
+  /** Answer 2271: marks per rubric criterion, in the rubric's order (required when the question has a rubric). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsInt({ each: true })
+  @Min(0, { each: true })
+  criteria?: number[];
 }
 
 // Assessments AS-6 (PRC-19): people who mark (asmt.evaluate, or the older exam:manage). No change while acting for
@@ -51,7 +59,7 @@ export class MarkingController {
   @HttpCode(200)
   @RequireAnyPermission('asmt.evaluate', 'exam:manage')
   mark(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('attemptId', ParseUUIDPipe) attemptId: string, @Param('questionId', ParseUUIDPipe) questionId: string, @Body() dto: MarkDto) {
-    return this.marking.mark(ctx, userId, attemptId, questionId, dto.marks, dto.feedback ?? null);
+    return this.marking.mark(ctx, userId, attemptId, questionId, dto.marks, dto.feedback ?? null, dto.criteria);
   }
 
   @Post(':attemptId/:questionId/suggestion')

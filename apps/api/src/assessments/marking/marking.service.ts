@@ -5,7 +5,7 @@ import { ExamRuntimeInternalClient } from '../../exam-runtime-client/exam-runtim
 import { AiInvocationService } from '../../ai/ai-invocation.service';
 import { minorState } from '../../talent-crm/minor';
 import { companySetting } from '../asmt-rules';
-import { markState, nextRound, type MarkState } from './marking-rules';
+import { markState, nextRound, rubricMark, type MarkState } from './marking-rules';
 import { MarkSuggestionClient } from './mark-suggestion.client';
 
 // Assessments AS-6 (PRC-19): the evaluator console. Written, code, file and spoken answers are marked by people:
@@ -34,11 +34,11 @@ export interface MarkingView {
   test: string;
   candidate: string;
   blind: boolean;
-  question: { text: string; type: string; marks: number };
+  question: { text: string; type: string; marks: number; rubric: { criterion: string; marks: number }[] };
   answer: { text: string | null; language: string | null; files: string[] };
   state: MarkState['status'];
   /** My own mark, once I have marked. */
-  mine: { marks: number; feedback: string | null; round: number } | null;
+  mine: { marks: number; feedback: string | null; round: number; criteria: number[] | null } | null;
   /** The moderator sees the two marks (never the comments). */
   toModerate: { a: number; b: number } | null;
   minor: boolean;
@@ -50,6 +50,8 @@ export interface MarkingView {
   assistant: { turns: { role: 'candidate' | 'assistant'; body: string; at: string }[]; otherTurns: number } | null;
 }
 
+/** Answer 2271: the question's rubric as stored (criteria with marks), or none. */
+const rubricOf = (v: unknown): { criterion: string; marks: number }[] => (Array.isArray(v) ? (v as { criterion: string; marks: number }[]) : []);
 const label = (blind: boolean, attemptId: string, name: string) => (blind ? `Candidate ${attemptId.slice(0, 4).toUpperCase()}` : name);
 const files = (json: string | null) => {
   try {
@@ -103,7 +105,7 @@ export class MarkingService {
   private async load(tx: Tx, org: string, attemptId: string, questionId: string) {
     const a = await tx.attempt.findFirst({
       where: { id: attemptId, organizationId: org },
-      select: { id: true, status: true, candidateId: true, submittedAt: true, invitation: { select: { exam: { select: { title: true, aiAllowed: true } }, candidate: { select: { name: true } } } }, answers: { select: { questionId: true, answerText: true, codeLanguage: true, answerFilesJson: true, marksAwarded: true, question: { select: { text: true, type: true, marks: true } } } } },
+      select: { id: true, status: true, candidateId: true, submittedAt: true, invitation: { select: { exam: { select: { title: true, aiAllowed: true } }, candidate: { select: { name: true } } } }, answers: { select: { questionId: true, answerText: true, codeLanguage: true, answerFilesJson: true, marksAwarded: true, question: { select: { text: true, type: true, marks: true, rubric: true } } } } },
     });
     const ans = a?.answers.find((x) => x.questionId === questionId);
     if (!a || !ans || !MANUAL.includes(ans.question.type)) throw new NotFoundException('Answer not found');
@@ -130,10 +132,10 @@ export class MarkingService {
         test: a.invitation.exam.title,
         candidate: label(r.blind, a.id, a.invitation.candidate.name),
         blind: r.blind,
-        question: { text: ans.question.text, type: ans.question.type, marks: ans.question.marks },
+        question: { text: ans.question.text, type: ans.question.type, marks: ans.question.marks, rubric: rubricOf(ans.question.rubric) },
         answer: { text: ans.answerText, language: ans.codeLanguage, files: files(ans.answerFilesJson) },
         state: state.status,
-        mine: mine ? { marks: mine.marks, feedback: mine.feedback, round: mine.round } : null,
+        mine: mine ? { marks: mine.marks, feedback: mine.feedback, round: mine.round, criteria: Array.isArray(mine.criteria) ? (mine.criteria as number[]) : null } : null,
         toModerate: state.status === 'needs_moderation' && !mine ? { a: state.a, b: state.b } : null,
         minor,
         suggestion: s ? { marks: s.marks, reason: s.reason } : null,
@@ -144,19 +146,22 @@ export class MarkingService {
   }
 
   /** My mark: recorded in my round; when it settles the answer, the final mark goes to the engine. */
-  async mark(ctx: TenantContext, userId: string, attemptId: string, questionId: string, marks: number, feedback: string | null) {
+  async mark(ctx: TenantContext, userId: string, attemptId: string, questionId: string, marks: number, feedback: string | null, criteria?: number[]) {
     const org = ctx.organizationId as string;
     const settled = await this.tenantPrisma.forTenant(ctx, async (tx) => {
       const r = await this.rules(tx, org);
       const { a, ans } = await this.load(tx, org, attemptId, questionId);
       if (a.status !== 'pending_manual_grade') throw new ConflictException('This attempt is not waiting for marking.');
       if (marks > ans.question.marks) throw new BadRequestException(`This question is out of ${ans.question.marks} marks.`);
+      const rubric = rubricOf(ans.question.rubric);
+      const byRubric = rubricMark(rubric, criteria, marks);
+      if ('refused' in byRubric) throw new BadRequestException(byRubric.refused);
       const o = { double: r.double, gapPercent: r.gapPercent, max: ans.question.marks };
       const rows = await tx.answerMark.findMany({ where: { attemptId, questionId } });
       const next = nextRound(markState(rows, o), rows, userId);
       if ('refused' in next) throw new ConflictException(next.refused);
       try {
-        await tx.answerMark.create({ data: { attemptId, questionId, markerUserId: userId, round: next.round, marks, feedback: feedback?.trim() || null } });
+        await tx.answerMark.create({ data: { attemptId, questionId, markerUserId: userId, round: next.round, marks, feedback: feedback?.trim() || null, ...(rubric.length ? { criteria: criteria! } : {}) } });
       } catch (e) {
         // Someone else took this round at the same moment: reload and mark the next one.
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('Someone else marked this answer just now. Reload it.');

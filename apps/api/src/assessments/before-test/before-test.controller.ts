@@ -28,6 +28,15 @@ export class DecideAccommodationDto {
   @IsIn(EXTRA_TIME_PERCENTS)
   extraTimePercent?: number | null;
 
+  /** Answer 2202: approving breaks gives this many more breaks (1 to 3) of this length (10, 15, 20 or 30 minutes). */
+  @IsOptional()
+  @IsIn([1, 2, 3])
+  extraBreaks?: number | null;
+
+  @IsOptional()
+  @IsIn([10, 15, 20, 30])
+  breakMinutes?: number | null;
+
   @IsOptional()
   @trim()
   @IsString()

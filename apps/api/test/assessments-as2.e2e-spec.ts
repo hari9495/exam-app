@@ -143,9 +143,9 @@ describe('Assessments AS-2: settings 6.5, proctoring modes, checklist, approval 
     });
 
     it('the builder reads the company defaults it names (mode, approver number); a results reader may not', async () => {
-      expect((await api('author', 'get', '/asmt/tests/defaults').expect(200)).body).toEqual({ proctorMode: 'record', highStakes: 500 });
+      expect((await api('author', 'get', '/asmt/tests/defaults').expect(200)).body).toEqual({ proctorMode: 'record', highStakes: 500, aiDrafts: true });
       await api('reader', 'get', '/asmt/tests/defaults').expect(403);
-      expect((await api('adminB', 'get', '/asmt/tests/defaults').expect(200)).body).toEqual({ proctorMode: 'ai', highStakes: 500 });
+      expect((await api('adminB', 'get', '/asmt/tests/defaults').expect(200)).body).toEqual({ proctorMode: 'ai', highStakes: 500, aiDrafts: true });
     });
 
     it('negative: a mode not offered (live) is 400, a results reader 403, another company 404', async () => {

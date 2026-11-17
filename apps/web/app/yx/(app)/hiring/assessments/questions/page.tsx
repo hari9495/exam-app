@@ -47,6 +47,7 @@ export default function YxQuestionBankPage() {
         onDraftWithAi: (input) => write('POST', '/questions/ai-generate', input),
         onSubmit: (id) => write('POST', `/question-bank/questions/${id}/submit`),
         onRetire: (id) => write('POST', `/questions/${id}/archive`),
+        onRestore: (id) => write('POST', `/question-bank/questions/${id}/restore`),
         onLoadStats: (id) => apiFetch(`/analytics/questions/${id}`, {}, accessToken ?? undefined) as Promise<ItemStats>,
       }}
     />

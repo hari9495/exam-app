@@ -20,6 +20,22 @@ export function waitingText(changes: number, translations: number): string {
 }
 
 /**
+ * Active people of the company who may hold one of `keys` (by role, profile or a grant valid on `day`). A first cut
+ * by text match: check each again with resolvePermissionGrants before acting.
+ */
+export function mayHoldKeys(tx: Tx, org: string, keys: string[], day: string) {
+  const likes = keys.map((k) => `%"${k}"%`);
+  return tx.$queryRaw<{ id: string; role: string; permission_profile_id: string | null }[]>`
+    SELECT u.id::text, u.role, u.permission_profile_id::text FROM users u
+    WHERE u.organization_id = ${org}::uuid AND u.status = 'active' AND (
+      u.role IN (SELECT rp.role FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id WHERE p.key = ANY(${keys}::text[]))
+      OR u.permission_profile_id IN (SELECT p.id FROM permission_profiles p WHERE p.organization_id = ${org}::uuid AND p.permissions_json LIKE ANY(${likes}::text[]))
+      OR u.id IN (SELECT g.user_id FROM role_grants g JOIN permission_profiles p ON p.organization_id = g.organization_id AND p.id = g.permission_profile_id
+                  WHERE g.organization_id = ${org}::uuid AND g.status = 'active' AND p.permissions_json LIKE ANY(${likes}::text[])
+                    AND g.valid_from <= ${day}::date AND (g.valid_to IS NULL OR g.valid_to >= ${day}::date)))`;
+}
+
+/**
  * Answer 2129: once a day, every bank writer who has questions or translations waiting for their review (someone
  * else's, not one they already gave the first approval to) gets one bell note, in companies that have assessments and
  * asmt.bank.review_reminders on (both on by default). Idempotent: the (person, India day) mark is inserted first and the
@@ -35,17 +51,8 @@ export class QuestionReviewNudgesService {
     private readonly notifications: NotificationsService,
   ) {}
 
-  /** Active people of the company who may hold a bank key (by role, profile or grant), checked again one by one. */
-  private async candidates(tx: Tx, org: string, day: string) {
-    const likes = BANK_KEYS.map((k) => `%"${k}"%`);
-    return tx.$queryRaw<{ id: string; role: string; permission_profile_id: string | null }[]>`
-      SELECT u.id::text, u.role, u.permission_profile_id::text FROM users u
-      WHERE u.organization_id = ${org}::uuid AND u.status = 'active' AND (
-        u.role IN (SELECT rp.role FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id WHERE p.key = ANY(${BANK_KEYS}::text[]))
-        OR u.permission_profile_id IN (SELECT p.id FROM permission_profiles p WHERE p.organization_id = ${org}::uuid AND (p.permissions_json LIKE ${likes[0]} OR p.permissions_json LIKE ${likes[1]}))
-        OR u.id IN (SELECT g.user_id FROM role_grants g JOIN permission_profiles p ON p.organization_id = g.organization_id AND p.id = g.permission_profile_id
-                    WHERE g.organization_id = ${org}::uuid AND g.status = 'active' AND (p.permissions_json LIKE ${likes[0]} OR p.permissions_json LIKE ${likes[1]})
-                      AND g.valid_from <= ${day}::date AND (g.valid_to IS NULL OR g.valid_to >= ${day}::date)))`;
+  private candidates(tx: Tx, org: string, day: string) {
+    return mayHoldKeys(tx, org, BANK_KEYS, day);
   }
 
   async sweep(now = new Date(), only?: string[]): Promise<number> {

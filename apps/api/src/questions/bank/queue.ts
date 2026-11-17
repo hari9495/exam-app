@@ -48,6 +48,7 @@ export function contentOf(r: BankRow): QuestionContent {
     imageAlt: r.imageAlt,
     options: [...r.options].sort((a, b) => a.orderIndex - b.orderIndex).map((o) => ({ text: o.text, isCorrect: o.isCorrect, imageUrl: o.imageUrl })),
     optionAlts: Array.isArray(r.optionAlts) ? (r.optionAlts as (string | null)[]) : [],
+    rubric: Array.isArray(r.rubric) ? (r.rubric as { criterion: string; marks: number }[]) : [],
     codeTests: r.codeTestsJson ? (JSON.parse(r.codeTestsJson) as QuestionContent['codeTests']) : undefined,
   };
 }

@@ -13,6 +13,7 @@ import { inr } from '../src/payroll/fnf.service';
 import { dayMonYear } from '../src/payroll/loan-rules';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { markSteppedUp } from './fixtures/step-up';
+import { payrollSettingsApplyAtOnce } from './fixtures/payroll-second-person';
 
 // Founder decision 8 end to end against the real database: a loan or advance is at most the company's months of gross
 // pay (default 2) less what the person still owes, and only after probation unless HR allows everyone. Both settings are
@@ -140,6 +141,8 @@ describe('Payroll loan rules (founder decision 8)', () => {
       await stepUp('approver1');
       await api('approver1', 'post', `/people/changes/${ch.changeId}/approve`).send({ confirmRebase: true }).expect(201);
     }
+    // Answers 1325 / 1521: this suite's payroll settings apply at once (the second-person control is tested elsewhere).
+    await payrollSettingsApplyAtOnce(server(), tenantPrisma, org.A, token.adminA);
   }, 300_000);
 
   afterAll(async () => {

@@ -12,6 +12,7 @@ import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { loanEmi } from '../src/payroll/inputs.service';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { markSteppedUp } from './fixtures/step-up';
+import { payrollSettingsApplyAtOnce } from './fixtures/payroll-second-person';
 
 // Founder answers of 30 Oct 2026 end to end against the real database:
 //   1  the loan interest rate is the company's per loan type (settings with a default); a client rate is refused;
@@ -135,6 +136,8 @@ describe('Pay follow-ups (founder answers 1, 2, 3, 5, 16)', () => {
     ).body;
     await stepUp('approver1');
     await api('approver1', 'post', `/people/changes/${ch.changeId}/approve`).send({ confirmRebase: true }).expect(201);
+    // Answers 1325 / 1521: this suite's payroll settings apply at once (the second-person control is tested elsewhere).
+    await payrollSettingsApplyAtOnce(server(), tenantPrisma, org.A, token.adminA);
   }, 300_000);
 
   afterAll(async () => {

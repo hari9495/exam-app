@@ -1484,6 +1484,49 @@ so it was not built here (question 2272).
 2275. **Other groups.** Only gender is asked. *Suggested: keep to gender until a customer asks; any new group is
       voluntary, with "prefer not to say", and the same minimum.*
 
+## Assessment follow-ups as built (branch `feat/yukthix-asmt-followups`, 17 Nov 2026; answers 2151, 2153, 2158, 2191, 2202, 2204, 2224, 2271, 2273)
+
+- **2191:** already built with the question bank follow-ups (2121): a bulk upload makes drafts in the review queue, the
+  uploader as author (e2e `question-bank-followups`). Nothing new.
+- **2224 Restore:** a retired question that was approved before has "Restore" in its drawer in the question bank
+  (`POST /question-bank/questions/:id/restore`, bank writers). It comes back approved as it was, audited
+  (`question.restored`). A question never approved is refused ("open it and send it for review"); one not retired too.
+- **2158 Telling the approver:** asking for approval of a big test sends a bell note ("A test waits for your approval")
+  to everyone with the tests key, never the asker or the author, linked to the test.
+- **2204 Telling the candidate:** each accommodation decision emails the candidate what was approved (or that it could
+  not be), with the message. The decision stands if the email fails.
+- **2202 Help that is applied:** migration `202617z0000381_asmt_followups`. Approving breaks asks how many more (1 to 3)
+  and how long (10, 15, 20 or 30 minutes); the invitation gets them, never shorter than the test's own. Approving
+  "changes to proctoring" gives the invitation the "no gaze flags" profile: looking down and head turns are not watched,
+  and the AI review of snapshots does not flag looking away. Both only before the test starts. The runtime reads them
+  once (`invitationExam`), with the extra time, wherever an attempt is settled or watched.
+- **2153 Sections in the builder:** the designed Sections step renames, reweights, adds and removes sections (with a
+  confirmation); the Blueprint step changes how many questions each pool draws and at what difficulty. Choosing
+  questions and a pool's skills stay on the older editor (question 2284).
+- **2151 Build from a job description:** behind `asmt.ai_generation` (AI-drafted questions and tests, on by default;
+  also gates the AI question drafts). Only the job description and the company's skill names go to AI. It proposes
+  skills with shares and a level; a skill not in the library must be mapped or removed; the person confirms and a
+  draft test is made with one pool section per skill. Audited.
+- **2271 Rubrics:** migration `202617z0000382_asmt_rubrics`. Essay and code questions may have up to 10 criteria with
+  whole marks adding up to the question's marks, written and reviewed in the bank (a change is a reviewed change).
+  PRC-19 marks each criterion; the total is their sum; the marks per criterion are kept with the mark.
+- **2273 Retire:** deciding "retire" on a fairness review archives the test (audited); the dialog says so first.
+- **Tests:** e2e `assessments-followups` (10); API unit (bank rubric 2, marking rubric 2, job description 3); runtime
+  unit (`invitationExam` 3); kit (bank +3, tests builder +4, accommodation +1, marking +1, fairness retire).
+
+### Questions (from 2284)
+
+2284. **Choosing questions in the designed builder.** Sections, weights and pool draws are edited in the designed
+      steps; picking a fixed section's questions and a pool's skills still opens the older editor. *Suggested: a
+      question picker and a skills picker in the Sections step next, then retire the older editor.*
+2285. **Mapping skills for test writers.** The skills list comes from the question tags, which need the bank key; a
+      test writer without it cannot map a skill the AI did not match. *Suggested: let the tests key read the skill
+      names (names only).*
+2286. **Rubric and AI suggestion.** The AI suggestion still gives one mark. *Suggested: suggest per criterion when
+      the question has a rubric, still only after the marker's own mark.*
+2287. **Unarchiving a retired test.** An archived test has no way back in the new pages. *Suggested: "Restore" on an
+      archived test for test writers, audited, like the question bank's.*
+
 **Founder answers (17 Nov 2026, "ok for all"), 2267-2275:** 2267 a "Live console" button on a published test for proctors; 2268 integrity score and thumbnails in AS-5 part 3; 2269 show the candidate's reply thread in the console drawer; 2270 after 3 face mismatches tell the candidate a proctor will check and flag it on the console; 2271 rubrics per essay and code question, marked criterion by criterion; 2272 AI-allowed tests as AS-6 part 2 after the live console; 2273 retiring after a fairness finding archives the test (with confirmation); 2274 a "may be chance" check later with the analysis tab; 2275 keep gender only until a customer asks.
 
 ## AS-5 as built, part 3 (branch `feat/yukthix-assessments-as5`, 17 Nov 2026; answers 2262, 2267-2270)
@@ -1532,6 +1575,12 @@ so it was not built here (question 2272).
 - 2278: keep Withdraw = erasure of recordings and face data; a "no monitoring for future tests" choice only if a customer asks.
 - 2279: the privacy centre lists accommodation evidence with its own delete date, and the erasure includes it (AS-6 part 2).
 - 2280: show unread proctor messages in the paused view too.
+
+**Founder answers (17 Nov 2026, "ok for all"), 2284 to 2287:**
+- 2284: add a question picker and a skills picker to the designed Sections step, then retire the older editor.
+- 2285: the tests key may read skill names (names only).
+- 2286: the AI suggests a mark per rubric criterion when the question has a rubric, still only after the marker's own mark.
+- 2287: "Restore" on an archived test for test writers, audited, like the question bank's.
 
 ## AS-6 as built, part 2 (branch `feat/yukthix-assessments-as6b`, 17 Nov 2026; answers 2272, 2277, 2279, 2280)
 

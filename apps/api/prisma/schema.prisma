@@ -627,6 +627,8 @@ model Question {
   /// Alt text for the question's image and, by option order, each option's image (approval needs them).
   imageAlt           String?               @map("image_alt") @db.VarChar(500)
   optionAlts         Json                  @default("[]") @map("option_alts")
+  /// Answer 2271: criteria with marks for essay and code questions ([{ criterion, marks }]).
+  rubric         Json      @default("[]")
   lastApprovedBy     String?               @map("last_approved_by") @db.Uuid
   lastApprovedAt     DateTime?             @map("last_approved_at") @db.Timestamptz(3)
   revisions          QuestionRevision[]
@@ -1021,6 +1023,10 @@ model Invitation {
   advancedFromExamId     String?                 @map("advanced_from_exam_id") @db.Uuid
   resendCount            Int                     @default(0) @map("resend_count")
   extraTimePercent       Int                     @default(0) @map("extra_time_percent")
+  /// Answer 2202: from an approved accommodation.
+  extraBreaks            Int                     @default(0) @map("extra_breaks") @db.SmallInt
+  breakMinutes           Int?                    @map("break_minutes") @db.SmallInt
+  proctoringProfile      String?                 @map("proctoring_profile") @db.VarChar(20)
   invitedAt              DateTime                @default(now()) @map("invited_at") @db.Timestamptz(3)
   expiresAt              DateTime                @map("expires_at") @db.Timestamptz(3)
   revokedAt              DateTime?               @map("revoked_at") @db.Timestamptz(3)
@@ -1210,6 +1216,8 @@ model AnswerMark {
   round          Int      @db.SmallInt
   marks          Int
   feedback       String?  @db.VarChar(2000)
+  /// Answer 2271: marks per rubric criterion, in the rubric order.
+  criteria       Json?
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([attemptId, questionId, markerUserId], map: "answer_marks_marker_key")
@@ -14723,6 +14731,8 @@ model AccommodationRequest {
   status                  String     @default("pending") @db.VarChar(12)
   approvedKinds           String[]   @default([]) @map("approved_kinds") @db.VarChar(20)
   grantedExtraTimePercent Int?       @map("granted_extra_time_percent")
+  grantedExtraBreaks     Int?       @map("granted_extra_breaks") @db.SmallInt
+  grantedBreakMinutes    Int?       @map("granted_break_minutes") @db.SmallInt
   message                 String?    @db.VarChar(2000)
   decidedBy               String?    @map("decided_by") @db.Uuid
   decidedAt               DateTime?  @map("decided_at") @db.Timestamptz(3)

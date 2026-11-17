@@ -4,7 +4,7 @@ import { AuditService, TenantContext, TenantPrismaService } from '@exam-platform
 import { SETTINGS } from '../../org-structure/settings-registry';
 import { QuestionsService } from '../questions.service';
 import type { CreateQuestionDto } from '../dto/create-question.dto';
-import { changedFields, isMajorChange, missingAltText, normalized, type QuestionContent } from './bank-rules';
+import { changedFields, isMajorChange, missingAltText, normalized, rubricProblem, type QuestionContent } from './bank-rules';
 import { commaList, companySetting, contentOf, sendForReview } from './queue';
 
 type Tx = Prisma.TransactionClient;
@@ -145,6 +145,8 @@ export class QuestionBankService {
           openChange: open ? { state: open.state, kind: open.kind } : null,
           languages: ['en', ...r.translations.filter((t) => t.version === r.version).map((t) => t.language)],
           aiDrafted: r.aiGenerated,
+          // Answer 2224: a retired question that was approved before can be restored.
+          wasApproved: r.lastApprovedAt !== null,
           updatedAt: (r.lastApprovedAt ?? r.createdAt).toISOString(),
         };
       });
@@ -194,8 +196,10 @@ export class QuestionBankService {
   /** A new question: a draft nobody can use until it is submitted and approved by another person. */
   async create(w: Who, raw: QuestionContent) {
     const c = normalized(raw);
+    const bad = rubricProblem(c);
+    if (bad) throw new BadRequestException(bad);
     const q = await this.questions.create(w.ctx, w.userId, this.dtoOf(c), { status: 'draft' });
-    await this.tx(w, (tx) => tx.question.update({ where: { id: q.id }, data: { imageAlt: c.imageAlt ?? null, optionAlts: (c.optionAlts ?? []) as Prisma.InputJsonValue } }));
+    await this.tx(w, (tx) => tx.question.update({ where: { id: q.id }, data: { imageAlt: c.imageAlt ?? null, optionAlts: (c.optionAlts ?? []) as Prisma.InputJsonValue, rubric: (c.rubric ?? []) as Prisma.InputJsonValue } }));
     return { id: q.id };
   }
 
@@ -205,6 +209,8 @@ export class QuestionBankService {
    */
   async save(w: Who, id: string, raw: QuestionContent) {
     const c = normalized(raw);
+    const bad = rubricProblem(c);
+    if (bad) throw new BadRequestException(bad);
     const r = await this.tx(w, (tx, org) => this.row(tx, org, id));
     if (r.status === 'archived') throw new ConflictException('This question is retired.');
     const open = await this.tx(w, (tx, org) => tx.questionRevision.findFirst({ where: { questionId: id, organizationId: org, state: { in: OPEN } } }));
@@ -215,7 +221,7 @@ export class QuestionBankService {
       if (r.createdBy !== w.userId) throw new ForbiddenException('Only the question’s author changes a draft. Ask for changes in review instead.');
       await this.questions.update(w.ctx, w.userId, id, this.dtoOf(c));
       await this.tx(w, async (tx) => {
-        await tx.question.update({ where: { id }, data: { imageAlt: c.imageAlt ?? null, optionAlts: (c.optionAlts ?? []) as Prisma.InputJsonValue } });
+        await tx.question.update({ where: { id }, data: { imageAlt: c.imageAlt ?? null, optionAlts: (c.optionAlts ?? []) as Prisma.InputJsonValue, rubric: (c.rubric ?? []) as Prisma.InputJsonValue } });
         if (open) await tx.questionRevision.update({ where: { id: open.id }, data: { state: 'draft', content: c as unknown as Prisma.InputJsonValue, rowVersion: { increment: 1 } } });
       });
       return { saved: 'draft' as const };
@@ -257,6 +263,19 @@ export class QuestionBankService {
       if (open.authorId !== w.userId) throw new ForbiddenException('Only the person who made this change withdraws it.');
       await tx.questionRevision.update({ where: { id: open.id }, data: { state: open.kind === 'new' ? 'draft' : 'withdrawn', submittedAt: null, rowVersion: { increment: 1 } } });
       await AuditService.recordIn(tx, w.ctx, { actorUserId: w.userId, action: 'question.change_withdrawn', entityType: 'question', entityId: id, metadata: { revision: open.id } });
+    });
+  }
+
+  /** Answer 2224: a retired question that was approved before comes back approved, as it was; a never-approved one goes through review. */
+  async restore(w: Who, id: string) {
+    return this.tx(w, async (tx, org) => {
+      const q = await tx.question.findFirst({ where: { id, organizationId: org }, select: { status: true, lastApprovedAt: true, version: true } });
+      if (!q) throw new NotFoundException('Question not found');
+      if (q.status !== 'archived') throw new ConflictException('This question is not retired.');
+      if (!q.lastApprovedAt) throw new ConflictException('This question was never approved. Open it and send it for review.');
+      await tx.question.update({ where: { id }, data: { status: 'active' } });
+      await AuditService.recordIn(tx, w.ctx, { actorUserId: w.userId, action: 'question.restored', entityType: 'question', entityId: id, metadata: { version: q.version } });
+      return { status: 'approved' as const };
     });
   }
 
@@ -348,7 +367,7 @@ export class QuestionBankService {
       const now = new Date();
       await tx.question.update({
         where: { id: r.questionId },
-        data: { status: 'active', version: r.version, imageAlt: content.imageAlt ?? null, optionAlts: (content.optionAlts ?? []) as Prisma.InputJsonValue, lastApprovedBy: w.userId, lastApprovedAt: now, ...(r.kind === 'major' ? { answerKeyChangedAt: now } : {}) },
+        data: { status: 'active', version: r.version, imageAlt: content.imageAlt ?? null, optionAlts: (content.optionAlts ?? []) as Prisma.InputJsonValue, rubric: (content.rubric ?? []) as Prisma.InputJsonValue, lastApprovedBy: w.userId, lastApprovedAt: now, ...(r.kind === 'major' ? { answerKeyChangedAt: now } : {}) },
       });
       await this.claim(tx, r.id, rowVersion + 1, { state: 'approved', ...(r.needsSecond ? { secondReviewerId: w.userId, secondReviewedAt: now } : { reviewerId: w.userId, reviewedAt: now, fieldComments: comments as Prisma.InputJsonValue }) });
       await AuditService.recordIn(tx, w.ctx, { actorUserId: w.userId, action: 'question.approved', entityType: 'question', entityId: r.questionId, metadata: { revision: r.id, kind: r.kind, version: r.version, author: r.authorId } });

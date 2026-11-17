@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { companySetting } from '../assessments/asmt-rules';
 import { Prisma, Question, QuestionOption, QuestionTag, Tag } from '@prisma/client';
 import { TenantPrismaService, answerKeyDiffers, optionRowsDiffer, validateCodeTests, parseCodeTests, CodeTestCase } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
@@ -373,6 +374,10 @@ export class QuestionsService {
         }
       });
     }
+
+    // Answer 2151: the company may switch AI drafts off (Settings › Assessments, asmt.ai_generation).
+    const aiOff = await this.tenantPrisma.forTenant(context, async (tx) => (await companySetting(tx, context.organizationId as string, 'asmt.ai_generation')) === 'off');
+    if (aiOff === true) throw new ForbiddenException('AI drafts are switched off for your company (Settings › Assessments).');
 
     // Fail fast. Without this the job is enqueued, picked up, and fails minutes later -- the
     // recruiter waits for a result that was never possible.

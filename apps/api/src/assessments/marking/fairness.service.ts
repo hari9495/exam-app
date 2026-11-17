@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { Prisma } from '@prisma/client';
 import { AuditService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { companySetting } from '../asmt-rules';
+import { ExamsService } from '../../exams/exams.service';
 import { impactRows, surveySummary, type ImpactRow } from './fairness-rules';
 
 // Assessments AS-6 (answers 2019, 2165): a test's fairness from voluntary answers only, as counts per group, hidden
@@ -26,6 +27,7 @@ export class FairnessService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly audit: AuditService,
+    private readonly exams: ExamsService,
   ) {}
 
   async view(ctx: TenantContext, examId: string): Promise<FairnessView> {
@@ -79,6 +81,11 @@ export class FairnessService {
     const n = await this.tenantPrisma.forTenant(ctx, (tx) => tx.asmtFairnessReview.updateMany({ where: { id: reviewId, organizationId: ctx.organizationId as string, decision: null }, data: { decision, reason: reason.trim(), decidedBy: userId, decidedAt: new Date() } }));
     if (!n.count) throw new NotFoundException('No open review to decide.');
     await this.audit.record(ctx, { actorUserId: userId, action: 'asmt.fairness_review.decided', entityType: 'asmt_fairness_review', entityId: reviewId, metadata: { decision } });
+    // Answer 2273: retiring archives the test (no new invitations; past attempts and reports stay), audited as usual.
+    if (decision === 'retire') {
+      const r = await this.tenantPrisma.forTenant(ctx, (tx) => tx.asmtFairnessReview.findFirstOrThrow({ where: { id: reviewId }, select: { examId: true } }));
+      await this.exams.archive(ctx, userId, r.examId);
+    }
     return { decided: true };
   }
 }

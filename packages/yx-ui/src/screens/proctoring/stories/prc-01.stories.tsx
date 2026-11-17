@@ -18,6 +18,7 @@ export const Error: S = { args: { state: 'error' } };
 // AS-1: the states the real question bank has (answers 2009, 2010, 2017).
 export const CompanyQuestions: S = { name: 'Company questions with review states', render: () => <QuestionBankScreen live={liveBank()} /> };
 export const PacksSwitch: S = { name: 'Starter packs switched on or off', render: () => <QuestionBankScreen live={liveBank({ settings: { languages: [], secondApproverCollections: [], duplicatePercent: 90, provisionalAnswers: 200, packs: ['english'] } })} /> };
+export const RetiredRestore: S = { name: 'Retired question: restore (answer 2224)', render: () => <QuestionBankScreen live={liveBank()} /> };
 export const NoQuestions: S = { name: 'No questions yet', render: () => <QuestionBankScreen live={liveBank({ rows: [], stats: {} })} /> };
 // Bank follow-ups (answer 2121): import and AI drafts land in the review queue.
 export const ImportQuestions: S = { name: 'Import a file (rows land in review)', render: () => <QuestionBankScreen live={liveBank({ defaultDialog: 'import' })} /> };

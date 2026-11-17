@@ -33,9 +33,9 @@ import { runnerSetting } from './runner-settings';
 import { StartAttemptDto } from './dto/start-attempt.dto';
 import { getProctoringEventSeverity, isStrikeWorthy } from './proctoring-severity';
 import { resolveProctoringConfig, isSignalEnabled, isProctoringBypassActive, ExamProctoringConfig } from './proctoring-config';
+import { invitationExam } from './invitation-exam';
 import { ReportProctoringEventDto } from './dto/report-proctoring-event.dto';
 import { shuffle } from './shuffle';
-import { effectiveDurationMinutes } from '../grading/grading';
 import { PistonClient, PistonExecuteResult } from '../code-execution/piston-client';
 import { PistonRuntimesService } from '../code-execution/piston-runtimes.service';
 import { RunLimiter } from '../code-execution/run-limiter';
@@ -1263,7 +1263,8 @@ export class AttemptService {
       // able to record events, strikes, or a pause/block. Ignore rather than reject, for
       // the same reason as the disabled-signal guard above.
       const proctoring = resolveProctoringConfig(exam, attempt);
-      if (!proctoring.webcamEnabled) {
+      // Answer 2202: a head turn is a gaze signal; the "no gaze" profile (or the test) does not watch it.
+      if (!proctoring.webcamEnabled || (dto.reason === 'head_turned' && !isSignalEnabled(proctoring, 'webcam_head_turned'))) {
         return { skip: true as const, strike: attempt.webcamViolationCount, status: attempt.status };
       }
       const screenDecision = this.decideScreenCapture(attempt, dto.screenshot, proctoring.screenCaptureEnabled);
@@ -2158,10 +2159,7 @@ export class AttemptService {
     if (!invitation || !invitation.exam) {
       throw new UnauthorizedException('Invalid candidate session');
     }
-    const exam = {
-      ...invitation.exam,
-      durationMinutes: effectiveDurationMinutes(invitation.exam.durationMinutes, invitation.extraTimePercent),
-    };
+    const exam = invitationExam(invitation.exam, invitation);
     return { organizationId: exam.organizationId, exam, invitation };
   }
 
