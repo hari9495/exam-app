@@ -1740,3 +1740,4 @@ MT-PPL-C-13..15 and MT-TIM-L-39..40.
 - 2288: Tamil Nadu's new PT months (August / January) start with the half-year from 1 Oct 2026; January 2027 is the first new deduction.
 - 2289: EDLI and admin-charge ceilings stay at ₹15,000 until the CA confirms checklist item 46; then a new rule version, with "verify" turned off.
 - 2290: the entity-settings bug (saved for a legal entity, never takes effect) is fixed separately on test main (`fix/yukthix-entity-settings`).
+- 2291 (17 Nov 2026, "ok for all"): the bonus, loan-rules, follow-ups and reports e2e suites turn the second-person rule off for their own company through `test/fixtures/payroll-second-person.ts`; the rule stays on by default and is covered by `settings-s3-payroll` and `settings-s7-moves`.
