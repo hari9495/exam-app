@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { TenantPrismaService, AiApiKeyResolverService, AiNotConfiguredError, BlobStorageService } from '@exam-platform/shared';
 import { QuotaService } from '../billing/quota.service';
 import { resolveProctoringConfig } from '../attempts/proctoring-config';
+import { GAZE_AI_FLAG } from '../attempts/invitation-exam';
 import { getProctoringEventSeverity } from '../attempts/proctoring-severity';
 import { WebcamVisionClient } from './webcam-vision.client';
 
@@ -50,7 +51,9 @@ export class WebcamVisionService {
       const images = await this.downloadFrames(this.sample(urls, MAX_FRAMES));
       if (images.length === 0) return;
 
-      const verdict = await this.client.analyze(images, aiProvider);
+      const raw = await this.client.analyze(images, aiProvider);
+      // Answer 2202: the "no gaze" profile is not flagged for looking away.
+      const verdict = attempt.invitation.proctoringProfile === 'no_gaze' ? { ...raw, flags: raw.flags.filter((f) => f.type !== GAZE_AI_FLAG) } : raw;
 
       await this.tenantPrisma.forTenant(context, async (tx) => {
         // One credit per analysis call, billed whether or not it flags (the spend happened).

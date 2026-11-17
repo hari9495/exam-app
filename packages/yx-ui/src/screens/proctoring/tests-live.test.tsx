@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { ScoreReportScreen, TestBuilderScreen } from './bank-tests';
-import { BUILDER_TEST, BUILDER_WAITING, liveBuilder, liveReport } from './tests-live-samples';
+import { BUILDER_TEST, BUILDER_WAITING, COMPANY_SKILLS, JD_PLAN, liveBuilder, liveReport } from './tests-live-samples';
 import { timeSettingsListChanges, type TimeSettingsData } from '../settings/time-settings-live';
 
 // AS-2 (answers 2007, 2008, 2123): the designed test builder and score report with live data.
@@ -72,6 +72,73 @@ describe('PRC-04 test builder (live)', () => {
     await ue.click(await toRadio(/^Open/));
     expect(locked).not.toHaveBeenCalled();
     expect(await screen.findAllByText('This test is locked. Copy it to change proctoring.')).not.toHaveLength(0);
+  });
+
+  it('answer 2153: the Sections step renames, reweights, adds and removes sections; negative: no name, no new section', async () => {
+    const onSaveSection = vi.fn().mockResolvedValue(undefined);
+    const onAddSection = vi.fn().mockResolvedValue(undefined);
+    const onDeleteSection = vi.fn().mockResolvedValue(undefined);
+    wrap(<TestBuilderScreen live={liveBuilder({ onSaveSection, onAddSection, onDeleteSection, onSavePool: vi.fn() })} />);
+    const name = screen.getByRole('textbox', { name: 'Name of Aptitude' });
+    await ue.clear(name);
+    await ue.type(name, 'Reasoning');
+    const weight = screen.getByRole('textbox', { name: 'Weight of Aptitude' });
+    await ue.clear(weight);
+    await ue.type(weight, '40');
+    expect(screen.getByText('110 %')).toBeInTheDocument();
+    await ue.click(screen.getAllByRole('button', { name: 'Save' })[0]!);
+    expect(onSaveSection).toHaveBeenCalledWith('s1', { title: 'Reasoning', weightPercent: 40 });
+    await ue.click(screen.getByRole('button', { name: 'Add section' }));
+    expect(screen.getByText('Give the section a name.')).toBeInTheDocument();
+    expect(onAddSection).not.toHaveBeenCalled();
+    await ue.type(screen.getByRole('textbox', { name: /New section/ }), 'Spring');
+    await ue.click(screen.getByRole('button', { name: 'Add section' }));
+    expect(onAddSection).toHaveBeenCalledWith('Spring');
+    await ue.click(screen.getAllByRole('button', { name: 'Remove' })[2]!);
+    await ue.click(screen.getByRole('button', { name: 'Remove section' }));
+    expect(onDeleteSection).toHaveBeenCalledWith('s3');
+  });
+
+  it('answer 2153: the Blueprint step changes how many a pool draws and at what difficulty; a locked test cannot', async () => {
+    const onSavePool = vi.fn().mockResolvedValue(undefined);
+    const { unmount } = wrap(<TestBuilderScreen live={liveBuilder({ onSavePool, onSaveSection: vi.fn(), onAddSection: vi.fn(), onDeleteSection: vi.fn() })} />);
+    await ue.click(screen.getByRole('button', { name: /^Continue/ }));
+    const drawn = screen.getByRole('textbox', { name: 'Questions drawn in SQL' });
+    await ue.clear(drawn);
+    await ue.type(drawn, '5');
+    await ue.click(within(screen.getByRole('table')).getAllByRole('button', { name: 'Save' })[1]!);
+    expect(onSavePool).toHaveBeenCalledWith('s3', { poolSize: 5, poolDifficulty: 'hard' });
+    unmount();
+    wrap(<TestBuilderScreen live={liveBuilder({ test: { ...BUILDER_TEST, editable: false }, onSavePool, onSaveSection: vi.fn(), onAddSection: vi.fn(), onDeleteSection: vi.fn() })} />);
+    expect(screen.queryByRole('textbox', { name: 'Name of Aptitude' })).toBeNull();
+    await ue.click(screen.getByRole('button', { name: /^Continue/ }));
+    expect(screen.getByRole('table', { name: /^Blueprint/ })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Questions drawn in SQL' })).toBeNull();
+  });
+
+  it('answer 2151: a job description proposes skills; an unmapped skill blocks the draft until mapped; then it is created', async () => {
+    const onProposeFromJd = vi.fn().mockResolvedValue(JD_PLAN);
+    const onCreateFromJd = vi.fn().mockResolvedValue(undefined);
+    wrap(<TestBuilderScreen live={liveBuilder({ test: null, skills: COMPANY_SKILLS, onProposeFromJd, onCreateFromJd })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Build from job description' }));
+    expect(screen.getByRole('button', { name: 'Find the skills' })).toBeDisabled();
+    await ue.type(screen.getByRole('textbox', { name: /Job description/ }), 'Senior backend developer, Java 17, Spring Boot and SQL for our distributor app.');
+    await ue.click(screen.getByRole('button', { name: 'Find the skills' }));
+    expect(onProposeFromJd).toHaveBeenCalledWith('Senior backend developer, Java 17, Spring Boot and SQL for our distributor app.');
+    expect(await screen.findByText('Not in your library')).toBeInTheDocument();
+    await ue.type(screen.getByRole('textbox', { name: 'Test name' }), 'Backend L3');
+    await ue.click(screen.getByRole('button', { name: 'Create draft test' }));
+    expect(screen.getByText(/Map the skill not in your library/)).toBeInTheDocument();
+    expect(onCreateFromJd).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('combobox', { name: 'Your skill for Spring' }));
+    await ue.click(await screen.findByRole('option', { name: 'Spring Boot' }));
+    await ue.click(screen.getByRole('button', { name: 'Create draft test' }));
+    expect(onCreateFromJd).toHaveBeenCalledWith({ title: 'Backend L3', level: 'hard', total: 20, skills: [{ tagId: 'k1', percent: 50 }, { tagId: 'k2', percent: 30 }, { tagId: 'k3', percent: 20 }] });
+  });
+
+  it('negative: without the AI setting there is no job description tab', () => {
+    wrap(<TestBuilderScreen live={liveBuilder({ test: null })} />);
+    expect(screen.queryByRole('tab', { name: 'Build from job description' })).toBeNull();
   });
 
   it('negative: a new test without a name is not created; with one it is', async () => {

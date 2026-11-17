@@ -1,7 +1,30 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ACCOMMODATION_LABEL, AuditService, BlobStorageService, EXTRA_TIME_PERCENTS, TenantContext, TenantPrismaService, type AccommodationKind } from '@exam-platform/shared';
 import { Prisma } from '@prisma/client';
 import { SETTINGS, resolveSetting } from '../../org-structure/settings-registry';
+import { EmailService } from '../../email/email.service';
+import { escapeHtml } from '../../notifications/notification-email-render';
+
+/** Answer 2204: the words of the decision email, one paragraph each. */
+export function accommodationDecisionText(company: string, test: string, status: string, approved: string[], d: { extraTimePercent?: number | null; extraBreaks?: number | null; breakMinutes?: number | null; message?: string | null }): string[] {
+  const what = approved.map((k) =>
+    k === 'time'
+      ? `${d.extraTimePercent} % extra time`
+      : k === 'breaks'
+        ? `${d.extraBreaks} extra break${d.extraBreaks === 1 ? '' : 's'} of up to ${d.breakMinutes} minutes`
+        : k === 'profile'
+          ? 'proctoring that does not watch where you look'
+          : (ACCOMMODATION_LABEL[k as AccommodationKind] ?? k).toLowerCase(),
+  );
+  const lines = [
+    status === 'declined'
+      ? `${company} could not approve the help you asked for with ${test}.`
+      : `${company} ${status === 'partly' ? 'approved part of' : 'approved'} the help you asked for with ${test}: ${what.join('; ')}.`,
+  ];
+  if (d.message?.trim()) lines.push(`Their message: ${d.message.trim()}`);
+  lines.push('You will see this when you open your test link. Reply to this email if anything is unclear.');
+  return lines;
+}
 
 /** A company setting's value (company scope; the product default when not set). */
 async function companySetting(tx: Prisma.TransactionClient, org: string, key: string): Promise<string> {
@@ -27,6 +50,8 @@ export interface AccommodationRowView {
   status: string;
   approvedKinds: string[];
   grantedExtraTimePercent: number | null;
+  grantedExtraBreaks: number | null;
+  grantedBreakMinutes: number | null;
   message: string | null;
   createdAt: string;
   decidedAt: string | null;
@@ -56,6 +81,8 @@ export interface ConnectivityRowView {
 export interface DecideAccommodation {
   approvedKinds: string[];
   extraTimePercent?: number | null;
+  extraBreaks?: number | null;
+  breakMinutes?: number | null;
   message?: string | null;
 }
 
@@ -63,10 +90,13 @@ const RUNNING = ['in_progress', 'paused'];
 
 @Injectable()
 export class BeforeTestService {
+  private readonly logger = new Logger(BeforeTestService.name);
+
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly blobStorage: BlobStorageService,
     private readonly audit: AuditService,
+    private readonly email: EmailService,
   ) {}
 
   private names(org: string, ids: (string | null)[]) {
@@ -100,6 +130,8 @@ export class BeforeTestService {
       status: r.status,
       approvedKinds: r.approvedKinds,
       grantedExtraTimePercent: r.grantedExtraTimePercent,
+      grantedExtraBreaks: r.grantedExtraBreaks,
+      grantedBreakMinutes: r.grantedBreakMinutes,
       message: r.message,
       createdAt: r.createdAt.toISOString(),
       decidedAt: r.decidedAt?.toISOString() ?? null,
@@ -121,7 +153,7 @@ export class BeforeTestService {
   async decide(ctx: TenantContext, userId: string, id: string, dto: DecideAccommodation) {
     const org = ctx.organizationId as string;
     const out = await this.tenantPrisma.forTenant(ctx, async (tx) => {
-      const r = await tx.accommodationRequest.findFirst({ where: { id, organizationId: org }, include: { invitation: { select: { id: true, attempt: { select: { id: true } } } } } });
+      const r = await tx.accommodationRequest.findFirst({ where: { id, organizationId: org }, include: { invitation: { select: { id: true, attempt: { select: { id: true } }, exam: { select: { title: true } }, candidate: { select: { name: true, email: true } } } } } });
       if (!r) throw new NotFoundException('Request not found');
       if (r.status !== 'pending') throw new ConflictException('This request was already decided. Reload to see the decision.');
       const approved = [...new Set(dto.approvedKinds)];
@@ -129,25 +161,49 @@ export class BeforeTestService {
       const time = approved.includes('time');
       if (time && !(EXTRA_TIME_PERCENTS as readonly number[]).includes(dto.extraTimePercent ?? -1)) throw new BadRequestException('Choose 25 %, 50 % or 100 % extra time to approve.');
       if (time && r.invitation.attempt) throw new ConflictException('The test has started, so extra time can no longer change.');
+      // Answer 2202: breaks and the "no gaze" proctoring profile apply to the invitation too, so also only before the test.
+      const breaks = approved.includes('breaks');
+      const profile = approved.includes('profile');
+      if (breaks && (!dto.extraBreaks || !dto.breakMinutes)) throw new BadRequestException('Choose how many extra breaks and how long each is to approve breaks.');
+      if ((breaks || profile) && r.invitation.attempt) throw new ConflictException('The test has started, so breaks and proctoring can no longer change.');
       const status = approved.length === 0 ? 'declined' : approved.length === r.kinds.length ? 'approved' : 'partly';
       // Guarded on still pending: two people deciding at once, the second is told.
       const res = await tx.accommodationRequest.updateMany({
         where: { id, status: 'pending' },
-        data: { status, approvedKinds: approved, grantedExtraTimePercent: time ? dto.extraTimePercent! : null, message: dto.message?.trim() || null, decidedBy: userId, decidedAt: new Date() },
+        data: { status, approvedKinds: approved, grantedExtraTimePercent: time ? dto.extraTimePercent! : null, grantedExtraBreaks: breaks ? dto.extraBreaks! : null, grantedBreakMinutes: breaks ? dto.breakMinutes! : null, message: dto.message?.trim() || null, decidedBy: userId, decidedAt: new Date() },
       });
       if (!res.count) throw new ConflictException('This request was already decided. Reload to see the decision.');
       // Approved extra time becomes the invitation's extra time (as the older accommodation route did).
-      if (time) await tx.invitation.update({ where: { id: r.invitation.id }, data: { extraTimePercent: dto.extraTimePercent! } });
-      return { status, approved, invitationId: r.invitation.id };
+      if (time || breaks || profile)
+        await tx.invitation.update({
+          where: { id: r.invitation.id },
+          data: { ...(time ? { extraTimePercent: dto.extraTimePercent! } : {}), ...(breaks ? { extraBreaks: dto.extraBreaks!, breakMinutes: dto.breakMinutes! } : {}), ...(profile ? { proctoringProfile: 'no_gaze' } : {}) },
+        });
+      return { status, approved, invitationId: r.invitation.id, test: r.invitation.exam.title, candidate: r.invitation.candidate };
     });
     await this.audit.record(ctx, {
       actorUserId: userId,
       action: 'accommodation.decided',
       entityType: 'accommodation_request',
       entityId: id,
-      metadata: { status: out.status, approved: out.approved.map((k) => ACCOMMODATION_LABEL[k as AccommodationKind] ?? k), extraTimePercent: out.approved.includes('time') ? dto.extraTimePercent : null, invitationId: out.invitationId },
+      metadata: { status: out.status, approved: out.approved.map((k) => ACCOMMODATION_LABEL[k as AccommodationKind] ?? k), extraTimePercent: out.approved.includes('time') ? dto.extraTimePercent : null, extraBreaks: out.approved.includes('breaks') ? dto.extraBreaks : null, breakMinutes: out.approved.includes('breaks') ? dto.breakMinutes : null, invitationId: out.invitationId },
     });
+    await this.tellCandidate(org, out, dto).catch((e: unknown) => this.logger.error(e));
     return { status: out.status };
+  }
+
+  /** Answer 2204: the candidate gets an email on each decision, with what was approved (the decision stands if it fails). */
+  private async tellCandidate(org: string, out: { status: string; approved: string[]; test: string; candidate: { name: string; email: string } }, dto: DecideAccommodation) {
+    const company = (await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) => tx.organization.findUnique({ where: { id: org }, select: { name: true } })))?.name ?? 'The company';
+    const lines = accommodationDecisionText(company, out.test, out.status, out.approved, dto);
+    const dear = out.candidate.name || 'candidate';
+    await this.email.send({
+      organizationId: org,
+      to: out.candidate.email,
+      subject: `${company}: your request for help with ${out.test}`,
+      text: [`Dear ${dear},`, ...lines].join('\n\n'),
+      html: [`<p>Dear ${escapeHtml(dear)},</p>`, ...lines.map((t) => `<p>${escapeHtml(t)}</p>`)].join(''),
+    });
   }
 
   /* ------------------------------------------------------------------ PRC-10 connectivity above the cap */

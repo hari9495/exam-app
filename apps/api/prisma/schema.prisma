@@ -1019,6 +1019,10 @@ model Invitation {
   advancedFromExamId     String?                 @map("advanced_from_exam_id") @db.Uuid
   resendCount            Int                     @default(0) @map("resend_count")
   extraTimePercent       Int                     @default(0) @map("extra_time_percent")
+  /// Answer 2202: from an approved accommodation.
+  extraBreaks            Int                     @default(0) @map("extra_breaks") @db.SmallInt
+  breakMinutes           Int?                    @map("break_minutes") @db.SmallInt
+  proctoringProfile      String?                 @map("proctoring_profile") @db.VarChar(20)
   invitedAt              DateTime                @default(now()) @map("invited_at") @db.Timestamptz(3)
   expiresAt              DateTime                @map("expires_at") @db.Timestamptz(3)
   revokedAt              DateTime?               @map("revoked_at") @db.Timestamptz(3)
@@ -14687,6 +14691,8 @@ model AccommodationRequest {
   status                  String     @default("pending") @db.VarChar(12)
   approvedKinds           String[]   @default([]) @map("approved_kinds") @db.VarChar(20)
   grantedExtraTimePercent Int?       @map("granted_extra_time_percent")
+  grantedExtraBreaks     Int?       @map("granted_extra_breaks") @db.SmallInt
+  grantedBreakMinutes    Int?       @map("granted_break_minutes") @db.SmallInt
   message                 String?    @db.VarChar(2000)
   decidedBy               String?    @map("decided_by") @db.Uuid
   decidedAt               DateTime?  @map("decided_at") @db.Timestamptz(3)

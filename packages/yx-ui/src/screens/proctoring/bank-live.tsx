@@ -3,7 +3,7 @@
 // ItemAnalysisScreen (PRC-05) in bank-tests.tsx render these when the page passes `live`. Same layout, kit parts and
 // words as the designs; only what the server holds is shown, and the server checks every action again.
 import { useMemo, useState } from 'react';
-import { Archive, FileUp, Plus, Send } from 'lucide-react';
+import { Archive, ArchiveRestore, FileUp, Plus, Send } from 'lucide-react';
 import { Button } from '../../components/button';
 import { AiBadge, Badge, type BadgeTone } from '../../components/display';
 import { DataTable, type TableColumn } from '../../components/table';
@@ -70,6 +70,8 @@ export interface BankRow {
   openChange: { state: string; kind: string } | null;
   languages: string[];
   aiDrafted: boolean;
+  /** Answer 2224: approved at some point, so a retired one can be restored as it was. */
+  wasApproved?: boolean;
   updatedAt: string;
 }
 
@@ -277,6 +279,8 @@ export interface LiveBank {
   defaultDialog?: 'import' | 'ai';
   onSubmit: (id: string) => Promise<unknown>;
   onRetire: (id: string) => Promise<unknown>;
+  /** Answer 2224: brings back a retired question that was approved before, approved and audited. */
+  onRestore?: (id: string) => Promise<unknown>;
   onLoadStats: (id: string) => Promise<ItemStats>;
 }
 
@@ -348,6 +352,19 @@ export function LiveQuestionBank({ live }: { live: LiveBank }) {
     if (ok) done(what === 'submit' ? `${ok} sent for review` : `${ok} retired`);
     if (failed.length) fail(`${failed.length} not done. ${failed[0]}`);
     setSelected([]);
+  };
+  const restore = async (id: string) => {
+    let message = '';
+    const ok = await run('restore', async () => {
+      try {
+        await live.onRestore!(id);
+      } catch (e) {
+        message = e instanceof Error ? e.message : 'Not restored';
+        throw e;
+      }
+    });
+    if (ok) done('Question restored');
+    else fail(message || 'Not restored');
   };
   return (
     <PrcFrame page="Question bank">
@@ -509,7 +526,20 @@ export function LiveQuestionBank({ live }: { live: LiveBank }) {
             />
             <h3 className="yx-prc-h">Item stats</h3>
             <ItemStatsBlock stats={stats} provisional={live.settings?.provisionalAnswers ?? 200} />
-            {open.status === 'retired' && <InlineAlert tone="info">Retired on {formatDate(new Date(open.updatedAt))}. Past attempts and reports keep it.</InlineAlert>}
+            {open.status === 'retired' && (
+              <InlineAlert
+                tone="info"
+                actions={
+                  live.onRestore && open.wasApproved ? (
+                    <Button size="sm" icon={ArchiveRestore} loading={busy === 'restore'} onClick={() => void restore(open.id)}>
+                      Restore
+                    </Button>
+                  ) : undefined
+                }
+              >
+                Retired on {formatDate(new Date(open.updatedAt))}. Past attempts and reports keep it.{open.wasApproved ? ' Restoring brings back the approved version.' : ' It was never approved: open it and send it for review.'}
+              </InlineAlert>
+            )}
           </div>
         </Drawer>
       )}

@@ -3,14 +3,17 @@
 // layout, kit parts and words as the designs; only what the server holds is shown, and the server checks every action
 // again (a published or started test is locked, the approver is never the author or the one who asked).
 import { useState } from 'react';
-import { Copy, Pencil, Plus } from 'lucide-react';
+import { Copy, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ConfirmDialog } from '../../components/overlay';
+import { Select } from '../../components/select';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
 import { DataTable } from '../../components/table';
 import { EmptyState, ErrorState, InlineAlert, Meter } from '../../components/feedback';
 import { ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { FormField } from '../../components/field';
-import { NumberField, TextField } from '../../components/inputs';
+import { NumberField, TextArea, TextField } from '../../components/inputs';
+import { Segment } from '../../components/segment';
 import { RadioGroup } from '../../components/choice';
 import { REVIEW_ID, Stepper } from '../../components/stepper';
 import { BarChart } from '../../components/charts';
@@ -95,8 +98,18 @@ export interface LiveTestBuilder {
   onSetMode: (mode: ProctorMode) => Promise<void>;
   /** Answer 2154: a section's cut-off (null clears it). Absent: the cut-offs are read only. */
   onSetCutoff?: (sectionId: string, percent: number | null) => Promise<void>;
-  /** The older section editor (questions, pools, weights). */
+  /** The older section editor (choosing questions, making a pool and its skills). */
   onEditSections: () => void;
+  /** Answer 2153: the designed steps edit sections. Absent: read only. */
+  onAddSection?: (title: string) => Promise<void>;
+  onSaveSection?: (id: string, v: { title: string; weightPercent: number }) => Promise<void>;
+  onDeleteSection?: (id: string) => Promise<void>;
+  onSavePool?: (id: string, v: { poolSize: number; poolDifficulty: string | null }) => Promise<void>;
+  /** Answer 2151: build from a job description (only when the company's AI drafts are on). Absent: no such tab. */
+  onProposeFromJd?: (jobDescription: string) => Promise<{ level: JdLevel; skills: JdSkill[] }>;
+  onCreateFromJd?: (d: { title: string; level: JdLevel; total: number; skills: { tagId: string; percent: number }[] }) => Promise<void>;
+  /** The company's skills (question tags), to map the job description's skills to. */
+  skills?: { id: string; name: string }[];
   onRequestApproval: () => Promise<void>;
   onApprove: () => Promise<void>;
   onPublish: () => Promise<void>;
@@ -151,6 +164,181 @@ function SectionCutoffs({ sections, locked, busy, onSave }: { sections: TestSect
   );
 }
 
+/** Answer 2151: a skill the job description asks for, matched to one of the company's skills (null = not yet). */
+export interface JdSkill {
+  name: string;
+  tagId: string | null;
+  percent: number;
+}
+export type JdLevel = 'easy' | 'medium' | 'hard';
+
+/** Answer 2151: the designed "Build from job description" tab. Only the text and the skill names go to AI; always a draft. */
+function FromJobDescription({ live, busy, run }: { live: LiveTestBuilder; busy: string | null; run: (k: string, fn: () => Promise<unknown>) => Promise<boolean> }) {
+  const [text, setText] = useState('');
+  const [title, setTitle] = useState('');
+  const [plan, setPlan] = useState<{ level: JdLevel; skills: JdSkill[] } | null>(null);
+  const [total, setTotal] = useState<number | null>(20);
+  const [tried, setTried] = useState(false);
+  const { done } = useSay();
+  const skills = live.skills ?? [];
+  const sum = plan ? plan.skills.reduce((n, s) => n + s.percent, 0) : 0;
+  const unmapped = plan ? plan.skills.filter((s) => !s.tagId).length : 0;
+  const twice = plan ? plan.skills.length !== new Set(plan.skills.map((s) => s.tagId).filter(Boolean)).size + unmapped : false;
+  const setSkill = (i: number, v: Partial<JdSkill>) => plan && setPlan({ ...plan, skills: plan.skills.map((s, j) => (j === i ? { ...s, ...v } : s)) });
+  const problem = !plan ? null : !plan.skills.length ? 'Keep at least one skill.' : unmapped ? `Map ${unmapped === 1 ? 'the skill' : `${unmapped} skills`} not in your library, or remove ${unmapped === 1 ? 'it' : 'them'}.` : twice ? 'Each of your skills can be in the test once.' : sum !== 100 ? `The shares add up to ${sum} %; make them 100 %.` : !title.trim() ? 'Name the test.' : !total ? 'Say how many questions the test draws.' : null;
+  return (
+    <div className="yx-prc-stack">
+      <FormField label="Job description" helper="Only this text and your skill names go to AI. No candidate data.">
+        <TextArea rows={5} value={text} onChange={setText} maxLength={8000} />
+      </FormField>
+      <div className="yx-prc-row">
+        <Button loading={busy === 'jd:propose'} disabled={text.trim().length < 40} onClick={() => void run('jd:propose', async () => setPlan(await live.onProposeFromJd!(text.trim())))}>
+          Find the skills
+        </Button>
+      </div>
+      {plan && (
+        <>
+          <InlineAlert tone="ai" title="Skills found in the job description">
+            You confirm the list; the test is always a draft, built from pools of your approved questions.
+          </InlineAlert>
+          <ul className="yx-prc-plain" aria-label="Skills for the test">
+            {plan.skills.map((s, i) => (
+              <li key={`${s.name}:${i}`}>
+                <span>{s.name}{!s.tagId && <Badge tone="warning">Not in your library</Badge>}</span>
+                <span className="yx-prc-row">
+                  <Select aria-label={`Your skill for ${s.name}`} value={s.tagId} onChange={(v) => setSkill(i, { tagId: v })} options={skills.map((k) => ({ value: k.id, label: k.name }))} placeholder="Map to your skill" searchable />
+                  <NumberField aria-label={`Share of ${s.name}`} value={s.percent} onChange={(v) => setSkill(i, { percent: Math.max(0, Math.min(100, Math.round(Number(v ?? 0)))) })} suffix="%" size="sm" />
+                  <Button size="sm" variant="danger" icon={Trash2} onClick={() => setPlan({ ...plan, skills: plan.skills.filter((_, j) => j !== i) })}>
+                    Remove
+                  </Button>
+                </span>
+              </li>
+            ))}
+            <li>
+              <span>Total</span> <Badge tone={sum === 100 ? 'success' : 'danger'}>{sum} %</Badge>
+            </li>
+          </ul>
+          <Segment label="Level" options={[{ value: 'easy' as const, label: 'Easy' }, { value: 'medium' as const, label: 'Medium' }, { value: 'hard' as const, label: 'Hard' }]} value={plan.level} onChange={(v) => setPlan({ ...plan, level: v })} />
+          <div className="yx-prc-row">
+            <FormField label="Test name">
+              <TextField value={title} onChange={setTitle} maxLength={200} placeholder="e.g. Backend developer · L3" />
+            </FormField>
+            <FormField label="Questions drawn in all">
+              <NumberField value={total} onChange={(v) => setTotal(v == null ? null : Math.max(5, Math.min(100, Math.round(Number(v)))))} />
+            </FormField>
+          </div>
+          {tried && problem && <InlineAlert tone="danger" title={problem} />}
+          <div className="yx-prc-row">
+            <Button
+              variant="primary"
+              icon={Plus}
+              loading={busy === 'jd:create'}
+              onClick={() => {
+                setTried(true);
+                if (problem) return;
+                void run('jd:create', () => live.onCreateFromJd!({ title: title.trim(), level: plan.level, total: total!, skills: plan.skills.map((s) => ({ tagId: s.tagId!, percent: s.percent })) })).then((ok) => ok && done('Draft test created'));
+              }}
+            >
+              Create draft test
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Answer 2153: the designed Sections step edits the sections themselves (name and weight; add and remove). */
+function SectionsEditor({ sections, busy, onSave, onAdd, onDelete }: { sections: TestSection[]; busy: string | null; onSave: (id: string, v: { title: string; weightPercent: number }) => void; onAdd: (title: string) => Promise<boolean>; onDelete: (id: string) => void }) {
+  const [draft, setDraft] = useState<Record<string, { title: string; weightPercent: number }>>({});
+  const [newTitle, setNewTitle] = useState('');
+  const [tried, setTried] = useState(false);
+  const [removing, setRemoving] = useState<TestSection | null>(null);
+  const value = (s: TestSection) => draft[s.id] ?? { title: s.title, weightPercent: s.weightPercent };
+  const set = (s: TestSection, v: Partial<{ title: string; weightPercent: number }>) => setDraft({ ...draft, [s.id]: { ...value(s), ...v } });
+  const weights = sections.reduce((n, s) => n + value(s).weightPercent, 0);
+  return (
+    <div className="yx-prc-stack">
+      <ul className="yx-prc-plain">
+        {sections.map((s) => {
+          const v = value(s);
+          return (
+            <li key={s.id}>
+              <span className="yx-prc-row">
+                <TextField aria-label={`Name of ${s.title}`} value={v.title} onChange={(t) => set(s, { title: t })} maxLength={200} size="sm" />
+                <NumberField aria-label={`Weight of ${s.title}`} value={v.weightPercent} onChange={(w) => set(s, { weightPercent: Math.max(0, Math.min(100, Number(w ?? 0))) })} suffix="%" size="sm" />
+              </span>
+              <span className="yx-prc-small yx-prc-muted">
+                {s.mode === 'pool' ? `draws ${s.poolSize ?? 0} from a pool` : `${s.questions} ${s.questions === 1 ? 'question' : 'questions'}`}
+                {s.requiredCount != null ? ` · answer any ${s.requiredCount}` : ''}
+              </span>
+              <span className="yx-prc-row">
+                <Button size="sm" loading={busy === `sec:${s.id}`} disabled={!v.title.trim()} onClick={() => onSave(s.id, { title: v.title.trim(), weightPercent: v.weightPercent })}>
+                  Save
+                </Button>
+                <Button size="sm" variant="danger" icon={Trash2} onClick={() => setRemoving(s)}>
+                  Remove
+                </Button>
+              </span>
+            </li>
+          );
+        })}
+        <li>
+          <span>Total weight</span> <Badge tone={weights === 100 ? 'success' : 'danger'}>{weights} %</Badge>
+        </li>
+      </ul>
+      <div className="yx-prc-row">
+        <FormField label="New section" error={tried && !newTitle.trim() ? 'Give the section a name.' : undefined}>
+          <TextField value={newTitle} onChange={setNewTitle} maxLength={200} placeholder="For example, SQL" />
+        </FormField>
+        <Button
+          icon={Plus}
+          loading={busy === 'sec:add'}
+          onClick={() => {
+            setTried(true);
+            if (newTitle.trim())
+              void onAdd(newTitle.trim()).then((ok) => {
+                if (ok) {
+                  setNewTitle('');
+                  setTried(false);
+                }
+              });
+          }}
+        >
+          Add section
+        </Button>
+      </div>
+      <ConfirmDialog
+        open={removing !== null}
+        onOpenChange={(o) => !o && setRemoving(null)}
+        title={`Remove ${removing?.title ?? 'this section'}?`}
+        consequence="Its questions stay in the question bank; only this test changes."
+        confirmLabel="Remove section"
+        destructive
+        onConfirm={() => {
+          if (removing) onDelete(removing.id);
+          setRemoving(null);
+        }}
+      />
+    </div>
+  );
+}
+
+/** Answer 2153: the Blueprint step sets how many questions each pool draws, and at what difficulty. */
+function PoolEditor({ s, busy, onSave }: { s: TestSection; busy: string | null; onSave: (id: string, v: { poolSize: number; poolDifficulty: string | null }) => void }) {
+  const [size, setSize] = useState<number | null>(s.poolSize);
+  const [level, setLevel] = useState<string>(s.poolDifficulty ?? 'any');
+  return (
+    <span className="yx-prc-row">
+      <NumberField aria-label={`Questions drawn in ${s.title}`} value={size} onChange={(v) => setSize(v == null ? null : Math.max(1, Math.round(Number(v))))} size="sm" />
+      <Select aria-label={`Difficulty in ${s.title}`} value={level} onChange={(v) => setLevel(v ?? 'any')} options={[{ value: 'any', label: 'Any' }, ...Object.entries(DIFFICULTY).map(([value, label]) => ({ value, label }))]} />
+      <Button size="sm" loading={busy === `pool:${s.id}`} disabled={!size} onClick={() => onSave(s.id, { poolSize: size!, poolDifficulty: level === 'any' ? null : level })}>
+        Save
+      </Button>
+    </span>
+  );
+}
+
 export function LiveTestBuilderScreen({ live }: { live: LiveTestBuilder }) {
   const t = live.test;
   const fromTest = (x: BuilderTestView | null): TestDetails | null => (x ? { title: x.title, durationMinutes: x.durationMinutes, passMark: x.passMark, expectedCandidates: x.expectedCandidates } : null);
@@ -190,6 +378,7 @@ export function LiveTestBuilderScreen({ live }: { live: LiveTestBuilder }) {
         <TabsList aria-label="Start from">
           <TabsTrigger value="ours">Our tests</TabsTrigger>
           <TabsTrigger value="starter">YukthiX starter</TabsTrigger>
+          {live.onProposeFromJd && live.onCreateFromJd && <TabsTrigger value="jd">Build from job description</TabsTrigger>}
         </TabsList>
         <TabsContent value="ours">
           <div className="yx-prc-stack">
@@ -245,6 +434,11 @@ export function LiveTestBuilderScreen({ live }: { live: LiveTestBuilder }) {
         <TabsContent value="starter">
           <p className="yx-prc-muted">YukthiX is writing the starter tests with the starter question packs. They appear here when ready.</p>
         </TabsContent>
+        {live.onProposeFromJd && live.onCreateFromJd && (
+          <TabsContent value="jd">
+            <FromJobDescription live={live} busy={busy} run={run} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
@@ -285,7 +479,15 @@ export function LiveTestBuilderScreen({ live }: { live: LiveTestBuilder }) {
       content: (
         <div className="yx-prc-stack">
           {detailsNote}
-          {t.sections.length === 0 ? (
+          {!locked && live.onSaveSection && live.onAddSection && live.onDeleteSection ? (
+            <SectionsEditor
+              sections={t.sections}
+              busy={busy}
+              onSave={(id, v) => void act(`sec:${id}`, () => live.onSaveSection!(id, v), 'Section saved')}
+              onAdd={(title) => run('sec:add', () => live.onAddSection!(title)).then((ok) => (ok && done('Section added'), ok))}
+              onDelete={(id) => void act(`sec:del:${id}`, () => live.onDeleteSection!(id), 'Section removed')}
+            />
+          ) : t.sections.length === 0 ? (
             <EmptyState title="No sections yet" description="Add sections and their questions or pools." />
           ) : (
             <ul className="yx-prc-plain">
@@ -306,7 +508,7 @@ export function LiveTestBuilderScreen({ live }: { live: LiveTestBuilder }) {
           {!locked && (
             <div className="yx-prc-row">
               <Button icon={Pencil} onClick={live.onEditSections}>
-                Edit sections and questions
+                {live.onSaveSection ? 'Choose questions and pools' : 'Edit sections and questions'}
               </Button>
             </div>
           )}
@@ -335,6 +537,9 @@ export function LiveTestBuilderScreen({ live }: { live: LiveTestBuilder }) {
                 { key: 'skills', header: 'Skills', value: (s: TestSection) => s.poolTags.join(', ') || 'Any', width: 220 },
                 { key: 'level', header: 'Difficulty', value: (s: TestSection) => (s.poolDifficulty ? (DIFFICULTY[s.poolDifficulty] ?? s.poolDifficulty) : 'Any'), width: 120 },
                 { key: 'drawn', header: 'Drawn', type: 'number', value: (s: TestSection) => s.poolSize ?? 0, width: 90 },
+                ...(!locked && live.onSavePool
+                  ? [{ key: 'edit', header: 'Change the draw', value: (s: TestSection) => s.poolSize ?? 0, render: (s: TestSection) => <PoolEditor key={`${s.id}:${s.poolSize}:${s.poolDifficulty}`} s={s} busy={busy} onSave={(id, v) => void act(`pool:${id}`, () => live.onSavePool!(id, v), 'Pool saved')} />, width: 320 }]
+                  : []),
                 { key: 'available', header: 'Available', type: 'number', value: (s: TestSection) => s.available ?? 0, width: 100 },
                 { key: 'state', header: 'Pool depth', value: (s: TestSection) => (poolShort(s) ? 'Below' : 'Enough'), render: (s) => (poolShort(s) ? <Badge tone="danger">Needs {s.poolSize}</Badge> : <Badge tone="success">Enough</Badge>), width: 130 },
               ]}

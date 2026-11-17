@@ -23,6 +23,23 @@ describe('PRC-01 question bank (live)', () => {
     expect(screen.getByText('0.41')).toBeInTheDocument();
   });
 
+  it('answer 2224: a retired question approved before is restored; negative: a never-approved one has no Restore, a refusal says why', async () => {
+    const onRestore = vi.fn().mockRejectedValueOnce(new Error('This question is not retired.')).mockResolvedValueOnce({});
+    const { unmount } = wrap(<QuestionBankScreen live={liveBank({ onRestore })} />);
+    await ue.click(within(screen.getByRole('table', { name: 'Questions' })).getByText('Which document records a CCP deviation?'));
+    await ue.click(await screen.findByRole('button', { name: 'Restore' }));
+    expect((await screen.findAllByText('This question is not retired.')).length).toBeGreaterThan(0);
+    await ue.click(screen.getByRole('button', { name: 'Restore' }));
+    expect(onRestore).toHaveBeenLastCalledWith('q4');
+    expect((await screen.findAllByText('Question restored')).length).toBeGreaterThan(0);
+    unmount();
+    const rows = liveBank().rows.map((r) => (r.id === 'q4' ? { ...r, wasApproved: false } : r));
+    wrap(<QuestionBankScreen live={liveBank({ rows, onRestore })} />);
+    await ue.click(within(screen.getByRole('table', { name: 'Questions' })).getByText('Which document records a CCP deviation?'));
+    expect(await screen.findByText(/It was never approved/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Restore' })).toBeNull();
+  });
+
   it('Add question opens a new question; the packs tab says which starter packs are on', async () => {
     const onOpen = vi.fn();
     wrap(<QuestionBankScreen live={liveBank({ onOpen })} />);

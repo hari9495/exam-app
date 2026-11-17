@@ -7,7 +7,7 @@ import { CodeReviewService } from '../code-review/code-review.service';
 import { PistonRuntimesService } from '../code-execution/piston-runtimes.service';
 import { ATTEMPT_STATUS_BROADCASTER, AttemptStatusBroadcaster } from '../monitoring/attempt-status-broadcaster';
 import { InternalAuthGuard } from './internal-auth.guard';
-import { effectiveDurationMinutes } from '../grading/grading';
+import { invitationExam } from '../attempts/invitation-exam';
 import { isProctoringBypassActive } from '../attempts/proctoring-config';
 import { NotifyMessageSentDto } from './dto/notify-message-sent.dto';
 import { SettleIfExpiredBatchDto } from './dto/settle-if-expired-batch.dto';
@@ -248,10 +248,7 @@ export class InternalController {
         include: { invitation: { include: { exam: true } } },
       });
       for (const attempt of attempts) {
-        const exam = {
-          ...attempt.invitation.exam,
-          durationMinutes: effectiveDurationMinutes(attempt.invitation.exam.durationMinutes, attempt.invitation.extraTimePercent),
-        };
+        const exam = invitationExam(attempt.invitation.exam, attempt.invitation);
         await this.attemptSettlement.settleIfExpired(tx, exam, attempt);
       }
     });

@@ -162,6 +162,13 @@ export class QuestionBankController {
     await this.bank.withdraw(who(req, ctx), id);
   }
 
+  @Post('questions/:id/restore')
+  @HttpCode(200)
+  @UseGuards(OwnSessionGuard)
+  restore(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.bank.restore(who(req, ctx), id);
+  }
+
   @Get('reviews')
   @ShowsAnswerKeys()
   async queue(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @SeesAnswerKeys() keys: boolean) {

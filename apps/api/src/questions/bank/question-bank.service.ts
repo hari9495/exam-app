@@ -145,6 +145,8 @@ export class QuestionBankService {
           openChange: open ? { state: open.state, kind: open.kind } : null,
           languages: ['en', ...r.translations.filter((t) => t.version === r.version).map((t) => t.language)],
           aiDrafted: r.aiGenerated,
+          // Answer 2224: a retired question that was approved before can be restored.
+          wasApproved: r.lastApprovedAt !== null,
           updatedAt: (r.lastApprovedAt ?? r.createdAt).toISOString(),
         };
       });
@@ -257,6 +259,19 @@ export class QuestionBankService {
       if (open.authorId !== w.userId) throw new ForbiddenException('Only the person who made this change withdraws it.');
       await tx.questionRevision.update({ where: { id: open.id }, data: { state: open.kind === 'new' ? 'draft' : 'withdrawn', submittedAt: null, rowVersion: { increment: 1 } } });
       await AuditService.recordIn(tx, w.ctx, { actorUserId: w.userId, action: 'question.change_withdrawn', entityType: 'question', entityId: id, metadata: { revision: open.id } });
+    });
+  }
+
+  /** Answer 2224: a retired question that was approved before comes back approved, as it was; a never-approved one goes through review. */
+  async restore(w: Who, id: string) {
+    return this.tx(w, async (tx, org) => {
+      const q = await tx.question.findFirst({ where: { id, organizationId: org }, select: { status: true, lastApprovedAt: true, version: true } });
+      if (!q) throw new NotFoundException('Question not found');
+      if (q.status !== 'archived') throw new ConflictException('This question is not retired.');
+      if (!q.lastApprovedAt) throw new ConflictException('This question was never approved. Open it and send it for review.');
+      await tx.question.update({ where: { id }, data: { status: 'active' } });
+      await AuditService.recordIn(tx, w.ctx, { actorUserId: w.userId, action: 'question.restored', entityType: 'question', entityId: id, metadata: { version: q.version } });
+      return { status: 'approved' as const };
     });
   }
 

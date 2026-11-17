@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { companySetting } from '../assessments/asmt-rules';
 import { Prisma, Question, QuestionOption, QuestionTag, Tag } from '@prisma/client';
 import { TenantPrismaService, answerKeyDiffers, optionRowsDiffer, validateCodeTests, parseCodeTests, CodeTestCase } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
@@ -349,6 +350,8 @@ export class QuestionsService {
   }
 
   async aiGenerate(context: TenantContext, userId: string, dto: AiGenerateQuestionsDto): Promise<{ aiJobId: string }> {
+    const aiOn = await this.tenantPrisma.forTenant(context, async (tx) => (await companySetting(tx, context.organizationId as string, 'asmt.ai_generation')) === 'on');
+    if (!aiOn) throw new ForbiddenException('AI drafts are switched off for your company (Settings › Assessments).');
     // Fail fast: every generated question would fail this exact check downstream (see
     // validateQuestionPayload) and be silently dropped -- after the provider call had been paid for.
     if (dto.negativeMarks > dto.marks) {
