@@ -34,7 +34,7 @@ import {
   todayIn,
   visibleSql,
 } from './time-core';
-import { CountedDay, accrualsDue, addDays, applyFloors, countLeaveDays, daysBetween } from './time-maths';
+import { CountedDay, accrualsDue, addDays, afterWait, applyFloors, ceilingLapses, countLeaveDays, daysBetween } from './time-maths';
 import { ScheduleBook, assertOpen, lockedDates } from './schedule';
 import { MaternityCase, daysWorked, eligibilityWindow, maternityChecks } from './time-rules';
 import { BLOCK_DATE_EXEMPT, blockDateStops, creditsDuringAbsence, encashAmount, encashTerms, yearEndWithEncash, monthLimitOver, monthName, noticePeriodMode, statutoryProblem, factoriesElEligible, lastDayAfterLeave, noticeDaysFor, noticeText, optionalLimitAfterMove, probationAllows } from './leave-rules';
@@ -1372,21 +1372,21 @@ export class LeaveService implements OnModuleInit {
         // TIM-27 Absence & notice: a type may keep or stop crediting during a long absence whatever the company says;
         // maternity always counts as service (Maternity Benefit Act), so it never stops crediting.
         const absences = (await tx.longAbsence.findMany({ where: { organizationId: org, employeeId: f.employeeId, toOn: { gte: asDate(year.start) } }, select: { fromOn: true, toOn: true, accrues: true, kind: true } })).filter((a) => a.kind !== 'maternity');
+        // Answer 2342: the credits already posted, and each type's balance now, for the ceiling.
+        const posted = new Set((await tx.leaveLedgerEntry.findMany({ where: { organizationId: org, employeeId: f.employeeId, periodKey: { not: null } }, select: { leaveTypeId: true, periodKey: true } })).map((x) => `${x.leaveTypeId}|${x.periodKey}`));
+        const held = new Map((await tx.leaveLedgerEntry.groupBy({ by: ['leaveTypeId'], where: { organizationId: org, employeeId: f.employeeId }, _sum: { days: true } })).map((g) => [g.leaveTypeId, num(g._sum.days)]));
         const data = policy.lines.flatMap((l) => {
           const t = types.get(l.leaveTypeId);
           if (!t || !t.active || !hasBalance(t.kind) || t.kind === 'comp_off') return [];
-          const own = (t.rules as unknown as LeaveRules).longAbsence;
-          const notEarning = absences.filter((a) => !creditsDuringAbsence(own, a.accrues)).map((a) => ({ from: dateOf(a.fromOn), to: dateOf(a.toOn) }));
-          return accrualsDue({ ...l, annualDays: ent.get(l.leaveTypeId) ?? l.annualDays }, { yearStart: year.start, joinedOn: f.joinedOn, exitedOn: f.exitedOn, upTo: local, notEarning, ...(year.short ? { yearEnd: year.end } : {}) }).map((d) => ({
-            organizationId: org,
-            employeeId: f.employeeId,
-            leaveTypeId: t.id,
-            entryOn: asDate(d.on),
-            kind: 'accrual',
-            days: d.days,
-            periodKey: d.periodKey,
-            reason: l.frequency === 'monthly' ? `${t.name} credit for ${d.periodKey.slice(8)}` : `${t.name} for the year from ${year.start}`,
-          }));
+          const rules = t.rules as unknown as LeaveRules;
+          const notEarning = absences.filter((a) => !creditsDuringAbsence(rules.longAbsence, a.accrues)).map((a) => ({ from: dateOf(a.fromOn), to: dateOf(a.toOn) }));
+          const due = afterWait(accrualsDue({ ...l, annualDays: ent.get(l.leaveTypeId) ?? l.annualDays }, { yearStart: year.start, joinedOn: f.joinedOn, exitedOn: f.exitedOn, upTo: local, notEarning, ...(year.short ? { yearEnd: year.end } : {}) }), f.joinedOn, rules.accrualWaitMonths ?? 0);
+          const fresh = due.filter((d) => !posted.has(`${t.id}|${d.periodKey}`));
+          const row = (d: { on: string; days: number; periodKey: string }, kind: string, reason: string) => ({ organizationId: org, employeeId: f.employeeId, leaveTypeId: t.id, entryOn: asDate(d.on), kind, days: d.days, periodKey: d.periodKey, reason });
+          return [
+            ...fresh.map((d) => row(d, 'accrual', l.frequency === 'monthly' ? `${t.name} credit for ${d.periodKey.slice(8)}` : `${t.name} for the year from ${year.start}`)),
+            ...ceilingLapses(fresh, held.get(t.id) ?? 0, l.maxBalance).map((d) => row(d, 'lapse', `Over the ${l.maxBalance}-day ceiling for ${t.name}`)),
+          ];
         });
         if (data.length) n += (await tx.leaveLedgerEntry.createMany({ data, skipDuplicates: true })).count;
       }

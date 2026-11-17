@@ -143,6 +143,32 @@ export interface AccrualDue {
  * cumulative entitlement, and the last month of the year trues up to the exact entitlement (L4). A joiner gets the
  * employed share of the joining month (pro-rata); nothing before joining or after leaving.
  */
+/** Answer 2342 (Oracle O11): credits dated before the person is N months in are dropped (forfeited, not paid later). */
+export function afterWait<T extends { on: string }>(dues: T[], joinedOn: string, waitMonths: number): T[] {
+  if (!waitMonths) return dues;
+  const from = day(joinedOn).plus({ months: waitMonths }).toISODate()!;
+  return dues.filter((d) => d.on >= from);
+}
+
+/**
+ * Answer 2342 (Oracle O10): the lapse lines that keep a balance at its ceiling as new credits come in, in date order. A
+ * credit lapses only its own days over the ceiling (a balance already above it, e.g. carried in, is never cut here).
+ */
+export function ceilingLapses(dues: readonly AccrualDue[], balance: number, max: number | null | undefined): AccrualDue[] {
+  if (max === null || max === undefined) return [];
+  const out: AccrualDue[] = [];
+  let run = balance;
+  for (const d of [...dues].sort((a, b) => (a.on < b.on ? -1 : a.on > b.on ? 1 : 0))) {
+    run = Math.round((run + d.days) * 100) / 100;
+    const over = Math.min(d.days, Math.round((run - max) * 100) / 100);
+    if (over > 0) {
+      out.push({ periodKey: `ceiling:${d.periodKey}`, on: d.on, days: -over });
+      run = Math.round((run - over) * 100) / 100;
+    }
+  }
+  return out;
+}
+
 export function accrualsDue(line: AccrualLine, o: { yearStart: string; joinedOn: string; exitedOn?: string | null; upTo: string; /** TIM-25: long absences that earn no leave (monthly credits only). */ notEarning?: readonly { from: string; to: string }[]; /** TIM-29: a short year ends early (a leave-year change); its yearly credit is for its months only. */ yearEnd?: string }): AccrualDue[] {
   if (line.annualDays <= 0) return [];
   const start = day(o.yearStart);

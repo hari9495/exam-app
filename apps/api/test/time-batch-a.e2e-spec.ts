@@ -9,6 +9,7 @@ import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { addDays } from '../src/time/time-maths';
+import { LeaveService } from '../src/time/leave.service';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 
 // Tier 1 batch A (attendance and leave daily), end to end against the real database (forced RLS, the app role): each item
@@ -700,6 +701,50 @@ describe('Time batch A', () => {
       await api('emp', 'get', `/time/hr/leave/${ids.empEmp}`).expect(403);
       await api('mgr', 'get', `/time/hr/leave/${ids.empEmp}`).expect(403);
       expect([403, 404]).toContain((await api('adminB', 'get', `/time/hr/leave/${ids.empEmp}`)).status);
+    });
+  });
+
+  // ------------------------------------------------------------------ 2342: ceiling and no credit at first (Oracle O10, O11)
+  describe('2342 leave ceiling and period of ineligibility', () => {
+    const line = (leaveTypeId: string, x: Record<string, unknown> = {}) => ({ leaveTypeId, annualDays: 24, frequency: 'monthly', proRata: true, rounding: 0.5, carryForwardMax: null, ...x });
+    const entries = (leaveTypeId: string) => inA((tx) => tx.leaveLedgerEntry.findMany({ where: { employeeId: ids.peerEmp, leaveTypeId } }));
+    beforeAll(async () => {
+      ids.cp = (await api('hrAdmin', 'post', '/time/setup/types').send({ code: 'CP', name: 'Capped leave', kind: 'earned', paid: true }).expect(201)).body.id;
+    });
+
+    it('negative: a wait outside 0 to 24 whole months, a ceiling of 0 and a carry forward above the ceiling are refused with nothing saved', async () => {
+      const types = await inA((tx) => tx.leaveType.count());
+      await api('hrAdmin', 'post', '/time/setup/types').send({ code: 'PV', name: 'Privilege leave', kind: 'earned', paid: true, rules: { accrualWaitMonths: 25 } }).expect(400);
+      await api('hrAdmin', 'post', '/time/setup/types').send({ code: 'PV', name: 'Privilege leave', kind: 'earned', paid: true, rules: { accrualWaitMonths: 1.5 } }).expect(400);
+      expect(await inA((tx) => tx.leaveType.count())).toBe(types);
+      ids.p2342 = (await api('hrAdmin', 'post', '/time/setup/policies').send({ name: `Ceiling ${run}` }).expect(201)).body.id;
+      await api('hrAdmin', 'post', `/time/setup/policies/${ids.p2342}/versions`).send({ validFrom: '2025-01-01', lines: [line(ids.cp, { maxBalance: 0 })] }).expect(400);
+      await api('hrAdmin', 'post', `/time/setup/policies/${ids.p2342}/versions`).send({ validFrom: '2025-01-01', lines: [line(ids.cp, { maxBalance: 3, carryForwardMax: 5 })] }).expect(400);
+      await api('emp', 'post', `/time/setup/policies/${ids.p2342}/versions`).send({ validFrom: '2025-01-01', lines: [line(ids.cp, { maxBalance: 3 })] }).expect(403);
+      expect(await inA((tx) => tx.leavePolicyVersion.count({ where: { policyId: ids.p2342 } }))).toBe(0);
+    });
+
+    it('a credit over the ceiling lapses at once; a type with a 3-month wait credits nothing to a new joiner', async () => {
+      ids.pv = (await api('hrAdmin', 'post', '/time/setup/types').send({ code: 'PV', name: 'Privilege leave', kind: 'earned', paid: true, rules: { accrualWaitMonths: 3 } }).expect(201)).body.id;
+      await api('hrAdmin', 'post', `/time/setup/policies/${ids.p2342}/versions`).send({ validFrom: '2025-01-01', lines: [line(ids.cp, { maxBalance: 3 }), line(ids.pv)] }).expect(201);
+      await api('hrAdmin', 'post', `/time/setup/policies/${ids.p2342}/assign`).send({ scopeType: 'employee', scopeId: ids.peerEmp, validFrom: '2025-01-01' }).expect(201);
+      await api('hrAdmin', 'post', `/time/people/${ids.peerEmp}/adjust`).send({ leaveTypeId: ids.cp, days: 3, reason: 'Opening balance' }).expect(201);
+      const leave = app.get(LeaveService);
+      await leave.accrue(org.A.id);
+      const cp = await entries(ids.cp);
+      const credits = cp.filter((e) => e.kind === 'accrual');
+      const lapses = cp.filter((e) => e.kind === 'lapse');
+      expect(credits.length).toBeGreaterThan(0);
+      expect(lapses.length).toBeGreaterThan(0);
+      expect(lapses[0].reason).toMatch(/Over the 3-day ceiling/);
+      expect(cp.reduce((n, e) => n + Number(e.days), 0)).toBe(3);
+      // Run again: nothing is posted twice.
+      await leave.accrue(org.A.id);
+      expect(await entries(ids.cp)).toHaveLength(cp.length);
+      // Joined three days ago: no credit for the first three months, and none of it is paid later.
+      expect(await entries(ids.pv)).toHaveLength(0);
+      // Another company sees none of it.
+      expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.leaveLedgerEntry.count({ where: { leaveTypeId: { in: [ids.cp, ids.pv] } } }))).toBe(0);
     });
   });
 });

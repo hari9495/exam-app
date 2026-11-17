@@ -400,6 +400,8 @@ export interface LeaveRules {
   certificateAfterDays: number | null;
   medical: boolean;
   negativeLimit: number;
+  /** Answer 2342: no credit in the first N months after joining (0 or missing: from the start). */
+  accrualWaitMonths?: number;
   encashable: boolean;
   hrApprovalAboveDays: number | null;
   /** Pay by day ranges (G1); one step of 1-99 % over the whole year is "partially paid" (TIM-27 Basics). */
@@ -443,6 +445,8 @@ export interface PolicyLine {
   proRata: boolean;
   rounding: number;
   carryForwardMax: number | null;
+  /** Answer 2342: the most days held at any time (null: no ceiling). */
+  maxBalance?: number | null;
 }
 
 export interface LocationRule {
