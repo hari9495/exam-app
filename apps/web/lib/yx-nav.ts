@@ -631,6 +631,7 @@ export function buildNav(n: NavInput): NavArea[] {
         ]),
         // Settings 4.9 Contract labour (CL-1): no payroll needed.
         ...when(!support && any('clra.settings.manage', 'clra.contractor.manage', 'clra.contractor.view', 'org.settings.manage'), L('clra-settings', 'Contract labour', '/yx/settings/contract-labour')),
+        ...when(!support && any('benefits.settings.manage', 'org.settings.manage'), L('benefits-settings', 'Benefits & FBP', '/yx/settings/benefits')),
       ]),
       // Settings 6.1 Hiring: recruiting, hiring admins and HR read it; the hiring settings key changes it.
       ...sec('Hiring & Assessments', [
