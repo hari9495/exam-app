@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import * as RD from '@radix-ui/react-dialog';
+import { useInertBehind, useInertBehindRef } from '../lib/inert';
 import { X } from 'lucide-react';
 import { Button, IconButton } from './button';
 import { InlineAlert } from './feedback';
@@ -54,6 +55,7 @@ export function Dialog({ open, defaultOpen = false, onOpenChange, trigger, title
   const [isOpen, setOpen] = useControllable(open, defaultOpen, onOpenChange);
   const returnTo = useRef<HTMLElement | null>(null);
   const [panel, setPanel] = useState<HTMLDivElement | null>(null);
+  useInertBehind(panel);
   const block = (e: Event) => {
     if (destructive || preventClose) e.preventDefault();
   };
@@ -230,6 +232,7 @@ export interface BottomSheetProps extends OpenProps {
 
 /** Mobile replacement for menus and drawers: slides up from the bottom, max 90 % of the screen height (§37). */
 export function BottomSheet({ open, defaultOpen = false, onOpenChange, trigger, title, description, children, footer }: BottomSheetProps) {
+  const sheetRef = useInertBehindRef();
   const [isOpen, setOpen] = useControllable(open, defaultOpen, onOpenChange);
   return (
     <RD.Root open={isOpen} onOpenChange={setOpen}>
@@ -237,6 +240,7 @@ export function BottomSheet({ open, defaultOpen = false, onOpenChange, trigger, 
       <RD.Portal>
         <RD.Overlay className="yx-dialog__scrim" />
         <RD.Content
+          ref={sheetRef}
           className="yx-sheet"
           tabIndex={-1}
           // Focus the sheet, not the Close button: no ring on ✕ when it opens (founder review 30 Sep 2026).

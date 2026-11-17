@@ -133,6 +133,19 @@ export function ErrorState({ title, description, onRetry, reference }: ErrorStat
 /** `grantedBy` names who can give access ("HR"); `note` is an optional extra sentence (why, or what it needs). */
 export function NoAccessState({ grantedBy, what = 'this page', note }: { grantedBy: ReactNode; what?: ReactNode; note?: ReactNode }) {
   const useRequests = useContext(AccessRequestContext);
+  const salaryCheck = useContext(SalaryCheckContext);
+  // Answer 2370: the page was refused because "Confirm it's you" was cancelled on a salary page, not for a missing
+  // permission: say so and offer the check again.
+  if (salaryCheck?.cancelled) {
+    return (
+      <div className="yx-empty">
+        <Icon icon={KeyRound} size="md" />
+        <p className="yx-empty__title">Confirm it's you to see salary details</p>
+        <p className="yx-empty__desc">Salary details stay hidden until you confirm it's you with your passkey or authenticator app.</p>
+        <Button onClick={salaryCheck.onRetry}>Try again</Button>
+      </div>
+    );
+  }
   return (
     <div className="yx-empty">
       <Icon icon={Lock} size="md" />
@@ -170,6 +183,12 @@ export interface AccessRequests {
 
 /** A hook the app provides: it loads the company's rules and the latest request only when a no-access state shows. */
 export const AccessRequestContext = createContext<(() => AccessRequests | null) | null>(null);
+
+/**
+ * Answer 2370: set by the app when the person cancelled "Confirm it's you" on a salary page (batch B item 1). While
+ * `cancelled`, NoAccessState asks them to confirm instead of saying they have no access; `onRetry` asks again.
+ */
+export const SalaryCheckContext = createContext<{ cancelled: boolean; onRetry: () => void } | null>(null);
 
 function RequestAccessLoader({ useRequests, what }: { useRequests: () => AccessRequests | null; what: string }) {
   const requests = useRequests();

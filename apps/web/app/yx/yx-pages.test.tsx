@@ -64,7 +64,7 @@ const FLOOR = {
 const POLICY = {
   mfaScope: 'sensitive_roles', allowedFactors: ['passkey', 'totp'], sessionIdleMinutes: null, sessionAbsoluteMinutes: null, maxConcurrentSessions: null,
   passwordMinLength: 12, ipAllowlistDesk: [], ipAllowlistAdmin: [], ipAllowlistApi: [], ssoOnly: false, breakGlassUserIds: [], otpSignInChannels: [],
-  maxFailedAttempts: 10, lockMinutes: 15, googleSignIn: false, microsoftSignIn: false,
+  maxFailedAttempts: 10, lockMinutes: 15, googleSignIn: false, microsoftSignIn: false, salaryRecheck: true, salaryRecheckMinutes: 15,
 };
 
 const api = apiFetch as jest.Mock;

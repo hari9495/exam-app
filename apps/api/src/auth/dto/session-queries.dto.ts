@@ -47,3 +47,15 @@ export class LoginEventsQueryDto extends MyLoginHistoryQueryDto {
 export class UnlockAccountDto {
   @IsString() @MinLength(10) @MaxLength(500) @Matches(/\S/) reason!: string;
 }
+
+// Admin A6 (batch B item 20): Login activity › Accounts.
+export class AccountsQueryDto extends PageQueryDto {
+  @IsOptional()
+  @IsIn(['all', 'active', 'invited', 'off'])
+  status?: 'all' | 'active' | 'invited' | 'off';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  search?: string;
+}

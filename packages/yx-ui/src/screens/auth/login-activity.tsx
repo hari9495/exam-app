@@ -3,6 +3,8 @@ import { Button } from '../../components/button';
 import { DateRangePicker, type DateRange } from '../../components/date';
 import { EmptyState, InlineAlert, NoAccessState, Pagination } from '../../components/feedback';
 import { FormField } from '../../components/field';
+import { TextField } from '../../components/inputs';
+import { Segment } from '../../components/segment';
 import { ConfirmDialog } from '../../components/overlay';
 import { Select } from '../../components/select';
 import { PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
@@ -23,9 +25,26 @@ export const NO_FILTERS: LoginActivityFilters = { result: null, method: null, us
 /** Failed attempts in the last 24 hours at or above this show a warning. */
 export const FAILED_SPIKE_AT = 20;
 
+export type LoginActivityTab = 'events' | 'sessions' | 'accounts';
+
+/** Admin A6 (batch B item 20): one person's account and whether they can sign in. */
+export interface AccountRow {
+  id: string;
+  name: string;
+  email: string;
+  roleLabel: string;
+  /** active: can sign in; invited: can sign in but never has; off: sign-in turned off (leavers, mistakes). */
+  status: 'active' | 'invited' | 'off';
+  lastLoginAt: string | null;
+  twoStep: boolean;
+  /** The viewer's own row: no actions (nobody turns off their own sign-in). */
+  self?: boolean;
+}
+export type AccountFilter = 'all' | 'active' | 'invited' | 'off';
+
 export interface LoginActivityScreenProps {
-  tab: 'events' | 'sessions';
-  onTabChange: (tab: 'events' | 'sessions') => void;
+  tab: LoginActivityTab;
+  onTabChange: (tab: LoginActivityTab) => void;
   events: Page<LoginEventRow> | null;
   eventsState: 'ready' | 'loading' | 'error';
   filters: LoginActivityFilters;
@@ -44,6 +63,18 @@ export interface LoginActivityScreenProps {
   /** Clears a person's account lock (step-up and audit are the host's / API's). Omitted: no Unlock action. */
   onUnlock?: (row: LoginEventRow, reason: string) => Promise<void>;
   onRetry?: () => void;
+  /** Admin A6: the Accounts tab. Omitted: no tab (the viewer may not manage accounts). */
+  accounts?: Page<AccountRow> | null;
+  accountsState?: 'ready' | 'loading' | 'error';
+  accountFilter?: AccountFilter;
+  onAccountFilter?: (f: AccountFilter) => void;
+  accountSearch?: string;
+  onAccountSearch?: (q: string) => void;
+  onAccountsPage?: (page: number) => void;
+  /** Turns sign-in off or back on (audited; refused for yourself and the last System Admin by the API). */
+  onSetSignIn?: (row: AccountRow, on: boolean) => Promise<void>;
+  /** Emails a new sign-in link to someone who never signed in (the old link stops working). */
+  onResendLink?: (row: AccountRow) => Promise<void>;
   /** The API refused for a missing permission: say so, not "couldn't load". */
   noAccess?: boolean;
 }
@@ -87,10 +118,11 @@ export function LoginActivityScreen(props: LoginActivityScreenProps) {
           This is more than usual. Accounts lock after too many wrong tries in a row and the person is emailed. Unlock someone from their row.
         </InlineAlert>
       )}
-      <Tabs value={props.tab} onValueChange={(v) => props.onTabChange(v as 'events' | 'sessions')}>
+      <Tabs value={props.tab} onValueChange={(v) => props.onTabChange(v as LoginActivityTab)}>
         <TabsList aria-label="Login activity">
           <TabsTrigger value="events">Sign-in attempts</TabsTrigger>
           <TabsTrigger value="sessions" count={props.sessions?.total}>Signed in now</TabsTrigger>
+          {props.accounts !== undefined && <TabsTrigger value="accounts">Accounts</TabsTrigger>}
         </TabsList>
         <TabsContent value="events">
           <div className="yx-auth__stack">
@@ -137,6 +169,11 @@ export function LoginActivityScreen(props: LoginActivityScreenProps) {
         <TabsContent value="sessions">
           <SessionsTable {...props} />
         </TabsContent>
+        {props.accounts !== undefined && (
+          <TabsContent value="accounts">
+            <AccountsTable {...props} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
@@ -200,6 +237,88 @@ function SessionsTable({ sessions, sessionsState, onSessionsPage, onRevokeSessio
         cardSummary
       />
       {sessions && sessions.total > sessions.pageSize && <Pagination page={sessions.page} pageSize={sessions.pageSize} total={sessions.total} onPageChange={onSessionsPage} />}
+    </div>
+  );
+}
+
+const ACCOUNT_FILTERS: { value: AccountFilter; label: string }[] = [
+  { value: 'all', label: 'Everyone' },
+  { value: 'active', label: 'Can sign in' },
+  { value: 'invited', label: 'Never signed in' },
+  { value: 'off', label: 'Turned off' },
+];
+const ACCOUNT_STATUS: Record<AccountRow['status'], { label: string; tone: 'success' | 'warning' | 'neutral' }> = {
+  active: { label: 'Can sign in', tone: 'success' },
+  invited: { label: 'Never signed in', tone: 'warning' },
+  off: { label: 'Turned off', tone: 'neutral' },
+};
+
+function AccountsTable(props: LoginActivityScreenProps) {
+  const { accounts, onSetSignIn, onResendLink } = props;
+  const filter = props.accountFilter ?? 'all';
+  const columns: TableColumn<AccountRow>[] = [
+    { key: 'person', header: 'Person', type: 'person', value: (a) => a.name, person: (a) => ({ name: a.name, secondary: a.email }), width: 260, hideable: false },
+    { key: 'role', header: 'Role', value: (a) => a.roleLabel, width: 170 },
+    { key: 'status', header: 'Sign-in', value: (a) => ACCOUNT_STATUS[a.status].label, render: (a) => <Badge tone={ACCOUNT_STATUS[a.status].tone}>{ACCOUNT_STATUS[a.status].label}</Badge>, width: 160 },
+    { key: 'last', header: 'Last signed in', type: 'date', value: (a) => a.lastLoginAt, render: (a) => (a.lastLoginAt ? when(a.lastLoginAt) : 'Never'), width: 190 },
+    { key: 'twoStep', header: 'Two-step', value: (a) => (a.twoStep ? 'On' : 'Off'), render: (a) => (a.twoStep ? <Badge tone="success">On</Badge> : <Badge>Off</Badge>), width: 110 },
+  ];
+  return (
+    <div className="yx-auth__stack">
+      <div className="yx-auth__filters">
+        <FormField label="Show">
+          <Segment label="Show" options={ACCOUNT_FILTERS} value={filter} onChange={(v) => props.onAccountFilter?.(v)} />
+        </FormField>
+        <FormField label="Search">
+          <TextField type="search" value={props.accountSearch ?? ''} onChange={(v) => props.onAccountSearch?.(v)} placeholder="Name or email" maxLength={100} />
+        </FormField>
+      </div>
+      <DataTable
+        label="Accounts"
+        columns={columns}
+        rows={accounts?.data ?? []}
+        getRowId={(a) => a.id}
+        state={props.accountsState ?? 'ready'}
+        onRetry={props.onRetry}
+        errorTitle="We couldn't load the accounts."
+        empty={<EmptyState compact title={filter === 'all' && !props.accountSearch ? 'Nobody has an account yet.' : 'Nobody matches these filters.'} />}
+        rowButtons={(a) =>
+          a.self ? null : (
+            <>
+              {a.status === 'invited' && onResendLink && (
+                <ConfirmDialog
+                  trigger={<Button size="sm" aria-label={`Send a new sign-in link to ${a.name}`}>Send link again</Button>}
+                  title={`Send ${a.name} a new sign-in link?`}
+                  consequence={`We email ${a.email} a new link. Any older link stops working.`}
+                  confirmLabel="Send link"
+                  onConfirm={() => onResendLink(a)}
+                />
+              )}
+              {onSetSignIn &&
+                (a.status === 'off' ? (
+                  <ConfirmDialog
+                    trigger={<Button size="sm" aria-label={`Turn sign-in back on for ${a.name}`}>Turn on</Button>}
+                    title={`Let ${a.name} sign in again?`}
+                    consequence="They can sign in their usual way from now. This is recorded in the audit log."
+                    confirmLabel="Turn on sign-in"
+                    onConfirm={() => onSetSignIn(a, true)}
+                  />
+                ) : (
+                  <ConfirmDialog
+                    trigger={<Button size="sm" aria-label={`Turn off sign-in for ${a.name}`}>Turn off</Button>}
+                    title={`Turn off sign-in for ${a.name}?`}
+                    consequence="They are signed out everywhere now and cannot sign in until it is turned back on. Their records stay. This is recorded in the audit log."
+                    confirmLabel="Turn off sign-in"
+                    destructive
+                    onConfirm={() => onSetSignIn(a, false)}
+                  />
+                ))}
+            </>
+          )
+        }
+        cardSummary
+      />
+      {accounts && accounts.total > accounts.pageSize && <Pagination page={accounts.page} pageSize={accounts.pageSize} total={accounts.total} onPageChange={(p) => props.onAccountsPage?.(p)} />}
     </div>
   );
 }

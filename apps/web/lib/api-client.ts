@@ -2,6 +2,7 @@ import { humanizeHttpError, NetworkError } from './http-error-message';
 import { goTo } from './navigate';
 import { withNextHere } from './safe-next';
 import { noteNotFound } from './yx-not-found';
+import { SALARY_RECHECK_MESSAGE, salaryCheck } from './salary-check';
 
 // Exported for public, unauthenticated pages (e.g. the candidate apply/status pages) that hit
 // the backend with plain fetch instead of apiFetch -- there's no access token to attach.
@@ -28,6 +29,9 @@ let stepUpHandler: (() => Promise<boolean>) | null = null;
 export function setStepUpHandler(handler: (() => Promise<boolean>) | null) {
   stepUpHandler = handler;
 }
+
+// Answer 2370: the cancelled-salary-check store lives in its own module (pages read it even where api-client is mocked).
+export { SALARY_RECHECK_MESSAGE, salaryCheck };
 
 // A 401 from these means a wrong credential or code, not an expired session: refreshing is
 // pointless there (and /auth/refresh would recurse into its own handler).
@@ -160,8 +164,13 @@ export async function apiFetch(path: string, options: RequestInit = {}, accessTo
     }
   }
 
-  if (code === STEP_UP_REQUIRED && stepUpHandler && (await stepUpHandler())) {
-    response = await doFetch(path, options, token);
+  if (code === STEP_UP_REQUIRED && stepUpHandler) {
+    if (await stepUpHandler()) {
+      response = await doFetch(path, options, token);
+      salaryCheck.set(false);
+    } else if ((await errorBody(response)).message === SALARY_RECHECK_MESSAGE) {
+      salaryCheck.set(true);
+    }
   }
 
   if (!response.ok) {

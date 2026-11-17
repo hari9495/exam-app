@@ -1,6 +1,6 @@
-# YukthiX accessibility statement (DRAFT, not yet published)
+# YukthiX accessibility statement
 
-Status: draft for the founder (answer 2333), 17 Nov 2026. Publish it at `/yx/legal/accessibility` once approved (question 2342).
+Status: approved (answers 2333 and 2352), published at `/yx/legal/accessibility` (kit: `LegalNoticeScreen`, doc `accessibility`). Gap G-1 was fixed by answer 2356 (the page behind an open dialog is inert).
 
 ## Our target
 
@@ -46,7 +46,6 @@ not add our own screen reader, colour filters or a "basic HTML" view, because yo
 
 | # | Where | What | WCAG | Plan |
 |---|---|---|---|---|
-| G-1 | Any open dialog or drawer | While a dialog is open, the page behind it is hidden from screen readers but its buttons are still in the page's code. The keyboard cannot reach them (focus stays in the dialog), but automated checks flag it (14 screen states). | 4.1.2 | Make the page behind an open dialog inert. |
 | G-2 | Charts | Not yet checked that every chart has a text or table version of its numbers. | 1.1.1 | Check each chart; add a table view where missing. |
 | G-3 | Rich text editor, org chart, roster grid | Complex widgets not yet tested with a screen reader. | 2.1.1, 4.1.2 | One-time NVDA pass (answer 2330), then fixes. |
 | G-4 | Whole app | No manual screen-reader (NVDA / JAWS / VoiceOver) pass has been done yet; only automated checks. | all | NVDA pass on the main flows (answer 2330). |
@@ -58,8 +57,8 @@ not add our own screen reader, colour filters or a "basic HTML" view, because yo
 
 ## Feedback and contact
 
-If something does not work for you, tell your company's HR team, or write to the YukthiX accessibility contact
-(address to be confirmed, question 2342). We aim to reply within 5 working days.
+If something does not work for you, tell your company's HR team, or write to accessibility@ the YukthiX domain (the same domain as
+the privacy contact, NEXT_PUBLIC_YX_PRIVACY_EMAIL). We aim to reply within 5 working days.
 
 ## Preparation of this statement
 

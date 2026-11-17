@@ -21,6 +21,8 @@ export interface LiveAuditEntry {
   id: string;
   at: string;
   action: string;
+  /** Admin B1: the entry as one plain sentence, built by the API (the event code stays in the drawer). */
+  sentence?: string;
   entityType: string;
   entityId: string | null;
   actor: string;
@@ -81,8 +83,7 @@ export function LiveAuditLogScreen({ live }: { live: LiveAuditLog }) {
   const columns: TableColumn<LiveAuditEntry>[] = [
     { key: 'at', header: 'Time', value: (r) => r.at, render: (r) => stamp(r.at), width: 170 },
     { key: 'actor', header: 'Who', type: 'person', value: (r) => r.actor, person: (r) => ({ name: r.actor, secondary: r.actorRole ?? undefined }) },
-    { key: 'action', header: 'Action', value: (r) => r.action, width: 260 },
-    { key: 'subject', header: 'Subject', value: (r) => r.entityType },
+    { key: 'what', header: 'What happened', value: (r) => r.sentence ?? r.action },
     // Answer 1723: shown once any entry has it.
     ...(live.entries.some((e) => e.channel) ? [{ key: 'channel', header: 'From', value: (r: LiveAuditEntry) => (r.channel ? (CHANNEL[r.channel] ?? r.channel) : '—'), width: 90 }] : []),
   ];
@@ -134,9 +135,9 @@ export function LiveAuditLogScreen({ live }: { live: LiveAuditLog }) {
       />
       {live.onMore && <Button onClick={live.onMore}>Show older entries</Button>}
       {current && (
-        <Drawer open onOpenChange={(o) => !o && setOpen(null)} title={current.action} subtitle={stamp(current.at)} meta={<PersonLabel name={current.actor} secondary={current.actorRole ?? undefined} />} size="lg">
+        <Drawer open onOpenChange={(o) => !o && setOpen(null)} title={current.sentence ?? current.action} subtitle={stamp(current.at)} meta={<PersonLabel name={current.actor} secondary={current.actorRole ?? undefined} />} size="lg">
           <div className="yx-plt-stack">
-            <DescriptionList items={[{ label: 'Subject', value: current.entityType }, { label: 'Record', value: current.entityId ?? '—', mono: true }, ...(current.channel ? [{ label: 'From', value: CHANNEL[current.channel] ?? current.channel }] : [])]} />
+            <DescriptionList items={[{ label: 'Event code', value: current.action, mono: true }, { label: 'Subject', value: current.entityType }, { label: 'Record', value: current.entityId ?? '—', mono: true }, ...(current.channel ? [{ label: 'From', value: CHANNEL[current.channel] ?? current.channel }] : [])]} />
             {diff.length ? <DiffTable caption="Changes" rows={diff} /> : <p className="yx-plt-muted">No field changes for this entry.</p>}
           </div>
         </Drawer>

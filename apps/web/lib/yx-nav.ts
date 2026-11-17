@@ -598,6 +598,8 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(settingsView, L('approval-policies', 'Approval policies', '/yx/settings/approval-policies')),
         // Answer 1563: the company audit log.
         ...when(has('audit.view') && !support, L('audit-log', 'Audit log', AUDIT_LOG)),
+        // Batch B item 3 (admin B2): deleted records across YukthiX, restorable until the company's keep days pass.
+        ...when((settingsAdmin || has('org:manage_settings')) && !support, L('recycle-bin', 'Recycle bin', '/yx/settings/recycle-bin')),
         ...when(has('lifecycle.journey.template.manage'), L('checklists', 'Onboarding checklists', '/yx/settings/checklists')),
         ...when(adminRole, L('settings', 'Security settings', '/yx/settings/security'), L('identity-providers', 'Single sign-on providers', '/yx/settings/identity-providers')),
         ...when(adminRole || n.role === 'auditor', L('activity', 'Login activity', '/yx/admin/login-activity')),

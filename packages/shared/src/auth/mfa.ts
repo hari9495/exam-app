@@ -195,12 +195,13 @@ export const NON_STEP_UP_MFA_METHODS: readonly string[] = ['otp', 'idp', 'enrolm
 // Step-up met: AAL2 proven on this session within the step-up window by a YukthiX passkey,
 // authenticator app or recovery code (NON_STEP_UP_MFA_METHODS never count).
 // No grace: an account without a factor cannot step up, so it cannot take step-up actions.
-export function stepUpSatisfied(session: SessionAssurance, now = Date.now()): boolean {
+// windowSeconds: a shorter window for one purpose (the salary re-check, batch B item 1); never longer than the platform's.
+export function stepUpSatisfied(session: SessionAssurance, now = Date.now(), windowSeconds = stepUpWindowSeconds()): boolean {
   return (
     session.assuranceLevel === 'aal2' &&
     session.mfaMethod !== null &&
     !NON_STEP_UP_MFA_METHODS.includes(session.mfaMethod) &&
     session.mfaVerifiedAt !== null &&
-    now - session.mfaVerifiedAt.getTime() <= stepUpWindowSeconds() * 1000
+    now - session.mfaVerifiedAt.getTime() <= Math.min(windowSeconds, stepUpWindowSeconds()) * 1000
   );
 }

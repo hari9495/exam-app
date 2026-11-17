@@ -25,6 +25,8 @@ export const TENANT_SECURITY_FLOOR = {
   // 15 minutes (the first lock; later ones double, capped at 24 h). Migration 20261006600000.
   maxFailedAttempts: { min: 3, max: 10 },
   lockMinutes: { min: 15, max: 24 * 60 },
+  // Batch B item 1 (pay B12 / admin B4): ask again before salary pages after this many minutes (the step-up window caps it).
+  salaryRecheckMinutes: [5, 10, 15],
 } as const;
 
 export type SecurityPolicySettings = Omit<TenantSecurityPolicy, 'organizationId' | 'updatedAt' | 'updatedByUserId'>;
@@ -47,6 +49,8 @@ export const DEFAULT_SECURITY_POLICY: SecurityPolicySettings = Object.freeze({
   lockMinutes: TENANT_SECURITY_FLOOR.lockMinutes.min,
   googleSignIn: false,
   microsoftSignIn: false,
+  salaryRecheck: true,
+  salaryRecheckMinutes: 15,
 });
 
 // Read on every staff request (IP allow-lists), so cached per process.

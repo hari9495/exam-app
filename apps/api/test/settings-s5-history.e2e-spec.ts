@@ -170,4 +170,26 @@ describe('Settings S-5: change history, view-only pages and the company audit lo
       expect(csv.text).not.toContain(`hr B ${run}`);
     });
   });
+  // Batch B item 29 (admin B1): each entry is also one plain sentence, on the page and in the export.
+  describe('Admin B1: the activity log in plain sentences', () => {
+    it('each entry carries a sentence naming who did what', async () => {
+      const entries = (await api('auditorA', 'get', '/payroll/audit?area=settings').expect(200)).body.entries as { action: string; sentence: string }[];
+      const change = entries.find((e) => e.action === 'org.setting.changed')!;
+      expect(change.sentence).toBe(`Company setting changed by hr A ${run}.`);
+      expect(entries.every((e) => typeof e.sentence === 'string' && e.sentence.endsWith('.'))).toBe(true);
+    });
+
+    it('the export has a "What happened" column with the same sentence and the event code beside it', async () => {
+      const csv = await api('exporterA', 'get', '/payroll/audit/export?area=settings').expect(200);
+      expect(csv.text).toContain('What happened,Event code');
+      expect(csv.text).toContain(`Company setting changed by hr A ${run}.`);
+    });
+
+    it('refused for the wrong role, nothing from another company, bad filters are a 400', async () => {
+      await api('plainA', 'get', '/payroll/audit').expect(403);
+      const b = (await api('hrB', 'get', '/payroll/audit?area=settings').expect(200)).body.entries as { sentence: string }[];
+      expect(b.some((e) => e.sentence.includes(`hr A ${run}`))).toBe(false);
+      await api('auditorA', 'get', '/payroll/audit?from=not-a-date').expect(400);
+    });
+  });
 });

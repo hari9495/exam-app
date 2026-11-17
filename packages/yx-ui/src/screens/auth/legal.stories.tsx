@@ -18,7 +18,7 @@ const OSS = [
 export const Privacy: S = { name: 'Privacy notice', render: () => <LegalNoticeScreen doc="privacy" contactEmail={EMAIL} /> };
 export const PrivacyNoContact: S = { name: 'Privacy notice · contact not published yet', render: () => <LegalNoticeScreen doc="privacy" /> };
 export const Terms: S = { name: 'Terms of use', render: () => <LegalNoticeScreen doc="terms" /> };
-export const Accessibility: S = { name: 'Accessibility statement', render: () => <LegalNoticeScreen doc="accessibility" contactEmail={EMAIL} /> };
+export const Accessibility: S = { name: 'Accessibility statement', render: () => <LegalNoticeScreen doc="accessibility" contactEmail="accessibility@yukthix.example" /> };
 export const Grievance: S = { name: 'Grievance officer', render: () => <LegalNoticeScreen doc="grievance" contactEmail={EMAIL} /> };
 export const OpenSource: S = { name: 'Open-source notices', render: () => <LegalNoticeScreen doc="openSource" components={OSS} /> };
 export const Phone: S = { name: 'Grievance officer · phone', globals: { viewport: { value: 'phone' } }, render: () => <LegalNoticeScreen doc="grievance" contactEmail={EMAIL} /> };

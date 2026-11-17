@@ -3,7 +3,7 @@ export * from './types';
 export { ForgotPasswordScreen, ResetPasswordScreen, SignInScreen, StaffSignInScreen, isMobileIdentifier, providerButtonLabel, type CompanyOption, type ForgotPasswordScreenProps, type ResetPasswordScreenProps, type SignInFields, type SignInScreenProps, type SignInStep, type SocialProvider, type StaffSignInScreenProps } from './sign-in';
 export { MfaChallengeScreen, MfaEnrolScreen, StepUpDialog, type MfaChallengeScreenProps, type MfaEnrolScreenProps, type StepUpDialogProps, type TotpSetup } from './mfa';
 export { MeSecurityScreen, type HistoryFilter, type MeSecurityScreenProps } from './me-security';
-export { LoginActivityScreen, ANY_FAILURE, NO_FILTERS, FAILED_SPIKE_AT, type LoginActivityFilters, type LoginActivityScreenProps } from './login-activity';
+export { LoginActivityScreen, ANY_FAILURE, NO_FILTERS, FAILED_SPIKE_AT, type LoginActivityFilters, type LoginActivityScreenProps, type LoginActivityTab, type AccountRow, type AccountFilter } from './login-activity';
 export { SecuritySettingsScreen, SESSION_DEFAULTS, policyChanges, policyErrors, type SecuritySettingsScreenProps } from './security-settings';
 export { THEME_STORAGE_KEY, readThemeChoice, useAppearance } from './shell';
 export { AuthFrame, AuthLanguageContext, LEGAL_LINKS, deviceLabel, errorText, type AuthFrameProps } from './kit';
