@@ -22659,5 +22659,27 @@
       "Screens/Time/TIM-18 · Apply leave"
     ],
     "note": "Positive and negative. Told on approval only, never the type or the reason."
+  },
+  {
+    "id": "MT-BATA-D12",
+    "area": "Batch A: cancel some days and extend leave (D12, answers 2311 and 2324, 17 Nov 2026)",
+    "screen": "Me › Leave › a request › Cancel some days / Extend (TIM-19)",
+    "url": "http://localhost:3000/yx/time/leave",
+    "account": "Employee arjun@demo-org.test; manager panel@demo-org.test (Divya); colleague hr-tester@demo-org.test (named under Notify colleagues); HR hr-tester@demo-org.test for HR's cancel (API: POST /time/hr/leave/<employee>/requests/<id>/cancel-days).",
+    "steps": [
+      "As Arjun: apply earned leave Monday to Wednesday next month, Notify colleagues = hr-tester; Divya approves it.",
+      "Open the request: press Cancel some days, then Send to approver with nothing ticked.",
+      "Tick all three days and send.",
+      "Tick only Wednesday, reason 'Back early'; send. Open the request again and try Cancel some days a second time.",
+      "As Divya: approve the cancel. As Arjun: open the request and My leave balances. As hr-tester: open the bell.",
+      "As Arjun: Extend; send with no date; then pick a new last day two days after the end and send.",
+      "As Arjun: Ask to cancel the remaining leave; Divya approves; hr-tester opens the bell.",
+      "As Arjun: open a request of last month (days already taken) and look for Cancel some days."
+    ],
+    "expected": "Step 2: 'Pick at least one day to cancel.'; Send stays pressable. Step 3: 'That is every day of this leave. Use Ask to cancel instead.' Step 4: toast 'Sent to Divya…'; the request shows 'Cancel some days: waiting for approval' and no second Cancel some days button. Step 5: the leave now ends on Tuesday, 2 days; 1 day is back in the balance; hr-tester has 'Arjun Kulkarni is no longer away on <Wednesday>.' (dates only). Step 6: 'Choose the new last day.'; then 'Extension sent to your manager', a new pending request from the day after the end. Step 7: hr-tester gets 'no longer away from … to …'. Step 8: taken days are shown as 'Already taken' and cannot be ticked.",
+    "stories": [
+      "Screens/Time/TIM-19 · Leave request detail"
+    ],
+    "note": "Positive and negative. HR's screen for cancelling any day is not built yet (API only, question 2325)."
   }
 ]
