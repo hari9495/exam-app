@@ -48,6 +48,8 @@ export default function YxPayrollHomePage() {
         dues: !canDues || dues.isError ? undefined : (dues.data ?? null),
         waitingForFnf: waitingFnf.data ?? null,
         fnfHref: () => '/yx/payroll/fnf',
+        // Answer 2300: settled first: one click adds it to an off-cycle correction run.
+        ...(perms.has('payroll.offcycle.prepare') ? { onAddToOffcycle: (id: string) => write<{ runId: string }>(`/corrections/${encodeURIComponent(id)}/offcycle`, {}) } : {}),
         calendar: month ? { cutOff: month.cutOff, payDate: month.payDate } : null,
         canPrepare: perms.has('payroll.run.prepare'),
         canOffcycle: perms.has('payroll.offcycle.prepare'),

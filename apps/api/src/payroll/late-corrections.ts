@@ -100,6 +100,13 @@ export async function paidIn(tx: Tx, org: string, employeeId: string, legalEntit
   return last && nextOpen > last.slice(0, 7) ? { month: last.slice(0, 7), fnf: true } : { month: nextOpen, fnf: false };
 }
 
+/** A payslip (approved) already paid this correction: a line points at it. */
+export async function correctionPaid(tx: Tx, org: string, correctionId: string): Promise<boolean> {
+  const lines = await tx.payslipLine.findMany({ where: { organizationId: org, sourceRef: correctionId }, select: { payslipId: true } });
+  if (!lines.length) return false;
+  return (await tx.payslip.count({ where: { organizationId: org, id: { in: lines.map((l) => l.payslipId) }, status: 'approved' } })) > 0;
+}
+
 /** The leave types a "leave:<code>" choice may name (answer 2282). */
 export async function knownLeave(tx: Tx, org: string, shouldBe: string): Promise<boolean> {
   if (!shouldBe.startsWith('leave:')) return true;
