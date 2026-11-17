@@ -11,7 +11,7 @@ import { ConsentDto, PatternAssignDto, PatternDto, RosterBulkDto, RosterCellDto,
 import { ScheduleBook, assertOpen, lockedDates, nightGuard, oshOn } from './schedule';
 import { TimeSetupService, SCOPE_MODEL } from './setup.service';
 import { TIME_KEYS, Facts, asDate, companySetting, grantCovers, dateOf, factsOn, holidaysFor, hrApprovers, leaveDays, mustSee, myEmployeeId, settingOn, visibleSql } from './time-core';
-import { addDays } from './time-maths';
+import { addDays, isWeeklyOff } from './time-maths';
 import { Conflict, ShiftTimes, mondayOf } from './time-rules';
 import { RosterGuard } from './roster-guard';
 import { BLOCKING, GUARD_CODE, RuleBreak, addedBreaks, insideNotice, shiftKindProblem, timeBreaks, type Limits, type PlanDay } from './roster-rules';
@@ -465,7 +465,9 @@ export class RosterService implements OnModuleInit {
         for (const on of week) {
           const wd = (new Date(`${on}T00:00:00Z`).getUTCDay() + 6) % 7;
           const d = await book.day(f, on, false);
-          if (dto.change === 'shift') cycle[wd] = d.weeklyOff ? null : dto.shiftId!;
+          // A weekly off HR marked as a one-off working day (D11) is still a weekly off in the person's usual week.
+          const off = d.weeklyOff || (d.source === 'location' && isWeeklyOff(on, (await book.locationDay(f, on)).base.weeklyOffs));
+          if (dto.change === 'shift') cycle[wd] = off ? null : dto.shiftId!;
           else cycle[wd] = dto.weeklyOffs!.includes(wd + 1) ? null : (d.shift?.shiftId ?? dto.shiftId ?? null);
           if (dto.change === 'weekly_off' && !dto.weeklyOffs!.includes(wd + 1) && !d.shift?.shiftId && !dto.shiftId) noShift.push(f.name);
         }
