@@ -243,3 +243,15 @@ All new sets go in `apps/api/src/statutory/packs/in.json` (IN.PT / IN.LWF) and `
 | H14 | **IN.TAXDED TY2026-27**: fill section numbers (123/Sch XV, 126, 124(3), 124(1)(a), 11 + Sch III Sl. 11, 19(1)); crosswalk rows for 89(1)→157(1), Form 10E→39, 12BB→124, 80C/80D; keep 87A→156 flagged unconfirmed | S |
 | H15 | Form 124 declaration: add "relationship with landlord" field | S |
 | H16 | Minimum wages: Maharashtra (Jul–Dec 2026), Haryana (1 Apr 2026), TN DA, then DL/WB/TS/AP/GJ/UP when sourced | M |
+
+## Founder answers, batch H (17 Nov 2026, "ok for all"), 2380 to 2389
+- 2380: build H6 and H9 now, marked verify, and the Haryana rate-with-cap evaluator. Wait for the CA on the conflicting rows: H7, the Haryana LWF cap (31, 34 or 35), H11 and H12.
+- 2381: Odisha gets only "no PT from 1 Apr 2026". Add the old schedule only if a customer needs to re-run earlier months (CA item 20).
+- 2382: a state whose PT rule in force has no slabs needs no PT registration in setup (Delhi, the H8 states, and Odisha from April).
+- 2383: Assam at exactly 25,000 = 208 a month (15,001 to 24,999 = 180), verify (CA item 9).
+- 2384: the Haryana LWF 0.2 % is of the month's gross earnings, capped; employer pays 2 times the employee share; verify.
+- 2385: Madhya Pradesh annual PT uses the yearly band from the projected salary (PT wage × 12); 2,500 = 208 × 11 + 212, with the 212 in March.
+- 2386: Punjab Development Tax waits for CA item 19.
+- 2387: H16 minimum-wage tables wait for the official gov.in PDFs (MH, HR, the TN DA); no invented rows.
+- 2388: H14 also shows "s.123 (old 80C)" style labels on the declaration screen. The other listed payroll items go in batch H part 2.
+- 2389: Kerala per-board LWF, Kerala local-body PT and Tamil Nadu local bodies outside Chennai wait for the CA (items 5, 40, 4).
