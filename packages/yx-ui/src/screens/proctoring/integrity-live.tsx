@@ -12,6 +12,7 @@ import { TextArea } from '../../components/inputs';
 import { Select } from '../../components/select';
 import { RadioGroup } from '../../components/choice';
 import { SYSTEM_ACTOR, Timeline } from '../../components/timeline';
+import { EvidenceFrame } from './proctoring-kit';
 import { PrcFrame } from './proctoring-shared';
 import { VERDICT_LABEL, type Verdict } from './proctoring-logic';
 
@@ -114,6 +115,8 @@ export interface LiveIncident {
   sections: string[];
   analysis: { flags: { type: string; severity: string; detail: string }[]; narrative: string | null } | null;
   events: { id: string; type: string; severity: string; at: string }[];
+  /** Answer 2262: the frames kept (opened one by one, each opening audited). */
+  frames?: { eventId: string; kind: 'camera' | 'screen'; at: string; what: string; flagged: boolean }[];
   reviewer: { id: string; name: string | null } | null;
   verdict: Verdict | null;
   sectionTitle: string | null;
@@ -140,6 +143,8 @@ export interface LiveIncidentWorkspace {
   onInvalidate: (input: { reason: string; secondReviewerId: string }) => Promise<unknown>;
   onSecondReview: (input: { confirm: boolean; reason: string }) => Promise<unknown>;
   onBack: () => void;
+  /** Answer 2262: opens one frame (audited). */
+  onFrame?: (eventId: string, kind: 'camera' | 'screen') => Promise<unknown>;
 }
 
 function DecisionCard({ live, inc }: { live: LiveIncidentWorkspace; inc: LiveIncident }) {
@@ -290,6 +295,27 @@ export function LiveIncidentWorkspaceScreen({ live }: { live: LiveIncidentWorksp
             )}
             {inc.analysis?.narrative && <p className="yx-prc-p">{inc.analysis.narrative}</p>}
           </Card>
+          {inc.frames && (
+            <Card title="Evidence frames">
+              {inc.frames.length ? (
+                <div className="yx-prc-grid4">
+                  {inc.frames.map((f) => (
+                    <div key={`${f.eventId}-${f.kind}`} className="yx-prc-stack">
+                      <EvidenceFrame at={new Date(f.at).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })} source={f.kind} label={f.what} flagged={f.flagged} />
+                      {live.onFrame && (
+                        <Button size="sm" onClick={() => void live.onFrame!(f.eventId, f.kind)} aria-label={`View the ${f.kind} frame: ${f.what}`}>
+                          View
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="yx-prc-muted">No camera or screen frames were kept for this attempt.</p>
+              )}
+              <p className="yx-prc-muted yx-prc-small">Your views are audited.</p>
+            </Card>
+          )}
           <Card title="Session events">
             {inc.events.length ? (
               <Timeline aria-label="Session events" items={inc.events.map((e) => ({ id: e.id, actor: { name: SYSTEM_ACTOR }, action: `${e.type.replace(/_/g, ' ')} (${e.severity})`, at: new Date(e.at) }))} />

@@ -49,6 +49,7 @@ export { AppealsScreen, IncidentWorkspaceScreen, IntegrityQueueScreen } from './
 export { LiveConsoleScreen } from './live';
 export type { LiveConsole, LiveThreadMessage } from './live-console-live';
 export type { LiveTileData } from './proctoring-logic';
+export { scoreFromFlags } from './proctoring-logic';
 export type { LiveAppealRow, LiveAppeals, LiveIncident, LiveIncidentRow, LiveIncidentWorkspace, LiveIntegrityQueue } from './integrity-live';
 export type { SystemCheck } from './proctoring-kit';
 

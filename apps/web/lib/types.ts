@@ -1550,6 +1550,8 @@ export interface CandidateIntegrity {
   appealUntil: string | null;
   canAppeal: boolean;
   appeal: { status: 'open' | 'upheld' | 'overturned'; sentAt: string; decidedAt: string | null; reason: string | null } | null;
+  /** Answer 2262: the flagged moments and how many frames are kept. */
+  evidence?: { moments: { at: string; what: string }[]; cameraFrames: number; screenFrames: number };
 }
 
 export interface AttemptState {

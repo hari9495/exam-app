@@ -170,3 +170,33 @@ describe('PRC-27 live decision and appeal', () => {
     expect(screen.queryByText('72 %')).not.toBeInTheDocument();
   });
 });
+
+describe('evidence frames and the candidate summary (answer 2262)', () => {
+  const frames = [
+    { eventId: 'e1', kind: 'camera' as const, at: '2026-11-17T05:00:00.000Z', what: 'webcam multiple faces', flagged: true },
+    { eventId: 'e1', kind: 'screen' as const, at: '2026-11-17T05:00:00.000Z', what: 'webcam multiple faces', flagged: true },
+  ];
+
+  it('the incident lists each frame kept; View opens one (the API audits it)', async () => {
+    const onFrame = vi.fn().mockResolvedValue(undefined);
+    render(<IncidentWorkspaceScreen live={workspace({ incident: { ...LIVE_INCIDENT, frames }, onFrame })} />);
+    expect(screen.getByText('Your views are audited.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'View the screen frame: webcam multiple faces' }));
+    expect(onFrame).toHaveBeenCalledWith('e1', 'screen');
+  });
+
+  it('negative: no frames kept says so; an incident without the list shows no card', () => {
+    const { unmount } = render(<IncidentWorkspaceScreen live={workspace({ incident: { ...LIVE_INCIDENT, frames: [] }, onFrame: vi.fn() })} />);
+    expect(screen.getByText('No camera or screen frames were kept for this attempt.')).toBeInTheDocument();
+    unmount();
+    render(<IncidentWorkspaceScreen live={workspace()} />);
+    expect(screen.queryByText('Evidence frames')).not.toBeInTheDocument();
+  });
+
+  it('the candidate sees the flagged moments and how many frames are kept, never a frame', () => {
+    render(<ResultAppealScreen live={{ testName: 'T', state: 'released', integrity: { ...LIVE_DECISION, evidence: { moments: [{ at: '10:32:05 am', what: 'webcam multiple faces' }], cameraFrames: 3, screenFrames: 1 } }, onAppeal: vi.fn() }} />);
+    expect(screen.getByRole('list', { name: 'Flagged moments' })).toHaveTextContent('10:32:05 am webcam multiple faces');
+    expect(screen.getByText(/3 camera frames and 1 screen capture are kept as evidence/)).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: /frame/i })).not.toBeInTheDocument();
+  });
+});

@@ -1439,6 +1439,8 @@ export interface LiveIntegrityDecision {
   appealUntil: string | null;
   canAppeal: boolean;
   appeal: { status: 'open' | 'upheld' | 'overturned'; sentOn: string; decidedOn: string | null; reason: string | null } | null;
+  /** Answer 2262: the flagged moments (times already formatted) and how many frames are kept; never the images. */
+  evidence?: { moments: { at: string; what: string }[]; cameraFrames: number; screenFrames: number };
 }
 
 export interface LiveResult {
@@ -1482,6 +1484,22 @@ function IntegrityDecisionPart({ d, onAppeal }: { d: LiveIntegrityDecision; onAp
           ]}
         />
       </Card>
+      {d.evidence && (
+        <Card title="What was recorded">
+          {d.evidence.moments.length ? (
+            <ul className="yx-prc-plain" aria-label="Flagged moments">
+              {d.evidence.moments.map((m, i) => (
+                <li key={i}>
+                  <span>{m.at}</span> <span>{m.what}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="yx-prc-muted">No moments were flagged.</p>
+          )}
+          <p className="yx-prc-muted yx-prc-small">{`${d.evidence.cameraFrames} camera ${d.evidence.cameraFrames === 1 ? 'frame' : 'frames'} and ${d.evidence.screenFrames} screen ${d.evidence.screenFrames === 1 ? 'capture' : 'captures'} are kept as evidence. Every time a reviewer opens one, it is recorded.`}</p>
+        </Card>
+      )}
       {d.canAppeal && !writing && (
         <InlineAlert tone="info" title={`You can appeal until ${d.appealUntil ?? ''}`} actions={<Button variant="primary" onClick={() => setWriting(true)}>Appeal this decision</Button>}>
           A different reviewer will look at your appeal. Your recordings are kept until it is decided.

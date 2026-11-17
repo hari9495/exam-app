@@ -123,7 +123,7 @@ export class IntegrityReviewService {
               submittedAt: true,
               invitation: { select: { candidate: { select: { name: true, email: true } }, exam: { select: { id: true, title: true } } } },
               integrityAnalysis: { select: { level: true, flagsJson: true, narrative: true, analyzedAt: true } },
-              proctoringEvents: { orderBy: { occurredAt: 'asc' }, take: 500, select: { id: true, eventType: true, severity: true, occurredAt: true } },
+              proctoringEvents: { orderBy: { occurredAt: 'asc' }, take: 500, select: { id: true, eventType: true, severity: true, occurredAt: true, metadataJson: true } },
             },
           },
         },
@@ -145,6 +145,14 @@ export class IntegrityReviewService {
           ? { level: r.attempt.integrityAnalysis.level, flags: parseFlags(r.attempt.integrityAnalysis.flagsJson), narrative: r.attempt.integrityAnalysis.narrative, analyzedAt: r.attempt.integrityAnalysis.analyzedAt?.toISOString() ?? null }
           : null,
         events: r.attempt.proctoringEvents.map((e) => ({ id: e.id, type: e.eventType, severity: e.severity, at: e.occurredAt.toISOString() })),
+        // Answer 2262: the stored frames (no links: each opening is a separate, audited call).
+        frames: r.attempt.proctoringEvents
+          .flatMap((e) => {
+            const f = framesOf(e.metadataJson);
+            const base = { eventId: e.id, at: e.occurredAt.toISOString(), what: e.eventType.replace(/_/g, ' '), flagged: e.severity !== 'low' };
+            return [...(f.camera ? [{ ...base, kind: 'camera' as const }] : []), ...(f.screen ? [{ ...base, kind: 'screen' as const }] : [])];
+          })
+          .slice(-60),
         reviewer: r.reviewerId ? { id: r.reviewerId, name: who.get(r.reviewerId) ?? null } : null,
         verdict: r.verdict,
         sectionTitle: r.sectionTitle,
@@ -291,6 +299,44 @@ export class IntegrityReviewService {
     });
   }
 
+  /** Answer 2262: a short-lived link to one frame of the incident's attempt; each opening is audited. */
+  async incidentFrame(ctx: TenantContext, userId: string, id: string, eventId: string, kind: 'camera' | 'screen'): Promise<{ url: string }> {
+    const e = await this.in(ctx, async (tx) => {
+      const inc = await tx.integrityIncident.findUnique({ where: { id }, select: { attemptId: true } });
+      if (!inc) throw new NotFoundException('Incident not found');
+      return tx.proctoringEvent.findFirst({ where: { id: eventId, attemptId: inc.attemptId }, select: { metadataJson: true, attemptId: true } });
+    });
+    const path = e ? framesOf(e.metadataJson)[kind] : null;
+    const url = path ? ((await this.blobStorage.signIfOurs(path)) as string | null) : null;
+    if (!e || !url) throw new NotFoundException('That frame is not kept.');
+    await this.in(ctx, (tx) => AuditService.recordIn(tx, ctx, { actorUserId: userId, action: 'asmt.incident.evidence_viewed', entityType: 'integrity_incident', entityId: id, metadata: { attemptId: e.attemptId, eventId, kind } }));
+    return { url };
+  }
+
+  /**
+   * Answer 2268: the latest camera frame of each running attempt of a test, for the live console's tiles (short-lived
+   * links). Watching is the proctor's job, so these are not audited one by one (the incident's frames are).
+   */
+  async liveFrames(ctx: TenantContext, examId: string): Promise<{ attemptId: string; url: string; at: string }[]> {
+    const rows = await this.in(ctx, (tx) =>
+      tx.proctoringEvent.findMany({
+        where: { eventType: 'webcam_snapshot', attempt: { examId, status: { in: ['in_progress', 'paused', 'blocked'] } } },
+        orderBy: [{ attemptId: 'asc' }, { occurredAt: 'desc' }],
+        distinct: ['attemptId'],
+        take: 500,
+        select: { attemptId: true, occurredAt: true, metadataJson: true },
+      }),
+    );
+    const out = await Promise.all(
+      rows.map(async (r) => {
+        const path = framesOf(r.metadataJson).camera;
+        const url = path ? ((await this.blobStorage.signIfOurs(path)) as string | null) : null;
+        return url ? { attemptId: r.attemptId, url, at: r.occurredAt.toISOString() } : null;
+      }),
+    );
+    return out.filter((x): x is { attemptId: string; url: string; at: string } => x !== null);
+  }
+
   /** Answer 2264: a short-lived link to the appeal's file; each opening is audited. */
   async appealEvidence(ctx: TenantContext, userId: string, id: string): Promise<{ url: string; name: string }> {
     const a = await this.in(ctx, (tx) => tx.integrityAppeal.findUnique({ where: { id }, select: { evidencePath: true, evidenceName: true, attemptId: true } }));
@@ -336,6 +382,17 @@ export interface Flag {
   severity: string;
   detail: string;
 }
+/** Answer 2262: the stored camera frame (`snapshot`) and screen capture (`screenshot`) of a proctoring event. */
+export function framesOf(metadataJson: string | null): { camera: string | null; screen: string | null } {
+  try {
+    const m = JSON.parse(metadataJson ?? '{}') as { snapshot?: unknown; screenshot?: unknown };
+    const s = (v: unknown) => (typeof v === 'string' && v ? v : null);
+    return { camera: s(m.snapshot), screen: s(m.screenshot) };
+  } catch {
+    return { camera: null, screen: null };
+  }
+}
+
 function parseFlags(json: string | null | undefined): Flag[] {
   try {
     const v = JSON.parse(json ?? '[]') as unknown;

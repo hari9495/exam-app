@@ -349,6 +349,39 @@ describe('Assessments AS-5: integrity review and appeals', () => {
     expect((await cand(r.ct, 'post', '/attempt/messages').send({ body: 'One more thing.' }).expect(400)).body.message).toMatch(/ended/);
   });
 
+  // Answers 2262 and 2268: the frames on the incident (each opening audited), the live console's latest frame per running
+  // attempt, and the candidate's summary (times and counts, never the images).
+  it('frames: the live console gets the latest frame while it runs; the incident lists the frames; opening one is audited', async () => {
+    const r = await running();
+    // The camera frame as the runner's periodic snapshot stores it (a blob path on a webcam_snapshot event).
+    await inOrg(org.A.id, (tx) => tx.proctoringEvent.create({ data: { attemptId: r.attemptId, eventType: 'webcam_snapshot', severity: 'low', metadataJson: JSON.stringify({ snapshot: `local-blob:webcam-snapshots/${r.attemptId}-1.jpg` }) } }));
+    const { examId } = await inOrg(org.A.id, (tx) => tx.attempt.findUniqueOrThrow({ where: { id: r.attemptId }, select: { examId: true } }));
+    expect((await api('proctor', 'get', `/asmt/live/${examId}/frames`).expect(200)).body).toEqual([expect.objectContaining({ attemptId: r.attemptId, url: expect.any(String) })]);
+    await api('reader', 'get', `/asmt/live/${examId}/frames`).expect(403);
+    expect((await api('adminB', 'get', `/asmt/live/${examId}/frames`).expect(200)).body).toEqual([]);
+    await inOrg(org.A.id, (tx) => tx.proctoringEvent.create({ data: { attemptId: r.attemptId, eventType: 'webcam_multiple_faces', severity: 'high', metadataJson: '{}' } }));
+    await cand(r.ct, 'post', '/attempt/submit').send({}).expect(201);
+    expect((await api('proctor', 'get', `/asmt/live/${examId}/frames`).expect(200)).body).toEqual([]);
+    await flag(r.attemptId, 'high_concern');
+    const iid = (await inOrg(org.A.id, (tx) => tx.integrityIncident.findUniqueOrThrow({ where: { attemptId: r.attemptId } }))).id;
+    const inc = (await api('proctor', 'get', `/asmt/integrity/${iid}`).expect(200)).body;
+    expect(inc.frames).toEqual([expect.objectContaining({ kind: 'camera', what: 'webcam snapshot', flagged: false })]);
+    expect(JSON.stringify(inc.frames)).not.toContain('webcam-snapshots/');
+    const ev = inc.frames[0].eventId as string;
+    await api('proctor', 'get', `/asmt/integrity/${iid}/frames/${ev}?kind=screen`).expect(404);
+    await api('proctor', 'get', `/asmt/integrity/${iid}/frames/${ev}?kind=other`).expect(400);
+    await api('reader', 'get', `/asmt/integrity/${iid}/frames/${ev}?kind=camera`).expect(403);
+    await api('adminB', 'get', `/asmt/integrity/${iid}/frames/${ev}?kind=camera`).expect(404);
+    expect(await inOrg(org.A.id, (tx) => tx.auditLog.count({ where: { entityId: iid, action: 'asmt.incident.evidence_viewed' } }))).toBe(0);
+    expect((await api('proctor', 'get', `/asmt/integrity/${iid}/frames/${ev}?kind=camera`).expect(200)).body.url).toEqual(expect.any(String));
+    expect(await inOrg(org.A.id, (tx) => tx.auditLog.count({ where: { entityId: iid, action: 'asmt.incident.evidence_viewed' } }))).toBe(1);
+    // The candidate's summary: the flagged moment by time and the counts, never a link.
+    await api('evaluator', 'post', `/asmt/integrity/${iid}/verdict`).send({ verdict: 'warning', reason: REASON }).expect(200);
+    const fb = await feedback(r.ct);
+    expect(fb.integrity.evidence).toEqual({ moments: [expect.objectContaining({ what: 'webcam multiple faces' })], cameraFrames: 1, screenFrames: 0 });
+    expect(JSON.stringify(fb)).not.toContain('webcam-snapshots/');
+  });
+
   it('negative: approving time above the cap does not pause a test without face checks', async () => {
     const r = await running(false);
     const credit = await inOrg(org.A.id, (tx) => tx.connectivityCredit.create({ data: { attemptId: r.attemptId, lostMs: 120_000 } }));

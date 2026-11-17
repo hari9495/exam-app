@@ -96,3 +96,22 @@ describe('PRC-13 live console', () => {
     expect(await screen.findByText('Thanks.', { selector: 'span' })).toBeInTheDocument();
   });
 });
+
+describe('PRC-13 integrity score and camera frame (answer 2268)', () => {
+  it('scores the flags so far: any high flag is high concern; mediums and lows lower it', async () => {
+    const { scoreFromFlags, tileLevel } = await import('./proctoring-logic');
+    expect(scoreFromFlags([])).toBe(100);
+    expect(tileLevel({ score: scoreFromFlags([{ severity: 'high' }]) })).toBe('high');
+    expect(scoreFromFlags([{ severity: 'medium' }, { severity: 'low' }])).toBe(85);
+    expect(tileLevel({ score: scoreFromFlags([{ severity: 'medium' }, { severity: 'medium' }]) })).toBe('review');
+    expect(scoreFromFlags(Array.from({ length: 10 }, () => ({ severity: 'high' })))).toBe(0);
+    expect(scoreFromFlags([{ severity: 'unknown' }])).toBe(100);
+  });
+
+  it('a tile shows the score and its latest camera frame; without a frame the placeholder shows', () => {
+    render(<LiveConsoleScreen tiles={[]} live={LIVE({ tiles: [{ id: 'a1', name: 'Sneha Iyer', status: 'in-progress', score: 49, flags: 1, question: '5 of 20 answered', secondsLeft: 1800, thumbUrl: 'https://blob.test/f.jpg' }, { id: 'a2', name: 'Arjun Nair', status: 'in-progress', score: 100, flags: 0, question: '9 of 20 answered', secondsLeft: 2400 }] })} />);
+    expect(screen.getByRole('img', { name: 'Sneha Iyer: latest camera frame' })).toHaveAttribute('src', 'https://blob.test/f.jpg');
+    expect(screen.getByText('49 · High concern')).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: 'Arjun Nair: latest camera frame' })).not.toBeInTheDocument();
+  });
+});

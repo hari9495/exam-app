@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { IsBoolean, IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
@@ -103,6 +103,27 @@ export class IntegrityReviewController {
   @RequireAnyPermission(...REVIEW)
   appeals(@CurrentTenant() ctx: TenantContext) {
     return this.service.appeals(ctx);
+  }
+
+  // Answer 2262: one frame of the incident's attempt (audited).
+  @Get('integrity/:id/frames/:eventId')
+  @RequireAnyPermission(...REVIEW)
+  incidentFrame(
+    @CurrentTenant() ctx: TenantContext,
+    @CurrentUserId() userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Query('kind') kind: string,
+  ) {
+    if (kind !== 'camera' && kind !== 'screen') throw new BadRequestException('kind must be camera or screen');
+    return this.service.incidentFrame(ctx, userId, id, eventId, kind);
+  }
+
+  // Answer 2268: the latest camera frame of each running attempt, for the live console (proctors).
+  @Get('live/:examId/frames')
+  @RequireAnyPermission('exam:manage', 'asmt.proctor')
+  liveFrames(@CurrentTenant() ctx: TenantContext, @Param('examId', ParseUUIDPipe) examId: string) {
+    return this.service.liveFrames(ctx, examId);
   }
 
   @Get('appeals/:id/evidence')

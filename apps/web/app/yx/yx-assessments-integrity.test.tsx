@@ -46,6 +46,8 @@ beforeEach(() => {
     if (path === '/asmt/integrity/i1') return INC;
     if (path === '/asmt/integrity/reviewers') return [{ id: 'u-gopal', name: 'Gopal Menon' }];
     if (path === '/asmt/appeals') return [APPEAL];
+    if (path === '/asmt/live/exam-1/frames') return [{ attemptId: 'att-1', url: 'https://blob.test/att-1.jpg', at: '2026-11-17T08:20:00.000Z' }];
+    if (path === '/attempts/att-1/messages') return [{ id: 'm1', fromCandidate: true, body: 'Sorry, fixed now.', sentAt: '2026-11-17T08:24:00.000Z', readAt: null }];
     return {};
   });
 });
@@ -112,9 +114,14 @@ describe('live console page', () => {
 
   it('shows started attempts by concern and pauses one with a reason', async () => {
     wrap(<YxLiveConsolePage />);
+    // Answer 2268: the latest camera frame and the score from the flags so far (one high flag: 49, high concern).
+    expect(await screen.findByRole('img', { name: 'Sneha Iyer: latest camera frame' })).toHaveAttribute('src', 'https://blob.test/att-1.jpg');
+    expect(screen.getByText('49 · High concern')).toBeInTheDocument();
     await userEvent.click(await screen.findByRole('button', { name: /^Sneha Iyer,/ }));
     expect(screen.queryByText('Not Started')).not.toBeInTheDocument();
     expect(screen.getByText(/webcam multiple faces \(high\)/)).toBeInTheDocument();
+    // Answer 2269: the thread both ways.
+    expect(await screen.findByText('Sorry, fixed now.')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Pause' }));
     await userEvent.type(screen.getByLabelText(/^Reason/), 'A second person came into the room.');
     await userEvent.click(screen.getByRole('button', { name: 'Pause test' }));

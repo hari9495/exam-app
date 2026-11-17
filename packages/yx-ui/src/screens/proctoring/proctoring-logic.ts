@@ -51,6 +51,17 @@ export interface LiveTileData {
   question: string;
   secondsLeft: number;
   accommodation?: string;
+  /** Answer 2268: the latest camera frame (a short-lived link); without it the camera placeholder shows. */
+  thumbUrl?: string;
+}
+
+/**
+ * Answer 2268: a live integrity score (0-100) from the flags so far: a high flag costs 51 (so any high flag is "high
+ * concern", as before), a medium 12, a low 3. The flags only point a proctor at a tile; they never change a result.
+ */
+export function scoreFromFlags(flags: { severity: string }[]): number {
+  const cost = flags.reduce((n, f) => n + (f.severity === 'high' ? 51 : f.severity === 'medium' ? 12 : f.severity === 'low' ? 3 : 0), 0);
+  return Math.max(0, 100 - cost);
 }
 
 /** A tile's level: given, or from its score. */
