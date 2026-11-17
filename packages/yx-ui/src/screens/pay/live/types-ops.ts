@@ -108,6 +108,8 @@ export interface PayslipQueryView {
   mine: boolean;
 }
 
+export type LandlordRelationship = 'not_related' | 'parent' | 'spouse' | 'child' | 'sibling' | 'other_relative';
+
 /** A declaration line (GET tax/me/declarations and the proof queue). */
 export interface DeclarationLine {
   id: string;
@@ -115,6 +117,8 @@ export interface DeclarationLine {
   amount: string;
   landlordName: string | null;
   landlordPan: string | null;
+  /** H15: Form No. 124 asks how the employee is related to the landlord. */
+  landlordRelationship?: LandlordRelationship | null;
   rentFrom: string | null;
   rentTo: string | null;
   metro: boolean | null;
@@ -141,6 +145,7 @@ export interface DeclarationInput {
   amount: string;
   landlordName?: string;
   landlordPan?: string;
+  landlordRelationship?: LandlordRelationship;
   rentFrom?: string;
   rentTo?: string;
   metro?: boolean;

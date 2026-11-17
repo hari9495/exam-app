@@ -54,13 +54,13 @@ export const DECLARATIONS: MyDeclarations = {
   proofCutoff: '2099-01-31',
   subjects: [
     { key: 'hra', section: null },
-    { key: 'sec80c', section: '123' },
-    { key: 'sec80d_self', section: '126' },
-    { key: 'sec24b', section: '22' },
+    { key: 'sec80c', section: 's.123, Sch XV (old 80C)' },
+    { key: 'sec80d_self', section: 's.126 (old 80D)' },
+    { key: 'sec24b', section: 'verify number' },
   ],
   lines: [
-    { id: 'd1', subjectKey: 'hra', amount: '240000.00', landlordName: 'S. Rao', landlordPan: '••••••234K', rentFrom: '2026-04', rentTo: '2027-03', metro: false, proofStatus: 'pending', approvedAmount: null, comment: null, proofs: [{ n: 0, name: 'rent-receipts.pdf', size: 120000, at: '2026-10-01T10:00:00Z' }], section: null },
-    { id: 'd2', subjectKey: 'sec80c', amount: '150000.00', landlordName: null, landlordPan: null, rentFrom: null, rentTo: null, metro: null, proofStatus: 'rejected', approvedAmount: null, comment: 'The ELSS statement is for last year. Send this year’s.', proofs: [{ n: 0, name: 'elss.pdf', size: 80000, at: '2026-10-01T10:00:00Z' }], section: '123' },
+    { id: 'd1', subjectKey: 'hra', amount: '240000.00', landlordName: 'S. Rao', landlordPan: '••••••234K', landlordRelationship: 'not_related', rentFrom: '2026-04', rentTo: '2027-03', metro: false, proofStatus: 'pending', approvedAmount: null, comment: null, proofs: [{ n: 0, name: 'rent-receipts.pdf', size: 120000, at: '2026-10-01T10:00:00Z' }], section: null },
+    { id: 'd2', subjectKey: 'sec80c', amount: '150000.00', landlordName: null, landlordPan: null, rentFrom: null, rentTo: null, metro: null, proofStatus: 'rejected', approvedAmount: null, comment: 'The ELSS statement is for last year. Send this year’s.', proofs: [{ n: 0, name: 'elss.pdf', size: 80000, at: '2026-10-01T10:00:00Z' }], section: 's.123, Sch XV (old 80C)' },
   ],
 };
 

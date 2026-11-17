@@ -287,4 +287,19 @@ describe('Payroll: state statutory rules (batch H)', () => {
       expect(await inA((tx) => tx.taxDeclarationLine.count({ where: { employeeId: ids.emp1 } }))).toBe(0);
     });
   });
+
+  describe('H15: Form No. 124 asks how you are related to the landlord', () => {
+    const rent = (extra: Record<string, unknown>) => ({ lines: [{ subjectKey: 'hra', amount: '18000.00', rentFrom: '2026-04', rentTo: '2027-03', metro: false, landlordName: 'S. Rao', landlordPan: 'ABCDE1234F', ...extra }] });
+    it('negatives: rent above 1,00,000 a year without the relationship, or with one not on the list, is a 400 and nothing is saved', async () => {
+      expect((await api('emp1', 'post', '/tax/me/declarations').send(rent({})).expect(400)).body.message).toBe('Rent above ₹100000 a year needs how you are related to your landlord.');
+      await api('emp1', 'post', '/tax/me/declarations').send(rent({ landlordRelationship: 'uncle' })).expect(400);
+      expect(await inA((tx) => tx.taxDeclarationLine.count({ where: { employeeId: ids.emp1 } }))).toBe(0);
+    });
+    it('with it the line is saved and shown back; another company cannot see it', async () => {
+      await api('emp1', 'post', '/tax/me/declarations').send(rent({ landlordRelationship: 'parent' })).expect(200);
+      const d = (await api('emp1', 'get', '/tax/me/declarations').expect(200)).body as { lines: { subjectKey: string; landlordRelationship: string | null; landlordPan: string }[] };
+      expect(d.lines.find((l) => l.subjectKey === 'hra')).toMatchObject({ landlordRelationship: 'parent', landlordPan: '••••••234F' });
+      expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.taxDeclarationLine.count({ where: { employeeId: ids.emp1 } }))).toBe(0);
+    });
+  });
 });

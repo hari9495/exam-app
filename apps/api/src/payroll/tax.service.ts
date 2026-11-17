@@ -686,6 +686,7 @@ export class TaxService implements OnModuleInit {
       amount: l.amount.toFixed(2),
       landlordName: l.landlordName,
       landlordPan: l.landlordPanLast4 ? `••••••${l.landlordPanLast4}` : null,
+      landlordRelationship: l.landlordRelationship,
       rentFrom: l.rentFrom,
       rentTo: l.rentTo,
       metro: l.metro,
@@ -734,6 +735,8 @@ export class TaxService implements OnModuleInit {
             throw new BadRequestException('Rent needs the months you pay it in this tax year and whether the city is a metro.');
           const yearly = D(r.amount).mul(monthsBetween(r.rentFrom, r.rentTo) + 1);
           if (yearly.gt(landlordPanAbove) && !r.landlordPan) throw new BadRequestException(`Rent above ₹${landlordPanAbove.toFixed(0)} a year needs your landlord's PAN.`);
+          // H15: Form No. 124 (Income-tax Rules 2026 r.205) also asks how you are related to the landlord.
+          if (ws.lawVersion === 'IT-2025' && yearly.gt(landlordPanAbove) && !r.landlordRelationship) throw new BadRequestException(`Rent above ₹${landlordPanAbove.toFixed(0)} a year needs how you are related to your landlord.`);
           if (r.landlordPan) {
             if (!PAN.test(r.landlordPan)) throw new BadRequestException("The landlord's PAN looks like ABCDE1234F.");
             pan = { enc: sealValue(this.crypto, org, ws.employeeId, r.landlordPan), last4: r.landlordPan.slice(-4) };
@@ -744,6 +747,7 @@ export class TaxService implements OnModuleInit {
           landlordName: r.landlordName ?? null,
           landlordPanEnc: pan?.enc ?? null,
           landlordPanLast4: pan?.last4 ?? null,
+          landlordRelationship: r.subjectKey === 'hra' ? (r.landlordRelationship ?? null) : null,
           rentFrom: r.subjectKey === 'hra' ? r.rentFrom! : null,
           rentTo: r.subjectKey === 'hra' ? r.rentTo! : null,
           metro: r.subjectKey === 'hra' ? !!r.metro : null,

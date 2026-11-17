@@ -309,6 +309,25 @@ describe('PAY-22 / PAY-41 · Me › Tax (live)', () => {
     await waitFor(() => expect(onDeclare).toHaveBeenCalledWith({ subjectKey: 'hra', amount: '18000', rentFrom: '2026-04', rentTo: '2027-03', metro: true }));
   });
 
+  it('H15 and H14: rent sends how you are related to the landlord (Form No. 124); subjects show the 2025 Act section', async () => {
+    const onDeclare = fn();
+    render(<TaxWorkspaceScreen live={live({ tab: 'declarations', declarations: { ...DECLARATIONS, lines: [DECLARATIONS.lines[1]] }, onDeclare })} />);
+    await ue.click(screen.getByRole('button', { name: 'Add declaration' }));
+    await ue.click(within(drawer()).getByRole('combobox', { name: /What/ }));
+    // A confirmed section replaces the old one; one still to confirm keeps the old label.
+    expect(await screen.findByRole('option', { name: 'Health insurance, self and family · s.126 (old 80D)' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Home loan interest (24(b))' })).toBeInTheDocument();
+    await ue.click(screen.getByRole('option', { name: 'Rent paid (HRA)' }));
+    await ue.type(within(drawer()).getByRole('textbox', { name: /Rent a month/ }), '18000');
+    await ue.type(within(drawer()).getByLabelText(/Rent paid from/), '2026-04');
+    await ue.type(within(drawer()).getByLabelText(/Rent paid to/), '2027-03');
+    await ue.type(within(drawer()).getByRole('textbox', { name: /Landlord's PAN/ }), 'abcde1234f');
+    await ue.click(within(drawer()).getByRole('combobox', { name: /related to the landlord/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Parent' }));
+    await ue.click(within(drawer()).getByRole('button', { name: 'Save declaration' }));
+    await waitFor(() => expect(onDeclare).toHaveBeenCalledWith({ subjectKey: 'hra', amount: '18000', rentFrom: '2026-04', rentTo: '2027-03', metro: false, landlordPan: 'ABCDE1234F', landlordRelationship: 'parent' }));
+  });
+
   it('proofs: in the old regime a turned-down proof shows payroll’s reason; before the window there is no upload', () => {
     const { unmount } = render(<TaxWorkspaceScreen live={live({ tab: 'proofs', workspace: { ...WS, regime: 'old' } })} />);
     expect(screen.getByText(/Payroll: The ELSS statement is for last year/)).toBeInTheDocument();
