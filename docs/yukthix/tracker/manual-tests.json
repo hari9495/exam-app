@@ -22747,13 +22747,41 @@
       "As arjun: open My payslips (own pay).",
       "As a payroll user with no passkey or app: open Payroll › Pay runs."
     ],
-    "expected": "Step 1: the 'Confirm it's you' dialog opens before any pay figure shows. Step 2: the page shows no pay data (an error or no-access state), nothing else changes. Step 3: the page loads. Step 4: no second ask within 15 minutes; after 16 minutes the dialog opens again. Step 5: toast that the settings were saved; the Segment shows one choice at a time (5 / 10 / 15 min). Step 6: the dialog opens again after 5 minutes. Step 7: the page opens with no dialog. Step 8: 'Security policy changed by <admin>.' entries for each change, with salaryRecheck before and after. Step 9: payslips open with no dialog (own pay is not gated, answer 2361). Step 10: the dialog says no second step is set up and links to My security (answer 2360).",
+    "expected": "Step 1: the 'Confirm it's you' dialog opens before any pay figure shows. Step 2: the page shows no pay data; it says 'Confirm it's you to see salary details' with a Try again button (answer 2370), not 'You don't have access'. Try again opens the dialog again; confirming loads the page. Open another page you really cannot open: it still says 'You don't have access'. Step 3: the page loads. Step 4: no second ask within 15 minutes; after 16 minutes the dialog opens again. Step 5: toast that the settings were saved; the Segment shows one choice at a time (5 / 10 / 15 min). Step 6: the dialog opens again after 5 minutes. Step 7: the page opens with no dialog. Step 8: 'Security policy changed by <admin>.' entries for each change, with salaryRecheck before and after. Step 9: payslips open with no dialog (own pay is not gated, answer 2361). Step 10: the dialog says no second step is set up and links to My security (answer 2360).",
     "stories": [
       "Screens/Security/Admin › 2.3 Security (Salary pages section)",
       "2.3 Security · salary pages, ask again after 5 min",
       "2.3 Security · salary pages re-check off",
-      "Screens/Security/Confirm it’s you › Step-up · passkey and app / nothing set up"
+      "Screens/Security/Confirm it’s you › Step-up · passkey and app / nothing set up",
+      "Screens/Security/Confirm it’s you › Step-up · cancelled on a salary page"
     ],
     "note": "Server rule in PermissionsGuard: routes on employee.salary.*, pay.range.* and payroll.* keys (not *.own, not payroll.query.handle) need a step-up within the company's window (default 15, allowed 5/10/15). Settings tenant_security_policies.salary_recheck / salary_recheck_minutes (migration 202617z0000451)."
+  },
+  {
+    "id": "MT-BATB-B2",
+    "area": "Batch B: recycle bin across YukthiX (admin B2, item 3, answers 2367-2369, 17 Nov 2026)",
+    "screen": "Settings › Recycle bin",
+    "url": "http://localhost:3000/yx/settings/recycle-bin",
+    "account": "HR hr-tester@demo-org.test (org.settings.manage); Admin admin-tester@demo-org.test; employee arjun@demo-org.test for the refusal.",
+    "steps": [
+      "As hr-tester: Settings › Organisation › Designations: add 'Test role B2', then delete it. Also delete a test location and a candidate email template you added for this test.",
+      "Open Settings › Recycle bin. Filter Area = Organisation; then search 'Test role'.",
+      "On 'Test role B2' press Restore, then Cancel; press Restore again and confirm.",
+      "Open Designations.",
+      "Delete 'Test role B2' again; add a new designation with the same name 'Test role B2'. In the recycle bin press Restore on the deleted one and confirm.",
+      "Press Delete for good on it, confirm, and confirm it's you with your passkey or app.",
+      "Change 'Keep deleted items for' to 30 days.",
+      "Change it to 45 days through the API (PUT /org/settings, key recycle_bin.keep_days, value 45).",
+      "Open /v2/settings/recycle-bin.",
+      "As arjun: open /yx/settings/recycle-bin directly.",
+      "Open Settings › Audit log, Area = Settings and Organisation."
+    ],
+    "expected": "Step 1: each delete works as before. Step 2: each record shows Name, What (Designation / Location / Email template), Area, 'Deleted <date> by <name>' and 'Deleted for good on' 180 days later; hiring's deleted candidates and jobs show too (30 days). No page scroll at 1278 x 635. Step 3: Cancel changes nothing; confirm shows the toast 'Test role B2 is back.' and it leaves the bin. Step 4: the designation is back with its old code. Step 5: the restore is refused: 'It cannot come back: a record with the same name or code exists now. Rename or delete that one first.'; it stays in the bin. Step 6: the dialog asks you to confirm it's you; then the toast 'Test role B2 is deleted for good.' Step 7: toast 'Deleted items are now kept for 30 days.'; the dates in 'Deleted for good on' move. Step 8: 400, nothing changes. Step 9: you land on Settings › Recycle bin. Step 10: no Recycle bin in the menu; the page says you don't have access to the recycle bin. Step 11: entries for the delete, the restore and the delete for good.",
+    "stories": [
+      "Screens/Settings/Recycle bin › Recycle bin · deleted records",
+      "Recycle bin · restore, confirm / restore refused (name taken) / delete for good, confirm",
+      "Recycle bin · keep days read-only / empty / loading / could not load / no access / phone"
+    ],
+    "note": "First wave (answer 2367, narrowed): designations, departments, grades, employment types, cost centres, locations, and candidate email / SMS / WhatsApp templates, plus hiring's existing soft-deleted candidates, jobs, pipelines and walk-in groups. Other areas join by adding a kind and one toBin() call. Hiring keeps its own 30 days."
   }
 ]

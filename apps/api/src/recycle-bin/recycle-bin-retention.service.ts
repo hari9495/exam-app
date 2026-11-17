@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { ENTITY_TYPES, EntityType } from './recycle-bin.service';
+import { DEFAULT_KEEP_DAYS, KEEP_DAYS_KEY } from './bin';
 
 export const RETENTION_DAYS = 30;
 const SYSTEM = { organizationId: null, isSuperAdmin: true };
@@ -62,6 +63,22 @@ export class RecycleBinRetentionService {
           }
         }
       }
+      // Batch B item 3: the YukthiX-wide bin keeps items for each company's recycle_bin.keep_days (default 180), read
+      // at run time, so a shorter setting applies to items already in the bin from the next run (answer 2368).
+      const binPurged = await Promise.resolve()
+        .then(() => run((tx) =>
+        tx.$executeRaw`
+          DELETE FROM recycle_bin_items b
+           WHERE b.deleted_at < ${now} - make_interval(days => COALESCE((
+             SELECT (s.value #>> '{}')::int FROM settings s
+              WHERE s.organization_id = b.organization_id AND s.key = ${KEEP_DAYS_KEY} AND s.scope_type = 'tenant'
+              ORDER BY s.created_at DESC LIMIT 1), ${DEFAULT_KEEP_DAYS}::int))`,
+      ))
+        .catch((error: unknown) => {
+        this.logger.warn(`Recycle-bin prune of the YukthiX bin failed: ${error instanceof Error ? error.message : String(error)}`);
+        return 0;
+      });
+      purged += Number(binPurged);
       if (purged > 0 || skipped > 0) {
         this.logger.log(`Recycle-bin prune: purged ${purged}, skipped ${skipped} (FK-blocked or errored), older than ${RETENTION_DAYS} days`);
       }

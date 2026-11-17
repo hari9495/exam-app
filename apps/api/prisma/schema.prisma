@@ -5437,6 +5437,21 @@ model SdPrivacySettings {
   @@map("sd_privacy_settings")
 }
 
+// Batch B item 3 (admin B2): a deleted record kept as it was, restorable with the same id until the company's keep days pass.
+model RecycleBinItem {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  kind           String   @db.VarChar(40)
+  entityId       String   @map("entity_id") @db.Uuid
+  label          String   @db.VarChar(200)
+  data           Json
+  deletedBy      String?  @map("deleted_by") @db.Uuid
+  deletedAt      DateTime @default(now()) @map("deleted_at") @db.Timestamptz(3)
+
+  @@index([organizationId, deletedAt(sort: Desc)], map: "recycle_bin_items_org_deleted_idx")
+  @@map("recycle_bin_items")
+}
+
 model SdRecycleBin {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String    @map("organization_id") @db.Uuid

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { toBin } from '../recycle-bin/bin';
 import { TenantPrismaService, TenantContext, AuditService } from '@exam-platform/shared';
 import { DEFAULT_TEMPLATES } from './default-templates';
 import { UpsertTemplateDto } from './dto/upsert-template.dto';
@@ -163,6 +164,7 @@ export class CandidateEmailTemplatesService {
       const existing = await tx.candidateEmailTemplate.findFirst({ where: { id, organizationId: context.organizationId as string } });
       if (!existing) throw new NotFoundException(`Template ${id} not found`);
 
+      await toBin(tx, { organizationId: context.organizationId as string, userId: actorUserId }, 'candidate_email_template', existing, existing.name);
       await tx.candidateEmailTemplate.delete({ where: { id } });
       await this.audit.record(context, {
         actorUserId,

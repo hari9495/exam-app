@@ -1,4 +1,5 @@
 import { locationValuesInForce } from './settings-registry';
+import { toBin, type BinKind } from '../recycle-bin/bin';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
@@ -437,6 +438,7 @@ export class OrgStructureService {
     return this.run(ctx, async (tx, c) => {
       const row = await this.locationOr404(tx, c, id);
       await this.assertNoSettings(tx, c, id);
+      await toBin(tx, c, 'location', row as unknown as { id: string }, row.name);
       await tx.location.delete({ where: { id } });
       await audit(tx, c, 'org.location.deleted', 'location', id, { name: row.name });
     });
@@ -688,6 +690,7 @@ export class OrgStructureService {
     return this.run(ctx, async (tx, c) => {
       const row = await this.masterOr404(tx, c, kind, id);
       await this.assertNoSettings(tx, c, id);
+      await toBin(tx, c, MASTER_ENTITY[kind] as BinKind, row as unknown as { id: string }, row.name);
       await delegate(tx, kind).delete({ where: { id } });
       await audit(tx, c, `org.${MASTER_ENTITY[kind]}.deleted`, MASTER_ENTITY[kind], id, { name: row.name });
     });
