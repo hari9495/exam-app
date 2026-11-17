@@ -103,10 +103,12 @@ describe('Payroll: state statutory rules (batch H)', () => {
     ids.group = (await api('payAdmin', 'post', '/payroll/pay-groups').send({ legalEntityId: ids.entity, name: 'Monthly', cutOffDay: 25, payDay: 0 }).expect(201)).body.id;
     // One person per state on 3,00,000 a year (25,000 a month gross), paid from August 2026.
     for (const st of STATES) emp[st] = await hireIn(st, '300000');
+    // emp1 signs in as an employee (own tax declarations).
+    ids.emp1 = await hireIn('IN-KA', '600000', users.emp1);
   }, 600_000);
 
   /** Hires someone at a place in a state on a yearly CTC from 1 Aug 2026, in the monthly pay group. */
-  const hireIn = async (state: string, annualCtc: string) => {
+  const hireIn = async (state: string, annualCtc: string, userId?: string) => {
     ids[state] ??= await addPlace(state, state.slice(3));
     const id = (
       await api('adminA', 'post', '/people/employees')
@@ -116,7 +118,8 @@ describe('Payroll: state statutory rules (batch H)', () => {
           reason: 'Joined',
           givenName: state,
           familyName: run,
-          employeeCode: `PST-${state}`,
+          employeeCode: `PST-${state}${userId ? '-U' : ''}`,
+          ...(userId ? { userId, workEmail: `emp1@payst-${run}.test` } : {}),
           joinedOn: '2026-08-01',
           assignment: { locationId: ids[state], departmentId: ids.dept, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId: null },
         })
@@ -266,6 +269,22 @@ describe('Payroll: state statutory rules (batch H)', () => {
       // Positive: a rate inside the range is kept from its date.
       await put('payAdmin', '0.1').expect(200);
       expect(await inA((tx) => tx.entityStatutoryOption.count({ where: { legalEntityId: ids.entity, optionKey: 'bonus.rate' } }))).toBe(1);
+    });
+  });
+
+  describe('H14: Income-tax Act 2025 sections for declarations', () => {
+    it('a 2026-27 declaration names Form No. 124 and the new sections with the old ones in brackets; unmapped subjects stay "verify number"', async () => {
+      const d = (await api('emp1', 'get', '/tax/me/declarations').expect(200)).body as { taxYear: string; form: string; subjects: { key: string; section: string | null }[] };
+      expect([d.taxYear, d.form]).toEqual(['2026-27', 'Form No. 124']);
+      const section = (k: string) => d.subjects.find((x) => x.key === k)?.section;
+      expect([section('sec80c'), section('sec80d_parents'), section('hra'), section('sec80ccd1b')]).toEqual(['s.123, Sch XV (old 80C)', 's.126 (old 80D)', 's.11, Sch III Sl. 11 (old 10(13A))', 's.124(3) (old 80CCD(1B))']);
+      expect(section('sec80e')).toBe('verify number');
+    });
+
+    it('negatives: someone with no employment gets 404; a subject the rules do not list is a 400 and nothing is saved', async () => {
+      await api('payAdminB', 'get', '/tax/me/declarations').expect(404);
+      await api('emp1', 'post', '/tax/me/declarations').send({ lines: [{ subjectKey: 'sec80zz', amount: '1000.00' }] }).expect(400);
+      expect(await inA((tx) => tx.taxDeclarationLine.count({ where: { employeeId: ids.emp1 } }))).toBe(0);
     });
   });
 });

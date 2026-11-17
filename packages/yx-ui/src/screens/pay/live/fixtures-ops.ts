@@ -49,7 +49,7 @@ export const QUERIES: PayslipQueryView[] = [
 
 export const DECLARATIONS: MyDeclarations = {
   taxYear: '2026-27',
-  form: 'Form 12BB successor (verify number)',
+  form: 'Form No. 124',
   proofWindowOpens: '2000-01-01',
   proofCutoff: '2099-01-31',
   subjects: [

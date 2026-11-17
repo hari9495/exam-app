@@ -702,13 +702,14 @@ export class TaxService implements OnModuleInit {
       const { ws, dates, today } = await this.ownWorkspace(tx, c);
       const lines = await tx.taxDeclarationLine.findMany({ where: { organizationId: c.organizationId, workspaceId: ws.id }, orderBy: { subjectKey: 'asc' } });
       const { keys } = await this.subjectKeys(today);
-      const labels = await tx.statutoryLawCrosswalk.findMany({ where: { lawVersion: ws.lawVersion, subjectKey: { in: [...keys] } } });
+      const labels = await tx.statutoryLawCrosswalk.findMany({ where: { lawVersion: ws.lawVersion, subjectKey: { in: [...keys, 'salary_declaration'] } } });
       return {
         taxYear: ws.taxYear,
         proofWindowOpens: dates.proofWindowOpens,
         proofCutoff: dates.proofCutoff,
         subjects: [...keys].map((k) => ({ key: k, section: labels.find((x) => x.subjectKey === k)?.section ?? null })),
-        form: ws.lawVersion === 'IT-2025' ? 'Form 12BB successor (verify number)' : 'Form 12BB',
+        // H14: the declaration form of the workspace's law (Form 12BB, or Form No. 124 under the 2025 Act), from the crosswalk.
+        form: labels.find((x) => x.subjectKey === 'salary_declaration')?.form ?? (ws.lawVersion === 'IT-2025' ? 'Form No. 124' : 'Form 12BB'),
         lines: lines.map((l) => ({ ...this.lineView(l), section: labels.find((x) => x.subjectKey === l.subjectKey)?.section ?? null })),
       };
     });
