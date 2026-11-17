@@ -1,9 +1,9 @@
 'use client';
 
-import { useMemo, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useSyncExternalStore, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AccessRequestContext, NotFoundReferenceContext, useToast, type AccessRequestSent } from '@yukthix/ui';
-import { apiFetch } from './api-client';
+import { AccessRequestContext, NotFoundReferenceContext, SalaryCheckContext, useToast, type AccessRequestSent } from '@yukthix/ui';
+import { apiFetch, salaryCheck } from './api-client';
 import { useAuth } from './auth-context';
 import { useNotFoundReference } from './yx-not-found';
 
@@ -45,9 +45,21 @@ const requestsHook = (pathname: string) =>
 export function YxPageHelp({ pathname, requests, children }: { pathname: string; requests: boolean; children: ReactNode }) {
   const reference = useNotFoundReference(pathname);
   const useRequests = useMemo(() => requestsHook(pathname), [pathname]);
+  // Answer 2370: after a cancelled "Confirm it's you" on a salary page, Try again refetches what was refused (the API asks again).
+  const qc = useQueryClient();
+  const cancelled = useSyncExternalStore(salaryCheck.subscribe, salaryCheck.get, () => false);
+  const onRetry = useCallback(() => {
+    salaryCheck.set(false);
+    void qc.refetchQueries({ type: 'active', predicate: (q) => q.state.status === 'error' });
+  }, [qc]);
+  const salary = useMemo(() => ({ cancelled, onRetry }), [cancelled, onRetry]);
+  // Another page starts fresh: its own refusal is a real "no access" unless the check is cancelled there too.
+  useEffect(() => salaryCheck.set(false), [pathname]);
   return (
     <NotFoundReferenceContext.Provider value={reference}>
-      <AccessRequestContext.Provider value={requests && pathname.startsWith('/') ? useRequests : null}>{children}</AccessRequestContext.Provider>
+      <SalaryCheckContext.Provider value={salary}>
+        <AccessRequestContext.Provider value={requests && pathname.startsWith('/') ? useRequests : null}>{children}</AccessRequestContext.Provider>
+      </SalaryCheckContext.Provider>
     </NotFoundReferenceContext.Provider>
   );
 }

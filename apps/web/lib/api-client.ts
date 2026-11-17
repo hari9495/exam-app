@@ -29,6 +29,24 @@ export function setStepUpHandler(handler: (() => Promise<boolean>) | null) {
   stepUpHandler = handler;
 }
 
+// Answer 2370: "Confirm it's you" was cancelled on a salary page (the API's salary re-check, batch B item 1). Pages then
+// show "Confirm it's you to see salary details" with Try again (the kit's SalaryCheckContext), not "no access".
+export const SALARY_RECHECK_MESSAGE = 'Confirm it is you to open salary details.';
+let salaryCheckCancelled = false;
+const salaryCheckListeners = new Set<() => void>();
+export const salaryCheck = {
+  get: () => salaryCheckCancelled,
+  set(cancelled: boolean) {
+    if (cancelled === salaryCheckCancelled) return;
+    salaryCheckCancelled = cancelled;
+    salaryCheckListeners.forEach((l) => l());
+  },
+  subscribe(listener: () => void) {
+    salaryCheckListeners.add(listener);
+    return () => void salaryCheckListeners.delete(listener);
+  },
+};
+
 // A 401 from these means a wrong credential or code, not an expired session: refreshing is
 // pointless there (and /auth/refresh would recurse into its own handler).
 const NO_REFRESH_PATHS = new Set([
@@ -160,8 +178,13 @@ export async function apiFetch(path: string, options: RequestInit = {}, accessTo
     }
   }
 
-  if (code === STEP_UP_REQUIRED && stepUpHandler && (await stepUpHandler())) {
-    response = await doFetch(path, options, token);
+  if (code === STEP_UP_REQUIRED && stepUpHandler) {
+    if (await stepUpHandler()) {
+      response = await doFetch(path, options, token);
+      salaryCheck.set(false);
+    } else if ((await errorBody(response)).message === SALARY_RECHECK_MESSAGE) {
+      salaryCheck.set(true);
+    }
   }
 
   if (!response.ok) {
