@@ -75,6 +75,8 @@ const LATER_SUPPORT_EXCLUDED = [
   // Pay: bonus, court orders, union dues, tax requests and forms.
   'bonus_computations', 'bonus_computation_rows', 'court_order_remittances', 'union_remittances', 'form12b_submissions', 'form16_return_links',
   'tax_pan_link_requests', 'tax_regime_requests', 'tax_residency_requests', 'tds_nil_months',
+  // Batch H part 2, E1: declaration and proof window actions (pay-protected, support sessions excluded).
+  'tax_window_actions',
   // Expenses cards; performance market rates, coach and disputes.
   'expense_cards', 'expense_card_lines', 'expense_card_mappings', 'expense_card_statements',
   'comp_market_rates', 'comp_market_surveys', 'perf_coach_dismissals', 'perf_coach_prefs', 'perf_dispute_exports', 'perf_dispute_files', 'perf_disputes', 'perf_home_snapshots'];
