@@ -1040,6 +1040,281 @@
       ]
     },
     {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-WB",
+      "version": "2014-v1",
+      "validFrom": "2014-04-01",
+      "validTo": "2026-09-30",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "West Bengal State Tax on Professions, Trades, Callings and Employments Act, 1979, schedule w.e.f. 1 Apr 2014 (official): https://comtax.wb.gov.in/Ptax-Schedule-New_(w.e.f._1-4-2014).pdf . Monthly: up to 10,000 nil; 10,001-15,000 = 110; 15,001-25,000 = 130; 25,001-40,000 = 150; above 40,000 = 200. In force to 30 Sep 2026 (replaced from 1 Oct 2026). Verify until the CA confirms (checklist items 6 and 24).",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "2500",
+        "slabs": [
+          {
+            "from": "0",
+            "to": "10000",
+            "amount": "0"
+          },
+          {
+            "from": "10000.01",
+            "to": "15000",
+            "amount": "110"
+          },
+          {
+            "from": "15000.01",
+            "to": "25000",
+            "amount": "130"
+          },
+          {
+            "from": "25000.01",
+            "to": "40000",
+            "amount": "150"
+          },
+          {
+            "from": "40000.01",
+            "to": null,
+            "amount": "200"
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "10,000: nil",
+          "fn": "pt",
+          "input": {
+            "ptWage": "10000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "0"
+          }
+        },
+        {
+          "name": "10,000.01: 110",
+          "fn": "pt",
+          "input": {
+            "ptWage": "10000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "110"
+          }
+        },
+        {
+          "name": "15,000: 110",
+          "fn": "pt",
+          "input": {
+            "ptWage": "15000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "110"
+          }
+        },
+        {
+          "name": "15,000.01: 130",
+          "fn": "pt",
+          "input": {
+            "ptWage": "15000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "130"
+          }
+        },
+        {
+          "name": "25,000: 130",
+          "fn": "pt",
+          "input": {
+            "ptWage": "25000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "130"
+          }
+        },
+        {
+          "name": "25,000.01: 150",
+          "fn": "pt",
+          "input": {
+            "ptWage": "25000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "150"
+          }
+        },
+        {
+          "name": "40,000: 150",
+          "fn": "pt",
+          "input": {
+            "ptWage": "40000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "150"
+          }
+        },
+        {
+          "name": "40,000.01: 200",
+          "fn": "pt",
+          "input": {
+            "ptWage": "40000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "200"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-WB",
+      "version": "2026-v2",
+      "validFrom": "2026-10-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "West Bengal PT schedule from 1 Oct 2026 (Act amended by notification 756-L of 07.08.2026; draft schedule 1407-F.T. of 18.08.2026; final number disputed, maybe 1607-F.T. of 16.09.2026). Secondary only: https://www.sgcms.com/regulatory-updates/west-bengal-overhauls-professional-tax-new-schedule-notified/ . Up to 20,000 nil; to 30,000 = 100; to 50,000 = 140; to 1,00,000 = 170; above = 208. TODO: CA checklist item 6.",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "2500",
+        "slabs": [
+          {
+            "from": "0",
+            "to": "20000",
+            "amount": "0"
+          },
+          {
+            "from": "20000.01",
+            "to": "30000",
+            "amount": "100"
+          },
+          {
+            "from": "30000.01",
+            "to": "50000",
+            "amount": "140"
+          },
+          {
+            "from": "50000.01",
+            "to": "100000",
+            "amount": "170"
+          },
+          {
+            "from": "100000.01",
+            "to": null,
+            "amount": "208"
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "20,000: nil",
+          "fn": "pt",
+          "input": {
+            "ptWage": "20000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "0"
+          }
+        },
+        {
+          "name": "20,000.01: 100",
+          "fn": "pt",
+          "input": {
+            "ptWage": "20000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "100"
+          }
+        },
+        {
+          "name": "30,000: 100",
+          "fn": "pt",
+          "input": {
+            "ptWage": "30000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "100"
+          }
+        },
+        {
+          "name": "30,000.01: 140",
+          "fn": "pt",
+          "input": {
+            "ptWage": "30000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "140"
+          }
+        },
+        {
+          "name": "50,000: 140",
+          "fn": "pt",
+          "input": {
+            "ptWage": "50000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "140"
+          }
+        },
+        {
+          "name": "50,000.01: 170",
+          "fn": "pt",
+          "input": {
+            "ptWage": "50000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "170"
+          }
+        },
+        {
+          "name": "1,00,000: 170",
+          "fn": "pt",
+          "input": {
+            "ptWage": "100000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "170"
+          }
+        },
+        {
+          "name": "1,00,000.01: 208",
+          "fn": "pt",
+          "input": {
+            "ptWage": "100000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "208"
+          }
+        },
+        {
+          "name": "February is not special: 208",
+          "fn": "pt",
+          "input": {
+            "ptWage": "500000",
+            "month": 2
+          },
+          "expected": {
+            "amount": "208"
+          }
+        }
+      ]
+    },
+    {
       "statute": "IN.LWF",
       "jurisdiction": "IN-KA",
       "version": "2024-v1",

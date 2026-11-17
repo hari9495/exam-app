@@ -217,6 +217,51 @@
           }
         }
       ]
+    },
+    {
+      "statute": "IN.CALENDAR",
+      "jurisdiction": "IN-WB",
+      "version": "WB-2014-v1",
+      "validFrom": "2014-04-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "West Bengal professional tax: paid within 21 days of the month end; yearly return by 30 April (not modelled here). Secondary only (https://www.tankhapay.com/blog/state-wise-professional-tax-slabs/); TODO: CA checklist item 6 confirms the due dates under the new schedule.",
+      "values": {
+        "kind": "calendar",
+        "items": [
+          {
+            "key": "pt",
+            "label": "Professional tax (West Bengal)",
+            "dueDay": 21,
+            "monthOffset": 1
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "September PT is due 21 October",
+          "fn": "calendar",
+          "input": {
+            "key": "pt",
+            "month": "2026-09"
+          },
+          "expected": {
+            "due": "2026-10-21"
+          }
+        },
+        {
+          "name": "January PT is due 21 February",
+          "fn": "calendar",
+          "input": {
+            "key": "pt",
+            "month": "2027-01"
+          },
+          "expected": {
+            "due": "2027-02-21"
+          }
+        }
+      ]
     }
   ]
 }

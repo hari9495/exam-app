@@ -32,7 +32,7 @@ describe('Payroll: state statutory rules (batch H)', () => {
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
   // The states a person is paid in (one each); every batch H item reads the same two runs (September and October 2026).
-  const STATES = ['IN-HR', 'IN-AP', 'IN-GJ'];
+  const STATES = ['IN-HR', 'IN-AP', 'IN-GJ', 'IN-WB'];
   const emp: Record<string, string> = {};
   const api = (who: Who, method: 'get' | 'post' | 'put' | 'patch', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const inA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, fn);
@@ -218,6 +218,24 @@ describe('Payroll: state statutory rules (batch H)', () => {
       expect(oct[emp['IN-AP']].explanation).toMatch(/^IN-AP professional tax/);
       expect(oct[emp['IN-GJ']]).toMatchObject({ pt: '200.00', version: 'IN-GJ 2025-v1' });
       expect(oct[emp['IN-HR']]).toMatchObject({ pt: null, version: 'IN-HR 2025-v1' });
+    });
+  });
+
+  describe('H3: West Bengal professional tax, old and new schedules', () => {
+    it('both versions are published with their dates, verify, and CA item 6', async () => {
+      const wb = await rulesOf('IN.PT', 'IN-WB');
+      expect(wb.map((r) => [r.version, r.validFrom, r.validTo, r.verify])).toEqual([
+        ['2026-v2', '2026-10-01', null, true],
+        ['2014-v1', '2014-04-01', '2026-09-30', true],
+      ]);
+      expect(wb[0].source).toMatch(/CA checklist item 6/);
+      expect((await rulesOf('IN.CALENDAR', 'IN-WB'))[0]).toMatchObject({ version: 'WB-2014-v1', verify: true });
+    });
+
+    it('the same pay is 130 in September (2014 schedule) and 100 in October (new schedule), each with its version', async () => {
+      const [sep, oct] = [await calcMonth('2026-09'), await calcMonth('2026-10')];
+      expect(sep[emp['IN-WB']]).toMatchObject({ pt: '130.00', version: 'IN-WB 2014-v1' });
+      expect(oct[emp['IN-WB']]).toMatchObject({ pt: '100.00', version: 'IN-WB 2026-v2' });
     });
   });
 });

@@ -23,6 +23,8 @@ describe('India pack (P07)', () => {
     for (const rs of sets) {
       expect({ rs: `${rs.statute} ${rs.jurisdiction}`, problems: checkShape(rs, { ptAnnualMax }) }).toEqual({ rs: `${rs.statute} ${rs.jurisdiction}`, problems: [] });
       expect((rs as unknown as { source: string }).source.length).toBeGreaterThan(20);
+      // The database column is varchar(500): a longer source fails the migration that loads it.
+      expect({ rs: `${rs.statute} ${rs.jurisdiction} ${rs.version}`, long: (rs as unknown as { source: string }).source.length > 500 }).toEqual({ rs: `${rs.statute} ${rs.jurisdiction} ${rs.version}`, long: false });
       expect(rs.golden.length).toBeGreaterThan(0);
     }
   });
@@ -54,6 +56,15 @@ describe('batch H: state PT rule data', () => {
     expect(noPt(sets, 'IN-ML', '2026-11-17')).toBe(false);
     // Before the set's start there is no rule, so no "none" either.
     expect(noPt(sets, 'IN-HR', '2025-03-31')).toBe(false);
+  });
+
+  it('H3: West Bengal switches schedule on 1 Oct 2026 (the old one ends 30 Sep); a 25,000 wage is 130 in September, 100 in October', () => {
+    const sep = inForce(sets, 'IN.PT', ['IN-WB'], '2026-09-30')!;
+    const oct = inForce(sets, 'IN.PT', ['IN-WB'], '2026-10-01')!;
+    expect([sep.version, oct.version]).toEqual(['2014-v1', '2026-v2']);
+    expect([pt(sep, { ptWage: '25000', month: 9 }).amount.toFixed(0), pt(oct, { ptWage: '25000', month: 10 }).amount.toFixed(0)]).toEqual(['130', '100']);
+    // The new top band: 208 x 12 = 2,496, inside the 2,500 cap with no special month.
+    expect(pt(oct, { ptWage: '150000', month: 3 }).amount.mul(12).toFixed(0)).toBe('2496');
   });
 });
 
