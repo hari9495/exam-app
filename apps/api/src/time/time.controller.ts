@@ -11,7 +11,7 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
 import { AttendanceService } from './attendance.service';
-import { AdjustDto, ApplyLeaveDto, CancelDaysDto, ExtendLeaveDto, LeaveHistoryQueryDto, WorkingDayDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, CalendarTemplateDto, EntityFilterDto, GeoPointsDto, HolidayDateDto, HolidayDto, LeavePlanDto, LeaveTypeDto, MonthEntityQueryDto, MonthQueryDto, NetworksDto, OnDutyDto, PermissionDto, PolicyDto, PolicyOrderDto, PolicyVersionDto, PublishDraftDto, PunchDto, RangeEntityQueryDto, RangeQueryDto, ReasonDto, RegulariseDto, WfhDto, YearChangeDto, YearEndDto, YearEndRunDto } from './dto';
+import { AdjustDto, ApplyLeaveDto, CancelDaysDto, CorrectBalanceDto, ExtendLeaveDto, LeaveHistoryQueryDto, WorkingDayDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, CalendarTemplateDto, EntityFilterDto, GeoPointsDto, HolidayDateDto, HolidayDto, LeavePlanDto, LeaveTypeDto, MonthEntityQueryDto, MonthQueryDto, NetworksDto, OnDutyDto, PermissionDto, PolicyDto, PolicyOrderDto, PolicyVersionDto, PublishDraftDto, PunchDto, RangeEntityQueryDto, RangeQueryDto, ReasonDto, RegulariseDto, WfhDto, YearChangeDto, YearEndDto, YearEndRunDto } from './dto';
 import { LeaveService } from './leave.service';
 import { LeaveV2Service } from './leave-v2.service';
 import { TimeSetupService } from './setup.service';
@@ -245,6 +245,14 @@ export class TimeController {
   @RequirePermissions('leave.balance.adjust')
   adjust(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string, @Body() dto: AdjustDto) {
     return this.leave.adjust(ctx, this.user(req), employeeId, dto);
+  }
+
+  /** Batch A D10 (answer 2314): the balance grid's correction of one cell: a reason, audited, a ledger adjustment. */
+  @Post('hr/balances/correct')
+  @RequirePermissions('leave.balance.adjust')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  correct(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: CorrectBalanceDto) {
+    return this.leave.correctBalance(ctx, this.user(req), dto);
   }
 
   // ------------------------------------------------------------------------------------------ set-up (company-wide)

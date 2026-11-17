@@ -114,6 +114,32 @@ export class AdjustDto {
   reason!: string;
 }
 
+/** Batch A D10 (answer 2314): one cell of the balance grid, from the balance HR saw to the corrected one, with a reason. */
+export class CorrectBalanceDto {
+  @IsUUID()
+  employeeId!: string;
+
+  @IsUUID()
+  leaveTypeId!: string;
+
+  /** The balance HR saw: a different one now means someone changed it since (409). */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(-1000)
+  @Max(1000)
+  from!: number;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(-1000)
+  @Max(1000)
+  to!: number;
+
+  @trim()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(500)
+  reason!: string;
+}
+
 export class RangeQueryDto {
   @IsDateString(DATE)
   from!: string;

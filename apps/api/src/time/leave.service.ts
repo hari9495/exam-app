@@ -9,7 +9,7 @@ import { DayEngine } from './day-engine.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { escapeHtml } from '../notifications/notification-email-render';
 import { payOn } from '../payroll/fnf.service';
-import { ApplyLeaveDto, AdjustDto, CancelDaysDto, ExtendLeaveDto, LeavePlanDto } from './dto';
+import { ApplyLeaveDto, AdjustDto, CancelDaysDto, CorrectBalanceDto, ExtendLeaveDto, LeavePlanDto } from './dto';
 import {
   Facts,
   LeaveRules,
@@ -1234,6 +1234,35 @@ export class LeaveService implements OnModuleInit {
       const e = await tx.leaveLedgerEntry.create({ data: { organizationId: c.organizationId, employeeId, leaveTypeId: t.id, entryOn: asDate(today), kind: 'adjustment', days: dto.days, reason: dto.reason, createdBy: c.userId ?? null } });
       await audit(tx, c, 'leave.balance.adjusted', 'leave_ledger', e.id, { employeeId, type: t.code, days: dto.days, reason: dto.reason });
       return { id: e.id };
+    });
+  }
+
+  /**
+   * Batch A D10 (answer 2314): HR corrects one balance in the grid to a new figure. The difference is posted as a ledger
+   * adjustment with HR's reason and audited (before and after); never below the leave type's minimum balance (its
+   * negative limit); never one's own. `from` is the balance HR saw: if it changed since, nothing is saved (409).
+   */
+  async correctBalance(ctx: TenantContext, user: ScopeUser, dto: CorrectBalanceDto) {
+    const v = await this.viewer(user);
+    if (v.actingForOther) throw new ForbiddenException('Not available while acting for someone else.');
+    if (dto.to === dto.from) throw new BadRequestException('The new balance is the same as now. Change it first.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const own = await this.ownId(tx, c, v);
+      const today = new Date().toISOString().slice(0, 10);
+      if (!(await grantCovers(tx, c, v, own, 'leave.balance.adjust', dto.employeeId, today))) throw new NotFoundException('Not found');
+      if (dto.employeeId === own) throw new ForbiddenException('You cannot correct your own balance. Ask another HR admin.');
+      const t = await tx.leaveType.findFirst({ where: { organizationId: c.organizationId, id: dto.leaveTypeId } });
+      if (!t || !hasBalance(t.kind)) throw new BadRequestException('Choose a leave type that has a balance.');
+      const min = -Number((t.rules as unknown as LeaveRules).negativeLimit ?? 0);
+      if (dto.to < min) throw new BadRequestException({ statusCode: 400, message: `${t.name} can't go below ${min} ${Math.abs(min) === 1 ? 'day' : 'days'}, the leave type's minimum balance.`, field: 'to' });
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`leave:${c.organizationId}:${dto.employeeId}`}))`;
+      const sum = await tx.leaveLedgerEntry.aggregate({ where: { organizationId: c.organizationId, employeeId: dto.employeeId, leaveTypeId: t.id }, _sum: { days: true } });
+      const now = Math.round(num(sum._sum.days) * 100) / 100;
+      if (now !== dto.from) throw new ConflictException({ statusCode: 409, code: 'BALANCE_CHANGED', message: `The ${t.name} balance is now ${now}, not ${dto.from}: it changed since you loaded it. Reload and try again.`, balance: now });
+      const days = Math.round((dto.to - now) * 100) / 100;
+      const e = await tx.leaveLedgerEntry.create({ data: { organizationId: c.organizationId, employeeId: dto.employeeId, leaveTypeId: t.id, entryOn: asDate(today), kind: 'adjustment', days, reason: dto.reason, createdBy: c.userId ?? null } });
+      await audit(tx, c, 'leave.balance.corrected', 'leave_ledger', e.id, { employeeId: dto.employeeId, type: t.code, from: now, to: dto.to, days, reason: dto.reason });
+      return { id: e.id, balance: dto.to, days };
     });
   }
 

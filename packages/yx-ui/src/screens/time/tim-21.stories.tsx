@@ -11,3 +11,6 @@ export const Employee: S = { name: 'Employee · ledger and projection' };
 export const Hr: S = { name: 'HR', args: { persona: 'hr' }, argTypes: { person: { control: 'text' } } };
 export const Adjust: S = { name: 'HR · adjust with reason', args: { persona: 'hr', adjustOpen: true } };
 export const Phone: S = { name: 'Phone', args: { surface: 'phone' }, ...phone };
+// Batch A D10 (answer 2314): everyone in HR's scope by leave type; a cell opens the correction with a reason.
+export const BalanceGrid: S = { name: 'HR · balance grid', args: { persona: 'hr', view: 'grid' } };
+export const CorrectBalance: S = { name: 'HR · balance grid · correct with reason', args: { persona: 'hr', view: 'grid', correctOpen: true } };

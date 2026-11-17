@@ -505,4 +505,49 @@ describe('Time batch A', () => {
       expect(t[3]).not.toMatch(/Trip/);
     });
   });
+
+  // ------------------------------------------------------------------ D10: balance correction grid (answer 2314)
+  describe('D10 balance correction grid', () => {
+    const entries = () => inA((tx) => tx.leaveLedgerEntry.count({ where: { employeeId: ids.empEmp, leaveTypeId: ids.d10 } }));
+    const body = (x: Record<string, unknown> = {}) => ({ employeeId: ids.empEmp, leaveTypeId: ids.d10, from: 5, to: 7.5, reason: 'Opening balance from the old system was short', ...x });
+    beforeAll(async () => {
+      await inA(async (tx) => {
+        // Minimum balance -2 (two days may be borrowed); 5 days today.
+        ids.d10 = (await tx.leaveType.create({ data: { organizationId: org.A.id, code: 'PL', name: 'Privilege leave', kind: 'casual', rules: { negativeLimit: 2 } } })).id;
+        await tx.leaveLedgerEntry.create({ data: { organizationId: org.A.id, employeeId: ids.empEmp, leaveTypeId: ids.d10, entryOn: new Date(`${today}T00:00:00Z`), kind: 'opening', days: 5, reason: 'Opening' } });
+      });
+    });
+
+    it('HR corrects a cell: the difference goes on the ledger with the reason, audited before and after; the grid shows it', async () => {
+      const out = (await api('hrAdmin', 'post', '/time/hr/balances/correct').send(body()).expect(201)).body;
+      expect(out).toMatchObject({ balance: 7.5, days: 2.5 });
+      const e = await inA((tx) => tx.leaveLedgerEntry.findUniqueOrThrow({ where: { id: out.id } }));
+      expect({ kind: e.kind, days: Number(e.days), reason: e.reason, by: e.createdBy }).toEqual({ kind: 'adjustment', days: 2.5, reason: 'Opening balance from the old system was short', by: users.hrAdmin });
+      const a = await inA((tx) => tx.auditLog.findFirstOrThrow({ where: { action: 'leave.balance.corrected', entityId: out.id } }));
+      expect(JSON.parse(a.metadataJson ?? '{}')).toMatchObject({ employeeId: ids.empEmp, from: 5, to: 7.5, days: 2.5 });
+      const grid = (await api('hrAdmin', 'get', '/time/hr/balances').expect(200)).body;
+      expect(grid.people.find((p: { employeeId: string }) => p.employeeId === ids.empEmp).balances.find((b: { leaveTypeId: string }) => b.leaveTypeId === ids.d10)).toMatchObject({ balance: 7.5, negativeLimit: 2 });
+      // Down to the minimum is allowed.
+      await api('hrAdmin', 'post', '/time/hr/balances/correct').send(body({ from: 7.5, to: -2 })).expect(201);
+    });
+
+    it('negative: below the minimum, a stale figure, no change, the wrong role, their own, another company and bad input: refused, nothing saved', async () => {
+      const before = await entries();
+      expect((await api('hrAdmin', 'post', '/time/hr/balances/correct').send(body({ from: -2, to: -2.5 })).expect(400)).body.message).toMatch(/can't go below -2 days/);
+      expect((await api('hrAdmin', 'post', '/time/hr/balances/correct').send(body({ from: 5, to: 6 })).expect(409)).body).toMatchObject({ code: 'BALANCE_CHANGED', balance: -2 });
+      await api('hrAdmin', 'post', '/time/hr/balances/correct').send(body({ from: -2, to: -2 })).expect(400);
+      await api('emp', 'post', '/time/hr/balances/correct').send(body({ from: -2, to: 1 })).expect(403);
+      await api('mgr', 'post', '/time/hr/balances/correct').send(body({ from: -2, to: 1 })).expect(403);
+      expect((await api('hrAdmin', 'post', '/time/hr/balances/correct').send(body({ employeeId: ids.hrEmp, from: 0, to: 1 })).expect(403)).body.message).toMatch(/your own balance/);
+      expect([403, 404]).toContain((await api('adminB', 'post', '/time/hr/balances/correct').send(body({ from: -2, to: 1 }))).status);
+      await api('hrAdmin', 'post', '/time/hr/balances/correct').send(body({ from: -2, to: 1, reason: '' })).expect(400);
+      await api('hrAdmin', 'post', '/time/hr/balances/correct').send(body({ from: -2, to: 'ten' })).expect(400);
+      await api('hrAdmin', 'post', '/time/hr/balances/correct').send(body({ from: -2, to: 1.333 })).expect(400);
+      await api('hrAdmin', 'post', '/time/hr/balances/correct').send(body({ employeeId: 'someone', from: -2, to: 1 })).expect(400);
+      await api('hrAdmin', 'post', '/time/hr/balances/correct').send(body({ from: -2, to: 1, extra: true })).expect(400);
+      expect(await entries()).toBe(before);
+      // Another company sees none of it.
+      expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.leaveLedgerEntry.count({ where: { leaveTypeId: ids.d10 } }))).toBe(0);
+    });
+  });
 });
