@@ -1664,8 +1664,123 @@ export function ResultAppealScreen({ state = 'released', live }: { state?: 'rele
 /* PRC-28 · Privacy centre                                             */
 /* ================================================================== */
 
-export function PrivacyCentreScreen({ confirmErase = false, legalHold = false, requested = false }: { confirmErase?: boolean; legalHold?: boolean; requested?: boolean }) {
-  // PRC-28
+/** AS-5 part 3 (PRC-28): what a company holds about the candidate's tests (dates already formatted for the reader). */
+export interface LivePrivacy {
+  state: 'loading' | 'error' | 'ready';
+  onRetry: () => void;
+  brand?: CandidateBrand;
+  company: string;
+  consents: { what: string; test: string; on: string }[];
+  recordings: { frames: number; deleteOn: string | null };
+  face: { kept: boolean; deleteOn: string | null };
+  /** An incident or appeal holds the evidence (legal hold). */
+  held: boolean;
+  request: { status: 'waiting' | 'done'; requestedOn: string; doneOn: string | null; dueOn: string } | null;
+  onErase: () => Promise<unknown>;
+  onDownload: () => Promise<unknown>;
+}
+
+export function PrivacyCentreScreen({ confirmErase = false, legalHold = false, requested = false, live }: { confirmErase?: boolean; legalHold?: boolean; requested?: boolean; live?: LivePrivacy }) {
+  // PRC-28; with `live`, the candidate's own data (AS-5 part 3).
+  if (live) return <LivePrivacyCentreScreen live={live} />;
+  return <SamplePrivacyCentre confirmErase={confirmErase} legalHold={legalHold} requested={requested} />;
+}
+
+function LivePrivacyCentreScreen({ live }: { live: LivePrivacy }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const r = live.request;
+  const waiting = r?.status === 'waiting';
+  const nothing = !live.recordings.frames && !live.face.kept;
+  return (
+    <CandidateFrame page="Privacy centre" brand={live.brand}>
+      <Title>Privacy centre</Title>
+      <p className="yx-prc-muted">What {live.company} holds about your tests, how long, and what you can change.</p>
+      {live.state === 'error' ? (
+        <InlineAlert tone="danger" title="We couldn't load your privacy centre." actions={<Button size="sm" onClick={live.onRetry}>Try again</Button>} />
+      ) : live.state === 'loading' ? (
+        <EmptyState title="Loading…" />
+      ) : (
+        <>
+          {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+          <Card title="Consents you gave">
+            {live.consents.length ? (
+              <ul className="yx-prc-plain">
+                {live.consents.map((c, i) => (
+                  <li key={i}>
+                    <span className="yx-prc-stack" data-gap="sm">
+                      <strong>{c.what}</strong>
+                      <span className="yx-prc-small">{`${c.on}, ${c.test}`}</span>
+                    </span>
+                    {!r || r.status === 'done' ? (
+                      <Button size="sm" onClick={() => setOpen(true)} disabled={nothing} aria-label={`Withdraw: ${c.what}`}>
+                        Withdraw
+                      </Button>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="yx-prc-muted">You have not started a monitored test yet.</p>
+            )}
+          </Card>
+          <Card title="What we keep and until when">
+            <DescriptionList
+              items={[
+                { label: 'Recordings and clips', value: !live.recordings.frames ? 'None kept' : live.held ? `Kept while a review or appeal is open (legal hold)${live.recordings.deleteOn ? `, then deleted (planned for ${live.recordings.deleteOn})` : ''}` : `Delete on ${live.recordings.deleteOn ?? '—'}` },
+                { label: 'Face template and photo', value: !live.face.kept ? 'None kept' : `Delete on ${live.face.deleteOn ?? '—'}` },
+                { label: 'Answers and score', value: `Kept with your application under ${live.company}'s retention policy` },
+              ]}
+            />
+          </Card>
+          {live.held && waiting && <InlineAlert tone="info">We can't erase your recordings while a review or appeal of your test is open. We will erase them when it closes.</InlineAlert>}
+          {waiting && r ? (
+            <InlineAlert tone="success" title={`Erasure request received on ${r.requestedOn}`}>
+              {`We will erase your recordings, clips and face data by ${r.dueOn} and email you. Your answers and score stay with your application.`}
+            </InlineAlert>
+          ) : r?.status === 'done' ? (
+            <InlineAlert tone="success" title={`Erased on ${r.doneOn ?? r.requestedOn}`}>Your recordings, clips and face data were erased. Your answers and score stay with your application.</InlineAlert>
+          ) : null}
+          <div className="yx-prc-row">
+            <Button
+              icon={Download}
+              loading={busy}
+              onClick={() => {
+                setBusy(true);
+                setError(null);
+                live
+                  .onDownload()
+                  .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Try again in a moment.'))
+                  .finally(() => setBusy(false));
+              }}
+            >
+              Download my data
+            </Button>
+            {!waiting && !nothing && (
+              <Button variant="danger" onClick={() => setOpen(true)}>
+                Erase my recordings and face data
+              </Button>
+            )}
+          </div>
+          <ConfirmDialog
+            open={open}
+            onOpenChange={setOpen}
+            title="Erase your recordings and face data?"
+            consequence={`We delete recordings, clips, your face template and photo. This can't be undone. Results already released are not changed; tests you have not taken yet will need a manual ID check.${live.held ? ' A review or appeal is open, so we erase them when it closes.' : ''}`}
+            confirmLabel="Erase my data"
+            destructive
+            onConfirm={async () => {
+              await live.onErase();
+            }}
+          />
+        </>
+      )}
+    </CandidateFrame>
+  );
+}
+
+function SamplePrivacyCentre({ confirmErase, legalHold, requested }: { confirmErase: boolean; legalHold: boolean; requested: boolean }) {
   const [open, setOpen] = useState(confirmErase);
   return (
     <CandidateFrame page="Privacy centre">

@@ -46,6 +46,8 @@ export { ConsentScreen, IdentityCheckScreen, type LiveConsent, type LiveSelfie, 
 // AS-5 part 1 (answers 2006, 2008, 2012): integrity review and appeals.
 export { AppealsScreen, IncidentWorkspaceScreen, IntegrityQueueScreen, IntegrityReportsScreen } from './integrity';
 export type { LiveIntegrityReportData, LiveIntegrityReports } from './integrity-live';
+// AS-5 part 3 (PRC-28): the candidate's privacy centre.
+export { PrivacyCentreScreen, type LivePrivacy } from './candidate';
 // AS-5 part 2 (PRC-13): the live console.
 export { LiveConsoleScreen } from './live';
 export type { LiveConsole, LiveThreadMessage } from './live-console-live';

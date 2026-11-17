@@ -10,6 +10,7 @@ import { asApproved } from './fixtures/approved-question';
 import { markSteppedUp } from './fixtures/step-up';
 import { openIncidentIfFlagged } from '../../exam-runtime/src/integrity/integrity-analysis.service';
 import { FaceVerificationService } from '../../exam-runtime/src/face/face-verification.service';
+import { ProctoringRetentionService } from '../src/proctoring-retention/proctoring-retention.service';
 
 // Assessments AS-5 part 1 (answers 2006, 2008, 2012), end to end against the real database (forced RLS, the app role):
 //   the analysis opens an incident for a flagged attempt and the candidate's result is held;
@@ -436,6 +437,47 @@ describe('Assessments AS-5: integrity review and appeals', () => {
     expect(file.headers['content-type']).toContain('spreadsheetml');
     expect((file.body as Buffer).subarray(0, 2).toString()).toBe('PK');
     expect(await inOrg(org.A.id, (tx) => tx.auditLog.count({ where: { entityId: exam, action: 'asmt.integrity_report.exported' } }))).toBe(1);
+  });
+
+  // PRC-28: the candidate's privacy centre; the erasure waits for a held review and is done by the nightly sweep.
+  it('PRC-28: the candidate sees what is kept, asks once to erase; a held review waits; the sweep erases and emails', async () => {
+    const r = await running();
+    const frame = `local-blob:webcam-snapshots/${r.attemptId}-9.jpg`;
+    await inOrg(org.A.id, async (tx) => {
+      await tx.proctoringEvent.create({ data: { attemptId: r.attemptId, eventType: 'webcam_multiple_faces', severity: 'high', metadataJson: JSON.stringify({ snapshot: frame, strike: 1 }) } });
+      await tx.faceEnrolment.create({ data: { attemptId: r.attemptId, status: 'enrolled', consentAt: new Date(), capturedAt: new Date(), referenceImagePath: `local-blob:face/${r.attemptId}.jpg` } });
+    });
+    await cand(r.ct, 'post', '/attempt/submit').send({}).expect(201);
+    const v = (await cand(r.ct, 'get', '/attempt/privacy').expect(200)).body;
+    expect(v).toMatchObject({ company: 'AS5 A', recordings: { frames: 1 }, face: { kept: true }, held: false, request: null });
+    expect(v.consents.map((c: { what: string }) => c.what)).toEqual(['Camera, screen and activity monitoring', 'Face check (biometric)']);
+    expect(v.recordings.deleteOn).toBeTruthy();
+    // A copy of the data: the events by type and time, never an image link.
+    const copy = (await cand(r.ct, 'get', '/attempt/privacy/export').expect(200)).body;
+    expect(copy.tests[0].monitoringEvents).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'webcam_multiple_faces' })]));
+    expect(JSON.stringify(copy)).not.toContain('local-blob:');
+    // A review is open: the request waits.
+    await flag(r.attemptId, 'high_concern');
+    expect((await cand(r.ct, 'post', '/attempt/privacy/erase').send({}).expect(200)).body).toMatchObject({ held: true, request: { status: 'waiting' } });
+    await cand(r.ct, 'post', '/attempt/privacy/erase').send({}).expect(200);
+    const cid = (await inOrg(org.A.id, (tx) => tx.attempt.findUniqueOrThrow({ where: { id: r.attemptId }, select: { invitation: { select: { candidateId: true } } } }))).invitation.candidateId;
+    expect(await inOrg(org.A.id, (tx) => tx.asmtErasureRequest.count({ where: { candidateId: cid } }))).toBe(1);
+    const sweep = adminApp.get(ProctoringRetentionService);
+    sent.length = 0;
+    await sweep.eraseRequested();
+    expect((await cand(r.ct, 'get', '/attempt/privacy').expect(200)).body).toMatchObject({ recordings: { frames: 1 }, request: { status: 'waiting' } });
+    // Cleared: nothing holds the evidence, so the next sweep erases it (scores stay) and emails the candidate.
+    const iid = (await inOrg(org.A.id, (tx) => tx.integrityIncident.findUniqueOrThrow({ where: { attemptId: r.attemptId } }))).id;
+    await api('proctor', 'post', `/asmt/integrity/${iid}/verdict`).send({ verdict: 'cleared', reason: REASON }).expect(200);
+    await sweep.eraseRequested();
+    const after = (await cand(r.ct, 'get', '/attempt/privacy').expect(200)).body;
+    expect(after).toMatchObject({ recordings: { frames: 0 }, face: { kept: false }, request: { status: 'done' } });
+    const ev = await inOrg(org.A.id, (tx) => tx.proctoringEvent.findFirstOrThrow({ where: { attemptId: r.attemptId, eventType: 'webcam_multiple_faces' } }));
+    expect(JSON.parse(ev.metadataJson!)).toEqual({ strike: 1 });
+    expect(sent.filter((m) => m.subject === 'Your recordings and face data were erased')).toHaveLength(1);
+    expect(await inOrg(org.A.id, (tx) => tx.auditLog.count({ where: { action: { in: ['candidate.erasure_requested', 'candidate.erasure_done', 'candidate.data_exported'] }, entityId: cid } }))).toBe(3);
+    await sweep.eraseRequested();
+    expect(sent.filter((m) => m.subject === 'Your recordings and face data were erased')).toHaveLength(1);
   });
 
   it('negative: approving time above the cap does not pause a test without face checks', async () => {

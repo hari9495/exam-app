@@ -1258,6 +1258,20 @@ model AsmtFairnessReview {
   @@map("asmt_fairness_reviews")
 }
 
+/// AS-5 part 3 (PRC-28): a candidate's request to erase their recordings, clips and face data at a company; the nightly
+/// sweep does it once no incident or appeal holds them. One waiting request per candidate (partial unique index).
+model AsmtErasureRequest {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  candidateId    String    @map("candidate_id") @db.Uuid
+  status         String    @default("waiting") @db.VarChar(20)
+  requestedAt    DateTime  @default(now()) @map("requested_at") @db.Timestamptz(3)
+  doneAt         DateTime? @map("done_at") @db.Timestamptz(3)
+
+  @@index([organizationId])
+  @@map("asmt_erasure_requests")
+}
+
 model CodeAnswerReview {
   id             String   @id @default(uuid()) @db.Uuid
   answerId       String   @unique @map("answer_id") @db.Uuid

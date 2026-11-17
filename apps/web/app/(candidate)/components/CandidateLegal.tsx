@@ -9,7 +9,7 @@ import { useAttemptQuery } from '../../../lib/hooks/useAttempt';
 export function CandidateLegal({ children }: { children: ReactNode }) {
   const { data } = useAttemptQuery();
   return (
-    <CandidateLegalContext.Provider value={{ privacyNotice: data?.privacyNotice ?? null, company: data?.organizationName ?? 'The company', termsHref: '/yx/legal/terms' }}>
+    <CandidateLegalContext.Provider value={{ privacyNotice: data?.privacyNotice ?? null, company: data?.organizationName ?? 'The company', termsHref: '/yx/legal/terms', privacyCentreHref: '/privacy' }}>
       {children}
     </CandidateLegalContext.Provider>
   );

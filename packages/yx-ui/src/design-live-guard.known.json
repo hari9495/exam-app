@@ -180,7 +180,6 @@
     "proctoring: InvigilatorAppScreen",
     "proctoring: MetricCatalogueScreen",
     "proctoring: MetricExplorerScreen",
-    "proctoring: PrivacyCentreScreen",
     "proctoring: ProctorPlannerScreen",
     "proctoring: ProctoringSettingsScreen",
     "proctoring: ReportBuilderScreen",

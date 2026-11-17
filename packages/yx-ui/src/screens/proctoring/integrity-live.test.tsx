@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { AppealsScreen, IncidentWorkspaceScreen, IntegrityQueueScreen, IntegrityReportsScreen } from './integrity';
 import type { LiveIntegrityReportData } from './integrity-live';
-import { ResultAppealScreen } from './candidate';
+import { PrivacyCentreScreen, ResultAppealScreen, type LivePrivacy } from './candidate';
 import type { LiveIncidentWorkspace } from './integrity-live';
 import { LIVE_APPEAL_ROWS, LIVE_DECISION, LIVE_INCIDENT, LIVE_INCIDENT_ROWS, LIVE_REVIEWERS, ME } from './integrity-live-samples';
 
@@ -237,5 +237,44 @@ describe('PRC-20 live integrity reports', () => {
     expect(screen.getByText('No answers were marked twice yet.')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Export XLSX' }));
     expect(await screen.findByText('You do not have access to this test.')).toBeInTheDocument();
+  });
+});
+
+describe('PRC-28 live privacy centre', () => {
+  const PRIV = (over: Partial<LivePrivacy> = {}): LivePrivacy => ({
+    state: 'ready',
+    onRetry: vi.fn(),
+    company: 'Kaveri Foods',
+    consents: [{ what: 'Camera, screen and activity monitoring', test: 'Java Backend Developer · L2', on: '17 Nov 2026' }],
+    recordings: { frames: 4, deleteOn: '17 Dec 2026' },
+    face: { kept: true, deleteOn: '17 Dec 2026' },
+    held: false,
+    request: null,
+    onErase: vi.fn().mockResolvedValue(undefined),
+    onDownload: vi.fn().mockResolvedValue(undefined),
+    ...over,
+  });
+
+  it('shows what is kept until when; erasing asks first; the copy downloads', async () => {
+    const live = PRIV();
+    render(<PrivacyCentreScreen live={live} />);
+    expect(screen.getAllByText('Delete on 17 Dec 2026')).toHaveLength(2);
+    await ue.click(screen.getByRole('button', { name: 'Download my data' }));
+    expect(live.onDownload).toHaveBeenCalled();
+    await ue.click(screen.getByRole('button', { name: 'Erase my recordings and face data' }));
+    await ue.click(within(screen.getByRole('dialog', { name: 'Erase your recordings and face data?' })).getByRole('button', { name: 'Erase my data' }));
+    expect(live.onErase).toHaveBeenCalled();
+  });
+
+  it('negative: a held review says it waits; a waiting request offers no second erase; nothing kept offers none', () => {
+    const { unmount } = render(<PrivacyCentreScreen live={PRIV({ held: true, request: { status: 'waiting', requestedOn: '17 Nov 2026', doneOn: null, dueOn: '17 Dec 2026' } })} />);
+    expect(screen.getByText(/can't erase your recordings while a review or appeal/)).toBeInTheDocument();
+    expect(screen.getByText('Erasure request received on 17 Nov 2026')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Erase my recordings and face data' })).not.toBeInTheDocument();
+    expect(screen.getByText(/legal hold/)).toBeInTheDocument();
+    unmount();
+    render(<PrivacyCentreScreen live={PRIV({ recordings: { frames: 0, deleteOn: null }, face: { kept: false, deleteOn: null } })} />);
+    expect(screen.getAllByText('None kept')).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: 'Erase my recordings and face data' })).not.toBeInTheDocument();
   });
 });
