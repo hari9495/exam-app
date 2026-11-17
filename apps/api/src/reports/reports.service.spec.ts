@@ -276,6 +276,8 @@ describe('ReportsService', () => {
         row({ candidateId: 'cand-1', candidateName: 'Alice', attemptId: 'a1', status: 'submitted', score: 7, maxScore: 10 }),
       ]);
       const tx = {
+        // AS-6 (answer 2154): the sections whose cut-off was missed.
+        result: { findUnique: jest.fn().mockResolvedValue(null) },
         attempt: {
           findFirst: jest.fn().mockResolvedValue({
             sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Coding', questionIds: ['qc'] }]),
@@ -317,6 +319,8 @@ describe('ReportsService', () => {
         }),
       ]);
       const tx = {
+        // AS-6 (answer 2154): the sections whose cut-off was missed.
+        result: { findUnique: jest.fn().mockResolvedValue(null) },
         attempt: {
           findFirst: jest.fn().mockResolvedValue({
             sectionSnapshotJson: JSON.stringify([
@@ -447,6 +451,8 @@ describe('ReportsService', () => {
         }),
       ]);
       const tx = {
+        // AS-6 (answer 2154): the sections whose cut-off was missed.
+        result: { findUnique: jest.fn().mockResolvedValue(null) },
         attempt: { findFirst: jest.fn().mockResolvedValue(null) },
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
@@ -486,6 +492,8 @@ describe('ReportsService', () => {
         }),
       ]);
       const tx = {
+        // AS-6 (answer 2154): the sections whose cut-off was missed.
+        result: { findUnique: jest.fn().mockResolvedValue(null) },
         attempt: {
           findFirst: jest.fn().mockResolvedValue({
             sectionSnapshotJson: JSON.stringify([
@@ -520,6 +528,8 @@ describe('ReportsService', () => {
         }),
       ]);
       const tx = {
+        // AS-6 (answer 2154): the sections whose cut-off was missed.
+        result: { findUnique: jest.fn().mockResolvedValue(null) },
         attempt: {
           findFirst: jest.fn().mockResolvedValue({
             sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
@@ -568,6 +578,8 @@ describe('ReportsService', () => {
         }),
       ]);
       const tx = {
+        // AS-6 (answer 2154): the sections whose cut-off was missed.
+        result: { findUnique: jest.fn().mockResolvedValue(null) },
         attempt: {
           findFirst: jest.fn().mockResolvedValue({
             sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
@@ -615,6 +627,8 @@ describe('ReportsService', () => {
         }),
       ]);
       const tx = {
+        // AS-6 (answer 2154): the sections whose cut-off was missed.
+        result: { findUnique: jest.fn().mockResolvedValue(null) },
         attempt: {
           findFirst: jest.fn().mockResolvedValue({
             sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
@@ -665,6 +679,8 @@ describe('ReportsService', () => {
         }),
       ]);
       const tx = {
+        // AS-6 (answer 2154): the sections whose cut-off was missed.
+        result: { findUnique: jest.fn().mockResolvedValue(null) },
         attempt: {
           findFirst: jest.fn().mockResolvedValue({
             sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
@@ -709,6 +725,8 @@ describe('ReportsService', () => {
         }),
       ]);
       const tx = {
+        // AS-6 (answer 2154): the sections whose cut-off was missed.
+        result: { findUnique: jest.fn().mockResolvedValue(null) },
         attempt: {
           findFirst: jest.fn().mockResolvedValue({
             sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
@@ -747,6 +765,8 @@ describe('ReportsService', () => {
         }),
       ]);
       const tx = {
+        // AS-6 (answer 2154): the sections whose cut-off was missed.
+        result: { findUnique: jest.fn().mockResolvedValue(null) },
         attempt: {
           findFirst: jest.fn().mockResolvedValue({
             sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
@@ -806,6 +826,8 @@ describe('ReportsService', () => {
           }),
         ]);
         const tx = {
+          // AS-6 (answer 2154): the sections whose cut-off was missed.
+          result: { findUnique: jest.fn().mockResolvedValue(null) },
           attempt: {
             findFirst: jest.fn().mockResolvedValue({
               sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
@@ -843,6 +865,8 @@ describe('ReportsService', () => {
           }),
         ]);
         const tx = {
+          // AS-6 (answer 2154): the sections whose cut-off was missed.
+          result: { findUnique: jest.fn().mockResolvedValue(null) },
           attempt: {
             findFirst: jest.fn().mockResolvedValue({
               sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
@@ -887,6 +911,8 @@ describe('ReportsService', () => {
           }),
         ]);
         const tx = {
+          // AS-6 (answer 2154): the sections whose cut-off was missed.
+          result: { findUnique: jest.fn().mockResolvedValue(null) },
           attempt: {
             findFirst: jest.fn().mockResolvedValue({
               sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
@@ -922,6 +948,8 @@ describe('ReportsService', () => {
         row({ candidateId: 'cand-1', candidateName: 'Alice', attemptId: 'a1', status: 'submitted' }),
       ]);
       const tx = {
+        // AS-6 (answer 2154): the sections whose cut-off was missed.
+        result: { findUnique: jest.fn().mockResolvedValue(null) },
         attempt: {
           findFirst: jest.fn().mockResolvedValue({
             sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Coding', questionIds: ['q1'] }]),
@@ -956,6 +984,8 @@ describe('ReportsService', () => {
         row({ candidateId: 'cand-1', candidateName: 'Alice', attemptId: 'a1', status: 'submitted' }),
       ]);
       const tx = {
+        // AS-6 (answer 2154): the sections whose cut-off was missed.
+        result: { findUnique: jest.fn().mockResolvedValue(null) },
         attempt: {
           findFirst: jest.fn().mockResolvedValue({
             sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Coding', questionIds: ['q1', 'q2'] }]),
@@ -1006,6 +1036,8 @@ describe('ReportsService', () => {
       examsService.getResults.mockResolvedValue([row({ candidateId: 'cand-1', attemptId: 'a1', status: 'submitted' })]);
       blobStorage.signIfOurs = jest.fn().mockResolvedValue('https://acct.blob.core.windows.net/c/face/a1.jpg?sig=x');
       const tx = {
+        // AS-6 (answer 2154): the sections whose cut-off was missed.
+        result: { findUnique: jest.fn().mockResolvedValue(null) },
         attempt: { findFirst: jest.fn().mockResolvedValue({
           sectionSnapshotJson: '[]', answers: [],
           faceEnrolment: { status: 'enrolled', referenceImagePath: 'https://acct.blob.core.windows.net/c/face/a1.jpg', capturedAt: new Date('2026-08-11T09:00:00Z') },
@@ -1024,6 +1056,8 @@ describe('ReportsService', () => {
     it('returns null enrolment for an attempt that predates the feature', async () => {
       examsService.getResults.mockResolvedValue([row({ candidateId: 'cand-1', attemptId: 'a1', status: 'submitted' })]);
       const tx = {
+        // AS-6 (answer 2154): the sections whose cut-off was missed.
+        result: { findUnique: jest.fn().mockResolvedValue(null) },
         attempt: { findFirst: jest.fn().mockResolvedValue({ sectionSnapshotJson: '[]', answers: [], faceEnrolment: null }) },
         question: { findMany: jest.fn().mockResolvedValue([]) },
         proctoringEvent: { findMany: jest.fn().mockResolvedValue([]) },
@@ -1039,6 +1073,8 @@ describe('ReportsService', () => {
       examsService.getResults.mockResolvedValue([row({ candidateId: 'cand-1', attemptId: 'a1', status: 'submitted' })]);
       blobStorage.signIfOurs = jest.fn().mockResolvedValue('https://blob/snap.jpg?sig=x');
       const tx = {
+        // AS-6 (answer 2154): the sections whose cut-off was missed.
+        result: { findUnique: jest.fn().mockResolvedValue(null) },
         attempt: { findFirst: jest.fn().mockResolvedValue({ sectionSnapshotJson: '[]', answers: [], faceEnrolment: null }) },
         question: { findMany: jest.fn().mockResolvedValue([]) },
         proctoringEvent: { findMany: jest.fn().mockResolvedValue([
@@ -1057,6 +1093,8 @@ describe('ReportsService', () => {
     it('returns an empty list, not null, when there were no mismatches', async () => {
       examsService.getResults.mockResolvedValue([row({ candidateId: 'cand-1', attemptId: 'a1', status: 'submitted' })]);
       const tx = {
+        // AS-6 (answer 2154): the sections whose cut-off was missed.
+        result: { findUnique: jest.fn().mockResolvedValue(null) },
         attempt: { findFirst: jest.fn().mockResolvedValue({ sectionSnapshotJson: '[]', answers: [], faceEnrolment: null }) },
         question: { findMany: jest.fn().mockResolvedValue([]) },
         proctoringEvent: { findMany: jest.fn().mockResolvedValue([]) },
@@ -1069,6 +1107,8 @@ describe('ReportsService', () => {
     it('degrades a malformed metadataJson to a mismatch entry with null score/snapshot, without throwing', async () => {
       examsService.getResults.mockResolvedValue([row({ candidateId: 'cand-1', attemptId: 'a1', status: 'submitted' })]);
       const tx = {
+        // AS-6 (answer 2154): the sections whose cut-off was missed.
+        result: { findUnique: jest.fn().mockResolvedValue(null) },
         attempt: { findFirst: jest.fn().mockResolvedValue({ sectionSnapshotJson: '[]', answers: [], faceEnrolment: null }) },
         question: { findMany: jest.fn().mockResolvedValue([]) },
         proctoringEvent: { findMany: jest.fn().mockResolvedValue([
