@@ -237,6 +237,8 @@ export const YX_KEYS = [
   // AS-5: Integrity review and Appeals.
   'asmt.proctor',
   'asmt.evaluate',
+  // AS-6: Fairness for results readers.
+  'asmt.results.view',
   'approvals:configure',
   // AT3: the careers site, consent notices and job boards (company settings).
   'org:manage_settings',

@@ -237,7 +237,7 @@ export function useRunnerActions() {
   return {
     startBreak: () => post('/attempt/break/start'),
     endBreak: () => post('/attempt/break/end'),
-    sendSurvey: (input: { rating: number; clearInstructions?: boolean; comment?: string }) => post('/attempt/survey', input),
+    sendSurvey: (input: { rating: number; clearInstructions?: boolean; comment?: string; gender?: 'woman' | 'man' | 'another' | 'not_say' }) => post('/attempt/survey', input),
     // AS-5 (answer 2012): appeal an integrity decision.
     sendAppeal: (text: string) => post('/attempt/appeal', { text }),
   };

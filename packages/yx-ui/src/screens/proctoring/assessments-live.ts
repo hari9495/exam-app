@@ -47,3 +47,10 @@ export { ConsentScreen, IdentityCheckScreen, type LiveConsent, type LiveSelfie, 
 export { AppealsScreen, IncidentWorkspaceScreen, IntegrityQueueScreen } from './integrity';
 export type { LiveAppealRow, LiveAppeals, LiveIncident, LiveIncidentRow, LiveIncidentWorkspace, LiveIntegrityQueue } from './integrity-live';
 export type { SystemCheck } from './proctoring-kit';
+
+// AS-6 (answer 2237): the legal links on live candidate pages.
+export { CandidateLegalContext, type CandidateLegal } from './proctoring-shared';
+
+// AS-6 (PRC-19, answers 2019, 2165): marking and fairness.
+export { EvaluatorConsoleScreen, FairnessScreen } from './integrity';
+export type { FairnessData, FairnessRow, LiveEvaluator, LiveFairness, MarkStatus, MarkingItem } from './marking-live';

@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsISO8601, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsISO8601, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested, MinLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class AnswerTelemetryDto {
@@ -86,4 +86,9 @@ export class SurveyDto {
   @IsString()
   @MaxLength(1000)
   comment?: string;
+
+  /** AS-6 (answer 2019): how the candidate chooses to describe themselves; voluntary, used only in aggregate. */
+  @IsOptional()
+  @IsIn(['woman', 'man', 'another', 'not_say'])
+  gender?: 'woman' | 'man' | 'another' | 'not_say';
 }

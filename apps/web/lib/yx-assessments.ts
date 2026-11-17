@@ -67,7 +67,7 @@ export interface CandidateDetailResponse {
   released: boolean;
   submittedAt: string | null;
   integrityAnalysis: { status: string; level: string | null } | null;
-  sections: { title: string; score: number; maxScore: number }[];
+  sections: { title: string; score: number; maxScore: number; cutoffPercent?: number | null; cutoffMissed?: boolean }[];
 }
 
 const INTEGRITY: Record<string, string> = { low: 'Clear', medium: 'Some flags', high: 'Needs review' };
@@ -85,6 +85,6 @@ export function scoreReport(d: CandidateDetailResponse): NonNullable<import('@yu
     released: d.released,
     submittedAt: d.submittedAt,
     integrity: d.integrityAnalysis?.status === 'completed' && level ? (INTEGRITY[level] ?? level) : d.integrityAnalysis ? 'Under review' : 'Not checked',
-    sections: d.sections.map((s) => ({ title: s.title, percentage: s.maxScore > 0 ? (s.score / s.maxScore) * 100 : null })),
+    sections: d.sections.map((s) => ({ title: s.title, percentage: s.maxScore > 0 ? (s.score / s.maxScore) * 100 : null, cutoffPercent: s.cutoffPercent ?? null, cutoffMissed: Boolean(s.cutoffMissed) })),
   };
 }

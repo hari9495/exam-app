@@ -47,16 +47,19 @@ describe('buildNav: areas', () => {
   // Answer 2159 (AS-3): Tests next to the Question bank; Invitations & drives for the people who invite candidates.
   it('Hire › Assessments: Tests for test writers, Invitations & drives for inviters', () => {
     const assess = (n: ReturnType<typeof buildNav>) => n.find((a) => a.id === 'hire')?.sections.find((s) => s.label === 'Assessments')?.items.map((l) => l.label) ?? [];
-    expect(assess(nav(['asmt.bank.manage', 'asmt.test.manage'], { assessments: true }))).toEqual(['Question bank', 'Tests', 'Question review', 'Item analysis']);
+    expect(assess(nav(['asmt.bank.manage', 'asmt.test.manage'], { assessments: true }))).toEqual(['Question bank', 'Tests', 'Question review', 'Item analysis', 'Fairness']);
     // AS-5: test owners also review integrity and appeals; a proctor or evaluator sees only those.
-    expect(assess(nav(['exam:manage'], { assessments: true }))).toEqual(['Tests', 'Integrity review', 'Appeals']);
+    expect(assess(nav(['exam:manage'], { assessments: true }))).toEqual(['Tests', 'Integrity review', 'Appeals', 'Marking', 'Fairness']);
+    // AS-6: an evaluator marks; a results reader sees fairness only.
+    expect(assess(nav(['asmt.evaluate'], { assessments: true }))).toEqual(['Integrity review', 'Appeals', 'Marking']);
+    expect(assess(nav(['asmt.results.view'], { assessments: true }))).toEqual(['Fairness']);
     expect(assess(nav(['asmt.proctor'], { assessments: true }))).toEqual(['Integrity review', 'Appeals']);
     expect(assess(nav(['asmt.evaluate'], { assessments: false }))).toEqual([]);
     expect(assess(nav(['ats.candidate.manage'], { assessments: true }))).toEqual(['Invitations & drives']);
     expect(assess(nav(['candidate:manage'], { assessments: true }))).toEqual(['Invitations & drives']);
     // negative: assessments off, or a results reader only.
     expect(assess(nav(['asmt.test.manage', 'candidate:manage'], { assessments: false }))).toEqual([]);
-    expect(assess(nav(['asmt.results.view'], { assessments: true }))).toEqual([]);
+    expect(assess(nav(['asmt.results.view'], { assessments: false }))).toEqual([]);
   });
 
   it('HIR-10: Background checks only for HR with the background-check key', () => {

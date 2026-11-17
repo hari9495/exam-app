@@ -1,5 +1,7 @@
 // Frames and panel links for Proctoring (area 'assess') and Analytics (area 'analytics'), APX-D §1.2.
-import type { ReactNode } from 'react';
+import { createContext, useContext, useState, type ReactNode } from 'react';
+import { Button, Link } from '../../components/button';
+import { Dialog } from '../../components/overlay';
 import { DesktopFrame, PortalFrame, type PanelSection } from '../_kit/frames';
 import { COMPANY } from '../_kit/data';
 import './screens.css';
@@ -55,6 +57,42 @@ export interface CandidateBrand {
   myTestsHref?: string;
 }
 
+/**
+ * AS-6 (answer 2237): the legal links on a live candidate page: the company's privacy notice for applicants (its text,
+ * when it has one) and YukthiX's terms of use. The live app provides them once around the candidate pages.
+ */
+export interface CandidateLegal {
+  privacyNotice: string | null;
+  company: string;
+  termsHref: string;
+}
+export const CandidateLegalContext = createContext<CandidateLegal | null>(null);
+
+function CandidateLegalLinks() {
+  const legal = useContext(CandidateLegalContext);
+  const [open, setOpen] = useState(false);
+  if (!legal) return null;
+  return (
+    <nav className="yx-prc-footlinks" aria-label="Legal">
+      {legal.privacyNotice && (
+        <Button size="sm" onClick={() => setOpen(true)}>
+          {`${legal.company} privacy notice`}
+        </Button>
+      )}
+      <Link href={legal.termsHref} target="_blank" rel="noopener">
+        YukthiX terms of use
+      </Link>
+      {legal.privacyNotice && (
+        <Dialog open={open} onOpenChange={setOpen} title={`${legal.company} privacy notice`} size="md" footer={<Button onClick={() => setOpen(false)}>Close</Button>}>
+          <p className="yx-prc-p yx-prc-notice-text">
+            {legal.privacyNotice}
+          </p>
+        </Dialog>
+      )}
+    </nav>
+  );
+}
+
 /** T9 candidate test portal: tenant brand, one short tab row, access-expiry banner. */
 /**
  * Live pages name the real company: `brand` (AS-3: company, candidate and the My tests tab) or `company` (AS-4a: the
@@ -65,12 +103,14 @@ export function CandidateFrame({ page, children, user = 'Arjun Nair', brand, com
     return (
       <PortalFrame tenant={brand.company} tenantLogoUrl={brand.logoUrl} portal="Candidate test portal" user={brand.candidate} nav={brand.myTestsHref ? [{ label: 'My tests', href: brand.myTestsHref, active: page === 'My tests' }] : []}>
         {children}
+        <CandidateLegalLinks />
       </PortalFrame>
     );
   if (company !== undefined)
     return (
       <PortalFrame tenant={company} portal="Candidate test portal" user={user}>
         {children}
+        <CandidateLegalLinks />
       </PortalFrame>
     );
   return (

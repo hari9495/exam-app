@@ -25,6 +25,8 @@ export interface BuilderSection {
   available: number | null;
   requiredCount: number | null;
   targetMinutes: number | null;
+  /** Answer 2154: the least percentage of this section's own marks to pass; null = none. */
+  cutoffPercent: number | null;
 }
 
 export interface BuilderTest {
@@ -96,6 +98,7 @@ export class AsmtTestsService {
             : null,
           requiredCount: s.requiredCount,
           targetMinutes: s.targetDurationMinutes,
+          cutoffPercent: s.cutoffPercent,
         });
       }
       const current = exam.approvedBy !== null && exam.approvedFingerprint === (await this.exams.fingerprintOf(tx, ctx, id));

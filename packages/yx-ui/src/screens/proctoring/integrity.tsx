@@ -23,6 +23,7 @@ import { CameraFrame, EvidenceFrame, FlagTimeline, IntegrityScoreCard, ScreenThu
 import { impactRatios, needsModeration, verdictError, VERDICT_LABEL, type Verdict } from './proctoring-logic';
 import { EVENTS_SNEHA, INCIDENTS, PEOPLE, REVIEWERS, SIGNALS_SNEHA, d, type IncidentRow } from './proctoring-data';
 import { LiveAppealsScreen, LiveIncidentWorkspaceScreen, LiveIntegrityQueueScreen, type LiveAppeals, type LiveIncidentWorkspace, type LiveIntegrityQueue } from './integrity-live';
+import { LiveEvaluatorScreen, LiveFairnessScreen, type LiveEvaluator, type LiveFairness } from './marking-live';
 
 const opt = (xs: string[]) => xs.map((x) => ({ value: x, label: x }));
 const SEV_TONE = { High: 'danger', Medium: 'warning', Low: 'neutral' } as const;
@@ -381,7 +382,12 @@ export interface EvaluatorConsoleProps {
   minor?: boolean;
 }
 
-export function EvaluatorConsoleScreen({ blind = true, kind = 'descriptive', defaultScores = {}, otherScore = null, minor = false }: EvaluatorConsoleProps) {
+/** PRC-19; with `live` (AS-6) the company's answers to mark, blind, with moderation and the AI suggestion after. */
+export function EvaluatorConsoleScreen(props: EvaluatorConsoleProps | { live: LiveEvaluator }) {
+  return 'live' in props ? <LiveEvaluatorScreen live={props.live} /> : <SampleEvaluatorConsole {...props} />;
+}
+
+function SampleEvaluatorConsole({ blind = true, kind = 'descriptive', defaultScores = {}, otherScore = null, minor = false }: EvaluatorConsoleProps) {
   // PRC-19
   const [scores, setScores] = useState<Record<string, number>>(defaultScores);
   const [focus, setFocus] = useState(0);
@@ -594,7 +600,12 @@ const GROUPS = [
   { group: 'Prefer not to say', passed: 71, total: 140 },
 ];
 
-export function FairnessScreen({ finding = true, validitySuppressed = false }: { finding?: boolean; validitySuppressed?: boolean }) {
+/** Fairness analytics; with `live` (AS-6, answer 2019) a test's pass rates per group from voluntary answers. */
+export function FairnessScreen(props: { finding?: boolean; validitySuppressed?: boolean } | { live: LiveFairness }) {
+  return 'live' in props ? <LiveFairnessScreen live={props.live} /> : <SampleFairness {...props} />;
+}
+
+function SampleFairness({ finding = true, validitySuppressed = false }: { finding?: boolean; validitySuppressed?: boolean }) {
   const groups = finding ? GROUPS : GROUPS.map((g) => (g.group === 'Women' ? { ...g, passed: 580 } : g));
   const rows = impactRatios(groups);
   return (

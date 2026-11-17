@@ -43,6 +43,8 @@ export interface TestSection {
   available: number | null;
   requiredCount: number | null;
   targetMinutes: number | null;
+  /** Answer 2154: the least percentage of this section's own marks to pass; null = none (absent on an older API). */
+  cutoffPercent?: number | null;
 }
 
 /** GET /asmt/tests/:id. */
@@ -91,6 +93,8 @@ export interface LiveTestBuilder {
   onOpen: (id: string) => void;
   onSaveDetails: (d: TestDetails) => Promise<void>;
   onSetMode: (mode: ProctorMode) => Promise<void>;
+  /** Answer 2154: a section's cut-off (null clears it). Absent: the cut-offs are read only. */
+  onSetCutoff?: (sectionId: string, percent: number | null) => Promise<void>;
   /** The older section editor (questions, pools, weights). */
   onEditSections: () => void;
   onRequestApproval: () => Promise<void>;
@@ -116,6 +120,36 @@ const DIFFICULTY: Record<string, string> = { easy: 'Easy', medium: 'Medium', har
 export const poolShort = (s: TestSection) => s.mode === 'pool' && (s.available ?? 0) < (s.poolSize ?? 0);
 
 /* ------------------------------------------------------------------ PRC-04 · Test builder */
+
+/**
+ * Answer 2154: a section may need its own least percentage. A candidate below it fails the test, whatever the total;
+ * the score report says which section. Empty = no cut-off.
+ */
+function SectionCutoffs({ sections, locked, busy, onSave }: { sections: TestSection[]; locked: boolean; busy: string | null; onSave: (id: string, v: number | null) => void }) {
+  const [draft, setDraft] = useState<Record<string, number | null>>({});
+  const value = (s: TestSection) => (s.id in draft ? draft[s.id]! : (s.cutoffPercent ?? null));
+  return (
+    <section className="yx-prc-box" aria-label="Section cut-offs">
+      <h2 className="yx-prc-h">Section cut-offs</h2>
+      <p className="yx-prc-small yx-prc-muted">A candidate below a section's cut-off fails the test, whatever the total. Leave empty for none.</p>
+      <ul className="yx-prc-plain">
+        {sections.map((s) => (
+          <li key={s.id}>
+            <span>{s.title}</span>
+            <span className="yx-prc-row">
+              <NumberField aria-label={`Cut-off for ${s.title}`} value={value(s)} onChange={(v) => setDraft({ ...draft, [s.id]: v == null || Number(v) < 1 ? null : Math.min(100, Number(v)) })} suffix="%" readOnly={locked} size="sm" />
+              {!locked && (
+                <Button size="sm" loading={busy === `cut:${s.id}`} onClick={() => onSave(s.id, value(s))}>
+                  Save
+                </Button>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
 
 export function LiveTestBuilderScreen({ live }: { live: LiveTestBuilder }) {
   const t = live.test;
@@ -341,6 +375,14 @@ export function LiveTestBuilderScreen({ live }: { live: LiveTestBuilder }) {
             </FormField>
           </div>
           {saveButton}
+          {t.sections.length > 0 && (
+            <SectionCutoffs
+              sections={t.sections}
+              locked={locked || !live.onSetCutoff}
+              busy={busy}
+              onSave={(id, v) => void act(`cut:${id}`, () => live.onSetCutoff!(id, v), v == null ? 'Cut-off removed' : 'Cut-off saved')}
+            />
+          )}
         </div>
       ),
     },
@@ -455,7 +497,8 @@ export interface LiveScoreReport {
     released: boolean;
     submittedAt: string | null;
     integrity: string;
-    sections: { title: string; percentage: number | null }[];
+    /** cutoffPercent / cutoffMissed: answer 2154 (absent on an older API). */
+    sections: { title: string; percentage: number | null; cutoffPercent?: number | null; cutoffMissed?: boolean }[];
   } | null;
 }
 
@@ -489,6 +532,15 @@ export function LiveScoreReportScreen({ live }: { live: LiveScoreReport }) {
           { label: 'Release', value: held ? 'Held' : r.released ? 'Released' : 'Not released' },
         ]}
       />
+      {r.sections.some((s) => s.cutoffMissed) && (
+        <InlineAlert tone="warning" title="Cut-off not met">
+          {r.sections
+            .filter((s) => s.cutoffMissed)
+            .map((s) => `${s.title}: ${Math.round(s.percentage ?? 0)} % against a cut-off of ${s.cutoffPercent ?? 0} %`)
+            .join('. ')}
+          . A section below its cut-off fails the test, whatever the total.
+        </InlineAlert>
+      )}
       {held && (
         <InlineAlert tone="warning" title="Held while it is reviewed">
           Nothing is released to the candidate until the hold is lifted, and the evidence is kept until then.
