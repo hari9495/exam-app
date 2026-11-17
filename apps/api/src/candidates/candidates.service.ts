@@ -699,6 +699,8 @@ export class CandidatesService {
         if (enrolment.referenceImagePath) evidenceUrls.push(enrolment.referenceImagePath);
       }
       await tx.faceEnrolment.deleteMany({ where: { attemptId: { in: attemptIds } } });
+      // AS-6 part 2: the candidate's questions to the test assistant are their own free text.
+      await tx.asmtAssistantMessage.deleteMany({ where: { attemptId: { in: attemptIds } } });
 
       // Same rule again: read the résumé blob's path before it's out of reach, and feed it into
       // the same best-effort delete loop as the other evidence. The candidate_profiles row's FK

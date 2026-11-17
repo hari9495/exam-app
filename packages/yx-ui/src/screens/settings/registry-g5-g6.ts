@@ -1288,6 +1288,8 @@ const assessments: SettingsPageDef = {
         { key: 'asmt.blind_marking', label: 'Blind marking', kind: 'toggle', value: true, helper: 'Markers do not see who wrote the answer.', starter: true, scope: 'Company', synonyms: ['blind', 'anonymous marking'] },
         { key: 'asmt.second_marker', label: 'A second marker for written answers', kind: 'toggle', value: false, helper: 'Two blind marks; far apart, a third person moderates.', starter: true, scope: 'Company', synonyms: ['double marking', 'moderation'] },
         { key: 'asmt.moderation_gap', label: 'Moderate when two marks differ by more than', kind: 'select', value: '25 %', options: ['10 %', '20 %', '25 %', '33 %', '50 %'], helper: 'A share of the question’s marks.', starter: true, scope: 'Company' },
+        // AS-6 part 2 (answer 2272): AI-allowed tests.
+        { key: 'asmt.assistant_turns', label: 'Questions to the assistant in an AI-allowed test', kind: 'select', value: '20', options: ['10', '20', '40', '60'], helper: 'Per attempt. Every question and answer is kept for the markers.', starter: true, scope: 'Company', synonyms: ['AI allowed', 'assistant', 'ChatGPT'] },
       ],
     },
     {

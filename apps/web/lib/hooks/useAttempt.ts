@@ -402,6 +402,30 @@ export function useFaceRecheck() {
   });
 }
 
+// AS-6 part 2 (answer 2272): the approved assistant of an AI-allowed test; every message is logged.
+export interface AssistantView {
+  limit: number;
+  turnsLeft: number;
+  log: { id: string; role: 'candidate' | 'assistant'; body: string; questionId: string | null; at: string }[];
+}
+export function useAssistant(enabled: boolean) {
+  const { accessToken } = useCandidateAuth();
+  const queryClient = useQueryClient();
+  const view = useQuery<AssistantView>({
+    queryKey: ['attempt', 'assistant'],
+    queryFn: () => candidateApiFetch('/attempt/assistant', {}, accessToken ?? undefined),
+    enabled: enabled && Boolean(accessToken),
+  });
+  const ask = useMutation({
+    mutationFn: (input: { message: string; questionId: string | null }): Promise<AssistantView> =>
+      candidateApiFetch('/attempt/assistant', { method: 'POST', body: JSON.stringify(input) }, accessToken ?? undefined),
+    onSuccess: (v) => queryClient.setQueryData(['attempt', 'assistant'], v),
+    // A failed answer still logs the question: show it.
+    onError: () => void queryClient.invalidateQueries({ queryKey: ['attempt', 'assistant'] }),
+  });
+  return { view, ask };
+}
+
 // Answer 2269: the candidate reads the proctor's messages ("Got it") or replies to them.
 export function useProctorMessages() {
   const { accessToken } = useCandidateAuth();

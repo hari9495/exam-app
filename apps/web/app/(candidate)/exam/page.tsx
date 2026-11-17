@@ -24,6 +24,7 @@ import {
   useCandidateHelp,
   useFaceRecheck,
   useProctorMessages,
+  useAssistant,
   RunCodeResult,
 } from '../../../lib/hooks/useAttempt';
 import { useCountdown } from '../../../lib/hooks/useCountdown';
@@ -200,6 +201,8 @@ export default function CandidateExamPage() {
   // Answer 2205: the face check after approved extra time.
   const faceRecheck = useFaceRecheck();
   const proctorMessages = useProctorMessages();
+  // AS-6 part 2 (answer 2272): the approved assistant, only in an AI-allowed test.
+  const assistant = useAssistant(Boolean(attemptState?.runner?.aiAllowed));
   const [faceCheckFailed, setFaceCheckFailed] = useState<string | null>(null);
   async function handleFaceCheck() {
     setFaceCheckFailed(null);
@@ -521,6 +524,15 @@ export default function CandidateExamPage() {
             actionLabel: 'I understand',
             onAction: () => ackFaceWarning.mutate(),
             busy: ackFaceWarning.isPending,
+          }
+        : null,
+    assistant:
+      run?.aiAllowed && assistant.view.data
+        ? {
+            log: assistant.view.data.log,
+            turnsLeft: assistant.view.data.turnsLeft,
+            limit: assistant.view.data.limit,
+            onAsk: (message) => assistant.ask.mutateAsync({ message, questionId: question?.id ?? null }),
           }
         : null,
     // Answer 2269: the proctor's messages; "Got it" marks them read, a reply goes to the proctor's console.

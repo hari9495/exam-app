@@ -2,7 +2,7 @@ import { ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Tx } from '../org-structure/org-structure.service';
 import { SettingDef, resolveSetting } from '../org-structure/settings-registry';
-import { Facts, LocationRule, asDate, dateOf, rulesFor } from './time-core';
+import { Facts, LocationRule, asDate, dateOf, rulesFor, workingDaysFor } from './time-core';
 import { isWeeklyOff } from './time-maths';
 import { PatternDef, Scheduled, ShiftTimes, crossesMidnight, overlapsNight, patternCell, resolveDay } from './time-rules';
 
@@ -95,10 +95,14 @@ export class ScheduleBook {
     return this.rules.get(locationId)!;
   }
 
-  /** The location's default shift on a date, as a shift. */
+  private workingDays = new Map<string, Set<string>>();
+
+  /** The location's default shift on a date, as a shift. A weekly off HR marked as working (D11) is worked. */
   async locationDay(f: Facts, on: string): Promise<{ rule: ShiftTimes; weeklyOff: boolean; base: LocationRule }> {
     const base = (await this.locationRule(f.locationId))(on);
-    return { rule: { ...base, shiftId: null, name: base.shiftName, night: crossesMidnight(base) }, weeklyOff: isWeeklyOff(on, base.weeklyOffs), base };
+    if (!this.workingDays.has(f.locationId)) this.workingDays.set(f.locationId, await workingDaysFor(this.tx, this.org, f.locationId));
+    const worked = this.workingDays.get(f.locationId)!.has(on);
+    return { rule: { ...base, shiftId: null, name: base.shiftName, night: crossesMidnight(base) }, weeklyOff: isWeeklyOff(on, base.weeklyOffs) && !worked, base };
   }
 
   /** Q1: what the person works on a date (`roster` false: ignoring the roster, i.e. the pattern or location). */

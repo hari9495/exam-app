@@ -79,6 +79,7 @@ export class TimeSetupService {
       const faExclusions = [...faLatest.values()].filter((r) => r.value === 'not_covered').map((r) => ({ scopeType: r.scopeType, name: faNames.get(r.scopeId) ?? 'Archived record' }));
       const today = todayIst();
       const grades = await tx.grade.findMany({ where: { organizationId: org }, orderBy: { name: 'asc' }, select: { id: true, name: true } });
+      const working = await tx.exceptionalWorkingDay.findMany({ where: { organizationId: org }, orderBy: { workOn: 'asc' } });
       const [moveRows, drafts, feedWaiting] = await Promise.all([
         tx.setting.findMany({ where: { organizationId: org, key: MOVE_KEY } }),
         tx.holidayDraft.findMany({ where: { organizationId: org }, orderBy: { holidayOn: 'asc' } }),
@@ -117,6 +118,8 @@ export class TimeSetupService {
             publishedAt: cal.publishedAt,
             waitingFeedChanges: feedWaiting.find((w) => w.calendarId === cal.id)?._count._all ?? 0,
             holidays: holidays.filter((h) => h.calendarId === cal.id).map((h) => ({ id: h.id, on: dateOf(h.holidayOn), name: h.name, kind: h.kind, halfDay: h.halfDay })),
+            // Batch A item 9 (D11): holidays or weekly offs marked as working days.
+            workingDays: working.filter((w) => w.calendarId === cal.id).map((w) => ({ id: w.id, on: dateOf(w.workOn), reason: w.reason })),
             drafts: drafts.filter((h) => h.calendarId === cal.id).map((h) => ({ id: h.id, on: dateOf(h.holidayOn), name: h.name, kind: h.kind, halfDay: h.halfDay, confirm: h.confirm, source: h.source })),
           };
         }),

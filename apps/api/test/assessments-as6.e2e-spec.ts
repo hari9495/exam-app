@@ -3,7 +3,7 @@ import request from 'supertest';
 import * as argon2 from 'argon2';
 import { randomUUID } from 'crypto';
 import { bootAdminApp, bootRuntimeApp } from './dual-app';
-import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
+import { AiApiKeyResolverService, PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
 import { AiInvocationService } from '../src/ai/ai-invocation.service';
 import { sealDob } from '../src/talent-crm/minor';
@@ -310,6 +310,103 @@ describe('Assessments AS-6: marking and fairness', () => {
       });
       await inOrg(org.B.id, (tx) => tx.consentNotice.create({ data: { organizationId: org.B.id, purpose: 'application', version: 5, text: 'Company B notice.' } }));
       expect((await cand(c!.ct, 'get', '/attempt/current').expect(200)).body.privacyNotice).toBe('We keep your test for 90 days.');
+    });
+  });
+
+  // AS-6 part 2 (answer 2272): AI-allowed tests: the switch, the logged assistant in the runner, the log for markers.
+  describe('AI-allowed tests', () => {
+    let exam: string;
+    let c: { candidateId: string; ct: string };
+    let attempt: string;
+    const put = (who: Who, path: string, body: object) => request(http).put(`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`).send(body);
+    const replies: string[] = [];
+    const fakeAssistant = (fail = false) =>
+      jest.spyOn(runtimeApp.get(AiApiKeyResolverService), 'resolve').mockResolvedValue({
+        ping: async () => undefined,
+        generateStructured: async (r: { prompt: string }) => {
+          if (fail) throw new Error('provider down');
+          replies.push(r.prompt);
+          return { reply: 'Try a HashMap of counts, then sort.' };
+        },
+      } as never);
+
+    it('the test writer turns it on for a draft; a results reader may not; a published test is locked', async () => {
+      exam = (await test([[ids.essay]])).exam;
+      await put('reader', `/asmt/tests/${exam}/ai-allowed`, { allowed: true }).expect(403);
+      await put('adminA', `/asmt/tests/${exam}/ai-allowed`, { allowed: 'yes' }).expect(400);
+      await put('adminB', `/asmt/tests/${exam}/ai-allowed`, { allowed: true }).expect(404);
+      expect((await put('adminA', `/asmt/tests/${exam}/ai-allowed`, { allowed: true }).expect(200)).body).toEqual({ aiAllowed: true });
+      expect((await api('adminA', 'get', `/asmt/tests/${exam}`).expect(200)).body.aiAllowed).toBe(true);
+      expect(await inOrg(org.A.id, (tx) => tx.auditLog.count({ where: { entityId: exam, action: 'exam.ai_allowed_set' } }))).toBe(1);
+      await api('adminA', 'post', `/exams/${exam}/publish`).expect(201);
+      await put('adminA', `/asmt/tests/${exam}/ai-allowed`, { allowed: false }).expect(409);
+    });
+
+    it('in the runner: copy and paste are not watched; a question and its answer are logged; the turn is counted', async () => {
+      [c] = await invite(exam, 1);
+      attempt = (await cand(c!.ct, 'post', '/attempt/start').send({ consent: true }).expect(201)).body.id;
+      const cur = (await cand(c!.ct, 'get', '/attempt/current').expect(200)).body;
+      expect(cur.runner.aiAllowed).toBe(true);
+      expect(cur.exam.proctoring.disabledSignals).toEqual(expect.arrayContaining(['copy_paste', 'editor_paste']));
+      const spy = fakeAssistant();
+      try {
+        const v = (await cand(c!.ct, 'post', '/attempt/assistant').send({ message: 'How do I count words?', questionId: ids.essay }).expect(200)).body;
+        expect(v).toMatchObject({ limit: 20, turnsLeft: 19 });
+        expect(v.log.map((m: { role: string; body: string }) => [m.role, m.body])).toEqual([
+          ['candidate', 'How do I count words?'],
+          ['assistant', 'Try a HashMap of counts, then sort.'],
+        ]);
+        // The assistant sees the conversation so far, not the test.
+        await cand(c!.ct, 'post', '/attempt/assistant').send({ message: 'And ties?' }).expect(200);
+        expect(replies[replies.length - 1]).toContain('How do I count words?');
+        expect(await inOrg(org.A.id, (tx) => tx.aiCreditUsage.count({ where: { sourceId: attempt, source: 'test_assistant' } }))).toBe(2);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it('negative: empty, too long, a question not in the test, a failed answer (kept, not counted), the limit', async () => {
+      await cand(c.ct, 'post', '/attempt/assistant').send({ message: '' }).expect(400);
+      await cand(c.ct, 'post', '/attempt/assistant').send({ message: 'x'.repeat(2001) }).expect(400);
+      await cand(c.ct, 'post', '/attempt/assistant').send({ message: 'Hi', questionId: randomUUID() }).expect(400);
+      const down = fakeAssistant(true);
+      try {
+        expect((await cand(c.ct, 'post', '/attempt/assistant').send({ message: 'Still there?' }).expect(503)).body.message).toMatch(/does not count/);
+      } finally {
+        down.mockRestore();
+      }
+      const v = (await cand(c.ct, 'get', '/attempt/assistant').expect(200)).body;
+      expect(v.turnsLeft).toBe(18);
+      expect(v.log[v.log.length - 1]).toMatchObject({ role: 'candidate', body: 'Still there?' });
+      // The company allows 10; 2 answered so far: 8 more, then no more.
+      await setting('asmt.assistant_turns', '10');
+      await inOrg(org.A.id, (tx) => tx.asmtAssistantMessage.createMany({ data: Array.from({ length: 8 }, () => ({ attemptId: attempt, role: 'assistant', body: 'ok' })) }));
+      expect((await cand(c.ct, 'post', '/attempt/assistant').send({ message: 'One more?' }).expect(409)).body.message).toMatch(/all 10 questions/);
+    });
+
+    it('negative: the log cannot be rewritten by the runtime; a test without the switch has no assistant', async () => {
+      const [p] = await prisma.$queryRaw<{ upd: boolean; ins: boolean }[]>`SELECT has_table_privilege('app_runtime', 'asmt_assistant_messages', 'UPDATE') AS upd, has_table_privilege('app_runtime', 'asmt_assistant_messages', 'INSERT') AS ins`;
+      expect(p).toEqual({ upd: false, ins: true });
+      const other = (await test([[ids.essay]])).exam;
+      await api('adminA', 'post', `/exams/${other}/publish`).expect(201);
+      const [d] = await invite(other, 1);
+      await cand(d!.ct, 'post', '/attempt/start').send({ consent: true }).expect(201);
+      expect((await cand(d!.ct, 'get', '/attempt/current').expect(200)).body.runner.aiAllowed).toBe(false);
+      await cand(d!.ct, 'get', '/attempt/assistant').expect(403);
+      await cand(d!.ct, 'post', '/attempt/assistant').send({ message: 'Hi' }).expect(403);
+    });
+
+    it('the marker reads the log for the question; after the test the assistant is closed', async () => {
+      await cand(c.ct, 'post', '/attempt/answer').send({ questionId: ids.essay, selectedOptionIds: [], answerText: 'Count with a map, sort by count then word.' }).expect(201);
+      await cand(c.ct, 'post', '/attempt/submit').send({}).expect(201);
+      await cand(c.ct, 'post', '/attempt/assistant').send({ message: 'After?' }).expect(400);
+      const v = (await api('m1', 'get', `/asmt/marking/${attempt}/${ids.essay}`).expect(200)).body;
+      expect(v.assistant.turns.map((t: { role: string; body: string }) => [t.role, t.body])).toEqual([
+        ['candidate', 'How do I count words?'],
+        ['assistant', 'Try a HashMap of counts, then sort.'],
+      ]);
+      expect(v.assistant.otherTurns).toBe(2); // "And ties?" and "Still there?"; a refused question is not logged
+      expect((await api('m1', 'get', `/asmt/marking/${ids.adult}/${ids.essay}`).expect(200)).body.assistant).toBeNull();
     });
   });
 });

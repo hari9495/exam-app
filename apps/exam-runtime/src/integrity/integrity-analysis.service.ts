@@ -89,7 +89,9 @@ export class IntegrityAnalysisService {
 
       const flags: IntegrityFlag[] = [];
 
-      for (const answer of answers) {
+      // AS-6 part 2 (answer 2272): in an AI-allowed test pasting the approved assistant's code is allowed, so the code
+      // paste flags (large paste, mostly pasted, no iteration) are not raised; the markers read the assistant log.
+      for (const answer of attempt.invitation.exam.aiAllowed ? [] : answers) {
         if (answer.question.type !== 'code' || !answer.telemetryJson) continue;
         let telemetry: AnswerTelemetry;
         try {

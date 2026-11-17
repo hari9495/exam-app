@@ -17,6 +17,7 @@ interface PrivacyView {
   consents: { what: string; test: string; at: string }[];
   recordings: { frames: number; deleteOn: string | null };
   face: { kept: boolean; deleteOn: string | null };
+  accommodation: { files: number; deleteOn: string | null; pending: boolean };
   held: boolean;
   request: { status: 'waiting' | 'done'; requestedAt: string; doneAt: string | null; dueOn: string } | null;
 }
@@ -46,6 +47,8 @@ export default function CandidatePrivacyPage() {
         consents: (d?.consents ?? []).map((c) => ({ what: c.what, test: c.test, on: day(c.at) ?? '' })),
         recordings: { frames: d?.recordings.frames ?? 0, deleteOn: day(d?.recordings.deleteOn ?? null) },
         face: { kept: d?.face.kept ?? false, deleteOn: day(d?.face.deleteOn ?? null) },
+        // Answer 2279: accommodation evidence with its own delete date.
+        accommodation: d?.accommodation ? { ...d.accommodation, deleteOn: day(d.accommodation.deleteOn) } : undefined,
         held: d?.held ?? false,
         request: d?.request ? { status: d.request.status, requestedOn: day(d.request.requestedAt)!, doneOn: day(d.request.doneAt), dueOn: day(d.request.dueOn)! } : null,
         onErase: () => erase.mutateAsync(),

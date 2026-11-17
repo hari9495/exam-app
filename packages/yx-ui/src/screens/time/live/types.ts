@@ -453,6 +453,8 @@ export interface TimeSetup {
     holidays: HolidayRow[];
     /** Clone to next year or a state template, waiting to be published (never seen by employees). */
     drafts?: (HolidayRow & { confirm: boolean; source: 'clone' | 'template' })[];
+    /** Batch A item 9 (D11): holidays or weekly offs marked as working days. */
+    workingDays?: { id: string; on: string; reason: string }[];
   }[];
   /** TIM-26: location id → state name, for locations with a state template. */
   templates?: Record<string, string>;

@@ -226,6 +226,9 @@ describe('Payroll: late corrections paid in the next run', () => {
     const absentOn = `${m1}-05`;
     // emp3 was absent on the 5th (one LOP day); m1 is paid and locked with that day unpaid.
     await inA((tx) => tx.attendanceDay.create({ data: { organizationId: org.A.id, employeeId: ids.emp3, workOn: new Date(`${absentOn}T00:00:00Z`), mode: 'punch', status: 'absent' } }));
+    // Answer 2300 (the next test): emp2 was absent on the 9th too, paid as one LOP day in the locked month.
+    await inA((tx) => tx.attendanceDay.create({ data: { organizationId: org.A.id, employeeId: ids.emp2, workOn: new Date(`${m1}-09T00:00:00Z`), mode: 'punch', status: 'absent' } }));
+    ids.m1 = m1;
     const run1 = (await api('payAdmin', 'post', '/payroll/runs').send({ payGroupId: ids.group, month: m1 }).expect(201)).body.id as string;
     const slips1 = await approveRun(run1);
     const s1 = slips1.find((x) => x.employeeId === ids.emp3)!;
@@ -265,5 +268,44 @@ describe('Payroll: late corrections paid in the next run', () => {
     expect(await reversal()).toEqual([]);
     await api('payAdmin', 'post', `/payroll/runs/${run2}/special-days/corrections/${cid}/undo-not-paid`).send({}).expect(201);
     expect((await reversal()).length).toBe(paid.length);
+  });
+
+  // Answer 2300: the leaver's full and final settlement was settled before the correction was approved: payroll adds it
+  // to an off-cycle correction run of the month of the last day in one click; it is paid there, once.
+  it('F&F settled first: listed so, one click adds it to an off-cycle correction run that pays it; refused when not settled, twice, or by others', async () => {
+    const m1 = ids.m1!;
+    const em = await inA((tx) => tx.employment.findFirstOrThrow({ where: { organizationId: org.A.id, employeeId: ids.emp2 } }));
+    const person = await inA((tx) => tx.employee.findFirstOrThrow({ where: { id: ids.emp2 } }));
+    await inA((tx) => tx.employment.update({ where: { id: em.id }, data: { exitedOn: new Date(`${m1}-28T00:00:00Z`) } }));
+    const fnfId = await scoped(async (tx) => {
+      const exit = await tx.exitCase.create({ data: { organizationId: org.A.id, employmentId: em.id, employeeId: ids.emp2, personId: person.personId!, exitType: 'resignation', initiatedBy: 'employee', reasonText: 'Moved city', submittedOn: new Date(`${m1}-01T00:00:00Z`), noticePeriod: '0d', standardLwd: new Date(`${m1}-28T00:00:00Z`), approvedLwd: new Date(`${m1}-28T00:00:00Z`), status: 'accepted', acceptedAt: new Date() } });
+      return (await tx.fnfSettlement.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity, employeeId: ids.emp2, employmentId: em.id, exitCaseId: exit.id, exitType: 'resignation', inputRevision: 1, lwd: new Date(`${m1}-28T00:00:00Z`), deadline: new Date(`${m1}-30T00:00:00Z`), status: 'open' } })).id;
+    });
+    const p1 = await inA((tx) => tx.payPeriod.findFirstOrThrow({ where: { organizationId: org.A.id, legalEntityId: ids.entity, periodStart: new Date(`${m1}-01T00:00:00Z`) } }));
+    // Approved after the lock, for the month of the last day (answer 2283).
+    const cid = (await scoped((tx) => tx.payCorrection.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity, employeeId: ids.emp2, payPeriodId: p1.id, workOn: new Date(`${m1}-09T00:00:00Z`), kind: 'attendance', source: 'hr', change: { shouldBe: 'present' }, reason: 'Was at the client site all day', status: 'approved', decidedAt: new Date(), targetPeriod: new Date(`${m1}-01T00:00:00Z`), createdBy: users.adminA } }))).id;
+    const add = (who: Who) => api(who, 'post', `/payroll/corrections/${cid}/offcycle`).send({});
+    // Not settled yet: the F&F pays it; nothing is added.
+    expect((await add('payAdmin').expect(409)).body.message).toMatch(/not settled/);
+    expect((await api('payAdmin', 'get', '/payroll/corrections/waiting-fnf').expect(200)).body.find((x: { id: string }) => x.id === cid)).toMatchObject({ state: 'waiting', fnfId });
+    await scoped((tx) => tx.fnfSettlement.update({ where: { id: fnfId }, data: { status: 'settled' } }));
+    expect((await api('payAdmin', 'get', '/payroll/corrections/waiting-fnf').expect(200)).body.find((x: { id: string }) => x.id === cid)).toMatchObject({ state: 'settled', month: m1 });
+    // Negative: an employee and another company.
+    await add('emp2').expect(403);
+    await add('payAdminB').expect(404);
+    const out = (await add('payAdmin').expect(200)).body as { runId: string; items: number };
+    expect(out.items).toBeGreaterThan(0);
+    const run = await scoped((tx) => tx.payrollRun.findUniqueOrThrow({ where: { id: out.runId } }));
+    expect([run.runType, run.offcycleKind, run.periodStart.toISOString().slice(0, 7)]).toEqual(['offcycle', 'correction', m1]);
+    expect(await scoped((tx) => tx.oneTimePay.count({ where: { organizationId: org.A.id, runId: out.runId, sourceRef: cid, status: 'approved' } }))).toBe(out.items);
+    // Once: a second click is refused; it is no longer listed.
+    expect((await add('payAdmin').expect(409)).body.message).toMatch(/already in an off-cycle run/);
+    expect((await api('payAdmin', 'get', '/payroll/corrections/waiting-fnf').expect(200)).body.find((x: { id: string }) => x.id === cid)).toBeUndefined();
+    // The off-cycle run pays it: the leaver's payslip carries the late correction under basic.
+    await calculate(out.runId);
+    const slip = ((await api('payAdmin', 'get', `/payroll/runs/${out.runId}/payslips`).expect(200)).body as { id: string; employeeId: string }[]).find((x) => x.employeeId === ids.emp2)!;
+    const lines = (await linesOf(slip.id)).body.lines as { code: string; amount: string; explanation: string }[];
+    expect(lines.find((l) => l.code === 'basic' && /late correction/.test(l.explanation))).toBeTruthy();
+    expect(Number(lines.find((l) => l.code === 'basic')!.amount)).toBeGreaterThan(0);
   });
 });

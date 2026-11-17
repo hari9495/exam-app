@@ -113,7 +113,9 @@ export interface LivePayrollHome {
   /** PAY-11: "Start off-cycle run" opens the designed off-cycle run page (else the drawer's off-cycle choice). */
   onNewOffcycle?: () => void;
   /** Answer 2283: late corrections of people who have left, paid by their full and final settlement (until settled). */
-  waitingForFnf?: { id: string; name: string; on: string; month: string; fnfId: string | null }[] | null;
+  waitingForFnf?: { id: string; name: string; on: string; month: string; fnfId: string | null; state?: 'waiting' | 'settled' }[] | null;
+  /** Answer 2300: the F&F was settled first: one click adds the correction to an off-cycle correction run (its id). */
+  onAddToOffcycle?: (correctionId: string) => Promise<{ runId: string }>;
   /** Opens the leaver's full and final settlement. */
   fnfHref?: (fnfId: string) => string;
 }
@@ -140,6 +142,20 @@ export function LivePayrollHomeScreen({ live }: { live: LivePayrollHome }) {
 function LiveHome({ live }: { live: LivePayrollHome }) {
   const [creating, setCreating] = useState<'regular' | 'offcycle' | null>(null);
   const [help, setHelp] = useState(false);
+  const [adding, setAdding] = useState<string | null>(null);
+  const { toast } = useToast();
+  const addToOffcycle = async (id: string, name: string) => {
+    setAdding(id);
+    try {
+      const r = await live.onAddToOffcycle!(id);
+      toast({ tone: 'success', title: `${name}: added to an off-cycle correction run`, description: 'Calculate and approve that run to pay it.' });
+      live.onOpen(r.runId);
+    } catch (e) {
+      toast({ tone: 'error', title: 'Not added', description: e instanceof Error ? e.message : 'Try again.' });
+    } finally {
+      setAdding(null);
+    }
+  };
   const runs = live.runs ?? [];
   const cur = currentRun(runs, live.month);
   const groupOf = (r: PayRun) => live.groups?.find((g) => g.id === r.payGroupId)?.name;
@@ -319,15 +335,27 @@ function LiveHome({ live }: { live: LivePayrollHome }) {
                         <Icon icon={AlertTriangle} label="Waiting" />
                         <div>
                           <p className="yx-pay-findings__title">{`${x.name}: late correction for ${x.on}`}</p>
-                          <p className="yx-pay-findings__desc">
-                            <Badge tone="warning">Waiting for F&F</Badge> {`They have left: their full and final settlement (${monthLabel(x.month)}) pays it.`}
-                          </p>
+                          {x.state === 'settled' ? (
+                            <p className="yx-pay-findings__desc">
+                              <Badge tone="warning">F&F settled</Badge> {`Their settlement (${monthLabel(x.month)}) was settled first: pay it in an off-cycle correction run.`}
+                            </p>
+                          ) : (
+                            <p className="yx-pay-findings__desc">
+                              <Badge tone="warning">Waiting for F&F</Badge> {`They have left: their full and final settlement (${monthLabel(x.month)}) pays it.`}
+                            </p>
+                          )}
                         </div>
-                        {x.fnfId && live.fnfHref && (
+                        {x.state === 'settled' && live.onAddToOffcycle ? (
+                          <div className="yx-pay-findings__acts">
+                            <Button size="sm" loading={adding === x.id} onClick={() => void addToOffcycle(x.id, x.name)}>
+                              Add to an off-cycle run
+                            </Button>
+                          </div>
+                        ) : x.fnfId && live.fnfHref ? (
                           <div className="yx-pay-findings__acts">
                             <Link href={live.fnfHref(x.fnfId)}>Open F&F</Link>
                           </div>
-                        )}
+                        ) : null}
                       </li>
                     ))}
                   </ul>

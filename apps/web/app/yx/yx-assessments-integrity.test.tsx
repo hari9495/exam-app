@@ -126,6 +126,8 @@ describe('live console page', () => {
     expect(screen.getByText(/webcam multiple faces \(high\)/)).toBeInTheDocument();
     // Answer 2269: the thread both ways.
     expect(await screen.findByText('Sorry, fixed now.')).toBeInTheDocument();
+    // Answer 2277: the visit is recorded once, however often the data refreshes.
+    expect(calls.filter((c) => c === 'POST /asmt/live/exam-1/opened')).toHaveLength(1);
     await userEvent.click(screen.getByRole('button', { name: 'Pause' }));
     await userEvent.type(screen.getByLabelText(/^Reason/), 'A second person came into the room.');
     await userEvent.click(screen.getByRole('button', { name: 'Pause test' }));

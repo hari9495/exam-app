@@ -952,6 +952,8 @@ export interface LiveRunner {
   pause?: LiveRunnerPause | null;
   /** A heads-up that does not stop the test (e.g. the face did not clearly match); dismissed by the candidate. */
   notice?: { title: string; message: string; actionLabel: string; onAction: () => void; busy?: boolean } | null;
+  /** AS-6 part 2 (answer 2272): the approved assistant of an AI-allowed test; every message is logged for the markers. */
+  assistant?: LiveAssistant | null;
   /** Answer 2269: the proctor's unread messages; the candidate says "Got it" or replies (the proctor sees the thread). */
   messages?: { items: { id: string; body: string }[]; onRead: () => Promise<unknown>; onReply: (text: string) => Promise<unknown> } | null;
   /** While on a break: seconds until it ends on its own. */
@@ -1115,6 +1117,57 @@ function ReviewBanner({ which, at, of, onPrevious, onNext, onStop }: { which: 'u
 }
 
 /** PRC-26 with a real attempt (exam-runtime): the designed runner, its sections, connection, calculator, display, breaks and finish. */
+/** AS-6 part 2 (answer 2272): the approved assistant in an AI-allowed test (PRC-26 "AI-allowed test: logged assistant"). */
+export interface LiveAssistant {
+  log: { id: string; role: 'candidate' | 'assistant'; body: string }[];
+  turnsLeft: number;
+  limit: number;
+  onAsk: (text: string) => Promise<unknown>;
+}
+
+function AssistantPanel({ assistant }: { assistant: LiveAssistant }) {
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ask = () => {
+    const text = draft.trim();
+    if (!text) return setError('Write your question first.');
+    setBusy(true);
+    setError(null);
+    assistant
+      .onAsk(text)
+      .then(() => setDraft(''))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Try again in a moment.'))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Card title="Allowed AI assistant · every message is logged" actions={<AiBadge />}>
+      <div className="yx-prc-stack">
+        <p className="yx-prc-small">You may use this assistant for this test. Other AI tools or websites are not allowed and are flagged as usual.</p>
+        {assistant.log.length > 0 && (
+          <ul className="yx-prc-plain" aria-label="Assistant conversation" aria-live="polite">
+            {assistant.log.map((m) => (
+              <li key={m.id}>
+                <span>
+                  <strong>{m.role === 'candidate' ? 'You:' : 'Assistant:'}</strong> {m.body}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <FormField label="Ask the assistant" error={error} helper={`${assistant.turnsLeft} of ${assistant.limit} questions left`}>
+          <TextArea rows={2} value={draft} onChange={setDraft} maxLength={2000} disabled={assistant.turnsLeft === 0} />
+        </FormField>
+        <div className="yx-prc-row">
+          <Button loading={busy} disabled={assistant.turnsLeft === 0} onClick={ask}>
+            Ask
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function LiveTestRunnerScreen({ live }: { live: LiveRunner }) {
   const [reviewing, setReviewing] = useState<'unanswered' | 'review' | null>(null);
   const [calc, setCalc] = useState(false);
@@ -1134,6 +1187,52 @@ function LiveTestRunnerScreen({ live }: { live: LiveRunner }) {
       .finally(() => setBusy(null));
   };
   const stopped = live.connection === 'offline' && live.offlineSeconds >= live.offlineMinutes * 60;
+  // Answer 2269 (and 2280: also in the paused view): the proctor's unread messages, Got it and Reply.
+  const proctorMessages = (
+    <>
+      {live.messages && live.messages.items.length > 0 && (
+        <InlineAlert
+          tone="info"
+          title={live.messages.items.length > 1 ? `${live.messages.items.length} messages from your proctor` : 'Message from your proctor'}
+          actions={
+            <>
+              <Button size="sm" loading={busy === 'read'} onClick={() => act('read', live.messages!.onRead)}>
+                Got it
+              </Button>
+              <Button size="sm" onClick={() => setReply('')}>
+                Reply
+              </Button>
+            </>
+          }
+        >
+          {live.messages.items.map((m) => (
+            <p key={m.id}>{m.body}</p>
+          ))}
+        </InlineAlert>
+      )}
+      <ConfirmDialog
+        open={reply !== null}
+        onOpenChange={(o) => !o && (setReply(null), setReplyError(null))}
+        title="Reply to your proctor"
+        consequence={`Your proctor sees your message in their console.${live.status === 'running' ? ' The timer keeps running.' : ''}`}
+        confirmLabel="Send"
+        onConfirm={async () => {
+          const text = (reply ?? '').trim();
+          if (!text) {
+            setReplyError('Write your message first.');
+            return false;
+          }
+          setReplyError(null);
+          await live.messages?.onReply(text);
+          setReply(null);
+        }}
+      >
+        <FormField label="Your message" required error={replyError}>
+          <TextArea value={reply ?? ''} onChange={setReply} rows={3} maxLength={1000} />
+        </FormField>
+      </ConfirmDialog>
+    </>
+  );
 
   if (live.status === 'submitted')
     return (
@@ -1153,6 +1252,7 @@ function LiveTestRunnerScreen({ live }: { live: LiveRunner }) {
         <Icon icon={Coffee} size="md" />
         <Heading level={1}>{live.status === 'break' ? 'Break' : 'Your test is paused'}</Heading>
         {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+        {proctorMessages}
         {live.status === 'break' ? (
           <>
             <p className="yx-prc-mono yx-prc-big" aria-live="polite">
@@ -1321,47 +1421,7 @@ function LiveTestRunnerScreen({ live }: { live: LiveRunner }) {
               {live.notice.message}
             </InlineAlert>
           )}
-          {live.messages && live.messages.items.length > 0 && (
-            <InlineAlert
-              tone="info"
-              title={live.messages.items.length > 1 ? `${live.messages.items.length} messages from your proctor` : 'Message from your proctor'}
-              actions={
-                <>
-                  <Button size="sm" loading={busy === 'read'} onClick={() => act('read', live.messages!.onRead)}>
-                    Got it
-                  </Button>
-                  <Button size="sm" onClick={() => setReply('')}>
-                    Reply
-                  </Button>
-                </>
-              }
-            >
-              {live.messages.items.map((m) => (
-                <p key={m.id}>{m.body}</p>
-              ))}
-            </InlineAlert>
-          )}
-          <ConfirmDialog
-            open={reply !== null}
-            onOpenChange={(o) => !o && (setReply(null), setReplyError(null))}
-            title="Reply to your proctor"
-            consequence="Your proctor sees your message in their console. The timer keeps running."
-            confirmLabel="Send"
-            onConfirm={async () => {
-              const text = (reply ?? '').trim();
-              if (!text) {
-                setReplyError('Write your message first.');
-                return false;
-              }
-              setReplyError(null);
-              await live.messages?.onReply(text);
-              setReply(null);
-            }}
-          >
-            <FormField label="Your message" required error={replyError}>
-              <TextArea value={reply ?? ''} onChange={setReply} rows={3} maxLength={1000} />
-            </FormField>
-          </ConfirmDialog>
+          {proctorMessages}
           {live.finishError && (
             <InlineAlert tone="danger" title="Your test was not submitted">
               <p>{live.finishError} Your answers are saved.</p>
@@ -1395,6 +1455,7 @@ function LiveTestRunnerScreen({ live }: { live: LiveRunner }) {
             </Card>
           )}
           {body}
+          {live.assistant && <AssistantPanel assistant={live.assistant} />}
           {calc && (
             <div className="yx-prc-floating">
               <Calculator scientific={live.calculator === 'scientific'} onClose={() => setCalc(false)} />
@@ -1870,6 +1931,8 @@ export interface LivePrivacy {
   consents: { what: string; test: string; on: string }[];
   recordings: { frames: number; deleteOn: string | null };
   face: { kept: boolean; deleteOn: string | null };
+  /** Answer 2279: files sent with accommodation requests. */
+  accommodation?: { files: number; deleteOn: string | null; pending: boolean };
   /** An incident or appeal holds the evidence (legal hold). */
   held: boolean;
   request: { status: 'waiting' | 'done'; requestedOn: string; doneOn: string | null; dueOn: string } | null;
@@ -1889,7 +1952,7 @@ function LivePrivacyCentreScreen({ live }: { live: LivePrivacy }) {
   const [error, setError] = useState<string | null>(null);
   const r = live.request;
   const waiting = r?.status === 'waiting';
-  const nothing = !live.recordings.frames && !live.face.kept;
+  const nothing = !live.recordings.frames && !live.face.kept && !live.accommodation?.files;
   return (
     <CandidateFrame page="Privacy centre" brand={live.brand}>
       <Title>Privacy centre</Title>
@@ -1927,6 +1990,9 @@ function LivePrivacyCentreScreen({ live }: { live: LivePrivacy }) {
               items={[
                 { label: 'Recordings and clips', value: !live.recordings.frames ? 'None kept' : live.held ? `Kept while a review or appeal is open (legal hold)${live.recordings.deleteOn ? `, then deleted (planned for ${live.recordings.deleteOn})` : ''}` : `Delete on ${live.recordings.deleteOn ?? '—'}` },
                 { label: 'Face template and photo', value: !live.face.kept ? 'None kept' : `Delete on ${live.face.deleteOn ?? '—'}` },
+                ...(live.accommodation?.files
+                  ? [{ label: 'Accommodation evidence', value: live.accommodation.pending ? 'Kept until your request is decided' : `Delete on ${live.accommodation.deleteOn ?? '—'}` }]
+                  : []),
                 { label: 'Answers and score', value: `Kept with your application under ${live.company}'s retention policy` },
               ]}
             />
@@ -1934,7 +2000,7 @@ function LivePrivacyCentreScreen({ live }: { live: LivePrivacy }) {
           {live.held && waiting && <InlineAlert tone="info">We can't erase your recordings while a review or appeal of your test is open. We will erase them when it closes.</InlineAlert>}
           {waiting && r ? (
             <InlineAlert tone="success" title={`Erasure request received on ${r.requestedOn}`}>
-              {`We will erase your recordings, clips and face data by ${r.dueOn} and email you. Your answers and score stay with your application.`}
+              {`We will erase your recordings, clips, face data and accommodation files by ${r.dueOn} and email you. Your answers and score stay with your application.`}
             </InlineAlert>
           ) : r?.status === 'done' ? (
             <InlineAlert tone="success" title={`Erased on ${r.doneOn ?? r.requestedOn}`}>Your recordings, clips and face data were erased. Your answers and score stay with your application.</InlineAlert>
@@ -1964,7 +2030,7 @@ function LivePrivacyCentreScreen({ live }: { live: LivePrivacy }) {
             open={open}
             onOpenChange={setOpen}
             title="Erase your recordings and face data?"
-            consequence={`We delete recordings, clips, your face template and photo. This can't be undone. Results already released are not changed; tests you have not taken yet will need a manual ID check.${live.held ? ' A review or appeal is open, so we erase them when it closes.' : ''}`}
+            consequence={`We delete recordings, clips, your face template and photo, and the files you sent with accommodation requests (the decisions stay). This can't be undone. Results already released are not changed; tests you have not taken yet will need a manual ID check.${live.held ? ' A review or appeal is open, so we erase them when it closes.' : ''}`}
             confirmLabel="Erase my data"
             destructive
             onConfirm={async () => {

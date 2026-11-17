@@ -29,6 +29,9 @@ export default function YxTimeHolidaysPage() {
         onRemoveDraft: (did) => write(`/setup/holiday-drafts/${id(did)}/remove`, 'POST', undefined, true, 'Removed from the draft'),
         onPublish: (cid, name, year) => write(`/setup/calendars/${id(cid)}/publish`, 'POST', { year }, true, `${name} ${year} calendar published`),
         onReviewFeed: () => router.push('/yx/time/setup/holiday-feeds'),
+        // Batch A item 9 (D11): a holiday or weekly off marked as a working day.
+        onMarkWorking: (cid, input) => write(`/setup/calendars/${id(cid)}/working-days`, 'POST', input, true, 'Marked as a working day'),
+        onUnmarkWorking: (wid) => write(`/setup/working-days/${id(wid)}/remove`, 'POST', undefined, true, 'Working day removed'),
       }}
     />
   );

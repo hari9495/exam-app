@@ -1,5 +1,5 @@
 import { EvidenceDto } from './accommodation.dto';
-import { IsArray, IsBoolean, IsIn, IsISO8601, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsUUID, IsISO8601, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested, MinLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class AnswerTelemetryDto {
@@ -62,6 +62,18 @@ export class AnswerDto {
   @IsOptional()
   @IsISO8601({ strict: true })
   clientSavedAt?: string;
+}
+
+/** AS-6 part 2 (answer 2272): a question to the approved assistant, from the question the candidate is on. */
+export class AssistantAskDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(2000)
+  message!: string;
+
+  @IsOptional()
+  @IsUUID()
+  questionId?: string | null;
 }
 
 /** Answer 2269: the candidate's reply to their proctor. */

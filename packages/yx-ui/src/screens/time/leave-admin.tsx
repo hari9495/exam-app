@@ -1991,6 +1991,9 @@ export interface LiveHolidayCalendars extends SetupLive {
   onPublish: (calendarId: string, name: string, year: number) => Promise<unknown>;
   /** TIM-42 Review changes (the holiday feed page). */
   onReviewFeed?: () => void;
+  /** Batch A item 9 (D11): a holiday or weekly off marked as a working day (today or later), and the mark removed. */
+  onMarkWorking?: (calendarId: string, input: { on: string; reason: string }) => Promise<unknown>;
+  onUnmarkWorking?: (id: string) => Promise<unknown>;
 }
 export interface LiveYearEnd extends SetupLive {
   /** TIM-29 Transition: the leave-year change of a legal entity instead of the year end. */
@@ -3089,6 +3092,9 @@ function LiveCalendarPanel({ d, t, rows, live }: LiveCalendarPanelProps) {
   const [triedMove, setTriedMove] = useState(false);
   const [removing, setRemoving] = useState<CalRow | null>(null);
   const [templating, setTemplating] = useState(false);
+  const [working, setWorking] = useState<{ date: Date | null; reason: string } | null>(null);
+  const [triedWork, setTriedWork] = useState(false);
+  const [unworking, setUnworking] = useState<{ id: string; on: string } | null>(null);
   const { busy, error, run } = useRun();
   const offs = t.loc?.rule.weeklyOffs ?? [];
   const isOff = (iso: string) => offUnder(iso, offs);
@@ -3127,6 +3133,14 @@ function LiveCalendarPanel({ d, t, rows, live }: LiveCalendarPanelProps) {
   const dirty = choose !== cal.optionalLimit || half !== cal.halfDayOpenHalf || onOff !== (cal.onWeeklyOff ?? 'none') || (!!cal.locationId && onMove !== (cal.onMove ?? 'share'));
   const onWeeklyOff = rows.filter((h) => isOff(h.on));
   const waiting = cal.waitingFeedChanges ?? 0;
+  // D11: only a holiday or (for a location's calendar) its weekly off can be marked; the server checks the same.
+  const workError = (date: Date) => {
+    const on = isoOf(date);
+    if (on < d.today) return 'Only today or later: earlier days are already in attendance records.';
+    if ((cal.workingDays ?? []).some((w) => w.on === on)) return `${day(date)} is already marked as a working day.`;
+    if (!rows.some((h) => !h.draft && h.on === on) && cal.locationId && !isOff(on)) return `${day(date)} is already a working day on this calendar.`;
+    return null;
+  };
   const cols: TableColumn<CalRow>[] = [
     { key: 'name', header: 'Holiday', value: (h) => `${h.name}${h.halfDay ? ' (half day)' : ''}` },
     {
@@ -3155,6 +3169,7 @@ function LiveCalendarPanel({ d, t, rows, live }: LiveCalendarPanelProps) {
       <div className="yx-tim-row">
         {drafts.length > 0 ? <Badge tone="neutral">Draft · not published</Badge> : cal.publishedAt ? <Badge tone="success">Published {isoDay(cal.publishedAt.slice(0, 10))}</Badge> : null}
         <Button icon={Plus} onClick={() => (setTriedHol(false), setHol({ name: '', date: null, kind: 'festival', halfDay: false }))}>Add holiday</Button>
+        {live.onMarkWorking && <Button onClick={() => (setTriedWork(false), setWorking({ date: null, reason: '' }))}>Mark a day as working</Button>}
       </div>
       {rows.some((h) => h.on < d.today) && <p className="yx-tim-muted">Holidays before today are locked: they are already in attendance records.</p>}
       <div className="yx-tim-editor">
@@ -3169,6 +3184,7 @@ function LiveCalendarPanel({ d, t, rows, live }: LiveCalendarPanelProps) {
             h.on < d.today ? null : (
               <>
                 <MenuItem onSelect={() => (setTriedMove(false), setMoving({ row: h, date: dateOfIso(h.on) }))}>Change date</MenuItem>
+                {live.onMarkWorking && !h.draft && <MenuItem onSelect={() => (setTriedWork(false), setWorking({ date: dateOfIso(h.on), reason: '' }))}>Mark as working day</MenuItem>}
                 <MenuItem destructive onSelect={() => setRemoving(h)}>Remove holiday</MenuItem>
               </>
             )
@@ -3211,7 +3227,60 @@ function LiveCalendarPanel({ d, t, rows, live }: LiveCalendarPanelProps) {
           <span className="yx-tim-muted">Employees see these holidays only after you publish</span>
         </div>
       )}
+      {live.onMarkWorking && (
+        <Card title="Working days">
+          {(cal.workingDays ?? []).length ? (
+            <ul className="yx-tim-list" aria-label={`${t.name} working days`}>
+              {(cal.workingDays ?? []).map((w) => (
+                <li key={w.id}>
+                  <span className="yx-tim-list__main">
+                    <strong><DayDate date={dateOfIso(w.on)} /></strong>
+                    <span className="yx-tim-muted">{w.reason}</span>
+                  </span>
+                  {w.on >= d.today && live.onUnmarkWorking && <Button size="sm" onClick={() => setUnworking({ id: w.id, on: w.on })}>Remove</Button>}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="yx-tim-muted">No holiday or weekly off is marked as a working day.</p>
+          )}
+        </Card>
+      )}
       {templateDialog}
+      <ConfirmDialog
+        open={!!working}
+        onOpenChange={(o) => !o && setWorking(null)}
+        title={`Mark a day as working on ${t.name}`}
+        consequence={`People ${t.loc ? `at ${t.name}` : 'on this calendar'} work that day: attendance expects them, and leave booked over it counts that day. They are told.`}
+        confirmLabel="Mark as working"
+        onConfirm={async () => {
+          setTriedWork(true);
+          if (!working?.date || working.reason.trim().length < 5 || workError(working.date)) return false;
+          await live.onMarkWorking!(cal.id, { on: isoOf(working.date), reason: working.reason.trim() });
+        }}
+      >
+        {working && (
+          <div className="yx-tim-form">
+            <FormField label="Date" required helper="A holiday or weekly off, today or later." error={triedWork ? (!working.date ? 'Choose the date.' : workError(working.date)) : null}>
+              <DatePicker value={working.date} onChange={(v) => setWorking({ ...working, date: v })} min={dateOfIso(d.today)} />
+            </FormField>
+            <FormField label="Why it is worked" required error={triedWork && working.reason.trim().length < 5 ? 'Say why the day is worked (at least 5 characters).' : null}>
+              <TextArea value={working.reason} onChange={(v) => setWorking({ ...working, reason: v })} rows={2} maxLength={300} />
+            </FormField>
+          </div>
+        )}
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={!!unworking}
+        onOpenChange={(o) => !o && setUnworking(null)}
+        title="Remove this working day?"
+        consequence={unworking ? `${isoDay(unworking.on)} is a holiday or weekly off again. If someone already has leave that counts the day, it stays a working day.` : undefined}
+        confirmLabel="Remove"
+        destructive
+        onConfirm={async () => {
+          if (unworking) await live.onUnmarkWorking!(unworking.id);
+        }}
+      />
       <ConfirmDialog
         open={!!hol}
         onOpenChange={(o) => !o && setHol(null)}

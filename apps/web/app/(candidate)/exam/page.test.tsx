@@ -33,6 +33,7 @@ jest.mock('../../../lib/hooks/useAttempt', () => ({
   useCandidateHelp: jest.fn(),
   useFaceRecheck: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
   useProctorMessages: jest.fn(() => ({ read: { mutateAsync: jest.fn() }, reply: { mutateAsync: jest.fn() } })),
+  useAssistant: jest.fn(() => ({ view: { data: undefined }, ask: { mutateAsync: jest.fn() } })),
 }));
 jest.mock('../../../lib/hooks/useScreenCapture', () => ({ useScreenCapture: jest.fn() }));
 jest.mock('../../../lib/client-error-reporter', () => ({ reportClientError: jest.fn() }));
@@ -1210,6 +1211,23 @@ describe('CandidateExamPage', () => {
       await waitFor(() => expect(reply).toHaveBeenCalledWith('Fixed now.'));
       await userEvent.click(screen.getByRole('button', { name: 'Got it' }));
       expect(read).toHaveBeenCalled();
+    });
+
+    it('AS-6 part 2 (2272): an AI-allowed test shows the assistant and asks from the current question', async () => {
+      const ask = jest.fn().mockResolvedValue({ limit: 20, turnsLeft: 18, log: [] });
+      (useAttemptModule.useAssistant as jest.Mock).mockReturnValue({ view: { data: { limit: 20, turnsLeft: 19, log: [{ id: 'a1', role: 'assistant', body: 'Use a map.', questionId: null, at: '2026-11-17T05:00:00.000Z' }] } }, ask: { mutateAsync: ask } });
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: { ...attemptState, runner: { aiAllowed: true } }, isError: false });
+      render(<CandidateExamPage />);
+      expect(screen.getByText('Use a map.')).toBeInTheDocument();
+      await userEvent.type(screen.getByLabelText(/^Ask the assistant/), 'And ties?');
+      await userEvent.click(screen.getByRole('button', { name: 'Ask' }));
+      await waitFor(() => expect(ask).toHaveBeenCalledWith({ message: 'And ties?', questionId: attemptState.sections[0].questions[0].id }));
+    });
+
+    it('negative 2272: a test that is not AI-allowed shows no assistant', () => {
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: attemptState, isError: false });
+      render(<CandidateExamPage />);
+      expect(screen.queryByText(/Allowed AI assistant/)).not.toBeInTheDocument();
     });
 
     it('negative: no camera says so instead of hanging', async () => {

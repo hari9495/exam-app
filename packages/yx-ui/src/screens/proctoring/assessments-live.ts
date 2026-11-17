@@ -29,7 +29,7 @@ export {
 } from './bank-live';
 
 // Assessments AS-4a (PRC-26, PRC-27): the designed test runner and result page, live with their `live` prop.
-export { ResultAppealScreen, TestRunnerScreen, type LiveIntegrityDecision, type LiveResult, type LiveRunner, type LiveRunnerPause, type LiveRunnerQuestion } from './candidate';
+export { ResultAppealScreen, TestRunnerScreen, type LiveAssistant, type LiveIntegrityDecision, type LiveResult, type LiveRunner, type LiveRunnerPause, type LiveRunnerQuestion } from './candidate';
 
 // Assessments AS-3 (PRC-07, PRC-21, PRC-32): invitations and drives, the candidate's tests, using an earlier result.
 export { CampusKitScreen, CoordinatorPortalScreen, InvitationsScreen } from './delivery';

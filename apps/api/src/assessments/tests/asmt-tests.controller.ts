@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, UseGuards } from '@nestjs/common';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { OwnSessionChangesGuard } from '../../auth/own-session.guard';
@@ -10,6 +10,11 @@ import { PermissionsGuard } from '../../rbac/permissions.guard';
 import { RequirePermissions } from '../../rbac/permissions.decorator';
 import { PROCTOR_MODES, type ProctorMode } from '../asmt-rules';
 import { AsmtTestsService } from './asmt-tests.service';
+
+export class AiAllowedDto {
+  @IsBoolean()
+  allowed!: boolean;
+}
 
 /** Answer 2151. */
 export class JdProposeDto {
@@ -93,6 +98,13 @@ export class AsmtTestsController {
   @RequirePermissions('exam:manage')
   setMode(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ProctoringModeDto) {
     return this.tests.setMode(ctx, userId, id, dto.mode);
+  }
+
+  // AS-6 part 2 (answer 2272): an AI-allowed test.
+  @Put(':id/ai-allowed')
+  @RequirePermissions('exam:manage')
+  setAiAllowed(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AiAllowedDto) {
+    return this.tests.setAiAllowed(ctx, userId, id, dto.allowed);
   }
 
   @Post(':id/approval/request')

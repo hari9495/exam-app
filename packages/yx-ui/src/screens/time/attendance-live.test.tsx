@@ -435,3 +435,63 @@ describe('Muster › one person (Extra · Attendance calendar, Manager · one pe
     expect(screen.getByText(/this person's attendance/i)).toBeInTheDocument();
   });
 });
+
+describe('batch A items 5 and 18: the month as a list or table, and my requests (A1, A2, A3)', () => {
+  it('List: a row per day so far with the worked bar and late by; a row opens the day panel', async () => {
+    const onOpenDay = vi.fn().mockResolvedValue(DAY_6);
+    const data = { ...ATT, days: [...ATT.days, { on: '2026-10-08', status: 'present' as const, leavePart: null, firstIn: '2026-10-08T04:20:00Z', lastOut: '2026-10-08T12:30:00Z', workedMinutes: 490, lateMinutes: 20, regularised: false }] };
+    render(<AttendanceCalendarScreen live={live({ data, onOpenDay })} />);
+    await ue.click(screen.getByRole('radio', { name: 'List' }));
+    const list = screen.getByRole('list', { name: 'Days this month' });
+    expect(within(list).getByText('Late by 20 min')).toBeInTheDocument();
+    expect(within(list).getByRole('meter', { name: /Worked on 7 Oct 2026/ })).toBeInTheDocument();
+    expect(within(list).queryByText(/10 Oct 2026/)).toBeNull();
+    await ue.click(within(list).getByRole('button', { name: /6 Oct 2026/ }));
+    await waitFor(() => expect(onOpenDay).toHaveBeenCalledWith('2026-10-06'));
+  });
+
+  it('Table: first in, last out, worked and late by in the person’s zone; a row opens the day', async () => {
+    const onOpenDay = vi.fn().mockResolvedValue(DAY_6);
+    render(<AttendanceCalendarScreen live={live({ onOpenDay })} />);
+    await ue.click(screen.getByRole('radio', { name: 'Table' }));
+    const table = screen.getByRole('table', { name: 'Days this month' });
+    expect(within(table).getAllByText('9:31 am')).toHaveLength(2);
+    expect(within(table).getByText('6:10 pm')).toBeInTheDocument();
+    await ue.click(within(table).getAllByText('9:31 am')[0]!);
+    await waitFor(() => expect(onOpenDay).toHaveBeenCalled());
+  });
+
+  it('Requests tab: this month’s requests by status; Withdraw on a waiting one; New request lists every kind', async () => {
+    const onWithdrawFix = vi.fn().mockResolvedValue(undefined);
+    const requests = [
+      { id: 'r1', on: '2026-10-06', kind: 'missed_out' as const, inMinute: null, outMinute: 1090, reason: 'Forgot', status: 'pending' as const },
+      { id: 'r2', on: '2026-10-02', kind: 'wfh' as const, inMinute: null, outMinute: null, reason: 'Plumber visit', status: 'approved' as const },
+      { id: 'r3', on: '2026-10-01', kind: 'on_duty' as const, inMinute: 600, outMinute: 900, reason: 'Client site', status: 'rejected' as const, place: 'Whitefield' },
+    ];
+    render(<AttendanceCalendarScreen live={live({ onWithdrawFix, onWfh: vi.fn(), onOnDuty: vi.fn(), data: { ...ATT, requests } })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Requests (3)' }));
+    const list = screen.getByRole('list', { name: 'My requests this month' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(3);
+    await ue.click(screen.getByRole('radio', { name: 'Approved' }));
+    expect(within(screen.getByRole('list', { name: 'My requests this month' })).getByText('Plumber visit')).toBeInTheDocument();
+    expect(screen.queryByText('Forgot')).toBeNull();
+    await ue.click(screen.getByRole('radio', { name: 'Waiting' }));
+    await ue.click(screen.getByRole('button', { name: 'Withdraw' }));
+    await ue.click(within(await screen.findByRole('dialog')).getByRole('button', { name: /^Withdraw/ }));
+    await waitFor(() => expect(onWithdrawFix).toHaveBeenCalledWith('r1'));
+    await ue.click(screen.getByRole('button', { name: 'Choose a request' }));
+    expect(await screen.findByRole('menuitem', { name: 'Work from home' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'On duty' })).toBeInTheDocument();
+  });
+
+  it('negative: no requests this month says so; a filter with none says how to see all', async () => {
+    const { unmount } = render(<AttendanceCalendarScreen live={live()} />);
+    await ue.click(screen.getByRole('tab', { name: 'Requests (0)' }));
+    expect(screen.getByText('No requests in October 2026.')).toBeInTheDocument();
+    unmount();
+    render(<AttendanceCalendarScreen live={live({ data: { ...ATT, requests: [{ id: 'r1', on: '2026-10-06', kind: 'missed_out', inMinute: null, outMinute: 1090, reason: 'Forgot', status: 'pending' }] } })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Requests (1)' }));
+    await ue.click(screen.getByRole('radio', { name: 'Approved' }));
+    expect(screen.getByText('No requests match this filter.')).toBeInTheDocument();
+  });
+});
