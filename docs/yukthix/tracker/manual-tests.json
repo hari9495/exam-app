@@ -22594,5 +22594,70 @@
       "Screens/Proctoring/Extra · Fairness analytics"
     ],
     "note": "Positive and negative. Answers 2202, 2204, 2271, 2273."
+  },
+  {
+    "id": "MT-BATA-B4",
+    "area": "Batch A: hourly permission (B4, answer 2310, 17 Nov 2026)",
+    "screen": "Me › Attendance › New request › Hourly permission (TIM-07)",
+    "url": "http://localhost:3000/yx/time/attendance",
+    "account": "Employee arjun@demo-org.test (Arjun Kulkarni); his manager panel@demo-org.test (Divya Raghunathan); admin-tester@demo-org.test for the setting.",
+    "steps": [
+      "As Arjun: New request › Hourly permission. Press Send request with nothing filled in.",
+      "Pick a working day this week, From 3:00 pm, To 5:30 pm, reason 'Bank visit'. Press Send request.",
+      "Change From to 4:30 pm and To to 6:30 pm. Read the effect box, then Send request.",
+      "Send the same day 5:00 pm to 6:00 pm again.",
+      "Pick a Sunday (weekly off) and send.",
+      "Send a second permission on another working day this month, then try a third one in the same month.",
+      "As Divya: open the inbox and approve the first permission.",
+      "As Arjun: open that day on My attendance (after the day is over: check in about 9:30 am, check out 4:30 pm).",
+      "As admin-tester: Settings › Time and leave › 3.5 Hourly permission: change 'Hourly permissions a month' to 3; as Arjun send the third one again."
+    ],
+    "expected": "Step 1: the times and the reason show their errors, Send stays pressable, nothing is sent. Step 2: refused, 'A permission can be at most 2 hours. Apply for leave for a longer time.' Step 3: 'Permission 4:30 pm – 6:30 pm · the day stays present', 'permission 1 of 2 in <month>. It does not use leave.'; toast 'Sent to your manager' for 5 s. Step 4: refused, 'You already asked for permission on … from 4:30 pm to 6:30 pm.' Step 5: refused, '… is your weekly off: no permission needed.' Step 6: the third is refused 'You have used all 2 permissions for <month>. Apply for leave instead.' Step 7: approved. Step 8: the day shows Present (not Half day); no leave was taken from any balance. Step 9: the third one is sent.",
+    "stories": [
+      "Screens/Time/TIM-07 · Attendance request"
+    ],
+    "note": "Positive and negative. Permission never uses leave and never counts towards regularisations."
+  },
+  {
+    "id": "MT-BATA-D15",
+    "area": "Batch A: reverse loss of pay (D15, answer 2315, 17 Nov 2026)",
+    "screen": "Payroll › Inputs › Loss of pay › Reverse loss of pay (PAY-04)",
+    "url": "http://localhost:3000/yx/payroll/inputs",
+    "account": "HR hr-tester@demo-org.test (has attendance.lock); payroll-tester@demo-org.test (approves for payroll); employee arjun@demo-org.test.",
+    "steps": [
+      "As hr-tester: pick a month that is locked. Press Reverse loss of pay, then Send to payroll with nothing filled in.",
+      "Find Arjun, Day 1 = a day he was marked absent, It should be = Paid day; Add a day with the same date; type a 5-letter reason; Send.",
+      "Change Day 2 to another absent day, It should be = Half day; reason 'Was at the Hosur plant audit, kiosk offline'. Send.",
+      "Send the same first day again.",
+      "Switch the page to the current (open) month and press Reverse loss of pay.",
+      "As payroll-tester: open the inbox and approve both corrections.",
+      "As arjun@: open Payroll › Inputs directly."
+    ],
+    "expected": "Step 1: 'Choose the person.' and the other missing fields show; Send stays pressable. Step 2: '<date> is listed twice.' and the reason error; nothing is sent. Step 3: toast 'Loss of pay reversal for Arjun Kulkarni sent to payroll' (2 days, paid in the next regular payroll once approved). Step 4: refused, 'A correction for that day is already waiting for approval.' Step 5: no form: '<month> has not been locked yet' with Go to regularisation. Step 6: both approved; the next regular run pays them. Step 7: no Reverse loss of pay button (no access).",
+    "stories": [
+      "Screens/Pay/PAY-04 · Manual LOP input"
+    ],
+    "note": "Positive and negative. One HR correction per day, all or none."
+  },
+  {
+    "id": "MT-BATA-C4",
+    "area": "Batch A: notify colleagues on leave (C4, answer 2313, 17 Nov 2026)",
+    "screen": "Me › Leave › Apply leave › Notify colleagues (TIM-18)",
+    "url": "http://localhost:3000/yx/time/leave",
+    "account": "Employee arjun@demo-org.test; manager panel@demo-org.test (Divya); a colleague to tell, e.g. hr-tester@demo-org.test.",
+    "steps": [
+      "As Arjun: Apply leave; under Notify colleagues find and add hr-tester and Divya; remove Divya with her tag's x.",
+      "Add colleagues until 10 are chosen.",
+      "Remove all but hr-tester; choose earned leave for a day next week, reason 'Family function'; Send request.",
+      "As hr-tester: open the bell before anyone approves.",
+      "As Divya: approve the leave.",
+      "As hr-tester: open the bell and the email in mailpit (localhost:8025).",
+      "As Arjun: apply again naming a colleague; as Divya turn it down; as the colleague check the bell."
+    ],
+    "expected": "Step 1: chosen people show as tags; removing works. Step 2: at 10 the search gives way to '10 people chosen, the most you can notify.' Step 3: sent (toast). Step 4: nothing about Arjun's leave. Step 6: one notice 'Arjun Kulkarni is away on <date>.' with the dates only: no 'Earned leave', no reason, in the bell and the email. Step 7: nothing is sent to the colleague.",
+    "stories": [
+      "Screens/Time/TIM-18 · Apply leave"
+    ],
+    "note": "Positive and negative. Told on approval only, never the type or the reason."
   }
 ]
