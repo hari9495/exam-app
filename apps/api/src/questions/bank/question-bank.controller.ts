@@ -1,7 +1,7 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { OwnSessionGuard } from '../../auth/own-session.guard';
@@ -16,7 +16,28 @@ import type { QuestionContent } from './bank-rules';
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 
 /** A question as written in the bank: the existing payload plus alt text for its images. */
+/** Answer 2271: one rubric criterion. */
+export class RubricCriterionDto {
+  @trim()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  criterion!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  marks!: number;
+}
+
 export class BankQuestionDto extends CreateQuestionDto {
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => RubricCriterionDto)
+  rubric?: RubricCriterionDto[];
+
   @IsOptional()
   @trim()
   @IsString()

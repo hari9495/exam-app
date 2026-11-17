@@ -56,6 +56,8 @@ export interface BankContent {
   options: { text: string; isCorrect?: boolean; imageUrl?: string | null }[];
   optionAlts?: (string | null)[];
   codeTests?: unknown[] | null;
+  /** Answer 2271: criteria with marks for a written or code answer. */
+  rubric?: { criterion: string; marks: number }[];
 }
 
 export interface BankRow {
@@ -191,7 +193,7 @@ const PACK_LABEL: Record<string, { name: string; desc: string }> = {
   english: { name: 'English proficiency', desc: 'Reading, grammar and comprehension.' },
   core_it: { name: 'Core IT skills', desc: 'Java, Python, SQL and web basics.' },
 };
-const FIELD_LABEL: Record<string, string> = { type: 'Type', text: 'Question', options: 'Options and answer key', modelAnswer: 'Model answer', codeTests: 'Code tests', marks: 'Marks', negativeMarks: 'Negative marks', difficulty: 'Difficulty', topic: 'Skill', category: 'Collection', imageUrl: 'Image', imageAlt: 'Image alt text', tags: 'Tags', optionAlts: 'Option alt text' };
+const FIELD_LABEL: Record<string, string> = { type: 'Type', text: 'Question', options: 'Options and answer key', modelAnswer: 'Model answer', codeTests: 'Code tests', marks: 'Marks', negativeMarks: 'Negative marks', difficulty: 'Difficulty', topic: 'Skill', category: 'Collection', imageUrl: 'Image', imageAlt: 'Image alt text', tags: 'Tags', optionAlts: 'Option alt text', rubric: 'Rubric' };
 /** The types the editor writes (answer 2125 adds code); file upload and spoken keep their settings as they are. */
 const EDITABLE_TYPES = ['single_mcq', 'multi_mcq', 'true_false', 'essay', 'code'];
 /** Answer 2126: images the question route takes (PNG, JPEG or SVG, up to 2 MB). */
@@ -727,6 +729,61 @@ function ImageField({ label, url, onUpload, onChange, readOnly }: { label: strin
   );
 }
 
+/** Answer 2271: why a rubric cannot be saved (the server checks the same), or nothing. */
+export function rubricProblems(c: BankContent): string[] {
+  const r = c.rubric ?? [];
+  if (!r.length) return [];
+  const names = r.map((x) => x.criterion.trim().toLowerCase());
+  const sum = r.reduce((t, x) => t + (x.marks || 0), 0);
+  return [
+    ...(names.some((n) => !n) ? ['Name every criterion.'] : []),
+    ...(new Set(names).size !== names.length ? ['Each criterion is named once.'] : []),
+    ...(r.some((x) => !Number.isInteger(x.marks) || x.marks < 1) ? ['Each criterion is worth at least 1 whole mark.'] : []),
+    ...(sum !== c.marks ? [`The criteria add up to ${sum} marks; the question is worth ${c.marks}.`] : []),
+  ];
+}
+
+/** Answer 2271: the rubric markers mark by, criterion by criterion (written and code questions). */
+function RubricEditor({ c, set, readOnly, problems }: { c: BankContent; set: (patch: Partial<BankContent>) => void; readOnly: boolean; problems: string[] }) {
+  const r = c.rubric ?? [];
+  const put = (i: number, patch: Partial<{ criterion: string; marks: number }>) => set({ rubric: r.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
+  const sum = r.reduce((t, x) => t + (x.marks || 0), 0);
+  return (
+    <section className="yx-prc-box" aria-label="Rubric">
+      <h3 className="yx-prc-h">Rubric</h3>
+      <p className="yx-prc-small yx-prc-muted">Optional. Markers give marks for each criterion; the criteria add up to the question's marks.</p>
+      {r.length > 0 && (
+        <ul className="yx-prc-plain">
+          {r.map((x, i) => (
+            <li key={i}>
+              <span className="yx-prc-row">
+                <TextField aria-label={`Criterion ${i + 1}`} value={x.criterion} onChange={(v) => put(i, { criterion: v })} maxLength={200} readOnly={readOnly} />
+                <NumberField aria-label={`Marks for criterion ${i + 1}`} value={x.marks} onChange={(v) => put(i, { marks: Math.max(0, Math.round(Number(v ?? 0))) })} size="sm" readOnly={readOnly} />
+              </span>
+              {!readOnly && (
+                <Button size="sm" onClick={() => set({ rubric: r.filter((_, j) => j !== i) })}>
+                  Remove
+                </Button>
+              )}
+            </li>
+          ))}
+          <li>
+            <span>Total</span> <Badge tone={sum === c.marks ? 'success' : 'danger'}>{`${sum} of ${c.marks}`}</Badge>
+          </li>
+        </ul>
+      )}
+      {problems.length > 0 && <InlineAlert tone="danger" title={problems[0]!} />}
+      {!readOnly && r.length < 10 && (
+        <div className="yx-prc-row">
+          <Button size="sm" icon={Plus} onClick={() => set({ rubric: [...r, { criterion: '', marks: 1 }] })}>
+            Add criterion
+          </Button>
+        </div>
+      )}
+    </section>
+  );
+}
+
 /** Answer 2125: the code question's language, starter code and auto-graded test cases. */
 function CodeTestsEditor({ c, set, languages, readOnly, problems }: { c: BankContent; set: (patch: Partial<BankContent>) => void; languages: { language: string; version: string }[]; readOnly: boolean; problems: string[] }) {
   const tests = (c.codeTests ?? []) as CodeTest[];
@@ -858,6 +915,8 @@ export function LiveQuestionEditor({ live }: { live: LiveEditor }) {
     setTried(true);
     if (!c.text.trim() || (CHOICE_TYPES.includes(c.type) && (c.options.length < 2 || c.options.some((o) => !o.text.trim()) || !c.options.some((o) => o.isCorrect)))) return say('Fill in what is marked, then save.');
     if (code.length) return say(code[0]!);
+    const rubricBad = (c.type === 'essay' || c.type === 'code') ? rubricProblems(c) : [];
+    if (rubricBad.length) return say(rubricBad[0]!);
     let out: Awaited<ReturnType<LiveEditor['onSave']>> = {};
     if (await run('save', async () => void (out = await live.onSave(c)))) {
       done(out.saved === 'major' ? `Saved as version ${out.version}. Submit it for review.` : out.saved === 'minor' ? 'Change saved. Submit it for review.' : 'Draft saved');
@@ -1048,6 +1107,7 @@ export function LiveQuestionEditor({ live }: { live: LiveEditor }) {
                 </FormField>
               )}
               {c.type === 'code' && <CodeTestsEditor c={c} set={set} languages={live.codeLanguages ?? []} readOnly={inReview || keysHidden} problems={tried ? code : []} />}
+              {(c.type === 'essay' || c.type === 'code') && <RubricEditor c={c} set={set} readOnly={inReview} problems={tried ? rubricProblems(c) : []} />}
               {!editableType && <InlineAlert tone="info">{TYPE_LABEL[c.type] ?? c.type} questions keep their test cases and settings as they are; this editor changes the question, marks, difficulty, skill and collection.</InlineAlert>}
             </div>
           </TabsContent>

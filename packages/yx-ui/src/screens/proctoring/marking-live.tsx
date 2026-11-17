@@ -31,10 +31,10 @@ export interface MarkingItem {
   test: string;
   candidate: string;
   blind: boolean;
-  question: { text: string; type: string; marks: number };
+  question: { text: string; type: string; marks: number; rubric?: { criterion: string; marks: number }[] };
   answer: { text: string | null; language: string | null; files: string[] };
   state: MarkStatus;
-  mine: { marks: number; feedback: string | null; round: number } | null;
+  mine: { marks: number; feedback: string | null; round: number; criteria?: number[] | null } | null;
   toModerate: { a: number; b: number } | null;
   minor: boolean;
   suggestion: { marks: number; reason: string | null } | null;
@@ -47,7 +47,8 @@ export interface LiveEvaluator {
   /** Where this answer sits in my queue (null: nothing waiting for me). */
   position: { index: number; total: number } | null;
   item: MarkingItem | null;
-  onMark: (marks: number, feedback: string | null) => Promise<void>;
+  /** Answer 2271: with a rubric, `criteria` are the marks per criterion (they add up to `marks`). */
+  onMark: (marks: number, feedback: string | null, criteria?: number[]) => Promise<void>;
   /** The AI's suggestion, asked only after my own mark. */
   onSuggest: () => Promise<void>;
   onNext: () => void;
@@ -65,6 +66,7 @@ const STATE_WORDS: Record<MarkStatus, string> = {
 export function LiveEvaluatorScreen({ live }: { live: LiveEvaluator }) {
   const it = live.item;
   const [marks, setMarks] = useState<number | null>(null);
+  const [byCriterion, setByCriterion] = useState<(number | null)[]>([]);
   const [feedback, setFeedback] = useState('');
   const [itemKey, setItemKey] = useState('');
   const { busy, run, error } = useRun();
@@ -96,7 +98,19 @@ export function LiveEvaluatorScreen({ live }: { live: LiveEvaluator }) {
       </PrcFrame>
     );
   const max = it.question.marks;
+  const rubric = it.question.rubric ?? [];
   const save = () => {
+    if (rubric.length) {
+      const missing = rubric.findIndex((_, i) => byCriterion[i] == null);
+      if (missing >= 0) return say(`Mark "${rubric[missing]!.criterion}".`);
+      const over = rubric.findIndex((r, i) => byCriterion[i]! > r.marks);
+      if (over >= 0) return say(`"${rubric[over]!.criterion}" is out of ${rubric[over]!.marks} marks.`);
+      const criteria = byCriterion.slice(0, rubric.length) as number[];
+      return void run('mark', async () => {
+        await live.onMark(criteria.reduce((t, x) => t + x, 0), feedback.trim() || null, criteria);
+        done('Mark saved');
+      });
+    }
     if (marks == null) return say('Enter your marks first.');
     if (marks > max) return say(`This question is out of ${max} marks.`);
     void run('mark', async () => {
@@ -153,13 +167,25 @@ export function LiveEvaluatorScreen({ live }: { live: LiveEvaluator }) {
           {it.mine ? (
             <div className="yx-prc-box" data-tone="subtle" aria-live="polite">
               <strong>{`Your mark: ${it.mine.marks} / ${max}`}</strong>
+              {rubric.length > 0 && it.mine.criteria && <span className="yx-prc-small">{rubric.map((r, i) => `${r.criterion} ${it.mine!.criteria![i] ?? 0}/${r.marks}`).join(' · ')}</span>}
               <span className="yx-prc-small">{STATE_WORDS[it.state]}</span>
             </div>
           ) : (
             <section className="yx-prc-box" aria-label="Mark this answer">
-              <FormField label={`Your marks (out of ${max})`} required>
-                <NumberField value={marks} onChange={(v) => setMarks(v == null ? null : Math.max(0, Math.round(Number(v))))} min={0} max={max} />
-              </FormField>
+              {rubric.length ? (
+                <div className="yx-prc-stack" data-gap="sm">
+                  {rubric.map((r, i) => (
+                    <FormField key={r.criterion} label={`${r.criterion} (out of ${r.marks})`} required>
+                      <NumberField value={byCriterion[i] ?? null} onChange={(v) => setByCriterion(rubric.map((_, j) => (j === i ? (v == null ? null : Math.max(0, Math.round(Number(v)))) : (byCriterion[j] ?? null))))} min={0} max={r.marks} />
+                    </FormField>
+                  ))}
+                  <span className="yx-prc-small" aria-live="polite">{`Total: ${byCriterion.reduce<number>((t, x) => t + (x ?? 0), 0)} / ${max}`}</span>
+                </div>
+              ) : (
+                <FormField label={`Your marks (out of ${max})`} required>
+                  <NumberField value={marks} onChange={(v) => setMarks(v == null ? null : Math.max(0, Math.round(Number(v))))} min={0} max={max} />
+                </FormField>
+              )}
               <FormField label="Feedback" optional helper="Shown with the mark. Other markers never see it.">
                 <TextArea rows={3} maxLength={2000} value={feedback} onChange={setFeedback} />
               </FormField>
@@ -236,7 +262,7 @@ const STATUS_BADGE: Record<FairnessRow['status'], { tone: 'success' | 'warning' 
   flagged: { tone: 'danger', label: 'Below 0.80' },
   hidden: { tone: 'neutral', label: 'Hidden' },
 };
-const DECISION_WORDS: Record<string, string> = { keep: 'Kept, with a reason', revise: 'To be revised', retire: 'To be retired' };
+const DECISION_WORDS: Record<string, string> = { keep: 'Kept, with a reason', revise: 'To be revised', retire: 'Retired: the test is archived' };
 
 export function LiveFairnessScreen({ live }: { live: LiveFairness }) {
   const [deciding, setDeciding] = useState(false);
@@ -299,7 +325,7 @@ export function LiveFairnessScreen({ live }: { live: LiveFairness }) {
           open={deciding}
           onOpenChange={setDeciding}
           title="Decide the review"
-          consequence="Recorded with your reason; the test's history keeps it."
+          consequence={decision === 'retire' ? 'Retiring archives the test: no new invitations go out; past attempts and reports stay. Recorded with your reason.' : "Recorded with your reason; the test's history keeps it."}
           confirmLabel="Save decision"
           onConfirm={async () => {
             setTried(true);

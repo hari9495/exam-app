@@ -627,6 +627,8 @@ model Question {
   /// Alt text for the question's image and, by option order, each option's image (approval needs them).
   imageAlt           String?               @map("image_alt") @db.VarChar(500)
   optionAlts         Json                  @default("[]") @map("option_alts")
+  /// Answer 2271: criteria with marks for essay and code questions ([{ criterion, marks }]).
+  rubric         Json      @default("[]")
   lastApprovedBy     String?               @map("last_approved_by") @db.Uuid
   lastApprovedAt     DateTime?             @map("last_approved_at") @db.Timestamptz(3)
   revisions          QuestionRevision[]
@@ -1212,6 +1214,8 @@ model AnswerMark {
   round          Int      @db.SmallInt
   marks          Int
   feedback       String?  @db.VarChar(2000)
+  /// Answer 2271: marks per rubric criterion, in the rubric order.
+  criteria       Json?
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([attemptId, questionId, markerUserId], map: "answer_marks_marker_key")

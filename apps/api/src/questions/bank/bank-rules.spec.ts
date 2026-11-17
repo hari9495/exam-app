@@ -1,4 +1,4 @@
-import { changedFields, closestDuplicate, isMajorChange, missingAltText, normalized, similarity, type QuestionContent } from './bank-rules';
+import { changedFields, closestDuplicate, isMajorChange, missingAltText, normalized, rubricProblem, similarity, type QuestionContent } from './bank-rules';
 
 const Q: QuestionContent = {
   type: 'single_mcq',
@@ -44,5 +44,22 @@ describe('question bank rules (answers 2009, 2010)', () => {
     const stored = normalized({ ...Q, negativeMarks: 0, category: null, tags: [], optionAlts: [] });
     expect(changedFields(stored, normalized({ ...Q, category: '  ', optionAlts: ['', ''] }))).toEqual([]);
     expect(changedFields(stored, normalized({ ...Q, negativeMarks: 0.5 }))).toEqual(['negativeMarks']);
+  });
+});
+
+describe('rubrics (answer 2271)', () => {
+  const essay: QuestionContent = { type: 'essay', text: 'Why?', difficulty: 'easy', marks: 10, options: [], rubric: [{ criterion: 'Cause', marks: 4 }, { criterion: 'Owner', marks: 6 }] };
+  it('a rubric adding up to the marks is fine; none is fine; a change to it is a reviewed change', () => {
+    expect(rubricProblem(essay)).toBeNull();
+    expect(rubricProblem({ ...essay, rubric: [] })).toBeNull();
+    expect(changedFields(normalized(essay), normalized({ ...essay, rubric: [{ criterion: 'Cause', marks: 5 }, { criterion: 'Owner', marks: 5 }] }))).toEqual(['rubric']);
+  });
+  it('negative: wrong type, unnamed or repeated criteria, part marks, a total that does not add up, more than 10', () => {
+    expect(rubricProblem({ ...essay, type: 'single_mcq' })).toMatch(/Only written/);
+    expect(rubricProblem({ ...essay, rubric: [{ criterion: ' ', marks: 10 }] })).toBe('Name every criterion.');
+    expect(rubricProblem({ ...essay, rubric: [{ criterion: 'Cause', marks: 5 }, { criterion: 'cause', marks: 5 }] })).toBe('Each criterion is named once.');
+    expect(rubricProblem({ ...essay, rubric: [{ criterion: 'Cause', marks: 9.5 }, { criterion: 'Owner', marks: 0.5 }] })).toMatch(/whole mark/);
+    expect(rubricProblem({ ...essay, rubric: [{ criterion: 'Cause', marks: 4 }] })).toBe('The criteria add up to 4 marks; the question is worth 10.');
+    expect(rubricProblem({ ...essay, marks: 11, rubric: Array.from({ length: 11 }, (_, i) => ({ criterion: `C${i}`, marks: 1 })) })).toMatch(/at most 10/);
   });
 });

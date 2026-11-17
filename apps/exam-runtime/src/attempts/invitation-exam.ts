@@ -32,11 +32,12 @@ function signals(json: string | null): string[] {
  * and, for the "no gaze" profile, the gaze signals switched off. Everything that settles or watches an attempt reads this.
  */
 export function invitationExam<E extends ExamTiming>(exam: E, inv: InvitationHelp): E {
+  // Only what the invitation was granted changes; everything else is the test as it is.
   return {
     ...exam,
     durationMinutes: effectiveDurationMinutes(exam.durationMinutes, inv.extraTimePercent),
-    breaksAllowed: exam.breaksAllowed + (inv.extraBreaks ?? 0),
-    breakMinutes: Math.max(exam.breakMinutes, inv.breakMinutes ?? 0),
-    disabledProctoringSignalsJson: inv.proctoringProfile === 'no_gaze' ? JSON.stringify([...new Set([...signals(exam.disabledProctoringSignalsJson), ...GAZE_SIGNALS])]) : exam.disabledProctoringSignalsJson,
+    ...(inv.extraBreaks ? { breaksAllowed: exam.breaksAllowed + inv.extraBreaks } : {}),
+    ...(inv.breakMinutes && inv.breakMinutes > exam.breakMinutes ? { breakMinutes: inv.breakMinutes } : {}),
+    ...(inv.proctoringProfile === 'no_gaze' ? { disabledProctoringSignalsJson: JSON.stringify([...new Set([...signals(exam.disabledProctoringSignalsJson), ...GAZE_SIGNALS])]) } : {}),
   };
 }

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AiModule } from '../../ai/ai.module';
 import { ExamRuntimeClientModule } from '../../exam-runtime-client/exam-runtime-client.module';
+import { ExamsModule } from '../../exams/exams.module';
 import { FairnessController } from './fairness.controller';
 import { FairnessService } from './fairness.service';
 import { MarkSuggestionClient } from './mark-suggestion.client';
@@ -9,7 +10,7 @@ import { MarkingService } from './marking.service';
 
 // Assessments AS-6: marking (PRC-19) and fairness (answers 2019, 2165).
 @Module({
-  imports: [AiModule, ExamRuntimeClientModule],
+  imports: [AiModule, ExamRuntimeClientModule, ExamsModule],
   controllers: [MarkingController, FairnessController],
   providers: [MarkingService, FairnessService, MarkSuggestionClient],
 })

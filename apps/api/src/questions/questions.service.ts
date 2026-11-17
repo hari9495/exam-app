@@ -350,8 +350,6 @@ export class QuestionsService {
   }
 
   async aiGenerate(context: TenantContext, userId: string, dto: AiGenerateQuestionsDto): Promise<{ aiJobId: string }> {
-    const aiOn = await this.tenantPrisma.forTenant(context, async (tx) => (await companySetting(tx, context.organizationId as string, 'asmt.ai_generation')) === 'on');
-    if (!aiOn) throw new ForbiddenException('AI drafts are switched off for your company (Settings › Assessments).');
     // Fail fast: every generated question would fail this exact check downstream (see
     // validateQuestionPayload) and be silently dropped -- after the provider call had been paid for.
     if (dto.negativeMarks > dto.marks) {
@@ -376,6 +374,10 @@ export class QuestionsService {
         }
       });
     }
+
+    // Answer 2151: the company may switch AI drafts off (Settings › Assessments, asmt.ai_generation).
+    const aiOff = await this.tenantPrisma.forTenant(context, async (tx) => (await companySetting(tx, context.organizationId as string, 'asmt.ai_generation')) === 'off');
+    if (aiOff === true) throw new ForbiddenException('AI drafts are switched off for your company (Settings › Assessments).');
 
     // Fail fast. Without this the job is enqueued, picked up, and fails minutes later -- the
     // recruiter waits for a result that was never possible.

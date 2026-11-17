@@ -28,6 +28,19 @@ export function markState(rows: MarkRow[], o: { double: boolean; gapPercent: num
   return { status: 'needs_moderation', a: one.marks, b: two.marks };
 }
 
+/**
+ * Answer 2271: a mark from a rubric: one whole mark per criterion, none above its own, and the total is their sum. A
+ * question without a rubric takes the total as given. Returns the total, or why it is refused.
+ */
+export function rubricMark(rubric: { criterion: string; marks: number }[], criteria: number[] | undefined, total: number): { marks: number } | { refused: string } {
+  if (!rubric.length) return criteria?.length ? { refused: 'This question has no rubric: give one mark.' } : { marks: total };
+  if (!criteria || criteria.length !== rubric.length) return { refused: `Mark each of the ${rubric.length} criteria.` };
+  const over = rubric.findIndex((r, i) => criteria[i]! > r.marks);
+  if (over >= 0) return { refused: `"${rubric[over]!.criterion}" is out of ${rubric[over]!.marks} marks.` };
+  const sum = criteria.reduce((t, x) => t + x, 0);
+  return sum === total ? { marks: sum } : { refused: `The criteria add up to ${sum}, not ${total}.` };
+}
+
 /** Two marks need a moderator when they differ by more than the company's share of the question's marks. */
 export function farApart(a: number, b: number, gapPercent: number, max: number): boolean {
   return Math.abs(a - b) > (gapPercent / 100) * max;
