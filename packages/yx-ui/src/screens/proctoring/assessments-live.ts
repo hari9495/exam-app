@@ -40,7 +40,7 @@ export type { CandidateBrand } from './proctoring-shared';
 export { AccommodationQueueScreen, ConnectivityPanelScreen } from './delivery';
 export { AccommodationRequestScreen } from './candidate';
 export { HELP_LABEL, approvedForYou, type AccommodationView, type CandidateHelpView, type ConnectivityView, type HelpKind, type LiveAccommodationQueue, type LiveAccommodationRequest, type LiveConnectivity } from './before-test-live';
-export { ReadinessCheckScreen, type LiveReadiness } from './candidate';
+export { ReadinessCheckScreen, ReadyToStartScreen, type LiveReadiness, type LiveReadyToStart } from './candidate';
 // AS-4a part 2 (answer 2201): the designed consent (PRC-24) and selfie (PRC-25) on /welcome.
 export { ConsentScreen, IdentityCheckScreen, type LiveConsent, type LiveSelfie, type ManualIdentityCheck } from './candidate';
 // AS-5 part 1 (answers 2006, 2008, 2012): integrity review and appeals.

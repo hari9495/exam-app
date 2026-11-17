@@ -152,6 +152,189 @@ function LiveReadinessScreen({ live }: { live: LiveReadiness }) {
   );
 }
 
+/* ------------------------------------------------------------------ PRC-22 · Ready to start (answer 2232) */
+
+/**
+ * Answer 2232: the last step on /welcome after consent and the photo: the test's details and instructions, help before
+ * the test, the camera, Safe Exam Browser when the test needs it, and Start. The page owns the camera, the checks run at
+ * Start and the attempt itself; this screen shows them.
+ */
+export interface LiveReadyToStart {
+  companyName: string;
+  candidateName: string;
+  testTitle: string;
+  durationMinutes: number;
+  sections: { title: string; questions: number }[];
+  instructions: string | null;
+  /** What was approved for this person (extra time, a manual identity check…), one line each. */
+  notes: string[];
+  /** Whether the test can be started now; "not_open" names when it opens. */
+  window: { state: 'open' | 'not_open' | 'closed'; opensAt?: string | null };
+  /** The page's live camera preview (null when the test does not use the camera). */
+  camera: ReactNode | null;
+  /** The camera is on (or not needed): Start is offered. */
+  cameraReady: boolean;
+  /** Why the last Start did not go ahead (another display, a browser without screen sharing). */
+  problem: string | null;
+  /** The test runs only inside Safe Exam Browser: its configuration file, instead of Start. */
+  seb: { onDownload: () => void } | null;
+  /** The photo step was not finished: go back to it instead of Start. */
+  onPhoto?: () => void;
+  onAccommodation: () => void;
+  onReadiness: () => void;
+  onMyTests: () => void;
+  starting: boolean;
+  onStart: () => void;
+}
+
+const READY_SAMPLE: LiveReadyToStart = {
+  companyName: COMPANY.name,
+  candidateName: 'Arjun Nair',
+  testTitle: 'Java Backend Developer · L2',
+  durationMinutes: 75,
+  sections: [
+    { title: 'Aptitude', questions: 12 },
+    { title: 'Java', questions: 20 },
+    { title: 'SQL', questions: 8 },
+  ],
+  instructions: 'Answer every question. You can mark questions for review and come back to them before you submit.',
+  notes: ['Approved for you: 25 % extra time'],
+  window: { state: 'open' },
+  camera: <CameraFrame state="live" label="Your camera" size="md" />,
+  cameraReady: true,
+  problem: null,
+  seb: null,
+  onAccommodation: () => undefined,
+  onReadiness: () => undefined,
+  onMyTests: () => undefined,
+  starting: false,
+  onStart: () => undefined,
+};
+
+/** PRC-22 Ready to start; with `live`, the candidate's own test (answer 2232). */
+export function ReadyToStartScreen(props: { state?: 'ready' | 'camera-off' | 'not-open' | 'closed' | 'seb' | 'problem' } | { live: LiveReadyToStart }) {
+  if ('live' in props) return <LiveReadyToStartScreen live={props.live} />;
+  const s = props.state ?? 'ready';
+  return (
+    <LiveReadyToStartScreen
+      live={{
+        ...READY_SAMPLE,
+        ...(s === 'camera-off' ? { camera: <CameraFrame state="connecting" label="Your camera" size="md" />, cameraReady: false } : {}),
+        ...(s === 'not-open' ? { window: { state: 'not_open' as const, opensAt: 'Thu 1 Oct 2026, 2:00 pm' } } : {}),
+        ...(s === 'closed' ? { window: { state: 'closed' as const } } : {}),
+        ...(s === 'seb' ? { seb: { onDownload: () => undefined } } : {}),
+        ...(s === 'problem' ? { problem: 'Please disconnect additional displays before starting the test.' } : {}),
+      }}
+    />
+  );
+}
+
+function LiveReadyToStartScreen({ live }: { live: LiveReadyToStart }) {
+  const total = live.sections.reduce((n, s) => n + s.questions, 0);
+  const open = live.window.state === 'open';
+  return (
+    <CandidateFrame page="My tests" user={live.candidateName} company={live.companyName}>
+      <Title>Ready to start</Title>
+      <p className="yx-prc-muted">{`Hi ${live.candidateName}, you're invited to ${live.testTitle}.`}</p>
+      <div className="yx-prc-split">
+        <div className="yx-prc-stack">
+          <Card title={live.testTitle}>
+            <div className="yx-prc-stack">
+              <DescriptionList
+                items={[
+                  { label: 'Length', value: `${live.durationMinutes} minutes` },
+                  { label: 'Questions', value: total ? `${total} ${total === 1 ? 'question' : 'questions'}` : '—' },
+                ]}
+              />
+              {live.sections.length > 0 && (
+                <ul className="yx-prc-plain" aria-label="Sections">
+                  {live.sections.map((s) => (
+                    <li key={s.title}>
+                      <span>{s.title}</span>
+                      <span className="yx-prc-muted">{`${s.questions} ${s.questions === 1 ? 'question' : 'questions'}`}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {live.notes.map((n) => (
+                <InlineAlert key={n} tone="info">
+                  {n}
+                </InlineAlert>
+              ))}
+            </div>
+          </Card>
+          {live.instructions && (
+            <Card title="Instructions">
+              <p className="yx-prc-p yx-prc-notice-text">{live.instructions}</p>
+            </Card>
+          )}
+          <Card title="Before you start">
+            <ul className="yx-prc-plain">
+              <li>
+                <span>Need extra time, screen-reader mode or other help?</span>
+                <Button size="sm" onClick={live.onAccommodation}>
+                  Ask for help
+                </Button>
+              </li>
+              <li>
+                <span>Check your camera, displays and connection.</span>
+                <Button size="sm" onClick={live.onReadiness}>
+                  Check your computer
+                </Button>
+              </li>
+              <li>
+                <span>Your other tests</span>
+                <Button size="sm" onClick={live.onMyTests}>
+                  My tests
+                </Button>
+              </li>
+            </ul>
+          </Card>
+        </div>
+        <aside className="yx-prc-stack">
+          {!open ? (
+            live.window.state === 'not_open' ? (
+              <InlineAlert tone="info" title="Not open yet">{`This test opens on ${live.window.opensAt ?? 'a later date'}. Come back then to start.`}</InlineAlert>
+            ) : (
+              <InlineAlert tone="danger" title="Closed">This test's window has closed. Contact the recruiter who invited you.</InlineAlert>
+            )
+          ) : (
+            <>
+              {live.camera && <figure className="yx-prc-selfie">{live.camera}</figure>}
+              {live.problem && <InlineAlert tone="danger" title="Not started">{live.problem}</InlineAlert>}
+              {live.seb ? (
+                <Card title="Safe Exam Browser required">
+                  <div className="yx-prc-stack">
+                    <p className="yx-prc-small">This test runs only inside Safe Exam Browser, which locks your computer to the test while you take it.</p>
+                    <ol className="yx-prc-small">
+                      <li>Install Safe Exam Browser from safeexambrowser.org.</li>
+                      <li>Download your test's configuration below.</li>
+                      <li>Open the file: Safe Exam Browser brings you back here, ready to start.</li>
+                    </ol>
+                    <Button icon={Download} onClick={live.seb.onDownload}>
+                      Download the configuration (.seb)
+                    </Button>
+                  </div>
+                </Card>
+              ) : live.onPhoto ? (
+                <Button variant="primary" onClick={live.onPhoto}>
+                  Continue to the photo check
+                </Button>
+              ) : live.cameraReady ? (
+                <Button variant="primary" loading={live.starting} onClick={live.onStart}>
+                  Start test
+                </Button>
+              ) : (
+                <p className="yx-prc-small yx-prc-muted">Turn on your camera to start.</p>
+              )}
+            </>
+          )}
+        </aside>
+      </div>
+    </CandidateFrame>
+  );
+}
+
 function SampleReadiness({ state = 'issues' }: { state?: ReadinessState }) {
   // PRC-22
   const checks: SystemCheck[] =
