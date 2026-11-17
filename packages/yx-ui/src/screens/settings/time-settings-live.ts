@@ -103,6 +103,8 @@ export const TIME_SETTINGS: Record<string, { links: string[]; settings: Place[] 
       { section: 'WFH and on-duty', key: 'attendance.on_duty.ahead_days', synonyms: ['od'] },
       { section: 'WFH and on-duty', key: 'attendance.on_duty.back_days' },
       { section: 'WFH and on-duty', key: 'attendance.on_duty.send_back' },
+      { section: 'Hourly permission', key: 'attendance.permission.monthly_limit', synonyms: ['permission', 'short leave', 'hours off'] },
+      { section: 'Hourly permission', key: 'attendance.permission.max_minutes' },
     ],
   },
   '3.6': {

@@ -92,6 +92,36 @@ export class LateCorrectionDto {
   reason!: string;
 }
 
+/** Batch A item 8 (D15): one day of an LOP reversal and what it should have been (never "unpaid": that is no reversal). */
+export class LopReversalDayDto {
+  @IsDateString({ strict: true })
+  on!: string;
+
+  @trim()
+  @IsString()
+  @Matches(/^(present|half_day|leave:[A-Za-z0-9_-]{1,20})$/, { message: 'Choose what the day should have been: a paid day, a half day or a leave type.' })
+  shouldBe!: string;
+}
+
+/** Batch A item 8 (D15, answer 2315): HR reverses loss of pay for days of a locked month, paid in the next regular run. */
+export class LopReversalDto {
+  @IsUUID()
+  employeeId!: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(31)
+  @ValidateNested({ each: true })
+  @Type(() => LopReversalDayDto)
+  days!: LopReversalDayDto[];
+
+  @trim()
+  @IsString()
+  @MinLength(10)
+  @MaxLength(500)
+  reason!: string;
+}
+
 export class HrCorrectionDto extends LateCorrectionDto {
   @IsUUID()
   employeeId!: string;

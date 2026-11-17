@@ -119,7 +119,7 @@ export async function seedTime(tx: Tx, organizationId: string) {
   const tenant = { forTenant: (_c: unknown, fn: (t: Tx) => unknown) => fn(tx) } as unknown as TenantPrismaService;
   const engine = new ApprovalsEngine(tenant, { notifySystem: async () => undefined } as never, { deliver: async () => undefined } as never);
   const days = new DayEngine();
-  const leave = new LeaveService(null as never, tenant, engine, days);
+  const leave = new LeaveService(null as never, tenant, engine, days, { notifySystem: async () => undefined } as never);
   leave.onModuleInit();
   const c = { organizationId, isSuperAdmin: false, userId: null };
 

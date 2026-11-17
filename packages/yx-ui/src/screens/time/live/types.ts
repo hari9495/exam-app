@@ -71,6 +71,8 @@ export interface LeaveInput {
   reason?: string;
   delegateUserId?: string;
   certificate?: boolean;
+  /** Batch A C4: up to 10 colleagues told on approval, with the dates only. */
+  notifyUserIds?: string[];
   expectedOn?: string;
   maternityCase?: MaternityCase;
 }
@@ -165,8 +167,8 @@ export interface PersonAttendance {
 export interface FixRow {
   id: string;
   on: string;
-  /** A fix of the day, work from home on it, or on duty (TIM-07). */
-  kind: FixKind | 'wfh' | 'on_duty';
+  /** A fix of the day, work from home on it, on duty, or an hourly permission (TIM-07). */
+  kind: FixKind | 'wfh' | 'on_duty' | 'permission';
   inMinute: number | null;
   outMinute: number | null;
   reason: string;
@@ -204,6 +206,14 @@ export interface OnDutyInput {
   resendOf?: string;
 }
 
+/** Batch A item 7 (B4): an hourly permission, a from and to time on one working day; it never uses leave. */
+export interface PermissionInput {
+  on: string;
+  inMinute: number;
+  outMinute: number;
+  reason: string;
+}
+
 /** TIM-31 Multi: one check-in point of a location. */
 export interface GeoPointInput { name: string; lat: number; lng: number; radiusM: number }
 
@@ -236,6 +246,8 @@ export interface MyAttendance {
   wfh: { limit: number; used: number };
   /** TIM-07 OnDuty: how far ahead and back on duty can be asked (company settings). */
   onDuty?: { aheadDays: number; backDays: number };
+  /** Batch A item 7 (B4): hourly permissions this month (asked for or approved), and the company's limits. */
+  permission?: { limit: number; maxMinutes: number; used: number };
   /** TIM-07 Ot: overtime asked for ahead, and how far ahead it can be asked. */
   otPlans?: OtPlanRow[];
   otAheadDays?: number;

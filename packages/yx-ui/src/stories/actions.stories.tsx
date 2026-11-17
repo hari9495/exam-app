@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { Archive, Copy, Download, MoreHorizontal, Pencil, Plus, Trash2, Upload } from 'lucide-react';
-import { Button, ButtonGroup, IconButton, Link, SplitButton } from '../components/button';
+import { Button, ButtonGroup, IconButton, Link, RowButton, SplitButton } from '../components/button';
 import { Menu, MenuCheckboxItem, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from '../components/menu';
 import { Tooltip } from '../components/tooltip';
 import { Text } from '../components/foundations';
@@ -308,5 +308,26 @@ export const TooltipOpen: S = {
         </button>
       </Tooltip>
     </div>
+  ),
+};
+
+/** A whole list row people press to open it: bordered at rest, a fill on hover, a focus ring from the keyboard. */
+export const RowButtons: S = {
+  name: 'Row button · a list row that opens',
+  render: () => (
+    <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 'var(--yx-space-2)', maxWidth: 560 }} aria-label="Days">
+      <li>
+        <RowButton aria-label="Tue 3 Nov 2026: Present">
+          <span><strong>Tue 3 Nov 2026</strong> · 9:12 am – 6:40 pm</span>
+          <span>Present</span>
+        </RowButton>
+      </li>
+      <li>
+        <RowButton aria-label="Mon 2 Nov 2026: Late">
+          <span><strong>Mon 2 Nov 2026</strong> · 9:58 am – 6:31 pm</span>
+          <span>Late by 18 min</span>
+        </RowButton>
+      </li>
+    </ul>
   ),
 };

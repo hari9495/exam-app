@@ -300,6 +300,3 @@ button.yx-tim-cov:hover { box-shadow: inset 0 0 0 var(--yx-border-width) current
 /* A place picker under a page subtitle (TIM-34 with several locations): wide enough for a location name, never the full row. */
 .yx-tim-place { width: max-content; min-width: calc(var(--yx-space-16) * 3); max-width: 100%; }
 /* Batch A item 5 (A1): a day of the month as a list row; the whole row opens the day panel. */
-.yx-tim-dayrow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--yx-space-3); width: 100%; padding: var(--yx-space-2) var(--yx-space-3); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-control); background: var(--yx-color-bg-surface); color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.yx-tim-dayrow:hover { background: var(--yx-color-bg-subtle); border-color: var(--yx-color-border-strong); }
-.yx-tim-dayrow:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: 1px; }

@@ -9,7 +9,7 @@ import { has, type ScopeUser, type Viewer } from '../access/scope';
 import { ApprovalsEngine, Notice, StepSpec } from '../workflow/approvals-engine.service';
 import { asDate, dateOf, factsOn, hrApprovers, monthRange, myEmployeeId } from '../time/time-core';
 import { addDays, daysBetween } from '../time/time-maths';
-import { ConfirmationDto, DeviceBatchDto, HrCorrectionDto, LateCorrectionDto } from './dto';
+import { ConfirmationDto, DeviceBatchDto, HrCorrectionDto, LateCorrectionDto, LopReversalDto } from './dto';
 import { PayKey, entitiesFor, payHolders, payViewer, requireEntity, requireSelf, systemAdmins, withPayScope } from './pay-access';
 
 // PAY-1.02 pay periods and the lock service, PAY-1.03 corrections into processed payroll, PAY-1.04 late device batches
@@ -447,6 +447,43 @@ export class PayPeriodsService implements OnModuleInit {
       if (!payroll.length) throw new BadRequestException('No one can approve it for payroll. Give someone "payroll.correction.approve" for this legal entity.');
       const steps: StepSpec[] = [{ name: 'Payroll', approvers: [{ kind: 'users', userIds: payroll }], mode: 'any', remindAfterHours: 24 }];
       return this.createCorrection(tx, c, { employeeId: f.employeeId, name: f.name, personId: f.personId, entityId: f.legalEntityId, period: p, dto, source: 'hr', steps, fallback: [] }, notices);
+    });
+    await this.engine.send(ctx, notices);
+    return out;
+  }
+
+  /**
+   * Batch A item 8 (attendance-leave D15, answer 2315): HR's "Reverse loss of pay" from the payroll inputs page. One HR
+   * correction per day (the same rules as POST corrections: attendance.lock for the person's legal entity, never your own,
+   * someone with payroll.correction.approve decides, paid in the next regular run), all in one transaction: a bad day
+   * saves none. Only for a frozen or locked month; an open month is fixed by regularisation (409 MONTH_OPEN).
+   */
+  async reverseLop(ctx: TenantContext, user: ScopeUser, dto: LopReversalDto) {
+    const v = await this.viewer(user);
+    requireSelf(v);
+    const days = dto.days.map((d) => d.on);
+    if (new Set(days).size !== days.length) throw new BadRequestException('Each day can be listed once.');
+    if (new Set(days.map((d) => d.slice(0, 7))).size > 1) throw new BadRequestException('Pick days of one month at a time.');
+    const notices: Notice[] = [];
+    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const ids: string[] = [];
+      for (const d of [...dto.days].sort((a, b) => a.on.localeCompare(b.on))) {
+        const f = await factsOn(tx, org, dto.employeeId, d.on);
+        if (!f) throw new NotFoundException('Not found');
+        await requireEntity(tx, c, v, 'attendance.lock', f.legalEntityId);
+        if (f.userId === v.userId) throw new ForbiddenException('Ask another HR admin to reverse loss of pay for yourself.');
+        const p = await this.periodOn(tx, org, f.legalEntityId, d.on);
+        if (!p || p.stage === 'open') throw new ConflictException({ statusCode: 409, code: 'MONTH_OPEN', message: `${monthText(d.on.slice(0, 7))} is still open. Fix the days in regularisation instead.` });
+        const today = todayIst();
+        const payroll = (await payHolders(tx, org, 'payroll.correction.approve', f.legalEntityId, today)).filter((u) => u !== v.userId);
+        if (!payroll.length) throw new BadRequestException('No one can approve it for payroll. Give someone "payroll.correction.approve" for this legal entity.');
+        const steps: StepSpec[] = [{ name: 'Payroll', approvers: [{ kind: 'users', userIds: payroll }], mode: 'any', remindAfterHours: 24 }];
+        const one = await this.createCorrection(tx, c, { employeeId: f.employeeId, name: f.name, personId: f.personId, entityId: f.legalEntityId, period: p, dto: { on: d.on, kind: 'attendance', shouldBe: d.shouldBe, reason: dto.reason }, source: 'hr', steps, fallback: [] }, notices);
+        ids.push(one.id);
+      }
+      await audit(tx, c, 'payroll.lop_reversal.submitted', 'employee', dto.employeeId, { days: dto.days, corrections: ids });
+      return { ids, count: ids.length, status: 'pending' };
     });
     await this.engine.send(ctx, notices);
     return out;

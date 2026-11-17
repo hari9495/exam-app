@@ -1,5 +1,6 @@
 // Batch A item 5 (attendance-leave A1): my month as a list (a row per day with a worked-time bar and "late by") and as a
 // table (first in, last out, worked, late by), beside the calendar. A day opens the same day panel (A2). Kit parts only.
+import { RowButton } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
 import { Meter } from '../../components/feedback';
 import { DataTable, type TableColumn } from '../../components/table';
@@ -31,7 +32,7 @@ export function AttendanceDayList({ rows, onOpen }: { rows: DayViewRow[]; onOpen
     <ul className="yx-tim-list" aria-label="Days this month">
       {shown.map((r) => (
         <li key={r.on}>
-          <button type="button" className="yx-tim-dayrow" onClick={() => onOpen(r.on)} aria-label={`${day(r.on)}: ${DAY_CODE_LABEL[r.code]}`}>
+          <RowButton onClick={() => onOpen(r.on)} aria-label={`${day(r.on)}: ${DAY_CODE_LABEL[r.code]}`}>
             <span className="yx-tim-list__main">
               <strong>
                 {weekday(r.on)} {day(r.on)}
@@ -43,7 +44,7 @@ export function AttendanceDayList({ rows, onOpen }: { rows: DayViewRow[]; onOpen
               {r.lateMin ? <span className="yx-tim-muted">{`Late by ${fmtDuration(r.lateMin)}`}</span> : null}
               <Badge tone={TONE[r.code] ?? 'neutral'}>{DAY_CODE_LABEL[r.code]}</Badge>
             </span>
-          </button>
+          </RowButton>
         </li>
       ))}
     </ul>

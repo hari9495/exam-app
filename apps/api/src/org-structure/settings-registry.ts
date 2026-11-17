@@ -563,6 +563,10 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // back for changes instead of turning it down.
   'attendance.on_duty.ahead_days': { label: 'On duty can be asked this many days ahead', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '7', '15', '30', '60', '90'], default: '30' },
   'attendance.on_duty.back_days': { label: 'On duty can be asked this many days back', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '3', '7', '15', '30', '60'], default: '60' },
+  // Batch A item 7 (attendance-leave B4, answer 2310): hourly permission, a few hours off on a working day that never uses
+  // leave. How many a month and how long each may be; past either limit the request is refused with the reason.
+  'attendance.permission.monthly_limit': { label: 'Hourly permissions a month', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '1', '2', '3', '4', '5', '6'], default: '2' },
+  'attendance.permission.max_minutes': { label: 'Longest hourly permission (minutes)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['30', '60', '90', '120', '180', '240'], default: '120' },
   'attendance.on_duty.send_back': { label: 'Managers can send on duty back for changes', scopes: ['tenant', 'legal_entity'], dated: false, values: ['on', 'off'], default: 'on' },
   // Extra · My attendance today, ChoseWfh (30 Oct 2026): someone outside the office may clock in as work from home on the
   // day; the request goes to their manager as usual, and if it is not approved those punches no longer count.

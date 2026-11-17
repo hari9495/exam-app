@@ -277,6 +277,31 @@ export const TIME_REGISTRY_SAMPLE: Record<string, RegistryDef> = {
     ],
     "default": "on"
   },
+  "attendance.permission.monthly_limit": {
+    "label": "Hourly permissions a month",
+    "values": [
+      "0",
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6"
+    ],
+    "default": "2"
+  },
+  "attendance.permission.max_minutes": {
+    "label": "Longest hourly permission (minutes)",
+    "values": [
+      "30",
+      "60",
+      "90",
+      "120",
+      "180",
+      "240"
+    ],
+    "default": "120"
+  },
   "leave.notice_days.default": {
     "label": "Apply leave at least this many days ahead (types without their own number)",
     "values": [

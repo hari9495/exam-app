@@ -20,8 +20,9 @@ export class DayEngine {
     const leave = await leaveDays(tx, org, employeeId, from, to);
     const punches = await tx.punch.findMany({ where: { organizationId: org, employeeId, accepted: true, workOn: { gte: asDate(from), lte: asDate(to) } }, orderBy: { punchedAt: 'asc' } });
     const approved = await tx.attendanceRequest.findMany({ where: { organizationId: org, employeeId, status: 'approved', workOn: { gte: asDate(from), lte: asDate(to) } }, orderBy: { decidedAt: 'asc' } });
-    const fixes = approved.filter((x) => x.kind !== 'wfh' && x.kind !== 'on_duty');
-    const onDuty = approved.filter((x) => x.kind === 'on_duty');
+    const fixes = approved.filter((x) => x.kind !== 'wfh' && x.kind !== 'on_duty' && x.kind !== 'permission');
+    // Batch A item 7 (B4): an approved hourly permission stretches the day like part-day on duty, so it stays present.
+    const onDuty = approved.filter((x) => x.kind === 'on_duty' || x.kind === 'permission');
     const wfh = new Set(approved.filter((x) => x.kind === 'wfh').map((x) => x.workOn.toISOString().slice(0, 10)));
     // ChoseWfh: a work-from-home day clocked in from outside and then not approved (or withdrawn): its web punches taken
     // under it ("field" at a restricted place) do not count. Punches are never changed (append-only), the day is.
