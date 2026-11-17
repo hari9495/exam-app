@@ -159,4 +159,34 @@ describe('Time batch A', () => {
       expect((await api('peer', 'get', '/time/me/leave/history').expect(200)).body.total).toBe(1);
     });
   });
+
+  // ------------------------------------------------------------------ items 5 and 18 (A1, A2, A3): list, table, requests
+  describe('A1-A3 my month as a list or table, and my requests', () => {
+    const month = today.slice(0, 7);
+    beforeAll(async () => {
+      await inA(async (tx) => {
+        const o = { organizationId: org.A.id };
+        await tx.attendanceDay.create({ data: { ...o, employeeId: ids.empEmp, workOn: new Date(`${month}-01T00:00:00Z`), mode: 'punch', status: 'present', firstIn: new Date(`${month}-01T04:20:00Z`), lastOut: new Date(`${month}-01T12:30:00Z`), workedMinutes: 490, lateMinutes: 20 } });
+        await tx.attendanceRequest.createMany({ data: [
+          { ...o, employeeId: ids.empEmp, workOn: new Date(`${month}-01T00:00:00Z`), kind: 'missed_out', outMinute: 1090, reason: 'Forgot to clock out', status: 'pending' },
+          { ...o, employeeId: ids.empEmp, workOn: new Date(`${month}-01T00:00:00Z`), kind: 'wfh', reason: 'Plumber visit', status: 'approved' },
+          { ...o, employeeId: ids.peerEmp, workOn: new Date(`${month}-01T00:00:00Z`), kind: 'wfh', reason: 'Not mine', status: 'pending' },
+        ] });
+      });
+    });
+
+    it('the month gives each day its first in, last out, worked and late minutes, and my requests with their status', async () => {
+      const m = (await api('emp', 'get', `/time/me/attendance?month=${month}`).expect(200)).body;
+      expect(m.days.find((x: { on: string }) => x.on === `${month}-01`)).toMatchObject({ status: 'present', workedMinutes: 490, lateMinutes: 20, firstIn: expect.any(String), lastOut: expect.any(String) });
+      const reasons = m.requests.map((r: { reason: string; status: string }) => [r.reason, r.status]);
+      expect(reasons).toEqual(expect.arrayContaining([['Forgot to clock out', 'pending'], ['Plumber visit', 'approved']]));
+    });
+
+    it('negative: a colleague’s request is not mine; another company sees none; a bad month is refused', async () => {
+      const m = (await api('emp', 'get', `/time/me/attendance?month=${month}`).expect(200)).body;
+      expect(m.requests.map((r: { reason: string }) => r.reason)).not.toContain('Not mine');
+      expect((await api('empB', 'get', `/time/me/attendance?month=${month}`).expect(200)).body.requests).toEqual([]);
+      await api('emp', 'get', '/time/me/attendance?month=2026-13').expect(400);
+    });
+  });
 });

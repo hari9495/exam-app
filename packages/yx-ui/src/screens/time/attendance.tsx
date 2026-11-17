@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Bell, ChevronLeft, ChevronRight, Clock, Download, Lock, Snowflake } from 'lucide-react';
 import { DesktopFrame, PhoneFrame } from '../_kit/frames';
-import { Button, IconButton } from '../../components/button';
+import { Button, IconButton, SplitButton } from '../../components/button';
+import { MenuItem } from '../../components/menu';
+import { Segment } from '../../components/segment';
+import { AttendanceDayList, AttendanceDayTable, type DayViewRow } from './attendance-views-live';
 import { Badge, DayDate, type BadgeTone } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, ErrorState, InlineAlert, NoAccessState, Pagination, Skeleton } from '../../components/feedback';
@@ -2589,12 +2592,66 @@ function useLiveRequests(live: LiveMyAttendance) {
 }
 
 /** Me › Attendance, live: the attendance calendar design (Extra · Attendance calendar) on my month. */
+/** Batch A item 5 (A1): the month's days for the list and table, times in the person's zone. */
+function viewRows(days: PDay[], d: MyAttendance): DayViewRow[] {
+  const at = (iso: string | null | undefined) => (iso ? fmt12(hm(zoneTime(new Date(iso), d.zone).minute)) : null);
+  // shortcut: the bar uses today's shift length for every day (a day's own shift is not in the month data); a per-day shift if rosters vary a lot.
+  const shiftMin = d.shift.off ? null : d.shift.end > d.shift.start ? d.shift.end - d.shift.start : d.shift.end + 1440 - d.shift.start;
+  return days.map((x) => {
+    const on = isoOf(x.date);
+    const row = d.days.find((r) => r.on === on);
+    return { on, code: x.code, firstIn: at(row?.firstIn), lastOut: at(row?.lastOut), workedMin: row?.workedMinutes ?? null, shiftMin, lateMin: row?.lateMinutes ?? null, note: x.note };
+  });
+}
+
+const REQ_STATUS: Record<FixRow['status'], { label: string; tone: 'info' | 'success' | 'danger' | 'neutral' | 'warning' }> = {
+  pending: { label: 'Waiting for approval', tone: 'info' },
+  approved: { label: 'Approved', tone: 'success' },
+  rejected: { label: 'Not approved', tone: 'danger' },
+  withdrawn: { label: 'Withdrawn', tone: 'neutral' },
+  sent_back: { label: 'Sent back for changes', tone: 'warning' },
+  resent: { label: 'Changed and sent again', tone: 'neutral' },
+};
+
+/** Batch A item 18 (A3): this month's requests on their own tab, by status. */
+function MyRequestsTab({ rows, filter, onFilter, month, onView, onWithdraw, canView }: { rows: FixRow[]; filter: 'all' | 'waiting' | 'approved' | 'closed'; onFilter: (f: 'all' | 'waiting' | 'approved' | 'closed') => void; month: string; onView: (on: string) => void; onWithdraw: (r: FixRow) => void; canView: (r: FixRow) => boolean }) {
+  const shown = rows.filter((r) => (filter === 'all' ? true : filter === 'waiting' ? r.status === 'pending' || r.status === 'sent_back' : filter === 'approved' ? r.status === 'approved' : r.status === 'rejected' || r.status === 'withdrawn' || r.status === 'resent'));
+  return (
+    <div className="yx-tim-stack">
+      <Segment label="Show requests" value={filter} onChange={onFilter} options={[{ value: 'all', label: 'All' }, { value: 'waiting', label: 'Waiting' }, { value: 'approved', label: 'Approved' }, { value: 'closed', label: 'Not approved or withdrawn' }]} />
+      {shown.length === 0 ? (
+        <EmptyState compact title={rows.length ? 'No requests match this filter.' : `No requests in ${month}.`} description={rows.length ? 'Choose "All" to see every request.' : 'Regularisations, work from home and on duty you ask for show here.'} />
+      ) : (
+        <ul className="yx-tim-list" aria-label="My requests this month">
+          {[...shown].sort((a, b) => (a.on < b.on ? 1 : -1)).map((r) => (
+            <li key={r.id}>
+              <span className="yx-tim-list__main">
+                <strong>{shortIso(r.on)} · {requestWord(r)}{r.place ? ` at ${r.place}` : ''}</strong>
+                <span className="yx-tim-muted">{r.reason}</span>
+              </span>
+              <span className="yx-tim-row">
+                <Badge tone={REQ_STATUS[r.status].tone}>{REQ_STATUS[r.status].label}</Badge>
+                {canView(r) && <Button size="sm" onClick={() => onView(r.on)}>View</Button>}
+                {r.status === 'pending' && <Button size="sm" onClick={() => onWithdraw(r)}>Withdraw</Button>}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function LiveAttendanceCalendar({ live }: { live: LiveMyAttendance }) {
   const d = live.data;
   const ready = live.state === 'ready' && !!d;
   const say = useSay();
   const narrow = useNarrow();
   const [openOn, setOpenOn] = useState<string | null>(null);
+  // Batch A items 5 and 18 (A1, A3): the month as a calendar, list or table; my requests on their own tab.
+  const [view, setView] = useState<'calendar' | 'list' | 'table'>('calendar');
+  const [tab, setTab] = useState<'days' | 'requests'>('days');
+  const [reqFilter, setReqFilter] = useState<'all' | 'waiting' | 'approved' | 'closed'>('all');
   const reqs = useLiveRequests(live);
   const pendingFix = new Set((d?.requests ?? []).filter((r) => r.status === 'pending' && r.kind !== 'wfh' && r.kind !== 'on_duty').map((r) => r.on));
   const wfhDays = new Set((d?.requests ?? []).filter((r) => r.status === 'approved' && r.kind === 'wfh').map((r) => r.on));
@@ -2624,7 +2681,22 @@ function LiveAttendanceCalendar({ live }: { live: LiveMyAttendance }) {
             <div className="yx-tim-row">
               {live.todayHref && <Button asChild><a href={live.todayHref}>Clock in or out</a></Button>}
               <Button icon={Download} onClick={() => exportMonth(d.employee.name, label, days)}>Export month</Button>
-              {reqs.first && (live.onWfh || live.onOnDuty || live.onOtPlan) && <Button onClick={() => reqs.open(reqs.first!)}>New request</Button>}
+              {reqs.first && (live.onWfh || live.onOnDuty || live.onOtPlan) && (
+                <SplitButton
+                  onClick={() => reqs.open(reqs.first!)}
+                  menuLabel="Choose a request"
+                  menu={
+                    <>
+                      {d.mode === 'punch' && <MenuItem onSelect={() => reqs.open('regularise')}>Regularise a day</MenuItem>}
+                      {live.onWfh && <MenuItem onSelect={() => reqs.open('wfh')}>Work from home</MenuItem>}
+                      {live.onOnDuty && <MenuItem onSelect={() => reqs.open('on_duty')}>On duty</MenuItem>}
+                      {live.onOtPlan && <MenuItem onSelect={() => reqs.open('ot')}>Overtime ahead</MenuItem>}
+                    </>
+                  }
+                >
+                  New request
+                </SplitButton>
+              )}
               {d.mode === 'punch' && <Button variant="primary" onClick={() => reqs.open('regularise')}>Regularise a day</Button>}
             </div>
           ) : undefined
@@ -2640,9 +2712,25 @@ function LiveAttendanceCalendar({ live }: { live: LiveMyAttendance }) {
       {ready && <FixAlert days={toFix} onFix={(on) => reqs.open('regularise', on)} />}
       <LiveStates state={live.state} onRetry={live.onRetry} what="your attendance">
         {d && (
+          <Tabs value={tab} onValueChange={(v) => setTab(v as 'days' | 'requests')}>
+            <TabsList aria-label="My attendance">
+              <TabsTrigger value="days">Days</TabsTrigger>
+              <TabsTrigger value="requests">{`Requests (${d.requests.filter((r) => r.on.startsWith(live.month)).length})`}</TabsTrigger>
+            </TabsList>
+            <TabsContent value="requests">
+              <MyRequestsTab rows={d.requests.filter((r) => r.on.startsWith(live.month))} filter={reqFilter} onFilter={setReqFilter} month={label} onView={(on) => { setTab('days'); setOpenOn(on); }} onWithdraw={reqs.withdraw} canView={(r) => r.kind !== 'wfh' && r.kind !== 'on_duty' && r.on.startsWith(live.month)} />
+            </TabsContent>
+            <TabsContent value="days">
           <div className="yx-tim-grid">
-            <div data-span="8">
-              <AttendanceMonth month={isoDay(`${live.month}-01`)} days={days} compact={narrow} selected={open?.date} onDayClick={(x) => setOpenOn(isoOf(x.date))} />
+            <div data-span="8" className="yx-tim-stack">
+              <Segment label="Show the month as" value={view} onChange={setView} options={[{ value: 'calendar', label: 'Calendar' }, { value: 'list', label: 'List' }, { value: 'table', label: 'Table' }]} />
+              {view === 'calendar' ? (
+                <AttendanceMonth month={isoDay(`${live.month}-01`)} days={days} compact={narrow} selected={open?.date} onDayClick={(x) => setOpenOn(isoOf(x.date))} />
+              ) : view === 'list' ? (
+                <AttendanceDayList rows={viewRows(days, d)} onOpen={setOpenOn} />
+              ) : (
+                <AttendanceDayTable rows={viewRows(days, d)} onOpen={setOpenOn} />
+              )}
             </div>
             <div data-span="4" className="yx-tim-stack">
               <Card title={`${label} totals`}>
@@ -2679,6 +2767,8 @@ function LiveAttendanceCalendar({ live }: { live: LiveMyAttendance }) {
               {live.night && <NightWork night={live.night} live={live} />}
             </div>
           </div>
+            </TabsContent>
+          </Tabs>
         )}
       </LiveStates>
       <Drawer open={!!open && !!d} onOpenChange={(o) => !o && setOpenOn(null)} title={open ? <DayDate date={open.date} /> : ''} subtitle="Your day card" size="lg">
