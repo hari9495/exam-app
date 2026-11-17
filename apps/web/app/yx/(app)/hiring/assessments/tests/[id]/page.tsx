@@ -38,6 +38,8 @@ export default function YxTestBuilderPage() {
         onRequestApproval: async () => void (await write('POST', `${t}/approval/request`)),
         onApprove: async () => void (await write('POST', `${t}/approval/approve`)),
         onPublish: async () => void (await write('POST', `/exams/${id}/publish`)),
+        // AS-6 part 2 (answer 2272): an AI-allowed test.
+        onSetAiAllowed: async (allowed) => void (await write('PUT', `${t}/ai-allowed`, { allowed })),
         // Answer 2267: proctors (the monitoring socket needs exam:manage) open the test's live console.
         onLiveConsole: perms.has('exam:manage' as never) ? () => router.push(`${BANK_BASE}/tests/${id}/live`) : undefined,
       }}

@@ -101,6 +101,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // AS-6 (PRC-19, answer 2019): marking and fairness.
   'asmt.blind_marking': { label: 'Tests: markers do not see who wrote the answer', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'asmt.second_marker': { label: 'Tests: a second marker marks each written answer blind', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
+  // AS-6 part 2 (answer 2272): questions a candidate may ask the approved assistant in one AI-allowed attempt.
+  'asmt.assistant_turns': { label: 'Tests: questions a candidate may ask the assistant in an AI-allowed test', scopes: ['tenant'], dated: false, values: ['10', '20', '40', '60'], default: '20' },
   'asmt.moderation_gap': { label: 'Tests: two marks further apart than this share of the marks go to a moderator (%)', scopes: ['tenant'], dated: false, values: ['10', '20', '25', '33', '50'], default: '25', labels: { '10': '10 %', '20': '20 %', '25': '25 %', '33': '33 %', '50': '50 %' } },
   'asmt.fairness_min_group': { label: 'Tests: fairness checks show a group only from this many answers', scopes: ['tenant'], dated: false, values: ['5', '10', '20', '30', '50', '100'], default: '30' },
   'asmt.item_stats.provisional_answers': { label: 'Item statistics are provisional under this many answers', scopes: ['tenant'], dated: false, values: ['50', '100', '200', '500'], default: '200' },

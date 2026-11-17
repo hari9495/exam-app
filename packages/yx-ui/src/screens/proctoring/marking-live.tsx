@@ -39,6 +39,8 @@ export interface MarkingItem {
   minor: boolean;
   suggestion: { marks: number; reason: string | null } | null;
   attemptReady: boolean;
+  /** AS-6 part 2 (answer 2272): an AI-allowed test's assistant log for this question (null: not an AI-allowed test). */
+  assistant?: { turns: { role: 'candidate' | 'assistant'; body: string; at: string }[]; otherTurns: number } | null;
 }
 
 export interface LiveEvaluator {
@@ -146,6 +148,27 @@ export function LiveEvaluatorScreen({ live }: { live: LiveEvaluator }) {
             <Card title={`Answer · ${(it.answer.text ?? '').trim().split(/\s+/).filter(Boolean).length} words`}>
               <p className="yx-prc-p">{it.answer.text || 'No answer was written.'}</p>
             </Card>
+          )}
+          {it.assistant && (
+            <>
+              <InlineAlert tone="info">AI-allowed test. Using the approved assistant is not an integrity issue here. Score prompting and checking from the log.</InlineAlert>
+              <Card title={`Assistant log for this question · ${it.assistant.turns.filter((t) => t.role === 'candidate').length} ${it.assistant.turns.filter((t) => t.role === 'candidate').length === 1 ? 'turn' : 'turns'}`} actions={<AiBadge />}>
+                {it.assistant.turns.length ? (
+                  <ul className="yx-prc-plain" aria-label="Assistant log">
+                    {it.assistant.turns.map((t, i) => (
+                      <li key={i}>
+                        <span>
+                          <strong>{t.role === 'candidate' ? 'Candidate:' : 'Assistant:'}</strong> {t.body}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="yx-prc-muted">The candidate did not use the assistant on this question.</p>
+                )}
+                {it.assistant.otherTurns > 0 && <p className="yx-prc-muted yx-prc-small">{`${it.assistant.otherTurns} more ${it.assistant.otherTurns === 1 ? 'question' : 'questions'} to the assistant on other questions of this test.`}</p>}
+              </Card>
+            </>
           )}
         </section>
         <aside className="yx-prc-stack" aria-label="Your mark">

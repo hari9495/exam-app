@@ -1,5 +1,5 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, UseGuards } from '@nestjs/common';
-import { IsIn } from 'class-validator';
+import { IsBoolean, IsIn } from 'class-validator';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { OwnSessionChangesGuard } from '../../auth/own-session.guard';
@@ -9,6 +9,11 @@ import { PermissionsGuard } from '../../rbac/permissions.guard';
 import { RequirePermissions } from '../../rbac/permissions.decorator';
 import { PROCTOR_MODES, type ProctorMode } from '../asmt-rules';
 import { AsmtTestsService } from './asmt-tests.service';
+
+export class AiAllowedDto {
+  @IsBoolean()
+  allowed!: boolean;
+}
 
 export class ProctoringModeDto {
   @IsIn(PROCTOR_MODES, { message: 'Choose Open, AI-only or Record & review.' })
@@ -39,6 +44,13 @@ export class AsmtTestsController {
   @RequirePermissions('exam:manage')
   setMode(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ProctoringModeDto) {
     return this.tests.setMode(ctx, userId, id, dto.mode);
+  }
+
+  // AS-6 part 2 (answer 2272): an AI-allowed test.
+  @Put(':id/ai-allowed')
+  @RequirePermissions('exam:manage')
+  setAiAllowed(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AiAllowedDto) {
+    return this.tests.setAiAllowed(ctx, userId, id, dto.allowed);
   }
 
   @Post(':id/approval/request')

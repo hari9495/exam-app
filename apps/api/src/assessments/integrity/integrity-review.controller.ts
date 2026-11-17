@@ -139,6 +139,14 @@ export class IntegrityReviewController {
     return this.service.incidentFrame(ctx, userId, id, eventId, kind);
   }
 
+  // Answer 2277: a proctor opening a test's live console is recorded once per visit.
+  @Post('live/:examId/opened')
+  @HttpCode(204)
+  @RequireAnyPermission('exam:manage', 'asmt.proctor')
+  liveOpened(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('examId', ParseUUIDPipe) examId: string) {
+    return this.service.liveOpened(ctx, userId, examId);
+  }
+
   // Answer 2268: the latest camera frame of each running attempt, for the live console (proctors).
   @Get('live/:examId/frames')
   @RequireAnyPermission('exam:manage', 'asmt.proctor')

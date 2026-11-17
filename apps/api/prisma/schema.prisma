@@ -793,6 +793,8 @@ model Exam {
   id                            String        @id @default(uuid()) @db.Uuid
   organizationId                String        @map("organization_id") @db.Uuid
   title                         String        @db.VarChar(1000)
+  /// AS-6 part 2 (answer 2272): candidates may use the approved assistant in the runner; every message is logged.
+  aiAllowed                     Boolean       @default(false) @map("ai_allowed")
   instructions                  String?       @db.Text
   status                        String        @default("draft") @db.VarChar(1000)
   durationMinutes               Int           @default(60) @map("duration_minutes")
@@ -1270,6 +1272,24 @@ model AsmtErasureRequest {
 
   @@index([organizationId])
   @@map("asmt_erasure_requests")
+}
+
+/// AS-6 part 2 (answer 2272): the assistant log of an AI-allowed test, both ways, on the attempt's record. The runtime
+/// may not update it (REVOKE); the markers read it with the answer.
+model AsmtAssistantMessage {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Filled by the database from the attempt (asmt_org_from_attempt).
+  organizationId String?  @map("organization_id") @db.Uuid
+  attemptId      String   @map("attempt_id") @db.Uuid
+  questionId     String?  @map("question_id") @db.Uuid
+  /// candidate | assistant
+  role           String   @db.VarChar(10)
+  body           String   @db.Text
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([attemptId, createdAt], map: "asmt_assistant_messages_attempt_idx")
+  @@index([organizationId])
+  @@map("asmt_assistant_messages")
 }
 
 model CodeAnswerReview {

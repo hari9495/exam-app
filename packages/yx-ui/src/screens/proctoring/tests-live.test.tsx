@@ -126,4 +126,20 @@ describe('Settings 6.5 collections that need a second approver (answer 2123)', (
     wrap(<TestBuilderScreen live={liveBuilder({ test: { ...BUILDER_TEST, status: 'published' } })} />);
     expect(screen.queryByRole('button', { name: 'Live console' })).toBeNull();
   });
+
+  it('2272: the proctoring step turns an AI-allowed test on; negative: a locked test refuses and sends nothing', async () => {
+    const onSetAiAllowed = vi.fn().mockResolvedValue(undefined);
+    const { unmount } = wrap(<TestBuilderScreen live={liveBuilder({ onSetAiAllowed })} />);
+    await toRadio(/^Open/);
+    await ue.click(screen.getByRole('switch', { name: /AI-allowed test/ }));
+    expect(onSetAiAllowed).toHaveBeenCalledWith(true);
+    unmount();
+    const locked = vi.fn();
+    wrap(<TestBuilderScreen live={liveBuilder({ test: { ...BUILDER_TEST, editable: false, aiAllowed: true }, onSetAiAllowed: locked })} />);
+    await toRadio(/^Open/);
+    expect(screen.getByRole('switch', { name: /AI-allowed test/ })).toBeChecked();
+    await ue.click(screen.getByRole('switch', { name: /AI-allowed test/ }));
+    expect(locked).not.toHaveBeenCalled();
+    expect(await screen.findAllByText(/This test is locked/)).not.toHaveLength(0);
+  });
 });

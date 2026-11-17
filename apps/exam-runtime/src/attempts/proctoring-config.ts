@@ -11,7 +11,15 @@ export interface ProctoringConfigSource {
   faceVerificationEnabled: boolean;
   /** allow_unenrolled | retry_then_allow | require_enrolment */
   faceEnrolmentPolicy: string;
+  /** AS-6 part 2 (answer 2272): an AI-allowed test. */
+  aiAllowed?: boolean;
 }
+
+/**
+ * AS-6 part 2 (answer 2272): the AI-assistance signals an AI-allowed test turns off. Copying the approved assistant's
+ * answer into the editor is allowed there; leaving the test for another tool is still a tab or window switch.
+ */
+export const AI_ASSISTANCE_SIGNALS = ['copy_paste', 'editor_paste'] as const;
 
 export interface ExamProctoringConfig {
   enableAntiCheating: boolean;
@@ -96,7 +104,7 @@ export function resolveProctoringConfig(
     // Anything other than an explicit 'warn' enforces, so a corrupt row fails safe.
     enforcement: (bypassed || exam.proctoringEnforcement === 'warn') ? 'warn' : 'block',
     strikeLimit: Math.max(1, exam.proctoringStrikeLimit),
-    disabledSignals: parseDisabledSignals(exam.disabledProctoringSignalsJson),
+    disabledSignals: [...new Set([...parseDisabledSignals(exam.disabledProctoringSignalsJson), ...(exam.aiAllowed ? AI_ASSISTANCE_SIGNALS : [])])],
     // Never touched by a bypass -- a bypass narrows what is punished, never what is watched.
     screenCaptureEnabled: exam.screenCaptureEnabled,
     // Same rule: a bypass never relaxes the Safe Exam Browser requirement.

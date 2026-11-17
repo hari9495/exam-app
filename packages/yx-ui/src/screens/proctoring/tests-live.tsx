@@ -11,7 +11,7 @@ import { EmptyState, ErrorState, InlineAlert, Meter } from '../../components/fee
 import { ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { FormField } from '../../components/field';
 import { NumberField, TextField } from '../../components/inputs';
-import { RadioGroup } from '../../components/choice';
+import { RadioGroup, Switch } from '../../components/choice';
 import { REVIEW_ID, Stepper } from '../../components/stepper';
 import { BarChart } from '../../components/charts';
 import { formatDate } from '../../lib/format';
@@ -56,6 +56,8 @@ export interface BuilderTestView {
   passMark: number;
   expectedCandidates: number | null;
   proctoringMode: ProctorMode | 'custom';
+  /** AS-6 part 2 (answer 2272): candidates may use the approved assistant; every message is logged. */
+  aiAllowed?: boolean;
   sections: TestSection[];
   checks: TestCheck[];
   editable: boolean;
@@ -100,6 +102,8 @@ export interface LiveTestBuilder {
   onRequestApproval: () => Promise<void>;
   onApprove: () => Promise<void>;
   onPublish: () => Promise<void>;
+  /** AS-6 part 2 (answer 2272): the AI-allowed switch (PRC-12). */
+  onSetAiAllowed?: (allowed: boolean) => Promise<void>;
   /** Answer 2267: opens the live console (PRC-13) of a published test; absent for people who cannot proctor. */
   onLiveConsole?: () => void;
 }
@@ -407,6 +411,17 @@ export function LiveTestBuilderScreen({ live }: { live: LiveTestBuilder }) {
             }}
             options={(['open', 'ai', 'record'] as const).map((m) => ({ value: m, label: MODE_WORDS[m].label, description: MODE_WORDS[m].description }))}
           />
+          {live.onSetAiAllowed && (
+            <Switch
+              label="AI-allowed test"
+              description="Candidates may use the approved assistant inside the runner; every prompt is logged. AI-assistance flags are turned off for this test."
+              checked={Boolean(t.aiAllowed)}
+              onChange={(on) => {
+                if (locked) return say('This test is locked. Copy it to change proctoring.');
+                void act('ai', () => live.onSetAiAllowed!(on), on ? 'AI-allowed test: the assistant is on' : 'The assistant is off')
+              }}
+            />
+          )}
           <p className="yx-prc-muted yx-prc-small">Live proctoring by a person comes with certification tests.</p>
         </div>
       ),

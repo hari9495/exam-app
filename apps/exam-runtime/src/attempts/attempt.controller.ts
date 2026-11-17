@@ -9,9 +9,10 @@ import { DeliveryService } from './delivery.service';
 import { ReuseDto } from './dto/reuse.dto';
 import { AccommodationService } from './accommodation.service';
 import { PrivacyService } from './privacy.service';
+import { AssistantService } from './assistant.service';
 import { AccommodationDto } from './dto/accommodation.dto';
 import { resolveClientIp } from '../network/resolve-client-ip';
-import { AnswerDto, AppealDto, ProctorReplyDto, SurveyDto } from './dto/answer.dto';
+import { AnswerDto, AppealDto, AssistantAskDto, ProctorReplyDto, SurveyDto } from './dto/answer.dto';
 import { StartAttemptDto } from './dto/start-attempt.dto';
 import { ReportProctoringEventDto } from './dto/report-proctoring-event.dto';
 import { ClientErrorDto } from './dto/client-error.dto';
@@ -33,6 +34,7 @@ export class AttemptController {
     private readonly delivery: DeliveryService,
     private readonly accommodations: AccommodationService,
     private readonly privacy: PrivacyService,
+    private readonly assistant: AssistantService,
   ) {}
 
   /** AS-3 (PRC-21): this candidate's tests at this company. */
@@ -60,6 +62,19 @@ export class AttemptController {
   }
 
   /** AS-4b (answer 2011, PRC-23): the candidate's requests for help and what was approved for them. */
+  // AS-6 part 2 (answer 2272): the approved assistant of an AI-allowed test; every message is logged.
+  @Get('assistant')
+  assistantView(@CurrentCandidate() candidate: CandidateSession) {
+    return this.assistant.view(candidate);
+  }
+
+  @Post('assistant')
+  @HttpCode(200)
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  assistantAsk(@CurrentCandidate() candidate: CandidateSession, @Body() dto: AssistantAskDto) {
+    return this.assistant.ask(candidate, dto.message, dto.questionId ?? null);
+  }
+
   // AS-5 part 3 (PRC-28): the privacy centre: what the company keeps, a copy, and an erasure request.
   @Get('privacy')
   privacyView(@CurrentCandidate() candidate: CandidateSession) {

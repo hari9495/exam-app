@@ -527,7 +527,7 @@ describe('AttemptService', () => {
         answers: [{ questionId: 'q1', selectedOptionIds: ['opt-a'], isMarkedForReview: false, answerFiles: [] }],
         messages: [],
         feedback: null,
-        runner: { calculator: 'none', breaksAllowed: undefined, breaksUsed: undefined, breakMinutes: undefined, breakEndsAt: null, offlineMinutes: 5, timeCreditCapMinutes: 10, offlineCreditSeconds: NaN, surveyDone: false },
+        runner: { calculator: 'none', breaksAllowed: undefined, breaksUsed: undefined, breakMinutes: undefined, breakEndsAt: null, offlineMinutes: 5, timeCreditCapMinutes: 10, offlineCreditSeconds: NaN, surveyDone: false, aiAllowed: false },
         pauseMessage: null,
         faceRecheckTriesLeft: null,
         faceWarningAt: null,
