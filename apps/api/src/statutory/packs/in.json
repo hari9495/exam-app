@@ -1315,6 +1315,35 @@
       ]
     },
     {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-OD",
+      "version": "2026-v1",
+      "validFrom": "2026-04-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Odisha repealed its professional tax from 1 Apr 2026 (Odisha Ordinance 02 of 2026, promulgated 21 Apr 2026); dues to March 2026 stay payable (that schedule is not loaded, question 2381). Secondary only: https://www.scconline.com/blog/post/2026/04/23/odisha-repeals-levy-of-professional-tax-effective-from-1-april-2026/ . TODO: CA checklist item 20 (was the ordinance replaced by an Act).",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "0",
+        "slabs": []
+      },
+      "golden": [
+        {
+          "name": "Odisha from April 2026: no professional tax",
+          "fn": "pt",
+          "input": {
+            "ptWage": "200000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "0"
+          }
+        }
+      ]
+    },
+    {
       "statute": "IN.LWF",
       "jurisdiction": "IN-KA",
       "version": "2024-v1",

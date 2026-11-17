@@ -58,6 +58,13 @@ describe('batch H: state PT rule data', () => {
     expect(noPt(sets, 'IN-HR', '2025-03-31')).toBe(false);
   });
 
+  it('H4: Odisha charges no PT from 1 Apr 2026; before that there is no rule loaded (question 2381)', () => {
+    expect(noPt(sets, 'IN-OD', '2026-04-01')).toBe(true);
+    expect(noPt(sets, 'IN-OD', '2026-03-31')).toBe(false);
+    expect(inForce(sets, 'IN.PT', ['IN-OD'], '2026-03-31')).toBeNull();
+    expect(one('IN.PT', 'IN-OD').source).toMatch(/CA checklist item 20/);
+  });
+
   it('H3: West Bengal switches schedule on 1 Oct 2026 (the old one ends 30 Sep); a 25,000 wage is 130 in September, 100 in October', () => {
     const sep = inForce(sets, 'IN.PT', ['IN-WB'], '2026-09-30')!;
     const oct = inForce(sets, 'IN.PT', ['IN-WB'], '2026-10-01')!;
