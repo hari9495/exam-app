@@ -226,3 +226,15 @@ A3 "Not ready for payroll" on People, E2 HR declares on behalf) follows in batch
   - software licence seats (M);
   - ticket and change costs rolling into budgets (M).
 - **GLPI 9:** notification templates in more languages, with the Hindi/locale work (Admin C1).
+
+## Founder decision (17 Nov 2026, "ok for all"): earlier gap order folded in
+
+Four items the founder had ranked first earlier move from tier 2 into **batch A**:
+- attendance-leave D12: partial cancel and extend;
+- D10: editable balance grid;
+- A9: office or remote on each punch;
+- B6: bulk shift, weekly-off and penalty changes.
+
+Batch A is now: 2, 5, 18, 7, 8, 9, C4, D12, D10, A9, B6. The order stays A → B → H → C → D → E → F → G. This
+replaces the 17 Nov "gap order" in `keka-ideas-map.md`; every item from it is now placed (calendar sync is tier 3,
+backups tier 2).
