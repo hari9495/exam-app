@@ -55,13 +55,15 @@ const months = (from: string, to: string) => {
 };
 
 /** Approved payslips whose rule versions are no longer the ones in force for their month, by statute and new version. */
-export function staleRuleUses(slips: { employeeId: string; month: string; ruleVersions: Record<string, string> }[], rules: readonly RuleSet[]) {
+export function staleRuleUses(slips: { employeeId: string; month: string; ruleVersions: Record<string, string>; on?: string }[], rules: readonly RuleSet[]) {
   const found = new Map<string, { statute: string; jur: string; version: string; periods: Set<string>; employees: Set<string> }>();
   for (const s of slips)
     for (const [k, used] of Object.entries(s.ruleVersions ?? {})) {
       const [statute, jur] = k.split('|');
       if (NOT_PAY.includes(statute)) continue;
-      const now = inForce(rules, statute, [jur], monthRange(s.month).to);
+      // The rule in force on the payslip's own last day (a weekly part of a month ends before the month does): a rule from
+      // 17 Sep never touches a part that ended on 14 Sep.
+      const now = inForce(rules, statute, [jur], s.on ?? monthRange(s.month).to);
       if (!now || now.version === used) continue;
       const key = `${statute}|${jur}|${now.version}`;
       const x = found.get(key) ?? { statute, jur, version: now.version, periods: new Set<string>(), employees: new Set<string>() };
@@ -509,10 +511,11 @@ export class ArrearsService {
     for (const entity of entityIds) {
       const slips = await tx.payslip.findMany({
         where: { organizationId: org, legalEntityId: entity, status: 'approved', runType: 'regular', periodStart: { gte: since } },
-        select: { employeeId: true, periodStart: true, ruleVersions: true },
+        select: { employeeId: true, periodStart: true, ruleVersions: true, runId: true },
       });
+      const ends = new Map((await tx.payrollRun.findMany({ where: { organizationId: org, id: { in: [...new Set(slips.map((s) => s.runId).filter((x): x is string => !!x))] } }, select: { id: true, periodEnd: true } })).map((r) => [r.id, dateOf(r.periodEnd)]));
       for (const x of staleRuleUses(
-        slips.map((s) => ({ employeeId: s.employeeId, month: dateOf(s.periodStart).slice(0, 7), ruleVersions: (s.ruleVersions as Record<string, string>) ?? {} })),
+        slips.map((s) => ({ employeeId: s.employeeId, month: dateOf(s.periodStart).slice(0, 7), ruleVersions: (s.ruleVersions as Record<string, string>) ?? {}, on: s.runId ? ends.get(s.runId) : undefined })),
         rules,
       )) {
         const data = { periods: x.periods, employees: x.employees, employeeCount: x.employees.length };

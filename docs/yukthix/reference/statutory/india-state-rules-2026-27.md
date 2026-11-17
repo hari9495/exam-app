@@ -227,8 +227,8 @@ All new sets go in `apps/api/src/statutory/packs/in.json` (IN.PT / IN.LWF) and `
 
 | # | Change | Size |
 |---|---|---|
-| H1 | **PF: new IN.PF version from 2026-09-17** with wageCeiling / epsCeiling 25,000 (EDLI and admin ceilings after CA item 46); goldens at 20,000 and 30,000 basic. Check every place that hard-codes 15,000 (`grep -rn 15000 apps/api/src/payroll`) | M |
-| H2 | **TN PT fix**: `deductMonths` [8, 1]; due date Aug → 30 Sep (and Jan → CA item 4); new version, keep the old one dated | S |
+| H1 | **PF: new IN.PF version from 2026-09-17** with wageCeiling / epsCeiling 25,000 (EDLI and admin ceilings after CA item 46); goldens at 20,000 and 30,000 basic. Check every place that hard-codes 15,000 (`grep -rn 15000 apps/api/src/payroll`) | M **Done 17 Nov 2026** (branch `fix/yukthix-pf-ceiling-tn-pt`): IN.PF 2026-v2 from 2026-09-17, wage and EPS ceilings 25,000, EDLI and admin as before until item 46, `verify: true`; migration `202617z0000401_pf_ceiling_tn_pt`; arrears proposals raised for months already paid on the old ceiling (checked by each payslip's own period end). |
+| H2 | **TN PT fix**: `deductMonths` [8, 1]; due date Aug → 30 Sep (and Jan → CA item 4); new version, keep the old one dated | S **Done 17 Nov 2026**: IN.PT IN-TN 2026-v2 and IN.CALENDAR TN-2026-v2 from 2026-10-01 (the Apr–Sep 2026 half-year was already deducted in September); August due 30 Sep, January the end of February until item 4. |
 | H3 | **West Bengal PT**: two versions – 2014 schedule to 2026-09-30, new schedule from 2026-10-01; plus calendar (21 days after month end) | M |
 | H4 | **Odisha PT**: explicit "no PT" set from 2026-04-01 and the pre-April schedule for arrears | S |
 | H5 | PT, official-confirmed: **Andhra Pradesh, Gujarat** slabs + calendars | S |

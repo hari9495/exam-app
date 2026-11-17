@@ -68,6 +68,28 @@
     },
     {
       "statute": "IN.CALENDAR",
+      "jurisdiction": "IN-TN",
+      "version": "TN-2026-v2",
+      "validFrom": "2026-10-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Greater Chennai Corporation press release R.D. PT C.No/3555/2026 dated 04.08.2026 (TN Urban Local Bodies Rules 2023 r.277(3)): the August deduction is remitted by 30 September with Form 14. The January remittance date is not stated (TODO: CA checklist item 4); the same rule (the end of the next month) is used until the CA confirms it. Tamil Nadu Labour Welfare Fund Act, 1972 s.15 (yearly contribution paid by 31 January).",
+      "values": {
+        "kind": "calendar",
+        "items": [
+          { "key": "pt", "label": "Professional tax (Tamil Nadu)", "dueDay": 30, "monthOffset": 1 },
+          { "key": "lwf", "label": "Labour welfare fund (Tamil Nadu)", "dueDay": 31, "monthOffset": 1 }
+        ]
+      },
+      "golden": [
+        { "name": "August half-year PT is due 30 September", "fn": "calendar", "input": { "key": "pt", "month": "2026-08" }, "expected": { "due": "2026-09-30" } },
+        { "name": "January half-year PT: the end of February until the CA confirms (item 4)", "fn": "calendar", "input": { "key": "pt", "month": "2027-01" }, "expected": { "due": "2027-02-28" } },
+        { "name": "December LWF is due 31 January", "fn": "calendar", "input": { "key": "lwf", "month": "2026-12" }, "expected": { "due": "2027-01-31" } }
+      ]
+    },
+    {
+      "statute": "IN.CALENDAR",
       "jurisdiction": "IN-TS",
       "version": "TS-2025-v1",
       "validFrom": "2025-04-01",
