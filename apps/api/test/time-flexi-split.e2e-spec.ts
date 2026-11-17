@@ -37,7 +37,7 @@ describe('Time flexi and split shifts', () => {
   const inA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, fn);
   const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
   const d = (n: number) => addDays(today, n);
-  // Past working days, all in last month (one payroll-feed month): 5th to 10th.
+  // Past working days, all in last month (one payroll-feed month): 5th to 8th, and the last day (overtime, see below).
   const lastMonth = addDays(`${today.slice(0, 7)}-01`, -1).slice(0, 7);
   const P = (day: number) => `${lastMonth}-${String(day).padStart(2, '0')}`;
   // A whole week at least 8 days ahead (outside the change notice).
@@ -241,17 +241,26 @@ describe('Time flexi and split shifts', () => {
     });
 
     it('overtime counts beyond both parts of a split (the gap is not hours)', async () => {
-      await rostered(P(9), ids.SP);
-      await punch(P(9), 'in', '07:00');
-      await punch(P(9), 'out', '11:00');
-      await punch(P(9), 'in', '17:00');
-      await punch(P(9), 'out', '22:00');
-      await evaluate(P(9));
-      expect((await dayOf(P(9)))?.workedMinutes).toBe(540);
-      const open = (await api('emp', 'get', '/time/me/overtime').expect(200)).body.open as { on: string; scheduledMinutes: number; eligibleMinutes: number }[];
-      expect(open.find((x) => x.on === P(9))).toMatchObject({ scheduledMinutes: 480, eligibleMinutes: 60 });
-      // Present on both parts without extra time: no overtime to claim.
-      expect(open.find((x) => x.on === P(5))).toBeUndefined();
+      // Overtime is claimable for the last 31 days only (/time/me/overtime), so the day is last month's last day: always
+      // inside that window and still in the payroll-feed month (the 9th dropped out of the window after the 9th).
+      const S = addDays(`${today.slice(0, 7)}-01`, -1);
+      const open = async () => (await api('emp', 'get', '/time/me/overtime').expect(200)).body.open as { on: string; scheduledMinutes: number; eligibleMinutes: number }[];
+      await rostered(S, ids.SP);
+      // First present on both parts without extra time (as on the 5th, 492 minutes): no overtime to claim.
+      await punch(S, 'in', '06:58');
+      await punch(S, 'out', '11:00');
+      await punch(S, 'in', '17:20');
+      await punch(S, 'out', '21:30');
+      await evaluate(S);
+      expect((await dayOf(S))?.workedMinutes).toBe(492);
+      expect((await open()).find((x) => x.on === S)).toBeUndefined();
+      // Then they come back for 48 minutes after the second part (punches are never deleted): 540 minutes, an hour
+      // beyond both parts; the 6-hour gap between the parts still counts for nothing.
+      await punch(S, 'in', '21:40');
+      await punch(S, 'out', '22:28');
+      await evaluate(S);
+      expect((await dayOf(S))?.workedMinutes).toBe(540);
+      expect((await open()).find((x) => x.on === S)).toMatchObject({ scheduledMinutes: 480, eligibleMinutes: 60 });
     });
 
     it('the payroll feed pays the half day as half and the rest in full', async () => {

@@ -80,7 +80,10 @@ describe('Hiring HIR-13 internal jobs', () => {
     ];
     for (const [who, k, role] of roster) {
       const o = org[k].id;
-      users[who] = (await tenantPrisma.forTenant({ organizationId: o, isSuperAdmin: false }, (tx) => tx.user.create({ data: { organizationId: o, email: `${who}@hir13-${run}.test`, name: `${who} ${run}`, passwordHash, role } }))).id;
+      // Answer 511 took the interviewer keys off the default employee role: the manager is given one, so the hiding is
+      // still tested against someone who could otherwise read applications.
+      const permissionProfileId = who === 'mgr' ? (await tenantPrisma.forTenant({ organizationId: o, isSuperAdmin: false }, (tx) => tx.permissionProfile.create({ data: { organizationId: o, name: `interviewer-${run}`, permissionsJson: JSON.stringify(['org:view', 'results:view']) } }))).id : null;
+      users[who] = (await tenantPrisma.forTenant({ organizationId: o, isSuperAdmin: false }, (tx) => tx.user.create({ data: { organizationId: o, email: `${who}@hir13-${run}.test`, name: `${who} ${run}`, passwordHash, role, permissionProfileId } }))).id;
       token[who] = (await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: org[k].slug, email: `${who}@hir13-${run}.test`, password: PASSWORD }).expect(200)).body.accessToken;
     }
     token.acting = (await api('hr', 'post', `/auth/impersonate/${users.emp}`).expect(200)).body.accessToken;

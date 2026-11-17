@@ -26,7 +26,7 @@ describe('Leave decisions (29 Oct 2026)', () => {
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'adminB' | 'hrPay' | 'hrNoPay' | 'hrExec' | 'mgr' | 'emp' | 'peer' | 'joiner' | 'empB' | 'payroll' | 'liabOnly' | 'hrAdjust' | 'hrScoped';
+  type Who = 'adminA' | 'adminA2' | 'adminB' | 'hrPay' | 'hrNoPay' | 'hrExec' | 'mgr' | 'emp' | 'peer' | 'joiner' | 'empB' | 'payroll' | 'liabOnly' | 'hrAdjust' | 'hrScoped';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
@@ -44,6 +44,12 @@ describe('Leave decisions (29 Oct 2026)', () => {
   const work = (n: number) => (isOff(d(n)) ? d(n + 1) : d(n));
   const preview = (who: Who, leaveTypeId: string, from: string, to = from) => api(who, 'post', '/time/me/leave/preview').send({ leaveTypeId, from, to }).expect(200);
   const setting = (key: string, value: string) => api('adminA', 'put', '/org/settings').send({ key, value, scopeType: 'tenant' }).expect(200);
+  // Answer 1325 (Settings S-3): payroll.* keys wait for a second person; it applies only once another admin approves.
+  const payrollSetting = async (key: string, value: string) => {
+    const r = (await setting(key, value)).body as { pending?: boolean; id: string };
+    expect(r.pending).toBe(true);
+    await api('adminA2', 'post', `/org/settings/requests/${r.id}/approve`).send({}).expect(200);
+  };
   const report = (who: Who, extra = '') => api(who, 'get', `/time/hr/leave-report?report=liability${extra}`);
   type LiabRow = { employeeId: string; days: number; dailyPay?: number | null; amount?: number | null; noPay?: boolean };
 
@@ -72,6 +78,8 @@ describe('Leave decisions (29 Oct 2026)', () => {
     const hrAdmin = ROLE_TEMPLATES.find((t) => t.key === 'hr_admin')!.permissions.filter((k) => k !== 'employee.salary.view');
     const roster: [Who, 'A' | 'B', string, readonly string[] | null][] = [
       ['adminA', 'A', 'org_admin', null],
+      // Answer 1325: a payroll setting change waits for a second person; adminA2 approves adminA's.
+      ['adminA2', 'A', 'org_admin', null],
       ['adminB', 'B', 'org_admin', null],
       ['hrPay', 'A', 'panel', [...hrAdmin, 'employee.salary.view']],
       ['hrNoPay', 'A', 'panel', hrAdmin],
@@ -334,9 +342,9 @@ describe('Leave decisions (29 Oct 2026)', () => {
     it('the company settings change the daily pay (÷ 30, gross)', async () => {
       await setting('leave.liability.divisor', '30');
       expect(rowOf((await report('hrPay').expect(200)).body, ids.empEmp).dailyPay).toBe(866.67);
-      await setting('payroll.leave_encashment_basis', 'gross');
+      await payrollSetting('payroll.leave_encashment_basis', 'gross');
       expect(rowOf((await report('hrPay').expect(200)).body, ids.empEmp).dailyPay).toBe(1200);
-      await setting('payroll.leave_encashment_basis', 'basic_da');
+      await payrollSetting('payroll.leave_encashment_basis', 'basic_da');
       await setting('leave.liability.divisor', '26');
     });
 
