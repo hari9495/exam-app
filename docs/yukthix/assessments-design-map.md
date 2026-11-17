@@ -382,9 +382,9 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 
 | story (sub-page) | verdict | bucket | note |
 |---|---|---|---|
-| Grid · Tiles sorted by concern | live (gap) | B | AS-5 part 2: `/yx/hiring/assessments/tests/[id]/live` from the monitoring socket; tiles by concern from their flags. Gap: no integrity score per tile, no camera thumbnails |
+| Grid · Tiles sorted by concern | live | B | AS-5 part 2 and 3: `/yx/hiring/assessments/tests/[id]/live` (a "Live console" button on a published test, 2267); each tile a 0-100 score from its flags so far and its latest camera frame (2268) |
 | HighConcernFilter · Filtered to high concern | live | B | AS-5 part 2 |
-| TileDetail · Tile detail: timeline, chat, actions | live (gap) | B | AS-5 part 2: the flags so far, a message to the candidate, pause, resume, end. Gap: no candidate replies in the drawer |
+| TileDetail · Tile detail: timeline, chat, actions | live | B | AS-5 part 3: the flags so far, the message thread both ways (2269), pause, resume, end; a face check handed over after 3 tries is a high flag (2270) |
 | TerminateConfirm · End attempt: confirmation with reason | live | B | a reason the record keeps and the second factor (2006); a paused or blocked attempt can be ended too |
 | PauseConfirm · Pause: reason required | live | B | AS-5 part 2: `POST /attempts/:id/pause` and `/resume`, a reason (kept as a proctoring event and in the audit log) and an optional message the candidate sees |
 | MissedStart · Proctor missing: 10-minute fall-back | design only, feature not built | C | no live proctor to miss |
@@ -426,7 +426,7 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 
 | story (sub-page) | verdict | bucket | note |
 |---|---|---|---|
-| Review · Flag review: playback, timeline, evidence | live (gap) | B | AS-5 part 1: `/yx/hiring/assessments/integrity/[id]`, the analysis flags and narrative, the session events, the verdict with a reason. Gap: no video playback or evidence frames (2262) |
+| Review · Flag review: playback, timeline, evidence | live (gap) | B | AS-5 part 1 and 3: the analysis flags, the session events, the evidence frames kept (each opened through an audited short-lived link, 2262). Gap: no video playback |
 | DisqualifyNeedsSecond · Disqualify: second reviewer required | live | B | AS-5 part 1: the first reviewer names the second; second factor (2006); database check |
 | Accept · Accept (cleared) with reason | live | B | AS-5 part 1: a reason of 10+ characters, audited |
 | SecondReview · Second reviewer | live | B | AS-5 part 1: only the named second reviewer confirms or sends it back, with a reason |
@@ -466,11 +466,11 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 
 | story (sub-page) | verdict | bucket | note |
 |---|---|---|---|
-| Collusion · Collusion | design only, feature not built | B | `collusion`: none |
-| Plagiarism · Plagiarism and code similarity | live (gap) | B | each code answer is compared with other candidates' answers to the same question and flagged (`integrity-analysis.service.ts` line 74). Gap: no report page |
-| Agreement · Inter-rater agreement | design only, feature not built | B | one marker only |
-| Empty · Empty | design only, feature not built | B | no report page |
-| Loading · Loading | design only, feature not built | B | as above |
+| Collusion · Collusion | live | B | AS-5 part 3: `/yx/hiring/assessments/integrity-reports`: clusters of attempts sharing 5+ identical wrong answers (common mistakes left out), start spread, review state |
+| Plagiarism · Plagiarism and code similarity | live (gap) | B | AS-5 part 3: the pairs the integrity analysis matched. Gap: no web match (partner add-on) |
+| Agreement · Inter-rater agreement | live | B | AS-5 part 3: weighted kappa of the first two marks (AS-6 double marking) by week; marker pairs whose answers were moderated |
+| Empty · Empty | live | B | AS-5 part 3; Export XLSX audited |
+| Loading · Loading | live | B | AS-5 part 3 |
 
 ### 5. Candidate (PRC-21 to PRC-28, PRC-31, PRC-32)
 
@@ -573,7 +573,7 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 |---|---|---|---|
 | Released · Released | live (gap) | B | `Exam.resultsReleaseMode`, `feedbackVisibility`, per-attempt release, certificate (`GET /attempt/certificate`). Gap: the 8 release elements of 6.5 |
 | Held · Under review (held) | live | B | AS-5 part 1: held while the integrity incident is undecided or an appeal is open |
-| Verdict · Verdict with appeal window | live (gap) | B | AS-5 part 1: `/result` shows the decision, "Why" and the window. Gap: no evidence frames for the candidate (2262) |
+| Verdict · Verdict with appeal window | live | B | AS-5 part 1 and 3: the decision, "Why", the window, and "What was recorded": the flagged moments by time and how many frames are kept (2262) |
 | AppealForm · Appeal form | live (gap) | B | AS-5 part 1: `POST /attempt/appeal`, once, in the window. Gap: no supporting files (2264) |
 | AppealSent · Appeal sent | live | B | AS-5 part 1: the result is held while it is open (2012) |
 | WindowClosed · Appeal window closed | live | B | AS-5 part 1 |
@@ -588,10 +588,10 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 
 | story (sub-page) | verdict | bucket | note |
 |---|---|---|---|
-| Default · Default | design only, feature not built | B | candidates cannot see their data; HR erases (`candidate:data_rights`, `candidates.controller.ts` line 81; `/yx/hiring/retention`) |
-| ConfirmErase · Erase: confirmation | design only, feature not built | B | as above |
-| LegalHold · Erasure blocked by open appeal | design only, feature not built | B | no appeals or legal hold |
-| Requested · Erasure requested | design only, feature not built | B | as Default |
+| Default · Default | live (gap) | B | AS-5 part 3: `/privacy`: consents given, what is kept until when, Download my data (audited). Gap: accommodation evidence is not listed |
+| ConfirmErase · Erase: confirmation | live | B | AS-5 part 3: a request (one waiting at a time); the nightly sweep erases frames, captures and face data, emails, audits |
+| LegalHold · Erasure blocked by open appeal | live | B | AS-5 part 3: the request waits while an incident is undecided or an appeal or its window is open |
+| Requested · Erasure requested | live | B | AS-5 part 3: received on, erase by (30 days), then "Erased on" |
 
 #### PRC-31 · Candidate app
 
@@ -1483,3 +1483,45 @@ so it was not built here (question 2272).
       two-proportion test and show "may be chance" when the groups are small, later with the analysis tab (2152).*
 2275. **Other groups.** Only gender is asked. *Suggested: keep to gender until a customer asks; any new group is
       voluntary, with "prefer not to say", and the same minimum.*
+
+**Founder answers (17 Nov 2026), 2267-2270:** 2267 a "Live console" button on a published test, for proctors; 2268 the integrity score and camera thumbnails on the tiles; 2269 the reply thread in the console drawer; 2270 three face checks, then hand over to a proctor with a flag on the console.
+
+## AS-5 as built, part 3 (branch `feat/yukthix-assessments-as5`, 17 Nov 2026; answers 2262, 2267-2270)
+
+- **2267:** a published test offers "Live console" to people who proctor (`exam:manage`, as the monitoring socket).
+- **2268:** each tile shows a 0-100 score from the flags so far (a high flag costs 51, so one high flag is still
+  "high concern"; medium 12, low 3) and the latest camera frame of a running attempt (`GET /asmt/live/:examId/frames`,
+  short-lived links, refreshed every minute; not audited per view, question 2277).
+- **2269:** the candidate sees the proctor's unread messages above the question until "Got it", and can reply
+  (`POST /attempt/messages`, `/attempt/messages/read`); a poll no longer marks them read (before, a message was marked
+  read without ever being shown). The console drawer shows the thread both ways, refreshed every 10 seconds.
+  Migration `202617z0000381_asmt_candidate_reply` (`from_candidate`; the sender is optional with a check).
+- **2270:** three face checks that do not match hand over to a proctor: no fourth try, "A proctor will check your
+  face", and a high `face_recheck_handoff` flag on the console.
+- **2262:** the incident lists the frames kept on its attempt (no links); a reviewer opens one through a short-lived
+  link, audited (`asmt.incident.evidence_viewed`). The candidate's decision shows "What was recorded": the flagged
+  moments by time and how many frames are kept, never the images.
+- **PRC-20 integrity reports** (`/yx/hiring/assessments/integrity-reports`, Integrity review people): collusion
+  clusters (5+ identical wrong answers; a wrong answer more than 5 % chose is left out), code similarity pairs from
+  the analysis, weighted kappa of double marks by week and the moderated marker pairs; Export XLSX, audited. Reports
+  point at attempts; they never change a score.
+- **PRC-28 privacy centre** (`/privacy`, "Your privacy centre" on every designed candidate page): consents, what is
+  kept until when (legal hold shown), Download my data (JSON, audited), and an erasure request (migration
+  `202617z0000391_asmt_erasure_requests`, one waiting per candidate). The nightly proctoring-retention job erases the
+  frames, captures and face data once nothing holds them, emails the candidate (unless opted out) and audits it;
+  scores stay.
+- **Tests:** e2e `assessments-as5` (23); API rules (integrity reports 6); kit live console, runner, integrity,
+  reports and privacy; web `/exam`, `/privacy`, live console, integrity reports pages; guards (known list shrank by 2).
+
+### Questions (from 2276)
+
+2276. **Collusion threshold.** 5 identical wrong answers link two attempts; a wrong answer more than 5 % of attempts
+      chose is ignored. Both are fixed. *Suggested: keep fixed until a company asks; then a Settings 6.5 value.*
+2277. **Live frames and audit.** Opening an incident frame is audited; the live console's thumbnails are not audited
+      per view (they refresh every minute). *Suggested: keep; record "opened the live console" once per visit.*
+2278. **Withdraw on the privacy centre.** Each consent's Withdraw opens the erasure of recordings and face data.
+      *Suggested: keep; a separate "no monitoring for future tests" choice only if a customer asks.*
+2279. **Accommodation evidence.** The privacy centre does not list it and the erasure does not touch it.
+      *Suggested: list it with its own delete date and include it in the erasure, in AS-6 part 2.*
+2280. **A message while paused.** The proctor's message shows above the question; in the paused view only the pause
+      message shows. *Suggested: show unread messages in the paused view too.*
