@@ -111,6 +111,8 @@ export interface ApplyForForm {
   today: string;
   balances: LeaveBalanceRow[];
   approval: 'chain' | 'approved';
+  /** Answer 2325: approved leave HR may still change (Cancel some days on HR's leave card). */
+  approved?: LeaveRequestRow[];
 }
 
 export type PunchKind = 'in' | 'out' | 'break_start' | 'break_end';
@@ -135,6 +137,8 @@ export interface PunchRow {
   where: string | null;
   /** WithNote: the note kept with the punch (null without one). */
   note?: string | null;
+  /** Batch A A9: office, remote or unknown, worked out at punch time. */
+  place?: 'office' | 'remote' | 'unknown';
 }
 
 export type DayStatus = 'present' | 'half_day' | 'absent' | 'leave' | 'holiday' | 'weekly_off' | 'missing_in' | 'missing_out' | 'no_timesheet' | 'not_started' | 'strike' | 'lockout' | 'layoff';
@@ -148,6 +152,8 @@ export interface DayRow {
   workedMinutes: number | null;
   lateMinutes: number | null;
   regularised: boolean;
+  /** Batch A A9: the day's place by the company's rule for mixed days (my month and one person's month). */
+  place?: 'office' | 'remote' | 'unknown';
   /** Overtime claimed for the day (pending or approved), on the muster. */
   otMinutes?: number;
   otStatus?: 'pending' | 'approved' | null;
@@ -345,6 +351,8 @@ export interface DayCard {
   shift?: { name: string; start: number; end: number; grace: number } | null;
   day: Omit<DayRow, 'on'> | null;
   punches: (PunchRow & { minute: number })[];
+  /** Batch A A9: the day's place by the company's rule for mixed days. */
+  place?: 'office' | 'remote' | 'unknown';
   /** TIM-03: the day's overtime (as a claim fixes it) and any claim for it. */
   ot?: { eligibleMinutes: number; payableMinutes: number; overCapMinutes: number; category: OtCategory; settle: 'pay' | 'comp_off'; claim: { id: string; status: 'pending' | 'approved'; overridden: boolean } | null } | null;
   /** Late marks this month up to the day, and how many are free (attendance.late_marks_free). */
@@ -392,6 +400,8 @@ export interface LeaveRules {
   certificateAfterDays: number | null;
   medical: boolean;
   negativeLimit: number;
+  /** Answer 2342: no credit in the first N months after joining (0 or missing: from the start). */
+  accrualWaitMonths?: number;
   encashable: boolean;
   hrApprovalAboveDays: number | null;
   /** Pay by day ranges (G1); one step of 1-99 % over the whole year is "partially paid" (TIM-27 Basics). */
@@ -435,6 +445,8 @@ export interface PolicyLine {
   proRata: boolean;
   rounding: number;
   carryForwardMax: number | null;
+  /** Answer 2342: the most days held at any time (null: no ceiling). */
+  maxBalance?: number | null;
 }
 
 export interface LocationRule {

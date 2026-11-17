@@ -570,6 +570,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'attendance.on_duty.send_back': { label: 'Managers can send on duty back for changes', scopes: ['tenant', 'legal_entity'], dated: false, values: ['on', 'off'], default: 'on' },
   // Extra · My attendance today, ChoseWfh (30 Oct 2026): someone outside the office may clock in as work from home on the
   // day; the request goes to their manager as usual, and if it is not approved those punches no longer count.
+  // Batch A A9 (answer 2312): each punch is office, remote or unknown; a day with both counts as office (default), remote,
+  // or whichever came first.
+  'attendance.day_place_rule': { label: 'A day with both office and remote punches counts as', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['office_wins', 'remote_wins', 'first_punch'], default: 'office_wins' },
   'attendance.wfh_same_day': { label: 'Clock in as work from home on the day (sent for approval)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['on', 'off'], default: 'on' },
   // Extra · My attendance today, ShiftNotStarted: check-in opens this long before the shift starts (any: no limit).
   'attendance.check_in_opens_minutes': { label: 'Check-in opens before the shift starts (minutes)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['any', '15', '30', '60', '90', '120', '180'], default: 'any' },
@@ -683,8 +686,10 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // two_step: HR (attendance.lock) sends it, then payroll (attendance.lock.approve) approves the lock; never the same person.
   'attendance.lock_flow': { label: 'Locking an attendance month', scopes: ['tenant', 'legal_entity'], dated: false, values: ['one_step', 'two_step'], default: 'one_step' },
   // TIM-03 / §B6: late marks a month that cost nothing, and what each late mark over them costs in unpaid days.
-  'attendance.late_marks_free': { label: 'Late marks a month without a deduction', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['0', '1', '2', '3', '4', '5', '6'], default: '3' },
-  'attendance.late_mark_penalty': { label: 'Each late mark over the free ones costs (days of pay)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['0', '0.5', '1'], default: '0' },
+  // Batch A B6 (answer 2316): the roster's bulk change sets these per person from the 1st of a month (employee rows carry
+  // valid_from and apply from that month only).
+  'attendance.late_marks_free': { label: 'Late marks a month without a deduction', scopes: ['employee', 'tenant', 'legal_entity', 'location'], dated: false, values: ['0', '1', '2', '3', '4', '5', '6'], default: '3' },
+  'attendance.late_mark_penalty': { label: 'Each late mark over the free ones costs (days of pay)', scopes: ['employee', 'tenant', 'legal_entity', 'location'], dated: false, values: ['0', '0.5', '1'], default: '0' },
   // TIM-36: presence-based attendance on work-from-home days (desktop app / Teams presence), only with each person's consent.
   'attendance.presence': { label: 'Presence-based attendance on work-from-home days', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', 'on'], default: 'off' },
   'attendance.factories_act': {
@@ -739,7 +744,8 @@ export function resolveSetting(def: SettingDef, rows: readonly SettingRow[], con
   for (const scopeType of SCOPE_ORDER) {
     const scopeId = context[scopeType];
     if (!scopeId || !def.scopes.includes(scopeType)) continue;
-    const candidates = rows.filter((r) => r.scopeType === scopeType && r.scopeId === scopeId && (!def.dated || (r.validFrom !== null && asOf !== null && r.validFrom <= asOf)));
+    // An undated setting's row may still carry valid_from (B6's per-person penalty policy): it applies from that date only.
+    const candidates = rows.filter((r) => r.scopeType === scopeType && r.scopeId === scopeId && (def.dated ? r.validFrom !== null && asOf !== null && r.validFrom <= asOf : r.validFrom === null || asOf === null || r.validFrom <= asOf));
     if (candidates.length === 0) continue;
     const row = candidates.reduce((a, b) => ((a.validFrom ?? '') >= (b.validFrom ?? '') ? a : b));
     return { value: row.value, source: { scopeType, scopeId, validFrom: row.validFrom, settingId: row.id } };

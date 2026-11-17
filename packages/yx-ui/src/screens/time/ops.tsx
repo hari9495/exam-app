@@ -1783,7 +1783,7 @@ export function LeaveReportsScreen({ report = 'balances', persona = 'hr', state 
       <PageHeader
         title="Leave reports"
         description={description}
-        actions={<div className="yx-tim-picker"><Select aria-label="Report" value={r} onChange={(v) => v && setR(v as LeaveReport)} options={options} /></div>}
+        actions={<div className="yx-tim-row"><div className="yx-tim-picker"><Select aria-label="Report" value={r} onChange={(v) => v && setR(v as LeaveReport)} options={options} /></div>{!fin && <Button asChild><a href="/?path=/story/screens-time-tim-21-·-leave-card--balance-grid" target="_top">Correct balances</a></Button>}</div>}
       />
       {r === 'liability' && !fin && <p className="yx-tim-note">Unused earned leave that can be cashed in, in days. The money shows only to people who may see pay (Payroll, or HR with pay access).</p>}
       {r === 'liability' && fin && (
@@ -1842,6 +1842,8 @@ export interface LiveLeaveReports {
   onExport: (q: LeaveReportQuery) => Promise<unknown>;
   /** Opens the person's leave card (leave.view); left out for someone who may read the liability only. */
   onOpenCard?: (employeeId: string) => void;
+  /** Batch A D10: opens the balance grid (leave.balance.adjust); absent, no button. */
+  onOpenGrid?: () => void;
   /** The reports this person may open (founder answer A: leave.liability.view alone opens the liability only). */
   reports?: LeaveReportKind[];
 }
@@ -1934,6 +1936,7 @@ function LiveLeaveReports({ live }: { live: LiveLeaveReports }) {
             {/* The month is the report's period, so it sits by Report: in the toolbar it pushed Columns to a second row at 1278 px. */}
             {(q.report === 'ledger' || q.report === 'lop') && <div className="yx-tim-picker"><Select aria-label="Month" value={q.month ?? months[0]!.value} onChange={(v) => v && set({ month: v })} options={months} /></div>}
             {live.state === 'ready' && <Button icon={Download} loading={busy === 'export'} onClick={() => void run('export', () => live.onExport(q))}>Export CSV</Button>}
+            {live.onOpenGrid && <Button onClick={live.onOpenGrid}>Correct balances</Button>}
           </div>
         }
       />

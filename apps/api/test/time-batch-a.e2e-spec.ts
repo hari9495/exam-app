@@ -9,6 +9,7 @@ import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { addDays } from '../src/time/time-maths';
+import { LeaveService } from '../src/time/leave.service';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 
 // Tier 1 batch A (attendance and leave daily), end to end against the real database (forced RLS, the app role): each item
@@ -503,6 +504,247 @@ describe('Time batch A', () => {
       expect(t).toHaveLength(4);
       expect(t[3]).toMatch(/is no longer away (on|from) /);
       expect(t[3]).not.toMatch(/Trip/);
+    });
+  });
+
+  // ------------------------------------------------------------------ D10: balance correction grid (answer 2314)
+  describe('D10 balance correction grid', () => {
+    const entries = () => inA((tx) => tx.leaveLedgerEntry.count({ where: { employeeId: ids.empEmp, leaveTypeId: ids.d10 } }));
+    const body = (x: Record<string, unknown> = {}) => ({ employeeId: ids.empEmp, leaveTypeId: ids.d10, from: 5, to: 7.5, reason: 'Opening balance from the old system was short', ...x });
+    beforeAll(async () => {
+      await inA(async (tx) => {
+        // Minimum balance -2 (two days may be borrowed); 5 days today.
+        ids.d10 = (await tx.leaveType.create({ data: { organizationId: org.A.id, code: 'PL', name: 'Privilege leave', kind: 'casual', rules: { negativeLimit: 2 } } })).id;
+        await tx.leaveLedgerEntry.create({ data: { organizationId: org.A.id, employeeId: ids.empEmp, leaveTypeId: ids.d10, entryOn: new Date(`${today}T00:00:00Z`), kind: 'opening', days: 5, reason: 'Opening' } });
+      });
+    });
+
+    it('HR corrects a cell: the difference goes on the ledger with the reason, audited before and after; the grid shows it', async () => {
+      const out = (await api('hrAdmin', 'post', '/time/hr/balances/correct').send(body()).expect(201)).body;
+      expect(out).toMatchObject({ balance: 7.5, days: 2.5 });
+      const e = await inA((tx) => tx.leaveLedgerEntry.findUniqueOrThrow({ where: { id: out.id } }));
+      expect({ kind: e.kind, days: Number(e.days), reason: e.reason, by: e.createdBy }).toEqual({ kind: 'adjustment', days: 2.5, reason: 'Opening balance from the old system was short', by: users.hrAdmin });
+      const a = await inA((tx) => tx.auditLog.findFirstOrThrow({ where: { action: 'leave.balance.corrected', entityId: out.id } }));
+      expect(JSON.parse(a.metadataJson ?? '{}')).toMatchObject({ employeeId: ids.empEmp, from: 5, to: 7.5, days: 2.5 });
+      const grid = (await api('hrAdmin', 'get', '/time/hr/balances').expect(200)).body;
+      expect(grid.people.find((p: { employeeId: string }) => p.employeeId === ids.empEmp).balances.find((b: { leaveTypeId: string }) => b.leaveTypeId === ids.d10)).toMatchObject({ balance: 7.5, negativeLimit: 2 });
+      // Down to the minimum is allowed.
+      await api('hrAdmin', 'post', '/time/hr/balances/correct').send(body({ from: 7.5, to: -2 })).expect(201);
+    });
+
+    it('negative: below the minimum, a stale figure, no change, the wrong role, their own, another company and bad input: refused, nothing saved', async () => {
+      const before = await entries();
+      expect((await api('hrAdmin', 'post', '/time/hr/balances/correct').send(body({ from: -2, to: -2.5 })).expect(400)).body.message).toMatch(/can't go below -2 days/);
+      expect((await api('hrAdmin', 'post', '/time/hr/balances/correct').send(body({ from: 5, to: 6 })).expect(409)).body).toMatchObject({ code: 'BALANCE_CHANGED', balance: -2 });
+      await api('hrAdmin', 'post', '/time/hr/balances/correct').send(body({ from: -2, to: -2 })).expect(400);
+      await api('emp', 'post', '/time/hr/balances/correct').send(body({ from: -2, to: 1 })).expect(403);
+      await api('mgr', 'post', '/time/hr/balances/correct').send(body({ from: -2, to: 1 })).expect(403);
+      expect((await api('hrAdmin', 'post', '/time/hr/balances/correct').send(body({ employeeId: ids.hrEmp, from: 0, to: 1 })).expect(403)).body.message).toMatch(/your own balance/);
+      expect([403, 404]).toContain((await api('adminB', 'post', '/time/hr/balances/correct').send(body({ from: -2, to: 1 }))).status);
+      await api('hrAdmin', 'post', '/time/hr/balances/correct').send(body({ from: -2, to: 1, reason: '' })).expect(400);
+      await api('hrAdmin', 'post', '/time/hr/balances/correct').send(body({ from: -2, to: 'ten' })).expect(400);
+      await api('hrAdmin', 'post', '/time/hr/balances/correct').send(body({ from: -2, to: 1.333 })).expect(400);
+      await api('hrAdmin', 'post', '/time/hr/balances/correct').send(body({ employeeId: 'someone', from: -2, to: 1 })).expect(400);
+      await api('hrAdmin', 'post', '/time/hr/balances/correct').send(body({ from: -2, to: 1, extra: true })).expect(400);
+      expect(await entries()).toBe(before);
+      // Another company sees none of it.
+      expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.leaveLedgerEntry.count({ where: { leaveTypeId: ids.d10 } }))).toBe(0);
+    });
+  });
+
+  // ------------------------------------------------------------------ A9: office or remote per punch (answer 2312)
+  describe('A9 office or remote per punch', () => {
+    const INSIDE = { lat: 12.9717, lng: 77.5947, accuracyM: 20 };
+    const OUTSIDE = { lat: 12.9716, lng: 77.6126, accuracyM: 20 };
+    const setRule = (who: Who, value: string) => api(who, 'put', '/org/settings').send({ key: 'attendance.day_place_rule', value, scopeType: 'tenant' });
+    const lastPunch = (employeeId: string) => inA((tx) => tx.punch.findFirstOrThrow({ where: { employeeId }, orderBy: { createdAt: 'desc' } }));
+    let on = '';
+
+    it('each punch stores its place at punch time: inside the office is office, clocking in from home is remote, refused is unknown', async () => {
+      expect((await api('emp', 'post', '/time/me/punch').send({ kind: 'in', ...INSIDE }).expect(200)).body).toMatchObject({ accepted: true });
+      const office = await lastPunch(ids.empEmp);
+      expect(office.workPlace).toBe('office');
+      on = office.workOn.toISOString().slice(0, 10);
+      expect((await api('peer', 'post', '/time/me/punch').send({ kind: 'in', wfh: true, ...OUTSIDE }).expect(200)).body).toMatchObject({ accepted: true });
+      expect((await lastPunch(ids.peerEmp)).workPlace).toBe('remote');
+      expect((await api('emp', 'post', '/time/me/punch').send({ kind: 'out', ...OUTSIDE }).expect(200)).body).toMatchObject({ accepted: false });
+      expect((await lastPunch(ids.empEmp)).workPlace).toBe('unknown');
+    });
+
+    it('a day with both follows the company setting: office wins by default, then remote wins, then the first punch', async () => {
+      // An earlier remote punch on the same day (clocked in from home in the morning, then came to the office).
+      await inA((tx) => tx.punch.create({ data: { organizationId: org.A.id, employeeId: ids.empEmp, punchedAt: new Date(Date.now() - 3 * 3600_000), workOn: new Date(`${on}T00:00:00Z`), kind: 'break_end', source: 'web', accepted: true, verdict: 'field', workPlace: 'remote' } }));
+      const card = async () => (await api('mgr', 'get', `/time/people/${ids.empEmp}/days/${on}`).expect(200)).body;
+      const c = await card();
+      expect(c.place).toBe('office');
+      expect(c.punches.map((p: { place: string }) => p.place)).toEqual(['remote', 'office', 'unknown']);
+      await setRule('adminA', 'remote_wins').expect(200);
+      expect((await card()).place).toBe('remote');
+      await setRule('adminA', 'first_punch').expect(200);
+      expect((await card()).place).toBe('remote');
+      // My month's list rows carry the day's place too.
+      const mine = (await api('emp', 'get', `/time/me/attendance?month=${on.slice(0, 7)}`).expect(200)).body;
+      expect(mine.days.find((x: { on: string }) => x.on === on)?.place).toBe('remote');
+      expect(mine.punches.every((p: { place?: string }) => typeof p.place === 'string')).toBe(true);
+      await setRule('adminA', 'office_wins').expect(200);
+      expect((await api('mgr', 'get', `/time/people/${ids.empEmp}/attendance?month=${on.slice(0, 7)}`).expect(200)).body.days.find((x: { on: string }) => x.on === on)?.place).toBe('office');
+    });
+
+    it('negative: the wrong role cannot change the rule, a bad value is a 400, other people and another company see nothing', async () => {
+      await setRule('emp', 'remote_wins').expect(403);
+      await setRule('adminA', 'whoever_is_louder').expect(400);
+      expect(await inA((tx) => tx.setting.findFirst({ where: { key: 'attendance.day_place_rule' } }).then((x) => x?.value))).toBe('office_wins');
+      expect([403, 404]).toContain((await api('peer', 'get', `/time/people/${ids.empEmp}/days/${on}`)).status);
+      expect([403, 404]).toContain((await api('empB', 'get', `/time/people/${ids.empEmp}/days/${on}`)).status);
+      expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.punch.count({ where: { employeeId: ids.empEmp } }))).toBe(0);
+    });
+  });
+
+  // ------------------------------------------------------------------ B6: bulk team changes (answer 2316)
+  describe('B6 bulk team changes', () => {
+    const bulk = (who: Who, x: Record<string, unknown>) => api(who, 'post', '/time/roster/bulk').send(x);
+    const assignments = () => inA((tx) => tx.shiftPatternAssignment.count({ where: { scopeType: 'employee' } }));
+    const cycleOf = async (employeeId: string, from: string) => {
+      const a = await inA((tx) => tx.shiftPatternAssignment.findFirstOrThrow({ where: { scopeType: 'employee', scopeId: employeeId, validFrom: new Date(`${from}T00:00:00Z`) } }));
+      return (await inA((tx) => tx.shiftPattern.findUniqueOrThrow({ where: { id: a.patternId } }))).cycle as (string | null)[];
+    };
+    const monthStart = `${today.slice(0, 7)}-01`;
+    const lastMonth = addDays(monthStart, -1).slice(0, 7);
+    const nextMonth = addDays(`${today.slice(0, 7)}-28`, 7).slice(0, 7);
+    const tomorrow = d(1);
+    beforeAll(async () => {
+      await inA(async (tx) => {
+        const o = { organizationId: org.A.id };
+        for (const [k, code, start, end] of [['s1', 'D1', 540, 1080], ['s2', 'D2', 600, 1140]] as const) {
+          ids[k] = (await tx.shift.create({ data: { ...o, code, name: `Day ${code}` } })).id;
+          await tx.shiftVersion.create({ data: { ...o, shiftId: ids[k], validFrom: new Date('2020-01-01T00:00:00Z'), startMinute: start, endMinute: end } });
+        }
+        // Last month locked for attendance (the D15 tests may have locked it already).
+        if (!(await tx.payPeriod.findFirst({ where: { legalEntityId: ids.entityA, periodStart: new Date(`${lastMonth}-01T00:00:00Z`) } })))
+          await tx.payPeriod.create({ data: { ...o, legalEntityId: ids.entityA, periodStart: new Date(`${lastMonth}-01T00:00:00Z`), periodEnd: new Date(`${addDays(monthStart, -1)}T00:00:00Z`), stage: 'locked', lockedAt: new Date(), reason: 'Batch A B6 test' } });
+      });
+    });
+
+    it('a manager changes the shift of ticked team members from tomorrow: their weekly offs stay; audited', async () => {
+      expect((await bulk('mgr', { employeeIds: [ids.empEmp, ids.peerEmp], from: tomorrow, change: 'shift', shiftId: ids.s1 }).expect(200)).body).toEqual({ changed: 2, from: tomorrow });
+      for (const e of [ids.empEmp, ids.peerEmp]) expect(await cycleOf(e, tomorrow)).toEqual([ids.s1, ids.s1, ids.s1, ids.s1, ids.s1, ids.s1, null]);
+      // One weekly pattern for the same week.
+      const a = await inA((tx) => tx.shiftPatternAssignment.findMany({ where: { scopeType: 'employee', validFrom: new Date(`${tomorrow}T00:00:00Z`) } }));
+      expect(new Set(a.map((x) => x.patternId)).size).toBe(1);
+      expect(await inA((tx) => tx.auditLog.count({ where: { action: 'time.roster.bulk_changed', actorUserId: users.mgr } }))).toBe(1);
+    });
+
+    it('weekly off keeps each shift; the same date replaces the earlier change; the location\'s usual shift needs a shift too', async () => {
+      await bulk('mgr', { employeeIds: [ids.empEmp], from: tomorrow, change: 'weekly_off', weeklyOffs: [6, 7] }).expect(200);
+      expect(await cycleOf(ids.empEmp, tomorrow)).toEqual([ids.s1, ids.s1, ids.s1, ids.s1, ids.s1, null, null]);
+      expect(await inA((tx) => tx.shiftPatternAssignment.count({ where: { scopeType: 'employee', scopeId: ids.empEmp } }))).toBe(1);
+      expect((await bulk('hrAdmin', { employeeIds: [ids.mgrEmp], from: tomorrow, change: 'weekly_off', weeklyOffs: [7] }).expect(400)).body.message).toMatch(/usual shift\. Choose the shift for them too/);
+      await bulk('hrAdmin', { employeeIds: [ids.mgrEmp], from: tomorrow, change: 'weekly_off', weeklyOffs: [7], shiftId: ids.s2 }).expect(200);
+      expect(await cycleOf(ids.mgrEmp, tomorrow)).toEqual([ids.s2, ids.s2, ids.s2, ids.s2, ids.s2, ids.s2, null]);
+    });
+
+    it('a date already past in an open month is allowed; inside the locked month it is refused with nothing saved', async () => {
+      const past = d(-1) < monthStart ? monthStart : d(-1);
+      if (past <= today) await bulk('hrAdmin', { employeeIds: [ids.peerEmp], from: past, change: 'shift', shiftId: ids.s2 }).expect(200);
+      const before = await assignments();
+      expect((await bulk('hrAdmin', { employeeIds: [ids.peerEmp], from: `${lastMonth}-15`, change: 'shift', shiftId: ids.s2 }).expect(409)).body.code).toBe('PERIOD_LOCKED');
+      expect(await assignments()).toBe(before);
+    });
+
+    it('HR changes the penalty policy from the 1st of a month only; the months before keep theirs', async () => {
+      const from = `${nextMonth}-01`;
+      await bulk('hrAdmin', { employeeIds: [ids.empEmp, ids.peerEmp], from, change: 'penalty', lateMarksFree: '1', lateMarkPenalty: '1' }).expect(200);
+      const rows = await inA((tx) => tx.setting.findMany({ where: { scopeType: 'employee', scopeId: ids.empEmp, key: { in: ['attendance.late_marks_free', 'attendance.late_mark_penalty'] } } }));
+      expect(rows.map((r) => [r.key, r.value, r.validFrom?.toISOString().slice(0, 10)]).sort()).toEqual([['attendance.late_mark_penalty', '1', from], ['attendance.late_marks_free', '1', from]]);
+      expect((await bulk('hrAdmin', { employeeIds: [ids.empEmp], from: `${nextMonth}-02`, change: 'penalty', lateMarksFree: '1', lateMarkPenalty: '1' }).expect(400)).body.message).toMatch(/1st of a month/);
+      // A manager plans shifts but cannot change the penalty policy.
+      await bulk('mgr', { employeeIds: [ids.empEmp], from, change: 'penalty', lateMarksFree: '0', lateMarkPenalty: '1' }).expect(403);
+    });
+
+    it('negative: the wrong role, out of scope, one\'s own, another company and bad input are refused with nothing saved', async () => {
+      const before = await assignments();
+      const ok = { employeeIds: [ids.peerEmp], from: tomorrow, change: 'shift', shiftId: ids.s2 };
+      expect([403, 404]).toContain((await bulk('emp', ok)).status);
+      expect([403, 404]).toContain((await bulk('mgr', { ...ok, employeeIds: [ids.hrEmp] })).status);
+      expect([403, 404]).toContain((await bulk('mgr', { ...ok, employeeIds: [ids.mgrEmp] })).status);
+      expect([403, 404]).toContain((await bulk('adminB', ok)).status);
+      // One bad person in the list: nobody changes.
+      expect([403, 404]).toContain((await bulk('mgr', { ...ok, employeeIds: [ids.peerEmp, ids.hrEmp] })).status);
+      for (const bad of [{ employeeIds: [] }, { employeeIds: ['someone'] }, { change: 'everything' }, { from: 'tomorrow' }, { shiftId: undefined }, { change: 'weekly_off', weeklyOffs: [8] }, { change: 'weekly_off', weeklyOffs: [1, 2, 3, 4] }, { extra: 1 }, { employeeIds: [ids.peerEmp, ids.peerEmp] }])
+        await bulk('mgr', { ...ok, ...bad }).expect(400);
+      await bulk('mgr', { ...ok, shiftId: randomUUID() }).expect(400);
+      expect(await assignments()).toBe(before);
+      expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.shiftPatternAssignment.count())).toBe(0);
+    });
+  });
+
+  // ------------------------------------------------------------------ 2325: HR's Cancel some days on the leave card
+  describe('2325 HR cancel some days from the leave card', () => {
+    const mon = (() => { for (let i = 90; i < 97; i++) if (new Date(`${d(i)}T00:00:00Z`).getUTCDay() === 1) return d(i); return d(90); })();
+    beforeAll(async () => {
+      ids.r2325 = (await api('emp', 'post', '/time/me/leave').send({ leaveTypeId: ids.EL, from: mon, to: addDays(mon, 2), reason: 'Village festival' }).expect(201)).body.id;
+      const wf = await inA((tx) => tx.wfRequest.findFirstOrThrow({ where: { subjectId: ids.r2325 } }));
+      const task = await inA((tx) => tx.wfTask.findFirstOrThrow({ where: { requestId: wf.id, status: 'open' } }));
+      await api('mgr', 'post', `/workflow/approvals/tasks/${task.id}/decide`).send({ decision: 'approve' }).expect(200);
+    });
+
+    it('HR reads the approved leave with its days, never the reason, and cancels a day from it', async () => {
+      const form = (await api('hrAdmin', 'get', `/time/hr/leave/${ids.empEmp}`).expect(200)).body;
+      const r = form.approved.find((x: { id: string }) => x.id === ids.r2325);
+      expect(r).toMatchObject({ status: 'approved', reason: null, changeWaiting: null, leaveDays: [{ on: mon }, { on: addDays(mon, 1) }, { on: addDays(mon, 2) }] });
+      await api('hrAdmin', 'post', `/time/hr/leave/${ids.empEmp}/requests/${r.id}/cancel-days`).send({ days: [addDays(mon, 2)], reason: 'Festival moved by a day, confirmed' }).expect(201);
+      const after = (await api('hrAdmin', 'get', `/time/hr/leave/${ids.empEmp}`).expect(200)).body.approved.find((x: { id: string }) => x.id === ids.r2325);
+      expect(after.leaveDays).toHaveLength(2);
+    });
+
+    it('negative: the employee, the manager without the key and another company cannot read it', async () => {
+      await api('emp', 'get', `/time/hr/leave/${ids.empEmp}`).expect(403);
+      await api('mgr', 'get', `/time/hr/leave/${ids.empEmp}`).expect(403);
+      expect([403, 404]).toContain((await api('adminB', 'get', `/time/hr/leave/${ids.empEmp}`)).status);
+    });
+  });
+
+  // ------------------------------------------------------------------ 2342: ceiling and no credit at first (Oracle O10, O11)
+  describe('2342 leave ceiling and period of ineligibility', () => {
+    const line = (leaveTypeId: string, x: Record<string, unknown> = {}) => ({ leaveTypeId, annualDays: 24, frequency: 'monthly', proRata: true, rounding: 0.5, carryForwardMax: null, ...x });
+    const entries = (leaveTypeId: string) => inA((tx) => tx.leaveLedgerEntry.findMany({ where: { employeeId: ids.peerEmp, leaveTypeId } }));
+    beforeAll(async () => {
+      ids.cp = (await api('hrAdmin', 'post', '/time/setup/types').send({ code: 'CP', name: 'Capped leave', kind: 'earned', paid: true }).expect(201)).body.id;
+    });
+
+    it('negative: a wait outside 0 to 24 whole months, a ceiling of 0 and a carry forward above the ceiling are refused with nothing saved', async () => {
+      const types = await inA((tx) => tx.leaveType.count());
+      await api('hrAdmin', 'post', '/time/setup/types').send({ code: 'PV', name: 'Privilege leave', kind: 'earned', paid: true, rules: { accrualWaitMonths: 25 } }).expect(400);
+      await api('hrAdmin', 'post', '/time/setup/types').send({ code: 'PV', name: 'Privilege leave', kind: 'earned', paid: true, rules: { accrualWaitMonths: 1.5 } }).expect(400);
+      expect(await inA((tx) => tx.leaveType.count())).toBe(types);
+      ids.p2342 = (await api('hrAdmin', 'post', '/time/setup/policies').send({ name: `Ceiling ${run}` }).expect(201)).body.id;
+      await api('hrAdmin', 'post', `/time/setup/policies/${ids.p2342}/versions`).send({ validFrom: '2025-01-01', lines: [line(ids.cp, { maxBalance: 0 })] }).expect(400);
+      await api('hrAdmin', 'post', `/time/setup/policies/${ids.p2342}/versions`).send({ validFrom: '2025-01-01', lines: [line(ids.cp, { maxBalance: 3, carryForwardMax: 5 })] }).expect(400);
+      await api('emp', 'post', `/time/setup/policies/${ids.p2342}/versions`).send({ validFrom: '2025-01-01', lines: [line(ids.cp, { maxBalance: 3 })] }).expect(403);
+      expect(await inA((tx) => tx.leavePolicyVersion.count({ where: { policyId: ids.p2342 } }))).toBe(0);
+    });
+
+    it('a credit over the ceiling lapses at once; a type with a 3-month wait credits nothing to a new joiner', async () => {
+      ids.pv = (await api('hrAdmin', 'post', '/time/setup/types').send({ code: 'PV', name: 'Privilege leave', kind: 'earned', paid: true, rules: { accrualWaitMonths: 3 } }).expect(201)).body.id;
+      await api('hrAdmin', 'post', `/time/setup/policies/${ids.p2342}/versions`).send({ validFrom: '2025-01-01', lines: [line(ids.cp, { maxBalance: 3 }), line(ids.pv)] }).expect(201);
+      await api('hrAdmin', 'post', `/time/setup/policies/${ids.p2342}/assign`).send({ scopeType: 'employee', scopeId: ids.peerEmp, validFrom: '2025-01-01' }).expect(201);
+      await api('hrAdmin', 'post', `/time/people/${ids.peerEmp}/adjust`).send({ leaveTypeId: ids.cp, days: 3, reason: 'Opening balance' }).expect(201);
+      const leave = app.get(LeaveService);
+      await leave.accrue(org.A.id);
+      const cp = await entries(ids.cp);
+      const credits = cp.filter((e) => e.kind === 'accrual');
+      const lapses = cp.filter((e) => e.kind === 'lapse');
+      expect(credits.length).toBeGreaterThan(0);
+      expect(lapses.length).toBeGreaterThan(0);
+      expect(lapses[0].reason).toMatch(/Over the 3-day ceiling/);
+      expect(cp.reduce((n, e) => n + Number(e.days), 0)).toBe(3);
+      // Run again: nothing is posted twice.
+      await leave.accrue(org.A.id);
+      expect(await entries(ids.cp)).toHaveLength(cp.length);
+      // Joined three days ago: no credit for the first three months, and none of it is paid later.
+      expect(await entries(ids.pv)).toHaveLength(0);
+      // Another company sees none of it.
+      expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.leaveLedgerEntry.count({ where: { leaveTypeId: { in: [ids.cp, ids.pv] } } }))).toBe(0);
     });
   });
 });

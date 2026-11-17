@@ -146,7 +146,11 @@ export interface Punch {
   refusal?: string;
   /** A short note the person kept with this punch (WithNote); shown under it on the day card. */
   note?: string;
+  /** Batch A A9 (answer 2312): office, remote or unknown, as the server stored it at punch time. Stories work it out from the verdict. */
+  place?: WorkPlace;
 }
+export type WorkPlace = 'office' | 'remote' | 'unknown';
+export const PLACE_LABEL: Record<WorkPlace, string> = { office: 'Office', remote: 'Remote', unknown: 'Not known' };
 
 /** Worked minutes from paired in/out punches minus breaks; an open "in" counts to `now`. */
 export function workedMinutes(punches: Punch[], now?: number): number {

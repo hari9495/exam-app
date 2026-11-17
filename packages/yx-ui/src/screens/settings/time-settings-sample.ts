@@ -229,6 +229,15 @@ export const TIME_REGISTRY_SAMPLE: Record<string, RegistryDef> = {
     ],
     "default": "4"
   },
+  "attendance.day_place_rule": {
+    "label": "A day with both office and remote punches counts as",
+    "values": [
+      "office_wins",
+      "remote_wins",
+      "first_punch"
+    ],
+    "default": "office_wins"
+  },
   "attendance.wfh_same_day": {
     "label": "Clock in as work from home on the day (sent for approval)",
     "values": [

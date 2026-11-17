@@ -297,3 +297,27 @@ export function presenceDay(signals: readonly { at: Date; state: 'active' | 'idl
   }
   return first && last ? { first, last, activeMinutes: Math.floor(active / 60_000) } : null;
 }
+
+/**
+ * Batch A A9 (answer 2312): where a punch was made, worked out once at punch time from the existing checks. On an office
+ * network or inside an office geofence, or at a kiosk or biometric device: office. Location recorded outside every office
+ * (a work-from-home day, or field staff): remote. Nothing restricts the place, or the punch was refused: unknown.
+ */
+export type WorkPlace = 'office' | 'remote' | 'unknown';
+export type DayPlaceRule = 'office_wins' | 'remote_wins' | 'first_punch';
+
+export function placeOf(p: { source: string; verdict: string; accepted: boolean }): WorkPlace {
+  if (!p.accepted) return 'unknown';
+  if (p.verdict === 'inside' || p.verdict === 'network' || p.source === 'biometric' || p.source === 'kiosk') return 'office';
+  if (p.verdict === 'field') return 'remote';
+  return 'unknown';
+}
+
+/** A day's place from its accepted punches in time order, by the company's rule (attendance.day_place_rule). */
+export function dayPlace(places: readonly WorkPlace[], rule: DayPlaceRule): WorkPlace {
+  const known = places.filter((x) => x !== 'unknown');
+  if (!known.length) return 'unknown';
+  if (rule === 'first_punch') return known[0]!;
+  const wins = rule === 'office_wins' ? 'office' : 'remote';
+  return known.includes(wins) ? wins : known[0]!;
+}

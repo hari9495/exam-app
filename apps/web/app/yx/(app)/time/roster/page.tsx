@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { RosterScreen, type OpenShiftsData, type RosterWeek, type TeamRosterWeek } from '@yukthix/ui/time';
 import { mondayOf, timeState, todayIndia, useTime, useTimeWrite } from '../../../../../lib/yx-time';
+import { useYxPermissions } from '../../../../../lib/yx-org';
 
 // Roster (M02 §B2, YX-AT-07), the TIM-05 design. A planner (a manager's own team, implicit, or roster.manage in scope)
 // gets the planning grid with the Open shifts tab; anyone who plans no one gets the Staff view: their own published week,
@@ -14,6 +15,7 @@ export default function YxRosterPage() {
   const team = useTime<TeamRosterWeek>(planner === false ? `/roster/team?week=${week}` : null);
   const open = useTime<OpenShiftsData>(planner ? '/open-shifts?show=all' : null);
   const write = useTimeWrite();
+  const perms = useYxPermissions();
   if (planner === false)
     return <RosterScreen staffLive={{ state: timeState(team), onRetry: () => void team.refetch(), data: team.data ?? null, week, onWeek: setWeek, swapHref: '/yx/time/shifts' }} />;
   return (
@@ -28,6 +30,9 @@ export default function YxRosterPage() {
         onCopy: (fromWeek, toWeek) => write('/roster/copy', 'POST', { fromWeek, toWeek }, true, 'Last week copied as a draft'),
         onPublish: (w, reason) => write('/roster/publish', 'POST', { week: w, ...(reason ? { reason } : {}) }, true, 'Roster published'),
         autoRosterHref: '/yx/time/auto-roster',
+        // Batch A B6 (answer 2316): the ticked people's shift, weekly off or penalty policy from a date (the drawer toasts).
+        onBulk: (x) => write('/roster/bulk', 'POST', x, true),
+        canPenalty: perms.has('attendance.lock'),
         openShifts: planner
           ? {
               state: timeState(open),

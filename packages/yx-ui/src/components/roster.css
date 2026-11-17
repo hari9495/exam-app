@@ -51,6 +51,11 @@
   border-right: var(--yx-border-width) solid var(--yx-color-border);
   min-width: 0;
 }
+/* B6: a row checkbox beside the name; the name and role stay one column. */
+.yx-roster__person[data-pick] { flex-direction: row; align-items: center; justify-content: flex-start; gap: var(--yx-space-2); }
+.yx-roster__who { display: flex; flex-direction: column; min-width: 0; }
+.yx-roster__bulk { display: flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-2); padding: var(--yx-space-2) var(--yx-space-3); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-control); background: var(--yx-color-bg-subtle); }
+.yx-roster__bulk-count { font-weight: var(--yx-weight-semibold); margin-right: var(--yx-space-2); }
 .yx-roster__name { font-weight: var(--yx-weight-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .yx-roster__role { font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); color: var(--yx-color-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .yx-roster__day { text-align: center; border-left: var(--yx-border-width) solid var(--yx-color-border); }

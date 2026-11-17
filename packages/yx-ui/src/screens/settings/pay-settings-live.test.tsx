@@ -30,7 +30,7 @@ describe('Payroll settings (S-3): every hidden setting has a field', () => {
   it('the 16 payroll and tax settings with no screen, the second-person switch and the lapse days, each sit on one drawn page', () => {
     const keys = unmoved(Object.values(PAY_SETTINGS).flatMap((p) => p.settings.map((s) => s.key)));
     expect(keys).toHaveLength(18); // 16 hidden, the second-person switch (1325) and the lapse days (1523)
-    expect(new Set([...keys, ...unmoved(Object.values(TIME_SETTINGS).flatMap((p) => p.settings.map((s) => s.key)))]).size).toBe(18 + 41); // time has 41 since batch A item 7 (hourly permission)
+    expect(new Set([...keys, ...unmoved(Object.values(TIME_SETTINGS).flatMap((p) => p.settings.map((s) => s.key)))]).size).toBe(18 + 42); // time has 42 since batch A A9 (the office-or-remote day rule)
     for (const [id, spec] of Object.entries(PAY_SETTINGS)) {
       const fields = allSettings(page(id));
       for (const s of spec.settings.filter((x) => !MOVED.has(x.key))) expect([s.key, fields.find((d) => d.key === s.key)?.starter]).toEqual([s.key, DATA.company[s.key] === undefined]);

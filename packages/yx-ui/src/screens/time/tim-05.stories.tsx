@@ -17,3 +17,8 @@ export const Empty: S = { name: 'Empty week', args: { state: 'empty' } };
 export const Loading: S = { name: 'Loading', args: { state: 'loading' } };
 export const Failed: S = { name: 'Error', args: { state: 'error' } };
 export const Phone: StoryObj<typeof MyShiftsPhone> = { name: 'Phone · my shifts', render: () => <MyShiftsPhone />, ...phone };
+// Batch A B6 (answer 2316): tick people, then change their shift, weekly off or penalty policy from a date.
+export const BulkBar: S = { name: 'Manager · people ticked (bulk bar)', args: { ticked: ['p1', 'p2', 'p3'] } };
+export const BulkShift: S = { name: 'Manager · bulk change shift', args: { ticked: ['p1', 'p2', 'p3'], bulk: 'shift' } };
+export const BulkWeeklyOff: S = { name: 'Manager · bulk change weekly off', args: { ticked: ['p1', 'p2'], bulk: 'weekly_off' } };
+export const BulkPenalty: S = { name: 'HR · bulk change penalty policy', args: { persona: 'hr', ticked: ['p1', 'p2', 'p3', 'p4'], bulk: 'penalty' } };

@@ -77,6 +77,7 @@ export interface BuilderTest {
     canApprove: boolean;
   };
   createdAt: string;
+  restoreNeedsReason: boolean;
 }
 
 @Injectable()
@@ -187,6 +188,8 @@ export class AsmtTestsService {
           canApprove: exam.status === 'draft' && exam.approvalRequestedBy !== null && !current && userId !== exam.approvalRequestedBy && userId !== exam.createdBy,
         },
         createdAt: exam.createdAt.toISOString(),
+        // Answer 2307: Restore asks for a reason while a fairness finding on the test is open.
+        restoreNeedsReason: exam.status === 'archived' && (await this.exams.openFairnessFinding(tx, org, id)) !== null,
       };
     });
   }
@@ -234,8 +237,8 @@ export class AsmtTestsService {
   }
 
   /** Answer 2287. */
-  restore(ctx: TenantContext, userId: string, id: string) {
-    return this.exams.restore(ctx, userId, id);
+  restore(ctx: TenantContext, userId: string, id: string, reason?: string) {
+    return this.exams.restore(ctx, userId, id, reason);
   }
 
   /** Answer 2285: the skills (question tags) by name, for mapping and pool skills; no questions, no counts. */

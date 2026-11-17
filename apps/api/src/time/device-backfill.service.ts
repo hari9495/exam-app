@@ -52,7 +52,7 @@ export class DeviceBackfillService {
     const org = c.organizationId;
     for (const p of punches) {
       if (await tx.punch.findFirst({ where: { organizationId: org, employeeId, punchedAt: p.at, kind: p.kind, accepted: true }, select: { id: true } })) continue;
-      await tx.punch.create({ data: { organizationId: org, employeeId, punchedAt: p.at, workOn: asDate(on), kind: p.kind, source: 'biometric', accepted: true, verdict: 'no_fence' } });
+      await tx.punch.create({ data: { organizationId: org, employeeId, punchedAt: p.at, workOn: asDate(on), kind: p.kind, source: 'biometric', accepted: true, verdict: 'no_fence', workPlace: 'office' } });
     }
     await this.days.evaluate(tx, c, employeeId, on, on);
   }

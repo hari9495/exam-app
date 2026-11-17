@@ -69,6 +69,8 @@ export interface BuilderTestView {
   editable: boolean;
   approval: { needed: boolean; threshold: number; requestedBy: string | null; requestedAt: string | null; approvedBy: string | null; approvedAt: string | null; current: boolean; canApprove: boolean };
   createdAt: string;
+  /** Answer 2307: a fairness finding on the test is still open, so Restore asks why (at least 10 letters). */
+  restoreNeedsReason?: boolean;
 }
 
 /** Answer 2284: a bank question as the picker shows it (never its answer key). */
@@ -142,7 +144,7 @@ export interface LiveTestBuilder {
   /** AS-6 part 2 (answer 2272): the AI-allowed switch (PRC-12). */
   onSetAiAllowed?: (allowed: boolean) => Promise<void>;
   /** Answer 2287: brings an archived test back as it was (test writers). Absent: no Restore. */
-  onRestore?: () => Promise<void>;
+  onRestore?: (reason?: string) => Promise<void>;
   /** Answer 2267: opens the live console (PRC-13) of a published test; absent for people who cannot proctor. */
   onLiveConsole?: () => void;
 }
@@ -514,6 +516,8 @@ export function LiveTestBuilderScreen({ live }: { live: LiveTestBuilder }) {
   const [step, setStep] = useState('sections');
   const [picking, setPicking] = useState<TestSection | null>(null);
   const [restoring, setRestoring] = useState(false);
+  const [restoreWhy, setRestoreWhy] = useState('');
+  const [restoreTried, setRestoreTried] = useState(false);
   const { busy, run, error, clearError } = useRun();
   const { done, say } = useSay();
   if (key !== loadedFor) {
@@ -875,10 +879,25 @@ export function LiveTestBuilderScreen({ live }: { live: LiveTestBuilder }) {
         consequence="It comes back as it was before it was archived: a published test can be used for invitations again. This is recorded in the audit log."
         confirmLabel="Restore"
         onConfirm={async () => {
-          if (live.onRestore && (await run('restore', live.onRestore))) done('Test restored');
+          const needs = t.restoreNeedsReason === true;
+          // Answer 2307: pressed without a reason, the field says why and the dialog stays open.
+          if (needs && restoreWhy.trim().length < 10) {
+            setRestoreTried(true);
+            document.getElementById('restore-why')?.focus();
+            return false;
+          }
+          if (live.onRestore && (await run('restore', () => live.onRestore!(needs ? restoreWhy.trim() : undefined)))) done('Test restored');
           setRestoring(false);
+          setRestoreWhy('');
+          setRestoreTried(false);
         }}
-      />
+      >
+        {t.restoreNeedsReason && (
+          <FormField id="restore-why" label="Why restore it now?" required helper="A fairness finding on this test is still open. Your reason goes into the audit log." error={restoreTried && restoreWhy.trim().length < 10 ? 'Say why in a sentence (at least 10 letters).' : undefined}>
+            <TextArea rows={2} value={restoreWhy} onChange={setRestoreWhy} maxLength={500} />
+          </FormField>
+        )}
+      </ConfirmDialog>
       <Stepper
         title="Build test"
         steps={steps}

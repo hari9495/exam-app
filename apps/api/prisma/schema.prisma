@@ -6215,6 +6215,8 @@ model Punch {
   accuracyM      Int?     @map("accuracy_m")
   distanceM      Int?     @map("distance_m")
   verdict        String   @db.VarChar(12)
+  /// Batch A A9 (answer 2312): office, remote or unknown, worked out at punch time (null: punched before it was stored).
+  workPlace      String?  @map("work_place") @db.VarChar(7)
   locationId     String?  @map("location_id") @db.Uuid
   ip             String?  @db.VarChar(45)
   device         String?  @db.VarChar(200)

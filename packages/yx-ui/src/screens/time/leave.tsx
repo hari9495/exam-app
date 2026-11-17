@@ -9,7 +9,7 @@ import { Drawer } from '../../components/drawer';
 import { EmptyState, ErrorState, InlineAlert, Meter, NoAccessState } from '../../components/feedback';
 import { BottomSheet, ConfirmDialog, Dialog } from '../../components/overlay';
 import { Card, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
-import { type TableColumn } from '../../components/table';
+import { DataTable, type TableColumn } from '../../components/table';
 import { Checkbox, RadioGroup } from '../../components/choice';
 import { NumberField, TextArea } from '../../components/inputs';
 import { ErrorSummary, FieldRow, FormField, useSaveErrors, useTooEarly } from '../../components/field';
@@ -98,6 +98,8 @@ const STORY = {
   attendance: 'screens-time-extra-·-attendance-calendar--employee',
   negative: 'screens-time-tim-30-·-leave-reports--negative',
   certificate: 'screens-time-tim-19-·-leave-request-detail--manager',
+  leaveCardHr: 'screens-time-tim-21-·-leave-card--hr',
+  balanceGrid: 'screens-time-tim-21-·-leave-card--balance-grid',
 };
 function LinkButton({ to, size, fullWidth, children }: { to: string; size?: 'sm'; fullWidth?: boolean; children: ReactNode }) {
   return <Button size={size} fullWidth={fullWidth} asChild><a href={storyHref(to)} target="_top">{children}</a></Button>;
@@ -939,6 +941,118 @@ function AdjustBalanceDialog({ open, onOpenChange, person: fixedPerson, onPost, 
 }
 
 /* =====================================================================
+   TIM-21 HR · Balance grid (batch A D10, founder answer 2314): everyone in scope by leave type. Each cell opens a small
+   dialog for the corrected balance and a reason; the difference is posted to the ledger and audited. Never below the
+   leave type's minimum balance; never one's own (the cell is plain text then).
+   ===================================================================== */
+
+export interface BalanceGridPerson {
+  employeeId: string;
+  name: string;
+  code: string | null;
+  canAdjust: boolean;
+  balances: { leaveTypeId: string; balance: number; hasBalance: boolean; negativeLimit: number }[];
+}
+export interface BalanceCorrection {
+  employeeId: string;
+  leaveTypeId: string;
+  from: number;
+  to: number;
+  reason: string;
+}
+const daysText = (n: number) => `${n} ${Math.abs(n) === 1 ? 'day' : 'days'}`;
+
+export function BalanceGrid({ types, people, onCorrect, open: open0 = null }: {
+  types: { id: string; code: string; name: string }[];
+  people: BalanceGridPerson[];
+  /** Resolves once the ledger line is posted, or throws the server's reason (shown in the dialog). */
+  onCorrect: (x: BalanceCorrection) => Promise<unknown>;
+  /** Stories: the dialog open on one cell. */
+  open?: { employeeId: string; leaveTypeId: string } | null;
+}) {
+  const [cell, setCell] = useState(open0);
+  // Only types someone in the list holds with a balance; unpaid and other kinds have nothing to correct.
+  const shown = types.filter((t) => people.some((p) => p.balances.some((b) => b.leaveTypeId === t.id && b.hasBalance)));
+  const columns: TableColumn<BalanceGridPerson>[] = [
+    { key: 'person', header: 'Employee', type: 'person', value: (p) => p.name, person: (p) => ({ name: p.name, secondary: p.code ?? undefined }), width: 220 },
+    ...shown.map((t): TableColumn<BalanceGridPerson> => ({
+      key: t.id,
+      header: t.code,
+      type: 'number',
+      width: 96,
+      value: (p) => p.balances.find((b) => b.leaveTypeId === t.id && b.hasBalance)?.balance ?? null,
+      render: (p) => {
+        const b = p.balances.find((x) => x.leaveTypeId === t.id && x.hasBalance);
+        if (!b) return <span className="yx-tim-muted" aria-label={`${t.name}: not in ${p.name}'s policy`}>–</span>;
+        return p.canAdjust ? (
+          <Button size="sm" aria-label={`Correct ${t.name} for ${p.name}: ${daysText(b.balance)}`} onClick={() => setCell({ employeeId: p.employeeId, leaveTypeId: t.id })}>{String(b.balance)}</Button>
+        ) : (
+          <span aria-label={`${t.name} for ${p.name}: ${daysText(b.balance)}, you can't correct it`}>{String(b.balance)}</span>
+        );
+      },
+    })),
+  ];
+  const person = cell ? people.find((p) => p.employeeId === cell.employeeId) : undefined;
+  const type = cell ? types.find((t) => t.id === cell.leaveTypeId) : undefined;
+  const bal = person && type ? person.balances.find((b) => b.leaveTypeId === type.id) : undefined;
+  return (
+    <>
+      <DataTable label="Leave balances by type" columns={columns} rows={people} getRowId={(p) => p.employeeId} pageSize={8} rowNoun={['person', 'people']} empty={<EmptyState title="No one to show" description="People in your HR scope appear here." />} />
+      <p className="yx-tim-note">Press a balance to correct it. Each change needs a reason, goes on the ledger as an adjustment and into the audit log. A balance can't go below the leave type's minimum.</p>
+      {person && type && bal && (
+        <CorrectBalanceDialog key={`${person.employeeId}:${type.id}`} person={person.name} typeName={type.name} from={bal.balance} min={-bal.negativeLimit} onClose={() => setCell(null)} onPost={(to, reason) => onCorrect({ employeeId: person.employeeId, leaveTypeId: type.id, from: bal.balance, to, reason })} />
+      )}
+    </>
+  );
+}
+
+function CorrectBalanceDialog({ person, typeName, from, min, onPost, onClose }: { person: string; typeName: string; from: number; min: number; onPost: (to: number, reason: string) => Promise<unknown>; onClose: () => void }) {
+  const [to, setTo] = useState<number | null>(from);
+  const [reason, setReason] = useState('');
+  const { busy, error, run } = useRun();
+  const { toast } = useToast();
+  // Never a disabled Post: pressed too early, the errors show and the first field takes focus.
+  const tooEarly = useTooEarly([
+    ...(to === null ? [{ fieldId: 'cb-to', message: 'Enter the corrected balance.' }] : to === from ? [{ fieldId: 'cb-to', message: 'That is the balance now. Change it first.' }] : to < min ? [{ fieldId: 'cb-to', message: `It can't go below ${daysText(min)}, the leave type's minimum balance.` }] : []),
+    ...(reason.trim().length < 3 ? [{ fieldId: 'cb-why', message: 'Say why (it goes on the ledger and the audit log).' }] : []),
+  ]);
+  const delta = to === null ? 0 : Math.round((to - from) * 100) / 100;
+  const post = () => {
+    if (tooEarly.stop()) return;
+    void run('post', async () => {
+      await onPost(to!, reason.trim());
+      toast({ tone: 'success', title: `${typeName} for ${person} is now ${daysText(to!)}` });
+      onClose();
+    });
+  };
+  return (
+    <Dialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title="Correct balance"
+      description={`${person} · ${typeName}. The change goes on the ledger with your reason; it can't be edited later, only corrected again.`}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" loading={busy === 'post'} onClick={post}>Post correction</Button>
+        </>
+      }
+    >
+      <div className="yx-tim-stack">
+        {error && <InlineAlert tone="danger" title="Not posted">{error}</InlineAlert>}
+        <FormField id="cb-to" label="Corrected balance (days)" required helper={`Now ${daysText(from)}. Lowest allowed: ${daysText(min)}. Half days are fine.`} error={tooEarly.errorOf('cb-to')}>
+          <NumberField value={to} decimals min={-1000} max={1000} onChange={setTo} />
+        </FormField>
+        <FormField id="cb-why" label="Reason" required error={tooEarly.errorOf('cb-why')}>
+          <TextArea rows={2} value={reason} onChange={setReason} maxLength={500} placeholder="For example: opening balance from the old system was wrong" />
+        </FormField>
+        <p className="yx-tim-muted">{delta === 0 ? 'Nothing to post yet.' : `Posts ${delta > 0 ? '+' : ''}${daysText(delta)} to the ledger.`}</p>
+      </div>
+    </Dialog>
+  );
+}
+
+/* =====================================================================
    TIM-17 · Leave home (role-based)
    ===================================================================== */
 
@@ -1614,8 +1728,14 @@ function projectBalance(b: LeaveBalance, on: Date, person = ME.name) {
   return { value, note };
 }
 
-export function LeaveCardScreen({ persona = 'emp', adjustOpen = false, surface = 'desk', person: personArg, live, mine }: {
+export function LeaveCardScreen({ persona = 'emp', adjustOpen = false, surface = 'desk', person: personArg, view: view0 = 'card', correctOpen = false, cancelDaysOpen = false, live, mine }: {
+  /** HR stories (answer 2325): Cancel some days open on the person's approved leave. */
+  cancelDaysOpen?: boolean;
   persona?: 'emp' | 'hr'; adjustOpen?: boolean; surface?: 'desk' | 'phone';
+  /** HR: one person's card, or everyone's balances by type (batch A D10). */
+  view?: 'card' | 'grid';
+  /** HR grid stories: the correction dialog open on Priya's earned leave. */
+  correctOpen?: boolean;
   /** HR view only: whose card (default the signed-in employee, ME). */
   person?: string;
   /** The app (HR › Leave balances): everyone in HR's scope, one card at a time. */
@@ -1625,10 +1745,14 @@ export function LeaveCardScreen({ persona = 'emp', adjustOpen = false, surface =
 }) {
   if (mine) return <LiveMyLeaveCardScreen live={mine} />;
   if (live) return <LiveLeaveCardScreen live={live} />;
+  if (persona === 'hr' && view0 === 'grid' && surface === 'desk') return <SampleBalanceGridScreen correctOpen={correctOpen} />;
   const person = persona === 'hr' && personArg ? personArg : ME.name;
   const isMe = person === ME.name;
   const who = isMe ? ME : TEAM.find((p) => p.name === person);
   const [adj, setAdj] = useState(adjustOpen);
+  // Answer 2325: HR's view of the person's approved leave, with Cancel some days (the drawer's HR mode).
+  const hrApproved = LEAVE_REQUESTS.filter((r) => r.person === person && r.status === 'Approved');
+  const [hrCancel, setHrCancel] = useState<LeaveRequestRow | null>(cancelDaysOpen ? (hrApproved.find((r) => r.days > 1) ?? null) : null);
   const [apply, setApply] = useState<LeaveCode | null>(null);
   const [viewReq, setViewReq] = useState(false);
   const [projDate, setProjDate] = useState<Date | null>(new Date(2026, 11, 1));
@@ -1675,7 +1799,23 @@ export function LeaveCardScreen({ persona = 'emp', adjustOpen = false, surface =
         <div className="yx-tim-grid">
           <div data-span="7">{ledgerCard}</div>
           {/* Stacked (below 1024): the projection comes before the long ledger, as on the phone. */}
-          <div data-span="5" style={stacked ? { order: -1 } : undefined}>{projCard}</div>
+          <div data-span="5" style={stacked ? { order: -1 } : undefined}>
+            <div className="yx-tim-stack">
+              {projCard}
+              {persona === 'hr' && hrApproved.length > 0 && (
+                <Card title="Approved leave">
+                  <ul className="yx-tim-list" aria-label="Approved leave">
+                    {hrApproved.map((r) => (
+                      <li key={r.id}>
+                        <span className="yx-tim-list__main"><strong>{r.type} · {span(r.from, r.to)}</strong><span className="yx-tim-muted">{plural(r.days, 'day')}</span></span>
+                        {r.days > 1 && <Button size="sm" onClick={() => setHrCancel(r)}>Cancel some days</Button>}
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -1684,6 +1824,7 @@ export function LeaveCardScreen({ persona = 'emp', adjustOpen = false, surface =
     <>
       {apply && <ApplyLeavePanel key={apply} type={apply} from={new Date(2026, 9, 5)} to={new Date(2026, 9, 5)} open onOpenChange={(o) => !o && setApply(null)} surface={surface} />}
       {viewReq && !phone && lr1 && <LeaveRequestView r={lr1} viewer={reqViewer} open onOpenChange={setViewReq} />}
+      {hrCancel && <CancelSomeDaysDrawer hr days={eachIso(hrCancel.from, hrCancel.to).filter((on) => dayOfIso(on).getDay() !== 0).map((on) => ({ on, portion: 1 }))} today={ymd(TODAY0)} onSend={async () => undefined} onClose={() => setHrCancel(null)} />}
     </>
   );
   if (phone && viewReq && lr1)
@@ -1698,7 +1839,7 @@ export function LeaveCardScreen({ persona = 'emp', adjustOpen = false, surface =
       <PageHeader
         title={persona === 'emp' ? 'My leave card' : `Leave card · ${person}`}
         description={isMe ? `Leave year 2026 · policy: Staff (Chennai)${persona === 'hr' ? ` · ${ME.code} · ${ME.role}` : ''}` : `Leave year 2026${who ? ` · ${who.code} · ${who.role}` : ''}`}
-        actions={persona === 'hr' ? <div className="yx-tim-row"><LinkButton to={STORY.leaveHomeHr}>Back to Team leave</LinkButton><Button variant="primary" onClick={() => setAdj(true)}>Adjust balance</Button></div> : <Button variant="primary" icon={CalendarPlus} onClick={() => setApply('EL')}>Apply leave</Button>}
+        actions={persona === 'hr' ? <div className="yx-tim-row"><LinkButton to={STORY.leaveHomeHr}>Back to Team leave</LinkButton><LinkButton to={STORY.balanceGrid}>Balance grid</LinkButton><Button variant="primary" onClick={() => setAdj(true)}>Adjust balance</Button></div> : <Button variant="primary" icon={CalendarPlus} onClick={() => setApply('EL')}>Apply leave</Button>}
       />
       {body}
       {extras}
@@ -1709,6 +1850,78 @@ export function LeaveCardScreen({ persona = 'emp', adjustOpen = false, surface =
         onPost={(e) => post(e)}
       />
     </TimePage>
+  );
+}
+
+/** TIM-21 HR · Balance grid with sample data: the people HR sees, their paid balances; a correction updates the cell. */
+function SampleBalanceGridScreen({ correctOpen }: { correctOpen: boolean }) {
+  const types = BALANCES.filter((b) => b.paid).map((b) => ({ id: b.code, code: b.code, name: b.name }));
+  const [people, setPeople] = useState<BalanceGridPerson[]>(() =>
+    PEOPLE_WITH_BALANCES.map((n) => ({
+      employeeId: n,
+      name: n,
+      code: n === ME.name ? ME.code : (TEAM.find((t) => t.name === n)?.code ?? null),
+      // HR never corrects their own balance; everyone else in scope can be corrected.
+      canAdjust: n !== HR_ADMIN.name,
+      balances: balancesFor(n).filter((b) => b.paid).map((b) => ({ leaveTypeId: b.code, balance: b.balance, hasBalance: true, negativeLimit: b.code === 'EL' ? 0 : b.code === 'CL' ? 2 : 0 })),
+    })),
+  );
+  return (
+    <TimePage active="Team leave" user={HR_ADMIN}>
+      <PageHeader title="Leave balances · everyone" description="Leave year 2026 · press a balance to correct it, with a reason" actions={<LinkButton to={STORY.leaveCardHr}>One person's card</LinkButton>} />
+      <BalanceGrid
+        types={types}
+        people={people}
+        open={correctOpen ? { employeeId: 'Priya Shankar', leaveTypeId: 'EL' } : null}
+        onCorrect={async (x) => setPeople((ps) => ps.map((p) => (p.employeeId === x.employeeId ? { ...p, balances: p.balances.map((b) => (b.leaveTypeId === x.leaveTypeId ? { ...b, balance: x.to } : b)) } : p)))}
+      />
+    </TimePage>
+  );
+}
+
+/**
+ * Answer 2325: HR's leave card lists the person's approved leave; "Cancel some days" opens the employee's drawer in HR mode
+ * (any day, a reason of at least 10 letters, cancelled at once and audited).
+ */
+function HrApprovedLeave({ employeeId, today, onLoad, onCancelDays, onDone }: { employeeId: string; today: string; onLoad: (employeeId: string) => Promise<LiveRequest[]>; onCancelDays: NonNullable<LiveLeaveCard['onHrCancelDays']>; onDone: () => void }) {
+  const [rows, setRows] = useState<LiveRequest[] | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [open, setOpen] = useState<LiveRequest | null>(null);
+  const load = () => {
+    setProblem(null);
+    onLoad(employeeId).then(setRows, (e: unknown) => setProblem(e instanceof Error && e.message ? e.message : "Their leave didn't load."));
+  };
+  useEffect(load, [employeeId]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <Card title="Approved leave">
+      {problem ? <ErrorState title="Their leave didn't load" description={problem} onRetry={load} /> : !rows ? <LoadingBlock rows={3} /> : rows.length === 0 ? <p className="yx-tim-muted">No approved leave from the last two months on.</p> : (
+        <ul className="yx-tim-list" aria-label="Approved leave">
+          {rows.map((r) => (
+            <li key={r.id}>
+              <span className="yx-tim-list__main">
+                <strong>{r.type?.name ?? 'Leave'} · {isoSpan(r.from, r.to)}</strong>
+                <span className="yx-tim-muted">{r.changeWaiting ? 'A change is waiting for approval' : daysWord(r.days)}</span>
+              </span>
+              {(r.leaveDays?.length ?? 0) > 1 && !r.changeWaiting && <Button size="sm" onClick={() => setOpen(r)}>Cancel some days</Button>}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="yx-tim-note">HR can cancel any day at once with a reason; it is saved in the audit trail and the days go back to the balance.</p>
+      {open && open.leaveDays && (
+        <CancelSomeDaysDrawer
+          hr
+          days={open.leaveDays}
+          today={today}
+          onSend={async (x) => {
+            await onCancelDays(employeeId, open.id, x);
+            load();
+            onDone();
+          }}
+          onClose={() => setOpen(null)}
+        />
+      )}
+    </Card>
   );
 }
 
@@ -2328,6 +2541,14 @@ export interface LiveLeaveCard {
   data: HrBalances | null;
   onLedger: (employeeId: string) => Promise<LedgerRow[]>;
   onAdjust: (employeeId: string, input: { leaveTypeId: string; days: number; reason: string }) => Promise<unknown>;
+  /** Answer 2325: the person's approved leave HR may change, and HR's "Cancel some days" (cancelled at once, audited). */
+  onApproved?: (employeeId: string) => Promise<LiveRequest[]>;
+  onHrCancelDays?: (employeeId: string, requestId: string, x: { days: string[]; reason: string }) => Promise<unknown>;
+  /** Batch A D10: the balance grid's correction of one cell (absent: no grid). */
+  onCorrect?: (x: BalanceCorrection) => Promise<unknown>;
+  /** Opens on the grid (the page keeps it in the address, ?view=grid). */
+  view?: 'card' | 'grid';
+  onView?: (v: 'card' | 'grid') => void;
 }
 
 const isoDate = (s: string) => {
@@ -3039,12 +3260,25 @@ function LiveLeaveCardScreen({ live }: { live: LiveLeaveCard }) {
     actor: { name: l.kind === 'adjustment' ? 'HR' : SYSTEM_ACTOR },
     action: `${LEDGER_TEXT[l.kind] ?? l.kind} ${l.days > 0 ? '+' : ''}${l.days} ${l.type}${l.reason ? ` · ${l.reason}` : ''}`,
   }));
+  const [view0, setView0] = useState<'card' | 'grid'>(live.view ?? 'card');
+  const view = live.onCorrect ? (live.view ?? view0) : 'card';
+  const setView = (v: 'card' | 'grid') => (live.onView ? live.onView(v) : setView0(v));
+  const viewSwitch = live.onCorrect ? <Segment label="View" value={view} onChange={setView} options={[{ value: 'card', label: 'One person' }, { value: 'grid', label: 'Balance grid' }]} /> : null;
+  if (view === 'grid')
+    return (
+      <TimePage active="Team leave">
+        <PageHeader title="Leave balances · everyone" description="Press a balance to correct it, with a reason" actions={viewSwitch} />
+        <LiveStates state={live.state} onRetry={live.onRetry} what="Leave balances">
+          {d && <BalanceGrid types={d.types} people={d.people} onCorrect={live.onCorrect!} />}
+        </LiveStates>
+      </TimePage>
+    );
   return (
     <TimePage active="Team leave">
       <PageHeader
         title={person ? `Leave card · ${person.name}` : 'Leave card'}
         description={person ? `${person.code ?? 'No employee code'} · every balance is the sum of its ledger` : undefined}
-        actions={live.state === 'ready' && person?.canAdjust ? <Button variant="primary" onClick={() => setAdj(true)}>Adjust balance</Button> : undefined}
+        actions={<div className="yx-tim-row">{viewSwitch}{live.state === 'ready' && person?.canAdjust && <Button variant="primary" onClick={() => setAdj(true)}>Adjust balance</Button>}</div>}
       />
       <LiveStates state={live.state} onRetry={live.onRetry} what="Leave balances">
         {d && (!person ? (
@@ -3055,12 +3289,21 @@ function LiveLeaveCardScreen({ live }: { live: LiveLeaveCard }) {
               <PersonPicker aria-label="Employee" value={person.employeeId} onChange={(v) => v && setPick(v)} people={d.people.map((p) => ({ id: p.employeeId, name: p.name, department: p.code ?? undefined }))} />
             </FormField>
             <BalanceCards live={{ balances: person.balances }} />
-            <Card title="History · every change to the balance">
-              {ledgerError ? (
-                <ErrorState title="The ledger didn't load" description={ledgerError} onRetry={() => load(person.employeeId)} />
-              ) : !rows ? <LoadingBlock rows={4} /> : items.length === 0 ? <p className="yx-tim-muted">No ledger lines yet.</p> : <Timeline aria-label="Leave history" items={items} />}
-              <p className="yx-tim-note">Each balance is the sum of its entries. An adjustment adds a line with your reason; it can't be edited, only reversed by another.</p>
-            </Card>
+            <div className="yx-tim-grid">
+              <div data-span={person.canAdjust && live.onApproved ? '7' : '12'}>
+                <Card title="History · every change to the balance">
+                  {ledgerError ? (
+                    <ErrorState title="The ledger didn't load" description={ledgerError} onRetry={() => load(person.employeeId)} />
+                  ) : !rows ? <LoadingBlock rows={4} /> : items.length === 0 ? <p className="yx-tim-muted">No ledger lines yet.</p> : <Timeline aria-label="Leave history" items={items} />}
+                  <p className="yx-tim-note">Each balance is the sum of its entries. An adjustment adds a line with your reason; it can't be edited, only reversed by another.</p>
+                </Card>
+              </div>
+              {person.canAdjust && live.onApproved && live.onHrCancelDays && (
+                <div data-span="5">
+                  <HrApprovedLeave key={person.employeeId} employeeId={person.employeeId} today={new Date().toISOString().slice(0, 10)} onLoad={live.onApproved} onCancelDays={live.onHrCancelDays} onDone={() => load(person.employeeId)} />
+                </div>
+              )}
+            </div>
           </div>
         ))}
       </LiveStates>
