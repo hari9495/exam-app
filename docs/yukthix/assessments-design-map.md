@@ -375,7 +375,7 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 | Live · Live: mode minimums locked | design only, feature not built | C | no live proctoring by a person watching (question 2007) |
 | Open · Open (matrix off) | live (gap) | B | `enableAntiCheating` off. Gap: the named mode |
 | NoFaceDetection · No face detection | live (gap) | B | `faceVerificationEnabled` and `webcamAiAnalysisEnabled` off. Gap: the named mode |
-| AiAllowed · AI-allowed test | design only, feature not built | B | no AI-allowed test or assistant log |
+| AiAllowed · AI-allowed test | live (gap) | B | AS-6 part 2 (2272): the switch on the builder's Proctoring step (`PUT /asmt/tests/:id/ai-allowed`, locked once published or started, part of the approval when on); copy and paste signals and the code paste flags off for that test (2292). Gap: the detection matrix |
 | Simple · Mode picker only | live (gap) | B | switches, not modes |
 
 #### PRC-13 · Live console
@@ -457,7 +457,7 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 | ScoredWithAi · Scored: AI suggestion revealed | live | B | AS-6: essays and code, only after the marker's own mark (`POST /asmt/marking/:attempt/:question/suggestion`) |
 | Moderation · Disagreement: moderation | live | B | AS-6: `asmt.second_marker`, `asmt.moderation_gap`; a third person's mark is final |
 | Code · Code response | live (gap) | B | code answers with Piston runs, auto-graded tests (`grading/code-autograde.service.ts`) and AI review |
-| AiAllowed · AI-allowed test: assistant log | design only, feature not built | B | AS-6 part 2 (question 2272) |
+| AiAllowed · AI-allowed test: assistant log | live (gap) | B | AS-6 part 2: the marker sees "not an integrity issue here", the log for the question and the turns on other questions. Gap: no criterion for "verification of AI output" (rubrics, 2271) |
 | Minor · Under-18: human only | live | B | AS-6: `minorState` from the candidate's sealed date of birth; the suggestion is refused |
 | NotBlind · Blind mode off | live | B | AS-6: names shown when `asmt.blind_marking` is off |
 | Live · blind, not marked yet; marked, AI suggestion shown; moderator; under-18, human only; code answer; nothing to mark | live | B | AS-6 live stories |
@@ -552,8 +552,8 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 | Reconnecting · Reconnecting: answers kept on device | live | B | `/exam` (AS-4a answer queue) |
 | WeakConnection · Weak connection | live (gap) | B | the runner shows the states; the page reports online, reconnecting and offline only |
 | Break · Break between sections | live (gap) | B | breaks per test (`exams.breaks_allowed`), any time. Gap: not tied to section ends |
-| PausedByProctor · Paused by proctor | live | B | AS-5 part 2 (2231): every pause shows in the runner's paused view: a proctor's (with their message), a rule broken (strike count, Continue), a face mismatch, the face re-check after approved time (2205), screen sharing and a block |
-| AiAllowed · AI-allowed test: logged assistant | design only, feature not built | B | no AI-allowed tests |
+| PausedByProctor · Paused by proctor | live | B | AS-5 part 2 (2231) and 2280: every pause shows in the runner's paused view, with the proctor's unread messages and Reply |
+| AiAllowed · AI-allowed test: logged assistant | live | B | AS-6 part 2: the assistant under the question (`GET`/`POST /attempt/assistant`), every message logged (`asmt_assistant_messages`, never rewritten), `asmt.assistant_turns` per attempt (default 20) |
 | Finish · Finish confirmation | live | B | `/exam`; a failed submit says so and offers Try again |
 | Submitted · Submitted and optional survey | live (gap) | B | `/submitted` (`ResultSummary`). Gap: no after-test survey (`survey` on that page: none) |
 | LiveOfflineStopped · Live · offline past the limit (answers kept on device) | live | B | AS-4a: `asmt.offline_minutes`; answers kept on the device until the server has them |
@@ -588,7 +588,7 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 
 | story (sub-page) | verdict | bucket | note |
 |---|---|---|---|
-| Default · Default | live (gap) | B | AS-5 part 3: `/privacy`: consents given, what is kept until when, Download my data (audited). Gap: accommodation evidence is not listed |
+| Default · Default | live | B | AS-5 part 3 and AS-6 part 2 (2279): `/privacy`: consents given, what is kept until when (accommodation evidence with its own date), Download my data (audited) |
 | ConfirmErase · Erase: confirmation | live | B | AS-5 part 3: a request (one waiting at a time); the nightly sweep erases frames, captures and face data, emails, audits |
 | LegalHold · Erasure blocked by open appeal | live | B | AS-5 part 3: the request waits while an incident is undecided or an appeal or its window is open |
 | Requested · Erasure requested | live | B | AS-5 part 3: received on, erase by (30 days), then "Erased on" |
@@ -1532,3 +1532,37 @@ so it was not built here (question 2272).
 - 2278: keep Withdraw = erasure of recordings and face data; a "no monitoring for future tests" choice only if a customer asks.
 - 2279: the privacy centre lists accommodation evidence with its own delete date, and the erasure includes it (AS-6 part 2).
 - 2280: show unread proctor messages in the paused view too.
+
+## AS-6 as built, part 2 (branch `feat/yukthix-assessments-as6b`, 17 Nov 2026; answers 2272, 2277, 2279, 2280)
+
+- **2277:** opening a test's live console records `asmt.live_console.opened` once per visit (`POST /asmt/live/:examId/opened`,
+  proctors; the page calls it once, not on each refresh).
+- **2280:** the proctor's unread messages, Got it and Reply also show in the runner's paused view (the reply dialog
+  does not say the timer runs while paused).
+- **2279:** the privacy centre lists accommodation evidence: "Kept until your request is decided", then a delete date
+  (decision + `asmt.retention`). The nightly proctoring-retention job now deletes decided accommodation files after
+  that (the request and its decision stay), and a candidate's erasure request includes them. The data copy lists the
+  requests with their file names.
+- **2272 AI-allowed tests:** migration `202617z0000411_asmt_ai_allowed` (`exams.ai_allowed`; `asmt_assistant_messages`,
+  forced RLS, the runtime may add and never rewrite). The test writer turns it on in the builder's Proctoring step
+  (draft only; it joins the approval fingerprint when on; a copy keeps it). In the runner the approved assistant sits
+  under the question: each question and answer is logged with the question the candidate was on; a company allows
+  `asmt.assistant_turns` answered questions per attempt (Settings 6.5, default 20); a failed answer keeps the question
+  in the log and does not count; each answer is one AI credit. The assistant sees the conversation, not the test. For
+  that test copy and paste are not watched and the code paste flags (large paste, mostly pasted, no iteration) are not
+  raised; leaving the test is still a tab or window switch. Markers see "not an integrity issue here" and the log for
+  the question. A data-rights erase deletes the log; the candidate's data copy includes it.
+- **Tests:** e2e `assessments-as6` (AI-allowed: 5), `assessments-as5` (2277, 2279: 2); kit builder switch, runner
+  assistant and paused messages, marking log, privacy centre accommodation; web live console visit.
+
+### Questions (from 2292)
+
+2292. **Which flags an AI-allowed test turns off.** Copy and paste signals and the code paste flags; tab and window
+      switches, faces and screen analysis stay. *Suggested: keep; an "answer reads like AI" flag later applies only to
+      tests that are not AI-allowed.*
+2293. **What the assistant knows.** It sees the conversation, not the question or the marking. *Suggested: keep: what the
+      candidate chooses to share is part of what is assessed.*
+2294. **An under-18 candidate on an AI-allowed test.** Allowed today (people mark by hand as always). *Suggested: allow;
+      the company decides by inviting.*
+2295. **Cost.** Each answer is one AI credit; a big drive could use many. *Suggested: show the credits a test used on
+      its report, with AS-7 billing.*

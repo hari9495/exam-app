@@ -22326,6 +22326,30 @@
     "note": "Positive and negative. Accommodation evidence is not in the privacy centre yet (question 2279)."
   },
   {
+    "id": "MT-ASMT-AI1",
+    "area": "AI-allowed tests, live console visit record, messages while paused, accommodation evidence on the privacy centre: answers 2272, 2277, 2279, 2280 (17 Nov 2026)",
+    "screen": "Hire › Assessments › Tests › a test (Proctoring step); Candidate › the test; Marking; Live console; Your privacy centre",
+    "url": "http://localhost:3000/yx/hiring/assessments/tests",
+    "account": "A test writer; a marker (asmt.evaluate); a proctor; a candidate; a results reader.",
+    "steps": [
+      "As the test writer, open a draft test with an essay; Proctoring step: turn on AI-allowed test; publish. Negative: on a published test, try to turn it off.",
+      "As the candidate, start it: the assistant card under the question; ask 'How do I count words?'. Negative: Ask with an empty box.",
+      "Paste the assistant's answer into the essay; check no copy/paste warning or strike.",
+      "Set Settings 6.5 'Questions to the assistant' to 10 and ask until none are left. Negative: the Ask button is off at 0.",
+      "Submit; as the marker, open the essay in Marking.",
+      "As the proctor, open the test's Live console twice (reload once); check the audit log.",
+      "Pause a candidate with a message; as the candidate, see the message on the paused screen and Reply.",
+      "As a candidate with an accommodation request and a file, open Your privacy centre before and after the decision; ask to erase."
+    ],
+    "expected": "Step 1: the switch saves ('AI-allowed test: the assistant is on'); a published test says it is locked. Step 2: the reply and '19 of 20 questions left'; 'Write your question first.' for an empty one. Step 3: no strike. Step 4: Ask is disabled with 0 left. Step 5: 'not an integrity issue here' and the log for the question. Step 6: one asmt.live_console.opened per visit. Step 7: the message and Reply on the paused screen. Step 8: 'Kept until your request is decided', then 'Delete on <date>'; the erasure removes the file, the decision stays.",
+    "stories": [
+      "LiveAssistant",
+      "LiveConsole",
+      "LivePrivacy"
+    ],
+    "note": "Positive and negative. Questions 2292-2295 for the founder."
+  },
+  {
     "id": "MT-ASMT-HELP1",
     "area": "Assessments AS-4b (16 Nov 2026)",
     "screen": "Candidate › Ask for an accommodation; Hire › Assessments › Accommodation requests",
