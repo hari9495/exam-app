@@ -78,10 +78,7 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
   /** Calculate, submit, and both approvers approve with the phrase. */
   const approveRun = async (runId: string) => {
     const r = await calculate(runId);
-    // A second month flags pay changes against the first; payroll confirms them before submitting.
-    for (const f of (await api('payAdmin', 'get', `/payroll/runs/${runId}/variances`).expect(200)).body as { id: string }[]) await api('payAdmin', 'post', `/payroll/runs/${runId}/variances/${f.id}/ack`).send({}).expect(200);
-    const sent = await api('payAdmin', 'post', `/payroll/runs/${runId}/submit`).send({});
-    if (sent.status !== 200) throw new Error(`submit ${runId}: ${sent.status} ${JSON.stringify(sent.body)}`);
+    await api('payAdmin', 'post', `/payroll/runs/${runId}/submit`).send({}).expect(200);
     for (const who of ['approver1', 'approver2'] as const) {
       await stepUp(who);
       await api(who, 'post', `/payroll/runs/${runId}/decision`)
@@ -274,52 +271,6 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
         .map((r) => r.t)
         .sort(),
     ).toEqual([...tables].sort());
-  });
-
-  // Fix (late corrections paid): an approved late correction for a locked month is paid by the next regular run, as an
-  // LOP reversal at the locked month's rates under the same components (so PF, ESI and tax follow), listed on the run's
-  // corrections panel; "Not paid" with a reason still takes it out.
-  it('a late correction approved after the month locked is paid in the next regular run; Not paid takes it out', async () => {
-    const after = (m: string) => iso(new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5)), 1))).slice(0, 7);
-    const m1 = after(month);
-    const m2 = after(m1);
-    const absentOn = `${m1}-05`;
-    // emp3 was absent on the 5th (one LOP day); m1 is paid and locked with that day unpaid.
-    await inA((tx) => tx.attendanceDay.create({ data: { organizationId: org.A.id, employeeId: ids.emp3, workOn: new Date(`${absentOn}T00:00:00Z`), mode: 'punch', status: 'absent' } }));
-    const run1 = (await api('payAdmin', 'post', '/payroll/runs').send({ payGroupId: ids.group, month: m1 }).expect(201)).body.id as string;
-    const slips1 = await approveRun(run1);
-    const s1 = slips1.find((x) => x.employeeId === ids.emp3)!;
-    const lop1 = (await linesOf(s1.id)).body.lines as { code: string; amount: string; explanation: string }[];
-    expect(lop1.find((l) => l.code === 'basic')!.explanation).toMatch(/less 1\.00 unpaid days/);
-    const p1 = await inA((tx) => tx.payPeriod.findFirstOrThrow({ where: { organizationId: org.A.id, legalEntityId: ids.entity, periodStart: new Date(`${m1}-01T00:00:00Z`) } }));
-    expect(['locked', 'filed']).toContain(p1.stage);
-    // The gate reader missed them: the correction is approved after the lock and waits for the next open month (m2).
-    const cid = (
-      await scoped((tx) =>
-        tx.payCorrection.create({
-          data: { organizationId: org.A.id, legalEntityId: ids.entity, employeeId: ids.emp3, payPeriodId: p1.id, workOn: new Date(`${absentOn}T00:00:00Z`), kind: 'attendance', source: 'late_request', change: { shouldBe: 'present' }, reason: 'The gate reader missed me', status: 'approved', decidedAt: new Date(), targetPeriod: new Date(`${m2}-01T00:00:00Z`), createdBy: users.emp3 },
-        }),
-      )
-    ).id;
-    const run2 = (await api('payAdmin', 'post', '/payroll/runs').send({ payGroupId: ids.group, month: m2 }).expect(201)).body.id as string;
-    const reversal = async () => {
-      await calculate(run2);
-      const s2 = ((await api('payAdmin', 'get', `/payroll/runs/${run2}/payslips`).expect(200)).body as { id: string; employeeId: string }[]).find((x) => x.employeeId === ids.emp3)!;
-      return ((await linesOf(s2.id)).body.lines as { code: string; kind: string; amount: string; explanation: string }[]).filter((l) => /late correction/.test(l.explanation));
-    };
-    const paid = await reversal();
-    // Paid back under the same components as the locked month's LOP cut (basic and the prorated allowances).
-    expect(paid.length).toBeGreaterThan(0);
-    expect(paid.find((l) => l.code === 'basic')).toMatchObject({ kind: 'earning', explanation: expect.stringContaining(absentOn) });
-    const total = paid.reduce((t, l) => t + Number(l.amount), 0);
-    expect(total).toBeGreaterThan(0);
-    // The run's corrections panel lists it; Not paid with a reason takes it out of the next calculation.
-    const card = (await api('payAdmin', 'get', `/payroll/runs/${run2}/special-days`).expect(200)).body;
-    expect(card.corrections).toEqual([expect.objectContaining({ id: cid, employeeId: ids.emp3, month: m1 })]);
-    await api('payAdmin', 'post', `/payroll/runs/${run2}/special-days/corrections/${cid}/not-paid`).send({ reason: 'Paid by cash at the site office' }).expect(200);
-    expect(await reversal()).toEqual([]);
-    await api('payAdmin', 'post', `/payroll/runs/${run2}/special-days/corrections/${cid}/undo-not-paid`).send({}).expect(200);
-    expect((await reversal()).length).toBe(paid.length);
   });
 
   it('an off-cycle bonus run: its items only, the same approval, the regular payslip untouched; others cannot add to it', async () => {

@@ -19,6 +19,8 @@ import { addDays } from '../time/time-maths';
 import { PeriodsService as TimePeriodsService } from '../time/periods.service';
 import { ApprovalsEngine, type Notice, type StepSpec } from '../workflow/approvals-engine.service';
 import { ENGINE_VERSION, calculatePayslip, hashOf, type CalcComponent, type Segment, type Snapshot } from './calc';
+import { LISTED_SOURCES, componentDifference, correctionLabel, monthOf, paidCorrections, shouldBeLop, wasLop, withDayChanged } from './late-corrections';
+import { monthRun } from './month-run';
 import type { ConfirmationDto } from './dto';
 import { principalPart } from './inputs.service';
 import { dayKinds } from './payslip-days';
@@ -633,7 +635,10 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       const open = ['draft', 'calculated', 'in_review', 'reopened'].includes(run.status) && !(period && (period.stage === 'locked' || period.stage === 'filed'));
       const editable = open && v.grants.has('payroll.input.manage');
       const rows = await tx.specialDays.findMany({ where: { organizationId: org, legalEntityId: run.legalEntityId, periodStart: run.periodStart, days: { gt: 0 } }, orderBy: [{ kind: 'asc' }, { enteredAt: 'asc' }] });
-      const all = await tx.payCorrection.findMany({ where: { organizationId: org, legalEntityId: run.legalEntityId, source: 'injury_leave', targetPeriod: run.periodStart, status: { in: ['approved', 'not_paid'] } }, orderBy: { createdAt: 'asc' } });
+      const all = await tx.payCorrection.findMany({ where: { organizationId: org, legalEntityId: run.legalEntityId, source: { in: LISTED_SOURCES }, targetPeriod: run.periodStart, status: { in: ['approved', 'not_paid'] } }, orderBy: { createdAt: 'asc' } });
+      // An injury correction carries its month and days; an attendance one its day (half a day for "half_day").
+      const monthOfX = (x: (typeof all)[number]) => (x.change as { month?: string }).month ?? monthOf(x.workOn);
+      const daysOfX = (x: (typeof all)[number]) => (x.change as { injuryDays?: string }).injuryDays ?? ((x.change as { shouldBe?: string }).shouldBe === 'half_day' ? '0.50' : '1.00');
       const corrections = all.filter((x) => x.status === 'approved');
       const dropped = all.filter((x) => x.status === 'not_paid');
       const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: [...rows.map((r) => r.employeeId), ...all.map((x) => x.employeeId)] } }, select: { id: true, givenName: true, familyName: true, preferredName: true } });
@@ -645,8 +650,8 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       return {
         editable,
         rows: rows.map((r) => ({ employeeId: r.employeeId, name: name(r.employeeId), kind: r.kind as 'suspension' | 'maternity' | 'injury', days: r.days.toFixed(2), source: r.source as 'leave' | 'payroll', note: r.note })),
-        corrections: corrections.map((x) => ({ id: x.id, employeeId: x.employeeId, name: name(x.employeeId), month: (x.change as { month: string }).month, days: (x.change as { injuryDays: string }).injuryDays, note: x.reason })),
-        notPaid: dropped.map((x) => ({ id: x.id, name: name(x.employeeId), month: (x.change as { month: string }).month, days: (x.change as { injuryDays: string }).injuryDays, reason: x.notPaidReason!, by: who.find((u) => u.id === x.notPaidBy)?.name ?? who.find((u) => u.id === x.notPaidBy)?.email ?? 'Former user' })),
+        corrections: corrections.map((x) => ({ id: x.id, employeeId: x.employeeId, name: name(x.employeeId), month: monthOfX(x), days: daysOfX(x), note: x.reason, kind: x.source === 'injury_leave' ? ('injury' as const) : ('attendance' as const), on: x.source === 'injury_leave' ? null : dateOf(x.workOn) })),
+        notPaid: dropped.map((x) => ({ id: x.id, name: name(x.employeeId), month: monthOfX(x), days: daysOfX(x), reason: x.notPaidReason!, by: who.find((u) => u.id === x.notPaidBy)?.name ?? who.find((u) => u.id === x.notPaidBy)?.email ?? 'Former user' })),
       };
     });
   }
@@ -663,7 +668,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       if (!(await entitiesFor(tx, c, v, 'payroll.input.manage')).includes(run.legalEntityId)) throw new ForbiddenException('Only payroll with the inputs key for this legal entity can do that.');
       const period = await tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId: run.legalEntityId, payGroupId: null, periodStart: run.periodStart } });
       if (run.runType !== 'regular' || !['draft', 'calculated', 'in_review', 'reopened'].includes(run.status) || (period && (period.stage === 'locked' || period.stage === 'filed'))) throw new ConflictException('This run is locked: nothing on it changes now.');
-      const x = await tx.payCorrection.findFirst({ where: { organizationId: org, id: correctionId, legalEntityId: run.legalEntityId, source: 'injury_leave', targetPeriod: run.periodStart } });
+      const x = await tx.payCorrection.findFirst({ where: { organizationId: org, id: correctionId, legalEntityId: run.legalEntityId, source: { in: LISTED_SOURCES }, targetPeriod: run.periodStart } });
       if (!x) throw new NotFoundException('Not found');
       if (reason !== null) {
         if (x.status !== 'approved') throw new ConflictException('This one is already marked not paid.');
@@ -793,7 +798,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
   // ------------------------------------------------------------------------------------------ the snapshot (§3.5)
 
   /** Everything one person's month is worked out from, by value (the function reads nothing else). */
-  async snapshot(tx: Tx, c: CompanyContext, run: Run, employmentId: string, rules: RuleSet[], reads = new ChunkReads([employmentId])): Promise<Snapshot> {
+  async snapshot(tx: Tx, c: CompanyContext, run: Run, employmentId: string, rules: RuleSet[], reads = new ChunkReads([employmentId]), late = true): Promise<Snapshot> {
     const org = c.organizationId;
     const month = this.month(run);
     const { from, to } = monthRange(month);
@@ -955,7 +960,12 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
         age,
       },
       ytd: { pt: (ytdPt._sum.amount ?? D(0)).toFixed(2) },
-      oneTime: oneTime.map((o) => ({ id: o.id, code: o.componentCode, amount: o.amount.toFixed(2), days: o.endOn && dateOf(o.endOn) <= to && dateOf(o.periodStart) < from ? Number(dateOf(o.endOn).slice(8)) : null, ...(o.label ? { label: o.label } : {}) })),
+      oneTime: [
+        ...oneTime.map((o) => ({ id: o.id, code: o.componentCode, amount: o.amount.toFixed(2), days: o.endOn && dateOf(o.endOn) <= to && dateOf(o.periodStart) < from ? Number(dateOf(o.endOn).slice(8)) : null, ...(o.label ? { label: o.label } : {}) })),
+        // Late corrections approved after their month locked, paid in this regular run (PAY-1.03 / 1.04).
+        // An F&F run paying the leaver's last salary pays them too (no regular run follows for that person).
+        ...(late && (run.runType === 'regular' || offcycle === 'fnf') && monthly && !itemsOnly ? await this.lateCorrectionItems(tx, c, run, em, rules, allComponents) : []),
+      ],
       // HLP-12 answer 65: a row filled from leave may be 0 days (the leave was cancelled); inFeed: already unpaid in the feed.
       special: special.filter((x) => x.days.gt(0)).map((x) => ({ kind: x.kind as 'suspension' | 'maternity' | 'injury', days: x.days.toFixed(2), daysBefore: x.daysBefore, inFeedDays: x.inFeedDays.toFixed(2) })),
       averageDailyWage: recentDays ? recent.reduce((t, x) => t.add(x.gross), D(0)).div(recentDays).toFixed(2) : null,
@@ -979,6 +989,31 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       ...(sub ? { sub: { k: sub.k, final: sub.final, ...(mtd ? { mtd } : {}) } } : {}),
       tax: !monthly ? undefined : await buildTaxInputs(tx, c, { employeeId: em.employeeId, employmentId, legalEntityId: run.legalEntityId, month, periodStart: run.periodStart, exitedOn: exitOn ? asDate(exitOn) : null, segment: segments[segments.length - 1], components, age }),
     };
+  }
+
+  /**
+   * PAY-1.03 / 1.04, YX-LOCK-03: the approved corrections of this person whose month was locked, targeted at this run's
+   * month. Each locked month is worked out again by the same engine with the day as it should have been (its own
+   * corrections never re-applied), and the difference per earning component is paid here under the same component, so
+   * PF, ESI, PT and tax follow its flags; less pay (a recovery) is a negative line. "Not paid" ones are left out.
+   */
+  private async lateCorrectionItems(tx: Tx, c: CompanyContext, run: Run, em: { id: string; employeeId: string; legalEntityId: string }, rules: RuleSet[], components: { code: string; statutory: string | null }[]): Promise<Snapshot['oneTime']> {
+    const org = c.organizationId;
+    const list = await paidCorrections(tx, org, run.legalEntityId, em.employeeId, run.periodStart);
+    if (!list.length) return [];
+    const statutory = new Set(components.filter((x) => x.statutory).map((x) => x.code));
+    const types = await tx.leaveType.findMany({ where: { organizationId: org }, select: { name: true, code: true, paid: true } });
+    const out: Snapshot['oneTime'] = [];
+    for (const x of list) {
+      const on = dateOf(x.workOn);
+      const delta = shouldBeLop(x, types) - (await wasLop(tx, org, em.employeeId, on));
+      if (!delta) continue;
+      const locked = await this.snapshot(tx, c, await monthRun(tx, org, { id: em.id, legalEntityId: run.legalEntityId }, on.slice(0, 7), run.preparedBy), em.id, rules, undefined, false);
+      const diff = componentDifference(calculatePayslip(locked, rules).lines, calculatePayslip(withDayChanged(locked, delta), rules).lines, statutory);
+      const label = correctionLabel(on, delta, x.decidedAt ? dateOf(x.decidedAt) : null);
+      for (const [code, amount] of diff) out.push({ id: x.id, code, amount: amount.toFixed(2), days: null, label });
+    }
+    return out;
   }
 
   /** Earlier sub-periods of the month (approved): taxable pay, PT wage, basic, HRA and PT, for the run that ends the month. */
