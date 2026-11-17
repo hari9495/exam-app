@@ -1650,3 +1650,9 @@ so it was not built here (question 2272).
       updated. *Suggested: keep; an "update the ones already there" choice if recruiters ask.*
 2303. **Candidate merge from a drive.** The drawer opens the kept candidate in Hire; the recruiter picks the other
       record there. *Suggested: keep; open Hire's merge with the other record already chosen if it is used often.*
+
+**Founder answers (17 Nov 2026, "ok for all"), 2302 to 2305:**
+- 2302: an imported institution whose code is already listed is refused, not updated; an "update existing" choice only if recruiters ask.
+- 2303: the merge link opens the kept candidate and the recruiter picks the other record there; preselect only if it is used often.
+- 2304: keep the 30-day floor: a notice read in the last 30 days is never deleted, whatever the setting.
+- 2305: a typed date or amount that differs from the receipt stands, and the claim's usual check flags the difference.
