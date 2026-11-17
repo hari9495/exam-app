@@ -209,6 +209,35 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     }, RUN_TX);
   }
 
+  /**
+   * A3 (batch H part 2, answer 2409): who is not ready for payroll today, for the People directory: current employees
+   * of the entities the viewer prepares runs for, with what is missing (a salary, a salary bank account, a PAN). The
+   * same checks as a run's; nothing about amounts. Null without payroll.run.prepare or when acting for someone.
+   */
+  async notReadyPeople(ctx: TenantContext, user: ScopeUser, entityId?: string | null): Promise<{ employeeId: string; missing: ('salary' | 'bank' | 'pan')[] }[] | null> {
+    const v = await this.viewer(user);
+    if (!v.grants.has('payroll.run.prepare') || v.actingForOther) return null;
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const ids = (await entitiesFor(tx, c, v, 'payroll.run.prepare')).filter((id) => !entityId || id === entityId);
+      if (!ids.length) return [];
+      await payScope(tx, ids);
+      const today = asDate(todayIst());
+      const ems = await tx.employment.findMany({ where: { organizationId: org, legalEntityId: { in: ids }, joinedOn: { lte: today }, OR: [{ exitedOn: null }, { exitedOn: { gte: today } }] }, select: { id: true, employeeId: true } });
+      if (!ems.length) return [];
+      const comps = new Set((await tx.compensation.findMany({ where: { organizationId: org, employmentId: { in: ems.map((e) => e.id) }, supersededAt: null, validFrom: { lte: today }, OR: [{ validTo: null }, { validTo: { gte: today } }] }, select: { employmentId: true } })).map((x) => x.employmentId));
+      const people = ems.map((e) => e.employeeId);
+      const banks = new Set((await tx.employeeBankAccount.findMany({ where: { organizationId: org, employeeId: { in: people }, purpose: 'salary', validTo: null }, select: { employeeId: true } })).map((x) => x.employeeId));
+      const pans = new Set((await tx.employeeIdentifiers.findMany({ where: { organizationId: org, employeeId: { in: people }, panHash: { not: null } }, select: { employeeId: true } })).map((x) => x.employeeId));
+      const out: { employeeId: string; missing: ('salary' | 'bank' | 'pan')[] }[] = [];
+      for (const e of ems) {
+        const missing = [...(comps.has(e.id) ? [] : (['salary'] as const)), ...(banks.has(e.employeeId) ? [] : (['bank'] as const)), ...(pans.has(e.employeeId) ? [] : (['pan'] as const))];
+        if (missing.length) out.push({ employeeId: e.employeeId, missing });
+      }
+      return out;
+    }, RUN_TX);
+  }
+
   /** People blocked from the month's open regular runs of these entities (the pay guard must already cover them). */
   async notReadyIn(tx: Tx, org: string, ids: string[], month: string): Promise<{ notReady: number; people: number; runId: string | null } | null> {
     const runs = await tx.payrollRun.findMany({ where: { organizationId: org, legalEntityId: { in: ids }, runType: 'regular', periodStart: asDate(`${month}-01`), status: { in: ['draft', 'calculated', 'in_review', 'reopened'] } } });

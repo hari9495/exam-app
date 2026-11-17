@@ -47,6 +47,13 @@ export class Payroll5cController {
     return this.runs.create(ctx, this.user(req), dto.payGroupId, dto.month, dto.offcycleKind ?? null, dto.subPeriod ?? null);
   }
 
+  /** A3: current employees not ready for payroll (no salary, no salary bank account, no PAN), for People. */
+  @Get('not-ready-people')
+  @RequirePermissions('payroll.run.prepare')
+  notReadyPeople(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query('legalEntityId', new ParseUUIDPipe({ optional: true })) legalEntityId?: string) {
+    return this.runs.notReadyPeople(ctx, this.user(req), legalEntityId ?? null).then((r) => r ?? []);
+  }
+
   @Get('runs')
   @RequireAnyPermission(...RUN_VIEW)
   list(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: RunListDto) {

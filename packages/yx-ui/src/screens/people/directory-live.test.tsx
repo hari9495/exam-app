@@ -24,6 +24,24 @@ describe('DirectoryScreen live', () => {
     expect(screen.getByText(/Everyone who works with Godavari Agro/)).toBeInTheDocument();
   });
 
+  it('A3: "Not ready for payroll" counts and keeps those people; their name line says what is missing; only for HR', async () => {
+    const emp = ROWS.filter((r) => r.kind === 'Employee');
+    const notReady = { [emp[0].id]: ['no salary bank account', 'no PAN'] };
+    const { unmount } = render(<DirectoryScreen persona="hr" rows={ROWS} live={live({ notReady })} />);
+    const toggle = screen.getByRole('button', { name: 'Not ready for payroll (1)' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await userEvent.click(toggle);
+    expect(document.body.textContent).toContain('Not ready for payroll: no salary bank account, no PAN');
+    await userEvent.click(toggle);
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getAllByText(emp[0].name).length).toBeGreaterThan(0);
+    expect(screen.queryByText(emp[1].name)).not.toBeInTheDocument();
+    unmount();
+    render(<DirectoryScreen persona="emp" rows={ROWS} live={live({ notReady })} />);
+    expect(screen.queryByRole('button', { name: /Not ready for payroll/ })).not.toBeInTheDocument();
+  });
+
   it('says the change against last month once it exists', () => {
     render(<DirectoryScreen persona="hr" rows={ROWS} live={live({ sinceMonth: 'September', cards: { Employee: { count: 7, delta: -2 }, 'All persons': { count: 8, delta: 0 } } })} />);
     const tabs = screen.getByRole('tablist', { name: 'Workforce' });

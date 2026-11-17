@@ -438,4 +438,21 @@ describe('Payroll: state statutory rules (batch H)', () => {
       expect(await scopedA((tx) => tx.taxDeclarationLine.count({ where: { employeeId: emp['IN-AP'] } }))).toBe(1);
     });
   });
+
+  describe('A3 (batch H part 2): not ready for payroll, for the People directory', () => {
+    type NR = { employeeId: string; missing: string[] };
+    it('lists each current employee with what is missing (salary on record, no bank, no PAN), keyed as the directory rows', async () => {
+      const rows = (await api('payAdmin', 'get', '/payroll/not-ready-people').expect(200)).body as NR[];
+      expect(rows.find((r) => r.employeeId === emp['IN-AP'])).toEqual({ employeeId: emp['IN-AP'], missing: ['bank', 'pan'] });
+      const workforce = (await api('adminA', 'get', '/people/workforce').expect(200)).body as { rows: { id: string; name: string }[] };
+      expect(workforce.rows.some((r) => r.id === emp['IN-AP'])).toBe(true);
+      // An entity filter the viewer does not reach is a 400 for a bad id and nothing for another company's.
+      await api('payAdmin', 'get', '/payroll/not-ready-people?legalEntityId=nope').expect(400);
+    });
+    it('negatives: an employee is refused; another company sees none of these people', async () => {
+      await api('emp1', 'get', '/payroll/not-ready-people').expect(403);
+      const b = (await api('payAdminB', 'get', '/payroll/not-ready-people').expect(200)).body as NR[];
+      expect(b.some((r) => Object.values(emp).includes(r.employeeId))).toBe(false);
+    });
+  });
 });
