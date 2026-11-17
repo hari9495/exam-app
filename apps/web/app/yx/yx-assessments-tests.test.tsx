@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ToastProvider } from '@yukthix/ui';
@@ -116,6 +116,15 @@ it('the Sections step picks bank questions and saves them on the section (answer
   // Answer 2285: the skills come from the tests key's route, not the bank's.
   expect(calls).toContain('GET /asmt/tests/skills');
   expect(calls).not.toContain('GET /tags');
+});
+
+it('an archived test is restored from the builder (answer 2287)', async () => {
+  const base = api.getMockImplementation()!;
+  api.mockImplementation(async (path: string, init?: RequestInit) => (path === '/asmt/tests/e1' && !init?.method ? { ...TEST, status: 'archived', editable: false } : base(path, init)));
+  wrap(<YxTestBuilderPage />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Restore' }));
+  await userEvent.click(within(screen.getByRole('dialog', { name: /Restore/ })).getByRole('button', { name: 'Restore' }));
+  await waitFor(() => expect(calls).toContain('POST /asmt/tests/e1/restore'));
 });
 
 it('negative: a refused approval shows the reason and nothing else is sent', async () => {

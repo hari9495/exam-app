@@ -255,3 +255,29 @@ describe('PRC-04 Sections step pickers', () => {
     expect(screen.queryByRole('button', { name: 'Questions' })).toBeNull();
   });
 });
+
+// Answer 2287: Restore on an archived test, for test writers.
+describe('PRC-04 archived test', () => {
+  it('says it is archived and restores it after a confirmation', async () => {
+    const onRestore = vi.fn().mockResolvedValue(undefined);
+    wrap(<TestBuilderScreen live={liveBuilder({ onRestore, test: { ...BUILDER_TEST, status: 'archived', editable: false } })} />);
+    expect(screen.getByText('This test is archived')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Restore' }));
+    const d = screen.getByRole('dialog', { name: /Restore Java Backend Developer/ });
+    await ue.click(within(d).getByRole('button', { name: 'Restore' }));
+    expect(onRestore).toHaveBeenCalled();
+  });
+  it('negative: without the key there is no Restore; a refusal says why; a live test has none', async () => {
+    const { unmount } = wrap(<TestBuilderScreen live={liveBuilder({ test: { ...BUILDER_TEST, status: 'archived', editable: false } })} />);
+    expect(screen.queryByRole('button', { name: 'Restore' })).toBeNull();
+    unmount();
+    const onRestore = vi.fn().mockRejectedValue(new Error('This test is not archived.'));
+    const r2 = wrap(<TestBuilderScreen live={liveBuilder({ onRestore, test: { ...BUILDER_TEST, status: 'archived', editable: false } })} />);
+    await ue.click(screen.getByRole('button', { name: 'Restore' }));
+    await ue.click(within(screen.getByRole('dialog', { name: /Restore/ })).getByRole('button', { name: 'Restore' }));
+    expect(await screen.findByText('This test is not archived.')).toBeInTheDocument();
+    r2.unmount();
+    wrap(<TestBuilderScreen live={liveBuilder({ onRestore })} />);
+    expect(screen.queryByRole('button', { name: 'Restore' })).toBeNull();
+  });
+});

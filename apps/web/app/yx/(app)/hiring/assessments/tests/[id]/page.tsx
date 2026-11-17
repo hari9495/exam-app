@@ -63,6 +63,8 @@ export default function YxTestBuilderPage() {
         // AS-6 part 2 (answer 2272): an AI-allowed test.
         onSetAiAllowed: async (allowed) => void (await write('PUT', `${t}/ai-allowed`, { allowed })),
         // Answer 2267: proctors (the monitoring socket needs exam:manage) open the test's live console.
+        // Answer 2287: Restore an archived test (the API checks the key and audits it).
+        onRestore: async () => void (await write('POST', `${t}/restore`)),
         onLiveConsole: perms.has('exam:manage' as never) ? () => router.push(`${BANK_BASE}/tests/${id}/live`) : undefined,
       }}
     />

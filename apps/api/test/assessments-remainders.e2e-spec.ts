@@ -171,4 +171,30 @@ describe('Assessments remainders', () => {
       expect(b.some((r) => r.name.includes(run))).toBe(false);
     });
   });
+  describe('2287 Restore an archived test', () => {
+    it('a test writer restores an archived draft as a draft and a published test as published, audited', async () => {
+      const draft = (await api('writer', 'post', '/exams').send({ title: `Archived draft ${run}` }).expect(201)).body.id as string;
+      await request(http).delete(`/api/v1/exams/${draft}`).set('Authorization', `Bearer ${token.writer}`).expect(200);
+      expect((await api('writer', 'post', `/asmt/tests/${draft}/restore`).expect(200)).body).toEqual({ status: 'draft' });
+      const pub = (await api('writer', 'post', '/exams').send({ title: `Archived live ${run}` }).expect(201)).body.id as string;
+      const sec = (await api('writer', 'post', `/exams/${pub}/sections`).send({ title: 'One' }).expect(201)).body.id;
+      await api('writer', 'put', `/exams/${pub}/sections/${sec}/questions`).send({ questionIds: [ids.q2] }).expect(200);
+      await api('writer', 'post', `/exams/${pub}/publish`).expect(201);
+      await request(http).delete(`/api/v1/exams/${pub}`).set('Authorization', `Bearer ${token.writer}`).expect(200);
+      expect((await api('writer', 'get', `/asmt/tests/${pub}`).expect(200)).body.status).toBe('archived');
+      expect((await api('writer', 'post', `/asmt/tests/${pub}/restore`).expect(200)).body).toEqual({ status: 'published' });
+      const audit = await inOrg(org.A.id, (tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action: 'exam.restored', entityId: { in: [draft, pub] } }, select: { actorUserId: true } }));
+      expect(audit.map((a) => a.actorUserId)).toEqual([users.writer, users.writer]);
+      ids.restored = pub;
+    });
+
+    it('negative: a test that is not archived is a 409; the wrong role is refused; another company gets 404; a bad id is a 400', async () => {
+      await api('writer', 'post', `/asmt/tests/${ids.restored}/restore`).expect(409);
+      await request(http).delete(`/api/v1/exams/${ids.restored}`).set('Authorization', `Bearer ${token.writer}`).expect(200);
+      await api('reader', 'post', `/asmt/tests/${ids.restored}/restore`).expect(403);
+      await api('adminB', 'post', `/asmt/tests/${ids.restored}/restore`).expect(404);
+      await api('writer', 'post', '/asmt/tests/not-a-uuid/restore').expect(400);
+      expect((await api('writer', 'get', `/asmt/tests/${ids.restored}`).expect(200)).body.status).toBe('archived');
+    });
+  });
 });

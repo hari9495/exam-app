@@ -3,7 +3,7 @@
 // layout, kit parts and words as the designs; only what the server holds is shown, and the server checks every action
 // again (a published or started test is locked, the approver is never the author or the one who asked).
 import { useState } from 'react';
-import { Copy, ListChecks, MonitorPlay, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { Copy, ListChecks, MonitorPlay, Pencil, Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
 import { ConfirmDialog } from '../../components/overlay';
 import { MultiSelect, Select } from '../../components/select';
 import { Drawer } from '../../components/drawer';
@@ -141,6 +141,8 @@ export interface LiveTestBuilder {
   onPublish: () => Promise<void>;
   /** AS-6 part 2 (answer 2272): the AI-allowed switch (PRC-12). */
   onSetAiAllowed?: (allowed: boolean) => Promise<void>;
+  /** Answer 2287: brings an archived test back as it was (test writers). Absent: no Restore. */
+  onRestore?: () => Promise<void>;
   /** Answer 2267: opens the live console (PRC-13) of a published test; absent for people who cannot proctor. */
   onLiveConsole?: () => void;
 }
@@ -511,6 +513,7 @@ export function LiveTestBuilderScreen({ live }: { live: LiveTestBuilder }) {
   const [tried, setTried] = useState(false);
   const [step, setStep] = useState('sections');
   const [picking, setPicking] = useState<TestSection | null>(null);
+  const [restoring, setRestoring] = useState(false);
   const { busy, run, error, clearError } = useRun();
   const { done, say } = useSay();
   if (key !== loadedFor) {
@@ -848,7 +851,11 @@ export function LiveTestBuilderScreen({ live }: { live: LiveTestBuilder }) {
         description={`${statusOf(t.status).label} · ${t.sections.length} ${t.sections.length === 1 ? 'section' : 'sections'}`}
         status={<Badge tone={statusOf(t.status).tone}>{statusOf(t.status).label}</Badge>}
         actions={
-          t.status !== 'draft' && live.onLiveConsole ? (
+          t.status === 'archived' && live.onRestore ? (
+            <Button icon={RotateCcw} onClick={() => setRestoring(true)}>
+              Restore
+            </Button>
+          ) : t.status !== 'draft' && live.onLiveConsole ? (
             <Button icon={MonitorPlay} onClick={live.onLiveConsole}>
               Live console
             </Button>
@@ -856,6 +863,22 @@ export function LiveTestBuilderScreen({ live }: { live: LiveTestBuilder }) {
         }
       />
       {error && <InlineAlert tone="danger" title={error} actions={<Button size="sm" onClick={clearError}>Dismiss</Button>} />}
+      {t.status === 'archived' && (
+        <InlineAlert tone="warning" title="This test is archived">
+          No one can be invited to it. Past attempts and reports stay.{live.onRestore ? ' Restore brings it back as it was before it was archived.' : ''}
+        </InlineAlert>
+      )}
+      <ConfirmDialog
+        open={restoring}
+        onOpenChange={setRestoring}
+        title={`Restore ${t.title}?`}
+        consequence="It comes back as it was before it was archived: a published test can be used for invitations again. This is recorded in the audit log."
+        confirmLabel="Restore"
+        onConfirm={async () => {
+          if (live.onRestore && (await run('restore', live.onRestore))) done('Test restored');
+          setRestoring(false);
+        }}
+      />
       <Stepper
         title="Build test"
         steps={steps}

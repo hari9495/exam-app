@@ -114,6 +114,14 @@ export class AsmtTestsController {
     return this.tests.questionChoices(ctx, id, sectionId, q);
   }
 
+  /** Answer 2287: Restore an archived test (test writers), audited, like the question bank's. */
+  @Post(':id/restore')
+  @HttpCode(200)
+  @RequirePermissions('exam:manage')
+  restore(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.tests.restore(ctx, userId, id);
+  }
+
   @Put(':id/proctoring-mode')
   @RequirePermissions('exam:manage')
   setMode(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ProctoringModeDto) {

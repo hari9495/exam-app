@@ -10,6 +10,8 @@ import { BANK_BASE, loadState, testRows, type ExamListPage } from '../../../../.
 export default function YxTestsPage() {
   const router = useRouter();
   const list = useApi<ExamListPage>('/exams?pageSize=100');
+  // Answer 2287: archived tests are listed too (marked Archived), so one can be opened and restored.
+  const archived = useApi<ExamListPage>('/exams?pageSize=100&status=archived');
   const defaults = useApi<{ proctorMode: ProctorMode; highStakes: number; aiDrafts?: boolean }>('/asmt/tests/defaults');
   // Answer 2151: the company's skills to map a job description to (question tags).
   // Answer 2285: skill names readable with the tests key (the bank key is not needed to map a skill).
@@ -22,7 +24,7 @@ export default function YxTestsPage() {
         state: loadState(list),
         onRetry: () => void list.refetch(),
         test: null,
-        tests: testRows(list.data),
+        tests: [...testRows(list.data), ...testRows(archived.data)],
         defaultMode: defaults.data?.proctorMode ?? 'ai',
         onNew: async (title) => open((await write<{ id: string }>('POST', '/exams', { title })).id),
         onCopy: async (id) => open((await write<{ id: string }>('POST', `/exams/${id}/duplicate`)).id),
