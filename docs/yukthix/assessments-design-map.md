@@ -1448,3 +1448,5 @@ so it was not built here (question 2272).
       two-proportion test and show "may be chance" when the groups are small, later with the analysis tab (2152).*
 2275. **Other groups.** Only gender is asked. *Suggested: keep to gender until a customer asks; any new group is
       voluntary, with "prefer not to say", and the same minimum.*
+
+**Founder answers (17 Nov 2026, "ok for all"), 2267-2275:** 2267 a "Live console" button on a published test for proctors; 2268 integrity score and thumbnails in AS-5 part 3; 2269 show the candidate's reply thread in the console drawer; 2270 after 3 face mismatches tell the candidate a proctor will check and flag it on the console; 2271 rubrics per essay and code question, marked criterion by criterion; 2272 AI-allowed tests as AS-6 part 2 after the live console; 2273 retiring after a fairness finding archives the test (with confirmation); 2274 a "may be chance" check later with the analysis tab; 2275 keep gender only until a customer asks.
