@@ -9,6 +9,7 @@ import { notOnHold } from '../src/assessments/asmt-rules';
 import { asApproved } from './fixtures/approved-question';
 import { markSteppedUp } from './fixtures/step-up';
 import { openIncidentIfFlagged } from '../../exam-runtime/src/integrity/integrity-analysis.service';
+import { FaceVerificationService } from '../../exam-runtime/src/face/face-verification.service';
 
 // Assessments AS-5 part 1 (answers 2006, 2008, 2012), end to end against the real database (forced RLS, the app role):
 //   the analysis opens an incident for a flagged attempt and the candidate's result is held;
@@ -299,6 +300,53 @@ describe('Assessments AS-5: integrity review and appeals', () => {
     // A proctor may lift a face re-check too.
     await tenantPrisma.forTenant(SUPER, (tx) => tx.attempt.update({ where: { id: r.attemptId }, data: { status: 'paused', pausedAt: new Date(), pausedReason: 'face_recheck' } }));
     expect((await api('proctor', 'post', `/attempts/${r.attemptId}/resume`).send({ reason: 'Checked the candidate on camera myself.' }).expect(200)).body.status).toBe('in_progress');
+  });
+
+  // Answer 2270: three tries, then a proctor checks; the hand-off is a high flag for the live console.
+  it('three face checks that do not match hand over to a proctor with a high flag; no fourth try', async () => {
+    const r = await running(true);
+    await tenantPrisma.forTenant(SUPER, (tx) => tx.attempt.update({ where: { id: r.attemptId }, data: { status: 'paused', pausedAt: new Date(), pausedReason: 'face_recheck' } }));
+    const spy = jest.spyOn(runtimeApp.get(FaceVerificationService), 'checkOnce').mockResolvedValue('mismatch');
+    try {
+      const shot = { snapshot: `data:image/jpeg;base64,${Buffer.from('frame').toString('base64')}` };
+      expect((await cand(r.ct, 'post', '/attempt/face-recheck').send(shot).expect(201)).body).toMatchObject({ status: 'paused', matched: false, triesLeft: 2 });
+      expect((await cand(r.ct, 'get', '/attempt/current').expect(200)).body.faceRecheckTriesLeft).toBe(2);
+      expect((await cand(r.ct, 'post', '/attempt/face-recheck').send(shot).expect(201)).body.triesLeft).toBe(1);
+      expect((await cand(r.ct, 'post', '/attempt/face-recheck').send(shot).expect(201)).body.triesLeft).toBe(0);
+      expect(await inOrg(org.A.id, (tx) => tx.proctoringEvent.count({ where: { attemptId: r.attemptId, eventType: 'face_recheck_handoff', severity: 'high' } }))).toBe(1);
+      expect((await cand(r.ct, 'post', '/attempt/face-recheck').send(shot).expect(400)).body.message).toMatch(/proctor will check/);
+      expect(spy).toHaveBeenCalledTimes(3);
+      expect((await cand(r.ct, 'get', '/attempt/current').expect(200)).body).toMatchObject({ status: 'paused', pausedReason: 'face_recheck', faceRecheckTriesLeft: 0 });
+      // The proctor checks and resumes.
+      expect((await api('proctor', 'post', `/attempts/${r.attemptId}/resume`).send({ reason: 'Checked the candidate on camera myself.' }).expect(200)).body.status).toBe('in_progress');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  // Answer 2269: the candidate reads the proctor's message and replies; the console shows the thread.
+  it('the candidate sees a message until Got it, replies, and the proctor sees the thread; a finished test refuses replies', async () => {
+    const r = await running();
+    await api('proctor', 'post', `/attempts/${r.attemptId}/message`).send({ body: 'Please keep your face in view.' }).expect(201);
+    // A poll does not mark it read: it is still there on the next one.
+    expect((await cand(r.ct, 'get', '/attempt/current').expect(200)).body.messages).toEqual([expect.objectContaining({ body: 'Please keep your face in view.' })]);
+    expect((await cand(r.ct, 'get', '/attempt/current').expect(200)).body.messages).toHaveLength(1);
+    await cand(r.ct, 'post', '/attempt/messages').send({ body: '' }).expect(400);
+    await cand(r.ct, 'post', '/attempt/messages').send({ body: 'x'.repeat(1001) }).expect(400);
+    await cand(r.ct, 'post', '/attempt/messages').send({ body: 'Sorry, the light moved. Fixed now.' }).expect(201);
+    expect((await cand(r.ct, 'get', '/attempt/current').expect(200)).body.messages).toEqual([]);
+    const thread = (await api('proctor', 'get', `/attempts/${r.attemptId}/messages`).expect(200)).body as { fromCandidate: boolean; body: string; readAt: string | null }[];
+    expect(thread.map((m) => [m.fromCandidate, m.body])).toEqual([
+      [false, 'Please keep your face in view.'],
+      [true, 'Sorry, the light moved. Fixed now.'],
+    ]);
+    expect(thread[0]!.readAt).not.toBeNull();
+    await api('reader', 'get', `/attempts/${r.attemptId}/messages`).expect(403);
+    await api('adminB', 'get', `/attempts/${r.attemptId}/messages`).expect(404);
+    await api('proctor', 'post', `/attempts/${r.attemptId}/message`).send({ body: 'Thanks.' }).expect(201);
+    expect((await cand(r.ct, 'post', '/attempt/messages/read').send({}).expect(200)).body.read).toBe(1);
+    await cand(r.ct, 'post', '/attempt/submit').send({}).expect(201);
+    expect((await cand(r.ct, 'post', '/attempt/messages').send({ body: 'One more thing.' }).expect(400)).body.message).toMatch(/ended/);
   });
 
   it('negative: approving time above the cap does not pause a test without face checks', async () => {

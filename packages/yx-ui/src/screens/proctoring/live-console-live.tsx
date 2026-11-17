@@ -1,7 +1,7 @@
 // AS-5 part 2 (PRC-13, answer 2006): the designed live console with a real test's attempts. Tiles come from the
 // monitoring socket (the page); pausing, resuming and ending each take a reason the attempt's record keeps; ending also
 // asks for the second factor (the page's API call asks and retries). Only kit parts.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { MessageSquare, Pause, Play, XOctagon } from 'lucide-react';
 import { Button, ButtonGroup } from '../../components/button';
 import { Badge } from '../../components/display';
@@ -32,7 +32,19 @@ export interface LiveConsole {
   /** Asks for the second factor first (the page). */
   onEnd: (id: string, reason: string) => Promise<unknown>;
   onMessage: (id: string, text: string) => Promise<unknown>;
+  /** Answer 2269: the attempt's messages both ways (the drawer reloads it every 10 seconds while open). */
+  onThread?: (id: string) => Promise<LiveThreadMessage[]>;
 }
+
+export interface LiveThreadMessage {
+  id: string;
+  fromCandidate: boolean;
+  body: string;
+  sentAt: string;
+  readAt: string | null;
+}
+
+const at = (iso: string) => new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
 
 const CONNECTION = { connecting: { label: 'Connecting…', tone: 'neutral' }, connected: { label: 'Live', tone: 'success' }, reconnecting: { label: 'Reconnecting…', tone: 'warning' }, disconnected: { label: 'Offline', tone: 'danger' } } as const;
 
@@ -48,6 +60,23 @@ export function LiveConsoleLiveScreen({ live }: { live: LiveConsole }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [said, setSaid] = useState('');
+  const [thread, setThread] = useState<LiveThreadMessage[]>([]);
+  // The page builds `live` on every render; keep the loader in a ref so the timer is set once per opened tile.
+  const threadOf = useRef(live.onThread);
+  threadOf.current = live.onThread;
+  const loadThread = (id: string) => threadOf.current?.(id).then((t) => setThread(t), () => undefined);
+  useEffect(() => {
+    setThread([]);
+    if (!openId || !threadOf.current) return;
+    let on = true;
+    const load = () => void threadOf.current?.(openId).then((t) => on && setThread(t), () => undefined);
+    load();
+    const timer = setInterval(load, 10_000);
+    return () => {
+      on = false;
+      clearInterval(timer);
+    };
+  }, [openId]);
   const shown = useMemo(() => sortByConcern(filterByRisk(live.tiles, risk)), [live.tiles, risk]);
   const open = live.tiles.find((t) => t.id === openId) ?? null;
   const counts = { all: live.tiles.length, high: filterByRisk(live.tiles, 'high').length, review: filterByRisk(live.tiles, 'review').length, clear: filterByRisk(live.tiles, 'clear').length };
@@ -141,7 +170,22 @@ export function LiveConsoleLiveScreen({ live }: { live: LiveConsole }) {
             <FormField label="Message to the candidate" helper="Shown to the candidate in the test">
               <TextArea value={draft} onChange={setDraft} rows={2} maxLength={1000} />
             </FormField>
-            {sent.length > 0 && <p className="yx-prc-muted yx-prc-small">{`Sent: ${sent[sent.length - 1]}`}</p>}
+            {live.onThread ? (
+              thread.length ? (
+                <ul className="yx-prc-plain" aria-label="Messages with the candidate" aria-live="polite">
+                  {thread.map((m) => (
+                    <li key={m.id}>
+                      <span>{m.fromCandidate ? open.name : 'Proctor'}</span> <span>{m.body}</span>{' '}
+                      <span className="yx-prc-muted yx-prc-small">{`${at(m.sentAt)}${!m.fromCandidate && m.readAt ? ' · read' : ''}`}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="yx-prc-muted yx-prc-small">No messages yet.</p>
+              )
+            ) : (
+              sent.length > 0 && <p className="yx-prc-muted yx-prc-small">{`Sent: ${sent[sent.length - 1]}`}</p>
+            )}
             <div className="yx-prc-row">
               <Button
                 icon={MessageSquare}
@@ -152,6 +196,7 @@ export function LiveConsoleLiveScreen({ live }: { live: LiveConsole }) {
                   void run(() => live.onMessage(open.id, text), `Message sent to ${open.name}`).then(() => {
                     setSent((x) => [...x, text]);
                     setDraft('');
+                    void loadThread(open.id);
                   });
                 }}
               >

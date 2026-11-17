@@ -1563,6 +1563,8 @@ export interface AttemptState {
   pausedReason: 'webcam' | 'browser_activity' | 'screen_share' | 'face_mismatch' | 'break' | 'proctor' | 'face_recheck' | null;
   /** AS-5: what the proctor said when pausing (pausedReason 'proctor'). */
   pauseMessage?: string | null;
+  /** Answer 2270: face checks left before a proctor takes over. */
+  faceRecheckTriesLeft?: number | null;
   // Stage-3 face enforcement 'warn': ISO timestamp of an unacknowledged non-freezing heads-up, or
   // null. Distinct from pausedReason -- warn never pauses, so the candidate keeps working while it
   // shows and clears it via /attempt/face-warning-ack.

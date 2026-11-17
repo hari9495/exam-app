@@ -77,4 +77,22 @@ describe('PRC-13 live console', () => {
     render(<LiveConsoleScreen tiles={[]} live={LIVE({ tiles: [] })} />);
     expect(screen.getByText('No candidates in this test yet.')).toBeInTheDocument();
   });
+
+  it('2269: the drawer shows the thread both ways and reloads it after a message is sent', async () => {
+    const onThread = vi
+      .fn()
+      .mockResolvedValueOnce([{ id: 'm1', fromCandidate: false, body: 'Please keep your face in view.', sentAt: '2026-11-17T05:00:00.000Z', readAt: '2026-11-17T05:01:00.000Z' }, { id: 'm2', fromCandidate: true, body: 'Sorry, fixed now.', sentAt: '2026-11-17T05:02:00.000Z', readAt: null }])
+      .mockResolvedValue([{ id: 'm3', fromCandidate: false, body: 'Thanks.', sentAt: '2026-11-17T05:03:00.000Z', readAt: null }]);
+    const live = LIVE({ onThread });
+    render(<LiveConsoleScreen tiles={[]} live={live} />);
+    await openTile('Sneha Iyer');
+    const list = await screen.findByRole('list', { name: 'Messages with the candidate' });
+    expect(within(list).getByText('Sorry, fixed now.')).toBeInTheDocument();
+    expect(within(list).getByText('Sneha Iyer')).toBeInTheDocument();
+    expect(within(list).getByText(/· read/)).toBeInTheDocument();
+    expect(onThread).toHaveBeenCalledWith('a1');
+    await ue.type(screen.getByLabelText(/^Message to the candidate/), 'Thanks.');
+    await ue.click(screen.getByRole('button', { name: 'Send' }));
+    expect(await screen.findByText('Thanks.', { selector: 'span' })).toBeInTheDocument();
+  });
 });

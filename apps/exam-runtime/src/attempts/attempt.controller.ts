@@ -10,7 +10,7 @@ import { ReuseDto } from './dto/reuse.dto';
 import { AccommodationService } from './accommodation.service';
 import { AccommodationDto } from './dto/accommodation.dto';
 import { resolveClientIp } from '../network/resolve-client-ip';
-import { AnswerDto, AppealDto, SurveyDto } from './dto/answer.dto';
+import { AnswerDto, AppealDto, ProctorReplyDto, SurveyDto } from './dto/answer.dto';
 import { StartAttemptDto } from './dto/start-attempt.dto';
 import { ReportProctoringEventDto } from './dto/report-proctoring-event.dto';
 import { ClientErrorDto } from './dto/client-error.dto';
@@ -187,6 +187,20 @@ export class AttemptController {
   @Throttle(MODERATE_ATTEMPT_THROTTLE)
   faceEnrolment(@CurrentCandidate() candidate: CandidateSession, @Body() dto: FaceEnrolmentDto) {
     return this.attemptService.recordFaceEnrolment(candidate, dto);
+  }
+
+  // Answer 2269: the candidate reads the proctor's messages and replies.
+  @Post('messages/read')
+  @HttpCode(200)
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  readMessages(@CurrentCandidate() candidate: CandidateSession) {
+    return this.attemptService.readMessages(candidate);
+  }
+
+  @Post('messages')
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  replyToProctor(@CurrentCandidate() candidate: CandidateSession, @Body() dto: ProctorReplyDto) {
+    return this.attemptService.replyToProctor(candidate, dto.body);
   }
 
   // AS-5 (answer 2205): the face check after approved extra time.

@@ -755,6 +755,8 @@ export interface LiveRunner {
   pause?: LiveRunnerPause | null;
   /** A heads-up that does not stop the test (e.g. the face did not clearly match); dismissed by the candidate. */
   notice?: { title: string; message: string; actionLabel: string; onAction: () => void; busy?: boolean } | null;
+  /** Answer 2269: the proctor's unread messages; the candidate says "Got it" or replies (the proctor sees the thread). */
+  messages?: { items: { id: string; body: string }[]; onRead: () => Promise<unknown>; onReply: (text: string) => Promise<unknown> } | null;
   /** While on a break: seconds until it ends on its own. */
   breakSecondsLeft?: number;
   breaksLeft: number;
@@ -924,6 +926,8 @@ function LiveTestRunnerScreen({ live }: { live: LiveRunner }) {
   const [contrast, setContrast] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reply, setReply] = useState<string | null>(null);
+  const [replyError, setReplyError] = useState<string | null>(null);
   const act = (key: string, fn?: () => Promise<unknown>) => {
     if (!fn) return;
     setBusy(key);
@@ -1120,6 +1124,47 @@ function LiveTestRunnerScreen({ live }: { live: LiveRunner }) {
               {live.notice.message}
             </InlineAlert>
           )}
+          {live.messages && live.messages.items.length > 0 && (
+            <InlineAlert
+              tone="info"
+              title={live.messages.items.length > 1 ? `${live.messages.items.length} messages from your proctor` : 'Message from your proctor'}
+              actions={
+                <>
+                  <Button size="sm" loading={busy === 'read'} onClick={() => act('read', live.messages!.onRead)}>
+                    Got it
+                  </Button>
+                  <Button size="sm" onClick={() => setReply('')}>
+                    Reply
+                  </Button>
+                </>
+              }
+            >
+              {live.messages.items.map((m) => (
+                <p key={m.id}>{m.body}</p>
+              ))}
+            </InlineAlert>
+          )}
+          <ConfirmDialog
+            open={reply !== null}
+            onOpenChange={(o) => !o && (setReply(null), setReplyError(null))}
+            title="Reply to your proctor"
+            consequence="Your proctor sees your message in their console. The timer keeps running."
+            confirmLabel="Send"
+            onConfirm={async () => {
+              const text = (reply ?? '').trim();
+              if (!text) {
+                setReplyError('Write your message first.');
+                return false;
+              }
+              setReplyError(null);
+              await live.messages?.onReply(text);
+              setReply(null);
+            }}
+          >
+            <FormField label="Your message" required error={replyError}>
+              <TextArea value={reply ?? ''} onChange={setReply} rows={3} maxLength={1000} />
+            </FormField>
+          </ConfirmDialog>
           {live.finishError && (
             <InlineAlert tone="danger" title="Your test was not submitted">
               <p>{live.finishError} Your answers are saved.</p>

@@ -200,4 +200,27 @@ describe('AS-6 candidate pages', () => {
     expect(screen.queryByRole('button', { name: 'Acme privacy notice' })).toBeNull();
     expect(screen.getByRole('link', { name: 'YukthiX terms of use' })).toBeInTheDocument();
   });
+
+  it('2269: the proctor\'s message shows until Got it; a reply is sent; negative: an empty reply is not', async () => {
+    const onRead = vi.fn().mockResolvedValue(undefined);
+    const onReply = vi.fn().mockResolvedValue(undefined);
+    render(<TestRunnerScreen live={{ ...LIVE_RUNNER, messages: { items: [{ id: 'm1', body: 'Please keep your face in view.' }], onRead, onReply } }} />);
+    expect(screen.getByText('Message from your proctor')).toBeInTheDocument();
+    expect(screen.getByText('Please keep your face in view.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Reply' }));
+    const d = screen.getByRole('dialog', { name: 'Reply to your proctor' });
+    await ue.click(within(d).getByRole('button', { name: 'Send' }));
+    expect(within(d).getByText('Write your message first.')).toBeInTheDocument();
+    expect(onReply).not.toHaveBeenCalled();
+    await ue.type(within(d).getByLabelText(/^Your message/), 'Sorry, fixed now.');
+    await ue.click(within(d).getByRole('button', { name: 'Send' }));
+    expect(onReply).toHaveBeenCalledWith('Sorry, fixed now.');
+    await ue.click(screen.getByRole('button', { name: 'Got it' }));
+    expect(onRead).toHaveBeenCalled();
+  });
+
+  it('negative: no messages, no message box', () => {
+    render(<TestRunnerScreen live={{ ...LIVE_RUNNER, messages: { items: [], onRead: vi.fn(), onReply: vi.fn() } }} />);
+    expect(screen.queryByText(/from your proctor/)).toBeNull();
+  });
 });

@@ -2,7 +2,9 @@
 
 import { useMemo } from 'react';
 import { useParams } from 'next/navigation';
-import { LiveConsoleScreen, type LiveTileData } from '@yukthix/ui/assessments';
+import { LiveConsoleScreen, type LiveThreadMessage, type LiveTileData } from '@yukthix/ui/assessments';
+import { apiFetch } from '../../../../../../../../lib/api-client';
+import { useAuth } from '../../../../../../../../lib/auth-context';
 import { useApi, useApiWrite } from '../../../../../../../../lib/yx-hiring';
 import { useExamMonitoring } from '../../../../../../../../lib/hooks/useExamMonitoring';
 
@@ -24,6 +26,7 @@ export default function YxLiveConsolePage() {
   const test = useApi<{ title: string }>(`/exams/${id}`);
   const m = useExamMonitoring(id);
   const write = useApiWrite();
+  const { accessToken } = useAuth();
   const events = useMemo(() => {
     const by: Record<string, { id: string; type: string; severity: string; at: string }[]> = {};
     m.alerts.forEach((a, i) => (by[a.attemptId] ??= []).push({ id: `${a.attemptId}-${i}`, type: a.eventType, severity: a.severity, at: a.occurredAt }));
@@ -64,6 +67,8 @@ export default function YxLiveConsolePage() {
         onResume: (attemptId, reason) => post(`/attempts/${attemptId}/resume`, { reason }),
         onEnd: (attemptId, reason) => post(`/attempts/${attemptId}/force-submit`, { reason }),
         onMessage: (attemptId, text) => post(`/attempts/${attemptId}/message`, { body: text }),
+        // Answer 2269: the thread both ways (the drawer reloads it while open).
+        onThread: (attemptId) => apiFetch(`/attempts/${encodeURIComponent(attemptId)}/messages`, {}, accessToken ?? undefined) as Promise<LiveThreadMessage[]>,
       }}
     />
   );

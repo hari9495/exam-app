@@ -1348,7 +1348,9 @@ model FaceEnrolment {
 model CandidateMessage {
   id           String    @id @default(uuid()) @db.Uuid
   attemptId    String    @map("attempt_id") @db.Uuid
-  sentByUserId String    @map("sent_by_user_id") @db.Uuid
+  /// Empty for the candidate's reply (answer 2269); a check keeps one of the two.
+  sentByUserId String?   @map("sent_by_user_id") @db.Uuid
+  fromCandidate Boolean  @default(false) @map("from_candidate")
   body         String    @db.Text
   sentAt       DateTime  @default(now()) @map("sent_at") @db.Timestamptz(3)
   readAt       DateTime? @map("read_at") @db.Timestamptz(3)
