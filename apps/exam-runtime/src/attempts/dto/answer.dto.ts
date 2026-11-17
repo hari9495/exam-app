@@ -64,6 +64,14 @@ export class AnswerDto {
   clientSavedAt?: string;
 }
 
+/** Answer 2269: the candidate's reply to their proctor. */
+export class ProctorReplyDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(1000)
+  body!: string;
+}
+
 /** AS-5 (answer 2012): the candidate's appeal of an integrity decision, in their own words. */
 export class AppealDto {
   @IsString()

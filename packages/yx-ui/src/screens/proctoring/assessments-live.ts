@@ -44,11 +44,15 @@ export { ReadinessCheckScreen, type LiveReadiness } from './candidate';
 // AS-4a part 2 (answer 2201): the designed consent (PRC-24) and selfie (PRC-25) on /welcome.
 export { ConsentScreen, IdentityCheckScreen, type LiveConsent, type LiveSelfie, type ManualIdentityCheck } from './candidate';
 // AS-5 part 1 (answers 2006, 2008, 2012): integrity review and appeals.
-export { AppealsScreen, IncidentWorkspaceScreen, IntegrityQueueScreen } from './integrity';
+export { AppealsScreen, IncidentWorkspaceScreen, IntegrityQueueScreen, IntegrityReportsScreen } from './integrity';
+export type { LiveIntegrityReportData, LiveIntegrityReports } from './integrity-live';
+// AS-5 part 3 (PRC-28): the candidate's privacy centre.
+export { PrivacyCentreScreen, type LivePrivacy } from './candidate';
 // AS-5 part 2 (PRC-13): the live console.
 export { LiveConsoleScreen } from './live';
-export type { LiveConsole } from './live-console-live';
+export type { LiveConsole, LiveThreadMessage } from './live-console-live';
 export type { LiveTileData } from './proctoring-logic';
+export { scoreFromFlags } from './proctoring-logic';
 export type { LiveAppealRow, LiveAppeals, LiveIncident, LiveIncidentRow, LiveIncidentWorkspace, LiveIntegrityQueue } from './integrity-live';
 export type { SystemCheck } from './proctoring-kit';
 

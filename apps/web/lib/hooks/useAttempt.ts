@@ -396,10 +396,26 @@ export function useFaceRecheck() {
   const { accessToken } = useCandidateAuth();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (snapshot: string): Promise<{ status: string; matched: boolean | null }> =>
+    mutationFn: (snapshot: string): Promise<{ status: string; matched: boolean | null; triesLeft?: number }> =>
       candidateApiFetch('/attempt/face-recheck', { method: 'POST', body: JSON.stringify({ snapshot }) }, accessToken ?? undefined),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attempt', 'current'] }),
   });
+}
+
+// Answer 2269: the candidate reads the proctor's messages ("Got it") or replies to them.
+export function useProctorMessages() {
+  const { accessToken } = useCandidateAuth();
+  const queryClient = useQueryClient();
+  const done = () => queryClient.invalidateQueries({ queryKey: ['attempt', 'current'] });
+  const read = useMutation({
+    mutationFn: (): Promise<{ read: number }> => candidateApiFetch('/attempt/messages/read', { method: 'POST', body: JSON.stringify({}) }, accessToken ?? undefined),
+    onSuccess: done,
+  });
+  const reply = useMutation({
+    mutationFn: (body: string): Promise<{ id: string }> => candidateApiFetch('/attempt/messages', { method: 'POST', body: JSON.stringify({ body }) }, accessToken ?? undefined),
+    onSuccess: done,
+  });
+  return { read, reply };
 }
 
 // Stage-3 face enforcement 'warn': candidate acknowledges the non-freezing heads-up, clearing

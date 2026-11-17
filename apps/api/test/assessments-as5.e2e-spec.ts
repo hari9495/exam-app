@@ -9,6 +9,8 @@ import { notOnHold } from '../src/assessments/asmt-rules';
 import { asApproved } from './fixtures/approved-question';
 import { markSteppedUp } from './fixtures/step-up';
 import { openIncidentIfFlagged } from '../../exam-runtime/src/integrity/integrity-analysis.service';
+import { FaceVerificationService } from '../../exam-runtime/src/face/face-verification.service';
+import { ProctoringRetentionService } from '../src/proctoring-retention/proctoring-retention.service';
 
 // Assessments AS-5 part 1 (answers 2006, 2008, 2012), end to end against the real database (forced RLS, the app role):
 //   the analysis opens an incident for a flagged attempt and the candidate's result is held;
@@ -299,6 +301,183 @@ describe('Assessments AS-5: integrity review and appeals', () => {
     // A proctor may lift a face re-check too.
     await tenantPrisma.forTenant(SUPER, (tx) => tx.attempt.update({ where: { id: r.attemptId }, data: { status: 'paused', pausedAt: new Date(), pausedReason: 'face_recheck' } }));
     expect((await api('proctor', 'post', `/attempts/${r.attemptId}/resume`).send({ reason: 'Checked the candidate on camera myself.' }).expect(200)).body.status).toBe('in_progress');
+  });
+
+  // Answer 2270: three tries, then a proctor checks; the hand-off is a high flag for the live console.
+  it('three face checks that do not match hand over to a proctor with a high flag; no fourth try', async () => {
+    const r = await running(true);
+    await tenantPrisma.forTenant(SUPER, (tx) => tx.attempt.update({ where: { id: r.attemptId }, data: { status: 'paused', pausedAt: new Date(), pausedReason: 'face_recheck' } }));
+    const spy = jest.spyOn(runtimeApp.get(FaceVerificationService), 'checkOnce').mockResolvedValue('mismatch');
+    try {
+      const shot = { snapshot: `data:image/jpeg;base64,${Buffer.from('frame').toString('base64')}` };
+      expect((await cand(r.ct, 'post', '/attempt/face-recheck').send(shot).expect(201)).body).toMatchObject({ status: 'paused', matched: false, triesLeft: 2 });
+      expect((await cand(r.ct, 'get', '/attempt/current').expect(200)).body.faceRecheckTriesLeft).toBe(2);
+      expect((await cand(r.ct, 'post', '/attempt/face-recheck').send(shot).expect(201)).body.triesLeft).toBe(1);
+      expect((await cand(r.ct, 'post', '/attempt/face-recheck').send(shot).expect(201)).body.triesLeft).toBe(0);
+      expect(await inOrg(org.A.id, (tx) => tx.proctoringEvent.count({ where: { attemptId: r.attemptId, eventType: 'face_recheck_handoff', severity: 'high' } }))).toBe(1);
+      expect((await cand(r.ct, 'post', '/attempt/face-recheck').send(shot).expect(400)).body.message).toMatch(/proctor will check/);
+      expect(spy).toHaveBeenCalledTimes(3);
+      expect((await cand(r.ct, 'get', '/attempt/current').expect(200)).body).toMatchObject({ status: 'paused', pausedReason: 'face_recheck', faceRecheckTriesLeft: 0 });
+      // The proctor checks and resumes.
+      expect((await api('proctor', 'post', `/attempts/${r.attemptId}/resume`).send({ reason: 'Checked the candidate on camera myself.' }).expect(200)).body.status).toBe('in_progress');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  // Answer 2269: the candidate reads the proctor's message and replies; the console shows the thread.
+  it('the candidate sees a message until Got it, replies, and the proctor sees the thread; a finished test refuses replies', async () => {
+    const r = await running();
+    await api('proctor', 'post', `/attempts/${r.attemptId}/message`).send({ body: 'Please keep your face in view.' }).expect(201);
+    // A poll does not mark it read: it is still there on the next one.
+    expect((await cand(r.ct, 'get', '/attempt/current').expect(200)).body.messages).toEqual([expect.objectContaining({ body: 'Please keep your face in view.' })]);
+    expect((await cand(r.ct, 'get', '/attempt/current').expect(200)).body.messages).toHaveLength(1);
+    await cand(r.ct, 'post', '/attempt/messages').send({ body: '' }).expect(400);
+    await cand(r.ct, 'post', '/attempt/messages').send({ body: 'x'.repeat(1001) }).expect(400);
+    await cand(r.ct, 'post', '/attempt/messages').send({ body: 'Sorry, the light moved. Fixed now.' }).expect(201);
+    expect((await cand(r.ct, 'get', '/attempt/current').expect(200)).body.messages).toEqual([]);
+    const thread = (await api('proctor', 'get', `/attempts/${r.attemptId}/messages`).expect(200)).body as { fromCandidate: boolean; body: string; readAt: string | null }[];
+    expect(thread.map((m) => [m.fromCandidate, m.body])).toEqual([
+      [false, 'Please keep your face in view.'],
+      [true, 'Sorry, the light moved. Fixed now.'],
+    ]);
+    expect(thread[0]!.readAt).not.toBeNull();
+    await api('reader', 'get', `/attempts/${r.attemptId}/messages`).expect(403);
+    await api('adminB', 'get', `/attempts/${r.attemptId}/messages`).expect(404);
+    await api('proctor', 'post', `/attempts/${r.attemptId}/message`).send({ body: 'Thanks.' }).expect(201);
+    expect((await cand(r.ct, 'post', '/attempt/messages/read').send({}).expect(200)).body.read).toBe(1);
+    await cand(r.ct, 'post', '/attempt/submit').send({}).expect(201);
+    expect((await cand(r.ct, 'post', '/attempt/messages').send({ body: 'One more thing.' }).expect(400)).body.message).toMatch(/ended/);
+  });
+
+  // Answers 2262 and 2268: the frames on the incident (each opening audited), the live console's latest frame per running
+  // attempt, and the candidate's summary (times and counts, never the images).
+  it('frames: the live console gets the latest frame while it runs; the incident lists the frames; opening one is audited', async () => {
+    const r = await running();
+    // The camera frame as the runner's periodic snapshot stores it (a blob path on a webcam_snapshot event).
+    await inOrg(org.A.id, (tx) => tx.proctoringEvent.create({ data: { attemptId: r.attemptId, eventType: 'webcam_snapshot', severity: 'low', metadataJson: JSON.stringify({ snapshot: `local-blob:webcam-snapshots/${r.attemptId}-1.jpg` }) } }));
+    const { examId } = await inOrg(org.A.id, (tx) => tx.attempt.findUniqueOrThrow({ where: { id: r.attemptId }, select: { examId: true } }));
+    expect((await api('proctor', 'get', `/asmt/live/${examId}/frames`).expect(200)).body).toEqual([expect.objectContaining({ attemptId: r.attemptId, url: expect.any(String) })]);
+    await api('reader', 'get', `/asmt/live/${examId}/frames`).expect(403);
+    expect((await api('adminB', 'get', `/asmt/live/${examId}/frames`).expect(200)).body).toEqual([]);
+    await inOrg(org.A.id, (tx) => tx.proctoringEvent.create({ data: { attemptId: r.attemptId, eventType: 'webcam_multiple_faces', severity: 'high', metadataJson: '{}' } }));
+    await cand(r.ct, 'post', '/attempt/submit').send({}).expect(201);
+    expect((await api('proctor', 'get', `/asmt/live/${examId}/frames`).expect(200)).body).toEqual([]);
+    await flag(r.attemptId, 'high_concern');
+    const iid = (await inOrg(org.A.id, (tx) => tx.integrityIncident.findUniqueOrThrow({ where: { attemptId: r.attemptId } }))).id;
+    const inc = (await api('proctor', 'get', `/asmt/integrity/${iid}`).expect(200)).body;
+    expect(inc.frames).toEqual([expect.objectContaining({ kind: 'camera', what: 'webcam snapshot', flagged: false })]);
+    expect(JSON.stringify(inc.frames)).not.toContain('webcam-snapshots/');
+    const ev = inc.frames[0].eventId as string;
+    await api('proctor', 'get', `/asmt/integrity/${iid}/frames/${ev}?kind=screen`).expect(404);
+    await api('proctor', 'get', `/asmt/integrity/${iid}/frames/${ev}?kind=other`).expect(400);
+    await api('reader', 'get', `/asmt/integrity/${iid}/frames/${ev}?kind=camera`).expect(403);
+    await api('adminB', 'get', `/asmt/integrity/${iid}/frames/${ev}?kind=camera`).expect(404);
+    expect(await inOrg(org.A.id, (tx) => tx.auditLog.count({ where: { entityId: iid, action: 'asmt.incident.evidence_viewed' } }))).toBe(0);
+    expect((await api('proctor', 'get', `/asmt/integrity/${iid}/frames/${ev}?kind=camera`).expect(200)).body.url).toEqual(expect.any(String));
+    expect(await inOrg(org.A.id, (tx) => tx.auditLog.count({ where: { entityId: iid, action: 'asmt.incident.evidence_viewed' } }))).toBe(1);
+    // The candidate's summary: the flagged moment by time and the counts, never a link.
+    await api('evaluator', 'post', `/asmt/integrity/${iid}/verdict`).send({ verdict: 'warning', reason: REASON }).expect(200);
+    const fb = await feedback(r.ct);
+    expect(fb.integrity.evidence).toEqual({ moments: [expect.objectContaining({ what: 'webcam multiple faces' })], cameraFrames: 1, screenFrames: 0 });
+    expect(JSON.stringify(fb)).not.toContain('webcam-snapshots/');
+  });
+
+  // PRC-20: collusion from identical wrong answers, code similarity from the analysis, agreement from double marks.
+  it('PRC-20: a test\'s integrity reports; the export is audited; a results reader and another company see nothing', async () => {
+    const qs: string[] = [];
+    for (let i = 0; i < 5; i++)
+      qs.push((await asApproved(await api('adminA', 'post', '/questions').send({ type: 'single_mcq', text: `Report q${i} ${run}?`, difficulty: 'easy', marks: 4, options: [{ text: 'A', isCorrect: true }, { text: 'B', isCorrect: false }, { text: 'C', isCorrect: false }] }).expect(201))).body.id);
+    const exam = (await api('adminA', 'post', '/exams').send({ title: `AS5 reports ${run}` }).expect(201)).body.id;
+    const section = (await api('adminA', 'post', `/exams/${exam}/sections`).send({ title: 'Aptitude' }).expect(201)).body.id;
+    await request(http).put(`/api/v1/exams/${exam}/sections/${section}/questions`).set('Authorization', `Bearer ${token.adminA}`).send({ questionIds: qs }).expect(200);
+    await api('adminA', 'post', `/exams/${exam}/publish`).expect(201);
+    const take = async (name: string) => {
+      const c = (await api('adminA', 'post', '/candidates').send({ email: `rep-${randomUUID().slice(0, 8)}@as5.test`, name }).expect(201)).body.id;
+      const inv = (await api('adminA', 'post', `/exams/${exam}/invitations`).send({ candidateIds: [c] }).expect(201)).body.created[0];
+      const ct = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token: inv.token }).expect(200)).body.accessToken as string;
+      const attemptId = (await cand(ct, 'post', '/attempt/start').send({ consent: true }).expect(201)).body.id as string;
+      await cand(ct, 'post', '/attempt/submit').send({}).expect(201);
+      return attemptId;
+    };
+    const [a1, a2, a3] = [await take('Rahul Deshpande'), await take('Harish Gowda'), await take('Keerthi Varma')];
+    // Two picked the same wrong option on all five; the third picked a different wrong one.
+    await inOrg(org.A.id, async (tx) => {
+      for (const q of qs) {
+        for (const [att, pick] of [[a1, 'opt-b'], [a2, 'opt-b'], [a3, 'opt-c']] as const)
+          await tx.answer.upsert({ where: { attemptId_questionId: { attemptId: att, questionId: q } }, create: { attemptId: att, questionId: q, selectedOptionIdsJson: JSON.stringify([`${pick}-${q}`]), isCorrect: false }, update: { selectedOptionIdsJson: JSON.stringify([`${pick}-${q}`]), isCorrect: false } });
+      }
+      await tx.integrityAnalysis.upsert({ where: { attemptId: a1 }, create: { attemptId: a1, status: 'done', level: 'review', flagsJson: JSON.stringify([{ type: 'similarity_match', severity: 'high', questionId: qs[0], counterpartAttemptId: a2, similarity: 0.91 }]) }, update: { flagsJson: JSON.stringify([{ type: 'similarity_match', severity: 'high', questionId: qs[0], counterpartAttemptId: a2, similarity: 0.91 }]) } });
+      await tx.answerMark.createMany({ data: [
+        { attemptId: a1, questionId: qs[0]!, markerUserId: users.proctor, round: 1, marks: 4 },
+        { attemptId: a1, questionId: qs[0]!, markerUserId: users.evaluator, round: 2, marks: 4 },
+        { attemptId: a1, questionId: qs[1]!, markerUserId: users.proctor, round: 1, marks: 0 },
+        { attemptId: a1, questionId: qs[1]!, markerUserId: users.evaluator, round: 2, marks: 4 },
+        { attemptId: a1, questionId: qs[1]!, markerUserId: users.adminA, round: 3, marks: 2 },
+        { attemptId: a2, questionId: qs[0]!, markerUserId: users.proctor, round: 1, marks: 2 },
+        { attemptId: a2, questionId: qs[0]!, markerUserId: users.evaluator, round: 2, marks: 2 },
+      ] });
+    });
+    const v = (await api('proctor', 'get', `/asmt/integrity-reports/${exam}`).expect(200)).body;
+    expect(v).toMatchObject({ attempts: 3, minSame: 5 });
+    expect(v.clusters).toEqual([expect.objectContaining({ id: 'CL-01', same: 5, incident: 'Not raised' })]);
+    expect([...v.clusters[0].who].sort()).toEqual(['Harish Gowda', 'Rahul Deshpande']);
+    expect(v.sizes.find((x: { size: string }) => x.size === '2').clusters).toBe(1);
+    expect(v.pairs).toEqual([expect.objectContaining({ similarity: 91 })]);
+    expect(v.agreement.doubleMarked).toBe(3);
+    expect(v.agreement.weeks).toHaveLength(1);
+    expect(v.agreement.markers).toEqual([expect.objectContaining({ moderated: 1, of: 3 })]);
+    await api('reader', 'get', `/asmt/integrity-reports/${exam}`).expect(403);
+    await api('adminB', 'get', `/asmt/integrity-reports/${exam}`).expect(404);
+    const file = await api('proctor', 'get', `/asmt/integrity-reports/${exam}/export`).buffer(true).parse((res, done) => {
+      const parts: Buffer[] = [];
+      res.on('data', (c: Buffer) => parts.push(c));
+      res.on('end', () => done(null, Buffer.concat(parts)));
+    }).expect(200);
+    expect(file.headers['content-type']).toContain('spreadsheetml');
+    expect((file.body as Buffer).subarray(0, 2).toString()).toBe('PK');
+    expect(await inOrg(org.A.id, (tx) => tx.auditLog.count({ where: { entityId: exam, action: 'asmt.integrity_report.exported' } }))).toBe(1);
+  });
+
+  // PRC-28: the candidate's privacy centre; the erasure waits for a held review and is done by the nightly sweep.
+  it('PRC-28: the candidate sees what is kept, asks once to erase; a held review waits; the sweep erases and emails', async () => {
+    const r = await running();
+    const frame = `local-blob:webcam-snapshots/${r.attemptId}-9.jpg`;
+    await inOrg(org.A.id, async (tx) => {
+      await tx.proctoringEvent.create({ data: { attemptId: r.attemptId, eventType: 'webcam_multiple_faces', severity: 'high', metadataJson: JSON.stringify({ snapshot: frame, strike: 1 }) } });
+      await tx.faceEnrolment.create({ data: { attemptId: r.attemptId, status: 'enrolled', consentAt: new Date(), capturedAt: new Date(), referenceImagePath: `local-blob:face/${r.attemptId}.jpg` } });
+    });
+    await cand(r.ct, 'post', '/attempt/submit').send({}).expect(201);
+    const v = (await cand(r.ct, 'get', '/attempt/privacy').expect(200)).body;
+    expect(v).toMatchObject({ company: 'AS5 A', recordings: { frames: 1 }, face: { kept: true }, held: false, request: null });
+    expect(v.consents.map((c: { what: string }) => c.what)).toEqual(['Camera, screen and activity monitoring', 'Face check (biometric)']);
+    expect(v.recordings.deleteOn).toBeTruthy();
+    // A copy of the data: the events by type and time, never an image link.
+    const copy = (await cand(r.ct, 'get', '/attempt/privacy/export').expect(200)).body;
+    expect(copy.tests[0].monitoringEvents).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'webcam_multiple_faces' })]));
+    expect(JSON.stringify(copy)).not.toContain('local-blob:');
+    // A review is open: the request waits.
+    await flag(r.attemptId, 'high_concern');
+    expect((await cand(r.ct, 'post', '/attempt/privacy/erase').send({}).expect(200)).body).toMatchObject({ held: true, request: { status: 'waiting' } });
+    await cand(r.ct, 'post', '/attempt/privacy/erase').send({}).expect(200);
+    const cid = (await inOrg(org.A.id, (tx) => tx.attempt.findUniqueOrThrow({ where: { id: r.attemptId }, select: { invitation: { select: { candidateId: true } } } }))).invitation.candidateId;
+    expect(await inOrg(org.A.id, (tx) => tx.asmtErasureRequest.count({ where: { candidateId: cid } }))).toBe(1);
+    const sweep = adminApp.get(ProctoringRetentionService);
+    sent.length = 0;
+    await sweep.eraseRequested();
+    expect((await cand(r.ct, 'get', '/attempt/privacy').expect(200)).body).toMatchObject({ recordings: { frames: 1 }, request: { status: 'waiting' } });
+    // Cleared: nothing holds the evidence, so the next sweep erases it (scores stay) and emails the candidate.
+    const iid = (await inOrg(org.A.id, (tx) => tx.integrityIncident.findUniqueOrThrow({ where: { attemptId: r.attemptId } }))).id;
+    await api('proctor', 'post', `/asmt/integrity/${iid}/verdict`).send({ verdict: 'cleared', reason: REASON }).expect(200);
+    await sweep.eraseRequested();
+    const after = (await cand(r.ct, 'get', '/attempt/privacy').expect(200)).body;
+    expect(after).toMatchObject({ recordings: { frames: 0 }, face: { kept: false }, request: { status: 'done' } });
+    const ev = await inOrg(org.A.id, (tx) => tx.proctoringEvent.findFirstOrThrow({ where: { attemptId: r.attemptId, eventType: 'webcam_multiple_faces' } }));
+    expect(JSON.parse(ev.metadataJson!)).toEqual({ strike: 1 });
+    expect(sent.filter((m) => m.subject === 'Your recordings and face data were erased')).toHaveLength(1);
+    expect(await inOrg(org.A.id, (tx) => tx.auditLog.count({ where: { action: { in: ['candidate.erasure_requested', 'candidate.erasure_done', 'candidate.data_exported'] }, entityId: cid } }))).toBe(3);
+    await sweep.eraseRequested();
+    expect(sent.filter((m) => m.subject === 'Your recordings and face data were erased')).toHaveLength(1);
   });
 
   it('negative: approving time above the cap does not pause a test without face checks', async () => {

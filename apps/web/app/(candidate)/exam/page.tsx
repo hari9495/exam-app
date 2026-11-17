@@ -24,6 +24,7 @@ import {
   useRunnerActions,
   useCandidateHelp,
   useFaceRecheck,
+  useProctorMessages,
   RunCodeResult,
 } from '../../../lib/hooks/useAttempt';
 import { useCountdown } from '../../../lib/hooks/useCountdown';
@@ -199,12 +200,14 @@ export default function CandidateExamPage() {
   const showFaceWarning = started && Boolean(attemptState?.faceWarningAt);
   // Answer 2205: the face check after approved extra time.
   const faceRecheck = useFaceRecheck();
+  const proctorMessages = useProctorMessages();
   const [faceCheckFailed, setFaceCheckFailed] = useState<string | null>(null);
   async function handleFaceCheck() {
     setFaceCheckFailed(null);
     try {
       const out = await faceRecheck.mutateAsync(await cameraFrame());
-      if (out.matched === false) setFaceCheckFailed("That did not match your photo. Face the camera in good light and try again, or wait for your proctor.");
+      if (out.matched === false && out.triesLeft !== 0)
+        setFaceCheckFailed(`That did not match your photo. Face the camera in good light and try again${out.triesLeft ? ` (${out.triesLeft} ${out.triesLeft === 1 ? 'try' : 'tries'} left)` : ''}, or wait for your proctor.`);
     } catch (error) {
       setFaceCheckFailed(error instanceof Error && error.message ? error.message : 'We could not use your camera. Check it is not in use by another app.');
     }
@@ -318,6 +321,7 @@ export default function CandidateExamPage() {
     browserViolations: attemptState.browserActivityViolationCount,
     strikeLimit: proctoringConfig?.strikeLimit ?? 3,
     pauseMessage: attemptState.pauseMessage,
+    faceRecheckTriesLeft: attemptState.faceRecheckTriesLeft,
     shareNeeded: screenShareRequired && !screenCapture.active && !isBlocked,
     shareError: screenCapture.error,
     onShare: () => void handleShareScreen(),
@@ -520,6 +524,12 @@ export default function CandidateExamPage() {
             busy: ackFaceWarning.isPending,
           }
         : null,
+    // Answer 2269: the proctor's messages; "Got it" marks them read, a reply goes to the proctor's console.
+    messages: {
+      items: attemptState.messages ?? [],
+      onRead: () => proctorMessages.read.mutateAsync(),
+      onReply: (text) => proctorMessages.reply.mutateAsync(text),
+    },
     breakSecondsLeft,
     breaksLeft: run ? Math.max(0, run.breaksAllowed - run.breaksUsed) : 0,
     breakMinutes: run?.breakMinutes ?? 0,

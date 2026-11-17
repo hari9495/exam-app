@@ -8,9 +8,10 @@ import { AttemptService } from './attempt.service';
 import { DeliveryService } from './delivery.service';
 import { ReuseDto } from './dto/reuse.dto';
 import { AccommodationService } from './accommodation.service';
+import { PrivacyService } from './privacy.service';
 import { AccommodationDto } from './dto/accommodation.dto';
 import { resolveClientIp } from '../network/resolve-client-ip';
-import { AnswerDto, AppealDto, SurveyDto } from './dto/answer.dto';
+import { AnswerDto, AppealDto, ProctorReplyDto, SurveyDto } from './dto/answer.dto';
 import { StartAttemptDto } from './dto/start-attempt.dto';
 import { ReportProctoringEventDto } from './dto/report-proctoring-event.dto';
 import { ClientErrorDto } from './dto/client-error.dto';
@@ -31,6 +32,7 @@ export class AttemptController {
     private readonly attemptService: AttemptService,
     private readonly delivery: DeliveryService,
     private readonly accommodations: AccommodationService,
+    private readonly privacy: PrivacyService,
   ) {}
 
   /** AS-3 (PRC-21): this candidate's tests at this company. */
@@ -58,6 +60,25 @@ export class AttemptController {
   }
 
   /** AS-4b (answer 2011, PRC-23): the candidate's requests for help and what was approved for them. */
+  // AS-5 part 3 (PRC-28): the privacy centre: what the company keeps, a copy, and an erasure request.
+  @Get('privacy')
+  privacyView(@CurrentCandidate() candidate: CandidateSession) {
+    return this.privacy.view(candidate);
+  }
+
+  @Get('privacy/export')
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  privacyExport(@CurrentCandidate() candidate: CandidateSession) {
+    return this.privacy.export(candidate);
+  }
+
+  @Post('privacy/erase')
+  @HttpCode(200)
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  privacyErase(@CurrentCandidate() candidate: CandidateSession) {
+    return this.privacy.requestErase(candidate);
+  }
+
   @Get('accommodation')
   accommodation(@CurrentCandidate() candidate: CandidateSession) {
     return this.accommodations.help(candidate);
@@ -187,6 +208,20 @@ export class AttemptController {
   @Throttle(MODERATE_ATTEMPT_THROTTLE)
   faceEnrolment(@CurrentCandidate() candidate: CandidateSession, @Body() dto: FaceEnrolmentDto) {
     return this.attemptService.recordFaceEnrolment(candidate, dto);
+  }
+
+  // Answer 2269: the candidate reads the proctor's messages and replies.
+  @Post('messages/read')
+  @HttpCode(200)
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  readMessages(@CurrentCandidate() candidate: CandidateSession) {
+    return this.attemptService.readMessages(candidate);
+  }
+
+  @Post('messages')
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  replyToProctor(@CurrentCandidate() candidate: CandidateSession, @Body() dto: ProctorReplyDto) {
+    return this.attemptService.replyToProctor(candidate, dto.body);
   }
 
   // AS-5 (answer 2205): the face check after approved extra time.

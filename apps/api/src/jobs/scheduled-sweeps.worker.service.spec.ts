@@ -26,7 +26,7 @@ describe('ScheduledSweepsWorkerService', () => {
       recycleBinRetention: { prune: jest.fn().mockResolvedValue(0) },
       apiUsageRetention: { prune: jest.fn().mockResolvedValue(0) },
       faceRetention: { prune: jest.fn().mockResolvedValue(0) },
-      proctoringRetention: { prune: jest.fn().mockResolvedValue(0) },
+      proctoringRetention: { prune: jest.fn().mockResolvedValue(0), eraseRequested: jest.fn().mockResolvedValue(0) },
       drip: { sweep: jest.fn().mockResolvedValue(undefined) },
       employeeHistory: { applyDue: jest.fn().mockResolvedValue(0) },
       people: { probationSweep: jest.fn().mockResolvedValue(0) },

@@ -2,6 +2,7 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { IncidentWorkspaceScreen, type LiveIncident } from '@yukthix/ui/assessments';
+import { apiFetch } from '../../../../../../../lib/api-client';
 import { useAuth } from '../../../../../../../lib/auth-context';
 import { decodeJwtPayload } from '../../../../../../../lib/jwt';
 import { useApi, useApiWrite } from '../../../../../../../lib/yx-hiring';
@@ -34,6 +35,11 @@ export default function YxIncidentPage() {
         onInvalidate: (input) => post('/invalidate', input),
         onSecondReview: (input) => post('/second-review', input),
         onBack: () => router.push('/yx/hiring/assessments/integrity'),
+        // Answer 2262: one frame at a time, through a short-lived link; the API records each opening.
+        onFrame: async (eventId, kind) => {
+          const { url } = await apiFetch(`/asmt/integrity/${id}/frames/${eventId}?kind=${kind}`, {}, accessToken ?? undefined);
+          window.open(url, '_blank', 'noopener');
+        },
       }}
     />
   );

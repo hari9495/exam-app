@@ -446,7 +446,7 @@ export function buildNav(n: NavInput): NavArea[] {
             // AS-3 (PRC-07): invitations and drives for the people who invite candidates.
             ...when(Boolean(n.assessments) && any('ats.candidate.manage', 'candidate:manage'), L('asmt-invitations', 'Invitations & drives', '/yx/hiring/assessments/invitations')),
             // AS-5 (answers 2006, 2012): integrity review and appeals, for the people who proctor, evaluate or own tests.
-            ...when(Boolean(n.assessments) && any('asmt.proctor', 'asmt.evaluate', 'exam:manage'), L('asmt-integrity', 'Integrity review', '/yx/hiring/assessments/integrity'), L('asmt-appeals', 'Appeals', '/yx/hiring/assessments/appeals')),
+            ...when(Boolean(n.assessments) && any('asmt.proctor', 'asmt.evaluate', 'exam:manage'), L('asmt-integrity', 'Integrity review', '/yx/hiring/assessments/integrity'), L('asmt-appeals', 'Appeals', '/yx/hiring/assessments/appeals'), L('asmt-integrity-reports', 'Integrity reports', '/yx/hiring/assessments/integrity-reports')),
             // AS-6 (PRC-19, answer 2019): marking for markers; fairness for test writers and results readers.
             ...when(Boolean(n.assessments) && any('asmt.evaluate', 'exam:manage'), L('asmt-marking', 'Marking', '/yx/hiring/assessments/marking')),
             ...when(Boolean(n.assessments) && any('asmt.test.manage', 'exam:manage', 'asmt.results.view'), L('asmt-fairness', 'Fairness', '/yx/hiring/assessments/fairness')),

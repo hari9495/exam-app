@@ -39,6 +39,8 @@ export interface PauseInput {
   browserViolations: number;
   strikeLimit: number;
   pauseMessage?: string | null;
+  /** Answer 2270: face checks left; at 0 a proctor checks. */
+  faceRecheckTriesLeft?: number | null;
   /** The test needs a shared screen and none is shared. */
   shareNeeded: boolean;
   shareError: string | null;
@@ -74,6 +76,12 @@ export function pauseFor(i: PauseInput): LiveRunnerPause | null {
       title: 'Your test is paused',
       message: i.pauseMessage?.trim() ? `Message from your proctor: "${i.pauseMessage.trim()}"` : 'Your proctor paused the test.',
       note: 'The timer is stopped. It starts again when your proctor resumes the test.',
+    };
+  if (i.pausedReason === 'face_recheck' && i.faceRecheckTriesLeft === 0)
+    return {
+      title: 'A proctor will check your face',
+      message: 'Your face did not match your photo after 3 tries. Stay in front of the camera; a proctor checks and then resumes your test.',
+      note: 'The timer is stopped while you wait.',
     };
   if (i.pausedReason === 'face_recheck')
     return {

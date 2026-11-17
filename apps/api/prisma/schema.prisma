@@ -1258,6 +1258,20 @@ model AsmtFairnessReview {
   @@map("asmt_fairness_reviews")
 }
 
+/// AS-5 part 3 (PRC-28): a candidate's request to erase their recordings, clips and face data at a company; the nightly
+/// sweep does it once no incident or appeal holds them. One waiting request per candidate (partial unique index).
+model AsmtErasureRequest {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  candidateId    String    @map("candidate_id") @db.Uuid
+  status         String    @default("waiting") @db.VarChar(20)
+  requestedAt    DateTime  @default(now()) @map("requested_at") @db.Timestamptz(3)
+  doneAt         DateTime? @map("done_at") @db.Timestamptz(3)
+
+  @@index([organizationId])
+  @@map("asmt_erasure_requests")
+}
+
 model CodeAnswerReview {
   id             String   @id @default(uuid()) @db.Uuid
   answerId       String   @unique @map("answer_id") @db.Uuid
@@ -1348,7 +1362,9 @@ model FaceEnrolment {
 model CandidateMessage {
   id           String    @id @default(uuid()) @db.Uuid
   attemptId    String    @map("attempt_id") @db.Uuid
-  sentByUserId String    @map("sent_by_user_id") @db.Uuid
+  /// Empty for the candidate's reply (answer 2269); a check keeps one of the two.
+  sentByUserId String?   @map("sent_by_user_id") @db.Uuid
+  fromCandidate Boolean  @default(false) @map("from_candidate")
   body         String    @db.Text
   sentAt       DateTime  @default(now()) @map("sent_at") @db.Timestamptz(3)
   readAt       DateTime? @map("read_at") @db.Timestamptz(3)

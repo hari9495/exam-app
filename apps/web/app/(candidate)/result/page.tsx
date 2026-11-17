@@ -29,6 +29,10 @@ export default function CandidateResultPage() {
           appealUntil: f.integrity.appealUntil ? day(f.integrity.appealUntil) : null,
           canAppeal: f.integrity.canAppeal,
           appeal: f.integrity.appeal ? { status: f.integrity.appeal.status, sentOn: day(f.integrity.appeal.sentAt), decidedOn: f.integrity.appeal.decidedAt ? day(f.integrity.appeal.decidedAt) : null, reason: f.integrity.appeal.reason } : null,
+          // Answer 2262: the flagged moments by time and the number of frames kept.
+          evidence: f.integrity.evidence
+            ? { ...f.integrity.evidence, moments: f.integrity.evidence.moments.map((m) => ({ at: new Date(m.at).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }), what: m.what })) }
+            : undefined,
         }
       : null,
     // Answer 2264: one optional file goes with the appeal (the runtime checks its type and size again).

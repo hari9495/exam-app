@@ -22,7 +22,7 @@ import { PrcFrame, type ViewState } from './proctoring-shared';
 import { CameraFrame, EvidenceFrame, FlagTimeline, IntegrityScoreCard, ScreenThumb, CodeAnswer } from './proctoring-kit';
 import { impactRatios, needsModeration, verdictError, VERDICT_LABEL, type Verdict } from './proctoring-logic';
 import { EVENTS_SNEHA, INCIDENTS, PEOPLE, REVIEWERS, SIGNALS_SNEHA, d, type IncidentRow } from './proctoring-data';
-import { LiveAppealsScreen, LiveIncidentWorkspaceScreen, LiveIntegrityQueueScreen, type LiveAppeals, type LiveIncidentWorkspace, type LiveIntegrityQueue } from './integrity-live';
+import { LiveAppealsScreen, LiveIncidentWorkspaceScreen, LiveIntegrityQueueScreen, LiveIntegrityReportsScreen, type LiveAppeals, type LiveIncidentWorkspace, type LiveIntegrityQueue, type LiveIntegrityReports } from './integrity-live';
 import { LiveEvaluatorScreen, LiveFairnessScreen, type LiveEvaluator, type LiveFairness } from './marking-live';
 
 const opt = (xs: string[]) => xs.map((x) => ({ value: x, label: x }));
@@ -507,8 +507,9 @@ function SampleEvaluatorConsole({ blind = true, kind = 'descriptive', defaultSco
 /* PRC-20 · Integrity reports                                          */
 /* ================================================================== */
 
-export function IntegrityReportsScreen({ tab = 'collusion', state = 'ready' }: { tab?: 'collusion' | 'plagiarism' | 'agreement'; state?: 'ready' | 'loading' | 'empty' }) {
-  // PRC-20
+export function IntegrityReportsScreen({ tab = 'collusion', state = 'ready', live }: { tab?: 'collusion' | 'plagiarism' | 'agreement'; state?: 'ready' | 'loading' | 'empty'; live?: LiveIntegrityReports }) {
+  // PRC-20; with `live`, a real test (AS-5 part 3).
+  if (live) return <LiveIntegrityReportsScreen live={live} />;
   const loading = state === 'loading';
   return (
     <PrcFrame page="Integrity reports">

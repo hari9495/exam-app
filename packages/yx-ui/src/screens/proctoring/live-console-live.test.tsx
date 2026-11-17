@@ -77,4 +77,41 @@ describe('PRC-13 live console', () => {
     render(<LiveConsoleScreen tiles={[]} live={LIVE({ tiles: [] })} />);
     expect(screen.getByText('No candidates in this test yet.')).toBeInTheDocument();
   });
+
+  it('2269: the drawer shows the thread both ways and reloads it after a message is sent', async () => {
+    const onThread = vi
+      .fn()
+      .mockResolvedValueOnce([{ id: 'm1', fromCandidate: false, body: 'Please keep your face in view.', sentAt: '2026-11-17T05:00:00.000Z', readAt: '2026-11-17T05:01:00.000Z' }, { id: 'm2', fromCandidate: true, body: 'Sorry, fixed now.', sentAt: '2026-11-17T05:02:00.000Z', readAt: null }])
+      .mockResolvedValue([{ id: 'm3', fromCandidate: false, body: 'Thanks.', sentAt: '2026-11-17T05:03:00.000Z', readAt: null }]);
+    const live = LIVE({ onThread });
+    render(<LiveConsoleScreen tiles={[]} live={live} />);
+    await openTile('Sneha Iyer');
+    const list = await screen.findByRole('list', { name: 'Messages with the candidate' });
+    expect(within(list).getByText('Sorry, fixed now.')).toBeInTheDocument();
+    expect(within(list).getByText('Sneha Iyer')).toBeInTheDocument();
+    expect(within(list).getByText(/· read/)).toBeInTheDocument();
+    expect(onThread).toHaveBeenCalledWith('a1');
+    await ue.type(screen.getByLabelText(/^Message to the candidate/), 'Thanks.');
+    await ue.click(screen.getByRole('button', { name: 'Send' }));
+    expect(await screen.findByText('Thanks.', { selector: 'span' })).toBeInTheDocument();
+  });
+});
+
+describe('PRC-13 integrity score and camera frame (answer 2268)', () => {
+  it('scores the flags so far: any high flag is high concern; mediums and lows lower it', async () => {
+    const { scoreFromFlags, tileLevel } = await import('./proctoring-logic');
+    expect(scoreFromFlags([])).toBe(100);
+    expect(tileLevel({ score: scoreFromFlags([{ severity: 'high' }]) })).toBe('high');
+    expect(scoreFromFlags([{ severity: 'medium' }, { severity: 'low' }])).toBe(85);
+    expect(tileLevel({ score: scoreFromFlags([{ severity: 'medium' }, { severity: 'medium' }]) })).toBe('review');
+    expect(scoreFromFlags(Array.from({ length: 10 }, () => ({ severity: 'high' })))).toBe(0);
+    expect(scoreFromFlags([{ severity: 'unknown' }])).toBe(100);
+  });
+
+  it('a tile shows the score and its latest camera frame; without a frame the placeholder shows', () => {
+    render(<LiveConsoleScreen tiles={[]} live={LIVE({ tiles: [{ id: 'a1', name: 'Sneha Iyer', status: 'in-progress', score: 49, flags: 1, question: '5 of 20 answered', secondsLeft: 1800, thumbUrl: 'https://blob.test/f.jpg' }, { id: 'a2', name: 'Arjun Nair', status: 'in-progress', score: 100, flags: 0, question: '9 of 20 answered', secondsLeft: 2400 }] })} />);
+    expect(screen.getByRole('img', { name: 'Sneha Iyer: latest camera frame' })).toHaveAttribute('src', 'https://blob.test/f.jpg');
+    expect(screen.getByText('49 · High concern')).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: 'Arjun Nair: latest camera frame' })).not.toBeInTheDocument();
+  });
 });

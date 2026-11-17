@@ -7,6 +7,7 @@
   background: var(--yx-color-bg-inverse); border-radius: var(--yx-radius-control);
   border: var(--yx-border-width) solid var(--yx-color-border);
 }
+.yx-cam__img { object-fit: cover; }
 .yx-cam__shape { fill: var(--yx-color-text-muted); stroke: var(--yx-color-text-muted); stroke-width: 2; }
 .yx-cam__shape path { fill: var(--yx-color-text-muted); }
 .yx-cam__object { fill: var(--yx-color-warning-border); stroke: var(--yx-color-warning-border); }

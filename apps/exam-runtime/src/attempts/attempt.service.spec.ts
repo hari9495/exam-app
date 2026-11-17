@@ -529,6 +529,7 @@ describe('AttemptService', () => {
         feedback: null,
         runner: { calculator: 'none', breaksAllowed: undefined, breaksUsed: undefined, breakMinutes: undefined, breakEndsAt: null, offlineMinutes: 5, timeCreditCapMinutes: 10, offlineCreditSeconds: NaN, surveyDone: false },
         pauseMessage: null,
+        faceRecheckTriesLeft: null,
         faceWarningAt: null,
         organizationName: 'Acme Corp',
         organizationLogoUrl: null,
@@ -692,7 +693,7 @@ describe('AttemptService', () => {
       expect((result as any).sections[0].questions[0].options).toEqual([{ id: 'opt-b', text: '5', imageAlt: null }, { id: 'opt-a', text: '4', imageAlt: null }]);
     });
 
-    it('returns unread messages and marks them read', async () => {
+    it('returns the proctor\'s unread messages and leaves them unread (answer 2269: read on Got it or a reply)', async () => {
       const attempt = {
         id: 'attempt-1', status: 'in_progress', startedAt: new Date(),
         questionOrderJson: '[]', sectionSnapshotJson: '[]', optionOrderJson: null,
@@ -711,11 +712,8 @@ describe('AttemptService', () => {
       const result = await service.getCurrent(session);
 
       expect((result as any).messages).toEqual([{ id: 'msg-1', body: 'Please stay on the exam tab', sentAt: unreadMessage.sentAt }]);
-      expect(tx.candidateMessage.findMany).toHaveBeenCalledWith({ where: { attemptId: 'attempt-1', readAt: null } });
-      expect(tx.candidateMessage.updateMany).toHaveBeenCalledWith({
-        where: { attemptId: 'attempt-1', readAt: null },
-        data: { readAt: expect.any(Date) },
-      });
+      expect(tx.candidateMessage.findMany).toHaveBeenCalledWith({ where: { attemptId: 'attempt-1', readAt: null, fromCandidate: false }, orderBy: { sentAt: 'asc' } });
+      expect(tx.candidateMessage.updateMany).not.toHaveBeenCalled();
     });
 
     it('resolves tenant context via an unscoped bootstrap lookup, an unscoped logo lookup, then a properly scoped call', async () => {

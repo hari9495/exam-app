@@ -32,6 +32,7 @@ jest.mock('../../../lib/hooks/useAttempt', () => ({
   useRunnerActions: jest.fn(),
   useCandidateHelp: jest.fn(),
   useFaceRecheck: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
+  useProctorMessages: jest.fn(() => ({ read: { mutateAsync: jest.fn() }, reply: { mutateAsync: jest.fn() } })),
 }));
 jest.mock('../../../lib/hooks/useScreenCapture', () => ({ useScreenCapture: jest.fn() }));
 jest.mock('../../../lib/client-error-reporter', () => ({ reportClientError: jest.fn() }));
@@ -1187,6 +1188,28 @@ describe('CandidateExamPage', () => {
       render(<CandidateExamPage />);
       await userEvent.click(screen.getByRole('button', { name: 'Check and continue' }));
       expect(await screen.findByText(/That did not match your photo/)).toBeInTheDocument();
+    });
+
+    it('answer 2270: after 3 tries a proctor checks; no more camera checks are offered', () => {
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: { ...attemptState, status: 'paused', pausedReason: 'face_recheck', faceRecheckTriesLeft: 0 }, isError: false });
+      render(<CandidateExamPage />);
+      expect(screen.getByText('A proctor will check your face')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Check and continue' })).not.toBeInTheDocument();
+    });
+
+    it("answer 2269: the proctor's message shows over the question; Got it marks it read; a reply is sent", async () => {
+      const read = jest.fn().mockResolvedValue({ read: 1 });
+      const reply = jest.fn().mockResolvedValue({ id: 'r1' });
+      (useAttemptModule.useProctorMessages as jest.Mock).mockReturnValue({ read: { mutateAsync: read }, reply: { mutateAsync: reply } });
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: { ...attemptState, messages: [{ id: 'm1', body: 'Please keep your face in view.', sentAt: '2026-11-17T05:00:00.000Z' }] }, isError: false });
+      render(<CandidateExamPage />);
+      expect(screen.getByText('Please keep your face in view.')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Reply' }));
+      await userEvent.type(screen.getByLabelText(/^Your message/), 'Fixed now.');
+      await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+      await waitFor(() => expect(reply).toHaveBeenCalledWith('Fixed now.'));
+      await userEvent.click(screen.getByRole('button', { name: 'Got it' }));
+      expect(read).toHaveBeenCalled();
     });
 
     it('negative: no camera says so instead of hanging', async () => {

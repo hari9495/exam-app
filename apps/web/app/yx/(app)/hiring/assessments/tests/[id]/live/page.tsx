@@ -1,8 +1,10 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useParams } from 'next/navigation';
-import { LiveConsoleScreen, type LiveTileData } from '@yukthix/ui/assessments';
+import { LiveConsoleScreen, scoreFromFlags, type LiveThreadMessage, type LiveTileData } from '@yukthix/ui/assessments';
+import { apiFetch } from '../../../../../../../../lib/api-client';
+import { useAuth } from '../../../../../../../../lib/auth-context';
 import { useApi, useApiWrite } from '../../../../../../../../lib/yx-hiring';
 import { useExamMonitoring } from '../../../../../../../../lib/hooks/useExamMonitoring';
 
@@ -24,6 +26,15 @@ export default function YxLiveConsolePage() {
   const test = useApi<{ title: string }>(`/exams/${id}`);
   const m = useExamMonitoring(id);
   const write = useApiWrite();
+  const { accessToken } = useAuth();
+  // Answer 2268: each running attempt's latest camera frame, refreshed every minute.
+  const frames = useApi<{ attemptId: string; url: string }[]>(`/asmt/live/${id}/frames`);
+  const refetchFrames = frames.refetch;
+  useEffect(() => {
+    const t = setInterval(() => void refetchFrames(), 60_000);
+    return () => clearInterval(t);
+  }, [refetchFrames]);
+  const thumbs = useMemo(() => new Map((frames.data ?? []).map((f) => [f.attemptId, f.url])), [frames.data]);
   const events = useMemo(() => {
     const by: Record<string, { id: string; type: string; severity: string; at: string }[]> = {};
     m.alerts.forEach((a, i) => (by[a.attemptId] ??= []).push({ id: `${a.attemptId}-${i}`, type: a.eventType, severity: a.severity, at: a.occurredAt }));
@@ -38,7 +49,8 @@ export default function YxLiveConsolePage() {
         id: r.attemptId!,
         name: r.candidateName,
         status: status === 'in-progress' && !r.online ? 'disconnected' : status,
-        level: flags.some((f) => f.severity === 'high') ? 'high' : flags.length ? 'review' : 'clear',
+        score: scoreFromFlags(flags),
+        thumbUrl: thumbs.get(r.attemptId!),
         flags: flags.length,
         lastFlag: flags.length ? flags[flags.length - 1]!.type.replace(/_/g, ' ') : undefined,
         question: r.totalQuestions ? `${r.answeredCount ?? 0} of ${r.totalQuestions} answered` : 'Not started',
@@ -64,6 +76,8 @@ export default function YxLiveConsolePage() {
         onResume: (attemptId, reason) => post(`/attempts/${attemptId}/resume`, { reason }),
         onEnd: (attemptId, reason) => post(`/attempts/${attemptId}/force-submit`, { reason }),
         onMessage: (attemptId, text) => post(`/attempts/${attemptId}/message`, { body: text }),
+        // Answer 2269: the thread both ways (the drawer reloads it while open).
+        onThread: (attemptId) => apiFetch(`/attempts/${encodeURIComponent(attemptId)}/messages`, {}, accessToken ?? undefined) as Promise<LiveThreadMessage[]>,
       }}
     />
   );

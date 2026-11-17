@@ -22299,6 +22299,33 @@
     "note": "Positive and negative. No integrity score or camera thumbnails on the tiles yet (question 2268)."
   },
   {
+    "id": "MT-ASMT-INT3",
+    "area": "Live console button, frames and score, reply thread, face check hand-off, evidence frames, integrity reports, privacy centre: answers 2262, 2267-2270 (17 Nov 2026)",
+    "screen": "Hire › Assessments › Tests › a test; Live console; Integrity review › an incident; Integrity reports; Candidate › the test, Your result, Your privacy centre",
+    "url": "http://localhost:3000/yx/hiring/assessments/tests",
+    "account": "A proctor (exam:manage) with a security key; a results reader; two candidates on a face-checked test; a reviewer.",
+    "steps": [
+      "As the proctor, open a published test: press Live console. Negative: a draft test has no button.",
+      "Watch the tiles: each shows a score and the latest camera frame; open one and send 'Please keep your face in view'.",
+      "As that candidate, see the message above the question; Reply 'Fixed now'; negative: Send an empty reply.",
+      "As the proctor, see the reply in the drawer within 10 seconds.",
+      "Approve extra time for the face-checked candidate; as the candidate, fail the face check 3 times (cover the camera).",
+      "As the proctor, see the high flag; resume the test with a reason.",
+      "Open an incident with frames: View one frame; check the audit log.",
+      "Open Integrity reports for a test with double marking; Export XLSX. Negative: as the results reader, open it.",
+      "As a candidate, open Your privacy centre: Download my data; Erase my recordings and face data; negative: ask again.",
+      "With a review open, run the nightly job: nothing erased; clear it, run again: erased, email received."
+    ],
+    "expected": "Step 1: the console opens; no button on a draft. Step 2: '49 · High concern' for one high flag; a real frame. Step 3: 'Message from your proctor'; the reply sends; 'Write your message first.' for an empty one. Step 4: the thread shows both. Step 5: after the 3rd, 'A proctor will check your face' and no Check button. Step 6: a high 'face recheck handoff' flag; the test resumes. Step 7: the frame opens; asmt.incident.evidence_viewed recorded. Step 8: clusters, pairs, agreement; a workbook downloads; the reader is refused. Step 9: a JSON copy without image links; 'Erasure request received on…'; no second request. Step 10: kept while held; then frames and face data gone, scores kept, 'Your recordings and face data were erased' email.",
+    "stories": [
+      "LiveConsole",
+      "LiveReports",
+      "LivePrivacy",
+      "LiveDecide"
+    ],
+    "note": "Positive and negative. Accommodation evidence is not in the privacy centre yet (question 2279)."
+  },
+  {
     "id": "MT-ASMT-HELP1",
     "area": "Assessments AS-4b (16 Nov 2026)",
     "screen": "Candidate › Ask for an accommodation; Hire › Assessments › Accommodation requests",
