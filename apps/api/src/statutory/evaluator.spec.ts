@@ -58,6 +58,13 @@ describe('batch H: state PT rule data', () => {
     expect(noPt(sets, 'IN-HR', '2025-03-31')).toBe(false);
   });
 
+  it('H13: bonus cites the Code on Wages from 21 Nov 2025 (the Act version before); same ceilings', () => {
+    expect(inForce(sets, 'IN.BONUS', ['IN'], '2025-11-20')!.version).toBe('2015-v1');
+    const code = inForce(sets, 'IN.BONUS', ['IN'], '2025-11-21')! as RuleSet & { lawVersion: string; source: string };
+    expect([code.version, code.lawVersion, code.verify]).toEqual(['2025-v2', 'CODE', true]);
+    expect(code.source).toMatch(/S\.O\. 4710\(E\).*CA checklist items 42-44/);
+  });
+
   it('H4: Odisha charges no PT from 1 Apr 2026; before that there is no rule loaded (question 2381)', () => {
     expect(noPt(sets, 'IN-OD', '2026-04-01')).toBe(true);
     expect(noPt(sets, 'IN-OD', '2026-03-31')).toBe(false);

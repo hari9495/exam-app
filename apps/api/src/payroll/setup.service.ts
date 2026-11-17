@@ -152,7 +152,7 @@ export class PaySetupService {
       await requireEntity(tx, c, v, 'payroll.statutory.setup', entityId);
       const bonusRs = inForce(await this.rules.published(), 'IN.BONUS', ['IN'], dto.validFrom);
       const range: [Prisma.Decimal, Prisma.Decimal] | null = bonusRs ? [new Prisma.Decimal(bonusRs.values.minRate as string), new Prisma.Decimal(bonusRs.values.maxRate as string)] : null;
-      if (!OPTION_VALUES[dto.optionKey](dto.value, range)) throw new BadRequestException(dto.optionKey === 'bonus.rate' && range ? `The bonus rate is between ${range[0]} and ${range[1]} (Payment of Bonus Act).` : `That is not a choice the law leaves for ${dto.optionKey}.`);
+      if (!OPTION_VALUES[dto.optionKey](dto.value, range)) throw new BadRequestException(dto.optionKey === 'bonus.rate' && range ? `The bonus rate is between ${range[0]} and ${range[1]}, as the law allows.` : `That is not a choice the law leaves for ${dto.optionKey}.`);
       const open = await tx.entityStatutoryOption.findFirst({ where: { organizationId: c.organizationId, legalEntityId: entityId, optionKey: dto.optionKey, validTo: null } });
       if (open) {
         if (iso(open.validFrom)! >= dto.validFrom) throw new ConflictException('The new value must start after the current one started.');

@@ -132,7 +132,7 @@ describe('Payroll: state statutory rules (batch H)', () => {
     await api('approver1', 'post', `/people/changes/${ch.changeId}/approve`).send({ confirmRebase: true }).expect(201);
     return id;
   };
-  type Pt = { pt: string | null; explanation: string | null; version: string | null };
+  type Pt = { pt: string | null; explanation: string | null; version: string | null; versions: Record<string, string>; lines: { code: string; amount: string }[] };
   const runs: Record<string, Promise<Record<string, Pt>>> = {};
   /** A month's run, calculated once (bank details waived): each person's PT line and the PT rule version used. */
   const calcMonth = (month: string) => (runs[month] ??= calcOnce(month));
@@ -157,7 +157,7 @@ describe('Payroll: state statutory rules (batch H)', () => {
       })) as Record<string, string>;
       const line = full.lines.find((l) => l.code === 'pt');
       const ptKey = Object.keys(versions).find((k) => k.startsWith('IN.PT|IN-'));
-      out[slip.employeeId] = { pt: line?.amount ?? null, explanation: line?.explanation ?? null, version: ptKey ? `${ptKey.slice(6)} ${versions[ptKey]}` : null };
+      out[slip.employeeId] = { pt: line?.amount ?? null, explanation: line?.explanation ?? null, version: ptKey ? `${ptKey.slice(6)} ${versions[ptKey]}` : null, versions, lines: full.lines };
     }
     return out;
   };
@@ -244,6 +244,28 @@ describe('Payroll: state statutory rules (batch H)', () => {
       expect((await calcMonth('2026-10'))[emp['IN-OD']]).toMatchObject({ pt: null, version: 'IN-OD 2026-v1' });
       expect((await missing()).some((x) => x.startsWith('IN.PT IN-OD'))).toBe(false);
       expect(await rulesOf('IN.PT', 'IN-OD')).toEqual([expect.objectContaining({ validFrom: '2026-04-01', verify: true })]);
+    });
+  });
+
+  describe('H13: statutory bonus under the Code on Wages', () => {
+    it('an October 2026 run uses the Code version (2025-v2) for the bonus provision', async () => {
+      const r = (await calcMonth('2026-10'))[emp['IN-AP']];
+      expect(r.versions['IN.BONUS|IN']).toBe('2025-v2');
+      expect(r.lines.some((l) => l.code === 'bonus_provision' && Number(l.amount) > 0)).toBe(true);
+    });
+
+    it('negatives: a bonus rate above 20% is a 400 with nothing saved; an employee is refused; another company gets 404', async () => {
+      const put = (who: Who, value: string) => api(who, 'put', `/payroll/entities/${ids.entity}/legal-options`).send({ optionKey: 'bonus.rate', value, validFrom: '2026-10-01' });
+      await markSteppedUp(tenantPrisma, token.payAdmin);
+      expect((await put('payAdmin', '0.25').expect(400)).body.message).toBe('The bonus rate is between 0.0833 and 0.2, as the law allows.');
+      await put('payAdmin', 'abc').expect(400);
+      await put('emp1', '0.1').expect(403);
+      await markSteppedUp(tenantPrisma, token.payAdminB);
+      await put('payAdminB', '0.1').expect(404);
+      expect(await inA((tx) => tx.entityStatutoryOption.count({ where: { legalEntityId: ids.entity } }))).toBe(0);
+      // Positive: a rate inside the range is kept from its date.
+      await put('payAdmin', '0.1').expect(200);
+      expect(await inA((tx) => tx.entityStatutoryOption.count({ where: { legalEntityId: ids.entity, optionKey: 'bonus.rate' } }))).toBe(1);
     });
   });
 });

@@ -1648,6 +1648,77 @@
       ]
     },
     {
+      "statute": "IN.BONUS",
+      "jurisdiction": "IN",
+      "version": "2025-v2",
+      "validFrom": "2025-11-21",
+      "validTo": null,
+      "lawVersion": "CODE",
+      "verify": true,
+      "source": "Code on Wages 2019 s.26 (in force 21 Nov 2025): eligible up to 21,000 a month (S.O. 4711(E)); calculated on 7,000 or the minimum wage if higher (S.O. 4710(E)), both of 25 Aug 2026, deemed from 21 Nov 2025: https://egazette.gov.in/WriteReadData/2026/275747.pdf . 8.33% (at least 100 a year, in the company bonus rules) to 20%. TODO: CA checklist items 42-44 (the exact s.26(2) formula and which minimum wage).",
+      "values": {
+        "kind": "bonus",
+        "eligibilityWage": "21000",
+        "calculationCeiling": "7000",
+        "minRate": "0.0833",
+        "maxRate": "0.2"
+      },
+      "golden": [
+        {
+          "name": "Wage 21,000 (the edge) at 8.33%: on 7,000 = 583.10",
+          "fn": "bonus",
+          "input": {
+            "bonusWage": "21000",
+            "rate": "0.0833",
+            "minWageMonthly": "4628"
+          },
+          "expected": {
+            "eligible": true,
+            "monthly": "583.10"
+          }
+        },
+        {
+          "name": "Wage 21,000.01: not eligible",
+          "fn": "bonus",
+          "input": {
+            "bonusWage": "21000.01",
+            "rate": "0.0833",
+            "minWageMonthly": "4628"
+          },
+          "expected": {
+            "eligible": false,
+            "monthly": "0"
+          }
+        },
+        {
+          "name": "State minimum wage 16,137.03 above 7,000: on the minimum wage = 1,344.21",
+          "fn": "bonus",
+          "input": {
+            "bonusWage": "20000",
+            "rate": "0.0833",
+            "minWageMonthly": "16137.03"
+          },
+          "expected": {
+            "eligible": true,
+            "monthly": "1344.21"
+          }
+        },
+        {
+          "name": "Wage below both ceilings: on the wage itself (5,000 x 20% = 1,000)",
+          "fn": "bonus",
+          "input": {
+            "bonusWage": "5000",
+            "rate": "0.2",
+            "minWageMonthly": "4628"
+          },
+          "expected": {
+            "eligible": true,
+            "monthly": "1000"
+          }
+        }
+      ]
+    },
+    {
       "statute": "IN.GRATUITY",
       "jurisdiction": "IN",
       "version": "2018-v1",
