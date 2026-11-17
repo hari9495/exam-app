@@ -6,6 +6,7 @@ import { PhoneFrame } from '../_kit/frames';
 import { Button } from '../../components/button';
 import { Badge, DayDate, PersonLabel, type BadgeTone } from '../../components/display';
 import { formatDate } from '../../lib/format';
+import { IN_STATES } from '../../lib/india-states';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert, Pagination, Skeleton } from '../../components/feedback';
 import { BottomSheet, ConfirmDialog, Dialog } from '../../components/overlay';
@@ -3239,4 +3240,4 @@ function LiveIndustrialForm({ live }: { live: LiveIndustrialAction }) {
     </TimePage>
   );
 }
-const STATE_NAME: Record<string, string> = { 'IN-KA': 'Karnataka', 'IN-TN': 'Tamil Nadu', 'IN-MH': 'Maharashtra', 'IN-DL': 'Delhi', 'IN-TG': 'Telangana', 'IN-GJ': 'Gujarat' };
+const STATE_NAME = IN_STATES;
