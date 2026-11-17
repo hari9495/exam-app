@@ -99,6 +99,7 @@
 .yx-careers__brand img, .yx-careers__brand svg { display: block; max-height: var(--yx-space-10); width: auto; }
 .yx-careers__brand-name { font-size: var(--yx-text-xl); line-height: var(--yx-leading-xl); font-weight: var(--yx-weight-semibold); }
 .yx-careers__brand-sub { padding-left: var(--yx-space-3); border-left: var(--yx-border-width) solid var(--yx-color-border-strong); color: var(--yx-color-text-secondary); font-size: var(--yx-text-md); }
+.yx-careers__a11y { display: inline-flex; }
 .yx-careers__bar-link { display: inline-flex; align-items: center; min-height: var(--yx-target-min); font-size: var(--yx-text-md); font-weight: var(--yx-weight-medium); text-decoration: underline; text-underline-offset: var(--yx-space-half); }
 
 .yx-careers__main { display: flex; flex-direction: column; width: 100%; max-width: var(--yx-careers-max); margin: 0 auto; padding: 0 var(--yx-space-6); box-sizing: border-box; }

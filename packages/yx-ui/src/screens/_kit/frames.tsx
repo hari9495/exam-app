@@ -20,6 +20,7 @@ import {
 } from '../../components/shell';
 import { IconButton } from '../../components/button';
 import { Drawer } from '../../components/drawer';
+import { AccessibilityMenu } from '../../components/accessibility';
 import { AssistantPanel, type AssistantMessage } from '../../components/notify';
 import { Monogram, PoweredBy, TenantLogo } from '../../components/brand';
 import { ENTITIES, ME } from './data';
@@ -104,6 +105,8 @@ export interface LiveFrame {
   scope?: ReactNode;
   /** <ProfileMenu>. */
   profile: ReactNode;
+  /** <AccessibilityMenu> saving to the person's account (answer 2330); left out, it keeps the choices in this browser. */
+  accessibility?: ReactNode;
   onHelp?: () => void;
   /** Answer 992: What's new has unread entries (a dot on Help). */
   helpUnread?: boolean;
@@ -205,7 +208,7 @@ function LiveDesktopFrame({ area, panelTitle, panel, railItems, live, children }
             ))}
           </SidePanel>
         }
-        topBar={<TopBar onSearch={live.onSearch} entity={live.scope} notifications={live.notifications} onHelp={live.onHelp} helpUnread={live.helpUnread} profile={live.profile} />}
+        topBar={<TopBar onSearch={live.onSearch} entity={live.scope} notifications={live.notifications} onHelp={live.onHelp} helpUnread={live.helpUnread} profile={live.profile} accessibility={live.accessibility} />}
         mobileTabBar={mobileTabs.length ? <MobileTabBar items={mobileTabs} activeId={mobileActive} onSelect={(id) => go(tabs[id as keyof typeof tabs])} /> : undefined}
         panelCollapsed={live.panelCollapsed}
         onPanelCollapsedChange={live.onPanelCollapsedChange}
@@ -326,6 +329,8 @@ export function PortalFrame({ tenant, portal, nav = [], user, aside, foot, child
         </nav>
         {user && <span className="yx-portal__user">{user}</span>}
         {aside}
+        {/* Answer 2331: every sign-in, candidate and portal page carries it (kept in this browser); never turned off. */}
+        <AccessibilityMenu />
       </header>
       <main className="yx-portal__body">{children}</main>
       <footer className="yx-portal__foot">

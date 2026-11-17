@@ -42,3 +42,23 @@ a[href]:hover { text-decoration-thickness: var(--yx-focus-width); }
 
 /* `hidden` always hides, even when a class sets display (e.g. flex). Hidden tab panels were leaving gaps (founder review 30 Sep 2026). */
 [hidden]:not([hidden="until-found"]) { display: none !important; }
+
+/* ---------- Accessibility menu (answers 2330 to 2334): the switches set on <html> (see tokens.css §4) ---------- */
+/* Text spacing (WCAG 1.4.12): letter 0.12 and word 0.16 times the font size, on everything. */
+:root[data-text-spacing="on"] * { letter-spacing: 0.12em !important; word-spacing: 0.16em !important; }
+/* Line height also spaces paragraphs twice the font size (WCAG 1.4.12). */
+:root[data-line-height="on"] p:not(:last-child) { margin-block-end: 2em; }
+/* Reduce motion: no animation or smooth scrolling anywhere, the kit's or not. */
+:root[data-reduce-motion="on"] *,
+:root[data-reduce-motion="on"] *::before,
+:root[data-reduce-motion="on"] *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+/* Stronger focus (and high contrast): a thick outline with a gap on whatever has focus, even parts that drew their own. */
+:root:is([data-strong-focus="on"], [data-contrast="high"]) :focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring) !important; outline-offset: var(--yx-space-half) !important; }
+/* Underline links (and high contrast: colour is never the only signal). */
+:root:is([data-underline-links="on"], [data-contrast="high"]) a[href] { text-decoration-line: underline !important; }
+/* Big cursor: the arrow everywhere, the hand on what can be pressed, the text bar where you type. */
+:root[data-big-cursor="on"],
+:root[data-big-cursor="on"] * { cursor: var(--yx-cursor-big) !important; }
+:root[data-big-cursor="on"] :is(a[href], button:not(:disabled), [role="button"], [role="tab"], [role="radio"], [role="checkbox"], [role="switch"], [role="menuitem"], [role="menuitemradio"], [role="option"], summary, label, select),
+:root[data-big-cursor="on"] :is(a[href], button:not(:disabled), [role="button"], [role="tab"], [role="radio"], [role="checkbox"], [role="switch"], [role="menuitem"], [role="menuitemradio"], [role="option"], summary, label) * { cursor: var(--yx-cursor-big-pointer) !important; }
+:root[data-big-cursor="on"] :is(input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"], [type="range"]), textarea, [contenteditable="true"], [contenteditable="true"] *) { cursor: text !important; }

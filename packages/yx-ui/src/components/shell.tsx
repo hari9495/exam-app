@@ -54,6 +54,7 @@ import {
   MessageCircleQuestionMark,
 } from 'lucide-react';
 import { cx } from '../lib/cx';
+import { AccessibilityMenu } from './accessibility';
 import { Heading, Icon, Kbd, type IconComponent } from './foundations';
 import { Button, IconButton } from './button';
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from './menu';
@@ -515,6 +516,11 @@ export interface TopBarProps {
   helpUnread?: boolean;
   /** <ProfileMenu>. */
   profile?: ReactNode;
+  /**
+   * The Accessibility menu, controlled by the host (signed in: saved on the account). Left out, the bar still shows
+   * one that keeps the choices in this browser: a company can never turn it off (answer 2330).
+   */
+  accessibility?: ReactNode;
 }
 
 export function TopBar({
@@ -528,6 +534,7 @@ export function TopBar({
   onHelp,
   helpUnread,
   profile,
+  accessibility,
 }: TopBarProps) {
   const shell = useContext(ShellContext);
   return (
@@ -548,6 +555,7 @@ export function TopBar({
         {entity && <div className="yx-topbar__entity">{entity}</div>}
         {/* Ask AI sits in the bar with the other tools, never floating over the page (R8). */}
         {onAsk && <IconButton icon={MessageCircleQuestionMark} label="Ask AI" variant="secondary" className="yx-ask-fab" onClick={onAsk} />}
+        {accessibility ?? <AccessibilityMenu />}
         {notifications}
         {onHelp && (
           <span className="yx-topbar__help">

@@ -37,6 +37,7 @@ import { Select, type SelectOption } from './select';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from './menu';
 import { FileUpload, type FileUploadProps, type UploadItem } from './upload';
 import { PoweredBy } from './brand';
+import { AccessibilityMenu } from './accessibility';
 
 /* ================================================================== */
 /* Tenant accent: the ONE place a runtime colour is accepted (§38)     */
@@ -687,6 +688,10 @@ export function CareersPage({ config, jobs, onApply, className, companies, assis
             Open jobs
           </a>
         )}
+        {/* Answer 2331: the careers pages carry the Accessibility menu (kept in this browser). */}
+        <span className="yx-careers__a11y">
+          <AccessibilityMenu />
+        </span>
       </header>
       <main className="yx-careers__main">
         {visible
