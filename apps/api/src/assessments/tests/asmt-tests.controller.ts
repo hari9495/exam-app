@@ -1,6 +1,6 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { OwnSessionChangesGuard } from '../../auth/own-session.guard';
@@ -56,6 +56,13 @@ export class JdCreateDto {
   skills!: JdSkillDto[];
 }
 
+/** Answer 2284: the picker's search. */
+export class QuestionChoicesQuery {
+  @IsOptional() @IsString() @MaxLength(100) search?: string;
+  @IsOptional() @IsIn(['easy', 'medium', 'hard']) difficulty?: string;
+  @IsOptional() @IsUUID() tagId?: string;
+}
+
 export class ProctoringModeDto {
   @IsIn(PROCTOR_MODES, { message: 'Choose Open, AI-only or Record & review.' })
   mode!: ProctorMode;
@@ -92,6 +99,12 @@ export class AsmtTestsController {
   @RequirePermissions('exam:manage')
   get(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.tests.get(ctx, userId, id);
+  }
+
+  @Get(':id/sections/:sectionId/question-choices')
+  @RequirePermissions('exam:manage')
+  questionChoices(@CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('sectionId', ParseUUIDPipe) sectionId: string, @Query() q: QuestionChoicesQuery) {
+    return this.tests.questionChoices(ctx, id, sectionId, q);
   }
 
   @Put(':id/proctoring-mode')

@@ -35,7 +35,6 @@ export default function YxTestsPage() {
           : {}),
         onSaveDetails: async () => {},
         onSetMode: async () => {},
-        onEditSections: () => {},
         onRequestApproval: async () => {},
         onApprove: async () => {},
         onPublish: async () => {},

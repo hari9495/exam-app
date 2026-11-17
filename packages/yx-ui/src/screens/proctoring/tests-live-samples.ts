@@ -1,6 +1,6 @@
 // Sample `live` data for the PRC-04 and PRC-06 stories of the states the real tests have (AS-2), and for the tests.
 // Not used by the app.
-import type { BuilderTestView, LiveScoreReport, LiveTestBuilder, TestListRow } from './tests-live';
+import type { BuilderTestView, LiveScoreReport, LiveTestBuilder, QuestionChoice, TestListRow } from './tests-live';
 
 const ok = () => Promise.resolve();
 
@@ -19,7 +19,7 @@ export const BUILDER_TEST: BuilderTestView = {
   proctoringMode: 'ai',
   sections: [
     { id: 's1', title: 'Aptitude', weightPercent: 30, mode: 'fixed', questions: 12, poolSize: null, poolDifficulty: null, poolTags: [], available: null, requiredCount: null, targetMinutes: 20 },
-    { id: 's2', title: 'Java', weightPercent: 50, mode: 'pool', questions: 0, poolSize: 10, poolDifficulty: 'medium', poolTags: ['Java', 'Streams API'], available: 34, requiredCount: null, targetMinutes: null },
+    { id: 's2', title: 'Java', weightPercent: 50, mode: 'pool', questions: 0, poolSize: 10, poolDifficulty: 'medium', poolTags: ['Java', 'Streams API'], poolTagIds: ['k1'], available: 34, requiredCount: null, targetMinutes: null },
     { id: 's3', title: 'SQL', weightPercent: 20, mode: 'pool', questions: 0, poolSize: 8, poolDifficulty: 'hard', poolTags: ['SQL joins'], available: 5, requiredCount: null, targetMinutes: null },
   ],
   checks: [
@@ -47,6 +47,13 @@ export const BUILDER_WAITING: BuilderTestView = {
 export const JD_PLAN = { level: 'hard' as const, skills: [{ name: 'Java streams', tagId: 'k1', percent: 50 }, { name: 'SQL joins', tagId: 'k2', percent: 30 }, { name: 'Spring', tagId: null, percent: 20 }] };
 export const COMPANY_SKILLS = [{ id: 'k1', name: 'Java streams' }, { id: 'k2', name: 'SQL joins' }, { id: 'k3', name: 'Spring Boot' }];
 
+/** Answer 2284: bank questions the Sections step's picker shows. */
+export const CHOSEN: QuestionChoice[] = [{ id: 'q1', text: 'A train 120 m long passes a pole in 6 seconds. What is its speed?', type: 'single_mcq', difficulty: 'easy', marks: 2, skills: ['Aptitude'] }];
+export const CHOICES: QuestionChoice[] = [
+  { id: 'q2', text: 'What does Collectors.groupingBy return for an empty stream?', type: 'single_mcq', difficulty: 'medium', marks: 4, skills: ['Java streams'] },
+  { id: 'q3', text: 'Write a query that lists customers with no orders.', type: 'code', difficulty: 'hard', marks: 10, skills: ['SQL joins'] },
+];
+
 export function liveBuilder(over: Partial<LiveTestBuilder> = {}): LiveTestBuilder {
   return {
     state: 'ready',
@@ -59,10 +66,16 @@ export function liveBuilder(over: Partial<LiveTestBuilder> = {}): LiveTestBuilde
     onOpen: () => {},
     onSaveDetails: ok,
     onSetMode: ok,
-    onEditSections: () => {},
     onRequestApproval: ok,
     onApprove: ok,
     onPublish: ok,
+    onAddSection: ok,
+    onSaveSection: ok,
+    onDeleteSection: ok,
+    onLoadChoices: () => Promise.resolve({ chosen: CHOSEN, choices: CHOICES }),
+    onSetQuestions: ok,
+    onSetPool: ok,
+    skills: COMPANY_SKILLS,
     ...over,
   };
 }

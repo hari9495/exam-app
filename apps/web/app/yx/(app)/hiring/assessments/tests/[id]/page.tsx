@@ -1,14 +1,16 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { TestBuilderScreen, type BuilderTestView, type ProctorMode } from '@yukthix/ui/assessments';
+import { TestBuilderScreen, type BuilderTestView, type ProctorMode, type QuestionChoice } from '@yukthix/ui/assessments';
 import { useApi, useApiWrite } from '../../../../../../../lib/yx-hiring';
 import { BANK_BASE, loadState, testRows, type ExamListPage } from '../../../../../../../lib/yx-assessments';
 import { useYxPermissions } from '../../../../../../../lib/yx-org';
+import { apiFetch } from '../../../../../../../lib/api-client';
+import { useAuth } from '../../../../../../../lib/auth-context';
 
 // Assessments AS-2 › Test builder (PRC-04, answers 2007, 2008): one test with its sections, the blueprint of its pools,
 // timing, scoring, the proctoring mode, the pre-publish checklist and the approver a big test needs (asmt.high_stakes).
-// Sections and questions are still edited on the older editor. The API checks every call (locked tests, four eyes).
+// Sections, their questions and pool skills are edited here (answer 2284). The API checks every call (locked tests, four eyes).
 export default function YxTestBuilderPage() {
   const router = useRouter();
   const { id } = useParams<{ id: string }>();
@@ -16,6 +18,9 @@ export default function YxTestBuilderPage() {
   const list = useApi<ExamListPage>('/exams?pageSize=100');
   const defaults = useApi<{ proctorMode: ProctorMode; highStakes: number }>('/asmt/tests/defaults');
   const write = useApiWrite();
+  const { accessToken } = useAuth();
+  const apiGet = <T,>(path: string) => apiFetch(path, {}, accessToken ?? undefined) as Promise<T>;
+  const skills = useApi<{ id: string; name: string }[]>('/tags');
   const perms = useYxPermissions();
   const open = (other: string) => router.push(`${BANK_BASE}/tests/${other}`);
   const t = `/asmt/tests/${id}`;
@@ -34,7 +39,18 @@ export default function YxTestBuilderPage() {
         onSetMode: async (mode) => void (await write('PUT', `${t}/proctoring-mode`, { mode })),
         // Answer 2154: a section's cut-off (the older section route, which locks a published or started test).
         onSetCutoff: async (sectionId, percent) => void (await write('PATCH', `/exams/${id}/sections/${sectionId}`, { cutoffPercent: percent })),
-        onEditSections: () => router.push(`/v2/exams/${id}/edit`),
+        // Answer 2284: the Sections step's question and skills pickers (the older editor is retired).
+        onLoadChoices: (sectionId, f) => {
+          const q = new URLSearchParams({ ...(f.search.trim() ? { search: f.search.trim() } : {}), ...(f.difficulty ? { difficulty: f.difficulty } : {}), ...(f.tagId ? { tagId: f.tagId } : {}) });
+          return apiGet<{ chosen: QuestionChoice[]; choices: QuestionChoice[] }>(`${t}/sections/${sectionId}/question-choices${q.size ? `?${q}` : ''}`);
+        },
+        onSetQuestions: async (sectionId, questionIds) => {
+          // A pool section becomes a section of chosen questions first.
+          if (test.data?.sections.find((s) => s.id === sectionId)?.mode === 'pool') await write('PATCH', `/exams/${id}/sections/${sectionId}`, { selectionMode: 'fixed' });
+          await write('PUT', `/exams/${id}/sections/${sectionId}/questions`, { questionIds });
+        },
+        onSetPool: async (sectionId, v) => void (await write('PATCH', `/exams/${id}/sections/${sectionId}`, { selectionMode: 'pool', poolTagIds: v.tagIds, poolSize: v.poolSize, ...(v.poolDifficulty ? { poolDifficulty: v.poolDifficulty } : {}) })),
+        skills: skills.data?.map((k) => ({ id: k.id, name: k.name })),
         // Answer 2153: the designed Sections and Blueprint steps edit sections on the existing routes.
         onAddSection: async (title) => void (await write('POST', `/exams/${id}/sections`, { title })),
         onSaveSection: async (sectionId, v) => void (await write('PATCH', `/exams/${id}/sections/${sectionId}`, v)),

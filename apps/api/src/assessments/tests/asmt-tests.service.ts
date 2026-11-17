@@ -8,6 +8,7 @@ import { mayHoldKeys } from '../../questions/bank/review-nudges.service';
 import { AiInvocationService } from '../../ai/ai-invocation.service';
 import { JdSkillsClient, matchSkills, planSections, type Level, type ProposedSkill } from './jd-test';
 import { ExamsService, type PublishCheck } from '../../exams/exams.service';
+import { htmlToText } from '../../service-desk/rich-text';
 import type { UpdateExamDto } from '../../exams/dto/update-exam.dto';
 import { HIGH_STAKES_KEY, companySetting, modeOf, needsApproval, presetOf, type ProctorMode } from '../asmt-rules';
 
@@ -20,6 +21,16 @@ type Tx = Prisma.TransactionClient;
 /** Who writes and approves tests (the YukthiX key and its older alias). */
 const TEST_KEYS = ['asmt.test.manage', 'exam:manage'];
 
+/** Answer 2284: a question as the Sections step's picker shows it (no answer key). */
+export interface QuestionChoice {
+  id: string;
+  text: string;
+  type: string;
+  difficulty: string;
+  marks: number;
+  skills: string[];
+}
+
 export interface BuilderSection {
   id: string;
   title: string;
@@ -30,6 +41,8 @@ export interface BuilderSection {
   poolSize: number | null;
   poolDifficulty: string | null;
   poolTags: string[];
+  /** Answer 2284: the pool's skill ids (the skills picker). */
+  poolTagIds: string[];
   available: number | null;
   requiredCount: number | null;
   targetMinutes: number | null;
@@ -141,6 +154,7 @@ export class AsmtTestsService {
           poolSize: pool ? s.poolSize : null,
           poolDifficulty: pool ? s.poolDifficulty : null,
           poolTags: pool ? s.poolTags.map((t) => t.tag.name) : [],
+          poolTagIds: pool ? s.poolTags.map((t) => t.tagId) : [],
           available: pool
             ? await tx.question.count({ where: { organizationId: org, status: 'active', ...(s.poolDifficulty ? { difficulty: s.poolDifficulty } : {}), AND: s.poolTags.map((t) => ({ tags: { some: { tagId: t.tagId } } })) } })
             : null,
@@ -174,6 +188,48 @@ export class AsmtTestsService {
         },
         createdAt: exam.createdAt.toISOString(),
       };
+    });
+  }
+
+  /**
+   * Answer 2284: the designed Sections step's question picker. A fixed section's chosen questions, and the bank's live
+   * questions it may add (not already in another section of this test), searched by words, difficulty and skill. Test
+   * writers read the question text and its skills, never the answer key. Changes go through the existing
+   * PUT /exams/:id/sections/:sectionId/questions (which locks a published or started test).
+   */
+  async questionChoices(ctx: TenantContext, id: string, sectionId: string, f: { search?: string; difficulty?: string; tagId?: string }): Promise<{ chosen: QuestionChoice[]; choices: QuestionChoice[] }> {
+    return this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const org = ctx.organizationId as string;
+      const section = await tx.examSection.findFirst({ where: { id: sectionId, examId: id, exam: { organizationId: org } }, select: { id: true } });
+      if (!section) throw new NotFoundException('Section not found');
+      const links = await tx.examSectionQuestion.findMany({ where: { section: { examId: id } }, select: { sectionId: true, questionId: true }, orderBy: { orderIndex: 'asc' } });
+      const mine = links.filter((l) => l.sectionId === sectionId).map((l) => l.questionId);
+      const elsewhere = links.filter((l) => l.sectionId !== sectionId).map((l) => l.questionId);
+      const select = { id: true, text: true, type: true, difficulty: true, marks: true, tags: { select: { tag: { select: { name: true } } } } } as const;
+      const shape = (q: { id: string; text: string; type: string; difficulty: string; marks: number; tags: { tag: { name: string } }[] }): QuestionChoice => ({
+        id: q.id,
+        text: htmlToText(q.text).slice(0, 240),
+        type: q.type,
+        difficulty: q.difficulty,
+        marks: q.marks,
+        skills: q.tags.map((t) => t.tag.name),
+      });
+      const chosenRows = mine.length ? await tx.question.findMany({ where: { organizationId: org, id: { in: mine } }, select }) : [];
+      const byId = new Map(chosenRows.map((q) => [q.id, q]));
+      const choices = await tx.question.findMany({
+        where: {
+          organizationId: org,
+          status: 'active',
+          id: { notIn: [...mine, ...elsewhere] },
+          ...(f.search ? { text: { contains: f.search, mode: 'insensitive' as const } } : {}),
+          ...(f.difficulty ? { difficulty: f.difficulty } : {}),
+          ...(f.tagId ? { tags: { some: { tagId: f.tagId } } } : {}),
+        },
+        select,
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      });
+      return { chosen: mine.map((q) => byId.get(q)).filter((q): q is NonNullable<typeof q> => Boolean(q)).map(shape), choices: choices.map(shape) };
     });
   }
 

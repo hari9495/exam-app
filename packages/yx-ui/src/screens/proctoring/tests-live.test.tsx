@@ -210,3 +210,48 @@ describe('Settings 6.5 collections that need a second approver (answer 2123)', (
     expect(await screen.findAllByText(/This test is locked/)).not.toHaveLength(0);
   });
 });
+
+// Answer 2284: the question and skills pickers in the designed Sections step (the older editor is retired).
+describe('PRC-04 Sections step pickers', () => {
+  it('a fixed section adds a bank question, takes one out and saves the chosen ones', async () => {
+    const onSetQuestions = vi.fn().mockResolvedValue(undefined);
+    const onLoadChoices = vi.fn(liveBuilder().onLoadChoices!);
+    wrap(<TestBuilderScreen live={liveBuilder({ onSetQuestions, onLoadChoices })} />);
+    await ue.click(screen.getByRole('button', { name: 'Questions' }));
+    const d = await screen.findByRole('dialog', { name: 'Questions in Aptitude' });
+    expect(await within(d).findByText(/A train 120 m long/)).toBeInTheDocument();
+    await ue.click(within(d).getByRole('button', { name: /^Add: What does Collectors/ }));
+    await ue.click(within(d).getByRole('button', { name: /^Take out: A train/ }));
+    await ue.click(within(d).getByRole('button', { name: 'Save 1 question' }));
+    expect(onSetQuestions).toHaveBeenCalledWith('s1', ['q2']);
+    expect(onLoadChoices).toHaveBeenCalledWith('s1', { search: '', difficulty: null, tagId: null });
+  });
+
+  it('a pool section saves its skills, draw and difficulty; negative: no skill is refused and nothing is sent', async () => {
+    const onSetPool = vi.fn().mockResolvedValue(undefined);
+    wrap(<TestBuilderScreen live={liveBuilder({ onSetPool, test: { ...BUILDER_TEST, sections: BUILDER_TEST.sections.map((s) => (s.id === 's2' ? { ...s, poolTagIds: [] } : s)) } })} />);
+    await ue.click(screen.getAllByRole('button', { name: 'Skills' })[0]!);
+    const d = await screen.findByRole('dialog', { name: 'Questions in Java' });
+    await ue.click(within(d).getByRole('button', { name: 'Save the pool' }));
+    expect(within(d).getByText('Choose at least one skill.')).toBeInTheDocument();
+    expect(onSetPool).not.toHaveBeenCalled();
+    await ue.click(within(d).getByRole('combobox', { name: 'Skills' }));
+    await ue.click(await screen.findByRole('option', { name: 'Java streams' }));
+    await ue.keyboard('{Escape}');
+    await ue.click(within(screen.getByRole('dialog', { name: 'Questions in Java' })).getByRole('button', { name: 'Save the pool' }));
+    expect(onSetPool).toHaveBeenCalledWith('s2', { tagIds: ['k1'], poolSize: 10, poolDifficulty: 'medium' });
+  });
+
+  it('negative: a refused save says why; a locked test has no pickers', async () => {
+    const onSetQuestions = vi.fn().mockRejectedValue(new Error('These questions are already used in another section of this exam'));
+    const { unmount } = wrap(<TestBuilderScreen live={liveBuilder({ onSetQuestions })} />);
+    await ue.click(screen.getByRole('button', { name: 'Questions' }));
+    const d = await screen.findByRole('dialog', { name: 'Questions in Aptitude' });
+    await within(d).findByText(/A train 120 m long/);
+    await ue.click(within(d).getByRole('button', { name: 'Save 1 question' }));
+    expect(await within(d).findByText(/already used in another section/)).toBeInTheDocument();
+    unmount();
+    wrap(<TestBuilderScreen live={liveBuilder({ test: { ...BUILDER_TEST, status: 'published', editable: false } })} />);
+    expect(screen.queryByRole('button', { name: 'Questions' })).toBeNull();
+  });
+});

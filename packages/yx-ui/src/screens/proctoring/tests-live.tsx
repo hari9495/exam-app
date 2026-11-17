@@ -3,9 +3,10 @@
 // layout, kit parts and words as the designs; only what the server holds is shown, and the server checks every action
 // again (a published or started test is locked, the approver is never the author or the one who asked).
 import { useState } from 'react';
-import { Copy, MonitorPlay, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Copy, ListChecks, MonitorPlay, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { ConfirmDialog } from '../../components/overlay';
-import { Select } from '../../components/select';
+import { MultiSelect, Select } from '../../components/select';
+import { Drawer } from '../../components/drawer';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
 import { DataTable } from '../../components/table';
@@ -43,6 +44,8 @@ export interface TestSection {
   poolSize: number | null;
   poolDifficulty: string | null;
   poolTags: string[];
+  /** Answer 2284: the pool's skill ids (for the skills picker). */
+  poolTagIds?: string[];
   available: number | null;
   requiredCount: number | null;
   targetMinutes: number | null;
@@ -66,6 +69,22 @@ export interface BuilderTestView {
   editable: boolean;
   approval: { needed: boolean; threshold: number; requestedBy: string | null; requestedAt: string | null; approvedBy: string | null; approvedAt: string | null; current: boolean; canApprove: boolean };
   createdAt: string;
+}
+
+/** Answer 2284: a bank question as the picker shows it (never its answer key). */
+export interface QuestionChoice {
+  id: string;
+  text: string;
+  type: string;
+  difficulty: string;
+  marks: number;
+  skills: string[];
+}
+
+export interface ChoiceFilter {
+  search: string;
+  difficulty: string | null;
+  tagId: string | null;
 }
 
 export interface TestListRow {
@@ -100,8 +119,13 @@ export interface LiveTestBuilder {
   onSetMode: (mode: ProctorMode) => Promise<void>;
   /** Answer 2154: a section's cut-off (null clears it). Absent: the cut-offs are read only. */
   onSetCutoff?: (sectionId: string, percent: number | null) => Promise<void>;
-  /** The older section editor (choosing questions, making a pool and its skills). */
-  onEditSections: () => void;
+  /**
+   * Answer 2284: the Sections step's pickers (the older editor is retired). A fixed section's chosen questions and the
+   * bank's questions it may add; saving the chosen ones; a pool's skills, draw and difficulty. Absent: read only.
+   */
+  onLoadChoices?: (sectionId: string, f: ChoiceFilter) => Promise<{ chosen: QuestionChoice[]; choices: QuestionChoice[] }>;
+  onSetQuestions?: (sectionId: string, questionIds: string[]) => Promise<void>;
+  onSetPool?: (sectionId: string, v: { tagIds: string[]; poolSize: number; poolDifficulty: string | null }) => Promise<void>;
   /** Answer 2153: the designed steps edit sections. Absent: read only. */
   onAddSection?: (title: string) => Promise<void>;
   onSaveSection?: (id: string, v: { title: string; weightPercent: number }) => Promise<void>;
@@ -255,7 +279,7 @@ function FromJobDescription({ live, busy, run }: { live: LiveTestBuilder; busy: 
 }
 
 /** Answer 2153: the designed Sections step edits the sections themselves (name and weight; add and remove). */
-function SectionsEditor({ sections, busy, onSave, onAdd, onDelete }: { sections: TestSection[]; busy: string | null; onSave: (id: string, v: { title: string; weightPercent: number }) => void; onAdd: (title: string) => Promise<boolean>; onDelete: (id: string) => void }) {
+function SectionsEditor({ sections, busy, onSave, onAdd, onDelete, onQuestions }: { sections: TestSection[]; busy: string | null; onSave: (id: string, v: { title: string; weightPercent: number }) => void; onAdd: (title: string) => Promise<boolean>; onDelete: (id: string) => void; onQuestions?: (s: TestSection) => void }) {
   const [draft, setDraft] = useState<Record<string, { title: string; weightPercent: number }>>({});
   const [newTitle, setNewTitle] = useState('');
   const [tried, setTried] = useState(false);
@@ -282,6 +306,11 @@ function SectionsEditor({ sections, busy, onSave, onAdd, onDelete }: { sections:
                 <Button size="sm" loading={busy === `sec:${s.id}`} disabled={!v.title.trim()} onClick={() => onSave(s.id, { title: v.title.trim(), weightPercent: v.weightPercent })}>
                   Save
                 </Button>
+                {onQuestions && (
+                  <Button size="sm" icon={ListChecks} onClick={() => onQuestions(s)}>
+                    {s.mode === 'pool' ? 'Skills' : 'Questions'}
+                  </Button>
+                )}
                 <Button size="sm" variant="danger" icon={Trash2} onClick={() => setRemoving(s)}>
                   Remove
                 </Button>
@@ -330,6 +359,133 @@ function SectionsEditor({ sections, busy, onSave, onAdd, onDelete }: { sections:
   );
 }
 
+const LEVELS = [{ value: 'any', label: 'Any' }, ...Object.entries(DIFFICULTY).map(([value, label]) => ({ value, label }))];
+
+/**
+ * Answer 2284: a section's questions, in the designed Sections step. "Chosen questions" picks bank questions one by one
+ * (searched by words, difficulty and skill); "Pool by skill" draws a number of questions at random from skills.
+ */
+function SectionQuestionsDrawer({ section, skills, onClose, onLoad, onSetQuestions, onSetPool, onDone }: { section: TestSection; skills: { id: string; name: string }[]; onClose: () => void; onLoad: NonNullable<LiveTestBuilder['onLoadChoices']>; onSetQuestions: NonNullable<LiveTestBuilder['onSetQuestions']>; onSetPool: NonNullable<LiveTestBuilder['onSetPool']>; onDone: (text: string) => void }) {
+  const [mode, setMode] = useState<'fixed' | 'pool'>(section.mode);
+  const [filter, setFilter] = useState<ChoiceFilter>({ search: '', difficulty: null, tagId: null });
+  const [chosen, setChosen] = useState<QuestionChoice[] | null>(null);
+  const [choices, setChoices] = useState<QuestionChoice[]>([]);
+  const [tags, setTags] = useState<string[]>(section.poolTagIds ?? []);
+  const [size, setSize] = useState<number | null>(section.poolSize ?? 5);
+  const [level, setLevel] = useState<string>(section.poolDifficulty ?? 'any');
+  const [tried, setTried] = useState(false);
+  const { busy, run, error } = useRun();
+  const load = (f: ChoiceFilter, keepChosen: boolean) =>
+    void run('load', async () => {
+      const r = await onLoad(section.id, f);
+      setChoices(r.choices.filter((q) => !(keepChosen && chosen ? chosen.some((c) => c.id === q.id) : r.chosen.some((c) => c.id === q.id))));
+      if (!keepChosen || !chosen) setChosen(r.chosen);
+    });
+  if (chosen === null && busy !== 'load' && !error) load(filter, false);
+  const picked = chosen ?? [];
+  const add = (q: QuestionChoice) => {
+    setChosen([...picked, q]);
+    setChoices(choices.filter((c) => c.id !== q.id));
+  };
+  const drop = (q: QuestionChoice) => {
+    setChosen(picked.filter((c) => c.id !== q.id));
+    setChoices([q, ...choices]);
+  };
+  const poolProblem = !tags.length ? 'Choose at least one skill.' : !size || size < 1 ? 'Draw at least one question.' : null;
+  const save = () => {
+    setTried(true);
+    if (mode === 'pool') {
+      if (poolProblem) return;
+      void run('save', () => onSetPool(section.id, { tagIds: tags, poolSize: size!, poolDifficulty: level === 'any' ? null : level })).then((ok) => ok && onDone('Pool saved'));
+    } else void run('save', () => onSetQuestions(section.id, picked.map((q) => q.id))).then((ok) => ok && onDone('Questions saved'));
+  };
+  const row = (q: QuestionChoice, action: 'add' | 'drop') => (
+    <li key={q.id}>
+      <span className="yx-prc-stack" data-gap="sm">
+        <span>{q.text || 'Question without text'}</span>
+        <span className="yx-prc-small yx-prc-muted">{[DIFFICULTY[q.difficulty] ?? q.difficulty, `${q.marks} ${q.marks === 1 ? 'mark' : 'marks'}`, ...q.skills].join(' · ')}</span>
+      </span>
+      {action === 'add' ? (
+        <Button size="sm" icon={Plus} onClick={() => add(q)} aria-label={`Add: ${q.text.slice(0, 60)}`}>
+          Add
+        </Button>
+      ) : (
+        <Button size="sm" icon={Trash2} onClick={() => drop(q)} aria-label={`Take out: ${q.text.slice(0, 60)}`}>
+          Take out
+        </Button>
+      )}
+    </li>
+  );
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`Questions in ${section.title}`}
+      subtitle="Only questions live in the question bank can be chosen; a question is in one section of a test at most."
+      size="lg"
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" loading={busy === 'save'} onClick={save}>
+            {mode === 'pool' ? 'Save the pool' : `Save ${picked.length} ${picked.length === 1 ? 'question' : 'questions'}`}
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-prc-stack">
+        {error && (
+          <InlineAlert tone="danger" title="That did not work">
+            {error}
+          </InlineAlert>
+        )}
+        <Segment label="How the questions are chosen" value={mode} onChange={setMode} options={[{ value: 'fixed', label: 'Chosen questions' }, { value: 'pool', label: 'Pool by skill' }]} />
+        {mode === 'pool' ? (
+          <>
+            <FormField label="Skills" required error={tried && !tags.length ? 'Choose at least one skill.' : undefined} helper="Each candidate gets questions that have all of these skills.">
+              <MultiSelect aria-label="Skills" value={tags} onChange={setTags} options={skills.map((k) => ({ value: k.id, label: k.name }))} searchable />
+            </FormField>
+            <div className="yx-prc-grid2">
+              <FormField label="Questions drawn" required error={tried && (!size || size < 1) ? 'Draw at least one question.' : undefined}>
+                <NumberField value={size} onChange={(v) => setSize(v == null ? null : Math.max(1, Math.round(Number(v))))} />
+              </FormField>
+              <FormField label="Difficulty">
+                <Segment label="Difficulty" value={level} onChange={setLevel} options={LEVELS} />
+              </FormField>
+            </div>
+            {!skills.length && <InlineAlert tone="info">There are no skills yet. Skills come from the question bank's tags.</InlineAlert>}
+          </>
+        ) : (
+          <>
+            <section className="yx-prc-box" aria-label="Chosen questions">
+              <strong>{`Chosen (${picked.length})`}</strong>
+              {chosen === null ? <p className="yx-prc-small yx-prc-muted">Loading…</p> : picked.length === 0 ? <p className="yx-prc-small yx-prc-muted">No questions chosen yet. Add them from the bank below.</p> : <ul className="yx-prc-plain">{picked.map((q) => row(q, 'drop'))}</ul>}
+            </section>
+            <section className="yx-prc-stack" aria-label="Question bank">
+              <div className="yx-prc-grid3">
+                <FormField label="Words in the question">
+                  <TextField value={filter.search} onChange={(v) => setFilter({ ...filter, search: v })} maxLength={100} />
+                </FormField>
+                <FormField label="Difficulty">
+                  <Segment label="Difficulty" value={filter.difficulty ?? 'any'} onChange={(v) => setFilter({ ...filter, difficulty: v === 'any' ? null : v })} options={LEVELS} />
+                </FormField>
+                <FormField label="Skill">
+                  <Select aria-label="Skill" value={filter.tagId} onChange={(v) => setFilter({ ...filter, tagId: v })} options={skills.map((k) => ({ value: k.id, label: k.name }))} clearable searchable />
+                </FormField>
+              </div>
+              <div className="yx-prc-row">
+                <Button icon={Search} loading={busy === 'load'} onClick={() => load(filter, true)}>
+                  Search the bank
+                </Button>
+              </div>
+              {choices.length === 0 ? <EmptyState title="No questions found" description="Change the words, difficulty or skill. Only live questions of the bank are shown." /> : <ul className="yx-prc-plain" aria-label="Questions you can add">{choices.map((q) => row(q, 'add'))}</ul>}
+            </section>
+          </>
+        )}
+      </div>
+    </Drawer>
+  );
+}
+
 /** Answer 2153: the Blueprint step sets how many questions each pool draws, and at what difficulty. */
 function PoolEditor({ s, busy, onSave }: { s: TestSection; busy: string | null; onSave: (id: string, v: { poolSize: number; poolDifficulty: string | null }) => void }) {
   const [size, setSize] = useState<number | null>(s.poolSize);
@@ -354,6 +510,7 @@ export function LiveTestBuilderScreen({ live }: { live: LiveTestBuilder }) {
   const [title, setTitle] = useState('');
   const [tried, setTried] = useState(false);
   const [step, setStep] = useState('sections');
+  const [picking, setPicking] = useState<TestSection | null>(null);
   const { busy, run, error, clearError } = useRun();
   const { done, say } = useSay();
   if (key !== loadedFor) {
@@ -492,6 +649,7 @@ export function LiveTestBuilderScreen({ live }: { live: LiveTestBuilder }) {
               onSave={(id, v) => void act(`sec:${id}`, () => live.onSaveSection!(id, v), 'Section saved')}
               onAdd={(title) => run('sec:add', () => live.onAddSection!(title)).then((ok) => (ok && done('Section added'), ok))}
               onDelete={(id) => void act(`sec:del:${id}`, () => live.onDeleteSection!(id), 'Section removed')}
+              onQuestions={live.onLoadChoices && live.onSetQuestions && live.onSetPool ? setPicking : undefined}
             />
           ) : t.sections.length === 0 ? (
             <EmptyState title="No sections yet" description="Add sections and their questions or pools." />
@@ -511,12 +669,19 @@ export function LiveTestBuilderScreen({ live }: { live: LiveTestBuilder }) {
               </li>
             </ul>
           )}
-          {!locked && (
-            <div className="yx-prc-row">
-              <Button icon={Pencil} onClick={live.onEditSections}>
-                {live.onSaveSection ? 'Choose questions and pools' : 'Edit sections and questions'}
-              </Button>
-            </div>
+          {picking && live.onLoadChoices && live.onSetQuestions && live.onSetPool && (
+            <SectionQuestionsDrawer
+              section={picking}
+              skills={live.skills ?? []}
+              onClose={() => setPicking(null)}
+              onLoad={live.onLoadChoices}
+              onSetQuestions={live.onSetQuestions}
+              onSetPool={live.onSetPool}
+              onDone={(text) => {
+                done(text);
+                setPicking(null);
+              }}
+            />
           )}
         </div>
       ),
