@@ -640,19 +640,32 @@ export class ExamsService {
     return archived;
   }
 
-  /** Answer 2287: an archived test comes back as it was before archiving (a draft when that is not known), audited. */
-  async restore(context: TenantContext, actorUserId: string, id: string): Promise<{ status: string }> {
+  /**
+   * Answer 2287: an archived test comes back as it was before archiving (a draft when that is not known), audited.
+   * Answer 2307: while a fairness finding on the test is still open (its latest review undecided, or decided "retire"),
+   * Restore needs a reason of at least 10 letters, kept in the audit entry.
+   */
+  async restore(context: TenantContext, actorUserId: string, id: string, reason?: string): Promise<{ status: string }> {
+    let finding: string | null = null;
     const status = await this.tenantPrisma.forTenant(context, async (tx) => {
       const existing = await tx.exam.findFirst({ where: { id, organizationId: context.organizationId as string }, select: { status: true, archivedFrom: true } });
       if (!existing) throw new NotFoundException(`Exam ${id} not found`);
       if (existing.status !== 'archived') throw new ConflictException('This test is not archived.');
+      finding = await this.openFairnessFinding(tx, context.organizationId as string, id);
+      if (finding && (reason?.trim().length ?? 0) < 10) throw new BadRequestException({ statusCode: 400, code: 'REASON_NEEDED', field: 'reason', message: 'A fairness finding on this test is still open. Say why you are restoring it (at least 10 letters).' });
       const back = existing.archivedFrom === 'published' ? 'published' : 'draft';
       const n = await tx.exam.updateMany({ where: { id, status: 'archived' }, data: { status: back, archivedFrom: null } });
       if (!n.count) throw new ConflictException('This test is not archived.');
       return back;
     });
-    await this.audit.record(context, { actorUserId, action: 'exam.restored', entityType: 'exam', entityId: id, metadata: { status } });
+    await this.audit.record(context, { actorUserId, action: 'exam.restored', entityType: 'exam', entityId: id, metadata: { status, ...(finding ? { fairnessReviewId: finding, reason: reason!.trim() } : {}) } });
     return { status };
+  }
+
+  /** Answer 2307: the id of the test's latest fairness review when it is still open (undecided or "retire"), else null. */
+  async openFairnessFinding(tx: Prisma.TransactionClient, org: string, examId: string): Promise<string | null> {
+    const r = await tx.asmtFairnessReview.findFirst({ where: { organizationId: org, examId }, orderBy: { openedAt: 'desc' }, select: { id: true, decision: true } });
+    return r && (r.decision === null || r.decision === 'retire') ? r.id : null;
   }
 
   async publish(context: TenantContext, actorUserId: string, id: string): Promise<Exam> {
