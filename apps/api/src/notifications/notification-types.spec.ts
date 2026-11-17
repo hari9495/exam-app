@@ -42,6 +42,7 @@ describe('notification catalog', () => {
       'help.feature_request.done',
       'asmt.question.changes_requested',
       'asmt.question.review_waiting',
+      'asmt.test.approval_requested',
       'helpdesk.change.scheduled',
       'helpdesk.change.overrun',
       'helpdesk.recurring.skipped',
