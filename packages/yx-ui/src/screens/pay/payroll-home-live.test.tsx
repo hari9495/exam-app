@@ -31,6 +31,21 @@ const home = (over: Partial<LivePayrollHome> = {}): LivePayrollHome => ({
 });
 
 describe('PAY-01 Payroll home, live', () => {
+  it('answer 2300: settled first, it says so and one click adds it to an off-cycle run, which opens; a refusal says why', async () => {
+    const onAddToOffcycle = vi.fn().mockRejectedValueOnce(new Error('This correction is already in an off-cycle run.')).mockResolvedValueOnce({ runId: 'r7' });
+    const live = home({ waitingForFnf: [{ id: 'pc2', name: 'Meena S', on: '2026-08-07', month: '2026-08', fnfId: 'f2', state: 'settled' }], onAddToOffcycle });
+    render(<PayrollHomeScreen live={live} />);
+    const list = screen.getByRole('list', { name: 'Waiting for F&F' });
+    expect(within(list).getByText('F&F settled')).toBeInTheDocument();
+    expect(within(list).queryByRole('link', { name: 'Open F&F' })).toBeNull();
+    await ue.click(within(list).getByRole('button', { name: 'Add to an off-cycle run' }));
+    expect((await screen.findAllByText('This correction is already in an off-cycle run.')).length).toBeGreaterThan(0);
+    expect(live.onOpen).not.toHaveBeenCalled();
+    await ue.click(within(list).getByRole('button', { name: 'Add to an off-cycle run' }));
+    await waitFor(() => expect(live.onOpen).toHaveBeenCalledWith('r7'));
+    expect(onAddToOffcycle).toHaveBeenCalledWith('pc2');
+  });
+
   it('answer 2283: a late correction of someone who has left shows as waiting for F&F, with a link to it; none, nothing shown', () => {
     const { unmount } = render(<PayrollHomeScreen live={home({ waitingForFnf: [{ id: 'pc1', name: 'Ravi Kumar', on: '2026-08-05', month: '2026-09', fnfId: 'f1' }], fnfHref: (id) => `/fnf/${id}` })} />);
     const list = screen.getByRole('list', { name: 'Waiting for F&F' });
