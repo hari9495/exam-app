@@ -104,7 +104,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       'api-usage-retention': () => apiUsageRetention.prune(),
       'face-retention': () => faceRetention.prune(),
       // AS-5 part 3 (PRC-28): candidates' erasure requests first, then the retention sweep.
-      'proctoring-retention': async () => (await proctoringRetention.eraseRequested()) + (await proctoringRetention.prune()),
+      'proctoring-retention': async () => (await proctoringRetention.eraseRequested()) + (await proctoringRetention.prune()) + (await proctoringRetention.pruneAccommodation()),
       'drip-steps': () => drip.sweep(),
       'employee-changes': () => employeeHistory.applyDue(),
       // M01 §3.4 / YX-LC-01: probation review reminders, escalation and opt-in auto-confirmation.

@@ -82,6 +82,7 @@ export function testFingerprint(exam: {
   passCriteriaPercent: number;
   expectedCandidates: number | null;
   switches: ProctorSwitches;
+  aiAllowed?: boolean;
   sections: { title: string; weightPercent: number; selectionMode: string; poolSize: number | null; poolDifficulty: string | null; requiredCount: number | null; questionIds: string[]; tagIds: string[] }[];
 }): string {
   const sections = [...exam.sections].map((s) => ({ ...s, questionIds: [...s.questionIds].sort(), tagIds: [...s.tagIds].sort() }));

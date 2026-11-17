@@ -266,6 +266,15 @@ describe('PRC-28 live privacy centre', () => {
     expect(live.onErase).toHaveBeenCalled();
   });
 
+  it('2279: accommodation evidence has its own row: kept until decided, then its delete date; it alone may be erased', () => {
+    const { unmount } = render(<PrivacyCentreScreen live={PRIV({ accommodation: { files: 1, pending: true, deleteOn: null } })} />);
+    expect(screen.getByText('Kept until your request is decided')).toBeInTheDocument();
+    unmount();
+    render(<PrivacyCentreScreen live={PRIV({ recordings: { frames: 0, deleteOn: null }, face: { kept: false, deleteOn: null }, accommodation: { files: 2, pending: false, deleteOn: '20 Jan 2027' } })} />);
+    expect(screen.getByText('Delete on 20 Jan 2027')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Erase my recordings and face data' })).toBeInTheDocument();
+  });
+
   it('negative: a held review says it waits; a waiting request offers no second erase; nothing kept offers none', () => {
     const { unmount } = render(<PrivacyCentreScreen live={PRIV({ held: true, request: { status: 'waiting', requestedOn: '17 Nov 2026', doneOn: null, dueOn: '17 Dec 2026' } })} />);
     expect(screen.getByText(/can't erase your recordings while a review or appeal/)).toBeInTheDocument();

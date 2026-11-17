@@ -62,8 +62,12 @@ export class ProctoringRetentionService {
           const faces = await tx.faceEnrolment.findMany({ where: { attemptId: { in: ids } }, select: { referenceImagePath: true } });
           faces.forEach((f) => f.referenceImagePath && urls.push(f.referenceImagePath));
           await tx.faceEnrolment.deleteMany({ where: { attemptId: { in: ids } } });
+          // Answer 2279: the files sent with accommodation requests go too (the request and its decision stay).
+          const acc = await tx.accommodationRequest.findMany({ where: { invitation: { candidateId: r.candidateId }, evidencePath: { not: null } }, select: { id: true, evidencePath: true } });
+          acc.forEach((a) => a.evidencePath && urls.push(a.evidencePath));
+          if (acc.length) await tx.accommodationRequest.updateMany({ where: { id: { in: acc.map((a) => a.id) } }, data: { evidencePath: null, evidenceName: null, evidenceType: null } });
           await tx.asmtErasureRequest.update({ where: { id: r.id }, data: { status: 'done', doneAt: now } });
-          await AuditService.recordIn(tx, ctx, { actorUserId: null, action: 'candidate.erasure_done', entityType: 'candidate', entityId: r.candidateId, metadata: { frames: events.length, faceRecords: faces.length } });
+          await AuditService.recordIn(tx, ctx, { actorUserId: null, action: 'candidate.erasure_done', entityType: 'candidate', entityId: r.candidateId, metadata: { frames: events.length, faceRecords: faces.length, accommodationFiles: acc.length } });
           const c = await tx.candidate.findUnique({ where: { id: r.candidateId }, select: { name: true, email: true, emailOptedOutAt: true } });
           const org = await tx.organization.findUnique({ where: { id: r.organizationId }, select: { name: true } });
           return { urls, c, org: org?.name ?? null };
@@ -79,7 +83,7 @@ export class ProctoringRetentionService {
           }
         }
         if (work.c?.email && !work.c.emailOptedOutAt) {
-          const html = buildCandidateEmailHtml({ logoUrl: null, orgName: work.org, bodyText: [`Hi ${work.c.name},`, '', 'As you asked, we erased the camera frames, screen captures and face data from your tests.', '', 'Your answers and scores stay with your application.'].join('\n') });
+          const html = buildCandidateEmailHtml({ logoUrl: null, orgName: work.org, bodyText: [`Hi ${work.c.name},`, '', 'As you asked, we erased the camera frames, screen captures, face data and accommodation files from your tests.', '', 'Your answers and scores stay with your application.'].join('\n') });
           const res = await this.email.send({ to: work.c.email, subject: 'Your recordings and face data were erased', html, organizationId: r.organizationId });
           if (!res.success) this.logger.warn(`Erasure email for request ${r.id} failed`);
         }
@@ -88,6 +92,35 @@ export class ProctoringRetentionService {
     } catch (error) {
       this.logger.warn(`Erasure requests sweep failed: ${error instanceof Error ? error.message : String(error)}`);
       return done;
+    }
+  }
+
+  /**
+   * Answer 2279: a file sent with an accommodation request is kept until the request is decided, then for the company's
+   * retention (asmt.retention) from the decision; then the file goes (the request and its decision stay).
+   */
+  async pruneAccommodation(now: Date = new Date()): Promise<number> {
+    const superAdmin = { organizationId: null, isSuperAdmin: true };
+    try {
+      const [days, rows] = await this.tenantPrisma.forTenant(superAdmin, async (tx) => [
+        await retentionByCompany(tx),
+        await tx.accommodationRequest.findMany({ where: { evidencePath: { not: null }, status: { not: 'pending' }, decidedAt: { lt: retentionCutoff(now, RETENTION_MIN_DAYS) } }, select: { id: true, evidencePath: true, decidedAt: true, organizationId: true }, take: 500 }),
+      ] as const);
+      const due = rows.filter((r) => r.decidedAt && pastRetention(r.decidedAt, r.organizationId, days, now));
+      if (!due.length) return 0;
+      await this.tenantPrisma.forTenant(superAdmin, (tx) => tx.accommodationRequest.updateMany({ where: { id: { in: due.map((r) => r.id) } }, data: { evidencePath: null, evidenceName: null, evidenceType: null } }));
+      for (const r of due) {
+        try {
+          await this.blobStorage.deleteByUrl(r.evidencePath!);
+        } catch (error) {
+          this.logger.warn(`Failed to delete accommodation evidence ${r.id}: ${(error as Error).message}`);
+        }
+      }
+      this.logger.log(`Deleted ${due.length} accommodation file(s) past their company's retention`);
+      return due.length;
+    } catch (error) {
+      this.logger.warn(`Accommodation evidence prune failed: ${error instanceof Error ? error.message : String(error)}`);
+      return 0;
     }
   }
 

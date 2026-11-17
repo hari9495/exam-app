@@ -81,6 +81,13 @@ describe('resolveProctoringConfig', () => {
     expect(resolveProctoringConfig(source({ enableAntiCheating: false, webcamProctoringEnabled: true, webcamAiAnalysisEnabled: true })).webcamAiAnalysisEnabled).toBe(false);
   });
 
+  it('AS-6 part 2 (2272): an AI-allowed test also turns copy and paste off, once each; others stay watched', () => {
+    const config = resolveProctoringConfig(source({ aiAllowed: true, disabledProctoringSignalsJson: '["copy_paste","right_click"]' }));
+    expect(config.disabledSignals).toEqual(['copy_paste', 'right_click', 'editor_paste']);
+    expect(isSignalEnabled(config, 'tab_switch')).toBe(true);
+    expect(resolveProctoringConfig(source()).disabledSignals).toEqual([]);
+  });
+
   it('parses the disabled-signal JSON array', () => {
     const config = resolveProctoringConfig(source({ disabledProctoringSignalsJson: '["right_click","idle_timeout"]' }));
 

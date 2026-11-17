@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { LiveConsoleScreen, scoreFromFlags, type LiveThreadMessage, type LiveTileData } from '@yukthix/ui/assessments';
 import { apiFetch } from '../../../../../../../../lib/api-client';
@@ -27,6 +27,13 @@ export default function YxLiveConsolePage() {
   const m = useExamMonitoring(id);
   const write = useApiWrite();
   const { accessToken } = useAuth();
+  // Answer 2277: one "opened the live console" record per visit (not per refresh of the data).
+  const recorded = useRef<string | null>(null);
+  useEffect(() => {
+    if (!accessToken || recorded.current === id) return;
+    recorded.current = id;
+    void apiFetch(`/asmt/live/${encodeURIComponent(id)}/opened`, { method: 'POST' }, accessToken).catch(() => undefined);
+  }, [id, accessToken]);
   // Answer 2268: each running attempt's latest camera frame, refreshed every minute.
   const frames = useApi<{ attemptId: string; url: string }[]>(`/asmt/live/${id}/frames`);
   const refetchFrames = frames.refetch;

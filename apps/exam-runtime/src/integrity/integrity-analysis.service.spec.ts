@@ -363,6 +363,26 @@ describe('IntegrityAnalysisService', () => {
     );
   });
 
+  it('AS-6 part 2 (2272): an AI-allowed test raises no code paste flags (pasting the assistant\'s code is allowed)', async () => {
+    const answers = [
+      {
+        answerText: 'x'.repeat(10),
+        marksAwarded: null,
+        telemetryJson: JSON.stringify({ keystrokeChars: 0, pastedChars: 0, pasteCount: 1, largestPasteChars: 250, secondsToFirstEdit: 5, activeSeconds: 60, runCount: 1 }),
+        question: { id: 'q1', type: 'code', marks: 10 },
+      },
+    ];
+    const write = persistTx();
+    tenantPrisma.forTenant
+      .mockResolvedValueOnce({ ...attemptWithExam, invitation: { ...attemptWithExam.invitation, exam: { ...attemptWithExam.invitation.exam, aiAllowed: true } } })
+      .mockImplementationOnce((_ctx, fn) => fn(readTxWith(answers)))
+      .mockImplementationOnce((_ctx, fn) => fn(write));
+
+    await service.analyze('attempt-1');
+
+    expect(integrityNarrativeClient.writeNarrative).not.toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ type: 'large_paste' })]), expect.anything(), expect.anything());
+  });
+
   it('skips telemetry silently when telemetryJson is unparseable, never flagging or throwing', async () => {
     const answers = [
       {

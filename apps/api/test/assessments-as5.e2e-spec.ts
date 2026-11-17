@@ -480,6 +480,48 @@ describe('Assessments AS-5: integrity review and appeals', () => {
     expect(sent.filter((m) => m.subject === 'Your recordings and face data were erased')).toHaveLength(1);
   });
 
+  // Answer 2277: opening a test's live console is recorded once per visit.
+  it('2277: opening the live console is recorded; a results reader and another company may not', async () => {
+    const r = await running();
+    const { examId } = await inOrg(org.A.id, (tx) => tx.attempt.findUniqueOrThrow({ where: { id: r.attemptId }, select: { examId: true } }));
+    await api('proctor', 'post', `/asmt/live/${examId}/opened`).expect(204);
+    await api('reader', 'post', `/asmt/live/${examId}/opened`).expect(403);
+    await api('adminB', 'post', `/asmt/live/${examId}/opened`).expect(404);
+    await api('proctor', 'post', `/asmt/live/${randomUUID()}/opened`).expect(404);
+    const rows = await inOrg(org.A.id, (tx) => tx.auditLog.findMany({ where: { entityId: examId, action: 'asmt.live_console.opened' } }));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.actorUserId).toBe(users.proctor);
+  });
+
+  // Answer 2279: accommodation evidence on the privacy centre with its own delete date; the erasure and retention take it.
+  it('2279: accommodation evidence is listed (pending: kept until decided), erased on request, and dropped after retention', async () => {
+    const r = await running();
+    const inv = await inOrg(org.A.id, (tx) => tx.attempt.findUniqueOrThrow({ where: { id: r.attemptId }, select: { invitationId: true, invitation: { select: { candidateId: true } } } }));
+    const req = await inOrg(org.A.id, (tx) => tx.accommodationRequest.create({ data: { invitationId: inv.invitationId, kinds: ['time'], extraTimePercent: 25, evidencePath: `local-blob:accommodation-evidence/${r.attemptId}.pdf`, evidenceName: 'letter.pdf', evidenceType: 'application/pdf' } }));
+    expect((await cand(r.ct, 'get', '/attempt/privacy').expect(200)).body.accommodation).toEqual({ files: 1, pending: true, deleteOn: null });
+    await inOrg(org.A.id, (tx) => tx.accommodationRequest.update({ where: { id: req.id }, data: { status: 'approved', approvedKinds: ['time'], decidedBy: users.adminA, decidedAt: new Date() } }));
+    const v = (await cand(r.ct, 'get', '/attempt/privacy').expect(200)).body;
+    expect(v.accommodation).toMatchObject({ files: 1, pending: false });
+    expect(new Date(v.accommodation.deleteOn).getTime()).toBeGreaterThan(Date.now() + 29 * 86_400_000);
+    const copy = (await cand(r.ct, 'get', '/attempt/privacy/export').expect(200)).body;
+    expect(copy.accommodationRequests).toEqual([expect.objectContaining({ status: 'approved', file: 'letter.pdf' })]);
+    expect(JSON.stringify(copy)).not.toContain('local-blob:');
+    // Retention: a recent decision keeps the file; one past the company's retention loses it (the decision stays).
+    const sweep = adminApp.get(ProctoringRetentionService);
+    await sweep.pruneAccommodation();
+    expect((await inOrg(org.A.id, (tx) => tx.accommodationRequest.findUniqueOrThrow({ where: { id: req.id } }))).evidencePath).not.toBeNull();
+    await inOrg(org.A.id, (tx) => tx.accommodationRequest.update({ where: { id: req.id }, data: { decidedAt: new Date(Date.now() - 400 * 86_400_000) } }));
+    await sweep.pruneAccommodation();
+    expect(await inOrg(org.A.id, (tx) => tx.accommodationRequest.findUniqueOrThrow({ where: { id: req.id } }))).toMatchObject({ evidencePath: null, evidenceName: null, status: 'approved' });
+    // Erasure: a second file goes with the recordings when the candidate asks.
+    const req2 = await inOrg(org.A.id, (tx) => tx.accommodationRequest.create({ data: { invitationId: inv.invitationId, kinds: ['reader'], evidencePath: `local-blob:accommodation-evidence/${r.attemptId}-2.pdf`, evidenceName: 'second.pdf', evidenceType: 'application/pdf', status: 'declined', decidedBy: users.adminA, decidedAt: new Date() } }));
+    await cand(r.ct, 'post', '/attempt/submit').send({}).expect(201);
+    await cand(r.ct, 'post', '/attempt/privacy/erase').send({}).expect(200);
+    await sweep.eraseRequested();
+    expect(await inOrg(org.A.id, (tx) => tx.accommodationRequest.findUniqueOrThrow({ where: { id: req2.id } }))).toMatchObject({ evidencePath: null, status: 'declined' });
+    expect((await cand(r.ct, 'get', '/attempt/privacy').expect(200)).body).toMatchObject({ accommodation: { files: 0 }, request: { status: 'done' } });
+  });
+
   it('negative: approving time above the cap does not pause a test without face checks', async () => {
     const r = await running(false);
     const credit = await inOrg(org.A.id, (tx) => tx.connectivityCredit.create({ data: { attemptId: r.attemptId, lostMs: 120_000 } }));

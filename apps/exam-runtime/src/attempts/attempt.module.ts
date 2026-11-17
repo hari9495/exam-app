@@ -12,6 +12,7 @@ import { AttemptService } from './attempt.service';
 import { DeliveryService } from './delivery.service';
 import { AccommodationService } from './accommodation.service';
 import { PrivacyService } from './privacy.service';
+import { AssistantService } from './assistant.service';
 
 @Module({
   imports: [
@@ -27,6 +28,6 @@ import { PrivacyService } from './privacy.service';
     ApiInternalClientModule,
   ],
   controllers: [AttemptController],
-  providers: [AttemptService, DeliveryService, AccommodationService, PrivacyService],
+  providers: [AttemptService, DeliveryService, AccommodationService, PrivacyService, AssistantService],
 })
 export class AttemptModule {}

@@ -548,6 +548,7 @@ export class ExamsService {
           ...(dto.certificatesEnabled !== undefined ? { certificatesEnabled: dto.certificatesEnabled } : {}),
           ...(dto.walkInEnabled !== undefined ? { walkInEnabled: dto.walkInEnabled } : {}),
           ...(dto.walkInListed !== undefined ? { walkInListed: dto.walkInListed } : {}),
+          ...(dto.aiAllowed !== undefined ? { aiAllowed: dto.aiAllowed } : {}),
           ...(dto.allowedIpRange !== undefined ? { allowedIpRange: dto.allowedIpRange || null } : {}),
           ...proctoring,
           ...faceId,
@@ -681,6 +682,8 @@ export class ExamsService {
       passCriteriaPercent: exam.passCriteriaPercent,
       expectedCandidates: exam.expectedCandidates,
       switches: { enableAntiCheating: exam.enableAntiCheating, webcamProctoringEnabled: exam.webcamProctoringEnabled, webcamAiAnalysisEnabled: exam.webcamAiAnalysisEnabled, screenCaptureEnabled: exam.screenCaptureEnabled },
+      // Only when on, so approvals given before AI-allowed tests existed still hold.
+      ...(exam.aiAllowed ? { aiAllowed: true } : {}),
       sections: exam.sections.map((x) => ({ title: x.title, weightPercent: x.weightPercent, selectionMode: x.selectionMode, poolSize: x.poolSize, poolDifficulty: x.poolDifficulty, requiredCount: x.requiredCount, cutoffPercent: x.cutoffPercent, questionIds: x.questions.map((q) => q.questionId), tagIds: x.poolTags.map((t) => t.tagId) })),
     });
   }
@@ -810,6 +813,7 @@ export class ExamsService {
           feedbackVisibility: exam.feedbackVisibility,
           resultsReleaseMode: exam.resultsReleaseMode,
           certificatesEnabled: exam.certificatesEnabled,
+          aiAllowed: exam.aiAllowed,
           enableAntiCheating: exam.enableAntiCheating,
           webcamProctoringEnabled: exam.webcamProctoringEnabled,
           webcamAiAnalysisEnabled: exam.webcamAiAnalysisEnabled,

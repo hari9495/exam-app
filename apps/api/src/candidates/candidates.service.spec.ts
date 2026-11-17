@@ -1069,6 +1069,7 @@ describe('CandidatesService', () => {
         proctoringEvents?: { metadataJson: string | null }[];
         faceEnrolments?: { referenceImagePath: string | null }[];
         faceEnrolment?: { deleteMany?: jest.Mock };
+        assistantDelete?: jest.Mock;
         candidateProfile?: { resumePath: string | null } | null;
         offers?: { pdfPath: string | null }[];
         interview?: { updateMany?: jest.Mock };
@@ -1109,6 +1110,8 @@ describe('CandidatesService', () => {
           findMany: jest.fn().mockResolvedValue(overrides.faceEnrolments ?? []),
           deleteMany: overrides.faceEnrolment?.deleteMany ?? jest.fn(),
         },
+        // AS-6 part 2: the candidate's questions to the test assistant.
+        asmtAssistantMessage: { deleteMany: overrides.assistantDelete ?? jest.fn() },
         candidateProfile: {
           findFirst: jest.fn().mockResolvedValue(overrides.candidateProfile ?? null),
           updateMany: jest.fn(),
@@ -1607,6 +1610,15 @@ describe('CandidatesService', () => {
       expect(blobStorage.deleteByUrl).toHaveBeenCalledTimes(1);
       expect(blobStorage.deleteByUrl).toHaveBeenCalledWith('https://blob.test/container/webcam-snapshots/c.jpg');
       expect(audit.record).toHaveBeenCalled();
+    });
+
+    it('AS-6 part 2: deletes the candidate\'s assistant log (their own free text) for their attempts', async () => {
+      const assistantDelete = jest.fn().mockResolvedValue({ count: 4 });
+      mockEraseTx({ assistantDelete });
+
+      await service.erase(context, 'user-1', 'cand-1');
+
+      expect(assistantDelete).toHaveBeenCalledWith({ where: { attemptId: { in: expect.any(Array) } } });
     });
 
     it('deletes the face reference image blob and the enrolment row', async () => {
